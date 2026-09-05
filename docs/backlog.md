@@ -6,6 +6,35 @@ belongs here. Entries are dated. Nothing here is a commitment.
 
 ---
 
+## A polite monitor - 2026-09-05
+
+An app that calmly answers "what is my computer doing?" - what is holding the
+machine awake, what is downloading, what is reading which logs. Existing tools
+are developer instruments or security products that alarm you; nothing just
+tells you. This is seat two made into a product.
+
+- **It fixes adoption from the other end.** Show system-level truth for
+  everything, and richer detail for anything that came through our layers: an
+  adopter reads "Qwen2.5, 3.1 GB, 40%, resumable, handed to the NAS" while
+  everything else reads "chrome.exe is using the network". The payoff for
+  adopting is visible, and it is never a warning about who did not - that is the
+  nag screen, and untrue besides.
+- **Two products hide here.** What *our* layers know is honest, buildable, and
+  currently shows almost nothing. What the *system* knows needs the privileged
+  service and inherits every limit in `logs-reading.md`. They are one product;
+  the second is what makes the first worth opening.
+- **The hardest rule comes from the log survey**: an empty result has nine
+  causes. A monitor that shows nothing when it *cannot see* is worse than
+  useless. "I cannot see this without administrator" is the only honest answer.
+- **It is the first thing a person judges on looks**, and the first sentence
+  about this project that someone could repeat to a friend.
+
+Side project until the layers underneath are adoptable. Building the visible
+thing on a library that gives a stateless caller zero resume only moves the
+problem somewhere more embarrassing.
+
+---
+
 ## A destination is a path, and a path is one machine — 2026-09-05
 
 Not speculative: it is why the ComfyUI node cannot delegate. Its own docstring
