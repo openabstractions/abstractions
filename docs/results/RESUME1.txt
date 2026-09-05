@@ -1,0 +1,56 @@
+PS> bash scripts/kill-and-resume.sh
+
+--- build ---
+
+--- what are we fetching, and do we already have it? ---
+digest  sha256:2fc237e65e1f963310e9c961d8e71e932734a72f90e3216a972d83edd1feb756
+size    313.4 MiB
+remote  https://huggingface.co/bartowski/Qwen2.5-0.5B-Instruct-GGUF/resolve/41ba88dbac95fed2528c92514c131d73eb5a174b/Qwen2.5-0.5B-Instruct-IQ2_M.gguf
+
+--- start the download, then kill it after 12 seconds ---
+scripts/kill-and-resume.sh: line 47:   259 Killed                     "$MG" get "$REF" -o "$OUT" > "$WORK/get.log" 2>&1
+killed pid 259
+hf://bartowski/Qwen2.5-0.5B-Instruct-GGUF#IQ2_M
+  digest  sha256:2fc237e65e1f963310e9c961d8e71e932734a72f90e3216a972d83edd1feb756
+  size    313.4 MiB
+  to      C:\Users\reinis\AppData\Local\Temp\kar\out\Qwen2.5-0.5B-Instruct-IQ2_M.gguf
+  source  https://huggingface.co/bartowski/Qwen2.5-0.5B-Instruct-GGUF/resolve/41ba88dbac95fed2528c92514c131d73eb5a174b/Qwen2.5-0.5B-Instruct-IQ2_M.gguf
+  job     1787205139652-eb9f221aea2ed0cc525e
+
+
+--- what survived? ---
+job record:      1787205139652-eb9f221aea2ed0cc525e.json
+bytes on disk:   1760727
+bytes PROVEN:    1580602
+
+The gap between those two numbers is the point. The dead process wrote
+more than it had checkpointed, and nothing vouches for the difference, so
+the resume starts from the proven number and throws the rest away.
+
+--- immediately after the kill, the dead owner still holds the lease ---
+Qwen2.5-0.5B-Instruct-IQ2_M.gguf (0% done) is still held by modelget@CoffeeMachine:16168 — free in 28s
+
+If that owner is gone its lease lapses by itself; run this again then.
+The wait is what stops two processes writing one file at once.
+
+--- wait for the dead owner's lease to lapse, then a NEW process finishes it ---
+finished 1 interrupted transfer(s)
+
+real	1m9.851s
+user	0m0.015s
+sys	0m0.000s
+
+--- did it actually land, and is it right? ---
+  size: 328597408 bytes
+  want digest: 2fc237e65e1f963310e9c961d8e71e932734a72f90e3216a972d83edd1feb756
+  got  digest: 2fc237e65e1f963310e9c961d8e71e932734a72f90e3216a972d83edd1feb756
+
+--- RESULT ---
+PASS
+
+A real model download was killed with SIGKILL partway through. A separate
+process picked the job up, resumed from the byte the dead one had proven, and
+delivered a file whose sha256 matches what HuggingFace published for it.
+
+Nothing was re-downloaded from zero. Nothing had to be graceful. The job outlived
+the process because the job was never inside it.

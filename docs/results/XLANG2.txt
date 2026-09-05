@@ -1,0 +1,99 @@
+PS> bash scripts/xlang-job.sh
+
+--- build the Go jobctl ---
+go:     /c/Users/reinis/Documents/AI abstractions (scratch)/xlang/jobctl.exe
+python: py -3 /c/Users/reinis/Documents/AI abstractions/job/python/jobctl.py
+
+--- Go submits a job whose spec neither implementation understands ---
+job id: 1787202430967-a752f9a9c2c77b123ffd
+
+--- Go claims it and proves the first 400 bytes ---
+epoch=1 state=running checkpoint=none
+done=460 checkpoint={"verified_prefix":400}
+the Go worker stops here and releases nothing.
+what it leaves behind is byte-identical to a SIGKILL: a lease with no
+process behind it. This test covers the record and the lease only — the
+download runner has its own resume tests over real bytes.
+
+--- Python looks for orphans while the Go lease is still live ---
+(none, correctly — the lease has not expired)
+
+--- wait out the lease, the way a crashed owner's lease expires ---
+
+--- Python finds the orphan ---
+1787202430967-a752f9a9c2c77b123ffd kind=conformance-kind state=running checkpoint={"verified_prefix":400}
+
+--- Python adopts it ---
+epoch=2 state=running checkpoint={"verified_prefix":400}
+the successor inherited the predecessor's checkpoint: 400, not the 460 written
+
+--- the zombie Go worker wakes up and tries to write with its old epoch ---
+refused, as it must be
+
+--- Python finishes the job ---
+done=1000 checkpoint={"verified_prefix":1000}
+state=transferred
+
+--- Go reads back what Python wrote ---
+{
+  "schema": 3,
+  "id": "1787202430967-a752f9a9c2c77b123ffd",
+  "kind": "conformance-kind",
+  "state": "transferred",
+  "spec": {
+    "artifact": {
+      "digest": "sha256:abcd",
+      "size": 1000
+    },
+    "sources": [
+      {
+        "scheme": "smb",
+        "locator": "//nas/models/qwen.gguf"
+      },
+      {
+        "scheme": "file",
+        "locator": "D:/models/qwen.gguf"
+      }
+    ],
+    "anything_else": {
+      "nested": [
+        1,
+        2,
+        3
+      ]
+    }
+  },
+  "checkpoint": {
+    "verified_prefix": 1000
+  },
+  "progress": {
+    "done": 1000,
+    "total": 1000,
+    "updated_at": "2026-08-20T05:07:14.951609Z"
+  },
+  "lease": {
+    "owner": "python-worker",
+    "epoch": 2,
+    "expires_at": "2026-08-20T05:08:14.635068Z"
+  },
+  "created_at": "2026-08-20T05:07:10.967343Z",
+  "updated_at": "2026-08-20T05:07:15.134811Z"
+}
+
+--- RESULT ---
+PASS
+
+A job was created in Go, worked on in Go, abandoned without release, adopted in
+Python, resumed from the byte Go had PROVEN rather than the byte it had written,
+finished in Python, and read back in Go. The stale Go owner was refused when it
+came back with its old epoch.
+
+Neither implementation imports the other. Neither is generated from a shared
+schema. The record on disk is the entire contract, and it survived the crossing
+unchanged in both directions.
+
+SCOPE: no bytes moved here, deliberately. This exercises the record, the lease,
+the epoch and the adoption path across two languages. Resume over real bytes —
+discarding an unproven tail, rebuilding the hash over an inherited prefix — is
+tested in download/go. What is still missing is a kill during a real
+multi-gigabyte transfer, which needs the service tier.

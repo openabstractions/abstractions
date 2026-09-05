@@ -1,0 +1,48 @@
+PS> $env:VAULT_CONFORMANCE_GGUF="C:\Users\reinis\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\store\74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
+PS> $env:VAULT_LLAMA_SERVER="C:\Users\reinis\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\llama-server\llama-server.exe"
+PS> go test -tags conformance -run TestBoundary_CorruptionScale -v -timeout 30m .
+=== RUN   TestBoundary_CorruptionScale
+    boundary_test.go:355: pristine: " Paris. It is the largest city in Europe and the second largest in the world. It is located in the south of"
+=== RUN   TestBoundary_CorruptionScale/zeroed_512B
+    boundary_test.go:396: zeroed 512 bytes at offset 442260028: size 491400032 (unchanged: true), sha256 62da0274c154ed36a3cc608dbbc418edcc42d7ff45203b25680d1e974fa6cf75
+
+=== G2c zeroed 512 bytes ===
+loaded=true
+content=" Paris. It is the largest city in Europe and the second largest in the world. It is located in the south of"
+identical to pristine: true
+
+    boundary_test.go:403: RESULT zeroed 512 bytes: served " Paris. It is the largest city in Europe and the second largest in the world. It is located in the south of"
+=== RUN   TestBoundary_CorruptionScale/inverted_512B
+    boundary_test.go:396: inverted 512 bytes at offset 442260028: size 491400032 (unchanged: true), sha256 073f279bfa21f700fb4739ba7606a0ab2b531b64edcb7e948f3823192ddab253
+
+=== G2c inverted 512 bytes ===
+loaded=true
+content=""
+identical to pristine: false
+
+    boundary_test.go:403: RESULT inverted 512 bytes: served ""
+=== RUN   TestBoundary_CorruptionScale/zeroed_4096B
+    boundary_test.go:396: zeroed 4096 bytes at offset 442260028: size 491400032 (unchanged: true), sha256 7967bcb4460796f5ff2d4dcb0379c2706ff6c3b5c38462bd3e6fce61f96fab99
+
+=== G2c zeroed 4096 bytes ===
+loaded=true
+content=" Paris. It is the largest city in Europe and the second largest in the world. It is located in the south of"
+identical to pristine: true
+
+    boundary_test.go:403: RESULT zeroed 4096 bytes: served " Paris. It is the largest city in Europe and the second largest in the world. It is located in the south of"
+=== RUN   TestBoundary_CorruptionScale/inverted_4096B
+    boundary_test.go:396: inverted 4096 bytes at offset 442260028: size 491400032 (unchanged: true), sha256 188ef433552a19747a48be600af03fa09aa2fb7ee83b9f2b666540d93f894645
+
+=== G2c inverted 4096 bytes ===
+loaded=true
+content=""
+identical to pristine: false
+
+    boundary_test.go:403: RESULT inverted 4096 bytes: served ""
+--- PASS: TestBoundary_CorruptionScale (10.41s)
+    --- PASS: TestBoundary_CorruptionScale/zeroed_512B (1.98s)
+    --- PASS: TestBoundary_CorruptionScale/inverted_512B (2.05s)
+    --- PASS: TestBoundary_CorruptionScale/zeroed_4096B (1.97s)
+    --- PASS: TestBoundary_CorruptionScale/inverted_4096B (1.99s)
+PASS
+ok  	github.com/ReinisLusis/abstraction-vault	13.520s

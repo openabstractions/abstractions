@@ -1,0 +1,39 @@
+PS> $env:VAULT_CONFORMANCE_GGUF="C:\Users\reinis\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\store\74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
+PS> $env:VAULT_LLAMA_SERVER="C:\Users\reinis\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\llama-server\llama-server.exe"
+PS> go test -tags conformance -run TestBoundary -v -timeout 60m .
+=== RUN   TestBoundary_TruncationThreshold
+    boundary_test.go:181: pristine 491400032 bytes: loaded, completion " Paris. It is the largest city in Europe and the second largest in the world. It is located in the south of"
+    boundary_test.go:187:   -1024 bytes (491399008): loaded=false
+    boundary_test.go:187:   - 512 bytes (491399520): loaded=false
+    boundary_test.go:187:   - 256 bytes (491399776): loaded=false
+    boundary_test.go:187:   - 128 bytes (491399904): loaded=false
+    boundary_test.go:187:   -  64 bytes (491399968): loaded=false
+    boundary_test.go:187:   -  32 bytes (491400000): loaded=false
+    boundary_test.go:187:   -  16 bytes (491400016): loaded=false
+    boundary_test.go:187:   -   8 bytes (491400024): loaded=false
+    boundary_test.go:187:   -   4 bytes (491400028): loaded=false
+    boundary_test.go:187:   -   2 bytes (491400030): loaded=false
+    boundary_test.go:187:   -   1 bytes (491400031): loaded=false
+    boundary_test.go:204: THRESHOLD: 0 bytes can be removed silently; 1 bytes is refused
+
+=== G2 truncation threshold: silent up to -0 bytes, refused at -1 ===
+
+--- PASS: TestBoundary_TruncationThreshold (3.70s)
+=== RUN   TestBoundary_MidFileFlip
+    boundary_test.go:248: flipped 64 bytes at offset 442260028 (90.0% into the file)
+    boundary_test.go:249:   before: 2f8f0b49a6b87c1a9299e0e6ffab4d4cf85936b9a02202600a44c4c2ba1c295e0a81f9660a37c4a0def659f2a5f2c2da7b18c99e64d9794c7fddd10e7da031ec
+    boundary_test.go:250:   after:  d070f4b6594783e56d661f190054b2b307a6c9465fddfd9ff5bb3b3d45e3d6a1f57e0699f5c83b5f2109a60d5a0d3d2584e736619b2686b380222ef1825fce13
+    boundary_test.go:251:   size    491400032 -> 491400032 (unchanged: true)
+    boundary_test.go:252:   sha256  74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db -> 2f40ca9cbede58ad17bd458ef031adf324eb5d5b93be0d06465b5485010bc774
+
+=== G2 mid-file flip ===
+pristine loaded=true content=" Paris. It is the largest city in Europe and the second largest in the world. It is located in the south of"
+flipped  loaded=true content=" 100步 10 bservation+offset步 100步bservbserv步bserv步bserv"
+same output as pristine: false
+
+    boundary_test.go:277: RESULT: llama.cpp loaded and served a file whose bytes do not match its digest.
+    boundary_test.go:278:   pristine: " Paris. It is the largest city in Europe and the second largest in the world. It is located in the south of"
+    boundary_test.go:279:   flipped:  " 100步 10 bservation+offset步 100步bservbserv步bserv步bserv"
+--- PASS: TestBoundary_MidFileFlip (4.86s)
+PASS
+ok  	github.com/ReinisLusis/abstraction-vault	11.481s

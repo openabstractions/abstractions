@@ -1,0 +1,50 @@
+PS> $env:VAULT_CONFORMANCE_GGUF="C:\Users\reinis\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\store\74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
+PS> $env:VAULT_LLAMA_SERVER="C:\Users\reinis\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\llama-server\llama-server.exe"
+PS> go test -tags conformance -run TestConformance_CorruptGGUF -v -timeout 30m .
+=== RUN   TestConformance_CorruptGGUF
+    conformance_test.go:166: source     C:\Users\reinis\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\store\74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+    conformance_test.go:167:   size     491400032 bytes, sha256:74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+    conformance_test.go:168: corrupted  C:\Users\reinis\AppData\Local\Temp\TestConformance_CorruptGGUF792274991\001\corrupt.gguf
+    conformance_test.go:169:   512 bytes inverted at offset 442260028
+    conformance_test.go:170:   size     491400032 bytes (unchanged: true)
+    conformance_test.go:171:   sha256   073f279bfa21f700fb4739ba7606a0ab2b531b64edcb7e948f3823192ddab253
+=== RUN   TestConformance_CorruptGGUF/vault_refuses
+    conformance_test.go:206: PutExpected refused on write: store: digest mismatch: got sha256:073f279bfa21f700fb4739ba7606a0ab2b531b64edcb7e948f3823192ddab253 want sha256:74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+    conformance_test.go:225: Open refused at rest: store: digest mismatch
+=== RUN   TestConformance_CorruptGGUF/llamacpp_accepts
+    conformance_test.go:256: pristine  loaded, answered " Paris. It is the largest city in Europe and the second largest in the world. It is located in the south of"
+    conformance_test.go:259: llama-server output:
+        0.00.032.919 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+        0.00.033.250 W srv  llama_server: -----------------
+        0.00.033.254 W srv  llama_server: CORS is set to allow all origins ('*') and no API key is set
+        0.00.033.254 W srv  llama_server: this can be a security risk (cross-origin attacks)
+        0.00.033.255 W srv  llama_server: more info: https://github.com/ggml-org/llama.cpp/pull/25655
+        0.00.033.255 W srv  llama_server: -----------------
+        0.00.036.211 I srv    load_model: loading model 'C:\Users\reinis\AppData\Local\Temp\TestConformance_CorruptGGUF792274991\001\corrupt.gguf'
+        0.00.400.710 W load: control-looking token: 128247 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+        0.00.496.274 I cmn          init: llama threadpool init, n_threads = 16
+        0.00.625.197 I srv    load_model: initializing, n_slots = 4, n_ctx_slot = 512, kv_unified = 'true'
+        0.00.647.073 I srv  llama_server: model loaded
+        0.00.647.085 I srv  llama_server: listening on http://127.0.0.1:55409
+        0.00.896.753 I slot get_availabl: id  3 | task -1 | selected slot by LRU, t_last = -1
+        0.00.896.795 I slot launch_slot_: id  3 | task 0 | processing task, is_child = 0
+        0.01.201.079 I slot print_timing: id  3 | task 0 | prompt eval time =      22.88 ms /     5 tokens (    4.58 ms per token,   218.52 tokens per second)
+        0.01.201.091 I slot print_timing: id  3 | task 0 |        eval time =     281.35 ms /    24 tokens (   12.23 ms per token,    81.75 tokens per second)
+        0.01.201.093 I slot print_timing: id  3 | task 0 |       total time =     304.23 ms /    29 tokens
+        0.01.201.094 I slot print_timing: id  3 | task 0 |    graphs reused =         23
+        0.01.201.124 I slot      release: id  3 | task 0 | stop processing: n_tokens = 28, truncated = 0
+        0.01.201.198 W common_chat_peg_parse: unparsed Content-only output:  1enti +offset 3bservbserv�bserv步+offset�第一步bserv�步 步bserv步步步
+        0.01.201.360 W srv          stop: cancel task, id_task = 0
+        0.01.201.419 W srv    operator(): got exception: {"error":{"code":500,"message":"The model produced output that does not match the expected Content-only format","type":"server_error"}}
+    conformance_test.go:265: corrupted loaded, answered ""
+
+=== same 491400032-byte file, 512 bytes changed, digest changed ===
+llama.cpp on pristine : loaded=true " Paris. It is the largest city in Europe and the second largest in the world. It is located in the south of"
+llama.cpp on corrupted: loaded=true ""
+vault on corrupted    : refused, store: digest mismatch
+
+--- PASS: TestConformance_CorruptGGUF (5.34s)
+    --- PASS: TestConformance_CorruptGGUF/vault_refuses (1.40s)
+    --- PASS: TestConformance_CorruptGGUF/llamacpp_accepts (2.84s)
+PASS
+ok  	github.com/ReinisLusis/abstraction-vault	8.876s

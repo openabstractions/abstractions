@@ -1,0 +1,25 @@
+PS> go test -tags cost -timeout 30m -run TestOpenBound -v ./internal/store/
+=== RUN   TestOpenBound
+    cost_test.go:184: open #1: 716ms for 1 GiB = 1431 MiB/s
+    cost_test.go:184: open #2: 740ms for 1 GiB = 1384 MiB/s
+    cost_test.go:187: machine: windows/amd64, 32 cpu
+    cost_test.go:188: sha256 over RAM (CPU ceiling): 445ms for 1 GiB = 2303 MiB/s
+    cost_test.go:189: store.Open (file + hash):      1431 MiB/s, then 1384 MiB/s
+    cost_test.go:196: Open reaches 62% of the CPU ceiling
+    cost_test.go:202: VERDICT: MIXED. Open reaches 62% of the ceiling; both the filesystem and the hash are visible in the number.
+--- PASS: TestOpenBound (3.11s)
+PASS
+ok  	github.com/ReinisLusis/abstraction-vault/internal/store	4.651s
+
+PS> VAULT_COST_GIB=4 go test -tags cost -timeout 30m -run TestOpenBound -v ./internal/store/
+=== RUN   TestOpenBound
+    cost_test.go:184: open #1: 4.161s for 4 GiB = 984 MiB/s
+    cost_test.go:184: open #2: 3.231s for 4 GiB = 1268 MiB/s
+    cost_test.go:187: machine: windows/amd64, 32 cpu
+    cost_test.go:188: sha256 over RAM (CPU ceiling): 1.77s for 4 GiB = 2314 MiB/s
+    cost_test.go:189: store.Open (file + hash):      984 MiB/s, then 1268 MiB/s
+    cost_test.go:196: Open reaches 55% of the CPU ceiling
+    cost_test.go:202: VERDICT: MIXED. Open reaches 55% of the ceiling; both the filesystem and the hash are visible in the number.
+--- PASS: TestOpenBound (14.26s)
+PASS
+ok  	github.com/ReinisLusis/abstraction-vault/internal/store	14.724s

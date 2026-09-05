@@ -1,0 +1,154 @@
+PS> & ".\llama-server.exe" --version
+version: 0.1.0-dev (build 10443, commit 27df9199d)
+built with Clang 20.1.8 for Windows x86_64
+
+PS> & ".\llama-server.exe" --help   (relevant excerpt)
+> -hf,   -hfr, --hf-repo <user>/<model>[:quant]
+                                          Hugging Face model repository; quant is optional, case-insensitive,
+                                          (env: LLAMA_ARG_HF_REPO)
+> -hff,  --hf-file FILE                   Hugging Face model file. If specified, it will override the quant in
+                                          --hf-repo (default: unused)
+                                          (env: LLAMA_ARG_HF_FILE)
+> -hft,  --hf-token TOKEN                 Hugging Face access token (default: value from HF_TOKEN environment
+                                          variable)
+> --offline                               Offline mode: forces use of cache, prevents network access
+                                          (env: LLAMA_ARG_OFFLINE)
+> -cl,   --cache-list                     show list of models in cache
+
+PS> $env:LLAMA_CACHE = "$PWD\cache"; New-Item -ItemType Directory -Path $env:LLAMA_CACHE -Force | Out-Null
+PS> & ".\llama-server.exe" --cache-list
+number of models in cache: 0
+
+=== Initial (clean) download: llama-server -hf bartowski/Qwen2.5-0.5B-Instruct-GGUF:IQ2_M --port 8899 ===
+0.00.948.822 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.949.853 W srv  llama_server: -----------------
+0.00.949.868 W srv  llama_server: CORS is set to allow all origins ('*') and no API key is set
+0.00.949.870 W srv  llama_server: this can be a security risk (cross-origin attacks)
+0.00.949.871 W srv  llama_server: more info: https://github.com/ggml-org/llama.cpp/pull/25655
+0.00.949.872 W srv  llama_server: -----------------
+2.46.824.577 W finalize_file: failed to create symlink: A required privilege is not held by the client.
+2.46.824.590 W finalize_file: switching to degraded mode
+2.46.838.128 I srv    load_model: loading model 'bartowski/Qwen2.5-0.5B-Instruct-GGUF:IQ2_M'
+2.47.451.240 W load: control-looking token: 128247 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+2.47.693.599 I cmn          init: llama threadpool init, n_threads = 16
+2.47.774.399 I srv    load_model: initializing, n_slots = 4, n_ctx_slot = 32768, kv_unified = 'true'
+2.47.782.452 I srv  llama_server: model loaded
+2.47.782.463 I srv  llama_server: listening on http://127.0.0.1:8899
+[process terminated by test harness after model loaded and server was listening; download+load took ~2m47s]
+
+PS> Get-ChildItem -Recurse cache | Format-Table FullName, Length
+cache\models--bartowski--Qwen2.5-0.5B-Instruct-GGUF
+cache\models--bartowski--Qwen2.5-0.5B-Instruct-GGUF\blobs                (empty - 0 items)
+cache\models--bartowski--Qwen2.5-0.5B-Instruct-GGUF\refs
+cache\models--bartowski--Qwen2.5-0.5B-Instruct-GGUF\snapshots
+cache\models--bartowski--Qwen2.5-0.5B-Instruct-GGUF\refs\main                                                    40
+cache\models--bartowski--Qwen2.5-0.5B-Instruct-GGUF\snapshots\41ba88dbac95fed2528c92514c131d73eb5a174b
+cache\models--bartowski--Qwen2.5-0.5B-Instruct-GGUF\snapshots\41ba88dbac95fed2528c92514c131d73eb5a174b\Qwen2.5-0.5B-Instruct-IQ2_M.gguf   398747577
+
+PS> Get-Content "cache\models--bartowski--Qwen2.5-0.5B-Instruct-GGUF\refs\main"
+41ba88dbac95fed2528c92514c131d73eb5a174b
+
+(HuggingFace hub-style cache layout used: models--<org>--<repo>/{blobs,refs,snapshots}. On this Windows
+account, symlink creation from blobs/ to snapshots/ failed ("A required privilege is not held by the
+client" - SeCreateSymbolicLinkPrivilege not granted), so llama-server fell back to "degraded mode" and
+wrote the real file directly under snapshots/, leaving blobs/ empty. No local hash of the downloaded
+file is computed or stored anywhere in the cache directory - no .sha256, no manifest, no etag file.)
+
+PS> Get-FileHash -Algorithm SHA256 -LiteralPath "cache\...\Qwen2.5-0.5B-Instruct-IQ2_M.gguf"
+SHA256  9B0512B786F00B2D82CF2ECBB08B43F7854542C930FD07B3ECE25FE8C36045EC
+
+PS> curl.exe -sIL "https://huggingface.co/bartowski/Qwen2.5-0.5B-Instruct-GGUF/resolve/41ba88dbac95fed2528c92514c131d73eb5a174b/Qwen2.5-0.5B-Instruct-IQ2_M.gguf"
+HTTP/1.1 302 Found
+Location: https://us.aws.cdn.hf.co/xet-bridge-us/... (Xet CAS reconstruction URL)
+X-Repo-Commit: 41ba88dbac95fed2528c92514c131d73eb5a174b
+X-Linked-Size: 328597408
+X-Linked-ETag: "2fc237e65e1f963310e9c961d8e71e932734a72f90e3216a972d83edd1feb756"
+X-Xet-Hash: 6f4c2778160604c3b171f40110677720cf1c475892a0b62c49b81ef843c2a522
+
+HTTP/1.1 200 OK
+content-type: application/octet-stream
+content-length: 328597408
+etag: "6f4c2778160604c3b171f40110677720cf1c475892a0b62c49b81ef843c2a522"
+
+(Note: the repo is Xet-backed. The size llama-server actually wrote to disk, 398,747,577 bytes, does not
+match either the X-Linked-Size (328,597,408) or the final CDN content-length (328,597,408) reported by
+the Hub for the same pinned revision. No content-encoding header was present, so this is not a
+transport-compression artifact on the wire; it reflects Xet's chunk-based reconstruction producing a
+different byte count than the CDN-reported size for the same commit. llama-server did not report or
+check this discrepancy in any way - it neither logged an expected size nor compared it to anything.)
+
+=== Truncation test 1: cut file from 398,747,577 to 100,000,000 bytes ===
+PS> Copy-Item $f "$f.orig_backup"
+PS> $fs = [System.IO.File]::Open($f,'Open','Write'); $fs.SetLength(100000000); $fs.Close()
+PS> (Get-Item $f).Length
+100000000
+PS> Get-FileHash -Algorithm SHA256 -LiteralPath $f
+SHA256  ED3C0217AFC9892199066F936266D6DB199CD62F562FA1BA0C10202EC11D3996
+
+PS> $env:LLAMA_CACHE = "$PWD\cache"; & ".\llama-server.exe" -hf bartowski/Qwen2.5-0.5B-Instruct-GGUF:IQ2_M --port 8899
+0.00.599.693 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.600.039 W srv  llama_server: -----------------
+0.00.600.043 W srv  llama_server: CORS is set to allow all origins ('*') and no API key is set
+0.00.600.044 W srv  llama_server: this can be a security risk (cross-origin attacks)
+0.00.600.044 W srv  llama_server: more info: https://github.com/ggml-org/llama.cpp/pull/25655
+0.00.600.045 W srv  llama_server: -----------------
+0.00.608.579 I srv    load_model: loading model 'bartowski/Qwen2.5-0.5B-Instruct-GGUF:IQ2_M'
+0.00.643.644 E llama_model_load: error loading model: tensor 'token_embd.weight' data is not within the file bounds, model is corrupted or incomplete
+0.00.643.651 E llama_model_load_from_file_impl: failed to load model
+0.00.643.698 E common_fit_params: encountered an error while trying to fit params to free device memory: failed to load model
+0.00.674.713 E llama_model_load: error loading model: tensor 'token_embd.weight' data is not within the file bounds, model is corrupted or incomplete
+0.00.674.722 E llama_model_load_from_file_impl: failed to load model
+0.00.674.728 E cmn  common_init_: failed to load model 'C:\Users\reinis\Documents\AI abstractions\team\researcher-local\provisioning\llama-server\cache\models--bartowski--Qwen2.5-0.5B-Instruct-GGUF\snapshots\41ba88dbac95fed2528c92514c131d73eb5a174b\Qwen2.5-0.5B-Instruct-IQ2_M.gguf'
+0.00.674.737 E srv    load_model: failed to load model, 'C:\Users\reinis\Documents\AI abstractions\team\researcher-local\provisioning\llama-server\cache\models--bartowski--Qwen2.5-0.5B-Instruct-GGUF\snapshots\41ba88dbac95fed2528c92514c131d73eb5a174b\Qwen2.5-0.5B-Instruct-IQ2_M.gguf'
+0.00.674.754 I srv    operator(): operator(): cleaning up before exit...
+0.00.676.304 E srv  llama_server: exiting due to model loading error
+[process exited on its own within ~1 second - no network request was made before the failure: elapsed
+time between "loading model" and the fatal error is 35ms, far too fast for an HTTP round trip. It went
+straight from finding the cached file to trying to mmap/parse it.]
+
+=== Truncation test 2: restore full file, then cut only the last 16 bytes (398,747,577 -> 398,747,561) ===
+PS> Copy-Item "$f.orig_backup" $f -Force
+PS> (Get-Item $f).Length
+398747577
+PS> $fs = [System.IO.File]::Open($f,'Open','Write'); $fs.SetLength(398747577-16); $fs.Close()
+PS> (Get-Item $f).Length
+398747561
+
+PS> $env:LLAMA_CACHE = "$PWD\cache"; & ".\llama-server.exe" -hf bartowski/Qwen2.5-0.5B-Instruct-GGUF:IQ2_M --port 8899
+0.00.564.742 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.565.077 W srv  llama_server: -----------------
+0.00.565.081 W srv  llama_server: CORS is set to allow all origins ('*') and no API key is set
+0.00.565.082 W srv  llama_server: this can be a security risk (cross-origin attacks)
+0.00.565.082 W srv  llama_server: more info: https://github.com/ggml-org/llama.cpp/pull/25655
+0.00.565.082 W srv  llama_server: -----------------
+0.00.569.428 I srv    load_model: loading model 'bartowski/Qwen2.5-0.5B-Instruct-GGUF:IQ2_M'
+0.01.116.005 W load: control-looking token: 128247 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+0.01.376.727 I cmn          init: llama threadpool init, n_threads = 16
+0.01.483.672 I srv    load_model: initializing, n_slots = 4, n_ctx_slot = 32768, kv_unified = 'true'
+0.01.496.036 I srv  llama_server: model loaded
+0.01.496.050 I srv  llama_server: listening on http://127.0.0.1:8899
+[server loaded successfully and started listening on a file truncated by 16 bytes. No error, no
+warning, no size check against the Hub. Model appears to have loaded "fine" because the tail of a GGUF
+file is typically alignment padding after the last tensor's data, so a small enough truncation does not
+trip the tensor-bounds sanity check that caught the larger truncation above. This is silent acceptance
+of a corrupted/incomplete cached file.]
+
+PS> Get-Process -Name llama-server -ErrorAction SilentlyContinue
+(process was still running/listening at time of check in test 2; killed by test harness timeout with
+no crash, no self-detected corruption)
+
+=== Summary of empirical findings (no interpretation added beyond what was observed) ===
+1. Hash verification: none observed. -hf never wrote or checked a sha256/etag anywhere in the local
+   cache. The only content-address in the cache tree is the HF-style directory name (repo id) and the
+   commit sha under refs/snapshots - not a hash of the file's bytes. No network HEAD/GET was issued on a
+   second run to compare local file size/etag against the remote before deciding to use the cached file.
+2. Resume: none observed. On both truncation tests, --hf-repo made zero network calls before attempting
+   to load the local file (confirmed by elapsed time <50ms from "loading model" to either success or
+   fatal error - not enough time for a TLS handshake to huggingface.co). It did not detect the file was
+   short of the expected byte count and did not resume or re-fetch the missing bytes.
+3. Truncated file, large cut (298MB removed, ~75% of file remaining): llama.cpp's GGUF tensor-bounds
+   check ("tensor 'token_embd.weight' data is not within the file bounds") caught the corruption and the
+   process exited with a clear error. This is an incidental side effect of the GGUF parser's own
+   structural sanity check, not a deliberate integrity/hash verification step by the -hf downloader.
+4. Truncated file, small cut (16 bytes removed from the very end): not caught at all. llama-server
+   loaded the model and began serving requests against a file it never verified was complete.

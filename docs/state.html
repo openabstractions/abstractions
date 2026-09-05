@@ -1,0 +1,784 @@
+<title>Downloads That Survive</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+  :root {
+    --paper:      #f4f6f7;
+    --paper-2:    #eaeeef;
+    --card:       #ffffff;
+    --ink:        #131a1f;
+    --ink-2:      #3d4b52;
+    --ink-3:      #6c7c84;
+    --rule:       #d3dadd;
+    --rule-soft:  #e3e9ea;
+
+    --accent:     #0d7a68;
+    --accent-dim: #0d7a681f;
+    --signal:     #a9660f;
+    --signal-dim: #a9660f1c;
+    --brick:      #a8382f;
+    --brick-dim:  #a8382f1a;
+
+    --term-bg:    #101a1e;
+    --term-fg:    #cbd8d6;
+    --term-dim:   #6b8189;
+
+    --display: "IBM Plex Sans Condensed", "Helvetica Neue", Arial, sans-serif;
+    --body:    "Source Serif 4", Georgia, "Times New Roman", serif;
+    --mono:    "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+
+    --measure: 68ch;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #0e1417;
+      --paper-2:    #141d21;
+      --card:       #151f23;
+      --ink:        #e6edee;
+      --ink-2:      #b0bfc4;
+      --ink-3:      #7e9198;
+      --rule:       #26343a;
+      --rule-soft:  #1d282d;
+
+      --accent:     #4ec2a8;
+      --accent-dim: #4ec2a824;
+      --signal:     #d9a24d;
+      --signal-dim: #d9a24d20;
+      --brick:      #e08276;
+      --brick-dim:  #e0827620;
+
+      --term-bg:    #080f12;
+      --term-fg:    #cbd8d6;
+      --term-dim:   #6b8189;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:      #0e1417;
+    --paper-2:    #141d21;
+    --card:       #151f23;
+    --ink:        #e6edee;
+    --ink-2:      #b0bfc4;
+    --ink-3:      #7e9198;
+    --rule:       #26343a;
+    --rule-soft:  #1d282d;
+
+    --accent:     #4ec2a8;
+    --accent-dim: #4ec2a824;
+    --signal:     #d9a24d;
+    --signal-dim: #d9a24d20;
+    --brick:      #e08276;
+    --brick-dim:  #e0827620;
+
+    --term-bg:    #080f12;
+    --term-fg:    #cbd8d6;
+    --term-dim:   #6b8189;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 17px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 0 28px 96px;
+  }
+
+  .col { max-width: var(--measure); }
+
+  /* ---------------------------------------------------------- masthead --- */
+
+  header.masthead {
+    border-bottom: 2px solid var(--ink);
+    padding: 56px 0 22px;
+    margin-bottom: 44px;
+  }
+
+  .eyebrow {
+    font-family: var(--display);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 14px;
+  }
+
+  h1 {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: clamp(38px, 6.2vw, 66px);
+    line-height: 1.02;
+    letter-spacing: -.015em;
+    margin: 0 0 18px;
+    text-wrap: balance;
+  }
+
+  .standfirst {
+    font-size: 20px;
+    line-height: 1.5;
+    color: var(--ink-2);
+    max-width: 56ch;
+    margin: 0;
+  }
+
+  .dateline {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--ink-3);
+    margin-top: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 22px;
+  }
+
+  /* ------------------------------------------------------------ typography */
+
+  h2 {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 30px;
+    letter-spacing: -.01em;
+    line-height: 1.15;
+    margin: 0 0 6px;
+    text-wrap: balance;
+  }
+
+  .kicker {
+    font-family: var(--display);
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 10px;
+  }
+
+  h3 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 19px;
+    letter-spacing: -.005em;
+    margin: 0 0 6px;
+  }
+
+  p { margin: 0 0 18px; }
+  section { margin-bottom: 72px; }
+  section > .col > p:last-child { margin-bottom: 0; }
+
+  strong { font-weight: 600; }
+  code {
+    font-family: var(--mono);
+    font-size: .87em;
+    background: var(--paper-2);
+    border: 1px solid var(--rule-soft);
+    border-radius: 3px;
+    padding: .08em .34em;
+  }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  .lede { font-size: 19px; color: var(--ink-2); }
+
+  /* ------------------------------------------------------------- terminal */
+
+  .term {
+    background: var(--term-bg);
+    color: var(--term-fg);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.72;
+    padding: 20px 22px;
+    border-radius: 5px;
+    overflow-x: auto;
+    margin: 0 0 14px;
+    white-space: pre;
+    tab-size: 2;
+  }
+  .term .c { color: var(--term-dim); }
+  .term .ok { color: #6fd3b4; }
+  .term .em { color: #e8c07a; }
+
+  figcaption {
+    font-family: var(--display);
+    font-size: 13px;
+    color: var(--ink-3);
+    margin-bottom: 34px;
+    max-width: 60ch;
+  }
+  figure { margin: 0 0 34px; }
+  figure .term:last-of-type { margin-bottom: 10px; }
+
+  /* ------------------------------------------------------------ the chain */
+
+  .chain { margin: 0 0 12px; }
+  .chain svg { width: 100%; height: auto; display: block; }
+
+  /* ------------------------------------------------------- evidence ledger */
+
+  .ledger {
+    display: grid;
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .ledger-row {
+    display: grid;
+    grid-template-columns: 1fr 260px;
+    gap: 0;
+    background: var(--card);
+  }
+  @media (max-width: 720px) {
+    .ledger-row { grid-template-columns: 1fr; }
+  }
+  .ledger-claim { padding: 18px 20px; }
+  .ledger-claim h3 { margin-bottom: 4px; }
+  .ledger-claim p { margin: 0; font-size: 15.5px; color: var(--ink-2); }
+  .ledger-proof {
+    padding: 18px 20px;
+    border-left: 1px solid var(--rule-soft);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.62;
+    color: var(--ink-3);
+  }
+  @media (max-width: 720px) {
+    .ledger-proof { border-left: 0; border-top: 1px solid var(--rule-soft); }
+  }
+  .ledger-proof b {
+    display: block;
+    font-family: var(--display);
+    font-size: 11px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 5px;
+    font-weight: 600;
+  }
+
+  /* ---------------------------------------------------------- state table */
+
+  .states { overflow-x: auto; margin: 0 0 16px; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 15px;
+    min-width: 640px;
+  }
+  th, td {
+    text-align: left;
+    padding: 11px 14px 11px 0;
+    border-bottom: 1px solid var(--rule-soft);
+    vertical-align: baseline;
+  }
+  thead th {
+    font-family: var(--display);
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 8px;
+  }
+  td.layer {
+    font-family: var(--mono);
+    font-size: 13.5px;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  td.langs { font-family: var(--mono); font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+  td.note { color: var(--ink-2); font-size: 15px; }
+
+  .pill {
+    display: inline-block;
+    font-family: var(--display);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: 3px 9px 2px;
+    border-radius: 100px;
+    white-space: nowrap;
+  }
+  .pill.proven { color: var(--accent); background: var(--accent-dim); }
+  .pill.one    { color: var(--signal); background: var(--signal-dim); }
+  .pill.none   { color: var(--brick); background: var(--brick-dim); }
+
+  /* -------------------------------------------------------------- roadmap */
+
+  .road { display: grid; gap: 0; }
+  .stop {
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    gap: 18px;
+    padding: 20px 0;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  .stop:first-child { border-top: 1px solid var(--rule); }
+  .stop-n {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--ink-3);
+    padding-top: 2px;
+    font-variant-numeric: tabular-nums;
+  }
+  .stop-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 5px;
+  }
+  .stop h3 { margin: 0; }
+  .stop p { margin: 0; color: var(--ink-2); font-size: 16px; max-width: 62ch; }
+  .why {
+    font-family: var(--display);
+    font-size: 12.5px;
+    color: var(--ink-3);
+    margin-top: 7px;
+    display: block;
+  }
+
+  /* ---------------------------------------------------------------- rules */
+
+  .rules { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }
+  .rules li {
+    padding-left: 20px;
+    border-left: 2px solid var(--rule);
+    color: var(--ink-2);
+    font-size: 16px;
+  }
+  .rules li b { color: var(--ink); font-weight: 600; }
+
+  /* --------------------------------------------------------------- footer */
+
+  footer {
+    border-top: 2px solid var(--ink);
+    padding-top: 20px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--ink-3);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 26px;
+  }
+
+  hr.soft {
+    border: 0;
+    border-top: 1px solid var(--rule);
+    margin: 0 0 30px;
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">Project state &amp; direction</p>
+    <h1>Downloads That Survive</h1>
+    <p class="standfirst">A standard library of interfaces — SLF4J's idea applied to the
+      things every local-AI tool rebuilds badly and privately.</p>
+    <div class="dateline">
+      <span>2 September 2026</span>
+      <span>9,629 lines</span>
+      <span>Go · Python · C++</span>
+      <span>2 machines, 3 tiers</span>
+    </div>
+  </header>
+
+  <section>
+    <div class="col">
+      <p class="lede">Every local-AI tool ships its own downloader, and every one of them
+        loses a 40&nbsp;GB model when the machine sleeps. Every tool keeps its own store, so
+        the same weights sit on disk four times under four names.</p>
+      <p>Measured on one ordinary machine: <strong>116&nbsp;GB across four stores that cannot
+        see each other.</strong> Not because the problem is hard — because there is no shared
+        <em>interface</em>, so each tool solves it privately and none of them solve it well.</p>
+    </div>
+
+    <div class="states" style="margin-top:26px">
+      <table>
+        <thead>
+          <tr><th>Store</th><th>Size</th><th>Names files by</th><th>Can dedupe?</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="layer">LM Studio</td><td class="langs">44 GB</td><td class="note">filename only</td><td><span class="pill none">No</span></td></tr>
+          <tr><td class="layer">Lemonade</td><td class="langs">26 GB</td><td class="note">content hash</td><td><span class="pill proven">Yes</span></td></tr>
+          <tr><td class="layer">Ollama</td><td class="langs">23 GB</td><td class="note">content hash</td><td><span class="pill proven">Yes</span></td></tr>
+          <tr><td class="layer">HuggingFace</td><td class="langs">23 GB</td><td class="note">content hash</td><td><span class="pill proven">Yes</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <p class="kicker">The shape</p>
+    <h2>Two hops, each ignorant of the next</h2>
+    <div class="col">
+      <p>An application asks for bytes. It never chooses who fetches them — it asks one
+        question, <em>is a system downloader alive on this machine</em>, and that service
+        decides everything after. Exactly as a library that logs knows about a facade and a
+        default, and nothing about which collector the sinks point at.</p>
+    </div>
+
+    <div class="chain" role="img" aria-label="Delegation chain: an application writes a job record into a shared store; a system downloader reads it and delegates to a NAS, to Windows BITS, or does the work itself.">
+      <svg viewBox="0 0 900 260" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-3)"/>
+          </marker>
+          <marker id="ard" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+          </marker>
+        </defs>
+
+        <!-- hop labels -->
+        <text x="14" y="26" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-3)">hop 0</text>
+        <text x="330" y="26" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-3)">hop 1</text>
+        <text x="660" y="26" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-3)">hop 2</text>
+
+        <!-- application -->
+        <rect x="14" y="44" width="184" height="70" rx="4" fill="var(--card)" stroke="var(--rule)"/>
+        <text x="30" y="70" font-family="IBM Plex Sans Condensed, sans-serif" font-weight="600" font-size="15" fill="var(--ink)">application</text>
+        <text x="30" y="90" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-3)">dl · modelget</text>
+        <text x="30" y="105" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-3)">links no tier</text>
+
+        <!-- store -->
+        <rect x="262" y="36" width="180" height="86" rx="4" fill="var(--accent-dim)" stroke="var(--accent)"/>
+        <text x="278" y="62" font-family="IBM Plex Sans Condensed, sans-serif" font-weight="600" font-size="15" fill="var(--ink)">job store</text>
+        <text x="278" y="82" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-2)">a record of the work</text>
+        <text x="278" y="97" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-2)">durable, not a channel</text>
+        <text x="278" y="112" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-2)">files today — a binding</text>
+
+        <!-- supervisor -->
+        <rect x="506" y="44" width="184" height="70" rx="4" fill="var(--card)" stroke="var(--rule)"/>
+        <text x="522" y="70" font-family="IBM Plex Sans Condensed, sans-serif" font-weight="600" font-size="15" fill="var(--ink)">system downloader</text>
+        <text x="522" y="90" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-3)">jobd</text>
+        <text x="522" y="105" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-3)">knows BITS, NAS</text>
+
+        <!-- tiers -->
+        <rect x="754" y="30" width="132" height="46" rx="4" fill="var(--card)" stroke="var(--rule)"/>
+        <text x="768" y="50" font-family="IBM Plex Sans Condensed, sans-serif" font-weight="600" font-size="14" fill="var(--ink)">NAS</text>
+        <text x="768" y="66" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-3)">always on</text>
+
+        <rect x="754" y="88" width="132" height="46" rx="4" fill="var(--card)" stroke="var(--rule)"/>
+        <text x="768" y="108" font-family="IBM Plex Sans Condensed, sans-serif" font-weight="600" font-size="14" fill="var(--ink)">BITS</text>
+        <text x="768" y="124" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-3)">survives reboot</text>
+
+        <rect x="754" y="146" width="132" height="46" rx="4" fill="var(--card)" stroke="var(--rule)"/>
+        <text x="768" y="166" font-family="IBM Plex Sans Condensed, sans-serif" font-weight="600" font-size="14" fill="var(--ink)">itself</text>
+        <text x="768" y="182" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-3)">last resort</text>
+
+        <!-- arrows -->
+        <line x1="200" y1="79" x2="256" y2="79" stroke="var(--ink-3)" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="444" y1="79" x2="500" y2="79" stroke="var(--ink-3)" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="692" y1="70" x2="748" y2="55" stroke="var(--ink-3)" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="692" y1="79" x2="748" y2="111" stroke="var(--ink-3)" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="692" y1="88" x2="748" y2="169" stroke="var(--ink-3)" stroke-width="1.4" marker-end="url(#ar)"/>
+
+        <text x="204" y="70" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-3)">writes</text>
+        <text x="448" y="70" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-3)">reads</text>
+
+        <!-- state written back -->
+        <path d="M 820 198 L 820 226 L 352 226 L 352 128" fill="none" stroke="var(--accent)" stroke-width="1.4" stroke-dasharray="4 4" marker-end="url(#ard)"/>
+        <text x="560" y="243" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--accent)">progress and state written back to the same files</text>
+      </svg>
+    </div>
+    <figcaption>The store is where the truth lives, which is why a download survives the
+      program that started it, the machine going to sleep, and being picked up by a different
+      implementation in a different language on a different computer. A socket cannot hold
+      state; BITS keeps an on-disk queue for the same reason. But files are a poor way to
+      carry <em>news</em>, so a submission also pokes a local socket — a hint with no job id
+      and no payload, carrying nothing but &ldquo;look now&rdquo;. Lose it and the sweep finds
+      the work anyway; the only cost is the wait.</figcaption>
+  </section>
+
+  <section>
+    <p class="kicker">What it looks like</p>
+    <h2>Close the terminal. Nothing stops.</h2>
+
+    <figure>
+<pre class="term"><span class="c">$</span> dl https://.../Qwen2.5-0.5B-Instruct-IQ2_M.gguf <span class="c">-o D:/models/</span>
+  job       1788378755276-b93cfa9b6f076a00b995
+  left for  <span class="em">jobd@CoffeeMachine:6252</span>
+
+The system downloader has it. This program can exit and the download
+will not stop.
+
+running     <span class="em">nas</span>      42.8 MiB / 313.4 MiB</pre>
+<pre class="term"><span class="c"># a different terminal, minutes later</span>
+<span class="c">$</span> dl list
+running     <span class="em">nas</span>      168.2 MiB / 313.4 MiB   Qwen2.5-0.5B-Instruct-IQ2_M.gguf</pre>
+      <figcaption>Nothing <code>dl</code> prints comes from its own memory — it reads the
+        record, exactly as any other process would. Which is why a console pull shows up in an
+        application's download list, and why restarting a server does not empty it while the
+        partial files are still on disk. Every tool in the survey fails this.</figcaption>
+    </figure>
+
+    <div class="col">
+      <p>The whole integration, in an application that contains no path, no hostname and no
+        flag:</p>
+    </div>
+<pre class="term"><span class="em">r</span>, _ := download.Discover()
+<span class="em">id</span>, _ := download.Submit(r.Store, spec)</pre>
+    <figcaption>On a machine with a NAS set up, those bytes are fetched by the NAS. On
+      Windows without one, by BITS. On a machine with neither, by the process you are standing
+      in. The application branches on none of it.</figcaption>
+  </section>
+
+  <section>
+    <p class="kicker">Evidence</p>
+    <h2>What is proven, and how</h2>
+    <div class="col">
+      <p style="margin-bottom:26px">Every claim here was run on real hardware. A failure is a
+        result; none of these are arguments.</p>
+    </div>
+
+    <div class="ledger">
+      <div class="ledger-row">
+        <div class="ledger-claim">
+          <h3>Go and Python finish each other's downloads</h3>
+          <p>Not "both can download". One starts a transfer and is <em>killed</em> partway
+            through — never releasing its lease, never writing a final checkpoint — and the
+            other resumes from the last proven byte and delivers a matching digest. Both
+            directions.</p>
+        </div>
+        <div class="ledger-proof">
+          <b>scripts/xlang-download.sh</b>
+          go stopped with 1081344<br>of 4194304 bytes proven<br>
+          <span style="color:var(--accent)">PASS go→python</span><br>
+          <span style="color:var(--accent)">PASS python→go</span>
+        </div>
+      </div>
+
+      <div class="ledger-row">
+        <div class="ledger-claim">
+          <h3>A NAS fetched 313 MB and handed it to a PC</h3>
+          <p>A Synology DS218+ running the same binary, over the same job store, with the same
+            lease protocol. There is no NAS-specific code in the repository — the tier needed a
+            portable path and nothing else.</p>
+        </div>
+        <div class="ledger-proof">
+          <b>Live, on hardware</b>
+          sha256 matched the digest<br>HuggingFace published<br>
+          <span style="color:var(--ink-3)">2fc237e6…d1feb756</span>
+        </div>
+      </div>
+
+      <div class="ledger-row">
+        <div class="ledger-claim">
+          <h3>Resume uses what was proven, not what is on disk</h3>
+          <p>A real download killed with SIGKILL. The dead process had written more than it
+            had checkpointed; nothing vouches for the difference, so the resume discards it.
+            That gap is the design, not a rounding error.</p>
+        </div>
+        <div class="ledger-proof">
+          <b>docs/results</b>
+          bytes on disk:&nbsp;&nbsp;61163581<br>
+          bytes PROVEN:&nbsp;&nbsp;52824170<br>
+          <span style="color:var(--signal)">8,339,411 discarded</span>
+        </div>
+      </div>
+
+      <div class="ledger-row">
+        <div class="ledger-claim">
+          <h3>O_EXCL is genuinely exclusive over SMB</h3>
+          <p>The assumption the entire lease protocol rests on. If two machines could both
+            succeed at creating the same epoch token, two owners would write one file. Tested
+            against the real Synology rather than assumed.</p>
+        </div>
+        <div class="ledger-proof">
+          <b>TestLiveExclusiveCreate</b>
+          second create refused<br>
+          <span style="color:var(--accent)">PASS</span>
+        </div>
+      </div>
+
+      <div class="ledger-row">
+        <div class="ledger-claim">
+          <h3>Go writes it, C++ serves it, Python reads it</h3>
+          <p>A job record written by the Go tool is rendered by the forked Lemonade server on
+            <code>/api/v1/downloads</code> — from disk, not from its own memory — and read back
+            by the Python implementation from the same directory. Three languages, one
+            contract, one real application.</p>
+        </div>
+        <div class="ledger-proof">
+          <b>lemond.exe, port 8123</b>
+          model_name: Qwen2.5-0.5B<br>
+          bytes_total: 328597408<br>
+          <span style="color:var(--signal)">status: paused</span>
+        </div>
+      </div>
+
+      <div class="ledger-row">
+        <div class="ledger-claim">
+          <h3>A forged identity does not survive the kernel</h3>
+          <p>A client claiming to be <code>systemd</code> with <code>uid 0</code> is stamped
+            with what SO_PEERCRED actually reports — and its lie is <em>kept</em>, in the field
+            documented as a claim. Deleting it would destroy evidence; believing it would be
+            the bug.</p>
+        </div>
+        <div class="ledger-proof">
+          <b>Run on the NAS kernel</b>
+          claimed uid 0 → real uid<br>
+          <span style="color:var(--accent)">PASS, 4 tests</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="kicker">Inventory</p>
+    <h2>What actually exists</h2>
+    <div class="col">
+      <p>The bar this project set: an interface with one implementation is a <em>design</em>.
+        It becomes an abstraction when something written independently passes the same tests
+        and can pick up work the first one started.</p>
+    </div>
+
+    <div class="states">
+      <table>
+        <thead>
+          <tr><th>Layer</th><th>Languages</th><th>Status</th><th>What it is</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="layer">job</td><td class="langs">Go · Python</td>
+            <td><span class="pill proven">Abstraction</span></td>
+            <td class="note">Work that outlives the process that started it. Leases, epochs, checkpoints.</td>
+          </tr>
+          <tr>
+            <td class="layer">download</td><td class="langs">Go · Python</td>
+            <td><span class="pill proven">Abstraction</span></td>
+            <td class="note">Bytes. Four transports — HTTP, file, BITS, NAS — behind one interface.</td>
+          </tr>
+          <tr>
+            <td class="layer">model</td><td class="langs">Go</td>
+            <td><span class="pill one">One impl</span></td>
+            <td class="note">The AI layer. Resolves a reference to a digest <em>before</em> any byte moves.</td>
+          </tr>
+          <tr>
+            <td class="layer">logging</td><td class="langs">Go</td>
+            <td><span class="pill one">One impl</span></td>
+            <td class="note">Not a facade — <code>slog</code> already is one. The part that leaves the process.</td>
+          </tr>
+          <tr>
+            <td class="layer">config</td><td class="langs">Go</td>
+            <td><span class="pill one">One impl</span></td>
+            <td class="note">Machine-level discovery, so nothing needs configuring per application.</td>
+          </tr>
+          <tr>
+            <td class="layer">vault</td><td class="langs">Go</td>
+            <td><span class="pill one">Unwired</span></td>
+            <td class="note">Content-addressed storage that refuses corrupt files. Not integrated.</td>
+          </tr>
+          <tr>
+            <td class="layer">forks/lemonade</td><td class="langs">C++</td>
+            <td><span class="pill proven">Running</span></td>
+            <td class="note">A third implementation inside 130k lines of C++ that did not ask for it. <code>lemond</code> builds and serves <code>/downloads</code> from the store.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <figcaption>Two layers clear the bar. Everything else has one implementation, and one
+      implementation is a design.</figcaption>
+  </section>
+
+  <section>
+    <p class="kicker">Direction</p>
+    <h2>Where this is heading</h2>
+    <div class="col">
+      <p style="margin-bottom:28px">In order, because each one answers a question the previous
+        one cannot. The numbering is a dependency chain, not a priority list.</p>
+    </div>
+
+    <div class="road">
+      <div class="stop">
+        <div class="stop-n">01</div>
+        <div>
+          <div class="stop-head"><h3>Propose it upstream</h3>
+            <span class="pill none">Not started</span></div>
+          <p>The fork builds and runs, but a fork is not adoption — we wrote both sides. The
+            change has never been put to the people who maintain Lemonade.</p>
+          <span class="why">Answers: does anyone who is not us want this?</span>
+        </div>
+      </div>
+
+      <div class="stop">
+        <div class="stop-n">02</div>
+        <div>
+          <div class="stop-head"><h3>The layers above <code>job</code></h3>
+            <span class="pill one">One language each</span></div>
+          <p>Only <code>job</code> has three implementations. <code>download</code> has two and
+            <code>logging</code> has one, so the argument thins out as you go up.</p>
+          <span class="why">Answers: does the contract hold where the domain gets specific?</span>
+        </div>
+      </div>
+
+      <div class="stop">
+        <div class="stop-n">03</div>
+        <div>
+          <div class="stop-head"><h3>Storage as the second abstraction</h3>
+            <span class="pill one">Written, unwired</span></div>
+          <p>The vault exists and refuses corrupt files. Wiring it under <code>download</code>
+            makes the 116 GB problem a <code>stat</code> rather than four copies.</p>
+          <span class="why">Answers: does the pattern generalise past moving bytes?</span>
+        </div>
+      </div>
+
+      <div class="stop">
+        <div class="stop-n">04</div>
+        <div>
+          <div class="stop-head"><h3>One host that never serves chat</h3>
+            <span class="pill none">Untouched</span></div>
+          <p>From the original problem statement, and still unaddressed: too many hosts, and
+            LLM hosts differ from video-model hosts where there should be one.</p>
+          <span class="why">Answers: the third of the owner's three original problems.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="kicker">Method</p>
+    <h2>Rules, each earned by a specific failure</h2>
+    <ul class="rules">
+      <li><b>No interface until two implementations exist</b> — and find the second one in the
+        world rather than inventing it.</li>
+      <li><b>Prefer adopting or wrapping over building.</b> BITS was adopted. <code>slog</code>
+        was adopted. <code>aria2</code> was refused on licence, and the reason is written
+        down.</li>
+      <li><b>An interface changes on a failing real case, never on an argument.</b>
+        <code>Finalize</code> gained a parameter because a NAS could not discover a local
+        destination from a handle — not because it read better.</li>
+      <li><b>Done means it runs on a machine you do not own</b>, from the written
+        instructions.</li>
+      <li><b>Every task ends in a pasted terminal transcript.</b> A failure is a result.</li>
+      <li><b>The word "standard" is not used</b> until somebody who is not us has implemented
+        one.</li>
+    </ul>
+  </section>
+
+  <hr class="soft">
+  <footer>
+    <span>9,629 lines</span>
+    <span>Go · Python · C++</span>
+    <span>2 September 2026</span>
+    <span>Not shipped, and says so</span>
+  </footer>
+
+</div>

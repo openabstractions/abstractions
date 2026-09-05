@@ -1,0 +1,89 @@
+PS> bash scripts/xlang-job.sh
+
+--- build the Go jobctl ---
+go:     /c/Users/reinis/Documents/AI abstractions (scratch)/xlang/jobctl.exe
+python: py -3 /c/Users/reinis/Documents/AI abstractions/job/python/jobctl.py
+
+--- Go submits a job with NO url source at all ---
+job id: 1787128419709-626a0a5fa9b334d6df02
+
+--- Go claims it and proves the first 400 bytes ---
+epoch=1 resume=0 state=running
+done=460 verified=400
+the Go worker stops here and releases nothing.
+what it leaves behind is byte-identical to a SIGKILL: a lease with no
+process behind it. (An actual mid-transfer kill needs the transfer runner,
+which is not written yet — this proves the record and lease contract only.)
+
+--- Python looks for orphans while the Go lease is still live ---
+(none, correctly — the lease has not expired)
+
+--- wait out the lease, the way a crashed owner's lease expires ---
+
+--- Python finds the orphan ---
+1787128419709-626a0a5fa9b334d6df02 state=running resume=400
+
+--- Python adopts it ---
+epoch=2 resume=400 state=running
+resumed from the verified prefix, not from bytes_done
+
+--- the zombie Go worker wakes up and tries to write with its old epoch ---
+refused, as it must be
+
+--- Python finishes the job ---
+done=1000 verified=1000
+state=transferred
+
+--- Go reads back what Python wrote ---
+{
+  "schema": 1,
+  "id": "1787128419709-626a0a5fa9b334d6df02",
+  "state": "transferred",
+  "artifact": {
+    "digest": "sha256:abababababababababababababababababababababababababababababababab",
+    "size": 1000
+  },
+  "sources": [
+    {
+      "scheme": "smb",
+      "locator": "\\\\nas\\models\\qwen.gguf"
+    },
+    {
+      "scheme": "file",
+      "locator": "D:/models/qwen.gguf"
+    }
+  ],
+  "sink": {
+    "partial": "C:\\Users\\reinis\\Documents\\AI abstractions (scratch)\\xlang\\store\\partials\\1787128419709-626a0a5fa9b334d6df02",
+    "final": "C:/Users/reinis/Documents/AI abstractions (scratch)/xlang/qwen.gguf"
+  },
+  "progress": {
+    "bytes_done": 1000,
+    "verified_prefix": 1000,
+    "updated_at": "2026-08-19T08:33:44.941344Z"
+  },
+  "lease": {
+    "owner": "python-worker",
+    "epoch": 2,
+    "expires_at": "2026-08-19T08:34:44.213566Z"
+  },
+  "created_at": "2026-08-19T08:33:39.709278Z",
+  "updated_at": "2026-08-19T08:33:45.446229Z"
+}
+
+--- RESULT ---
+PASS
+
+A job was created in Go, worked on in Go, abandoned without release, adopted in
+Python, resumed from the byte Go had PROVEN rather than the byte it had written,
+finished in Python, and read back in Go. The stale Go owner was refused when it
+came back with its old epoch.
+
+Neither implementation imports the other. Neither is generated from a shared
+schema. The record on disk is the entire contract, and it survived the crossing
+unchanged in both directions.
+
+WHAT THIS DOES NOT YET PROVE: no bytes moved. The transfer runner does not exist,
+so this exercises the record, the lease, the epoch and the adoption path — not
+resume of a real partially-written file. That test comes next and it needs a
+real transfer to kill in the middle of.

@@ -1,0 +1,32 @@
+
+PS> Get-Date -Format yyyy-MM-dd
+2026-08-16
+PS> Select-String liveRepo,liveQuant hf_live_test.go
+liveRepo  = "bartowski/SmolLM2-135M-Instruct-GGUF"
+liveQuant = "Q3_K_S"
+PS> go test -tags live -timeout 30m -run TestLiveHFFetchAndVerify -v -count=1 ./internal/registry/
+=== RUN   TestLiveHFFetchAndVerify
+    hf_live_test.go:118: live fetch verified: 88202080 bytes in 10s, digest sha256:7add77b8d3736d6b2fd21dc96e69be026f19bde843e9988b43cef1315fc5eebe
+--- PASS: TestLiveHFFetchAndVerify (10.14s)
+PASS
+ok  	github.com/ReinisLusis/abstraction-vault/internal/registry	10.909s
+
+PS> Select-String liveRepo,liveQuant hf_live_test.go
+liveRepo  = "lmstudio-community/SmolLM2-135M-Instruct-GGUF"
+liveQuant = "Q3_K_L"
+PS> go test -tags live -timeout 30m -run TestLiveHFFetchAndVerify -v -count=1 ./internal/registry/
+=== RUN   TestLiveHFFetchAndVerify
+    hf_live_test.go:118: live fetch verified: 97532992 bytes in 6s, digest sha256:44ec6b52f046e4ffe6e1bf04d1cf8d815bbcf2a230c272120bff87ae048b13ed
+--- PASS: TestLiveHFFetchAndVerify (6.72s)
+PASS
+ok  	github.com/ReinisLusis/abstraction-vault/internal/registry	7.481s
+
+PS> Select-String liveRepo,liveQuant hf_live_test.go
+liveRepo  = "ggml-org/gemma-3-1b-it-GGUF"
+liveQuant = "Q4_K_M"
+PS> go test -tags live -timeout 30m -run TestLiveHFFetchAndVerify -v -count=1 ./internal/registry/
+=== RUN   TestLiveHFFetchAndVerify
+    hf_live_test.go:118: live fetch verified: 806058240 bytes in 35s, digest sha256:8ccc5cd1f1b3602548715ae25a66ed73fd5dc68a210412eea643eb20eb75a135
+--- PASS: TestLiveHFFetchAndVerify (35.63s)
+PASS
+ok  	github.com/ReinisLusis/abstraction-vault/internal/registry	36.262s

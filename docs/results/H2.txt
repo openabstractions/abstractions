@@ -1,0 +1,47 @@
+PS> go test -run TestPolicy ./internal/store/
+ok  	github.com/ReinisLusis/abstraction-vault/internal/store	0.579s
+
+PS> $env:VAULT_COST_GIB=4; go test -tags cost -run TestPolicyCost -v ./internal/store/
+=== RUN   TestPolicyCost
+    cost_test.go:271: machine: windows/amd64, 32 cpu, 4 GiB artifact
+    cost_test.go:272: before (VerifyAlways):   5.48s  = 748 MiB/s of hashing
+    cost_test.go:274: after  (VerifyRecorded): 0s
+    cost_test.go:275: 
+    cost_test.go:276: extrapolated to a 40 GB model, on every load:
+    cost_test.go:277:   before  51s
+    cost_test.go:278:   after   0s
+    cost_test.go:279: 
+    cost_test.go:280: Both still refuse corrupt bytes — see TestPolicy_RefusesCorruption. What changed is
+    cost_test.go:281: when the store re-derives that, not whether it will hand out bytes that do not match.
+    cost_test.go:290: after corrupting the artifact, both policies refused it
+--- PASS: TestPolicyCost (20.10s)
+PASS
+ok  	github.com/ReinisLusis/abstraction-vault/internal/store	20.618s
+
+--- the same guarantee through the real binary, on a real 491 MB model ---
+
+PS> go build -o vault.exe ./cmd/vault
+(built)
+
+PS> vault verify <digest>        # the scrub: reads every byte, every time
+ok        74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+
+real	0m1.103s
+user	0m0.000s
+sys	0m0.078s
+
+PS> py -3 scripts/corrupt.py <store>/<digest> 512 invert
+invert 512 bytes at offset 442260028 of 491400032
+  before 2f8f0b49a6b87c1a9299e0e6ffab4d4c
+  after  d070f4b6594783e56d661f190054b2b3
+  size   491400032 (unchanged: True)
+
+PS> vault verify <digest>
+CORRUPT   74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db  (bytes do not match this name)
+vault: 1 of 1 artifacts did not verify
+exit code: 1
+
+PS> vault verify --all
+CORRUPT   74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db  (bytes do not match this name)
+vault: 1 of 1 artifacts did not verify
+exit code: 1

@@ -1,0 +1,47 @@
+PS> bash scripts/supervisor.sh
+
+--- build ---
+
+--- start a real download and kill it after 12 seconds ---
+scripts/supervisor.sh: line 41:   988 Killed                     "$MG" get "$REF" -o "$OUT" > "$WORK/get.log" 2>&1
+killed pid 988
+checkpointed at 17213777 bytes
+
+--- what the supervisor sees ---
+store: C:/Users/reinis/AppData/Local/Temp/sup/jobs
+os transfer service: true
+
+running        5%  here       Qwen2.5-0.5B-Instruct-IQ2_M.gguf
+
+--- the lease has to lapse first — nothing may touch a job someone may still hold ---
+
+--- one supervisor sweep, and NOTHING ELSE ---
+2026-08-21T09:41:01+03:00  reconciled=0 adopted=1 service=true
+
+real	2m50.269s
+user	0m0.000s
+sys	0m0.016s
+
+--- did the file arrive? ---
+  size: 328597408 bytes
+  want: 2fc237e65e1f963310e9c961d8e71e932734a72f90e3216a972d83edd1feb756
+  got:  2fc237e65e1f963310e9c961d8e71e932734a72f90e3216a972d83edd1feb756
+
+--- and the supervisor now reports it as finished ---
+store: C:/Users/reinis/AppData/Local/Temp/sup/jobs
+os transfer service: true
+
+transferred  100%  here       Qwen2.5-0.5B-Instruct-IQ2_M.gguf  (done, waiting to be taken delivery of)
+
+--- a second sweep must do nothing ---
+2026-08-21T09:41:07+03:00  reconciled=0 adopted=0 service=true
+
+--- RESULT ---
+PASS
+
+A real download was killed. No human ran the downloader again. A single
+supervisor sweep — the same one a scheduled task performs every few minutes —
+found the abandoned job, finished it, and delivered a file matching the digest
+HuggingFace published. A second sweep correctly did nothing.
+
+That is the gap closed: the bytes no longer wait for someone to notice.

@@ -1,0 +1,17 @@
+PS> $env:VAULT_CONFORMANCE_GGUF="C:\Users\reinis\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\store\74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
+PS> $env:VAULT_LLAMA_SERVER="C:\Users\reinis\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\llama-server\llama-server.exe"
+PS> go test -tags conformance -run TestBoundary_SingleBitFlip -v -timeout 30m .
+=== RUN   TestBoundary_SingleBitFlip
+    boundary_test.go:315: flipped ONE bit at offset 442260028: 2f -> af
+    boundary_test.go:316:   size   491400032 -> 491400032
+    boundary_test.go:317:   sha256 74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db -> d1fb138f3fc81dd9c4fb43aff84dab7ed7554f881c4d960a81fad0c2b2a58dcb
+
+=== G2b single-bit flip ===
+pristine loaded=true content=" Paris. It is the largest city in Europe and the second largest in the world. It is located in the south of"
+onebit   loaded=true content=" Paris. It is the largest city in Europe and the second largest in the world. It is located in the south of"
+identical output: true
+
+    boundary_test.go:335: RESULT: served. pristine " Paris. It is the largest city in Europe and the second largest in the world. It is located in the south of" vs onebit " Paris. It is the largest city in Europe and the second largest in the world. It is located in the south of"
+--- PASS: TestBoundary_SingleBitFlip (3.93s)
+PASS
+ok  	github.com/ReinisLusis/abstraction-vault	7.321s

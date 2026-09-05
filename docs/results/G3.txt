@@ -1,0 +1,49 @@
+PS> bash scripts/g3-ollama-corrupt.sh qwen2.5:0.5b
+
+=== inputs ===
+model     qwen2.5:0.5b
+source    /c/Users/reinis/.ollama/models/manifests/registry.ollama.ai/library/qwen2.5/0.5b
+workdir   /c/Users/reinis/Documents/AI abstractions (scratch)/g3-run
+Warning: client version is 0.32.13
+
+=== isolate: copy manifest and blobs into a private store ===
+total 388509
+-rw-r--r-- 1 reinis 197121       490 Aug 18 10:10 sha256-005f95c7475154a17e84b85cd497949d6dd2a4f9d77c096e3c66e4d9c32acaf5
+-rw-r--r-- 1 reinis 197121        68 Aug 18 10:10 sha256-66b9ea09bd5b7099cbb4fc820f31b575c0366fa439b08245566692c6784e281e
+-rw-r--r-- 1 reinis 197121     11343 Aug 18 10:10 sha256-832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e
+-rw-r--r-- 1 reinis 197121 397807936 Aug 18 10:10 sha256-c5396e06af294bd101b30dce59131a76d2b773e76950acc870eda801d3ab0515
+-rw-r--r-- 1 reinis 197121      1482 Aug 18 10:10 sha256-eb4402837c7829a690fa845de4d7f3fd842c2adee476d5341da8a46ea9255175
+
+=== target blob ===
+-rw-r--r-- 1 reinis 197121 397807936 Aug 18 10:10 /c/Users/reinis/Documents/AI abstractions (scratch)/g3-run/blobs/sha256-c5396e06af294bd101b30dce59131a76d2b773e76950acc870eda801d3ab0515
+content hashes to its own name (C2, re-checked here):
+c5396e06af294bd101b30dce59131a76d2b773e76950acc870eda801d3ab0515 */c/Users/reinis/Documents/AI abstractions (scratch)/g3-run/blobs/sha256-c5396e06af294bd101b30dce59131a76d2b773e76950acc870eda801d3ab0515
+
+=== baseline: pristine blob ===
+NAME            ID              SIZE      MODIFIED      
+qwen2.5:0.5b    a8b0c5157701    397 MB    6 seconds ago    
+response    'The capital of France is Paris.'
+done_reason stop
+error       None
+
+=== corrupt: invert 512 bytes at 90% of the blob, length unchanged ===
+offset       358027142 of 397807936
+before[:16]  b5337d932bf3531b0fe9a70ed4ca2610
+after [:16]  4acc826cd40cace4f01658f12b35d9ef
+size         397807936 (unchanged: True )
+the blob no longer hashes to its own name:
+69a158d7a39f0195d7850a9dafb539a21eb23634655816fa00dd8b5dbae7def4 */c/Users/reinis/Documents/AI abstractions (scratch)/g3-run/blobs/sha256-c5396e06af294bd101b30dce59131a76d2b773e76950acc870eda801d3ab0515
+its filename still claims it does:
+sha256-c5396e06af294bd101b30dce59131a76d2b773e76950acc870eda801d3ab0515
+
+=== same question, corrupted blob ===
+NAME            ID              SIZE      MODIFIED       
+qwen2.5:0.5b    a8b0c5157701    397 MB    22 seconds ago    
+response    '-K, the capital of France, the capital of France, the capital of France, the capital of France, the capital'
+done_reason length
+error       None
+
+=== done ===
+If the second answer differs from the first and nothing errored, Ollama
+stores digests it does not check, and the refusal differentiator covers
+both incumbents. If it refused, say so plainly instead.

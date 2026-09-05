@@ -1,0 +1,50 @@
+PS> bash scripts/conformance.sh
+
+--- build the implementations ---
+  go: /c/Users/reinis/AppData/Local/Temp/conf/jobctl-go.exe "$@"
+  python: py -3 /c/Users/reinis/Documents/AI\ abstractions/job/python/jobctl.py "$@"
+
+--- the first implementation creates a job none of them understand ---
+created by go: 1787218555198-8fae6fb273f7b4cce3f1
+
+--- hop 1 — go finds the orphan and continues it ---
+  epoch=1 state=running checkpoint=none
+  inherited checkpoint: 0
+  wrote 137, proved 100, then walked away without releasing
+
+--- hop 2 — python finds the orphan and continues it ---
+  epoch=2 state=running checkpoint={"verified_prefix":100}
+  inherited checkpoint: 100
+  wrote 237, proved 200, then walked away without releasing
+
+--- hop 3 — go finds the orphan and continues it ---
+  epoch=3 state=running checkpoint={"verified_prefix":200}
+  inherited checkpoint: 200
+  wrote 337, proved 300, then walked away without releasing
+
+--- hop 4 — python finds the orphan and continues it ---
+  epoch=4 state=running checkpoint={"verified_prefix":300}
+  inherited checkpoint: 300
+  wrote 437, proved 400, then walked away without releasing
+
+--- every implementation reads the same final record ---
+  go: reads it, and the spec it never understood is still intact
+  python: reads it, and the spec it never understood is still intact
+
+--- the record on disk is byte-identical whoever wrote it last ---
+  go: round-trips the record unchanged
+  python: round-trips the record unchanged
+
+--- RESULT ---
+PASS — implementations: go python
+
+One job went round a relay of 2 implementations, twice. At every hop
+the previous owner was gone without releasing anything, the next one found the
+job by itself, inherited the checkpoint its predecessor had PROVEN rather than
+the larger number it had written, and refused a write presenting a stale epoch.
+
+Every implementation reads the same record, re-encodes it identically, and
+carries a spec none of them has a type for.
+
+None of them imports another. None is generated from a shared schema. The record
+on disk is the entire contract.
