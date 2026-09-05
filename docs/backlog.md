@@ -4,6 +4,9 @@ Ideas worth keeping and not worth building yet. Five lines each: an idea that
 needs a document is either being decided now, in which case it gets one, or it
 belongs here. Entries are dated. Nothing here is a commitment.
 
+Technical design notes only. Market judgments and adoption-target assessments
+belong in the private strategy repository, not here.
+
 ---
 
 ## A polite monitor - 2026-09-05
@@ -96,26 +99,6 @@ should say so rather than letting adopters discover it by trying.
 
 ---
 
-## Ollama is not the adopter, and the pain was smaller than reported — 2026-09-05
-
-Six issues over 28 months, all closed, three reactions between them, and three
-of the six share one root cause already fixed in main by a one-hour grace period
-before pruning. Ollama has had resume since 2023 and maintainers have said so
-consistently; a pull request proposing it would be closed as already done.
-
-Their real remaining gap is that a checkpoint is written once per chunk attempt,
-so a network error discards bytes already on disk and the progress bar runs
-backwards. The honest fix is theirs and is thirty to fifty lines in
-`server/download.go`. It needs no dependency, and it is the shape of change they
-demonstrably merge — an outside contributor landed a fix in that exact file in
-two days.
-
-Reachability, measured: 331 merged pull requests in four and a half months, of
-which seventeen were from genuine outsiders. Roughly seven percent. The ones
-that land are small, tested, and narrow.
-
----
-
 ## A stateless caller gets no resume at all — 2026-09-05
 
 Found by trying to adopt the library into a one-shot CLI. It models resume as
@@ -171,16 +154,6 @@ a TTL is mandatory — the lease, reached independently in unrelated code.
 at all, which rules out the design a specification would have promised. `system`
 and `execution` intent must stay separate. Adopting a facade here is a shim
 until a second platform implements the same delegated-hold contract.
-
----
-
-## Server operators: one gap, and it is ours — 2026-09-05
-
-Retry and caching are solved for this audience by `hf_transfer`, aria2, s5cmd
-and registries; Dragonfly owns fleet-scale dedup. What remains is coordinating
-one download across machines sharing a destination, so a second node does not
-restart a fetch already in flight. That is the job store. Concentrated in
-small-to-mid ML platforms on Kubernetes. Pursue after desktop, not before.
 
 ---
 
