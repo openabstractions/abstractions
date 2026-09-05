@@ -6,6 +6,40 @@ belongs here. Entries are dated. Nothing here is a commitment.
 
 ---
 
+## A stateless caller gets no resume at all — 2026-09-05
+
+Found by trying to adopt the library into a one-shot CLI. It models resume as
+job-record continuity, keyed by job id. A CLI models it as file continuity,
+keyed by destination. Every invocation called `submit()`, got a new record with
+`verified_prefix` of zero, and sent no Range request — measured, not inferred.
+
+The proof it belongs in the library: both of our own adopters already wrote the
+missing piece themselves. The ComfyUI node has `_resume_or_submit` ("two runs
+fetching the same file are the same work") and the Lemonade fork has the same
+logic in C++. Two adopters reinventing one function is the function's
+specification. **Find-or-create by destination must be a library operation.**
+
+Four more from the same attempt, each an adoption barrier rather than a bug:
+
+- **Atomic delivery is unreachable.** Temp file and rename is the single thing
+  that adopter genuinely lacked, and it is private to `Runner`. The most
+  valuable primitive we have cannot be used without taking the whole store.
+- **We impose our HTTP stack.** The library fetches with `urllib`, so a caller
+  built on `requests` gets different exception types and its test mocks stop
+  intercepting. The transport must be injectable.
+- **No integrity without a digest.** Our only guarantee is a caller-supplied
+  `sha256:`, and most APIs do not hand one back. The adopter had built
+  ETag/If-Range checking precisely to catch a remote object changing between
+  attempts; we cannot detect that at all.
+- **It cannot be vendored.** `from abstraction_job import ...` is flat and
+  absolute, so dropping the files under a namespaced path requires editing them.
+
+**Verdict from the attempt: not ready for an outside adopter, and not close.**
+That maintainer had spent five weeks hardening the same code by hand with
+nineteen tests pinning its semantics. No PR was opened, correctly.
+
+---
+
 ## The lease rests on a primitive tested once — 2026-09-05
 
 Mutual exclusion is an `O_EXCL` claim token, which `store.go` calls atomic on
