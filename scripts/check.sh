@@ -52,11 +52,24 @@ run() {  # run <label> <command...>
 }
 
 section "go"
+# A layer that is not on disk is a broken checkout, not something to pass
+# over. Skipping quietly is how this printed PASS while testing nothing: the
+# paths still named the old single tree, every layer was absent, and the only
+# thing that ran was the example.
 for d in job/go download/go storage/go logging/go config/go model/go \
-         abstraction/go examples/pretend-lemonade deploy/nas/mkimage; do
-    [ -d "$ROOT/$d" ] || continue
-    run "$d" bash -c "cd '$ROOT/$d' && go build ./... && go test ./..."
+         abstraction/go; do
+    if [ -d "$TREE/$d" ]; then
+        run "$d" bash -c "cd '$TREE/$d' && go build ./... && go test ./..."
+    else
+        fail "$d (missing from $TREE -- run scripts/layers.sh)"
+    fi
 done
+
+# The example consumer lives here rather than in a layer, because it is what
+# depends on them rather than one of them.
+if [ -d "$ROOT/examples/pretend-lemonade" ]; then
+    run "examples/pretend-lemonade" bash -c "cd '$ROOT/examples/pretend-lemonade' && go build ./..."
+fi
 
 section "python"
 run "job/python"            bash -c "cd '$TREE/job/python' && '$PY' -m unittest discover -p 'test_*.py'"

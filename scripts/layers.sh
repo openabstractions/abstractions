@@ -19,7 +19,25 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="$ROOT/.layers"
 ORG="openabstractions"
 BASE="https://github.com/$ORG"
-[ "${1:-}" = "--ssh" ] && BASE="git@github.com:$ORG"
+LATEST=0
+for arg in "$@"; do
+    case "$arg" in
+        --ssh)    BASE="git@github.com:$ORG" ;;
+        --latest) LATEST=1 ;;
+        *) echo "unknown argument: $arg" >&2; exit 2 ;;
+    esac
+done
+
+# Which commit of each repository is known to work with the others. Splitting
+# the layers made an adopter's pull smaller and left nothing recording which
+# versions belong together, so the cross-language proof would otherwise run
+# against whatever main happened to be that morning.
+LOCK="$ROOT/layers.lock"
+pinned() {
+    [ "$LATEST" = "1" ] && return 1
+    [ -f "$LOCK" ] || return 1
+    awk -v r="$1" '$1 == r { print $2; found = 1 } END { exit !found }' "$LOCK"
+}
 
 LAYERS="abstraction-job abstraction-download abstraction-storage
         abstraction-config abstraction-logging abstraction-model
@@ -28,13 +46,21 @@ LAYERS="abstraction-job abstraction-download abstraction-storage
 mkdir -p "$DEST"
 for repo in $LAYERS; do
     printf '%-24s ' "$repo"
-    if [ -d "$DEST/$repo/.git" ]; then
-        git -C "$DEST/$repo" fetch --quiet origin
-        git -C "$DEST/$repo" reset --quiet --hard origin/main
-        printf 'updated to %s\n' "$(git -C "$DEST/$repo" rev-parse --short HEAD)"
+    [ -d "$DEST/$repo/.git" ] || git clone --quiet "$BASE/$repo.git" "$DEST/$repo"
+    git -C "$DEST/$repo" fetch --quiet origin
+
+    if want="$(pinned "$repo")"; then
+        git -C "$DEST/$repo" reset --quiet --hard "$want" 2>/dev/null || {
+            printf 'PINNED SHA NOT FOUND: %s
+' "$want" >&2
+            exit 1
+        }
+        printf 'pinned  %s
+' "$(git -C "$DEST/$repo" rev-parse --short HEAD)"
     else
-        git clone --quiet "$BASE/$repo.git" "$DEST/$repo"
-        printf 'cloned at %s\n' "$(git -C "$DEST/$repo" rev-parse --short HEAD)"
+        git -C "$DEST/$repo" reset --quiet --hard origin/main
+        printf 'main    %s
+' "$(git -C "$DEST/$repo" rev-parse --short HEAD)"
     fi
 done
 
