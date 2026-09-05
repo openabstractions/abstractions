@@ -6,6 +6,23 @@ belongs here. Entries are dated. Nothing here is a commitment.
 
 ---
 
+## A destination is a path, and a path is one machine — 2026-09-05
+
+Not speculative: it is why the ComfyUI node cannot delegate. Its own docstring
+says a job handed to a NAS would name a directory that exists on the PC and not
+on the NAS, so the bytes land nowhere and the caller waits for a file that is
+never coming. Every delegation problem traces to sink.final being an absolute
+path.
+
+The requester should say what it needs available, never where. Placement is the
+store'''s decision -- local disk, the NAS, both -- and a path is materialised only
+when something opens a file. Content addressing already makes location a
+property of a copy rather than of identity, so the pieces exist. Nix'''s
+substituters are the closest prior art: they answer where can I get this, not
+here is the file. Folds into [[accessibility]].
+
+---
+
 ## User interface: web first, native last — 2026-09-05
 
 Web UI until the contract underneath is proven, then native per platform, thin
