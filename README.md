@@ -193,7 +193,13 @@ What does not:
 - [`docs/repo-layout.md`](docs/repo-layout.md) — why the repositories are split.
 - [`docs/backlog.md`](docs/backlog.md) — ideas not being built yet.
 - [`docs/origin.txt`](docs/origin.txt) — the problem as originally stated.
+- [`docs/using-other-peoples-code.md`](docs/using-other-peoples-code.md) — what
+  licences code may be taken from, and what a contributor must do when they
+  copy something. Read before adapting anything from outside this
+  organisation.
 
 ## Licence
 
-Apache-2.0. See [`LICENSE`](LICENSE).
+Apache-2.0. See [`LICENSE`](LICENSE). Third-party code, dependencies, and
+techniques this project has taken from elsewhere are recorded in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
