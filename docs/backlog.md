@@ -6,6 +6,40 @@ belongs here. Entries are dated. Nothing here is a commitment.
 
 ---
 
+## The lease rests on a primitive tested once — 2026-09-05
+
+Mutual exclusion is an `O_EXCL` claim token, which `store.go` calls atomic on
+NTFS and POSIX. NFS is the documented exception and a network share is the
+binding this exists for; it has been checked against one Synology over SMB. A
+survey of server operators found the same assumption failing in production one
+layer up — 125 Kubernetes workers, `flock` over NFS, each holding its own
+"exclusive" lock, about 30% of datapoints lost. The fix is not a cleverer
+primitive: a store should prove exclusivity on the filesystem it is on, by
+racing creators for one name at setup, and refuse to be shared when it cannot.
+
+---
+
+## Keep-awake: what an existing Windows tool already knows — 2026-09-05
+
+Delegation destroys the OS guarantee that a dying process releases its lock, so
+a TTL is mandatory — the lease, reached independently in unrelated code.
+`PowerRequestExecutionRequired` cannot be granted on behalf of another process
+at all, which rules out the design a specification would have promised. `system`
+and `execution` intent must stay separate. Adopting a facade here is a shim
+until a second platform implements the same delegated-hold contract.
+
+---
+
+## Server operators: one gap, and it is ours — 2026-09-05
+
+Retry and caching are solved for this audience by `hf_transfer`, aria2, s5cmd
+and registries; Dragonfly owns fleet-scale dedup. What remains is coordinating
+one download across machines sharing a destination, so a second node does not
+restart a fetch already in flight. That is the job store. Concentrated in
+small-to-mid ML platforms on Kubernetes. Pursue after desktop, not before.
+
+---
+
 ## Accessibility: where an artifact actually lives — 2026-09-05
 
 Ask for a model and get it at a stated latency — RAM, SSD, NAS — without saying
