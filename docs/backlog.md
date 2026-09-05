@@ -9,6 +9,45 @@ belong in the private strategy repository, not here.
 
 ---
 
+## Accountability now, enforcement later - 2026-09-05
+
+No platform lets us enforce per-app permissions between processes of one user at
+one integrity level. So do not claim it, and do not withhold the feature either.
+
+- **Put the truth in the sentence, not a footnote.** Not "Allow LogViewer to read
+  the System log" with an asterisk, but "Anything you run can already read this.
+  Recording that LogViewer asked." A red asterisk is the part people do not
+  read.
+- **What we ship today is accountability, not access control**, and that is not a
+  consolation prize - most enterprise security is accountability. Audit logs do
+  not stop anyone either. The interface does not change as platforms harden; the
+  guarantee behind it strengthens, which is the `Proof` ladder gaining a rung.
+- **Users click through prompts without reading, and always will.** The
+  conclusion is not that wording is pointless, it is that *the design must not
+  depend on them reading*: ask rarely, make "yes" the narrowest grant rather than
+  the broadest, and put the truth where it is found later. That is the monitor,
+  and it is why the monitor matters more than the prompt.
+
+**Strict mode, for people who want it.** Default permissive; the switch lives in
+the monitor, which is where somebody learns enough to want it. What strict mode
+enforces is real because it needs no control over the caller, only over
+ourselves:
+
+> We cannot stop a process being injected into. We can refuse to talk to
+> processes that are easy to inject into.
+
+No verifiable identity, no service - MSIX package identity on Windows, a valid
+signature on macOS. No mitigation policies enabled, no service. Unsigned, no
+service. And it must say what it refused: "blocked LogViewer: unsigned". A
+feature that silently does not work is one people switch off.
+
+That is also the adoption incentive, in its honest form. An app wanting to serve
+strict-mode users has to be signed, packaged and hardened - a gate it can walk
+through, not a nag screen shaming it. The pressure comes from users who chose
+strict, never from us.
+
+---
+
 ## A polite monitor - 2026-09-05
 
 An app that calmly answers "what is my computer doing?" - what is holding the
