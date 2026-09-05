@@ -1,10 +1,10 @@
-PS> $env:VAULT_CONFORMANCE_GGUF="C:\Users\reinis\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\store\74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
-PS> $env:VAULT_LLAMA_SERVER="C:\Users\reinis\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\llama-server\llama-server.exe"
+PS> $env:VAULT_CONFORMANCE_GGUF="C:\Users\user\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\store\74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
+PS> $env:VAULT_LLAMA_SERVER="C:\Users\user\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\llama-server\llama-server.exe"
 PS> go test -tags conformance -run TestConformance_TruncatedGGUF -v -timeout 30m .
 === RUN   TestConformance_TruncatedGGUF
-    conformance_test.go:143: source     C:\Users\reinis\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\store\74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+    conformance_test.go:143: source     C:\Users\user\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\store\74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
     conformance_test.go:144:   size     491400032 bytes, sha256:74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
-    conformance_test.go:145: truncated  C:\Users\reinis\AppData\Local\Temp\TestConformance_TruncatedGGUF3800684034\001\truncated.gguf
+    conformance_test.go:145: truncated  C:\Users\user\AppData\Local\Temp\TestConformance_TruncatedGGUF3800684034\001\truncated.gguf
     conformance_test.go:146:   size     491400016 bytes (-16), sha256:ad510079dcd1066497c83872ebe74f1bb2b231cb06428c1a4b815bd16fcd507d
 === RUN   TestConformance_TruncatedGGUF/vault_refuses
     conformance_test.go:175: PutExpected refused on write: store: digest mismatch: got sha256:ad510079dcd1066497c83872ebe74f1bb2b231cb06428c1a4b815bd16fcd507d want sha256:74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
@@ -19,14 +19,14 @@ PS> go test -tags conformance -run TestConformance_TruncatedGGUF -v -timeout 30m
         0.00.029.980 W srv  llama_server: this can be a security risk (cross-origin attacks)
         0.00.029.981 W srv  llama_server: more info: https://github.com/ggml-org/llama.cpp/pull/25655
         0.00.029.981 W srv  llama_server: -----------------
-        0.00.037.107 I srv    load_model: loading model 'C:\Users\reinis\AppData\Local\Temp\TestConformance_TruncatedGGUF3800684034\001\truncated.gguf'
+        0.00.037.107 I srv    load_model: loading model 'C:\Users\user\AppData\Local\Temp\TestConformance_TruncatedGGUF3800684034\001\truncated.gguf'
         0.00.069.896 E llama_model_load: error loading model: tensor 'output_norm.weight' data is not within the file bounds, model is corrupted or incomplete
         0.00.069.908 E llama_model_load_from_file_impl: failed to load model
         0.00.069.949 E common_fit_params: encountered an error while trying to fit params to free device memory: failed to load model
         0.00.103.775 E llama_model_load: error loading model: tensor 'output_norm.weight' data is not within the file bounds, model is corrupted or incomplete
         0.00.103.785 E llama_model_load_from_file_impl: failed to load model
-        0.00.103.790 E cmn  common_init_: failed to load model 'C:\Users\reinis\AppData\Local\Temp\TestConformance_TruncatedGGUF3800684034\001\truncated.gguf'
-        0.00.103.802 E srv    load_model: failed to load model, 'C:\Users\reinis\AppData\Local\Temp\TestConformance_TruncatedGGUF3800684034\001\truncated.gguf'
+        0.00.103.790 E cmn  common_init_: failed to load model 'C:\Users\user\AppData\Local\Temp\TestConformance_TruncatedGGUF3800684034\001\truncated.gguf'
+        0.00.103.802 E srv    load_model: failed to load model, 'C:\Users\user\AppData\Local\Temp\TestConformance_TruncatedGGUF3800684034\001\truncated.gguf'
         0.00.103.817 I srv    operator(): operator(): cleaning up before exit...
         0.00.104.995 E srv  llama_server: exiting due to model loading error
     conformance_test.go:244: llama-server output:
@@ -36,14 +36,14 @@ PS> go test -tags conformance -run TestConformance_TruncatedGGUF -v -timeout 30m
         0.00.029.980 W srv  llama_server: this can be a security risk (cross-origin attacks)
         0.00.029.981 W srv  llama_server: more info: https://github.com/ggml-org/llama.cpp/pull/25655
         0.00.029.981 W srv  llama_server: -----------------
-        0.00.037.107 I srv    load_model: loading model 'C:\Users\reinis\AppData\Local\Temp\TestConformance_TruncatedGGUF3800684034\001\truncated.gguf'
+        0.00.037.107 I srv    load_model: loading model 'C:\Users\user\AppData\Local\Temp\TestConformance_TruncatedGGUF3800684034\001\truncated.gguf'
         0.00.069.896 E llama_model_load: error loading model: tensor 'output_norm.weight' data is not within the file bounds, model is corrupted or incomplete
         0.00.069.908 E llama_model_load_from_file_impl: failed to load model
         0.00.069.949 E common_fit_params: encountered an error while trying to fit params to free device memory: failed to load model
         0.00.103.775 E llama_model_load: error loading model: tensor 'output_norm.weight' data is not within the file bounds, model is corrupted or incomplete
         0.00.103.785 E llama_model_load_from_file_impl: failed to load model
-        0.00.103.790 E cmn  common_init_: failed to load model 'C:\Users\reinis\AppData\Local\Temp\TestConformance_TruncatedGGUF3800684034\001\truncated.gguf'
-        0.00.103.802 E srv    load_model: failed to load model, 'C:\Users\reinis\AppData\Local\Temp\TestConformance_TruncatedGGUF3800684034\001\truncated.gguf'
+        0.00.103.790 E cmn  common_init_: failed to load model 'C:\Users\user\AppData\Local\Temp\TestConformance_TruncatedGGUF3800684034\001\truncated.gguf'
+        0.00.103.802 E srv    load_model: failed to load model, 'C:\Users\user\AppData\Local\Temp\TestConformance_TruncatedGGUF3800684034\001\truncated.gguf'
         0.00.103.817 I srv    operator(): operator(): cleaning up before exit...
         0.00.104.995 E srv  llama_server: exiting due to model loading error
 --- FAIL: TestConformance_TruncatedGGUF (2.46s)

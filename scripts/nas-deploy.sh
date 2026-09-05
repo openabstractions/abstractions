@@ -22,7 +22,7 @@
 set -u
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-TARGET="${1:-admin@192.168.173.111}"
+TARGET="${1:?usage: nas-deploy.sh <user>@<nas-host> [remote-dir]}"
 REMOTE="${2:-/volume1/docker/abstraction}"
 NAS_STORE="${NAS_STORE:-/volume1/docker/abstraction/store}"
 NAS_KEY="${NAS_KEY:-$HOME/.ssh/id_ed25519_nas}"

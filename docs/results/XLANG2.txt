@@ -1,8 +1,8 @@
 PS> bash scripts/xlang-job.sh
 
 --- build the Go jobctl ---
-go:     /c/Users/reinis/Documents/AI abstractions (scratch)/xlang/jobctl.exe
-python: py -3 /c/Users/reinis/Documents/AI abstractions/job/python/jobctl.py
+go:     /c/Users/user/Documents/AI abstractions (scratch)/xlang/jobctl.exe
+python: py -3 /c/Users/user/Documents/AI abstractions/job/python/jobctl.py
 
 --- Go submits a job whose spec neither implementation understands ---
 job id: 1787202430967-a752f9a9c2c77b123ffd

@@ -1,4 +1,4 @@
-PS C:\Users\reinis\Documents\AI abstractions\vault> $env:VAULT_COST_GIB="8"; & "C:\Program Files\Go\bin\go.exe" test -tags cost -timeout 30m -run TestOpenCost -v ./internal/store/
+PS C:\Users\user\Documents\AI abstractions\vault> $env:VAULT_COST_GIB="8"; & "C:\Program Files\Go\bin\go.exe" test -tags cost -timeout 30m -run TestOpenCost -v ./internal/store/
 === RUN   TestOpenCost
     cost_test.go:84: machine: windows/amd64, 32 cpu
     cost_test.go:85: put  (hash on write): 21.107s for 8 GiB
@@ -14,7 +14,7 @@ PS C:\Users\reinis\Documents\AI abstractions\vault> $env:VAULT_COST_GIB="8"; & "
 PASS
 ok  	github.com/ReinisLusis/abstraction-vault/internal/store	43.031s
 
-PS C:\Users\reinis\Documents\AI abstractions> wsl.exe --distribution Ubuntu --exec bash -lc "/usr/local/go/bin/go version; echo '---'; export VAULT_COST_GIB=8; cd '/mnt/c/Users/reinis/Documents/AI abstractions/vault'; /usr/local/go/bin/go test -tags cost -timeout 30m -run TestOpenCost -v ./internal/store/"
+PS C:\Users\user\Documents\AI abstractions> wsl.exe --distribution Ubuntu --exec bash -lc "/usr/local/go/bin/go version; echo '---'; export VAULT_COST_GIB=8; cd '/mnt/c/Users/user/Documents/AI abstractions/vault'; /usr/local/go/bin/go test -tags cost -timeout 30m -run TestOpenCost -v ./internal/store/"
 go version go1.26.5 linux/amd64
 ---
 === RUN   TestOpenCost
@@ -32,21 +32,21 @@ go version go1.26.5 linux/amd64
 PASS
 ok  	github.com/ReinisLusis/abstraction-vault/internal/store	57.523s
 
-PS C:\Users\reinis\Documents\AI abstractions> Get-PSDrive -PSProvider FileSystem | Select-Object Name,Root
+PS C:\Users\user\Documents\AI abstractions> Get-PSDrive -PSProvider FileSystem | Select-Object Name,Root
 Name Root
 ---- ----
 C    C:\
-PS C:\Users\reinis\Documents\AI abstractions> net use
+PS C:\Users\user\Documents\AI abstractions> net use
 New connections will be remembered.
 
 There are no entries in the list.
 
-PS C:\Users\reinis\Documents\AI abstractions> Get-SmbMapping -ErrorAction SilentlyContinue | Select-Object Status,RemotePath,LocalPath
-PS C:\Users\reinis\Documents\AI abstractions> Get-Content $env:USERPROFILE\.ssh\config -ErrorAction SilentlyContinue; Get-Content $env:USERPROFILE\.ssh\known_hosts -ErrorAction SilentlyContinue
+PS C:\Users\user\Documents\AI abstractions> Get-SmbMapping -ErrorAction SilentlyContinue | Select-Object Status,RemotePath,LocalPath
+PS C:\Users\user\Documents\AI abstractions> Get-Content $env:USERPROFILE\.ssh\config -ErrorAction SilentlyContinue; Get-Content $env:USERPROFILE\.ssh\known_hosts -ErrorAction SilentlyContinue
 github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
 github.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGLVlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4jk+S4dhPeAUC5y+bDYirYgM4GC7uEnztnZyaVWQ7B381AK4Qdrwt51ZqExKbQpTUNn+EjqoTwvqNj4kqx5QUCI0ThS/YkOxJCXmPUWZbhjpCg56i+2aB6CmK2JGhn57K5mj0MNdBXA4/WnwH6XoPWJzK5Nyu2zB3nAZp+S5hpQs+p1vN1/wsjk=
 github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=
-PS C:\Users\reinis\Documents\AI abstractions> foreach ($h in @("diskstation","synology","nas","dsm","synologynas","diskstation.local","nas.local")) { $r = Resolve-DnsName $h -ErrorAction SilentlyContinue; if ($r) { Write-Output "RESOLVED $h -> $($r.IPAddress -join ',')" } else { Write-Output "no-resolve $h" } }
+PS C:\Users\user\Documents\AI abstractions> foreach ($h in @("diskstation","synology","nas","dsm","synologynas","diskstation.local","nas.local")) { $r = Resolve-DnsName $h -ErrorAction SilentlyContinue; if ($r) { Write-Output "RESOLVED $h -> $($r.IPAddress -join ',')" } else { Write-Output "no-resolve $h" } }
 no-resolve diskstation
 no-resolve synology
 no-resolve nas
@@ -54,7 +54,7 @@ no-resolve dsm
 no-resolve synologynas
 no-resolve diskstation.local
 no-resolve nas.local
-PS C:\Users\reinis\Documents\AI abstractions> ipconfig
+PS C:\Users\user\Documents\AI abstractions> ipconfig
 Windows IP Configuration
 
 Ethernet adapter vEthernet (WSL (Hyper-V firewall)):
@@ -65,23 +65,23 @@ Ethernet adapter vEthernet (WSL (Hyper-V firewall)):
 
 Wireless LAN adapter Wi-Fi:
    Link-local IPv6 Address . . . . . : fe80::xxxx:xxxx:xxxx:xxxx%NN
-   IPv4 Address. . . . . . . . . . . : 192.168.173.227
+   IPv4 Address. . . . . . . . . . . : 192.0.2.227
    Subnet Mask . . . . . . . . . . . : 255.255.255.0
-   Default Gateway . . . . . . . . . : 192.168.173.1
-PS C:\Users\reinis\Documents\AI abstractions> ping -n 1 192.168.173.255 | Out-Null; Start-Sleep -Seconds 2; arp -a
-Interface: 192.168.173.227 --- 0x8
+   Default Gateway . . . . . . . . . : 192.0.2.1
+PS C:\Users\user\Documents\AI abstractions> ping -n 1 192.0.2.255 | Out-Null; Start-Sleep -Seconds 2; arp -a
+Interface: 192.0.2.227 --- 0x8
   Internet Address      Physical Address      Type
-  192.168.173.1         xx-xx-xx-xx-xx-xx     dynamic
-  192.168.173.5         xx-xx-xx-xx-xx-xx     dynamic
-  192.168.173.246       xx-xx-xx-xx-xx-xx     dynamic
-  192.168.173.255       ff-ff-ff-ff-ff-ff     static
+  192.0.2.1         xx-xx-xx-xx-xx-xx     dynamic
+  192.0.2.5         xx-xx-xx-xx-xx-xx     dynamic
+  192.0.2.246       xx-xx-xx-xx-xx-xx     dynamic
+  192.0.2.255       ff-ff-ff-ff-ff-ff     static
   224.0.0.2             01-00-5e-00-00-02     static
   224.0.0.22            01-00-5e-00-00-16     static
   224.0.0.251           01-00-5e-00-00-fb     static
   239.255.255.250       01-00-5e-7f-ff-fa     static
   255.255.255.255       ff-ff-ff-ff-ff-ff     static
-PS C:\Users\reinis\Documents\AI abstractions> foreach ($ip in @("192.168.173.5","192.168.173.246")) { Write-Output "=== $ip ==="; foreach ($port in @(22,80,443,445,5000,5001,7777)) { $c = New-Object Net.Sockets.TcpClient; $iar = $c.BeginConnect($ip,$port,$null,$null); $ok = $iar.AsyncWaitHandle.WaitOne(1500); if($ok -and $c.Connected){ Write-Output "  port $port : OPEN" } else { Write-Output "  port $port : closed" }; $c.Close() } }
-=== 192.168.173.5 ===
+PS C:\Users\user\Documents\AI abstractions> foreach ($ip in @("192.0.2.5","192.0.2.246")) { Write-Output "=== $ip ==="; foreach ($port in @(22,80,443,445,5000,5001,7777)) { $c = New-Object Net.Sockets.TcpClient; $iar = $c.BeginConnect($ip,$port,$null,$null); $ok = $iar.AsyncWaitHandle.WaitOne(1500); if($ok -and $c.Connected){ Write-Output "  port $port : OPEN" } else { Write-Output "  port $port : closed" }; $c.Close() } }
+=== 192.0.2.5 ===
   port 22 : closed
   port 80 : closed
   port 443 : closed
@@ -89,7 +89,7 @@ PS C:\Users\reinis\Documents\AI abstractions> foreach ($ip in @("192.168.173.5",
   port 5000 : closed
   port 5001 : closed
   port 7777 : closed
-=== 192.168.173.246 ===
+=== 192.0.2.246 ===
   port 22 : closed
   port 80 : closed
   port 443 : closed
@@ -98,4 +98,4 @@ PS C:\Users\reinis\Documents\AI abstractions> foreach ($ip in @("192.168.173.5",
   port 5001 : closed
   port 7777 : closed
 
-SYNOLOGY NAS: unavailable. No NAS reachable from this machine: no mounted/SMB shares, no SSH config or known_hosts entry, no DNS resolution for diskstation/synology/nas/dsm hostnames, and no LAN host (only gateway 192.168.173.1 plus 192.168.173.5 and 192.168.173.246, both with all NAS ports 22/80/443/445/5000/5001/7777 closed) answering as a Synology. Leg recorded as failed/unavailable; no numbers fabricated.
+SYNOLOGY NAS: unavailable. No NAS reachable from this machine: no mounted/SMB shares, no SSH config or known_hosts entry, no DNS resolution for diskstation/synology/nas/dsm hostnames, and no LAN host (only gateway 192.0.2.1 plus 192.0.2.5 and 192.0.2.246, both with all NAS ports 22/80/443/445/5000/5001/7777 closed) answering as a Synology. Leg recorded as failed/unavailable; no numbers fabricated.

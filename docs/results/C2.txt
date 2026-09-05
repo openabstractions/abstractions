@@ -41,5 +41,5 @@ PS> Get-FileHash -Algorithm SHA256 $env:USERPROFILE\.ollama\models\blobs\sha256-
 
 Algorithm : SHA256
 Hash      : C5396E06AF294BD101B30DCE59131A76D2B773E76950ACC870EDA801D3AB0515
-Path      : C:\Users\reinis\.ollama\models\blobs\sha256-c5396e06af294bd101b30dce59131a76d2b773e76950acc870eda801d3ab051
+Path      : C:\Users\user\.ollama\models\blobs\sha256-c5396e06af294bd101b30dce59131a76d2b773e76950acc870eda801d3ab051
             5

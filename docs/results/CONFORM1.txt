@@ -1,8 +1,8 @@
 PS> bash scripts/conformance.sh
 
 --- build the implementations ---
-  go: /c/Users/reinis/AppData/Local/Temp/conf/jobctl-go.exe "$@"
-  python: py -3 /c/Users/reinis/Documents/AI\ abstractions/job/python/jobctl.py "$@"
+  go: /c/Users/user/AppData/Local/Temp/conf/jobctl-go.exe "$@"
+  python: py -3 /c/Users/user/Documents/AI\ abstractions/job/python/jobctl.py "$@"
 
 --- the first implementation creates a job none of them understand ---
 created by go: 1787218555198-8fae6fb273f7b4cce3f1

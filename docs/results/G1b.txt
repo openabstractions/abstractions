@@ -1,10 +1,10 @@
-PS> $env:VAULT_CONFORMANCE_GGUF="C:\Users\reinis\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\store\74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
-PS> $env:VAULT_LLAMA_SERVER="C:\Users\reinis\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\llama-server\llama-server.exe"
+PS> $env:VAULT_CONFORMANCE_GGUF="C:\Users\user\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\store\74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
+PS> $env:VAULT_LLAMA_SERVER="C:\Users\user\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\llama-server\llama-server.exe"
 PS> go test -tags conformance -run TestConformance_CorruptGGUF -v -timeout 30m .
 === RUN   TestConformance_CorruptGGUF
-    conformance_test.go:166: source     C:\Users\reinis\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\store\74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+    conformance_test.go:166: source     C:\Users\user\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\store\74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
     conformance_test.go:167:   size     491400032 bytes, sha256:74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
-    conformance_test.go:168: corrupted  C:\Users\reinis\AppData\Local\Temp\TestConformance_CorruptGGUF792274991\001\corrupt.gguf
+    conformance_test.go:168: corrupted  C:\Users\user\AppData\Local\Temp\TestConformance_CorruptGGUF792274991\001\corrupt.gguf
     conformance_test.go:169:   512 bytes inverted at offset 442260028
     conformance_test.go:170:   size     491400032 bytes (unchanged: true)
     conformance_test.go:171:   sha256   073f279bfa21f700fb4739ba7606a0ab2b531b64edcb7e948f3823192ddab253
@@ -20,7 +20,7 @@ PS> go test -tags conformance -run TestConformance_CorruptGGUF -v -timeout 30m .
         0.00.033.254 W srv  llama_server: this can be a security risk (cross-origin attacks)
         0.00.033.255 W srv  llama_server: more info: https://github.com/ggml-org/llama.cpp/pull/25655
         0.00.033.255 W srv  llama_server: -----------------
-        0.00.036.211 I srv    load_model: loading model 'C:\Users\reinis\AppData\Local\Temp\TestConformance_CorruptGGUF792274991\001\corrupt.gguf'
+        0.00.036.211 I srv    load_model: loading model 'C:\Users\user\AppData\Local\Temp\TestConformance_CorruptGGUF792274991\001\corrupt.gguf'
         0.00.400.710 W load: control-looking token: 128247 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
         0.00.496.274 I cmn          init: llama threadpool init, n_threads = 16
         0.00.625.197 I srv    load_model: initializing, n_slots = 4, n_ctx_slot = 512, kv_unified = 'true'

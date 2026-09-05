@@ -1,9 +1,8 @@
 # What a real application taught the abstraction
 
-Everything below was learned by putting the job layer into Lemonade — 130k lines
-of C++ that had never heard of it — over one night. None of it came from
-designing. Each item cost hours and at least one wrong turn, so it is written
-down in the form that would have saved them.
+Everything below was learned by putting the job layer into Lemonade, a 130k-line
+C++ application. None of it came from designing. Each item cost at least one
+wrong turn, so it is written down in the form that would have saved them.
 
 The work lives in a fork, on a branch:
 `github.com/ReinisLusis/lemonade` → `abstraction-job-store`.
@@ -111,8 +110,8 @@ already has, sitting on the durable substrate underneath.
 
 ## What comes next, and what each part tests
 
-The road ahead is mostly not downloading, which is the point: every item below
-exercises the abstraction from a direction downloading never would.
+The road ahead is mostly not downloading. Every item below exercises the
+abstraction from a direction downloading never would.
 
 | next | what it tests |
 |---|---|

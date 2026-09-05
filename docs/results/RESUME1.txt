@@ -13,7 +13,7 @@ killed pid 259
 hf://bartowski/Qwen2.5-0.5B-Instruct-GGUF#IQ2_M
   digest  sha256:2fc237e65e1f963310e9c961d8e71e932734a72f90e3216a972d83edd1feb756
   size    313.4 MiB
-  to      C:\Users\reinis\AppData\Local\Temp\kar\out\Qwen2.5-0.5B-Instruct-IQ2_M.gguf
+  to      C:\Users\user\AppData\Local\Temp\kar\out\Qwen2.5-0.5B-Instruct-IQ2_M.gguf
   source  https://huggingface.co/bartowski/Qwen2.5-0.5B-Instruct-GGUF/resolve/41ba88dbac95fed2528c92514c131d73eb5a174b/Qwen2.5-0.5B-Instruct-IQ2_M.gguf
   job     1787205139652-eb9f221aea2ed0cc525e
 
@@ -28,7 +28,7 @@ more than it had checkpointed, and nothing vouches for the difference, so
 the resume starts from the proven number and throws the rest away.
 
 --- immediately after the kill, the dead owner still holds the lease ---
-Qwen2.5-0.5B-Instruct-IQ2_M.gguf (0% done) is still held by modelget@CoffeeMachine:16168 — free in 28s
+Qwen2.5-0.5B-Instruct-IQ2_M.gguf (0% done) is still held by modelget@host:16168 — free in 28s
 
 If that owner is gone its lease lapses by itself; run this again then.
 The wait is what stops two processes writing one file at once.

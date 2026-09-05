@@ -1,61 +1,61 @@
-PS C:\Users\reinis\Documents\AI abstractions\vault> $env:PATH = "C:\Program Files\Go\bin;C:\Program Files\Git\cmd;" + $env:PATH
-PS C:\Users\reinis\Documents\AI abstractions\vault> go version
+PS C:\Users\user\Documents\AI abstractions\vault> $env:PATH = "C:\Program Files\Go\bin;C:\Program Files\Git\cmd;" + $env:PATH
+PS C:\Users\user\Documents\AI abstractions\vault> go version
 go version go1.26.5 windows/amd64
-PS C:\Users\reinis\Documents\AI abstractions\vault> $tmp = "C:\Users\reinis\AppData\Local\Temp\opencode\a0repro"
-PS C:\Users\reinis\Documents\AI abstractions\vault> New-Item -ItemType Directory -Path $tmp | Out-Null
-PS C:\Users\reinis\Documents\AI abstractions\vault> go build -o "$tmp\vaultd.exe" ./cmd/vaultd
-PS C:\Users\reinis\Documents\AI abstractions\vault> echo "exit: $LASTEXITCODE"
+PS C:\Users\user\Documents\AI abstractions\vault> $tmp = "C:\Users\user\AppData\Local\Temp\opencode\a0repro"
+PS C:\Users\user\Documents\AI abstractions\vault> New-Item -ItemType Directory -Path $tmp | Out-Null
+PS C:\Users\user\Documents\AI abstractions\vault> go build -o "$tmp\vaultd.exe" ./cmd/vaultd
+PS C:\Users\user\Documents\AI abstractions\vault> echo "exit: $LASTEXITCODE"
 exit: 0
-PS C:\Users\reinis\Documents\AI abstractions\vault> go build -o "$tmp\vault.exe" ./cmd/vault
-PS C:\Users\reinis\Documents\AI abstractions\vault> echo "exit: $LASTEXITCODE"
+PS C:\Users\user\Documents\AI abstractions\vault> go build -o "$tmp\vault.exe" ./cmd/vault
+PS C:\Users\user\Documents\AI abstractions\vault> echo "exit: $LASTEXITCODE"
 exit: 0
-PS C:\Users\reinis\Documents\AI abstractions\vault> Get-ChildItem $tmp
+PS C:\Users\user\Documents\AI abstractions\vault> Get-ChildItem $tmp
 
-    Directory: C:\Users\reinis\AppData\Local\Temp\opencode\a0repro
+    Directory: C:\Users\user\AppData\Local\Temp\opencode\a0repro
 
 Mode                 LastWriteTime         Length Name
 ----                 -------------         ------ ----
 -a----         8/16/2026   1:58 PM        9397248 vault.exe
 -a----         8/16/2026   1:58 PM       10035712 vaultd.exe
 
-PS C:\Users\reinis\Documents\AI abstractions\vault> $storeDir = Join-Path $tmp "store"
-PS C:\Users\reinis\Documents\AI abstractions\vault> New-Item -ItemType Directory -Path $storeDir -Force | Out-Null
-PS C:\Users\reinis\Documents\AI abstractions\vault> $env:VAULT_TOKEN = "reprosecret123"
-PS C:\Users\reinis\Documents\AI abstractions\vault> $env:VAULT_ADDR = "127.0.0.1:7778"
-PS C:\Users\reinis\Documents\AI abstractions\vault> $env:VAULT_STORE = $storeDir
-PS C:\Users\reinis\Documents\AI abstractions\vault> Start-Process -FilePath "$tmp\vaultd.exe" -PassThru -RedirectStandardOutput "$tmp\vaultd.out.log" -RedirectStandardError "$tmp\vaultd.err.log" -WindowStyle Hidden
-PS C:\Users\reinis\Documents\AI abstractions\vault> Start-Sleep -Seconds 1
-PS C:\Users\reinis\Documents\AI abstractions\vault> Get-Content "$tmp\vaultd.err.log"
-2026/08/16 13:58:30 vaultd listening on 127.0.0.1:7778 (store C:\Users\reinis\AppData\Local\Temp\opencode\a0repro\store)
-PS C:\Users\reinis\Documents\AI abstractions\vault> curl.exe -s -o NUL -w "%{http_code}`n" http://127.0.0.1:7778/v1/artifacts
+PS C:\Users\user\Documents\AI abstractions\vault> $storeDir = Join-Path $tmp "store"
+PS C:\Users\user\Documents\AI abstractions\vault> New-Item -ItemType Directory -Path $storeDir -Force | Out-Null
+PS C:\Users\user\Documents\AI abstractions\vault> $env:VAULT_TOKEN = "reprosecret123"
+PS C:\Users\user\Documents\AI abstractions\vault> $env:VAULT_ADDR = "127.0.0.1:7778"
+PS C:\Users\user\Documents\AI abstractions\vault> $env:VAULT_STORE = $storeDir
+PS C:\Users\user\Documents\AI abstractions\vault> Start-Process -FilePath "$tmp\vaultd.exe" -PassThru -RedirectStandardOutput "$tmp\vaultd.out.log" -RedirectStandardError "$tmp\vaultd.err.log" -WindowStyle Hidden
+PS C:\Users\user\Documents\AI abstractions\vault> Start-Sleep -Seconds 1
+PS C:\Users\user\Documents\AI abstractions\vault> Get-Content "$tmp\vaultd.err.log"
+2026/08/16 13:58:30 vaultd listening on 127.0.0.1:7778 (store C:\Users\user\AppData\Local\Temp\opencode\a0repro\store)
+PS C:\Users\user\Documents\AI abstractions\vault> curl.exe -s -o NUL -w "%{http_code}`n" http://127.0.0.1:7778/v1/artifacts
 401
-PS C:\Users\reinis\Documents\AI abstractions\vault> Remove-Item Env:\VAULT_TOKEN, Env:\VAULT_ADDR, Env:\VAULT_STORE
-PS C:\Users\reinis\Documents\AI abstractions\vault> & "$tmp\vault.exe" get --service http://127.0.0.1:7778 --url https://raw.githubusercontent.com/git/git/master/README.md --digest sha256:0000000000000000000000000000000000000000000000000000000000000 --id readme-test
+PS C:\Users\user\Documents\AI abstractions\vault> Remove-Item Env:\VAULT_TOKEN, Env:\VAULT_ADDR, Env:\VAULT_STORE
+PS C:\Users\user\Documents\AI abstractions\vault> & "$tmp\vault.exe" get --service http://127.0.0.1:7778 --url https://raw.githubusercontent.com/git/git/master/README.md --digest sha256:0000000000000000000000000000000000000000000000000000000000000 --id readme-test
 vault: remote: 401 Unauthorized: {"error":"unauthorized","status":"failed"}
-PS C:\Users\reinis\Documents\AI abstractions\vault> echo "exit code: $LASTEXITCODE"
+PS C:\Users\user\Documents\AI abstractions\vault> echo "exit code: $LASTEXITCODE"
 exit code: 1
-PS C:\Users\reinis\Documents\AI abstractions\vault> Get-Process vaultd | Stop-Process -Force
-PS C:\Users\reinis\Documents\AI abstractions\vault> go build ./...
-PS C:\Users\reinis\Documents\AI abstractions\vault> echo "build exit: $LASTEXITCODE"
+PS C:\Users\user\Documents\AI abstractions\vault> Get-Process vaultd | Stop-Process -Force
+PS C:\Users\user\Documents\AI abstractions\vault> go build ./...
+PS C:\Users\user\Documents\AI abstractions\vault> echo "build exit: $LASTEXITCODE"
 build exit: 0
-PS C:\Users\reinis\Documents\AI abstractions\vault> go vet ./...
-PS C:\Users\reinis\Documents\AI abstractions\vault> echo "vet exit: $LASTEXITCODE"
+PS C:\Users\user\Documents\AI abstractions\vault> go vet ./...
+PS C:\Users\user\Documents\AI abstractions\vault> echo "vet exit: $LASTEXITCODE"
 vet exit: 0
-PS C:\Users\reinis\Documents\AI abstractions\vault> go test -run TestClientAuth_RealBinaries -v .
+PS C:\Users\user\Documents\AI abstractions\vault> go test -run TestClientAuth_RealBinaries -v .
 === RUN   TestClientAuth_RealBinaries
 === RUN   TestClientAuth_RealBinaries/no_token_at_all:_client_refuses,_never_sends_the_request
 === RUN   TestClientAuth_RealBinaries/wrong_token:_401_from_the_real_daemon
 === RUN   TestClientAuth_RealBinaries/with_token:_success
 === NAME  TestClientAuth_RealBinaries
     auth_integration_test.go:80: vaultd output:
-        2026/08/16 14:08:23 vaultd listening on 127.0.0.1:50065 (store C:\Users\reinis\AppData\Local\Temp\TestClientAuth_RealBinaries1608546221\001\store)
+        2026/08/16 14:08:23 vaultd listening on 127.0.0.1:50065 (store C:\Users\user\AppData\Local\Temp\TestClientAuth_RealBinaries1608546221\001\store)
 --- PASS: TestClientAuth_RealBinaries (4.41s)
     --- PASS: TestClientAuth_RealBinaries/no_token_at_all:_client_refuses,_never_sends_the_request (0.71s)
     --- PASS: TestClientAuth_RealBinaries/wrong_token:_401_from_the_real_daemon (0.02s)
     --- PASS: TestClientAuth_RealBinaries/with_token:_success (0.22s)
 PASS
 ok  	github.com/ReinisLusis/abstraction-vault	6.767s
-PS C:\Users\reinis\Documents\AI abstractions\vault> go test ./...
+PS C:\Users\user\Documents\AI abstractions\vault> go test ./...
 ok  	github.com/ReinisLusis/abstraction-vault	5.197s
 ok  	github.com/ReinisLusis/abstraction-vault/cmd/vault	1.614s
 ok  	github.com/ReinisLusis/abstraction-vault/cmd/vaultd	(cached)

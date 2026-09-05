@@ -1,5 +1,5 @@
-PS> $env:VAULT_CONFORMANCE_GGUF="C:\Users\reinis\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\store\74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
-PS> $env:VAULT_LLAMA_SERVER="C:\Users\reinis\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\llama-server\llama-server.exe"
+PS> $env:VAULT_CONFORMANCE_GGUF="C:\Users\user\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\store\74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
+PS> $env:VAULT_LLAMA_SERVER="C:\Users\user\Documents\AI abstractions (scratch)\team\researcher-local\provisioning\llama-server\llama-server.exe"
 PS> go test -tags conformance -run TestBoundary_SingleBitFlip -v -timeout 30m .
 === RUN   TestBoundary_SingleBitFlip
     boundary_test.go:315: flipped ONE bit at offset 442260028: 2f -> af

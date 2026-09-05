@@ -1,8 +1,8 @@
 PS> bash scripts/xlang-job.sh
 
 --- build the Go jobctl ---
-go:     /c/Users/reinis/Documents/AI abstractions (scratch)/xlang/jobctl.exe
-python: py -3 /c/Users/reinis/Documents/AI abstractions/job/python/jobctl.py
+go:     /c/Users/user/Documents/AI abstractions (scratch)/xlang/jobctl.exe
+python: py -3 /c/Users/user/Documents/AI abstractions/job/python/jobctl.py
 
 --- Go submits a job with NO url source at all ---
 job id: 1787128419709-626a0a5fa9b334d6df02
@@ -54,8 +54,8 @@ state=transferred
     }
   ],
   "sink": {
-    "partial": "C:\\Users\\reinis\\Documents\\AI abstractions (scratch)\\xlang\\store\\partials\\1787128419709-626a0a5fa9b334d6df02",
-    "final": "C:/Users/reinis/Documents/AI abstractions (scratch)/xlang/qwen.gguf"
+    "partial": "C:\\Users\\user\\Documents\\AI abstractions (scratch)\\xlang\\store\\partials\\1787128419709-626a0a5fa9b334d6df02",
+    "final": "C:/Users/user/Documents/AI abstractions (scratch)/xlang/qwen.gguf"
   },
   "progress": {
     "bytes_done": 1000,

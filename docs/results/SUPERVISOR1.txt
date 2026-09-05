@@ -8,7 +8,7 @@ killed pid 988
 checkpointed at 17213777 bytes
 
 --- what the supervisor sees ---
-store: C:/Users/reinis/AppData/Local/Temp/sup/jobs
+store: C:/Users/user/AppData/Local/Temp/sup/jobs
 os transfer service: true
 
 running        5%  here       Qwen2.5-0.5B-Instruct-IQ2_M.gguf
@@ -28,7 +28,7 @@ sys	0m0.016s
   got:  2fc237e65e1f963310e9c961d8e71e932734a72f90e3216a972d83edd1feb756
 
 --- and the supervisor now reports it as finished ---
-store: C:/Users/reinis/AppData/Local/Temp/sup/jobs
+store: C:/Users/user/AppData/Local/Temp/sup/jobs
 os transfer service: true
 
 transferred  100%  here       Qwen2.5-0.5B-Instruct-IQ2_M.gguf  (done, waiting to be taken delivery of)

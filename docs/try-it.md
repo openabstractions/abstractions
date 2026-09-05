@@ -1,18 +1,29 @@
 # Try it: one command, three downloaders
 
-The point of this walkthrough is what you **don't** type. The `dl` line is
-byte-identical in all three parts. No flag, no path, no hostname, no mention of
-BITS or a NAS. What changes is only what happens to be running on the machine.
+The `dl` command line is byte-identical in all three parts below — no flag, no
+path, no hostname, no mention of BITS or a NAS. Only what happens to be running
+on the machine changes.
 
-Binaries are in `bin/`. Everything below is run from the repo root.
+**Before you start.** Build `dl` and `jobd` from
+[`abstraction-download`](https://github.com/openabstractions/abstraction-download):
+
+```bash
+git clone git@github.com:openabstractions/abstraction-download.git
+cd abstraction-download/go
+go build -o bin/dl ./cmd/dl
+go build -o bin/jobd ./cmd/jobd
+```
+
+Part 1 runs anywhere Go does. Part 2 needs Windows, for BITS. Part 3 needs a
+NAS running `jobd` — see `scripts/nas-deploy.sh` in the charter repository.
 
 ```
-store        C:\Users\reinis\.abstraction
+store        %USERPROFILE%\.abstraction
 model        Qwen2.5-0.5B-Instruct-IQ2_M.gguf, 313 MB, from HuggingFace
 ```
 
-The model is a real public file, reachable from this PC *and* from the NAS —
-which matters, because in part 3 the machine doing the fetching is not this one.
+The model is a public file, reachable from this PC *and* from the NAS, which
+matters because in part 3 the machine doing the fetching is not this one.
 
 ---
 
@@ -48,8 +59,8 @@ Now run the **exact same** `dl` command again. Two things to look at:
   same artifact at the same destination is one piece of work, and repeating the
   command is how a person resumes.
 - it starts from the byte the dead process had **proven**, not the byte it had
-  written. Those are different numbers, and the difference is thrown away
-  deliberately — nothing vouched for it.
+  written. Those are different numbers, and the difference is discarded because
+  nothing vouched for it.
 
 ---
 
@@ -96,8 +107,7 @@ nothing of yours attached to it.
 ./bin/dl.exe list
 ```
 
-Watch the numbers climb with nothing of yours running. That is the whole point
-of the project in one command.
+The numbers keep climbing with nothing of yours running.
 
 ---
 
@@ -126,7 +136,7 @@ Now: `which itself delegates to "nas"`.
 To watch the far side, look at the record appearing in the NAS's own store:
 
 ```bash
-ls -lt //192.168.173.111/docker/abstraction/store/jobs/ | head -3
+ls -lt //<nas-host>/docker/abstraction/store/jobs/ | head -3
 ```
 
 The NAS fetches the bytes over its own connection, proves the digest, and marks
@@ -142,16 +152,12 @@ The three `dl` invocations are the same string. Diff them.
 `dl` does not import `bits` and does not import `nas`. Check it:
 
 ```bash
-grep -nE "abstraction-download/(bits|nas)" download/go/cmd/dl/main.go || echo "neither is imported"
+grep -nE "abstraction-download/(bits|nas)" go/cmd/dl/main.go || echo "neither is imported"
 ```
 
 The words appear twice in that file and both times in prose — a comment saying
 it imports no tier, and a usage line naming the setup command. The only question
-`dl` ever asks is answered by the machine, not by you.
-
-That is the SLF4J property: a library that logs knows about a facade and a
-default, and nothing about which collector the sinks point at. It would be a
-worse library if it did.
+`dl` asks is answered by the machine, not by you.
 
 ## Live view
 

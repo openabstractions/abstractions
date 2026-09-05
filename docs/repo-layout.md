@@ -29,13 +29,13 @@ depend on it, run it, or read it.
 The objection is fair: someone who wants Go does not want C++. Two reasons it is
 still right here.
 
-**The proof is the point.** This project's whole claim is that three independent
-implementations agree, and the evidence is a harness that runs them against each
-other and compares bytes. Split the languages across repositories and that proof
-spans repositories: it needs a checkout of each, a CI system to coordinate them,
-and it can drift between releases. Co-location is exactly where it earns its
-keep. gRPC splits per language and pays for a separate interop suite; that is a
-reasonable trade at gRPC's size and an unreasonable one at ours.
+**The interop harness has to live somewhere.** The claim being tested is that
+three independent implementations agree, and the evidence is a harness that runs
+them against each other and compares bytes. Split the languages across
+repositories and that harness spans repositories: it needs a checkout of each, a
+CI system to coordinate them, and it can drift between releases. gRPC splits per
+language and pays for a separate interop suite; that is a reasonable trade at
+gRPC's size and an unreasonable one at ours.
 
 **The cost is small.** A layer is a few thousand lines per language, and each
 toolchain takes only what it needs anyway: `go get` resolves the `/go`

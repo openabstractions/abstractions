@@ -23,7 +23,7 @@ consuming that prefix while the NAS is still appending to it:
     nas fetches (WAN)  ──────────────►
       local follows        ──────────────►
 
-This is what BitTorrent does, and `research/transfer/libtorrent.txt` already
+This is what BitTorrent does, and [`research/transfer/libtorrent.txt`](https://github.com/openabstractions/research/blob/main/transfer/libtorrent.txt) already
 says why it is the right shape: *"a content-addressed manifest of fixed-size
 pieces, each independently verifiable, fetchable from any number of sources in
 any order."* That note calls it the data model "this abstraction needs". It was
@@ -106,13 +106,13 @@ download borrows them.
 4. `nas`: serve a prefix — the smallest part, and the only one that is obviously
    just plumbing.
 
-Steps 1–3 are contract changes in three languages. Step 4 is an afternoon. The
-ratio is the point, and it is why this is written down rather than started.
+Steps 1–3 are contract changes in three languages. Step 4 is an afternoon. That
+ratio is why this is written down rather than started.
 
 ## Prior art to design against
 
-- `research/transfer/libtorrent.txt` — pieces, independent verification,
+- [`research/transfer/libtorrent.txt`](https://github.com/openabstractions/research/blob/main/transfer/libtorrent.txt) — pieces, independent verification,
   recovery by re-hashing a partial with no control file at all.
-- `research/transfer/aria2.txt` — multi-source fetch of one artifact.
-- `research/transfer/bits.txt` — what a system service does and does not expose
+- [`research/transfer/aria2.txt`](https://github.com/openabstractions/research/blob/main/transfer/aria2.txt) — multi-source fetch of one artifact.
+- [`research/transfer/bits.txt`](https://github.com/openabstractions/research/blob/main/transfer/bits.txt) — what a system service does and does not expose
   about a partial transfer.
