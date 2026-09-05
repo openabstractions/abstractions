@@ -3,7 +3,13 @@
 The design change that lets this library describe a download somebody actually
 runs.
 
-Status: **specified, unimplemented.** Additive — nothing already written breaks.
+Status: **implemented in Go, Python and C++.** Additive — nothing already
+written breaks.
+
+The sections below were amended after implementing it. The agreement between the
+three is thinner than it looks: six forks in the road went the same way three
+times because the same person walked them. What is written down now is what
+would have to be written for a stranger to land in the same place.
 
 ---
 
@@ -48,13 +54,56 @@ at zero, or 0 if there is none. **A reader that knows nothing about `verified`
 still works** — it resumes from the prefix and re-fetches the rest, which is
 exactly what it does today. That is what makes this additive.
 
-Ranges are half-open, non-overlapping, sorted, and merged on write, so there is
-one canonical form and two implementations cannot disagree about how to spell
-the same state.
+Ranges are half-open, non-overlapping, sorted, and merged on write. That was
+not enough to be canonical, and implementing it three times found the gap:
+
+- **Adjacent ranges merge, not only overlapping ones.** `[[0,4],[4,8]]` and
+  `[[0,8]]` are the same proven bytes and "non-overlapping" permits both. Without
+  adjacency-merging the form is sorted but not canonical, and the byte
+  comparison that is the whole point of this project proves nothing.
+- Empty ranges are dropped, not refused.
+- Ties on `start` sort by `end`.
+- `"verified": []` is written for an empty set, never omitted.
+- A checkpoint carrying only a prefix reads as one range `[0, prefix)`, not as
+  the empty set.
+- **When a stored prefix and stored ranges disagree, take their union.** This is
+  the interesting case rather than an edge one: it is exactly what a writer that
+  predates ranges produces when it takes over a job. Trusting `verified` alone
+  silently discards proven bytes; refusing the record rejects what other
+  implementations accept.
+- Offsets are integers. JSON has one number type, so a decoder that accepts
+  `4194304.5` will re-emit it and break the comparison. Refuse it explicitly.
+
+**The example above is not the encoding.** Inside a record every element is on
+its own line, because that is what the three encoders do by default. An
+implementation faithful to the inline example would fail every comparison.
+
+**Enforce "never critical" rather than asserting it.** The record preserves
+caller-declared criticals, so a writer could mark ranges critical and every
+existing reader would then refuse the job -- the exact outcome this design
+forbids. A reader must strip the marking, not merely refrain from adding it.
+The same hole existed for `abstraction.job/step@1`.
+
+**Cross-language byte fixtures need a `.gitattributes` guard.** A Windows
+checkout with `core.autocrlf=true` rewrites the fixture and fails every
+comparison for a reason no diff will show. This project has now been bitten by
+line endings three times.
 
 Declared as a content model, so a reader can refuse what it cannot handle:
 
     abstraction.download/ranges@1
+
+**And this declaration cannot be derived, which no other one has to be.** Every
+other content model is rediscovered from the record's own fields, so it cannot
+drift from the data. This one describes what is *inside* the checkpoint, and the
+checkpoint is opaque to the job layer -- deriving it would mean sniffing for a
+`verified` key, which puts download knowledge into the generic record.
+
+The implementation carries it instead: a small set of models that are declared
+but not derivable, preserved across a read-modify-write exactly as an unknown
+extension is, with an explicit way to withdraw it. That choice has to be written
+down here, because two implementations deciding differently emit different
+`content` arrays for the same record.
 
 **Advisory, never critical.** An old reader ignoring `verified` re-downloads
 some bytes; it does not corrupt anything. Marking it critical would break every
