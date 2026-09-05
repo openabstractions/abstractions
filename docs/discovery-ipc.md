@@ -186,9 +186,19 @@ transfer that could have been handed off. A client must never cache `present`.
    with a recomputed remaining.
 
    **On Windows it is overlapped I/O, and the part that bites is the cleanup.**
-   After the wait times out, call `CancelIoEx` **and then wait for the
-   cancellation to complete** before the `OVERLAPPED` and the read buffer go out
-   of scope — the kernel may still be writing into both. Getting that wrong
+   After the wait times out, call `CancelIoEx` **naming the specific pending
+   `OVERLAPPED`, never `NULL`** — a null pointer cancels only I/O issued by the
+   calling thread, so a cancellation raised from any other thread silently does
+   nothing and the buffer stays live. go-winio, mio and libuv all target the
+   specific operation, and a patch passing `NULL` was rejected in tokio for
+   exactly this reason.
+
+   **Then wait for the cancellation to complete** before the `OVERLAPPED` and
+   the read buffer go out of scope — the kernel may still be writing into both.
+   Three mature implementations satisfy that invariant three different ways: a
+   blocking wait on a channel, retiring the operation through the event loop's
+   normal completion path, or holding the structure alive by reference count
+   until the completion arrives. Any of them is conforming. Getting it wrong
    corrupts memory intermittently and no test catches it.
 
    **A worker thread with a timed join is not a substitute.** A thread blocked
@@ -202,7 +212,15 @@ transfer that could have been handed off. A client must never cache `present`.
    unreadable can still say it is alive.
 4. **Only a supervisor listens.** Asking never creates an endpoint.
 5. **The server applies its own per-connection deadline** — one second is
-   ample — and must not let one connection block accept. A single local process
+   ample — and must not let one connection block accept.
+
+   **A deadline bounds duration, not count.** A local process opening thousands
+   of connections and holding each just under the deadline is otherwise
+   unbounded, so the server also caps concurrent connections in total and *per
+   peer uid*. systemd's varlink, at this exact scale, uses 4096 global and 128
+   per uid, the global figure self-tuning down from the process's descriptor
+   limit. A per-uid cap is the part that matters: without it one hostile local
+   user exhausts every slot for everybody else. A single local process
    that connects and never sends would otherwise push every other caller into
    its timeout, and every application on the machine reports absent.
 6. **Only the server unlinks a stale socket** — a Unix rule, not a universal
@@ -280,3 +298,14 @@ around them.
 - a response whose `store` differs from the client's returns absent
 - two stores on one machine have different endpoints and do not cross-talk
 - a line longer than the cap returns absent rather than consuming memory
+- **shutting the listener down while an accept is pending returns promptly** —
+  run this on Windows against a real pipe. go-winio, a decade-mature library,
+  still hangs on this today, and the fix proposed for it is the "wait briefly
+  then give up" pattern rule 3 forbids
+- **after sending an error object the server stops processing that request** —
+  the error path looks correct in isolation and continuing anyway survives
+  review, which is why Chromium tracks it as a recurring class rather than one
+  bug
+- a request that is exactly `{"ask":"who"}` with nothing after it before the
+  `0x0A` parses — a token filling the whole buffer is the boundary a
+  line-scanner gets wrong, and systemd shipped that bug for years
