@@ -6,6 +6,17 @@ belongs here. Entries are dated. Nothing here is a commitment.
 
 ---
 
+## User interface: web first, native last — 2026-09-05
+
+Web UI until the contract underneath is proven, then native per platform, thin
+and signed. Deferring costs nothing in security: no platform lets a third party
+draw a prompt a user can distinguish from a fake, so trust comes from caller
+identity and the ACL'''d channel, never from the pixels. Little Snitch reached the
+same conclusion and ships a local web page on Linux rather than faking native
+chrome. Native is polish, and polish is last.
+
+---
+
 ## The checkpoint is one integer, and that is the ceiling — 2026-09-05
 
 `Checkpoint` holds `VerifiedPrefix int64`. That expresses a contiguous prefix
