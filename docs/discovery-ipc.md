@@ -3,10 +3,18 @@
 The contract. Implementations are written against this file and must not need to
 agree with each other about anything not in it.
 
-Status: **specified, unimplemented.** An architectural review of the first draft
-found seven places where two competent implementers would diverge, three of them
-silently — both sides correct, different endpoint, and the caller simply reports
-"absent". Those are fixed below.
+Status: **amended from three implementations and one adversarial review.**
+
+The first draft had seven places two implementers would diverge. Building it
+found more, and one finding matters more than any individual fix: the author of
+the Python and C++ clients reported that their agreeing on every cross-language
+case was *nearly worthless as evidence*, because one person made a dozen
+unstated choices the same way twice, within an hour, from one head.
+
+That applies to this whole project. Agreement between implementations written by
+the same author tests the author's consistency, not the specification. What
+follows is written so a stranger cannot get it wrong, and the conformance
+section names what would actually prove it.
 
 ---
 
@@ -25,10 +33,16 @@ something is listening now, or it does not.
 process and be readable by a machine that was switched off. This replaces
 *discovery*, not the store.
 
-**Out of reach.** A local socket does not cross to another machine. When the
-supervisor is a NAS the only thing both ends share is the store, so
-cross-machine discovery keeps the file. Local IPC is the truthful case; the file
-is the one that crosses a network. Removing the file path breaks the NAS.
+**Out of reach.** A local endpoint should not cross to another machine, so when
+the supervisor is a NAS the only thing both ends share is the store and
+cross-machine discovery keeps the file. Removing the file path breaks the NAS.
+
+**That is not true by default on Windows.** A named pipe is reachable remotely
+as `\\host\pipe\name` over SMB unless it is created with
+`FILE_PIPE_REJECT_REMOTE_CLIENTS`. The first draft asserted locality as a
+property of the transport; it is a property of one flag, and an implementation
+written from that draft would have published a remotely reachable endpoint while
+the document explained that local IPC is the truthful case. Set the flag.
 
 ## Which layer owns it
 
@@ -43,8 +57,14 @@ a trap: case folding, `\\?\` prefixes, short names, mapped drives versus UNC,
 symlinks under `/private`, Unicode normalisation on HFS+, and a legacy store
 alias each yield two names for one store. Every one fails silently.
 
-Instead the supervisor invents a name once and publishes it in the file the
-client is already reading:
+Instead the supervisor publishes a name it invented once, in
+`<store>/services/<machine>/<name>.json` — see `service-topology.md`, which is
+normative for the registry's location and shape. **The earlier example showing
+an endpoint inside `supervisor.json` is superseded**: that file is rewritten
+wholesale by the heartbeat writer, so anything published there is erased within
+one interval.
+
+An entry contains:
 
 ```json
 { "endpoint": "abstraction-3f9a1c04e7b25d8613ca9f2076be4481", … }
@@ -66,8 +86,10 @@ per-netns, so a container or Flatpak adopter cannot reach a host supervisor.
 
 Where the fallback directory already exists with different ownership or mode,
 the supervisor refuses to listen rather than using it. Unix socket paths are
-capped near 104 bytes; a supervisor that cannot fit must fail loudly at startup,
-never silently decline to listen.
+capped at 104 bytes on macOS and 108 on Linux; a supervisor that cannot fit must
+fail loudly at startup, never silently decline to listen. In practice the name
+is 49 bytes, so with any ordinary runtime directory the cap is unreachable —
+worth implementing, not worth designing around.
 
 ## The protocol
 
@@ -105,6 +127,30 @@ understanding it. An unknown `ask` gets `{"error": "unknown ask"}`; a malformed
 request gets `{"error": "invalid request"}`. The server never closes without
 answering, because silence and a hang are indistinguishable.
 
+## The decision procedure
+
+Two implementations written from the first draft agreed on every case, and the
+author reported that as worthless evidence: one person made a dozen unstated
+choices the same way twice. At least one plausible alternative ordering returns
+**present** for an error object, which is the one answer that must never be
+wrong. So the procedure is total and ordered, and an implementer transcribes it
+rather than deriving it:
+
+1. read the line; if it is not a single JSON object -> **absent**
+2. `error` present -> **absent**
+3. `store` missing, not a string, or not equal -> **absent**
+4. `critical` present and not an array -> **absent**
+5. any element of `critical` not a string, or not a name this client knows ->
+   **incompatible**
+6. otherwise -> **present**
+
+`store` is compared **byte for byte, with no normalisation of any kind** — no
+case folding, no `realpath`, no trailing-separator trimming. The supervisor
+publishes the same string its callers hold, and that is the supervisor's
+burden. Anything else re-enters the trap this document spends a section
+refusing: a path is not an identity, and two spellings of one directory would
+report absent forever on a correctly configured machine.
+
 ## Three answers, not two
 
 A client returns `absent`, `present`, or `incompatible`.
@@ -113,8 +159,11 @@ A client returns `absent`, `present`, or `incompatible`.
   malformed JSON, a line over 64 KiB (cap it; a hostile local process can
   otherwise feed unbounded bytes), a `store` that does not match the one the
   client opened, or any timeout.
-- **incompatible** — a `critical` name the client does not know. The caller must
-  not hand work over. This is not an error to report; it is a newer supervisor.
+- **incompatible** — **any well-formed answer this client cannot fully
+  interpret**, not only an unknown `critical` name. A supervisor that changed
+  the framing would otherwise report absent, and the operator would get no
+  signal that something newer is running. Only the absence of an answer is
+  absent. The caller must not hand work over; this is not an error to report.
 - **present** — everything else.
 
 A false `absent` is safe only because the lease prevents two owners, and costs a
@@ -124,11 +173,30 @@ transfer that could have been handed off. A client must never cache `present`.
 
 1. **Connect failure is the answer.** No supervisor is the ordinary case. Not a
    warning, not a log line above debug, never an exception the caller catches.
-2. **One deadline of 200 ms** computed at entry and applied across connect,
-   write and read together. On Windows a pipe read cannot be interrupted
-   synchronously, so a client must use overlapped I/O — a synchronous read
-   against a server that accepts and never writes hangs forever, which is the
-   failure this rule exists to prevent.
+2. **The request is exactly `{"ask":"who"}` followed by `0x0A`** — no spaces,
+   no other key order, because a server that string-matches will exist and the
+   response framing is already pinned byte-exactly.
+3. **One deadline of 200 ms** computed at entry and applied across connect,
+   write and read together, measured on a monotonic clock. The registry read is
+   outside it; a client cannot bound a file read anyway.
+
+   **On POSIX this is not `SO_RCVTIMEO`.** Per-operation socket timeouts give
+   connect, write and every read its own 200 ms, so a server stalling each
+   phase in turn gets three budgets. One budget means non-blocking plus `poll`
+   with a recomputed remaining.
+
+   **On Windows it is overlapped I/O, and the part that bites is the cleanup.**
+   After the wait times out, call `CancelIoEx` **and then wait for the
+   cancellation to complete** before the `OVERLAPPED` and the read buffer go out
+   of scope — the kernel may still be writing into both. Getting that wrong
+   corrupts memory intermittently and no test catches it.
+
+   **A worker thread with a timed join is not a substitute.** A thread blocked
+   in a synchronous `ReadFile` on a pipe cannot be cancelled or killed, so that
+   design leaks a thread and a handle per call, leaves the process unable to
+   exit, and passes every test in the suite. `nDefaultTimeOut` on the pipe is
+   also not a substitute: it bounds `WaitNamedPipe` and says nothing about how
+   long a read may take.
 3. **Answering touches no disk, no lease, no store.** The answer is what the
    process already knows about itself, so a supervisor whose store has become
    unreadable can still say it is alive.
@@ -137,8 +205,12 @@ transfer that could have been handed off. A client must never cache `present`.
    ample — and must not let one connection block accept. A single local process
    that connects and never sends would otherwise push every other caller into
    its timeout, and every application on the machine reports absent.
-6. **Only the server unlinks a stale socket**, before bind, and only after its
-   own connect to that path fails. A client that unlinks can remove a socket a
+6. **Only the server unlinks a stale socket** — a Unix rule, not a universal
+   one. A Windows pipe has no stale state at all: the object dies with its last
+   handle, so the conformance case below cannot be run on the primary platform
+   and its Windows analogue is a different one, a registry entry naming a pipe
+   that no longer exists. Unlink before bind, and only after its own connect to
+   that path fails. A client that unlinks can remove a socket a
    supervisor bound a millisecond earlier, leaving it listening on an unlinked
    inode and undiscoverable — worse than the bug being fixed. Clients treat a
    refused connection as absent and touch nothing.
@@ -146,11 +218,30 @@ transfer that could have been handed off. A client must never cache `present`.
    Windows a pipe DACL granting the supervisor's own SID. Version one requires
    the supervisor to run as the same user as its callers, and says so; a
    service-account supervisor is a later problem and must not be implied.
-8. **Windows pipes.** Create with `PIPE_UNLIMITED_INSTANCES`, always keep a
-   pending `ConnectNamedPipe`, byte mode not message mode, and
-   `FlushFileBuffers` before disconnecting. A client meeting `ERROR_PIPE_BUSY`
-   waits within its remaining budget and retries once rather than reporting
-   absent, and opens with `SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION`.
+8. **Windows pipes.** Byte mode, not message mode. Always keep a pending
+   `ConnectNamedPipe`.
+
+   Create the first instance with **`FILE_FLAG_FIRST_PIPE_INSTANCE`**. Without
+   it, `CreateNamedPipe` on a name another process already created *succeeds*
+   and adds an instance to theirs — connections then land on whichever instance
+   the kernel hands out, so anyone who has read the registry takes roughly half
+   of every caller's traffic. The unguessable name protects the endpoint only
+   until it is published; this flag is what makes the capability argument true
+   on Windows rather than aspirational.
+
+   Create with **`FILE_PIPE_REJECT_REMOTE_CLIENTS`**, or the endpoint is
+   reachable over SMB from any machine that can route to this one.
+
+   **Do not require `FlushFileBuffers`.** On a pipe it blocks until the peer
+   drains, with no timeout, which contradicts the server's own per-connection
+   deadline — and it is unreachable from a portable connection type that does
+   not expose the handle. Instead: after writing, the server does not close
+   until the peer closes or its deadline expires. Closing a pipe handle discards
+   data the client has not read, and that is the failure being avoided.
+
+   `ERROR_PIPE_BUSY` is **the healthy steady state**, not an edge case — a
+   listener has an instance free only while it is inside accept. A client
+   retries until its budget is spent, not once.
 9. **Nothing in the response authorises anything.** It is self-description. No
    field may become an identity a decision is made on.
 
