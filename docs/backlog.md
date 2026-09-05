@@ -6,6 +6,59 @@ belongs here. Entries are dated. Nothing here is a commitment.
 
 ---
 
+## The checkpoint is one integer, and that is the ceiling — 2026-09-05
+
+`Checkpoint` holds `VerifiedPrefix int64`. That expresses a contiguous prefix
+and nothing else, so the library can only ever describe a single sequential
+stream. Every serious downloader fetches in parallel ranges — aria2,
+hf_transfer, s5cmd, and Ollama, whose sixteen concurrent parts land at scattered
+offsets in a sparse file. "Parts 0, 2 and 5 done; 1, 3 and 4 at forty percent"
+has no representation here.
+
+An investigation of Ollama as an adopter concluded that taking this library
+would mean deleting their parallelism, which no maintainer would accept. Not an
+impedance mismatch at the edges: the central structure is one number where the
+adopter needs a vector.
+
+Three independent findings now converge on the same fix, which is the strongest
+signal this project has produced about its own design:
+
+- `docs/incremental-delivery.md` — following a delegate's partial needs pieces
+- `research/transfer/libtorrent.txt`, written weeks earlier, called a manifest
+  of independently verifiable pieces "the data model this abstraction needs"
+- Ollama — parallel ranges cannot be a prefix
+
+**The change**: a checkpoint expresses a set of verified ranges, with the single
+prefix as the degenerate case so nothing already written breaks. It is additive,
+it is a new content model rather than a format break, and it unblocks piecewise
+digests, following a delegate mid-transfer, and every parallel-chunk adopter at
+once.
+
+Until it lands, this library fits single-stream callers only, and the README
+should say so rather than letting adopters discover it by trying.
+
+---
+
+## Ollama is not the adopter, and the pain was smaller than reported — 2026-09-05
+
+Six issues over 28 months, all closed, three reactions between them, and three
+of the six share one root cause already fixed in main by a one-hour grace period
+before pruning. Ollama has had resume since 2023 and maintainers have said so
+consistently; a pull request proposing it would be closed as already done.
+
+Their real remaining gap is that a checkpoint is written once per chunk attempt,
+so a network error discards bytes already on disk and the progress bar runs
+backwards. The honest fix is theirs and is thirty to fifty lines in
+`server/download.go`. It needs no dependency, and it is the shape of change they
+demonstrably merge — an outside contributor landed a fix in that exact file in
+two days.
+
+Reachability, measured: 331 merged pull requests in four and a half months, of
+which seventeen were from genuine outsiders. Roughly seven percent. The ones
+that land are small, tested, and narrow.
+
+---
+
 ## A stateless caller gets no resume at all — 2026-09-05
 
 Found by trying to adopt the library into a one-shot CLI. It models resume as
