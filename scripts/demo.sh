@@ -29,12 +29,12 @@ for cand in python3 python "py -3"; do
 done
 [ -n "$PY" ] || { echo "no working python"; exit 2; }
 
-act() { printf '\n\n=========== %s ===========\n\n' "$*"; }
+section() { printf '\n\n=========== %s ===========\n\n' "$*"; }
 step() { printf '\n--- %s ---\n' "$*"; }
 
 rm -rf "$WORK"; mkdir -p "$WORK"
 
-act "ACT 0 — a model file, and the name it claims"
+section "one .gguf: hashed, 512 bytes inverted, hashed again"
 
 step "the file"
 [ -f "$GGUF" ] || { echo "set VAULT_CONFORMANCE_GGUF to a real .gguf"; exit 2; }
@@ -52,7 +52,7 @@ echo "Nothing about the file's size, name, mtime or extension changed."
 echo "This is what bit rot, a bad cable, a failing DIMM and an interrupted"
 echo "write all look like on disk."
 
-act "ACT 1 — llama.cpp is asked"
+section "llama-server: load and complete, pristine then corrupted"
 
 serve_llama() {
     "$LLAMA" -m "$1" --host 127.0.0.1 --port "$LPORT" -c 512 -ngl 0 > "$WORK/llama.log" 2>&1 &
@@ -93,7 +93,7 @@ else
 fi
 kill_llama
 
-act "ACT 2 — Ollama is asked"
+section "ollama: list and generate, pristine then corrupted blob"
 
 echo "Ollama DOES store digests: every blob is named sha256-<hex> and its"
 echo "manifests list each layer by digest. The question is whether it checks them."
@@ -141,12 +141,14 @@ if [ -f "$manifest" ]; then
     ask_ollama
     stop_ollama
 else
-    echo "(no local $OLLAMA_MODEL — skipping Act 2)"
+    echo "(no local $OLLAMA_MODEL — skipping ollama)"
 fi
 
-act "ACT 3 — the vault is asked"
+section "vault verify: pristine then corrupted, both stored under the pristine digest"
 
-(cd "$REPO/vault" && go build -o "$WORK/vault.exe" ./cmd/vault) || { echo "build failed"; exit 2; }
+# GOWORK=off because the vault is its own repository that happens to sit inside
+# this checkout, and go.work at the root would otherwise claim it.
+(cd "$REPO/vault" && GOWORK=off go build -o "$WORK/vault.exe" ./cmd/vault) || { echo "build failed"; exit 2; }
 mkdir -p "$WORK/store"
 # Read from stdin: coreutils escapes the whole line with a leading backslash
 # when the filename contains one, and every path here is a Windows path.
@@ -161,7 +163,7 @@ cp "$WORK/model.gguf" "$WORK/store/$PRISTINE_DIGEST"
 VAULT_STORE="$WORK/store" "$WORK/vault.exe" verify "$PRISTINE_DIGEST"
 echo "   exit code: $?"
 
-act "THE POINT"
+section "summary"
 cat <<'EOF'
 One file. 512 bytes out of half a gigabyte. Length identical.
 

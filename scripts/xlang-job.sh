@@ -11,16 +11,15 @@
 # taking it over. If this passes, the abstraction crosses languages; if it only
 # works when both halves are written by one generator, it is a file format.
 #
-#   usage: xlang-job.sh [workdir]
+#   usage: xlang-job.sh [workdir]   default: a fresh temp dir, because a fixed
+#                                   one under $HOME made two concurrent runs
+#                                   look exactly like a real disagreement
 
 set -u
 
-WORK="${1:-$HOME/xlang-job}"
-# The layers live in their own repositories now. scripts/layers.sh checks them
-# out and assembles .tree, which has the single-tree shape these harnesses were
-# written against. Falls back to this repository so the script still works if
-# somebody arranges the tree themselves.
-REPO="${ABSTRACTION_TREE:-$(cd "$(dirname "$0")/.." && pwd)}"
+WORK="${1:-}"
+[ -n "$WORK" ] || { WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT; }
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
 export JOB_STORE="$WORK/store"
 
 PY=""

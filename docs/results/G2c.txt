@@ -45,4 +45,4 @@ identical to pristine: false
     --- PASS: TestBoundary_CorruptionScale/zeroed_4096B (1.97s)
     --- PASS: TestBoundary_CorruptionScale/inverted_4096B (1.99s)
 PASS
-ok  	github.com/ReinisLusis/abstraction-vault	13.520s
+ok  	github.com/openabstractions/abstraction-job	13.520s

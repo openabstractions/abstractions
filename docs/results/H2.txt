@@ -1,5 +1,5 @@
 PS> go test -run TestPolicy ./internal/store/
-ok  	github.com/ReinisLusis/abstraction-vault/internal/store	0.579s
+ok  	github.com/openabstractions/abstraction-job/internal/store	0.579s
 
 PS> $env:VAULT_COST_GIB=4; go test -tags cost -run TestPolicyCost -v ./internal/store/
 === RUN   TestPolicyCost
@@ -16,7 +16,7 @@ PS> $env:VAULT_COST_GIB=4; go test -tags cost -run TestPolicyCost -v ./internal/
     cost_test.go:290: after corrupting the artifact, both policies refused it
 --- PASS: TestPolicyCost (20.10s)
 PASS
-ok  	github.com/ReinisLusis/abstraction-vault/internal/store	20.618s
+ok  	github.com/openabstractions/abstraction-job/internal/store	20.618s
 
 --- the same guarantee through the real binary, on a real 491 MB model ---
 

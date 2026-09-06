@@ -50,5 +50,5 @@ PS> go test -tags conformance -run TestConformance_TruncatedGGUF -v -timeout 30m
     --- PASS: TestConformance_TruncatedGGUF/vault_refuses (1.27s)
     --- FAIL: TestConformance_TruncatedGGUF/llamacpp_accepts (0.14s)
 FAIL
-FAIL	github.com/ReinisLusis/abstraction-vault	5.257s
+FAIL	github.com/openabstractions/abstraction-job	5.257s
 FAIL

@@ -16,13 +16,15 @@
 # the one-time setup that gets that back, which you do once and never again.
 #
 #   usage: nas-deploy.sh [user@host] [remote-dir]
-#     env: NAS_STORE   the store on the NAS (default /volume1/docker/abstraction/store)
+#     env: NAS_HOST    the NAS, when no user@host is given (default nas.invalid,
+#                      which resolves nowhere: set it or pass the target)
+#          NAS_STORE   the store on the NAS (default /volume1/docker/abstraction/store)
 #          NAS_KEY     ssh key (default ~/.ssh/id_ed25519_nas)
 
 set -u
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-TARGET="${1:?usage: nas-deploy.sh <user>@<nas-host> [remote-dir]}"
+TARGET="${1:-admin@${NAS_HOST:-nas.invalid}}"
 REMOTE="${2:-/volume1/docker/abstraction}"
 NAS_STORE="${NAS_STORE:-/volume1/docker/abstraction/store}"
 NAS_KEY="${NAS_KEY:-$HOME/.ssh/id_ed25519_nas}"

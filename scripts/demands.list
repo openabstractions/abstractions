@@ -1,0 +1,58 @@
+# The closed vocabulary for the DEMANDS line every feedback file ends with.
+#
+# A loop is a repeated conclusion, and the loop audit measured that no word
+# similarity can find one: 990 pairs of feedback files median 0.164, the real
+# clusters 0.18-0.21, and loop 1's most distant pair 0.138 — below the corpus
+# median. A ranker would put a genuine loop under a random pair. So the
+# comparable thing is not the conclusion, it is the action the conclusion
+# demands, and it is comparable only because the list of actions is closed.
+#
+# One term per feedback file, one line, last line of the file:
+#
+#     DEMANDS: reach-the-half-that-never-worked
+#
+# A trailing ` · note` is allowed and ignored by the count.
+#
+# The manager owns this file. An agent that needs a term which is not here says
+# so in its report and uses the closest one; the request is the signal that
+# something genuinely new was found, and adding a term is a deliberate edit to
+# this file with a diff attached. Terms are seeded from the nine loops in
+# feedback/2026-09-06-loop-audit.md and each names one of them.
+
+instrument-for-a-rule-we-already-wrote
+	Loop 1. A rule was written, nothing can fail it, so nobody follows it.
+	Six agents reached this on 2026-09-06, four after METHOD.md §8 said it.
+
+evidence-from-outside-our-own-code
+	Loop 2. Our implementations agree by descent, not by independent arrival,
+	so agreement between them is not evidence. Reached eight times in two days.
+
+record-that-a-landing-is-still-there
+	Loop 3. The work was done and nothing records it, or it was undone and
+	nothing records that either. Six agents; caused the one clean rebuild.
+
+check-the-reason-not-only-the-claim
+	Loop 4. The justification recorded for a decision was never tested and was
+	false. We check claims about state and never claims about why.
+
+reach-the-half-that-never-worked
+	Loop 5. Every instrument we build covers the half where something already
+	worked. Fifteen VISION.md entries and eight more agents after it was named.
+
+make-the-artefact-deliver-its-promise
+	Loop 6. The thing that advertises the abstraction does not provide it.
+
+use-the-facility-not-a-child-process
+	Loop 7. Shelling out to a program that wraps a platform facility looks like
+	adoption and is not: it inherits console behaviour, execution policy,
+	startup cost, localisation and parse surface.
+
+stop-re-asking-a-closed-question
+	Loop 8. A question closed in writing was asked again. The adoption verdict
+	was closed on 09-05 and re-asked seventeen hours later.
+
+collapse-the-reds-to-one-cause
+	Loop 9. One root cause printed as N separate failures manufactures work.
+
+nothing
+	The file asks for no change to the design. Rare, and it is a real answer.

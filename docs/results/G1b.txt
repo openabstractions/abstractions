@@ -47,4 +47,4 @@ vault on corrupted    : refused, store: digest mismatch
     --- PASS: TestConformance_CorruptGGUF/vault_refuses (1.40s)
     --- PASS: TestConformance_CorruptGGUF/llamacpp_accepts (2.84s)
 PASS
-ok  	github.com/ReinisLusis/abstraction-vault	8.876s
+ok  	github.com/openabstractions/abstraction-job	8.876s

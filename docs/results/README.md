@@ -9,6 +9,28 @@ checked out as siblings.
 Usernames, machine names and LAN addresses have been replaced with
 placeholders. Nothing else in these files was edited.
 
+Transcripts from 2026-09-06 on open with five `#` lines: the tree they
+measured, the state of the machine (power, plan, filesystem), the command that
+produces them again, and their scope — which platforms they prove and which
+they leave `UNPROVEN`. [`results.sh`](../../scripts/results.sh) writes the
+ones a machine with the three toolchains can produce; `results.sh --check`
+refuses when one of them measured a tree other than the committed one, so a
+release cannot carry a number nobody can attribute to a commit. The rest were
+written by hand from runs that need hardware — a NAS on the LAN, a packet
+filter with root — and their `# re-run` line says what.
+
+## Delegation, refusal, concurrency and power
+
+| file | produced by | what it shows |
+|---|---|---|
+| [`NAS1.txt`](NAS1.txt) | hand | A 386 MB model asked for on a PC; every process of ours on the PC killed 20 s in; a NAS on the LAN finishes and verifies it 48 s later, and the first sweep after the PC comes back delivers it. DSM 6.2.4 with the package scripts run by hand; Package Center install and DSM 7 `UNPROVEN`. |
+| [`NAS2.txt`](NAS2.txt) | hand | The same bytes asked for again. Before: the NAS fetched 388 MB it already held. After: a job whose only source is a dead URL completes from the held copy, which is proof that needs no byte counter. |
+| [`SMB1.txt`](SMB1.txt) | hand, one test | A record read 154 s stale over SMB because the Windows redirector reuses a closed handle; every constant open stays stale for nine minutes, alternating the open sees the change within one poll. The fix's pin on local disk is at the end. |
+| [`REACH1.txt`](REACH1.txt) | hand | A host refused in our file is refused by nftables for `curl`, which links nothing of ours, with our sentence in the kernel log. Linux only; the Windows rule text is rendered and unapplied. |
+| [`CAS-MIXED1.txt`](CAS-MIXED1.txt) | `results.sh` | Two Go, two C++ and two Python writers making 100 changes each to one file, a reader per language spinning through every rename. A lock one of them believes differently is a lost update here. Windows; macOS `UNPROVEN`. |
+| [`BEHAVIOUR1.txt`](BEHAVIOUR1.txt) | `results.sh` | Every scenario in `testdata/scenarios/` replayed by Go, Python and C++ against a store of their own, one transcript each, diffed. What diverged, what no language could run and what no page decides are printed, not skipped. |
+| [`AWAKE1.txt`](AWAKE1.txt) | `results.sh` | The machine held awake while a job's lease is live, observed through the kernel's own execution-state bit rather than our store: released on release, on lapse, on the job turning terminal, and when the holder is killed. Windows; Linux reads `systemd-inhibit`; macOS `UNPROVEN`. |
+
 ## Job and download layers
 
 | file | script | what it shows |

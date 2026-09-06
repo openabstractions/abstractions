@@ -1,0 +1,50 @@
+{
+  "$schema": "https://fundingjson.org/schema.json",
+  "version": "v1.0.0",
+  "entity": {
+    "type": "individual",
+    "role": "maintainer",
+    "name": "Reinis Lusis",
+    "email": "not-yet-published@openabstractions.invalid",
+    "description": "Sole maintainer of openabstractions: platform abstractions (download, job, storage, identity) with one contract and a conformance corpus that several language implementations must match byte for byte. Apache-2.0, not monetised, no company.",
+    "webpageUrl": {
+      "url": "https://github.com/openabstractions"
+    }
+  },
+  "projects": [
+    {
+      "guid": "openabstractions",
+      "name": "openabstractions",
+      "description": "Contracts for the seats operating systems leave empty - background download, durable jobs, caller identity - each with implementations in Go, Python and C++ proved equal against one corpus.",
+      "webpageUrl": {
+        "url": "https://github.com/openabstractions"
+      },
+      "repositoryUrl": {
+        "url": "https://github.com/openabstractions/abstractions"
+      },
+      "licenses": ["spdx:Apache-2.0"],
+      "tags": ["operating-system", "download", "ipc", "conformance", "go", "python", "cpp"]
+    }
+  ],
+  "funding": {
+    "channels": [
+      {
+        "guid": "ask",
+        "type": "other",
+        "description": "No payment address is published. Ask through the repository; details are agreed per grant."
+      }
+    ],
+    "plans": [
+      {
+        "guid": "any",
+        "status": "active",
+        "name": "Any amount, once",
+        "description": "Maintainer time on the conformance corpus and the implementations.",
+        "amount": 0,
+        "currency": "EUR",
+        "frequency": "one-time",
+        "channels": ["ask"]
+      }
+    ]
+  }
+}

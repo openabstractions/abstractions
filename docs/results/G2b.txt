@@ -14,4 +14,4 @@ identical output: true
     boundary_test.go:335: RESULT: served. pristine " Paris. It is the largest city in Europe and the second largest in the world. It is located in the south of" vs onebit " Paris. It is the largest city in Europe and the second largest in the world. It is located in the south of"
 --- PASS: TestBoundary_SingleBitFlip (3.93s)
 PASS
-ok  	github.com/ReinisLusis/abstraction-vault	7.321s
+ok  	github.com/openabstractions/abstraction-job	7.321s

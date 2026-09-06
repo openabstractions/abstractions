@@ -1,0 +1,153 @@
+# BEHAVIOUR1  produced by scripts/results.sh on 2026-09-06, commit d496205, exit 0
+# measures  download@f4ecec1 job@766cc1d
+# state     windows/amd64; AC, 79%, plan Balanced; NTFS; Microsoft Windows 11 Pro 10.0.26200
+# re-run    REPLAY_CPP=<build>/Release/replay.exe scripts/behaviour-conformance.sh
+# scope     one machine, three implementations of one contract; proves agreement, not the platform
+
+download behaviour conformance
+  go: store transfer wire wanted
+  python: store transfer wire wanted
+  cpp: store transfer wire wanted
+  fixture: http://127.0.0.1:58478
+  PASS  capabilities: identical in go python cpp
+  PASS  models: 7 names, identical in go python cpp and on the contract pages
+          abstraction.download/ranges@1 never-critical
+          abstraction.job/base@1 critical-ok
+          abstraction.job/delegation@1 critical-ok
+          abstraction.job/intent@1 critical-ok
+          abstraction.job/recall@1 critical-ok
+          abstraction.job/step@1 never-critical
+          abstraction.job/terminal@1 critical-ok
+
+  PASS  already-here: identical transcript in go python cpp, 5 against the contract
+  PASS  awake: identical transcript in go python cpp, 10 against the contract
+  PASS  cancel-adoption: identical transcript in go python cpp, 4 against the contract
+  PASS  credential-bound: identical transcript in go python cpp, 1 against the contract
+  PASS  deputy-absolute-sink: identical transcript in go python cpp, 4 against the contract
+  PASS  deputy-credential: identical transcript in go python cpp, 3 against the contract
+  PASS  failure-endings: identical transcript in go python cpp, 11 against the contract
+  PASS  foreign-sink: identical transcript in go python cpp, 6 against the contract
+  PASS  lease: identical transcript in go python cpp, 8 against the contract
+  PASS  matrix: identical transcript in go python cpp, 39 against the contract
+  PASS  notice-close: identical transcript in go python cpp, 2 against the contract
+  PASS  notice-coalesce: identical transcript in go python cpp, 3 against the contract
+  PASS  notice-present: identical transcript in go python cpp, 6 against the contract
+  PASS  notice-quiet: identical transcript in go python cpp, 7 against the contract
+  PASS  notice-two-listeners: identical transcript in go python cpp, 7 against the contract
+  PASS  orphans: identical transcript in go python cpp, 5 against the contract
+  PASS  pause-adoption: identical transcript in go python cpp, 4 against the contract
+  PASS  ranges-withdrawal: identical transcript in go python cpp, 3 against the contract
+  PASS  reach-refused: identical transcript in go python cpp, 4 against the contract
+  PASS  recall: identical transcript in go python cpp, 31 against the contract
+  PASS  resume-short-file: identical transcript in go python cpp, 3 against the contract
+  PASS  resume: identical transcript in go python cpp, 2 against the contract
+  PASS  terminal: identical transcript in go python cpp, 15 against the contract
+  PASS  unknown-model: identical transcript in go python cpp, 7 against the contract
+  PASS  wanted: identical transcript in go python cpp, 12 against the contract
+  PASS  wire-416: identical transcript in go python cpp, 3 against the contract
+  PASS  wire-encoded-body: identical transcript in go python cpp, 3 against the contract
+  PASS  wire-ignored-range: identical transcript in go python cpp, 2 against the contract
+  PASS  wire-lying-range: identical transcript in go python cpp, 3 against the contract
+  PASS  wire-marked-multipart: identical transcript in go python cpp, 3 against the contract
+  PASS  wire-multipart: identical transcript in go python cpp, 3 against the contract
+  PASS  wire-notnow-status: identical transcript in go python cpp, 9 against the contract
+  PASS  wire-obsolete-date: identical transcript in go python cpp, 3 against the contract
+  PASS  wire-overlong-body: identical transcript in go python cpp, nothing asserted
+  PASS  wire-plain: identical transcript in go python cpp, 2 against the contract
+  PASS  wire-redirect: identical transcript in go python cpp, nothing asserted
+  PASS  wire-refusal-status: identical transcript in go python cpp, 11 against the contract
+  PASS  wire-short-range: identical transcript in go python cpp, 3 against the contract
+  PASS  wire-truncated-body: identical transcript in go python cpp, 3 against the contract
+  PASS  wire-unasked-206: identical transcript in go python cpp, 3 against the contract
+  PASS  wire-undeclared-length: identical transcript in go python cpp, 3 against the contract
+  PASS  wire-unknown-total: identical transcript in go python cpp, 2 against the contract
+  PASS  wire-version-changed: identical transcript in go python cpp, 4 against the contract
+  PASS  wire-version-modified: identical transcript in go python cpp, 4 against the contract
+  PASS  wire-wrong-offset: identical transcript in go python cpp, 3 against the contract
+  PASS  every field this script compares is specified in job/README.md
+
+========================================
+  SILENT — 2 scenarios assert nothing about what SHOULD happen
+
+    wire-overlong-body
+    wire-redirect
+========================================
+========================================
+  UNDECIDED — 5 steps no contract page settles
+
+    matrix step 2 — renew against a record nobody has ever held — no page says
+    matrix step 12 — renew while the lease is live — no page says when renew succeeds, only that a terminal record still accepts it
+    matrix step 25 — update on transferred — the page says terminal refuses updates and that transferred is not terminal, and never closes the gap
+    matrix step 26 — intent on transferred — same gap, same sentence
+    matrix step 27 — release on transferred — the page states only that releasing turns running back into pending
+========================================
+========================================
+  UNEXERCISED — 63 of 142 invariants no scenario names
+    [JOB-K1] The spec is opaque, and kind says who can read it
+    [JOB-C1] A successor inherits what its predecessor proved
+    [JOB-P1] progress is BG_JOB_PROGRESS's BytesTransferred/BytesTotal: best-effort, explicitly non-mo...
+    [JOB-C2] Declared as abstraction.download/ranges@1, and advisory
+    [JOB-C3] Ranges are half-open, non-overlapping, sorted, and merged where they touch as well as whe...
+    [JOB-C4] Empty ranges are dropped; a fractional offset is refused
+    [JOB-C5] Where a stored prefix and stored ranges disagree they are unioned
+    [JOB-L2] A claim is a compare-and-set on the record under its lock
+    [JOB-L3] The lock file is never deleted
+    [JOB-L4] And a claim writes the record as it is under the lock, never the claimant's copy
+    [JOB-W1] work/<id is a name, not a shape
+    [JOB-W3] The store creates work/; it does not create work/<id
+    [JOB-W2] So "everything not listed here is not the store's" is true and does not mean it is free: ...
+    [JOB-F1] A field that is not in this table is refused, not ignored
+    [JOB-F2] Anything a participant needs to carry that is not here goes in extensions, under a namesp...
+    [JOB-E1] The bytes are compared between implementations, so the encoding is fixed: indented with t...
+    [JOB-E2] content, id, kind, state, spec, progress.done, progress.updated_at, the whole lease, crea...
+    [JOB-E3] A reader must treat absent and empty as the same thing
+    [JOB-E4] A writer must not spell the same state two ways
+    [JOB-D8] So critical is a subset of content
+    [JOB-D3] Extension keys are appended to content sorted
+    [JOB-D4] It is never written again
+    [JOB-D5] Everything else — 1, 2, 6, 99 — is refused
+    [JOB-I1] want is exactly one of run, pause, cancel; anything else is refused rather than treated a...
+    [JOB-I2] Absent means run
+    [JOB-I4] It is idempotent
+    [JOB-I6] Asking for something the current owner cannot do is not an error here
+    [JOB-I7] run records a value; it does not delete the field
+    [JOB-I10] An implementation that cannot honour pause must FAIL the job with a reason rather than ca...
+    [JOB-S4] Where nobody holds the lease, the caller takes it for a moment and writes the state itself
+    [JOB-G1] When it is set, progress is a cache of what the external system last reported; the extern...
+    [JOB-E5] The timestamp format is now pinned to exactly six fractional digits and a Z
+    [DL-R2] The unproven tail is discarded, and the hash is rebuilt over the prefix that is kept
+    [DL-R17] It verifies what a delegate delivered
+    [DL-R18] It survives the delegate disappearing
+    [DL-R19] A handle that no longer resolves returns the job to pending with its sources and checkpoi...
+    [DL-R20] It works on a record another machine wrote
+    [DL-R21] An absolute path is left alone by the machine whose convention it is written in and refus...
+    [DL-R22] A sink cannot name the store
+    [DL-R23] The store's own layout is unspellable as a destination, and a job may write exactly one p...
+    [DL-R24] It honours required capabilities
+    [DL-E3] An implementation attaches the class to each error where that error is defined, and never...
+    [DL-V3] Only strong validators are kept
+    [DL-S1] Unknown keys are ignored, at every level
+    [DL-S2] A digest is meant as its hex
+    [DL-S3] Anything that is not exactly 64 hex characters afterwards reads as empty
+    [DL-S4] A path is absolute if it is absolute under either convention
+    [DL-S8] A relative sink path that resolves outside the store root is refused
+    [DL-S9] A relative sink path that names the store's own layout is refused
+    [DL-S10] work/<id and everything below it is not reserved against job <id
+    [DL-S11] Asked on behalf of no job (an empty id, which is what a caller has before an id exists), ...
+    [DL-S12] Comparison folds case and trims a trailing dot or space from every segment, on every plat...
+    [DL-S13] A segment that is nothing but dots and spaces is left alone
+    [DL-S14] Absolute paths are outside this rule entirely
+    [DL-S15] Then three lines per source, source0 … sourceN, indexed from 0 in the order the sources...
+    [DL-S16] A final that is relative under both conventions gives work/<id
+    [DL-S17] Anything else gives <final.part
+    [DL-S18] An empty final counts as relative
+    [DL-S20] A path in a record has one separator, /, and it is the same one all the way through
+    [DL-S21] Every backslash becomes a forward slash, whatever wrote the path and whether it is relati...
+    [DL-S22] A UNC root comes out as //server/share
+    [DL-S23] The rewrite is stable: a path already in this form comes back unchanged
+    [DL-S19] Strictness is a cross-language decision or it is a bug
+========================================
+
+  48 scenarios agreed, 0 diverged, 0 contradicted the contract
+  79 of 142 invariants have a scenario, 63 do not
+  RESULT: three implementations, one behaviour

@@ -1,0 +1,71 @@
+# REACH1  written by hand on 2026-09-06 from a run that day; nothing in it was produced by a script
+# measures  download/reachwall compiling our refused list into nftables, against a curl that links nothing of ours
+# state     laptop, plugged in. WSL2 Ubuntu 26.04, kernel 6.18, as root; nftables 1.1.6-1 installed for the run; nft_socket not built into the kernel; cgroup v2
+# re-run    as root on Linux with nft: build download/reachwall, `reachwall --group 60001 --apply`, curl as that gid, `journalctl -k`; `reachwall --file allowed.json --apply` with `{}` removes the table
+# scope     Linux only. The Windows rule text below was rendered and never applied; macOS not examined. nftables enforces an address, never a name: the sets for a name stay empty until a resolver fills them
+
+$ cat refused.json
+{
+  "127.0.0.1": "not this week, the disk is full",
+  "huggingface.co": "it's 40 GB and the disk has 12"
+}
+
+$ reachwall --group 60001 --apply
+reachwall: name huggingface.co: nftables matches addresses, not names, and resolving it here would
+  freeze one DNS answer into a rule; sets host_huggingface_co and host_huggingface_co6 are empty, so
+  nothing is refused, until a resolver fills them from live answers (README)
+
+$ nft list table inet reachwall
+table inet reachwall {
+	set host_huggingface_co { type ipv4_addr; flags interval }
+	set host_huggingface_co6 { type ipv6_addr; flags interval }
+	chain output {
+		type filter hook output priority filter; policy accept;
+		ct state new meta skgid 60001 ip daddr 127.0.0.1 counter packets 0 bytes 0 log prefix "reach 127.0.0.1: not this week, the disk is full " reject with icmpx admin-prohibited
+		ct state new meta skgid 60001 ip daddr @host_huggingface_co counter packets 0 bytes 0 log prefix "reach huggingface.co: it's 40 GB and the disk has 12 " reject with icmpx admin-prohibited
+		ct state new meta skgid 60001 ip6 daddr @host_huggingface_co6 counter ... reject with icmpx admin-prohibited
+	}
+}
+
+$ python3 listener on 127.0.0.1:60603; curl run twice against it
+curl as gid 60001: exit 7  curl: (7) Failed to connect to 127.0.0.1 port 60603 after 0 ms: Could not connect to server
+curl as root:     exit 0  reached
+
+$ journalctl -k --no-pager | grep "reach 127"
+Sep 06 14:03:07 host kernel: reach 127.0.0.1: not this week, the disk is full IN= OUT=lo SRC=127.0.0.1 DST=127.0.0.1 ... DPT=60603 ... SYN
+
+$ nft list chain inet reachwall output | head -1
+		ct state new meta skgid 60001 ip daddr 127.0.0.1 counter packets 1 bytes 60 log prefix ...
+
+$ reachwall --apply          (no --group: the machine, which is what the file says)
+curl as root:     exit 7  curl: (7) Failed to connect to 127.0.0.1 port 38527 after 0 ms: Could not connect to server
+
+$ reachwall --file allowed.json --apply     ({} — the window's Allow)
+$ nft list tables
+(none)
+
+curl got EHOSTUNREACH (113), measured separately; port-unreachable would have
+been ECONNREFUSED, which lies. `counter packets 1` says the rule fired once,
+for the one connection. Two limits of the platform, measured on the way:
+`log prefix` holds 127 bytes and refuses 128; `socket cgroupv2` returns
+ENOENT on this kernel, so a program is a uid or gid here, not a cgroup.
+Without `ct state new`, the reject of a packet to 127.0.0.1 matched its own
+ICMP reply and curl retransmitted SYNs for ever — 22 on the counter.
+
+--- the same file as Windows Firewall text: rendered by `reachwall --os windows --program <dl.exe>`, never applied ---
+
+# reachwall: the hosts this machine refuses, as Windows Firewall rules. Elevated shell; re-runnable.
+$ErrorActionPreference = 'Stop'
+if ((Get-MpPreference).EnableNetworkProtection -eq 0) { throw 'reachwall: a rule on a name is enforced only while Defender Network Protection is on, and it is off: Set-MpPreference -EnableNetworkProtection Enabled, or the rule passes everything in silence' }
+Get-NetFirewallRule -Group 'openabstractions reach' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+
+New-NetFirewallRule -Group 'openabstractions reach' -DisplayName 'reach 127.0.0.1' -Description 'not this week, the disk is full' -Direction Outbound -Action Block -Profile Any -RemoteAddress '127.0.0.1' -Program 'C:\Users\user\Documents\AI abstractions\bin\dl.exe'
+
+Remove-NetFirewallDynamicKeywordAddress -Id '{4d159f2e-6535-53ec-947b-28e9765a43f7}' -ErrorAction SilentlyContinue
+New-NetFirewallDynamicKeywordAddress -Id '{4d159f2e-6535-53ec-947b-28e9765a43f7}' -Keyword 'huggingface.co' -AutoResolve $true
+Remove-NetFirewallDynamicKeywordAddress -Id '{52eec926-c0a6-5050-8ef7-ac2e3cf674c6}' -ErrorAction SilentlyContinue
+New-NetFirewallDynamicKeywordAddress -Id '{52eec926-c0a6-5050-8ef7-ac2e3cf674c6}' -Keyword '*.huggingface.co' -AutoResolve $true
+New-NetFirewallRule -Group 'openabstractions reach' -DisplayName 'reach huggingface.co' -Description 'it''s 40 GB and the disk has 12' -Direction Outbound -Action Block -Profile Any -RemoteDynamicKeywordAddresses @('{4d159f2e-6535-53ec-947b-28e9765a43f7}', '{52eec926-c0a6-5050-8ef7-ac2e3cf674c6}') -Program 'C:\Users\user\Documents\AI abstractions\bin\dl.exe'
+
+On the machine that rendered this, EnableNetworkProtection read 0, so the
+script would have stopped at its first line. Read with Get-* only.

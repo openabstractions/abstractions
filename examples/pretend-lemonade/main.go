@@ -1,47 +1,55 @@
 // An application that knows nothing about NASes, BITS, shares or job stores.
 //
-// This is the entire integration a fork of Lemonade would carry. Note what is
-// absent: no path, no hostname, no flag, no branch on which tier to use, no
-// mention of a NAS, and not even this program's own name. Discover takes no
-// arguments because there is nothing left for the caller to know — the OS says
-// which executable is running, and the machine says which tiers it has.
+// This is the entire integration a fork of Lemonade would carry: one import, no
+// path, no hostname, no flag, and no branch on who does the work.
 package main
 
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"time"
 
-	download "github.com/openabstractions/abstraction-download/go"
-	_ "github.com/openabstractions/abstraction-download/go/all" // the classpath, spelled in Go
+	abstraction "github.com/openabstractions/abstraction-facade/go"
 )
 
 func main() {
-	r, err := download.Discover()
-	if err != nil {
+	if err := run(os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
 
-	fmt.Printf("tiers linked into this build : %v\n", download.RegisteredTiers())
-	fmt.Printf("tier this machine will use   : %s\n", r.Tier())
-
-	if len(os.Args) < 2 {
-		return
-	}
-	// From here it is ordinary: submit, and let whatever answered do the work.
-	id, err := download.Submit(r.Store, download.Spec{
-		Sources: []download.Source{{Scheme: "https", Locator: os.Args[1]}},
-		Sink:    download.Sink{Final: "files/example.bin"},
-	})
+func run(args []string, out io.Writer) error {
+	a, err := abstraction.Discover()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return err
 	}
-	fmt.Printf("submitted %s\n", id)
-	if err := r.Delegate(context.Background(), id); err != nil {
-		fmt.Println("nothing to delegate to; this process would do it itself")
-		return
+	fmt.Fprintf(out, "this machine : %v\n", a.Bindings())
+
+	downloads := a.Download()
+	fmt.Fprintf(out, "bytes go to  : %s\n", downloads.Where())
+
+	if len(args) == 0 {
+		return nil
 	}
-	fmt.Printf("handed to %s\n", r.Tier())
+
+	h, err := downloads.Get(args[0], "files/")
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "submitted %s\n", h.ID())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	if _, err := h.Wait(ctx); err != nil {
+		return err
+	}
+	where, err := h.Destination()
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "delivered to %s\n", where)
+	return nil
 }

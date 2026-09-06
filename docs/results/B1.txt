@@ -12,7 +12,7 @@ PS C:\Users\user\Documents\AI abstractions\vault> $env:VAULT_COST_GIB="8"; & "C:
     cost_test.go:101: A 70B load pays 79s (1.3 min) on EVERY open. The falsifier fires on this machine: re-verifying on every open costs more than it saves. Note that this does not kill content-addressing — it kills doing the check unconditionally in Open(). Record the number, then decide when re-verification happens. Do not weaken the refusal itself.
 --- PASS: TestOpenCost (39.99s)
 PASS
-ok  	github.com/ReinisLusis/abstraction-vault/internal/store	43.031s
+ok  	github.com/openabstractions/abstraction-job/internal/store	43.031s
 
 PS C:\Users\user\Documents\AI abstractions> wsl.exe --distribution Ubuntu --exec bash -lc "/usr/local/go/bin/go version; echo '---'; export VAULT_COST_GIB=8; cd '/mnt/c/Users/user/Documents/AI abstractions/vault'; /usr/local/go/bin/go test -tags cost -timeout 30m -run TestOpenCost -v ./internal/store/"
 go version go1.26.5 linux/amd64
@@ -30,7 +30,7 @@ go version go1.26.5 linux/amd64
     cost_test.go:101: A 70B load pays 46s on every open. Noticeable. Measure on the slowest machine that will run this before deciding.
 --- PASS: TestOpenCost (55.97s)
 PASS
-ok  	github.com/ReinisLusis/abstraction-vault/internal/store	57.523s
+ok  	github.com/openabstractions/abstraction-job/internal/store	57.523s
 
 PS C:\Users\user\Documents\AI abstractions> Get-PSDrive -PSProvider FileSystem | Select-Object Name,Root
 Name Root

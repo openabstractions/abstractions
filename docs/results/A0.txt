@@ -54,17 +54,17 @@ PS C:\Users\user\Documents\AI abstractions\vault> go test -run TestClientAuth_Re
     --- PASS: TestClientAuth_RealBinaries/wrong_token:_401_from_the_real_daemon (0.02s)
     --- PASS: TestClientAuth_RealBinaries/with_token:_success (0.22s)
 PASS
-ok  	github.com/ReinisLusis/abstraction-vault	6.767s
+ok  	github.com/openabstractions/abstraction-job	6.767s
 PS C:\Users\user\Documents\AI abstractions\vault> go test ./...
-ok  	github.com/ReinisLusis/abstraction-vault	5.197s
-ok  	github.com/ReinisLusis/abstraction-vault/cmd/vault	1.614s
-ok  	github.com/ReinisLusis/abstraction-vault/cmd/vaultd	(cached)
-?   	github.com/ReinisLusis/abstraction-vault/demo/server	[no test files]
-ok  	github.com/ReinisLusis/abstraction-vault/internal/acquire	(cached)
-?   	github.com/ReinisLusis/abstraction-vault/internal/control	[no test files]
-ok  	github.com/ReinisLusis/abstraction-vault/internal/manifest	(cached)
-ok  	github.com/ReinisLusis/abstraction-vault/internal/ref	(cached)
-ok  	github.com/ReinisLusis/abstraction-vault/internal/registry	2.658s
-ok  	github.com/ReinisLusis/abstraction-vault/internal/store	(cached)
-ok  	github.com/ReinisLusis/abstraction-vault/internal/transfer	(cached)
-ok  	github.com/ReinisLusis/abstraction-vault/internal/worker	(cached)
+ok  	github.com/openabstractions/abstraction-job	5.197s
+ok  	github.com/openabstractions/abstraction-job/cmd/vault	1.614s
+ok  	github.com/openabstractions/abstraction-job/cmd/vaultd	(cached)
+?   	github.com/openabstractions/abstraction-job/demo/server	[no test files]
+ok  	github.com/openabstractions/abstraction-job/internal/acquire	(cached)
+?   	github.com/openabstractions/abstraction-job/internal/control	[no test files]
+ok  	github.com/openabstractions/abstraction-job/internal/manifest	(cached)
+ok  	github.com/openabstractions/abstraction-job/internal/ref	(cached)
+ok  	github.com/openabstractions/abstraction-job/internal/registry	2.658s
+ok  	github.com/openabstractions/abstraction-job/internal/store	(cached)
+ok  	github.com/openabstractions/abstraction-job/internal/transfer	(cached)
+ok  	github.com/openabstractions/abstraction-job/internal/worker	(cached)

@@ -1,0 +1,10 @@
+# CAS-MIXED1  produced by scripts/results.sh on 2026-09-06, commit d496205, exit 0
+# measures  cas@312a329
+# state     windows/amd64; AC, 79%, plan Balanced; NTFS; Microsoft Windows 11 Pro 10.0.26200
+# re-run    CAS_CPP=<build>/cas/cpp/Release/test_cas.exe python cas/mixed.py 3
+# scope     the host filesystem only; a network share is not exercised. macOS UNPROVEN
+
+run 1: ok in 5.7 s
+run 2: ok in 3.7 s
+run 3: ok in 2.6 s
+win32 cas: 3 of 3 runs green; 6 writers x 100 in go, c++, python, one reader per language, in a temporary directory

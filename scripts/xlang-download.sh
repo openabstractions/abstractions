@@ -18,9 +18,7 @@
 #   bash scripts/xlang-download.sh
 set -uo pipefail
 cd "$(dirname "$0")/.."
-# See scripts/layers.sh: the layers are separate repositories now and .tree is
-# the single-tree view these harnesses were written against.
-ROOT="${ABSTRACTION_TREE:-$PWD}"
+ROOT="$PWD"
 
 GO_DL="$ROOT/download/go"
 PY_DL="$ROOT/download/python"
@@ -108,8 +106,8 @@ import (
 	"os"
 	"time"
 
-	download "github.com/ReinisLusis/abstraction/download/go"
-	job "github.com/ReinisLusis/abstraction/job/go"
+	download "github.com/openabstractions/abstraction-download/go"
+	job "github.com/openabstractions/abstraction-job/go"
 )
 
 func main() {
@@ -162,10 +160,10 @@ GOEOF
   cp "$GO_DL/go.mod" "$WORK/gohelper/go.mod" 2>/dev/null
   ( cd "$WORK/gohelper" && \
     go mod edit -module=xlanghelper \
-      -replace=github.com/ReinisLusis/abstraction/download/go="$GO_DL" \
-      -replace=github.com/ReinisLusis/abstraction/job/go="$ROOT/job/go" \
-      -replace=github.com/ReinisLusis/abstraction/storage/go="$ROOT/storage/go" \
-      -replace=github.com/ReinisLusis/abstraction/config/go="$ROOT/config/go" && \
+      -replace=github.com/openabstractions/abstraction-download/go="$GO_DL" \
+      -replace=github.com/openabstractions/abstraction-job/go="$ROOT/job/go" \
+      -replace=github.com/openabstractions/abstraction-storage/go="$ROOT/storage/go" \
+      -replace=github.com/openabstractions/abstraction-config/go="$ROOT/config/go" && \
     go mod tidy >/dev/null 2>&1 && \
     go build -o "$WORK/gohelper/helper" . ) || return 1
 }

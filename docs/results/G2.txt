@@ -36,4 +36,4 @@ same output as pristine: false
     boundary_test.go:279:   flipped:  " 100步 10 bservation+offset步 100步bservbserv步bserv步bserv"
 --- PASS: TestBoundary_MidFileFlip (4.86s)
 PASS
-ok  	github.com/ReinisLusis/abstraction-vault	11.481s
+ok  	github.com/openabstractions/abstraction-job	11.481s

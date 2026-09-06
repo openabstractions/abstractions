@@ -9,7 +9,7 @@ PS> go test -tags cost -timeout 30m -run TestOpenBound -v ./internal/store/
     cost_test.go:202: VERDICT: MIXED. Open reaches 62% of the ceiling; both the filesystem and the hash are visible in the number.
 --- PASS: TestOpenBound (3.11s)
 PASS
-ok  	github.com/ReinisLusis/abstraction-vault/internal/store	4.651s
+ok  	github.com/openabstractions/abstraction-job/internal/store	4.651s
 
 PS> VAULT_COST_GIB=4 go test -tags cost -timeout 30m -run TestOpenBound -v ./internal/store/
 === RUN   TestOpenBound
@@ -22,4 +22,4 @@ PS> VAULT_COST_GIB=4 go test -tags cost -timeout 30m -run TestOpenBound -v ./int
     cost_test.go:202: VERDICT: MIXED. Open reaches 55% of the ceiling; both the filesystem and the hash are visible in the number.
 --- PASS: TestOpenBound (14.26s)
 PASS
-ok  	github.com/ReinisLusis/abstraction-vault/internal/store	14.724s
+ok  	github.com/openabstractions/abstraction-job/internal/store	14.724s
