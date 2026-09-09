@@ -15,3 +15,4 @@ transfer  run runshared stage
 wire      credential refuse allow src=http:
 wanted    drop sweep
 identity  ladder bench value ceiling caneve serve speak identify proof trusted check same traces claimed
+logging   record attr group msg level read keys encode decode machine auto default separation cap write held forge send attest chain uid author relay disputed

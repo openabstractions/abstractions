@@ -10,4 +10,5 @@
 DL     download.md  https://raw.githubusercontent.com/openabstractions/abstraction-download/main/CONTRACT.md
 ID     identity.md  https://raw.githubusercontent.com/openabstractions/abstraction-identity/main/CONTRACT.md
 JOB    job.md       https://raw.githubusercontent.com/openabstractions/abstraction-job/main/CONTRACT.md
+LOG    logging.md   https://raw.githubusercontent.com/openabstractions/abstraction-logging/main/CONTRACT.md
 WATCH  watch.md     https://raw.githubusercontent.com/openabstractions/abstraction-watch/main/README.md

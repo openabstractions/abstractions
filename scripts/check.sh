@@ -7,8 +7,9 @@
 # implementations agree; a harness nobody remembers to run is not evidence.
 #
 #   usage: scripts/check.sh [--fast] [--public] [--verbose]
-#     --fast    skip the C++ build and the cross-language harnesses, which need
-#               a compiler and take minutes. Go and Python only.
+#     --fast    skip the MSVC C++ build and the cross-language harnesses, which
+#               take minutes. Go, Python, and the C++ under g++ in WSL, which
+#               is under a minute and runs in every mode.
 #     --public  also fetch the openabstractions repositories: prove no file
 #               lives in two of them, and let the rules read the files each
 #               repository authors for itself, which no rule derived from
@@ -123,6 +124,7 @@ prose_tested_tree map_unnamed front_doors_open front_doors_published hand_rolled
 struck_section_unmarked
 wasted_bytes_after_kill
 peer_corpus_peers peer_corpus_disagreements peer_corpus_roundtrip_differs peer_corpus_wire_refused
+cpp_toolchains_built pins_named pins_dead_measured
 gate_fast_minutes gate_full_minutes gate_public_minutes"
 
 # Output is kept and only shown for what failed. A passing run should be short
@@ -408,8 +410,10 @@ for d in "${HMODS[@]}"; do
     run "HEAD $d" bash -c "cd '$H/$d' && go build ./... && go test -count=1 -run '^$' ./..."
 done
 run "HEAD python" "$PY" -m compileall -q "$H"
-if [ "$FAST" = 1 ] || [ -z "$CMAKE" ]; then
-    skip "HEAD c++ ($([ "$FAST" = 1 ] && echo --fast || echo 'no cmake'))"
+if [ "$FAST" = 1 ]; then
+    skip "HEAD c++ (--fast)"
+elif [ -z "$CMAKE" ]; then
+    unproven 'HEAD c++ — no cmake here, so whether the committed C++ builds under MSVC is not known; the linux leg below builds the working tree, never HEAD'
 else
     run "HEAD c++" bash -c "'$CMAKE' -S '$H' -B '$ROOT/.build/head-cpp' -DCMAKE_BUILD_TYPE=Release && '$CMAKE' --build '$ROOT/.build/head-cpp' --config Release"
 fi
@@ -541,38 +545,69 @@ else
     esac
 fi
 
+section "c++"
+# Two compilers, or the word UNPROVEN. This section used to vanish when cmake
+# was absent, and it was absent from PATH on the machine the gate runs on: the
+# C++ went red on macOS and Windows the first day anything built it there, a
+# layer that had not compiled since morning went unnoticed for a day, and the
+# harnesses below kept comparing a binary an earlier run had left in .build.
+# A missing compiler is still not a failing test, but a third of every
+# three-language claim resting on nothing is said out loud, and a binary this
+# run did not build is handed to nobody.
+CPP_BUILD="$LOGS/no-cpp-build"
+NCPP=0
+if [ "$FAST" = 1 ]; then
+    skip "c++ msvc (--fast: minutes)"
+elif [ -z "$CMAKE" ]; then
+    unproven 'c++ msvc — no cmake on PATH and none under Visual Studio; set ABSTRACTION_CMAKE. The Windows half of the C++ compiled nowhere on this run.'
+else
+    # Configured out of tree so a failed build never leaves artefacts in the
+    # repository that a later run would mistake for a good one.
+    B="${ABSTRACTION_CPP_BUILD:-$ROOT/.build}"
+    CTEST="$(dirname "$CMAKE")/ctest"
+    NFAIL_BEFORE=${#FAILED[@]}
+    run "cmake configure"   bash -c "'$CMAKE' -S '$ROOT' -B '$B' -DCMAKE_BUILD_TYPE=Release"
+    run "cmake build"       bash -c "'$CMAKE' --build '$B' --config Release"
+    run "ctest"             bash -c "'$CTEST' --test-dir '$B' -C Release --output-on-failure"
+    [ "${#FAILED[@]}" = "$NFAIL_BEFORE" ] && { CPP_BUILD="$B"; NCPP=$((NCPP+1)); }
+fi
+# The second compiler, and the platform CI builds on. g++ in WSL is on this
+# machine, needs no network and no laptop that might be off, and builds and
+# tests the whole tree in under a minute, so it runs in every mode. The
+# working tree goes over one pipe into a directory WSL owns, because /mnt/c
+# is slow and a WSL /tmp does not outlive the VM's idle timeout.
+if command -v wsl.exe >/dev/null 2>&1 \
+   && wsl.exe -e sh -c 'command -v cmake >/dev/null && command -v g++ >/dev/null' >/dev/null 2>&1; then
+    LX="$LOGS/cpp-linux.log"
+    if git -C "$ROOT" ls-files -coz --exclude-standard | tar --null -T - -cf - \
+       | wsl.exe -e sh -c 'd=$(mktemp -d) && tar -xf - -C "$d" && cd "$d" && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j"$(nproc)" && ctest --test-dir build --output-on-failure; rc=$?; rm -rf "$d"; exit $rc' \
+       > "$LX" 2>&1; then
+        pass "c++ linux — g++ $(wsl.exe -e g++ -dumpfullversion 2>/dev/null | tr -d '\r') in WSL built the working tree and passed $(sed -n 's/.*tests passed, 0 tests failed out of \([0-9]*\).*/\1/p' "$LX" | tail -1) tests"
+        NCPP=$((NCPP+1))
+    else
+        fail "c++ linux — g++ in WSL"; echo "$LX" >>"$LOGS/failed"
+    fi
+else
+    unproven 'c++ linux — no wsl.exe with cmake and g++ on it. The unix half of the C++ compiled nowhere on this run.'
+fi
+metric cpp_toolchains_built "$NCPP" check.sh
+
 if [ "$FAST" = "1" ]; then
     section "skipped"
-    skip "c++ and the cross-language harnesses (--fast)"
+    skip "the cross-language harnesses (--fast)"
 else
-    section "c++"
-    # A missing compiler is not a failing test. Saying FAIL for it trains
-    # everyone to ignore a red line, which is how a real failure gets through.
-    if [ -z "$CMAKE" ]; then
-        skip 'cmake not on PATH — set ABSTRACTION_CMAKE or run from a'
-        printf '        developer shell. On Windows vcvars64.bat needs the VS Installer\n'
-        printf '        directory on PATH first or it half-configures silently.\n'
-    else
-        # Configured out of tree so a failed build never leaves artefacts in the
-        # repository that a later run would mistake for a good one.
-        B="${ABSTRACTION_CPP_BUILD:-$ROOT/.build}"
-        CTEST="$(dirname "$CMAKE")/ctest"
-        run "cmake configure"   bash -c "'$CMAKE' -S '$ROOT' -B '$B' -DCMAKE_BUILD_TYPE=Release"
-        run "cmake build"       bash -c "'$CMAKE' --build '$B' --config Release"
-        run "ctest"             bash -c "'$CTEST' --test-dir '$B' -C Release --output-on-failure"
-    fi
-
     section "cross-language"
+    [ "$CPP_BUILD" != "$LOGS/no-cpp-build" ] \
+      || unproven 'c++ in every harness below — no MSVC build this run, so no C++ binary is handed to them; one left in .build by an earlier run is not this tree'"'"'s'
     run "job conformance"   pinned "$ROOT/scripts/xlang-job.sh"
     # The C++ reader this run just built, rather than the one a developer once
     # left in /c/jobbuild: without this the third implementation is compiled by
     # the line above and then left out of the comparison it exists for.
-    SPECREAD="${B:-$ROOT/.build}/Release/specread.exe"
-    [ -f "$SPECREAD" ] || SPECREAD="${B:-$ROOT/.build}/specread"
+    SPECREAD="$CPP_BUILD/Release/specread.exe"
+    [ -f "$SPECREAD" ] || SPECREAD="$CPP_BUILD/specread"
     run "download spec"     pinned SPECREAD_CPP="$SPECREAD" "$ROOT/scripts/spec-conformance.sh"
     # Three implementations must spell one proven byte set the same way, or the
     # record churns against itself and no diff of a job's history means anything.
-    CPP_BUILD="${B:-$ROOT/.build}"
     JOBCTL_CPP="$CPP_BUILD/Release/jobctl.exe"
     [ -f "$JOBCTL_CPP" ] || JOBCTL_CPP="$CPP_BUILD/jobctl"
     run "checkpoint ranges" pinned JOBCTL_CPP="$JOBCTL_CPP" "$ROOT/scripts/conformance.sh" --canonical
@@ -584,7 +619,14 @@ else
     # cost and a tenth of a second on Linux; a foreign lock fails run one.
     TEST_CAS="$CPP_BUILD/cas/cpp/Release/test_cas.exe"
     [ -f "$TEST_CAS" ] || TEST_CAS="$CPP_BUILD/cas/cpp/test_cas"
-    run "cas mixed languages" env CAS_CPP="$TEST_CAS" "$PY" "$ROOT/cas/mixed.py" 3
+    MIX="$LOGS/cas-mixed.log"
+    if env CAS_CPP="$TEST_CAS" "$PY" "$ROOT/cas/mixed.py" 3 > "$MIX" 2>&1; then
+        pass "cas mixed languages"
+    elif grep -q 'c++: ABSENT' "$MIX"; then
+        unproven "cas mixed languages — $(grep -m1 'c++: ABSENT' "$MIX")"
+    else
+        fail "cas mixed languages"; echo "$MIX" >>"$LOGS/failed"
+    fi
 
     # Implementations diverge today and failing on every one of them would buy
     # what the citation rule bought: a line everybody steps over. So the gate is
@@ -772,6 +814,14 @@ fi
 # tagged broken, under a check that reported it as red every single run. So the
 # org's own files go underneath and the generated ones on top: what a stranger
 # clones after the push, with an uncommitted fix still showing as broken.
+#
+# GOWORK=off is half of what the stranger lacks. The other half is a cold
+# proxy: this loop inherited the ambient module cache and proxy.golang.org,
+# and the proxy serves a deleted version forever, so it stayed green through
+# eight tags whose go.mod named versions no remote had. Our own modules are
+# fetched from the repository itself, into a module cache created empty for
+# this run; everything else may still come from the proxy, which is what the
+# stranger's go does too.
 if [ "$PUBLIC" = "1" ]; then
     S="$LOGS/standalone"
     rm -rf "$S"
@@ -783,9 +833,12 @@ if [ "$PUBLIC" = "1" ]; then
     done
     mapfile -t SMODS < <(find "$S" -name go.mod | sort)
     [ "${#SMODS[@]}" -gt 0 ] || nothing "standalone build" 0 1
+    COLD="$LOGS/modcache"
+    COLD_W="$(cygpath -w "$COLD" 2>/dev/null || echo "$COLD")"
     for m in "${SMODS[@]}"; do
         d="$(dirname "$m")"
-        run "standalone ${d#$S/}" env GOWORK=off bash -c "cd '$d' && go build ./..."
+        run "standalone cold ${d#$S/}" env GOWORK=off GOFLAGS=-mod=readonly GONOPROXY="github.com/${ABSTRACTION_ORG:-openabstractions}" \
+            GOMODCACHE="$COLD_W" GIT_TERMINAL_PROMPT=0 bash -c "cd '$d' && go build ./..."
     done
 else
     skip 'standalone build of each published module (pass --public)'
@@ -857,6 +910,62 @@ if [ "$PUBLIC" = "1" ]; then
     fi
 else
     skip 'what go/v0.1.0 makes of what this tree writes (needs the module proxy — pass --public)'
+fi
+
+# What a stranger receives, opened. Five wheels built with a six-line METADATA
+# and no licence text while every pyproject.toml declared one; a manifest was
+# read by three instruments and the archive by none. scripts/package.sh builds
+# the wheel and the sdist from .split, fetches the module zip the proxy serves
+# and installs the C++ into scratch, and opens each. It runs after the split
+# above because that is where its Python and C++ inputs come from, and it says
+# ABSENT for a package nothing has published rather than passing it.
+#
+# scripts/package.sh and scripts/size.sh keep their own rows in
+# research/gate/series.tsv and regenerate their own tables under research/;
+# the series block at the end of this file writes only its own keys.
+said() {  # said <log> <verdict>... — the lines a scripts/*.sh instrument printed under those verdicts
+    local log="$1"; shift
+    sed 's/\x1b\[[0-9;]*m//g' "$log" | grep -E "^  ($(IFS='|'; echo "$*")) " | sed 's/^  //; s/  */ /g' \
+      | grep -vE '^[A-Z]+ [0-9]+ (artifact|package)\(s\) '
+}
+if [ "$PUBLIC" = "1" ]; then
+    PK="$LOGS/package.log"
+    ABSTRACTION_CMAKE="$CMAKE" sh "$ROOT/scripts/package.sh" python go $([ "$FAST" = 1 ] || echo cpp) > "$PK" 2>&1; pk=$?
+    PKSUM="$(sed -n 's/^  \([0-9]* artifact(s) opened: .*\)/\1/p' "$PK" | tail -1)"
+    case "$pk" in
+    0) pass "packages — $PKSUM$([ "$FAST" = 1 ] && echo '; the C++ installs not opened (--fast)')"
+       said "$PK" ABSENT > "$LOGS/package-absent"; detail "$LOGS/package-absent" ;;
+    1) fail "packages ($(said "$PK" FAIL | wc -l) built artifacts do not carry what their manifest promises)"
+       said "$PK" FAIL > "$LOGS/package-bad"; detail "$LOGS/package-bad"; echo "$PK" >>"$LOGS/failed" ;;
+    2) unproven "packages — $PKSUM"
+       said "$PK" UNPROVEN ABSENT > "$LOGS/package-unproven"; detail "$LOGS/package-unproven" ;;
+    *) fail "packages — scripts/package.sh exited $pk before its verdict"; echo "$PK" >>"$LOGS/failed" ;;
+    esac
+else
+    skip 'packages — what a stranger receives, opened (builds from .split and reads the module proxy — pass --public)'
+fi
+
+# The size of what we publish, as a series. Somebody else's 128 KB root
+# certificate bundle reached a published module and was found by a person
+# reading a dependency list; a byte count per package, compared with the last
+# one recorded, is the number that moves on that day. scripts/size.sh reads
+# the proxy's zip for the newest tag of every module and refuses a growth past
+# its threshold that research/size151/explained.tsv does not account for.
+if [ "$PUBLIC" = "1" ]; then
+    SZ="$LOGS/size.log"
+    sh "$ROOT/scripts/size.sh" > "$SZ" 2>&1; sz=$?
+    SZSUM="$(sed -n 's/^  \([0-9]* package(s) measured: .*\)/\1/p' "$SZ" | tail -1)"
+    case "$sz" in
+    0) pass "sizes — $SZSUM"
+       said "$SZ" ABSENT > "$LOGS/size-absent"; detail "$LOGS/size-absent" ;;
+    1) fail "sizes ($(said "$SZ" FAIL | wc -l) packages grew past the threshold with no explanation recorded)"
+       said "$SZ" FAIL > "$LOGS/size-bad"; detail "$LOGS/size-bad"; echo "$SZ" >>"$LOGS/failed" ;;
+    2) unproven "sizes — $SZSUM"
+       said "$SZ" UNPROVEN ABSENT > "$LOGS/size-unproven"; detail "$LOGS/size-unproven" ;;
+    *) fail "sizes — scripts/size.sh exited $sz before its verdict"; echo "$SZ" >>"$LOGS/failed" ;;
+    esac
+else
+    skip 'sizes — the bytes of every published package against its last recorded size (reads the module proxy — pass --public)'
 fi
 
 section "rules"
@@ -1232,6 +1341,91 @@ else
     pass "dependencies — every published module resolves to modules we wrote"
 fi
 
+# ---- every version a go.mod or a public page names is a tag the remote has
+# Twelve tags were cut in one command and eight asserted a dependency graph
+# that did not exist, and a tag is permanent: the proxy serves the version
+# forever and a republished number is a checksum mismatch. So the versions a
+# go.mod requires of our own modules are compared with `git ls-remote --tags`
+# on the repository — never the proxy, which is what hid it — and so is every
+# version a site/ page types beside a repository. A require with a replace
+# beside it resolves to a directory and is left out; a pseudo-version names a
+# commit, which no tag answers for, and is counted rather than checked. A
+# published file fails; a measured one prints, because research/wire-compat
+# pinned to a tag the remote no longer has is a measurement held up by a cache.
+if [ "$PUBLIC" = "1" ]; then
+    PIN="$LOGS/pins"; mkdir -p "$PIN"
+    PINORG="${ABSTRACTION_ORG:-openabstractions}"
+    : > "$PIN/named"
+    for mod in $(git ls-files 'go.mod' '*/go.mod'); do
+        awk -v f="$mod" -v org="github.com/$PINORG/" '
+            /^replace \(/ { inrep = 1; next }   inrep && /^\)/ { inrep = 0; next }
+            /^require \(/ { inreq = 1; next }   inreq && /^\)/ { inreq = 0; next }
+            (inrep || /^replace /) && /=>/ { p = $1; if (p == "replace") p = $2; rep[p] = 1; next }
+            (inreq || /^require /) && index($0, org) { p = $1; v = $2; if (p == "require") { p = $2; v = $3 } req[p] = v }
+            END { for (p in req) if (!(p in rep)) {
+                      repo = substr(p, length(org) + 1); sub("/.*", "", repo)
+                      dir = substr(p, length(org) + length(repo) + 2)
+                      tag = (dir == "" ? "" : dir "/") req[p]
+                      kind = (req[p] ~ /[0-9]{14}-[0-9a-f]{12}$/) ? "commit" : "tag"
+                      printf "%s\t%s\t%s\t%s\t%s\n", f, repo, tag, kind, p "@" req[p] } }' "$ROOT/$mod" >> "$PIN/named"
+    done
+    xargs -r -d '\n' grep -HoE "$PINORG/[a-z.-]+[^ <\"]*@v[0-9]+\.[0-9]+\.[0-9]+|$PINORG/[a-z.-]+/releases/tag/[^\"]+" < "$RULES/state-pages" 2>/dev/null \
+      | awk -v org="$PINORG" '{
+            f = $0; sub(":.*", "", f); p = substr($0, length(f) + 2); said = p
+            sub("^" org "/", "", p); repo = p; sub("/.*", "", repo); rest = substr(p, length(repo) + 1)
+            if (rest ~ /^\/releases\/tag\//) { tag = rest; sub("^/releases/tag/", "", tag); gsub("%2F", "/", tag) }
+            else { ver = rest; sub(".*@", "", ver); dir = rest; sub("@.*", "", dir); sub("^/", "", dir); sub("/cmd/.*", "", dir)
+                   tag = (dir == "" ? "" : dir "/") ver }
+            printf "%s\t%s\t%s\ttag\t%s\n", f, repo, tag, said }' >> "$PIN/named"
+    grep -vxFf "$GENS/expected" "$RULES/state-pages" \
+      | xargs -r -d '\n' grep -nE 'v[0-9]+\.[0-9]+\.[0-9]+' 2>/dev/null | grep -vE "$PINORG/[a-z.-]+" | cut -c1-160 > "$PIN/loose"
+    cut -f2 "$PIN/named" | sort -u > "$PIN/repos"
+    : > "$PIN/tags"; : > "$PIN/unreached"
+    while read -r r; do
+        if GIT_TERMINAL_PROMPT=0 git ls-remote --tags "git@github.com:$PINORG/$r" > "$PIN/ls" 2>"$PIN/ls.err"; then
+            awk -v r="$r" '{ sub("refs/tags/", "", $2); if ($2 !~ /\^\{\}$/) print r "\t" $2 }' "$PIN/ls" >> "$PIN/tags"
+        else
+            printf '%s\t%s\n' "$r" "$(head -1 "$PIN/ls.err")" >> "$PIN/unreached"
+        fi
+    done < "$PIN/repos"
+    awk -F'\t' '
+        FILENAME == ARGV[1] { have[$1 "\t" $2] = 1; next }
+        FILENAME == ARGV[2] { gone[$1] = 1; next }
+        FILENAME == ARGV[3] { ship[$0] = 1; next }
+        { named++
+          if ($4 == "commit") { commits++; next }
+          if ($2 in gone) { unreached++; next }
+          if (($1 == "") || (($2 "\t" $3) in have)) next
+          published = 0; for (s in ship) if ($1 == s || index($1, s "/") == 1) published = 1
+          print (published ? "dead" : "measured") "\t" $1 "\t" $5 " — not a tag on " $2 }
+        END { printf "%d %d %d\n", named, commits, unreached }
+    ' "$PIN/tags" "$PIN/unreached" "$RULES/shipped" "$PIN/named" > "$PIN/verdicts"
+    read -r NPIN NPINCOMMIT NPINUNREACH < <(tail -1 "$PIN/verdicts")
+    grep -a '^dead	' "$PIN/verdicts" | cut -f2- | sort > "$PIN/dead"
+    grep -a '^measured	' "$PIN/verdicts" | cut -f2- | sort > "$PIN/measured"
+    metric pins_named "$NPIN" check.sh
+    metric pins_dead_measured "$(wc -l < "$PIN/measured")" check.sh
+    note "$NPIN versions named in $(cut -f1 "$PIN/named" | sort -u | wc -l) files, checked against the tags of $(cut -f1 "$PIN/tags" | sort -u | wc -l) repositories over ssh; $NPINCOMMIT pinned to a commit and not checked, $(wc -l < "$PIN/measured") in measured code point at versions the remote no longer has"
+    if [ -s "$PIN/unreached" ]; then
+        unproven "pinned versions — $(wc -l < "$PIN/unreached") repositories could not be listed, and $NPINUNREACH versions naming them were judged not at all"
+        detail "$PIN/unreached"
+    fi
+    if [ "$NPIN" = 0 ]; then
+        nothing "pinned versions" 0 1
+    elif [ -s "$PIN/loose" ]; then
+        fail "pinned versions ($(wc -l < "$PIN/loose") versions typed on a public page with no repository on the line, so nothing can check them)"
+        detail "$PIN/loose"
+    elif [ -s "$PIN/dead" ]; then
+        fail "pinned versions ($(wc -l < "$PIN/dead") named in published files and not a tag on their repository — a stranger's go get resolves them from a cache, or not at all)"
+        detail "$PIN/dead"
+    else
+        pass "pinned versions — every version a published go.mod or page names is a tag on its repository$([ -s "$PIN/measured" ] && printf '; %s in measured code point at versions the remote no longer has' "$(wc -l < "$PIN/measured")")"
+        detail "$PIN/measured"
+    fi
+else
+    skip 'pinned versions are tags their repositories still have (git ls-remote — pass --public)'
+fi
+
 # ---- no public header names somebody else's header ----------------------
 # A build file that fetches a dependency costs the adopter a fetch. A header we
 # publish that includes one costs every adopter of that layer the dependency
@@ -1494,6 +1688,38 @@ elif [ -s "$RULES/new-leaks" ]; then
     detail "$RULES/new-leak-lines"
 else
     pass "leaked identifiers — none outside the recorded set"
+fi
+
+# ---- a public state line names a machine by class, never by name ---------
+# A CPU model, a core count, a battery percentage and "the owner using it
+# throughout" sat on site/evidence.html for days. The rule above had zero hits:
+# it lists identifiers, and a hardware fingerprint is a description that
+# happens to be unique. So a state paragraph on a public page has a grammar —
+# the class of machine, an OS, a power source, what else loaded it, dates and
+# the versions of the tools under test — and a model, a count, a percentage
+# or a person fails it. Those belong in the research/ file that produced the
+# number, which is where somebody reproduces it. A power plan's name stays
+# allowed: the rule in CLAUDE.md asks for it, and "Balanced" names nobody.
+grep -E '^site/.*\.html$' "$RULES/files" > "$RULES/state-pages"
+xargs -r -d '\n' awk '
+    /<p class="state"/ { on = 1; at = FNR; s = "" }
+    on { s = s " " $0 }
+    on && /<\/p>/ { on = 0; gsub(/[ \t]+/, " ", s); gsub(/<[^>]*>/, "", s); print FILENAME ":" at "\t" s }
+' < "$RULES/state-pages" > "$RULES/state-lines" 2>/dev/null
+STATERE='%|\b(Intel|AMD|Ryzen|Xeon|Core i[3579]|Apple M[0-9]|Snapdragon|EPYC|Threadripper)\b'
+STATERE="$STATERE"'|\b[0-9]+ (logical |physical )?(cores?|CPUs?|threads|processors)\b'
+STATERE="$STATERE"'|\b[0-9]+ ?(GB|GiB|TB)( of)? (RAM|memory)\b'
+STATERE="$STATERE"'|\b(owner|agent)s?\b'
+grep -E "$STATERE" "$RULES/state-lines" | cut -c1-200 > "$RULES/state-bad"
+NSTATE=$(wc -l < "$RULES/state-lines")
+note "$NSTATE state paragraphs on $(wc -l < "$RULES/state-pages") public pages, read against the grammar: class, OS, power, load, dates, tool versions"
+if [ "$NSTATE" = 0 ]; then
+    nothing "state lines" 0 1
+elif [ -s "$RULES/state-bad" ]; then
+    fail "state lines ($(wc -l < "$RULES/state-bad") name a machine — a model, a count, a percentage or a person — on a public page)"
+    detail "$RULES/state-bad"
+else
+    pass "state lines — $NSTATE public state paragraphs name a machine by class only"
 fi
 
 # ---- the generated code reads as the language it is generated into -----
