@@ -120,6 +120,7 @@ leaked_identifier_files exported_names shared_exported_names kills_fired kills_u
 footprint_rows footprint_untestable footprint_contradicted research_unindexed
 demands_declared demands_repeated feedback_without_verdict discarded_errors
 prose_tested_tree map_unnamed front_doors_open front_doors_published hand_rolled_stores
+struck_section_unmarked
 wasted_bytes_after_kill
 peer_corpus_peers peer_corpus_disagreements peer_corpus_roundtrip_differs peer_corpus_wire_refused
 gate_fast_minutes gate_full_minutes gate_public_minutes"
@@ -160,7 +161,8 @@ if [ "$NFILES" = 0 ]; then
     nothing "contract tags" 0 1
 elif [ -s "$RULES/tags-stray" ]; then
     fail "contract tags ($(wc -l < "$RULES/tags-stray") cited and declared on no page)"
-    grep -Ff <(sed 's/^/\t/' "$RULES/tags-stray") "$RULES/tags-cited" | sed 's/^/        /'
+    grep -Ff <(sed 's/^/\t/' "$RULES/tags-stray") "$RULES/tags-cited" > "$RULES/tags-stray-where"
+    detail "$RULES/tags-stray-where"
 else
     pass "contract tags — $(wc -l < "$RULES/tags-declared") declared on $(wc -l < "$RULES/pages") pages, $(cut -f2 "$RULES/tags-cited" | sort -u | wc -l) cited in $(cut -f1 "$RULES/tags-cited" | sort -u | wc -l) files, every citation resolves"
 fi
@@ -249,7 +251,7 @@ if [ "$NEXP" = 0 ] || [ "$NDECL" = 0 ]; then
     nothing "expectation tags" "$NEXP" 1
 elif [ "$NBREAK" != 0 ]; then
     fail "expectation tags ($NBREAK unrecorded)"
-    sed 's/^/        /' "$EXP/breaks"
+    detail "$EXP/breaks"
 else
     pass "expectation tags — $NTAGGED of $NEXP expectations name a rule, every name resolves against $NPAGES rule documents, $NUNEX of $NDECL declared rules are exercised by no expectation"
 fi
@@ -304,9 +306,11 @@ else
     if [ "$NPATHS" = 0 ] || [ "$NART" = 0 ]; then
         nothing "generated files" "$NART" 1
     elif [ -s "$GENS/stale" ] || [ -s "$GENS/undeclared" ]; then
+        { cat "$GENS/stale"
+          sed 's|$|\tis generated and scripts/generate.targets declares nothing that writes it|' "$GENS/undeclared"
+        } > "$GENS/bad"
         fail "generated files ($(wc -l < "$GENS/stale") stale or untracked, $(wc -l < "$GENS/undeclared") committed under no declared output root)"
-        sed 's/^/        /' "$GENS/stale"
-        sed 's|^|        |; s|$|\tis generated and scripts/generate.targets declares nothing that writes it|' "$GENS/undeclared"
+        detail "$GENS/bad"
     else
         # How much of a definition an artefact carries is read out of the
         # generator's own report rather than restated here: the surface list on
@@ -444,6 +448,99 @@ pytests "cas/python"        cas/python
 # model with the other while the machine holds two.
 run "model identity"        pinned PY="$PY" "$ROOT/scripts/identity-conformance.sh"
 
+section "conformance"
+# The proof this project publishes, and the one thing nothing here ran.
+# conformance/ judges an implementation against the rules written on the
+# contract pages, reads no source tree of ours, and reached a green verdict from
+# a clean clone on 2026-09-09. Nothing in this file called it, so the gate could
+# be green over a broken proof for as long as nobody thought to run it by hand.
+#
+# Assembled here into the shape scripts/split.manifest publishes, because that
+# shape is the only one run.sh knows: fixture.py and scenarios/ beside it, the
+# contract pages under contracts/. The pages are this tree's own CONTRACT.md
+# files, which is what the three layer repositories serve; whether those copies
+# still agree is split.sh's question, and fetching them would put the network
+# into a gate that runs every few minutes.
+CONF="$LOGS/conf"
+mkdir -p "$CONF/scenarios" "$CONF/contracts"
+cp -R "$ROOT/conformance/." "$CONF/" 2>/dev/null
+cp "$ROOT/download/testdata/fixture.py" "$CONF/fixture.py" 2>/dev/null
+cp "$ROOT"/download/testdata/scenarios/*.txt "$CONF/scenarios/" 2>/dev/null
+cp "$ROOT/download/CONTRACT.md" "$CONF/contracts/download.md" 2>/dev/null
+cp "$ROOT/job/CONTRACT.md"      "$CONF/contracts/job.md"      2>/dev/null
+cp "$ROOT/watch/README.md"      "$CONF/contracts/watch.md"    2>/dev/null
+: > "$CONF/absent"
+for f in run.sh selftest.sh contracts.list fixture.py \
+         contracts/download.md contracts/job.md contracts/watch.md; do
+    [ -s "$CONF/$f" ] || printf '%s\tthe suite reads this and this tree did not supply it\n' "$f" >> "$CONF/absent"
+done
+NSCEN=$(ls "$CONF/scenarios"/*.txt 2>/dev/null | wc -l)
+# What --fast runs instead, and it is named here rather than counted, because a
+# subset nobody can read is a subset nobody can argue with. Greedy cover over
+# the rule tags the scenarios cite, so ten scenarios reach most of the rules the
+# whole directory reaches for a fifth of the wall time; research/gate120 holds
+# the measurement. wire-ignored-range is in the list to start the fixture —
+# without it the driver cannot declare wire, `wanted` is out of reach, and the
+# subset could never be anything but UNPROVEN.
+CONF_SUBSET="matrix recall failure-endings intent notice-quiet wanted pause-adoption foreign-sink terminal wire-ignored-range"
+if [ -s "$CONF/absent" ]; then
+    fail "conformance ($(wc -l < "$CONF/absent") of the suite's own inputs are missing from this tree, so it judged nothing)"
+    detail "$CONF/absent"
+elif [ "$NSCEN" -lt 40 ]; then
+    nothing "conformance" "$NSCEN scenario" 40
+elif ! (cd "$ROOT/download/go" && go build -o "$CONF/replay.exe" ./cmd/replay) >"$CONF/build.log" 2>&1; then
+    fail "conformance — the reference driver will not build, so the published suite had nothing to judge"
+    echo "$CONF/build.log" >>"$LOGS/failed"
+else
+    # A runner that calls our driver green proves nothing until it can still say
+    # no. selftest.sh puts three toy drivers to it — one declaring nothing, one
+    # answering ok to everything, one admitting it has no HTTP — and demands
+    # not-set-up, failed and incomplete back.
+    run "conformance runner" sh "$CONF/selftest.sh"
+
+    ONLY=""; OVER="all $NSCEN scenarios"; WHOLE=1
+    if [ "$FAST" = 1 ]; then
+        WHOLE=0
+        for s in $CONF_SUBSET; do ONLY="$ONLY --only $s"; done
+        OVER="$(echo $CONF_SUBSET | wc -w) of $NSCEN scenarios: $CONF_SUBSET"
+    fi
+    CV="$CONF/run.log"
+    sh "$CONF/run.sh" $ONLY -- "$CONF/replay.exe" >"$CV" 2>&1; cv=$?
+    NRULE=$(sed -n 's/^    passed: *//p' "$CV")
+    NUNREACH=$(sed -n 's/^    unreachable: *//p' "$CV")
+    metric conformance_rules_kept "${NRULE:-0}" conformance/run.sh
+    metric conformance_rules_unreachable "${NUNREACH:-0}" conformance/run.sh
+    # Only a whole run's numbers go in the series. A subset's 52 recorded beside
+    # a full run's 84 is a series that moves because a flag moved.
+    [ "$WHOLE" = 1 ] && SERIES_KEYS="$SERIES_KEYS conformance_rules_kept conformance_rules_unreachable"
+    case "$cv" in
+    0) if [ "$WHOLE" = 1 ]; then
+           pass "conformance — ${NRULE:-0} rules the contract pages state, kept over $OVER"
+       else
+           pass "conformance SUBSET — ${NRULE:-0} rules kept over $OVER. This is not the suite; drop --fast for that"
+       fi ;;
+    1) sed -n '/^  FAIL  /,/^          observed:/p' "$CV" > "$CONF/broke"
+       fail "conformance ($(sed -n 's/^  [0-9]* scenarios passed, \([0-9]*\) failed.*/\1/p' "$CV") scenarios broke a rule a contract page states, over $(grep -c '^  FAIL  ' "$CV") expectations)"
+       detail "$CONF/broke"; echo "$CV" >>"$LOGS/failed" ;;
+    # Exit 2 is the runner refusing to call an unreached rule a pass, and its two
+    # causes are not one defect. A contract page missing is this tree failing to
+    # hand over a file it wrote itself, which is red. A capability the driver
+    # could not declare is a toolchain absent from this machine — no python, so
+    # no fixture, so no wire — and that is UNPROVEN, named, and never a pass.
+    2) if grep -q 'contract pages this run needed and did not have' "$CV"; then
+           fail "conformance — a contract page this tree authors reached the runner missing, and every rule citing it was judged against nothing"
+           echo "$CV" >>"$LOGS/failed"
+       else
+           unproven "conformance — ${NUNREACH:-?} rules out of reach, judged not at all, over $OVER"
+           { sed -n 's/^  fixture: */fixture /p' "$CV" | grep ABSENT
+             sed -n 's/^  ----  //p' "$CV"; } > "$CONF/outofreach"
+           detail "$CONF/outofreach"
+       fi ;;
+    *) fail "conformance — run.sh exited $cv: it could not be set up, which is this tree's fault and not an implementation's"
+       echo "$CV" >>"$LOGS/failed" ;;
+    esac
+fi
+
 if [ "$FAST" = "1" ]; then
     section "skipped"
     skip "c++ and the cross-language harnesses (--fast)"
@@ -523,13 +620,13 @@ else
         comm -13 "$LOGS/beh-now" "$LOGS/beh-was" > "$LOGS/beh-gone"
         if [ -s "$LOGS/beh-new" ]; then
             fail "behaviour conformance ($(wc -l < "$LOGS/beh-new") unrecorded)"
-            sed 's/^/        /' "$LOGS/beh-new"; echo "$BEH" >>"$LOGS/failed"
+            detail "$LOGS/beh-new"; echo "$BEH" >>"$LOGS/failed"
         elif [ -s "$LOGS/beh-gone" ]; then
             fail "behaviour conformance ($(wc -l < "$LOGS/beh-gone") recorded and now agreeing — drop them from check.baseline)"
-            sed 's/^/        /' "$LOGS/beh-gone"
+            detail "$LOGS/beh-gone"
         else
             pass "behaviour conformance — $(wc -l < "$LOGS/beh-now") known divergences, exactly the recorded set"
-            sed 's/^/        /' "$LOGS/beh-now"
+            detail "$LOGS/beh-now"
         fi
     fi
 
@@ -552,13 +649,13 @@ else
         comm -13 "$LOGS/ver-now" "$LOGS/ver-was" > "$LOGS/ver-gone"
         if [ -s "$LOGS/ver-new" ]; then
             fail "verdict conformance ($(wc -l < "$LOGS/ver-new") unrecorded)"
-            sed 's/^/        /' "$LOGS/ver-new"; echo "$VER" >>"$LOGS/failed"
+            detail "$LOGS/ver-new"; echo "$VER" >>"$LOGS/failed"
         elif [ -s "$LOGS/ver-gone" ]; then
             fail "verdict conformance ($(wc -l < "$LOGS/ver-gone") recorded and now agreeing — drop them from check.baseline)"
-            sed 's/^/        /' "$LOGS/ver-gone"
+            detail "$LOGS/ver-gone"
         else
             pass "verdict conformance — $(wc -l < "$LOGS/ver-now") known divergences, exactly the recorded set"
-            sed 's/^/        /' "$LOGS/ver-now"
+            detail "$LOGS/ver-now"
         fi
     fi
 
@@ -613,10 +710,12 @@ else
             label="peer corpus $peer ($chain) — $n fixtures, $disagree recorded disagreements, $wr records refused, $wm moved"
             if [ "${bad:-0}" != 0 ] || [ "${stale:-0}" != 0 ]; then
                 fail "$label — ${bad:-0} unrecorded, ${stale:-0} recorded and gone"
-                grep -h "^$peer/$key	" "$PC/new" "$PC/gone" 2>/dev/null | sed 's/^/        /'
+                grep -h "^$peer/$key	" "$PC/new" "$PC/gone" 2>/dev/null > "$PC/moved.rows"
+                detail "$PC/moved.rows"
             elif [ "$rt" != 0 ]; then
                 fail "$label — $rt of the accept.roundtrip-* fixtures did not come back byte for byte"
-                grep "^$peer/$key	.*	roundtrip$" "$PC/$peer.$key.rows" | sed 's/^/        /'
+                grep "^$peer/$key	.*	roundtrip$" "$PC/$peer.$key.rows" > "$PC/roundtrip.rows"
+                detail "$PC/roundtrip.rows"
             else
                 pass "$label"
             fi
@@ -647,7 +746,8 @@ if [ "$PUBLIC" = "1" ]; then
         pass "published tree — every repository equals what this one generates"
     else
         fail "published tree — $(grep -c '^  .*FAIL' "$LOGS/split.log") repositories differ from what this one generates"
-        sed 's/^/      /' "$LOGS/split.log" | grep -E 'FAIL|LEAK|every row' | head -20
+        grep -E 'FAIL|LEAK|every row' "$LOGS/split.log" > "$LOGS/split-bad"
+        detail "$LOGS/split-bad"
     fi
 else
     skip 'published tree (needs the network — pass --public)'
@@ -744,10 +844,10 @@ if [ "$PUBLIC" = "1" ]; then
         comm -13 "$WC/now" "$WC/was" > "$WC/gone"
         if [ -s "$WC/new" ]; then
             fail "published reader ($(wc -l < "$WC/new") lines v0.1.0 now prints that check.baseline does not)"
-            sed 's/^/        /' "$WC/new" | head -20
+            detail "$WC/new"
         elif [ -s "$WC/gone" ]; then
             fail "published reader ($(wc -l < "$WC/gone") recorded lines v0.1.0 no longer prints — drop them from check.baseline)"
-            sed 's/^/        /' "$WC/gone" | head -20
+            detail "$WC/gone"
         else
             pass "published reader — $(wc -l < "$WC/now") lines from go/v0.1.0 over the corpus and $NLIVE scenarios this tree ran, exactly the recorded set"
         fi
@@ -793,7 +893,7 @@ comm -23 "$RULES/gate-scripts" "$RULES/gate-tracked" > "$RULES/gate-missing"
 note "$(wc -l < "$RULES/gate-scripts") files under scripts/ are named by check.sh or by something it sources, found by grepping each of them for \$ROOT/scripts/*, and checked against git ls-files scripts"
 if [ -s "$RULES/gate-missing" ]; then
     fail "gate scripts ($(wc -l < "$RULES/gate-missing") the gate runs and git does not track — a fresh clone has a broken gate)"
-    sed 's/^/        /' "$RULES/gate-missing"
+    detail "$RULES/gate-missing"
 else
     pass "gate scripts — every one is in the repository"
 fi
@@ -831,12 +931,13 @@ if (cd "$ROOT/scripts/unchecked" && GOWORK=off go build -o "$UC/unchecked.exe" .
         if [ -s "$UC/grew" ]; then
             fail "discarded errors ($(wc -l < "$UC/grew") callees have a refusal thrown away that check.baseline does not record)"
             while IFS=$'\t' read -r c n; do
-                printf '        %s\t%s\n' "$c" "$n"
-                awk -F'\t' -v c="$c" '$1==c {print "            " $2}' "$UC/sites"
-            done < "$UC/grew"
+                printf '%s\t%s\n' "$c" "$n"
+                awk -F'\t' -v c="$c" '$1==c {print "    " $2}' "$UC/sites"
+            done < "$UC/grew" > "$UC/grew-sites"
+            detail "$UC/grew-sites"
         elif [ -s "$UC/fell" ]; then
             fail "discarded errors ($(wc -l < "$UC/fell") recorded counts have stopped being true — write the new ones into check.baseline, that is the debt being paid)"
-            sed 's/^/        /' "$UC/fell"
+            detail "$UC/fell"
         else
             pass "discarded errors — every one is recorded and none has grown"
         fi
@@ -926,7 +1027,7 @@ if [ ! -s "$RULES/gone" ]; then
     note "no path is being unpublished, so nothing can be left naming one"
 elif [ -s "$RULES/gone-new" ]; then
     fail "$(wc -l < "$RULES/gone-new") files name a path the next publish removes"
-    sed 's/^/        /' "$RULES/gone-new"
+    detail "$RULES/gone-new"
 else
     pass "nothing names a path the next publish removes — $(wc -l < "$RULES/gone") removed, $(wc -l < "$RULES/gone-scan") files read"
 fi
@@ -1000,13 +1101,13 @@ if [ "$NCITE" = 0 ]; then
     nothing "citations" 0 1
 elif [ -s "$RULES/org-gone" ]; then
     fail "citations ($(wc -l < "$RULES/org-gone") recorded as published and not there)"
-    sed 's/^/        /' "$RULES/org-gone"
+    detail "$RULES/org-gone"
 elif [ -s "$RULES/new-broken" ]; then
     fail "citations ($(wc -l < "$RULES/new-broken") new)"
-    sed 's/^/        /' "$RULES/new-broken"
+    detail "$RULES/new-broken"
 elif [ -s "$RULES/fixed-broken" ]; then
     fail "citations ($(wc -l < "$RULES/fixed-broken") recorded breaks now resolve — drop them from check.baseline)"
-    sed 's/^/        /' "$RULES/fixed-broken"
+    detail "$RULES/fixed-broken"
 else
     pass "citations — the broken set is exactly the recorded one"
 fi
@@ -1020,7 +1121,7 @@ if [ "$NPAT" -gt 0 ] && [ -s "$RULES/copyleft-fixture" ] \
     xargs -d '\n' grep -lFf "$RULES/copyleft" < "$RULES/scan" 2>/dev/null | sort > "$RULES/copyleft-hits"
     if [ -s "$RULES/copyleft-hits" ]; then
         fail "copyleft in distributed files"
-        sed 's/^/        /' "$RULES/copyleft-hits"
+        detail "$RULES/copyleft-hits"
     else
         pass "copyleft — $NPAT licence signatures, none in $((NFILES + NORG)) distributed files"
     fi
@@ -1034,7 +1135,7 @@ find "$ROOT/.build/_deps" -maxdepth 5 -type f \
   | xargs -d '\n' grep -lFf "$RULES/copyleft" 2>/dev/null | sed "s#^$ROOT/##" | sort > "$RULES/vendored"
 if [ -s "$RULES/vendored" ]; then
     note "vendored and linked in, not pushed by us: $(wc -l < "$RULES/vendored") copyleft licence texts"
-    sed 's/^/        /' "$RULES/vendored"
+    detail "$RULES/vendored"
 fi
 
 # ---- nothing we ship depends on anything we did not write ----------------
@@ -1115,17 +1216,18 @@ comm -13 "$RULES/deps" "$RULES/known-deps" > "$RULES/gone-deps"
 metric shipped_dependencies "$(wc -l < "$RULES/deps")" check.sh
 note "$NMOD go modules against $(wc -l < "$RULES/shipped") published sources; $(sort -u "$RULES/measured" | wc -l) foreign dependencies in code we only measure, $(wc -l < "$RULES/known-deps") recorded in what we ship"
 if [ -s "$RULES/fetched" ]; then
-    note "cloned at configure time, into headers we publish: $(sort -u "$RULES/fetched" | wc -l)"
-    sort -u "$RULES/fetched" | sed 's/^/        /'
+    sort -u -o "$RULES/fetched" "$RULES/fetched"
+    note "cloned at configure time, into headers we publish: $(wc -l < "$RULES/fetched")"
+    detail "$RULES/fetched"
 fi
 if [ "$NMOD" = 0 ]; then
     nothing "dependencies" 0 1
 elif [ -s "$RULES/new-deps" ]; then
     fail "dependencies ($(wc -l < "$RULES/new-deps") new in a published tree)"
-    sed 's/^/        /' "$RULES/new-deps"
+    detail "$RULES/new-deps"
 elif [ -s "$RULES/gone-deps" ]; then
     fail "dependencies ($(wc -l < "$RULES/gone-deps") recorded and no longer there — drop them from check.baseline)"
-    sed 's/^/        /' "$RULES/gone-deps"
+    detail "$RULES/gone-deps"
 else
     pass "dependencies — every published module resolves to modules we wrote"
 fi
@@ -1144,7 +1246,7 @@ if [ "$NHDR" = 0 ]; then
     nothing "public headers" 0 1
 elif [ -s "$RULES/header-deps" ]; then
     fail "public headers ($(wc -l < "$RULES/header-deps") reach a third-party header, and so does every adopter that includes them)"
-    sed 's/^/        /' "$RULES/header-deps"
+    detail "$RULES/header-deps"
 else
     pass "public headers — $NHDR published headers, none includes anything but our own"
 fi
@@ -1351,13 +1453,14 @@ if [ ! -s "$RULES/store-scan" ]; then
     nothing "stores" 0 1
 elif [ -s "$RULES/stores-new" ]; then
     fail "stores ($(wc -l < "$RULES/stores-new") hand-rolled where cas.Change is one import away)"
-    sed 's/^/        /' "$RULES/stores-new"
+    detail "$RULES/stores-new"
 elif [ -s "$RULES/stores-gone" ]; then
     fail "stores ($(wc -l < "$RULES/stores-gone") recorded and now gone — drop them from check.baseline)"
-    sed 's/^/        /' "$RULES/stores-gone"
+    detail "$RULES/stores-gone"
 else
     pass "stores — none but the recorded set"
-    sed 's/^/        still hand-rolled: /' "$RULES/stores"
+    sed 's/^/still hand-rolled: /' "$RULES/stores" > "$RULES/stores-said"
+    detail "$RULES/stores-said"
 fi
 
 # ---- no leaked identifier ----------------------------------------------
@@ -1387,7 +1490,8 @@ if [ "$NPUB" = 0 ]; then
     nothing "leaked identifiers" 0 1
 elif [ -s "$RULES/new-leaks" ]; then
     fail "leaked identifiers ($(wc -l < "$RULES/new-leaks") new files)"
-    while read -r f; do grep "^$f:" "$RULES/leaks" | head -3 | sed 's/^/        /'; done < "$RULES/new-leaks"
+    while read -r f; do grep "^$f:" "$RULES/leaks" | head -3; done < "$RULES/new-leaks" > "$RULES/new-leak-lines"
+    detail "$RULES/new-leak-lines"
 else
     pass "leaked identifiers — none outside the recorded set"
 fi
@@ -1415,11 +1519,40 @@ else
         nothing "generated-code fit" 0 1
     elif grep -q '^FELL' "$RULES/fit-moved"; then
         fail "generated-code fit (backends emitting code their own language likes less than scripts/check.baseline records: $(grep -c '^FELL' "$RULES/fit-moved"))"
-        awk -F'\t' '$1=="FELL" {printf "        %s fell %d -> %d — name what it hurt and why before you lower the floor\n", $2, $3, $4}' "$RULES/fit-moved"
+        awk -F'\t' '$1=="FELL" {printf "%s fell %d -> %d — name what it hurt and why before you lower the floor\n", $2, $3, $4}' "$RULES/fit-moved" > "$RULES/fit-fell"
+        detail "$RULES/fit-fell"
     else
         pass "generated-code fit — no backend regressed$(grep -q '^ROSE' "$RULES/fit-moved" && printf '; %s rose, which makes the change eligible and never approved — raise the line in scripts/check.baseline once somebody has said what moved' "$(grep -c '^ROSE' "$RULES/fit-moved")")"
-        awk -F'\t' '$1=="ROSE" {printf "        %s rose %d -> %d\n", $2, $3, $4}' "$RULES/fit-moved"
+        awk -F'\t' '$1=="ROSE" {printf "%s rose %d -> %d\n", $2, $3, $4}' "$RULES/fit-moved" > "$RULES/fit-rose"
+        detail "$RULES/fit-rose"
     fi
+fi
+
+# ---- a decision's status is written on it, not on the heading above it --
+# scripts/vision.sh show read an entry's status from the section it sat in, so
+# every entry filed under "Struck out" without a strike marker was reported
+# frozen. The marker decides now; nothing yet stopped the filing error that made
+# the two disagree, and it went unseen for months because it is invisible unless
+# you diff a heading against an entry. Names each one, because the fix is per
+# entry: strike it, or move it back out with scripts/vision.sh move.
+VISION="${VISION_FILE:-$ROOT/VISION.md}"
+awk -v f="$(basename "$VISION")" '
+    /^## / { h = substr($0, 4); sub(/ [-\xe2\x80\x94] .*/, "", h); sub(/,.*/, "", h) }
+    h != "Struck out" { next }
+    /^- ~~/   { print "marked" }
+    /^- \*\*/ { printf "unmarked\t%s:%d %.96s\n", f, NR, substr($0, 3) }
+' "$VISION" > "$RULES/struck-section"
+grep -a '^unmarked	' "$RULES/struck-section" | cut -f2- > "$RULES/struck-unmarked"
+NSS=$(wc -l < "$RULES/struck-section")
+metric struck_section_unmarked "$(wc -l < "$RULES/struck-unmarked")" scripts/check.sh
+note "$NSS entries sit under $(basename "$VISION") § Struck out, $(grep -ac '^marked$' "$RULES/struck-section") of them carrying a ~~ strike marker"
+if [ "$NSS" = 0 ]; then
+    nothing "struck-out filing" 0 1
+elif [ -s "$RULES/struck-unmarked" ]; then
+    fail "struck-out filing ($(wc -l < "$RULES/struck-unmarked") filed as struck and carrying no strike marker — each one is a live decision that scripts/vision.sh once reported frozen)"
+    detail "$RULES/struck-unmarked"
+else
+    pass "struck-out filing — every entry under Struck out carries its strike marker"
 fi
 
 # ---- documents do not grow faster than tested code ---------------------
@@ -1529,7 +1662,16 @@ FINISHED=1
 printf '  \033[1m%d rules ran, %d skipped, %d UNPROVEN, %d failed\033[0m\n' \
     "$NRAN" "$NSKIPPED" "$NUNPROVEN" "${#FAILED[@]}"
 if [ ${#FAILED[@]} -eq 0 ]; then
-    printf '  \033[32mPASS\033[0m — everything agrees\n\n'
+    # "everything agrees" beside a non-zero UNPROVEN count is the sentence this
+    # whole convention exists to refuse: a platform nobody reached did not
+    # agree, it was never asked. The count stays out of the exit code — a Mac
+    # that is not infrastructure cannot make every run red — and out of the
+    # claim.
+    if [ "$NUNPROVEN" -gt 0 ]; then
+        printf '  \033[32mPASS\033[0m — everything that ran agrees; \033[33m%d UNPROVEN\033[0m above was never asked\n\n' "$NUNPROVEN"
+    else
+        printf '  \033[32mPASS\033[0m — everything agrees\n\n'
+    fi
     exit 0
 fi
 printf '    \033[31mFAIL\033[0m  %s\n' "${FAILED[@]}"

@@ -32,6 +32,8 @@ fixture() {
   echo "$f"
 }
 vision() { f=$1; shift; VISION_FILE=$f sh "$root/scripts/vision.sh" "$@" >/dev/null 2>"$tmp/err"; }
+say()    { f=$1; shift; VISION_FILE=$f sh "$root/scripts/vision.sh" "$@" 2>"$tmp/err"; }
+entry()  { sed -n "$(at "$1" "$2"),\$p" "$1" | awk 'NR > 1 && (/^- (\*\*|~~)/ || /^## /) { exit } { print }'; }
 index()  { VISION_FILE=$1 sh "$root/scripts/vision-index.sh" >/dev/null 2>"$tmp/err"; }
 rows()   { grep '^- L[0-9]' "$1"; }
 title()  { rows "$1" | sed -n "${2}p" | sed 's/^- L[0-9]* //; s/^\*\*DEAD\*\* //; s/^`[^`]*` //'; }
@@ -337,6 +339,98 @@ EOF
 index "$f"
 vision "$f" add 'C++ and other (regex) [metacharacters]' "$tmp/new.md"
 yes_ "a section name full of metacharacters matches literally" $? "$(cat "$tmp/err")"
+
+echo "-- show, where the status is read from"
+f=$(fixture <<'EOF'
+## Decisions
+
+- **2026-09-07 · A live decision that stayed put.** Body.
+
+- **2026-09-07 · A decision struck where it was taken.** Body.
+
+## Struck out
+
+- **2026-09-06 · A live decision filed here by mistake.** Body one.
+  Body two.
+
+- ~~**2026-09-05 · A properly struck one.**~~ Body.
+  **Struck 2026-09-05: measured false**
+
+- ~~**2026-09-04 · Struck by hand, long ago, with no annotation.**~~ Body.
+EOF
+)
+index "$f"
+check "a live entry in a live section reports live" "live" \
+  "$(say "$f" show 'A live decision that stayed' | sed -n 1p)"
+check "an unstruck entry under Struck out reports live, not frozen" \
+  "live" "$(say "$f" show 'A live decision filed here' | sed -n 1p)"
+check "the section is reported beside the status, not as it" \
+  "section: Struck out" "$(say "$f" show 'A live decision filed here' | sed -n 2p)"
+say "$f" show 'A live decision filed here' | grep -q '^the heading disagrees:'
+yes_ "and the disagreement between heading and marker is said out loud" $?
+check "a struck entry under Struck out reports its date and reason" \
+  "struck 2026-09-05: measured false" "$(say "$f" show 'A properly struck one' | sed -n 1p)"
+check "a hand-struck entry with no annotation still reports struck" \
+  "struck (undated)" "$(say "$f" show 'Struck by hand, long ago' | sed -n 1p)"
+say "$f" show 'A properly struck one' | grep -q '^the heading disagrees:'
+no_ "a properly filed struck entry raises no disagreement" $?
+l=$(at "$f" '· A decision struck where')
+vision "$f" strike "$l" --by "2026-09-07 the later case" "outgrown"
+check "a strike outside Struck out is read from its marker too" \
+  "struck $today: outgrown" "$(say "$f" show 'A decision struck where' | sed -n 1p)"
+check "and its supersession is reported" "superseded by: 2026-09-07 the later case" \
+  "$(say "$f" show 'A decision struck where' | sed -n 3p)"
+
+echo "-- move"
+f=$(fixture <<'EOF'
+## Decisions
+
+- **2026-09-07 · A live decision that stayed put.** Body.
+
+## Struck out
+
+- **2026-09-06 · A live decision filed here by mistake.** Body one.
+  Body two.
+
+- ~~**2026-09-05 · A properly struck one.**~~ Body.
+EOF
+)
+index "$f"
+cp "$f" "$tmp/m.orig"
+was_n=$(grep -c '^- \(\*\*\|~~\)' "$f"); was_l=$(wc -l < "$f")
+entry "$f" '· A live decision filed here' > "$tmp/m.entry"
+l=$(at "$f" '· A live decision filed here')
+vision "$f" move "$l" Decisions; yes_ "moves an entry into another section" $? "$(cat "$tmp/err")"
+check "the entry count is unchanged" "$was_n" "$(grep -c '^- \(\*\*\|~~\)' "$f")"
+[ "$(wc -l < "$f")" -ge "$was_l" ]; yes_ "the file did not shrink" $?
+entry "$f" '· A live decision filed here' > "$tmp/m.moved"
+cmp -s "$tmp/m.entry" "$tmp/m.moved"; yes_ "the moved entry is byte-identical" $?
+check "it lands first in the section it moved to" \
+  "- **2026-09-06 · A live decision filed here by mistake.** Body one." \
+  "$(sed -n "$(($(at "$f" '^## Decisions$') + 2))p" "$f")"
+awk '/^## Struck out/ { o = 1; next } o && /^- \*\*/ { n++ } END { exit !n }' "$f"
+no_ "it is gone from the section it left" $?
+survives "$tmp/m.orig" "$f"; yes_ "move removed no line of prose" $?
+anchors_land "$f"; yes_ "every anchor still lands on a lead line" $?
+check "and it now reports the section it was moved to" "section: Decisions" \
+  "$(say "$f" show 'A live decision filed here' | sed -n 2p)"
+
+l=$(at "$f" '· A properly struck one')
+vision "$f" move "$l" Decisions; yes_ "a struck entry moves too" $? "$(cat "$tmp/err")"
+check "and keeps its strike marker" "struck (undated)" \
+  "$(say "$f" show 'A properly struck one' | sed -n 1p)"
+
+cp "$f" "$tmp/m.guard"
+l=$(at "$f" '· A live decision filed here')
+vision "$f" move "$((l + 1))" 'Struck out'; no_ "refuses to move a body line" $?
+vision "$f" move "$l" Nowhere; no_ "refuses a section that does not exist" $?
+vision "$f" move "$l" Decisions; no_ "refuses the section the entry is already in" $?
+vision "$f" move "$l" Contents; no_ "refuses to file an entry into the generated contents" $?
+vision "$f" move abc Decisions; no_ "refuses a line number that is not a number" $?
+vision "$f" move 99999 'Struck out'; no_ "refuses a line number past the end" $?
+vision "$f" move 0 'Struck out'; no_ "refuses line zero" $?
+vision "$f" move "$l"; no_ "refuses a move with no section" $?
+cmp -s "$tmp/m.guard" "$f"; yes_ "none of the eight refusals changed a byte" $?
 
 echo "-- find and dead"
 f=$(fixture <<'EOF'

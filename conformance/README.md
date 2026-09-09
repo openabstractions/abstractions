@@ -2,7 +2,7 @@
 
 Judge your implementation of the abstraction contracts against the rules on the
 contract pages. You need this directory, a POSIX shell, your own program, and
-the contract pages themselves — three files, fetched by the commands below,
+the contract pages themselves — four files, fetched by the commands below,
 which live in the layer repositories rather than here. You do not need our
 source tree, our build, or Go. The wire scenarios also want a Python 3 to run
 `fixture.py`; without one they report unreachable and say so.
@@ -51,7 +51,16 @@ that do not apply to it. `run.sh` prints the count.
 What a scenario needs is read from the operations in it, not only from the
 `# requires:` line it declares — that line is a floor. A scenario that fetches
 over HTTP needs `wire`, and one that submits a record and takes a lease needs
-`store`, whether or not it says so.
+`store`, whether or not it says so. `capabilities.list` beside `run.sh` is the
+closed set that places every operation under a capability; an operation it
+places under none is unreachable by name, never guessed at and never a pass.
+[DRIVER.md](DRIVER.md) is where a layer joining the suite adds its line.
+
+The scenarios are grouped by layer, a directory each: `scenarios/` holds the
+download and job rules, `identity/` the identity ones. `run.sh` reads one
+directory per run, so ask for the layer you came for:
+
+    sh run.sh --scenarios identity -- ./my-driver
 
 ## The contract pages
 
@@ -61,10 +70,11 @@ steps and judges no rule. Fetch them into `contracts/`:
 
     mkdir -p contracts
     curl -L -o contracts/download.md https://raw.githubusercontent.com/openabstractions/abstraction-download/main/CONTRACT.md
+    curl -L -o contracts/identity.md https://raw.githubusercontent.com/openabstractions/abstraction-identity/main/CONTRACT.md
     curl -L -o contracts/job.md      https://raw.githubusercontent.com/openabstractions/abstraction-job/main/CONTRACT.md
     curl -L -o contracts/watch.md    https://raw.githubusercontent.com/openabstractions/abstraction-watch/main/README.md
 
-`contracts.list` holds the same three lines in a form the runner reads, so you
+`contracts.list` holds the same four lines in a form the runner reads, so you
 do not have to work out which page a missing tag came from: a page the scenarios
 you selected cite and the run does not have is named, with the command that
 fetches it, and the run exits 2. A tag an expectation cites and no page you
@@ -98,9 +108,14 @@ honest answer.
 
     sh selftest.sh
 
-Three toy drivers, one that declares nothing, one that answers `ok` to
-everything, and one that admits it has no HTTP. The runner must call them not
-set up, failed, and incomplete. If it calls any of them green, do not trust it.
+Five toy drivers. One declares nothing, one answers `ok` to everything, and one
+admits it has no HTTP: the runner must call them not set up, failed, and
+incomplete. A fourth answers real bodies, and the runner must refuse a superset
+of one, a stray field, a negation and a reordering, and must report an operation
+no capability places as out of reach rather than running it. A fifth declares
+`identity` alone, and must be judged on identity alone and told by name what it
+lacks for the scenario it cannot run. If the runner calls any of these green, do
+not trust it.
 
 ## What this proves, and what it does not
 

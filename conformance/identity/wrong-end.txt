@@ -1,0 +1,17 @@
+# requires: identity
+#
+# The two mistakes that answer rather than fail. On the client end of a pipe
+# every question below has an answer and every answer is about the service
+# itself; SO_PEERCRED on a listening socket returns the credentials captured at
+# listen(2), also the service's own. A service that identified itself and
+# believed it had identified a caller would authorise everything, so both are
+# refused by name rather than answered weakly.
+serve S
+speak S self
+identify S self-listening listening
+identify S self-client client
+identify S peer
+
+# expect 3: no-answer not-server-end [ID-E1]
+# expect 4: no-answer not-server-end [ID-E1]
+# expect 5: ok ... [ID-E5]

@@ -75,27 +75,61 @@ selected() {
 # it: every scenario declaring `transfer` also submits records and takes leases,
 # which is `store`. A driver handed a scenario it never claimed fails a rule
 # instead of being told the scenario is out of its reach, so the operations
-# decide and the declared line is unioned in.
-needs() {
-    { sed -n 's/^# requires: *//p' "$1" | head -1 | tr ' ' '\n'
-      awk '
-      /^#/ || /^ *$/ { next }
-      { seen[$1] = 1; if ($0 ~ /src=http:/) http = 1 }
-      END {
-          for (op in seen)
-              print op ~ /^(drop|sweep)$/            ? "wanted"   :
-                    op ~ /^(run|runshared|stage)$/   ? "transfer" :
-                    op ~ /^(credential|refuse|allow)$/ ? "wire"   : "store"
-          if (http) print "wire"
-      }' "$1"
-    } | grep . | sort -u | tr '\n' ' ' | sed 's/ $//'
+# decide, by the table in capabilities.list, and the declared line is unioned in.
+# One awk over the directory: a name and its needs per line on stdout, an
+# operation the table does not place on stderr.
+classify() {
+    awk -v LIST="$CAPLIST" '
+    BEGIN {
+        while ((getline line < LIST) > 0) {
+            if (line ~ /^[ \t]*(>|$)/) continue
+            n = split(line, f, /[ \t]+/)
+            for (i = 2; i <= n; i++)
+                if (index(f[i], "=")) key[f[i]] = f[1]; else op[f[i]] = f[1]
+        }
+    }
+    function add(c) { if (c != "" && !(c in have)) { have[c] = 1; needs = needs " " c } }
+    function flush() { if (name != "") print name "\t" substr(needs, 2) }
+    FNR == 1 {
+        flush()
+        name = FILENAME; sub(/.*\//, "", name); sub(/\.txt$/, "", name)
+        needs = ""; delete have
+    }
+    /^# *requires:/ { s = $0; sub(/^# *requires: */, "", s); n = split(s, f, /[ \t]+/); for (i = 1; i <= n; i++) add(f[i]); next }
+    /^#/ || /^[ \t]*$/ { next }
+    {
+        if ($1 in op) add(op[$1]); else print name "\t" $1 > "/dev/stderr"
+        for (i = 2; i <= NF; i++) for (k in key) if (index($i, k) == 1) add(key[k])
+    }
+    END { flush() }
+    ' "$@"
 }
+
+# A scenario's name comes out of its path here and everywhere below, rather
+# than out of basename. Spawning a process is expensive on Windows and this
+# suite opens with three passes over the whole directory, so the runner was
+# spending longer working out names than running drivers.
+scenario_name() { n=${1##*/}; n=${n%.txt}; }
+
+CAPLIST=${CAPABILITIES_LIST:-$HERE/capabilities.list}
+[ -f "$CAPLIST" ] || { echo "run.sh: no capabilities.list at $CAPLIST — nothing says what a scenario needs" >&2; exit 3; }
+NEEDS="$WORK/needs"
+: > "$NEEDS"; : > "$WORK/unplaced"
+have=no
+for f in "$SCENARIOS"/*.txt; do
+    [ -f "$f" ] && { have=yes; break; }
+done
+[ "$have" = no ] || classify "$SCENARIOS"/*.txt > "$NEEDS" 2> "$WORK/unplaced"
+
+needs_of() { awk -F'\t' -v n="$1" '$1 == n { print $2; exit }' "$NEEDS"; }
+unplaced_in() { awk -F'\t' -v n="$1" '$1 == n && !s[$2]++ { printf " `%s`", $2 }' "$WORK/unplaced"; }
 
 wanted_wire=no
 for f in "$SCENARIOS"/*.txt; do
     [ -f "$f" ] || continue
-    selected "$(basename "$f" .txt)" || continue
-    case " $(needs "$f") " in
+    scenario_name "$f"
+    selected "$n" || continue
+    case " $(needs_of "$n") " in
         *" wire "*) wanted_wire=yes ;;
     esac
 done
@@ -205,7 +239,8 @@ UNDECIDED=""
 # names rules they do not test, and reading the whole file reports a rule as
 # covered because somebody mentioned it in a comment.
 cited_rules() {
-    awk -v name="$(basename "$1" .txt)" '
+    awk '
+    FNR == 1 { name = FILENAME; sub(/.*\//, "", name); sub(/\.txt$/, "", name) }
     /^#[ \t]*expect[ \t]+[0-9]+[ \t]*:/ {
         step = $0
         sub(/^#[ \t]*expect[ \t]+/, "", step)
@@ -217,7 +252,7 @@ cited_rules() {
             line = substr(line, 1, RSTART - 1)
             sub(/[ \t]+$/, "", line)
         }
-    }' "$1"
+    }' "$@"
 }
 
 # Not a tab. A tab is IFS whitespace, so `IFS=<tab> read` folds two into one, and
@@ -233,11 +268,11 @@ judge() {
         delete out
         sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s)
         if (s == "") return 0
-        if (s !~ "^" FIELD) return split(s, out, /[ \t]+/)
-        gsub(" " FIELD, "\034&", s)
+        if (s !~ "^" KEY) return split(s, out, /[ \t]+/)
+        gsub(" " KEY, "\034&", s)
         return split(s, out, "\034 ")
     }
-    function holds(want, got,   claim, body, wn, gn, i, j, open, w, g, seen) {
+    function holds(want, got,   claim, body, wn, gn, i, j, open, w, g) {
         sub(/[ \t]+$/, "", want); sub(/[ \t]+$/, "", got)
         if (want == "") return 1
         if (got == "") return 0
@@ -248,15 +283,15 @@ judge() {
         if (open) sub(/([ \t]|^)\.\.\.$/, "", body)
         wn = toks(body, w)
         gn = toks(tail(got), g)
+        j = 1
         for (i = 1; i <= wn; i++) {
-            for (j = 1; j <= gn; j++) if (!(j in seen) && g[j] == w[i]) break
-            if (j > gn) return 0
-            seen[j] = 1
+            if (open) while (j <= gn && g[j] != w[i]) j++
+            if (j > gn || g[j] != w[i]) return 0
+            j++
         }
-        if (!open) for (j = 1; j <= gn; j++) if (!(j in seen)) return 0
-        return 1
+        return open || j > gn
     }
-    BEGIN { FIELD = "(state|epoch|held|recall|want|done|err|cp|content|crit|awake)=" }
+    BEGIN { KEY = "[A-Za-z_][A-Za-z0-9_.-]*=" }
     NR == FNR { answer[FNR] = $0; next }
     {
         want = substr($0, index($0, " ") + 1)
@@ -276,16 +311,20 @@ judge() {
 
 run_one() {
     f=$1
-    name=$(basename "$f" .txt)
-    need=$(needs "$f")
-    [ -n "$need" ] || need=store
+    scenario_name "$f"; name=$n
+    need=$(needs_of "$name")
 
     missing=""
     for c in $need; do
         case " $CAPS " in *" $c "*) ;; *) missing="$missing $c" ;; esac
     done
-    if [ "$missing" != "" ]; then
+    stray=$(unplaced_in "$name")
+    if [ -n "$stray" ]; then
+        why="capabilities.list places$stray under no capability, so nothing says which driver may run this"
+    elif [ "$missing" != "" ]; then
         why="the driver does not declare$missing"
+    fi
+    if [ -n "$stray" ] || [ "$missing" != "" ]; then
         echo "  ----  $name: UNREACHABLE — $why"
         cited_rules "$f" | while read -r t rest; do printf '%s\t%s\n' "$t" "$why"; done >> "$UNREACH"
         n_unreach=$((n_unreach + 1))
@@ -345,19 +384,33 @@ run_one() {
 : > "$WORK/undecided"
 SELWHERE="$WORK/tag.selected"
 : > "$SELWHERE"
+# One awk over the whole directory, not two per file. What a selected scenario
+# cites is the same set filtered by name, which costs one more awk rather than
+# forty-six. The glob is passed through unquoted on purpose: pathname expansion
+# is not field-split, so a directory whose path holds a space still arrives as
+# one argument per file.
+have=no
 for f in "$SCENARIOS"/*.txt; do
-    [ -f "$f" ] || continue
-    cited_rules "$f" >> "$WHERE"
-    selected "$(basename "$f" .txt)" && cited_rules "$f" >> "$SELWHERE"
+    [ -f "$f" ] && { have=yes; break; }
 done
+[ "$have" = no ] || cited_rules "$SCENARIOS"/*.txt > "$WHERE"
 sort -u -o "$WHERE" "$WHERE"
+if [ -z "$ONLY" ]; then
+    cp "$WHERE" "$SELWHERE"
+else
+    for s in $ONLY; do printf '%s\n' "$s"; done | sort -u > "$WORK/only"
+    awk -F'\t' 'NR == FNR { sel[$0] = 1; next }
+                { name = $2; sub(/ step .*/, "", name); if (name in sel) print }' \
+        "$WORK/only" "$WHERE" > "$SELWHERE"
+fi
 sort -u -o "$SELWHERE" "$SELWHERE"
 cut -f1 "$WHERE" | sort -u > "$CITED"
 
 any=0
 for f in "$SCENARIOS"/*.txt; do
     [ -f "$f" ] || continue
-    selected "$(basename "$f" .txt)" || continue
+    scenario_name "$f"
+    selected "$n" || continue
     any=1
     run_one "$f"
 done

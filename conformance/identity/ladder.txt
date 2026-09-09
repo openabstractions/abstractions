@@ -1,0 +1,33 @@
+# requires: identity
+#
+# The ladder and the attribute, with no platform in the answer.
+#
+# `bench` builds an attribute at a stated proof and nothing else. It exists so
+# that AtLeast can be judged on every machine rather than only on the one whose
+# peer happens to land at the interesting level - the same reason the download
+# driver has `plant`. Nothing here opens a socket.
+#
+# Step 1 answers with one token rather than nine words on purpose. The runner
+# compares an expectation's tokens as a multiset, so nine words in the wrong
+# order still hold, and a rule about an ORDER has to be spelled as one token or
+# it is not falsifiable. Nine words here were shown not to notice the ladder
+# being reordered; one token does.
+ladder
+bench B kernel
+value B none
+value B pid
+value B kernel
+value B signed
+bench N none
+value N none
+value N pid
+bench C claimed
+
+# expect 1: ok none<claimed<invalid<unsigned<unmet<pid<bound<kernel<signed [ID-P1]
+# expect 3: ok proof=kernel [ID-P3]
+# expect 4: ok proof=kernel
+# expect 5: ok proof=kernel
+# expect 6: unproven want=signed got=kernel [ID-P3]
+# expect 8: unproven want=none got=none [ID-P4]
+# expect 9: unproven want=pid got=none [ID-P4]
+# expect 10: invalid [ID-P2]

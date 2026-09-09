@@ -1,0 +1,35 @@
+# requires: identity
+#
+# A peer whose code signature the operating system checked and REFUSED. The
+# service asks for a code identity at the weakest level above nothing.
+#
+# Step 6 is the assertion. It was RED on Windows and on macOS until the ladder
+# gained three verdict rungs below `pid` - invalid, unsigned, unmet - so that a
+# signature the platform examined and did not accept compares as weaker than
+# any policy that implies verification, by Check's ordinary AtLeast comparison
+# and without reading Code.Trusted at all. See CONTRACT.md, "A verdict is not
+# a claim".
+#
+# Step 4 was undecided while two candidate fixes disagreed about what Code
+# should then report. Both make step 6 green; the one built [ID-C6] leaves
+# Code at its verdict rung rather than withholding it at none, so the failure
+# stays readable. The API question is settled; the value still is not one
+# token across platforms - unsigned on Windows, unmet on macOS, none on Linux
+# where Code never verifies at all - so step 4 stays undecided here, now for
+# that reason instead.
+#
+# On Linux the scenario is green for a reason that proves nothing here: Code is
+# permanently none on that platform, so step 6 refuses whatever Check does with
+# Trusted. That was already true and is unrelated to the fix above.
+serve S
+speak S untrusted
+identify S p
+proof p code
+trusted p
+check p code=pid
+
+# expect 3: ok ... [ID-E5]
+# expect 5: ok trusted=no [ID-C5]
+# expect 6: unproven code [ID-C4]
+
+# undecided 4: the shape is settled [ID-C6] but the value is not one token across platforms - unsigned, unmet or none depending which

@@ -1,0 +1,22 @@
+# requires: identity
+#
+# What a service may know before any connection exists. Every expectation here
+# is about the running platform rather than about a peer, so a driver answers
+# all of it without opening a socket - which is the whole point of Ceiling: a
+# service whose permission model rests on a proof this operating system cannot
+# produce should fail to start, not discover it once per connection.
+#
+# Only the answers that are the same on all three platforms are asserted. The
+# per-platform ceilings are a table in CONTRACT.md and no portable scenario can
+# reach them.
+ceiling
+caneve
+caneve code=signed
+caneve user=kernel
+caneve user=signed
+
+# expect 1: ok user=kernel ... [ID-L1] [ID-L3]
+# expect 2: ok [ID-C2]
+# expect 3: unproven code [ID-L4]
+# expect 4: ok [ID-L2]
+# expect 5: unproven user [ID-L2]

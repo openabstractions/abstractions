@@ -1,0 +1,20 @@
+# requires: identity
+#
+# Check names every attribute that fell short, not the first one. A service that
+# learns about its second impossible requirement only after fixing the first
+# spends a release cycle discovering its permission model one attribute at a
+# time, and the answer is the same either way: this platform will not do it.
+#
+# `signed` is out of reach for every attribute on every platform this package
+# speaks to, which is what makes step 4 portable. Step 5 is the other half: an
+# attribute the policy does not name is not judged, however weak it is.
+serve S
+speak S self
+identify S p
+check p user=signed process=signed path=signed package=signed code=signed
+check p user=kernel
+check p
+
+# expect 4: unproven user process path package code [ID-C1]
+# expect 5: ok [ID-C3]
+# expect 6: ok [ID-C2]

@@ -1,0 +1,4 @@
+> The toy vocabulary the selftest scenarios use. `say` is an operation no layer
+> has, kept here so the real list never learns it.
+
+store     orphans state say

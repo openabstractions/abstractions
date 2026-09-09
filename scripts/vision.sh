@@ -5,6 +5,7 @@
 #   vision.sh add <section> <file>...        insert one or more entries, newest first
 #   vision.sh strike <line> [--by <id>] <reason>
 #                                             strike an entry in place, never delete it
+#   vision.sh move <line> <section>          refile one entry, whole and unchanged
 #   vision.sh section <name>                 add a new top-level section, once
 #   vision.sh show [<date>] "<fragment>"     print one whole entry, with its status
 #   vision.sh dead                           list every struck entry
@@ -13,6 +14,11 @@
 # Set VISION_FILE to point it at a fixture instead of the real ledger.
 # Every command that writes regenerates the contents block and refuses to
 # produce a file with fewer entries or fewer lines than it was given.
+#
+# A strike marker on the entry says whether it is live or struck. The heading it
+# sits under is reported beside that as a separate fact, never as the status: a
+# live decision filed under "Struck out" read as frozen, and was retired by the
+# instrument whose job was to stop that.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -37,7 +43,7 @@ install_or_die() {
   VISION_FILE=$src sh scripts/vision-index.sh
 }
 
-usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 
 section_of() {
   awk -v s="$1" '
@@ -147,6 +153,35 @@ strike)
   install_or_die "$work/out" 2
   echo "struck line $line"
   ;;
+move)
+  [ $# -eq 3 ] || usage
+  line=$2; section=$3
+  case "$line" in *[!0-9]* | "") echo "not a line number: $line" >&2; exit 1 ;; esac
+  [ "$line" -ge 1 ] && [ "$line" -le "$(wc -l < "$src")" ] || { echo "line $line is outside the file" >&2; exit 1; }
+  case "$(sed -n "${line}p" "$src")" in
+    "- **"* | "- ~~"*) ;;
+    *) echo "line $line is not the first line of an entry" >&2; exit 1 ;;
+  esac
+  bounds=$(entry_bounds "$line")
+  [ -n "$bounds" ] || { echo "cannot find where the entry ends" >&2; exit 1; }
+  end=${bounds#* }
+  [ "$(section_of "$line")" != "$section" ] || { echo "already in section: $section" >&2; exit 1; }
+  work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
+  sed -n "${line},${end}p" "$src" |
+    awk 'NF { last = NR } { l[NR] = $0 } END { for (i = 1; i <= last; i++) print l[i] }' > "$work/entry"
+  sed "${line},${end}d" "$src" > "$work/cut"
+  # A section name also appears as a heading inside the generated contents, and
+  # an entry parked in there is an entry nothing can find again.
+  at=$(awk -v s="## $section" '
+    /^<!-- contents:begin/ { b = 1 }
+    /^<!-- contents:end/ { b = 0; next }
+    !b && $0 == s { print NR; exit }
+  ' "$work/cut")
+  [ -n "$at" ] || { echo "no section: $section" >&2; exit 1; }
+  { head -n "$at" "$work/cut"; echo; cat "$work/entry"; tail -n +$((at + 1)) "$work/cut"; } > "$work/out"
+  install_or_die "$work/out" $((end - line + 1))
+  echo "moved line $line to $section"
+  ;;
 dead)
   grep -n '^- ~~' "$src" | cut -c1-160
   ;;
@@ -181,9 +216,11 @@ show)
   end=${bounds#* }
   section=$(section_of "$start")
   body=$(sed -n "${start},${end}p" "$src")
-  if [ "$section" = "Struck out" ]; then
-    status="frozen"
-    superseded=""
+  superseded=""
+  struck=0
+  case "$(printf '%s\n' "$body" | sed -n '1p')" in "- ~~"*) struck=1 ;; esac
+  if [ "$struck" = 0 ]; then
+    status="live"
   else
     strikeline=$(printf '%s\n' "$body" | grep -m1 '\*\*Struck [0-9-]*: ' || true)
     if [ -n "$strikeline" ]; then
@@ -192,15 +229,13 @@ show)
       status="struck $when: $reason"
       superseded=$(printf '%s\n' "$strikeline" | sed -n 's/.*superseded by: //p')
     else
-      case "$(printf '%s\n' "$body" | sed -n '1p')" in
-        "- ~~"*) status="struck (undated)" ;;
-        *) status="live" ;;
-      esac
-      superseded=""
+      status="struck (undated)"
     fi
   fi
   echo "$status"
   echo "section: $section"
+  [ "$struck" = 1 ] || [ "$section" != "Struck out" ] ||
+    echo "the heading disagrees: it is filed under Struck out and carries no strike marker, so it is live"
   [ -z "$superseded" ] || echo "superseded by: $superseded"
   echo
   printf '%s\n' "$body"

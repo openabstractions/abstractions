@@ -1,0 +1,26 @@
+# requires: identity
+#
+# Two connections from the same program, carrying two different lies about who
+# is calling, and one identity. This is the layer's founding assertion: the
+# shipped tool it was written against takes an `owner` string out of the message
+# and never checks it, so the first thing a conforming implementation has to
+# prove is that no such string can reach the answer.
+#
+# `same` compares user, path, package and code, value and proof. It does not
+# compare the process: two connections are two processes and the pid differs by
+# construction, which is a fact about the connection rather than a claim.
+serve S
+speak S self say=i-am-logviewer
+identify S alpha
+speak S self say=lsass.exe
+identify S beta
+same alpha beta
+traces alpha
+traces beta
+claimed alpha
+
+# expect 3: ok ... [ID-E5]
+# expect 6: ok [ID-N1]
+# expect 7: ok [ID-N1]
+# expect 8: ok [ID-N1]
+# expect 9: ok - [ID-P2] [ID-N2]

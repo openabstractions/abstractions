@@ -1,0 +1,8 @@
+# requires: identity
+#
+# One scenario from a second layer. A driver that declares only `identity` is
+# judged on this and told the store scenario beside it is out of reach - not
+# that it lacks a capability nobody asked it for.
+ladder
+
+# expect 1: ok none claimed pid bound kernel signed

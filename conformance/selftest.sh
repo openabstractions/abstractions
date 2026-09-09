@@ -5,6 +5,7 @@ HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 RUN="$HERE/run.sh"
 CORPUS="$HERE/scenarios"
 [ -d "$CORPUS" ] || CORPUS="$HERE/../download/testdata/scenarios"
+TOY="$HERE/selftest/capabilities.list"
 bad=0
 
 check() {
@@ -20,14 +21,25 @@ check() {
 }
 
 counts() {
-    refused=$1; kept=$2; label=$3; shift 3
+    refused=$1; kept=$2; unreached=$3; label=$4; shift 4
     out=$("$@" 2>&1)
     r=$(printf '%s\n' "$out" | grep -c '^  FAIL  ')
     k=$(printf '%s\n' "$out" | grep -c '^  PASS  ')
-    if [ "$r" = "$refused" ] && [ "$k" = "$kept" ]; then
-        echo "  ok    $label ($r refused, $k held)"
+    u=$(printf '%s\n' "$out" | grep -c '^  ----  ')
+    if [ "$r" = "$refused" ] && [ "$k" = "$kept" ] && [ "$u" = "$unreached" ]; then
+        echo "  ok    $label ($r refused, $k held, $u out of reach)"
     else
-        echo "  BAD   $label: expected $refused refused and $kept held, got $r and $k"
+        echo "  BAD   $label: expected $refused refused, $kept held, $unreached out of reach; got $r, $k, $u"
+        bad=1
+    fi
+}
+
+says() {
+    want=$1; label=$2; shift 2
+    if "$@" 2>&1 | grep -q -- "$want"; then
+        echo "  ok    $label"
+    else
+        echo "  BAD   $label: the run never said \"$want\""
         bad=1
     fi
 }
@@ -39,8 +51,14 @@ check 1 "a driver that answers ok to everything fails" \
     sh "$RUN" --scenarios "$CORPUS" --only already-here -- sh "$HERE/selftest/liar.sh"
 check 2 "a rule out of reach is incomplete, never a pass" \
     sh "$RUN" --scenarios "$CORPUS" --only wire-plain --no-fixture -- sh "$HERE/selftest/narrow.sh"
-counts 3 1 "a superset, a stray field and a negation are all refused" \
+counts 4 1 0 "a superset, a stray field, a negation and a reordering are all refused" \
+    env CAPABILITIES_LIST="$TOY" sh "$RUN" --scenarios "$HERE/selftest" -- sh "$HERE/selftest/generous.sh"
+counts 0 0 2 "an operation no capability places is out of reach, never a pass" \
     sh "$RUN" --scenarios "$HERE/selftest" -- sh "$HERE/selftest/generous.sh"
+counts 0 1 1 "a driver declaring only identity is judged on identity alone" \
+    sh "$RUN" --scenarios "$HERE/selftest/layers" -- sh "$HERE/selftest/identity.sh"
+says "orphans: UNREACHABLE — the driver does not declare store" "and the scenario it cannot run names what it lacks" \
+    sh "$RUN" --scenarios "$HERE/selftest/layers" -- sh "$HERE/selftest/identity.sh"
 check 2 "a rule tag with no contract page is incomplete, never a pass" \
     sh "$RUN" --scenarios "$HERE/selftest/tagged" --contracts "$HERE/selftest/absent" \
         -- sh "$HERE/selftest/generous.sh"
