@@ -1,0 +1,12 @@
+> Which contract page declares which rule tags, and where to fetch each one.
+> run.sh reads this to name the pages a run needed and did not have.
+>
+>   <tag prefix>  <file under the contracts directory>  <where it comes from>
+>
+> The pages are not copied into this directory on purpose: a normative page
+> living in two public repositories is a reader who cannot tell which one binds
+> them. This file is the pointer, and a pointer is not a second copy.
+
+DL     download.md  https://raw.githubusercontent.com/openabstractions/abstraction-download/main/CONTRACT.md
+JOB    job.md       https://raw.githubusercontent.com/openabstractions/abstraction-job/main/CONTRACT.md
+WATCH  watch.md     https://raw.githubusercontent.com/openabstractions/abstraction-watch/main/README.md

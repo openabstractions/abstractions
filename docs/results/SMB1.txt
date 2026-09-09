@@ -1,0 +1,45 @@
+# SMB1  written by hand on 2026-09-06 from the probe's own results file; the pinned test at the end was run by hand the same day
+# measures  a Windows 11 SMB client polling a file that a Samba server rewrites through its local filesystem, by temp-and-rename
+# state     PC: Windows 11, plan Balanced, NTFS; NAS as NAS1 (DSM 6.2.4, Samba). 1 s poll. Power source not recorded
+# re-run    the probe needs a share whose server rewrites files locally (a NAS running jobd); the pin runs anywhere: `cd job/go && go test -count=1 -v -run TestAnotherProcessesWriteIsSeenWithinOnePoll .`
+# scope     the Windows redirector against Samba on DSM 6. Not measured: NFS, macOS SMB, Windows Server, a poll slower than 1 s
+
+Seen first in a supervisor: a record the NAS marked complete at 13:23:57 read
+as running by a PC jobd polling every 10 s until 13:26:31 — 154 s — while a
+fresh process over the same UNC path read it complete at 13:26:16.
+
+run1  1 s poll, one file per open method, the far side rewriting it
+  plain / no-buffering / exclusive-share / list-then-open / stat-then-open:
+      STILL STALE after 5 min 57 s
+  a fresh `cmd /c type` every 5 s: the old value the whole time
+      — so not per process; the cache is the redirector's, shared by every process on the client
+
+run3  1 s poll, eight open flavours, the far side flipping v1->v2 then v2->v3
+
+  open each poll as ...                                  saw the change
+  ----------------------------------------------------  --------------
+  os.ReadFile (read-only)                               never (whole 9 min)
+  constant O_RDWR                                       never
+  delete-access / backup-intent / POSIX / write-through never
+  no-buffering                                          never
+  list the directory then open read-only               never
+  ALTERNATE O_RDWR / read-only on consecutive opens     within one poll, twice
+
+The lever is not the access mode. Consecutive opens must differ, so the cached
+server handle cannot be reused and the redirector issues a fresh CREATE. The
+154 s is this effect ending only when the poll happened to idle the handle out;
+at a 1 s poll it does not end.
+
+Correctness never depended on it: a claim is an O_EXCL create, not a read.
+Progress reporting and the already-here scan were what read stale.
+
+Fix: job/go/read_windows.go alternates the open mode of successive record
+reads; a no-op elsewhere. Pinned on local disk, one process writing and
+another reading:
+
+  === RUN   TestAnotherProcessesWriteIsSeenWithinOnePoll
+      crossprocess_test.go:68: seen 8ms after the other process exited
+  --- PASS: TestAnotherProcessesWriteIsSeenWithinOnePoll (0.05s)
+
+The pin proves freshness across processes on one disk. It has not been run
+against the share; the probe has, and is not yet published.

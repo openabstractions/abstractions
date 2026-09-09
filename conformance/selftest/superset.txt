@@ -1,0 +1,13 @@
+# requires: store
+#
+# The three answers a substring comparison used to accept. The driver returns a
+# longer orphan list than the scenario names, a record where the scenario named
+# only the verdict, and a refusal whose word sits inside a phrase that denies
+# it. Each of these is a certificate this suite must not issue.
+orphans
+state A
+say conflict
+
+# expect 1: ok A
+# expect 2: ok
+# expect 3: conflict

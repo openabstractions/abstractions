@@ -1,0 +1,25 @@
+# Every generated artefact in this tree, and the definition that makes it.
+#
+#   <definition>   <output root>   <backend> [backend ...] [-only=<surface,...>]
+#
+# Backends: go python cpp javascript rust docs. Omit the list for all of them.
+#
+# A surface is one declaration the definition makes — a struct, an enum, a
+# constant, the vocabulary, the protocol. `-only=` names every surface the
+# artefact carries, so an adopter of the envelope alone does not receive the
+# record codec. The list is the whole contents and not a set of roots: the
+# generator refuses one that does not close, and its refusal names both what is
+# missing and what needed it. Omit the flag for the whole definition.
+#
+# This is a declaration and not an allow-list. An allow-list removes an
+# obligation — a line is added and a check stops firing. Every line here adds
+# one: scripts/check.sh regenerates what the line names and refuses any
+# difference, refuses a line whose definition is gone, and refuses a generated
+# file committed under an output root no line declares. Leaving a line out
+# hides nothing; it turns the artefact red instead.
+#
+# A definition that feeds no committed artefact needs no line. Nothing can be
+# stale about a file that does not exist.
+
+job/job.thrift	site	docs
+job/job.thrift	job	go	-only=Step,Progress,Recall,Lease,Delegation,Intent,Envelope,Record,Request,Response,Verdict,Content,Store

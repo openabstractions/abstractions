@@ -1,0 +1,12 @@
+# requires: store
+#
+# The same three answers, asserted as they are. A list named whole holds, and
+# `...` is how a scenario says it is naming part of an answer and no more. If
+# this one goes red the comparison refuses everything, which proves nothing.
+orphans
+state A
+say conflict
+
+# expect 1: ok A B C
+# expect 2: ok ...
+# expect 3: not ...

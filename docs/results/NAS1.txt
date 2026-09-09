@@ -1,0 +1,33 @@
+# NAS1  written by hand on 2026-09-06 from a run that day; nothing in it was produced by a script
+# measures  download/go/cmd/jobd built from this tree that day (sha256 b9f68b9b…), run by addon-synology's own start-stop-status
+# state     PC: Windows 11, the store reached over SMB; power source not recorded. NAS: Synology DS218+, DSM 6.2.4, kernel 4.4, x86_64, store on its local volume
+# re-run    needs a NAS on the LAN: build addon-synology (spk/build.sh), start jobd on it, name its share on the PC (ABSTRACTION_NAS_STORE), run dl, kill dl and the PC's jobd
+# scope     DSM 6.2.4 with the package scripts run by hand as admin. Package Center install UNPROVEN; DSM 7 UNPROVEN; a real sleep UNPROVEN — the PC's absence was two SIGKILLs
+
+The package was staged on the NAS and its start-stop-status run by hand as
+admin — what Package Center runs, minus root and the package user.
+
+NAS  13:15     start-stop-status start -> rc 0; status -> rc 0
+               jobd: watching <store> (delegates to: here)
+
+PC   13:18:44  dl https://huggingface.co/…/smollm2-360m-instruct-q8_0.gguf -o out --digest sha256:48ab…
+               fetched by nas
+               running     nas
+PC   13:19:05  dl killed (SIGKILL, 20 s in)
+PC   13:19:19  the PC's jobd killed too. Nothing of ours runs on the PC.
+
+NAS  13:19:17  record: running, done 95 MB, owner jobd@<nas>:7936
+NAS  13:20:07  reconciled=0 delegated=0 adopted=1 delivered=1
+               record: complete, 386404992 bytes, files/smollm2-360m-instruct-q8_0.gguf
+               sha256sum on the NAS: 48ab3034…7750201  (matches Hugging Face's LFS oid)
+
+PC   13:22:41  jobd run restarted -> first sweep: delivered=1
+               out/smollm2-360m-instruct-q8_0.gguf 386404992 bytes, sha256 48ab3034…7750201
+               PC record: complete, delegation.system nas
+
+What the times say: 48 s from the last process of ours dying on the PC
+(13:19:19) to the NAS finishing and verifying (13:20:07). The PC came back at
+13:22:41 and the first sweep delivered; how long the copy from the share took
+was not recorded. The two clocks were not compared. Delivery goes through the
+PC's jobd from the share, so the claim is that no PC process fetched a byte
+from the network, not that the bytes never passed through one.

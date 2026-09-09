@@ -1,0 +1,18 @@
+cross-language download conformance
+  store: /tmp/tmp.Db33OZYJEx
+
+payload: 4194304 bytes  sha256:db887567b3d666c6d027a4883130c69b90825ed47874827f2d84e9593fd6abe7
+server:  http://127.0.0.1:58412/payload.bin
+
+building the Go helper...
+
+Go starts, Python finishes
+        go stopped with 1081344 of 4194304 bytes proven
+  PASS  go->python: go started it, python finished it, digest matches
+
+Python starts, Go finishes
+        python stopped with 1048576 of 4194304 bytes proven
+  PASS  python->go: python started it, go finished it, digest matches
+
+----------------------------------------
+  2 passed, 0 failed

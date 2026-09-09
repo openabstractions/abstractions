@@ -1,0 +1,28 @@
+
+# build artifacts and downloaded binaries — never commit these
+# deleted in the salvage — kept ignored so agent scratch work cannot resurrect it
+# forked upstream projects (their own repos, tracked separately)
+# nested repos (tracked separately)
+# opencode workspace (62 MB of node_modules)
+# python bytecode
+# runtime logs
+*.dll
+*.dylib
+*.exe
+*.gguf
+*.pyc
+*.so
+*.zip
+.build/
+.gotest/
+.layers/
+.opencode/
+.tree/
+/forks/
+/team/
+/vault/
+__pycache__/
+bin/
+demo/*.jsonl
+node_modules/
+timeline.log

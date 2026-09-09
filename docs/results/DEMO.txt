@@ -1,0 +1,92 @@
+PS> bash scripts/demo.sh
+
+
+=========== ACT 0 — a model file, and the name it claims ===========
+
+
+--- the file ---
+491400032 bytes
+sha256 of the bytes, which is the only name that cannot lie:
+74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+
+--- corrupt it: 512 bytes inverted, 90% of the way in, length untouched ---
+invert 512 bytes at offset 442260028 of 491400032
+  before 2f8f0b49a6b87c1a9299e0e6ffab4d4c
+  after  d070f4b6594783e56d661f190054b2b3
+  size   491400032 (unchanged: True)
+the file now hashes to:
+073f279bfa21f700fb4739ba7606a0ab2b531b64edcb7e948f3823192ddab253
+
+Nothing about the file's size, name, mtime or extension changed.
+This is what bit rot, a bad cable, a failing DIMM and an interrupted
+write all look like on disk.
+
+
+=========== ACT 1 — llama.cpp is asked ===========
+
+
+--- pristine model ---
+   loaded: yes
+   answer: ' Paris. It is the largest city in Europe and the second largest in the world. It is located in the south of'
+
+--- corrupted model — same size, same name, 512 bytes different ---
+   loaded: yes    <-- no error, no warning, no exit code
+   answer: (none) — last response: {"error":{"code":500,"message":"The model produced output that does not match the expected Content-only format","type":"server_error"}}
+
+
+=========== ACT 2 — Ollama is asked ===========
+
+Ollama DOES store digests: every blob is named sha256-<hex> and its
+manifests list each layer by digest. The question is whether it checks them.
+
+--- pristine blob ---
+   answer: 'The capital of France is Paris.'
+   error : None
+
+--- corrupt the blob: 512 bytes inverted, length untouched ---
+invert 512 bytes at offset 358027142 of 397807936
+  before b5337d932bf3531b0fe9a70ed4ca2610
+  after  4acc826cd40cace4f01658f12b35d9ef
+  size   397807936 (unchanged: True)
+   the blob no longer hashes to its own filename:
+   filename says  c5396e06af294bd101b30dce59131a76d2b773e76950acc870eda801d3ab0515
+   bytes hash to  69a158d7a39f0195d7850a9dafb539a21eb23634655816fa00dd8b5dbae7def4
+
+--- ask again ---
+NAME            ID              SIZE      MODIFIED       
+qwen2.5:0.5b    a8b0c5157701    397 MB    20 seconds ago    
+   answer: '-K, the capital of France, the capital of France, the capital of France, the capital of France, the capital'
+   error : None
+
+
+=========== ACT 3 — the vault is asked ===========
+
+
+--- the honest file, stored under its own name ---
+ok        74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+
+--- the corrupted file, stored under the name it claims to be ---
+CORRUPT   74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db  (bytes do not match this name)
+vault: 1 of 1 artifacts did not verify
+   exit code: 1
+
+
+=========== THE POINT ===========
+
+One file. 512 bytes out of half a gigabyte. Length identical.
+
+  llama.cpp   accepted the file and started serving. The model then produced
+              unusable output, reported as a generic 500 with no suggestion
+              that the file on disk is damaged.
+  Ollama      listed it, loaded it, and answered with confident nonsense —
+              while storing, in the filename, the digest that would have
+              caught it.
+  vault       refused, named the file, and exited non-zero.
+
+Note what none of the failures said: "this file is corrupt." A user sees a
+server error, or a bad answer, and reaches for the prompt, the seed, the
+quantisation or the context length. The file is the last thing anyone suspects
+and the only thing that is actually wrong.
+
+Every claim here has its own transcript: docs/results/G1b.txt, G2c.txt, G3.txt,
+H2.txt. This script is those results on one file, in one screen.

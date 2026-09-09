@@ -1,0 +1,22 @@
+# NAS2  written by hand on 2026-09-06 from two runs that day; nothing in it was produced by a script
+# measures  jobd on the NAS: BEFORE is the binary of NAS1 (sha256 b9f68b9b…), AFTER is this tree's with the already-here change (sha256 acc727ce…)
+# state     as NAS1. The NAS was in ordinary household use, so its interface counter carries traffic that is not ours
+# re-run    needs the NAS of NAS1 holding a finished record; submit a job for the same digest whose only source is a dead URL, then `jobd once` on the NAS
+# scope     one NAS, one model. The cross-language pin is testdata/scenarios/already-here.txt [DL-R28], which BEHAVIOUR1 runs anywhere
+
+The store already held smollm2-360m-instruct-q8_0.gguf, complete and verified,
+sha256:48ab3034…7750201, from NAS1.
+
+BEFORE   a fresh `dl` of the same URL and digest, delegated to the NAS
+  NAS eth0 rx  53,829,168,247 -> 54,236,031,031  =  +406,862,784 bytes (~388 MB)
+  NAS jobd:    reconciled=0 delegated=0 adopted=1 delivered=1
+  new record:  complete, validators {etag: …}        — an HTTP GET happened
+
+AFTER    a record whose ONLY source is https://127.0.0.1:9/dead.gguf, digest 48ab3034…
+  jobd once -> reconciled=0 delegated=0 adopted=1 delivered=1
+  record:      complete, done=386,404,992, validators {}   — no HTTP fetch
+  files/deadproof.gguf  sha256 48ab3034…7750201            — copied from the held file
+
+A dead-only source completing is the proof: the bytes can only have come from
+the copy already there. The interface counter is not the proof — the NAS moved
+about 869 MB of its own traffic during the AFTER window.

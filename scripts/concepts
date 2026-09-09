@@ -1,0 +1,122 @@
+> Which concepts exist, and which layer owns each. scripts/check.sh reads this
+> and nothing else adjudicates a shared name.
+>
+>   concept ID  OWNER  what it is
+>   spells  ID  MODULE NAME     an exported name that IS this concept
+>   idiom   NAME  what it is     a naming convention, not a concept
+>   split   ID  MODULE NAME     a second implementation of it. Debt.
+>   shape   MODULE.NAME  MODULE.NAME  why two identical layouts are not one thing
+>   cite    MODULE NAME  system, version and page where this word already means this
+>   novel   MODULE NAME  the established word this one rejected, and why
+>
+> The last two are the outward half, and they are demanded at birth: a name a
+> module exports, or a package it declares (NAME is "package foo"), goes red the
+> moment it exists until one of them says where the word came from. A spells
+> or split row counts, because the concept row already adjudicated the word.
+> Names older than the rule are recorded as `uncited` in check.baseline, which
+> is compared both ways like everything else. Four services were named in one
+> day with no check against prior art while a rule requiring one stood, so the
+> check runs on every module with a go.mod outside research/, published or not,
+> and on untracked files: the act is the name, not the commit.
+>
+> A cite row asks where the word came from and never what it already means one
+> file away, which is how a rename nearly landed a name that meant the opposite
+> in the same struct. So a cited name that equals, or is the plural of, another
+> exported name or struct field in its own module goes red — unless the row
+> names that neighbour, which proves the author looked. A field whose type is
+> the name is not a neighbour; it is the name.
+>
+> A concept is not a name. Two layers may both export Store and mean unrelated
+> things. The test is whether they must AGREE: if changing one and not the other
+> would be a BUG rather than a divergence, it is one concept and one layer owns
+> it. job.Store and storage.Store fail that test — neither constrains the other,
+> and a caller holding both is holding two things. job.Timestamp and
+> logging.Timestamp passed it, and had already drifted.
+>
+> Scope is the cross-layer vocabulary: every concept a second layer names, or
+> whose NAME a second layer uses. A concept only one layer ever mentions needs no
+> adjudication and is not here. Go only — C++ and Python would each need their
+> own extractor.
+>
+> What goes red: a spelling nothing exports; a name two published modules export
+> with no row; a spelling outside its concept's owner that is not recorded as a
+> split; a concept nothing spells; an idiom only one module uses; two exported
+> structs with identical layout and no shape row. Both directions, like every
+> other set here — a breach that appears and a breach that stops appearing.
+>
+> What does NOT go red: two layers implementing one concept under two DIFFERENT
+> names and different layouts. Nothing here sees that. The range model was found
+> by a person reading two repositories side by side and this page would not have
+> found it either; the shape rule is the part of that hole that closes cheaply.
+
+idiom	New	Go's constructor. The concept is the type it returns.
+idiom	Open	Returns a handle to something that already exists.
+idiom	Options	The settings a constructor takes. The concept is the type it configures.
+idiom	FromEnv	Reads this machine and returns a working value, never an error.
+idiom	Discover	Presence is the configuration: read the machine, return what it has.
+
+concept	job.store	job/go	Where job records live, as an interface. Never a directory.
+spells	job.store	job/go	Store
+concept	bytes.store	storage/go	Where bytes live, named by what they are.
+spells	bytes.store	storage/go	Store
+
+concept	job.record	job/go	The whole job: all another process, in another language, after a reboot needs to continue the work.
+spells	job.record	job/go	Record
+concept	log.record	logging/go	One structured log line, in a form that survives leaving the process.
+spells	log.record	logging/go	Record
+
+concept	timestamp	job/go	How an instant is spelled in every record we write: UTC, six fractional digits, trailing Z. Owned here because this is where the cross-language bug was proven. logging aliases it.
+spells	timestamp	job/go	Timestamp
+spells	timestamp	job/go	At
+
+concept	bytes.ref	storage/go	An opaque handle to bytes in a store. The holder never learns a path.
+spells	bytes.ref	storage/go	Ref
+concept	model.ref	model/go	A pinned model identity, hf:// or ollama://, resolved to a digest before bytes move.
+spells	model.ref	model/go	Ref
+
+concept	download.sink	download/go	Where downloaded bytes land, declared at submission because the writer may not be our process.
+spells	download.sink	download/go	Sink
+concept	log.sink	logging/go	Where a log record goes when it leaves the process.
+spells	log.sink	logging/go	Sink
+
+concept	fetcher.registry	download/go	The fetchers, asked in turn which can serve a source.
+spells	fetcher.registry	download/go	Fetchers
+concept	resolver.registry	model/go	The resolvers, asked in turn which can name a model.
+spells	resolver.registry	model/go	Registry
+
+concept	download.submit	download/go	Create a download job from a spec and return its id.
+spells	download.submit	download/go	Submit
+concept	model.submit	model/go	Resolve a model reference and submit the download it implies. Two operations, not one: this one has to name a resolver first.
+spells	model.submit	model/go	Submit
+
+concept	store.writable-dir	storage/go	The capability of naming a directory another process can write into. Not every store has one.
+spells	store.writable-dir	storage/go	Local
+concept	model.on-disk	model/go	A model already on this disk, preferred over the network.
+spells	model.on-disk	model/go	Local
+
+concept	config.dir-name	config/go	The directory and file machine-level configuration lives in.
+spells	config.dir-name	config/go	Name
+concept	model.name	model/go	A model name with vendor noise stripped, so a fine-tune does not collapse onto its base.
+spells	model.name	model/go	Name
+
+concept	notice	watch/go	The present of a watched source: what is true now, and whether it has stopped changing. Not an event and not a history.
+spells	notice	watch/go	Notice
+split	notice	job/go	Notice
+concept	subscription	watch/go	A listener's handle on a watched source: the next present, or closed. Two listeners on one source are independent.
+spells	subscription	watch/go	Subscription
+split	subscription	job/go	Subscription
+concept	download.source	download/go	Where the bytes of a download come from, as a URL the fetchers are asked about.
+spells	download.source	download/go	Source
+concept	watch.source	watch/go	What a subscription reads: a function returning the present and a stamp that changes when it does.
+spells	watch.source	watch/go	Source
+
+cite	job/go	Recall	NFSv4 recalls a delegation before it revokes it: RFC 7530 §10.2 and §16.2 (CB_RECALL), RFC 8881 §20.2; the client returns it within the lease period or the server revokes it. Ceph MDS "cap recall" is the same shape. Azure File Sync and HSM recall a file from cold storage: a different domain, and still "back to where it came from".
+cite	job/go	FeatureRecall	The feature carrying job.Recall; see that row.
+novel	watch/go	Notice	event (inotify(7), Kubernetes watch) rejected: an event is history and this is the present; Rx Notification rejected: it materialises one emission.
+cite	watch/go	Subscription	Reactive Streams 1.0.4 §3, Subscription: the listener's handle on a stream, cancelled by the listener — here Close.
+cite	watch/go	Poll	poll(2); Python watchdog PollingObserver: a source asked on a timer because it cannot say when it moved.
+cite	watch/go	Push	push, as in HTTP push and an Rx hot source: a source that says when it moved.
+cite	watch/go	package watch	Kubernetes API "watch" (efficient detection of changes), etcd v3 Watch, ZooKeeper watches, inotify_add_watch(2): tell me when this changes; the quiet half is a watchdog, systemd WatchdogSec=. Born notify and renamed: on every target desktop that word is a toast (org.freedesktop.Notifications, UserNotifications, ToastNotification), a file event (inotify(7), FindFirstChangeNotification) or readiness (sd_notify(3)). Its callers job.Watch, WatchQuiet and Watchable already said watch.
+cite	logging/go	Default	log/slog: slog.Default is the logger in force when nothing was installed, and its handler writes text to stderr; this is that handler, or the machine's sink when one is configured. Not DefaultMaxLine, a cap.
+cite	rights/go	package rights	FreeBSD rights(4), Capsicum: the operations a capability permits. Windows User Rights Assignment (SeServiceLogonRight). Lampson 1971, the entries of the access matrix. Android, Apple TCC, W3C Permissions and Flatpak say permission, and Windows RMS says rights for licensing; this is the first sense.
+novel	asks/go	package asks	prompt rejected: ComfyUI's API calls a queued workflow a prompt (POST /prompt); consent rejected: "update now" and "rate us" are not consent; request rejected: HTTP owns it. The word is Chromium's CONTENT_SETTING_ASK and Apple's Ask to Buy queue; the record is Ask, as container/list.List.

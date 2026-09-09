@@ -1,0 +1,9 @@
+# requires: store
+#
+# One expectation, one rule tag, and a driver that answers it correctly. The
+# step holds either way. What differs is whether the run had the page that
+# declares JOB-L5: without it there is nothing the tag was judged against, and a
+# runner that called this green would be certifying a rule it never read.
+orphans
+
+# expect 1: ok A B C [JOB-L5]

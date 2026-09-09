@@ -1,0 +1,15 @@
+# AWAKE1  produced by scripts/results.sh on 2026-09-06, commit d496205, exit 0
+# measures  job@766cc1d
+# state     windows/amd64; AC, 79%, plan Balanced; NTFS; Microsoft Windows 11 Pro 10.0.26200
+# re-run    cd job/go && go test -count=1 -v -run '^TestHold' .
+# scope     Windows reads the kernel's SystemExecutionState; Linux reads systemd-inhibit. macOS UNPROVEN
+
+=== RUN   TestHoldFollowsLease
+--- PASS: TestHoldFollowsLease (0.40s)
+=== RUN   TestHoldDiesWithHolder
+--- PASS: TestHoldDiesWithHolder (0.29s)
+=== RUN   TestHoldHelper
+    awake_test.go:110: 
+--- SKIP: TestHoldHelper (0.00s)
+PASS
+ok  	github.com/openabstractions/abstraction-job/go	1.294s
