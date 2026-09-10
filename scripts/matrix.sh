@@ -3,6 +3,13 @@
 #
 #   scripts/matrix.sh           write docs/results/MATRIX.txt and site/coverage.html
 #   scripts/matrix.sh --check   fail if either differs from what today's evidence produces
+#   scripts/matrix.sh --cells   print the <layer> <language> <implementation> triples
+#                               this walk finds, and nothing else
+#
+# --cells exists so scripts/check.sh can record a verdict against the same cell
+# list this grid reads, instead of carrying a second copy of the rule for what
+# counts as a cell. Two copies of that rule is how identity/ — a Go module at
+# its layer root, with no go/ subdirectory — would go missing from one of them.
 #
 # Four things already answered a piece of this and none of them was a grid.
 # MAP.md's languages column is typed by hand and tests nothing. Six harnesses
@@ -15,14 +22,17 @@
 # reads the tree for which cells exist, and the recorded transcripts under
 # docs/results/ for which cells were proven.
 #
-# WHY A CELL IS RARELY GREEN. A verdict is PASS only when a recorded transcript
-# says so about the tree as it is now. The gate builds and tests most of these
-# cells on every run, and keeps no per-cell record of having done it, so what
-# the gate proves cannot be read back out of the repository afterwards. Calling
-# those cells PASS would be assuming the gate ran and was green, which is the
-# same defect as passing a platform that was absent. They are UNPROVEN, with the
-# reason `gate`, and the reason column is where the distinction lives: `gate` is
-# a cell whose result nobody records, `unreached` is a cell nothing runs at all.
+# WHY A CELL IS GREEN. A verdict is PASS only when a recorded transcript says so
+# about the tree as it is now. For most of this grid that transcript is
+# docs/results/GATE.txt, which scripts/check.sh --record writes: one line per
+# cell, the verdict the gate reached, and a `# measures` header naming each
+# layer's tree. Until that file exists a cell the gate builds and tests on every
+# run still reads UNPROVEN with the reason `gate`, because a run nobody wrote
+# down cannot be read back out of the repository, and calling it PASS would be
+# assuming the gate ran and was green — the same defect as passing a platform
+# that was absent. The reason column is where the distinctions live: `gate` is a
+# cell whose result nobody has recorded, `skipped` is a cell the last recorded
+# run could not judge, `unreached` is a cell nothing runs at all.
 #
 # NO STATE LINE, deliberately, against the rule that every measurement carries
 # one. This counts files and reads transcripts written elsewhere; power source
@@ -36,6 +46,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LANGS="go python cpp"
 OUT_TXT="docs/results/MATRIX.txt"
 OUT_HTML="site/coverage.html"
+GATE_TXT="docs/results/GATE.txt"
 
 git() { command git -C "$ROOT" "$@"; }
 
@@ -145,6 +156,10 @@ transcripts() {
         # strength of the run that wrote it. An instrument that is its own
         # evidence proves nothing at all.
         [ "$f" = "$ROOT/$OUT_TXT" ] && continue
+        # The gate record has the same header and is read per cell below, not
+        # by the language-word search here, which would light up all three
+        # languages for every layer it names.
+        [ "$f" = "$ROOT/$GATE_TXT" ] && continue
         head="$(sed -n '1p' "$f")"
         case "$head" in '# '*' produced by '*', exit '*) ;; *) continue ;; esac
         n="$(basename "$f" .txt)"
@@ -174,6 +189,58 @@ transcripts() {
     done
 }
 
+# ---- the gate's own record ---------------------------------------------
+#
+# docs/results/GATE.txt, written by scripts/check.sh --record. The gate builds
+# and tests most of this grid on every run and threw the result away into a
+# mktemp its own trap deleted, so most of this grid read UNPROVEN for one
+# reason: nobody wrote down what the gate had just proved.
+#
+# Read per cell, never per file. Every other transcript here is searched for a
+# language word, which is right for a harness whose output says "go and python
+# agreed"; this file names one implementation directory per line and a word
+# search over it would make every layer green in all three languages.
+#
+# Three ways this record refuses to be believed, and they are the point of it:
+# a header that is not the one check.sh writes, a layer whose tree has moved
+# since the run, and a run taken on a tree with uncommitted changes under the
+# layers it names. The last two are DRIFTED, which verdict() renders UNPROVEN
+# with the reason `drifted` — the same treatment a stale harness transcript
+# gets, because a record that cannot go stale is a record that lies quietly.
+gate_record() {
+    local f="$ROOT/$GATE_TXT" head mode dirty=0 d tree impl v why layer lang
+    [ -f "$f" ] || return 0
+    head="$(sed -n '1p' "$f")"
+    case "$head" in
+        '# GATE  produced by scripts/check.sh'*', commit '*', exit '*) ;;
+        *) echo "matrix.sh: $GATE_TXT is not a record scripts/check.sh --record wrote — ignoring it" >&2; return 0 ;;
+    esac
+    mode="$(sed -n 's/^# mode  *//p' "$f")"
+    declare -A MEAS=()
+    for d in $(sed -n 's/^# measures  //p' "$f"); do
+        case "$d" in +uncommitted) dirty=1; continue ;; *@*) ;; *) continue ;; esac
+        MEAS[${d%@*}]="${d##*@}"
+    done
+    while IFS=$'\t' read -r impl v why; do
+        [ -n "${CELL_OF[$impl]:-}" ] || continue
+        layer="${CELL_OF[$impl]%%	*}"; lang="${CELL_OF[$impl]#*	}"
+        tree="${MEAS[$layer]:-none}"
+        if [ "$dirty" = 1 ]; then
+            printf '%s\t%s\t2\tDRIFTED\tGATE ran with uncommitted changes under the layers it names, so it judged a tree no commit holds\n' "$layer" "$lang"
+        elif [ "$tree" != "$(tree_at "$layer")" ]; then
+            printf '%s\t%s\t2\tDRIFTED\tGATE recorded %s at %s@%s; the tree is %s@%s\n' \
+                "$layer" "$lang" "$v" "$layer" "$tree" "$layer" "$(tree_at "$layer")"
+        else
+            case "$v" in
+                PASS) printf '%s\t%s\t1\tPASS\tGATE %s, %s\n' "$layer" "$lang" "$mode" "$why" ;;
+                FAIL) printf '%s\t%s\t0\tFAIL\tGATE %s, %s\n' "$layer" "$lang" "$mode" "$why" ;;
+                *)    printf '%s\t%s\t3\tSKIPPED\tthe last recorded gate run (%s) did not judge %s: %s\n' \
+                          "$layer" "$lang" "$mode" "$impl" "$why" ;;
+            esac
+        fi
+    done < <(sed -n 's/^  \([^ ][^ ]*\) \{1,\}\(PASS\|FAIL\|UNPROVEN\) \{1,\}\(.*\)$/\1\t\2\t\3/p' "$f")
+}
+
 # ---- the grid ----------------------------------------------------------
 
 WORK="$(mktemp -d)"
@@ -186,15 +253,18 @@ declare -A TREE_AT
 while read -r _ _ sha name; do TREE_AT[$name]="$sha"; done < <(git ls-tree --abbrev HEAD)
 tree_at() { printf '%s' "${TREE_AT[$1]:-none}"; }
 cells > "$WORK/cells"
-declared > "$WORK/declared"
-transcripts | sort -t"$(printf '\t')" -k1,1 -k2,2 -k3,3n | cut -f1,2,4,5 > "$WORK/evidence"
-cut -f1 "$WORK/cells" | sort -u > "$WORK/layers"
 # A grid over an empty input set is the failure mode this project has already
 # had: every cell would read as a deliberate gap and the page would say so.
 [ -s "$WORK/cells" ] || {
     echo "matrix.sh: no <layer>/<language> implementation found under $ROOT — a grid over nothing would read as full coverage of nothing" >&2
     exit 2
 }
+[ "${1:-}" = "--cells" ] && { cat "$WORK/cells"; exit 0; }
+declared > "$WORK/declared"
+declare -A CELL_OF
+while IFS=$'\t' read -r a b c; do CELL_OF[$c]="$a	$b"; done < "$WORK/cells"
+{ transcripts; gate_record; } | sort -t"$(printf '\t')" -k1,1 -k2,2 -k3,3n | cut -f1,2,4,5 > "$WORK/evidence"
+cut -f1 "$WORK/cells" | sort -u > "$WORK/layers"
 
 files() { [ "$1" = 1 ] && echo "1 test file" || echo "$1 test files"; }
 
@@ -230,6 +300,7 @@ verdict() {  # verdict <layer> <lang> -> VERDICT <TAB> reason <TAB> attribution
         PASS)    printf 'PASS\trecorded\t%s\n' "${e#*	}"; return ;;
         FAIL)    printf 'FAIL\trecorded\t%s\n' "${e#*	}"; return ;;
         DRIFTED) printf 'UNPROVEN\tdrifted\t%s\n' "${e#*	}"; return ;;
+        SKIPPED) printf 'UNPROVEN\tskipped\t%s\n' "${e#*	}"; return ;;
     esac
     n="$(tests_in "$lang" "$impl")"
     if ! reached "$layer" "$lang" "$impl"; then
@@ -337,7 +408,8 @@ EOF
 reasons
   recorded    a transcript in docs/results/ recorded this verdict for this tree
   drifted     a transcript recorded a verdict for a tree this one is no longer
-  gate        the gate runs this cell every time and writes down no per-cell result
+  skipped     the last recorded gate run reached this cell and could not judge it
+  gate        the gate runs this cell every time and no recorded run wrote down the result
   untested    the cell has no test file of its own
   unreached   nothing the gate runs names this cell
   declared    the inventory declares the language and the tree does not have it
@@ -377,7 +449,7 @@ write_html() {
 
 <main>
 <nav class="site"><a class="name" href="index.html">Open Abstractions</a>
-<a href="index.html">Overview</a> <a href="reference.html">Reference</a> <a href="evidence.html">Evidence</a> <a href="coverage.html" aria-current="page">Coverage</a> <a href="adopt.html">Adopt</a>
+<a href="index.html">Overview</a> <a href="cases.html">Cases</a> <a href="reference.html">Reference</a> <a href="evidence.html">Evidence</a> <a href="coverage.html" aria-current="page">Coverage</a> <a href="adopt.html">Adopt</a>
 <a class="right" href="https://github.com/openabstractions">github.com/openabstractions</a></nav>
 
 <h1>Coverage</h1>
@@ -392,10 +464,12 @@ Nothing on this page is typed by hand, and a grid the evidence no longer produce
 The same grid, in the same run, is <a href="https://github.com/openabstractions/abstractions/blob/main/docs/results/MATRIX.txt"><code>docs/results/MATRIX.txt</code></a>.</p>
 
 <div class="warn"><p><strong>$N_BLIND of the $N_IMPL implementations in this tree carry no verdict attributed to this tree.</strong>
-That is the honest headline and it is not a rounding error. Most of them are built and tested on every run of the
-project's own gate — and the gate writes down no per-cell result, so what it proved cannot be read back out of the
-repository afterwards. A cell is green here only when a recorded transcript says so about the tree as it is now.
-Calling the rest green would be assuming a run nobody can point at.</p></div>
+That is the honest headline. A cell is green here only when a recorded transcript says so about the tree as it is now —
+a cross-language harness transcript, or
+<a href="https://github.com/openabstractions/abstractions/blob/main/docs/results/GATE.txt"><code>GATE.txt</code></a>, the per-cell
+record <code>scripts/check.sh --record</code> writes. Every one of those names the commit and the layer trees it judged,
+and goes back to <code>UNPROVEN</code> the moment a layer moves under it. Calling the rest green would be assuming a run
+nobody can point at.</p></div>
 
 <h2 id="grid">The grid</h2>
 <div class="wrap"><table class="grid">
@@ -432,9 +506,9 @@ A Go-only layer has legitimately empty cells. An implementation that exists and 
 written <span class="cell unproven">UNPROVEN</span> so it looks like one.</p>
 
 <h2 id="why">Why each cell reads as it does</h2>
-<p>The reason is the point of the table. <code>gate</code> is a cell the project's own gate runs on every change without
-recording the outcome; <code>unreached</code> is a cell nothing runs at all. Both are <span class="cell unproven">UNPROVEN</span>
-and they are very different gaps.</p>
+<p>The reason is the point of the table. <code>gate</code> is a cell the project's own gate runs on every change and no recorded
+run wrote down; <code>skipped</code> is a cell the last recorded run could not judge; <code>unreached</code> is a cell nothing
+runs at all. All three are <span class="cell unproven">UNPROVEN</span> and they are very different gaps.</p>
 <div class="wrap"><table class="why">
 <tr><th>layer</th><th>language</th><th>cell</th><th>reason</th><th>what proved it, or what did not</th></tr>
 EOF
@@ -446,7 +520,8 @@ EOF
 <tr><th>reason</th><th>what it says about the cell</th></tr>
 <tr><td><code>recorded</code></td><td>a transcript in <code>docs/results/</code> recorded this verdict for this tree</td></tr>
 <tr><td><code>drifted</code></td><td>a transcript recorded a verdict, for a tree this one is no longer. It proves what the code used to do</td></tr>
-<tr><td><code>gate</code></td><td>the gate builds and tests this cell every run and writes down no per-cell result</td></tr>
+<tr><td><code>skipped</code></td><td>the last recorded gate run reached this cell and could not judge it — a toolchain absent, or a mode that leaves it out</td></tr>
+<tr><td><code>gate</code></td><td>the gate builds and tests this cell every run, and no recorded run has written down the result</td></tr>
 <tr><td><code>untested</code></td><td>the cell has no test file of its own</td></tr>
 <tr><td><code>unreached</code></td><td>nothing the gate runs names this cell</td></tr>
 <tr><td><code>declared</code></td><td>the project's inventory declares the language and the tree does not have it</td></tr>
@@ -455,9 +530,11 @@ EOF
 </table></div>
 
 <h2 id="evidence">Where the evidence comes from</h2>
-<p>Six cross-language harnesses and one public suite. Five of the six say which language a result belongs to; what none
-of them leaves behind is a committed record naming the commit it judged, which is why so much of the grid reads
-<code>gate</code> rather than <span class="good">PASS</span>.</p>
+<p>Six cross-language harnesses and one public suite. Five of the six say which language a result belongs to, and two of them
+leave a committed transcript naming the commit they judged. The rest of the grid rests on the gate itself, which builds and
+tests most of these cells on every run: <code>scripts/check.sh --record</code> writes what it reached into
+<a href="https://github.com/openabstractions/abstractions/blob/main/docs/results/GATE.txt"><code>GATE.txt</code></a>, one line per
+cell. A cell still reads <code>gate</code> where no recorded run has judged it.</p>
 <div class="wrap"><table>
 <tr><th>harness</th><th>asks</th><th>says which language?</th><th>leaves a committed transcript?</th></tr>
 <tr><td><a href="https://github.com/openabstractions/abstractions/blob/main/scripts/behaviour-conformance.sh"><code>behaviour-conformance.sh</code></a></td><td>do the implementations <em>do</em> the same thing</td><td>yes — every scenario line names the languages that agreed, and an absent one is named too</td><td>yes, <a href="https://github.com/openabstractions/abstractions/blob/main/docs/results/BEHAVIOUR1.txt"><code>BEHAVIOUR1.txt</code></a></td></tr>
@@ -474,7 +551,7 @@ many test files each cell carries.</p>
 
 <footer>
 <p>Nothing here carries an API stability promise. <code>UNPROVEN</code> is written wherever a platform has not been reached.</p>
-<p><a href="index.html">Overview</a> · <a href="reference.html">Reference</a> · <a href="evidence.html">Evidence</a> · <a href="adopt.html">Adopt</a> ·
+<p><a href="index.html">Overview</a> · <a href="cases.html">Cases</a> · <a href="reference.html">Reference</a> · <a href="evidence.html">Evidence</a> · <a href="adopt.html">Adopt</a> ·
 <a href="https://github.com/openabstractions">github.com/openabstractions</a></p>
 </footer>
 </main>

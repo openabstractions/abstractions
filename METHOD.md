@@ -2,7 +2,8 @@
 
 How to tell an abstraction from a layer, and how to test one.
 
-This file is capped at roughly two hundred lines on purpose. The project it came out of
+This file is short on purpose, and the cap it used to name was a number nobody
+enforced: it said two hundred while the file passed four hundred. The project it came out of
 produced two hundred thousand words of specification and one working binary. If this
 document ever needs a second volume, it has become the thing it warns about.
 
@@ -433,3 +434,73 @@ verdict.** A design fitted to a weighting is a design fitted to a table somebody
 assembled.
 
 The procedure and the population model live in `research/language-score/`.
+
+## 14. Which interfaces are ours to draw at all
+
+Added 2026-09-10. Everything above says how an interface is drawn. This says
+which ones we are entitled to draw.
+
+**The sampling frame is not the subject.** The first adopters are local-AI
+tools because that is where the pain is loudest — tens of gigabytes, on
+somebody's desk, dozens of programs reimplementing the same few services. No
+interface in this vocabulary names a model, except `model`'s, which is the one
+layer that is about them.
+
+### Three seats
+
+Platform services are built for the cooperating process declaring its own
+intent. Almost none of them offers a seat to a third party.
+
+| seat | question | provided by platforms? |
+|---|---|---|
+| **self-assertion** | I declare what I want | always |
+| **observation** | what is everyone else doing, and why | rarely, and privileged |
+| **agency** | act on it, or for someone who never asked | essentially never |
+
+Keep-awake demonstrates it. `SetThreadExecutionState`,
+`IOPMAssertionCreateWithName` and `systemd-inhibit` all serve seat one.
+`powercfg /requests` is seat two and needs administrator, so an ordinary
+application cannot find out what is holding the machine awake. Seat three
+barely exists — `powercfg /requestsoverride` denies by process name,
+machine-wide, from an elevated command line, with no API — and no platform lets
+you hold wake *for* a process that never learned the call.
+
+> **A layer enters this vocabulary only if seat two or seat three is missing,
+> and the seat can be furnished by something the adopter is able to carry.**
+
+Wrapping seat one is not worth doing. **Classify by which seat is missing,
+never by the noun**: a noun bundles capabilities that belong to different
+kinds, and treating "a rights and ownership service" as one item is what made
+the whole idea look unbuildable. *Which app is asking* and *what it may do
+here* are ours. *A token another machine will honour* is an identity provider —
+its own trust model, key custody and attack surface — and is built as a service
+that adopts these abstractions, never as a layer of one. A capability the
+platforms already observe and act on wants a portability shim, not this
+library. A capability nearly furnished on two platforms with nothing to face on
+the third has its scope cut to where it is honest, or is not taken.
+
+What follows from the test is in `CLAUDE.md` § Prior art; it is sharpened in
+`VISION.md` 2026-09-07 *The seat test, sharpened by an agent*.
+
+### What "carry" allows
+
+A daemon has a lifecycle and a library does not, and every lifecycle is a
+failure mode: it can be stopped, crash, fail to start, be blocked by policy, or
+run twice over one store.
+
+| dependency | may a layer require it? | why |
+|---|---|---|
+| a library the adopter links or bundles | **yes** | no lifecycle. It is present because the adopter is present |
+| a helper process the library can start itself, user-scope | **yes** | recoverable without privilege; this is what `jobd` is |
+| a system service needing admin | **only as an upgrade** | not installable on a locked-down machine, and the adopter cannot fix that |
+| a server on another machine | **no** | it cannot be carried at all. Build it as a service that adopts these abstractions |
+
+Prefer the library. Require a daemon only for what a library cannot do.
+
+**A capability that varies by environment must degrade, because it cannot be
+carried — nobody can bundle a NAS.** That is why *presence is the
+configuration* applies to `download`.
+
+And a layer is admitted the way an interface is changed (§5): on a real case
+that forced it — an adopter, or our own products using it — never on an
+argument.

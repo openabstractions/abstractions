@@ -2,10 +2,12 @@
 
 Judge your implementation of the abstraction contracts against the rules on the
 contract pages. You need this directory, a POSIX shell, your own program, and
-the contract pages themselves — four files, fetched by the commands below,
-which live in the layer repositories rather than here. You do not need our
-source tree, our build, or Go. The wire scenarios also want a Python 3 to run
-`fixture.py`; without one they report unreachable and say so.
+the contract pages themselves, fetched by the commands below, which live in the
+layer repositories rather than here — `contracts.list` beside `run.sh` is the
+list of them, and it is the one the runner reads. You do not need our source
+tree, our build, or Go. The scenarios that go over HTTP also want a
+Python 3 to run `fixture.py`, the small server that answers them; without one
+they report unreachable and say so.
 
 ## Run it
 
@@ -43,7 +45,10 @@ can do:
     ./my-driver --capabilities
     transfer wire
 
-Scenarios needing anything you did not declare are reported unreachable, with
+Each token names a group of operations — `transfer` moves bytes, `wire` does it
+over HTTP against the fixture, `store` keeps records. [DRIVER.md](DRIVER.md)
+lists them all. Scenarios needing anything you did not declare are reported
+unreachable, with
 the missing capability named. About half the download rules presuppose a job
 store; a transfer-only implementation can now say so instead of failing rules
 that do not apply to it. `run.sh` prints the count.
@@ -72,9 +77,10 @@ steps and judges no rule. Fetch them into `contracts/`:
     curl -L -o contracts/download.md https://raw.githubusercontent.com/openabstractions/abstraction-download/main/CONTRACT.md
     curl -L -o contracts/identity.md https://raw.githubusercontent.com/openabstractions/abstraction-identity/main/CONTRACT.md
     curl -L -o contracts/job.md      https://raw.githubusercontent.com/openabstractions/abstraction-job/main/CONTRACT.md
+    curl -L -o contracts/logging.md  https://raw.githubusercontent.com/openabstractions/abstraction-logging/main/CONTRACT.md
     curl -L -o contracts/watch.md    https://raw.githubusercontent.com/openabstractions/abstraction-watch/main/README.md
 
-`contracts.list` holds the same four lines in a form the runner reads, so you
+`contracts.list` holds the same lines in a form the runner reads, so you
 do not have to work out which page a missing tag came from: a page the scenarios
 you selected cite and the run does not have is named, with the command that
 fetches it, and the run exits 2. A tag an expectation cites and no page you

@@ -6,7 +6,7 @@
 # worked. The cross-language harnesses are the only evidence three
 # implementations agree; a harness nobody remembers to run is not evidence.
 #
-#   usage: scripts/check.sh [--fast] [--public] [--verbose]
+#   usage: scripts/check.sh [--fast] [--public] [--verbose] [--record]
 #     --fast    skip the MSVC C++ build and the cross-language harnesses, which
 #               take minutes. Go, Python, and the C++ under g++ in WSL, which
 #               is under a minute and runs in every mode.
@@ -19,6 +19,12 @@
 #               output something people scrolled past rather than read. Wired
 #               through the documents section; the other sections still print
 #               every offender.
+#     --record  write what this run judged, cell by cell, to
+#               docs/results/GATE.txt. OFF by default and it is the only flag
+#               here that writes a tracked file: several agents are live in one
+#               tree and a rule that rewrites files is the shape of every sweep
+#               this project has paid for. An ordinary run collects the same
+#               verdicts and says at the end how they differ from the record.
 #
 # Exits non-zero if anything failed, and prints what.
 
@@ -33,11 +39,13 @@ T0=${EPOCHREALTIME/./}
 FAST=0
 PUBLIC=0
 VERBOSE=0
+RECORD=0
 for a in "$@"; do
     case "$a" in
         --fast) FAST=1 ;;
         --public) PUBLIC=1 ;;
         --verbose) VERBOSE=1 ;;
+        --record) RECORD=1 ;;
         *) echo "unknown flag: $a" >&2; exit 2 ;;
     esac
 done
@@ -140,6 +148,30 @@ run() {  # run <label> <command...>
     local label="$1"; shift
     local log="$LOGS/${label//[^a-zA-Z0-9]/_}.log"
     if "$@" >"$log" 2>&1; then pass "$label"; else fail "$label"; echo "$log" >>"$LOGS/failed"; fi
+}
+
+# What this run judged, one implementation directory per line. The gate has
+# built and tested most of the coverage grid on every run since it was written
+# and thrown the answer into $LOGS, which the trap above deletes, so most of
+# that grid read UNPROVEN for one reason: nobody wrote down what the gate had
+# just proved.
+#
+# The verdict word is the grid's, not the gate's: PASS, FAIL, or UNPROVEN for a
+# cell this run reached and could not judge. There is no fourth word. A cell
+# this run never came near is absent from the file entirely and the grid keeps
+# calling it UNPROVEN, which is the honest reading and needs no line here.
+CELLS="$LOGS/cells"
+: > "$CELLS"
+cellverdict() { printf '%s\t%s\t%s\n' "$1" "$2" "$3" >> "$CELLS"; }
+# run(), and the cell the label stands for. Nothing else about run() changes:
+# FAILED is the gate's own record of what went red and reading its length either
+# side is cheaper than a second execution path that could drift from the first.
+runcell() {  # runcell <implementation> <what judged it> <label> <command...>
+    local impl="$1" by="$2"; shift 2
+    local n=${#FAILED[@]}
+    run "$@"
+    if [ "${#FAILED[@]}" = "$n" ]; then cellverdict "$impl" PASS "$by"
+    else cellverdict "$impl" FAIL "$by"; fi
 }
 
 section "contract"
@@ -333,7 +365,7 @@ printf '  pid %s\n' "$$"
 mapfile -t MODS < <(modules "$ROOT")
 [ "${#MODS[@]}" -gt 0 ] || nothing "go modules" 0 1
 for d in "${MODS[@]}"; do
-    run "$d" bash -c "cd '$ROOT/$d' && go build ./... && go test ./..."
+    runcell "$d" "go build ./... && go test ./..." "$d" bash -c "cd '$ROOT/$d' && go build ./... && go test ./..."
 done
 # -race needs cgo, and go itself reports CGO_ENABLED=0 when it cannot find a C
 # compiler. parallel.go is the first concurrent code in the tree and shipped
@@ -435,13 +467,21 @@ section "python"
 # moved directory or an import error in the package under test reads exactly
 # like a green run. It prints the count itself; this reads it back.
 pytests() {  # pytests <label> <directory>
-    local log="$LOGS/py_${1//[^a-zA-Z0-9]/_}.log"
+    local log="$LOGS/py_${1//[^a-zA-Z0-9]/_}.log" n
+    # An interpreter that is not here is a platform that was absent, and the
+    # branches below would have called that a broken rule.
+    if [ -z "$PY" ]; then
+        unproven "$1 — no python interpreter on this run; set ABSTRACTION_PYTHON"
+        cellverdict "$2" UNPROVEN "no python interpreter on this run"; return
+    fi
     if ! (cd "$ROOT/$2" && "$PY" -m unittest discover -p 'test_*.py') >"$log" 2>&1; then
-        fail "$1"; echo "$log" >>"$LOGS/failed"
+        fail "$1"; echo "$log" >>"$LOGS/failed"; cellverdict "$2" FAIL "unittest discover"
     elif grep -q '^Ran 0 tests' "$log"; then
         fail "$1 — discovery found no test to run, and unittest calls that a pass"
+        cellverdict "$2" FAIL "unittest discover found no test"
     else
-        pass "$1 — $(sed -n 's/^Ran \([0-9]*\) tests\?.*/\1/p' "$log" | tail -1) tests"
+        n="$(sed -n 's/^Ran \([0-9]*\) tests\?.*/\1/p' "$log" | tail -1)"
+        pass "$1 — $n tests"; cellverdict "$2" PASS "unittest discover, $n tests"
     fi
 }
 pytests "job/python"        job/python
@@ -595,6 +635,55 @@ else
     unproven 'c++ linux — no wsl.exe with cmake and g++ on it. The unix half of the C++ compiled nowhere on this run.'
 fi
 metric cpp_toolchains_built "$NCPP" check.sh
+
+# Which C++ cell each ctest test belongs to, and what the legs above did to it.
+#
+# One build and one ctest cover every C++ cell at once, so "the tree was green"
+# is all a naive record could say — and a cell whose test binary is not in the
+# build at all would ride to PASS on its neighbours. So the mapping is derived
+# rather than typed: add_test names a target, add_executable gives that target
+# a source file, and the first path component of that file is the layer. The
+# root CMakeLists builds watch's test because it includes the job store, and
+# that shape falls out of the same rule instead of being special-cased.
+CPPT="$LOGS/cpp"; mkdir -p "$CPPT"
+: > "$CPPT/map"
+while read -r cm; do
+    cmd="$(dirname "$cm")"; [ "$cmd" = "." ] && cmd=""
+    awk -v d="$cmd" '
+    match($0, /add_executable\([A-Za-z0-9_]+[ \t]+[^ \t)]+/) {
+        split(substr($0, RSTART + 15, RLENGTH - 15), a, /[ \t]+/); exe[a[1]] = a[2]
+    }
+    match($0, /add_test\(NAME[ \t]+[A-Za-z0-9_]+[ \t]+COMMAND[ \t]+[A-Za-z0-9_]+/) {
+        split(substr($0, RSTART, RLENGTH), a, /[ \t]+/); t[a[2]] = a[4]
+    }
+    END { for (n in t) if (t[n] in exe) { p = (d == "" ? "" : d "/") exe[t[n]]
+              sub(/\/.*/, "", p); print n "\t" p "/cpp" } }' "$ROOT/$cm" >> "$CPPT/map"
+done < <(git -C "$ROOT" ls-files '*CMakeLists.txt')
+sort -u -o "$CPPT/map" "$CPPT/map"
+
+# Every ctest line either leg printed: the test's name, and whether it passed.
+: > "$CPPT/ran"
+for leg in "msvc:$LOGS/ctest.log" "linux:$LOGS/cpp-linux.log"; do
+    [ -f "${leg#*:}" ] || continue
+    awk -v leg="${leg%%:*}" 'match($0, /^[ ]*[0-9]+\/[0-9]+ Test +#[0-9]+: +[A-Za-z0-9_.-]+/) {
+        n = substr($0, RSTART, RLENGTH); sub(/.*: +/, "", n)
+        print n "\t" ($0 ~ /Passed/ ? "PASS" : "FAIL") "\t" leg }' "${leg#*:}" >> "$CPPT/ran"
+done
+CPP_LEGS="$(cut -f3 "$CPPT/ran" | sort -u | paste -sd'+' -)"
+for impl in $(cut -f2 "$CPPT/map" | sort -u); do
+    [ -d "$ROOT/$impl" ] || continue
+    read -r NT NBAD < <(awk -F'\t' -v i="$impl" \
+        'NR == FNR { if ($2 == i) mine[$1] = 1; next }
+         $1 in mine { n++; if ($2 == "FAIL") bad++ }
+         END { print n + 0, bad + 0 }' "$CPPT/map" "$CPPT/ran")
+    if [ "$NT" = 0 ]; then
+        cellverdict "$impl" UNPROVEN "no C++ toolchain on this run executed a ctest test belonging to it"
+    elif [ "$NBAD" != 0 ]; then
+        cellverdict "$impl" FAIL "ctest under $CPP_LEGS, $NBAD of $NT test runs failed"
+    else
+        cellverdict "$impl" PASS "ctest under $CPP_LEGS, $NT test runs"
+    fi
+done
 
 if [ "$FAST" = "1" ]; then
     section "skipped"
@@ -1851,6 +1940,73 @@ for k in $SERIES_KEYS; do
     NMOVED=$((NMOVED+1))
 done
 note "$NMOVED of ${#METRIC[@]} measured numbers moved and were appended to research/gate/series.tsv"
+
+# ---- what this run judged, cell by cell --------------------------------
+#
+# The numbers above go to a series because a number is a series. A verdict is
+# not: it belongs to one commit and it is worthless a commit later, so it goes
+# where the other commit-attributed transcripts go, in the shape they use.
+#
+# Which implementation directories are cells is asked of scripts/matrix.sh
+# rather than decided again here — the gate builds twenty Go modules and only
+# ten of them are layers, and a second copy of that rule is how the two would
+# come to disagree about identity/, which is a Go module at its layer root.
+GATE_RECORD="$ROOT/docs/results/GATE.txt"
+KNOWN="$LOGS/cells-known"
+pinned "$ROOT/scripts/matrix.sh" --cells > "$KNOWN" 2>/dev/null || : > "$KNOWN"
+awk -F'\t' 'NR == FNR { cell[$3] = 1; next }
+            $1 in cell { v[$1] = $2 "\t" $3 }
+            END { for (i in v) print i "\t" v[i] }' "$KNOWN" "$CELLS" | sort > "$LOGS/cells-kept"
+NCELL=$(wc -l < "$LOGS/cells-kept")
+GLAYERS="$(cut -f1 "$LOGS/cells-kept" | cut -d/ -f1 | sort -u | paste -sd' ' -)"
+GMEAS=""
+for l in $GLAYERS; do
+    GMEAS="$GMEAS $l@$(git -C "$ROOT" rev-parse --short "HEAD:$l" 2>/dev/null || echo none)"
+done
+GMEAS="${GMEAS# }"
+# The header names commits, so a tree carrying changes no commit holds must say
+# so. It is written rather than refused: the grid reads the marker and puts
+# every cell back to UNPROVEN, which is a louder answer than a file that never
+# appeared.
+[ -z "$(git -C "$ROOT" status --porcelain -- $GLAYERS 2>/dev/null)" ] || GMEAS="$GMEAS +uncommitted"
+gate_record() {
+    cat <<EOF
+# GATE  produced by scripts/check.sh on $(date +%Y-%m-%d), commit $(git -C "$ROOT" rev-parse --short HEAD), exit $([ "${#FAILED[@]}" -eq 0 ] && echo 0 || echo 1)
+# measures  $GMEAS
+# machine   $(uname -s)/$(uname -m); $(go version 2>/dev/null | cut -d' ' -f3 || echo 'no go'); $([ -n "$PY" ] && "$PY" -V 2>&1 | tr -d '\r' || echo 'no python'); $NCPP c++ toolchain(s) built
+# mode      $MODE
+# regenerate  sh scripts/check.sh $([ "$MODE" = full ] || echo "--$MODE ")--record   then  sh scripts/matrix.sh
+# scope     one machine, one run of this gate. PASS means this run built and
+#           tested the cell; UNPROVEN means it reached the cell and could not
+#           judge it; a cell this run never came near is not in the list at all.
+#           No state line: what varies with power and load is minutes, and the
+#           minutes are in research/gate/series.tsv where a series belongs.
+
+EOF
+    awk -F'\t' '{ printf "  %-22s %-9s %s\n", $1, $2, $3 }' "$LOGS/cells-kept"
+}
+if [ "$RECORD" = 1 ]; then
+    gate_record > "$GATE_RECORD"
+    note "docs/results/GATE.txt — $NCELL cells: $(cut -f2 "$LOGS/cells-kept" | sort | uniq -c | tr -d '\n' | tr -s ' ')"
+    note "the grid does not move until it is regenerated: sh scripts/matrix.sh"
+    case "$GMEAS" in *+uncommitted*) note "recorded on a tree with uncommitted changes under $GLAYERS — every cell will read UNPROVEN until it is recorded on a committed tree" ;; esac
+else
+    if [ ! -f "$GATE_RECORD" ]; then
+        note "$NCELL cells judged and nothing wrote them down — docs/results/GATE.txt does not exist. sh scripts/check.sh --record writes it."
+    else
+        # The date, the head commit and the machine move without a verdict
+        # moving, so they are out of the comparison; the `# measures` line is
+        # in it, because it names each layer's own tree and that is exactly
+        # what makes a recorded verdict stale.
+        gate_record | grep -v '^# GATE  produced by\|^# machine' > "$LOGS/gate-now"
+        grep -v '^# GATE  produced by\|^# machine' "$GATE_RECORD" > "$LOGS/gate-was"
+        if cmp -s "$LOGS/gate-now" "$LOGS/gate-was"; then
+            note "docs/results/GATE.txt matches what this run judged, $NCELL cells"
+        else
+            note "docs/results/GATE.txt differs from what this run judged on $(diff "$LOGS/gate-was" "$LOGS/gate-now" | grep -c '^[<>]') lines — sh scripts/check.sh --record rewrites it, then sh scripts/matrix.sh"
+        fi
+    fi
+fi
 
 # Before the result and not after it, so the last screen of an eight-hundred
 # line run is the summary rather than somebody else's stack trace.

@@ -39,6 +39,7 @@ operations need which capability, one line per capability.
 | `wire` | the same over HTTP against the fixture named by `ABSTRACTION_FIXTURE` |
 | `wanted` | answer a drop folder of requests |
 | `identity` | say who is on the other end of a connection, and how well |
+| `logging` | encode and read the part of a log line that leaves the process. **Declared, not yet judgeable here** — see below |
 
 What a scenario needs is read from the operations in it, by that list, and
 unioned with its `# requires:` line, because a declaration drifts from the file
@@ -181,7 +182,7 @@ Six more any operation may answer:
 | `stale-epoch` | the epoch offered is not the one the record carries |
 | `lease-expired` | the lease this was issued against has lapsed |
 | `terminal` | the record is in a state that accepts no further change |
-| `unknown-model` | the record declares a critical model this reader cannot read |
+| `unknown-model` | the record declares a critical schema this reader cannot read. The definition spells this same refusal `unknown_schema` |
 | `refused` | refused for a reason with no word of its own |
 
 and four that belong to one operation each, because they say something no
@@ -190,8 +191,8 @@ refusal class does:
 | word | answered by | meaning |
 |---|---|---|
 | `transfer-failed` | `run`, `runshared` | the bytes did not arrive proven. What the record carries afterwards is the assertion |
-| `changed` | `next` | the listener was handed a present that differs from the last one it took |
-| `quiet` | `next` | the budget passed and the present did not change |
+| `changed` | `next` | the listener was handed a snapshot that differs from the last one it took |
+| `quiet` | `next` | the budget passed and the snapshot did not change |
 | `closed` | `next` | the subscription was closed |
 
 ### The fields
@@ -233,6 +234,7 @@ epoch it last handed that owner and issues later operations against it.
 | `recall <alias> <owner> <grace-ms> [reason]` | ask the holder to stop, against the epoch that owner holds |
 | `hold <alias>` | keep the machine awake for the lease the record carries now |
 | `state <alias>` | print the record, change nothing |
+| `failure <alias>` | print the class the record's last failure recovers as: `ok class=permanent`, `ok class=retryable`, or `ok class=none`. Never the sentence — wording is not a contract |
 | `orphans` | `ok -`, or `ok` and the aliases of records whose lease lapsed, sorted |
 | `run <alias> <owner>` | transfer the record to its sink. `ok <fields>`, or `transfer-failed <fields>` |
 | `runshared <alias> <owner>` | the same, as a supervisor over a store several machines write |
@@ -315,7 +317,9 @@ documented example keys of every cloud vendor do — a token that cannot
 authenticate anything is safe to write down, and this one has to be written down
 or no two drivers can agree on what a bound credential looks like on the wire.
 What arrives on the fixture's wire is what your runner chose to send, which is
-the whole question the deputy scenarios ask.
+the whole question the [confused-deputy](https://en.wikipedia.org/wiki/Confused_deputy_problem)
+scenarios ask: whether a downloader hands a credential it holds to a host that
+did not earn it.
 
 ## `identity`
 
@@ -357,6 +361,20 @@ peer so later operations can ask about it.
 
 A peer kind a scenario does not use is not listed; one is added with the
 scenario that needs it.
+
+## `logging`: declared, and half joined
+
+Of the four things below that a layer arrives with, `logging` has two:
+`capabilities.list` names its capability and its operations, and
+`contracts.list` names the page its rules live on. It has neither a section on
+this page fixing its verdicts, its body and its operations, nor its scenarios
+published beside the others.
+
+So a logging driver cannot be written from these pages, and no published
+scenario asks for one. Declaring `logging` buys nothing today. It is named here
+rather than left out because a reader who meets it in `capabilities.list` is
+owed the reason it does nothing, and because a capability nothing published can
+exercise is a gap, not a pass.
 
 ## Joining with a third layer
 

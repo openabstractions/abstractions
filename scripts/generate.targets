@@ -23,3 +23,15 @@
 
 job/job.thrift	site	docs
 job/job.thrift	job	go	-only=Step,Progress,Recall,Lease,Delegation,Intent,Envelope,Record,Request,Response,Verdict,Content,Store
+
+# One definition, three roots, because each backend's own relative path lands
+# where that language already looks: a Go package under the module, a header
+# under the include root the CMake install copies, and a directory beside the
+# Python module. The Python artefact is generated and NOT in the wheel —
+# `py-modules = ["abstraction_download"]` ships one file, and the only way to
+# add `py/rec.py` to that distribution is to claim the top-level import name
+# `py`, which belongs to somebody else on PyPI. It is the authority the shipped
+# module is tested against instead; see download/CONTRACT.md § Two endings.
+download/download.thrift	download	go
+download/download.thrift	download/cpp/include/abstraction/download	cpp
+download/download.thrift	download/python	python

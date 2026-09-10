@@ -10,7 +10,7 @@
 > operation on no line here is a scenario the suite cannot classify, and the run
 > stops before any driver is asked. A layer joins by adding its line.
 
-store     submit claim renew progress release finish intent recall hold state orphans plant sleep watch next close
+store     submit claim renew progress release finish intent recall hold state failure orphans plant sleep watch next close
 transfer  run runshared stage
 wire      credential refuse allow src=http:
 wanted    drop sweep

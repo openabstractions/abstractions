@@ -13,12 +13,20 @@ own programs. Windows has a transfer service that outlives the process that aske
 (BITS); Linux and macOS have neither it nor each other's answer. An application
 that wants the capability on all three either picks one platform or writes its
 own, and writing its own is what everybody does. Three shapes and no common call
-is the seat SLF4J found in logging. [`SCOPE.md`](SCOPE.md) says which seats
-qualify and which do not.
+is the seat SLF4J found in logging. [`METHOD.md`](METHOD.md) §14 says which
+seats qualify and which do not.
 
 This repository is the parent: the scope rules, the method, the measured results,
 and the suite. It is a test suite, not a library — the code is in the layer
 repositories listed below.
+
+**Deciding whether to adopt any of this?**
+[What adopting involves](https://openabstractions.org/adopt.html) — including
+where the honest answer is "no install line is printed here, because none has
+been run from a clean machine" — and
+[what is proven and what is not](https://openabstractions.org/coverage.html).
+[CONTRIBUTING.md § Adopting](CONTRIBUTING.md#adopting) is the same ground with
+every link in one place.
 
 ## Use a layer
 
@@ -113,12 +121,14 @@ so read them as a record of what happened once, not as independent verification.
 
 ## Status
 
-Experimental, Apache-2.0, and one maintainer. Ten of the twelve layer
-repositories carry a Go tag; `abstraction-identity` and `abstraction-rights`
-carry none, and nothing carries an API stability promise. **Go 1.26 or later is
-required.** Go is also the only language anyone can install: every Python
-implementation is on no package index, and no C++ implementation has a tagged
-release.
+Experimental, Apache-2.0, and one maintainer. Nothing carries an API stability
+promise, and no version number is typed on this page: each repository's tag list
+is the answer to "which release", because a tag is the only thing that cannot
+drift. **Go 1.26 or later is required.** Go is also the only language with a
+tagged release anywhere: every Python implementation is on no package index and
+is adopted by pinning a commit — each layer's `python/README.md` says what to
+install, what to import and shows one example that runs — and no C++
+implementation has a tagged release at all.
 
 The only adopters are ours, so nobody outside has yet had to live with these
 names. Every published transcript was produced on Windows or Linux; macOS is
@@ -131,9 +141,8 @@ says how to report a fault.
 
 ## Also here
 
-- [`SCOPE.md`](SCOPE.md) — which layers qualify, and in what order. Read it
-  before proposing one.
-- [`METHOD.md`](METHOD.md) — how an interface is drawn and tested here.
+- [`METHOD.md`](METHOD.md) — how an interface is drawn and tested here, and
+  §14 which layers qualify at all. Read §14 before proposing one.
 - [`STATE.md`](STATE.md) — what is open, in order.
 - [`docs/try-it.md`](docs/try-it.md) — one `dl` command across three fetchers.
 - [`docs/integrating.md`](docs/integrating.md) — what adopting these interfaces

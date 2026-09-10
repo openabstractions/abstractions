@@ -1,5 +1,5 @@
-# MATRIX  produced by scripts/matrix.sh on 2026-09-10, commit c5c0991
-# measures  abstraction@139e861 asks@87c0ff6 cas@7565469 config@8c8d0af download@0f81577 identity@1cf7b0c job@5806dfe logging@68d0a1c model@551c394 rights@4a3e767 router@4d89dda storage@e97f1c0 watch@eaf2c71
+# MATRIX  produced by scripts/matrix.sh on 2026-09-10, commit 8eecfb0
+# measures  abstraction@139e861 asks@87c0ff6 cas@7565469 config@c1d9446 download@6ab23f9 identity@cf38a12 job@cc17156 logging@68d0a1c model@551c394 rights@4a3e767 router@4d89dda storage@e97f1c0 watch@fa67908
 # regenerate  sh scripts/matrix.sh   (--check refuses a grid the evidence no longer produces)
 # scope     this tree only. It reads what is committed here and the transcripts
 #           in docs/results/; it runs no implementation and no harness. Each
@@ -13,68 +13,69 @@
 
 layer       go        python    cpp       
 ----------- --------- --------- --------- 
-abstraction UNPROVEN  —         —         
-asks        UNPROVEN  —         —         
+abstraction PASS      —         —         
+asks        PASS      —         —         
 cas         PASS      PASS      PASS      
-config      UNPROVEN  UNPROVEN  —         
-download    FAIL      FAIL      FAIL      
-identity    UNPROVEN  —         —         
-job         FAIL      FAIL      FAIL      
-logging     UNPROVEN  —         —         
-model       UNPROVEN  UNPROVEN  —         
-rights      UNPROVEN  —         —         
-router      UNPROVEN  —         —         
-storage     UNPROVEN  —         UNPROVEN  
-watch       UNPROVEN  UNPROVEN  UNPROVEN  
+config      PASS      PASS      —         
+download    UNPROVEN  UNPROVEN  UNPROVEN  
+identity    PASS      —         —         
+job         PASS      PASS      PASS      
+logging     PASS      —         —         
+model       FAIL      PASS      —         
+rights      PASS      —         —         
+router      PASS      —         —         
+storage     PASS      —         PASS      
+watch       PASS      PASS      PASS      
 
-39 cells over 13 layers: 3 PASS, 6 FAIL, 15 UNPROVEN, 0 ABSENT, 15 with no implementation.
-24 implementations exist and 15 of them carry no verdict attributed to this tree.
+39 cells over 13 layers: 20 PASS, 1 FAIL, 3 UNPROVEN, 0 ABSENT, 15 with no implementation.
+24 implementations exist and 3 of them carry no verdict attributed to this tree.
 
 why each cell reads as it does
-  abstraction go      UNPROVEN  gate        the gate builds and tests abstraction/go (2 test files) every run and records no per-cell result
+  abstraction go      PASS      recorded    GATE fast, go build ./... && go test ./...
   abstraction python  —         none        no python implementation, and the inventory declares none, so the gap is deliberate
   abstraction cpp     —         none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  asks        go      UNPROVEN  gate        the gate builds and tests asks/go (2 test files) every run and records no per-cell result
+  asks        go      PASS      recorded    GATE fast, go build ./... && go test ./...
   asks        python  —         none        no python implementation, and the inventory declares none, so the gap is deliberate
   asks        cpp     —         none        no cpp implementation, and the inventory declares none, so the gap is deliberate
   cas         go      PASS      recorded    CAS-MIXED1, exit 0
   cas         python  PASS      recorded    CAS-MIXED1, exit 0
   cas         cpp     PASS      recorded    CAS-MIXED1, exit 0
-  config      go      UNPROVEN  gate        the gate builds and tests config/go (4 test files) every run and records no per-cell result
-  config      python  UNPROVEN  gate        the gate builds and tests config/python (2 test files) every run and records no per-cell result
+  config      go      PASS      recorded    GATE fast, go build ./... && go test ./...
+  config      python  PASS      recorded    GATE fast, unittest discover, 17 tests
   config      cpp     —         none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  download    go      FAIL      recorded    BEHAVIOUR1, 28 failed
-  download    python  FAIL      recorded    BEHAVIOUR1, 14 failed
-  download    cpp     FAIL      recorded    BEHAVIOUR1, 14 failed
-  identity    go      UNPROVEN  gate        the gate builds and tests identity (18 test files) every run and records no per-cell result
+  download    go      UNPROVEN  drifted     BEHAVIOUR1 recorded PASS at download@88561a4; the tree is download@6ab23f9
+  download    python  UNPROVEN  drifted     BEHAVIOUR1 recorded PASS at download@88561a4; the tree is download@6ab23f9
+  download    cpp     UNPROVEN  drifted     BEHAVIOUR1 recorded PASS at download@88561a4; the tree is download@6ab23f9
+  identity    go      PASS      recorded    GATE fast, go build ./... && go test ./...
   identity    python  —         none        no python implementation, and the inventory declares none, so the gap is deliberate
   identity    cpp     —         none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  job         go      FAIL      recorded    BEHAVIOUR1, 28 failed
-  job         python  FAIL      recorded    BEHAVIOUR1, 14 failed
-  job         cpp     FAIL      recorded    BEHAVIOUR1, 14 failed
-  logging     go      UNPROVEN  gate        the gate builds and tests logging/go (4 test files) every run and records no per-cell result
+  job         go      PASS      recorded    GATE fast, go build ./... && go test ./...
+  job         python  PASS      recorded    GATE fast, unittest discover, 75 tests
+  job         cpp     PASS      recorded    GATE fast, ctest under linux, 4 test runs
+  logging     go      PASS      recorded    GATE fast, go build ./... && go test ./...
   logging     python  —         none        no python implementation, and the inventory declares none, so the gap is deliberate
   logging     cpp     —         none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  model       go      UNPROVEN  gate        the gate builds and tests model/go (3 test files) every run and records no per-cell result
-  model       python  UNPROVEN  gate        the gate builds and tests model/python (2 test files) every run and records no per-cell result
+  model       go      FAIL      recorded    GATE fast, go build ./... && go test ./...
+  model       python  PASS      recorded    GATE fast, unittest discover, 41 tests
   model       cpp     —         none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  rights      go      UNPROVEN  gate        the gate builds and tests rights/go (4 test files) every run and records no per-cell result
+  rights      go      PASS      recorded    GATE fast, go build ./... && go test ./...
   rights      python  —         none        no python implementation, and the inventory declares none, so the gap is deliberate
   rights      cpp     —         none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  router      go      UNPROVEN  gate        the gate builds and tests router/go (7 test files) every run and records no per-cell result
+  router      go      PASS      recorded    GATE fast, go build ./... && go test ./...
   router      python  —         undeclared  no python implementation, and the inventory carries no row for router, so nothing says whether the gap is deliberate
   router      cpp     —         undeclared  no cpp implementation, and the inventory carries no row for router, so nothing says whether the gap is deliberate
-  storage     go      UNPROVEN  gate        the gate builds and tests storage/go (1 test file) every run and records no per-cell result
+  storage     go      PASS      recorded    GATE fast, go build ./... && go test ./...
   storage     python  —         none        no python implementation, and the inventory declares none, so the gap is deliberate
-  storage     cpp     UNPROVEN  gate        the gate builds and tests storage/cpp (1 test file) every run and records no per-cell result
-  watch       go      UNPROVEN  gate        the gate builds and tests watch/go (1 test file) every run and records no per-cell result
-  watch       python  UNPROVEN  gate        the gate builds and tests watch/python (2 test files) every run and records no per-cell result
-  watch       cpp     UNPROVEN  gate        the gate builds and tests watch/cpp (1 test file) every run and records no per-cell result
+  storage     cpp     PASS      recorded    GATE fast, ctest under linux, 1 test runs
+  watch       go      PASS      recorded    GATE fast, go build ./... && go test ./...
+  watch       python  PASS      recorded    GATE fast, unittest discover, 19 tests
+  watch       cpp     PASS      recorded    GATE fast, ctest under linux, 1 test runs
 
 reasons
   recorded    a transcript in docs/results/ recorded this verdict for this tree
   drifted     a transcript recorded a verdict for a tree this one is no longer
-  gate        the gate runs this cell every time and writes down no per-cell result
+  skipped     the last recorded gate run reached this cell and could not judge it
+  gate        the gate runs this cell every time and no recorded run wrote down the result
   untested    the cell has no test file of its own
   unreached   nothing the gate runs names this cell
   declared    the inventory declares the language and the tree does not have it

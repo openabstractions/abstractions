@@ -60,7 +60,7 @@ func docsOpen(b *strings.Builder) {
 
 <main>
 <nav class="site"><a class="name" href="index.html">Open Abstractions</a>
-<a href="index.html">Overview</a> <a href="reference.html">Reference</a> <a href="evidence.html">Evidence</a> <a href="adopt.html">Adopt</a>
+<a href="index.html">Overview</a> <a href="cases.html">Cases</a> <a href="reference.html">Reference</a> <a href="evidence.html">Evidence</a> <a href="coverage.html">Coverage</a> <a href="adopt.html">Adopt</a>
 <a class="right" href="https://github.com/openabstractions">github.com/openabstractions</a></nav>
 <p class="meta" style="margin-top:10px"><a href="#encoding">Encoding</a> · <a href="#types">Types</a> · <a href="#structs">Structs</a> · <a href="#enums">Enumerations</a> · <a href="#constants">Constants</a> · <a href="#vocabulary">Vocabulary</a> · <a href="#refusals">Refusals</a> · <a href="#protocol">Protocol</a></p>
 
@@ -72,7 +72,7 @@ func docsOpen(b *strings.Builder) {
 func docsClose(b *strings.Builder) {
 	b.WriteString(`
 <footer>
-<p><a href="index.html">Overview</a> · <a href="reference.html">Reference</a> · <a href="evidence.html">Evidence</a> · <a href="adopt.html">Adopt</a> ·
+<p><a href="index.html">Overview</a> · <a href="cases.html">Cases</a> · <a href="reference.html">Reference</a> · <a href="evidence.html">Evidence</a> · <a href="coverage.html">Coverage</a> · <a href="adopt.html">Adopt</a> ·
 <a href="https://github.com/openabstractions">github.com/openabstractions</a></p>
 </footer>
 </main>
