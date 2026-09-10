@@ -67,12 +67,17 @@
 #   # expect 6: state=cancelled
 #   # expect 6: done=0
 #
-# One phrase per line, keyed by the step it is about, matched against that step's
-# transcript line at whitespace boundaries. Partial on purpose. A whole expected
-# line would re-pin the fields nobody decided -- the epoch, the exact spelling of
-# an empty checkpoint -- and that is the disease, not the cure. A scenario asserts
-# the fields a written rule settles and stays silent about the rest, and the
-# silence is counted and printed below rather than passing for agreement.
+# One expectation per line, keyed by the step it is about. An expectation is the
+# whole answer unless it ends in `...`, which makes it a partial claim about the
+# fields it names and silent about the rest -- a whole expected line everywhere
+# would re-pin the fields nobody decided, the epoch and the exact spelling of an
+# empty checkpoint, and that is the disease rather than the cure. The silence is
+# counted and printed below rather than passing for agreement.
+#
+# That rule is not restated here. This script evaluates conformance/run.sh's own
+# judge, because the restatement that used to stand in this file never learned
+# the `...` notation the scenarios adopted, and for two days printed 42 false
+# CONTRACT BROKEN lines against expectations all three implementations kept.
 #
 # WHICH RULES NOBODY WROTE A SCENARIO FOR. Making the contract a fourth party
 # did not close the gap; it moved it. A scenario can now say what SHOULD happen,
@@ -323,12 +328,19 @@ gap() { GAPS="$GAPS
 # invariants reads one contract page and prints "<tag><tab><the sentence it
 # ends>". A page wraps its prose, so the unit is the paragraph rather than the
 # line -- except a table row and a heading, which are each a claim of their own.
+#
+# A page declares a tag once and then cites it in later prose, the same way a
+# scenario does. Only the first occurrence on a page is the declaration: the
+# sentences around the citations are about the rule rather than the rule, and
+# reading them as declarations reported 23 rules declared twice, none of which
+# was, and filed fragments like "and not" under a tag as its wording.
 invariants() {
     awk '
     function emit(block,   before, cut, i, tag, sent) {
         gsub(/\n/, " ", block)
         while (match(block, /\[(JOB|DL|WATCH)-[A-Z][A-Z0-9]*\]/)) {
             tag = substr(block, RSTART + 1, RLENGTH - 2)
+            if (seen[tag]++) { block = substr(block, RSTART + RLENGTH); continue }
             before = substr(block, 1, RSTART - 1)
             sub(/[.:;,] *$/, "", before)
             cut = 0
@@ -361,8 +373,20 @@ for page in "$ROOT/job/README.md" "$ROOT/job/CONTRACT.md" "$ROOT/download/README
 done
 dupes="$(cut -f1 "$DECLARED" | sort | uniq -d)"
 if [ -n "$dupes" ]; then
-    echo "  FAIL  a tag is declared twice on the contract pages: $(echo $dupes)"
+    echo "  FAIL  a tag is declared on two contract pages, so two of them claim the rule: $(echo $dupes)"
     diverge=$((diverge+1))
+fi
+
+# What an expectation means is one rule over one scenario corpus, and it is
+# written in conformance/run.sh, which is the copy a stranger runs. Reading that
+# copy costs a sed and an eval; keeping a second copy here cost 42 false CONTRACT
+# BROKEN lines the day the corpus learned a notation only one reader was taught.
+RULE="$ROOT/conformance/run.sh"
+[ -f "$RULE" ] || { echo "  FAIL  $RULE is missing, and it is where an expectation's meaning is written" >&2; exit 3; }
+eval "$(sed -n -e '/^SEP=/p' -e '/^judge() {$/,/^}$/p' "$RULE")"
+if [ -z "${SEP:-}" ] || ! declare -F judge >/dev/null; then
+    echo "  FAIL  $RULE no longer spells SEP and judge() as this script reads them" >&2
+    exit 3
 fi
 
 # against_contract checks one transcript against what the scenario says should
@@ -370,22 +394,17 @@ fi
 # one when a rule moved.
 against_contract() {
     local file="$1" out="$2" impl="$3" name="$4" bad=0
-    local n phrase line tail
-    while read -r n phrase; do
-        [ -n "$n" ] || continue
-        line="$(sed -n "${n}p" "$out")"
-        tail="${line#* -> }"
-        case " $tail " in
-            *" $phrase "*) continue ;;
-        esac
-        echo "  FAIL  $name: $impl step $n CONTRADICTS the contract"
-        echo "        expected: $phrase"
-        echo "        observed: ${tail:-<no such step>}"
+    local exp="$WORK/exp.$name.$impl" verdict step tags want got
+    sed -n -E 's/^# *expect +([0-9]+) *: */\1 /p' "$file" > "$exp"
+    [ -s "$exp" ] || return 0
+    judge "$out" "$exp" > "$exp.judged"
+    while IFS="$SEP" read -r verdict step tags want got; do
+        [ "$verdict" = held ] && continue
+        echo "  FAIL  $name: $impl step $step CONTRADICTS the contract"
+        echo "        expected: $want"
+        echo "        observed: ${got:-<no such step>}"
         bad=1
-    done <<EOF
-$(sed -n 's/^# *expect  *\([0-9][0-9]*\) *: */\1 /p' "$file" |
-  sed 's/ *\[\(JOB\|DL\|WATCH\)-[A-Z][A-Z0-9]*\]//g')
-EOF
+    done < "$exp.judged"
     return $bad
 }
 
@@ -487,7 +506,12 @@ done
 # about the unwritten parts by descent, and a harness reads that as conformance.
 # A fourth implementer is handed a page, not this file, so every field and every
 # refusal token compared above must appear on that page.
-DOC="$ROOT/job/README.md"
+#
+# The page is CONTRACT.md: the one conformance/contracts.list fetches as JOB, and
+# the one job/README.md sends a reader to for every normative rule. This used to
+# name README.md, which carries none of this vocabulary and should not -- a claim
+# belongs in one file and the README links to it.
+DOC="$ROOT/job/CONTRACT.md"
 undocumented=""
 for k in state epoch held want done err cp content; do
     grep -qF "\`$k\`" "$DOC" || undocumented="$undocumented $k"
@@ -497,10 +521,10 @@ for k in not-found lease-held stale-epoch lease-expired terminal invalid refused
 done
 grep -qF -- '--capabilities' "$DOC" || undocumented="$undocumented <how-a-driver-declares-what-it-can-do>"
 if [ -z "$undocumented" ]; then
-    echo "  PASS  every field this script compares is specified in job/README.md"
+    echo "  PASS  every field this script compares is specified in ${DOC#$ROOT/}"
     agree=$((agree+1))
 else
-    echo "  FAIL  compared here and written down nowhere:$undocumented"
+    echo "  FAIL  compared here and written down nowhere in ${DOC#$ROOT/}:$undocumented"
     diverge=$((diverge+1))
 fi
 

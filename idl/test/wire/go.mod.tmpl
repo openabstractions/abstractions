@@ -1,0 +1,16 @@
+module wire
+
+go 1.26
+
+require (
+	github.com/openabstractions/abstraction-job/go v0.0.0
+	idl/out/go v0.0.0
+)
+
+replace github.com/openabstractions/abstraction-job/go => "@REPO@/job/go"
+
+replace github.com/openabstractions/abstraction-cas/go => "@REPO@/cas/go"
+
+replace github.com/openabstractions/abstraction-watch/go => "@REPO@/watch/go"
+
+replace idl/out/go => "@OUT@/go"

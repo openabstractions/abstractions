@@ -1,0 +1,14 @@
+{ "content" : [ "abstraction.job/base@1" ] ,  "critical" : [ "abstraction.job/base@1" ] , "id" : "j1" , "kind" : "download" , "state" : "running" , "spec" :
+      {
+        "solidus_escaped":"a\/b" ,
+        "solidus_plain":"a/b" ,
+        "hex_escaped":"\u0041" ,
+        "hex_plain":"A" ,
+        "tab_short":"\t" ,
+        "tab_long":"\u0009" ,
+        "astral_raw":"𝄞" ,
+        "astral_escaped":"\ud834\udd1e" ,
+        "line_separator":"\u2028" ,
+        "quote":"\"" ,
+        "backslash":"\\"
+      } ,"progress":{"done":4,"total":8,"updated_at":"2026-08-20T05:07:14.951609Z"},"lease":{"owner":"w","epoch":1,"expires_at":"2026-08-20T05:08:14.635068Z"},"created_at":"2026-08-20T05:07:10.967343Z","updated_at":"2026-08-20T05:07:15.134811Z"}

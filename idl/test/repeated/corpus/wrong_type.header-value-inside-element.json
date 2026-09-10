@@ -1,0 +1,11 @@
+{
+  "id": "p",
+  "sources": [
+    {
+      "url": "u",
+      "headers": {
+        "retries": 3
+      }
+    }
+  ]
+}

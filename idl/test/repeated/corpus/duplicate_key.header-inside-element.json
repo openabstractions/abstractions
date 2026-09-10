@@ -1,0 +1,12 @@
+{
+  "id": "p",
+  "sources": [
+    {
+      "url": "u",
+      "headers": {
+        "accept": "a",
+        "accept": "b"
+      }
+    }
+  ]
+}

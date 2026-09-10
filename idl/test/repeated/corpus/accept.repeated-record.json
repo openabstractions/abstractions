@@ -1,0 +1,27 @@
+{
+  "id": "plan-1",
+  "sources": [
+    {
+      "url": "https://a.example/x",
+      "priority": 1,
+      "headers": {
+        "accept": "*/*",
+        "x-trace": "abc"
+      }
+    },
+    {
+      "url": "https://b.example/x",
+      "note": {
+        "mirror": true
+      }
+    }
+  ],
+  "mirrors": [
+    {
+      "url": "https://c.example/x"
+    }
+  ],
+  "labels": {
+    "env": "prod"
+  }
+}

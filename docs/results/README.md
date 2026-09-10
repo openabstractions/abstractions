@@ -42,6 +42,7 @@ filter with root — and their `# re-run` line says what.
 | [`RESUME1.txt`](RESUME1.txt) | `kill-and-resume.sh` | A download killed with SIGKILL and resumed by a separate process from the proven prefix. The bytes written past the last checkpoint are discarded. |
 | [`SUPERVISOR1.txt`](SUPERVISOR1.txt) | `supervisor.sh` | A supervisor sweep adopting an orphaned job — owner dead, lease lapsed — finishing it, and a second sweep correctly doing nothing. |
 | [`DEMO.txt`](DEMO.txt) | `demo.sh` | The end-to-end walkthrough: a model file, the name it claims, and what each tool does when the two disagree. |
+| [`MATRIX.txt`](MATRIX.txt) | `matrix.sh` | Which layer × language cell has a verdict, and which only looks like it has one. It runs nothing: a cell is `PASS` only where a transcript here recorded one for the tree as it stands, so a cell the gate exercises every run and never writes down reads `UNPROVEN`. Today that is every one of them. |
 
 ## Content addressing and integrity
 

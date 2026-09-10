@@ -1,0 +1,42 @@
+{
+  "content": [
+    "abstraction.job/base@1",
+    "vendor.example/order@1"
+  ],
+  "critical": [
+    "abstraction.job/base@1"
+  ],
+  "id": "j1",
+  "kind": "download",
+  "state": "running",
+  "spec": {
+    "artifact": {
+      "bytes": 8
+    }
+  },
+  "progress": {
+    "done": 4,
+    "total": 8,
+    "updated_at": "2026-08-20T05:07:14.951609Z"
+  },
+  "lease": {
+    "owner": "w",
+    "epoch": 1,
+    "expires_at": "2026-08-20T05:08:14.635068Z"
+  },
+  "extensions": {
+    "vendor.example/order@1": {
+      "z": 1,
+      "a": 2,
+      "m": 3,
+      "\u006b": 4,
+      "nested": {
+        "y": true,
+        "b": false,
+        "c": null
+      }
+    }
+  },
+  "created_at": "2026-08-20T05:07:10.967343Z",
+  "updated_at": "2026-08-20T05:07:15.134811Z"
+}

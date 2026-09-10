@@ -323,6 +323,8 @@ else
     fi
 fi
 
+run "coverage grid"     pinned "$ROOT/scripts/matrix.sh" --check
+
 section "go"
 printf '  pid %s\n' "$$"
 # Read once and reused by platforms and by the linux run below. The list came
@@ -447,6 +449,8 @@ pytests "download/python"   download/python
 run "adopters/comfyui"      bash -c "cd '$ROOT/adopters/comfyui' && '$PY' test_node.py"
 pytests "model/python"      model/python
 pytests "cas/python"        cas/python
+pytests "watch/python"      watch/python
+pytests "config/python"     config/python
 # Go decides for the tools, Python decides for the broker and for ComfyUI. One
 # token of disagreement and two applications each believe they are sharing a
 # model with the other while the machine holds two.

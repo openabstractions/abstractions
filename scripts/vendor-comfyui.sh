@@ -18,6 +18,7 @@ mkdir -p "$DEST"
 for src in "$ROOT/job/python/abstraction_job.py" \
            "$ROOT/watch/python/abstraction_watch.py" \
            "$ROOT/cas/python/abstraction_cas.py" \
+           "$ROOT/config/python/abstraction_config.py" \
            "$ROOT/download/python/abstraction_download.py"; do
     cp "$src" "$DEST/$(basename "$src")"
     printf '  %s\n' "$(basename "$src")"

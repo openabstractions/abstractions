@@ -23,16 +23,35 @@
 # Three trees, not two. The mirror's HEAD and the generated candidate are not
 # enough to tell "this file changed here" from "this file changed in the
 # mirror": the copy below reverts a merged contribution and reports it as our
-# own edit. So the sha of the last tree we pushed is kept beside the approval
-# tokens and the two are compared. There is nothing to compare against on the
-# first run, and assuming the mirror is ours is exactly how a file was lost, so
-# the first run refuses until --adopt records a baseline the operator looked at.
+# own edit. So the sha of the last tree we pushed is kept and the two are
+# compared. There is nothing to compare against on the first run, and assuming
+# the mirror is ours is exactly how a file was lost, so the first run refuses
+# until --adopt records a baseline the operator looked at.
+#
+# Two records, neither in .split, which is disposable and says so:
+#
+#   published.tsv         tracked at the root: the commit last pushed to each
+#                         mirror and the revision it was generated from. Commit
+#                         it with the publish it records; git is what keeps it.
+#   .git/publish/approved an approval per repository, in the repository's own
+#                         git directory: shared by every worktree, deleted by
+#                         nothing but the push it approved.
+#
+# The candidate is bound to the revision that generated it. split.sh records
+# that revision in .split/source and nothing here labels a publication with
+# HEAD: a candidate is refused unless its revision is HEAD or an ancestor that
+# HEAD has not changed in any path the manifest publishes, and unless the
+# working tree agrees with HEAD in those same paths. A stale candidate used to
+# carry the current HEAD in its approval, and every record downstream believed
+# it.
 #
 # A refusal exits non-zero, names the file and names the rule:
 #
 #   2 usage       3 fetch      5 destination     7 denied string
 #   4 a file the manifest declares that would not be published    6 approval
 #   8 the mirror moved under us: no baseline, or an edit this publish would erase
+#   9 the candidate does not describe HEAD: no record, stale, off this line,
+#     or the working tree has edited what it publishes
 set -u
 cd "$(dirname "$0")/.."
 ROOT=$PWD
@@ -42,8 +61,8 @@ ORG="${ABSTRACTION_ORG:-openabstractions}"
 REMOTE="${ABSTRACTION_REMOTE:-git@github.com:$ORG}"
 MAN="$ROOT/scripts/split.manifest"
 WORK="$OUT/.publish"
-TOKENS="$WORK/approved"
-EXPORTED="$WORK/exported"
+PUB="$ROOT/published.tsv"
+TOKENS="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/publish/approved"
 PUSH=0
 ALL=0
 APPROVE=0
@@ -88,7 +107,7 @@ awk '$1 ~ /^>/ || NF==0 { next }
      $1=="repo" { r=$2; next }
      $1=="deny" || $1=="allow" { p=$0; sub(/^[ \t]*[a-z]+[ \t]+/, "", p)
          printf "-\t%s\t%s\n", $1, p; next }
-     { printf "%s\t%s\t%s\n", (r==""?"-":r), $1, $2 }' "$MAN" > "$TMP/rules"
+     { printf "%s\t%s\t%s\t%s\n", (r==""?"-":r), $1, $2, $3 }' "$MAN" > "$TMP/rules"
 
 awk -F'\t' '$2=="deny"  { if (d) print d "\t" (a?a:"^$"); d=$3; a="" }
             $2=="allow" { a=$3 }
@@ -121,9 +140,57 @@ repos=$(find "$OUT" -mindepth 1 -maxdepth 1 -type d ! -name '.*' -exec basename 
 [ "$APPROVE" = 1 ] && [ -z "$WANT" ] && { echo "--approve needs repository names" >&2; exit 2; }
 [ "$ADOPT" = 1 ] && [ -z "$WANT" ] && { echo "--adopt needs repository names" >&2; exit 2; }
 
-mkdir -p "$WORK" "$TOKENS" "$EXPORTED"
-SOURCE=$(git -C "$ROOT" rev-parse HEAD)
-printf '\033[1msource\033[0m %s\n\033[1mdestination\033[0m %s\n\n' "$SOURCE" "$REMOTE"
+mkdir -p "$WORK" "$TOKENS"
+
+exported_of() { awk -F'\t' -v r="$1" '$1==r { print $2 }' "$PUB" 2>/dev/null; }
+record() {
+    { if [ -f "$PUB" ]; then grep '^>' "$PUB"; else cat <<'HEADER'
+> What scripts/publish.sh last pushed to each github.com/openabstractions
+> repository: the mirror commit, then the private revision it was generated
+> from, or - when --adopt recorded a commit this tree did not make. publish.sh
+> is the only writer. Commit this file with the publish it records.
+HEADER
+      fi
+      { [ -f "$PUB" ] && grep -v '^>' "$PUB" | awk -F'\t' -v r="$1" 'NF && $1!=r'
+        printf '%s\t%s\t%s\n' "$1" "$2" "$3"; } | LC_ALL=C sort
+    } > "$TMP/pub"
+    cp "$TMP/pub" "$PUB"
+}
+
+# Every path the generation reads: the manifest's sources, the manifest, the
+# generator, and .gitattributes, which git archive honours.
+{ awk -F'\t' '$2=="tree" || $2=="file" { print $4 }' "$TMP/rules"
+  printf 'scripts/split.manifest\nscripts/split.sh\n.gitattributes\n'; } | sort -u > "$TMP/reads"
+
+HEAD=$(git -C "$ROOT" rev-parse HEAD)
+SOURCE=$(awk -F'\t' '$1=="revision" { print $2 }' "$OUT/source" 2>/dev/null)
+if [ "$ADOPT" = 0 ]; then
+    if [ -z "$SOURCE" ]; then
+        refuse 9 "${OUT#$ROOT/}/source  does not exist, so nothing says what generated ${OUT#$ROOT/} - run scripts/split.sh; a split that refuses records nothing"
+    elif ! git -C "$ROOT" cat-file -e "$SOURCE^{commit}" 2>/dev/null; then
+        refuse 9 "${OUT#$ROOT/}  generated from $SOURCE, which is not a commit in this repository - run scripts/split.sh"
+    elif ! git -C "$ROOT" merge-base --is-ancestor "$SOURCE" "$HEAD"; then
+        refuse 9 "${OUT#$ROOT/}  generated from $(printf '%.12s' "$SOURCE"), which is not an ancestor of HEAD $(printf '%.12s' "$HEAD"): another branch, or rewritten history - run scripts/split.sh"
+    else
+        git -C "$ROOT" diff --name-only "$SOURCE" "$HEAD" -- $(cat "$TMP/reads") > "$TMP/moved"
+        if [ -s "$TMP/moved" ]; then
+            refuse 9 "${OUT#$ROOT/}  generated from $(printf '%.12s' "$SOURCE"); HEAD $(printf '%.12s' "$HEAD") changed $(wc -l < "$TMP/moved") published path(s) since: $(head -3 "$TMP/moved" | paste -sd' ' -) - run scripts/split.sh"
+        fi
+        for k in manifest:scripts/split.manifest generator:scripts/split.sh; do
+            was=$(awk -F'\t' -v k="${k%%:*}" '$1==k { print $2 }' "$OUT/source")
+            [ "$was" = "$(git -C "$ROOT" rev-parse "$SOURCE:${k#*:}")" ] ||
+                refuse 9 "${OUT#$ROOT/}  generated with a ${k#*:} that is not the one committed at $(printf '%.12s' "$SOURCE") - commit it, then run scripts/split.sh"
+        done
+        git -C "$ROOT" status --porcelain -uall -- $(cat "$TMP/reads") | cut -c4- > "$TMP/dirty"
+        if [ -s "$TMP/dirty" ]; then
+            refuse 9 "working tree  differs from HEAD in $(wc -l < "$TMP/dirty") path(s) the manifest publishes: $(head -3 "$TMP/dirty" | paste -sd' ' -) - the candidate is HEAD and would not carry them; commit or discard them, then run scripts/split.sh"
+        fi
+    fi
+    [ "$NREFUSED" = 0 ] || repos=""
+fi
+printf '\033[1msource\033[0m %s' "${SOURCE:-$HEAD}"
+[ "$ADOPT$NREFUSED" != 00 ] || [ "$SOURCE" = "$HEAD" ] || printf '  (HEAD %.12s changed nothing it publishes)' "$HEAD"
+printf '\n\033[1mdestination\033[0m %s\n\033[1mrecords\033[0m %s  %s\n\n' "$REMOTE" "${PUB#$ROOT/}" "$TOKENS"
 changed=0
 published=0
 uptodate=0
@@ -161,8 +228,8 @@ for r in $repos; do
     git -C "$d" clean -qfdx
 
     if [ "$ADOPT" = 1 ]; then
-        was=$(cat "$EXPORTED/$r" 2>/dev/null || echo)
-        printf '%s\n' "$dest" > "$EXPORTED/$r"
+        was=$(exported_of "$r")
+        record "$r" "$dest" -
         if [ -n "$was" ]; then
             printf '  \033[32madopted\033[0m  %-22s %.12s -> %.12s\n' "$r" "$was" "$dest"
         else
@@ -196,7 +263,7 @@ for r in $repos; do
 
     (cd "$gen" && find . -type f) | sed 's|^\./||' | sort > "$TMP/genlist"
 
-    exported=$(cat "$EXPORTED/$r" 2>/dev/null || echo)
+    exported=$(exported_of "$r")
     if [ -z "$exported" ]; then
         refuse 8 "$r  no baseline - a mirror-side edit cannot be told from a fresh publish; read $url, then run scripts/publish.sh --adopt $r"
         continue
@@ -325,7 +392,7 @@ says where each one comes from. Do not edit a generated file in place - the next
 publish overwrites it. CONTRIBUTING.md says where a fix goes instead, and this
 subject line is how you tell a generated file from one authored here."
     if git -C "$d" push -q origin HEAD; then
-        git -C "$d" rev-parse HEAD > "$EXPORTED/$r"
+        record "$r" "$(git -C "$d" rev-parse HEAD)" "$SOURCE"
         printf '          \033[32mpushed\033[0m\n'
         rm -f "$tok"
         published=$((published + 1))

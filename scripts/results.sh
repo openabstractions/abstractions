@@ -16,6 +16,14 @@
 # The transcripts no script can produce — a NAS on the LAN, a packet filter
 # with root — carry a `# re-run` line naming what they need. --check lists
 # them rather than passing them: a platform that was absent is UNPROVEN.
+#
+# A C++ binary is handed to a harness already built, and it is the only thing
+# here that can be older than the tree the header names: go is rebuilt every run
+# and python is read off the disk. So a binary older than the last commit to the
+# directories the header names is refused rather than measured. It was not, and
+# a transcript went out attributing three days of C++ fixes to a binary built
+# before them — which is worse than no transcript, because the coverage grid
+# downstream cannot see the difference and believes the header.
 
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -58,6 +66,20 @@ tree_line() {
     echo "${line# }"
 }
 
+attributable() { # attributable <name> <binary> <the directories the header names>
+    local n="$1" bin="$2" dirs="$3" bt ct d t
+    bt="$(date -r "$bin" +%s 2>/dev/null)"
+    [ -n "$bt" ] || { echo "$n: cannot read the age of $bin" >&2; return 1; }
+    ct=0
+    for d in $dirs; do
+        t="$(git -C "$ROOT" log -1 --format=%ct -- "$d" 2>/dev/null)"
+        [ -n "$t" ] && [ "$t" -gt "$ct" ] && ct="$t"
+    done
+    [ "$bt" -ge "$ct" ] && return 0
+    echo "$n: REFUSED. $bin was built $(date -d "@$bt" '+%Y-%m-%d %H:%M') and $dirs last changed $(date -d "@$ct" '+%Y-%m-%d %H:%M'), so the header would name a commit this binary predates. Rebuild it, or point ABSTRACTION_CPP_BUILD at a build tree that is current." >&2
+    return 1
+}
+
 state_line() {
     case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*)
@@ -90,11 +112,13 @@ produce() {
     BEHAVIOUR1)
         local replay="$B/Release/replay.exe"; [ -f "$replay" ] || replay="$B/replay"
         [ -f "$replay" ] || { echo "$n: c++ replay driver ABSENT under $B; two of three is not a transcript" >&2; return 1; }
+        attributable "$n" "$replay" "$(measures "$n")" || return 1
         REPLAY_CPP="$replay" bash "$ROOT/scripts/behaviour-conformance.sh" > "$raw" 2>&1 ;;
     CAS-MIXED1)
         local cas="$B/cas/cpp/Release/test_cas.exe"; [ -f "$cas" ] || cas="$B/cas/cpp/test_cas"
         [ -f "$cas" ] || { echo "$n: c++ test_cas ABSENT under $B; two of three is not a transcript" >&2; return 1; }
         [ -n "$PY" ] || { echo "$n: no python; set ABSTRACTION_PYTHON" >&2; return 1; }
+        attributable "$n" "$cas" "$(measures "$n")" || return 1
         CAS_CPP="$cas" "$PY" "$ROOT/cas/mixed.py" 3 > "$raw" 2>&1 ;;
     AWAKE1)
         (cd "$ROOT/job/go" && go test -count=1 -v -run '^TestHold' .) > "$raw" 2>&1 ;;
