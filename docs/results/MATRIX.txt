@@ -1,5 +1,5 @@
-# MATRIX  produced by scripts/matrix.sh on 2026-09-10, commit 2c26008
-# measures  abstraction@139e861 asks@87c0ff6 cas@017bcf7 config@8a4e899 download@56ce403 identity@cf38a12 job@7432d4d logging@68d0a1c model@ffb29b4 rights@4a3e767 router@4d89dda storage@e97f1c0 watch@0a0beff
+# MATRIX  produced by scripts/matrix.sh on 2026-09-10, commit d762d15
+# measures  abstraction@139e861 asks@87c0ff6 cas@017bcf7 config@cb5347c download@56ce403 identity@cf38a12 job@7432d4d logging@68d0a1c model@0037120 rights@4a3e767 router@4d89dda storage@e97f1c0 watch@0a0beff
 # regenerate  sh scripts/matrix.sh   (--check refuses a grid the evidence no longer produces)
 # scope     this tree only. It reads what is committed here and the transcripts
 #           in docs/results/; it runs no implementation and no harness. Each
@@ -21,13 +21,13 @@ download    PASS      PASS      PASS
 identity    PASS      —         —         
 job         PASS      PASS      PASS      
 logging     PASS      —         —         
-model       FAIL      PASS      —         
+model       PASS      PASS      —         
 rights      PASS      —         —         
 router      PASS      —         —         
 storage     PASS      —         PASS      
 watch       PASS      PASS      PASS      
 
-39 cells over 13 layers: 23 PASS, 1 FAIL, 0 UNPROVEN, 0 ABSENT, 15 with no implementation.
+39 cells over 13 layers: 24 PASS, 0 FAIL, 0 UNPROVEN, 0 ABSENT, 15 with no implementation.
 24 implementations exist and 0 of them carry no verdict attributed to this tree.
 
 why each cell reads as it does
@@ -55,7 +55,7 @@ why each cell reads as it does
   logging     go      PASS      recorded    GATE fast, go build ./... && go test ./...
   logging     python  —         none        no python implementation, and the inventory declares none, so the gap is deliberate
   logging     cpp     —         none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  model       go      FAIL      recorded    GATE fast, go build ./... && go test ./...
+  model       go      PASS      recorded    GATE fast, go build ./... && go test ./...
   model       python  PASS      recorded    GATE fast, unittest discover, 41 tests
   model       cpp     —         none        no cpp implementation, and the inventory declares none, so the gap is deliberate
   rights      go      PASS      recorded    GATE fast, go build ./... && go test ./...
