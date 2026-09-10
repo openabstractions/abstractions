@@ -24,6 +24,16 @@
 job/job.thrift	site	docs
 job/job.thrift	job	go	-only=Step,Progress,Recall,Lease,Delegation,Intent,Envelope,Record,Request,Response,Verdict,Content,Store
 
+# The job definition feeds Go and the page, and no line here gives it a Python
+# or a C++ artefact — not because those backends cannot emit what the job layer
+# declares, but because no program can hold two of their artefacts at once. Each
+# lands at a fixed identity: package `py` for Python, `namespace rec` for C++,
+# sixteen of whose names both copies define. The conformance drivers under
+# download/ already carry the download layer's copy, so a second one is shadowed
+# in Python and a redefinition in C++, and the Verdict transcript tokens they
+# print are spelled by hand there and diffed against Go's. Giving the artefact a
+# name from its definition would fix it and rewrites every `rec::` in the tree.
+
 # One definition, three roots, because each backend's own relative path lands
 # where that language already looks: a Go package under the module, a header
 # under the include root the CMake install copies, and a directory beside the

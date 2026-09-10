@@ -12,8 +12,8 @@
 # and no rubric term buys it back, because a Go file gofmt will not accept is
 # not Go however well it scores on our taste.
 #
-# RUBRIC is ours. Six terms, every one lifted from research/native-shape's
-# per-language table of what a native speaker expects to be handed. It is the
+# RUBRIC is ours. Six terms, every one lifted from a per-language table of what
+# a native speaker expects to be handed. It is the
 # weaker kind of evidence and every line it prints says so.
 #
 # C++ gets UNPROVEN, not a pass: no compiler on this machine. clang-format is
@@ -125,7 +125,7 @@ else
 fi
 
 # ---- the rubric ----------------------------------------------------------
-# Six terms, 0/1/2, from research/native-shape/RESULTS.txt section 1. Errors
+# Six terms, 0/1/2, from that same table. Errors
 # carries double weight because it is the term that decides whether a caller
 # can use the binding at all: a Go function returns an error, a Rust function
 # returns Result, and one shape emitted into five languages is code nobody in

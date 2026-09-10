@@ -123,8 +123,7 @@ same corpus without touching any of the first five.
   terminal record a `go/v0.1.0` store wrote — is `content_mismatch` to a
   generated peer while the shipped layer reads it and re-derives on write.
   Eight of the twenty-nine records under `download/testdata/records`, measured
-  2026-09-09 in `research/pred166/RESULTS.md`; before that day five were
-  refused for the opposite reason. The envelope is unaffected.
+  2026-09-09; before that day five were refused for the opposite reason. The envelope is unaffected.
 
   ~~The definition has no term for `step@1`, `terminal@1` or `recall@1`~~
   2026-09-09: a term's predicate is now a path, a member of an opaque value, or

@@ -1,8 +1,8 @@
 # fit
 
 Scores the code the generator emits, per language, against that language's own
-conventions. `research/language-score` scores our *vocabulary*; this scores the
-*output*. They are not the same question and they must not be averaged.
+conventions. How well the notation's own *vocabulary* fits a language is a
+different question; this scores the *output*. They must not be averaged.
 
 Two halves, never mixed:
 
@@ -10,8 +10,9 @@ Two halves, never mixed:
   `rustc -D warnings`, `python -m compileall`, `node --check`. A tool that
   refuses the file is a **hard zero** for that language and no rubric term buys
   it back.
-- **Rubric** — ours. Six terms from `research/native-shape/RESULTS.txt` § 1:
-  naming, namespace, errors, construction, absence, opaque. `errors` carries
+- **Rubric** — ours. Six terms, taken from a survey of what each language's own
+  code looks like: naming, namespace, errors, construction, absence, opaque.
+  `errors` carries
   double weight. 14 points in all. Weaker evidence, and every line it prints
   says so.
 
@@ -24,14 +25,14 @@ machine is reported `UNPROVEN`, never a pass.
 
 Writes only under the scratch directory you name. Takes about half a minute,
 most of it `rustc`. Add a definition path to score a different one, or set
-`FIT_GEN` to point at a copy of the generator — that is how the red proof in
-`research/language-score/generated-fit.tsv` was taken.
+`FIT_GEN` to point at a copy of the generator — that is how one generator is
+scored before and after a change, in one session against one tree, which is what
+makes the two halves comparable.
 
-The gate runs it in `scripts/check.sh` and vetoes only: a language whose points
-**fall** below its floor in `scripts/check.baseline` is red and is named; a
-language whose points rise is a note asking for the floor to be raised. The
-score may veto and may never authorise — `research/language-score/RESULTS.txt`
-§ 7, and `generated-fit.tsv` holds the case that shows why.
+The gate runs it in [`scripts/check.sh`](../../scripts/check.sh) and vetoes
+only: a language whose points **fall** below the floor recorded for it is red
+and is named; a language whose points rise is a note asking for the floor to be
+raised. The score may veto and may never authorise.
 
 ## What may break
 
@@ -48,8 +49,8 @@ score may veto and may never authorise — `research/language-score/RESULTS.txt`
 - **`absence` is the one term that is not purely a measurement of the code.** It
   reads `omit = "absent"` out of the definition and asks whether the emitted
   type honours it, so editing the definition moves the term while the emitted
-  bytes stand still — measured, and it is the whole content of the traced change
-  in `research/language-score/generated-fit.tsv`. That is a real weakness and it
+  bytes stand still — measured, and it was the whole content of one before-and-
+  after pair. That is a real weakness and it
   is also how the instrument found something: a term that moves with no diff
   under it is the signal that the definition is claiming what the code does not
   carry. Any new term should be checked against the same question, and a score

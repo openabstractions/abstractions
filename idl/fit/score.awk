@@ -31,7 +31,7 @@ END {
 		}
 	}
 
-	printf "\nRUBRIC — ours, from research/native-shape. Weaker evidence, and it says so.\n"
+	printf "\nRUBRIC — ours. Weaker evidence, and it says so.\n"
 	printf "\n%-12s", "term"
 	for (i = 1; i <= 5; i++) printf "%11s", L[i]
 	printf "%6s\n", "wt"
@@ -57,8 +57,8 @@ END {
 	for (i = 1; i <= 5; i++) printf "%11s", sprintf("%.3f%s", final[L[i]] / MAX, toolgone[L[i]] != "" ? "?" : "")
 	printf "\n"
 	# The language with no tool scores highest, and it must not read as the best
-	# one. A gate that goes green because a toolchain was absent is the defect
-	# CLAUDE.md names by name, and a number is the easiest place for it to hide.
+	# one. A gate that goes green because a toolchain was absent is an absence
+	# reported as a pass, and a number is the easiest place for it to hide.
 	for (i = 1; i <= 5; i++) if (toolgone[L[i]] != "")
 		printf "\n  ? %s has no tool to refuse it. Its number is our judgement alone and\n    is not comparable with the four above it — a high score with no tool\n    behind it is an absence, not a pass.\n", L[i]
 

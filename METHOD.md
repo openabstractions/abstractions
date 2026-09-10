@@ -279,8 +279,8 @@ You have stopped doing engineering and started doing taxonomy when:
 Added 2026-09-06, on evidence, after the brakes were shown to have no pads.
 
 **Every rule we write names the instrument that enforces it, or it is deleted.**
-Not weakened - deleted. Contract pages, `CLAUDE.md`, this file, a brief, a
-convention: all of them.
+Not weakened - deleted. Contract pages, our operating rules, this file, a brief,
+a convention: all of them.
 
 **Generalised 2026-09-06 from "every MUST on a contract page", which was too
 narrow and cost four agents.** Six reached *a rule we wrote has no instrument, so
@@ -355,7 +355,7 @@ exactly one of them. A rule found in two drifts; a rule found in none is what
 | fields, types, identifiers, structural constraints | schema | the record table in `job/README.md` § The record, enforced by each language's decoder; `job/job.thrift` is a sketch that generates nothing. **Prose, not machine-readable** - the open question in § 6 stands |
 | operations, state transitions, cancellation, ownership, retries | behavioural specification | `job/SPEC.md` |
 | framing, discovery, authentication, reconnection | transport binding | the file layout in `job/README.md` § Where the files are and `cas/README.md`; the socket in `job/go/wire.go`, shipped to nobody |
-| concrete examples and regressions | conformance corpus | `download/testdata/scenarios/`, `download/testdata/verdicts/`, `research/wire-compat/` |
+| concrete examples and regressions | conformance corpus | `download/testdata/scenarios/`, `download/testdata/verdicts/` |
 
 The README is the door - install it, call it, one example - and links into
 the four. A tagged rule on the door is a rule in the wrong jurisdiction; the
@@ -433,8 +433,6 @@ the trade is argued in words with the number as evidence rather than as the
 verdict.** A design fitted to a weighting is a design fitted to a table somebody
 assembled.
 
-The procedure and the population model live in `research/language-score/`.
-
 ## 14. Which interfaces are ours to draw at all
 
 Added 2026-09-10. Everything above says how an interface is drawn. This says
@@ -478,9 +476,6 @@ that adopts these abstractions, never as a layer of one. A capability the
 platforms already observe and act on wants a portability shim, not this
 library. A capability nearly furnished on two platforms with nothing to face on
 the third has its scope cut to where it is honest, or is not taken.
-
-What follows from the test is in `CLAUDE.md` § Prior art; it is sharpened in
-`VISION.md` 2026-09-07 *The seat test, sharpened by an agent*.
 
 ### What "carry" allows
 

@@ -1,35 +1,35 @@
-# GATE  produced by scripts/check.sh on 2026-09-10, commit d762d15, exit 1
-# measures  abstraction@139e861 asks@87c0ff6 cas@017bcf7 config@cb5347c download@56ce403 identity@cf38a12 job@7432d4d logging@68d0a1c model@0037120 rights@4a3e767 router@4d89dda storage@e97f1c0 watch@0a0beff
-# machine   MINGW64_NT-10.0-26200/x86_64; go1.26.5; Python 3.12.10; 1 c++ toolchain(s) built
-# mode      fast
-# regenerate  sh scripts/check.sh --fast --record   then  sh scripts/matrix.sh
+# GATE  produced by scripts/check.sh on 2026-09-10, commit fac0218, exit 1
+# measures  abstraction@139e861 asks@8391834 cas@c6784b1 config@6deb3b2 download@eb7ca98 identity@d9d7267 job@b1878d8 logging@68d0a1c model@0037120 rights@6d9d16d router@0bdb1d8 storage@e97f1c0 watch@0a0beff
+# machine   MINGW64_NT-10.0-26200/x86_64; go1.26.5; Python 3.12.10; 2 c++ toolchain(s) built
+# mode      full
+# regenerate  sh scripts/check.sh --record   then  sh scripts/matrix.sh
 # scope     one machine, one run of this gate. PASS means this run built and
 #           tested the cell; UNPROVEN means it reached the cell and could not
 #           judge it; a cell this run never came near is not in the list at all.
 #           No state line: what varies with power and load is minutes, and the
 #           minutes are in research/gate/series.tsv where a series belongs.
 
-  abstraction/go         PASS      go build ./... && go test ./...
-  asks/go                PASS      go build ./... && go test ./...
-  cas/cpp                PASS      ctest under linux, 1 test runs
-  cas/go                 PASS      go build ./... && go test ./...
-  cas/python             PASS      unittest discover, 13 tests
-  config/go              PASS      go build ./... && go test ./...
-  config/python          PASS      unittest discover, 17 tests
-  download/cpp           PASS      ctest under linux, 6 test runs
-  download/go            PASS      go build ./... && go test ./...
-  download/python        PASS      unittest discover, 67 tests
-  identity               PASS      go build ./... && go test ./...
-  job/cpp                PASS      ctest under linux, 4 test runs
-  job/go                 PASS      go build ./... && go test ./...
-  job/python             PASS      unittest discover, 75 tests
-  logging/go             PASS      go build ./... && go test ./...
-  model/go               PASS      go build ./... && go test ./...
-  model/python           PASS      unittest discover, 41 tests
-  rights/go              PASS      go build ./... && go test ./...
-  router/go              PASS      go build ./... && go test ./...
-  storage/cpp            PASS      ctest under linux, 1 test runs
-  storage/go             PASS      go build ./... && go test ./...
-  watch/cpp              PASS      ctest under linux, 1 test runs
-  watch/go               PASS      go build ./... && go test ./...
-  watch/python           PASS      unittest discover, 19 tests
+  abstraction/go         PASS      go build ./... && go test ./... [go1.26.5]
+  asks/go                PASS      go build ./... && go test ./... [go1.26.5]
+  cas/cpp                PASS      ctest under g++ 15.2.0 in WSL + msvc 14.51.36231, 2 test runs [g++/msvc]
+  cas/go                 PASS      go build ./... && go test ./... [go1.26.5]
+  cas/python             PASS      unittest discover, 13 tests [py3.12]
+  config/go              PASS      go build ./... && go test ./... [go1.26.5]
+  config/python          PASS      unittest discover, 17 tests [py3.12]
+  download/cpp           PASS      ctest under g++ 15.2.0 in WSL + msvc 14.51.36231, 12 test runs [g++/msvc]
+  download/go            PASS      the published conformance suite, 85 rules over all 47 scenarios [go1.26.5]
+  download/python        PASS      unittest discover, 67 tests [py3.12]
+  identity               PASS      go build ./... && go test ./... [go1.26.5]
+  job/cpp                PASS      ctest under g++ 15.2.0 in WSL + msvc 14.51.36231, 8 test runs [g++/msvc]
+  job/go                 PASS      go build ./... && go test ./... [go1.26.5]
+  job/python             PASS      unittest discover, 75 tests [py3.12]
+  logging/go             PASS      go build ./... && go test ./... [go1.26.5]
+  model/go               PASS      go build ./... && go test ./... [go1.26.5]
+  model/python           PASS      unittest discover, 41 tests [py3.12]
+  rights/go              PASS      go build ./... && go test ./... [go1.26.5]
+  router/go              PASS      go build ./... && go test ./... [go1.26.5]
+  storage/cpp            PASS      ctest under g++ 15.2.0 in WSL + msvc 14.51.36231, 2 test runs [g++/msvc]
+  storage/go             PASS      go build ./... && go test ./... [go1.26.5]
+  watch/cpp              PASS      ctest under g++ 15.2.0 in WSL + msvc 14.51.36231, 2 test runs [g++/msvc]
+  watch/go               PASS      go build ./... && go test ./... [go1.26.5]
+  watch/python           PASS      unittest discover, 19 tests [py3.12]

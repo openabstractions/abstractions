@@ -1,0 +1,429 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Control panel</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f6f6f7; --card: #fff; --line: #e3e3e6; --ink: #16181d; --dim: #6b7078;
+  --live: #2563eb; --good: #17803d; --warn: #b45309; --bad: #b91c1c; --muted: #6b7078;
+  --track: #e8e9ec; --sunk: #eff0f2;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101114; --card: #17191d; --line: #24272d; --ink: #e8eaee; --dim: #8b919c;
+    --live: #60a5fa; --good: #4ade80; --warn: #fbbf24; --bad: #f87171; --muted: #8b919c;
+    --track: #24272d; --sunk: #1c1f24;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+main { max-width: 860px; margin: 0 auto; padding: 28px 20px 64px; }
+header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+h1 { font-size: 24px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
+.where { color: var(--dim); font-size: 13px; }
+.where b { color: var(--ink); font-weight: 600; }
+.bindings { color: var(--dim); font-size: 12px; margin: 6px 0 18px; font-family: ui-monospace, Consolas, monospace; }
+
+nav { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 22px; }
+nav button {
+  border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none;
+  color: var(--dim); font: inherit; font-weight: 550; padding: 8px 12px; cursor: pointer;
+}
+nav button:hover { color: var(--ink); }
+nav button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--live); }
+section[hidden] { display: none; }
+
+form.add { display: flex; gap: 8px; margin-bottom: 22px; }
+input, select {
+  flex: 1 1 auto; min-width: 0; padding: 9px 12px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit;
+}
+input.dest { flex: 0 1 240px; }
+input:focus, select:focus { outline: 2px solid var(--live); outline-offset: -1px; border-color: transparent; }
+button {
+  padding: 9px 14px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--card); color: var(--ink); font: inherit; cursor: pointer;
+}
+button:hover { border-color: var(--dim); }
+button:disabled { opacity: .5; cursor: default; }
+button.primary { background: var(--live); border-color: var(--live); color: #fff; }
+button.primary:hover { filter: brightness(1.08); }
+
+.nothing {
+  border: 1px dashed var(--line); border-radius: 10px; padding: 28px;
+  text-align: center; color: var(--dim);
+}
+.job {
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 14px 16px; margin-bottom: 10px;
+}
+.job.past { background: none; padding: 10px 16px; }
+.job.past .name { font-weight: 500; }
+h2 { font-size: 12px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase;
+     color: var(--dim); margin: 26px 0 8px 16px; }
+h2:first-child { margin-top: 0; }
+.top { display: flex; align-items: center; gap: 10px; }
+.name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pill {
+  margin-left: auto; flex: none; font-size: 12px; font-weight: 600; letter-spacing: .01em;
+  padding: 2px 9px; border-radius: 999px; border: 1px solid currentColor;
+}
+.live { color: var(--live); } .good { color: var(--good); }
+.warn { color: var(--warn); } .bad { color: var(--bad); } .muted { color: var(--muted); }
+.src { color: var(--dim); font-size: 12.5px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.track { height: 6px; border-radius: 999px; background: var(--track); margin: 11px 0 8px; overflow: hidden; }
+.fill { height: 100%; border-radius: 999px; background: currentColor; transition: width .3s ease; }
+.fill.unknown {
+  width: 100%; opacity: .35;
+  background: repeating-linear-gradient(90deg, currentColor 0 8px, transparent 8px 20px);
+}
+.facts { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; color: var(--dim); }
+.facts b { color: var(--ink); font-weight: 600; }
+.err {
+  margin-top: 9px; padding: 8px 10px; border-radius: 7px; font-size: 12.5px;
+  color: var(--bad); border: 1px solid currentColor; word-break: break-word;
+}
+.path { margin-top: 8px; font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; color: var(--dim); word-break: break-all; }
+.acts { display: flex; gap: 7px; margin-top: 11px; }
+.acts button { padding: 5px 12px; font-size: 13px; }
+.reach { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 4px 16px; }
+.host { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); }
+.host:first-child { border-top: 0; }
+.host .name { flex: 1 1 auto; }
+.host .apps { color: var(--dim); font-size: 12.5px; }
+.host .why { color: var(--bad); font-size: 12.5px; }
+.host button { flex: none; padding: 4px 12px; font-size: 13px; min-width: 72px; }
+.host input { flex: 0 1 260px; padding: 5px 10px; font-size: 12.5px; }
+.host.off .name { color: var(--dim); text-decoration: line-through; }
+
+.tier {
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 13px 16px; margin-bottom: 10px;
+}
+.tier.serving { border-color: var(--live); }
+.tier.off .name, .tier.unusable .name { color: var(--dim); }
+.tier .why { color: var(--dim); font-size: 12.5px; margin-top: 3px; }
+.tier .row { display: flex; align-items: center; gap: 10px; }
+.tier .row input { flex: 1 1 200px; padding: 5px 10px; font-size: 12.5px; }
+.tier button { flex: none; padding: 4px 12px; font-size: 13px; }
+.setup { margin-top: 11px; padding-top: 11px; border-top: 1px solid var(--line); }
+.store { font-family: ui-monospace, Consolas, monospace; font-size: 12px; word-break: break-all; }
+.found { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.found .claim { color: var(--dim); font-size: 12px; }
+.found.unlikely .name, .found.unlikely .claim { opacity: .55; }
+.found input { flex: 0 1 150px; padding: 4px 8px; font-size: 12.5px; }
+.note {
+  border: 1px solid var(--warn); color: var(--warn); border-radius: 8px;
+  padding: 9px 12px; font-size: 12.5px; margin-bottom: 14px;
+}
+.quiet { color: var(--dim); font-size: 12.5px; margin: 8px 0 0; }
+.result { background: var(--sunk); border-radius: 8px; padding: 10px 12px; margin-top: 11px; font-size: 13px; }
+.result b { font-weight: 650; }
+</style>
+
+<main>
+  <header>
+    <h1>Control panel</h1>
+    <span class="where" id="where"></span>
+  </header>
+  <div class="bindings" id="bindings"></div>
+
+  <nav id="tabs">
+    <button data-tab="delegation" aria-selected="true">Delegation</button>
+    <button data-tab="downloads">Downloads</button>
+    <button data-tab="reach">May reach</button>
+  </nav>
+
+  <section id="delegation">
+    <div id="override" hidden></div>
+    <h2>Where work goes</h2>
+    <div id="tiers"></div>
+    <p class="quiet" id="supervisor"></p>
+    <p class="quiet" id="from"></p>
+
+    <h2>Quick test</h2>
+    <div class="tier">
+      <form class="row" id="trial">
+        <input name="source" placeholder="a small file to fetch" autocomplete="off" spellcheck="false">
+        <button class="primary">Test</button>
+      </form>
+      <div id="trialout"></div>
+    </div>
+  </section>
+
+  <section id="downloads" hidden>
+    <form class="add" id="add">
+      <input name="source" placeholder="Paste a link" autocomplete="off" spellcheck="false" required>
+      <input name="destination" class="dest" placeholder="folder" autocomplete="off" spellcheck="false">
+      <button class="primary">Download</button>
+    </form>
+    <div id="list"></div>
+  </section>
+
+  <section id="reach" hidden>
+    <h2>May reach</h2>
+    <div class="reach" id="reachlist"></div>
+  </section>
+</main>
+
+<script>
+// This run's key, handed over in the URL the panel opened. Sent as a header, so
+// a page on another origin cannot forge a request: setting one makes the browser
+// ask this server for permission first, and it answers nothing.
+const key = new URLSearchParams(location.search).get("k") || "";
+
+const list = document.getElementById("list");
+const add = document.getElementById("add");
+const dest = add.destination;
+let destTouched = false;
+dest.addEventListener("input", () => destTouched = true);
+
+const esc = s => (s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+const tabs = document.getElementById("tabs");
+tabs.addEventListener("click", e => {
+  const b = e.target.closest("button[data-tab]");
+  if (!b) return;
+  for (const other of tabs.children) other.ariaSelected = String(other === b);
+  for (const s of document.querySelectorAll("main > section")) s.hidden = s.id !== b.dataset.tab;
+});
+
+function body(j) {
+  const facts = [j.bar, j.step, j.holder || "served by " + j.served, j.moved].filter(Boolean)
+    .map((f, i) => i === 0 ? `<span><b>${esc(f)}</b></span>` : `<span>${esc(f)}</span>`).join("");
+  const track = j.track
+    ? `<div class="track ${j.tone}"><div class="fill${j.unknown ? " unknown" : ""}" style="${j.unknown ? "" : `width:${j.percent}%`}"></div></div>`
+    : "";
+  return `<div class="top ${j.tone}">
+      <span class="name">${esc(j.name || j.id)}</span>
+      <span class="pill">${esc(j.state)}</span>
+    </div>
+    ${j.source ? `<div class="src">${esc(j.source)}</div>` : ""}
+    ${track}
+    <div class="facts">${facts}</div>
+    ${j.error ? `<div class="err">${esc(j.error)}</div>` : ""}
+    ${j.path ? `<div class="path">${esc(j.path)}</div>` : ""}`;
+}
+
+function acts(j) {
+  return [
+    j.canPause && `<button data-do="pause" data-id="${esc(j.id)}">Pause</button>`,
+    j.canResume && `<button data-do="resume" data-id="${esc(j.id)}">Resume</button>`,
+    j.canCollect && `<button class="primary" data-do="collect" data-id="${esc(j.id)}">Collect</button>`,
+    j.canCancel && `<button data-do="cancel" data-id="${esc(j.id)}">Cancel</button>`,
+  ].filter(Boolean).join("");
+}
+
+// Rewriting the list every second would take the buttons out from under a
+// finger already on its way down, so each part is replaced only when its own
+// markup changed and everything else is moved rather than remade.
+const cards = new Map();
+const nothing = Object.assign(document.createElement("div"), { className: "nothing" });
+const earlier = Object.assign(document.createElement("h2"), { textContent: "Earlier" });
+
+function sync(el, html) {
+  if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; }
+}
+
+function draw(s) {
+  document.getElementById("where").innerHTML = "bytes go to <b>" + esc(s.where) + "</b>";
+  document.getElementById("bindings").textContent = s.bindings.join("   ·   ");
+  if (!destTouched && !dest.value) dest.placeholder = s.destination;
+
+  if (s.nothing) { nothing.textContent = s.nothing; list.append(nothing); } else nothing.remove();
+  let divided = false;
+  s.jobs.forEach((j, i) => {
+    let el = cards.get(j.id);
+    if (!el) {
+      el = document.createElement("div");
+      el.innerHTML = `<div></div><div class="acts"></div>`;
+      cards.set(j.id, el);
+    }
+    if (j.finished && i > 0 && !divided) { list.append(earlier); divided = true; }
+    el.className = "job" + (j.finished ? " past" : "");
+    const rows = acts(j);
+    sync(el.children[0], body(j));
+    sync(el.children[1], rows);
+    el.children[1].style.display = rows ? "" : "none";
+    list.append(el);
+  });
+  if (!divided) earlier.remove();
+  for (const [id, el] of cards) {
+    if (!s.jobs.some(j => j.id === id)) { el.remove(); cards.delete(id); }
+  }
+  drawReach(s.reach || []);
+  drawDelegation(s.delegation);
+}
+
+// One row per host a download here has named, and the switch DREAM.md § Rights
+// draws beside it. Off is a refusal with a reason: the next connection any
+// runner on this machine opens to that host is refused, and the reason is what
+// the application shows.
+const reachEl = document.getElementById("reachlist");
+function drawReach(rows) {
+  const html = rows.length ? rows.map(r => `<div class="host${r.refused ? " off" : ""}">
+      <span class="name">${esc(r.host)}</span>
+      <span class="apps">${esc(r.apps.length ? "reached by " + r.apps.join(", ") : "not reached yet")}</span>
+      ${r.refused ? `<span class="why">${esc(r.reason)}</span>`
+                  : `<input class="reason" placeholder="why — the application shows this" autocomplete="off" spellcheck="false">`}
+      <button data-reach="${r.refused ? "allow" : "refuse"}" data-host="${esc(r.host)}">${r.refused ? "Allow" : "Refuse"}</button>
+    </div>`).join("") : `<div class="host"><span class="apps">No download here has named a host yet.</span></div>`;
+  sync(reachEl, html);
+}
+
+reachEl.addEventListener("click", async e => {
+  const b = e.target.closest("button[data-reach]");
+  if (!b) return;
+  const body = { do: b.dataset.reach, host: b.dataset.host };
+  if (b.dataset.reach === "refuse") {
+    const typed = b.parentElement.querySelector("input.reason");
+    body.reason = (typed && typed.value.trim()) || "switched off in the control panel";
+  }
+  b.disabled = true;
+  try { await send(new URLSearchParams(body)); } finally { b.disabled = false; }
+});
+
+// Every tier this machine could hand work to, highest first, with the reason
+// when it cannot. A tier is switched off, never forced on: forcing one that is
+// unconfigured or unreachable cannot work, and a control that silently does
+// nothing is worse than none.
+const tiersEl = document.getElementById("tiers");
+
+function status(t) {
+  if (t.serving) return ["serving", "live"];
+  if (t.off) return ["switched off", "warn"];
+  if (t.usable) return ["ready", "good"];
+  return ["not available here", "muted"];
+}
+
+function setup(t, d) {
+  if (!t.discover) return "";
+  const rows = d.found.map(f => `<div class="found${f.files ? "" : " unlikely"}">
+      <span class="name">${esc(f.name)}</span>
+      <span class="claim">${esc(f.address)} · ${f.files ? "serves files" : "did not answer as a file server"}${f.says ? " · says " + esc(f.says) : ""}</span>
+      <input class="share" placeholder="share name" list="shares-${esc(f.address)}" autocomplete="off" spellcheck="false">
+      <datalist id="shares-${esc(f.address)}">${f.shares.map(s => `<option>${esc(s)}</option>`).join("")}</datalist>
+      <input class="folder" value="abstraction/store" autocomplete="off" spellcheck="false">
+      <button data-find="check" data-address="${esc(f.address)}">Check</button>
+      <button class="primary" data-find="adopt" data-address="${esc(f.address)}">Use this</button>
+    </div>`).join("");
+  return `<div class="setup">
+    ${t.store
+      ? `<div class="row"><span class="store">${esc(t.store)}</span>
+           <button data-find="forget">Forget</button></div>`
+      : `<div class="quiet">No store on the network yet. Nothing is handed anywhere.</div>`}
+    <div class="row" style="margin-top:10px">
+      <button data-find="find"${d.searching ? " disabled" : ""}>${d.searching ? "Looking…" : "Find on my network"}</button>
+      <span class="claim">${d.found.length ? "a device's own name and words, shown as it sent them" : ""}</span>
+    </div>
+    ${rows}
+  </div>`;
+}
+
+function drawDelegation(d) {
+  const over = document.getElementById("override");
+  over.hidden = !d.overridden.length;
+  if (d.overridden.length) {
+    over.className = "note";
+    over.textContent = "The environment is deciding " + d.overridden.join(", ") +
+      " for every program started from it, and this window cannot change that. Unset " +
+      d.overridden.map(f => f.toUpperCase()).join(", ") + " and reopen.";
+  }
+  sync(tiersEl, d.tiers.map(t => {
+    const [word, tone] = status(t);
+    return `<div class="tier${t.serving ? " serving" : ""}${t.off ? " off" : ""}${!t.usable && !t.off ? " unusable" : ""}">
+      <div class="top ${tone}">
+        <span class="name">${esc(t.system)}</span>
+        <span class="pill">${esc(word)}</span>
+      </div>
+      ${t.why ? `<div class="why">${esc(t.why)}</div>` : ""}
+      <div class="row" style="margin-top:10px">
+        ${t.off
+          ? `<button data-serve="on" data-system="${esc(t.system)}">Switch on</button>`
+          : `<input class="reason" placeholder="why — this is kept with the switch" autocomplete="off" spellcheck="false">
+             <button data-serve="off" data-system="${esc(t.system)}">Switch off</button>`}
+      </div>
+      ${setup(t, d)}
+    </div>`;
+  }).join(""));
+
+  // Whether anything is watching. Every switch above is advice to a supervisor,
+  // so with none alive none of them changes where a byte goes.
+  const sup = document.getElementById("supervisor");
+  sup.textContent = d.supervisor;
+  sup.className = d.alone ? "note" : "quiet";
+
+  const told = d.told ? ` Changes to them arrive by ${esc(d.told)}.` : "";
+  sync(document.getElementById("from"), (d.from || []).length
+    ? (d.from || []).map(o =>
+        `<div>${esc(o.key)} — from ${esc(o.path ? o.rung + " file " + o.path : o.rung)}</div>`).join("") + told
+    : `Nothing is configured; ${esc(d.file)} is where an answer would go.` + told);
+
+  const t = d.trial;
+  const out = document.getElementById("trialout");
+  if (!t.source) { out.innerHTML = ""; return; }
+  const line = t.running ? "fetching…"
+    : t.error ? `<b class="bad">did not arrive</b> — ${esc(t.error)}`
+    : `<b>arrived</b> · served by <b>${esc(t.served)}</b> · ${t.bytes} bytes in ${esc(t.took)}`;
+  sync(out, `<div class="result">${line}
+    <div class="path">${esc(t.path || t.source)}</div>
+    ${t.at ? `<div class="quiet">${esc(t.at)}</div>` : ""}</div>`);
+}
+
+tiersEl.addEventListener("click", async e => {
+  const b = e.target.closest("button[data-serve], button[data-find]");
+  if (!b) return;
+  const body = {};
+  if (b.dataset.serve) {
+    body.do = "serve";
+    body.system = b.dataset.system;
+    body.on = b.dataset.serve === "on" ? "1" : "0";
+    const typed = b.parentElement.querySelector("input.reason");
+    if (typed) body.reason = typed.value.trim();
+  } else {
+    body.do = b.dataset.find;
+    if (b.dataset.address) {
+      const row = b.closest(".found");
+      body.address = b.dataset.address;
+      body.share = row.querySelector(".share").value;
+      body.folder = row.querySelector(".folder").value;
+    }
+  }
+  b.disabled = true;
+  try { await send(new URLSearchParams(body), b.dataset.find === "check" ? "That share is reachable and writable." : null); }
+  finally { b.disabled = false; }
+});
+
+document.getElementById("trial").addEventListener("submit", async e => {
+  e.preventDefault();
+  await send(new URLSearchParams({ do: "test", source: e.target.source.value }));
+});
+
+async function send(body, ok) {
+  const r = await fetch("/act", { method: "POST", body, headers: { "X-Panel-Key": key } });
+  if (!r.ok) alert(await r.text()); else if (ok) alert(ok);
+  return r.ok;
+}
+
+list.addEventListener("click", async e => {
+  const b = e.target.closest("button[data-do]");
+  if (!b) return;
+  b.disabled = true;
+  try { await send(new URLSearchParams({ do: b.dataset.do, id: b.dataset.id })); }
+  finally { b.disabled = false; }
+});
+
+add.addEventListener("submit", async e => {
+  e.preventDefault();
+  const ok = await send(new URLSearchParams({
+    do: "add", source: add.source.value, destination: dest.value || dest.placeholder,
+  }));
+  if (ok) add.source.value = "";
+});
+
+new EventSource("/events?k=" + encodeURIComponent(key)).onmessage = e => draw(JSON.parse(e.data));
+</script>

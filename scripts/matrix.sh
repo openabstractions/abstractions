@@ -142,11 +142,17 @@ LANG_RE_go='(^|[^a-zA-Z])[Gg][Oo]([^a-zA-Z]|$)'
 LANG_RE_python='[Pp]ython'
 LANG_RE_cpp='([Cc]\+\+|[Cc][Pp][Pp])'
 
-# Emits layer, lang, rank, verdict, attribution. The rank exists because a cell
-# can hold more than one verdict — job is measured by AWAKE1 and by BEHAVIOUR1 —
+# Emits layer, lang, rank, verdict, toolchain, attribution. The rank exists
+# because a cell can hold more than one verdict — job is measured by AWAKE1 and
+# by BEHAVIOUR1, download/cpp by ctest and by the published conformance suite —
 # and only one reaches the grid. Sorting on the verdict word would rank DRIFTED
-# first and let a stale verdict shadow a fresh one; sorting on the rank puts a
-# failure first, then a pass, then anything drifted.
+# first and let a stale verdict shadow a fresh one.
+#
+# The order is failure, then anything that could not be judged, then a pass,
+# then anything drifted. SKIPPED above PASS and not below it: a cell one
+# instrument proved and another could not reach is not a proven cell, and
+# ranking the pass first is how a green ctest would go on hiding a conformance
+# suite that was never put to the same code. Absence is reported, never passed.
 transcripts() {
     local f n head rc dirs d tree now l re npass nfail
     for f in "$ROOT"/docs/results/*.txt; do
@@ -176,13 +182,13 @@ transcripts() {
                 npass=$(grep -E '^[[:space:]]*PASS' "$f" | grep -cE "$re")
                 nfail=$(grep -E '^[[:space:]]*FAIL' "$f" | grep -cE "$re")
                 if [ "$tree" != "$now" ]; then
-                    printf '%s\t%s\t2\tDRIFTED\t%s recorded %s at %s@%s; the tree is %s@%s\n' \
+                    printf '%s\t%s\t3\tDRIFTED\t-\t%s recorded %s at %s@%s; the tree is %s@%s\n' \
                         "$d" "$l" "$n" "$([ "$rc" = 0 ] && echo PASS || echo FAIL)" "$d" "$tree" "$d" "$now"
                 elif [ "$rc" = 0 ] && [ "$nfail" = 0 ]; then
-                    printf '%s\t%s\t1\tPASS\t%s, %s\n' "$d" "$l" "$n" \
+                    printf '%s\t%s\t2\tPASS\t-\t%s, %s\n' "$d" "$l" "$n" \
                         "$([ "$npass" -gt 0 ] && echo "$npass scenarios" || echo "exit 0")"
                 else
-                    printf '%s\t%s\t0\tFAIL\t%s, %s failed\n' "$d" "$l" "$n" "$nfail"
+                    printf '%s\t%s\t0\tFAIL\t-\t%s, %s failed\n' "$d" "$l" "$n" "$nfail"
                 fi
             done
         done
@@ -207,8 +213,19 @@ transcripts() {
 # layers it names. The last two are DRIFTED, which verdict() renders UNPROVEN
 # with the reason `drifted` — the same treatment a stale harness transcript
 # gets, because a record that cannot go stale is a record that lies quietly.
+#
+# A cell line's `why` ends in a bracketed toolchain where the gate knew one:
+#
+#     download/cpp   PASS   ctest under g++ 15.2.0 in WSL, 6 test runs [g++]
+#
+# That bracket is the answer to a question this grid printed PASS over for as
+# long as it existed: which compiler. Every C++ cell meant whatever the record's
+# mode happened to build — one compiler on one machine — and the grid said only
+# PASS, so a column standing for a three-platform claim named nothing. A record
+# written before the bracket existed leaves it empty and the cell reads `?`,
+# which is the true statement about that record.
 gate_record() {
-    local f="$ROOT/$GATE_TXT" head mode dirty=0 d tree impl v why layer lang
+    local f="$ROOT/$GATE_TXT" head mode dirty=0 d tree impl v why tool layer lang
     [ -f "$f" ] || return 0
     head="$(sed -n '1p' "$f")"
     case "$head" in
@@ -225,16 +242,18 @@ gate_record() {
         [ -n "${CELL_OF[$impl]:-}" ] || continue
         layer="${CELL_OF[$impl]%%	*}"; lang="${CELL_OF[$impl]#*	}"
         tree="${MEAS[$layer]:-none}"
+        tool=-
+        case "$why" in *' ['*']') tool="${why##*[}"; tool="${tool%]}"; why="${why% [*}" ;; esac
         if [ "$dirty" = 1 ]; then
-            printf '%s\t%s\t2\tDRIFTED\tGATE ran with uncommitted changes under the layers it names, so it judged a tree no commit holds\n' "$layer" "$lang"
+            printf '%s\t%s\t3\tDRIFTED\t-\tGATE ran with uncommitted changes under the layers it names, so it judged a tree no commit holds\n' "$layer" "$lang"
         elif [ "$tree" != "$(tree_at "$layer")" ]; then
-            printf '%s\t%s\t2\tDRIFTED\tGATE recorded %s at %s@%s; the tree is %s@%s\n' \
+            printf '%s\t%s\t3\tDRIFTED\t-\tGATE recorded %s at %s@%s; the tree is %s@%s\n' \
                 "$layer" "$lang" "$v" "$layer" "$tree" "$layer" "$(tree_at "$layer")"
         else
             case "$v" in
-                PASS) printf '%s\t%s\t1\tPASS\tGATE %s, %s\n' "$layer" "$lang" "$mode" "$why" ;;
-                FAIL) printf '%s\t%s\t0\tFAIL\tGATE %s, %s\n' "$layer" "$lang" "$mode" "$why" ;;
-                *)    printf '%s\t%s\t3\tSKIPPED\tthe last recorded gate run (%s) did not judge %s: %s\n' \
+                PASS) printf '%s\t%s\t2\tPASS\t%s\tGATE %s, %s\n' "$layer" "$lang" "$tool" "$mode" "$why" ;;
+                FAIL) printf '%s\t%s\t0\tFAIL\t%s\tGATE %s, %s\n' "$layer" "$lang" "$tool" "$mode" "$why" ;;
+                *)    printf '%s\t%s\t1\tSKIPPED\t-\tthe last recorded gate run (%s) did not judge %s: %s\n' \
                           "$layer" "$lang" "$mode" "$impl" "$why" ;;
             esac
         fi
@@ -263,7 +282,13 @@ cells > "$WORK/cells"
 declared > "$WORK/declared"
 declare -A CELL_OF
 while IFS=$'\t' read -r a b c; do CELL_OF[$c]="$a	$b"; done < "$WORK/cells"
-{ transcripts; gate_record; } | sort -t"$(printf '\t')" -k1,1 -k2,2 -k3,3n | cut -f1,2,4,5 > "$WORK/evidence"
+{ transcripts; gate_record; } | sort -t"$(printf '\t')" -k1,1 -k2,2 -k3,3n | cut -f1,2,4,5,6 > "$WORK/evidence"
+# The mode the record was written from, read here rather than inside
+# gate_record(): the left side of that pipe is a subshell, so what it assigns
+# does not reach the page. The page states what the mode left out, and a
+# sentence about the mode that is typed by hand goes on being true until a run
+# in another mode makes a liar of it under a lead saying nothing here is typed.
+GATE_MODE="$(sed -n 's/^# mode  *//p' "$ROOT/$GATE_TXT" 2>/dev/null || true)"
 cut -f1 "$WORK/cells" | sort -u > "$WORK/layers"
 
 files() { [ "$1" = 1 ] && echo "1 test file" || echo "$1 test files"; }
@@ -273,57 +298,73 @@ files() { [ "$1" = 1 ] && echo "1 test file" || echo "$1 test files"; }
 # step nobody will wait for is a gate step somebody removes.
 declare -A IMPL EVIDENCE DECLARED HAS_ROW
 while IFS=$'\t' read -r a b c; do IMPL[$a/$b]="$c"; done < "$WORK/cells"
-while IFS=$'\t' read -r a b c d; do
-    [ -n "${EVIDENCE[$a/$b]:-}" ] || EVIDENCE[$a/$b]="$c	$d"
+while IFS=$'\t' read -r a b c d e; do
+    [ -n "${EVIDENCE[$a/$b]:-}" ] || EVIDENCE[$a/$b]="$c	$d	$e"
 done < "$WORK/evidence"
 while IFS=$'\t' read -r a b; do DECLARED[$a/$b]=1; HAS_ROW[$a]=1; done < "$WORK/declared"
 GOWORK_TXT="$(slurp "$ROOT/go.work")"
 CMAKE_TXT="$(slurp "$ROOT/CMakeLists.txt")"
 CHECK_TXT="$(slurp "$ROOT/scripts/check.sh" | grep -E '^[[:space:]]*(pytests|run)[[:space:]]')"
 
-verdict() {  # verdict <layer> <lang> -> VERDICT <TAB> reason <TAB> attribution
-    local layer="$1" lang="$2" impl e v n
+# A verdict carries the toolchain that reached it, and a verdict that came from
+# a record naming none carries `?`. There is no third state and there is no
+# blank: a cell that says PASS and nothing else is a cell claiming a compiler,
+# an interpreter and a platform it never named, which is how every C++ cell in
+# this grid came to stand for one compiler on one machine in silence.
+verdict() {  # verdict <layer> <lang> -> VERDICT <TAB> toolchain <TAB> reason <TAB> attribution
+    local layer="$1" lang="$2" impl e v t n
     impl="${IMPL[$layer/$lang]:-}"
     if [ -z "$impl" ]; then
         if [ -n "${DECLARED[$layer/$lang]:-}" ]; then
-            printf 'ABSENT\tdeclared\tthe inventory declares %s for %s and the tree has none\n' "$lang" "$layer"
+            printf 'ABSENT\t\tdeclared\tthe inventory declares %s for %s and the tree has none\n' "$lang" "$layer"
         elif [ -n "${HAS_ROW[$layer]:-}" ]; then
-            printf -- '—\tnone\tno %s implementation, and the inventory declares none, so the gap is deliberate\n' "$lang"
+            printf -- '—\t\tnone\tno %s implementation, and the inventory declares none, so the gap is deliberate\n' "$lang"
         else
-            printf -- '—\tundeclared\tno %s implementation, and the inventory carries no row for %s, so nothing says whether the gap is deliberate\n' "$lang" "$layer"
+            printf -- '—\t\tundeclared\tno %s implementation, and the inventory carries no row for %s, so nothing says whether the gap is deliberate\n' "$lang" "$layer"
         fi
         return
     fi
     e="${EVIDENCE[$layer/$lang]:-}"
-    v="${e%%	*}"
+    v="${e%%	*}"; e="${e#*	}"
+    # A dash and not an empty field: bash treats a tab as IFS whitespace, so a
+    # run of two collapses into one and every field after an empty one shifts
+    # left. That put a whole attribution into the toolchain column.
+    t="${e%%	*}"; e="${e#*	}"; [ "$t" = - ] && t=""
     case "$v" in
-        PASS)    printf 'PASS\trecorded\t%s\n' "${e#*	}"; return ;;
-        FAIL)    printf 'FAIL\trecorded\t%s\n' "${e#*	}"; return ;;
-        DRIFTED) printf 'UNPROVEN\tdrifted\t%s\n' "${e#*	}"; return ;;
-        SKIPPED) printf 'UNPROVEN\tskipped\t%s\n' "${e#*	}"; return ;;
+        PASS)    printf 'PASS\t%s\trecorded\t%s\n' "${t:-?}" "$e"; return ;;
+        FAIL)    printf 'FAIL\t%s\trecorded\t%s\n' "${t:-?}" "$e"; return ;;
+        DRIFTED) printf 'UNPROVEN\t\tdrifted\t%s\n' "$e"; return ;;
+        SKIPPED) printf 'UNPROVEN\t\tskipped\t%s\n' "$e"; return ;;
     esac
     n="$(tests_in "$lang" "$impl")"
     if ! reached "$layer" "$lang" "$impl"; then
-        printf 'UNPROVEN\tunreached\t%s exists with %s and nothing the gate runs names it\n' "$impl" "$(files "$n")"
+        printf 'UNPROVEN\t\tunreached\t%s exists with %s and nothing the gate runs names it\n' "$impl" "$(files "$n")"
     elif [ "$n" = 0 ]; then
-        printf 'UNPROVEN\tuntested\tthe gate names %s and the cell carries no test file of its own\n' "$impl"
+        printf 'UNPROVEN\t\tuntested\tthe gate names %s and the cell carries no test file of its own\n' "$impl"
     else
-        printf 'UNPROVEN\tgate\tthe gate builds and tests %s (%s) every run and records no per-cell result\n' "$impl" "$(files "$n")"
+        printf 'UNPROVEN\t\tgate\tthe gate builds and tests %s (%s) every run and records no per-cell result\n' "$impl" "$(files "$n")"
     fi
 }
 
 LAYERS="$(cat "$WORK/layers")"
-declare -A CELL REASON WHY
+declare -A CELL TOOL REASON WHY
 for layer in $LAYERS; do
     for lang in $LANGS; do
         row="$(verdict "$layer" "$lang")"
         CELL[$layer/$lang]="${row%%	*}"; row="${row#*	}"
+        TOOL[$layer/$lang]="${row%%	*}"; row="${row#*	}"
         REASON[$layer/$lang]="${row%%	*}"
         WHY[$layer/$lang]="${row#*	}"
-        printf '%s\t%s\t%s\t%s\t%s\n' "$layer" "$lang" \
-            "${CELL[$layer/$lang]}" "${REASON[$layer/$lang]}" "${WHY[$layer/$lang]}"
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$layer" "$lang" \
+            "${CELL[$layer/$lang]}" "${REASON[$layer/$lang]}" \
+            "${WHY[$layer/$lang]}" "${TOOL[$layer/$lang]}"
     done
 done > "$WORK/grid"
+
+# What a reader sees in the grid: the verdict, and the toolchain that reached
+# it. A verdict no toolchain can be attached to — no implementation, or nothing
+# that judged one — carries neither.
+celltext() { printf '%s%s' "${CELL[$1/$2]}" "${TOOL[$1/$2]:+ ${TOOL[$1/$2]}}"; }
 
 n_of() { awk -F'\t' -v v="$1" '$3==v' "$WORK/grid" | wc -l | tr -d ' '; }
 
@@ -354,6 +395,18 @@ W=0
 for d in $LAYERS; do [ "${#d}" -le "$W" ] || W="${#d}"; done
 W=$(( W + 1 ))
 SPACES='                        '
+# One width for every verdict column, from the widest thing any of them holds.
+# A per-language width would put the toolchain in the C++ column and nowhere
+# else, and a reader would take that to mean C++ is the language with a
+# toolchain question rather than the language that has two of them.
+CW=8
+for layer in $LAYERS; do
+    for lang in $LANGS; do
+        t="$(celltext "$layer" "$lang")"; t="${t//—/.}"
+        [ "${#t}" -le "$CW" ] || CW="${#t}"
+    done
+done
+CW=$(( CW + 2 ))
 pad() {
     local s="$1" w="$2" n="${1//—/.}"
     printf '%s%s' "$s" "${SPACES:0:$(( w - ${#n} < 0 ? 0 : w - ${#n} ))}"
@@ -374,15 +427,19 @@ write_txt() {
     ABSENT    checked, and the thing is confirmed not there
     —         no implementation of this layer in this language
 
-$(pad layer $W)$(for l in $LANGS; do pad "$l" 10; done)
+    Each cell also names the toolchain that reached its verdict, and ? where the
+    record it came from named none. A verdict over a compiler nobody named is a
+    claim about a compiler nobody named.
+
+$(pad layer $W)$(for l in $LANGS; do pad "$l" $CW; done)
 EOF
     pad "$(printf '%*s' $((W - 1)) '' | tr ' ' -)" $W
-    for l in $LANGS; do pad "---------" 10; done
+    for l in $LANGS; do pad "$(printf '%*s' $((CW - 2)) '' | tr ' ' -)" $CW; done
     printf '\n'
     local layer lang
     for layer in $LAYERS; do
         pad "$layer" $W
-        for lang in $LANGS; do pad "${CELL[$layer/$lang]}" 10; done
+        for lang in $LANGS; do pad "$(celltext "$layer" "$lang")" $CW; done
         printf '\n'
     done
     cat <<EOF
@@ -398,7 +455,7 @@ EOF
             printf '  '
             pad "$layer" $W
             pad "$lang" 8
-            pad "${CELL[$layer/$lang]}" 10
+            pad "$(celltext "$layer" "$lang")" $CW
             pad "${REASON[$layer/$lang]}" 12
             printf '%s\n' "${WHY[$layer/$lang]}"
         done
@@ -439,10 +496,11 @@ write_html() {
 .grid td:not(:first-child) { text-align: center; white-space: nowrap; }
 .grid th:not(:first-child) { text-align: center; }
 .cell { font: 600 12px ui-monospace, Consolas, Menlo, monospace; }
+.tool { font: 400 11px ui-monospace, Consolas, Menlo, monospace; color: var(--dim); white-space: nowrap; }
 .absent { color: var(--bad); }
 .dash { color: var(--dim); font-weight: 400; }
 .grid tr td:first-child { font-family: ui-monospace, Consolas, Menlo, monospace; }
-.why td:nth-child(1), .why td:nth-child(2), .why td:nth-child(4) {
+.why td:nth-child(1), .why td:nth-child(2), .why td:nth-child(4), .why td:nth-child(5) {
   font-family: ui-monospace, Consolas, Menlo, monospace; font-size: 13px; }
 .tally { font-variant-numeric: tabular-nums; }
 </style>
@@ -472,15 +530,20 @@ and goes back to <code>UNPROVEN</code> the moment a layer moves under it. Callin
 nobody can point at.</p></div>
 
 <h2 id="grid">The grid</h2>
+<p>Beside each verdict is the toolchain that reached it, and <code>?</code> where the record it came from named none.
+A C++ cell is the reason this is here: a <span class="cell good">PASS</span> in the C++ column used to stand for a
+three-platform claim without naming a single compiler. This grid was recorded from a <code>${GATE_MODE:-unrecorded}</code>
+run, and every cell says which toolchains reached it.</p>
 <div class="wrap"><table class="grid">
 <tr><th>layer</th>$(for l in $LANGS; do printf '<th>%s</th>' "$l"; done)</tr>
 EOF
-    local layer lang v
+    local layer lang v t
     for layer in $LAYERS; do
         printf '<tr><td>%s</td>' "$layer"
         for lang in $LANGS; do
-            v="${CELL[$layer/$lang]}"
-            printf '<td><span class="cell %s">%s</span></td>' "$(cls "$v")" "$v"
+            v="${CELL[$layer/$lang]}"; t="${TOOL[$layer/$lang]}"
+            printf '<td><span class="cell %s">%s</span>%s</td>' \
+                "$(cls "$v")" "$v" "${t:+ <span class=\"tool\">${t//&/&amp;}</span>}"
         done
         printf '</tr>\n'
     done
@@ -510,10 +573,10 @@ written <span class="cell unproven">UNPROVEN</span> so it looks like one.</p>
 run wrote down; <code>skipped</code> is a cell the last recorded run could not judge; <code>unreached</code> is a cell nothing
 runs at all. All three are <span class="cell unproven">UNPROVEN</span> and they are very different gaps.</p>
 <div class="wrap"><table class="why">
-<tr><th>layer</th><th>language</th><th>cell</th><th>reason</th><th>what proved it, or what did not</th></tr>
+<tr><th>layer</th><th>language</th><th>cell</th><th>toolchain</th><th>reason</th><th>what proved it, or what did not</th></tr>
 EOF
-    awk -F'\t' '{ for (i = 1; i <= 5; i++) { gsub(/&/, "\\&amp;", $i); gsub(/</, "\\&lt;", $i) }
-                  printf "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n", $1, $2, $3, $4, $5 }' "$WORK/grid"
+    awk -F'\t' '{ for (i = 1; i <= 6; i++) { gsub(/&/, "\\&amp;", $i); gsub(/</, "\\&lt;", $i) }
+                  printf "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n", $1, $2, $3, $6, $4, $5 }' "$WORK/grid"
     cat <<EOF
 </table></div>
 <div class="wrap"><table>

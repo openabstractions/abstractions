@@ -128,6 +128,7 @@ undecided=0
 DECLARED="$WORK/invariants.declared"
 CITED="$WORK/invariants.cited"
 : > "$CITED"
+: > "$WORK/names.carried"
 
 echo "download behaviour conformance"
 
@@ -263,6 +264,39 @@ fi
 # knows and no contract page declares is a private agreement between three
 # implementations by the same hand; a name a page declares and no reader knows
 # is a rule a stranger is held to and we are not.
+#
+# WHAT A DECLARATION IS, asked before whether it is well formed. A key spelled
+# `download.failure/v1` was written by three implementations, printed in
+# `content=` on every failure transcript and named on a contract page, and both
+# halves of this check were blind to it at once: the page half matched names
+# against the grammar, so a name outside the grammar was not a mismatch but an
+# absence, and the driver half asked the job layer for a roster the download
+# layer's own key was never in. One cause surfaced as 28 transcript divergence
+# lines, and a person decided it rather than an instrument reporting it.
+#
+# So the two questions are separated. A ROSTER LINE is a declaration because a
+# driver printed it. A TOKEN IN `content=` is a declaration because a record
+# carries it. A PAGE TOKEN is a declaration when it is shaped like a name of a
+# layer of ours -- a dotted prefix, one slash, one segment, and one of $LAYERS
+# among the dotted words -- which is why `coordination.k8s.io/v1` and
+# `nas.example/transfer@2`, cited on those pages as somebody else's vocabulary,
+# are not declarations and a download-layer key spelled any way at all is. None
+# consults the grammar. WELL FORMED is $NAME and nothing else in this file
+# spells it, so a declaration that misses it is named and counted rather than
+# silently unmatched.
+#
+# MALFORMED and UNRECOGNISED are different failures with different remedies and
+# are printed apart: a name that does not parse is a spelling somebody must fix,
+# a well-formed name nobody declares is a roster or a page somebody must extend.
+NAME='abstraction[.][a-z][a-z0-9]*/[a-z][a-z0-9]*@[0-9]+'
+NAMELIKE='[a-z][a-z0-9]*([.][a-z][a-z0-9]*)+/[a-z][a-z0-9]*(@[0-9]+)?'
+PAGES=("$ROOT/job/README.md" "$ROOT/job/CONTRACT.md" "$ROOT/download/README.md" "$ROOT/download/CONTRACT.md")
+LAYERS="abstraction"
+for page in "${PAGES[@]}"; do
+    layer="$(basename "$(dirname "$page")")"
+    case " $LAYERS " in *" $layer "*) ;; *) LAYERS="$LAYERS $layer" ;; esac
+done
+
 : > "$WORK/models.rosters"
 declared=""
 for name in $ROSTER; do
@@ -274,9 +308,36 @@ for name in $ROSTER; do
     models: $name answers no --models roster, so its refusals are unreadable"
         continue
     fi
+    bad="$(awk -v re="^$NAME\$" '
+        NF == 0 { next }
+        $1 ~ re && NF == 2 && ($2 == "critical-ok" || $2 == "never-critical") { next }
+        { print }' "$WORK/models.$name" | paste -sd, -)"
+    if [ -n "$bad" ]; then
+        echo "  FAIL  models: $name declares a line this check cannot parse: $bad"
+        diverge=$((diverge+1))
+    fi
     declared="$declared $name"
     echo "$name=$(paste -sd, - < "$WORK/models.$name")" >> "$WORK/models.rosters"
 done
+
+grep -ohE "$NAMELIKE" "${PAGES[@]}" | sort -u | awk -v layers="$LAYERS" '
+    BEGIN { n = split(layers, a, " "); for (i = 1; i <= n; i++) known[a[i]] = 1 }
+    { m = split(substr($0, 1, index($0, "/") - 1), word, ".")
+      for (i = 1; i <= m; i++) if (word[i] in known) { print; next } }' > "$WORK/models.page.declared"
+grep -E "^$NAME\$" "$WORK/models.page.declared" > "$WORK/models.page" || :
+pagebad="$(grep -vE "^$NAME\$" "$WORK/models.page.declared" | paste -sd' ' -)"
+if [ -n "$pagebad" ]; then
+    echo "  FAIL  models: a contract page names a content set this check cannot parse: $pagebad"
+    diverge=$((diverge+1))
+fi
+# Every name any driver declared, which is what a record's names are checked
+# against below. The union and not the intersection: a name one reader knows is
+# a name somebody declared, and the rosters disagreeing about it is the line
+# above, not a second report of the same thing.
+: > "$WORK/models.declared"
+for name in $declared; do cut -d' ' -f1 "$WORK/models.$name" >> "$WORK/models.declared"; done
+sort -u "$WORK/models.declared" -o "$WORK/models.declared"
+
 if [ "$(echo $declared | wc -w)" -lt 2 ]; then
     echo "  ----  models: only$declared answered — one roster agreeing with itself proves nothing"
     GAPS="$GAPS
@@ -300,8 +361,6 @@ elif [ "$(sed 's/^[a-z+]*=//' "$WORK/models.rosters" | sort -u | grep -c .)" != 
     diverge=$((diverge+1))
 else
     cut -d' ' -f1 "$WORK/models.$(echo $declared | cut -d' ' -f1)" | sort -u > "$WORK/models.known"
-    grep -ohE 'abstraction\.[a-z]+/[a-z]+@[0-9]+' \
-        "$ROOT/job/README.md" "$ROOT/job/CONTRACT.md" "$ROOT/download/README.md" "$ROOT/download/CONTRACT.md" | sort -u > "$WORK/models.page"
     unwritten="$(comm -23 "$WORK/models.known" "$WORK/models.page" | paste -sd' ' -)"
     unbuilt="$(comm -13 "$WORK/models.known" "$WORK/models.page" | paste -sd' ' -)"
     if [ -n "$unwritten$unbuilt" ]; then
@@ -430,6 +489,16 @@ run_scenario() {
 $(sed -n 's/^# *undecided  *\([0-9][0-9]*\) *: */\1 — /p' "$file")
 EOF
 
+    # A name the scenario handed in is the scenario's; a name the implementation
+    # added is the implementation's, and only the second must be on a roster.
+    # unknown-model forges `abstraction.test/hovercraft@7` on disk on purpose, to
+    # reach the refusal no conforming writer can produce. Operations only — an
+    # expectation naming a content set is the author asserting one, not planting
+    # one, and reading those would blind this to the very key it exists to catch.
+    local ops="$WORK/ops.$name" carried="$WORK/carried.$name"
+    sed 's/#.*//' "$file" > "$ops"
+    : > "$carried"
+
     local ran="" first="" firstimpl="" ok=1 kept=1
     for impl in $ROSTER; do
         eval "caps=\$CAPS_$impl; gone=\$MISSING_$impl"
@@ -459,6 +528,11 @@ EOF
             continue
         fi
         ran="$ran $impl"
+        # A token here is a content name because a record carries it, whatever it
+        # is spelled like. This is the half no roster and no page can be missing
+        # at the same time as the implementation writing it.
+        grep -oE '(content|crit)=[^ ]*' "$out" | sed 's/^[a-z]*=//' | tr ',' '\n' \
+            | grep . >> "$carried" || :
         against_contract "$file" "$out" "$impl" "$name" || kept=0
         if [ -z "$first" ]; then first="$out"; firstimpl="$impl"; continue; fi
         if ! cmp -s "$first" "$out"; then
@@ -467,6 +541,11 @@ EOF
             ok=0
         fi
     done
+
+    local carried_name
+    while read -r carried_name; do
+        grep -qF -- "$carried_name" "$ops" || echo "$carried_name" >> "$WORK/names.carried"
+    done < <(sort -u "$carried")
 
     local n; n="$(echo $ran | wc -w)"
     [ "$kept" = 1 ] || broke=$((broke+1))
@@ -498,6 +577,28 @@ for f in "$ROOT"/download/testdata/scenarios/*.txt; do
     fi
     run_scenario "$f"
 done
+
+# --- the names the records themselves carried ------------------------------
+#
+# The third source, and the only one that cannot abstain. A roster can omit a
+# name and a page can spell it a fourth way, but a record that carries a payload
+# names it in `content` on every write, so this list is what the implementations
+# actually did rather than what any of them said.
+if [ -s "$WORK/names.carried" ]; then
+    sort -u "$WORK/names.carried" -o "$WORK/names.carried"
+    carriedbad="$(grep -vE "^$NAME\$" "$WORK/names.carried" | paste -sd' ' -)"
+    if [ -n "$carriedbad" ]; then
+        echo "  FAIL  models: a record carries a content set this check cannot parse: $carriedbad"
+        diverge=$((diverge+1))
+    fi
+    stray=""
+    [ -s "$WORK/models.declared" ] &&
+        stray="$(comm -23 "$WORK/names.carried" "$WORK/models.declared" | paste -sd' ' -)"
+    if [ -n "$stray" ]; then
+        echo "  FAIL  models: carried in a record and on no roster: $stray"
+        diverge=$((diverge+1))
+    fi
+fi
 
 # --- and the contract this script enforces is written down -----------------
 #

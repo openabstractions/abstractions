@@ -27,7 +27,7 @@ exit 0  every judged rule passed and nothing was out of reach
      1  a rule failed
      2  incomplete: a rule could not be reached, a contract page the scenarios
         cite was not supplied, or an expectation named a rule no page declares
-     3  the suite could not be set up
+     3  the suite could not be set up, or two contract pages declare one rule
 
 The driver contract is DRIVER.md. Nothing here reads our source tree.
 EOF
@@ -179,13 +179,19 @@ else
     echo "  fixture:      ABSENT — ${FIXTURE_WHY:-not needed by the scenarios selected}"
 fi
 
+# The first occurrence of a tag on a page is the declaration; a later one is a
+# citation, prose about the rule rather than the rule. Two sentences filed under
+# one tag leave a report picking one, so a passing mention can replace what a
+# rule says. scripts/behaviour-conformance.sh reads a page by the same rule.
 invariants() {
-    awk '
-    function emit(block,   before, cut, i, tag, sent) {
+    awk -v PAGE="$2" '
+    function emit(block, line,   before, cut, i, tag, sent) {
         gsub(/\n/, " ", block)
         while (match(block, /\[[A-Z]+-[A-Z]*[0-9]+\]/)) {
             tag = substr(block, RSTART + 1, RLENGTH - 2)
             before = substr(block, 1, RSTART - 1)
+            block = substr(block, RSTART + RLENGTH)
+            if (seen[tag]++) continue
             sub(/[.:;,] *$/, "", before)
             cut = 0
             for (i = 1; i < length(before); i++)
@@ -198,16 +204,15 @@ invariants() {
             gsub(/  +/, " ", sent)
             sub(/ +$/, "", sent)
             if (length(sent) > 92) sent = substr(sent, 1, 89) "..."
-            print tag "\t" sent
-            block = substr(block, RSTART + RLENGTH)
+            print tag "\t" sent "\t" PAGE "\t" line
         }
     }
-    /^```/          { fence = !fence; emit(buf); buf = ""; next }
+    /^```/          { fence = !fence; emit(buf, bufline); buf = ""; next }
     fence           { next }
-    /^$/            { emit(buf); buf = ""; next }
-    /^[|#]/         { emit(buf); buf = ""; emit($0); next }
-                    { buf = buf " " $0 }
-    END             { emit(buf) }
+    /^$/            { emit(buf, bufline); buf = ""; next }
+    /^[|#]/         { emit(buf, bufline); buf = ""; emit($0, FNR); next }
+                    { if (buf == "") bufline = FNR; buf = buf " " $0 }
+    END             { emit(buf, bufline) }
     ' "$1"
 }
 
@@ -217,8 +222,9 @@ pages=""
 if [ -d "$CONTRACTS" ]; then
     for p in "$CONTRACTS"/*.md; do
         [ -f "$p" ] || continue
-        pages="$pages $(basename "$p")"
-        invariants "$p" >> "$DECLARED"
+        b=$(basename "$p")
+        pages="$pages $b"
+        invariants "$p" "$b" >> "$DECLARED"
     done
 fi
 sort -u -o "$DECLARED" "$DECLARED"
@@ -228,6 +234,19 @@ else
     echo "  contracts:    NONE at $CONTRACTS — the end of this run says what to fetch"
 fi
 echo
+
+twice=$(cut -f1 "$DECLARED" | sort | uniq -d)
+if [ -n "$twice" ]; then
+    echo "  two contract pages declare the same rule, and nothing here can say which"
+    echo "  of them binds. A run that picked one would print a rule nobody wrote."
+    echo
+    for t in $twice; do
+        awk -F'\t' -v t="$t" '$1 == t { printf "      [%s] %s near line %s: %s\n", $1, $3, $4, $2 }' "$DECLARED"
+    done
+    echo
+    echo "  RESULT: NOT SET UP"
+    exit 3
+fi
 
 PASS="$WORK/tag.pass"; FAIL="$WORK/tag.fail"; UNREACH="$WORK/tag.unreach"; CITED="$WORK/tag.cited"
 WHERE="$WORK/tag.where"

@@ -4,8 +4,7 @@
 it declares `store`, keeps records under `<workdir>/jobs/<id>.json` through
 the encoder and decoder that `idl/gen` emits from `job/job.thrift`, and
 answers the store, watch and awake operations. It is the fourth implementer
-of the job contract and was written from the pages alone; every place the
-pages left it guessing is listed in `research/rust161/RESULTS.md`.
+of the job contract and was written from the pages alone.
 
 Build, from a PowerShell with `go` and `rustc` on the path:
 

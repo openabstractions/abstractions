@@ -182,7 +182,7 @@ Six more any operation may answer:
 | `stale-epoch` | the epoch offered is not the one the record carries |
 | `lease-expired` | the lease this was issued against has lapsed |
 | `terminal` | the record is in a state that accepts no further change |
-| `unknown-model` | the record declares a critical schema this reader cannot read. The definition spells this same refusal `unknown_schema` |
+| `unknown-model` | the record declares a critical schema this reader cannot read. The definition spells this same refusal `unknown_schema`, and says so: `job/job.thrift` carries the word above beside the member |
 | `refused` | refused for a reason with no word of its own |
 
 and four that belong to one operation each, because they say something no
@@ -284,6 +284,29 @@ A record declares the models it carries and the subset a reader must understand
 or refuse it, and this roster is what an `unknown-model` answer is decided
 against. The runner does not ask for it: a scenario reaches the refusal through
 `plant`, and a reader checking a transcript by hand reads the roster.
+
+### `--refusals`
+
+A `store` driver also answers `--refusals`: every verdict word above that it can
+print for a refusal, one per line, sorted, without `ok` and without the four that
+belong to one operation each.
+
+    invalid
+    lease-expired
+    lease-held
+    not-found
+    refused
+    stale-epoch
+    terminal
+    unknown-model
+
+The words are one vocabulary with two spellings — `job/job.thrift` declares the
+member and the `transcript` annotation beside it declares the word here — and
+this roster is where the two are compared. Byte-comparing transcripts cannot do
+it: it proves three drivers agree, and three drivers agreeing on a word the
+definition does not declare is exactly how `unknown-model` and `unknown_schema`
+drifted apart unnoticed. A driver that can derive the roster from the definition
+should; one that spells it by hand is conformant and this is what checks it.
 
 ### The wire fixture
 

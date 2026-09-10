@@ -245,8 +245,8 @@ languages must agree to spell identically for no reader that exists.
 
 **What forced it.** Measured, 2026-09-08: the profile encoded exactly one nested
 struct and no repeated one, so a definition of the `download` layer could not be
-written at all — `sources[]` is the field that layer has the most rules about
-(`research/dlgen81/STAGES.md`). The proxy that had priced the gap counted the
+written at all — `sources[]` is the field that layer has the most rules about.
+The proxy that had priced the gap counted the
 *representations* the notation could not name and never asked whether it could
 hold the *container*, and under that proxy every layer with a repeated record
 scores zero mismatch and is equally impossible.

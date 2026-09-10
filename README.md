@@ -94,11 +94,29 @@ cannot tell which one binds them.
 
 ## Measured
 
+**The coverage grid** answers "is any of this real" better than this page can:
+one row per layer, one column per language, one verdict per cell —
+[`docs/results/MATRIX.txt`](docs/results/MATRIX.txt), and
+[the same grid on the web](https://openabstractions.org/coverage.html). It reads
+what is committed in this repository and the transcripts below, and runs no
+implementation: it reports what was recorded, never what would happen if you ran
+it now.
+
+It uses five verdicts because four kinds of gap are not one gap. `PASS` and
+`FAIL` mean a recorded run reached the cell. `UNPROVEN` means it could not be
+checked, and names why. `ABSENT` means it was checked and the thing is not
+there. `—` means there is no implementation at all — not an untested one and not
+a finished one — and each `—` carries whether that gap is declared deliberate or
+simply unexplained. No count from the grid is repeated on this page: it names
+the commit and the layer trees it measured, and `sh scripts/matrix.sh --check`
+refuses a grid the evidence no longer produces, so one that has gone stale fails
+the gate instead of reading as coverage.
+
 Transcripts of every run are in [`docs/results/`](docs/results/), indexed in
 [`docs/results/README.md`](docs/results/README.md) with the script that produced
 each and the state of the machine. They are our own output on our own machines,
 so read them as a record of what happened once, not as independent verification.
-`UNPROVEN` marks a platform not reached; a pass by absence is a defect here.
+A pass by absence is a defect here.
 
 - A killed download resumes from the proven prefix; bytes written past the last
   checkpoint are discarded. [`RESUME1.txt`](docs/results/RESUME1.txt).

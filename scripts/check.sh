@@ -9,7 +9,13 @@
 #   usage: scripts/check.sh [--fast] [--public] [--verbose] [--record]
 #     --fast    skip the MSVC C++ build and the cross-language harnesses, which
 #               take minutes. Go, Python, and the C++ under g++ in WSL, which
-#               is under a minute and runs in every mode.
+#               is under a minute and runs in every mode. So does the C++
+#               conformance driver: it is two libraries and seconds to build,
+#               and a mode that judged only the Go driver would record a grid
+#               claiming a second implementation nobody put the suite to.
+#               Every mode ends by naming what it did not judge, rule by rule
+#               and cell by cell, because that list is the whole difference
+#               between a subset and a result.
 #     --public  also fetch the openabstractions repositories: prove no file
 #               lives in two of them, and let the rules read the files each
 #               repository authors for itself, which no rule derived from
@@ -57,9 +63,10 @@ if [ -z "$PY" ]; then
     done
 fi
 
+CPPENV=$(sh "$ROOT/scripts/cppenv.sh" --export) && eval "$CPPENV"
+
 CMAKE="${ABSTRACTION_CMAKE:-$(command -v cmake 2>/dev/null || true)}"
-for c in "/c/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe" \
-         "/c/Program Files/CMake/bin/cmake.exe"; do
+for c in "/c/Program Files/CMake/bin/cmake.exe"; do
     [ -n "$CMAKE" ] || [ ! -x "$c" ] || CMAKE="$c"
 done
 
@@ -76,11 +83,15 @@ ran() { NRAN=$((NRAN+1)); SLOW="$SLOW$LAPUS	$1"$'\n'; }
 pass() { lap; printf '  \033[32mok\033[0m    %s \033[90m%s\033[0m\n' "$1" "$SECS"; ran "$1"; }
 fail() { lap; printf '  \033[31mFAIL\033[0m  %s \033[90m%s\033[0m\n' "$1" "$SECS"; ran "$1"; FAILED+=("$1"); }
 # A rule that quietly stops running is the defect this whole file is about, so
-# a skip is counted and named rather than only printed.
-skip() { lap; NSKIPPED=$((NSKIPPED+1)); printf '  \033[33mskip\033[0m  %s\n' "$1"; }
+# a skip is counted and named rather than only printed. Kept as well as printed,
+# because the line scrolls past eight hundred lines before the result block and
+# a reader who cannot see what a mode left out reads what it did judge as all
+# there was.
+NOTJUDGED=""
+skip() { lap; NSKIPPED=$((NSKIPPED+1)); NOTJUDGED="$NOTJUDGED  skip      $1"$'\n'; printf '  \033[33mskip\033[0m  %s\n' "$1"; }
 # Counted apart from a skip: a tool this run did not have is an inconvenience,
 # a platform this run could not reach is the thing we say out loud.
-unproven() { lap; NUNPROVEN=$((NUNPROVEN+1)); printf '  \033[33mUNPROVEN\033[0m  %s\n' "$1"; }
+unproven() { lap; NUNPROVEN=$((NUNPROVEN+1)); NOTJUDGED="$NOTJUDGED  UNPROVEN  $1"$'\n'; printf '  \033[33mUNPROVEN\033[0m  %s\n' "$1"; }
 # A rule whose input set is empty passes on nothing, which is how this project
 # published green for two days. Every rule that can see an empty set says so.
 nothing() { fail "$1 — $2 inputs, and this rule cannot fail on fewer than $3"; }
@@ -132,7 +143,7 @@ prose_tested_tree map_unnamed front_doors_open front_doors_published hand_rolled
 struck_section_unmarked
 wasted_bytes_after_kill
 peer_corpus_peers peer_corpus_disagreements peer_corpus_roundtrip_differs peer_corpus_wire_refused
-cpp_toolchains_built pins_named pins_dead_measured
+cpp_toolchains_built pins_named pins_dead_measured pins_behind_newest
 gate_fast_minutes gate_full_minutes gate_public_minutes"
 
 # Output is kept and only shown for what failed. A passing run should be short
@@ -144,10 +155,14 @@ LOGS="$(mktemp -d)"
 FINISHED=0
 trap 'rm -rf "$LOGS"; [ "$FINISHED" = 1 ] || printf "\n  \033[31mABORTED\033[0m — the gate stopped before its result block. Nothing above it is a pass.\n\n"' EXIT
 
+# RUN_LOG is where the last run() put its output. A caller that wants to read
+# it must not spell the name a second time: one place owns how a label becomes
+# a filename, or the two spellings drift and the reader silently finds nothing.
+RUN_LOG=""
 run() {  # run <label> <command...>
     local label="$1"; shift
-    local log="$LOGS/${label//[^a-zA-Z0-9]/_}.log"
-    if "$@" >"$log" 2>&1; then pass "$label"; else fail "$label"; echo "$log" >>"$LOGS/failed"; fi
+    RUN_LOG="$LOGS/${label//[^a-zA-Z0-9]/_}.log"
+    if "$@" >"$RUN_LOG" 2>&1; then pass "$label"; else fail "$label"; echo "$RUN_LOG" >>"$LOGS/failed"; fi
 }
 
 # What this run judged, one implementation directory per line. The gate has
@@ -160,19 +175,82 @@ run() {  # run <label> <command...>
 # cell this run reached and could not judge. There is no fourth word. A cell
 # this run never came near is absent from the file entirely and the grid keeps
 # calling it UNPROVEN, which is the honest reading and needs no line here.
+#
+# A verdict also names the toolchain that reached it, in a trailing [bracket],
+# because a cell reading PASS over a compiler nobody named is a claim about a
+# compiler nobody named: every C++ cell in this grid meant "g++ under WSL" for
+# as long as the record existed and the grid never said so. A verdict with no
+# toolchain is written with none, and the grid renders that as a question mark
+# rather than inventing one.
 CELLS="$LOGS/cells"
 : > "$CELLS"
-cellverdict() { printf '%s\t%s\t%s\n' "$1" "$2" "$3" >> "$CELLS"; }
+cellverdict() {  # cellverdict <implementation> <verdict> <what judged it> [toolchain]
+    printf '%s\t%s\t%s\n' "$1" "$2" "$3${4:+ [$4]}" >> "$CELLS"
+}
 # run(), and the cell the label stands for. Nothing else about run() changes:
 # FAILED is the gate's own record of what went red and reading its length either
 # side is cheaper than a second execution path that could drift from the first.
-runcell() {  # runcell <implementation> <what judged it> <label> <command...>
-    local impl="$1" by="$2"; shift 2
+runcell() {  # runcell <implementation> <what judged it> <toolchain> <label> <command...>
+    local impl="$1" by="$2" tool="$3"; shift 3
     local n=${#FAILED[@]}
     run "$@"
-    if [ "${#FAILED[@]}" = "$n" ]; then cellverdict "$impl" PASS "$by"
-    else cellverdict "$impl" FAIL "$by"; fi
+    if [ "${#FAILED[@]}" = "$n" ]; then cellverdict "$impl" PASS "$by" "$tool"
+    else cellverdict "$impl" FAIL "$by" "$tool"; fi
 }
+# Which toolchain reached a cell, asked per cell: the instruments below put
+# three languages to one test in one call, and one name carried across all
+# three is a claim about a compiler that never saw two of them.
+tool_for() {
+    case "$1" in
+        */python) printf '%s' "${PY_TOOL:-}" ;;
+        */cpp)    printf '%s' "${CPP_TAG:-}" ;;
+        # Go is the default rather than a fourth case: a go module can sit at
+        # its layer root, so identity/ is a Go cell whose path never says go,
+        # and every implementation here named without a language is one of those.
+        *)        printf '%s' "${GO_TOOL:-}" ;;
+    esac
+}
+# The verdict every instrument that is not runcell() reached about a cell. Only
+# a verdict worse than PASS is written: collapse() below keeps the worst one a
+# cell got, so a second PASS can move nothing, and each cell already carries a
+# verdict from the build that owns it. Five instruments wrote no verdict at all
+# until this existed, and the page published twenty-four green cells on a run
+# whose harnesses went red in all three languages.
+lower() {  # lower <verdict> <what judged it> <implementation>...
+    local v="$1" by="$2" i; shift 2
+    for i in "$@"; do cellverdict "$i" "$v" "$by" "$(tool_for "$i")"; done
+}
+# run(), and the cells it lowers if it goes red. For an instrument that decides
+# nothing itself and leaves the verdict to run()'s exit status. One argument
+# holds every cell it judges, because a harness that compares implementations
+# is red about all of them at once.
+runlower() {  # runlower <verdict> <what judged it> <implementation...> <label> <command...>
+    local v="$1" by="$2" impl="$3"; shift 3
+    local n=${#FAILED[@]}
+    run "$@"
+    [ "${#FAILED[@]}" = "$n" ] || lower "$v" "$by" $impl
+}
+# The worst verdict a cell was given, in the order scripts/matrix.sh ranks by.
+# Keeping the last one written let a green build hide a red harness, which is
+# the defect one level up from the one the grid exists to end.
+collapse() {  # collapse <known cells> <verdicts> -> implementation, verdict, why
+    awk -F'\t' 'function rank(v) {
+                    if (v == "FAIL") return 0
+                    if (v == "UNPROVEN") return 1
+                    return 2
+                }
+                NR == FNR { cell[$3] = 1; next }
+                $1 in cell && (!($1 in best) || rank($2) < best[$1]) {
+                    best[$1] = rank($2); v[$1] = $2 "\t" $3
+                }
+                END { for (i in v) print i "\t" v[i] }' "$1" "$2" | sort
+}
+# One name per language per run, asked once. The gate's header line already
+# names these for the machine; a cell that does not carry them is a cell whose
+# reader has to assume the header applies to it, and for C++ it does not.
+GO_TOOL="$(go env GOVERSION 2>/dev/null || true)"
+PY_TOOL=""
+[ -z "$PY" ] || PY_TOOL="py$("$PY" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || true)"
 
 section "contract"
 # Every rule a page states carries a tag and a scenario cites the tag it tests.
@@ -356,6 +434,20 @@ else
 fi
 
 run "coverage grid"     pinned "$ROOT/scripts/matrix.sh" --check
+# The rule every cell on the public page rests on, put to a case that breaks it.
+# collapse() kept whichever verdict was written last, and the build that passes
+# writes before the harness that fails, so on 2026-09-10 ten rules about layer
+# code went red and all twenty-four cells published PASS. Both orders are here
+# because only one of them was ever wrong.
+CFIX="$LOGS/collapse"
+printf 'a\tgo\ta/go\nb\tgo\tb/go\nc\tgo\tc/go\n' > "$CFIX.known"
+printf 'a/go\tPASS\tbuild\na/go\tFAIL\tharness\nb/go\tFAIL\tharness\nb/go\tPASS\tbuild\nc/go\tPASS\tbuild\nc/go\tUNPROVEN\tharness\n' > "$CFIX.cells"
+CGOT="$(collapse "$CFIX.known" "$CFIX.cells" | cut -f2 | paste -sd' ' -)"
+if [ "$CGOT" = "FAIL FAIL UNPROVEN" ]; then
+    pass "cell collapse — the worst verdict an instrument reached wins, in either order"
+else
+    fail "cell collapse — a cell kept a verdict better than one an instrument reached: want [FAIL FAIL UNPROVEN] got [$CGOT]"
+fi
 
 section "go"
 printf '  pid %s\n' "$$"
@@ -365,7 +457,7 @@ printf '  pid %s\n' "$$"
 mapfile -t MODS < <(modules "$ROOT")
 [ "${#MODS[@]}" -gt 0 ] || nothing "go modules" 0 1
 for d in "${MODS[@]}"; do
-    runcell "$d" "go build ./... && go test ./..." "$d" bash -c "cd '$ROOT/$d' && go build ./... && go test ./..."
+    runcell "$d" "go build ./... && go test ./..." "$GO_TOOL" "$d" bash -c "cd '$ROOT/$d' && go build ./... && go test ./..."
 done
 # -race needs cgo, and go itself reports CGO_ENABLED=0 when it cannot find a C
 # compiler. parallel.go is the first concurrent code in the tree and shipped
@@ -373,7 +465,17 @@ done
 # passes on nothing.
 if [ "$(go env CGO_ENABLED 2>/dev/null)" = "1" ]; then
     for d in job/go download/go; do
+        NRACE=${#FAILED[@]}
         run "$d -race" bash -c "cd '$ROOT/$d' && go test -race ./..."
+        [ "${#FAILED[@]}" = "$NRACE" ] && continue
+        # cgo takes whatever C compiler the machine has, and one that refuses
+        # the flags go hands it fails before a test runs. A detector that never
+        # ran is UNPROVEN; a detector that ran and spoke is the layer's FAIL.
+        if grep -q '\[build failed\]' "$RUN_LOG"; then
+            lower UNPROVEN "go test -race never ran here: $(grep -m1 -i 'error\|cannot' "$RUN_LOG" | tr '\t' ' ' | cut -c1-120)" "$d"
+        else
+            lower FAIL "go test -race ./..." "$d"
+        fi
     done
 else
     skip "race detector — -race needs cgo and there is no C compiler for go env CC=$(go env CC 2>/dev/null)."
@@ -394,7 +496,8 @@ section "platforms"
 # { return l.Close() }` compiles anywhere — so the run below is the other half.
 for os in linux darwin; do
     for d in "${MODS[@]}"; do
-        run "$os $d" env GOOS="$os" GOARCH=amd64 bash -c "cd '$ROOT/$d' && go vet ./..."
+        runlower FAIL "go vet for $os/amd64" "$d" \
+            "$os $d" env GOOS="$os" GOARCH=amd64 bash -c "cd '$ROOT/$d' && go vet ./..."
     done
 done
 
@@ -407,11 +510,13 @@ done
 if command -v wsl.exe >/dev/null 2>&1 && wsl.exe -e sh -c 'command -v go' >/dev/null 2>&1; then
     W="$(wsl.exe -e wslpath -a "$(cygpath -w "$ROOT" 2>/dev/null || echo "$ROOT")" 2>/dev/null | tr -d '\r')"
     for d in "${MODS[@]}"; do
-        run "linux run $d" wsl.exe -e sh -c "cd '$W/$d' && go test ./... >/dev/null"
+        runlower FAIL "go test on the linux this machine has, under WSL" "$d" \
+            "linux run $d" wsl.exe -e sh -c "cd '$W/$d' && go test ./... >/dev/null"
     done
 else
     unproven 'linux run — no wsl.exe with go on it. Nothing on this run has'
     printf '            executed a line of the unix half of anything.\n'
+    lower UNPROVEN "no linux on this run: the unix half of this module was type-checked and executed nowhere" "${MODS[@]}"
 fi
 # macOS stays UNPROVEN and is said out loud rather than left to a green gate:
 # the Mac is the owner's laptop, it is not infrastructure, and identity's
@@ -419,6 +524,11 @@ fi
 # type-checked above and run by nobody.
 unproven 'darwin run — vet only. identity/{bind,codesign,sysctl,identity}_darwin.go'
 printf '            and job/go/awake_unix.go on macOS are compiled here and executed nowhere.\n'
+# The two cells that sentence is about. Without these it printed yellow in a
+# transcript nobody keeps while the grid published identity/go green, and a
+# reader of the page had no way to learn that a third of that layer has never
+# been executed. A platform nobody reached is UNPROVEN on the page too.
+lower UNPROVEN "the macOS half is type-checked and run by nobody: this gate reaches no Mac" identity job/go
 
 # Bytes not re-fetched after a kill. The only axis on which this layer beats
 # curl, wget and aria2c — 11.6 MB against 3.22 GB at 8 GiB — and until now the
@@ -475,13 +585,13 @@ pytests() {  # pytests <label> <directory>
         cellverdict "$2" UNPROVEN "no python interpreter on this run"; return
     fi
     if ! (cd "$ROOT/$2" && "$PY" -m unittest discover -p 'test_*.py') >"$log" 2>&1; then
-        fail "$1"; echo "$log" >>"$LOGS/failed"; cellverdict "$2" FAIL "unittest discover"
+        fail "$1"; echo "$log" >>"$LOGS/failed"; cellverdict "$2" FAIL "unittest discover" "$PY_TOOL"
     elif grep -q '^Ran 0 tests' "$log"; then
         fail "$1 — discovery found no test to run, and unittest calls that a pass"
-        cellverdict "$2" FAIL "unittest discover found no test"
+        cellverdict "$2" FAIL "unittest discover found no test" "$PY_TOOL"
     else
         n="$(sed -n 's/^Ran \([0-9]*\) tests\?.*/\1/p' "$log" | tail -1)"
-        pass "$1 — $n tests"; cellverdict "$2" PASS "unittest discover, $n tests"
+        pass "$1 — $n tests"; cellverdict "$2" PASS "unittest discover, $n tests" "$PY_TOOL"
     fi
 }
 pytests "job/python"        job/python
@@ -552,41 +662,95 @@ else
         for s in $CONF_SUBSET; do ONLY="$ONLY --only $s"; done
         OVER="$(echo $CONF_SUBSET | wc -w) of $NSCEN scenarios: $CONF_SUBSET"
     fi
-    CV="$CONF/run.log"
-    sh "$CONF/run.sh" $ONLY -- "$CONF/replay.exe" >"$CV" 2>&1; cv=$?
-    NRULE=$(sed -n 's/^    passed: *//p' "$CV")
-    NUNREACH=$(sed -n 's/^    unreachable: *//p' "$CV")
-    metric conformance_rules_kept "${NRULE:-0}" conformance/run.sh
-    metric conformance_rules_unreachable "${NUNREACH:-0}" conformance/run.sh
-    # Only a whole run's numbers go in the series. A subset's 52 recorded beside
-    # a full run's 84 is a series that moves because a flag moved.
-    [ "$WHOLE" = 1 ] && SERIES_KEYS="$SERIES_KEYS conformance_rules_kept conformance_rules_unreachable"
-    case "$cv" in
-    0) if [ "$WHOLE" = 1 ]; then
-           pass "conformance — ${NRULE:-0} rules the contract pages state, kept over $OVER"
-       else
-           pass "conformance SUBSET — ${NRULE:-0} rules kept over $OVER. This is not the suite; drop --fast for that"
-       fi ;;
-    1) sed -n '/^  FAIL  /,/^          observed:/p' "$CV" > "$CONF/broke"
-       fail "conformance ($(sed -n 's/^  [0-9]* scenarios passed, \([0-9]*\) failed.*/\1/p' "$CV") scenarios broke a rule a contract page states, over $(grep -c '^  FAIL  ' "$CV") expectations)"
-       detail "$CONF/broke"; echo "$CV" >>"$LOGS/failed" ;;
+    # One judgement, applied to each driver in turn. Two copies of this case
+    # would drift, and the entire value of a second driver is that it is judged
+    # by the same rule as the first.
+    #
     # Exit 2 is the runner refusing to call an unreached rule a pass, and its two
     # causes are not one defect. A contract page missing is this tree failing to
     # hand over a file it wrote itself, which is red. A capability the driver
     # could not declare is a toolchain absent from this machine — no python, so
     # no fixture, so no wire — and that is UNPROVEN, named, and never a pass.
-    2) if grep -q 'contract pages this run needed and did not have' "$CV"; then
-           fail "conformance — a contract page this tree authors reached the runner missing, and every rule citing it was judged against nothing"
-           echo "$CV" >>"$LOGS/failed"
-       else
-           unproven "conformance — ${NUNREACH:-?} rules out of reach, judged not at all, over $OVER"
-           { sed -n 's/^  fixture: */fixture /p' "$CV" | grep ABSENT
-             sed -n 's/^  ----  //p' "$CV"; } > "$CONF/outofreach"
-           detail "$CONF/outofreach"
-       fi ;;
-    *) fail "conformance — run.sh exited $cv: it could not be set up, which is this tree's fault and not an implementation's"
-       echo "$CV" >>"$LOGS/failed" ;;
-    esac
+    conf_judge() {  # conf_judge <label> <cell> <toolchain> <driver> <log>
+        local label="$1" cell="$2" tool="$3" drv="$4" log="$5" rc
+        sh "$CONF/run.sh" $ONLY -- "$drv" >"$log" 2>&1; rc=$?
+        CONF_RULES=$(sed -n 's/^    passed: *//p' "$log")
+        CONF_UNREACH=$(sed -n 's/^    unreachable: *//p' "$log")
+        case "$rc" in
+        0) if [ "$WHOLE" = 1 ]; then
+               pass "$label — ${CONF_RULES:-0} rules the contract pages state, kept over $OVER"
+           else
+               pass "$label SUBSET — ${CONF_RULES:-0} rules kept over $OVER. This is not the suite; drop --fast for that"
+           fi
+           cellverdict "$cell" PASS "the published conformance suite, ${CONF_RULES:-0} rules over $OVER" "$tool" ;;
+        1) sed -n '/^  FAIL  /,/^          observed:/p' "$log" > "$CONF/broke"
+           fail "$label ($(sed -n 's/^  [0-9]* scenarios passed, \([0-9]*\) failed.*/\1/p' "$log") scenarios broke a rule a contract page states, over $(grep -c '^  FAIL  ' "$log") expectations)"
+           detail "$CONF/broke"; echo "$log" >>"$LOGS/failed"
+           cellverdict "$cell" FAIL "the published conformance suite, $(grep -c '^  FAIL  ' "$log") expectations broke a rule a contract page states" "$tool" ;;
+        2) if grep -q 'contract pages this run needed and did not have' "$log"; then
+               fail "$label — a contract page this tree authors reached the runner missing, and every rule citing it was judged against nothing"
+               echo "$log" >>"$LOGS/failed"
+               cellverdict "$cell" FAIL "the published conformance suite could not read a contract page this tree authors" "$tool"
+           else
+               unproven "$label — ${CONF_UNREACH:-?} rules out of reach, judged not at all, over $OVER"
+               { sed -n 's/^  fixture: */fixture /p' "$log" | grep ABSENT
+                 sed -n 's/^  ----  //p' "$log"; } > "$CONF/outofreach"
+               detail "$CONF/outofreach"
+               cellverdict "$cell" UNPROVEN "the published conformance suite left ${CONF_UNREACH:-?} rules out of reach, so it judged $cell not at all" "$tool"
+           fi ;;
+        *) fail "$label — run.sh exited $rc: it could not be set up, which is this tree's fault and not an implementation's"
+           echo "$log" >>"$LOGS/failed"
+           cellverdict "$cell" UNPROVEN "the published conformance suite could not be set up on this run: run.sh exited $rc" "$tool" ;;
+        esac
+    }
+
+    conf_judge "conformance go" download/go "$GO_TOOL" "$CONF/replay.exe" "$CONF/run.log"
+    # Only the reference driver's numbers go in the series, and only a whole
+    # run's. A subset's 52 recorded beside a full run's 84 is a series that moves
+    # because a flag moved; a second driver's 85 beside the first's is a series
+    # with two values a day and no way to tell which implementation moved.
+    metric conformance_rules_kept "${CONF_RULES:-0}" conformance/run.sh
+    metric conformance_rules_unreachable "${CONF_UNREACH:-0}" conformance/run.sh
+    [ "$WHOLE" = 1 ] && SERIES_KEYS="$SERIES_KEYS conformance_rules_kept conformance_rules_unreachable"
+
+    # The second implementation, against the same published suite, in every mode.
+    #
+    # This is the proof the project exists to produce — one contract, two
+    # independent implementations, judged by a suite that reads neither source
+    # tree — and until now nothing ran it: the gate built download/go/cmd/replay
+    # and asked no one else, while the same gate compiled download/cpp/cmd/
+    # replay.cpp and threw it away. Three implementations agreeing because one
+    # author transcribed one design three times is not agreement; a suite that
+    # only ever met one of them cannot tell the difference.
+    #
+    # Its own configure and build rather than the c++ section's, which --fast
+    # skips for the thirteen test binaries and the minutes they cost: the driver
+    # alone is a couple of libraries and seconds, so this leg runs in every mode
+    # and no mode records a C++ conformance cell it did not judge.
+    #
+    # Ninja, not the default generator: measured
+    # MSBuild failing to configure at all from a long build directory, reported
+    # as "Check for working CXX compiler - broken", which is MAX_PATH and not a
+    # compiler. Where there is no ninja the default generator is used and named.
+    CPPD="$LOGS/cppdriver"
+    CPPGEN=""; command -v ninja >/dev/null 2>&1 && CPPGEN="-G Ninja"
+    CPPTOOL="${ABSTRACTION_CPPENV%% *}"
+    if [ -z "$CMAKE" ]; then
+        unproven 'conformance c++ — no cmake on this run, so the published suite was put to no C++ driver. Only Go was asked, and one implementation agreeing with a suite is not two agreeing with each other.'
+        cellverdict download/cpp UNPROVEN "the published conformance suite was put to no C++ driver: no cmake on this run"
+    elif ! bash -c "'$CMAKE' -S '$ROOT' -B '$CPPD' $CPPGEN -DCMAKE_BUILD_TYPE=Release -DABSTRACTION_BUILD_TESTS=OFF -DABSTRACTION_BUILD_TOOLS=ON && '$CMAKE' --build '$CPPD' --config Release --target replay" >"$LOGS/cppdriver.log" 2>&1; then
+        unproven "conformance c++ — the C++ driver would not build under ${ABSTRACTION_CPPENV:-a toolchain scripts/cppenv.sh could not name}${CPPGEN:+ with }${CPPGEN#-G }, so the published suite was put to no C++ driver"
+        detail "$LOGS/cppdriver.log"
+        cellverdict download/cpp UNPROVEN "the published conformance suite was put to no C++ driver: download/cpp/cmd/replay.cpp would not build under ${ABSTRACTION_CPPENV:-an unnamed toolchain}"
+    else
+        CPPDRV="$(ls "$CPPD/replay.exe" "$CPPD/Release/replay.exe" "$CPPD/replay" 2>/dev/null | head -1)"
+        if [ -z "$CPPDRV" ]; then
+            unproven "conformance c++ — the C++ driver built and this rule cannot find the binary under $CPPD, so the published suite was put to no C++ driver"
+            cellverdict download/cpp UNPROVEN "the published conformance suite was put to no C++ driver: the build left no replay binary this rule knows how to find"
+        else
+            conf_judge "conformance c++" download/cpp "$CPPTOOL" "$CPPDRV" "$CONF/run-cpp.log"
+        fi
+    fi
 fi
 
 section "c++"
@@ -600,10 +764,20 @@ section "c++"
 # run did not build is handed to nobody.
 CPP_BUILD="$LOGS/no-cpp-build"
 NCPP=0
+# The two toolchains by name, and the name is what a cell carries. scripts/
+# cppenv.sh already resolved the Windows one — "msvc 14.51.36231" — into
+# ABSTRACTION_CPPENV at the top of this file, once for the whole run; the linux
+# one is asked of g++ where the leg runs. A leg that did not run leaves its name
+# empty and the cell says which compiler was not asked instead of only which was.
+CPP_MSVC=""
+CPP_GXX=""
+CPP_UNRUN=""
 if [ "$FAST" = 1 ]; then
     skip "c++ msvc (--fast: minutes)"
+    CPP_UNRUN="msvc not built (--fast)"
 elif [ -z "$CMAKE" ]; then
     unproven 'c++ msvc — no cmake on PATH and none under Visual Studio; set ABSTRACTION_CMAKE. The Windows half of the C++ compiled nowhere on this run.'
+    CPP_UNRUN="msvc not built (no cmake)"
 else
     # Configured out of tree so a failed build never leaves artefacts in the
     # repository that a later run would mistake for a good one.
@@ -613,7 +787,12 @@ else
     run "cmake configure"   bash -c "'$CMAKE' -S '$ROOT' -B '$B' -DCMAKE_BUILD_TYPE=Release"
     run "cmake build"       bash -c "'$CMAKE' --build '$B' --config Release"
     run "ctest"             bash -c "'$CTEST' --test-dir '$B' -C Release --output-on-failure"
-    [ "${#FAILED[@]}" = "$NFAIL_BEFORE" ] && { CPP_BUILD="$B"; NCPP=$((NCPP+1)); }
+    if [ "${#FAILED[@]}" = "$NFAIL_BEFORE" ]; then
+        CPP_BUILD="$B"; NCPP=$((NCPP+1))
+        CPP_MSVC="${ABSTRACTION_CPPENV:-msvc}"
+    else
+        CPP_UNRUN="msvc built red"
+    fi
 fi
 # The second compiler, and the platform CI builds on. g++ in WSL is on this
 # machine, needs no network and no laptop that might be off, and builds and
@@ -626,13 +805,16 @@ if command -v wsl.exe >/dev/null 2>&1 \
     if git -C "$ROOT" ls-files -coz --exclude-standard | tar --null -T - -cf - \
        | wsl.exe -e sh -c 'd=$(mktemp -d) && tar -xf - -C "$d" && cd "$d" && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j"$(nproc)" && ctest --test-dir build --output-on-failure; rc=$?; rm -rf "$d"; exit $rc' \
        > "$LX" 2>&1; then
-        pass "c++ linux — g++ $(wsl.exe -e g++ -dumpfullversion 2>/dev/null | tr -d '\r') in WSL built the working tree and passed $(sed -n 's/.*tests passed, 0 tests failed out of \([0-9]*\).*/\1/p' "$LX" | tail -1) tests"
+        CPP_GXX="g++ $(wsl.exe -e g++ -dumpfullversion 2>/dev/null | tr -d '\r') in WSL"
+        pass "c++ linux — $CPP_GXX built the working tree and passed $(sed -n 's/.*tests passed, 0 tests failed out of \([0-9]*\).*/\1/p' "$LX" | tail -1) tests"
         NCPP=$((NCPP+1))
     else
         fail "c++ linux — g++ in WSL"; echo "$LX" >>"$LOGS/failed"
+        CPP_UNRUN="$CPP_UNRUN${CPP_UNRUN:+; }g++ in WSL built red"
     fi
 else
     unproven 'c++ linux — no wsl.exe with cmake and g++ on it. The unix half of the C++ compiled nowhere on this run.'
+    CPP_UNRUN="$CPP_UNRUN${CPP_UNRUN:+; }g++ in WSL not run (no wsl.exe with cmake and g++)"
 fi
 metric cpp_toolchains_built "$NCPP" check.sh
 
@@ -669,7 +851,18 @@ for leg in "msvc:$LOGS/ctest.log" "linux:$LOGS/cpp-linux.log"; do
         n = substr($0, RSTART, RLENGTH); sub(/.*: +/, "", n)
         print n "\t" ($0 ~ /Passed/ ? "PASS" : "FAIL") "\t" leg }' "${leg#*:}" >> "$CPPT/ran"
 done
-CPP_LEGS="$(cut -f3 "$CPPT/ran" | sort -u | paste -sd'+' -)"
+# The leg word is what the ctest transcript carries; the compiler is what a
+# reader needs. "linux" is not a toolchain, and a cell that reads PASS over it
+# is a cell whose reader cannot tell g++ from MSVC from clang.
+CPP_LEGS=""; CPP_TAG=""
+for leg in $(cut -f3 "$CPPT/ran" | sort -u); do
+    case "$leg" in
+        msvc)  n="${CPP_MSVC:-msvc}";        t=msvc ;;
+        linux) n="${CPP_GXX:-g++ in WSL}";   t=g++ ;;
+        *)     n="$leg";                     t="$leg" ;;
+    esac
+    CPP_LEGS="$CPP_LEGS${CPP_LEGS:+ + }$n"; CPP_TAG="$CPP_TAG${CPP_TAG:+/}$t"
+done
 for impl in $(cut -f2 "$CPPT/map" | sort -u); do
     [ -d "$ROOT/$impl" ] || continue
     read -r NT NBAD < <(awk -F'\t' -v i="$impl" \
@@ -677,11 +870,11 @@ for impl in $(cut -f2 "$CPPT/map" | sort -u); do
          $1 in mine { n++; if ($2 == "FAIL") bad++ }
          END { print n + 0, bad + 0 }' "$CPPT/map" "$CPPT/ran")
     if [ "$NT" = 0 ]; then
-        cellverdict "$impl" UNPROVEN "no C++ toolchain on this run executed a ctest test belonging to it"
+        cellverdict "$impl" UNPROVEN "no C++ toolchain on this run executed a ctest test belonging to it${CPP_UNRUN:+; $CPP_UNRUN}"
     elif [ "$NBAD" != 0 ]; then
-        cellverdict "$impl" FAIL "ctest under $CPP_LEGS, $NBAD of $NT test runs failed"
+        cellverdict "$impl" FAIL "ctest under $CPP_LEGS, $NBAD of $NT test runs failed${CPP_UNRUN:+; $CPP_UNRUN}" "$CPP_TAG"
     else
-        cellverdict "$impl" PASS "ctest under $CPP_LEGS, $NT test runs"
+        cellverdict "$impl" PASS "ctest under $CPP_LEGS, $NT test runs${CPP_UNRUN:+; $CPP_UNRUN}" "$CPP_TAG"
     fi
 done
 
@@ -692,18 +885,33 @@ else
     section "cross-language"
     [ "$CPP_BUILD" != "$LOGS/no-cpp-build" ] \
       || unproven 'c++ in every harness below — no MSVC build this run, so no C++ binary is handed to them; one left in .build by an earlier run is not this tree'"'"'s'
-    run "job conformance"   pinned "$ROOT/scripts/xlang-job.sh"
+    # xlang-job.sh drives the Go and Python jobctl and no C++ one.
+    runlower FAIL "the cross-language job harness: two jobctls did not agree" "job/go job/python" \
+        "job conformance"   pinned "$ROOT/scripts/xlang-job.sh"
     # The C++ reader this run just built, rather than the one a developer once
     # left in /c/jobbuild: without this the third implementation is compiled by
     # the line above and then left out of the comparison it exists for.
     SPECREAD="$CPP_BUILD/Release/specread.exe"
     [ -f "$SPECREAD" ] || SPECREAD="$CPP_BUILD/specread"
+    NSPEC=${#FAILED[@]}
     run "download spec"     pinned SPECREAD_CPP="$SPECREAD" "$ROOT/scripts/spec-conformance.sh"
+    # Only the readers that ran, which the suite names on its own last line. One
+    # it could not build is absent from that list and already UNPROVEN from the
+    # build that owns it, so lowering it here would name the wrong reason.
+    [ "${#FAILED[@]}" = "$NSPEC" ] || lower FAIL \
+        "the download spec suite: the readers did not read one spec the same way" \
+        $(sed -n 's/^.*implementations: //p' "$RUN_LOG" | tail -1 | tr ' ' '\n' | sed 's|^|download/|')
     # Three implementations must spell one proven byte set the same way, or the
     # record churns against itself and no diff of a job's history means anything.
     JOBCTL_CPP="$CPP_BUILD/Release/jobctl.exe"
     [ -f "$JOBCTL_CPP" ] || JOBCTL_CPP="$CPP_BUILD/jobctl"
+    NCANON=${#FAILED[@]}
     run "checkpoint ranges" pinned JOBCTL_CPP="$JOBCTL_CPP" "$ROOT/scripts/conformance.sh" --canonical
+    # The suite lists the jobctls it shimmed, one per line, and a C++ one it was
+    # not handed is not on that list and is not this rule's to judge.
+    [ "${#FAILED[@]}" = "$NCANON" ] || lower FAIL \
+        "the canonical byte set: the jobctls did not spell one proven record the same way" \
+        $(sed -n 's/^  \(go\|python\|cpp\):.*/\1/p' "$RUN_LOG" | sort -u | sed 's|^|job/|')
     # The one harness that compares nothing. Six writers of three languages on
     # one file, a reader per language spinning through every rename: a lock
     # byte or a rename semantics one of them believes differently is a lost
@@ -717,8 +925,13 @@ else
         pass "cas mixed languages"
     elif grep -q 'c++: ABSENT' "$MIX"; then
         unproven "cas mixed languages — $(grep -m1 'c++: ABSENT' "$MIX")"
+        lower UNPROVEN "six writers of three languages on one file were put to two: no C++ test_cas on this run" cas/cpp
     else
         fail "cas mixed languages"; echo "$MIX" >>"$LOGS/failed"
+        # Six writers on one file: a lost update or a torn read is every
+        # writer's, and nothing here says which language dropped the byte.
+        lower FAIL "six writers of three languages on one file: a lost update or a torn read" \
+            cas/go cas/python cas/cpp
     fi
 
     # Implementations diverge today and failing on every one of them would buy
@@ -738,6 +951,9 @@ else
         # divergences because it died reads identically to one that agreed.
         fail "behaviour conformance — the harness printed no scenario count; an empty divergence set here means it never ran, not that the three agreed"
         echo "$BEH" >>"$LOGS/failed"
+        # The skip above catches an absent reader, so past it all three ran.
+        lower UNPROVEN "the behaviour suite printed no scenario count, so it judged this reader not at all" \
+            download/go download/python download/cpp
     else
         sed -n 's/^  FAIL  /divergence /p; s/^    \(.*this behaviour is UNPROVEN in .*\)$/unproven \1/p' "$BEH" \
           | sort -u > "$LOGS/beh-now"
@@ -756,9 +972,13 @@ else
         if [ -s "$LOGS/beh-new" ]; then
             fail "behaviour conformance ($(wc -l < "$LOGS/beh-new") unrecorded)"
             detail "$LOGS/beh-new"; echo "$BEH" >>"$LOGS/failed"
+            lower FAIL "the behaviour suite: $(wc -l < "$LOGS/beh-new") divergences between the three readers that nothing records" \
+                download/go download/python download/cpp
         elif [ -s "$LOGS/beh-gone" ]; then
             fail "behaviour conformance ($(wc -l < "$LOGS/beh-gone") recorded and now agreeing — drop them from check.baseline)"
             detail "$LOGS/beh-gone"
+            lower FAIL "the behaviour suite: $(wc -l < "$LOGS/beh-gone") divergences are recorded for these readers and no longer happen" \
+                download/go download/python download/cpp
         else
             pass "behaviour conformance — $(wc -l < "$LOGS/beh-now") known divergences, exactly the recorded set"
             detail "$LOGS/beh-now"
@@ -782,12 +1002,15 @@ else
         grep -a '^verdict	' "$BASE" | cut -f2- | sort -u > "$LOGS/ver-was"
         comm -23 "$LOGS/ver-now" "$LOGS/ver-was" > "$LOGS/ver-new"
         comm -13 "$LOGS/ver-now" "$LOGS/ver-was" > "$LOGS/ver-gone"
+        VREAD=$(sed -n 's/^  implementations: //p' "$VER" | tail -1 | tr ' ' '\n' | sed 's|^|download/|')
         if [ -s "$LOGS/ver-new" ]; then
             fail "verdict conformance ($(wc -l < "$LOGS/ver-new") unrecorded)"
             detail "$LOGS/ver-new"; echo "$VER" >>"$LOGS/failed"
+            lower FAIL "the verdict suite: $(wc -l < "$LOGS/ver-new") divergences in what these readers refuse that nothing records" $VREAD
         elif [ -s "$LOGS/ver-gone" ]; then
             fail "verdict conformance ($(wc -l < "$LOGS/ver-gone") recorded and now agreeing — drop them from check.baseline)"
             detail "$LOGS/ver-gone"
+            lower FAIL "the verdict suite: $(wc -l < "$LOGS/ver-gone") divergences are recorded for these readers and no longer happen" $VREAD
         else
             pass "verdict conformance — $(wc -l < "$LOGS/ver-now") known divergences, exactly the recorded set"
             detail "$LOGS/ver-now"
@@ -805,6 +1028,15 @@ else
     if [ "$obt" -ne 0 ]; then
         fail "obtainable — $(grep -c '^  FAIL' "$OBT") front doors refused"
         grep '^  FAIL' "$OBT" | sed 's/^  FAIL  /        /'; echo "$OBT" >>"$LOGS/failed"
+        # A door is named by the language it opens for, and every door here is a
+        # way to obtain the download layer. A cell nobody can get is not a
+        # proven cell whatever its own tests said.
+        ODOORS=$(sed -n 's/^  FAIL  \([a-z+]*\):.*/\1/p' "$OBT" | sort -u)
+        # A refusal naming no language is the doors disagreeing about the one
+        # line they must all print, and that implicates every door that answered.
+        [ -n "$ODOORS" ] || ODOORS=$(sed -n 's/^  \([a-z+]*\): .*/\1/p' "$OBT" | grep -vx doors | sort -u)
+        lower FAIL "the front door refused: $(grep -m1 '^  FAIL' "$OBT" | sed 's/^  FAIL  //' | tr '\t' ' ' | cut -c1-100)" \
+            $(printf '%s\n' $ODOORS | sed 's|^|download/|')
     elif grep -q ': ABSENT' "$OBT"; then
         skip "obtainable — $(sed -n 's/^    \([a-z+]*\): ABSENT — \(.*\)/\1 absent: \2/p' "$OBT" | paste -sd';' -); open: $(sed -n 's/^  doors: //p' "$OBT")"
     else
@@ -843,24 +1075,35 @@ else
             bad=$( (grep -c "^$peer/$key	" "$PC/new" 2>/dev/null) || true )
             stale=$( (grep -c "^$peer/$key	" "$PC/gone" 2>/dev/null) || true )
             label="peer corpus $peer ($chain) — $n fixtures, $disagree recorded disagreements, $wr records refused, $wm moved"
+            # Each peer is job/<language> built by the toolchain its own row
+            # names, which is finer than tool_for() can be: the same C++ source
+            # is two artefacts here and only one of them may be red.
             if [ "${bad:-0}" != 0 ] || [ "${stale:-0}" != 0 ]; then
                 fail "$label — ${bad:-0} unrecorded, ${stale:-0} recorded and gone"
                 grep -h "^$peer/$key	" "$PC/new" "$PC/gone" 2>/dev/null > "$PC/moved.rows"
                 detail "$PC/moved.rows"
+                cellverdict "job/$peer" FAIL "the corpus: ${bad:-0} disagreements with $n fixtures that nothing records, ${stale:-0} recorded and gone" "$chain"
             elif [ "$rt" != 0 ]; then
                 fail "$label — $rt of the accept.roundtrip-* fixtures did not come back byte for byte"
                 grep "^$peer/$key	.*	roundtrip$" "$PC/$peer.$key.rows" > "$PC/roundtrip.rows"
                 detail "$PC/roundtrip.rows"
+                cellverdict "job/$peer" FAIL "the corpus: $rt of the roundtrip fixtures did not come back byte for byte" "$chain"
             else
                 pass "$label"
             fi
         done < "$PC/summary"
         while IFS=$'\t' read -r who why; do
             unproven "peer corpus $who — $why"
+            cellverdict "job/${who%%/*}" UNPROVEN "the corpus was put to no ${who#*/} build of this peer: $(printf '%s' "$why" | tr '\t' ' ' | cut -c1-100)" "${who#*/}"
         done < "$PC/unproven"
         # corpus.sh also compares the SET of records every peer re-wrote. Its
-        # exit code carries that and the vacuity guard; neither has a row above.
-        [ "$pcs" = 0 ] || { fail "peer corpus — corpus.sh exited $pcs"; echo "$PC/log" >>"$LOGS/failed"; }
+        # exit code carries that and the vacuity guard; neither has a row above,
+        # and both are about every peer at once.
+        [ "$pcs" = 0 ] || {
+            fail "peer corpus — corpus.sh exited $pcs"; echo "$PC/log" >>"$LOGS/failed"
+            lower FAIL "the corpus: the peers did not move the same set of records on the wire (corpus.sh exited $pcs)" \
+                $(cut -f1 "$PC/summary" | sort -u | sed 's|^|job/|')
+        }
     fi
 fi
 
@@ -1434,13 +1677,13 @@ else
     pass "dependencies — every published module resolves to modules we wrote"
 fi
 
-# ---- every version a go.mod or a public page names is a tag the remote has
+# ---- every version a published file names is a tag the remote has ---------
 # Twelve tags were cut in one command and eight asserted a dependency graph
 # that did not exist, and a tag is permanent: the proxy serves the version
 # forever and a republished number is a checksum mismatch. So the versions a
 # go.mod requires of our own modules are compared with `git ls-remote --tags`
 # on the repository — never the proxy, which is what hid it — and so is every
-# version a site/ page types beside a repository. A require with a replace
+# version typed in any file split.manifest publishes. A require with a replace
 # beside it resolves to a directory and is left out; a pseudo-version names a
 # commit, which no tag answers for, and is counted rather than checked. A
 # published file fails; a measured one prints, because research/wire-compat
@@ -1462,16 +1705,37 @@ if [ "$PUBLIC" = "1" ]; then
                       kind = (req[p] ~ /[0-9]{14}-[0-9a-f]{12}$/) ? "commit" : "tag"
                       printf "%s\t%s\t%s\t%s\t%s\n", f, repo, tag, kind, p "@" req[p] } }' "$ROOT/$mod" >> "$PIN/named"
     done
-    xargs -r -d '\n' grep -HoE "$PINORG/[a-z.-]+[^ <\"]*@v[0-9]+\.[0-9]+\.[0-9]+|$PINORG/[a-z.-]+/releases/tag/[^\"]+" < "$RULES/state-pages" 2>/dev/null \
-      | awk -v org="$PINORG" '{
-            f = $0; sub(":.*", "", f); p = substr($0, length(f) + 2); said = p
-            sub("^" org "/", "", p); repo = p; sub("/.*", "", repo); rest = substr(p, length(repo) + 1)
-            if (rest ~ /^\/releases\/tag\//) { tag = rest; sub("^/releases/tag/", "", tag); gsub("%2F", "/", tag) }
-            else { ver = rest; sub(".*@", "", ver); dir = rest; sub("@.*", "", dir); sub("^/", "", dir); sub("/cmd/.*", "", dir)
-                   tag = (dir == "" ? "" : dir "/") ver }
-            printf "%s\t%s\t%s\ttag\t%s\n", f, repo, tag, said }' >> "$PIN/named"
-    grep -vxFf "$GENS/expected" "$RULES/state-pages" \
-      | xargs -r -d '\n' grep -nE 'v[0-9]+\.[0-9]+\.[0-9]+' 2>/dev/null | grep -vE "$PINORG/[a-z.-]+" | cut -c1-160 > "$PIN/loose"
+    # A Dockerfile ARG, a TSV column and a paragraph of prose pin a version
+    # exactly as a go.mod does, and the rule read site/*.html — from a list
+    # another rule three hundred lines below builds, so on a fresh $LOGS it read
+    # nothing at all and the page half of this check had never once run. The set
+    # is the manifest's own: every tracked file under a published source, less
+    # the module files the loop above reads properly — go.sum with them, since
+    # it records every version a build ever saw and the go.mod is the assertion.
+    awk 'NR==FNR { ship[++n] = $0; next }
+         { for (i = 1; i <= n; i++) if ($0 == ship[i] || index($0, ship[i] "/") == 1) { print; next } }' \
+        "$RULES/shipped" "$RULES/files" | grep -vE '(^|/)go\.(mod|sum)$' > "$PIN/scan"
+    # Half of what a released page types is the bare repository name — the
+    # module path is only one of its spellings — so the names come off the
+    # manifest's repo lines and a repository added there is checked the same day.
+    PINREPO="$(grep -E '^repo [a-z]' "$ROOT/scripts/split.manifest" | cut -d' ' -f2 | paste -sd'|' - | sed 's/\./\\./g')"
+    xargs -r -d '\n' grep -HonE "\b($PINREPO)(/[A-Za-z0-9._-]+)*@v[0-9]+\.[0-9]+\.[0-9]+|\b($PINREPO)/releases/tag/[^\"), ]+" < "$PIN/scan" 2>/dev/null \
+      | awk '{ f = $0; sub(":.*", "", f); r = substr($0, length(f) + 2)
+               ln = r; sub(":.*", "", ln); p = substr(r, length(ln) + 2); said = p
+               if (p ~ /\/releases\/tag\//) {
+                   repo = p; sub("/releases/tag/.*", "", repo)
+                   tag = p; sub(".*/releases/tag/", "", tag); gsub("%2F", "/", tag) }
+               else { ver = p; sub(".*@", "", ver); path = p; sub("@.*", "", path)
+                      repo = path; sub("/.*", "", repo); dir = substr(path, length(repo) + 1)
+                      sub("/cmd/.*", "", dir); sub("^/", "", dir)
+                      tag = (dir == "" ? "" : dir "/") ver }
+               printf "%s\t%s\t%s\ttag\t%s\n", f, repo, tag, said " (line " ln ")" }' >> "$PIN/named"
+    # Loose numbers stay a rule about pages: a version with no repository beside
+    # it is unresolvable prose on site/, and a project version in a pyproject or
+    # a CMakeLists is the same string doing its job.
+    grep -E '^site/.*\.html$' "$RULES/files" > "$PIN/pages"
+    grep -vxFf <(cat "$GENS/expected" 2>/dev/null) "$PIN/pages" \
+      | xargs -r -d '\n' grep -nE 'v[0-9]+\.[0-9]+\.[0-9]+' 2>/dev/null | grep -vE "($PINREPO)" | cut -c1-160 > "$PIN/loose"
     cut -f2 "$PIN/named" | sort -u > "$PIN/repos"
     : > "$PIN/tags"; : > "$PIN/unreached"
     while read -r r; do
@@ -1496,9 +1760,30 @@ if [ "$PUBLIC" = "1" ]; then
     read -r NPIN NPINCOMMIT NPINUNREACH < <(tail -1 "$PIN/verdicts")
     grep -a '^dead	' "$PIN/verdicts" | cut -f2- | sort > "$PIN/dead"
     grep -a '^measured	' "$PIN/verdicts" | cut -f2- | sort > "$PIN/measured"
+    # A tag that is alive and two releases old passes the rule above and is
+    # still a stranger installing last week's program. It is not a failure —
+    # nothing is broken — so it is a series that moves, and "eight pins are two
+    # releases behind" stops being a sentence somebody has to keep true. Only
+    # published files: research/wire-compat is pinned to the first tag on
+    # purpose, and a rule that counted it would never reach zero honestly.
+    awk -F'\t' '
+        function vnum(v,   a) { sub("^v", "", v); split(v, a, "."); return a[1] * 1000000 + a[2] * 1000 + a[3] }
+        FILENAME == ARGV[1] { pre = $2; sub("[^/]*$", "", pre); v = $2; sub(".*/", "", v)
+                              if (v ~ /^v[0-9]+\.[0-9]+\.[0-9]+$/ && vnum(v) > best[$1 "\t" pre]) {
+                                  best[$1 "\t" pre] = vnum(v); name[$1 "\t" pre] = v }
+                              next }
+        FILENAME == ARGV[2] { ship[$0] = 1; next }
+        $4 == "tag" && $3 ~ /^([a-z]+\/)?v[0-9]+\.[0-9]+\.[0-9]+$/ {
+            published = 0; for (s in ship) if ($1 == s || index($1, s "/") == 1) published = 1
+            if (!published) next
+            pre = $3; sub("[^/]*$", "", pre); v = $3; sub(".*/", "", v); k = $2 "\t" pre
+            if ((k in best) && vnum(v) < best[k]) printf "%s\t%s — %s%s is newer\n", $1, $5, pre, name[k] }
+    ' "$PIN/tags" "$RULES/shipped" "$PIN/named" | sort > "$PIN/behind"
     metric pins_named "$NPIN" check.sh
     metric pins_dead_measured "$(wc -l < "$PIN/measured")" check.sh
-    note "$NPIN versions named in $(cut -f1 "$PIN/named" | sort -u | wc -l) files, checked against the tags of $(cut -f1 "$PIN/tags" | sort -u | wc -l) repositories over ssh; $NPINCOMMIT pinned to a commit and not checked, $(wc -l < "$PIN/measured") in measured code point at versions the remote no longer has"
+    metric pins_behind_newest "$(wc -l < "$PIN/behind")" check.sh
+    note "$NPIN versions named in $(cut -f1 "$PIN/named" | sort -u | wc -l) of the $(wc -l < "$PIN/scan") files split.manifest publishes, checked against the tags of $(cut -f1 "$PIN/tags" | sort -u | wc -l) repositories over ssh; $NPINCOMMIT pinned to a commit and not checked, $(wc -l < "$PIN/measured") in measured code point at versions the remote no longer has, $(wc -l < "$PIN/behind") at a tag the repository has since moved past"
+    if [ -s "$PIN/behind" ]; then detail "$PIN/behind"; fi
     if [ -s "$PIN/unreached" ]; then
         unproven "pinned versions — $(wc -l < "$PIN/unreached") repositories could not be listed, and $NPINUNREACH versions naming them were judged not at all"
         detail "$PIN/unreached"
@@ -1512,7 +1797,7 @@ if [ "$PUBLIC" = "1" ]; then
         fail "pinned versions ($(wc -l < "$PIN/dead") named in published files and not a tag on their repository — a stranger's go get resolves them from a cache, or not at all)"
         detail "$PIN/dead"
     else
-        pass "pinned versions — every version a published go.mod or page names is a tag on its repository$([ -s "$PIN/measured" ] && printf '; %s in measured code point at versions the remote no longer has' "$(wc -l < "$PIN/measured")")"
+        pass "pinned versions — every version a published file names is a tag on its repository$([ -s "$PIN/measured" ] && printf '; %s in measured code point at versions the remote no longer has' "$(wc -l < "$PIN/measured")")"
         detail "$PIN/measured"
     fi
 else
@@ -1954,10 +2239,18 @@ note "$NMOVED of ${#METRIC[@]} measured numbers moved and were appended to resea
 GATE_RECORD="$ROOT/docs/results/GATE.txt"
 KNOWN="$LOGS/cells-known"
 pinned "$ROOT/scripts/matrix.sh" --cells > "$KNOWN" 2>/dev/null || : > "$KNOWN"
-awk -F'\t' 'NR == FNR { cell[$3] = 1; next }
-            $1 in cell { v[$1] = $2 "\t" $3 }
-            END { for (i in v) print i "\t" v[i] }' "$KNOWN" "$CELLS" | sort > "$LOGS/cells-kept"
+collapse "$KNOWN" "$CELLS" > "$LOGS/cells-kept"
 NCELL=$(wc -l < "$LOGS/cells-kept")
+# A cell this run never came near is absent from the record, and the grid goes
+# on calling it UNPROVEN. That is the honest reading and it is also the quiet
+# one: --fast leaves cells out and its output said which rules it skipped, never
+# which cells nobody judged. An unjudged cell that looks judged is the whole
+# defect, so the count is said here, in the mode's own words.
+cut -f3 "$KNOWN" | sort -u > "$LOGS/cells-all"
+cut -f1 "$LOGS/cells-kept" | sort -u > "$LOGS/cells-judged"
+comm -23 "$LOGS/cells-all" "$LOGS/cells-judged" > "$LOGS/cells-unjudged"
+NUNJUDGED=$(wc -l < "$LOGS/cells-unjudged")
+NCELLUNPROVEN=$(awk -F'\t' '$2 == "UNPROVEN"' "$LOGS/cells-kept" | wc -l)
 GLAYERS="$(cut -f1 "$LOGS/cells-kept" | cut -d/ -f1 | sort -u | paste -sd' ' -)"
 GMEAS=""
 for l in $GLAYERS; do
@@ -2044,8 +2337,24 @@ elif [ "$NRAN" -lt "$RAN_WAS" ]; then
 elif [ "$NRAN" -gt "$RAN_WAS" ]; then
     note "$((NRAN - RAN_WAS)) more rules than scripts/check.baseline records for a $MODE run — write $NRAN	$NOUT into its rules	$MODE line"
 fi
+# What this mode did not judge, gathered where it can be read. Every line below
+# also printed itself hundreds of lines above, which is the same as not printing
+# it: a reader who reaches the result block has scrolled past all of them, and a
+# green summary standing alone reads as a whole answer. --fast is the mode this
+# is for — it leaves out the MSVC build, the cross-language harnesses and, with
+# --public, the C++ installs nobody opens — and it is the mode the recorded grid
+# is written from.
+if [ -n "$NOTJUDGED" ] || [ "$NUNJUDGED" -gt 0 ]; then
+    printf '\n\033[1mwhat this %s run did not judge\033[0m\n' "$MODE"
+    printf '%s' "$NOTJUDGED"
+    [ "$NUNJUDGED" = 0 ] || printf '  cells     %d of %d carry no verdict from this run: %s\n' \
+        "$NUNJUDGED" "$(wc -l < "$LOGS/cells-all")" "$(paste -sd' ' "$LOGS/cells-unjudged")"
+    [ "$NCELLUNPROVEN" = 0 ] || printf '  cells     %d reached and not judged: %s\n' \
+        "$NCELLUNPROVEN" "$(awk -F'\t' '$2 == "UNPROVEN" {print $1}' "$LOGS/cells-kept" | paste -sd' ' -)"
+fi
+
 FINISHED=1
-printf '  \033[1m%d rules ran, %d skipped, %d UNPROVEN, %d failed\033[0m\n' \
+printf '\n  \033[1m%d rules ran, %d skipped, %d UNPROVEN, %d failed\033[0m\n' \
     "$NRAN" "$NSKIPPED" "$NUNPROVEN" "${#FAILED[@]}"
 if [ ${#FAILED[@]} -eq 0 ]; then
     # "everything agrees" beside a non-zero UNPROVEN count is the sentence this
