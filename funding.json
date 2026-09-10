@@ -5,7 +5,7 @@
     "type": "individual",
     "role": "maintainer",
     "name": "Reinis Lusis",
-    "email": "not-yet-published@openabstractions.invalid",
+    "email": "info@openabstractions.org",
     "description": "Sole maintainer of openabstractions: platform abstractions (download, job, storage, identity) with one contract and a conformance corpus that several language implementations must match byte for byte. Apache-2.0, not monetised, no company.",
     "webpageUrl": {
       "url": "https://github.com/openabstractions"

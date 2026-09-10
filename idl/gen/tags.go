@@ -19,6 +19,7 @@ var ruleDocuments = []string{
 	"download/CONTRACT.md",
 	"identity/CONTRACT.md",
 	"logging/CONTRACT.md",
+	"config/CONTRACT.md",
 }
 
 func verifyDocs(e emitted) error {

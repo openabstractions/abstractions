@@ -1,5 +1,5 @@
-# MATRIX  produced by scripts/matrix.sh on 2026-09-10, commit 8eecfb0
-# measures  abstraction@139e861 asks@87c0ff6 cas@7565469 config@c1d9446 download@6ab23f9 identity@cf38a12 job@cc17156 logging@68d0a1c model@551c394 rights@4a3e767 router@4d89dda storage@e97f1c0 watch@fa67908
+# MATRIX  produced by scripts/matrix.sh on 2026-09-10, commit 2c26008
+# measures  abstraction@139e861 asks@87c0ff6 cas@017bcf7 config@8a4e899 download@56ce403 identity@cf38a12 job@7432d4d logging@68d0a1c model@ffb29b4 rights@4a3e767 router@4d89dda storage@e97f1c0 watch@0a0beff
 # regenerate  sh scripts/matrix.sh   (--check refuses a grid the evidence no longer produces)
 # scope     this tree only. It reads what is committed here and the transcripts
 #           in docs/results/; it runs no implementation and no harness. Each
@@ -17,7 +17,7 @@ abstraction PASS      —         —
 asks        PASS      —         —         
 cas         PASS      PASS      PASS      
 config      PASS      PASS      —         
-download    UNPROVEN  UNPROVEN  UNPROVEN  
+download    PASS      PASS      PASS      
 identity    PASS      —         —         
 job         PASS      PASS      PASS      
 logging     PASS      —         —         
@@ -27,8 +27,8 @@ router      PASS      —         —
 storage     PASS      —         PASS      
 watch       PASS      PASS      PASS      
 
-39 cells over 13 layers: 20 PASS, 1 FAIL, 3 UNPROVEN, 0 ABSENT, 15 with no implementation.
-24 implementations exist and 3 of them carry no verdict attributed to this tree.
+39 cells over 13 layers: 23 PASS, 1 FAIL, 0 UNPROVEN, 0 ABSENT, 15 with no implementation.
+24 implementations exist and 0 of them carry no verdict attributed to this tree.
 
 why each cell reads as it does
   abstraction go      PASS      recorded    GATE fast, go build ./... && go test ./...
@@ -37,15 +37,15 @@ why each cell reads as it does
   asks        go      PASS      recorded    GATE fast, go build ./... && go test ./...
   asks        python  —         none        no python implementation, and the inventory declares none, so the gap is deliberate
   asks        cpp     —         none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  cas         go      PASS      recorded    CAS-MIXED1, exit 0
-  cas         python  PASS      recorded    CAS-MIXED1, exit 0
-  cas         cpp     PASS      recorded    CAS-MIXED1, exit 0
+  cas         go      PASS      recorded    GATE fast, go build ./... && go test ./...
+  cas         python  PASS      recorded    GATE fast, unittest discover, 13 tests
+  cas         cpp     PASS      recorded    GATE fast, ctest under linux, 1 test runs
   config      go      PASS      recorded    GATE fast, go build ./... && go test ./...
   config      python  PASS      recorded    GATE fast, unittest discover, 17 tests
   config      cpp     —         none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  download    go      UNPROVEN  drifted     BEHAVIOUR1 recorded PASS at download@88561a4; the tree is download@6ab23f9
-  download    python  UNPROVEN  drifted     BEHAVIOUR1 recorded PASS at download@88561a4; the tree is download@6ab23f9
-  download    cpp     UNPROVEN  drifted     BEHAVIOUR1 recorded PASS at download@88561a4; the tree is download@6ab23f9
+  download    go      PASS      recorded    GATE fast, go build ./... && go test ./...
+  download    python  PASS      recorded    GATE fast, unittest discover, 67 tests
+  download    cpp     PASS      recorded    GATE fast, ctest under linux, 6 test runs
   identity    go      PASS      recorded    GATE fast, go build ./... && go test ./...
   identity    python  —         none        no python implementation, and the inventory declares none, so the gap is deliberate
   identity    cpp     —         none        no cpp implementation, and the inventory declares none, so the gap is deliberate

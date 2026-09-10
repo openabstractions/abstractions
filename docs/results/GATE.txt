@@ -1,5 +1,5 @@
-# GATE  produced by scripts/check.sh on 2026-09-10, commit c8d856b, exit 1
-# measures  abstraction@139e861 asks@87c0ff6 cas@7565469 config@c1d9446 download@ceeade9 identity@cf38a12 job@cc17156 logging@68d0a1c model@551c394 rights@4a3e767 router@4d89dda storage@e97f1c0 watch@fa67908
+# GATE  produced by scripts/check.sh on 2026-09-10, commit 7dec521, exit 1
+# measures  abstraction@139e861 asks@87c0ff6 cas@017bcf7 config@8a4e899 download@56ce403 identity@cf38a12 job@7432d4d logging@68d0a1c model@ffb29b4 rights@4a3e767 router@4d89dda storage@e97f1c0 watch@0a0beff
 # machine   MINGW64_NT-10.0-26200/x86_64; go1.26.5; Python 3.12.10; 1 c++ toolchain(s) built
 # mode      fast
 # regenerate  sh scripts/check.sh --fast --record   then  sh scripts/matrix.sh
