@@ -197,6 +197,11 @@ func TestReplyCppGoExchange(t *testing.T) {
 	if cxx == "" {
 		t.Skip("C++ exchange requires CXX, g++ or clang++")
 	}
+	if version, err := exec.Command(cxx, "--version").CombinedOutput(); err == nil {
+		t.Logf("C++ compiler %s: %s", cxx, version)
+	} else {
+		t.Logf("C++ compiler %s (--version unavailable)", cxx)
+	}
 	s, e := parse(head + replyFixture)
 	if e != nil {
 		t.Fatal(e)
@@ -236,7 +241,7 @@ func TestReplyCppGoExchange(t *testing.T) {
 		request := run(cpp, "emit", method, nil)
 		goRequest := run(goexe, "emit", method, nil)
 		if string(request) != string(goRequest) {
-			t.Fatalf("%s request byte mismatch\nC++ %s\nGo %s", method, request, goRequest)
+			t.Fatalf("%s request byte mismatch (%d C++ bytes, %d Go bytes)\nC++ %q\nGo %q", method, len(request), len(goRequest), request, goRequest)
 		}
 		response := run(goexe, "serve", method, request)
 		run(cpp, "check", method, response)

@@ -23,6 +23,7 @@ import (
 func own(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
+	t.Setenv("HOME", dir)
 	t.Setenv("APPDATA", dir)
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	t.Setenv("ProgramData", filepath.Join(dir, "machine"))
