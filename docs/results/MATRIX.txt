@@ -1,5 +1,5 @@
-# MATRIX  produced by scripts/matrix.sh on 2026-09-12, commit 929f77d
-# measures  openabstractions-flat/abstraction-asks@dc90adb openabstractions-flat/abstraction-cas@f9cb388 openabstractions-flat/abstraction-config@3a6b536 openabstractions-flat/abstraction-download@0e9f520 openabstractions-flat/abstraction-facade@2274aed openabstractions-flat/abstraction-identity@9b388e7 openabstractions-flat/abstraction-job@7cfad00 openabstractions-flat/abstraction-logging@c6ee7aa openabstractions-flat/abstraction-model@62fae45 openabstractions-flat/abstraction-rights@d33d9ed openabstractions-flat/abstraction-router@68128e6 openabstractions-flat/abstraction-storage@27bc58b openabstractions-flat/abstraction-watch@27bd982
+# MATRIX  produced by scripts/matrix.sh on 2026-09-12, commit e1e75b6
+# measures  openabstractions-flat/abstraction-asks@d87aa54 openabstractions-flat/abstraction-cas@f9cb388 openabstractions-flat/abstraction-config@1d97522 openabstractions-flat/abstraction-download@0e9f520 openabstractions-flat/abstraction-facade@2274aed openabstractions-flat/abstraction-identity@9b388e7 openabstractions-flat/abstraction-job@7cfad00 openabstractions-flat/abstraction-logging@7587a69 openabstractions-flat/abstraction-model@62fae45 openabstractions-flat/abstraction-rights@ace5f0f openabstractions-flat/abstraction-router@2d720fb openabstractions-flat/abstraction-storage@27bc58b openabstractions-flat/abstraction-watch@27bd982
 # regenerate  sh scripts/matrix.sh   (--check refuses a grid the evidence no longer produces)
 # scope     this tree only. It reads what is committed here and the transcripts
 #           in docs/results/; it runs no implementation and no harness. Each
@@ -120,7 +120,7 @@ SERVICE CLIENTS / focused checks (separate from capability conformance; no provi
   router-cpp-windows-service | openabstractions-flat/abstraction-router | cpp | client | windows/amd64 | PASS | Installed C++ Router.Models/Hosts/Pick -> generated RPC -> shared IPC -> identity-bound Go router service and existing provider over isolated local HTTP fixtures; inventory/resident/denied choices, empty allowance versus absence, caller audit, typed refusals, GET-only provider reads and no client-local state; no central-host or GPU-cost claim | python: Python 3.12.14; go: go version go1.26.5 windows/amd64; cmake: cmake version 4.3.1-msvc1
 
 why each cell reads as it does
-  abstraction-asks     go      UNPROVEN                       drifted     GATE recorded FAIL at openabstractions-flat/abstraction-asks@7e9ea82; the tree is openabstractions-flat/abstraction-asks@dc90adb
+  abstraction-asks     go      UNPROVEN                       drifted     GATE recorded FAIL at openabstractions-flat/abstraction-asks@7e9ea82; the tree is openabstractions-flat/abstraction-asks@d87aa54
   abstraction-asks     python  —                        none        no python implementation/client found; no inventory claim establishes why it is missing
   abstraction-asks     cpp     —                        none        no cpp implementation/client found; no inventory claim establishes why it is missing
   abstraction-asks     rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
@@ -130,8 +130,8 @@ why each cell reads as it does
   abstraction-cas      cpp     PASS Apple Clang darwin/arm64  recorded    DARWIN1 , CMake build and aggregate CTest on native macOS
   abstraction-cas      rust    —                        undeclared  no rust implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-cas
   abstraction-cas      javascript—                        undeclared  no javascript implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-cas
-  abstraction-config   go      UNPROVEN                       drifted     GATE recorded FAIL at openabstractions-flat/abstraction-config@9c4cbe5; the tree is openabstractions-flat/abstraction-config@3a6b536
-  abstraction-config   python  UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-config@9c4cbe5; the tree is openabstractions-flat/abstraction-config@3a6b536
+  abstraction-config   go      UNPROVEN                       drifted     GATE recorded FAIL at openabstractions-flat/abstraction-config@9c4cbe5; the tree is openabstractions-flat/abstraction-config@1d97522
+  abstraction-config   python  UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-config@9c4cbe5; the tree is openabstractions-flat/abstraction-config@1d97522
   abstraction-config   cpp     UNPROVEN                       unreached   openabstractions-flat/abstraction-config/cpp exists with 0 test files and nothing the gate runs names it
   abstraction-config   rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
   abstraction-config   javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
@@ -155,7 +155,7 @@ why each cell reads as it does
   abstraction-job      cpp     UNPROVEN                       drifted     GATE recorded FAIL at openabstractions-flat/abstraction-job@30ffc73; the tree is openabstractions-flat/abstraction-job@7cfad00
   abstraction-job      rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
   abstraction-job      javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
-  abstraction-logging  go      UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-logging@ec56256; the tree is openabstractions-flat/abstraction-logging@c6ee7aa
+  abstraction-logging  go      UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-logging@ec56256; the tree is openabstractions-flat/abstraction-logging@7587a69
   abstraction-logging  python  —                        none        no python implementation/client found; no inventory claim establishes why it is missing
   abstraction-logging  cpp     UNPROVEN                       unreached   openabstractions-flat/abstraction-logging/cpp exists with 0 test files and nothing the gate runs names it
   abstraction-logging  rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
@@ -165,12 +165,12 @@ why each cell reads as it does
   abstraction-model    cpp     —                        none        no cpp implementation/client found; no inventory claim establishes why it is missing
   abstraction-model    rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
   abstraction-model    javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
-  abstraction-rights   go      UNPROVEN                       drifted     GATE recorded FAIL at openabstractions-flat/abstraction-rights@6fff1f5; the tree is openabstractions-flat/abstraction-rights@d33d9ed
+  abstraction-rights   go      UNPROVEN                       drifted     GATE recorded FAIL at openabstractions-flat/abstraction-rights@6fff1f5; the tree is openabstractions-flat/abstraction-rights@ace5f0f
   abstraction-rights   python  —                        none        no python implementation/client found; no inventory claim establishes why it is missing
   abstraction-rights   cpp     —                        none        no cpp implementation/client found; no inventory claim establishes why it is missing
   abstraction-rights   rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
   abstraction-rights   javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
-  abstraction-router   go      UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-router@a56ecb2; the tree is openabstractions-flat/abstraction-router@68128e6
+  abstraction-router   go      UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-router@a56ecb2; the tree is openabstractions-flat/abstraction-router@2d720fb
   abstraction-router   python  —                        undeclared  no python implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-router
   abstraction-router   cpp     UNPROVEN                       unreached   openabstractions-flat/abstraction-router/cpp exists with 0 test files and nothing the gate runs names it
   abstraction-router   rust    —                        undeclared  no rust implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-router
