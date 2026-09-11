@@ -42,7 +42,7 @@ Each is refused by name, with the reason in the error.
 | **[DEF-F2]** `union` | A union's absent arm and an absent field are two spellings of one thing, and the record already spells absence two ways ([DEF-A4]). |
 | **[DEF-F3]** `set<T>` | A set has no order that three languages share. Use `list`. |
 | **[DEF-F4]** `double`, and any float | A float has more than one spelling. `1.50` and `1.5` are one value and two records. Numbers inside an *opaque* field keep whatever spelling they arrived with ([DEF-E5]); the definition itself has no float. |
-| **[DEF-F5]** `binary` | Ambiguous between "bytes" and "a document carried whole". Declaring the record's `spec` as `binary` is exactly what let one implementation reformat inside it. Say `json` or say `string`. |
+| **[DEF-F5]** `binary` on unsupported backends | Arbitrary octets, distinct from UTF-8 `string` and verbatim `json`. Go/C++/Python support it; Rust/JavaScript currently refuse it explicitly. See binary values below. |
 | **[DEF-F6]** `include` | One file, one normative text. A transitive definition graph has no single thing to point an adopter at. |
 | **[DEF-F7]** default values (`1: optional i32 n = 3`) | A default written back is not an absence, and the difference is load-bearing. A reader that supplies a default on read and a writer that records one are doing different things, and one syntax for both hides it. |
 | **[DEF-F8]** `i8`, `i16`, `byte` | Integer width is pinned per field and we need two widths. Offering more invites a third. |
@@ -795,3 +795,18 @@ Record-only selection retains the standalone codec output; support for zero-fiel
 argument/result carriers also corrects previously invalid empty Python classes.
 Tests exchange Python frames with a Go dispatcher over process buffers, including
 logging's one-way Write; this does not claim a deployed IPC service.
+
+### Binary values
+
+`binary` is arbitrary octets: Go `[]byte`, C++ `std::vector<std::uint8_t>`,
+and Python `bytes`. JSON represents it as an RFC 4648 standard-alphabet Base64
+string with required padding and no whitespace. Readers reject malformed
+alphabet/padding and nonzero padding bits with `bad_binary`; encoders emit the
+canonical padded spelling. Empty binary encodes as `""`; JSON null is not binary.
+
+For `optional binary data (omit="absent")`, missing and empty stay distinct:
+Go nil versus non-nil empty slice, C++ optional vector, Python None versus b''.
+A required binary value is always emitted, including empty. Required-field
+absence remains `missing_field`. Binary is not a replacement for opaque JSON:
+bytes have no internal document semantics. Binary collections are not yet in
+the supported profile. Rust/JavaScript binary generation fails before output.

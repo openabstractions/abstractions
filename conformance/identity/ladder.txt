@@ -25,8 +25,8 @@ bench C claimed
 
 # expect 1: ok none<claimed<invalid<unsigned<unmet<pid<bound<kernel<signed [ID-P1]
 # expect 3: ok proof=kernel [ID-P3]
-# expect 4: ok proof=kernel
-# expect 5: ok proof=kernel
+# expect 4: ok proof=kernel [ID-P3]
+# expect 5: ok proof=kernel [ID-P3]
 # expect 6: unproven want=signed got=kernel [ID-P3]
 # expect 8: unproven want=none got=none [ID-P4]
 # expect 9: unproven want=pid got=none [ID-P4]

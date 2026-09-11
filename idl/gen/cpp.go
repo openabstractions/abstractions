@@ -706,6 +706,8 @@ func cppStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 
 func cppRead(s *Definition, f Field) string {
 	switch f.Type {
+	case "binary":
+		return "decode_binary(r.str())"
 	case "string":
 		if f.Grammar.Named() {
 			return "read_timestamp(r)"
@@ -857,6 +859,9 @@ func genCpp(s *Definition) string {
 		prelude += cppEncList
 	}
 	b.WriteString(strings.NewReplacer("@INDENT@", strconv.Itoa(s.Encoding.Indent)).Replace(prelude))
+	if hasBinary(s) {
+		b.WriteString("\ninline std::string encode_binary(const std::vector<std::uint8_t>&);\ninline std::vector<std::uint8_t> decode_binary(const std::string&);\n")
+	}
 	cppVocabulary(&b, s)
 	for _, st := range s.Structs {
 		fmt.Fprintf(&b, "\nstruct %s {\n", st.Name)
@@ -914,6 +919,9 @@ func genCpp(s *Definition) string {
 	}
 	cppDecoder(&b, s)
 	cppProtocol(&b, s)
+	if hasBinary(s) {
+		b.WriteString(cppBinary)
+	}
 	cppService(&b, s)
 	b.WriteString("\n}  // namespace rec\n")
 	return b.String()
@@ -1018,6 +1026,11 @@ func cppEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 
 func cppType(s *Definition, f Field) string {
 	switch f.Type {
+	case "binary":
+		if f.Omit == "absent" {
+			return "std::optional<std::vector<std::uint8_t>>"
+		}
+		return "std::vector<std::uint8_t>"
 	case "string":
 		return "std::string"
 	case "i32":
@@ -1057,7 +1070,7 @@ func cppInit(f Field) string {
 }
 
 func cppPresent(s *Definition, f Field, e string) string {
-	if f.Omit == "absent" && s.IsStruct(f.Type) {
+	if f.Omit == "absent" && (s.IsStruct(f.Type) || f.Type == "binary") {
 		return e + ".has_value()"
 	}
 	switch f.Type {
@@ -1077,6 +1090,11 @@ func cppValue(s *Definition, f Field, e string) string {
 		return "esc(out, write_timestamp(" + e + "));"
 	}
 	switch f.Type {
+	case "binary":
+		if f.Omit == "absent" {
+			e = "*" + e
+		}
+		return "esc(out, encode_binary(" + e + "));"
 	case "string":
 		return "esc(out, " + e + ");"
 	case "i32", "i64":

@@ -994,6 +994,8 @@ func goRead(s *Definition, f Field) string {
 		return "x, err := " + call + "\n\t\t\t\tif err != nil {\n\t\t\t\t\treturn nil, err\n\t\t\t\t}\n\t\t\t\t" + assign
 	}
 	switch f.Type {
+	case "binary":
+		return get("r.binary()", e+" = x")
 	case "string":
 		if f.Grammar.Named() {
 			return get("r.timestamp()", e+" = x")
@@ -1190,6 +1192,9 @@ func genGo(s *Definition) string {
 	}
 	goDecoder(&b, s)
 	goProtocol(&b, s)
+	if hasBinary(s) {
+		b.WriteString(goBinary)
+	}
 	goService(&b, s)
 	pretty, err := format.Source([]byte(b.String()))
 	if err != nil {
@@ -1300,6 +1305,8 @@ func goEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 
 func goType(s *Definition, f Field) string {
 	switch f.Type {
+	case "binary":
+		return "[]byte"
 	case "string":
 		return "string"
 	case "i32":
@@ -1330,7 +1337,7 @@ func goType(s *Definition, f Field) string {
 
 func goPresent(s *Definition, f Field, e string) string {
 	if f.Omit == "absent" {
-		if s.IsStruct(f.Type) {
+		if s.IsStruct(f.Type) || f.Type == "binary" {
 			return e + " != nil"
 		}
 		return e + ` != ""`
@@ -1354,6 +1361,8 @@ func goValue(s *Definition, f Field, e string) string {
 		return "out = esc(out, writeTimestamp(" + e + "))"
 	}
 	switch f.Type {
+	case "binary":
+		return "out = esc(out, encodeBinary(" + e + "))"
 	case "string":
 		return "out = esc(out, " + e + ")"
 	case "i32":

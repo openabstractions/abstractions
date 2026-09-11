@@ -646,6 +646,8 @@ func pyStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 
 func pyRead(s *Definition, f Field) string {
 	switch f.Type {
+	case "binary":
+		return "_decode_binary(r.string())"
 	case "string":
 		if f.Grammar.Named() {
 			return "_read_timestamp(r)"
@@ -838,6 +840,9 @@ func genPy(s *Definition) string {
 	}
 	pyDecoder(&b, s)
 	pyProtocol(&b, s)
+	if hasBinary(s) {
+		b.WriteString(pyBinary)
+	}
 	pyService(&b, s)
 	return b.String()
 }
@@ -936,10 +941,12 @@ func pyEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 }
 
 func pyDefault(s *Definition, f Field) string {
-	if f.Omit == "absent" && s.IsStruct(f.Type) {
+	if f.Omit == "absent" && (s.IsStruct(f.Type) || f.Type == "binary") {
 		return "None"
 	}
 	switch f.Type {
+	case "binary":
+		return "b\"\""
 	case "string", "json":
 		return `""`
 	case "i32", "i64":
@@ -958,7 +965,7 @@ func pyDefault(s *Definition, f Field) string {
 }
 
 func pyPresent(s *Definition, f Field, e string) string {
-	if f.Omit == "absent" && s.IsStruct(f.Type) {
+	if f.Omit == "absent" && (s.IsStruct(f.Type) || f.Type == "binary") {
 		return e + " is not None"
 	}
 	switch f.Type {
@@ -977,6 +984,8 @@ func pyValue(s *Definition, f Field, e string) string {
 		return "esc(out, _write_timestamp(" + e + "))"
 	}
 	switch f.Type {
+	case "binary":
+		return "esc(out, _encode_binary(" + e + "))"
 	case "string":
 		return "esc(out, " + e + ")"
 	case "i32", "i64":

@@ -44,7 +44,7 @@ var grammarAccepts = map[string][]string{
 }
 
 var scalarTypes = map[string]bool{
-	"bool": true, "i32": true, "i64": true, "string": true, "json": true,
+	"bool": true, "i32": true, "i64": true, "string": true, "json": true, "binary": true,
 }
 
 func parse(src string) (*Definition, error) {

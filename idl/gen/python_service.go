@@ -89,6 +89,8 @@ func pyServiceType(f Field) string {
 		return "None"
 	case "i32", "i64":
 		return "int"
+	case "binary":
+		return "bytes"
 	case "string":
 		return "str"
 	case "bool":
@@ -108,7 +110,11 @@ func pyService(b *strings.Builder, s *Definition) {
 	if len(s.Services) == 0 {
 		return
 	}
-	b.WriteString(pyServiceCommon)
+	common := pyServiceCommon
+	if hasBinary(s) {
+		common = strings.Replace(common, "    if kind == \"string\":", "    if kind == \"binary\":\n        valid = type(value) is bytes\n    elif kind == \"string\":", 1)
+	}
+	b.WriteString(common)
 	if hasReplies(s) {
 		b.WriteString(pyServiceResponse)
 	}

@@ -173,6 +173,9 @@ func run(args []string, stdout io.Writer) error {
 		if len(want) > 0 && !contains(want, b.lang) {
 			continue
 		}
+		if err := validateBinaryBackend(def, b.lang); err != nil {
+			return err
+		}
 		if err := validateServiceBackend(def, b.lang); err != nil {
 			return err
 		}
