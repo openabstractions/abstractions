@@ -268,19 +268,34 @@ const replyExchangeCpp = `#include "rec.h"
 #include <iostream>
 #include <iterator>
 #ifdef _WIN32
-#include <fcntl.h>
-#include <io.h>
+#define NOMINMAX
+#include <windows.h>
 #endif
+// Test transport carries bytes. Some MinGW libstdc++ builds translate cout
+// despite binary mode on the C standard stream; use native handles here.
+void writeFrame(std::string_view frame){
+#ifdef _WIN32
+ HANDLE out=GetStdHandle(STD_OUTPUT_HANDLE);
+ while(!frame.empty()){DWORD n=0;DWORD want=static_cast<DWORD>(frame.size());if(!WriteFile(out,frame.data(),want,&n,nullptr)||n==0)throw std::runtime_error("stdout write failed");frame.remove_prefix(n);}
+#else
+ std::cout.write(frame.data(),static_cast<std::streamsize>(frame.size()));if(!std::cout)throw std::runtime_error("stdout write failed");
+#endif
+}
+std::string readFrame(){
+#ifdef _WIN32
+ std::string frame;char buffer[4096];DWORD n;
+ for(;;){if(!ReadFile(GetStdHandle(STD_INPUT_HANDLE),buffer,sizeof buffer,&n,nullptr)){if(GetLastError()==ERROR_BROKEN_PIPE)break;throw std::runtime_error("stdin read failed");}if(n==0)break;frame.append(buffer,n);}return frame;
+#else
+ return std::string(std::istreambuf_iterator<char>(std::cin),{});
+#endif
+}
 struct Captured{};
 struct Transport{
  std::string mode;
  void WriteFrame(std::string_view){}
- std::string ExchangeFrame(std::string_view frame){if(mode=="emit"){std::cout<<frame;throw Captured{};}return std::string(std::istreambuf_iterator<char>(std::cin),{});}
+ std::string ExchangeFrame(std::string_view frame){if(mode=="emit"){writeFrame(frame);throw Captured{};}return readFrame();}
 };
 int main(int argc,char**argv){
-#ifdef _WIN32
-_setmode(_fileno(stdin),_O_BINARY);_setmode(_fileno(stdout),_O_BINARY);
-#endif
 Transport t{argv[1]};rec::QueryClient c(t);std::string method=argv[2];bool reject=t.mode=="reject";
  try{if(method=="Echo"){rec::Record v;v.value="\xE9\x9B\xAA<&";auto result=c.Echo(v,"",false,0);if(result.value!=v.value)return 2;}
  else if(method=="Opaque"){std::string raw="{ \"a\" : [1,\n false] }";if(c.Opaque(raw)!=raw)return 3;}
