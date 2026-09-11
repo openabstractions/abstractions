@@ -2,7 +2,7 @@
 #
 #   powershell -File test/repeated/run.ps1 -Scratch <dir>
 #
-# test/run.ps1 proves the profile on job/job.thrift, which has neither shape.
+# test/run.ps1 proves the profile on openabstractions-flat/abstraction-job/job.thrift, which has neither shape.
 # This proves the two the generator learned on 2026-09-08, on the smallest
 # definition that reaches every rule they touch. Needs go. Every other
 # toolchain is optional and a missing one is reported UNPROVEN, never skipped.

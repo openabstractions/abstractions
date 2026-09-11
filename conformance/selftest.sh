@@ -4,7 +4,7 @@ set -u
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 RUN="$HERE/run.sh"
 CORPUS="$HERE/scenarios"
-[ -d "$CORPUS" ] || CORPUS="$HERE/../download/testdata/scenarios"
+[ -d "$CORPUS" ] || CORPUS="$HERE/../openabstractions-flat/abstraction-download/testdata/scenarios"
 TOY="$HERE/selftest/capabilities.list"
 bad=0
 

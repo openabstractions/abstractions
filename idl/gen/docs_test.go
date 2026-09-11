@@ -6,7 +6,12 @@ import (
 	"testing"
 )
 
-const example = "../../job/job.thrift"
+var example = func() string {
+	if _, err := os.Stat("../testdata/job.thrift"); err == nil {
+		return "../testdata/job.thrift"
+	}
+	return "../../openabstractions-flat/abstraction-job/job.thrift"
+}()
 
 func exampleDefinition(t *testing.T) *Definition {
 	t.Helper()

@@ -348,14 +348,14 @@ Everything above is elaboration on those.
 
 Added 2026-09-08. A specification is four documents, and a rule lives in
 exactly one of them. A rule found in two drifts; a rule found in none is what
-`job/README.md` had been carrying under the name of a door.
+`openabstractions-flat/abstraction-job/README.md` had been carrying under the name of a door.
 
 | the rule is about | jurisdiction | the artefact, today |
 |---|---|---|
-| fields, types, identifiers, structural constraints | schema | the record table in `job/README.md` § The record, enforced by each language's decoder; `job/job.thrift` is a sketch that generates nothing. **Prose, not machine-readable** - the open question in § 6 stands |
-| operations, state transitions, cancellation, ownership, retries | behavioural specification | `job/SPEC.md` |
-| framing, discovery, authentication, reconnection | transport binding | the file layout in `job/README.md` § Where the files are and `cas/README.md`; the socket in `job/go/wire.go`, shipped to nobody |
-| concrete examples and regressions | conformance corpus | `download/testdata/scenarios/`, `download/testdata/verdicts/` |
+| fields, types, identifiers, structural constraints | schema | the record table in `openabstractions-flat/abstraction-job/README.md` § The record, enforced by each language's decoder; `openabstractions-flat/abstraction-job/job.thrift` is a sketch that generates nothing. **Prose, not machine-readable** - the open question in § 6 stands |
+| operations, state transitions, cancellation, ownership, retries | behavioural specification | `openabstractions-flat/abstraction-job/SPEC.md` |
+| framing, discovery, authentication, reconnection | transport binding | the file layout in `openabstractions-flat/abstraction-job/README.md` § Where the files are and `openabstractions-flat/abstraction-cas/README.md`; the socket in `openabstractions-flat/abstraction-job/go/wire.go`, shipped to nobody |
+| concrete examples and regressions | conformance corpus | `openabstractions-flat/abstraction-download/testdata/scenarios/`, `openabstractions-flat/abstraction-download/testdata/verdicts/` |
 
 The README is the door - install it, call it, one example - and links into
 the four. A tagged rule on the door is a rule in the wrong jurisdiction; the

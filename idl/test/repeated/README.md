@@ -4,7 +4,7 @@ The repeated record [DEF-A9] and the string map [DEF-A10], proved the same way
 everything else in this profile is proved: one definition, five backends, one
 byte comparison.
 
-`../run.ps1` proves the profile on `job/job.thrift`, which has neither shape.
+`../run.ps1` proves the profile on `abstraction-job/job.thrift`, which has neither shape.
 `repeated.thrift` is the smallest definition that reaches every rule the two
 additions touch — a document with a required and an optional repeated field, an
 element carrying a string map and an opaque value, and `depth_limit = "5"` so

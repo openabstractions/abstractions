@@ -34,7 +34,7 @@ than read, it says so and names what produced it.
 **Why Thrift and not Protobuf.** Both were disqualified as *generators* for the
 same reason — their generated code calls a runtime library the adopter must
 link. Thrift wins on the syntax question for two reasons that are ours rather
-than general: `job/job.thrift` already existed and was already the file people
+than general: `abstraction-job/job.thrift` already existed and was already the file people
 cited, and Thrift's post-declaration annotation syntax is a natural place to put
 per-field policy, where Protobuf's options syntax is heavier and its
 `.proto`-file semantics carry a wire format we are not using.

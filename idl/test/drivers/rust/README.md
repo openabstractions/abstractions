@@ -2,7 +2,7 @@
 
 `replay.rs` is a conformance driver in the sense of `conformance/DRIVER.md`:
 it declares `store`, keeps records under `<workdir>/jobs/<id>.json` through
-the encoder and decoder that `idl/gen` emits from `job/job.thrift`, and
+the encoder and decoder that `idl/gen` emits from `abstraction-job/job.thrift`, and
 answers the store, watch and awake operations. It is the fourth implementer
 of the job contract and was written from the pages alone.
 
@@ -12,7 +12,7 @@ Build, from a PowerShell with `go` and `rustc` on the path:
 
 Judge it:
 
-    sh conformance/run.sh --scenarios download/testdata/scenarios --contracts <pages> --no-fixture -- <dir>/replay.exe
+    sh conformance/run.sh --scenarios conformance/scenarios --contracts <pages> --no-fixture -- <dir>/replay.exe
 
 where `<pages>` holds `job.md`, `watch.md`, `download.md` and `identity.md`
 as `conformance/contracts.list` names them.

@@ -2,9 +2,9 @@
 
 Terminal transcripts from runs done here. They are our own output, so treat
 them as a record of what happened on one machine, not as independent
-verification. Where a script produced the transcript it is named; the scripts
-are in [`../../scripts/`](../../scripts/) and expect the layer repositories
-checked out as siblings.
+verification. Where a script produced the transcript it is named; the names identify the maintainer harnesses used for that run. These harnesses
+require private source and are not distributed here. Use the public
+[conformance suite](../../conformance/README.md) to judge your own driver.
 
 Usernames, machine names and LAN addresses have been replaced with
 placeholders. Nothing else in these files was edited.
@@ -12,7 +12,7 @@ placeholders. Nothing else in these files was edited.
 Transcripts from 2026-09-06 on open with five `#` lines: the tree they
 measured, the state of the machine (power, plan, filesystem), the command that
 produces them again, and their scope — which platforms they prove and which
-they leave `UNPROVEN`. [`results.sh`](../../scripts/results.sh) writes the
+they leave `UNPROVEN`. The maintainer `results.sh` writes the
 ones a machine with the three toolchains can produce; `results.sh --check`
 refuses when one of them measured a tree other than the committed one, so a
 release cannot carry a number nobody can attribute to a commit. The rest were

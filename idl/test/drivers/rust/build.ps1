@@ -2,7 +2,7 @@
 # driver on it. Writes only under <Scratch>; leaves <Scratch>\replay.exe.
 #
 #   powershell -File build.ps1 -Scratch <dir> [-Definition <file>]
-#   sh conformance/run.sh --scenarios download/testdata/scenarios --contracts <pages> --no-fixture -- <Scratch>/replay.exe
+#   sh conformance/run.sh --scenarios conformance/scenarios --contracts <pages> --no-fixture -- <Scratch>/replay.exe
 
 param(
   [Parameter(Mandatory = $true)][string]$Scratch,
@@ -12,7 +12,10 @@ param(
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $idl = (Resolve-Path "$here\..\..\..").Path
-if (-not $Definition) { $Definition = "$idl\..\job\job.thrift" }
+if (-not $Definition) {
+  $Definition = "$idl\testdata\job.thrift"
+  if (-not (Test-Path $Definition)) { $Definition = "$idl\..\openabstractions-flat\abstraction-job\job.thrift" }
+}
 
 $env:GOCACHE = "$Scratch\gocache"
 $env:GOMODCACHE = "$Scratch\gomodcache"

@@ -14,12 +14,18 @@ var citedTag = regexp.MustCompile(`\[([A-Z]+-[A-Z]*[0-9]+)\]`)
 var ruleDocuments = []string{
 	"LANGUAGE.md",
 	"idl/LANGUAGE.md",
-	"job/CONTRACT.md",
-	"job/SPEC.md",
-	"download/CONTRACT.md",
-	"identity/CONTRACT.md",
-	"logging/CONTRACT.md",
-	"config/CONTRACT.md",
+	"abstraction-job/CONTRACT.md",
+	"abstraction-job/SPEC.md",
+	"abstraction-download/CONTRACT.md",
+	"abstraction-identity/CONTRACT.md",
+	"abstraction-logging/CONTRACT.md",
+	"abstraction-config/CONTRACT.md",
+	"openabstractions-flat/abstraction-job/CONTRACT.md",
+	"openabstractions-flat/abstraction-job/SPEC.md",
+	"openabstractions-flat/abstraction-download/CONTRACT.md",
+	"openabstractions-flat/abstraction-identity/CONTRACT.md",
+	"openabstractions-flat/abstraction-logging/CONTRACT.md",
+	"openabstractions-flat/abstraction-config/CONTRACT.md",
 }
 
 func verifyDocs(e emitted) error {

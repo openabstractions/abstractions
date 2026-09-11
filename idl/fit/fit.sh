@@ -27,7 +27,7 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 SCRATCH="${1:?usage: fit.sh <scratchdir> [definition|--tsv]}"
 shift
 TSV=0
-DEF="$ROOT/job/job.thrift"
+DEF="$ROOT/openabstractions-flat/abstraction-job/job.thrift"
 for a in "$@"; do
 	case "$a" in
 	--tsv) TSV=1 ;;

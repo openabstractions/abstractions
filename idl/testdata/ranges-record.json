@@ -1,0 +1,46 @@
+{
+  "content": [
+    "abstraction.job/base@1",
+    "abstraction.download/ranges@1"
+  ],
+  "critical": [
+    "abstraction.job/base@1"
+  ],
+  "id": "1787202430967-a752f9a9c2c77b123ffd",
+  "kind": "download",
+  "state": "running",
+  "spec": {
+    "artifact": {
+      "bytes": 23068672
+    }
+  },
+  "checkpoint": {
+    "verified_prefix": 4194304,
+    "verified": [
+      [
+        0,
+        4194304
+      ],
+      [
+        8388608,
+        12582912
+      ],
+      [
+        20971520,
+        23068672
+      ]
+    ]
+  },
+  "progress": {
+    "done": 10485760,
+    "total": 23068672,
+    "updated_at": "2026-08-20T05:07:14.951609Z"
+  },
+  "lease": {
+    "owner": "go-worker",
+    "epoch": 2,
+    "expires_at": "2026-08-20T05:08:14.635068Z"
+  },
+  "created_at": "2026-08-20T05:07:10.967343Z",
+  "updated_at": "2026-08-20T05:07:15.134811Z"
+}

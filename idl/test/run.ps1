@@ -15,9 +15,13 @@ param(
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Split-Path -Parent $here
-if (-not $Definition) { $Definition = "$root\..\job\job.thrift" }
-if (-not $Reference) { $Reference = "$root\..\job\testdata\ranges-record.json" }
-if (-not $Terminal) { $Terminal = "$root\..\job\testdata\terminal-record.json" }
+$jobData = "$root\testdata"
+if (-not (Test-Path "$jobData\job.thrift")) { $jobData = "$root\..\openabstractions-flat\abstraction-job" }
+if (-not $Definition) { $Definition = "$jobData\job.thrift" }
+$records = $jobData
+if (Test-Path "$jobData\testdata") { $records = "$jobData\testdata" }
+if (-not $Reference) { $Reference = "$records\ranges-record.json" }
+if (-not $Terminal) { $Terminal = "$records\terminal-record.json" }
 $corpus = "$here\corpus"
 
 $env:GOCACHE = "$Scratch\gocache"

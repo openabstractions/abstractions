@@ -1,4 +1,4 @@
-// The shapes job/job.thrift does not have, so that the profile is proved on
+// The shapes openabstractions-flat/abstraction-job/job.thrift does not have, so that the profile is proved on
 // more than the one definition it was written from.
 //
 // A repeated record [DEF-A9] and a string map [DEF-A10], nested inside each

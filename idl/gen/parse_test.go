@@ -275,7 +275,7 @@ vocabulary W {
 }
 
 func TestExampleGeneratesForEveryBackend(t *testing.T) {
-	src, err := os.ReadFile("../../job/job.thrift")
+	src, err := os.ReadFile(example)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,7 +324,7 @@ func TestSeparatorFlagAppearsOnlyWhenItCanVary(t *testing.T) {
 }
 
 func TestEncodingDeclarationReachesEveryBackend(t *testing.T) {
-	src, err := os.ReadFile("../../job/job.thrift")
+	src, err := os.ReadFile(example)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +344,7 @@ func TestEncodingDeclarationReachesEveryBackend(t *testing.T) {
 }
 
 func TestReaderObligationsReachEveryBackend(t *testing.T) {
-	src, err := os.ReadFile("../../job/job.thrift")
+	src, err := os.ReadFile(example)
 	if err != nil {
 		t.Fatal(err)
 	}

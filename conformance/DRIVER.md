@@ -182,7 +182,7 @@ Six more any operation may answer:
 | `stale-epoch` | the epoch offered is not the one the record carries |
 | `lease-expired` | the lease this was issued against has lapsed |
 | `terminal` | the record is in a state that accepts no further change |
-| `unknown-model` | the record declares a critical schema this reader cannot read. The definition spells this same refusal `unknown_schema`, and says so: `job/job.thrift` carries the word above beside the member |
+| `unknown-model` | the record declares a critical schema this reader cannot read. The definition spells this same refusal `unknown_schema`, and says so: `openabstractions-flat/abstraction-job/job.thrift` carries the word above beside the member |
 | `refused` | refused for a reason with no word of its own |
 
 and four that belong to one operation each, because they say something no
@@ -300,7 +300,7 @@ belong to one operation each.
     terminal
     unknown-model
 
-The words are one vocabulary with two spellings — `job/job.thrift` declares the
+The words are one vocabulary with two spellings — `openabstractions-flat/abstraction-job/job.thrift` declares the
 member and the `transcript` annotation beside it declares the word here — and
 this roster is where the two are compared. Byte-comparing transcripts cannot do
 it: it proves three drivers agree, and three drivers agreeing on a word the

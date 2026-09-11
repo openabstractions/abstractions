@@ -108,9 +108,9 @@ checked, and names why. `ABSENT` means it was checked and the thing is not
 there. `—` means there is no implementation at all — not an untested one and not
 a finished one — and each `—` carries whether that gap is declared deliberate or
 simply unexplained. No count from the grid is repeated on this page: it names
-the commit and the layer trees it measured, and `sh scripts/matrix.sh --check`
-refuses a grid the evidence no longer produces, so one that has gone stale fails
-the gate instead of reading as coverage.
+the commit and the layer trees it measured, and the maintainer gate checks that the grid agrees with its evidence.
+The standalone `conformance/` runner and `idl/` generator are the public tools;
+private orchestration and publication scripts are not included.
 
 Transcripts of every run are in [`docs/results/`](docs/results/), indexed in
 [`docs/results/README.md`](docs/results/README.md) with the script that produced

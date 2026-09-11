@@ -200,7 +200,7 @@ another.
 
 ~~`Delegation` describes a system somebody else runs and may carry fields we do
 not model~~ 2026-09-08: it was `grant` in the shipped definition and
-`job/CONTRACT.md` [JOB-F1] had always named `delegation` among the scopes that
+`abstraction-job/CONTRACT.md` [JOB-F1] had always named `delegation` among the scopes that
 refuse. The example was the violation.
 
 **`grant` skips and drops; it does not keep.** No generated backend holds an
@@ -267,7 +267,7 @@ Refused by name: a path through an optional struct, through a scalar or a
 list, two keys into an opaque value, membership on a number, a bool, a
 timestamp or an opaque member, `is` on `when = "always"`, and a term derived
 from the list that carries it. No negation, no conjunction, no comparison, no
-expression: the four names `job/job.thrift` could not declare before this set
+expression: the four names `abstraction-job/job.thrift` could not declare before this set
 existed needed exactly these three shapes and nothing more, and each addition
 after this one is a decision about five backends, not a convenience.
 
@@ -487,7 +487,7 @@ linked to.
 An adopter that takes the envelope should not receive the record codec. So the
 generator takes a selection:
 
-    go run . ../../job/job.thrift <outdir> -only=Request,Response,Verdict,Store
+    go run . ../testdata/job.thrift <outdir> -only=Request,Response,Verdict,Store
 
 A **surface** is one declaration — a struct, an enum, a constant, the
 vocabulary, the protocol. The encoding block, the refusal words and the
