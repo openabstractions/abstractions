@@ -73,8 +73,10 @@ refusal {
   14: content_mismatch (stage = "derivation")
 }
 
-// An instant, as ISO-8601 in UTC with exactly six fractional digits and a
-// trailing Z on the way out, and anything RFC 3339 on the way in.
+// An instant, in UTC with exactly six fractional digits and a trailing Z on
+// the way out. Reading uses the profile's bounded RFC 3339 grammar: Gregorian
+// dates in years 0000–9999, no leap seconds, and a representable UTC result.
+// Writing converts offsets to UTC and truncates fractions beyond microseconds.
 //
 // Six digits, not nine, because Python's datetime holds microseconds and cannot
 // represent nanoseconds: the contract is set by the least precise participant,
@@ -120,10 +122,6 @@ enum Verdict {
   10: not_supported  (transcript = "refused")
   11: other          (transcript = "refused")
 } (unknown = "grant")
-
-// HTTP statuses that mean asking again cannot help. Retry classification, in
-// the sense every transfer engine already uses it.
-const list<i32> permanent_status = [400, 401, 402, 403, 404, 405, 406, 410, 414, 451]
 
 // The data models a record can carry, named in `content`, and the subset a
 // reader must understand or refuse the record in `critical`.

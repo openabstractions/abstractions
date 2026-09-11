@@ -721,7 +721,7 @@ fn date_part(s: &[u8]) -> bool {
 
 /// [DEF-G1] rfc3339-wide: what a reader accepts. Any fraction of one to nine
 /// digits or none, either case of the separators, and a numeric offset.
-pub fn wide_timestamp(text: &str) -> bool {
+fn lexical_timestamp(text: &str) -> bool {
     let s = text.as_bytes();
     if !date_part(s) || (s[10] != b'T' && s[10] != b't') {
         return false;
@@ -752,8 +752,7 @@ pub fn wide_timestamp(text: &str) -> bool {
 /// [DEF-G2] rfc3339-micros: what a writer emits. Exactly six fractional digits,
 /// upper-case separators, UTC.
 pub fn micros_timestamp(text: &str) -> bool {
-    let s = text.as_bytes();
-    s.len() == 27 && date_part(s) && s[10] == b'T' && s[19] == b'.' && digits(s, 20, 6) && s[26] == b'Z'
+    text.len() == 27 && normalized_timestamp(text) == text
 }
 
 fn read_timestamp(r: &mut Reader) -> Result<String, Refusal> {
@@ -806,6 +805,11 @@ func rsStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 	b.WriteString("                _ => {\n")
 	if st.RefuseUnknown() {
 		b.WriteString("                    return r.refuse(\"unknown_field\");\n")
+	} else if st.PreservesUnknown() {
+		if s.Encoding.RefuseDuplicateKeys() {
+			b.WriteString("                    if v.extras.contains_key(&key) { return r.refuse(\"duplicate_key\"); }\n")
+		}
+		b.WriteString("                    let raw = r.raw_value()?; v.extras.insert(key, raw);\n")
 	} else {
 		b.WriteString("                    r.skip_value()?;\n")
 	}
@@ -973,6 +977,9 @@ func genRust(s *Definition) string {
 		for _, f := range st.Fields {
 			fmt.Fprintf(&b, "    pub %s: %s,\n", f.Ident("rust"), rsType(s, f))
 		}
+		if st.PreservesUnknown() {
+			b.WriteString("    pub extras: BTreeMap<String, Raw>,\n")
+		}
 		b.WriteString("}\n")
 	}
 	for _, st := range s.Structs {
@@ -1013,6 +1020,10 @@ func genRust(s *Definition) string {
 	).Replace(decode))
 	if s.Timestamps() {
 		b.WriteString(rsTimestamp)
+		b.WriteString(rsTimestampNormalize)
+	}
+	if s.PreservesUnknown() {
+		b.WriteString(rsPreserve)
 	}
 	rsDecoder(&b, s)
 	rsProtocol(&b, s)
@@ -1105,11 +1116,14 @@ func rsEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 			b.WriteString("    }\n")
 		}
 	}
+	if st.PreservesUnknown() {
+		fmt.Fprintf(b, "    first = extra_fields(out, &v.extras, &[%s], depth, first);\n", quotedFieldNames(st))
+	}
 	if !flat {
 		switch {
 		case p.closeAlways:
 			b.WriteString("    out.push(b'\\n');\n    pad(out, depth);\n")
-		case len(st.Fields) > 0:
+		case len(st.Fields) > 0 || st.PreservesUnknown():
 			b.WriteString("    if !first {\n        out.push(b'\\n');\n        pad(out, depth);\n    }\n")
 		}
 	}
@@ -1160,6 +1174,9 @@ func rsPresent(s *Definition, f Field, e string) string {
 }
 
 func rsValue(s *Definition, f Field, e string) string {
+	if f.Grammar.Named() {
+		return "esc(out, &write_timestamp(&" + e + "));"
+	}
 	switch f.Type {
 	case "string":
 		return "esc(out, &" + e + ");"

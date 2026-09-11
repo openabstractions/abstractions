@@ -176,7 +176,8 @@ export function encList(out, v, depth, enc) {
 `
 
 const jsDecodeCommon = `
-const DEC = new TextDecoder();
+// A BOM inside a JSON string is data, not a stream signature.
+const DEC = new TextDecoder("utf-8", {ignoreBOM: true});
 const DEPTH_LIMIT = @DEPTH@;
 const I64_DIGITS = 19;
 const UNESCAPE = { 0x22: 0x22, 0x5c: 0x5c, 0x2f: 0x2f, 0x62: 0x08, 0x66: 0x0c, 0x6e: 0x0a, 0x72: 0x0d, 0x74: 0x09 };
@@ -525,7 +526,7 @@ const datePart = (s) =>
 
 // [DEF-G1] rfc3339-wide: what a reader accepts. Any fraction of one to nine
 // digits or none, either case of the separators, and a numeric offset.
-export function wideTimestamp(s) {
+function lexicalTimestamp(s) {
   if (!datePart(s) || (s[10] !== "T" && s[10] !== "t")) return false;
   let i = 19;
   if (i < s.length && s[i] === ".") {
@@ -543,7 +544,7 @@ export function wideTimestamp(s) {
 // [DEF-G2] rfc3339-micros: what a writer emits. Exactly six fractional digits,
 // upper-case separators, UTC.
 export function microsTimestamp(s) {
-  return s.length === 27 && datePart(s) && s[10] === "T" && s[19] === "." && isDigits(s, 20, 6) && s[26] === "Z";
+  return s.length === 27 && normalizedTimestamp(s) === s;
 }
 
 function readTimestamp(r) {
@@ -565,6 +566,12 @@ func jsDecoder(b *strings.Builder, s *Definition) {
 				b.WriteString(",")
 			}
 			fmt.Fprintf(b, " %s: %s", f.Ident("javascript"), jsDefault(s, f))
+		}
+		if st.PreservesUnknown() {
+			if len(st.Fields) > 0 {
+				b.WriteString(",")
+			}
+			b.WriteString(" extras: Object.create(null)")
 		}
 		b.WriteString(" };\n}\n")
 	}
@@ -599,9 +606,17 @@ func jsStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 		fmt.Fprintf(b, "        seen |= %d;\n", 1<<i)
 		fmt.Fprintf(b, "        v.%s = %s;\n      ", f.Ident("javascript"), jsRead(s, f))
 	}
+	if len(st.Fields) == 0 && st.PreservesUnknown() {
+		b.WriteString("      if (false) {\n      ")
+	}
 	b.WriteString("} else {\n")
 	if st.RefuseUnknown() {
 		b.WriteString("        throw r.refuse(\"unknown_field\");\n")
+	} else if st.PreservesUnknown() {
+		if s.Encoding.RefuseDuplicateKeys() {
+			b.WriteString("        if (Object.hasOwn(v.extras, key)) throw r.refuse(\"duplicate_key\");\n")
+		}
+		b.WriteString("        v.extras[key] = r.rawValue();\n")
 	} else {
 		b.WriteString("        r.skipValue();\n")
 	}
@@ -809,6 +824,10 @@ func genJS(s *Definition) string {
 	).Replace(decode))
 	if s.Timestamps() {
 		b.WriteString(jsTimestamp)
+		b.WriteString(jsTimestampNormalize)
+	}
+	if s.PreservesUnknown() {
+		b.WriteString(jsPreserve)
 	}
 	jsDecoder(&b, s)
 	jsProtocol(&b, s)
@@ -896,11 +915,14 @@ func jsEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 			b.WriteString("  }\n")
 		}
 	}
+	if st.PreservesUnknown() {
+		fmt.Fprintf(b, "  first = extraFields(out, v.extras, [%s], depth, first);\n", quotedFieldNames(st))
+	}
 	if !flat {
 		switch {
 		case p.closeAlways:
 			b.WriteString("  out.byte(0x0a);\n  pad(out, depth);\n")
-		case len(st.Fields) > 0:
+		case len(st.Fields) > 0 || st.PreservesUnknown():
 			b.WriteString("  if (!first) { out.byte(0x0a); pad(out, depth); }\n")
 		}
 	}
@@ -930,6 +952,9 @@ func jsPresent(s *Definition, f Field, e string) string {
 }
 
 func jsValue(s *Definition, f Field, e string) string {
+	if f.Grammar.Named() {
+		return "esc(out, writeTimestamp(" + e + "));"
+	}
 	switch f.Type {
 	case "string":
 		return "esc(out, " + e + ");"

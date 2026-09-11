@@ -1,35 +1,35 @@
-# GATE  produced by scripts/check.sh on 2026-09-10, commit fac0218, exit 1
-# measures  abstraction@139e861 asks@8391834 cas@c6784b1 config@6deb3b2 download@eb7ca98 identity@d9d7267 job@b1878d8 logging@68d0a1c model@0037120 rights@6d9d16d router@0bdb1d8 storage@e97f1c0 watch@0a0beff
-# machine   MINGW64_NT-10.0-26200/x86_64; go1.26.5; Python 3.12.10; 2 c++ toolchain(s) built
+# GATE  produced by scripts/check.sh on 2026-09-11, commit 5e899ba, exit 1
+# measures  openabstractions-flat/abstraction-asks@7e9ea82 openabstractions-flat/abstraction-cas@f9cb388 openabstractions-flat/abstraction-config@9c4cbe5 openabstractions-flat/abstraction-download@43ab3b5 openabstractions-flat/abstraction-facade@4fee870 openabstractions-flat/abstraction-identity@b812381 openabstractions-flat/abstraction-job@30ffc73 openabstractions-flat/abstraction-logging@ec56256 openabstractions-flat/abstraction-model@7cf857e openabstractions-flat/abstraction-rights@6fff1f5 openabstractions-flat/abstraction-router@a56ecb2 openabstractions-flat/abstraction-storage@e97f1c0 openabstractions-flat/abstraction-watch@27bd982
+# machine   MINGW64_NT-10.0-26200/x86_64; go1.26.5; Python 3.12.14; 2 c++ toolchain(s) built
 # mode      full
-# regenerate  sh scripts/check.sh --record   then  sh scripts/matrix.sh
+# regenerate  sh scripts/check.sh --record
 # scope     one machine, one run of this gate. PASS means this run built and
 #           tested the cell; UNPROVEN means it reached the cell and could not
 #           judge it; a cell this run never came near is not in the list at all.
 #           No state line: what varies with power and load is minutes, and the
 #           minutes are in research/gate/series.tsv where a series belongs.
 
-  abstraction/go         PASS      go build ./... && go test ./... [go1.26.5]
-  asks/go                PASS      go build ./... && go test ./... [go1.26.5]
-  cas/cpp                PASS      ctest under g++ 15.2.0 in WSL + msvc 14.51.36231, 2 test runs [g++/msvc]
-  cas/go                 PASS      go build ./... && go test ./... [go1.26.5]
-  cas/python             PASS      unittest discover, 13 tests [py3.12]
-  config/go              PASS      go build ./... && go test ./... [go1.26.5]
-  config/python          PASS      unittest discover, 17 tests [py3.12]
-  download/cpp           PASS      ctest under g++ 15.2.0 in WSL + msvc 14.51.36231, 12 test runs [g++/msvc]
-  download/go            PASS      the published conformance suite, 85 rules over all 47 scenarios [go1.26.5]
-  download/python        PASS      unittest discover, 67 tests [py3.12]
-  identity               PASS      go build ./... && go test ./... [go1.26.5]
-  job/cpp                PASS      ctest under g++ 15.2.0 in WSL + msvc 14.51.36231, 8 test runs [g++/msvc]
-  job/go                 PASS      go build ./... && go test ./... [go1.26.5]
-  job/python             PASS      unittest discover, 75 tests [py3.12]
-  logging/go             PASS      go build ./... && go test ./... [go1.26.5]
-  model/go               PASS      go build ./... && go test ./... [go1.26.5]
-  model/python           PASS      unittest discover, 41 tests [py3.12]
-  rights/go              PASS      go build ./... && go test ./... [go1.26.5]
-  router/go              PASS      go build ./... && go test ./... [go1.26.5]
-  storage/cpp            PASS      ctest under g++ 15.2.0 in WSL + msvc 14.51.36231, 2 test runs [g++/msvc]
-  storage/go             PASS      go build ./... && go test ./... [go1.26.5]
-  watch/cpp              PASS      ctest under g++ 15.2.0 in WSL + msvc 14.51.36231, 2 test runs [g++/msvc]
-  watch/go               PASS      go build ./... && go test ./... [go1.26.5]
-  watch/python           PASS      unittest discover, 19 tests [py3.12]
+  openabstractions-flat/abstraction-asks/go PASS      go build ./... && go test ./... [go1.26.5]
+  openabstractions-flat/abstraction-cas/cpp PASS      ctest under g++ 15.2.0 in WSL + msvc 14.51.36231, 2 test runs [g++/msvc]
+  openabstractions-flat/abstraction-cas/go PASS      go build ./... && go test ./... [go1.26.5]
+  openabstractions-flat/abstraction-cas/python PASS      unittest discover, 13 tests [py3.12]
+  openabstractions-flat/abstraction-config/go PASS      go build ./... && go test ./... [go1.26.5]
+  openabstractions-flat/abstraction-config/python PASS      unittest discover, 17 tests [py3.12]
+  openabstractions-flat/abstraction-download/cpp PASS      the published conformance suite, 85 rules over all 47 scenarios [msvc]
+  openabstractions-flat/abstraction-download/go PASS      go build ./... && go test ./... [go1.26.5]
+  openabstractions-flat/abstraction-download/python PASS      unittest discover, 70 tests [py3.12]
+  openabstractions-flat/abstraction-facade/go PASS      go build ./... && go test ./... [go1.26.5]
+  openabstractions-flat/abstraction-identity UNPROVEN  the macOS half is type-checked and run by nobody: this gate reaches no Mac [go1.26.5]
+  openabstractions-flat/abstraction-job/cpp FAIL      the corpus: 11 disagreements with 120 fixtures that nothing records, 3 recorded and gone [msvc 19.51.36256]
+  openabstractions-flat/abstraction-job/go FAIL      the corpus: 16 disagreements with 120 fixtures that nothing records, 0 recorded and gone [go1.26.5 windows/amd64]
+  openabstractions-flat/abstraction-job/python FAIL      the corpus: 16 disagreements with 120 fixtures that nothing records, 0 recorded and gone [CPython 3.12.14 win32]
+  openabstractions-flat/abstraction-logging/go PASS      go build ./... && go test ./... [go1.26.5]
+  openabstractions-flat/abstraction-model/go PASS      go build ./... && go test ./... [go1.26.5]
+  openabstractions-flat/abstraction-model/python PASS      unittest discover, 41 tests [py3.12]
+  openabstractions-flat/abstraction-rights/go PASS      go build ./... && go test ./... [go1.26.5]
+  openabstractions-flat/abstraction-router/go PASS      go build ./... && go test ./... [go1.26.5]
+  openabstractions-flat/abstraction-storage/cpp PASS      ctest under g++ 15.2.0 in WSL + msvc 14.51.36231, 2 test runs [g++/msvc]
+  openabstractions-flat/abstraction-storage/go PASS      go build ./... && go test ./... [go1.26.5]
+  openabstractions-flat/abstraction-watch/cpp PASS      ctest under g++ 15.2.0 in WSL + msvc 14.51.36231, 2 test runs [g++/msvc]
+  openabstractions-flat/abstraction-watch/go PASS      go build ./... && go test ./... [go1.26.5]
+  openabstractions-flat/abstraction-watch/python PASS      unittest discover, 19 tests [py3.12]

@@ -51,6 +51,7 @@ function Generate($def, $out) {
   New-Item -ItemType Directory -Force $out | Out-Null
   Push-Location "$root\gen"
   & go run . $def $out | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "generator failed for $def" }
   Pop-Location
   [System.IO.File]::WriteAllText("$out\go\go.mod", "module idl/out/go`n`ngo 1.26`n")
 }
@@ -63,9 +64,10 @@ function RunDrivers($out, $res) {
   New-Item -ItemType Directory -Force "$Scratch\d-go" | Out-Null
   Copy-Item "$here\drivers\go\main.go" "$Scratch\d-go\" -Force
   [System.IO.File]::WriteAllText("$Scratch\d-go\go.mod",
-    "module d`n`ngo 1.26`n`nrequire idl/out/go v0.0.0`n`nreplace idl/out/go => $($out -replace '\\','/')/go`n")
+    "module d`n`ngo 1.26`n`nrequire idl/out/go v0.0.0`n`nreplace idl/out/go => `"$($out -replace '\\','/')/go`"`n")
   Push-Location "$Scratch\d-go"
   & go run . $res $corpus | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "generated Go corpus driver failed" }
   Pop-Location
   $script:ran += "go"
 

@@ -1,11 +1,11 @@
-# MATRIX  produced by scripts/matrix.sh on 2026-09-10, commit ddd31d9
-# measures  abstraction@6e37257 asks@1352b48 cas@1f99bd1 config@6deb3b2 download@5b3c636 identity@b812381 job@b126e63 logging@cbf5c4c model@160dbc3 rights@fb5baa4 router@e07620f storage@e97f1c0 watch@0a0beff
+# MATRIX  produced by scripts/matrix.sh on 2026-09-11, commit 5e899ba
+# measures  openabstractions-flat/abstraction-asks@7e9ea82 openabstractions-flat/abstraction-cas@f9cb388 openabstractions-flat/abstraction-config@9c4cbe5 openabstractions-flat/abstraction-download@43ab3b5 openabstractions-flat/abstraction-facade@4fee870 openabstractions-flat/abstraction-identity@b812381 openabstractions-flat/abstraction-job@30ffc73 openabstractions-flat/abstraction-logging@ec56256 openabstractions-flat/abstraction-model@7cf857e openabstractions-flat/abstraction-rights@6fff1f5 openabstractions-flat/abstraction-router@a56ecb2 openabstractions-flat/abstraction-storage@e97f1c0 openabstractions-flat/abstraction-watch@27bd982
 # regenerate  sh scripts/matrix.sh   (--check refuses a grid the evidence no longer produces)
 # scope     this tree only. It reads what is committed here and the transcripts
 #           in docs/results/; it runs no implementation and no harness. Each
 #           transcript it cites carries its own state line.
 
-    PASS      evidence exists, was reached, and the implementation kept the rules
+    PASS      the recorded checks passed within their stated scope and exceptions
     FAIL      evidence exists and a rule broke
     UNPROVEN  could not be checked here — see the reason
     ABSENT    checked, and the thing is confirmed not there
@@ -15,65 +15,66 @@
     record it came from named none. A verdict over a compiler nobody named is a
     claim about a compiler nobody named.
 
-layer       go             python         cpp            
------------ -------------  -------------  -------------  
-abstraction UNPROVEN       —              —              
-asks        UNPROVEN       —              —              
-cas         UNPROVEN       UNPROVEN       UNPROVEN       
-config      PASS go1.26.5  PASS py3.12    —              
-download    UNPROVEN       UNPROVEN       UNPROVEN       
-identity    UNPROVEN       —              —              
-job         UNPROVEN       UNPROVEN       UNPROVEN       
-logging     UNPROVEN       —              —              
-model       UNPROVEN       UNPROVEN       —              
-rights      UNPROVEN       —              —              
-router      UNPROVEN       —              —              
-storage     PASS go1.26.5  —              PASS g++/msvc  
-watch       PASS go1.26.5  PASS py3.12    PASS g++/msvc  
+layer                go                        python                        cpp                        
+-------------------- -------------------------------  -------------------------------  -------------------------------  
+abstraction-asks     FAIL* go1.26.5 darwin/arm64 cgo  —                        —                        
+abstraction-cas      PASS go1.26.5                    PASS py3.12                      PASS Apple Clang darwin/arm64    
+abstraction-config   FAIL go1.26.5 darwin/arm64 cgo   PASS py3.12                      —                        
+abstraction-download FAIL* go1.26.5 darwin/arm64 cgo  PASS py3.12                      PASS Apple Clang darwin/arm64    
+abstraction-facade   PASS go1.26.5                    —                        —                        
+abstraction-identity PASS go1.26.5 darwin/arm64 cgo   —                        —                        
+abstraction-job      FAIL go1.26.5 windows/amd64      FAIL CPython 3.12.14 win32       FAIL msvc 19.51.36256            
+abstraction-logging  PASS go1.26.5                    —                        —                        
+abstraction-model    PASS go1.26.5                    PASS py3.12                      —                        
+abstraction-rights   FAIL* go1.26.5 darwin/arm64 cgo  —                        —                        
+abstraction-router   PASS go1.26.5                    —                        —                        
+abstraction-storage  PASS go1.26.5                    —                        PASS Apple Clang darwin/arm64    
+abstraction-watch    PASS go1.26.5                    PASS py3.12                      PASS Apple Clang darwin/arm64    
 
-39 cells over 13 layers: 7 PASS, 0 FAIL, 17 UNPROVEN, 0 ABSENT, 15 with no implementation.
-24 implementations exist and 17 of them carry no verdict attributed to this tree.
+39 cells over 13 layers: 17 PASS, 7 FAIL, 0 UNPROVEN, 0 ABSENT, 15 with no implementation.
+24 implementations exist and 0 of them carry no verdict attributed to this tree.
+* Documented platform limitation: the current macOS IPC provider cannot supply the process proof required by these service tests. These cells remain counted as FAIL.
 
 why each cell reads as it does
-  abstraction go      UNPROVEN       drifted     GATE recorded PASS at abstraction@139e861; the tree is abstraction@6e37257
-  abstraction python  —              none        no python implementation, and the inventory declares none, so the gap is deliberate
-  abstraction cpp     —              none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  asks        go      UNPROVEN       drifted     GATE recorded PASS at asks@8391834; the tree is asks@1352b48
-  asks        python  —              none        no python implementation, and the inventory declares none, so the gap is deliberate
-  asks        cpp     —              none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  cas         go      UNPROVEN       drifted     CAS-MIXED1 recorded PASS at cas@7565469; the tree is cas@1f99bd1
-  cas         python  UNPROVEN       drifted     CAS-MIXED1 recorded PASS at cas@7565469; the tree is cas@1f99bd1
-  cas         cpp     UNPROVEN       drifted     CAS-MIXED1 recorded PASS at cas@7565469; the tree is cas@1f99bd1
-  config      go      PASS go1.26.5  recorded    GATE full, go build ./... && go test ./...
-  config      python  PASS py3.12    recorded    GATE full, unittest discover, 17 tests
-  config      cpp     —              none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  download    go      UNPROVEN       drifted     BEHAVIOUR1 recorded PASS at download@88561a4; the tree is download@5b3c636
-  download    python  UNPROVEN       drifted     BEHAVIOUR1 recorded PASS at download@88561a4; the tree is download@5b3c636
-  download    cpp     UNPROVEN       drifted     BEHAVIOUR1 recorded PASS at download@88561a4; the tree is download@5b3c636
-  identity    go      UNPROVEN       drifted     GATE recorded PASS at identity@d9d7267; the tree is identity@b812381
-  identity    python  —              none        no python implementation, and the inventory declares none, so the gap is deliberate
-  identity    cpp     —              none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  job         go      UNPROVEN       drifted     AWAKE1 recorded PASS at job@5806dfe; the tree is job@b126e63
-  job         python  UNPROVEN       drifted     BEHAVIOUR1 recorded PASS at job@5806dfe; the tree is job@b126e63
-  job         cpp     UNPROVEN       drifted     BEHAVIOUR1 recorded PASS at job@5806dfe; the tree is job@b126e63
-  logging     go      UNPROVEN       drifted     GATE recorded PASS at logging@68d0a1c; the tree is logging@cbf5c4c
-  logging     python  —              none        no python implementation, and the inventory declares none, so the gap is deliberate
-  logging     cpp     —              none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  model       go      UNPROVEN       drifted     GATE recorded PASS at model@0037120; the tree is model@160dbc3
-  model       python  UNPROVEN       drifted     GATE recorded PASS at model@0037120; the tree is model@160dbc3
-  model       cpp     —              none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  rights      go      UNPROVEN       drifted     GATE recorded PASS at rights@6d9d16d; the tree is rights@fb5baa4
-  rights      python  —              none        no python implementation, and the inventory declares none, so the gap is deliberate
-  rights      cpp     —              none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  router      go      UNPROVEN       drifted     GATE recorded PASS at router@0bdb1d8; the tree is router@e07620f
-  router      python  —              undeclared  no python implementation, and the inventory carries no row for router, so nothing says whether the gap is deliberate
-  router      cpp     —              undeclared  no cpp implementation, and the inventory carries no row for router, so nothing says whether the gap is deliberate
-  storage     go      PASS go1.26.5  recorded    GATE full, go build ./... && go test ./...
-  storage     python  —              none        no python implementation, and the inventory declares none, so the gap is deliberate
-  storage     cpp     PASS g++/msvc  recorded    GATE full, ctest under g++ 15.2.0 in WSL + msvc 14.51.36231, 2 test runs
-  watch       go      PASS go1.26.5  recorded    GATE full, go build ./... && go test ./...
-  watch       python  PASS py3.12    recorded    GATE full, unittest discover, 19 tests
-  watch       cpp     PASS g++/msvc  recorded    GATE full, ctest under g++ 15.2.0 in WSL + msvc 14.51.36231, 2 test runs
+  abstraction-asks     go      FAIL* go1.26.5 darwin/arm64 cgo  recorded    DARWIN1 , go test -count=1 ./... on native macOS; platform limitation: darwin-peer-proof
+  abstraction-asks     python  —                        none        no python implementation, and the inventory declares none, so the gap is deliberate
+  abstraction-asks     cpp     —                        none        no cpp implementation, and the inventory declares none, so the gap is deliberate
+  abstraction-cas      go      PASS go1.26.5                    recorded    GATE full, go build ./... && go test ./...
+  abstraction-cas      python  PASS py3.12                      recorded    GATE full, unittest discover, 13 tests
+  abstraction-cas      cpp     PASS Apple Clang darwin/arm64    recorded    DARWIN1 , CMake build and aggregate CTest on native macOS
+  abstraction-config   go      FAIL go1.26.5 darwin/arm64 cgo   recorded    DARWIN1 , go test -count=1 ./... on native macOS
+  abstraction-config   python  PASS py3.12                      recorded    GATE full, unittest discover, 17 tests
+  abstraction-config   cpp     —                        none        no cpp implementation, and the inventory declares none, so the gap is deliberate
+  abstraction-download go      FAIL* go1.26.5 darwin/arm64 cgo  recorded    DARWIN1 , go test -count=1 ./... on native macOS; platform limitation: darwin-peer-proof
+  abstraction-download python  PASS py3.12                      recorded    GATE full, unittest discover, 70 tests
+  abstraction-download cpp     PASS Apple Clang darwin/arm64    recorded    DARWIN1 , CMake build and aggregate CTest on native macOS
+  abstraction-facade   go      PASS go1.26.5                    recorded    GATE full, go build ./... && go test ./...
+  abstraction-facade   python  —                        none        no python implementation, and the inventory declares none, so the gap is deliberate
+  abstraction-facade   cpp     —                        none        no cpp implementation, and the inventory declares none, so the gap is deliberate
+  abstraction-identity go      PASS go1.26.5 darwin/arm64 cgo   recorded    DARWIN1 , go test -count=1 ./... on native macOS
+  abstraction-identity python  —                        none        no python implementation, and the inventory declares none, so the gap is deliberate
+  abstraction-identity cpp     —                        none        no cpp implementation, and the inventory declares none, so the gap is deliberate
+  abstraction-job      go      FAIL go1.26.5 windows/amd64      recorded    GATE full, the corpus: 16 disagreements with 120 fixtures that nothing records, 0 recorded and gone
+  abstraction-job      python  FAIL CPython 3.12.14 win32       recorded    GATE full, the corpus: 16 disagreements with 120 fixtures that nothing records, 0 recorded and gone
+  abstraction-job      cpp     FAIL msvc 19.51.36256            recorded    GATE full, the corpus: 11 disagreements with 120 fixtures that nothing records, 3 recorded and gone
+  abstraction-logging  go      PASS go1.26.5                    recorded    GATE full, go build ./... && go test ./...
+  abstraction-logging  python  —                        none        no python implementation, and the inventory declares none, so the gap is deliberate
+  abstraction-logging  cpp     —                        none        no cpp implementation, and the inventory declares none, so the gap is deliberate
+  abstraction-model    go      PASS go1.26.5                    recorded    GATE full, go build ./... && go test ./...
+  abstraction-model    python  PASS py3.12                      recorded    GATE full, unittest discover, 41 tests
+  abstraction-model    cpp     —                        none        no cpp implementation, and the inventory declares none, so the gap is deliberate
+  abstraction-rights   go      FAIL* go1.26.5 darwin/arm64 cgo  recorded    DARWIN1 , go test -count=1 ./... on native macOS; platform limitation: darwin-peer-proof
+  abstraction-rights   python  —                        none        no python implementation, and the inventory declares none, so the gap is deliberate
+  abstraction-rights   cpp     —                        none        no cpp implementation, and the inventory declares none, so the gap is deliberate
+  abstraction-router   go      PASS go1.26.5                    recorded    GATE full, go build ./... && go test ./...
+  abstraction-router   python  —                        undeclared  no python implementation, and the inventory carries no row for openabstractions-flat/abstraction-router, so nothing says whether the gap is deliberate
+  abstraction-router   cpp     —                        undeclared  no cpp implementation, and the inventory carries no row for openabstractions-flat/abstraction-router, so nothing says whether the gap is deliberate
+  abstraction-storage  go      PASS go1.26.5                    recorded    GATE full, go build ./... && go test ./...
+  abstraction-storage  python  —                        none        no python implementation, and the inventory declares none, so the gap is deliberate
+  abstraction-storage  cpp     PASS Apple Clang darwin/arm64    recorded    DARWIN1 , CMake build and aggregate CTest on native macOS
+  abstraction-watch    go      PASS go1.26.5                    recorded    GATE full, go build ./... && go test ./...
+  abstraction-watch    python  PASS py3.12                      recorded    GATE full, unittest discover, 19 tests
+  abstraction-watch    cpp     PASS Apple Clang darwin/arm64    recorded    DARWIN1 , CMake build and aggregate CTest on native macOS
 
 reasons
   recorded    a transcript in docs/results/ recorded this verdict for this tree
@@ -85,5 +86,3 @@ reasons
   declared    the inventory declares the language and the tree does not have it
   none        no implementation, and the inventory declares none, so the gap is deliberate
   undeclared  no implementation, and the inventory carries no row for the layer at all
-
-the inventory declares layer directories this walk did not find: vault

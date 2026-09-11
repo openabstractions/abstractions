@@ -556,8 +556,21 @@ func (p *parser) structDef() error {
 	}
 	st.Document = st.Ann["document"] == "true"
 	st.UnknownFields = st.Ann["unknown_fields"]
-	if st.UnknownFields != "refuse" && st.UnknownFields != "grant" {
-		return fmt.Errorf("struct %s does not say what a reader does with a field it has never heard of; this profile defines unknown_fields = \"refuse\" and unknown_fields = \"grant\"", name)
+	if st.UnknownFields != "refuse" && st.UnknownFields != "grant" && !st.PreservesUnknown() {
+		return fmt.Errorf("struct %s does not say what a reader does with a field it has never heard of; this profile defines unknown_fields = \"refuse\", \"grant\", or \"preserve\"", name)
+	}
+	if st.PreservesUnknown() {
+		for _, f := range st.Fields {
+			for _, lang := range []string{"go", "python", "cpp", "javascript", "rust"} {
+				ident := f.Ident(lang)
+				if lang == "go" {
+					ident = exported(ident)
+				}
+				if f.Name == "extras" || ident == "extras" || (lang == "go" && ident == "Extras") {
+					return fmt.Errorf("struct %s preserves unknown fields: extras/Extras is reserved for generated storage (%s field %s)", name, lang, f.Name)
+				}
+			}
+		}
 	}
 	p.def.Structs = append(p.def.Structs, st)
 	p.def.byName[name] = &p.def.Structs[len(p.def.Structs)-1]
@@ -783,8 +796,8 @@ func (p *parser) validateProtocol() error {
 		if st.Document {
 			return fmt.Errorf("protocol %s carries its %s in the document; an envelope carries a document and is not one", pr.Name, role.what)
 		}
-		if st.RefuseUnknown() {
-			return fmt.Errorf("protocol %s makes %s refuse a field it has never heard of, so no peer can add one without breaking every peer that has not; an envelope grants", pr.Name, role.name)
+		if st.UnknownFields != "grant" {
+			return fmt.Errorf("protocol %s requires unknown_fields = \"grant\" for its %s envelope %s; an envelope grants", pr.Name, role.what, role.name)
 		}
 	}
 	op := p.fieldOf(pr.Request, pr.OpField)

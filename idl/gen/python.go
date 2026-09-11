@@ -546,7 +546,7 @@ def _date_part(s):
             and _digits(s, 14, 2) and s[16] == ":" and _digits(s, 17, 2))
 
 
-def wide_timestamp(s):
+def _lexical_timestamp(s):
     """[DEF-G1] rfc3339-wide: what a reader accepts. Any fraction of one to nine
     digits or none, either case of the separators, and a numeric offset."""
     if not _date_part(s) or s[10] not in "Tt":
@@ -571,8 +571,7 @@ def wide_timestamp(s):
 def micros_timestamp(s):
     """[DEF-G2] rfc3339-micros: what a writer emits. Exactly six fractional
     digits, upper-case separators, UTC."""
-    return (len(s) == 27 and _date_part(s) and s[10] == "T" and s[19] == "."
-            and _digits(s, 20, 6) and s[26] == "Z")
+    return len(s) == 27 and _normalized_timestamp(s) == s
 
 
 def _read_timestamp(r):
@@ -619,9 +618,17 @@ func pyStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 		fmt.Fprintf(b, "                seen |= %d\n", 1<<i)
 		fmt.Fprintf(b, "                v.%s = %s\n", f.Ident("python"), pyRead(s, f))
 	}
+	if len(st.Fields) == 0 && st.PreservesUnknown() {
+		b.WriteString("            if False:\n                pass\n")
+	}
 	b.WriteString("            else:\n")
 	if st.RefuseUnknown() {
 		b.WriteString("                raise r.refuse(\"unknown_field\")\n")
+	} else if st.PreservesUnknown() {
+		if s.Encoding.RefuseDuplicateKeys() {
+			b.WriteString("                if key in v.extras:\n                    raise r.refuse(\"duplicate_key\")\n")
+		}
+		b.WriteString("                v.extras[key] = r.raw_value()\n")
 	} else {
 		b.WriteString("                r.skip_value()\n")
 	}
@@ -778,6 +785,9 @@ func genPy(s *Definition) string {
 		for _, f := range st.Fields {
 			fmt.Fprintf(&b, "        self.%s = kw.get(%q, %s)\n", f.Ident("python"), f.Name, pyDefault(s, f))
 		}
+		if st.PreservesUnknown() {
+			b.WriteString("        self.extras = kw.get(\"extras\", {})\n")
+		}
 	}
 	for _, st := range s.Structs {
 		if !s.Envelope(st.Name) {
@@ -810,6 +820,10 @@ func genPy(s *Definition) string {
 	).Replace(decode))
 	if s.Timestamps() {
 		b.WriteString(pyTimestamp)
+		b.WriteString(pyTimestampNormalize)
+	}
+	if s.PreservesUnknown() {
+		b.WriteString(pyPreserve)
 	}
 	pyDecoder(&b, s)
 	pyProtocol(&b, s)
@@ -894,11 +908,14 @@ func pyEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 		fmt.Fprintf(b, "%sesc(out, %q)\n%sout += b\": \"\n", ind, f.Name, ind)
 		fmt.Fprintf(b, "%s%s\n", ind, pyValue(s, f, e))
 	}
+	if st.PreservesUnknown() {
+		fmt.Fprintf(b, "    first = _extra_fields(out, v.extras, [%s], depth, first)\n", quotedFieldNames(st))
+	}
 	if !flat {
 		switch {
 		case p.closeAlways:
 			b.WriteString("    out += b\"\\n\"\n    pad(out, depth)\n")
-		case len(st.Fields) > 0:
+		case len(st.Fields) > 0 || st.PreservesUnknown():
 			b.WriteString("    if not first:\n        out += b\"\\n\"\n        pad(out, depth)\n")
 		}
 	}
@@ -939,6 +956,9 @@ func pyPresent(s *Definition, f Field, e string) string {
 }
 
 func pyValue(s *Definition, f Field, e string) string {
+	if f.Grammar.Named() {
+		return "esc(out, _write_timestamp(" + e + "))"
+	}
 	switch f.Type {
 	case "string":
 		return "esc(out, " + e + ")"

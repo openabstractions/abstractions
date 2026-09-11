@@ -603,7 +603,7 @@ inline bool date_part(std::string_view s) {
 
 // [DEF-G1] rfc3339-wide: what a reader accepts. Any fraction of one to nine
 // digits or none, either case of the separators, and a numeric offset.
-inline bool wide_timestamp(std::string_view s) {
+inline bool lexical_timestamp(std::string_view s) {
     if (!date_part(s) || (s[10] != 'T' && s[10] != 't')) return false;
     std::size_t i = 19;
     if (i < s.size() && s[i] == '.') {
@@ -621,8 +621,7 @@ inline bool wide_timestamp(std::string_view s) {
 // [DEF-G2] rfc3339-micros: what a writer emits. Exactly six fractional digits,
 // upper-case separators, UTC.
 inline bool micros_timestamp(std::string_view s) {
-    return s.size() == 27 && date_part(s) && s[10] == 'T' && s[19] == '.' && digits(s, 20, 6) &&
-           s[26] == 'Z';
+    return s.size() == 27 && normalized_timestamp(s) == s;
 }
 
 inline std::string read_timestamp(Reader& r) {
@@ -674,9 +673,17 @@ func cppStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 		fmt.Fprintf(b, "                seen |= %du;\n", 1<<i)
 		fmt.Fprintf(b, "                v.%s = %s;\n            ", f.Ident("cpp"), cppRead(s, f))
 	}
+	if len(st.Fields) == 0 && st.PreservesUnknown() {
+		b.WriteString("            if (false) {\n            ")
+	}
 	b.WriteString("} else {\n")
 	if st.RefuseUnknown() {
 		b.WriteString("                r.refuse(\"unknown_field\");\n")
+	} else if st.PreservesUnknown() {
+		if s.Encoding.RefuseDuplicateKeys() {
+			b.WriteString("                if (v.extras.find(key) != v.extras.end()) r.refuse(\"duplicate_key\");\n")
+		}
+		b.WriteString("                v.extras[key] = r.raw_value();\n")
 	} else {
 		b.WriteString("                r.skip_value();\n")
 	}
@@ -821,6 +828,12 @@ func genCpp(s *Definition) string {
 		esc = cppEscASCII
 	}
 	prelude := cppCommon + esc
+	if s.PreservesUnknown() {
+		prelude += "\ninline bool extra_fields(std::string&, const std::map<std::string, Raw>&, const std::vector<std::string>&, int, bool);\n"
+	}
+	if s.Timestamps() {
+		prelude += "\ninline bool wide_timestamp(std::string_view);\ninline std::string normalized_timestamp(std::string_view);\ninline std::string write_timestamp(std::string_view);\n"
+	}
 	if s.StringMapDocument() {
 		prelude += cppStrMap
 	}
@@ -833,6 +846,9 @@ func genCpp(s *Definition) string {
 		fmt.Fprintf(&b, "\nstruct %s {\n", st.Name)
 		for _, f := range st.Fields {
 			fmt.Fprintf(&b, "    %s %s%s;\n", cppType(s, f), f.Ident("cpp"), cppInit(f))
+		}
+		if st.PreservesUnknown() {
+			b.WriteString("    std::map<std::string, Raw> extras;\n")
 		}
 		b.WriteString("};\n")
 	}
@@ -871,8 +887,12 @@ func genCpp(s *Definition) string {
 	).Replace(decode))
 	if s.Timestamps() {
 		b.WriteString(cppTimestamp)
+		b.WriteString(cppTimestampNormalize)
 	}
 	cppWireHelpers(&b, s)
+	if s.PreservesUnknown() {
+		b.WriteString(cppPreserve)
+	}
 	cppDecoder(&b, s)
 	cppProtocol(&b, s)
 	b.WriteString("\n}  // namespace rec\n")
@@ -961,11 +981,14 @@ func cppEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 			b.WriteString("    }\n")
 		}
 	}
+	if st.PreservesUnknown() {
+		fmt.Fprintf(b, "    first = extra_fields(out, v.extras, {%s}, depth, first);\n", quotedFieldNames(st))
+	}
 	if !flat {
 		switch {
 		case p.closeAlways:
 			b.WriteString("    out += '\\n';\n    pad(out, depth);\n")
-		case len(st.Fields) > 0:
+		case len(st.Fields) > 0 || st.PreservesUnknown():
 			b.WriteString("    if (!first) { out += '\\n'; pad(out, depth); }\n")
 		}
 	}
@@ -1026,6 +1049,9 @@ func cppPresent(s *Definition, f Field, e string) string {
 }
 
 func cppValue(s *Definition, f Field, e string) string {
+	if f.Grammar.Named() {
+		return "esc(out, write_timestamp(" + e + "));"
+	}
 	switch f.Type {
 	case "string":
 		return "esc(out, " + e + ");"

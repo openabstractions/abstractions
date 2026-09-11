@@ -1,0 +1,24 @@
+# DARWIN1  produced by native platform runner on 2026-09-11, commit a4ae71c, exit 1
+# platform  darwin/arm64
+# measures  openabstractions-flat/abstraction-asks@7e9ea82 openabstractions-flat/abstraction-cas@f9cb388 openabstractions-flat/abstraction-config@9c4cbe5 openabstractions-flat/abstraction-download@43ab3b5 openabstractions-flat/abstraction-facade@4fee870 openabstractions-flat/abstraction-identity@b812381 openabstractions-flat/abstraction-job@30ffc73 openabstractions-flat/abstraction-logging@ec56256 openabstractions-flat/abstraction-model@7cf857e openabstractions-flat/abstraction-rights@6fff1f5 openabstractions-flat/abstraction-router@a56ecb2 openabstractions-flat/abstraction-storage@e97f1c0 openabstractions-flat/abstraction-watch@27bd982
+# machine   Darwin arm64; 15.7.4; go version go1.26.5 darwin/arm64; Apple clang version 17.0.0 (clang-1700.6.4.2); cmake version 4.4.2; Now drawing from 'AC Power'
+# scope     Native Go tests with cgo and native CMake/CTest; one Apple Silicon Mac.
+
+  openabstractions-flat/abstraction-asks/go FAIL go test -count=1 ./... on native macOS; platform limitation: darwin-peer-proof [go1.26.5 darwin/arm64 cgo]
+  openabstractions-flat/abstraction-cas/go PASS go test -count=1 ./... on native macOS [go1.26.5 darwin/arm64 cgo]
+  openabstractions-flat/abstraction-config/go FAIL go test -count=1 ./... on native macOS [go1.26.5 darwin/arm64 cgo]
+  openabstractions-flat/abstraction-download/go FAIL go test -count=1 ./... on native macOS; platform limitation: darwin-peer-proof [go1.26.5 darwin/arm64 cgo]
+  openabstractions-flat/abstraction-facade/go PASS go test -count=1 ./... on native macOS [go1.26.5 darwin/arm64 cgo]
+  openabstractions-flat/abstraction-identity PASS go test -count=1 ./... on native macOS [go1.26.5 darwin/arm64 cgo]
+  openabstractions-flat/abstraction-job/go PASS go test -count=1 ./... on native macOS [go1.26.5 darwin/arm64 cgo]
+  openabstractions-flat/abstraction-logging/go PASS go test -count=1 ./... on native macOS [go1.26.5 darwin/arm64 cgo]
+  openabstractions-flat/abstraction-model/go PASS go test -count=1 ./... on native macOS [go1.26.5 darwin/arm64 cgo]
+  openabstractions-flat/abstraction-rights/go FAIL go test -count=1 ./... on native macOS; platform limitation: darwin-peer-proof [go1.26.5 darwin/arm64 cgo]
+  openabstractions-flat/abstraction-router/go PASS go test -count=1 ./... on native macOS [go1.26.5 darwin/arm64 cgo]
+  openabstractions-flat/abstraction-storage/go PASS go test -count=1 ./... on native macOS [go1.26.5 darwin/arm64 cgo]
+  openabstractions-flat/abstraction-watch/go PASS go test -count=1 ./... on native macOS [go1.26.5 darwin/arm64 cgo]
+  openabstractions-flat/abstraction-cas/cpp PASS CMake build and aggregate CTest on native macOS [Apple Clang darwin/arm64]
+  openabstractions-flat/abstraction-watch/cpp PASS CMake build and aggregate CTest on native macOS [Apple Clang darwin/arm64]
+  openabstractions-flat/abstraction-storage/cpp PASS CMake build and aggregate CTest on native macOS [Apple Clang darwin/arm64]
+  openabstractions-flat/abstraction-job/cpp PASS CMake build and aggregate CTest on native macOS [Apple Clang darwin/arm64]
+  openabstractions-flat/abstraction-download/cpp PASS CMake build and aggregate CTest on native macOS [Apple Clang darwin/arm64]

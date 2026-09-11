@@ -185,11 +185,11 @@ A closed list, generated once per language instead of transcribed once per
 language. The ten status codes that mean *no, permanently* were written by hand
 in three languages and disagreed by four rows.
 
-### [DEF-A7] `(unknown_fields = "refuse" | "grant")`
+### [DEF-A7] `(unknown_fields = "refuse" | "grant" | "preserve")`
 
 Every struct says it, and a struct that does not is refused. `refuse` rejects the
 whole document on a field name the reader has never heard of; `grant` skips the
-value and carries on.
+value and carries on. `preserve` retains that value for subsequent writes.
 
 **It is per struct and not per document**, which is the whole point: in the
 shipped record every part of the record refuses, and the service envelope around
@@ -203,12 +203,44 @@ not model~~ 2026-09-08: it was `grant` in the shipped definition and
 `abstraction-job/CONTRACT.md` [JOB-F1] had always named `delegation` among the scopes that
 refuse. The example was the violation.
 
-**`grant` skips and drops; it does not keep.** No generated backend holds an
-unknown field anywhere, so a newer writer's addition to a `grant` scope is gone
+**`grant` skips and drops; it does not keep.** A newer writer's addition to a `grant` scope is gone
 the first time an older reader writes the value back. That is proto3 before
 3.5.0, and it is the reason `grant` belongs only where nothing is written back.
-Where a participant needs to carry something this definition does not model, the
-place for it is a declared extension map, which is preserved.
+A declared extension map also carries values this definition does not model;
+those values remain preserved by the existing opaque-JSON behavior.
+
+**`preserve` is an explicit alternative for an open struct**, not a change to
+`grant` or `refuse`. It stores unknown decoded field names and their raw JSON
+values in a generated `extras` map (`Extras` in Go). This is host-side storage;
+there is no additional wrapper key on the wire. The name `extras` and its
+backend member spellings, including annotation renames, are reserved in a
+preserving struct. A wire key named `extras` is itself an ordinary unknown key
+and may be held inside that map. JavaScript uses a null-prototype map so keys
+such as `__proto__` remain data.
+
+The writer emits known fields in definition order, then extra fields sorted by
+the UTF-8 bytes of their decoded names. It emits every extra value, including
+null, false, zero, empty strings, empty arrays and empty objects. Extra values
+follow the existing opaque-JSON rule: string escapes, number spellings and member
+order are retained; surrounding whitespace may be reflowed. Unknown keys use the
+declared string escaping policy. **This guarantees unknown value preservation,
+not whole-object byte identity:** promoting an unknown field to a declared field
+can change its placement and apply that field's type/omission rules. Adopters
+must consider that separately before replacing an existing opaque representation.
+
+Decoded duplicate unknown names use `duplicate_key` when `duplicate_keys` is
+`refuse`; with `last`, the final value wins. Known repeated fields retain their
+`duplicate_field` rule. A caller-constructed extras entry colliding with **any**
+declared wire field is refused as `duplicate_field`, even if that declared field
+would otherwise be omitted. Extra keys must be valid Unicode strings. Raw values
+are syntax-, string-, duplicate- and depth-validated by the same JSON scanner at
+their actual enclosing depth before emission. Multiple values or trailing data
+produce `trailing_bytes`; malformed, duplicate or overly deep values retain
+their existing refusal words. Invalid direct writes throw (C++/Python/JavaScript)
+or panic (Go/Rust), as the infallible encoder interfaces already require.
+
+The mode applies independently to nested and repeated structs. Protocol envelopes
+continue to require `grant` under DEF-P1; this addition does not change them.
 
 ### [DEF-A8] `vocabulary` — a declaration derived from the instance
 
@@ -454,6 +486,16 @@ and the profile knows which of its grammars contains which.
 fractional digits, either case of the `T` and `Z` separators, and a numeric
 offset in place of `Z`. Anything else is [`bad_timestamp`](#the-refusal-vocabulary).
 
+The calendar is proleptic Gregorian, with four-digit years `0000` through
+`9999`, real month/day combinations, hours `00`–`23`, and minutes and seconds
+`00`–`59`. Numeric offset hours are `00`–`23` and minutes `00`–`59`.
+Leap-second `:60` is refused: these codecs do not invent a mapping to a different
+instant. The offset-normalized UTC date must also stay within the four-digit
+year range. `-00:00` is accepted and canonicalized to UTC, as in the existing
+semantic timestamp bindings. These are the raw codec's bounds; an application's
+native time type may have a smaller range (Python datetime, for example, has no
+year zero). A binding must report that limitation rather than alter the instant.
+
 ### [DEF-G2] `rfc3339-micros`, the write grammar
 
 `write = "rfc3339-micros"` is what an encoder emits: exactly six fractional
@@ -463,6 +505,16 @@ same bytes in five languages.
 It is a separate rule from [DEF-G1] because it is a separate obligation — a
 generated encoder must produce it, a generated decoder must not require it — and
 because the two are cited separately by the code that implements them.
+
+The encoder converts the numeric offset to UTC, pads a missing or short fraction
+with zeros, and truncates digits beyond six without rounding. It applies this
+rule to timestamp fields only; timestamp-looking strings inside opaque JSON
+remain untouched. A decoder validates the instant but retains the input string;
+canonicalization happens on write. Already canonical values remain byte-identical.
+An invalid timestamp supplied directly to an encoder is a programming error:
+the existing infallible Go/Rust encoding APIs panic, while C++/Python/JavaScript
+throw; the diagnostic is `bad_timestamp`. Wire readers return their normal
+`bad_timestamp` refusal. No replacement instant or empty string is emitted.
 
 ---
 

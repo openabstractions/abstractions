@@ -49,7 +49,17 @@ type Struct struct {
 	UnknownFields string
 }
 
-func (s Struct) RefuseUnknown() bool { return s.UnknownFields == "refuse" }
+func (s Struct) RefuseUnknown() bool    { return s.UnknownFields == "refuse" }
+func (s Struct) PreservesUnknown() bool { return s.UnknownFields == "preserve" }
+
+func (s *Definition) PreservesUnknown() bool {
+	for _, st := range s.Structs {
+		if st.PreservesUnknown() {
+			return true
+		}
+	}
+	return false
+}
 
 // Path is the fields a predicate walks from the document, root first, and is
 // nil for "always". Member is the key one level into the opaque value the path
@@ -247,6 +257,13 @@ type separators struct {
 
 func plan(st Struct) separators {
 	p := separators{before: make([]string, len(st.Fields)), clearFlagTo: len(st.Fields)}
+	if st.PreservesUnknown() {
+		p.flag = true
+		for i := range p.before {
+			p.before[i] = "flag"
+		}
+		return p
+	}
 	written := false
 	for i, f := range st.Fields {
 		switch {

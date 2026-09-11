@@ -869,7 +869,7 @@ func datePart(s string) bool {
 
 // [DEF-G1] rfc3339-wide: what a reader accepts. Any fraction of one to nine
 // digits or none, either case of the separators, and a numeric offset.
-func WideTimestamp(s string) bool {
+func lexicalTimestamp(s string) bool {
 	if !datePart(s) || (s[10] != 'T' && s[10] != 't') {
 		return false
 	}
@@ -900,7 +900,7 @@ func WideTimestamp(s string) bool {
 // [DEF-G2] rfc3339-micros: what a writer emits. Exactly six fractional digits,
 // upper-case separators, UTC.
 func MicrosTimestamp(s string) bool {
-	return len(s) == 27 && datePart(s) && s[10] == 'T' && s[19] == '.' && digits(s, 20, 6) && s[26] == 'Z'
+	return len(s) == 27 && normalizedTimestamp(s) == s
 }
 
 func (r *reader) timestamp() (string, error) {
@@ -938,7 +938,11 @@ func goStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 	fmt.Fprintf(b, "\nfunc (r *reader) decode%s() (*%s, error) {\n", st.Name, st.Name)
 	b.WriteString("\tif r.at() != '{' {\n\t\treturn nil, r.refuse(\"wrong_type\")\n\t}\n")
 	b.WriteString("\tif err := r.enter(); err != nil {\n\t\treturn nil, err\n\t}\n\tr.pos++\n")
-	fmt.Fprintf(b, "\tv := &%s{}\n\tvar seen uint32\n\tr.ws()\n", st.Name)
+	fmt.Fprintf(b, "\tv := &%s{}\n", st.Name)
+	if len(st.Fields) > 0 {
+		b.WriteString("\tvar seen uint32\n")
+	}
+	b.WriteString("\tr.ws()\n")
 	b.WriteString("\tif r.at() != '}' {\n\t\tfor {\n\t\t\tr.ws()\n")
 	b.WriteString("\t\t\tif r.at() != '\"' {\n\t\t\t\treturn nil, r.refuse(\"malformed\")\n\t\t\t}\n")
 	b.WriteString("\t\t\tkey, err := r.str()\n\t\t\tif err != nil {\n\t\t\t\treturn nil, err\n\t\t\t}\n")
@@ -953,6 +957,12 @@ func goStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 	b.WriteString("\t\t\tdefault:\n")
 	if st.RefuseUnknown() {
 		b.WriteString("\t\t\t\treturn nil, r.refuse(\"unknown_field\")\n")
+	} else if st.PreservesUnknown() {
+		b.WriteString("\t\t\t\tif v.Extras == nil { v.Extras = map[string]Raw{} }\n")
+		if s.Encoding.RefuseDuplicateKeys() {
+			b.WriteString("\t\t\t\tif _, exists := v.Extras[key]; exists { return nil, r.refuse(\"duplicate_key\") }\n")
+		}
+		b.WriteString("\t\t\t\tx, err := r.rawValue(); if err != nil { return nil, err }; v.Extras[key] = x\n")
 	} else {
 		b.WriteString("\t\t\t\tif err := r.skipValue(); err != nil {\n\t\t\t\t\treturn nil, err\n\t\t\t\t}\n")
 	}
@@ -1128,6 +1138,9 @@ func genGo(s *Definition) string {
 		for _, f := range st.Fields {
 			fmt.Fprintf(&b, "\t%s %s\n", exported(f.Ident("go")), goType(s, f))
 		}
+		if st.PreservesUnknown() {
+			b.WriteString("\tExtras map[string]Raw\n")
+		}
 		b.WriteString("}\n")
 	}
 	for _, st := range s.Structs {
@@ -1162,6 +1175,10 @@ func genGo(s *Definition) string {
 	).Replace(decode))
 	if s.Timestamps() {
 		b.WriteString(goTimestamp)
+		b.WriteString(goTimestampNormalize)
+	}
+	if s.PreservesUnknown() {
+		b.WriteString(goPreserve)
 	}
 	goDecoder(&b, s)
 	goProtocol(&b, s)
@@ -1257,11 +1274,14 @@ func goEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 			b.WriteString("\t}\n")
 		}
 	}
+	if st.PreservesUnknown() {
+		fmt.Fprintf(b, "\tout, first = extraFields(out, v.Extras, []string{%s}, depth, first)\n", quotedFieldNames(st))
+	}
 	if !flat {
 		switch {
 		case p.closeAlways:
 			b.WriteString("\tout = append(out, '\\n')\n\tout = pad(out, depth)\n")
-		case len(st.Fields) > 0:
+		case len(st.Fields) > 0 || st.PreservesUnknown():
 			b.WriteString("\tif !first {\n\t\tout = append(out, '\\n')\n\t\tout = pad(out, depth)\n\t}\n")
 		}
 	}
@@ -1317,6 +1337,9 @@ func goPresent(s *Definition, f Field, e string) string {
 }
 
 func goValue(s *Definition, f Field, e string) string {
+	if f.Grammar.Named() {
+		return "out = esc(out, writeTimestamp(" + e + "))"
+	}
 	switch f.Type {
 	case "string":
 		return "out = esc(out, " + e + ")"
