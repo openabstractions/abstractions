@@ -1,5 +1,23 @@
 # abstraction-idl
 
+
+Use `--no-ipc` when a capability needs a language interface without a service
+transport. For example:
+
+```sh
+go run ./gen example.thrift output --no-ipc go cpp python docs
+```
+
+This emits the same method signatures and ordinary record types/codecs, with
+no generated transport client, dispatcher or service message envelopes. API
+docs describe direct implementations rather than delivery guarantees. The
+default invocation remains unchanged. Go, C++ and Python support this mode;
+Rust and JavaScript service interfaces fail explicitly rather than silently
+producing only records. Existing `-only=` selection and namespaces still apply.
+The schema profile is unchanged (including service `wire_name` metadata);
+legacy `protocol` declarations are not translated into interfaces by this flag.
+No binary or callback semantics are invented by selecting interface-only mode.
+
 Define records and service interfaces once; generate their language APIs,
 wire bindings, codecs and API reference. The notation is a profile of Apache
 Thrift's IDL — see [LANGUAGE.md](LANGUAGE.md) for supported constructs and

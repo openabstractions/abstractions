@@ -13,7 +13,7 @@ require golang.org/x/sys v0.47.0 // indirect
 
 require (
 	github.com/openabstractions/abstraction-cas/go v0.2.0 // indirect
-	github.com/openabstractions/abstraction-identity v0.2.1-0.20260911220117-9b3c2c8c4576 // indirect
+	github.com/openabstractions/abstraction-identity v0.2.1-0.20260911225957-3aa75da4cda3 // indirect
 	github.com/openabstractions/abstraction-logging/go v0.2.0 // indirect
 	github.com/openabstractions/abstraction-storage/go v0.2.0 // indirect
 	github.com/openabstractions/abstraction-watch/go v0.2.0 // indirect

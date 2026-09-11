@@ -1123,6 +1123,9 @@ func Member(v Raw, name string) bool {
 `
 
 func genGo(s *Definition) string {
+	if s.NoIPC {
+		return genInterfaceOnly(s, "go")
+	}
 	s = serviceTypes(s)
 	var b strings.Builder
 	esc := goEscMinimal

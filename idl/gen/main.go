@@ -69,7 +69,7 @@ var backends = []backend{
 	{"docs", "schema.html", genDocs, nil, false},
 }
 
-const usage = "usage: gen <definition.thrift> <outdir> [-only=<surface,...>] [language ...]\n       gen <definition.thrift> --paths [language ...]"
+const usage = "usage: gen <definition.thrift> <outdir> [-only=<surface,...>] [--no-ipc] [language ...]\n       gen <definition.thrift> --paths [language ...]"
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
@@ -81,6 +81,7 @@ func run(args []string, stdout io.Writer) error {
 	if len(args) == 0 || len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
 		fmt.Fprintln(stdout, usage)
 		fmt.Fprintln(stdout, "Languages: go python cpp javascript rust docs. Omit languages for all backends.")
+		fmt.Fprintln(stdout, "--no-ipc emits service interfaces and record types/codecs without IPC bindings (Go, C++, Python).")
 		fmt.Fprintln(stdout, "--paths lists output locations without generating code or claiming backend support for a schema's features.")
 		return nil
 	}
@@ -106,8 +107,14 @@ func run(args []string, stdout io.Writer) error {
 		}
 	}
 	var want, only []string
+	noIPC := false
 	for _, a := range args[2:] {
 		switch {
+		case a == "--no-ipc":
+			if noIPC {
+				return fmt.Errorf("--no-ipc may be supplied once")
+			}
+			noIPC = true
 		case strings.HasPrefix(a, "-only="):
 			if only != nil {
 				return fmt.Errorf("-only may be supplied once")
@@ -138,6 +145,14 @@ func run(args []string, stdout io.Writer) error {
 	def, err := selected(whole, only)
 	if err != nil {
 		return fmt.Errorf("%s: %w", args[0], err)
+	}
+	if noIPC {
+		if def.Proto != nil {
+			return fmt.Errorf("--no-ipc requires service declarations; legacy protocol-only interface generation is not implemented")
+		}
+		copy := *def
+		copy.NoIPC = true
+		def = &copy
 	}
 	out := args[1]
 	if out == "--paths" {

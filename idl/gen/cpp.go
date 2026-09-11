@@ -831,6 +831,9 @@ inline bool member(const Raw& raw, const std::string& name) {
 `
 
 func genCpp(s *Definition) string {
+	if s.NoIPC {
+		return genInterfaceOnly(s, "cpp")
+	}
 	s = serviceTypes(s)
 	var b strings.Builder
 	esc := cppEscMinimal

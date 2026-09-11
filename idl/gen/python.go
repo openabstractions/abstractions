@@ -770,6 +770,9 @@ def member(raw, name):
 `
 
 func genPy(s *Definition) string {
+	if s.NoIPC {
+		return genInterfaceOnly(s, "python")
+	}
 	s = serviceTypes(s)
 	var b strings.Builder
 	esc := pyEscMinimal

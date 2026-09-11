@@ -152,6 +152,7 @@ type Service struct {
 }
 
 type Definition struct {
+	NoIPC      bool // output mode only; never schema semantics
 	Namespaces map[string]string
 	Services   []Service
 	Encoding   Encoding

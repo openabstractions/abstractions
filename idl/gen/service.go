@@ -201,6 +201,9 @@ func validateServiceBackend(s *Definition, lang string) error {
 		return validatePythonServices(s)
 	}
 	if len(s.Services) > 0 && lang != "go" && lang != "cpp" && lang != "docs" {
+		if s.NoIPC {
+			return fmt.Errorf("%s --no-ipc service interface generation is not implemented", lang)
+		}
 		return fmt.Errorf("%s service generation is not implemented; refusing data-only output", lang)
 	}
 	return nil

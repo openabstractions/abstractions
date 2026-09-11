@@ -45,7 +45,9 @@ func genDocs(s *Definition) string {
 	docsConsts(b, s)
 	docsVocabulary(b, s)
 	docsRefusals(b, s)
-	docsProtocol(b, s)
+	if !s.NoIPC {
+		docsProtocol(b, s)
+	}
 	docsServices(b, s)
 	docsClose(b)
 	return b.String()
@@ -354,10 +356,14 @@ func docsServices(b *strings.Builder, s *Definition) {
 	for _, svc := range s.Services {
 		heading(b, 2, "service-"+svc.Name, "Service "+mono(svc.Name), "DEF-S1")
 		fmt.Fprintf(b, "<p>%s</p>\n", html.EscapeString(svc.Doc))
-		fmt.Fprintf(b, "<p>Wire identity: %s</p>\n", mono(svc.WireName))
-		b.WriteString("<p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>\n")
-		if svcReplies(svc) {
-			b.WriteString("<p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>\n")
+		if s.NoIPC {
+			b.WriteString("<p>Interface-only output: implement these methods directly. No IPC client, dispatcher, message envelope or transport binding is emitted. Record codecs remain available. Method return/error signatures are retained; oneway marks the schema declaration, not a delivery or persistence guarantee for a direct call.</p>\n")
+		} else {
+			fmt.Fprintf(b, "<p>Wire identity: %s</p>\n", mono(svc.WireName))
+			b.WriteString("<p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>\n")
+			if svcReplies(svc) {
+				b.WriteString("<p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>\n")
+			}
 		}
 		for _, m := range svc.Methods {
 			fmt.Fprintf(b, "<p>%s</p>\n", html.EscapeString(m.Doc))

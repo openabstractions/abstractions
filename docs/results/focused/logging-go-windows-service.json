@@ -69,7 +69,7 @@
     ],
     "service_language": "go"
   },
-  "inputs_digest": "207b0801bf84da54e0fea77453d9dc0bd7b4ec5c7fe47c2b6c7c6675f152e7db",
+  "inputs_digest": "df5ae58c182d423b16459b5700e144fe75de7def2a12cbb58624c7f34424897b",
   "toolchains": {
     "python": {
       "argv": [
@@ -78,7 +78,7 @@
       ],
       "exit": 0,
       "output": "Python 3.12.14\r\n",
-      "seconds": 0.11
+      "seconds": 0.266
     },
     "go": {
       "argv": [
@@ -87,7 +87,7 @@
       ],
       "exit": 0,
       "output": "go version go1.26.5 windows/amd64\n",
-      "seconds": 0.062
+      "seconds": 1.093
     }
   },
   "result": {
@@ -99,8 +99,8 @@
     ],
     "exit": 0,
     "output": "go version go1.26.5 windows/amd64\r\nPASS: Go write\r\nPASS: Go bad-schema\r\nPASS: Go absent\r\nPASS: go facade -> generated client -> shared IPC -> identity-bound Go service -> provider\r\nPASS: client exited; record survived; schema refused; absent service errored; no client store\r\n",
-    "seconds": 2.906
+    "seconds": 2.641
   },
-  "commit": "4d7c0fb53532f03145298b0f72829dc2189f4f41",
-  "record_digest": "832738c2a85f32d7d59a7c70dd867a1a4ec8cfcd8d6d9125869a1c32e2e79106"
+  "commit": "94e11f539dec1fdb999a0710bf91be35338229da",
+  "record_digest": "77110cd11488375dc49f796d91e143ec3d9d19c34938fa4003b8e6ee7be2a98a"
 }
