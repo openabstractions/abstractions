@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.16)
+project(facade_consumer LANGUAGES CXX)
+find_package(abstraction_facade CONFIG REQUIRED)
+add_executable(facade_consumer client.cpp)
+target_link_libraries(facade_consumer PRIVATE abstraction::facade_client)

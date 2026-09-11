@@ -137,16 +137,32 @@ type Protocol struct {
 	Unknown    string
 }
 
+type Method struct {
+	Oneway bool
+	Result Field
+	Doc    string
+	Name   string
+	Args   []Field
+}
+type Service struct {
+	Doc      string
+	WireName string
+	Name     string
+	Methods  []Method
+}
+
 type Definition struct {
-	Encoding Encoding
-	Typedefs []Typedef
-	Structs  []Struct
-	Enums    []Enum
-	Consts   []Const
-	Vocab    *Vocabulary
-	Refusals []Refusal
-	Proto    *Protocol
-	Document string
+	Namespaces map[string]string
+	Services   []Service
+	Encoding   Encoding
+	Typedefs   []Typedef
+	Structs    []Struct
+	Enums      []Enum
+	Consts     []Const
+	Vocab      *Vocabulary
+	Refusals   []Refusal
+	Proto      *Protocol
+	Document   string
 
 	byName map[string]*Struct
 }

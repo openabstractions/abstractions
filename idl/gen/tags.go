@@ -65,6 +65,15 @@ func checkNames(e emitted) error {
 
 func definitionNames(s *Definition) []string {
 	var out []string
+	for _, svc := range s.Services {
+		out = append(out, svc.Name)
+		for _, m := range svc.Methods {
+			out = append(out, m.Name)
+			for _, f := range m.Args {
+				out = append(out, f.Name, f.Type)
+			}
+		}
+	}
 	for _, td := range s.Typedefs {
 		out = append(out, td.Alias)
 	}

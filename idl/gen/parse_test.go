@@ -128,7 +128,7 @@ func TestRefusals(t *testing.T) {
   1: optional i32 n = 3 (omit = "zero")
 } (document = "true", unknown_fields = "refuse")
 `, "a default written back is not an absence"},
-		{"service", head + doc + "service S { void ping() }\n", "behaviour is not in the schema"},
+		{"service", head + doc + "service S { void ping() }\n", "needs a unique nonempty wire_name"},
 		{"a type the profile does not encode", head + `struct Doc {
   1: required double x
 } (document = "true", unknown_fields = "refuse")

@@ -1,0 +1,79 @@
+{
+  "id": "logging-cpp-windows-service",
+  "layer": "openabstractions-flat/abstraction-logging",
+  "language": "cpp",
+  "scope": "client",
+  "platform": "windows/amd64",
+  "scenario": "cpp facade -> generated client -> shared named-pipe IPC -> identity-checked Go logging service -> service-owned JSONL sink; multiline Unicode, zero level and empty attrs preserved; verified peer; record survives client exit; schema=2 refused; absent service errors; no client-local storage",
+  "inputs": [
+    "conformance/clients/logging/CMakeLists.txt",
+    "conformance/clients/logging/client.cpp",
+    "conformance/clients/logging/run.py",
+    "conformance/clients/workspace.py",
+    "deploy/nas/mkimage/go.mod",
+    "examples/pretend-lemonade/go.mod",
+    "examples/pretend-lemonade/go.sum",
+    "go.work",
+    "go.work.sum",
+    "idl/gen",
+    "monitor/go.mod",
+    "monitor/go.sum",
+    "openabstractions-flat/abstraction-asks/go",
+    "openabstractions-flat/abstraction-cas/go",
+    "openabstractions-flat/abstraction-config/CONTRACT.md",
+    "openabstractions-flat/abstraction-config/config.thrift",
+    "openabstractions-flat/abstraction-config/cpp",
+    "openabstractions-flat/abstraction-config/go",
+    "openabstractions-flat/abstraction-download/CONTRACT.md",
+    "openabstractions-flat/abstraction-download/download.thrift",
+    "openabstractions-flat/abstraction-download/go",
+    "openabstractions-flat/abstraction-download/reachwall/go.mod",
+    "openabstractions-flat/abstraction-download/reachwall/go.sum",
+    "openabstractions-flat/abstraction-facade/cpp",
+    "openabstractions-flat/abstraction-facade/go/go.mod",
+    "openabstractions-flat/abstraction-facade/go/go.sum",
+    "openabstractions-flat/abstraction-identity",
+    "openabstractions-flat/abstraction-job/CONTRACT.md",
+    "openabstractions-flat/abstraction-job/go",
+    "openabstractions-flat/abstraction-job/job.thrift",
+    "openabstractions-flat/abstraction-logging/CONTRACT.md",
+    "openabstractions-flat/abstraction-logging/cpp",
+    "openabstractions-flat/abstraction-logging/go",
+    "openabstractions-flat/abstraction-logging/logging.thrift",
+    "openabstractions-flat/abstraction-model/go",
+    "openabstractions-flat/abstraction-rights/go",
+    "openabstractions-flat/abstraction-router/cpp",
+    "openabstractions-flat/abstraction-router/go",
+    "openabstractions-flat/abstraction-router/router.thrift",
+    "openabstractions-flat/abstraction-storage/go",
+    "openabstractions-flat/abstraction-watch/go",
+    "research/discovery-bench/go.mod",
+    "research/discovery-bench/go.sum",
+    "research/facade-linking/go.mod",
+    "research/plugins/go/go.mod",
+    "research/plugins/go/go.sum",
+    "serve"
+  ],
+  "toolchains": {
+    "python": [
+      "python",
+      "--version"
+    ],
+    "go": [
+      "go",
+      "version"
+    ],
+    "cmake": [
+      "python",
+      "conformance/clients/logging/run.py",
+      "--toolchain"
+    ]
+  },
+  "command": [
+    "python",
+    "conformance/clients/logging/run.py",
+    "--language",
+    "cpp"
+  ],
+  "service_language": "go"
+}

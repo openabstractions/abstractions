@@ -1,0 +1,7 @@
+# Configuration C++ service proof
+
+Run `python run.py --help` first. `python run.py --run` builds the actual central host and an outside C++ consumer using the installed config CMake package. Sources may be the private flat tree or sibling public checkouts through `../workspace.py`. CMake must already be installed (`CMAKE` can name it); `--toolchain` prints its version. This runner currently measures Windows.
+
+The service and client get different home/config directories. The service's run environment deliberately disagrees with its user file. Checks cover provider values and source paths, caller overrides, value-only stamps, rereading provider changes, malformed and missing source defaults, generated unknown-field refusal, absent-service errors and no client-created state. Source mutation is test setup between requests, not a client operation. All listeners are isolated local endpoints; builds and staged installations remain under ignored `.build/config`. Nothing is persistently installed or published.
+
+`python run.py --run --service-only` is an explicit independent-development fixture that calls the same service.Serve entry point without central registration. It is not central-host coverage and prints its mode. The initial agent runtime run used this fixture and passed; central-host evidence must come from the default command after integration. Root owns conformance manifests/evidence recording; no central verdict is inferred from fixture success.

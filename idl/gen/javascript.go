@@ -625,6 +625,7 @@ func jsStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 	if req := requiredMask(st); req != 0 {
 		fmt.Fprintf(b, "  if ((seen & %d) !== %d) throw r.refuse(\"missing_field\");\n", req, req)
 	}
+	emitEqualities(b, st, "javascript", false)
 	b.WriteString("  return v;\n}\n")
 }
 
@@ -883,6 +884,7 @@ func jsEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 	} else {
 		fmt.Fprintf(b, "\nexport function enc_%s(out, v, depth) {\n", lower(st.Name))
 	}
+	emitEqualities(b, st, "javascript", true)
 	b.WriteString("  out.byte(0x7b);\n")
 	if p.flag {
 		b.WriteString("  let first = true;\n")

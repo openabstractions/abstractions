@@ -17,19 +17,25 @@ import (
 	"os"
 
 	asks "github.com/openabstractions/abstraction-asks/go"
+	config "github.com/openabstractions/abstraction-config/go/service"
 	"github.com/openabstractions/abstraction-download/go/serve"
+	logging "github.com/openabstractions/abstraction-logging/go/service"
 	rights "github.com/openabstractions/abstraction-rights/go"
 	router "github.com/openabstractions/abstraction-router/go"
+	routerservice "github.com/openabstractions/abstraction-router/go/service"
 )
 
 // capabilities is the whole of what this program is. A capability is a name a
 // registration writes and a function that holds an endpoint until it is
 // stopped; nothing else about it is this program's business.
 var capabilities = map[string]func([]string) error{
-	"asks":   asks.Serve,
-	"rights": rights.Serve,
-	"router": router.Serve,
-	"jobd":   serve.Jobs,
+	"asks":      asks.Serve,
+	"rights":    rights.Serve,
+	"router":    router.Serve,
+	"jobd":      serve.Jobs,
+	"logging":   logging.Serve,
+	"config":    config.Serve,
+	"router-v1": routerservice.Serve,
 }
 
 func main() {
@@ -56,6 +62,9 @@ func usage() {
   openabstractions serve rights   holds what was granted, and the awake hold
   openabstractions serve router   reports the hosts on this machine
   openabstractions serve jobd     finishes transfers nobody is watching
+  openabstractions serve logging  receives identity-bound structured log records
+  openabstractions serve config   answers configuration through the service
+  openabstractions serve router-v1  serves typed model discovery and route requests
 
 One capability per process. Each takes the flags its own service takes;
 --endpoint is where it listens, and every one of them defaults to the fixed

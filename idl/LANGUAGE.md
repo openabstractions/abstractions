@@ -38,7 +38,7 @@ Each is refused by name, with the reason in the error.
 
 | refused | why |
 |---|---|
-| **[DEF-F1]** `service`, `exception`, `oneway`, `throws` | Behaviour is not in the schema. An epoch that only increases, a lease that is exclusive, a successor that resumes only from a proven prefix — none of that is expressible and none of it belongs here. It lives in the contract page and the scenario corpus. |
+| **[DEF-F1]** `exception`, `throws` | Behaviour is not in the schema. An epoch that only increases, a lease that is exclusive, a successor that resumes only from a proven prefix — none of that is expressible and none of it belongs here. It lives in the contract page and the scenario corpus. |
 | **[DEF-F2]** `union` | A union's absent arm and an absent field are two spellings of one thing, and the record already spells absence two ways ([DEF-A4]). |
 | **[DEF-F3]** `set<T>` | A set has no order that three languages share. Use `list`. |
 | **[DEF-F4]** `double`, and any float | A float has more than one spelling. `1.50` and `1.5` are one value and two records. Numbers inside an *opaque* field keep whatever spelling they arrived with ([DEF-E5]); the definition itself has no float. |
@@ -530,7 +530,8 @@ above.
 The same list, in a second form: the `docs` backend emits the reference page
 from exactly those declarations, and each construct on it cites the rule above
 that admits it. **The page is therefore bounded by this section** — it can carry
-no meaning the definition does not hold, so what a name *means*, which pattern
+no meaning the definition does not hold. Service/method `doc` annotations carry
+API intent; additional interpretation, which pattern
 it descends from, and any example that runs are written by hand elsewhere and
 linked to.
 
@@ -586,7 +587,8 @@ pipe, a socket, a queue and a file, and each answers these differently:
 
 `test/wire` is the worked example: two Go peers and a Python one, all three
 carrying the same generated envelope, and every line about connecting, framing
-and dispatching written by hand in each.
+written by hand in each. That older envelope-only example predates the
+service binding in DEF-S1; service dispatch is now generated.
 
 **The enforceable form of this rule is the import list.** Each backend declares
 the imports it may emit — Go, Python and JavaScript declare none, Rust declares
@@ -642,3 +644,154 @@ timestamps.** A generated decoder accepts any JSON whitespace, any field order,
 and a document with or without the declared terminator. It writes exactly one of
 those. Nothing is gained by refusing a record we can read, and refusing one is
 how two correct implementations stop talking to each other.
+
+### [DEF-S1] Service interfaces and protocol
+
+Standard Thrift syntax declares named methods, independently of transport:
+
+```thrift
+service Events {
+  oneway void Write(1: Record record)
+  oneway void Ping()
+  Record Read(1: string name)
+} (wire_name="example.events/events@1", doc="Submit application events.")
+```
+
+The binding supports multiple services, one-way methods, typed request-response
+results and required typed arguments. Omitted `required` is implied for method
+arguments. Optional/default arguments and `throws` remain refused explicitly.
+Go and C++ generate interfaces, transport-injected clients and pure dispatchers.
+Python generates interfaces and clients; it does not generate a server runtime
+or dispatcher. Rust and JavaScript refuse service-bearing definitions rather
+than silently emit just data codecs.
+The docs backend includes the method signatures and semantics.
+
+Each call is JSON bytes, possibly containing whitespace/newlines and without a
+transport delimiter:
+`{"version":1,"service":"example.events/events@1","method":"Write","arguments":{"record":{...}}}`.
+The generated binding owns these fields and the typed argument encoding. A
+shared transport carries a complete opaque frame (length framing or equivalent); it supplies stream framing,
+connections, deadlines and peer binding. It must consume or copy frame bytes
+before returning. A client never opens a socket or a store.
+
+For `oneway void`, success means local submission only, not remote acceptance or
+durability. No response is awaited. Dispatch rejects unknown version, service
+or method and decodes all arguments before calling any handler. Unknown envelope
+and argument fields are refused. Duplicate keys follow the definition's policy;
+duplicate declared fields are refused. Empty strings, false and zero remain
+present arguments. Handler errors are local to the receiver; a transport must
+not turn these into an implicit acknowledgement protocol.
+
+### Namespaces
+
+`namespace * oa.logging` supplies a common default; explicit language namespaces
+override it. Dot-separated portable identifiers map to Go's final package
+component and nested C++ namespaces. Namespaced outputs use paths such as
+`go/oa/logging/rec.go`, `cpp/oa/logging/rec.h`, `py/oa/logging/rec.py`,
+`js/oa/logging/rec.mjs`, and `rs/oa/logging/rec.rs`. Docs use
+`oa.logging.schema.html` from the default namespace. No namespace preserves the
+legacy `rec` names and paths. Namespace choice does not alter wire bytes.
+
+A service requires an explicit nonempty `wire_name` annotation, unique in its
+schema. This identity is independent of source namespace or class name, so two
+capabilities can both call their API `Sink` without accepting each other's calls.
+Optional `doc` annotations on service and method declarations are rendered as
+escaped text in generated API reference pages. Unknown service/method
+annotations are rejected. Method names are wire operation names.
+
+Go clients receive structural `FrameWriter` and/or `FrameExchanger` interfaces.
+C++ clients accept a transport with `WriteFrame(std::string_view)` and/or
+`ExchangeFrame(std::string_view)` returning `std::string`, as their methods require;
+one shared runtime can serve
+multiple generated namespaces without handwritten per-capability subclasses.
+Direct opaque JSON arguments retain their raw value tokens, including interior
+whitespace; the protocol does not compact them. Typed document arguments retain
+that document's validation, including vocabulary derivation before dispatch.
+The current 32-argument bound follows the generated struct reader's 32-bit
+presence mask, not a limit imposed by transport.
+
+An explicit data-only `-only` selection may still target other code backends;
+only a selected service requires service-capable generation.
+
+Nested opaque JSON inside structured service arguments/results (and raw-value maps) is
+currently rejected: the legacy document encoders reflow it despite DEF-A3.
+Direct `json` arguments are supported with a service-specific verbatim carrier.
+This restriction prevents silent mutation until nested opaque encoding is fixed
+consistently; record-only selections keep their existing codec behavior.
+
+### Request-response methods
+
+A method without `oneway` uses `ExchangeFrame` and returns its declared type,
+or no value for `void`. The transport associates exactly one response with each
+exchange; it must serialize exchanges or provide equivalent correlation. There
+is no request ID in this protocol. The binding does not implement retry,
+cancellation, authorization or persistence guarantees.
+
+The reply envelope is
+`{"version":1,"service":"example.events/events@1","method":"Read","ok":true,"payload":{"value":{...}}}`.
+Void success uses an empty payload object. Error replies set `ok:false` and use
+`{"code":"denied","message":""}` as payload. Code must be nonempty; unknown codes
+and empty messages survive roundtrip. Go returns `*ServiceError`; C++ throws
+`ServiceError`. Providers may intentionally supply a code and public diagnostic.
+Unexpected handler failures become `handler_error` with generic message
+`handler failed`; invalid return values become `invalid_result`. Invalid error
+diagnostics remain local codec refusals rather than being emitted.
+
+Clients check version, service, method and the complete typed result before
+exposing it. Wrong reply identity is `mismatched_response`; empty error code is
+`invalid_error`. Dispatch validates arguments before invocation. Methods sent
+through the wrong transport operation produce `wrong_mode`. Unparseable requests
+and unknown envelope versions return local errors; associated request refusals
+can be represented by error replies. Transport errors remain transport errors.
+One-way requests retain their original wire format and have no acknowledgement.
+
+Direct `json` results preserve raw tokens, as direct arguments do. Generated C++
+dispatchers are pure codec/test infrastructure; no C++ IPC listening server is
+supplied. Cross-language tests exchange complete buffers between a C++ client and
+Go dispatcher; they do not prove an installed service.
+
+### Required integer equality
+
+A required `i32` or `i64` field may declare
+`(equals="1", equals_refusal="bad_schema")`. The literal must be canonical signed
+decimal within that integer type's range. The named refusal must be declared at
+the `structure` stage. Both annotations are required together; other types and
+optional fields are refused by the generator.
+
+All five readers validate integer spelling/type/range and required presence
+before checking equality at the struct boundary. Missing input remains
+`missing_field`; an out-of-range integer remains `number_spelling`. A supplied,
+well-typed unequal value uses the declared equality refusal. Nested records use
+the same checks. Equality never supplies a default or fills an omitted field.
+
+All five encoders refuse an unequal in-memory value before emitting that struct.
+Go panics with `*Refusal`, C++ throws `Refusal`, Python and JavaScript raise/throw
+`Refusal`, and Rust panics with a typed `Refusal` payload. Encoding offsets are
+zero because there is no input byte position. Dynamic Python booleans are not
+integers for this constraint. Generated API reference includes the literal and
+refusal alongside field presence. Definitions without equality retain their
+existing codec behavior and output.
+
+### Python service clients
+
+Python preserves schema method names (`Write`, `Echo`) and honors parameter
+`python.name` aliases. `SinkClient(transport)` implements the generated `Sink`
+interface. Its transport supplies `write_frame(frame: bytes)` for one-way calls
+and/or `exchange_frame(frame: bytes) -> bytes` for request-response calls. No
+native I/O or server is generated. An exchange must return its associated reply;
+framing, concurrency, deadlines and connection identity remain transport duties.
+
+Clients preserve direct opaque JSON tokens and zero/false/empty values, validate
+arguments before calling transport, and validate reply identity and typed result
+before exposing it. Raw results are bytes. `ServiceError.code` and `.message`
+preserve unknown nonempty codes and empty diagnostics; malformed replies use
+`Refusal`, identity/version errors use `DispatchError.code`, and transport
+exceptions propagate unchanged. Python's coercions (such as bool-as-int or
+fraction truncation) are not accepted as typed service arguments.
+
+Python keywords, duplicate aliases and generated-name collisions are refused at
+backend preflight before any output. Internal local names avoid parameter names.
+Record-only selection retains the standalone codec output; support for zero-field
+argument/result carriers also corrects previously invalid empty Python classes.
+Tests exchange Python frames with a Go dispatcher over process buffers, including
+logging's one-way Write; this does not claim a deployed IPC service.

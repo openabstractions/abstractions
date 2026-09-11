@@ -27,6 +27,9 @@ func surfaces(s *Definition) []string {
 	if s.Proto != nil {
 		out = append(out, s.Proto.Name)
 	}
+	for _, svc := range s.Services {
+		out = append(out, svc.Name)
+	}
 	return out
 }
 
@@ -70,6 +73,24 @@ func needs(s *Definition, name string) []string {
 		add(s.Proto.Request)
 		add(s.Proto.Response)
 		add(s.Proto.Verdicts)
+	}
+	for _, svc := range s.Services {
+		if svc.Name == name {
+			for _, m := range svc.Methods {
+				if !m.Oneway {
+					if s.IsStruct(m.Result.Type) {
+						add(m.Result.Type)
+					}
+					add(s.Repeated(m.Result.Type))
+				}
+				for _, f := range m.Args {
+					if s.IsStruct(f.Type) {
+						add(f.Type)
+					}
+					add(s.Repeated(f.Type))
+				}
+			}
+		}
 	}
 	return out
 }
@@ -117,10 +138,11 @@ func selected(s *Definition, only []string) (*Definition, error) {
 
 func prune(s *Definition, only []string) *Definition {
 	out := &Definition{
-		Encoding: s.Encoding,
-		Typedefs: s.Typedefs,
-		Refusals: s.Refusals,
-		byName:   map[string]*Struct{},
+		Encoding:   s.Encoding,
+		Namespaces: s.Namespaces,
+		Typedefs:   s.Typedefs,
+		Refusals:   s.Refusals,
+		byName:     map[string]*Struct{},
 	}
 	for _, st := range s.Structs {
 		if contains(only, st.Name) {
@@ -148,6 +170,11 @@ func prune(s *Definition, only []string) *Definition {
 	}
 	if contains(only, s.Document) {
 		out.Document = s.Document
+	}
+	for _, svc := range s.Services {
+		if contains(only, svc.Name) {
+			out.Services = append(out.Services, svc)
+		}
 	}
 	return out
 }

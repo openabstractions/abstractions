@@ -1,5 +1,5 @@
-# MATRIX  produced by scripts/matrix.sh on 2026-09-11, commit 5e899ba
-# measures  openabstractions-flat/abstraction-asks@7e9ea82 openabstractions-flat/abstraction-cas@f9cb388 openabstractions-flat/abstraction-config@9c4cbe5 openabstractions-flat/abstraction-download@43ab3b5 openabstractions-flat/abstraction-facade@4fee870 openabstractions-flat/abstraction-identity@b812381 openabstractions-flat/abstraction-job@30ffc73 openabstractions-flat/abstraction-logging@ec56256 openabstractions-flat/abstraction-model@7cf857e openabstractions-flat/abstraction-rights@6fff1f5 openabstractions-flat/abstraction-router@a56ecb2 openabstractions-flat/abstraction-storage@e97f1c0 openabstractions-flat/abstraction-watch@27bd982
+# MATRIX  produced by scripts/matrix.sh on 2026-09-12, commit 929f77d
+# measures  openabstractions-flat/abstraction-asks@dc90adb openabstractions-flat/abstraction-cas@f9cb388 openabstractions-flat/abstraction-config@3a6b536 openabstractions-flat/abstraction-download@0e9f520 openabstractions-flat/abstraction-facade@2274aed openabstractions-flat/abstraction-identity@9b388e7 openabstractions-flat/abstraction-job@7cfad00 openabstractions-flat/abstraction-logging@c6ee7aa openabstractions-flat/abstraction-model@62fae45 openabstractions-flat/abstraction-rights@d33d9ed openabstractions-flat/abstraction-router@68128e6 openabstractions-flat/abstraction-storage@27bc58b openabstractions-flat/abstraction-watch@27bd982
 # regenerate  sh scripts/matrix.sh   (--check refuses a grid the evidence no longer produces)
 # scope     this tree only. It reads what is committed here and the transcripts
 #           in docs/results/; it runs no implementation and no harness. Each
@@ -15,66 +15,176 @@
     record it came from named none. A verdict over a compiler nobody named is a
     claim about a compiler nobody named.
 
-layer                go                        python                        cpp                        
--------------------- -------------------------------  -------------------------------  -------------------------------  
-abstraction-asks     FAIL* go1.26.5 darwin/arm64 cgo  —                        —                        
-abstraction-cas      PASS go1.26.5                    PASS py3.12                      PASS Apple Clang darwin/arm64    
-abstraction-config   FAIL go1.26.5 darwin/arm64 cgo   PASS py3.12                      —                        
-abstraction-download FAIL* go1.26.5 darwin/arm64 cgo  PASS py3.12                      PASS Apple Clang darwin/arm64    
-abstraction-facade   PASS go1.26.5                    —                        —                        
-abstraction-identity PASS go1.26.5 darwin/arm64 cgo   —                        —                        
-abstraction-job      FAIL go1.26.5 windows/amd64      FAIL CPython 3.12.14 win32       FAIL msvc 19.51.36256            
-abstraction-logging  PASS go1.26.5                    —                        —                        
-abstraction-model    PASS go1.26.5                    PASS py3.12                      —                        
-abstraction-rights   FAIL* go1.26.5 darwin/arm64 cgo  —                        —                        
-abstraction-router   PASS go1.26.5                    —                        —                        
-abstraction-storage  PASS go1.26.5                    —                        PASS Apple Clang darwin/arm64    
-abstraction-watch    PASS go1.26.5                    PASS py3.12                      PASS Apple Clang darwin/arm64    
+IDL codec generator registration (source availability, not client implementation
+or test evidence):
+  go: available
+  python: available
+  cpp: available
+  rust: available
+  javascript: available
 
-39 cells over 13 layers: 17 PASS, 7 FAIL, 0 UNPROVEN, 0 ABSENT, 15 with no implementation.
-24 implementations exist and 0 of them carry no verdict attributed to this tree.
+Legacy whole-layer verification:
+layer                go                        python                        cpp                        rust                        javascript
+-------------------- -----------------------------  -----------------------------  -----------------------------  -----------------------------  -----------------------------
+abstraction-asks     UNPROVEN                       —                        —                        —                        —
+abstraction-cas      PASS go1.26.5                  PASS py3.12                    PASS Apple Clang darwin/arm64  —                        —
+abstraction-config   UNPROVEN                       UNPROVEN                       UNPROVEN                       —                        —
+abstraction-download UNPROVEN                       UNPROVEN                       UNPROVEN                       —                        —
+abstraction-facade   UNPROVEN                       —                        UNPROVEN                       —                        —
+abstraction-identity UNPROVEN                       —                        UNPROVEN                       —                        —
+abstraction-job      UNPROVEN                       UNPROVEN                       UNPROVEN                       —                        —
+abstraction-logging  UNPROVEN                       —                        UNPROVEN                       —                        —
+abstraction-model    UNPROVEN                       UNPROVEN                       —                        —                        —
+abstraction-rights   UNPROVEN                       —                        —                        —                        —
+abstraction-router   UNPROVEN                       —                        UNPROVEN                       —                        —
+abstraction-storage  UNPROVEN                       —                        UNPROVEN                       —                        —
+abstraction-watch    PASS go1.26.5                  PASS py3.12                    PASS Apple Clang darwin/arm64  —                        —
+
+65 cells over 13 layers: 6 PASS, 0 FAIL, 23 UNPROVEN, 0 ABSENT, 36 with no implementation.
+29 implementations exist and 23 of them carry no verdict attributed to this tree.
 * Documented platform limitation: the current macOS IPC provider cannot supply the process proof required by these service tests. These cells remain counted as FAIL.
 
+SERVICE CLIENTS AND CAPABILITY DIMENSIONS
+Independent dimensions, not ordinal levels. Interface availability is source inventory, not a test PASS. A C++ service client can use a Go host; no C++ server is required. Native OS and custom providers require explicitly classified evidence. Legacy checks remain unclassified and their failures remain in the legacy grid below.
+abstraction-asks | go | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-asks | python | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-asks | cpp | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-asks | rust | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-asks | javascript | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-cas | go | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-cas | python | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-cas | cpp | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-cas | rust | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-cas | javascript | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-config | go | interface: service interface available | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-config | python | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-config | cpp | interface: service interface available | service-client: PASS | windows/amd64; host: go; config-cpp-windows-service (PASS) | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-config | rust | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-config | javascript | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-download | go | interface: record codec only | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-download | python | interface: record codec only | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-download | cpp | interface: record codec only | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-download | rust | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-download | javascript | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-facade | go | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-facade | python | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-facade | cpp | interface: not found | service-client: PASS | windows/amd64; host: go; facade-cpp-windows-services (PASS) | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-facade | rust | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-facade | javascript | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-identity | go | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-identity | python | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-identity | cpp | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-identity | rust | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-identity | javascript | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-job | go | interface: record codec only | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-job | python | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-job | cpp | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-job | rust | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-job | javascript | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-logging | go | interface: service interface available | service-client: PASS | windows/amd64; host: go; logging-go-windows-service (PASS) | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-logging | python | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-logging | cpp | interface: service interface available | service-client: PASS | windows/amd64; host: go; logging-cpp-windows-service (PASS) | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-logging | rust | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-logging | javascript | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-model | go | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-model | python | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-model | cpp | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-model | rust | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-model | javascript | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-rights | go | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-rights | python | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-rights | cpp | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-rights | rust | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-rights | javascript | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-router | go | interface: service interface available | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-router | python | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-router | cpp | interface: service interface available | service-client: PASS | windows/amd64; host: go; router-cpp-windows-service (PASS) | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-router | rust | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-router | javascript | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-storage | go | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-storage | python | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-storage | cpp | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-storage | rust | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-storage | javascript | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-watch | go | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-watch | python | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-watch | cpp | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-watch | rust | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+abstraction-watch | javascript | interface: not found | service-client: UNPROVEN / unclassified | native-provider: UNPROVEN / unclassified | custom-provider: UNPROVEN / unclassified
+Shared IPC runtime source: reusable C ABI client binding, C++ wrapper, native transport; source availability is separate from full identity provider conformance.
+SERVICE CLIENTS / focused checks (separate from capability conformance; no provider verdict is replaced):
+  config-cpp-windows-service | openabstractions-flat/abstraction-config | cpp | client | windows/amd64 | PASS | Installed C++ Config.Read -> generated protocol -> shared IPC -> central Go host -> same-user configuration provider; caller override/provenance/live reload/value-only stamp, malformed or missing provider source, typed request refusal, absence errors and no client-local state | python: Python 3.12.14; go: go version go1.26.5 windows/amd64; cmake: cmake version 4.3.1-msvc1
+  facade-cpp-windows-services | openabstractions-flat/abstraction-facade | cpp | client | windows/amd64 | PASS | Installed C++ facade Log/Config.Read/Router.Models/Hosts/Pick reach three production Go services and providers; service-owned configuration reload/provenance, verified logging identity and persistence, empty router inventory versus typed negative decisions/refusal, caller audit, absence errors and no client-local state | python: Python 3.12.14; go: go version go1.26.5 windows/amd64; cmake: cmake version 4.3.1-msvc1
+  logging-cpp-windows-service | openabstractions-flat/abstraction-logging | cpp | client | windows/amd64 | PASS | cpp facade -> generated client -> shared named-pipe IPC -> identity-checked Go logging service -> service-owned JSONL sink; multiline Unicode, zero level and empty attrs preserved; verified peer; record survives client exit; schema=2 refused; absent service errors; no client-local storage | python: Python 3.12.14; go: go version go1.26.5 windows/amd64; cmake: cmake version 4.3.1-msvc1
+  logging-go-windows-service | openabstractions-flat/abstraction-logging | go | client | windows/amd64 | PASS | go facade -> generated client -> shared named-pipe IPC -> identity-checked Go logging service -> service-owned JSONL sink; multiline Unicode, zero level and empty attrs preserved; verified peer; record survives client exit; schema=2 refused; absent service errors; no client-local storage | python: Python 3.12.14; go: go version go1.26.5 windows/amd64
+  router-cpp-windows-service | openabstractions-flat/abstraction-router | cpp | client | windows/amd64 | PASS | Installed C++ Router.Models/Hosts/Pick -> generated RPC -> shared IPC -> identity-bound Go router service and existing provider over isolated local HTTP fixtures; inventory/resident/denied choices, empty allowance versus absence, caller audit, typed refusals, GET-only provider reads and no client-local state; no central-host or GPU-cost claim | python: Python 3.12.14; go: go version go1.26.5 windows/amd64; cmake: cmake version 4.3.1-msvc1
+
 why each cell reads as it does
-  abstraction-asks     go      FAIL* go1.26.5 darwin/arm64 cgo  recorded    DARWIN1 , go test -count=1 ./... on native macOS; platform limitation: darwin-peer-proof
-  abstraction-asks     python  —                        none        no python implementation, and the inventory declares none, so the gap is deliberate
-  abstraction-asks     cpp     —                        none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  abstraction-cas      go      PASS go1.26.5                    recorded    GATE full, go build ./... && go test ./...
-  abstraction-cas      python  PASS py3.12                      recorded    GATE full, unittest discover, 13 tests
-  abstraction-cas      cpp     PASS Apple Clang darwin/arm64    recorded    DARWIN1 , CMake build and aggregate CTest on native macOS
-  abstraction-config   go      FAIL go1.26.5 darwin/arm64 cgo   recorded    DARWIN1 , go test -count=1 ./... on native macOS
-  abstraction-config   python  PASS py3.12                      recorded    GATE full, unittest discover, 17 tests
-  abstraction-config   cpp     —                        none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  abstraction-download go      FAIL* go1.26.5 darwin/arm64 cgo  recorded    DARWIN1 , go test -count=1 ./... on native macOS; platform limitation: darwin-peer-proof
-  abstraction-download python  PASS py3.12                      recorded    GATE full, unittest discover, 70 tests
-  abstraction-download cpp     PASS Apple Clang darwin/arm64    recorded    DARWIN1 , CMake build and aggregate CTest on native macOS
-  abstraction-facade   go      PASS go1.26.5                    recorded    GATE full, go build ./... && go test ./...
-  abstraction-facade   python  —                        none        no python implementation, and the inventory declares none, so the gap is deliberate
-  abstraction-facade   cpp     —                        none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  abstraction-identity go      PASS go1.26.5 darwin/arm64 cgo   recorded    DARWIN1 , go test -count=1 ./... on native macOS
-  abstraction-identity python  —                        none        no python implementation, and the inventory declares none, so the gap is deliberate
-  abstraction-identity cpp     —                        none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  abstraction-job      go      FAIL go1.26.5 windows/amd64      recorded    GATE full, the corpus: 16 disagreements with 120 fixtures that nothing records, 0 recorded and gone
-  abstraction-job      python  FAIL CPython 3.12.14 win32       recorded    GATE full, the corpus: 16 disagreements with 120 fixtures that nothing records, 0 recorded and gone
-  abstraction-job      cpp     FAIL msvc 19.51.36256            recorded    GATE full, the corpus: 11 disagreements with 120 fixtures that nothing records, 3 recorded and gone
-  abstraction-logging  go      PASS go1.26.5                    recorded    GATE full, go build ./... && go test ./...
-  abstraction-logging  python  —                        none        no python implementation, and the inventory declares none, so the gap is deliberate
-  abstraction-logging  cpp     —                        none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  abstraction-model    go      PASS go1.26.5                    recorded    GATE full, go build ./... && go test ./...
-  abstraction-model    python  PASS py3.12                      recorded    GATE full, unittest discover, 41 tests
-  abstraction-model    cpp     —                        none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  abstraction-rights   go      FAIL* go1.26.5 darwin/arm64 cgo  recorded    DARWIN1 , go test -count=1 ./... on native macOS; platform limitation: darwin-peer-proof
-  abstraction-rights   python  —                        none        no python implementation, and the inventory declares none, so the gap is deliberate
-  abstraction-rights   cpp     —                        none        no cpp implementation, and the inventory declares none, so the gap is deliberate
-  abstraction-router   go      PASS go1.26.5                    recorded    GATE full, go build ./... && go test ./...
-  abstraction-router   python  —                        undeclared  no python implementation, and the inventory carries no row for openabstractions-flat/abstraction-router, so nothing says whether the gap is deliberate
-  abstraction-router   cpp     —                        undeclared  no cpp implementation, and the inventory carries no row for openabstractions-flat/abstraction-router, so nothing says whether the gap is deliberate
-  abstraction-storage  go      PASS go1.26.5                    recorded    GATE full, go build ./... && go test ./...
-  abstraction-storage  python  —                        none        no python implementation, and the inventory declares none, so the gap is deliberate
-  abstraction-storage  cpp     PASS Apple Clang darwin/arm64    recorded    DARWIN1 , CMake build and aggregate CTest on native macOS
-  abstraction-watch    go      PASS go1.26.5                    recorded    GATE full, go build ./... && go test ./...
-  abstraction-watch    python  PASS py3.12                      recorded    GATE full, unittest discover, 19 tests
-  abstraction-watch    cpp     PASS Apple Clang darwin/arm64    recorded    DARWIN1 , CMake build and aggregate CTest on native macOS
+  abstraction-asks     go      UNPROVEN                       drifted     GATE recorded FAIL at openabstractions-flat/abstraction-asks@7e9ea82; the tree is openabstractions-flat/abstraction-asks@dc90adb
+  abstraction-asks     python  —                        none        no python implementation/client found; no inventory claim establishes why it is missing
+  abstraction-asks     cpp     —                        none        no cpp implementation/client found; no inventory claim establishes why it is missing
+  abstraction-asks     rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
+  abstraction-asks     javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
+  abstraction-cas      go      PASS go1.26.5                  recorded    GATE full, go build ./... && go test ./...
+  abstraction-cas      python  PASS py3.12                    recorded    GATE full, unittest discover, 13 tests
+  abstraction-cas      cpp     PASS Apple Clang darwin/arm64  recorded    DARWIN1 , CMake build and aggregate CTest on native macOS
+  abstraction-cas      rust    —                        undeclared  no rust implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-cas
+  abstraction-cas      javascript—                        undeclared  no javascript implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-cas
+  abstraction-config   go      UNPROVEN                       drifted     GATE recorded FAIL at openabstractions-flat/abstraction-config@9c4cbe5; the tree is openabstractions-flat/abstraction-config@3a6b536
+  abstraction-config   python  UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-config@9c4cbe5; the tree is openabstractions-flat/abstraction-config@3a6b536
+  abstraction-config   cpp     UNPROVEN                       unreached   openabstractions-flat/abstraction-config/cpp exists with 0 test files and nothing the gate runs names it
+  abstraction-config   rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
+  abstraction-config   javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
+  abstraction-download go      UNPROVEN                       drifted     GATE recorded FAIL at openabstractions-flat/abstraction-download@43ab3b5; the tree is openabstractions-flat/abstraction-download@0e9f520
+  abstraction-download python  UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-download@43ab3b5; the tree is openabstractions-flat/abstraction-download@0e9f520
+  abstraction-download cpp     UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-download@43ab3b5; the tree is openabstractions-flat/abstraction-download@0e9f520
+  abstraction-download rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
+  abstraction-download javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
+  abstraction-facade   go      UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-facade@4fee870; the tree is openabstractions-flat/abstraction-facade@2274aed
+  abstraction-facade   python  —                        none        no python implementation/client found; no inventory claim establishes why it is missing
+  abstraction-facade   cpp     UNPROVEN                       unreached   openabstractions-flat/abstraction-facade/cpp exists with 0 test files and nothing the gate runs names it
+  abstraction-facade   rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
+  abstraction-facade   javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
+  abstraction-identity go      UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-identity@b812381; the tree is openabstractions-flat/abstraction-identity@9b388e7
+  abstraction-identity python  —                        none        no python implementation/client found; no inventory claim establishes why it is missing
+  abstraction-identity cpp     UNPROVEN                       unreached   openabstractions-flat/abstraction-identity/cpp exists with 4 test files and nothing the gate runs names it
+  abstraction-identity rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
+  abstraction-identity javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
+  abstraction-job      go      UNPROVEN                       drifted     GATE recorded FAIL at openabstractions-flat/abstraction-job@30ffc73; the tree is openabstractions-flat/abstraction-job@7cfad00
+  abstraction-job      python  UNPROVEN                       drifted     GATE recorded FAIL at openabstractions-flat/abstraction-job@30ffc73; the tree is openabstractions-flat/abstraction-job@7cfad00
+  abstraction-job      cpp     UNPROVEN                       drifted     GATE recorded FAIL at openabstractions-flat/abstraction-job@30ffc73; the tree is openabstractions-flat/abstraction-job@7cfad00
+  abstraction-job      rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
+  abstraction-job      javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
+  abstraction-logging  go      UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-logging@ec56256; the tree is openabstractions-flat/abstraction-logging@c6ee7aa
+  abstraction-logging  python  —                        none        no python implementation/client found; no inventory claim establishes why it is missing
+  abstraction-logging  cpp     UNPROVEN                       unreached   openabstractions-flat/abstraction-logging/cpp exists with 0 test files and nothing the gate runs names it
+  abstraction-logging  rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
+  abstraction-logging  javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
+  abstraction-model    go      UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-model@7cf857e; the tree is openabstractions-flat/abstraction-model@62fae45
+  abstraction-model    python  UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-model@7cf857e; the tree is openabstractions-flat/abstraction-model@62fae45
+  abstraction-model    cpp     —                        none        no cpp implementation/client found; no inventory claim establishes why it is missing
+  abstraction-model    rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
+  abstraction-model    javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
+  abstraction-rights   go      UNPROVEN                       drifted     GATE recorded FAIL at openabstractions-flat/abstraction-rights@6fff1f5; the tree is openabstractions-flat/abstraction-rights@d33d9ed
+  abstraction-rights   python  —                        none        no python implementation/client found; no inventory claim establishes why it is missing
+  abstraction-rights   cpp     —                        none        no cpp implementation/client found; no inventory claim establishes why it is missing
+  abstraction-rights   rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
+  abstraction-rights   javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
+  abstraction-router   go      UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-router@a56ecb2; the tree is openabstractions-flat/abstraction-router@68128e6
+  abstraction-router   python  —                        undeclared  no python implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-router
+  abstraction-router   cpp     UNPROVEN                       unreached   openabstractions-flat/abstraction-router/cpp exists with 0 test files and nothing the gate runs names it
+  abstraction-router   rust    —                        undeclared  no rust implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-router
+  abstraction-router   javascript—                        undeclared  no javascript implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-router
+  abstraction-storage  go      UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-storage@e97f1c0; the tree is openabstractions-flat/abstraction-storage@27bc58b
+  abstraction-storage  python  —                        none        no python implementation/client found; no inventory claim establishes why it is missing
+  abstraction-storage  cpp     UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-storage@e97f1c0; the tree is openabstractions-flat/abstraction-storage@27bc58b
+  abstraction-storage  rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
+  abstraction-storage  javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
+  abstraction-watch    go      PASS go1.26.5                  recorded    GATE full, go build ./... && go test ./...
+  abstraction-watch    python  PASS py3.12                    recorded    GATE full, unittest discover, 19 tests
+  abstraction-watch    cpp     PASS Apple Clang darwin/arm64  recorded    DARWIN1 , CMake build and aggregate CTest on native macOS
+  abstraction-watch    rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
+  abstraction-watch    javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
 
 reasons
   recorded    a transcript in docs/results/ recorded this verdict for this tree
@@ -84,5 +194,5 @@ reasons
   untested    the cell has no test file of its own
   unreached   nothing the gate runs names this cell
   declared    the inventory declares the language and the tree does not have it
-  none        no implementation, and the inventory declares none, so the gap is deliberate
+  none        no implementation/client found; absence does not establish intent
   undeclared  no implementation, and the inventory carries no row for the layer at all

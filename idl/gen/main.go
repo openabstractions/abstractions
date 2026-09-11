@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -67,70 +69,133 @@ var backends = []backend{
 	{"docs", "schema.html", genDocs, nil, false},
 }
 
-const usage = "usage: gen <definition.thrift> <outdir> [-only=<surface,...>] [language ...]"
+const usage = "usage: gen <definition.thrift> <outdir> [-only=<surface,...>] [language ...]\n       gen <definition.thrift> --paths [language ...]"
 
 func main() {
-	if len(os.Args) < 3 {
-		fmt.Fprintln(os.Stderr, usage)
-		os.Exit(2)
-	}
-	src, err := os.ReadFile(os.Args[1])
-	if err != nil {
+	if err := run(os.Args[1:], os.Stdout); err != nil {
 		fail(err)
+	}
+}
+
+func run(args []string, stdout io.Writer) error {
+	if len(args) == 0 || len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Fprintln(stdout, usage)
+		fmt.Fprintln(stdout, "Languages: go python cpp javascript rust docs. Omit languages for all backends.")
+		fmt.Fprintln(stdout, "--paths lists output locations without generating code or claiming backend support for a schema's features.")
+		return nil
+	}
+	if len(args) < 2 {
+		return fmt.Errorf("%s", usage)
+	}
+	src, err := os.ReadFile(args[0])
+	if err != nil {
+		return err
 	}
 	whole, err := parse(string(src))
 	if err != nil {
-		fail(fmt.Errorf("%s: %w", os.Args[1], err))
+		return fmt.Errorf("%s: %w", args[0], err)
+	}
+	namespaceLanguages := make([]string, 0, len(whole.Namespaces))
+	for lang := range whole.Namespaces {
+		namespaceLanguages = append(namespaceLanguages, lang)
+	}
+	sort.Strings(namespaceLanguages)
+	for _, lang := range namespaceLanguages {
+		if err := validateNamespace(lang, whole.Namespaces[lang]); err != nil {
+			return err
+		}
 	}
 	var want, only []string
-	for _, a := range os.Args[3:] {
+	for _, a := range args[2:] {
 		switch {
 		case strings.HasPrefix(a, "-only="):
+			if only != nil {
+				return fmt.Errorf("-only may be supplied once")
+			}
 			only = strings.Split(strings.TrimPrefix(a, "-only="), ",")
 			for i, n := range only {
 				only[i] = strings.TrimSpace(n)
 			}
 			if len(only) == 1 && only[0] == "" {
-				fail(fmt.Errorf("-only names nothing; leave the flag off to emit every surface"))
+				return fmt.Errorf("-only names nothing; leave the flag off to emit every surface")
 			}
 		case strings.HasPrefix(a, "-"):
-			fail(fmt.Errorf("%s is not a flag this generator takes\n%s", a, usage))
+			return fmt.Errorf("%s is not a flag this generator takes\n%s", a, usage)
 		default:
+			known := false
+			for _, b := range backends {
+				known = known || b.lang == a
+			}
+			if !known {
+				return fmt.Errorf("no backend named %s", a)
+			}
+			if contains(want, a) {
+				return fmt.Errorf("backend %s was requested twice", a)
+			}
 			want = append(want, a)
 		}
 	}
 	def, err := selected(whole, only)
 	if err != nil {
-		fail(fmt.Errorf("%s: %w", os.Args[1], err))
+		return fmt.Errorf("%s: %w", args[0], err)
 	}
-	out := os.Args[2]
-	count := 0
+	out := args[1]
+	if out == "--paths" {
+		for _, b := range backends {
+			if len(want) > 0 && !contains(want, b.lang) {
+				continue
+			}
+			path, _ := namespacedOutput(b, def.Namespaces, "")
+			fmt.Fprintln(stdout, path)
+		}
+		return nil
+	}
+	type artifact struct{ path, body, report string }
+	var artifacts []artifact
+	// Validate and render the entire request before changing any output. A
+	// misspelt or unsupported backend must not leave a plausible partial build.
 	for _, b := range backends {
 		if len(want) > 0 && !contains(want, b.lang) {
 			continue
 		}
-		p := filepath.Join(out, b.path)
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			fail(err)
+		if err := validateServiceBackend(def, b.lang); err != nil {
+			return err
+		}
+	}
+	for _, b := range backends {
+		if len(want) > 0 && !contains(want, b.lang) {
+			continue
 		}
 		body := b.emit(def)
 		entire := body
 		if def != whole {
-			entire = b.emit(whole)
+			verificationDefinition := whole
+			if validateServiceBackend(whole, b.lang) != nil {
+				// An explicitly selected record-only artifact still checks all
+				// declared refusal words, including the service frame's grammar.
+				verificationDefinition = serviceTypes(whole)
+			}
+			entire = b.emit(verificationDefinition)
 		}
-		if err := b.verify(emitted{def, b.lang, b.imports, body, os.Args[1], entire}); err != nil {
-			fail(err)
+		if err := b.verify(emitted{def, b.lang, b.imports, body, args[0], entire}); err != nil {
+			return err
 		}
-		body = banner(b.lang, os.Args[1], body)
-		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
-			fail(err)
-		}
-		fmt.Printf("%-12s %-16s %5d lines  %s\n", b.lang, b.path, strings.Count(body, "\n"), carries(whole, def))
-		count++
+		path, body := namespacedOutput(b, def.Namespaces, body)
+		body = banner(b.lang, args[0], body)
+		artifacts = append(artifacts, artifact{path, body,
+			fmt.Sprintf("%-12s %-16s %5d lines  %s\n", b.lang, path, strings.Count(body, "\n"), carries(whole, def))})
 	}
-	if count == 0 {
-		fail(fmt.Errorf("no backend named %s", strings.Join(want, " ")))
+	for _, a := range artifacts {
+		p := filepath.Join(out, a.path)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(p, []byte(a.body), 0o644); err != nil {
+			return err
+		}
+		fmt.Fprint(stdout, a.report)
 	}
+	return nil
 }
 
 func carries(whole, def *Definition) string {

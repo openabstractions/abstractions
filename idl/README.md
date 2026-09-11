@@ -1,17 +1,20 @@
 # abstraction-idl
 
-One definition of a record; for every language, an encoder that writes the same
-bytes, a decoder that refuses the same inputs with the same word, and the
-envelope those records travel in. The notation is a profile of Apache Thrift's
-IDL — see [LANGUAGE.md](LANGUAGE.md) for what it takes, forbids and adds, and
-[LINEAGE.md](LINEAGE.md) for where each construct came from and why.
+Define records and service interfaces once; generate their language APIs,
+wire bindings, codecs and API reference. The notation is a profile of Apache
+Thrift's IDL — see [LANGUAGE.md](LANGUAGE.md) for supported constructs and
+[LINEAGE.md](LINEAGE.md) for their origins.
 
-**Nothing about delivering a message is generated.** Framing, connection
-lifetime, reconnection and the socket belong to the transport binding and are
-written by hand once per binding; a generator that opens a socket has left its
-jurisdiction. LANGUAGE.md § *What the generator does not emit* is the list, and
-the generator fails its own build if a backend emits an import that could reach
-one.
+**Current scope:** Go, C++ and Python generate typed request-response and one-way
+clients with injected transports. Go hosts services; Go and C++ also generate
+pure dispatchers. Python generates interfaces and clients, with no server runtime.
+Five languages have record codecs; Rust/JavaScript service bindings remain
+explicitly unsupported.
+
+Generated bindings own method identity, argument encoding and dispatch. Shared
+transport owns framing, connections, deadlines, reconnection and peer binding;
+no socket or store is generated. Complete messages may contain newlines, so a
+transport uses length framing or an equivalent opaque-message boundary.
 
 Generated code **links nothing**. Not this repository, not a runtime, not a
 serialisation library — at most the target language's own standard library.
@@ -136,3 +139,11 @@ same corpus without touching any of the first five.
   map<string,string>`, structs of those, and lists of those structs. Anything
   else is refused by name, including `double`, `set<T>`, `binary` and `union`.
 - `test/run.ps1` and `test/wire.ps1` are Windows-only. The generator is not.
+
+Service declarations generate callable interfaces, injected-transport clients,
+dispatchers and API reference from the same definition. The Go/C++/Python client
+bindings support one-way and typed request-response methods with an explicit
+stable `wire_name`; replies contain typed results or stable error codes. No socket
+or storage implementation is generated.
+See [the service language rule](LANGUAGE.md#def-s1-service-interfaces-and-protocol)
+for framing, errors, opaque arguments and transport lifetime requirements.

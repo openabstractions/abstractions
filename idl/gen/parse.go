@@ -16,7 +16,6 @@ type parser struct {
 }
 
 var forbidden = map[string]string{
-	"service":     "behaviour is not in the schema: a lease, an epoch and a refusal live in the contract page and the scenario corpus",
 	"exception":   "behaviour is not in the schema: a refusal is a closed vocabulary, declared as an enum",
 	"union":       "a union's absent arm and an absent field are two spellings of one thing",
 	"senum":       "withdrawn from Thrift itself",
@@ -101,7 +100,9 @@ func (p *parser) file() error {
 		case "typedef":
 			err = p.typedef()
 		case "namespace":
-			p.i += 3
+			err = p.namespaceDef()
+		case "service":
+			err = p.serviceDef()
 		case "struct":
 			err = p.structDef()
 		case "enum":
@@ -774,7 +775,13 @@ func (p *parser) validate() error {
 	if len(p.def.Refusals) == 0 {
 		return fmt.Errorf("the definition declares no refusals, and a decoder's public surface is the word it says no with")
 	}
+	if err := p.validateEqualities(); err != nil {
+		return err
+	}
 	if err := p.validateVocabulary(); err != nil {
+		return err
+	}
+	if err := p.validateServices(); err != nil {
 		return err
 	}
 	return p.validateProtocol()

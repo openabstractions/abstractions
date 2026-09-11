@@ -1,0 +1,73 @@
+{
+  "id": "config-cpp-windows-service",
+  "layer": "openabstractions-flat/abstraction-config",
+  "language": "cpp",
+  "scope": "client",
+  "service_language": "go",
+  "platform": "windows/amd64",
+  "scenario": "Installed C++ Config.Read -> generated protocol -> shared IPC -> central Go host -> same-user configuration provider; caller override/provenance/live reload/value-only stamp, malformed or missing provider source, typed request refusal, absence errors and no client-local state",
+  "inputs": [
+    "conformance/clients/config",
+    "conformance/clients/workspace.py",
+    "deploy/nas/mkimage/go.mod",
+    "examples/pretend-lemonade/go.mod",
+    "examples/pretend-lemonade/go.sum",
+    "go.work",
+    "go.work.sum",
+    "idl/gen",
+    "monitor/go.mod",
+    "monitor/go.sum",
+    "openabstractions-flat/abstraction-asks/go",
+    "openabstractions-flat/abstraction-cas/go",
+    "openabstractions-flat/abstraction-config/CONTRACT.md",
+    "openabstractions-flat/abstraction-config/config.thrift",
+    "openabstractions-flat/abstraction-config/cpp",
+    "openabstractions-flat/abstraction-config/go",
+    "openabstractions-flat/abstraction-download/CONTRACT.md",
+    "openabstractions-flat/abstraction-download/download.thrift",
+    "openabstractions-flat/abstraction-download/go",
+    "openabstractions-flat/abstraction-download/reachwall/go.mod",
+    "openabstractions-flat/abstraction-download/reachwall/go.sum",
+    "openabstractions-flat/abstraction-facade/go/go.mod",
+    "openabstractions-flat/abstraction-facade/go/go.sum",
+    "openabstractions-flat/abstraction-identity",
+    "openabstractions-flat/abstraction-job/CONTRACT.md",
+    "openabstractions-flat/abstraction-job/go",
+    "openabstractions-flat/abstraction-job/job.thrift",
+    "openabstractions-flat/abstraction-logging/CONTRACT.md",
+    "openabstractions-flat/abstraction-logging/go",
+    "openabstractions-flat/abstraction-logging/logging.thrift",
+    "openabstractions-flat/abstraction-model/go",
+    "openabstractions-flat/abstraction-rights/go",
+    "openabstractions-flat/abstraction-router/go",
+    "openabstractions-flat/abstraction-router/router.thrift",
+    "openabstractions-flat/abstraction-storage/go",
+    "openabstractions-flat/abstraction-watch/go",
+    "research/discovery-bench/go.mod",
+    "research/discovery-bench/go.sum",
+    "research/facade-linking/go.mod",
+    "research/plugins/go/go.mod",
+    "research/plugins/go/go.sum",
+    "serve"
+  ],
+  "toolchains": {
+    "python": [
+      "python",
+      "--version"
+    ],
+    "go": [
+      "go",
+      "version"
+    ],
+    "cmake": [
+      "python",
+      "conformance/clients/config/run.py",
+      "--toolchain"
+    ]
+  },
+  "command": [
+    "python",
+    "conformance/clients/config/run.py",
+    "--run"
+  ]
+}

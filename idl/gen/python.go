@@ -618,7 +618,7 @@ func pyStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 		fmt.Fprintf(b, "                seen |= %d\n", 1<<i)
 		fmt.Fprintf(b, "                v.%s = %s\n", f.Ident("python"), pyRead(s, f))
 	}
-	if len(st.Fields) == 0 && st.PreservesUnknown() {
+	if len(st.Fields) == 0 {
 		b.WriteString("            if False:\n                pass\n")
 	}
 	b.WriteString("            else:\n")
@@ -636,6 +636,10 @@ func pyStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 	b.WriteString("    if r.at() != _RBRACE:\n        raise r.refuse(\"malformed\")\n    r.pos += 1\n    r.depth -= 1\n")
 	if req := requiredMask(st); req != 0 {
 		fmt.Fprintf(b, "    if seen & %d != %d:\n        raise r.refuse(\"missing_field\")\n", req, req)
+	}
+	emitEqualities(b, st, "python", false)
+	if len(s.Services) > 0 && st.Name == s.Document && s.Vocab != nil {
+		b.WriteString("    _derive(r, v)\n")
 	}
 	b.WriteString("    return v\n")
 }
@@ -766,6 +770,7 @@ def member(raw, name):
 `
 
 func genPy(s *Definition) string {
+	s = serviceTypes(s)
 	var b strings.Builder
 	esc := pyEscMinimal
 	if s.Encoding.EscapeNonASCII() {
@@ -782,6 +787,9 @@ func genPy(s *Definition) string {
 	pyVocabulary(&b, s)
 	for _, st := range s.Structs {
 		fmt.Fprintf(&b, "\n\nclass %s:\n    def __init__(self, **kw):\n", st.Name)
+		if len(st.Fields) == 0 && !st.PreservesUnknown() {
+			b.WriteString("        pass\n")
+		}
 		for _, f := range st.Fields {
 			fmt.Fprintf(&b, "        self.%s = kw.get(%q, %s)\n", f.Ident("python"), f.Name, pyDefault(s, f))
 		}
@@ -827,6 +835,7 @@ func genPy(s *Definition) string {
 	}
 	pyDecoder(&b, s)
 	pyProtocol(&b, s)
+	pyService(&b, s)
 	return b.String()
 }
 
@@ -879,6 +888,7 @@ func pyEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 	} else {
 		fmt.Fprintf(b, "\n\ndef enc_%s(out, v, depth):\n", lower(st.Name))
 	}
+	emitEqualities(b, st, "python", true)
 	b.WriteString("    out += b\"{\"\n")
 	if p.flag {
 		b.WriteString("    first = True\n")
@@ -956,6 +966,10 @@ func pyPresent(s *Definition, f Field, e string) string {
 }
 
 func pyValue(s *Definition, f Field, e string) string {
+	if f.Type == "json" && f.Ann["service_raw"] == "true" {
+		return "out += " + e + ".encode(\"utf-8\") if isinstance(" + e + ", str) else " + e
+	}
+
 	if f.Grammar.Named() {
 		return "esc(out, _write_timestamp(" + e + "))"
 	}

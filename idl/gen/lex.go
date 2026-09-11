@@ -60,7 +60,7 @@ func lex(src string) ([]token, error) {
 				l.pos++
 			}
 			l.emit("int", l.src[start:l.pos])
-		case strings.IndexByte("{}()<>,;:=[]", c) >= 0:
+		case strings.IndexByte("{}()<>,;:=[]*", c) >= 0:
 			l.pos++
 			l.emit("punct", string(c))
 		default:

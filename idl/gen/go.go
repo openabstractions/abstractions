@@ -971,6 +971,10 @@ func goStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 	if req := requiredMask(st); req != 0 {
 		fmt.Fprintf(b, "\tif seen&%d != %d {\n\t\treturn nil, r.refuse(\"missing_field\")\n\t}\n", req, req)
 	}
+	emitEqualities(b, st, "go", false)
+	if len(s.Services) > 0 && st.Name == s.Document && s.Vocab != nil {
+		b.WriteString("if err:=r.derive(v);err!=nil{return nil,err}\n")
+	}
 	b.WriteString("\treturn v, nil\n}\n")
 }
 
@@ -1119,6 +1123,7 @@ func Member(v Raw, name string) bool {
 `
 
 func genGo(s *Definition) string {
+	s = serviceTypes(s)
 	var b strings.Builder
 	esc := goEscMinimal
 	if s.Encoding.EscapeNonASCII() {
@@ -1182,6 +1187,7 @@ func genGo(s *Definition) string {
 	}
 	goDecoder(&b, s)
 	goProtocol(&b, s)
+	goService(&b, s)
 	pretty, err := format.Source([]byte(b.String()))
 	if err != nil {
 		fail(fmt.Errorf("the Go backend emitted something gofmt refuses: %w", err))
@@ -1242,6 +1248,7 @@ func goEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 	} else {
 		fmt.Fprintf(b, "\nfunc enc%s(out []byte, v *%s, depth int) []byte {\n", st.Name, st.Name)
 	}
+	emitEqualities(b, st, "go", true)
 	b.WriteString("\tout = append(out, '{')\n")
 	if p.flag {
 		b.WriteString("\tfirst := true\n")
@@ -1337,6 +1344,9 @@ func goPresent(s *Definition, f Field, e string) string {
 }
 
 func goValue(s *Definition, f Field, e string) string {
+	if f.Type == "json" && f.Ann["service_raw"] == "true" {
+		return "out = append(out, " + e + "...)"
+	}
 	if f.Grammar.Named() {
 		return "out = esc(out, writeTimestamp(" + e + "))"
 	}

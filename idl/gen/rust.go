@@ -818,6 +818,7 @@ func rsStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 	if req := requiredMask(st); req != 0 {
 		fmt.Fprintf(b, "    if seen & %d != %d {\n        return r.refuse(\"missing_field\");\n    }\n", req, req)
 	}
+	emitEqualities(b, st, "rust", false)
 	b.WriteString("    Ok(v)\n}\n")
 }
 
@@ -1084,6 +1085,7 @@ func rsEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 	} else {
 		fmt.Fprintf(b, "\npub fn enc_%s(out: &mut Vec<u8>, v: &%s, depth: i32) {\n", lower(st.Name), st.Name)
 	}
+	emitEqualities(b, st, "rust", true)
 	b.WriteString("    out.push(b'{');\n")
 	if p.flag {
 		b.WriteString("    let mut first = true;\n")

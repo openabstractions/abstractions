@@ -220,11 +220,7 @@ inline void enc_list(std::string& out, const std::vector<T>& v, int depth,
 }
 `
 
-const cppDecodeCommon = `
-inline constexpr int kDepthLimit = @DEPTH@;
-inline constexpr std::size_t kI64Digits = 19;
-
-class Refusal : public std::runtime_error {
+const cppRefusal = `class Refusal : public std::runtime_error {
 public:
     Refusal(const char* word, std::size_t offset)
         : std::runtime_error(std::string("refused: ") + word + " at byte " + std::to_string(offset)),
@@ -232,7 +228,13 @@ public:
           offset(offset) {}
     const char* word;
     std::size_t offset;
-};
+};`
+
+const cppDecodeCommon = `
+inline constexpr int kDepthLimit = @DEPTH@;
+inline constexpr std::size_t kI64Digits = 19;
+
+` + cppRefusal + `
 
 inline void append_rune(std::string& out, std::uint32_t cp) {
     if (cp < 0x80) {
@@ -636,6 +638,9 @@ inline std::string read_timestamp(Reader& r) {
 `
 
 func cppDecoder(b *strings.Builder, s *Definition) {
+	if len(s.Services) > 0 && s.Vocab != nil {
+		fmt.Fprintf(b, "inline void derive(const Reader&, %s&);\n", s.Document)
+	}
 	b.WriteString("\n")
 	for _, st := range s.Structs {
 		fmt.Fprintf(b, "inline %s decode_%s(Reader& r);\n", st.Name, lower(st.Name))
@@ -673,7 +678,7 @@ func cppStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 		fmt.Fprintf(b, "                seen |= %du;\n", 1<<i)
 		fmt.Fprintf(b, "                v.%s = %s;\n            ", f.Ident("cpp"), cppRead(s, f))
 	}
-	if len(st.Fields) == 0 && st.PreservesUnknown() {
+	if len(st.Fields) == 0 {
 		b.WriteString("            if (false) {\n            ")
 	}
 	b.WriteString("} else {\n")
@@ -691,6 +696,10 @@ func cppStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 	b.WriteString("    if (r.at() != '}') r.refuse(\"malformed\");\n    ++r.pos;\n    --r.depth;\n")
 	if req := requiredMask(st); req != 0 {
 		fmt.Fprintf(b, "    if ((seen & %du) != %du) r.refuse(\"missing_field\");\n", req, req)
+	}
+	emitEqualities(b, st, "cpp", false)
+	if len(s.Services) > 0 && st.Name == s.Document && s.Vocab != nil {
+		b.WriteString("derive(r,v);\n")
 	}
 	b.WriteString("    return v;\n}\n")
 }
@@ -822,12 +831,16 @@ inline bool member(const Raw& raw, const std::string& name) {
 `
 
 func genCpp(s *Definition) string {
+	s = serviceTypes(s)
 	var b strings.Builder
 	esc := cppEscMinimal
 	if s.Encoding.EscapeNonASCII() {
 		esc = cppEscASCII
 	}
 	prelude := cppCommon + esc
+	if s.HasEqualities() {
+		prelude += "\n" + cppRefusal + "\n"
+	}
 	if s.PreservesUnknown() {
 		prelude += "\ninline bool extra_fields(std::string&, const std::map<std::string, Raw>&, const std::vector<std::string>&, int, bool);\n"
 	}
@@ -871,6 +884,9 @@ func genCpp(s *Definition) string {
 		strDup = cppStrDupKey
 	}
 	decode := cppDecodeCommon
+	if s.HasEqualities() {
+		decode = strings.Replace(decode, cppRefusal, "", 1)
+	}
 	if s.HasStringMap() {
 		decode += cppStrMapDecode
 	}
@@ -895,6 +911,7 @@ func genCpp(s *Definition) string {
 	}
 	cppDecoder(&b, s)
 	cppProtocol(&b, s)
+	cppService(&b, s)
 	b.WriteString("\n}  // namespace rec\n")
 	return b.String()
 }
@@ -949,6 +966,7 @@ func cppEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 	} else {
 		fmt.Fprintf(b, "\ninline void enc_%s(std::string& out, const %s& v, int depth) {\n", lower(st.Name), st.Name)
 	}
+	emitEqualities(b, st, "cpp", true)
 	b.WriteString("    out += '{';\n")
 	if p.flag {
 		b.WriteString("    bool first = true;\n")
@@ -1049,6 +1067,9 @@ func cppPresent(s *Definition, f Field, e string) string {
 }
 
 func cppValue(s *Definition, f Field, e string) string {
+	if f.Type == "json" && f.Ann["service_raw"] == "true" {
+		return "out += " + e + ";"
+	}
 	if f.Grammar.Named() {
 		return "esc(out, write_timestamp(" + e + "));"
 	}

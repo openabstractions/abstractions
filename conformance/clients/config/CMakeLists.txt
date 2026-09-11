@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.16)
+project(config_consumer LANGUAGES C CXX)
+find_package(abstraction_config CONFIG REQUIRED)
+add_executable(config_consumer client.cpp)
+target_link_libraries(config_consumer PRIVATE abstraction::config_client)
