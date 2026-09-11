@@ -45,7 +45,7 @@ install command and example:
 | to ask this machine what it can do, without naming who answers | [`abstraction-facade`](https://github.com/openabstractions/abstraction-facade) |
 | where a machine keeps its answer to "which store" | [`abstraction-config`](https://github.com/openabstractions/abstraction-config) |
 | a closed catalogue of questions a machine may ask a person | [`abstraction-asks`](https://github.com/openabstractions/abstraction-asks) |
-| to say which programs may hold a machine awake | [`abstraction-rights`](https://github.com/openabstractions/abstraction-rights) |
+| to grant, inspect and revoke application permissions | [`abstraction-rights`](https://github.com/openabstractions/abstraction-rights) |
 | model weights named across stores that disagree about names | [`abstraction-model`](https://github.com/openabstractions/abstraction-model) |
 
 Running implementations built on those contracts:
