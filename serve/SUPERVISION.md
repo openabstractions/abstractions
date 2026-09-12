@@ -31,7 +31,12 @@ runtime defaults to logging and config; job admission requires explicit store
 and logical-owner configuration. `openabstractions status --json` queries the
 baseline capabilities through the resolver under the invoking account.
 
-Disposable installed recovery/removal checks, per-user shortcut activation,
+Per-user Startup invokes `jobdw start --runtime`. The supervisor starts the
+contained runtime before exposing its worker bus. Start checks logging/config
+availability even when a supervisor already answers. This check establishes
+capability availability; it does not establish ownership of the answering host.
+
+Disposable installed recovery/removal checks, immediate activation on installation,
 same-account multi-session ownership and accepted-work recovery after forced
 termination remain pending. The parent containment package currently supports
 Windows 10/Server 2016 and later.
