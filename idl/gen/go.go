@@ -972,6 +972,7 @@ func goStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 		fmt.Fprintf(b, "\tif seen&%d != %d {\n\t\treturn nil, r.refuse(\"missing_field\")\n\t}\n", req, req)
 	}
 	emitEqualities(b, st, "go", false)
+	emitEnumChecks(b, st, "go", false)
 	if len(s.Services) > 0 && st.Name == s.Document && s.Vocab != nil {
 		b.WriteString("if err:=r.derive(v);err!=nil{return nil,err}\n")
 	}
@@ -999,6 +1000,9 @@ func goRead(s *Definition, f Field) string {
 	case "string":
 		if f.Grammar.Named() {
 			return get("r.timestamp()", e+" = x")
+		}
+		if enumAbsent(f) {
+			return get("r.str()", e+" = &x")
 		}
 		return get("r.str()", e+" = x")
 	case "i32":
@@ -1125,6 +1129,7 @@ func Member(v Raw, name string) bool {
 `
 
 func genGo(s *Definition) string {
+	s = enumCarriers(s)
 	if s.NoIPC {
 		return genInterfaceOnly(s, "go")
 	}
@@ -1216,7 +1221,7 @@ func goVocabulary(b *strings.Builder, s *Definition) {
 		for _, m := range en.Members {
 			fmt.Fprintf(b, "\nconst %s%s = %q\n", en.Name, exported(m.Name), m.Name)
 		}
-		fmt.Fprintf(b, "\nconst %sUnknown = %q\n", en.Name, en.Ann["unknown"])
+		fmt.Fprintf(b, "\nconst %s%s = %q\n", en.Name, enumPolicyName(en, "go"), en.Ann["unknown"])
 		for _, key := range en.MemberAnn() {
 			fmt.Fprintf(b, "\nvar %s%s = map[string]string{\n", en.Name, exported(key))
 			for _, m := range en.Members {
@@ -1257,6 +1262,7 @@ func goEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 		fmt.Fprintf(b, "\nfunc enc%s(out []byte, v *%s, depth int) []byte {\n", st.Name, st.Name)
 	}
 	emitEqualities(b, st, "go", true)
+	emitEnumChecks(b, st, "go", true)
 	b.WriteString("\tout = append(out, '{')\n")
 	if p.flag {
 		b.WriteString("\tfirst := true\n")
@@ -1304,6 +1310,9 @@ func goEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 }
 
 func goType(s *Definition, f Field) string {
+	if enumAbsent(f) {
+		return "*string"
+	}
 	switch f.Type {
 	case "binary":
 		return "[]byte"
@@ -1337,7 +1346,7 @@ func goType(s *Definition, f Field) string {
 
 func goPresent(s *Definition, f Field, e string) string {
 	if f.Omit == "absent" {
-		if s.IsStruct(f.Type) || f.Type == "binary" {
+		if s.IsStruct(f.Type) || f.Type == "binary" || enumAbsent(f) {
 			return e + " != nil"
 		}
 		return e + ` != ""`
@@ -1354,6 +1363,9 @@ func goPresent(s *Definition, f Field, e string) string {
 }
 
 func goValue(s *Definition, f Field, e string) string {
+	if enumAbsent(f) {
+		return "out = esc(out, *" + e + ")"
+	}
 	if f.Type == "json" && f.Ann["service_raw"] == "true" {
 		return "out = append(out, " + e + "...)"
 	}

@@ -250,6 +250,9 @@ func docsEnums(b *strings.Builder, s *Definition) {
 		return
 	}
 	heading(b, 2, "enums", "Enumerations", "DEF-T5")
+	if hasEnumFields(s) {
+		b.WriteString("<p>Enum fields carry JSON strings containing exact member names, never numeric IDs. Unknown names are preserved with grant and refused as bad_enum with refuse on read and write. Optional absent fields preserve presence separately from an empty string.</p>\n")
+	}
 	fmt.Fprintf(b, "<p class=\"meta\">An enumeration is a closed vocabulary of wire names, and each one says on its own what a reader does with a member it has never heard of %s.</p>\n", rule("DEF-A5"))
 	for _, en := range s.Enums {
 		fmt.Fprintf(b, "<h3 id=%q>%s</h3>\n", "enum-"+en.Name, mono(en.Name))

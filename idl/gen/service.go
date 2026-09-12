@@ -156,7 +156,7 @@ func (p *parser) validateServices() error {
 					return e
 				}
 				f := m.Result
-				if f.Type != "void" && !scalarTypes[f.Type] && !encodableCollections[f.Type] && !p.def.IsStruct(f.Type) && p.def.Repeated(f.Type) == "" {
+				if f.Type != "void" && !scalarTypes[f.Type] && p.def.Enum(f.Type) == nil && !encodableCollections[f.Type] && !p.def.IsStruct(f.Type) && p.def.Repeated(f.Type) == "" {
 					return fmt.Errorf("unsupported service return type %s", f.Type)
 				}
 				if f.Type != "json" && serviceNestedOpaque(p.def, f.Type, map[string]bool{}) {
@@ -188,7 +188,7 @@ func (p *parser) validateServices() error {
 				if f.Omit != "never" {
 					return fmt.Errorf("arguments must be required")
 				}
-				if !scalarTypes[f.Type] && !encodableCollections[f.Type] && !p.def.IsStruct(f.Type) && p.def.Repeated(f.Type) == "" {
+				if !scalarTypes[f.Type] && p.def.Enum(f.Type) == nil && !encodableCollections[f.Type] && !p.def.IsStruct(f.Type) && p.def.Repeated(f.Type) == "" {
 					return fmt.Errorf("unsupported argument type %s", f.Type)
 				}
 			}

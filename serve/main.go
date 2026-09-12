@@ -1,18 +1,11 @@
-// openabstractions is the one resident program: one binary to build, sign,
-// upgrade and check for a previous version, and one process per capability at
-// run time.
-//
-// `openabstractions serve <capability>` is what a platform starts. It is not
-// one host process — every platform's stated reason for starting a service is a
-// reason against sharing one. Registering it is per platform and is
-// not here: the registration decides when a capability starts and when it idles
-// out, and this program only has to be something a registration can name.
-//
-// It is in the charter rather than in a layer because it belongs to no single
-// layer, and a module that may depend on all four cannot sit inside one of them.
+// openabstractions is the common host command. Runtime composition and platform
+// activation are independent of the capability API; legacy single-capability
+// commands remain available during migration.
 package main
 
 import (
+	"errors"
+	"flag"
 	"fmt"
 	"os"
 
@@ -25,10 +18,8 @@ import (
 	routerservice "github.com/openabstractions/abstraction-router/go/service"
 )
 
-// capabilities is the whole of what this program is. A capability is a name a
-// registration writes and a function that holds an endpoint until it is
-// stopped; nothing else about it is this program's business.
 var capabilities = map[string]func([]string) error{
+	"runtime":   serveRuntime,
 	"asks":      asks.Serve,
 	"rights":    rights.Serve,
 	"router":    router.Serve,
@@ -39,6 +30,10 @@ var capabilities = map[string]func([]string) error{
 }
 
 func main() {
+	if len(os.Args) == 2 && (os.Args[1] == "--help" || os.Args[1] == "-h") {
+		usage()
+		return
+	}
 	if len(os.Args) < 3 || os.Args[1] != "serve" {
 		usage()
 		os.Exit(2)
@@ -50,6 +45,9 @@ func main() {
 		os.Exit(2)
 	}
 	if err := run(os.Args[3:]); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return
+		}
 		fmt.Fprintln(os.Stderr, "openabstractions:", err)
 		os.Exit(1)
 	}
@@ -59,6 +57,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `openabstractions — the resident half of each layer
 
   openabstractions serve asks     answers questions a person has to answer
+  openabstractions serve runtime  hosts resolution, logging and config together
   openabstractions serve rights   holds what was granted, and the awake hold
   openabstractions serve router   reports the hosts on this machine
   openabstractions serve jobd     finishes transfers nobody is watching
@@ -66,9 +65,9 @@ func usage() {
   openabstractions serve config   answers configuration through the service
   openabstractions serve router-v1  serves typed model discovery and route requests
 
-One capability per process. Each takes the flags its own service takes;
---endpoint is where it listens, and every one of them defaults to the fixed
-per-user name an installer can write into a registration.
+Runtime hosts a catalogue and its selected providers in one process. The other
+verbs remain standalone hosts. Each verb accepts --help for its own options.
+Starting a foreground host does not install or register it with the OS.
 
 The CLIs are elsewhere and unchanged: dl, jobctl, asks, rights, router.`)
 }

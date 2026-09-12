@@ -810,3 +810,32 @@ A required binary value is always emitted, including empty. Required-field
 absence remains `missing_field`. Binary is not a replacement for opaque JSON:
 bytes have no internal document semantics. Binary collections are not yet in
 the supported profile. Rust/JavaScript binary generation fails before output.
+
+
+### Enum fields
+
+A declared enum may be used directly as a required or optional record field,
+including nested records, repeated records, service arguments and results. The
+schema and API reference retain the enum's name. Codecs use string carriers:
+Go `string`, C++ `std::string`, Python `str`, JavaScript string and Rust `String`.
+JSON contains the exact member name, never the numeric member ID.
+
+`unknown="refuse"` rejects unlisted names as `bad_enum` on decoding and encoding;
+declare that refusal at the structure stage. `unknown="grant"` preserves any
+string, including empty and future names. Non-string JSON remains `wrong_type`;
+missing required fields remain `missing_field`. Validation follows required
+presence at each record boundary. Encoding failures use the same language
+mechanism and zero offsets as integer equality constraints.
+
+`omit="absent"` retains absence separately from an empty string, using Go
+`*string`, C++ `std::optional<std::string>`, Python `None`, JavaScript `null`,
+and Rust `Option<String>`. An explicitly supplied JSON null is refused.
+`omit="zero"` omits the empty carrier on output; an explicitly supplied name on
+input is still validated. Enum collections themselves remain outside the profile;
+use repeated records containing enum fields. Selections must include each enum
+referenced by their selected records or services.
+
+Existing vocabulary constants retain their names and bytes. When a Go enum
+member owns the generated `EnumUnknown` name (for example member `unknown`),
+policy metadata uses `EnumUnknownPolicy`, appending `Policy` until no member
+collides. The member constant retains its exact wire name.

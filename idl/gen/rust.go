@@ -819,10 +819,14 @@ func rsStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 		fmt.Fprintf(b, "    if seen & %d != %d {\n        return r.refuse(\"missing_field\");\n    }\n", req, req)
 	}
 	emitEqualities(b, st, "rust", false)
+	emitEnumChecks(b, st, "rust", false)
 	b.WriteString("    Ok(v)\n}\n")
 }
 
 func rsRead(s *Definition, f Field) string {
+	if enumAbsent(f) {
+		return "Some(r.string()?)"
+	}
 	switch f.Type {
 	case "string":
 		if f.Grammar.Named() {
@@ -959,6 +963,7 @@ pub fn member(raw: &[u8], name: &str) -> bool {
 `
 
 func genRust(s *Definition) string {
+	s = enumCarriers(s)
 	var b strings.Builder
 	esc := rsEscMinimal
 	if s.Encoding.EscapeNonASCII() {
@@ -1041,7 +1046,7 @@ func rsVocabulary(b *strings.Builder, s *Definition) {
 			fmt.Fprintf(b, "%q", m.Name)
 		}
 		b.WriteString("];\n")
-		fmt.Fprintf(b, "pub const %s_UNKNOWN: &str = %q;\n", upper(en.Name), en.Ann["unknown"])
+		fmt.Fprintf(b, "pub const %s_%s: &str = %q;\n", upper(en.Name), enumPolicyName(en, "rust"), en.Ann["unknown"])
 		for _, key := range en.MemberAnn() {
 			var rows []Member
 			for _, m := range en.Members {
@@ -1086,6 +1091,7 @@ func rsEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 		fmt.Fprintf(b, "\npub fn enc_%s(out: &mut Vec<u8>, v: &%s, depth: i32) {\n", lower(st.Name), st.Name)
 	}
 	emitEqualities(b, st, "rust", true)
+	emitEnumChecks(b, st, "rust", true)
 	b.WriteString("    out.push(b'{');\n")
 	if p.flag {
 		b.WriteString("    let mut first = true;\n")
@@ -1133,6 +1139,9 @@ func rsEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 }
 
 func rsType(s *Definition, f Field) string {
+	if enumAbsent(f) {
+		return "Option<String>"
+	}
 	switch f.Type {
 	case "string":
 		return "String"
@@ -1163,7 +1172,7 @@ func rsType(s *Definition, f Field) string {
 }
 
 func rsPresent(s *Definition, f Field, e string) string {
-	if f.Omit == "absent" && s.IsStruct(f.Type) {
+	if f.Omit == "absent" && (s.IsStruct(f.Type) || enumAbsent(f)) {
 		return e + ".is_some()"
 	}
 	switch f.Type {
@@ -1176,6 +1185,9 @@ func rsPresent(s *Definition, f Field, e string) string {
 }
 
 func rsValue(s *Definition, f Field, e string) string {
+	if enumAbsent(f) {
+		return "esc(out, " + e + ".as_ref().unwrap());"
+	}
 	if f.Grammar.Named() {
 		return "esc(out, &write_timestamp(&" + e + "));"
 	}

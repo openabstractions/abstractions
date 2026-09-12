@@ -739,7 +739,7 @@ func (p *parser) validate() error {
 			if isCollection(f.Type) && f.Omit == "absent" {
 				return fmt.Errorf("line %d: %s is a collection omitted when absent, and an absent collection and an empty one are one thing on the wire; a collection says omit = \"zero\"", f.Line, f.Name)
 			}
-			if scalarTypes[f.Type] || encodableCollections[f.Type] {
+			if scalarTypes[f.Type] || p.def.Enum(f.Type) != nil || encodableCollections[f.Type] {
 				continue
 			}
 			if f.Type == "list<json>" {

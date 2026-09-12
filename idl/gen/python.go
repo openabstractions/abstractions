@@ -638,6 +638,7 @@ func pyStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 		fmt.Fprintf(b, "    if seen & %d != %d:\n        raise r.refuse(\"missing_field\")\n", req, req)
 	}
 	emitEqualities(b, st, "python", false)
+	emitEnumChecks(b, st, "python", false)
 	if len(s.Services) > 0 && st.Name == s.Document && s.Vocab != nil {
 		b.WriteString("    _derive(r, v)\n")
 	}
@@ -772,6 +773,7 @@ def member(raw, name):
 `
 
 func genPy(s *Definition) string {
+	s = enumCarriers(s)
 	if s.NoIPC {
 		return genInterfaceOnly(s, "python")
 	}
@@ -857,7 +859,7 @@ func pyVocabulary(b *strings.Builder, s *Definition) {
 			fmt.Fprintf(b, "%q", m.Name)
 		}
 		b.WriteString("]\n")
-		fmt.Fprintf(b, "%s_UNKNOWN = %q\n", upper(en.Name), en.Ann["unknown"])
+		fmt.Fprintf(b, "%s_%s = %q\n", upper(en.Name), enumPolicyName(en, "python"), en.Ann["unknown"])
 		for _, key := range en.MemberAnn() {
 			fmt.Fprintf(b, "%s_%s = {\n", upper(en.Name), upper(key))
 			for _, m := range en.Members {
@@ -897,6 +899,7 @@ func pyEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 		fmt.Fprintf(b, "\n\ndef enc_%s(out, v, depth):\n", lower(st.Name))
 	}
 	emitEqualities(b, st, "python", true)
+	emitEnumChecks(b, st, "python", true)
 	b.WriteString("    out += b\"{\"\n")
 	if p.flag {
 		b.WriteString("    first = True\n")
@@ -941,7 +944,7 @@ func pyEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 }
 
 func pyDefault(s *Definition, f Field) string {
-	if f.Omit == "absent" && (s.IsStruct(f.Type) || f.Type == "binary") {
+	if f.Omit == "absent" && (s.IsStruct(f.Type) || f.Type == "binary" || enumAbsent(f)) {
 		return "None"
 	}
 	switch f.Type {
@@ -965,7 +968,7 @@ func pyDefault(s *Definition, f Field) string {
 }
 
 func pyPresent(s *Definition, f Field, e string) string {
-	if f.Omit == "absent" && (s.IsStruct(f.Type) || f.Type == "binary") {
+	if f.Omit == "absent" && (s.IsStruct(f.Type) || f.Type == "binary" || enumAbsent(f)) {
 		return e + " is not None"
 	}
 	switch f.Type {

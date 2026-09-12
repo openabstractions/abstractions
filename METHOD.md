@@ -239,10 +239,10 @@ So the constraint is:
 
 > **Define the record and the protocol. Let each language bind them its own way.**
 
-Which written form of the record is normative is open: the contract pages'
-tagged prose, which the scenarios cite; `job.thrift`, published and checked
-against nothing; or a schema that generated passing clients. The decision is
-the owner's and precedes anything built on a schema.
+Each abstraction's Thrift definition is the common source of its vocabulary,
+types, errors and shared API. Behavioral contracts specify the guarantees and
+state transitions; independent scenarios test them. A limitation in the
+definition or generator does not override an already agreed behavioral rule.
 
 Which is the same conclusion as §2, arrived at from the other side. The audit thesis says
 the valuable thing at a boundary is the record of what crossed. The portability evidence
@@ -350,12 +350,12 @@ Added 2026-09-08. A specification is four documents, and a rule lives in
 exactly one of them. A rule found in two drifts; a rule found in none is what
 `openabstractions-flat/abstraction-job/README.md` had been carrying under the name of a door.
 
-| the rule is about | jurisdiction | the artefact, today |
+| the rule is about | jurisdiction | the artefact |
 |---|---|---|
-| fields, types, identifiers, structural constraints | schema | the record table in `openabstractions-flat/abstraction-job/README.md` § The record, enforced by each language's decoder; `openabstractions-flat/abstraction-job/job.thrift` is a sketch that generates nothing. **Prose, not machine-readable** - the open question in § 6 stands |
-| operations, state transitions, cancellation, ownership, retries | behavioural specification | `openabstractions-flat/abstraction-job/SPEC.md` |
-| framing, discovery, authentication, reconnection | transport binding | the file layout in `openabstractions-flat/abstraction-job/README.md` § Where the files are and `openabstractions-flat/abstraction-cas/README.md`; the socket in `openabstractions-flat/abstraction-job/go/wire.go`, shipped to nobody |
-| concrete examples and regressions | conformance corpus | `openabstractions-flat/abstraction-download/testdata/scenarios/`, `openabstractions-flat/abstraction-download/testdata/verdicts/` |
+| fields, types, identifiers, structural constraints | definition | Each abstraction's Thrift definition; generated language representations and API reference derive from it |
+| operations, state transitions, cancellation, ownership, retries | behavioural specification | The abstraction's CONTRACT.md and its tagged behavioral rules |
+| framing, discovery, authentication, reconnection | transport binding | Shared transport specifications and the capability's binding contract; service-owned file layout is not the client transport |
+| concrete examples and regressions | conformance corpus | Independently authored scenarios and fixtures, plus service-client and installed-lifecycle checks for the claims they cover |
 
 The README is the door - install it, call it, one example - and links into
 the four. A tagged rule on the door is a rule in the wrong jurisdiction; the
@@ -381,9 +381,11 @@ language.** The cost stops being a product and becomes a sum.
 
 **Three constraints decide the design, and they are not negotiable.**
 
-**Generated code imports nothing.** A runtime library an adopter must link is a
-dependency we hand to every one of them forever. That single test disqualified
-Thrift, Protobuf, Cap'n Proto, FlatBuffers and Smithy — measured, not assumed.
+**Generated vocabulary is usable without a service runtime.** Direct language
+interfaces and codecs do not force the adopter to run a service or import a
+provider. Optional IPC clients take a transport; that transport can use our
+shared C-compatible client library or a native implementation. Sharing platform
+I/O is explicitly allowed and does not make a provider dependency part of the API.
 
 **Generated code reads as native.** `Result` in Rust, an exception in Java, a
 returned error in Go; the naming, the namespace and the import a local would
@@ -397,8 +399,10 @@ cites where it came from.** A construct with no ancestor is a claim that needs
 defending. `idl/LINEAGE.md` carries that, and it is part of the contract rather
 than documentation of it — the first thing a stranger reads.
 
-**The engine is never generated. Only the vocabulary**: the record, the wire,
-the status and refusal lists, the capability words.
+**The provider engine is never generated.** The definition generates vocabulary,
+interfaces and API documentation, and optionally IPC clients, codecs and
+dispatchers. Local primitives generate direct interfaces without inventing a
+daemon. Native service behavior remains the provider's implementation.
 
 And what this does *not* buy: **generated implementations agreeing is not
 evidence and never claims to be.** It is descent made honest. The evidence
@@ -485,16 +489,23 @@ run twice over one store.
 
 | dependency | may a layer require it? | why |
 |---|---|---|
-| a library the adopter links or bundles | **yes** | no lifecycle. It is present because the adopter is present |
-| a helper process the library can start itself, user-scope | **yes** | recoverable without privilege; this is what `jobd` is |
+| a library the adopter links or bundles | **yes** | An API/client dependency, or an explicitly supplied local wrapper as an adoption bridge |
+| a helper process the library can start itself, user-scope | **yes** | A way to make the shared service runtime available without administrative installation |
 | a system service needing admin | **only as an upgrade** | not installable on a locked-down machine, and the adopter cannot fix that |
-| a server on another machine | **no** | it cannot be carried at all. Build it as a service that adopts these abstractions |
+| a server on another machine | **supported, availability explicit** | Remote services are part of the architecture; a particular unreachable server cannot be a hidden prerequisite for every adopter |
 
-Prefer the library. Require a daemon only for what a library cannot do.
+The architecture is service-first, including remote services. Local wrappers
+allow adoption without replacing an existing engine; they do not determine the
+system's architecture. Provider selection must satisfy explicit operation
+requirements, and service absence must not silently introduce local execution.
 
-**A capability that varies by environment must degrade, because it cannot be
-carried — nobody can bundle a NAS.** That is why *presence is the
-configuration* applies to `download`.
+An unavailable capability is reported through the API. A different available
+provider may qualify, but an accepted guarantee is never silently weakened.
+Personal integrations such as NAS or BITS are demonstrations of the general
+contract, not the source of provider order or deployment requirements.
+Implementing them can expose defects in the abstract concepts and require the
+contract to evolve. Capture that real case, separate shared meaning from
+adapter-specific behavior, and test the correction across affected bindings.
 
 And a layer is admitted the way an interface is changed (§5): on a real case
 that forced it — an adopter, or our own products using it — never on an

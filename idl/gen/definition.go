@@ -31,14 +31,15 @@ type Typedef struct {
 }
 
 type Field struct {
-	ID      int
-	Type    string
-	Alias   string
-	Name    string
-	Omit    string
-	Grammar Grammar
-	Ann     map[string]string
-	Line    int
+	EnumType *Enum // backend carrier metadata; never changes the schema
+	ID       int
+	Type     string
+	Alias    string
+	Name     string
+	Omit     string
+	Grammar  Grammar
+	Ann      map[string]string
+	Line     int
 }
 
 type Struct struct {

@@ -698,6 +698,7 @@ func cppStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 		fmt.Fprintf(b, "    if ((seen & %du) != %du) r.refuse(\"missing_field\");\n", req, req)
 	}
 	emitEqualities(b, st, "cpp", false)
+	emitEnumChecks(b, st, "cpp", false)
 	if len(s.Services) > 0 && st.Name == s.Document && s.Vocab != nil {
 		b.WriteString("derive(r,v);\n")
 	}
@@ -833,6 +834,7 @@ inline bool member(const Raw& raw, const std::string& name) {
 `
 
 func genCpp(s *Definition) string {
+	s = enumCarriers(s)
 	if s.NoIPC {
 		return genInterfaceOnly(s, "cpp")
 	}
@@ -843,7 +845,7 @@ func genCpp(s *Definition) string {
 		esc = cppEscASCII
 	}
 	prelude := cppCommon + esc
-	if s.HasEqualities() {
+	if s.HasEqualities() || hasEnumFields(s) {
 		prelude += "\n" + cppRefusal + "\n"
 	}
 	if s.PreservesUnknown() {
@@ -892,7 +894,7 @@ func genCpp(s *Definition) string {
 		strDup = cppStrDupKey
 	}
 	decode := cppDecodeCommon
-	if s.HasEqualities() {
+	if s.HasEqualities() || hasEnumFields(s) {
 		decode = strings.Replace(decode, cppRefusal, "", 1)
 	}
 	if s.HasStringMap() {
@@ -937,7 +939,7 @@ func cppVocabulary(b *strings.Builder, s *Definition) {
 			fmt.Fprintf(b, "%q", m.Name)
 		}
 		b.WriteString("};\n")
-		fmt.Fprintf(b, "inline const std::string k%sUnknown = %q;\n", en.Name, en.Ann["unknown"])
+		fmt.Fprintf(b, "inline const std::string k%s%s = %q;\n", en.Name, enumPolicyName(en, "cpp"), en.Ann["unknown"])
 		for _, key := range en.MemberAnn() {
 			fmt.Fprintf(b, "inline const std::map<std::string, std::string> k%s%s = {\n", en.Name, exported(key))
 			for _, m := range en.Members {
@@ -978,6 +980,7 @@ func cppEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 		fmt.Fprintf(b, "\ninline void enc_%s(std::string& out, const %s& v, int depth) {\n", lower(st.Name), st.Name)
 	}
 	emitEqualities(b, st, "cpp", true)
+	emitEnumChecks(b, st, "cpp", true)
 	b.WriteString("    out += '{';\n")
 	if p.flag {
 		b.WriteString("    bool first = true;\n")
@@ -1025,6 +1028,9 @@ func cppEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 }
 
 func cppType(s *Definition, f Field) string {
+	if enumAbsent(f) {
+		return "std::optional<std::string>"
+	}
 	switch f.Type {
 	case "binary":
 		if f.Omit == "absent" {
@@ -1070,7 +1076,7 @@ func cppInit(f Field) string {
 }
 
 func cppPresent(s *Definition, f Field, e string) string {
-	if f.Omit == "absent" && (s.IsStruct(f.Type) || f.Type == "binary") {
+	if f.Omit == "absent" && (s.IsStruct(f.Type) || f.Type == "binary" || enumAbsent(f)) {
 		return e + ".has_value()"
 	}
 	switch f.Type {
@@ -1083,6 +1089,9 @@ func cppPresent(s *Definition, f Field, e string) string {
 }
 
 func cppValue(s *Definition, f Field, e string) string {
+	if enumAbsent(f) {
+		return "esc(out, *" + e + ");"
+	}
 	if f.Type == "json" && f.Ann["service_raw"] == "true" {
 		return "out += " + e + ";"
 	}

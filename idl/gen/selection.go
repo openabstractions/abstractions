@@ -54,7 +54,7 @@ func needs(s *Definition, name string) []string {
 	}
 	if st := s.Struct(name); st != nil {
 		for _, f := range st.Fields {
-			if s.IsStruct(f.Type) {
+			if s.IsStruct(f.Type) || s.Enum(f.Type) != nil {
 				add(f.Type)
 			}
 			add(s.Repeated(f.Type))
@@ -78,13 +78,13 @@ func needs(s *Definition, name string) []string {
 		if svc.Name == name {
 			for _, m := range svc.Methods {
 				if !m.Oneway {
-					if s.IsStruct(m.Result.Type) {
+					if s.IsStruct(m.Result.Type) || s.Enum(m.Result.Type) != nil {
 						add(m.Result.Type)
 					}
 					add(s.Repeated(m.Result.Type))
 				}
 				for _, f := range m.Args {
-					if s.IsStruct(f.Type) {
+					if s.IsStruct(f.Type) || s.Enum(f.Type) != nil {
 						add(f.Type)
 					}
 					add(s.Repeated(f.Type))

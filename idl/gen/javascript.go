@@ -626,11 +626,12 @@ func jsStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 		fmt.Fprintf(b, "  if ((seen & %d) !== %d) throw r.refuse(\"missing_field\");\n", req, req)
 	}
 	emitEqualities(b, st, "javascript", false)
+	emitEnumChecks(b, st, "javascript", false)
 	b.WriteString("  return v;\n}\n")
 }
 
 func jsDefault(s *Definition, f Field) string {
-	if f.Omit == "absent" && s.IsStruct(f.Type) {
+	if f.Omit == "absent" && (s.IsStruct(f.Type) || enumAbsent(f)) {
 		return "null"
 	}
 	switch f.Type {
@@ -779,6 +780,7 @@ export function member(raw, name) {
 `
 
 func genJS(s *Definition) string {
+	s = enumCarriers(s)
 	var b strings.Builder
 	esc := jsEscMinimal
 	if s.Encoding.EscapeNonASCII() {
@@ -845,7 +847,7 @@ func jsVocabulary(b *strings.Builder, s *Definition) {
 			fmt.Fprintf(b, "%q", m.Name)
 		}
 		b.WriteString("];\n")
-		fmt.Fprintf(b, "export const %sUnknown = %q;\n", en.Name, en.Ann["unknown"])
+		fmt.Fprintf(b, "export const %s%s = %q;\n", en.Name, enumPolicyName(en, "javascript"), en.Ann["unknown"])
 		for _, key := range en.MemberAnn() {
 			fmt.Fprintf(b, "export const %s%s = {\n", en.Name, exported(key))
 			for _, m := range en.Members {
@@ -885,6 +887,7 @@ func jsEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 		fmt.Fprintf(b, "\nexport function enc_%s(out, v, depth) {\n", lower(st.Name))
 	}
 	emitEqualities(b, st, "javascript", true)
+	emitEnumChecks(b, st, "javascript", true)
 	b.WriteString("  out.byte(0x7b);\n")
 	if p.flag {
 		b.WriteString("  let first = true;\n")
@@ -932,7 +935,7 @@ func jsEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 }
 
 func jsPresent(s *Definition, f Field, e string) string {
-	if f.Omit == "absent" && s.IsStruct(f.Type) {
+	if f.Omit == "absent" && (s.IsStruct(f.Type) || enumAbsent(f)) {
 		return e + " !== undefined && " + e + " !== null"
 	}
 	switch f.Type {
