@@ -1,5 +1,5 @@
-# MATRIX  produced by scripts/matrix.sh on 2026-09-12, commit 711bf52
-# measures  openabstractions-flat/abstraction-asks@67bc91e openabstractions-flat/abstraction-cas@f9cb388 openabstractions-flat/abstraction-config@e14c74d openabstractions-flat/abstraction-download@d809e96 openabstractions-flat/abstraction-facade@75832f0 openabstractions-flat/abstraction-identity@dc63e2b openabstractions-flat/abstraction-job@7cfad00 openabstractions-flat/abstraction-logging@238137d openabstractions-flat/abstraction-model@00e86f5 openabstractions-flat/abstraction-rights@2951974 openabstractions-flat/abstraction-router@d79374d openabstractions-flat/abstraction-storage@27bc58b openabstractions-flat/abstraction-watch@27bd982
+# MATRIX  produced by scripts/matrix.sh on 2026-09-12, commit f9452b8
+# measures  openabstractions-flat/abstraction-asks@67bc91e openabstractions-flat/abstraction-cas@cf455b4 openabstractions-flat/abstraction-config@d93ae75 openabstractions-flat/abstraction-download@c075c85 openabstractions-flat/abstraction-facade@75832f0 openabstractions-flat/abstraction-identity@f02cf2a openabstractions-flat/abstraction-job@7cfad00 openabstractions-flat/abstraction-logging@e1ffdaf openabstractions-flat/abstraction-model@00e86f5 openabstractions-flat/abstraction-rights@2951974 openabstractions-flat/abstraction-router@d79374d openabstractions-flat/abstraction-storage@27bc58b openabstractions-flat/abstraction-watch@27bd982
 # regenerate  sh scripts/matrix.sh   (--check refuses a grid the evidence no longer produces)
 # scope     this tree only. It reads what is committed here and the transcripts
 #           in docs/results/; it runs no implementation and no harness. Each
@@ -26,65 +26,68 @@ or test evidence):
 Legacy whole-layer verification:
 layer                go                        python                        cpp                        rust                        javascript
 -------------------- -----------------------------  -----------------------------  -----------------------------  -----------------------------  -----------------------------
-abstraction-asks     UNPROVEN                       —                        —                        —                        —
-abstraction-cas      PASS go1.26.5                  PASS py3.12                    PASS Apple Clang darwin/arm64  —                        —
-abstraction-config   UNPROVEN                       UNPROVEN                       UNPROVEN                       —                        —
-abstraction-download UNPROVEN                       UNPROVEN                       UNPROVEN                       —                        —
-abstraction-facade   UNPROVEN                       —                        UNPROVEN                       —                        —
+abstraction-asks     PASS go1.26.5                  —                        —                        —                        —
+abstraction-cas      PASS go1.26.5                  PASS py3.12                    PASS g++                       —                        —
+abstraction-config   PASS go1.26.5                  PASS py3.12                    UNPROVEN                       —                        —
+abstraction-download PASS go1.26.5                  PASS py3.12                    PASS msvc                      —                        —
+abstraction-facade   PASS go1.26.5                  —                        UNPROVEN                       —                        —
 abstraction-identity UNPROVEN                       —                        UNPROVEN                       —                        —
-abstraction-job      UNPROVEN                       UNPROVEN                       UNPROVEN                       —                        —
-abstraction-logging  UNPROVEN                       —                        UNPROVEN                       —                        —
-abstraction-model    UNPROVEN                       UNPROVEN                       —                        —                        —
-abstraction-rights   UNPROVEN                       —                        —                        —                        —
-abstraction-router   UNPROVEN                       —                        UNPROVEN                       —                        —
-abstraction-storage  UNPROVEN                       —                        UNPROVEN                       —                        —
+abstraction-job      UNPROVEN                       PASS py3.12                    PASS g++                       —                        —
+abstraction-logging  PASS go1.26.5                  —                        UNPROVEN                       —                        —
+abstraction-model    PASS go1.26.5                  PASS py3.12                    —                        —                        —
+abstraction-rights   PASS go1.26.5                  —                        —                        —                        —
+abstraction-router   PASS go1.26.5                  —                        UNPROVEN                       —                        —
+abstraction-storage  PASS go1.26.5                  —                        PASS g++                       —                        —
 abstraction-watch    PASS go1.26.5                  PASS py3.12                    PASS Apple Clang darwin/arm64  —                        —
 
-65 cells over 13 layers: 6 PASS, 0 FAIL, 23 UNPROVEN, 0 ABSENT, 36 with no implementation.
-29 implementations exist and 23 of them carry no verdict attributed to this tree.
+65 cells over 13 layers: 22 PASS, 0 FAIL, 7 UNPROVEN, 0 ABSENT, 36 with no implementation.
+29 implementations exist and 7 of them carry no verdict attributed to this tree.
 * Documented platform limitation: the current macOS IPC provider cannot supply the process proof required by these service tests. These cells remain counted as FAIL.
 
 CAPABILITY COVERAGE
 API = handwritten public API; Interface = generated API; Types = record codec only. Tested = recorded layer checks; Service, Native and Adapter = scoped runtime evidence. Green availability is not a runtime PASS. Expand a cell for platforms and evidence.
-asks | go | API
-  Handwritten public API source available; not a generated interface or runtime test PASS.
-  Current layer verification pending.
-cas | go | API, Tested
+asks | go | API, Tested
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Recorded layer checks: PASS. go1.26.5; not a native-provider classification.
-cas | python | API, Tested
-  Handwritten public API source available; not a generated interface or runtime test PASS.
-  Recorded layer checks: PASS. py3.12; not a native-provider classification.
-cas | cpp | API, Tested
-  Handwritten public API source available; not a generated interface or runtime test PASS.
-  Recorded layer checks: PASS. Apple Clang darwin/arm64; not a native-provider classification.
-config | go | API, Interface
+cas | go | API, Interface, Tested
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
-  Current layer verification pending.
-config | python | API
+  Recorded layer checks: PASS. go1.26.5; not a native-provider classification.
+cas | python | API, Interface, Tested
   Handwritten public API source available; not a generated interface or runtime test PASS.
-  Current layer verification pending.
+  Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
+  Recorded layer checks: PASS. py3.12; not a native-provider classification.
+cas | cpp | API, Interface, Tested
+  Handwritten public API source available; not a generated interface or runtime test PASS.
+  Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
+  Recorded layer checks: PASS. g++; not a native-provider classification.
+config | go | API, Interface, Tested
+  Handwritten public API source available; not a generated interface or runtime test PASS.
+  Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
+  Recorded layer checks: PASS. go1.26.5; not a native-provider classification.
+config | python | API, Tested
+  Handwritten public API source available; not a generated interface or runtime test PASS.
+  Recorded layer checks: PASS. py3.12; not a native-provider classification.
 config | cpp | API, Interface, Service
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
   Current layer verification pending.
   Service client: PASS. windows/amd64; host: go; config-cpp-windows-service (PASS)
-download | go | API, Types
+download | go | API, Types, Tested
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Generated record types and codec only; no generated service interface established.
-  Current layer verification pending.
-download | python | API, Types
+  Recorded layer checks: PASS. go1.26.5; not a native-provider classification.
+download | python | API, Types, Tested
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Generated record types and codec only; no generated service interface established.
-  Current layer verification pending.
-download | cpp | API, Types
+  Recorded layer checks: PASS. py3.12; not a native-provider classification.
+download | cpp | API, Types, Tested
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Generated record types and codec only; no generated service interface established.
-  Current layer verification pending.
-facade | go | API
+  Recorded layer checks: PASS. msvc; not a native-provider classification.
+facade | go | API, Tested
   Handwritten public API source available; not a generated interface or runtime test PASS.
-  Current layer verification pending.
+  Recorded layer checks: PASS. go1.26.5; not a native-provider classification.
 facade | cpp | API, Service
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Current layer verification pending.
@@ -99,46 +102,46 @@ job | go | API, Types
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Generated record types and codec only; no generated service interface established.
   Current layer verification pending.
-job | python | API
+job | python | API, Tested
   Handwritten public API source available; not a generated interface or runtime test PASS.
-  Current layer verification pending.
-job | cpp | API
+  Recorded layer checks: PASS. py3.12; not a native-provider classification.
+job | cpp | API, Tested
   Handwritten public API source available; not a generated interface or runtime test PASS.
-  Current layer verification pending.
-logging | go | API, Interface, Service
+  Recorded layer checks: PASS. g++; not a native-provider classification.
+logging | go | API, Interface, Tested, Service
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
-  Current layer verification pending.
+  Recorded layer checks: PASS. go1.26.5; not a native-provider classification.
   Service client: PASS. windows/amd64; host: go; logging-go-windows-service (PASS)
 logging | cpp | API, Interface, Service
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
   Current layer verification pending.
   Service client: PASS. windows/amd64; host: go; logging-cpp-windows-service (PASS)
-model | go | API
+model | go | API, Tested
   Handwritten public API source available; not a generated interface or runtime test PASS.
-  Current layer verification pending.
-model | python | API
+  Recorded layer checks: PASS. go1.26.5; not a native-provider classification.
+model | python | API, Tested
   Handwritten public API source available; not a generated interface or runtime test PASS.
-  Current layer verification pending.
-rights | go | API
+  Recorded layer checks: PASS. py3.12; not a native-provider classification.
+rights | go | API, Tested
   Handwritten public API source available; not a generated interface or runtime test PASS.
-  Current layer verification pending.
-router | go | API, Interface
+  Recorded layer checks: PASS. go1.26.5; not a native-provider classification.
+router | go | API, Interface, Tested
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
-  Current layer verification pending.
+  Recorded layer checks: PASS. go1.26.5; not a native-provider classification.
 router | cpp | API, Interface, Service
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
   Current layer verification pending.
   Service client: PASS. windows/amd64; host: go; router-cpp-windows-service (PASS)
-storage | go | API
+storage | go | API, Tested
   Handwritten public API source available; not a generated interface or runtime test PASS.
-  Current layer verification pending.
-storage | cpp | API
+  Recorded layer checks: PASS. go1.26.5; not a native-provider classification.
+storage | cpp | API, Tested
   Handwritten public API source available; not a generated interface or runtime test PASS.
-  Current layer verification pending.
+  Recorded layer checks: PASS. g++; not a native-provider classification.
 watch | go | API, Tested
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Recorded layer checks: PASS. go1.26.5; not a native-provider classification.
@@ -150,75 +153,75 @@ watch | cpp | API, Tested
   Recorded layer checks: PASS. Apple Clang darwin/arm64; not a native-provider classification.
 Shared IPC runtime source: reusable C ABI client binding, C++ wrapper, native transport; source availability is separate from full identity provider conformance.
 SERVICE CLIENTS / focused checks (separate from capability conformance; no provider verdict is replaced):
-  config-cpp-windows-service | openabstractions-flat/abstraction-config | cpp | client | windows/amd64 | PASS | Installed C++ Config.Read -> generated protocol -> shared IPC -> central Go host -> same-user configuration provider; caller override/provenance/live reload/value-only stamp, malformed or missing provider source, typed request refusal, absence errors and no client-local state | python: Python 3.12.14; go: go version go1.26.5 windows/amd64; cmake: cmake version 4.3.1-msvc1
+  config-cpp-windows-service | openabstractions-flat/abstraction-config | cpp | client | windows/amd64 | PASS | Installed C++ Config.Read -> generated protocol -> shared IPC -> central Go host -> same-user configuration provider; caller override/provenance/live reload/value-only stamp, malformed or missing provider source, typed request refusal, absence errors and no client-local state | python: Python 3.12.10; go: go version go1.26.5 windows/amd64; cmake: cmake version 4.3.1-msvc1
   facade-cpp-windows-services | openabstractions-flat/abstraction-facade | cpp | client | windows/amd64 | PASS | Installed C++ facade Log/Config.Read/Router.Models/Hosts/Pick reach three production Go services and providers; service-owned configuration reload/provenance, verified logging identity and persistence, empty router inventory versus typed negative decisions/refusal, caller audit, absence errors and no client-local state | python: Python 3.12.14; go: go version go1.26.5 windows/amd64; cmake: cmake version 4.3.1-msvc1
-  logging-cpp-windows-service | openabstractions-flat/abstraction-logging | cpp | client | windows/amd64 | PASS | cpp facade -> generated client -> shared named-pipe IPC -> identity-checked Go logging service -> service-owned JSONL sink; multiline Unicode, zero level and empty attrs preserved; verified peer; record survives client exit; schema=2 refused; absent service errors; no client-local storage | python: Python 3.12.14; go: go version go1.26.5 windows/amd64; cmake: cmake version 4.3.1-msvc1
-  logging-go-windows-service | openabstractions-flat/abstraction-logging | go | client | windows/amd64 | PASS | go facade -> generated client -> shared named-pipe IPC -> identity-checked Go logging service -> service-owned JSONL sink; multiline Unicode, zero level and empty attrs preserved; verified peer; record survives client exit; schema=2 refused; absent service errors; no client-local storage | python: Python 3.12.14; go: go version go1.26.5 windows/amd64
+  logging-cpp-windows-service | openabstractions-flat/abstraction-logging | cpp | client | windows/amd64 | PASS | cpp facade -> generated client -> shared named-pipe IPC -> identity-checked Go logging service -> service-owned JSONL sink; multiline Unicode, zero level and empty attrs preserved; verified peer; record survives client exit; schema=2 refused; absent service errors; no client-local storage | python: Python 3.12.10; go: go version go1.26.5 windows/amd64; cmake: cmake version 4.3.1-msvc1
+  logging-go-windows-service | openabstractions-flat/abstraction-logging | go | client | windows/amd64 | PASS | go facade -> generated client -> shared named-pipe IPC -> identity-checked Go logging service -> service-owned JSONL sink; multiline Unicode, zero level and empty attrs preserved; verified peer; record survives client exit; schema=2 refused; absent service errors; no client-local storage | python: Python 3.12.10; go: go version go1.26.5 windows/amd64
   router-cpp-windows-service | openabstractions-flat/abstraction-router | cpp | client | windows/amd64 | PASS | Installed C++ Router.Models/Hosts/Pick -> generated RPC -> shared IPC -> identity-bound Go router service and existing provider over isolated local HTTP fixtures; inventory/resident/denied choices, empty allowance versus absence, caller audit, typed refusals, GET-only provider reads and no client-local state; no central-host or GPU-cost claim | python: Python 3.12.14; go: go version go1.26.5 windows/amd64; cmake: cmake version 4.3.1-msvc1
 
 why each cell reads as it does
-  abstraction-asks     go      UNPROVEN                       drifted     GATE recorded FAIL at openabstractions-flat/abstraction-asks@7e9ea82; the tree is openabstractions-flat/abstraction-asks@67bc91e
+  abstraction-asks     go      PASS go1.26.5                  recorded    GATE fast, go build ./... && go test ./...
   abstraction-asks     python  —                        none        no python implementation/client found; no inventory claim establishes why it is missing
   abstraction-asks     cpp     —                        none        no cpp implementation/client found; no inventory claim establishes why it is missing
   abstraction-asks     rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
   abstraction-asks     javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
-  abstraction-cas      go      PASS go1.26.5                  recorded    GATE full, go build ./... && go test ./...
-  abstraction-cas      python  PASS py3.12                    recorded    GATE full, unittest discover, 13 tests
-  abstraction-cas      cpp     PASS Apple Clang darwin/arm64  recorded    DARWIN1 , CMake build and aggregate CTest on native macOS
+  abstraction-cas      go      PASS go1.26.5                  recorded    GATE fast, go build ./... && go test ./...
+  abstraction-cas      python  PASS py3.12                    recorded    GATE fast, unittest discover, 13 tests
+  abstraction-cas      cpp     PASS g++                       recorded    GATE fast, ctest under g++ 15.2.0 in WSL, 2 test runs; msvc not built (--fast)
   abstraction-cas      rust    —                        undeclared  no rust implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-cas
   abstraction-cas      javascript—                        undeclared  no javascript implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-cas
-  abstraction-config   go      UNPROVEN                       drifted     GATE recorded FAIL at openabstractions-flat/abstraction-config@9c4cbe5; the tree is openabstractions-flat/abstraction-config@e14c74d
-  abstraction-config   python  UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-config@9c4cbe5; the tree is openabstractions-flat/abstraction-config@e14c74d
+  abstraction-config   go      PASS go1.26.5                  recorded    GATE fast, go build ./... && go test ./...
+  abstraction-config   python  PASS py3.12                    recorded    GATE fast, unittest discover, 17 tests
   abstraction-config   cpp     UNPROVEN                       unreached   openabstractions-flat/abstraction-config/cpp exists with 0 test files and nothing the gate runs names it
   abstraction-config   rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
   abstraction-config   javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
-  abstraction-download go      UNPROVEN                       drifted     GATE recorded FAIL at openabstractions-flat/abstraction-download@43ab3b5; the tree is openabstractions-flat/abstraction-download@d809e96
-  abstraction-download python  UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-download@43ab3b5; the tree is openabstractions-flat/abstraction-download@d809e96
-  abstraction-download cpp     UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-download@43ab3b5; the tree is openabstractions-flat/abstraction-download@d809e96
+  abstraction-download go      PASS go1.26.5                  recorded    GATE fast, go build ./... && go test ./...
+  abstraction-download python  PASS py3.12                    recorded    GATE fast, unittest discover, 70 tests
+  abstraction-download cpp     PASS msvc                      recorded    GATE fast, the published conformance suite, 52 rules over 10 of 47 scenarios: matrix recall failure-endings intent notice-quiet wanted pause-adoption foreign-sink terminal wire-ignored-range
   abstraction-download rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
   abstraction-download javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
-  abstraction-facade   go      UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-facade@4fee870; the tree is openabstractions-flat/abstraction-facade@75832f0
+  abstraction-facade   go      PASS go1.26.5                  recorded    GATE fast, go build ./... && go test ./...
   abstraction-facade   python  —                        none        no python implementation/client found; no inventory claim establishes why it is missing
   abstraction-facade   cpp     UNPROVEN                       unreached   openabstractions-flat/abstraction-facade/cpp exists with 0 test files and nothing the gate runs names it
   abstraction-facade   rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
   abstraction-facade   javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
-  abstraction-identity go      UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-identity@b812381; the tree is openabstractions-flat/abstraction-identity@dc63e2b
+  abstraction-identity go      UNPROVEN                       skipped     the last recorded gate run (fast) did not judge openabstractions-flat/abstraction-identity: the macOS half is type-checked and run by nobody: this gate reaches no Mac
   abstraction-identity python  —                        none        no python implementation/client found; no inventory claim establishes why it is missing
-  abstraction-identity cpp     UNPROVEN                       unreached   openabstractions-flat/abstraction-identity/cpp exists with 4 test files and nothing the gate runs names it
+  abstraction-identity cpp     UNPROVEN                       skipped     the last recorded gate run (fast) did not judge openabstractions-flat/abstraction-identity/cpp: no C++ toolchain on this run executed a ctest test belonging to it; msvc not built (--fast)
   abstraction-identity rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
   abstraction-identity javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
-  abstraction-job      go      UNPROVEN                       drifted     GATE recorded FAIL at openabstractions-flat/abstraction-job@30ffc73; the tree is openabstractions-flat/abstraction-job@7cfad00
-  abstraction-job      python  UNPROVEN                       drifted     GATE recorded FAIL at openabstractions-flat/abstraction-job@30ffc73; the tree is openabstractions-flat/abstraction-job@7cfad00
-  abstraction-job      cpp     UNPROVEN                       drifted     GATE recorded FAIL at openabstractions-flat/abstraction-job@30ffc73; the tree is openabstractions-flat/abstraction-job@7cfad00
+  abstraction-job      go      UNPROVEN                       skipped     the last recorded gate run (fast) did not judge openabstractions-flat/abstraction-job/go: the macOS half is type-checked and run by nobody: this gate reaches no Mac
+  abstraction-job      python  PASS py3.12                    recorded    GATE fast, unittest discover, 76 tests
+  abstraction-job      cpp     PASS g++                       recorded    GATE fast, ctest under g++ 15.2.0 in WSL, 4 test runs; msvc not built (--fast)
   abstraction-job      rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
   abstraction-job      javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
-  abstraction-logging  go      UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-logging@ec56256; the tree is openabstractions-flat/abstraction-logging@238137d
+  abstraction-logging  go      PASS go1.26.5                  recorded    GATE fast, go build ./... && go test ./...
   abstraction-logging  python  —                        none        no python implementation/client found; no inventory claim establishes why it is missing
   abstraction-logging  cpp     UNPROVEN                       unreached   openabstractions-flat/abstraction-logging/cpp exists with 0 test files and nothing the gate runs names it
   abstraction-logging  rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
   abstraction-logging  javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
-  abstraction-model    go      UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-model@7cf857e; the tree is openabstractions-flat/abstraction-model@00e86f5
-  abstraction-model    python  UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-model@7cf857e; the tree is openabstractions-flat/abstraction-model@00e86f5
+  abstraction-model    go      PASS go1.26.5                  recorded    GATE fast, go build ./... && go test ./...
+  abstraction-model    python  PASS py3.12                    recorded    GATE fast, unittest discover, 41 tests
   abstraction-model    cpp     —                        none        no cpp implementation/client found; no inventory claim establishes why it is missing
   abstraction-model    rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
   abstraction-model    javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
-  abstraction-rights   go      UNPROVEN                       drifted     GATE recorded FAIL at openabstractions-flat/abstraction-rights@6fff1f5; the tree is openabstractions-flat/abstraction-rights@2951974
+  abstraction-rights   go      PASS go1.26.5                  recorded    GATE fast, go build ./... && go test ./...
   abstraction-rights   python  —                        none        no python implementation/client found; no inventory claim establishes why it is missing
   abstraction-rights   cpp     —                        none        no cpp implementation/client found; no inventory claim establishes why it is missing
   abstraction-rights   rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
   abstraction-rights   javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
-  abstraction-router   go      UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-router@a56ecb2; the tree is openabstractions-flat/abstraction-router@d79374d
+  abstraction-router   go      PASS go1.26.5                  recorded    GATE fast, go build ./... && go test ./...
   abstraction-router   python  —                        undeclared  no python implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-router
   abstraction-router   cpp     UNPROVEN                       unreached   openabstractions-flat/abstraction-router/cpp exists with 0 test files and nothing the gate runs names it
   abstraction-router   rust    —                        undeclared  no rust implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-router
   abstraction-router   javascript—                        undeclared  no javascript implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-router
-  abstraction-storage  go      UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-storage@e97f1c0; the tree is openabstractions-flat/abstraction-storage@27bc58b
+  abstraction-storage  go      PASS go1.26.5                  recorded    GATE fast, go build ./... && go test ./...
   abstraction-storage  python  —                        none        no python implementation/client found; no inventory claim establishes why it is missing
-  abstraction-storage  cpp     UNPROVEN                       drifted     GATE recorded PASS at openabstractions-flat/abstraction-storage@e97f1c0; the tree is openabstractions-flat/abstraction-storage@27bc58b
+  abstraction-storage  cpp     PASS g++                       recorded    GATE fast, ctest under g++ 15.2.0 in WSL, 1 test runs; msvc not built (--fast)
   abstraction-storage  rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
   abstraction-storage  javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
-  abstraction-watch    go      PASS go1.26.5                  recorded    GATE full, go build ./... && go test ./...
-  abstraction-watch    python  PASS py3.12                    recorded    GATE full, unittest discover, 19 tests
+  abstraction-watch    go      PASS go1.26.5                  recorded    GATE fast, go build ./... && go test ./...
+  abstraction-watch    python  PASS py3.12                    recorded    GATE fast, unittest discover, 19 tests
   abstraction-watch    cpp     PASS Apple Clang darwin/arm64  recorded    DARWIN1 , CMake build and aggregate CTest on native macOS
   abstraction-watch    rust    —                        none        no rust implementation/client found; no inventory claim establishes why it is missing
   abstraction-watch    javascript—                        none        no javascript implementation/client found; no inventory claim establishes why it is missing
