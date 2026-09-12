@@ -17,12 +17,14 @@ import (
 type runtimeFlags struct {
 	endpoint, logEndpoint, configEndpoint, out string
 	jobRoot, jobOwner, jobEndpoint             string
+	supervised                                 bool
 }
 
 func parseRuntime(args []string, output io.Writer) (runtimeFlags, error) {
 	var options runtimeFlags
 	flags := flag.NewFlagSet("runtime", flag.ContinueOnError)
 	flags.SetOutput(output)
+	flags.BoolVar(&options.supervised, "supervised", false, "installed-parent mode: private stdin pipe EOF cancels; stdout READY 1 after listeners initialize")
 	flags.StringVar(&options.endpoint, "endpoint", "", "resolver bootstrap endpoint (default: runtime-v1)")
 	flags.StringVar(&options.logEndpoint, "log-endpoint", "", "logging service endpoint")
 	flags.StringVar(&options.configEndpoint, "config-endpoint", "", "configuration service endpoint")
@@ -49,10 +51,17 @@ func serveRuntime(args []string) error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	if options.supervised {
+		return superviseRuntime(ctx, options, os.Stdin, os.Stdout)
+	}
 	return runRuntime(ctx, options)
 }
 
 func runRuntime(ctx context.Context, options runtimeFlags) error {
+	return runRuntimeReady(ctx, options, nil)
+}
+
+func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -79,5 +88,13 @@ func runRuntime(ctx context.Context, options runtimeFlags) error {
 		return err
 	}
 	defer runtime.Close()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if ready != nil {
+		if err := ready(); err != nil {
+			return err
+		}
+	}
 	return runtime.Serve(ctx)
 }

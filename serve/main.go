@@ -30,6 +30,13 @@ var capabilities = map[string]func([]string) error{
 }
 
 func main() {
+	if len(os.Args) >= 2 && os.Args[1] == "status" {
+		if err := runtimeStatus(os.Args[2:], os.Stdout, os.Stderr); err != nil && !errors.Is(err, flag.ErrHelp) {
+			fmt.Fprintln(os.Stderr, "openabstractions:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) == 2 && (os.Args[1] == "--help" || os.Args[1] == "-h") {
 		usage()
 		return
@@ -56,6 +63,7 @@ func main() {
 func usage() {
 	fmt.Fprintln(os.Stderr, `openabstractions — the resident half of each layer
 
+  openabstractions status         queries runtime capability readiness
   openabstractions serve asks     answers questions a person has to answer
   openabstractions serve runtime  hosts resolution, logging and config together
   openabstractions serve rights   holds what was granted, and the awake hold
