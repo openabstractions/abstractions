@@ -89,7 +89,7 @@ def main():
     token = uuid.uuid4().hex[:8]
     native, stage, consumer = BUILD / 'n', BUILD / ('s' + token), BUILD / ('c' + token)
     run([cmake, '-S', layer('abstraction-facade') / 'cpp', '-B', native, '-DBUILD_SHARED_LIBS=OFF'] +
-        ['-DCMAKE_DISABLE_FIND_PACKAGE_abstraction_' + name + '=TRUE' for name in ('logging', 'config', 'router', 'ipc')])
+        ['-DCMAKE_DISABLE_FIND_PACKAGE_abstraction_' + name + '=TRUE' for name in ('logging', 'config', 'router', 'ipc', 'job_acceptance')])
     compiler_identity = []
     for compiler in sorted((native / 'CMakeFiles').glob('*/CMakeCXXCompiler.cmake')):
         compiler_identity.extend(re.findall(r'set\(CMAKE_CXX_COMPILER_(ID|VERSION) "([^"]+)"\)', compiler.read_text()))
