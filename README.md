@@ -1,37 +1,45 @@
-# abstractions
+# OpenAbstractions
 
-**In development.** No tagged release; the scope, method and results below are
-current, but nothing here has shipped as a stable version.
+Applications adopt common capability APIs while services own execution, shared
+state and lifecycle. Contracts, generated clients and shared transports let a
+capability be used independently of its provider. Explicit wrappers around
+existing engines remain available as an adoption path with declared guarantees.
 
-Contracts for capabilities that applications keep rebuilding privately —
-durable work, downloads, storage, logging, local caller identity — each written
-so more than one implementation can satisfy it, and a conformance suite that
-tests whether an implementation actually does.
+## Start with a service client
 
-Every platform already provides these capabilities, in a different shape, to its
-own programs. Windows has a transfer service that outlives the process that asked
-(BITS); Linux and macOS have neither it nor each other's answer. An application
-that wants the capability on all three either picks one platform or writes its
-own, and writing its own is what everybody does. Three shapes and no common call
-is the seat SLF4J found in logging. [`METHOD.md`](METHOD.md) §14 says which
-seats qualify and which do not.
+Choose a capability from [the facade](https://github.com/openabstractions/abstraction-facade)
+and follow its language package instructions. Go, C++, Python, Rust and JavaScript
+have generated service clients; implemented capabilities and transport support
+vary by package. Requests carry required guarantees. Missing or incompatible
+services produce explicit failures.
 
-This repository is the parent: the scope rules, the method, the measured results,
-and the suite. It is a test suite, not a library — the code is in the layer
-repositories listed below.
+Install a compatible runtime from [redist releases](https://github.com/openabstractions/redist/releases),
+then use `openabstractions start` and `openabstractions status`. Consult each
+release's asset, signing and platform evidence. This page does not announce an
+unpublished version. For development, select a coordinated source revision and
+independently configure trust for an explicit host.
 
-**Start with a service client:** the
-[facade README](https://github.com/openabstractions/abstraction-facade) provides
-Go and C++ logging examples, runtime requirements and source-build instructions.
-The [adoption guide](https://openabstractions.org/adopt.html) explains ownership
-and failure behavior. [CONTRIBUTING.md](CONTRIBUTING.md#adopting) gives agents a
-revision and evidence checklist. Development APIs require a coordinated source
-set; verify public availability before selecting a dependency revision.
+Go/C++/Python default local bindings verify installed runtime account/program
+identity before resolver and provider payloads on Windows and supported Linux.
+Rust/JavaScript need explicit independent trust configuration. macOS currently
+refuses the local Program proof required by these service profiles. A running
+process alone does not establish capability readiness.
+
+Applications retain request identity and owner/binding information for recovery.
+Accepted work stays with its original owner; cancelling a wait does not cancel
+that work. Services own NAS/backend access and credentials. An unavailable runtime
+does not silently become an application file store.
+
+This repository contains the central runtime/CLI, panel, IDL generator, contracts
+and conformance tools. Capability and provider packages live in the repositories
+below. [The adoption guide](https://openabstractions.org/adopt.html) describes the
+ownership model; [CONTRIBUTING.md](CONTRIBUTING.md#adopting) gives revision and
+evidence checks for contributors.
 
 ## Use a layer
 
-Nothing here is installed. Each layer is its own repository with its own README,
-install command and example:
+Each capability repository documents its clients, provider scope and package
+requirements. Select only the capabilities an application needs:
 
 | you want | repository |
 |---|---|
@@ -39,8 +47,8 @@ install command and example:
 | a download that can be finished by somebody else | [`abstraction-download`](https://github.com/openabstractions/abstraction-download) |
 | bytes at rest, named by digest | [`abstraction-storage`](https://github.com/openabstractions/abstraction-storage) |
 | compare-and-set over a file, on the kernel's own lock | [`abstraction-cas`](https://github.com/openabstractions/abstraction-cas) |
-| to be told a record changed, without polling | [`abstraction-watch`](https://github.com/openabstractions/abstraction-watch) |
-| a log line that survives the process that wrote it | [`abstraction-logging`](https://github.com/openabstractions/abstraction-logging) |
+| bounded observation of changing state | [`abstraction-watch`](https://github.com/openabstractions/abstraction-watch) |
+| structured logging and bounded service-owned history | [`abstraction-logging`](https://github.com/openabstractions/abstraction-logging) |
 | to know which program is on the other end of a local connection | [`abstraction-identity`](https://github.com/openabstractions/abstraction-identity) |
 | to ask this machine what it can do, without naming who answers | [`abstraction-facade`](https://github.com/openabstractions/abstraction-facade) |
 | where a machine keeps its answer to "which store" | [`abstraction-config`](https://github.com/openabstractions/abstraction-config) |
@@ -56,7 +64,7 @@ the fetcher for a LAN; [`docker-jobd`](https://github.com/openabstractions/docke
 [`polite-monitor`](https://github.com/openabstractions/polite-monitor), a Windows
 window listing what the machine is doing; and
 [`adopter-comfyui`](https://github.com/openabstractions/adopter-comfyui), which
-puts ComfyUI-Manager's downloads behind a job record.
+routes ComfyUI-Manager downloads through the durable job service.
 
 A layer repository holds every language for that one contract, because the
 conformance proof compares bytes across languages
@@ -139,18 +147,15 @@ A pass by absence is a defect here.
 
 ## Status
 
-Experimental, Apache-2.0, and one maintainer. Nothing carries an API stability
-promise, and no version number is typed on this page: each repository's tag list
-is the answer to "which release", because a tag is the only thing that cannot
-drift. **Go 1.26 or later is required.** Go is also the only language with a
-tagged release anywhere: every Python implementation is on no package index and
-is adopted by pinning a commit — each layer's `python/README.md` says what to
-install, what to import and shows one example that runs — and no C++
-implementation has a tagged release at all.
+Source support, package publication and native installation qualification are
+separate results. Use each repository's release metadata and capability contract.
+Development APIs may change; coordinated source packages can precede registry
+publication. Go source builds require the version declared in their module files.
 
-The only adopters are ours, so nobody outside has yet had to live with these
-names. Every published transcript was produced on Windows or Linux; macOS is
-`UNPROVEN` throughout. Read a repository's Status section before depending on it.
+The evidence below is historical and scoped to its named sources and hosts.
+Current Windows/Linux local trust and service clients have focused tests; macOS
+native lifecycle measurements preserve the known Program-proof refusal. A build
+or a generated client alone does not establish provider or installation behavior.
 
 [`GOVERNANCE.md`](https://github.com/openabstractions/.github/blob/main/GOVERNANCE.md)
 says what happens if the maintainer stops;
@@ -162,7 +167,7 @@ says how to report a fault.
 - [`METHOD.md`](METHOD.md) — how an interface is drawn and tested here, and
   §14 which layers qualify at all. Read §14 before proposing one.
 - [`STATE.md`](STATE.md) — what is open, in order.
-- [`docs/try-it.md`](docs/try-it.md) — one `dl` command across three fetchers.
+- [`docs/try-it.md`](docs/try-it.md) — historical legacy-worker demonstration across three fetchers.
 - [`docs/integrating.md`](docs/integrating.md) — what adopting these interfaces
   taught them.
 - [`docs/using-other-peoples-code.md`](docs/using-other-peoples-code.md) — what

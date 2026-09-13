@@ -14,7 +14,7 @@ import (
 func TestPanelReadinessMatchesSDKWithIndependentFailures(t *testing.T) {
 	own(t)
 	panelConfigRuntime(t)
-	machine := facade.Discover()
+	machine := panelMachine()
 	evidence := wire.BootstrapObservation{State: "installed", Detail: "isolated test registration"}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

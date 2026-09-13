@@ -80,7 +80,7 @@ func readinessLabel(status string) string {
 // Installation observations and resolution share one caller budget. This is a
 // read-only snapshot requested by the user; it never activates or repairs hosts.
 func observeReadiness(ctx context.Context) readinessView {
-	return collectReadiness(ctx, facade.Discover(), bootstrap.ObserveInstalled)
+	return collectReadiness(ctx, panelMachine(), bootstrap.ObserveInstalled)
 }
 
 func collectReadiness(ctx context.Context, machine *facade.Machine, installed func(context.Context) wire.BootstrapObservation) readinessView {

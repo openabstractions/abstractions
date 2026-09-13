@@ -1,61 +1,65 @@
 # abstraction-idl
 
+Define records and service interfaces once; generate language APIs, clients,
+codecs and API reference. The notation is a profile of Apache Thrift's IDL. See
+[LANGUAGE.md](LANGUAGE.md) for supported constructs and [LINEAGE.md](LINEAGE.md)
+for their origins.
 
-Use `--no-ipc` when a capability needs a language interface without a service
-transport. For example:
+Go, C++, Python, Rust and JavaScript generate typed request-response and one-way
+clients with injected transports. Generated dispatchers and callable interfaces
+are language/profile-specific; a generated protocol does not supply an OS server
+or provider. Shared transport owns framing, connections, deadlines, cancellation
+and peer verification. A transport failure preserves uncertainty; generation
+supplies no automatic retry or provider switching.
+
+Standalone outputs use the target language's standard library. Configured Rust
+service profiles can select `--shared-rust-transport`: they use the pure
+`abstraction-frame` crate from identity's `rust-frame/` package. Native IPC is a
+separate implementation of that trait. Records-only and direct-interface output
+remain independent of that crate. Included definitions may introduce explicit
+language package dependencies; keep their generated packages coordinated.
+
+## Direct interfaces
+
+Use `--no-ipc` for language interfaces and ordinary records/codecs without
+transport clients, dispatchers or service message envelopes:
 
 ```sh
-go run ./gen example.thrift output --no-ipc go cpp python docs
+GOWORK=off go -C gen run . example.thrift output --no-ipc go cpp python rust javascript docs
 ```
 
-This emits the same method signatures and ordinary record types/codecs, with
-no generated transport client, dispatcher or service message envelopes. API
-docs describe direct implementations rather than delivery guarantees. The
-default invocation remains unchanged. Go, C++ and Python support this mode;
-Rust and JavaScript service interfaces fail explicitly rather than silently
-producing only records. Existing `-only=` selection and namespaces still apply.
-The schema profile is unchanged (including service `wire_name` metadata);
-legacy `protocol` declarations are not translated into interfaces by this flag.
-No binary or callback semantics are invented by selecting interface-only mode.
-
-Define records and service interfaces once; generate their language APIs,
-wire bindings, codecs and API reference. The notation is a profile of Apache
-Thrift's IDL — see [LANGUAGE.md](LANGUAGE.md) for supported constructs and
-[LINEAGE.md](LINEAGE.md) for their origins.
-
-**Current scope:** Go, C++ and Python generate typed request-response and one-way
-clients with injected transports. Go hosts services; Go and C++ also generate
-pure dispatchers. Python generates interfaces and clients, with no server runtime.
-Five languages have record codecs; Rust/JavaScript service bindings remain
-explicitly unsupported.
-
-Generated bindings own method identity, argument encoding and dispatch. Shared
-transport owns framing, connections, deadlines, reconnection and peer binding;
-no socket or store is generated. Complete messages may contain newlines, so a
-transport uses length framing or an equivalent opaque-message boundary.
-
-Generated code **links nothing**. Not this repository, not a runtime, not a
-serialisation library — at most the target language's own standard library.
+Replace the example paths with your definition and output directory. Go, C++,
+Python and Rust expose their direct interfaces; JavaScript emits overridable
+asynchronous interface classes. The current CLI help omits JavaScript from its
+`--no-ipc` list, but the backend and focused test implement it. Unsupported
+schema features fail explicitly. Legacy `protocol` declarations do not become
+service interfaces through this flag.
 
 ## Install
 
-Nothing to install. The generator is one Go module with no dependencies:
+The generator is a standalone Go module. From a source checkout:
 
     git clone https://github.com/openabstractions/abstractions.git   # idl/ lives here
     cd abstractions/idl/gen
-    go run . <definition.thrift> <outdir> [language ...]
+    GOWORK=off go run . --help
+    GOWORK=off go run . <definition.thrift> <outdir> [language ...]
 
 Languages: `go` `python` `cpp` `javascript` `rust`, and `docs`, which emits the
 reference page rather than an encoder. Omit the list for all of them. There is
-no tagged release yet, so `go run <module>@<version>` does not resolve.
+release availability is determined by the selected public revision and its module
+metadata. These commands run a reviewed checkout. `GOWORK=off` isolates the
+generator module from a surrounding development workspace; in PowerShell use
+`$env:GOWORK="off"` before the Go command.
 
-Measured on the example definition: Go, Python and JavaScript import nothing at
-all; C++ includes eight standard headers; Rust uses one,
-`std::collections::BTreeMap`.
+Useful options include `--paths` for output locations, `-only=` for exact
+surface selection, `--named-codecs` for composable record codecs, and
+`--go-import=alias=package-path` for included Go definitions.
+`--go-alias-package=import-path` emits compatibility exports forwarding to a
+canonical generated Go package. `--paths` does not validate backend support.
 
 ## One example that runs
 
-    go -C gen run . ../testdata/job.thrift /tmp/out
+    GOWORK=off go -C gen run . ../testdata/job.thrift /tmp/out
     powershell -File test/run.ps1 -Scratch /tmp/idl
     powershell -File test/repeated/run.ps1 -Scratch /tmp/repeated
 
@@ -83,7 +87,7 @@ A toolchain that is missing is reported `UNPROVEN`, never skipped.
 
 ## Taking only part of a definition
 
-    go -C gen run . ../testdata/job.thrift /tmp/out -only=Request,Response,Verdict,Store go
+    GOWORK=off go -C gen run . ../testdata/job.thrift /tmp/out -only=Request,Response,Verdict,Store go
 
 emits the envelope and nothing else — about half the Go the whole definition
 produces. A surface is one declaration: a struct, an enum, a constant, the
@@ -100,7 +104,7 @@ the bytes. The generator and tests here run independently of that workflow.
 
 ## The page
 
-    go -C gen run . ../testdata/job.thrift /tmp/idl-docs docs
+    GOWORK=off go -C gen run . ../testdata/job.thrift /tmp/idl-docs docs
 
 writes `/tmp/idl-docs/schema.html`: every struct, field, id, type, omission rule, enum
 member, constant, vocabulary term, refusal word, encoding setting and protocol
@@ -153,13 +157,16 @@ same corpus without touching any of the first five.
   Five independent implementations happen to report the same byte because they
   were generated from one algorithm; a sixth, written by hand from
   `LANGUAGE.md`, would not be wrong to differ.
-- The profile encodes `bool i32 i64 string json list<string> map<string,json>
-  map<string,string>`, structs of those, and lists of those structs. Anything
-  else is refused by name, including `double`, `set<T>`, `binary` and `union`.
+- The profile supports the declared scalar/container/record types, including
+  `binary` with canonical base64 encoding in all five backends. Invalid alphabet,
+  padding and tail bits are refused. `double`, `set<T>` and `union` remain outside
+  the profile. Included-type support varies by backend; consult LANGUAGE.md and
+  the generator's explicit refusal rather than assuming every imported schema
+  works in every language.
 - `test/run.ps1` and `test/wire.ps1` are Windows-only. The generator is not.
 
 Service declarations generate callable interfaces, injected-transport clients,
-dispatchers and API reference from the same definition. The Go/C++/Python client
+dispatchers and API reference from the same definition. The Go/C++/Python/Rust/JavaScript client
 bindings support one-way and typed request-response methods with an explicit
 stable `wire_name`; replies contain typed results or stable error codes. No socket
 or storage implementation is generated.

@@ -37,11 +37,11 @@ func (p *servicePanel) binding(ctx context.Context) (*client.JobsClient, *client
 	if p.jobs != nil {
 		return p.jobs, p.inventory, p.history, nil
 	}
-	inventory, err := facade.Discover().ResolveJobInventory(ctx, facade.Requirements{Scope: "local"})
+	inventory, err := panelMachine().ResolveJobInventory(ctx, facade.Requirements{Scope: "local"})
 	if err != nil {
 		return nil, nil, api.HistoryWindow{}, err
 	}
-	jobs, err := facade.Discover().ResolveJobs(ctx, facade.Requirements{Scope: "local"})
+	jobs, err := panelMachine().ResolveJobs(ctx, facade.Requirements{Scope: "local"})
 	if err != nil {
 		return nil, nil, api.HistoryWindow{}, err
 	}
@@ -184,7 +184,7 @@ func (p *servicePanel) result(w http.ResponseWriter, r *http.Request) {
 func (p *servicePanel) settings(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := panelCall(r)
 	defer cancel()
-	editor, err := facade.Discover().ResolveConfigEditor(ctx, facade.Requirements{Scope: "local"})
+	editor, err := panelMachine().ResolveConfigEditor(ctx, facade.Requirements{Scope: "local"})
 	if err != nil {
 		panelError(w, err)
 		return

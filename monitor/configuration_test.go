@@ -44,6 +44,7 @@ func panelConfigRuntime(t *testing.T) func() {
 		}
 	})
 	t.Setenv("ABSTRACTION_RUNTIME_ENDPOINT", options.Endpoint)
+	trustPanelRuntime(t, options.Endpoint)
 	return func() { cancel(); h.Close() }
 }
 
@@ -80,7 +81,7 @@ func TestPanelEditsOnlyUserSettings(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	editor, err := facade.Discover().ResolveConfigEditor(ctx, facade.Requirements{})
+	editor, err := panelMachine().ResolveConfigEditor(ctx, facade.Requirements{})
 	if err != nil {
 		t.Fatal(err)
 	}

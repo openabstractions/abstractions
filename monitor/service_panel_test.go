@@ -47,6 +47,7 @@ func panelServiceRuntime(t *testing.T) {
 		}
 	})
 	t.Setenv("ABSTRACTION_RUNTIME_ENDPOINT", o.Endpoint)
+	trustPanelRuntime(t, o.Endpoint)
 }
 func panelRequest(t *testing.T, h http.Handler, path string, body any) *httptest.ResponseRecorder {
 	t.Helper()

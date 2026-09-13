@@ -20,7 +20,7 @@ import (
 func (w *window) editConfiguration(change func(*config.Config) error) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	editor, err := facade.Discover().ResolveConfigEditor(ctx, facade.Requirements{Scope: "local"})
+	editor, err := panelMachine().ResolveConfigEditor(ctx, facade.Requirements{Scope: "local"})
 	if err != nil {
 		return fmt.Errorf("configuration service: %w", err)
 	}
@@ -79,7 +79,7 @@ type configurationResolver func(context.Context) (configurationObserver, error)
 
 func observeConfiguration(parent context.Context, retryDelay time.Duration) *configurationObservation {
 	return observeConfigurationWith(parent, retryDelay, func(ctx context.Context) (configurationObserver, error) {
-		observer, err := facade.Discover().ResolveConfigObserver(ctx, facade.Requirements{Scope: "local"})
+		observer, err := panelMachine().ResolveConfigObserver(ctx, facade.Requirements{Scope: "local"})
 		if err != nil {
 			return nil, err
 		}
