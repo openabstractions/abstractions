@@ -83,7 +83,15 @@ func TestServiceBackendSupportIsCheckedBeforeAnyOutput(t *testing.T) {
 	if err := os.WriteFile(source, []byte(strings.Split(string(profile), "struct Closed")[0]+serviceFixture), 0600); err != nil {
 		t.Fatal(err)
 	}
-	for _, langs := range [][]string{nil, {"go", "python", "javascript"}, {"cpp", "javascript"}, {"go", "javascript"}} {
+	profileDoc, err := os.ReadFile("../LANGUAGE.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeNamespaceFile(t, filepath.Dir(source), "LANGUAGE.md", string(profileDoc))
+	before := backends
+	backends = append(append([]backend(nil), backends...), backend{lang: "unsupported", path: "unsupported.txt", emit: func(*Definition) string { t.Fatal("unsupported emitter reached"); return "" }})
+	t.Cleanup(func() { backends = before })
+	for _, langs := range [][]string{nil, {"go", "python", "unsupported"}, {"cpp", "unsupported"}, {"go", "unsupported"}} {
 		out := filepath.Join(t.TempDir(), "out")
 		var report bytes.Buffer
 		err := run(append([]string{source, out}, langs...), &report)
@@ -96,6 +104,10 @@ func TestServiceBackendSupportIsCheckedBeforeAnyOutput(t *testing.T) {
 		if report.Len() != 0 {
 			t.Fatal("partial success reported")
 		}
+	}
+	backends = before
+	if err := run([]string{source, t.TempDir(), "go", "cpp", "python", "javascript", "rust", "docs"}, &bytes.Buffer{}); err != nil {
+		t.Fatalf("supported service generation: %v", err)
 	}
 	data, err := os.ReadFile(source)
 	if err != nil {

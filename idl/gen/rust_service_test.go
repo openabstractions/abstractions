@@ -93,7 +93,7 @@ fn main(){
 func TestRustServiceProductionAndNoIPC(t *testing.T) {
 	rust := rustServiceCompiler(t)
 	for _, name := range []string{"logging", "facade"} {
-		s, e := loadDefinition("../../openabstractions-flat/abstraction-" + name + "/" + name + ".thrift")
+		s, e := loadDefinition(productionFile(t, "abstraction-"+name+"/"+name+".thrift"))
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -151,7 +151,7 @@ func TestRustProductionServiceExchange(t *testing.T) {
 	rust := rustServiceCompiler(t)
 	dir := t.TempDir()
 	for _, name := range []string{"logging", "facade"} {
-		s, e := loadDefinition("../../openabstractions-flat/abstraction-" + name + "/" + name + ".thrift")
+		s, e := loadDefinition(productionFile(t, "abstraction-"+name+"/"+name+".thrift"))
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -226,7 +226,7 @@ func TestSharedRustTransportMode(t *testing.T) {
 		t.Fatal("record selection acquired transport")
 	}
 	dir := t.TempDir()
-	src, e := filepath.Abs("../../openabstractions-flat/abstraction-logging/logging.thrift")
+	src, e := filepath.Abs(productionFile(t, "abstraction-logging/logging.thrift"))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -250,7 +250,7 @@ func TestSharedRustTransportProductionExchange(t *testing.T) {
 	rust := rustServiceCompiler(t)
 	dir := t.TempDir()
 	for _, name := range []string{"logging", "facade"} {
-		s, e := loadDefinition("../../openabstractions-flat/abstraction-" + name + "/" + name + ".thrift")
+		s, e := loadDefinition(productionFile(t, "abstraction-"+name+"/"+name+".thrift"))
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -258,7 +258,7 @@ func TestSharedRustTransportProductionExchange(t *testing.T) {
 		writeNamespaceFile(t, dir, name+".rs", genRust(s))
 		writeNamespaceFile(t, dir, name+"/rec.go", genGo(s))
 	}
-	core, e := filepath.Abs("../../openabstractions-flat/abstraction-identity/rust-frame/src/lib.rs")
+	core, e := filepath.Abs(productionFile(t, "abstraction-identity/rust-frame/src/lib.rs"))
 	if e != nil {
 		t.Fatal(e)
 	}

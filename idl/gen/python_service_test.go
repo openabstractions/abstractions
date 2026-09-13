@@ -126,10 +126,7 @@ print('Python '+sys.version.split()[0]+': typed replies, oneway, raw bytes, zero
 
 func TestPythonLoggingClient(t *testing.T) {
 	p := servicePython(t)
-	path := "../../openabstractions-flat/abstraction-logging/logging.thrift"
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		path = "../testdata/logging.thrift"
-	}
+	path := productionFile(t, "abstraction-logging/logging.thrift")
 	source, e := os.ReadFile(path)
 	if e != nil {
 		t.Fatal(e)

@@ -11,7 +11,7 @@ import (
 
 func TestGoAliasProduction(t *testing.T) {
 	root := t.TempDir()
-	schema := filepath.Join("..", "..", "openabstractions-flat", "abstraction-facade", "facade.thrift")
+	schema := productionFile(t, "abstraction-facade/facade.thrift")
 	var out bytes.Buffer
 	if err := run([]string{schema, filepath.Join(root, "canonical"), "go"}, &out); err != nil {
 		t.Fatal(err)
@@ -51,7 +51,7 @@ func TestGoAliasUnsupportedAndFlags(t *testing.T) {
 		t.Fatal("unsupported generic")
 	}
 	var out bytes.Buffer
-	schema := filepath.Join("..", "..", "openabstractions-flat", "abstraction-facade", "facade.thrift")
+	schema := productionFile(t, "abstraction-facade/facade.thrift")
 	for _, flag := range []string{"--go-alias-package=", "--go-alias-package=bad path"} {
 		if run([]string{schema, t.TempDir(), "go", flag}, &out) == nil {
 			t.Fatal(flag)

@@ -178,7 +178,7 @@ fn main(){
 
 }
 func TestRustAcceptanceBinarySchemaCompiles(t *testing.T) {
-	raw, e := os.ReadFile("../../openabstractions-flat/abstraction-job/acceptance.thrift")
+	raw, e := os.ReadFile(productionFile(t, "abstraction-job/acceptance.thrift"))
 	if e != nil {
 		t.Fatal(e)
 	}

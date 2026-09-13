@@ -89,9 +89,15 @@ func TestNoIPCDefaultAndUnsupported(t *testing.T) {
 		t.Fatal("mode mutated default")
 	}
 	for _, lang := range []string{"javascript"} {
-		if err := validateServiceBackend(&copy, lang); err == nil || !strings.Contains(err.Error(), "--no-ipc") {
+		if err := validateServiceBackend(&copy, lang); err != nil {
 			t.Fatalf("%s: %v", lang, err)
 		}
+	}
+	if err := validateServiceBackend(&copy, "unsupported"); err == nil || !strings.Contains(err.Error(), "--no-ipc") {
+		t.Fatalf("unsupported interface backend: %v", err)
+	}
+	if strings.Contains(genJS(&copy), "QueryClient") || !strings.Contains(genJS(s), "QueryClient") {
+		t.Fatal("JavaScript no-ipc mode did not suppress transport client")
 	}
 }
 

@@ -39,9 +39,12 @@ func TestServiceParse(t *testing.T) {
 		}
 	}
 	for _, lang := range []string{"javascript"} {
-		if validateServiceBackend(s, lang) == nil {
-			t.Fatal("silently omitted service", lang)
+		if err := validateServiceBackend(s, lang); err != nil {
+			t.Fatal("supported service refused", lang, err)
 		}
+	}
+	if !strings.Contains(genJS(s), "export class EventsClient") {
+		t.Fatal("JavaScript service omitted")
 	}
 	if _, e = selected(s, []string{"Events"}); e == nil {
 		t.Fatal("service selected without argument record")
