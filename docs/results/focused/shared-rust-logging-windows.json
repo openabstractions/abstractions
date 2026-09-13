@@ -1,0 +1,213 @@
+{
+  "schema": 2,
+  "execution_platform": "windows/amd64",
+  "manifest": "conformance/clients/rust_services/manifests/windows.json",
+  "definition": {
+    "id": "shared-rust-logging-windows",
+    "layer": "openabstractions-flat/abstraction-logging",
+    "language": "rust",
+    "scope": "client",
+    "service_language": "go",
+    "transport": "shared-native-ipc",
+    "platform": "windows/amd64",
+    "scenario": "Installed Rust generated resolver/logging/history over shared native IPC: real Go service, exact record/history, requirement and malformed-reference refusal, absence, deadline and cancellation",
+    "inputs": [
+      "conformance/clients/rust_services",
+      "conformance/clients/workspace.py",
+      "demo/go.mod",
+      "demo/go.sum",
+      "deploy/nas/mkimage/go.mod",
+      "examples/pretend-lemonade/go.mod",
+      "examples/pretend-lemonade/go.sum",
+      "go.work",
+      "go.work.sum",
+      "idl/gen",
+      "idl/gen/go.mod",
+      "monitor/go.mod",
+      "monitor/go.sum",
+      "openabstractions-flat/abstraction-asks/asks.thrift",
+      "openabstractions-flat/abstraction-asks/go",
+      "openabstractions-flat/abstraction-asks/go/go.mod",
+      "openabstractions-flat/abstraction-asks/go/go.sum",
+      "openabstractions-flat/abstraction-cas/cas.thrift",
+      "openabstractions-flat/abstraction-cas/go",
+      "openabstractions-flat/abstraction-cas/go/go.mod",
+      "openabstractions-flat/abstraction-config/config.thrift",
+      "openabstractions-flat/abstraction-config/go",
+      "openabstractions-flat/abstraction-config/go/go.mod",
+      "openabstractions-flat/abstraction-config/go/go.sum",
+      "openabstractions-flat/abstraction-download/download.thrift",
+      "openabstractions-flat/abstraction-download/go",
+      "openabstractions-flat/abstraction-download/go/go.mod",
+      "openabstractions-flat/abstraction-download/go/go.sum",
+      "openabstractions-flat/abstraction-download/reachwall/go.mod",
+      "openabstractions-flat/abstraction-download/reachwall/go.sum",
+      "openabstractions-flat/abstraction-download/request.thrift",
+      "openabstractions-flat/abstraction-facade/facade.thrift",
+      "openabstractions-flat/abstraction-facade/go",
+      "openabstractions-flat/abstraction-facade/go/go.mod",
+      "openabstractions-flat/abstraction-facade/go/go.sum",
+      "openabstractions-flat/abstraction-facade/rs",
+      "openabstractions-flat/abstraction-facade/rust",
+      "openabstractions-flat/abstraction-identity",
+      "openabstractions-flat/abstraction-identity/go",
+      "openabstractions-flat/abstraction-identity/go.mod",
+      "openabstractions-flat/abstraction-identity/go.sum",
+      "openabstractions-flat/abstraction-identity/identity.thrift",
+      "openabstractions-flat/abstraction-job/acceptance.thrift",
+      "openabstractions-flat/abstraction-job/go",
+      "openabstractions-flat/abstraction-job/go/go.mod",
+      "openabstractions-flat/abstraction-job/go/go.sum",
+      "openabstractions-flat/abstraction-job/job.thrift",
+      "openabstractions-flat/abstraction-logging/go",
+      "openabstractions-flat/abstraction-logging/go/go.mod",
+      "openabstractions-flat/abstraction-logging/go/go.sum",
+      "openabstractions-flat/abstraction-logging/logging.thrift",
+      "openabstractions-flat/abstraction-logging/rs",
+      "openabstractions-flat/abstraction-logging/rust",
+      "openabstractions-flat/abstraction-model/go",
+      "openabstractions-flat/abstraction-model/go/go.mod",
+      "openabstractions-flat/abstraction-model/go/go.sum",
+      "openabstractions-flat/abstraction-model/model.thrift",
+      "openabstractions-flat/abstraction-rights/go",
+      "openabstractions-flat/abstraction-rights/go/go.mod",
+      "openabstractions-flat/abstraction-rights/go/go.sum",
+      "openabstractions-flat/abstraction-rights/rights.thrift",
+      "openabstractions-flat/abstraction-router/go",
+      "openabstractions-flat/abstraction-router/go/go.mod",
+      "openabstractions-flat/abstraction-router/go/go.sum",
+      "openabstractions-flat/abstraction-router/router.thrift",
+      "openabstractions-flat/abstraction-storage/go",
+      "openabstractions-flat/abstraction-storage/go/go.mod",
+      "openabstractions-flat/abstraction-storage/storage.thrift",
+      "openabstractions-flat/abstraction-watch/go",
+      "openabstractions-flat/abstraction-watch/go/go.mod",
+      "openabstractions-flat/abstraction-watch/watch.thrift",
+      "research/casr123/gonil/go.mod",
+      "research/conf180/askgo/go.mod",
+      "research/darwin-verification/go.mod",
+      "research/darwin-verification/go.sum",
+      "research/discovery-bench/go.mod",
+      "research/discovery-bench/go.sum",
+      "research/facade-linking/go.mod",
+      "research/gen118/demo/criterion3/subset-out-fixed/abstraction-asks/go/go.mod",
+      "research/gen118/demo/criterion3/subset-out-fixed/abstraction-asks/go/go.sum",
+      "research/gen118/demo/criterion3/subset-out-fixed/abstraction-rights/go/go.mod",
+      "research/gen118/demo/criterion3/subset-out-fixed/abstraction-rights/go/go.sum",
+      "research/gen118/demo/criterion3/subset-out-fixed/abstraction-watch/go/go.mod",
+      "research/gen118/demo/criterion3/subset-out-orig/abstraction-asks/go/go.mod",
+      "research/gen118/demo/criterion3/subset-out-orig/abstraction-asks/go/go.sum",
+      "research/gen118/demo/criterion3/subset-out-orig/abstraction-rights/go/go.mod",
+      "research/gen118/demo/criterion3/subset-out-orig/abstraction-rights/go/go.sum",
+      "research/gen118/demo/criterion3/subset-out-orig/abstraction-watch/go/go.mod",
+      "research/generation-choice/drivers/go/go.mod",
+      "research/generation-choice/gen/go.mod",
+      "research/generative/go/go.mod",
+      "research/plugins/go/go.mod",
+      "research/plugins/go/go.sum",
+      "research/range-support/go.mod",
+      "research/schema-contract-review/go.mod",
+      "research/schema/service/go.mod",
+      "research/skew/driver/go.mod",
+      "research/wire-compat/go.mod",
+      "research/wire-compat/go.sum",
+      "research/wxs240/probe/go.mod",
+      "research/wxs240/probe/go.sum",
+      "scripts/generate.targets",
+      "scripts/unchecked/go.mod",
+      "serve/go.mod",
+      "serve/go.sum"
+    ],
+    "toolchains": {
+      "python": [
+        "py",
+        "--version"
+      ],
+      "go": [
+        "go",
+        "version"
+      ],
+      "cmake": [
+        "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe",
+        "--version"
+      ],
+      "rust": [
+        "rustc",
+        "--version"
+      ],
+      "cargo": [
+        "cargo",
+        "--version"
+      ]
+    },
+    "command": [
+      "py",
+      "conformance/clients/rust_services/run.py",
+      "--run",
+      "--cmake",
+      "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe"
+    ]
+  },
+  "inputs_digest": "9cbaffb2719c22933548e6d99bc00cec0986c77cb5dc3ff703f356dcda4cbac8",
+  "toolchains": {
+    "python": {
+      "argv": [
+        "py",
+        "--version"
+      ],
+      "exit": 0,
+      "output": "Python 3.12.10\r\n",
+      "seconds": 0.141
+    },
+    "go": {
+      "argv": [
+        "go",
+        "version"
+      ],
+      "exit": 0,
+      "output": "go version go1.26.5 windows/amd64\n",
+      "seconds": 1.047
+    },
+    "cmake": {
+      "argv": [
+        "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe",
+        "--version"
+      ],
+      "exit": 0,
+      "output": "cmake version 4.3.1-msvc1\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n",
+      "seconds": 0.047
+    },
+    "rust": {
+      "argv": [
+        "rustc",
+        "--version"
+      ],
+      "exit": 0,
+      "output": "rustc 1.98.0 (88d9e12ae 2026-08-18)\n",
+      "seconds": 0.062
+    },
+    "cargo": {
+      "argv": [
+        "cargo",
+        "--version"
+      ],
+      "exit": 0,
+      "output": "cargo 1.98.0 (797e8a9bc 2026-08-05)\n",
+      "seconds": 0.078
+    }
+  },
+  "result": {
+    "argv": [
+      "py",
+      "conformance/clients/rust_services/run.py",
+      "--run",
+      "--cmake",
+      "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe"
+    ],
+    "exit": 0,
+    "output": "-- Building for: Visual Studio 18 2026\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- The C compiler identification is MSVC 19.51.36256.0\n-- The CXX compiler identification is MSVC 19.51.36256.0\n-- Detecting C compiler ABI info\n-- Detecting C compiler ABI info - done\n-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting C compile features\n-- Detecting C compile features - done\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Configuring done (4.1s)\n-- Generating done (0.1s)\n-- Build files have been written to: <user-home>/AppData/Local/Temp/oa-rust-services-og0h8sfz/native\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\nC:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Microsoft\\VC\\v180\\Microsoft.CppBuild.targets(561,5): warning MSB8029: The Intermediate directory or Output directory cannot reside under the Temporary directory as it could lead to issues with incremental build. [<user-home>\\AppData\\Local\\Temp\\oa-rust-services-og0h8sfz\\native\\ZERO_CHECK.vcxproj]\r\n  1>Checking Build System\r\nC:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Microsoft\\VC\\v180\\Microsoft.CppBuild.targets(561,5): warning MSB8029: The Intermediate directory or Output directory cannot reside under the Temporary directory as it could lead to issues with incremental build. [<user-home>\\AppData\\Local\\Temp\\oa-rust-services-og0h8sfz\\native\\abstraction_ipc.vcxproj]\r\n  Building Custom Rule <user-home>/Documents/AI abstractions/.worktrees/schema-contract-review/openabstractions-flat/abstraction-identity/cpp/CMakeLists.txt\r\n  client.cpp\r\n  abstraction_ipc.vcxproj -> <user-home>\\AppData\\Local\\Temp\\oa-rust-services-og0h8sfz\\native\\Release\\abstraction_ipc.lib\r\nC:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Microsoft\\VC\\v180\\Microsoft.CppBuild.targets(561,5): warning MSB8029: The Intermediate directory or Output directory cannot reside under the Temporary directory as it could lead to issues with incremental build. [<user-home>\\AppData\\Local\\Temp\\oa-rust-services-og0h8sfz\\native\\ALL_BUILD.vcxproj]\r\n  Building Custom Rule <user-home>/Documents/AI abstractions/.worktrees/schema-contract-review/openabstractions-flat/abstraction-identity/cpp/CMakeLists.txt\r\n-- Installing: <user-home>/AppData/Local/Temp/oa-rust-services-og0h8sfz/prefix/lib/abstraction_ipc.lib\n-- Installing: <user-home>/AppData/Local/Temp/oa-rust-services-og0h8sfz/prefix/include\n-- Installing: <user-home>/AppData/Local/Temp/oa-rust-services-og0h8sfz/prefix/include/abstraction\n-- Installing: <user-home>/AppData/Local/Temp/oa-rust-services-og0h8sfz/prefix/include/abstraction/ipc\n-- Installing: <user-home>/AppData/Local/Temp/oa-rust-services-og0h8sfz/prefix/include/abstraction/ipc/bootstrap.hpp\n-- Installing: <user-home>/AppData/Local/Temp/oa-rust-services-og0h8sfz/prefix/include/abstraction/ipc/client.h\n-- Installing: <user-home>/AppData/Local/Temp/oa-rust-services-og0h8sfz/prefix/include/abstraction/ipc/client.hpp\n-- Installing: <user-home>/AppData/Local/Temp/oa-rust-services-og0h8sfz/prefix/include/abstraction/ipc/frame.hpp\n-- Installing: <user-home>/AppData/Local/Temp/oa-rust-services-og0h8sfz/prefix/include/abstraction/ipc/process.hpp\n-- Installing: <user-home>/AppData/Local/Temp/oa-rust-services-og0h8sfz/prefix/lib/cmake/abstraction_ipc/abstraction_ipcTargets.cmake\n-- Installing: <user-home>/AppData/Local/Temp/oa-rust-services-og0h8sfz/prefix/lib/cmake/abstraction_ipc/abstraction_ipcTargets-release.cmake\n-- Installing: <user-home>/AppData/Local/Temp/oa-rust-services-og0h8sfz/prefix/lib/cmake/abstraction_ipc/abstraction_ipcConfig.cmake\n-- Installing: <user-home>/AppData/Local/Temp/oa-rust-services-og0h8sfz/prefix/lib/cmake/abstraction_ipc/abstraction_ipcConfigVersion.cmake\n   Compiling abstraction-ipc v0.0.0 (<user-home>\\AppData\\Local\\Temp\\oa-rust-services-og0h8sfz\\source\\openabstractions-flat\\abstraction-identity\\rust)\n   Compiling abstraction-logging-api v0.0.0 (<user-home>\\AppData\\Local\\Temp\\oa-rust-services-og0h8sfz\\source\\openabstractions-flat\\abstraction-logging\\rust)\n   Compiling abstraction-facade-service v0.0.0 (<user-home>\\AppData\\Local\\Temp\\oa-rust-services-og0h8sfz\\source\\openabstractions-flat\\abstraction-facade\\rust)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.83s\n     Running unittests src\\lib.rs (<user-home>\\AppData\\Local\\Temp\\oa-rust-services-og0h8sfz\\target\\debug\\deps\\abstraction_facade_service-7ee48ca76d504dae.exe)\n\nrunning 3 tests\ntest tests::invalid_requirements_refuse_without_io ... ok\ntest tests::forged_references_refuse_before_binding ... ok\ntest tests::malformed_history_and_valid_end ... ok\n\ntest result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n   Doc-tests abstraction_facade_service\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Locking 3 packages to latest compatible versions\n   Compiling abstraction-facade-service v0.0.0 (<user-home>\\AppData\\Local\\Temp\\oa-rust-services-og0h8sfz\\source\\openabstractions-flat\\abstraction-facade\\rust)\n   Compiling outside-rust-services-consumer v0.0.0 (<user-home>\\AppData\\Local\\Temp\\oa-rust-services-og0h8sfz\\source\\conformance\\clients\\rust_services)\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.68s\nconsumer runtime|absent|cancel|forged ENDPOINT\nPASS resolved Rust logging exact record/history, unmet, cancellation, deadline\nPASS: real installed static Rust service client packages, logging and shared cancellation\r\n",
+    "seconds": 14.641
+  },
+  "commit": "099526c4dc98a099535b011d80884259caddedf0",
+  "record_digest": "2c5dc9bc33a875e2db7ff22f066e04a1dccb480d8aee4f680a1f5e0b0cd1851b"
+}

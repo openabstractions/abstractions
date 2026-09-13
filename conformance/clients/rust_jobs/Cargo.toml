@@ -1,0 +1,8 @@
+[package]
+name="rust-jobs-consumer"
+version="0.0.0"
+edition="2021"
+[dependencies]
+abstraction-facade-native={path="../../../openabstractions-flat/abstraction-facade/rust-native"}
+abstraction-facade-jobs={path="../../../openabstractions-flat/abstraction-facade/rust-jobs"}
+abstraction-ipc={path="../../../openabstractions-flat/abstraction-identity/rust"}

@@ -5,7 +5,7 @@
   "scope": "client",
   "service_language": "go",
   "platform": "windows/amd64",
-  "scenario": "Installed C++ facade Log/Config.Read/Router.Models/Hosts/Pick reach three production Go services and providers; service-owned configuration reload/provenance, verified logging identity and persistence, empty router inventory versus typed negative decisions/refusal, caller audit, absence errors and no client-local state",
+  "scenario": "Installed C++ facade resolves Log/Config.Read/ConfigEditor.ReadUser/ReplaceUser/Router.Models/Hosts/Pick through the Go resolver to three production services; conventional endpoint overrides cannot select providers; resolver absence fails while providers remain live; service-owned configuration reload/provenance and revision-checked edits with stale-write refusal, verified logging identity and persistence, empty router inventory versus typed negative decisions, caller audit and no client-local state",
   "inputs": [
     "conformance/clients/facade",
     "conformance/clients/workspace.py",
@@ -29,8 +29,7 @@
     "openabstractions-flat/abstraction-download/reachwall/go.mod",
     "openabstractions-flat/abstraction-download/reachwall/go.sum",
     "openabstractions-flat/abstraction-facade/cpp",
-    "openabstractions-flat/abstraction-facade/go/go.mod",
-    "openabstractions-flat/abstraction-facade/go/go.sum",
+    "openabstractions-flat/abstraction-facade/go",
     "openabstractions-flat/abstraction-identity",
     "openabstractions-flat/abstraction-job/CONTRACT.md",
     "openabstractions-flat/abstraction-job/acceptance.thrift",

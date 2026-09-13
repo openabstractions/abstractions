@@ -35,6 +35,7 @@ func own(t *testing.T) string {
 
 func panelOver(t *testing.T, store job.Store) (*window, *download.Runner) {
 	t.Helper()
+	panelConfigRuntime(t)
 	r := download.DiscoverIn(store)
 	cfg := config.Watch()
 	t.Cleanup(func() { cfg.Close() })

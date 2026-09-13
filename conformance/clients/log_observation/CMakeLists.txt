@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.16)
+project(log_observer_consumer LANGUAGES CXX)
+find_package(abstraction_facade_logging CONFIG REQUIRED)
+add_executable(log_observer_consumer main.cpp)
+target_link_libraries(log_observer_consumer PRIVATE abstraction::facade_logging)

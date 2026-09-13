@@ -864,6 +864,7 @@ func genCpp(s *Definition) string {
 	if hasBinary(s) {
 		b.WriteString("\ninline std::string encode_binary(const std::vector<std::uint8_t>&);\ninline std::vector<std::uint8_t> decode_binary(const std::string&);\n")
 	}
+	b.WriteString(importPrelude(s, "cpp"))
 	cppVocabulary(&b, s)
 	for _, st := range s.Structs {
 		fmt.Fprintf(&b, "\nstruct %s {\n", st.Name)
@@ -884,7 +885,7 @@ func genCpp(s *Definition) string {
 	if s.Encoding.TrailingNewline() {
 		tail = "    out += '\\n';\n"
 	}
-	if s.Document != "" {
+	if s.Document != "" && len(s.Imports) == 0 {
 		fmt.Fprintf(&b, "\ninline std::string encode(const %s& v) {\n    std::string out;\n    enc_%s(out, v, 0);\n%s    return out;\n}\n",
 			s.Document, lower(s.Document), tail)
 	}

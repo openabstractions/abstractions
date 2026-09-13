@@ -1,0 +1,12 @@
+[package]
+name = "outside-rust-services-consumer"
+version = "0.0.0"
+edition = "2021"
+[dependencies]
+abstraction-facade-native = { path = "../../../openabstractions-flat/abstraction-facade/rust-native" }
+abstraction-facade-logging = { path = "../../../openabstractions-flat/abstraction-facade/rust-logging" }
+abstraction-facade-service = { path = "../../../openabstractions-flat/abstraction-facade/rust" }
+abstraction-ipc = { path = "../../../openabstractions-flat/abstraction-identity/rust" }
+[[bin]]
+name = "consumer"
+path = "main.rs"

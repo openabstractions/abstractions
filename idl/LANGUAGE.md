@@ -42,8 +42,8 @@ Each is refused by name, with the reason in the error.
 | **[DEF-F2]** `union` | A union's absent arm and an absent field are two spellings of one thing, and the record already spells absence two ways ([DEF-A4]). |
 | **[DEF-F3]** `set<T>` | A set has no order that three languages share. Use `list`. |
 | **[DEF-F4]** `double`, and any float | A float has more than one spelling. `1.50` and `1.5` are one value and two records. Numbers inside an *opaque* field keep whatever spelling they arrived with ([DEF-E5]); the definition itself has no float. |
-| **[DEF-F5]** `binary` on unsupported backends | Arbitrary octets, distinct from UTF-8 `string` and verbatim `json`. Go/C++/Python support it; Rust/JavaScript currently refuse it explicitly. See binary values below. |
-| **[DEF-F6]** `include` | One file, one normative text. A transitive definition graph has no single thing to point an adopter at. |
+| **[DEF-F5]** `binary` on unsupported backends | Arbitrary octets, distinct from UTF-8 `string` and verbatim `json`. Go/C++/Python/Rust/JavaScript support it; unsupported backends refuse it explicitly. See binary values below. |
+| **[DEF-F6]** unsupported cross-definition references | Qualified included records are supported in Go/C++/Python/docs as described below. Imported enums/typedefs, cyclic include graphs and unsupported backends are refused. |
 | **[DEF-F7]** default values (`1: optional i32 n = 3`) | A default written back is not an absence, and the difference is load-bearing. A reader that supplies a default on read and a writer that records one are doing different things, and one syntax for both hides it. |
 | **[DEF-F8]** `i8`, `i16`, `byte` | Integer width is pinned per field and we need two widths. Offering more invites a third. |
 | **[DEF-F9]** an `optional` field with no `omit` | See [DEF-A4]. |
@@ -591,8 +591,9 @@ written by hand in each. That older envelope-only example predates the
 service binding in DEF-S1; service dispatch is now generated.
 
 **The enforceable form of this rule is the import list.** Each backend declares
-the imports it may emit — Go, Python and JavaScript declare none, Rust declares
-`BTreeMap`, C++ declares eight standard headers — and emitting anything else
+its fixed standard-library imports and explicit included-definition imports.
+Go package paths come from build configuration; C++/Python use the included
+namespace. JavaScript and Rust refuse typed includes. Emitting an undeclared import
 fails the generator's own build. A module that cannot name a socket, a clock or
 a filesystem cannot reach one, and widening that list is how a backend would
 have to admit it was trying to.
@@ -661,9 +662,15 @@ The binding supports multiple services, one-way methods, typed request-response
 results and required typed arguments. Omitted `required` is implied for method
 arguments. Optional/default arguments and `throws` remain refused explicitly.
 Go and C++ generate interfaces, transport-injected clients and pure dispatchers.
-Python generates interfaces and clients; it does not generate a server runtime
-or dispatcher. Rust and JavaScript refuse service-bearing definitions rather
-than silently emit just data codecs.
+Python and Rust generate interfaces and transport-injected clients. Their
+generated output contains no server runtime or dispatcher. Rust clients use a
+`FrameTransport` trait with an associated transport error; `CallError` retains
+transport failures, codec refusals, envelope errors and service code/message.
+Transport adapters own waiting budgets and cancellation. Generated calls never
+retry, and a transport error leaves receiver acceptance unresolved. One-way
+completion confirms local submission only. Rust `--no-ipc` emits capability
+traits and record codecs. Rust typed includes remain explicitly unsupported.
+JavaScript refuses service-bearing definitions.
 The docs backend includes the method signatures and semantics.
 
 Each call is JSON bytes, possibly containing whitespace/newlines and without a
@@ -799,17 +806,21 @@ logging's one-way Write; this does not claim a deployed IPC service.
 ### Binary values
 
 `binary` is arbitrary octets: Go `[]byte`, C++ `std::vector<std::uint8_t>`,
-and Python `bytes`. JSON represents it as an RFC 4648 standard-alphabet Base64
+Python `bytes`, Rust `Vec<u8>`, and JavaScript `Uint8Array` (including Node Buffer). JSON represents it as an RFC 4648 standard-alphabet Base64
 string with required padding and no whitespace. Readers reject malformed
 alphabet/padding and nonzero padding bits with `bad_binary`; encoders emit the
 canonical padded spelling. Empty binary encodes as `""`; JSON null is not binary.
 
 For `optional binary data (omit="absent")`, missing and empty stay distinct:
-Go nil versus non-nil empty slice, C++ optional vector, Python None versus b''.
+Go nil versus non-nil empty slice, C++ optional vector, Python None versus b'',
+Rust Option versus an empty vector, and JavaScript null/undefined versus an empty
+Uint8Array. JavaScript constructors use null for absent values; invalid binary
+carriers throw `Refusal` with `wrong_type` before transport submission.
 A required binary value is always emitted, including empty. Required-field
 absence remains `missing_field`. Binary is not a replacement for opaque JSON:
 bytes have no internal document semantics. Binary collections are not yet in
-the supported profile. Rust/JavaScript binary generation fails before output.
+the supported profile. JavaScript binary codecs use portable byte operations and
+canonical Base64 without requiring Node or browser-specific encoding helpers.
 
 
 ### Enum fields
@@ -839,3 +850,53 @@ Existing vocabulary constants retain their names and bytes. When a Go enum
 member owns the generated `EnumUnknown` name (for example member `unknown`),
 policy metadata uses `EnumUnknownPolicy`, appending `Policy` until no member
 collides. The member constant retains its exact wire name.
+
+
+## Typed cross-definition records
+
+`include "relative/model.thrift"` binds the filename stem `model`. A field or
+service signature uses `model.Ref`; an unqualified `Ref` remains local. Paths
+resolve from the including source file. The loader refuses missing files,
+unresolved types, duplicate aliases and cyclic include graphs. Canonical file
+paths identify memoized dependencies; include nesting is bounded at 64 definitions. The supported
+subset imports record types, including optional and repeated records. Imported
+enums, typedefs and recursive record layouts remain unsupported and are refused.
+Includes sharing a target namespace are ambiguous and refused.
+
+Each included record keeps its generated language identity, encoding policy,
+unknown-field behavior and refusal words. Generated bridges delegate to the
+included codec, retaining raw extension values. They translate a dependency's
+refusal into the enclosing codec's refusal carrier with its original word and
+absolute input offset. Nesting depth and the tighter enclosing/included limit
+continue across the boundary. Named encoding checks its output through the same
+record decoder. The ordinary document encoder of an including definition uses
+that validation too. Python named codecs check field types before encoding. Unknown fields are judged by the definition owning that record.
+
+Generate each dependency with `--named-codecs` before compiling its consumers.
+This exports `EncodeRef`/`DecodeRef` in Go and `encode_ref`/`decode_ref` in C++ and
+Python for a record named Ref, alongside the existing document codecs. The `At`
+(Go) or `_at` (C++/Python) entry points compose records with explicit depth and
+limit; decoding returns the consumed byte count. Named top-level codecs retain
+the definition's terminator. Consumers with includes also emit named codecs.
+The generator emits each source independently; it does not copy dependency
+records into the consumer or infer dependency versions.
+
+For example, generate `model.thrift` and `request.thrift` with
+`--named-codecs go cpp python docs`, then generate their consumer with:
+
+```
+gen resolver.thrift out --go-import=model=example.org/model/abstraction/model/api --go-import=request=example.org/download/abstraction/download/request go cpp python docs
+```
+
+Go mappings are explicit build metadata. C++ consumers add the generated `cpp/`
+roots to their include paths; Python consumers install the generated `py/`
+namespace trees. A selection lists local surfaces; imported record dependencies
+remain linked through their owning modules. `--no-ipc` retains typed interfaces
+and record codecs.
+
+The current IPC envelope pre-scans payload JSON. An envelope declaring
+`duplicate_keys="refuse"` cannot safely embed a dependency allowing last-wins
+keys; generation refuses that combination with an explicit `--no-ipc` option.
+Compatible policies support generated IPC. This restriction also covers
+transitive dependencies. Direct record codecs can compose different policies.
+Definitions without includes or `--named-codecs` retain their generated bytes.

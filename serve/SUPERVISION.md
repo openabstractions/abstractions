@@ -8,8 +8,9 @@ end for shutdown. Parent death also closes that end; the child must not inherit
 a copy of the writer. The Windows process tests exercise this ownership.
 
 EOF requests cooperative context cancellation. Unexpected control bytes and
-read errors fail the child. Provider/resolver listener initialization must all
-succeed before the acknowledgment is written. A failed or short readiness write
+read errors fail the child. Resolver initialization must succeed before the
+acknowledgment is written. Independent provider failures remain observable
+through resolution while healthy capabilities stay available. A failed or short readiness write
 closes initialized listeners and fails startup. The marker reports local listener
 initialization; capability-specific readiness remains available through the
 resolver. Diagnostics use stderr. The parent must consume stdout and observe
@@ -27,12 +28,14 @@ process churn that prevents complete observation is reported as an error.
 
 Machine service registration opts in with `jobd service install --runtime`.
 The supervisor retains its download worker and observes both lifetimes. The
-runtime defaults to logging and config; job admission requires explicit store
-and logical-owner configuration. `openabstractions status --json` queries the
-baseline capabilities through the resolver under the invoking account.
+runtime defaults to logging, configuration and managed durable jobs.
+`openabstractions status --json` queries the generated baseline contract roster
+through the resolver under the invoking account. It separately reports read-only
+installation/supervision evidence. Running supervision does not establish
+capability readiness; interrupted queries preserve unanswered results.
 
 Per-user Startup invokes `jobdw start --runtime`. The supervisor starts the
-contained runtime before exposing its worker bus. Start checks logging/config
+contained runtime before exposing its worker bus. Central start checks the default contracts'
 availability even when a supervisor already answers. This check establishes
 capability availability; it does not establish ownership of the answering host.
 

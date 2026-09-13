@@ -13,13 +13,14 @@ type parser struct {
 	grammars map[string]Grammar
 	def      *Definition
 	seenEnc  bool
+	load     func(string) (*Definition, error)
 }
 
 var forbidden = map[string]string{
-	"exception":   "behaviour is not in the schema: a refusal is a closed vocabulary, declared as an enum",
-	"union":       "a union's absent arm and an absent field are two spellings of one thing",
-	"senum":       "withdrawn from Thrift itself",
-	"include":     "one file, one definition: a transitive definition graph has no single normative text",
+	"exception": "behaviour is not in the schema: a refusal is a closed vocabulary, declared as an enum",
+	"union":     "a union's absent arm and an absent field are two spellings of one thing",
+	"senum":     "withdrawn from Thrift itself",
+
 	"cpp_include": "one file, one definition",
 	"oneway":      "behaviour is not in the schema",
 }
@@ -47,13 +48,16 @@ var scalarTypes = map[string]bool{
 	"bool": true, "i32": true, "i64": true, "string": true, "json": true, "binary": true,
 }
 
-func parse(src string) (*Definition, error) {
+func parse(src string) (*Definition, error) { return parseWithIncludes(src, nil) }
+
+func parseWithIncludes(src string, load func(string) (*Definition, error)) (*Definition, error) {
 	toks, err := lex(src)
 	if err != nil {
 		return nil, err
 	}
 	p := &parser{
 		toks:     toks,
+		load:     load,
 		typedefs: map[string]string{},
 		grammars: map[string]Grammar{},
 		def:      &Definition{byName: map[string]*Struct{}},
@@ -95,6 +99,8 @@ func (p *parser) file() error {
 		}
 		var err error
 		switch word {
+		case "include":
+			err = p.includeDef()
 		case "encoding":
 			err = p.encoding()
 		case "typedef":

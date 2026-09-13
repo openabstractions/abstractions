@@ -69,7 +69,7 @@ var backends = []backend{
 	{"docs", "schema.html", genDocs, nil, false},
 }
 
-const usage = "usage: gen <definition.thrift> <outdir> [-only=<surface,...>] [--no-ipc] [language ...]\n       gen <definition.thrift> --paths [language ...]"
+const usage = "usage: gen <definition.thrift> <outdir> [-only=<surface,...>] [--no-ipc] [--shared-rust-transport] [language ...]\n       gen <definition.thrift> --paths [language ...]"
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
@@ -81,18 +81,18 @@ func run(args []string, stdout io.Writer) error {
 	if len(args) == 0 || len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
 		fmt.Fprintln(stdout, usage)
 		fmt.Fprintln(stdout, "Languages: go python cpp javascript rust docs. Omit languages for all backends.")
-		fmt.Fprintln(stdout, "--no-ipc emits service interfaces and record types/codecs without IPC bindings (Go, C++, Python).")
+		fmt.Fprintln(stdout, "--no-ipc emits service interfaces and record types/codecs without IPC bindings (Go, C++, Python, Rust).")
+		fmt.Fprintln(stdout, "--shared-rust-transport uses the pure abstraction-frame crate for Rust IPC; standalone and --no-ipc outputs remain independent.")
+		fmt.Fprintln(stdout, "--go-alias-package=import-path emits Go compatibility exports forwarding to the canonical generated package.")
+		fmt.Fprintln(stdout, "--named-codecs exports composable per-record codecs; generate dependencies with this flag.")
+		fmt.Fprintln(stdout, "--go-import=alias=package-path maps an include filename alias to its generated Go package; repeat per dependency.")
 		fmt.Fprintln(stdout, "--paths lists output locations without generating code or claiming backend support for a schema's features.")
 		return nil
 	}
 	if len(args) < 2 {
 		return fmt.Errorf("%s", usage)
 	}
-	src, err := os.ReadFile(args[0])
-	if err != nil {
-		return err
-	}
-	whole, err := parse(string(src))
+	whole, err := loadDefinition(args[0])
 	if err != nil {
 		return fmt.Errorf("%s: %w", args[0], err)
 	}
@@ -107,9 +107,35 @@ func run(args []string, stdout io.Writer) error {
 		}
 	}
 	var want, only []string
+	goAlias := ""
 	noIPC := false
 	for _, a := range args[2:] {
 		switch {
+		case strings.HasPrefix(a, "--go-alias-package="):
+			value := strings.TrimPrefix(a, "--go-alias-package=")
+			if goAlias != "" || value == "" || strings.ContainsAny(value, "\"\\ \n\r\t") {
+				return fmt.Errorf("--go-alias-package requires one nonempty import path")
+			}
+			goAlias = value
+		case a == "--shared-rust-transport":
+			if whole.SharedRustTransport {
+				return fmt.Errorf("--shared-rust-transport may be supplied once")
+			}
+			whole.SharedRustTransport = true
+		case a == "--named-codecs":
+			whole.NamedCodecs = true
+		case strings.HasPrefix(a, "--go-import="):
+			pair := strings.SplitN(strings.TrimPrefix(a, "--go-import="), "=", 2)
+			if len(pair) != 2 || pair[0] == "" || pair[1] == "" || strings.ContainsAny(pair[1], "\"\\ \n\r") {
+				return fmt.Errorf("--go-import requires alias=package-path")
+			}
+			if whole.GoImports == nil {
+				whole.GoImports = map[string]string{}
+			}
+			if whole.GoImports[pair[0]] != "" {
+				return fmt.Errorf("duplicate Go import mapping %s", pair[0])
+			}
+			whole.GoImports[pair[0]] = pair[1]
 		case a == "--no-ipc":
 			if noIPC {
 				return fmt.Errorf("--no-ipc may be supplied once")
@@ -173,6 +199,9 @@ func run(args []string, stdout io.Writer) error {
 		if len(want) > 0 && !contains(want, b.lang) {
 			continue
 		}
+		if err := validateIncludes(def, b.lang); err != nil {
+			return err
+		}
 		if err := validateBinaryBackend(def, b.lang); err != nil {
 			return err
 		}
@@ -184,7 +213,7 @@ func run(args []string, stdout io.Writer) error {
 		if len(want) > 0 && !contains(want, b.lang) {
 			continue
 		}
-		body := b.emit(def)
+		body := emitIncluded(b, def)
 		entire := body
 		if def != whole {
 			verificationDefinition := whole
@@ -193,12 +222,18 @@ func run(args []string, stdout io.Writer) error {
 				// declared refusal words, including the service frame's grammar.
 				verificationDefinition = serviceTypes(whole)
 			}
-			entire = b.emit(verificationDefinition)
+			entire = emitIncluded(b, verificationDefinition)
 		}
-		if err := b.verify(emitted{def, b.lang, b.imports, body, args[0], entire}); err != nil {
+		if err := b.verify(emitted{def, b.lang, includeImports(b, def), body, args[0], entire}); err != nil {
 			return err
 		}
 		path, body := namespacedOutput(b, def.Namespaces, body)
+		if b.lang == "go" && goAlias != "" {
+			body, err = goExportAliases(body, goAlias)
+			if err != nil {
+				return err
+			}
+		}
 		body = banner(b.lang, args[0], body)
 		artifacts = append(artifacts, artifact{path, body,
 			fmt.Sprintf("%-12s %-16s %5d lines  %s\n", b.lang, path, strings.Count(body, "\n"), carries(whole, def))})

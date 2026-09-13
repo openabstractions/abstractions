@@ -3,6 +3,7 @@
 #include <cctype>
 #include <iostream>
 #include <stdexcept>
+#include <thread>
 
 void require(bool condition, const char* message) {
     if (!condition) throw std::runtime_error(message);
@@ -26,6 +27,8 @@ int main(int argc, char** argv) {
         if (mode == "absent") {
             absent([&] { machine.Log().Log(0, "must not create local storage"); });
             absent([&] { machine.Config().Read(); });
+            absent([&] { machine.ResolveLogReader().Read(""); });
+            absent([&] { machine.ResolveConfigEditor().ReadUser(); });
             absent([&] { machine.Router().Models(); });
             absent([&] { machine.Router().Hosts(); });
             absent([&] { abstraction::router::PickRequest r; r.model = "qwen2.5"; machine.Router().Pick(r); });
@@ -44,7 +47,38 @@ int main(int argc, char** argv) {
             return 0;
         }
         require(mode == "all", "unknown mode");
+        auto editor = machine.ResolveConfigEditor();
+        const auto original = editor.ReadUser();
+        require(original.values.store == "service-owned store", "editor copied run or machine values");
+        auto updated = original.values;
+        updated.off["editor-proof"] = "temporary test setting";
+        const auto applied = editor.ReplaceUser(original.revision, updated);
+        require(applied.outcome == "applied",
+                "revision-checked edit was not applied");
+        const auto conflict = editor.ReplaceUser(original.revision, original.values);
+        require(conflict.outcome == "conflict",
+                "stale edit silently overwrote settings");
+        require(machine.Config().Read().off.at("editor-proof") == "temporary test setting",
+                "reader and editor disagree about service-owned settings");
+        const auto restored = editor.ReplaceUser(applied.snapshot.revision, original.values);
+        require(restored.outcome == "applied",
+                "failed to restore fixture settings");
         machine.Log().Log(0, "facade to Go service\nsecond line \xE2\x98\x83", {{"binding", "facade"}, {"empty", ""}});
+        const auto deadline=abstraction::ipc::Clock::now()+std::chrono::seconds(2);
+        auto history=machine.ResolveLogReader({},"local",deadline);
+        abstraction::logging::Page page;
+        do {
+            page=history.Read("",1,65536);
+            require(page.outcome=="page","history refused");
+            if(!page.records.empty()) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        } while(abstraction::ipc::Clock::now()<deadline);
+        require(page.records.size()==1 && page.records[0].msg=="facade to Go service\nsecond line \xE2\x98\x83" && page.records[0].attrs.at("binding")=="facade","history changed logged record");
+        require(!page.records[0].identity.empty() && page.records[0].identity.back().verified,"history lost service attestation");
+        const auto continuation=history.Read(page.next,1,65536);
+        require(continuation.records.empty() && continuation.at_end && continuation.next==page.next,"history end replayed records");
+        require(history.Read("expired:0").outcome=="gap","history silently restarted old cursor");
+        require(history.Read("",1,1).outcome=="record_too_large","history silently skipped oversized record");
         const auto models = machine.Router().Models(); caller(models.observation);
         const auto hosts = machine.Router().Hosts(); caller(hosts.observation);
         require(models.models.empty() && hosts.hosts.empty() && hosts.asked.empty() && hosts.doubled.empty(),
@@ -64,15 +98,7 @@ int main(int argc, char** argv) {
         for (const auto& a : audited.asked)
             require(a.caller == audited.observation.caller.path_description && a.user == audited.observation.caller.user_description,
                     "router provider audit is not bound to the client");
-        abstraction::ipc::FrameTransport transport(abstraction::router::default_endpoint(), 10000, 1 << 20);
-        const auto reply = transport.ExchangeFrame(
-            R"({"version":1,"service":"abstraction.router/router@1","method":"Missing","arguments":{}})");
-        bool typed_refusal = false;
-        try { abstraction::router::service_response(reply, "abstraction.router/router@1", "Missing"); }
-        catch (const abstraction::router::ServiceError& error) { typed_refusal = error.code == "unknown_method"; }
-        require(typed_refusal && machine.Router().Hosts().asked.size() == 2,
-                "typed unknown-method refusal changed or reached the provider");
-        std::cout << "CLIENT VERIFIED: three service calls and provider audit\n" << std::flush;
+        std::cout << "CLIENT VERIFIED: service reads, revision-checked edits and provider audit\n" << std::flush;
         // The harness observes the service-owned log before letting this caller
         // exit. One-way logging itself does not promise a persistence receipt.
         require(std::cin.get() == '\n', "harness did not observe the logging provider");

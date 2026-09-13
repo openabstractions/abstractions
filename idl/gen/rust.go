@@ -828,6 +828,11 @@ func rsRead(s *Definition, f Field) string {
 		return "Some(r.string()?)"
 	}
 	switch f.Type {
+	case "binary":
+		if f.Omit == "absent" {
+			return "Some(read_binary(r)?)"
+		}
+		return "read_binary(r)?"
 	case "string":
 		if f.Grammar.Named() {
 			return "read_timestamp(r)?"
@@ -963,6 +968,9 @@ pub fn member(raw: &[u8], name: &str) -> bool {
 `
 
 func genRust(s *Definition) string {
+	if !s.NoIPC {
+		s = serviceTypes(s)
+	}
 	s = enumCarriers(s)
 	var b strings.Builder
 	esc := rsEscMinimal
@@ -1031,8 +1039,12 @@ func genRust(s *Definition) string {
 	if s.PreservesUnknown() {
 		b.WriteString(rsPreserve)
 	}
+	if hasBinary(s) {
+		b.WriteString(rsBinary)
+	}
 	rsDecoder(&b, s)
 	rsProtocol(&b, s)
+	rsServices(&b, s)
 	return b.String()
 }
 
@@ -1143,6 +1155,11 @@ func rsType(s *Definition, f Field) string {
 		return "Option<String>"
 	}
 	switch f.Type {
+	case "binary":
+		if f.Omit == "absent" {
+			return "Option<Vec<u8>>"
+		}
+		return "Vec<u8>"
 	case "string":
 		return "String"
 	case "json":
@@ -1172,7 +1189,7 @@ func rsType(s *Definition, f Field) string {
 }
 
 func rsPresent(s *Definition, f Field, e string) string {
-	if f.Omit == "absent" && (s.IsStruct(f.Type) || enumAbsent(f)) {
+	if f.Omit == "absent" && (s.IsStruct(f.Type) || enumAbsent(f) || f.Type == "binary") {
 		return e + ".is_some()"
 	}
 	switch f.Type {
@@ -1192,9 +1209,17 @@ func rsValue(s *Definition, f Field, e string) string {
 		return "esc(out, &write_timestamp(&" + e + "));"
 	}
 	switch f.Type {
+	case "binary":
+		if f.Omit == "absent" {
+			return "esc(out, &encode_binary(" + e + ".as_ref().unwrap()));"
+		}
+		return "esc(out, &encode_binary(&" + e + "));"
 	case "string":
 		return "esc(out, &" + e + ");"
 	case "json":
+		if f.Ann["service_raw"] == "true" {
+			return "out.extend_from_slice(&" + e + ");"
+		}
 		return "raw(out, &" + e + ", depth + 1);"
 	case "i32":
 		return "num(out, " + e + " as i64);"
@@ -1217,3 +1242,54 @@ func rsValue(s *Definition, f Field, e string) string {
 	}
 	return "enc_" + lower(f.Type) + "(out, &" + e + ", depth + 1);"
 }
+
+// Binary uses the same padded, canonical base64 spelling as the other backends.
+const rsBinary = `
+fn encode_binary(value: &[u8]) -> String {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for chunk in value.chunks(3) {
+        let mut v = (chunk[0] as u32) << 16;
+        if chunk.len() > 1 { v |= (chunk[1] as u32) << 8; }
+        if chunk.len() > 2 { v |= chunk[2] as u32; }
+        out.push(ALPHABET[(v >> 18) as usize] as char);
+        out.push(ALPHABET[((v >> 12) & 63) as usize] as char);
+        out.push(if chunk.len() > 1 { ALPHABET[((v >> 6) & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { ALPHABET[(v & 63) as usize] as char } else { '=' });
+    }
+    out
+}
+fn read_binary(r: &mut Reader) -> Result<Vec<u8>, Refusal> {
+    let text = r.string()?;
+    let bytes = text.as_bytes();
+    if bytes.len() % 4 != 0 { return r.refuse("bad_binary"); }
+    let mut out = Vec::new();
+    for (i, chunk) in bytes.chunks(4).enumerate() {
+        let mut v = 0u32;
+        let mut pad = 0;
+        for (j, &c) in chunk.iter().enumerate() {
+            let digit = if c == b'=' {
+                if j < 2 || (i + 1) * 4 != bytes.len() { return r.refuse("bad_binary"); }
+                pad += 1;
+                0
+            } else {
+                if pad != 0 { return r.refuse("bad_binary"); }
+                match c {
+                    b'A'..=b'Z' => c - b'A',
+                    b'a'..=b'z' => c - b'a' + 26,
+                    b'0'..=b'9' => c - b'0' + 52,
+                    b'+' => 62,
+                    b'/' => 63,
+                    _ => return r.refuse("bad_binary"),
+                }
+            };
+            v = (v << 6) | digit as u32;
+        }
+        out.push((v >> 16) as u8);
+        if pad < 2 { out.push((v >> 8) as u8); }
+        if pad == 0 { out.push(v as u8); }
+    }
+    if encode_binary(&out) != text { return r.refuse("bad_binary"); }
+    Ok(out)
+}
+`

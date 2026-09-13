@@ -38,7 +38,7 @@ func TestServiceParse(t *testing.T) {
 			t.Fatalf("%s: want %s, got %v", tc.input, tc.want, e)
 		}
 	}
-	for _, lang := range []string{"rust", "javascript"} {
+	for _, lang := range []string{"javascript"} {
 		if validateServiceBackend(s, lang) == nil {
 			t.Fatal("silently omitted service", lang)
 		}
@@ -308,3 +308,27 @@ Transport t{argv[1]};rec::QueryClient c(t);std::string method=argv[2];bool rejec
  catch(const std::exception&e){std::cerr<<e.what();return 9;}
 }
 `
+
+func TestCppServiceDescriptor(t *testing.T) {
+	s, err := parse(head + serviceFixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := genCpp(s)
+	for _, want := range []string{`struct EventsService{`, `wire_name="example.events/events@1"`, `capability="example.events"`, `using Client=EventsClient<Transport>`} {
+		if !strings.Contains(out, want) {
+			t.Fatal("missing descriptor", want)
+		}
+	}
+	legacy, err := parse(head + strings.Replace(serviceFixture, "example.events/events@1", "legacy", 1))
+	if err != nil {
+		t.Fatal("legacy wire name", err)
+	}
+	if !strings.Contains(genCpp(legacy), `capability=""`) {
+		t.Fatal("invented legacy capability")
+	}
+	_, err = parse(head + strings.Replace(serviceFixture, "struct Record", `struct EventsService{1:required string v}(unknown_fields="grant") struct Record`, 1))
+	if err == nil {
+		t.Fatal("descriptor name collision accepted")
+	}
+}

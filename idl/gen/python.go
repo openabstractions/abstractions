@@ -791,6 +791,7 @@ func genPy(s *Definition) string {
 		prelude += pyEncList
 	}
 	b.WriteString(strings.NewReplacer("@INDENT@", strconv.Itoa(s.Encoding.Indent)).Replace(prelude))
+	b.WriteString(importPrelude(s, "python"))
 	pyVocabulary(&b, s)
 	for _, st := range s.Structs {
 		fmt.Fprintf(&b, "\n\nclass %s:\n    def __init__(self, **kw):\n", st.Name)
@@ -814,8 +815,12 @@ func genPy(s *Definition) string {
 		tail = "    out += b\"\\n\"\n"
 	}
 	if s.Document != "" {
-		fmt.Fprintf(&b, "\n\ndef encode(v):\n    out = bytearray()\n    enc_%s(out, v, 0)\n%s    return bytes(out)\n",
-			lower(s.Document), tail)
+		if len(s.Imports) > 0 {
+			fmt.Fprintf(&b, "\n\ndef encode(v):\n    return encode_%s(v)\n", lower(s.Document))
+		} else {
+			fmt.Fprintf(&b, "\n\ndef encode(v):\n    out = bytearray()\n    enc_%s(out, v, 0)\n%s    return bytes(out)\n",
+				lower(s.Document), tail)
+		}
 	}
 	dup, skipDup := "", ""
 	if s.Encoding.RefuseDuplicateKeys() {

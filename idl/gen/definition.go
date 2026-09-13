@@ -153,18 +153,23 @@ type Service struct {
 }
 
 type Definition struct {
-	NoIPC      bool // output mode only; never schema semantics
-	Namespaces map[string]string
-	Services   []Service
-	Encoding   Encoding
-	Typedefs   []Typedef
-	Structs    []Struct
-	Enums      []Enum
-	Consts     []Const
-	Vocab      *Vocabulary
-	Refusals   []Refusal
-	Proto      *Protocol
-	Document   string
+	Imports             []IncludedDefinition
+	Foreign             map[string]ImportedRecord
+	NamedCodecs         bool
+	GoImports           map[string]string
+	NoIPC               bool // output mode only; never schema semantics
+	SharedRustTransport bool // generated Rust IPC uses abstraction-frame; standalone remains default
+	Namespaces          map[string]string
+	Services            []Service
+	Encoding            Encoding
+	Typedefs            []Typedef
+	Structs             []Struct
+	Enums               []Enum
+	Consts              []Const
+	Vocab               *Vocabulary
+	Refusals            []Refusal
+	Proto               *Protocol
+	Document            string
 
 	byName map[string]*Struct
 }
@@ -201,7 +206,7 @@ func (s *Definition) Words() []string {
 	return out
 }
 
-func (s *Definition) IsStruct(t string) bool { _, ok := s.byName[t]; return ok }
+func (s *Definition) IsStruct(t string) bool { return s.Struct(t) != nil }
 
 func listElement(t string) string {
 	if strings.HasPrefix(t, "list<") && strings.HasSuffix(t, ">") {
@@ -246,7 +251,15 @@ func (s *Definition) HasStringMap() bool {
 	return s.StringMapDocument() || envelopeUses(s, "map<string,string>")
 }
 
-func (s *Definition) Struct(name string) *Struct { return s.byName[name] }
+func (s *Definition) Struct(name string) *Struct {
+	if st := s.byName[name]; st != nil {
+		return st
+	}
+	if _, ok := s.importedRecord(name); ok {
+		return &Struct{Name: name}
+	}
+	return nil
+}
 
 func (s *Definition) Timestamps() bool {
 	for _, st := range s.Structs {

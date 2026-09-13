@@ -20,13 +20,13 @@ This repository is the parent: the scope rules, the method, the measured results
 and the suite. It is a test suite, not a library — the code is in the layer
 repositories listed below.
 
-**Deciding whether to adopt any of this?**
-[What adopting involves](https://openabstractions.org/adopt.html) — including
-where the honest answer is "no install line is printed here, because none has
-been run from a clean machine" — and
-[what is proven and what is not](https://openabstractions.org/coverage.html).
-[CONTRIBUTING.md § Adopting](CONTRIBUTING.md#adopting) is the same ground with
-every link in one place.
+**Start with a service client:** the
+[facade README](https://github.com/openabstractions/abstraction-facade) provides
+Go and C++ logging examples, runtime requirements and source-build instructions.
+The [adoption guide](https://openabstractions.org/adopt.html) explains ownership
+and failure behavior. [CONTRIBUTING.md](CONTRIBUTING.md#adopting) gives agents a
+revision and evidence checklist. Development APIs require a coordinated source
+set; verify public availability before selecting a dependency revision.
 
 ## Use a layer
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -106,7 +107,7 @@ for(auto bad:{"A","AA","AAA","AB==","AAB=","AA=A","====","AA==AAAA","AA-_"}){try
 }
 func TestBinaryUnsupportedBackends(t *testing.T) {
 	s := binaryDefinition(t)
-	for _, lang := range []string{"rust", "javascript"} {
+	for _, lang := range []string{"unsupported"} {
 		if validateBinaryBackend(s, lang) == nil {
 			t.Fatal(lang)
 		}
@@ -118,11 +119,95 @@ func TestBinaryHelpersAreFeatureScoped(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	for lang, body := range map[string]string{"go": genGo(s), "cpp": genCpp(s), "python": genPy(s)} {
+	for lang, body := range map[string]string{"go": genGo(s), "cpp": genCpp(s), "python": genPy(s), "rust": genRust(s), "javascript": genJS(s)} {
 		for _, marker := range []string{"encodeBinary", "encode_binary", "bad_binary", "kind == \"binary\""} {
 			if strings.Contains(body, marker) {
 				t.Fatalf("%s added binary machinery to an existing schema", lang)
 			}
 		}
+	}
+}
+
+func TestBinaryRust(t *testing.T) {
+	s := binaryDefinition(t)
+	if e := validateBinaryBackend(s, "rust"); e != nil {
+		t.Fatal(e)
+	}
+	dir := t.TempDir()
+	writeNamespaceFile(t, dir, "rec.rs", genRust(s))
+	writeNamespaceFile(t, dir, "main.rs", `mod rec;
+use std::io::Write;
+fn main(){
+ assert!(rec::decode(b"{}").unwrap().data.is_none());
+ for data in [vec![],vec![0],vec![255,0],(0..=255u8).collect()] {
+ let v=rec::Value{data:Some(data.clone())}; assert_eq!(rec::decode(&rec::encode(&v)).unwrap().data,Some(data)); }
+ for bad in ["A","AA","AAA","AB==","AAB=","AA=A","====","AA==AAAA","AA-_","AA==\\n","éAAA","AAA=AAAA"] {
+ let raw=format!("{{\"data\":\"{}\"}}",bad);
+ assert_eq!(rec::decode(raw.as_bytes()).err().unwrap().word,"bad_binary","{}",bad); }
+ for (raw,word) in [("{\"data\":false}","wrong_type"),("{\"data\":\"AB==\"}x","bad_binary"),("{\"data\":\"AA==\"}x","trailing_bytes")] {
+ assert_eq!(rec::decode(raw.as_bytes()).err().unwrap().word,word,"{}",raw); }
+ std::io::stdout().write_all(&rec::encode(&rec::Value{data:Some((0..=255u8).collect())})).unwrap();
+}
+`)
+	exe := filepath.Join(dir, "probe.exe")
+	c := exec.Command(rustServiceCompiler(t), "--edition=2021", filepath.Join(dir, "main.rs"), "-o", exe)
+	if out, e := c.CombinedOutput(); e != nil {
+		t.Fatalf("%v\n%s", e, out)
+	}
+	out, e := exec.Command(exe).CombinedOutput()
+	if e != nil {
+		t.Fatalf("%v\n%s", e, out)
+	}
+	all := make([]byte, 256)
+	for i := range all {
+		all[i] = byte(i)
+	}
+	if !strings.Contains(string(out), "\""+base64.StdEncoding.EncodeToString(all)+"\"") {
+		t.Fatalf("noncanonical output: %s", out)
+	}
+	// Negative control: canonical tail-bit validation must be exercised by the executable.
+	body := strings.Replace(genRust(s), `if encode_binary(&out) != text { return r.refuse("bad_binary"); }`, "", 1)
+	writeNamespaceFile(t, dir, "rec.rs", body)
+	c = exec.Command(rustServiceCompiler(t), "--edition=2021", filepath.Join(dir, "main.rs"), "-o", exe)
+	if out, e := c.CombinedOutput(); e != nil {
+		t.Fatalf("mutation compile: %v\n%s", e, out)
+	}
+	if out, e := exec.Command(exe).CombinedOutput(); e == nil {
+		t.Fatalf("canonical-tail mutation passed: %s", out)
+	}
+
+}
+func TestRustAcceptanceBinarySchemaCompiles(t *testing.T) {
+	raw, e := os.ReadFile("../../openabstractions-flat/abstraction-job/acceptance.thrift")
+	if e != nil {
+		t.Fatal(e)
+	}
+	s, e := parse(string(raw))
+	if e != nil {
+		t.Fatal(e)
+	}
+	dir := t.TempDir()
+	writeNamespaceFile(t, dir, "rec.rs", genRust(s))
+	c := exec.Command(rustServiceCompiler(t), "--edition=2021", "--crate-type=lib", filepath.Join(dir, "rec.rs"), "-o", filepath.Join(dir, "lib.rlib"))
+	if out, e := c.CombinedOutput(); e != nil {
+		t.Fatalf("%v\n%s", e, out)
+	}
+}
+
+func TestRustBinaryDepth(t *testing.T) {
+	s, e := parse(strings.Replace(head, `depth_limit    = "64"`, `depth_limit    = "1"`, 1) + `struct Child {1: required binary data}(unknown_fields="refuse") struct Value {1: required Child child}(document="true",unknown_fields="refuse")`)
+	if e != nil {
+		t.Fatal(e)
+	}
+	dir := t.TempDir()
+	writeNamespaceFile(t, dir, "rec.rs", genRust(s))
+	writeNamespaceFile(t, dir, "main.rs", `mod rec;fn main(){assert_eq!(rec::decode(b"{\"child\":{\"data\":\"AA==\"}}").err().unwrap().word,"depth_exceeded");}`)
+	exe := filepath.Join(dir, "probe.exe")
+	c := exec.Command(rustServiceCompiler(t), "--edition=2021", filepath.Join(dir, "main.rs"), "-o", exe)
+	if out, e := c.CombinedOutput(); e != nil {
+		t.Fatalf("%v\n%s", e, out)
+	}
+	if out, e := exec.Command(exe).CombinedOutput(); e != nil {
+		t.Fatalf("%v\n%s", e, out)
 	}
 }

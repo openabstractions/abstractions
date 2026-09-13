@@ -83,7 +83,7 @@ func TestServiceBackendSupportIsCheckedBeforeAnyOutput(t *testing.T) {
 	if err := os.WriteFile(source, []byte(strings.Split(string(profile), "struct Closed")[0]+serviceFixture), 0600); err != nil {
 		t.Fatal(err)
 	}
-	for _, langs := range [][]string{nil, {"go", "python", "rust"}, {"cpp", "rust"}, {"go", "javascript"}} {
+	for _, langs := range [][]string{nil, {"go", "python", "javascript"}, {"cpp", "javascript"}, {"go", "javascript"}} {
 		out := filepath.Join(t.TempDir(), "out")
 		var report bytes.Buffer
 		err := run(append([]string{source, out}, langs...), &report)

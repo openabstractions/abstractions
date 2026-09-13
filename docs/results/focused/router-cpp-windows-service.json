@@ -1,5 +1,6 @@
 {
-  "schema": 1,
+  "schema": 2,
+  "execution_platform": "windows/amd64",
   "manifest": "conformance/clients/router/manifests/cpp-windows.json",
   "definition": {
     "id": "router-cpp-windows-service",
@@ -74,7 +75,7 @@
       "--run"
     ]
   },
-  "inputs_digest": "293689b7b50f55c17992b6cf710f404c4b2b7f5c5f14c0228d140d3c402de646",
+  "inputs_digest": "cb8493b625926af87bad8cd42a20dfe457b71a2185d6eebe7259d32fc70c6df6",
   "toolchains": {
     "python": {
       "argv": [
@@ -83,7 +84,7 @@
       ],
       "exit": 0,
       "output": "Python 3.12.10\r\n",
-      "seconds": 0.891
+      "seconds": 0.046
     },
     "go": {
       "argv": [
@@ -92,7 +93,7 @@
       ],
       "exit": 0,
       "output": "go version go1.26.5 windows/amd64\n",
-      "seconds": 1.281
+      "seconds": 0.047
     },
     "cmake": {
       "argv": [
@@ -102,7 +103,7 @@
       ],
       "exit": 0,
       "output": "cmake version 4.3.1-msvc1\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n",
-      "seconds": 1.328
+      "seconds": 0.297
     }
   },
   "result": {
@@ -112,9 +113,9 @@
       "--run"
     ],
     "exit": 0,
-    "output": "-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\r\n-- Configuring done (0.1s)\r\n-- Generating done (0.3s)\r\n-- Build files have been written to: $ROOT/.build/router/native\r\nC++ compiler ID MSVC\r\nC++ compiler VERSION 19.51.36256.0\r\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\n  abstraction_ipc.vcxproj -> $ROOT\\.build\\router\\native\\abstraction_ipc-build\\Release\\abstraction_ipc.lib\r\n-- Installing: $ROOT\\.build\\router\\s-b61054d9/lib/abstraction_ipc.lib\r\n-- Installing: $ROOT\\.build\\router\\s-b61054d9/include\r\n-- Installing: $ROOT\\.build\\router\\s-b61054d9/include/abstraction\r\n-- Installing: $ROOT\\.build\\router\\s-b61054d9/include/abstraction/ipc\r\n-- Installing: $ROOT\\.build\\router\\s-b61054d9/include/abstraction/ipc/client.h\r\n-- Installing: $ROOT\\.build\\router\\s-b61054d9/include/abstraction/ipc/client.hpp\r\n-- Installing: $ROOT\\.build\\router\\s-b61054d9/include/abstraction/ipc/frame.hpp\r\n-- Installing: $ROOT\\.build\\router\\s-b61054d9/include/abstraction/ipc/process.hpp\r\n-- Installing: $ROOT\\.build\\router\\s-b61054d9/lib/cmake/abstraction_ipc/abstraction_ipcTargets.cmake\r\n-- Installing: $ROOT\\.build\\router\\s-b61054d9/lib/cmake/abstraction_ipc/abstraction_ipcTargets-release.cmake\r\n-- Installing: $ROOT\\.build\\router\\s-b61054d9/lib/cmake/abstraction_ipc/abstraction_ipcConfig.cmake\r\n-- Installing: $ROOT\\.build\\router\\s-b61054d9/lib/cmake/abstraction_ipc/abstraction_ipcConfigVersion.cmake\r\n-- Up-to-date: $ROOT\\.build\\router\\s-b61054d9/include\r\n-- Up-to-date: $ROOT\\.build\\router\\s-b61054d9/include/abstraction\r\n-- Installing: $ROOT\\.build\\router\\s-b61054d9/include/abstraction/router\r\n-- Installing: $ROOT\\.build\\router\\s-b61054d9/include/abstraction/router/client.hpp\r\n-- Up-to-date: $ROOT\\.build\\router\\s-b61054d9/include/abstraction\r\n-- Up-to-date: $ROOT\\.build\\router\\s-b61054d9/include/abstraction/router\r\n-- Installing: $ROOT\\.build\\router\\s-b61054d9/include/abstraction/router/rec.h\r\n-- Installing: $ROOT\\.build\\router\\s-b61054d9/lib/cmake/abstraction_router/abstraction_routerTargets.cmake\r\n-- Installing: $ROOT\\.build\\router\\s-b61054d9/lib/cmake/abstraction_router/abstraction_routerConfig.cmake\r\n-- Installing: $ROOT\\.build\\router\\s-b61054d9/lib/cmake/abstraction_router/abstraction_routerConfigVersion.cmake\r\n-- Building for: Visual Studio 18 2026\r\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\r\n-- The CXX compiler identification is MSVC 19.51.36256.0\r\n-- Detecting CXX compiler ABI info\r\n-- Detecting CXX compiler ABI info - done\r\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting CXX compile features\r\n-- Detecting CXX compile features - done\r\n-- Configuring done (6.2s)\r\n-- Generating done (0.1s)\r\n-- Build files have been written to: $ROOT/.build/router/c-e253fc06\r\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\n  1>Checking Build System\r\n  Building Custom Rule $ROOT/conformance/clients/router/CMakeLists.txt\r\n  client.cpp\r\n  router_consumer.vcxproj -> $ROOT\\.build\\router\\c-e253fc06\\Release\\router_consumer.exe\r\n  Building Custom Rule $ROOT/conformance/clients/router/CMakeLists.txt\r\nPASS: Models, Hosts, Pick, caller audit, host failure, empty allowance, typed refusals\r\nPASS: absent service, no fallback\r\nPASS: empty model and host arrays\r\nPASS: absent service, no fallback\r\nPASS: installed C++ client -> generated RPC -> shared IPC -> identity-bound Go router provider\r\nScope: Models/Hosts/Pick subset on Windows; no GPU-cost, HTTP-window or OS-installation claim.\r\n",
-    "seconds": 36.219
+    "output": "-- Building for: Visual Studio 18 2026\r\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\r\n-- The CXX compiler identification is MSVC 19.51.36256.0\r\n-- Detecting CXX compiler ABI info\r\n-- Detecting CXX compiler ABI info - done\r\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting CXX compile features\r\n-- Detecting CXX compile features - done\r\n-- The C compiler identification is MSVC 19.51.36256.0\r\n-- Detecting C compiler ABI info\r\n-- Detecting C compiler ABI info - done\r\n-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting C compile features\r\n-- Detecting C compile features - done\r\n-- Configuring done (7.7s)\r\n-- Generating done (0.2s)\r\n-- Build files have been written to: $ROOT/.build/router/native\r\nC++ compiler ID MSVC\r\nC++ compiler VERSION 19.51.36256.0\r\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\n  1>Checking Build System\r\n  Building Custom Rule $ROOT/openabstractions-flat/abstraction-identity/cpp/CMakeLists.txt\r\n  client.cpp\r\n  abstraction_ipc.vcxproj -> $ROOT\\.build\\router\\native\\abstraction_ipc-build\\Release\\abstraction_ipc.lib\r\n  Building Custom Rule $ROOT/openabstractions-flat/abstraction-router/cpp/CMakeLists.txt\r\n-- Installing: $ROOT\\.build\\router\\s-0b1660a2/lib/abstraction_ipc.lib\r\n-- Installing: $ROOT\\.build\\router\\s-0b1660a2/include\r\n-- Installing: $ROOT\\.build\\router\\s-0b1660a2/include/abstraction\r\n-- Installing: $ROOT\\.build\\router\\s-0b1660a2/include/abstraction/ipc\r\n-- Installing: $ROOT\\.build\\router\\s-0b1660a2/include/abstraction/ipc/client.h\r\n-- Installing: $ROOT\\.build\\router\\s-0b1660a2/include/abstraction/ipc/client.hpp\r\n-- Installing: $ROOT\\.build\\router\\s-0b1660a2/include/abstraction/ipc/frame.hpp\r\n-- Installing: $ROOT\\.build\\router\\s-0b1660a2/include/abstraction/ipc/process.hpp\r\n-- Installing: $ROOT\\.build\\router\\s-0b1660a2/lib/cmake/abstraction_ipc/abstraction_ipcTargets.cmake\r\n-- Installing: $ROOT\\.build\\router\\s-0b1660a2/lib/cmake/abstraction_ipc/abstraction_ipcTargets-release.cmake\r\n-- Installing: $ROOT\\.build\\router\\s-0b1660a2/lib/cmake/abstraction_ipc/abstraction_ipcConfig.cmake\r\n-- Installing: $ROOT\\.build\\router\\s-0b1660a2/lib/cmake/abstraction_ipc/abstraction_ipcConfigVersion.cmake\r\n-- Up-to-date: $ROOT\\.build\\router\\s-0b1660a2/include\r\n-- Up-to-date: $ROOT\\.build\\router\\s-0b1660a2/include/abstraction\r\n-- Installing: $ROOT\\.build\\router\\s-0b1660a2/include/abstraction/router\r\n-- Installing: $ROOT\\.build\\router\\s-0b1660a2/include/abstraction/router/client.hpp\r\n-- Up-to-date: $ROOT\\.build\\router\\s-0b1660a2/include/abstraction\r\n-- Up-to-date: $ROOT\\.build\\router\\s-0b1660a2/include/abstraction/router\r\n-- Installing: $ROOT\\.build\\router\\s-0b1660a2/include/abstraction/router/rec.h\r\n-- Installing: $ROOT\\.build\\router\\s-0b1660a2/lib/cmake/abstraction_router/abstraction_routerTargets.cmake\r\n-- Installing: $ROOT\\.build\\router\\s-0b1660a2/lib/cmake/abstraction_router/abstraction_routerConfig.cmake\r\n-- Installing: $ROOT\\.build\\router\\s-0b1660a2/lib/cmake/abstraction_router/abstraction_routerConfigVersion.cmake\r\n-- Building for: Visual Studio 18 2026\r\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\r\n-- The CXX compiler identification is MSVC 19.51.36256.0\r\n-- Detecting CXX compiler ABI info\r\n-- Detecting CXX compiler ABI info - done\r\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting CXX compile features\r\n-- Detecting CXX compile features - done\r\n-- Configuring done (2.6s)\r\n-- Generating done (0.1s)\r\n-- Build files have been written to: $ROOT/.build/router/c-229e25c0\r\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\n  1>Checking Build System\r\n  Building Custom Rule $ROOT/conformance/clients/router/CMakeLists.txt\r\n  client.cpp\r\n  router_consumer.vcxproj -> $ROOT\\.build\\router\\c-229e25c0\\Release\\router_consumer.exe\r\n  Building Custom Rule $ROOT/conformance/clients/router/CMakeLists.txt\r\nPASS: Models, Hosts, Pick, caller audit, host failure, empty allowance, typed refusals\r\nPASS: absent service, no fallback\r\nPASS: empty model and host arrays\r\nPASS: absent service, no fallback\r\nPASS: installed C++ client -> generated RPC -> shared IPC -> identity-bound Go router provider\r\nScope: Models/Hosts/Pick subset on Windows; no GPU-cost, HTTP-window or OS-installation claim.\r\n",
+    "seconds": 21.36
   },
-  "commit": "8019269261bdeab0a532a1cfa9f3d9b993a916c7",
-  "record_digest": "71e95570fdbeeb42d9b4a616bd86cbcdb2c66237fa60805f34cc5c0de1fde03b"
+  "commit": "078360467acecb9512a053e39b4f80395f867ce2",
+  "record_digest": "81b4b0249282cc1db6d0b8413219bc917f8a162dd554628cc5b66a0fce2d5ced"
 }

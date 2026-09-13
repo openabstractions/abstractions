@@ -126,6 +126,13 @@ func (p *parser) validateServices() error {
 		}
 	}
 	wireNames := map[string]bool{}
+	if len(p.def.Services) > 1 {
+		for _, name := range []string{"ServiceName", "service_name"} {
+			if err := reserve(name); err != nil {
+				return err
+			}
+		}
+	}
 	for _, s := range p.def.Services {
 		if strings.TrimSpace(s.WireName) == "" || wireNames[s.WireName] {
 			return fmt.Errorf("service %s needs a unique nonempty wire_name", s.Name)
@@ -137,7 +144,7 @@ func (p *parser) validateServices() error {
 		if len(s.Methods) == 0 {
 			return fmt.Errorf("service %s has no methods", s.Name)
 		}
-		for _, n := range []string{s.Name + "Client", s.Name + "Dispatcher", s.Name + "Transport"} {
+		for _, n := range []string{s.Name + "Client", s.Name + "Dispatcher", s.Name + "Transport", s.Name + "Service"} {
 			if e := reserve(n); e != nil {
 				return e
 			}
@@ -197,6 +204,12 @@ func (p *parser) validateServices() error {
 	return nil
 }
 func validateServiceBackend(s *Definition, lang string) error {
+	if lang == "javascript" {
+		return validateJSServices(s)
+	}
+	if lang == "rust" {
+		return validateRustServices(s)
+	}
 	if lang == "python" {
 		return validatePythonServices(s)
 	}
@@ -303,6 +316,9 @@ func serviceIdentifier(name string) bool {
 }
 
 func serviceNestedOpaque(s *Definition, t string, seen map[string]bool) bool {
+	if imp, ok := s.importedRecord(t); ok {
+		return serviceNestedOpaque(imp.Def, imp.Name, map[string]bool{})
+	}
 	if t == "json" || t == "map<string,json>" || t == "list<json>" {
 		return true
 	}
@@ -392,6 +408,13 @@ type DispatchError string
 func(e DispatchError)Error()string{return string(e)}
 func servicePayload(frame []byte)(*OAServiceFrame,error){r:=&reader{buf:frame};r.ws();v,err:=r.decodeOAServiceFrame();if err!=nil{return nil,err};r.ws();if r.pos!=len(r.buf){return nil,r.refuse("trailing_bytes")};if v.Version!=1{return nil,DispatchError("unknown_version")};return v,nil}
 `)
+	if len(s.Services) > 1 {
+		b.WriteString(`
+// ServiceName validates the request envelope and version for routing. The chosen
+// generated dispatcher validates service, method and typed arguments before use.
+func ServiceName(frame []byte)(string,error){v,err:=servicePayload(frame);if err!=nil{return "",err};return v.Service,nil}
+`)
+	}
 	if hasReplies(s) {
 		b.WriteString(`
 // ExchangeFrame returns the response associated with this call. Correlation,
@@ -504,6 +527,9 @@ struct FrameWriter{virtual ~FrameWriter()=default;virtual void WriteFrame(std::s
 struct DispatchError:std::runtime_error{using std::runtime_error::runtime_error;};
 inline OAServiceFrame service_payload(std::string_view frame){Reader r{frame};r.skip_ws();auto v=decode_oaserviceframe(r);r.skip_ws();if(r.pos!=r.buf.size())r.refuse("trailing_bytes");if(v.version!=1)throw DispatchError("unknown_version");return v;}
 `)
+	if len(s.Services) > 1 {
+		b.WriteString("// Validates the request envelope and version; dispatchers validate typed arguments.\ninline std::string service_name(std::string_view frame){return service_payload(frame).service;}\n")
+	}
 	if hasReplies(s) {
 		b.WriteString(`
 struct FrameExchanger{virtual ~FrameExchanger()=default;virtual std::string ExchangeFrame(std::string_view)=0;};
@@ -543,6 +569,11 @@ inline std::string service_reply(const OAServiceFrame& request,const Raw& payloa
 			b.WriteString("}\n")
 		}
 		b.WriteString("};\n")
+		capability := ""
+		if prefix, profile, ok := strings.Cut(svc.WireName, "/"); ok && prefix != "" && profile != "" && !strings.ContainsAny(prefix, " \t\r\n\x00") {
+			capability = prefix
+		}
+		fmt.Fprintf(b, "struct %sService{inline static constexpr std::string_view wire_name=%s;inline static constexpr std::string_view capability=%s;template<class Transport>using Client=%sClient<Transport>;};\n", svc.Name, strconv.Quote(svc.WireName), strconv.Quote(capability), svc.Name)
 		base := "FrameWriter"
 		if svcReplies(svc) {
 			base += ",FrameExchanger"

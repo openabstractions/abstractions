@@ -1,3 +1,4 @@
+// Explicit legacy adoption: this caller retains embedded/provider APIs.
 // An application that knows nothing about NASes, BITS, shares or job stores.
 //
 // This is the entire integration a fork of Lemonade would carry: one import, no
@@ -11,7 +12,7 @@ import (
 	"os"
 	"time"
 
-	abstraction "github.com/openabstractions/abstraction-facade/go"
+	abstraction "github.com/openabstractions/abstraction-facade/go/legacy"
 )
 
 func main() {

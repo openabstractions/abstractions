@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.16)
+project(job_inventory_consumer LANGUAGES CXX)
+find_package(abstraction_facade CONFIG REQUIRED)
+add_executable(job_inventory_consumer client.cpp)
+target_link_libraries(job_inventory_consumer PRIVATE abstraction::facade_jobs)

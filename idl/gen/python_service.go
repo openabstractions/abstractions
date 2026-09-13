@@ -14,6 +14,9 @@ func validatePythonServices(s *Definition) error {
 	for _, n := range strings.Fields(reserved) {
 		used[n] = true
 	}
+	if len(s.Services) > 1 {
+		used["service_name"] = true
+	}
 	valid := func(n string) bool {
 		if n == "" || namespaceKeyword("python", n) || strings.Contains(n, ".") {
 			return false
@@ -115,6 +118,17 @@ func pyService(b *strings.Builder, s *Definition) {
 		common = strings.Replace(common, "    if kind == \"string\":", "    if kind == \"binary\":\n        valid = type(value) is bytes\n    elif kind == \"string\":", 1)
 	}
 	b.WriteString(common)
+	if len(s.Services) > 1 {
+		b.WriteString(`
+def service_name(frame):
+    """Validate envelope/version for routing; dispatchers validate typed arguments."""
+    value = _service_decode(_decode_oaserviceframe, frame)
+    if value.version != 1:
+        raise DispatchError("unknown_version")
+    return value.service
+
+`)
+	}
 	if hasReplies(s) {
 		b.WriteString(pyServiceResponse)
 	}

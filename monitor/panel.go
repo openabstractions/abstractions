@@ -184,12 +184,26 @@ func origins(cfg config.Config) []origin {
 
 func (w *window) delegation(cfg config.Config) delegation {
 	d := delegation{
-		NASStore:   cfg.NASStore,
-		From:       origins(cfg),
-		File:       config.UserPath(),
-		Overridden: config.Overridden(),
-		Serving:    "here",
-		Told:       w.cfg.How(),
+		NASStore: cfg.NASStore,
+		From:     origins(cfg),
+
+		Serving: "here",
+		Told:    w.cfg.How(),
+	}
+	for _, key := range config.Keys {
+		if cfg.Origin(key).Rung == config.Environment {
+			d.Overridden = append(d.Overridden, key)
+		}
+	}
+	for _, o := range d.From {
+		if o.Rung == config.User {
+			d.File = o.Path
+			break
+		}
+	}
+	if status, ok := w.cfg.(interface{ Error() error }); ok && status.Error() != nil {
+		d.Supervisor = "Configuration unavailable; last observed values retained"
+		return d
 	}
 	for _, o := range w.panel.tiers(cfg) {
 		t := tier{System: o.System, Usable: o.Usable, Off: o.Off, Why: o.Why,
@@ -229,7 +243,7 @@ func (w *window) serve(system, reason string, on bool) error {
 	if !known(w.panel.tiers(w.cfg.Current()), system) {
 		return fmt.Errorf("%q is not a tier this program has", system)
 	}
-	err := config.Edit(config.UserPath(), func(c *config.Config) error {
+	err := w.editConfiguration(func(c *config.Config) error {
 		if on {
 			delete(c.Off, system)
 			return nil
@@ -344,7 +358,7 @@ func (w *window) adopt(address, share, dir string) error {
 	if err := nas.Check(ctx, root); err != nil {
 		return err
 	}
-	err = config.Edit(config.UserPath(), func(c *config.Config) error {
+	err = w.editConfiguration(func(c *config.Config) error {
 		c.NASStore = root
 		// Choosing a NAS is the same act as wanting one. Leaving an earlier
 		// switch off would set it up and then not use it, with the reason for
@@ -359,7 +373,7 @@ func (w *window) adopt(address, share, dir string) error {
 // forget takes the NAS store back out. A person who moves house should not have
 // to find a JSON file.
 func (w *window) forget() error {
-	err := config.Edit(config.UserPath(), func(c *config.Config) error {
+	err := w.editConfiguration(func(c *config.Config) error {
 		c.NASStore = ""
 		return nil
 	})

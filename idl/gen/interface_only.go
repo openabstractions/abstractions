@@ -20,6 +20,8 @@ func genInterfaceOnly(s *Definition, lang string) string {
 		body = genCpp(&data)
 	case "python":
 		body = genPy(&data)
+	case "javascript":
+		body = genJS(&data)
 	default:
 		panic("unsupported interface backend: " + lang)
 	}
@@ -47,6 +49,16 @@ func genInterfaceOnly(s *Definition, lang string) string {
 				}
 				fmt.Fprintf(&api, ") -> %q:\n        raise NotImplementedError\n", pyServiceType(method.Result))
 			}
+		case "javascript":
+			fmt.Fprintf(&api, "\nexport class %s {\n", svc.Name)
+			for _, method := range svc.Methods {
+				var args []string
+				for i := range method.Args {
+					args = append(args, fmt.Sprintf("arg%d", i))
+				}
+				fmt.Fprintf(&api, "  async %s(%s) { throw new Error(\"not implemented\"); }\n", method.Name, strings.Join(args, ","))
+			}
+			api.WriteString("}\n")
 		}
 	}
 	if lang == "cpp" {

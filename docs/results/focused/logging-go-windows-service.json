@@ -1,5 +1,6 @@
 {
-  "schema": 1,
+  "schema": 2,
+  "execution_platform": "windows/amd64",
   "manifest": "conformance/clients/logging/manifests/go-windows.json",
   "definition": {
     "id": "logging-go-windows-service",
@@ -7,7 +8,7 @@
     "language": "go",
     "scope": "client",
     "platform": "windows/amd64",
-    "scenario": "go facade -> generated client -> shared named-pipe IPC -> identity-checked Go logging service -> service-owned JSONL sink; multiline Unicode, zero level and empty attrs preserved; verified peer; record survives client exit; schema=2 refused; absent service errors; no client-local storage",
+    "scenario": "independent Go logging client with explicit endpoint -> generated client -> shared named-pipe IPC -> identity-checked Go logging service -> service-owned JSONL sink; multiline Unicode, zero level and empty attrs preserved; verified peer; record survives client exit; schema=2 refused; absent service errors; no client-local storage",
     "inputs": [
       "conformance/clients/logging/client.go",
       "conformance/clients/logging/run.py",
@@ -69,7 +70,7 @@
     ],
     "service_language": "go"
   },
-  "inputs_digest": "d7b5b6c7ab4bcaa4ab4c3a5d5aa5c8d01ed3b9e5edbd8c64314858a40861fab3",
+  "inputs_digest": "cf6705b314746981e1078af15b98a301bdf5e57c9b956192cb5d8d83f11ae124",
   "toolchains": {
     "python": {
       "argv": [
@@ -78,7 +79,7 @@
       ],
       "exit": 0,
       "output": "Python 3.12.10\r\n",
-      "seconds": 0.875
+      "seconds": 1.438
     },
     "go": {
       "argv": [
@@ -87,7 +88,7 @@
       ],
       "exit": 0,
       "output": "go version go1.26.5 windows/amd64\n",
-      "seconds": 1.312
+      "seconds": 2.281
     }
   },
   "result": {
@@ -98,9 +99,9 @@
       "go"
     ],
     "exit": 0,
-    "output": "go version go1.26.5 windows/amd64\r\nPASS: Go write\r\nPASS: Go bad-schema\r\nPASS: Go absent\r\nPASS: go facade -> generated client -> shared IPC -> identity-bound Go service -> provider\r\nPASS: client exited; record survived; schema refused; absent service errored; no client store\r\n",
-    "seconds": 10.781
+    "output": "go version go1.26.5 windows/amd64\r\nPASS: Go write\r\nPASS: Go bad-schema\r\nPASS: Go absent\r\nPASS: go independent client -> generated protocol -> shared IPC -> identity-bound Go service -> provider\r\nPASS: client exited; record survived; schema refused; absent service errored; no client store\r\n",
+    "seconds": 9.422
   },
-  "commit": "8019269261bdeab0a532a1cfa9f3d9b993a916c7",
-  "record_digest": "6601e9c267ef48e73f7798e7fc3d541e266c02cf116595731758291571f67eb6"
+  "commit": "078360467acecb9512a053e39b4f80395f867ce2",
+  "record_digest": "5a9edace517aaf07513cc20aaa09ee9fccc43e16cf9a505eb26292b560da597b"
 }

@@ -1,0 +1,848 @@
+{
+  "version": 1,
+  "layers": [
+    {
+      "layer": "job",
+      "kind": "service",
+      "api": [
+        "openabstractions-flat/abstraction-job/go/abstraction/job/acceptance/rec.go"
+      ],
+      "providers": [
+        "openabstractions-flat/abstraction-job/go/acceptanceprovider/provider.go"
+      ],
+      "definitions": [
+        {
+          "path": "openabstractions-flat/abstraction-job/acceptance.thrift",
+          "mode": "service",
+          "languages": [
+            "go",
+            "cpp",
+            "python"
+          ]
+        },
+        {
+          "path": "openabstractions-flat/abstraction-job/job.thrift",
+          "mode": "legacy-protocol",
+          "languages": [
+            "go"
+          ]
+        }
+      ],
+      "descriptor_status": "defined",
+      "reason": "Admission and operation control service; legacy job record/protocol remains separate.",
+      "language_obligations": {
+        "go": {
+          "generated": [
+            "openabstractions-flat/abstraction-job/acceptance.thrift",
+            "openabstractions-flat/abstraction-job/job.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; native provider execution is separate."
+        },
+        "cpp": {
+          "generated": [
+            "openabstractions-flat/abstraction-job/acceptance.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; native provider execution is separate."
+        },
+        "python": {
+          "generated": [
+            "openabstractions-flat/abstraction-job/acceptance.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; native provider execution is separate."
+        },
+        "rust": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        },
+        "javascript": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        }
+      },
+      "interface_generation": {
+        "status": "described",
+        "reason": "Admission and operation control service; legacy job record/protocol remains separate."
+      }
+    },
+    {
+      "layer": "download",
+      "kind": "records",
+      "api": [
+        "openabstractions-flat/abstraction-download/go/spec.go"
+      ],
+      "providers": [
+        "openabstractions-flat/abstraction-download/go/runner.go"
+      ],
+      "definitions": [
+        {
+          "path": "openabstractions-flat/abstraction-download/download.thrift",
+          "mode": "records",
+          "languages": [
+            "go",
+            "cpp",
+            "python"
+          ]
+        },
+        {
+          "path": "openabstractions-flat/abstraction-download/request.thrift",
+          "mode": "records",
+          "languages": [
+            "go",
+            "cpp",
+            "python"
+          ]
+        }
+      ],
+      "descriptor_status": "defined",
+      "reason": "Request and durable transfer vocabulary; execution uses job acceptance/operation services, no separate download daemon.",
+      "language_obligations": {
+        "go": {
+          "generated": [
+            "openabstractions-flat/abstraction-download/download.thrift",
+            "openabstractions-flat/abstraction-download/request.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; native provider execution is separate."
+        },
+        "cpp": {
+          "generated": [
+            "openabstractions-flat/abstraction-download/download.thrift",
+            "openabstractions-flat/abstraction-download/request.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; native provider execution is separate."
+        },
+        "python": {
+          "generated": [
+            "openabstractions-flat/abstraction-download/download.thrift",
+            "openabstractions-flat/abstraction-download/request.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; native provider execution is separate."
+        },
+        "rust": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        },
+        "javascript": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        }
+      },
+      "interface_generation": {
+        "status": "described",
+        "reason": "Request and durable transfer vocabulary; execution uses job acceptance/operation services, no separate download daemon."
+      }
+    },
+    {
+      "layer": "storage",
+      "kind": "service",
+      "api": [
+        "openabstractions-flat/abstraction-storage/go/storage.go"
+      ],
+      "providers": [
+        "openabstractions-flat/abstraction-storage/go/content.go"
+      ],
+      "definitions": [
+        {
+          "path": "openabstractions-flat/abstraction-storage/storage.thrift",
+          "mode": "direct",
+          "languages": [
+            "go",
+            "cpp",
+            "python"
+          ]
+        },
+        {
+          "path": "openabstractions-flat/abstraction-storage/content.thrift",
+          "mode": "service",
+          "languages": [
+            "go",
+            "cpp",
+            "python"
+          ]
+        }
+      ],
+      "descriptor_status": "defined",
+      "reason": "Direct Store/Local/Writable remain explicit native adapters; additive authorized read-only content service uses opaque bounded resources.",
+      "language_obligations": {
+        "go": {
+          "generated": [
+            "openabstractions-flat/abstraction-storage/storage.thrift",
+            "openabstractions-flat/abstraction-storage/content.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; native provider execution is separate."
+        },
+        "cpp": {
+          "generated": [
+            "openabstractions-flat/abstraction-storage/storage.thrift",
+            "openabstractions-flat/abstraction-storage/content.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; native provider execution is separate."
+        },
+        "python": {
+          "generated": [
+            "openabstractions-flat/abstraction-storage/storage.thrift",
+            "openabstractions-flat/abstraction-storage/content.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; native provider execution is separate."
+        },
+        "rust": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        },
+        "javascript": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        }
+      },
+      "interface_generation": {
+        "status": "described",
+        "reason": "Generated direct Store, optional Local/Writable interfaces; existing providers require explicit adapters; no IPC."
+      }
+    },
+    {
+      "layer": "cas",
+      "kind": "direct",
+      "api": [
+        "openabstractions-flat/abstraction-cas/cas.thrift"
+      ],
+      "providers": [
+        "openabstractions-flat/abstraction-cas/go/cas.go"
+      ],
+      "definitions": [
+        {
+          "path": "openabstractions-flat/abstraction-cas/cas.thrift",
+          "mode": "direct",
+          "languages": [
+            "go",
+            "cpp",
+            "python"
+          ]
+        }
+      ],
+      "descriptor_status": "defined",
+      "reason": "Direct compare-and-set; --no-ipc deliberately omits transport.",
+      "language_obligations": {
+        "go": {
+          "generated": [
+            "openabstractions-flat/abstraction-cas/cas.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; native provider execution is separate."
+        },
+        "cpp": {
+          "generated": [
+            "openabstractions-flat/abstraction-cas/cas.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; native provider execution is separate."
+        },
+        "python": {
+          "generated": [
+            "openabstractions-flat/abstraction-cas/cas.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; native provider execution is separate."
+        },
+        "rust": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        },
+        "javascript": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        }
+      },
+      "interface_generation": {
+        "status": "described",
+        "reason": "Direct compare-and-set; --no-ipc deliberately omits transport."
+      }
+    },
+    {
+      "layer": "watch",
+      "kind": "direct",
+      "api": [
+        "openabstractions-flat/abstraction-watch/go/watch.go"
+      ],
+      "providers": [
+        "openabstractions-flat/abstraction-watch/go/watch.go"
+      ],
+      "definitions": [
+        {
+          "path": "openabstractions-flat/abstraction-watch/watch.thrift",
+          "mode": "vocabulary-native",
+          "languages": [
+            "go",
+            "cpp",
+            "python"
+          ]
+        }
+      ],
+      "descriptor_status": "defined",
+      "reason": "Generated notice/options/stamp metadata; native generic T, callbacks, subscription and context lifetime remain explicit language supplement.",
+      "language_obligations": {
+        "go": {
+          "generated": [
+            "openabstractions-flat/abstraction-watch/watch.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Vocabulary only; Generated notice/options/stamp metadata; native generic T, callbacks, subscription and context lifetime remain explicit language supplement."
+        },
+        "cpp": {
+          "generated": [
+            "openabstractions-flat/abstraction-watch/watch.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Vocabulary only; Generated notice/options/stamp metadata; native generic T, callbacks, subscription and context lifetime remain explicit language supplement."
+        },
+        "python": {
+          "generated": [
+            "openabstractions-flat/abstraction-watch/watch.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Vocabulary only; Generated notice/options/stamp metadata; native generic T, callbacks, subscription and context lifetime remain explicit language supplement."
+        },
+        "rust": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        },
+        "javascript": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        }
+      },
+      "interface_generation": {
+        "status": "native-supplement",
+        "reason": "Generated notice/options/stamp metadata; native generic T, callbacks, subscription and context lifetime remain explicit language supplement."
+      }
+    },
+    {
+      "layer": "logging",
+      "kind": "service",
+      "api": [
+        "openabstractions-flat/abstraction-logging/logging.thrift"
+      ],
+      "providers": [
+        "openabstractions-flat/abstraction-logging/go/service/service.go"
+      ],
+      "definitions": [
+        {
+          "path": "openabstractions-flat/abstraction-logging/logging.thrift",
+          "mode": "service",
+          "languages": [
+            "go",
+            "cpp",
+            "python"
+          ]
+        }
+      ],
+      "descriptor_status": "defined",
+      "reason": "Generated Sink service with separate provider.",
+      "language_obligations": {
+        "go": {
+          "generated": [
+            "openabstractions-flat/abstraction-logging/logging.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; native provider execution is separate."
+        },
+        "cpp": {
+          "generated": [
+            "openabstractions-flat/abstraction-logging/logging.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; native provider execution is separate."
+        },
+        "python": {
+          "generated": [
+            "openabstractions-flat/abstraction-logging/logging.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; client installation and provider execution require separate evidence."
+        },
+        "rust": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        },
+        "javascript": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        }
+      },
+      "interface_generation": {
+        "status": "described",
+        "reason": "Generated Sink service with separate provider."
+      }
+    },
+    {
+      "layer": "identity",
+      "kind": "native",
+      "api": [
+        "openabstractions-flat/abstraction-identity/identity.go"
+      ],
+      "providers": [
+        "openabstractions-flat/abstraction-identity/proof.go"
+      ],
+      "definitions": [
+        {
+          "path": "openabstractions-flat/abstraction-identity/identity.thrift",
+          "mode": "vocabulary-native",
+          "languages": [
+            "go",
+            "cpp",
+            "python"
+          ]
+        }
+      ],
+      "descriptor_status": "defined",
+      "reason": "Generated proof vocabulary; Peer, Attr<T>, OS handles and connect-time extraction are native and cannot be serialized as authority.",
+      "language_obligations": {
+        "go": {
+          "generated": [
+            "openabstractions-flat/abstraction-identity/identity.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Vocabulary only; Generated proof vocabulary; Peer, Attr<T>, OS handles and connect-time extraction are native and cannot be serialized as authority."
+        },
+        "cpp": {
+          "generated": [
+            "openabstractions-flat/abstraction-identity/identity.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Vocabulary only; Generated proof vocabulary; Peer, Attr<T>, OS handles and connect-time extraction are native and cannot be serialized as authority."
+        },
+        "python": {
+          "generated": [
+            "openabstractions-flat/abstraction-identity/identity.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Vocabulary only; Generated proof vocabulary; Peer, Attr<T>, OS handles and connect-time extraction are native and cannot be serialized as authority."
+        },
+        "rust": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        },
+        "javascript": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        }
+      },
+      "interface_generation": {
+        "status": "native-supplement",
+        "reason": "Generated proof vocabulary; Peer, Attr<T>, OS handles and connect-time extraction are native and cannot be serialized as authority."
+      }
+    },
+    {
+      "layer": "rights",
+      "kind": "service",
+      "api": [
+        "openabstractions-flat/abstraction-rights/go/wire.go",
+        "openabstractions-flat/abstraction-rights/go/client/authorization.go"
+      ],
+      "providers": [
+        "openabstractions-flat/abstraction-rights/go/service.go",
+        "openabstractions-flat/abstraction-rights/go/authorization/host.go"
+      ],
+      "definitions": [
+        {
+          "path": "openabstractions-flat/abstraction-rights/rights.thrift",
+          "mode": "service",
+          "languages": [
+            "go",
+            "cpp",
+            "python"
+          ]
+        }
+      ],
+      "descriptor_status": "defined",
+      "reason": "Generated exact-rule authorization and explicitly authorized operator administration. Native bearer/awake leases are preserved; broader enforcement and operator UI integration remain separate obligations.",
+      "language_obligations": {
+        "go": {
+          "generated": [
+            "openabstractions-flat/abstraction-rights/rights.thrift"
+          ],
+          "binding": "Go shared IPC decision host/client and native enforcement helper tested.",
+          "limitation": "Decision and conditional operator profiles generated. Native connection-owned awake lease has no serialized lifetime; broader resource enforcement and operator UI remain separate."
+        },
+        "cpp": {
+          "generated": [
+            "openabstractions-flat/abstraction-rights/rights.thrift"
+          ],
+          "binding": "Generated protocol/client; packaged shared-transport adoption remains separate.",
+          "limitation": "Decision and conditional operator profiles generated. Native connection-owned awake lease has no serialized lifetime; broader resource enforcement and operator UI remain separate."
+        },
+        "python": {
+          "generated": [
+            "openabstractions-flat/abstraction-rights/rights.thrift"
+          ],
+          "binding": "Generated protocol/client; packaged shared-transport adoption remains separate.",
+          "limitation": "Decision and conditional operator profiles generated. Native connection-owned awake lease has no serialized lifetime; broader resource enforcement and operator UI remain separate."
+        },
+        "rust": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service backend available; no rights Rust artifact or packaged client committed."
+        },
+        "javascript": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        }
+      },
+      "interface_generation": {
+        "status": "described",
+        "reason": "Generated exact-rule authorization and explicitly authorized operator administration. Native bearer/awake leases are preserved; broader enforcement and operator UI integration remain separate obligations."
+      },
+      "native_rosters": [
+        {
+          "name": "refusal_codes",
+          "definition": "openabstractions-flat/abstraction-rights/rights.thrift",
+          "source": "openabstractions-flat/abstraction-rights/go/errors.go",
+          "pattern": "\\bCode\\w+\\s*=\\s*\"([^\"]+)\""
+        },
+        {
+          "name": "operations",
+          "definition": "openabstractions-flat/abstraction-rights/rights.thrift",
+          "source": "openabstractions-flat/abstraction-rights/go/wire.go",
+          "pattern": "\\bOp\\w+\\s*=\\s*\"([^\"]+)\""
+        }
+      ]
+    },
+    {
+      "layer": "asks",
+      "kind": "service",
+      "api": [
+        "openabstractions-flat/abstraction-asks/go/wire.go",
+        "openabstractions-flat/abstraction-asks/go/client/application.go"
+      ],
+      "providers": [
+        "openabstractions-flat/abstraction-asks/go/service.go",
+        "openabstractions-flat/abstraction-asks/go/application/host.go"
+      ],
+      "definitions": [
+        {
+          "path": "openabstractions-flat/abstraction-asks/asks.thrift",
+          "mode": "service",
+          "languages": [
+            "go",
+            "cpp",
+            "python"
+          ]
+        }
+      ],
+      "descriptor_status": "defined",
+      "reason": "Generated caller-bound application admission/observation and explicitly authorized operator answering/latest-book history. Native Forget/retirement and Via/For evidence remain explicit provider integration.",
+      "language_obligations": {
+        "go": {
+          "generated": [
+            "openabstractions-flat/abstraction-asks/asks.thrift"
+          ],
+          "binding": "Go caller-bound shared IPC host/client tested.",
+          "limitation": "Application and operator profiles generated; native Forget/retirement and Via/For evidence remain provider integration."
+        },
+        "cpp": {
+          "generated": [
+            "openabstractions-flat/abstraction-asks/asks.thrift"
+          ],
+          "binding": "Generated protocol/client; packaged shared-transport adoption remains separate.",
+          "limitation": "Application and operator profiles generated; native Forget/retirement and Via/For evidence remain provider integration."
+        },
+        "python": {
+          "generated": [
+            "openabstractions-flat/abstraction-asks/asks.thrift"
+          ],
+          "binding": "Generated protocol/client; packaged shared-transport adoption remains separate.",
+          "limitation": "Application and operator profiles generated; native Forget/retirement and Via/For evidence remain provider integration."
+        },
+        "rust": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service backend available; no asks Rust artifact or packaged client committed."
+        },
+        "javascript": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        }
+      },
+      "interface_generation": {
+        "status": "described",
+        "reason": "Generated caller-bound application admission/observation and explicitly authorized operator answering/latest-book history. Native Forget/retirement and Via/For evidence remain explicit provider integration."
+      },
+      "native_rosters": [
+        {
+          "name": "refusal_codes",
+          "definition": "openabstractions-flat/abstraction-asks/asks.thrift",
+          "source": "openabstractions-flat/abstraction-asks/go/errors.go",
+          "pattern": "\\bCode\\w+\\s*=\\s*\"([^\"]+)\""
+        },
+        {
+          "name": "operations",
+          "definition": "openabstractions-flat/abstraction-asks/asks.thrift",
+          "source": "openabstractions-flat/abstraction-asks/go/wire.go",
+          "pattern": "\\bOp\\w+\\s*=\\s*\"([^\"]+)\""
+        }
+      ]
+    },
+    {
+      "layer": "config",
+      "kind": "service",
+      "api": [
+        "openabstractions-flat/abstraction-config/config.thrift"
+      ],
+      "providers": [
+        "openabstractions-flat/abstraction-config/go/service/service.go"
+      ],
+      "definitions": [
+        {
+          "path": "openabstractions-flat/abstraction-config/config.thrift",
+          "mode": "service",
+          "languages": [
+            "go",
+            "cpp",
+            "python"
+          ]
+        }
+      ],
+      "descriptor_status": "defined",
+      "reason": "Reader and revisioned user Editor service.",
+      "language_obligations": {
+        "go": {
+          "generated": [
+            "openabstractions-flat/abstraction-config/config.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; native provider execution is separate."
+        },
+        "cpp": {
+          "generated": [
+            "openabstractions-flat/abstraction-config/config.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; native provider execution is separate."
+        },
+        "python": {
+          "generated": [
+            "openabstractions-flat/abstraction-config/config.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; native provider execution is separate."
+        },
+        "rust": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        },
+        "javascript": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        }
+      },
+      "interface_generation": {
+        "status": "described",
+        "reason": "Reader and revisioned user Editor service."
+      }
+    },
+    {
+      "layer": "model",
+      "kind": "service",
+      "api": [
+        "openabstractions-flat/abstraction-model/go/model.go",
+        "openabstractions-flat/abstraction-model/go/client/client.go"
+      ],
+      "providers": [
+        "openabstractions-flat/abstraction-model/go/ollama.go",
+        "openabstractions-flat/abstraction-model/go/service/service.go"
+      ],
+      "definitions": [
+        {
+          "path": "openabstractions-flat/abstraction-model/model.thrift",
+          "mode": "service",
+          "languages": [
+            "go",
+            "cpp",
+            "python"
+          ]
+        }
+      ],
+      "descriptor_status": "defined",
+      "reason": "Generated ModelResolver returns the portable typed download Request; nonportable native mappings refuse explicitly.",
+      "language_obligations": {
+        "go": {
+          "generated": [
+            "openabstractions-flat/abstraction-model/model.thrift"
+          ],
+          "binding": "Go identity-bound service/client tested; C++/Python generated protocol requires shared transport bindings.",
+          "limitation": "Native registry configuration and explicit local adapters remain provider-side; nonportable mappings refuse."
+        },
+        "cpp": {
+          "generated": [
+            "openabstractions-flat/abstraction-model/model.thrift"
+          ],
+          "binding": "Go identity-bound service/client tested; C++/Python generated protocol requires shared transport bindings.",
+          "limitation": "Native registry configuration and explicit local adapters remain provider-side; nonportable mappings refuse."
+        },
+        "python": {
+          "generated": [
+            "openabstractions-flat/abstraction-model/model.thrift"
+          ],
+          "binding": "Go identity-bound service/client tested; C++/Python generated protocol requires shared transport bindings.",
+          "limitation": "Native registry configuration and explicit local adapters remain provider-side; nonportable mappings refuse."
+        },
+        "rust": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        },
+        "javascript": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        }
+      },
+      "interface_generation": {
+        "status": "described",
+        "reason": "Generated ModelResolver returns the portable typed download Request; nonportable native mappings refuse explicitly."
+      }
+    },
+    {
+      "layer": "router",
+      "kind": "service",
+      "api": [
+        "openabstractions-flat/abstraction-router/router.thrift"
+      ],
+      "providers": [
+        "openabstractions-flat/abstraction-router/go/service/service.go"
+      ],
+      "definitions": [
+        {
+          "path": "openabstractions-flat/abstraction-router/router.thrift",
+          "mode": "service",
+          "languages": [
+            "go",
+            "cpp"
+          ]
+        }
+      ],
+      "descriptor_status": "defined",
+      "reason": "Generated inventory/residency/routing service subset.",
+      "language_obligations": {
+        "go": {
+          "generated": [
+            "openabstractions-flat/abstraction-router/router.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; native provider execution is separate."
+        },
+        "cpp": {
+          "generated": [
+            "openabstractions-flat/abstraction-router/router.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; native provider execution is separate."
+        },
+        "python": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "No committed output target for this language; generation/integration obligation remains."
+        },
+        "rust": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        },
+        "javascript": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        }
+      },
+      "interface_generation": {
+        "status": "described",
+        "reason": "Generated inventory/residency/routing service subset."
+      }
+    },
+    {
+      "layer": "facade",
+      "kind": "service",
+      "api": [
+        "openabstractions-flat/abstraction-facade/facade.thrift"
+      ],
+      "providers": [
+        "openabstractions-flat/abstraction-facade/go/resolution/host.go"
+      ],
+      "definitions": [
+        {
+          "path": "openabstractions-flat/abstraction-facade/facade.thrift",
+          "mode": "service",
+          "languages": [
+            "go",
+            "cpp",
+            "python"
+          ]
+        }
+      ],
+      "descriptor_status": "defined",
+      "reason": "Resolver service plus client-composed readiness; no new status endpoint.",
+      "language_obligations": {
+        "go": {
+          "generated": [
+            "openabstractions-flat/abstraction-facade/facade.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; native provider execution is separate."
+        },
+        "cpp": {
+          "generated": [
+            "openabstractions-flat/abstraction-facade/facade.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; native provider execution is separate."
+        },
+        "python": {
+          "generated": [
+            "openabstractions-flat/abstraction-facade/facade.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Generation target exists; native provider execution is separate."
+        },
+        "rust": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        },
+        "javascript": {
+          "generated": [],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+        }
+      },
+      "interface_generation": {
+        "status": "described",
+        "reason": "Resolver service plus client-composed readiness; no new status endpoint."
+      }
+    }
+  ]
+}

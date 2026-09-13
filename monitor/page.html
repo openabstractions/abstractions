@@ -132,6 +132,13 @@ h2:first-child { margin-top: 0; }
   </header>
   <div class="bindings" id="bindings"></div>
 
+  <details class="result" id="runtime">
+    <summary>Service status</summary>
+    <p class="quiet">Check installed supervision and each service's current readiness.</p>
+    <button id="check-runtime" type="button">Check services</button>
+    <pre id="runtime-status" style="white-space:pre-wrap" aria-live="polite">Not checked yet.</pre>
+  </details>
+
   <nav id="tabs">
     <button data-tab="delegation" aria-selected="true">Delegation</button>
     <button data-tab="downloads">Downloads</button>
@@ -175,6 +182,27 @@ h2:first-child { margin-top: 0; }
 // a page on another origin cannot forge a request: setting one makes the browser
 // ask this server for permission first, and it answers nothing.
 const key = new URLSearchParams(location.search).get("k") || "";
+
+document.getElementById("check-runtime").addEventListener("click", async e => {
+  const button = e.currentTarget;
+  const output = document.getElementById("runtime-status");
+  button.disabled = true;
+  output.textContent = "Checking services…";
+  try {
+    const response = await fetch("/runtime", { headers: { "X-Panel-Key": key }, cache: "no-store" });
+    if (!response.ok) throw new Error("Status request failed (" + response.status + ").");
+    const report = await response.json();
+    const lines = ["Supervision: " + report.bootstrapLabel];
+    if (report.detail) lines.push(report.detail);
+    for (const item of report.capabilities) {
+      lines.push(item.name + ": " + item.label + (item.provider ? " (" + item.provider + ")" : ""));
+    }
+    if (report.error) lines.push("Observation: " + report.error);
+    lines.push("Checked at " + report.checkedAt);
+    output.textContent = lines.join("\n");
+  } catch (error) { output.textContent = error.message; }
+  finally { button.disabled = false; }
+});
 
 const list = document.getElementById("list");
 const add = document.getElementById("add");

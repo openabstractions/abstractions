@@ -1,5 +1,6 @@
 {
-  "schema": 1,
+  "schema": 2,
+  "execution_platform": "windows/amd64",
   "manifest": "conformance/clients/config/manifests/cpp-windows.json",
   "definition": {
     "id": "config-cpp-windows-service",
@@ -74,7 +75,7 @@
       "--run"
     ]
   },
-  "inputs_digest": "be679baf5aae908e16ebc952cf4b224fe76b5ac9cdb7c0c0314aea80b22b9e18",
+  "inputs_digest": "3cc6a87eac54a5fc3fd25aca0e62df33156dfb74f8029c803080c7ec5a7be7bc",
   "toolchains": {
     "python": {
       "argv": [
@@ -83,7 +84,7 @@
       ],
       "exit": 0,
       "output": "Python 3.12.10\r\n",
-      "seconds": 3.688
+      "seconds": 4.235
     },
     "go": {
       "argv": [
@@ -92,7 +93,7 @@
       ],
       "exit": 0,
       "output": "go version go1.26.5 windows/amd64\n",
-      "seconds": 0.125
+      "seconds": 0.094
     },
     "cmake": {
       "argv": [
@@ -102,7 +103,7 @@
       ],
       "exit": 0,
       "output": "cmake version 4.3.1-msvc1\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n",
-      "seconds": 4.062
+      "seconds": 0.281
     }
   },
   "result": {
@@ -112,9 +113,9 @@
       "--run"
     ],
     "exit": 0,
-    "output": "go version go1.26.5 windows/amd64\r\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\r\n-- Configuring done (0.1s)\r\n-- Generating done (0.3s)\r\n-- Build files have been written to: $ROOT/.build/config/native\r\nC++ compiler ID MSVC\r\nC++ compiler VERSION 19.51.36256.0\r\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\n  abstraction_ipc.vcxproj -> $ROOT\\.build\\config\\native\\abstraction_ipc-build\\Release\\abstraction_ipc.lib\r\n-- Installing: $ROOT\\.build\\config\\s-0f872f85/lib/abstraction_ipc.lib\r\n-- Installing: $ROOT\\.build\\config\\s-0f872f85/include\r\n-- Installing: $ROOT\\.build\\config\\s-0f872f85/include/abstraction\r\n-- Installing: $ROOT\\.build\\config\\s-0f872f85/include/abstraction/ipc\r\n-- Installing: $ROOT\\.build\\config\\s-0f872f85/include/abstraction/ipc/client.h\r\n-- Installing: $ROOT\\.build\\config\\s-0f872f85/include/abstraction/ipc/client.hpp\r\n-- Installing: $ROOT\\.build\\config\\s-0f872f85/include/abstraction/ipc/frame.hpp\r\n-- Installing: $ROOT\\.build\\config\\s-0f872f85/include/abstraction/ipc/process.hpp\r\n-- Installing: $ROOT\\.build\\config\\s-0f872f85/lib/cmake/abstraction_ipc/abstraction_ipcTargets.cmake\r\n-- Installing: $ROOT\\.build\\config\\s-0f872f85/lib/cmake/abstraction_ipc/abstraction_ipcTargets-release.cmake\r\n-- Installing: $ROOT\\.build\\config\\s-0f872f85/lib/cmake/abstraction_ipc/abstraction_ipcConfig.cmake\r\n-- Installing: $ROOT\\.build\\config\\s-0f872f85/lib/cmake/abstraction_ipc/abstraction_ipcConfigVersion.cmake\r\n-- Up-to-date: $ROOT\\.build\\config\\s-0f872f85/include\r\n-- Up-to-date: $ROOT\\.build\\config\\s-0f872f85/include/abstraction\r\n-- Installing: $ROOT\\.build\\config\\s-0f872f85/include/abstraction/config\r\n-- Installing: $ROOT\\.build\\config\\s-0f872f85/include/abstraction/config/client.hpp\r\n-- Up-to-date: $ROOT\\.build\\config\\s-0f872f85/include/abstraction\r\n-- Up-to-date: $ROOT\\.build\\config\\s-0f872f85/include/abstraction/config\r\n-- Installing: $ROOT\\.build\\config\\s-0f872f85/include/abstraction/config/rec.h\r\n-- Installing: $ROOT\\.build\\config\\s-0f872f85/lib/cmake/abstraction_config/abstraction_configTargets.cmake\r\n-- Installing: $ROOT\\.build\\config\\s-0f872f85/lib/cmake/abstraction_config/abstraction_configConfig.cmake\r\n-- Installing: $ROOT\\.build\\config\\s-0f872f85/lib/cmake/abstraction_config/abstraction_configConfigVersion.cmake\r\n-- Building for: Visual Studio 18 2026\r\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\r\n-- The C compiler identification is MSVC 19.51.36256.0\r\n-- The CXX compiler identification is MSVC 19.51.36256.0\r\n-- Detecting C compiler ABI info\r\n-- Detecting C compiler ABI info - done\r\n-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting C compile features\r\n-- Detecting C compile features - done\r\n-- Detecting CXX compiler ABI info\r\n-- Detecting CXX compiler ABI info - done\r\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting CXX compile features\r\n-- Detecting CXX compile features - done\r\n-- Configuring done (4.5s)\r\n-- Generating done (0.1s)\r\n-- Build files have been written to: $ROOT/.build/config/c-0f872f85\r\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\n  1>Checking Build System\r\n  Building Custom Rule $ROOT/conformance/clients/config/CMakeLists.txt\r\n  client.cpp\r\n  config_consumer.vcxproj -> $ROOT\\.build\\config\\c-0f872f85\\Release\\config_consumer.exe\r\n  Building Custom Rule $ROOT/conformance/clients/config/CMakeLists.txt\r\nPASS config read\r\nPASS config same-value\r\nPASS config override\r\nPASS refusal\r\nPASS config read\r\nPASS config defaults\r\nPASS config defaults\r\nPASS absent\r\nPASS C++ installed client -> generated protocol -> shared framing -> central host -> identity-bound same-user config provider\r\nPASS caller override, provider provenance/reload, value-only stamp, malformed/missing source, request refusal, absent service, no client store\r\n",
-    "seconds": 13.75
+    "output": "go version go1.26.5 windows/amd64\r\n-- Building for: Visual Studio 18 2026\r\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\r\n-- The CXX compiler identification is MSVC 19.51.36256.0\r\n-- Detecting CXX compiler ABI info\r\n-- Detecting CXX compiler ABI info - done\r\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting CXX compile features\r\n-- Detecting CXX compile features - done\r\n-- The C compiler identification is MSVC 19.51.36256.0\r\n-- Detecting C compiler ABI info\r\n-- Detecting C compiler ABI info - done\r\n-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting C compile features\r\n-- Detecting C compile features - done\r\n-- Configuring done (8.0s)\r\n-- Generating done (0.1s)\r\n-- Build files have been written to: $ROOT/.build/config/native\r\nC++ compiler ID MSVC\r\nC++ compiler VERSION 19.51.36256.0\r\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\n  1>Checking Build System\r\n  Building Custom Rule $ROOT/openabstractions-flat/abstraction-identity/cpp/CMakeLists.txt\r\n  client.cpp\r\n  abstraction_ipc.vcxproj -> $ROOT\\.build\\config\\native\\abstraction_ipc-build\\Release\\abstraction_ipc.lib\r\n  Building Custom Rule $ROOT/openabstractions-flat/abstraction-config/cpp/CMakeLists.txt\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/lib/abstraction_ipc.lib\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/include\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction/ipc\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction/ipc/client.h\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction/ipc/client.hpp\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction/ipc/frame.hpp\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction/ipc/process.hpp\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/lib/cmake/abstraction_ipc/abstraction_ipcTargets.cmake\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/lib/cmake/abstraction_ipc/abstraction_ipcTargets-release.cmake\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/lib/cmake/abstraction_ipc/abstraction_ipcConfig.cmake\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/lib/cmake/abstraction_ipc/abstraction_ipcConfigVersion.cmake\r\n-- Up-to-date: $ROOT\\.build\\config\\s-8551f3f5/include\r\n-- Up-to-date: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction/config\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction/config/client.hpp\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction/config/editor.hpp\r\n-- Up-to-date: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction\r\n-- Up-to-date: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction/config\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction/config/rec.h\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/lib/cmake/abstraction_config/abstraction_configTargets.cmake\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/lib/cmake/abstraction_config/abstraction_configConfig.cmake\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/lib/cmake/abstraction_config/abstraction_configConfigVersion.cmake\r\n-- Building for: Visual Studio 18 2026\r\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\r\n-- The C compiler identification is MSVC 19.51.36256.0\r\n-- The CXX compiler identification is MSVC 19.51.36256.0\r\n-- Detecting C compiler ABI info\r\n-- Detecting C compiler ABI info - done\r\n-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting C compile features\r\n-- Detecting C compile features - done\r\n-- Detecting CXX compiler ABI info\r\n-- Detecting CXX compiler ABI info - done\r\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting CXX compile features\r\n-- Detecting CXX compile features - done\r\n-- Configuring done (4.7s)\r\n-- Generating done (0.1s)\r\n-- Build files have been written to: $ROOT/.build/config/c-8551f3f5\r\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\n  1>Checking Build System\r\n  Building Custom Rule $ROOT/conformance/clients/config/CMakeLists.txt\r\n  client.cpp\r\n  config_consumer.vcxproj -> $ROOT\\.build\\config\\c-8551f3f5\\Release\\config_consumer.exe\r\n  Building Custom Rule $ROOT/conformance/clients/config/CMakeLists.txt\r\nPASS config read\r\nPASS config same-value\r\nPASS config override\r\nPASS refusal\r\nPASS config read\r\nPASS config defaults\r\nPASS config defaults\r\nPASS absent\r\nPASS C++ installed client -> generated protocol -> shared framing -> central host -> identity-bound same-user config provider\r\nPASS caller override, provider provenance/reload, value-only stamp, malformed/missing source, request refusal, absent service, no client store\r\n",
+    "seconds": 21.844
   },
-  "commit": "8019269261bdeab0a532a1cfa9f3d9b993a916c7",
-  "record_digest": "88632e5c101e6f1c6bf5c68d3d9983bb9a6bf59930f4150af572b7c4e5c88574"
+  "commit": "078360467acecb9512a053e39b4f80395f867ce2",
+  "record_digest": "ec9a23d68e99190de55a074c9b8d9c2b43e920389c1428cea39ae760e92b5fc5"
 }

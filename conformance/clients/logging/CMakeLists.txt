@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
 project(logging_consumer LANGUAGES CXX)
-find_package(abstraction_facade CONFIG REQUIRED)
+find_package(abstraction_logging CONFIG REQUIRED)
 add_executable(logging_consumer client.cpp)
-target_link_libraries(logging_consumer PRIVATE abstraction::facade_client)
+target_link_libraries(logging_consumer PRIVATE abstraction::logging_client)

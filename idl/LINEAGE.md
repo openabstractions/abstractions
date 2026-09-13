@@ -57,7 +57,7 @@ not read ASN.1. **We took its central idea instead — see the encoding block.**
 | `set<T>` | **CBOR** and **Protobuf** both refuse to promise map or set ordering. We refuse the type rather than promise an order we cannot keep. |
 | `double` | **I-JSON (RFC 7493 §2.2)** on interoperable numbers, and **RFC 8785 §3.2.2.3**, which had to specify ECMAScript number formatting exactly because "a JSON number" is not one spelling. We avoid the problem instead of specifying our way through it. |
 | `binary` | Ours, and it is a measured lesson rather than a borrowed one. See *the opaque type*. |
-| `include` | **JSON Schema**'s `$ref` across documents, which is the feature that makes "which text binds me" unanswerable. |
+| Cyclic or unresolved `include` references | The earlier blanket refusal is superseded by qualified record references, documented below. Each included definition remains authoritative for its records. |
 | default values | **JOSE**, **Protobuf 3** and our own `intent` rule, which all separate *a value a reader supplies* from *a value a writer recorded*. One syntax for both hides the difference. |
 
 ---
@@ -505,3 +505,34 @@ Schema languages describe documents, so nobody has these, because nobody else's
 conformance proof is *two implementations produce the same bytes and refuse the
 same inputs*. Everyone else's is *the runtime handles it*, and a runtime does not
 need to be told in the schema what it already does.
+
+
+## Qualified record includes (2026-09-12)
+
+Standard Thrift relative `include` and filename-qualified record references now
+retain each definition's type identity. The generator imports generated modules
+and calls their named record codecs. Go module paths are explicit CLI build
+configuration; shared capability schemas contain language namespaces only.
+
+This replaces the historical one-file restriction for the tested record subset.
+Unknown fields, raw extensions, refusal words and nesting limits remain owned by
+the record's definition. The current envelope duplicate-key compatibility refusal
+is documented in LANGUAGE.md. Enum/typedef imports and recursive layouts remain
+explicitly unsupported. No model API migration is implied: native download.Spec
+contains provider-private Sink state, while download/request.thrift describes
+portable request vocabulary suitable for a separately reviewed model interface.
+
+## Rust typed service clients (2026-09-13)
+
+Rust service emission reuses the existing record codecs and service envelope
+carriers. Generated traits and clients cover logging Sink/HistoryReader and
+facade Resolver. The transport trait retains its adapter's error type; waiting,
+cancellation and native IPC belong to the shared transport binding. No generated
+retry or server is added. Record-only output remains unchanged. Typed includes
+and binary fields remain explicitly unsupported by the Rust backend.
+
+JavaScript binary codecs reuse the existing binary profile: Uint8Array carriers,
+canonical RFC 4648 padded Base64, and bad_binary refusals including nonzero padding
+bits. Helpers and service carrier checks are emitted only for binary definitions.
+Executable Node fixtures cover records, generated asynchronous clients, and a
+mutation removing canonical validation. Shared transport calls retain their errors.

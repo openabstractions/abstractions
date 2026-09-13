@@ -1,34 +1,10 @@
-// Command monitor is the control panel: a window onto what this machine is
-// doing with downloads, and the controls for it.
-//
-// Everything it shows about a job comes from abstraction.Discover, and every
-// button it draws beside one is a capability the handle admits to having. What
-// it shows about the machine — which tiers exist, which serves, what is on the
-// network — comes from the layers that own those answers, and every change it
-// makes goes into the one file this machine keeps its answers in.
-//
-// # What this window is not allowed to be
-//
-// A loopback socket carries no caller identity: any process here can open one,
-// and the kernel vouches for none of them. The router settled that yesterday by
-// refusing to route from its HTTP window at all. This one cannot be read-only —
-// its whole purpose is to change where a person's downloads go — so the rule is
-// applied where it can be: the powers are bounded and the boundary is written
-// down rather than assumed.
-//
-//   - A key minted at startup and handed to the browser in the URL this program
-//     opens. It is sent in a header, which a page on another origin cannot set
-//     without a preflight this server never answers, so a web page cannot drive
-//     this window. It is not proof of who is calling and is not offered as one.
-//   - The store may be pointed only at an address a broadcast THIS machine sent
-//     got an answer from, with the share and folder checked segment by segment
-//     and the whole path proven writable first. A path typed into a page is
-//     untrusted input in exactly the way a record's sink is.
-//   - A tier can be switched off by anyone who reaches this socket, which
-//     reduces where bytes go and never redirects them.
+// Command monitor presents service-owned work and configuration by default.
+// --legacy-local explicitly selects the retained embedded-provider controls.
+// The loopback UI uses a per-run bearer key; it does not claim native caller identity.
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	_ "embed"
@@ -45,16 +21,11 @@ import (
 	"runtime"
 	"time"
 
-	config "github.com/openabstractions/abstraction-config/go"
 	download "github.com/openabstractions/abstraction-download/go"
 
-	// The panel names the tiers, so it has to have them linked. An application
-	// that did this would be choosing who fetches its bytes; this program
-	// fetches nothing on anybody's behalf and delegates nothing — it reports
-	// what the machine has and writes down what a person decided about it, and
-	// a tier that is not linked cannot even be named.
+	// Provider registrations support the explicit --legacy-local mode.
 	_ "github.com/openabstractions/abstraction-download/go/all"
-	abstraction "github.com/openabstractions/abstraction-facade/go"
+	abstraction "github.com/openabstractions/abstraction-facade/go/legacy"
 	job "github.com/openabstractions/abstraction-job/go"
 )
 
@@ -65,14 +36,21 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:8734", "address to listen on; loopback only")
 	open := flag.Bool("open", true, "open the window in the default browser")
 	native := flag.Bool("native", windowed(), "draw a window on the desktop instead of serving a page")
+	legacy := flag.Bool("legacy-local", false, "explicitly use deprecated embedded provider and file inventory controls")
 	flag.Parse()
+	if !*legacy {
+		if err := runServicePanel(*addr, *open, *native); err != nil {
+			fail(*native, err)
+		}
+		return
+	}
 
 	a, err := abstraction.Discover()
 	if err != nil {
 		fail(*native, err)
 	}
 	m := &window{a: a, downloads: a.Download(), jobs: a.Jobs(),
-		reach: download.DefaultRefusals(), key: mint(), panel: newPanel(), cfg: config.Watch()}
+		reach: download.DefaultRefusals(), key: mint(), panel: newPanel(), cfg: watchConfiguration(context.Background())}
 	defer m.cfg.Close()
 
 	if *native {
@@ -90,6 +68,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", m.serveHTML)
 	mux.HandleFunc("/state", m.guard(m.serveState))
+	mux.HandleFunc("/runtime", m.guard(m.serveReadiness))
 	mux.HandleFunc("/events", m.guard(m.serveEvents))
 	mux.HandleFunc("/act", m.guard(m.act))
 
@@ -156,10 +135,9 @@ type window struct {
 	// answered a broadcast, and how the last quick test went.
 	panel *panel
 
-	// cfg is this machine's answers, subscribed to rather than re-read. A person
-	// editing config.json, another window, or jobd writing a tier off all reach
-	// this window without anybody asking again.
-	cfg *config.Subscription
+	// cfg observes resolved service snapshots with bounded polling. Changes
+	// may coalesce; failures remain visible alongside the last good snapshot.
+	cfg configurationView
 }
 
 func (w *window) serveHTML(rw http.ResponseWriter, r *http.Request) {
@@ -196,10 +174,8 @@ func (w *window) serveState(rw http.ResponseWriter, r *http.Request) {
 }
 
 // serveEvents pushes a snapshot when something happened: a record moved, this
-// machine's answers changed, or the panel learned something by asking. Nothing
-// is on a tick. The only timer left is set from the drawing itself, for the
-// elapsed times and the leases that change with no writer at all, and with
-// nothing moving it is not set.
+// machine's service snapshot changed, or the panel learned something by asking.
+// Configuration is polled; redraw timers also track elapsed times and leases.
 func (w *window) serveEvents(rw http.ResponseWriter, r *http.Request) {
 	flush, ok := rw.(http.Flusher)
 	if !ok {
@@ -214,13 +190,15 @@ func (w *window) serveEvents(rw http.ResponseWriter, r *http.Request) {
 	// This stream's own subscription, so that one reader taking a change does
 	// not take it from another. The same reason w.downloads.Jobs() is called
 	// here and not held on the window.
-	cfg := config.Watch()
+	cfg := watchConfiguration(r.Context())
 	defer cfg.Close()
+	viewWindow := *w
+	viewWindow.cfg = cfg
 	clock := time.NewTimer(time.Hour)
 	defer clock.Stop()
 
 	for {
-		s := w.snapshot(cfg.Current())
+		s := viewWindow.snapshot(cfg.Current())
 		b, err := json.Marshal(s)
 		if err != nil {
 			return

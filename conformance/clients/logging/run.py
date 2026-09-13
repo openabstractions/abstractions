@@ -1,4 +1,4 @@
-"""Run a real Go logging host and prove facade clients reach its service-owned file.
+"""Run a Go logging host and prove independent clients reach its service-owned file.
 
 No arguments shows help. Builds use .build/logging-service-proof; each run uses
 a fresh private output directory and isolated client home. No product is installed.
@@ -62,7 +62,7 @@ run(['go', 'build', '-o', BUILD / 'host.exe', './serve'])
 languages = ['go', 'cpp'] if args.language == 'all' else [args.language]
 clients = {}
 if 'go' in languages:
-    dependencies = run(['go', 'list', '-deps', 'github.com/openabstractions/abstraction-facade/go/client'], echo=False)
+    dependencies = run(['go', 'list', '-deps', 'github.com/openabstractions/abstraction-logging/go/client'], echo=False)
     for forbidden in ['github.com/openabstractions/abstraction-logging/go',
                       'github.com/openabstractions/abstraction-job/go',
                       'github.com/openabstractions/abstraction-download/go']:
@@ -76,11 +76,8 @@ if 'cpp' in languages:
     identity = uuid.uuid4().hex
     stage = BUILD / ('stage-' + identity)
     consumer = BUILD / ('consumer-' + identity)
-    run([cmake, '-S', layer('abstraction-facade') / 'cpp',
+    run([cmake, '-S', layer('abstraction-logging') / 'cpp',
          '-B', native, '-DBUILD_SHARED_LIBS=OFF',
-         '-DCMAKE_DISABLE_FIND_PACKAGE_abstraction_logging=TRUE',
-         '-DCMAKE_DISABLE_FIND_PACKAGE_abstraction_config=TRUE',
-         '-DCMAKE_DISABLE_FIND_PACKAGE_abstraction_router=TRUE',
          '-DCMAKE_DISABLE_FIND_PACKAGE_abstraction_ipc=TRUE'])
     for compiler in sorted((native / 'CMakeFiles').glob('*/CMakeCXXCompiler.cmake')):
         for key, value in re.findall(r'set\(CMAKE_CXX_COMPILER_(ID|VERSION) "([^"]+)"\)', compiler.read_text()):
@@ -137,5 +134,5 @@ for language, executable in clients.items():
     run([executable, 'absent'], cwd=client_home, environment=client_env, timeout=15)
     assert not list(client_home.rglob('*')), 'absent-service fallback created state'
     assert output.read_bytes() == before, 'absent client changed service storage'
-    print('PASS:', language, 'facade -> generated client -> shared IPC -> identity-bound Go service -> provider')
+    print('PASS:', language, 'independent client -> generated protocol -> shared IPC -> identity-bound Go service -> provider')
     print('PASS: client exited; record survived; schema refused; absent service errored; no client store')

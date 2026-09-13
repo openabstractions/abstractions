@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.16)
+project(authority_binding_consumer LANGUAGES CXX)
+find_package(abstraction_facade_asks CONFIG REQUIRED)
+find_package(abstraction_facade_rights CONFIG REQUIRED)
+find_package(abstraction_facade_storage CONFIG REQUIRED)
+add_executable(authority_binding_consumer main.cpp)
+target_link_libraries(authority_binding_consumer PRIVATE abstraction::facade_asks abstraction::facade_rights abstraction::facade_storage)

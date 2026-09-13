@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	downloadserve "github.com/openabstractions/abstraction-download/go/serve"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	logging "github.com/openabstractions/abstraction-logging/go"
 )
@@ -81,8 +82,8 @@ func isolatedRuntime(t *testing.T) (runtimeFlags, []string) {
 		}
 		return filepath.Join(dir, s)
 	}
-	o := runtimeFlags{endpoint: endpoint("r"), logEndpoint: endpoint("l"), configEndpoint: endpoint("c"), out: filepath.Join(dir, "records")}
-	args := []string{"serve", "runtime", "--supervised", "--endpoint", o.endpoint, "--log-endpoint", o.logEndpoint, "--config-endpoint", o.configEndpoint, "--out", o.out}
+	o := runtimeFlags{endpoint: endpoint("r"), logEndpoint: endpoint("l"), configEndpoint: endpoint("c"), out: filepath.Join(dir, "records"), jobEndpoint: endpoint("j"), stateDir: filepath.Join(dir, "private")}
+	args := []string{"serve", "runtime", "--supervised", "--endpoint", o.endpoint, "--log-endpoint", o.logEndpoint, "--config-endpoint", o.configEndpoint, "--out", o.out, "--jobs-endpoint", o.jobEndpoint, "--state-dir", o.stateDir}
 	return o, args
 }
 func expectLine(t *testing.T, lines <-chan string, want string) {
@@ -119,7 +120,7 @@ func assertListenersReleased(t *testing.T, o runtimeFlags) {
 		t.Fatal(err)
 	}
 	defer sink.Close()
-	h, err := host.Listen(host.Options{Endpoint: o.endpoint, LogEndpoint: o.logEndpoint, ConfigEndpoint: o.configEndpoint, Sink: sink})
+	h, err := host.Listen(host.Options{Endpoint: o.endpoint, LogEndpoint: o.logEndpoint, ConfigEndpoint: o.configEndpoint, Sink: sink, JobRoot: filepath.Join(o.stateDir, "jobs"), ManagedJobs: true, JobEndpoint: o.jobEndpoint, JobExecutor: downloadserve.HTTPExecution{}})
 	if err != nil {
 		t.Fatalf("listeners not released: %v", err)
 	}

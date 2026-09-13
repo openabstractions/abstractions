@@ -1147,6 +1147,7 @@ func genGo(s *Definition) string {
 		prelude += goEncList
 	}
 	b.WriteString(strings.NewReplacer("@INDENT@", strconv.Itoa(s.Encoding.Indent)).Replace(prelude))
+	b.WriteString(importPrelude(s, "go"))
 	goVocabulary(&b, s)
 	for _, st := range s.Structs {
 		fmt.Fprintf(&b, "\ntype %s struct {\n", st.Name)
@@ -1168,7 +1169,11 @@ func genGo(s *Definition) string {
 		tail = ", '\\n'"
 	}
 	if s.Document != "" {
-		fmt.Fprintf(&b, "\nfunc Encode(v *%s) []byte {\n\treturn append(enc%s(nil, v, 0)%s)\n}\n", s.Document, s.Document, tail)
+		if len(s.Imports) > 0 {
+			fmt.Fprintf(&b, "\nfunc Encode(v *%s) []byte {return Encode%s(v)}\n", s.Document, s.Document)
+		} else {
+			fmt.Fprintf(&b, "\nfunc Encode(v *%s) []byte {\n\treturn append(enc%s(nil, v, 0)%s)\n}\n", s.Document, s.Document, tail)
+		}
 	}
 	dup, skipSeen, skipKey, skipDup := "", "", "_, err := ", ""
 	if s.Encoding.RefuseDuplicateKeys() {

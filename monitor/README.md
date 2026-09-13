@@ -2,6 +2,12 @@
 
 Three screens today, and room for the ones coming.
 
+**Service status** — use Check services in either the web panel or desktop
+window to inspect supervision and each runtime capability. The check shares the
+SDK's authorized resolution results and a three-second budget. Partial failures
+leave unanswered services marked Not checked. It runs on request, performs no
+activation and shows when the snapshot was taken.
+
 **Delegation** — every tier this machine could hand work to, which one is
 serving, and why the others are not. Switch one off with a reason and the next
 job goes elsewhere; a supervisor that has been running for days obeys it without
@@ -16,12 +22,10 @@ it, which tier served it, and buttons that pause, resume, collect and cancel.
 **May reach** — the hosts this machine's downloads have named, and the switch
 that refuses one with a reason an application shows.
 
-It is the first application built on
-[`abstraction`](https://github.com/openabstractions/abstraction-facade) rather
-than on a store and a directory. Everything it shows about a job comes from
-`Discover()`; everything it changes about the machine goes through
-[`config`](https://github.com/openabstractions/abstraction-config), which is the
-one place a machine keeps its answers.
+Configuration, service status and download inventory use resolved service APIs
+by default. Older adoption controls require explicit `--legacy-local` mode.
+Configuration changes carry a revision;
+conflicting edits require a refresh.
 
 ```bash
 cd monitor && go run .

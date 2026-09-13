@@ -10,16 +10,34 @@ import (
 	"time"
 
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
+	"github.com/openabstractions/abstraction-facade/go/bootstrap"
+	"github.com/openabstractions/abstraction-facade/go/client"
 	"github.com/openabstractions/abstraction-facade/go/resolution"
 )
 
 type capabilityStatus struct {
-	Capability string `json:"capability"`
-	Status     string `json:"status"`
+	Capability string          `json:"capability"`
+	Contract   string          `json:"contract"`
+	Status     string          `json:"status"`
+	Result     json.RawMessage `json:"result,omitempty"`
+}
+type bootstrapStatus struct {
+	State  string `json:"state"`
+	Detail string `json:"detail,omitempty"`
 }
 type runtimeReport struct {
+	Bootstrap    bootstrapStatus    `json:"bootstrap"`
 	Capabilities []capabilityStatus `json:"capabilities"`
 	Error        string             `json:"error,omitempty"`
+}
+
+// Start and status require the same installed runtime contracts.
+func runtimeContracts() [][2]string {
+	var result [][2]string
+	for _, request := range client.DefaultStatusRequests() {
+		result = append(result, [2]string{request.Capability, request.Contracts[0]})
+	}
+	return result
 }
 
 // Status observes the resolver's current registrations using the caller's
@@ -38,35 +56,47 @@ func runtimeStatus(args []string, output, diagnostics io.Writer) error {
 	}
 	report := runtimeReport{Capabilities: []capabilityStatus{}}
 	var failure error
+	explicitEndpoint := *endpoint != ""
 	if *endpoint == "" {
 		*endpoint, failure = resolution.CheckedDefaultEndpoint()
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *budget)
 	defer cancel()
+	evidence := wire.BootstrapObservation{State: "unknown", Detail: "explicit endpoint; installed runtime lifecycle was not queried"}
+	if !explicitEndpoint {
+		evidence = bootstrap.ObserveInstalled(ctx)
+	}
+	report.Bootstrap = bootstrapStatus{State: evidence.State, Detail: evidence.Detail}
 	if failure == nil {
-		client := resolution.NewClient(*endpoint, *budget)
-		for _, item := range []struct{ capability, contract string }{
-			{"abstraction.logging", "abstraction.logging/sink@1"},
-			{"abstraction.config", "abstraction.config/reader@1"},
-		} {
-			result, err := client.Resolve(ctx, wire.ResolveRequest{Capability: item.capability, Contracts: []string{item.contract}, Scope: wire.ScopeLocal})
-			if err != nil {
-				failure = err
-				break
+		observation, err := client.New(*endpoint).Observe(ctx, client.DefaultStatusRequests(), evidence)
+		failure = err
+		for _, item := range observation.Capabilities {
+			entry := capabilityStatus{Capability: item.Request.Capability, Contract: item.Request.Contracts[0]}
+			if item.Result != nil {
+				entry.Status = item.Result.Status
+				entry.Result = wire.Encode(item.Result)
 			}
-			report.Capabilities = append(report.Capabilities, capabilityStatus{item.capability, result.Status})
+			report.Capabilities = append(report.Capabilities, entry)
 		}
 	}
 	if failure != nil {
 		report.Error = failure.Error()
+		if len(report.Capabilities) == 0 {
+			for _, request := range client.DefaultStatusRequests() {
+				report.Capabilities = append(report.Capabilities, capabilityStatus{Capability: request.Capability, Contract: request.Contracts[0]})
+			}
+		}
 	}
 	if *asJSON {
 		if err := json.NewEncoder(output).Encode(report); err != nil {
 			return err
 		}
 	} else {
+		if _, err := fmt.Fprintf(output, "runtime supervision: %s (%s)\n", report.Bootstrap.State, report.Bootstrap.Detail); err != nil {
+			return err
+		}
 		for _, item := range report.Capabilities {
-			if _, err := fmt.Fprintf(output, "%s: %s\n", item.Capability, item.Status); err != nil {
+			if _, err := fmt.Fprintf(output, "%s (%s): %s\n", item.Capability, item.Contract, item.Status); err != nil {
 				return err
 			}
 		}

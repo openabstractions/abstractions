@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -10,7 +11,6 @@ import (
 	"time"
 
 	"github.com/openabstractions/abstractions/monitor/win"
-	config "github.com/openabstractions/abstraction-config/go"
 )
 
 func windowed() bool { return win.Windowed() }
@@ -59,6 +59,20 @@ func (m *window) desktop() error {
 func (d *desk) build() {
 	ui := d.ui
 	head := ui.Head("Where this machine's downloads go")
+	checkingServices := false
+	services := ui.Button("Check services", func() {
+		if checkingServices {
+			return
+		}
+		checkingServices = true
+		go func() {
+			view := observeReadiness(context.Background())
+			ui.Do(func() {
+				checkingServices = false
+				win.Say("Service status", readinessText(view))
+			})
+		}()
+	})
 	d.supervisor = ui.Dim("")
 	d.tiers = ui.List(
 		win.Column{Title: "Tier", Width: 110},
@@ -94,7 +108,8 @@ func (d *desk) build() {
 
 	ui.OnSize(func(cw, ch int) {
 		x, w, y := 16, cw-32, 12
-		head.Place(x, y, w, 24)
+		head.Place(x, y, w-150, 24)
+		services.Place(x+w-140, y, 140, 24)
 		y += 26
 		d.supervisor.Place(x, y, w, 34)
 		y += 40
@@ -129,12 +144,10 @@ func (d *desk) build() {
 }
 
 // watch redraws on the same signals the page's event stream uses: this
-// machine's answers changing, and something the panel learned by asking. The
-// only timer is set from the drawing, for the heartbeat that goes stale with
-// nobody writing anything, and with nothing to wait for it is not set.
+// configuration snapshots changing, and something the panel learned by asking.
+// Configuration uses bounded polling; drawing timers track stale heartbeats.
 func (d *desk) watch() {
-	cfg := config.Watch()
-	defer cfg.Close()
+	cfg := d.m.cfg
 	clock := time.NewTimer(time.Hour)
 	defer clock.Stop()
 	for {
@@ -148,7 +161,10 @@ func (d *desk) watch() {
 			clock.Reset(next)
 		}
 		select {
-		case <-cfg.Changes():
+		case _, ok := <-cfg.Changes():
+			if !ok {
+				return
+			}
 			d.m.panel.stale()
 		case <-d.m.panel.change:
 		case <-clock.C:
@@ -189,7 +205,7 @@ func (d *desk) draw(g delegation) {
 
 	switch {
 	case !d.drawn:
-		d.status.SetText("Answers are kept in " + g.File + ", and a change to them arrives by " + g.Told)
+		d.status.SetText("Configuration: " + g.Told)
 	case g.Searching && !d.searching:
 		d.status.SetText("Asking the network who is there.")
 	case d.searching && !g.Searching:
@@ -276,4 +292,55 @@ func text(s, fallback string) string {
 		return fallback
 	}
 	return s
+}
+
+// The service launcher retains a native window without constructing legacy
+// provider controls. Typed forms and recovery records live in the browser UI.
+func (p *servicePanel) desktop(url string) error {
+	lifetime, stop := context.WithCancel(context.Background())
+	defer stop()
+	return win.Run("OpenAbstractions services", 780, 440, func(ui *win.Window) {
+		title := ui.Head("Service-owned work for this panel")
+		status := ui.Dim("Refresh to query the runtime. No provider files are opened.")
+		rows := ui.List(win.Column{Title: "Operation", Width: 330}, win.Column{Title: "State", Width: 110}, win.Column{Title: "Progress", Width: 200})
+		busy := false
+		refresh := ui.Button("Refresh", func() {
+			if busy {
+				return
+			}
+			busy = true
+			go func() {
+				ctx, cancel := context.WithTimeout(lifetime, 5*time.Second)
+				defer cancel()
+				_, inventory, _, err := p.binding(ctx)
+				var values [][]string
+				message := ""
+				if err == nil {
+					page, e := inventory.ListWork(ctx, "", 32)
+					err = e
+					if err == nil {
+						message = "Inventory: " + page.Outcome
+						if !page.Complete {
+							message += "; more pages available in full controls"
+						}
+						for _, s := range page.Snapshots {
+							values = append(values, []string{s.Receipt.OperationId, s.State, fmt.Sprintf("%d / %d", s.Progress.Done, s.Progress.Total)})
+						}
+					}
+				}
+				if err != nil {
+					message = "Unavailable: " + err.Error()
+				}
+				ui.Do(func() { busy = false; rows.Set(values); status.SetText(message) })
+			}()
+		})
+		controls := ui.Button("Open full controls", func() { launch(url) })
+		ui.OnSize(func(w, h int) {
+			title.Place(14, 10, w-28, 28)
+			refresh.Place(14, 46, 120, 30)
+			controls.Place(150, 46, 200, 30)
+			rows.Place(14, 90, w-28, h-142)
+			status.Place(14, h-42, w-28, 30)
+		})
+	})
 }

@@ -4,12 +4,11 @@ import (
 	"fmt"
 	"os"
 
-	facade "github.com/openabstractions/abstraction-facade/go/client"
 	logging "github.com/openabstractions/abstraction-logging/go/client"
 )
 
 func main() {
-	c := facade.Discover().Log()
+	c := logging.New(os.Getenv(logging.EnvEndpoint))
 	switch os.Args[1] {
 	case "write":
 		if err := c.Log(0, "from go\nsecond line ☃", map[string]string{"language": "go", "empty": ""}); err != nil {

@@ -88,7 +88,7 @@ func TestNoIPCDefaultAndUnsupported(t *testing.T) {
 	if genGo(s) != baseline || !strings.Contains(baseline, "QueryClient") {
 		t.Fatal("mode mutated default")
 	}
-	for _, lang := range []string{"rust", "javascript"} {
+	for _, lang := range []string{"javascript"} {
 		if err := validateServiceBackend(&copy, lang); err == nil || !strings.Contains(err.Error(), "--no-ipc") {
 			t.Fatalf("%s: %v", lang, err)
 		}

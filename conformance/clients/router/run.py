@@ -47,6 +47,11 @@ run([cmake, '-S', layer('abstraction-router') / 'cpp', '-B', BUILD / 'native', '
 compiler_metadata(BUILD / 'native')
 run([cmake, '--build', BUILD / 'native', '--config', 'Release'])
 run([cmake, '--install', BUILD / 'native', '--config', 'Release', '--prefix', stage])
+run([cmake,'-S',layer('abstraction-facade')/'cpp','-B',BUILD/'resolution','-DABSTRACTION_FACADE_BUILD_AGGREGATE=OFF','-DABSTRACTION_FACADE_BUILD_RESOLUTION=ON','-DCMAKE_DISABLE_FIND_PACKAGE_abstraction_ipc=TRUE','-DBUILD_SHARED_LIBS=OFF','-DABSTRACTION_IPC_BUILD_TESTS=OFF'])
+run([cmake,'--build',BUILD/'resolution','--config','Release'])
+run([cmake,'--install',BUILD/'resolution','--config','Release','--prefix',stage])
+for name in ('logging','config','job','model','storage','asks','rights'):
+    if (stage/'include/abstraction'/name).exists():raise RuntimeError('unrelated installed package: '+name)
 run([cmake, '-S', HERE, '-B', consumer, '-DCMAKE_PREFIX_PATH=' + str(stage)])
 run([cmake, '--build', consumer, '--config', 'Release'])
 executable = consumer / 'Release' / 'router_consumer.exe'
@@ -56,10 +61,10 @@ for mode in ['normal', 'empty']:
     home.mkdir(parents=True)
     trace = case / 'host-requests.txt'
     endpoint = r'\\.\pipe\oa-router-proof-' + uuid.uuid4().hex
-    client_env = dict(env, ABSTRACTION_ROUTER_ENDPOINT=endpoint)
+    client_env = dict(env, ABSTRACTION_ROUTER_ENDPOINT=endpoint, ABSTRACTION_RUNTIME_ENDPOINT=endpoint+"-resolver")
     for name in ['HOME', 'USERPROFILE', 'LOCALAPPDATA', 'APPDATA', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME']:
         client_env[name] = str(home)
-    command = [str(BUILD / 'host.exe'), '--endpoint', endpoint, '--trace', str(trace)]
+    command = [str(BUILD / 'host.exe'), '--endpoint', endpoint, '--resolver', endpoint+'-resolver', '--trace', str(trace)]
     if mode == 'empty': command.append('--empty')
     server = subprocess.Popen(command, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8')
     ready = queue.Queue()

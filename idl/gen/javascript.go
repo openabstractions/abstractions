@@ -606,7 +606,7 @@ func jsStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 		fmt.Fprintf(b, "        seen |= %d;\n", 1<<i)
 		fmt.Fprintf(b, "        v.%s = %s;\n      ", f.Ident("javascript"), jsRead(s, f))
 	}
-	if len(st.Fields) == 0 && st.PreservesUnknown() {
+	if len(st.Fields) == 0 {
 		b.WriteString("      if (false) {\n      ")
 	}
 	b.WriteString("} else {\n")
@@ -623,7 +623,7 @@ func jsStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 	b.WriteString("      }\n      r.ws();\n      if (r.at() !== 0x2c) break;\n      r.pos++;\n    }\n  }\n")
 	b.WriteString("  if (r.at() !== 0x7d) throw r.refuse(\"malformed\");\n  r.pos++;\n  r.depth--;\n")
 	if req := requiredMask(st); req != 0 {
-		fmt.Fprintf(b, "  if ((seen & %d) !== %d) throw r.refuse(\"missing_field\");\n", req, req)
+		fmt.Fprintf(b, "  if (((seen & %d) >>> 0) !== %d) throw r.refuse(\"missing_field\");\n", req, req)
 	}
 	emitEqualities(b, st, "javascript", false)
 	emitEnumChecks(b, st, "javascript", false)
@@ -631,10 +631,12 @@ func jsStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 }
 
 func jsDefault(s *Definition, f Field) string {
-	if f.Omit == "absent" && (s.IsStruct(f.Type) || enumAbsent(f)) {
+	if f.Omit == "absent" && (s.IsStruct(f.Type) || enumAbsent(f) || f.Type == "binary") {
 		return "null"
 	}
 	switch f.Type {
+	case "binary":
+		return "new Uint8Array(0)"
 	case "string", "json":
 		return `""`
 	case "i32":
@@ -656,6 +658,8 @@ func jsDefault(s *Definition, f Field) string {
 
 func jsRead(s *Definition, f Field) string {
 	switch f.Type {
+	case "binary":
+		return "readBinary(r)"
 	case "string":
 		if f.Grammar.Named() {
 			return "readTimestamp(r)"
@@ -781,12 +785,19 @@ export function member(raw, name) {
 
 func genJS(s *Definition) string {
 	s = enumCarriers(s)
+	if s.NoIPC {
+		return genInterfaceOnly(s, "javascript")
+	}
+	s = serviceTypes(s)
 	var b strings.Builder
 	esc := jsEscMinimal
 	if s.Encoding.EscapeNonASCII() {
 		esc = jsEscASCII
 	}
 	prelude := jsCommon + esc
+	if hasBinary(s) {
+		prelude += jsBinary
+	}
 	if s.StringMapDocument() {
 		prelude += jsStrMap
 	}
@@ -834,6 +845,7 @@ func genJS(s *Definition) string {
 	}
 	jsDecoder(&b, s)
 	jsProtocol(&b, s)
+	jsService(&b, s)
 	return b.String()
 }
 
@@ -935,10 +947,12 @@ func jsEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 }
 
 func jsPresent(s *Definition, f Field, e string) string {
-	if f.Omit == "absent" && (s.IsStruct(f.Type) || enumAbsent(f)) {
+	if f.Omit == "absent" && (s.IsStruct(f.Type) || enumAbsent(f) || f.Type == "binary") {
 		return e + " !== undefined && " + e + " !== null"
 	}
 	switch f.Type {
+	case "binary":
+		return "binaryPresent(" + e + ")"
 	case "i64":
 		return e + " !== 0n"
 	case "i32":
@@ -957,10 +971,15 @@ func jsPresent(s *Definition, f Field, e string) string {
 }
 
 func jsValue(s *Definition, f Field, e string) string {
+	if f.Type == "json" && f.Ann["service_raw"] == "true" {
+		return "for (const byte of (typeof " + e + " === \"string\" ? ENC.encode(" + e + ") : " + e + ")) out.byte(byte);"
+	}
 	if f.Grammar.Named() {
 		return "esc(out, writeTimestamp(" + e + "));"
 	}
 	switch f.Type {
+	case "binary":
+		return "esc(out, encodeBinary(" + e + "));"
 	case "string":
 		return "esc(out, " + e + ");"
 	case "i32", "i64":

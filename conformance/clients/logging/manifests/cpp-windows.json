@@ -4,7 +4,7 @@
   "language": "cpp",
   "scope": "client",
   "platform": "windows/amd64",
-  "scenario": "cpp facade -> generated client -> shared named-pipe IPC -> identity-checked Go logging service -> service-owned JSONL sink; multiline Unicode, zero level and empty attrs preserved; verified peer; record survives client exit; schema=2 refused; absent service errors; no client-local storage",
+  "scenario": "independent C++ logging client with explicit endpoint -> generated client -> shared named-pipe IPC -> identity-checked Go logging service -> service-owned JSONL sink; multiline Unicode, zero level and empty attrs preserved; verified peer; record survives client exit; schema=2 refused; absent service errors; no client-local storage",
   "inputs": [
     "conformance/clients/logging/CMakeLists.txt",
     "conformance/clients/logging/client.cpp",

@@ -25,7 +25,7 @@ func hasBinary(s *Definition) bool {
 	return false
 }
 func validateBinaryBackend(s *Definition, lang string) error {
-	if hasBinary(s) && lang != "go" && lang != "cpp" && lang != "python" && lang != "docs" {
+	if hasBinary(s) && lang != "go" && lang != "cpp" && lang != "python" && lang != "rust" && lang != "javascript" && lang != "docs" {
 		return fmt.Errorf("%s binary generation is not implemented", lang)
 	}
 	return nil
@@ -121,4 +121,46 @@ def _decode_binary(text):
     result = bytes(out)
     if _encode_binary(result) != text: bad()
     return result
+`
+
+// JavaScript uses a portable Uint8Array carrier in both Node and browsers.
+const jsBinary = `
+function binaryPresent(value) {
+  if (!(value instanceof Uint8Array)) throw new Refusal("wrong_type", 0);
+  return value.length !== 0;
+}
+function encodeBinary(value) {
+  binaryPresent(value);
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const out = [];
+  for (let i = 0; i < value.length; i += 3) {
+    const left = value.length - i;
+    const v = (value[i] << 16) | ((left > 1 ? value[i+1] : 0) << 8) | (left > 2 ? value[i+2] : 0);
+    out.push(alphabet[(v >>> 18) & 63], alphabet[(v >>> 12) & 63], left > 1 ? alphabet[(v >>> 6) & 63] : "=", left > 2 ? alphabet[v & 63] : "=");
+  }
+  return out.join("");
+}
+function readBinary(r) {
+  const text = r.string();
+  const bad = () => { throw r.refuse("bad_binary"); };
+  if (text.length % 4 !== 0) bad();
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const out = new Uint8Array(text.length / 4 * 3);
+  let size = 0;
+  for (let i = 0; i < text.length; i += 4) {
+    let v = 0, pad = 0;
+    for (let j = 0; j < 4; j++) {
+      const c = text[i+j]; let digit = 0;
+      if (c === "=") { if (j < 2 || i+4 !== text.length) bad(); pad++; }
+      else { if (pad !== 0) bad(); digit = alphabet.indexOf(c); if (digit < 0) bad(); }
+      v = (v << 6) | digit;
+    }
+    out[size++] = (v >>> 16) & 255;
+    if (pad < 2) out[size++] = (v >>> 8) & 255;
+    if (pad < 1) out[size++] = v & 255;
+  }
+  const result = out.slice(0, size);
+  if (encodeBinary(result) !== text) bad();
+  return result;
+}
 `

@@ -16,3 +16,5 @@ fails and its isolated home remains empty.
 
 This is a Windows client-to-service proof of the named subset. It does not prove
 GPU cost, the legacy HTTP window, every platform or OS service installation.
+
+The fixture now registers its isolated router endpoint with the production resolver host. Models/Hosts/Pick use the generated Router descriptor through ResolveService; the installed prefix contains router plus independent resolution and shared IPC.

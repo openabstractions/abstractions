@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.16)
+project(delegation_consumer LANGUAGES CXX)
+find_package(abstraction_facade CONFIG REQUIRED)
+find_package(abstraction_download_request CONFIG REQUIRED)
+add_executable(delegation_consumer client.cpp)
+target_link_libraries(delegation_consumer PRIVATE abstraction::facade_jobs abstraction::download_request)

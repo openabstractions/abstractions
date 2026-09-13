@@ -1,9 +1,11 @@
-#include <abstraction/facade/client.hpp>
+#include <abstraction/logging/client.hpp>
 #include <iostream>
 
 int main(int argc, char** argv) {
     if (argc != 2) return 2;
-    auto client = abstraction::facade::Discover().Log();
+    // This capability fixture supplies its provider explicitly. The separate
+    // facade fixture proves runtime resolution.
+    auto client = abstraction::logging::Logger(abstraction::logging::default_endpoint());
     const std::string mode = argv[1];
     if (mode == "write") {
         client.Log(0, "from cpp\nsecond line \xE2\x98\x83", {{"language", "cpp"}, {"empty", ""}});

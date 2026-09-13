@@ -120,6 +120,9 @@ func selected(s *Definition, only []string) (*Definition, error) {
 	var missing []string
 	for _, n := range only {
 		for _, d := range needs(s, n) {
+			if _, imported := s.importedRecord(d); imported {
+				continue
+			}
 			if contains(only, d) {
 				continue
 			}
@@ -138,7 +141,8 @@ func selected(s *Definition, only []string) (*Definition, error) {
 
 func prune(s *Definition, only []string) *Definition {
 	out := &Definition{
-		Encoding:   s.Encoding,
+		Encoding: s.Encoding,
+		Imports:  s.Imports, Foreign: s.Foreign, NamedCodecs: s.NamedCodecs, GoImports: s.GoImports,
 		Namespaces: s.Namespaces,
 		Typedefs:   s.Typedefs,
 		Refusals:   s.Refusals,

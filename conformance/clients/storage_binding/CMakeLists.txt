@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.16)
+project(storage_binding_consumer LANGUAGES CXX)
+find_package(abstraction_facade_storage CONFIG REQUIRED)
+add_executable(storage_binding_consumer main.cpp)
+target_link_libraries(storage_binding_consumer PRIVATE abstraction::facade_storage)
