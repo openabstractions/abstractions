@@ -947,6 +947,13 @@ func goStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 	b.WriteString("\t\t\tif r.at() != '\"' {\n\t\t\t\treturn nil, r.refuse(\"malformed\")\n\t\t\t}\n")
 	b.WriteString("\t\t\tkey, err := r.str()\n\t\t\tif err != nil {\n\t\t\t\treturn nil, err\n\t\t\t}\n")
 	b.WriteString("\t\t\tr.ws()\n\t\t\tif r.at() != ':' {\n\t\t\t\treturn nil, r.refuse(\"malformed\")\n\t\t\t}\n")
+	if len(st.Fields) == 0 && st.RefuseUnknown() {
+		// Every member of a fieldless refusing struct is unknown. A switch whose
+		// only arm returns leaves the loop tail unreachable, which go vet reports.
+		b.WriteString("\t\t\t_ = key\n\t\t\treturn nil, r.refuse(\"unknown_field\")\n\t\t}\n\t}\n")
+		goStructDecoderEnd(b, s, st)
+		return
+	}
 	b.WriteString("\t\t\tr.pos++\n\t\t\tr.ws()\n\t\t\tswitch key {\n")
 	for i, f := range st.Fields {
 		fmt.Fprintf(b, "\t\t\tcase %q:\n", f.Name)
@@ -967,6 +974,10 @@ func goStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 		b.WriteString("\t\t\t\tif err := r.skipValue(); err != nil {\n\t\t\t\t\treturn nil, err\n\t\t\t\t}\n")
 	}
 	b.WriteString("\t\t\t}\n\t\t\tr.ws()\n\t\t\tif r.at() != ',' {\n\t\t\t\tbreak\n\t\t\t}\n\t\t\tr.pos++\n\t\t}\n\t}\n")
+	goStructDecoderEnd(b, s, st)
+}
+
+func goStructDecoderEnd(b *strings.Builder, s *Definition, st Struct) {
 	b.WriteString("\tif r.at() != '}' {\n\t\treturn nil, r.refuse(\"malformed\")\n\t}\n\tr.pos++\n\tr.depth--\n")
 	if req := requiredMask(st); req != 0 {
 		fmt.Fprintf(b, "\tif seen&%d != %d {\n\t\treturn nil, r.refuse(\"missing_field\")\n\t}\n", req, req)
@@ -1150,7 +1161,7 @@ func genGo(s *Definition) string {
 	b.WriteString(importPrelude(s, "go"))
 	goVocabulary(&b, s)
 	for _, st := range s.Structs {
-		fmt.Fprintf(&b, "\ntype %s struct {\n", st.Name)
+		fmt.Fprintf(&b, "\n%stype %s struct {\n", structDoc(st, "// "), st.Name)
 		for _, f := range st.Fields {
 			fmt.Fprintf(&b, "\t%s %s\n", exported(f.Ident("go")), goType(s, f))
 		}

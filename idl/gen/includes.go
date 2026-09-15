@@ -160,7 +160,7 @@ func validateIncludes(s *Definition, lang string) error {
 	if len(s.Imports) == 0 && !s.NamedCodecs {
 		return nil
 	}
-	if lang != "go" && lang != "cpp" && lang != "python" && lang != "docs" {
+	if lang != "go" && lang != "cpp" && lang != "python" && lang != "javascript" && lang != "rust" && lang != "docs" {
 		return fmt.Errorf("%s backend does not support typed includes or named record codecs", lang)
 	}
 	if err := validateImportedGraph(s); err != nil {
@@ -213,6 +213,12 @@ func validateIncludes(s *Definition, lang string) error {
 			return fmt.Errorf("include %s collides with importing %s namespace", imp.Alias, lang)
 		}
 	}
+	if lang == "javascript" {
+		return validateJSIncludes(s)
+	}
+	if lang == "rust" {
+		return validateRustIncludes(s)
+	}
 	return nil
 }
 
@@ -247,6 +253,9 @@ func validateImportedGraph(s *Definition) error {
 	for _, n := range surfaces(s) {
 		declared[lower(n)] = true
 	}
+	// Generated codec names also collide with each other: records Query and
+	// QueryAt both produce EncodeQueryAt and encode_query_at.
+	owners := map[string]string{}
 	for _, st := range s.Structs {
 		if err := visit(st.Name); err != nil {
 			return err
@@ -255,6 +264,15 @@ func validateImportedGraph(s *Definition) error {
 			if declared[lower(n)] {
 				return fmt.Errorf("named codec collision %s", n)
 			}
+			if prior, ok := owners[lower(n)]; ok && prior != st.Name {
+				spelling := n
+				if n[0] >= 'A' && n[0] <= 'Z' {
+					// Name the JavaScript export spelling of the same codec as well.
+					spelling = n + " (" + strings.ToLower(n[:1]) + n[1:] + ")"
+				}
+				return fmt.Errorf("named codec collision %s between records %s and %s", spelling, prior, st.Name)
+			}
+			owners[lower(n)] = st.Name
 		}
 	}
 	return nil

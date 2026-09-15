@@ -2,15 +2,20 @@ package configobservation_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	cas "github.com/openabstractions/abstraction-cas/go/api"
 	config "github.com/openabstractions/abstraction-config/go"
+	configservice "github.com/openabstractions/abstraction-config/go/service"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
+	identity "github.com/openabstractions/abstraction-identity"
+	"github.com/openabstractions/abstractions/conformance/clients/fixture"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -52,6 +57,18 @@ func TestInstalledGenericConfigBinding(t *testing.T) {
 		}()
 		return c, cancel, nil
 	}
+	// 0 forbidden, 1 unavailable, 2 permitted. Earlier phases edit with permission.
+	var editMode atomic.Int32
+	editMode.Store(2)
+	options.ConfigEditPolicy = func(ctx context.Context, peer *identity.Peer) error {
+		switch editMode.Load() {
+		case 0:
+			return errors.New("installed consumer not granted")
+		case 1:
+			return fmt.Errorf("decision lookup: %w", configservice.ErrEditPolicyUnavailable)
+		}
+		return ctx.Err()
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	start := func() func() {
@@ -75,7 +92,7 @@ func TestInstalledGenericConfigBinding(t *testing.T) {
 	run := func(args ...string) string {
 		cmd := exec.CommandContext(ctx, probe, append([]string{options.Endpoint}, args...)...)
 		cmd.Dir = t.TempDir()
-		out, e := cmd.CombinedOutput()
+		out, e := fixture.Output(ctx, cmd)
 		if e != nil {
 			t.Fatalf("%v: %s", e, out)
 		}
@@ -84,5 +101,15 @@ func TestInstalledGenericConfigBinding(t *testing.T) {
 	var cursor string
 	func() { stop := start(); defer stop(); cursor = run("observe") }()
 	func() { stop := start(); defer stop(); run("gap", cursor) }()
-	t.Log("PASS generated factory observer/reader/editor, wait/cancel/deadline, moved binding and restart gap")
+	func() {
+		stop := start()
+		defer stop()
+		editMode.Store(0)
+		t.Log(run("edit", "forbidden"))
+		editMode.Store(1)
+		t.Log(run("edit", "unavailable"))
+		editMode.Store(2)
+		t.Log(run("edit", "applied"))
+	}()
+	t.Log("PASS generated factory observer/reader/editor, wait/cancel/deadline, moved binding, restart gap and edit policy outcomes")
 }

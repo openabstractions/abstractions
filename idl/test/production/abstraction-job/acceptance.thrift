@@ -38,7 +38,8 @@ refusal {
 struct RequestIdentity {
   1: required string key
   2: required string history_epoch
-} (unknown_fields = "refuse", doc="Stable SDK key in an owner-issued history epoch. Scope is authenticated caller plus this service contract, never a caller-provided principal. Persist before send for restart recovery.")
+  3: optional i64 attempt (omit = "zero")
+} (unknown_fields = "refuse", doc="Stable SDK key in an owner-issued history epoch. Scope is authenticated caller plus this service contract, never a caller-provided principal. Persist before send for restart recovery. Attempt is a nonnegative explicit retry number for the same key and epoch; zero is the original request. Attempt N+1 is eligible only after attempt N failed terminally or was sealed (JOB-A7).")
 struct Submission {
   1: required RequestIdentity identity
   2: required string kind
@@ -59,27 +60,30 @@ enum Outcome {
   4: key_conflict
   5: forbidden
   6: invalid
+  7: unavailable
 } (unknown = "refuse")
 struct AcceptanceResult {
   1: required Outcome outcome
   2: optional Receipt receipt (omit = "absent")
   3: required string reason
-} (document = "true", unknown_fields = "refuse", doc="Accepted requires a receipt; other outcomes forbid one. Definite nonacceptance requires authoritative sealed evidence preventing any delayed acceptance of this identity. Absence, timeout, expired history and access denial are insufficient.")
+} (document = "true", unknown_fields = "refuse", doc="Accepted requires a receipt; other outcomes forbid one. Definite nonacceptance requires authoritative sealed evidence preventing any delayed acceptance of this identity. Absence, timeout, expired history and access denial are insufficient. Unavailable means a required policy decision could not be obtained: no admission effect and no seal were recorded, and the same identity may be presented again (JOB-A9).")
 struct HistoryWindow {
   1: required string logical_owner
   2: required string history_epoch
   3: required i64 minimum_retention_ms
-} (unknown_fields = "refuse", doc="Owner-issued acceptance epoch and minimum reconciliation retention. After closing an epoch the owner fences all its submissions, including delayed ones. This does not assert that old unknown work was never accepted.")
+  4: optional i64 result_retention_ms (omit = "zero")
+} (unknown_fields = "refuse", doc="Owner-issued acceptance epoch and minimum reconciliation retention. After closing an epoch the owner fences all its submissions, including delayed ones. This does not assert that old unknown work was never accepted. Result retention is the provider's declared minimum time, in milliseconds after completion, that complete result bytes stay readable; zero declares none (JOB-A11).")
 enum CancellationOutcome {
   1: requested
   2: already_terminal
   3: unknown
   4: forbidden
   5: unsupported
+  6: unavailable
 } (unknown = "refuse")
 struct CancellationResult {
   1: required CancellationOutcome outcome
-} (unknown_fields = "refuse", doc="Requested acknowledges cancellation intent, not stopped effects. Completion may win the race; observe the existing operation for its terminal result.")
+} (unknown_fields = "refuse", doc="Requested acknowledges cancellation intent, not stopped effects. Completion may win the race; observe the existing operation for its terminal result. Unavailable records no intent because a required policy decision could not be obtained; the request may be repeated.")
 service RecoverableAcceptance {
   HistoryWindow GetHistoryWindow() (doc="Obtain the logical owner and history epoch before first submission; creates no work.")
   AcceptanceResult Submit(1: Submission submission) (doc="Atomically associate authenticated request identity, arguments, operation and guarantees before acknowledging. Duplicate equal arguments recover the original receipt. No weaker provider fallback on unknown.")
@@ -105,10 +109,23 @@ enum FailureClass {
   2: permanent
   3: unknown
 } (unknown = "refuse")
+enum FailureCause {
+  1: other
+  2: digest_mismatch
+  3: oversize
+  4: short_transfer
+  5: unauthorized
+  6: not_found
+  7: refused
+  8: server_error
+  9: transport
+  10: result_lost
+} (unknown = "grant")
 struct WorkFailure {
   1: required FailureClass classification
   2: required string message
-} (unknown_fields = "refuse", doc="Last-attempt failure. Unknown classification remains unknown; do not infer it from message text. Retryable failure can coexist with pending work.")
+  3: optional FailureCause cause (omit = "zero")
+} (unknown_fields = "refuse", doc="Last-attempt failure. Unknown classification remains unknown; do not infer it from message text. Retryable failure can coexist with pending work. Permanent classification means the provider will not try this operation again and its state is failed. Cause is the provider's typed reason when known; empty means unreported, and an unrecognized cause is treated as other.")
 struct OperationSnapshot {
   1: required Receipt receipt
   2: required WorkState state
@@ -122,11 +139,12 @@ enum ObservationOutcome {
   3: forbidden
   4: invalid
   5: definitely_not_accepted
+  6: unavailable
 } (unknown = "refuse")
 struct ObservationResult {
   1: required ObservationOutcome outcome
   2: optional OperationSnapshot snapshot (omit = "absent")
-} (unknown_fields = "refuse", doc="Exactly observed carries a snapshot; all other outcomes forbid it. Absent identities are unknown and observation never seals them. Definite nonacceptance requires an existing authoritative seal. Already accepted journals may be recovered.")
+} (unknown_fields = "refuse", doc="Exactly observed carries a snapshot; all other outcomes forbid it. Absent identities are unknown and observation never seals them. Definite nonacceptance requires an existing authoritative seal. Already accepted journals may be recovered. Unavailable means a required policy decision could not be obtained and no state was read or changed (JOB-A9).")
 enum ResultOutcome {
   1: data
   2: not_ready

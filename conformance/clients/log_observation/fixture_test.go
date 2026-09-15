@@ -5,6 +5,7 @@ import (
 	"fmt"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	logging "github.com/openabstractions/abstraction-logging/go"
+	"github.com/openabstractions/abstractions/conformance/clients/fixture"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -62,7 +63,7 @@ func TestInstalledLogObservation(t *testing.T) {
 		t.Helper()
 		cmd := exec.CommandContext(ctx, probe, append([]string{o.Endpoint, mode}, args...)...)
 		cmd.Dir = t.TempDir()
-		out, e := cmd.CombinedOutput()
+		out, e := fixture.Output(ctx, cmd)
 		if e != nil {
 			t.Fatalf("%s %s: %v", mode, out, e)
 		}

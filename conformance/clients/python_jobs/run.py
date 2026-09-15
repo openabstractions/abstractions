@@ -6,20 +6,24 @@ import shutil
 import subprocess
 import sys
 import tempfile
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from workspace import source_revision, dry_run_stop, DRY_RUN_HELP
 
 ROOT = Path(__file__).resolve().parents[3]
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", action="store_true")
+    parser.add_argument('--dry-run', action='store_true', help=DRY_RUN_HELP)
     parser.add_argument("--cmake", default="cmake")
     args = parser.parse_args()
-    if not args.run:
+    if not (args.run or args.dry_run):
         parser.print_help()
         return
     def command(argv, **kwargs):
         subprocess.run([str(x) for x in argv], cwd=ROOT, check=True, timeout=120, **kwargs)
-    command(["git", "rev-parse", "HEAD"])
+    source_revision()
+    if args.dry_run: dry_run_stop('python_jobs', args)
     command(["git", "status", "--short"])
     with tempfile.TemporaryDirectory(prefix="oa-defaults-") as tmp:
         base = Path(tmp)

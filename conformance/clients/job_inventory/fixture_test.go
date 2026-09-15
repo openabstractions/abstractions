@@ -6,6 +6,7 @@ import (
 	"fmt"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	identity "github.com/openabstractions/abstraction-identity"
+	"github.com/openabstractions/abstractions/conformance/clients/fixture"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -57,7 +58,7 @@ func TestInstalledInventory(t *testing.T) {
 				}
 			}()
 			command := exec.CommandContext(ctx, probe, o.Endpoint, mode)
-			out, err := command.CombinedOutput()
+			out, err := fixture.Output(ctx, command)
 			if err != nil {
 				t.Fatalf("%s: %v", out, err)
 			}

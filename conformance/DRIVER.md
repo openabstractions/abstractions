@@ -39,7 +39,7 @@ operations need which capability, one line per capability.
 | `wire` | the same over HTTP against the fixture named by `ABSTRACTION_FIXTURE` |
 | `wanted` | answer a drop folder of requests |
 | `identity` | say who is on the other end of a connection, and how well |
-| `logging` | encode and read the part of a log line that leaves the process. **Declared, not yet judgeable here** — see below |
+| `logging` | encode and read the part of a log line that leaves the process, pick the sink a machine offers, and assess the identity chain a record carries |
 
 What a scenario needs is read from the operations in it, by that list, and
 unioned with its `# requires:` line, because a declaration drifts from the file
@@ -385,19 +385,62 @@ peer so later operations can ask about it.
 A peer kind a scenario does not use is not listed; one is added with the
 scenario that needs it.
 
-## `logging`: declared, and half joined
+## `logging`
 
-Of the four things below that a layer arrives with, `logging` has two:
-`capabilities.list` names its capability and its operations, and
-`contracts.list` names the page its rules live on. It has neither a section on
-this page fixing its verdicts, its body and its operations, nor its scenarios
-published beside the others.
+The rules are on the logging contract page (`LOG-` tags). The scenarios live in
+`abstraction-logging/testdata/scenarios` and are run with
+`run.sh --scenarios <that directory> --contracts <directory holding logging.md> --no-fixture`.
+No logging scenario needs the wire fixture.
 
-So a logging driver cannot be written from these pages, and no published
-scenario asks for one. Declaring `logging` buys nothing today. It is named here
-rather than left out because a reader who meets it in `capabilities.list` is
-owed the reason it does nothing, and because a capability nothing published can
-exercise is a gap, not a pass.
+The body carries shapes, counts and mechanism names, never a value: a message,
+a host name, an instant and a path belong to one machine. `machine`, `attest`
+and `forge` script a world, so a rule about the sink chain or the identity chain
+is judgeable on a machine that offers no service and no attester.
+
+### The verdict
+
+| word | meaning |
+|---|---|
+| `no-answer` | there is nothing to give, and the body says why in one word: `absent` for an attribute the record does not carry, `unattributed` for a record with no author or relay the path from the anchor reaches |
+| `refused` | a sink or codec refused the record or the value. `decode` also names the schema it refused |
+
+### The operations
+
+`<alias>` names a record the scenario builds, or a sink `auto` picked. A `-`
+body means empty.
+
+| operation | what it does |
+|---|---|
+| `level <n>` | `ok name=<landmark>` for a slog level number, `ERROR+4` between landmarks |
+| `record <alias> <level> [bare]` | build a record at that level carrying the writer's `self` claim; `bare` carries no identity chain at all. `ok schema=1` |
+| `attr <alias> <key> <value>` | set a string attribute |
+| `group <alias> <group> <key> <value>` | pass one grouped attribute through the language's logging handler, which flattens it |
+| `msg <alias> <n> [wide]` | set the message to `n` characters, two-byte characters with `wide` |
+| `job <alias> <n>` | set the job field to `n` characters |
+| `read <alias> <key>` | `ok type=string value=<v>`, or `no-answer absent` |
+| `keys <alias>` | `ok` and the attribute keys sorted and comma-separated |
+| `encode <alias>` | `ok schema=<n> level=<n> frac=<digits> zone=<Z> lines=<n> end=lf\|none` |
+| `decode <schema>` | decode a minimal line carrying that schema: `ok`, or `refused schema=<n>` |
+| `machine <none\|file\|unwritable\|service\|deaf>[+...]` | configure what this machine offers through the environment chain: nothing, a file, a file that cannot be opened, a listening service, a service address nobody listens on |
+| `auto <alias>` | pick the sink the environment chain selects, `ok tier=service\|file\|discard` |
+| `default` | the handler the environment chain gives a program: `ok out=sink` for a sink, `ok out=stderr` for the language's own text output |
+| `separation <alias>` | `ok sep=<level>` the sink reports for its storage |
+| `cap <alias> <bytes>` | set a file sink's line cap |
+| `write <alias> [record]` | write through the sink: `ok where=service\|file\|discard`, or `refused` |
+| `held <alias>` | `ok lines=<n> over=<n> marked=<n> torn=<n>` over what the file holds |
+| `forge <alias> <mechanism> [bind]` | append a hostile verified hop claiming that mechanism, bound under a key the forger made up with `bind` |
+| `send <alias>` | render the record as it leaves the process and read it back as the next party receives it |
+| `attest <alias> <mechanism\|none> [relay] [contradicts] [bind]` | apply what a receiving service does when the platform's attester answered with that mechanism, or with nothing |
+| `chain <alias>` | `ok` and each hop as `<hop>:<mechanism>:<standing>`, `ok -` for an empty chain |
+| `uid <alias> <hop>` | `ok uid=<n>` of that hop |
+| `author <alias>`, `relay <alias>` | `ok by=<mechanism> hop=<n>`, or `no-answer unattributed` |
+| `disputed <alias>` | `ok disputed=yes\|no` |
+
+`default` and `auto` read the environment chain the contract's sink rules
+describe, and `LOG-S8` judges only that chain's default: Go answers them with
+`logging.LegacyDefault` and `logging.LegacyAuto`. A binding's resolved-service
+default (Go `logging.Default`) is a separate entry point with no operation here.
+LOG-S8 does not require it to write to stderr when no runtime answers.
 
 ## Joining with a third layer
 

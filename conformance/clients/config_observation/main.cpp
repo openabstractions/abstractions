@@ -20,9 +20,19 @@ void alternate_transport() {
 }
 int main(int argc,char**argv){try {
  alternate_transport();
- if(argc==2&&std::string(argv[1])=="--help"){std::cout<<"consumer runtime observe|gap [cursor]\n";return 0;}
+ if(argc==2&&std::string(argv[1])=="--help"){std::cout<<"consumer runtime observe|gap [cursor]\nconsumer runtime edit applied|forbidden|unavailable\n";return 0;}
  if(argc<3)return 2;
  af::ResolutionClient resolver(argv[1]);auto deadline=ipc::Clock::now()+std::chrono::seconds(5);
+ if(std::string(argv[2])=="edit"){
+  if(argc!=4)return 2;const std::string expected=argv[3];
+  auto editor=af::ResolveService<cfg::ConfigEditorService>(resolver);
+  auto before=editor->ReadUser();auto values=before.values;values.off["cpp-edit-policy"]=expected;
+  auto result=editor->ReplaceUser(before.revision,values);check(result.outcome==expected);
+  if(expected=="applied"){check(result.snapshot.values.off.at("cpp-edit-policy")=="applied"&&editor->ReadUser().revision==result.snapshot.revision);std::cout<<"PASS policy-permitted edit applied\n";return 0;}
+  check(result.snapshot.revision.empty()&&result.snapshot.values.off.empty()&&result.snapshot.values.store.empty());
+  check(editor->ReadUser().revision==before.revision);
+  std::cout<<"PASS "<<expected<<" edit left settings unchanged\n";return 0;
+ }
  auto observer=af::ResolveService<cfg::ConfigObserverService>(resolver,{},"local",deadline);
  auto moved=std::move(observer); // generated client retains its transport reference
  if(std::string(argv[2])=="gap") {auto v=moved->Observe({},argv[3],0);check(v.outcome=="gap"&&!v.snapshot);return 0;}

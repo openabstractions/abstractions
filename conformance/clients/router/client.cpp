@@ -1,9 +1,12 @@
 #include <abstraction/router/client.hpp>
 #include <abstraction/facade/resolution.hpp>
+#include <oa_fixture/host.hpp>
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 namespace r = abstraction::router;
 void require(bool condition,const char*message){if(!condition)throw std::runtime_error(message);}
 void caller(const r::Observation& observed){
@@ -15,7 +18,13 @@ int main(int argc,char**argv){
  try{
  if(argc!=2)return 2;std::string mode=argv[1];r::Client client;
  if(mode=="absent"){bool refused=false;try{client.Models();}catch(const std::exception&){refused=true;}require(refused,"absent service succeeded");std::cout<<"PASS: absent service, no fallback\n";return 0;}
- auto generic=abstraction::facade::ResolveService<r::RouterService>(abstraction::facade::ResolutionClient{});
+ // The proof installs no runtime, so installed-runtime selection has no
+ // evidence. The harness names its fixture host; this user's principal and that
+ // program are then required of the resolver and the bound router service.
+ auto resolver=abstraction::facade::ResolutionClient{};
+ if(const char* program=std::getenv("OA_ROUTER_PROOF_SERVER_PROGRAM");program&&*program)
+  resolver=resolver.WithServerExpectation(oa_fixture::host(program));
+ auto generic=abstraction::facade::ResolveService<r::RouterService>(resolver);
  auto models=generic->Models(false);caller(models.observation);auto hosts=generic->Hosts(false);caller(hosts.observation);
  if(mode=="empty"){require(models.models.empty()&&hosts.hosts.empty()&&hosts.asked.empty()&&hosts.doubled.empty(),"empty arrays changed");std::cout<<"PASS: empty model and host arrays\n";return 0;}
  require(models.models.size()==2&&hosts.hosts.size()==3,"wrong inventory");

@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.16)
+project(resource_rights_consumer LANGUAGES CXX)
+find_package(abstraction_model CONFIG REQUIRED)
+find_package(abstraction_facade CONFIG REQUIRED)
+add_executable(resource_rights_consumer main.cpp)
+target_compile_features(resource_rights_consumer PRIVATE cxx_std_17)
+target_link_libraries(resource_rights_consumer PRIVATE abstraction::facade_client)

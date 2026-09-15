@@ -37,7 +37,7 @@ func validateJSServices(s *Definition) error {
 			if !valid(f.Ident("javascript")) {
 				return fmt.Errorf("javascript field identifier %q is invalid", f.Ident("javascript"))
 			}
-			if strings.Contains(f.Type, ".") {
+			if strings.Contains(f.Type, ".") && !jsImportedType(s, f.Type) {
 				return fmt.Errorf("javascript service field %s needs unsupported %s codecs", f.Name, f.Type)
 			}
 		}
@@ -51,7 +51,7 @@ func validateJSServices(s *Definition) error {
 				return fmt.Errorf("javascript service method name %q is reserved", m.Name)
 			}
 			for _, f := range append(append([]Field{}, m.Args...), m.Result) {
-				if strings.Contains(f.Type, ".") {
+				if strings.Contains(f.Type, ".") && !jsImportedType(s, f.Type) {
 					return fmt.Errorf("javascript service value needs unsupported %s codecs", f.Type)
 				}
 			}

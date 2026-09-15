@@ -17,36 +17,29 @@ import uuid
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
-from workspace import environment, layer
+from workspace import environment, layer, msvc_toolchain, certify_msvc, source_revision, dry_run_stop, DRY_RUN_HELP
 ROOT = HERE.parents[2]
 BUILD = ROOT / '.build' / 'logging-service-proof'
 
-def cmake_path():
-    found = os.environ.get('CMAKE') or shutil.which('cmake')
-    if found:
-        return found
-    for edition in ('Community', 'Professional', 'Enterprise', 'BuildTools'):
-        candidate = Path(os.environ.get('ProgramFiles', 'C:/Program Files')) / (
-            'Microsoft Visual Studio/18/' + edition +
-            '/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe')
-        if candidate.is_file():
-            return str(candidate)
-    raise RuntimeError('CMake not found; set CMAKE to its executable path')
-
-parser = argparse.ArgumentParser(description=__doc__)
+parser = argparse.ArgumentParser(description=__doc__ + '\nThe C++ client certifies MSVC on Windows: run from a '
+                                 'vcvars64 developer environment; other toolchains are refused before building.')
 parser.add_argument('--language', choices=['go', 'cpp', 'all'], default='all')
+parser.add_argument('--dry-run', action='store_true', help=DRY_RUN_HELP)
 parser.add_argument('--toolchain', action='store_true', help='print CMake version without running tests')
 if len(sys.argv) == 1:
     parser.print_help()
     raise SystemExit(0)
 args = parser.parse_args()
+source_revision()
+if args.dry_run: dry_run_stop('logging', args)
 if args.toolchain:
-    subprocess.run([cmake_path(), '--version'], check=True)
+    subprocess.run([msvc_toolchain(dict(os.environ)), '--version'], check=True)
     raise SystemExit(0)
 if os.name != 'nt':
     raise SystemExit('This service proof currently measures Windows only.')
 BUILD.mkdir(parents=True, exist_ok=True)
 env = environment(BUILD)
+cmake = msvc_toolchain(env) if args.language in ('cpp', 'all') else None
 
 def run(command, cwd=ROOT, environment=env, timeout=120, echo=True):
     result = subprocess.run(list(map(str, command)), cwd=cwd, env=environment,
@@ -71,20 +64,28 @@ if 'go' in languages:
     run(['go', 'build', '-o', BUILD / 'go-client.exe', HERE / 'client.go'])
     clients['go'] = BUILD / 'go-client.exe'
 if 'cpp' in languages:
-    cmake = cmake_path()
-    native = BUILD / 'native'
-    identity = uuid.uuid4().hex
-    stage = BUILD / ('stage-' + identity)
-    consumer = BUILD / ('consumer-' + identity)
+    # Short, fresh trees per run: a cache configured by another toolchain
+    # installs no per-configuration export file, and the consumer's object
+    # paths must stay under the Windows path limit.
+    identity = uuid.uuid4().hex[:8]
+    native = BUILD / ('n-' + identity)
+    stage = BUILD / ('s-' + identity)
+    consumer = BUILD / ('c-' + identity)
     run([cmake, '-S', layer('abstraction-logging') / 'cpp',
          '-B', native, '-DBUILD_SHARED_LIBS=OFF',
-         '-DCMAKE_DISABLE_FIND_PACKAGE_abstraction_ipc=TRUE'])
-    for compiler in sorted((native / 'CMakeFiles').glob('*/CMakeCXXCompiler.cmake')):
-        for key, value in re.findall(r'set\(CMAKE_CXX_COMPILER_(ID|VERSION) "([^"]+)"\)', compiler.read_text()):
-            print('C++ compiler', key, value)
+         '-DCMAKE_DISABLE_FIND_PACKAGE_abstraction_ipc=TRUE',
+         '-DABSTRACTION_LOGGING_BUILD_TESTS=ON'])
+    certify_msvc(native)
     run([cmake, '--build', native, '--config', 'Release'])
+    # The package's own reader tests, built by the certified MSVC toolchain.
+    ctest = Path(cmake).with_name('ctest.exe')
+    tests = run([ctest, '--test-dir', native, '-C', 'Release', '--output-on-failure', '--no-tests=error'])
+    if 'logging_attestation_fields' not in tests or '100% tests passed' not in tests:
+        raise RuntimeError('C++ logging reader tests did not all run and pass')
+    print('PASS: C++ logging package tests under the certified MSVC toolchain')
     run([cmake, '--install', native, '--config', 'Release', '--prefix', stage])
     run([cmake, '-S', HERE, '-B', consumer, '-DCMAKE_PREFIX_PATH=' + str(stage)])
+    certify_msvc(consumer)
     run([cmake, '--build', consumer, '--config', 'Release'])
     clients['cpp'] = consumer / 'Release' / 'logging_consumer.exe'
 

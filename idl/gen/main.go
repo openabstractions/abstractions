@@ -86,7 +86,11 @@ func run(args []string, stdout io.Writer) error {
 		fmt.Fprintln(stdout, "--go-alias-package=import-path emits Go compatibility exports forwarding to the canonical generated package.")
 		fmt.Fprintln(stdout, "--named-codecs exports composable per-record codecs; generate dependencies with this flag.")
 		fmt.Fprintln(stdout, "--go-import=alias=package-path maps an include filename alias to its generated Go package; repeat per dependency.")
+		fmt.Fprintln(stdout, "--js-import=alias=module-specifier maps an include filename alias to its generated JavaScript module or package; repeat per dependency.")
+		fmt.Fprintln(stdout, "--rust-import=alias=crate-path maps an include filename alias to the Rust crate holding its generated records; repeat per dependency.")
 		fmt.Fprintln(stdout, "--paths lists output locations without generating code or claiming backend support for a schema's features.")
+		fmt.Fprintln(stdout, "Run the generator and its tests with GOWORK=off (PowerShell: $env:GOWORK=\"off\") so a surrounding go.work does not replace this module.")
+		fmt.Fprintln(stdout, "Tests: GOWORK=off go test ./... ; Python-backed tests use PYTHON, else python on PATH, and need a real interpreter (on Windows the Store python alias fails; see idl/test/production/README.md).")
 		return nil
 	}
 	if len(args) < 2 {
@@ -136,6 +140,30 @@ func run(args []string, stdout io.Writer) error {
 				return fmt.Errorf("duplicate Go import mapping %s", pair[0])
 			}
 			whole.GoImports[pair[0]] = pair[1]
+		case strings.HasPrefix(a, "--js-import="):
+			pair := strings.SplitN(strings.TrimPrefix(a, "--js-import="), "=", 2)
+			if len(pair) != 2 || pair[0] == "" || !jsModuleSpecifier(pair[1]) {
+				return fmt.Errorf("--js-import requires alias=module-specifier")
+			}
+			if whole.JSImports == nil {
+				whole.JSImports = map[string]string{}
+			}
+			if whole.JSImports[pair[0]] != "" {
+				return fmt.Errorf("duplicate JavaScript import mapping %s", pair[0])
+			}
+			whole.JSImports[pair[0]] = pair[1]
+		case strings.HasPrefix(a, "--rust-import="):
+			pair := strings.SplitN(strings.TrimPrefix(a, "--rust-import="), "=", 2)
+			if len(pair) != 2 || pair[0] == "" || !rustCratePath.MatchString(pair[1]) {
+				return fmt.Errorf("--rust-import requires alias=crate-path")
+			}
+			if whole.RustImports == nil {
+				whole.RustImports = map[string]string{}
+			}
+			if whole.RustImports[pair[0]] != "" {
+				return fmt.Errorf("duplicate Rust import mapping %s", pair[0])
+			}
+			whole.RustImports[pair[0]] = pair[1]
 		case a == "--no-ipc":
 			if noIPC {
 				return fmt.Errorf("--no-ipc may be supplied once")

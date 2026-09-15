@@ -794,7 +794,7 @@ func genPy(s *Definition) string {
 	b.WriteString(importPrelude(s, "python"))
 	pyVocabulary(&b, s)
 	for _, st := range s.Structs {
-		fmt.Fprintf(&b, "\n\nclass %s:\n    def __init__(self, **kw):\n", st.Name)
+		fmt.Fprintf(&b, "\n\n%sclass %s:\n    def __init__(self, **kw):\n", structDoc(st, "# "), st.Name)
 		if len(st.Fields) == 0 && !st.PreservesUnknown() {
 			b.WriteString("        pass\n")
 		}

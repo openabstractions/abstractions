@@ -1,0 +1,11 @@
+[package]
+name="config-asks-consumer"
+version="0.0.0"
+edition="2021"
+[dependencies]
+abstraction-facade-native={path="../../../openabstractions-flat/abstraction-facade/rust-native"}
+abstraction-facade-config={path="../../../openabstractions-flat/abstraction-facade/rust-config"}
+abstraction-facade-asks={path="../../../openabstractions-flat/abstraction-facade/rust-asks"}
+[[bin]]
+name="config-asks-consumer"
+path="main.rs"

@@ -29,7 +29,7 @@ most of it `rustc`. Add a definition path to score a different one, or set
 scored before and after a change, in one session against one tree, which is what
 makes the two halves comparable.
 
-The gate runs it in [`scripts/check.sh`](../../scripts/check.sh) and vetoes
+The gate runs it in `scripts/check.sh` and vetoes
 only: a language whose points **fall** below the floor recorded for it is red
 and is named; a language whose points rise is a note asking for the floor to be
 raised. The score may veto and may never authorise.

@@ -119,7 +119,7 @@ func (p *servicePanel) act(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !slices.Contains([]string{"submit", "reconcile", "cancel", "observe"}, action.Action) {
-		http.Error(w, "This legacy action is unavailable in service mode. --legacy-local explicitly selects the old provider controls.", 400)
+		http.Error(w, "This action is unavailable: the panel offers submit, reconcile, cancel and observe.", 400)
 		return
 	}
 	ctx, cancel := panelCall(r)
@@ -215,7 +215,6 @@ func (p *servicePanel) settings(w http.ResponseWriter, r *http.Request) {
 	panelJSON(w, result)
 }
 func (p *servicePanel) handler(key string) http.Handler {
-	guard := &window{key: key}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
@@ -229,12 +228,14 @@ func (p *servicePanel) handler(key string) http.Handler {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = io.WriteString(w, servicePage)
 	})
-	mux.HandleFunc("/binding", guard.guard(p.serveBinding))
-	mux.HandleFunc("/inventory", guard.guard(p.serveInventory))
-	mux.HandleFunc("/action", guard.guard(p.act))
-	mux.HandleFunc("/result", guard.guard(p.result))
-	mux.HandleFunc("/settings", guard.guard(p.settings))
-	mux.HandleFunc("/runtime", guard.guard(guard.serveReadiness))
+	mux.HandleFunc("/binding", guard(key, p.serveBinding))
+	mux.HandleFunc("/inventory", guard(key, p.serveInventory))
+	mux.HandleFunc("/action", guard(key, p.act))
+	mux.HandleFunc("/result", guard(key, p.result))
+	mux.HandleFunc("/settings", guard(key, p.settings))
+	mux.HandleFunc("/questions", guard(key, p.questions))
+	mux.HandleFunc("/rights", guard(key, p.rights))
+	mux.HandleFunc("/runtime", guard(key, serveReadiness))
 	return serviceBrowserBoundary(mux)
 }
 func runServicePanel(address string, open, native bool) error {

@@ -7,6 +7,9 @@ install a service or exercise an upstream application integration.
 Run a check with `python logging/run.py --help` (or the corresponding capability
 directory). Checks name the platform they measure and refuse unsupported ones.
 The C++ consumer builds through installed CMake packages.
+On Windows, `python wsl_run.py <runner> [args]` runs a check inside WSL from an
+extracted copy of the current worktree with `OA_SOURCE_REVISION` set; see
+`python wsl_run.py --help`.
 
 In a public `abstractions` checkout, put the required `abstraction-*` repositories
 beside it. The Go host uses those source checkouts through a temporary workspace,

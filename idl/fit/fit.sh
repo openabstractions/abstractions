@@ -64,7 +64,8 @@ have() { command -v "$1" >/dev/null 2>&1; }
 
 PYEXE="${ABSTRACTION_PYTHON:-}"
 if [ -z "$PYEXE" ]; then
-	for c in "$LOCALAPPDATA/Programs/Python/Python312/python.exe" python3 python; do
+	# LOCALAPPDATA exists only on Windows; under set -u Linux stopped here.
+	for c in ${LOCALAPPDATA:+"$LOCALAPPDATA/Programs/Python/Python312/python.exe"} python3 python; do
 		have "$c" && { PYEXE="$c"; break; }
 	done
 fi

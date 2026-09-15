@@ -7,11 +7,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 
 	asks "github.com/openabstractions/abstraction-asks/go"
 	config "github.com/openabstractions/abstraction-config/go/service"
-	"github.com/openabstractions/abstraction-download/go/serve"
 	logging "github.com/openabstractions/abstraction-logging/go/service"
 	rights "github.com/openabstractions/abstraction-rights/go"
 	router "github.com/openabstractions/abstraction-router/go"
@@ -23,23 +23,38 @@ var capabilities = map[string]func([]string) error{
 	"asks":      asks.Serve,
 	"rights":    rights.Serve,
 	"router":    router.Serve,
-	"jobd":      serve.Jobs,
+	"jobd":      serveJobd,
 	"logging":   logging.Serve,
 	"config":    config.Serve,
 	"router-v1": routerservice.Serve,
 }
 
+// complain writes a last diagnostic to standard error ahead of an exit status
+// that already reports the failure; it is where a failed diagnostic write ends.
+func complain(v ...any) { log.New(os.Stderr, "", 0).Println(v...) }
+
 func main() {
 	if len(os.Args) >= 2 && os.Args[1] == "storage" {
 		if err := storageCommand(os.Args[2:], os.Stdout, os.Stderr); err != nil && !errors.Is(err, flag.ErrHelp) {
-			fmt.Fprintln(os.Stderr, "openabstractions:", err)
+			complain("openabstractions:", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if len(os.Args) >= 2 && os.Args[1] == "jobs" {
+		if err := jobsCommand(os.Args[2:], os.Stdout, os.Stderr); err != nil && !errors.Is(err, flag.ErrHelp) {
+			complain("openabstractions:", err)
+			var exit *exitError
+			if errors.As(err, &exit) {
+				os.Exit(exit.code)
+			}
 			os.Exit(1)
 		}
 		return
 	}
 	if len(os.Args) >= 2 && os.Args[1] == "start" {
 		if err := runtimeStart(os.Args[2:], os.Stdout, os.Stderr); err != nil && !errors.Is(err, flag.ErrHelp) {
-			fmt.Fprintln(os.Stderr, "openabstractions:", err)
+			complain("openabstractions:", err)
 			os.Exit(1)
 		}
 		return
@@ -47,7 +62,7 @@ func main() {
 
 	if len(os.Args) >= 2 && os.Args[1] == "status" {
 		if err := runtimeStatus(os.Args[2:], os.Stdout, os.Stderr); err != nil && !errors.Is(err, flag.ErrHelp) {
-			fmt.Fprintln(os.Stderr, "openabstractions:", err)
+			complain("openabstractions:", err)
 			os.Exit(1)
 		}
 		return
@@ -71,6 +86,10 @@ func main() {
 			return
 		}
 		fmt.Fprintln(os.Stderr, "openabstractions:", err)
+		var exit *exitError
+		if errors.As(err, &exit) {
+			os.Exit(exit.code)
+		}
 		os.Exit(1)
 	}
 }
@@ -81,6 +100,7 @@ func usage() {
   openabstractions start          activates the installed user runtime
   openabstractions status         queries runtime capability readiness
   openabstractions storage check  checks managed storage compatibility
+  openabstractions jobs migrate-legacy  converts legacy job records with an operator mapping
   openabstractions serve asks     answers questions a person has to answer
   openabstractions serve runtime  hosts resolution, logging, config and durable jobs
   openabstractions serve rights   holds what was granted, and the awake hold

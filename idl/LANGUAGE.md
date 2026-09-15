@@ -593,7 +593,8 @@ service binding in DEF-S1; service dispatch is now generated.
 **The enforceable form of this rule is the import list.** Each backend declares
 its fixed standard-library imports and explicit included-definition imports.
 Go package paths come from build configuration; C++/Python use the included
-namespace. JavaScript and Rust refuse typed includes. Emitting an undeclared import
+namespace. JavaScript module specifiers come from explicit `--js-import` mappings.
+Rust crate paths come from explicit `--rust-import` mappings. Emitting an undeclared import
 fails the generator's own build. A module that cannot name a socket, a clock or
 a filesystem cannot reach one, and widening that list is how a backend would
 have to admit it was trying to.
@@ -669,7 +670,7 @@ transport failures, codec refusals, envelope errors and service code/message.
 Transport adapters own waiting budgets and cancellation. Generated calls never
 retry, and a transport error leaves receiver acceptance unresolved. One-way
 completion confirms local submission only. Rust `--no-ipc` emits capability
-traits and record codecs. Rust typed includes remain explicitly unsupported.
+traits and record codecs. Rust typed includes reference dependency crates named by `--rust-import`; `--named-codecs` exports `encode_x_at`, `decode_x_at`, `check_x`, `encode_x_document` and `decode_x_document`.
 JavaScript refuses service-bearing definitions.
 The docs backend includes the method signatures and semantics.
 

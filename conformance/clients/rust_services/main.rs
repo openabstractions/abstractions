@@ -80,12 +80,28 @@ fn main() {
     assert_eq!(r.time, record().time);
     assert_eq!(r.level, 2);
     assert_eq!(r.msg, record().msg);
-    assert_eq!(r.attrs, record().attrs);
+    // A record submitted without a writer claim gains an explicit unclaimed marker (logging CONTRACT).
+    let mut expected_attrs = record().attrs;
+    expected_attrs.insert("logging.writer_claim".into(), "absent".into());
+    assert_eq!(r.attrs, expected_attrs);
     assert!(!r.identity.is_empty());
     let end = history.read(page.next, 16, 65536).unwrap();
     assert_eq!(end.outcome, "page");
     assert!(end.records.is_empty() && end.at_end);
     assert!(history.read("".into(), 0, 65536).is_err());
+    // The host's history policy reads this file on every call.
+    if let Ok(mode_file) = std::env::var("OA_RUST_HISTORY_POLICY") {
+        for (mode, code) in [("history-forbidden", "forbidden"), ("history-unavailable", "policy_unavailable")] {
+            std::fs::write(&mode_file, mode).unwrap();
+            match history.read("".into(), 16, 65536) {
+                Err(logging::CallError::Service(e)) => assert_eq!(e.code, code),
+                other => panic!("{mode} history read gave {:?}", other.map(|p| p.outcome)),
+            }
+        }
+        std::fs::write(&mode_file, "permit").unwrap();
+        assert_eq!(history.read("".into(), 16, 65536).unwrap().outcome, "page");
+        println!("PASS Rust history refusal codes forbidden and policy_unavailable");
+    }
     let signal = Cancellation::new().unwrap();
     let bound = Machine::new(endpoint)
         .with_cancellation(signal.clone())

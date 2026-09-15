@@ -1,0 +1,56 @@
+# Contract rule violations recorded when the rules were introduced: the fix
+# backlog. idl/inventory.py fails on any violation not listed here and on any
+# listed one that no longer occurs. Rules: idl/inventory.py, R1 R3 R4 R7.
+# rule<TAB>definition<TAB>subject<TAB>detail
+R1	openabstractions-flat/abstraction-config/config.thrift	ConfigEditor.ReadUser	returns UserSnapshot without an outcome enum
+R1	openabstractions-flat/abstraction-config/config.thrift	ConfigEditor.ReplaceUser	UserReplaceOutcome lacks invalid
+R1	openabstractions-flat/abstraction-config/config.thrift	ConfigObserver.Observe	ConfigObservationOutcome lacks forbidden
+R1	openabstractions-flat/abstraction-config/config.thrift	ConfigReader.Read	returns Snapshot without an outcome enum
+R1	openabstractions-flat/abstraction-facade/facade.thrift	Resolver.Resolve	ResolutionStatus lacks invalid
+R1	openabstractions-flat/abstraction-job/acceptance.thrift	RecoverableAcceptance.CancelWork	CancellationOutcome lacks invalid
+R1	openabstractions-flat/abstraction-job/acceptance.thrift	RecoverableAcceptance.GetHistoryWindow	returns HistoryWindow without an outcome enum
+R1	openabstractions-flat/abstraction-logging/logging.thrift	HistoryObserver.Observe	PageOutcome lacks forbidden, invalid
+R1	openabstractions-flat/abstraction-logging/logging.thrift	HistoryReader.Read	PageOutcome lacks forbidden, invalid
+R1	openabstractions-flat/abstraction-logging/logging.thrift	Sink.Write	returns void without an outcome enum
+R1	openabstractions-flat/abstraction-router/router.thrift	Router.Hosts	returns HostsSnapshot without an outcome enum
+R1	openabstractions-flat/abstraction-router/router.thrift	Router.Models	returns ModelsSnapshot without an outcome enum
+R1	openabstractions-flat/abstraction-router/router.thrift	Router.Pick	returns PickResult without an outcome enum
+R1	openabstractions-flat/abstraction-storage/content.thrift	ContentReader.Close	CloseOutcome lacks unavailable, invalid
+R1	openabstractions-flat/abstraction-storage/content.thrift	ContentWriter.Abort	AbortOutcome lacks unavailable, invalid
+R1	openabstractions-flat/abstraction-storage/content.thrift	ContentWriter.Commit	CommitOutcome lacks invalid
+R4	openabstractions-flat/abstraction-asks/asks.thrift	Question.key	undeclared catalogue: no catalogue = "open" or "closed"
+R4	openabstractions-flat/abstraction-config/config.thrift	Snapshot	undeclared catalogue: no catalogue = "open" or "closed"
+R4	openabstractions-flat/abstraction-rights/rights.thrift	resource_actions	undeclared catalogue: no catalogue = "open" or "closed"
+R7	openabstractions-flat/abstraction-asks/asks.thrift	ObservationOutcome	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-asks/asks.thrift	OperatorDecisionOutcome	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-asks/asks.thrift	OperatorPageOutcome	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-asks/asks.thrift	OperatorRetirementOutcome	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-config/config.thrift	ConfigObservationOutcome	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-config/config.thrift	UserReplaceOutcome	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-facade/facade.thrift	BootstrapState	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-facade/facade.thrift	ResolutionStatus	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-facade/facade.thrift	Scope	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-job/acceptance.thrift	CancellationOutcome	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-job/acceptance.thrift	FailureCause	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-job/acceptance.thrift	FailureClass	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-job/acceptance.thrift	InventoryOutcome	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-job/acceptance.thrift	ObservationOutcome	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-job/acceptance.thrift	Outcome	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-job/acceptance.thrift	ResultOutcome	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-job/acceptance.thrift	WorkState	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-job/job.thrift	Capability	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-job/job.thrift	Verdict	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-logging/logging.thrift	PageOutcome	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-model/model.thrift	LookupOutcome	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-storage/content.thrift	AbortOutcome	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-storage/content.thrift	AppendOutcome	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-storage/content.thrift	BeginOutcome	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-storage/content.thrift	ChangeKind	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-storage/content.thrift	ChangePageOutcome	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-storage/content.thrift	CloseOutcome	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-storage/content.thrift	CommitOutcome	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-storage/content.thrift	Evidence	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-storage/content.thrift	ListingOutcome	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-storage/content.thrift	OpenOutcome	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-storage/content.thrift	ReadOutcome	declares no reader = "display" or "act"
+R7	openabstractions-flat/abstraction-storage/content.thrift	Verification	declares no reader = "display" or "act"

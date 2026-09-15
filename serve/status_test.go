@@ -31,10 +31,12 @@ func TestRuntimeStatusUsesLiveResolver(t *testing.T) {
 	case <-ready:
 	case err := <-done:
 		t.Fatalf("startup: %v", err)
+	case <-time.After(runtimeWait):
+		t.Fatalf("runtime not ready within %v", runtimeWait)
 	}
 	defer func() {
 		cancel()
-		if err := <-done; err != nil {
+		if err := awaitStopped(t, done, "runtime"); err != nil {
 			t.Error(err)
 		}
 	}()
@@ -114,7 +116,7 @@ func TestRuntimeStatusPreservesRefusal(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- host.Serve(ctx) }()
-	defer func() { cancel(); host.Close(); <-done }()
+	defer func() { cancel(); host.Close(); awaitStopped(t, done, "resolver fixture") }()
 	var out bytes.Buffer
 	statusErr := runtimeStatus([]string{"--json", "--endpoint", options.endpoint}, &out, io.Discard)
 	if !programProven {
@@ -176,7 +178,7 @@ func TestRuntimeStatusRequiresJobAndEditorContracts(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			done := make(chan error, 1)
 			go func() { done <- host.Serve(ctx) }()
-			defer func() { cancel(); host.Close(); <-done }()
+			defer func() { cancel(); host.Close(); awaitStopped(t, done, "resolver fixture") }()
 			var out bytes.Buffer
 			if err := runtimeStatus([]string{"--json", "--endpoint", options.endpoint}, &out, io.Discard); err == nil {
 				t.Fatal("missing required contract reported ready")

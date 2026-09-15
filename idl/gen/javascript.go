@@ -560,7 +560,7 @@ function readTimestamp(r) {
 
 func jsDecoder(b *strings.Builder, s *Definition) {
 	for _, st := range s.Structs {
-		fmt.Fprintf(b, "\nexport function new%s() {\n  return {", st.Name)
+		fmt.Fprintf(b, "\n%sexport function new%s() {\n  return {", structDoc(st, "// "), st.Name)
 		for i, f := range st.Fields {
 			if i > 0 {
 				b.WriteString(",")

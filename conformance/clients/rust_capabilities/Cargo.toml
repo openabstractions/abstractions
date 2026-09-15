@@ -1,0 +1,14 @@
+[package]
+name="capabilities-consumer"
+version="0.0.0"
+edition="2021"
+[dependencies]
+abstraction-facade-native={path="../../../openabstractions-flat/abstraction-facade/rust-native"}
+abstraction-facade-storage={path="../../../openabstractions-flat/abstraction-facade/rust-storage"}
+abstraction-facade-router={path="../../../openabstractions-flat/abstraction-facade/rust-router"}
+abstraction-facade-model={path="../../../openabstractions-flat/abstraction-facade/rust-model"}
+abstraction-facade-logging={path="../../../openabstractions-flat/abstraction-facade/rust-logging"}
+abstraction-facade-rights={path="../../../openabstractions-flat/abstraction-facade/rust-rights"}
+[[bin]]
+name="capabilities-consumer"
+path="main.rs"

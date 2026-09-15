@@ -14,6 +14,7 @@ import (
 	rightsservice "github.com/openabstractions/abstraction-rights/go/authorization"
 	rc "github.com/openabstractions/abstraction-rights/go/client"
 	storage "github.com/openabstractions/abstraction-storage/go"
+	"github.com/openabstractions/abstractions/conformance/clients/fixture"
 	"os"
 	"os/exec"
 	"os/user"
@@ -47,6 +48,10 @@ func TestInstalledAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The service clock moves forward to prove expiry without waiting.
+	clockBase := time.Now().UTC().Truncate(time.Millisecond)
+	var clockOffset atomic.Int64
+	policy.Clock = func() time.Time { return clockBase.Add(time.Duration(clockOffset.Load())) }
 	endpoint := func(name string) string {
 		if runtime.GOOS == "windows" {
 			return fmt.Sprintf(`\\.\pipe\oa-authority-%d-%s`, time.Now().UnixNano(), name)
@@ -113,7 +118,7 @@ func TestInstalledAuthority(t *testing.T) {
 		cmd := exec.CommandContext(ctx, probe, append([]string{o.Endpoint, mode, expected}, args...)...)
 		cmd.Dir = t.TempDir()
 		cmd.Env = append(os.Environ(), "OA_AUTHORITY_ACCOUNT="+account.Uid, "OA_AUTHORITY_PROGRAM="+filepath.Clean(probe))
-		out, e := cmd.CombinedOutput()
+		out, e := fixture.Output(ctx, cmd)
 		if e != nil {
 			t.Fatalf("%s/%s %s: %v", mode, expected, out, e)
 		}
@@ -126,7 +131,7 @@ func TestInstalledAuthority(t *testing.T) {
 		id = run("questions", "pending")
 		run("operator", "forbidden", id)
 		operatorAllowed.Store(true)
-		run("operator", "answered", id)
+		t.Log(run("operator", "answered", id))
 		operatorAllowed.Store(false)
 		run("operator", "forbidden", id)
 		run("rights", "not_granted")
@@ -153,6 +158,9 @@ func TestInstalledAuthority(t *testing.T) {
 		}
 		rightsOperatorAllowed.Store(true)
 		run("rights-operator", "apply", provider.digest)
+		expires := run("rights-catalogue", "register")
+		clockOffset.Store(int64(2 * time.Hour))
+		t.Log(run("rights-catalogue", "expired", expires))
 		rightsOperatorAllowed.Store(false)
 		run("rights-operator", "forbidden", provider.digest)
 	}()

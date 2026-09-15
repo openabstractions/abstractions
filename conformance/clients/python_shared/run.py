@@ -10,6 +10,8 @@ import sys
 import tempfile
 import threading
 import uuid
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from workspace import source_revision, dry_run_stop, DRY_RUN_HELP
 
 ROOT = Path(__file__).resolve().parents[3]
 HERE = Path(__file__).resolve().parent
@@ -18,11 +20,14 @@ HERE = Path(__file__).resolve().parent
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", action="store_true", help="build/install into a temporary prefix and run isolated fixtures")
+    parser.add_argument('--dry-run', action='store_true', help=DRY_RUN_HELP)
     parser.add_argument("--cmake", default="cmake")
     args = parser.parse_args()
-    if not args.run:
+    if not (args.run or args.dry_run):
         parser.print_help()
         return
+    source_revision()
+    if args.dry_run: dry_run_stop('python_shared', args)
     def command(argv, cwd=ROOT, env=None):
         subprocess.run([str(x) for x in argv], cwd=cwd, env=env, check=True, timeout=120)
 

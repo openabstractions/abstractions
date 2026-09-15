@@ -1,8 +1,11 @@
 #include <abstraction/facade/client.hpp>
+#include <oa_fixture/host.hpp>
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 #include <thread>
 
 void require(bool condition, const char* message) {
@@ -24,6 +27,12 @@ int main(int argc, char** argv) {
         if (argc != 2) return 2;
         const std::string mode = argv[1];
         auto machine = abstraction::facade::Discover();
+        // The proof installs no runtime, so installed-runtime selection has no
+        // evidence. The harness names its fixture host; this user's principal and
+        // that program are then required of the resolver and every bound service.
+        if (const char* program = std::getenv("OA_FACADE_PROOF_SERVER_PROGRAM"); program && *program) {
+            machine = machine.WithServerExpectation(oa_fixture::host(program));
+        }
         if (mode == "absent") {
             absent([&] { machine.Log().Log(0, "must not create local storage"); });
             absent([&] { machine.Config().Read(); });

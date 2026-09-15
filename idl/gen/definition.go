@@ -114,6 +114,7 @@ type Const struct {
 	Type    string
 	Strings []string
 	Ints    []int64
+	Ann     map[string]string
 }
 
 type Refusal struct {
@@ -157,6 +158,8 @@ type Definition struct {
 	Foreign             map[string]ImportedRecord
 	NamedCodecs         bool
 	GoImports           map[string]string
+	JSImports           map[string]string
+	RustImports         map[string]string
 	NoIPC               bool // output mode only; never schema semantics
 	SharedRustTransport bool // generated Rust IPC uses abstraction-frame; standalone remains default
 	Namespaces          map[string]string

@@ -51,6 +51,7 @@ fn main() {
     let identity = wire::RequestIdentity {
         key: "retained-rust-key".into(),
         history_epoch: window.history_epoch,
+        attempt: 0,
     };
     let spec: Vec<u8> = args[2]
         .as_bytes()
@@ -75,6 +76,7 @@ fn main() {
         identity: wire::RequestIdentity {
             key: identity.key.clone(),
             history_epoch: identity.history_epoch.clone(),
+            attempt: identity.attempt,
         },
         kind: "download".into(),
         spec,
@@ -121,6 +123,7 @@ fn main() {
         .reconcile(&wire::RequestIdentity {
             key: "unseen".into(),
             history_epoch: format!("{}-unknown", identity.history_epoch),
+            attempt: 0,
         })
         .unwrap();
     assert_eq!(unknown.outcome, "unknown");

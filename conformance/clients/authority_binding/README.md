@@ -9,7 +9,11 @@ The Go fixture hosts the real runtime with a temporary application Book and
 DecisionPolicy. The application admits a stable question, checks pending and
 conflict, waits with a bound and cancellation, then exits. A separately authorized generated QuestionOperator client
 answers once. Denied list/answer calls return no data; authorized history pages,
-stable answer replay and a cursor gap after mutation are checked. After runtime restart, the same executable/key returns that
+stable answer replay and a cursor gap after mutation are checked. A denied
+operator cannot retire. The authorized operator retires the pending pagination
+question with its record, replays retirement without a record, and observes
+`gone` for both application Observe and Ask of that key. Unknown IDs retire as
+`unknown`, and answering a retired ID reports `unknown`. After runtime restart, the same executable/key returns that
 answer and original admission repeatedly; forgetting yields gone. Unknown keys
 stay unknown. No application API supplies operator authority.
 

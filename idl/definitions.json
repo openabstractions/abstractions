@@ -1,5 +1,10 @@
 {
   "version": 1,
+  "unpackaged_outputs": {
+    "openabstractions-flat/abstraction-download/python/py/pyproject.toml": "The shipped abstraction_download wheel is python/pyproject.toml with one module; generated py/rec.py is its test authority and would need the top-level import name py.",
+    "openabstractions-flat/abstraction-cas/py/pyproject.toml": "Direct --no-ipc CAS records; no Python distribution or resolved Python client installs them.",
+    "openabstractions-flat/abstraction-watch/py/pyproject.toml": "Watch notice metadata only; the generic Python subscription stays native and no distribution installs the records."
+  },
   "layers": [
     {
       "layer": "job",
@@ -791,7 +796,7 @@
         "openabstractions-flat/abstraction-facade/facade.thrift"
       ],
       "providers": [
-        "openabstractions-flat/abstraction-facade/go/resolution/host.go"
+        "openabstractions-flat/abstraction-facade/go-core/resolution/host.go"
       ],
       "definitions": [
         {

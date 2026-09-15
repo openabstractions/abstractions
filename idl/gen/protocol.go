@@ -9,7 +9,7 @@ import (
 
 var emittedWord = regexp.MustCompile(`refuse\("([a-z_]+)"\)`)
 
-var emittedImport = regexp.MustCompile(`(?m)^\s*(?:#include\s*<([^>]+)>|use\s+([\w:]+)\s*;|import\s+(\S+)|from\s+(\S+)\s+import|.*\brequire\(\s*['"]([^'"]+))`)
+var emittedImport = regexp.MustCompile(`(?m)^\s*(?:#include\s*<([^>]+)>|use\s+([\w:]+)\s*;|import\s+[^'"\n]*\bfrom\s+['"]([^'"]+)['"]|import\s+(\S+)|from\s+(\S+)\s+import|.*\brequire\(\s*['"]([^'"]+))`)
 
 func verifyCode(e emitted) error {
 	if err := checkWords(e); err != nil {

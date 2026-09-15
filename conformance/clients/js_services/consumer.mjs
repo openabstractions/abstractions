@@ -1,4 +1,4 @@
-import {RecoverableAcceptanceClient,OperationControlClient,JobInventoryClient,newSubmission} from '@openabstractions/job-acceptance';
+import {RecoverableAcceptanceClient,OperationControlClient,JobInventoryClient,newSubmission,newRequestIdentity} from '@openabstractions/job-acceptance';
 import {ContentReaderClient} from '@openabstractions/storage-content';
 import {newRequest,newSource,encode as encodeRequest} from '@openabstractions/download-request';
 import assert from 'node:assert/strict';
@@ -33,7 +33,7 @@ if(mode==='roundtrip') {
  const [url,digest]=process.argv.slice(4),max=65536n;
  const bind=await machine.resolveService('abstraction.job/acceptance@1',{maxFrame:2097152});
  const jobs=bind.client(RecoverableAcceptanceClient),history=await jobs.GetHistoryWindow();
- const submission=newSubmission();submission.identity={key:'js-caller-owned-key',history_epoch:history.history_epoch};submission.kind='download';
+ const submission=newSubmission();submission.identity={...newRequestIdentity(),key:'js-caller-owned-key',history_epoch:history.history_epoch};submission.kind='download';
  const request=newRequest();request.artifact={digest,size:150000n};request.sources=[{...newSource(),scheme:'http',locator:url}];submission.spec=encodeRequest(request);
  submission.required_guarantees=['abstraction.job/reconciliation@1'];
  const accepted=await jobs.Submit(submission);assert.equal(accepted.outcome,'accepted');assert.ok(accepted.receipt);
@@ -61,13 +61,26 @@ if(mode==='roundtrip') {
  } else if(mode==='verified'||mode==='untrusted') {
  const [principal,program]=process.argv.slice(4);
  const server={principalKind:process.platform==='win32'?1:2,principal,program:mode==='untrusted'?(process.platform==='win32'?'C:\\untrusted\\other.exe':'/untrusted/other'):program};
- const verified=new Machine(endpoint,{connector,timeout:1000,server});
+ // These modes prove trust propagation, and cancel/timeout/queue prove deadline
+ // semantics. Each call below owns a fresh budget equal to the facade's default
+ // per-call timeout; no call shares a budget with another, so host load from
+ // parallel builds cannot sum across calls. Latencies are printed as evidence.
+ const perCall=5000;
+ const verified=new Machine(endpoint,{connector,timeout:perCall,server});
  server.program='mutated caller object';
- if(mode==='untrusted')await assert.rejects(verified.resolveService('abstraction.logging/reader@1'),e=>e.status===Status.untrusted);
+ const timed=async(label,call)=>{const start=performance.now();try{return await call();}finally{console.log(`verified-latency ${label} ${(performance.now()-start).toFixed(1)}ms budget ${perCall}ms`);}};
+ if(mode==='untrusted')await timed('untrusted-resolve',()=>assert.rejects(verified.resolveService('abstraction.logging/reader@1'),e=>e.status===Status.untrusted));
  else {
-  const binding=await verified.callScope().resolveService('abstraction.logging/reader@1');
+  // A call scope covers exactly its single resolution.
+  const scoped=await timed('scoped-resolve',()=>verified.callScope().resolveService('abstraction.logging/reader@1'));
+  assert.equal(scoped.waiting.server.program,program);
+  const binding=await timed('resolve',()=>verified.resolveService('abstraction.logging/reader@1'));
   assert.equal(binding.waiting.server.program,program);
-  for(const view of [binding,binding.withWaiting(),binding.callScope()])assert.equal((await view.client(HistoryReaderClient).Read('',1n,65536n)).outcome,'page');
+  for(const [label,view] of [['default',()=>binding],['withWaiting',()=>binding.withWaiting()],['callScope',()=>binding.callScope()]]) {
+   const selected=view();
+   assert.equal(selected.waiting.server.program,program);
+   assert.equal((await timed(label+'-read',()=>selected.client(HistoryReaderClient).Read('',1n,65536n))).outcome,'page');
+  }
  }
  console.log('PASS native verified '+mode);
 } else if(mode==='forged') {

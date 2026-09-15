@@ -49,7 +49,7 @@ struct Attestation {
  10: required i64 pid
  11: optional string key (omit = "zero")
  12: optional string mac (omit = "zero")
-} (unknown_fields = "grant")
+} (unknown_fields = "grant", doc = "One hop of the provenance chain. program is the name a party gives itself and appears on the writer's self claim. exe is the executable path the attesting mechanism resolved for the party it established; a receiving service's stamp sets exe and leaves program empty. user is the account name or Windows SID; uid and gid are -1 where unestablished.")
 struct Record {
   1: required i64 schema (equals = "1", equals_refusal = "bad_schema")
   2: required timestamp time

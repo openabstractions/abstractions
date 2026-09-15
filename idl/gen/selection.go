@@ -142,7 +142,7 @@ func selected(s *Definition, only []string) (*Definition, error) {
 func prune(s *Definition, only []string) *Definition {
 	out := &Definition{
 		Encoding: s.Encoding,
-		Imports:  s.Imports, Foreign: s.Foreign, NamedCodecs: s.NamedCodecs, GoImports: s.GoImports,
+		Imports:  s.Imports, Foreign: s.Foreign, NamedCodecs: s.NamedCodecs, GoImports: s.GoImports, JSImports: s.JSImports, RustImports: s.RustImports,
 		Namespaces: s.Namespaces,
 		Typedefs:   s.Typedefs,
 		Refusals:   s.Refusals,

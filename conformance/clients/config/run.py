@@ -8,25 +8,22 @@ from pathlib import Path
 HERE=Path(__file__).resolve().parent
 ROOT=HERE.parents[2]
 sys.path.insert(0,str(HERE.parent))
-from workspace import layer,environment,compiler_metadata
+from workspace import layer,environment,msvc_toolchain,certify_msvc, source_revision, dry_run_stop, DRY_RUN_HELP
 BUILD=ROOT/'.build'/'config'
-def cmake_path():
- found=os.environ.get('CMAKE') or shutil.which('cmake')
- if found:return found
- for edition in ('Community','Professional','Enterprise','BuildTools'):
-  p=Path(os.environ.get('ProgramFiles','C:/Program Files'))/('Microsoft Visual Studio/18/'+edition+'/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe')
-  if p.is_file():return str(p)
- raise RuntimeError('CMake not found; set CMAKE')
-p=argparse.ArgumentParser(description=__doc__)
+p=argparse.ArgumentParser(description=__doc__+'\nCertifies MSVC on Windows: run from a vcvars64 developer environment; other toolchains are refused before building.')
 p.add_argument('--run',action='store_true',help='build and execute the isolated Windows service check')
+p.add_argument('--dry-run', action='store_true', help=DRY_RUN_HELP)
 p.add_argument('--service-only',action='store_true',help='use a small Serve fixture instead of the central host')
 p.add_argument('--toolchain',action='store_true',help='print CMake metadata without executing services')
 a=p.parse_args()
-if a.toolchain:subprocess.run([cmake_path(),'--version'],check=True);raise SystemExit(0)
-if not a.run:p.print_help();raise SystemExit(0)
+if a.toolchain:subprocess.run([msvc_toolchain(dict(os.environ)),'--version'],check=True);raise SystemExit(0)
+if not (a.run or a.dry_run):p.print_help();raise SystemExit(0)
+source_revision()
+if a.dry_run: dry_run_stop('config', a)
 if os.name!='nt':raise SystemExit('This conformance runner measures Windows. Unit tests also cover Linux.')
 BUILD.mkdir(parents=True,exist_ok=True)
 env=environment(BUILD)
+cmake=msvc_toolchain(env)
 def run(command,cwd=ROOT,environment=env,timeout=120):
  r=subprocess.run([str(x) for x in command],cwd=cwd,env=environment,capture_output=True,text=True,encoding='utf-8',timeout=timeout)
  print(r.stdout.replace(str(ROOT),'$ROOT').replace(ROOT.as_posix(),'$ROOT'),end='')
@@ -35,13 +32,15 @@ def run(command,cwd=ROOT,environment=env,timeout=120):
 run(['go','version'])
 if a.service_only:run(['go','build','-o',BUILD/'host.exe',HERE/'service_main.go'])
 else:run(['go','build','-o',BUILD/'host.exe','.'],ROOT/'serve')
-cmake=cmake_path()
-run([cmake,'-S',layer('abstraction-config')/'cpp','-B',BUILD/'native','-DBUILD_SHARED_LIBS=OFF','-DCMAKE_DISABLE_FIND_PACKAGE_abstraction_ipc=TRUE'])
-compiler_metadata(BUILD/'native')
-run([cmake,'--build',BUILD/'native','--config','Release'])
-identity=uuid.uuid4().hex[:8];stage=BUILD/('s-'+identity);outside=BUILD/('c-'+identity)
-run([cmake,'--install',BUILD/'native','--config','Release','--prefix',stage])
+identity=uuid.uuid4().hex[:8];native=BUILD/('n-'+identity);stage=BUILD/('s-'+identity);outside=BUILD/('c-'+identity)
+# A fresh tree per run: a cache configured by another toolchain or generator
+# installs no per-configuration export file for --config Release.
+run([cmake,'-S',layer('abstraction-config')/'cpp','-B',native,'-DBUILD_SHARED_LIBS=OFF','-DCMAKE_DISABLE_FIND_PACKAGE_abstraction_ipc=TRUE'])
+certify_msvc(native)
+run([cmake,'--build',native,'--config','Release'])
+run([cmake,'--install',native,'--config','Release','--prefix',stage])
 run([cmake,'-S',HERE,'-B',outside,'-DCMAKE_PREFIX_PATH='+str(stage)])
+certify_msvc(outside)
 run([cmake,'--build',outside,'--config','Release'])
 consumer=outside/'Release'/'config_consumer.exe'
 case=BUILD/uuid.uuid4().hex[:12];client_home=case/'client';provider_home=case/'provider'

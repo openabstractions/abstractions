@@ -1,0 +1,11 @@
+cmake_minimum_required(VERSION 3.16)
+project(linux_lifecycle_consumer LANGUAGES CXX)
+find_package(abstraction_facade CONFIG REQUIRED)
+find_package(abstraction_download_request CONFIG REQUIRED)
+# The application links only the job binding, IPC and request vocabulary.
+if(TARGET abstraction::job OR TARGET abstraction::download OR TARGET abstraction::download_runner OR TARGET abstraction::logging_client OR TARGET abstraction::config_client OR TARGET abstraction::router_client)
+    message(FATAL_ERROR "lifecycle consumer pulled a provider or unrelated client")
+endif()
+add_executable(lifecycle_consumer client.cpp)
+target_compile_features(lifecycle_consumer PRIVATE cxx_std_17)
+target_link_libraries(lifecycle_consumer PRIVATE abstraction::facade_jobs abstraction::download_request)

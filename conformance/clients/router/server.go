@@ -11,8 +11,7 @@ import (
 	"github.com/openabstractions/abstraction-identity/listen"
 	router "github.com/openabstractions/abstraction-router/go"
 	"github.com/openabstractions/abstraction-router/go/service"
-	"net/http"
-	"net/http/httptest"
+	"github.com/openabstractions/abstractions/conformance/clients/fixture"
 	"os"
 	"os/user"
 	"strconv"
@@ -31,32 +30,17 @@ func main() {
 	}
 	defer out.Close()
 	var mu sync.Mutex
-	host := func(routes map[string]string) *httptest.Server {
-		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			mu.Lock()
-			fmt.Fprintln(out, r.Method)
-			mu.Unlock()
-			if r.Method != "GET" {
-				http.Error(w, "mutation refused", 405)
-				return
-			}
-			s, ok := routes[r.URL.Path]
-			if !ok {
-				http.NotFound(w, r)
-				return
-			}
-			fmt.Fprint(w, s)
-		}))
-	}
-	lemonade := host(map[string]string{"/api/v1/models": `{"data":[{"id":"Qwen3.6-35B-A3B-GGUF","downloaded":true}]}`, "/api/v1/health": `{"all_models_loaded":[{"model_name":"Qwen3.6-35B-A3B-GGUF","loaded":true}]}`})
-	defer lemonade.Close()
-	studio := host(map[string]string{"/api/v0/models": `{"data":[{"id":"qwen/qwen3.6-35b-a3b","type":"llm","state":"not-loaded"},{"id":"google/gemma-4-26b-it","type":"llm","state":"not-loaded"}]}`})
-	defer studio.Close()
+	lemonade, studio, closeHosts := fixture.ModelHosts(func(method string) {
+		mu.Lock()
+		fmt.Fprintln(out, method)
+		mu.Unlock()
+	})
+	defer closeHosts()
 	var r *router.Router
 	if *empty {
 		r = router.New()
 	} else {
-		r = router.New(router.Lemonade(lemonade.URL), router.LMStudio(studio.URL), router.Ollama("http://127.0.0.1:1"))
+		r = router.New(router.Lemonade(lemonade), router.LMStudio(studio), router.Ollama(fixture.UnreachableOllama))
 	}
 	r.Survey()
 	h, err := service.Listen(*endpoint, r)

@@ -13,13 +13,59 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	downloadserve "github.com/openabstractions/abstraction-download/go/serve"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
+	"github.com/openabstractions/abstraction-identity/listen"
 	logging "github.com/openabstractions/abstraction-logging/go"
 )
+
+// endpointSeq and the process id make a test endpoint unique on the machine.
+// Windows pipe names are machine-wide, and this host's clock advances in
+// steps of about 300 microseconds: names built from time.Now().UnixNano()
+// repeated within one test binary and across concurrent test binaries, and
+// the runtime holding the second copy failed to start.
+var endpointSeq atomic.Int64
+
+func testPipe(prefix, service string) string {
+	return fmt.Sprintf(`\\.\pipe\%s-%d-%d-%s`, prefix, os.Getpid(), endpointSeq.Add(1), service)
+}
+
+// runtimeWait bounds every wait on an in-process runtime or fixture.
+const runtimeWait = 15 * time.Second
+
+// awaitReadiness returns the runtime's first line, the error the runtime
+// returned before writing one, or a timeout. A runtime that cannot start never
+// writes its readiness line, and a bare read of it waits for the test binary's
+// own timeout.
+func awaitReadiness(ready io.Reader, done <-chan error, wait time.Duration) (string, error) {
+	line := make(chan string, 1)
+	go func() { l, _ := bufio.NewReader(ready).ReadString('\n'); line <- l }()
+	select {
+	case l := <-line:
+		return l, nil
+	case err := <-done:
+		return "", fmt.Errorf("runtime returned before readiness: %w", err)
+	case <-time.After(wait):
+		return "", fmt.Errorf("no readiness within %v", wait)
+	}
+}
+
+// awaitStopped waits a bounded time for a cancelled runtime or fixture to
+// return and names the one that did not.
+func awaitStopped(t *testing.T, done <-chan error, what string) error {
+	t.Helper()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(runtimeWait):
+		t.Errorf("%s did not return within %v of cancellation", what, runtimeWait)
+		return nil
+	}
+}
 
 // The helper runs the real CLI entry point in a separate executable process.
 func TestSupervisedProcessHelper(t *testing.T) {
@@ -78,7 +124,7 @@ func isolatedRuntime(t *testing.T) (runtimeFlags, []string) {
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	endpoint := func(s string) string {
 		if runtime.GOOS == "windows" {
-			return fmt.Sprintf(`\\.\pipe\oa-supervised-%d-%s`, time.Now().UnixNano(), s)
+			return testPipe("oa-supervised", s)
 		}
 		return filepath.Join(dir, s)
 	}
@@ -259,7 +305,7 @@ func TestSupervisedCancellationDoesNotWaitForStdin(t *testing.T) {
 	defer readyW.Close()
 	done := make(chan error, 1)
 	go func() { done <- superviseRuntime(ctx, o, r, readyW) }()
-	line, err := bufio.NewReader(readyR).ReadString('\n')
+	line, err := awaitReadiness(readyR, done, runtimeWait)
 	if err != nil || line != "READY 1\n" {
 		t.Fatal(line, err)
 	}
@@ -270,6 +316,33 @@ func TestSupervisedCancellationDoesNotWaitForStdin(t *testing.T) {
 		t.Fatal("shutdown waited for parent stdin")
 	}
 	assertListenersReleased(t, o)
+}
+
+// A runtime whose endpoint is already held returns before readiness, and the
+// readiness wait ends with that error instead of waiting for the test timeout.
+func TestSupervisedStartupFailureEndsTheReadinessWait(t *testing.T) {
+	o, _ := isolatedRuntime(t)
+	held, err := listen.Listen(o.endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Close()
+	r, w, _ := os.Pipe()
+	defer r.Close()
+	defer w.Close()
+	readyR, readyW := io.Pipe()
+	defer readyR.Close()
+	defer readyW.Close()
+	done := make(chan error, 1)
+	go func() { done <- superviseRuntime(context.Background(), o, r, readyW) }()
+	began := time.Now()
+	line, err := awaitReadiness(readyR, done, runtimeWait)
+	if err == nil || !strings.Contains(err.Error(), "returned before readiness") {
+		t.Fatalf("held endpoint: line %q, err %v", line, err)
+	}
+	if elapsed := time.Since(began); elapsed > 10*time.Second {
+		t.Fatalf("startup failure took %v to end the readiness wait", elapsed)
+	}
 }
 
 type shortReady struct{}

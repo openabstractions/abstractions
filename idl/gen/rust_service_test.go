@@ -130,6 +130,24 @@ func TestRustServiceValidation(t *testing.T) {
 			t.Fatal("accepted collision", name)
 		}
 	}
+	argument := "struct Answer {1: required string value}(document=\"true\",unknown_fields=\"refuse\")\nservice Lookup {Answer Find(1: string ref)}(wire_name=\"example.lookup/lookup@1\")\n"
+	keyword, e := parse(head + argument)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e := validateServiceBackend(keyword, "rust"); e == nil || !strings.Contains(e.Error(), "rust.name") {
+		t.Fatalf("accepted keyword service argument: %v", e)
+	}
+	renamed, e := parse(head + strings.Replace(argument, "string ref)", `string ref (rust.name = "reference"))`, 1))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e := validateServiceBackend(renamed, "rust"); e != nil {
+		t.Fatalf("refused renamed service argument: %v", e)
+	}
+	if !strings.Contains(genRust(renamed), "reference: arg0") {
+		t.Fatal("renamed argument not used in generated record")
+	}
 	s, e := parse(head + replyFixture)
 	if e != nil {
 		t.Fatal(e)

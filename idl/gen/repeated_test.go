@@ -97,6 +97,19 @@ func TestShapesTheProfileStillRefuses(t *testing.T) {
   2: optional map<string,string> labels (omit = "absent")
 } (document = "true", unknown_fields = "refuse")
 `, `a collection says omit = "zero"`},
+		{"an integer omitted when absent", head + `struct Doc {
+  1: required string id
+  2: optional i64 limit (omit = "absent")
+} (document = "true", unknown_fields = "refuse")
+`, `limit is an optional i64 omitted when absent`},
+		{"an i32 omitted when absent", head + `struct Doc {
+  1: optional i32 count (omit = "absent")
+} (document = "true", unknown_fields = "refuse")
+`, `count is an optional i32 omitted when absent`},
+		{"a bool omitted when absent", head + `struct Doc {
+  1: optional bool kept (omit = "absent")
+} (document = "true", unknown_fields = "refuse")
+`, `kept is an optional bool omitted when absent`},
 		{"a repeated record in an envelope", head + `struct Inner {
   1: required string a
 } (unknown_fields = "refuse")

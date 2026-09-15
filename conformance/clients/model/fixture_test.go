@@ -9,6 +9,7 @@ import (
 	execution "github.com/openabstractions/abstraction-download/go/serve"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	model "github.com/openabstractions/abstraction-model/go"
+	"github.com/openabstractions/abstractions/conformance/clients/fixture"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -68,7 +69,7 @@ func TestInstalledModel(t *testing.T) {
 		if probe == "" {
 			t.Fatal("required", mode.env)
 		}
-		out, err := exec.CommandContext(ctx, probe, mode.endpoint).CombinedOutput()
+		out, err := fixture.Output(ctx, exec.CommandContext(ctx, probe, mode.endpoint))
 		if err != nil {
 			t.Fatalf("%s: %v %s", mode.env, err, out)
 		}

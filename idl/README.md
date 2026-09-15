@@ -49,7 +49,10 @@ reference page rather than an encoder. Omit the list for all of them. There is
 release availability is determined by the selected public revision and its module
 metadata. These commands run a reviewed checkout. `GOWORK=off` isolates the
 generator module from a surrounding development workspace; in PowerShell use
-`$env:GOWORK="off"` before the Go command.
+`$env:GOWORK="off"` before the Go command. Its tests need the same setting:
+`GOWORK=off go test ./...` from `idl/gen`. Python-backed tests also need a real
+interpreter in `PYTHON`; [test/production/README.md](test/production/README.md)
+gives the Windows Store alias case and the optional Node and C++ toolchains.
 
 Useful options include `--paths` for output locations, `-only=` for exact
 surface selection, `--named-codecs` for composable record codecs, and

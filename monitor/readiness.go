@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -91,7 +90,7 @@ func collectReadiness(ctx context.Context, machine *facade.Machine, installed fu
 	return readinessPresentation(observation, err)
 }
 
-func (w *window) serveReadiness(rw http.ResponseWriter, r *http.Request) {
+func serveReadiness(rw http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		rw.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -99,23 +98,4 @@ func (w *window) serveReadiness(rw http.ResponseWriter, r *http.Request) {
 	rw.Header().Set("Content-Type", "application/json")
 	rw.Header().Set("Cache-Control", "no-store")
 	json.NewEncoder(rw).Encode(observeReadiness(r.Context()))
-}
-
-func readinessText(view readinessView) string {
-	var text strings.Builder
-	fmt.Fprintf(&text, "Supervision: %s\n", view.BootstrapLabel)
-	if view.Detail != "" {
-		fmt.Fprintln(&text, view.Detail)
-	}
-	for _, row := range view.Capabilities {
-		fmt.Fprintf(&text, "\n%s: %s", row.Name, row.Label)
-		if row.Provider != "" {
-			fmt.Fprintf(&text, " (%s)", row.Provider)
-		}
-	}
-	if view.Error != "" {
-		fmt.Fprintf(&text, "\n\nObservation: %s", view.Error)
-	}
-	fmt.Fprintf(&text, "\n\nChecked at %s", view.CheckedAt)
-	return text.String()
 }

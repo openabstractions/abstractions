@@ -9,16 +9,17 @@ import (
 	"testing"
 )
 
+// servicePython is the interpreter TestMain verified before any test ran. When
+// the run opted out of Python, the calling test skips and says why.
 func servicePython(t *testing.T) string {
 	t.Helper()
-	p := os.Getenv("PYTHON")
-	if p == "" {
-		p, _ = exec.LookPath("python")
+	if pythonSkipped != "" {
+		t.Skip("Python-backed test skipped by " + pythonSkipped)
 	}
-	if p == "" {
-		t.Skip("Python unavailable")
+	if testPython == "" {
+		t.Fatal("TestMain did not resolve a Python interpreter")
 	}
-	return p
+	return testPython
 }
 func TestPythonServiceValidation(t *testing.T) {
 	s, e := parse(head + replyFixture)

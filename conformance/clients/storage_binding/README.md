@@ -21,4 +21,15 @@ This is source-derived SDK evidence, not a released package/version claim.
 The current native execution is Windows x64; Darwin Program proof limitations
 are explicit in the fixture. Temporary binaries, data and prefix are removed.
 
+The default `ResolveStorage` and `ResolveStorageWriter` overloads bound only
+resolution. The consumer waits beyond that five-second budget and then reads and
+writes successfully; the explicit-deadline overload still refuses after expiry.
+
+TestInstalledStorageWriter composes the writer contract with a temporary native
+content store and the generated rights decision service. Separate consumer
+processes are refused before any provider lookup, write after an explicit write
+grant, and read the exact bytes through the reader contract. They also prove
+duplicate-identity reconciliation, identity conflict, oversized refusal,
+interrupted-upload invisibility and revoked append/commit with owned abort.
+
 The generated ContentReader descriptor now drives Open/Read/Close through the common ResolveService factory. Resource/range validation remains explicit; content lookup continues to make only an unverified naming claim.

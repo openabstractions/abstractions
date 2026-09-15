@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	request "github.com/openabstractions/abstraction-download/go/abstraction/download/request"
+	"github.com/openabstractions/abstractions/conformance/clients/fixture"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -105,7 +106,7 @@ func TestInstalledRustJobs(t *testing.T) {
 	cmd := exec.CommandContext(ctx, python, aliasEndpoint, hex.EncodeToString(spec))
 	cmd.Dir = clientHome
 	cmd.Env = append(os.Environ(), "HOME="+clientHome, "USERPROFILE="+clientHome, "APPDATA="+clientHome, "XDG_CONFIG_HOME="+clientHome, "ProgramData="+clientHome, "PYTHONDONTWRITEBYTECODE=1")
-	out, err := cmd.CombinedOutput()
+	out, err := fixture.Output(ctx, cmd)
 	if err != nil {
 		t.Fatalf("Rust: %v %s", err, out)
 	}

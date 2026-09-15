@@ -469,6 +469,33 @@ func (p *parser) protocolDef() error {
 	return nil
 }
 
+// fieldAnnotation reports whether a field annotation is one this profile reads:
+// the generator's own keys, and catalogue/closed_by, which idl/inventory.py
+// judges as contract rule R4.
+func fieldAnnotation(k string) bool {
+	switch k {
+	case "omit", "equals", "equals_refusal", "service_raw", "catalogue", "closed_by":
+		return true
+	}
+	return strings.HasSuffix(k, ".name") && k != ".name"
+}
+
+// catalogueAnnotation checks catalogue and closed_by wherever they may appear.
+func catalogueAnnotation(ann map[string]string, line int, name string) error {
+	c, ok := ann["catalogue"]
+	switch {
+	case ok && c != "open" && c != "closed":
+		return fmt.Errorf("line %d: %s: catalogue = %q; this profile defines catalogue = \"open\" and catalogue = \"closed\"", line, name, c)
+	case c == "closed" && ann["closed_by"] == "":
+		return fmt.Errorf("line %d: %s is a closed catalogue and names no rule; a closed catalogue says closed_by = \"<rule tag>\"", line, name)
+	case !ok && ann["closed_by"] != "":
+		return fmt.Errorf("line %d: %s carries closed_by without catalogue = \"closed\"", line, name)
+	case c == "open" && ann["closed_by"] != "":
+		return fmt.Errorf("line %d: %s is an open catalogue and carries closed_by", line, name)
+	}
+	return nil
+}
+
 func (p *parser) annotations() (map[string]string, error) {
 	ann := map[string]string{}
 	if !p.at("(") {
@@ -561,6 +588,9 @@ func (p *parser) structDef() error {
 	if err != nil {
 		return err
 	}
+	if err := catalogueAnnotation(st.Ann, p.toks[p.i-1].line, "struct "+name); err != nil {
+		return err
+	}
 	st.Document = st.Ann["document"] == "true"
 	st.UnknownFields = st.Ann["unknown_fields"]
 	if st.UnknownFields != "refuse" && st.UnknownFields != "grant" && !st.PreservesUnknown() {
@@ -623,6 +653,14 @@ func (p *parser) field() (Field, error) {
 	if p.at(",") || p.at(";") {
 		p.i++
 	}
+	for k := range ann {
+		if !fieldAnnotation(k) {
+			return Field{}, fmt.Errorf("line %d: %s carries %q, and a field takes omit, equals, equals_refusal, service_raw, <language>.name, catalogue and closed_by; a flag this profile does not read is a rule nobody enforces", line, name, k)
+		}
+	}
+	if err := catalogueAnnotation(ann, line, name); err != nil {
+		return Field{}, err
+	}
 	omit := ann["omit"]
 	switch {
 	case req == "required" && omit != "":
@@ -682,6 +720,14 @@ func (p *parser) enumDef() error {
 	if u := en.Ann["unknown"]; u != "grant" && u != "refuse" {
 		return fmt.Errorf("enum %s does not say what an unknown member does; this profile defines unknown = \"grant\" and unknown = \"refuse\"", name)
 	}
+	for k := range en.Ann {
+		if k != "unknown" && k != "reader" {
+			return fmt.Errorf("enum %s carries %q, and an enum takes unknown and reader; a flag this profile does not read is a rule nobody enforces", name, k)
+		}
+	}
+	if r, ok := en.Ann["reader"]; ok && r != "display" && r != "act" {
+		return fmt.Errorf("enum %s: reader = %q; this profile defines reader = \"display\" (unknown = \"grant\") and reader = \"act\" (unknown = \"refuse\")", name, r)
+	}
 	p.def.Enums = append(p.def.Enums, en)
 	return nil
 }
@@ -722,6 +768,18 @@ func (p *parser) constDef() error {
 		}
 	}
 	p.i++
+	line := p.peek().line
+	if c.Ann, err = p.annotations(); err != nil {
+		return err
+	}
+	for k := range c.Ann {
+		if k != "catalogue" && k != "closed_by" {
+			return fmt.Errorf("line %d: const %s carries %q, and a const takes catalogue and closed_by; a flag this profile does not read is a rule nobody enforces", line, name, k)
+		}
+	}
+	if err := catalogueAnnotation(c.Ann, line, name); err != nil {
+		return err
+	}
 	p.def.Consts = append(p.def.Consts, c)
 	return nil
 }
@@ -744,6 +802,9 @@ func (p *parser) validate() error {
 		for _, f := range st.Fields {
 			if isCollection(f.Type) && f.Omit == "absent" {
 				return fmt.Errorf("line %d: %s is a collection omitted when absent, and an absent collection and an empty one are one thing on the wire; a collection says omit = \"zero\"", f.Line, f.Name)
+			}
+			if (f.Type == "i32" || f.Type == "i64" || f.Type == "bool") && f.Omit == "absent" {
+				return fmt.Errorf("line %d: %s is an optional %s omitted when absent; generated bindings carry %s as a value without presence, so it says omit = \"zero\" or is required", f.Line, f.Name, f.Type, f.Type)
 			}
 			if scalarTypes[f.Type] || p.def.Enum(f.Type) != nil || encodableCollections[f.Type] {
 				continue

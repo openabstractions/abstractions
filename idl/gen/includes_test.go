@@ -238,7 +238,7 @@ v,e:=r.DecodeQuery(input);if e!=nil{panic(e)};if v.Work.Sources[0].Extras["futur
 	}
 }
 func TestTypedIncludeGraphAndCodecCollisions(t *testing.T) {
-	for _, change := range []string{"cycle", "codec", "namespace"} {
+	for _, change := range []string{"cycle", "codec", "at-suffix", "namespace", "at-prefix-control"} {
 		dir, out := includeFixture(t)
 		p := filepath.Join(dir, "resolver.thrift")
 		data, _ := os.ReadFile(p)
@@ -248,6 +248,12 @@ func TestTypedIncludeGraphAndCodecCollisions(t *testing.T) {
 			s = strings.Replace(s, "model.Ref ref", "Query ref", 1)
 		case "codec":
 			s += "\nstruct EncodeQuery {1: required string text}(unknown_fields=\"refuse\")\n"
+		case "at-suffix":
+			// Query and QueryAt both produce EncodeQueryAt/encode_query_at.
+			s += "\nstruct QueryAt {1: required string text}(unknown_fields=\"refuse\")\n"
+		case "at-prefix-control":
+			// QueryAtlas shares a prefix and produces no identical export name.
+			s += "\nstruct QueryAtlas {1: required string text}(unknown_fields=\"refuse\")\n"
 		case "namespace":
 			data, _ := os.ReadFile(filepath.Join(dir, "model.thrift"))
 			writeNamespaceFile(t, dir, "other.thrift", string(data))
@@ -255,8 +261,16 @@ func TestTypedIncludeGraphAndCodecCollisions(t *testing.T) {
 		}
 		writeNamespaceFile(t, dir, "resolver.thrift", s)
 		var report bytes.Buffer
-		if e := run([]string{p, out, "docs"}, &report); e == nil {
+		e := run([]string{p, out, "docs"}, &report)
+		switch {
+		case change == "at-prefix-control":
+			if e != nil {
+				t.Fatalf("refused non-colliding record QueryAtlas: %v", e)
+			}
+		case e == nil:
 			t.Fatal("accepted", change)
+		case change == "at-suffix" && !strings.Contains(e.Error(), "named codec collision EncodeQueryAt (encodeQueryAt) between records Query and QueryAt"):
+			t.Fatalf("refused Query/QueryAt without naming the collision: %v", e)
 		}
 	}
 }

@@ -4,14 +4,18 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	"github.com/openabstractions/abstraction-facade/go/resolution"
 	runtimehost "github.com/openabstractions/abstraction-facade/go/runtime"
+	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-identity/listen"
 	logging "github.com/openabstractions/abstraction-logging/go"
+	logservice "github.com/openabstractions/abstraction-logging/go/service"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -98,7 +102,21 @@ func main() {
 		panic(err)
 	}
 	defer file.Close()
-	host, err := runtimehost.Listen(runtimehost.Options{Endpoint: endpoint, LogEndpoint: endpoint + "-log", ConfigEndpoint: endpoint + "-config", Sink: sink{file}, OnError: func(err error) { fmt.Fprintln(os.Stderr, err) }})
+	options := runtimehost.Options{Endpoint: endpoint, LogEndpoint: endpoint + "-log", ConfigEndpoint: endpoint + "-config", Sink: sink{file}, OnError: func(err error) { fmt.Fprintln(os.Stderr, err) }}
+	// The consumer writes history-forbidden or history-unavailable into this file to exercise refusal codes.
+	if modeFile := os.Getenv("OA_RUST_HISTORY_POLICY"); modeFile != "" {
+		options.LogHistoryPolicy = func(ctx context.Context, p *identity.Peer) error {
+			mode, _ := os.ReadFile(modeFile)
+			switch strings.TrimSpace(string(mode)) {
+			case "history-forbidden":
+				return errors.New("fixture history refused")
+			case "history-unavailable":
+				return fmt.Errorf("fixture decision lookup: %w", logservice.ErrHistoryPolicyUnavailable)
+			}
+			return ctx.Err()
+		}
+	}
+	host, err := runtimehost.Listen(options)
 	if err != nil {
 		panic(err)
 	}

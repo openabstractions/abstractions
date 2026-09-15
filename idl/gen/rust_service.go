@@ -35,6 +35,12 @@ func validateRustServices(s *Definition) error {
 			if namespaceKeyword("rust", m.Name) || m.Name == "new" || m.Name == "transport" {
 				return fmt.Errorf("Rust service method collision %q", m.Name)
 			}
+			// Arguments become generated record fields; a keyword needs rust.name.
+			for _, a := range m.Args {
+				if namespaceKeyword("rust", a.Ident("rust")) || strings.Contains(a.Ident("rust"), ".") {
+					return fmt.Errorf("invalid Rust service argument %q of %s; set rust.name", a.Ident("rust"), m.Name)
+				}
+			}
 		}
 	}
 	return nil

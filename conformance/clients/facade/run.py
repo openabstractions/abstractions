@@ -1,7 +1,8 @@
-"""Verify an installed C++ facade through the production Go resolver on Windows.
+"""Verify an installed C++ facade through the production Go resolver on Windows and Linux.
 
 No arguments prints help. Uses short .build/facade paths, three unique local
-pipes, one resolver and separate service/client homes. No OS installation or C++ server is
+endpoints (named pipes on Windows, Unix sockets on Linux), one resolver and
+separate service/client homes. No OS installation or C++ server is
 involved. The Go fixture composes production providers; native OS adapters are
 not certified by this check.
 """
@@ -21,24 +22,13 @@ import uuid
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
-from workspace import environment, layer
+from workspace import (environment, layer, cmake_for, certify_compiler, source_revision, CERTIFIES,
+                       DRY_RUN_HELP, dry_run_stop,
+                       ATTESTATION_BY, attested_principal, fixture_endpoints, host_program, consumer_executable)
 ROOT = HERE.parents[2]
 from sdk import installed_sdk
 
 BUILD = ROOT / '.build' / 'facade'
-
-
-def cmake_path():
-    found = os.environ.get('CMAKE') or shutil.which('cmake')
-    if found:
-        return found
-    for edition in ('Community', 'Professional', 'Enterprise', 'BuildTools'):
-        candidate = Path(os.environ.get('ProgramFiles', 'C:/Program Files')) / (
-            'Microsoft Visual Studio/18/' + edition +
-            '/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe')
-        if candidate.is_file():
-            return str(candidate)
-    raise RuntimeError('CMake unavailable; set CMAKE to its executable')
 
 
 def require(condition, message):
@@ -64,19 +54,26 @@ def home_environment(env, path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__ + '\n' + CERTIFIES)
     parser.add_argument('--run', action='store_true', help='build and run the isolated service/client proof')
+    parser.add_argument('--dry-run', action='store_true', help=DRY_RUN_HELP)
     parser.add_argument('--toolchain', action='store_true', help='print CMake version without building/running')
+    parser.add_argument('--cmake', help='CMake executable (Windows: Visual Studio bundled CMake only)')
     args = parser.parse_args()
     if args.toolchain:
-        subprocess.run([cmake_path(), '--version'], check=True)
+        subprocess.run([cmake_for(dict(os.environ), args.cmake), '--version'], check=True)
         return
-    if not args.run:
+    if not (args.run or args.dry_run):
         parser.print_help()
         return
-    require(os.name == 'nt', 'This proof currently measures Windows only')
+    source_revision()
+    if args.dry_run: dry_run_stop('facade', args)
+    windows = os.name == 'nt'
+    require(windows or sys.platform.startswith('linux'), 'This proof measures Windows and Linux only')
     BUILD.mkdir(parents=True, exist_ok=True)
     env = environment(BUILD)
+    cmake = cmake_for(env, args.cmake)
+    host = host_program(BUILD, 'host')
 
     def run(command, cwd=ROOT, child_env=env, timeout=180):
         result = subprocess.run(list(map(str, command)), cwd=cwd, env=child_env,
@@ -87,15 +84,15 @@ def main():
         return output
 
     run(['go', 'version'])
-    run(['go', 'build', '-o', BUILD / 'host.exe', HERE / 'host.go'])
-    cmake = cmake_path()
+    run(['go', 'build', '-o', host, HERE / 'host.go'])
     token = uuid.uuid4().hex[:8]
     with ExitStack() as stack:
         stage = stack.enter_context(installed_sdk(cmake, 'aggregate', env))
         consumer = BUILD / ('c' + token)
-        run([cmake, '-S', HERE, '-B', consumer, '-DCMAKE_PREFIX_PATH=' + str(stage)])
+        run([cmake, '-S', HERE, '-B', consumer, '-DCMAKE_PREFIX_PATH=' + str(stage), '-DCMAKE_BUILD_TYPE=Release'])
+        certify_compiler(consumer)
         run([cmake, '--build', consumer, '--config', 'Release'])
-        executable = consumer / 'Release' / 'facade_consumer.exe'
+        executable = consumer_executable(consumer, 'facade_consumer')
         require(executable.is_file(), 'installed facade consumer not built')
 
         case = BUILD / ('t' + token)
@@ -111,9 +108,13 @@ def main():
         # Prove config reads caller overrides/files, not the service's run override.
         host_env['ABSTRACTION_STORE'] = 'must-not-leak-from-service-environment'
         client_env = home_environment(env, client_home)
-        endpoints = {name: '\\\\.\\pipe\\oa-facade-' + token + '-' + name for name in ('logging', 'config', 'router')}
-        runtime_endpoint = '\\\\.\\pipe\\oa-facade-' + token + '-runtime'
+        endpoints = stack.enter_context(fixture_endpoints(['logging', 'config', 'router', 'runtime'], 'facade-' + token))
+        runtime_endpoint = endpoints.pop('runtime')
         client_env['ABSTRACTION_RUNTIME_ENDPOINT'] = runtime_endpoint
+        # No runtime is installed for this proof, so default runtime selection
+        # has no installation evidence. The client expects this user's fixture
+        # host program instead; every resolved service must still prove it.
+        client_env['OA_FACADE_PROOF_SERVER_PROGRAM'] = str(host.resolve())
         for name, variable in [('logging', 'ABSTRACTION_LOG_ENDPOINT'), ('config', 'ABSTRACTION_CONFIG_ENDPOINT'), ('router', 'ABSTRACTION_ROUTER_ENDPOINT')]:
             # Conventional endpoint construction must fail this proof. Only the
             # resolver's registration identifies the working provider endpoints.
@@ -122,14 +123,14 @@ def main():
         client = None
         try:
             for name, endpoint in endpoints.items():
-                command = [str(BUILD / 'host.exe'), name, endpoint]
+                command = [str(host), name, endpoint]
                 if name == 'logging':
                     command.append(str(output))
                 process = subprocess.Popen(command, env=host_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                            text=True, encoding='utf-8')
                 processes.append(process)
                 require(line(process).strip() == 'READY ' + name, 'wrong service readiness')
-            resolver = subprocess.Popen([str(BUILD / 'host.exe'), 'resolver', runtime_endpoint,
+            resolver = subprocess.Popen([str(host), 'resolver', runtime_endpoint,
                                          *endpoints.values()], env=host_env, stdout=subprocess.PIPE,
                                         stderr=subprocess.PIPE, text=True, encoding='utf-8')
             processes.append(resolver)
@@ -154,8 +155,9 @@ def main():
                     record['msg'] == 'facade to Go service\nsecond line ☃' and
                     record['attrs'] == {'binding': 'facade', 'empty': ''}, 'logging values changed')
             peer = record['identity'][-1]
-            require(peer['verified'] and peer['by'] == 'identity/windows' and peer['user'] and
-                    Path(peer['exe']).name.lower() == executable.name.lower(), 'logging caller identity incorrect')
+            require(peer['verified'] and peer['by'] == ATTESTATION_BY and attested_principal(peer) and
+                    Path(peer['exe']).name.lower() == executable.name.lower(),
+                    'logging caller identity incorrect: ' + json.dumps(peer))
             _, error = client.communicate('\n', timeout=15)
             require(client.returncode == 0, 'facade consumer failed: ' + error)
             require(all(p.poll() is None for p in processes), 'service died with its client')

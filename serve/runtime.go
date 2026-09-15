@@ -106,14 +106,19 @@ func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() err
 	}
 	sink, closeSink, err := runtimeLogSink(options.out)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "runtime logging:", err)
+		complain("runtime logging:", err)
 	}
 	if closeSink != nil {
 		defer closeSink.Close()
 	}
 	var executor acceptanceprovider.Executor
-	if options.executeDownloads {
-		executor = downloadserve.HTTPExecution{OnError: func(err error) { fmt.Fprintln(os.Stderr, "runtime:", err) }}
+	report := func(err error) { complain("runtime:", err) }
+	if managed {
+		if executor, err = managedJobExecutor(options.jobRoot, report); err != nil {
+			return fmt.Errorf("runtime jobs: %w", err)
+		}
+	} else if options.executeDownloads {
+		executor = downloadserve.HTTPExecution{OnError: report}
 	}
 	var registry *model.Registry
 	if !options.withoutModels {
@@ -142,6 +147,37 @@ func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() err
 		}
 	}
 	return runtime.Serve(ctx)
+}
+
+// managedJobRoot is the managed job store the runtime opens for a state
+// directory; an empty state selects the current user's runtime-v1 directory.
+func managedJobRoot(state string) (string, error) {
+	if state == "" {
+		var err error
+		if state, err = runtimeStateDir(runtime.GOOS, os.Getenv, os.UserHomeDir); err != nil {
+			return "", err
+		}
+	}
+	if !filepath.IsAbs(state) {
+		return "", fmt.Errorf("runtime: absolute state directory required")
+	}
+	return filepath.Join(state, "jobs"), nil
+}
+
+// managedJobExecutor selects the executor whose profile the managed root
+// retains. Roots created by the runtime keep HTTPExecution; roots converted by
+// `jobs migrate-legacy apply` keep LegacySinkExecution. The provider open
+// rechecks the profile under the host lease.
+func managedJobExecutor(root string, onError func(error)) (acceptanceprovider.Executor, error) {
+	profile, owned, err := acceptanceprovider.RecordedExecutionProfile(root)
+	if err != nil {
+		return nil, err
+	}
+	execution := downloadserve.HTTPExecution{OnError: onError}
+	if owned && profile == downloadserve.LegacySinkProfile {
+		return downloadserve.LegacySinkExecution{HTTPExecution: execution}, nil
+	}
+	return execution, nil
 }
 
 // Durable work survives user cache cleanup.

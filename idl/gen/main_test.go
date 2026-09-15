@@ -14,6 +14,12 @@ func TestHelpDoesNotNeedDefinition(t *testing.T) {
 		if err := run(args, &out); err != nil || !strings.Contains(out.String(), "Languages:") {
 			t.Fatalf("help %v: %v, %q", args, err, out.String())
 		}
+		// Running the tests needs both settings; help is where a newcomer looks.
+		for _, requirement := range []string{"GOWORK=off go test ./...", "PYTHON"} {
+			if !strings.Contains(out.String(), requirement) {
+				t.Fatalf("help %v does not name the test requirement %q", args, requirement)
+			}
+		}
 	}
 }
 

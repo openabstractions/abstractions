@@ -75,16 +75,7 @@ func TestEqualityFiveBackends(t *testing.T) {
 		}
 	}
 	t.Run("go", func(t *testing.T) { run(t, "go", "run", "main.go") })
-	t.Run("python", func(t *testing.T) {
-		p := os.Getenv("PYTHON")
-		if p == "" {
-			p, _ = exec.LookPath("python")
-		}
-		if p == "" {
-			t.Skip("Python unavailable")
-		}
-		run(t, p, "-B", "main.py")
-	})
+	t.Run("python", func(t *testing.T) { run(t, servicePython(t), "-B", "main.py") })
 	t.Run("javascript", func(t *testing.T) {
 		p, e := exec.LookPath("node")
 		if e != nil {

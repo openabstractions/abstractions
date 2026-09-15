@@ -867,7 +867,7 @@ func genCpp(s *Definition) string {
 	b.WriteString(importPrelude(s, "cpp"))
 	cppVocabulary(&b, s)
 	for _, st := range s.Structs {
-		fmt.Fprintf(&b, "\nstruct %s {\n", st.Name)
+		fmt.Fprintf(&b, "\n%sstruct %s {\n", structDoc(st, "// "), st.Name)
 		for _, f := range st.Fields {
 			fmt.Fprintf(&b, "    %s %s%s;\n", cppType(s, f), f.Ident("cpp"), cppInit(f))
 		}

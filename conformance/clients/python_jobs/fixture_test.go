@@ -17,6 +17,7 @@ import (
 	execution "github.com/openabstractions/abstraction-download/go/serve"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	"github.com/openabstractions/abstraction-identity/listen"
+	"github.com/openabstractions/abstractions/conformance/clients/fixture"
 )
 
 func TestInstalledPythonJobs(t *testing.T) {
@@ -77,7 +78,7 @@ func TestInstalledPythonJobs(t *testing.T) {
 	cmd := exec.CommandContext(ctx, python, "-I", script, os.Getenv("OA_PYTHON_JOBS_PACKAGES"), options.Endpoint, source.URL, fmt.Sprintf("sha256:%x", sha256.Sum256(body)), fmt.Sprint(len(body)))
 	cmd.Dir = clientHome
 	cmd.Env = append(os.Environ(), "HOME="+clientHome, "USERPROFILE="+clientHome, "APPDATA="+clientHome, "XDG_CONFIG_HOME="+clientHome, "ProgramData="+clientHome, "PYTHONDONTWRITEBYTECODE=1")
-	out, err := cmd.CombinedOutput()
+	out, err := fixture.Output(ctx, cmd)
 	if err != nil {
 		t.Fatalf("Python: %v %s", err, out)
 	}

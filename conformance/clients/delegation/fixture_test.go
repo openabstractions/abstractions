@@ -9,6 +9,7 @@ import (
 	request "github.com/openabstractions/abstraction-download/go/abstraction/download/request"
 	downloadserve "github.com/openabstractions/abstraction-download/go/serve"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
+	"github.com/openabstractions/abstractions/conformance/clients/fixture"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -121,7 +122,7 @@ func command(t *testing.T, args ...string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	c := exec.CommandContext(ctx, os.Getenv("OA_CPP_DELEGATION_PROBE"), args...)
-	output, err := c.CombinedOutput()
+	output, err := fixture.Output(ctx, c)
 	if err != nil {
 		t.Fatalf("C++ %v: %v\n%s", args, err, output)
 	}

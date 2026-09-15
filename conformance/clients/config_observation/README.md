@@ -12,5 +12,10 @@ waiting, moved transport ownership and restart gap. It also binds an explicit
 in-process generated test dispatcher using the same descriptor and rejects a
 mismatched reference. No C++ service daemon or owner configuration is used.
 
+A third runtime lifetime configures an explicit edit policy. The consumer's
+ReplaceUser receives `forbidden` and then `unavailable` with an empty snapshot,
+and ReadUser shows the revision unchanged each time. When the policy permits,
+the same edit applies and reads back.
+
 Missing config/IPC dependencies must refuse by name. This fixture measures native
 Windows/MSVC; a Darwin run remains subject to the current Program identity limit.

@@ -17,6 +17,8 @@ func includeImports(b backend, s *Definition) []string {
 			out = append(out, strings.ReplaceAll(namespaceFor(imp.Def.Namespaces, "cpp"), ".", "/")+"/rec.h")
 		case "python":
 			out = append(out, namespaceFor(imp.Def.Namespaces, "python")+".rec")
+		case "javascript":
+			out = append(out, s.JSImports[imp.Alias])
 		}
 	}
 	return out
@@ -49,6 +51,12 @@ func emitIncluded(b backend, s *Definition) string {
 		}
 		links.WriteString("</ul></section>")
 		return strings.Replace(body, "</body>", links.String()+"</body>", 1)
+	}
+	if b.lang == "javascript" {
+		return emitJSIncluded(b, s)
+	}
+	if b.lang == "rust" {
+		return emitRustIncluded(b, s)
 	}
 	s = importCarriers(s)
 	body := b.emit(s)
