@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -65,8 +64,10 @@ func TestPythonOptOut(t *testing.T) {
 
 // isStoreAlias reports the Windows App Execution Alias under
 // %LOCALAPPDATA%\Microsoft\WindowsApps, which starts the Store instead of Python.
+// Backslashes are replaced directly: filepath.ToSlash converts only the host's
+// separator, so on Linux and macOS it left the Windows path unrecognised.
 func isStoreAlias(path string) bool {
-	return strings.Contains(strings.ToLower(filepath.ToSlash(path)), "/microsoft/windowsapps/")
+	return strings.Contains(strings.ToLower(strings.ReplaceAll(path, `\`, "/")), "/microsoft/windowsapps/")
 }
 
 func pythonVersion(path string) (int, int, error) {
