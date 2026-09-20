@@ -6,13 +6,95 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"runtime"
 	"testing"
 	"time"
+	"unsafe"
 
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	"golang.org/x/sys/windows"
 )
+
+func windowsTokenPrivileges(token windows.Token) ([]windows.LUIDAndAttributes, error) {
+	var size uint32
+	if err := windows.GetTokenInformation(token, windows.TokenPrivileges, nil, 0, &size); !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) {
+		return nil, err
+	}
+	data := make([]byte, size)
+	if err := windows.GetTokenInformation(token, windows.TokenPrivileges, &data[0], size, &size); err != nil {
+		return nil, err
+	}
+	privileges := (*windows.Tokenprivileges)(unsafe.Pointer(&data[0])).AllPrivileges()
+	return append([]windows.LUIDAndAttributes(nil), privileges...), nil
+}
+
+func disableWindowsReadBypassPrivileges(t *testing.T, token windows.Token) {
+	t.Helper()
+	privileges, err := windowsTokenPrivileges(token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"SeBackupPrivilege", "SeRestorePrivilege"} {
+		var luid windows.LUID
+		if err := windows.LookupPrivilegeValue(nil, windows.StringToUTF16Ptr(name), &luid); err != nil {
+			t.Fatal(err)
+		}
+		for _, privilege := range privileges {
+			if privilege.Luid != luid {
+				continue
+			}
+			state := windows.Tokenprivileges{
+				PrivilegeCount: 1,
+				Privileges: [1]windows.LUIDAndAttributes{{
+					Luid:       luid,
+					Attributes: privilege.Attributes &^ windows.SE_PRIVILEGE_ENABLED,
+				}},
+			}
+			if err := windows.AdjustTokenPrivileges(token, false, &state, 0, nil, nil); err != nil {
+				t.Fatalf("disable %s: %v", name, err)
+			}
+		}
+	}
+	privileges, err = windowsTokenPrivileges(token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"SeBackupPrivilege", "SeRestorePrivilege"} {
+		var luid windows.LUID
+		if err := windows.LookupPrivilegeValue(nil, windows.StringToUTF16Ptr(name), &luid); err != nil {
+			t.Fatal(err)
+		}
+		for _, privilege := range privileges {
+			if privilege.Luid == luid && privilege.Attributes&windows.SE_PRIVILEGE_ENABLED != 0 {
+				t.Fatalf("%s remained enabled on the test thread", name)
+			}
+		}
+	}
+}
+
+func withoutWindowsReadBypassPrivileges(t *testing.T, call func()) {
+	t.Helper()
+	runtime.LockOSThread()
+	if err := windows.ImpersonateSelf(windows.SecurityImpersonation); err != nil {
+		runtime.UnlockOSThread()
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := windows.RevertToSelf(); err != nil {
+			t.Errorf("revert thread impersonation: %v", err)
+			return
+		}
+		runtime.UnlockOSThread()
+	}()
+	var token windows.Token
+	if err := windows.OpenThreadToken(windows.CurrentThread(), windows.TOKEN_ADJUST_PRIVILEGES|windows.TOKEN_QUERY, false, &token); err != nil {
+		t.Fatal(err)
+	}
+	defer token.Close()
+	disableWindowsReadBypassPrivileges(t, token)
+	call()
+}
 
 // A policy file whose ACL denies reads keeps answering access denied. The
 // policy store retries that transient writer-facing error until its read budget,
@@ -47,35 +129,37 @@ func TestADecisionThatCannotBeReadInTimeIsUnavailable(t *testing.T) {
 		denied = false
 	}
 	t.Cleanup(reset)
-	if _, err := os.Lstat(r.path); err != nil {
-		t.Fatalf("read-denied policy metadata: %v", err)
-	}
-	if f, err := os.Open(r.path); err == nil {
-		f.Close()
-		t.Fatal("read-denied policy opened")
-	} else if !errors.Is(err, windows.ERROR_ACCESS_DENIED) {
-		t.Fatalf("read-denied policy answered %v, want access denied", err)
-	}
+	withoutWindowsReadBypassPrivileges(t, func() {
+		if _, err := os.Lstat(r.path); err != nil {
+			t.Fatalf("read-denied policy metadata: %v", err)
+		}
+		if f, err := os.Open(r.path); err == nil {
+			f.Close()
+			t.Fatal("read-denied policy opened")
+		} else if !errors.Is(err, windows.ERROR_ACCESS_DENIED) {
+			t.Fatalf("read-denied policy answered %v, want access denied", err)
+		}
 
-	start := time.Now()
-	checkErr := r.policy.CheckState(context.Background())
-	checkElapsed := time.Since(start)
-	if !errors.Is(checkErr, context.DeadlineExceeded) {
-		t.Fatalf("CheckState = %v after %v, want deadline exceeded", checkErr, checkElapsed)
-	}
-	if checkElapsed < decisionBudget-100*time.Millisecond || checkElapsed > decisionBudget+time.Second {
-		t.Fatalf("CheckState returned after %v, want the %v read budget", checkElapsed, decisionBudget)
-	}
+		start := time.Now()
+		checkErr := r.policy.CheckState(context.Background())
+		checkElapsed := time.Since(start)
+		if !errors.Is(checkErr, context.DeadlineExceeded) {
+			t.Fatalf("CheckState = %v after %v, want deadline exceeded", checkErr, checkElapsed)
+		}
+		if checkElapsed < decisionBudget-100*time.Millisecond || checkElapsed > decisionBudget+time.Second {
+			t.Fatalf("CheckState returned after %v, want the %v read budget", checkElapsed, decisionBudget)
+		}
 
-	start = time.Now()
-	d := r.decide(context.Background(), subject, host.ConfigEditAction, host.ConfigEditResource)
-	decisionElapsed := time.Since(start)
-	if d.Outcome != rwire.DecisionOutcomeUnavailable {
-		t.Fatalf("read-denied policy decision: %+v after %v", d, decisionElapsed)
-	}
-	if decisionElapsed < decisionBudget-100*time.Millisecond || decisionElapsed > decisionBudget+time.Second {
-		t.Fatalf("decision returned after %v, want the %v read budget", decisionElapsed, decisionBudget)
-	}
+		start = time.Now()
+		d := r.decide(context.Background(), subject, host.ConfigEditAction, host.ConfigEditResource)
+		decisionElapsed := time.Since(start)
+		if d.Outcome != rwire.DecisionOutcomeUnavailable {
+			t.Fatalf("read-denied policy decision: %+v after %v", d, decisionElapsed)
+		}
+		if decisionElapsed < decisionBudget-100*time.Millisecond || decisionElapsed > decisionBudget+time.Second {
+			t.Fatalf("decision returned after %v, want the %v read budget", decisionElapsed, decisionBudget)
+		}
+	})
 
 	reset()
 	gotPolicy, err := os.ReadFile(r.path)
