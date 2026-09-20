@@ -11,7 +11,7 @@ import tempfile
 import threading
 import uuid
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from workspace import source_revision, dry_run_stop, DRY_RUN_HELP
+from workspace import source_revision, dry_run_stop, DRY_RUN_HELP, CMAKE_BUILD_TYPE_RELEASE
 
 ROOT = Path(__file__).resolve().parents[3]
 HERE = Path(__file__).resolve().parent
@@ -35,7 +35,7 @@ def main():
         base = Path(tmp)
         native, prefix = base/"native", base/"prefix"
         command([args.cmake,"-S",ROOT/"openabstractions-flat/abstraction-identity/cpp","-B",native,
-                 "-DBUILD_SHARED_LIBS=ON","-DABSTRACTION_IPC_BUILD_TESTS=OFF",f"-DCMAKE_INSTALL_PREFIX={prefix}"])
+                 "-DBUILD_SHARED_LIBS=ON","-DABSTRACTION_IPC_BUILD_TESTS=OFF",f"-DCMAKE_INSTALL_PREFIX={prefix}",CMAKE_BUILD_TYPE_RELEASE])
         command([args.cmake,"--build",native,"--config","Release"])
         command([args.cmake,"--install",native,"--config","Release"])
         library = prefix/("bin/abstraction_ipc.dll" if os.name=="nt" else "lib/libabstraction_ipc.dylib" if sys.platform=="darwin" else "lib/libabstraction_ipc.so")
@@ -46,7 +46,7 @@ def main():
             path=base/name
             shutil.copytree(ROOT/f"openabstractions-flat/abstraction-{name}/py",path)
             packages.append(path)
-        if not (base/"logging/abstraction/logging/rec.py").is_file():
+        if not (base/"logging/abstraction/logging/_codec.py").is_file():
             raise RuntimeError("generated logging Python source is required")
         installed=base/"python"
         command([sys.executable,"-m","pip","install","--no-index","--no-build-isolation","--no-deps","--target",installed,*packages])
@@ -88,7 +88,9 @@ def main():
                     if not line.startswith("RECORD "):raise AssertionError(line)
                     record=json.loads(line[7:])
                     assert record["msg"]=="python shared IPC ✓" and record["level"]==2
-                    assert record["attrs"]=={"component":"outside-consumer"}
+                    # The service adds only its own logging.* annotations, such as
+                    # logging.writer_claim for a record without a writer claim.
+                    assert {k:v for k,v in record["attrs"].items() if not k.startswith("logging.")}=={"component":"outside-consumer"},record["attrs"]
                     assert record.get("identity"),"receiving boundary did not retain caller evidence"
             finally:
                 proc.stdin.write("stop\n");proc.stdin.flush()

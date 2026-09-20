@@ -20,26 +20,33 @@ Foreground invocation keeps its existing signal handling. Supervised invocation
 also responds to signals and does not join a blocked stdin reader during shutdown.
 There is no global shutdown endpoint.
 
-The Windows parent implementation in `abstraction-download/go/serve/runtimehost`
-supplies bounded startup, EOF shutdown and forced process-tree termination.
-It attaches a kill-on-close Job Object during process creation. Completion checks
-observe job accounting and captured process handles within the shutdown budget;
-process churn that prevents complete observation is reported as an error.
+The Windows parent is `openabstractions serve host`, with its launcher in
+`internal/runtimehost`. The launcher supplies bounded startup, EOF shutdown and
+forced process-tree termination. It attaches a kill-on-close Job Object during
+process creation. Completion checks observe job accounting and captured process
+handles within the shutdown budget; process churn that prevents complete
+observation is reported as an error.
 
-Machine service registration opts in with `jobd service install --runtime`.
-The supervisor retains its download worker and observes both lifetimes. The
-runtime defaults to logging, configuration and managed durable jobs.
+The host restarts a failed child after 2 s, 10 s and 30 s, and exits with
+failure on the fourth consecutive failure; a child that ran five minutes resets
+the count. Before each launch it refuses during an installer upgrade (exit
+status 3) and exits cleanly when another runtime already answers the user's
+endpoint. Per-user, it holds a hidden session window for Restart Manager and
+sign-out shutdown and calls `RegisterApplicationRestart("serve host")` with
+`RESTART_NO_CRASH|RESTART_NO_HANG|RESTART_NO_REBOOT` before the child is ready.
+Machine scope registers `openabstractionsw.exe serve host --service` as the
+per-user service template with `openabstractions host register`; the SCM
+recovery policy restarts a host that fails. Startup diagnostics, including the
+token's `TokenElevation` and `TokenElevationType`, go to
+`%LOCALAPPDATA%\openabstractions\host\host.log`.
+
+The runtime defaults to logging, configuration and managed durable jobs.
 `openabstractions status --json` queries the generated baseline contract roster
 through the resolver under the invoking account. It separately reports read-only
 installation/supervision evidence. Running supervision does not establish
 capability readiness; interrupted queries preserve unanswered results.
 
-Per-user Startup invokes `jobdw start --runtime`. The supervisor starts the
-contained runtime before exposing its worker bus. Central start checks the default contracts'
-availability even when a supervisor already answers. This check establishes
-capability availability; it does not establish ownership of the answering host.
-
-Disposable installed recovery/removal checks, immediate activation on installation,
-same-account multi-session ownership and accepted-work recovery after forced
-termination remain pending. The parent containment package currently supports
-Windows 10/Server 2016 and later.
+Disposable installed recovery/removal checks, same-account multi-session
+ownership and accepted-work recovery after forced termination remain pending.
+The parent containment package currently supports Windows 10/Server 2016 and
+later.

@@ -118,7 +118,7 @@ func TestServicePanelRealSubmitInventoryReconcileAndResult(t *testing.T) {
 	r = panelRequest(t, h, "/action", action)
 	var recovered api.AcceptanceResult
 	_ = json.Unmarshal(r.Body.Bytes(), &recovered)
-	if recovered.Receipt == nil || recovered.Receipt.OperationId != accepted.Receipt.OperationId {
+	if recovered.Receipt == nil || recovered.Receipt.OperationID != accepted.Receipt.OperationID {
 		t.Fatal("reconcile changed operation")
 	}
 	for {
@@ -126,7 +126,7 @@ func TestServicePanelRealSubmitInventoryReconcileAndResult(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if observed.Snapshot != nil && observed.Snapshot.State == "complete" {
+		if observed.Snapshot != nil && observed.Snapshot.State == api.WorkStateComplete {
 			break
 		}
 		select {
@@ -139,6 +139,11 @@ func TestServicePanelRealSubmitInventoryReconcileAndResult(t *testing.T) {
 	var page api.InventoryPage
 	if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &page) != nil || len(page.Snapshots) != 1 {
 		t.Fatalf("inventory: %d %s", r.Code, r.Body.String())
+	}
+	// The job list names what the operation fetches: the runtime derived the
+	// label from the source URL, which has a host and no path (JOB-A12).
+	if want := "127.0.0.1"; page.Snapshots[0].Label != want || !page.Snapshots[0].LabelDerived {
+		t.Fatalf("inventory label: %q derived=%v, want %q derived", page.Snapshots[0].Label, page.Snapshots[0].LabelDerived, want)
 	}
 	q := url.Values{"key": {action.Identity.Key}, "epoch": {action.Identity.HistoryEpoch}, "owner": {action.Owner}, "endpoint": {action.Endpoint}}
 	r = panelRequest(t, h, "/result?"+q.Encode(), nil)

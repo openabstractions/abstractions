@@ -101,30 +101,30 @@ func main(){var _ r.Resolver=provider{};c:=r.NewResolverClient(transport{r.Resol
 		t.Fatalf("depth mutation escaped regression: %v %s", e, b)
 	}
 	os.WriteFile(codecPath, original, 0600)
-	writeNamespaceFile(t, out, "consumer.py", `from cross.resolver import rec as r
-from abstraction.model.api import rec as m
-from abstraction.download.request import rec as d
+	writeNamespaceFile(t, out, "consumer.py", `from cross.resolver import _codec as r
+from abstraction.model import api as m
+from abstraction.download import request as d
 v=r.Query(ref=m.Ref(registry='',repo='same',revision='',quant='',file=''),alternatives=[])
 v.alternatives=[v.ref]
 got=r.decode_query(r.encode_query(v))
 assert type(got.ref) is m.Ref and got.ref.repo=='same'
 assert d.decode_source(d.encode_source(d.Source(scheme='http',locator='named'))).locator=='named'
 class Provider(r.Resolver):
-    def Resolve(self,ref):return d.Request(artifact=d.Artifact(digest=ref.repo),sources=[])
+    def resolve(self,ref):return d.Request(artifact=d.Artifact(digest=ref.repo),sources=[])
 class Transport:
     def exchange_frame(self,frame):
-        req=r._service_decode(r._decode_oaserviceframe,frame)
-        args=r._service_decode(r._decode_oaresolverresolvearguments,req.arguments,1)
-        result=r.OAResolverResolveResult(value=Provider().Resolve(args.ref))
-        payload=r._service_encode(r.enc_oaresolverresolveresult,result,1)
-        reply=r.OAServiceReply(version=1,service=req.service,method=req.method,ok=True,payload=payload)
-        return r._service_encode(r.enc_oaservicereply,reply,0)
+        req=r._service_decode(r._read_oa_service_frame,frame)
+        args=r._service_decode(r._read_oa_resolver_resolve_arguments,req.arguments,1)
+        result=r._ResolverResolveResult(value=Provider().resolve(args.ref))
+        payload=r._service_encode(r._write_oa_resolver_resolve_result,result,1)
+        reply=r._ServiceReply(version=1,service=req.service,method=req.method,ok=True,payload=payload)
+        return r._service_encode(r._write_oa_service_reply,reply,0)
 c=r.ResolverClient(Transport())
-assert c.Resolve(v.ref).artifact.digest=='same'
-try:c.Resolve(m.Ref(registry='',repo=17,revision='',quant='',file=''))
+assert c.resolve(v.ref).artifact.digest=='same'
+try:c.resolve(m.Ref(registry='',repo=17,revision='',quant='',file=''))
 except r.Refusal:pass
 else:raise AssertionError('invalid imported Python member')
-try:r.decode_query_at(r.encode_query(v),62,64)
+try:r._decode_query_at(r.encode_query(v),62,64)
 except Exception as e: assert 'depth_exceeded' in str(e)
 else:raise AssertionError('depth reset')
 `)
@@ -174,8 +174,8 @@ func TestTypedIncludesCppConsumer(t *testing.T) {
 	writeNamespaceFile(t, out, "consumer.cpp", `#include <cross/resolver/rec.h>
 #include <type_traits>
 namespace r=cross::resolver;namespace m=abstraction::model::api;namespace d=abstraction::download::request;
-struct Provider:r::Resolver{d::Request Resolve(const m::Ref& ref) override {d::Request v;v.artifact.digest=ref.repo;return v;}};
-int main(){static_assert(std::is_same<decltype(r::Query{}.ref),m::Ref>::value);r::Query v;v.ref.repo="same";v.alternatives.push_back(v.ref);auto bytes=r::encode_query(v);auto got=r::decode_query(std::string_view(bytes));if(got.ref.repo!="same"||got.alternatives.size()!=1)return 1;d::Source source;source.scheme="http";source.locator="named";if(d::decode_source(std::string_view(d::encode_source(source))).locator!="named")return 5;Provider p;auto work=p.Resolve(got.ref);if(work.artifact.digest!="same")return 2;try{std::size_t n=0;r::decode_query_at(bytes,62,64,n);return 3;}catch(const r::Refusal& e){if(std::string(e.word)!="depth_exceeded")return 4;}return 0;}
+struct Provider:r::Resolver{d::Request resolve(const m::Ref& ref) override {d::Request v;v.artifact.digest=ref.repo;return v;}};
+int main(){static_assert(std::is_same<decltype(r::Query{}.ref),m::Ref>::value);r::Query v;v.ref.repo="same";v.alternatives.push_back(v.ref);auto bytes=r::encode_query(v);auto got=r::decode_query(std::string_view(bytes));if(got.ref.repo!="same"||got.alternatives.size()!=1)return 1;d::Source source;source.scheme="http";source.locator="named";if(d::decode_source(std::string_view(d::encode_source(source))).locator!="named")return 5;Provider p;auto work=p.resolve(got.ref);if(work.artifact.digest!="same")return 2;try{std::size_t n=0;r::detail::decode_query_at(bytes,62,64,n);return 3;}catch(const r::Refusal& e){if(std::string(e.word)!="depth_exceeded")return 4;}return 0;}
 `)
 	exe := filepath.Join(out, "consumer.exe")
 	args := []string{"-std=c++17", "-Wall", "-Wextra", "-Werror", "-I" + filepath.Join(out, "cpp"), filepath.Join(out, "consumer.cpp"), "-o", exe}
@@ -328,9 +328,9 @@ func main(){v:=r.Query{Work:&d.Request{Sources:[]d.Source{{Scheme:"http",Locator
 	if b, e := cmd.CombinedOutput(); e != nil {
 		t.Fatalf("mixed Go: %v %s", e, b)
 	}
-	writeNamespaceFile(t, out, "mixed.py", `from cross.resolver import rec as r
-from abstraction.model.api import rec as m
-from abstraction.download.request import rec as d
+	writeNamespaceFile(t, out, "mixed.py", `from cross.resolver import _codec as r
+from abstraction.model import api as m
+from abstraction.download import request as d
 v=r.Query(work=d.Request(sources=[d.Source(scheme='http',locator='test')]))
 try:r.encode(v)
 except r.Refusal as e:assert e.word=='depth_exceeded'

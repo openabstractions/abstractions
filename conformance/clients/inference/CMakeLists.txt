@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.16)
+project(inference_consumer LANGUAGES CXX)
+find_package(abstraction_facade CONFIG REQUIRED)
+find_package(abstraction_inference_api CONFIG REQUIRED)
+add_executable(inference_consumer main.cpp)
+target_compile_features(inference_consumer PRIVATE cxx_std_17)
+target_link_libraries(inference_consumer PRIVATE abstraction::facade_client abstraction::inference_api)

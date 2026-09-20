@@ -1,0 +1,150 @@
+dataclass ActionEdit
+  outcome: ActionEditOutcome | None
+  revision: str
+  current: CatalogEntry | None
+enum ActionEditOutcome
+  APPLIED = 'applied'
+  CONFLICT = 'conflict'
+  UNKNOWN = 'unknown'
+  INVALID = 'invalid'
+  EXHAUSTED = 'exhausted'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass AppMetadata
+  id: str
+  name: str
+  rights: list[str]
+  registered: str
+class Authorization
+  decide(action: str, resource: str) -> Decision
+  decide_for(subject: Subject, action: str, resource: str) -> Decision
+class AuthorizationClient(Authorization)
+  __init__(transport)
+  decide(action: str, resource: str) -> Decision
+  decide_for(subject: Subject, action: str, resource: str) -> Decision
+class AuthorizationOperator
+  list_policy(cursor: str, limit: int) -> PolicyPage
+  set_rule(expected_revision: str, rule: PolicyRule) -> PolicyEdit
+  revoke_rule(expected_revision: str, subject: Subject, action: str, resource: str) -> PolicyEdit
+  set_rule_for(expected_revision: str, rule: PolicyRule, ttl_ms: int, why: str) -> PolicyEdit
+  read_rule(subject: Subject, action: str, resource: str) -> RuleRead
+  register_action(expected_revision: str, action: str) -> ActionEdit
+  retire_action(expected_revision: str, action: str) -> ActionEdit
+class AuthorizationOperatorClient(AuthorizationOperator)
+  __init__(transport)
+  list_policy(cursor: str, limit: int) -> PolicyPage
+  set_rule(expected_revision: str, rule: PolicyRule) -> PolicyEdit
+  revoke_rule(expected_revision: str, subject: Subject, action: str, resource: str) -> PolicyEdit
+  set_rule_for(expected_revision: str, rule: PolicyRule, ttl_ms: int, why: str) -> PolicyEdit
+  read_rule(subject: Subject, action: str, resource: str) -> RuleRead
+  register_action(expected_revision: str, action: str) -> ActionEdit
+  retire_action(expected_revision: str, action: str) -> ActionEdit
+dataclass CatalogEntry
+  action: str
+  registered_by: Subject
+  registered_at: str
+dataclass Decision
+  outcome: DecisionOutcome | None
+  policy_revision: str
+enum DecisionOutcome
+  PERMITTED = 'permitted'
+  DENIED = 'denied'
+  NOT_GRANTED = 'not_granted'
+  UNKNOWN_ACTION = 'unknown_action'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+class DispatchError(ValueError)
+  __init__(code)
+dataclass HoldMetadata
+  app: str
+  name: str
+  right: str
+  why: str
+  since: str
+const KNOWN_RIGHTS
+const OPERATIONS
+dataclass PolicyEdit
+  outcome: PolicyEditOutcome | None
+  revision: str
+  current: PolicyRule | None
+enum PolicyEditOutcome
+  APPLIED = 'applied'
+  CONFLICT = 'conflict'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass PolicyPage
+  outcome: PolicyPageOutcome | None
+  revision: str
+  catalog: list[str]
+  rules: list[PolicyRule]
+  next: str
+  complete: bool
+enum PolicyPageOutcome
+  PAGE = 'page'
+  GAP = 'gap'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass PolicyRule
+  subject: Subject
+  action: str
+  resource: str
+  permit: bool
+const REFUSAL_CODES
+const RESOURCE_ACTIONS
+class Refusal(ValueError)
+  __init__(word, offset)
+dataclass Request
+  op: str
+  name: str
+  rights: list[str]
+  secret: str
+  token: str
+  right: str
+  why: str
+  app: str
+  admin: str
+dataclass ResponseMetadata
+  code: str
+  error: str
+  secret: str
+  token: str
+  expires: str
+  app: AppMetadata | None
+  right: str
+  apps: list[AppMetadata]
+  holds: list[HoldMetadata]
+dataclass RuleRead
+  outcome: RuleReadOutcome | None
+  revision: str
+  record: RuleRecord | None
+enum RuleReadOutcome
+  FOUND = 'found'
+  EXPIRED = 'expired'
+  UNKNOWN = 'unknown'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass RuleRecord
+  rule: PolicyRule
+  set_by: Subject
+  set_at: str
+  why: str
+  expires: str
+class ServiceError(Exception)
+  __init__(code, message)
+enum ServiceErrorCode
+  HANDLER_ERROR = 'handler_error'
+  INVALID_RESULT = 'invalid_result'
+  UNKNOWN_VERSION = 'unknown_version'
+  UNKNOWN_SERVICE = 'unknown_service'
+  UNKNOWN_METHOD = 'unknown_method'
+  WRONG_MODE = 'wrong_mode'
+dataclass Subject
+  account: str
+  program: str
+def decode(data)
+def encode(v)
+def service_name(frame)

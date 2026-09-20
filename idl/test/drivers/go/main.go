@@ -22,7 +22,7 @@ func awkward() *rec.Record {
 		Content: []string{"abstraction.job/base@1", "abstraction.job/intent@1",
 			"abstraction.job/envelope@1", "abstraction.job/step@1"},
 		Critical: []string{"abstraction.job/base@1"},
-		Id:       "1787202430967-a752f9a9c2c77b123ffd",
+		ID:       "1787202430967-a752f9a9c2c77b123ffd",
 		Kind:     "download",
 		Envelope: &rec.Envelope{
 			Schema:  "nas.example/transfer@2",
@@ -54,7 +54,7 @@ func ranges() *rec.Record {
 	return &rec.Record{
 		Content:    []string{"abstraction.job/base@1", "abstraction.download/ranges@1"},
 		Critical:   []string{"abstraction.job/base@1"},
-		Id:         "1787202430967-a752f9a9c2c77b123ffd",
+		ID:         "1787202430967-a752f9a9c2c77b123ffd",
 		Kind:       "download",
 		State:      "running",
 		Spec:       `{"artifact":{"bytes":23068672}}`,
@@ -76,7 +76,7 @@ func terminal() *rec.Record {
 			"abstraction.job/terminal@1", "abstraction.job/recall@1"},
 		Critical: []string{"abstraction.job/base@1", "abstraction.job/terminal@1",
 			"abstraction.job/recall@1"},
-		Id:         "1787202430967-a752f9a9c2c77b123ffd",
+		ID:         "1787202430967-a752f9a9c2c77b123ffd",
 		Kind:       "download",
 		State:      "failed",
 		Spec:       `{"artifact":{"bytes":64}}`,

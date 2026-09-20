@@ -192,6 +192,18 @@ def main():
         require(json.loads(config_file.read_text()) == config_value, 'client changed configuration provider file')
         print('PASS: service-owned state survives client exit; all six operation checks fail when services are absent; no client store')
 
+        # The installed binding consumer's activation test: a shimmed selection
+        # names a copy of the test as openabstractions.exe; nothing is installed.
+        binding = BUILD / ('b' + token)
+        run([cmake, '-S', layer('abstraction-facade') / 'cpp' / 'test' / 'binding', '-B', binding,
+             '-DCMAKE_PREFIX_PATH=' + str(stage), '-DCMAKE_BUILD_TYPE=Release'])
+        certify_compiler(binding)
+        run([cmake, '--build', binding, '--config', 'Release', '--target', 'facade_activation'])
+        ctest = shutil.which('ctest', path=str(Path(cmake).parent)) or 'ctest'
+        run([ctest, '--test-dir', binding, '-C', 'Release', '-R', '^facade_activation$', '--no-tests=error',
+             '--output-on-failure', '-V'], timeout=180)
+        print('PASS: default discovery activates a stopped installation once; explicit endpoints, untrusted servers and observation never do')
+
 
 if __name__ == '__main__':
     main()

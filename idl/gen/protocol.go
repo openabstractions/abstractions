@@ -97,7 +97,7 @@ func verdictNames(s *Definition) []string {
 	en := s.Enum(s.Proto.Verdicts)
 	out := make([]string, len(en.Members))
 	for i, m := range en.Members {
-		out[i] = m.Name
+		out[i] = m.WireName()
 	}
 	return out
 }
@@ -255,9 +255,11 @@ func goProtocol(b *strings.Builder, s *Definition) {
 	// The order is the half of a refusal that agreeing on the words leaves open:
 	// an input can break two rules, and two readers that refuse the same set can
 	// still disagree on the word for half of it.
-	b.WriteString("\n// Refusals is in the order two of them are chosen between.\n")
-	goStrings(b, "Refusals", s.Words())
-	b.WriteString("\nfunc RefusalRank(word string) int {\n\tfor i, w := range Refusals {\n\t\tif w == word {\n\t\t\treturn i\n\t\t}\n\t}\n\treturn -1\n}\n")
+	// Codec machinery, unexported like every helper: the public surface is the
+	// contract's types, errors, codecs and services (idl/LANGUAGE.md "Public surface").
+	b.WriteString("\n// refusals is in the order two of them are chosen between.\n")
+	goStrings(b, "refusals", s.Words())
+	b.WriteString("\nfunc refusalRank(word string) int {\n\tfor i, w := range refusals {\n\t\tif w == word {\n\t\t\treturn i\n\t\t}\n\t}\n\treturn -1\n}\n")
 	if s.Proto == nil {
 		return
 	}
@@ -289,6 +291,12 @@ func goProtocol(b *strings.Builder, s *Definition) {
 }
 
 func goValueFlat(s *Definition, f Field, e string) string {
+	if goClosedEnum(f) {
+		return "out = esc(out, " + e + ".String())"
+	}
+	if goEnum(f) {
+		return "out = esc(out, string(" + e + "))"
+	}
 	switch f.Type {
 	case "string":
 		return "out = esc(out, " + e + ")"
@@ -314,7 +322,7 @@ func goValueFlat(s *Definition, f Field, e string) string {
 
 const pyRawFlat = `
 
-def raw_flat(out, s):
+def _raw_flat(out, s):
     b = s.encode("utf-8") if isinstance(s, str) else s
     i, n = 0, len(b)
     while i < n:
@@ -340,49 +348,49 @@ def raw_flat(out, s):
 
 const pyStrsFlat = `
 
-def strs_flat(out, v):
+def _strs_flat(out, v):
     out += b"["
     for i, s in enumerate(v):
         if i:
             out += b","
-        esc(out, s)
+        _esc(out, s)
     out += b"]"
 `
 
 const pyRawsFlat = `
 
-def raws_flat(out, v):
+def _raws_flat(out, v):
     out += b"["
     for i, s in enumerate(v):
         if i:
             out += b","
-        raw_flat(out, s)
+        _raw_flat(out, s)
     out += b"]"
 `
 
 const pyRawmapFlat = `
 
-def rawmap_flat(out, m):
+def _rawmap_flat(out, m):
     out += b"{"
     for i, k in enumerate(sorted(m, key=lambda k: k.encode("utf-8"))):
         if i:
             out += b","
-        esc(out, k)
+        _esc(out, k)
         out += b":"
-        raw_flat(out, m[k])
+        _raw_flat(out, m[k])
     out += b"}"
 `
 
 const pyStrmapFlat = `
 
-def strmap_flat(out, m):
+def _strmap_flat(out, m):
     out += b"{"
     for i, k in enumerate(sorted(m, key=lambda k: k.encode("utf-8"))):
         if i:
             out += b","
-        esc(out, k)
+        _esc(out, k)
         out += b":"
-        esc(out, m[k])
+        _esc(out, m[k])
     out += b"}"
 `
 
@@ -422,9 +430,9 @@ func pyStrings(b *strings.Builder, name string, xs []string) {
 }
 
 func pyProtocol(b *strings.Builder, s *Definition) {
-	b.WriteString("\n\n# REFUSALS is in the order two of them are chosen between.")
-	pyStrings(b, "REFUSALS", s.Words())
-	b.WriteString("\n\ndef refusal_rank(word):\n    return REFUSALS.index(word) if word in REFUSALS else -1\n")
+	b.WriteString("\n\n# _REFUSALS is in the order two of them are chosen between.")
+	pyStrings(b, "_REFUSALS", s.Words())
+	b.WriteString("\n\ndef _refusal_rank(word):\n    return _REFUSALS.index(word) if word in _REFUSALS else -1\n")
 	if s.Proto == nil {
 		return
 	}
@@ -450,31 +458,31 @@ func pyProtocol(b *strings.Builder, s *Definition) {
 	b.WriteString("\n\ndef is_verdict(name):\n    return name in VERDICTS\n")
 	for _, name := range envelopes(s) {
 		pyEncoder(b, s, *s.Struct(name), true)
-		fmt.Fprintf(b, "\n\ndef encode_%s(v):\n    out = bytearray()\n    enc_wire_%s(out, v)\n    return bytes(out)\n", lower(name), lower(name))
-		fmt.Fprintf(b, "\n\ndef decode_%s(data):\n    r = _Reader(bytes(data))\n    r.ws()\n    v = _decode_%s(r)\n    r.ws()\n    if r.pos < len(r.buf):\n        raise r.refuse(\"trailing_bytes\")\n    return v\n", lower(name), lower(name))
+		fmt.Fprintf(b, "\n\ndef encode_%s(v):\n    out = bytearray()\n    _write_flat_%s(out, v)\n    return bytes(out)\n", pyStem(name), pyStem(name))
+		fmt.Fprintf(b, "\n\ndef decode_%s(data):\n    r = _Reader(bytes(data))\n    r.ws()\n    v = %s(r)\n    r.ws()\n    if r.pos < len(r.buf):\n        raise r.refuse(\"trailing_bytes\")\n    return v\n", pyStem(name), pyReader(name))
 	}
 }
 
 func pyValueFlat(s *Definition, f Field, e string) string {
 	switch f.Type {
 	case "string":
-		return "esc(out, " + e + ")"
+		return "_esc(out, " + e + ")"
 	case "i32", "i64":
-		return "num(out, " + e + ")"
+		return "_num(out, " + e + ")"
 	case "bool":
 		return `out += b"true" if ` + e + ` else b"false"`
 	case "json":
-		return "raw_flat(out, " + e + ")"
+		return "_raw_flat(out, " + e + ")"
 	case "list<string>":
-		return "strs_flat(out, " + e + ")"
+		return "_strs_flat(out, " + e + ")"
 	case "list<json>":
-		return "raws_flat(out, " + e + ")"
+		return "_raws_flat(out, " + e + ")"
 	case "map<string,json>":
-		return "rawmap_flat(out, " + e + ")"
+		return "_rawmap_flat(out, " + e + ")"
 	case "map<string,string>":
-		return "strmap_flat(out, " + e + ")"
+		return "_strmap_flat(out, " + e + ")"
 	}
-	return "enc_wire_" + lower(f.Type) + "(out, " + e + ")"
+	return "_write_flat_" + pyStem(f.Type) + "(out, " + e + ")"
 }
 
 const jsRawFlat = `
@@ -586,9 +594,11 @@ func jsStrings(b *strings.Builder, name string, xs []string) {
 }
 
 func jsProtocol(b *strings.Builder, s *Definition) {
+	var list strings.Builder
 	b.WriteString("\n// refusals is in the order two of them are chosen between.")
-	jsStrings(b, "refusals", s.Words())
-	b.WriteString("\nexport function refusalRank(word) {\n  return refusals.indexOf(word);\n}\n")
+	jsStrings(&list, "refusals", s.Words())
+	b.WriteString(strings.Replace(list.String(), "export const ", "const ", 1))
+	b.WriteString("\nfunction refusalRank(word) {\n  return refusals.indexOf(word);\n}\n")
 	if s.Proto == nil {
 		return
 	}
@@ -614,8 +624,8 @@ func jsProtocol(b *strings.Builder, s *Definition) {
 	b.WriteString("\nexport function isVerdict(name) {\n  return verdicts.includes(name);\n}\n")
 	for _, name := range envelopes(s) {
 		jsEncoder(b, s, *s.Struct(name), true)
-		fmt.Fprintf(b, "\nexport function encode%s(v) {\n  const out = new Out();\n  enc_wire_%s(out, v);\n  return out.bytes();\n}\n", name, lower(name))
-		fmt.Fprintf(b, "\nexport function decode%s(data) {\n  const r = new Reader(data);\n  r.ws();\n  const v = decode_%s(r);\n  r.ws();\n  if (r.pos < r.buf.length) throw r.refuse(\"trailing_bytes\");\n  return v;\n}\n", name, lower(name))
+		fmt.Fprintf(b, "\nexport function encode%s(v) {\n  const out = new Out();\n  writeFlat%s(out, v);\n  return out.bytes();\n}\n", jsStem(name), jsStem(name))
+		fmt.Fprintf(b, "\nexport function decode%s(data) {\n  const r = new Reader(data);\n  r.ws();\n  const v = read%s(r);\n  r.ws();\n  if (r.pos < r.buf.length) throw r.refuse(\"trailing_bytes\");\n  return v;\n}\n", jsStem(name), jsStem(name))
 	}
 }
 
@@ -638,7 +648,7 @@ func jsValueFlat(s *Definition, f Field, e string) string {
 	case "map<string,string>":
 		return "strmapFlat(out, " + e + ");"
 	}
-	return "enc_wire_" + lower(f.Type) + "(out, " + e + ");"
+	return "writeFlat" + jsStem(f.Type) + "(out, " + e + ");"
 }
 
 const cppRawFlat = `
@@ -772,9 +782,9 @@ func cppWireHelpers(b *strings.Builder, s *Definition) {
 }
 
 func cppProtocol(b *strings.Builder, s *Definition) {
-	b.WriteString("\n// kRefusals is in the order two of them are chosen between.")
+	b.WriteString("\nnamespace detail {\n// kRefusals is in the order two of them are chosen between.")
 	cppStrings(b, "kRefusals", s.Words())
-	b.WriteString("\ninline int refusal_rank(std::string_view word) {\n    for (std::size_t i = 0; i < kRefusals.size(); ++i)\n        if (kRefusals[i] == word) return static_cast<int>(i);\n    return -1;\n}\n")
+	b.WriteString("\ninline int refusal_rank(std::string_view word) {\n    for (std::size_t i = 0; i < kRefusals.size(); ++i)\n        if (kRefusals[i] == word) return static_cast<int>(i);\n    return -1;\n}\n}  // namespace detail\n")
 	if s.Proto == nil {
 		return
 	}
@@ -783,10 +793,14 @@ func cppProtocol(b *strings.Builder, s *Definition) {
 	fmt.Fprintf(b, "\ninline constexpr std::string_view kUnknownOperation = %q;\n", s.Proto.Unknown)
 	cppStrings(b, "kVerdicts", verdictNames(s))
 	b.WriteString("\ninline bool is_verdict(std::string_view name) {\n    for (const auto& v : kVerdicts) if (v == name) return true;\n    return false;\n}\n")
+	b.WriteString("\nnamespace detail {\n")
 	for _, name := range envelopes(s) {
 		cppEncoder(b, s, *s.Struct(name), true)
-		fmt.Fprintf(b, "\ninline std::string encode_%s(const %s& v) {\n    std::string out;\n    enc_wire_%s(out, v);\n    return out;\n}\n", lower(name), name, lower(name))
-		fmt.Fprintf(b, "\ninline %s decode_%s_document(std::string_view data) {\n    Reader r{data};\n    r.skip_ws();\n    %s v = decode_%s(r);\n    r.skip_ws();\n    if (r.pos < r.buf.size()) r.refuse(\"trailing_bytes\");\n    return v;\n}\n", name, lower(name), name, lower(name))
+	}
+	b.WriteString("\n}  // namespace detail\n")
+	for _, name := range envelopes(s) {
+		fmt.Fprintf(b, "\ninline std::string encode_%s(const %s& v) {\n    std::string out;\n    detail::enc_wire_%s(out, v);\n    return out;\n}\n", cppFn(name), name, cppFn(name))
+		fmt.Fprintf(b, "\ninline %s decode_%s_document(std::string_view data) {\n    detail::Reader r{data};\n    r.skip_ws();\n    %s v = detail::decode_%s(r);\n    r.skip_ws();\n    if (r.pos < r.buf.size()) r.refuse(\"trailing_bytes\");\n    return v;\n}\n", name, cppFn(name), name, cppFn(name))
 	}
 }
 
@@ -809,11 +823,11 @@ func cppValueFlat(s *Definition, f Field, e string) string {
 	case "map<string,string>":
 		return "strmap_flat(out, " + e + ");"
 	}
-	return "enc_wire_" + lower(f.Type) + "(out, " + e + ");"
+	return "enc_wire_" + cppFn(f.Type) + "(out, " + e + ");"
 }
 
 const rsRawFlat = `
-pub fn raw_flat(out: &mut Vec<u8>, s: &Raw) {
+fn raw_flat(out: &mut Vec<u8>, s: &Raw) {
     let mut i = 0;
     while i < s.len() {
         let c = s[i];
@@ -843,7 +857,7 @@ pub fn raw_flat(out: &mut Vec<u8>, s: &Raw) {
 `
 
 const rsStrsFlat = `
-pub fn strs_flat(out: &mut Vec<u8>, v: &[String]) {
+fn strs_flat(out: &mut Vec<u8>, v: &[String]) {
     out.push(b'[');
     for (i, s) in v.iter().enumerate() {
         if i > 0 {
@@ -856,7 +870,7 @@ pub fn strs_flat(out: &mut Vec<u8>, v: &[String]) {
 `
 
 const rsRawsFlat = `
-pub fn raws_flat(out: &mut Vec<u8>, v: &[Raw]) {
+fn raws_flat(out: &mut Vec<u8>, v: &[Raw]) {
     out.push(b'[');
     for (i, s) in v.iter().enumerate() {
         if i > 0 {
@@ -869,7 +883,7 @@ pub fn raws_flat(out: &mut Vec<u8>, v: &[Raw]) {
 `
 
 const rsRawmapFlat = `
-pub fn rawmap_flat(out: &mut Vec<u8>, m: &BTreeMap<String, Raw>) {
+fn rawmap_flat(out: &mut Vec<u8>, m: &BTreeMap<String, Raw>) {
     out.push(b'{');
     for (i, (k, v)) in m.iter().enumerate() {
         if i > 0 {
@@ -884,7 +898,7 @@ pub fn rawmap_flat(out: &mut Vec<u8>, m: &BTreeMap<String, Raw>) {
 `
 
 const rsStrmapFlat = `
-pub fn strmap_flat(out: &mut Vec<u8>, m: &BTreeMap<String, String>) {
+fn strmap_flat(out: &mut Vec<u8>, m: &BTreeMap<String, String>) {
     out.push(b'{');
     for (i, (k, v)) in m.iter().enumerate() {
         if i > 0 {
@@ -940,8 +954,10 @@ func rsStrings(b *strings.Builder, name string, xs []string) {
 
 func rsProtocol(b *strings.Builder, s *Definition) {
 	b.WriteString("\n// REFUSALS is in the order two of them are chosen between.")
-	rsStrings(b, "REFUSALS", s.Words())
-	b.WriteString("\npub fn refusal_rank(word: &str) -> i32 {\n    match REFUSALS.iter().position(|w| *w == word) {\n        Some(i) => i as i32,\n        None => -1,\n    }\n}\n")
+	var list strings.Builder
+	rsStrings(&list, "REFUSALS", s.Words())
+	b.WriteString(strings.Replace(list.String(), "pub const ", "const ", 1))
+	b.WriteString("\nfn refusal_rank(word: &str) -> i32 {\n    match REFUSALS.iter().position(|w| *w == word) {\n        Some(i) => i as i32,\n        None => -1,\n    }\n}\n")
 	if s.Proto == nil {
 		return
 	}
@@ -967,8 +983,8 @@ func rsProtocol(b *strings.Builder, s *Definition) {
 	b.WriteString("\npub fn is_verdict(name: &str) -> bool {\n    VERDICTS.contains(&name)\n}\n")
 	for _, name := range envelopes(s) {
 		rsEncoder(b, s, *s.Struct(name), true)
-		fmt.Fprintf(b, "\npub fn encode_%s(v: &%s) -> Vec<u8> {\n    let mut out = Vec::new();\n    enc_wire_%s(&mut out, v);\n    out\n}\n", lower(name), name, lower(name))
-		fmt.Fprintf(b, "\npub fn decode_%s_document(data: &[u8]) -> Result<%s, Refusal> {\n    let mut r = Reader { buf: data, pos: 0, depth: 0 };\n    r.skip_ws();\n    let v = decode_%s(&mut r)?;\n    r.skip_ws();\n    if r.pos < r.buf.len() {\n        return r.refuse(\"trailing_bytes\");\n    }\n    Ok(v)\n}\n", lower(name), name, lower(name))
+		fmt.Fprintf(b, "\npub fn encode_%s(v: &%s) -> Vec<u8> {\n    let mut out = Vec::new();\n    enc_wire_%s(&mut out, v);\n    out\n}\n", rsFn(name), name, rsFn(name))
+		fmt.Fprintf(b, "\npub fn decode_%s_document(data: &[u8]) -> Result<%s, Refusal> {\n    let mut r = Reader { buf: data, pos: 0, depth: 0 };\n    r.skip_ws();\n    let v = decode_%s(&mut r)?;\n    r.skip_ws();\n    if r.pos < r.buf.len() {\n        return r.refuse(\"trailing_bytes\");\n    }\n    Ok(v)\n}\n", rsFn(name), name, rsFn(name))
 	}
 }
 
@@ -993,5 +1009,5 @@ func rsValueFlat(s *Definition, f Field, e string) string {
 	case "map<string,string>":
 		return "strmap_flat(out, &" + e + ");"
 	}
-	return "enc_wire_" + lower(f.Type) + "(out, &" + e + ");"
+	return "enc_wire_" + rsFn(f.Type) + "(out, &" + e + ");"
 }

@@ -8,7 +8,7 @@ from pathlib import Path
 HERE=Path(__file__).resolve().parent
 ROOT=HERE.parents[2]
 sys.path.insert(0,str(HERE.parent))
-from workspace import layer,environment,msvc_toolchain,certify_msvc, source_revision, dry_run_stop, DRY_RUN_HELP
+from workspace import layer,environment,msvc_toolchain,certify_msvc, source_revision, dry_run_stop, DRY_RUN_HELP, CMAKE_BUILD_TYPE_RELEASE
 BUILD=ROOT/'.build'/'config'
 p=argparse.ArgumentParser(description=__doc__+'\nCertifies MSVC on Windows: run from a vcvars64 developer environment; other toolchains are refused before building.')
 p.add_argument('--run',action='store_true',help='build and execute the isolated Windows service check')
@@ -35,11 +35,11 @@ else:run(['go','build','-o',BUILD/'host.exe','.'],ROOT/'serve')
 identity=uuid.uuid4().hex[:8];native=BUILD/('n-'+identity);stage=BUILD/('s-'+identity);outside=BUILD/('c-'+identity)
 # A fresh tree per run: a cache configured by another toolchain or generator
 # installs no per-configuration export file for --config Release.
-run([cmake,'-S',layer('abstraction-config')/'cpp','-B',native,'-DBUILD_SHARED_LIBS=OFF','-DCMAKE_DISABLE_FIND_PACKAGE_abstraction_ipc=TRUE'])
+run([cmake,'-S',layer('abstraction-config')/'cpp','-B',native,'-DBUILD_SHARED_LIBS=OFF','-DCMAKE_DISABLE_FIND_PACKAGE_abstraction_ipc=TRUE',CMAKE_BUILD_TYPE_RELEASE])
 certify_msvc(native)
 run([cmake,'--build',native,'--config','Release'])
 run([cmake,'--install',native,'--config','Release','--prefix',stage])
-run([cmake,'-S',HERE,'-B',outside,'-DCMAKE_PREFIX_PATH='+str(stage)])
+run([cmake,'-S',HERE,'-B',outside,'-DCMAKE_PREFIX_PATH='+str(stage),CMAKE_BUILD_TYPE_RELEASE])
 certify_msvc(outside)
 run([cmake,'--build',outside,'--config','Release'])
 consumer=outside/'Release'/'config_consumer.exe'

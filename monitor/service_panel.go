@@ -29,6 +29,8 @@ type servicePanel struct {
 	jobs      *client.JobsClient
 	inventory *client.InventoryClient
 	history   api.HistoryWindow
+	// log is the Panel's own logging.
+	log panelLog
 }
 
 func (p *servicePanel) binding(ctx context.Context) (*client.JobsClient, *client.InventoryClient, api.HistoryWindow, error) {
@@ -37,11 +39,11 @@ func (p *servicePanel) binding(ctx context.Context) (*client.JobsClient, *client
 	if p.jobs != nil {
 		return p.jobs, p.inventory, p.history, nil
 	}
-	inventory, err := panelMachine().ResolveJobInventory(ctx, facade.Requirements{Scope: "local"})
+	inventory, err := panelMachine().ResolveJobInventory(ctx, facade.Requirements{Scope: facade.ScopeLocal})
 	if err != nil {
 		return nil, nil, api.HistoryWindow{}, err
 	}
-	jobs, err := panelMachine().ResolveJobs(ctx, facade.Requirements{Scope: "local"})
+	jobs, err := panelMachine().ResolveJobs(ctx, facade.Requirements{Scope: facade.ScopeLocal})
 	if err != nil {
 		return nil, nil, api.HistoryWindow{}, err
 	}
@@ -133,6 +135,9 @@ func (p *servicePanel) act(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "saved operation belongs to another binding; do not resubmit to a new owner", 409)
 		return
 	}
+	if action.Action != "observe" {
+		p.logAction(ctx, action.Action, map[string]string{"request.key": action.Identity.Key})
+	}
 	var result any
 	switch action.Action {
 	case "submit":
@@ -170,8 +175,8 @@ func (p *servicePanel) result(w http.ResponseWriter, r *http.Request) {
 		panelError(w, err)
 		return
 	}
-	if first.Outcome != "data" || first.Chunk == nil {
-		http.Error(w, "result: "+first.Outcome, 409)
+	if first.Outcome != api.ResultOutcomeData || first.Chunk == nil {
+		http.Error(w, "result: "+first.Outcome.String(), 409)
 		return
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
@@ -182,9 +187,13 @@ func (p *servicePanel) result(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func (p *servicePanel) settings(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" && r.Method != "POST" {
+		http.Error(w, "GET or POST required", 405)
+		return
+	}
 	ctx, cancel := panelCall(r)
 	defer cancel()
-	editor, err := panelMachine().ResolveConfigEditor(ctx, facade.Requirements{Scope: "local"})
+	editor, err := panelMachine().ResolveConfigEditor(ctx, facade.Requirements{Scope: facade.ScopeLocal})
 	if err != nil {
 		panelError(w, err)
 		return
@@ -198,15 +207,19 @@ func (p *servicePanel) settings(w http.ResponseWriter, r *http.Request) {
 		panelJSON(w, value)
 		return
 	}
-	if r.Method != "POST" {
-		http.Error(w, "GET or POST required", 405)
-		return
-	}
 	var value configwire.UserSnapshot
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&value); err != nil {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&value); err != nil {
 		http.Error(w, "invalid settings", 400)
 		return
 	}
+	var extra any
+	if decoder.Decode(&extra) != io.EOF {
+		http.Error(w, "one settings replacement required", 400)
+		return
+	}
+	p.logAction(ctx, "settings.replace", map[string]string{"settings.revision": value.Revision})
 	result, err := editor.ReplaceUserContext(ctx, value.Revision, value.Values)
 	if err != nil {
 		panelError(w, err)
@@ -231,11 +244,21 @@ func (p *servicePanel) handler(key string) http.Handler {
 	mux.HandleFunc("/binding", guard(key, p.serveBinding))
 	mux.HandleFunc("/inventory", guard(key, p.serveInventory))
 	mux.HandleFunc("/action", guard(key, p.act))
+	mux.HandleFunc("/account-work", guard(key, p.accountWork))
 	mux.HandleFunc("/result", guard(key, p.result))
 	mux.HandleFunc("/settings", guard(key, p.settings))
+	mux.HandleFunc("/settings/observe", guard(key, p.observeSettings))
 	mux.HandleFunc("/questions", guard(key, p.questions))
 	mux.HandleFunc("/rights", guard(key, p.rights))
+	mux.HandleFunc("/rights/allow", guard(key, p.rightsBundle))
+	mux.HandleFunc("/credentials-page", p.credentialsPageHandler(key))
+	mux.HandleFunc("/credentials", guard(key, p.credentials))
 	mux.HandleFunc("/runtime", guard(key, serveReadiness))
+	mux.HandleFunc("/logging", guard(key, p.logging))
+	mux.HandleFunc("/identity", guard(key, p.identity))
+	mux.HandleFunc("/explore", guard(key, p.explore))
+	p.inferenceRoutes(mux, key)
+	p.registryRoutes(mux, key)
 	return serviceBrowserBoundary(mux)
 }
 func runServicePanel(address string, open, native bool) error {

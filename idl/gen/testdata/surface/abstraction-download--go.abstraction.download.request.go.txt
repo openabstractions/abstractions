@@ -1,0 +1,52 @@
+type Raw string
+type Network uint32
+const NetworkAny
+const NetworkUnmetered
+func (Network) String() string
+func (Network) WireName() (string, bool)
+func ParseNetwork(word string) (Network, bool)
+func (Network) MarshalText() ([]byte, error)
+func (Network) UnmarshalText(text []byte) error
+func (Network) MarshalJSON() ([]byte, error)
+func (Network) UnmarshalJSON(data []byte) error
+func NetworkValues() []Network
+func (Network) Known() bool
+var DownstreamRecoveryGuarantees
+var CredentialGuarantees
+var NetworkCostGuarantees
+var WaitingExtensions
+type Constraints struct
+  Network Network
+type Artifact struct
+  Digest string
+  Size int64
+type Source struct
+  Scheme string
+  Locator string
+  Credential string
+type Request struct
+  Artifact Artifact
+  Sources []Source
+  Constraints *Constraints
+func Encode(v *Request) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+func Decode(in []byte) (*Request, error)
+func DecodeConstraintsAt(in []byte, depth, limit int) (*Constraints, int, error)
+func EncodeConstraintsAt(v *Constraints, depth int) []byte
+func EncodeConstraints(v *Constraints) []byte
+func DecodeConstraints(in []byte) (*Constraints, error)
+func DecodeArtifactAt(in []byte, depth, limit int) (*Artifact, int, error)
+func EncodeArtifactAt(v *Artifact, depth int) []byte
+func EncodeArtifact(v *Artifact) []byte
+func DecodeArtifact(in []byte) (*Artifact, error)
+func DecodeSourceAt(in []byte, depth, limit int) (*Source, int, error)
+func EncodeSourceAt(v *Source, depth int) []byte
+func EncodeSource(v *Source) []byte
+func DecodeSource(in []byte) (*Source, error)
+func DecodeRequestAt(in []byte, depth, limit int) (*Request, int, error)
+func EncodeRequestAt(v *Request, depth int) []byte
+func EncodeRequest(v *Request) []byte
+func DecodeRequest(in []byte) (*Request, error)

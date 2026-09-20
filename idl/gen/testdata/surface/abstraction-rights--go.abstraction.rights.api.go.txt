@@ -1,0 +1,230 @@
+type Raw string
+type DecisionOutcome uint32
+const DecisionOutcomePermitted
+const DecisionOutcomeDenied
+const DecisionOutcomeNotGranted
+const DecisionOutcomeUnknownAction
+const DecisionOutcomeInvalid
+const DecisionOutcomeForbidden
+const DecisionOutcomeUnavailable
+func (DecisionOutcome) String() string
+func (DecisionOutcome) WireName() (string, bool)
+func ParseDecisionOutcome(word string) (DecisionOutcome, bool)
+func (DecisionOutcome) MarshalText() ([]byte, error)
+func (DecisionOutcome) UnmarshalText(text []byte) error
+func (DecisionOutcome) MarshalJSON() ([]byte, error)
+func (DecisionOutcome) UnmarshalJSON(data []byte) error
+func DecisionOutcomeValues() []DecisionOutcome
+func (DecisionOutcome) Known() bool
+type PolicyPageOutcome uint32
+const PolicyPageOutcomePage
+const PolicyPageOutcomeGap
+const PolicyPageOutcomeInvalid
+const PolicyPageOutcomeForbidden
+const PolicyPageOutcomeUnavailable
+func (PolicyPageOutcome) String() string
+func (PolicyPageOutcome) WireName() (string, bool)
+func ParsePolicyPageOutcome(word string) (PolicyPageOutcome, bool)
+func (PolicyPageOutcome) MarshalText() ([]byte, error)
+func (PolicyPageOutcome) UnmarshalText(text []byte) error
+func (PolicyPageOutcome) MarshalJSON() ([]byte, error)
+func (PolicyPageOutcome) UnmarshalJSON(data []byte) error
+func PolicyPageOutcomeValues() []PolicyPageOutcome
+func (PolicyPageOutcome) Known() bool
+type PolicyEditOutcome uint32
+const PolicyEditOutcomeApplied
+const PolicyEditOutcomeConflict
+const PolicyEditOutcomeInvalid
+const PolicyEditOutcomeForbidden
+const PolicyEditOutcomeUnavailable
+func (PolicyEditOutcome) String() string
+func (PolicyEditOutcome) WireName() (string, bool)
+func ParsePolicyEditOutcome(word string) (PolicyEditOutcome, bool)
+func (PolicyEditOutcome) MarshalText() ([]byte, error)
+func (PolicyEditOutcome) UnmarshalText(text []byte) error
+func (PolicyEditOutcome) MarshalJSON() ([]byte, error)
+func (PolicyEditOutcome) UnmarshalJSON(data []byte) error
+func PolicyEditOutcomeValues() []PolicyEditOutcome
+func (PolicyEditOutcome) Known() bool
+type RuleReadOutcome uint32
+const RuleReadOutcomeFound
+const RuleReadOutcomeExpired
+const RuleReadOutcomeUnknown
+const RuleReadOutcomeInvalid
+const RuleReadOutcomeForbidden
+const RuleReadOutcomeUnavailable
+func (RuleReadOutcome) String() string
+func (RuleReadOutcome) WireName() (string, bool)
+func ParseRuleReadOutcome(word string) (RuleReadOutcome, bool)
+func (RuleReadOutcome) MarshalText() ([]byte, error)
+func (RuleReadOutcome) UnmarshalText(text []byte) error
+func (RuleReadOutcome) MarshalJSON() ([]byte, error)
+func (RuleReadOutcome) UnmarshalJSON(data []byte) error
+func RuleReadOutcomeValues() []RuleReadOutcome
+func (RuleReadOutcome) Known() bool
+type ActionEditOutcome uint32
+const ActionEditOutcomeApplied
+const ActionEditOutcomeConflict
+const ActionEditOutcomeUnknown
+const ActionEditOutcomeInvalid
+const ActionEditOutcomeExhausted
+const ActionEditOutcomeForbidden
+const ActionEditOutcomeUnavailable
+func (ActionEditOutcome) String() string
+func (ActionEditOutcome) WireName() (string, bool)
+func ParseActionEditOutcome(word string) (ActionEditOutcome, bool)
+func (ActionEditOutcome) MarshalText() ([]byte, error)
+func (ActionEditOutcome) UnmarshalText(text []byte) error
+func (ActionEditOutcome) MarshalJSON() ([]byte, error)
+func (ActionEditOutcome) UnmarshalJSON(data []byte) error
+func ActionEditOutcomeValues() []ActionEditOutcome
+func (ActionEditOutcome) Known() bool
+type ServiceErrorCode string
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) Known() bool
+var Operations
+var KnownRights
+var RefusalCodes
+var ResourceActions
+type Request struct
+  Op string
+  Name string
+  Rights []string
+  Secret string
+  Token string
+  Right string
+  Why string
+  App string
+  Admin string
+type AppMetadata struct
+  ID string
+  Name string
+  Rights []string
+  Registered string
+type HoldMetadata struct
+  App string
+  Name string
+  Right string
+  Why string
+  Since string
+type ResponseMetadata struct
+  Code string
+  Error string
+  Secret string
+  Token string
+  Expires string
+  App *AppMetadata
+  Right string
+  Apps []AppMetadata
+  Holds []HoldMetadata
+type Subject struct
+  Account string
+  Program string
+type Decision struct
+  Outcome DecisionOutcome
+  PolicyRevision string
+type PolicyRule struct
+  Subject Subject
+  Action string
+  Resource string
+  Permit bool
+type PolicyPage struct
+  Outcome PolicyPageOutcome
+  Revision string
+  Catalog []string
+  Rules []PolicyRule
+  Next string
+  Complete bool
+type PolicyEdit struct
+  Outcome PolicyEditOutcome
+  Revision string
+  Current *PolicyRule
+type RuleRecord struct
+  Rule PolicyRule
+  SetBy Subject
+  SetAt string
+  Why string
+  Expires string
+type RuleRead struct
+  Outcome RuleReadOutcome
+  Revision string
+  Record *RuleRecord
+type CatalogEntry struct
+  Action string
+  RegisteredBy Subject
+  RegisteredAt string
+type ActionEdit struct
+  Outcome ActionEditOutcome
+  Revision string
+  Current *CatalogEntry
+func Encode(v *Request) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+func Decode(in []byte) (*Request, error)
+type FrameWriter interface
+  WriteFrame(frame []byte) error
+type DispatchError string
+func (DispatchError) Error() string
+func ServiceName(frame []byte) (string, error)
+type FrameExchanger interface
+  ExchangeFrame(frame []byte) ([]byte, error)
+type ServiceError struct
+  Code ServiceErrorCode
+  Message string
+func (ServiceError) Error() string
+const EndpointContract
+type DescribedService interface
+  DescribeService() (contract string, ready bool, why string)
+func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+type ServedService interface
+  DescribedService
+  ServiceContract() string
+func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+type Authorization interface
+  Decide(action, resource string) (Decision, error)
+  DecideFor(subject Subject, action, resource string) (Decision, error)
+type AuthorizationTransport interface
+  FrameExchanger
+type AuthorizationClient struct
+func NewAuthorizationClient(t AuthorizationTransport) *AuthorizationClient
+type AuthorizationDispatcher struct
+  Handler Authorization
+func (AuthorizationClient) Decide(action, resource string) (result Decision, err error)
+func (AuthorizationClient) DecideFor(subject Subject, action, resource string) (result Decision, err error)
+func (AuthorizationDispatcher) DescribeService() (contract string, ready bool, why string)
+func (AuthorizationDispatcher) ServiceContract() string
+func (AuthorizationDispatcher) WriteFrame(frame []byte) error
+func (AuthorizationDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type AuthorizationOperator interface
+  ListPolicy(cursor string, limit int64) (PolicyPage, error)
+  SetRule(expectedRevision string, rule PolicyRule) (PolicyEdit, error)
+  RevokeRule(expectedRevision string, subject Subject, action, resource string) (PolicyEdit, error)
+  SetRuleFor(expectedRevision string, rule PolicyRule, ttlMs int64, why string) (PolicyEdit, error)
+  ReadRule(subject Subject, action, resource string) (RuleRead, error)
+  RegisterAction(expectedRevision, action string) (ActionEdit, error)
+  RetireAction(expectedRevision, action string) (ActionEdit, error)
+type AuthorizationOperatorTransport interface
+  FrameExchanger
+type AuthorizationOperatorClient struct
+func NewAuthorizationOperatorClient(t AuthorizationOperatorTransport) *AuthorizationOperatorClient
+type AuthorizationOperatorDispatcher struct
+  Handler AuthorizationOperator
+func (AuthorizationOperatorClient) ListPolicy(cursor string, limit int64) (result PolicyPage, err error)
+func (AuthorizationOperatorClient) SetRule(expectedRevision string, rule PolicyRule) (result PolicyEdit, err error)
+func (AuthorizationOperatorClient) RevokeRule(expectedRevision string, subject Subject, action, resource string) (result PolicyEdit, err error)
+func (AuthorizationOperatorClient) SetRuleFor(expectedRevision string, rule PolicyRule, ttlMs int64, why string) (result PolicyEdit, err error)
+func (AuthorizationOperatorClient) ReadRule(subject Subject, action, resource string) (result RuleRead, err error)
+func (AuthorizationOperatorClient) RegisterAction(expectedRevision, action string) (result ActionEdit, err error)
+func (AuthorizationOperatorClient) RetireAction(expectedRevision, action string) (result ActionEdit, err error)
+func (AuthorizationOperatorDispatcher) DescribeService() (contract string, ready bool, why string)
+func (AuthorizationOperatorDispatcher) ServiceContract() string
+func (AuthorizationOperatorDispatcher) WriteFrame(frame []byte) error
+func (AuthorizationOperatorDispatcher) ExchangeFrame(frame []byte) ([]byte, error)

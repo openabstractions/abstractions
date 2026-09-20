@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "generated/py"))
-import rec
+import _codec as rec
 
 try:
     r = rec.decode(Path(sys.argv[1]).read_bytes())

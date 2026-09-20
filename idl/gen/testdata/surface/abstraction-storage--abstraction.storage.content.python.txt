@@ -1,0 +1,511 @@
+enum AbortOutcome
+  ABORTED = 'aborted'
+  GAP = 'gap'
+  FORBIDDEN = 'forbidden'
+dataclass AbortResult
+  outcome: AbortOutcome | None
+enum Addressing
+  CONTENT = 'content'
+  NAME = 'name'
+enum AppendOutcome
+  ACCEPTED = 'accepted'
+  GAP = 'gap'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  OUT_OF_ORDER = 'out_of_order'
+  TOO_LARGE = 'too_large'
+  UNAVAILABLE = 'unavailable'
+dataclass AppendResult
+  outcome: AppendOutcome | None
+  received: int
+enum Attestation
+  DECLARED = 'declared'
+  OBSERVED = 'observed'
+  VERIFIED = 'verified'
+dataclass Basis
+  index: str
+  key: str
+  role: str
+enum BeginOutcome
+  STARTED = 'started'
+  COMMITTED = 'committed'
+  PRESENT = 'present'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  CONFLICT = 'conflict'
+  TOO_LARGE = 'too_large'
+  BUSY = 'busy'
+  UNSUPPORTED = 'unsupported'
+  UNAVAILABLE = 'unavailable'
+  EXHAUSTED = 'exhausted'
+dataclass BeginResult
+  outcome: BeginOutcome | None
+  upload: Upload | None
+  stored: Stored | None
+  limit: int
+dataclass Change
+  sequence: int
+  kind: ChangeKind | None
+  digest: str
+  size: int
+enum ChangeKind
+  ADDED = 'added'
+  REMOVED = 'removed'
+dataclass ChangePage
+  outcome: ChangePageOutcome | None
+  changes: list[Change]
+  next: str
+  at_end: bool
+enum ChangePageOutcome
+  PAGE = 'page'
+  GAP = 'gap'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  UNAVAILABLE = 'unavailable'
+dataclass Chunk
+  offset: int
+  total: int
+  data: bytes
+  eof: bool
+enum CloseOutcome
+  CLOSED = 'closed'
+  GAP = 'gap'
+  FORBIDDEN = 'forbidden'
+dataclass CloseResult
+  outcome: CloseOutcome | None
+enum CommitOutcome
+  COMMITTED = 'committed'
+  GAP = 'gap'
+  FORBIDDEN = 'forbidden'
+  INCOMPLETE = 'incomplete'
+  MISMATCH = 'mismatch'
+  UNAVAILABLE = 'unavailable'
+dataclass CommitResult
+  outcome: CommitOutcome | None
+  stored: Stored | None
+  received: int
+class ContentChanges
+  observe(cursor: str, max_changes: int, wait_ms: int) -> ChangePage
+  list(continuation: str, limit: int) -> ListingPage
+class ContentChangesClient(ContentChanges)
+  __init__(transport)
+  observe(cursor: str, max_changes: int, wait_ms: int) -> ChangePage
+  list(continuation: str, limit: int) -> ListingPage
+class ContentReader
+  open(digest: str) -> OpenResult
+  read(handle: str, offset: int, max_bytes: int) -> ReadResult
+  close(handle: str) -> CloseResult
+class ContentReaderClient(ContentReader)
+  __init__(transport)
+  open(digest: str) -> OpenResult
+  read(handle: str, offset: int, max_bytes: int) -> ReadResult
+  close(handle: str) -> CloseResult
+class ContentRemover
+  remove(target: str) -> RemoveResult
+class ContentRemoverClient(ContentRemover)
+  __init__(transport)
+  remove(target: str) -> RemoveResult
+class ContentWriter
+  begin(request: str, digest: str, size: int) -> BeginResult
+  append(handle: str, offset: int, data: bytes) -> AppendResult
+  commit(handle: str) -> CommitResult
+  abort(handle: str) -> AbortResult
+class ContentWriterClient(ContentWriter)
+  __init__(transport)
+  begin(request: str, digest: str, size: int) -> BeginResult
+  append(handle: str, offset: int, data: bytes) -> AppendResult
+  commit(handle: str) -> CommitResult
+  abort(handle: str) -> AbortResult
+dataclass Dangling
+  holder: Holder
+  basis: Basis
+  reference: str
+  expected_digest: str
+  expected_size: int
+  observed_at: str
+enum DescribeOutcome
+  DESCRIBED = 'described'
+  UNKNOWN = 'unknown'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  UNAVAILABLE = 'unavailable'
+dataclass DescribeResult
+  outcome: DescribeOutcome | None
+  manifest: Manifest | None
+class DispatchError(ValueError)
+  __init__(code)
+dataclass Entry
+  role: str
+  digest: str
+  size: int
+  media_type: str
+  evidence: Evidence | None
+  locator: str
+  manifest: str
+  annotations: dict[str, str]
+enum Evidence
+  HASHED = 'hashed'
+  NAMED = 'named'
+  FOREIGN = 'foreign'
+  NONE = 'none'
+dataclass Hold
+  id: str
+  holder: Holder
+  target: str
+  purpose: str
+  lifetime: Lifetime | None
+  expires: str
+  attestation: Attestation | str
+  observed_at: str
+  basis: Basis | None
+enum HoldOutcome
+  HELD = 'held'
+  UNKNOWN_TARGET = 'unknown_target'
+  CONFLICT = 'conflict'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  EXHAUSTED = 'exhausted'
+  UNAVAILABLE = 'unavailable'
+dataclass HoldResult
+  outcome: HoldOutcome | None
+  hold: Hold | None
+dataclass Holder
+  account: str
+  program: str
+  instance: str
+  established_by: str
+  domain: str
+class Holds
+  hold(request: str, target: str, purpose: str, lifetime: Lifetime | None, lease_ms: int) -> HoldResult
+  release(hold: str) -> ReleaseResult
+  renew(hold: str, lease_ms: int) -> RenewResult
+class HoldsClient(Holds)
+  __init__(transport)
+  hold(request: str, target: str, purpose: str, lifetime: Lifetime | None, lease_ms: int) -> HoldResult
+  release(hold: str) -> ReleaseResult
+  renew(hold: str, lease_ms: int) -> RenewResult
+const INVENTORY_SOURCE_ERROR_CODES
+class Inventory
+  list(continuation: str, limit: int) -> InventoryPage
+  holders(target: str) -> InventoryPage
+  unheld(continuation: str, limit: int) -> InventoryPage
+  find(digest: str) -> InventoryPage
+class InventoryClient(Inventory)
+  __init__(transport)
+  list(continuation: str, limit: int) -> InventoryPage
+  holders(target: str) -> InventoryPage
+  unheld(continuation: str, limit: int) -> InventoryPage
+  find(digest: str) -> InventoryPage
+enum InventoryOutcome
+  PAGE = 'page'
+  GAP = 'gap'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  UNAVAILABLE = 'unavailable'
+dataclass InventoryPage
+  outcome: InventoryOutcome | None
+  stores: list[Store]
+  manifests: list[ManifestHolders]
+  objects: list[ObjectHolders]
+  dangling: list[Dangling]
+  continuation: str
+  complete: bool
+  cursor: str
+  grace_ms: int
+  audit_retention_ms: int
+class InventorySource
+  describe() -> SourceDescription
+  snapshot(continuation: str, limit: int) -> SourcePage
+  observe(cursor: str, max_changes: int, wait_ms: int) -> SourcePage
+  verify(target: str) -> SourcePage
+  remove(target: str) -> RemoveResult
+class InventorySourceClient(InventorySource)
+  __init__(transport)
+  describe() -> SourceDescription
+  snapshot(continuation: str, limit: int) -> SourcePage
+  observe(cursor: str, max_changes: int, wait_ms: int) -> SourcePage
+  verify(target: str) -> SourcePage
+  remove(target: str) -> RemoveResult
+enum Lifetime
+  UNTIL_RELEASED = 'until_released'
+  LEASE = 'lease'
+  WHILE_PRESENT = 'while_present'
+dataclass ListedObject
+  digest: str
+  size: int
+enum ListingOutcome
+  PAGE = 'page'
+  GAP = 'gap'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  UNAVAILABLE = 'unavailable'
+dataclass ListingPage
+  outcome: ListingOutcome | None
+  objects: list[ListedObject]
+  continuation: str
+  complete: bool
+  cursor: str
+dataclass Manifest
+  id: str
+  addressing: Addressing | None
+  kind: str
+  entries: list[Entry]
+  names: list[Name]
+  descriptor: dict[str, str]
+  store: str
+  superseded_by: str
+dataclass ManifestHolders
+  manifest: Manifest
+  holds: list[Hold]
+class Manifests
+  describe(id: str) -> DescribeResult
+  publish(request: str, manifest: Manifest) -> PublishResult
+class ManifestsClient(Manifests)
+  __init__(transport)
+  describe(id: str) -> DescribeResult
+  publish(request: str, manifest: Manifest) -> PublishResult
+dataclass Name
+  scheme: str
+  name: str
+dataclass Object
+  locator: str
+  size: int
+  modified: str
+  partial: bool
+  digest: str
+  evidence: Evidence | None
+dataclass ObjectHolders
+  object: Object
+  store: str
+  holds: list[Hold]
+enum OpenOutcome
+  OPENED = 'opened'
+  NOT_FOUND = 'not_found'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  UNSUPPORTED = 'unsupported'
+  UNAVAILABLE = 'unavailable'
+  EXHAUSTED = 'exhausted'
+dataclass OpenResult
+  outcome: OpenOutcome | None
+  resource: Resource | None
+enum Placement
+  LOCAL = 'local'
+  REMOTE = 'remote'
+enum PublishOutcome
+  PUBLISHED = 'published'
+  PRESENT = 'present'
+  INCOMPLETE = 'incomplete'
+  CONFLICT = 'conflict'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  EXHAUSTED = 'exhausted'
+  UNAVAILABLE = 'unavailable'
+dataclass PublishResult
+  outcome: PublishOutcome | None
+  manifest: Manifest | None
+  missing: list[str]
+enum ReadOutcome
+  DATA = 'data'
+  GAP = 'gap'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  UNAVAILABLE = 'unavailable'
+  CHANGED = 'changed'
+dataclass ReadResult
+  outcome: ReadOutcome | None
+  chunk: Chunk | None
+class Refusal(ValueError)
+  __init__(word, offset)
+enum ReleaseOutcome
+  RELEASED = 'released'
+  UNKNOWN = 'unknown'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  UNAVAILABLE = 'unavailable'
+dataclass ReleaseResult
+  outcome: ReleaseOutcome | None
+enum RemoveOutcome
+  REMOVED = 'removed'
+  NOT_FOUND = 'not_found'
+  HELD = 'held'
+  BUSY = 'busy'
+  UNSUPPORTED = 'unsupported'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  UNAVAILABLE = 'unavailable'
+dataclass RemoveResult
+  outcome: RemoveOutcome | None
+  holders: list[Holder]
+enum RenewOutcome
+  RENEWED = 'renewed'
+  UNKNOWN = 'unknown'
+  EXPIRED = 'expired'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  UNAVAILABLE = 'unavailable'
+dataclass RenewResult
+  outcome: RenewOutcome | None
+  hold: Hold | None
+dataclass Resource
+  handle: str
+  digest: str
+  size: int
+  verification: Verification | None
+class ServiceError(Exception)
+  __init__(code, message)
+enum ServiceErrorCode
+  HANDLER_ERROR = 'handler_error'
+  INVALID_RESULT = 'invalid_result'
+  UNKNOWN_VERSION = 'unknown_version'
+  UNKNOWN_SERVICE = 'unknown_service'
+  UNKNOWN_METHOD = 'unknown_method'
+  WRONG_MODE = 'wrong_mode'
+  CALLER_UNAVAILABLE = 'caller_unavailable'
+  IDENTITY_REQUIRED = 'identity_required'
+dataclass SourceChange
+  sequence: int
+  kind: SourceChangeKind | None
+  target: str
+  hold: Hold | None
+  store: Store | None
+enum SourceChangeKind
+  ADDED = 'added'
+  REMOVED = 'removed'
+  HELD = 'held'
+  RELEASED = 'released'
+  STORE_CHANGED = 'store_changed'
+dataclass SourceDescription
+  outcome: SourceDescriptionOutcome | None
+  name: str
+  stores: list[Store]
+  schemes: list[str]
+  capabilities: list[str]
+enum SourceDescriptionOutcome
+  DESCRIBED = 'described'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  UNAVAILABLE = 'unavailable'
+dataclass SourcePage
+  outcome: SourcePageOutcome | None
+  stores: list[Store]
+  manifests: list[ManifestHolders]
+  objects: list[ObjectHolders]
+  dangling: list[Dangling]
+  changes: list[SourceChange]
+  continuation: str
+  complete: bool
+  cursor: str
+enum SourcePageOutcome
+  PAGE = 'page'
+  GAP = 'gap'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  UNAVAILABLE = 'unavailable'
+dataclass Store
+  name: str
+  program: str
+  locator: str
+  rule: str
+  present: bool
+  errors: list[StoreError]
+  placement: Placement | None
+  domain: str
+dataclass StoreError
+  kind: StoreErrorKind | str
+  locator: str
+  detail: str
+enum StoreErrorKind
+  OTHER = 'other'
+  MALFORMED_INDEX = 'malformed_index'
+  UNREADABLE_INDEX = 'unreadable_index'
+  UNREADABLE_TREE = 'unreadable_tree'
+  UNREADABLE_CONFIGURATION = 'unreadable_configuration'
+dataclass Stored
+  digest: str
+  size: int
+  evidence: Evidence | None
+dataclass Upload
+  handle: str
+  digest: str
+  size: int
+  received: int
+enum Verification
+  UNVERIFIED = 'unverified'
+def decode(data)
+def decode_abort_result(data)
+def decode_append_result(data)
+def decode_basis(data)
+def decode_begin_result(data)
+def decode_change(data)
+def decode_change_page(data)
+def decode_chunk(data)
+def decode_close_result(data)
+def decode_commit_result(data)
+def decode_dangling(data)
+def decode_describe_result(data)
+def decode_entry(data)
+def decode_hold(data)
+def decode_hold_result(data)
+def decode_holder(data)
+def decode_inventory_page(data)
+def decode_listed_object(data)
+def decode_listing_page(data)
+def decode_manifest(data)
+def decode_manifest_holders(data)
+def decode_name(data)
+def decode_object(data)
+def decode_object_holders(data)
+def decode_open_result(data)
+def decode_publish_result(data)
+def decode_read_result(data)
+def decode_release_result(data)
+def decode_remove_result(data)
+def decode_renew_result(data)
+def decode_resource(data)
+def decode_source_change(data)
+def decode_source_description(data)
+def decode_source_page(data)
+def decode_store(data)
+def decode_store_error(data)
+def decode_stored(data)
+def decode_upload(data)
+def encode(v)
+def encode_abort_result(v)
+def encode_append_result(v)
+def encode_basis(v)
+def encode_begin_result(v)
+def encode_change(v)
+def encode_change_page(v)
+def encode_chunk(v)
+def encode_close_result(v)
+def encode_commit_result(v)
+def encode_dangling(v)
+def encode_describe_result(v)
+def encode_entry(v)
+def encode_hold(v)
+def encode_hold_result(v)
+def encode_holder(v)
+def encode_inventory_page(v)
+def encode_listed_object(v)
+def encode_listing_page(v)
+def encode_manifest(v)
+def encode_manifest_holders(v)
+def encode_name(v)
+def encode_object(v)
+def encode_object_holders(v)
+def encode_open_result(v)
+def encode_publish_result(v)
+def encode_read_result(v)
+def encode_release_result(v)
+def encode_remove_result(v)
+def encode_renew_result(v)
+def encode_resource(v)
+def encode_source_change(v)
+def encode_source_description(v)
+def encode_source_page(v)
+def encode_store(v)
+def encode_store_error(v)
+def encode_stored(v)
+def encode_upload(v)
+def service_name(frame)

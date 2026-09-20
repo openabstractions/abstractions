@@ -1,0 +1,10 @@
+[package]
+name="inference-consumer"
+version="0.0.0"
+edition="2021"
+[dependencies]
+abstraction-facade-native={path="../../../../openabstractions-flat/abstraction-facade/rust-native"}
+abstraction-facade-inference={path="../../../../openabstractions-flat/abstraction-facade/rust-inference"}
+[[bin]]
+name="inference-consumer"
+path="main.rs"

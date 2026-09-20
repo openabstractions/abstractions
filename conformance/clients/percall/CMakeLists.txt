@@ -1,0 +1,12 @@
+cmake_minimum_required(VERSION 3.16)
+project(percall LANGUAGES CXX)
+find_package(abstraction_ipc CONFIG REQUIRED)
+# The generated facade records are header-only; only the transport is linked.
+set(FACADE_INCLUDE_DIR "" CACHE PATH "abstraction-facade/cpp, holding abstraction/facade/rec.h")
+if(NOT EXISTS "${FACADE_INCLUDE_DIR}/abstraction/facade/rec.h")
+    message(FATAL_ERROR "FACADE_INCLUDE_DIR must hold abstraction/facade/rec.h")
+endif()
+add_executable(cpp_percall main.cpp)
+target_compile_features(cpp_percall PRIVATE cxx_std_17)
+target_include_directories(cpp_percall PRIVATE "${FACADE_INCLUDE_DIR}")
+target_link_libraries(cpp_percall PRIVATE abstraction::ipc)

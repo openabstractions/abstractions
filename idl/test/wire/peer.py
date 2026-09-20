@@ -11,7 +11,7 @@ import socket
 import sys
 
 sys.path.insert(0, sys.argv[1])
-import rec  # noqa: E402
+import _codec as rec  # noqa: E402
 
 ADDRESS = sys.argv[2]
 OUT = sys.argv[3]

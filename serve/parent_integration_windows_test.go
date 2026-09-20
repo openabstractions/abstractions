@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openabstractions/abstraction-download/go/serve/runtimehost"
+	"github.com/openabstractions/abstractions/serve/internal/runtimehost"
 )
 
 // Set the probe to a separately built central executable. This exercises its

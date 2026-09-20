@@ -182,15 +182,22 @@ fi
 # The first occurrence of a tag on a page is the declaration; a later one is a
 # citation, prose about the rule rather than the rule. Two sentences filed under
 # one tag leave a report picking one, so a passing mention can replace what a
-# rule says. scripts/behaviour-conformance.sh reads a page by the same rule.
+# rule says. A page declares only its own family of tags, the prefix most of
+# its tags carry: the download page citing [JOB-E8] states no job rule.
+# scripts/behaviour-conformance.sh reads a page by the same rules.
+own_family() {
+    grep -o '\[[A-Z][A-Z]*-[A-Z]*[0-9][0-9]*\]' "$1" | sed 's/^\[\([A-Z]*\)-.*/\1/' |
+        sort | uniq -c | sort -rn | awk 'NR == 1 { print $2 }'
+}
 invariants() {
-    awk -v PAGE="$2" '
+    awk -v PAGE="$2" -v OWN="$(own_family "$1")" '
     function emit(block, line,   before, cut, i, tag, sent) {
         gsub(/\n/, " ", block)
         while (match(block, /\[[A-Z]+-[A-Z]*[0-9]+\]/)) {
             tag = substr(block, RSTART + 1, RLENGTH - 2)
             before = substr(block, 1, RSTART - 1)
             block = substr(block, RSTART + RLENGTH)
+            if (substr(tag, 1, index(tag, "-") - 1) != OWN) continue
             if (seen[tag]++) continue
             sub(/[.:;,] *$/, "", before)
             cut = 0

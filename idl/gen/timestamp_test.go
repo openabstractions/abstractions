@@ -57,7 +57,7 @@ func TestTimestampVectors(t *testing.T) {
    if err!=nil{t.Fatal(err)}
    encoded:=Encode(r);again,err:=Decode(encoded);if err!=nil{t.Fatal(err)}
    if again.UpdatedAt!=p[2]{t.Fatalf("want %s, got %s",p[2],again.UpdatedAt)}
-   if !MicrosTimestamp(again.UpdatedAt)||MicrosTimestamp(p[1])!=(p[1]==p[2]){t.Fatal("write grammar predicate")}
+   if !microsTimestamp(again.UpdatedAt)||microsTimestamp(p[1])!=(p[1]==p[2]){t.Fatal("write grammar predicate")}
    if string(Encode(again))!=string(encoded){t.Fatal("encoding not idempotent")}
   })
  }

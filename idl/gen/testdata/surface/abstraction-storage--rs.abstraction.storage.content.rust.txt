@@ -1,0 +1,701 @@
+pub type Raw
+pub enum Verification
+  Unverified
+  pub const ALL: [Self; 1]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum OpenOutcome
+  Opened
+  NotFound
+  Forbidden
+  Invalid
+  Unsupported
+  Unavailable
+  Exhausted
+  pub const ALL: [Self; 7]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum ReadOutcome
+  Data
+  Gap
+  Forbidden
+  Invalid
+  Unavailable
+  Changed
+  pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum CloseOutcome
+  Closed
+  Gap
+  Forbidden
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum BeginOutcome
+  Started
+  Committed
+  Present
+  Forbidden
+  Invalid
+  Conflict
+  TooLarge
+  Busy
+  Unsupported
+  Unavailable
+  Exhausted
+  pub const ALL: [Self; 11]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum AppendOutcome
+  Accepted
+  Gap
+  Forbidden
+  Invalid
+  OutOfOrder
+  TooLarge
+  Unavailable
+  pub const ALL: [Self; 7]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum CommitOutcome
+  Committed
+  Gap
+  Forbidden
+  Incomplete
+  Mismatch
+  Unavailable
+  pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum AbortOutcome
+  Aborted
+  Gap
+  Forbidden
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum Evidence
+  Hashed
+  Named
+  Foreign
+  None
+  pub const ALL: [Self; 4]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum ChangeKind
+  Added
+  Removed
+  pub const ALL: [Self; 2]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum ChangePageOutcome
+  Page
+  Gap
+  Forbidden
+  Invalid
+  Unavailable
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum ListingOutcome
+  Page
+  Gap
+  Forbidden
+  Invalid
+  Unavailable
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum Addressing
+  Content
+  Name
+  pub const ALL: [Self; 2]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum Placement
+  Local
+  Remote
+  pub const ALL: [Self; 2]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum Lifetime
+  UntilReleased
+  Lease
+  WhilePresent
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub mod attestation
+  pub const DECLARED: &str
+  pub const OBSERVED: &str
+  pub const VERIFIED: &str
+  pub const ALL: [&str; 3]
+pub mod store_error_kind
+  pub const OTHER: &str
+  pub const MALFORMED_INDEX: &str
+  pub const UNREADABLE_INDEX: &str
+  pub const UNREADABLE_TREE: &str
+  pub const UNREADABLE_CONFIGURATION: &str
+  pub const ALL: [&str; 5]
+pub enum HoldOutcome
+  Held
+  UnknownTarget
+  Conflict
+  Forbidden
+  Invalid
+  Exhausted
+  Unavailable
+  pub const ALL: [Self; 7]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum ReleaseOutcome
+  Released
+  Unknown
+  Forbidden
+  Invalid
+  Unavailable
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum RenewOutcome
+  Renewed
+  Unknown
+  Expired
+  Forbidden
+  Invalid
+  Unavailable
+  pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum DescribeOutcome
+  Described
+  Unknown
+  Forbidden
+  Invalid
+  Unavailable
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum PublishOutcome
+  Published
+  Present
+  Incomplete
+  Conflict
+  Forbidden
+  Invalid
+  Exhausted
+  Unavailable
+  pub const ALL: [Self; 8]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum InventoryOutcome
+  Page
+  Gap
+  Forbidden
+  Invalid
+  Unavailable
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum RemoveOutcome
+  Removed
+  NotFound
+  Held
+  Busy
+  Unsupported
+  Forbidden
+  Invalid
+  Unavailable
+  pub const ALL: [Self; 8]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum SourceDescriptionOutcome
+  Described
+  Forbidden
+  Invalid
+  Unavailable
+  pub const ALL: [Self; 4]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum SourceChangeKind
+  Added
+  Removed
+  Held
+  Released
+  StoreChanged
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum SourcePageOutcome
+  Page
+  Gap
+  Forbidden
+  Invalid
+  Unavailable
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub mod service_error_code
+  pub const HANDLER_ERROR: &str
+  pub const INVALID_RESULT: &str
+  pub const UNKNOWN_VERSION: &str
+  pub const UNKNOWN_SERVICE: &str
+  pub const UNKNOWN_METHOD: &str
+  pub const WRONG_MODE: &str
+  pub const CALLER_UNAVAILABLE: &str
+  pub const IDENTITY_REQUIRED: &str
+  pub const ALL: [&str; 8]
+pub const INVENTORY_SOURCE_ERROR_CODES: [&str; 2]
+pub struct Resource
+  handle: String
+  digest: String
+  size: i64
+  verification: Verification
+pub struct OpenResult
+  outcome: OpenOutcome
+  resource: Option<Resource>
+pub struct Chunk
+  offset: i64
+  total: i64
+  data: Vec<u8>
+  eof: bool
+pub struct ReadResult
+  outcome: ReadOutcome
+  chunk: Option<Chunk>
+pub struct CloseResult
+  outcome: CloseOutcome
+pub struct Upload
+  handle: String
+  digest: String
+  size: i64
+  received: i64
+pub struct Stored
+  digest: String
+  size: i64
+  evidence: Evidence
+pub struct BeginResult
+  outcome: BeginOutcome
+  upload: Option<Upload>
+  stored: Option<Stored>
+  limit: i64
+pub struct AppendResult
+  outcome: AppendOutcome
+  received: i64
+pub struct CommitResult
+  outcome: CommitOutcome
+  stored: Option<Stored>
+  received: i64
+pub struct AbortResult
+  outcome: AbortOutcome
+pub struct Change
+  sequence: i64
+  kind: ChangeKind
+  digest: String
+  size: i64
+pub struct ChangePage
+  outcome: ChangePageOutcome
+  changes: Vec<Change>
+  next: String
+  at_end: bool
+pub struct ListedObject
+  digest: String
+  size: i64
+pub struct ListingPage
+  outcome: ListingOutcome
+  objects: Vec<ListedObject>
+  continuation: String
+  complete: bool
+  cursor: String
+pub struct Object
+  locator: String
+  size: i64
+  modified: String
+  partial: bool
+  digest: String
+  evidence: Evidence
+pub struct Entry
+  role: String
+  digest: String
+  size: i64
+  media_type: String
+  evidence: Evidence
+  locator: String
+  manifest: String
+  annotations: BTreeMap<String, String>
+pub struct Name
+  scheme: String
+  name: String
+pub struct Manifest
+  id: String
+  addressing: Addressing
+  kind: String
+  entries: Vec<Entry>
+  names: Vec<Name>
+  descriptor: BTreeMap<String, String>
+  store: String
+  superseded_by: String
+pub struct Holder
+  account: String
+  program: String
+  instance: String
+  established_by: String
+  domain: String
+pub struct Basis
+  index: String
+  key: String
+  role: String
+pub struct Hold
+  id: String
+  holder: Holder
+  target: String
+  purpose: String
+  lifetime: Lifetime
+  expires: String
+  attestation: String
+  observed_at: String
+  basis: Option<Basis>
+pub struct Dangling
+  holder: Holder
+  basis: Basis
+  reference: String
+  expected_digest: String
+  expected_size: i64
+  observed_at: String
+pub struct StoreError
+  kind: String
+  locator: String
+  detail: String
+pub struct Store
+  name: String
+  program: String
+  locator: String
+  rule: String
+  present: bool
+  errors: Vec<StoreError>
+  placement: Placement
+  domain: String
+pub struct HoldResult
+  outcome: HoldOutcome
+  hold: Option<Hold>
+pub struct ReleaseResult
+  outcome: ReleaseOutcome
+pub struct RenewResult
+  outcome: RenewOutcome
+  hold: Option<Hold>
+pub struct DescribeResult
+  outcome: DescribeOutcome
+  manifest: Option<Manifest>
+pub struct PublishResult
+  outcome: PublishOutcome
+  manifest: Option<Manifest>
+  missing: Vec<String>
+pub struct ManifestHolders
+  manifest: Manifest
+  holds: Vec<Hold>
+pub struct ObjectHolders
+  object: Object
+  store: String
+  holds: Vec<Hold>
+pub struct InventoryPage
+  outcome: InventoryOutcome
+  stores: Vec<Store>
+  manifests: Vec<ManifestHolders>
+  objects: Vec<ObjectHolders>
+  dangling: Vec<Dangling>
+  continuation: String
+  complete: bool
+  cursor: String
+  grace_ms: i64
+  audit_retention_ms: i64
+pub struct RemoveResult
+  outcome: RemoveOutcome
+  holders: Vec<Holder>
+pub struct SourceDescription
+  outcome: SourceDescriptionOutcome
+  name: String
+  stores: Vec<Store>
+  schemes: Vec<String>
+  capabilities: Vec<String>
+pub struct SourceChange
+  sequence: i64
+  kind: SourceChangeKind
+  target: String
+  hold: Option<Hold>
+  store: Option<Store>
+pub struct SourcePage
+  outcome: SourcePageOutcome
+  stores: Vec<Store>
+  manifests: Vec<ManifestHolders>
+  objects: Vec<ObjectHolders>
+  dangling: Vec<Dangling>
+  changes: Vec<SourceChange>
+  continuation: String
+  complete: bool
+  cursor: String
+pub fn encode(v: &OpenResult) -> Vec<u8>
+pub struct Refusal
+  word: &'static str
+  offset: usize
+pub fn decode(data: &[u8]) -> Result<OpenResult, Refusal>
+pub use abstraction_frame::FrameTransport
+pub struct ServiceError
+  code: String
+  message: String
+pub enum CallError<E>
+  Transport(E)
+  Refusal(Refusal)
+  Dispatch(&'static str)
+  Service(ServiceError)
+pub trait ContentReader
+  type Error
+  fn open(&self, digest: String) -> Result<OpenResult, Self::Error>
+  fn read(&self, handle: String, offset: i64, max_bytes: i64) -> Result<ReadResult, Self::Error>
+  fn close(&self, handle: String) -> Result<CloseResult, Self::Error>
+pub struct ContentReaderClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait ContentWriter
+  type Error
+  fn begin(&self, request: String, digest: String, size: i64) -> Result<BeginResult, Self::Error>
+  fn append(&self, handle: String, offset: i64, data: Vec<u8>) -> Result<AppendResult, Self::Error>
+  fn commit(&self, handle: String) -> Result<CommitResult, Self::Error>
+  fn abort(&self, handle: String) -> Result<AbortResult, Self::Error>
+pub struct ContentWriterClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait ContentChanges
+  type Error
+  fn observe(&self, cursor: String, max_changes: i64, wait_ms: i64) -> Result<ChangePage, Self::Error>
+  fn list(&self, continuation: String, limit: i64) -> Result<ListingPage, Self::Error>
+pub struct ContentChangesClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait Holds
+  type Error
+  fn hold(&self, request: String, target: String, purpose: String, lifetime: Lifetime, lease_ms: i64) -> Result<HoldResult, Self::Error>
+  fn release(&self, hold: String) -> Result<ReleaseResult, Self::Error>
+  fn renew(&self, hold: String, lease_ms: i64) -> Result<RenewResult, Self::Error>
+pub struct HoldsClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait Manifests
+  type Error
+  fn describe(&self, id: String) -> Result<DescribeResult, Self::Error>
+  fn publish(&self, request: String, manifest: Manifest) -> Result<PublishResult, Self::Error>
+pub struct ManifestsClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait Inventory
+  type Error
+  fn list(&self, continuation: String, limit: i64) -> Result<InventoryPage, Self::Error>
+  fn holders(&self, target: String) -> Result<InventoryPage, Self::Error>
+  fn unheld(&self, continuation: String, limit: i64) -> Result<InventoryPage, Self::Error>
+  fn find(&self, digest: String) -> Result<InventoryPage, Self::Error>
+pub struct InventoryClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait ContentRemover
+  type Error
+  fn remove(&self, target: String) -> Result<RemoveResult, Self::Error>
+pub struct ContentRemoverClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait InventorySource
+  type Error
+  fn describe(&self) -> Result<SourceDescription, Self::Error>
+  fn snapshot(&self, continuation: String, limit: i64) -> Result<SourcePage, Self::Error>
+  fn observe(&self, cursor: String, max_changes: i64, wait_ms: i64) -> Result<SourcePage, Self::Error>
+  fn verify(&self, target: String) -> Result<SourcePage, Self::Error>
+  fn remove(&self, target: String) -> Result<RemoveResult, Self::Error>
+pub struct InventorySourceClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub fn encode_resource_document(v: &Resource) -> Result<Vec<u8>, Refusal>
+pub fn decode_resource_document(data: &[u8]) -> Result<Resource, Refusal>
+pub fn encode_open_result_document(v: &OpenResult) -> Result<Vec<u8>, Refusal>
+pub fn decode_open_result_document(data: &[u8]) -> Result<OpenResult, Refusal>
+pub fn encode_chunk_document(v: &Chunk) -> Result<Vec<u8>, Refusal>
+pub fn decode_chunk_document(data: &[u8]) -> Result<Chunk, Refusal>
+pub fn encode_read_result_document(v: &ReadResult) -> Result<Vec<u8>, Refusal>
+pub fn decode_read_result_document(data: &[u8]) -> Result<ReadResult, Refusal>
+pub fn encode_close_result_document(v: &CloseResult) -> Result<Vec<u8>, Refusal>
+pub fn decode_close_result_document(data: &[u8]) -> Result<CloseResult, Refusal>
+pub fn encode_upload_document(v: &Upload) -> Result<Vec<u8>, Refusal>
+pub fn decode_upload_document(data: &[u8]) -> Result<Upload, Refusal>
+pub fn encode_stored_document(v: &Stored) -> Result<Vec<u8>, Refusal>
+pub fn decode_stored_document(data: &[u8]) -> Result<Stored, Refusal>
+pub fn encode_begin_result_document(v: &BeginResult) -> Result<Vec<u8>, Refusal>
+pub fn decode_begin_result_document(data: &[u8]) -> Result<BeginResult, Refusal>
+pub fn encode_append_result_document(v: &AppendResult) -> Result<Vec<u8>, Refusal>
+pub fn decode_append_result_document(data: &[u8]) -> Result<AppendResult, Refusal>
+pub fn encode_commit_result_document(v: &CommitResult) -> Result<Vec<u8>, Refusal>
+pub fn decode_commit_result_document(data: &[u8]) -> Result<CommitResult, Refusal>
+pub fn encode_abort_result_document(v: &AbortResult) -> Result<Vec<u8>, Refusal>
+pub fn decode_abort_result_document(data: &[u8]) -> Result<AbortResult, Refusal>
+pub fn encode_change_document(v: &Change) -> Result<Vec<u8>, Refusal>
+pub fn decode_change_document(data: &[u8]) -> Result<Change, Refusal>
+pub fn encode_change_page_document(v: &ChangePage) -> Result<Vec<u8>, Refusal>
+pub fn decode_change_page_document(data: &[u8]) -> Result<ChangePage, Refusal>
+pub fn encode_listed_object_document(v: &ListedObject) -> Result<Vec<u8>, Refusal>
+pub fn decode_listed_object_document(data: &[u8]) -> Result<ListedObject, Refusal>
+pub fn encode_listing_page_document(v: &ListingPage) -> Result<Vec<u8>, Refusal>
+pub fn decode_listing_page_document(data: &[u8]) -> Result<ListingPage, Refusal>
+pub fn encode_object_document(v: &Object) -> Result<Vec<u8>, Refusal>
+pub fn decode_object_document(data: &[u8]) -> Result<Object, Refusal>
+pub fn encode_entry_document(v: &Entry) -> Result<Vec<u8>, Refusal>
+pub fn decode_entry_document(data: &[u8]) -> Result<Entry, Refusal>
+pub fn encode_name_document(v: &Name) -> Result<Vec<u8>, Refusal>
+pub fn decode_name_document(data: &[u8]) -> Result<Name, Refusal>
+pub fn encode_manifest_document(v: &Manifest) -> Result<Vec<u8>, Refusal>
+pub fn decode_manifest_document(data: &[u8]) -> Result<Manifest, Refusal>
+pub fn encode_holder_document(v: &Holder) -> Result<Vec<u8>, Refusal>
+pub fn decode_holder_document(data: &[u8]) -> Result<Holder, Refusal>
+pub fn encode_basis_document(v: &Basis) -> Result<Vec<u8>, Refusal>
+pub fn decode_basis_document(data: &[u8]) -> Result<Basis, Refusal>
+pub fn encode_hold_document(v: &Hold) -> Result<Vec<u8>, Refusal>
+pub fn decode_hold_document(data: &[u8]) -> Result<Hold, Refusal>
+pub fn encode_dangling_document(v: &Dangling) -> Result<Vec<u8>, Refusal>
+pub fn decode_dangling_document(data: &[u8]) -> Result<Dangling, Refusal>
+pub fn encode_store_error_document(v: &StoreError) -> Result<Vec<u8>, Refusal>
+pub fn decode_store_error_document(data: &[u8]) -> Result<StoreError, Refusal>
+pub fn encode_store_document(v: &Store) -> Result<Vec<u8>, Refusal>
+pub fn decode_store_document(data: &[u8]) -> Result<Store, Refusal>
+pub fn encode_hold_result_document(v: &HoldResult) -> Result<Vec<u8>, Refusal>
+pub fn decode_hold_result_document(data: &[u8]) -> Result<HoldResult, Refusal>
+pub fn encode_release_result_document(v: &ReleaseResult) -> Result<Vec<u8>, Refusal>
+pub fn decode_release_result_document(data: &[u8]) -> Result<ReleaseResult, Refusal>
+pub fn encode_renew_result_document(v: &RenewResult) -> Result<Vec<u8>, Refusal>
+pub fn decode_renew_result_document(data: &[u8]) -> Result<RenewResult, Refusal>
+pub fn encode_describe_result_document(v: &DescribeResult) -> Result<Vec<u8>, Refusal>
+pub fn decode_describe_result_document(data: &[u8]) -> Result<DescribeResult, Refusal>
+pub fn encode_publish_result_document(v: &PublishResult) -> Result<Vec<u8>, Refusal>
+pub fn decode_publish_result_document(data: &[u8]) -> Result<PublishResult, Refusal>
+pub fn encode_manifest_holders_document(v: &ManifestHolders) -> Result<Vec<u8>, Refusal>
+pub fn decode_manifest_holders_document(data: &[u8]) -> Result<ManifestHolders, Refusal>
+pub fn encode_object_holders_document(v: &ObjectHolders) -> Result<Vec<u8>, Refusal>
+pub fn decode_object_holders_document(data: &[u8]) -> Result<ObjectHolders, Refusal>
+pub fn encode_inventory_page_document(v: &InventoryPage) -> Result<Vec<u8>, Refusal>
+pub fn decode_inventory_page_document(data: &[u8]) -> Result<InventoryPage, Refusal>
+pub fn encode_remove_result_document(v: &RemoveResult) -> Result<Vec<u8>, Refusal>
+pub fn decode_remove_result_document(data: &[u8]) -> Result<RemoveResult, Refusal>
+pub fn encode_source_description_document(v: &SourceDescription) -> Result<Vec<u8>, Refusal>
+pub fn decode_source_description_document(data: &[u8]) -> Result<SourceDescription, Refusal>
+pub fn encode_source_change_document(v: &SourceChange) -> Result<Vec<u8>, Refusal>
+pub fn decode_source_change_document(data: &[u8]) -> Result<SourceChange, Refusal>
+pub fn encode_source_page_document(v: &SourcePage) -> Result<Vec<u8>, Refusal>
+pub fn decode_source_page_document(data: &[u8]) -> Result<SourcePage, Refusal>
+pub mod internal
+  pub fn micros_timestamp(text: &str) -> bool
+  pub fn wide_timestamp(text: &str) -> bool
+  pub fn decode_resource_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Resource, usize), super::Refusal>
+  pub fn check_resource(v: &super::Resource, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_resource_at(v: &super::Resource, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_open_result_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::OpenResult, usize), super::Refusal>
+  pub fn check_open_result(v: &super::OpenResult, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_open_result_at(v: &super::OpenResult, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_chunk_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Chunk, usize), super::Refusal>
+  pub fn check_chunk(v: &super::Chunk, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_chunk_at(v: &super::Chunk, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_read_result_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ReadResult, usize), super::Refusal>
+  pub fn check_read_result(v: &super::ReadResult, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_read_result_at(v: &super::ReadResult, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_close_result_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::CloseResult, usize), super::Refusal>
+  pub fn check_close_result(v: &super::CloseResult, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_close_result_at(v: &super::CloseResult, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_upload_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Upload, usize), super::Refusal>
+  pub fn check_upload(v: &super::Upload, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_upload_at(v: &super::Upload, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_stored_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Stored, usize), super::Refusal>
+  pub fn check_stored(v: &super::Stored, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_stored_at(v: &super::Stored, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_begin_result_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::BeginResult, usize), super::Refusal>
+  pub fn check_begin_result(v: &super::BeginResult, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_begin_result_at(v: &super::BeginResult, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_append_result_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::AppendResult, usize), super::Refusal>
+  pub fn check_append_result(v: &super::AppendResult, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_append_result_at(v: &super::AppendResult, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_commit_result_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::CommitResult, usize), super::Refusal>
+  pub fn check_commit_result(v: &super::CommitResult, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_commit_result_at(v: &super::CommitResult, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_abort_result_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::AbortResult, usize), super::Refusal>
+  pub fn check_abort_result(v: &super::AbortResult, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_abort_result_at(v: &super::AbortResult, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_change_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Change, usize), super::Refusal>
+  pub fn check_change(v: &super::Change, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_change_at(v: &super::Change, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_change_page_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ChangePage, usize), super::Refusal>
+  pub fn check_change_page(v: &super::ChangePage, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_change_page_at(v: &super::ChangePage, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_listed_object_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ListedObject, usize), super::Refusal>
+  pub fn check_listed_object(v: &super::ListedObject, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_listed_object_at(v: &super::ListedObject, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_listing_page_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ListingPage, usize), super::Refusal>
+  pub fn check_listing_page(v: &super::ListingPage, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_listing_page_at(v: &super::ListingPage, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_object_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Object, usize), super::Refusal>
+  pub fn check_object(v: &super::Object, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_object_at(v: &super::Object, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_entry_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Entry, usize), super::Refusal>
+  pub fn check_entry(v: &super::Entry, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_entry_at(v: &super::Entry, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_name_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Name, usize), super::Refusal>
+  pub fn check_name(v: &super::Name, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_name_at(v: &super::Name, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_manifest_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Manifest, usize), super::Refusal>
+  pub fn check_manifest(v: &super::Manifest, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_manifest_at(v: &super::Manifest, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_holder_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Holder, usize), super::Refusal>
+  pub fn check_holder(v: &super::Holder, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_holder_at(v: &super::Holder, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_basis_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Basis, usize), super::Refusal>
+  pub fn check_basis(v: &super::Basis, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_basis_at(v: &super::Basis, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_hold_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Hold, usize), super::Refusal>
+  pub fn check_hold(v: &super::Hold, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_hold_at(v: &super::Hold, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_dangling_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Dangling, usize), super::Refusal>
+  pub fn check_dangling(v: &super::Dangling, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_dangling_at(v: &super::Dangling, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_store_error_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::StoreError, usize), super::Refusal>
+  pub fn check_store_error(v: &super::StoreError, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_store_error_at(v: &super::StoreError, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_store_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Store, usize), super::Refusal>
+  pub fn check_store(v: &super::Store, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_store_at(v: &super::Store, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_hold_result_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::HoldResult, usize), super::Refusal>
+  pub fn check_hold_result(v: &super::HoldResult, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_hold_result_at(v: &super::HoldResult, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_release_result_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ReleaseResult, usize), super::Refusal>
+  pub fn check_release_result(v: &super::ReleaseResult, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_release_result_at(v: &super::ReleaseResult, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_renew_result_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::RenewResult, usize), super::Refusal>
+  pub fn check_renew_result(v: &super::RenewResult, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_renew_result_at(v: &super::RenewResult, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_describe_result_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::DescribeResult, usize), super::Refusal>
+  pub fn check_describe_result(v: &super::DescribeResult, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_describe_result_at(v: &super::DescribeResult, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_publish_result_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::PublishResult, usize), super::Refusal>
+  pub fn check_publish_result(v: &super::PublishResult, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_publish_result_at(v: &super::PublishResult, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_manifest_holders_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ManifestHolders, usize), super::Refusal>
+  pub fn check_manifest_holders(v: &super::ManifestHolders, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_manifest_holders_at(v: &super::ManifestHolders, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_object_holders_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ObjectHolders, usize), super::Refusal>
+  pub fn check_object_holders(v: &super::ObjectHolders, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_object_holders_at(v: &super::ObjectHolders, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_inventory_page_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::InventoryPage, usize), super::Refusal>
+  pub fn check_inventory_page(v: &super::InventoryPage, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_inventory_page_at(v: &super::InventoryPage, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_remove_result_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::RemoveResult, usize), super::Refusal>
+  pub fn check_remove_result(v: &super::RemoveResult, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_remove_result_at(v: &super::RemoveResult, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_source_description_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::SourceDescription, usize), super::Refusal>
+  pub fn check_source_description(v: &super::SourceDescription, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_source_description_at(v: &super::SourceDescription, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_source_change_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::SourceChange, usize), super::Refusal>
+  pub fn check_source_change(v: &super::SourceChange, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_source_change_at(v: &super::SourceChange, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_source_page_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::SourcePage, usize), super::Refusal>
+  pub fn check_source_page(v: &super::SourcePage, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_source_page_at(v: &super::SourcePage, depth: i32) -> Result<Vec<u8>, super::Refusal>

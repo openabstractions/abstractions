@@ -1,0 +1,897 @@
+type Raw string
+type Verification uint32
+const VerificationUnverified
+func (Verification) String() string
+func (Verification) WireName() (string, bool)
+func ParseVerification(word string) (Verification, bool)
+func (Verification) MarshalText() ([]byte, error)
+func (Verification) UnmarshalText(text []byte) error
+func (Verification) MarshalJSON() ([]byte, error)
+func (Verification) UnmarshalJSON(data []byte) error
+func VerificationValues() []Verification
+func (Verification) Known() bool
+type OpenOutcome uint32
+const OpenOutcomeOpened
+const OpenOutcomeNotFound
+const OpenOutcomeForbidden
+const OpenOutcomeInvalid
+const OpenOutcomeUnsupported
+const OpenOutcomeUnavailable
+const OpenOutcomeExhausted
+func (OpenOutcome) String() string
+func (OpenOutcome) WireName() (string, bool)
+func ParseOpenOutcome(word string) (OpenOutcome, bool)
+func (OpenOutcome) MarshalText() ([]byte, error)
+func (OpenOutcome) UnmarshalText(text []byte) error
+func (OpenOutcome) MarshalJSON() ([]byte, error)
+func (OpenOutcome) UnmarshalJSON(data []byte) error
+func OpenOutcomeValues() []OpenOutcome
+func (OpenOutcome) Known() bool
+type ReadOutcome uint32
+const ReadOutcomeData
+const ReadOutcomeGap
+const ReadOutcomeForbidden
+const ReadOutcomeInvalid
+const ReadOutcomeUnavailable
+const ReadOutcomeChanged
+func (ReadOutcome) String() string
+func (ReadOutcome) WireName() (string, bool)
+func ParseReadOutcome(word string) (ReadOutcome, bool)
+func (ReadOutcome) MarshalText() ([]byte, error)
+func (ReadOutcome) UnmarshalText(text []byte) error
+func (ReadOutcome) MarshalJSON() ([]byte, error)
+func (ReadOutcome) UnmarshalJSON(data []byte) error
+func ReadOutcomeValues() []ReadOutcome
+func (ReadOutcome) Known() bool
+type CloseOutcome uint32
+const CloseOutcomeClosed
+const CloseOutcomeGap
+const CloseOutcomeForbidden
+func (CloseOutcome) String() string
+func (CloseOutcome) WireName() (string, bool)
+func ParseCloseOutcome(word string) (CloseOutcome, bool)
+func (CloseOutcome) MarshalText() ([]byte, error)
+func (CloseOutcome) UnmarshalText(text []byte) error
+func (CloseOutcome) MarshalJSON() ([]byte, error)
+func (CloseOutcome) UnmarshalJSON(data []byte) error
+func CloseOutcomeValues() []CloseOutcome
+func (CloseOutcome) Known() bool
+type BeginOutcome uint32
+const BeginOutcomeStarted
+const BeginOutcomeCommitted
+const BeginOutcomePresent
+const BeginOutcomeForbidden
+const BeginOutcomeInvalid
+const BeginOutcomeConflict
+const BeginOutcomeTooLarge
+const BeginOutcomeBusy
+const BeginOutcomeUnsupported
+const BeginOutcomeUnavailable
+const BeginOutcomeExhausted
+func (BeginOutcome) String() string
+func (BeginOutcome) WireName() (string, bool)
+func ParseBeginOutcome(word string) (BeginOutcome, bool)
+func (BeginOutcome) MarshalText() ([]byte, error)
+func (BeginOutcome) UnmarshalText(text []byte) error
+func (BeginOutcome) MarshalJSON() ([]byte, error)
+func (BeginOutcome) UnmarshalJSON(data []byte) error
+func BeginOutcomeValues() []BeginOutcome
+func (BeginOutcome) Known() bool
+type AppendOutcome uint32
+const AppendOutcomeAccepted
+const AppendOutcomeGap
+const AppendOutcomeForbidden
+const AppendOutcomeInvalid
+const AppendOutcomeOutOfOrder
+const AppendOutcomeTooLarge
+const AppendOutcomeUnavailable
+func (AppendOutcome) String() string
+func (AppendOutcome) WireName() (string, bool)
+func ParseAppendOutcome(word string) (AppendOutcome, bool)
+func (AppendOutcome) MarshalText() ([]byte, error)
+func (AppendOutcome) UnmarshalText(text []byte) error
+func (AppendOutcome) MarshalJSON() ([]byte, error)
+func (AppendOutcome) UnmarshalJSON(data []byte) error
+func AppendOutcomeValues() []AppendOutcome
+func (AppendOutcome) Known() bool
+type CommitOutcome uint32
+const CommitOutcomeCommitted
+const CommitOutcomeGap
+const CommitOutcomeForbidden
+const CommitOutcomeIncomplete
+const CommitOutcomeMismatch
+const CommitOutcomeUnavailable
+func (CommitOutcome) String() string
+func (CommitOutcome) WireName() (string, bool)
+func ParseCommitOutcome(word string) (CommitOutcome, bool)
+func (CommitOutcome) MarshalText() ([]byte, error)
+func (CommitOutcome) UnmarshalText(text []byte) error
+func (CommitOutcome) MarshalJSON() ([]byte, error)
+func (CommitOutcome) UnmarshalJSON(data []byte) error
+func CommitOutcomeValues() []CommitOutcome
+func (CommitOutcome) Known() bool
+type AbortOutcome uint32
+const AbortOutcomeAborted
+const AbortOutcomeGap
+const AbortOutcomeForbidden
+func (AbortOutcome) String() string
+func (AbortOutcome) WireName() (string, bool)
+func ParseAbortOutcome(word string) (AbortOutcome, bool)
+func (AbortOutcome) MarshalText() ([]byte, error)
+func (AbortOutcome) UnmarshalText(text []byte) error
+func (AbortOutcome) MarshalJSON() ([]byte, error)
+func (AbortOutcome) UnmarshalJSON(data []byte) error
+func AbortOutcomeValues() []AbortOutcome
+func (AbortOutcome) Known() bool
+type Evidence uint32
+const EvidenceHashed
+const EvidenceNamed
+const EvidenceForeign
+const EvidenceNone
+func (Evidence) String() string
+func (Evidence) WireName() (string, bool)
+func ParseEvidence(word string) (Evidence, bool)
+func (Evidence) MarshalText() ([]byte, error)
+func (Evidence) UnmarshalText(text []byte) error
+func (Evidence) MarshalJSON() ([]byte, error)
+func (Evidence) UnmarshalJSON(data []byte) error
+func EvidenceValues() []Evidence
+func (Evidence) Known() bool
+type ChangeKind uint32
+const ChangeKindAdded
+const ChangeKindRemoved
+func (ChangeKind) String() string
+func (ChangeKind) WireName() (string, bool)
+func ParseChangeKind(word string) (ChangeKind, bool)
+func (ChangeKind) MarshalText() ([]byte, error)
+func (ChangeKind) UnmarshalText(text []byte) error
+func (ChangeKind) MarshalJSON() ([]byte, error)
+func (ChangeKind) UnmarshalJSON(data []byte) error
+func ChangeKindValues() []ChangeKind
+func (ChangeKind) Known() bool
+type ChangePageOutcome uint32
+const ChangePageOutcomePage
+const ChangePageOutcomeGap
+const ChangePageOutcomeForbidden
+const ChangePageOutcomeInvalid
+const ChangePageOutcomeUnavailable
+func (ChangePageOutcome) String() string
+func (ChangePageOutcome) WireName() (string, bool)
+func ParseChangePageOutcome(word string) (ChangePageOutcome, bool)
+func (ChangePageOutcome) MarshalText() ([]byte, error)
+func (ChangePageOutcome) UnmarshalText(text []byte) error
+func (ChangePageOutcome) MarshalJSON() ([]byte, error)
+func (ChangePageOutcome) UnmarshalJSON(data []byte) error
+func ChangePageOutcomeValues() []ChangePageOutcome
+func (ChangePageOutcome) Known() bool
+type ListingOutcome uint32
+const ListingOutcomePage
+const ListingOutcomeGap
+const ListingOutcomeForbidden
+const ListingOutcomeInvalid
+const ListingOutcomeUnavailable
+func (ListingOutcome) String() string
+func (ListingOutcome) WireName() (string, bool)
+func ParseListingOutcome(word string) (ListingOutcome, bool)
+func (ListingOutcome) MarshalText() ([]byte, error)
+func (ListingOutcome) UnmarshalText(text []byte) error
+func (ListingOutcome) MarshalJSON() ([]byte, error)
+func (ListingOutcome) UnmarshalJSON(data []byte) error
+func ListingOutcomeValues() []ListingOutcome
+func (ListingOutcome) Known() bool
+type Addressing uint32
+const AddressingContent
+const AddressingName
+func (Addressing) String() string
+func (Addressing) WireName() (string, bool)
+func ParseAddressing(word string) (Addressing, bool)
+func (Addressing) MarshalText() ([]byte, error)
+func (Addressing) UnmarshalText(text []byte) error
+func (Addressing) MarshalJSON() ([]byte, error)
+func (Addressing) UnmarshalJSON(data []byte) error
+func AddressingValues() []Addressing
+func (Addressing) Known() bool
+type Placement uint32
+const PlacementLocal
+const PlacementRemote
+func (Placement) String() string
+func (Placement) WireName() (string, bool)
+func ParsePlacement(word string) (Placement, bool)
+func (Placement) MarshalText() ([]byte, error)
+func (Placement) UnmarshalText(text []byte) error
+func (Placement) MarshalJSON() ([]byte, error)
+func (Placement) UnmarshalJSON(data []byte) error
+func PlacementValues() []Placement
+func (Placement) Known() bool
+type Lifetime uint32
+const LifetimeUntilReleased
+const LifetimeLease
+const LifetimeWhilePresent
+func (Lifetime) String() string
+func (Lifetime) WireName() (string, bool)
+func ParseLifetime(word string) (Lifetime, bool)
+func (Lifetime) MarshalText() ([]byte, error)
+func (Lifetime) UnmarshalText(text []byte) error
+func (Lifetime) MarshalJSON() ([]byte, error)
+func (Lifetime) UnmarshalJSON(data []byte) error
+func LifetimeValues() []Lifetime
+func (Lifetime) Known() bool
+type Attestation string
+const AttestationDeclared
+const AttestationObserved
+const AttestationVerified
+func AttestationValues() []Attestation
+func (Attestation) Known() bool
+type StoreErrorKind string
+const StoreErrorKindOther
+const StoreErrorKindMalformedIndex
+const StoreErrorKindUnreadableIndex
+const StoreErrorKindUnreadableTree
+const StoreErrorKindUnreadableConfiguration
+func StoreErrorKindValues() []StoreErrorKind
+func (StoreErrorKind) Known() bool
+type HoldOutcome uint32
+const HoldOutcomeHeld
+const HoldOutcomeUnknownTarget
+const HoldOutcomeConflict
+const HoldOutcomeForbidden
+const HoldOutcomeInvalid
+const HoldOutcomeExhausted
+const HoldOutcomeUnavailable
+func (HoldOutcome) String() string
+func (HoldOutcome) WireName() (string, bool)
+func ParseHoldOutcome(word string) (HoldOutcome, bool)
+func (HoldOutcome) MarshalText() ([]byte, error)
+func (HoldOutcome) UnmarshalText(text []byte) error
+func (HoldOutcome) MarshalJSON() ([]byte, error)
+func (HoldOutcome) UnmarshalJSON(data []byte) error
+func HoldOutcomeValues() []HoldOutcome
+func (HoldOutcome) Known() bool
+type ReleaseOutcome uint32
+const ReleaseOutcomeReleased
+const ReleaseOutcomeUnknown
+const ReleaseOutcomeForbidden
+const ReleaseOutcomeInvalid
+const ReleaseOutcomeUnavailable
+func (ReleaseOutcome) String() string
+func (ReleaseOutcome) WireName() (string, bool)
+func ParseReleaseOutcome(word string) (ReleaseOutcome, bool)
+func (ReleaseOutcome) MarshalText() ([]byte, error)
+func (ReleaseOutcome) UnmarshalText(text []byte) error
+func (ReleaseOutcome) MarshalJSON() ([]byte, error)
+func (ReleaseOutcome) UnmarshalJSON(data []byte) error
+func ReleaseOutcomeValues() []ReleaseOutcome
+func (ReleaseOutcome) Known() bool
+type RenewOutcome uint32
+const RenewOutcomeRenewed
+const RenewOutcomeUnknown
+const RenewOutcomeExpired
+const RenewOutcomeForbidden
+const RenewOutcomeInvalid
+const RenewOutcomeUnavailable
+func (RenewOutcome) String() string
+func (RenewOutcome) WireName() (string, bool)
+func ParseRenewOutcome(word string) (RenewOutcome, bool)
+func (RenewOutcome) MarshalText() ([]byte, error)
+func (RenewOutcome) UnmarshalText(text []byte) error
+func (RenewOutcome) MarshalJSON() ([]byte, error)
+func (RenewOutcome) UnmarshalJSON(data []byte) error
+func RenewOutcomeValues() []RenewOutcome
+func (RenewOutcome) Known() bool
+type DescribeOutcome uint32
+const DescribeOutcomeDescribed
+const DescribeOutcomeUnknown
+const DescribeOutcomeForbidden
+const DescribeOutcomeInvalid
+const DescribeOutcomeUnavailable
+func (DescribeOutcome) String() string
+func (DescribeOutcome) WireName() (string, bool)
+func ParseDescribeOutcome(word string) (DescribeOutcome, bool)
+func (DescribeOutcome) MarshalText() ([]byte, error)
+func (DescribeOutcome) UnmarshalText(text []byte) error
+func (DescribeOutcome) MarshalJSON() ([]byte, error)
+func (DescribeOutcome) UnmarshalJSON(data []byte) error
+func DescribeOutcomeValues() []DescribeOutcome
+func (DescribeOutcome) Known() bool
+type PublishOutcome uint32
+const PublishOutcomePublished
+const PublishOutcomePresent
+const PublishOutcomeIncomplete
+const PublishOutcomeConflict
+const PublishOutcomeForbidden
+const PublishOutcomeInvalid
+const PublishOutcomeExhausted
+const PublishOutcomeUnavailable
+func (PublishOutcome) String() string
+func (PublishOutcome) WireName() (string, bool)
+func ParsePublishOutcome(word string) (PublishOutcome, bool)
+func (PublishOutcome) MarshalText() ([]byte, error)
+func (PublishOutcome) UnmarshalText(text []byte) error
+func (PublishOutcome) MarshalJSON() ([]byte, error)
+func (PublishOutcome) UnmarshalJSON(data []byte) error
+func PublishOutcomeValues() []PublishOutcome
+func (PublishOutcome) Known() bool
+type InventoryOutcome uint32
+const InventoryOutcomePage
+const InventoryOutcomeGap
+const InventoryOutcomeForbidden
+const InventoryOutcomeInvalid
+const InventoryOutcomeUnavailable
+func (InventoryOutcome) String() string
+func (InventoryOutcome) WireName() (string, bool)
+func ParseInventoryOutcome(word string) (InventoryOutcome, bool)
+func (InventoryOutcome) MarshalText() ([]byte, error)
+func (InventoryOutcome) UnmarshalText(text []byte) error
+func (InventoryOutcome) MarshalJSON() ([]byte, error)
+func (InventoryOutcome) UnmarshalJSON(data []byte) error
+func InventoryOutcomeValues() []InventoryOutcome
+func (InventoryOutcome) Known() bool
+type RemoveOutcome uint32
+const RemoveOutcomeRemoved
+const RemoveOutcomeNotFound
+const RemoveOutcomeHeld
+const RemoveOutcomeBusy
+const RemoveOutcomeUnsupported
+const RemoveOutcomeForbidden
+const RemoveOutcomeInvalid
+const RemoveOutcomeUnavailable
+func (RemoveOutcome) String() string
+func (RemoveOutcome) WireName() (string, bool)
+func ParseRemoveOutcome(word string) (RemoveOutcome, bool)
+func (RemoveOutcome) MarshalText() ([]byte, error)
+func (RemoveOutcome) UnmarshalText(text []byte) error
+func (RemoveOutcome) MarshalJSON() ([]byte, error)
+func (RemoveOutcome) UnmarshalJSON(data []byte) error
+func RemoveOutcomeValues() []RemoveOutcome
+func (RemoveOutcome) Known() bool
+type SourceDescriptionOutcome uint32
+const SourceDescriptionOutcomeDescribed
+const SourceDescriptionOutcomeForbidden
+const SourceDescriptionOutcomeInvalid
+const SourceDescriptionOutcomeUnavailable
+func (SourceDescriptionOutcome) String() string
+func (SourceDescriptionOutcome) WireName() (string, bool)
+func ParseSourceDescriptionOutcome(word string) (SourceDescriptionOutcome, bool)
+func (SourceDescriptionOutcome) MarshalText() ([]byte, error)
+func (SourceDescriptionOutcome) UnmarshalText(text []byte) error
+func (SourceDescriptionOutcome) MarshalJSON() ([]byte, error)
+func (SourceDescriptionOutcome) UnmarshalJSON(data []byte) error
+func SourceDescriptionOutcomeValues() []SourceDescriptionOutcome
+func (SourceDescriptionOutcome) Known() bool
+type SourceChangeKind uint32
+const SourceChangeKindAdded
+const SourceChangeKindRemoved
+const SourceChangeKindHeld
+const SourceChangeKindReleased
+const SourceChangeKindStoreChanged
+func (SourceChangeKind) String() string
+func (SourceChangeKind) WireName() (string, bool)
+func ParseSourceChangeKind(word string) (SourceChangeKind, bool)
+func (SourceChangeKind) MarshalText() ([]byte, error)
+func (SourceChangeKind) UnmarshalText(text []byte) error
+func (SourceChangeKind) MarshalJSON() ([]byte, error)
+func (SourceChangeKind) UnmarshalJSON(data []byte) error
+func SourceChangeKindValues() []SourceChangeKind
+func (SourceChangeKind) Known() bool
+type SourcePageOutcome uint32
+const SourcePageOutcomePage
+const SourcePageOutcomeGap
+const SourcePageOutcomeForbidden
+const SourcePageOutcomeInvalid
+const SourcePageOutcomeUnavailable
+func (SourcePageOutcome) String() string
+func (SourcePageOutcome) WireName() (string, bool)
+func ParseSourcePageOutcome(word string) (SourcePageOutcome, bool)
+func (SourcePageOutcome) MarshalText() ([]byte, error)
+func (SourcePageOutcome) UnmarshalText(text []byte) error
+func (SourcePageOutcome) MarshalJSON() ([]byte, error)
+func (SourcePageOutcome) UnmarshalJSON(data []byte) error
+func SourcePageOutcomeValues() []SourcePageOutcome
+func (SourcePageOutcome) Known() bool
+type ServiceErrorCode string
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+const ServiceErrorCodeCallerUnavailable
+const ServiceErrorCodeIdentityRequired
+func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) Known() bool
+var InventorySourceErrorCodes
+type Resource struct
+  Handle string
+  Digest string
+  Size int64
+  Verification Verification
+type OpenResult struct
+  Outcome OpenOutcome
+  Resource *Resource
+type Chunk struct
+  Offset int64
+  Total int64
+  Data []byte
+  EOF bool
+type ReadResult struct
+  Outcome ReadOutcome
+  Chunk *Chunk
+type CloseResult struct
+  Outcome CloseOutcome
+type Upload struct
+  Handle string
+  Digest string
+  Size int64
+  Received int64
+type Stored struct
+  Digest string
+  Size int64
+  Evidence Evidence
+type BeginResult struct
+  Outcome BeginOutcome
+  Upload *Upload
+  Stored *Stored
+  Limit int64
+type AppendResult struct
+  Outcome AppendOutcome
+  Received int64
+type CommitResult struct
+  Outcome CommitOutcome
+  Stored *Stored
+  Received int64
+type AbortResult struct
+  Outcome AbortOutcome
+type Change struct
+  Sequence int64
+  Kind ChangeKind
+  Digest string
+  Size int64
+type ChangePage struct
+  Outcome ChangePageOutcome
+  Changes []Change
+  Next string
+  AtEnd bool
+type ListedObject struct
+  Digest string
+  Size int64
+type ListingPage struct
+  Outcome ListingOutcome
+  Objects []ListedObject
+  Continuation string
+  Complete bool
+  Cursor string
+type Object struct
+  Locator string
+  Size int64
+  Modified string
+  Partial bool
+  Digest string
+  Evidence Evidence
+type Entry struct
+  Role string
+  Digest string
+  Size int64
+  MediaType string
+  Evidence Evidence
+  Locator string
+  Manifest string
+  Annotations map[string]string
+type Name struct
+  Scheme string
+  Name string
+type Manifest struct
+  ID string
+  Addressing Addressing
+  Kind string
+  Entries []Entry
+  Names []Name
+  Descriptor map[string]string
+  Store string
+  SupersededBy string
+type Holder struct
+  Account string
+  Program string
+  Instance string
+  EstablishedBy string
+  Domain string
+type Basis struct
+  Index string
+  Key string
+  Role string
+type Hold struct
+  ID string
+  Holder Holder
+  Target string
+  Purpose string
+  Lifetime Lifetime
+  Expires string
+  Attestation Attestation
+  ObservedAt string
+  Basis *Basis
+type Dangling struct
+  Holder Holder
+  Basis Basis
+  Reference string
+  ExpectedDigest string
+  ExpectedSize int64
+  ObservedAt string
+type StoreError struct
+  Kind StoreErrorKind
+  Locator string
+  Detail string
+type Store struct
+  Name string
+  Program string
+  Locator string
+  Rule string
+  Present bool
+  Errors []StoreError
+  Placement Placement
+  Domain string
+type HoldResult struct
+  Outcome HoldOutcome
+  Hold *Hold
+type ReleaseResult struct
+  Outcome ReleaseOutcome
+type RenewResult struct
+  Outcome RenewOutcome
+  Hold *Hold
+type DescribeResult struct
+  Outcome DescribeOutcome
+  Manifest *Manifest
+type PublishResult struct
+  Outcome PublishOutcome
+  Manifest *Manifest
+  Missing []string
+type ManifestHolders struct
+  Manifest Manifest
+  Holds []Hold
+type ObjectHolders struct
+  Object Object
+  Store string
+  Holds []Hold
+type InventoryPage struct
+  Outcome InventoryOutcome
+  Stores []Store
+  Manifests []ManifestHolders
+  Objects []ObjectHolders
+  Dangling []Dangling
+  Continuation string
+  Complete bool
+  Cursor string
+  GraceMs int64
+  AuditRetentionMs int64
+type RemoveResult struct
+  Outcome RemoveOutcome
+  Holders []Holder
+type SourceDescription struct
+  Outcome SourceDescriptionOutcome
+  Name string
+  Stores []Store
+  Schemes []string
+  Capabilities []string
+type SourceChange struct
+  Sequence int64
+  Kind SourceChangeKind
+  Target string
+  Hold *Hold
+  Store *Store
+type SourcePage struct
+  Outcome SourcePageOutcome
+  Stores []Store
+  Manifests []ManifestHolders
+  Objects []ObjectHolders
+  Dangling []Dangling
+  Changes []SourceChange
+  Continuation string
+  Complete bool
+  Cursor string
+func Encode(v *OpenResult) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+func Decode(in []byte) (*OpenResult, error)
+type FrameWriter interface
+  WriteFrame(frame []byte) error
+type DispatchError string
+func (DispatchError) Error() string
+func ServiceName(frame []byte) (string, error)
+type FrameExchanger interface
+  ExchangeFrame(frame []byte) ([]byte, error)
+type ServiceError struct
+  Code ServiceErrorCode
+  Message string
+func (ServiceError) Error() string
+const EndpointContract
+type DescribedService interface
+  DescribeService() (contract string, ready bool, why string)
+func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+type ServedService interface
+  DescribedService
+  ServiceContract() string
+func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+type ContentReader interface
+  Open(digest string) (OpenResult, error)
+  Read(handle string, offset, maxBytes int64) (ReadResult, error)
+  Close(handle string) (CloseResult, error)
+type ContentReaderTransport interface
+  FrameExchanger
+type ContentReaderClient struct
+func NewContentReaderClient(t ContentReaderTransport) *ContentReaderClient
+type ContentReaderDispatcher struct
+  Handler ContentReader
+func (ContentReaderClient) Open(digest string) (result OpenResult, err error)
+func (ContentReaderClient) Read(handle string, offset, maxBytes int64) (result ReadResult, err error)
+func (ContentReaderClient) Close(handle string) (result CloseResult, err error)
+func (ContentReaderDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ContentReaderDispatcher) ServiceContract() string
+func (ContentReaderDispatcher) WriteFrame(frame []byte) error
+func (ContentReaderDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type ContentWriter interface
+  Begin(request, digest string, size int64) (BeginResult, error)
+  Append(handle string, offset int64, data []byte) (AppendResult, error)
+  Commit(handle string) (CommitResult, error)
+  Abort(handle string) (AbortResult, error)
+type ContentWriterTransport interface
+  FrameExchanger
+type ContentWriterClient struct
+func NewContentWriterClient(t ContentWriterTransport) *ContentWriterClient
+type ContentWriterDispatcher struct
+  Handler ContentWriter
+func (ContentWriterClient) Begin(request, digest string, size int64) (result BeginResult, err error)
+func (ContentWriterClient) Append(handle string, offset int64, data []byte) (result AppendResult, err error)
+func (ContentWriterClient) Commit(handle string) (result CommitResult, err error)
+func (ContentWriterClient) Abort(handle string) (result AbortResult, err error)
+func (ContentWriterDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ContentWriterDispatcher) ServiceContract() string
+func (ContentWriterDispatcher) WriteFrame(frame []byte) error
+func (ContentWriterDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type ContentChanges interface
+  Observe(cursor string, maxChanges, waitMs int64) (ChangePage, error)
+  List(continuation string, limit int64) (ListingPage, error)
+type ContentChangesTransport interface
+  FrameExchanger
+type ContentChangesClient struct
+func NewContentChangesClient(t ContentChangesTransport) *ContentChangesClient
+type ContentChangesDispatcher struct
+  Handler ContentChanges
+func (ContentChangesClient) Observe(cursor string, maxChanges, waitMs int64) (result ChangePage, err error)
+func (ContentChangesClient) List(continuation string, limit int64) (result ListingPage, err error)
+func (ContentChangesDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ContentChangesDispatcher) ServiceContract() string
+func (ContentChangesDispatcher) WriteFrame(frame []byte) error
+func (ContentChangesDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type Holds interface
+  Hold(request, target, purpose string, lifetime Lifetime, leaseMs int64) (HoldResult, error)
+  Release(hold string) (ReleaseResult, error)
+  Renew(hold string, leaseMs int64) (RenewResult, error)
+type HoldsTransport interface
+  FrameExchanger
+type HoldsClient struct
+func NewHoldsClient(t HoldsTransport) *HoldsClient
+type HoldsDispatcher struct
+  Handler Holds
+func (HoldsClient) Hold(request, target, purpose string, lifetime Lifetime, leaseMs int64) (result HoldResult, err error)
+func (HoldsClient) Release(hold string) (result ReleaseResult, err error)
+func (HoldsClient) Renew(hold string, leaseMs int64) (result RenewResult, err error)
+func (HoldsDispatcher) DescribeService() (contract string, ready bool, why string)
+func (HoldsDispatcher) ServiceContract() string
+func (HoldsDispatcher) WriteFrame(frame []byte) error
+func (HoldsDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type Manifests interface
+  Describe(id string) (DescribeResult, error)
+  Publish(request string, manifest Manifest) (PublishResult, error)
+type ManifestsTransport interface
+  FrameExchanger
+type ManifestsClient struct
+func NewManifestsClient(t ManifestsTransport) *ManifestsClient
+type ManifestsDispatcher struct
+  Handler Manifests
+func (ManifestsClient) Describe(id string) (result DescribeResult, err error)
+func (ManifestsClient) Publish(request string, manifest Manifest) (result PublishResult, err error)
+func (ManifestsDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ManifestsDispatcher) ServiceContract() string
+func (ManifestsDispatcher) WriteFrame(frame []byte) error
+func (ManifestsDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type Inventory interface
+  List(continuation string, limit int64) (InventoryPage, error)
+  Holders(target string) (InventoryPage, error)
+  Unheld(continuation string, limit int64) (InventoryPage, error)
+  Find(digest string) (InventoryPage, error)
+type InventoryTransport interface
+  FrameExchanger
+type InventoryClient struct
+func NewInventoryClient(t InventoryTransport) *InventoryClient
+type InventoryDispatcher struct
+  Handler Inventory
+func (InventoryClient) List(continuation string, limit int64) (result InventoryPage, err error)
+func (InventoryClient) Holders(target string) (result InventoryPage, err error)
+func (InventoryClient) Unheld(continuation string, limit int64) (result InventoryPage, err error)
+func (InventoryClient) Find(digest string) (result InventoryPage, err error)
+func (InventoryDispatcher) DescribeService() (contract string, ready bool, why string)
+func (InventoryDispatcher) ServiceContract() string
+func (InventoryDispatcher) WriteFrame(frame []byte) error
+func (InventoryDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type ContentRemover interface
+  Remove(target string) (RemoveResult, error)
+type ContentRemoverTransport interface
+  FrameExchanger
+type ContentRemoverClient struct
+func NewContentRemoverClient(t ContentRemoverTransport) *ContentRemoverClient
+type ContentRemoverDispatcher struct
+  Handler ContentRemover
+func (ContentRemoverClient) Remove(target string) (result RemoveResult, err error)
+func (ContentRemoverDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ContentRemoverDispatcher) ServiceContract() string
+func (ContentRemoverDispatcher) WriteFrame(frame []byte) error
+func (ContentRemoverDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type InventorySource interface
+  Describe() (SourceDescription, error)
+  Snapshot(continuation string, limit int64) (SourcePage, error)
+  Observe(cursor string, maxChanges, waitMs int64) (SourcePage, error)
+  Verify(target string) (SourcePage, error)
+  Remove(target string) (RemoveResult, error)
+type InventorySourceTransport interface
+  FrameExchanger
+type InventorySourceClient struct
+func NewInventorySourceClient(t InventorySourceTransport) *InventorySourceClient
+type InventorySourceDispatcher struct
+  Handler InventorySource
+func (InventorySourceClient) Describe() (result SourceDescription, err error)
+func (InventorySourceClient) Snapshot(continuation string, limit int64) (result SourcePage, err error)
+func (InventorySourceClient) Observe(cursor string, maxChanges, waitMs int64) (result SourcePage, err error)
+func (InventorySourceClient) Verify(target string) (result SourcePage, err error)
+func (InventorySourceClient) Remove(target string) (result RemoveResult, err error)
+func (InventorySourceDispatcher) DescribeService() (contract string, ready bool, why string)
+func (InventorySourceDispatcher) ServiceContract() string
+func (InventorySourceDispatcher) WriteFrame(frame []byte) error
+func (InventorySourceDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+func DecodeResourceAt(in []byte, depth, limit int) (*Resource, int, error)
+func EncodeResourceAt(v *Resource, depth int) []byte
+func EncodeResource(v *Resource) []byte
+func DecodeResource(in []byte) (*Resource, error)
+func DecodeOpenResultAt(in []byte, depth, limit int) (*OpenResult, int, error)
+func EncodeOpenResultAt(v *OpenResult, depth int) []byte
+func EncodeOpenResult(v *OpenResult) []byte
+func DecodeOpenResult(in []byte) (*OpenResult, error)
+func DecodeChunkAt(in []byte, depth, limit int) (*Chunk, int, error)
+func EncodeChunkAt(v *Chunk, depth int) []byte
+func EncodeChunk(v *Chunk) []byte
+func DecodeChunk(in []byte) (*Chunk, error)
+func DecodeReadResultAt(in []byte, depth, limit int) (*ReadResult, int, error)
+func EncodeReadResultAt(v *ReadResult, depth int) []byte
+func EncodeReadResult(v *ReadResult) []byte
+func DecodeReadResult(in []byte) (*ReadResult, error)
+func DecodeCloseResultAt(in []byte, depth, limit int) (*CloseResult, int, error)
+func EncodeCloseResultAt(v *CloseResult, depth int) []byte
+func EncodeCloseResult(v *CloseResult) []byte
+func DecodeCloseResult(in []byte) (*CloseResult, error)
+func DecodeUploadAt(in []byte, depth, limit int) (*Upload, int, error)
+func EncodeUploadAt(v *Upload, depth int) []byte
+func EncodeUpload(v *Upload) []byte
+func DecodeUpload(in []byte) (*Upload, error)
+func DecodeStoredAt(in []byte, depth, limit int) (*Stored, int, error)
+func EncodeStoredAt(v *Stored, depth int) []byte
+func EncodeStored(v *Stored) []byte
+func DecodeStored(in []byte) (*Stored, error)
+func DecodeBeginResultAt(in []byte, depth, limit int) (*BeginResult, int, error)
+func EncodeBeginResultAt(v *BeginResult, depth int) []byte
+func EncodeBeginResult(v *BeginResult) []byte
+func DecodeBeginResult(in []byte) (*BeginResult, error)
+func DecodeAppendResultAt(in []byte, depth, limit int) (*AppendResult, int, error)
+func EncodeAppendResultAt(v *AppendResult, depth int) []byte
+func EncodeAppendResult(v *AppendResult) []byte
+func DecodeAppendResult(in []byte) (*AppendResult, error)
+func DecodeCommitResultAt(in []byte, depth, limit int) (*CommitResult, int, error)
+func EncodeCommitResultAt(v *CommitResult, depth int) []byte
+func EncodeCommitResult(v *CommitResult) []byte
+func DecodeCommitResult(in []byte) (*CommitResult, error)
+func DecodeAbortResultAt(in []byte, depth, limit int) (*AbortResult, int, error)
+func EncodeAbortResultAt(v *AbortResult, depth int) []byte
+func EncodeAbortResult(v *AbortResult) []byte
+func DecodeAbortResult(in []byte) (*AbortResult, error)
+func DecodeChangeAt(in []byte, depth, limit int) (*Change, int, error)
+func EncodeChangeAt(v *Change, depth int) []byte
+func EncodeChange(v *Change) []byte
+func DecodeChange(in []byte) (*Change, error)
+func DecodeChangePageAt(in []byte, depth, limit int) (*ChangePage, int, error)
+func EncodeChangePageAt(v *ChangePage, depth int) []byte
+func EncodeChangePage(v *ChangePage) []byte
+func DecodeChangePage(in []byte) (*ChangePage, error)
+func DecodeListedObjectAt(in []byte, depth, limit int) (*ListedObject, int, error)
+func EncodeListedObjectAt(v *ListedObject, depth int) []byte
+func EncodeListedObject(v *ListedObject) []byte
+func DecodeListedObject(in []byte) (*ListedObject, error)
+func DecodeListingPageAt(in []byte, depth, limit int) (*ListingPage, int, error)
+func EncodeListingPageAt(v *ListingPage, depth int) []byte
+func EncodeListingPage(v *ListingPage) []byte
+func DecodeListingPage(in []byte) (*ListingPage, error)
+func DecodeObjectAt(in []byte, depth, limit int) (*Object, int, error)
+func EncodeObjectAt(v *Object, depth int) []byte
+func EncodeObject(v *Object) []byte
+func DecodeObject(in []byte) (*Object, error)
+func DecodeEntryAt(in []byte, depth, limit int) (*Entry, int, error)
+func EncodeEntryAt(v *Entry, depth int) []byte
+func EncodeEntry(v *Entry) []byte
+func DecodeEntry(in []byte) (*Entry, error)
+func DecodeNameAt(in []byte, depth, limit int) (*Name, int, error)
+func EncodeNameAt(v *Name, depth int) []byte
+func EncodeName(v *Name) []byte
+func DecodeName(in []byte) (*Name, error)
+func DecodeManifestAt(in []byte, depth, limit int) (*Manifest, int, error)
+func EncodeManifestAt(v *Manifest, depth int) []byte
+func EncodeManifest(v *Manifest) []byte
+func DecodeManifest(in []byte) (*Manifest, error)
+func DecodeHolderAt(in []byte, depth, limit int) (*Holder, int, error)
+func EncodeHolderAt(v *Holder, depth int) []byte
+func EncodeHolder(v *Holder) []byte
+func DecodeHolder(in []byte) (*Holder, error)
+func DecodeBasisAt(in []byte, depth, limit int) (*Basis, int, error)
+func EncodeBasisAt(v *Basis, depth int) []byte
+func EncodeBasis(v *Basis) []byte
+func DecodeBasis(in []byte) (*Basis, error)
+func DecodeHoldAt(in []byte, depth, limit int) (*Hold, int, error)
+func EncodeHoldAt(v *Hold, depth int) []byte
+func EncodeHold(v *Hold) []byte
+func DecodeHold(in []byte) (*Hold, error)
+func DecodeDanglingAt(in []byte, depth, limit int) (*Dangling, int, error)
+func EncodeDanglingAt(v *Dangling, depth int) []byte
+func EncodeDangling(v *Dangling) []byte
+func DecodeDangling(in []byte) (*Dangling, error)
+func DecodeStoreErrorAt(in []byte, depth, limit int) (*StoreError, int, error)
+func EncodeStoreErrorAt(v *StoreError, depth int) []byte
+func EncodeStoreError(v *StoreError) []byte
+func DecodeStoreError(in []byte) (*StoreError, error)
+func DecodeStoreAt(in []byte, depth, limit int) (*Store, int, error)
+func EncodeStoreAt(v *Store, depth int) []byte
+func EncodeStore(v *Store) []byte
+func DecodeStore(in []byte) (*Store, error)
+func DecodeHoldResultAt(in []byte, depth, limit int) (*HoldResult, int, error)
+func EncodeHoldResultAt(v *HoldResult, depth int) []byte
+func EncodeHoldResult(v *HoldResult) []byte
+func DecodeHoldResult(in []byte) (*HoldResult, error)
+func DecodeReleaseResultAt(in []byte, depth, limit int) (*ReleaseResult, int, error)
+func EncodeReleaseResultAt(v *ReleaseResult, depth int) []byte
+func EncodeReleaseResult(v *ReleaseResult) []byte
+func DecodeReleaseResult(in []byte) (*ReleaseResult, error)
+func DecodeRenewResultAt(in []byte, depth, limit int) (*RenewResult, int, error)
+func EncodeRenewResultAt(v *RenewResult, depth int) []byte
+func EncodeRenewResult(v *RenewResult) []byte
+func DecodeRenewResult(in []byte) (*RenewResult, error)
+func DecodeDescribeResultAt(in []byte, depth, limit int) (*DescribeResult, int, error)
+func EncodeDescribeResultAt(v *DescribeResult, depth int) []byte
+func EncodeDescribeResult(v *DescribeResult) []byte
+func DecodeDescribeResult(in []byte) (*DescribeResult, error)
+func DecodePublishResultAt(in []byte, depth, limit int) (*PublishResult, int, error)
+func EncodePublishResultAt(v *PublishResult, depth int) []byte
+func EncodePublishResult(v *PublishResult) []byte
+func DecodePublishResult(in []byte) (*PublishResult, error)
+func DecodeManifestHoldersAt(in []byte, depth, limit int) (*ManifestHolders, int, error)
+func EncodeManifestHoldersAt(v *ManifestHolders, depth int) []byte
+func EncodeManifestHolders(v *ManifestHolders) []byte
+func DecodeManifestHolders(in []byte) (*ManifestHolders, error)
+func DecodeObjectHoldersAt(in []byte, depth, limit int) (*ObjectHolders, int, error)
+func EncodeObjectHoldersAt(v *ObjectHolders, depth int) []byte
+func EncodeObjectHolders(v *ObjectHolders) []byte
+func DecodeObjectHolders(in []byte) (*ObjectHolders, error)
+func DecodeInventoryPageAt(in []byte, depth, limit int) (*InventoryPage, int, error)
+func EncodeInventoryPageAt(v *InventoryPage, depth int) []byte
+func EncodeInventoryPage(v *InventoryPage) []byte
+func DecodeInventoryPage(in []byte) (*InventoryPage, error)
+func DecodeRemoveResultAt(in []byte, depth, limit int) (*RemoveResult, int, error)
+func EncodeRemoveResultAt(v *RemoveResult, depth int) []byte
+func EncodeRemoveResult(v *RemoveResult) []byte
+func DecodeRemoveResult(in []byte) (*RemoveResult, error)
+func DecodeSourceDescriptionAt(in []byte, depth, limit int) (*SourceDescription, int, error)
+func EncodeSourceDescriptionAt(v *SourceDescription, depth int) []byte
+func EncodeSourceDescription(v *SourceDescription) []byte
+func DecodeSourceDescription(in []byte) (*SourceDescription, error)
+func DecodeSourceChangeAt(in []byte, depth, limit int) (*SourceChange, int, error)
+func EncodeSourceChangeAt(v *SourceChange, depth int) []byte
+func EncodeSourceChange(v *SourceChange) []byte
+func DecodeSourceChange(in []byte) (*SourceChange, error)
+func DecodeSourcePageAt(in []byte, depth, limit int) (*SourcePage, int, error)
+func EncodeSourcePageAt(v *SourcePage, depth int) []byte
+func EncodeSourcePage(v *SourcePage) []byte
+func DecodeSourcePage(in []byte) (*SourcePage, error)

@@ -58,6 +58,9 @@ func needs(s *Definition, name string) []string {
 				add(f.Type)
 			}
 			add(s.Repeated(f.Type))
+			if s.Enum(listElement(f.Type)) != nil {
+				add(listElement(f.Type))
+			}
 		}
 		if s.Vocab != nil && s.Vocab.Of == name {
 			add(s.Vocab.Name)
@@ -82,12 +85,18 @@ func needs(s *Definition, name string) []string {
 						add(m.Result.Type)
 					}
 					add(s.Repeated(m.Result.Type))
+					if s.Enum(listElement(m.Result.Type)) != nil {
+						add(listElement(m.Result.Type))
+					}
 				}
 				for _, f := range m.Args {
 					if s.IsStruct(f.Type) || s.Enum(f.Type) != nil {
 						add(f.Type)
 					}
 					add(s.Repeated(f.Type))
+					if s.Enum(listElement(f.Type)) != nil {
+						add(listElement(f.Type))
+					}
 				}
 			}
 		}

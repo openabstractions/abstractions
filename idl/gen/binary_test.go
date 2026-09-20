@@ -88,7 +88,7 @@ func TestBinaryCpp(t *testing.T) {
 int main(){rec::Value v;auto absent=rec::decode(rec::encode(v));if(absent.data)return 1;
 v.data=std::vector<std::uint8_t>{};auto empty=rec::decode(rec::encode(v));if(!empty.data||!empty.data->empty())return 2;
 for(int i=0;i<256;i++)v.data->push_back(static_cast<std::uint8_t>(i));auto back=rec::decode(rec::encode(v));if(back.data!=v.data)return 3;
-if(rec::encode_binary({0,255})!="AP8=")return 4;
+if(rec::detail::encode_binary({0,255})!="AP8=")return 4;
 for(auto bad:{"A","AA","AAA","AB==","AAB=","AA=A","====","AA==AAAA","AA-_"}){try{rec::decode(std::string("{\"data\":\"")+bad+"\"}");std::cerr<<"accepted invalid Base64: "<<bad<<"\n";return 5;}catch(const rec::Refusal&e){if(std::string(e.word)!="bad_binary"){std::cerr<<"invalid Base64 "<<bad<<": expected bad_binary, got "<<e.word<<"\n";return 6;}}}
 }`)
 	exe := filepath.Join(dir, "binary.exe")

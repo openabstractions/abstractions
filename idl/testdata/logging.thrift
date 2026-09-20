@@ -82,10 +82,18 @@ struct Page {
   3: required string next
   4: required bool at_end
 } (unknown_fields = "refuse", doc="A bounded page in provider append order. next is an opaque continuation bound to this history instance. at_end means the observed end during this call; later records may appear. Refusals contain no records and never advance a supplied cursor. gap requires an explicit restart with empty cursor; it never silently restarts a stream.")
+// Codes HistoryReader and HistoryObserver handlers send on the reply error
+// channel when history access is not authorized, beside the dispatcher's own.
+const list<string> history_error_codes = ["caller_unavailable", "identity_required", "wrong_user", "policy_unavailable", "forbidden"]
+// Words a caller sends as the cursor of HistoryReader.Read or
+// HistoryObserver.Observe in place of a continuation. "end" begins at the
+// current end of retained history. A provider never issues a word as next.
+const list<string> history_cursor_words = ["end"]
+
 service HistoryReader {
-  Page Read(1: string cursor, 2: i64 max_records, 3: i64 max_bytes) (doc="Read retained records through the service. Empty cursor starts at earliest retained history. Limits are 1..256 records and 1..65536 encoded-record bytes; a first record that exceeds the byte limit gives record_too_large. A provider without history gives unavailable. Cursors may expire on restart or retention changes, reported as gap. Snapshot reads may be repeated at end; this method promises no subscription or persistence acknowledgement. The receiving service authorizes history access from native caller evidence.")
-} (wire_name = "abstraction.logging/reader@1", doc="Authorized bounded access to retained logging history. Applications receive records and opaque cursors; history location and retention belong to the provider.")
+  Page Read(1: string cursor, 2: i64 max_records, 3: i64 max_bytes) (doc="Read retained records through the service. Empty cursor starts at earliest retained history. Cursor end (history_cursor_words) starts at the current end: the page holds no records, at_end is true and next continues from that end. Limits are 1..256 records and 1..65536 encoded-record bytes; a first record that exceeds the byte limit gives record_too_large. A provider without history gives unavailable. Cursors may expire on restart or retention changes, reported as gap. Snapshot reads may be repeated at end; this method promises no subscription or persistence acknowledgement. The receiving service authorizes history access from native caller evidence.")
+} (wire_name = "abstraction.logging/reader@1", error_codes = "history_error_codes", doc="Authorized bounded access to retained logging history. Applications receive records and opaque cursors; history location and retention belong to the provider.")
 
 service HistoryObserver {
-  Page Observe(1: string cursor, 2: i64 max_records, 3: i64 max_bytes, 4: i64 wait_ms) (doc="Read with the same bounds and cursor semantics as HistoryReader. At an empty current end, wait up to wait_ms (0..30000) for a provider notification, then reread once; expiry may return an empty current-end page. Cancellation stops waiting and does not undo logging. Providers without observation return unsupported. Bounded waiter capacity exhaustion returns unavailable. Authorization is rechecked before records return. This is long-poll observation; external file writers have no notification promise.")
-} (wire_name = "abstraction.logging/observer@1", doc="Authorized bounded long-poll history observation with provider-owned notifications.")
+  Page Observe(1: string cursor, 2: i64 max_records, 3: i64 max_bytes, 4: i64 wait_ms) (doc="Read with the same bounds and cursor semantics as HistoryReader. Cursor end fixes the current end when the call begins and returns only records appended after it. At an empty current end, wait up to wait_ms (0..30000) for a provider notification, then reread once; expiry may return an empty current-end page. Cancellation stops waiting and does not undo logging. Providers without observation return unsupported. Bounded waiter capacity exhaustion returns unavailable. Authorization is rechecked before records return. This is long-poll observation; external file writers have no notification promise.")
+} (wire_name = "abstraction.logging/observer@1", error_codes = "history_error_codes", doc="Authorized bounded long-poll history observation with provider-owned notifications.")

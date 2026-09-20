@@ -1,0 +1,182 @@
+using Raw = std::string
+class Refusal : public std::runtime_error
+  const char* word
+  std::size_t offset
+enum class DecisionOutcome {Permitted, Denied, NotGranted, UnknownAction, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(DecisionOutcome value)
+inline std::optional<DecisionOutcome> parse_decision_outcome(std::string_view name)
+inline constexpr bool operator==(DecisionOutcome value, std::string_view name)
+inline constexpr bool operator!=(DecisionOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, DecisionOutcome value)
+inline constexpr bool operator!=(std::string_view name, DecisionOutcome value)
+inline const std::vector<std::string> kDecisionOutcomeNames
+enum class PolicyPageOutcome {Page, Gap, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(PolicyPageOutcome value)
+inline std::optional<PolicyPageOutcome> parse_policy_page_outcome(std::string_view name)
+inline constexpr bool operator==(PolicyPageOutcome value, std::string_view name)
+inline constexpr bool operator!=(PolicyPageOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, PolicyPageOutcome value)
+inline constexpr bool operator!=(std::string_view name, PolicyPageOutcome value)
+inline const std::vector<std::string> kPolicyPageOutcomeNames
+enum class PolicyEditOutcome {Applied, Conflict, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(PolicyEditOutcome value)
+inline std::optional<PolicyEditOutcome> parse_policy_edit_outcome(std::string_view name)
+inline constexpr bool operator==(PolicyEditOutcome value, std::string_view name)
+inline constexpr bool operator!=(PolicyEditOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, PolicyEditOutcome value)
+inline constexpr bool operator!=(std::string_view name, PolicyEditOutcome value)
+inline const std::vector<std::string> kPolicyEditOutcomeNames
+enum class RuleReadOutcome {Found, Expired, Unknown, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(RuleReadOutcome value)
+inline std::optional<RuleReadOutcome> parse_rule_read_outcome(std::string_view name)
+inline constexpr bool operator==(RuleReadOutcome value, std::string_view name)
+inline constexpr bool operator!=(RuleReadOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, RuleReadOutcome value)
+inline constexpr bool operator!=(std::string_view name, RuleReadOutcome value)
+inline const std::vector<std::string> kRuleReadOutcomeNames
+enum class ActionEditOutcome {Applied, Conflict, Unknown, Invalid, Exhausted, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(ActionEditOutcome value)
+inline std::optional<ActionEditOutcome> parse_action_edit_outcome(std::string_view name)
+inline constexpr bool operator==(ActionEditOutcome value, std::string_view name)
+inline constexpr bool operator!=(ActionEditOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ActionEditOutcome value)
+inline constexpr bool operator!=(std::string_view name, ActionEditOutcome value)
+inline const std::vector<std::string> kActionEditOutcomeNames
+inline const std::vector<std::string> kServiceErrorCodeNames
+inline constexpr std::string_view kServiceErrorCodeHandlerError
+inline constexpr std::string_view kServiceErrorCodeInvalidResult
+inline constexpr std::string_view kServiceErrorCodeUnknownVersion
+inline constexpr std::string_view kServiceErrorCodeUnknownService
+inline constexpr std::string_view kServiceErrorCodeUnknownMethod
+inline constexpr std::string_view kServiceErrorCodeWrongMode
+inline const std::vector<std::string> kOperations
+inline const std::vector<std::string> kKnownRights
+inline const std::vector<std::string> kRefusalCodes
+inline const std::vector<std::string> kResourceActions
+struct Request
+  std::string op
+  std::string name
+  std::vector<std::string> rights
+  std::string secret
+  std::string token
+  std::string right
+  std::string why
+  std::string app
+  std::string admin
+struct AppMetadata
+  std::string id
+  std::string name
+  std::vector<std::string> rights
+  std::string registered
+struct HoldMetadata
+  std::string app
+  std::string name
+  std::string right
+  std::string why
+  std::string since
+struct ResponseMetadata
+  std::string code
+  std::string error
+  std::string secret
+  std::string token
+  std::string expires
+  std::optional<AppMetadata> app
+  std::string right
+  std::vector<AppMetadata> apps
+  std::vector<HoldMetadata> holds
+struct Subject
+  std::string account
+  std::string program
+struct Decision
+  DecisionOutcome outcome
+  std::string policy_revision
+struct PolicyRule
+  Subject subject
+  std::string action
+  std::string resource
+  bool permit
+struct PolicyPage
+  PolicyPageOutcome outcome
+  std::string revision
+  std::vector<std::string> catalog
+  std::vector<PolicyRule> rules
+  std::string next
+  bool complete
+struct PolicyEdit
+  PolicyEditOutcome outcome
+  std::string revision
+  std::optional<PolicyRule> current
+struct RuleRecord
+  PolicyRule rule
+  Subject set_by
+  std::string set_at
+  std::string why
+  std::string expires
+struct RuleRead
+  RuleReadOutcome outcome
+  std::string revision
+  std::optional<RuleRecord> record
+struct CatalogEntry
+  std::string action
+  Subject registered_by
+  std::string registered_at
+struct ActionEdit
+  ActionEditOutcome outcome
+  std::string revision
+  std::optional<CatalogEntry> current
+inline std::string encode(const Request& v)
+inline Request decode(std::string_view data)
+struct FrameWriter
+  virtual void write_frame(std::string_view frame)
+struct DispatchError : std::runtime_error
+inline std::string service_name(std::string_view frame)
+struct FrameExchanger
+  virtual std::string exchange_frame(std::string_view frame)
+struct ServiceError : std::runtime_error
+  std::string code, message
+inline constexpr std::string_view kEndpointContract
+struct DescribedService
+  std::string contract
+  bool ready
+  std::string why
+std::string describe_endpoint(std::string_view frame, const std::string& program, const std::string& version, const Services& . . . services)
+struct Authorization
+  virtual Decision decide(const std::string& action, const std::string& resource)
+  virtual Decision decide_for(const Subject& subject, const std::string& action, const std::string& resource)
+template<class Transport>struct AuthorizationClient : Authorization
+  Transport& transport_
+  Decision decide(const std::string& action, const std::string& resource) override
+  Decision decide_for(const Subject& subject, const std::string& action, const std::string& resource) override
+struct AuthorizationService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct AuthorizationDispatcher : FrameWriter, FrameExchanger
+  Authorization& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct AuthorizationOperator
+  virtual PolicyPage list_policy(const std::string& cursor, const std::int64_t& limit)
+  virtual PolicyEdit set_rule(const std::string& expected_revision, const PolicyRule& rule)
+  virtual PolicyEdit revoke_rule(const std::string& expected_revision, const Subject& subject, const std::string& action, const std::string& resource)
+  virtual PolicyEdit set_rule_for(const std::string& expected_revision, const PolicyRule& rule, const std::int64_t& ttl_ms, const std::string& why)
+  virtual RuleRead read_rule(const Subject& subject, const std::string& action, const std::string& resource)
+  virtual ActionEdit register_action(const std::string& expected_revision, const std::string& action)
+  virtual ActionEdit retire_action(const std::string& expected_revision, const std::string& action)
+template<class Transport>struct AuthorizationOperatorClient : AuthorizationOperator
+  Transport& transport_
+  PolicyPage list_policy(const std::string& cursor, const std::int64_t& limit) override
+  PolicyEdit set_rule(const std::string& expected_revision, const PolicyRule& rule) override
+  PolicyEdit revoke_rule(const std::string& expected_revision, const Subject& subject, const std::string& action, const std::string& resource) override
+  PolicyEdit set_rule_for(const std::string& expected_revision, const PolicyRule& rule, const std::int64_t& ttl_ms, const std::string& why) override
+  RuleRead read_rule(const Subject& subject, const std::string& action, const std::string& resource) override
+  ActionEdit register_action(const std::string& expected_revision, const std::string& action) override
+  ActionEdit retire_action(const std::string& expected_revision, const std::string& action) override
+struct AuthorizationOperatorService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct AuthorizationOperatorDispatcher : FrameWriter, FrameExchanger
+  AuthorizationOperator& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override

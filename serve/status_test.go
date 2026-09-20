@@ -53,7 +53,7 @@ func TestRuntimeStatusUsesLiveResolver(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}
-	if report.Error != "" || len(report.Capabilities) != 5 {
+	if report.Error != "" || len(report.Capabilities) != 5 || report.Profile == "" {
 		t.Fatalf("%s", out.Bytes())
 	}
 	contracts := map[string]bool{}
@@ -94,7 +94,7 @@ func TestRuntimeStatusUsesLiveResolver(t *testing.T) {
 		t.Fatal(err)
 	}
 	observation, err := operations.ObserveWork(call, api.RequestIdentity{Key: "status-unsubmitted", HistoryEpoch: history.HistoryEpoch})
-	if err != nil || observation.Outcome != "unknown" || observation.Snapshot != nil {
+	if err != nil || observation.Outcome.String() != "unknown" || observation.Snapshot != nil {
 		t.Fatalf("default operation service: %+v %v", observation, err)
 	}
 }

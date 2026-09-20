@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	"github.com/openabstractions/abstraction-job/go/acceptanceprovider"
 )
 
@@ -54,6 +55,13 @@ func storageCommand(args []string, output, diagnostics io.Writer) error {
 		}
 	}
 	root := filepath.Join(*state, "jobs")
+	// A guarded check of an existing store writes host-guard metadata into the
+	// account's default state.
+	if _, err := os.Stat(root); err == nil && !supplied && !*readOnly {
+		if err := refuseVirtualizedProfile("storage check", bootstrap.CurrentProfileView); err != nil {
+			return err
+		}
+	}
 	executor, err := managedJobExecutor(root, nil)
 	if err != nil {
 		return fmt.Errorf("storage check %q: %w", root, err)

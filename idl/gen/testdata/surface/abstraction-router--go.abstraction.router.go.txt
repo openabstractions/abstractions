@@ -1,0 +1,131 @@
+type Raw string
+type ServiceErrorCode string
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+const ServiceErrorCodeInternal
+const ServiceErrorCodeInvalidRequest
+const ServiceErrorCodeCallerRefused
+const ServiceErrorCodeUnknownOperation
+const ServiceErrorCodePolicyUnavailable
+const ServiceErrorCodeForbidden
+func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) Known() bool
+var Profiles
+var Verdicts
+var WireKinds
+var CredentialConsumers
+var RouterErrorCodes
+type HostAllowance struct
+  Hosts []string
+type PickRequest struct
+  Model string
+  Fresh bool
+  Allowed *HostAllowance
+  Profile string
+type Caller struct
+  UserDescription string
+  PathDescription string
+type Observation struct
+  Caller Caller
+  TookMs int64
+  CacheAgeMs int64
+type Alias struct
+  Host string
+  Name string
+  Resident bool
+  Servable bool
+  Hosted bool
+  Profiles []string
+type Family struct
+  Family string
+  Names []Alias
+type ModelsSnapshot struct
+  Observation Observation
+  Models []Family
+type HostState struct
+  Host string
+  Base string
+  Up bool
+  Why string
+  Installed int64
+  Resident []string
+  Servable bool
+  Hosted bool
+  Wire string
+  Credential string
+  DeclaredBy string
+  Profiles []string
+  Domain string
+type Ask struct
+  At string
+  Caller string
+  User string
+  Model string
+  Family string
+  Verdict string
+  Host string
+type HostsSnapshot struct
+  Observation Observation
+  Hosts []HostState
+  Doubled []string
+  Asked []Ask
+type Decision struct
+  Asked string
+  Family string
+  Verdict string
+  Host string
+  Model string
+  Endpoint string
+  InstalledOn []string
+  Authorised *HostAllowance
+  Withheld []string
+  Loads int64
+  Why string
+type PickResult struct
+  Observation Observation
+  Decision Decision
+func Encode(v *PickRequest) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+func Decode(in []byte) (*PickRequest, error)
+type FrameWriter interface
+  WriteFrame(frame []byte) error
+type DispatchError string
+func (DispatchError) Error() string
+type FrameExchanger interface
+  ExchangeFrame(frame []byte) ([]byte, error)
+type ServiceError struct
+  Code ServiceErrorCode
+  Message string
+func (ServiceError) Error() string
+const EndpointContract
+type DescribedService interface
+  DescribeService() (contract string, ready bool, why string)
+func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+type ServedService interface
+  DescribedService
+  ServiceContract() string
+func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+type Router interface
+  Models(fresh bool) (ModelsSnapshot, error)
+  Hosts(fresh bool) (HostsSnapshot, error)
+  Pick(request PickRequest) (PickResult, error)
+type RouterTransport interface
+  FrameExchanger
+type RouterClient struct
+func NewRouterClient(t RouterTransport) *RouterClient
+type RouterDispatcher struct
+  Handler Router
+func (RouterClient) Models(fresh bool) (result ModelsSnapshot, err error)
+func (RouterClient) Hosts(fresh bool) (result HostsSnapshot, err error)
+func (RouterClient) Pick(request PickRequest) (result PickResult, err error)
+func (RouterDispatcher) DescribeService() (contract string, ready bool, why string)
+func (RouterDispatcher) ServiceContract() string
+func (RouterDispatcher) WriteFrame(frame []byte) error
+func (RouterDispatcher) ExchangeFrame(frame []byte) ([]byte, error)

@@ -1,0 +1,14 @@
+{
+  "name": "@openabstractions/opencode-provider",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": "./index.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "peerDependencies": {
+    "@openabstractions/facade": "0.0.0",
+    "@openabstractions/inference": "0.0.0",
+    "@openabstractions/ipc": "0.0.0"
+  }
+}

@@ -12,7 +12,9 @@
     "scenario": "Installed C++ Config.Read -> generated protocol -> shared IPC -> central Go host -> same-user configuration provider; caller override/provenance/live reload/value-only stamp, malformed or missing provider source, typed request refusal, absence errors and no client-local state",
     "inputs": [
       "conformance/clients/config",
+      "conformance/clients/fixture/go.mod",
       "conformance/clients/workspace.py",
+      "conformance/faults/lostreply/go/go.mod",
       "deploy/nas/mkimage/go.mod",
       "examples/pretend-lemonade/go.mod",
       "examples/pretend-lemonade/go.sum",
@@ -22,37 +24,64 @@
       "monitor/go.mod",
       "monitor/go.sum",
       "openabstractions-flat/abstraction-asks/go",
+      "openabstractions-flat/abstraction-asks/go/go.mod",
+      "openabstractions-flat/abstraction-asks/go/go.sum",
       "openabstractions-flat/abstraction-cas/go",
+      "openabstractions-flat/abstraction-cas/go/go.mod",
       "openabstractions-flat/abstraction-config/CONTRACT.md",
       "openabstractions-flat/abstraction-config/config.thrift",
       "openabstractions-flat/abstraction-config/cpp",
       "openabstractions-flat/abstraction-config/go",
+      "openabstractions-flat/abstraction-config/go/go.mod",
+      "openabstractions-flat/abstraction-config/go/go.sum",
       "openabstractions-flat/abstraction-download/CONTRACT.md",
       "openabstractions-flat/abstraction-download/download.thrift",
       "openabstractions-flat/abstraction-download/go",
+      "openabstractions-flat/abstraction-download/go/go.mod",
+      "openabstractions-flat/abstraction-download/go/go.sum",
       "openabstractions-flat/abstraction-download/reachwall/go.mod",
       "openabstractions-flat/abstraction-download/reachwall/go.sum",
+      "openabstractions-flat/abstraction-facade/go",
+      "openabstractions-flat/abstraction-facade/go-core",
+      "openabstractions-flat/abstraction-facade/go-core/go.mod",
+      "openabstractions-flat/abstraction-facade/go-core/go.sum",
       "openabstractions-flat/abstraction-facade/go/go.mod",
       "openabstractions-flat/abstraction-facade/go/go.sum",
       "openabstractions-flat/abstraction-identity",
+      "openabstractions-flat/abstraction-identity/go.mod",
+      "openabstractions-flat/abstraction-identity/go.sum",
       "openabstractions-flat/abstraction-job/CONTRACT.md",
       "openabstractions-flat/abstraction-job/go",
+      "openabstractions-flat/abstraction-job/go/go.mod",
+      "openabstractions-flat/abstraction-job/go/go.sum",
       "openabstractions-flat/abstraction-job/job.thrift",
       "openabstractions-flat/abstraction-logging/CONTRACT.md",
       "openabstractions-flat/abstraction-logging/go",
+      "openabstractions-flat/abstraction-logging/go/go.mod",
+      "openabstractions-flat/abstraction-logging/go/go.sum",
       "openabstractions-flat/abstraction-logging/logging.thrift",
       "openabstractions-flat/abstraction-model/go",
+      "openabstractions-flat/abstraction-model/go/go.mod",
+      "openabstractions-flat/abstraction-model/go/go.sum",
       "openabstractions-flat/abstraction-rights/go",
+      "openabstractions-flat/abstraction-rights/go/go.mod",
+      "openabstractions-flat/abstraction-rights/go/go.sum",
       "openabstractions-flat/abstraction-router/go",
+      "openabstractions-flat/abstraction-router/go/go.mod",
+      "openabstractions-flat/abstraction-router/go/go.sum",
       "openabstractions-flat/abstraction-router/router.thrift",
       "openabstractions-flat/abstraction-storage/go",
+      "openabstractions-flat/abstraction-storage/go/go.mod",
+      "openabstractions-flat/abstraction-storage/go/go.sum",
       "openabstractions-flat/abstraction-watch/go",
+      "openabstractions-flat/abstraction-watch/go/go.mod",
       "research/discovery-bench/go.mod",
       "research/discovery-bench/go.sum",
-      "research/facade-linking/go.mod",
       "research/plugins/go/go.mod",
       "research/plugins/go/go.sum",
-      "serve"
+      "serve",
+      "serve/go.mod",
+      "serve/go.sum"
     ],
     "toolchains": {
       "python": [
@@ -75,7 +104,7 @@
       "--run"
     ]
   },
-  "inputs_digest": "3cc6a87eac54a5fc3fd25aca0e62df33156dfb74f8029c803080c7ec5a7be7bc",
+  "inputs_digest": "5d13fb69ac5f397b99b6a06b0dd2a001fd632d9e686fd1ffebfc3548785dded4",
   "toolchains": {
     "python": {
       "argv": [
@@ -84,7 +113,7 @@
       ],
       "exit": 0,
       "output": "Python 3.12.10\r\n",
-      "seconds": 4.235
+      "seconds": 3.297
     },
     "go": {
       "argv": [
@@ -93,7 +122,7 @@
       ],
       "exit": 0,
       "output": "go version go1.26.5 windows/amd64\n",
-      "seconds": 0.094
+      "seconds": 2.672
     },
     "cmake": {
       "argv": [
@@ -103,7 +132,7 @@
       ],
       "exit": 0,
       "output": "cmake version 4.3.1-msvc1\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n",
-      "seconds": 0.281
+      "seconds": 2.14
     }
   },
   "result": {
@@ -113,9 +142,9 @@
       "--run"
     ],
     "exit": 0,
-    "output": "go version go1.26.5 windows/amd64\r\n-- Building for: Visual Studio 18 2026\r\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\r\n-- The CXX compiler identification is MSVC 19.51.36256.0\r\n-- Detecting CXX compiler ABI info\r\n-- Detecting CXX compiler ABI info - done\r\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting CXX compile features\r\n-- Detecting CXX compile features - done\r\n-- The C compiler identification is MSVC 19.51.36256.0\r\n-- Detecting C compiler ABI info\r\n-- Detecting C compiler ABI info - done\r\n-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting C compile features\r\n-- Detecting C compile features - done\r\n-- Configuring done (8.0s)\r\n-- Generating done (0.1s)\r\n-- Build files have been written to: $ROOT/.build/config/native\r\nC++ compiler ID MSVC\r\nC++ compiler VERSION 19.51.36256.0\r\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\n  1>Checking Build System\r\n  Building Custom Rule $ROOT/openabstractions-flat/abstraction-identity/cpp/CMakeLists.txt\r\n  client.cpp\r\n  abstraction_ipc.vcxproj -> $ROOT\\.build\\config\\native\\abstraction_ipc-build\\Release\\abstraction_ipc.lib\r\n  Building Custom Rule $ROOT/openabstractions-flat/abstraction-config/cpp/CMakeLists.txt\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/lib/abstraction_ipc.lib\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/include\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction/ipc\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction/ipc/client.h\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction/ipc/client.hpp\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction/ipc/frame.hpp\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction/ipc/process.hpp\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/lib/cmake/abstraction_ipc/abstraction_ipcTargets.cmake\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/lib/cmake/abstraction_ipc/abstraction_ipcTargets-release.cmake\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/lib/cmake/abstraction_ipc/abstraction_ipcConfig.cmake\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/lib/cmake/abstraction_ipc/abstraction_ipcConfigVersion.cmake\r\n-- Up-to-date: $ROOT\\.build\\config\\s-8551f3f5/include\r\n-- Up-to-date: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction/config\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction/config/client.hpp\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction/config/editor.hpp\r\n-- Up-to-date: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction\r\n-- Up-to-date: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction/config\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/include/abstraction/config/rec.h\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/lib/cmake/abstraction_config/abstraction_configTargets.cmake\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/lib/cmake/abstraction_config/abstraction_configConfig.cmake\r\n-- Installing: $ROOT\\.build\\config\\s-8551f3f5/lib/cmake/abstraction_config/abstraction_configConfigVersion.cmake\r\n-- Building for: Visual Studio 18 2026\r\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\r\n-- The C compiler identification is MSVC 19.51.36256.0\r\n-- The CXX compiler identification is MSVC 19.51.36256.0\r\n-- Detecting C compiler ABI info\r\n-- Detecting C compiler ABI info - done\r\n-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting C compile features\r\n-- Detecting C compile features - done\r\n-- Detecting CXX compiler ABI info\r\n-- Detecting CXX compiler ABI info - done\r\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting CXX compile features\r\n-- Detecting CXX compile features - done\r\n-- Configuring done (4.7s)\r\n-- Generating done (0.1s)\r\n-- Build files have been written to: $ROOT/.build/config/c-8551f3f5\r\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\n  1>Checking Build System\r\n  Building Custom Rule $ROOT/conformance/clients/config/CMakeLists.txt\r\n  client.cpp\r\n  config_consumer.vcxproj -> $ROOT\\.build\\config\\c-8551f3f5\\Release\\config_consumer.exe\r\n  Building Custom Rule $ROOT/conformance/clients/config/CMakeLists.txt\r\nPASS config read\r\nPASS config same-value\r\nPASS config override\r\nPASS refusal\r\nPASS config read\r\nPASS config defaults\r\nPASS config defaults\r\nPASS absent\r\nPASS C++ installed client -> generated protocol -> shared framing -> central host -> identity-bound same-user config provider\r\nPASS caller override, provider provenance/reload, value-only stamp, malformed/missing source, request refusal, absent service, no client store\r\n",
-    "seconds": 21.844
+    "output": "source revision: 8d7d7747e323383194561d9d35a01434ca5f7f3d \r\ngo version go1.26.5 windows/amd64\r\n-- Building for: Visual Studio 18 2026\r\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\r\n-- The CXX compiler identification is MSVC 19.51.36256.0\r\n-- Detecting CXX compiler ABI info\r\n-- Detecting CXX compiler ABI info - done\r\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting CXX compile features\r\n-- Detecting CXX compile features - done\r\n-- The C compiler identification is MSVC 19.51.36256.0\r\n-- Detecting C compiler ABI info\r\n-- Detecting C compiler ABI info - done\r\n-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting C compile features\r\n-- Detecting C compile features - done\r\n-- Configuring done (3.9s)\r\n-- Generating done (0.2s)\r\n-- Build files have been written to: $ROOT/.build/config/n-5b5c45df\r\nC++ compiler ID MSVC\r\nC++ compiler VERSION 19.51.36256.0\r\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\n  1>Checking Build System\r\n  Building Custom Rule $ROOT/openabstractions-flat/abstraction-identity/cpp/CMakeLists.txt\r\n  client.cpp\r\n  abstraction_ipc.vcxproj -> $ROOT\\.build\\config\\n-5b5c45df\\abstraction_ipc-build\\Release\\abstraction_ipc.lib\r\n  Building Custom Rule $ROOT/openabstractions-flat/abstraction-config/cpp/CMakeLists.txt\r\n-- Installing: $ROOT\\.build\\config\\s-5b5c45df/lib/abstraction_ipc.lib\r\n-- Installing: $ROOT\\.build\\config\\s-5b5c45df/include\r\n-- Installing: $ROOT\\.build\\config\\s-5b5c45df/include/abstraction\r\n-- Installing: $ROOT\\.build\\config\\s-5b5c45df/include/abstraction/ipc\r\n-- Installing: $ROOT\\.build\\config\\s-5b5c45df/include/abstraction/ipc/bootstrap.hpp\r\n-- Installing: $ROOT\\.build\\config\\s-5b5c45df/include/abstraction/ipc/client.h\r\n-- Installing: $ROOT\\.build\\config\\s-5b5c45df/include/abstraction/ipc/client.hpp\r\n-- Installing: $ROOT\\.build\\config\\s-5b5c45df/include/abstraction/ipc/frame.hpp\r\n-- Installing: $ROOT\\.build\\config\\s-5b5c45df/include/abstraction/ipc/process.hpp\r\n-- Installing: $ROOT\\.build\\config\\s-5b5c45df/share/abstraction_ipc/link-dependencies.txt\r\n-- Installing: $ROOT\\.build\\config\\s-5b5c45df/lib/cmake/abstraction_ipc/abstraction_ipcTargets.cmake\r\n-- Installing: $ROOT\\.build\\config\\s-5b5c45df/lib/cmake/abstraction_ipc/abstraction_ipcTargets-release.cmake\r\n-- Installing: $ROOT\\.build\\config\\s-5b5c45df/lib/cmake/abstraction_ipc/abstraction_ipcConfig.cmake\r\n-- Installing: $ROOT\\.build\\config\\s-5b5c45df/lib/cmake/abstraction_ipc/abstraction_ipcConfigVersion.cmake\r\n-- Up-to-date: $ROOT\\.build\\config\\s-5b5c45df/include\r\n-- Up-to-date: $ROOT\\.build\\config\\s-5b5c45df/include/abstraction\r\n-- Installing: $ROOT\\.build\\config\\s-5b5c45df/include/abstraction/config\r\n-- Installing: $ROOT\\.build\\config\\s-5b5c45df/include/abstraction/config/client.hpp\r\n-- Installing: $ROOT\\.build\\config\\s-5b5c45df/include/abstraction/config/editor.hpp\r\n-- Up-to-date: $ROOT\\.build\\config\\s-5b5c45df/include/abstraction\r\n-- Up-to-date: $ROOT\\.build\\config\\s-5b5c45df/include/abstraction/config\r\n-- Installing: $ROOT\\.build\\config\\s-5b5c45df/include/abstraction/config/rec.h\r\n-- Installing: $ROOT\\.build\\config\\s-5b5c45df/lib/cmake/abstraction_config/abstraction_configTargets.cmake\r\n-- Installing: $ROOT\\.build\\config\\s-5b5c45df/lib/cmake/abstraction_config/abstraction_configConfig.cmake\r\n-- Installing: $ROOT\\.build\\config\\s-5b5c45df/lib/cmake/abstraction_config/abstraction_configConfigVersion.cmake\r\n-- Building for: Visual Studio 18 2026\r\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\r\n-- The C compiler identification is MSVC 19.51.36256.0\r\n-- The CXX compiler identification is MSVC 19.51.36256.0\r\n-- Detecting C compiler ABI info\r\n-- Detecting C compiler ABI info - done\r\n-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting C compile features\r\n-- Detecting C compile features - done\r\n-- Detecting CXX compiler ABI info\r\n-- Detecting CXX compiler ABI info - done\r\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting CXX compile features\r\n-- Detecting CXX compile features - done\r\n-- Configuring done (3.6s)\r\n-- Generating done (0.1s)\r\n-- Build files have been written to: $ROOT/.build/config/c-5b5c45df\r\nC++ compiler ID MSVC\r\nC++ compiler VERSION 19.51.36256.0\r\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\n  1>Checking Build System\r\n  Building Custom Rule $ROOT/conformance/clients/config/CMakeLists.txt\r\n  client.cpp\r\n  config_consumer.vcxproj -> $ROOT\\.build\\config\\c-5b5c45df\\Release\\config_consumer.exe\r\n  Building Custom Rule $ROOT/conformance/clients/config/CMakeLists.txt\r\nPASS config read\r\nPASS config same-value\r\nPASS config override\r\nPASS refusal\r\nPASS config read\r\nPASS config defaults\r\nPASS config defaults\r\nPASS absent\r\nPASS C++ installed client -> generated protocol -> shared framing -> central host -> identity-bound same-user config provider\r\nPASS caller override, provider provenance/reload, value-only stamp, malformed/missing source, request refusal, absent service, no client store\r\n",
+    "seconds": 13.516
   },
-  "commit": "078360467acecb9512a053e39b4f80395f867ce2",
-  "record_digest": "ec9a23d68e99190de55a074c9b8d9c2b43e920389c1428cea39ae760e92b5fc5"
+  "commit": "8d7d7747e323383194561d9d35a01434ca5f7f3d",
+  "record_digest": "58f112a7535049e2a49ca03476b7327c6362d3ec3f88944ebf42528e4252584f"
 }

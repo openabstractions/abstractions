@@ -37,7 +37,8 @@ func table(b *strings.Builder, head []string, rows [][]string) {
 
 func genDocs(s *Definition) string {
 	b := &strings.Builder{}
-	docsOpen(b)
+	docsOpen(b, s)
+	docsServices(b, s)
 	docsEncoding(b, s)
 	docsTypes(b, s)
 	docsStructs(b, s)
@@ -48,12 +49,11 @@ func genDocs(s *Definition) string {
 	if !s.NoIPC {
 		docsProtocol(b, s)
 	}
-	docsServices(b, s)
 	docsClose(b)
 	return b.String()
 }
 
-func docsOpen(b *strings.Builder) {
+func docsOpen(b *strings.Builder, s *Definition) {
 	b.WriteString(`<!doctype html>
 <html lang="en">
 <meta charset="utf-8">
@@ -65,11 +65,40 @@ func docsOpen(b *strings.Builder) {
 <nav class="site"><a class="name" href="index.html">Open Abstractions</a>
 <a href="index.html">Overview</a> <a href="cases.html">Cases</a> <a href="reference.html">Reference</a> <a href="evidence.html">Evidence</a> <a href="coverage.html">Coverage</a> <a href="adopt.html">Adopt</a>
 <a class="right" href="https://github.com/openabstractions">github.com/openabstractions</a></nav>
-<p class="meta" style="margin-top:10px"><a href="#encoding">Encoding</a> · <a href="#types">Types</a> · <a href="#structs">Structs</a> · <a href="#enums">Enumerations</a> · <a href="#constants">Constants</a> · <a href="#vocabulary">Vocabulary</a> · <a href="#refusals">Refusals</a> · <a href="#protocol">Protocol</a></p>
+
 
 <h1>Schema</h1>
-<p class="lead">One definition; this page and every encoder are emitted from it. Nothing below is written by hand, and each rule tag links the construct to the profile that admits it.</p>
+<p class="lead">Use this reference to inspect fields, methods, accepted values and failure outcomes. For setup and working examples, start with the <a href="reference.html">API guide</a>.</p>
 `)
+	if ns := namespaceFor(s.Namespaces, "docs"); ns != "" {
+		fmt.Fprintf(b, "<p>Definition: %s</p>\n", mono(ns))
+	}
+	var sections []string
+	add := func(id, name string) {
+		sections = append(sections, "<a href=\"#"+html.EscapeString(id)+"\">"+html.EscapeString(name)+"</a>")
+	}
+	for _, svc := range s.Services {
+		add("service-"+svc.Name, svc.Name)
+	}
+	add("types", "Types")
+	add("structs", "Fields")
+	if len(s.Enums) > 0 {
+		add("enums", "Enumerations")
+	}
+	if len(s.Consts) > 0 {
+		add("constants", "Constants")
+	}
+	add("encoding", "Encoding")
+	if s.Vocab != nil {
+		add("vocabulary", "Vocabulary")
+	}
+	if len(s.Refusals) > 0 {
+		add("refusals", "Refusals")
+	}
+	if !s.NoIPC && s.Proto != nil {
+		add("protocol", "Protocol")
+	}
+	fmt.Fprintf(b, "<nav aria-label=\"Schema sections\" class=\"meta\">%s</nav>\n", strings.Join(sections, " · "))
 }
 
 func docsClose(b *strings.Builder) {
@@ -251,7 +280,7 @@ func docsEnums(b *strings.Builder, s *Definition) {
 	}
 	heading(b, 2, "enums", "Enumerations", "DEF-T5")
 	if hasEnumFields(s) {
-		b.WriteString("<p>Enum fields carry JSON strings containing exact member names, never numeric IDs. Unknown names are preserved with grant and refused as bad_enum with refuse on read and write. Optional absent fields preserve presence separately from an empty string.</p>\n")
+		b.WriteString("<p>Enum fields carry JSON strings containing exact member wire spellings, never numeric IDs. Unknown names are preserved with grant and refused as bad_enum with refuse on read and write. Optional absent fields preserve presence separately from an empty string.</p>\n")
 	}
 	fmt.Fprintf(b, "<p class=\"meta\">An enumeration is a closed vocabulary of wire names, and each one says on its own what a reader does with a member it has never heard of %s.</p>\n", rule("DEF-A5"))
 	for _, en := range s.Enums {
@@ -259,10 +288,11 @@ func docsEnums(b *strings.Builder, s *Definition) {
 		fmt.Fprintf(b, "<p class=\"meta\">a member this reader does not know is %s</p>\n",
 			mono(en.Ann["unknown"]))
 		keys := en.MemberAnn()
-		head := append([]string{"id", "member"}, keys...)
+		head := append([]string{"id", "member", "wire"}, keys...)
 		rows := make([][]string, 0, len(en.Members))
 		for _, m := range en.Members {
-			r := []string{strconv.Itoa(m.ID), mono(m.Name)}
+			wire := mono(m.WireName())
+			r := []string{strconv.Itoa(m.ID), mono(m.Name), wire}
 			for _, k := range keys {
 				if v, ok := m.Ann[k]; ok {
 					r = append(r, mono(v))
@@ -357,12 +387,23 @@ func docsProtocol(b *strings.Builder, s *Definition) {
 
 func docsServices(b *strings.Builder, s *Definition) {
 	for _, svc := range s.Services {
-		heading(b, 2, "service-"+svc.Name, "Service "+mono(svc.Name), "DEF-S1")
+		label := "Service "
+		if s.NoIPC {
+			label = "Interface "
+		}
+		heading(b, 2, "service-"+svc.Name, label+mono(svc.Name), "DEF-S1")
 		fmt.Fprintf(b, "<p>%s</p>\n", html.EscapeString(svc.Doc))
 		if s.NoIPC {
 			b.WriteString("<p>Interface-only output: implement these methods directly. No IPC client, dispatcher, message envelope or transport binding is emitted. Record codecs remain available. Method return/error signatures are retained; oneway marks the schema declaration, not a delivery or persistence guarantee for a direct call.</p>\n")
 		} else {
 			fmt.Fprintf(b, "<p>Wire identity: %s</p>\n", mono(svc.WireName))
+			if len(svc.ErrorCodes) > 0 {
+				codes := make([]string, len(svc.ErrorCodes))
+				for i, w := range svc.ErrorCodes {
+					codes[i] = mono(w)
+				}
+				fmt.Fprintf(b, "<p>Handler error codes, declared by %s: %s. Generated bindings name each as a ServiceErrorCode member beside the dispatcher's own codes.</p>\n", mono(svc.ErrorCodesConst), strings.Join(codes, ", "))
+			}
 			if len(s.Services) > 1 {
 				b.WriteString("<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>\n")
 			}

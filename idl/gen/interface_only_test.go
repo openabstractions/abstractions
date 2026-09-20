@@ -36,7 +36,7 @@ func TestNoIPCGeneration(t *testing.T) {
 	if err := run([]string{source, dir, "--no-ipc", "go", "cpp", "python", "docs"}, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"go/rec/rec.go", "cpp/rec.h", "py/rec.py"} {
+	for _, path := range []string{"go/rec/rec.go", "cpp/rec.h", "py/_codec.py"} {
 		body, err := os.ReadFile(filepath.Join(dir, path))
 		if err != nil {
 			t.Fatal(err)
@@ -118,11 +118,11 @@ func TestNoIPCCpp(t *testing.T) {
 	writeNamespaceFile(t, dir, "rec.h", genCpp(s))
 	writeNamespaceFile(t, dir, "main.cpp", `#include "rec.h"
 struct Provider:rec::Query{
-rec::Record Echo(const rec::Record&r,const std::string&,const bool&,const std::int64_t&)override{return r;}
-std::string Opaque(const std::string&r)override{return r;}
-void Reset()override{} void Notify()override{} std::string Fail(const std::string&)override{return "";}
+rec::Record echo(const rec::Record&r,const std::string&,const bool&,const std::int64_t&)override{return r;}
+std::string opaque(const std::string&r)override{return r;}
+void reset()override{} void notify()override{} std::string fail(const std::string&)override{return "";}
 };
-int main(){Provider p;rec::Query& api=p;rec::Record r;r.value="x";return api.Echo(r,"",false,0).value=="x"?0:1;}`)
+int main(){Provider p;rec::Query& api=p;rec::Record r;r.value="x";return api.echo(r,"",false,0).value=="x"?0:1;}`)
 	exe := filepath.Join(dir, "api.exe")
 	args := []string{"-std=c++17", filepath.Join(dir, "main.cpp"), "-o", exe}
 	if name := strings.ToLower(filepath.Base(cxx)); name == "cl" || name == "cl.exe" {
@@ -149,11 +149,11 @@ func TestNoIPCPython(t *testing.T) {
 	writeNamespaceFile(t, dir, "rec.py", genPy(s))
 	writeNamespaceFile(t, dir, "test.py", `import rec
 class Provider(rec.Query):
- def Echo(self, record, text, enabled, count): return record
+ def echo(self, record, text, enabled, count): return record
 p=Provider()
 r=rec.Record()
 r.value='x'
-assert p.Echo(r,'',False,0).value=='x'
+assert p.echo(r,'',False,0).value=='x'
 assert not hasattr(rec,'QueryClient')
 assert not hasattr(rec,'FrameWriter')
 `)

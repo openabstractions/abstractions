@@ -25,8 +25,8 @@ controlled backend protocol is a test adapter, with no NAS or installed service.
 
 Use an existing installed prefix containing `abstraction_facade`,
 `abstraction_ipc`, `abstraction_job_acceptance` and
-`abstraction_download_request`. Request-only download installation uses
-`ABSTRACTION_DOWNLOAD_BUILD_LEGACY=OFF`; facade jobs-only installation uses
+`abstraction_download_request`. The download package installs the request
+vocabulary alone; facade jobs-only installation uses
 `ABSTRACTION_FACADE_BUILD_AGGREGATE=OFF`. No provider library is linked into C++.
 
 ```
@@ -50,10 +50,10 @@ caches. These commands reproduce those configurations and refresh installed
 headers from the current source (substitute the full CMake path as needed):
 
 ```sh
-cmake -S openabstractions-flat/abstraction-facade/cpp -B .build/cx/facade -DABSTRACTION_FACADE_BUILD_AGGREGATE=OFF -DABSTRACTION_FACADE_BUILD_JOBS=ON -DABSTRACTION_JOB_BUILD_LEGACY=OFF
+cmake -S openabstractions-flat/abstraction-facade/cpp -B .build/cx/facade -DABSTRACTION_FACADE_BUILD_AGGREGATE=OFF -DABSTRACTION_FACADE_BUILD_JOBS=ON
 cmake --build .build/cx/facade --config Release --parallel 4
 cmake --install .build/cx/facade --config Release --prefix .build/cx/prefix
-cmake -S openabstractions-flat/abstraction-download/cpp -B .build/cx/request -DABSTRACTION_DOWNLOAD_BUILD_LEGACY=OFF
+cmake -S openabstractions-flat/abstraction-download/cpp -B .build/cx/request
 cmake --install .build/cx/request --config Release --prefix .build/cx/prefix
 ```
 

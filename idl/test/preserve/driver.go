@@ -27,7 +27,7 @@ func main() {
 	}
 	scope := os.Args[3]
 	if scope == "mutate" {
-		r.Id = "edited"
+		r.ID = "edited"
 		if r.Child != nil {
 			r.Child.Name = "edited-child"
 		}

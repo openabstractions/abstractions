@@ -1,0 +1,351 @@
+using Raw = std::string
+class Refusal : public std::runtime_error
+  const char* word
+  std::size_t offset
+enum class Scope {Any, Local, Remote}
+inline constexpr std::string_view wire_name(Scope value)
+inline std::optional<Scope> parse_scope(std::string_view name)
+inline constexpr bool operator==(Scope value, std::string_view name)
+inline constexpr bool operator!=(Scope value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Scope value)
+inline constexpr bool operator!=(std::string_view name, Scope value)
+inline const std::vector<std::string> kScopeNames
+enum class ResolutionStatus {Resolved, Unavailable, Forbidden, Incompatible, UnmetRequirements, NotReady, InvalidRequest}
+inline constexpr std::string_view wire_name(ResolutionStatus value)
+inline std::optional<ResolutionStatus> parse_resolution_status(std::string_view name)
+inline constexpr bool operator==(ResolutionStatus value, std::string_view name)
+inline constexpr bool operator!=(ResolutionStatus value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ResolutionStatus value)
+inline constexpr bool operator!=(std::string_view name, ResolutionStatus value)
+inline const std::vector<std::string> kResolutionStatusNames
+enum class BootstrapState {Unknown, Installed, Starting, Running, Unavailable}
+inline constexpr std::string_view wire_name(BootstrapState value)
+inline std::optional<BootstrapState> parse_bootstrap_state(std::string_view name)
+inline constexpr bool operator==(BootstrapState value, std::string_view name)
+inline constexpr bool operator!=(BootstrapState value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, BootstrapState value)
+inline constexpr bool operator!=(std::string_view name, BootstrapState value)
+inline const std::vector<std::string> kBootstrapStateNames
+enum class CallerOutcome {Observed, Forbidden, Unavailable, Invalid}
+inline constexpr std::string_view wire_name(CallerOutcome value)
+inline std::optional<CallerOutcome> parse_caller_outcome(std::string_view name)
+inline constexpr bool operator==(CallerOutcome value, std::string_view name)
+inline constexpr bool operator!=(CallerOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, CallerOutcome value)
+inline constexpr bool operator!=(std::string_view name, CallerOutcome value)
+inline const std::vector<std::string> kCallerOutcomeNames
+enum class DescriptionOutcome {Described, Forbidden, Unavailable, Invalid}
+inline constexpr std::string_view wire_name(DescriptionOutcome value)
+inline std::optional<DescriptionOutcome> parse_description_outcome(std::string_view name)
+inline constexpr bool operator==(DescriptionOutcome value, std::string_view name)
+inline constexpr bool operator!=(DescriptionOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, DescriptionOutcome value)
+inline constexpr bool operator!=(std::string_view name, DescriptionOutcome value)
+inline const std::vector<std::string> kDescriptionOutcomeNames
+enum class ServiceReadiness {Ready, NotReady, Unknown}
+inline constexpr std::string_view wire_name(ServiceReadiness value)
+inline std::optional<ServiceReadiness> parse_service_readiness(std::string_view name)
+inline constexpr bool operator==(ServiceReadiness value, std::string_view name)
+inline constexpr bool operator!=(ServiceReadiness value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ServiceReadiness value)
+inline constexpr bool operator!=(std::string_view name, ServiceReadiness value)
+inline const std::vector<std::string> kServiceReadinessNames
+enum class DeclarationTransport {Native, Remote}
+inline constexpr std::string_view wire_name(DeclarationTransport value)
+inline std::optional<DeclarationTransport> parse_declaration_transport(std::string_view name)
+inline constexpr bool operator==(DeclarationTransport value, std::string_view name)
+inline constexpr bool operator!=(DeclarationTransport value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, DeclarationTransport value)
+inline constexpr bool operator!=(std::string_view name, DeclarationTransport value)
+inline const std::vector<std::string> kDeclarationTransportNames
+enum class Activation {OnDemand, Attach, Remote}
+inline constexpr std::string_view wire_name(Activation value)
+inline std::optional<Activation> parse_activation(std::string_view name)
+inline constexpr bool operator==(Activation value, std::string_view name)
+inline constexpr bool operator!=(Activation value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Activation value)
+inline constexpr bool operator!=(std::string_view name, Activation value)
+inline const std::vector<std::string> kActivationNames
+enum class DeclarationReadiness {Ready, Idle, Starting, Restarting, Refused, Unreachable, NotReady}
+inline constexpr std::string_view wire_name(DeclarationReadiness value)
+inline std::optional<DeclarationReadiness> parse_declaration_readiness(std::string_view name)
+inline constexpr bool operator==(DeclarationReadiness value, std::string_view name)
+inline constexpr bool operator!=(DeclarationReadiness value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, DeclarationReadiness value)
+inline constexpr bool operator!=(std::string_view name, DeclarationReadiness value)
+inline const std::vector<std::string> kDeclarationReadinessNames
+enum class DeclarationListOutcome {Page, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(DeclarationListOutcome value)
+inline std::optional<DeclarationListOutcome> parse_declaration_list_outcome(std::string_view name)
+inline constexpr bool operator==(DeclarationListOutcome value, std::string_view name)
+inline constexpr bool operator!=(DeclarationListOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, DeclarationListOutcome value)
+inline constexpr bool operator!=(std::string_view name, DeclarationListOutcome value)
+inline const std::vector<std::string> kDeclarationListOutcomeNames
+enum class DeclarationEditOutcome {Applied, Conflict, Unknown, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(DeclarationEditOutcome value)
+inline std::optional<DeclarationEditOutcome> parse_declaration_edit_outcome(std::string_view name)
+inline constexpr bool operator==(DeclarationEditOutcome value, std::string_view name)
+inline constexpr bool operator!=(DeclarationEditOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, DeclarationEditOutcome value)
+inline constexpr bool operator!=(std::string_view name, DeclarationEditOutcome value)
+inline const std::vector<std::string> kDeclarationEditOutcomeNames
+enum class ApplicationOutcome {Applied, Page, Unknown, Stale, Conflict, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(ApplicationOutcome value)
+inline std::optional<ApplicationOutcome> parse_application_outcome(std::string_view name)
+inline constexpr bool operator==(ApplicationOutcome value, std::string_view name)
+inline constexpr bool operator!=(ApplicationOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ApplicationOutcome value)
+inline constexpr bool operator!=(std::string_view name, ApplicationOutcome value)
+inline const std::vector<std::string> kApplicationOutcomeNames
+enum class ApplicationActivationOutcome {Ready, Unknown, Disabled, Forbidden, Invalid, LaunchRefused, IdentityRefused, NotReady, Unavailable}
+inline constexpr std::string_view wire_name(ApplicationActivationOutcome value)
+inline std::optional<ApplicationActivationOutcome> parse_application_activation_outcome(std::string_view name)
+inline constexpr bool operator==(ApplicationActivationOutcome value, std::string_view name)
+inline constexpr bool operator!=(ApplicationActivationOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ApplicationActivationOutcome value)
+inline constexpr bool operator!=(std::string_view name, ApplicationActivationOutcome value)
+inline const std::vector<std::string> kApplicationActivationOutcomeNames
+inline const std::vector<std::string> kServiceErrorCodeNames
+inline constexpr std::string_view kServiceErrorCodeHandlerError
+inline constexpr std::string_view kServiceErrorCodeInvalidResult
+inline constexpr std::string_view kServiceErrorCodeUnknownVersion
+inline constexpr std::string_view kServiceErrorCodeUnknownService
+inline constexpr std::string_view kServiceErrorCodeUnknownMethod
+inline constexpr std::string_view kServiceErrorCodeWrongMode
+inline const std::vector<std::string> kDeclarationResourceKinds
+inline const std::vector<std::string> kRegistryActions
+inline const std::vector<std::string> kDefaultRuntimeContracts
+struct ResolveRequest
+  std::string capability
+  std::vector<std::string> contracts
+  std::vector<std::string> guarantees
+  Scope scope
+struct ServiceReference
+  std::string provider
+  std::string capability
+  std::string contract
+  std::vector<std::string> guarantees
+  Scope scope
+  std::string transport
+  std::string endpoint
+struct ResolveResult
+  ResolutionStatus status
+  std::optional<ServiceReference> reference
+struct BootstrapObservation
+  BootstrapState state
+  std::string detail
+struct CapabilityObservation
+  ResolveRequest request
+  std::optional<ResolveResult> result
+struct RuntimeObservation
+  BootstrapObservation bootstrap
+  std::vector<CapabilityObservation> capabilities
+struct CallerAttribute
+  std::string attribute
+  std::string proof
+  std::string ceiling
+struct CallerObservation
+  CallerOutcome outcome
+  std::string mechanism
+  std::string account
+  std::string program
+  std::int64_t pid
+  std::vector<CallerAttribute> attributes
+  std::string platform
+  std::string transport
+  bool bindable
+  std::string stronger
+struct ServiceState
+  std::string contract
+  ServiceReadiness readiness
+  std::string why
+  std::vector<std::string> guarantees
+  std::map<std::string, std::string> capabilities
+struct Description
+  DescriptionOutcome outcome
+  std::string program
+  std::string version
+  std::vector<ServiceState> services
+struct RemoteTrust
+  std::string server_name
+  std::string roots
+  std::string certificate
+  std::string key
+  std::string credential
+struct Declaration
+  std::string name
+  std::string program
+  std::vector<std::string> arguments
+  std::string endpoint
+  DeclarationTransport transport
+  std::vector<std::string> contracts
+  std::vector<std::string> guarantees
+  std::vector<std::string> resources
+  Activation activation
+  std::optional<RemoteTrust> remote
+  std::vector<std::string> models
+struct DeclarationState
+  Declaration declaration
+  std::string declared_by
+  std::int64_t declared_unix_ms
+  DeclarationReadiness readiness
+  std::string why
+  std::int64_t restarts
+  std::vector<ServiceState> described
+  std::vector<std::string> accepted
+struct DeclarationList
+  DeclarationListOutcome outcome
+  std::string revision
+  std::vector<DeclarationState> declarations
+struct DeclarationChange
+  DeclarationEditOutcome outcome
+  std::string revision
+  std::string reason
+struct DeclarationObservation
+  DeclarationListOutcome outcome
+  std::string cursor
+  std::vector<DeclarationState> declarations
+struct ApplicationInterface
+  std::string name
+  std::string protocol
+  std::string contract
+struct ApplicationActivationRecipe
+  std::vector<std::string> arguments
+  ApplicationInterface readiness
+  std::int64_t readiness_timeout_ms
+struct ApplicationDescriptor
+  std::string name
+  std::string program
+  std::string title
+  std::string start_guidance
+  std::optional<ApplicationActivationRecipe> activation
+struct ApplicationContext
+  std::string name
+  std::string title
+  std::string revision
+struct ApplicationPresence
+  std::string application
+  std::string instance
+  std::vector<ApplicationInterface> interfaces
+  std::vector<ApplicationContext> contexts
+  std::int64_t lease_ms
+struct ApplicationInstance
+  std::string instance
+  std::vector<ApplicationInterface> interfaces
+  std::vector<ApplicationContext> contexts
+  std::int64_t expires_unix_ms
+struct ApplicationEntry
+  ApplicationDescriptor descriptor
+  std::vector<ApplicationInstance> instances
+  Scope scope
+struct ApplicationChange
+  ApplicationOutcome outcome
+  std::string instance
+  std::string reason
+struct ApplicationPage
+  ApplicationOutcome outcome
+  std::string cursor
+  std::vector<ApplicationEntry> applications
+struct ApplicationActivationResult
+  ApplicationActivationOutcome outcome
+  std::string instance
+  bool started
+  std::string reason
+inline std::string encode(const ResolveResult& v)
+inline ResolveResult decode(std::string_view data)
+struct FrameWriter
+  virtual void write_frame(std::string_view frame)
+struct DispatchError : std::runtime_error
+inline std::string service_name(std::string_view frame)
+struct FrameExchanger
+  virtual std::string exchange_frame(std::string_view frame)
+struct ServiceError : std::runtime_error
+  std::string code, message
+inline constexpr std::string_view kEndpointContract
+struct DescribedService
+  std::string contract
+  bool ready
+  std::string why
+std::string describe_endpoint(std::string_view frame, const std::string& program, const std::string& version, const Services& . . . services)
+struct Resolver
+  virtual ResolveResult resolve(const ResolveRequest& request)
+template<class Transport>struct ResolverClient : Resolver
+  Transport& transport_
+  ResolveResult resolve(const ResolveRequest& request) override
+struct ResolverService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ResolverDispatcher : FrameWriter, FrameExchanger
+  Resolver& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct Caller
+  virtual CallerObservation observe()
+template<class Transport>struct CallerClient : Caller
+  Transport& transport_
+  CallerObservation observe() override
+struct CallerService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct CallerDispatcher : FrameWriter, FrameExchanger
+  Caller& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct Endpoint
+  virtual Description describe()
+template<class Transport>struct EndpointClient : Endpoint
+  Transport& transport_
+  Description describe() override
+struct EndpointService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct EndpointDispatcher : FrameWriter, FrameExchanger
+  Endpoint& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct Registry
+  virtual DeclarationList declarations()
+  virtual DeclarationChange declare(const std::string& expected_revision, const Declaration& declaration)
+  virtual DeclarationChange withdraw(const std::string& expected_revision, const std::string& name)
+  virtual DeclarationObservation observe(const std::string& cursor, const std::int64_t& wait_ms)
+template<class Transport>struct RegistryClient : Registry
+  Transport& transport_
+  DeclarationList declarations() override
+  DeclarationChange declare(const std::string& expected_revision, const Declaration& declaration) override
+  DeclarationChange withdraw(const std::string& expected_revision, const std::string& name) override
+  DeclarationObservation observe(const std::string& cursor, const std::int64_t& wait_ms) override
+struct RegistryService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct RegistryDispatcher : FrameWriter, FrameExchanger
+  Registry& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct Applications
+  virtual ApplicationChange register_(const ApplicationDescriptor& descriptor)
+  virtual ApplicationChange remove(const std::string& application)
+  virtual ApplicationChange announce(const ApplicationPresence& presence)
+  virtual ApplicationChange withdraw(const std::string& application, const std::string& instance)
+  virtual ApplicationPage observe(const std::string& cursor, const std::int64_t& wait_ms)
+  virtual ApplicationActivationResult activate(const std::string& application)
+template<class Transport>struct ApplicationsClient : Applications
+  Transport& transport_
+  ApplicationChange register_(const ApplicationDescriptor& descriptor) override
+  ApplicationChange remove(const std::string& application) override
+  ApplicationChange announce(const ApplicationPresence& presence) override
+  ApplicationChange withdraw(const std::string& application, const std::string& instance) override
+  ApplicationPage observe(const std::string& cursor, const std::int64_t& wait_ms) override
+  ApplicationActivationResult activate(const std::string& application) override
+struct ApplicationsService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ApplicationsDispatcher : FrameWriter, FrameExchanger
+  Applications& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override

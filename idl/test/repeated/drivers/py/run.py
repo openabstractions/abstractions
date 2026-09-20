@@ -2,7 +2,7 @@ import pathlib
 import sys
 
 sys.path.insert(0, sys.argv[1])
-import rec
+import _codec as rec
 
 OUT = pathlib.Path(sys.argv[2])
 lines = []

@@ -1,0 +1,27 @@
+using Raw = std::string
+class Refusal : public std::runtime_error
+  const char* word
+  std::size_t offset
+enum class Proof {None, Claimed, Invalid, Unsigned, Unmet, Pid, Bound, Kernel, Signed}
+inline constexpr std::string_view wire_name(Proof value)
+inline std::optional<Proof> parse_proof(std::string_view name)
+inline constexpr bool operator==(Proof value, std::string_view name)
+inline constexpr bool operator!=(Proof value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Proof value)
+inline constexpr bool operator!=(std::string_view name, Proof value)
+inline const std::vector<std::string> kProofNames
+inline const std::vector<std::string> kNativeOperations
+inline const std::vector<std::string> kNativeBindingTypes
+struct ProofRequirement
+  Proof user
+  Proof process
+  Proof path
+  Proof package
+  Proof code
+struct ProofFailure
+  std::string attribute
+  Proof have
+  Proof need
+  std::string why
+inline std::string encode(const ProofRequirement& v)
+inline ProofRequirement decode(std::string_view data)

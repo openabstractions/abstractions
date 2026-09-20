@@ -62,7 +62,7 @@ if (Have "py") {
 } else { $unproven += "python  UNPROVEN: no interpreter on this machine" }
 
 if (Have "node") {
-  Copy-Item "$out\js\rec.mjs" "$Scratch\rec.mjs" -Force
+  Copy-Item "$out\js\internal.mjs" "$Scratch\rec.mjs" -Force
   Copy-Item "$here\drivers\js\run.mjs" "$Scratch\run.mjs" -Force
   & node "$Scratch\run.mjs" $res $corpus | Out-Null
   $ran += "js"
@@ -73,7 +73,9 @@ if (Have "rustc") {
   Copy-Item "$out\rs\rec.rs" "$Scratch\d-rs\rec.rs" -Force
   Copy-Item "$here\drivers\rs\main.rs" "$Scratch\d-rs\main.rs" -Force
   Remove-Item "$Scratch\d-rs\main.exe" -ErrorAction SilentlyContinue
-  & rustc --edition 2021 -O --out-dir "$Scratch\d-rs" "$Scratch\d-rs\main.rs" > "$Scratch\rs-build.log" 2>&1
+  # Through cmd, as test/run.ps1 does: a dead-code warning for a generated item
+  # the driver never calls goes to the log instead of stopping this script.
+  & cmd /c "rustc --edition 2021 -O --out-dir ""$Scratch\d-rs"" ""$Scratch\d-rs\main.rs"" > ""$Scratch\rs-build.log"" 2>&1"
   if (Test-Path "$Scratch\d-rs\main.exe") {
     & "$Scratch\d-rs\main.exe" $res $corpus | Out-Null
     $ran += "rs"

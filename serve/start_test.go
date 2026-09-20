@@ -75,6 +75,24 @@ func TestStartLifecycle(t *testing.T) {
 		})
 	}
 }
+
+// An installed `start` refused by a held upgrade exclusion exits 3, the status
+// the SDK activation turns into its typed upgrade-in-progress refusal. The
+// command dispatch used to exit 1 for every start failure.
+func TestStartUpgradeRefusalKeepsExitStatus(t *testing.T) {
+	refusal := &exitError{code: exitUpgradeInProgress, err: errors.New("an upgrade of this installation is in progress")}
+	h := startHooks{guard: func() error { return nil },
+		activate: func(context.Context) error { return refusal },
+		ready:    func(context.Context) (bool, error) { return false, nil }}
+	err := startInstalled(context.Background(), h)
+	if got := exitStatus(err); got != exitUpgradeInProgress {
+		t.Fatalf("start refusal exit status %d, want %d: %v", got, exitUpgradeInProgress, err)
+	}
+	if got := exitStatus(errors.New("start readiness failed")); got != 1 {
+		t.Fatalf("other start failure exit status %d, want 1", got)
+	}
+}
+
 func TestStartCommandCancellation(t *testing.T) {
 	t.Setenv("OA_START_HELPER", "sleep")
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
@@ -110,7 +128,7 @@ func TestStartReadyRequiresAllRuntimeContracts(t *testing.T) {
 			options, _ := isolatedRuntime(t)
 			var candidates []resolution.Candidate
 			for _, item := range all[:count] {
-				candidates = append(candidates, resolution.Candidate{Ready: true, Reference: wire.ServiceReference{Provider: "fixture", Capability: item[0], Contract: item[1], Transport: "oa-framed-local@1", Endpoint: options.endpoint, Scope: "local"}})
+				candidates = append(candidates, resolution.Candidate{Ready: true, Reference: wire.ServiceReference{Provider: "fixture", Capability: item[0], Contract: item[1], Transport: "oa-framed-local@1", Endpoint: options.endpoint, Scope: wire.ScopeLocal}})
 			}
 			catalog, err := resolution.New(candidates)
 			if err != nil {

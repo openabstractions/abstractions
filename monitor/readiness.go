@@ -31,8 +31,8 @@ type readinessView struct {
 }
 
 func readinessPresentation(observation wire.RuntimeObservation, err error) readinessView {
-	view := readinessView{Bootstrap: observation.Bootstrap.State, Detail: observation.Bootstrap.Detail,
-		BootstrapLabel: readinessLabel(observation.Bootstrap.State),
+	view := readinessView{Bootstrap: observation.Bootstrap.State.String(), Detail: observation.Bootstrap.Detail,
+		BootstrapLabel: readinessLabel(observation.Bootstrap.State.String()),
 		Capabilities:   []readinessRow{}, CheckedAt: time.Now().Format(time.RFC3339)}
 	if err != nil {
 		view.Error = err.Error()
@@ -40,7 +40,7 @@ func readinessPresentation(observation wire.RuntimeObservation, err error) readi
 	for _, item := range observation.Capabilities {
 		row := readinessRow{Capability: item.Request.Capability, Contract: strings.Join(item.Request.Contracts, ", "), Status: "unobserved"}
 		if item.Result != nil {
-			row.Status = item.Result.Status
+			row.Status = item.Result.Status.String()
 			if item.Result.Reference != nil {
 				row.Provider = item.Result.Reference.Provider
 			}

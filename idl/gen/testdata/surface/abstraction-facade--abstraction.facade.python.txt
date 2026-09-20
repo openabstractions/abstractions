@@ -1,0 +1,274 @@
+enum Activation
+  ON_DEMAND = 'on_demand'
+  ATTACH = 'attach'
+  REMOTE = 'remote'
+enum ApplicationActivationOutcome
+  READY = 'ready'
+  UNKNOWN = 'unknown'
+  DISABLED = 'disabled'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  LAUNCH_REFUSED = 'launch_refused'
+  IDENTITY_REFUSED = 'identity_refused'
+  NOT_READY = 'not_ready'
+  UNAVAILABLE = 'unavailable'
+dataclass ApplicationActivationRecipe
+  arguments: list[str]
+  readiness: ApplicationInterface
+  readiness_timeout_ms: int
+dataclass ApplicationActivationResult
+  outcome: ApplicationActivationOutcome | None
+  instance: str
+  started: bool
+  reason: str
+dataclass ApplicationChange
+  outcome: ApplicationOutcome | None
+  instance: str
+  reason: str
+dataclass ApplicationContext
+  name: str
+  title: str
+  revision: str
+dataclass ApplicationDescriptor
+  name: str
+  program: str
+  title: str
+  start_guidance: str
+  activation: ApplicationActivationRecipe | None
+dataclass ApplicationEntry
+  descriptor: ApplicationDescriptor
+  instances: list[ApplicationInstance]
+  scope: Scope | None
+dataclass ApplicationInstance
+  instance: str
+  interfaces: list[ApplicationInterface]
+  contexts: list[ApplicationContext]
+  expires_unix_ms: int
+dataclass ApplicationInterface
+  name: str
+  protocol: str
+  contract: str
+enum ApplicationOutcome
+  APPLIED = 'applied'
+  PAGE = 'page'
+  UNKNOWN = 'unknown'
+  STALE = 'stale'
+  CONFLICT = 'conflict'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass ApplicationPage
+  outcome: ApplicationOutcome | None
+  cursor: str
+  applications: list[ApplicationEntry]
+dataclass ApplicationPresence
+  application: str
+  instance: str
+  interfaces: list[ApplicationInterface]
+  contexts: list[ApplicationContext]
+  lease_ms: int
+class Applications
+  register(descriptor: ApplicationDescriptor) -> ApplicationChange
+  remove(application: str) -> ApplicationChange
+  announce(presence: ApplicationPresence) -> ApplicationChange
+  withdraw(application: str, instance: str) -> ApplicationChange
+  observe(cursor: str, wait_ms: int) -> ApplicationPage
+  activate(application: str) -> ApplicationActivationResult
+class ApplicationsClient(Applications)
+  __init__(transport)
+  register(descriptor: ApplicationDescriptor) -> ApplicationChange
+  remove(application: str) -> ApplicationChange
+  announce(presence: ApplicationPresence) -> ApplicationChange
+  withdraw(application: str, instance: str) -> ApplicationChange
+  observe(cursor: str, wait_ms: int) -> ApplicationPage
+  activate(application: str) -> ApplicationActivationResult
+dataclass BootstrapObservation
+  state: BootstrapState | None
+  detail: str
+enum BootstrapState
+  UNKNOWN = 'unknown'
+  INSTALLED = 'installed'
+  STARTING = 'starting'
+  RUNNING = 'running'
+  UNAVAILABLE = 'unavailable'
+class Caller
+  observe() -> CallerObservation
+dataclass CallerAttribute
+  attribute: str
+  proof: str
+  ceiling: str
+class CallerClient(Caller)
+  __init__(transport)
+  observe() -> CallerObservation
+dataclass CallerObservation
+  outcome: CallerOutcome | None
+  mechanism: str
+  account: str
+  program: str
+  pid: int
+  attributes: list[CallerAttribute]
+  platform: str
+  transport: str
+  bindable: bool
+  stronger: str
+enum CallerOutcome
+  OBSERVED = 'observed'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+  INVALID = 'invalid'
+dataclass CapabilityObservation
+  request: ResolveRequest
+  result: ResolveResult | None
+const DECLARATION_RESOURCE_KINDS
+const DEFAULT_RUNTIME_CONTRACTS
+dataclass Declaration
+  name: str
+  program: str
+  arguments: list[str]
+  endpoint: str
+  transport: DeclarationTransport | None
+  contracts: list[str]
+  guarantees: list[str]
+  resources: list[str]
+  activation: Activation | None
+  remote: RemoteTrust | None
+  models: list[str]
+dataclass DeclarationChange
+  outcome: DeclarationEditOutcome | None
+  revision: str
+  reason: str
+enum DeclarationEditOutcome
+  APPLIED = 'applied'
+  CONFLICT = 'conflict'
+  UNKNOWN = 'unknown'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass DeclarationList
+  outcome: DeclarationListOutcome | None
+  revision: str
+  declarations: list[DeclarationState]
+enum DeclarationListOutcome
+  PAGE = 'page'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass DeclarationObservation
+  outcome: DeclarationListOutcome | None
+  cursor: str
+  declarations: list[DeclarationState]
+enum DeclarationReadiness
+  READY = 'ready'
+  IDLE = 'idle'
+  STARTING = 'starting'
+  RESTARTING = 'restarting'
+  REFUSED = 'refused'
+  UNREACHABLE = 'unreachable'
+  NOT_READY = 'not_ready'
+dataclass DeclarationState
+  declaration: Declaration
+  declared_by: str
+  declared_unix_ms: int
+  readiness: DeclarationReadiness | None
+  why: str
+  restarts: int
+  described: list[ServiceState]
+  accepted: list[str]
+enum DeclarationTransport
+  NATIVE = 'oa-native@1'
+  REMOTE = 'oa-remote@1'
+dataclass Description
+  outcome: DescriptionOutcome | None
+  program: str
+  version: str
+  services: list[ServiceState]
+enum DescriptionOutcome
+  DESCRIBED = 'described'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+  INVALID = 'invalid'
+class DispatchError(ValueError)
+  __init__(code)
+class Endpoint
+  describe() -> Description
+class EndpointClient(Endpoint)
+  __init__(transport)
+  describe() -> Description
+const REGISTRY_ACTIONS
+class Refusal(ValueError)
+  __init__(word, offset)
+class Registry
+  declarations() -> DeclarationList
+  declare(expected_revision: str, declaration: Declaration) -> DeclarationChange
+  withdraw(expected_revision: str, name: str) -> DeclarationChange
+  observe(cursor: str, wait_ms: int) -> DeclarationObservation
+class RegistryClient(Registry)
+  __init__(transport)
+  declarations() -> DeclarationList
+  declare(expected_revision: str, declaration: Declaration) -> DeclarationChange
+  withdraw(expected_revision: str, name: str) -> DeclarationChange
+  observe(cursor: str, wait_ms: int) -> DeclarationObservation
+dataclass RemoteTrust
+  server_name: str
+  roots: str
+  certificate: str
+  key: str
+  credential: str
+enum ResolutionStatus
+  RESOLVED = 'resolved'
+  UNAVAILABLE = 'unavailable'
+  FORBIDDEN = 'forbidden'
+  INCOMPATIBLE = 'incompatible'
+  UNMET_REQUIREMENTS = 'unmet_requirements'
+  NOT_READY = 'not_ready'
+  INVALID_REQUEST = 'invalid_request'
+dataclass ResolveRequest
+  capability: str
+  contracts: list[str]
+  guarantees: list[str]
+  scope: Scope | None
+dataclass ResolveResult
+  status: ResolutionStatus | None
+  reference: ServiceReference | None
+class Resolver
+  resolve(request: ResolveRequest) -> ResolveResult
+class ResolverClient(Resolver)
+  __init__(transport)
+  resolve(request: ResolveRequest) -> ResolveResult
+dataclass RuntimeObservation
+  bootstrap: BootstrapObservation
+  capabilities: list[CapabilityObservation]
+enum Scope
+  ANY = 'any'
+  LOCAL = 'local'
+  REMOTE = 'remote'
+class ServiceError(Exception)
+  __init__(code, message)
+enum ServiceErrorCode
+  HANDLER_ERROR = 'handler_error'
+  INVALID_RESULT = 'invalid_result'
+  UNKNOWN_VERSION = 'unknown_version'
+  UNKNOWN_SERVICE = 'unknown_service'
+  UNKNOWN_METHOD = 'unknown_method'
+  WRONG_MODE = 'wrong_mode'
+enum ServiceReadiness
+  READY = 'ready'
+  NOT_READY = 'not_ready'
+  UNKNOWN = 'unknown'
+dataclass ServiceReference
+  provider: str
+  capability: str
+  contract: str
+  guarantees: list[str]
+  scope: Scope | None
+  transport: str
+  endpoint: str
+dataclass ServiceState
+  contract: str
+  readiness: ServiceReadiness | None
+  why: str
+  guarantees: list[str]
+  capabilities: dict[str, str]
+def decode(data)
+def encode(v)
+def service_name(frame)

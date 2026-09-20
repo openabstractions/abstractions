@@ -1,0 +1,167 @@
+pub type Raw
+pub enum DecisionOutcome
+  Permitted
+  Denied
+  NotGranted
+  UnknownAction
+  Invalid
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 7]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum PolicyPageOutcome
+  Page
+  Gap
+  Invalid
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum PolicyEditOutcome
+  Applied
+  Conflict
+  Invalid
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum RuleReadOutcome
+  Found
+  Expired
+  Unknown
+  Invalid
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum ActionEditOutcome
+  Applied
+  Conflict
+  Unknown
+  Invalid
+  Exhausted
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 7]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub mod service_error_code
+  pub const HANDLER_ERROR: &str
+  pub const INVALID_RESULT: &str
+  pub const UNKNOWN_VERSION: &str
+  pub const UNKNOWN_SERVICE: &str
+  pub const UNKNOWN_METHOD: &str
+  pub const WRONG_MODE: &str
+  pub const ALL: [&str; 6]
+pub const OPERATIONS: [&str; 9]
+pub const KNOWN_RIGHTS: [&str; 1]
+pub const REFUSAL_CODES: [&str; 15]
+pub const RESOURCE_ACTIONS: [&str; 11]
+pub struct Request
+  op: String
+  name: String
+  rights: Vec<String>
+  secret: String
+  token: String
+  right: String
+  why: String
+  app: String
+  admin: String
+pub struct AppMetadata
+  id: String
+  name: String
+  rights: Vec<String>
+  registered: String
+pub struct HoldMetadata
+  app: String
+  name: String
+  right: String
+  why: String
+  since: String
+pub struct ResponseMetadata
+  code: String
+  error: String
+  secret: String
+  token: String
+  expires: String
+  app: Option<AppMetadata>
+  right: String
+  apps: Vec<AppMetadata>
+  holds: Vec<HoldMetadata>
+pub struct Subject
+  account: String
+  program: String
+pub struct Decision
+  outcome: DecisionOutcome
+  policy_revision: String
+pub struct PolicyRule
+  subject: Subject
+  action: String
+  resource: String
+  permit: bool
+pub struct PolicyPage
+  outcome: PolicyPageOutcome
+  revision: String
+  catalog: Vec<String>
+  rules: Vec<PolicyRule>
+  next: String
+  complete: bool
+pub struct PolicyEdit
+  outcome: PolicyEditOutcome
+  revision: String
+  current: Option<PolicyRule>
+pub struct RuleRecord
+  rule: PolicyRule
+  set_by: Subject
+  set_at: String
+  why: String
+  expires: String
+pub struct RuleRead
+  outcome: RuleReadOutcome
+  revision: String
+  record: Option<RuleRecord>
+pub struct CatalogEntry
+  action: String
+  registered_by: Subject
+  registered_at: String
+pub struct ActionEdit
+  outcome: ActionEditOutcome
+  revision: String
+  current: Option<CatalogEntry>
+pub fn encode(v: &Request) -> Vec<u8>
+pub struct Refusal
+  word: &'static str
+  offset: usize
+pub fn decode(data: &[u8]) -> Result<Request, Refusal>
+pub use abstraction_frame::FrameTransport
+pub struct ServiceError
+  code: String
+  message: String
+pub enum CallError<E>
+  Transport(E)
+  Refusal(Refusal)
+  Dispatch(&'static str)
+  Service(ServiceError)
+pub trait Authorization
+  type Error
+  fn decide(&self, action: String, resource: String) -> Result<Decision, Self::Error>
+  fn decide_for(&self, subject: Subject, action: String, resource: String) -> Result<Decision, Self::Error>
+pub struct AuthorizationClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait AuthorizationOperator
+  type Error
+  fn list_policy(&self, cursor: String, limit: i64) -> Result<PolicyPage, Self::Error>
+  fn set_rule(&self, expected_revision: String, rule: PolicyRule) -> Result<PolicyEdit, Self::Error>
+  fn revoke_rule(&self, expected_revision: String, subject: Subject, action: String, resource: String) -> Result<PolicyEdit, Self::Error>
+  fn set_rule_for(&self, expected_revision: String, rule: PolicyRule, ttl_ms: i64, why: String) -> Result<PolicyEdit, Self::Error>
+  fn read_rule(&self, subject: Subject, action: String, resource: String) -> Result<RuleRead, Self::Error>
+  fn register_action(&self, expected_revision: String, action: String) -> Result<ActionEdit, Self::Error>
+  fn retire_action(&self, expected_revision: String, action: String) -> Result<ActionEdit, Self::Error>
+pub struct AuthorizationOperatorClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T

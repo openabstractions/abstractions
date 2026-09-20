@@ -25,7 +25,7 @@ fn question(request_key: &str, host: &str) -> asks::ApplicationQuestion {
 
 fn config_and_questions(machine: &Machine, policy_file: &str) {
     let set_policy = |mode: &str| std::fs::write(policy_file, mode).unwrap();
-    let editor = machine.resolve_config_editor(vec![], "local").unwrap();
+    let editor = machine.resolve_config_editor(vec![], abstraction_facade_native::Scope::Local).unwrap();
     let before = editor.read_user().unwrap();
     let mut values = settings(&before.values);
     values.off.insert("rust-edit".into(), "applied".into());
@@ -46,8 +46,8 @@ fn config_and_questions(machine: &Machine, policy_file: &str) {
     set_policy("permit");
     println!("PASS config editor applied, conflict, forbidden and unavailable with unchanged revision");
 
-    let reader = machine.resolve_config(vec![], "local").unwrap();
-    let observer = machine.resolve_config_observer(vec![], "local").unwrap();
+    let reader = machine.resolve_config(vec![], abstraction_facade_native::Scope::Local).unwrap();
+    let observer = machine.resolve_config_observer(vec![], abstraction_facade_native::Scope::Local).unwrap();
     assert_eq!(reader.read(config::RunOverrides::default()).unwrap().off["rust-edit"], "applied");
     let first = observer.observe(config::RunOverrides::default(), "", 0).unwrap();
     assert!(first.outcome == "snapshot" && !first.cursor.is_empty(), "first observation {}", first.outcome);
@@ -65,8 +65,8 @@ fn config_and_questions(machine: &Machine, policy_file: &str) {
     assert_eq!(reader.read(config::RunOverrides::default()).unwrap().off["rust-observed"], "yes");
     println!("PASS config reader and observer: snapshot, unchanged, waiting snapshot after an edit, local bound refusal");
 
-    let questions = machine.resolve_asks(vec![], "local").unwrap();
-    let operator = machine.resolve_asks_operator(vec![], "local").unwrap();
+    let questions = machine.resolve_asks(vec![], abstraction_facade_native::Scope::Local).unwrap();
+    let operator = machine.resolve_asks_operator(vec![], abstraction_facade_native::Scope::Local).unwrap();
     let kept = questions.ask(question("rust-answered", "kept.example")).unwrap();
     assert_eq!(kept.outcome, "pending");
     let kept_id = kept.answer.as_ref().unwrap().id.clone();
@@ -115,7 +115,7 @@ fn main() {
     match a[2].as_str() {
         "all" => config_and_questions(&machine, &a[3]),
         "operator-forbidden" => {
-            let operator = machine.resolve_asks_operator(vec![], "local").unwrap();
+            let operator = machine.resolve_asks_operator(vec![], abstraction_facade_native::Scope::Local).unwrap();
             let page = operator.list("", 16).unwrap();
             assert!(page.outcome == "forbidden" && page.records.is_empty() && page.next.is_empty() && !page.complete);
             let decision = operator.answer(&a[3], "refuse").unwrap();
@@ -125,7 +125,7 @@ fn main() {
             println!("PASS another program is refused list, answer and retire");
         }
         "still-answered" => {
-            let questions = machine.resolve_asks(vec![], "local").unwrap();
+            let questions = machine.resolve_asks(vec![], abstraction_facade_native::Scope::Local).unwrap();
             let observed = questions.observe("rust-answered", 0).unwrap();
             assert!(observed.outcome == "answered" && observed.answer.unwrap().option == "once");
             println!("PASS refused operator left the answer unchanged");

@@ -35,7 +35,7 @@ func (s sink) Write(record logging.Record) error {
 type forged struct{}
 
 func (forged) Resolve(request wire.ResolveRequest) (wire.ResolveResult, error) {
-	return wire.ResolveResult{Status: "resolved", Reference: &wire.ServiceReference{Provider: "fixture", Capability: "wrong-capability", Contract: request.Contracts[0], Scope: "local", Transport: "oa-framed-local@1", Endpoint: "must-not-connect"}}, nil
+	return wire.ResolveResult{Status: wire.ResolutionStatusResolved, Reference: &wire.ServiceReference{Provider: "fixture", Capability: "wrong-capability", Contract: request.Contracts[0], Scope: wire.ScopeLocal, Transport: "oa-framed-local@1", Endpoint: "must-not-connect"}}, nil
 }
 
 func main() {

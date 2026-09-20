@@ -162,7 +162,7 @@ func unknownOperation(address string) string {
 func generatedDocumentAccepted(address string) string {
 	body := rec.Encode(&rec.Record{
 		Content: []string{"abstraction.job/base@1"},
-		Id:      "",
+		ID:      "",
 		Kind:    "download",
 		State:   "pending",
 		Spec:    `{"artifact":{"bytes":1}}`,

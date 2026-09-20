@@ -125,7 +125,7 @@ func TestInstalledResourceRights(t *testing.T) {
 	if filepath.Clean(subject.Program) != filepath.Clean(probe) {
 		t.Fatalf("unexpected native subject %q", subject.Program)
 	}
-	rules := [][2]string{{host.LogHistoryAction, host.LogHistoryResource}, {host.ModelLookupAction, "fixture"}, {routerservice.ActionInventory, routerservice.ResourceInventory}, {routerservice.ActionRoute, "qwen2.5"}}
+	rules := [][2]string{{host.LogHistoryAction, host.LogHistoryResource}, {host.ModelLookupAction, "fixture"}, {routerservice.ActionInventory, routerservice.ResourceInventory}, {routerservice.ActionRoute, routerservice.ResourceRoutes}}
 	set := func(permit bool) {
 		for _, r := range rules {
 			var err error

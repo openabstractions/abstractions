@@ -3,7 +3,7 @@ import argparse, os, subprocess, sys, tempfile
 from pathlib import Path
 HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE.parent))
-from workspace import ROOT, environment, cmake_for, certify_compiler, build_root, CERTIFIES, source_revision, dry_run_stop, DRY_RUN_HELP
+from workspace import ROOT, environment, cmake_for, certify_compiler, build_root, CERTIFIES, source_revision, dry_run_stop, DRY_RUN_HELP, CMAKE_BUILD_TYPE_RELEASE
 p=argparse.ArgumentParser(description=__doc__+' '+CERTIFIES)
 p.add_argument('--run',action='store_true')
 p.add_argument('--dry-run', action='store_true', help=DRY_RUN_HELP)
@@ -23,11 +23,11 @@ with tempfile.TemporaryDirectory(prefix='ab-',dir=build_root()) as temp:
  run([a.cmake,'--install',b/'sdk','--config','Release','--prefix',b/'prefix'])
  for name in ('job','logging','config','router','model'):
   if (b/'prefix/include/abstraction'/name).exists():raise RuntimeError('unrelated package installed: '+name)
- run([a.cmake,'-S',HERE,'-B',b/'consumer','-DCMAKE_PREFIX_PATH='+str(b/'prefix')])
+ run([a.cmake,'-S',HERE,'-B',b/'consumer','-DCMAKE_PREFIX_PATH='+str(b/'prefix'),CMAKE_BUILD_TYPE_RELEASE])
  run([a.cmake,'--build',b/'consumer','--config','Release'])
  certify_compiler(b/'consumer')
  for name in ('abstraction_asks','abstraction_rights','abstraction_storage_content','abstraction_ipc'):
-  result=subprocess.run([a.cmake,'-S',str(HERE),'-B',str(b/name),'-DCMAKE_PREFIX_PATH='+str(b/'prefix'),'-DCMAKE_DISABLE_FIND_PACKAGE_'+name+'=TRUE'],cwd=ROOT,env=env,capture_output=True,text=True,timeout=120)
+  result=subprocess.run([a.cmake,'-S',str(HERE),'-B',str(b/name),'-DCMAKE_PREFIX_PATH='+str(b/'prefix'),'-DCMAKE_DISABLE_FIND_PACKAGE_'+name+'=TRUE',CMAKE_BUILD_TYPE_RELEASE],cwd=ROOT,env=env,capture_output=True,text=True,timeout=120)
   if result.returncode==0 or name not in result.stdout+result.stderr:raise RuntimeError('missing dependency not refused: '+name)
   print('missing dependency refused:',name)
  exe=b/'consumer'/('Release/authority_binding_consumer.exe' if os.name=='nt' else 'authority_binding_consumer')

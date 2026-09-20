@@ -58,7 +58,9 @@ inline void esc(std::string& out, const std::string& s) {
 }
 `
 
-const cppCommon = `#pragma once
+// cppHeader opens the definition's namespace with the two names every caller
+// meets: the opaque payload and the refusal a codec throws.
+const cppHeader = `#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -73,6 +75,10 @@ namespace rec {
 
 using Raw = std::string;
 
+` + cppRefusal + `
+`
+
+const cppCommon = `
 inline void esc(std::string& out, const std::string& s);
 
 inline void esc_byte(std::string& out, unsigned char c) {
@@ -114,6 +120,8 @@ inline void strs(std::string& out, const std::vector<std::string>& v, int depth)
     pad(out, depth);
     out += ']';
 }
+
+@ENUM_LIST_HELPER@
 
 inline bool ws(unsigned char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; }
 
@@ -185,6 +193,21 @@ inline void rawmap(std::string& out, const std::map<std::string, Raw>& m, int de
 }
 `
 
+const cppEnumListHelper = `template <typename E>
+inline void enum_strs(std::string& out, const std::vector<E>& v, int depth) {
+    if (v.empty()) { out += "[]"; return; }
+    out += "[\n";
+    for (std::size_t i = 0; i < v.size(); ++i) {
+        pad(out, depth + 1);
+        esc(out, std::string(wire_name(v[i])));
+        if (i + 1 < v.size()) out += ',';
+        out += '\n';
+    }
+    pad(out, depth);
+    out += ']';
+}
+`
+
 const cppStrMap = `
 inline void strmap(std::string& out, const std::map<std::string, std::string>& m, int depth) {
     if (m.empty()) { out += "{}"; return; }
@@ -233,8 +256,6 @@ public:
 const cppDecodeCommon = `
 inline constexpr int kDepthLimit = @DEPTH@;
 inline constexpr std::size_t kI64Digits = 19;
-
-` + cppRefusal + `
 
 inline void append_rune(std::string& out, std::uint32_t cp) {
     if (cp < 0x80) {
@@ -643,28 +664,26 @@ func cppDecoder(b *strings.Builder, s *Definition) {
 	}
 	b.WriteString("\n")
 	for _, st := range s.Structs {
-		fmt.Fprintf(b, "inline %s decode_%s(Reader& r);\n", st.Name, lower(st.Name))
+		fmt.Fprintf(b, "inline %s decode_%s(Reader& r);\n", st.Name, cppFn(st.Name))
 	}
 	for _, st := range s.Structs {
 		cppStructDecoder(b, s, st)
 	}
 	cppDerive(b, s)
-	if s.Document == "" {
-		return
-	}
-	fmt.Fprintf(b, "\ninline %s decode(std::string_view data) {\n    Reader r{data};\n    r.skip_ws();\n", s.Document)
-	fmt.Fprintf(b, "    %s v = decode_%s(r);\n    r.skip_ws();\n", s.Document, lower(s.Document))
-	b.WriteString("    if (r.pos < r.buf.size()) r.refuse(\"trailing_bytes\");\n")
-	if s.Vocab != nil {
-		b.WriteString("    derive(r, v);\n")
-	}
-	b.WriteString("    return v;\n}\n")
 }
 
 func cppStructDecoder(b *strings.Builder, s *Definition, st Struct) {
-	fmt.Fprintf(b, "\ninline %s decode_%s(Reader& r) {\n", st.Name, lower(st.Name))
+	fmt.Fprintf(b, "\ninline %s decode_%s(Reader& r) {\n", st.Name, cppFn(st.Name))
 	b.WriteString("    if (r.at() != '{') r.refuse(\"wrong_type\");\n    r.enter();\n    ++r.pos;\n")
-	fmt.Fprintf(b, "    %s v;\n    std::uint32_t seen = 0;\n    r.skip_ws();\n", st.Name)
+	fmt.Fprintf(b, "    %s v;\n", st.Name)
+	for _, f := range st.Fields {
+		if cppClosedEnum(f) {
+			fmt.Fprintf(b, "    std::optional<std::string> %s;\n", cppWireLocal(f))
+		} else if cppClosedEnumList(f) {
+			fmt.Fprintf(b, "    std::optional<std::vector<std::string>> %s;\n", cppWireLocal(f))
+		}
+	}
+	b.WriteString("    std::uint32_t seen = 0;\n    r.skip_ws();\n")
 	b.WriteString("    if (r.at() != '}') {\n        for (;;) {\n            r.skip_ws();\n")
 	b.WriteString("            if (r.at() != '\"') r.refuse(\"malformed\");\n            const std::string key = r.str();\n")
 	b.WriteString("            r.skip_ws();\n            if (r.at() != ':') r.refuse(\"malformed\");\n            ++r.pos;\n            r.skip_ws();\n")
@@ -676,7 +695,13 @@ func cppStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 		fmt.Fprintf(b, "%s (key == %q) {\n", kw, f.Name)
 		fmt.Fprintf(b, "                if (seen & %du) r.refuse(\"duplicate_field\");\n", 1<<i)
 		fmt.Fprintf(b, "                seen |= %du;\n", 1<<i)
-		fmt.Fprintf(b, "                v.%s = %s;\n            ", f.Ident("cpp"), cppRead(s, f))
+		if cppClosedEnum(f) {
+			fmt.Fprintf(b, "                %s = r.str();\n            ", cppWireLocal(f))
+		} else if cppClosedEnumList(f) {
+			fmt.Fprintf(b, "                %s = r.str_list();\n            ", cppWireLocal(f))
+		} else {
+			fmt.Fprintf(b, "                v.%s = %s;\n            ", f.Ident("cpp"), cppRead(s, f))
+		}
 	}
 	if len(st.Fields) == 0 {
 		b.WriteString("            if (false) {\n            ")
@@ -698,9 +723,19 @@ func cppStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 		fmt.Fprintf(b, "    if ((seen & %du) != %du) r.refuse(\"missing_field\");\n", req, req)
 	}
 	emitEqualities(b, st, "cpp", false)
-	emitEnumChecks(b, st, "cpp", false)
+	for _, f := range st.Fields {
+		if cppClosedEnumList(f) {
+			fmt.Fprintf(b, "    if (%[1]s) {\n        v.%[2]s.reserve(%[1]s->size());\n        for (const auto& name : *%[1]s) { const auto parsed = %[3]s(name); if (!parsed) r.refuse(\"bad_enum\"); v.%[2]s.push_back(*parsed); }\n    }\n", cppWireLocal(f), f.Ident("cpp"), cppParseName(f.EnumType))
+			continue
+		}
+		if !cppClosedEnum(f) {
+			continue
+		}
+		fmt.Fprintf(b, "    if (%s) {\n        const auto parsed = %s(*%s);\n        if (!parsed) r.refuse(\"bad_enum\");\n        v.%s = *parsed;\n    }\n",
+			cppWireLocal(f), cppParseName(f.EnumType), cppWireLocal(f), f.Ident("cpp"))
+	}
 	if len(s.Services) > 0 && st.Name == s.Document && s.Vocab != nil {
-		b.WriteString("derive(r,v);\n")
+		b.WriteString("    derive(r, v);\n")
 	}
 	b.WriteString("    return v;\n}\n")
 }
@@ -732,9 +767,9 @@ func cppRead(s *Definition, f Field) string {
 		return "str_map(r)"
 	}
 	if elem := s.Repeated(f.Type); elem != "" {
-		return "decode_list<" + elem + ">(r, decode_" + lower(elem) + ")"
+		return "decode_list<" + cppTypeName(s, elem) + ">(r, decode_" + cppFn(elem) + ")"
 	}
-	return "decode_" + lower(f.Type) + "(r)"
+	return "decode_" + cppFn(f.Type) + "(r)"
 }
 
 func cppDerive(b *strings.Builder, s *Definition) {
@@ -742,7 +777,7 @@ func cppDerive(b *strings.Builder, s *Definition) {
 	if v == nil {
 		return
 	}
-	fmt.Fprintf(b, "\ninline const std::vector<std::string> k%sTerms = {", v.Name)
+	fmt.Fprintf(b, "\ninline const std::vector<std::string> %s = {", cppConstant(v.Name, "terms"))
 	for i, t := range v.Terms {
 		if i > 0 {
 			b.WriteString(", ")
@@ -750,7 +785,7 @@ func cppDerive(b *strings.Builder, s *Definition) {
 		fmt.Fprintf(b, "%q", t.Name)
 	}
 	b.WriteString("};\n")
-	fmt.Fprintf(b, "inline const std::vector<std::string> k%sStripCritical = {", v.Name)
+	fmt.Fprintf(b, "inline const std::vector<std::string> %s = {", cppConstant(v.Name, "strip_critical"))
 	first := true
 	for _, t := range v.Terms {
 		if !t.StripCritical {
@@ -770,14 +805,14 @@ func cppDerive(b *strings.Builder, s *Definition) {
 	}
 	fmt.Fprintf(b, "\ninline void derive(const Reader& r, %s& v) {\n", v.Of)
 	b.WriteString("    std::vector<std::string> kept;\n")
-	fmt.Fprintf(b, "    for (const auto& name : v.%s) {\n", v.Critical)
-	fmt.Fprintf(b, "        if (holds(k%sStripCritical, name)) continue;\n", v.Name)
-	fmt.Fprintf(b, "        if (!holds(k%sTerms, name)) r.refuse(\"unknown_critical\");\n", v.Name)
-	fmt.Fprintf(b, "        if (!holds(v.%s, name)) r.refuse(\"not_a_subset\");\n", v.Names)
+	fmt.Fprintf(b, "    for (const auto& name : v.%s) {\n", cppIdent(v.Critical))
+	fmt.Fprintf(b, "        if (holds(%s, name)) continue;\n", cppConstant(v.Name, "strip_critical"))
+	fmt.Fprintf(b, "        if (!holds(%s, name)) r.refuse(\"unknown_critical\");\n", cppConstant(v.Name, "terms"))
+	fmt.Fprintf(b, "        if (!holds(v.%s, name)) r.refuse(\"not_a_subset\");\n", cppIdent(v.Names))
 	b.WriteString("        kept.push_back(name);\n    }\n")
-	fmt.Fprintf(b, "    v.%s = kept;\n", v.Critical)
+	fmt.Fprintf(b, "    v.%s = kept;\n", cppIdent(v.Critical))
 	for _, t := range v.Terms {
-		fmt.Fprintf(b, "    if ((%s) != holds(v.%s, %q)) r.refuse(\"content_mismatch\");\n", cppTest(s, t), v.Names, t.Name)
+		fmt.Fprintf(b, "    if ((%s) != holds(v.%s, %q)) r.refuse(\"content_mismatch\");\n", cppTest(s, t), cppIdent(v.Names), t.Name)
 	}
 	b.WriteString("}\n")
 }
@@ -790,17 +825,25 @@ func cppTest(s *Definition, t Term) string {
 	for _, f := range t.Path {
 		e += "." + f.Ident("cpp")
 	}
+	last := t.Last()
 	switch {
 	case t.Member != "":
 		return fmt.Sprintf("member(%s, %q)", e, t.Member)
 	case t.Membership():
+		if cppClosedEnum(last) {
+			if last.Omit == "absent" {
+				e = "wire_name(" + e + ".value_or(" + cppEnumName(last.EnumType) + "{}))"
+			} else {
+				e = "wire_name(" + e + ")"
+			}
+		}
 		parts := make([]string, len(t.Is))
 		for i, w := range t.Is {
 			parts[i] = fmt.Sprintf("%s == %q", e, w)
 		}
 		return strings.Join(parts, " || ")
 	}
-	return cppPresent(s, t.Last(), e)
+	return cppPresent(s, last, e)
 }
 
 const cppMember = `
@@ -840,14 +883,22 @@ func genCpp(s *Definition) string {
 	}
 	s = serviceTypes(s)
 	var b strings.Builder
+	b.WriteString(cppHeader)
+	cppVocabulary(&b, s)
+	carriers := rsCarriers(s)
+	for _, st := range cppStructOrder(s, carriers, false) {
+		cppStruct(&b, s, st)
+	}
+	b.WriteString("\n// Codec machinery. Nothing here is API; it may change in any release.\nnamespace detail {\n")
 	esc := cppEscMinimal
 	if s.Encoding.EscapeNonASCII() {
 		esc = cppEscASCII
 	}
-	prelude := cppCommon + esc
-	if s.HasEqualities() || hasEnumFields(s) {
-		prelude += "\n" + cppRefusal + "\n"
+	enumListHelper := ""
+	if hasEnumLists(s) {
+		enumListHelper = cppEnumListHelper
 	}
+	prelude := strings.Replace(cppCommon, "@ENUM_LIST_HELPER@", enumListHelper, 1) + esc
 	if s.PreservesUnknown() {
 		prelude += "\ninline bool extra_fields(std::string&, const std::map<std::string, Raw>&, const std::vector<std::string>&, int, bool);\n"
 	}
@@ -865,29 +916,18 @@ func genCpp(s *Definition) string {
 		b.WriteString("\ninline std::string encode_binary(const std::vector<std::uint8_t>&);\ninline std::vector<std::uint8_t> decode_binary(const std::string&);\n")
 	}
 	b.WriteString(importPrelude(s, "cpp"))
-	cppVocabulary(&b, s)
+	for _, st := range cppStructOrder(s, carriers, true) {
+		cppStruct(&b, s, st)
+	}
 	for _, st := range s.Structs {
-		fmt.Fprintf(&b, "\n%sstruct %s {\n", structDoc(st, "// "), st.Name)
-		for _, f := range st.Fields {
-			fmt.Fprintf(&b, "    %s %s%s;\n", cppType(s, f), f.Ident("cpp"), cppInit(f))
+		if !s.Envelope(st.Name) {
+			fmt.Fprintf(&b, "inline void enc_%s(std::string&, const %s&, int);\n", cppFn(st.Name), st.Name)
 		}
-		if st.PreservesUnknown() {
-			b.WriteString("    std::map<std::string, Raw> extras;\n")
-		}
-		b.WriteString("};\n")
 	}
 	for _, st := range s.Structs {
 		if !s.Envelope(st.Name) {
 			cppEncoder(&b, s, st, false)
 		}
-	}
-	tail := ""
-	if s.Encoding.TrailingNewline() {
-		tail = "    out += '\\n';\n"
-	}
-	if s.Document != "" && len(s.Imports) == 0 {
-		fmt.Fprintf(&b, "\ninline std::string encode(const %s& v) {\n    std::string out;\n    enc_%s(out, v, 0);\n%s    return out;\n}\n",
-			s.Document, lower(s.Document), tail)
 	}
 	dup, skipSeen, skipKey, skipDup, strDup := "", "", "", "", ""
 	if s.Encoding.RefuseDuplicateKeys() {
@@ -895,9 +935,6 @@ func genCpp(s *Definition) string {
 		strDup = cppStrDupKey
 	}
 	decode := cppDecodeCommon
-	if s.HasEqualities() || hasEnumFields(s) {
-		decode = strings.Replace(decode, cppRefusal, "", 1)
-	}
 	if s.HasStringMap() {
 		decode += cppStrMapDecode
 	}
@@ -921,10 +958,20 @@ func genCpp(s *Definition) string {
 		b.WriteString(cppPreserve)
 	}
 	cppDecoder(&b, s)
-	cppProtocol(&b, s)
 	if hasBinary(s) {
 		b.WriteString(cppBinary)
 	}
+	b.WriteString("\n}  // namespace detail\n")
+	tail := ""
+	if s.Encoding.TrailingNewline() {
+		tail = "    out += '\\n';\n"
+	}
+	if s.Document != "" && len(s.Imports) == 0 {
+		fmt.Fprintf(&b, "\ninline std::string encode(const %s& v) {\n    std::string out;\n    detail::enc_%s(out, v, 0);\n%s    return out;\n}\n",
+			s.Document, cppFn(s.Document), tail)
+	}
+	cppDocumentDecoder(&b, s)
+	cppProtocol(&b, s)
 	cppService(&b, s)
 	b.WriteString("\n}  // namespace rec\n")
 	return b.String()
@@ -932,20 +979,44 @@ func genCpp(s *Definition) string {
 
 func cppVocabulary(b *strings.Builder, s *Definition) {
 	for _, en := range s.Enums {
-		fmt.Fprintf(b, "\ninline const std::vector<std::string> k%sNames = {", en.Name)
+		closed := en.Ann["unknown"] == "refuse"
+		if closed {
+			name := upperCamelName(en.Name)
+			fmt.Fprintf(b, "\nenum class %s : std::int32_t {\n", name)
+			for i, m := range en.Members {
+				fmt.Fprintf(b, "    %s = %d,\n", upperCamelName(m.Name), i+1)
+			}
+			b.WriteString("};\n")
+			fmt.Fprintf(b, "\n// The member's name on the wire; empty for a value that names no member.\ninline constexpr std::string_view wire_name(%s value) {\n    switch (value) {\n", name)
+			for _, m := range en.Members {
+				fmt.Fprintf(b, "        case %s::%s: return %q;\n", name, upperCamelName(m.Name), m.WireName())
+			}
+			b.WriteString("    }\n    return {};\n}\n")
+			fmt.Fprintf(b, "\n// The member a wire name spells; empty for a name this vocabulary refuses.\ninline std::optional<%s> %s(std::string_view name) {\n", name, cppParseName(&en))
+			for _, m := range en.Members {
+				fmt.Fprintf(b, "    if (name == %q) return %s::%s;\n", m.WireName(), name, upperCamelName(m.Name))
+			}
+			b.WriteString("    return std::nullopt;\n}\n")
+			fmt.Fprintf(b, "\n// A member equals its wire name, so code holding the contract's word compares directly.\ninline constexpr bool operator==(%[1]s value, std::string_view name) { return wire_name(value) == name; }\ninline constexpr bool operator!=(%[1]s value, std::string_view name) { return wire_name(value) != name; }\ninline constexpr bool operator==(std::string_view name, %[1]s value) { return wire_name(value) == name; }\ninline constexpr bool operator!=(std::string_view name, %[1]s value) { return wire_name(value) != name; }\n", name)
+		}
+		fmt.Fprintf(b, "\ninline const std::vector<std::string> %s = {", cppConstant(en.Name, "names"))
 		for i, m := range en.Members {
 			if i > 0 {
 				b.WriteString(", ")
 			}
-			fmt.Fprintf(b, "%q", m.Name)
+			fmt.Fprintf(b, "%q", m.WireName())
 		}
 		b.WriteString("};\n")
-		fmt.Fprintf(b, "inline const std::string k%s%s = %q;\n", en.Name, enumPolicyName(en, "cpp"), en.Ann["unknown"])
+		if !closed {
+			for _, m := range en.Members {
+				fmt.Fprintf(b, "inline constexpr std::string_view %s = %q;\n", cppConstant(en.Name, m.Name), m.WireName())
+			}
+		}
 		for _, key := range en.MemberAnn() {
-			fmt.Fprintf(b, "inline const std::map<std::string, std::string> k%s%s = {\n", en.Name, exported(key))
+			fmt.Fprintf(b, "inline const std::map<std::string, std::string> %s = {\n", cppConstant(en.Name, key))
 			for _, m := range en.Members {
 				if v, ok := m.Ann[key]; ok {
-					fmt.Fprintf(b, "    {%q, %q},\n", m.Name, v)
+					fmt.Fprintf(b, "    {%q, %q},\n", m.WireName(), v)
 				}
 			}
 			b.WriteString("};\n")
@@ -953,7 +1024,7 @@ func cppVocabulary(b *strings.Builder, s *Definition) {
 	}
 	for _, c := range s.Consts {
 		if c.Type == "list<i32>" {
-			fmt.Fprintf(b, "\ninline const std::vector<std::int32_t> k%s = {", exported(c.Name))
+			fmt.Fprintf(b, "\ninline const std::vector<std::int32_t> %s = {", cppConstant(c.Name))
 			for i, n := range c.Ints {
 				if i > 0 {
 					b.WriteString(", ")
@@ -961,7 +1032,7 @@ func cppVocabulary(b *strings.Builder, s *Definition) {
 				fmt.Fprintf(b, "%d", n)
 			}
 		} else {
-			fmt.Fprintf(b, "\ninline const std::vector<std::string> k%s = {", exported(c.Name))
+			fmt.Fprintf(b, "\ninline const std::vector<std::string> %s = {", cppConstant(c.Name))
 			for i, v := range c.Strings {
 				if i > 0 {
 					b.WriteString(", ")
@@ -976,12 +1047,29 @@ func cppVocabulary(b *strings.Builder, s *Definition) {
 func cppEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 	p := plan(st)
 	if flat {
-		fmt.Fprintf(b, "\ninline void enc_wire_%s(std::string& out, const %s& v) {\n", lower(st.Name), st.Name)
+		fmt.Fprintf(b, "\ninline void enc_wire_%s(std::string& out, const %s& v) {\n", cppFn(st.Name), st.Name)
 	} else {
-		fmt.Fprintf(b, "\ninline void enc_%s(std::string& out, const %s& v, int depth) {\n", lower(st.Name), st.Name)
+		fmt.Fprintf(b, "\ninline void enc_%s(std::string& out, const %s& v, int depth) {\n", cppFn(st.Name), st.Name)
 	}
 	emitEqualities(b, st, "cpp", true)
-	emitEnumChecks(b, st, "cpp", true)
+	for _, f := range st.Fields {
+		if cppClosedEnumList(f) {
+			fmt.Fprintf(b, "    for (const auto item : v.%s) if (wire_name(item).empty()) throw Refusal(\"bad_enum\", 0);\n", f.Ident("cpp"))
+			continue
+		}
+		if !cppClosedEnum(f) {
+			continue
+		}
+		e := "v." + f.Ident("cpp")
+		switch f.Omit {
+		case "absent":
+			fmt.Fprintf(b, "    if (%s.has_value() && wire_name(*%s).empty()) throw Refusal(\"bad_enum\", 0);\n", e, e)
+		case "never":
+			fmt.Fprintf(b, "    if (wire_name(%s).empty()) throw Refusal(\"bad_enum\", 0);\n", e)
+		default:
+			fmt.Fprintf(b, "    if (%s != %s{} && wire_name(%s).empty()) throw Refusal(\"bad_enum\", 0);\n", e, cppEnumName(f.EnumType), e)
+		}
+	}
 	b.WriteString("    out += '{';\n")
 	if p.flag {
 		b.WriteString("    bool first = true;\n")
@@ -1029,6 +1117,15 @@ func cppEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 }
 
 func cppType(s *Definition, f Field) string {
+	if cppClosedEnumList(f) {
+		return "std::vector<" + cppEnumName(f.EnumType) + ">"
+	}
+	if cppClosedEnum(f) {
+		if f.Omit == "absent" {
+			return "std::optional<" + cppEnumName(f.EnumType) + ">"
+		}
+		return cppEnumName(f.EnumType)
+	}
 	if enumAbsent(f) {
 		return "std::optional<std::string>"
 	}
@@ -1058,15 +1155,18 @@ func cppType(s *Definition, f Field) string {
 		return "std::map<std::string, std::string>"
 	}
 	if elem := s.Repeated(f.Type); elem != "" {
-		return "std::vector<" + elem + ">"
+		return "std::vector<" + cppTypeName(s, elem) + ">"
 	}
 	if f.Omit == "absent" {
-		return "std::optional<" + f.Type + ">"
+		return "std::optional<" + cppTypeName(s, f.Type) + ">"
 	}
-	return f.Type
+	return cppTypeName(s, f.Type)
 }
 
 func cppInit(f Field) string {
+	if cppClosedEnum(f) && f.Omit != "absent" {
+		return "{}"
+	}
 	switch f.Type {
 	case "i32", "i64":
 		return " = 0"
@@ -1077,6 +1177,12 @@ func cppInit(f Field) string {
 }
 
 func cppPresent(s *Definition, f Field, e string) string {
+	if cppClosedEnum(f) {
+		if f.Omit == "absent" {
+			return e + ".has_value()"
+		}
+		return e + " != " + cppEnumName(f.EnumType) + "{}"
+	}
 	if f.Omit == "absent" && (s.IsStruct(f.Type) || f.Type == "binary" || enumAbsent(f)) {
 		return e + ".has_value()"
 	}
@@ -1090,6 +1196,15 @@ func cppPresent(s *Definition, f Field, e string) string {
 }
 
 func cppValue(s *Definition, f Field, e string) string {
+	if cppClosedEnumList(f) {
+		return "enum_strs(out, " + e + ", depth + 1);"
+	}
+	if cppClosedEnum(f) {
+		if f.Omit == "absent" {
+			return "esc(out, std::string(wire_name(*" + e + ")));"
+		}
+		return "esc(out, std::string(wire_name(" + e + ")));"
+	}
 	if enumAbsent(f) {
 		return "esc(out, *" + e + ");"
 	}
@@ -1121,10 +1236,93 @@ func cppValue(s *Definition, f Field, e string) string {
 		return "strmap(out, " + e + ", depth + 1);"
 	}
 	if elem := s.Repeated(f.Type); elem != "" {
-		return "enc_list<" + elem + ">(out, " + e + ", depth + 1, enc_" + lower(elem) + ");"
+		return "enc_list<" + cppTypeName(s, elem) + ">(out, " + e + ", depth + 1, enc_" + cppFn(elem) + ");"
 	}
 	if f.Omit == "absent" {
-		return "enc_" + lower(f.Type) + "(out, *" + e + ", depth + 1);"
+		return "enc_" + cppFn(f.Type) + "(out, *" + e + ", depth + 1);"
 	}
-	return "enc_" + lower(f.Type) + "(out, " + e + ", depth + 1);"
+	return "enc_" + cppFn(f.Type) + "(out, " + e + ", depth + 1);"
 }
+
+func cppDocumentDecoder(b *strings.Builder, s *Definition) {
+	if s.Document == "" {
+		return
+	}
+	fmt.Fprintf(b, "\ninline %s decode(std::string_view data) {\n    detail::Reader r{data};\n    r.skip_ws();\n", s.Document)
+	fmt.Fprintf(b, "    %s v = detail::decode_%s(r);\n    r.skip_ws();\n", s.Document, cppFn(s.Document))
+	b.WriteString("    if (r.pos < r.buf.size()) r.refuse(\"trailing_bytes\");\n")
+	if s.Vocab != nil {
+		b.WriteString("    detail::derive(r, v);\n")
+	}
+	b.WriteString("    return v;\n}\n")
+}
+
+func cppStruct(b *strings.Builder, s *Definition, st Struct) {
+	fmt.Fprintf(b, "\n%sstruct %s {\n", structDoc(st, "// "), st.Name)
+	for _, f := range st.Fields {
+		fmt.Fprintf(b, "    %s %s%s;\n", cppType(s, f), f.Ident("cpp"), cppInit(f))
+	}
+	if st.PreservesUnknown() {
+		b.WriteString("    std::map<std::string, Raw> extras;\n")
+	}
+	b.WriteString("};\n")
+}
+
+// cppStructOrder puts complete member types before the structs that contain
+// them. std::optional<T> and std::vector<T> require T to be complete, so a
+// forward declaration cannot repair schema declaration order here.
+func cppStructOrder(s *Definition, carriers map[string]bool, wantCarrier bool) []Struct {
+	var out []Struct
+	state := map[string]uint8{}
+	var visit func(string)
+	visit = func(name string) {
+		if _, foreign := s.Foreign[name]; foreign {
+			return
+		}
+		if state[name] != 0 || carriers[name] != wantCarrier {
+			return
+		}
+		st := s.Struct(name)
+		if st == nil {
+			return
+		}
+		state[name] = 1
+		for _, f := range st.Fields {
+			dep := f.Type
+			if e := s.Repeated(f.Type); e != "" {
+				dep = e
+			}
+			if s.IsStruct(dep) && state[dep] != 1 {
+				visit(dep)
+			}
+		}
+		state[name] = 2
+		out = append(out, *st)
+	}
+	for _, st := range s.Structs {
+		visit(st.Name)
+	}
+	return out
+}
+
+func cppTypeName(s *Definition, name string) string {
+	if imp, ok := s.Foreign[name]; ok {
+		return "::" + strings.ReplaceAll(namespaceFor(imp.Def.Namespaces, "cpp"), ".", "::") + "::" + imp.Name
+	}
+	return name
+}
+
+func cppFn(record string) string { return snakeName(record) }
+
+func cppEnumName(en *Enum) string { return upperCamelName(en.Name) }
+
+func cppParseName(en *Enum) string { return "parse_" + snakeName(en.Name) }
+
+func cppClosedEnum(f Field) bool {
+	return f.EnumType != nil && !f.EnumList && f.EnumType.Ann["unknown"] == "refuse"
+}
+func cppClosedEnumList(f Field) bool {
+	return f.EnumType != nil && f.EnumList && f.EnumType.Ann["unknown"] == "refuse"
+}
+
+func cppWireLocal(f Field) string { return "wire_" + strings.TrimSuffix(f.Ident("cpp"), "_") }

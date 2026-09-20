@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import * as rec from './generated/js/rec.mjs';
+import * as rec from './generated/js/internal.mjs';
 try {
   const r=rec.decode(fs.readFileSync(process.argv[2])),scope=process.argv[4];
   if(scope==='mutate') {

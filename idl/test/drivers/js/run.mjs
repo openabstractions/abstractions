@@ -26,10 +26,10 @@ function awkward() {
     progress: {
       done: 0n,
       total: 9223372036854775807n,
-      updated_at: TS,
+      updatedAt: TS,
       step: { name: "", ordinal: 1, of: 0, done: 0n, total: -9223372036854775808n },
     },
-    lease: { owner: "", epoch: 0n, expires_at: TS, recall: null },
+    lease: { owner: "", epoch: 0n, expiresAt: TS, recall: null },
     delegation: null,
     requires: [],
     error: err,
@@ -41,8 +41,8 @@ function awkward() {
       [cp(0xfffd) + ".example"]: "true",
       [cp(0x1d11e) + ".example"]: "{}",
     },
-    created_at: TS,
-    updated_at: TS,
+    createdAt: TS,
+    updatedAt: TS,
   };
 }
 
@@ -59,13 +59,13 @@ function ranges() {
     progress: {
       done: 10485760n,
       total: 23068672n,
-      updated_at: "2026-08-20T05:07:14.951609Z",
+      updatedAt: "2026-08-20T05:07:14.951609Z",
       step: null,
     },
     lease: {
       owner: "go-worker",
       epoch: 2n,
-      expires_at: "2026-08-20T05:08:14.635068Z",
+      expiresAt: "2026-08-20T05:08:14.635068Z",
       recall: null,
     },
     delegation: null,
@@ -73,8 +73,8 @@ function ranges() {
     error: "",
     intent: null,
     extensions: {},
-    created_at: "2026-08-20T05:07:10.967343Z",
-    updated_at: "2026-08-20T05:07:15.134811Z",
+    createdAt: "2026-08-20T05:07:10.967343Z",
+    updatedAt: "2026-08-20T05:07:15.134811Z",
   };
 }
 
@@ -92,13 +92,13 @@ function terminal() {
     progress: {
       done: 8n,
       total: 64n,
-      updated_at: "2026-09-09T17:21:08.958178Z",
+      updatedAt: "2026-09-09T17:21:08.958178Z",
       step: { name: "fetch", ordinal: 1, of: 2, done: 8n, total: 64n },
     },
     lease: {
       owner: "alpha",
       epoch: 3n,
-      expires_at: "2026-09-09T17:21:09.958178Z",
+      expiresAt: "2026-09-09T17:21:09.958178Z",
       recall: {
         reason: "yield",
         by: "broker",
@@ -111,8 +111,8 @@ function terminal() {
     error: "source closed the connection",
     intent: null,
     extensions: {},
-    created_at: "2026-09-09T17:21:06.998457Z",
-    updated_at: "2026-09-09T17:21:08.967883Z",
+    createdAt: "2026-09-09T17:21:06.998457Z",
+    updatedAt: "2026-09-09T17:21:08.967883Z",
   };
 }
 

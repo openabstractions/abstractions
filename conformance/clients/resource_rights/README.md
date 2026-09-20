@@ -16,8 +16,9 @@ stages:
   `forbidden`, before any grant;
 - `granted`: after exact rules for `abstraction.logging/history.read`,
   `abstraction.model/lookup` on registry `fixture`,
-  `abstraction.router/inventory.read` and `abstraction.router/route` on model
-  `qwen2.5`, every call succeeds;
+  `abstraction.router/inventory.read` and `abstraction.router/route` on
+  `abstraction.router/routes`, every call succeeds, including a pick of model
+  `qwen2.5`;
 - `revoked`: every call is refused again;
 - `outage`: with the rights service stopped, history and router report
   `policy_unavailable` and model lookup reports `unavailable`.

@@ -2,46 +2,58 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
 
+// The Python backend emits two modules. _codec.py holds every record,
+// vocabulary, codec and client; __init__.py re-exports the public names, so
+// `from abstraction.rights.api import AuthorizationClient` is the whole import
+// an application writes. Codec helpers, argument and result envelopes and
+// dispatch tables carry a leading underscore and never leave _codec.py.
+
 const pyEscMinimal = `
-def esc(out, s):
+def _esc(out, s):
     out += b'"'
     for c in s.encode("utf-8"):
-        esc_byte(out, c)
+        _esc_byte(out, c)
     out += b'"'
 `
 
 const pyEscASCII = `
-def esc(out, s):
+def _esc(out, s):
     out += b'"'
     for ch in s:
         cp = ord(ch)
         if cp < 0x80:
-            esc_byte(out, cp)
+            _esc_byte(out, cp)
         elif cp > 0xFFFF:
             cp -= 0x10000
-            unit(out, 0xD800 + (cp >> 10))
-            unit(out, 0xDC00 + (cp & 0x3FF))
+            _unit(out, 0xD800 + (cp >> 10))
+            _unit(out, 0xDC00 + (cp & 0x3FF))
         else:
-            unit(out, cp)
+            _unit(out, cp)
     out += b'"'
 
 
-def unit(out, u):
+def _unit(out, u):
     out += b"\\u" + bytes([_HEX[(u >> 12) & 0xF], _HEX[(u >> 8) & 0xF],
                            _HEX[(u >> 4) & 0xF], _HEX[u & 0xF]])
 `
 
-const pyCommon = `_HEX = b"0123456789abcdef"
+const pyCommon = `from __future__ import annotations
+
+import dataclasses
+import enum
+
+_HEX = b"0123456789abcdef"
 _WS = (0x20, 0x09, 0x0A, 0x0D)
 _SHORT = {0x22: b'\\"', 0x5C: b"\\\\", 0x08: b"\\b", 0x0C: b"\\f",
           0x0A: b"\\n", 0x0D: b"\\r", 0x09: b"\\t"}
 
 
-def esc_byte(out, c):
+def _esc_byte(out, c):
     short = _SHORT.get(c)
     if short is not None:
         out += short
@@ -51,30 +63,30 @@ def esc_byte(out, c):
         out.append(c)
 
 
-def num(out, n):
+def _num(out, n):
     out += str(int(n)).encode("ascii")
 
 
-def pad(out, depth):
+def _pad(out, depth):
     out += b" " * (depth * @INDENT@)
 
 
-def strs(out, v, depth):
+def _strs(out, v, depth):
     if not v:
         out += b"[]"
         return
     out += b"[\n"
     for i, s in enumerate(v):
-        pad(out, depth + 1)
-        esc(out, s)
+        _pad(out, depth + 1)
+        _esc(out, s)
         if i + 1 < len(v):
             out += b","
         out += b"\n"
-    pad(out, depth)
+    _pad(out, depth)
     out += b"]"
 
 
-def raw(out, s, depth):
+def _raw(out, s, depth):
     b = s.encode("utf-8") if isinstance(s, str) else s
     i, n = 0, len(b)
     while i < n:
@@ -105,16 +117,16 @@ def raw(out, s, depth):
             else:
                 depth += 1
                 out += b"\n"
-                pad(out, depth)
+                _pad(out, depth)
         elif c in (0x7D, 0x5D):
             depth -= 1
             out += b"\n"
-            pad(out, depth)
+            _pad(out, depth)
             out.append(c)
             i += 1
         elif c == 0x2C:
             out += b",\n"
-            pad(out, depth)
+            _pad(out, depth)
             i += 1
         elif c == 0x3A:
             out += b": "
@@ -124,59 +136,87 @@ def raw(out, s, depth):
             i += 1
 
 
-def rawmap(out, m, depth):
+def _rawmap(out, m, depth):
     keys = sorted(m, key=lambda k: k.encode("utf-8"))
     if not keys:
         out += b"{}"
         return
     out += b"{\n"
     for i, k in enumerate(keys):
-        pad(out, depth + 1)
-        esc(out, k)
+        _pad(out, depth + 1)
+        _esc(out, k)
         out += b": "
-        raw(out, m[k], depth + 1)
+        _raw(out, m[k], depth + 1)
         if i + 1 < len(keys):
             out += b","
         out += b"\n"
-    pad(out, depth)
+    _pad(out, depth)
     out += b"}"
 `
 
 const pyStrMap = `
 
-def strmap(out, m, depth):
+def _strmap(out, m, depth):
     keys = sorted(m, key=lambda k: k.encode("utf-8"))
     if not keys:
         out += b"{}"
         return
     out += b"{\n"
     for i, k in enumerate(keys):
-        pad(out, depth + 1)
-        esc(out, k)
+        _pad(out, depth + 1)
+        _esc(out, k)
         out += b": "
-        esc(out, m[k])
+        _esc(out, m[k])
         if i + 1 < len(keys):
             out += b","
         out += b"\n"
-    pad(out, depth)
+    _pad(out, depth)
     out += b"}"
 `
 
 const pyEncList = `
 
-def enc_list(out, v, depth, enc):
+def _write_list(out, v, depth, enc):
     if not v:
         out += b"[]"
         return
     out += b"[\n"
     for i, x in enumerate(v):
-        pad(out, depth + 1)
+        _pad(out, depth + 1)
         enc(out, x, depth + 1)
         if i + 1 < len(v):
             out += b","
         out += b"\n"
-    pad(out, depth)
+    _pad(out, depth)
     out += b"]"
+`
+
+// pyEnumBase is the one base every generated vocabulary derives from. Members
+// are strings, so a member compares equal to its wire word and encodes as it.
+const pyEnumBase = `
+
+try:
+    from enum import StrEnum as _StrEnum
+except ImportError:  # Python 3.10
+    class _StrEnum(str, enum.Enum):
+        def __str__(self):
+            return self.value
+
+
+def _closed_enum(cls, value):
+    if value is not None and not isinstance(value, str):
+        raise Refusal("wrong_type", 0)
+    try:
+        cls(value)
+    except ValueError:
+        raise Refusal("bad_enum", 0) from None
+
+
+def _open_enum(cls, value):
+    try:
+        return cls(value)
+    except ValueError:
+        return value
 `
 
 const pyDecodeCommon = `
@@ -191,6 +231,8 @@ _I64_DIGITS = 19
 
 
 class Refusal(ValueError):
+    """Bytes the contract refuses: word names the rule, offset the byte."""
+
     def __init__(self, word, offset):
         super().__init__("refused: %s at byte %d" % (word, offset))
         self.word = word
@@ -503,7 +545,7 @@ const pyStrMapDecode = `
 
 const pyDecodeList = `
 
-def _decode_list(r, elem):
+def _read_list(r, elem):
     if r.at() != _LBRACK:
         raise r.refuse("wrong_type")
     r.enter()
@@ -568,7 +610,7 @@ def _lexical_timestamp(s):
     return len(s) == i + 6 and _digits(s, i + 1, 2) and s[i + 3] == ":" and _digits(s, i + 4, 2)
 
 
-def micros_timestamp(s):
+def _micros_timestamp(s):
     """[DEF-G2] rfc3339-micros: what a writer emits. Exactly six fractional
     digits, upper-case separators, UTC."""
     return len(s) == 27 and _normalized_timestamp(s) == s
@@ -577,11 +619,140 @@ def micros_timestamp(s):
 def _read_timestamp(r):
     at = r.pos
     s = r.string()
-    if not wide_timestamp(s):
+    if not _wide_timestamp(s):
         r.pos = at
         raise r.refuse("bad_timestamp")
     return s
 `
+
+// pyInternalRecord reports whether a struct is a carrier the backend made up:
+// a service's argument or result envelope, the service frame, or the alias of
+// an included record. None of them is part of the Python API.
+func pyInternalRecord(s *Definition, name string) bool {
+	switch name {
+	case "OAServiceFrame", "OAServiceReply", "OAServiceError":
+		return true
+	}
+	if _, ok := s.Foreign[name]; ok {
+		return true
+	}
+	for _, svc := range s.Services {
+		for _, m := range svc.Methods {
+			if name == argsName(svc, m) || name == resultName(svc, m) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// pyClass is the Python class a contract struct becomes.
+func pyClass(s *Definition, name string) string {
+	if pyInternalRecord(s, name) {
+		return "_" + strings.TrimPrefix(name, "OA")
+	}
+	return pascalCase(name)
+}
+
+func pyStem(name string) string   { return snakeCase(name) }
+func pyWriter(name string) string { return "_write_" + pyStem(name) }
+func pyReader(name string) string { return "_read_" + pyStem(name) }
+func pyDependency(alias string) string {
+	return "_dependency_" + snakeCase(alias)
+}
+
+// pyTypeName is the name a type hint uses for a record, including a record an
+// included definition owns.
+func pyTypeName(s *Definition, name string) string {
+	if imp, ok := s.Foreign[name]; ok {
+		return pyDependency(imp.Alias) + "." + pascalCase(imp.Name)
+	}
+	return pyClass(s, name)
+}
+
+func pyEnumClosed(en *Enum) bool { return en.Ann["unknown"] != "grant" }
+
+// pyHint is a field's annotation. Absence is None; an open vocabulary keeps a
+// word no member names as a plain str.
+func pyHint(s *Definition, f Field) string {
+	if en := f.EnumType; en != nil {
+		if f.EnumList {
+			if pyEnumClosed(en) {
+				return "list[" + pascalCase(en.Name) + "]"
+			}
+			return "list[" + pascalCase(en.Name) + " | str]"
+		}
+		switch {
+		case f.Omit == "absent" || pyEnumClosed(en):
+			return pascalCase(en.Name) + " | None"
+		default:
+			return pascalCase(en.Name) + " | str"
+		}
+	}
+	optional := func(t string) string {
+		if f.Omit == "absent" {
+			return t + " | None"
+		}
+		return t
+	}
+	switch f.Type {
+	case "void":
+		return "None"
+	case "binary":
+		return optional("bytes")
+	case "string":
+		return "str"
+	case "i32", "i64":
+		return "int"
+	case "bool":
+		return "bool"
+	case "json":
+		return "bytes | str"
+	case "list<string>":
+		return "list[str]"
+	case "list<json>":
+		return "list[bytes | str]"
+	case "map<string,json>":
+		return "dict[str, bytes | str]"
+	case "map<string,string>":
+		return "dict[str, str]"
+	}
+	if elem := s.Repeated(f.Type); elem != "" {
+		return "list[" + pyTypeName(s, elem) + "]"
+	}
+	if s.IsStruct(f.Type) {
+		return optional(pyTypeName(s, f.Type))
+	}
+	return f.Type
+}
+
+// pyKind is the value checker's name for a field's type. A vocabulary field is
+// checked as a string and judged by the codec against its enumeration.
+func pyKind(f Field) string {
+	if f.EnumType != nil && f.EnumList {
+		return "list<enum>"
+	}
+	if f.EnumType != nil && !f.EnumList {
+		return "enum"
+	}
+	return f.Type
+}
+
+// pyDocstring renders a documentation annotation as a docstring at an indent.
+func pyDocstring(doc, indent string) string {
+	text := strings.Join(strings.Fields(doc), " ")
+	if text == "" {
+		return ""
+	}
+	text = strings.ReplaceAll(text, `\`, `\\`)
+	text = strings.ReplaceAll(text, `"""`, `\"\"\"`)
+	if strings.HasSuffix(text, `"`) {
+		text += " "
+	}
+	lines := structDoc(Struct{Ann: map[string]string{"doc": text}}, indent)
+	lines = strings.TrimSuffix(lines, "\n")
+	return indent + `"""` + strings.TrimPrefix(lines, indent) + `"""` + "\n"
+}
 
 func pyDecoder(b *strings.Builder, s *Definition) {
 	for _, st := range s.Structs {
@@ -589,7 +760,7 @@ func pyDecoder(b *strings.Builder, s *Definition) {
 	}
 	if s.Document != "" {
 		b.WriteString("\n\ndef decode(data):\n    r = _Reader(bytes(data))\n    r.ws()\n")
-		fmt.Fprintf(b, "    v = _decode_%s(r)\n    r.ws()\n", lower(s.Document))
+		fmt.Fprintf(b, "    v = %s(r)\n    r.ws()\n", pyReader(s.Document))
 		b.WriteString("    if r.pos < len(r.buf):\n        raise r.refuse(\"trailing_bytes\")\n")
 		if s.Vocab != nil {
 			b.WriteString("    _derive(r, v)\n")
@@ -600,9 +771,9 @@ func pyDecoder(b *strings.Builder, s *Definition) {
 }
 
 func pyStructDecoder(b *strings.Builder, s *Definition, st Struct) {
-	fmt.Fprintf(b, "\n\ndef _decode_%s(r):\n", lower(st.Name))
+	fmt.Fprintf(b, "\n\ndef %s(r):\n", pyReader(st.Name))
 	b.WriteString("    if r.at() != _LBRACE:\n        raise r.refuse(\"wrong_type\")\n")
-	fmt.Fprintf(b, "    r.enter()\n    r.pos += 1\n    v = %s()\n    seen = 0\n    r.ws()\n", st.Name)
+	fmt.Fprintf(b, "    r.enter()\n    r.pos += 1\n    v = %s()\n    seen = 0\n    r.ws()\n", pyClass(s, st.Name))
 	b.WriteString("    if r.at() != _RBRACE:\n        while True:\n            r.ws()\n")
 	b.WriteString("            if r.at() != _QUOTE:\n                raise r.refuse(\"malformed\")\n")
 	b.WriteString("            key = r.string()\n            r.ws()\n")
@@ -616,7 +787,7 @@ func pyStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 		fmt.Fprintf(b, "            %s key == %q:\n", kw, f.Name)
 		fmt.Fprintf(b, "                if seen & %d:\n                    raise r.refuse(\"duplicate_field\")\n", 1<<i)
 		fmt.Fprintf(b, "                seen |= %d\n", 1<<i)
-		fmt.Fprintf(b, "                v.%s = %s\n", f.Ident("python"), pyRead(s, f))
+		fmt.Fprintf(b, "                v.%s = %s\n", f.Ident("python"), pyReadValue(s, f))
 	}
 	if len(st.Fields) == 0 {
 		b.WriteString("            if False:\n                pass\n")
@@ -638,14 +809,67 @@ func pyStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 		fmt.Fprintf(b, "    if seen & %d != %d:\n        raise r.refuse(\"missing_field\")\n", req, req)
 	}
 	emitEqualities(b, st, "python", false)
-	emitEnumChecks(b, st, "python", false)
+	pyEnumChecks(b, st, false)
 	if len(s.Services) > 0 && st.Name == s.Document && s.Vocab != nil {
 		b.WriteString("    _derive(r, v)\n")
 	}
 	b.WriteString("    return v\n")
 }
 
-func pyRead(s *Definition, f Field) string {
+// pyEnumChecks judges vocabulary fields. The encoder refuses a word a closed
+// vocabulary does not name, and anything that is not a string; the decoder turns
+// the wire word into its member, or keeps the word where the vocabulary is open.
+func pyEnumChecks(b *strings.Builder, st Struct, encode bool) {
+	for i, f := range st.Fields {
+		en := f.EnumType
+		if en == nil {
+			continue
+		}
+		e := "v." + f.Ident("python")
+		cls := pascalCase(en.Name)
+		if f.EnumList {
+			if encode {
+				fmt.Fprintf(b, "    for item in %s:\n", e)
+				if pyEnumClosed(en) {
+					fmt.Fprintf(b, "        _closed_enum(%s, item)\n", cls)
+				} else {
+					b.WriteString("        if not isinstance(item, str):\n            raise Refusal(\"wrong_type\", 0)\n")
+				}
+			} else if pyEnumClosed(en) {
+				fmt.Fprintf(b, "    try:\n        %s = [%s(item) for item in %s]\n    except ValueError:\n        raise r.refuse(\"bad_enum\") from None\n", e, cls, e)
+			} else {
+				fmt.Fprintf(b, "    %s = [_open_enum(%s, item) for item in %s]\n", e, cls, e)
+			}
+			continue
+		}
+		guard := ""
+		switch {
+		case f.Omit == "absent":
+			guard = e + " is not None"
+		case f.Omit == "zero" && encode:
+			guard = e
+		case f.Omit == "zero":
+			guard = fmt.Sprintf("seen & %d", 1<<i)
+		}
+		indent := "    "
+		if guard != "" {
+			fmt.Fprintf(b, "    if %s:\n", guard)
+			indent += "    "
+		}
+		switch {
+		case encode && pyEnumClosed(en):
+			fmt.Fprintf(b, "%s_closed_enum(%s, %s)\n", indent, cls, e)
+		case encode:
+			fmt.Fprintf(b, "%sif not isinstance(%s, str):\n%s    raise Refusal(\"wrong_type\", 0)\n", indent, e, indent)
+		case pyEnumClosed(en):
+			fmt.Fprintf(b, "%stry:\n%s    %s = %s(%s)\n%sexcept ValueError:\n%s    raise r.refuse(\"bad_enum\") from None\n", indent, indent, e, cls, e, indent, indent)
+		default:
+			fmt.Fprintf(b, "%s%s = _open_enum(%s, %s)\n", indent, e, cls, e)
+		}
+	}
+}
+
+func pyReadValue(s *Definition, f Field) string {
 	switch f.Type {
 	case "binary":
 		return "_decode_binary(r.string())"
@@ -672,9 +896,23 @@ func pyRead(s *Definition, f Field) string {
 		return "r.str_map()"
 	}
 	if elem := s.Repeated(f.Type); elem != "" {
-		return "_decode_list(r, _decode_" + lower(elem) + ")"
+		return "_read_list(r, " + pyReader(elem) + ")"
 	}
-	return "_decode_" + lower(f.Type) + "(r)"
+	return pyReader(f.Type) + "(r)"
+}
+
+// vocabIdent is the language identifier of a document field a vocabulary names.
+func vocabIdent(s *Definition, name, lang string) string {
+	if v := s.Vocab; v != nil {
+		if st := s.Struct(v.Of); st != nil {
+			for _, f := range st.Fields {
+				if f.Name == name {
+					return f.Ident(lang)
+				}
+			}
+		}
+	}
+	return Field{Name: name}.Ident(lang)
 }
 
 func pyDerive(b *strings.Builder, s *Definition) {
@@ -682,7 +920,8 @@ func pyDerive(b *strings.Builder, s *Definition) {
 	if v == nil {
 		return
 	}
-	fmt.Fprintf(b, "\n\n%s_TERMS = [", upper(v.Name))
+	terms, strip := upperSnake(v.Name)+"_TERMS", upperSnake(v.Name)+"_STRIP_CRITICAL"
+	fmt.Fprintf(b, "\n\n%s = [", terms)
 	for i, t := range v.Terms {
 		if i > 0 {
 			b.WriteString(", ")
@@ -690,7 +929,7 @@ func pyDerive(b *strings.Builder, s *Definition) {
 		fmt.Fprintf(b, "%q", t.Name)
 	}
 	b.WriteString("]\n")
-	fmt.Fprintf(b, "%s_STRIP_CRITICAL = frozenset({", upper(v.Name))
+	fmt.Fprintf(b, "%s = frozenset({", strip)
 	first := true
 	for _, t := range v.Terms {
 		if !t.StripCritical {
@@ -703,15 +942,16 @@ func pyDerive(b *strings.Builder, s *Definition) {
 		fmt.Fprintf(b, "%q", t.Name)
 	}
 	b.WriteString("})\n")
+	names, critical := vocabIdent(s, v.Names, "python"), vocabIdent(s, v.Critical, "python")
 	b.WriteString("\n\ndef _derive(r, v):\n")
-	fmt.Fprintf(b, "    present = set(v.%s)\n", v.Names)
+	fmt.Fprintf(b, "    present = set(v.%s)\n", names)
 	b.WriteString("    kept = []\n")
-	fmt.Fprintf(b, "    for name in v.%s:\n", v.Critical)
-	fmt.Fprintf(b, "        if name in %s_STRIP_CRITICAL:\n            continue\n", upper(v.Name))
-	fmt.Fprintf(b, "        if name not in %s_TERMS:\n            raise r.refuse(\"unknown_critical\")\n", upper(v.Name))
+	fmt.Fprintf(b, "    for name in v.%s:\n", critical)
+	fmt.Fprintf(b, "        if name in %s:\n            continue\n", strip)
+	fmt.Fprintf(b, "        if name not in %s:\n            raise r.refuse(\"unknown_critical\")\n", terms)
 	b.WriteString("        if name not in present:\n            raise r.refuse(\"not_a_subset\")\n")
 	b.WriteString("        kept.append(name)\n")
-	fmt.Fprintf(b, "    v.%s = kept\n", v.Critical)
+	fmt.Fprintf(b, "    v.%s = kept\n", critical)
 	for _, t := range v.Terms {
 		fmt.Fprintf(b, "    if %s != (%q in present):\n        raise r.refuse(\"content_mismatch\")\n", pyTest(s, t), t.Name)
 	}
@@ -730,7 +970,7 @@ func pyTest(s *Definition, t Term) string {
 	}
 	switch {
 	case t.Member != "":
-		return fmt.Sprintf("member(%s, %q)", e, t.Member)
+		return fmt.Sprintf("_member(%s, %q)", e, t.Member)
 	case t.Membership():
 		parts := make([]string, len(t.Is))
 		for i, w := range t.Is {
@@ -743,7 +983,7 @@ func pyTest(s *Definition, t Term) string {
 
 const pyMember = `
 
-def member(raw, name):
+def _member(raw, name):
     """[DEF-A8] Whether an opaque value is an object naming this member with
     something other than null. The key is decoded, so two spellings of one name
     are one name; the value is neither decoded nor judged."""
@@ -772,6 +1012,83 @@ def member(raw, name):
     return False
 `
 
+// pyRecordOrder emits a record after every record its field defaults
+// construct, so a default factory names a class that already exists.
+func pyRecordOrder(s *Definition) []Struct {
+	done := map[string]bool{}
+	var out []Struct
+	var visit func(st Struct)
+	visit = func(st Struct) {
+		if done[st.Name] {
+			return
+		}
+		done[st.Name] = true
+		for _, f := range st.Fields {
+			if f.Omit != "absent" && f.EnumType == nil {
+				if dep := s.byName[f.Type]; dep != nil {
+					visit(*dep)
+				}
+			}
+		}
+		out = append(out, st)
+	}
+	for _, st := range s.Structs {
+		visit(st)
+	}
+	return out
+}
+
+func pyRecord(b *strings.Builder, s *Definition, st Struct) {
+	b.WriteString("\n\n@dataclasses.dataclass(kw_only=True)\n")
+	fmt.Fprintf(b, "class %s:\n", pyClass(s, st.Name))
+	doc := pyDocstring(st.Ann["doc"], "    ")
+	b.WriteString(doc)
+	if len(st.Fields) == 0 && !st.PreservesUnknown() && doc == "" {
+		b.WriteString("    pass\n")
+	}
+	if doc != "" && (len(st.Fields) > 0 || st.PreservesUnknown()) {
+		b.WriteString("\n")
+	}
+	for _, f := range st.Fields {
+		fmt.Fprintf(b, "    %s: %s = %s\n", f.Ident("python"), pyHint(s, f), pyDefault(s, f))
+	}
+	if st.PreservesUnknown() {
+		b.WriteString("    extras: dict[str, bytes | str] = dataclasses.field(default_factory=dict)\n")
+	}
+}
+
+func pyVocabularyEnums(b *strings.Builder, s *Definition) {
+	if len(s.Enums) == 0 {
+		return
+	}
+	b.WriteString(pyEnumBase)
+	for _, en := range s.Enums {
+		fmt.Fprintf(b, "\n\nclass %s(_StrEnum):\n", pascalCase(en.Name))
+		if len(en.Members) == 0 {
+			b.WriteString("    pass\n")
+		}
+		for _, m := range en.Members {
+			name := upperSnake(m.Name)
+			if n, ok := m.Ann["python.name"]; ok {
+				name = n
+			}
+			fmt.Fprintf(b, "    %s = %q\n", name, m.WireName())
+		}
+		for _, key := range en.MemberAnn() {
+			if strings.HasSuffix(key, ".name") {
+				continue
+			}
+			fmt.Fprintf(b, "\n\n%s_%s = {\n", upperSnake(en.Name), upperSnake(key))
+			for _, m := range en.Members {
+				if v, ok := m.Ann[key]; ok {
+					fmt.Fprintf(b, "    %s.%s: %q,\n", pascalCase(en.Name), upperSnake(m.Name), v)
+				}
+			}
+			b.WriteString("}\n")
+		}
+	}
+}
+
 func genPy(s *Definition) string {
 	s = enumCarriers(s)
 	if s.NoIPC {
@@ -792,18 +1109,10 @@ func genPy(s *Definition) string {
 	}
 	b.WriteString(strings.NewReplacer("@INDENT@", strconv.Itoa(s.Encoding.Indent)).Replace(prelude))
 	b.WriteString(importPrelude(s, "python"))
+	pyVocabularyEnums(&b, s)
 	pyVocabulary(&b, s)
-	for _, st := range s.Structs {
-		fmt.Fprintf(&b, "\n\n%sclass %s:\n    def __init__(self, **kw):\n", structDoc(st, "# "), st.Name)
-		if len(st.Fields) == 0 && !st.PreservesUnknown() {
-			b.WriteString("        pass\n")
-		}
-		for _, f := range st.Fields {
-			fmt.Fprintf(&b, "        self.%s = kw.get(%q, %s)\n", f.Ident("python"), f.Name, pyDefault(s, f))
-		}
-		if st.PreservesUnknown() {
-			b.WriteString("        self.extras = kw.get(\"extras\", {})\n")
-		}
+	for _, st := range pyRecordOrder(s) {
+		pyRecord(&b, s, st)
 	}
 	for _, st := range s.Structs {
 		if !s.Envelope(st.Name) {
@@ -816,10 +1125,10 @@ func genPy(s *Definition) string {
 	}
 	if s.Document != "" {
 		if len(s.Imports) > 0 {
-			fmt.Fprintf(&b, "\n\ndef encode(v):\n    return encode_%s(v)\n", lower(s.Document))
+			fmt.Fprintf(&b, "\n\ndef encode(v):\n    return encode_%s(v)\n", pyStem(s.Document))
 		} else {
-			fmt.Fprintf(&b, "\n\ndef encode(v):\n    out = bytearray()\n    enc_%s(out, v, 0)\n%s    return bytes(out)\n",
-				lower(s.Document), tail)
+			fmt.Fprintf(&b, "\n\ndef encode(v):\n    out = bytearray()\n    %s(out, v, 0)\n%s    return bytes(out)\n",
+				pyWriter(s.Document), tail)
 		}
 	}
 	dup, skipDup := "", ""
@@ -855,28 +1164,8 @@ func genPy(s *Definition) string {
 }
 
 func pyVocabulary(b *strings.Builder, s *Definition) {
-	for _, en := range s.Enums {
-		fmt.Fprintf(b, "\n\n%s_NAMES = [", upper(en.Name))
-		for i, m := range en.Members {
-			if i > 0 {
-				b.WriteString(", ")
-			}
-			fmt.Fprintf(b, "%q", m.Name)
-		}
-		b.WriteString("]\n")
-		fmt.Fprintf(b, "%s_%s = %q\n", upper(en.Name), enumPolicyName(en, "python"), en.Ann["unknown"])
-		for _, key := range en.MemberAnn() {
-			fmt.Fprintf(b, "%s_%s = {\n", upper(en.Name), upper(key))
-			for _, m := range en.Members {
-				if v, ok := m.Ann[key]; ok {
-					fmt.Fprintf(b, "    %q: %q,\n", m.Name, v)
-				}
-			}
-			b.WriteString("}\n")
-		}
-	}
 	for _, c := range s.Consts {
-		fmt.Fprintf(b, "\n\n%s = [", upper(c.Name))
+		fmt.Fprintf(b, "\n\n%s = [", upperSnake(c.Name))
 		if c.Type == "list<i32>" {
 			for i, n := range c.Ints {
 				if i > 0 {
@@ -899,12 +1188,12 @@ func pyVocabulary(b *strings.Builder, s *Definition) {
 func pyEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 	p := plan(st)
 	if flat {
-		fmt.Fprintf(b, "\n\ndef enc_wire_%s(out, v):\n", lower(st.Name))
+		fmt.Fprintf(b, "\n\ndef _write_flat_%s(out, v):\n", pyStem(st.Name))
 	} else {
-		fmt.Fprintf(b, "\n\ndef enc_%s(out, v, depth):\n", lower(st.Name))
+		fmt.Fprintf(b, "\n\ndef %s(out, v, depth):\n", pyWriter(st.Name))
 	}
 	emitEqualities(b, st, "python", true)
-	emitEnumChecks(b, st, "python", true)
+	pyEnumChecks(b, st, true)
 	b.WriteString("    out += b\"{\"\n")
 	if p.flag {
 		b.WriteString("    first = True\n")
@@ -926,12 +1215,12 @@ func pyEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 			fmt.Fprintf(b, "%sfirst = False\n", ind)
 		}
 		if flat {
-			fmt.Fprintf(b, "%sesc(out, %q)\n%sout += b\":\"\n", ind, f.Name, ind)
+			fmt.Fprintf(b, "%s_esc(out, %q)\n%sout += b\":\"\n", ind, f.Name, ind)
 			fmt.Fprintf(b, "%s%s\n", ind, pyValueFlat(s, f, e))
 			continue
 		}
-		fmt.Fprintf(b, "%sout += b\"\\n\"\n%spad(out, depth + 1)\n", ind, ind)
-		fmt.Fprintf(b, "%sesc(out, %q)\n%sout += b\": \"\n", ind, f.Name, ind)
+		fmt.Fprintf(b, "%sout += b\"\\n\"\n%s_pad(out, depth + 1)\n", ind, ind)
+		fmt.Fprintf(b, "%s_esc(out, %q)\n%sout += b\": \"\n", ind, f.Name, ind)
 		fmt.Fprintf(b, "%s%s\n", ind, pyValue(s, f, e))
 	}
 	if st.PreservesUnknown() {
@@ -940,16 +1229,25 @@ func pyEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 	if !flat {
 		switch {
 		case p.closeAlways:
-			b.WriteString("    out += b\"\\n\"\n    pad(out, depth)\n")
+			b.WriteString("    out += b\"\\n\"\n    _pad(out, depth)\n")
 		case len(st.Fields) > 0 || st.PreservesUnknown():
-			b.WriteString("    if not first:\n        out += b\"\\n\"\n        pad(out, depth)\n")
+			b.WriteString("    if not first:\n        out += b\"\\n\"\n        _pad(out, depth)\n")
 		}
 	}
 	b.WriteString("    out += b\"}\"\n")
 }
 
 func pyDefault(s *Definition, f Field) string {
-	if f.Omit == "absent" && (s.IsStruct(f.Type) || f.Type == "binary" || enumAbsent(f)) {
+	if en := f.EnumType; en != nil {
+		if f.EnumList {
+			return "dataclasses.field(default_factory=list)"
+		}
+		if f.Omit == "absent" || pyEnumClosed(en) {
+			return "None"
+		}
+		return `""`
+	}
+	if f.Omit == "absent" && (s.IsStruct(f.Type) || f.Type == "binary") {
 		return "None"
 	}
 	switch f.Type {
@@ -962,14 +1260,14 @@ func pyDefault(s *Definition, f Field) string {
 	case "bool":
 		return "False"
 	case "list<string>", "list<json>":
-		return "[]"
+		return "dataclasses.field(default_factory=list)"
 	case "map<string,json>", "map<string,string>":
-		return "{}"
+		return "dataclasses.field(default_factory=dict)"
 	}
 	if s.Repeated(f.Type) != "" {
-		return "[]"
+		return "dataclasses.field(default_factory=list)"
 	}
-	return f.Type + "()"
+	return "dataclasses.field(default_factory=" + pyClass(s, f.Type) + ")"
 }
 
 func pyPresent(s *Definition, f Field, e string) string {
@@ -989,31 +1287,95 @@ func pyValue(s *Definition, f Field, e string) string {
 	}
 
 	if f.Grammar.Named() {
-		return "esc(out, _write_timestamp(" + e + "))"
+		return "_esc(out, _write_timestamp(" + e + "))"
 	}
 	switch f.Type {
 	case "binary":
-		return "esc(out, _encode_binary(" + e + "))"
+		return "_esc(out, _encode_binary(" + e + "))"
 	case "string":
-		return "esc(out, " + e + ")"
+		return "_esc(out, " + e + ")"
 	case "i32", "i64":
-		return "num(out, " + e + ")"
+		return "_num(out, " + e + ")"
 	case "bool":
 		return `out += b"true" if ` + e + ` else b"false"`
 	case "json":
-		return "raw(out, " + e + ", depth + 1)"
+		return "_raw(out, " + e + ", depth + 1)"
 	case "list<string>":
-		return "strs(out, " + e + ", depth + 1)"
+		return "_strs(out, " + e + ", depth + 1)"
 	case "map<string,json>":
-		return "rawmap(out, " + e + ", depth + 1)"
+		return "_rawmap(out, " + e + ", depth + 1)"
 	case "map<string,string>":
-		return "strmap(out, " + e + ", depth + 1)"
+		return "_strmap(out, " + e + ", depth + 1)"
 	}
 	if elem := s.Repeated(f.Type); elem != "" {
-		return "enc_list(out, " + e + ", depth + 1, enc_" + lower(elem) + ")"
+		return "_write_list(out, " + e + ", depth + 1, " + pyWriter(elem) + ")"
 	}
-	return "enc_" + lower(f.Type) + "(out, " + e + ", depth + 1)"
+	return pyWriter(f.Type) + "(out, " + e + ", depth + 1)"
 }
 
 func lower(n string) string { return strings.ToLower(n) }
 func upper(n string) string { return strings.ToUpper(n) }
+
+// pyPublicNames lists what _codec.py offers an application: every top-level
+// class, function and constant it defines without a leading underscore.
+func pyPublicNames(body string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, line := range strings.Split(body, "\n") {
+		name := ""
+		switch {
+		case strings.HasPrefix(line, "class "), strings.HasPrefix(line, "def "):
+			rest := line[strings.Index(line, " ")+1:]
+			end := strings.IndexAny(rest, "(:")
+			if end > 0 {
+				name = rest[:end]
+			}
+		default:
+			if i := strings.Index(line, " = "); i > 0 && !strings.ContainsAny(line[:i], " \t.,[(") {
+				name = line[:i]
+			}
+		}
+		if name == "" || strings.HasPrefix(name, "_") || seen[name] {
+			continue
+		}
+		seen[name] = true
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// genPyPublic is __init__.py: the package an application imports.
+func genPyPublic(s *Definition, private string) string {
+	names := pyPublicNames(private)
+	var b strings.Builder
+	ns := namespaceFor(s.Namespaces, "python")
+	if ns == "" {
+		b.WriteString("\"\"\"Generated contract types, vocabularies and service clients.\"\"\"\n")
+	} else {
+		fmt.Fprintf(&b, "\"\"\"%s: generated contract types, vocabularies and service clients.\"\"\"\n", ns)
+	}
+	if len(names) == 0 {
+		b.WriteString("\n__all__ = []\n")
+		return b.String()
+	}
+	b.WriteString("\nfrom ._codec import (\n")
+	for _, n := range names {
+		fmt.Fprintf(&b, "    %s,\n", n)
+	}
+	b.WriteString(")\n\n__all__ = [\n")
+	for _, n := range names {
+		fmt.Fprintf(&b, "    %q,\n", n)
+	}
+	b.WriteString("]\n")
+	b.WriteString(`
+# Report every class and function as a member of this package, so help(),
+# tracebacks and pickles name the import an application writes.
+for _name in __all__:
+    _value = globals()[_name]
+    if isinstance(_value, type) or callable(_value):
+        _value.__module__ = __name__
+del _name, _value
+`)
+	return b.String()
+}

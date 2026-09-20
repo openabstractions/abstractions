@@ -1,0 +1,46 @@
+dataclass Delivery
+  digest: str
+  media_type: str
+  size: int
+  location: str
+dataclass Document
+  request: Request | None
+  result: JobResult | None
+const EXECUTION_GUARANTEES
+dataclass ImageRequest
+  model: str
+  mode: Mode | None
+  prompt: str
+  size: str
+  count: int
+  image_digest: str
+  image_media_type: str
+  mask_digest: str
+  mask_media_type: str
+  guarantees: list[RequestGuarantee | str]
+  credential: str
+  required_extensions: list[str]
+  extensions: dict[str, str]
+dataclass JobResult
+  profile: Profile | None
+  deliveries: list[Delivery]
+  host: str
+  model: str
+const KINDS
+enum Mode
+  GENERATE = 'generate'
+  EDIT = 'edit'
+enum Profile
+  VIDEO = 'video'
+  IMAGE_BATCH = 'image_batch'
+class Refusal(ValueError)
+  __init__(word, offset)
+dataclass Request
+  profile: Profile | None
+  image: ImageRequest
+  duration_ms: int
+enum RequestGuarantee
+  LOCAL_ONLY = 'abstraction.inference/local-only@1'
+  HOSTED_ALLOWED = 'abstraction.inference/hosted-allowed@1'
+def decode(data)
+def encode(v)

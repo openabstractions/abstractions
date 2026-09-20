@@ -1,0 +1,16 @@
+using Raw = std::string
+class Refusal : public std::runtime_error
+  const char* word
+  std::size_t offset
+inline const std::vector<std::string> kLifecycleOperations
+inline const std::vector<std::string> kFailureNames
+struct NoticeMetadata
+  bool quiet
+  std::int64_t silence_ns
+struct WatchOptions
+  std::int64_t every_ns
+  std::int64_t budget_ns
+struct Stamp
+  std::string value
+inline std::string encode(const NoticeMetadata& v)
+inline NoticeMetadata decode(std::string_view data)

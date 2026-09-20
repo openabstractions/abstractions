@@ -57,7 +57,7 @@ fn stamp(us: i64) -> String {
 }
 
 fn parse_stamp(s: &str) -> Option<i64> {
-    if !rec::wide_timestamp(s) {
+    if !rec::internal::wide_timestamp(s) {
         return None;
     }
     let b = s.as_bytes();
@@ -82,6 +82,35 @@ fn parse_stamp(s: &str) -> Option<i64> {
         us += if b[i] == b'+' { -offset } else { offset };
     }
     Some(us)
+}
+
+/// The checkpoint's JSON with insignificant whitespace removed and string
+/// tokens kept byte for byte, the spelling a transcript line compares.
+fn compact(out: &mut Vec<u8>, s: &[u8]) {
+    let mut i = 0;
+    while i < s.len() {
+        let c = s[i];
+        if c == b' ' || c == b'\t' || c == b'\n' || c == b'\r' {
+            i += 1;
+        } else if c == b'"' {
+            let mut j = i + 1;
+            while j < s.len() {
+                if s[j] == b'\\' {
+                    j += 2;
+                    continue;
+                }
+                j += 1;
+                if s[j - 1] == b'"' {
+                    break;
+                }
+            }
+            out.extend_from_slice(&s[i..j.min(s.len())]);
+            i = j;
+        } else {
+            out.push(c);
+            i += 1;
+        }
+    }
 }
 
 fn live(lease: &rec::Lease, now: i64) -> bool {
@@ -115,7 +144,7 @@ fn declare(r: &mut rec::Record) {
     if r.progress.step.is_some() {
         add(STEP, false);
     }
-    if rec::member(&r.checkpoint, "verified") {
+    if rec::internal::member(&r.checkpoint, "verified") {
         add(RANGES, false);
     }
     if terminal(r) {
@@ -305,7 +334,7 @@ impl Driver {
         if r.checkpoint.is_empty() {
             cp.extend_from_slice(b"none");
         } else {
-            rec::raw_flat(&mut cp, &r.checkpoint);
+            compact(&mut cp, &r.checkpoint);
         }
         format!(
             "{} state={} epoch={} held={} recall={} want={} done={} err={} cp={} content={} crit={} awake={}",

@@ -1,0 +1,133 @@
+pub type Raw
+pub enum ObservationOutcome
+  Pending
+  Answered
+  Unknown
+  Gone
+  Invalid
+  Conflict
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 8]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum OperatorPageOutcome
+  Page
+  Gap
+  Invalid
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum OperatorDecisionOutcome
+  Answered
+  Conflict
+  Unknown
+  Invalid
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum OperatorRetirementOutcome
+  Retired
+  Unknown
+  Invalid
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub mod service_error_code
+  pub const HANDLER_ERROR: &str
+  pub const INVALID_RESULT: &str
+  pub const UNKNOWN_VERSION: &str
+  pub const UNKNOWN_SERVICE: &str
+  pub const UNKNOWN_METHOD: &str
+  pub const WRONG_MODE: &str
+  pub const ALL: [&str; 6]
+pub const OPERATIONS: [&str; 5]
+pub const REFUSAL_CODES: [&str; 11]
+pub const RESOURCE_ACTIONS: [&str; 1]
+pub struct Question
+  asker: String
+  key: String
+  slots: BTreeMap<String, String>
+pub struct Request
+  op: String
+  ask: Option<Question>
+  wait: bool
+  id: String
+  option: String
+  admin: String
+pub struct Answer
+  id: String
+  pending: bool
+  option: String
+  yes: bool
+  kept: bool
+pub struct RecordMetadata
+  id: String
+  asker: String
+  key: String
+  about: String
+  text: String
+  options: Vec<String>
+  asked: String
+  option: String
+  answered: String
+  kept: bool
+  yes: bool
+pub struct ResponseMetadata
+  code: String
+  error: String
+  answer: Option<Answer>
+  records: Vec<RecordMetadata>
+pub struct ApplicationQuestion
+  request_key: String
+  key: String
+  slots: BTreeMap<String, String>
+pub struct QuestionObservation
+  outcome: ObservationOutcome
+  answer: Option<Answer>
+pub struct OperatorPage
+  outcome: OperatorPageOutcome
+  records: Vec<RecordMetadata>
+  next: String
+  complete: bool
+pub struct OperatorDecision
+  outcome: OperatorDecisionOutcome
+  record: Option<RecordMetadata>
+pub struct OperatorRetirement
+  outcome: OperatorRetirementOutcome
+  record: Option<RecordMetadata>
+pub fn encode(v: &Request) -> Vec<u8>
+pub struct Refusal
+  word: &'static str
+  offset: usize
+pub fn decode(data: &[u8]) -> Result<Request, Refusal>
+pub use abstraction_frame::FrameTransport
+pub struct ServiceError
+  code: String
+  message: String
+pub enum CallError<E>
+  Transport(E)
+  Refusal(Refusal)
+  Dispatch(&'static str)
+  Service(ServiceError)
+pub trait QuestionApplication
+  type Error
+  fn ask(&self, question: ApplicationQuestion) -> Result<QuestionObservation, Self::Error>
+  fn observe(&self, request_key: String, wait_ms: i64) -> Result<QuestionObservation, Self::Error>
+pub struct QuestionApplicationClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait QuestionOperator
+  type Error
+  fn list_questions(&self, cursor: String, limit: i64) -> Result<OperatorPage, Self::Error>
+  fn answer_question(&self, id: String, option: String) -> Result<OperatorDecision, Self::Error>
+  fn retire_question(&self, id: String) -> Result<OperatorRetirement, Self::Error>
+pub struct QuestionOperatorClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T

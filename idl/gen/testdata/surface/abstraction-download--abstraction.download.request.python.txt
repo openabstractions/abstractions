@@ -1,0 +1,32 @@
+dataclass Artifact
+  digest: str
+  size: int
+const CREDENTIAL_GUARANTEES
+dataclass Constraints
+  network: Network | None
+const DOWNSTREAM_RECOVERY_GUARANTEES
+const NETWORK_COST_GUARANTEES
+enum Network
+  ANY = 'any'
+  UNMETERED = 'unmetered'
+class Refusal(ValueError)
+  __init__(word, offset)
+dataclass Request
+  artifact: Artifact
+  sources: list[Source]
+  constraints: Constraints | None
+dataclass Source
+  scheme: str
+  locator: str
+  credential: str
+const WAITING_EXTENSIONS
+def decode(data)
+def decode_artifact(data)
+def decode_constraints(data)
+def decode_request(data)
+def decode_source(data)
+def encode(v)
+def encode_artifact(v)
+def encode_constraints(v)
+def encode_request(v)
+def encode_source(v)

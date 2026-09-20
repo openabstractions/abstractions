@@ -1,0 +1,27 @@
+const NATIVE_BINDING_TYPES
+const NATIVE_OPERATIONS
+enum Proof
+  NONE = 'none'
+  CLAIMED = 'claimed'
+  INVALID = 'invalid'
+  UNSIGNED = 'unsigned'
+  UNMET = 'unmet'
+  PID = 'pid'
+  BOUND = 'bound'
+  KERNEL = 'kernel'
+  SIGNED = 'signed'
+dataclass ProofFailure
+  attribute: str
+  have: Proof | None
+  need: Proof | None
+  why: str
+dataclass ProofRequirement
+  user: Proof | None
+  process: Proof | None
+  path: Proof | None
+  package: Proof | None
+  code: Proof | None
+class Refusal(ValueError)
+  __init__(word, offset)
+def decode(data)
+def encode(v)

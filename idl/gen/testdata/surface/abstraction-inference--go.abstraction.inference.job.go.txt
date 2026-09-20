@@ -1,0 +1,69 @@
+type Raw string
+type Profile uint32
+const ProfileVideo
+const ProfileImageBatch
+func (Profile) String() string
+func (Profile) WireName() (string, bool)
+func ParseProfile(word string) (Profile, bool)
+func (Profile) MarshalText() ([]byte, error)
+func (Profile) UnmarshalText(text []byte) error
+func (Profile) MarshalJSON() ([]byte, error)
+func (Profile) UnmarshalJSON(data []byte) error
+func ProfileValues() []Profile
+func (Profile) Known() bool
+type Mode uint32
+const ModeGenerate
+const ModeEdit
+func (Mode) String() string
+func (Mode) WireName() (string, bool)
+func ParseMode(word string) (Mode, bool)
+func (Mode) MarshalText() ([]byte, error)
+func (Mode) UnmarshalText(text []byte) error
+func (Mode) MarshalJSON() ([]byte, error)
+func (Mode) UnmarshalJSON(data []byte) error
+func ModeValues() []Mode
+func (Mode) Known() bool
+type RequestGuarantee string
+const RequestGuaranteeLocalOnly
+const RequestGuaranteeHostedAllowed
+func RequestGuaranteeValues() []RequestGuarantee
+func (RequestGuarantee) Known() bool
+var Kinds
+var ExecutionGuarantees
+type ImageRequest struct
+  Model string
+  Mode Mode
+  Prompt string
+  Size string
+  Count int64
+  ImageDigest string
+  ImageMediaType string
+  MaskDigest string
+  MaskMediaType string
+  Guarantees []RequestGuarantee
+  Credential string
+  RequiredExtensions []string
+  Extensions map[string]string
+type Delivery struct
+  Digest string
+  MediaType string
+  Size int64
+  Location string
+type Request struct
+  Profile Profile
+  Image ImageRequest
+  DurationMs int64
+type JobResult struct
+  Profile Profile
+  Deliveries []Delivery
+  Host string
+  Model string
+type Document struct
+  Request *Request
+  Result *JobResult
+func Encode(v *Document) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+func Decode(in []byte) (*Document, error)

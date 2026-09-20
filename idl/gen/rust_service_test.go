@@ -69,11 +69,11 @@ impl FrameTransport for Transport {
 }
 fn main(){
  let c=rec::QueryClient::new(Transport{host:std::env::args().nth(1).unwrap(),calls:Cell::new(0),reply:RefCell::new(None),fail:Cell::new(false)});
- let v=c.Echo(rec::Record{value:"雪<&".into()},"".into(),false,0).unwrap();assert_eq!(v.value,"雪<&");
- let raw=b"{ \"a\" : [1,\n false] }".to_vec();assert_eq!(c.Opaque(raw.clone()).unwrap(),raw);
- c.Reset().unwrap();c.Notify().unwrap();
- match c.Fail("future_code".into()){Err(CallError::Service(e))=>assert_eq!(e.code,"future_code"),_=>panic!("service error lost")}
- let before=c.transport().calls.get();assert!(matches!(c.Opaque(b"[".to_vec()),Err(CallError::Refusal(_))));assert_eq!(before,c.transport().calls.get());
+ let v=c.echo(rec::Record{value:"雪<&".into()},"".into(),false,0).unwrap();assert_eq!(v.value,"雪<&");
+ let raw=b"{ \"a\" : [1,\n false] }".to_vec();assert_eq!(c.opaque(raw.clone()).unwrap(),raw);
+ c.reset().unwrap();c.notify().unwrap();
+ match c.fail("future_code".into()){Err(CallError::Service(e))=>assert_eq!(e.code,"future_code"),_=>panic!("service error lost")}
+ let before=c.transport().calls.get();assert!(matches!(c.opaque(b"[".to_vec()),Err(CallError::Refusal(_))));assert_eq!(before,c.transport().calls.get());
  for reply in [
  r#"{"version":2,"service":"example.query/query@1","method":"Reset","ok":true,"payload":{}}"#,
  r#"{"version":1,"service":"wrong","method":"Reset","ok":true,"payload":{}}"#,
@@ -83,10 +83,10 @@ fn main(){
  r#"{"version":1,"service":"example.query/query@1","method":"Reset","ok":false,"payload":{"code":"","message":""}}"#,
  r#"{"version":1,"version":1,"service":"example.query/query@1","method":"Reset","ok":true,"payload":{}}"#,
  r#"{"version":1,"service":"example.query/query@1","method":"Reset","ok":true,"payload":{}} null"#
- ]{*c.transport().reply.borrow_mut()=Some(reply.as_bytes().to_vec());assert!(c.Reset().is_err(),"accepted {}",reply);}
+ ]{*c.transport().reply.borrow_mut()=Some(reply.as_bytes().to_vec());assert!(c.reset().is_err(),"accepted {}",reply);}
  *c.transport().reply.borrow_mut()=None;c.transport().fail.set(true);let before=c.transport().calls.get();
- assert!(matches!(c.Notify(),Err(CallError::Transport(7))));assert!(matches!(c.Reset(),Err(CallError::Transport(7))));assert_eq!(c.transport().calls.get(),before+2);
- c.transport().fail.set(false);c.Reset().unwrap();
+ assert!(matches!(c.notify(),Err(CallError::Transport(7))));assert!(matches!(c.reset(),Err(CallError::Transport(7))));assert_eq!(c.transport().calls.get(),before+2);
+ c.transport().fail.set(false);c.reset().unwrap();
 }
 `
 
@@ -145,7 +145,7 @@ func TestRustServiceValidation(t *testing.T) {
 	if e := validateServiceBackend(renamed, "rust"); e != nil {
 		t.Fatalf("refused renamed service argument: %v", e)
 	}
-	if !strings.Contains(genRust(renamed), "reference: arg0") {
+	if !strings.Contains(genRust(renamed), "let args = OALookupFindArguments { reference };") {
 		t.Fatal("renamed argument not used in generated record")
 	}
 	s, e := parse(head + replyFixture)
@@ -194,9 +194,9 @@ import("os";"io";l "production.test/logging";f "production.test/facade")
 type sink struct{}
 func(sink)Write(v l.Record)error{if v.Msg!="rust-log"||v.Schema!=1{panic("invalid record")};return nil}
 type history struct{}
-func(history)Read(cursor string,n,b int64)(l.Page,error){if cursor!="cursor"||n!=1||b!=1000{panic("invalid history args")};return l.Page{Outcome:"page",Records:[]l.Record{{Schema:1,Time:"2026-09-13T00:00:00.000000Z",Msg:"retained"}},Next:"next",AtEnd:true},nil}
+func(history)Read(cursor string,n,b int64)(l.Page,error){if cursor!="cursor"||n!=1||b!=1000{panic("invalid history args")};return l.Page{Outcome:l.PageOutcomePage,Records:[]l.Record{{Schema:1,Time:"2026-09-13T00:00:00.000000Z",Msg:"retained"}},Next:"next",AtEnd:true},nil}
 type resolver struct{}
-func(resolver)Resolve(v f.ResolveRequest)(f.ResolveResult,error){if v.Capability!="abstraction.logging"||v.Scope!="local"||len(v.Contracts)!=1||v.Contracts[0]!="abstraction.logging/sink@1"{panic("invalid request")};return f.ResolveResult{Status:"unavailable"},nil}
+func(resolver)Resolve(v f.ResolveRequest)(f.ResolveResult,error){if v.Capability!="abstraction.logging"||v.Scope!=f.ScopeLocal||len(v.Contracts)!=1||v.Contracts[0]!="abstraction.logging/sink@1"{panic("invalid request")};return f.ResolveResult{Status:f.ResolutionStatusUnavailable},nil}
 func main(){b,e:=io.ReadAll(os.Stdin);if e!=nil{panic(e)};var out []byte;switch os.Args[1]{case "sink":d:=l.SinkDispatcher{Handler:sink{}};e=d.WriteFrame(b);case "history":d:=l.HistoryReaderDispatcher{Handler:history{}};out,e=d.ExchangeFrame(b);case "resolver":d:=f.ResolverDispatcher{Handler:resolver{}};out,e=d.ExchangeFrame(b)};if e!=nil{panic(e)};os.Stdout.Write(out)}
 `
 const rustProductionProbe = `mod logging;mod facade;
@@ -208,10 +208,11 @@ impl logging::FrameTransport for Transport{type Error=();fn write_frame(&self,b:
 impl facade::FrameTransport for Transport{type Error=();fn write_frame(&self,b:&[u8])->Result<(),()>{self.run(b);Ok(())}fn exchange_frame(&self,b:&[u8])->Result<Vec<u8>,()>{Ok(self.run(b))}}
 fn transport(mode:&'static str)->Transport{Transport{host:std::env::args().nth(1).unwrap(),mode,calls:Cell::new(0)}}
 fn main(){
- let sink=logging::SinkClient::new(transport("sink"));let mut r=logging::Record::default();r.schema=1;r.time="2026-09-13T00:00:00.000000Z".into();r.msg="rust-log".into();sink.Write(r).unwrap();
- let page=logging::HistoryReaderClient::new(transport("history")).Read("cursor".into(),1,1000).unwrap();assert_eq!(page.outcome,"page");assert_eq!(page.records[0].msg,"retained");assert!(page.at_end);
- let resolver=facade::ResolverClient::new(transport("resolver"));let mut r=facade::ResolveRequest::default();r.capability="abstraction.logging".into();r.scope="local".into();r.contracts=vec!["abstraction.logging/sink@1".into()];assert_eq!(resolver.Resolve(r).unwrap().status,"unavailable");
- let n=resolver.transport().calls.get();let mut bad=facade::ResolveRequest::default();bad.scope="invalid".into();assert!(matches!(resolver.Resolve(bad),Err(facade::CallError::Refusal(_))));assert_eq!(n,resolver.transport().calls.get());
+ let sink=logging::SinkClient::new(transport("sink"));let mut r=logging::Record::default();r.schema=1;r.time="2026-09-13T00:00:00.000000Z".into();r.msg="rust-log".into();sink.write(r).unwrap();
+ let page=logging::HistoryReaderClient::new(transport("history")).read("cursor".into(),1,1000).unwrap();assert_eq!(page.outcome,"page");assert_eq!(page.records[0].msg,"retained");assert!(page.at_end);
+ let resolver=facade::ResolverClient::new(transport("resolver"));let r=facade::ResolveRequest{capability:"abstraction.logging".into(),contracts:vec!["abstraction.logging/sink@1".into()],guarantees:vec![],scope:facade::Scope::Local};assert_eq!(resolver.resolve(r).unwrap().status,"unavailable");
+ // A scope no member names cannot be constructed, so there is no invalid request left to refuse before the transport.
+ assert_eq!(resolver.transport().calls.get(),1);
 }
 `
 

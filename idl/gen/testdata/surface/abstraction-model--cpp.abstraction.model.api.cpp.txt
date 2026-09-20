@@ -1,0 +1,91 @@
+using Raw = std::string
+class Refusal : public std::runtime_error
+  const char* word
+  std::size_t offset
+enum class LookupOutcome {Resolved, Invalid, Unavailable, UnsupportedMapping, Forbidden}
+inline constexpr std::string_view wire_name(LookupOutcome value)
+inline std::optional<LookupOutcome> parse_lookup_outcome(std::string_view name)
+inline constexpr bool operator==(LookupOutcome value, std::string_view name)
+inline constexpr bool operator!=(LookupOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, LookupOutcome value)
+inline constexpr bool operator!=(std::string_view name, LookupOutcome value)
+inline const std::vector<std::string> kLookupOutcomeNames
+enum class ManifestOutcome {Resolved, NotFound, Invalid, Unavailable, UnsupportedMapping, Forbidden}
+inline constexpr std::string_view wire_name(ManifestOutcome value)
+inline std::optional<ManifestOutcome> parse_manifest_outcome(std::string_view name)
+inline constexpr bool operator==(ManifestOutcome value, std::string_view name)
+inline constexpr bool operator!=(ManifestOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ManifestOutcome value)
+inline constexpr bool operator!=(std::string_view name, ManifestOutcome value)
+inline const std::vector<std::string> kManifestOutcomeNames
+inline const std::vector<std::string> kServiceErrorCodeNames
+inline constexpr std::string_view kServiceErrorCodeHandlerError
+inline constexpr std::string_view kServiceErrorCodeInvalidResult
+inline constexpr std::string_view kServiceErrorCodeUnknownVersion
+inline constexpr std::string_view kServiceErrorCodeUnknownService
+inline constexpr std::string_view kServiceErrorCodeUnknownMethod
+inline constexpr std::string_view kServiceErrorCodeWrongMode
+inline const std::vector<std::string> kResolverOperations
+inline const std::vector<std::string> kRegistryOperations
+struct Ref
+  std::string registry
+  std::string repo
+  std::string revision
+  std::string quant
+  std::string file
+  std::string credential
+struct LookupResult
+  LookupOutcome outcome
+  std::optional<::abstraction::download::request::Request> request
+struct ManifestResult
+  ManifestOutcome outcome
+  std::optional<::abstraction::storage::content::Manifest> manifest
+  std::string resolved_revision
+inline Ref decode(std::string_view data)
+struct FrameWriter
+  virtual void write_frame(std::string_view frame)
+struct DispatchError : std::runtime_error
+inline std::string service_name(std::string_view frame)
+struct FrameExchanger
+  virtual std::string exchange_frame(std::string_view frame)
+struct ServiceError : std::runtime_error
+  std::string code, message
+inline constexpr std::string_view kEndpointContract
+struct DescribedService
+  std::string contract
+  bool ready
+  std::string why
+std::string describe_endpoint(std::string_view frame, const std::string& program, const std::string& version, const Services& . . . services)
+struct ModelResolver
+  virtual LookupResult resolve(const Ref& ref)
+template<class Transport>struct ModelResolverClient : ModelResolver
+  Transport& transport_
+  LookupResult resolve(const Ref& ref) override
+struct ModelResolverService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ModelResolverDispatcher : FrameWriter, FrameExchanger
+  ModelResolver& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct ModelManifest
+  virtual ManifestResult resolve(const Ref& ref)
+template<class Transport>struct ModelManifestClient : ModelManifest
+  Transport& transport_
+  ManifestResult resolve(const Ref& ref) override
+struct ModelManifestService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ModelManifestDispatcher : FrameWriter, FrameExchanger
+  ModelManifest& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+inline std::string encode_ref(const Ref& v)
+inline Ref decode_ref(std::string_view in)
+inline std::string encode_lookup_result(const LookupResult& v)
+inline LookupResult decode_lookup_result(std::string_view in)
+inline std::string encode_manifest_result(const ManifestResult& v)
+inline ManifestResult decode_manifest_result(std::string_view in)
+inline std::string encode(const Ref& v)

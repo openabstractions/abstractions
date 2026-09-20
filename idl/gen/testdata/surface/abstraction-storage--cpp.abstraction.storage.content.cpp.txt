@@ -1,0 +1,636 @@
+using Raw = std::string
+class Refusal : public std::runtime_error
+  const char* word
+  std::size_t offset
+enum class Verification {Unverified}
+inline constexpr std::string_view wire_name(Verification value)
+inline std::optional<Verification> parse_verification(std::string_view name)
+inline constexpr bool operator==(Verification value, std::string_view name)
+inline constexpr bool operator!=(Verification value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Verification value)
+inline constexpr bool operator!=(std::string_view name, Verification value)
+inline const std::vector<std::string> kVerificationNames
+enum class OpenOutcome {Opened, NotFound, Forbidden, Invalid, Unsupported, Unavailable, Exhausted}
+inline constexpr std::string_view wire_name(OpenOutcome value)
+inline std::optional<OpenOutcome> parse_open_outcome(std::string_view name)
+inline constexpr bool operator==(OpenOutcome value, std::string_view name)
+inline constexpr bool operator!=(OpenOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, OpenOutcome value)
+inline constexpr bool operator!=(std::string_view name, OpenOutcome value)
+inline const std::vector<std::string> kOpenOutcomeNames
+enum class ReadOutcome {Data, Gap, Forbidden, Invalid, Unavailable, Changed}
+inline constexpr std::string_view wire_name(ReadOutcome value)
+inline std::optional<ReadOutcome> parse_read_outcome(std::string_view name)
+inline constexpr bool operator==(ReadOutcome value, std::string_view name)
+inline constexpr bool operator!=(ReadOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ReadOutcome value)
+inline constexpr bool operator!=(std::string_view name, ReadOutcome value)
+inline const std::vector<std::string> kReadOutcomeNames
+enum class CloseOutcome {Closed, Gap, Forbidden}
+inline constexpr std::string_view wire_name(CloseOutcome value)
+inline std::optional<CloseOutcome> parse_close_outcome(std::string_view name)
+inline constexpr bool operator==(CloseOutcome value, std::string_view name)
+inline constexpr bool operator!=(CloseOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, CloseOutcome value)
+inline constexpr bool operator!=(std::string_view name, CloseOutcome value)
+inline const std::vector<std::string> kCloseOutcomeNames
+enum class BeginOutcome {Started, Committed, Present, Forbidden, Invalid, Conflict, TooLarge, Busy, Unsupported, Unavailable, Exhausted}
+inline constexpr std::string_view wire_name(BeginOutcome value)
+inline std::optional<BeginOutcome> parse_begin_outcome(std::string_view name)
+inline constexpr bool operator==(BeginOutcome value, std::string_view name)
+inline constexpr bool operator!=(BeginOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, BeginOutcome value)
+inline constexpr bool operator!=(std::string_view name, BeginOutcome value)
+inline const std::vector<std::string> kBeginOutcomeNames
+enum class AppendOutcome {Accepted, Gap, Forbidden, Invalid, OutOfOrder, TooLarge, Unavailable}
+inline constexpr std::string_view wire_name(AppendOutcome value)
+inline std::optional<AppendOutcome> parse_append_outcome(std::string_view name)
+inline constexpr bool operator==(AppendOutcome value, std::string_view name)
+inline constexpr bool operator!=(AppendOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, AppendOutcome value)
+inline constexpr bool operator!=(std::string_view name, AppendOutcome value)
+inline const std::vector<std::string> kAppendOutcomeNames
+enum class CommitOutcome {Committed, Gap, Forbidden, Incomplete, Mismatch, Unavailable}
+inline constexpr std::string_view wire_name(CommitOutcome value)
+inline std::optional<CommitOutcome> parse_commit_outcome(std::string_view name)
+inline constexpr bool operator==(CommitOutcome value, std::string_view name)
+inline constexpr bool operator!=(CommitOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, CommitOutcome value)
+inline constexpr bool operator!=(std::string_view name, CommitOutcome value)
+inline const std::vector<std::string> kCommitOutcomeNames
+enum class AbortOutcome {Aborted, Gap, Forbidden}
+inline constexpr std::string_view wire_name(AbortOutcome value)
+inline std::optional<AbortOutcome> parse_abort_outcome(std::string_view name)
+inline constexpr bool operator==(AbortOutcome value, std::string_view name)
+inline constexpr bool operator!=(AbortOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, AbortOutcome value)
+inline constexpr bool operator!=(std::string_view name, AbortOutcome value)
+inline const std::vector<std::string> kAbortOutcomeNames
+enum class Evidence {Hashed, Named, Foreign, None}
+inline constexpr std::string_view wire_name(Evidence value)
+inline std::optional<Evidence> parse_evidence(std::string_view name)
+inline constexpr bool operator==(Evidence value, std::string_view name)
+inline constexpr bool operator!=(Evidence value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Evidence value)
+inline constexpr bool operator!=(std::string_view name, Evidence value)
+inline const std::vector<std::string> kEvidenceNames
+enum class ChangeKind {Added, Removed}
+inline constexpr std::string_view wire_name(ChangeKind value)
+inline std::optional<ChangeKind> parse_change_kind(std::string_view name)
+inline constexpr bool operator==(ChangeKind value, std::string_view name)
+inline constexpr bool operator!=(ChangeKind value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ChangeKind value)
+inline constexpr bool operator!=(std::string_view name, ChangeKind value)
+inline const std::vector<std::string> kChangeKindNames
+enum class ChangePageOutcome {Page, Gap, Forbidden, Invalid, Unavailable}
+inline constexpr std::string_view wire_name(ChangePageOutcome value)
+inline std::optional<ChangePageOutcome> parse_change_page_outcome(std::string_view name)
+inline constexpr bool operator==(ChangePageOutcome value, std::string_view name)
+inline constexpr bool operator!=(ChangePageOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ChangePageOutcome value)
+inline constexpr bool operator!=(std::string_view name, ChangePageOutcome value)
+inline const std::vector<std::string> kChangePageOutcomeNames
+enum class ListingOutcome {Page, Gap, Forbidden, Invalid, Unavailable}
+inline constexpr std::string_view wire_name(ListingOutcome value)
+inline std::optional<ListingOutcome> parse_listing_outcome(std::string_view name)
+inline constexpr bool operator==(ListingOutcome value, std::string_view name)
+inline constexpr bool operator!=(ListingOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ListingOutcome value)
+inline constexpr bool operator!=(std::string_view name, ListingOutcome value)
+inline const std::vector<std::string> kListingOutcomeNames
+enum class Addressing {Content, Name}
+inline constexpr std::string_view wire_name(Addressing value)
+inline std::optional<Addressing> parse_addressing(std::string_view name)
+inline constexpr bool operator==(Addressing value, std::string_view name)
+inline constexpr bool operator!=(Addressing value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Addressing value)
+inline constexpr bool operator!=(std::string_view name, Addressing value)
+inline const std::vector<std::string> kAddressingNames
+enum class Placement {Local, Remote}
+inline constexpr std::string_view wire_name(Placement value)
+inline std::optional<Placement> parse_placement(std::string_view name)
+inline constexpr bool operator==(Placement value, std::string_view name)
+inline constexpr bool operator!=(Placement value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Placement value)
+inline constexpr bool operator!=(std::string_view name, Placement value)
+inline const std::vector<std::string> kPlacementNames
+enum class Lifetime {UntilReleased, Lease, WhilePresent}
+inline constexpr std::string_view wire_name(Lifetime value)
+inline std::optional<Lifetime> parse_lifetime(std::string_view name)
+inline constexpr bool operator==(Lifetime value, std::string_view name)
+inline constexpr bool operator!=(Lifetime value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Lifetime value)
+inline constexpr bool operator!=(std::string_view name, Lifetime value)
+inline const std::vector<std::string> kLifetimeNames
+inline const std::vector<std::string> kAttestationNames
+inline constexpr std::string_view kAttestationDeclared
+inline constexpr std::string_view kAttestationObserved
+inline constexpr std::string_view kAttestationVerified
+inline const std::vector<std::string> kStoreErrorKindNames
+inline constexpr std::string_view kStoreErrorKindOther
+inline constexpr std::string_view kStoreErrorKindMalformedIndex
+inline constexpr std::string_view kStoreErrorKindUnreadableIndex
+inline constexpr std::string_view kStoreErrorKindUnreadableTree
+inline constexpr std::string_view kStoreErrorKindUnreadableConfiguration
+enum class HoldOutcome {Held, UnknownTarget, Conflict, Forbidden, Invalid, Exhausted, Unavailable}
+inline constexpr std::string_view wire_name(HoldOutcome value)
+inline std::optional<HoldOutcome> parse_hold_outcome(std::string_view name)
+inline constexpr bool operator==(HoldOutcome value, std::string_view name)
+inline constexpr bool operator!=(HoldOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, HoldOutcome value)
+inline constexpr bool operator!=(std::string_view name, HoldOutcome value)
+inline const std::vector<std::string> kHoldOutcomeNames
+enum class ReleaseOutcome {Released, Unknown, Forbidden, Invalid, Unavailable}
+inline constexpr std::string_view wire_name(ReleaseOutcome value)
+inline std::optional<ReleaseOutcome> parse_release_outcome(std::string_view name)
+inline constexpr bool operator==(ReleaseOutcome value, std::string_view name)
+inline constexpr bool operator!=(ReleaseOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ReleaseOutcome value)
+inline constexpr bool operator!=(std::string_view name, ReleaseOutcome value)
+inline const std::vector<std::string> kReleaseOutcomeNames
+enum class RenewOutcome {Renewed, Unknown, Expired, Forbidden, Invalid, Unavailable}
+inline constexpr std::string_view wire_name(RenewOutcome value)
+inline std::optional<RenewOutcome> parse_renew_outcome(std::string_view name)
+inline constexpr bool operator==(RenewOutcome value, std::string_view name)
+inline constexpr bool operator!=(RenewOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, RenewOutcome value)
+inline constexpr bool operator!=(std::string_view name, RenewOutcome value)
+inline const std::vector<std::string> kRenewOutcomeNames
+enum class DescribeOutcome {Described, Unknown, Forbidden, Invalid, Unavailable}
+inline constexpr std::string_view wire_name(DescribeOutcome value)
+inline std::optional<DescribeOutcome> parse_describe_outcome(std::string_view name)
+inline constexpr bool operator==(DescribeOutcome value, std::string_view name)
+inline constexpr bool operator!=(DescribeOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, DescribeOutcome value)
+inline constexpr bool operator!=(std::string_view name, DescribeOutcome value)
+inline const std::vector<std::string> kDescribeOutcomeNames
+enum class PublishOutcome {Published, Present, Incomplete, Conflict, Forbidden, Invalid, Exhausted, Unavailable}
+inline constexpr std::string_view wire_name(PublishOutcome value)
+inline std::optional<PublishOutcome> parse_publish_outcome(std::string_view name)
+inline constexpr bool operator==(PublishOutcome value, std::string_view name)
+inline constexpr bool operator!=(PublishOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, PublishOutcome value)
+inline constexpr bool operator!=(std::string_view name, PublishOutcome value)
+inline const std::vector<std::string> kPublishOutcomeNames
+enum class InventoryOutcome {Page, Gap, Forbidden, Invalid, Unavailable}
+inline constexpr std::string_view wire_name(InventoryOutcome value)
+inline std::optional<InventoryOutcome> parse_inventory_outcome(std::string_view name)
+inline constexpr bool operator==(InventoryOutcome value, std::string_view name)
+inline constexpr bool operator!=(InventoryOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, InventoryOutcome value)
+inline constexpr bool operator!=(std::string_view name, InventoryOutcome value)
+inline const std::vector<std::string> kInventoryOutcomeNames
+enum class RemoveOutcome {Removed, NotFound, Held, Busy, Unsupported, Forbidden, Invalid, Unavailable}
+inline constexpr std::string_view wire_name(RemoveOutcome value)
+inline std::optional<RemoveOutcome> parse_remove_outcome(std::string_view name)
+inline constexpr bool operator==(RemoveOutcome value, std::string_view name)
+inline constexpr bool operator!=(RemoveOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, RemoveOutcome value)
+inline constexpr bool operator!=(std::string_view name, RemoveOutcome value)
+inline const std::vector<std::string> kRemoveOutcomeNames
+enum class SourceDescriptionOutcome {Described, Forbidden, Invalid, Unavailable}
+inline constexpr std::string_view wire_name(SourceDescriptionOutcome value)
+inline std::optional<SourceDescriptionOutcome> parse_source_description_outcome(std::string_view name)
+inline constexpr bool operator==(SourceDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator!=(SourceDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, SourceDescriptionOutcome value)
+inline constexpr bool operator!=(std::string_view name, SourceDescriptionOutcome value)
+inline const std::vector<std::string> kSourceDescriptionOutcomeNames
+enum class SourceChangeKind {Added, Removed, Held, Released, StoreChanged}
+inline constexpr std::string_view wire_name(SourceChangeKind value)
+inline std::optional<SourceChangeKind> parse_source_change_kind(std::string_view name)
+inline constexpr bool operator==(SourceChangeKind value, std::string_view name)
+inline constexpr bool operator!=(SourceChangeKind value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, SourceChangeKind value)
+inline constexpr bool operator!=(std::string_view name, SourceChangeKind value)
+inline const std::vector<std::string> kSourceChangeKindNames
+enum class SourcePageOutcome {Page, Gap, Forbidden, Invalid, Unavailable}
+inline constexpr std::string_view wire_name(SourcePageOutcome value)
+inline std::optional<SourcePageOutcome> parse_source_page_outcome(std::string_view name)
+inline constexpr bool operator==(SourcePageOutcome value, std::string_view name)
+inline constexpr bool operator!=(SourcePageOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, SourcePageOutcome value)
+inline constexpr bool operator!=(std::string_view name, SourcePageOutcome value)
+inline const std::vector<std::string> kSourcePageOutcomeNames
+inline const std::vector<std::string> kServiceErrorCodeNames
+inline constexpr std::string_view kServiceErrorCodeHandlerError
+inline constexpr std::string_view kServiceErrorCodeInvalidResult
+inline constexpr std::string_view kServiceErrorCodeUnknownVersion
+inline constexpr std::string_view kServiceErrorCodeUnknownService
+inline constexpr std::string_view kServiceErrorCodeUnknownMethod
+inline constexpr std::string_view kServiceErrorCodeWrongMode
+inline constexpr std::string_view kServiceErrorCodeCallerUnavailable
+inline constexpr std::string_view kServiceErrorCodeIdentityRequired
+inline const std::vector<std::string> kInventorySourceErrorCodes
+struct Resource
+  std::string handle
+  std::string digest
+  std::int64_t size
+  Verification verification
+struct OpenResult
+  OpenOutcome outcome
+  std::optional<Resource> resource
+struct Chunk
+  std::int64_t offset
+  std::int64_t total
+  std::vector<std::uint8_t> data
+  bool eof
+struct ReadResult
+  ReadOutcome outcome
+  std::optional<Chunk> chunk
+struct CloseResult
+  CloseOutcome outcome
+struct Upload
+  std::string handle
+  std::string digest
+  std::int64_t size
+  std::int64_t received
+struct Stored
+  std::string digest
+  std::int64_t size
+  Evidence evidence
+struct BeginResult
+  BeginOutcome outcome
+  std::optional<Upload> upload
+  std::optional<Stored> stored
+  std::int64_t limit
+struct AppendResult
+  AppendOutcome outcome
+  std::int64_t received
+struct CommitResult
+  CommitOutcome outcome
+  std::optional<Stored> stored
+  std::int64_t received
+struct AbortResult
+  AbortOutcome outcome
+struct Change
+  std::int64_t sequence
+  ChangeKind kind
+  std::string digest
+  std::int64_t size
+struct ChangePage
+  ChangePageOutcome outcome
+  std::vector<Change> changes
+  std::string next
+  bool at_end
+struct ListedObject
+  std::string digest
+  std::int64_t size
+struct ListingPage
+  ListingOutcome outcome
+  std::vector<ListedObject> objects
+  std::string continuation
+  bool complete
+  std::string cursor
+struct Object
+  std::string locator
+  std::int64_t size
+  std::string modified
+  bool partial
+  std::string digest
+  Evidence evidence
+struct Entry
+  std::string role
+  std::string digest
+  std::int64_t size
+  std::string media_type
+  Evidence evidence
+  std::string locator
+  std::string manifest
+  std::map<std::string, std::string> annotations
+struct Name
+  std::string scheme
+  std::string name
+struct Manifest
+  std::string id
+  Addressing addressing
+  std::string kind
+  std::vector<Entry> entries
+  std::vector<Name> names
+  std::map<std::string, std::string> descriptor
+  std::string store
+  std::string superseded_by
+struct Holder
+  std::string account
+  std::string program
+  std::string instance
+  std::string established_by
+  std::string domain
+struct Basis
+  std::string index
+  std::string key
+  std::string role
+struct Hold
+  std::string id
+  Holder holder
+  std::string target
+  std::string purpose
+  Lifetime lifetime
+  std::string expires
+  std::string attestation
+  std::string observed_at
+  std::optional<Basis> basis
+struct Dangling
+  Holder holder
+  Basis basis
+  std::string reference
+  std::string expected_digest
+  std::int64_t expected_size
+  std::string observed_at
+struct StoreError
+  std::string kind
+  std::string locator
+  std::string detail
+struct Store
+  std::string name
+  std::string program
+  std::string locator
+  std::string rule
+  bool present
+  std::vector<StoreError> errors
+  Placement placement
+  std::string domain
+struct HoldResult
+  HoldOutcome outcome
+  std::optional<Hold> hold
+struct ReleaseResult
+  ReleaseOutcome outcome
+struct RenewResult
+  RenewOutcome outcome
+  std::optional<Hold> hold
+struct DescribeResult
+  DescribeOutcome outcome
+  std::optional<Manifest> manifest
+struct PublishResult
+  PublishOutcome outcome
+  std::optional<Manifest> manifest
+  std::vector<std::string> missing
+struct ManifestHolders
+  Manifest manifest
+  std::vector<Hold> holds
+struct ObjectHolders
+  Object object
+  std::string store
+  std::vector<Hold> holds
+struct InventoryPage
+  InventoryOutcome outcome
+  std::vector<Store> stores
+  std::vector<ManifestHolders> manifests
+  std::vector<ObjectHolders> objects
+  std::vector<Dangling> dangling
+  std::string continuation
+  bool complete
+  std::string cursor
+  std::int64_t grace_ms
+  std::int64_t audit_retention_ms
+struct RemoveResult
+  RemoveOutcome outcome
+  std::vector<Holder> holders
+struct SourceDescription
+  SourceDescriptionOutcome outcome
+  std::string name
+  std::vector<Store> stores
+  std::vector<std::string> schemes
+  std::vector<std::string> capabilities
+struct SourceChange
+  std::int64_t sequence
+  SourceChangeKind kind
+  std::string target
+  std::optional<Hold> hold
+  std::optional<Store> store
+struct SourcePage
+  SourcePageOutcome outcome
+  std::vector<Store> stores
+  std::vector<ManifestHolders> manifests
+  std::vector<ObjectHolders> objects
+  std::vector<Dangling> dangling
+  std::vector<SourceChange> changes
+  std::string continuation
+  bool complete
+  std::string cursor
+inline std::string encode(const OpenResult& v)
+inline OpenResult decode(std::string_view data)
+struct FrameWriter
+  virtual void write_frame(std::string_view frame)
+struct DispatchError : std::runtime_error
+inline std::string service_name(std::string_view frame)
+struct FrameExchanger
+  virtual std::string exchange_frame(std::string_view frame)
+struct ServiceError : std::runtime_error
+  std::string code, message
+inline constexpr std::string_view kEndpointContract
+struct DescribedService
+  std::string contract
+  bool ready
+  std::string why
+std::string describe_endpoint(std::string_view frame, const std::string& program, const std::string& version, const Services& . . . services)
+struct ContentReader
+  virtual OpenResult open(const std::string& digest)
+  virtual ReadResult read(const std::string& handle, const std::int64_t& offset, const std::int64_t& max_bytes)
+  virtual CloseResult close(const std::string& handle)
+template<class Transport>struct ContentReaderClient : ContentReader
+  Transport& transport_
+  OpenResult open(const std::string& digest) override
+  ReadResult read(const std::string& handle, const std::int64_t& offset, const std::int64_t& max_bytes) override
+  CloseResult close(const std::string& handle) override
+struct ContentReaderService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ContentReaderDispatcher : FrameWriter, FrameExchanger
+  ContentReader& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct ContentWriter
+  virtual BeginResult begin(const std::string& request, const std::string& digest, const std::int64_t& size)
+  virtual AppendResult append(const std::string& handle, const std::int64_t& offset, const std::vector<std::uint8_t>& data)
+  virtual CommitResult commit(const std::string& handle)
+  virtual AbortResult abort(const std::string& handle)
+template<class Transport>struct ContentWriterClient : ContentWriter
+  Transport& transport_
+  BeginResult begin(const std::string& request, const std::string& digest, const std::int64_t& size) override
+  AppendResult append(const std::string& handle, const std::int64_t& offset, const std::vector<std::uint8_t>& data) override
+  CommitResult commit(const std::string& handle) override
+  AbortResult abort(const std::string& handle) override
+struct ContentWriterService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ContentWriterDispatcher : FrameWriter, FrameExchanger
+  ContentWriter& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct ContentChanges
+  virtual ChangePage observe(const std::string& cursor, const std::int64_t& max_changes, const std::int64_t& wait_ms)
+  virtual ListingPage list(const std::string& continuation, const std::int64_t& limit)
+template<class Transport>struct ContentChangesClient : ContentChanges
+  Transport& transport_
+  ChangePage observe(const std::string& cursor, const std::int64_t& max_changes, const std::int64_t& wait_ms) override
+  ListingPage list(const std::string& continuation, const std::int64_t& limit) override
+struct ContentChangesService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ContentChangesDispatcher : FrameWriter, FrameExchanger
+  ContentChanges& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct Holds
+  virtual HoldResult hold(const std::string& request, const std::string& target, const std::string& purpose, const Lifetime& lifetime, const std::int64_t& lease_ms)
+  virtual ReleaseResult release(const std::string& hold)
+  virtual RenewResult renew(const std::string& hold, const std::int64_t& lease_ms)
+template<class Transport>struct HoldsClient : Holds
+  Transport& transport_
+  HoldResult hold(const std::string& request, const std::string& target, const std::string& purpose, const Lifetime& lifetime, const std::int64_t& lease_ms) override
+  ReleaseResult release(const std::string& hold) override
+  RenewResult renew(const std::string& hold, const std::int64_t& lease_ms) override
+struct HoldsService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct HoldsDispatcher : FrameWriter, FrameExchanger
+  Holds& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct Manifests
+  virtual DescribeResult describe(const std::string& id)
+  virtual PublishResult publish(const std::string& request, const Manifest& manifest)
+template<class Transport>struct ManifestsClient : Manifests
+  Transport& transport_
+  DescribeResult describe(const std::string& id) override
+  PublishResult publish(const std::string& request, const Manifest& manifest) override
+struct ManifestsService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ManifestsDispatcher : FrameWriter, FrameExchanger
+  Manifests& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct Inventory
+  virtual InventoryPage list(const std::string& continuation, const std::int64_t& limit)
+  virtual InventoryPage holders(const std::string& target)
+  virtual InventoryPage unheld(const std::string& continuation, const std::int64_t& limit)
+  virtual InventoryPage find(const std::string& digest)
+template<class Transport>struct InventoryClient : Inventory
+  Transport& transport_
+  InventoryPage list(const std::string& continuation, const std::int64_t& limit) override
+  InventoryPage holders(const std::string& target) override
+  InventoryPage unheld(const std::string& continuation, const std::int64_t& limit) override
+  InventoryPage find(const std::string& digest) override
+struct InventoryService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct InventoryDispatcher : FrameWriter, FrameExchanger
+  Inventory& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct ContentRemover
+  virtual RemoveResult remove(const std::string& target)
+template<class Transport>struct ContentRemoverClient : ContentRemover
+  Transport& transport_
+  RemoveResult remove(const std::string& target) override
+struct ContentRemoverService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ContentRemoverDispatcher : FrameWriter, FrameExchanger
+  ContentRemover& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct InventorySource
+  virtual SourceDescription describe()
+  virtual SourcePage snapshot(const std::string& continuation, const std::int64_t& limit)
+  virtual SourcePage observe(const std::string& cursor, const std::int64_t& max_changes, const std::int64_t& wait_ms)
+  virtual SourcePage verify(const std::string& target)
+  virtual RemoveResult remove(const std::string& target)
+template<class Transport>struct InventorySourceClient : InventorySource
+  Transport& transport_
+  SourceDescription describe() override
+  SourcePage snapshot(const std::string& continuation, const std::int64_t& limit) override
+  SourcePage observe(const std::string& cursor, const std::int64_t& max_changes, const std::int64_t& wait_ms) override
+  SourcePage verify(const std::string& target) override
+  RemoveResult remove(const std::string& target) override
+struct InventorySourceService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct InventorySourceDispatcher : FrameWriter, FrameExchanger
+  InventorySource& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+inline std::string encode_resource(const Resource& v)
+inline Resource decode_resource(std::string_view in)
+inline std::string encode_open_result(const OpenResult& v)
+inline OpenResult decode_open_result(std::string_view in)
+inline std::string encode_chunk(const Chunk& v)
+inline Chunk decode_chunk(std::string_view in)
+inline std::string encode_read_result(const ReadResult& v)
+inline ReadResult decode_read_result(std::string_view in)
+inline std::string encode_close_result(const CloseResult& v)
+inline CloseResult decode_close_result(std::string_view in)
+inline std::string encode_upload(const Upload& v)
+inline Upload decode_upload(std::string_view in)
+inline std::string encode_stored(const Stored& v)
+inline Stored decode_stored(std::string_view in)
+inline std::string encode_begin_result(const BeginResult& v)
+inline BeginResult decode_begin_result(std::string_view in)
+inline std::string encode_append_result(const AppendResult& v)
+inline AppendResult decode_append_result(std::string_view in)
+inline std::string encode_commit_result(const CommitResult& v)
+inline CommitResult decode_commit_result(std::string_view in)
+inline std::string encode_abort_result(const AbortResult& v)
+inline AbortResult decode_abort_result(std::string_view in)
+inline std::string encode_change(const Change& v)
+inline Change decode_change(std::string_view in)
+inline std::string encode_change_page(const ChangePage& v)
+inline ChangePage decode_change_page(std::string_view in)
+inline std::string encode_listed_object(const ListedObject& v)
+inline ListedObject decode_listed_object(std::string_view in)
+inline std::string encode_listing_page(const ListingPage& v)
+inline ListingPage decode_listing_page(std::string_view in)
+inline std::string encode_object(const Object& v)
+inline Object decode_object(std::string_view in)
+inline std::string encode_entry(const Entry& v)
+inline Entry decode_entry(std::string_view in)
+inline std::string encode_name(const Name& v)
+inline Name decode_name(std::string_view in)
+inline std::string encode_manifest(const Manifest& v)
+inline Manifest decode_manifest(std::string_view in)
+inline std::string encode_holder(const Holder& v)
+inline Holder decode_holder(std::string_view in)
+inline std::string encode_basis(const Basis& v)
+inline Basis decode_basis(std::string_view in)
+inline std::string encode_hold(const Hold& v)
+inline Hold decode_hold(std::string_view in)
+inline std::string encode_dangling(const Dangling& v)
+inline Dangling decode_dangling(std::string_view in)
+inline std::string encode_store_error(const StoreError& v)
+inline StoreError decode_store_error(std::string_view in)
+inline std::string encode_store(const Store& v)
+inline Store decode_store(std::string_view in)
+inline std::string encode_hold_result(const HoldResult& v)
+inline HoldResult decode_hold_result(std::string_view in)
+inline std::string encode_release_result(const ReleaseResult& v)
+inline ReleaseResult decode_release_result(std::string_view in)
+inline std::string encode_renew_result(const RenewResult& v)
+inline RenewResult decode_renew_result(std::string_view in)
+inline std::string encode_describe_result(const DescribeResult& v)
+inline DescribeResult decode_describe_result(std::string_view in)
+inline std::string encode_publish_result(const PublishResult& v)
+inline PublishResult decode_publish_result(std::string_view in)
+inline std::string encode_manifest_holders(const ManifestHolders& v)
+inline ManifestHolders decode_manifest_holders(std::string_view in)
+inline std::string encode_object_holders(const ObjectHolders& v)
+inline ObjectHolders decode_object_holders(std::string_view in)
+inline std::string encode_inventory_page(const InventoryPage& v)
+inline InventoryPage decode_inventory_page(std::string_view in)
+inline std::string encode_remove_result(const RemoveResult& v)
+inline RemoveResult decode_remove_result(std::string_view in)
+inline std::string encode_source_description(const SourceDescription& v)
+inline SourceDescription decode_source_description(std::string_view in)
+inline std::string encode_source_change(const SourceChange& v)
+inline SourceChange decode_source_change(std::string_view in)
+inline std::string encode_source_page(const SourcePage& v)
+inline SourcePage decode_source_page(std::string_view in)

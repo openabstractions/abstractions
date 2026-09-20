@@ -1,0 +1,576 @@
+pub type Raw
+pub mod request_guarantee
+  pub const LOCAL_ONLY: &str
+  pub const HOSTED_ALLOWED: &str
+  pub const ALL: [&str; 2]
+pub enum Role
+  System
+  User
+  Assistant
+  Tool
+  pub const ALL: [Self; 4]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum PartKind
+  Text
+  Image
+  ToolCall
+  ToolResult
+  pub const ALL: [Self; 4]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum ReplyOutcome
+  Completed
+  Refused
+  NotPermitted
+  BudgetExceeded
+  UnsupportedFeature
+  NoHost
+  Cancelled
+  Unavailable
+  Invalid
+  Forbidden
+  Exhausted
+  pub const ALL: [Self; 11]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum StopReason
+  NoStop
+  End
+  MaxOutput
+  StopSequence
+  ToolCalls
+  ContentFilter
+  Other
+  pub const ALL: [Self; 7]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum DeltaKind
+  Part
+  Usage
+  End
+  Segment
+  Audio
+  Transcript
+  ImageProgress
+  ImageResult
+  pub const ALL: [Self; 8]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum StartOutcome
+  Accepted
+  NotPermitted
+  BudgetExceeded
+  UnsupportedFeature
+  NoHost
+  Unavailable
+  Invalid
+  Forbidden
+  Exhausted
+  pub const ALL: [Self; 9]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum PageOutcome
+  Page
+  Gap
+  Unknown
+  Invalid
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum CancelOutcome
+  Cancelled
+  Ended
+  Unknown
+  Invalid
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum EmbedOutcome
+  Completed
+  Refused
+  NotPermitted
+  BudgetExceeded
+  UnsupportedFeature
+  NoHost
+  Unavailable
+  Invalid
+  Forbidden
+  pub const ALL: [Self; 9]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum TranscriptUnitKind
+  Segment
+  Word
+  pub const ALL: [Self; 2]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum TimestampMode
+  None
+  Segment
+  Word
+  SegmentAndWord
+  pub const ALL: [Self; 4]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum SpeechFormat
+  Mp3
+  Opus
+  Aac
+  Flac
+  Wav
+  Pcm
+  pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum LiveFormat
+  Pcm1624000
+  pub const ALL: [Self; 1]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum LiveInputOutcome
+  Accepted
+  Duplicate
+  OutOfOrder
+  Closed
+  Invalid
+  Unknown
+  Forbidden
+  Unavailable
+  Exhausted
+  pub const ALL: [Self; 9]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum ImageMode
+  Generate
+  Edit
+  pub const ALL: [Self; 2]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum ListOutcome
+  Page
+  Invalid
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 4]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum EditOutcome
+  Applied
+  Conflict
+  Unknown
+  Invalid
+  NoSecureStore
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 7]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum KeyState
+  Active
+  Revoked
+  Lost
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum AuditRoute
+  Native
+  Window
+  Remote
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum AuditOutcome
+  Page
+  Gap
+  Invalid
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub mod service_error_code
+  pub const HANDLER_ERROR: &str
+  pub const INVALID_RESULT: &str
+  pub const UNKNOWN_VERSION: &str
+  pub const UNKNOWN_SERVICE: &str
+  pub const UNKNOWN_METHOD: &str
+  pub const WRONG_MODE: &str
+  pub const ALL: [&str; 6]
+pub const FEATURES: [&str; 3]
+pub const RESOURCE_ACTIONS: [&str; 4]
+pub const LOCAL_KEY_KINDS: [&str; 1]
+pub const LOCAL_HOST_KINDS: [&str; 9]
+pub const HOST_PROFILES: [&str; 6]
+pub const HOST_DECLARERS: [&str; 6]
+pub const CREDENTIAL_CONSUMERS: [&str; 5]
+pub const CLAIM_EXTENSIONS: [&str; 1]
+pub struct Part
+  kind: PartKind
+  text: String
+  digest: String
+  media_type: String
+  call_id: String
+  name: String
+  arguments: String
+pub struct Message
+  role: Role
+  parts: Vec<Part>
+pub struct Tool
+  name: String
+  description: String
+  parameters: String
+pub struct Temperature
+  milli: i64
+pub struct Options
+  max_output: i64
+  temperature: Option<Temperature>
+  stop: Vec<String>
+  json_schema: String
+pub struct Request
+  model: String
+  messages: Vec<Message>
+  tools: Vec<Tool>
+  options: Option<Options>
+  extensions: BTreeMap<String, String>
+  required_extensions: Vec<String>
+  guarantees: Vec<String>
+  credential: String
+pub struct Usage
+  input: i64
+  output: i64
+  cached: i64
+pub struct Cost
+  micros: i64
+  currency: String
+pub struct Reply
+  outcome: ReplyOutcome
+  reason: String
+  message: Message
+  stop_reason: StopReason
+  usage: Usage
+  host: String
+  model: String
+  cost: Option<Cost>
+pub struct Delta
+  sequence: i64
+  kind: DeltaKind
+  index: i64
+  part: Option<Part>
+  usage: Option<Usage>
+  end: Option<Reply>
+  segment: Option<TranscriptSegment>
+  transcription_end: Option<TranscriptionReply>
+  audio: Option<AudioChunk>
+  speech_end: Option<SpeechReply>
+  transcript: Option<LiveTranscript>
+  live_end: Option<LiveReply>
+  image_progress: Option<ImageProgress>
+  image_result: Option<ImageResult>
+  image_end: Option<ImageReply>
+pub struct Admission
+  outcome: StartOutcome
+  reason: String
+  operation: String
+  host: String
+  model: String
+  retention_ms: i64
+  idle_ms: i64
+  retained_deltas: i64
+pub struct DeltaPage
+  outcome: PageOutcome
+  deltas: Vec<Delta>
+  next: i64
+  at_end: bool
+pub struct Cancellation
+  outcome: CancelOutcome
+  reply_outcome: Option<ReplyOutcome>
+pub struct EmbedRequest
+  model: String
+  inputs: Vec<String>
+  dimensions: i64
+  guarantees: Vec<String>
+  credential: String
+  extensions: BTreeMap<String, String>
+pub struct Embeddings
+  outcome: EmbedOutcome
+  reason: String
+  vectors: Vec<String>
+  dimensions: i64
+  usage: Usage
+  host: String
+  model: String
+  cost: Option<Cost>
+pub struct TranscriptionRequest
+  model: String
+  audio_digest: String
+  media_type: String
+  language: String
+  timestamps: TimestampMode
+  guarantees: Vec<String>
+  credential: String
+  extensions: BTreeMap<String, String>
+pub struct TranscriptSegment
+  index: i64
+  kind: TranscriptUnitKind
+  start_ms: i64
+  end_ms: i64
+  text: String
+pub struct TranscriptionReply
+  outcome: ReplyOutcome
+  reason: String
+  language: String
+  duration_ms: i64
+  usage: Usage
+  host: String
+  model: String
+  cost: Option<Cost>
+pub struct SpeechRequest
+  model: String
+  voice: String
+  text: String
+  format: SpeechFormat
+  guarantees: Vec<String>
+  credential: String
+  extensions: BTreeMap<String, String>
+pub struct AudioChunk
+  index: i64
+  data: Vec<u8>
+pub struct Delivery
+  digest: String
+  media_type: String
+  size: i64
+  location: String
+pub struct SpeechReply
+  outcome: ReplyOutcome
+  reason: String
+  delivery: Delivery
+  characters: i64
+  usage: Usage
+  host: String
+  model: String
+  cost: Option<Cost>
+pub struct LiveRequest
+  model: String
+  voice: String
+  format: LiveFormat
+  guarantees: Vec<String>
+  credential: String
+  extensions: BTreeMap<String, String>
+pub struct LiveInputResult
+  outcome: LiveInputOutcome
+  next_sequence: i64
+pub struct LiveTranscript
+  text: String
+  is_final: bool
+pub struct LiveReply
+  outcome: ReplyOutcome
+  reason: String
+  delivery: Delivery
+  usage: Usage
+  input_audio_bytes: i64
+  output_audio_bytes: i64
+  host: String
+  model: String
+pub struct ImageRequest
+  model: String
+  mode: ImageMode
+  prompt: String
+  size: String
+  count: i64
+  image_digest: String
+  image_media_type: String
+  mask_digest: String
+  mask_media_type: String
+  guarantees: Vec<String>
+  credential: String
+  required_extensions: Vec<String>
+  extensions: BTreeMap<String, String>
+pub struct ImageProgress
+  percent: i64
+  message: String
+pub struct ImageResult
+  index: i64
+  delivery: Delivery
+pub struct ImageReply
+  outcome: ReplyOutcome
+  reason: String
+  deliveries: Vec<Delivery>
+  images: i64
+  usage: Usage
+  host: String
+  model: String
+  cost: Option<Cost>
+pub struct CeilingLimit
+  tokens_per_day: i64
+  micros_per_day: i64
+  requests_per_day: i64
+  images_per_day: i64
+  audio_seconds_per_day: i64
+  characters_per_day: i64
+pub struct HostEntry
+  name: String
+  hosted: bool
+  kind: String
+  base: String
+  credential: String
+  ceiling: Option<CeilingLimit>
+  profiles: Vec<String>
+  declared_by: String
+pub struct Spend
+  day: String
+  tokens: i64
+  micros: i64
+  requests: i64
+  audio_seconds: i64
+  characters: i64
+  images: i64
+pub struct HostState
+  entry: HostEntry
+  up: bool
+  why: String
+  spend: Option<Spend>
+pub struct HostList
+  outcome: ListOutcome
+  revision: String
+  hosts: Vec<HostState>
+pub struct HostChange
+  outcome: EditOutcome
+  revision: String
+  reason: String
+pub struct LocalKey
+  program: String
+  name: String
+  credential: String
+  issued_unix_ms: i64
+  issued_by: String
+  state: KeyState
+pub struct KeyList
+  outcome: ListOutcome
+  keys: Vec<LocalKey>
+pub struct KeyIssued
+  outcome: EditOutcome
+  reason: String
+  key: String
+  record: Option<LocalKey>
+pub struct KeyRevoked
+  outcome: EditOutcome
+pub struct AuditEntry
+  sequence: i64
+  unix_ms: i64
+  route: AuditRoute
+  rung: String
+  program: String
+  operation: String
+  host: String
+  model: String
+  credential: String
+  outcome: String
+  reason: String
+  tokens_in: i64
+  tokens_out: i64
+  wall_ms: i64
+  ceiling: String
+  domain: String
+  claim: String
+  profile: String
+  audio_seconds: i64
+  characters: i64
+  images: i64
+pub struct AuditPage
+  outcome: AuditOutcome
+  entries: Vec<AuditEntry>
+  next: i64
+  at_end: bool
+pub struct GatewayState
+  outcome: ListOutcome
+  revision: String
+  open: bool
+  address: String
+  listening: bool
+  listening_address: String
+  why: String
+pub struct GatewayChange
+  outcome: EditOutcome
+  revision: String
+  reason: String
+pub fn encode(v: &Request) -> Vec<u8>
+pub struct Refusal
+  word: &'static str
+  offset: usize
+pub fn decode(data: &[u8]) -> Result<Request, Refusal>
+pub use abstraction_frame::FrameTransport
+pub struct ServiceError
+  code: String
+  message: String
+pub enum CallError<E>
+  Transport(E)
+  Refusal(Refusal)
+  Dispatch(&'static str)
+  Service(ServiceError)
+pub trait Chat
+  type Error
+  fn start(&self, request: Request) -> Result<Admission, Self::Error>
+  fn observe(&self, operation: String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> Result<DeltaPage, Self::Error>
+  fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error>
+pub struct ChatClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait Embedder
+  type Error
+  fn embed(&self, request: EmbedRequest) -> Result<Embeddings, Self::Error>
+pub struct EmbedderClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait Transcription
+  type Error
+  fn start(&self, request: TranscriptionRequest) -> Result<Admission, Self::Error>
+  fn observe(&self, operation: String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> Result<DeltaPage, Self::Error>
+  fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error>
+pub struct TranscriptionClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait Speech
+  type Error
+  fn start(&self, request: SpeechRequest) -> Result<Admission, Self::Error>
+  fn observe(&self, operation: String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> Result<DeltaPage, Self::Error>
+  fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error>
+pub struct SpeechClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait Live
+  type Error
+  fn start(&self, request: LiveRequest) -> Result<Admission, Self::Error>
+  fn append(&self, operation: String, sequence: i64, audio: Vec<u8>) -> Result<LiveInputResult, Self::Error>
+  fn observe(&self, operation: String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> Result<DeltaPage, Self::Error>
+  fn commit(&self, operation: String) -> Result<LiveInputResult, Self::Error>
+  fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error>
+pub struct LiveClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait Image
+  type Error
+  fn start(&self, request: ImageRequest) -> Result<Admission, Self::Error>
+  fn observe(&self, operation: String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> Result<DeltaPage, Self::Error>
+  fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error>
+pub struct ImageClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait Operator
+  type Error
+  fn hosts(&self) -> Result<HostList, Self::Error>
+  fn add_host(&self, expected_revision: String, host: HostEntry) -> Result<HostChange, Self::Error>
+  fn remove_host(&self, expected_revision: String, name: String) -> Result<HostChange, Self::Error>
+  fn keys(&self) -> Result<KeyList, Self::Error>
+  fn issue_key(&self, program: String, credential: String) -> Result<KeyIssued, Self::Error>
+  fn revoke_key(&self, program: String) -> Result<KeyRevoked, Self::Error>
+  fn audit(&self, cursor: i64, max_entries: i64) -> Result<AuditPage, Self::Error>
+  fn gateway(&self) -> Result<GatewayState, Self::Error>
+  fn set_gateway(&self, expected_revision: String, open: bool, address: String) -> Result<GatewayChange, Self::Error>
+pub struct OperatorClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T

@@ -203,13 +203,13 @@ func TestGeneratedCppServicesShareOneTransport(t *testing.T) {
 #include "cpp/oa/second/rec.h"
 struct SharedTransport {
   std::vector<std::string> frames;
-  void WriteFrame(std::string_view frame) { frames.emplace_back(frame); }
+  void write_frame(std::string_view frame) { frames.emplace_back(frame); }
 };
 int main() {
   SharedTransport transport;
   oa::first::EventsClient first(transport);
   oa::second::EventsClient second(transport);
-  first.Ping(); second.Ping();
+  first.ping(); second.ping();
   return transport.frames.size() != 2 ||
     transport.frames[0].find("oa.first/events@1") == std::string::npos ||
     transport.frames[1].find("oa.second/events@1") == std::string::npos;

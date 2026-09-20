@@ -64,8 +64,8 @@ fn sha256(data: &[u8]) -> String {
 }
 
 fn storage_changes(machine: &Machine, set_policy: &dyn Fn(&str)) {
-    let changes = machine.resolve_storage_changes(vec![], "local").unwrap();
-    let writer = machine.resolve_storage_writer(vec![], "local").unwrap();
+    let changes = machine.resolve_storage_changes(vec![], abstraction_facade_native::Scope::Local).unwrap();
+    let writer = machine.resolve_storage_writer(vec![], abstraction_facade_native::Scope::Local).unwrap();
     let store = |text: &str| {
         let digest = sha256(text.as_bytes());
         let stored = writer.write(&new_request_id().unwrap(), &digest, text.as_bytes()).unwrap();
@@ -112,7 +112,7 @@ fn storage_changes(machine: &Machine, set_policy: &dyn Fn(&str)) {
 }
 
 fn router_calls(machine: &Machine, set_policy: &dyn Fn(&str)) {
-    let routes = machine.resolve_router(vec![], "local").unwrap();
+    let routes = machine.resolve_router(vec![], abstraction_facade_native::Scope::Local).unwrap();
     let pick = |model: &str| {
         let mut request = router::PickRequest::default();
         request.model = model.into();
@@ -180,7 +180,7 @@ fn router_calls(machine: &Machine, set_policy: &dyn Fn(&str)) {
 }
 
 fn log_observer(machine: &Machine, endpoint: &str, set_policy: &dyn Fn(&str)) {
-    let observer = machine.resolve_log_observer(vec![], "local").unwrap();
+    let observer = machine.resolve_log_observer(vec![], abstraction_facade_native::Scope::Local).unwrap();
     let mut cursor = String::new();
     loop {
         let page = observer.observe(&cursor, 256, 65536, 0).unwrap();
@@ -194,8 +194,8 @@ fn log_observer(machine: &Machine, endpoint: &str, set_policy: &dyn Fn(&str)) {
     let writer_endpoint = endpoint.to_string();
     let writer = std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(300));
-        let sink = Machine::new(&writer_endpoint).resolve_log(vec![], "local").unwrap();
-        sink.Write(logging::Record {
+        let sink = Machine::new(&writer_endpoint).resolve_log(vec![], abstraction_facade_native::Scope::Local).unwrap();
+        sink.write(logging::Record {
             schema: 1,
             time: "2026-09-15T12:00:00.000000Z".into(),
             level: 2,
@@ -228,8 +228,8 @@ fn log_observer(machine: &Machine, endpoint: &str, set_policy: &dyn Fn(&str)) {
 }
 
 fn rights_administration(machine: &Machine, set_policy: &dyn Fn(&str)) {
-    let decisions = machine.resolve_rights(vec![], "local").unwrap();
-    let admin = machine.resolve_rights_operator(vec![], "local").unwrap();
+    let decisions = machine.resolve_rights(vec![], abstraction_facade_native::Scope::Local).unwrap();
+    let admin = machine.resolve_rights_operator(vec![], abstraction_facade_native::Scope::Local).unwrap();
     let env = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("{name} required"));
     let me = || rights::Subject { account: env("OA_RIGHTS_ACCOUNT"), program: env("OA_RIGHTS_PROGRAM") };
     let (right, target) = ("fixture.read", "rust-resource");
@@ -283,7 +283,7 @@ fn rights_administration(machine: &Machine, set_policy: &dyn Fn(&str)) {
 }
 
 fn model_lookup(machine: &Machine, set_policy: &dyn Fn(&str)) {
-    let lookup = machine.resolve_model(vec![], "local").unwrap();
+    let lookup = machine.resolve_model(vec![], abstraction_facade_native::Scope::Local).unwrap();
     let reference = |repo: &str| {
         let mut r = model::Ref::default();
         r.registry = "fixture".into();

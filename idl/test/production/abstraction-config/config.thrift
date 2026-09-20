@@ -51,9 +51,13 @@ struct Snapshot {
   6: required Origins origins
   7: required string stamp
 } (document = "true", unknown_fields = "refuse", doc="Existing provider values and provenance. Empty values mean absence. Stamp follows values rather than provenance; paths are diagnostic configuration data, not permission to access a store.")
+// Codes ConfigReader handlers send on the reply error channel, beside the
+// dispatcher's own.
+const list<string> reader_error_codes = ["storage_unavailable", "caller_unavailable", "identity_required", "wrong_user"]
+
 service ConfigReader {
   Snapshot Read(1: RunOverrides overrides) (doc="Read same-user machine/user configuration with explicit caller run overrides. No writes, watch or provider fallback.")
-} (wire_name = "abstraction.config/reader@1", doc="Per-user configuration read service. Caller identity is checked independently of overrides.")
+} (wire_name = "abstraction.config/reader@1", error_codes = "reader_error_codes", doc="Per-user configuration read service. Caller identity is checked independently of overrides.")
 
 struct UserSettings {
   1: required string nas_store
@@ -76,10 +80,14 @@ struct UserReplaceResult {
   1: required UserReplaceOutcome outcome
   2: required UserSnapshot snapshot
 } (unknown_fields = "refuse", doc="Applied returns the written snapshot. Conflict performs no write and returns the current snapshot. Forbidden reports an evaluated edit-policy refusal; unavailable reports that the edit-policy decision could not be obtained and may be retried. Both perform no storage access and carry empty values with an empty revision. No outcome merges settings implicitly.")
+// Codes ConfigEditor handlers send on the reply error channel. Edit-policy
+// refusal is the forbidden or unavailable outcome, never one of these.
+const list<string> editor_error_codes = ["invalid_revision", "storage_unavailable", "caller_unavailable", "identity_required", "wrong_user"]
+
 service ConfigEditor {
   UserSnapshot ReadUser() (doc="Read only the authenticated service user's persisted rung. No environment or machine merge. Missing storage is empty; corrupt, unsupported or unavailable storage returns storage_unavailable.")
   UserReplaceResult ReplaceUser(1: string expected_revision, 2: UserSettings values) (doc="Compare the opaque revision and replace atomically through the selected conditional-write store. Stale revision returns conflict. Empty revision is invalid_revision. Storage failures return storage_unavailable. A configured edit policy is evaluated after same-account proof and before storage access: refusal returns forbidden and a failed decision returns unavailable. A canceled wait leaves write outcome unresolved; reread rather than blindly retry.")
-} (wire_name = "abstraction.config/editor@1", doc="Same-account Program-proven user editor on the config endpoint. The service selects its private user path once. Caller claims cannot grant authority; forbidden callers cause no storage access. Existing machine and run rungs are unaffected.")
+} (wire_name = "abstraction.config/editor@1", error_codes = "editor_error_codes", doc="Same-account Program-proven user editor on the config endpoint. The service selects its private user path once. Caller claims cannot grant authority; forbidden callers cause no storage access. Existing machine and run rungs are unaffected.")
 
 
 enum ConfigObservationOutcome {

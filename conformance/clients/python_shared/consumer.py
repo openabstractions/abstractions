@@ -8,8 +8,9 @@ from unittest.mock import patch
 sys.path.insert(0, sys.argv[1])
 from abstraction.ipc import Library, FrameTransport, FrameError, CANCELLED, TIMEOUT, INVALID_ARGUMENT, UNTRUSTED, ServerExpectation
 from abstraction.facade.client import Machine, ResolutionError
-from abstraction.facade import rec as wire
-from abstraction.logging import rec as logging
+from abstraction.facade import Scope
+import abstraction.facade as wire
+import abstraction.logging as logging
 
 assert pathlib.Path(wire.__file__).is_relative_to(sys.argv[1])
 assert pathlib.Path(logging.__file__).is_relative_to(sys.argv[1])
@@ -29,15 +30,15 @@ for changed, expected in [({"contract":"wrong"},"invalid_resolution"),
                           ({"scope":"remote"},"invalid_resolution"),
                           ({"transport":"wrong"},"unsupported_transport")]:
     fields=dict(provider="fixture",capability="abstraction.logging",contract="abstraction.logging/sink@1",
-                guarantees=["required"],scope="local",transport="oa-framed-local@1",endpoint="never-contact")
+                guarantees=["required"],scope=Scope.LOCAL,transport="oa-framed-local@1",endpoint="never-contact")
     fields.update(changed)
     class Resolver:
-        def Resolve(self, request):
+        def resolve(self, request):
             return wire.ResolveResult(status="resolved",reference=wire.ServiceReference(**fields))
     machine=Machine(endpoint,lib)
     try:
         with patch("abstraction.facade.client.wire.ResolverClient", return_value=Resolver()):
-            machine.resolve_log(guarantees=["required"],scope="local")
+            machine.resolve_log(guarantees=["required"],scope=Scope.LOCAL)
         raise AssertionError("invalid resolver reference accepted")
     except ResolutionError as error:
         assert error.status==expected,(error.status,expected)
@@ -47,32 +48,44 @@ if mode == "log":
     try:
         Machine(endpoint, lib, server=bad).resolve_log()
         raise AssertionError("wrong runtime image accepted")
-    except FrameError as error:
-        assert error.status == UNTRUSTED, error.status
+    except ResolutionError as error:
+        assert error.status == "runtime_unavailable", error.status
+        assert isinstance(error.__cause__, FrameError) and error.__cause__.status == UNTRUSTED, error.__cause__
     machine = Machine(library=lib, server=server_identity, deadline=time.monotonic()+3)
-    logger = machine.resolve_log(scope="local")
-    logger.Write(logging.Record(schema=1, time="2026-09-12T12:00:00.000000Z", level=2,
+    logger = machine.resolve_log(scope=Scope.LOCAL)
+    logger.write(logging.Record(schema=1, time="2026-09-12T12:00:00.000000Z", level=2,
                                 msg="python shared IPC ✓", attrs={"component":"outside-consumer"}))
-    history = machine.resolve_log_reader(scope="local")
-    page = history.Read("", 1, 65536)
+    history = machine.resolve_log_reader(scope=Scope.LOCAL)
+    page = history.read("", 1, 65536)
     assert page.outcome == "page" and len(page.records) == 1, page
     assert page.records[0].msg == "python shared IPC ✓"
     assert page.records[0].attrs["component"] == "outside-consumer"
-    end = history.Read(page.next, 1, 65536)
+    end = history.read(page.next, 1, 65536)
     assert end.outcome == "page" and end.at_end and not end.records
-    assert history.Read("foreign:0", 1, 65536).outcome == "gap"
-    assert history.Read("", 1, 1).outcome == "record_too_large"
+    assert history.read("foreign:0", 1, 65536).outcome == "gap"
+    assert history.read("", 1, 1).outcome == "record_too_large"
     try:
         machine.resolve_log(guarantees=["unsupported-test-guarantee"])
         raise AssertionError("requirements silently weakened")
     except ResolutionError as e:
         assert e.status == "unmet_requirements", e.status
+    # The runtime is up and serves no rights capability.
+    try:
+        machine.resolve_rights(scope=Scope.LOCAL)
+        raise AssertionError("absent capability resolved")
+    except ResolutionError as e:
+        assert (e.status, e.capability, e.contract) == (
+            "unavailable", "abstraction.rights", "abstraction.rights/authorization@1"), (e.status, e.capability, e.contract)
+        assert e.looked_for.startswith("the installed runtime at ") and e.__cause__ is None, (e.looked_for, e.__cause__)
 elif mode == "absent":
     try:
         Machine(endpoint, lib, timeout=0.2).resolve_log()
         raise AssertionError("absent runtime succeeded")
-    except FrameError:
-        pass
+    except ResolutionError as error:
+        assert (error.status, error.capability, error.contract, error.looked_for) == (
+            "runtime_unavailable", "abstraction.logging", "abstraction.logging/sink@1",
+            "the explicit endpoint " + endpoint), (error.status, error.capability, error.contract, error.looked_for)
+        assert isinstance(error.__cause__, FrameError), repr(error.__cause__)
 elif mode == "oversized":
     try:
         FrameTransport(lib, endpoint).exchange_frame(b"x")

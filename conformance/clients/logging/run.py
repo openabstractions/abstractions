@@ -17,7 +17,7 @@ import uuid
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
-from workspace import environment, layer, msvc_toolchain, certify_msvc, source_revision, dry_run_stop, DRY_RUN_HELP
+from workspace import environment, layer, msvc_toolchain, certify_msvc, source_revision, dry_run_stop, DRY_RUN_HELP, CMAKE_BUILD_TYPE_RELEASE
 ROOT = HERE.parents[2]
 BUILD = ROOT / '.build' / 'logging-service-proof'
 
@@ -74,7 +74,7 @@ if 'cpp' in languages:
     run([cmake, '-S', layer('abstraction-logging') / 'cpp',
          '-B', native, '-DBUILD_SHARED_LIBS=OFF',
          '-DCMAKE_DISABLE_FIND_PACKAGE_abstraction_ipc=TRUE',
-         '-DABSTRACTION_LOGGING_BUILD_TESTS=ON'])
+         '-DABSTRACTION_LOGGING_BUILD_TESTS=ON', CMAKE_BUILD_TYPE_RELEASE])
     certify_msvc(native)
     run([cmake, '--build', native, '--config', 'Release'])
     # The package's own reader tests, built by the certified MSVC toolchain.
@@ -84,7 +84,7 @@ if 'cpp' in languages:
         raise RuntimeError('C++ logging reader tests did not all run and pass')
     print('PASS: C++ logging package tests under the certified MSVC toolchain')
     run([cmake, '--install', native, '--config', 'Release', '--prefix', stage])
-    run([cmake, '-S', HERE, '-B', consumer, '-DCMAKE_PREFIX_PATH=' + str(stage)])
+    run([cmake, '-S', HERE, '-B', consumer, '-DCMAKE_PREFIX_PATH=' + str(stage), CMAKE_BUILD_TYPE_RELEASE])
     certify_msvc(consumer)
     run([cmake, '--build', consumer, '--config', 'Release'])
     clients['cpp'] = consumer / 'Release' / 'logging_consumer.exe'

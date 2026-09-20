@@ -1,0 +1,120 @@
+type Raw string
+type LookupOutcome uint32
+const LookupOutcomeResolved
+const LookupOutcomeInvalid
+const LookupOutcomeUnavailable
+const LookupOutcomeUnsupportedMapping
+const LookupOutcomeForbidden
+func (LookupOutcome) String() string
+func (LookupOutcome) WireName() (string, bool)
+func ParseLookupOutcome(word string) (LookupOutcome, bool)
+func (LookupOutcome) MarshalText() ([]byte, error)
+func (LookupOutcome) UnmarshalText(text []byte) error
+func (LookupOutcome) MarshalJSON() ([]byte, error)
+func (LookupOutcome) UnmarshalJSON(data []byte) error
+func LookupOutcomeValues() []LookupOutcome
+func (LookupOutcome) Known() bool
+type ManifestOutcome uint32
+const ManifestOutcomeResolved
+const ManifestOutcomeNotFound
+const ManifestOutcomeInvalid
+const ManifestOutcomeUnavailable
+const ManifestOutcomeUnsupportedMapping
+const ManifestOutcomeForbidden
+func (ManifestOutcome) String() string
+func (ManifestOutcome) WireName() (string, bool)
+func ParseManifestOutcome(word string) (ManifestOutcome, bool)
+func (ManifestOutcome) MarshalText() ([]byte, error)
+func (ManifestOutcome) UnmarshalText(text []byte) error
+func (ManifestOutcome) MarshalJSON() ([]byte, error)
+func (ManifestOutcome) UnmarshalJSON(data []byte) error
+func ManifestOutcomeValues() []ManifestOutcome
+func (ManifestOutcome) Known() bool
+type ServiceErrorCode string
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) Known() bool
+var ResolverOperations
+var RegistryOperations
+type Ref struct
+  Registry string
+  Repo string
+  Revision string
+  Quant string
+  File string
+  Credential string
+type LookupResult struct
+  Outcome LookupOutcome
+  Request *oaImported0
+type ManifestResult struct
+  Outcome ManifestOutcome
+  Manifest *oaImported1
+  ResolvedRevision string
+func Encode(v *Ref) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+func Decode(in []byte) (*Ref, error)
+type FrameWriter interface
+  WriteFrame(frame []byte) error
+type DispatchError string
+func (DispatchError) Error() string
+func ServiceName(frame []byte) (string, error)
+type FrameExchanger interface
+  ExchangeFrame(frame []byte) ([]byte, error)
+type ServiceError struct
+  Code ServiceErrorCode
+  Message string
+func (ServiceError) Error() string
+const EndpointContract
+type DescribedService interface
+  DescribeService() (contract string, ready bool, why string)
+func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+type ServedService interface
+  DescribedService
+  ServiceContract() string
+func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+type ModelResolver interface
+  Resolve(ref Ref) (LookupResult, error)
+type ModelResolverTransport interface
+  FrameExchanger
+type ModelResolverClient struct
+func NewModelResolverClient(t ModelResolverTransport) *ModelResolverClient
+type ModelResolverDispatcher struct
+  Handler ModelResolver
+func (ModelResolverClient) Resolve(ref Ref) (result LookupResult, err error)
+func (ModelResolverDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ModelResolverDispatcher) ServiceContract() string
+func (ModelResolverDispatcher) WriteFrame(frame []byte) error
+func (ModelResolverDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type ModelManifest interface
+  Resolve(ref Ref) (ManifestResult, error)
+type ModelManifestTransport interface
+  FrameExchanger
+type ModelManifestClient struct
+func NewModelManifestClient(t ModelManifestTransport) *ModelManifestClient
+type ModelManifestDispatcher struct
+  Handler ModelManifest
+func (ModelManifestClient) Resolve(ref Ref) (result ManifestResult, err error)
+func (ModelManifestDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ModelManifestDispatcher) ServiceContract() string
+func (ModelManifestDispatcher) WriteFrame(frame []byte) error
+func (ModelManifestDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+func DecodeRefAt(in []byte, depth, limit int) (*Ref, int, error)
+func EncodeRefAt(v *Ref, depth int) []byte
+func EncodeRef(v *Ref) []byte
+func DecodeRef(in []byte) (*Ref, error)
+func DecodeLookupResultAt(in []byte, depth, limit int) (*LookupResult, int, error)
+func EncodeLookupResultAt(v *LookupResult, depth int) []byte
+func EncodeLookupResult(v *LookupResult) []byte
+func DecodeLookupResult(in []byte) (*LookupResult, error)
+func DecodeManifestResultAt(in []byte, depth, limit int) (*ManifestResult, int, error)
+func EncodeManifestResultAt(v *ManifestResult, depth int) []byte
+func EncodeManifestResult(v *ManifestResult) []byte
+func DecodeManifestResult(in []byte) (*ManifestResult, error)

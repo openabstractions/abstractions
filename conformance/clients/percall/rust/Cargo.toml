@@ -1,0 +1,11 @@
+[package]
+name = "percall-probe"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+abstraction-ipc = { path = "../../../../openabstractions-flat/abstraction-identity/rust" }
+
+[[bin]]
+name = "rust-percall"
+path = "main.rs"

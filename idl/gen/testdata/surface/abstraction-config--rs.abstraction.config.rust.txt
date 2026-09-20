@@ -1,0 +1,105 @@
+pub type Raw
+pub enum UserReplaceOutcome
+  Applied
+  Conflict
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 4]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum ConfigObservationOutcome
+  Snapshot
+  Unchanged
+  Gap
+  Unavailable
+  Unsupported
+  Invalid
+  pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub mod service_error_code
+  pub const HANDLER_ERROR: &str
+  pub const INVALID_RESULT: &str
+  pub const UNKNOWN_VERSION: &str
+  pub const UNKNOWN_SERVICE: &str
+  pub const UNKNOWN_METHOD: &str
+  pub const WRONG_MODE: &str
+  pub const STORAGE_UNAVAILABLE: &str
+  pub const CALLER_UNAVAILABLE: &str
+  pub const IDENTITY_REQUIRED: &str
+  pub const WRONG_USER: &str
+  pub const INVALID_REVISION: &str
+  pub const ALL: [&str; 11]
+pub const READER_ERROR_CODES: [&str; 4]
+pub const EDITOR_ERROR_CODES: [&str; 5]
+pub struct RunOverrides
+  nas_store: String
+  store: String
+  log_sink: String
+  log_service: String
+pub struct Origin
+  rung: String
+  path: String
+pub struct Origins
+  nas_store: Origin
+  store: Origin
+  log_sink: Origin
+  log_service: Origin
+  off: Origin
+pub struct Snapshot
+  nas_store: String
+  store: String
+  log_sink: String
+  log_service: String
+  off: BTreeMap<String, String>
+  origins: Origins
+  stamp: String
+pub struct UserSettings
+  nas_store: String
+  store: String
+  log_sink: String
+  log_service: String
+  off: BTreeMap<String, String>
+pub struct UserSnapshot
+  values: UserSettings
+  revision: String
+pub struct UserReplaceResult
+  outcome: UserReplaceOutcome
+  snapshot: UserSnapshot
+pub struct ConfigObservation
+  outcome: ConfigObservationOutcome
+  cursor: String
+  snapshot: Option<Snapshot>
+pub fn encode(v: &Snapshot) -> Vec<u8>
+pub struct Refusal
+  word: &'static str
+  offset: usize
+pub fn decode(data: &[u8]) -> Result<Snapshot, Refusal>
+pub use abstraction_frame::FrameTransport
+pub struct ServiceError
+  code: String
+  message: String
+pub enum CallError<E>
+  Transport(E)
+  Refusal(Refusal)
+  Dispatch(&'static str)
+  Service(ServiceError)
+pub trait ConfigReader
+  type Error
+  fn read(&self, overrides: RunOverrides) -> Result<Snapshot, Self::Error>
+pub struct ConfigReaderClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait ConfigEditor
+  type Error
+  fn read_user(&self) -> Result<UserSnapshot, Self::Error>
+  fn replace_user(&self, expected_revision: String, values: UserSettings) -> Result<UserReplaceResult, Self::Error>
+pub struct ConfigEditorClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait ConfigObserver
+  type Error
+  fn observe(&self, overrides: RunOverrides, cursor: String, wait_ms: i64) -> Result<ConfigObservation, Self::Error>
+pub struct ConfigObserverClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T

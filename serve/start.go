@@ -22,6 +22,9 @@ func runtimeStart(args []string, output, diagnostics io.Writer) error {
 	flags := flag.NewFlagSet("start", flag.ContinueOnError)
 	flags.SetOutput(diagnostics)
 	budget := flags.Duration("timeout", 20*time.Second, "total activation and readiness waiting budget")
+	// Start always refuses an elevated or root token; the installer names the
+	// requirement on its activation command line.
+	flags.Bool("require-unelevated", false, "refuse an elevated token (always enforced; accepted for the installer's command line)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -101,8 +104,8 @@ func startReady(ctx context.Context, endpoint string) (bool, error) {
 			return false, nil
 		} // An unavailable transport is retried only inside the caller's budget.
 		switch result.Status {
-		case "resolved":
-		case "not_ready", "unavailable":
+		case wire.ResolutionStatusResolved:
+		case wire.ResolutionStatusNotReady, wire.ResolutionStatusUnavailable:
 			return false, nil
 		default:
 			return false, fmt.Errorf("start readiness refused: %s: %s", item[0], result.Status)

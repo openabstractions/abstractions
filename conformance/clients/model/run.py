@@ -8,7 +8,7 @@ import subprocess
 import sys
 HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE.parent))
-from workspace import ROOT, environment, cmake_for, certify_compiler, build_root, CERTIFIES, source_revision, dry_run_stop, DRY_RUN_HELP
+from workspace import ROOT, environment, cmake_for, certify_compiler, build_root, CERTIFIES, source_revision, dry_run_stop, DRY_RUN_HELP, CMAKE_BUILD_TYPE_RELEASE
 from sdk import installed_sdk
 p=argparse.ArgumentParser(description=__doc__+' '+CERTIFIES)
 p.add_argument('--run',action='store_true')
@@ -36,18 +36,18 @@ with ExitStack() as stack:
  run([a.cmake,'--version'])
  if a.direct_probe is None or a.generic_probe is None:
   direct_prefix=stack.enter_context(installed_sdk(a.cmake, 'model-resolution', env))
-  run([a.cmake,'-S',HERE,'-B',build/'direct','-DMODEL_DIRECT_ONLY=ON','-DMODEL_GENERIC=ON','-DCMAKE_PREFIX_PATH='+str(direct_prefix)])
+  run([a.cmake,'-S',HERE,'-B',build/'direct','-DMODEL_DIRECT_ONLY=ON','-DMODEL_GENERIC=ON','-DCMAKE_PREFIX_PATH='+str(direct_prefix),CMAKE_BUILD_TYPE_RELEASE])
   run([a.cmake,'--build',build/'direct','--config','Release'])
   if a.direct_probe is None:a.direct_probe=build/'direct'/('Release/model_direct.exe' if os.name=='nt' else 'model_direct')
   if a.generic_probe is None:a.generic_probe=build/'direct'/('Release/model_generic.exe' if os.name=='nt' else 'model_generic')
  missing=subprocess.run([a.cmake,'-S',str(HERE),'-B',str(build/'missing-request'),
   '-DMODEL_DIRECT_ONLY=ON','-DCMAKE_PREFIX_PATH='+str(a.prefix.resolve()),
-  '-DCMAKE_DISABLE_FIND_PACKAGE_abstraction_download_request=TRUE'],cwd=ROOT,env=env,capture_output=True,text=True,timeout=120)
+  '-DCMAKE_DISABLE_FIND_PACKAGE_abstraction_download_request=TRUE',CMAKE_BUILD_TYPE_RELEASE],cwd=ROOT,env=env,capture_output=True,text=True,timeout=120)
  if missing.returncode==0 or 'abstraction_download_request' not in missing.stdout+missing.stderr:
   raise RuntimeError('missing required request package was not explicitly refused')
  print('missing named download request dependency refused')
 
- run([a.cmake,'-S',HERE,'-B',build/'cpp','-DCMAKE_PREFIX_PATH='+str(a.prefix.resolve())])
+ run([a.cmake,'-S',HERE,'-B',build/'cpp','-DCMAKE_PREFIX_PATH='+str(a.prefix.resolve()),CMAKE_BUILD_TYPE_RELEASE])
  run([a.cmake,'--build',build/'cpp','--config','Release','--parallel','4'])
  certify_compiler(build/'cpp')
  exe=build/'cpp'/('Release/model_consumer.exe' if os.name=='nt' else 'model_consumer')

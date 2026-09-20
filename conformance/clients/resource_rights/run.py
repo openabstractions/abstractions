@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
-from workspace import ROOT, environment, compiler_metadata, source_revision, dry_run_stop, DRY_RUN_HELP
+from workspace import ROOT, environment, compiler_metadata, source_revision, dry_run_stop, DRY_RUN_HELP, CMAKE_BUILD_TYPE_RELEASE
 from sdk import installed_sdk
 
 p = argparse.ArgumentParser(description=__doc__)
@@ -37,7 +37,7 @@ with ExitStack() as stack:
             raise RuntimeError(result.stderr or result.stdout)
     if a.prefix is None:
         a.prefix = stack.enter_context(installed_sdk(a.cmake, "aggregate", env))
-    run([a.cmake, "-S", HERE, "-B", build/"cpp", "-DCMAKE_PREFIX_PATH="+str(a.prefix.resolve())])
+    run([a.cmake, "-S", HERE, "-B", build/"cpp", "-DCMAKE_PREFIX_PATH="+str(a.prefix.resolve()), CMAKE_BUILD_TYPE_RELEASE])
     run([a.cmake, "--build", build/"cpp", "--config", "Release", "--parallel", "4"])
     compiler_metadata(build/"cpp")
     exe = build/"cpp"/("Release/resource_rights_consumer.exe" if os.name == "nt" else "resource_rights_consumer")

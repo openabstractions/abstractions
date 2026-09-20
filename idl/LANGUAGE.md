@@ -166,18 +166,46 @@ accepted and the compiler had to catch.
 
 ### [DEF-A5] Per-member enum annotations, and `(unknown = ...)`
 
-An enum is a closed vocabulary of wire names. Every member may carry arbitrary
+An enum declares named members of a wire vocabulary. Every member may carry arbitrary
 annotations, and the enum body carries `(unknown = "grant")` or
 `(unknown = "refuse")` — what a reader does with a member it has never heard of.
 
-The direction is the point and it is not one policy per document. A vocabulary
-that can only **grant** fails open, because a word we cannot read grants
-nothing. A vocabulary that **constrains** fails closed, because a closed
-vocabulary that fails open is not closed.
+The unknown-member policy applies during encoding and decoding. `grant`
+preserves an unknown word; `refuse` rejects it. Authority and supported request
+semantics are enforced by the service before it performs work.
 
-Enums generate a name list, the unknown-member policy, and one table per
-annotation key. They are not generated as language enums, because a wire name
-outlives any one language's spelling of it.
+The `reader` annotation records what happens after decoding. `display` carries
+unknown words for presentation. `validate` carries them to a service boundary
+that must reject unsupported values before effects. Both require
+`unknown="grant"`. `act` identifies a word used directly to select behavior and
+requires `unknown="refuse"` so an unknown word never selects an action.
+
+Enums generate the language's native vocabulary form, its member list and one
+table per annotation key. The unknown-member policy is a property of the
+generated type and is stated in its documentation; no constant spells it,
+because a constant named like a member compares with a value and is always
+false. Go emits a closed vocabulary as a numeric named type whose tags have no
+wire meaning; `String`, `WireName` and `Parse<Enum>` map it explicitly to the
+member word. An open Go vocabulary remains a string type so a reader can keep a
+word it has never heard. Both expose typed member constants,
+`<Enum>Values()` returning a new slice of the members, and `Known()`.
+
+A member may set `wire="..."` when its exact JSON string is not a language
+identifier:
+
+```thrift
+enum Transport {
+  1: native(wire="oa-native@1")
+}(unknown="refuse")
+```
+
+`native` remains the logical member name used to generate constants and enum
+variants. The parser, encoder, standard Go text/JSON methods, member value and
+enum collections use `oa-native@1`. Without `wire`, the logical name remains
+the wire string. Wire spellings must be nonempty and unique within the enum;
+the parser rejects duplicate effective spellings before generation. `wire` is
+semantic metadata and is displayed in enum documentation rather than emitted
+as a member annotation table.
 
 ### [DEF-A6] `const list<i32>` and `const list<string>`
 
@@ -567,6 +595,33 @@ that do narrow — every declared name is on the page — narrow to the surface
 list in `scripts/generate.targets`, which is compared against the artefact byte
 for byte, so a scope cannot shrink without the declaration shrinking with it.
 
+## Public surface
+
+A generated module's public surface is what an application or a service
+implementation names: records, vocabularies with their wire-name conversions,
+declared constants, `Raw`, the errors a call raises (`Refusal`, `ServiceError`,
+`DispatchError`), document codecs, service interfaces, clients, dispatchers, and
+`service_name` where one namespace holds several services. Everything else the
+generator emits is codec machinery and is private: the refusal words in their
+ranked order and `refusal_rank`, the timestamp predicates, the vocabulary
+`member` predicate, readers, writers and envelopes.
+
+An item code outside the module genuinely needs lives in the language's
+explicit internal place, never on the public surface. Two needs exist today:
+the cross-file record codecs an including definition calls, and the timestamp
+and `member` predicates the conformance drivers under `idl/test` probe.
+
+| Language | Internal place | Today |
+|---|---|---|
+| C++ | `namespace detail` | `detail::micros_timestamp`, `detail::decode_ref_at` |
+| Rust | `pub mod internal`, wrappers over private items | `internal::micros_timestamp`, `internal::member`, `internal::decode_ref_at`, `internal::check_ref` |
+| Python | the `_codec` module, under a `_` name the package does not re-export | `_codec._micros_timestamp`, `_codec._decode_ref_at` |
+| JavaScript | `internal.mjs` (the `/internal` package subpath), not re-exported by `index.mjs` | `microsTimestamp`, `member`, `decodeRefAt` |
+| Go | unexported | `microsTimestamp`; `DecodeRefAt`/`EncodeRefAt` stay exported because Go has no internal visibility across modules, and an including package in another module calls them |
+
+`scripts/idiom_check.py` refuses each private helper name on a public surface,
+and the surface snapshots under `idl/gen/testdata/surface/` record the rest.
+
 ## What the generator does not emit, and will not
 
 **A generator that opens a socket has left its jurisdiction.** The definition
@@ -660,7 +715,15 @@ service Events {
 ```
 
 The binding supports multiple services, one-way methods, typed request-response
-results and required typed arguments. Omitted `required` is implied for method
+results and required typed arguments.
+
+`(error_codes = "<const>")` on a service names a `const list<string>` whose
+distinct snake_case words are the codes its handlers send on the reply error
+channel. A result without an `outcome` field refuses through that channel. The
+generated `ServiceErrorCode` vocabulary, open, holds the dispatcher's own codes
+(`handler_error`, `invalid_result`, `unknown_version`, `unknown_service`,
+`unknown_method`, `wrong_mode`) and then every declared code, and Go types
+`ServiceError.Code` with it. The name `ServiceErrorCode` is reserved. Omitted `required` is implied for method
 arguments. Optional/default arguments and `throws` remain refused explicitly.
 Go and C++ generate interfaces, transport-injected clients and pure dispatchers.
 Python and Rust generate interfaces and transport-injected clients. Their
@@ -670,7 +733,7 @@ transport failures, codec refusals, envelope errors and service code/message.
 Transport adapters own waiting budgets and cancellation. Generated calls never
 retry, and a transport error leaves receiver acceptance unresolved. One-way
 completion confirms local submission only. Rust `--no-ipc` emits capability
-traits and record codecs. Rust typed includes reference dependency crates named by `--rust-import`; `--named-codecs` exports `encode_x_at`, `decode_x_at`, `check_x`, `encode_x_document` and `decode_x_document`.
+traits and record codecs. Rust typed includes reference dependency crates named by `--rust-import`; `--named-codecs` exports `encode_x_document` and `decode_x_document`, and puts `encode_x_at`, `decode_x_at` and `check_x` in the crate's `internal` module.
 JavaScript refuses service-bearing definitions.
 The docs backend includes the method signatures and semantics.
 
@@ -695,10 +758,33 @@ not turn these into an implicit acknowledgement protocol.
 `namespace * oa.logging` supplies a common default; explicit language namespaces
 override it. Dot-separated portable identifiers map to Go's final package
 component and nested C++ namespaces. Namespaced outputs use paths such as
-`go/oa/logging/rec.go`, `cpp/oa/logging/rec.h`, `py/oa/logging/rec.py`,
-`js/oa/logging/rec.mjs`, and `rs/oa/logging/rec.rs`. Docs use
-`oa.logging.schema.html` from the default namespace. No namespace preserves the
-legacy `rec` names and paths. Namespace choice does not alter wire bytes.
+`go/oa/logging/rec.go`, `cpp/oa/logging/rec.h`, `py/oa/logging/__init__.py`
+with its private `_codec.py`, `js/oa/logging/index.mjs` with its `internal.mjs`,
+and `rs/oa/logging/rec.rs`. Docs use
+`oa.logging.schema.html` from the default namespace. Without a namespace the
+outputs sit directly under each language directory: `py/__init__.py`,
+`js/index.mjs`, and the `rec` names and paths elsewhere. Namespace choice does
+not alter wire bytes. Identifiers follow each language's convention (Python
+snake_case members and CapWords classes, JavaScript camelCase members and
+PascalCase classes); a field's `python.name` or `javascript.name` annotation
+overrides the mapped spelling, and the wire name never changes.
+
+Rust, C++ and Go follow the same rule with their own conventions. Rust uses
+snake_case functions, methods, fields and parameters, UpperCamelCase types and
+enum variants, and SCREAMING_SNAKE_CASE constants. C++ uses lowercase
+namespaces, PascalCase types, snake_case functions, methods, parameters and
+members, PascalCase enumerators in `enum class`, and `k`-prefixed PascalCase
+constants; codec helpers, carriers and envelopes live in `detail`. Go exports
+PascalCase names with initialisms in capitals (`OperationID`, `TTLMs`,
+`SHA256Digest`), names parameters after the contract in lowerCamelCase, and
+leaves helpers and envelopes unexported. A `rust.name`, `cpp.name` or `go.name`
+annotation wins over the mapping. A C++ identifier, Go parameter or Rust method
+name that maps to a keyword takes a trailing underscore. In a definition with
+services, a Rust record field or method argument that maps to a keyword is
+refused until it carries `rust.name`. A closed vocabulary (`unknown="refuse"`) is a Rust
+`enum`, a C++ `enum class` and a Go numeric named type with explicit wire-name
+mapping; an open vocabulary stays a string with named constants for its known
+words.
 
 A service requires an explicit nonempty `wire_name` annotation, unique in its
 schema. This identity is independent of source namespace or class name, so two
@@ -708,8 +794,8 @@ escaped text in generated API reference pages. Unknown service/method
 annotations are rejected. Method names are wire operation names.
 
 Go clients receive structural `FrameWriter` and/or `FrameExchanger` interfaces.
-C++ clients accept a transport with `WriteFrame(std::string_view)` and/or
-`ExchangeFrame(std::string_view)` returning `std::string`, as their methods require;
+C++ clients accept a transport with `write_frame(std::string_view)` and/or
+`exchange_frame(std::string_view)` returning `std::string`, as their methods require;
 one shared runtime can serve
 multiple generated namespaces without handwritten per-capability subclasses.
 Direct opaque JSON arguments retain their raw value tokens, including interior
@@ -727,9 +813,39 @@ Direct `json` arguments are supported with a service-specific verbatim carrier.
 This restriction prevents silent mutation until nested opaque encoding is fixed
 consistently; record-only selections keep their existing codec behavior.
 
+### [DEF-S2] The endpoint description every dispatcher answers
+
+Every definition with a request-response service also emits, in Go and C++,
+the base-protocol service `abstraction.facade/endpoint@1` `Describe`, declared
+in `abstraction-facade/facade.thrift`. A dispatcher that exchanges frames
+answers a Describe frame itself, listing its own service. An endpoint hosting
+several services answers it with Go `DescribeEndpoint(frame, program, version,
+dispatchers...)` or C++ `describe_endpoint(frame, program, version,
+dispatchers...)`, which accept dispatchers of any generated package in the
+order given. Each dispatcher reports `DescribeService()` (C++
+`describe_service()`): its wire name, and `ready` unless its handler has the
+optional hook `Ready() (bool, string)` (C++ `ready()` returning a pair of bool
+and string on the handler's own type) reporting otherwise with a reason. The
+reply is written with the shape facade.thrift declares, so no generated package
+depends on the facade's. `guarantees` and `capabilities` are empty in generated
+replies. A frame for any other undeclared service still reads
+`unknown_service`, and a non-empty argument object reads `unknown_field`.
+
+A Go host serving several services routes each request-response frame with
+`ServeEndpoint(frame, program, version, dispatchers...)`. It answers Describe
+for all of them, hands any other frame to the dispatcher whose
+`ServiceContract()` equals the frame's service, reads `wrong_mode` for a
+dispatcher without request-response methods, and reads `unknown_service` for a
+service it does not host. A host that picks a dispatcher by name by hand must
+still send `abstraction.facade/endpoint@1` frames to one of these calls. The
+names `EndpointContract`, `DescribedService`, `DescribeEndpoint`,
+`ServedService` and `ServeEndpoint` are reserved. Python, Rust and JavaScript generate no dispatcher; they reach the
+service through the facade definition's generated `Endpoint` client.
+
 ### Request-response methods
 
-A method without `oneway` uses `ExchangeFrame` and returns its declared type,
+A method without `oneway` uses the exchange operation (Go `ExchangeFrame`, C++
+`exchange_frame`) and returns its declared type,
 or no value for `void`. The transport associates exactly one response with each
 exchange; it must serialize exchanges or provide equivalent correlation. There
 is no request ID in this protocol. The binding does not implement retry,
@@ -782,9 +898,11 @@ existing codec behavior and output.
 
 ### Python service clients
 
-Python preserves schema method names (`Write`, `Echo`) and honors parameter
-`python.name` aliases. `SinkClient(transport)` implements the generated `Sink`
-interface. Its transport supplies `write_frame(frame: bytes)` for one-way calls
+Python spells schema methods in snake_case (`Write` is `write`, `DecideFor` is
+`decide_for`) while the frame keeps the schema method name, and honors parameter
+`python.name` aliases. Records are keyword-only dataclasses and closed
+vocabularies are string-valued `enum` members. `SinkClient(transport)` implements
+the generated `Sink` interface. Its transport supplies `write_frame(frame: bytes)` for one-way calls
 and/or `exchange_frame(frame: bytes) -> bytes` for request-response calls. No
 native I/O or server is generated. An exchange must return its associated reply;
 framing, concurrency, deadlines and connection identity remain transport duties.
@@ -797,12 +915,12 @@ preserve unknown nonempty codes and empty diagnostics; malformed replies use
 exceptions propagate unchanged. Python's coercions (such as bool-as-int or
 fraction truncation) are not accepted as typed service arguments.
 
-Python keywords, duplicate aliases and generated-name collisions are refused at
+Duplicate aliases and generated-name collisions are refused at
 backend preflight before any output. Internal local names avoid parameter names.
 Record-only selection retains the standalone codec output; support for zero-field
 argument/result carriers also corrects previously invalid empty Python classes.
 Tests exchange Python frames with a Go dispatcher over process buffers, including
-logging's one-way Write; this does not claim a deployed IPC service.
+logging's one-way write; this does not claim a deployed IPC service.
 
 ### Binary values
 
@@ -830,7 +948,7 @@ A declared enum may be used directly as a required or optional record field,
 including nested records, repeated records, service arguments and results. The
 schema and API reference retain the enum's name. Codecs use string carriers:
 Go `string`, C++ `std::string`, Python `str`, JavaScript string and Rust `String`.
-JSON contains the exact member name, never the numeric member ID.
+JSON contains the member's exact wire spelling, never the numeric member ID.
 
 `unknown="refuse"` rejects unlisted names as `bad_enum` on decoding and encoding;
 declare that refusal at the structure stage. `unknown="grant"` preserves any
@@ -843,14 +961,18 @@ mechanism and zero offsets as integer equality constraints.
 `*string`, C++ `std::optional<std::string>`, Python `None`, JavaScript `null`,
 and Rust `Option<String>`. An explicitly supplied JSON null is refused.
 `omit="zero"` omits the empty carrier on output; an explicitly supplied name on
-input is still validated. Enum collections themselves remain outside the profile;
-use repeated records containing enum fields. Selections must include each enum
-referenced by their selected records or services.
+input is still validated. `list<Enum>` carries an ordered JSON array of the exact
+member strings. Its public type is `[]Enum` in Go, `std::vector<Enum>` for a
+closed C++ enum, `Vec<Enum>` for a closed Rust enum, `list[Enum]` in Python and
+`Enum[]` in TypeScript. Open C++ and Rust lists retain string elements; Python
+and TypeScript expose the known member type plus future strings. Each element
+uses the enum's unknown policy, so a closed list refuses an unlisted word as
+`bad_enum` and an open list round-trips it. Collections use `omit="zero"`, and
+selections must include each enum referenced by their selected records or
+services.
 
-Existing vocabulary constants retain their names and bytes. When a Go enum
-member owns the generated `EnumUnknown` name (for example member `unknown`),
-policy metadata uses `EnumUnknownPolicy`, appending `Policy` until no member
-collides. The member constant retains its exact wire name.
+Member constants retain their wire names. A Go member spelled `Values` is
+refused, because `<Enum>Values` names the generated member list.
 
 
 ## Typed cross-definition records
@@ -876,8 +998,12 @@ that validation too. Python named codecs check field types before encoding. Unkn
 Generate each dependency with `--named-codecs` before compiling its consumers.
 This exports `EncodeRef`/`DecodeRef` in Go and `encode_ref`/`decode_ref` in C++ and
 Python for a record named Ref, alongside the existing document codecs. The `At`
-(Go) or `_at` (C++/Python) entry points compose records with explicit depth and
-limit; decoding returns the consumed byte count. Named top-level codecs retain
+(Go) or `_at` entry points compose records with explicit depth and limit;
+decoding returns the consumed byte count. They exist for including generated
+code and sit in each language's internal place (see "Public surface"): C++
+`detail::decode_ref_at`, Python `_codec._decode_ref_at`, Rust
+`internal::decode_ref_at`, the JavaScript `internal.mjs` subpath; Go exports
+`DecodeRefAt`. Named top-level codecs retain
 the definition's terminator. Consumers with includes also emit named codecs.
 The generator emits each source independently; it does not copy dependency
 records into the consumer or infer dependency versions.

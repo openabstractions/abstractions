@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>ComfyUI parameter proposal</title>
+    <style>
+      :root { font: 14px/1.45 system-ui, sans-serif; color-scheme: light dark; }
+      body { margin: 0; padding: 16px; }
+      main { max-width: 520px; }
+      .state { display: inline-block; padding: 2px 8px; border: 1px solid currentColor; border-radius: 999px; font-weight: 650; }
+      dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; }
+      dt { color: #666; }
+      dd { margin: 0; overflow-wrap: anywhere; }
+      .change { font-size: 1.25rem; }
+      .notice { border-left: 3px solid #b7791f; padding-left: 10px; }
+      details { margin-top: 12px; }
+      summary { cursor: pointer; }
+      [hidden] { display: none; }
+    </style>
+  </head>
+  <body>
+    <main aria-live="polite">
+      <p id="loading">Waiting for the proposal record…</p>
+      <section id="proposal" hidden>
+        <p><strong>Demonstration:</strong> preview a ComfyUI sampling-steps edit opened by this tool call.</p>
+        <p><span class="state">Preview — nothing changed yet</span></p>
+        <h1 id="target"></h1>
+        <dl>
+          <dt>Node</dt><dd id="node"></dd>
+          <dt>Parameter</dt><dd id="widget"></dd>
+        </dl>
+        <p class="notice">This view is read-only. Apply remains an explicit action in the connected ComfyUI panel.</p>
+        <details>
+          <summary>Technical details</summary>
+          <dl>
+            <dt>Instance</dt><dd id="instance"></dd>
+            <dt id="application-instance-label" hidden>OA instance</dt><dd id="application-instance" hidden></dd>
+            <dt>Context</dt><dd id="context"></dd>
+            <dt>Revision</dt><dd id="revision"></dd>
+            <dt id="token-label" hidden>Proposal</dt><dd id="token" hidden></dd>
+          </dl>
+        </details>
+      </section>
+      <section id="refusal" hidden>
+        <p><span class="state" id="outcome"></span></p>
+        <p>The proposal record was unavailable.</p>
+      </section>
+    </main>
+    <script type="module" src="/src/app.ts"></script>
+  </body>
+</html>

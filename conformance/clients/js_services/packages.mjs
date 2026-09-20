@@ -1,6 +1,6 @@
 // Installed npm package metadata, and dependencies derived from generated imports.
 import assert from 'node:assert/strict';
-import {readFileSync, readdirSync, statSync} from 'node:fs';
+import {existsSync, readFileSync, readdirSync, statSync} from 'node:fs';
 import {join} from 'node:path';
 
 const modules = join(process.cwd(), 'node_modules');
@@ -25,10 +25,16 @@ for (const name of names) {
   const base = repository.url.slice('git+'.length, -'.git'.length);
   assert.ok(pkg.homepage?.startsWith(base), `${name} homepage`);
   assert.equal(pkg.bugs?.url, base + '/issues', name);
+  // TypeScript hosts read "types" (node10) or the "types" export condition (nodenext);
+  // both must name a declaration file the tarball actually carries.
+  assert.ok(typeof pkg.types === 'string' && existsSync(join(dir, pkg.types)), `${name} ships its top-level types ${pkg.types}`);
+  const main = typeof pkg.exports === 'string' ? null : pkg.exports?.['.'];
+  assert.ok(main && typeof main === 'object' && main.types === pkg.types && existsSync(join(dir, main.default)), `${name} exports "." with types ${pkg.types} and a default`);
   const imported = new Set();
   for (const file of walk(dir).filter((path) => /\.(mjs|js)$/.test(path))) {
     for (const match of readFileSync(file, 'utf8').matchAll(importSpecifier)) {
-      if (!match[1].startsWith('.') && !match[1].startsWith('node:')) imported.add(match[1]);
+      // A subpath such as @openabstractions/download-request/internal belongs to its package.
+      if (!match[1].startsWith('.') && !match[1].startsWith('node:')) imported.add(match[1].split('/').slice(0, 2).join('/'));
     }
   }
   const declared = pkg.dependencies ?? {};

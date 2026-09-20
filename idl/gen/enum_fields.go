@@ -13,6 +13,10 @@ func enumCarriers(s *Definition) *Definition {
 		if en := s.Enum(f.Type); en != nil {
 			f.EnumType = en
 			f.Type = "string"
+		} else if en := s.Enum(listElement(f.Type)); en != nil {
+			f.EnumType = en
+			f.EnumList = true
+			f.Type = "list<string>"
 		}
 		return f
 	}
@@ -40,7 +44,7 @@ func enumCarriers(s *Definition) *Definition {
 	return &o
 }
 
-func enumAbsent(f Field) bool { return f.EnumType != nil && f.Omit == "absent" }
+func enumAbsent(f Field) bool { return f.EnumType != nil && !f.EnumList && f.Omit == "absent" }
 
 func emitEnumChecks(b *strings.Builder, st Struct, lang string, encode bool) {
 	for i, f := range st.Fields {
@@ -53,6 +57,41 @@ func emitEnumChecks(b *strings.Builder, st Struct, lang string, encode bool) {
 			name = exported(name)
 		}
 		e := "v." + name
+		if f.EnumList {
+			if !encode {
+				continue // native conversion at the reader boundary applies the unknown policy
+			}
+			switch lang {
+			case "go":
+				if en.Ann["unknown"] == "refuse" {
+					fmt.Fprintf(b, "    for _, item := range %s { if !item.Known() { panic(&Refusal{Word:\"bad_enum\",Offset:0}) } }\n", e)
+				}
+			case "cpp":
+				if en.Ann["unknown"] == "refuse" {
+					fmt.Fprintf(b, "    for (const auto item : %s) if (wire_name(item).empty()) throw Refusal(\"bad_enum\",0);\n", e)
+				}
+			case "rust":
+				// A closed Rust enum has no invalid safe value; open lists carry strings.
+			case "python":
+				fmt.Fprintf(b, "    for item in %s:\n", e)
+				if pyEnumClosed(en) {
+					fmt.Fprintf(b, "        _closed_enum(%s, item)\n", pascalCase(en.Name))
+				} else {
+					b.WriteString("        if not isinstance(item, str):\n            raise Refusal(\"wrong_type\", 0)\n")
+				}
+			case "javascript":
+				fmt.Fprintf(b, "    for (const item of %s) {\n        if (typeof item !== \"string\") throw new Refusal(\"wrong_type\",0);\n", e)
+				if en.Ann["unknown"] == "refuse" {
+					var terms []string
+					for _, m := range en.Members {
+						terms = append(terms, "item !== "+fmt.Sprintf("%q", m.WireName()))
+					}
+					fmt.Fprintf(b, "        if (%s) throw new Refusal(\"bad_enum\",0);\n", strings.Join(terms, " && "))
+				}
+				b.WriteString("    }\n")
+			}
+			continue
+		}
 		guard := ""
 		value := e
 		if enumAbsent(f) {
@@ -75,7 +114,13 @@ func emitEnumChecks(b *strings.Builder, st Struct, lang string, encode bool) {
 		if f.Omit == "zero" {
 			if encode {
 				switch lang {
-				case "go", "cpp":
+				case "go":
+					if en.Ann["unknown"] == "refuse" {
+						guard = e + ` != 0`
+					} else {
+						guard = e + ` != ""`
+					}
+				case "cpp":
 					guard = e + ` != ""`
 				case "python":
 					guard = e + ` != ""`
@@ -91,19 +136,24 @@ func emitEnumChecks(b *strings.Builder, st Struct, lang string, encode bool) {
 				}
 			}
 		}
-		var terms []string
-		for _, m := range en.Members {
-			op := " != "
-			if lang == "javascript" {
-				op = " !== "
+		bad := ""
+		if lang == "go" && en.Ann["unknown"] == "refuse" {
+			bad = "!(" + value + ").Known()"
+		} else {
+			var terms []string
+			for _, m := range en.Members {
+				op := " != "
+				if lang == "javascript" {
+					op = " !== "
+				}
+				terms = append(terms, value+op+fmt.Sprintf("%q", m.WireName()))
 			}
-			terms = append(terms, value+op+fmt.Sprintf("%q", m.Name))
+			join := " && "
+			if lang == "python" {
+				join = " and "
+			}
+			bad = strings.Join(terms, join)
 		}
-		join := " && "
-		if lang == "python" {
-			join = " and "
-		}
-		bad := strings.Join(terms, join)
 		if bad == "" {
 			bad = "true"
 			if lang == "python" {
@@ -183,18 +233,18 @@ func emitEnumChecks(b *strings.Builder, st Struct, lang string, encode bool) {
 func hasEnumFields(s *Definition) bool {
 	for _, st := range s.Structs {
 		for _, f := range st.Fields {
-			if f.EnumType != nil || s.Enum(f.Type) != nil {
+			if f.EnumType != nil || s.Enum(f.Type) != nil || s.Enum(listElement(f.Type)) != nil {
 				return true
 			}
 		}
 	}
 	for _, svc := range s.Services {
 		for _, m := range svc.Methods {
-			if m.Result.EnumType != nil || s.Enum(m.Result.Type) != nil {
+			if m.Result.EnumType != nil || s.Enum(m.Result.Type) != nil || s.Enum(listElement(m.Result.Type)) != nil {
 				return true
 			}
 			for _, f := range m.Args {
-				if f.EnumType != nil || s.Enum(f.Type) != nil {
+				if f.EnumType != nil || s.Enum(f.Type) != nil || s.Enum(listElement(f.Type)) != nil {
 					return true
 				}
 			}
@@ -202,35 +252,26 @@ func hasEnumFields(s *Definition) bool {
 	}
 	return false
 }
-func enumPolicyName(en Enum, lang string) string {
-	if lang != "go" {
-		if lang == "python" || lang == "rust" {
-			return "UNKNOWN"
-		}
-		return "Unknown"
-	}
-	suffix := "Unknown"
-	if lang == "python" || lang == "rust" {
-		suffix = "UNKNOWN"
-	}
-	for {
-		used := false
-		for _, m := range en.Members {
-			n := exported(m.Name)
-			if lang == "python" || lang == "rust" {
-				n = upper(m.Name)
-			}
-			if n == suffix {
-				used = true
+
+func hasEnumLists(s *Definition) bool {
+	for _, st := range s.Structs {
+		for _, f := range st.Fields {
+			if f.EnumList || s.Enum(listElement(f.Type)) != nil {
+				return true
 			}
 		}
-		if !used {
-			return suffix
-		}
-		if lang == "python" || lang == "rust" {
-			suffix += "_POLICY"
-		} else {
-			suffix += "Policy"
+	}
+	for _, svc := range s.Services {
+		for _, m := range svc.Methods {
+			if m.Result.EnumList || s.Enum(listElement(m.Result.Type)) != nil {
+				return true
+			}
+			for _, f := range m.Args {
+				if f.EnumList || s.Enum(listElement(f.Type)) != nil {
+					return true
+				}
+			}
 		}
 	}
+	return false
 }

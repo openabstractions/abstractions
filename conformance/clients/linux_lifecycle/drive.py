@@ -6,7 +6,7 @@ Run as root inside a disposable Linux host with systemd as PID 1 (WSL Ubuntu):
 
 scripts/check.sh --linux-lifecycle calls this with a `git archive` of HEAD. It
 extracts the archive and builds, with local toolchains and no module downloads:
-the four candidate programs and the Linux package; the installed C++ prefix
+the candidate program and the Linux package; the installed C++ prefix
 (static IPC, facade jobs, download request); a shared IPC prefix; the identity,
 facade, job and download-request Python packages; and the Go job client, whose
 module joins the extracted go.work beside the lost-reply helper module. When the
@@ -27,8 +27,7 @@ from pathlib import Path
 PREDECESSOR = "https://github.com/openabstractions/redist/releases/download/v0.1.6/"
 PREDECESSOR_ARCHIVE = "abstraction-0.1.6-linux-amd64.tar.gz"
 PREDECESSOR_REVISION = "redist v0.1.6 c78e3ddc64efce84e07345e2449e5360fc23f5d3 (published asset)"
-PROGRAMS = {"openabstractions": "./serve", "jobd": "./openabstractions-flat/abstraction-download/go/cmd/jobd",
-            "dl": "./openabstractions-flat/abstraction-download/go/cmd/dl", "jobctl": "./openabstractions-flat/abstraction-job/go/cmd/jobctl"}
+PROGRAMS = {"openabstractions": "./serve"}
 
 
 def step(label, argv, cwd, env=None, timeout=900, log=None):
@@ -86,8 +85,8 @@ def main():
     prefix, shared, python = work / "prefix", work / "ipc-shared", work / "python"
     cmake = [("static IPC", "openabstractions-flat/abstraction-identity/cpp", "b-ipc", ["-DBUILD_SHARED_LIBS=OFF", "-DABSTRACTION_IPC_BUILD_TESTS=OFF"], prefix, True),
              ("facade jobs", "openabstractions-flat/abstraction-facade/cpp", "b-facade", ["-DABSTRACTION_FACADE_BUILD_AGGREGATE=OFF", "-DABSTRACTION_FACADE_BUILD_JOBS=ON",
-              "-DABSTRACTION_JOB_BUILD_LEGACY=OFF", "-DBUILD_SHARED_LIBS=OFF", "-DABSTRACTION_IPC_BUILD_TESTS=OFF"], prefix, True),
-             ("download request", "openabstractions-flat/abstraction-download/cpp", "b-request", ["-DABSTRACTION_DOWNLOAD_BUILD_LEGACY=OFF"], prefix, False),
+              "-DBUILD_SHARED_LIBS=OFF", "-DABSTRACTION_IPC_BUILD_TESTS=OFF"], prefix, True),
+             ("download request", "openabstractions-flat/abstraction-download/cpp", "b-request", [], prefix, False),
              ("shared IPC", "openabstractions-flat/abstraction-identity/cpp", "b-ipc-shared", ["-DBUILD_SHARED_LIBS=ON", "-DABSTRACTION_IPC_BUILD_TESTS=OFF"], shared, True)]
     for label, source, build, options, destination, compile_ in cmake:
         step(f"configure {label}", ["cmake", "-S", source, "-B", work / build, "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_PREFIX_PATH={prefix}",

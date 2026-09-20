@@ -1,0 +1,11 @@
+using Raw = std::string
+class Refusal : public std::runtime_error
+  const char* word
+  std::size_t offset
+struct Value
+  std::optional<std::vector<std::uint8_t>> data
+inline std::string encode(const Value& v)
+inline Value decode(std::string_view data)
+struct Store
+  virtual Value read(const std::string& path)
+  virtual void write(const std::string& path, const Value& base, const std::vector<std::uint8_t>& data)

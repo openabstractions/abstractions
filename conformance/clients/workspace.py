@@ -98,6 +98,14 @@ def consumer_executable(build, name):
     """A CMake consumer's executable: Release/<name>.exe for Visual Studio, <name> for single-config generators."""
     return Path(build) / 'Release' / (name + '.exe') if os.name == 'nt' else Path(build) / name
 
+# Every CMake configure call needs this: a single-configuration generator
+# (Ninja, Makefiles) takes its build type at configure time and, left unset,
+# exports only a noconfig target file, which an install for --config Release
+# then silently skips. A multi-configuration generator (Visual Studio) selects
+# the type at build/install time instead and ignores this at configure, so
+# passing it unconditionally is safe on every generator.
+CMAKE_BUILD_TYPE_RELEASE = '-DCMAKE_BUILD_TYPE=Release'
+
 MSVC_RECIPE = ('Run it from a Visual Studio 18 x64 developer environment: write a .bat that calls '
                '"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat" '
                'and then this runner, and invoke that .bat by absolute path.')
@@ -179,6 +187,32 @@ def build_root():
     root = ROOT / '.build'
     root.mkdir(parents=True, exist_ok=True)
     return root
+
+KEEP_HELP = ('build in DIR and keep it afterwards, for rerunning or inspecting the built clients; DIR must be '
+             'absent or empty. Without it the build tree is temporary and removed')
+
+@contextmanager
+def build_tree(prefix, keep=None, root=None, **temporary):
+    """The directory a runner builds in.
+
+    With keep, DIR is created (it must be absent or empty, so it holds only this
+    run) and survives the run, whether it passes or fails. Without it, a
+    temporary directory under root is removed on exit. temporary passes through
+    to tempfile.TemporaryDirectory.
+    """
+    if keep is None:
+        with tempfile.TemporaryDirectory(prefix=prefix, dir=root, **temporary) as directory:
+            yield Path(directory)
+        return
+    path = Path(keep).resolve()
+    if path.exists() and (not path.is_dir() or any(path.iterdir())):
+        raise SystemExit('--keep ' + str(path) + ': the directory must be absent or empty')
+    path.mkdir(parents=True, exist_ok=True)
+    print('build tree kept at', path, flush=True)
+    try:
+        yield path
+    finally:
+        print('build tree kept at', path, flush=True)
 
 def layer(name):
     base = ROOT / 'openabstractions-flat'

@@ -65,3 +65,18 @@ trust evidence for those methods requires `--run`.
 
 This evidence supplies no browser, macOS or public-release verdict. One-way
 logging remains transport submission; it is not a durable receipt.
+
+Every package ships TypeScript declarations: the generator writes `index.d.mts`
+beside each `index.mjs`, and the facade and IPC packages carry hand-written
+`index.d.ts`. `packages.mjs` requires each package's `types` field and `.` export
+condition to name a file the tarball carries. `--tsc <typescript>/bin/tsc`
+compiles `types.mts` (plus `types_native.mts` with `--run`) strictly against the
+installed packages under nodenext and node10 resolution, and `types_protocol.mts`
+under nodenext; no compiler is downloaded.
+
+`manifests/windows-pure.json` records the `--pure` run as focused client
+evidence for every layer whose package it installs. Record it from a committed
+tree with
+`python scripts/matrix_evidence.py run conformance/clients/js_services/manifests/windows-pure.json`.
+The gate's `javascript` section runs the same `--pure` proof and writes one
+verdict per installed package into its record.

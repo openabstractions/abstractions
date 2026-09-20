@@ -1,10 +1,22 @@
 # Results
 
-Terminal transcripts from runs done here. They are our own output, so treat
-them as a record of what happened on one machine, not as independent
-verification. Where a script produced the transcript it is named; the names identify the maintainer harnesses used for that run. These harnesses
-require private source and are not distributed here. Use the public
-[conformance suite](../../conformance/README.md) to judge your own driver.
+Use these records to see which behavior was exercised, on which platform,
+at which source revision. The [coverage table](MATRIX.txt) compares recorded
+inputs with current source. The [web table](https://openabstractions.org/coverage.html)
+shows the last published generation.
+
+`focused/` contains service-client checks. Each record names the scenario,
+source inputs, compiler or runtime, platform, command and result. These checks
+cover individual integration paths. Changed inputs require fresh verification.
+
+## Historical run catalogue
+
+The transcripts below retain their original observations and scope. Some name
+retired commands or maintainer harnesses absent from the public charter. The
+public [conformance suite](../../conformance/README.md) lets another
+implementation run the contract scenarios. Current setup belongs in the
+capability READMEs.
+
 
 Usernames, machine names and LAN addresses have been replaced with
 placeholders. Nothing else in these files was edited.
@@ -42,7 +54,7 @@ filter with root — and their `# re-run` line says what.
 | [`RESUME1.txt`](RESUME1.txt) | `kill-and-resume.sh` | A download killed with SIGKILL and resumed by a separate process from the proven prefix. The bytes written past the last checkpoint are discarded. |
 | [`SUPERVISOR1.txt`](SUPERVISOR1.txt) | `supervisor.sh` | A supervisor sweep adopting an orphaned job — owner dead, lease lapsed — finishing it, and a second sweep correctly doing nothing. |
 | [`DEMO.txt`](DEMO.txt) | `demo.sh` | The end-to-end walkthrough: a model file, the name it claims, and what each tool does when the two disagree. |
-| [`MATRIX.txt`](MATRIX.txt) | `matrix.sh` | Which layer × language cell has a verdict, and which only looks like it has one. It runs nothing: a cell is `PASS` only where a transcript here recorded one for the tree as it stands, so a cell the gate exercises every run and never writes down reads `UNPROVEN`. That statement describes this historical transcript; consult the current generated coverage page for current evidence. |
+| [`MATRIX.txt`](MATRIX.txt) | `matrix.sh` | Which layer × language cell has a verdict, and which only looks like it has one. It runs nothing: a cell is `PASS` only where a transcript here recorded one for the tree as it stands, so a cell the gate exercises every run and never writes down reads `UNPROVEN`. Consult the source revision and fingerprints in the generated table for its current evidence. |
 
 ## Content addressing and integrity
 

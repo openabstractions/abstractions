@@ -1,0 +1,12 @@
+type Raw string
+type Value struct
+  Data []byte
+func Encode(v *Value) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+func Decode(in []byte) (*Value, error)
+type Store interface
+  Read(path string) (Value, error)
+  Write(path string, base Value, data []byte) error

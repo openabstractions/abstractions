@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import re
 
-LAYERS = set('job download storage cas watch logging identity rights asks config model router facade'.split())
+LAYERS = set('job download storage cas watch logging identity rights asks credentials inference config model router facade'.split())
 LANGUAGES = set('go cpp python rust javascript'.split())
 
 
@@ -42,10 +42,19 @@ def validate_package_metadata(root, inventory):
     if missing: raise ValueError(f'generated packages lack metadata: {missing}')
 
 
+WIRE_NAME = re.compile(r'^service\s+\w+\s*\{.*?^\}\s*\(\s*wire_name\s*=\s*"([^"]+)"', re.M | re.S)
+
+
+def profiles(root, inventory):
+    """Each definition's service profiles by wire name, in declaration order."""
+    return {d['path']: WIRE_NAME.findall((root/d['path']).read_text(encoding='utf-8-sig'))
+            for row in inventory['layers'] for d in row['definitions']}
+
+
 def validate(root, inventory, complete=False):
     rows=inventory['layers']
     if inventory.get('version')!=1 or len(rows)!=len(LAYERS) or {r['layer'] for r in rows}!=LAYERS:
-        raise ValueError('exactly the thirteen intended layers are required')
+        raise ValueError(f'exactly the {len(LAYERS)} intended layers are required')
     declared=set(); pending=[]; generation=targets(root)
     for row in rows:
         name=row['layer']
@@ -85,11 +94,14 @@ def validate(root, inventory, complete=False):
                 raise ValueError(f'{name}: unknown generation mode')
             if bool(services)!=(mode in ('service','direct')):
                 raise ValueError(f'{name}: interface classification disagrees with descriptor')
+            no_ipc = definition.get('no_ipc', mode == 'direct')
+            if not isinstance(no_ipc, bool) or (no_ipc and mode not in ('direct', 'records')) or (mode == 'direct' and not no_ipc):
+                raise ValueError(f'{name}: incorrect IPC classification for {path}')
             rows_for=generation.get(path,[])
             for language in definition['languages']:
                 matches=[r for r in rows_for if language in r[1]]
                 if not matches: raise ValueError(f'{name}: missing {language} generation target for {path}')
-                if any(r[2]!=(mode=='direct') for r in matches):
+                if any(r[2]!=no_ipc for r in matches):
                     raise ValueError(f'{name}: incorrect IPC flag for {path}')
             if not any(r[3] for r in rows_for): raise ValueError(f'{name}: API documentation generation missing')
     actual={p.relative_to(root).as_posix() for name in LAYERS for p in (root/f'openabstractions-flat/abstraction-{name}').glob('*.thrift')}
@@ -97,7 +109,7 @@ def validate(root, inventory, complete=False):
     if complete and pending: raise ValueError(f'descriptor obligations remain: {", ".join(pending)}')
     validate_package_metadata(root, inventory)
     backlog = check_contract_rules(root, inventory)
-    return {'layers':len(rows),'definitions':len(declared),'pending':pending,'descriptors_complete':not pending,'pending_interfaces':[r['layer'] for r in rows if r.get('interface_generation',{}).get('status')=='pending'],'contract_rule_backlog':backlog}
+    return {'layers':len(rows),'definitions':len(declared),'profiles':sum(len(v) for v in profiles(root,inventory).values()),'pending':pending,'descriptors_complete':not pending,'pending_interfaces':[r['layer'] for r in rows if r.get('interface_generation',{}).get('status')=='pending'],'contract_rule_backlog':backlog}
 
 
 # Contract rules from feedback/protocol-lessons-audit-2026-09-15.md, "Rules for
@@ -114,8 +126,9 @@ def validate(root, inventory, complete=False):
 #       by a struct or field has no name to find it by: a recorded R4 entry
 #       naming Struct or Struct.field keeps failing until that subject is
 #       annotated.
-#   R7  every enum declares reader = "display" or "act", and unknown = "grant"
-#       for display, "refuse" for act.
+#   R7  every enum declares reader = "display", "validate" or "act". Displayed
+#       and semantically validated vocabularies carry unknown words; vocabularies
+#       acted on directly refuse them.
 # Current violations are recorded whole in CONTRACT_RULES_RECORDED. A violation
 # not recorded fails, and so does a recorded one that no longer occurs: the file
 # is the fix backlog and only shrinks.
@@ -123,7 +136,7 @@ CONTRACT_RULES_RECORDED = 'idl/contract_rules.recorded'
 POLICY_REFUSALS = ('forbidden', 'unavailable', 'invalid')
 CATALOGUE = re.compile(r'_(actions|keys|questions)$')
 FIELD = re.compile(r'\d+\s*:\s*(?:required\s+|optional\s+)?([\w.]+(?:<[^>]*>)?)\s+(\w+)')
-READERS = {'display': 'grant', 'act': 'refuse'}
+READERS = {'display': 'grant', 'validate': 'grant', 'act': 'refuse'}
 
 
 def _blank(text):
@@ -233,7 +246,7 @@ def definition_violations(path, model, service_calls, enums=None, structs=None, 
     for name, enum in model['enums'].items():
         reader, unknown = enum['reader'], enum['unknown']
         if reader not in READERS:
-            found.append(('R7', path, name, 'declares no reader = "display" or "act"'))
+            found.append(('R7', path, name, 'declares no reader = "display", "validate" or "act"'))
         elif unknown != READERS[reader]:
             found.append(('R7', path, name, f'reader = "{reader}" requires unknown = "{READERS[reader]}", found {unknown}'))
         if name.endswith('Cause') and (unknown != 'grant' or 'other' not in enum['members']):

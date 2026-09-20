@@ -1,0 +1,12 @@
+type Raw string
+var FailureNames
+type Failure struct
+  Error string
+  Permanent bool
+  Cause string
+func Encode(v *Failure) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+func Decode(in []byte) (*Failure, error)

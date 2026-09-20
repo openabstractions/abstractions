@@ -77,7 +77,7 @@ func TestRustTypedIncludes(t *testing.T) {
 	}
 	codecPath := filepath.Join(rs, "rs/cross/resolver/rec.rs")
 	codec, _ := os.ReadFile(codecPath)
-	for _, line := range []string{"pub type OAImported0 = fixture_model::Ref;\n", "fixture_request::decode_request_at(&r.buf[r.pos..], r.depth, r.limit)"} {
+	for _, line := range []string{"type OAImported0 = fixture_model::Ref;\n", "fixture_request::internal::decode_request_at(&r.buf[r.pos..], r.depth, r.limit)"} {
 		if !strings.Contains(string(codec), line) {
 			t.Fatalf("generated crate lacks %q", line)
 		}
@@ -263,15 +263,15 @@ fn main() {
     named.locator = "named".into();
     let round = fixture_request::decode_source_document(&fixture_request::encode_source_document(&named).unwrap()).unwrap();
     assert_eq!(round.locator, "named");
-    assert!(fixture_model::check_ref(&reference("x", "y"), 0, 64).is_ok());
-    assert_eq!(fixture_model::check_ref(&reference("x", "y"), 64, 64).unwrap_err().word, "depth_exceeded");
+    assert!(fixture_model::internal::check_ref(&reference("x", "y"), 0, 64).is_ok());
+    assert_eq!(fixture_model::internal::check_ref(&reference("x", "y"), 64, 64).unwrap_err().word, "depth_exceeded");
     let client = r::ResolverClient::new(Transport { host: host.clone(), calls: Cell::new(0) });
-    let answer = client.Resolve(reference("same", "weights.gguf")).unwrap();
+    let answer = client.resolve(reference("same", "weights.gguf")).unwrap();
     assert_eq!(answer.artifact.digest, "same");
     assert_eq!(answer.sources.len(), 1);
     assert_eq!(answer.sources[0].locator, "weights.gguf");
     assert_eq!(client.transport().calls.get(), 1);
-    for (what, outcome) in [("decode", r::decode_query_at(&bytes, 62, 64).map(|_| ())), ("check", r::check_query(&v, 62, 64))] {
+    for (what, outcome) in [("decode", r::internal::decode_query_at(&bytes, 62, 64).map(|_| ())), ("check", r::internal::check_query(&v, 62, 64))] {
         match outcome {
             Err(e) if e.word == "depth_exceeded" => {}
             other => {

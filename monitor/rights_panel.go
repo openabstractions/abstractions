@@ -3,12 +3,12 @@ package main
 import (
 	"encoding/json"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
 	facade "github.com/openabstractions/abstraction-facade/go"
+	identity "github.com/openabstractions/abstraction-identity"
 	rightsclient "github.com/openabstractions/abstraction-rights/go/client"
 )
 
@@ -31,7 +31,7 @@ func rightsText(s string, max int) bool {
 
 func (e rightsEdit) valid() bool {
 	target := rightsText(e.Revision, 128) && rightsText(e.Account, 128) && rightsText(e.Program, 4096) &&
-		filepath.IsAbs(e.Program) && filepath.Clean(e.Program) == e.Program && rightsText(e.Action, 128) && rightsText(e.Resource, 1024)
+		identity.ValidSubjectProgram(e.Program) && rightsText(e.Action, 128) && rightsText(e.Resource, 1024)
 	switch e.Edit {
 	case "set":
 		return target
@@ -62,10 +62,13 @@ func (p *servicePanel) rights(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := panelCall(r)
 	defer cancel()
-	operator, err := panelMachine().ResolveRightsOperator(ctx, facade.Requirements{Scope: "local"})
+	operator, err := panelMachine().ResolveRightsOperator(ctx, facade.Requirements{Scope: facade.ScopeLocal})
 	if err != nil {
 		panelError(w, err)
 		return
+	}
+	if edit.Edit != "" {
+		p.logAction(ctx, "rights."+edit.Edit, map[string]string{"rights.revision": edit.Revision, "rights.action": edit.Action})
 	}
 	subject := rightsclient.Subject{Account: edit.Account, Program: edit.Program}
 	var result any

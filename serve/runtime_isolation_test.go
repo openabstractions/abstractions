@@ -39,7 +39,7 @@ func TestRuntimeLogStorageFailurePreservesIndependentServices(t *testing.T) {
 		}
 	}()
 	result, err := resolution.NewClient(options.endpoint, time.Second).Resolve(ctx, wire.ResolveRequest{Capability: "abstraction.logging", Contracts: []string{"abstraction.logging/sink@1"}, Scope: wire.ScopeLocal})
-	if err != nil || result.Status != "not_ready" {
+	if err != nil || result.Status.String() != "not_ready" {
 		t.Fatalf("failed log advertised ready: %+v %v", result, err)
 	}
 	machine := client.New(options.endpoint)

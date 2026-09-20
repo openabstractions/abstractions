@@ -1,0 +1,17 @@
+type Raw string
+var LifecycleOperations
+var FailureNames
+type NoticeMetadata struct
+  Quiet bool
+  SilenceNs int64
+type WatchOptions struct
+  EveryNs int64
+  BudgetNs int64
+type Stamp struct
+  Value string
+func Encode(v *NoticeMetadata) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+func Decode(in []byte) (*NoticeMetadata, error)

@@ -1,0 +1,20 @@
+const FAILURE_NAMES
+dataclass FindResult
+  reference: Ref | None
+class Local
+  path(reference: Ref) -> str
+dataclass Ref
+  store: str
+  digest: str
+  size: int
+  locator: str
+class Refusal(ValueError)
+  __init__(word, offset)
+class Store
+  name() -> str
+  find(digest: str) -> FindResult
+  place(digest: str, size: int) -> Ref
+class Writable
+  commit(reference: Ref) -> None
+def decode(data)
+def encode(v)

@@ -18,7 +18,14 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:8734", "address to listen on; loopback only")
 	open := flag.Bool("open", true, "open the window in the default browser")
 	native := flag.Bool("native", windowed(), "draw a window on the desktop instead of serving a page")
+	endpoint := flag.String("runtime-endpoint", "", "resolver endpoint of a runtime other than the installed one, such as an isolated `openabstractions serve runtime`; requires -runtime-program")
+	program := flag.String("runtime-program", "", "absolute path of the executable that runtime must run as, under this account")
 	flag.Parse()
+	if *endpoint != "" || *program != "" {
+		if err := bindExplicitRuntime(*endpoint, *program); err != nil {
+			fail(*native, err)
+		}
+	}
 	if err := runServicePanel(*addr, *open, *native); err != nil {
 		fail(*native, err)
 	}

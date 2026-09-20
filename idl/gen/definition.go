@@ -32,6 +32,7 @@ type Typedef struct {
 
 type Field struct {
 	EnumType *Enum // backend carrier metadata; never changes the schema
+	EnumList bool  // the backend carrier is a list of EnumType, encoded as strings
 	ID       int
 	Type     string
 	Alias    string
@@ -103,6 +104,15 @@ type Member struct {
 	Ann  map[string]string
 }
 
+// WireName is the exact JSON string for this member. The logical Name remains
+// the source and native-language identifier when a contract supplies an alias.
+func (m Member) WireName() string {
+	if word, ok := m.Ann["wire"]; ok {
+		return word
+	}
+	return m.Name
+}
+
 type Enum struct {
 	Name    string
 	Members []Member
@@ -151,6 +161,11 @@ type Service struct {
 	WireName string
 	Name     string
 	Methods  []Method
+	// ErrorCodesConst names the const list<string> that declares the codes
+	// this service's handlers send on the reply error channel; ErrorCodes
+	// holds its words once the definition is validated.
+	ErrorCodesConst string
+	ErrorCodes      []string
 }
 
 type Definition struct {
@@ -279,6 +294,18 @@ func (f Field) Ident(lang string) string {
 	if n, ok := f.Ann[lang+".name"]; ok {
 		return n
 	}
+	switch lang {
+	case "rust":
+		return snakeName(f.Name)
+	case "cpp":
+		return cppIdent(f.Name)
+	case "go":
+		return goName(f.Name)
+	case "python":
+		return pyName(f.Name)
+	case "javascript":
+		return jsName(f.Name)
+	}
 	return f.Name
 }
 
@@ -328,6 +355,9 @@ func (e Enum) MemberAnn() []string {
 	var out []string
 	for _, m := range e.Members {
 		for k := range m.Ann {
+			if k == "wire" {
+				continue
+			}
 			if !seen[k] {
 				seen[k] = true
 				out = append(out, k)

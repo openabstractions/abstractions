@@ -1,0 +1,58 @@
+using Raw = std::string
+class Refusal : public std::runtime_error
+  const char* word
+  std::size_t offset
+enum class Profile {Video, ImageBatch}
+inline constexpr std::string_view wire_name(Profile value)
+inline std::optional<Profile> parse_profile(std::string_view name)
+inline constexpr bool operator==(Profile value, std::string_view name)
+inline constexpr bool operator!=(Profile value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Profile value)
+inline constexpr bool operator!=(std::string_view name, Profile value)
+inline const std::vector<std::string> kProfileNames
+enum class Mode {Generate, Edit}
+inline constexpr std::string_view wire_name(Mode value)
+inline std::optional<Mode> parse_mode(std::string_view name)
+inline constexpr bool operator==(Mode value, std::string_view name)
+inline constexpr bool operator!=(Mode value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Mode value)
+inline constexpr bool operator!=(std::string_view name, Mode value)
+inline const std::vector<std::string> kModeNames
+inline const std::vector<std::string> kRequestGuaranteeNames
+inline constexpr std::string_view kRequestGuaranteeLocalOnly
+inline constexpr std::string_view kRequestGuaranteeHostedAllowed
+inline const std::vector<std::string> kKinds
+inline const std::vector<std::string> kExecutionGuarantees
+struct ImageRequest
+  std::string model
+  Mode mode
+  std::string prompt
+  std::string size
+  std::int64_t count
+  std::string image_digest
+  std::string image_media_type
+  std::string mask_digest
+  std::string mask_media_type
+  std::vector<std::string> guarantees
+  std::string credential
+  std::vector<std::string> required_extensions
+  std::map<std::string, std::string> extensions
+struct Delivery
+  std::string digest
+  std::string media_type
+  std::int64_t size
+  std::string location
+struct Request
+  Profile profile
+  ImageRequest image
+  std::int64_t duration_ms
+struct JobResult
+  Profile profile
+  std::vector<Delivery> deliveries
+  std::string host
+  std::string model
+struct Document
+  std::optional<Request> request
+  std::optional<JobResult> result
+inline std::string encode(const Document& v)
+inline Document decode(std::string_view data)

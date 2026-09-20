@@ -1,0 +1,23 @@
+type Raw string
+var FailureNames
+type Ref struct
+  Store string
+  Digest string
+  Size int64
+  Locator string
+type FindResult struct
+  Reference *Ref
+func Encode(v *Ref) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+func Decode(in []byte) (*Ref, error)
+type Store interface
+  Name() (string, error)
+  Find(digest string) (FindResult, error)
+  Place(digest string, size int64) (Ref, error)
+type Local interface
+  Path(reference Ref) (string, error)
+type Writable interface
+  Commit(reference Ref) error

@@ -7,7 +7,10 @@ actual facade/logging/identity Cargo source packages, including generated rs
 files. It builds this committed consumer manifest offline, without synthetic
 package metadata or registry dependencies.
 
-The outside consumer uses native bootstrap with an explicit fixture override,
+The outside consumer checks that installed discovery (`discover()`) selects the
+runtime identity through the shared C ABI and refuses the fixture host that the
+endpoint override names, as `runtime_unavailable` with an `UNTRUSTED` or
+`PROOF_UNAVAILABLE` cause. Through the explicit fixture endpoint it then
 resolves a production Go logging service and writes/reads an exact Unicode
 record with attributes and receiver identity. It checks absent/unmet resolution,
 a forged reference from a generated Go dispatcher, outbound schema refusal, cancellation after binding and during quiet resolver
@@ -16,7 +19,7 @@ provider/contract/scope/guarantee/transport references and malformed history.
 No Rust server, provider files or owner runtime are used by the client; its
 isolated home must remain empty. The Go fixture owns and removes its history.
 
-The runner measures Windows/MSVC only and cleans temporary binaries, source
+The runner measures Windows/MSVC and Linux/GCC and cleans temporary binaries, source
 copies and provider data. It makes no full Rust language-matrix claim.
 
 The source fixture selects `rust-native` and `rust-logging` explicitly. The pure `rust` resolver core has no logging or native dependency.

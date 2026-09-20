@@ -1,0 +1,178 @@
+const ACCEPTANCE_ERROR_CODES
+const ADMISSION_GUARANTEES
+enum AcceptanceOutcome
+  ACCEPTED = 'accepted'
+  DEFINITELY_NOT_ACCEPTED = 'definitely_not_accepted'
+  UNKNOWN = 'unknown'
+  KEY_CONFLICT = 'key_conflict'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  UNAVAILABLE = 'unavailable'
+dataclass AcceptanceResult
+  outcome: AcceptanceOutcome | None
+  receipt: Receipt | None
+  reason: str
+enum CancellationOutcome
+  REQUESTED = 'requested'
+  ALREADY_TERMINAL = 'already_terminal'
+  UNKNOWN = 'unknown'
+  FORBIDDEN = 'forbidden'
+  UNSUPPORTED = 'unsupported'
+  UNAVAILABLE = 'unavailable'
+dataclass CancellationResult
+  outcome: CancellationOutcome | None
+class DispatchError(ValueError)
+  __init__(code)
+enum FailureCause
+  OTHER = 'other'
+  DIGEST_MISMATCH = 'digest_mismatch'
+  OVERSIZE = 'oversize'
+  SHORT_TRANSFER = 'short_transfer'
+  UNAUTHORIZED = 'unauthorized'
+  NOT_FOUND = 'not_found'
+  REFUSED = 'refused'
+  SERVER_ERROR = 'server_error'
+  TRANSPORT = 'transport'
+  RESULT_LOST = 'result_lost'
+  CREDENTIAL = 'credential'
+enum FailureClass
+  RETRYABLE = 'retryable'
+  PERMANENT = 'permanent'
+  UNKNOWN = 'unknown'
+dataclass HistoryWindow
+  logical_owner: str
+  history_epoch: str
+  minimum_retention_ms: int
+  result_retention_ms: int
+enum InventoryOutcome
+  PAGE = 'page'
+  GAP = 'gap'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  UNAVAILABLE = 'unavailable'
+dataclass InventoryPage
+  outcome: InventoryOutcome | None
+  snapshots: list[OperationSnapshot]
+  next: str
+  complete: bool
+class JobInventory
+  list_work(cursor: str, limit: int) -> InventoryPage
+class JobInventoryClient(JobInventory)
+  __init__(transport)
+  list_work(cursor: str, limit: int) -> InventoryPage
+class JobOperator
+  list_account_work(cursor: str, limit: int) -> InventoryPage
+  cancel_operation(operation_id: str) -> OperatorCancellation
+class JobOperatorClient(JobOperator)
+  __init__(transport)
+  list_account_work(cursor: str, limit: int) -> InventoryPage
+  cancel_operation(operation_id: str) -> OperatorCancellation
+enum ObservationOutcome
+  OBSERVED = 'observed'
+  UNKNOWN = 'unknown'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  DEFINITELY_NOT_ACCEPTED = 'definitely_not_accepted'
+  UNAVAILABLE = 'unavailable'
+dataclass ObservationResult
+  outcome: ObservationOutcome | None
+  snapshot: OperationSnapshot | None
+class OperationControl
+  observe_work(identity: RequestIdentity) -> ObservationResult
+  read_result(identity: RequestIdentity, offset: int, max_bytes: int) -> ResultRead
+class OperationControlClient(OperationControl)
+  __init__(transport)
+  observe_work(identity: RequestIdentity) -> ObservationResult
+  read_result(identity: RequestIdentity, offset: int, max_bytes: int) -> ResultRead
+dataclass OperationSnapshot
+  receipt: Receipt
+  state: WorkState | None
+  progress: WorkProgress
+  cancellation_requested: bool
+  failure: WorkFailure | None
+  label: str
+  label_derived: bool
+  waiting: str
+dataclass OperatorCancellation
+  outcome: OperatorCancellationOutcome | None
+enum OperatorCancellationOutcome
+  REQUESTED = 'requested'
+  ALREADY_TERMINAL = 'already_terminal'
+  UNKNOWN = 'unknown'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  UNAVAILABLE = 'unavailable'
+const RESOURCE_ACTIONS
+dataclass Receipt
+  identity: RequestIdentity
+  logical_owner: str
+  operation_id: str
+  accepted_guarantees: list[str]
+  history_retention_ms: int
+class RecoverableAcceptance
+  get_history_window() -> HistoryWindow
+  submit(submission: Submission) -> AcceptanceResult
+  reconcile(identity: RequestIdentity) -> AcceptanceResult
+  cancel_work(identity: RequestIdentity) -> CancellationResult
+class RecoverableAcceptanceClient(RecoverableAcceptance)
+  __init__(transport)
+  get_history_window() -> HistoryWindow
+  submit(submission: Submission) -> AcceptanceResult
+  reconcile(identity: RequestIdentity) -> AcceptanceResult
+  cancel_work(identity: RequestIdentity) -> CancellationResult
+class Refusal(ValueError)
+  __init__(word, offset)
+dataclass RequestIdentity
+  key: str
+  history_epoch: str
+  attempt: int
+dataclass ResultChunk
+  receipt: Receipt
+  offset: int
+  total: int
+  data: bytes
+  eof: bool
+enum ResultOutcome
+  DATA = 'data'
+  NOT_READY = 'not_ready'
+  UNAVAILABLE = 'unavailable'
+  UNSUPPORTED = 'unsupported'
+  UNKNOWN = 'unknown'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+dataclass ResultRead
+  outcome: ResultOutcome | None
+  chunk: ResultChunk | None
+class ServiceError(Exception)
+  __init__(code, message)
+enum ServiceErrorCode
+  HANDLER_ERROR = 'handler_error'
+  INVALID_RESULT = 'invalid_result'
+  UNKNOWN_VERSION = 'unknown_version'
+  UNKNOWN_SERVICE = 'unknown_service'
+  UNKNOWN_METHOD = 'unknown_method'
+  WRONG_MODE = 'wrong_mode'
+  FORBIDDEN = 'forbidden'
+dataclass Submission
+  identity: RequestIdentity
+  kind: str
+  spec: bytes
+  required_guarantees: list[str]
+  label: str
+dataclass WorkFailure
+  classification: FailureClass | None
+  message: str
+  cause: FailureCause | str
+dataclass WorkProgress
+  done: int
+  total: int
+enum WorkState
+  PENDING = 'pending'
+  RUNNING = 'running'
+  TRANSFERRED = 'transferred'
+  COMPLETE = 'complete'
+  FAILED = 'failed'
+  CANCELLED = 'cancelled'
+def decode(data)
+def encode(v)
+def service_name(frame)

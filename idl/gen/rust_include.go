@@ -46,7 +46,7 @@ func validateRustIncludes(s *Definition) error {
 		if s.Envelope(st.Name) {
 			continue
 		}
-		l := lower(st.Name)
+		l := rsFn(st.Name)
 		for _, n := range []string{"enc_" + l, "decode_" + l, "named_encode_" + l, "check_" + l, "encode_" + l + "_at", "decode_" + l + "_at", "encode_" + l + "_document", "decode_" + l + "_document"} {
 			if prior, ok := names[n]; ok {
 				return fmt.Errorf("rust named codec collision %s between %s and record %s", n, prior, st.Name)
@@ -59,7 +59,7 @@ func validateRustIncludes(s *Definition) error {
 
 func emitRustIncluded(b backend, s *Definition) string {
 	s = importCarriers(s)
-	body := b.emit(s)
+	body := genRustBody(s)
 	body = rsMustReplace(body, "struct Reader<'a> {\n    buf: &'a [u8],\n    pos: usize,\n    depth: i32,\n}", "struct Reader<'a> {\n    buf: &'a [u8],\n    pos: usize,\n    depth: i32,\n    limit: i32,\n}")
 	body = rsMustReplace(body, "if self.depth > DEPTH_LIMIT {", "if self.depth > self.limit {")
 	// A selection without decoders constructs no reader; every construction present gains the default limit.
@@ -69,17 +69,18 @@ func emitRustIncluded(b backend, s *Definition) string {
 		if s.Encoding.TrailingNewline() {
 			term = "    out.push(b'\\n');\n"
 		}
-		plain := fmt.Sprintf("\npub fn encode(v: &%s) -> Vec<u8> {\n    let mut out = Vec::new();\n    enc_%s(&mut out, v, 0);\n%s    out\n}\n", s.Document, lower(s.Document), term)
-		body = rsMustReplace(body, plain, fmt.Sprintf("\npub fn encode(v: &%s) -> Vec<u8> {\n    match encode_%s_document(v) {\n        Ok(out) => out,\n        Err(e) => std::panic::panic_any(e),\n    }\n}\n", s.Document, lower(s.Document)))
+		plain := fmt.Sprintf("\npub fn encode(v: &%s) -> Vec<u8> {\n    let mut out = Vec::new();\n    enc_%s(&mut out, v, 0);\n%s    out\n}\n", s.Document, rsFn(s.Document), term)
+		body = rsMustReplace(body, plain, fmt.Sprintf("\npub fn encode(v: &%s) -> Vec<u8> {\n    match encode_%s_document(v) {\n        Ok(out) => out,\n        Err(e) => std::panic::panic_any(e),\n    }\n}\n", s.Document, rsFn(s.Document)))
 	}
 	var tail strings.Builder
 	for _, n := range foreignNames(s) {
 		imp := s.Foreign[n]
-		fmt.Fprintf(&tail, rsImportedBridge, n, lower(n), s.RustImports[imp.Alias], imp.Name, lower(imp.Name))
+		fmt.Fprintf(&tail, rsImportedBridge, n, rsFn(n), s.RustImports[imp.Alias], imp.Name, rsFn(imp.Name))
 		if !s.NoIPC && len(s.Services) > 0 {
-			fmt.Fprintf(&tail, "\nfn service_check_%s(v: &%s) -> Result<(), Refusal> {\n    check_imported_%s(v)\n}\n", lower(n), n, lower(n))
+			fmt.Fprintf(&tail, "\nfn service_check_%s(v: &%s) -> Result<(), Refusal> {\n    check_imported_%s(v)\n}\n", rsFn(n), n, rsFn(n))
 		}
 	}
+	var named []string
 	for _, st := range s.Structs {
 		if s.Envelope(st.Name) {
 			continue
@@ -92,9 +93,10 @@ func emitRustIncluded(b backend, s *Definition) string {
 		if s.Encoding.TrailingNewline() {
 			out, term = "let mut out", "    out.push(b'\\n');\n"
 		}
-		fmt.Fprintf(&tail, rsNamedCodec, st.Name, lower(st.Name), bind, derive, out, term)
+		fmt.Fprintf(&tail, rsNamedCodec, st.Name, rsFn(st.Name), bind, derive, out, term)
+		named = append(named, st.Name)
 	}
-	return body + tail.String()
+	return body + tail.String() + rsInternal(s, named)
 }
 
 func rsMustReplace(body, old, replacement string) string {
@@ -106,24 +108,18 @@ func rsMustReplace(body, old, replacement string) string {
 
 // %[1]s carrier, %[2]s lower carrier, %[3]s crate path, %[4]s imported record, %[5]s lower imported record.
 const rsImportedBridge = `
-pub type %[1]s = %[3]s::%[4]s;
+type %[1]s = %[3]s::%[4]s;
 
-pub fn enc_%[2]s(out: &mut Vec<u8>, v: &%[1]s, depth: i32) {
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let mut bytes = Vec::new();
-        %[3]s::enc_%[5]s(&mut bytes, v, depth);
-        bytes
-    })) {
+// The included crate encodes and checks its own record; its refusal keeps its word.
+fn enc_%[2]s(out: &mut Vec<u8>, v: &%[1]s, depth: i32) {
+    match %[3]s::internal::encode_%[5]s_at(v, depth) {
         Ok(bytes) => out.extend_from_slice(&bytes),
-        Err(p) => match p.downcast::<%[3]s::Refusal>() {
-            Ok(e) => std::panic::panic_any(Refusal { word: e.word, offset: e.offset }),
-            Err(p) => std::panic::resume_unwind(p),
-        },
+        Err(e) => std::panic::panic_any(Refusal { word: e.word, offset: e.offset }),
     }
 }
 
 fn decode_%[2]s(r: &mut Reader) -> Result<%[1]s, Refusal> {
-    match %[3]s::decode_%[5]s_at(&r.buf[r.pos..], r.depth, r.limit) {
+    match %[3]s::internal::decode_%[5]s_at(&r.buf[r.pos..], r.depth, r.limit) {
         Ok((v, n)) => {
             r.pos += n;
             Ok(v)
@@ -133,7 +129,7 @@ fn decode_%[2]s(r: &mut Reader) -> Result<%[1]s, Refusal> {
 }
 
 fn check_imported_%[2]s(v: &%[1]s) -> Result<(), Refusal> {
-    %[3]s::check_%[5]s(v, 0, DEPTH_LIMIT).map_err(|e| Refusal { word: e.word, offset: e.offset })
+    %[3]s::internal::check_%[5]s(v, 0, DEPTH_LIMIT).map_err(|e| Refusal { word: e.word, offset: e.offset })
 }
 `
 
@@ -153,7 +149,7 @@ fn named_encode_%[2]s(v: &%[1]s, depth: i32) -> Result<Vec<u8>, Refusal> {
     }
 }
 
-pub fn decode_%[2]s_at(data: &[u8], depth: i32, limit: i32) -> Result<(%[1]s, usize), Refusal> {
+fn decode_%[2]s_at(data: &[u8], depth: i32, limit: i32) -> Result<(%[1]s, usize), Refusal> {
     let mut r = Reader { buf: data, pos: 0, depth, limit: if limit < DEPTH_LIMIT { limit } else { DEPTH_LIMIT } };
     if depth < 0 || limit < 1 {
         return r.refuse("depth_exceeded");
@@ -163,7 +159,7 @@ pub fn decode_%[2]s_at(data: &[u8], depth: i32, limit: i32) -> Result<(%[1]s, us
 %[4]s    Ok((v, r.pos))
 }
 
-pub fn check_%[2]s(v: &%[1]s, depth: i32, limit: i32) -> Result<(), Refusal> {
+fn check_%[2]s(v: &%[1]s, depth: i32, limit: i32) -> Result<(), Refusal> {
     if depth < 0 || limit < 1 {
         return Err(Refusal { word: "depth_exceeded", offset: 0 });
     }
@@ -171,8 +167,8 @@ pub fn check_%[2]s(v: &%[1]s, depth: i32, limit: i32) -> Result<(), Refusal> {
     decode_%[2]s_at(&out, depth, limit).map(|_| ())
 }
 
-pub fn encode_%[2]s_at(v: &%[1]s, depth: i32) -> Result<Vec<u8>, Refusal> {
-    if depth < 0 || depth >= DEPTH_LIMIT {
+fn encode_%[2]s_at(v: &%[1]s, depth: i32) -> Result<Vec<u8>, Refusal> {
+    if !(0..DEPTH_LIMIT).contains(&depth) {
         return Err(Refusal { word: "depth_exceeded", offset: 0 });
     }
     let out = named_encode_%[2]s(v, depth)?;

@@ -1,0 +1,88 @@
+pub type Raw
+pub enum PageOutcome
+  Page
+  Gap
+  Unavailable
+  InvalidRequest
+  RecordTooLarge
+  Corrupt
+  Unsupported
+  pub const ALL: [Self; 7]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub mod service_error_code
+  pub const HANDLER_ERROR: &str
+  pub const INVALID_RESULT: &str
+  pub const UNKNOWN_VERSION: &str
+  pub const UNKNOWN_SERVICE: &str
+  pub const UNKNOWN_METHOD: &str
+  pub const WRONG_MODE: &str
+  pub const CALLER_UNAVAILABLE: &str
+  pub const IDENTITY_REQUIRED: &str
+  pub const WRONG_USER: &str
+  pub const POLICY_UNAVAILABLE: &str
+  pub const FORBIDDEN: &str
+  pub const ALL: [&str; 11]
+pub const HISTORY_ERROR_CODES: [&str; 5]
+pub const HISTORY_CURSOR_WORDS: [&str; 1]
+pub struct Attestation
+  by: String
+  verified: bool
+  hop: i64
+  program: String
+  host: String
+  user: String
+  exe: String
+  uid: i64
+  gid: i64
+  pid: i64
+  key: String
+  mac: String
+pub struct Record
+  schema: i64
+  time: String
+  level: i64
+  msg: String
+  identity: Vec<Attestation>
+  job: String
+  attrs: BTreeMap<String, String>
+pub struct Page
+  outcome: PageOutcome
+  records: Vec<Record>
+  next: String
+  at_end: bool
+pub fn encode(v: &Record) -> Vec<u8>
+pub struct Refusal
+  word: &'static str
+  offset: usize
+pub fn decode(data: &[u8]) -> Result<Record, Refusal>
+pub use abstraction_frame::FrameTransport
+pub struct ServiceError
+  code: String
+  message: String
+pub enum CallError<E>
+  Transport(E)
+  Refusal(Refusal)
+  Dispatch(&'static str)
+  Service(ServiceError)
+pub trait Sink
+  type Error
+  fn write(&self, record: Record) -> Result<(), Self::Error>
+pub struct SinkClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait HistoryReader
+  type Error
+  fn read(&self, cursor: String, max_records: i64, max_bytes: i64) -> Result<Page, Self::Error>
+pub struct HistoryReaderClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait HistoryObserver
+  type Error
+  fn observe(&self, cursor: String, max_records: i64, max_bytes: i64, wait_ms: i64) -> Result<Page, Self::Error>
+pub struct HistoryObserverClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub mod internal
+  pub fn micros_timestamp(text: &str) -> bool
+  pub fn wide_timestamp(text: &str) -> bool

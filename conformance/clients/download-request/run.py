@@ -3,7 +3,7 @@ import argparse, hashlib, os, shutil, subprocess, sys, tempfile
 from pathlib import Path
 HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE.parent))
-from workspace import ROOT, layer, environment, cmake_for, certify_compiler, CERTIFIES, source_revision, dry_run_stop, DRY_RUN_HELP
+from workspace import ROOT, layer, environment, cmake_for, certify_compiler, CERTIFIES, source_revision, dry_run_stop, DRY_RUN_HELP, CMAKE_BUILD_TYPE_RELEASE
 p=argparse.ArgumentParser(description=__doc__+' '+CERTIFIES)
 p.add_argument('--run',action='store_true')
 p.add_argument('--dry-run', action='store_true', help=DRY_RUN_HELP)
@@ -26,7 +26,7 @@ gen=['-G',a.generator] if a.generator else []
 # request consumer and Go reader keep exchanging files in b itself.
 with tempfile.TemporaryDirectory(prefix='r-',dir=b,ignore_cleanup_errors=True) as temp:
  work=Path(temp);build,prefix,consumer,outside=work/'b',work/'p',work/'c',work/'outside'
- run([a.cmake,'-S',layer('abstraction-download')/'cpp','-B',build,'-DABSTRACTION_BUILD_TESTS=OFF',*gen])
+ run([a.cmake,'-S',layer('abstraction-download')/'cpp','-B',build,'-DABSTRACTION_BUILD_TESTS=OFF',CMAKE_BUILD_TYPE_RELEASE,*gen])
  certify_compiler(build)
  run([a.cmake,'--build',build,'--config','Release','--parallel','4'])
  run([a.cmake,'--install',build,'--config','Release','--prefix',prefix])
@@ -35,7 +35,7 @@ with tempfile.TemporaryDirectory(prefix='r-',dir=b,ignore_cleanup_errors=True) a
  # Copy only the consumer sources outside the source checkout's include hierarchy.
  outside.mkdir()
  for name in ('CMakeLists.txt','client.cpp'): shutil.copyfile(HERE/name,outside/name)
- run([a.cmake,'-S',outside,'-B',consumer,'-DCMAKE_PREFIX_PATH='+str(prefix),*gen])
+ run([a.cmake,'-S',outside,'-B',consumer,'-DCMAKE_PREFIX_PATH='+str(prefix),CMAKE_BUILD_TYPE_RELEASE,*gen])
  certify_compiler(consumer)
  run([a.cmake,'--build',consumer,'--config','Release'])
  exe=consumer/'Release'/'request_consumer.exe' if os.name=='nt' else consumer/'request_consumer'

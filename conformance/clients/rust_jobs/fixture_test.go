@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	download "github.com/openabstractions/abstraction-download/go"
+	"github.com/openabstractions/abstraction-download/go/netcost"
 	execution "github.com/openabstractions/abstraction-download/go/serve"
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	resolution "github.com/openabstractions/abstraction-facade/go/resolution"
@@ -55,7 +57,7 @@ func TestInstalledRustJobs(t *testing.T) {
 	}))
 	defer source.Close()
 	prefix := fmt.Sprintf("rust-jobs-%d-%d", os.Getpid(), time.Now().UnixNano())
-	options := host.Options{Endpoint: listen.Endpoint(prefix), LogEndpoint: listen.Endpoint(prefix + "l"), ConfigEndpoint: listen.Endpoint(prefix + "c"), ModelEndpoint: listen.Endpoint(prefix + "m"), JobEndpoint: listen.Endpoint(prefix + "j"), JobRoot: filepath.Join(home, "private"), JobOwner: "rust-jobs-owner", JobExecutor: execution.HTTPExecution{}}
+	options := host.Options{Endpoint: listen.Endpoint(prefix), LogEndpoint: listen.Endpoint(prefix + "l"), ConfigEndpoint: listen.Endpoint(prefix + "c"), ModelEndpoint: listen.Endpoint(prefix + "m"), JobEndpoint: listen.Endpoint(prefix + "j"), JobRoot: filepath.Join(home, "private"), JobOwner: "rust-jobs-owner", JobExecutor: meteredExecution()}
 	h, err := host.Listen(options)
 	if err != nil {
 		t.Fatal(err)
@@ -75,7 +77,7 @@ func TestInstalledRustJobs(t *testing.T) {
 	// Provider attribution is independent of the durable owner's identity.
 	var candidates []resolution.Candidate
 	for _, contract := range []string{"abstraction.job/acceptance@1", "abstraction.job/operations@1", "abstraction.job/inventory@1"} {
-		candidates = append(candidates, resolution.Candidate{Ready: true, Reference: wire.ServiceReference{Provider: "implementation-A", Capability: "abstraction.job", Contract: contract, Scope: "local", Transport: resolution.LocalTransport, Endpoint: options.JobEndpoint}})
+		candidates = append(candidates, resolution.Candidate{Ready: true, Reference: wire.ServiceReference{Provider: "implementation-A", Capability: "abstraction.job", Contract: contract, Scope: wire.ScopeLocal, Transport: resolution.LocalTransport, Endpoint: options.JobEndpoint}})
 	}
 	catalog, err := resolution.New(candidates)
 	if err != nil {
@@ -103,7 +105,14 @@ func TestInstalledRustJobs(t *testing.T) {
 		t.Fatal(err)
 	}
 	spec := request.Encode(&request.Request{Artifact: request.Artifact{Digest: fmt.Sprintf("sha256:%x", sha256.Sum256(body)), Size: int64(len(body))}, Sources: []request.Source{{Scheme: "http", Locator: source.URL}}})
-	cmd := exec.CommandContext(ctx, python, aliasEndpoint, hex.EncodeToString(spec))
+	// A second generated request asks for an unmetered network; the runtime's
+	// cost source reports a metered path, so it waits and is never fetched.
+	constrained := request.Encode(&request.Request{Sources: []request.Source{{Scheme: "http", Locator: source.URL + "/constrained"}}, Constraints: &request.Constraints{Network: request.NetworkUnmetered}})
+	// Two more name a credential: hf, which the runtime admits and refuses to
+	// apply, and missing, which it refuses at admission.
+	named := request.Encode(&request.Request{Sources: []request.Source{{Scheme: "http", Locator: source.URL + "/credential", Credential: "hf"}}})
+	missing := request.Encode(&request.Request{Sources: []request.Source{{Scheme: "http", Locator: source.URL + "/missing", Credential: "missing"}}})
+	cmd := exec.CommandContext(ctx, python, aliasEndpoint, hex.EncodeToString(spec), hex.EncodeToString(constrained), hex.EncodeToString(named), hex.EncodeToString(missing))
 	cmd.Dir = clientHome
 	cmd.Env = append(os.Environ(), "HOME="+clientHome, "USERPROFILE="+clientHome, "APPDATA="+clientHome, "XDG_CONFIG_HOME="+clientHome, "ProgramData="+clientHome, "PYTHONDONTWRITEBYTECODE=1")
 	out, err := fixture.Output(ctx, cmd)
@@ -118,4 +127,28 @@ func TestInstalledRustJobs(t *testing.T) {
 	if err != nil || len(entries) != 0 {
 		t.Fatal("client touched provider storage", entries, err)
 	}
+}
+
+// meteredExecution is real HTTP execution whose network cost source reports a
+// metered path, so a request with network unmetered waits and never fetches.
+// Unconstrained work is unaffected by it.
+func meteredExecution() execution.HTTPExecution {
+	metered := netcost.NewFake(netcost.Metered)
+	return execution.HTTPExecution{NetworkCost: func() (netcost.Source, error) { return metered, nil }, Credentials: fixtureCredentials{}}
+}
+
+// fixtureCredentials admits the credential hf and refuses any other name as
+// unknown at admission; applying hf is refused as revoked, so work naming it
+// ends with cause credential and never reaches the origin (JOB-A16, DL-K1).
+type fixtureCredentials struct{}
+
+func (fixtureCredentials) CheckCredential(_ context.Context, _, name, _ string) error {
+	if name == "hf" {
+		return nil
+	}
+	return download.CredentialRefusal(name, "unknown")
+}
+
+func (fixtureCredentials) ApplyCredential(_ context.Context, _, name, _ string) (map[string]string, error) {
+	return nil, download.CredentialRefusal(name, "revoked")
 }

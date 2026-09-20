@@ -1,0 +1,450 @@
+type Raw string
+type Scope uint32
+const ScopeAny
+const ScopeLocal
+const ScopeRemote
+func (Scope) String() string
+func (Scope) WireName() (string, bool)
+func ParseScope(word string) (Scope, bool)
+func (Scope) MarshalText() ([]byte, error)
+func (Scope) UnmarshalText(text []byte) error
+func (Scope) MarshalJSON() ([]byte, error)
+func (Scope) UnmarshalJSON(data []byte) error
+func ScopeValues() []Scope
+func (Scope) Known() bool
+type ResolutionStatus uint32
+const ResolutionStatusResolved
+const ResolutionStatusUnavailable
+const ResolutionStatusForbidden
+const ResolutionStatusIncompatible
+const ResolutionStatusUnmetRequirements
+const ResolutionStatusNotReady
+const ResolutionStatusInvalidRequest
+func (ResolutionStatus) String() string
+func (ResolutionStatus) WireName() (string, bool)
+func ParseResolutionStatus(word string) (ResolutionStatus, bool)
+func (ResolutionStatus) MarshalText() ([]byte, error)
+func (ResolutionStatus) UnmarshalText(text []byte) error
+func (ResolutionStatus) MarshalJSON() ([]byte, error)
+func (ResolutionStatus) UnmarshalJSON(data []byte) error
+func ResolutionStatusValues() []ResolutionStatus
+func (ResolutionStatus) Known() bool
+type BootstrapState uint32
+const BootstrapStateUnknown
+const BootstrapStateInstalled
+const BootstrapStateStarting
+const BootstrapStateRunning
+const BootstrapStateUnavailable
+func (BootstrapState) String() string
+func (BootstrapState) WireName() (string, bool)
+func ParseBootstrapState(word string) (BootstrapState, bool)
+func (BootstrapState) MarshalText() ([]byte, error)
+func (BootstrapState) UnmarshalText(text []byte) error
+func (BootstrapState) MarshalJSON() ([]byte, error)
+func (BootstrapState) UnmarshalJSON(data []byte) error
+func BootstrapStateValues() []BootstrapState
+func (BootstrapState) Known() bool
+type CallerOutcome uint32
+const CallerOutcomeObserved
+const CallerOutcomeForbidden
+const CallerOutcomeUnavailable
+const CallerOutcomeInvalid
+func (CallerOutcome) String() string
+func (CallerOutcome) WireName() (string, bool)
+func ParseCallerOutcome(word string) (CallerOutcome, bool)
+func (CallerOutcome) MarshalText() ([]byte, error)
+func (CallerOutcome) UnmarshalText(text []byte) error
+func (CallerOutcome) MarshalJSON() ([]byte, error)
+func (CallerOutcome) UnmarshalJSON(data []byte) error
+func CallerOutcomeValues() []CallerOutcome
+func (CallerOutcome) Known() bool
+type DescriptionOutcome uint32
+const DescriptionOutcomeDescribed
+const DescriptionOutcomeForbidden
+const DescriptionOutcomeUnavailable
+const DescriptionOutcomeInvalid
+func (DescriptionOutcome) String() string
+func (DescriptionOutcome) WireName() (string, bool)
+func ParseDescriptionOutcome(word string) (DescriptionOutcome, bool)
+func (DescriptionOutcome) MarshalText() ([]byte, error)
+func (DescriptionOutcome) UnmarshalText(text []byte) error
+func (DescriptionOutcome) MarshalJSON() ([]byte, error)
+func (DescriptionOutcome) UnmarshalJSON(data []byte) error
+func DescriptionOutcomeValues() []DescriptionOutcome
+func (DescriptionOutcome) Known() bool
+type ServiceReadiness uint32
+const ServiceReadinessReady
+const ServiceReadinessNotReady
+const ServiceReadinessUnknown
+func (ServiceReadiness) String() string
+func (ServiceReadiness) WireName() (string, bool)
+func ParseServiceReadiness(word string) (ServiceReadiness, bool)
+func (ServiceReadiness) MarshalText() ([]byte, error)
+func (ServiceReadiness) UnmarshalText(text []byte) error
+func (ServiceReadiness) MarshalJSON() ([]byte, error)
+func (ServiceReadiness) UnmarshalJSON(data []byte) error
+func ServiceReadinessValues() []ServiceReadiness
+func (ServiceReadiness) Known() bool
+type DeclarationTransport uint32
+const DeclarationTransportNative
+const DeclarationTransportRemote
+func (DeclarationTransport) String() string
+func (DeclarationTransport) WireName() (string, bool)
+func ParseDeclarationTransport(word string) (DeclarationTransport, bool)
+func (DeclarationTransport) MarshalText() ([]byte, error)
+func (DeclarationTransport) UnmarshalText(text []byte) error
+func (DeclarationTransport) MarshalJSON() ([]byte, error)
+func (DeclarationTransport) UnmarshalJSON(data []byte) error
+func DeclarationTransportValues() []DeclarationTransport
+func (DeclarationTransport) Known() bool
+type Activation uint32
+const ActivationOnDemand
+const ActivationAttach
+const ActivationRemote
+func (Activation) String() string
+func (Activation) WireName() (string, bool)
+func ParseActivation(word string) (Activation, bool)
+func (Activation) MarshalText() ([]byte, error)
+func (Activation) UnmarshalText(text []byte) error
+func (Activation) MarshalJSON() ([]byte, error)
+func (Activation) UnmarshalJSON(data []byte) error
+func ActivationValues() []Activation
+func (Activation) Known() bool
+type DeclarationReadiness uint32
+const DeclarationReadinessReady
+const DeclarationReadinessIdle
+const DeclarationReadinessStarting
+const DeclarationReadinessRestarting
+const DeclarationReadinessRefused
+const DeclarationReadinessUnreachable
+const DeclarationReadinessNotReady
+func (DeclarationReadiness) String() string
+func (DeclarationReadiness) WireName() (string, bool)
+func ParseDeclarationReadiness(word string) (DeclarationReadiness, bool)
+func (DeclarationReadiness) MarshalText() ([]byte, error)
+func (DeclarationReadiness) UnmarshalText(text []byte) error
+func (DeclarationReadiness) MarshalJSON() ([]byte, error)
+func (DeclarationReadiness) UnmarshalJSON(data []byte) error
+func DeclarationReadinessValues() []DeclarationReadiness
+func (DeclarationReadiness) Known() bool
+type DeclarationListOutcome uint32
+const DeclarationListOutcomePage
+const DeclarationListOutcomeInvalid
+const DeclarationListOutcomeForbidden
+const DeclarationListOutcomeUnavailable
+func (DeclarationListOutcome) String() string
+func (DeclarationListOutcome) WireName() (string, bool)
+func ParseDeclarationListOutcome(word string) (DeclarationListOutcome, bool)
+func (DeclarationListOutcome) MarshalText() ([]byte, error)
+func (DeclarationListOutcome) UnmarshalText(text []byte) error
+func (DeclarationListOutcome) MarshalJSON() ([]byte, error)
+func (DeclarationListOutcome) UnmarshalJSON(data []byte) error
+func DeclarationListOutcomeValues() []DeclarationListOutcome
+func (DeclarationListOutcome) Known() bool
+type DeclarationEditOutcome uint32
+const DeclarationEditOutcomeApplied
+const DeclarationEditOutcomeConflict
+const DeclarationEditOutcomeUnknown
+const DeclarationEditOutcomeInvalid
+const DeclarationEditOutcomeForbidden
+const DeclarationEditOutcomeUnavailable
+func (DeclarationEditOutcome) String() string
+func (DeclarationEditOutcome) WireName() (string, bool)
+func ParseDeclarationEditOutcome(word string) (DeclarationEditOutcome, bool)
+func (DeclarationEditOutcome) MarshalText() ([]byte, error)
+func (DeclarationEditOutcome) UnmarshalText(text []byte) error
+func (DeclarationEditOutcome) MarshalJSON() ([]byte, error)
+func (DeclarationEditOutcome) UnmarshalJSON(data []byte) error
+func DeclarationEditOutcomeValues() []DeclarationEditOutcome
+func (DeclarationEditOutcome) Known() bool
+type ApplicationOutcome uint32
+const ApplicationOutcomeApplied
+const ApplicationOutcomePage
+const ApplicationOutcomeUnknown
+const ApplicationOutcomeStale
+const ApplicationOutcomeConflict
+const ApplicationOutcomeInvalid
+const ApplicationOutcomeForbidden
+const ApplicationOutcomeUnavailable
+func (ApplicationOutcome) String() string
+func (ApplicationOutcome) WireName() (string, bool)
+func ParseApplicationOutcome(word string) (ApplicationOutcome, bool)
+func (ApplicationOutcome) MarshalText() ([]byte, error)
+func (ApplicationOutcome) UnmarshalText(text []byte) error
+func (ApplicationOutcome) MarshalJSON() ([]byte, error)
+func (ApplicationOutcome) UnmarshalJSON(data []byte) error
+func ApplicationOutcomeValues() []ApplicationOutcome
+func (ApplicationOutcome) Known() bool
+type ApplicationActivationOutcome uint32
+const ApplicationActivationOutcomeReady
+const ApplicationActivationOutcomeUnknown
+const ApplicationActivationOutcomeDisabled
+const ApplicationActivationOutcomeForbidden
+const ApplicationActivationOutcomeInvalid
+const ApplicationActivationOutcomeLaunchRefused
+const ApplicationActivationOutcomeIdentityRefused
+const ApplicationActivationOutcomeNotReady
+const ApplicationActivationOutcomeUnavailable
+func (ApplicationActivationOutcome) String() string
+func (ApplicationActivationOutcome) WireName() (string, bool)
+func ParseApplicationActivationOutcome(word string) (ApplicationActivationOutcome, bool)
+func (ApplicationActivationOutcome) MarshalText() ([]byte, error)
+func (ApplicationActivationOutcome) UnmarshalText(text []byte) error
+func (ApplicationActivationOutcome) MarshalJSON() ([]byte, error)
+func (ApplicationActivationOutcome) UnmarshalJSON(data []byte) error
+func ApplicationActivationOutcomeValues() []ApplicationActivationOutcome
+func (ApplicationActivationOutcome) Known() bool
+type ServiceErrorCode string
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) Known() bool
+var DeclarationResourceKinds
+var RegistryActions
+var DefaultRuntimeContracts
+type ResolveRequest struct
+  Capability string
+  Contracts []string
+  Guarantees []string
+  Scope Scope
+type ServiceReference struct
+  Provider string
+  Capability string
+  Contract string
+  Guarantees []string
+  Scope Scope
+  Transport string
+  Endpoint string
+type ResolveResult struct
+  Status ResolutionStatus
+  Reference *ServiceReference
+type BootstrapObservation struct
+  State BootstrapState
+  Detail string
+type CapabilityObservation struct
+  Request ResolveRequest
+  Result *ResolveResult
+type RuntimeObservation struct
+  Bootstrap BootstrapObservation
+  Capabilities []CapabilityObservation
+type CallerAttribute struct
+  Attribute string
+  Proof string
+  Ceiling string
+type CallerObservation struct
+  Outcome CallerOutcome
+  Mechanism string
+  Account string
+  Program string
+  PID int64
+  Attributes []CallerAttribute
+  Platform string
+  Transport string
+  Bindable bool
+  Stronger string
+type ServiceState struct
+  Contract string
+  Readiness ServiceReadiness
+  Why string
+  Guarantees []string
+  Capabilities map[string]string
+type Description struct
+  Outcome DescriptionOutcome
+  Program string
+  Version string
+  Services []ServiceState
+type RemoteTrust struct
+  ServerName string
+  Roots string
+  Certificate string
+  Key string
+  Credential string
+type Declaration struct
+  Name string
+  Program string
+  Arguments []string
+  Endpoint string
+  Transport DeclarationTransport
+  Contracts []string
+  Guarantees []string
+  Resources []string
+  Activation Activation
+  Remote *RemoteTrust
+  Models []string
+type DeclarationState struct
+  Declaration Declaration
+  DeclaredBy string
+  DeclaredUnixMs int64
+  Readiness DeclarationReadiness
+  Why string
+  Restarts int64
+  Described []ServiceState
+  Accepted []string
+type DeclarationList struct
+  Outcome DeclarationListOutcome
+  Revision string
+  Declarations []DeclarationState
+type DeclarationChange struct
+  Outcome DeclarationEditOutcome
+  Revision string
+  Reason string
+type DeclarationObservation struct
+  Outcome DeclarationListOutcome
+  Cursor string
+  Declarations []DeclarationState
+type ApplicationInterface struct
+  Name string
+  Protocol string
+  Contract string
+type ApplicationActivationRecipe struct
+  Arguments []string
+  Readiness ApplicationInterface
+  ReadinessTimeoutMs int64
+type ApplicationDescriptor struct
+  Name string
+  Program string
+  Title string
+  StartGuidance string
+  Activation *ApplicationActivationRecipe
+type ApplicationContext struct
+  Name string
+  Title string
+  Revision string
+type ApplicationPresence struct
+  Application string
+  Instance string
+  Interfaces []ApplicationInterface
+  Contexts []ApplicationContext
+  LeaseMs int64
+type ApplicationInstance struct
+  Instance string
+  Interfaces []ApplicationInterface
+  Contexts []ApplicationContext
+  ExpiresUnixMs int64
+type ApplicationEntry struct
+  Descriptor ApplicationDescriptor
+  Instances []ApplicationInstance
+  Scope Scope
+type ApplicationChange struct
+  Outcome ApplicationOutcome
+  Instance string
+  Reason string
+type ApplicationPage struct
+  Outcome ApplicationOutcome
+  Cursor string
+  Applications []ApplicationEntry
+type ApplicationActivationResult struct
+  Outcome ApplicationActivationOutcome
+  Instance string
+  Started bool
+  Reason string
+func Encode(v *ResolveResult) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+func Decode(in []byte) (*ResolveResult, error)
+type FrameWriter interface
+  WriteFrame(frame []byte) error
+type DispatchError string
+func (DispatchError) Error() string
+func ServiceName(frame []byte) (string, error)
+type FrameExchanger interface
+  ExchangeFrame(frame []byte) ([]byte, error)
+type ServiceError struct
+  Code ServiceErrorCode
+  Message string
+func (ServiceError) Error() string
+const EndpointContract
+type DescribedService interface
+  DescribeService() (contract string, ready bool, why string)
+func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+type ServedService interface
+  DescribedService
+  ServiceContract() string
+func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+type Resolver interface
+  Resolve(request ResolveRequest) (ResolveResult, error)
+type ResolverTransport interface
+  FrameExchanger
+type ResolverClient struct
+func NewResolverClient(t ResolverTransport) *ResolverClient
+type ResolverDispatcher struct
+  Handler Resolver
+func (ResolverClient) Resolve(request ResolveRequest) (result ResolveResult, err error)
+func (ResolverDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ResolverDispatcher) ServiceContract() string
+func (ResolverDispatcher) WriteFrame(frame []byte) error
+func (ResolverDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type Caller interface
+  Observe() (CallerObservation, error)
+type CallerTransport interface
+  FrameExchanger
+type CallerClient struct
+func NewCallerClient(t CallerTransport) *CallerClient
+type CallerDispatcher struct
+  Handler Caller
+func (CallerClient) Observe() (result CallerObservation, err error)
+func (CallerDispatcher) DescribeService() (contract string, ready bool, why string)
+func (CallerDispatcher) ServiceContract() string
+func (CallerDispatcher) WriteFrame(frame []byte) error
+func (CallerDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type Endpoint interface
+  Describe() (Description, error)
+type EndpointTransport interface
+  FrameExchanger
+type EndpointClient struct
+func NewEndpointClient(t EndpointTransport) *EndpointClient
+type EndpointDispatcher struct
+  Handler Endpoint
+func (EndpointClient) Describe() (result Description, err error)
+func (EndpointDispatcher) DescribeService() (contract string, ready bool, why string)
+func (EndpointDispatcher) ServiceContract() string
+func (EndpointDispatcher) WriteFrame(frame []byte) error
+func (EndpointDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type Registry interface
+  Declarations() (DeclarationList, error)
+  Declare(expectedRevision string, declaration Declaration) (DeclarationChange, error)
+  Withdraw(expectedRevision, name string) (DeclarationChange, error)
+  Observe(cursor string, waitMs int64) (DeclarationObservation, error)
+type RegistryTransport interface
+  FrameExchanger
+type RegistryClient struct
+func NewRegistryClient(t RegistryTransport) *RegistryClient
+type RegistryDispatcher struct
+  Handler Registry
+func (RegistryClient) Declarations() (result DeclarationList, err error)
+func (RegistryClient) Declare(expectedRevision string, declaration Declaration) (result DeclarationChange, err error)
+func (RegistryClient) Withdraw(expectedRevision, name string) (result DeclarationChange, err error)
+func (RegistryClient) Observe(cursor string, waitMs int64) (result DeclarationObservation, err error)
+func (RegistryDispatcher) DescribeService() (contract string, ready bool, why string)
+func (RegistryDispatcher) ServiceContract() string
+func (RegistryDispatcher) WriteFrame(frame []byte) error
+func (RegistryDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type Applications interface
+  Register(descriptor ApplicationDescriptor) (ApplicationChange, error)
+  Remove(application string) (ApplicationChange, error)
+  Announce(presence ApplicationPresence) (ApplicationChange, error)
+  Withdraw(application, instance string) (ApplicationChange, error)
+  Observe(cursor string, waitMs int64) (ApplicationPage, error)
+  Activate(application string) (ApplicationActivationResult, error)
+type ApplicationsTransport interface
+  FrameExchanger
+type ApplicationsClient struct
+func NewApplicationsClient(t ApplicationsTransport) *ApplicationsClient
+type ApplicationsDispatcher struct
+  Handler Applications
+func (ApplicationsClient) Register(descriptor ApplicationDescriptor) (result ApplicationChange, err error)
+func (ApplicationsClient) Remove(application string) (result ApplicationChange, err error)
+func (ApplicationsClient) Announce(presence ApplicationPresence) (result ApplicationChange, err error)
+func (ApplicationsClient) Withdraw(application, instance string) (result ApplicationChange, err error)
+func (ApplicationsClient) Observe(cursor string, waitMs int64) (result ApplicationPage, err error)
+func (ApplicationsClient) Activate(application string) (result ApplicationActivationResult, err error)
+func (ApplicationsDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ApplicationsDispatcher) ServiceContract() string
+func (ApplicationsDispatcher) WriteFrame(frame []byte) error
+func (ApplicationsDispatcher) ExchangeFrame(frame []byte) ([]byte, error)

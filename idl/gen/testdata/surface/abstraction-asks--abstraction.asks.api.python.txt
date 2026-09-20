@@ -1,0 +1,115 @@
+dataclass Answer
+  id: str
+  pending: bool
+  option: str
+  yes: bool
+  kept: bool
+dataclass ApplicationQuestion
+  request_key: str
+  key: str
+  slots: dict[str, str]
+class DispatchError(ValueError)
+  __init__(code)
+const OPERATIONS
+enum ObservationOutcome
+  PENDING = 'pending'
+  ANSWERED = 'answered'
+  UNKNOWN = 'unknown'
+  GONE = 'gone'
+  INVALID = 'invalid'
+  CONFLICT = 'conflict'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass OperatorDecision
+  outcome: OperatorDecisionOutcome | None
+  record: RecordMetadata | None
+enum OperatorDecisionOutcome
+  ANSWERED = 'answered'
+  CONFLICT = 'conflict'
+  UNKNOWN = 'unknown'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass OperatorPage
+  outcome: OperatorPageOutcome | None
+  records: list[RecordMetadata]
+  next: str
+  complete: bool
+enum OperatorPageOutcome
+  PAGE = 'page'
+  GAP = 'gap'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass OperatorRetirement
+  outcome: OperatorRetirementOutcome | None
+  record: RecordMetadata | None
+enum OperatorRetirementOutcome
+  RETIRED = 'retired'
+  UNKNOWN = 'unknown'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass Question
+  asker: str
+  key: str
+  slots: dict[str, str]
+class QuestionApplication
+  ask(question: ApplicationQuestion) -> QuestionObservation
+  observe(request_key: str, wait_ms: int) -> QuestionObservation
+class QuestionApplicationClient(QuestionApplication)
+  __init__(transport)
+  ask(question: ApplicationQuestion) -> QuestionObservation
+  observe(request_key: str, wait_ms: int) -> QuestionObservation
+dataclass QuestionObservation
+  outcome: ObservationOutcome | None
+  answer: Answer | None
+class QuestionOperator
+  list_questions(cursor: str, limit: int) -> OperatorPage
+  answer_question(id: str, option: str) -> OperatorDecision
+  retire_question(id: str) -> OperatorRetirement
+class QuestionOperatorClient(QuestionOperator)
+  __init__(transport)
+  list_questions(cursor: str, limit: int) -> OperatorPage
+  answer_question(id: str, option: str) -> OperatorDecision
+  retire_question(id: str) -> OperatorRetirement
+const REFUSAL_CODES
+const RESOURCE_ACTIONS
+dataclass RecordMetadata
+  id: str
+  asker: str
+  key: str
+  about: str
+  text: str
+  options: list[str]
+  asked: str
+  option: str
+  answered: str
+  kept: bool
+  yes: bool
+class Refusal(ValueError)
+  __init__(word, offset)
+dataclass Request
+  op: str
+  ask: Question | None
+  wait: bool
+  id: str
+  option: str
+  admin: str
+dataclass ResponseMetadata
+  code: str
+  error: str
+  answer: Answer | None
+  records: list[RecordMetadata]
+class ServiceError(Exception)
+  __init__(code, message)
+enum ServiceErrorCode
+  HANDLER_ERROR = 'handler_error'
+  INVALID_RESULT = 'invalid_result'
+  UNKNOWN_VERSION = 'unknown_version'
+  UNKNOWN_SERVICE = 'unknown_service'
+  UNKNOWN_METHOD = 'unknown_method'
+  WRONG_MODE = 'wrong_mode'
+def decode(data)
+def encode(v)
+def service_name(frame)

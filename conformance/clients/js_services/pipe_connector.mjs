@@ -31,8 +31,10 @@ export class PipeTestConnector {
         if (size > maxFrame) return fail(new Error('oversized reply'));
         if (received.length > 4 + size) return fail(new Error('trailing reply bytes'));
         if (received.length === 4 + size) {
-          // The service waits for end-of-stream after its reply.
-          socket.end();
+          // The service waits for end-of-stream after its reply. end() only
+          // half-closes a Windows pipe, which held the service's call open
+          // until its deadline; destroy() closes the handle.
+          socket.destroy();
           succeed(new Uint8Array(received.subarray(4)));
         }
       });

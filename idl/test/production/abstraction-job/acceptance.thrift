@@ -45,7 +45,8 @@ struct Submission {
   2: required string kind
   3: required binary spec
   4: required list<string> required_guarantees
-} (unknown_fields = "refuse", doc="Opaque kind-specific specification bytes, not a second tagged job Record. Equality includes kind, exact spec bytes and the set of required guarantees. Credentials are supplied at the authorized service boundary.")
+  5: optional string label (omit = "absent")
+} (unknown_fields = "refuse", doc="Opaque kind-specific specification bytes, not a second tagged job Record. Equality includes kind, exact spec bytes and the set of required guarantees. Credentials are supplied at the authorized service boundary. Label is the caller's display text for the operation, 1 to 256 UTF-8 bytes after trimming on one line; an empty label is absent, and an invalid one makes Submit invalid. It is outside equality and fixed at acceptance (JOB-A12).")
 struct Receipt {
   1: required RequestIdentity identity
   2: required string logical_owner
@@ -53,7 +54,7 @@ struct Receipt {
   4: required list<string> accepted_guarantees
   5: required i64 history_retention_ms
 } (unknown_fields = "refuse", doc="Recoverable acceptance evidence. Retention is a minimum duration from original acceptance, never renewed by replay. Expiry does not end work, transfer ownership or authorize duplicate execution. IDs confer no authority.")
-enum Outcome {
+enum AcceptanceOutcome {
   1: accepted
   2: definitely_not_accepted
   3: unknown
@@ -63,7 +64,7 @@ enum Outcome {
   7: unavailable
 } (unknown = "refuse")
 struct AcceptanceResult {
-  1: required Outcome outcome
+  1: required AcceptanceOutcome outcome
   2: optional Receipt receipt (omit = "absent")
   3: required string reason
 } (document = "true", unknown_fields = "refuse", doc="Accepted requires a receipt; other outcomes forbid one. Definite nonacceptance requires authoritative sealed evidence preventing any delayed acceptance of this identity. Absence, timeout, expired history and access denial are insufficient. Unavailable means a required policy decision could not be obtained: no admission effect and no seal were recorded, and the same identity may be presented again (JOB-A9).")
@@ -84,12 +85,17 @@ enum CancellationOutcome {
 struct CancellationResult {
   1: required CancellationOutcome outcome
 } (unknown_fields = "refuse", doc="Requested acknowledges cancellation intent, not stopped effects. Completion may win the race; observe the existing operation for its terminal result. Unavailable records no intent because a required policy decision could not be obtained; the request may be repeated.")
+// Codes RecoverableAcceptance handlers send on the reply error channel, beside
+// the dispatcher's own. GetHistoryWindow has no outcome field and refuses an
+// unauthorized caller here.
+const list<string> acceptance_error_codes = ["forbidden"]
+
 service RecoverableAcceptance {
   HistoryWindow GetHistoryWindow() (doc="Obtain the logical owner and history epoch before first submission; creates no work.")
   AcceptanceResult Submit(1: Submission submission) (doc="Atomically associate authenticated request identity, arguments, operation and guarantees before acknowledging. Duplicate equal arguments recover the original receipt. No weaker provider fallback on unknown.")
   AcceptanceResult Reconcile(1: RequestIdentity identity) (doc="Authorized lookup at the original logical owner after lost request, lost reply or caller restart. A definite negative seals the identity against delayed submissions. Unavailable evidence gives unknown.")
   CancellationResult CancelWork(1: RequestIdentity identity) (doc="Authorized explicit work cancellation. Cancelling a transport wait is never this operation and never relinquishes accepted work ownership.")
-} (wire_name = "abstraction.job/acceptance@1", doc="Version 1 recoverable acceptance vocabulary, local or remote. Providers must implement atomic recovery and downstream deduplication before advertising those guarantees. Legacy Store is not implicitly upgraded.")
+} (wire_name = "abstraction.job/acceptance@1", error_codes = "acceptance_error_codes", doc="Version 1 recoverable acceptance vocabulary, local or remote. Providers must implement atomic recovery and downstream deduplication before advertising those guarantees. Legacy Store is not implicitly upgraded.")
 
 // Observation and result access retain the original authenticated acceptance scope.
 enum WorkState {
@@ -120,6 +126,7 @@ enum FailureCause {
   8: server_error
   9: transport
   10: result_lost
+  11: credential
 } (unknown = "grant")
 struct WorkFailure {
   1: required FailureClass classification
@@ -132,7 +139,10 @@ struct OperationSnapshot {
   3: required WorkProgress progress
   4: required bool cancellation_requested
   5: optional WorkFailure failure (omit = "absent")
-} (unknown_fields = "refuse", doc="Receipt binds original request and logical owner. Cancellation requested is intent, not stopped effects. Progress and last-attempt failure are advisory; no provider paths are exposed.")
+  6: optional string label (omit = "absent")
+  7: optional bool label_derived (omit = "zero")
+  8: optional string waiting (omit = "zero")
+} (unknown_fields = "refuse", doc="Receipt binds original request and logical owner. Cancellation requested is intent, not stopped effects. Progress and last-attempt failure are advisory; no provider paths are exposed, and the label is display text, never a path or a result file name. Label is the stored display label: the caller's, or one the kind's provider derived at acceptance, when label_derived is true. It is absent when neither exists (JOB-A12). Waiting is the word the kind's provider reports for accepted, unfinished work held by a condition the submission set, such as network:metered; empty when nothing holds it. It is advisory and never a failure (JOB-A15).")
 enum ObservationOutcome {
   1: observed
   2: unknown
@@ -187,3 +197,24 @@ struct InventoryPage {
 service JobInventory {
   InventoryPage ListWork(1: string cursor, 2: i64 limit) (doc="List only the authenticated acceptance scope. Empty cursor starts a bounded enumeration; limit is 1..64 snapshots. Opaque cursors are bound to this provider instance and caller. Sessions expire after 30 seconds idle and restart yields gap; at most 32 sessions exist. Each call scans at most 256 directory entries and 16MiB provider bytes, with a 512KiB compact-JSON snapshot accounting budget (frame encoding overhead is additional). Empty scan pages still advance. Repeating the latest input cursor with the same limit replays its page; older cursors return gap. A lost initial empty-cursor reply can be restarted explicitly; no global scan or cross-caller authority is implied. Partial reads may return unavailable rather than falsely complete. No subscription or retention protocol is supplied.")
 } (wire_name = "abstraction.job/inventory@1", doc="Bounded own-scope inventory on the acceptance provider endpoint. Authorization is independent of cursor text and uses the existing native caller scope. Listing does not authorize cross-scope Observe/Cancel or expose private provider paths.")
+
+// The rights actions a job service enforces (JOB-A14). Submission spends on the
+// account's behalf; account-wide inventory and cancelling another program's
+// work cross programs. The resource of each is abstraction.job/acceptance@1.
+const list<string> resource_actions = ["abstraction.job/acceptance.submit", "abstraction.job/acceptance.cancel", "abstraction.job/inventory.read"] (catalogue = "closed", closed_by = "JOB-A14")
+
+enum OperatorCancellationOutcome {
+  1: requested
+  2: already_terminal
+  3: unknown
+  4: forbidden
+  5: invalid
+  6: unavailable
+} (reader = "act", unknown = "refuse")
+struct OperatorCancellation {
+  1: required OperatorCancellationOutcome outcome
+} (unknown_fields = "refuse", doc="Requested acknowledges cancellation intent recorded on the named operation, whichever scope accepted it; it is not stopped effects. Already_terminal names an operation that ended. Unknown names no operation of this provider. Invalid is a malformed operation id. Forbidden is an evaluated refusal of the caller's rule. Unavailable records no intent because the decision or the store could not be reached (JOB-A13).")
+service JobOperator {
+  InventoryPage ListAccountWork(1: string cursor, 2: i64 limit) (doc="List accepted operations of every caller scope of this provider, under the same bounds, cursor, session, replay and gap rules as JobInventory.ListWork. A cursor is bound to the caller and to this account-wide listing. Each call is decided by the rule abstraction.job/inventory.read on abstraction.job/acceptance@1 (JOB-A13); forbidden and unavailable pages carry no snapshots. Snapshots expose no provider paths and no caller scope.")
+  OperatorCancellation CancelOperation(1: string operation_id) (doc="Record cancellation intent on the operation with this receipt operation id, whichever scope accepted it. The id is 1..128 bytes of lowercase ASCII letters, digits and '-'. Each call is decided by the rule abstraction.job/acceptance.cancel on abstraction.job/acceptance@1 (JOB-A13). The intent records the caller's scope. Observe the operation through its submitter or ListAccountWork for its terminal state.")
+} (wire_name = "abstraction.job/operator@1", doc="Account-wide inventory and cross-scope cancellation on the acceptance provider endpoint, for the person acting through an operator program. A provider serves it only with a configured rights decision per call; without one every call is forbidden. A caller's own work stays on RecoverableAcceptance, OperationControl and JobInventory under ownership (JOB-A13).")

@@ -13,16 +13,16 @@ int main(int argc,char**argv){try{
  const std::string mode=argv[2];
  abstraction::facade::Machine machine(argv[1]);
  const auto deadline=abstraction::ipc::Clock::now()+std::chrono::seconds(10);
- auto history=machine.ResolveLogReader({},"local",deadline);
- auto model=machine.ResolveModel({},"local",deadline);
- auto router=machine.ResolveRouter({},"local",deadline);
+ auto history=machine.resolve_log_reader({},abstraction::facade::Scope::Local,deadline);
+ auto model=machine.resolve_model({},abstraction::facade::Scope::Local,deadline);
+ auto router=machine.resolve_router({},abstraction::facade::Scope::Local,deadline);
  abstraction::model::api::Ref ref;ref.registry="fixture";ref.repo="weights";
  abstraction::router::PickRequest pick;pick.model="qwen2.5";
  std::map<std::string,std::string> got{
-  {"history",code_of([&]{history.Read("",16,65536);})},
-  {"model",model.Resolve(ref).outcome},
-  {"inventory",code_of([&]{router.Models();})},
-  {"route",code_of([&]{router.Pick(pick);})}};
+  {"history",code_of([&]{history.read("",16,65536);})},
+  {"model",std::string(wire_name(model.resolve(ref).outcome))},
+  {"inventory",code_of([&]{router.models();})},
+  {"route",code_of([&]{router.pick(pick);})}};
  std::map<std::string,std::string> want;
  if(mode=="denied"||mode=="revoked")want={{"history","forbidden"},{"model","forbidden"},{"inventory","forbidden"},{"route","forbidden"}};
  else if(mode=="granted")want={{"history","ok"},{"model","resolved"},{"inventory","ok"},{"route","ok"}};

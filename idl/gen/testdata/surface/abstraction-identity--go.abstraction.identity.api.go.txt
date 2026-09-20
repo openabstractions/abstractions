@@ -1,0 +1,39 @@
+type Raw string
+type Proof uint32
+const ProofNone
+const ProofClaimed
+const ProofInvalid
+const ProofUnsigned
+const ProofUnmet
+const ProofPID
+const ProofBound
+const ProofKernel
+const ProofSigned
+func (Proof) String() string
+func (Proof) WireName() (string, bool)
+func ParseProof(word string) (Proof, bool)
+func (Proof) MarshalText() ([]byte, error)
+func (Proof) UnmarshalText(text []byte) error
+func (Proof) MarshalJSON() ([]byte, error)
+func (Proof) UnmarshalJSON(data []byte) error
+func ProofValues() []Proof
+func (Proof) Known() bool
+var NativeOperations
+var NativeBindingTypes
+type ProofRequirement struct
+  User Proof
+  Process Proof
+  Path Proof
+  Package Proof
+  Code Proof
+type ProofFailure struct
+  Attribute string
+  Have Proof
+  Need Proof
+  Why string
+func Encode(v *ProofRequirement) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+func Decode(in []byte) (*ProofRequirement, error)

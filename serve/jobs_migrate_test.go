@@ -336,7 +336,7 @@ func observeMigratedJobs(t *testing.T, wait context.Context, endpoint, epoch str
 	for s, id := range f.ids {
 		identity := api.RequestIdentity{Key: "legacy-" + string(s), HistoryEpoch: window.HistoryEpoch}
 		observed, err := jobs.ObserveWork(wait, identity)
-		if err != nil || observed.Outcome != "observed" || observed.Snapshot.Receipt.OperationId != id || observed.Snapshot.State != finalState[s] {
+		if err != nil || observed.Outcome.String() != "observed" || observed.Snapshot.Receipt.OperationID != id || observed.Snapshot.State.String() != finalState[s] {
 			t.Fatalf("observe %s: %+v %v", s, observed, err)
 		}
 		if finalState[s] == "complete" {
@@ -346,7 +346,7 @@ func observeMigratedJobs(t *testing.T, wait context.Context, endpoint, epoch str
 			}
 			continue
 		}
-		if read, err := jobs.ReadResult(wait, identity, 0, 1024); err != nil || read.Outcome != "unavailable" {
+		if read, err := jobs.ReadResult(wait, identity, 0, 1024); err != nil || read.Outcome.String() != "unavailable" {
 			t.Fatalf("terminal non-result %s: %+v %v", s, read, err)
 		}
 	}

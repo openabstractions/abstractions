@@ -1,0 +1,303 @@
+type Raw string
+type AcceptanceOutcome uint32
+const AcceptanceOutcomeAccepted
+const AcceptanceOutcomeDefinitelyNotAccepted
+const AcceptanceOutcomeUnknown
+const AcceptanceOutcomeKeyConflict
+const AcceptanceOutcomeForbidden
+const AcceptanceOutcomeInvalid
+const AcceptanceOutcomeUnavailable
+func (AcceptanceOutcome) String() string
+func (AcceptanceOutcome) WireName() (string, bool)
+func ParseAcceptanceOutcome(word string) (AcceptanceOutcome, bool)
+func (AcceptanceOutcome) MarshalText() ([]byte, error)
+func (AcceptanceOutcome) UnmarshalText(text []byte) error
+func (AcceptanceOutcome) MarshalJSON() ([]byte, error)
+func (AcceptanceOutcome) UnmarshalJSON(data []byte) error
+func AcceptanceOutcomeValues() []AcceptanceOutcome
+func (AcceptanceOutcome) Known() bool
+type CancellationOutcome uint32
+const CancellationOutcomeRequested
+const CancellationOutcomeAlreadyTerminal
+const CancellationOutcomeUnknown
+const CancellationOutcomeForbidden
+const CancellationOutcomeUnsupported
+const CancellationOutcomeUnavailable
+func (CancellationOutcome) String() string
+func (CancellationOutcome) WireName() (string, bool)
+func ParseCancellationOutcome(word string) (CancellationOutcome, bool)
+func (CancellationOutcome) MarshalText() ([]byte, error)
+func (CancellationOutcome) UnmarshalText(text []byte) error
+func (CancellationOutcome) MarshalJSON() ([]byte, error)
+func (CancellationOutcome) UnmarshalJSON(data []byte) error
+func CancellationOutcomeValues() []CancellationOutcome
+func (CancellationOutcome) Known() bool
+type WorkState uint32
+const WorkStatePending
+const WorkStateRunning
+const WorkStateTransferred
+const WorkStateComplete
+const WorkStateFailed
+const WorkStateCancelled
+func (WorkState) String() string
+func (WorkState) WireName() (string, bool)
+func ParseWorkState(word string) (WorkState, bool)
+func (WorkState) MarshalText() ([]byte, error)
+func (WorkState) UnmarshalText(text []byte) error
+func (WorkState) MarshalJSON() ([]byte, error)
+func (WorkState) UnmarshalJSON(data []byte) error
+func WorkStateValues() []WorkState
+func (WorkState) Known() bool
+type FailureClass uint32
+const FailureClassRetryable
+const FailureClassPermanent
+const FailureClassUnknown
+func (FailureClass) String() string
+func (FailureClass) WireName() (string, bool)
+func ParseFailureClass(word string) (FailureClass, bool)
+func (FailureClass) MarshalText() ([]byte, error)
+func (FailureClass) UnmarshalText(text []byte) error
+func (FailureClass) MarshalJSON() ([]byte, error)
+func (FailureClass) UnmarshalJSON(data []byte) error
+func FailureClassValues() []FailureClass
+func (FailureClass) Known() bool
+type FailureCause string
+const FailureCauseOther
+const FailureCauseDigestMismatch
+const FailureCauseOversize
+const FailureCauseShortTransfer
+const FailureCauseUnauthorized
+const FailureCauseNotFound
+const FailureCauseRefused
+const FailureCauseServerError
+const FailureCauseTransport
+const FailureCauseResultLost
+const FailureCauseCredential
+func FailureCauseValues() []FailureCause
+func (FailureCause) Known() bool
+type ObservationOutcome uint32
+const ObservationOutcomeObserved
+const ObservationOutcomeUnknown
+const ObservationOutcomeForbidden
+const ObservationOutcomeInvalid
+const ObservationOutcomeDefinitelyNotAccepted
+const ObservationOutcomeUnavailable
+func (ObservationOutcome) String() string
+func (ObservationOutcome) WireName() (string, bool)
+func ParseObservationOutcome(word string) (ObservationOutcome, bool)
+func (ObservationOutcome) MarshalText() ([]byte, error)
+func (ObservationOutcome) UnmarshalText(text []byte) error
+func (ObservationOutcome) MarshalJSON() ([]byte, error)
+func (ObservationOutcome) UnmarshalJSON(data []byte) error
+func ObservationOutcomeValues() []ObservationOutcome
+func (ObservationOutcome) Known() bool
+type ResultOutcome uint32
+const ResultOutcomeData
+const ResultOutcomeNotReady
+const ResultOutcomeUnavailable
+const ResultOutcomeUnsupported
+const ResultOutcomeUnknown
+const ResultOutcomeForbidden
+const ResultOutcomeInvalid
+func (ResultOutcome) String() string
+func (ResultOutcome) WireName() (string, bool)
+func ParseResultOutcome(word string) (ResultOutcome, bool)
+func (ResultOutcome) MarshalText() ([]byte, error)
+func (ResultOutcome) UnmarshalText(text []byte) error
+func (ResultOutcome) MarshalJSON() ([]byte, error)
+func (ResultOutcome) UnmarshalJSON(data []byte) error
+func ResultOutcomeValues() []ResultOutcome
+func (ResultOutcome) Known() bool
+type InventoryOutcome uint32
+const InventoryOutcomePage
+const InventoryOutcomeGap
+const InventoryOutcomeForbidden
+const InventoryOutcomeInvalid
+const InventoryOutcomeUnavailable
+func (InventoryOutcome) String() string
+func (InventoryOutcome) WireName() (string, bool)
+func ParseInventoryOutcome(word string) (InventoryOutcome, bool)
+func (InventoryOutcome) MarshalText() ([]byte, error)
+func (InventoryOutcome) UnmarshalText(text []byte) error
+func (InventoryOutcome) MarshalJSON() ([]byte, error)
+func (InventoryOutcome) UnmarshalJSON(data []byte) error
+func InventoryOutcomeValues() []InventoryOutcome
+func (InventoryOutcome) Known() bool
+type OperatorCancellationOutcome uint32
+const OperatorCancellationOutcomeRequested
+const OperatorCancellationOutcomeAlreadyTerminal
+const OperatorCancellationOutcomeUnknown
+const OperatorCancellationOutcomeForbidden
+const OperatorCancellationOutcomeInvalid
+const OperatorCancellationOutcomeUnavailable
+func (OperatorCancellationOutcome) String() string
+func (OperatorCancellationOutcome) WireName() (string, bool)
+func ParseOperatorCancellationOutcome(word string) (OperatorCancellationOutcome, bool)
+func (OperatorCancellationOutcome) MarshalText() ([]byte, error)
+func (OperatorCancellationOutcome) UnmarshalText(text []byte) error
+func (OperatorCancellationOutcome) MarshalJSON() ([]byte, error)
+func (OperatorCancellationOutcome) UnmarshalJSON(data []byte) error
+func OperatorCancellationOutcomeValues() []OperatorCancellationOutcome
+func (OperatorCancellationOutcome) Known() bool
+type ServiceErrorCode string
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+const ServiceErrorCodeForbidden
+func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) Known() bool
+var AdmissionGuarantees
+var AcceptanceErrorCodes
+var ResourceActions
+type RequestIdentity struct
+  Key string
+  HistoryEpoch string
+  Attempt int64
+type Submission struct
+  Identity RequestIdentity
+  Kind string
+  Spec []byte
+  RequiredGuarantees []string
+  Label string
+type Receipt struct
+  Identity RequestIdentity
+  LogicalOwner string
+  OperationID string
+  AcceptedGuarantees []string
+  HistoryRetentionMs int64
+type AcceptanceResult struct
+  Outcome AcceptanceOutcome
+  Receipt *Receipt
+  Reason string
+type HistoryWindow struct
+  LogicalOwner string
+  HistoryEpoch string
+  MinimumRetentionMs int64
+  ResultRetentionMs int64
+type CancellationResult struct
+  Outcome CancellationOutcome
+type WorkProgress struct
+  Done int64
+  Total int64
+type WorkFailure struct
+  Classification FailureClass
+  Message string
+  Cause FailureCause
+type OperationSnapshot struct
+  Receipt Receipt
+  State WorkState
+  Progress WorkProgress
+  CancellationRequested bool
+  Failure *WorkFailure
+  Label string
+  LabelDerived bool
+  Waiting string
+type ObservationResult struct
+  Outcome ObservationOutcome
+  Snapshot *OperationSnapshot
+type ResultChunk struct
+  Receipt Receipt
+  Offset int64
+  Total int64
+  Data []byte
+  EOF bool
+type ResultRead struct
+  Outcome ResultOutcome
+  Chunk *ResultChunk
+type InventoryPage struct
+  Outcome InventoryOutcome
+  Snapshots []OperationSnapshot
+  Next string
+  Complete bool
+type OperatorCancellation struct
+  Outcome OperatorCancellationOutcome
+func Encode(v *AcceptanceResult) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+func Decode(in []byte) (*AcceptanceResult, error)
+type FrameWriter interface
+  WriteFrame(frame []byte) error
+type DispatchError string
+func (DispatchError) Error() string
+func ServiceName(frame []byte) (string, error)
+type FrameExchanger interface
+  ExchangeFrame(frame []byte) ([]byte, error)
+type ServiceError struct
+  Code ServiceErrorCode
+  Message string
+func (ServiceError) Error() string
+const EndpointContract
+type DescribedService interface
+  DescribeService() (contract string, ready bool, why string)
+func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+type ServedService interface
+  DescribedService
+  ServiceContract() string
+func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+type RecoverableAcceptance interface
+  GetHistoryWindow() (HistoryWindow, error)
+  Submit(submission Submission) (AcceptanceResult, error)
+  Reconcile(identity RequestIdentity) (AcceptanceResult, error)
+  CancelWork(identity RequestIdentity) (CancellationResult, error)
+type RecoverableAcceptanceTransport interface
+  FrameExchanger
+type RecoverableAcceptanceClient struct
+func NewRecoverableAcceptanceClient(t RecoverableAcceptanceTransport) *RecoverableAcceptanceClient
+type RecoverableAcceptanceDispatcher struct
+  Handler RecoverableAcceptance
+func (RecoverableAcceptanceClient) GetHistoryWindow() (result HistoryWindow, err error)
+func (RecoverableAcceptanceClient) Submit(submission Submission) (result AcceptanceResult, err error)
+func (RecoverableAcceptanceClient) Reconcile(identity RequestIdentity) (result AcceptanceResult, err error)
+func (RecoverableAcceptanceClient) CancelWork(identity RequestIdentity) (result CancellationResult, err error)
+func (RecoverableAcceptanceDispatcher) DescribeService() (contract string, ready bool, why string)
+func (RecoverableAcceptanceDispatcher) ServiceContract() string
+func (RecoverableAcceptanceDispatcher) WriteFrame(frame []byte) error
+func (RecoverableAcceptanceDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type OperationControl interface
+  ObserveWork(identity RequestIdentity) (ObservationResult, error)
+  ReadResult(identity RequestIdentity, offset, maxBytes int64) (ResultRead, error)
+type OperationControlTransport interface
+  FrameExchanger
+type OperationControlClient struct
+func NewOperationControlClient(t OperationControlTransport) *OperationControlClient
+type OperationControlDispatcher struct
+  Handler OperationControl
+func (OperationControlClient) ObserveWork(identity RequestIdentity) (result ObservationResult, err error)
+func (OperationControlClient) ReadResult(identity RequestIdentity, offset, maxBytes int64) (result ResultRead, err error)
+func (OperationControlDispatcher) DescribeService() (contract string, ready bool, why string)
+func (OperationControlDispatcher) ServiceContract() string
+func (OperationControlDispatcher) WriteFrame(frame []byte) error
+func (OperationControlDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type JobInventory interface
+  ListWork(cursor string, limit int64) (InventoryPage, error)
+type JobInventoryTransport interface
+  FrameExchanger
+type JobInventoryClient struct
+func NewJobInventoryClient(t JobInventoryTransport) *JobInventoryClient
+type JobInventoryDispatcher struct
+  Handler JobInventory
+func (JobInventoryClient) ListWork(cursor string, limit int64) (result InventoryPage, err error)
+func (JobInventoryDispatcher) DescribeService() (contract string, ready bool, why string)
+func (JobInventoryDispatcher) ServiceContract() string
+func (JobInventoryDispatcher) WriteFrame(frame []byte) error
+func (JobInventoryDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type JobOperator interface
+  ListAccountWork(cursor string, limit int64) (InventoryPage, error)
+  CancelOperation(operationID string) (OperatorCancellation, error)
+type JobOperatorTransport interface
+  FrameExchanger
+type JobOperatorClient struct
+func NewJobOperatorClient(t JobOperatorTransport) *JobOperatorClient
+type JobOperatorDispatcher struct
+  Handler JobOperator
+func (JobOperatorClient) ListAccountWork(cursor string, limit int64) (result InventoryPage, err error)
+func (JobOperatorClient) CancelOperation(operationID string) (result OperatorCancellation, err error)
+func (JobOperatorDispatcher) DescribeService() (contract string, ready bool, why string)
+func (JobOperatorDispatcher) ServiceContract() string
+func (JobOperatorDispatcher) WriteFrame(frame []byte) error
+func (JobOperatorDispatcher) ExchangeFrame(frame []byte) ([]byte, error)

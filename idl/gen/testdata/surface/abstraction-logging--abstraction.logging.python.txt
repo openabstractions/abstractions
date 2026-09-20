@@ -1,0 +1,72 @@
+dataclass Attestation
+  by: str
+  verified: bool
+  hop: int
+  program: str
+  host: str
+  user: str
+  exe: str
+  uid: int
+  gid: int
+  pid: int
+  key: str
+  mac: str
+class DispatchError(ValueError)
+  __init__(code)
+const HISTORY_CURSOR_WORDS
+const HISTORY_ERROR_CODES
+class HistoryObserver
+  observe(cursor: str, max_records: int, max_bytes: int, wait_ms: int) -> Page
+class HistoryObserverClient(HistoryObserver)
+  __init__(transport)
+  observe(cursor: str, max_records: int, max_bytes: int, wait_ms: int) -> Page
+class HistoryReader
+  read(cursor: str, max_records: int, max_bytes: int) -> Page
+class HistoryReaderClient(HistoryReader)
+  __init__(transport)
+  read(cursor: str, max_records: int, max_bytes: int) -> Page
+dataclass Page
+  outcome: PageOutcome | None
+  records: list[Record]
+  next: str
+  at_end: bool
+enum PageOutcome
+  PAGE = 'page'
+  GAP = 'gap'
+  UNAVAILABLE = 'unavailable'
+  INVALID_REQUEST = 'invalid_request'
+  RECORD_TOO_LARGE = 'record_too_large'
+  CORRUPT = 'corrupt'
+  UNSUPPORTED = 'unsupported'
+dataclass Record
+  schema: int
+  time: str
+  level: int
+  msg: str
+  identity: list[Attestation]
+  job: str
+  attrs: dict[str, str]
+class Refusal(ValueError)
+  __init__(word, offset)
+class ServiceError(Exception)
+  __init__(code, message)
+enum ServiceErrorCode
+  HANDLER_ERROR = 'handler_error'
+  INVALID_RESULT = 'invalid_result'
+  UNKNOWN_VERSION = 'unknown_version'
+  UNKNOWN_SERVICE = 'unknown_service'
+  UNKNOWN_METHOD = 'unknown_method'
+  WRONG_MODE = 'wrong_mode'
+  CALLER_UNAVAILABLE = 'caller_unavailable'
+  IDENTITY_REQUIRED = 'identity_required'
+  WRONG_USER = 'wrong_user'
+  POLICY_UNAVAILABLE = 'policy_unavailable'
+  FORBIDDEN = 'forbidden'
+class Sink
+  write(record: Record) -> None
+class SinkClient(Sink)
+  __init__(transport)
+  write(record: Record) -> None
+def decode(data)
+def encode(v)
+def service_name(frame)

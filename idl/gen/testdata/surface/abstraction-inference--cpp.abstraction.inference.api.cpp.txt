@@ -1,0 +1,618 @@
+using Raw = std::string
+class Refusal : public std::runtime_error
+  const char* word
+  std::size_t offset
+inline const std::vector<std::string> kRequestGuaranteeNames
+inline constexpr std::string_view kRequestGuaranteeLocalOnly
+inline constexpr std::string_view kRequestGuaranteeHostedAllowed
+enum class Role {System, User, Assistant, Tool}
+inline constexpr std::string_view wire_name(Role value)
+inline std::optional<Role> parse_role(std::string_view name)
+inline constexpr bool operator==(Role value, std::string_view name)
+inline constexpr bool operator!=(Role value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Role value)
+inline constexpr bool operator!=(std::string_view name, Role value)
+inline const std::vector<std::string> kRoleNames
+enum class PartKind {Text, Image, ToolCall, ToolResult}
+inline constexpr std::string_view wire_name(PartKind value)
+inline std::optional<PartKind> parse_part_kind(std::string_view name)
+inline constexpr bool operator==(PartKind value, std::string_view name)
+inline constexpr bool operator!=(PartKind value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, PartKind value)
+inline constexpr bool operator!=(std::string_view name, PartKind value)
+inline const std::vector<std::string> kPartKindNames
+enum class ReplyOutcome {Completed, Refused, NotPermitted, BudgetExceeded, UnsupportedFeature, NoHost, Cancelled, Unavailable, Invalid, Forbidden, Exhausted}
+inline constexpr std::string_view wire_name(ReplyOutcome value)
+inline std::optional<ReplyOutcome> parse_reply_outcome(std::string_view name)
+inline constexpr bool operator==(ReplyOutcome value, std::string_view name)
+inline constexpr bool operator!=(ReplyOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ReplyOutcome value)
+inline constexpr bool operator!=(std::string_view name, ReplyOutcome value)
+inline const std::vector<std::string> kReplyOutcomeNames
+enum class StopReason {NoStop, End, MaxOutput, StopSequence, ToolCalls, ContentFilter, Other}
+inline constexpr std::string_view wire_name(StopReason value)
+inline std::optional<StopReason> parse_stop_reason(std::string_view name)
+inline constexpr bool operator==(StopReason value, std::string_view name)
+inline constexpr bool operator!=(StopReason value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, StopReason value)
+inline constexpr bool operator!=(std::string_view name, StopReason value)
+inline const std::vector<std::string> kStopReasonNames
+enum class DeltaKind {Part, Usage, End, Segment, Audio, Transcript, ImageProgress, ImageResult}
+inline constexpr std::string_view wire_name(DeltaKind value)
+inline std::optional<DeltaKind> parse_delta_kind(std::string_view name)
+inline constexpr bool operator==(DeltaKind value, std::string_view name)
+inline constexpr bool operator!=(DeltaKind value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, DeltaKind value)
+inline constexpr bool operator!=(std::string_view name, DeltaKind value)
+inline const std::vector<std::string> kDeltaKindNames
+enum class StartOutcome {Accepted, NotPermitted, BudgetExceeded, UnsupportedFeature, NoHost, Unavailable, Invalid, Forbidden, Exhausted}
+inline constexpr std::string_view wire_name(StartOutcome value)
+inline std::optional<StartOutcome> parse_start_outcome(std::string_view name)
+inline constexpr bool operator==(StartOutcome value, std::string_view name)
+inline constexpr bool operator!=(StartOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, StartOutcome value)
+inline constexpr bool operator!=(std::string_view name, StartOutcome value)
+inline const std::vector<std::string> kStartOutcomeNames
+enum class PageOutcome {Page, Gap, Unknown, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(PageOutcome value)
+inline std::optional<PageOutcome> parse_page_outcome(std::string_view name)
+inline constexpr bool operator==(PageOutcome value, std::string_view name)
+inline constexpr bool operator!=(PageOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, PageOutcome value)
+inline constexpr bool operator!=(std::string_view name, PageOutcome value)
+inline const std::vector<std::string> kPageOutcomeNames
+enum class CancelOutcome {Cancelled, Ended, Unknown, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(CancelOutcome value)
+inline std::optional<CancelOutcome> parse_cancel_outcome(std::string_view name)
+inline constexpr bool operator==(CancelOutcome value, std::string_view name)
+inline constexpr bool operator!=(CancelOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, CancelOutcome value)
+inline constexpr bool operator!=(std::string_view name, CancelOutcome value)
+inline const std::vector<std::string> kCancelOutcomeNames
+enum class EmbedOutcome {Completed, Refused, NotPermitted, BudgetExceeded, UnsupportedFeature, NoHost, Unavailable, Invalid, Forbidden}
+inline constexpr std::string_view wire_name(EmbedOutcome value)
+inline std::optional<EmbedOutcome> parse_embed_outcome(std::string_view name)
+inline constexpr bool operator==(EmbedOutcome value, std::string_view name)
+inline constexpr bool operator!=(EmbedOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EmbedOutcome value)
+inline constexpr bool operator!=(std::string_view name, EmbedOutcome value)
+inline const std::vector<std::string> kEmbedOutcomeNames
+enum class TranscriptUnitKind {Segment, Word}
+inline constexpr std::string_view wire_name(TranscriptUnitKind value)
+inline std::optional<TranscriptUnitKind> parse_transcript_unit_kind(std::string_view name)
+inline constexpr bool operator==(TranscriptUnitKind value, std::string_view name)
+inline constexpr bool operator!=(TranscriptUnitKind value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, TranscriptUnitKind value)
+inline constexpr bool operator!=(std::string_view name, TranscriptUnitKind value)
+inline const std::vector<std::string> kTranscriptUnitKindNames
+enum class TimestampMode {None, Segment, Word, SegmentAndWord}
+inline constexpr std::string_view wire_name(TimestampMode value)
+inline std::optional<TimestampMode> parse_timestamp_mode(std::string_view name)
+inline constexpr bool operator==(TimestampMode value, std::string_view name)
+inline constexpr bool operator!=(TimestampMode value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, TimestampMode value)
+inline constexpr bool operator!=(std::string_view name, TimestampMode value)
+inline const std::vector<std::string> kTimestampModeNames
+enum class SpeechFormat {Mp3, Opus, Aac, Flac, Wav, Pcm}
+inline constexpr std::string_view wire_name(SpeechFormat value)
+inline std::optional<SpeechFormat> parse_speech_format(std::string_view name)
+inline constexpr bool operator==(SpeechFormat value, std::string_view name)
+inline constexpr bool operator!=(SpeechFormat value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, SpeechFormat value)
+inline constexpr bool operator!=(std::string_view name, SpeechFormat value)
+inline const std::vector<std::string> kSpeechFormatNames
+enum class LiveFormat {Pcm1624000}
+inline constexpr std::string_view wire_name(LiveFormat value)
+inline std::optional<LiveFormat> parse_live_format(std::string_view name)
+inline constexpr bool operator==(LiveFormat value, std::string_view name)
+inline constexpr bool operator!=(LiveFormat value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, LiveFormat value)
+inline constexpr bool operator!=(std::string_view name, LiveFormat value)
+inline const std::vector<std::string> kLiveFormatNames
+enum class LiveInputOutcome {Accepted, Duplicate, OutOfOrder, Closed, Invalid, Unknown, Forbidden, Unavailable, Exhausted}
+inline constexpr std::string_view wire_name(LiveInputOutcome value)
+inline std::optional<LiveInputOutcome> parse_live_input_outcome(std::string_view name)
+inline constexpr bool operator==(LiveInputOutcome value, std::string_view name)
+inline constexpr bool operator!=(LiveInputOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, LiveInputOutcome value)
+inline constexpr bool operator!=(std::string_view name, LiveInputOutcome value)
+inline const std::vector<std::string> kLiveInputOutcomeNames
+enum class ImageMode {Generate, Edit}
+inline constexpr std::string_view wire_name(ImageMode value)
+inline std::optional<ImageMode> parse_image_mode(std::string_view name)
+inline constexpr bool operator==(ImageMode value, std::string_view name)
+inline constexpr bool operator!=(ImageMode value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ImageMode value)
+inline constexpr bool operator!=(std::string_view name, ImageMode value)
+inline const std::vector<std::string> kImageModeNames
+enum class ListOutcome {Page, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(ListOutcome value)
+inline std::optional<ListOutcome> parse_list_outcome(std::string_view name)
+inline constexpr bool operator==(ListOutcome value, std::string_view name)
+inline constexpr bool operator!=(ListOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ListOutcome value)
+inline constexpr bool operator!=(std::string_view name, ListOutcome value)
+inline const std::vector<std::string> kListOutcomeNames
+enum class EditOutcome {Applied, Conflict, Unknown, Invalid, NoSecureStore, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(EditOutcome value)
+inline std::optional<EditOutcome> parse_edit_outcome(std::string_view name)
+inline constexpr bool operator==(EditOutcome value, std::string_view name)
+inline constexpr bool operator!=(EditOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EditOutcome value)
+inline constexpr bool operator!=(std::string_view name, EditOutcome value)
+inline const std::vector<std::string> kEditOutcomeNames
+enum class KeyState {Active, Revoked, Lost}
+inline constexpr std::string_view wire_name(KeyState value)
+inline std::optional<KeyState> parse_key_state(std::string_view name)
+inline constexpr bool operator==(KeyState value, std::string_view name)
+inline constexpr bool operator!=(KeyState value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, KeyState value)
+inline constexpr bool operator!=(std::string_view name, KeyState value)
+inline const std::vector<std::string> kKeyStateNames
+enum class AuditRoute {Native, Window, Remote}
+inline constexpr std::string_view wire_name(AuditRoute value)
+inline std::optional<AuditRoute> parse_audit_route(std::string_view name)
+inline constexpr bool operator==(AuditRoute value, std::string_view name)
+inline constexpr bool operator!=(AuditRoute value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, AuditRoute value)
+inline constexpr bool operator!=(std::string_view name, AuditRoute value)
+inline const std::vector<std::string> kAuditRouteNames
+enum class AuditOutcome {Page, Gap, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(AuditOutcome value)
+inline std::optional<AuditOutcome> parse_audit_outcome(std::string_view name)
+inline constexpr bool operator==(AuditOutcome value, std::string_view name)
+inline constexpr bool operator!=(AuditOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, AuditOutcome value)
+inline constexpr bool operator!=(std::string_view name, AuditOutcome value)
+inline const std::vector<std::string> kAuditOutcomeNames
+inline const std::vector<std::string> kServiceErrorCodeNames
+inline constexpr std::string_view kServiceErrorCodeHandlerError
+inline constexpr std::string_view kServiceErrorCodeInvalidResult
+inline constexpr std::string_view kServiceErrorCodeUnknownVersion
+inline constexpr std::string_view kServiceErrorCodeUnknownService
+inline constexpr std::string_view kServiceErrorCodeUnknownMethod
+inline constexpr std::string_view kServiceErrorCodeWrongMode
+inline const std::vector<std::string> kFeatures
+inline const std::vector<std::string> kResourceActions
+inline const std::vector<std::string> kLocalKeyKinds
+inline const std::vector<std::string> kLocalHostKinds
+inline const std::vector<std::string> kHostProfiles
+inline const std::vector<std::string> kHostDeclarers
+inline const std::vector<std::string> kCredentialConsumers
+inline const std::vector<std::string> kClaimExtensions
+struct Part
+  PartKind kind
+  std::string text
+  std::string digest
+  std::string media_type
+  std::string call_id
+  std::string name
+  std::string arguments
+struct Message
+  Role role
+  std::vector<Part> parts
+struct Tool
+  std::string name
+  std::string description
+  std::string parameters
+struct Temperature
+  std::int64_t milli
+struct Options
+  std::int64_t max_output
+  std::optional<Temperature> temperature
+  std::vector<std::string> stop
+  std::string json_schema
+struct Request
+  std::string model
+  std::vector<Message> messages
+  std::vector<Tool> tools
+  std::optional<Options> options
+  std::map<std::string, std::string> extensions
+  std::vector<std::string> required_extensions
+  std::vector<std::string> guarantees
+  std::string credential
+struct Usage
+  std::int64_t input
+  std::int64_t output
+  std::int64_t cached
+struct Cost
+  std::int64_t micros
+  std::string currency
+struct Reply
+  ReplyOutcome outcome
+  std::string reason
+  Message message
+  StopReason stop_reason
+  Usage usage
+  std::string host
+  std::string model
+  std::optional<Cost> cost
+struct TranscriptSegment
+  std::int64_t index
+  TranscriptUnitKind kind
+  std::int64_t start_ms
+  std::int64_t end_ms
+  std::string text
+struct TranscriptionReply
+  ReplyOutcome outcome
+  std::string reason
+  std::string language
+  std::int64_t duration_ms
+  Usage usage
+  std::string host
+  std::string model
+  std::optional<Cost> cost
+struct AudioChunk
+  std::int64_t index
+  std::vector<std::uint8_t> data
+struct Delivery
+  std::string digest
+  std::string media_type
+  std::int64_t size
+  std::string location
+struct SpeechReply
+  ReplyOutcome outcome
+  std::string reason
+  Delivery delivery
+  std::int64_t characters
+  Usage usage
+  std::string host
+  std::string model
+  std::optional<Cost> cost
+struct LiveTranscript
+  std::string text
+  bool is_final
+struct LiveReply
+  ReplyOutcome outcome
+  std::string reason
+  Delivery delivery
+  Usage usage
+  std::int64_t input_audio_bytes
+  std::int64_t output_audio_bytes
+  std::string host
+  std::string model
+struct ImageProgress
+  std::int64_t percent
+  std::string message
+struct ImageResult
+  std::int64_t index
+  Delivery delivery
+struct ImageReply
+  ReplyOutcome outcome
+  std::string reason
+  std::vector<Delivery> deliveries
+  std::int64_t images
+  Usage usage
+  std::string host
+  std::string model
+  std::optional<Cost> cost
+struct Delta
+  std::int64_t sequence
+  DeltaKind kind
+  std::int64_t index
+  std::optional<Part> part
+  std::optional<Usage> usage
+  std::optional<Reply> end
+  std::optional<TranscriptSegment> segment
+  std::optional<TranscriptionReply> transcription_end
+  std::optional<AudioChunk> audio
+  std::optional<SpeechReply> speech_end
+  std::optional<LiveTranscript> transcript
+  std::optional<LiveReply> live_end
+  std::optional<ImageProgress> image_progress
+  std::optional<ImageResult> image_result
+  std::optional<ImageReply> image_end
+struct Admission
+  StartOutcome outcome
+  std::string reason
+  std::string operation
+  std::string host
+  std::string model
+  std::int64_t retention_ms
+  std::int64_t idle_ms
+  std::int64_t retained_deltas
+struct DeltaPage
+  PageOutcome outcome
+  std::vector<Delta> deltas
+  std::int64_t next
+  bool at_end
+struct Cancellation
+  CancelOutcome outcome
+  std::optional<ReplyOutcome> reply_outcome
+struct EmbedRequest
+  std::string model
+  std::vector<std::string> inputs
+  std::int64_t dimensions
+  std::vector<std::string> guarantees
+  std::string credential
+  std::map<std::string, std::string> extensions
+struct Embeddings
+  EmbedOutcome outcome
+  std::string reason
+  std::vector<std::string> vectors
+  std::int64_t dimensions
+  Usage usage
+  std::string host
+  std::string model
+  std::optional<Cost> cost
+struct TranscriptionRequest
+  std::string model
+  std::string audio_digest
+  std::string media_type
+  std::string language
+  TimestampMode timestamps
+  std::vector<std::string> guarantees
+  std::string credential
+  std::map<std::string, std::string> extensions
+struct SpeechRequest
+  std::string model
+  std::string voice
+  std::string text
+  SpeechFormat format
+  std::vector<std::string> guarantees
+  std::string credential
+  std::map<std::string, std::string> extensions
+struct LiveRequest
+  std::string model
+  std::string voice
+  LiveFormat format
+  std::vector<std::string> guarantees
+  std::string credential
+  std::map<std::string, std::string> extensions
+struct LiveInputResult
+  LiveInputOutcome outcome
+  std::int64_t next_sequence
+struct ImageRequest
+  std::string model
+  ImageMode mode
+  std::string prompt
+  std::string size
+  std::int64_t count
+  std::string image_digest
+  std::string image_media_type
+  std::string mask_digest
+  std::string mask_media_type
+  std::vector<std::string> guarantees
+  std::string credential
+  std::vector<std::string> required_extensions
+  std::map<std::string, std::string> extensions
+struct CeilingLimit
+  std::int64_t tokens_per_day
+  std::int64_t micros_per_day
+  std::int64_t requests_per_day
+  std::int64_t images_per_day
+  std::int64_t audio_seconds_per_day
+  std::int64_t characters_per_day
+struct HostEntry
+  std::string name
+  bool hosted
+  std::string kind
+  std::string base
+  std::string credential
+  std::optional<CeilingLimit> ceiling
+  std::vector<std::string> profiles
+  std::string declared_by
+struct Spend
+  std::string day
+  std::int64_t tokens
+  std::int64_t micros
+  std::int64_t requests
+  std::int64_t audio_seconds
+  std::int64_t characters
+  std::int64_t images
+struct HostState
+  HostEntry entry
+  bool up
+  std::string why
+  std::optional<Spend> spend
+struct HostList
+  ListOutcome outcome
+  std::string revision
+  std::vector<HostState> hosts
+struct HostChange
+  EditOutcome outcome
+  std::string revision
+  std::string reason
+struct LocalKey
+  std::string program
+  std::string name
+  std::string credential
+  std::int64_t issued_unix_ms
+  std::string issued_by
+  KeyState state
+struct KeyList
+  ListOutcome outcome
+  std::vector<LocalKey> keys
+struct KeyIssued
+  EditOutcome outcome
+  std::string reason
+  std::string key
+  std::optional<LocalKey> record
+struct KeyRevoked
+  EditOutcome outcome
+struct AuditEntry
+  std::int64_t sequence
+  std::int64_t unix_ms
+  AuditRoute route
+  std::string rung
+  std::string program
+  std::string operation
+  std::string host
+  std::string model
+  std::string credential
+  std::string outcome
+  std::string reason
+  std::int64_t tokens_in
+  std::int64_t tokens_out
+  std::int64_t wall_ms
+  std::string ceiling
+  std::string domain
+  std::string claim
+  std::string profile
+  std::int64_t audio_seconds
+  std::int64_t characters
+  std::int64_t images
+struct AuditPage
+  AuditOutcome outcome
+  std::vector<AuditEntry> entries
+  std::int64_t next
+  bool at_end
+struct GatewayState
+  ListOutcome outcome
+  std::string revision
+  bool open
+  std::string address
+  bool listening
+  std::string listening_address
+  std::string why
+struct GatewayChange
+  EditOutcome outcome
+  std::string revision
+  std::string reason
+inline std::string encode(const Request& v)
+inline Request decode(std::string_view data)
+struct FrameWriter
+  virtual void write_frame(std::string_view frame)
+struct DispatchError : std::runtime_error
+inline std::string service_name(std::string_view frame)
+struct FrameExchanger
+  virtual std::string exchange_frame(std::string_view frame)
+struct ServiceError : std::runtime_error
+  std::string code, message
+inline constexpr std::string_view kEndpointContract
+struct DescribedService
+  std::string contract
+  bool ready
+  std::string why
+std::string describe_endpoint(std::string_view frame, const std::string& program, const std::string& version, const Services& . . . services)
+struct Chat
+  virtual Admission start(const Request& request)
+  virtual DeltaPage observe(const std::string& operation, const std::int64_t& cursor, const std::int64_t& max_deltas, const std::int64_t& max_bytes, const std::int64_t& wait_ms)
+  virtual Cancellation cancel(const std::string& operation)
+template<class Transport>struct ChatClient : Chat
+  Transport& transport_
+  Admission start(const Request& request) override
+  DeltaPage observe(const std::string& operation, const std::int64_t& cursor, const std::int64_t& max_deltas, const std::int64_t& max_bytes, const std::int64_t& wait_ms) override
+  Cancellation cancel(const std::string& operation) override
+struct ChatService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ChatDispatcher : FrameWriter, FrameExchanger
+  Chat& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct Embedder
+  virtual Embeddings embed(const EmbedRequest& request)
+template<class Transport>struct EmbedderClient : Embedder
+  Transport& transport_
+  Embeddings embed(const EmbedRequest& request) override
+struct EmbedderService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct EmbedderDispatcher : FrameWriter, FrameExchanger
+  Embedder& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct Transcription
+  virtual Admission start(const TranscriptionRequest& request)
+  virtual DeltaPage observe(const std::string& operation, const std::int64_t& cursor, const std::int64_t& max_deltas, const std::int64_t& max_bytes, const std::int64_t& wait_ms)
+  virtual Cancellation cancel(const std::string& operation)
+template<class Transport>struct TranscriptionClient : Transcription
+  Transport& transport_
+  Admission start(const TranscriptionRequest& request) override
+  DeltaPage observe(const std::string& operation, const std::int64_t& cursor, const std::int64_t& max_deltas, const std::int64_t& max_bytes, const std::int64_t& wait_ms) override
+  Cancellation cancel(const std::string& operation) override
+struct TranscriptionService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct TranscriptionDispatcher : FrameWriter, FrameExchanger
+  Transcription& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct Speech
+  virtual Admission start(const SpeechRequest& request)
+  virtual DeltaPage observe(const std::string& operation, const std::int64_t& cursor, const std::int64_t& max_deltas, const std::int64_t& max_bytes, const std::int64_t& wait_ms)
+  virtual Cancellation cancel(const std::string& operation)
+template<class Transport>struct SpeechClient : Speech
+  Transport& transport_
+  Admission start(const SpeechRequest& request) override
+  DeltaPage observe(const std::string& operation, const std::int64_t& cursor, const std::int64_t& max_deltas, const std::int64_t& max_bytes, const std::int64_t& wait_ms) override
+  Cancellation cancel(const std::string& operation) override
+struct SpeechService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct SpeechDispatcher : FrameWriter, FrameExchanger
+  Speech& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct Live
+  virtual Admission start(const LiveRequest& request)
+  virtual LiveInputResult append(const std::string& operation, const std::int64_t& sequence, const std::vector<std::uint8_t>& audio)
+  virtual DeltaPage observe(const std::string& operation, const std::int64_t& cursor, const std::int64_t& max_deltas, const std::int64_t& max_bytes, const std::int64_t& wait_ms)
+  virtual LiveInputResult commit(const std::string& operation)
+  virtual Cancellation cancel(const std::string& operation)
+template<class Transport>struct LiveClient : Live
+  Transport& transport_
+  Admission start(const LiveRequest& request) override
+  LiveInputResult append(const std::string& operation, const std::int64_t& sequence, const std::vector<std::uint8_t>& audio) override
+  DeltaPage observe(const std::string& operation, const std::int64_t& cursor, const std::int64_t& max_deltas, const std::int64_t& max_bytes, const std::int64_t& wait_ms) override
+  LiveInputResult commit(const std::string& operation) override
+  Cancellation cancel(const std::string& operation) override
+struct LiveService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct LiveDispatcher : FrameWriter, FrameExchanger
+  Live& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct Image
+  virtual Admission start(const ImageRequest& request)
+  virtual DeltaPage observe(const std::string& operation, const std::int64_t& cursor, const std::int64_t& max_deltas, const std::int64_t& max_bytes, const std::int64_t& wait_ms)
+  virtual Cancellation cancel(const std::string& operation)
+template<class Transport>struct ImageClient : Image
+  Transport& transport_
+  Admission start(const ImageRequest& request) override
+  DeltaPage observe(const std::string& operation, const std::int64_t& cursor, const std::int64_t& max_deltas, const std::int64_t& max_bytes, const std::int64_t& wait_ms) override
+  Cancellation cancel(const std::string& operation) override
+struct ImageService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ImageDispatcher : FrameWriter, FrameExchanger
+  Image& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct Operator
+  virtual HostList hosts()
+  virtual HostChange add_host(const std::string& expected_revision, const HostEntry& host)
+  virtual HostChange remove_host(const std::string& expected_revision, const std::string& name)
+  virtual KeyList keys()
+  virtual KeyIssued issue_key(const std::string& program, const std::string& credential)
+  virtual KeyRevoked revoke_key(const std::string& program)
+  virtual AuditPage audit(const std::int64_t& cursor, const std::int64_t& max_entries)
+  virtual GatewayState gateway()
+  virtual GatewayChange set_gateway(const std::string& expected_revision, const bool& open, const std::string& address)
+template<class Transport>struct OperatorClient : Operator
+  Transport& transport_
+  HostList hosts() override
+  HostChange add_host(const std::string& expected_revision, const HostEntry& host) override
+  HostChange remove_host(const std::string& expected_revision, const std::string& name) override
+  KeyList keys() override
+  KeyIssued issue_key(const std::string& program, const std::string& credential) override
+  KeyRevoked revoke_key(const std::string& program) override
+  AuditPage audit(const std::int64_t& cursor, const std::int64_t& max_entries) override
+  GatewayState gateway() override
+  GatewayChange set_gateway(const std::string& expected_revision, const bool& open, const std::string& address) override
+struct OperatorService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct OperatorDispatcher : FrameWriter, FrameExchanger
+  Operator& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override

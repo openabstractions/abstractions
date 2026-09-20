@@ -88,6 +88,15 @@ func TestServiceDocs(t *testing.T) {
 			t.Fatal("missing service docs", v)
 		}
 	}
+	if !strings.Contains(out, `href="#service-Events"`) || strings.Index(out, `id="service-Events"`) > strings.Index(out, `id="encoding"`) {
+		t.Fatal("service methods must be discoverable before encoding details")
+	}
+	s.NoIPC = true
+	out = genDocs(s)
+	if strings.Contains(out, `href="#protocol"`) || !strings.Contains(out, "Interface <code>Events</code>") {
+		t.Fatal("direct interfaces must not advertise an IPC protocol")
+	}
+
 }
 
 const serviceGoTest = `package rec
@@ -167,7 +176,7 @@ func(h *handler)Echo(r Record,text string,enabled bool,count int64)(Record,error
 func(h *handler)Opaque(p Raw)(Raw,error){h.calls++;return p,nil}
 func(h *handler)Reset()error{h.calls++;return nil}
 func(h *handler)Notify()error{h.calls++;return nil}
-func(h *handler)Fail(kind string)(string,error){h.calls++;switch kind{case "panic":panic("secret panic");case "invalid":return string([]byte{255}),nil;case "diagnostic":return "",&ServiceError{Code:"denied",Message:string([]byte{255})};case "ordinary":return "",errors.New("secret error");default:return "",&ServiceError{Code:kind}}}
+func(h *handler)Fail(kind string)(string,error){h.calls++;switch kind{case "panic":panic("secret panic");case "invalid":return string([]byte{255}),nil;case "diagnostic":return "",&ServiceError{Code:"denied",Message:string([]byte{255})};case "ordinary":return "",errors.New("secret error");default:return "",&ServiceError{Code:ServiceErrorCode(kind)}}}
 type fake struct{frame []byte;response []byte;err error}
 func(f *fake)WriteFrame(b []byte)error{f.frame=b;return f.err}
 func(f *fake)ExchangeFrame(b []byte)([]byte,error){f.frame=b;return f.response,f.err}
@@ -175,7 +184,7 @@ func TestRoundtrip(t *testing.T){h:=&handler{};d:=&QueryDispatcher{Handler:h};c:
  r,e:=c.Echo(Record{Value:"\u96ea<&"},"",false,0);if e!=nil||r.Value!="\u96ea<&"{t.Fatal(r,e)}
  raw:=Raw("{ \"a\" : [1,\n false] }");v,e:=c.Opaque(raw);if e!=nil||v!=raw{t.Fatal(v,e)}
  if e=c.Reset();e!=nil{t.Fatal(e)};if e=c.Notify();e!=nil{t.Fatal(e)}
- for _,tc:=range []struct{kind,code,message string}{{"future_code","future_code",""},{"panic","handler_error","handler failed"},{"ordinary","handler_error","handler failed"},{"invalid","invalid_result",""}}{_,e=c.Fail(tc.kind);var se *ServiceError;if !errors.As(e,&se)||se.Code!=tc.code||se.Message!=tc.message{t.Fatalf("%s: %#v",tc.kind,e)}}
+ for _,tc:=range []struct{kind,code,message string}{{"future_code","future_code",""},{"panic","handler_error","handler failed"},{"ordinary","handler_error","handler failed"},{"invalid","invalid_result",""}}{_,e=c.Fail(tc.kind);var se *ServiceError;if !errors.As(e,&se)||string(se.Code)!=tc.code||se.Message!=tc.message{t.Fatalf("%s: %#v",tc.kind,e)}}
  if _,e=c.Fail("diagnostic");e==nil{t.Fatal("invalid diagnostic")}
 }
 func TestRefusals(t *testing.T){h:=&handler{};d:=&QueryDispatcher{Handler:h};f:=&fake{err:errors.New("offline")};c:=NewQueryClient(f)
@@ -295,15 +304,15 @@ std::string readFrame(){
 struct Captured{};
 struct Transport{
  std::string mode;
- void WriteFrame(std::string_view){}
- std::string ExchangeFrame(std::string_view frame){if(mode=="emit"){writeFrame(frame);throw Captured{};}return readFrame();}
+ void write_frame(std::string_view){}
+ std::string exchange_frame(std::string_view frame){if(mode=="emit"){writeFrame(frame);throw Captured{};}return readFrame();}
 };
 int main(int argc,char**argv){
 Transport t{argv[1]};rec::QueryClient c(t);std::string method=argv[2];bool reject=t.mode=="reject";
- try{if(method=="Echo"){rec::Record v;v.value="\xE9\x9B\xAA<&";auto result=c.Echo(v,"",false,0);if(result.value!=v.value)return 2;}
- else if(method=="Opaque"){std::string raw="{ \"a\" : [1,\n false] }";if(c.Opaque(raw)!=raw)return 3;}
- else if(method=="Reset"){c.Reset();}
- else if(method=="Fail"){c.Fail("future_code");return 4;}
+ try{if(method=="Echo"){rec::Record v;v.value="\xE9\x9B\xAA<&";auto result=c.echo(v,"",false,0);if(result.value!=v.value)return 2;}
+ else if(method=="Opaque"){std::string raw="{ \"a\" : [1,\n false] }";if(c.opaque(raw)!=raw)return 3;}
+ else if(method=="Reset"){c.reset();}
+ else if(method=="Fail"){c.fail("future_code");return 4;}
  return reject?5:0;
  }catch(const Captured&){return t.mode=="emit"?0:6;}
  catch(const rec::DispatchError& e){return reject&&std::string(e.what())=="mismatched_response"?0:7;}
@@ -318,7 +327,7 @@ func TestCppServiceDescriptor(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := genCpp(s)
-	for _, want := range []string{`struct EventsService{`, `wire_name="example.events/events@1"`, `capability="example.events"`, `using Client=EventsClient<Transport>`} {
+	for _, want := range []string{`struct EventsService{`, `kWireName="example.events/events@1"`, `kCapability="example.events"`, `using Client=EventsClient<Transport>`} {
 		if !strings.Contains(out, want) {
 			t.Fatal("missing descriptor", want)
 		}
@@ -327,7 +336,7 @@ func TestCppServiceDescriptor(t *testing.T) {
 	if err != nil {
 		t.Fatal("legacy wire name", err)
 	}
-	if !strings.Contains(genCpp(legacy), `capability=""`) {
+	if !strings.Contains(genCpp(legacy), `kCapability=""`) {
 		t.Fatal("invented legacy capability")
 	}
 	_, err = parse(head + strings.Replace(serviceFixture, "struct Record", `struct EventsService{1:required string v}(unknown_fields="grant") struct Record`, 1))

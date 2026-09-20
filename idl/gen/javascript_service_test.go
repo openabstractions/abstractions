@@ -34,9 +34,9 @@ func TestJavaScriptServiceNoIPCAndFullMask(t *testing.T) {
 	writeNamespaceFile(t, dir, "rec.mjs", body)
 	writeNamespaceFile(t, dir, "test.mjs", `import assert from 'node:assert/strict';import * as r from './rec.mjs';
 const value=r.newRecord();assert.deepEqual(r.decode(r.encode(value)),value);
-await assert.rejects(new r.Store().Load('key'),/not implemented/);
-class Memory extends r.Store {async Load(key){return value;}}
-assert.equal(await new Memory().Load('key'),value);`)
+await assert.rejects(new r.Store().load('key'),/not implemented/);
+class Memory extends r.Store {async load(key){return value;}}
+assert.equal(await new Memory().load('key'),value);`)
 	c := exec.Command(node, "test.mjs")
 	c.Dir = dir
 	if out, e := c.CombinedOutput(); e != nil {
@@ -114,22 +114,22 @@ function invoke(mode,frame) {calls++;const p=spawnSync(host,[mode],{input:frame}
 const transport={exchangeFrame:async frame=>invoke('exchange',frame),writeFrame:async frame=>{invoke('oneway',frame);}};
 const c=new r.QueryClient(transport);
 const record=r.newRecord();record.value='雪<&';
-assert.equal((await c.Echo(record,'',false,0n)).value,record.value);
+assert.equal((await c.echo(record,'',false,0n)).value,record.value);
 const raw='{ "a" : [1,\n false] }';
-assert.equal(new TextDecoder().decode(await c.Opaque(raw)),raw);
-assert.equal(await c.Reset(),undefined);
-assert.equal(await c.Notify(),undefined);
-await assert.rejects(c.Fail('future_code'),e=>e instanceof r.ServiceError&&e.code==='future_code');
+assert.equal(new TextDecoder().decode(await c.opaque(raw)),raw);
+assert.equal(await c.reset(),undefined);
+assert.equal(await c.notify(),undefined);
+await assert.rejects(c.fail('future_code'),e=>e instanceof r.ServiceError&&e.code==='future_code');
 const count=calls;
-for(const args of [[record,'',false,0],[record,'',0,0n],[{...record,value:'\ud800'},'',false,0n],[record,'',false,9223372036854775808n]]) await assert.rejects(c.Echo(...args),r.Refusal);
-for(const value of ['{','{}{}','{"same":1,"same":2}']) await assert.rejects(c.Opaque(value),r.Refusal);
+for(const args of [[record,'',false,0],[record,'',0,0n],[{...record,value:'\ud800'},'',false,0n],[record,'',false,9223372036854775808n]]) await assert.rejects(c.echo(...args),r.Refusal);
+for(const value of ['{','{}{}','{"same":1,"same":2}']) await assert.rejects(c.opaque(value),r.Refusal);
 assert.equal(calls,count);
 const good={version:1,service:'example.query/query@1',method:'Echo',ok:true,payload:{value:{value:'x'}}};
 for(const value of [{...good,version:2},{...good,method:'wrong'},{...good,service:'wrong'},{...good,payload:{}},{...good,payload:{value:{value:false}}},{...good,ok:false,payload:{code:'',message:''}}]) {
  const bad=new r.QueryClient({exchangeFrame:async()=>new TextEncoder().encode(JSON.stringify(value))});
- await assert.rejects(bad.Echo(record,'',false,0n),e=>e instanceof r.Refusal||e instanceof r.DispatchError);
+ await assert.rejects(bad.echo(record,'',false,0n),e=>e instanceof r.Refusal||e instanceof r.DispatchError);
 }
 const offline=new Error('offline');
-await assert.rejects(new r.QueryClient({exchangeFrame:async()=>{throw offline;}}).Reset(),e=>e===offline);
+await assert.rejects(new r.QueryClient({exchangeFrame:async()=>{throw offline;}}).reset(),e=>e===offline);
 console.log('PASS: generated JavaScript/Go replies, oneway, exact raw tokens, typed input and hostile reply controls');
 `

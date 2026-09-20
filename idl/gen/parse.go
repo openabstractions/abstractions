@@ -725,8 +725,19 @@ func (p *parser) enumDef() error {
 			return fmt.Errorf("enum %s carries %q, and an enum takes unknown and reader; a flag this profile does not read is a rule nobody enforces", name, k)
 		}
 	}
-	if r, ok := en.Ann["reader"]; ok && r != "display" && r != "act" {
-		return fmt.Errorf("enum %s: reader = %q; this profile defines reader = \"display\" (unknown = \"grant\") and reader = \"act\" (unknown = \"refuse\")", name, r)
+	if r, ok := en.Ann["reader"]; ok && r != "display" && r != "validate" && r != "act" {
+		return fmt.Errorf("enum %s: reader = %q; this profile defines reader = \"display\" and reader = \"validate\" (unknown = \"grant\"), and reader = \"act\" (unknown = \"refuse\")", name, r)
+	}
+	wires := map[string]string{}
+	for _, m := range en.Members {
+		word := m.WireName()
+		if word == "" {
+			return fmt.Errorf("enum %s member %s has an empty wire spelling; a member must have a nonempty JSON string", name, m.Name)
+		}
+		if prior, ok := wires[word]; ok {
+			return fmt.Errorf("enum %s members %s and %s both use wire spelling %q", name, prior, m.Name, word)
+		}
+		wires[word] = m.Name
 	}
 	p.def.Enums = append(p.def.Enums, en)
 	return nil
@@ -806,7 +817,7 @@ func (p *parser) validate() error {
 			if (f.Type == "i32" || f.Type == "i64" || f.Type == "bool") && f.Omit == "absent" {
 				return fmt.Errorf("line %d: %s is an optional %s omitted when absent; generated bindings carry %s as a value without presence, so it says omit = \"zero\" or is required", f.Line, f.Name, f.Type, f.Type)
 			}
-			if scalarTypes[f.Type] || p.def.Enum(f.Type) != nil || encodableCollections[f.Type] {
+			if scalarTypes[f.Type] || p.def.Enum(f.Type) != nil || p.def.Enum(listElement(f.Type)) != nil || encodableCollections[f.Type] {
 				continue
 			}
 			if f.Type == "list<json>" {
@@ -900,7 +911,7 @@ func (p *parser) validateProtocol() error {
 		return fmt.Errorf("protocol %s draws its verdicts from %s, which refuses a member it has never heard of; a peer that cannot carry an unfamiliar verdict back to its caller turns the far side's answer into no answer", pr.Name, pr.Verdicts)
 	}
 	for _, m := range en.Members {
-		if m.Name == pr.Unknown {
+		if m.WireName() == pr.Unknown {
 			return nil
 		}
 	}

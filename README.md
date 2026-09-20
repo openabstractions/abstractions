@@ -1,181 +1,166 @@
 # OpenAbstractions
 
-Applications adopt common capability APIs while services own execution, shared
-state and lifecycle. Contracts, generated clients and shared transports let a
-capability be used independently of its provider. Explicit wrappers around
-existing engines remain available as an adoption path with declared guarantees.
+OpenAbstractions lets an application ask this computer to do useful work: keep a
+download running after the application closes, call a model without handling its
+API key, read shared content, or ask a person for a decision. The person running
+the computer chooses which local program, background service or remote provider
+does that work.
 
-## Start with a service client
+The application receives clear results and failures through one API for each
+kind of work. The service keeps shared state, credentials and recovery data. An
+operator can replace the program doing future work without rewriting the
+application.
 
-Choose a capability from [the facade](https://github.com/openabstractions/abstraction-facade)
-and follow its language package instructions. Go, C++, Python, Rust and JavaScript
-have generated service clients; implemented capabilities and transport support
-vary by package. Requests carry required guarantees. Missing or incompatible
-services produce explicit failures.
+This repository is the public development charter. It contains the runtime,
+control panel, conformance runner, examples and recorded evidence. Capability
+contracts and language packages live in the linked repositories.
+[Release notes](https://github.com/openabstractions/redist/releases/latest) name
+the available packages, included features and platform verification.
 
-Install a compatible runtime from [redist releases](https://github.com/openabstractions/redist/releases),
-then use `openabstractions start` and `openabstractions status`. Consult each
-release's asset, signing and platform evidence. This page does not announce an
-unpublished version. For development, select a coordinated source revision and
-independently configure trust for an explicit host.
+## What you can build
 
-Go/C++/Python default local bindings verify installed runtime account/program
-identity before resolver and provider payloads on Windows and supported Linux.
-Rust/JavaScript need explicit independent trust configuration. macOS currently
-refuses the local Program proof required by these service profiles. A running
-process alone does not establish capability readiness.
+| Need | Application API | Current provider path |
+| --- | --- | --- |
+| Durable downloads | [`abstraction-download`](https://github.com/openabstractions/abstraction-download) through durable jobs | Runtime-owned HTTP execution and configured native providers |
+| Durable work | [`abstraction-job`](https://github.com/openabstractions/abstraction-job) acceptance and operation clients | Service-owned acceptance, recovery and results |
+| Shared content | [`abstraction-storage`](https://github.com/openabstractions/abstraction-storage) content and change clients | Runtime content store or an explicitly selected storage provider |
+| Configuration | [`abstraction-config`](https://github.com/openabstractions/abstraction-config) reader, editor and observer | Service-owned machine and user settings |
+| Authorization | [`abstraction-rights`](https://github.com/openabstractions/abstraction-rights) decision and operator clients | Exact subject, action and resource rules |
+| Human decisions | [`abstraction-asks`](https://github.com/openabstractions/abstraction-asks) application and operator clients | Bounded question and answer service |
+| Model resolution | [`abstraction-model`](https://github.com/openabstractions/abstraction-model) resolver | Authorized storage manifests and registries |
+| Provider routing | [`abstraction-router`](https://github.com/openabstractions/abstraction-router) inventory and selection | Service-owned model and host catalogue |
+| Model inference | `abstraction.inference` development contracts | Local OpenAI-compatible hosts, selected hosted hosts and native providers |
+| Named credentials | `abstraction.credentials` development contracts | Platform secure store or an explicit development backend |
+| Application presence | Facade application directory and activation clients | Registered programs with leased live instances and contexts |
+| Structured events | [`abstraction-logging`](https://github.com/openabstractions/abstraction-logging) sinks and history clients | Identity-attributed service collection and observation |
 
-Applications retain request identity and owner/binding information for recovery.
-Accepted work stays with its original owner; cancelling a wait does not cancel
-that work. Services own NAS/backend access and credentials. An unavailable runtime
-does not silently become an application file store.
+The [facade](https://github.com/openabstractions/abstraction-facade) is the
+normal application entrypoint. It resolves a service from requirements such as
+contract version, placement, guarantees and readiness. Each capability call is
+authorized again at the service boundary.
 
-This repository contains the central runtime/CLI, panel, IDL generator, contracts
-and conformance tools. Capability and provider packages live in the repositories
-below. [The adoption guide](https://openabstractions.org/adopt.html) describes the
-ownership model; [CONTRIBUTING.md](CONTRIBUTING.md#adopting) gives revision and
-evidence checks for contributors.
+```text
+application -> facade resolver -> generated capability client -> service -> provider
+                                                            \-> service-owned state
+```
 
-## Use a layer
+Accepted work stays with the service that accepted it. A caller timeout cancels
+the wait. Explicit cancellation is a separate operation. Durable clients retain
+the original binding and request identity to reconcile a lost reply without
+creating duplicate work.
 
-Each capability repository documents its clients, provider scope and package
-requirements. Select only the capabilities an application needs:
+## Connect tools people already use
 
-| you want | repository |
-|---|---|
-| work that outlives the process that asked for it | [`abstraction-job`](https://github.com/openabstractions/abstraction-job) |
-| a download that can be finished by somebody else | [`abstraction-download`](https://github.com/openabstractions/abstraction-download) |
-| bytes at rest, named by digest | [`abstraction-storage`](https://github.com/openabstractions/abstraction-storage) |
-| compare-and-set over a file, on the kernel's own lock | [`abstraction-cas`](https://github.com/openabstractions/abstraction-cas) |
-| bounded observation of changing state | [`abstraction-watch`](https://github.com/openabstractions/abstraction-watch) |
-| structured logging and bounded service-owned history | [`abstraction-logging`](https://github.com/openabstractions/abstraction-logging) |
-| to know which program is on the other end of a local connection | [`abstraction-identity`](https://github.com/openabstractions/abstraction-identity) |
-| to ask this machine what it can do, without naming who answers | [`abstraction-facade`](https://github.com/openabstractions/abstraction-facade) |
-| where a machine keeps its answer to "which store" | [`abstraction-config`](https://github.com/openabstractions/abstraction-config) |
-| a closed catalogue of questions a machine may ask a person | [`abstraction-asks`](https://github.com/openabstractions/abstraction-asks) |
-| to grant, inspect and revoke application permissions | [`abstraction-rights`](https://github.com/openabstractions/abstraction-rights) |
-| model weights named across stores that disagree about names | [`abstraction-model`](https://github.com/openabstractions/abstraction-model) |
+An operator can connect an existing downloader, model engine or remote service.
+The application keeps asking for a download or model call in the same way. OA
+checks access, applies named credentials, limits the request and records which
+provider accepted it. Removing that provider stops new work from going there;
+work it already accepted keeps the same owner through completion.
 
-Running implementations built on those contracts:
-[`service-jobd`](https://github.com/openabstractions/service-jobd), a supervisor
-that finishes work nobody is watching;
-[`addon-synology`](https://github.com/openabstractions/addon-synology), a NAS as
-the fetcher for a LAN; [`docker-jobd`](https://github.com/openabstractions/docker-jobd);
-[`polite-monitor`](https://github.com/openabstractions/polite-monitor), a Windows
-window listing what the machine is doing; and
-[`adopter-comfyui`](https://github.com/openabstractions/adopter-comfyui), which
-routes ComfyUI-Manager downloads through the durable job service.
+An assistant can find a supported editor or ComfyUI workflow, open the
+application when it is closed, and propose a change to the item the person is
+viewing. The target application shows what would change. The person applies it
+there, and the assistant can read back the observed result. In the controlled
+ComfyUI example, OpenCode proposed changing a sampler's steps from 20 to 24;
+ComfyUI showed the preview, applied it separately, and rejected the old request
+after the workflow changed.
 
-A layer repository holds every language for that one contract, because the
-conformance proof compares bytes across languages
-([`docs/repo-layout.md`](docs/repo-layout.md)).
+Provider generations keep accepted work with one owner. Application leases
+remove closed instances. Instance, context and revision checks stop a request
+from landing in a different document or workflow. These are development proofs;
+release packaging remains under qualification.
 
-## Judge an implementation, including one of ours
+## Try the development runtime
 
-You need [`conformance/`](conformance/), a POSIX shell, and a program of your own
-that applies a scenario and prints what it saw
-([`conformance/DRIVER.md`](conformance/DRIVER.md) is the whole contract that
-program keeps). Our source tree, our build and Go are not required.
+Build one fixed executable so exact-program grants remain attached to the same
+program identity. Requirements are Go 1.26 or newer and any platform tools named
+by the capability you exercise.
 
-    sh conformance/run.sh -- ./my-driver
+```console
+go build -o ./out/openabstractions ./serve
+./out/openabstractions --help
+./out/openabstractions serve runtime --isolated quickstart --state-dir /absolute/path/to/oa-state
+```
 
-Before trusting it, check the runner against toy drivers that are wrong in three
-different ways:
+The runtime prints an `ABSTRACTION_RUNTIME_ENDPOINT`. Keep it running, set that
+value in another terminal, and inspect readiness:
 
-    $ sh conformance/selftest.sh
-    conformance selftest
-      ok    a driver that declares nothing is not set up (exit 3)
-      ok    a driver that answers ok to everything fails (exit 1)
-      ok    a rule out of reach is incomplete, never a pass (exit 2)
-      ok    a superset, a stray field and a negation are all refused (3 refused, 1 held)
-      RESULT: the runner distinguishes passed, failed and out of reach
+```console
+./out/openabstractions status --json
+./out/openabstractions probe --json
+```
 
-A capability you have not implemented, a fixture that would not start, a scenario
-out of reach: each is counted and named, and the run exits 2. Out of reach is
-never a pass. A partial implementation declares what it can do and is scored on
-that.
+`probe` performs bounded capability reads and preserves typed unavailable or
+forbidden outcomes. Operator commands include durable downloads and jobs,
+credentials, rights, inference hosts, providers and applications. Run
+`<command> --help` before changing machine state.
 
-The rules themselves are tagged — `[DL-R28]`, `[JOB-L5]` — on each layer's
-`CONTRACT.md`, and every scenario cites the tag it tests. The pages are not
-copied here on purpose: a normative page in two repositories is a reader who
-cannot tell which one binds them.
+The control panel in [`monitor/`](monitor/) uses the same generated clients for
+configuration, rights, applications and service status. It is the current OA
+panel. The separate `polite-monitor` repository is a retained legacy program.
 
-## Measured
+## Use it from an application
 
-**The coverage grid** answers "is any of this real" better than this page can:
-one row per layer, one column per language, one verdict per cell —
-[`docs/results/MATRIX.txt`](docs/results/MATRIX.txt), and
-[the same grid on the web](https://openabstractions.org/coverage.html). It reads
-what is committed in this repository and the transcripts below, and runs no
-implementation: it reports what was recorded, never what would happen if you ran
-it now.
+Choose the facade package for your language: [Go](https://github.com/openabstractions/abstraction-facade#go),
+[C++17](https://github.com/openabstractions/abstraction-facade#c17),
+[Python](https://github.com/openabstractions/abstraction-facade#python),
+[Rust](https://github.com/openabstractions/abstraction-facade#rust), or
+[JavaScript](https://github.com/openabstractions/abstraction-facade#javascript).
+Each generated client uses the shared OA service envelope and preserves typed
+outcomes. Package availability and provider support vary by language and
+capability; use the package README and its recorded evidence.
 
-It uses five verdicts because four kinds of gap are not one gap. `PASS` and
-`FAIL` mean a recorded run reached the cell. `UNPROVEN` means it could not be
-checked, and names why. `ABSENT` means it was checked and the thing is not
-there. `—` means there is no implementation at all — not an untested one and not
-a finished one — and each `—` carries whether that gap is declared deliberate or
-simply unexplained. No count from the grid is repeated on this page: it names
-the commit and the layer trees it measured, and the maintainer gate checks that the grid agrees with its evidence.
-The standalone `conformance/` runner and `idl/` generator are the public tools;
-private orchestration and publication scripts are not included.
+Pin the exact package revision you test. A coordinated source build proves
+source compatibility for that revision. Release pages state which independently
+published packages and native artifacts are available.
 
-Transcripts of every run are in [`docs/results/`](docs/results/), indexed in
-[`docs/results/README.md`](docs/results/README.md) with the script that produced
-each and the state of the machine. They are our own output on our own machines,
-so read them as a record of what happened once, not as independent verification.
-A pass by absence is a defect here.
+## Current limits
 
-- A killed download resumes from the proven prefix; bytes written past the last
-  checkpoint are discarded. [`RESUME1.txt`](docs/results/RESUME1.txt).
-- Go, Python and C++ replay the whole scenario corpus and produce identical
-  transcripts. [`BEHAVIOUR1.txt`](docs/results/BEHAVIOUR1.txt).
-- Go and Python finish each other's downloads, both directions, digests matching.
-  [`XLANG-DOWNLOAD.txt`](docs/results/XLANG-DOWNLOAD.txt).
-- A NAS finishes and verifies a 386 MB file after every process of ours on the PC
-  was killed. DSM 6.2.4 with the package scripts run by hand; Package Center and
-  DSM 7 `UNPROVEN`. [`NAS1.txt`](docs/results/NAS1.txt).
-- Six writers in three languages, one file, no lost update. Windows; macOS
-  `UNPROVEN`. [`CAS-MIXED1.txt`](docs/results/CAS-MIXED1.txt).
-- `curl`, which links nothing of ours, is refused from a listed host by the
-  platform packet filter with our reason in the kernel log. Linux; the Windows
-  rule text is rendered and unapplied, `UNPROVEN`.
-  [`REACH1.txt`](docs/results/REACH1.txt).
-- The machine is held awake for the life of a lease, read back from the kernel's
-  own execution state. Windows and Linux; macOS `UNPROVEN`.
-  [`AWAKE1.txt`](docs/results/AWAKE1.txt).
+- Package availability, signing and installation verification are recorded per release.
+- macOS native IPC lacks the program proof required by protected service calls,
+  and those calls fail closed.
+- JavaScript/Bun native clients require an explicit controlled endpoint.
+  Installed selection and configured server-expectation verification return
+  `ProofUnavailable`.
+- Remote services and compatibility HTTP windows have narrower trust evidence
+  than native local IPC.
+- Hosted-provider qualification is separate from controlled fixtures. Recorded
+  tests make no paid-provider claim.
 
-## Status
+The [recorded results](docs/results/README.md) name the revision, platform and
+scope behind each claim. They are historical observations from project-owned
+machines. A build or generated client alone does not establish runtime,
+provider or installation behavior.
 
-Source support, package publication and native installation qualification are
-separate results. Use each repository's release metadata and capability contract.
-Development APIs may change; coordinated source packages can precede registry
-publication. Go source builds require the version declared in their module files.
+## Judge an implementation
 
-The evidence below is historical and scoped to its named sources and hosts.
-Current Windows/Linux local trust and service clients have focused tests; macOS
-native lifecycle measurements preserve the known Program-proof refusal. A build
-or a generated client alone does not establish provider or installation behavior.
+The standalone [`conformance/`](conformance/README.md) runner checks another
+implementation through its public behavior. Supply a program that applies one
+scenario and prints what it observed:
 
-[`GOVERNANCE.md`](https://github.com/openabstractions/.github/blob/main/GOVERNANCE.md)
-says what happens if the maintainer stops;
-[`SECURITY.md`](https://github.com/openabstractions/.github/blob/main/SECURITY.md)
-says how to report a fault.
+```console
+sh conformance/run.sh -- ./my-driver
+```
 
-## Also here
+The runner reports passed, failed and out-of-reach scenarios separately. Each
+scenario cites the tagged rule from the capability repository's `CONTRACT.md`.
+The [coverage grid](docs/results/MATRIX.txt) summarizes committed transcripts;
+it does not run implementations while rendering the table.
 
-- [`METHOD.md`](METHOD.md) — how an interface is drawn and tested here, and
-  §14 which layers qualify at all. Read §14 before proposing one.
-- [`STATE.md`](STATE.md) — what is open, in order.
-- [`docs/try-it.md`](docs/try-it.md) — historical legacy-worker demonstration across three fetchers.
-- [`docs/integrating.md`](docs/integrating.md) — what adopting these interfaces
-  taught them.
-- [`docs/using-other-peoples-code.md`](docs/using-other-peoples-code.md) — what
-  licences code may be taken from.
-- [`research`](https://github.com/openabstractions/research) — the prior art read
-  before designing.
+## Repository map
 
-## Licence
+- [`serve/`](serve/) — runtime and operator command source.
+- [`monitor/`](monitor/) — current control panel source.
+- [`examples/`](examples/) — small integration examples.
+- [`conformance/`](conformance/README.md) — independent behavior runner.
+- [`docs/results/`](docs/results/README.md) — historical test transcripts and
+  their environments.
+- [`METHOD.md`](METHOD.md) — criteria for adding or changing an abstraction.
+- [`docs/REMOVED.md`](docs/REMOVED.md) — retired entrypoints and replacements.
 
-Apache-2.0. See [`LICENSE`](LICENSE). Code and techniques taken from elsewhere
-are recorded in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+Contributors should read [CONTRIBUTING.md](CONTRIBUTING.md). Governance and
+security reporting live in the organization profile repositories. Code and
+techniques taken from elsewhere are recorded in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+Apache-2.0. See [`LICENSE`](LICENSE).

@@ -1,0 +1,151 @@
+type Raw string
+type UserReplaceOutcome uint32
+const UserReplaceOutcomeApplied
+const UserReplaceOutcomeConflict
+const UserReplaceOutcomeForbidden
+const UserReplaceOutcomeUnavailable
+func (UserReplaceOutcome) String() string
+func (UserReplaceOutcome) WireName() (string, bool)
+func ParseUserReplaceOutcome(word string) (UserReplaceOutcome, bool)
+func (UserReplaceOutcome) MarshalText() ([]byte, error)
+func (UserReplaceOutcome) UnmarshalText(text []byte) error
+func (UserReplaceOutcome) MarshalJSON() ([]byte, error)
+func (UserReplaceOutcome) UnmarshalJSON(data []byte) error
+func UserReplaceOutcomeValues() []UserReplaceOutcome
+func (UserReplaceOutcome) Known() bool
+type ConfigObservationOutcome uint32
+const ConfigObservationOutcomeSnapshot
+const ConfigObservationOutcomeUnchanged
+const ConfigObservationOutcomeGap
+const ConfigObservationOutcomeUnavailable
+const ConfigObservationOutcomeUnsupported
+const ConfigObservationOutcomeInvalid
+func (ConfigObservationOutcome) String() string
+func (ConfigObservationOutcome) WireName() (string, bool)
+func ParseConfigObservationOutcome(word string) (ConfigObservationOutcome, bool)
+func (ConfigObservationOutcome) MarshalText() ([]byte, error)
+func (ConfigObservationOutcome) UnmarshalText(text []byte) error
+func (ConfigObservationOutcome) MarshalJSON() ([]byte, error)
+func (ConfigObservationOutcome) UnmarshalJSON(data []byte) error
+func ConfigObservationOutcomeValues() []ConfigObservationOutcome
+func (ConfigObservationOutcome) Known() bool
+type ServiceErrorCode string
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+const ServiceErrorCodeStorageUnavailable
+const ServiceErrorCodeCallerUnavailable
+const ServiceErrorCodeIdentityRequired
+const ServiceErrorCodeWrongUser
+const ServiceErrorCodeInvalidRevision
+func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) Known() bool
+var ReaderErrorCodes
+var EditorErrorCodes
+type RunOverrides struct
+  NasStore string
+  Store string
+  LogSink string
+  LogService string
+type Origin struct
+  Rung string
+  Path string
+type Origins struct
+  NasStore Origin
+  Store Origin
+  LogSink Origin
+  LogService Origin
+  Off Origin
+type Snapshot struct
+  NasStore string
+  Store string
+  LogSink string
+  LogService string
+  Off map[string]string
+  Origins Origins
+  Stamp string
+type UserSettings struct
+  NasStore string
+  Store string
+  LogSink string
+  LogService string
+  Off map[string]string
+type UserSnapshot struct
+  Values UserSettings
+  Revision string
+type UserReplaceResult struct
+  Outcome UserReplaceOutcome
+  Snapshot UserSnapshot
+type ConfigObservation struct
+  Outcome ConfigObservationOutcome
+  Cursor string
+  Snapshot *Snapshot
+func Encode(v *Snapshot) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+func Decode(in []byte) (*Snapshot, error)
+type FrameWriter interface
+  WriteFrame(frame []byte) error
+type DispatchError string
+func (DispatchError) Error() string
+func ServiceName(frame []byte) (string, error)
+type FrameExchanger interface
+  ExchangeFrame(frame []byte) ([]byte, error)
+type ServiceError struct
+  Code ServiceErrorCode
+  Message string
+func (ServiceError) Error() string
+const EndpointContract
+type DescribedService interface
+  DescribeService() (contract string, ready bool, why string)
+func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+type ServedService interface
+  DescribedService
+  ServiceContract() string
+func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+type ConfigReader interface
+  Read(overrides RunOverrides) (Snapshot, error)
+type ConfigReaderTransport interface
+  FrameExchanger
+type ConfigReaderClient struct
+func NewConfigReaderClient(t ConfigReaderTransport) *ConfigReaderClient
+type ConfigReaderDispatcher struct
+  Handler ConfigReader
+func (ConfigReaderClient) Read(overrides RunOverrides) (result Snapshot, err error)
+func (ConfigReaderDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ConfigReaderDispatcher) ServiceContract() string
+func (ConfigReaderDispatcher) WriteFrame(frame []byte) error
+func (ConfigReaderDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type ConfigEditor interface
+  ReadUser() (UserSnapshot, error)
+  ReplaceUser(expectedRevision string, values UserSettings) (UserReplaceResult, error)
+type ConfigEditorTransport interface
+  FrameExchanger
+type ConfigEditorClient struct
+func NewConfigEditorClient(t ConfigEditorTransport) *ConfigEditorClient
+type ConfigEditorDispatcher struct
+  Handler ConfigEditor
+func (ConfigEditorClient) ReadUser() (result UserSnapshot, err error)
+func (ConfigEditorClient) ReplaceUser(expectedRevision string, values UserSettings) (result UserReplaceResult, err error)
+func (ConfigEditorDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ConfigEditorDispatcher) ServiceContract() string
+func (ConfigEditorDispatcher) WriteFrame(frame []byte) error
+func (ConfigEditorDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type ConfigObserver interface
+  Observe(overrides RunOverrides, cursor string, waitMs int64) (ConfigObservation, error)
+type ConfigObserverTransport interface
+  FrameExchanger
+type ConfigObserverClient struct
+func NewConfigObserverClient(t ConfigObserverTransport) *ConfigObserverClient
+type ConfigObserverDispatcher struct
+  Handler ConfigObserver
+func (ConfigObserverClient) Observe(overrides RunOverrides, cursor string, waitMs int64) (result ConfigObservation, err error)
+func (ConfigObserverDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ConfigObserverDispatcher) ServiceContract() string
+func (ConfigObserverDispatcher) WriteFrame(frame []byte) error
+func (ConfigObserverDispatcher) ExchangeFrame(frame []byte) ([]byte, error)

@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-const runtimeAgent = "com.openabstractions.jobd" // Installed label retained across upgrades.
+const runtimeAgent = "com.openabstractions.runtime" // The LaunchAgent label the package registers.
 func startGuard() error {
 	if os.Geteuid() == 0 {
 		return errors.New("start refused: use the installed user's graphical session")

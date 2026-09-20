@@ -1,0 +1,67 @@
+{
+  "fault": "sink-outage",
+  "contract": "abstraction-logging/CONTRACT.md LOG-S12, LOG-S13",
+  "options": {
+    "capacity": 8,
+    "initial_backoff_ms": 5,
+    "max_backoff_ms": 20,
+    "program": "sink-outage-fixture"
+  },
+  "outage": {
+    "write_error": "sink-outage: write refused",
+    "rebind_error": {"status": "runtime_unavailable", "cause": "sink-outage: rebind refused"}
+  },
+  "steps": [
+    {"log": ["before-1", "before-2"]},
+    {"await": "settled"},
+    {"outage": true},
+    {"log": ["during-1"]},
+    {"await": "failing"},
+    {"log": ["during-2", "during-3", "during-4", "during-5", "during-6", "during-7", "during-8", "during-9", "during-10", "during-11", "during-12"]},
+    {"counts": {"accepted": 10, "dropped": 4, "written": 2, "failed": 0, "abandoned": 0, "queued": 8, "failing": true}},
+    {"await": "retry"},
+    {"hold": "records dropped while the sink was unreachable"},
+    {"outage": false},
+    {"await": "held"},
+    {"log": ["during-13"]},
+    {"counts": {"accepted": 10, "dropped": 5, "written": 2, "failed": 0, "abandoned": 0, "queued": 8, "failing": true}},
+    {"release": true},
+    {"await": "settled"},
+    {"close": true}
+  ],
+  "expect": {
+    "counts": {"accepted": 10, "dropped": 5, "written": 10, "failed": 0, "abandoned": 0, "queued": 0, "failing": false},
+    "last_error_contains": "runtime_unavailable",
+    "failure_status": "runtime_unavailable",
+    "transitions": ["failure", "overflow", "recovery"],
+    "delivered": [
+      "before-1",
+      "before-2",
+      "records dropped while the sink was unreachable",
+      "during-1",
+      "during-2",
+      "during-3",
+      "during-4",
+      "during-5",
+      "during-6",
+      "during-7",
+      "during-8",
+      "records dropped while the sink was unreachable"
+    ],
+    "gap": {
+      "level": 4,
+      "msg": "records dropped while the sink was unreachable",
+      "attrs": {"dropped": "4"},
+      "timestamps": ["since", "until"],
+      "hop": 0,
+      "by": "self",
+      "program": "sink-outage-fixture"
+    },
+    "gaps_dropped": ["4", "1"],
+    "reporter": [
+      "abstraction.logging: service unreachable (runtime_unavailable); 1 queued, 0 dropped",
+      "abstraction.logging: queue full, dropping newest records; 8 queued, 1 dropped",
+      "abstraction.logging: delivering again; 5 dropped"
+    ]
+  }
+}

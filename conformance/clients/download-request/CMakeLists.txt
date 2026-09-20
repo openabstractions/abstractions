@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 project(download_request_consumer LANGUAGES CXX)
-find_package(abstraction_download CONFIG REQUIRED)
+find_package(abstraction_download_request CONFIG REQUIRED)
 add_executable(request_consumer client.cpp)
-target_link_libraries(request_consumer PRIVATE abstraction::download)
+target_link_libraries(request_consumer PRIVATE abstraction::download_request)
 target_compile_features(request_consumer PRIVATE cxx_std_17)

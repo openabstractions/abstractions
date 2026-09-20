@@ -21,7 +21,7 @@ func generateJSIncludes(t *testing.T, dir, out string, extra ...string) {
 		if e := run([]string{filepath.Join(dir, name+".thrift"), root, "--named-codecs", "javascript"}, &report); e != nil {
 			t.Fatal(name, e)
 		}
-		writeNamespaceFile(t, root, "package.json", `{"name":"@fixture/`+name+`","type":"module","exports":"./js/`+ns+`/rec.mjs"}`)
+		writeNamespaceFile(t, root, "package.json", `{"name":"@fixture/`+name+`","type":"module","exports":{".":"./js/`+ns+`/index.mjs","./internal":"./js/`+ns+`/internal.mjs"}}`)
 	}
 	var report bytes.Buffer
 	args := append(append([]string{filepath.Join(dir, "resolver.thrift"), out}, jsIncludeMappings...), extra...)
@@ -48,7 +48,8 @@ func sameTree(t *testing.T, a, b string) {
 		}
 		return nil
 	})
-	if count != 5 {
+	// Three modules, each internal.mjs, index.mjs and index.d.mts, plus two package.json fixtures.
+	if count != 11 {
 		t.Fatalf("compared %d generated files", count)
 	}
 }
@@ -70,15 +71,28 @@ func TestJavaScriptTypedIncludes(t *testing.T) {
 	generateJSIncludes(t, dir, js)
 	generateJSIncludes(t, dir, filepath.Join(dir, "again"))
 	sameTree(t, js, filepath.Join(dir, "again"))
-	codecPath := filepath.Join(js, "js/cross/resolver/rec.mjs")
+	codecPath := filepath.Join(js, "js/cross/resolver/internal.mjs")
 	codec, _ := os.ReadFile(codecPath)
-	for _, line := range []string{"import * as oa_dependency_model from \"@fixture/model\";\n", "import * as oa_dependency_request from \"@fixture/request\";\n"} {
+	for _, line := range []string{"import * as dependencyModel from \"@fixture/model/internal\";\n", "import * as dependencyRequest from \"@fixture/request/internal\";\n"} {
 		if !strings.Contains(string(codec), line) {
 			t.Fatalf("generated module lacks %q", line)
 		}
 	}
-	if strings.Contains(string(codec), "struct Ref") || strings.Contains(string(codec), "function decode_ref(") {
+	if strings.Contains(string(codec), "struct Ref") || strings.Contains(string(codec), "function readRef(r) {\n  if") {
 		t.Fatal("imported codec body copied into importing module")
+	}
+	decl, _ := os.ReadFile(filepath.Join(js, "js/cross/resolver/index.d.mts"))
+	for _, line := range []string{"import type * as dependencyModel from \"@fixture/model\";\n", "import type * as dependencyRequest from \"@fixture/request\";\n", "dependencyRequest.Request"} {
+		if !strings.Contains(string(decl), line) {
+			t.Fatalf("generated declarations lack %q\n%s", line, decl)
+		}
+	}
+	if tsc := os.Getenv("TSC"); tsc != "" {
+		// The importing declarations resolve their dependencies' declarations by package name.
+		writeNamespaceFile(t, js, "types.mts", "export * as resolver from './js/cross/resolver/index.mjs';\n")
+		if b, e := runNode(t, node, js, tsc, "--noEmit", "--strict", "--skipLibCheck", "false", "--target", "es2022", "--lib", "es2022", "--module", "nodenext", "--moduleResolution", "nodenext", "types.mts"); e != nil {
+			t.Fatalf("tsc over typed include declarations: %v\n%s", e, b)
+		}
 	}
 
 	goOut := filepath.Join(out, "gohost")
@@ -134,7 +148,7 @@ func TestJavaScriptIncludeMixedDepth(t *testing.T) {
 	writeNamespaceFile(t, dir, "resolver.thrift", src)
 	generateJSIncludes(t, dir, out)
 	writeNamespaceFile(t, out, "mixed.mjs", `import assert from 'node:assert/strict';
-import * as r from './js/cross/resolver/rec.mjs';
+import * as r from './js/cross/resolver/internal.mjs';
 import * as m from '@fixture/model';
 import * as d from '@fixture/request';
 const enc=new TextEncoder();
@@ -195,7 +209,7 @@ func TestJavaScriptIncludeRefusals(t *testing.T) {
 	if e := run(selected, &b); e != nil {
 		t.Fatal(e)
 	}
-	generated, _ := os.ReadFile(filepath.Join(out, "js/cross/resolver/rec.mjs"))
+	generated, _ := os.ReadFile(filepath.Join(out, "js/cross/resolver/internal.mjs"))
 	if strings.Contains(string(generated), "newQuery") || !strings.Contains(string(generated), "export class Resolver") || !strings.Contains(string(generated), "@fixture/request") {
 		t.Fatal("selection lost imported closure or retained local record")
 	}
@@ -216,7 +230,7 @@ func main(){
 
 const jsIncludeConsumer = `import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import * as r from './js/cross/resolver/rec.mjs';
+import * as r from './js/cross/resolver/internal.mjs';
 import * as m from '@fixture/model';
 import * as d from '@fixture/request';
 const host=process.argv[2];
@@ -251,9 +265,9 @@ assert.throws(()=>r.encode({...v,ref:{...ref,repo:17}}),e=>e instanceof r.Refusa
 assert.equal(d.decodeSource(d.encodeSource({...d.newSource(),scheme:'http',locator:'named'})).locator,'named');
 let calls=0;
 const c=new r.ResolverClient({exchangeFrame:async frame=>{calls++;return go('exchange',frame);}});
-assert.deepEqual(await c.Resolve(ref),{...d.newRequest(),artifact:{...d.newArtifact(),digest:'same'},sources:[{...d.newSource(),scheme:'http',locator:'weights.gguf'}]});
+assert.deepEqual(await c.resolve(ref),{...d.newRequest(),artifact:{...d.newArtifact(),digest:'same'},sources:[{...d.newSource(),scheme:'http',locator:'weights.gguf'}]});
 assert.equal(calls,1);
-for(const bad of [{...ref,repo:17},{...ref,repo:'\ud800'},null,{registry:''}]) await assert.rejects(c.Resolve(bad),e=>e instanceof r.Refusal,JSON.stringify(bad));
+for(const bad of [{...ref,repo:17},{...ref,repo:'\ud800'},null,{registry:''}]) await assert.rejects(c.resolve(bad),e=>e instanceof r.Refusal,JSON.stringify(bad));
 assert.equal(calls,1);
 try{r.decodeQueryAt(bytes,62,64);throw new Error('accepted');}
 catch(e){if(!(e instanceof r.Refusal)||e.word!=='depth_exceeded')throw new Error('depth reset: '+e);}

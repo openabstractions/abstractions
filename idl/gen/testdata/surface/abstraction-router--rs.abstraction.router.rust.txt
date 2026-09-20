@@ -1,0 +1,114 @@
+pub type Raw
+pub mod service_error_code
+  pub const HANDLER_ERROR: &str
+  pub const INVALID_RESULT: &str
+  pub const UNKNOWN_VERSION: &str
+  pub const UNKNOWN_SERVICE: &str
+  pub const UNKNOWN_METHOD: &str
+  pub const WRONG_MODE: &str
+  pub const INTERNAL: &str
+  pub const INVALID_REQUEST: &str
+  pub const CALLER_REFUSED: &str
+  pub const UNKNOWN_OPERATION: &str
+  pub const POLICY_UNAVAILABLE: &str
+  pub const FORBIDDEN: &str
+  pub const ALL: [&str; 12]
+pub const PROFILES: [&str; 5]
+pub const VERDICTS: [&str; 8]
+pub const WIRE_KINDS: [&str; 9]
+pub const CREDENTIAL_CONSUMERS: [&str; 1]
+pub const ROUTER_ERROR_CODES: [&str; 6]
+pub struct HostAllowance
+  hosts: Vec<String>
+pub struct PickRequest
+  model: String
+  fresh: bool
+  allowed: Option<HostAllowance>
+  profile: String
+pub struct Caller
+  user_description: String
+  path_description: String
+pub struct Observation
+  caller: Caller
+  took_ms: i64
+  cache_age_ms: i64
+pub struct Alias
+  host: String
+  name: String
+  resident: bool
+  servable: bool
+  hosted: bool
+  profiles: Vec<String>
+pub struct Family
+  family: String
+  names: Vec<Alias>
+pub struct ModelsSnapshot
+  observation: Observation
+  models: Vec<Family>
+pub struct HostState
+  host: String
+  base: String
+  up: bool
+  why: String
+  installed: i64
+  resident: Vec<String>
+  servable: bool
+  hosted: bool
+  wire: String
+  credential: String
+  declared_by: String
+  profiles: Vec<String>
+  domain: String
+pub struct Ask
+  at: String
+  caller: String
+  user: String
+  model: String
+  family: String
+  verdict: String
+  host: String
+pub struct HostsSnapshot
+  observation: Observation
+  hosts: Vec<HostState>
+  doubled: Vec<String>
+  asked: Vec<Ask>
+pub struct Decision
+  asked: String
+  family: String
+  verdict: String
+  host: String
+  model: String
+  endpoint: String
+  installed_on: Vec<String>
+  authorised: Option<HostAllowance>
+  withheld: Vec<String>
+  loads: i64
+  why: String
+pub struct PickResult
+  observation: Observation
+  decision: Decision
+pub fn encode(v: &PickRequest) -> Vec<u8>
+pub struct Refusal
+  word: &'static str
+  offset: usize
+pub fn decode(data: &[u8]) -> Result<PickRequest, Refusal>
+pub use abstraction_frame::FrameTransport
+pub struct ServiceError
+  code: String
+  message: String
+pub enum CallError<E>
+  Transport(E)
+  Refusal(Refusal)
+  Dispatch(&'static str)
+  Service(ServiceError)
+pub trait Router
+  type Error
+  fn models(&self, fresh: bool) -> Result<ModelsSnapshot, Self::Error>
+  fn hosts(&self, fresh: bool) -> Result<HostsSnapshot, Self::Error>
+  fn pick(&self, request: PickRequest) -> Result<PickResult, Self::Error>
+pub struct RouterClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub mod internal
+  pub fn micros_timestamp(text: &str) -> bool
+  pub fn wide_timestamp(text: &str) -> bool

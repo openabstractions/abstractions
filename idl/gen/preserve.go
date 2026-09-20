@@ -68,10 +68,10 @@ def _extra_fields(out, extras, known, depth, first):
             out += b","
         first = False
         out += b"\n"
-        pad(out, depth + 1)
-        esc(out, key)
+        _pad(out, depth + 1)
+        _esc(out, key)
         out += b": "
-        raw(out, value, depth + 1)
+        _raw(out, value, depth + 1)
     return first
 `
 

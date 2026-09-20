@@ -54,7 +54,9 @@ class Handler(BaseHTTPRequestHandler):
             ready, _, _ = select.select([self.connection], [], [], 0)
             if not ready:
                 return False
-            return self.connection.recv(1, socket.MSG_PEEK | socket.MSG_DONTWAIT) == b""
+            # Windows has no MSG_DONTWAIT; select already reported the socket
+            # readable, so a peek returns at once on either platform.
+            return self.connection.recv(1, socket.MSG_PEEK | getattr(socket, "MSG_DONTWAIT", 0)) == b""
         except BlockingIOError:
             return False
         except OSError:

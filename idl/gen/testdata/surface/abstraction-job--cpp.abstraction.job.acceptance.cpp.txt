@@ -1,0 +1,231 @@
+using Raw = std::string
+class Refusal : public std::runtime_error
+  const char* word
+  std::size_t offset
+enum class AcceptanceOutcome {Accepted, DefinitelyNotAccepted, Unknown, KeyConflict, Forbidden, Invalid, Unavailable}
+inline constexpr std::string_view wire_name(AcceptanceOutcome value)
+inline std::optional<AcceptanceOutcome> parse_acceptance_outcome(std::string_view name)
+inline constexpr bool operator==(AcceptanceOutcome value, std::string_view name)
+inline constexpr bool operator!=(AcceptanceOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, AcceptanceOutcome value)
+inline constexpr bool operator!=(std::string_view name, AcceptanceOutcome value)
+inline const std::vector<std::string> kAcceptanceOutcomeNames
+enum class CancellationOutcome {Requested, AlreadyTerminal, Unknown, Forbidden, Unsupported, Unavailable}
+inline constexpr std::string_view wire_name(CancellationOutcome value)
+inline std::optional<CancellationOutcome> parse_cancellation_outcome(std::string_view name)
+inline constexpr bool operator==(CancellationOutcome value, std::string_view name)
+inline constexpr bool operator!=(CancellationOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, CancellationOutcome value)
+inline constexpr bool operator!=(std::string_view name, CancellationOutcome value)
+inline const std::vector<std::string> kCancellationOutcomeNames
+enum class WorkState {Pending, Running, Transferred, Complete, Failed, Cancelled}
+inline constexpr std::string_view wire_name(WorkState value)
+inline std::optional<WorkState> parse_work_state(std::string_view name)
+inline constexpr bool operator==(WorkState value, std::string_view name)
+inline constexpr bool operator!=(WorkState value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, WorkState value)
+inline constexpr bool operator!=(std::string_view name, WorkState value)
+inline const std::vector<std::string> kWorkStateNames
+enum class FailureClass {Retryable, Permanent, Unknown}
+inline constexpr std::string_view wire_name(FailureClass value)
+inline std::optional<FailureClass> parse_failure_class(std::string_view name)
+inline constexpr bool operator==(FailureClass value, std::string_view name)
+inline constexpr bool operator!=(FailureClass value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, FailureClass value)
+inline constexpr bool operator!=(std::string_view name, FailureClass value)
+inline const std::vector<std::string> kFailureClassNames
+inline const std::vector<std::string> kFailureCauseNames
+inline constexpr std::string_view kFailureCauseOther
+inline constexpr std::string_view kFailureCauseDigestMismatch
+inline constexpr std::string_view kFailureCauseOversize
+inline constexpr std::string_view kFailureCauseShortTransfer
+inline constexpr std::string_view kFailureCauseUnauthorized
+inline constexpr std::string_view kFailureCauseNotFound
+inline constexpr std::string_view kFailureCauseRefused
+inline constexpr std::string_view kFailureCauseServerError
+inline constexpr std::string_view kFailureCauseTransport
+inline constexpr std::string_view kFailureCauseResultLost
+inline constexpr std::string_view kFailureCauseCredential
+enum class ObservationOutcome {Observed, Unknown, Forbidden, Invalid, DefinitelyNotAccepted, Unavailable}
+inline constexpr std::string_view wire_name(ObservationOutcome value)
+inline std::optional<ObservationOutcome> parse_observation_outcome(std::string_view name)
+inline constexpr bool operator==(ObservationOutcome value, std::string_view name)
+inline constexpr bool operator!=(ObservationOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ObservationOutcome value)
+inline constexpr bool operator!=(std::string_view name, ObservationOutcome value)
+inline const std::vector<std::string> kObservationOutcomeNames
+enum class ResultOutcome {Data, NotReady, Unavailable, Unsupported, Unknown, Forbidden, Invalid}
+inline constexpr std::string_view wire_name(ResultOutcome value)
+inline std::optional<ResultOutcome> parse_result_outcome(std::string_view name)
+inline constexpr bool operator==(ResultOutcome value, std::string_view name)
+inline constexpr bool operator!=(ResultOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ResultOutcome value)
+inline constexpr bool operator!=(std::string_view name, ResultOutcome value)
+inline const std::vector<std::string> kResultOutcomeNames
+enum class InventoryOutcome {Page, Gap, Forbidden, Invalid, Unavailable}
+inline constexpr std::string_view wire_name(InventoryOutcome value)
+inline std::optional<InventoryOutcome> parse_inventory_outcome(std::string_view name)
+inline constexpr bool operator==(InventoryOutcome value, std::string_view name)
+inline constexpr bool operator!=(InventoryOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, InventoryOutcome value)
+inline constexpr bool operator!=(std::string_view name, InventoryOutcome value)
+inline const std::vector<std::string> kInventoryOutcomeNames
+enum class OperatorCancellationOutcome {Requested, AlreadyTerminal, Unknown, Forbidden, Invalid, Unavailable}
+inline constexpr std::string_view wire_name(OperatorCancellationOutcome value)
+inline std::optional<OperatorCancellationOutcome> parse_operator_cancellation_outcome(std::string_view name)
+inline constexpr bool operator==(OperatorCancellationOutcome value, std::string_view name)
+inline constexpr bool operator!=(OperatorCancellationOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, OperatorCancellationOutcome value)
+inline constexpr bool operator!=(std::string_view name, OperatorCancellationOutcome value)
+inline const std::vector<std::string> kOperatorCancellationOutcomeNames
+inline const std::vector<std::string> kServiceErrorCodeNames
+inline constexpr std::string_view kServiceErrorCodeHandlerError
+inline constexpr std::string_view kServiceErrorCodeInvalidResult
+inline constexpr std::string_view kServiceErrorCodeUnknownVersion
+inline constexpr std::string_view kServiceErrorCodeUnknownService
+inline constexpr std::string_view kServiceErrorCodeUnknownMethod
+inline constexpr std::string_view kServiceErrorCodeWrongMode
+inline constexpr std::string_view kServiceErrorCodeForbidden
+inline const std::vector<std::string> kAdmissionGuarantees
+inline const std::vector<std::string> kAcceptanceErrorCodes
+inline const std::vector<std::string> kResourceActions
+struct RequestIdentity
+  std::string key
+  std::string history_epoch
+  std::int64_t attempt
+struct Submission
+  RequestIdentity identity
+  std::string kind
+  std::vector<std::uint8_t> spec
+  std::vector<std::string> required_guarantees
+  std::string label
+struct Receipt
+  RequestIdentity identity
+  std::string logical_owner
+  std::string operation_id
+  std::vector<std::string> accepted_guarantees
+  std::int64_t history_retention_ms
+struct AcceptanceResult
+  AcceptanceOutcome outcome
+  std::optional<Receipt> receipt
+  std::string reason
+struct HistoryWindow
+  std::string logical_owner
+  std::string history_epoch
+  std::int64_t minimum_retention_ms
+  std::int64_t result_retention_ms
+struct CancellationResult
+  CancellationOutcome outcome
+struct WorkProgress
+  std::int64_t done
+  std::int64_t total
+struct WorkFailure
+  FailureClass classification
+  std::string message
+  std::string cause
+struct OperationSnapshot
+  Receipt receipt
+  WorkState state
+  WorkProgress progress
+  bool cancellation_requested
+  std::optional<WorkFailure> failure
+  std::string label
+  bool label_derived
+  std::string waiting
+struct ObservationResult
+  ObservationOutcome outcome
+  std::optional<OperationSnapshot> snapshot
+struct ResultChunk
+  Receipt receipt
+  std::int64_t offset
+  std::int64_t total
+  std::vector<std::uint8_t> data
+  bool eof
+struct ResultRead
+  ResultOutcome outcome
+  std::optional<ResultChunk> chunk
+struct InventoryPage
+  InventoryOutcome outcome
+  std::vector<OperationSnapshot> snapshots
+  std::string next
+  bool complete
+struct OperatorCancellation
+  OperatorCancellationOutcome outcome
+inline std::string encode(const AcceptanceResult& v)
+inline AcceptanceResult decode(std::string_view data)
+struct FrameWriter
+  virtual void write_frame(std::string_view frame)
+struct DispatchError : std::runtime_error
+inline std::string service_name(std::string_view frame)
+struct FrameExchanger
+  virtual std::string exchange_frame(std::string_view frame)
+struct ServiceError : std::runtime_error
+  std::string code, message
+inline constexpr std::string_view kEndpointContract
+struct DescribedService
+  std::string contract
+  bool ready
+  std::string why
+std::string describe_endpoint(std::string_view frame, const std::string& program, const std::string& version, const Services& . . . services)
+struct RecoverableAcceptance
+  virtual HistoryWindow get_history_window()
+  virtual AcceptanceResult submit(const Submission& submission)
+  virtual AcceptanceResult reconcile(const RequestIdentity& identity)
+  virtual CancellationResult cancel_work(const RequestIdentity& identity)
+template<class Transport>struct RecoverableAcceptanceClient : RecoverableAcceptance
+  Transport& transport_
+  HistoryWindow get_history_window() override
+  AcceptanceResult submit(const Submission& submission) override
+  AcceptanceResult reconcile(const RequestIdentity& identity) override
+  CancellationResult cancel_work(const RequestIdentity& identity) override
+struct RecoverableAcceptanceService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct RecoverableAcceptanceDispatcher : FrameWriter, FrameExchanger
+  RecoverableAcceptance& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct OperationControl
+  virtual ObservationResult observe_work(const RequestIdentity& identity)
+  virtual ResultRead read_result(const RequestIdentity& identity, const std::int64_t& offset, const std::int64_t& max_bytes)
+template<class Transport>struct OperationControlClient : OperationControl
+  Transport& transport_
+  ObservationResult observe_work(const RequestIdentity& identity) override
+  ResultRead read_result(const RequestIdentity& identity, const std::int64_t& offset, const std::int64_t& max_bytes) override
+struct OperationControlService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct OperationControlDispatcher : FrameWriter, FrameExchanger
+  OperationControl& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct JobInventory
+  virtual InventoryPage list_work(const std::string& cursor, const std::int64_t& limit)
+template<class Transport>struct JobInventoryClient : JobInventory
+  Transport& transport_
+  InventoryPage list_work(const std::string& cursor, const std::int64_t& limit) override
+struct JobInventoryService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct JobInventoryDispatcher : FrameWriter, FrameExchanger
+  JobInventory& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct JobOperator
+  virtual InventoryPage list_account_work(const std::string& cursor, const std::int64_t& limit)
+  virtual OperatorCancellation cancel_operation(const std::string& operation_id)
+template<class Transport>struct JobOperatorClient : JobOperator
+  Transport& transport_
+  InventoryPage list_account_work(const std::string& cursor, const std::int64_t& limit) override
+  OperatorCancellation cancel_operation(const std::string& operation_id) override
+struct JobOperatorService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct JobOperatorDispatcher : FrameWriter, FrameExchanger
+  JobOperator& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override

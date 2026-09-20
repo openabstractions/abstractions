@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	download "github.com/openabstractions/abstraction-download/go"
+	"github.com/openabstractions/abstraction-download/go/netcost"
 	execution "github.com/openabstractions/abstraction-download/go/serve"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	"github.com/openabstractions/abstraction-identity/listen"
@@ -50,7 +52,7 @@ func TestInstalledPythonJobs(t *testing.T) {
 	}))
 	defer source.Close()
 	prefix := fmt.Sprintf("python-jobs-%d-%d", os.Getpid(), time.Now().UnixNano())
-	options := host.Options{Endpoint: listen.Endpoint(prefix), LogEndpoint: listen.Endpoint(prefix + "l"), ConfigEndpoint: listen.Endpoint(prefix + "c"), ModelEndpoint: listen.Endpoint(prefix + "m"), JobEndpoint: listen.Endpoint(prefix + "j"), JobRoot: filepath.Join(home, "private"), JobOwner: "python-jobs-owner", JobExecutor: execution.HTTPExecution{}}
+	options := host.Options{Endpoint: listen.Endpoint(prefix), LogEndpoint: listen.Endpoint(prefix + "l"), ConfigEndpoint: listen.Endpoint(prefix + "c"), ModelEndpoint: listen.Endpoint(prefix + "m"), JobEndpoint: listen.Endpoint(prefix + "j"), JobRoot: filepath.Join(home, "private"), JobOwner: "python-jobs-owner", JobExecutor: meteredExecution()}
 	h, err := host.Listen(options)
 	if err != nil {
 		t.Fatal(err)
@@ -90,4 +92,28 @@ func TestInstalledPythonJobs(t *testing.T) {
 	if err != nil || len(entries) != 0 {
 		t.Fatal("client touched provider storage", entries, err)
 	}
+}
+
+// meteredExecution is real HTTP execution whose network cost source reports a
+// metered path, so a request with network unmetered waits and never fetches.
+// Unconstrained work is unaffected by it.
+func meteredExecution() execution.HTTPExecution {
+	metered := netcost.NewFake(netcost.Metered)
+	return execution.HTTPExecution{NetworkCost: func() (netcost.Source, error) { return metered, nil }, Credentials: fixtureCredentials{}}
+}
+
+// fixtureCredentials admits the credential hf and refuses any other name as
+// unknown at admission; applying hf is refused as revoked, so work naming it
+// ends with cause credential and never reaches the origin (JOB-A16, DL-K1).
+type fixtureCredentials struct{}
+
+func (fixtureCredentials) CheckCredential(_ context.Context, _, name, _ string) error {
+	if name == "hf" {
+		return nil
+	}
+	return download.CredentialRefusal(name, "unknown")
+}
+
+func (fixtureCredentials) ApplyCredential(_ context.Context, _, name, _ string) (map[string]string, error) {
+	return nil, download.CredentialRefusal(name, "revoked")
 }

@@ -61,11 +61,11 @@ func (p wirePeer) Submit(r job.Record) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return resp.Id, nil
+	return resp.ID, nil
 }
 
 func (p wirePeer) Load(id string) (*job.Record, error) {
-	return p.record(p.do(&rec.Request{Op: "load", Id: id}))
+	return p.record(p.do(&rec.Request{Op: "load", ID: id}))
 }
 
 func (p wirePeer) List() ([]*job.Record, error) { return p.many(&rec.Request{Op: "list"}) }
@@ -93,24 +93,24 @@ func (p wirePeer) Claimable(r *job.Record) bool {
 }
 
 func (p wirePeer) Claim(id, owner string, ttl time.Duration) (*job.Record, error) {
-	return p.record(p.do(&rec.Request{Op: "claim", Id: id, Owner: owner, TtlMs: ttl.Milliseconds()}))
+	return p.record(p.do(&rec.Request{Op: "claim", ID: id, Owner: owner, TTLMs: ttl.Milliseconds()}))
 }
 
 func (p wirePeer) Renew(id string, epoch int64, ttl time.Duration) (*job.Record, error) {
-	return p.record(p.do(&rec.Request{Op: "renew", Id: id, Epoch: epoch, TtlMs: ttl.Milliseconds()}))
+	return p.record(p.do(&rec.Request{Op: "renew", ID: id, Epoch: epoch, TTLMs: ttl.Milliseconds()}))
 }
 
 func (p wirePeer) Release(id string, epoch int64) error {
-	_, err := p.do(&rec.Request{Op: "release", Id: id, Epoch: epoch})
+	_, err := p.do(&rec.Request{Op: "release", ID: id, Epoch: epoch})
 	return err
 }
 
 func (p wirePeer) SetIntent(id string, want job.Want, by string) (*job.Record, error) {
-	return p.record(p.do(&rec.Request{Op: "set_intent", Id: id, Want: string(want), By: by}))
+	return p.record(p.do(&rec.Request{Op: "set_intent", ID: id, Want: string(want), By: by}))
 }
 
 func (p wirePeer) Recall(id string, epoch int64, reason, by string, grace time.Duration) (*job.Record, error) {
-	return p.record(p.do(&rec.Request{Op: "recall", Id: id, Epoch: epoch, Reason: reason, By: by, TtlMs: grace.Milliseconds()}))
+	return p.record(p.do(&rec.Request{Op: "recall", ID: id, Epoch: epoch, Reason: reason, By: by, TTLMs: grace.Milliseconds()}))
 }
 
 // Update reads, mutates what it read, and writes conditional on the record
@@ -132,7 +132,7 @@ func (p wirePeer) Update(id string, epoch int64, mutate func(*job.Record) error)
 	if err != nil {
 		return nil, err
 	}
-	return p.record(p.do(&rec.Request{Op: "write", Id: id, Epoch: epoch, Base: string(base), Record: string(next)}))
+	return p.record(p.do(&rec.Request{Op: "write", ID: id, Epoch: epoch, Base: string(base), Record: string(next)}))
 }
 
 var _ job.Store = wirePeer{}

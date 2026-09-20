@@ -41,7 +41,7 @@ var reconciliation = []string{"abstraction.job/reconciliation@1"}
 func report(label string, result api.AcceptanceResult) {
 	if result.Outcome == "accepted" && result.Receipt != nil {
 		r := result.Receipt
-		fmt.Println(label, r.OperationId, r.LogicalOwner, r.Identity.HistoryEpoch, r.Identity.Key)
+		fmt.Println(label, r.OperationID, r.LogicalOwner, r.Identity.HistoryEpoch, r.Identity.Key)
 		return
 	}
 	fmt.Println("NOT_ACCEPTED", result.Outcome, result.Reason)
@@ -120,7 +120,7 @@ func result(args []string) (int, error) {
 		return 0, err
 	}
 	report("RECONCILED", recovered)
-	if recovered.Outcome != "accepted" || recovered.Receipt.OperationId != args[2] {
+	if recovered.Outcome != "accepted" || recovered.Receipt.OperationID != args[2] {
 		return 4, nil
 	}
 	for {
@@ -131,7 +131,7 @@ func result(args []string) (int, error) {
 		if observed.Outcome != "observed" || observed.Snapshot == nil {
 			return 0, fmt.Errorf("operation unobservable: %s", observed.Outcome)
 		}
-		if observed.Snapshot.Receipt.OperationId != args[2] {
+		if observed.Snapshot.Receipt.OperationID != args[2] {
 			return 0, errors.New("operation changed")
 		}
 		if observed.Snapshot.State == "complete" {

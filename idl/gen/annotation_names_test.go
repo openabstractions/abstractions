@@ -36,6 +36,7 @@ func TestAnnotationNamesAndValuesAreRefused(t *testing.T) {
 func TestAnnotationNamesTheProfileReadsParse(t *testing.T) {
 	src := head + doc + `enum Shown { 1: a } (unknown = "grant", reader = "display")
 enum Acted { 1: a (transcript = "A") } (unknown = "refuse", reader = "act")
+enum Validated { 1: a } (unknown = "grant", reader = "validate")
 enum Unmarked { 1: a } (unknown = "refuse")
 const list<string> open_keys = ["a"] (catalogue = "open")
 const list<string> closed_keys = ["a"] (catalogue = "closed", closed_by = "CFG-R2")

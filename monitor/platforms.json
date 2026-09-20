@@ -1,0 +1,106 @@
+{
+  "schema": "openabstractions.platforms/1",
+  "about": "Where the OpenAbstractions runtime is supported, from recorded evidence only. A cross-build is not evidence. scripts/catalogue.py reads this file, checks every evidence path exists, and publishes it in the layer catalogue. A facade on a platform declared unsupported reports runtime_unavailable naming that platform (openabstractions-flat/abstraction-facade/RESOLUTION.md).",
+  "statuses": {
+    "supported": "The runtime installs, starts its background services, becomes ready, recovers from a crash and uninstalls, and an application's default resolution reaches it.",
+    "supported without background services": "The programs install, run in the foreground and uninstall. No background service is registered, and default resolution finds no runtime.",
+    "unsupported": "No application can use a runtime service on this platform. Resolution fails with runtime_unavailable naming the platform."
+  },
+  "platforms": [
+    {
+      "id": "windows-user",
+      "name": "Windows x64, per-user installation",
+      "status": "supported",
+      "runtime": "Per-user MSI; the supervisor starts the runtime in the signed-in session.",
+      "limits": [
+        "Installed-client and rollback evidence is revision-specific; consult the selected release for its package qualification.",
+        "ARM64 is untested."
+      ],
+      "evidence": [
+        {"path": "feedback/publication-0.1.7-result.md", "shows": "Candidate run 35085536304 passed Windows per-user and machine scope; release run 35086256626 passed every job."},
+        {"path": "feedback/todo-closure-review-2026-09-15.md", "shows": "Release run 34911872230 ran per-user install, readiness immediately after msiexec, removal and upgrade."},
+        {"path": "installer/test_user_runtime.ps1", "shows": "The per-user lifecycle fixture the hosted runs execute."},
+        {"path": "feedback/windows-elevated-unscoped.md", "shows": "An elevated install with no scope property is refused before anything is copied (`RefuseElevatedPerUserInstall`, closed in 0.1.7, candidate run 35085536304 and release run 35086256626)."},
+        {"path": "feedback/local-windows-qualification-0.1.8.md", "shows": "Candidate 5caa1402 (2026-09-17): fresh per-user installation, five-language installed discovery/calls, crash recovery, upgrade from 0.1.7, forced rollback and removal passed. This candidate fixes the earlier failed-upgrade supervisor gap."}
+      ]
+    },
+    {
+      "id": "windows-machine",
+      "name": "Windows x64, machine installation",
+      "status": "supported",
+      "runtime": "Machine MSI; a service template starts a per-session runtime for each signed-in user.",
+      "limits": [
+        "Removal while a per-session instance runs depends on the Restart Manager (RELEASE-CHECKLIST.md, Windows qualification).",
+        "ARM64 is untested."
+      ],
+      "evidence": [
+        {"path": "feedback/publication-0.1.7-result.md", "shows": "Candidate run 35085536304 passed Windows machine scope."},
+        {"path": "feedback/runtime-candidate.md", "shows": "Machine installation, fresh-user readiness, crash recovery and uninstall passed on a disposable runner."},
+        {"path": "feedback/windows-user-upgrade-stop.md", "shows": "Machine-scope fresh-session readiness fixture, run 34908119657."},
+        {"path": "installer/test_service_session.ps1", "shows": "The machine-scope session fixture."}
+      ]
+    },
+    {
+      "id": "linux-systemd-user",
+      "name": "Linux amd64 with a systemd user manager",
+      "status": "supported",
+      "runtime": "Per-user tarball; install.sh registers abstraction-runtime.service with the user manager.",
+      "limits": [
+        "Trusted selection needs clone3 and waitid P_PIDFD (Linux 5.4 or newer); a sandbox denying them returns PROOF_UNAVAILABLE.",
+        "Measured on WSL2 with systemd 259 only; arm64, other distributions, non-WSL hardware and graphical sessions are untested."
+      ],
+      "evidence": [
+        {"path": "feedback/local-linux-release-qualification.md", "shows": "Install, readiness of five contracts, native selection, untrusted refusal, SIGKILL recovery, reinstall and removal in a temporary account."},
+        {"path": "feedback/linux-complete-lifecycle.md", "shows": "One unchanged C++ application passes ten lifecycle scenarios against the installed runtime, including upgrade from the published 0.1.6 package."},
+        {"path": "feedback/native-linux-selection.md", "shows": "Selection requires the loaded user unit, clone3 and pidfd."}
+      ]
+    },
+    {
+      "id": "linux-no-user-manager",
+      "name": "Linux amd64 without a systemd user manager (containers, WSL without systemd, hosted CI accounts)",
+      "status": "supported without background services",
+      "runtime": "The same tarball; install.sh installs the programs, reports that no background service will run and records `timer no`.",
+      "limits": [
+        "Default resolution cannot select a runtime: selection reads the loaded user unit from systemctl, so applications receive runtime_unavailable.",
+        "`openabstractions serve runtime` runs in the foreground; an application reaches it only through an explicit endpoint."
+      ],
+      "evidence": [
+        {"path": "research/ci76/redist-release.yml", "shows": "Job linux-verify installs on a hosted runner with no user manager, runs dl, jobd and jobctl against one store, and uninstalls; it passed in release runs 34911872230 and 35086256626."},
+        {"path": "installer/posix/linux/install.sh", "shows": "The no-manager branch."},
+        {"path": "feedback/local-linux-release-qualification.md", "shows": "With no loaded runtime unit, selection returns UNTRUSTED and status reports every contract unresolved."}
+      ]
+    },
+    {
+      "id": "macos",
+      "name": "macOS (universal package)",
+      "status": "unsupported",
+      "facade_platform": "macos",
+      "runtime": "The per-user package installs, upgrades and uninstalls without a password, and launchd runs and restarts the runtime.",
+      "limits": [
+        "Selection has no darwin path, and the platform's peer proof cannot establish the Program identity protected calls require: readiness and resolution are refused.",
+        "The recorded direction is XPC with audit tokens (ARCHITECTURE.md, Transport, identity and authority)."
+      ],
+      "evidence": [
+        {"path": "feedback/macos-complete-lifecycle.md", "shows": "Install, upgrade and crash recovery pass; readiness, resolution and held work are REFUSED-BY-PLATFORM-LIMIT."},
+        {"path": "feedback/runtime-macos-native.md", "shows": "Native launchd start, recovery and removal; typed status fails on process proof."},
+        {"path": "openabstractions-flat/abstraction-facade/go-core/bootstrap/selection_other.go", "shows": "Installed-runtime selection is not implemented outside Windows and Linux."}
+      ]
+    },
+    {
+      "id": "android-termux",
+      "name": "Android, including Termux",
+      "status": "unsupported",
+      "facade_platform": "android",
+      "runtime": "None. No runtime is built, packaged, installed or run for Android.",
+      "limits": [
+        "The packager builds only linux and macos; the release builds Windows MSIs, Linux tarballs and one macOS package.",
+        "Termux has no systemd user manager, which Linux selection requires."
+      ],
+      "evidence": [
+        {"path": "installer/posix/build.py", "shows": "`--platform` accepts only linux and macos."},
+        {"path": "research/ci76/redist-release.yml", "shows": "The release builds no Android asset."},
+        {"path": "feedback/zenos-adoption-reinvestigation.md", "shows": "Nothing in the tree records a build, install or run on Android or Termux."}
+      ]
+    }
+  ]
+}

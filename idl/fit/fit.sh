@@ -54,9 +54,9 @@ GEN="${FIT_GEN:-$ROOT/idl/gen}"
 printf 'module idl/out/go\n\ngo 1.26\n' > "$OUT/go/go.mod"
 
 GO="$OUT/go/rec/rec.go"
-PY="$OUT/py/rec.py"
+PY="$OUT/py/_codec.py"
 CPP="$OUT/cpp/rec.h"
-JS="$OUT/js/rec.mjs"
+JS="$OUT/js/internal.mjs"
 RS="$OUT/rs/rec.rs"
 
 row() { printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" >> "$RAW"; }
@@ -208,8 +208,8 @@ absence() {  # absence <lang> <file> <pattern builder>
 		go) pat="^	$(pascal "$f") +\*" ;;
 		rust) pat="^    pub $f: Option<" ;;
 		cpp) pat="std::optional<[^>]*> $f;" ;;
-		py) pat="self\.$f = kw\.get\(\"$f\", None\)" ;;
-		js) pat="$f: null" ;;
+		py) pat="^    $f: [A-Za-z_.]+ \| None = None$" ;;
+		js) camel=$(pascal "$f"); pat="$(printf '%s' "$camel" | cut -c1 | tr 'A-Z' 'a-z')$(printf '%s' "$camel" | cut -c2-): null" ;;
 		esac
 		grep -qE "$pat" "$file" || miss="$miss $f"
 	done
@@ -229,7 +229,7 @@ grep -q '^type Raw = string' "$GO" && term go opaque 1 "Raw is an ALIAS for stri
 	|| term go opaque 2 "a distinct type over bytes"
 grep -qE '^pub type Raw = Vec<u8>' "$RS" && term rust opaque 2 "Vec<u8>: bytes, byte equality, no reparse" || term rust opaque 1 "not a byte sequence"
 grep -q 'using Raw = std::string' "$CPP" && term cpp opaque 2 "std::string: bytes, byte equality" || term cpp opaque 1 "not a byte sequence"
-grep -q 'self.spec = kw.get("spec", "")' "$PY" \
+grep -q '^    spec: bytes | str = ""' "$PY" \
 	&& term python opaque 1 "spec defaults to str while raw() also accepts bytes: two types reach the same field and only one round-trips a document that is not valid UTF-8" \
 	|| term python opaque 2 "bytes throughout"
 grep -q 'spec: ""' "$JS" \

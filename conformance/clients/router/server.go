@@ -54,7 +54,7 @@ func main() {
 		panic(e)
 	}
 	catalog, e := resolution.New([]resolution.Candidate{{Ready: true, Reference: wire.ServiceReference{
-		Provider: "router-fixture", Capability: "abstraction.router", Contract: "abstraction.router/router@1", Scope: "local", Transport: resolution.LocalTransport, Endpoint: *endpoint}}})
+		Provider: "router-fixture", Capability: "abstraction.router", Contract: "abstraction.router/router@1", Scope: wire.ScopeLocal, Transport: resolution.LocalTransport, Endpoint: *endpoint}}})
 	if e != nil {
 		panic(e)
 	}

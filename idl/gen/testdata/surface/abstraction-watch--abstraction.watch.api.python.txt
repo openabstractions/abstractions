@@ -1,0 +1,14 @@
+const FAILURE_NAMES
+const LIFECYCLE_OPERATIONS
+dataclass NoticeMetadata
+  quiet: bool
+  silence_ns: int
+class Refusal(ValueError)
+  __init__(word, offset)
+dataclass Stamp
+  value: str
+dataclass WatchOptions
+  every_ns: int
+  budget_ns: int
+def decode(data)
+def encode(v)

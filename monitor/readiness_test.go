@@ -15,7 +15,7 @@ func TestPanelReadinessMatchesSDKWithIndependentFailures(t *testing.T) {
 	own(t)
 	panelConfigRuntime(t)
 	machine := panelMachine()
-	evidence := wire.BootstrapObservation{State: "installed", Detail: "isolated test registration"}
+	evidence := wire.BootstrapObservation{State: wire.BootstrapStateInstalled, Detail: "isolated test registration"}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	want, err := machine.Observe(ctx, facade.DefaultStatusRequests(), evidence)
@@ -38,11 +38,11 @@ func TestPanelReadinessMatchesSDKWithIndependentFailures(t *testing.T) {
 
 func TestPanelReadinessRetainsPartialFailure(t *testing.T) {
 	requests := facade.DefaultStatusRequests()
-	observation := wire.RuntimeObservation{Bootstrap: wire.BootstrapObservation{State: "running"}}
+	observation := wire.RuntimeObservation{Bootstrap: wire.BootstrapObservation{State: wire.BootstrapStateRunning}}
 	for _, request := range requests {
 		observation.Capabilities = append(observation.Capabilities, wire.CapabilityObservation{Request: request})
 	}
-	observation.Capabilities[0].Result = &wire.ResolveResult{Status: "forbidden"}
+	observation.Capabilities[0].Result = &wire.ResolveResult{Status: wire.ResolutionStatusForbidden}
 	view := readinessPresentation(observation, errors.New("resolver disconnected"))
 	if view.Bootstrap != "running" || view.Capabilities[0].Status != "forbidden" || view.Capabilities[1].Status != "unobserved" || view.Error == "" {
 		t.Fatalf("partial result invented readiness or lost refusal: %+v", view)
@@ -56,7 +56,7 @@ func TestPanelReadinessSharesCancelledBudget(t *testing.T) {
 		if !errors.Is(ctx.Err(), context.Canceled) {
 			t.Fatal("bootstrap observation lost cancellation")
 		}
-		return wire.BootstrapObservation{State: "unknown"}
+		return wire.BootstrapObservation{State: wire.BootstrapStateUnknown}
 	})
 	if view.Error == "" {
 		t.Fatal("cancelled observation reported success")

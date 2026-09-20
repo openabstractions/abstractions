@@ -1,0 +1,778 @@
+type Raw string
+type RequestGuarantee string
+const RequestGuaranteeLocalOnly
+const RequestGuaranteeHostedAllowed
+func RequestGuaranteeValues() []RequestGuarantee
+func (RequestGuarantee) Known() bool
+type Role uint32
+const RoleSystem
+const RoleUser
+const RoleAssistant
+const RoleTool
+func (Role) String() string
+func (Role) WireName() (string, bool)
+func ParseRole(word string) (Role, bool)
+func (Role) MarshalText() ([]byte, error)
+func (Role) UnmarshalText(text []byte) error
+func (Role) MarshalJSON() ([]byte, error)
+func (Role) UnmarshalJSON(data []byte) error
+func RoleValues() []Role
+func (Role) Known() bool
+type PartKind uint32
+const PartKindText
+const PartKindImage
+const PartKindToolCall
+const PartKindToolResult
+func (PartKind) String() string
+func (PartKind) WireName() (string, bool)
+func ParsePartKind(word string) (PartKind, bool)
+func (PartKind) MarshalText() ([]byte, error)
+func (PartKind) UnmarshalText(text []byte) error
+func (PartKind) MarshalJSON() ([]byte, error)
+func (PartKind) UnmarshalJSON(data []byte) error
+func PartKindValues() []PartKind
+func (PartKind) Known() bool
+type ReplyOutcome uint32
+const ReplyOutcomeCompleted
+const ReplyOutcomeRefused
+const ReplyOutcomeNotPermitted
+const ReplyOutcomeBudgetExceeded
+const ReplyOutcomeUnsupportedFeature
+const ReplyOutcomeNoHost
+const ReplyOutcomeCancelled
+const ReplyOutcomeUnavailable
+const ReplyOutcomeInvalid
+const ReplyOutcomeForbidden
+const ReplyOutcomeExhausted
+func (ReplyOutcome) String() string
+func (ReplyOutcome) WireName() (string, bool)
+func ParseReplyOutcome(word string) (ReplyOutcome, bool)
+func (ReplyOutcome) MarshalText() ([]byte, error)
+func (ReplyOutcome) UnmarshalText(text []byte) error
+func (ReplyOutcome) MarshalJSON() ([]byte, error)
+func (ReplyOutcome) UnmarshalJSON(data []byte) error
+func ReplyOutcomeValues() []ReplyOutcome
+func (ReplyOutcome) Known() bool
+type StopReason uint32
+const StopReasonNoStop
+const StopReasonEnd
+const StopReasonMaxOutput
+const StopReasonStopSequence
+const StopReasonToolCalls
+const StopReasonContentFilter
+const StopReasonOther
+func (StopReason) String() string
+func (StopReason) WireName() (string, bool)
+func ParseStopReason(word string) (StopReason, bool)
+func (StopReason) MarshalText() ([]byte, error)
+func (StopReason) UnmarshalText(text []byte) error
+func (StopReason) MarshalJSON() ([]byte, error)
+func (StopReason) UnmarshalJSON(data []byte) error
+func StopReasonValues() []StopReason
+func (StopReason) Known() bool
+type DeltaKind uint32
+const DeltaKindPart
+const DeltaKindUsage
+const DeltaKindEnd
+const DeltaKindSegment
+const DeltaKindAudio
+const DeltaKindTranscript
+const DeltaKindImageProgress
+const DeltaKindImageResult
+func (DeltaKind) String() string
+func (DeltaKind) WireName() (string, bool)
+func ParseDeltaKind(word string) (DeltaKind, bool)
+func (DeltaKind) MarshalText() ([]byte, error)
+func (DeltaKind) UnmarshalText(text []byte) error
+func (DeltaKind) MarshalJSON() ([]byte, error)
+func (DeltaKind) UnmarshalJSON(data []byte) error
+func DeltaKindValues() []DeltaKind
+func (DeltaKind) Known() bool
+type StartOutcome uint32
+const StartOutcomeAccepted
+const StartOutcomeNotPermitted
+const StartOutcomeBudgetExceeded
+const StartOutcomeUnsupportedFeature
+const StartOutcomeNoHost
+const StartOutcomeUnavailable
+const StartOutcomeInvalid
+const StartOutcomeForbidden
+const StartOutcomeExhausted
+func (StartOutcome) String() string
+func (StartOutcome) WireName() (string, bool)
+func ParseStartOutcome(word string) (StartOutcome, bool)
+func (StartOutcome) MarshalText() ([]byte, error)
+func (StartOutcome) UnmarshalText(text []byte) error
+func (StartOutcome) MarshalJSON() ([]byte, error)
+func (StartOutcome) UnmarshalJSON(data []byte) error
+func StartOutcomeValues() []StartOutcome
+func (StartOutcome) Known() bool
+type PageOutcome uint32
+const PageOutcomePage
+const PageOutcomeGap
+const PageOutcomeUnknown
+const PageOutcomeInvalid
+const PageOutcomeForbidden
+const PageOutcomeUnavailable
+func (PageOutcome) String() string
+func (PageOutcome) WireName() (string, bool)
+func ParsePageOutcome(word string) (PageOutcome, bool)
+func (PageOutcome) MarshalText() ([]byte, error)
+func (PageOutcome) UnmarshalText(text []byte) error
+func (PageOutcome) MarshalJSON() ([]byte, error)
+func (PageOutcome) UnmarshalJSON(data []byte) error
+func PageOutcomeValues() []PageOutcome
+func (PageOutcome) Known() bool
+type CancelOutcome uint32
+const CancelOutcomeCancelled
+const CancelOutcomeEnded
+const CancelOutcomeUnknown
+const CancelOutcomeInvalid
+const CancelOutcomeForbidden
+const CancelOutcomeUnavailable
+func (CancelOutcome) String() string
+func (CancelOutcome) WireName() (string, bool)
+func ParseCancelOutcome(word string) (CancelOutcome, bool)
+func (CancelOutcome) MarshalText() ([]byte, error)
+func (CancelOutcome) UnmarshalText(text []byte) error
+func (CancelOutcome) MarshalJSON() ([]byte, error)
+func (CancelOutcome) UnmarshalJSON(data []byte) error
+func CancelOutcomeValues() []CancelOutcome
+func (CancelOutcome) Known() bool
+type EmbedOutcome uint32
+const EmbedOutcomeCompleted
+const EmbedOutcomeRefused
+const EmbedOutcomeNotPermitted
+const EmbedOutcomeBudgetExceeded
+const EmbedOutcomeUnsupportedFeature
+const EmbedOutcomeNoHost
+const EmbedOutcomeUnavailable
+const EmbedOutcomeInvalid
+const EmbedOutcomeForbidden
+func (EmbedOutcome) String() string
+func (EmbedOutcome) WireName() (string, bool)
+func ParseEmbedOutcome(word string) (EmbedOutcome, bool)
+func (EmbedOutcome) MarshalText() ([]byte, error)
+func (EmbedOutcome) UnmarshalText(text []byte) error
+func (EmbedOutcome) MarshalJSON() ([]byte, error)
+func (EmbedOutcome) UnmarshalJSON(data []byte) error
+func EmbedOutcomeValues() []EmbedOutcome
+func (EmbedOutcome) Known() bool
+type TranscriptUnitKind uint32
+const TranscriptUnitKindSegment
+const TranscriptUnitKindWord
+func (TranscriptUnitKind) String() string
+func (TranscriptUnitKind) WireName() (string, bool)
+func ParseTranscriptUnitKind(word string) (TranscriptUnitKind, bool)
+func (TranscriptUnitKind) MarshalText() ([]byte, error)
+func (TranscriptUnitKind) UnmarshalText(text []byte) error
+func (TranscriptUnitKind) MarshalJSON() ([]byte, error)
+func (TranscriptUnitKind) UnmarshalJSON(data []byte) error
+func TranscriptUnitKindValues() []TranscriptUnitKind
+func (TranscriptUnitKind) Known() bool
+type TimestampMode uint32
+const TimestampModeNone
+const TimestampModeSegment
+const TimestampModeWord
+const TimestampModeSegmentAndWord
+func (TimestampMode) String() string
+func (TimestampMode) WireName() (string, bool)
+func ParseTimestampMode(word string) (TimestampMode, bool)
+func (TimestampMode) MarshalText() ([]byte, error)
+func (TimestampMode) UnmarshalText(text []byte) error
+func (TimestampMode) MarshalJSON() ([]byte, error)
+func (TimestampMode) UnmarshalJSON(data []byte) error
+func TimestampModeValues() []TimestampMode
+func (TimestampMode) Known() bool
+type SpeechFormat uint32
+const SpeechFormatMp3
+const SpeechFormatOpus
+const SpeechFormatAac
+const SpeechFormatFlac
+const SpeechFormatWav
+const SpeechFormatPcm
+func (SpeechFormat) String() string
+func (SpeechFormat) WireName() (string, bool)
+func ParseSpeechFormat(word string) (SpeechFormat, bool)
+func (SpeechFormat) MarshalText() ([]byte, error)
+func (SpeechFormat) UnmarshalText(text []byte) error
+func (SpeechFormat) MarshalJSON() ([]byte, error)
+func (SpeechFormat) UnmarshalJSON(data []byte) error
+func SpeechFormatValues() []SpeechFormat
+func (SpeechFormat) Known() bool
+type LiveFormat uint32
+const LiveFormatPcm1624000
+func (LiveFormat) String() string
+func (LiveFormat) WireName() (string, bool)
+func ParseLiveFormat(word string) (LiveFormat, bool)
+func (LiveFormat) MarshalText() ([]byte, error)
+func (LiveFormat) UnmarshalText(text []byte) error
+func (LiveFormat) MarshalJSON() ([]byte, error)
+func (LiveFormat) UnmarshalJSON(data []byte) error
+func LiveFormatValues() []LiveFormat
+func (LiveFormat) Known() bool
+type LiveInputOutcome uint32
+const LiveInputOutcomeAccepted
+const LiveInputOutcomeDuplicate
+const LiveInputOutcomeOutOfOrder
+const LiveInputOutcomeClosed
+const LiveInputOutcomeInvalid
+const LiveInputOutcomeUnknown
+const LiveInputOutcomeForbidden
+const LiveInputOutcomeUnavailable
+const LiveInputOutcomeExhausted
+func (LiveInputOutcome) String() string
+func (LiveInputOutcome) WireName() (string, bool)
+func ParseLiveInputOutcome(word string) (LiveInputOutcome, bool)
+func (LiveInputOutcome) MarshalText() ([]byte, error)
+func (LiveInputOutcome) UnmarshalText(text []byte) error
+func (LiveInputOutcome) MarshalJSON() ([]byte, error)
+func (LiveInputOutcome) UnmarshalJSON(data []byte) error
+func LiveInputOutcomeValues() []LiveInputOutcome
+func (LiveInputOutcome) Known() bool
+type ImageMode uint32
+const ImageModeGenerate
+const ImageModeEdit
+func (ImageMode) String() string
+func (ImageMode) WireName() (string, bool)
+func ParseImageMode(word string) (ImageMode, bool)
+func (ImageMode) MarshalText() ([]byte, error)
+func (ImageMode) UnmarshalText(text []byte) error
+func (ImageMode) MarshalJSON() ([]byte, error)
+func (ImageMode) UnmarshalJSON(data []byte) error
+func ImageModeValues() []ImageMode
+func (ImageMode) Known() bool
+type ListOutcome uint32
+const ListOutcomePage
+const ListOutcomeInvalid
+const ListOutcomeForbidden
+const ListOutcomeUnavailable
+func (ListOutcome) String() string
+func (ListOutcome) WireName() (string, bool)
+func ParseListOutcome(word string) (ListOutcome, bool)
+func (ListOutcome) MarshalText() ([]byte, error)
+func (ListOutcome) UnmarshalText(text []byte) error
+func (ListOutcome) MarshalJSON() ([]byte, error)
+func (ListOutcome) UnmarshalJSON(data []byte) error
+func ListOutcomeValues() []ListOutcome
+func (ListOutcome) Known() bool
+type EditOutcome uint32
+const EditOutcomeApplied
+const EditOutcomeConflict
+const EditOutcomeUnknown
+const EditOutcomeInvalid
+const EditOutcomeNoSecureStore
+const EditOutcomeForbidden
+const EditOutcomeUnavailable
+func (EditOutcome) String() string
+func (EditOutcome) WireName() (string, bool)
+func ParseEditOutcome(word string) (EditOutcome, bool)
+func (EditOutcome) MarshalText() ([]byte, error)
+func (EditOutcome) UnmarshalText(text []byte) error
+func (EditOutcome) MarshalJSON() ([]byte, error)
+func (EditOutcome) UnmarshalJSON(data []byte) error
+func EditOutcomeValues() []EditOutcome
+func (EditOutcome) Known() bool
+type KeyState uint32
+const KeyStateActive
+const KeyStateRevoked
+const KeyStateLost
+func (KeyState) String() string
+func (KeyState) WireName() (string, bool)
+func ParseKeyState(word string) (KeyState, bool)
+func (KeyState) MarshalText() ([]byte, error)
+func (KeyState) UnmarshalText(text []byte) error
+func (KeyState) MarshalJSON() ([]byte, error)
+func (KeyState) UnmarshalJSON(data []byte) error
+func KeyStateValues() []KeyState
+func (KeyState) Known() bool
+type AuditRoute uint32
+const AuditRouteNative
+const AuditRouteWindow
+const AuditRouteRemote
+func (AuditRoute) String() string
+func (AuditRoute) WireName() (string, bool)
+func ParseAuditRoute(word string) (AuditRoute, bool)
+func (AuditRoute) MarshalText() ([]byte, error)
+func (AuditRoute) UnmarshalText(text []byte) error
+func (AuditRoute) MarshalJSON() ([]byte, error)
+func (AuditRoute) UnmarshalJSON(data []byte) error
+func AuditRouteValues() []AuditRoute
+func (AuditRoute) Known() bool
+type AuditOutcome uint32
+const AuditOutcomePage
+const AuditOutcomeGap
+const AuditOutcomeInvalid
+const AuditOutcomeForbidden
+const AuditOutcomeUnavailable
+func (AuditOutcome) String() string
+func (AuditOutcome) WireName() (string, bool)
+func ParseAuditOutcome(word string) (AuditOutcome, bool)
+func (AuditOutcome) MarshalText() ([]byte, error)
+func (AuditOutcome) UnmarshalText(text []byte) error
+func (AuditOutcome) MarshalJSON() ([]byte, error)
+func (AuditOutcome) UnmarshalJSON(data []byte) error
+func AuditOutcomeValues() []AuditOutcome
+func (AuditOutcome) Known() bool
+type ServiceErrorCode string
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) Known() bool
+var Features
+var ResourceActions
+var LocalKeyKinds
+var LocalHostKinds
+var HostProfiles
+var HostDeclarers
+var CredentialConsumers
+var ClaimExtensions
+type Part struct
+  Kind PartKind
+  Text string
+  Digest string
+  MediaType string
+  CallID string
+  Name string
+  Arguments string
+type Message struct
+  Role Role
+  Parts []Part
+type Tool struct
+  Name string
+  Description string
+  Parameters string
+type Temperature struct
+  Milli int64
+type Options struct
+  MaxOutput int64
+  Temperature *Temperature
+  Stop []string
+  JSONSchema string
+type Request struct
+  Model string
+  Messages []Message
+  Tools []Tool
+  Options *Options
+  Extensions map[string]string
+  RequiredExtensions []string
+  Guarantees []RequestGuarantee
+  Credential string
+type Usage struct
+  Input int64
+  Output int64
+  Cached int64
+type Cost struct
+  Micros int64
+  Currency string
+type Reply struct
+  Outcome ReplyOutcome
+  Reason string
+  Message Message
+  StopReason StopReason
+  Usage Usage
+  Host string
+  Model string
+  Cost *Cost
+type Delta struct
+  Sequence int64
+  Kind DeltaKind
+  Index int64
+  Part *Part
+  Usage *Usage
+  End *Reply
+  Segment *TranscriptSegment
+  TranscriptionEnd *TranscriptionReply
+  Audio *AudioChunk
+  SpeechEnd *SpeechReply
+  Transcript *LiveTranscript
+  LiveEnd *LiveReply
+  ImageProgress *ImageProgress
+  ImageResult *ImageResult
+  ImageEnd *ImageReply
+type Admission struct
+  Outcome StartOutcome
+  Reason string
+  Operation string
+  Host string
+  Model string
+  RetentionMs int64
+  IdleMs int64
+  RetainedDeltas int64
+type DeltaPage struct
+  Outcome PageOutcome
+  Deltas []Delta
+  Next int64
+  AtEnd bool
+type Cancellation struct
+  Outcome CancelOutcome
+  ReplyOutcome *ReplyOutcome
+type EmbedRequest struct
+  Model string
+  Inputs []string
+  Dimensions int64
+  Guarantees []RequestGuarantee
+  Credential string
+  Extensions map[string]string
+type Embeddings struct
+  Outcome EmbedOutcome
+  Reason string
+  Vectors []string
+  Dimensions int64
+  Usage Usage
+  Host string
+  Model string
+  Cost *Cost
+type TranscriptionRequest struct
+  Model string
+  AudioDigest string
+  MediaType string
+  Language string
+  Timestamps TimestampMode
+  Guarantees []RequestGuarantee
+  Credential string
+  Extensions map[string]string
+type TranscriptSegment struct
+  Index int64
+  Kind TranscriptUnitKind
+  StartMs int64
+  EndMs int64
+  Text string
+type TranscriptionReply struct
+  Outcome ReplyOutcome
+  Reason string
+  Language string
+  DurationMs int64
+  Usage Usage
+  Host string
+  Model string
+  Cost *Cost
+type SpeechRequest struct
+  Model string
+  Voice string
+  Text string
+  Format SpeechFormat
+  Guarantees []RequestGuarantee
+  Credential string
+  Extensions map[string]string
+type AudioChunk struct
+  Index int64
+  Data []byte
+type Delivery struct
+  Digest string
+  MediaType string
+  Size int64
+  Location string
+type SpeechReply struct
+  Outcome ReplyOutcome
+  Reason string
+  Delivery Delivery
+  Characters int64
+  Usage Usage
+  Host string
+  Model string
+  Cost *Cost
+type LiveRequest struct
+  Model string
+  Voice string
+  Format LiveFormat
+  Guarantees []RequestGuarantee
+  Credential string
+  Extensions map[string]string
+type LiveInputResult struct
+  Outcome LiveInputOutcome
+  NextSequence int64
+type LiveTranscript struct
+  Text string
+  IsFinal bool
+type LiveReply struct
+  Outcome ReplyOutcome
+  Reason string
+  Delivery Delivery
+  Usage Usage
+  InputAudioBytes int64
+  OutputAudioBytes int64
+  Host string
+  Model string
+type ImageRequest struct
+  Model string
+  Mode ImageMode
+  Prompt string
+  Size string
+  Count int64
+  ImageDigest string
+  ImageMediaType string
+  MaskDigest string
+  MaskMediaType string
+  Guarantees []RequestGuarantee
+  Credential string
+  RequiredExtensions []string
+  Extensions map[string]string
+type ImageProgress struct
+  Percent int64
+  Message string
+type ImageResult struct
+  Index int64
+  Delivery Delivery
+type ImageReply struct
+  Outcome ReplyOutcome
+  Reason string
+  Deliveries []Delivery
+  Images int64
+  Usage Usage
+  Host string
+  Model string
+  Cost *Cost
+type CeilingLimit struct
+  TokensPerDay int64
+  MicrosPerDay int64
+  RequestsPerDay int64
+  ImagesPerDay int64
+  AudioSecondsPerDay int64
+  CharactersPerDay int64
+type HostEntry struct
+  Name string
+  Hosted bool
+  Kind string
+  Base string
+  Credential string
+  Ceiling *CeilingLimit
+  Profiles []string
+  DeclaredBy string
+type Spend struct
+  Day string
+  Tokens int64
+  Micros int64
+  Requests int64
+  AudioSeconds int64
+  Characters int64
+  Images int64
+type HostState struct
+  Entry HostEntry
+  Up bool
+  Why string
+  Spend *Spend
+type HostList struct
+  Outcome ListOutcome
+  Revision string
+  Hosts []HostState
+type HostChange struct
+  Outcome EditOutcome
+  Revision string
+  Reason string
+type LocalKey struct
+  Program string
+  Name string
+  Credential string
+  IssuedUnixMs int64
+  IssuedBy string
+  State KeyState
+type KeyList struct
+  Outcome ListOutcome
+  Keys []LocalKey
+type KeyIssued struct
+  Outcome EditOutcome
+  Reason string
+  Key string
+  Record *LocalKey
+type KeyRevoked struct
+  Outcome EditOutcome
+type AuditEntry struct
+  Sequence int64
+  UnixMs int64
+  Route AuditRoute
+  Rung string
+  Program string
+  Operation string
+  Host string
+  Model string
+  Credential string
+  Outcome string
+  Reason string
+  TokensIn int64
+  TokensOut int64
+  WallMs int64
+  Ceiling string
+  Domain string
+  Claim string
+  Profile string
+  AudioSeconds int64
+  Characters int64
+  Images int64
+type AuditPage struct
+  Outcome AuditOutcome
+  Entries []AuditEntry
+  Next int64
+  AtEnd bool
+type GatewayState struct
+  Outcome ListOutcome
+  Revision string
+  Open bool
+  Address string
+  Listening bool
+  ListeningAddress string
+  Why string
+type GatewayChange struct
+  Outcome EditOutcome
+  Revision string
+  Reason string
+func Encode(v *Request) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+func Decode(in []byte) (*Request, error)
+type FrameWriter interface
+  WriteFrame(frame []byte) error
+type DispatchError string
+func (DispatchError) Error() string
+func ServiceName(frame []byte) (string, error)
+type FrameExchanger interface
+  ExchangeFrame(frame []byte) ([]byte, error)
+type ServiceError struct
+  Code ServiceErrorCode
+  Message string
+func (ServiceError) Error() string
+const EndpointContract
+type DescribedService interface
+  DescribeService() (contract string, ready bool, why string)
+func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+type ServedService interface
+  DescribedService
+  ServiceContract() string
+func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+type Chat interface
+  Start(request Request) (Admission, error)
+  Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (DeltaPage, error)
+  Cancel(operation string) (Cancellation, error)
+type ChatTransport interface
+  FrameExchanger
+type ChatClient struct
+func NewChatClient(t ChatTransport) *ChatClient
+type ChatDispatcher struct
+  Handler Chat
+func (ChatClient) Start(request Request) (result Admission, err error)
+func (ChatClient) Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (result DeltaPage, err error)
+func (ChatClient) Cancel(operation string) (result Cancellation, err error)
+func (ChatDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ChatDispatcher) ServiceContract() string
+func (ChatDispatcher) WriteFrame(frame []byte) error
+func (ChatDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type Embedder interface
+  Embed(request EmbedRequest) (Embeddings, error)
+type EmbedderTransport interface
+  FrameExchanger
+type EmbedderClient struct
+func NewEmbedderClient(t EmbedderTransport) *EmbedderClient
+type EmbedderDispatcher struct
+  Handler Embedder
+func (EmbedderClient) Embed(request EmbedRequest) (result Embeddings, err error)
+func (EmbedderDispatcher) DescribeService() (contract string, ready bool, why string)
+func (EmbedderDispatcher) ServiceContract() string
+func (EmbedderDispatcher) WriteFrame(frame []byte) error
+func (EmbedderDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type Transcription interface
+  Start(request TranscriptionRequest) (Admission, error)
+  Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (DeltaPage, error)
+  Cancel(operation string) (Cancellation, error)
+type TranscriptionTransport interface
+  FrameExchanger
+type TranscriptionClient struct
+func NewTranscriptionClient(t TranscriptionTransport) *TranscriptionClient
+type TranscriptionDispatcher struct
+  Handler Transcription
+func (TranscriptionClient) Start(request TranscriptionRequest) (result Admission, err error)
+func (TranscriptionClient) Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (result DeltaPage, err error)
+func (TranscriptionClient) Cancel(operation string) (result Cancellation, err error)
+func (TranscriptionDispatcher) DescribeService() (contract string, ready bool, why string)
+func (TranscriptionDispatcher) ServiceContract() string
+func (TranscriptionDispatcher) WriteFrame(frame []byte) error
+func (TranscriptionDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type Speech interface
+  Start(request SpeechRequest) (Admission, error)
+  Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (DeltaPage, error)
+  Cancel(operation string) (Cancellation, error)
+type SpeechTransport interface
+  FrameExchanger
+type SpeechClient struct
+func NewSpeechClient(t SpeechTransport) *SpeechClient
+type SpeechDispatcher struct
+  Handler Speech
+func (SpeechClient) Start(request SpeechRequest) (result Admission, err error)
+func (SpeechClient) Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (result DeltaPage, err error)
+func (SpeechClient) Cancel(operation string) (result Cancellation, err error)
+func (SpeechDispatcher) DescribeService() (contract string, ready bool, why string)
+func (SpeechDispatcher) ServiceContract() string
+func (SpeechDispatcher) WriteFrame(frame []byte) error
+func (SpeechDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type Live interface
+  Start(request LiveRequest) (Admission, error)
+  Append(operation string, sequence int64, audio []byte) (LiveInputResult, error)
+  Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (DeltaPage, error)
+  Commit(operation string) (LiveInputResult, error)
+  Cancel(operation string) (Cancellation, error)
+type LiveTransport interface
+  FrameExchanger
+type LiveClient struct
+func NewLiveClient(t LiveTransport) *LiveClient
+type LiveDispatcher struct
+  Handler Live
+func (LiveClient) Start(request LiveRequest) (result Admission, err error)
+func (LiveClient) Append(operation string, sequence int64, audio []byte) (result LiveInputResult, err error)
+func (LiveClient) Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (result DeltaPage, err error)
+func (LiveClient) Commit(operation string) (result LiveInputResult, err error)
+func (LiveClient) Cancel(operation string) (result Cancellation, err error)
+func (LiveDispatcher) DescribeService() (contract string, ready bool, why string)
+func (LiveDispatcher) ServiceContract() string
+func (LiveDispatcher) WriteFrame(frame []byte) error
+func (LiveDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type Image interface
+  Start(request ImageRequest) (Admission, error)
+  Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (DeltaPage, error)
+  Cancel(operation string) (Cancellation, error)
+type ImageTransport interface
+  FrameExchanger
+type ImageClient struct
+func NewImageClient(t ImageTransport) *ImageClient
+type ImageDispatcher struct
+  Handler Image
+func (ImageClient) Start(request ImageRequest) (result Admission, err error)
+func (ImageClient) Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (result DeltaPage, err error)
+func (ImageClient) Cancel(operation string) (result Cancellation, err error)
+func (ImageDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ImageDispatcher) ServiceContract() string
+func (ImageDispatcher) WriteFrame(frame []byte) error
+func (ImageDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type Operator interface
+  Hosts() (HostList, error)
+  AddHost(expectedRevision string, host HostEntry) (HostChange, error)
+  RemoveHost(expectedRevision, name string) (HostChange, error)
+  Keys() (KeyList, error)
+  IssueKey(program, credential string) (KeyIssued, error)
+  RevokeKey(program string) (KeyRevoked, error)
+  Audit(cursor, maxEntries int64) (AuditPage, error)
+  Gateway() (GatewayState, error)
+  SetGateway(expectedRevision string, open bool, address string) (GatewayChange, error)
+type OperatorTransport interface
+  FrameExchanger
+type OperatorClient struct
+func NewOperatorClient(t OperatorTransport) *OperatorClient
+type OperatorDispatcher struct
+  Handler Operator
+func (OperatorClient) Hosts() (result HostList, err error)
+func (OperatorClient) AddHost(expectedRevision string, host HostEntry) (result HostChange, err error)
+func (OperatorClient) RemoveHost(expectedRevision, name string) (result HostChange, err error)
+func (OperatorClient) Keys() (result KeyList, err error)
+func (OperatorClient) IssueKey(program, credential string) (result KeyIssued, err error)
+func (OperatorClient) RevokeKey(program string) (result KeyRevoked, err error)
+func (OperatorClient) Audit(cursor, maxEntries int64) (result AuditPage, err error)
+func (OperatorClient) Gateway() (result GatewayState, err error)
+func (OperatorClient) SetGateway(expectedRevision string, open bool, address string) (result GatewayChange, err error)
+func (OperatorDispatcher) DescribeService() (contract string, ready bool, why string)
+func (OperatorDispatcher) ServiceContract() string
+func (OperatorDispatcher) WriteFrame(frame []byte) error
+func (OperatorDispatcher) ExchangeFrame(frame []byte) ([]byte, error)

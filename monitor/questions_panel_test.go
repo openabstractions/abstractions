@@ -77,7 +77,7 @@ func TestServicePanelQuestionOperator(t *testing.T) {
 	panelQuestionRuntime(t, &allow)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	app, err := panelMachine().ResolveAsks(ctx, facade.Requirements{Scope: "local"})
+	app, err := panelMachine().ResolveAsks(ctx, facade.Requirements{Scope: facade.ScopeLocal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestServicePanelQuestionOperator(t *testing.T) {
 		if err != nil || admitted.Answer == nil {
 			t.Fatalf("admission %+v %v", admitted, err)
 		}
-		ids[q.RequestKey] = admitted.Answer.Id
+		ids[q.RequestKey] = admitted.Answer.ID
 	}
 	h := (&servicePanel{}).handler("test-key")
 	list := func() wire.OperatorPage {
@@ -101,52 +101,52 @@ func TestServicePanelQuestionOperator(t *testing.T) {
 		return r.Code, r.Body.Bytes()
 	}
 
-	if page := list(); page.Outcome != "forbidden" || len(page.Records) != 0 {
+	if page := list(); page.Outcome != wire.OperatorPageOutcomeForbidden || len(page.Records) != 0 {
 		t.Fatalf("unauthorized list %+v", page)
 	}
 	code, body := act(questionAction{Action: "answer", ID: ids[answered.RequestKey], Option: "once"})
-	if d := decodePanel[wire.OperatorDecision](t, code, body); d.Outcome != "forbidden" || d.Record != nil {
+	if d := decodePanel[wire.OperatorDecision](t, code, body); d.Outcome != wire.OperatorDecisionOutcomeForbidden || d.Record != nil {
 		t.Fatalf("unauthorized answer %+v", d)
 	}
 	code, body = act(questionAction{Action: "retire", ID: ids[pending.RequestKey]})
-	if d := decodePanel[wire.OperatorRetirement](t, code, body); d.Outcome != "forbidden" || d.Record != nil {
+	if d := decodePanel[wire.OperatorRetirement](t, code, body); d.Outcome != wire.OperatorRetirementOutcomeForbidden || d.Record != nil {
 		t.Fatalf("unauthorized retirement %+v", d)
 	}
-	if o, err := app.ObserveContext(ctx, pending.RequestKey, 0); err != nil || o.Outcome != "pending" {
+	if o, err := app.ObserveContext(ctx, pending.RequestKey, 0); err != nil || o.Outcome != askclient.ObservationOutcomePending {
 		t.Fatalf("refused panel actions changed the question %+v %v", o, err)
 	}
 
 	allow.Store(true)
-	if page := list(); page.Outcome != "page" || len(page.Records) != 2 || !page.Complete {
+	if page := list(); page.Outcome != wire.OperatorPageOutcomePage || len(page.Records) != 2 || !page.Complete {
 		t.Fatalf("authorized list %+v", page)
 	}
 	code, body = act(questionAction{Action: "answer", ID: ids[answered.RequestKey], Option: "once"})
-	if d := decodePanel[wire.OperatorDecision](t, code, body); d.Outcome != "answered" || d.Record == nil || d.Record.Option != "once" {
+	if d := decodePanel[wire.OperatorDecision](t, code, body); d.Outcome != wire.OperatorDecisionOutcomeAnswered || d.Record == nil || d.Record.Option != "once" {
 		t.Fatalf("panel answer %+v", d)
 	}
 	code, body = act(questionAction{Action: "answer", ID: ids[answered.RequestKey], Option: "refuse"})
-	if d := decodePanel[wire.OperatorDecision](t, code, body); d.Outcome != "conflict" {
+	if d := decodePanel[wire.OperatorDecision](t, code, body); d.Outcome != wire.OperatorDecisionOutcomeConflict {
 		t.Fatalf("conflicting panel answer %+v", d)
 	}
 	code, body = act(questionAction{Action: "retire", ID: ids[pending.RequestKey]})
-	if d := decodePanel[wire.OperatorRetirement](t, code, body); d.Outcome != "retired" || d.Record == nil || d.Record.Id != ids[pending.RequestKey] {
+	if d := decodePanel[wire.OperatorRetirement](t, code, body); d.Outcome != wire.OperatorRetirementOutcomeRetired || d.Record == nil || d.Record.ID != ids[pending.RequestKey] {
 		t.Fatalf("panel retirement %+v", d)
 	}
 	code, body = act(questionAction{Action: "retire", ID: ids[pending.RequestKey]})
-	if d := decodePanel[wire.OperatorRetirement](t, code, body); d.Outcome != "retired" || d.Record != nil {
+	if d := decodePanel[wire.OperatorRetirement](t, code, body); d.Outcome != wire.OperatorRetirementOutcomeRetired || d.Record != nil {
 		t.Fatalf("panel retirement replay %+v", d)
 	}
 	code, body = act(questionAction{Action: "retire", ID: "never-admitted"})
-	if d := decodePanel[wire.OperatorRetirement](t, code, body); d.Outcome != "unknown" {
+	if d := decodePanel[wire.OperatorRetirement](t, code, body); d.Outcome != wire.OperatorRetirementOutcomeUnknown {
 		t.Fatalf("unknown panel retirement %+v", d)
 	}
-	if o, err := app.ObserveContext(ctx, pending.RequestKey, 0); err != nil || o.Outcome != "gone" {
+	if o, err := app.ObserveContext(ctx, pending.RequestKey, 0); err != nil || o.Outcome != askclient.ObservationOutcomeGone {
 		t.Fatalf("application after panel retirement %+v %v", o, err)
 	}
-	if o, err := app.ObserveContext(ctx, answered.RequestKey, 0); err != nil || o.Outcome != "answered" {
+	if o, err := app.ObserveContext(ctx, answered.RequestKey, 0); err != nil || o.Outcome != askclient.ObservationOutcomeAnswered {
 		t.Fatalf("application after panel answer %+v %v", o, err)
 	}
-	if page := list(); page.Outcome != "page" || len(page.Records) != 1 || page.Records[0].Id != ids[answered.RequestKey] {
+	if page := list(); page.Outcome != wire.OperatorPageOutcomePage || len(page.Records) != 1 || page.Records[0].ID != ids[answered.RequestKey] {
 		t.Fatalf("list after retirement %+v", page)
 	}
 	for _, bad := range []questionAction{{Action: "pause", ID: "x"}, {Action: "answer", ID: "bad\nid", Option: "once"}, {Action: "retire", ID: "x", Option: "once"}, {Action: "answer", ID: "x"}} {

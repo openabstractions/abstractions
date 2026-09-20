@@ -1,0 +1,104 @@
+dataclass Alias
+  host: str
+  name: str
+  resident: bool
+  servable: bool
+  hosted: bool
+  profiles: list[str]
+dataclass Ask
+  at: str
+  caller: str
+  user: str
+  model: str
+  family: str
+  verdict: str
+  host: str
+const CREDENTIAL_CONSUMERS
+dataclass Caller
+  user_description: str
+  path_description: str
+dataclass Decision
+  asked: str
+  family: str
+  verdict: str
+  host: str
+  model: str
+  endpoint: str
+  installed_on: list[str]
+  authorised: HostAllowance | None
+  withheld: list[str]
+  loads: int
+  why: str
+class DispatchError(ValueError)
+  __init__(code)
+dataclass Family
+  family: str
+  names: list[Alias]
+dataclass HostAllowance
+  hosts: list[str]
+dataclass HostState
+  host: str
+  base: str
+  up: bool
+  why: str
+  installed: int
+  resident: list[str]
+  servable: bool
+  hosted: bool
+  wire: str
+  credential: str
+  declared_by: str
+  profiles: list[str]
+  domain: str
+dataclass HostsSnapshot
+  observation: Observation
+  hosts: list[HostState]
+  doubled: list[str]
+  asked: list[Ask]
+dataclass ModelsSnapshot
+  observation: Observation
+  models: list[Family]
+dataclass Observation
+  caller: Caller
+  took_ms: int
+  cache_age_ms: int
+const PROFILES
+dataclass PickRequest
+  model: str
+  fresh: bool
+  allowed: HostAllowance | None
+  profile: str
+dataclass PickResult
+  observation: Observation
+  decision: Decision
+const ROUTER_ERROR_CODES
+class Refusal(ValueError)
+  __init__(word, offset)
+class Router
+  models(fresh: bool) -> ModelsSnapshot
+  hosts(fresh: bool) -> HostsSnapshot
+  pick(request: PickRequest) -> PickResult
+class RouterClient(Router)
+  __init__(transport)
+  models(fresh: bool) -> ModelsSnapshot
+  hosts(fresh: bool) -> HostsSnapshot
+  pick(request: PickRequest) -> PickResult
+class ServiceError(Exception)
+  __init__(code, message)
+enum ServiceErrorCode
+  HANDLER_ERROR = 'handler_error'
+  INVALID_RESULT = 'invalid_result'
+  UNKNOWN_VERSION = 'unknown_version'
+  UNKNOWN_SERVICE = 'unknown_service'
+  UNKNOWN_METHOD = 'unknown_method'
+  WRONG_MODE = 'wrong_mode'
+  INTERNAL = 'internal'
+  INVALID_REQUEST = 'invalid_request'
+  CALLER_REFUSED = 'caller_refused'
+  UNKNOWN_OPERATION = 'unknown_operation'
+  POLICY_UNAVAILABLE = 'policy_unavailable'
+  FORBIDDEN = 'forbidden'
+const VERDICTS
+const WIRE_KINDS
+def decode(data)
+def encode(v)

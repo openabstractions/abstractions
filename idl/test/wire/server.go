@@ -74,7 +74,7 @@ func dispatch(store job.Store, req *rec.Request) *rec.Response {
 	if !rec.IsOperation(req.Op) {
 		return &rec.Response{Kind: rec.UnknownOperation, Error: "unknown op " + req.Op}
 	}
-	ttl := time.Duration(req.TtlMs) * time.Millisecond
+	ttl := time.Duration(req.TTLMs) * time.Millisecond
 	switch req.Op {
 	case "submit":
 		r, err := job.DecodeProposal([]byte(req.Record))
@@ -85,32 +85,32 @@ func dispatch(store job.Store, req *rec.Request) *rec.Response {
 		if err != nil {
 			return refuse(err)
 		}
-		return &rec.Response{Id: id}
+		return &rec.Response{ID: id}
 	case "load":
-		return one(store.Load(req.Id))
+		return one(store.Load(req.ID))
 	case "list":
 		return many(store.List())
 	case "orphans":
 		return many(store.Orphans())
 	case "claimable":
-		r, err := store.Load(req.Id)
+		r, err := store.Load(req.ID)
 		if err != nil {
 			return refuse(err)
 		}
 		return &rec.Response{Bool: store.Claimable(r)}
 	case "claim":
-		return one(store.Claim(req.Id, req.Owner, ttl))
+		return one(store.Claim(req.ID, req.Owner, ttl))
 	case "renew":
-		return one(store.Renew(req.Id, req.Epoch, ttl))
+		return one(store.Renew(req.ID, req.Epoch, ttl))
 	case "release":
-		if err := store.Release(req.Id, req.Epoch); err != nil {
+		if err := store.Release(req.ID, req.Epoch); err != nil {
 			return refuse(err)
 		}
 		return &rec.Response{}
 	case "set_intent":
-		return one(store.SetIntent(req.Id, job.Want(req.Want), req.By))
+		return one(store.SetIntent(req.ID, job.Want(req.Want), req.By))
 	case "recall":
-		return one(store.Recall(req.Id, req.Epoch, req.Reason, req.By, ttl))
+		return one(store.Recall(req.ID, req.Epoch, req.Reason, req.By, ttl))
 	case "write":
 		return one(applyWrite(store, req))
 	}
@@ -125,13 +125,13 @@ func applyWrite(store job.Store, req *rec.Request) (*job.Record, error) {
 	if req.Base == "" {
 		return nil, fmt.Errorf("%w: a write must present the record it was computed from", job.ErrInvalid)
 	}
-	return store.Update(req.Id, req.Epoch, func(held *job.Record) error {
+	return store.Update(req.ID, req.Epoch, func(held *job.Record) error {
 		same, err := unchanged(held, req.Base)
 		if err != nil {
 			return err
 		}
 		if !same {
-			return fmt.Errorf("%w: %s", job.ErrConflict, req.Id)
+			return fmt.Errorf("%w: %s", job.ErrConflict, req.ID)
 		}
 		held.State = want.State
 		held.Progress = want.Progress

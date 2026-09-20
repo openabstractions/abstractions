@@ -53,9 +53,9 @@ const jsBinaryTest = `import assert from 'node:assert/strict';import * as r from
 const te=new TextEncoder(),td=new TextDecoder();
 const all=Uint8Array.from({length:131079},(_,i)=>i&255);
 for(const data of [null,new Uint8Array(),Uint8Array.of(0),Uint8Array.of(255,0),all,all.subarray(3,260),Buffer.from([1,2,3])]) {
- const v=r.newValue();v.required_data=data??new Uint8Array();v.data=data;
+ const v=r.newValue();v.requiredData=data??new Uint8Array();v.data=data;
  const raw=r.encode(v),back=r.decode(raw);
- assert.deepEqual(back.required_data,new Uint8Array(v.required_data));
+ assert.deepEqual(back.requiredData,new Uint8Array(v.requiredData));
  if(data===null)assert.equal(back.data,null);else {assert.deepEqual(back.data,new Uint8Array(data));assert.equal(JSON.parse(td.decode(raw)).data,Buffer.from(data).toString('base64'));}
 }
 for(const bad of ['A','AA','AAA','AB==','AAB=','AA=A','====','AA==AAAA','AA-_','AA==\n']) {
@@ -63,13 +63,13 @@ for(const bad of ['A','AA','AAA','AB==','AAB=','AA=A','====','AA==AAAA','AA-_','
 }
 for(const raw of ['{}','{"required_data":null}']) assert.throws(()=>r.decode(te.encode(raw)),r.Refusal);
 for(const bad of ['',[],new Uint16Array(),new ArrayBuffer(0),1,undefined]) {
- for(const field of ['required_data','data','sparse']) {if(field==='data'&&bad===undefined)continue;const v=r.newValue();v[field]=bad;assert.throws(()=>r.encode(v),e=>e instanceof r.Refusal&&e.word==='wrong_type');}
+ for(const field of ['requiredData','data','sparse']) {if(field==='data'&&bad===undefined)continue;const v=r.newValue();v[field]=bad;assert.throws(()=>r.encode(v),e=>e instanceof r.Refusal&&e.word==='wrong_type');}
 }
 let calls=0;const failure=new Error('uncertain write');
 const transport={exchangeFrame:async frame=>{calls++;const q=JSON.parse(td.decode(frame));assert.equal(q.arguments.data,Buffer.from(all).toString('base64'));return te.encode(JSON.stringify({version:1,service:q.service,method:q.method,ok:true,payload:{value:q.arguments.data}}));},writeFrame:async frame=>{calls++;assert.equal(JSON.parse(td.decode(frame)).arguments.data,'AP8=');throw failure;}};
-const client=new r.BlobClient(transport);assert.deepEqual(await client.Echo(all),all);
-await assert.rejects(client.Put(Uint8Array.of(0,255)),e=>e===failure);assert.equal(calls,2);
-await assert.rejects(client.Echo('text'),r.Refusal);assert.equal(calls,2);
+const client=new r.BlobClient(transport);assert.deepEqual(await client.echo(all),all);
+await assert.rejects(client.put(Uint8Array.of(0,255)),e=>e===failure);assert.equal(calls,2);
+await assert.rejects(client.echo('text'),r.Refusal);assert.equal(calls,2);
 const forged=new r.BlobClient({exchangeFrame:async()=>te.encode(JSON.stringify({version:1,service:'example/blob@1',method:'Echo',ok:true,payload:{value:'AB=='}}))});
-await assert.rejects(forged.Echo(new Uint8Array()),e=>e instanceof r.Refusal&&e.word==='bad_binary');
+await assert.rejects(forged.echo(new Uint8Array()),e=>e instanceof r.Refusal&&e.word==='bad_binary');
 `

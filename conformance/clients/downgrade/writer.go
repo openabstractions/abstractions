@@ -64,7 +64,7 @@ func main() {
 	if err != nil || v.Outcome != "accepted" {
 		fail("submit: %+v %v", v, err)
 	}
-	report := map[string]any{"mode": mode, "operation": v.Receipt.OperationId}
+	report := map[string]any{"mode": mode, "operation": v.Receipt.OperationID}
 
 	switch mode {
 	case "plain":
@@ -73,7 +73,7 @@ func main() {
 		if err != nil {
 			fail("store: %v", err)
 		}
-		claimed, err := store.Claim(v.Receipt.OperationId, "downgrade-writer", time.Minute)
+		claimed, err := store.Claim(v.Receipt.OperationID, "downgrade-writer", time.Minute)
 		if err != nil {
 			fail("claim: %v", err)
 		}
@@ -85,7 +85,7 @@ func main() {
 		if err != nil || retry.Outcome != "accepted" {
 			fail("retry: %+v %v", retry, err)
 		}
-		report["retry"] = retry.Receipt.OperationId
+		report["retry"] = retry.Receipt.OperationID
 	case "lost":
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan error, 1)
@@ -107,7 +107,7 @@ func main() {
 		}
 		cancel()
 		<-done
-		if err := os.Remove(filepath.Join(root, "results", v.Receipt.OperationId)); err != nil {
+		if err := os.Remove(filepath.Join(root, "results", v.Receipt.OperationID)); err != nil {
 			fail("remove result: %v", err)
 		}
 		read, err := operations.ReadResult(s.Identity, 0, 16)

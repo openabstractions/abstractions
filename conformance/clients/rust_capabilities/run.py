@@ -24,12 +24,12 @@ def main():
         p.print_help()
         return
     windows = os.name == "nt"
-    if not windows and not sys.platform.startswith("linux"):
-        raise RuntimeError("native fixture measures Windows/MSVC and Linux only")
     def run(argv, env=None, cwd=ROOT):
         subprocess.run([str(x) for x in argv], cwd=cwd, env=env, check=True, timeout=600)
     source_revision()
     if a.dry_run: dry_run_stop('rust_capabilities', a)
+    if not windows and not sys.platform.startswith("linux"):
+        raise RuntimeError("native fixture measures Windows/MSVC and Linux only")
     with tempfile.TemporaryDirectory(prefix="oa-rust-capabilities-") as tmp:
         b = Path(tmp); tree = b/"tree"
         for component, parts in [("identity", ["rust-frame"]), ("facade", ["rust", "rust-storage", "rust-router", "rust-model", "rust-logging", "rust-rights", "rs"]), ("storage", ["rust", "rs"]), ("router", ["rust", "rs"]), ("model", ["rust", "rs"]), ("download", ["rust", "rs"]), ("logging", ["rust", "rs"]), ("rights", ["rust", "rs"])]:

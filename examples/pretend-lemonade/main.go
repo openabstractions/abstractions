@@ -67,10 +67,10 @@ func run(args []string, out io.Writer) error {
 			return err
 		}
 	}
-	if accepted.Outcome != "accepted" || accepted.Receipt == nil {
+	if accepted.Outcome != api.AcceptanceOutcomeAccepted || accepted.Receipt == nil {
 		return fmt.Errorf("download not accepted: %s %s", accepted.Outcome, accepted.Reason)
 	}
-	fmt.Fprintf(out, "submitted %s\n", accepted.Receipt.OperationId)
+	fmt.Fprintf(out, "submitted %s\n", accepted.Receipt.OperationID)
 	for {
 		observed, err := jobs.ObserveWork(ctx, identity)
 		if err != nil {
@@ -80,9 +80,9 @@ func run(args []string, out io.Writer) error {
 			return fmt.Errorf("download unobservable: %s", observed.Outcome)
 		}
 		switch observed.Snapshot.State {
-		case "complete":
+		case api.WorkStateComplete:
 			return deliver(ctx, jobs, identity, args[0], out)
-		case "failed", "cancelled":
+		case api.WorkStateFailed, api.WorkStateCancelled:
 			return fmt.Errorf("download %s", observed.Snapshot.State)
 		}
 		select {

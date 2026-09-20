@@ -1,5 +1,5 @@
-# GATE  produced by scripts/check.sh on 2026-09-12, commit 78fef2e, exit 1
-# measures  openabstractions-flat/abstraction-asks@67bc91e openabstractions-flat/abstraction-cas@cf455b4 openabstractions-flat/abstraction-config@d93ae75 openabstractions-flat/abstraction-download@037f545 openabstractions-flat/abstraction-facade@75832f0 openabstractions-flat/abstraction-identity@f02cf2a openabstractions-flat/abstraction-job@7cfad00 openabstractions-flat/abstraction-logging@e1ffdaf openabstractions-flat/abstraction-model@00e86f5 openabstractions-flat/abstraction-rights@2951974 openabstractions-flat/abstraction-router@d79374d openabstractions-flat/abstraction-storage@27bc58b openabstractions-flat/abstraction-watch@27bd982
+# GATE  produced by scripts/check.sh on 2026-09-17, commit e8fff0cf, exit 1
+# measures  openabstractions-flat/abstraction-asks@842343f1 openabstractions-flat/abstraction-cas@3b3891bc openabstractions-flat/abstraction-config@9be6b005 openabstractions-flat/abstraction-credentials@2aec27ac openabstractions-flat/abstraction-download@69d14875 openabstractions-flat/abstraction-facade@f00d37a0 openabstractions-flat/abstraction-identity@1253dd49 openabstractions-flat/abstraction-inference@5a1b60ce openabstractions-flat/abstraction-job@d511c4b6 openabstractions-flat/abstraction-logging@2e08de55 openabstractions-flat/abstraction-model@fd7b8c7c openabstractions-flat/abstraction-rights@d3cfa93d openabstractions-flat/abstraction-router@1d6a1525 openabstractions-flat/abstraction-storage@8f94fed2 openabstractions-flat/abstraction-storage-over-local-stores@1cf13364 openabstractions-flat/abstraction-watch@5ef871d9
 # machine   MINGW64_NT-10.0-26200/x86_64; go1.26.5; Python 3.12.10; 1 c++ toolchain(s) built
 # mode      fast
 # regenerate  sh scripts/check.sh --fast --record
@@ -10,27 +10,42 @@
 #           minutes are in research/gate/series.tsv where a series belongs.
 
   openabstractions-flat/abstraction-asks/go PASS      go build ./... && go test ./... [go1.26.5]
+  openabstractions-flat/abstraction-asks/javascript PASS      js_services --pure: installed package, 28 generated methods against the production Go runtime through the test pipe connector [node24.19.0]
   openabstractions-flat/abstraction-cas/cpp PASS      ctest under g++ 15.2.0 in WSL, 2 test runs; msvc not built (--fast) [g++]
   openabstractions-flat/abstraction-cas/go PASS      go build ./... && go test ./... [go1.26.5]
-  openabstractions-flat/abstraction-cas/python PASS      unittest discover, 13 tests [py3.12]
+  openabstractions-flat/abstraction-cas/python PASS      unittest discover, 21 tests [py3.12]
   openabstractions-flat/abstraction-config/go PASS      go build ./... && go test ./... [go1.26.5]
-  openabstractions-flat/abstraction-config/python PASS      unittest discover, 17 tests [py3.12]
-  openabstractions-flat/abstraction-download/cpp PASS      the published conformance suite, 52 rules over 10 of 47 scenarios: matrix recall failure-endings intent notice-quiet wanted pause-adoption foreign-sink terminal wire-ignored-range [msvc]
+  openabstractions-flat/abstraction-config/javascript PASS      js_services --pure: installed package, 28 generated methods against the production Go runtime through the test pipe connector [node24.19.0]
+  openabstractions-flat/abstraction-config/python PASS      unittest discover, 19 tests [py3.12]
+  openabstractions-flat/abstraction-credentials/go PASS      go build ./... && go test ./... [go1.26.5]
+  openabstractions-flat/abstraction-download/cpp UNPROVEN  no C++ toolchain on this run executed a ctest test belonging to it; msvc not built (--fast)
   openabstractions-flat/abstraction-download/go PASS      go build ./... && go test ./... [go1.26.5]
-  openabstractions-flat/abstraction-download/python PASS      unittest discover, 70 tests [py3.12]
+  openabstractions-flat/abstraction-download/javascript PASS      js_services --pure: installed package, 28 generated methods against the production Go runtime through the test pipe connector [node24.19.0]
+  openabstractions-flat/abstraction-facade/cpp UNPROVEN  no C++ toolchain on this run executed a ctest test belonging to it; msvc not built (--fast)
   openabstractions-flat/abstraction-facade/go PASS      go build ./... && go test ./... [go1.26.5]
+  openabstractions-flat/abstraction-facade/javascript PASS      js_services --pure: installed package, 28 generated methods against the production Go runtime through the test pipe connector [node24.19.0]
   openabstractions-flat/abstraction-identity UNPROVEN  the macOS half is type-checked and run by nobody: this gate reaches no Mac [go1.26.5]
   openabstractions-flat/abstraction-identity/cpp UNPROVEN  no C++ toolchain on this run executed a ctest test belonging to it; msvc not built (--fast)
-  openabstractions-flat/abstraction-job/cpp PASS      ctest under g++ 15.2.0 in WSL, 4 test runs; msvc not built (--fast) [g++]
+  openabstractions-flat/abstraction-identity/javascript UNPROVEN  the native Node-API connector is built only by js_services --run (MSVC or GCC and Node headers), which this gate does not run
+  openabstractions-flat/abstraction-inference/go PASS      go build ./... && go test ./... [go1.26.5]
   openabstractions-flat/abstraction-job/go UNPROVEN  the macOS half is type-checked and run by nobody: this gate reaches no Mac [go1.26.5]
-  openabstractions-flat/abstraction-job/python PASS      unittest discover, 76 tests [py3.12]
+  openabstractions-flat/abstraction-job/javascript PASS      js_services --pure: installed package, 28 generated methods against the production Go runtime through the test pipe connector [node24.19.0]
+  openabstractions-flat/abstraction-job/python PASS      unittest discover, 2 tests [py3.12]
+  openabstractions-flat/abstraction-logging/cpp UNPROVEN  no C++ toolchain on this run executed a ctest test belonging to it; msvc not built (--fast)
   openabstractions-flat/abstraction-logging/go PASS      go build ./... && go test ./... [go1.26.5]
+  openabstractions-flat/abstraction-logging/javascript PASS      js_services --pure: installed package, 28 generated methods against the production Go runtime through the test pipe connector [node24.19.0]
+  openabstractions-flat/abstraction-model/cpp UNPROVEN  no C++ toolchain on this run executed a ctest test belonging to it; msvc not built (--fast)
   openabstractions-flat/abstraction-model/go PASS      go build ./... && go test ./... [go1.26.5]
-  openabstractions-flat/abstraction-model/python PASS      unittest discover, 41 tests [py3.12]
+  openabstractions-flat/abstraction-model/javascript PASS      js_services --pure: installed package, 28 generated methods against the production Go runtime through the test pipe connector [node24.19.0]
+  openabstractions-flat/abstraction-model/python PASS      unittest discover, 4 tests [py3.12]
   openabstractions-flat/abstraction-rights/go PASS      go build ./... && go test ./... [go1.26.5]
+  openabstractions-flat/abstraction-rights/javascript PASS      js_services --pure: installed package, 28 generated methods against the production Go runtime through the test pipe connector [node24.19.0]
   openabstractions-flat/abstraction-router/go PASS      go build ./... && go test ./... [go1.26.5]
+  openabstractions-flat/abstraction-router/javascript PASS      js_services --pure: installed package, 28 generated methods against the production Go runtime through the test pipe connector [node24.19.0]
+  openabstractions-flat/abstraction-storage-over-local-stores/go PASS      go build ./... && go test ./... [go1.26.5]
   openabstractions-flat/abstraction-storage/cpp PASS      ctest under g++ 15.2.0 in WSL, 1 test runs; msvc not built (--fast) [g++]
   openabstractions-flat/abstraction-storage/go PASS      go build ./... && go test ./... [go1.26.5]
+  openabstractions-flat/abstraction-storage/javascript PASS      js_services --pure: installed package, 28 generated methods against the production Go runtime through the test pipe connector [node24.19.0]
   openabstractions-flat/abstraction-watch/cpp PASS      ctest under g++ 15.2.0 in WSL, 1 test runs; msvc not built (--fast) [g++]
   openabstractions-flat/abstraction-watch/go PASS      go build ./... && go test ./... [go1.26.5]
-  openabstractions-flat/abstraction-watch/python PASS      unittest discover, 19 tests [py3.12]
+  openabstractions-flat/abstraction-watch/python PASS      unittest discover, 15 tests [py3.12]

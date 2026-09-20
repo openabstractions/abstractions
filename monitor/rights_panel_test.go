@@ -87,12 +87,12 @@ func TestServicePanelRightsOperator(t *testing.T) {
 	grant := func(revision string, permit bool) rightsEdit {
 		return rightsEdit{Edit: "set", Revision: revision, Account: target.Account, Program: target.Program, Action: panelRightsAction, Resource: "sha256:panel", Permit: permit}
 	}
-	decision := func() string { return policy.Decide(target, panelRightsAction, "sha256:panel").Outcome }
+	decision := func() string { return policy.Decide(target, panelRightsAction, "sha256:panel").Outcome.String() }
 
-	if page := list(); page.Outcome != "forbidden" || page.Revision != "" || len(page.Catalog) != 0 {
+	if page := list(); page.Outcome != wire.PolicyPageOutcomeForbidden || page.Revision != "" || len(page.Catalog) != 0 {
 		t.Fatalf("unauthorized list %+v", page)
 	}
-	if e := edit(grant("any-revision", true)); e.Outcome != "forbidden" || e.Revision != "" || e.Current != nil {
+	if e := edit(grant("any-revision", true)); e.Outcome != wire.PolicyEditOutcomeForbidden || e.Revision != "" || e.Current != nil {
 		t.Fatalf("unauthorized grant %+v", e)
 	}
 	if got := decision(); got != "not_granted" {
@@ -101,25 +101,25 @@ func TestServicePanelRightsOperator(t *testing.T) {
 
 	allow.Store(true)
 	empty := list()
-	if empty.Outcome != "page" || !empty.Complete || len(empty.Rules) != 0 || len(empty.Catalog) != 1 || empty.Catalog[0] != panelRightsAction {
+	if empty.Outcome != wire.PolicyPageOutcomePage || !empty.Complete || len(empty.Rules) != 0 || len(empty.Catalog) != 1 || empty.Catalog[0] != panelRightsAction {
 		t.Fatalf("authorized list %+v", empty)
 	}
 	granted := edit(grant(empty.Revision, true))
-	if granted.Outcome != "applied" || granted.Current == nil || !granted.Current.Permit || granted.Revision == empty.Revision {
+	if granted.Outcome != wire.PolicyEditOutcomeApplied || granted.Current == nil || !granted.Current.Permit || granted.Revision == empty.Revision {
 		t.Fatalf("panel grant %+v", granted)
 	}
 	if got := decision(); got != "permitted" {
 		t.Fatalf("panel grant decision %s", got)
 	}
-	if stale := edit(grant(empty.Revision, false)); stale.Outcome != "conflict" || stale.Revision != granted.Revision || stale.Current == nil || !stale.Current.Permit {
+	if stale := edit(grant(empty.Revision, false)); stale.Outcome != wire.PolicyEditOutcomeConflict || stale.Revision != granted.Revision || stale.Current == nil || !stale.Current.Permit {
 		t.Fatalf("stale panel deny %+v", stale)
 	}
 	page := list()
-	if page.Outcome != "page" || page.Revision != granted.Revision || len(page.Rules) != 1 || page.Rules[0].Subject != target || !page.Rules[0].Permit {
+	if page.Outcome != wire.PolicyPageOutcomePage || page.Revision != granted.Revision || len(page.Rules) != 1 || page.Rules[0].Subject != target || !page.Rules[0].Permit {
 		t.Fatalf("list after grant %+v", page)
 	}
 	denied := edit(grant(page.Revision, false))
-	if denied.Outcome != "applied" || denied.Current == nil || denied.Current.Permit {
+	if denied.Outcome != wire.PolicyEditOutcomeApplied || denied.Current == nil || denied.Current.Permit {
 		t.Fatalf("panel deny %+v", denied)
 	}
 	if got := decision(); got != "denied" {
@@ -127,27 +127,27 @@ func TestServicePanelRightsOperator(t *testing.T) {
 	}
 
 	outage.Store(true)
-	if page := list(); page.Outcome != "unavailable" || len(page.Rules) != 0 {
+	if page := list(); page.Outcome != wire.PolicyPageOutcomeUnavailable || len(page.Rules) != 0 {
 		t.Fatalf("operator outage list %+v", page)
 	}
 	revoke := rightsEdit{Edit: "revoke", Revision: denied.Revision, Account: target.Account, Program: target.Program, Action: panelRightsAction, Resource: "sha256:panel"}
-	if e := edit(revoke); e.Outcome != "unavailable" || e.Revision != "" {
+	if e := edit(revoke); e.Outcome != wire.PolicyEditOutcomeUnavailable || e.Revision != "" {
 		t.Fatalf("operator outage revoke %+v", e)
 	}
 	if got := decision(); got != "denied" {
 		t.Fatalf("unavailable revoke changed policy: %s", got)
 	}
 	outage.Store(false)
-	if e := edit(revoke); e.Outcome != "applied" || e.Current != nil {
+	if e := edit(revoke); e.Outcome != wire.PolicyEditOutcomeApplied || e.Current != nil {
 		t.Fatalf("panel revoke %+v", e)
 	}
 	if got := decision(); got != "not_granted" {
 		t.Fatalf("panel revoke decision %s", got)
 	}
-	if e := edit(rightsEdit{Edit: "set", Revision: denied.Revision, Account: target.Account, Program: target.Program, Action: "abstraction.unknown/action", Resource: "x", Permit: true}); e.Outcome != "invalid" {
+	if e := edit(rightsEdit{Edit: "set", Revision: denied.Revision, Account: target.Account, Program: target.Program, Action: "abstraction.unknown/action", Resource: "x", Permit: true}); e.Outcome != wire.PolicyEditOutcomeInvalid {
 		t.Fatalf("uncatalogued panel grant %+v", e)
 	}
-	if page := list(); page.Outcome != "page" || len(page.Rules) != 0 {
+	if page := list(); page.Outcome != wire.PolicyPageOutcomePage || len(page.Rules) != 0 {
 		t.Fatalf("list after revoke %+v", page)
 	}
 

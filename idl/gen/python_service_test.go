@@ -29,7 +29,7 @@ func TestPythonServiceValidation(t *testing.T) {
 	if e = validateServiceBackend(s, "python"); e != nil {
 		t.Fatal(e)
 	}
-	for _, tc := range []struct{ old, new string }{{"Query {", "bytes {"}, {"Echo(", "async("}, {"Echo(", "__init__("}, {"Echo(", "_transport("}, {"string text", "string text(python.name=\"class\")"}, {"string text", "string text(python.name=\"record\")"}, {"string text", "string text(python.name=\"self\")"}, {"string value", "string value(python.name=\"a.b\")"}} {
+	for _, tc := range []struct{ old, new string }{{"Query {", "Record_ {"}, {"string text", "string text(python.name=\"class\")"}, {"string text", "string text(python.name=\"record\")"}, {"string text", "string text(python.name=\"self\")"}, {"string value", "string value(python.name=\"a.b\")"}} {
 		d, e := parse(head + strings.Replace(replyFixture, tc.old, tc.new, 1))
 		if e != nil {
 			t.Fatal("must reach Python preflight", tc, e)
@@ -96,31 +96,31 @@ class Transport:
   return subprocess.run([host,'serve',''],input=frame,check=True,capture_output=True).stdout
 t=Transport();c=r.QueryClient(t)
 def equal_request(method):assert t.frame==subprocess.run([host,'emit',method],capture_output=True,check=True).stdout
-v=c.Echo(r.Record(value='\u96ea<&'),'',False,0);assert v.value=='\u96ea<&';equal_request('Echo')
-raw=b'{ "a" : [1,\n false] }';assert c.Opaque(raw)==raw;equal_request('Opaque')
-assert c.Reset() is None;equal_request('Reset')
-try:c.Fail('future_code');raise AssertionError('accepted failure')
+v=c.echo(r.Record(value='\u96ea<&'),'',False,0);assert v.value=='\u96ea<&';equal_request('Echo')
+raw=b'{ "a" : [1,\n false] }';assert c.opaque(raw)==raw;equal_request('Opaque')
+assert c.reset() is None;equal_request('Reset')
+try:c.fail('future_code');raise AssertionError('accepted failure')
 except r.ServiceError as e:assert e.code=='future_code' and e.message==''
-equal_request('Fail');assert c.Notify() is None
+equal_request('Fail');assert c.notify() is None
 count=t.calls
 for args in [(r.Record(value='x'),'',False,True),(r.Record(value='x'),'',False,1.5),(r.Record(value='x'),'',False,2**63),(r.Record(value='x'),'',0,0),(r.Record(value=1),'',False,0)]:
- try:c.Echo(*args);raise AssertionError('coerced wrong type')
+ try:c.echo(*args);raise AssertionError('coerced wrong type')
  except r.Refusal:pass
 for raw in [b'{',b'{}{}',b'{"a":1,"a":2}',b'"\xff"']:
- try:c.Opaque(raw);raise AssertionError('accepted bad raw')
+ try:c.opaque(raw);raise AssertionError('accepted bad raw')
  except r.Refusal:pass
 assert t.calls==count
 reply={'version':1,'service':'example.query/query@1','method':'Echo','ok':True,'payload':{'value':{'value':'x'}}}
 for bad in [b'{',json.dumps(reply).encode()+b'{}',json.dumps(dict(reply,version=2)).encode(),json.dumps(dict(reply,service='wrong')).encode(),json.dumps(dict(reply,method='wrong')).encode(),json.dumps(dict(reply,payload={})).encode(),json.dumps(dict(reply,payload={'value':{'value':False}})).encode(),json.dumps(dict(reply,ok=False,payload={'code':'','message':''})).encode(),json.dumps(dict(reply,ok=False,payload={'code':'future_code'})).encode()]:
  t.reply=bad
- try:c.Echo(r.Record(value='x'),'',False,0);raise AssertionError('accepted bad response')
+ try:c.echo(r.Record(value='x'),'',False,0);raise AssertionError('accepted bad response')
  except (r.Refusal,r.DispatchError):pass
 t.reply=json.dumps(dict(reply,ok=False,payload={'code':'unknown','message':''})).encode()
-try:c.Echo(r.Record(value='x'),'',False,0);raise AssertionError('accepted failure')
+try:c.echo(r.Record(value='x'),'',False,0);raise AssertionError('accepted failure')
 except r.ServiceError as e:assert e.code=='unknown' and e.message==''
 class Offline:
  def exchange_frame(self,frame):raise OSError('offline')
-try:r.QueryClient(Offline()).Reset();raise AssertionError('swallowed transport error')
+try:r.QueryClient(Offline()).reset();raise AssertionError('swallowed transport error')
 except OSError:pass
 print('Python '+sys.version.split()[0]+': typed replies, oneway, raw bytes, zero/false/empty, malformed frames and unknown errors passed')
 `
@@ -172,9 +172,9 @@ import rec as r
 class Transport:
  calls=0
  def write_frame(self,frame):self.calls+=1;subprocess.run([sys.argv[1]],input=frame,capture_output=True,check=True)
-t=Transport();c=r.SinkClient(t);v=r.Record(schema=1,time='2026-09-11T00:00:00Z',level=0,msg='');assert c.Write(v) is None and t.calls==1
+t=Transport();c=r.SinkClient(t);v=r.Record(schema=1,time='2026-09-11T00:00:00Z',level=0,msg='');assert c.write(v) is None and t.calls==1
 v.schema=2
-try:c.Write(v);raise AssertionError('bad schema emitted')
+try:c.write(v);raise AssertionError('bad schema emitted')
 except r.Refusal as e:assert e.word=='bad_schema'
 assert t.calls==1
 `
@@ -206,11 +206,11 @@ class T:
  calls=0
  def write_frame(self,b):self.calls+=1;assert json.loads(b)['arguments']=={'args':'one','other':'two'}
  def exchange_frame(self,b):self.calls+=1;return b'{"version":1,"service":"example/s@1","method":"Echo","ok":true,"payload":{"value":{"content":[]}}}'
-t=T();c=r.SClient(t);c.Write(_oa_args='one',label='two');assert t.calls==1
-try:c.Echo(r.Record(content=[]));raise AssertionError('vocabulary bypass')
+t=T();c=r.SClient(t);c.write(_oa_args='one',label='two');assert t.calls==1
+try:c.echo(r.Record(content=[]));raise AssertionError('vocabulary bypass')
 except r.Refusal as e:assert e.word=='content_mismatch'
 assert t.calls==1
-try:c.Echo(r.Record(content=['base']));raise AssertionError('invalid result vocabulary')
+try:c.echo(r.Record(content=['base']));raise AssertionError('invalid result vocabulary')
 except r.Refusal as e:assert e.word=='content_mismatch'
 assert t.calls==2
 `

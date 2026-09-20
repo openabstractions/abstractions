@@ -51,7 +51,7 @@ func TestCentralRuntimeModelLookup(t *testing.T) {
 	}
 	// Unknown registry proves default service wiring without external lookup.
 	r, err := lookup.ResolveContext(ctx, modelclient.Ref{Registry: "unconfigured-test-registry", Repo: "weights"})
-	if err != nil || r.Outcome != "unavailable" || r.Request != nil {
+	if err != nil || r.Outcome.String() != "unavailable" || r.Request != nil {
 		t.Fatalf("lookup %+v %v", r, err)
 	}
 }

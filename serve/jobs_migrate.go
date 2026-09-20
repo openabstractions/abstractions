@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"text/tabwriter"
 
 	downloadserve "github.com/openabstractions/abstraction-download/go/serve"
+	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	"github.com/openabstractions/abstraction-job/go/acceptanceprovider"
 )
@@ -39,14 +39,7 @@ type exitError struct {
 func (e *exitError) Error() string { return e.err.Error() }
 func (e *exitError) Unwrap() error { return e.err }
 
-const jobsUsage = `Usage: openabstractions jobs <command>
-
-Commands:
-  migrate-legacy   convert legacy job records in the managed runtime root into
-                   service-owned records using an operator ownership mapping
-
-Run "openabstractions jobs migrate-legacy" for its commands.
-`
+const jobsUsage = jobsServiceUsage
 
 const migrateUsage = `Usage: openabstractions jobs migrate-legacy <inspect|apply|abandon> [options]
 
@@ -66,7 +59,8 @@ nothing is inferred from file names, and active work is never assigned.
       Withdraw an interrupted apply that did not finish. Refuses completed
       migrations and a running runtime job host.
 
-Drain active legacy work through the legacy provider (jobd) before apply.
+Active legacy records are refused. The legacy provider that could finish them
+was removed in 0.1.8; see docs/REMOVED.md.
 
 Mapping file (JSON, unknown or duplicate fields refused):
   {
@@ -94,10 +88,13 @@ func jobsCommand(args []string, output, diagnostics io.Writer) error {
 		_, err := io.WriteString(output, jobsUsage)
 		return err
 	}
-	if args[0] != "migrate-legacy" {
-		return &exitError{exitUsage, fmt.Errorf("jobs: unknown command %q; use jobs --help", args[0])}
+	switch args[0] {
+	case "migrate-legacy":
+		return migrateLegacyCommand(args[1:], output, diagnostics)
+	case "list", "show", "wait", "cancel", "result":
+		return jobsServiceCommand(args[0], args[1:], output, diagnostics)
 	}
-	return migrateLegacyCommand(args[1:], output, diagnostics)
+	return &exitError{exitUsage, fmt.Errorf("jobs: unknown command %q; use jobs --help", args[0])}
 }
 
 func migrateLegacyCommand(args []string, output, diagnostics io.Writer) error {
@@ -144,6 +141,13 @@ func migrateLegacyCommand(args []string, output, diagnostics io.Writer) error {
 	if err != nil {
 		return &exitError{exitUsage, fmt.Errorf("jobs migrate-legacy: %w", err)}
 	}
+	// apply and abandon write the store; the default state is the account's.
+	refuse := func() error {
+		if supplied {
+			return nil
+		}
+		return refuseVirtualizedProfile("jobs migrate-legacy", bootstrap.CurrentProfileView)
+	}
 	switch sub {
 	case "inspect":
 		return inspectLegacy(root, *template, output, diagnostics)
@@ -151,8 +155,14 @@ func migrateLegacyCommand(args []string, output, diagnostics io.Writer) error {
 		if *mapping == "" {
 			return &exitError{exitUsage, errors.New("jobs migrate-legacy apply: --mapping is required")}
 		}
+		if err := refuse(); err != nil {
+			return err
+		}
 		return applyLegacy(root, *mapping, output, diagnostics)
 	default:
+		if err := refuse(); err != nil {
+			return err
+		}
 		return abandonLegacy(root, output)
 	}
 }
@@ -182,55 +192,6 @@ type mappingSubmission struct {
 	RequiredGuarantees []string        `json:"required_guarantees"`
 }
 
-// describeJobdStore reports jobd's separate legacy store, whose records this
-// migration cannot see, and returns a failed write. It reads only the directory
-// listing.
-func describeJobdStore(managedRoot string, w io.Writer) error {
-	store, origin, err := downloadserve.StoreRootOrigin()
-	if err != nil {
-		_, werr := fmt.Fprintf(w, "jobd legacy store: location unavailable (%v).\n", err)
-		return werr
-	}
-	if sameDirectory(store, managedRoot) {
-		return nil
-	}
-	entries, err := os.ReadDir(filepath.Join(store, "jobs"))
-	records := 0
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") {
-			records++
-		}
-	}
-	switch {
-	case errors.Is(err, os.ErrNotExist):
-		_, werr := fmt.Fprintf(w, "jobd legacy store: %s (from %s) has no jobs directory.\n", store, origin)
-		return werr
-	case err != nil:
-		_, werr := fmt.Fprintf(w, "jobd legacy store: %s (from %s) is unreadable: %v.\n", store, origin, err)
-		return werr
-	}
-	_, err = fmt.Fprintf(w, `jobd legacy store: %s (from %s) holds %d job record(s).
-Migration cannot see these records: it converts only records inside %s.
-Instead: keep observing and finishing them through jobd, dl or jobctl, the
-explicit legacy provider; submit new work through the runtime job service.
-Importing records from the jobd store into the runtime root is not available.
-`, store, origin, records, managedRoot)
-	return err
-}
-
-func sameDirectory(a, b string) bool {
-	if left, err := os.Stat(a); err == nil {
-		if right, err := os.Stat(b); err == nil {
-			return os.SameFile(left, right)
-		}
-	}
-	a, b = filepath.Clean(a), filepath.Clean(b)
-	if runtime.GOOS == "windows" {
-		return strings.EqualFold(a, b)
-	}
-	return a == b
-}
-
 func inspectLegacy(root string, templateOnly bool, output, diagnostics io.Writer) error {
 	jobs, err := acceptanceprovider.InspectLegacyJobs(root)
 	if err != nil {
@@ -253,16 +214,10 @@ func inspectLegacy(root string, templateOnly bool, output, diagnostics io.Writer
 		return err
 	}
 	if templateOnly {
-		if err := describeJobdStore(root, diagnostics); err != nil {
-			return err
-		}
 		_, err = fmt.Fprintf(output, "%s\n", encoded)
 		return err
 	}
 	if _, err := fmt.Fprintf(output, "Legacy job root: %s\n", root); err != nil {
-		return err
-	}
-	if err := describeJobdStore(root, output); err != nil {
 		return err
 	}
 	if profile, owned, err := acceptanceprovider.RecordedExecutionProfile(root); err != nil {
@@ -431,7 +386,7 @@ func applyLegacy(root, path string, output, diagnostics io.Writer) error {
 		return errors.Join(err, refusals)
 	}
 	for _, c := range result.Converted {
-		if _, err := fmt.Fprintf(output, "converted %s request_key=%s\n", c.Receipt.OperationId, strings.TrimSpace(keys[c.Receipt.OperationId])); err != nil {
+		if _, err := fmt.Fprintf(output, "converted %s request_key=%s\n", c.Receipt.OperationID, strings.TrimSpace(keys[c.Receipt.OperationID])); err != nil {
 			return errors.Join(err, refusals)
 		}
 	}

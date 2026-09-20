@@ -10,7 +10,8 @@ python conformance/clients/job_inventory/run.py --run --prefix "$PREFIX"
 
 The external CMake consumer links only `abstraction::facade_jobs`. Its generated
 acceptance client submits five operations and its read-only inventory binding
-traverses the actual Go runtime's caller-scoped inventory. It checks continuation
+traverses the actual Go runtime's caller-scoped inventory. It checks each
+snapshot's caller label (present or absent, never derived), continuation
 replay, stale cursor gap, explicit cancellation and deadline, intact subsequent
 calls, and a denied method policy. Production validation rejects malformed page
 bounds, duplicate receipts, invalid progress, and stalled cursors. Advisory progress may exceed an outdated total.

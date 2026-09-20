@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[3]
 HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE.parent))
-from workspace import cmake_for, certify_compiler, build_root, source_revision, resolved_executable, dry_run_stop, DRY_RUN_HELP
+from workspace import cmake_for, certify_compiler, build_root, build_tree, KEEP_HELP, source_revision, resolved_executable, dry_run_stop, DRY_RUN_HELP, CMAKE_BUILD_TYPE_RELEASE
 DEFAULT_SDK=ROOT/'.build/node-sdk'
 PURE=('facade','logging','job','storage','config','rights','asks','download','model','router')
 NAMES=['asks','config','download-request','facade','job-acceptance','logging','model','rights','router','storage-content']
@@ -42,6 +42,8 @@ def main():
  p.add_argument('--node',default='node',help='Node.js executable (default: node on PATH; symlinks are resolved and its bundled npm is used)')
  p.add_argument('--node-sdk',type=Path,default=DEFAULT_SDK,help=f'node-gyp devdir holding <version>/include/node, plus <version>/x64/node.lib on Windows (default {DEFAULT_SDK}); fetched once when absent')
  p.add_argument('--race',action='store_true',help='run the Go fixture with -race (needs a configured C compiler)')
+ p.add_argument('--tsc',type=Path,help="TypeScript compiler script (a typescript package's lib/tsc.js or bin/tsc) run with this Node; compiles types.mts (and types_native.mts with --run) against the installed declarations. No compiler is downloaded")
+ p.add_argument('--keep',metavar='DIR',help=KEEP_HELP+'; the kept tree holds the addon, the installed packages under outside/ and the npm cache')
  a=p.parse_args()
  if not (a.run or a.pure or a.dry_run):p.print_help();return
  source_revision()
@@ -60,17 +62,19 @@ def main():
  # proof has finished by then, so a leftover scratch tree under .build is not a
  # failure of it. MSBuild refuses the Temporary directory, so Windows builds under
  # the checkout's short .build root; Linux keeps the system temporary directory.
- with tempfile.TemporaryDirectory(prefix='js-',dir=build_root() if WINDOWS else None,ignore_cleanup_errors=True) as tmp:
-  b=Path(tmp);sources=[ROOT/f'openabstractions-flat/abstraction-{name}/javascript' for name in PURE]
+ with build_tree('js-',a.keep,build_root() if WINDOWS else None,ignore_cleanup_errors=True) as b:
+  sources=[ROOT/f'openabstractions-flat/abstraction-{name}/javascript' for name in PURE]
   npm_env=dict(os.environ,NPM_CONFIG_CACHE=str(b/'npm-cache'),NPM_CONFIG_USERCONFIG=str(b/'empty-npmrc'),NPM_CONFIG_GLOBALCONFIG=str(b/'empty-global-npmrc'))
   if a.run:
    headers,library=node_sdk(node,npm_env,a.node_sdk.resolve(),version)
    ipc=ROOT/'openabstractions-flat/abstraction-identity/cpp';native=ROOT/'openabstractions-flat/abstraction-identity/javascript'
-   # Single-config generators on Linux take the build type at configure time.
-   release=[] if WINDOWS else ['-DCMAKE_BUILD_TYPE=Release']
+   # A single-configuration generator takes the build type at configure time on
+   # every platform; a multi-configuration generator ignores it there and picks
+   # the type via --config instead, so passing it unconditionally is safe.
+   release=[CMAKE_BUILD_TYPE_RELEASE]
    run([cmake,'-S',ipc,'-B',b/'ipc','-DBUILD_SHARED_LIBS=OFF','-DABSTRACTION_IPC_BUILD_TESTS=OFF','-DCMAKE_INSTALL_PREFIX='+str(b/'prefix'),*release],cmake_env);certify_compiler(b/'ipc')
    run([cmake,'--build',b/'ipc','--config','Release'],cmake_env);run([cmake,'--install',b/'ipc','--config','Release'],cmake_env)
-   run([cmake,'-S',native,'-B',b/'addon','-DCMAKE_PREFIX_PATH='+str(b/'prefix'),'-DNODE_INCLUDE_DIR='+str(headers),*(['-DNODE_IMPORT_LIBRARY='+str(library)] if library else release)],cmake_env);certify_compiler(b/'addon')
+   run([cmake,'-S',native,'-B',b/'addon','-DCMAKE_PREFIX_PATH='+str(b/'prefix'),'-DNODE_INCLUDE_DIR='+str(headers),*(['-DNODE_IMPORT_LIBRARY='+str(library)] if library else []),*release],cmake_env);certify_compiler(b/'addon')
    run([cmake,'--build',b/'addon','--config','Release'],cmake_env);run([cmake,'--install',b/'addon','--config','Release','--prefix',b/'native-package'],cmake_env)
    sources.insert(0,b/'native-package')
   packages=b/'outside/node_modules/@openabstractions'
@@ -81,12 +85,23 @@ def main():
   if len(tarballs)!=len(sources):raise RuntimeError(f'{len(sources)} actual package tarballs required')
   run([node,npm,'install','--offline','--ignore-scripts','--no-audit','--no-fund','--no-package-lock','--prefix',b/'outside',*tarballs],npm_env,cwd=b/'outside')
   assert sorted(p.name for p in packages.iterdir())==sorted(NAMES+(['ipc'] if a.run else []))
-  for file in ('consumer.mjs','pure.mjs','services.mjs','pipe_connector.mjs','packages.mjs'):shutil.copy2(HERE/file,b/'outside'/file)
+  for file in ('consumer.mjs','pure.mjs','absence.mjs','services.mjs','pipe_connector.mjs','packages.mjs'):shutil.copy2(HERE/file,b/'outside'/file)
   env=dict(os.environ);env.pop('ABSTRACTION_IPC_NODE',None);env.pop('NODE_PATH',None)
   run([node,b/'outside/packages.mjs'],env,cwd=b/'outside')
+  if a.tsc:
+   # The installed declarations, compiled strictly under both resolutions a
+   # TypeScript host uses: package exports (nodenext) and the types field (node10).
+   consumers=['types.mts']+(['types_native.mts'] if a.run else [])
+   for file in consumers+['types_protocol.mts']:shutil.copy2(HERE/file,b/'outside'/file)
+   strict=[node,a.tsc.resolve(),'--noEmit','--strict','--skipLibCheck','false','--target','es2022','--lib','es2022,dom']
+   run([*strict,'--module','nodenext','--moduleResolution','nodenext',*consumers,'types_protocol.mts'],env,cwd=b/'outside')
+   run([*strict,'--module','esnext','--moduleResolution','node10',*consumers],env,cwd=b/'outside')
+   print('PASS installed TypeScript declarations compile strictly: nodenext',', '.join(consumers+['types_protocol.mts']),'; node10',', '.join(consumers),flush=True)
   # Prove the pure package does not load the available native addon.
   env['ABSTRACTION_IPC_NODE']=str(b/'must-not-load.node')
   run([node,b/'outside/pure.mjs'],env,cwd=b/'outside')
+  # Resolution with no runtime rejects with the facade's ResolutionError; no runtime runs here.
+  run([node,b/'outside/absence.mjs'],env,cwd=b/'outside')
   env.pop('ABSTRACTION_IPC_NODE');env.update(OA_JS_NODE=str(node),OA_JS_SERVICES=str(b/'outside/services.mjs'))
   if a.run:
    env.update(OA_JS_CONSUMER=str(b/'outside/consumer.mjs'),UV_THREADPOOL_SIZE='1',OA_JS_CONNECTOR='native')
@@ -94,5 +109,5 @@ def main():
   else:
    env['OA_JS_CONNECTOR']='pipe'
    run(['go','test',*(['-race'] if a.race else []),'-count=1','-v','-run','TestInstalledJavaScriptCapabilities',HERE/'fixture_test.go'],env,timeout=900)
- print('PASS installed source packages and generated calls against production Go services'+(' through native IPC' if a.run else ' through the test pipe connector')+'; temporary packages removed')
+ print('PASS installed source packages and generated calls against production Go services'+(' through native IPC' if a.run else ' through the test pipe connector')+('; build tree kept' if a.keep else '; temporary packages removed'))
 if __name__=='__main__':main()

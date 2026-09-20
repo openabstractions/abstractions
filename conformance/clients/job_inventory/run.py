@@ -8,7 +8,7 @@ import subprocess
 import sys
 HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE.parent))
-from workspace import ROOT, environment, cmake_for, certify_compiler, build_root, CERTIFIES, source_revision, dry_run_stop, DRY_RUN_HELP
+from workspace import ROOT, environment, cmake_for, certify_compiler, build_root, CERTIFIES, source_revision, dry_run_stop, DRY_RUN_HELP, CMAKE_BUILD_TYPE_RELEASE
 from sdk import installed_sdk
 p=argparse.ArgumentParser(description=__doc__+' '+CERTIFIES)
 p.add_argument('--run',action='store_true')
@@ -32,7 +32,7 @@ with ExitStack() as stack:
  if a.prefix is None:
   a.prefix=stack.enter_context(installed_sdk(a.cmake, 'jobs', env))
  run([a.cmake,'--version'])
- run([a.cmake,'-S',HERE,'-B',build/'cpp','-DCMAKE_PREFIX_PATH='+str(a.prefix.resolve())])
+ run([a.cmake,'-S',HERE,'-B',build/'cpp','-DCMAKE_PREFIX_PATH='+str(a.prefix.resolve()),CMAKE_BUILD_TYPE_RELEASE])
  run([a.cmake,'--build',build/'cpp','--config','Release','--parallel','4'])
  certify_compiler(build/'cpp')
  exe=build/'cpp'/('Release/job_inventory_consumer.exe' if os.name=='nt' else 'job_inventory_consumer')

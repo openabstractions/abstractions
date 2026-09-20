@@ -73,16 +73,16 @@ func adoptResult(t *testing.T, ctx context.Context, c api.OperationControl, id a
 			t.Fatalf("read: %+v %v", r, err)
 		}
 		chunk := r.Chunk
-		if chunk.Offset != int64(len(got)) || chunk.Total < 0 || chunk.Total > int64(len(want)) || int64(len(chunk.Data)) > chunk.Total-chunk.Offset || (len(chunk.Data) == 0 && !chunk.Eof) || chunk.Eof != (chunk.Offset+int64(len(chunk.Data)) == chunk.Total) {
+		if chunk.Offset != int64(len(got)) || chunk.Total < 0 || chunk.Total > int64(len(want)) || int64(len(chunk.Data)) > chunk.Total-chunk.Offset || (len(chunk.Data) == 0 && !chunk.EOF) || chunk.EOF != (chunk.Offset+int64(len(chunk.Data)) == chunk.Total) {
 			t.Fatalf("invalid/nonprogressing chunk: %+v", chunk)
 		}
-		if total >= 0 && (total != chunk.Total || operation != chunk.Receipt.OperationId) {
+		if total >= 0 && (total != chunk.Total || operation != chunk.Receipt.OperationID) {
 			t.Fatal("result identity/total changed")
 		}
 		total = chunk.Total
-		operation = chunk.Receipt.OperationId
+		operation = chunk.Receipt.OperationID
 		got = append(got, chunk.Data...)
-		if r.Chunk.Eof {
+		if r.Chunk.EOF {
 			break
 		}
 	}

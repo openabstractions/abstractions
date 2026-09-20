@@ -1,0 +1,521 @@
+dataclass Admission
+  outcome: StartOutcome | None
+  reason: str
+  operation: str
+  host: str
+  model: str
+  retention_ms: int
+  idle_ms: int
+  retained_deltas: int
+dataclass AudioChunk
+  index: int
+  data: bytes
+dataclass AuditEntry
+  sequence: int
+  unix_ms: int
+  route: AuditRoute | None
+  rung: str
+  program: str
+  operation: str
+  host: str
+  model: str
+  credential: str
+  outcome: str
+  reason: str
+  tokens_in: int
+  tokens_out: int
+  wall_ms: int
+  ceiling: str
+  domain: str
+  claim: str
+  profile: str
+  audio_seconds: int
+  characters: int
+  images: int
+enum AuditOutcome
+  PAGE = 'page'
+  GAP = 'gap'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass AuditPage
+  outcome: AuditOutcome | None
+  entries: list[AuditEntry]
+  next: int
+  at_end: bool
+enum AuditRoute
+  NATIVE = 'native'
+  WINDOW = 'window'
+  REMOTE = 'remote'
+const CLAIM_EXTENSIONS
+const CREDENTIAL_CONSUMERS
+enum CancelOutcome
+  CANCELLED = 'cancelled'
+  ENDED = 'ended'
+  UNKNOWN = 'unknown'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass Cancellation
+  outcome: CancelOutcome | None
+  reply_outcome: ReplyOutcome | None
+dataclass CeilingLimit
+  tokens_per_day: int
+  micros_per_day: int
+  requests_per_day: int
+  images_per_day: int
+  audio_seconds_per_day: int
+  characters_per_day: int
+class Chat
+  start(request: Request) -> Admission
+  observe(operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage
+  cancel(operation: str) -> Cancellation
+class ChatClient(Chat)
+  __init__(transport)
+  start(request: Request) -> Admission
+  observe(operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage
+  cancel(operation: str) -> Cancellation
+dataclass Cost
+  micros: int
+  currency: str
+dataclass Delivery
+  digest: str
+  media_type: str
+  size: int
+  location: str
+dataclass Delta
+  sequence: int
+  kind: DeltaKind | None
+  index: int
+  part: Part | None
+  usage: Usage | None
+  end: Reply | None
+  segment: TranscriptSegment | None
+  transcription_end: TranscriptionReply | None
+  audio: AudioChunk | None
+  speech_end: SpeechReply | None
+  transcript: LiveTranscript | None
+  live_end: LiveReply | None
+  image_progress: ImageProgress | None
+  image_result: ImageResult | None
+  image_end: ImageReply | None
+enum DeltaKind
+  PART = 'part'
+  USAGE = 'usage'
+  END = 'end'
+  SEGMENT = 'segment'
+  AUDIO = 'audio'
+  TRANSCRIPT = 'transcript'
+  IMAGE_PROGRESS = 'image_progress'
+  IMAGE_RESULT = 'image_result'
+dataclass DeltaPage
+  outcome: PageOutcome | None
+  deltas: list[Delta]
+  next: int
+  at_end: bool
+class DispatchError(ValueError)
+  __init__(code)
+enum EditOutcome
+  APPLIED = 'applied'
+  CONFLICT = 'conflict'
+  UNKNOWN = 'unknown'
+  INVALID = 'invalid'
+  NO_SECURE_STORE = 'no_secure_store'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+enum EmbedOutcome
+  COMPLETED = 'completed'
+  REFUSED = 'refused'
+  NOT_PERMITTED = 'not_permitted'
+  BUDGET_EXCEEDED = 'budget_exceeded'
+  UNSUPPORTED_FEATURE = 'unsupported_feature'
+  NO_HOST = 'no_host'
+  UNAVAILABLE = 'unavailable'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+dataclass EmbedRequest
+  model: str
+  inputs: list[str]
+  dimensions: int
+  guarantees: list[RequestGuarantee | str]
+  credential: str
+  extensions: dict[str, str]
+class Embedder
+  embed(request: EmbedRequest) -> Embeddings
+class EmbedderClient(Embedder)
+  __init__(transport)
+  embed(request: EmbedRequest) -> Embeddings
+dataclass Embeddings
+  outcome: EmbedOutcome | None
+  reason: str
+  vectors: list[str]
+  dimensions: int
+  usage: Usage
+  host: str
+  model: str
+  cost: Cost | None
+const FEATURES
+dataclass GatewayChange
+  outcome: EditOutcome | None
+  revision: str
+  reason: str
+dataclass GatewayState
+  outcome: ListOutcome | None
+  revision: str
+  open: bool
+  address: str
+  listening: bool
+  listening_address: str
+  why: str
+const HOST_DECLARERS
+const HOST_PROFILES
+dataclass HostChange
+  outcome: EditOutcome | None
+  revision: str
+  reason: str
+dataclass HostEntry
+  name: str
+  hosted: bool
+  kind: str
+  base: str
+  credential: str
+  ceiling: CeilingLimit | None
+  profiles: list[str]
+  declared_by: str
+dataclass HostList
+  outcome: ListOutcome | None
+  revision: str
+  hosts: list[HostState]
+dataclass HostState
+  entry: HostEntry
+  up: bool
+  why: str
+  spend: Spend | None
+class Image
+  start(request: ImageRequest) -> Admission
+  observe(operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage
+  cancel(operation: str) -> Cancellation
+class ImageClient(Image)
+  __init__(transport)
+  start(request: ImageRequest) -> Admission
+  observe(operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage
+  cancel(operation: str) -> Cancellation
+enum ImageMode
+  GENERATE = 'generate'
+  EDIT = 'edit'
+dataclass ImageProgress
+  percent: int
+  message: str
+dataclass ImageReply
+  outcome: ReplyOutcome | None
+  reason: str
+  deliveries: list[Delivery]
+  images: int
+  usage: Usage
+  host: str
+  model: str
+  cost: Cost | None
+dataclass ImageRequest
+  model: str
+  mode: ImageMode | None
+  prompt: str
+  size: str
+  count: int
+  image_digest: str
+  image_media_type: str
+  mask_digest: str
+  mask_media_type: str
+  guarantees: list[RequestGuarantee | str]
+  credential: str
+  required_extensions: list[str]
+  extensions: dict[str, str]
+dataclass ImageResult
+  index: int
+  delivery: Delivery
+dataclass KeyIssued
+  outcome: EditOutcome | None
+  reason: str
+  key: str
+  record: LocalKey | None
+dataclass KeyList
+  outcome: ListOutcome | None
+  keys: list[LocalKey]
+dataclass KeyRevoked
+  outcome: EditOutcome | None
+enum KeyState
+  ACTIVE = 'active'
+  REVOKED = 'revoked'
+  LOST = 'lost'
+const LOCAL_HOST_KINDS
+const LOCAL_KEY_KINDS
+enum ListOutcome
+  PAGE = 'page'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+class Live
+  start(request: LiveRequest) -> Admission
+  append(operation: str, sequence: int, audio: bytes) -> LiveInputResult
+  observe(operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage
+  commit(operation: str) -> LiveInputResult
+  cancel(operation: str) -> Cancellation
+class LiveClient(Live)
+  __init__(transport)
+  start(request: LiveRequest) -> Admission
+  append(operation: str, sequence: int, audio: bytes) -> LiveInputResult
+  observe(operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage
+  commit(operation: str) -> LiveInputResult
+  cancel(operation: str) -> Cancellation
+enum LiveFormat
+  PCM16_24000 = 'pcm16_24000'
+enum LiveInputOutcome
+  ACCEPTED = 'accepted'
+  DUPLICATE = 'duplicate'
+  OUT_OF_ORDER = 'out_of_order'
+  CLOSED = 'closed'
+  INVALID = 'invalid'
+  UNKNOWN = 'unknown'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+  EXHAUSTED = 'exhausted'
+dataclass LiveInputResult
+  outcome: LiveInputOutcome | None
+  next_sequence: int
+dataclass LiveReply
+  outcome: ReplyOutcome | None
+  reason: str
+  delivery: Delivery
+  usage: Usage
+  input_audio_bytes: int
+  output_audio_bytes: int
+  host: str
+  model: str
+dataclass LiveRequest
+  model: str
+  voice: str
+  format: LiveFormat | None
+  guarantees: list[RequestGuarantee | str]
+  credential: str
+  extensions: dict[str, str]
+dataclass LiveTranscript
+  text: str
+  is_final: bool
+dataclass LocalKey
+  program: str
+  name: str
+  credential: str
+  issued_unix_ms: int
+  issued_by: str
+  state: KeyState | None
+dataclass Message
+  role: Role | None
+  parts: list[Part]
+class Operator
+  hosts() -> HostList
+  add_host(expected_revision: str, host: HostEntry) -> HostChange
+  remove_host(expected_revision: str, name: str) -> HostChange
+  keys() -> KeyList
+  issue_key(program: str, credential: str) -> KeyIssued
+  revoke_key(program: str) -> KeyRevoked
+  audit(cursor: int, max_entries: int) -> AuditPage
+  gateway() -> GatewayState
+  set_gateway(expected_revision: str, open: bool, address: str) -> GatewayChange
+class OperatorClient(Operator)
+  __init__(transport)
+  hosts() -> HostList
+  add_host(expected_revision: str, host: HostEntry) -> HostChange
+  remove_host(expected_revision: str, name: str) -> HostChange
+  keys() -> KeyList
+  issue_key(program: str, credential: str) -> KeyIssued
+  revoke_key(program: str) -> KeyRevoked
+  audit(cursor: int, max_entries: int) -> AuditPage
+  gateway() -> GatewayState
+  set_gateway(expected_revision: str, open: bool, address: str) -> GatewayChange
+dataclass Options
+  max_output: int
+  temperature: Temperature | None
+  stop: list[str]
+  json_schema: str
+enum PageOutcome
+  PAGE = 'page'
+  GAP = 'gap'
+  UNKNOWN = 'unknown'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass Part
+  kind: PartKind | None
+  text: str
+  digest: str
+  media_type: str
+  call_id: str
+  name: str
+  arguments: str
+enum PartKind
+  TEXT = 'text'
+  IMAGE = 'image'
+  TOOL_CALL = 'tool_call'
+  TOOL_RESULT = 'tool_result'
+const RESOURCE_ACTIONS
+class Refusal(ValueError)
+  __init__(word, offset)
+dataclass Reply
+  outcome: ReplyOutcome | None
+  reason: str
+  message: Message
+  stop_reason: StopReason | None
+  usage: Usage
+  host: str
+  model: str
+  cost: Cost | None
+enum ReplyOutcome
+  COMPLETED = 'completed'
+  REFUSED = 'refused'
+  NOT_PERMITTED = 'not_permitted'
+  BUDGET_EXCEEDED = 'budget_exceeded'
+  UNSUPPORTED_FEATURE = 'unsupported_feature'
+  NO_HOST = 'no_host'
+  CANCELLED = 'cancelled'
+  UNAVAILABLE = 'unavailable'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  EXHAUSTED = 'exhausted'
+dataclass Request
+  model: str
+  messages: list[Message]
+  tools: list[Tool]
+  options: Options | None
+  extensions: dict[str, str]
+  required_extensions: list[str]
+  guarantees: list[RequestGuarantee | str]
+  credential: str
+enum RequestGuarantee
+  LOCAL_ONLY = 'abstraction.inference/local-only@1'
+  HOSTED_ALLOWED = 'abstraction.inference/hosted-allowed@1'
+enum Role
+  SYSTEM = 'system'
+  USER = 'user'
+  ASSISTANT = 'assistant'
+  TOOL = 'tool'
+class ServiceError(Exception)
+  __init__(code, message)
+enum ServiceErrorCode
+  HANDLER_ERROR = 'handler_error'
+  INVALID_RESULT = 'invalid_result'
+  UNKNOWN_VERSION = 'unknown_version'
+  UNKNOWN_SERVICE = 'unknown_service'
+  UNKNOWN_METHOD = 'unknown_method'
+  WRONG_MODE = 'wrong_mode'
+class Speech
+  start(request: SpeechRequest) -> Admission
+  observe(operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage
+  cancel(operation: str) -> Cancellation
+class SpeechClient(Speech)
+  __init__(transport)
+  start(request: SpeechRequest) -> Admission
+  observe(operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage
+  cancel(operation: str) -> Cancellation
+enum SpeechFormat
+  MP3 = 'mp3'
+  OPUS = 'opus'
+  AAC = 'aac'
+  FLAC = 'flac'
+  WAV = 'wav'
+  PCM = 'pcm'
+dataclass SpeechReply
+  outcome: ReplyOutcome | None
+  reason: str
+  delivery: Delivery
+  characters: int
+  usage: Usage
+  host: str
+  model: str
+  cost: Cost | None
+dataclass SpeechRequest
+  model: str
+  voice: str
+  text: str
+  format: SpeechFormat | None
+  guarantees: list[RequestGuarantee | str]
+  credential: str
+  extensions: dict[str, str]
+dataclass Spend
+  day: str
+  tokens: int
+  micros: int
+  requests: int
+  audio_seconds: int
+  characters: int
+  images: int
+enum StartOutcome
+  ACCEPTED = 'accepted'
+  NOT_PERMITTED = 'not_permitted'
+  BUDGET_EXCEEDED = 'budget_exceeded'
+  UNSUPPORTED_FEATURE = 'unsupported_feature'
+  NO_HOST = 'no_host'
+  UNAVAILABLE = 'unavailable'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  EXHAUSTED = 'exhausted'
+enum StopReason
+  NO_STOP = 'no_stop'
+  END = 'end'
+  MAX_OUTPUT = 'max_output'
+  STOP_SEQUENCE = 'stop_sequence'
+  TOOL_CALLS = 'tool_calls'
+  CONTENT_FILTER = 'content_filter'
+  OTHER = 'other'
+dataclass Temperature
+  milli: int
+enum TimestampMode
+  NONE = 'none'
+  SEGMENT = 'segment'
+  WORD = 'word'
+  SEGMENT_AND_WORD = 'segment_and_word'
+dataclass Tool
+  name: str
+  description: str
+  parameters: str
+dataclass TranscriptSegment
+  index: int
+  kind: TranscriptUnitKind | None
+  start_ms: int
+  end_ms: int
+  text: str
+enum TranscriptUnitKind
+  SEGMENT = 'segment'
+  WORD = 'word'
+class Transcription
+  start(request: TranscriptionRequest) -> Admission
+  observe(operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage
+  cancel(operation: str) -> Cancellation
+class TranscriptionClient(Transcription)
+  __init__(transport)
+  start(request: TranscriptionRequest) -> Admission
+  observe(operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage
+  cancel(operation: str) -> Cancellation
+dataclass TranscriptionReply
+  outcome: ReplyOutcome | None
+  reason: str
+  language: str
+  duration_ms: int
+  usage: Usage
+  host: str
+  model: str
+  cost: Cost | None
+dataclass TranscriptionRequest
+  model: str
+  audio_digest: str
+  media_type: str
+  language: str
+  timestamps: TimestampMode | None
+  guarantees: list[RequestGuarantee | str]
+  credential: str
+  extensions: dict[str, str]
+dataclass Usage
+  input: int
+  output: int
+  cached: int
+def decode(data)
+def encode(v)
+def service_name(frame)

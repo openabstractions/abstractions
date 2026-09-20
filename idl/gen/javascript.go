@@ -2,12 +2,19 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
 
+// The JavaScript backend emits two modules. internal.mjs holds the codec,
+// records, vocabularies and clients; index.mjs re-exports the public names and
+// is what a package's "exports" names. internal.mjs additionally exports only
+// what another generated module needs across files: a record's depth-aware
+// codec pair and its value check.
+
 const jsEscMinimal = `
-export function esc(out, s) {
+function esc(out, s) {
   out.byte(0x22);
   for (const c of ENC.encode(s)) escByte(out, c);
   out.byte(0x22);
@@ -19,7 +26,7 @@ function unit(out, u) {
   out.ascii("\\u" + HEX[(u >> 12) & 0xf] + HEX[(u >> 8) & 0xf] + HEX[(u >> 4) & 0xf] + HEX[u & 0xf]);
 }
 
-export function esc(out, s) {
+function esc(out, s) {
   out.byte(0x22);
   for (const ch of s) {
     const cp = ch.codePointAt(0);
@@ -38,7 +45,7 @@ const jsCommon = `const HEX = "0123456789abcdef";
 const ENC = new TextEncoder();
 const SHORT = { 0x22: '\\"', 0x5c: "\\\\", 0x08: "\\b", 0x0c: "\\f", 0x0a: "\\n", 0x0d: "\\r", 0x09: "\\t" };
 
-export class Out {
+class Out {
   constructor() { this.b = []; }
   byte(c) { this.b.push(c); }
   ascii(s) { for (let i = 0; i < s.length; i++) this.b.push(s.charCodeAt(i)); }
@@ -54,11 +61,11 @@ function escByte(out, c) {
 
 // Every integer the definition calls i64 is a BigInt here, because Number
 // rounds above 2^53 and two values in the conformance record are i64 extremes.
-export function num(out, n) { out.ascii(BigInt(n).toString()); }
+function num(out, n) { out.ascii(BigInt(n).toString()); }
 
-export function pad(out, depth) { for (let i = 0; i < depth * @INDENT@; i++) out.byte(0x20); }
+function pad(out, depth) { for (let i = 0; i < depth * @INDENT@; i++) out.byte(0x20); }
 
-export function strs(out, v, depth) {
+function strs(out, v, depth) {
   if (v.length === 0) { out.ascii("[]"); return; }
   out.ascii("[\n");
   for (let i = 0; i < v.length; i++) {
@@ -73,7 +80,7 @@ export function strs(out, v, depth) {
 
 const isWs = (c) => c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0d;
 
-export function raw(out, s, depth) {
+function raw(out, s, depth) {
   const b = typeof s === "string" ? ENC.encode(s) : s;
   let i = 0;
   while (i < b.length) {
@@ -125,7 +132,7 @@ function byteLess(a, b) {
   return x.length - y.length;
 }
 
-export function rawmap(out, m, depth) {
+function rawmap(out, m, depth) {
   const keys = Object.keys(m).sort(byteLess);
   if (keys.length === 0) { out.ascii("{}"); return; }
   out.ascii("{\n");
@@ -143,7 +150,7 @@ export function rawmap(out, m, depth) {
 `
 
 const jsStrMap = `
-export function strmap(out, m, depth) {
+function strmap(out, m, depth) {
   const keys = Object.keys(m).sort(byteLess);
   if (keys.length === 0) { out.ascii("{}"); return; }
   out.ascii("{\n");
@@ -161,7 +168,7 @@ export function strmap(out, m, depth) {
 `
 
 const jsEncList = `
-export function encList(out, v, depth, enc) {
+function writeList(out, v, depth, enc) {
   if (v.length === 0) { out.ascii("[]"); return; }
   out.ascii("[\n");
   for (let i = 0; i < v.length; i++) {
@@ -480,7 +487,7 @@ function strMap(r) {
 `
 
 const jsDecodeList = `
-function decodeList(r, elem) {
+function readList(r, elem) {
   if (r.at() !== 0x5b) throw r.refuse("wrong_type");
   r.enter();
   r.pos++;
@@ -558,9 +565,20 @@ function readTimestamp(r) {
 }
 `
 
+// jsInternalRecord reports whether a struct is a carrier the backend made up.
+// Its factory and codec stay inside internal.mjs.
+func jsInternalRecord(s *Definition, name string) bool { return pyInternalRecord(s, name) }
+
+// jsStem is the PascalCase stem of a record's generated functions.
+func jsStem(name string) string { return pascalCase(name) }
+
 func jsDecoder(b *strings.Builder, s *Definition) {
 	for _, st := range s.Structs {
-		fmt.Fprintf(b, "\n%sexport function new%s() {\n  return {", structDoc(st, "// "), st.Name)
+		export := "export "
+		if jsInternalRecord(s, st.Name) {
+			export = ""
+		}
+		fmt.Fprintf(b, "\n%s%sfunction new%s() {\n  return {", structDoc(st, "// "), export, jsStem(st.Name))
 		for i, f := range st.Fields {
 			if i > 0 {
 				b.WriteString(",")
@@ -579,7 +597,7 @@ func jsDecoder(b *strings.Builder, s *Definition) {
 		jsStructDecoder(b, s, st)
 	}
 	if s.Document != "" {
-		fmt.Fprintf(b, "\nexport function decode(data) {\n  const r = new Reader(data);\n  r.ws();\n  const v = decode_%s(r);\n", lower(s.Document))
+		fmt.Fprintf(b, "\nexport function decode(data) {\n  const r = new Reader(data);\n  r.ws();\n  const v = read%s(r);\n", jsStem(s.Document))
 		b.WriteString("  r.ws();\n  if (r.pos < r.buf.length) throw r.refuse(\"trailing_bytes\");\n")
 		if s.Vocab != nil {
 			b.WriteString("  derive(r, v);\n")
@@ -590,9 +608,9 @@ func jsDecoder(b *strings.Builder, s *Definition) {
 }
 
 func jsStructDecoder(b *strings.Builder, s *Definition, st Struct) {
-	fmt.Fprintf(b, "\nfunction decode_%s(r) {\n", lower(st.Name))
+	fmt.Fprintf(b, "\nfunction read%s(r) {\n", jsStem(st.Name))
 	b.WriteString("  if (r.at() !== 0x7b) throw r.refuse(\"wrong_type\");\n  r.enter();\n  r.pos++;\n")
-	fmt.Fprintf(b, "  const v = new%s();\n  let seen = 0;\n  r.ws();\n", st.Name)
+	fmt.Fprintf(b, "  const v = new%s();\n  let seen = 0;\n  r.ws();\n", jsStem(st.Name))
 	b.WriteString("  if (r.at() !== 0x7d) {\n    for (;;) {\n      r.ws();\n")
 	b.WriteString("      if (r.at() !== 0x22) throw r.refuse(\"malformed\");\n      const key = r.string();\n")
 	b.WriteString("      r.ws();\n      if (r.at() !== 0x3a) throw r.refuse(\"malformed\");\n      r.pos++;\n      r.ws();\n")
@@ -653,7 +671,7 @@ func jsDefault(s *Definition, f Field) string {
 	if s.Repeated(f.Type) != "" {
 		return "[]"
 	}
-	return "new" + f.Type + "()"
+	return "new" + jsStem(f.Type) + "()"
 }
 
 func jsRead(s *Definition, f Field) string {
@@ -683,9 +701,9 @@ func jsRead(s *Definition, f Field) string {
 		return "strMap(r)"
 	}
 	if elem := s.Repeated(f.Type); elem != "" {
-		return "decodeList(r, decode_" + lower(elem) + ")"
+		return "readList(r, read" + jsStem(elem) + ")"
 	}
-	return "decode_" + lower(f.Type) + "(r)"
+	return "read" + jsStem(f.Type) + "(r)"
 }
 
 func jsDerive(b *strings.Builder, s *Definition) {
@@ -693,7 +711,8 @@ func jsDerive(b *strings.Builder, s *Definition) {
 	if v == nil {
 		return
 	}
-	fmt.Fprintf(b, "\nexport const %sTerms = [", lowerCamel(v.Name))
+	terms, strip := camelCase(v.Name)+"Terms", camelCase(v.Name)+"StripCritical"
+	fmt.Fprintf(b, "\nexport const %s = [", terms)
 	for i, t := range v.Terms {
 		if i > 0 {
 			b.WriteString(", ")
@@ -701,7 +720,7 @@ func jsDerive(b *strings.Builder, s *Definition) {
 		fmt.Fprintf(b, "%q", t.Name)
 	}
 	b.WriteString("];\n")
-	fmt.Fprintf(b, "export const %sStripCritical = [", lowerCamel(v.Name))
+	fmt.Fprintf(b, "export const %s = [", strip)
 	first := true
 	for _, t := range v.Terms {
 		if !t.StripCritical {
@@ -714,14 +733,15 @@ func jsDerive(b *strings.Builder, s *Definition) {
 		fmt.Fprintf(b, "%q", t.Name)
 	}
 	b.WriteString("];\n")
+	names, critical := vocabIdent(s, v.Names, "javascript"), vocabIdent(s, v.Critical, "javascript")
 	b.WriteString("\nfunction derive(r, v) {\n")
-	fmt.Fprintf(b, "  const present = new Set(v.%s);\n", v.Names)
+	fmt.Fprintf(b, "  const present = new Set(v.%s);\n", names)
 	b.WriteString("  const kept = [];\n")
-	fmt.Fprintf(b, "  for (const name of v.%s) {\n", v.Critical)
-	fmt.Fprintf(b, "    if (%sStripCritical.includes(name)) continue;\n", lowerCamel(v.Name))
-	fmt.Fprintf(b, "    if (!%sTerms.includes(name)) throw r.refuse(\"unknown_critical\");\n", lowerCamel(v.Name))
+	fmt.Fprintf(b, "  for (const name of v.%s) {\n", critical)
+	fmt.Fprintf(b, "    if (%s.includes(name)) continue;\n", strip)
+	fmt.Fprintf(b, "    if (!%s.includes(name)) throw r.refuse(\"unknown_critical\");\n", terms)
 	b.WriteString("    if (!present.has(name)) throw r.refuse(\"not_a_subset\");\n    kept.push(name);\n  }\n")
-	fmt.Fprintf(b, "  v.%s = kept;\n", v.Critical)
+	fmt.Fprintf(b, "  v.%s = kept;\n", critical)
 	for _, t := range v.Terms {
 		fmt.Fprintf(b, "  if (%s !== present.has(%q)) throw r.refuse(\"content_mismatch\");\n", jsTest(s, t), t.Name)
 	}
@@ -816,8 +836,8 @@ func genJS(s *Definition) string {
 		tail = "  out.byte(0x0a);\n"
 	}
 	if s.Document != "" {
-		fmt.Fprintf(&b, "\nexport function encode(v) {\n  const out = new Out();\n  enc_%s(out, v, 0);\n%s  return out.bytes();\n}\n",
-			lower(s.Document), tail)
+		fmt.Fprintf(&b, "\nexport function encode(v) {\n  const out = new Out();\n  write%s(out, v, 0);\n%s  return out.bytes();\n}\n",
+			jsStem(s.Document), tail)
 	}
 	dup, skipDup, strDup := "", "", ""
 	if s.Encoding.RefuseDuplicateKeys() {
@@ -849,29 +869,34 @@ func genJS(s *Definition) string {
 	return b.String()
 }
 
+// jsVocabulary emits each enumeration as a frozen object whose members are the
+// wire words, and each constant list under its camelCase name.
 func jsVocabulary(b *strings.Builder, s *Definition) {
 	for _, en := range s.Enums {
-		fmt.Fprintf(b, "\nexport const %sNames = [", en.Name)
-		for i, m := range en.Members {
-			if i > 0 {
-				b.WriteString(", ")
+		fmt.Fprintf(b, "\nexport const %s = Object.freeze({\n", pascalCase(en.Name))
+		for _, m := range en.Members {
+			name := jsPascal(m.Name)
+			if n, ok := m.Ann["javascript.name"]; ok {
+				name = n
 			}
-			fmt.Fprintf(b, "%q", m.Name)
+			fmt.Fprintf(b, "  %s: %q,\n", name, m.WireName())
 		}
-		b.WriteString("];\n")
-		fmt.Fprintf(b, "export const %s%s = %q;\n", en.Name, enumPolicyName(en, "javascript"), en.Ann["unknown"])
+		b.WriteString("});\n")
 		for _, key := range en.MemberAnn() {
-			fmt.Fprintf(b, "export const %s%s = {\n", en.Name, exported(key))
+			if strings.HasSuffix(key, ".name") {
+				continue
+			}
+			fmt.Fprintf(b, "export const %s%s = Object.freeze({\n", pascalCase(en.Name), jsPascal(key))
 			for _, m := range en.Members {
 				if v, ok := m.Ann[key]; ok {
-					fmt.Fprintf(b, "  %q: %q,\n", m.Name, v)
+					fmt.Fprintf(b, "  %q: %q,\n", m.WireName(), v)
 				}
 			}
-			b.WriteString("};\n")
+			b.WriteString("});\n")
 		}
 	}
 	for _, c := range s.Consts {
-		fmt.Fprintf(b, "\nexport const %s = [", lowerCamel(c.Name))
+		fmt.Fprintf(b, "\nexport const %s = [", camelCase(c.Name))
 		if c.Type == "list<i32>" {
 			for i, n := range c.Ints {
 				if i > 0 {
@@ -894,9 +919,9 @@ func jsVocabulary(b *strings.Builder, s *Definition) {
 func jsEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 	p := plan(st)
 	if flat {
-		fmt.Fprintf(b, "\nfunction enc_wire_%s(out, v) {\n", lower(st.Name))
+		fmt.Fprintf(b, "\nfunction writeFlat%s(out, v) {\n", jsStem(st.Name))
 	} else {
-		fmt.Fprintf(b, "\nexport function enc_%s(out, v, depth) {\n", lower(st.Name))
+		fmt.Fprintf(b, "\nfunction write%s(out, v, depth) {\n", jsStem(st.Name))
 	}
 	emitEqualities(b, st, "javascript", true)
 	emitEnumChecks(b, st, "javascript", true)
@@ -996,12 +1021,75 @@ func jsValue(s *Definition, f Field, e string) string {
 		return "strmap(out, " + e + ", depth + 1);"
 	}
 	if elem := s.Repeated(f.Type); elem != "" {
-		return "encList(out, " + e + ", depth + 1, enc_" + lower(elem) + ");"
+		return "writeList(out, " + e + ", depth + 1, write" + jsStem(elem) + ");"
 	}
-	return "enc_" + lower(f.Type) + "(out, " + e + ", depth + 1);"
+	return "write" + jsStem(f.Type) + "(out, " + e + ", depth + 1);"
 }
 
-func lowerCamel(n string) string {
-	s := exported(n)
-	return strings.ToLower(s[:1]) + s[1:]
+// jsCrossFile reports an export of internal.mjs that exists for another
+// generated module or a conformance driver and is not part of the package API:
+// the cross-file record codecs, the timestamp predicates and member.
+func jsCrossFile(name string) bool {
+	if name == "microsTimestamp" || name == "wideTimestamp" || name == "member" {
+		return true
+	}
+	if strings.HasPrefix(name, "check") && len(name) > 5 && name[5] >= 'A' && name[5] <= 'Z' {
+		return true
+	}
+	return (strings.HasPrefix(name, "encode") || strings.HasPrefix(name, "decode")) && strings.HasSuffix(name, "At") && len(name) > 8
+}
+
+// jsPublicNames lists what internal.mjs exports for applications.
+func jsPublicNames(body string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, line := range strings.Split(body, "\n") {
+		if !strings.HasPrefix(line, "export ") {
+			continue
+		}
+		fields := strings.Fields(strings.TrimPrefix(line, "export "))
+		if len(fields) > 0 && fields[0] == "async" {
+			fields = fields[1:]
+		}
+		if len(fields) < 2 {
+			continue
+		}
+		switch fields[0] {
+		case "function", "class", "const", "let":
+		default:
+			continue
+		}
+		name := fields[1]
+		if i := strings.IndexAny(name, "( ={"); i >= 0 {
+			name = name[:i]
+		}
+		if name == "" || seen[name] || jsCrossFile(name) {
+			continue
+		}
+		seen[name] = true
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// genJSPublic is index.mjs: the module a package's "exports" names.
+func genJSPublic(s *Definition, private string) string {
+	names := jsPublicNames(private)
+	var b strings.Builder
+	if ns := namespaceFor(s.Namespaces, "javascript"); ns != "" {
+		fmt.Fprintf(&b, "// %s: generated contract types, vocabularies and service clients.\n", ns)
+	} else {
+		b.WriteString("// Generated contract types, vocabularies and service clients.\n")
+	}
+	if len(names) == 0 {
+		b.WriteString("export {};\n")
+		return b.String()
+	}
+	b.WriteString("export {\n")
+	for _, n := range names {
+		fmt.Fprintf(&b, "  %s,\n", n)
+	}
+	b.WriteString("} from \"./internal.mjs\";\n")
+	return b.String()
 }

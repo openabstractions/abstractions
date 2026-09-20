@@ -15,15 +15,16 @@ import time
 
 sys.path.insert(0, sys.argv[1])
 from abstraction.ipc import FrameError  # noqa: E402
-from abstraction.facade.client import Machine  # noqa: E402
-from abstraction.job.acceptance import rec as job  # noqa: E402
-from abstraction.download.request import rec as download  # noqa: E402
+from abstraction.facade.client import Machine, ResolutionError  # noqa: E402
+from abstraction.facade import Scope
+import abstraction.job.acceptance as job  # noqa: E402
+import abstraction.download.request as download  # noqa: E402
 
 RECONCILIATION = ["abstraction.job/reconciliation@1"]
 
 
 def bind(seconds):
-    return Machine(deadline=time.monotonic() + seconds).resolve_job_operations(guarantees=RECONCILIATION, scope="local")
+    return Machine(deadline=time.monotonic() + seconds).resolve_job_operations(guarantees=RECONCILIATION, scope=Scope.LOCAL)
 
 
 def report(label, result):
@@ -39,7 +40,7 @@ def main():
     if mode == "submit" and len(args) == 4:
         url, size, digest, key = args
         jobs = bind(15)
-        window = jobs.GetHistoryWindow()
+        window = jobs.get_history_window()
         identity = job.RequestIdentity(key=key, history_epoch=window.history_epoch)
         artifact = download.Artifact(digest="" if digest == "-" else digest, size=int(size))
         request = download.Request(artifact=artifact, sources=[download.Source(scheme="http", locator=url)])
@@ -47,22 +48,22 @@ def main():
                                     required_guarantees=RECONCILIATION)
         print("IDENTITY", identity.key, identity.history_epoch, flush=True)
         try:
-            report("ACCEPTED", jobs.Submit(submission))
+            report("ACCEPTED", jobs.submit(submission))
         except FrameError as error:
             print("UNKNOWN frame", error.status, flush=True)
-            report("RECONCILED", bind(15).Reconcile(identity))
+            report("RECONCILED", bind(15).reconcile(identity))
         return 0
     if mode == "result" and len(args) == 4:
         key, epoch, operation, seconds = args
         deadline = time.monotonic() + int(seconds)
         jobs = bind(int(seconds))
         identity = job.RequestIdentity(key=key, history_epoch=epoch)
-        recovered = jobs.Reconcile(identity)
+        recovered = jobs.reconcile(identity)
         report("RECONCILED", recovered)
         if recovered.outcome != "accepted" or recovered.receipt.operation_id != operation:
             return 4
         while True:
-            observed = jobs.ObserveWork(identity)
+            observed = jobs.observe_work(identity)
             if observed.outcome != "observed":
                 raise RuntimeError("operation unobservable: " + observed.outcome)
             if observed.snapshot.receipt.operation_id != operation:
@@ -76,7 +77,7 @@ def main():
                 raise RuntimeError("observation budget expired")
             time.sleep(0.1)
         output = io.BytesIO()
-        copied = jobs.CopyResult(identity, output)
+        copied = jobs.copy_result(identity, output)
         body = output.getvalue()
         if copied != len(body):
             raise RuntimeError("copy count differs")
@@ -89,6 +90,10 @@ def main():
 if __name__ == "__main__":
     try:
         sys.exit(main())
+    except ResolutionError as error:
+        # Resolution failures, including an absent runtime, carry the transport cause.
+        print("ERROR resolution", error.status, error, flush=True)
+        sys.exit(6)
     except FrameError as error:
         print("ERROR frame", error.status, error, flush=True)
         sys.exit(6)

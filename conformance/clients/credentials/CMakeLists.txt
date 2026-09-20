@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.16)
+project(credentials_consumer LANGUAGES CXX)
+find_package(abstraction_facade CONFIG REQUIRED)
+find_package(abstraction_credentials_api CONFIG REQUIRED)
+add_executable(credentials_consumer main.cpp)
+target_compile_features(credentials_consumer PRIVATE cxx_std_17)
+target_link_libraries(credentials_consumer PRIVATE abstraction::facade_client abstraction::credentials_api)

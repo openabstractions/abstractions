@@ -26,7 +26,10 @@ type bootstrapStatus struct {
 	Detail string `json:"detail,omitempty"`
 }
 type runtimeReport struct {
-	Bootstrap    bootstrapStatus    `json:"bootstrap"`
+	Bootstrap bootstrapStatus `json:"bootstrap"`
+	// Profile is this caller's view of the profile folders: "real",
+	// "virtualized(<package family>)", or "unknown: <reason>".
+	Profile      string             `json:"profile"`
 	Capabilities []capabilityStatus `json:"capabilities"`
 	Error        string             `json:"error,omitempty"`
 }
@@ -43,6 +46,9 @@ func runtimeContracts() [][2]string {
 // Status observes the resolver's current registrations using the caller's
 // authority. It performs no activation and sends no provider mutations.
 func runtimeStatus(args []string, output, diagnostics io.Writer) error {
+	if len(args) > 0 && args[0] == "describe" {
+		return statusDescribe(args[1:], output, diagnostics)
+	}
 	flags := flag.NewFlagSet("status", flag.ContinueOnError)
 	flags.SetOutput(diagnostics)
 	endpoint := flags.String("endpoint", "", "runtime bootstrap endpoint (default: current user)")
@@ -62,18 +68,23 @@ func runtimeStatus(args []string, output, diagnostics io.Writer) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *budget)
 	defer cancel()
-	evidence := wire.BootstrapObservation{State: "unknown", Detail: "explicit endpoint; installed runtime lifecycle was not queried"}
+	evidence := wire.BootstrapObservation{State: wire.BootstrapStateUnknown, Detail: "explicit endpoint; installed runtime lifecycle was not queried"}
 	if !explicitEndpoint {
 		evidence = bootstrap.ObserveInstalled(ctx)
 	}
-	report.Bootstrap = bootstrapStatus{State: evidence.State, Detail: evidence.Detail}
+	report.Bootstrap = bootstrapStatus{State: evidence.State.String(), Detail: evidence.Detail}
+	if view, err := bootstrap.CurrentProfileView(); err != nil {
+		report.Profile = "unknown: " + err.Error()
+	} else {
+		report.Profile = view.String()
+	}
 	if failure == nil {
 		observation, err := client.New(*endpoint).Observe(ctx, client.DefaultStatusRequests(), evidence)
 		failure = err
 		for _, item := range observation.Capabilities {
 			entry := capabilityStatus{Capability: item.Request.Capability, Contract: item.Request.Contracts[0]}
 			if item.Result != nil {
-				entry.Status = item.Result.Status
+				entry.Status = item.Result.Status.String()
 				entry.Result = wire.Encode(item.Result)
 			}
 			report.Capabilities = append(report.Capabilities, entry)
@@ -95,6 +106,9 @@ func runtimeStatus(args []string, output, diagnostics io.Writer) error {
 		if _, err := fmt.Fprintf(output, "runtime supervision: %s (%s)\n", report.Bootstrap.State, report.Bootstrap.Detail); err != nil {
 			return err
 		}
+		if _, err := fmt.Fprintf(output, "profile: %s\n", report.Profile); err != nil {
+			return err
+		}
 		for _, item := range report.Capabilities {
 			if _, err := fmt.Fprintf(output, "%s (%s): %s\n", item.Capability, item.Contract, item.Status); err != nil {
 				return err
@@ -105,7 +119,7 @@ func runtimeStatus(args []string, output, diagnostics io.Writer) error {
 		return failure
 	}
 	for _, item := range report.Capabilities {
-		if item.Status != wire.ResolutionStatusResolved {
+		if item.Status != wire.ResolutionStatusResolved.String() {
 			return errors.New("runtime capabilities are unavailable or refused")
 		}
 	}

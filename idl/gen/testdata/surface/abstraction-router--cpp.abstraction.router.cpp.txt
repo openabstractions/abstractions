@@ -1,0 +1,123 @@
+using Raw = std::string
+class Refusal : public std::runtime_error
+  const char* word
+  std::size_t offset
+inline const std::vector<std::string> kServiceErrorCodeNames
+inline constexpr std::string_view kServiceErrorCodeHandlerError
+inline constexpr std::string_view kServiceErrorCodeInvalidResult
+inline constexpr std::string_view kServiceErrorCodeUnknownVersion
+inline constexpr std::string_view kServiceErrorCodeUnknownService
+inline constexpr std::string_view kServiceErrorCodeUnknownMethod
+inline constexpr std::string_view kServiceErrorCodeWrongMode
+inline constexpr std::string_view kServiceErrorCodeInternal
+inline constexpr std::string_view kServiceErrorCodeInvalidRequest
+inline constexpr std::string_view kServiceErrorCodeCallerRefused
+inline constexpr std::string_view kServiceErrorCodeUnknownOperation
+inline constexpr std::string_view kServiceErrorCodePolicyUnavailable
+inline constexpr std::string_view kServiceErrorCodeForbidden
+inline const std::vector<std::string> kProfiles
+inline const std::vector<std::string> kVerdicts
+inline const std::vector<std::string> kWireKinds
+inline const std::vector<std::string> kCredentialConsumers
+inline const std::vector<std::string> kRouterErrorCodes
+struct HostAllowance
+  std::vector<std::string> hosts
+struct PickRequest
+  std::string model
+  bool fresh
+  std::optional<HostAllowance> allowed
+  std::string profile
+struct Caller
+  std::string user_description
+  std::string path_description
+struct Observation
+  Caller caller
+  std::int64_t took_ms
+  std::int64_t cache_age_ms
+struct Alias
+  std::string host
+  std::string name
+  bool resident
+  bool servable
+  bool hosted
+  std::vector<std::string> profiles
+struct Family
+  std::string family
+  std::vector<Alias> names
+struct ModelsSnapshot
+  Observation observation
+  std::vector<Family> models
+struct HostState
+  std::string host
+  std::string base
+  bool up
+  std::string why
+  std::int64_t installed
+  std::vector<std::string> resident
+  bool servable
+  bool hosted
+  std::string wire
+  std::string credential
+  std::string declared_by
+  std::vector<std::string> profiles
+  std::string domain
+struct Ask
+  std::string at
+  std::string caller
+  std::string user
+  std::string model
+  std::string family
+  std::string verdict
+  std::string host
+struct HostsSnapshot
+  Observation observation
+  std::vector<HostState> hosts
+  std::vector<std::string> doubled
+  std::vector<Ask> asked
+struct Decision
+  std::string asked
+  std::string family
+  std::string verdict
+  std::string host
+  std::string model
+  std::string endpoint
+  std::vector<std::string> installed_on
+  std::optional<HostAllowance> authorised
+  std::vector<std::string> withheld
+  std::int64_t loads
+  std::string why
+struct PickResult
+  Observation observation
+  Decision decision
+inline std::string encode(const PickRequest& v)
+inline PickRequest decode(std::string_view data)
+struct FrameWriter
+  virtual void write_frame(std::string_view frame)
+struct DispatchError : std::runtime_error
+struct FrameExchanger
+  virtual std::string exchange_frame(std::string_view frame)
+struct ServiceError : std::runtime_error
+  std::string code, message
+inline constexpr std::string_view kEndpointContract
+struct DescribedService
+  std::string contract
+  bool ready
+  std::string why
+std::string describe_endpoint(std::string_view frame, const std::string& program, const std::string& version, const Services& . . . services)
+struct Router
+  virtual ModelsSnapshot models(const bool& fresh)
+  virtual HostsSnapshot hosts(const bool& fresh)
+  virtual PickResult pick(const PickRequest& request)
+template<class Transport>struct RouterClient : Router
+  Transport& transport_
+  ModelsSnapshot models(const bool& fresh) override
+  HostsSnapshot hosts(const bool& fresh) override
+  PickResult pick(const PickRequest& request) override
+struct RouterService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct RouterDispatcher : FrameWriter, FrameExchanger
+  Router& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override

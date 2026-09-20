@@ -1,0 +1,317 @@
+pub type Raw
+pub enum Scope
+  Any
+  Local
+  Remote
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum ResolutionStatus
+  Resolved
+  Unavailable
+  Forbidden
+  Incompatible
+  UnmetRequirements
+  NotReady
+  InvalidRequest
+  pub const ALL: [Self; 7]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum BootstrapState
+  Unknown
+  Installed
+  Starting
+  Running
+  Unavailable
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum CallerOutcome
+  Observed
+  Forbidden
+  Unavailable
+  Invalid
+  pub const ALL: [Self; 4]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum DescriptionOutcome
+  Described
+  Forbidden
+  Unavailable
+  Invalid
+  pub const ALL: [Self; 4]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum ServiceReadiness
+  Ready
+  NotReady
+  Unknown
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum DeclarationTransport
+  Native
+  Remote
+  pub const ALL: [Self; 2]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum Activation
+  OnDemand
+  Attach
+  Remote
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum DeclarationReadiness
+  Ready
+  Idle
+  Starting
+  Restarting
+  Refused
+  Unreachable
+  NotReady
+  pub const ALL: [Self; 7]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum DeclarationListOutcome
+  Page
+  Invalid
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 4]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum DeclarationEditOutcome
+  Applied
+  Conflict
+  Unknown
+  Invalid
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum ApplicationOutcome
+  Applied
+  Page
+  Unknown
+  Stale
+  Conflict
+  Invalid
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 8]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum ApplicationActivationOutcome
+  Ready
+  Unknown
+  Disabled
+  Forbidden
+  Invalid
+  LaunchRefused
+  IdentityRefused
+  NotReady
+  Unavailable
+  pub const ALL: [Self; 9]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub mod service_error_code
+  pub const HANDLER_ERROR: &str
+  pub const INVALID_RESULT: &str
+  pub const UNKNOWN_VERSION: &str
+  pub const UNKNOWN_SERVICE: &str
+  pub const UNKNOWN_METHOD: &str
+  pub const WRONG_MODE: &str
+  pub const ALL: [&str; 6]
+pub const DECLARATION_RESOURCE_KINDS: [&str; 3]
+pub const REGISTRY_ACTIONS: [&str; 1]
+pub const DEFAULT_RUNTIME_CONTRACTS: [&str; 5]
+pub struct ResolveRequest
+  capability: String
+  contracts: Vec<String>
+  guarantees: Vec<String>
+  scope: Scope
+pub struct ServiceReference
+  provider: String
+  capability: String
+  contract: String
+  guarantees: Vec<String>
+  scope: Scope
+  transport: String
+  endpoint: String
+pub struct ResolveResult
+  status: ResolutionStatus
+  reference: Option<ServiceReference>
+pub struct BootstrapObservation
+  state: BootstrapState
+  detail: String
+pub struct CapabilityObservation
+  request: ResolveRequest
+  result: Option<ResolveResult>
+pub struct RuntimeObservation
+  bootstrap: BootstrapObservation
+  capabilities: Vec<CapabilityObservation>
+pub struct CallerAttribute
+  attribute: String
+  proof: String
+  ceiling: String
+pub struct CallerObservation
+  outcome: CallerOutcome
+  mechanism: String
+  account: String
+  program: String
+  pid: i64
+  attributes: Vec<CallerAttribute>
+  platform: String
+  transport: String
+  bindable: bool
+  stronger: String
+pub struct ServiceState
+  contract: String
+  readiness: ServiceReadiness
+  why: String
+  guarantees: Vec<String>
+  capabilities: BTreeMap<String, String>
+pub struct Description
+  outcome: DescriptionOutcome
+  program: String
+  version: String
+  services: Vec<ServiceState>
+pub struct RemoteTrust
+  server_name: String
+  roots: String
+  certificate: String
+  key: String
+  credential: String
+pub struct Declaration
+  name: String
+  program: String
+  arguments: Vec<String>
+  endpoint: String
+  transport: DeclarationTransport
+  contracts: Vec<String>
+  guarantees: Vec<String>
+  resources: Vec<String>
+  activation: Activation
+  remote: Option<RemoteTrust>
+  models: Vec<String>
+pub struct DeclarationState
+  declaration: Declaration
+  declared_by: String
+  declared_unix_ms: i64
+  readiness: DeclarationReadiness
+  why: String
+  restarts: i64
+  described: Vec<ServiceState>
+  accepted: Vec<String>
+pub struct DeclarationList
+  outcome: DeclarationListOutcome
+  revision: String
+  declarations: Vec<DeclarationState>
+pub struct DeclarationChange
+  outcome: DeclarationEditOutcome
+  revision: String
+  reason: String
+pub struct DeclarationObservation
+  outcome: DeclarationListOutcome
+  cursor: String
+  declarations: Vec<DeclarationState>
+pub struct ApplicationInterface
+  name: String
+  protocol: String
+  contract: String
+pub struct ApplicationActivationRecipe
+  arguments: Vec<String>
+  readiness: ApplicationInterface
+  readiness_timeout_ms: i64
+pub struct ApplicationDescriptor
+  name: String
+  program: String
+  title: String
+  start_guidance: String
+  activation: Option<ApplicationActivationRecipe>
+pub struct ApplicationContext
+  name: String
+  title: String
+  revision: String
+pub struct ApplicationPresence
+  application: String
+  instance: String
+  interfaces: Vec<ApplicationInterface>
+  contexts: Vec<ApplicationContext>
+  lease_ms: i64
+pub struct ApplicationInstance
+  instance: String
+  interfaces: Vec<ApplicationInterface>
+  contexts: Vec<ApplicationContext>
+  expires_unix_ms: i64
+pub struct ApplicationEntry
+  descriptor: ApplicationDescriptor
+  instances: Vec<ApplicationInstance>
+  scope: Scope
+pub struct ApplicationChange
+  outcome: ApplicationOutcome
+  instance: String
+  reason: String
+pub struct ApplicationPage
+  outcome: ApplicationOutcome
+  cursor: String
+  applications: Vec<ApplicationEntry>
+pub struct ApplicationActivationResult
+  outcome: ApplicationActivationOutcome
+  instance: String
+  started: bool
+  reason: String
+pub fn encode(v: &ResolveResult) -> Vec<u8>
+pub struct Refusal
+  word: &'static str
+  offset: usize
+pub fn decode(data: &[u8]) -> Result<ResolveResult, Refusal>
+pub use abstraction_frame::FrameTransport
+pub struct ServiceError
+  code: String
+  message: String
+pub enum CallError<E>
+  Transport(E)
+  Refusal(Refusal)
+  Dispatch(&'static str)
+  Service(ServiceError)
+pub trait Resolver
+  type Error
+  fn resolve(&self, request: ResolveRequest) -> Result<ResolveResult, Self::Error>
+pub struct ResolverClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait Caller
+  type Error
+  fn observe(&self) -> Result<CallerObservation, Self::Error>
+pub struct CallerClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait Endpoint
+  type Error
+  fn describe(&self) -> Result<Description, Self::Error>
+pub struct EndpointClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait Registry
+  type Error
+  fn declarations(&self) -> Result<DeclarationList, Self::Error>
+  fn declare(&self, expected_revision: String, declaration: Declaration) -> Result<DeclarationChange, Self::Error>
+  fn withdraw(&self, expected_revision: String, name: String) -> Result<DeclarationChange, Self::Error>
+  fn observe(&self, cursor: String, wait_ms: i64) -> Result<DeclarationObservation, Self::Error>
+pub struct RegistryClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait Applications
+  type Error
+  fn register(&self, descriptor: ApplicationDescriptor) -> Result<ApplicationChange, Self::Error>
+  fn remove(&self, application: String) -> Result<ApplicationChange, Self::Error>
+  fn announce(&self, presence: ApplicationPresence) -> Result<ApplicationChange, Self::Error>
+  fn withdraw(&self, application: String, instance: String) -> Result<ApplicationChange, Self::Error>
+  fn observe(&self, cursor: String, wait_ms: i64) -> Result<ApplicationPage, Self::Error>
+  fn activate(&self, application: String) -> Result<ApplicationActivationResult, Self::Error>
+pub struct ApplicationsClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T

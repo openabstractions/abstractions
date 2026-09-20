@@ -1,0 +1,29 @@
+{
+  "name": "@openabstractions/comfy-presentation-apps-host",
+  "version": "0.1.0-dev",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && cross-env INPUT=app.html vite build",
+    "start": "node server.mjs",
+    "test": "node --test test/*.test.mjs",
+    "test:reference-host": "node test/reference-host.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
+    "@modelcontextprotocol/express": "2.0.0",
+    "@modelcontextprotocol/ext-apps": "2.0.0",
+    "@modelcontextprotocol/node": "2.0.0",
+    "@modelcontextprotocol/server": "2.0.0",
+    "cors": "2.8.5",
+    "express": "5.1.0",
+    "zod": "4.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.0",
+    "cross-env": "10.1.0",
+    "typescript": "5.9.3",
+    "vite": "6.4.3",
+    "vite-plugin-singlefile": "2.3.0"
+  }
+}

@@ -38,7 +38,7 @@ func normalizedTimestamp(s string) string {
  for k:=0; k<6 && k<len(fraction); k++ { out[20+k]=fraction[k] }
  return string(out)
 }
-func WideTimestamp(s string) bool { return normalizedTimestamp(s) != "" }
+func wideTimestamp(s string) bool { return normalizedTimestamp(s) != "" }
 func writeTimestamp(s string) string {
  result := normalizedTimestamp(s)
  if result == "" { panic(&Refusal{Word:"bad_timestamp", Offset:0}) }
@@ -94,7 +94,7 @@ def _normalized_timestamp(s):
     return "%04d-%02d-%02dT%02d:%02d:%02d.%sZ" % (y, m, d, total // 60, total % 60, sec, (fraction + "000000")[:6])
 
 
-def wide_timestamp(s):
+def _wide_timestamp(s):
     return bool(_normalized_timestamp(s))
 
 
@@ -190,7 +190,7 @@ fn normalized_timestamp(text: &str) -> String {
     let s=text.as_bytes();
     let (mut y,mut m,mut d)=(timestamp_number(s,0,4),timestamp_number(s,5,2),timestamp_number(s,8,2));
     let (h,minute,sec)=(timestamp_number(s,11,2),timestamp_number(s,14,2),timestamp_number(s,17,2));
-    if m<1 || m>12 || d<1 || d>timestamp_days(y,m) || h>23 || minute>59 || sec>59 {return String::new();}
+    if !(1..=12).contains(&m) || !(1..=timestamp_days(y,m)).contains(&d) || h>23 || minute>59 || sec>59 {return String::new();}
     let mut i=19; let mut fraction=&s[0..0];
     if s[i]==b'.' {i+=1; let start=i; while s[i].is_ascii_digit() {i+=1;} fraction=&s[start..i];}
     let mut total=h*60+minute;
@@ -206,10 +206,10 @@ fn normalized_timestamp(text: &str) -> String {
     let mut out=*b"0000-00-00T00:00:00.000000Z";
     let mut put=|at: usize,width: usize,mut value: i32| {for k in (0..width).rev() {out[at+k]=b'0'+(value%10) as u8; value/=10;}};
     put(0,4,y); put(5,2,m); put(8,2,d); put(11,2,total/60); put(14,2,total%60); put(17,2,sec);
-    for k in 0..fraction.len().min(6) {out[20+k]=fraction[k];}
+    let kept=fraction.len().min(6); out[20..20+kept].copy_from_slice(&fraction[..kept]);
     String::from_utf8(out.to_vec()).unwrap()
 }
-pub fn wide_timestamp(text: &str) -> bool {!normalized_timestamp(text).is_empty()}
+fn wide_timestamp(text: &str) -> bool {!normalized_timestamp(text).is_empty()}
 fn write_timestamp(text: &str) -> String {
     let result=normalized_timestamp(text);
     assert!(!result.is_empty(), "bad_timestamp");

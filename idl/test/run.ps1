@@ -94,7 +94,7 @@ cl /nologo /std:c++20 /EHsc /utf-8 /I "$out\cpp" "$here\drivers\cpp\run.cpp" /Fe
   } else { $script:results += "cpp     UNPROVEN: no MSVC on this machine" }
 
   if (Have "node") {
-    Copy-Item "$out\js\rec.mjs" "$Scratch\rec.mjs" -Force
+    Copy-Item "$out\js\internal.mjs" "$Scratch\rec.mjs" -Force
     Copy-Item "$here\drivers\js\run.mjs" "$Scratch\run.mjs" -Force
     & node "$Scratch\run.mjs" $res $corpus | Out-Null
     $script:ran += "js"

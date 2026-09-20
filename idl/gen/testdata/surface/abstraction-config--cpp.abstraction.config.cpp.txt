@@ -1,0 +1,129 @@
+using Raw = std::string
+class Refusal : public std::runtime_error
+  const char* word
+  std::size_t offset
+enum class UserReplaceOutcome {Applied, Conflict, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(UserReplaceOutcome value)
+inline std::optional<UserReplaceOutcome> parse_user_replace_outcome(std::string_view name)
+inline constexpr bool operator==(UserReplaceOutcome value, std::string_view name)
+inline constexpr bool operator!=(UserReplaceOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, UserReplaceOutcome value)
+inline constexpr bool operator!=(std::string_view name, UserReplaceOutcome value)
+inline const std::vector<std::string> kUserReplaceOutcomeNames
+enum class ConfigObservationOutcome {Snapshot, Unchanged, Gap, Unavailable, Unsupported, Invalid}
+inline constexpr std::string_view wire_name(ConfigObservationOutcome value)
+inline std::optional<ConfigObservationOutcome> parse_config_observation_outcome(std::string_view name)
+inline constexpr bool operator==(ConfigObservationOutcome value, std::string_view name)
+inline constexpr bool operator!=(ConfigObservationOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ConfigObservationOutcome value)
+inline constexpr bool operator!=(std::string_view name, ConfigObservationOutcome value)
+inline const std::vector<std::string> kConfigObservationOutcomeNames
+inline const std::vector<std::string> kServiceErrorCodeNames
+inline constexpr std::string_view kServiceErrorCodeHandlerError
+inline constexpr std::string_view kServiceErrorCodeInvalidResult
+inline constexpr std::string_view kServiceErrorCodeUnknownVersion
+inline constexpr std::string_view kServiceErrorCodeUnknownService
+inline constexpr std::string_view kServiceErrorCodeUnknownMethod
+inline constexpr std::string_view kServiceErrorCodeWrongMode
+inline constexpr std::string_view kServiceErrorCodeStorageUnavailable
+inline constexpr std::string_view kServiceErrorCodeCallerUnavailable
+inline constexpr std::string_view kServiceErrorCodeIdentityRequired
+inline constexpr std::string_view kServiceErrorCodeWrongUser
+inline constexpr std::string_view kServiceErrorCodeInvalidRevision
+inline const std::vector<std::string> kReaderErrorCodes
+inline const std::vector<std::string> kEditorErrorCodes
+struct RunOverrides
+  std::string nas_store
+  std::string store
+  std::string log_sink
+  std::string log_service
+struct Origin
+  std::string rung
+  std::string path
+struct Origins
+  Origin nas_store
+  Origin store
+  Origin log_sink
+  Origin log_service
+  Origin off
+struct Snapshot
+  std::string nas_store
+  std::string store
+  std::string log_sink
+  std::string log_service
+  std::map<std::string, std::string> off
+  Origins origins
+  std::string stamp
+struct UserSettings
+  std::string nas_store
+  std::string store
+  std::string log_sink
+  std::string log_service
+  std::map<std::string, std::string> off
+struct UserSnapshot
+  UserSettings values
+  std::string revision
+struct UserReplaceResult
+  UserReplaceOutcome outcome
+  UserSnapshot snapshot
+struct ConfigObservation
+  ConfigObservationOutcome outcome
+  std::string cursor
+  std::optional<Snapshot> snapshot
+inline std::string encode(const Snapshot& v)
+inline Snapshot decode(std::string_view data)
+struct FrameWriter
+  virtual void write_frame(std::string_view frame)
+struct DispatchError : std::runtime_error
+inline std::string service_name(std::string_view frame)
+struct FrameExchanger
+  virtual std::string exchange_frame(std::string_view frame)
+struct ServiceError : std::runtime_error
+  std::string code, message
+inline constexpr std::string_view kEndpointContract
+struct DescribedService
+  std::string contract
+  bool ready
+  std::string why
+std::string describe_endpoint(std::string_view frame, const std::string& program, const std::string& version, const Services& . . . services)
+struct ConfigReader
+  virtual Snapshot read(const RunOverrides& overrides)
+template<class Transport>struct ConfigReaderClient : ConfigReader
+  Transport& transport_
+  Snapshot read(const RunOverrides& overrides) override
+struct ConfigReaderService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ConfigReaderDispatcher : FrameWriter, FrameExchanger
+  ConfigReader& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct ConfigEditor
+  virtual UserSnapshot read_user()
+  virtual UserReplaceResult replace_user(const std::string& expected_revision, const UserSettings& values)
+template<class Transport>struct ConfigEditorClient : ConfigEditor
+  Transport& transport_
+  UserSnapshot read_user() override
+  UserReplaceResult replace_user(const std::string& expected_revision, const UserSettings& values) override
+struct ConfigEditorService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ConfigEditorDispatcher : FrameWriter, FrameExchanger
+  ConfigEditor& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct ConfigObserver
+  virtual ConfigObservation observe(const RunOverrides& overrides, const std::string& cursor, const std::int64_t& wait_ms)
+template<class Transport>struct ConfigObserverClient : ConfigObserver
+  Transport& transport_
+  ConfigObservation observe(const RunOverrides& overrides, const std::string& cursor, const std::int64_t& wait_ms) override
+struct ConfigObserverService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ConfigObserverDispatcher : FrameWriter, FrameExchanger
+  ConfigObserver& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override

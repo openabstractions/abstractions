@@ -31,9 +31,9 @@ func TestGoAliasProduction(t *testing.T) {
 import("testing"; old "example.test/compat/go/abstraction/facade"; core "example.test/canonical/go/abstraction/facade")
 func TestIdentityAndCodec(t *testing.T){
  var original core.ResolveResult = old.ResolveResult{Status:old.ResolutionStatusUnavailable}
- bytes:=old.Encode(&original); value,err:=core.Decode(bytes);if err!=nil||value.Status!="unavailable"{t.Fatal(value,err)}
+ bytes:=old.Encode(&original); value,err:=core.Decode(bytes);if err!=nil||value.Status!=core.ResolutionStatusUnavailable{t.Fatal(value,err)}
  var _ *old.ResolverClient = core.NewResolverClient(nil)
- old.ScopeNames[0]="changed";if core.ScopeNames[0]!="changed"{t.Fatal("lost backing contents")}
+ if old.ScopeValues()[0]!=core.ScopeValues()[0]||!old.ScopeAny.Known(){t.Fatal("vocabulary does not forward")}
 }
 `), 0600)
 	command := exec.Command("go", "test", "./...")

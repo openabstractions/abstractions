@@ -1,0 +1,22 @@
+using Raw = std::string
+class Refusal : public std::runtime_error
+  const char* word
+  std::size_t offset
+inline const std::vector<std::string> kFailureNames
+struct Ref
+  std::string store
+  std::string digest
+  std::int64_t size
+  std::string locator
+struct FindResult
+  std::optional<Ref> reference
+inline std::string encode(const Ref& v)
+inline Ref decode(std::string_view data)
+struct Store
+  virtual std::string name()
+  virtual FindResult find(const std::string& digest)
+  virtual Ref place(const std::string& digest, const std::int64_t& size)
+struct Local
+  virtual std::string path(const Ref& reference)
+struct Writable
+  virtual void commit(const Ref& reference)

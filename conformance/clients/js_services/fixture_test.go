@@ -12,6 +12,7 @@ import (
 	config "github.com/openabstractions/abstraction-config/go"
 	configservice "github.com/openabstractions/abstraction-config/go/service"
 	download "github.com/openabstractions/abstraction-download/go"
+	"github.com/openabstractions/abstraction-download/go/netcost"
 	downloadserve "github.com/openabstractions/abstraction-download/go/serve"
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
@@ -37,6 +38,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -44,7 +46,7 @@ import (
 type forged struct{}
 
 func (forged) Resolve(q wire.ResolveRequest) (wire.ResolveResult, error) {
-	return wire.ResolveResult{Status: "resolved", Reference: &wire.ServiceReference{Provider: "test", Capability: "wrong", Contract: q.Contracts[0], Scope: "local", Transport: "oa-framed-local@1", Endpoint: "must-not-connect", Guarantees: []string{}}}, nil
+	return wire.ResolveResult{Status: wire.ResolutionStatusResolved, Reference: &wire.ServiceReference{Provider: "test", Capability: "wrong", Contract: q.Contracts[0], Scope: wire.ScopeLocal, Transport: "oa-framed-local@1", Endpoint: "must-not-connect", Guarantees: []string{}}}, nil
 }
 func TestInstalledJavaScript(t *testing.T) {
 	node, script := os.Getenv("OA_JS_NODE"), os.Getenv("OA_JS_CONSUMER")
@@ -56,18 +58,28 @@ func TestInstalledJavaScript(t *testing.T) {
 		t.Setenv(key, dir)
 	}
 	endpoint := func(name string) string { return fixture.Endpoint(dir, "js-"+name) }
-	run := func(t *testing.T, mode, ep string, extra ...string) {
+	// runVia gives the consumer the endpoint override through the variable, or
+	// through --runtime-endpoint with the variable empty.
+	runVia := func(t *testing.T, option bool, mode, ep string, extra ...string) {
 		t.Helper()
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, node, append([]string{script, mode, ep}, extra...)...)
+		args, variable := append([]string{script, mode, ep}, extra...), ep
+		if option {
+			args, variable = append(args, "--runtime-endpoint", ep), ""
+		}
+		cmd := exec.CommandContext(ctx, node, args...)
 		cmd.Dir = t.TempDir()
-		cmd.Env = append(os.Environ(), "ABSTRACTION_RUNTIME_ENDPOINT="+ep)
+		cmd.Env = append(os.Environ(), "ABSTRACTION_RUNTIME_ENDPOINT="+variable)
 		out, err := fixture.Output(ctx, cmd)
 		if err != nil {
 			t.Fatalf("%s: %v %s", mode, err, out)
 		}
 		t.Log(string(out))
+	}
+	run := func(t *testing.T, mode, ep string, extra ...string) {
+		t.Helper()
+		runVia(t, false, mode, ep, extra...)
 	}
 	t.Run("runtime", func(t *testing.T) {
 		sink, err := logging.OpenFileSink(filepath.Join(dir, "private-records"))
@@ -77,7 +89,11 @@ func TestInstalledJavaScript(t *testing.T) {
 		defer sink.Close()
 		body := bytes.Repeat([]byte("x"), 150000)
 		digest := fmt.Sprintf("sha256:%x", sha256.Sum256(body))
+		var credentialRequests atomic.Int32
 		source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, "/credential") || r.URL.Path == "/missing" {
+				credentialRequests.Add(1)
+			}
 			w.Header().Set("Content-Length", fmt.Sprint(len(body)))
 			_, _ = w.Write(body)
 		}))
@@ -87,8 +103,10 @@ func TestInstalledJavaScript(t *testing.T) {
 			t.Fatal(err)
 		}
 		ep := endpoint("runtime")
+		metered := netcost.NewFake(netcost.Metered)
 		h, err := host.Listen(host.Options{Endpoint: ep, LogEndpoint: endpoint("log"), ConfigEndpoint: endpoint("config"), Sink: sink,
-			JobRoot: filepath.Join(dir, "jobs"), JobOwner: "js-fixture-owner", JobEndpoint: endpoint("jobs"), JobExecutor: downloadserve.HTTPExecution{},
+			// The cost source reports a metered path: the consumer's unmetered request waits.
+			JobRoot: filepath.Join(dir, "jobs"), JobOwner: "js-fixture-owner", JobEndpoint: endpoint("jobs"), JobExecutor: downloadserve.HTTPExecution{NetworkCost: func() (netcost.Source, error) { return metered, nil }, Credentials: fixtureCredentials{}},
 			Storage: content, StorageEndpoint: endpoint("storage"), StoragePolicy: func(ctx context.Context, p *identity.Peer, d string) error {
 				path, e := p.Path.AtLeast(listen.Program.Path)
 				if e != nil || !fixture.SameExecutable(path, node) || d != digest {
@@ -115,6 +133,8 @@ func TestInstalledJavaScript(t *testing.T) {
 			}
 		}()
 		run(t, "roundtrip", ep)
+		run(t, "installed", ep)
+		runVia(t, true, "installed", ep)
 		account, e := user.Current()
 		if e != nil {
 			t.Fatal(e)
@@ -126,6 +146,9 @@ func TestInstalledJavaScript(t *testing.T) {
 		run(t, "verified", ep, account.Uid, program)
 		run(t, "untrusted", ep, account.Uid, program)
 		run(t, "job-storage", ep, source.URL, digest)
+		if credentialRequests.Load() != 0 {
+			t.Fatalf("a refused credential reached the origin %d times", credentialRequests.Load())
+		}
 	})
 	for _, mode := range []string{"forged", "oversized", "truncated", "malformed", "cancel", "timeout", "queue"} {
 		t.Run(mode, func(t *testing.T) {
@@ -417,3 +440,19 @@ func (*fixtureContent) Place(string, int64) (storage.Ref, error) {
 	return storage.Ref{}, storage.ErrReadOnly
 }
 func (p *fixtureContent) Path(storage.Ref) string { return p.path }
+
+// fixtureCredentials admits the credential hf and refuses any other name as
+// unknown at admission; applying hf is refused as revoked, so work naming it
+// ends with cause credential and never reaches the origin (JOB-A16, DL-K1).
+type fixtureCredentials struct{}
+
+func (fixtureCredentials) CheckCredential(_ context.Context, _, name, _ string) error {
+	if name == "hf" {
+		return nil
+	}
+	return download.CredentialRefusal(name, "unknown")
+}
+
+func (fixtureCredentials) ApplyCredential(_ context.Context, _, name, _ string) (map[string]string, error) {
+	return nil, download.CredentialRefusal(name, "revoked")
+}

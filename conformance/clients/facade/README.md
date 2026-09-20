@@ -38,6 +38,12 @@ running providers. Every facade operation must fail. After stopping all services
 the absence checks run again. The client home
 must remain empty, and provider-owned files must remain unchanged. No actual
 model-host discovery, GPU probe, external network or C++ server is used.
+
+Finally the runner builds `abstraction-facade/cpp/test/binding` against the same
+installed prefix and runs its `facade_activation` test. A selection shim names a
+copy of that test as `openabstractions.exe` under the build directory; the copy
+stands in for `openabstractions start` and the runtime it starts. Nothing is
+installed or registered.
 `windows.json` describes this focused service-client evidence; record it only
 after its source inputs have been committed.
 

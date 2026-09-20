@@ -1,0 +1,62 @@
+class DispatchError
+class HistoryObserverClient
+  observe(cursor, maxRecords, maxBytes, waitMs)
+object HistoryObserverService {wireName, Client}
+class HistoryReaderClient
+  read(cursor, maxRecords, maxBytes)
+object HistoryReaderService {wireName, Client}
+enum PageOutcome
+  Page
+  Gap
+  Unavailable
+  InvalidRequest
+  RecordTooLarge
+  Corrupt
+  Unsupported
+class Refusal
+class ServiceError
+enum ServiceErrorCode
+  HandlerError
+  InvalidResult
+  UnknownVersion
+  UnknownService
+  UnknownMethod
+  WrongMode
+  CallerUnavailable
+  IdentityRequired
+  WrongUser
+  PolicyUnavailable
+  Forbidden
+class SinkClient
+  write(record)
+object SinkService {wireName, Client}
+function decode(data)
+function encode(v)
+const historyCursorWords
+const historyErrorCodes
+function newAttestation()
+  by
+  verified
+  hop
+  program
+  host
+  user
+  exe
+  uid
+  gid
+  pid
+  key
+  mac
+function newPage()
+  outcome
+  records
+  next
+  atEnd
+function newRecord()
+  schema
+  time
+  level
+  msg
+  identity
+  job
+  attrs

@@ -164,7 +164,9 @@ func (c *rustCrates) build(target rustTarget, name string) string {
 		c.t.Fatalf("%s generated no Rust source", target.def)
 	}
 	lib := filepath.Join(c.dir, "lib"+name+".rlib")
-	c.run(c.dir, append([]string{"--edition=2021", "--crate-type=rlib", "--crate-name=" + name, source, "-o", lib, "-L", c.dir}, externs...)...)
+	// Warnings are denied and the naming lints forbidden, so neither dead code
+	// nor an #[allow] suppression can ship in a generated crate.
+	c.run(c.dir, append([]string{"--edition=2021", "--crate-type=rlib", "--crate-name=" + name, "-D", "warnings", "-F", "nonstandard_style", source, "-o", lib, "-L", c.dir}, externs...)...)
 	c.built[name] = lib
 	return lib
 }
@@ -195,6 +197,7 @@ func TestRustEveryDeclaredTargetCompiles(t *testing.T) {
 func TestRustKeywordArgumentFailsBeforeCrate(t *testing.T) {
 	dir := t.TempDir()
 	writeNamespaceFile(t, dir, "abstraction-download/request.thrift", readProduction(t, "abstraction-download/request.thrift"))
+	writeNamespaceFile(t, dir, "abstraction-storage/content.thrift", readProduction(t, "abstraction-storage/content.thrift"))
 	model := readProduction(t, "abstraction-model/model.thrift")
 	stripped := strings.Replace(model, `Ref ref (rust.name = "reference")`, "Ref ref", 1)
 	if stripped == model {
@@ -202,7 +205,7 @@ func TestRustKeywordArgumentFailsBeforeCrate(t *testing.T) {
 	}
 	writeNamespaceFile(t, dir, "abstraction-model/model.thrift", stripped)
 	var report bytes.Buffer
-	err := run([]string{filepath.Join(dir, "abstraction-model", "model.thrift"), filepath.Join(dir, "out"), "--rust-import=request=abstraction_download_request_api", "--shared-rust-transport", "rust"}, &report)
+	err := run([]string{filepath.Join(dir, "abstraction-model", "model.thrift"), filepath.Join(dir, "out"), "--rust-import=request=abstraction_download_request_api", "--rust-import=content=abstraction_storage_content_api", "--shared-rust-transport", "rust"}, &report)
 	if err == nil || !strings.Contains(err.Error(), "rust.name") {
 		t.Fatalf("keyword argument reached Rust output: %v", err)
 	}

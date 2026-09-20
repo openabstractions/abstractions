@@ -1,0 +1,9 @@
+class Refusal(ValueError)
+  __init__(word, offset)
+class Store
+  read(path: str) -> Value
+  write(path: str, base: Value, data: bytes) -> None
+dataclass Value
+  data: bytes | None
+def decode(data)
+def encode(v)

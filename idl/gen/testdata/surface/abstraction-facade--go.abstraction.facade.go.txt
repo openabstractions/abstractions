@@ -1,0 +1,180 @@
+type Raw canonical.Raw
+type Scope canonical.Scope
+const ScopeAny
+const ScopeLocal
+const ScopeRemote
+func ParseScope(word string) (Scope, bool)
+func ScopeValues() []Scope
+type ResolutionStatus canonical.ResolutionStatus
+const ResolutionStatusResolved
+const ResolutionStatusUnavailable
+const ResolutionStatusForbidden
+const ResolutionStatusIncompatible
+const ResolutionStatusUnmetRequirements
+const ResolutionStatusNotReady
+const ResolutionStatusInvalidRequest
+func ParseResolutionStatus(word string) (ResolutionStatus, bool)
+func ResolutionStatusValues() []ResolutionStatus
+type BootstrapState canonical.BootstrapState
+const BootstrapStateUnknown
+const BootstrapStateInstalled
+const BootstrapStateStarting
+const BootstrapStateRunning
+const BootstrapStateUnavailable
+func ParseBootstrapState(word string) (BootstrapState, bool)
+func BootstrapStateValues() []BootstrapState
+type CallerOutcome canonical.CallerOutcome
+const CallerOutcomeObserved
+const CallerOutcomeForbidden
+const CallerOutcomeUnavailable
+const CallerOutcomeInvalid
+func ParseCallerOutcome(word string) (CallerOutcome, bool)
+func CallerOutcomeValues() []CallerOutcome
+type DescriptionOutcome canonical.DescriptionOutcome
+const DescriptionOutcomeDescribed
+const DescriptionOutcomeForbidden
+const DescriptionOutcomeUnavailable
+const DescriptionOutcomeInvalid
+func ParseDescriptionOutcome(word string) (DescriptionOutcome, bool)
+func DescriptionOutcomeValues() []DescriptionOutcome
+type ServiceReadiness canonical.ServiceReadiness
+const ServiceReadinessReady
+const ServiceReadinessNotReady
+const ServiceReadinessUnknown
+func ParseServiceReadiness(word string) (ServiceReadiness, bool)
+func ServiceReadinessValues() []ServiceReadiness
+type DeclarationTransport canonical.DeclarationTransport
+const DeclarationTransportNative
+const DeclarationTransportRemote
+func ParseDeclarationTransport(word string) (DeclarationTransport, bool)
+func DeclarationTransportValues() []DeclarationTransport
+type Activation canonical.Activation
+const ActivationOnDemand
+const ActivationAttach
+const ActivationRemote
+func ParseActivation(word string) (Activation, bool)
+func ActivationValues() []Activation
+type DeclarationReadiness canonical.DeclarationReadiness
+const DeclarationReadinessReady
+const DeclarationReadinessIdle
+const DeclarationReadinessStarting
+const DeclarationReadinessRestarting
+const DeclarationReadinessRefused
+const DeclarationReadinessUnreachable
+const DeclarationReadinessNotReady
+func ParseDeclarationReadiness(word string) (DeclarationReadiness, bool)
+func DeclarationReadinessValues() []DeclarationReadiness
+type DeclarationListOutcome canonical.DeclarationListOutcome
+const DeclarationListOutcomePage
+const DeclarationListOutcomeInvalid
+const DeclarationListOutcomeForbidden
+const DeclarationListOutcomeUnavailable
+func ParseDeclarationListOutcome(word string) (DeclarationListOutcome, bool)
+func DeclarationListOutcomeValues() []DeclarationListOutcome
+type DeclarationEditOutcome canonical.DeclarationEditOutcome
+const DeclarationEditOutcomeApplied
+const DeclarationEditOutcomeConflict
+const DeclarationEditOutcomeUnknown
+const DeclarationEditOutcomeInvalid
+const DeclarationEditOutcomeForbidden
+const DeclarationEditOutcomeUnavailable
+func ParseDeclarationEditOutcome(word string) (DeclarationEditOutcome, bool)
+func DeclarationEditOutcomeValues() []DeclarationEditOutcome
+type ApplicationOutcome canonical.ApplicationOutcome
+const ApplicationOutcomeApplied
+const ApplicationOutcomePage
+const ApplicationOutcomeUnknown
+const ApplicationOutcomeStale
+const ApplicationOutcomeConflict
+const ApplicationOutcomeInvalid
+const ApplicationOutcomeForbidden
+const ApplicationOutcomeUnavailable
+func ParseApplicationOutcome(word string) (ApplicationOutcome, bool)
+func ApplicationOutcomeValues() []ApplicationOutcome
+type ApplicationActivationOutcome canonical.ApplicationActivationOutcome
+const ApplicationActivationOutcomeReady
+const ApplicationActivationOutcomeUnknown
+const ApplicationActivationOutcomeDisabled
+const ApplicationActivationOutcomeForbidden
+const ApplicationActivationOutcomeInvalid
+const ApplicationActivationOutcomeLaunchRefused
+const ApplicationActivationOutcomeIdentityRefused
+const ApplicationActivationOutcomeNotReady
+const ApplicationActivationOutcomeUnavailable
+func ParseApplicationActivationOutcome(word string) (ApplicationActivationOutcome, bool)
+func ApplicationActivationOutcomeValues() []ApplicationActivationOutcome
+type ServiceErrorCode canonical.ServiceErrorCode
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+func ServiceErrorCodeValues() []ServiceErrorCode
+var DeclarationResourceKinds
+var RegistryActions
+var DefaultRuntimeContracts
+type ResolveRequest canonical.ResolveRequest
+type ServiceReference canonical.ServiceReference
+type ResolveResult canonical.ResolveResult
+type BootstrapObservation canonical.BootstrapObservation
+type CapabilityObservation canonical.CapabilityObservation
+type RuntimeObservation canonical.RuntimeObservation
+type CallerAttribute canonical.CallerAttribute
+type CallerObservation canonical.CallerObservation
+type ServiceState canonical.ServiceState
+type Description canonical.Description
+type RemoteTrust canonical.RemoteTrust
+type Declaration canonical.Declaration
+type DeclarationState canonical.DeclarationState
+type DeclarationList canonical.DeclarationList
+type DeclarationChange canonical.DeclarationChange
+type DeclarationObservation canonical.DeclarationObservation
+type ApplicationInterface canonical.ApplicationInterface
+type ApplicationActivationRecipe canonical.ApplicationActivationRecipe
+type ApplicationDescriptor canonical.ApplicationDescriptor
+type ApplicationContext canonical.ApplicationContext
+type ApplicationPresence canonical.ApplicationPresence
+type ApplicationInstance canonical.ApplicationInstance
+type ApplicationEntry canonical.ApplicationEntry
+type ApplicationChange canonical.ApplicationChange
+type ApplicationPage canonical.ApplicationPage
+type ApplicationActivationResult canonical.ApplicationActivationResult
+func Encode(v *ResolveResult) []byte
+type Refusal canonical.Refusal
+func Decode(in []byte) (*ResolveResult, error)
+type FrameWriter canonical.FrameWriter
+type DispatchError canonical.DispatchError
+func ServiceName(frame []byte) (string, error)
+type FrameExchanger canonical.FrameExchanger
+type ServiceError canonical.ServiceError
+const EndpointContract
+type DescribedService canonical.DescribedService
+func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+type ServedService canonical.ServedService
+func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+type Resolver canonical.Resolver
+type ResolverTransport canonical.ResolverTransport
+type ResolverClient canonical.ResolverClient
+func NewResolverClient(t ResolverTransport) *ResolverClient
+type ResolverDispatcher canonical.ResolverDispatcher
+type Caller canonical.Caller
+type CallerTransport canonical.CallerTransport
+type CallerClient canonical.CallerClient
+func NewCallerClient(t CallerTransport) *CallerClient
+type CallerDispatcher canonical.CallerDispatcher
+type Endpoint canonical.Endpoint
+type EndpointTransport canonical.EndpointTransport
+type EndpointClient canonical.EndpointClient
+func NewEndpointClient(t EndpointTransport) *EndpointClient
+type EndpointDispatcher canonical.EndpointDispatcher
+type Registry canonical.Registry
+type RegistryTransport canonical.RegistryTransport
+type RegistryClient canonical.RegistryClient
+func NewRegistryClient(t RegistryTransport) *RegistryClient
+type RegistryDispatcher canonical.RegistryDispatcher
+type Applications canonical.Applications
+type ApplicationsTransport canonical.ApplicationsTransport
+type ApplicationsClient canonical.ApplicationsClient
+func NewApplicationsClient(t ApplicationsTransport) *ApplicationsClient
+type ApplicationsDispatcher canonical.ApplicationsDispatcher

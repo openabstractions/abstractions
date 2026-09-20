@@ -1,0 +1,39 @@
+using Raw = std::string
+class Refusal : public std::runtime_error
+  const char* word
+  std::size_t offset
+enum class Network {Any, Unmetered}
+inline constexpr std::string_view wire_name(Network value)
+inline std::optional<Network> parse_network(std::string_view name)
+inline constexpr bool operator==(Network value, std::string_view name)
+inline constexpr bool operator!=(Network value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Network value)
+inline constexpr bool operator!=(std::string_view name, Network value)
+inline const std::vector<std::string> kNetworkNames
+inline const std::vector<std::string> kDownstreamRecoveryGuarantees
+inline const std::vector<std::string> kCredentialGuarantees
+inline const std::vector<std::string> kNetworkCostGuarantees
+inline const std::vector<std::string> kWaitingExtensions
+struct Constraints
+  Network network
+struct Artifact
+  std::string digest
+  std::int64_t size
+struct Source
+  std::string scheme
+  std::string locator
+  std::string credential
+struct Request
+  Artifact artifact
+  std::vector<Source> sources
+  std::optional<Constraints> constraints
+inline std::string encode(const Request& v)
+inline Request decode(std::string_view data)
+inline std::string encode_constraints(const Constraints& v)
+inline Constraints decode_constraints(std::string_view in)
+inline std::string encode_artifact(const Artifact& v)
+inline Artifact decode_artifact(std::string_view in)
+inline std::string encode_source(const Source& v)
+inline Source decode_source(std::string_view in)
+inline std::string encode_request(const Request& v)
+inline Request decode_request(std::string_view in)

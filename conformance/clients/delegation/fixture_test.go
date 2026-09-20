@@ -7,6 +7,7 @@ import (
 	"fmt"
 	download "github.com/openabstractions/abstraction-download/go"
 	request "github.com/openabstractions/abstraction-download/go/abstraction/download/request"
+	"github.com/openabstractions/abstraction-download/go/netcost"
 	downloadserve "github.com/openabstractions/abstraction-download/go/serve"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	"github.com/openabstractions/abstractions/conformance/clients/fixture"
@@ -128,6 +129,110 @@ func command(t *testing.T, args ...string) string {
 	}
 	return strings.TrimSpace(string(output))
 }
+
+// The installed C++ consumer submits a request with network unmetered through
+// the generated request header while the runtime's cost source reports a
+// metered path. It reads the waiting word, cancels, and nothing is fetched
+// (download CONTRACT DL-N2 to DL-N6, JOB-A15).
+func TestCppNetworkWaiting(t *testing.T) {
+	if os.Getenv("OA_CPP_DELEGATION_PROBE") == "" {
+		t.Fatal("set OA_CPP_DELEGATION_PROBE to installed-header consumer")
+	}
+	if runtime.GOOS == "darwin" {
+		t.Fatal("Program proof required; current macOS path cannot claim this conformance")
+	}
+	dir, err := os.MkdirTemp("", "oa-net-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	for _, name := range []string{"HOME", "APPDATA", "XDG_CONFIG_HOME", "ProgramData"} {
+		t.Setenv(name, dir)
+	}
+	var fetched atomic.Int32
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fetched.Add(1)
+		w.Write([]byte("must not move while metered"))
+	}))
+	defer source.Close()
+	endpoint := func(name string) string {
+		if runtime.GOOS == "windows" {
+			return fmt.Sprintf(`\\.\pipe\oa-net-%d-%s`, time.Now().UnixNano(), name)
+		}
+		return filepath.Join(dir, name+".sock")
+	}
+	metered := netcost.NewFake(netcost.Metered)
+	o := host.Options{Endpoint: endpoint("runtime"), LogEndpoint: endpoint("log"), ConfigEndpoint: endpoint("config"), JobEndpoint: endpoint("jobs"), JobRoot: filepath.Join(dir, "provider"), JobOwner: "network-owner",
+		JobExecutor: downloadserve.HTTPExecution{NetworkCost: func() (netcost.Source, error) { return metered, nil }}}
+	stop := start(t, o)
+	if out := command(t, "waiting", o.Endpoint, "constrained-request", source.URL+"/constrained"); out != "WAITED network:metered CANCELLED" {
+		t.Fatal(out)
+	}
+	stop()
+	if fetched.Load() != 0 {
+		t.Fatalf("a metered wait fetched %d times", fetched.Load())
+	}
+}
+
+// fixtureCredentials admits the credential hf and refuses any other name as
+// unknown at admission; applying hf is refused as revoked.
+type fixtureCredentials struct{}
+
+func (fixtureCredentials) CheckCredential(_ context.Context, _, name, _ string) error {
+	if name == "hf" {
+		return nil
+	}
+	return download.CredentialRefusal(name, "unknown")
+}
+
+func (fixtureCredentials) ApplyCredential(_ context.Context, _, name, _ string) (map[string]string, error) {
+	return nil, download.CredentialRefusal(name, "revoked")
+}
+
+// The installed C++ consumer submits a request naming the credential hf, which
+// the runtime admits and refuses to apply: the operation fails permanently with
+// cause credential and credential:revoked:hf. A name the runtime does not hold
+// is refused at admission, invalid with credential:unknown:missing and no
+// receipt. Nothing reaches the origin (job JOB-A8, JOB-A16; download DL-K1).
+func TestCppCredentialWord(t *testing.T) {
+	if os.Getenv("OA_CPP_DELEGATION_PROBE") == "" {
+		t.Fatal("set OA_CPP_DELEGATION_PROBE to installed-header consumer")
+	}
+	if runtime.GOOS == "darwin" {
+		t.Fatal("Program proof required; current macOS path cannot claim this conformance")
+	}
+	dir, err := os.MkdirTemp("", "oa-cred-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	for _, name := range []string{"HOME", "APPDATA", "XDG_CONFIG_HOME", "ProgramData"} {
+		t.Setenv(name, dir)
+	}
+	var fetched atomic.Int32
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fetched.Add(1)
+		w.Write([]byte("must not be fetched without the credential"))
+	}))
+	defer source.Close()
+	endpoint := func(name string) string {
+		if runtime.GOOS == "windows" {
+			return fmt.Sprintf(`\\.\pipe\oa-cred-%d-%s`, time.Now().UnixNano(), name)
+		}
+		return filepath.Join(dir, name+".sock")
+	}
+	o := host.Options{Endpoint: endpoint("runtime"), LogEndpoint: endpoint("log"), ConfigEndpoint: endpoint("config"), JobEndpoint: endpoint("jobs"), JobRoot: filepath.Join(dir, "provider"), JobOwner: "credential-owner",
+		JobExecutor: downloadserve.HTTPExecution{Credentials: fixtureCredentials{}}}
+	stop := start(t, o)
+	if out := command(t, "credential", o.Endpoint, "credential-request", source.URL); out != "CREDENTIAL revoked:hf REFUSED unknown:missing" {
+		t.Fatal(out)
+	}
+	stop()
+	if fetched.Load() != 0 {
+		t.Fatalf("a refused credential reached the origin %d times", fetched.Load())
+	}
+}
+
 func TestCppDelegation(t *testing.T) {
 	if os.Getenv("OA_CPP_DELEGATION_PROBE") == "" {
 		t.Fatal("set OA_CPP_DELEGATION_PROBE to installed-header consumer")

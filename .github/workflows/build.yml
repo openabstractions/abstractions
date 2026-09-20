@@ -42,7 +42,7 @@ jobs:
           go env GOOS GOARCH CGO_ENABLED CC GOWORK GOFLAGS
           # These paths are published by split.manifest, not private workspace
           # modules. Public module pins must resolve without sibling replaces.
-          for module in serve monitor idl/gen; do
+          for module in serve monitor idl/gen mcp-gateway examples/logging-quickstart examples/pretend-lemonade; do
             echo "::group::$module: public dependency build and tests"
             test -f "$module/go.mod"
             (cd "$module" && go build ./... && go test -v -count=1 -timeout=10m ./...)

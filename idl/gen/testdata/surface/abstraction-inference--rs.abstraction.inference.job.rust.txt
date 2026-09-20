@@ -1,0 +1,55 @@
+pub type Raw
+pub enum Profile
+  Video
+  ImageBatch
+  pub const ALL: [Self; 2]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum Mode
+  Generate
+  Edit
+  pub const ALL: [Self; 2]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub mod request_guarantee
+  pub const LOCAL_ONLY: &str
+  pub const HOSTED_ALLOWED: &str
+  pub const ALL: [&str; 2]
+pub const KINDS: [&str; 1]
+pub const EXECUTION_GUARANTEES: [&str; 1]
+pub struct ImageRequest
+  model: String
+  mode: Mode
+  prompt: String
+  size: String
+  count: i64
+  image_digest: String
+  image_media_type: String
+  mask_digest: String
+  mask_media_type: String
+  guarantees: Vec<String>
+  credential: String
+  required_extensions: Vec<String>
+  extensions: BTreeMap<String, String>
+pub struct Delivery
+  digest: String
+  media_type: String
+  size: i64
+  location: String
+pub struct Request
+  profile: Profile
+  image: ImageRequest
+  duration_ms: i64
+pub struct JobResult
+  profile: Profile
+  deliveries: Vec<Delivery>
+  host: String
+  model: String
+pub struct Document
+  request: Option<Request>
+  result: Option<JobResult>
+pub fn encode(v: &Document) -> Vec<u8>
+pub struct Refusal
+  word: &'static str
+  offset: usize
+pub fn decode(data: &[u8]) -> Result<Document, Refusal>

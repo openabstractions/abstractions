@@ -1,0 +1,209 @@
+pub type Raw
+pub enum AcceptanceOutcome
+  Accepted
+  DefinitelyNotAccepted
+  Unknown
+  KeyConflict
+  Forbidden
+  Invalid
+  Unavailable
+  pub const ALL: [Self; 7]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum CancellationOutcome
+  Requested
+  AlreadyTerminal
+  Unknown
+  Forbidden
+  Unsupported
+  Unavailable
+  pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum WorkState
+  Pending
+  Running
+  Transferred
+  Complete
+  Failed
+  Cancelled
+  pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum FailureClass
+  Retryable
+  Permanent
+  Unknown
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub mod failure_cause
+  pub const OTHER: &str
+  pub const DIGEST_MISMATCH: &str
+  pub const OVERSIZE: &str
+  pub const SHORT_TRANSFER: &str
+  pub const UNAUTHORIZED: &str
+  pub const NOT_FOUND: &str
+  pub const REFUSED: &str
+  pub const SERVER_ERROR: &str
+  pub const TRANSPORT: &str
+  pub const RESULT_LOST: &str
+  pub const CREDENTIAL: &str
+  pub const ALL: [&str; 11]
+pub enum ObservationOutcome
+  Observed
+  Unknown
+  Forbidden
+  Invalid
+  DefinitelyNotAccepted
+  Unavailable
+  pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum ResultOutcome
+  Data
+  NotReady
+  Unavailable
+  Unsupported
+  Unknown
+  Forbidden
+  Invalid
+  pub const ALL: [Self; 7]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum InventoryOutcome
+  Page
+  Gap
+  Forbidden
+  Invalid
+  Unavailable
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum OperatorCancellationOutcome
+  Requested
+  AlreadyTerminal
+  Unknown
+  Forbidden
+  Invalid
+  Unavailable
+  pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub mod service_error_code
+  pub const HANDLER_ERROR: &str
+  pub const INVALID_RESULT: &str
+  pub const UNKNOWN_VERSION: &str
+  pub const UNKNOWN_SERVICE: &str
+  pub const UNKNOWN_METHOD: &str
+  pub const WRONG_MODE: &str
+  pub const FORBIDDEN: &str
+  pub const ALL: [&str; 7]
+pub const ADMISSION_GUARANTEES: [&str; 3]
+pub const ACCEPTANCE_ERROR_CODES: [&str; 1]
+pub const RESOURCE_ACTIONS: [&str; 3]
+pub struct RequestIdentity
+  key: String
+  history_epoch: String
+  attempt: i64
+pub struct Submission
+  identity: RequestIdentity
+  kind: String
+  spec: Vec<u8>
+  required_guarantees: Vec<String>
+  label: String
+pub struct Receipt
+  identity: RequestIdentity
+  logical_owner: String
+  operation_id: String
+  accepted_guarantees: Vec<String>
+  history_retention_ms: i64
+pub struct AcceptanceResult
+  outcome: AcceptanceOutcome
+  receipt: Option<Receipt>
+  reason: String
+pub struct HistoryWindow
+  logical_owner: String
+  history_epoch: String
+  minimum_retention_ms: i64
+  result_retention_ms: i64
+pub struct CancellationResult
+  outcome: CancellationOutcome
+pub struct WorkProgress
+  done: i64
+  total: i64
+pub struct WorkFailure
+  classification: FailureClass
+  message: String
+  cause: String
+pub struct OperationSnapshot
+  receipt: Receipt
+  state: WorkState
+  progress: WorkProgress
+  cancellation_requested: bool
+  failure: Option<WorkFailure>
+  label: String
+  label_derived: bool
+  waiting: String
+pub struct ObservationResult
+  outcome: ObservationOutcome
+  snapshot: Option<OperationSnapshot>
+pub struct ResultChunk
+  receipt: Receipt
+  offset: i64
+  total: i64
+  data: Vec<u8>
+  eof: bool
+pub struct ResultRead
+  outcome: ResultOutcome
+  chunk: Option<ResultChunk>
+pub struct InventoryPage
+  outcome: InventoryOutcome
+  snapshots: Vec<OperationSnapshot>
+  next: String
+  complete: bool
+pub struct OperatorCancellation
+  outcome: OperatorCancellationOutcome
+pub fn encode(v: &AcceptanceResult) -> Vec<u8>
+pub struct Refusal
+  word: &'static str
+  offset: usize
+pub fn decode(data: &[u8]) -> Result<AcceptanceResult, Refusal>
+pub use abstraction_frame::FrameTransport
+pub struct ServiceError
+  code: String
+  message: String
+pub enum CallError<E>
+  Transport(E)
+  Refusal(Refusal)
+  Dispatch(&'static str)
+  Service(ServiceError)
+pub trait RecoverableAcceptance
+  type Error
+  fn get_history_window(&self) -> Result<HistoryWindow, Self::Error>
+  fn submit(&self, submission: Submission) -> Result<AcceptanceResult, Self::Error>
+  fn reconcile(&self, identity: RequestIdentity) -> Result<AcceptanceResult, Self::Error>
+  fn cancel_work(&self, identity: RequestIdentity) -> Result<CancellationResult, Self::Error>
+pub struct RecoverableAcceptanceClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait OperationControl
+  type Error
+  fn observe_work(&self, identity: RequestIdentity) -> Result<ObservationResult, Self::Error>
+  fn read_result(&self, identity: RequestIdentity, offset: i64, max_bytes: i64) -> Result<ResultRead, Self::Error>
+pub struct OperationControlClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait JobInventory
+  type Error
+  fn list_work(&self, cursor: String, limit: i64) -> Result<InventoryPage, Self::Error>
+pub struct JobInventoryClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait JobOperator
+  type Error
+  fn list_account_work(&self, cursor: String, limit: i64) -> Result<InventoryPage, Self::Error>
+  fn cancel_operation(&self, operation_id: String) -> Result<OperatorCancellation, Self::Error>
+pub struct JobOperatorClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T

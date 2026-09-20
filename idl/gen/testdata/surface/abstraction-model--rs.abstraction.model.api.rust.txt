@@ -1,0 +1,86 @@
+pub type Raw
+pub enum LookupOutcome
+  Resolved
+  Invalid
+  Unavailable
+  UnsupportedMapping
+  Forbidden
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum ManifestOutcome
+  Resolved
+  NotFound
+  Invalid
+  Unavailable
+  UnsupportedMapping
+  Forbidden
+  pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub mod service_error_code
+  pub const HANDLER_ERROR: &str
+  pub const INVALID_RESULT: &str
+  pub const UNKNOWN_VERSION: &str
+  pub const UNKNOWN_SERVICE: &str
+  pub const UNKNOWN_METHOD: &str
+  pub const WRONG_MODE: &str
+  pub const ALL: [&str; 6]
+pub const RESOLVER_OPERATIONS: [&str; 2]
+pub const REGISTRY_OPERATIONS: [&str; 3]
+pub struct Ref
+  registry: String
+  repo: String
+  revision: String
+  quant: String
+  file: String
+  credential: String
+pub struct LookupResult
+  outcome: LookupOutcome
+  request: Option<OAImported0>
+pub struct ManifestResult
+  outcome: ManifestOutcome
+  manifest: Option<OAImported1>
+  resolved_revision: String
+pub fn encode(v: &Ref) -> Vec<u8>
+pub struct Refusal
+  word: &'static str
+  offset: usize
+pub fn decode(data: &[u8]) -> Result<Ref, Refusal>
+pub use abstraction_frame::FrameTransport
+pub struct ServiceError
+  code: String
+  message: String
+pub enum CallError<E>
+  Transport(E)
+  Refusal(Refusal)
+  Dispatch(&'static str)
+  Service(ServiceError)
+pub trait ModelResolver
+  type Error
+  fn resolve(&self, reference: Ref) -> Result<LookupResult, Self::Error>
+pub struct ModelResolverClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait ModelManifest
+  type Error
+  fn resolve(&self, reference: Ref) -> Result<ManifestResult, Self::Error>
+pub struct ModelManifestClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub fn encode_ref_document(v: &Ref) -> Result<Vec<u8>, Refusal>
+pub fn decode_ref_document(data: &[u8]) -> Result<Ref, Refusal>
+pub fn encode_lookup_result_document(v: &LookupResult) -> Result<Vec<u8>, Refusal>
+pub fn decode_lookup_result_document(data: &[u8]) -> Result<LookupResult, Refusal>
+pub fn encode_manifest_result_document(v: &ManifestResult) -> Result<Vec<u8>, Refusal>
+pub fn decode_manifest_result_document(data: &[u8]) -> Result<ManifestResult, Refusal>
+pub mod internal
+  pub fn decode_ref_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Ref, usize), super::Refusal>
+  pub fn check_ref(v: &super::Ref, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_ref_at(v: &super::Ref, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_lookup_result_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::LookupResult, usize), super::Refusal>
+  pub fn check_lookup_result(v: &super::LookupResult, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_lookup_result_at(v: &super::LookupResult, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_manifest_result_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ManifestResult, usize), super::Refusal>
+  pub fn check_manifest_result(v: &super::ManifestResult, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_manifest_result_at(v: &super::ManifestResult, depth: i32) -> Result<Vec<u8>, super::Refusal>

@@ -61,15 +61,40 @@ func (b backend) verify(e emitted) error {
 
 var backends = []backend{
 	{"go", "go/rec/rec.go", genGo, nil, true},
-	{"python", "py/rec.py", genPy, nil, true},
+	{"python", "py/_codec.py", genPy, []string{"__future__", "dataclasses", "enum"}, true},
 	{"cpp", "cpp/rec.h", genCpp, []string{
 		"cstddef", "cstdint", "map", "optional", "stdexcept", "string", "string_view", "vector"}, true},
-	{"javascript", "js/rec.mjs", genJS, nil, true},
+	{"javascript", "js/internal.mjs", genJS, nil, true},
 	{"rust", "rs/rec.rs", genRust, []string{"std::collections::BTreeMap"}, true},
 	{"docs", "schema.html", genDocs, nil, false},
 }
 
-const usage = "usage: gen <definition.thrift> <outdir> [-only=<surface,...>] [--no-ipc] [--shared-rust-transport] [language ...]\n       gen <definition.thrift> --paths [language ...]"
+// publicModules are the modules an application imports, beside a backend's
+// implementation module: Python's package __init__.py and JavaScript's
+// index.mjs. Each re-exports the implementation's public names and nothing else.
+var publicModules = map[string]struct {
+	file string
+	emit func(*Definition, string) string
+}{
+	"python":     {"__init__.py", genPyPublic},
+	"javascript": {"index.mjs", genJSPublic},
+}
+
+// jsTypesPath is index.d.mts, the TypeScript declarations TypeScript pairs with index.mjs.
+func jsTypesPath(path string) string {
+	return filepath.ToSlash(filepath.Join(filepath.Dir(path), "index.d.mts"))
+}
+
+// publicPath is where a backend's public module lands beside its implementation.
+func publicPath(lang, path string) (string, bool) {
+	m, ok := publicModules[lang]
+	if !ok {
+		return "", false
+	}
+	return filepath.ToSlash(filepath.Join(filepath.Dir(path), m.file)), true
+}
+
+const usage ="usage: gen <definition.thrift> <outdir> [-only=<surface,...>] [--no-ipc] [--shared-rust-transport] [language ...]\n       gen <definition.thrift> --paths [language ...]"
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
@@ -216,6 +241,12 @@ func run(args []string, stdout io.Writer) error {
 			}
 			path, _ := namespacedOutput(b, def.Namespaces, "")
 			fmt.Fprintln(stdout, path)
+			if public, ok := publicPath(b.lang, path); ok {
+				fmt.Fprintln(stdout, public)
+			}
+			if b.lang == "javascript" {
+				fmt.Fprintln(stdout, jsTypesPath(path))
+			}
 		}
 		return nil
 	}
@@ -255,12 +286,32 @@ func run(args []string, stdout io.Writer) error {
 		if err := b.verify(emitted{def, b.lang, includeImports(b, def), body, args[0], entire}); err != nil {
 			return err
 		}
+		if b.lang == "rust" {
+			// Verified over every helper the backend can emit; shipped without
+			// the ones this artefact never reaches, since a crate denies dead code.
+			body = rsPrune(body)
+		}
 		path, body := namespacedOutput(b, def.Namespaces, body)
 		if b.lang == "go" && goAlias != "" {
 			body, err = goExportAliases(body, goAlias)
 			if err != nil {
 				return err
 			}
+		}
+		if public, ok := publicPath(b.lang, path); ok {
+			text := banner(b.lang, args[0], publicModules[b.lang].emit(def, body))
+			artifacts = append(artifacts, artifact{public, text,
+				fmt.Sprintf("%-12s %-16s %5d lines  %s\n", b.lang, public, strings.Count(text, "\n"), "public names")})
+		}
+		if b.lang == "javascript" {
+			decl, err := genJSTypes(def, body)
+			if err != nil {
+				return err
+			}
+			typesPath := jsTypesPath(path)
+			text := banner(b.lang, args[0], decl)
+			artifacts = append(artifacts, artifact{typesPath, text,
+				fmt.Sprintf("%-12s %-16s %5d lines  %s\n", b.lang, typesPath, strings.Count(text, "\n"), "declarations")})
 		}
 		body = banner(b.lang, args[0], body)
 		artifacts = append(artifacts, artifact{path, body,

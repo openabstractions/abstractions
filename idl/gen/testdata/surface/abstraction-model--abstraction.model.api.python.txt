@@ -1,0 +1,61 @@
+class DispatchError(ValueError)
+  __init__(code)
+enum LookupOutcome
+  RESOLVED = 'resolved'
+  INVALID = 'invalid'
+  UNAVAILABLE = 'unavailable'
+  UNSUPPORTED_MAPPING = 'unsupported_mapping'
+  FORBIDDEN = 'forbidden'
+dataclass LookupResult
+  outcome: LookupOutcome | None
+  request: _dependency_request.Request | None
+enum ManifestOutcome
+  RESOLVED = 'resolved'
+  NOT_FOUND = 'not_found'
+  INVALID = 'invalid'
+  UNAVAILABLE = 'unavailable'
+  UNSUPPORTED_MAPPING = 'unsupported_mapping'
+  FORBIDDEN = 'forbidden'
+dataclass ManifestResult
+  outcome: ManifestOutcome | None
+  manifest: _dependency_content.Manifest | None
+  resolved_revision: str
+class ModelManifest
+  resolve(ref: Ref) -> ManifestResult
+class ModelManifestClient(ModelManifest)
+  __init__(transport)
+  resolve(ref: Ref) -> ManifestResult
+class ModelResolver
+  resolve(ref: Ref) -> LookupResult
+class ModelResolverClient(ModelResolver)
+  __init__(transport)
+  resolve(ref: Ref) -> LookupResult
+const REGISTRY_OPERATIONS
+const RESOLVER_OPERATIONS
+dataclass Ref
+  registry: str
+  repo: str
+  revision: str
+  quant: str
+  file: str
+  credential: str
+class Refusal(ValueError)
+  __init__(word, offset)
+class ServiceError(Exception)
+  __init__(code, message)
+enum ServiceErrorCode
+  HANDLER_ERROR = 'handler_error'
+  INVALID_RESULT = 'invalid_result'
+  UNKNOWN_VERSION = 'unknown_version'
+  UNKNOWN_SERVICE = 'unknown_service'
+  UNKNOWN_METHOD = 'unknown_method'
+  WRONG_MODE = 'wrong_mode'
+def decode(data)
+def decode_lookup_result(data)
+def decode_manifest_result(data)
+def decode_ref(data)
+def encode(v)
+def encode_lookup_result(v)
+def encode_manifest_result(v)
+def encode_ref(v)
+def service_name(frame)

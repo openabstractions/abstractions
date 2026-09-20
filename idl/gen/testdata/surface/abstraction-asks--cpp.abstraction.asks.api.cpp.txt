@@ -1,0 +1,146 @@
+using Raw = std::string
+class Refusal : public std::runtime_error
+  const char* word
+  std::size_t offset
+enum class ObservationOutcome {Pending, Answered, Unknown, Gone, Invalid, Conflict, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(ObservationOutcome value)
+inline std::optional<ObservationOutcome> parse_observation_outcome(std::string_view name)
+inline constexpr bool operator==(ObservationOutcome value, std::string_view name)
+inline constexpr bool operator!=(ObservationOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ObservationOutcome value)
+inline constexpr bool operator!=(std::string_view name, ObservationOutcome value)
+inline const std::vector<std::string> kObservationOutcomeNames
+enum class OperatorPageOutcome {Page, Gap, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(OperatorPageOutcome value)
+inline std::optional<OperatorPageOutcome> parse_operator_page_outcome(std::string_view name)
+inline constexpr bool operator==(OperatorPageOutcome value, std::string_view name)
+inline constexpr bool operator!=(OperatorPageOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, OperatorPageOutcome value)
+inline constexpr bool operator!=(std::string_view name, OperatorPageOutcome value)
+inline const std::vector<std::string> kOperatorPageOutcomeNames
+enum class OperatorDecisionOutcome {Answered, Conflict, Unknown, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(OperatorDecisionOutcome value)
+inline std::optional<OperatorDecisionOutcome> parse_operator_decision_outcome(std::string_view name)
+inline constexpr bool operator==(OperatorDecisionOutcome value, std::string_view name)
+inline constexpr bool operator!=(OperatorDecisionOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, OperatorDecisionOutcome value)
+inline constexpr bool operator!=(std::string_view name, OperatorDecisionOutcome value)
+inline const std::vector<std::string> kOperatorDecisionOutcomeNames
+enum class OperatorRetirementOutcome {Retired, Unknown, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(OperatorRetirementOutcome value)
+inline std::optional<OperatorRetirementOutcome> parse_operator_retirement_outcome(std::string_view name)
+inline constexpr bool operator==(OperatorRetirementOutcome value, std::string_view name)
+inline constexpr bool operator!=(OperatorRetirementOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, OperatorRetirementOutcome value)
+inline constexpr bool operator!=(std::string_view name, OperatorRetirementOutcome value)
+inline const std::vector<std::string> kOperatorRetirementOutcomeNames
+inline const std::vector<std::string> kServiceErrorCodeNames
+inline constexpr std::string_view kServiceErrorCodeHandlerError
+inline constexpr std::string_view kServiceErrorCodeInvalidResult
+inline constexpr std::string_view kServiceErrorCodeUnknownVersion
+inline constexpr std::string_view kServiceErrorCodeUnknownService
+inline constexpr std::string_view kServiceErrorCodeUnknownMethod
+inline constexpr std::string_view kServiceErrorCodeWrongMode
+inline const std::vector<std::string> kOperations
+inline const std::vector<std::string> kRefusalCodes
+inline const std::vector<std::string> kResourceActions
+struct Question
+  std::string asker
+  std::string key
+  std::map<std::string, std::string> slots
+struct Request
+  std::string op
+  std::optional<Question> ask
+  bool wait
+  std::string id
+  std::string option
+  std::string admin
+struct Answer
+  std::string id
+  bool pending
+  std::string option
+  bool yes
+  bool kept
+struct RecordMetadata
+  std::string id
+  std::string asker
+  std::string key
+  std::string about
+  std::string text
+  std::vector<std::string> options
+  std::string asked
+  std::string option
+  std::string answered
+  bool kept
+  bool yes
+struct ResponseMetadata
+  std::string code
+  std::string error
+  std::optional<Answer> answer
+  std::vector<RecordMetadata> records
+struct ApplicationQuestion
+  std::string request_key
+  std::string key
+  std::map<std::string, std::string> slots
+struct QuestionObservation
+  ObservationOutcome outcome
+  std::optional<Answer> answer
+struct OperatorPage
+  OperatorPageOutcome outcome
+  std::vector<RecordMetadata> records
+  std::string next
+  bool complete
+struct OperatorDecision
+  OperatorDecisionOutcome outcome
+  std::optional<RecordMetadata> record
+struct OperatorRetirement
+  OperatorRetirementOutcome outcome
+  std::optional<RecordMetadata> record
+inline std::string encode(const Request& v)
+inline Request decode(std::string_view data)
+struct FrameWriter
+  virtual void write_frame(std::string_view frame)
+struct DispatchError : std::runtime_error
+inline std::string service_name(std::string_view frame)
+struct FrameExchanger
+  virtual std::string exchange_frame(std::string_view frame)
+struct ServiceError : std::runtime_error
+  std::string code, message
+inline constexpr std::string_view kEndpointContract
+struct DescribedService
+  std::string contract
+  bool ready
+  std::string why
+std::string describe_endpoint(std::string_view frame, const std::string& program, const std::string& version, const Services& . . . services)
+struct QuestionApplication
+  virtual QuestionObservation ask(const ApplicationQuestion& question)
+  virtual QuestionObservation observe(const std::string& request_key, const std::int64_t& wait_ms)
+template<class Transport>struct QuestionApplicationClient : QuestionApplication
+  Transport& transport_
+  QuestionObservation ask(const ApplicationQuestion& question) override
+  QuestionObservation observe(const std::string& request_key, const std::int64_t& wait_ms) override
+struct QuestionApplicationService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct QuestionApplicationDispatcher : FrameWriter, FrameExchanger
+  QuestionApplication& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct QuestionOperator
+  virtual OperatorPage list_questions(const std::string& cursor, const std::int64_t& limit)
+  virtual OperatorDecision answer_question(const std::string& id, const std::string& option)
+  virtual OperatorRetirement retire_question(const std::string& id)
+template<class Transport>struct QuestionOperatorClient : QuestionOperator
+  Transport& transport_
+  OperatorPage list_questions(const std::string& cursor, const std::int64_t& limit) override
+  OperatorDecision answer_question(const std::string& id, const std::string& option) override
+  OperatorRetirement retire_question(const std::string& id) override
+struct QuestionOperatorService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct QuestionOperatorDispatcher : FrameWriter, FrameExchanger
+  QuestionOperator& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override

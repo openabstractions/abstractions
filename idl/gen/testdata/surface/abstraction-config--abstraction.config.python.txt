@@ -1,0 +1,90 @@
+class ConfigEditor
+  read_user() -> UserSnapshot
+  replace_user(expected_revision: str, values: UserSettings) -> UserReplaceResult
+class ConfigEditorClient(ConfigEditor)
+  __init__(transport)
+  read_user() -> UserSnapshot
+  replace_user(expected_revision: str, values: UserSettings) -> UserReplaceResult
+dataclass ConfigObservation
+  outcome: ConfigObservationOutcome | None
+  cursor: str
+  snapshot: Snapshot | None
+enum ConfigObservationOutcome
+  SNAPSHOT = 'snapshot'
+  UNCHANGED = 'unchanged'
+  GAP = 'gap'
+  UNAVAILABLE = 'unavailable'
+  UNSUPPORTED = 'unsupported'
+  INVALID = 'invalid'
+class ConfigObserver
+  observe(overrides: RunOverrides, cursor: str, wait_ms: int) -> ConfigObservation
+class ConfigObserverClient(ConfigObserver)
+  __init__(transport)
+  observe(overrides: RunOverrides, cursor: str, wait_ms: int) -> ConfigObservation
+class ConfigReader
+  read(overrides: RunOverrides) -> Snapshot
+class ConfigReaderClient(ConfigReader)
+  __init__(transport)
+  read(overrides: RunOverrides) -> Snapshot
+class DispatchError(ValueError)
+  __init__(code)
+const EDITOR_ERROR_CODES
+dataclass Origin
+  rung: str
+  path: str
+dataclass Origins
+  nas_store: Origin
+  store: Origin
+  log_sink: Origin
+  log_service: Origin
+  off: Origin
+const READER_ERROR_CODES
+class Refusal(ValueError)
+  __init__(word, offset)
+dataclass RunOverrides
+  nas_store: str
+  store: str
+  log_sink: str
+  log_service: str
+class ServiceError(Exception)
+  __init__(code, message)
+enum ServiceErrorCode
+  HANDLER_ERROR = 'handler_error'
+  INVALID_RESULT = 'invalid_result'
+  UNKNOWN_VERSION = 'unknown_version'
+  UNKNOWN_SERVICE = 'unknown_service'
+  UNKNOWN_METHOD = 'unknown_method'
+  WRONG_MODE = 'wrong_mode'
+  STORAGE_UNAVAILABLE = 'storage_unavailable'
+  CALLER_UNAVAILABLE = 'caller_unavailable'
+  IDENTITY_REQUIRED = 'identity_required'
+  WRONG_USER = 'wrong_user'
+  INVALID_REVISION = 'invalid_revision'
+dataclass Snapshot
+  nas_store: str
+  store: str
+  log_sink: str
+  log_service: str
+  off: dict[str, str]
+  origins: Origins
+  stamp: str
+enum UserReplaceOutcome
+  APPLIED = 'applied'
+  CONFLICT = 'conflict'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass UserReplaceResult
+  outcome: UserReplaceOutcome | None
+  snapshot: UserSnapshot
+dataclass UserSettings
+  nas_store: str
+  store: str
+  log_sink: str
+  log_service: str
+  off: dict[str, str]
+dataclass UserSnapshot
+  values: UserSettings
+  revision: str
+def decode(data)
+def encode(v)
+def service_name(frame)

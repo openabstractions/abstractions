@@ -6,7 +6,64 @@ import (
 	"strings"
 )
 
+// validateJSNames refuses a definition whose JavaScript spelling would collide.
+// Properties may be reserved words; parameters may not, and JavaScript has no
+// trailing-underscore convention, so such a contract name needs javascript.name.
+func validateJSNames(s *Definition) error {
+	for _, st := range s.Structs {
+		props := map[string]string{}
+		if st.PreservesUnknown() {
+			props["extras"] = "extras"
+		}
+		for _, f := range st.Fields {
+			n := f.Ident("javascript")
+			if prior, ok := props[n]; ok {
+				return fmt.Errorf("JavaScript property %q is both %s.%s and %s.%s; add javascript.name to one", n, st.Name, prior, st.Name, f.Name)
+			}
+			props[n] = f.Name
+		}
+	}
+	for _, en := range s.Enums {
+		members := map[string]string{}
+		for _, m := range en.Members {
+			n := jsPascal(m.Name)
+			if o, ok := m.Ann["javascript.name"]; ok {
+				n = o
+			}
+			if prior, ok := members[n]; ok {
+				return fmt.Errorf("JavaScript member %s.%s is both %s and %s", pascalCase(en.Name), n, prior, m.Name)
+			}
+			members[n] = m.Name
+		}
+	}
+	for _, svc := range s.Services {
+		methods := map[string]string{}
+		for _, m := range svc.Methods {
+			n := camelCase(m.Name)
+			if prior, ok := methods[n]; ok {
+				return fmt.Errorf("JavaScript method %s.%s is both %s and %s", pascalCase(svc.Name), n, prior, m.Name)
+			}
+			methods[n] = m.Name
+			params := map[string]string{}
+			for _, f := range m.Args {
+				p := f.Ident("javascript")
+				if jsReservedParameter(p) {
+					return fmt.Errorf("JavaScript parameter %q of %s is a reserved word; add javascript.name to %s", p, m.Name, f.Name)
+				}
+				if prior, ok := params[p]; ok {
+					return fmt.Errorf("JavaScript parameter %q of %s is both %s and %s; add javascript.name to one", p, m.Name, prior, f.Name)
+				}
+				params[p] = f.Name
+			}
+		}
+	}
+	return nil
+}
+
 func validateJSServices(s *Definition) error {
+	if err := validateJSNames(s); err != nil {
+		return err
+	}
 	if len(s.Services) == 0 {
 		return nil
 	}
@@ -30,7 +87,7 @@ func validateJSServices(s *Definition) error {
 		return true
 	}
 	for _, st := range s.Structs {
-		if !valid(st.Name) || used[st.Name] {
+		if !valid(jsStem(st.Name)) || used[jsStem(st.Name)] {
 			return fmt.Errorf("javascript service record name %q is reserved", st.Name)
 		}
 		for _, f := range st.Fields {
@@ -43,11 +100,12 @@ func validateJSServices(s *Definition) error {
 		}
 	}
 	for _, svc := range s.Services {
-		if !valid(svc.Name) || used[svc.Name] {
+		if !valid(pascalCase(svc.Name)) || used[pascalCase(svc.Name)] {
 			return fmt.Errorf("javascript service name %q is reserved", svc.Name)
 		}
 		for _, m := range svc.Methods {
-			if !valid(m.Name) || m.Name == "constructor" || m.Name == "then" || m.Name == "_transport" {
+			n := camelCase(m.Name)
+			if !valid(n) || n == "constructor" || n == "then" || n == "_transport" {
 				return fmt.Errorf("javascript service method name %q is reserved", m.Name)
 			}
 			for _, f := range append(append([]Field{}, m.Args...), m.Result) {
@@ -58,6 +116,23 @@ func validateJSServices(s *Definition) error {
 		}
 	}
 	return nil
+}
+
+func jsParams(m Method) string {
+	var params []string
+	for _, f := range m.Args {
+		params = append(params, f.Ident("javascript"))
+	}
+	return strings.Join(params, ", ")
+}
+
+// jsInterface is the method shape a --no-ipc definition offers an implementer.
+func jsInterface(b *strings.Builder, svc Service) {
+	fmt.Fprintf(b, "\nexport class %s {\n", pascalCase(svc.Name))
+	for _, m := range svc.Methods {
+		fmt.Fprintf(b, "  async %s(%s) { throw new Error(\"not implemented\"); }\n", camelCase(m.Name), jsParams(m))
+	}
+	b.WriteString("}\n")
 }
 
 func jsService(b *strings.Builder, s *Definition) {
@@ -80,7 +155,7 @@ func jsService(b *strings.Builder, s *Definition) {
 	}
 	b.WriteString(`
 function _serviceRequest(service, method, argumentsBytes) {
-  return _serviceEncode(enc_oaserviceframe, {
+  return _serviceEncode(writeOAServiceFrame, {
     version:1, service, method, arguments:new TextDecoder("utf-8",{fatal:true}).decode(argumentsBytes)
   },0);
 }
@@ -89,11 +164,11 @@ function _serviceRequest(service, method, argumentsBytes) {
 		b.WriteString(`
 function _serviceResponse(frame, service, method) {
   if (!(frame instanceof Uint8Array)) throw new TypeError("transport frame must be Uint8Array");
-  const reply = _serviceDecode(decode_oaservicereply, frame, 0);
+  const reply = _serviceDecode(readOAServiceReply, frame, 0);
   if (reply.version !== 1) throw new DispatchError("unknown_version");
   if (reply.service !== service || reply.method !== method) throw new DispatchError("mismatched_response");
   if (!reply.ok) {
-    const error = _serviceDecode(decode_oaserviceerror, reply.payload, 1);
+    const error = _serviceDecode(readOAServiceError, reply.payload, 1);
     if (!error.code) throw new DispatchError("invalid_error");
     throw new ServiceError(error.code, error.message);
   }
@@ -102,29 +177,26 @@ function _serviceResponse(frame, service, method) {
 `)
 	}
 	for _, svc := range s.Services {
-		fmt.Fprintf(b, "\nexport class %sClient {\n  constructor(transport) { this._transport = transport; }\n", svc.Name)
+		fmt.Fprintf(b, "\nexport class %sClient {\n  constructor(transport) { this._transport = transport; }\n", pascalCase(svc.Name))
 		for _, m := range svc.Methods {
-			var params []string
-			for i := range m.Args {
-				params = append(params, fmt.Sprintf("arg%d", i))
+			args := jsStem(argsName(svc, m))
+			fmt.Fprintf(b, "\n  async %s(%s) {\n    const _args = new%s();\n", camelCase(m.Name), jsParams(m), args)
+			for _, f := range m.Args {
+				fmt.Fprintf(b, "    _args.%s = %s;\n", f.Ident("javascript"), f.Ident("javascript"))
 			}
-			fmt.Fprintf(b, "  async %s(%s) {\n    const args = new%s();\n", m.Name, strings.Join(params, ","), argsName(svc, m))
-			for i, f := range m.Args {
-				fmt.Fprintf(b, "    args[%q] = arg%d;\n", f.Ident("javascript"), i)
-			}
-			fmt.Fprintf(b, "    _serviceCheck(%q, args);\n    const payload = _serviceEncode(enc_%s, args, 1);\n    _serviceDecode(decode_%s, payload, 1);\n    const request = _serviceRequest(%q, %q, payload);\n", argsName(svc, m), lower(argsName(svc, m)), lower(argsName(svc, m)), svc.WireName, m.Name)
+			fmt.Fprintf(b, "    _serviceCheck(%q, _args);\n    const _payload = _serviceEncode(write%s, _args, 1);\n    _serviceDecode(read%s, _payload, 1);\n    const _request = _serviceRequest(%q, %q, _payload);\n", argsName(svc, m), args, args, svc.WireName, m.Name)
 			if m.Oneway {
-				b.WriteString("    await this._transport.writeFrame(request);\n")
+				b.WriteString("    await this._transport.writeFrame(_request);\n")
 			} else {
-				fmt.Fprintf(b, "    const reply = _serviceResponse(await this._transport.exchangeFrame(request), %q, %q);\n    const result = _serviceDecode(decode_%s, reply, 1);\n", svc.WireName, m.Name, lower(resultName(svc, m)))
+				fmt.Fprintf(b, "    const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), %q, %q);\n    const _result = _serviceDecode(read%s, _reply, 1);\n", svc.WireName, m.Name, jsStem(resultName(svc, m)))
 				if m.Result.Type != "void" {
-					b.WriteString("    return result.value;\n")
+					b.WriteString("    return _result.value;\n")
 				}
 			}
 			b.WriteString("  }\n")
 		}
 		b.WriteString("}\n")
-		fmt.Fprintf(b, "export const %sService = Object.freeze({wireName:%s,Client:%sClient});\n", svc.Name, strconv.Quote(svc.WireName), svc.Name)
+		fmt.Fprintf(b, "export const %sService = Object.freeze({wireName:%s,Client:%sClient});\n", pascalCase(svc.Name), strconv.Quote(svc.WireName), pascalCase(svc.Name))
 	}
 }
 

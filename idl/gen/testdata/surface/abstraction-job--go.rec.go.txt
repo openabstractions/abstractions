@@ -1,0 +1,102 @@
+type Raw string
+type Verdict string
+const VerdictNotFound
+const VerdictLeaseHeld
+const VerdictStaleEpoch
+const VerdictConflict
+const VerdictLeaseExpired
+const VerdictTerminal
+const VerdictInvalid
+const VerdictUnknownSchema
+const VerdictUnknownOp
+const VerdictNotSupported
+const VerdictOther
+func VerdictValues() []Verdict
+func (Verdict) Known() bool
+var VerdictTranscript
+type Step struct
+  Name string
+  Ordinal int32
+  Of int32
+  Done int64
+  Total int64
+type Progress struct
+  Done int64
+  Total int64
+  UpdatedAt string
+  Step *Step
+type Recall struct
+  Reason string
+  By string
+  At string
+  Until string
+type Lease struct
+  Owner string
+  Epoch int64
+  ExpiresAt string
+  Recall *Recall
+type Delegation struct
+  System string
+  ExternalID string
+  Delivered bool
+type Intent struct
+  Want string
+  By string
+  At string
+type Envelope struct
+  Schema string
+  Actions []string
+type Record struct
+  Content []string
+  Critical []string
+  ID string
+  Kind string
+  Envelope *Envelope
+  State string
+  Spec Raw
+  Checkpoint Raw
+  Progress Progress
+  Lease Lease
+  Delegation *Delegation
+  Requires []string
+  Error string
+  Intent *Intent
+  Extensions map[string]Raw
+  CreatedAt string
+  UpdatedAt string
+type Request struct
+  Op string
+  ID string
+  Owner string
+  Epoch int64
+  TTLMs int64
+  Want string
+  By string
+  Reason string
+  Record Raw
+  Base Raw
+type Response struct
+  Kind string
+  Error string
+  ID string
+  Record Raw
+  Records []Raw
+  Bool bool
+  Unreadable []string
+func Encode(v *Record) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+func Decode(in []byte) (*Record, error)
+var ContentTerms
+var ContentStripCritical
+var Operations
+func IsOperation(name string) bool
+const UnknownOperation
+var Verdicts
+func IsVerdict(name string) bool
+func EncodeRequest(v *Request) []byte
+func DecodeRequest(in []byte) (*Request, error)
+func EncodeResponse(v *Response) []byte
+func DecodeResponse(in []byte) (*Response, error)

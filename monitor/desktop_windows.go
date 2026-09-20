@@ -50,12 +50,12 @@ func (p *servicePanel) desktop(url string) error {
 					page, e := inventory.ListWork(ctx, "", 32)
 					err = e
 					if err == nil {
-						message = "Inventory: " + page.Outcome
+						message = "Inventory: " + page.Outcome.String()
 						if !page.Complete {
 							message += "; more pages available in full controls"
 						}
 						for _, s := range page.Snapshots {
-							values = append(values, []string{s.Receipt.OperationId, s.State, fmt.Sprintf("%d / %d", s.Progress.Done, s.Progress.Total)})
+							values = append(values, []string{s.Receipt.OperationID, s.State.String(), fmt.Sprintf("%d / %d", s.Progress.Done, s.Progress.Total)})
 						}
 					}
 				}

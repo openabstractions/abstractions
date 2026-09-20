@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"go/format"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -134,6 +135,8 @@ func strs(out []byte, v []string, depth int) []byte {
 	return append(out, ']')
 }
 
+@ENUM_LIST_HELPER@
+
 func raw(out []byte, s string, depth int) []byte {
 	ws := func(c byte) bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' }
 	for i := 0; i < len(s); {
@@ -238,6 +241,20 @@ func rawmap(out []byte, m map[string]Raw, depth int) []byte {
 	}
 	out = pad(out, depth)
 	return append(out, '}')
+}
+`
+
+const goEnumListHelper = `func enumStrs[T any](out []byte, v []T, depth int, word func(T) string) []byte {
+	if len(v) == 0 { return append(out, '[', ']') }
+	out = append(out, '[', '\n')
+	for i, item := range v {
+		out = pad(out, depth+1)
+		out = esc(out, word(item))
+		if i+1 < len(v) { out = append(out, ',') }
+		out = append(out, '\n')
+	}
+	out = pad(out, depth)
+	return append(out, ']')
 }
 `
 
@@ -899,7 +916,7 @@ func lexicalTimestamp(s string) bool {
 
 // [DEF-G2] rfc3339-micros: what a writer emits. Exactly six fractional digits,
 // upper-case separators, UTC.
-func MicrosTimestamp(s string) bool {
+func microsTimestamp(s string) bool {
 	return len(s) == 27 && normalizedTimestamp(s) == s
 }
 
@@ -909,7 +926,7 @@ func (r *reader) timestamp() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !WideTimestamp(s) {
+	if !wideTimestamp(s) {
 		r.pos = at
 		return "", r.refuse("bad_timestamp")
 	}
@@ -1012,6 +1029,19 @@ func goRead(s *Definition, f Field) string {
 		if f.Grammar.Named() {
 			return get("r.timestamp()", e+" = x")
 		}
+		if goEnum(f) {
+			name := goName(f.EnumType.Name)
+			if goClosedEnum(f) {
+				if enumAbsent(f) {
+					return get("r.str()", "word, ok := Parse"+name+"(x)\n\t\t\t\tif !ok {\n\t\t\t\t\treturn nil, r.refuse(\"bad_enum\")\n\t\t\t\t}\n\t\t\t\t"+e+" = &word")
+				}
+				return get("r.str()", "word, ok := Parse"+name+"(x)\n\t\t\t\tif !ok {\n\t\t\t\t\treturn nil, r.refuse(\"bad_enum\")\n\t\t\t\t}\n\t\t\t\t"+e+" = word")
+			}
+			if enumAbsent(f) {
+				return get("r.str()", "word := "+name+"(x)\n\t\t\t\t"+e+" = &word")
+			}
+			return get("r.str()", e+" = "+name+"(x)")
+		}
 		if enumAbsent(f) {
 			return get("r.str()", e+" = &x")
 		}
@@ -1025,6 +1055,13 @@ func goRead(s *Definition, f Field) string {
 	case "json":
 		return get("r.rawValue()", e+" = x")
 	case "list<string>":
+		if f.EnumList {
+			name := goName(f.EnumType.Name)
+			if goClosedEnum(f) {
+				return get("r.strList()", "words := make([]"+name+", len(x))\n\t\t\t\tfor i, raw := range x { word, ok := Parse"+name+"(raw); if !ok { return nil, r.refuse(\"bad_enum\") }; words[i] = word }\n\t\t\t\t"+e+" = words")
+			}
+			return get("r.strList()", "words := make([]"+name+", len(x))\n\t\t\t\tfor i, raw := range x { words[i] = "+name+"(raw) }\n\t\t\t\t"+e+" = words")
+		}
 		return get("r.strList()", e+" = x")
 	case "map<string,json>":
 		return get("r.rawMap()", e+" = x")
@@ -1047,7 +1084,7 @@ func goDerive(b *strings.Builder, s *Definition) {
 	if v == nil {
 		return
 	}
-	fmt.Fprintf(b, "\nvar %sTerms = []string{", v.Name)
+	fmt.Fprintf(b, "\nvar %sTerms = []string{", goName(v.Name))
 	for i, t := range v.Terms {
 		if i > 0 {
 			b.WriteString(", ")
@@ -1055,7 +1092,7 @@ func goDerive(b *strings.Builder, s *Definition) {
 		fmt.Fprintf(b, "%q", t.Name)
 	}
 	b.WriteString("}\n")
-	fmt.Fprintf(b, "\nvar %sStripCritical = map[string]bool{\n", v.Name)
+	fmt.Fprintf(b, "\nvar %sStripCritical = map[string]bool{\n", goName(v.Name))
 	for _, t := range v.Terms {
 		if t.StripCritical {
 			fmt.Fprintf(b, "\t%q: true,\n", t.Name)
@@ -1063,14 +1100,14 @@ func goDerive(b *strings.Builder, s *Definition) {
 	}
 	b.WriteString("}\n")
 	fmt.Fprintf(b, "\nfunc (r *reader) derive(v *%s) error {\n", v.Of)
-	fmt.Fprintf(b, "\tin := map[string]bool{}\n\tfor _, n := range v.%s {\n\t\tin[n] = true\n\t}\n", exported(v.Names))
-	fmt.Fprintf(b, "\tknown := map[string]bool{}\n\tfor _, n := range %sTerms {\n\t\tknown[n] = true\n\t}\n", v.Name)
-	fmt.Fprintf(b, "\tkept := v.%s[:0]\n", exported(v.Critical))
-	fmt.Fprintf(b, "\tfor _, n := range v.%s {\n", exported(v.Critical))
-	fmt.Fprintf(b, "\t\tswitch {\n\t\tcase %sStripCritical[n]:\n\t\t\tcontinue\n", v.Name)
+	fmt.Fprintf(b, "\tin := map[string]bool{}\n\tfor _, n := range v.%s {\n\t\tin[n] = true\n\t}\n", goName(v.Names))
+	fmt.Fprintf(b, "\tknown := map[string]bool{}\n\tfor _, n := range %sTerms {\n\t\tknown[n] = true\n\t}\n", goName(v.Name))
+	fmt.Fprintf(b, "\tkept := v.%s[:0]\n", goName(v.Critical))
+	fmt.Fprintf(b, "\tfor _, n := range v.%s {\n", goName(v.Critical))
+	fmt.Fprintf(b, "\t\tswitch {\n\t\tcase %sStripCritical[n]:\n\t\t\tcontinue\n", goName(v.Name))
 	b.WriteString("\t\tcase !known[n]:\n\t\t\treturn r.refuse(\"unknown_critical\")\n")
 	b.WriteString("\t\tcase !in[n]:\n\t\t\treturn r.refuse(\"not_a_subset\")\n\t\t}\n\t\tkept = append(kept, n)\n\t}\n")
-	fmt.Fprintf(b, "\tv.%s = kept\n", exported(v.Critical))
+	fmt.Fprintf(b, "\tv.%s = kept\n", goName(v.Critical))
 	for _, t := range v.Terms {
 		fmt.Fprintf(b, "\tif (%s) != in[%q] {\n\t\treturn r.refuse(\"content_mismatch\")\n\t}\n", goTest(s, t), t.Name)
 	}
@@ -1091,7 +1128,7 @@ func goTest(s *Definition, t Term) string {
 	}
 	switch {
 	case t.Member != "":
-		return fmt.Sprintf("Member(%s, %q)", e, t.Member)
+		return fmt.Sprintf("member(%s, %q)", e, t.Member)
 	case t.Membership():
 		parts := make([]string, len(t.Is))
 		for i, w := range t.Is {
@@ -1106,7 +1143,7 @@ const goMember = `
 // [DEF-A8] Whether an opaque value is an object naming this member with
 // something other than null. The key is decoded, so two spellings of one name
 // are one name; the value is neither decoded nor judged.
-func Member(v Raw, name string) bool {
+func member(v Raw, name string) bool {
 	r := &reader{buf: []byte(v)}
 	r.ws()
 	if r.at() != '{' {
@@ -1150,7 +1187,11 @@ func genGo(s *Definition) string {
 	if s.Encoding.EscapeNonASCII() {
 		esc = goEscASCII
 	}
-	prelude := goCommon + esc
+	enumListHelper := ""
+	if hasEnumLists(s) {
+		enumListHelper = goEnumListHelper
+	}
+	prelude := strings.Replace(goCommon, "@ENUM_LIST_HELPER@", enumListHelper, 1) + esc
 	if s.StringMapDocument() {
 		prelude += goStrMap
 	}
@@ -1217,7 +1258,7 @@ func genGo(s *Definition) string {
 		b.WriteString(goBinary)
 	}
 	goService(&b, s)
-	pretty, err := format.Source([]byte(b.String()))
+	pretty, err := format.Source([]byte(goUnexportCarriers(b.String(), s)))
 	if err != nil {
 		fail(fmt.Errorf("the Go backend emitted something gofmt refuses: %w", err))
 	}
@@ -1226,23 +1267,98 @@ func genGo(s *Definition) string {
 
 func goVocabulary(b *strings.Builder, s *Definition) {
 	for _, en := range s.Enums {
-		fmt.Fprintf(b, "\nvar %sNames = []string{", en.Name)
-		for i, m := range en.Members {
-			if i > 0 {
-				b.WriteString(", ")
-			}
-			fmt.Fprintf(b, "%q", m.Name)
+		name := goName(en.Name)
+		closed := en.Ann["unknown"] == "refuse"
+		if closed {
+			fmt.Fprintf(b, "\n// %s is a closed vocabulary. Its numeric values are private implementation\n// tags; String and Parse%s preserve the exact wire words.\ntype %s uint32\n", name, name, name)
+		} else {
+			fmt.Fprintf(b, "\n// %[1]s is an open vocabulary: a reader keeps a word it has never heard, so\n// a value may be none of the constants below. %[1]s(word) and string(v)\n// convert between the raw word and the vocabulary.\ntype %[1]s string\n", name)
 		}
-		b.WriteString("}\n")
 		for _, m := range en.Members {
-			fmt.Fprintf(b, "\nconst %s%s = %q\n", en.Name, exported(m.Name), m.Name)
+			if goName(m.Name) == "Values" {
+				fail(fmt.Errorf("enum %s: member %s is spelled %sValues in Go, which names the generated member list; rename the member", en.Name, m.Name, name))
+			}
 		}
-		fmt.Fprintf(b, "\nconst %s%s = %q\n", en.Name, enumPolicyName(en, "go"), en.Ann["unknown"])
 		for _, key := range en.MemberAnn() {
-			fmt.Fprintf(b, "\nvar %s%s = map[string]string{\n", en.Name, exported(key))
+			if goName(key) == "Values" {
+				fail(fmt.Errorf("enum %s: annotation %s is spelled %sValues in Go, which names the generated member list; rename the annotation", en.Name, key, name))
+			}
+		}
+		b.WriteString("\nconst (\n")
+		var members []string
+		for i, m := range en.Members {
+			if closed {
+				fmt.Fprintf(b, "\t%s%s %s = %d\n", name, goName(m.Name), name, i+1)
+			} else {
+				fmt.Fprintf(b, "\t%s%s %s = %q\n", name, goName(m.Name), name, m.WireName())
+			}
+			members = append(members, name+goName(m.Name))
+		}
+		b.WriteString(")\n")
+		if closed {
+			fmt.Fprintf(b, "\n// String returns v's exact wire word, or the empty string for an invalid value.\nfunc (v %s) String() string {\n\tword, _ := v.WireName()\n\treturn word\n}\n", name)
+			fmt.Fprintf(b, "\n// WireName returns v's exact wire word and whether v names a member.\nfunc (v %s) WireName() (string, bool) {\n\tswitch v {\n", name)
+			for _, m := range en.Members {
+				fmt.Fprintf(b, "\tcase %s%s:\n\t\treturn %q, true\n", name, goName(m.Name), m.WireName())
+			}
+			b.WriteString("\t}\n\treturn \"\", false\n}\n")
+			fmt.Fprintf(b, "\n// Parse%s returns the member named by an exact wire word.\nfunc Parse%s(word string) (%s, bool) {\n\tswitch word {\n", name, name, name)
+			for _, m := range en.Members {
+				fmt.Fprintf(b, "\tcase %q:\n\t\treturn %s%s, true\n", m.WireName(), name, goName(m.Name))
+			}
+			fmt.Fprintf(b, "\t}\n\treturn %s(0), false\n}\n", name)
+			fmt.Fprintf(b, `
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v %[1]s) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok { return nil, &Refusal{Word:"bad_enum",Offset:0} }
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *%[1]s) UnmarshalText(text []byte) error {
+	word, ok := Parse%[1]s(string(text))
+	if !ok { return &Refusal{Word:"bad_enum",Offset:0} }
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v %[1]s) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok { return nil, &Refusal{Word:"bad_enum",Offset:0} }
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *%[1]s) UnmarshalJSON(data []byte) error {
+	r := reader{buf:data}
+	r.ws()
+	word, err := r.str()
+	if err != nil { return err }
+	r.ws()
+	if r.pos != len(r.buf) { return r.refuse("trailing_bytes") }
+	parsed, ok := Parse%[1]s(word)
+	if !ok { return r.refuse("bad_enum") }
+	*v = parsed
+	return nil
+}
+`, name)
+		}
+		fmt.Fprintf(b, "\n// %[1]sValues returns every member of %[1]s in declaration order, in a new slice.\nfunc %[1]sValues() []%[1]s {\n\treturn []%[1]s{%[2]s}\n}\n", name, strings.Join(members, ", "))
+		if closed {
+			fmt.Fprintf(b, "\n// Known reports whether v is a member of %[1]s.\nfunc (v %[1]s) Known() bool {\n\t_, ok := v.WireName()\n\treturn ok\n}\n", name)
+		} else {
+			fmt.Fprintf(b, "\n// Known reports whether v is a member of %[1]s.\nfunc (v %[1]s) Known() bool {\n\tswitch v {\n\tcase %[2]s:\n\t\treturn true\n\t}\n\treturn false\n}\n", name, strings.Join(members, ", "))
+		}
+		for _, key := range en.MemberAnn() {
+			fmt.Fprintf(b, "\nvar %s%s = map[string]string{\n", name, goName(key))
 			for _, m := range en.Members {
 				if v, ok := m.Ann[key]; ok {
-					fmt.Fprintf(b, "\t%q: %q,\n", m.Name, v)
+					fmt.Fprintf(b, "\t%q: %q,\n", m.WireName(), v)
 				}
 			}
 			b.WriteString("}\n")
@@ -1250,7 +1366,7 @@ func goVocabulary(b *strings.Builder, s *Definition) {
 	}
 	for _, c := range s.Consts {
 		if c.Type == "list<i32>" {
-			fmt.Fprintf(b, "\nvar %s = []int32{", exported(c.Name))
+			fmt.Fprintf(b, "\nvar %s = []int32{", goName(c.Name))
 			for i, n := range c.Ints {
 				if i > 0 {
 					b.WriteString(", ")
@@ -1258,7 +1374,7 @@ func goVocabulary(b *strings.Builder, s *Definition) {
 				fmt.Fprintf(b, "%d", n)
 			}
 		} else {
-			fmt.Fprintf(b, "\nvar %s = []string{", exported(c.Name))
+			fmt.Fprintf(b, "\nvar %s = []string{", goName(c.Name))
 			for i, v := range c.Strings {
 				if i > 0 {
 					b.WriteString(", ")
@@ -1326,6 +1442,15 @@ func goEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 }
 
 func goType(s *Definition, f Field) string {
+	if f.EnumList {
+		return "[]" + goName(f.EnumType.Name)
+	}
+	if goEnum(f) {
+		if enumAbsent(f) {
+			return "*" + goName(f.EnumType.Name)
+		}
+		return goName(f.EnumType.Name)
+	}
 	if enumAbsent(f) {
 		return "*string"
 	}
@@ -1367,6 +1492,9 @@ func goPresent(s *Definition, f Field, e string) string {
 		}
 		return e + ` != ""`
 	}
+	if goClosedEnum(f) {
+		return e + " != 0"
+	}
 	switch f.Type {
 	case "string", "json":
 		return e + ` != ""`
@@ -1379,8 +1507,23 @@ func goPresent(s *Definition, f Field, e string) string {
 }
 
 func goValue(s *Definition, f Field, e string) string {
+	if f.EnumList {
+		if goClosedEnum(f) {
+			return "out = enumStrs(out, " + e + ", depth+1, func(v " + goName(f.EnumType.Name) + ") string { return v.String() })"
+		}
+		return "out = enumStrs(out, " + e + ", depth+1, func(v " + goName(f.EnumType.Name) + ") string { return string(v) })"
+	}
 	if enumAbsent(f) {
-		return "out = esc(out, *" + e + ")"
+		if goClosedEnum(f) {
+			return "out = esc(out, " + e + ".String())"
+		}
+		return "out = esc(out, string(*" + e + "))"
+	}
+	if goClosedEnum(f) {
+		return "out = esc(out, " + e + ".String())"
+	}
+	if goEnum(f) {
+		return "out = esc(out, string(" + e + "))"
 	}
 	if f.Type == "json" && f.Ann["service_raw"] == "true" {
 		return "out = append(out, " + e + "...)"
@@ -1425,4 +1568,31 @@ func exported(n string) string {
 		}
 	}
 	return strings.Join(parts, "")
+}
+
+func goUnexportCarriers(body string, s *Definition) string {
+	names := []string{"OAServiceFrame", "OAServiceReply", "OAServiceError"}
+	for _, svc := range s.Services {
+		for _, m := range svc.Methods {
+			names = append(names, argsName(svc, m), resultName(svc, m))
+		}
+	}
+	pattern := `(^|[^A-Za-z0-9_])OA(` + strings.Join(trimOA(names), "|") + `|Imported[0-9]+)\b`
+	return regexp.MustCompile(pattern).ReplaceAllString(body, "${1}oa${2}")
+}
+
+func trimOA(names []string) []string {
+	out := make([]string, len(names))
+	for i, n := range names {
+		out[i] = regexp.QuoteMeta(strings.TrimPrefix(n, "OA"))
+	}
+	return out
+}
+
+func goEnum(f Field) bool { return f.EnumType != nil }
+
+// goClosedEnum reports a vocabulary whose unknown wire words are refused.
+// Go emits these as numeric named constants and maps them explicitly to words.
+func goClosedEnum(f Field) bool {
+	return f.EnumType != nil && f.EnumType.Ann["unknown"] == "refuse"
 }

@@ -1,9 +1,9 @@
 {
   "version": 1,
   "unpackaged_outputs": {
-    "openabstractions-flat/abstraction-download/python/py/pyproject.toml": "The shipped abstraction_download wheel is python/pyproject.toml with one module; generated py/rec.py is its test authority and would need the top-level import name py.",
     "openabstractions-flat/abstraction-cas/py/pyproject.toml": "Direct --no-ipc CAS records; no Python distribution or resolved Python client installs them.",
-    "openabstractions-flat/abstraction-watch/py/pyproject.toml": "Watch notice metadata only; the generic Python subscription stays native and no distribution installs the records."
+    "openabstractions-flat/abstraction-watch/py/pyproject.toml": "Watch notice metadata only; the generic Python subscription stays native and no distribution installs the records.",
+    "conformance/clients/fixture/livevoice/wire/py/pyproject.toml": "Private transport-measurement fixture imported directly by its runner; no product distribution installs this test protocol."
   },
   "layers": [
     {
@@ -88,9 +88,7 @@
           "path": "openabstractions-flat/abstraction-download/download.thrift",
           "mode": "records",
           "languages": [
-            "go",
-            "cpp",
-            "python"
+            "go"
           ]
         },
         {
@@ -116,7 +114,6 @@
         },
         "cpp": {
           "generated": [
-            "openabstractions-flat/abstraction-download/download.thrift",
             "openabstractions-flat/abstraction-download/request.thrift"
           ],
           "binding": "Native provider/client integration requires separate evidence.",
@@ -124,7 +121,6 @@
         },
         "python": {
           "generated": [
-            "openabstractions-flat/abstraction-download/download.thrift",
             "openabstractions-flat/abstraction-download/request.thrift"
           ],
           "binding": "Native provider/client integration requires separate evidence.",
@@ -609,6 +605,160 @@
           "pattern": "\\bOp\\w+\\s*=\\s*\"([^\"]+)\""
         }
       ]
+    },
+    {
+      "layer": "credentials",
+      "kind": "service",
+      "api": [
+        "openabstractions-flat/abstraction-credentials/go/abstraction/credentials/api/rec.go",
+        "openabstractions-flat/abstraction-credentials/go/client/client.go"
+      ],
+      "providers": [
+        "openabstractions-flat/abstraction-credentials/go/holder.go",
+        "openabstractions-flat/abstraction-credentials/go/service/host.go"
+      ],
+      "definitions": [
+        {
+          "path": "openabstractions-flat/abstraction-credentials/credentials.thrift",
+          "mode": "service",
+          "languages": [
+            "go",
+            "cpp",
+            "python",
+            "rust",
+            "javascript"
+          ]
+        }
+      ],
+      "descriptor_status": "defined",
+      "reason": "Generated holder registration, metadata and audit profile and designated-enforcer applier profile. Platform secret storage and program designation are native provider integration.",
+      "language_obligations": {
+        "go": {
+          "generated": [
+            "openabstractions-flat/abstraction-credentials/credentials.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Holder and applier profiles generated; platform secret stores and enforcer designation remain provider integration."
+        },
+        "cpp": {
+          "generated": [
+            "openabstractions-flat/abstraction-credentials/credentials.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Holder and applier profiles generated; platform secret stores and enforcer designation remain provider integration."
+        },
+        "python": {
+          "generated": [
+            "openabstractions-flat/abstraction-credentials/credentials.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Holder and applier profiles generated; platform secret stores and enforcer designation remain provider integration."
+        },
+        "rust": {
+          "generated": [
+            "openabstractions-flat/abstraction-credentials/credentials.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Holder and applier profiles generated; platform secret stores and enforcer designation remain provider integration."
+        },
+        "javascript": {
+          "generated": [
+            "openabstractions-flat/abstraction-credentials/credentials.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "Holder and applier profiles generated; platform secret stores and enforcer designation remain provider integration."
+        }
+      },
+      "interface_generation": {
+        "status": "described",
+        "reason": "Generated holder registration, metadata and audit profile and designated-enforcer applier profile. Platform secret storage and program designation are native provider integration."
+      }
+    },
+    {
+      "layer": "inference",
+      "kind": "service",
+      "api": [
+        "openabstractions-flat/abstraction-inference/inference.thrift",
+        "openabstractions-flat/abstraction-inference/go/abstraction/inference/api/rec.go",
+        "openabstractions-flat/abstraction-inference/go/client/client.go"
+      ],
+      "providers": [
+        "openabstractions-flat/abstraction-inference/go/provider.go",
+        "openabstractions-flat/abstraction-inference/go/service/host.go"
+      ],
+      "definitions": [
+        {
+          "path": "openabstractions-flat/abstraction-inference/inference.thrift",
+          "mode": "service",
+          "languages": [
+            "go",
+            "cpp",
+            "python",
+            "rust",
+            "javascript"
+          ]
+        },
+        {
+          "path": "openabstractions-flat/abstraction-inference/job.thrift",
+          "mode": "records",
+          "languages": [
+            "go",
+            "cpp",
+            "python",
+            "rust",
+            "javascript"
+          ],
+          "no_ipc": true
+        }
+      ],
+      "descriptor_status": "defined",
+      "reason": "Generated chat, embeddings, transcription, speech, live voice and image services, plus durable inference job requests including video. Runtime providers own host selection, credential application, limits and upstream connections.",
+      "language_obligations": {
+        "go": {
+          "generated": [
+            "openabstractions-flat/abstraction-inference/inference.thrift",
+            "openabstractions-flat/abstraction-inference/job.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "chat@1 generated; client.Chat Complete and Stream (iter.Seq2); facade Machine.ResolveInference. Provider behaviour is the Go runtime provider."
+        },
+        "cpp": {
+          "generated": [
+            "openabstractions-flat/abstraction-inference/inference.thrift",
+            "openabstractions-flat/abstraction-inference/job.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "chat@1 generated; inference::Chat complete and callback stream; facade resolve_inference. Provider behaviour is the Go runtime provider."
+        },
+        "python": {
+          "generated": [
+            "openabstractions-flat/abstraction-inference/inference.thrift",
+            "openabstractions-flat/abstraction-inference/job.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "chat@1 generated; abstraction.inference.client.Chat complete and generator stream; facade Machine.resolve_inference. Provider behaviour is the Go runtime provider."
+        },
+        "rust": {
+          "generated": [
+            "openabstractions-flat/abstraction-inference/inference.thrift",
+            "openabstractions-flat/abstraction-inference/job.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "chat@1 generated; abstraction-facade-inference Chat complete and Iterator stream; InferenceMachine::resolve_inference. Provider behaviour is the Go runtime provider."
+        },
+        "javascript": {
+          "generated": [
+            "openabstractions-flat/abstraction-inference/inference.thrift",
+            "openabstractions-flat/abstraction-inference/job.thrift"
+          ],
+          "binding": "Native provider/client integration requires separate evidence.",
+          "limitation": "chat@1 generated; Chat complete and async generator stream; resolveInference(machine). Provider behaviour is the Go runtime provider."
+        }
+      },
+      "interface_generation": {
+        "status": "described",
+        "reason": "Generated chat@1 service: requests, messages, parts, tools, usage, typed outcomes and bounded Start/Observe/Cancel delta pages. Host selection, credential application, ceilings and upstream wires are native provider integration."
+      }
     },
     {
       "layer": "config",
