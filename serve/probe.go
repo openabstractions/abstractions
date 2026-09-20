@@ -142,7 +142,11 @@ func (o probeOptions) machine() (*client.Machine, error) {
 }
 
 // probeSelf names this program as a rights subject.
-func probeSelf() probeSubject { return probe.Self() }
+func probeSelf() probeSubject {
+	self := probe.Self()
+	self.Program = selfProgramPath(self.Program)
+	return self
+}
 
 var local = client.Requirements{Scope: client.ScopeLocal}
 

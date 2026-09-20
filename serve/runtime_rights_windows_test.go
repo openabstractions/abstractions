@@ -2,7 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -10,6 +14,14 @@ import (
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	"golang.org/x/sys/windows"
 )
+
+func windowsFileIdentity(handle syscall.Handle) (string, error) {
+	var info syscall.ByHandleFileInformation
+	if err := syscall.GetFileInformationByHandle(handle, &info); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("volume=%08x file=%08x%08x", info.VolumeSerialNumber, info.FileIndexHigh, info.FileIndexLow), nil
+}
 
 // A policy file another handle holds without sharing keeps answering a sharing
 // violation, which the file store retries for many seconds. The in-process
@@ -33,12 +45,30 @@ func TestADecisionThatCannotBeReadInTimeIsUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	closed := false
+	t.Cleanup(func() {
+		if !closed {
+			windows.CloseHandle(handle)
+		}
+	})
+	if probe, probeErr := os.Open(r.path); probeErr == nil {
+		heldID, heldErr := windowsFileIdentity(syscall.Handle(handle))
+		probeID, probeIDErr := windowsFileIdentity(syscall.Handle(probe.Fd()))
+		probe.Close()
+		t.Fatalf("exclusive handle did not deny a second read: held identity %q (%v), probe identity %q (%v)", heldID, heldErr, probeID, probeIDErr)
+	} else if !errors.Is(probeErr, windows.ERROR_SHARING_VIOLATION) {
+		t.Fatalf("exclusive handle precondition: second read answered %v, want sharing violation", probeErr)
+	}
 	start := time.Now()
 	d := r.decide(context.Background(), subject, host.ConfigEditAction, host.ConfigEditResource)
 	elapsed := time.Since(start)
-	windows.CloseHandle(handle)
+	heldID, heldErr := windowsFileIdentity(syscall.Handle(handle))
+	if err := windows.CloseHandle(handle); err != nil {
+		t.Fatalf("close exclusive handle %q (%v): %v", heldID, heldErr, err)
+	}
+	closed = true
 	if d.Outcome != rwire.DecisionOutcomeUnavailable || elapsed > decisionBudget+time.Second {
-		t.Fatalf("held policy file: %+v after %v", d, elapsed)
+		t.Fatalf("held policy file %q (%v): %+v after %v", heldID, heldErr, d, elapsed)
 	}
 	deadline := time.Now().Add(time.Minute)
 	for {

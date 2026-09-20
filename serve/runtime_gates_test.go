@@ -94,7 +94,11 @@ func probeBinary(t *testing.T) string {
 	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
 		t.Fatalf("build %s: %v\n%s", probeClientName, err, out)
 	}
-	return bin
+	resolved, err := filepath.EvalSymlinks(bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resolved
 }
 
 // probeAs runs the probe binary against the runtime and returns its one result
