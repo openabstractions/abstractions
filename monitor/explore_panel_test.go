@@ -97,7 +97,7 @@ func TestPanelExploreGrantCallRevoke(t *testing.T) {
 	rewrite := "capability=config&operation=rewrite&confirm=write"
 
 	before := call(rewrite)
-	if before.Result.Outcome != "forbidden" || before.Result.Rule == nil || before.Result.Rule.Action != host.ConfigEditAction || !sameFile(before.Result.Subject.Program, exe) {
+	if before.Result.Outcome != "forbidden" || before.Result.Rule == nil || before.Result.Rule.Action != host.ConfigEditAction || before.Result.Subject != catalogue.Self {
 		t.Fatalf("rewrite before a grant %+v", before.Result)
 	}
 	if before.Rule == nil || before.Rule.Outcome != "unknown" || before.Rule.Permit != nil || before.Rule.Revision == "" {

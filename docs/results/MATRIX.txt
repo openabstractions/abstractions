@@ -1,4 +1,4 @@
-# MATRIX  produced by scripts/matrix.sh on 2026-09-20, commit d8a13f05
+# MATRIX  produced by scripts/matrix.sh on 2026-09-21, commit 0f4311f4
 # measures  openabstractions-flat/abstraction-asks@5404570c openabstractions-flat/abstraction-cas@71d68d0e openabstractions-flat/abstraction-config@aaa3b70f openabstractions-flat/abstraction-credentials@29f434ff openabstractions-flat/abstraction-download@dc15c760 openabstractions-flat/abstraction-facade@bd338a1b openabstractions-flat/abstraction-identity@b60ed9d6 openabstractions-flat/abstraction-inference@bd4719d1 openabstractions-flat/abstraction-job@c2b844c4 openabstractions-flat/abstraction-logging@6f8bd57b openabstractions-flat/abstraction-model@cf22edd5 openabstractions-flat/abstraction-rights@12a31510 openabstractions-flat/abstraction-router@f785ff3d openabstractions-flat/abstraction-storage@a24a7b79 openabstractions-flat/abstraction-storage-over-local-stores@7f65e90c openabstractions-flat/abstraction-watch@86148f78
 # regenerate  sh scripts/matrix.sh   (--check refuses a grid the evidence no longer produces)
 # scope     this tree only. It reads what is committed here and the transcripts

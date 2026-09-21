@@ -37,6 +37,12 @@ type exploreRuleView struct {
 
 var exploreLocal = facade.Requirements{Scope: facade.ScopeLocal}
 
+func exploreSelf() probe.Subject {
+	self := probe.Self()
+	self.Program = exploreSelfProgram(self.Program)
+	return self
+}
+
 // exploreConfirmWrite is the confirm value a probe that writes requires.
 const exploreConfirmWrite = "write"
 
@@ -81,7 +87,7 @@ func (p *servicePanel) explore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	self := probe.Self()
+	self := exploreSelf()
 	capability, operation, argument := q.Get("capability"), q.Get("operation"), q.Get("argument")
 	if capability == "" {
 		panelJSON(w, struct {
@@ -119,10 +125,12 @@ func (p *servicePanel) explore(w http.ResponseWriter, r *http.Request) {
 	if chosen.Writes {
 		p.logAction(ctx, "explore."+capability+"."+operation, nil)
 	}
+	result := probe.Run(ctx, panelMachine(), chosen, argument)
+	result.Subject = self
 	reply := struct {
 		Result probe.Result     `json:"result"`
 		Rule   *exploreRuleView `json:"rule,omitempty"`
-	}{Result: probe.Run(ctx, panelMachine(), chosen, argument)}
+	}{Result: result}
 	if reply.Result.Rule != nil {
 		view := readExploreRule(ctx, subject, *reply.Result.Rule)
 		reply.Rule = &view
