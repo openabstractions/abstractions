@@ -17,6 +17,21 @@ contracts and language packages live in the linked repositories.
 [Release notes](https://github.com/openabstractions/redist/releases/latest) name
 the available packages, included features and platform verification.
 
+## Available now: 0.2.0
+
+[Download 0.2.0](https://github.com/openabstractions/redist/releases/tag/v0.2.0) for Windows, Linux and macOS.
+Use one runtime to keep accepted work running, call AI providers with named
+credentials, manage application permissions, and find or activate registered
+applications. Windows includes the Panel for inspecting and managing the runtime.
+The SDK sources cover Go, C++17, Python, Rust and JavaScript; package versions
+and registry availability are documented separately by each capability.
+
+Windows x64 installation, upgrades, rollback and crash recovery passed.
+Linux amd64 installation and runtime-backed downloading passed. The macOS
+package is signed and notarised; protected service calls retain the documented
+caller-identity limitation. Windows and Linux packages are unsigned.
+[Release verification and limits](https://github.com/openabstractions/abstractions/blob/main/docs/results/release-0.2.0.md).
+
 ## What you can build
 
 | Need | Application API | Current provider path |
@@ -29,8 +44,8 @@ the available packages, included features and platform verification.
 | Human decisions | [`abstraction-asks`](https://github.com/openabstractions/abstraction-asks) application and operator clients | Bounded question and answer service |
 | Model resolution | [`abstraction-model`](https://github.com/openabstractions/abstraction-model) resolver | Authorized storage manifests and registries |
 | Provider routing | [`abstraction-router`](https://github.com/openabstractions/abstraction-router) inventory and selection | Service-owned model and host catalogue |
-| Model inference | `abstraction.inference` development contracts | Local OpenAI-compatible hosts, selected hosted hosts and native providers |
-| Named credentials | `abstraction.credentials` development contracts | Platform secure store or an explicit development backend |
+| Model inference | [`abstraction-inference`](https://github.com/openabstractions/abstraction-inference) contracts | Local OpenAI-compatible hosts, selected hosted hosts and native providers |
+| Named credentials | [`abstraction-credentials`](https://github.com/openabstractions/abstraction-credentials) contracts | Platform secure store or an explicit development backend |
 | Application presence | Facade application directory and activation clients | Registered programs with leased live instances and contexts |
 | Structured events | [`abstraction-logging`](https://github.com/openabstractions/abstraction-logging) sinks and history clients | Identity-attributed service collection and observation |
 
@@ -67,8 +82,8 @@ after the workflow changed.
 
 Provider generations keep accepted work with one owner. Application leases
 remove closed instances. Instance, context and revision checks stop a request
-from landing in a different document or workflow. These are development proofs;
-release packaging remains under qualification.
+from landing in a different document or workflow. These integration proofs complement the
+[0.2.0 package checks](https://github.com/openabstractions/abstractions/blob/main/docs/results/release-0.2.0.md); each records its own environment and scope.
 
 ## Try the development runtime
 
