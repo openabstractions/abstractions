@@ -115,7 +115,9 @@ func TestServicePanelRightsOperator(t *testing.T) {
 		t.Fatalf("stale panel deny %+v", stale)
 	}
 	page := list()
-	if page.Outcome != wire.PolicyPageOutcomePage || page.Revision != granted.Revision || len(page.Rules) != 1 || page.Rules[0].Subject != target || !page.Rules[0].Permit {
+	wantSubject := target
+	wantSubject.Program = identity.NormalizeSubjectProgram(target.Program)
+	if page.Outcome != wire.PolicyPageOutcomePage || page.Revision != granted.Revision || len(page.Rules) != 1 || page.Rules[0].Subject != wantSubject || !page.Rules[0].Permit {
 		t.Fatalf("list after grant %+v", page)
 	}
 	denied := edit(grant(page.Revision, false))
