@@ -90,6 +90,7 @@ type ModelResolverDispatcher struct
   Handler ModelResolver
 func (ModelResolverClient) Resolve(ref Ref) (result LookupResult, err error)
 func (ModelResolverDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ModelResolverDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ModelResolverDispatcher) ServiceContract() string
 func (ModelResolverDispatcher) WriteFrame(frame []byte) error
 func (ModelResolverDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -103,6 +104,7 @@ type ModelManifestDispatcher struct
   Handler ModelManifest
 func (ModelManifestClient) Resolve(ref Ref) (result ManifestResult, err error)
 func (ModelManifestDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ModelManifestDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ModelManifestDispatcher) ServiceContract() string
 func (ModelManifestDispatcher) WriteFrame(frame []byte) error
 func (ModelManifestDispatcher) ExchangeFrame(frame []byte) ([]byte, error)

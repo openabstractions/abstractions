@@ -1,0 +1,160 @@
+pub type Raw
+pub enum Evidence
+  Verified
+  Claimed
+  pub const ALL: [Self; 2]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum ResourceCallOutcome
+  Ok
+  Forbidden
+  Unavailable
+  Invalid
+  Unknown
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum AcquireOutcome
+  Acquired
+  Insufficient
+  HoldersRefused
+  NotPermitted
+  Unavailable
+  Invalid
+  Forbidden
+  pub const ALL: [Self; 7]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum YieldAnswer
+  Yielded
+  Refused
+  pub const ALL: [Self; 2]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum ProcessBindOutcome
+  Bound
+  Unverifiable
+  Refused
+  Invalid
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub mod service_error_code
+  pub const HANDLER_ERROR: &str
+  pub const INVALID_RESULT: &str
+  pub const UNKNOWN_VERSION: &str
+  pub const UNKNOWN_SERVICE: &str
+  pub const UNKNOWN_METHOD: &str
+  pub const WRONG_MODE: &str
+  pub const INTERNAL: &str
+  pub const INVALID_REQUEST: &str
+  pub const CALLER_REFUSED: &str
+  pub const UNKNOWN_RESOURCE: &str
+  pub const POLICY_UNAVAILABLE: &str
+  pub const FORBIDDEN: &str
+  pub const ALL: [&str; 12]
+pub const KNOWN_RESOURCES: [&str; 3]
+pub const RESOURCE_ERROR_CODES: [&str; 6]
+pub struct Holder
+  program: String
+  account: String
+  amount: i64
+  evidence: Evidence
+  lease: String
+  grant: String
+  since: String
+  detail: String
+pub struct ResourceState
+  resource: String
+  capacity: i64
+  held: i64
+  holders: Vec<Holder>
+  observed: String
+  instrument: String
+pub struct HoldersResult
+  outcome: ResourceCallOutcome
+  state: Option<ResourceState>
+pub struct ResourceList
+  resources: Vec<String>
+  observed: String
+pub struct ResourcesResult
+  outcome: ResourceCallOutcome
+  list: Option<ResourceList>
+pub struct Lease
+  id: String
+  resource: String
+  amount: i64
+  since: String
+  renew_by: String
+pub struct YieldRecord
+  holder: String
+  amount: i64
+  answer: String
+  took_ms: i64
+pub struct AcquireResult
+  outcome: AcquireOutcome
+  lease: Option<Lease>
+  asked: Vec<YieldRecord>
+pub struct YieldRequest
+  id: String
+  resource: String
+  amount: i64
+  reason: String
+  at: String
+  lease: String
+pub struct YieldPage
+  requests: Vec<YieldRequest>
+  next: String
+pub struct ObserveResult
+  outcome: ResourceCallOutcome
+  page: Option<YieldPage>
+pub struct AnswerResult
+  recorded: bool
+pub struct AnswerCallResult
+  outcome: ResourceCallOutcome
+  answer: Option<AnswerResult>
+pub struct LeaseChange
+  applied: bool
+  lease: Option<Lease>
+pub struct LeaseChangeResult
+  outcome: ResourceCallOutcome
+  change: Option<LeaseChange>
+pub struct ProcessBindResult
+  outcome: ProcessBindOutcome
+pub fn encode(v: &ResourceState) -> Vec<u8>
+pub struct Refusal
+  word: &'static str
+  offset: usize
+pub fn decode(data: &[u8]) -> Result<ResourceState, Refusal>
+pub use abstraction_frame::FrameTransport
+pub struct ServiceError
+  code: String
+  message: String
+pub enum CallError<E>
+  Transport(E)
+  Refusal(Refusal)
+  Dispatch(&'static str)
+  Service(ServiceError)
+pub trait Table
+  type Error
+  fn resources(&self) -> Result<ResourcesResult, Self::Error>
+  fn holders(&self, resource: String, fresh: bool) -> Result<HoldersResult, Self::Error>
+pub struct TableClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait Leases
+  type Error
+  fn acquire(&self, resource: String, amount: i64, wait_ms: i64) -> Result<AcquireResult, Self::Error>
+  fn renew(&self, lease: String) -> Result<LeaseChangeResult, Self::Error>
+  fn release(&self, lease: String) -> Result<LeaseChangeResult, Self::Error>
+  fn observe(&self, cursor: String, wait_ms: i64) -> Result<ObserveResult, Self::Error>
+  fn answer(&self, request: String, answer: YieldAnswer, reason: String) -> Result<AnswerCallResult, Self::Error>
+  fn bind_process(&self, lease: String, pid: i64) -> Result<ProcessBindResult, Self::Error>
+pub struct LeasesClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub mod internal
+  pub fn micros_timestamp(text: &str) -> bool
+  pub fn wide_timestamp(text: &str) -> bool

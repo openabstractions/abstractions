@@ -20,13 +20,14 @@ import (
 
 	download "github.com/openabstractions/abstraction-download/go"
 	"github.com/openabstractions/abstraction-facade/go/client"
+	identity "github.com/openabstractions/abstraction-identity"
 	job "github.com/openabstractions/abstraction-job/go"
 	api "github.com/openabstractions/abstraction-job/go/abstraction/job/acceptance"
 	"github.com/openabstractions/abstraction-job/go/acceptanceprovider"
 )
 
 func TestJobsMigrateHelpAndMappingDecoder(t *testing.T) {
-	for _, args := range [][]string{nil, {"--help"}, {"migrate-legacy"}, {"migrate-legacy", "--help"}} {
+	for _, args := range [][]string{{"--help"}, {"migrate-legacy", "--help"}} {
 		var out bytes.Buffer
 		if err := jobsCommand(args, &out, &bytes.Buffer{}); err != nil {
 			t.Fatal(args, err)
@@ -35,7 +36,9 @@ func TestJobsMigrateHelpAndMappingDecoder(t *testing.T) {
 			t.Fatalf("help for %q: %s", args, out.String())
 		}
 	}
-	for _, args := range [][]string{{"unknown"}, {"migrate-legacy", "unknown"}, {"migrate-legacy", "inspect", "extra"}, {"migrate-legacy", "apply"}, {"migrate-legacy", "inspect", "--state-dir", "relative"}, {"migrate-legacy", "inspect", "--state-dir="}} {
+	// Bare "jobs" and bare "jobs migrate-legacy" are missing-command mistakes
+	// (item 7), not help requests.
+	for _, args := range [][]string{nil, {"migrate-legacy"}, {"unknown"}, {"migrate-legacy", "unknown"}, {"migrate-legacy", "inspect", "extra"}, {"migrate-legacy", "apply"}, {"migrate-legacy", "inspect", "--state-dir", "relative"}, {"migrate-legacy", "inspect", "--state-dir="}} {
 		var exit *exitError
 		if err := jobsCommand(args, &bytes.Buffer{}, &bytes.Buffer{}); !errors.As(err, &exit) || exit.code != exitUsage {
 			t.Fatalf("%q: %v", args, err)
@@ -119,7 +122,11 @@ func runCLI(t *testing.T, bin string, args ...string) (string, string, int) {
 }
 
 func TestJobsMigrateLegacyCommandEndToEnd(t *testing.T) {
-	dir, err := os.MkdirTemp("", "oa-legacy-")
+	base := ""
+	if runtime.GOOS == "darwin" {
+		base = "/tmp"
+	}
+	dir, err := os.MkdirTemp(base, "oa-legacy-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,8 +166,13 @@ func TestJobsMigrateLegacyCommandEndToEnd(t *testing.T) {
 	f.finish(t, f.ids[job.StateFailed], nil, func(r *job.Record) { r.State = job.StateFailed; r.Error = "legacy failure" })
 	f.finish(t, f.ids[job.StateCancelled], nil, func(r *job.Record) { r.State = job.StateCancelled })
 
-	if out, _, code := runCLI(t, bin, "jobs", "migrate-legacy"); code != 0 || !strings.Contains(out, "Mapping file") {
-		t.Fatalf("no-argument help: %d %s", code, out)
+	// Bare "jobs migrate-legacy" is a missing-command mistake (item 7), not a
+	// help request.
+	if _, stderr, code := runCLI(t, bin, "jobs", "migrate-legacy"); code != 2 || !strings.Contains(stderr, "a command is required") {
+		t.Fatalf("no-argument: %d %s", code, stderr)
+	}
+	if out, _, code := runCLI(t, bin, "jobs", "migrate-legacy", "--help"); code != 0 || !strings.Contains(out, "Mapping file") {
+		t.Fatalf("--help: %d %s", code, out)
 	}
 	out, stderr, code := runCLI(t, bin, "jobs", "migrate-legacy", "inspect", "--state-dir", state)
 	if code != 0 {
@@ -283,18 +295,25 @@ func TestJobsMigrateLegacyCommandEndToEnd(t *testing.T) {
 		}
 	}
 	defer stop()
+	started := false
 	select {
 	case <-ready:
+		started = true
 	case err := <-done:
 		returned = true
-		t.Fatal("managed runtime did not start on the migrated root:", err)
+		if runtime.GOOS != "darwin" || !errors.Is(err, identity.ErrNotProven) {
+			t.Fatal("managed runtime did not start on the migrated root:", err)
+		}
+		assertListenersReleased(t, o)
 	case <-time.After(20 * time.Second):
 		t.Fatal("managed runtime startup")
 	}
-	for _, args := range [][]string{{"apply", "--mapping", mapping}, {"abandon"}} {
-		_, stderr, code := runCLI(t, bin, append(append([]string{"jobs", "migrate-legacy"}, args...), "--state-dir", state)...)
-		if code != exitHostActive || !strings.Contains(stderr, "runtime job host is running") {
-			t.Fatalf("%v beside running runtime: %d %s", args, code, stderr)
+	if started {
+		for _, args := range [][]string{{"apply", "--mapping", mapping}, {"abandon"}} {
+			_, stderr, code := runCLI(t, bin, append(append([]string{"jobs", "migrate-legacy"}, args...), "--state-dir", state)...)
+			if code != exitHostActive || !strings.Contains(stderr, "runtime job host is running") {
+				t.Fatalf("%v beside running runtime: %d %s", args, code, stderr)
+			}
 		}
 	}
 
@@ -320,6 +339,9 @@ func TestJobsMigrateLegacyCommandEndToEnd(t *testing.T) {
 		if after[filepath.FromSlash(sink)] != string(bodies[id]) && finalState[stateOf[id]] == "complete" {
 			t.Fatalf("result file moved or rewritten: %s", sink)
 		}
+	}
+	if !started {
+		t.Skip("live migrated-job observation requires Program proof; Unix startup refusal was verified")
 	}
 }
 

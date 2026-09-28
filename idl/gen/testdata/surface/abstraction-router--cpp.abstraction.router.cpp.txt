@@ -13,7 +13,7 @@ inline constexpr std::string_view kServiceErrorCodeInternal
 inline constexpr std::string_view kServiceErrorCodeInvalidRequest
 inline constexpr std::string_view kServiceErrorCodeCallerRefused
 inline constexpr std::string_view kServiceErrorCodeUnknownOperation
-inline constexpr std::string_view kServiceErrorCodePolicyUnavailable
+inline constexpr std::string_view kServiceErrorCodeUnavailable
 inline constexpr std::string_view kServiceErrorCodeForbidden
 inline const std::vector<std::string> kProfiles
 inline const std::vector<std::string> kVerdicts
@@ -41,9 +41,18 @@ struct Alias
   bool servable
   bool hosted
   std::vector<std::string> profiles
+  std::vector<std::string> held_in
+  std::int64_t context_length
+struct Component
+  std::string store
+  std::string role
+  std::string name
 struct Family
   std::string family
   std::vector<Alias> names
+  std::vector<std::string> held_in
+  std::string family_source
+  std::vector<Component> components
 struct ModelsSnapshot
   Observation observation
   std::vector<Family> models

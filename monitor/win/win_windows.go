@@ -11,11 +11,11 @@ import (
 var (
 	user32   = syscall.NewLazyDLL("user32.dll")
 	gdi32    = syscall.NewLazyDLL("gdi32.dll")
-	comctl32 = syscall.NewLazyDLL("comctl32.dll")
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
 
 	registerClass       = user32.NewProc("RegisterClassExW")
 	createWindow        = user32.NewProc("CreateWindowExW")
+	destroyWindowProc   = user32.NewProc("DestroyWindow")
 	defWindowProc       = user32.NewProc("DefWindowProcW")
 	getMessage          = user32.NewProc("GetMessageW")
 	translateMessage    = user32.NewProc("TranslateMessage")
@@ -30,6 +30,7 @@ var (
 	getWindowRect       = user32.NewProc("GetWindowRect")
 	loadCursor          = user32.NewProc("LoadCursorW")
 	loadIcon            = user32.NewProc("LoadIconW")
+	loadImage           = user32.NewProc("LoadImageW")
 	setWindowText       = user32.NewProc("SetWindowTextW")
 	getWindowText       = user32.NewProc("GetWindowTextW")
 	getWindowTextLength = user32.NewProc("GetWindowTextLengthW")
@@ -44,9 +45,8 @@ var (
 	setBkColor       = gdi32.NewProc("SetBkColor")
 	setTextColor     = gdi32.NewProc("SetTextColor")
 
-	initCommonControls = comctl32.NewProc("InitCommonControlsEx")
-	getModuleHandle    = kernel32.NewProc("GetModuleHandleW")
-	getConsoleWindow   = kernel32.NewProc("GetConsoleWindow")
+	getModuleHandle  = kernel32.NewProc("GetModuleHandleW")
+	getConsoleWindow = kernel32.NewProc("GetConsoleWindow")
 )
 
 const (
@@ -60,6 +60,7 @@ const (
 
 	wmDestroy        = 0x0002
 	wmSize           = 0x0005
+	wmGetMinMaxInfo  = 0x0024
 	wmSetFont        = 0x0030
 	wmSetText        = 0x000C
 	wmCommand        = 0x0111
@@ -71,60 +72,35 @@ const (
 	swShowNormal = 1
 	redraw       = 1
 
-	idcArrow           = 32512
-	idiApplication     = 32512
-	mbIconInformation  = 0x40
-	iccListViewClasses = 0x0001
+	idcArrow          = 32512
+	idiApplication    = 32512
+	mbIconInformation = 0x40
+
+	// appIconResource is the resource id monitor/panel.rc packs panel.ico
+	// under (CREATEPROCESS_MANIFEST_RESOURCE_ID's icon counterpart — by
+	// convention, and the id this file's own writeRC in
+	// monitor/icon/gen/main.go uses, id 1). imageIcon and lrDefaultColor
+	// are LoadImageW's IMAGE_ICON and LR_DEFAULTCOLOR.
+	appIconResource = 1
+	imageIcon       = 1
+	lrDefaultColor  = 0x00000000
 
 	defaultCharSet   = 1
 	clearTypeQuality = 5
 
-	ssLeft        = 0x0000
-	ssNoPrefix    = 0x0080
 	esAutoHScroll = 0x0080
 
-	lvmFirst          = 0x1000
-	lvmDeleteAllItems = lvmFirst + 9
-	lvmInsertColumn   = lvmFirst + 97
-	lvmInsertItem     = lvmFirst + 77
-	lvmSetItemText    = lvmFirst + 116
-	lvmSetItemState   = lvmFirst + 43
-	lvmGetNextItem    = lvmFirst + 12
-	lvmSetExStyle     = lvmFirst + 54
-
-	lvsReport        = 0x0001
-	lvsSingleSel     = 0x0004
-	lvsShowSelAlways = 0x0008
-	lvsNoSortHeader  = 0x8000
-
-	lvsExFullRowSelect = 0x0020
-	lvsExDoubleBuffer  = 0x00010000
-
-	lvifText     = 0x0001
-	lvifState    = 0x0008
-	lvisSelected = 0x0002
-	lvisFocused  = 0x0001
-	lvniSelected = 0x0002
-
-	lvcfWidth   = 0x0002
-	lvcfText    = 0x0004
-	lvcfSubItem = 0x0008
-
 	inkText = 0x00202020
-	inkDim  = 0x00606060
 	paper   = 0x00FFFFFF
 )
 
 const (
-	// LVM_GETNEXTITEM searches after the item it is given, so -1 starts at the top.
-	beforeFirstItem = ^uintptr(0)
-
 	// DPI_AWARENESS_CONTEXT_SYSTEM_AWARE, which the header spells as the
 	// pointer-shaped constant -2.
 	dpiContextSystemAware = ^uintptr(1)
 )
 
-// The five structs below are the C structs the calls above take. Their field
+// The structs below are the C structs the calls above take. Their field
 // order and types are transcribed from the Windows headers and checked against
 // them, on both the 32- and 64-bit layouts, by layout_windows_test.go. Go's own
 // alignment reproduces the Microsoft layout exactly, so none of them carries
@@ -150,37 +126,9 @@ type message struct {
 }
 
 type rect struct{ Left, Top, Right, Bottom int32 }
-
-type lvColumn struct {
-	Mask      uint32
-	Fmt, CX   int32
-	Text      *uint16
-	TextMax   int32
-	SubItem   int32
-	Image     int32
-	Order     int32
-	CXMin     int32
-	CXDefault int32
-	CXIdeal   int32
+type minMaxInfo struct {
+	Reserved, MaxSize, MaxPosition, MinTrack, MaxTrack point
 }
-
-type lvItem struct {
-	Mask             uint32
-	Item, SubItem    int32
-	State, StateMask uint32
-	Text             *uint16
-	TextMax          int32
-	Image            int32
-	Param            uintptr
-	Indent           int32
-	GroupID          int32
-	Columns          uint32
-	PColumns         uintptr
-	PColFmt          uintptr
-	Group            int32
-}
-
-type initCommonControlsEx struct{ Size, Classes uint32 }
 
 var (
 	live   sync.Mutex
@@ -203,25 +151,38 @@ type panel struct {
 func register() (panel, error) {
 	makeDPIAware()
 
-	icc := initCommonControlsEx{Size: uint32(unsafe.Sizeof(initCommonControlsEx{})), Classes: iccListViewClasses}
-	initCommonControls.Call(uintptr(unsafe.Pointer(&icc)))
-
-	inst, _, _ := getModuleHandle.Call(0)
-	cursor, _, _ := loadCursor.Call(0, idcArrow)
-	icon, _, _ := loadIcon.Call(0, idiApplication)
+	inst, _, _ := getModuleHandle.Call(0)        //unchecked: GetModuleHandle(NULL) is the running image and cannot fail
+	cursor, _, _ := loadCursor.Call(0, idcArrow) //unchecked: a stock cursor; a zero handle only means the class registers without one
+	iconLarge := loadAppIcon(inst, 32)
+	iconSmall := loadAppIcon(inst, 16)
 	brush, _, _ := createSolidBrush.Call(paper)
 	p := panel{class: utf16("abstraction.panel"), brush: syscall.Handle(brush), instance: inst}
 
 	wc := wndClassEx{
 		Size: uint32(unsafe.Sizeof(wndClassEx{})), WndProc: proc,
-		Instance: syscall.Handle(inst), Icon: syscall.Handle(icon),
+		Instance: syscall.Handle(inst), Icon: syscall.Handle(iconLarge),
 		Cursor: syscall.Handle(cursor), Brush: p.brush, ClassName: p.class,
-		IconSm: syscall.Handle(icon),
+		IconSm: syscall.Handle(iconSmall),
 	}
 	if r, _, err := registerClass.Call(uintptr(unsafe.Pointer(&wc))); r == 0 {
 		return panel{}, fmt.Errorf("register window class: %w", err)
 	}
 	return p, nil
+}
+
+// loadAppIcon loads the size by size square icon packed into the running
+// executable at resource id 1 by monitor/panel.rc (monitor/icon/gen/main.go
+// writes both the .rc and the panel.ico it points at). inst is the module
+// handle LoadImageW resolves that resource against; passing 0 for it, as a
+// plain `go build` without the generated monitor/rsrc_windows_*.syso files
+// does implicitly by finding no resource at all, falls back to the stock
+// IDI_APPLICATION icon so the window and tray still draw something.
+func loadAppIcon(inst uintptr, size int32) syscall.Handle {
+	h, _, _ := loadImage.Call(inst, appIconResource, imageIcon, uintptr(size), uintptr(size), lrDefaultColor)
+	if h == 0 {
+		h, _, _ = loadIcon.Call(0, idiApplication)
+	}
+	return syscall.Handle(h)
 }
 
 func makeDPIAware() {
@@ -233,19 +194,31 @@ func makeDPIAware() {
 	dpiAware.Call()
 }
 
+// EnableDPIAwareness opts this process out of the DPI virtualization Windows
+// applies to a process that never asks. Call it once, before any window is
+// created. Package win's own windows reach it through register(), below;
+// a window this package does not draw itself, such as the WebView2 host
+// window in desktop_windows.go, calls it directly.
+func EnableDPIAwareness() { makeDPIAware() }
+
 // Window is one top-level window and everything drawn in it.
 type Window struct {
-	h        syscall.Handle
-	instance uintptr
-	dpi      int
-	body     syscall.Handle
-	head     syscall.Handle
-	brush    syscall.Handle
+	h         syscall.Handle
+	instance  uintptr
+	dpi       int
+	minWidth  int
+	minHeight int
+	body      syscall.Handle
+	brush     syscall.Handle
 
 	next  int32
 	click map[int32]func()
 	tint  map[syscall.Handle]uint32
 	size  func(w, h int)
+
+	// trayMsg, when set, handles the Shell_NotifyIcon callback message a tray
+	// icon registered on this window (see tray_windows.go, beside this file).
+	trayMsg func(wparam, lparam uintptr)
 
 	mu     sync.Mutex
 	queued []func()
@@ -262,21 +235,40 @@ type Window struct {
 //
 // Work that must not block the window goes to Do.
 func Run(title string, width, height int, build func(*Window)) error {
+	return run(title, width, height, 0, 0, true, build)
+}
+
+// RunWithMinimum keeps at least minWidth by minHeight client units available
+// while the user resizes the window. All dimensions are in 96-dpi units.
+func RunWithMinimum(title string, width, height, minWidth, minHeight int, build func(*Window)) error {
+	return run(title, width, height, minWidth, minHeight, true, build)
+}
+
+// RunHidden pumps a window's messages the same way Run does, but never shows
+// it. It is for a window that exists only to receive messages — the tray
+// icon's Shell_NotifyIcon callback, in tray_windows.go beside this file —
+// with no visible surface of its own. Close ends it, since it has no title
+// bar for a person to close.
+func RunHidden(title string, build func(*Window)) error {
+	return run(title, 0, 0, 0, 0, false, build)
+}
+
+func run(title string, width, height, minWidth, minHeight int, visible bool, build func(*Window)) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	w, err := open(title, width, height)
+	w, err := open(title, width, height, minWidth, minHeight)
 	if err != nil {
 		return err
 	}
 	defer forget(w.h)
 
 	build(w)
-	w.pump()
+	w.pump(visible)
 	return nil
 }
 
-func open(title string, width, height int) (*Window, error) {
+func open(title string, width, height, minWidth, minHeight int) (*Window, error) {
 	p, err := sharedPanel()
 	if err != nil {
 		return nil, err
@@ -290,7 +282,8 @@ func open(title string, width, height int) (*Window, error) {
 		return nil, fmt.Errorf("create window: %w", err)
 	}
 
-	w := &Window{h: syscall.Handle(hwnd), instance: p.instance, dpi: 96, brush: p.brush,
+	w := &Window{h: syscall.Handle(hwnd), instance: p.instance, dpi: 96,
+		minWidth: minWidth, minHeight: minHeight, brush: p.brush,
 		click: map[int32]func(){}, tint: map[syscall.Handle]uint32{}, next: 100}
 	live.Lock()
 	byHwnd[w.h] = w
@@ -308,7 +301,6 @@ func open(title string, width, height int) (*Window, error) {
 		}
 	}
 	w.body = w.font(9, 400)
-	w.head = w.font(12, 600)
 	w.client(width, height)
 	return w, nil
 }
@@ -319,8 +311,10 @@ func forget(h syscall.Handle) {
 	live.Unlock()
 }
 
-func (w *Window) pump() {
-	showWindow.Call(uintptr(w.h), swShowNormal)
+func (w *Window) pump(visible bool) {
+	if visible {
+		showWindow.Call(uintptr(w.h), swShowNormal)
+	}
 	if w.size != nil {
 		w.resized()
 	}
@@ -368,6 +362,36 @@ func (w *Window) font(pt, weight int) syscall.Handle {
 
 func (w *Window) px(n int) int { return n * w.dpi / 96 }
 
+// minimumOuterSize converts a logical client minimum to Win32's physical
+// outer-window tracking size. The current frame measurement includes the
+// title bar and resize borders that WM_GETMINMAXINFO expects.
+func minimumOuterSize(minWidth, minHeight, dpi int, outer, client rect) point {
+	frameWidth := int(outer.Right-outer.Left) - int(client.Right-client.Left)
+	frameHeight := int(outer.Bottom-outer.Top) - int(client.Bottom-client.Top)
+	return point{
+		X: int32((minWidth*dpi+95)/96 + frameWidth),
+		Y: int32((minHeight*dpi+95)/96 + frameHeight),
+	}
+}
+
+func (w *Window) setMinimumTrackSize(lparam uintptr) bool {
+	if lparam == 0 || w.minWidth <= 0 || w.minHeight <= 0 {
+		return false
+	}
+	var outer, client rect
+	if ok, _, _ := getWindowRect.Call(uintptr(w.h), uintptr(unsafe.Pointer(&outer))); ok == 0 { //unchecked: GetWindowRect's BOOL is checked; last error adds no recovery to this optional size constraint
+		return false
+	}
+	if ok, _, _ := getClientRect.Call(uintptr(w.h), uintptr(unsafe.Pointer(&client))); ok == 0 { //unchecked: GetClientRect's BOOL is checked; last error adds no recovery to this optional size constraint
+		return false
+	}
+	minimum := minimumOuterSize(w.minWidth, w.minHeight, w.dpi, outer, client)
+	info := (*minMaxInfo)(unsafe.Pointer(lparam))
+	info.MinTrack.X = max(info.MinTrack.X, minimum.X)
+	info.MinTrack.Y = max(info.MinTrack.Y, minimum.Y)
+	return true
+}
+
 // Do runs f on the thread that owns the window. Every control here is touched
 // from that thread only: a handle is owned by the thread that created it, and
 // the work behind these buttons reaches a NAS and takes seconds.
@@ -381,6 +405,11 @@ func (w *Window) Do(f func()) {
 // OnSize lays the controls out. Called once at startup and on every resize,
 // with the client area in 96-dpi units.
 func (w *Window) OnSize(f func(width, height int)) { w.size = f }
+
+// Close destroys the window, ending Run's or RunHidden's message pump. A
+// hidden window built with RunHidden has no title bar close button, so this
+// is how code such as a tray icon's Quit item ends it.
+func (w *Window) Close() { destroyWindowProc.Call(uintptr(w.h)) } //unchecked: Call's error is the raw GetLastError, not meaningful without a failed primary return; DestroyWindow's failure here has no recovery
 
 func (w *Window) resized() {
 	var r rect
@@ -435,117 +464,13 @@ func (c *Control) Text() string {
 
 func (c *Control) Focus() { setFocus.Call(uintptr(c.h)) }
 
-// Head is a section title.
-func (w *Window) Head(text string) *Control {
-	c := w.child("STATIC", ssLeft|ssNoPrefix, 0, text)
-	sendMessage.Call(uintptr(c.h), wmSetFont, uintptr(w.head), redraw)
-	w.tint[c.h] = inkText
-	return c
-}
-
-// Dim is secondary text — a reason, a path, a result. STATIC wraps at the width
-// it is given, so it is a line or a paragraph.
-func (w *Window) Dim(text string) *Control {
-	c := w.child("STATIC", ssLeft|ssNoPrefix, 0, text)
-	w.tint[c.h] = inkDim
-	return c
-}
-
-func (w *Window) Button(text string, do func()) *Control {
-	c := w.child("BUTTON", wsTabStop, 0, text)
-	w.click[c.id] = do
-	return c
-}
-
 func (w *Window) Field(text string) *Control {
 	return w.child("EDIT", wsTabStop|wsBorder|esAutoHScroll, 0, text)
 }
 
-// Column is one column of a List, with its width in 96-dpi units.
-type Column struct {
-	Title string
-	Width int
-}
-
-// List is a report-mode list view: the control Windows already has for rows a
-// person picks one of.
-type List struct {
-	*Control
-	cols []Column
-	rows [][]string
-}
-
-func (w *Window) List(cols ...Column) *List {
-	c := w.child("SysListView32", wsTabStop|wsBorder|lvsReport|lvsSingleSel|lvsShowSelAlways|lvsNoSortHeader, 0, "")
-	sendMessage.Call(uintptr(c.h), lvmSetExStyle, 0, lvsExFullRowSelect|lvsExDoubleBuffer)
-	for i, col := range cols {
-		lc := lvColumn{Mask: lvcfWidth | lvcfText | lvcfSubItem, CX: int32(w.px(col.Width)),
-			Text: utf16(col.Title), SubItem: int32(i)}
-		sendMessage.Call(uintptr(c.h), lvmInsertColumn, uintptr(i), uintptr(unsafe.Pointer(&lc)))
-	}
-	return &List{Control: c, cols: cols}
-}
-
-// Set replaces the contents. Rows already there are written cell by cell rather
-// than cleared and rebuilt, so a person's selection survives a redraw.
-func (l *List) Set(rows [][]string) {
-	if same(l.rows, rows) {
-		return
-	}
-	if len(rows) != len(l.rows) {
-		sendMessage.Call(uintptr(l.h), lvmDeleteAllItems, 0, 0)
-		for i := range rows {
-			it := lvItem{Mask: lvifText, Item: int32(i), Text: utf16("")}
-			sendMessage.Call(uintptr(l.h), lvmInsertItem, 0, uintptr(unsafe.Pointer(&it)))
-		}
-		l.rows = make([][]string, len(rows))
-	}
-	for i, row := range rows {
-		for j := range l.cols {
-			cell := ""
-			if j < len(row) {
-				cell = row[j]
-			}
-			if i < len(l.rows) && j < len(l.rows[i]) && l.rows[i][j] == cell {
-				continue
-			}
-			it := lvItem{Mask: lvifText, Item: int32(i), SubItem: int32(j), Text: utf16(cell)}
-			sendMessage.Call(uintptr(l.h), lvmSetItemText, uintptr(i), uintptr(unsafe.Pointer(&it)))
-		}
-		l.rows[i] = append([]string(nil), row...)
-	}
-}
-
-// Chosen is the index of the selected row, or -1.
-func (l *List) Chosen() int {
-	r, _, _ := sendMessage.Call(uintptr(l.h), lvmGetNextItem, beforeFirstItem, lvniSelected)
-	return int(int32(r))
-}
-
-func (l *List) Choose(i int) {
-	it := lvItem{Mask: lvifState, State: lvisSelected | lvisFocused, StateMask: lvisSelected | lvisFocused}
-	sendMessage.Call(uintptr(l.h), lvmSetItemState, uintptr(i), uintptr(unsafe.Pointer(&it)))
-}
-
-func same(a, b [][]string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if len(a[i]) != len(b[i]) {
-			return false
-		}
-		for j := range a[i] {
-			if a[i][j] != b[i][j] {
-				return false
-			}
-		}
-	}
-	return true
-}
-
 // Say shows a message box. Used for what a window cannot recover from.
 func Say(title, body string) {
+	//unchecked: Call's error is the raw GetLastError, not meaningful without a failed primary return; the message box has no fallback if MessageBoxW fails
 	messageBox.Call(0, uintptr(unsafe.Pointer(utf16(body))),
 		uintptr(unsafe.Pointer(utf16(title))), mbIconInformation)
 }
@@ -575,9 +500,18 @@ func dispatch(hwnd, msg, wparam, lparam uintptr) uintptr {
 			w.resized()
 		}
 		return 0
+	case wmGetMinMaxInfo:
+		if w.setMinimumTrackSize(lparam) {
+			return 0
+		}
 	case wmCommand:
 		if do := w.click[controlID(wparam)]; do != nil {
 			do()
+		}
+		return 0
+	case wmTrayCallback:
+		if w.trayMsg != nil {
+			w.trayMsg(wparam, lparam)
 		}
 		return 0
 	case wmQueued:

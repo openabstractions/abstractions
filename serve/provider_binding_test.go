@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	"github.com/openabstractions/abstraction-facade/go/resolution"
+	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-identity/listen"
 	"github.com/openabstractions/abstraction-inference/go"
 	inferenceservice "github.com/openabstractions/abstraction-inference/go/service"
@@ -32,7 +34,7 @@ func shortMediationEndpoint(t *testing.T) string {
 func TestProviderBindingSurvivesRestartAndChangesOnRedeclaration(t *testing.T) {
 	state := t.TempDir()
 	report := func(err error) { t.Errorf("providers: %v", err) }
-	p, err := openProviders(state, report)
+	p, err := openProviders(state, false, report)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +57,7 @@ func TestProviderBindingSurvivesRestartAndChangesOnRedeclaration(t *testing.T) {
 	if original.Generation == "" {
 		t.Fatal("new declaration has no persisted generation")
 	}
-	reopened, err := openProviders(state, report)
+	reopened, err := openProviders(state, false, report)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,6 +158,14 @@ func TestProviderMediationStartsAPendingRetirementSweep(t *testing.T) {
 	binding := inference.ExecutionBinding{Host: "retired", BindingID: "retired-before-start"}
 	endpoint := shortMediationEndpoint(t)
 	host, err := inferenceservice.ListenMediated(endpoint, provider, inference.ExecutionLocal, binding)
+	if runtime.GOOS == "darwin" && errors.Is(err, identity.ErrNotProven) {
+		l, listenErr := listen.Listen(endpoint)
+		if listenErr != nil {
+			t.Fatalf("unproven mediation retained listener: %v", listenErr)
+		}
+		l.Close()
+		t.Skip("retirement sweep requires a mediated Program listener; Unix startup refusal is checked separately")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,6 +214,17 @@ func TestOneMediationListenerFailureLeavesOtherCandidatesAvailable(t *testing.T)
 		t.Fatal(err)
 	}
 	defer m.Close()
+	if runtime.GOOS == "darwin" {
+		if len(reported) != 2 || !errors.Is(reported[0], identity.ErrNotProven) || !errors.Is(reported[1], identity.ErrNotProven) {
+			t.Fatalf("Unix mediation proof refusals: %v", reported)
+		}
+		for _, candidate := range p.Candidates() {
+			if candidate.Ready {
+				t.Fatalf("unproven mediation published ready candidate: %+v", candidate)
+			}
+		}
+		t.Skip("healthy mediation candidate requires Program proof; Unix startup refusal is checked separately")
+	}
 	if len(reported) != 1 {
 		t.Fatalf("listener failures reported %d times: %v", len(reported), reported)
 	}

@@ -2,15 +2,10 @@ package delegation_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	download "github.com/openabstractions/abstraction-download/go"
-	request "github.com/openabstractions/abstraction-download/go/abstraction/download/request"
-	"github.com/openabstractions/abstraction-download/go/netcost"
-	downloadserve "github.com/openabstractions/abstraction-download/go/serve"
-	host "github.com/openabstractions/abstraction-facade/go/runtime"
-	"github.com/openabstractions/abstractions/conformance/clients/fixture"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -22,7 +17,90 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	download "github.com/openabstractions/abstraction-download/go"
+	request "github.com/openabstractions/abstraction-download/go/abstraction/download/request"
+	"github.com/openabstractions/abstraction-download/go/netcost"
+	downloadserve "github.com/openabstractions/abstraction-download/go/serve"
+	host "github.com/openabstractions/abstraction-facade/go/runtime"
+	job "github.com/openabstractions/abstraction-job/go"
+	"github.com/openabstractions/abstractions/conformance/clients/fixture"
 )
+
+// The C++ client crosses IPC for submission and result retrieval. The Go
+// runtime owns the durable partial-range checkpoint across its restart.
+func TestCppServicePartialRangeResume(t *testing.T) {
+	if os.Getenv("OA_CPP_DELEGATION_PROBE") == "" {
+		t.Fatal("set OA_CPP_DELEGATION_PROBE to the built C++ client")
+	}
+	if runtime.GOOS == "darwin" {
+		t.Skip("current Program proof limitation")
+	}
+	const (
+		size       = 32 << 20
+		holdAt     = 4 << 20
+		checkpoint = 20 << 20
+	)
+	body := make([]byte, size)
+	for i := range body {
+		body[i] = byte(i)
+	}
+	origin := fixture.NewHeldRangeOrigin(body, holdAt)
+	source := httptest.NewServer(origin)
+	defer source.Close()
+	defer origin.Unblock()
+	dir := t.TempDir()
+	for _, name := range []string{"HOME", "APPDATA", "XDG_CONFIG_HOME", "ProgramData"} {
+		t.Setenv(name, dir)
+	}
+	endpoint := func(name string) string {
+		if runtime.GOOS == "windows" {
+			return fmt.Sprintf(`\\.\pipe\oa-cpp-range-%d-%s`, time.Now().UnixNano(), name)
+		}
+		return filepath.Join(dir, name+".sock")
+	}
+	o := host.Options{Endpoint: endpoint("runtime"), LogEndpoint: endpoint("log"), ConfigEndpoint: endpoint("config"), JobEndpoint: endpoint("jobs"), JobRoot: filepath.Join(dir, "provider"), JobOwner: "cpp-range-owner", JobExecutor: downloadserve.HTTPExecution{}}
+	stop := start(t, o)
+	key := "cpp-range-key"
+	accepted := strings.Fields(command(t, "range-submit", o.Endpoint, key, source.URL+"/artifact", fmt.Sprint(size), fmt.Sprintf("sha256:%x", sha256.Sum256(body))))
+	if len(accepted) != 4 || accepted[0] != "ACCEPTED" {
+		t.Fatalf("submission: %v", accepted)
+	}
+	select {
+	case <-origin.Held():
+	case <-time.After(20 * time.Second):
+		t.Fatal("first range did not hold")
+	}
+	store, err := job.NewFileStore(o.JobRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		record, err := store.Load(accepted[2])
+		if err == nil && record.Progress.Done == checkpoint {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("partial checkpoint not durable: record=%+v error=%v", record, err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	stop()
+	restarted := time.Now()
+	stop = start(t, o)
+	resultPath := filepath.Join(dir, "result.bin")
+	result := command(t, "range-result", o.Endpoint, key, accepted[1], accepted[2], resultPath)
+	if result != fmt.Sprintf("RESULT %d", size) {
+		t.Fatalf("result: %q", result)
+	}
+	got, err := os.ReadFile(resultPath)
+	if err != nil || len(got) != size || sha256.Sum256(got) != sha256.Sum256(body) {
+		t.Fatalf("client result size=%d digest=%x error=%v", len(got), sha256.Sum256(got), err)
+	}
+	origin.CheckResume(t, restarted, 10*time.Second)
+	stop()
+}
 
 // The fake represents one external adapter; its state survives the host restart.
 // All preparation, guarantee admission and reconciliation use production code.
@@ -120,7 +198,11 @@ func start(t *testing.T, o host.Options) func() {
 }
 func command(t *testing.T, args ...string) string {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	limit := 20 * time.Second
+	if len(args) > 0 && args[0] == "range-result" {
+		limit = 90 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
 	c := exec.CommandContext(ctx, os.Getenv("OA_CPP_DELEGATION_PROBE"), args...)
 	output, err := fixture.Output(ctx, c)

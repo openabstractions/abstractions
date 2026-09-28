@@ -128,7 +128,7 @@ func TestApplicationsCommandListsFilteredMetadataAndReusesReadyPresence(t *testi
 }
 
 func TestApplicationsCommandUsageAndAbsentRuntime(t *testing.T) {
-	for _, args := range [][]string{{"unknown"}, {"list", "extra"}, {"activate"}, {"activate", "../editor"}, {"activate", "editor", "extra"}, {"list", "--timeout", "-1s"}} {
+	for _, args := range [][]string{{"unknown"}, {"list", "extra"}, {"activate"}, {"activate", "editor", "extra"}, {"list", "--timeout", "-1s"}} {
 		err := applicationsCommand(args, io.Discard, io.Discard)
 		assertExit(t, err, exitUsage, strings.Join(args, " "))
 	}
@@ -138,6 +138,28 @@ func TestApplicationsCommandUsageAndAbsentRuntime(t *testing.T) {
 	}
 	err := applicationsCommand([]string{"list", "--endpoint", unreachableEndpoint(t), "--timeout", "2s"}, io.Discard, io.Discard)
 	assertExit(t, err, exitNotResolved, "applications list without runtime")
+	// activate's argument format is not checked client-side (item 1, round
+	// 5): exactly one argument of any shape, including one that looks like a
+	// path, reaches the runtime's own not-ready/unknown outcome instead of a
+	// usage mistake.
+	err = applicationsCommand([]string{"activate", "../editor", "--endpoint", unreachableEndpoint(t), "--timeout", "2s"}, io.Discard, io.Discard)
+	assertExit(t, err, exitNotResolved, "applications activate ../editor without runtime")
+}
+
+// TestApplicationsActivateArgumentCount is item 1's own test: one argument
+// reaches the runtime's own outcome, whatever its format; zero or two are
+// still the usage mistake, unchanged.
+func TestApplicationsActivateArgumentCount(t *testing.T) {
+	endpoint := unreachableEndpoint(t)
+	// Exactly one argument, even one no registered application could be
+	// named (mixed case; providerName, the registry's own format, is
+	// lowercase-only): the runtime decides unknown, not this command.
+	err := applicationsCommand([]string{"activate", "SingleName", "--endpoint", endpoint, "--timeout", "2s"}, io.Discard, io.Discard)
+	assertExit(t, err, exitNotResolved, "activate SingleName")
+	for _, args := range [][]string{{"activate"}, {"activate", "one", "two"}} {
+		err := applicationsCommand(append(args, "--endpoint", endpoint, "--timeout", "2s"), io.Discard, io.Discard)
+		assertExit(t, err, exitUsage, strings.Join(args, " "))
+	}
 }
 
 func TestCredentialAndInferenceHelpNameCurrentHostedRequirements(t *testing.T) {

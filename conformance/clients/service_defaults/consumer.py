@@ -119,7 +119,7 @@ def router_code(call):
     return "ok"
 
 
-for mode, code in (("router-forbidden", "forbidden"), ("router-unavailable", "policy_unavailable")):
+for mode, code in (("router-forbidden", "forbidden"), ("router-unavailable", "unavailable")):
     edit_policy(mode)
     assert router_code(lambda: routes.models(False)) == code, mode
     assert router_code(lambda: routes.hosts(False)) == code, mode
@@ -285,4 +285,4 @@ except ResolutionError as error:
     assert isinstance(error.__cause__, OSError), repr(error.__cause__)
 else:
     raise AssertionError("missing resolver selected local provider")
-print("PASS: installed Python reader/editor, edit-policy forbidden/unavailable, question retirement, model lookup forbidden/unavailable, router inventory/pick forbidden/policy_unavailable, existing records, change, conflict, absent resolver")
+print("PASS: installed Python reader/editor, edit-policy forbidden/unavailable, question retirement, model lookup forbidden/unavailable, router inventory/pick forbidden/unavailable, existing records, change, conflict, absent resolver")

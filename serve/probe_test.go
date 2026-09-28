@@ -48,6 +48,9 @@ func unreachableEndpoint(t *testing.T) string {
 	if runtime.GOOS == "windows" {
 		return testPipe("oa-probe-absent", "r")
 	}
+	if runtime.GOOS == "darwin" {
+		return filepath.Join(shortSocketDir(t), "absent.sock")
+	}
 	return filepath.Join(t.TempDir(), "absent.sock")
 }
 

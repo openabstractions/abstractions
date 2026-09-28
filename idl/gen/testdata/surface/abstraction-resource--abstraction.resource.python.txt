@@ -1,0 +1,139 @@
+enum AcquireOutcome
+  ACQUIRED = 'acquired'
+  INSUFFICIENT = 'insufficient'
+  HOLDERS_REFUSED = 'holders_refused'
+  NOT_PERMITTED = 'not_permitted'
+  UNAVAILABLE = 'unavailable'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+dataclass AcquireResult
+  outcome: AcquireOutcome | None
+  lease: Lease | None
+  asked: list[YieldRecord]
+dataclass AnswerCallResult
+  outcome: ResourceCallOutcome | None
+  answer: AnswerResult | None
+dataclass AnswerResult
+  recorded: bool
+class DispatchError(ValueError)
+  __init__(code)
+enum Evidence
+  VERIFIED = 'verified'
+  CLAIMED = 'claimed'
+dataclass Holder
+  program: str
+  account: str
+  amount: int
+  evidence: Evidence | None
+  lease: str
+  grant: str
+  since: str
+  detail: str
+dataclass HoldersResult
+  outcome: ResourceCallOutcome | None
+  state: ResourceState | None
+const KNOWN_RESOURCES
+dataclass Lease
+  id: str
+  resource: str
+  amount: int
+  since: str
+  renew_by: str
+dataclass LeaseChange
+  applied: bool
+  lease: Lease | None
+dataclass LeaseChangeResult
+  outcome: ResourceCallOutcome | None
+  change: LeaseChange | None
+class Leases
+  acquire(resource: str, amount: int, wait_ms: int) -> AcquireResult
+  renew(lease: str) -> LeaseChangeResult
+  release(lease: str) -> LeaseChangeResult
+  observe(cursor: str, wait_ms: int) -> ObserveResult
+  answer(request: str, answer: YieldAnswer | None, reason: str) -> AnswerCallResult
+  bind_process(lease: str, pid: int) -> ProcessBindResult
+class LeasesClient(Leases)
+  __init__(transport)
+  acquire(resource: str, amount: int, wait_ms: int) -> AcquireResult
+  renew(lease: str) -> LeaseChangeResult
+  release(lease: str) -> LeaseChangeResult
+  observe(cursor: str, wait_ms: int) -> ObserveResult
+  answer(request: str, answer: YieldAnswer | None, reason: str) -> AnswerCallResult
+  bind_process(lease: str, pid: int) -> ProcessBindResult
+dataclass ObserveResult
+  outcome: ResourceCallOutcome | None
+  page: YieldPage | None
+enum ProcessBindOutcome
+  BOUND = 'bound'
+  UNVERIFIABLE = 'unverifiable'
+  REFUSED = 'refused'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass ProcessBindResult
+  outcome: ProcessBindOutcome | None
+const RESOURCE_ERROR_CODES
+class Refusal(ValueError)
+  __init__(word, offset)
+enum ResourceCallOutcome
+  OK = 'ok'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+  INVALID = 'invalid'
+  UNKNOWN = 'unknown'
+dataclass ResourceList
+  resources: list[str]
+  observed: str
+dataclass ResourceState
+  resource: str
+  capacity: int
+  held: int
+  holders: list[Holder]
+  observed: str
+  instrument: str
+dataclass ResourcesResult
+  outcome: ResourceCallOutcome | None
+  list: ResourceList | None
+class ServiceError(Exception)
+  __init__(code, message)
+enum ServiceErrorCode
+  HANDLER_ERROR = 'handler_error'
+  INVALID_RESULT = 'invalid_result'
+  UNKNOWN_VERSION = 'unknown_version'
+  UNKNOWN_SERVICE = 'unknown_service'
+  UNKNOWN_METHOD = 'unknown_method'
+  WRONG_MODE = 'wrong_mode'
+  INTERNAL = 'internal'
+  INVALID_REQUEST = 'invalid_request'
+  CALLER_REFUSED = 'caller_refused'
+  UNKNOWN_RESOURCE = 'unknown_resource'
+  POLICY_UNAVAILABLE = 'policy_unavailable'
+  FORBIDDEN = 'forbidden'
+class Table
+  resources() -> ResourcesResult
+  holders(resource: str, fresh: bool) -> HoldersResult
+class TableClient(Table)
+  __init__(transport)
+  resources() -> ResourcesResult
+  holders(resource: str, fresh: bool) -> HoldersResult
+enum YieldAnswer
+  YIELDED = 'yielded'
+  REFUSED = 'refused'
+dataclass YieldPage
+  requests: list[YieldRequest]
+  next: str
+dataclass YieldRecord
+  holder: str
+  amount: int
+  answer: str
+  took_ms: int
+dataclass YieldRequest
+  id: str
+  resource: str
+  amount: int
+  reason: str
+  at: str
+  lease: str
+def decode(data)
+def encode(v)
+def service_name(frame)

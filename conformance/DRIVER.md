@@ -166,7 +166,7 @@ implementations cannot agree on.
 
 The body is the record's fields after the verdict:
 
-    03 claim A beta 1500 -> lease-held state=running epoch=1 held=yes recall=none want=run done=0 err=none cp=none content= crit= awake=no
+    03 claim A beta 1500 -> lease_held state=running epoch=1 held=yes recall=none want=run done=0 err=none cp=none content= crit= awake=no
 
 The record is printed even when the operation was refused. What a refusal left
 behind is the half of a refusal a caller has to live with.
@@ -177,12 +177,12 @@ Six more any operation may answer:
 
 | word | meaning |
 |---|---|
-| `not-found` | no such record |
-| `lease-held` | somebody else holds a live lease |
-| `stale-epoch` | the epoch offered is not the one the record carries |
-| `lease-expired` | the lease this was issued against has lapsed |
+| `not_found` | no such record |
+| `lease_held` | somebody else holds a live lease |
+| `stale_epoch` | the epoch offered is not the one the record carries |
+| `lease_expired` | the lease this was issued against has lapsed |
 | `terminal` | the record is in a state that accepts no further change |
-| `unknown-model` | the record declares a critical schema this reader cannot read. The definition spells this same refusal `unknown_schema`, and says so: `openabstractions-flat/abstraction-job/job.thrift` carries the word above beside the member |
+| `unknown_schema` | the record declares a critical schema this reader cannot read |
 | `refused` | refused for a reason with no word of its own |
 
 and four that belong to one operation each, because they say something no
@@ -246,7 +246,7 @@ epoch it last handed that owner and issues later operations against it.
 | `drop <name> [k=v ...]` | write one request into the drop folder. `text=` replaces the whole line, for a request that is not one |
 | `sweep` | one pass over the drop folder. `ok` and each request as `<name>=<state>`, sorted |
 | `watch <name> [budget-ms]` | open a subscription |
-| `next <name>` | what the listener was handed: `changed <jobs>`, `quiet <jobs>`, `closed`, `not-found`, or `refused`. `<jobs>` is `alias=state/done` for each named record, sorted, or `-`. Never the silence between notices — clocks are not compared |
+| `next <name>` | what the listener was handed: `changed <jobs>`, `quiet <jobs>`, `closed`, `not_found`, or `refused`. `<jobs>` is `alias=state/done` for each named record, sorted, or `-`. Never the silence between notices — clocks are not compared |
 | `close <name>` | close the subscription |
 | `sleep <ms>` | wait. The one place a duration is the point: a lease expiry is measured in wall time and cannot be observed any other way |
 
@@ -281,7 +281,7 @@ one per line, followed by `critical-ok` or `never-critical`.
     abstraction.job/verified-prefix@1 never-critical
 
 A record declares the models it carries and the subset a reader must understand
-or refuse it, and this roster is what an `unknown-model` answer is decided
+or refuse it, and this roster is what an `unknown_schema` answer is decided
 against. The runner does not ask for it: a scenario reaches the refusal through
 `plant`, and a reader checking a transcript by hand reads the roster.
 
@@ -292,21 +292,20 @@ print for a refusal, one per line, sorted, without `ok` and without the four tha
 belong to one operation each.
 
     invalid
-    lease-expired
-    lease-held
-    not-found
+    lease_expired
+    lease_held
+    not_found
     refused
-    stale-epoch
+    stale_epoch
     terminal
-    unknown-model
+    unknown_schema
 
-The words are one vocabulary with two spellings — `openabstractions-flat/abstraction-job/job.thrift` declares the
-member and the `transcript` annotation beside it declares the word here — and
-this roster is where the two are compared. Byte-comparing transcripts cannot do
-it: it proves three drivers agree, and three drivers agreeing on a word the
-definition does not declare is exactly how `unknown-model` and `unknown_schema`
-drifted apart unnoticed. A driver that can derive the roster from the definition
-should; one that spells it by hand is conformant and this is what checks it.
+Each word comes from a Verdict member in `openabstractions-flat/abstraction-job/job.thrift`.
+The four members without a refusal word of their own carry `transcript =
+"refused"`. A driver that can derive the roster from the definition should;
+one that spells it by hand is conformant when the roster agrees. Through one
+release, comparison and roster checks also accept the earlier hyphenated words
+`not-found`, `lease-held`, `stale-epoch`, `lease-expired` and `unknown-model`.
 
 ### The wire fixture
 

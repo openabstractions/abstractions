@@ -25,13 +25,13 @@
 
 // The bytes. Every language writes exactly this or it is not an implementation.
 //
-// The escape setting below is [JOB-E6]: escape what JSON requires, U+2028 and
+// The escape setting below is [JOB-J6]: escape what JSON requires, U+2028 and
 // U+2029, and nothing else. Go's default escapes & < > so that output is safe
 // to paste inside a <script>; nothing reads a record that way, and while that
 // default stood a download URL's query separator was spelled "&" by one
 // implementation and "&" by the other two.
 //
-// The opaque setting is [JOB-E7] and [JOB-E8]: an opaque value is one
+// The opaque setting is [JOB-J7] and [JOB-J8]: an opaque value is one
 // syntactically valid JSON value, validated in full and carried as the bytes it
 // arrived as. Validated, because a record is a UTF-8 file a stranger's parser
 // reads and one illegal escape three levels down makes the whole file
@@ -103,21 +103,17 @@ enum Capability {
 // binding that carried them as text lost the only part of an error that
 // mattered, which is the part `errors.Is` reads.
 //
-// `transcript` is how a conformance driver spells the same refusal in the
-// transcript conformance/DRIVER.md defines. It is declared and not derived:
-// four members answer `refused`, the transcript's word for a refusal with no
-// word of its own, and `unknown_schema` answers `unknown-model`, so no rule
-// over a member's spelling could produce this column. Deriving it is how the
-// two vocabularies came to disagree in one member while agreeing in six.
+// A conformance transcript uses each member's spelling. `transcript` marks the
+// four members that answer `refused` instead of their own word.
 enum Verdict {
-   1: not_found      (transcript = "not-found")
-   2: lease_held     (transcript = "lease-held")
-   3: stale_epoch    (transcript = "stale-epoch")
+   1: not_found
+   2: lease_held
+   3: stale_epoch
    4: conflict       (transcript = "refused")
-   5: lease_expired  (transcript = "lease-expired")
-   6: terminal       (transcript = "terminal")
-   7: invalid        (transcript = "invalid")
-   8: unknown_schema (transcript = "unknown-model")
+   5: lease_expired
+   6: terminal
+   7: invalid
+   8: unknown_schema
    9: unknown_op     (transcript = "refused")
   10: not_supported  (transcript = "refused")
   11: other          (transcript = "refused")

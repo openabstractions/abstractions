@@ -33,6 +33,6 @@ go test -count=1 conformance/clients/service_defaults/defaults_test.go -run Test
 Python/native execution is enabled by the runner, and is explicitly skipped by
 a Go-only invocation. Native macOS Program proof remains unavailable; this is
 currently a Windows/compatible Linux fixture, with Windows evidence recorded in
-feedback/shared-state-migration-acceptance.md. Existing C++ installed facade and
+research/feedback-archive-2026-09-24/shared-state-migration-acceptance.md. Existing C++ installed facade and
 Go dependency graph checks remain in ../facade; this fixture does not rebuild
 those unrelated packages.

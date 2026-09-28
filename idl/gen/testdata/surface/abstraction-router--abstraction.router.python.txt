@@ -5,6 +5,8 @@ dataclass Alias
   servable: bool
   hosted: bool
   profiles: list[str]
+  held_in: list[str]
+  context_length: int
 dataclass Ask
   at: str
   caller: str
@@ -17,6 +19,10 @@ const CREDENTIAL_CONSUMERS
 dataclass Caller
   user_description: str
   path_description: str
+dataclass Component
+  store: str
+  role: str
+  name: str
 dataclass Decision
   asked: str
   family: str
@@ -34,6 +40,9 @@ class DispatchError(ValueError)
 dataclass Family
   family: str
   names: list[Alias]
+  held_in: list[str]
+  family_source: str
+  components: list[Component]
 dataclass HostAllowance
   hosts: list[str]
 dataclass HostState
@@ -96,7 +105,7 @@ enum ServiceErrorCode
   INVALID_REQUEST = 'invalid_request'
   CALLER_REFUSED = 'caller_refused'
   UNKNOWN_OPERATION = 'unknown_operation'
-  POLICY_UNAVAILABLE = 'policy_unavailable'
+  UNAVAILABLE = 'unavailable'
   FORBIDDEN = 'forbidden'
 const VERDICTS
 const WIRE_KINDS

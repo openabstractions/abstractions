@@ -10,6 +10,7 @@ import (
 
 	cas "github.com/openabstractions/abstraction-cas/go"
 	casapi "github.com/openabstractions/abstraction-cas/go/api"
+	config "github.com/openabstractions/abstraction-config/go"
 	download "github.com/openabstractions/abstraction-download/go"
 	nas "github.com/openabstractions/abstraction-download/go/nas"
 	downloadserve "github.com/openabstractions/abstraction-download/go/serve"
@@ -25,6 +26,26 @@ const (
 type downloadProviderConfig struct {
 	Backend string `json:"backend"`
 	Root    string `json:"root,omitempty"`
+}
+
+// runtimeNASStore reads the same configuration sources as the runtime's config
+// service. The legacy CLI spelling is a run override for the nas_store key.
+func runtimeNASStore(options runtimeFlags) (string, error) {
+	store, path := isolatedConfigStore(options.stateDir)
+	machine := ""
+	if store == nil {
+		store = casapi.BoundedFileStore{MaxBytes: config.MaxUserFileBytes}
+		path, machine = config.UserPath(), config.MachinePath()
+	}
+	value := os.Getenv("ABSTRACTION_NAS_STORE")
+	if options.downloadNASRoot != "" {
+		value = options.downloadNASRoot
+	}
+	settings, err := config.LoadWithSources(store, path, machine, map[string]string{"ABSTRACTION_NAS_STORE": value})
+	if err != nil {
+		return "", fmt.Errorf("runtime: read NAS store setting: %w", err)
+	}
+	return settings.NASStore, nil
 }
 
 // managedDownloadExecutor pins the selected provider beside the acceptance
@@ -81,7 +102,7 @@ func normalizeDownloadProvider(backend, nasRoot string) (string, string, error) 
 		return backend, "", nil
 	case downloadBackendNAS:
 		if nasRoot == "" || !filepath.IsAbs(nasRoot) {
-			return "", "", errors.New("runtime: NAS download backend requires an absolute --jobs-download-nas-root")
+			return "", "", errors.New("runtime: NAS download backend requires an absolute nas_store setting or --jobs-download-nas-root override")
 		}
 		nasRoot = filepath.Clean(nasRoot)
 		// Establish the trusted directory before recording its identity. This

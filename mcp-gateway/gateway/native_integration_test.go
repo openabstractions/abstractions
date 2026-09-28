@@ -112,6 +112,10 @@ type fixtureApplications struct {
 	once     sync.Once
 }
 
+func fixtureProgram(path string) string {
+	return identity.CanonicalProgramPath(filepath.Clean(path))
+}
+
 func newFixtureApplications(endpoint string, visible map[string]string) (*fixtureApplications, error) {
 	l, err := listen.Listen(endpoint)
 	if err != nil {
@@ -153,7 +157,7 @@ func (a *fixtureApplications) Serve(ctx context.Context) error {
 			if err != nil {
 				return
 			}
-			reply, err := (&wire.ApplicationsDispatcher{Handler: fixtureApplicationsReceiver{application: a.visible[filepath.Clean(program)]}}).ExchangeFrame(call.Frame)
+			reply, err := (&wire.ApplicationsDispatcher{Handler: fixtureApplicationsReceiver{application: a.visible[fixtureProgram(program)]}}).ExchangeFrame(call.Frame)
 			if err == nil {
 				_ = call.Reply(reply)
 			}
@@ -229,7 +233,7 @@ func startFixture(t *testing.T, cfg fixtureConfig) *fixtureRuntime {
 	p, err := inference.New(inference.Config{
 		Router: r,
 		Decide: func(_ context.Context, subject inference.Subject, action, resource string) (string, error) {
-			if cfg.allowed[filepath.Clean(subject.Program)] && action == inference.ActionComplete && resource == "host:fixture" {
+			if cfg.allowed[fixtureProgram(subject.Program)] && action == inference.ActionComplete && resource == "host:fixture" {
 				return "permitted", nil
 			}
 			return "not_granted", nil
@@ -263,7 +267,7 @@ func startFixture(t *testing.T, cfg fixtureConfig) *fixtureRuntime {
 	}
 	policy := func(peer *identity.Peer) bool {
 		path, err := peer.Path.AtLeast(listen.Program.Path)
-		return err == nil && cfg.allowed[filepath.Clean(path)]
+		return err == nil && cfg.allowed[fixtureProgram(path)]
 	}
 	h, err := facaderuntime.Listen(facaderuntime.Options{
 		Endpoint: cfg.runtimeEndpoint, LogEndpoint: cfg.logEndpoint, ConfigEndpoint: cfg.configEndpoint,
@@ -384,7 +388,7 @@ func TestNativePrincipalsAndDurableRecoveryThroughMCP(t *testing.T) {
 	buildFixture(t, a)
 	buildFixture(t, b)
 	buildFixture(t, denied)
-	allowed := map[string]bool{filepath.Clean(a): true, filepath.Clean(b): true}
+	allowed := map[string]bool{fixtureProgram(a): true, fixtureProgram(b): true}
 	var gets, posts atomic.Int64
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
@@ -408,7 +412,7 @@ func TestNativePrincipalsAndDurableRecoveryThroughMCP(t *testing.T) {
 		routerEndpoint: fixtureEndpoint(t, "router"), inferenceEndpoint: fixtureEndpoint(t, "inference"), jobEndpoint: fixtureEndpoint(t, "jobs"),
 		applicationsEndpoint: fixtureEndpoint(t, "applications"),
 		jobRoot:              filepath.Join(dir, "jobs"), allowed: allowed, prepares: &prepares, executorEnabled: &executorEnabled, upstream: upstream.URL,
-		applications: map[string]string{filepath.Clean(a): "visible-a", filepath.Clean(b): "visible-b"},
+		applications: map[string]string{fixtureProgram(a): "visible-a", fixtureProgram(b): "visible-b"},
 		record: func(record inference.Record) {
 			recordMu.Lock()
 			defer recordMu.Unlock()
@@ -462,10 +466,10 @@ func TestNativePrincipalsAndDurableRecoveryThroughMCP(t *testing.T) {
 	recordMu.Unlock()
 	var permittedAttributed, refusedAttributed bool
 	for _, record := range observedRecords {
-		if filepath.Clean(record.Program) == filepath.Clean(a) && record.Outcome == "completed" {
+		if fixtureProgram(record.Program) == fixtureProgram(a) && record.Outcome == "completed" {
 			permittedAttributed = true
 		}
-		if filepath.Clean(record.Program) == filepath.Clean(denied) && record.Outcome != "completed" {
+		if fixtureProgram(record.Program) == fixtureProgram(denied) && record.Outcome != "completed" {
 			refusedAttributed = true
 		}
 		raw, _ := json.Marshal(record)

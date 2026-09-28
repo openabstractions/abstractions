@@ -19,6 +19,7 @@ func commandFlags(output io.Writer, defaultState string) (*flag.FlagSet, *string
 	flags.SetOutput(output)
 	state := flags.String("state-dir", defaultState, "absolute directory for durable opaque job handles")
 	flags.Usage = func() {
+		//unchecked: usage text on a help/error path; a failed write to the flag package's own output writer has nothing further to report
 		fmt.Fprintln(output, `usage: openabstractions-mcp [--state-dir ABSOLUTE_PATH]
 
 Local stdio MCP server. It exposes this fixed tool inventory:
@@ -46,6 +47,7 @@ options:`)
 func main() {
 	config, err := os.UserConfigDir()
 	if err != nil {
+		//unchecked: last diagnostic before os.Exit; a failed write to stderr has no fallback destination
 		fmt.Fprintln(os.Stderr, "openabstractions-mcp:", err)
 		os.Exit(1)
 	}
@@ -57,17 +59,20 @@ func main() {
 		os.Exit(2)
 	}
 	if flags.NArg() != 0 {
+		//unchecked: last diagnostic before os.Exit; a failed write to stderr has no fallback destination
 		fmt.Fprintln(os.Stderr, "openabstractions-mcp: unexpected arguments")
 		os.Exit(2)
 	}
 	backend, err := gateway.NewOA(facade.Discover(), *state)
 	if err != nil {
+		//unchecked: last diagnostic before os.Exit; a failed write to stderr has no fallback destination
 		fmt.Fprintln(os.Stderr, "openabstractions-mcp:", err)
 		os.Exit(1)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	if err := gateway.NewServer(backend).Run(ctx, &mcp.StdioTransport{MaxLineLength: 1 << 20}); err != nil && ctx.Err() == nil {
+		//unchecked: last diagnostic before os.Exit; a failed write to stderr has no fallback destination
 		fmt.Fprintln(os.Stderr, "openabstractions-mcp:", err)
 		os.Exit(1)
 	}

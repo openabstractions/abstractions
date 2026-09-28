@@ -133,6 +133,15 @@ dataclass Declaration
   activation: Activation | None
   remote: RemoteTrust | None
   models: list[str]
+  role: DeclarationRole | None
+  host: DeclarationHost | None
+dataclass DeclarationCeiling
+  tokens_per_day: int
+  micros_per_day: int
+  requests_per_day: int
+  images_per_day: int
+  audio_seconds_per_day: int
+  characters_per_day: int
 dataclass DeclarationChange
   outcome: DeclarationEditOutcome | None
   revision: str
@@ -144,6 +153,12 @@ enum DeclarationEditOutcome
   INVALID = 'invalid'
   FORBIDDEN = 'forbidden'
   UNAVAILABLE = 'unavailable'
+dataclass DeclarationHost
+  base: str
+  kind: str
+  hosted: bool
+  credential: str
+  ceiling: DeclarationCeiling | None
 dataclass DeclarationList
   outcome: DeclarationListOutcome | None
   revision: str
@@ -165,6 +180,11 @@ enum DeclarationReadiness
   REFUSED = 'refused'
   UNREACHABLE = 'unreachable'
   NOT_READY = 'not_ready'
+  DISABLED = 'disabled'
+enum DeclarationRole
+  PROVIDER = 'provider'
+  HOST = 'host'
+  REMOTE = 'remote'
 dataclass DeclarationState
   declaration: Declaration
   declared_by: str
@@ -174,9 +194,12 @@ dataclass DeclarationState
   restarts: int
   described: list[ServiceState]
   accepted: list[str]
+  role: DeclarationRole | None
+  host: HostReading | None
 enum DeclarationTransport
   NATIVE = 'oa-native@1'
   REMOTE = 'oa-remote@1'
+  HTTP = 'http@1'
 dataclass Description
   outcome: DescriptionOutcome | None
   program: str
@@ -194,6 +217,9 @@ class Endpoint
 class EndpointClient(Endpoint)
   __init__(transport)
   describe() -> Description
+dataclass HostReading
+  up: bool
+  why: str
 const REGISTRY_ACTIONS
 class Refusal(ValueError)
   __init__(word, offset)

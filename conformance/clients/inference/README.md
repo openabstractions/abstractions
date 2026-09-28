@@ -42,7 +42,7 @@ loopback port and a local `ollama` host over the fake upstream
 the C++ consumer and Python, grants Python `complete` on `host:ollama` and
 issues Python a local key. The fixture calls chat@1 natively without a rule
 (an audit entry with route `native`), and the llm-style Python client from
-`abstraction-inference/go/gateway/testdata` streams through the window (route
+`abstraction-inference/adapters/go/gateway/testdata` streams through the window (route
 `window`, rung `tcp-loopback/<platform> ...`). The Go operator client, the C++
 consumer (`inference_consumer <runtime> audit`) and the Python consumer
 (`py_consumer.py <runtime> audit`) then print the whole audit, and the three

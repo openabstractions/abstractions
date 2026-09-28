@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -12,21 +11,44 @@ import (
 
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	"github.com/openabstractions/abstraction-facade/go/client"
+	identity "github.com/openabstractions/abstraction-identity"
 )
 
 const providerUsage = `Usage: openabstractions provider <command>
 
-Declares providers outside the runtime in its registry,
-abstraction.facade/registry@1. The runtime launches an on-demand provider when
-a resolution first needs it, restarts it with backoff, and offers its contracts
-to applications after the runtime's own services while the process at its
-endpoint runs the declared program and endpoint@1 Describe lists every declared
-contract ready. A remote runtime is reached over mutual TLS and its hosts are
-listed as NAME/HOST.
+Reads and writes the runtime's registry, abstraction.facade/registry@1: the
+one directory of the programs it knows, in three roles.
+
+  provider  serves OA contracts on an OA endpoint. The runtime launches an
+            on-demand one when a resolution first needs it, restarts it with
+            backoff, and offers its contracts to applications after the
+            runtime's own services while the process at its endpoint runs the
+            declared program and endpoint@1 Describe lists every declared
+            contract ready.
+  host      a foreign HTTP engine the router reaches at a base URL, with its
+            wire kind, credential, profiles and ceiling. Add and remove one
+            with "openabstractions inference server", which writes the same
+            declaration.
+  remote    another runtime over mutual TLS, whose hosts are listed as
+            NAME/HOST.
+
+A declaration is declared by the operator program that wrote it, by the
+product whose own record names its address, or by the installation, which
+ships declaration files in the directory "declarations" beside the installed
+openabstractions executable. A shipped declaration may name its program as a
+bare file name with no path separator; the runtime resolves it against the
+tools directory "declarations" sits beside, the directory holding the
+runtime's own operator programs, and that resolved absolute path is what it
+launches and names to its rights rules. A bare name resolving to no file is
+reported invalid, naming the shipped name and the resolved path. A
+declaration added with "provider add" always names its program by an
+absolute path. Withdrawing a declaration of a product or the installation
+disables it by name, so a reinstall does not bring it back; declaring that
+name again enables it.
 
 Commands:
-  provider list          every declaration, its readiness, described contracts
-                         and accepted resources
+  provider list          every declaration, its role, readiness, described
+                         contracts and accepted resources
   provider add <name> --program PATH --provider-endpoint NAME --contract CONTRACT
                          [--arg ARG]... [--activate on-demand|attach]
                          [--guarantee NAME]... [--model NAME]... [--profiles LIST] [--store NAME]...
@@ -35,12 +57,16 @@ Commands:
                          --client FILE --client-key FILE [--credential NAME]
                          [--profiles LIST]
                          declare another runtime at the listed revision
-  provider remove <name> withdraw a declaration; an on-demand child ends
+  provider remove <name> withdraw a declaration; an on-demand child ends. A
+                         declaration of a product or the installation is
+                         disabled by name instead of removed
 
 provider add:
   --program PATH       the absolute executable path the runtime launches and
                        requires of the process serving the endpoint; a program
-                       cannot declare itself
+                       cannot declare itself. Stored and compared as the
+                       canonical long path: a short DOS 8.3 launch alias
+                       names the same program as its long spelling
   --provider-endpoint NAME
                        the local endpoint name the provider listens on
                        (a-z, 0-9, _ . -)
@@ -53,7 +79,7 @@ provider add:
                        attach reads a provider something else started
   --guarantee NAME     a guarantee its candidates advertise, repeatable
   --model NAME         a model a native inference provider serves, repeatable;
-	                   kept as its explicit mediation allowlist
+                       kept as its explicit mediation allowlist
   --profiles LIST      comma-separated profiles it serves, kept as resources
                        profile:NAME
   --store NAME         for an inventory source, a store the runtime accepts
@@ -72,32 +98,37 @@ provider add:
   --client-key FILE    this runtime's PEM client private key
   --credential NAME    the credential the remote runtime holds and applies
 
-Every command accepts --endpoint, --timeout and --json. Declaring needs
-abstraction.facade/provider.manage, which the command line and the Panel hold
-by installation.
+Every command accepts --endpoint, --timeout and --json. The endpoint is
+--endpoint if given, else ABSTRACTION_RUNTIME_ENDPOINT if set, else the
+installed runtime. Declaring needs abstraction.facade/provider.manage, which
+the command line and the Panel hold by installation.
 
 Exit codes: 0 done, 1 runtime not resolved or transport failure, 2 usage,
 3 typed refusal (forbidden, conflict, invalid), 4 unavailable, 6 unknown.
 `
 
 func providerCommand(args []string, output, diagnostics io.Writer) error {
-	if len(args) == 0 || isHelp(args[0]) {
+	if len(args) > 0 && isHelp(args[0]) {
 		_, err := io.WriteString(output, providerUsage)
 		return err
+	}
+	if len(args) == 0 {
+		return commandMistake(diagnostics, "provider: a command is required", "openabstractions provider --help")
 	}
 	command := "provider " + args[0]
 	switch args[0] {
 	case "list", "add", "remove":
 	default:
-		return &exitError{exitUsage, fmt.Errorf("provider: no command called %q; run openabstractions provider --help", args[0])}
+		return commandMistake(diagnostics, fmt.Sprintf("provider: no command called %q", args[0]), "openabstractions provider --help")
+	}
+	if containsHelp(args[1:]) {
+		_, err := io.WriteString(output, providerUsage)
+		return err
 	}
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
-	flags.SetOutput(diagnostics)
-	flags.Usage = func() {
-		if _, err := fmt.Fprint(diagnostics, providerUsage); err == nil {
-			flags.PrintDefaults()
-		}
-	}
+	flags.SetOutput(io.Discard)
+	// badFlag below prints this program's own three-line mistake shape;
+	flags.Usage = func() {} // the flag package's own per-error usage call must print nothing
 	var options serviceOptions
 	options.bind(flags)
 	program := flags.String("program", "", "program path")
@@ -118,46 +149,44 @@ func providerCommand(args []string, output, diagnostics io.Writer) error {
 	flags.Var(&stores, "store", "accepted inventory store")
 	positional, err := parsePositional(flags, args[1:])
 	if err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return err
-		}
-		return &exitError{exitUsage, fmt.Errorf("%s: %w", command, err)}
+		return badFlag(flags, diagnostics, command, providerUsage, args[1:], err)
 	}
 	wantsName := command != "provider list"
 	if wantsName != (len(positional) == 1) || len(positional) > 1 {
 		if wantsName {
-			return &exitError{exitUsage, fmt.Errorf("%s: name exactly one provider", command)}
+			return flagMistake(diagnostics, command, providerUsage, "name exactly one provider")
 		}
-		return &exitError{exitUsage, fmt.Errorf("%s: takes no arguments", command)}
+		return flagMistake(diagnostics, command, providerUsage, "takes no arguments")
 	}
 	activation := wire.ActivationOnDemand
 	if command == "provider add" {
 		switch {
 		case *remoteAt != "":
 			if *program != "" || *endpoint != "" || len(contracts) > 0 || len(arguments) > 0 || len(models) > 0 || len(stores) > 0 {
-				return &exitError{exitUsage, fmt.Errorf("%s: --remote takes no --program, --provider-endpoint, --contract, --arg or --store", command)}
+				return flagMistake(diagnostics, command, providerUsage, "--remote takes no --program, --provider-endpoint, --contract, --arg or --store")
 			}
 			activation = wire.ActivationRemote
 		case *activate == "on-demand":
 		case *activate == "attach":
 			activation = wire.ActivationAttach
 		default:
-			return &exitError{exitUsage, fmt.Errorf("%s: --activate is on-demand or attach", command)}
+			return flagMistake(diagnostics, command, providerUsage, "--activate is on-demand or attach")
 		}
 		if *remoteAt == "" && (*program == "" || !filepath.IsAbs(*program) || *endpoint == "" || len(contracts) == 0) {
-			return &exitError{exitUsage, fmt.Errorf("%s: --program (absolute), --provider-endpoint and --contract are required", command)}
+			return flagMistake(diagnostics, command, providerUsage, "--program (absolute), --provider-endpoint and --contract are required")
 		}
 	}
 	if options.budget < 0 {
-		return &exitError{exitUsage, fmt.Errorf("%s: --timeout must not be negative", command)}
+		return flagMistake(diagnostics, command, providerUsage, "--timeout must not be negative")
 	}
 	w := newWaiting(options.budget)
 	defer w.stop()
+	machine, source := options.machine(diagnostics, command)
 	call, done := w.call()
-	registry, err := options.machine().ResolveRegistry(call, client.Requirements{})
+	registry, err := machine.ResolveRegistry(call, client.Requirements{})
 	done()
 	if err != nil {
-		return notResolved(command, err)
+		return notResolved(command, source, err)
 	}
 	transport := func(err error) error { return &exitError{exitNotResolved, fmt.Errorf("%s: %w", command, err)} }
 	call, done = w.call()
@@ -182,7 +211,7 @@ func providerCommand(args []string, output, diagnostics io.Writer) error {
 		declaration := wire.Declaration{Name: name, Program: *program, Arguments: append([]string{}, arguments...), Endpoint: *endpoint,
 			Transport: wire.DeclarationTransportNative, Contracts: contracts, Guarantees: guarantees, Activation: activation}
 		if *program != "" {
-			declaration.Program = filepath.Clean(*program)
+			declaration.Program = identity.CanonicalProgramPath(filepath.Clean(*program))
 		}
 		for _, profile := range splitList(*profiles) {
 			declaration.Resources = append(declaration.Resources, "profile:"+profile)
@@ -212,7 +241,8 @@ func providerCommand(args []string, output, diagnostics io.Writer) error {
 // printDeclarations writes the registry listing as a table.
 func printDeclarations(output io.Writer, list wire.DeclarationList) error {
 	table := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(table, "NAME\tACTIVATION\tCONTRACTS\tMODELS\tENDPOINT\tPROGRAM\tREADINESS\tDESCRIBED\tRESTARTS\tRESOURCES\tACCEPTED\tDECLARED BY\tDECLARED")
+	//unchecked: table buffers in memory; the write to the underlying output surfaces at Flush, which is checked below
+	fmt.Fprintln(table, "NAME\tROLE\tACTIVATION\tCONTRACTS\tMODELS\tENDPOINT\tPROGRAM\tREADINESS\tDESCRIBED\tRESTARTS\tRESOURCES\tACCEPTED\tDECLARED BY\tDECLARED")
 	for _, p := range list.Declarations {
 		d := p.Declaration
 		readiness := p.Readiness.String()
@@ -223,10 +253,20 @@ func printDeclarations(output io.Writer, list wire.DeclarationList) error {
 		for _, s := range p.Described {
 			described = append(described, s.Contract+"="+s.Readiness.String())
 		}
-		fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\t%s\t%s\n", d.Name, d.Activation, strings.Join(d.Contracts, ","), strings.Join(d.Models, ","), d.Endpoint, d.Program,
+		// A host declares no OA endpoint or program: its engine stands there.
+		endpoint, program := d.Endpoint, d.Program
+		if h := d.Host; h != nil {
+			endpoint, program = h.Base, h.Kind
+			if h.Credential != "" {
+				program += " " + h.Credential
+			}
+		}
+		//unchecked: table buffers in memory; the write to the underlying output surfaces at Flush, which is checked below
+		fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\t%s\t%s\n", d.Name, p.Role, d.Activation, strings.Join(d.Contracts, ","), strings.Join(d.Models, ","), endpoint, program,
 			readiness, strings.Join(described, ","), p.Restarts, strings.Join(d.Resources, ","), strings.Join(p.Accepted, ","), p.DeclaredBy,
 			time.UnixMilli(p.DeclaredUnixMs).UTC().Format(time.RFC3339))
 	}
+	//unchecked: table buffers in memory; the write to the underlying output surfaces at Flush, which is checked below
 	fmt.Fprintf(table, "revision: %s\n", list.Revision)
 	return table.Flush()
 }

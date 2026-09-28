@@ -215,7 +215,7 @@ func TestShippedRuntimeGatesEachActionByItsRule(t *testing.T) {
 		t.Fatal(err)
 	}
 	unavailable := map[string]string{"config rewrite": "unavailable", "logging history": "policy_unavailable", "model resolve": "unavailable",
-		"router hosts": "policy_unavailable", "router pick": "policy_unavailable", "jobs submit": "unavailable"}
+		"router hosts": "unavailable", "router pick": "unavailable", "jobs submit": "unavailable"}
 	for _, c := range shippedGates(server.URL + "/other.bin") {
 		name := strings.Join(c.args[:2], " ")
 		if outage, _ := probeAs(t, bin, options, c.args...); outage.Outcome != unavailable[name] {
@@ -373,14 +373,14 @@ func TestRightsGrantForBundlesWritesEachExactRule(t *testing.T) {
 	}
 
 	inference := bundle(0, "--for", "inference", "--host", "openrouter", "--credential", "openrouter", "--why", "chat for the probe")
-	if inference.Outcome != "applied" || len(inference.Landed) != 3 || inference.Landed[1].Resource != "host:openrouter" || inference.Landed[2].Resource != "credential:openrouter" {
+	if inference.Outcome != "applied" || len(inference.Landed) != 4 || inference.Landed[2].Resource != "host:openrouter" || inference.Landed[3].Resource != "credential:openrouter" {
 		t.Fatalf("inference bundle %+v", inference)
 	}
 	if pick, _ := probeAs(t, bin, options, "router", "pick", "probe-model"); pick.Outcome == "forbidden" {
 		t.Fatalf("route under the inference bundle %+v", pick)
 	}
-	if hosts, _ := probeAs(t, bin, options, "router", "hosts"); hosts.Outcome != "forbidden" {
-		t.Fatalf("router inventory outside the bundle %+v", hosts)
+	if hosts, _ := probeAs(t, bin, options, "router", "hosts"); hosts.Outcome == "forbidden" {
+		t.Fatalf("inventory under the inference bundle %+v", hosts)
 	}
 }
 

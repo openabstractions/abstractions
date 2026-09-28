@@ -1835,8 +1835,17 @@ func DescribeEndpoint(frame []byte, program, version string, services ...Describ
 	for i, service := range services {
 		contract, ready, why := service.DescribeService()
 		readiness := "ready"
-		if !ready {
+		if ready {
+			why = ""
+		} else {
 			readiness = "not_ready"
+		}
+		var guarantees []string
+		var capabilities map[string]string
+		if described, ok := service.(interface {
+			DescribeServiceMetadata() ([]string, map[string]string)
+		}); ok {
+			guarantees, capabilities = described.DescribeServiceMetadata()
 		}
 		if i > 0 {
 			out = append(out, ',')
@@ -1845,7 +1854,23 @@ func DescribeEndpoint(frame []byte, program, version string, services ...Describ
 		out = esc(out, contract)
 		out = append(out, ",\"readiness\":\""+readiness+"\",\"why\":"...)
 		out = esc(out, why)
-		out = append(out, ",\"guarantees\":[],\"capabilities\":{}}"...)
+		out = append(out, ",\"guarantees\":["...)
+		for j, guarantee := range guarantees {
+			if j > 0 {
+				out = append(out, ',')
+			}
+			out = esc(out, guarantee)
+		}
+		out = append(out, "],\"capabilities\":{"...)
+		for j, key := range sortedKeys(capabilities) {
+			if j > 0 {
+				out = append(out, ',')
+			}
+			out = esc(out, key)
+			out = append(out, ':')
+			out = esc(out, capabilities[key])
+		}
+		out = append(out, "}}"...)
 	}
 	return serviceReply(v, Raw(append(out, "]}}"...)), nil)
 }
@@ -1995,6 +2020,17 @@ func (d *VoiceProbeDispatcher) DescribeService() (contract string, ready bool, w
 		return "oa.test/livevoice-probe@1", ready, why
 	}
 	return "oa.test/livevoice-probe@1", true, ""
+}
+
+// DescribeServiceMetadata returns optional handler display facts for Describe.
+// They grant no authority and do not change service admission.
+func (d *VoiceProbeDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string) {
+	if h, ok := d.Handler.(interface {
+		DescribeMetadata() ([]string, map[string]string)
+	}); ok {
+		return h.DescribeMetadata()
+	}
+	return nil, nil
 }
 
 // ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.

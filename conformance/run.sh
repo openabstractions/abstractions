@@ -183,7 +183,7 @@ fi
 # citation, prose about the rule rather than the rule. Two sentences filed under
 # one tag leave a report picking one, so a passing mention can replace what a
 # rule says. A page declares only its own family of tags, the prefix most of
-# its tags carry: the download page citing [JOB-E8] states no job rule.
+# its tags carry: the download page citing [JOB-J8] states no job rule.
 # scripts/behaviour-conformance.sh reads a page by the same rules.
 own_family() {
     grep -o '\[[A-Z][A-Z]*-[A-Z]*[0-9][0-9]*\]' "$1" | sed 's/^\[\([A-Z]*\)-.*/\1/' |
@@ -210,6 +210,15 @@ invariants() {
             sub(/^[ \t,;:-]+ */, "", sent)
             gsub(/  +/, " ", sent)
             sub(/ +$/, "", sent)
+            if (sent == "") {
+                # A head-form declaration, **[TAG] Title.** Body, opens its
+                # paragraph: the title after the tag is the wording of the rule.
+                sent = block
+                sub(/^[* ]+/, "", sent)
+                if (match(sent, /\.\*\*|\. /)) sent = substr(sent, 1, RSTART - 1)
+                gsub(/[*`~>|]/, "", sent)
+                sub(/ +$/, "", sent)
+            }
             if (length(sent) > 92) sent = substr(sent, 1, 89) "..."
             print tag "\t" sent "\t" PAGE "\t" line
         }
@@ -290,6 +299,14 @@ judge() {
     awk -v SEP="$SEP" '
     function head(s) { sub(/[ \t].*$/, "", s); return s }
     function tail(s,   p) { p = index(s, " "); return p ? substr(s, p + 1) : "" }
+    function canonical_verdict(s) {
+        if (s == "not-found") return "not_found"
+        if (s == "lease-held") return "lease_held"
+        if (s == "stale-epoch") return "stale_epoch"
+        if (s == "lease-expired") return "lease_expired"
+        if (s == "unknown-model") return "unknown_schema"
+        return s
+    }
     function toks(s, out) {
         delete out
         sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s)
@@ -304,7 +321,7 @@ judge() {
         if (got == "") return 0
         if (index(head(want), "=")) { claim = ""; body = want }
         else                        { claim = head(want); body = tail(want) }
-        if (claim != "" && claim != head(got)) return 0
+        if (claim != "" && canonical_verdict(claim) != canonical_verdict(head(got))) return 0
         open = (body == "..." || body ~ /[ \t]\.\.\.$/)
         if (open) sub(/([ \t]|^)\.\.\.$/, "", body)
         wn = toks(body, w)

@@ -12,16 +12,22 @@
     "platform": "windows/amd64",
     "scenario": "Installed Python logging client through generated resolver, shared native IPC and Go service: exact record and receiving identity, absent runtime, cancellation, frame limit, empty client home",
     "inputs": [
+      "adopters/comfyui-presentation/server/go.mod",
+      "adopters/comfyui-presentation/server/go.sum",
       "conformance/clients/fixture/go.mod",
       "conformance/clients/python_shared",
       "conformance/clients/workspace.py",
       "conformance/faults/lostreply/go/go.mod",
       "deploy/nas/mkimage/go.mod",
+      "examples/logging-quickstart/go.mod",
+      "examples/logging-quickstart/go.sum",
       "examples/pretend-lemonade/go.mod",
       "examples/pretend-lemonade/go.sum",
       "go.work",
       "go.work.sum",
       "idl/gen",
+      "mcp-gateway/go.mod",
+      "mcp-gateway/go.sum",
       "monitor/go.mod",
       "monitor/go.sum",
       "openabstractions-flat/abstraction-asks/asks.thrift",
@@ -36,6 +42,8 @@
       "openabstractions-flat/abstraction-config/go/go.mod",
       "openabstractions-flat/abstraction-config/go/go.sum",
       "openabstractions-flat/abstraction-config/py",
+      "openabstractions-flat/abstraction-credentials/go/go.mod",
+      "openabstractions-flat/abstraction-credentials/go/go.sum",
       "openabstractions-flat/abstraction-download/download.thrift",
       "openabstractions-flat/abstraction-download/go",
       "openabstractions-flat/abstraction-download/go/go.mod",
@@ -57,6 +65,11 @@
       "openabstractions-flat/abstraction-identity/go.sum",
       "openabstractions-flat/abstraction-identity/identity.thrift",
       "openabstractions-flat/abstraction-identity/py",
+      "openabstractions-flat/abstraction-inference/adapters/go/go.mod",
+      "openabstractions-flat/abstraction-inference/adapters/go/go.sum",
+      "openabstractions-flat/abstraction-inference/go",
+      "openabstractions-flat/abstraction-inference/go/go.mod",
+      "openabstractions-flat/abstraction-inference/go/go.sum",
       "openabstractions-flat/abstraction-job/acceptance.thrift",
       "openabstractions-flat/abstraction-job/go",
       "openabstractions-flat/abstraction-job/go/go.mod",
@@ -70,7 +83,14 @@
       "openabstractions-flat/abstraction-model/go",
       "openabstractions-flat/abstraction-model/go/go.mod",
       "openabstractions-flat/abstraction-model/go/go.sum",
+      "openabstractions-flat/abstraction-model/identity",
+      "openabstractions-flat/abstraction-model/identity/go.mod",
       "openabstractions-flat/abstraction-model/model.thrift",
+      "openabstractions-flat/abstraction-provider-modelbridge/go/go.mod",
+      "openabstractions-flat/abstraction-provider-modelhost/go/go.mod",
+      "openabstractions-flat/abstraction-resource/go",
+      "openabstractions-flat/abstraction-resource/go/go.mod",
+      "openabstractions-flat/abstraction-resource/go/go.sum",
       "openabstractions-flat/abstraction-rights/go",
       "openabstractions-flat/abstraction-rights/go/go.mod",
       "openabstractions-flat/abstraction-rights/go/go.sum",
@@ -79,6 +99,8 @@
       "openabstractions-flat/abstraction-router/go/go.mod",
       "openabstractions-flat/abstraction-router/go/go.sum",
       "openabstractions-flat/abstraction-router/router.thrift",
+      "openabstractions-flat/abstraction-storage-over-local-stores/go/go.mod",
+      "openabstractions-flat/abstraction-storage-over-local-stores/go/go.sum",
       "openabstractions-flat/abstraction-storage/go",
       "openabstractions-flat/abstraction-storage/go/go.mod",
       "openabstractions-flat/abstraction-storage/go/go.sum",
@@ -116,7 +138,7 @@
       "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe"
     ]
   },
-  "inputs_digest": "d7f49ab3c880516d4010f1f0b5ef57a4008c0e964332b8ad44d16c74f6682ebd",
+  "inputs_digest": "98b8f053383d7c450f5a609793fb22796d57460ff0e2d4d93195b6ce287b1e0e",
   "toolchains": {
     "python": {
       "argv": [
@@ -125,7 +147,7 @@
       ],
       "exit": 0,
       "output": "Python 3.12.10\r\n",
-      "seconds": 0.047
+      "seconds": 0.062
     },
     "go": {
       "argv": [
@@ -143,7 +165,7 @@
       ],
       "exit": 0,
       "output": "cmake version 4.3.1-msvc1\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n",
-      "seconds": 0.031
+      "seconds": 0.047
     }
   },
   "result": {
@@ -155,9 +177,9 @@
       "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe"
     ],
     "exit": 0,
-    "output": "source revision: 8d7d7747e323383194561d9d35a01434ca5f7f3d (uncommitted changes present)\r\n-- Building for: Visual Studio 18 2026\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- The C compiler identification is MSVC 19.51.36256.0\n-- The CXX compiler identification is MSVC 19.51.36256.0\n-- Detecting C compiler ABI info\n-- Detecting C compiler ABI info - done\n-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting C compile features\n-- Detecting C compile features - done\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Configuring done (9.2s)\n-- Generating done (0.1s)\nCMake Warning:\n  Manually-specified variables were not used by the project:\n\n    CMAKE_BUILD_TYPE\n\n\n-- Build files have been written to: <user-home>/AppData/Local/Temp/oa-python-siaqcama/native\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\nC:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Microsoft\\VC\\v180\\Microsoft.CppBuild.targets(561,5): warning MSB8029: The Intermediate directory or Output directory cannot reside under the Temporary directory as it could lead to issues with incremental build. [<user-home>\\AppData\\Local\\Temp\\oa-python-siaqcama\\native\\ZERO_CHECK.vcxproj]\r\n  1>Checking Build System\r\nC:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Microsoft\\VC\\v180\\Microsoft.CppBuild.targets(561,5): warning MSB8029: The Intermediate directory or Output directory cannot reside under the Temporary directory as it could lead to issues with incremental build. [<user-home>\\AppData\\Local\\Temp\\oa-python-siaqcama\\native\\abstraction_ipc.vcxproj]\r\n  Building Custom Rule <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/openabstractions-flat/abstraction-identity/cpp/CMakeLists.txt\r\n  client.cpp\r\n     Creating library <user-home>/AppData/Local/Temp/oa-python-siaqcama/native/Release/abstraction_ipc.lib and object <user-home>/AppData/Local/Temp/oa-python-siaqcama/native/Release/abstraction_ipc.exp\r\n  abstraction_ipc.vcxproj -> <user-home>\\AppData\\Local\\Temp\\oa-python-siaqcama\\native\\Release\\abstraction_ipc.dll\r\nC:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Microsoft\\VC\\v180\\Microsoft.CppBuild.targets(561,5): warning MSB8029: The Intermediate directory or Output directory cannot reside under the Temporary directory as it could lead to issues with incremental build. [<user-home>\\AppData\\Local\\Temp\\oa-python-siaqcama\\native\\ALL_BUILD.vcxproj]\r\n  Building Custom Rule <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/openabstractions-flat/abstraction-identity/cpp/CMakeLists.txt\r\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-siaqcama/prefix/lib/abstraction_ipc.lib\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-siaqcama/prefix/bin/abstraction_ipc.dll\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-siaqcama/prefix/include\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-siaqcama/prefix/include/abstraction\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-siaqcama/prefix/include/abstraction/ipc\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-siaqcama/prefix/include/abstraction/ipc/bootstrap.hpp\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-siaqcama/prefix/include/abstraction/ipc/client.h\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-siaqcama/prefix/include/abstraction/ipc/client.hpp\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-siaqcama/prefix/include/abstraction/ipc/frame.hpp\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-siaqcama/prefix/include/abstraction/ipc/process.hpp\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-siaqcama/prefix/share/abstraction_ipc/link-dependencies.txt\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-siaqcama/prefix/lib/cmake/abstraction_ipc/abstraction_ipcTargets.cmake\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-siaqcama/prefix/lib/cmake/abstraction_ipc/abstraction_ipcTargets-release.cmake\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-siaqcama/prefix/lib/cmake/abstraction_ipc/abstraction_ipcConfig.cmake\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-siaqcama/prefix/lib/cmake/abstraction_ipc/abstraction_ipcConfigVersion.cmake\nProcessing <user-home>\\AppData\\Local\\Temp\\oa-python-siaqcama\\identity\r\n  Preparing metadata (pyproject.toml): started\r\n  Preparing metadata (pyproject.toml): finished with status 'done'\r\nProcessing <user-home>\\AppData\\Local\\Temp\\oa-python-siaqcama\\facade\r\n  Preparing metadata (pyproject.toml): started\r\n  Preparing metadata (pyproject.toml): finished with status 'done'\r\nProcessing <user-home>\\AppData\\Local\\Temp\\oa-python-siaqcama\\logging\r\n  Preparing metadata (pyproject.toml): started\r\n  Preparing metadata (pyproject.toml): finished with status 'done'\r\nBuilding wheels for collected packages: abstraction-ipc, abstraction-facade-client, abstraction-logging-protocol\r\n  Building wheel for abstraction-ipc (pyproject.toml): started\r\n  Building wheel for abstraction-ipc (pyproject.toml): finished with status 'done'\r\n  Created wheel for abstraction-ipc: filename=abstraction_ipc-0.0.0-py3-none-any.whl size=6731 sha256=019d6cd22d0f81f93e3c5d710390ab6b9c705a7b01ee07d527cda78e9c5ded0b\r\n  Stored in directory: <user-home>\\AppData\\Local\\Temp\\pip-ephem-wheel-cache-mce8kd5f\\wheels\\51\\27\\55\\7d1655dd480b00d79acbfd777e0eafc3e807507e54d646884e\r\n  Building wheel for abstraction-facade-client (pyproject.toml): started\r\n  Building wheel for abstraction-facade-client (pyproject.toml): finished with status 'done'\r\n  Created wheel for abstraction-facade-client: filename=abstraction_facade_client-0.0.0-py3-none-any.whl size=32321 sha256=90f955dbaa77fadbc820a22dbd1f957006582ced812f77cf1c707b45dc72eaa7\r\n  Stored in directory: <user-home>\\AppData\\Local\\Temp\\pip-ephem-wheel-cache-mce8kd5f\\wheels\\3c\\71\\12\\62a72a334e973ca2ddd2d0b4384a8ae278d75ce389aa0e1976\r\n  Building wheel for abstraction-logging-protocol (pyproject.toml): started\r\n  Building wheel for abstraction-logging-protocol (pyproject.toml): finished with status 'done'\r\n  Created wheel for abstraction-logging-protocol: filename=abstraction_logging_protocol-0.0.0-py3-none-any.whl size=17812 sha256=432d323956b59eb1e7b467dc9bb8409fafd96b4241ca2d2b09c46eab7929ca90\r\n  Stored in directory: <user-home>\\AppData\\Local\\Temp\\pip-ephem-wheel-cache-mce8kd5f\\wheels\\5d\\3d\\8c\\3f05634f7c9a811203a79c1b83d13aaa3d909e47e654fa877a\r\nSuccessfully built abstraction-ipc abstraction-facade-client abstraction-logging-protocol\r\nInstalling collected packages: abstraction-logging-protocol, abstraction-ipc, abstraction-facade-client\r\n\r\nSuccessfully installed abstraction-facade-client-0.0.0 abstraction-ipc-0.0.0 abstraction-logging-protocol-0.0.0\r\n.........\r\n----------------------------------------------------------------------\r\nRan 9 tests in 0.002s\r\n\r\nOK\r\n.\r\n----------------------------------------------------------------------\r\nRan 1 test in 0.000s\r\n\r\nOK\r\nPASS bootstrap\r\nPASS absent\r\nPASS log\r\nPASS oversized\r\nPASS cancel\r\nPASS: installed Python resolver/logging, exact payload, absent runtime, oversized frame, cancellation, empty client home\r\n",
-    "seconds": 43.375
+    "output": "source revision: 536ea6f5505a94192eeb07fc65536855f3a379d6 (uncommitted changes present)\r\n-- Building for: Visual Studio 18 2026\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- The C compiler identification is MSVC 19.51.36256.0\n-- The CXX compiler identification is MSVC 19.51.36256.0\n-- Detecting C compiler ABI info\n-- Detecting C compiler ABI info - done\n-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting C compile features\n-- Detecting C compile features - done\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Configuring done (5.1s)\n-- Generating done (0.1s)\nCMake Warning:\n  Manually-specified variables were not used by the project:\n\n    CMAKE_BUILD_TYPE\n\n\n-- Build files have been written to: <user-home>/AppData/Local/Temp/oa-python-xbtudzp4/native\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\nC:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Microsoft\\VC\\v180\\Microsoft.CppBuild.targets(561,5): warning MSB8029: The Intermediate directory or Output directory cannot reside under the Temporary directory as it could lead to issues with incremental build. [<user-home>\\AppData\\Local\\Temp\\oa-python-xbtudzp4\\native\\ZERO_CHECK.vcxproj]\r\n  1>Checking Build System\r\nC:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Microsoft\\VC\\v180\\Microsoft.CppBuild.targets(561,5): warning MSB8029: The Intermediate directory or Output directory cannot reside under the Temporary directory as it could lead to issues with incremental build. [<user-home>\\AppData\\Local\\Temp\\oa-python-xbtudzp4\\native\\abstraction_ipc.vcxproj]\r\n  Building Custom Rule <user-home>/.codex/worktrees/oa-storage-vocabulary/openabstractions-flat/abstraction-identity/cpp/CMakeLists.txt\r\n  client.cpp\r\n     Creating library <user-home>/AppData/Local/Temp/oa-python-xbtudzp4/native/Release/abstraction_ipc.lib and object <user-home>/AppData/Local/Temp/oa-python-xbtudzp4/native/Release/abstraction_ipc.exp\r\n  abstraction_ipc.vcxproj -> <user-home>\\AppData\\Local\\Temp\\oa-python-xbtudzp4\\native\\Release\\abstraction_ipc.dll\r\nC:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Microsoft\\VC\\v180\\Microsoft.CppBuild.targets(561,5): warning MSB8029: The Intermediate directory or Output directory cannot reside under the Temporary directory as it could lead to issues with incremental build. [<user-home>\\AppData\\Local\\Temp\\oa-python-xbtudzp4\\native\\ALL_BUILD.vcxproj]\r\n  Building Custom Rule <user-home>/.codex/worktrees/oa-storage-vocabulary/openabstractions-flat/abstraction-identity/cpp/CMakeLists.txt\r\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-xbtudzp4/prefix/lib/abstraction_ipc.lib\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-xbtudzp4/prefix/bin/abstraction_ipc.dll\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-xbtudzp4/prefix/include\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-xbtudzp4/prefix/include/abstraction\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-xbtudzp4/prefix/include/abstraction/ipc\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-xbtudzp4/prefix/include/abstraction/ipc/bootstrap.hpp\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-xbtudzp4/prefix/include/abstraction/ipc/client.h\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-xbtudzp4/prefix/include/abstraction/ipc/client.hpp\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-xbtudzp4/prefix/include/abstraction/ipc/frame.hpp\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-xbtudzp4/prefix/include/abstraction/ipc/process.hpp\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-xbtudzp4/prefix/share/abstraction_ipc/link-dependencies.txt\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-xbtudzp4/prefix/lib/cmake/abstraction_ipc/abstraction_ipcTargets.cmake\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-xbtudzp4/prefix/lib/cmake/abstraction_ipc/abstraction_ipcTargets-release.cmake\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-xbtudzp4/prefix/lib/cmake/abstraction_ipc/abstraction_ipcConfig.cmake\n-- Installing: <user-home>/AppData/Local/Temp/oa-python-xbtudzp4/prefix/lib/cmake/abstraction_ipc/abstraction_ipcConfigVersion.cmake\nProcessing <user-home>\\AppData\\Local\\Temp\\oa-python-xbtudzp4\\identity\r\n  Preparing metadata (pyproject.toml): started\r\n  Preparing metadata (pyproject.toml): finished with status 'done'\r\nProcessing <user-home>\\AppData\\Local\\Temp\\oa-python-xbtudzp4\\facade\r\n  Preparing metadata (pyproject.toml): started\r\n  Preparing metadata (pyproject.toml): finished with status 'done'\r\nProcessing <user-home>\\AppData\\Local\\Temp\\oa-python-xbtudzp4\\logging\r\n  Preparing metadata (pyproject.toml): started\r\n  Preparing metadata (pyproject.toml): finished with status 'done'\r\nBuilding wheels for collected packages: abstraction-ipc, abstraction-facade-client, abstraction-logging-protocol\r\n  Building wheel for abstraction-ipc (pyproject.toml): started\r\n  Building wheel for abstraction-ipc (pyproject.toml): finished with status 'done'\r\n  Created wheel for abstraction-ipc: filename=abstraction_ipc-0.0.0-py3-none-any.whl size=7999 sha256=42e0eec539d6986f04ccd725fcfa26c465d83828b3120dccc50ac1891782b005\r\n  Stored in directory: <user-home>\\AppData\\Local\\Temp\\pip-ephem-wheel-cache-8skun0w_\\wheels\\48\\47\\9b\\40d6807591e4dee792c9b6f144de52d0edacbc307c86f34ec8\r\n  Building wheel for abstraction-facade-client (pyproject.toml): started\r\n  Building wheel for abstraction-facade-client (pyproject.toml): finished with status 'done'\r\n  Created wheel for abstraction-facade-client: filename=abstraction_facade_client-0.0.0-py3-none-any.whl size=35375 sha256=7ff9f1e72f59e3a24c1040b17038fabf75e31d4c05aab9fee4be1cda978ed6fe\r\n  Stored in directory: <user-home>\\AppData\\Local\\Temp\\pip-ephem-wheel-cache-8skun0w_\\wheels\\a0\\59\\dd\\8b7c3797438c70e3acd2f25c3a55f7b1bf06359f3e485909c0\r\n  Building wheel for abstraction-logging-protocol (pyproject.toml): started\r\n  Building wheel for abstraction-logging-protocol (pyproject.toml): finished with status 'done'\r\n  Created wheel for abstraction-logging-protocol: filename=abstraction_logging_protocol-0.0.0-py3-none-any.whl size=17972 sha256=8b26130fa9c6a8e579f730cf4e51df357045f0684c4536b6828cf2133b214541\r\n  Stored in directory: <user-home>\\AppData\\Local\\Temp\\pip-ephem-wheel-cache-8skun0w_\\wheels\\6d\\92\\31\\ff7865c4432f1d9cf31d75cc283d3c7bd8c3bc5b85dc5b0266\r\nSuccessfully built abstraction-ipc abstraction-facade-client abstraction-logging-protocol\r\nInstalling collected packages: abstraction-logging-protocol, abstraction-ipc, abstraction-facade-client\r\n\r\nSuccessfully installed abstraction-facade-client-0.0.0 abstraction-ipc-0.0.0 abstraction-logging-protocol-0.0.0\r\n...........\r\n----------------------------------------------------------------------\r\nRan 11 tests in 0.004s\r\n\r\nOK\r\n.\r\n----------------------------------------------------------------------\r\nRan 1 test in 0.000s\r\n\r\nOK\r\nPASS bootstrap\r\nPASS absent\r\nPASS log\r\nPASS oversized\r\nPASS cancel\r\nPASS: installed Python resolver/logging, exact payload, absent runtime, oversized frame, cancellation, empty client home\r\n",
+    "seconds": 24.453
   },
-  "commit": "8d7d7747e323383194561d9d35a01434ca5f7f3d",
-  "record_digest": "b375b45986271441f394a36717803ca9ed280755c14c80ef7ff9fc5182b07425"
+  "commit": "536ea6f5505a94192eeb07fc65536855f3a379d6",
+  "record_digest": "c651065cd4a56f418fec5c3f5e34784d6912ee12b650bf2d240d2a52647723a3"
 }

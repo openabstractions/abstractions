@@ -13,23 +13,24 @@ import (
 	cwire "github.com/openabstractions/abstraction-credentials/go/abstraction/credentials/api"
 	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
+	"github.com/openabstractions/abstraction-inference/adapters/go/gateway"
+	"github.com/openabstractions/abstraction-inference/adapters/go/realtime"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	iwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
-	"github.com/openabstractions/abstraction-inference/go/gateway"
 	inferenceservice "github.com/openabstractions/abstraction-inference/go/service"
 	logging "github.com/openabstractions/abstraction-logging/go"
+	resourceservice "github.com/openabstractions/abstraction-resource/go/service"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	router "github.com/openabstractions/abstraction-router/go"
 )
 
-// inferenceHostsFile is the runtime's inference host configuration inside its
-// state directory: the local runtimes to reach, the hosted hosts and their
-// credential names, and per-credential ceilings. The `inference host` commands
-// and the Panel write it. The local hosts are the "local" entries plus, when
-// "declared" is true, the hosts the products on this machine declare
-// (runtime_inference_declared.go). An absent "declared" is true without
-// "local" and false with it, and "local": [] still selects none. An absent
-// "hosted" selects no hosted host.
+// inferenceHostsFile is the runtime's inference settings inside its state
+// directory: the per-credential ceilings, the provider's bounds, and whether
+// the products on this machine declare hosts (runtime_inference_declared.go).
+// Its "local" and "hosted" entries are what the registration build wrote;
+// each becomes a registry declaration of role host at the first start on this
+// build and leaves the file (registry.go). An absent "declared" is true
+// without "local" and false with it.
 const inferenceHostsFile = "hosts.json"
 
 // inferenceLocalHost is a model runtime on this machine: its kind and base URL.
@@ -74,7 +75,11 @@ type runtimeInference struct {
 	provider *inference.Provider
 	// router is the router the provider reaches hosts through; the runtime also
 	// publishes it as abstraction.router/router@1.
-	router         *router.Router
+	router *router.Router
+	// resources is who holds this machine's scarce resources, published as
+	// abstraction.resource/table@1 and read by the router for its residency
+	// answer (runtime_resources.go).
+	resources      *runtimeResources
 	host           *inferenceservice.Host
 	remoteHost     *inferenceservice.Host
 	endpoint       string
@@ -88,6 +93,9 @@ type runtimeInference struct {
 	// providers is the provider declarations the runtime supervises and offers
 	// as candidates and remote hosts (provider.go); nil without them.
 	providers *runtimeProviders
+	// provenance tells the router what the accepted inventory sources say this
+	// machine holds (runtime_inventory.go); nil without providers.
+	provenance *inventoryProvenance
 	// mediation owns the declaration-generation-pinned OA endpoints returned
 	// by resolution for supported native providers.
 	mediation *providerMediation
@@ -95,6 +103,11 @@ type runtimeInference struct {
 	// registryEndpoint (registry.go); nil without providers.
 	registry         *registryHost
 	registryEndpoint string
+	// lending serves the declared lending provider as
+	// abstraction.storage/lend@1 on lendingEndpoint (runtime_lending.go); nil
+	// without providers.
+	lending         *lendingHost
+	lendingEndpoint string
 }
 
 // Serve serves chat@1 and operator@1. The gateway window, when open, closes
@@ -108,6 +121,9 @@ func (r *runtimeInference) Serve(ctx context.Context) error {
 	}
 	serveCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	// The router's model catalogue carries what the stores hold for as long
+	// as the runtime serves.
+	go r.provenance.run(serveCtx)
 	served := make(chan error, 2)
 	go func() { served <- r.host.Serve(serveCtx) }()
 	go func() { served <- r.remoteHost.Serve(serveCtx) }()
@@ -135,17 +151,21 @@ func (r *runtimeInference) OperatorAvailable() bool { return r.operator != nil }
 
 func (r *runtimeInference) Close() error {
 	r.gateway.stop()
-	var mediationErr error
+	var mediationErr, providersErr, registryErr, lendingErr error
 	if r.mediation != nil {
 		mediationErr = r.mediation.Close()
 	}
 	if r.providers != nil {
-		r.providers.Close()
+		providersErr = r.providers.Close()
 	}
 	if r.registry != nil {
-		r.registry.Close()
+		registryErr = r.registry.Close()
 	}
-	return errors.Join(mediationErr, r.host.Close(), r.remoteHost.Close(), r.provider.Close())
+	if r.lending != nil {
+		lendingErr = r.lending.Close()
+	}
+	r.resources.close()
+	return errors.Join(mediationErr, providersErr, registryErr, lendingErr, r.host.Close(), r.remoteHost.Close(), r.provider.Close())
 }
 
 func inferenceEndpoint(options runtimeFlags) (string, error) {
@@ -155,7 +175,7 @@ func inferenceEndpoint(options runtimeFlags) (string, error) {
 	case options.endpoint != "":
 		return options.endpoint + "-inference", nil
 	}
-	return bootstrap.Endpoint("inference-v1")
+	return options.defaultEndpoint("inference-v1")
 }
 
 func inferenceRemoteEndpoint(options runtimeFlags) (string, error) {
@@ -165,7 +185,7 @@ func inferenceRemoteEndpoint(options runtimeFlags) (string, error) {
 	case options.endpoint != "":
 		return options.endpoint + "-inference-remote", nil
 	}
-	return bootstrap.Endpoint("inference-remote-v1")
+	return options.defaultEndpoint("inference-remote-v1")
 }
 
 func loadInferenceHosts(path string) (inferenceHosts, error) {
@@ -191,12 +211,16 @@ func (c inferenceHosts) usesDeclarations() bool {
 	return c.Local == nil
 }
 
-func inferenceRouter(config inferenceHosts, report func(error)) (*router.Router, error) {
-	hosts, err := inferenceHostList(config, report)
-	if err != nil {
-		return nil, err
+// routerHosts is every host the router reaches: the registry's declarations
+// of role host, the mediated native inference providers, and the remote
+// runtimes. Nothing else names a host.
+func routerHosts(providers *runtimeProviders) []*router.Host {
+	if providers == nil {
+		return nil
 	}
-	return router.New(hosts...), nil
+	hosts := providers.hostRouterHosts()
+	hosts = append(hosts, providers.nativeInferenceHosts()...)
+	return append(hosts, providers.remoteHosts()...)
 }
 
 // localRouterHost is the router host of one local entry.
@@ -226,46 +250,6 @@ func localRouterHost(l inferenceLocalHost) (*router.Host, error) {
 	}
 	h.DeclaredBy, h.Profiles = l.DeclaredBy, l.Profiles
 	return h, nil
-}
-
-// inferenceHostList is the router hosts a configuration names: its local
-// entries, the declared local hosts no entry names, and its hosted hosts.
-func inferenceHostList(config inferenceHosts, report func(error)) ([]*router.Host, error) {
-	var hosts []*router.Host
-	named := map[string]bool{}
-	if config.Local != nil {
-		for _, l := range *config.Local {
-			h, err := localRouterHost(l)
-			if err != nil {
-				return nil, err
-			}
-			named[h.Name] = true
-			hosts = append(hosts, h)
-		}
-	}
-	if config.usesDeclarations() {
-		for _, h := range declaredLocalHosts(report) {
-			if !named[h.Name] {
-				hosts = append(hosts, h)
-			}
-		}
-	}
-	for _, h := range config.Hosted {
-		if h.Name == "" || h.Base == "" || h.Wire == "" {
-			return nil, errors.New("inference: a hosted host needs a name, base and wire")
-		}
-		if h.Wire == router.WireRemote {
-			// A remote runtime is a registry declaration (provider.go).
-			if report != nil {
-				report(fmt.Errorf("inference: hosted host %s names wire %s; declare it with provider add --remote", h.Name, h.Wire))
-			}
-			continue
-		}
-		hosted := router.NewHosted(h.Name, h.Base, h.Wire, h.Credential)
-		hosted.DeclaredBy, hosted.Profiles = h.DeclaredBy, h.Profiles
-		hosts = append(hosts, hosted)
-	}
-	return hosts, nil
 }
 
 // composeInference needs the composed credentials: its policy decides and its
@@ -298,20 +282,24 @@ func composeInference(options runtimeFlags, c *runtimeCredentials, sink logging.
 	if err != nil {
 		return nil, err
 	}
-	// Provider declarations are optional: a runtime whose providers directory
-	// cannot be read serves inference without them and reports why.
-	providers, err := openProviders(state, report)
+	// Declarations are optional: a runtime whose providers directory cannot
+	// be read serves inference without them and reports why. It then reaches
+	// no host either, because the registry is the one directory of hosts.
+	providers, err := openProviders(state, config.usesDeclarations(), report)
 	if err != nil {
 		report(fmt.Errorf("runtime providers: %w", err))
 		providers = nil
 	}
-	r, err := inferenceRouter(config, report)
-	if err != nil {
-		return nil, err
-	}
+	r := router.New()
+	// Who holds the card is measured once, by the table, and read from there.
+	resources := composeResources(state, r, c.runtimeRights, report)
+	r.SetResidency(tableResidency{table: resources.table})
 	if providers != nil {
-		hosts := append(mustHosts(inferenceHostList(config, report)), providers.nativeInferenceHosts()...)
-		r.SetHosts(append(hosts, providers.remoteHosts()...)...)
+		providers.routerHostStates = func() []router.HostState {
+			states, _, _, _, _ := r.Residency(false)
+			return states
+		}
+		r.SetHosts(routerHosts(providers)...)
 	}
 	runtimeProgram := c.operators[0]
 	// The router reads hosted listings as the runtime's own program.
@@ -322,7 +310,11 @@ func composeInference(options runtimeFlags, c *runtimeCredentials, sink logging.
 		}
 		return result.Headers, nil
 	})
-	ceilings, err := inference.OpenCeilings(filepath.Join(dir, "ceilings.json"), config.Ceilings, nil)
+	limits := map[string]inference.Ceiling{}
+	if providers != nil {
+		limits = declarationBudgets(providers.hostFiles())
+	}
+	ceilings, err := inference.OpenCeilings(filepath.Join(dir, "ceilings.json"), limits, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -335,6 +327,11 @@ func composeInference(options runtimeFlags, c *runtimeCredentials, sink logging.
 		return nil, err
 	}
 	cfg := inference.Config{Router: r, Ceilings: ceilings, OnError: report, ResolveContent: content.read, PrepareContentWrite: content.prepareWrite,
+		LiveDialer: realtime.Dial,
+		// Admit waits for an on-demand declared native provider's readiness
+		// (FAC-R8) once the router has picked it; nil providers admits every
+		// host unconditionally.
+		Admit: providers.nativeAdmit,
 		Decide: func(ctx context.Context, s inference.Subject, action, resource string) (string, error) {
 			return c.decideAsking(ctx, rwire.Subject{Account: s.Account, Program: s.Program}, action, resource).Outcome.String(), nil
 		},
@@ -374,11 +371,13 @@ func composeInference(options runtimeFlags, c *runtimeCredentials, sink logging.
 	}
 	endpoint, err := inferenceEndpoint(options)
 	if err != nil {
+		//unchecked: tearing down what was already built before returning err, which this call already reports
 		provider.Close()
 		return nil, err
 	}
 	h, err := inferenceservice.ListenForPlacement(endpoint, provider, inference.ExecutionLocal)
 	if err != nil {
+		//unchecked: tearing down what was already built before returning err, which this call already reports
 		provider.Close()
 		return nil, err
 	}
@@ -386,19 +385,23 @@ func composeInference(options runtimeFlags, c *runtimeCredentials, sink logging.
 	h.Operator = operator
 	remoteEndpoint, err := inferenceRemoteEndpoint(options)
 	if err != nil {
+		//unchecked: tearing down what was already built before returning err, which this call already reports
 		h.Close()
+		//unchecked: tearing down what was already built before returning err, which this call already reports
 		provider.Close()
 		return nil, err
 	}
 	remoteHost, err := inferenceservice.ListenForPlacement(remoteEndpoint, provider, inference.ExecutionRemote)
 	if err != nil {
+		//unchecked: tearing down what was already built before returning err, which this call already reports
 		h.Close()
+		//unchecked: tearing down what was already built before returning err, which this call already reports
 		provider.Close()
 		return nil, err
 	}
 	remoteHost.OnError = report
 	// The original endpoint remains the concrete local-execution binding.
-	composed := &runtimeInference{provider: provider, router: r, host: h, remoteHost: remoteHost, endpoint: endpoint, remoteEndpoint: remoteEndpoint, operator: operator, content: content}
+	composed := &runtimeInference{provider: provider, router: r, resources: resources, host: h, remoteHost: remoteHost, endpoint: endpoint, remoteEndpoint: remoteEndpoint, operator: operator, content: content}
 	composed.gateway = &gatewayControl{path: filepath.Join(dir, inferenceGatewayFile), report: report,
 		open: func(address string) (*gateway.Window, error) {
 			return openGateway(address, composed, cfg.Record, report)
@@ -410,8 +413,11 @@ func composeInference(options runtimeFlags, c *runtimeCredentials, sink logging.
 		}
 		providers.remotesChanged = operator.refreshHosts
 		composed.providers, operator.providers = providers, providers
+		c.host.OnStored = operator.credentialStored
+		composed.provenance = newInventoryProvenance(providers, r, report)
 		composed.mediation, err = newProviderMediation(endpoint, provider, providers, report)
 		if err != nil {
+			//unchecked: tearing down what was already built before returning err, which this call already reports
 			composed.Close()
 			return nil, err
 		}
@@ -421,33 +427,61 @@ func composeInference(options runtimeFlags, c *runtimeCredentials, sink logging.
 			composed.registry, err = listenRegistry(registryAt, &runtimeRegistry{providers: providers, operator: operator}, c.owner, report)
 		}
 		if err != nil {
+			//unchecked: tearing down what was already built before returning err, which this call already reports
 			composed.Close()
 			return nil, fmt.Errorf("runtime registry: %w", err)
 		}
 		composed.registryEndpoint = registryAt
+		// Lending is mediated like every other provider call: an application
+		// resolves this runtime, and the runtime decides the engine's rule
+		// before it reaches the provider that writes the link.
+		lendingAt, err := lendingEndpoint(options)
+		if err == nil {
+			composed.lending, err = listenLending(lendingAt, &runtimeLending{providers: providers, rights: c.runtimeRights}, c.owner, report)
+		}
+		if err != nil {
+			//unchecked: tearing down what was already built before returning err, which this call already reports
+			composed.Close()
+			return nil, fmt.Errorf("runtime lending: %w", err)
+		}
+		composed.lendingEndpoint = lendingAt
 	}
 	if err := composed.gateway.start(options.gateway); err != nil {
+		//unchecked: tearing down what was already built before returning err, which this call already reports
 		composed.Close()
 		return nil, fmt.Errorf("--gateway %s: %w", options.gateway, err)
 	}
 	return composed, nil
 }
 
-// configure publishes chat@1 and its router as router@1, and registers the
-// inference rights actions. No rule is granted: an application calls complete
-// only under an explicit rule, and reads or routes only under one.
-func (r *runtimeInference) configure(o *host.Options, routerEndpoint string) {
+// configure publishes chat@1, its router as router@1 and the resource table as
+// table@1, and registers the inference rights actions. No rule is granted: an
+// application calls complete only under an explicit rule, and reads or routes
+// only under one. A program with no table.read rule still reads its own rows,
+// which is the rule and not an omission (CONTRACT.md RES-T4).
+func (r *runtimeInference) configure(o *host.Options, routerEndpoint, resourceEndpoint string) {
 	if r == nil {
 		return
 	}
 	o.Inference, o.InferenceEndpoint, o.InferenceRemoteEndpoint = r, r.endpoint, r.remoteEndpoint
 	r.content.configure(o)
 	o.Router, o.RouterEndpoint = r.router, routerEndpoint
+	o.ResourceTable, o.ResourceTableEndpoint = r.resources.table, resourceEndpoint
+	o.ResourceLeases = r.resources.book
 	o.RightsActions = append(o.RightsActions, iwire.ResourceActions...)
+	o.RightsActions = append(o.RightsActions, host.ResourceTableReadAction,
+		resourceservice.ActionHold, resourceservice.ActionYield)
 	if r.providers != nil {
 		o.Providers = r.providers
 		o.Registry, o.RegistryEndpoint = r.registry, r.registryEndpoint
-		o.RightsActions = append(o.RightsActions, ActionInventoryProvide, ActionProviderManage)
+		o.RightsActions = append(o.RightsActions, ActionInventoryProvide, ActionProviderManage, ActionInventoryRead, ActionLend)
+		if r.lending != nil {
+			o.Lending, o.LendingEndpoint = r.lending, r.lendingEndpoint
+		}
+		// What the machine holds, composed from every accepted declared source
+		// and read by applications under one rule of its own.
+		o.StorageInventoryPolicy = host.ContentPolicyFromRights(r.content.rights.decider(), ActionInventoryRead)
+		o.StorageInventorySources = r.providers.inventorySources
 	}
 }
 
@@ -459,7 +493,7 @@ func runtimeRouterEndpoint(options runtimeFlags) (string, error) {
 	case options.endpoint != "":
 		return options.endpoint + "-router", nil
 	}
-	return bootstrap.Endpoint("router-v1")
+	return options.defaultEndpoint("router-v1")
 }
 
 // mustHosts is the hosts of a configuration inferenceRouter already accepted.
@@ -468,6 +502,7 @@ func mustHosts(hosts []*router.Host, _ error) []*router.Host { return hosts }
 // close releases a composed service the runtime never took over.
 func (r *runtimeInference) close() {
 	if r != nil {
+		//unchecked: close has no return value to report a close failure through
 		r.Close()
 	}
 }

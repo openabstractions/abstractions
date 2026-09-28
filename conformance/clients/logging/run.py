@@ -30,11 +30,11 @@ if len(sys.argv) == 1:
     parser.print_help()
     raise SystemExit(0)
 args = parser.parse_args()
-source_revision()
-if args.dry_run: dry_run_stop('logging', args)
 if args.toolchain:
     subprocess.run([msvc_toolchain(dict(os.environ)), '--version'], check=True)
     raise SystemExit(0)
+source_revision()
+if args.dry_run: dry_run_stop('logging', args)
 if os.name != 'nt':
     raise SystemExit('This service proof currently measures Windows only.')
 BUILD.mkdir(parents=True, exist_ok=True)

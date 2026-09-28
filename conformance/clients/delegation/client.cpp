@@ -1,6 +1,8 @@
 #include <abstraction/facade/jobs.hpp>
 #include <abstraction/download/request/rec.h>
 #include <algorithm>
+#include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <thread>
@@ -17,7 +19,9 @@ int main(int argc, char** argv) {
         if (argc == 2 && std::string(argv[1]) == "--help") {
             std::cout << "delegation_consumer submit|incapable endpoint key source-url; "
                          "recover|pending endpoint key epoch operation owner; "
-                         "waiting|credential endpoint key source-url\n";
+                         "waiting|credential endpoint key source-url; "
+                         "range-submit endpoint key source-url size digest; "
+                         "range-result endpoint key epoch operation output-path\n";
             return 0;
         }
         if (argc < 4) throw std::runtime_error("use --help");
@@ -25,6 +29,53 @@ int main(int argc, char** argv) {
         const auto guarantee = d::kDownstreamRecoveryGuarantees[0];
         const auto deadline = abstraction::ipc::Clock::now() + std::chrono::seconds(15);
         f::ResolutionClient resolver(argv[2]);
+
+        if (mode == "range-submit" && argc == 7) {
+            auto jobs = f::resolve_job_operations(resolver, {"abstraction.job/reconciliation@1"},
+                                                  abstraction::facade::Scope::Local, deadline);
+            const auto history = jobs.get_history_window();
+            d::Request request;
+            request.artifact.size = std::strtoll(argv[5], nullptr, 10);
+            request.artifact.digest = argv[6];
+            request.sources.push_back({"http", argv[4]});
+            const auto raw = d::encode(request);
+            f::job_api::Submission submission;
+            submission.identity = {argv[3], history.history_epoch};
+            submission.kind = "download";
+            submission.spec.assign(raw.begin(), raw.end());
+            submission.required_guarantees = {"abstraction.job/reconciliation@1"};
+            const auto result = jobs.submit(submission);
+            require(result.outcome == "accepted" && result.receipt.has_value());
+            std::cout << "ACCEPTED " << history.history_epoch << ' ' << result.receipt->operation_id
+                      << ' ' << result.receipt->logical_owner << '\n';
+            return 0;
+        }
+        if (mode == "range-result" && argc == 7) {
+            const auto finish = abstraction::ipc::Clock::now() + std::chrono::seconds(90);
+            auto jobs = f::resolve_job_operations(resolver, {"abstraction.job/reconciliation@1"},
+                                                  abstraction::facade::Scope::Local, finish);
+            f::job_api::RequestIdentity id{argv[3], argv[4]};
+            const auto recovered = jobs.reconcile(id);
+            require(recovered.outcome == "accepted" && recovered.receipt.has_value()
+                    && recovered.receipt->operation_id == argv[5]);
+            for (;;) {
+                const auto observed = jobs.observe_work(id);
+                require(observed.outcome == "observed" && observed.snapshot.has_value());
+                require(observed.snapshot->receipt.operation_id == argv[5]);
+                if (observed.snapshot->state == "complete") break;
+                require(observed.snapshot->state != "failed" && observed.snapshot->state != "cancelled");
+                require(abstraction::ipc::Clock::now() < finish);
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+            std::ofstream output(argv[6], std::ios::binary | std::ios::trunc);
+            require(output.good());
+            const auto copied = jobs.copy_result(id, output);
+            if (copied.error) std::rethrow_exception(copied.error);
+            output.flush();
+            require(output.good());
+            std::cout << "RESULT " << copied.confirmed << '\n';
+            return 0;
+        }
 
         if (mode == "incapable" && argc == 5) {
             try {

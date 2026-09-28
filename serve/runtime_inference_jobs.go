@@ -17,8 +17,9 @@ import (
 // execution profile. Every existing kind delegates byte-for-byte to base, so
 // reopening a mature download root retains its preparation and result behavior.
 type runtimeInferenceJobExecutor struct {
-	base      acceptanceprovider.Executor
-	inference *inference.JobExecution
+	base          acceptanceprovider.Executor
+	inference     *inference.JobExecution
+	legacyResolve inference.JobSubjectResolver
 }
 
 func composeInferenceJobs(base acceptanceprovider.Executor, runtime *runtimeInference, credentials *runtimeCredentials, report func(error)) acceptanceprovider.Executor {
@@ -42,7 +43,7 @@ func composeInferenceJobs(base acceptanceprovider.Executor, runtime *runtimeInfe
 		}
 		return inference.Subject{}, inference.ContentForbidden
 	}
-	return &runtimeInferenceJobExecutor{base: base, inference: inference.NewJobExecution(runtime.provider, resolve, report)}
+	return &runtimeInferenceJobExecutor{base: base, inference: inference.NewJobExecution(runtime.provider, resolve, report), legacyResolve: resolve}
 }
 
 func (e *runtimeInferenceJobExecutor) Profile() string { return e.base.Profile() }
@@ -63,6 +64,16 @@ func (e *runtimeInferenceJobExecutor) PrepareScoped(scope, id, kind string, spec
 	}
 	prepared, err := e.base.Prepare(id, kind, spec)
 	return prepared, nil, err
+}
+
+func (e *runtimeInferenceJobExecutor) PrepareSubjectScoped(binding acceptanceprovider.Binding, id, kind string, spec []byte, required []string) ([]byte, []string, error) {
+	if kind == inference.InferenceJobKind {
+		return e.inference.PrepareScoped(binding.Scope, id, kind, spec, required)
+	}
+	if scoped, ok := e.base.(acceptanceprovider.SubjectScopedPreparer); ok {
+		return scoped.PrepareSubjectScoped(binding, id, kind, spec, required)
+	}
+	return e.PrepareScoped(binding.Scope, id, kind, spec, required)
 }
 
 func (e *runtimeInferenceJobExecutor) PrepareWithGuarantees(id, kind string, spec []byte, required []string) ([]byte, []string, error) {
@@ -120,9 +131,44 @@ func (e *runtimeInferenceJobExecutor) CheckAdmission(scope, kind string, spec []
 	return api.AcceptanceOutcomeAccepted, ""
 }
 
+func (e *runtimeInferenceJobExecutor) CheckSubjectAdmission(binding acceptanceprovider.Binding, kind string, spec []byte, required []string) (api.AcceptanceOutcome, string) {
+	if binding.Subject == nil {
+		return api.AcceptanceOutcomeUnavailable, "caller:unavailable"
+	}
+	if kind == inference.InferenceJobKind {
+		return e.inference.CheckAdmissionForSubject(binding.Scope, kind, spec, required, inference.Subject{Account: binding.Subject.Account, Program: binding.Subject.Program})
+	}
+	if checker, ok := e.base.(acceptanceprovider.SubjectAdmissionChecker); ok {
+		return checker.CheckSubjectAdmission(binding, kind, spec, required)
+	}
+	return e.CheckAdmission(binding.Scope, kind, spec, required)
+}
+
 func (e *runtimeInferenceJobExecutor) Serve(ctx context.Context, store job.Store) error {
 	return serveInferenceWorkers(ctx,
 		func(ctx context.Context) error { return e.base.Serve(ctx, store) },
+		func(ctx context.Context) error { return e.inference.Serve(ctx, store) },
+	)
+}
+
+func (e *runtimeInferenceJobExecutor) ServeWithSubjectLookup(ctx context.Context, store job.Store, lookup acceptanceprovider.SubjectLookup) error {
+	e.inference.SetOperationSubjectResolver(func(ctx context.Context, operationID, scope, credential string) (inference.Subject, inference.ContentOutcome) {
+		subject, found, err := lookup(operationID, scope)
+		if err != nil || !found {
+			return inference.Subject{}, inference.ContentUnavailable
+		}
+		if subject == nil {
+			return e.legacyResolve(ctx, scope, credential)
+		}
+		return inference.Subject{Account: subject.Account, Program: subject.Program}, inference.ContentResolved
+	})
+	return serveInferenceWorkers(ctx,
+		func(ctx context.Context) error {
+			if base, ok := e.base.(acceptanceprovider.SubjectServingExecutor); ok {
+				return base.ServeWithSubjectLookup(ctx, store, lookup)
+			}
+			return e.base.Serve(ctx, store)
+		},
 		func(ctx context.Context) error { return e.inference.Serve(ctx, store) },
 	)
 }

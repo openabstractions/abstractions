@@ -16,6 +16,7 @@ def main():
     parser.add_argument("--run", action="store_true")
     parser.add_argument('--dry-run', action='store_true', help=DRY_RUN_HELP)
     parser.add_argument("--cmake", default="cmake")
+    parser.add_argument("--range-only", action="store_true", help="run only the partial-range service restart fixture")
     args = parser.parse_args()
     if not (args.run or args.dry_run):
         parser.print_help()
@@ -44,7 +45,8 @@ def main():
         controls = base/"test_jobs.py"
         controls.write_text("import sys;sys.path.insert(0,"+repr(str(installed))+")\n"+(ROOT/"openabstractions-flat/abstraction-facade/py/test_jobs.py").read_text(encoding="utf-8"),encoding="utf-8")
         command([sys.executable,"-I",controls])
-        command(["go","test","-v","-count=1","conformance/clients/python_jobs/fixture_test.go"], env=env)
+        selected = ["-run", "^TestPythonServicePartialRangeResume$"] if args.range_only else []
+        command(["go","test","-v","-count=1",*selected,"conformance/clients/python_jobs/fixture_test.go"], env=env)
     print("PASS: temporary installed bindings/native library, actual Go service tests; fixture prefix removed")
 
 if __name__ == "__main__":

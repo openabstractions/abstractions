@@ -1,0 +1,521 @@
+/* Shared shell and two-skin stylesheet for the OpenAbstractions Panel.
+   The server marks <html data-platform="windows|macos|linux"> from the
+   runtime's own platform (or, for the screenshot tool only, a ?platform=
+   query parameter). Every rule below keys off that attribute; dark mode
+   follows prefers-color-scheme within each skin. */
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+
+html[data-platform="windows"] {
+  --oa-font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --oa-font-size: 14px;
+  --oa-nav-width: 320px;
+  --oa-icon-size: 16px;
+  --oa-page-bg: #f3f3f3;
+  --oa-card-bg: #fbfbfb;
+  --oa-card-border: #e5e5e5;
+  --oa-card-radius: 4px;
+  --oa-title-size: 28px;
+  --oa-title-weight: 600;
+  --oa-accent: #0067c0;
+  --oa-button-height: 32px;
+  --oa-button-radius: 4px;
+  --oa-text: #1b1b1b;
+  --oa-text-secondary: #5d5d5d;
+  --oa-sep: #e5e5e5;
+  --oa-nav-selected-bg: rgba(0, 0, 0, .05);
+  --oa-switch-w: 40px;
+  --oa-switch-h: 20px;
+}
+@media (prefers-color-scheme: dark) {
+  html[data-platform="windows"] {
+    --oa-page-bg: #1c1c1c;
+    --oa-card-bg: #2b2b2b;
+    --oa-card-border: #3a3a3a;
+    --oa-accent: #4cc2ff;
+    --oa-text: #f3f3f3;
+    --oa-text-secondary: #c8c8c8;
+    --oa-sep: #3a3a3a;
+    --oa-nav-selected-bg: rgba(255, 255, 255, .08);
+  }
+}
+
+html[data-platform="macos"] {
+  --oa-font-family: -apple-system, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+  --oa-font-size: 13px;
+  --oa-nav-width: 215px;
+  --oa-icon-size: 22px;
+  --oa-page-bg: #f5f5f5;
+  --oa-card-bg: #ffffff;
+  --oa-card-border: #e5e5e5;
+  --oa-card-radius: 10px;
+  --oa-title-size: 22px;
+  --oa-title-weight: 700;
+  --oa-accent: #007aff;
+  --oa-button-radius: 5px;
+  --oa-button-bg: #ffffff;
+  --oa-button-border: rgba(0, 0, 0, .18);
+  --oa-button-shadow: 0 1px 0 rgba(0, 0, 0, .06);
+  --oa-text: #1d1d1f;
+  --oa-text-secondary: #6e6e73;
+  --oa-sep: #e5e5e5;
+  --oa-nav-selected-bg: rgba(0, 122, 255, .15);
+  --oa-switch-w: 26px;
+  --oa-switch-h: 15px;
+}
+@media (prefers-color-scheme: dark) {
+  html[data-platform="macos"] {
+    --oa-page-bg: #1e1e1e;
+    --oa-card-bg: #2c2c2e;
+    --oa-card-border: #3a3a3c;
+    --oa-sep: #3a3a3c;
+    --oa-text: #f5f5f7;
+    --oa-text-secondary: #a1a1a6;
+    --oa-nav-selected-bg: rgba(10, 132, 255, .25);
+    --oa-button-bg: #3a3a3c;
+    --oa-button-border: rgba(255, 255, 255, .16);
+    --oa-button-shadow: 0 1px 0 rgba(0, 0, 0, .4);
+  }
+}
+
+html[data-platform="linux"] {
+  --oa-font-family: system-ui, sans-serif;
+  --oa-font-size: 13px;
+  --oa-nav-width: 215px;
+  --oa-icon-size: 22px;
+  --oa-page-bg: #f2f2f2;
+  --oa-card-bg: #ffffff;
+  --oa-card-border: #e0e0e0;
+  --oa-card-radius: 10px;
+  --oa-title-size: 22px;
+  --oa-title-weight: 700;
+  --oa-accent: #5f6368;
+  --oa-button-radius: 5px;
+  --oa-button-bg: #ffffff;
+  --oa-button-border: rgba(0, 0, 0, .18);
+  --oa-button-shadow: 0 1px 0 rgba(0, 0, 0, .06);
+  --oa-text: #1d1d1d;
+  --oa-text-secondary: #6b6b6b;
+  --oa-sep: #e0e0e0;
+  --oa-nav-selected-bg: rgba(95, 99, 104, .15);
+  --oa-switch-w: 26px;
+  --oa-switch-h: 15px;
+}
+@media (prefers-color-scheme: dark) {
+  html[data-platform="linux"] {
+    --oa-page-bg: #1e1e1e;
+    --oa-card-bg: #2b2b2b;
+    --oa-card-border: #3a3a3a;
+    --oa-sep: #3a3a3a;
+    --oa-text: #f0f0f0;
+    --oa-text-secondary: #a0a0a0;
+    --oa-accent: #9aa0a6;
+    --oa-nav-selected-bg: rgba(154, 160, 166, .25);
+    --oa-button-bg: #3a3a3a;
+    --oa-button-border: rgba(255, 255, 255, .16);
+    --oa-button-shadow: 0 1px 0 rgba(0, 0, 0, .4);
+  }
+}
+
+body {
+  font-family: var(--oa-font-family);
+  font-size: var(--oa-font-size);
+  background: var(--oa-page-bg);
+  color: var(--oa-text);
+  accent-color: var(--oa-accent);
+}
+a { color: var(--oa-accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+pre, textarea, code { font-family: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace; }
+/* Most <pre> elements in this Panel are a status line or a rule row, plain
+   sentences that happen to use <pre> rather than a code block; a bare <pre>
+   wraps like one (task 2026-09-23, seventh first-time visitor, finding 1: an
+   earlier round's blanket "pre { overflow-x: auto }", meant only for a wide
+   JSON dump or hash, instead put every sentence and rule row in its own
+   one-line box with a horizontal scrollbar). A long unbroken token inside
+   one, such as a sha256 digest, still has to give way somewhere, so
+   overflow-wrap: anywhere lets it break rather than force the line wider
+   than its container. */
+pre { white-space: normal; overflow-wrap: anywhere; }
+/* A genuine code or JSON block — every Technical details disclosure in this
+   Panel is a <pre> inside a <details> — keeps its own formatting: line
+   breaks and indentation are part of what it shows, so it wraps a long line
+   instead of collapsing it to one, rather than reading like ordinary prose. */
+details pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+input, select, textarea { max-width: 100%; }
+
+.oa-shell { display: flex; min-height: 100vh; align-items: stretch; }
+
+.oa-nav {
+  width: var(--oa-nav-width);
+  flex: 0 0 auto;
+  padding: 1.25rem .75rem;
+  overflow-y: auto;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
+  box-sizing: border-box;
+}
+html[data-platform="windows"] .oa-nav { border-right: 1px solid var(--oa-card-border); }
+
+.oa-nav-item {
+  display: flex;
+  align-items: center;
+  gap: .7em;
+  padding: .5em .8em;
+  margin: .1rem 0;
+  color: var(--oa-text);
+  border-radius: var(--oa-card-radius);
+  position: relative;
+}
+.oa-nav-item:hover { background: var(--oa-nav-selected-bg); text-decoration: none; }
+.oa-nav-item .oa-nav-label { font-weight: 400; }
+
+html[data-platform="windows"] .oa-nav-item.active {
+  background: var(--oa-nav-selected-bg);
+  border-radius: 4px;
+}
+html[data-platform="windows"] .oa-nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: -.75rem;
+  top: .35em;
+  bottom: .35em;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--oa-accent);
+}
+html[data-platform="macos"] .oa-nav-item.active,
+html[data-platform="linux"] .oa-nav-item.active {
+  background: var(--oa-nav-selected-bg);
+  border-radius: 6px;
+}
+
+.oa-nav-icon { display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+html[data-platform="windows"] .oa-nav-icon {
+  width: var(--oa-icon-size);
+  height: var(--oa-icon-size);
+  color: var(--oa-text-secondary);
+}
+html[data-platform="windows"] .oa-nav-icon svg { width: 16px; height: 16px; fill: currentColor; }
+html[data-platform="macos"] .oa-nav-icon,
+html[data-platform="linux"] .oa-nav-icon {
+  width: var(--oa-icon-size);
+  height: var(--oa-icon-size);
+  border-radius: 6px;
+  background: var(--oa-accent);
+  color: #fff;
+}
+html[data-platform="macos"] .oa-nav-icon svg,
+html[data-platform="linux"] .oa-nav-icon svg { width: 14px; height: 14px; fill: currentColor; }
+
+/* overflow-x: hidden here, not on html/body, is the backstop for finding 5
+   (task 2026-09-23, fifth first-time visitor): a <pre> or <table> cell
+   carrying one long unbroken string (a hash, a path, a JSON dump) has no
+   break opportunity by default and can paint wider than this column, which
+   otherwise drags the whole page into a sideways scroll and carries the nav
+   column off-screen with it, cutting its labels ("Credentials" read as
+   "ntials"). The elements below still get their own overflow-x: auto, so
+   that content stays reachable by scrolling the one element, never the page.
+   This clips it at the content column rather than html/body: giving the
+   root element a non-visible overflow-x forces its overflow-y to auto too
+   (CSS Overflow's same-axis rule, since it was left at the default visible),
+   turning it into a second, nested scroll container beside the normal one
+   the page already has. .oa-content is also the narrower, correct fix on
+   its own terms: it is the column actually at risk, and .oa-nav, a sibling
+   under .oa-shell rather than a descendant, is never affected by it. */
+.oa-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 2rem 2.5rem 3rem;
+  max-width: 900px;
+  overflow-x: hidden;
+}
+.oa-content h1 {
+  font-size: var(--oa-title-size);
+  font-weight: var(--oa-title-weight);
+  margin: 0 0 .6em;
+}
+.oa-content h2 { font-size: 1.05rem; font-weight: 600; margin: 0 0 .5em; }
+.oa-content h3 { font-size: 1rem; font-weight: 600; }
+
+/* Every existing <section> becomes one grouped row / card. */
+.oa-content section {
+  background: var(--oa-card-bg);
+  border: 1px solid var(--oa-card-border);
+  border-radius: var(--oa-card-radius);
+  padding: 1rem 1.25rem;
+  margin: 0 0 1rem;
+}
+html[data-platform="macos"] .oa-content section,
+html[data-platform="linux"] .oa-content section {
+  padding: 0 1rem;
+  overflow: hidden;
+}
+/* A row is a block child of a section: text, tables, lists, forms,
+   headings, preformatted blocks, textareas, and a label that wraps a
+   block. Each gets 10px of vertical padding; the hairline sits only
+   between two adjacent rows, never above the first or below the last.
+   A row left empty by the page's own script (a placeholder <div>/<pre>
+   before its first read) takes no space, so it never shows as a blank
+   row under the last real control. */
+html[data-platform="macos"] .oa-content section > :is(p, div, table, pre, ul, ol, form, h2, h3, textarea, label:has(> div, > p, > table, > pre, > ul, > ol, > form, > textarea)),
+html[data-platform="linux"] .oa-content section > :is(p, div, table, pre, ul, ol, form, h2, h3, textarea, label:has(> div, > p, > table, > pre, > ul, > ol, > form, > textarea)) {
+  padding: 10px 0;
+  margin: 0;
+}
+html[data-platform="macos"] .oa-content section > :is(p, div, table, pre, ul, ol, form, h2, h3, textarea) + :is(p, div, table, pre, ul, ol, form, h2, h3, textarea),
+html[data-platform="linux"] .oa-content section > :is(p, div, table, pre, ul, ol, form, h2, h3, textarea) + :is(p, div, table, pre, ul, ol, form, h2, h3, textarea) {
+  border-top: 1px solid var(--oa-sep);
+}
+html[data-platform="macos"] .oa-content section > :is(p, div, table, pre, ul, ol, form, h2, h3):empty,
+html[data-platform="linux"] .oa-content section > :is(p, div, table, pre, ul, ol, form, h2, h3):empty {
+  padding: 0;
+  border-top: none;
+}
+
+/* Inline controls (button, select, input, a label with only inline
+   content, span) are not rows: they lay out inline inside the section's
+   own padding, with no hairline of their own. A run of inline controls
+   gets the row's 10px of vertical space as a group, not per control: the
+   every control carries the same 10px top margin, so a run stays on one
+   baseline, and the last one before a following row adds 10px below. */
+html[data-platform="macos"] .oa-content section > :is(button, select, input, label, span),
+html[data-platform="linux"] .oa-content section > :is(button, select, input, label, span) {
+  display: inline-block;
+  vertical-align: top;
+  margin: 10px 6px 0 0;
+}
+html[data-platform="macos"] .oa-content section > :is(button, select, input, label, span):has(+ :is(p, div, table, pre, ul, ol, form, textarea)),
+html[data-platform="linux"] .oa-content section > :is(button, select, input, label, span):has(+ :is(p, div, table, pre, ul, ol, form, textarea)),
+html[data-platform="macos"] .oa-content section > :is(button, select, input, label, span):last-child,
+html[data-platform="linux"] .oa-content section > :is(button, select, input, label, span):last-child {
+  margin-bottom: 10px;
+}
+html[data-platform="macos"] .oa-content section > label:has(> div, > p, > table, > pre, > ul, > ol, > form, > textarea),
+html[data-platform="linux"] .oa-content section > label:has(> div, > p, > table, > pre, > ul, > ol, > form, > textarea) {
+  display: block;
+  vertical-align: baseline;
+  padding: 10px 0;
+  margin: 0;
+}
+html[data-platform="macos"] .oa-content section > :is(button, select, input, label, span) + :is(p, div, table, pre, ul, ol, form, textarea),
+html[data-platform="linux"] .oa-content section > :is(button, select, input, label, span) + :is(p, div, table, pre, ul, ol, form, textarea) {
+  border-top: 1px solid var(--oa-sep);
+}
+
+input, select, textarea, button {
+  font: inherit;
+  margin: .3rem .3rem .3rem 0;
+  padding: .4rem .6rem;
+  color: var(--oa-text);
+  background: var(--oa-card-bg);
+  border: 1px solid var(--oa-card-border);
+  border-radius: var(--oa-button-radius);
+}
+textarea { width: 95%; height: 10rem; }
+button {
+  padding: 0 .9em;
+  cursor: pointer;
+}
+button:hover { filter: brightness(0.97); }
+button:active { filter: brightness(0.93); }
+
+html[data-platform="windows"] button,
+html[data-platform="windows"] input,
+html[data-platform="windows"] select { height: var(--oa-button-height); }
+
+/* macOS/linux buttons size from their own content instead of a fixed
+   height, so a 1px border and 13px text always fit inside the button box.
+   Inputs and selects keep the platform's own fixed control height. */
+html[data-platform="macos"] button,
+html[data-platform="linux"] button {
+  height: auto;
+  line-height: 20px;
+  padding: 1px 10px;
+  background: var(--oa-button-bg);
+  border-color: var(--oa-button-border);
+  box-shadow: var(--oa-button-shadow);
+}
+html[data-platform="macos"] input,
+html[data-platform="macos"] select,
+html[data-platform="linux"] input,
+html[data-platform="linux"] select {
+  height: 22px;
+  line-height: 20px;
+  padding: 0 8px;
+}
+
+table { border-collapse: collapse; width: 100%; }
+/* word-break: normal is the point: a cell wraps at a space the same as any
+   other text (task 2026-09-23, seventh first-time visitor, finding 1 —
+   giving the table itself display: block + overflow-x: auto to keep
+   Inference's ten-column host list off the page also fed it a narrower
+   column than normal table layout would, so overflow-wrap: anywhere broke
+   ordinary short words like "lmstudio" mid-word instead of at the space
+   before or after them). overflow-wrap: anywhere is still there for the one
+   case word-break: normal cannot help: a single unbroken token with no
+   space in it at all, such as a sha256 digest, which still has to give way
+   somewhere rather than push the table wider than its column.  */
+td, th {
+  border-bottom: 1px solid var(--oa-sep);
+  padding: .3rem;
+  text-align: left;
+  vertical-align: top;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+/* th keeps its one short word whole (task 2026-09-23, eighth first-time
+   visitor, finding 6): a heading like "Name" or "Credential" read as
+   "Na/me" or "Cre/den/tial" at 600px, since td, th's own overflow-wrap:
+   anywhere above (meant for a genuinely unbreakable value like a sha256
+   digest in a data cell) applied to a heading's one plain word too. A
+   heading is never that kind of value, so it never needs to break. */
+th { white-space: nowrap; overflow-wrap: normal; }
+/* .oa-table is the one place left to put width a table cannot give up
+   without breaking a heading: its own horizontal scrollbar, on the wrapper
+   alone, never the page (finding 5 and 6 both took that off the page and
+   off ordinary text already) and never a heading or a cell's own text. */
+.oa-table { overflow-x: auto; }
+/* A cell inside .oa-table used to wrap at its own spaces (td, th's own
+   word-break: normal above), which let table layout narrow a wide table
+   like Inference's ten-column host list to fit its container instead of
+   overflowing it: the wrapper's own scrollbar never triggered, and the
+   last column or two lost their width and their content entirely (task
+   2026-09-23, thirteenth first-time visitor, finding 10). A cell inside
+   .oa-table now keeps its own line whole, the same rule th already gets
+   everywhere (task 2026-09-23, eighth first-time visitor, finding 6), so
+   the table's natural width wins and the wrapper scrolls sideways whole
+   instead of squeezing a column away. */
+.oa-table td { white-space: nowrap; overflow-wrap: normal; }
+
+/* A checkbox carrying class="switch" renders as a toggle switch in both
+   skins, matching the platform's own control instead of the browser default. */
+input.switch[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: var(--oa-switch-w);
+  height: var(--oa-switch-h);
+  border-radius: calc(var(--oa-switch-h) / 2);
+  background: var(--oa-card-border);
+  border: none;
+  position: relative;
+  vertical-align: middle;
+  cursor: pointer;
+  transition: background .15s ease;
+}
+input.switch[type="checkbox"]::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(var(--oa-switch-h) - 4px);
+  height: calc(var(--oa-switch-h) - 4px);
+  border-radius: 50%;
+  background: #fff;
+  transition: transform .15s ease;
+}
+input.switch[type="checkbox"]:checked { background: var(--oa-accent); }
+input.switch[type="checkbox"]:checked::before {
+  transform: translateX(calc(var(--oa-switch-w) - var(--oa-switch-h)));
+}
+
+.error { color: #b22; }
+.gap { border-left: 6px solid #b60; background: #fff4e5; color: #4a2a00; padding: .4rem .6rem; margin: .4rem 0; }
+.record { border-left: 6px solid var(--oa-card-border); padding: .2rem .6rem; margin: .4rem 0; }
+.record p, .gap p { margin: .2rem 0; }
+.hop { list-style: none; margin: .1rem 0; }
+.verified { color: #064; font-weight: 600; }
+.verified::before { content: "verified  "; background: #064; color: #fff; border-radius: 3px; padding: 0 .3rem; margin-right: .4rem; font-size: .8em; }
+.claim, .claimed { color: var(--oa-text-secondary); font-style: italic; }
+.claim::before, .claimed::before { content: "claim  "; background: var(--oa-card-border); color: var(--oa-text); border-radius: 3px; padding: 0 .3rem; margin-right: .4rem; font-size: .8em; font-style: normal; }
+.claimed::before { content: "claimed  "; }
+.asserted { color: #8a5a00; }
+.asserted::before { content: "untrusted  "; background: #fc6; color: #000; border-radius: 3px; padding: 0 .3rem; margin-right: .4rem; font-size: .8em; }
+.program { cursor: help; border-bottom: 1px dotted var(--oa-text-secondary); }
+.resource h3 { margin-bottom: .2rem; }
+.stale { color: #b60; }
+.key { font-family: monospace; background: #fff4e5; border-left: 6px solid #b60; padding: .4rem .6rem; color: #4a2a00; }
+
+/* A rule name kept as small text after the sentence that already explains it
+   in words (task 2026-09-23 finding 3: "host.manage adds or removes a host"
+   read as instructions, not the plain sentence the reader needs). */
+.oa-muted { font-size: .85em; color: var(--oa-text-secondary); }
+
+/* The "Grant" control panel_shell.go attaches after a section's own sentence
+   naming the rules it needs (grantScript). The status line takes no space
+   until a click gives it text, so an untouched control adds only its
+   button's row. */
+.oa-grant-status:empty { display: none; }
+.oa-grant-status.error { color: #b22; }
+
+/* oaShowError's disclosure (monitor/panel_shell.go, plainScript): a plain
+   sentence stands as the element's own text, with the runtime's original
+   wording tucked behind this modest, muted toggle rather than shown outright. */
+details.oa-error-details { margin-top: .2rem; font-size: .85em; color: var(--oa-text-secondary); }
+details.oa-error-details summary { cursor: pointer; color: var(--oa-text-secondary); }
+details.oa-error-details pre { margin: .2rem 0 0; }
+
+/* Section help links (monitor/help.go): inside every section heading, a
+   Windows "Learn more" text link at the right, Settings-app style; a small
+   "?" mark on macOS and Linux, plus one round page-level "?" button there.
+   Each platform shows only its own kind. */
+.oa-help-mark, .oa-help-learnmore, .oa-help-float { display: none; }
+
+html[data-platform="windows"] .oa-help-learnmore {
+  display: inline;
+  float: right;
+  margin-left: 1em;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--oa-accent);
+  text-decoration: none;
+}
+html[data-platform="windows"] .oa-help-learnmore:hover { text-decoration: underline; }
+
+html[data-platform="macos"] .oa-help-mark,
+html[data-platform="linux"] .oa-help-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-left: .5em;
+  border-radius: 50%;
+  background: var(--oa-nav-selected-bg);
+  color: var(--oa-accent);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+html[data-platform="macos"] .oa-help-float,
+html[data-platform="linux"] .oa-help-float {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--oa-accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .35);
+  z-index: 10;
+}
+
+@media (max-width: 860px) {
+  .oa-shell { flex-direction: column; }
+  .oa-nav { width: 100%; display: flex; flex-wrap: wrap; border-right: none; border-bottom: 1px solid var(--oa-card-border); position: static; height: auto; }
+  .oa-nav-item { flex: 1 1 auto; }
+  .oa-content { max-width: none; padding: 1.5rem; }
+}

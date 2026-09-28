@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,6 +22,7 @@ import (
 	fwire "github.com/openabstractions/abstraction-facade/go-core/go/abstraction/facade"
 	"github.com/openabstractions/abstraction-facade/go-core/resolution"
 	"github.com/openabstractions/abstraction-facade/go/client"
+	identity "github.com/openabstractions/abstraction-identity"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	iwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	logging "github.com/openabstractions/abstraction-logging/go"
@@ -106,7 +108,6 @@ func TestRuntimeInferenceDiagnosticSinkFailureDoesNotDuplicateWork(t *testing.T)
 	if err := rightsState.policy.Set(rwire.Subject{Account: rightsState.owner, Program: program}, inference.ActionComplete, inference.ResourceHost("ollama"), true); err != nil {
 		t.Fatal(err)
 	}
-	credentials := &runtimeCredentials{runtimeRights: rightsState}
 	var reports chan error = make(chan error, 8)
 	report := func(err error) {
 		select {
@@ -114,6 +115,18 @@ func TestRuntimeInferenceDiagnosticSinkFailureDoesNotDuplicateWork(t *testing.T)
 		default:
 		}
 	}
+	credentials, err := composeCredentials(options, rightsState, report)
+	if runtime.GOOS == "darwin" && errors.Is(err, identity.ErrNotProven) {
+		if chats.Load() != 0 {
+			t.Fatal("unproven runtime reached the upstream host")
+		}
+		assertListenersReleased(t, options)
+		t.Skip("inference diagnostic path requires Program proof; Unix startup refusal is checked separately")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer credentials.close()
 	sink := &failingInferenceDiagnosticSink{called: make(chan struct{}, 1)}
 	runtime, err := composeInference(options, credentials, sink, report)
 	if err != nil {

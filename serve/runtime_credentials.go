@@ -19,6 +19,7 @@ import (
 	downloadserve "github.com/openabstractions/abstraction-download/go/serve"
 	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
+	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-job/go/acceptanceprovider"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 )
@@ -78,10 +79,10 @@ func credentialsEndpoints(options runtimeFlags) (credentialsEndpoint, rightsEndp
 		sum := sha256.Sum256([]byte(options.endpoint))
 		return options.endpoint + "-credentials", options.endpoint + "-rights", "oa-runtime-" + hex.EncodeToString(sum[:6]), nil
 	}
-	if credentialsEndpoint, err = bootstrap.Endpoint("credentials-v1"); err != nil {
+	if credentialsEndpoint, err = options.defaultEndpoint("credentials-v1"); err != nil {
 		return "", "", "", err
 	}
-	rightsEndpoint, err = bootstrap.Endpoint("rights-authorization-v1")
+	rightsEndpoint, err = options.defaultEndpoint("rights-authorization-v1")
 	return credentialsEndpoint, rightsEndpoint, credentials.DefaultNamespace, err
 }
 
@@ -120,13 +121,17 @@ func platformBackend(dir string) (credentials.Backend, error) {
 // operatorPrograms are the runtime's own executable and its installed operator
 // siblings: the command line, its windowless link and the Abstraction Panel,
 // the programs holding holder.manage, holder.read and rights operator authority
-// by installation (feedback/credentials-holder-design.md, operator tools).
+// by installation (research/feedback-archive-2026-09-24/credentials-holder-design.md, operator tools).
+// Each path is canonicalized (identity.CanonicalProgramPath) so a runtime
+// launched through a short DOS 8.3 alias still recognizes the same operator
+// programs a caller's peer identity, also canonicalized, is compared against
+// in authorizeOperator.
 func operatorPrograms() ([]string, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return nil, err
 	}
-	return operatorSiblings(filepath.Clean(exe)), nil
+	return operatorSiblings(identity.CanonicalProgramPath(filepath.Clean(exe))), nil
 }
 
 // operatorSiblings names exe and each operator program installed beside it.
@@ -137,8 +142,11 @@ func operatorSiblings(exe string) []string {
 			name += ".exe"
 		}
 		sibling := filepath.Join(filepath.Dir(exe), name)
-		if _, err := os.Stat(sibling); err == nil && !slices.Contains(programs, sibling) {
-			programs = append(programs, sibling)
+		if _, err := os.Stat(sibling); err == nil {
+			sibling = identity.CanonicalProgramPath(sibling)
+			if !slices.Contains(programs, sibling) {
+				programs = append(programs, sibling)
+			}
 		}
 	}
 	return programs
@@ -203,6 +211,7 @@ func (c *runtimeCredentials) configure(o *host.Options) {
 // close releases a composed host the runtime never took over.
 func (c *runtimeCredentials) close() {
 	if c != nil {
+		//unchecked: close has no return value to report a close failure through
 		c.host.Close()
 	}
 }
@@ -245,6 +254,24 @@ func (c *runtimeCredentials) ApplyCredential(ctx context.Context, scope, name, t
 		return nil, err
 	}
 	return c.apply(ctx, subject, downloadserve.CredentialConsumer, name, target)
+}
+
+func (c *runtimeCredentials) ApplySubjectCredential(ctx context.Context, subject acceptanceprovider.AuthenticatedSubject, name, target string) (map[string]string, error) {
+	if subject.Account != c.owner || subject.Program == "" {
+		return nil, download.CredentialRefusal(name, "not_permitted")
+	}
+	return c.apply(ctx, cwire.Subject{Account: subject.Account, Program: subject.Program}, downloadserve.CredentialConsumer, name, target)
+}
+
+func (c *runtimeCredentials) CheckSubjectCredential(ctx context.Context, subject acceptanceprovider.AuthenticatedSubject, name, target string) error {
+	if subject.Account != c.owner || subject.Program == "" {
+		return download.CredentialRefusal(name, "not_permitted")
+	}
+	result := c.holder.Check(ctx, cwire.Use{Subject: cwire.Subject{Account: subject.Account, Program: subject.Program}, Consumer: downloadserve.CredentialConsumer, Name: name, Target: target}, c.decide)
+	if result.Outcome != cwire.ApplyOutcomeApplied {
+		return download.CredentialRefusal(name, result.Outcome.String())
+	}
+	return nil
 }
 
 // CheckCredential serves download admission: the holder's Check for the

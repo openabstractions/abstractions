@@ -1,6 +1,6 @@
-# Contract rule violations recorded when the rules were introduced: the fix
-# backlog. idl/inventory.py fails on any violation not listed here and on any
-# listed one that no longer occurs. Rules: idl/inventory.py, R1 R3 R4 R7.
+# Known contract rule violations: the fix backlog. idl/inventory.py fails on
+# any unlisted violation and any listed one that no longer occurs.
+# Rules: idl/inventory.py, R1 R3 R4 R7.
 # rule<TAB>definition<TAB>subject<TAB>detail
 R1	openabstractions-flat/abstraction-config/config.thrift	ConfigEditor.ReadUser	returns UserSnapshot without an outcome enum
 R1	openabstractions-flat/abstraction-config/config.thrift	ConfigEditor.ReplaceUser	UserReplaceOutcome lacks invalid
@@ -18,6 +18,11 @@ R1	openabstractions-flat/abstraction-router/router.thrift	Router.Pick	returns Pi
 R1	openabstractions-flat/abstraction-storage/content.thrift	ContentReader.Close	CloseOutcome lacks unavailable, invalid
 R1	openabstractions-flat/abstraction-storage/content.thrift	ContentWriter.Abort	AbortOutcome lacks unavailable, invalid
 R1	openabstractions-flat/abstraction-storage/content.thrift	ContentWriter.Commit	CommitOutcome lacks invalid
+# Lending's peer-check forbidden is distinct from operator-rule not_permitted;
+# research/vocabulary/RENAME-PLAN.md schedules these members for lend@2.
+R1	openabstractions-flat/abstraction-storage/lend.thrift	Lending.Lend	LendOutcome lacks forbidden
+R1	openabstractions-flat/abstraction-storage/lend.thrift	Lending.Lends	LendsOutcome lacks forbidden
+R1	openabstractions-flat/abstraction-storage/lend.thrift	Lending.Unlend	UnlendOutcome lacks forbidden
 R4	openabstractions-flat/abstraction-asks/asks.thrift	Question.key	undeclared catalogue: no catalogue = "open" or "closed"
 R4	openabstractions-flat/abstraction-config/config.thrift	Snapshot	undeclared catalogue: no catalogue = "open" or "closed"
 R7	openabstractions-flat/abstraction-asks/asks.thrift	ObservationOutcome	declares no reader = "display", "validate" or "act"

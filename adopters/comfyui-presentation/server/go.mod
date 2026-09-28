@@ -6,6 +6,7 @@ require github.com/modelcontextprotocol/go-sdk v1.8.0
 
 require (
 	github.com/openabstractions/abstraction-facade/go v0.4.1
+	github.com/openabstractions/abstraction-identity v0.3.0
 	github.com/openabstractions/abstraction-logging/go v0.3.1
 	github.com/openabstractions/abstraction-rights/go v0.2.1
 )
@@ -15,8 +16,7 @@ require (
 	github.com/openabstractions/abstraction-asks/go v0.3.1 // indirect
 	github.com/openabstractions/abstraction-config/go v0.3.1 // indirect
 	github.com/openabstractions/abstraction-download/go v0.4.4 // indirect
-	github.com/openabstractions/abstraction-facade/go-core v0.1.1 // indirect
-	github.com/openabstractions/abstraction-identity v0.2.2 // indirect
+	github.com/openabstractions/abstraction-facade/go-core v0.2.0 // indirect
 	github.com/openabstractions/abstraction-job/go v0.4.4 // indirect
 	github.com/openabstractions/abstraction-model/go v0.3.1 // indirect
 	github.com/openabstractions/abstraction-router/go v0.1.0 // indirect

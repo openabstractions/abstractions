@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -21,13 +20,18 @@ import (
 	inference "github.com/openabstractions/abstraction-inference/go"
 	iwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	inferenceservice "github.com/openabstractions/abstraction-inference/go/service"
+	resourceservice "github.com/openabstractions/abstraction-resource/go/service"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	router "github.com/openabstractions/abstraction-router/go"
 )
 
 // ActionProviderManage is the registry's one rights action, decided on
-// resource account (facade CONTRACT.md REG-5).
+// resource account (facade CONTRACT.md FAC-R5).
 const ActionProviderManage = "abstraction.facade/provider.manage"
+
+// ResourceCard is the rights resource of abstraction.resource/hold for one
+// table card, as a declaration names it in resources: card:<n>.
+func ResourceCard(name string) string { return "card:" + name }
 
 // RegistryContract is the registry profile's wire name.
 const RegistryContract = "abstraction.facade/registry@1"
@@ -71,21 +75,19 @@ func registryEndpoint(options runtimeFlags) (string, error) {
 	case options.endpoint != "":
 		return options.endpoint + "-registry", nil
 	}
-	return bootstrap.Endpoint("registry-v1")
+	return options.defaultEndpoint("registry-v1")
 }
 
 func (r *runtimeRegistry) Declarations(ctx context.Context, caller inference.Subject) wire.DeclarationList {
 	if word := r.operator.gate(ctx, caller, ActionProviderManage); word != "" {
 		return wire.DeclarationList{Outcome: declarationListRefusal(word), Declarations: []wire.DeclarationState{}}
 	}
-	r.providers.mu.Lock()
-	_, revision, err := r.providers.read()
-	r.providers.mu.Unlock()
+	list, revision, err := r.providers.list()
 	if err != nil {
 		r.providers.report(err)
 		return wire.DeclarationList{Outcome: wire.DeclarationListOutcomeUnavailable, Declarations: []wire.DeclarationState{}}
 	}
-	return wire.DeclarationList{Outcome: wire.DeclarationListOutcomePage, Revision: revision, Declarations: r.providers.list()}
+	return wire.DeclarationList{Outcome: wire.DeclarationListOutcomePage, Revision: revision, Declarations: list}
 }
 
 // Declare adds one declaration. A program never declares itself: an adopter
@@ -110,14 +112,20 @@ func (r *runtimeRegistry) Declare(ctx context.Context, caller inference.Subject,
 		return change
 	}
 	// Each capability reads its own acceptance rule: the person accepts each
-	// named store from this program, and a remote runtime's hosts serve the
+	// named store from this program, the resource table's card is held by the
+	// program that declared it, and a remote runtime's hosts serve the
 	// operator programs. An existing rule, a deny included, stays as it is.
 	by := rwire.Subject{Account: caller.Account, Program: caller.Program}
 	var errs []error
 	for _, store := range d.resources("store") {
 		errs = append(errs, r.operator.permitRuleWhy(by, d.Program, ActionInventoryProvide, ResourceStore(store), providerAddWhy))
 	}
-	if d.remote() {
+	for _, card := range d.resources("card") {
+		errs = append(errs, r.operator.permitRuleWhy(by, d.Program, resourceservice.ActionHold, ResourceCard(card), providerAddWhy))
+	}
+	if d.host() {
+		errs = append(errs, r.operator.writeHostRules(caller, (providerFile{Declaration: d}).hostEntry()))
+	} else if d.remote() {
 		errs = append(errs, r.operator.writeHostRules(caller, iwire.HostEntry{Name: d.Name, Hosted: true, Kind: router.WireRemote}))
 	}
 	if err := errors.Join(errs...); err != nil {
@@ -151,24 +159,35 @@ func (r *runtimeRegistry) Observe(ctx context.Context, caller inference.Subject,
 	}
 	deadline := time.NewTimer(time.Duration(waitMS) * time.Millisecond)
 	defer deadline.Stop()
+	expired := false
 	for {
+		if word := r.operator.gate(ctx, caller, ActionProviderManage); word != "" {
+			return refused(declarationListRefusal(word))
+		}
 		r.providers.mu.Lock()
 		changes := r.providers.changes
 		r.providers.mu.Unlock()
-		list := r.providers.list()
+		list, _, err := r.providers.list()
+		if err != nil {
+			r.providers.report(err)
+			return refused(wire.DeclarationListOutcomeUnavailable)
+		}
 		raw, err := json.Marshal(list)
 		if err != nil {
 			return refused(wire.DeclarationListOutcomeUnavailable)
 		}
 		sum := sha256.Sum256(raw)
 		now := "registry-v1:" + hex.EncodeToString(sum[:12])
-		if cursor == "" || now != cursor {
+		if cursor == "" || now != cursor || expired {
+			if word := r.operator.gate(ctx, caller, ActionProviderManage); word != "" {
+				return refused(declarationListRefusal(word))
+			}
 			return wire.DeclarationObservation{Outcome: wire.DeclarationListOutcomePage, Cursor: now, Declarations: list}
 		}
 		select {
 		case <-changes:
 		case <-deadline.C:
-			return wire.DeclarationObservation{Outcome: wire.DeclarationListOutcomePage, Cursor: now, Declarations: list}
+			expired = true
 		case <-ctx.Done():
 			return refused(wire.DeclarationListOutcomeUnavailable)
 		}
@@ -189,12 +208,12 @@ type registryHost struct {
 }
 
 func listenRegistry(endpoint string, registry *runtimeRegistry, owner string, report func(error)) (*registryHost, error) {
-	l, err := listen.Listen(endpoint)
+	l, err := listen.ListenFramed(endpoint, listen.Program)
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &registryHost{listener: l, registry: registry, owner: owner, report: report, ctx: ctx, cancel: cancel, slots: make(chan struct{}, 64)}, nil
+	return &registryHost{listener: listen.Sessions(l, listen.SessionOptions{MaxSessions: 64}), registry: registry, owner: owner, report: report, ctx: ctx, cancel: cancel, slots: make(chan struct{}, 64)}, nil
 }
 
 func (h *registryHost) Close() error {
@@ -204,6 +223,7 @@ func (h *registryHost) Close() error {
 }
 
 func (h *registryHost) Serve(ctx context.Context) error {
+	//unchecked: Close is idempotent (sync.Once); this async cancellation callback has no caller to report the error to, and Serve's own deferred Close below is the same no-op afterward
 	stop := context.AfterFunc(ctx, func() { h.Close() })
 	defer stop()
 	defer h.workers.Wait()
@@ -219,6 +239,7 @@ func (h *registryHost) Serve(ctx context.Context) error {
 		select {
 		case h.slots <- struct{}{}:
 		default:
+			//unchecked: dropping a connection because the worker slots are full; nothing here can act on a failed close of the connection it is already refusing
 			conn.Close()
 			continue
 		}
@@ -255,9 +276,6 @@ type registryReceiver struct {
 }
 
 func (r *registryReceiver) caller() inference.Subject {
-	if runtime.GOOS == "darwin" {
-		return inference.Subject{}
-	}
 	peer, err := r.call.Peer()
 	if err != nil {
 		return inference.Subject{}
@@ -299,7 +317,7 @@ type legacyProviderFile struct {
 }
 
 // legacyHosts is the part of a registration-build hosts.json the migration
-// moves: its hosted entries of wire oa-remote@1.
+// moves: its hosted entries, of wire oa-remote@1 or of any other wire.
 type legacyHosts struct {
 	Hosted []struct {
 		Name       string                `json:"name"`
@@ -394,13 +412,60 @@ func migrateProviderState(state string, report func(error)) error {
 			return err
 		}
 	}
-	if len(moved) == 0 {
-		return nil
-	}
 	config, err := loadInferenceHosts(hostsPath)
 	if err != nil {
 		return err
 	}
-	config.Hosted = slices.DeleteFunc(config.Hosted, func(h inferenceHostedHost) bool { return moved[h.Name] })
+	// Every host entry hosts.json still carries becomes a declaration of role
+	// host, keeping its declared_by as the declaration's provenance. The file
+	// then keeps only the ceilings, the bounds and the declared switch.
+	hosts := []iwire.HostEntry{}
+	declaredBy := map[string]string{}
+	if config.Local != nil {
+		for _, l := range *config.Local {
+			hosts = append(hosts, iwire.HostEntry{Name: l.Kind, Kind: l.Kind, Base: l.Base, Profiles: l.Profiles})
+			declaredBy[l.Kind] = l.DeclaredBy
+		}
+	}
+	for _, h := range config.Hosted {
+		if moved[h.Name] || h.Wire == router.WireRemote {
+			continue
+		}
+		host := iwire.HostEntry{Name: h.Name, Hosted: true, Kind: h.Wire, Base: h.Base, Credential: h.Credential, Profiles: h.Profiles}
+		if limit, ok := config.Ceilings[h.Credential]; ok && h.Credential != "" {
+			host.Ceiling = ceilingLimit(limit)
+		}
+		hosts = append(hosts, host)
+		declaredBy[h.Name] = h.DeclaredBy
+	}
+	if len(moved) == 0 && len(hosts) == 0 && config.Local != nil && config.Declared != nil {
+		return nil
+	}
+	for _, entry := range hosts {
+		path := filepath.Join(dir, entry.Name+".json")
+		if _, err := os.Stat(path); err == nil {
+			continue
+		}
+		by := declaredBy[entry.Name]
+		if by == "" {
+			by = declaredByOperator
+		}
+		file := newHostFile(entry, by)
+		if field := validProviderDeclaration(file.Declaration); field != "" {
+			report(fmt.Errorf("providers: host %s in %s cannot become a declaration: invalid %s; it is removed", entry.Name, inferenceHostsFile, field))
+			continue
+		}
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return err
+		}
+		if err := writeAtomically(path, file); err != nil {
+			return err
+		}
+	}
+	// The declarations switch is written out before the entries leave, so the
+	// products keep declaring exactly what they declared before.
+	declared := config.usesDeclarations()
+	empty := []inferenceLocalHost{}
+	config.Declared, config.Local, config.Hosted = &declared, &empty, nil
 	return writeAtomically(hostsPath, config)
 }

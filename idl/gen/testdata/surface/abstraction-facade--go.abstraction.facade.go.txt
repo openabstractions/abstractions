@@ -46,8 +46,15 @@ func ServiceReadinessValues() []ServiceReadiness
 type DeclarationTransport canonical.DeclarationTransport
 const DeclarationTransportNative
 const DeclarationTransportRemote
+const DeclarationTransportHTTP
 func ParseDeclarationTransport(word string) (DeclarationTransport, bool)
 func DeclarationTransportValues() []DeclarationTransport
+type DeclarationRole canonical.DeclarationRole
+const DeclarationRoleProvider
+const DeclarationRoleHost
+const DeclarationRoleRemote
+func ParseDeclarationRole(word string) (DeclarationRole, bool)
+func DeclarationRoleValues() []DeclarationRole
 type Activation canonical.Activation
 const ActivationOnDemand
 const ActivationAttach
@@ -62,6 +69,7 @@ const DeclarationReadinessRestarting
 const DeclarationReadinessRefused
 const DeclarationReadinessUnreachable
 const DeclarationReadinessNotReady
+const DeclarationReadinessDisabled
 func ParseDeclarationReadiness(word string) (DeclarationReadiness, bool)
 func DeclarationReadinessValues() []DeclarationReadiness
 type DeclarationListOutcome canonical.DeclarationListOutcome
@@ -125,7 +133,10 @@ type CallerObservation canonical.CallerObservation
 type ServiceState canonical.ServiceState
 type Description canonical.Description
 type RemoteTrust canonical.RemoteTrust
+type DeclarationCeiling canonical.DeclarationCeiling
+type DeclarationHost canonical.DeclarationHost
 type Declaration canonical.Declaration
+type HostReading canonical.HostReading
 type DeclarationState canonical.DeclarationState
 type DeclarationList canonical.DeclarationList
 type DeclarationChange canonical.DeclarationChange

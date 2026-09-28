@@ -110,7 +110,7 @@ func deliver(ctx context.Context, jobs *facade.JobsClient, identity api.RequestI
 		return err
 	}
 	if _, err := jobs.CopyResult(ctx, identity, f); err != nil {
-		f.Close()
+		f.Close() //unchecked: the copy error is the one to return; the file is closed on the way out
 		return err
 	}
 	if err := f.Close(); err != nil {

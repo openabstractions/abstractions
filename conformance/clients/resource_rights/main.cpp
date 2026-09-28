@@ -26,7 +26,7 @@ int main(int argc,char**argv){try{
  std::map<std::string,std::string> want;
  if(mode=="denied"||mode=="revoked")want={{"history","forbidden"},{"model","forbidden"},{"inventory","forbidden"},{"route","forbidden"}};
  else if(mode=="granted")want={{"history","ok"},{"model","resolved"},{"inventory","ok"},{"route","ok"}};
- else if(mode=="outage")want={{"history","policy_unavailable"},{"model","unavailable"},{"inventory","policy_unavailable"},{"route","policy_unavailable"}};
+ else if(mode=="outage")want={{"history","policy_unavailable"},{"model","unavailable"},{"inventory","unavailable"},{"route","unavailable"}};
  else return 2;
  for(const auto& [name,value]:want)check(got[name]==value,mode+" "+name+" = "+got[name]);
  std::cout<<"PASS "<<mode<<": history="<<got["history"]<<" model="<<got["model"]<<" inventory="<<got["inventory"]<<" route="<<got["route"]<<'\n';

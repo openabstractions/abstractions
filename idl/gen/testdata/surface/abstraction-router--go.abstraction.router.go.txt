@@ -10,7 +10,7 @@ const ServiceErrorCodeInternal
 const ServiceErrorCodeInvalidRequest
 const ServiceErrorCodeCallerRefused
 const ServiceErrorCodeUnknownOperation
-const ServiceErrorCodePolicyUnavailable
+const ServiceErrorCodeUnavailable
 const ServiceErrorCodeForbidden
 func ServiceErrorCodeValues() []ServiceErrorCode
 func (ServiceErrorCode) Known() bool
@@ -40,9 +40,18 @@ type Alias struct
   Servable bool
   Hosted bool
   Profiles []string
+  HeldIn []string
+  ContextLength int64
+type Component struct
+  Store string
+  Role string
+  Name string
 type Family struct
   Family string
   Names []Alias
+  HeldIn []string
+  FamilySource string
+  Components []Component
 type ModelsSnapshot struct
   Observation Observation
   Models []Family
@@ -126,6 +135,7 @@ func (RouterClient) Models(fresh bool) (result ModelsSnapshot, err error)
 func (RouterClient) Hosts(fresh bool) (result HostsSnapshot, err error)
 func (RouterClient) Pick(request PickRequest) (result PickResult, err error)
 func (RouterDispatcher) DescribeService() (contract string, ready bool, why string)
+func (RouterDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (RouterDispatcher) ServiceContract() string
 func (RouterDispatcher) WriteFrame(frame []byte) error
 func (RouterDispatcher) ExchangeFrame(frame []byte) ([]byte, error)

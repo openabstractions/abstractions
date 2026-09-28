@@ -79,6 +79,7 @@ func (l *panelLog) bind(ctx context.Context) (*logging.AsyncSink, error) {
 // note keeps the latest transition and reports it on standard error, as the
 // default reporter would.
 func (l *panelLog) note(transition string) {
+	//unchecked: a failed write to stderr has no fallback destination
 	fmt.Fprintln(os.Stderr, "abstraction.logging: "+transition)
 	l.mu.Lock()
 	l.transition, l.changedAt = transition, time.Now()
@@ -127,6 +128,7 @@ func (l *panelLog) close(ctx context.Context) {
 	l.sink = nil
 	l.mu.Unlock()
 	if sink != nil {
+		//unchecked: best-effort drain on shutdown; nothing left running to report a close failure to
 		_, _ = sink.Close(ctx)
 	}
 }
@@ -139,5 +141,6 @@ func (p *servicePanel) logAction(ctx context.Context, action string, attrs map[s
 	for k, v := range attrs {
 		all[k] = v
 	}
+	//unchecked: a failure to log is shown in the Panel's sink state and does not stop the action, per the comment above
 	_ = p.log.record(ctx, logging.LevelInfo, "panel action", all)
 }

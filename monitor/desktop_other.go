@@ -9,6 +9,8 @@ import (
 
 func windowed() bool { return false }
 
+func nativeWebView2Available() bool { return false }
+
 func fail(_ bool, err error) { log.Fatal(err) }
 
 func (p *servicePanel) desktop(_ string) error {

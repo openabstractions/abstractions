@@ -34,10 +34,16 @@ type hopView struct {
 	Program  string `json:"program,omitempty"`
 	Host     string `json:"host,omitempty"`
 	User     string `json:"user,omitempty"`
-	Exe      string `json:"exe,omitempty"`
-	UID      int    `json:"uid"`
-	GID      int    `json:"gid"`
-	PID      int    `json:"pid"`
+	// AccountName is User (or UID, on a platform with no User) resolved to a
+	// display name through accountDisplayName, the same resolution Identity's
+	// own runtime sentence uses (task 2026-09-23, ninth first-time visitor,
+	// finding 1: the logging service's own stamp named the account by its
+	// raw SID directly, never a name a person reads as their own account).
+	AccountName string `json:"accountName,omitempty"`
+	Exe         string `json:"exe,omitempty"`
+	UID         int    `json:"uid"`
+	GID         int    `json:"gid"`
+	PID         int    `json:"pid"`
 }
 
 // logRecordView is one retained record. A sink_gap is the LOG-S13 record a
@@ -132,8 +138,12 @@ func presentRecord(value wire.Record) logRecordView {
 		case k == 1:
 			role = "writer"
 		}
+		account := a.User
+		if account == "" {
+			account = itoa(a.UID)
+		}
 		view.Hops = append(view.Hops, hopView{Hop: k, By: a.By, Role: role, Standing: provenance.Standing[k].String(), Verified: a.Verified,
-			Program: a.Program, Host: a.Host, User: a.User, Exe: a.Exe, UID: a.UID, GID: a.GID, PID: a.PID})
+			Program: a.Program, Host: a.Host, User: a.User, AccountName: accountDisplayName(account), Exe: a.Exe, UID: a.UID, GID: a.GID, PID: a.PID})
 	}
 	_, view.Author = provenance.Author()
 	view.Disputed = provenance.Disputed()
@@ -224,6 +234,19 @@ func (p *servicePanel) logging(w http.ResponseWriter, r *http.Request) {
 		}
 		wait = time.Duration(ms) * time.Millisecond
 	}
+	// count lets the Panel's own quick choice (50, 200 or 1000 records) ask
+	// for more than logPageRecords' own default page, on arrival and on
+	// every later read (task 2026-09-23, eleventh first-time visitor,
+	// requirement 2). A caller naming none still gets that default.
+	count := int64(logPageRecords)
+	if text := q.Get("count"); text != "" {
+		n, err := strconv.ParseInt(text, 10, 64)
+		if err != nil || n < 1 || n > 2000 {
+			http.Error(w, "invalid count: 1 to 2000", 400)
+			return
+		}
+		count = n
+	}
 	view := logView{Mode: "read", Cursor: cursor, Records: []logRecordView{}}
 	var page wire.Page
 	if follow {
@@ -239,7 +262,7 @@ func (p *servicePanel) logging(w http.ResponseWriter, r *http.Request) {
 			panelError(w, err)
 			return
 		}
-		page, err = observer.ObserveContext(ctx, cursor, logPageRecords, logPageBytes, wait.Milliseconds())
+		page, err = observer.ObserveContext(ctx, cursor, count, logPageBytes, wait.Milliseconds())
 		if err != nil {
 			panelAbsence(w, err)
 			return
@@ -252,7 +275,7 @@ func (p *servicePanel) logging(w http.ResponseWriter, r *http.Request) {
 			panelAbsence(w, err)
 			return
 		}
-		page, err = reader.ReadContext(ctx, cursor, logPageRecords, logPageBytes)
+		page, err = reader.ReadContext(ctx, cursor, count, logPageBytes)
 		if err != nil {
 			panelAbsence(w, err)
 			return

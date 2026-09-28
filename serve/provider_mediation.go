@@ -14,7 +14,63 @@ import (
 
 	inference "github.com/openabstractions/abstraction-inference/go"
 	inferenceservice "github.com/openabstractions/abstraction-inference/go/service"
+	router "github.com/openabstractions/abstraction-router/go"
 )
+
+// nativeInferenceLaunchBudget is the runtime's launch budget (FAC-R8) for a
+// chat@1 Start the router picked onto a declared native provider that has not
+// answered its first readiness probe: the most nativeAdmit waits before the
+// call reads unavailable with reason activating:<name>. A caller's own,
+// shorter deadline still governs inside that budget. A variable so tests can
+// shorten it rather than block for the real budget.
+var nativeInferenceLaunchBudget = 30 * time.Second
+
+// nativeAdmit is the provider's Admit hook: a Start already routed onto a
+// declared native host waits here, inside the caller's own deadline and never
+// longer than nativeInferenceLaunchBudget, for an on-demand provider's first
+// readiness (FAC-R8), exactly as the lending forward waits for its declared
+// provider. A host that is ready, or is not a declared native provider at
+// all, costs this call nothing beyond the read. A caller whose deadline
+// passes first reads unavailable with the same reason word the lending
+// forward uses, activating:<name>; the launch keeps running in the
+// background, and the next call finds the provider ready or not_ready with
+// its own reason.
+func (p *runtimeProviders) nativeAdmit(ctx context.Context, host *router.Host, model string) (string, bool) {
+	if p == nil || host == nil || host.Wire != router.WireNative {
+		return "", true
+	}
+	s := p.lookup(host.Name)
+	if s == nil {
+		return "the declared native provider is gone", false
+	}
+	if s.ready() {
+		return "", true
+	}
+	deadline := time.Now().Add(nativeInferenceLaunchBudget)
+	for {
+		s.activate()
+		if s.ready() {
+			return "", true
+		}
+		if ctx.Err() != nil || !time.Now().Before(deadline) {
+			return s.activatingReason(), false
+		}
+		p.mu.Lock()
+		changes := p.changes
+		p.mu.Unlock()
+		wait := 200 * time.Millisecond
+		if remaining := time.Until(deadline); remaining < wait {
+			wait = remaining
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case <-changes:
+		case <-timer.C:
+		case <-ctx.Done():
+		}
+		timer.Stop()
+	}
+}
 
 // providerMediation owns one application-facing endpoint for every supported
 // declaration generation. Resolution therefore chooses the exact router host
@@ -43,6 +99,7 @@ type providerMediationRoute struct {
 func newProviderMediation(base string, provider *inference.Provider, providers *runtimeProviders, report func(error)) (*providerMediation, error) {
 	m := &providerMediation{base: base, provider: provider, providers: providers, report: report, routes: map[string]*providerMediationRoute{}}
 	if err := m.sync(); err != nil {
+		//unchecked: cleaning up partial state before returning sync's own error, which is what this call already reports
 		m.Close()
 		return nil, err
 	}
@@ -103,6 +160,7 @@ func (m *providerMediation) sync() error {
 			m.sweepLocked(bindingID, route)
 			continue
 		}
+		//unchecked: route is being decommissioned regardless of Close's outcome; failing the whole reconciliation over one route's close would be disproportionate
 		_ = route.host.Close()
 		delete(m.routes, bindingID)
 	}
@@ -157,6 +215,7 @@ func (m *providerMediation) sweepLocked(bindingID string, route *providerMediati
 				removed := false
 				current := m.routes[bindingID]
 				if !m.closed && current == route && current.retired {
+					//unchecked: background sweep goroutine has no caller to report a close failure to; the route is removed from routing regardless
 					_ = current.host.Close()
 					delete(m.routes, bindingID)
 					removed = true

@@ -14,7 +14,9 @@ import (
 	"text/tabwriter"
 	"time"
 
+	fwire "github.com/openabstractions/abstraction-facade/go-core/go/abstraction/facade"
 	"github.com/openabstractions/abstraction-facade/go/client"
+	"github.com/openabstractions/abstraction-identity/listen"
 	api "github.com/openabstractions/abstraction-job/go/abstraction/job/acceptance"
 )
 
@@ -47,40 +49,32 @@ const maxAttemptProbe = 4096
 
 const jobsServiceUsage = `Usage: openabstractions jobs <command>
 
-Commands:
-  list                       what this program submitted in this account
-  list --all                 what every program submitted in this account;
-                             needs the rule abstraction.job/inventory.read
-  show <id> | --key K        observe one operation once
-  wait <id> | --key K        follow one operation until it ends
-  cancel <id> | --key K      record the intent to cancel; JOB-A6 intent, not proof
-  cancel --all <id>          cancel another program's operation by its id;
-                             needs the rule abstraction.job/acceptance.cancel
-  result <id> --out FILE     copy a complete result out of the runtime
-  migrate-legacy             convert legacy job records with an operator mapping
+Lists, watches, cancels and reads the result of this program's own work
+through the runtime's job service.
 
-Every command accepts --endpoint, --timeout and --json. An operation is named
-by its operation id, or by the request identity --key K [--epoch E]
-[--attempt N] the submitting command printed. Without --attempt, --key names
-the latest attempt of that key (JOB-A7). Scope is this program in this account:
-work an application submitted through its own binding is observed by that
-application.
+  list [--all]            this program's work; --all needs an operator rule
+  show <id> | --key K      observe one operation once
+  wait <id> | --key K      follow one operation until it ends
+  cancel <id> | --key K    record the intent to cancel, not proof of it
+  cancel --all <id>        cancel another program's operation by its id;
+                           needs an operator rule
+  result <id> --out FILE   copy a complete result out of the runtime
+  migrate-legacy           convert legacy job records with an operator mapping
 
-list and show print each operation's label: the submitting program's own text,
-or one the runtime derived, such as a download's source host and last path
-segment, marked "(derived)". A label is display text for a person (JOB-A12).
-Unfinished work a condition holds shows why beside it, such as
-"(waiting: network:metered)" for a download waiting for an unmetered network
-(JOB-A15); --json carries the word as "waiting".
-
-result writes the file --out names. The runtime keeps no file name for a
-result, so a directory is refused rather than given an invented name.
+Every command accepts --endpoint, --timeout and --json. The endpoint is
+--endpoint if given, else ABSTRACTION_RUNTIME_ENDPOINT if set, else the
+installed runtime. --timeout D is a deadline for the whole command; work
+still running when it passes continues (exit 7). An operation is named by
+its id, or by the request identity --key K [--epoch E] [--attempt N] the
+submitting command printed; without --attempt, --key names its latest
+attempt.
 
 Exit codes: 0 done, 1 runtime not resolved or transport failure, 2 usage,
 3 typed refusal, 4 unavailable (repeat later), 5 work failed or was cancelled,
 6 acceptance or observation uncertain, 7 still waiting, 130 interrupted.
 
-Run "openabstractions jobs migrate-legacy" for its own commands and codes.
+Run "openabstractions jobs migrate-legacy --help" for its own commands and codes.
+Learn more: openabstractions-flat/abstraction-job/CONTRACT.md
 `
 
 // serviceOptions are the flags every service-backed command shares with status.
@@ -93,32 +87,86 @@ type serviceOptions struct {
 
 func (o *serviceOptions) bind(flags *flag.FlagSet) {
 	flags.StringVar(&o.endpoint, "endpoint", "", "runtime bootstrap endpoint (default: the installed runtime)")
-	flags.DurationVar(&o.budget, "timeout", 0, "total waiting budget; zero waits without a deadline")
+	flags.DurationVar(&o.budget, "timeout", 0, "deadline for the whole command; zero means none")
 	flags.BoolVar(&o.asJSON, "json", false, "emit one JSON document on stdout")
 }
 
-// machine resolves through installation evidence, the trust path `status` and
-// `start` use. An explicit endpoint is a deliberately supplied provider. No
-// command reads a store directory or falls back to a local file store.
-func (o serviceOptions) machine() *client.Machine {
-	if o.endpoint != "" {
-		return client.New(o.endpoint)
+// machine resolves this command's runtime connection through resolveEndpoint,
+// the one rule every command in this program applies: an explicit --endpoint
+// is a deliberately supplied provider; ABSTRACTION_RUNTIME_ENDPOINT alone
+// connects to the named endpoint unverified, and diagnostics gets the one-line
+// notice once (research/packaged-activation/GATEWAY-REFUSAL-2026-09-22.md);
+// with neither, this resolves through installation evidence, the trust path
+// `status` and `start` use. No command reads a store directory or falls back
+// to a local file store.
+func (o serviceOptions) machine(diagnostics io.Writer, command string) (*client.Machine, endpointSource) {
+	endpoint, source := resolveEndpoint(o.endpoint)
+	switch source {
+	case endpointFromVar:
+		warnUnverifiedEndpoint(diagnostics, command, endpoint)
+		return client.New(endpoint), source
+	case endpointExplicit:
+		return client.New(endpoint), source
+	default:
+		return client.Discover(), source
 	}
-	return client.Discover()
 }
 
 func admission() client.Requirements {
 	return client.Requirements{Guarantees: api.AdmissionGuarantees}
 }
 
-// notResolved reports a binding failure as the runtime not being resolvable.
-// The resolver's typed status is preserved for the person reading it.
-func notResolved(command string, err error) error {
-	var refusal *client.ResolutionError
-	if errors.As(err, &refusal) {
-		return &exitError{exitNotResolved, fmt.Errorf("%s: no runtime resolved: %s", command, refusal.Status)}
+// notResolved reports a binding failure. A verified endpoint that answered as
+// a different program, account or process is the runtime this command
+// reached, not one that failed to answer; every other resolution failure
+// means no runtime answered at all. source names which of the three rules
+// resolveEndpoint applies chose the endpoint this command tried, so a person
+// who set ABSTRACTION_RUNTIME_ENDPOINT can tell it was honored even when the
+// runtime it named did not answer.
+func notResolved(command string, source endpointSource, err error) error {
+	if cause, ok := runtimeMismatchCause(err.Error()); ok {
+		return &exitError{exitNotResolved, fmt.Errorf("%s", wrongRuntime(command, cause))}
 	}
-	return &exitError{exitNotResolved, fmt.Errorf("%s: no runtime resolved: %w", command, err)}
+	if isConnectFailure(err) {
+		if endpoint, ok := connectFailureText(err.Error()); ok {
+			return &exitError{exitNotResolved, errors.New(noRuntimeListensAt(command, endpoint, source))}
+		}
+	}
+	return &exitError{exitNotResolved, fmt.Errorf("%s: %s (endpoint: %s)\n%s", command, noRuntimeFirstLine, source, err)}
+}
+
+// notResolvedEndpoint is notResolved for a call bound to a caller-named
+// endpoint, explicit or from ABSTRACTION_RUNTIME_ENDPOINT. A resolve request
+// against that endpoint reads a raw unknown_service when the pipe named
+// answers a service, not the runtime's resolver, and that refusal names
+// neither: the caller reads only "unknown_service" against an endpoint they
+// named themselves. Endpoints answer abstraction.facade/endpoint@1 beside
+// their own service, so this asks the one that just refused what it serves
+// and names it in the typed refusal notResolved still returns.
+func notResolvedEndpoint(command, endpoint string, source endpointSource, err error) error {
+	var refusal *fwire.ServiceError
+	if endpoint != "" && errors.As(err, &refusal) && refusal.Code == fwire.ServiceErrorCodeUnknownService {
+		if serves := endpointServices(endpoint); serves != "" {
+			return &exitError{exitNotResolved, fmt.Errorf("%s: %s %s serves %s; the endpoint wants the runtime's resolver endpoint", command, source, endpoint, serves)}
+		}
+	}
+	return notResolved(command, source, err)
+}
+
+// endpointServices names every contract endpoint answers, read through
+// abstraction.facade/endpoint@1, which every dispatcher answers beside its
+// own service. Empty when the endpoint cannot describe itself either.
+func endpointServices(endpoint string) string {
+	transport := listen.FrameClient{Endpoint: endpoint, Timeout: 2 * time.Second, MaxFrame: 1 << 20, Sessions: true}
+	description, err := fwire.NewEndpointClient(transport).Describe()
+	if err != nil || description.Outcome != fwire.DescriptionOutcomeDescribed || len(description.Services) == 0 {
+		return ""
+	}
+	names := make([]string, len(description.Services))
+	for i, s := range description.Services {
+		names[i] = s.Contract
+	}
+	return strings.Join(names, ", ")
 }
 
 // refusal maps a contract outcome word to its exit code, printing the word as
@@ -394,32 +442,32 @@ func (s *jobSelector) bind(flags *flag.FlagSet) {
 	flags.Int64Var(&s.attempt, "attempt", 0, "attempt of --key (default: the latest attempt)")
 }
 
-func (s *jobSelector) parse(command string, flags *flag.FlagSet, positional []string) error {
+func (s *jobSelector) parse(diagnostics io.Writer, command, usage string, flags *flag.FlagSet, positional []string) error {
 	flags.Visit(func(f *flag.Flag) { s.attemptSet = s.attemptSet || f.Name == "attempt" })
 	switch len(positional) {
 	case 0:
 		if s.key == "" {
-			return &exitError{exitUsage, fmt.Errorf("%s: name an operation id, or --key K", command)}
+			return flagMistake(diagnostics, command, usage, "name an operation id, or --key K")
 		}
 	case 1:
 		if s.key != "" {
-			return &exitError{exitUsage, fmt.Errorf("%s: an operation id and --key name two different things", command)}
+			return flagMistake(diagnostics, command, usage, "an operation id and --key name two different things")
 		}
 		s.id = positional[0]
 		if s.id == "" {
-			return &exitError{exitUsage, fmt.Errorf("%s: empty operation id", command)}
+			return flagMistake(diagnostics, command, usage, "empty operation id")
 		}
 	default:
-		return &exitError{exitUsage, fmt.Errorf("%s: unexpected arguments", command)}
+		return flagMistake(diagnostics, command, usage, "unexpected arguments")
 	}
 	if s.key == "" && s.epoch != "" {
-		return &exitError{exitUsage, fmt.Errorf("%s: --epoch names the epoch of --key", command)}
+		return flagMistake(diagnostics, command, usage, "--epoch names the epoch of --key")
 	}
 	if s.key == "" && s.attemptSet {
-		return &exitError{exitUsage, fmt.Errorf("%s: --attempt names an attempt of --key", command)}
+		return flagMistake(diagnostics, command, usage, "--attempt names an attempt of --key")
 	}
 	if s.attempt < 0 {
-		return &exitError{exitUsage, fmt.Errorf("%s: --attempt must not be negative", command)}
+		return flagMistake(diagnostics, command, usage, "--attempt must not be negative")
 	}
 	return nil
 }
@@ -428,7 +476,7 @@ func (s *jobSelector) parse(command string, flags *flag.FlagSet, positional []st
 // contract needs. An operation id is found by traversing this caller's own
 // inventory; an id outside this scope is a refusal, never a silent empty result.
 // A key without --attempt names its latest attempt.
-func resolveIdentity(w *waiting, command string, machine *client.Machine, jobs *client.JobsClient, selector jobSelector) (api.RequestIdentity, error) {
+func resolveIdentity(w *waiting, command string, source endpointSource, machine *client.Machine, jobs *client.JobsClient, selector jobSelector) (api.RequestIdentity, error) {
 	if selector.key != "" {
 		id := api.RequestIdentity{Key: selector.key, HistoryEpoch: selector.epoch, Attempt: selector.attempt}
 		if id.HistoryEpoch == "" {
@@ -436,7 +484,7 @@ func resolveIdentity(w *waiting, command string, machine *client.Machine, jobs *
 			window, err := jobs.GetHistoryWindow(call)
 			done()
 			if err != nil {
-				return api.RequestIdentity{}, notResolved(command, err)
+				return api.RequestIdentity{}, notResolved(command, source, err)
 			}
 			id.HistoryEpoch = window.HistoryEpoch
 		}
@@ -449,7 +497,7 @@ func resolveIdentity(w *waiting, command string, machine *client.Machine, jobs *
 		}
 		return id, nil
 	}
-	snapshots, err := listScope(w, command, machine)
+	snapshots, err := listScope(w, command, source, machine)
 	if err != nil {
 		return api.RequestIdentity{}, err
 	}
@@ -462,12 +510,12 @@ func resolveIdentity(w *waiting, command string, machine *client.Machine, jobs *
 		fmt.Errorf("%s: invalid: %s names no work this program submitted in this account", command, selector.id)}
 }
 
-func resolveOperations(w *waiting, command string, machine *client.Machine) (*client.JobsClient, error) {
+func resolveOperations(w *waiting, command string, source endpointSource, machine *client.Machine) (*client.JobsClient, error) {
 	call, done := w.call()
 	defer done()
 	jobs, err := machine.ResolveJobOperations(call, admission())
 	if err != nil {
-		return nil, notResolved(command, err)
+		return nil, notResolved(command, source, err)
 	}
 	return jobs, nil
 }
@@ -475,12 +523,12 @@ func resolveOperations(w *waiting, command string, machine *client.Machine) (*cl
 // resolveAcceptance binds the submission contract. The command exits while the
 // work continues, so it requires every admission guarantee; a receipt that
 // weakens one is refused by the binding rather than accepted quietly.
-func resolveAcceptance(w *waiting, command string, machine *client.Machine) (*client.JobsClient, error) {
+func resolveAcceptance(w *waiting, command string, source endpointSource, machine *client.Machine) (*client.JobsClient, error) {
 	call, done := w.call()
 	defer done()
 	jobs, err := machine.ResolveJobs(call, admission())
 	if err != nil {
-		return nil, notResolved(command, err)
+		return nil, notResolved(command, source, err)
 	}
 	return jobs, nil
 }
@@ -488,24 +536,24 @@ func resolveAcceptance(w *waiting, command string, machine *client.Machine) (*cl
 // listScope traverses this caller's inventory completely. A gap restarts the
 // traversal once; a second gap is a failure, never a partial list presented as
 // the whole.
-func listScope(w *waiting, command string, machine *client.Machine) ([]api.OperationSnapshot, error) {
+func listScope(w *waiting, command string, source endpointSource, machine *client.Machine) ([]api.OperationSnapshot, error) {
 	call, done := w.call()
 	inventory, err := machine.ResolveJobInventory(call, admission())
 	done()
 	if err != nil {
-		return nil, notResolved(command, err)
+		return nil, notResolved(command, source, err)
 	}
 	return listAll(w, command, inventory.ListWork)
 }
 
 // listAccount traverses every program's work in this account through the job
 // operator profile, which the runtime decides by the inventory.read rule.
-func listAccount(w *waiting, command string, machine *client.Machine) ([]api.OperationSnapshot, error) {
+func listAccount(w *waiting, command string, source endpointSource, machine *client.Machine) ([]api.OperationSnapshot, error) {
 	call, done := w.call()
 	operator, err := machine.ResolveJobOperator(call, admission())
 	done()
 	if err != nil {
-		return nil, notResolved(command, err)
+		return nil, notResolved(command, source, err)
 	}
 	return listAll(w, command, operator.ListAccountWork)
 }
@@ -667,6 +715,7 @@ func copyResult(w *waiting, command string, jobs *client.JobsClient, id api.Requ
 	done()
 	closeErr := file.Close()
 	if copyErr != nil {
+		//unchecked: best-effort temp-file cleanup on an error path that already returns a definite error
 		os.Remove(partial)
 		var service *api.ServiceError
 		if errors.As(copyErr, &service) {
@@ -675,16 +724,19 @@ func copyResult(w *waiting, command string, jobs *client.JobsClient, id api.Requ
 		return written, &exitError{exitNotResolved, fmt.Errorf("%s: %w", command, copyErr)}
 	}
 	if closeErr != nil {
+		//unchecked: best-effort temp-file cleanup on an error path that already returns a definite error
 		os.Remove(partial)
 		return written, &exitError{exitNotResolved, fmt.Errorf("%s: %w", command, closeErr)}
 	}
 	if verify != nil {
 		if err := verify(partial); err != nil {
+			//unchecked: best-effort temp-file cleanup on an error path that already returns a definite error
 			os.Remove(partial)
 			return written, err
 		}
 	}
 	if err := os.Rename(partial, sink); err != nil {
+		//unchecked: best-effort temp-file cleanup on an error path that already returns a definite error
 		os.Remove(partial)
 		return written, &exitError{exitNotResolved, fmt.Errorf("%s: %w", command, err)}
 	}
@@ -707,13 +759,14 @@ func resultRefusal(command, outcome string) error {
 // keeps its own parsing, output and exit codes.
 func jobsServiceCommand(sub string, args []string, output, diagnostics io.Writer) error {
 	command := "jobs " + sub
-	flags := flag.NewFlagSet(command, flag.ContinueOnError)
-	flags.SetOutput(diagnostics)
-	flags.Usage = func() {
-		if _, err := fmt.Fprint(diagnostics, jobsServiceUsage); err == nil {
-			flags.PrintDefaults()
-		}
+	if containsHelp(args) {
+		_, err := io.WriteString(output, jobsServiceUsage)
+		return err
 	}
+	flags := flag.NewFlagSet(command, flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	// badFlag below prints this program's own three-line mistake shape;
+	flags.Usage = func() {} // the flag package's own per-error usage call must print nothing
 	var options serviceOptions
 	options.bind(flags)
 	var selector jobSelector
@@ -730,45 +783,42 @@ func jobsServiceCommand(sub string, args []string, output, diagnostics io.Writer
 	}
 	positional, err := parsePositional(flags, args)
 	if err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return err
-		}
-		return &exitError{exitUsage, fmt.Errorf("%s: %w", command, err)}
+		return badFlag(flags, diagnostics, command, jobsServiceUsage, args, err)
 	}
 	if options.budget < 0 {
-		return &exitError{exitUsage, fmt.Errorf("%s: --timeout must not be negative", command)}
+		return flagMistake(diagnostics, command, jobsServiceUsage, "--timeout must not be negative")
 	}
 	if sub == "list" {
 		if len(positional) != 0 {
-			return &exitError{exitUsage, fmt.Errorf("%s: unexpected arguments", command)}
+			return flagMistake(diagnostics, command, jobsServiceUsage, "unexpected arguments")
 		}
-		return jobsList(options, *all, output)
+		return jobsList(options, diagnostics, *all, output)
 	}
 	if sub == "cancel" && *all {
 		attempt := false
 		flags.Visit(func(f *flag.Flag) { attempt = attempt || f.Name == "attempt" })
 		if len(positional) != 1 || selector.key != "" || selector.epoch != "" || attempt {
-			return &exitError{exitUsage, fmt.Errorf("%s --all: name exactly one operation id; another program's request key means nothing here", command)}
+			return flagMistake(diagnostics, command, jobsServiceUsage, "--all: name exactly one operation id; another program's request key means nothing here")
 		}
-		return jobsCancelOperation(options, positional[0], output)
+		return jobsCancelOperation(options, diagnostics, positional[0], output)
 	}
-	if err := selector.parse(command, flags, positional); err != nil {
+	if err := selector.parse(diagnostics, command, jobsServiceUsage, flags, positional); err != nil {
 		return err
 	}
 	var file string
 	if sub == "result" {
-		if file, err = resultFile(command, *sink); err != nil {
+		if file, err = resultFile(diagnostics, command, jobsServiceUsage, *sink); err != nil {
 			return err
 		}
 	}
 	w := newWaiting(options.budget)
 	defer w.stop()
-	machine := options.machine()
-	jobs, err := resolveOperations(w, command, machine)
+	machine, source := options.machine(diagnostics, command)
+	jobs, err := resolveOperations(w, command, source, machine)
 	if err != nil {
 		return err
 	}
-	id, err := resolveIdentity(w, command, machine, jobs, selector)
+	id, err := resolveIdentity(w, command, source, machine, jobs, selector)
 	if err != nil {
 		return err
 	}
@@ -784,7 +834,7 @@ func jobsServiceCommand(sub string, args []string, output, diagnostics io.Writer
 	}
 }
 
-func jobsList(options serviceOptions, all bool, output io.Writer) error {
+func jobsList(options serviceOptions, diagnostics io.Writer, all bool, output io.Writer) error {
 	const command = "jobs list"
 	w := newWaiting(options.budget)
 	defer w.stop()
@@ -792,7 +842,8 @@ func jobsList(options serviceOptions, all bool, output io.Writer) error {
 	if all {
 		list = listAccount
 	}
-	snapshots, err := list(w, command, options.machine())
+	machine, source := options.machine(diagnostics, command)
+	snapshots, err := list(w, command, source, machine)
 	if err != nil {
 		return err
 	}
@@ -869,15 +920,16 @@ func jobsWait(w *waiting, command string, jobs *client.JobsClient, id api.Reques
 // jobsCancelOperation records cancellation intent on any program's operation
 // through the job operator profile, which the runtime decides by the
 // acceptance.cancel rule (JOB-A13). The submitter observes the result.
-func jobsCancelOperation(options serviceOptions, operationID string, output io.Writer) error {
+func jobsCancelOperation(options serviceOptions, diagnostics io.Writer, operationID string, output io.Writer) error {
 	const command = "jobs cancel --all"
 	w := newWaiting(options.budget)
 	defer w.stop()
+	machine, source := options.machine(diagnostics, command)
 	call, done := w.call()
-	operator, err := options.machine().ResolveJobOperator(call, admission())
+	operator, err := machine.ResolveJobOperator(call, admission())
 	done()
 	if err != nil {
-		return notResolved(command, err)
+		return notResolved(command, source, err)
 	}
 	call, done = w.call()
 	result, err := operator.CancelOperation(call, operationID)
@@ -968,16 +1020,16 @@ func jobsResult(w *waiting, command string, jobs *client.JobsClient, id api.Requ
 // no file name: the name belongs to whoever binds the bytes to a file, and a
 // command that did not submit the work does not know it. A directory is refused
 // before anything is sent, rather than filled with an invented name.
-func resultFile(command, out string) (string, error) {
+func resultFile(diagnostics io.Writer, command, usage, out string) (string, error) {
 	if out == "" {
-		return "", &exitError{exitUsage, fmt.Errorf("%s: --out is required", command)}
+		return "", flagMistake(diagnostics, command, usage, "--out is required")
 	}
 	if isDirectory(out) {
-		return "", &exitError{exitUsage, fmt.Errorf("%s: --out %s is a directory; the runtime keeps no file name for a result, so name the file", command, out)}
+		return "", flagMistake(diagnostics, command, usage, fmt.Sprintf("--out %s is a directory; the runtime keeps no file name for a result, so name the file", out))
 	}
 	absolute, err := filepath.Abs(out)
 	if err != nil {
-		return "", &exitError{exitUsage, fmt.Errorf("%s: --out: %w", command, err)}
+		return "", flagMistake(diagnostics, command, usage, fmt.Sprintf("--out: %v", err))
 	}
 	return absolute, nil
 }
@@ -994,7 +1046,7 @@ func isDirectory(out string) bool {
 
 // sinkPath turns `download --out` into the file the result is written to. A
 // directory takes the name the command derived from the URL it submitted.
-func sinkPath(command, out, name string) (string, error) {
+func sinkPath(diagnostics io.Writer, command, usage, out, name string) (string, error) {
 	if out == "" {
 		out = "."
 	}
@@ -1006,7 +1058,7 @@ func sinkPath(command, out, name string) (string, error) {
 	}
 	absolute, err := filepath.Abs(out)
 	if err != nil {
-		return "", &exitError{exitUsage, fmt.Errorf("%s: --out: %w", command, err)}
+		return "", flagMistake(diagnostics, command, usage, fmt.Sprintf("--out: %v", err))
 	}
 	return absolute, nil
 }

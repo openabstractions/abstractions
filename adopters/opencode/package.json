@@ -1,12 +1,26 @@
 {
-  "name": "@openabstractions/opencode-provider",
+  "name": "@openabstractions/opencode",
   "version": "0.0.0",
+  "description": "OpenCode provider serving any model the local OpenAbstractions runtime is allowed to serve.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/openabstractions/abstractions.git",
+    "directory": "adopters/opencode"
+  },
+  "homepage": "https://github.com/openabstractions/abstractions/tree/HEAD/adopters/opencode#readme",
+  "bugs": {
+    "url": "https://github.com/openabstractions/abstractions/issues"
+  },
   "type": "module",
-  "exports": "./index.js",
+  "exports": {
+    ".": {"default": "./index.js"}
+  },
+  "files": ["index.js", "README.md"],
   "engines": {
     "node": ">=18"
   },
-  "peerDependencies": {
+  "dependencies": {
     "@openabstractions/facade": "0.0.0",
     "@openabstractions/inference": "0.0.0",
     "@openabstractions/ipc": "0.0.0"

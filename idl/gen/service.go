@@ -158,7 +158,7 @@ func (p *parser) validateServices() error {
 		}
 		methods := map[string]bool{}
 		for _, m := range s.Methods {
-			if !serviceIdentifier(m.Name) || methods[exported(m.Name)] || m.Name == "transport_" || m.Name == s.Name+"Client" || m.Name == s.Name {
+			if !serviceIdentifier(m.Name) || methods[exported(m.Name)] || exported(m.Name) == "DescribeMetadata" || exported(m.Name) == "DescribeServiceMetadata" || m.Name == "transport_" || m.Name == s.Name+"Client" || m.Name == s.Name {
 				return fmt.Errorf("invalid or colliding method %s", m.Name)
 			}
 			methods[exported(m.Name)] = true
@@ -556,7 +556,7 @@ func serviceReply(v *OAServiceFrame,payload Raw,err error)(frame []byte,outErr e
 			b.WriteString("return\n}\n")
 		}
 		if hasReplies(s) {
-			fmt.Fprintf(b, "// DescribeService is this dispatcher's service as %s Describe lists it:\n// ready unless its handler implements Ready() (bool, string) and reports otherwise.\nfunc(d *%sDispatcher)DescribeService()(contract string,ready bool,why string){if h,ok:=d.Handler.(interface{Ready()(bool,string)});ok{if ready,why=h.Ready();ready{why=\"\"};return %q,ready,why};return %q,true,\"\"}\n// ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.\nfunc(d *%sDispatcher)ServiceContract()string{return %q}\n", endpointWireName, svc.Name, svc.WireName, svc.WireName, svc.Name, svc.WireName)
+			fmt.Fprintf(b, "// DescribeService is this dispatcher's service as %s Describe lists it:\n// ready unless its handler implements Ready() (bool, string) and reports otherwise.\nfunc(d *%sDispatcher)DescribeService()(contract string,ready bool,why string){if h,ok:=d.Handler.(interface{Ready()(bool,string)});ok{if ready,why=h.Ready();ready{why=\"\"};return %q,ready,why};return %q,true,\"\"}\n// DescribeServiceMetadata returns optional handler display facts for Describe.\n// They grant no authority and do not change service admission.\nfunc(d *%sDispatcher)DescribeServiceMetadata()(guarantees []string,capabilities map[string]string){if h,ok:=d.Handler.(interface{DescribeMetadata()([]string,map[string]string)});ok{return h.DescribeMetadata()};return nil,nil}\n// ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.\nfunc(d *%sDispatcher)ServiceContract()string{return %q}\n", endpointWireName, svc.Name, svc.WireName, svc.WireName, svc.Name, svc.Name, svc.WireName)
 		}
 		fmt.Fprintf(b, "func(d *%sDispatcher)WriteFrame(frame []byte)error{v,err:=servicePayload(frame);if err!=nil{return err};if v.Service!=%q{return DispatchError(\"unknown_service\")};switch v.Method{\n", svc.Name, svc.WireName)
 		for _, m := range svc.Methods {
@@ -635,8 +635,12 @@ func DescribeEndpoint(frame []byte,program,version string,services ...DescribedS
  if !empty{return serviceReply(v,"",&Refusal{Word:"unknown_field"})}
  out:=append([]byte(nil),"{\"value\":{\"outcome\":\"described\",\"program\":"...);out=esc(out,program);out=append(out,",\"version\":"...);out=esc(out,version);out=append(out,",\"services\":["...)
  for i,service:=range services{
-  contract,ready,why:=service.DescribeService();readiness:="ready";if !ready{readiness="not_ready"}
-  if i>0{out=append(out,',')};out=append(out,"{\"contract\":"...);out=esc(out,contract);out=append(out,",\"readiness\":\""+readiness+"\",\"why\":"...);out=esc(out,why);out=append(out,",\"guarantees\":[],\"capabilities\":{}}"...)
+  contract,ready,why:=service.DescribeService();readiness:="ready";if ready{why=""}else{readiness="not_ready"}
+  var guarantees []string;var capabilities map[string]string
+  if described,ok:=service.(interface{DescribeServiceMetadata()([]string,map[string]string)});ok{guarantees,capabilities=described.DescribeServiceMetadata()}
+  if i>0{out=append(out,',')};out=append(out,"{\"contract\":"...);out=esc(out,contract);out=append(out,",\"readiness\":\""+readiness+"\",\"why\":"...);out=esc(out,why)
+  out=append(out,",\"guarantees\":["...);for j,guarantee:=range guarantees{if j>0{out=append(out,',')};out=esc(out,guarantee)}
+  out=append(out,"],\"capabilities\":{"...);for j,key:=range sortedKeys(capabilities){if j>0{out=append(out,',')};out=esc(out,key);out=append(out,':' );out=esc(out,capabilities[key])};out=append(out,"}}"...)
  }
  return serviceReply(v,Raw(append(out,"]}}"...)),nil)
 }

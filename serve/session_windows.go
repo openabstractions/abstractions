@@ -80,6 +80,7 @@ func startSessionWindowWithMessages(cancel context.CancelFunc, completed <-chan 
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
 		defer func() { cancel(); close(w.done) }()
+		//unchecked: UTF16PtrFromString only fails on an embedded NUL, and this source string is built entirely from decimal digits
 		name, _ := windows.UTF16PtrFromString(fmt.Sprintf("OpenAbstractionsHost-%d-%d", os.Getpid(), windowSequence.Add(1)))
 		instance, _, err := getModuleHandle.Call(0)
 		if instance == 0 {

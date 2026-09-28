@@ -12,6 +12,7 @@ import (
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	"github.com/openabstractions/abstraction-identity/listen"
 	"github.com/openabstractions/abstraction-identity/remote"
+	inference "github.com/openabstractions/abstraction-inference/go"
 	content "github.com/openabstractions/abstraction-storage/go/abstraction/storage/content"
 )
 
@@ -27,10 +28,14 @@ type providerTiming struct {
 	backoffFirst, backoffMax time.Duration
 	stable                   time.Duration
 	probeBudget              time.Duration
+	// inventoryBudget bounds one inventory-source call. A source reads whole
+	// stores by stat, which takes longer than a readiness probe.
+	inventoryBudget time.Duration
 }
 
 var defaultProviderTiming = providerTiming{probeWaiting: 200 * time.Millisecond, probeReady: 2 * time.Second,
-	backoffFirst: 250 * time.Millisecond, backoffMax: 30 * time.Second, stable: time.Minute, probeBudget: 2 * time.Second}
+	backoffFirst: 250 * time.Millisecond, backoffMax: 30 * time.Second, stable: time.Minute, probeBudget: 2 * time.Second,
+	inventoryBudget: 60 * time.Second}
 
 // providerSupervisor runs one declaration: it attaches to the provider, or
 // launches it as a child on first activation and restarts it with backoff
@@ -79,7 +84,7 @@ func (s *providerSupervisor) state() wire.DeclarationState {
 		described = []wire.ServiceState{}
 	}
 	return wire.DeclarationState{Declaration: s.file.Declaration.wire(), DeclaredBy: s.file.DeclaredBy, DeclaredUnixMs: s.file.DeclaredAt,
-		Readiness: s.readiness, Why: s.why, Restarts: s.restarts, Described: described, Accepted: slices.Clone(s.accepted)}
+		Role: s.file.Declaration.role(), Readiness: s.readiness, Why: s.why, Restarts: s.restarts, Described: described, Accepted: slices.Clone(s.accepted)}
 }
 
 // set records a reading and tells the watchers when it changed.
@@ -98,6 +103,22 @@ func (s *providerSupervisor) activate() {
 	s.wantedOnce.Do(func() { close(s.wanted) })
 }
 
+// ready reports whether the supervisor currently reads the provider ready.
+func (s *providerSupervisor) ready() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.readiness == wire.DeclarationReadinessReady
+}
+
+// activatingReason is the unavailable reason a mediated call reads when it
+// gave up waiting for an on-demand provider's readiness before its own
+// deadline or the runtime's launch budget passed (FAC-R8). The launch keeps
+// running in the background; a later call finds the provider ready or
+// not_ready with its own reason.
+func (s *providerSupervisor) activatingReason() string {
+	return "activating:" + s.file.Declaration.Name
+}
+
 // start begins supervision once.
 func (s *providerSupervisor) start() {
 	s.mu.Lock()
@@ -109,6 +130,17 @@ func (s *providerSupervisor) start() {
 	// The runtime is the only reader of an inventory source, and it wants one
 	// as soon as it serves.
 	if slices.Contains(s.file.Declaration.Contracts, storageInventorySource) {
+		s.activate()
+	}
+	// A native inference provider that declares the profiles it serves is one
+	// the router surveys: the router is the one directory of the models on
+	// this machine, and a model no list names is a model no application can
+	// ask for. Such a provider is activated as soon as the runtime serves. It
+	// costs a process and no weights — the model host loads a file on the
+	// first call that names it — and a declaration that leaves its profiles
+	// out is reached through its own mediated endpoint and stays idle until a
+	// resolution asks for it (FAC-R8).
+	if d := s.file.Declaration; slices.Contains(d.Contracts, inference.Contract) && len(d.Models) > 0 && len(d.resources("profile")) > 0 {
 		s.activate()
 	}
 	go s.run()
@@ -218,6 +250,7 @@ func (s *providerSupervisor) launch(launches int) bool {
 		select {
 		case <-s.stop:
 			t.Stop()
+			//unchecked: best-effort termination; a failed Kill (e.g. the process already exited) is fine since the wait below still proceeds
 			cmd.Process.Kill()
 			<-exited
 			s.set(wire.DeclarationReadinessIdle, "stopped")
@@ -263,10 +296,10 @@ func (s *providerSupervisor) attach() {
 
 // transport is the connection a probe uses: the local endpoint requiring the
 // declared program as the server, or the remote runtime over mutual TLS.
-func (s *providerSupervisor) transport(ctx context.Context) (wire.EndpointTransport, error) {
+func (s *providerSupervisor) transport(ctx context.Context, budget time.Duration) (wire.EndpointTransport, error) {
 	d := s.file.Declaration
 	if !d.remote() {
-		return listen.FrameClient{Endpoint: s.endpoint, Timeout: s.p.timing.probeBudget, MaxFrame: 8 << 20,
+		return listen.FrameClient{Endpoint: s.endpoint, Timeout: budget, MaxFrame: 8 << 20,
 			Server: &listen.ServerExpectation{Principal: s.p.principal, Program: d.Program}}.WithContext(ctx), nil
 	}
 	address, err := remoteAddress(d.Endpoint)
@@ -277,7 +310,7 @@ func (s *providerSupervisor) transport(ctx context.Context) (wire.EndpointTransp
 	if err != nil {
 		return nil, err
 	}
-	client, err := remote.Client(address, config, s.p.timing.probeBudget, 8<<20)
+	client, err := remote.Client(address, config, budget, 8<<20)
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +324,7 @@ func (s *providerSupervisor) probe() (wire.DeclarationReadiness, string) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.p.timing.probeBudget)
 	defer cancel()
 	d := s.file.Declaration
-	transport, err := s.transport(ctx)
+	transport, err := s.transport(ctx, s.p.timing.probeBudget)
 	if err != nil {
 		s.record(ctx, nil, nil)
 		return wire.DeclarationReadinessUnreachable, "remote:" + err.Error()

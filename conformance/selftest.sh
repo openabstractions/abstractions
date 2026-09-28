@@ -65,6 +65,8 @@ check 2 "a rule tag with no contract page is incomplete, never a pass" \
 check 0 "the same run, with the page that declares the tag, is green" \
     sh "$RUN" --scenarios "$HERE/selftest/tagged" --contracts "$HERE/selftest/pages" \
         -- sh "$HERE/selftest/generous.sh"
+check 0 "legacy and canonical refusal words compare for one release" \
+    sh "$RUN" --scenarios "$HERE/selftest/legacy" --no-fixture -- sh "$HERE/selftest/generous.sh"
 
 [ "$bad" = 0 ] || { echo "  RESULT: the runner does not behave as documented"; exit 1; }
 echo "  RESULT: the runner distinguishes passed, failed and out of reach"

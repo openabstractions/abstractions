@@ -60,9 +60,11 @@ func TestServeCommandHelpAndEndpointRefusal(t *testing.T) {
 		}
 		return stdout.String(), stderr.String(), 0
 	}
+	// Requested help (--help, -h) prints to stdout and exits 0; nothing about
+	// it is a mistake, so stderr stays clean.
 	for _, help := range []string{"--help", "-h"} {
 		stdout, stderr, code := run("serve", help)
-		if code != 0 || !strings.Contains(stdout, "EXIT") || strings.Contains(stderr, "no capability") || !strings.Contains(stderr, "openabstractions serve runtime") {
+		if code != 0 || !strings.Contains(stdout, "EXIT") || !strings.Contains(stdout, "Usage: openabstractions serve <capability>") || !strings.Contains(stdout, "  runtime") || strings.Contains(stderr, "no capability") || stderr != "" {
 			t.Fatalf("serve %s: exit %d\nstdout %s\nstderr %s", help, code, stdout, stderr)
 		}
 	}
@@ -70,9 +72,9 @@ func TestServeCommandHelpAndEndpointRefusal(t *testing.T) {
 	if code != 1 || !strings.Contains(stderr, `--endpoint "l6-runtime"`) || !strings.Contains(stderr, "--isolated <name>") {
 		t.Fatalf("bare endpoint name: exit %d\n%s", code, stderr)
 	}
-	_, stderr, code = run("serve", "runtime", "--help")
-	if code != 0 || !strings.Contains(stderr, "-isolated") {
-		t.Fatalf("runtime help: exit %d\n%s", code, stderr)
+	stdout, stderr, code := run("serve", "runtime", "--help")
+	if code != 0 || !strings.Contains(stdout, "-isolated") || stderr != "" {
+		t.Fatalf("runtime help: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
 	}
 }
 

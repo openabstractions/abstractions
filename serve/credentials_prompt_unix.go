@@ -25,6 +25,7 @@ func promptSecret(diagnostics io.Writer) ([]byte, error) {
 		return nil, err
 	}
 	defer unix.IoctlSetTermios(fd, termiosSet, saved)
+	//unchecked: prompt output is diagnostic; terminal echo is already disabled and the following read reports its own errors
 	fmt.Fprint(diagnostics, "secret (not echoed): ")
 	defer fmt.Fprintln(diagnostics)
 	return readSecretLine(os.Stdin)

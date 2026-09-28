@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	config "github.com/openabstractions/abstraction-config/go"
 	wire "github.com/openabstractions/abstraction-config/go/abstraction/config"
@@ -111,5 +112,36 @@ func TestPanelConfigServiceAdoption(t *testing.T) {
 	stop()
 	if r := panelRequest(t, h, "/settings", nil); r.Code != 503 {
 		t.Fatalf("stopped service: %d %s", r.Code, r.Body)
+	}
+}
+
+// A wait that runs its full budget because nothing changed must still return
+// "unchanged" rather than a client-side timeout: observeSettings gives its
+// own context and Observer more time than the settingsObserveWait it asks
+// for, so an idle window is not mistaken for an absent service.
+func TestPanelConfigObserveIdleWindowEndsWithoutError(t *testing.T) {
+	own(t)
+	if err := os.MkdirAll(filepath.Dir(config.UserPath()), 0700); err != nil {
+		t.Fatal(err)
+	}
+	panelConfigRuntime(t)
+	h := (&servicePanel{}).handler("test-key")
+	r := panelRequest(t, h, "/settings/observe?cursor=", nil)
+	var first wire.ConfigObservation
+	if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &first) != nil || first.Outcome != wire.ConfigObservationOutcomeSnapshot {
+		t.Fatalf("first: %d %s", r.Code, r.Body)
+	}
+	began := time.Now()
+	r = panelRequest(t, h, "/settings/observe?cursor="+first.Cursor, nil)
+	elapsed := time.Since(began)
+	var second wire.ConfigObservation
+	if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &second) != nil {
+		t.Fatalf("idle window: %d %s", r.Code, r.Body)
+	}
+	if second.Outcome != wire.ConfigObservationOutcomeUnchanged || second.Cursor != first.Cursor {
+		t.Fatalf("idle window: %+v", second)
+	}
+	if elapsed < settingsObserveWait {
+		t.Fatalf("returned in %v, before the requested %v wait", elapsed, settingsObserveWait)
 	}
 }

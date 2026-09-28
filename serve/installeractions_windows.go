@@ -76,7 +76,9 @@ func appendInstallerAction(path func(scope string) (string, error), scope, line 
 	if err != nil {
 		return
 	}
+	//unchecked: appendInstallerAction is a best-effort diagnostic log with no return value to report a write failure through
 	_, _ = f.WriteString(line)
+	//unchecked: appendInstallerAction is a best-effort diagnostic log with no return value to report a close failure through
 	_ = f.Close()
 }
 

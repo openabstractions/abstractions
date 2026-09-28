@@ -41,9 +41,9 @@ func splitList(s string) []string {
 // list reads now. The first rule that does not apply stops the bundle; the
 // command prints the rules that landed and the one that stopped it, and never
 // retries.
-func rightsBundle(machine *client.Machine, call func() (context.Context, context.CancelFunc), command, bundle string, rule rightsRule, rules []grants.Rule, revision, why string, ttl time.Duration, asJSON bool, output io.Writer) error {
+func rightsBundle(machine *client.Machine, source endpointSource, call func() (context.Context, context.CancelFunc), command, bundle string, rule rightsRule, rules []grants.Rule, revision, why string, ttl time.Duration, asJSON bool, output io.Writer) error {
 	command += " --for " + bundle
-	operator, err := resolveOperator(machine, call, command)
+	operator, err := resolveOperator(machine, source, call, command)
 	if err != nil {
 		return err
 	}
@@ -57,7 +57,7 @@ func rightsBundle(machine *client.Machine, call func() (context.Context, context
 		}
 		if page.Outcome != rights.PolicyPageOutcomePage {
 			reply.Outcome = page.Outcome.String()
-			return bundlePrint(output, asJSON, reply, refusal(command, page.Outcome.String(), "listing the policy revision"))
+			return bundlePrint(output, asJSON, reply, rightsOperatorRefusal(command, page.Outcome.String(), "listing the policy revision"))
 		}
 		revision = page.Revision
 	}
@@ -97,20 +97,29 @@ func bundlePrint(output io.Writer, asJSON bool, reply bundleReply, failure error
 		}
 		return failure
 	}
+	// Every write into b below targets a strings.Builder, which never errors;
+	// the only write that can fail is the io.WriteString to output at the end.
 	var b strings.Builder
+	//unchecked: strings.Builder never errors
 	fmt.Fprintf(&b, "%s: %s for %s running %s", reply.Command, reply.Outcome, reply.Subject.Account, reply.Subject.Program)
 	if reply.Revision != "" {
+		//unchecked: strings.Builder never errors
 		fmt.Fprintf(&b, "; policy revision now %s", reply.Revision)
 	}
+	//unchecked: strings.Builder never errors
 	b.WriteString("\n")
 	for _, r := range reply.Landed {
+		//unchecked: strings.Builder never errors
 		fmt.Fprintf(&b, "  permit %s on %s (why %q)\n", r.Action, r.Resource, reply.Why)
 	}
 	if reply.Stopped != nil {
+		//unchecked: strings.Builder never errors
 		fmt.Fprintf(&b, "  stopped at %s on %s: %s", reply.Stopped.Action, reply.Stopped.Resource, reply.Outcome)
 		if reply.Current != nil {
+			//unchecked: strings.Builder never errors
 			fmt.Fprintf(&b, "; current rule: %s", ruleWord(reply.Current.Permit))
 		}
+		//unchecked: strings.Builder never errors
 		b.WriteString("\n")
 	}
 	if _, err := io.WriteString(output, b.String()); err != nil {

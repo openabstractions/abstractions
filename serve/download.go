@@ -21,47 +21,42 @@ import (
 
 const downloadUsage = `Usage: openabstractions download <url> [options]
 
-Submits an HTTP(S) transfer to the runtime's job service and copies the result
-out. The runtime owns the transfer, the partial file and the retry:
+Submits an HTTP(S) transfer to the runtime's job service and copies the
+result out. The runtime owns the transfer, the partial file and the retry;
 this command sends no path and keeps no store. Closing it leaves the work
-running under abstraction.job/caller-exit@1.
+running.
 
-  --sha256 HEX     the artifact's SHA-256; the runtime verifies the bytes
-                   against it before the operation is complete
-  --size BYTES     the artifact's expected size; oversize ends the work
-  --credential NAME
-                   a credential registered with openabstractions credentials
-                   add; the runtime applies it to each request it sends and
-                   this command never sees the secret
-  --unmetered      move bytes only while the runtime's network is unmetered.
-                   The runtime waits while the connection is metered and
-                   resumes with Range afterwards; jobs list shows
-                   "(waiting: network:metered)". A runtime with no network
-                   cost source on its platform is not resolved
-                   (abstraction.download/network-cost@1)
-  --out PATH       directory or file the result is copied into (default: .)
-  --label TEXT     what jobs list and the Panel show for this work, one line of
-                   at most 256 bytes. It is your own text, stored as you give it
-                   and shown to whoever lists this account's work. Without it,
-                   the runtime shows the URL's host and last path segment. The
-                   request key and the work it names stay the same whatever the
-                   label (JOB-A12)
-  --key KEY        request key; the default is derived from the submission, so
-                   repeating the command returns the latest attempt's receipt
-                   (JOB-A2)
-  --retry          submit the next attempt of the same request. The runtime
-                   accepts it only after the latest attempt failed or was
-                   definitely not accepted (JOB-A7); nothing retries on its own
-  --no-wait        print the receipt and return while the work continues
-  --quiet          print no progress
-  --endpoint EP    runtime bootstrap endpoint (default: the installed runtime)
-  --timeout D      waiting budget; zero waits without a deadline
-  --json           emit one JSON document on stdout
+  --sha256 HEX       the artifact's SHA-256, verified before completion
+  --size BYTES       the artifact's expected size; oversize ends the work
+  --credential NAME  a name registered with credentials add; the runtime
+                     applies it and this command never sees the secret
+  --unmetered        move bytes only while the runtime's network is
+                     unmetered, resuming with Range once it is again
+  --out PATH         directory or file the result is copied into (default: .)
+  --label TEXT       your own text, shown wherever this work is listed, at
+                     most 256 bytes (default: the URL's host and last path
+                     segment)
+  --key KEY          request key (default: derived from the submission);
+                     repeating the command returns the latest attempt
+  --retry            submit the next attempt, after the latest one failed or
+                     was not accepted
+  --no-wait          print the receipt and return while the work continues
+  --quiet            print no progress
+  --endpoint EP      runtime bootstrap endpoint (default: the installed
+                     runtime)
+  --timeout D        deadline for the whole command; the work continues
+                     past it; zero means none
+  --json             emit one JSON document on stdout
+
+The endpoint is --endpoint if given, else ABSTRACTION_RUNTIME_ENDPOINT if set,
+else the installed runtime.
 
 Exit codes: 0 done, 1 runtime not resolved or output error, 2 usage,
 3 typed refusal, 4 unavailable (repeat later), 5 the work failed or was
 cancelled, 6 acceptance uncertain (rerun the same command to reconcile),
 7 still waiting, 130 interrupted while waiting.
+
+Learn more: openabstractions-flat/abstraction-job/CONTRACT.md
 `
 
 // downloadReport is the --json document.
@@ -75,17 +70,14 @@ type downloadReport struct {
 
 func downloadCommand(args []string, output, diagnostics io.Writer) error {
 	const command = "download"
-	if len(args) == 0 || isHelp(args[0]) {
+	if containsHelp(args) {
 		_, err := io.WriteString(output, downloadUsage)
 		return err
 	}
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
-	flags.SetOutput(diagnostics)
-	flags.Usage = func() {
-		if _, err := fmt.Fprint(diagnostics, downloadUsage); err == nil {
-			flags.PrintDefaults()
-		}
-	}
+	flags.SetOutput(io.Discard)
+	// badFlag below prints this program's own three-line mistake shape;
+	flags.Usage = func() {} // the flag package's own per-error usage call must print nothing
 	var options serviceOptions
 	options.bind(flags)
 	digest := flags.String("sha256", "", "the artifact's SHA-256 as 64 hex characters")
@@ -100,27 +92,27 @@ func downloadCommand(args []string, output, diagnostics io.Writer) error {
 	flags.BoolVar(&options.quiet, "quiet", false, "print no progress")
 	positional, err := parsePositional(flags, args)
 	if err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return err
-		}
-		return &exitError{exitUsage, fmt.Errorf("%s: %w", command, err)}
+		return badFlag(flags, diagnostics, command, downloadUsage, args, err)
+	}
+	if len(positional) == 0 {
+		return flagMistake(diagnostics, command, downloadUsage, "a URL is required")
 	}
 	if len(positional) != 1 {
-		return &exitError{exitUsage, errors.New("download: name exactly one URL")}
+		return flagMistake(diagnostics, command, downloadUsage, "name exactly one URL")
 	}
 	locator := positional[0]
-	source, name, err := downloadSource(locator)
+	source, name, err := downloadSource(diagnostics, locator)
 	if err != nil {
 		return err
 	}
-	artifact, err := downloadArtifact(*digest, *size)
+	artifact, err := downloadArtifact(diagnostics, *digest, *size)
 	if err != nil {
 		return err
 	}
 	required := slices.Clone(api.AdmissionGuarantees)
 	if *credential != "" {
 		if !validCredentialName(*credential) {
-			return &exitError{exitUsage, fmt.Errorf("download: --credential %q must be 1-64 characters from A-Z, a-z, 0-9, _, - and .", *credential)}
+			return flagMistake(diagnostics, command, downloadUsage, fmt.Sprintf("--credential %q must be 1-64 characters from A-Z, a-z, 0-9, _, - and .", *credential))
 		}
 		source.Credential = *credential
 		required = append(required, request.CredentialGuarantees...)
@@ -131,11 +123,11 @@ func downloadCommand(args []string, output, diagnostics io.Writer) error {
 		required = append(required, request.NetworkCostGuarantees...)
 	}
 	if options.budget < 0 {
-		return &exitError{exitUsage, errors.New("download: --timeout must not be negative")}
+		return flagMistake(diagnostics, command, downloadUsage, "--timeout must not be negative")
 	}
 	text, err := api.NormalizeLabel(*label)
 	if err != nil {
-		return &exitError{exitUsage, fmt.Errorf("download: --label: %w", err)}
+		return flagMistake(diagnostics, command, downloadUsage, fmt.Sprintf("--label: %v", err))
 	}
 	// The submission is built and validated before anything is sent, so a usage
 	// refusal never leaves an identity behind. The label is outside the request
@@ -144,10 +136,10 @@ func downloadCommand(args []string, output, diagnostics io.Writer) error {
 	submission := api.Submission{Kind: download.Kind, Spec: payload, RequiredGuarantees: required, Label: text}
 	w := newWaiting(options.budget)
 	defer w.stop()
-	machine := options.machine()
+	machine, epSource := options.machine(diagnostics, command)
 	// Resolution names every guarantee the submission requires, so a runtime
 	// that cannot keep one is refused as unmet before an identity exists.
-	jobs, err := resolveAcceptanceRequiring(w, command, machine, required)
+	jobs, err := resolveAcceptanceRequiring(w, command, epSource, machine, required)
 	if err != nil {
 		return err
 	}
@@ -155,7 +147,7 @@ func downloadCommand(args []string, output, diagnostics io.Writer) error {
 	window, err := jobs.GetHistoryWindow(call)
 	done()
 	if err != nil {
-		return notResolved(command, err)
+		return notResolved(command, epSource, err)
 	}
 	submission.Identity = api.RequestIdentity{HistoryEpoch: window.HistoryEpoch, Key: *key}
 	if submission.Identity.Key == "" {
@@ -163,7 +155,7 @@ func downloadCommand(args []string, output, diagnostics io.Writer) error {
 	}
 	// Observation and the result read are the operations contract, bound
 	// separately from the acceptance contract that takes the submission.
-	operations, err := resolveOperations(w, command, machine)
+	operations, err := resolveOperations(w, command, epSource, machine)
 	if err != nil {
 		return err
 	}
@@ -220,7 +212,7 @@ func downloadCommand(args []string, output, diagnostics io.Writer) error {
 		}
 		return err
 	}
-	sink, err := sinkPath(command, *out, name)
+	sink, err := sinkPath(diagnostics, command, downloadUsage, *out, name)
 	if err != nil {
 		return err
 	}
@@ -249,12 +241,12 @@ func downloadCommand(args []string, output, diagnostics io.Writer) error {
 
 // resolveAcceptanceRequiring binds the submission contract with the admission
 // guarantees and every execution guarantee the submission requires.
-func resolveAcceptanceRequiring(w *waiting, command string, machine *client.Machine, required []string) (*client.JobsClient, error) {
+func resolveAcceptanceRequiring(w *waiting, command string, epSource endpointSource, machine *client.Machine, required []string) (*client.JobsClient, error) {
 	call, done := w.call()
 	defer done()
 	jobs, err := machine.ResolveJobs(call, client.Requirements{Guarantees: required})
 	if err != nil {
-		return nil, notResolved(command, err)
+		return nil, notResolved(command, epSource, err)
 	}
 	return jobs, nil
 }
@@ -262,19 +254,19 @@ func resolveAcceptanceRequiring(w *waiting, command string, machine *client.Mach
 // downloadSource validates the URL against what the runtime's execution profile
 // accepts: anonymous HTTP(S) with a host. Anything else is refused here, before
 // an identity exists, rather than sealed as definitely_not_accepted.
-func downloadSource(raw string) (request.Source, string, error) {
+func downloadSource(diagnostics io.Writer, raw string) (request.Source, string, error) {
 	parsed, err := url.Parse(raw)
 	if err != nil {
-		return request.Source{}, "", &exitError{exitUsage, fmt.Errorf("download: %q is not a URL", raw)}
+		return request.Source{}, "", flagMistake(diagnostics, "download", downloadUsage, fmt.Sprintf("%q is not a URL", raw))
 	}
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return request.Source{}, "", &exitError{exitUsage, fmt.Errorf("download: %q is not an http:// or https:// URL", raw)}
+		return request.Source{}, "", flagMistake(diagnostics, "download", downloadUsage, fmt.Sprintf("%q is not an http:// or https:// URL", raw))
 	}
 	if parsed.Host == "" {
-		return request.Source{}, "", &exitError{exitUsage, fmt.Errorf("download: %q names no host", raw)}
+		return request.Source{}, "", flagMistake(diagnostics, "download", downloadUsage, fmt.Sprintf("%q names no host", raw))
 	}
 	if parsed.User != nil {
-		return request.Source{}, "", &exitError{exitUsage, errors.New("download: a URL carrying credentials is refused; register the secret with openabstractions credentials add and pass --credential NAME")}
+		return request.Source{}, "", flagMistake(diagnostics, "download", downloadUsage, "a URL carrying credentials is refused; register the secret with openabstractions credentials add and pass --credential NAME")
 	}
 	name := path.Base(parsed.Path)
 	if name == "." || name == "/" || name == "" {
@@ -283,17 +275,17 @@ func downloadSource(raw string) (request.Source, string, error) {
 	return request.Source{Scheme: parsed.Scheme, Locator: raw}, name, nil
 }
 
-func downloadArtifact(digest string, size int64) (request.Artifact, error) {
+func downloadArtifact(diagnostics io.Writer, digest string, size int64) (request.Artifact, error) {
 	artifact := request.Artifact{Size: size}
 	if size < 0 {
-		return artifact, &exitError{exitUsage, errors.New("download: --size must not be negative")}
+		return artifact, flagMistake(diagnostics, "download", downloadUsage, "--size must not be negative")
 	}
 	if digest == "" {
 		return artifact, nil
 	}
 	decoded, err := hex.DecodeString(strings.TrimPrefix(digest, "sha256:"))
 	if err != nil || len(decoded) != 32 {
-		return artifact, &exitError{exitUsage, errors.New("download: --sha256 takes 64 hex characters")}
+		return artifact, flagMistake(diagnostics, "download", downloadUsage, "--sha256 takes 64 hex characters")
 	}
 	artifact.Digest = "sha256:" + strings.ToLower(strings.TrimPrefix(digest, "sha256:"))
 	return artifact, nil
@@ -306,13 +298,20 @@ func downloadArtifact(digest string, size int64) (request.Artifact, error) {
 func submissionKey(s api.Submission) string {
 	guarantees := slices.Clone(s.RequiredGuarantees)
 	slices.Sort(guarantees)
+	// hash.Hash.Write is documented to never return an error, for every call below.
 	sum := sha256.New()
+	//unchecked: hash.Hash.Write never returns an error
 	sum.Write([]byte(s.Kind))
+	//unchecked: hash.Hash.Write never returns an error
 	sum.Write([]byte{0})
+	//unchecked: hash.Hash.Write never returns an error
 	sum.Write(s.Spec)
+	//unchecked: hash.Hash.Write never returns an error
 	sum.Write([]byte{0})
 	for _, g := range guarantees {
+		//unchecked: hash.Hash.Write never returns an error
 		sum.Write([]byte(g))
+		//unchecked: hash.Hash.Write never returns an error
 		sum.Write([]byte{0})
 	}
 	return "download-" + hex.EncodeToString(sum.Sum(nil))[:32]

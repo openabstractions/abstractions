@@ -22,6 +22,7 @@ func promptSecret(diagnostics io.Writer) ([]byte, error) {
 		return nil, err
 	}
 	defer windows.SetConsoleMode(handle, mode)
+	//unchecked: a failed prompt write does not stop the read that follows, and there is nothing else to do about it here
 	fmt.Fprint(diagnostics, "secret (not echoed): ")
 	defer fmt.Fprintln(diagnostics)
 	return readSecretLine(os.Stdin)

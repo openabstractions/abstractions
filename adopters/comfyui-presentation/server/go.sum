@@ -16,10 +16,10 @@ github.com/openabstractions/abstraction-download/go v0.4.4 h1:piT5Vu48kiAAQPD3Cy
 github.com/openabstractions/abstraction-download/go v0.4.4/go.mod h1:E6MNrbAeZ1TOWemCncvRTomVevnn8jFFdmJERIvuHDc=
 github.com/openabstractions/abstraction-facade/go v0.4.1 h1:9mspOvLc2+CwZ2t1eoz8SaC9fjKIWr1psojCHd1Tzew=
 github.com/openabstractions/abstraction-facade/go v0.4.1/go.mod h1:zZOJi3KGtlTRVNwOhC74F0o1I+cHghKNdoH344FYByc=
-github.com/openabstractions/abstraction-facade/go-core v0.1.1 h1:uopr6mFl7fDTessq/NeOp33pqjhxAIMuPSvyutAz2KE=
-github.com/openabstractions/abstraction-facade/go-core v0.1.1/go.mod h1:wgTjH2QAy4SxjeBBhIbwOwTvwSHY5bNt1+2eVX+QmP4=
-github.com/openabstractions/abstraction-identity v0.2.2 h1:x8mcco2z0ca//vmsNxFEl+p4UQBWYLVb2GSJsBsg82M=
-github.com/openabstractions/abstraction-identity v0.2.2/go.mod h1:gv5sDQuTQqv/UY+fXY5Q74i1junNIEvf/5UsZxMxwKY=
+github.com/openabstractions/abstraction-facade/go-core v0.2.0 h1:dKHPBH0Laa8u3RjwhY3Y70tQ52EqXXOqOkHY1sRny6g=
+github.com/openabstractions/abstraction-facade/go-core v0.2.0/go.mod h1:XJc+2YDyYAu6vZGMLn12v95nJ3Oow/j5lhX+r+EBnlQ=
+github.com/openabstractions/abstraction-identity v0.3.0 h1:NTSP2JxO+1Fi/IHO4PCg+PrtO2aoufzflmPS8U6IPAg=
+github.com/openabstractions/abstraction-identity v0.3.0/go.mod h1:gv5sDQuTQqv/UY+fXY5Q74i1junNIEvf/5UsZxMxwKY=
 github.com/openabstractions/abstraction-job/go v0.4.4 h1:4Fzth3biXc3xh9MzXKLGWvZfANQEhuWl0MHL+NFHg28=
 github.com/openabstractions/abstraction-job/go v0.4.4/go.mod h1:iu35AowDgxNrAu0Ks9EPBtw4voqeI6nGP+i29hgNwA8=
 github.com/openabstractions/abstraction-logging/go v0.3.1 h1:VdE9pNih6cwsPwkIWk8Q6kPgg401PmeBISzLlMkE62A=

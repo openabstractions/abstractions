@@ -63,9 +63,15 @@ enum DeclarationReadiness
   Refused
   Unreachable
   NotReady
+  Disabled
+enum DeclarationRole
+  Provider
+  Host
+  Remote
 enum DeclarationTransport
   Native
   Remote
+  Http
 enum DescriptionOutcome
   Described
   Forbidden
@@ -192,10 +198,25 @@ function newDeclaration()
   activation
   remote
   models
+  role
+  host
+function newDeclarationCeiling()
+  tokensPerDay
+  microsPerDay
+  requestsPerDay
+  imagesPerDay
+  audioSecondsPerDay
+  charactersPerDay
 function newDeclarationChange()
   outcome
   revision
   reason
+function newDeclarationHost()
+  base
+  kind
+  hosted
+  credential
+  ceiling
 function newDeclarationList()
   outcome
   revision
@@ -213,11 +234,16 @@ function newDeclarationState()
   restarts
   described
   accepted
+  role
+  host
 function newDescription()
   outcome
   program
   version
   services
+function newHostReading()
+  up
+  why
 function newRemoteTrust()
   serverName
   roots

@@ -12,16 +12,22 @@
     "platform": "windows/amd64",
     "scenario": "Installed Rust generated resolver/logging/history over shared native IPC: real Go service, exact record/history, requirement and malformed-reference refusal, absence, deadline and cancellation",
     "inputs": [
+      "adopters/comfyui-presentation/server/go.mod",
+      "adopters/comfyui-presentation/server/go.sum",
       "conformance/clients/fixture/go.mod",
       "conformance/clients/rust_services",
       "conformance/clients/workspace.py",
       "conformance/faults/lostreply/go/go.mod",
       "deploy/nas/mkimage/go.mod",
+      "examples/logging-quickstart/go.mod",
+      "examples/logging-quickstart/go.sum",
       "examples/pretend-lemonade/go.mod",
       "examples/pretend-lemonade/go.sum",
       "go.work",
       "go.work.sum",
       "idl/gen",
+      "mcp-gateway/go.mod",
+      "mcp-gateway/go.sum",
       "monitor/go.mod",
       "monitor/go.sum",
       "openabstractions-flat/abstraction-asks/asks.thrift",
@@ -35,6 +41,8 @@
       "openabstractions-flat/abstraction-config/go",
       "openabstractions-flat/abstraction-config/go/go.mod",
       "openabstractions-flat/abstraction-config/go/go.sum",
+      "openabstractions-flat/abstraction-credentials/go/go.mod",
+      "openabstractions-flat/abstraction-credentials/go/go.sum",
       "openabstractions-flat/abstraction-download/download.thrift",
       "openabstractions-flat/abstraction-download/go",
       "openabstractions-flat/abstraction-download/go/go.mod",
@@ -56,6 +64,11 @@
       "openabstractions-flat/abstraction-identity/go.mod",
       "openabstractions-flat/abstraction-identity/go.sum",
       "openabstractions-flat/abstraction-identity/identity.thrift",
+      "openabstractions-flat/abstraction-inference/adapters/go/go.mod",
+      "openabstractions-flat/abstraction-inference/adapters/go/go.sum",
+      "openabstractions-flat/abstraction-inference/go",
+      "openabstractions-flat/abstraction-inference/go/go.mod",
+      "openabstractions-flat/abstraction-inference/go/go.sum",
       "openabstractions-flat/abstraction-job/acceptance.thrift",
       "openabstractions-flat/abstraction-job/go",
       "openabstractions-flat/abstraction-job/go/go.mod",
@@ -70,7 +83,14 @@
       "openabstractions-flat/abstraction-model/go",
       "openabstractions-flat/abstraction-model/go/go.mod",
       "openabstractions-flat/abstraction-model/go/go.sum",
+      "openabstractions-flat/abstraction-model/identity",
+      "openabstractions-flat/abstraction-model/identity/go.mod",
       "openabstractions-flat/abstraction-model/model.thrift",
+      "openabstractions-flat/abstraction-provider-modelbridge/go/go.mod",
+      "openabstractions-flat/abstraction-provider-modelhost/go/go.mod",
+      "openabstractions-flat/abstraction-resource/go",
+      "openabstractions-flat/abstraction-resource/go/go.mod",
+      "openabstractions-flat/abstraction-resource/go/go.sum",
       "openabstractions-flat/abstraction-rights/go",
       "openabstractions-flat/abstraction-rights/go/go.mod",
       "openabstractions-flat/abstraction-rights/go/go.sum",
@@ -79,6 +99,8 @@
       "openabstractions-flat/abstraction-router/go/go.mod",
       "openabstractions-flat/abstraction-router/go/go.sum",
       "openabstractions-flat/abstraction-router/router.thrift",
+      "openabstractions-flat/abstraction-storage-over-local-stores/go/go.mod",
+      "openabstractions-flat/abstraction-storage-over-local-stores/go/go.sum",
       "openabstractions-flat/abstraction-storage/go",
       "openabstractions-flat/abstraction-storage/go/go.mod",
       "openabstractions-flat/abstraction-storage/go/go.sum",
@@ -124,7 +146,7 @@
       "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe"
     ]
   },
-  "inputs_digest": "540d5e3316a664cd42107bb8ebb59290b3984327d2689fb4ee979e5c41f5f80e",
+  "inputs_digest": "d88b7f3ebea7475f7635ec47d214b38ec28dd7c36a18449e167b726b4a9ed2fc",
   "toolchains": {
     "python": {
       "argv": [
@@ -133,7 +155,7 @@
       ],
       "exit": 0,
       "output": "Python 3.12.10\r\n",
-      "seconds": 2.047
+      "seconds": 0.047
     },
     "go": {
       "argv": [
@@ -142,7 +164,7 @@
       ],
       "exit": 0,
       "output": "go version go1.26.5 windows/amd64\n",
-      "seconds": 1.547
+      "seconds": 0.047
     },
     "cmake": {
       "argv": [
@@ -151,7 +173,7 @@
       ],
       "exit": 0,
       "output": "cmake version 4.3.1-msvc1\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n",
-      "seconds": 0.562
+      "seconds": 0.047
     },
     "rust": {
       "argv": [
@@ -160,7 +182,7 @@
       ],
       "exit": 0,
       "output": "rustc 1.98.0 (88d9e12ae 2026-08-18)\n",
-      "seconds": 1.203
+      "seconds": 0.063
     },
     "cargo": {
       "argv": [
@@ -169,7 +191,7 @@
       ],
       "exit": 0,
       "output": "cargo 1.98.0 (797e8a9bc 2026-08-05)\n",
-      "seconds": 1.0
+      "seconds": 0.046
     }
   },
   "result": {
@@ -181,9 +203,9 @@
       "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe"
     ],
     "exit": 0,
-    "output": "source revision: 8d7d7747e323383194561d9d35a01434ca5f7f3d (uncommitted changes present)\r\n-- Building for: Visual Studio 18 2026\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- The C compiler identification is MSVC 19.51.36256.0\n-- The CXX compiler identification is MSVC 19.51.36256.0\n-- Detecting C compiler ABI info\n-- Detecting C compiler ABI info - done\n-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting C compile features\n-- Detecting C compile features - done\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Configuring done (36.1s)\n-- Generating done (0.1s)\nCMake Warning:\n  Manually-specified variables were not used by the project:\n\n    CMAKE_BUILD_TYPE\n\n\n-- Build files have been written to: <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/.build/rsv-aykuly04/native\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\n  1>Checking Build System\r\n  Building Custom Rule <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/openabstractions-flat/abstraction-identity/cpp/CMakeLists.txt\r\n  client.cpp\r\n  abstraction_ipc.vcxproj -> <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\rsv-aykuly04\\native\\Release\\abstraction_ipc.lib\r\n  Building Custom Rule <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/openabstractions-flat/abstraction-identity/cpp/CMakeLists.txt\r\n-- Installing: <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/.build/rsv-aykuly04/prefix/lib/abstraction_ipc.lib\n-- Installing: <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/.build/rsv-aykuly04/prefix/include\n-- Installing: <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/.build/rsv-aykuly04/prefix/include/abstraction\n-- Installing: <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/.build/rsv-aykuly04/prefix/include/abstraction/ipc\n-- Installing: <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/.build/rsv-aykuly04/prefix/include/abstraction/ipc/bootstrap.hpp\n-- Installing: <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/.build/rsv-aykuly04/prefix/include/abstraction/ipc/client.h\n-- Installing: <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/.build/rsv-aykuly04/prefix/include/abstraction/ipc/client.hpp\n-- Installing: <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/.build/rsv-aykuly04/prefix/include/abstraction/ipc/frame.hpp\n-- Installing: <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/.build/rsv-aykuly04/prefix/include/abstraction/ipc/process.hpp\n-- Installing: <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/.build/rsv-aykuly04/prefix/share/abstraction_ipc/link-dependencies.txt\n-- Installing: <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/.build/rsv-aykuly04/prefix/lib/cmake/abstraction_ipc/abstraction_ipcTargets.cmake\n-- Installing: <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/.build/rsv-aykuly04/prefix/lib/cmake/abstraction_ipc/abstraction_ipcTargets-release.cmake\n-- Installing: <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/.build/rsv-aykuly04/prefix/lib/cmake/abstraction_ipc/abstraction_ipcConfig.cmake\n-- Installing: <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/.build/rsv-aykuly04/prefix/lib/cmake/abstraction_ipc/abstraction_ipcConfigVersion.cmake\n   Compiling abstraction-frame v0.0.0 (<user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\rsv-aykuly04\\source\\openabstractions-flat\\abstraction-identity\\rust-frame)\n   Compiling abstraction-facade-service v0.0.0 (<user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\rsv-aykuly04\\source\\openabstractions-flat\\abstraction-facade\\rust)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.48s\n     Running unittests src\\lib.rs (<user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\rsv-aykuly04\\target\\debug\\deps\\abstraction_facade_service-d8c373f7f3dddfe8.exe)\n\nrunning 14 tests\ntest tests::invalid_requirements_do_not_connect ... ok\ntest tests::no_runtime_installed_is_a_resolution_error ... ok\ntest tests::describe_endpoint_reads_the_description_through_the_connector ... ok\ntest tests::caller_cancellation_stays_a_transport_outcome ... ok\ntest tests::alternate_connector_preserves_one_budget_and_fixed_binding ... ok\ntest tests::explicit_endpoint_nobody_listens_on_is_a_resolution_error ... ok\ntest tests::selection_refusal_contacts_nothing ... ok\ntest tests::installed_resolution_verifies_the_selected_identity_on_every_connection ... ok\ntest tests::reusable_defaults_and_scoped_composite_waiting ... ok\ntest tests::unsupported_platform_names_itself_before_selection ... ok\ntest tests::success_is_unchanged ... ok\ntest tests::resolve_registry_binds_the_resolved_registry_endpoint ... ok\ntest tests::runtime_without_the_service_is_the_resolvers_refusal ... ok\ntest tests::malformed_reference_never_connects_selected_endpoint ... ok\n\ntest result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n   Doc-tests abstraction_facade_service\n\nrunning 1 test\ntest src\\lib.rs - Machine<C>::resolve_service (line 216) - compile fail ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.42s\n\n   Compiling abstraction-ipc v0.0.0 (<user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\rsv-aykuly04\\source\\openabstractions-flat\\abstraction-identity\\rust)\n   Compiling abstraction-facade-service v0.0.0 (<user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\rsv-aykuly04\\source\\openabstractions-flat\\abstraction-facade\\rust)\n   Compiling abstraction-logging-api v0.0.0 (<user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\rsv-aykuly04\\source\\openabstractions-flat\\abstraction-logging\\rust)\n   Compiling abstraction-facade-logging v0.0.0 (<user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\rsv-aykuly04\\source\\openabstractions-flat\\abstraction-facade\\rust-logging)\n   Compiling abstraction-facade-native v0.0.0 (<user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\rsv-aykuly04\\source\\openabstractions-flat\\abstraction-facade\\rust-native)\n   Compiling outside-rust-services-consumer v0.0.0 (<user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\rsv-aykuly04\\source\\conformance\\clients\\rust_services)\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 11.26s\nconsumer runtime|absent|cancel|forged ENDPOINT [--runtime-endpoint OVERRIDE]\n  --runtime-endpoint OVERRIDE  runtime mode: the endpoint override, in place of ABSTRACTION_RUNTIME_ENDPOINT\nPASS absent: runtime_unavailable at the explicit endpoint, with source\nPASS installed discovery verifies the selected runtime identity; the endpoint override (variable) is refused: installed runtime selection failed (status 8, confirmed prefix 0) at the installed runtime\nPASS Rust history refusal codes forbidden and policy_unavailable\nPASS resolved Rust logging exact record/history, unmet, cancellation, deadline\nPASS installed discovery verifies the selected runtime identity; the endpoint override (option) is refused: installed runtime selection failed (status 8, confirmed prefix 0) at the installed runtime\nPASS Rust history refusal codes forbidden and policy_unavailable\nPASS resolved Rust logging exact record/history, unmet, cancellation, deadline\nC++ compiler ID MSVC\r\nC++ compiler VERSION 19.51.36256.0\r\nPASS: real installed static Rust service client packages, logging and shared cancellation on Windows\r\n",
-    "seconds": 92.329
+    "output": "source revision: 536ea6f5505a94192eeb07fc65536855f3a379d6 (uncommitted changes present)\r\n-- Building for: Visual Studio 18 2026\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- The C compiler identification is MSVC 19.51.36256.0\n-- The CXX compiler identification is MSVC 19.51.36256.0\n-- Detecting C compiler ABI info\n-- Detecting C compiler ABI info - done\n-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting C compile features\n-- Detecting C compile features - done\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Configuring done (5.0s)\n-- Generating done (0.1s)\nCMake Warning:\n  Manually-specified variables were not used by the project:\n\n    CMAKE_BUILD_TYPE\n\n\n-- Build files have been written to: <user-home>/.codex/worktrees/oa-storage-vocabulary/.build/rsv-at4jz6a5/native\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\n  1>Checking Build System\r\n  Building Custom Rule <user-home>/.codex/worktrees/oa-storage-vocabulary/openabstractions-flat/abstraction-identity/cpp/CMakeLists.txt\r\n  client.cpp\r\n  abstraction_ipc.vcxproj -> <user-home>\\.codex\\worktrees\\oa-storage-vocabulary\\.build\\rsv-at4jz6a5\\native\\Release\\abstraction_ipc.lib\r\n  Building Custom Rule <user-home>/.codex/worktrees/oa-storage-vocabulary/openabstractions-flat/abstraction-identity/cpp/CMakeLists.txt\r\n-- Installing: <user-home>/.codex/worktrees/oa-storage-vocabulary/.build/rsv-at4jz6a5/prefix/lib/abstraction_ipc.lib\n-- Installing: <user-home>/.codex/worktrees/oa-storage-vocabulary/.build/rsv-at4jz6a5/prefix/include\n-- Installing: <user-home>/.codex/worktrees/oa-storage-vocabulary/.build/rsv-at4jz6a5/prefix/include/abstraction\n-- Installing: <user-home>/.codex/worktrees/oa-storage-vocabulary/.build/rsv-at4jz6a5/prefix/include/abstraction/ipc\n-- Installing: <user-home>/.codex/worktrees/oa-storage-vocabulary/.build/rsv-at4jz6a5/prefix/include/abstraction/ipc/bootstrap.hpp\n-- Installing: <user-home>/.codex/worktrees/oa-storage-vocabulary/.build/rsv-at4jz6a5/prefix/include/abstraction/ipc/client.h\n-- Installing: <user-home>/.codex/worktrees/oa-storage-vocabulary/.build/rsv-at4jz6a5/prefix/include/abstraction/ipc/client.hpp\n-- Installing: <user-home>/.codex/worktrees/oa-storage-vocabulary/.build/rsv-at4jz6a5/prefix/include/abstraction/ipc/frame.hpp\n-- Installing: <user-home>/.codex/worktrees/oa-storage-vocabulary/.build/rsv-at4jz6a5/prefix/include/abstraction/ipc/process.hpp\n-- Installing: <user-home>/.codex/worktrees/oa-storage-vocabulary/.build/rsv-at4jz6a5/prefix/share/abstraction_ipc/link-dependencies.txt\n-- Installing: <user-home>/.codex/worktrees/oa-storage-vocabulary/.build/rsv-at4jz6a5/prefix/lib/cmake/abstraction_ipc/abstraction_ipcTargets.cmake\n-- Installing: <user-home>/.codex/worktrees/oa-storage-vocabulary/.build/rsv-at4jz6a5/prefix/lib/cmake/abstraction_ipc/abstraction_ipcTargets-release.cmake\n-- Installing: <user-home>/.codex/worktrees/oa-storage-vocabulary/.build/rsv-at4jz6a5/prefix/lib/cmake/abstraction_ipc/abstraction_ipcConfig.cmake\n-- Installing: <user-home>/.codex/worktrees/oa-storage-vocabulary/.build/rsv-at4jz6a5/prefix/lib/cmake/abstraction_ipc/abstraction_ipcConfigVersion.cmake\n   Compiling abstraction-frame v0.0.0 (<user-home>\\.codex\\worktrees\\oa-storage-vocabulary\\.build\\rsv-at4jz6a5\\source\\openabstractions-flat\\abstraction-identity\\rust-frame)\n   Compiling abstraction-facade-service v0.0.0 (<user-home>\\.codex\\worktrees\\oa-storage-vocabulary\\.build\\rsv-at4jz6a5\\source\\openabstractions-flat\\abstraction-facade\\rust)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.63s\n     Running unittests src\\lib.rs (<user-home>\\.codex\\worktrees\\oa-storage-vocabulary\\.build\\rsv-at4jz6a5\\target\\debug\\deps\\abstraction_facade_service-e4d2e9b24aecbd5e.exe)\n\nrunning 15 tests\ntest tests::invalid_requirements_do_not_connect ... ok\ntest tests::no_runtime_installed_is_a_resolution_error ... ok\ntest tests::caller_cancellation_stays_a_transport_outcome ... ok\ntest tests::describe_endpoint_reads_the_description_through_the_connector ... ok\ntest tests::explicit_endpoint_nobody_listens_on_is_a_resolution_error ... ok\ntest tests::a_resolved_binding_carries_the_reference_the_runtime_returned ... ok\ntest tests::alternate_connector_preserves_one_budget_and_fixed_binding ... ok\ntest tests::reusable_defaults_and_scoped_composite_waiting ... ok\ntest tests::resolve_registry_binds_the_resolved_registry_endpoint ... ok\ntest tests::selection_refusal_contacts_nothing ... ok\ntest tests::success_is_unchanged ... ok\ntest tests::unsupported_platform_names_itself_before_selection ... ok\ntest tests::installed_resolution_verifies_the_selected_identity_on_every_connection ... ok\ntest tests::runtime_without_the_service_is_the_resolvers_refusal ... ok\ntest tests::malformed_reference_never_connects_selected_endpoint ... ok\n\ntest result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n   Doc-tests abstraction_facade_service\n\nrunning 1 test\ntest src\\lib.rs - Machine<C>::resolve_service (line 218) - compile fail ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s\n\n   Compiling abstraction-ipc v0.0.0 (<user-home>\\.codex\\worktrees\\oa-storage-vocabulary\\.build\\rsv-at4jz6a5\\source\\openabstractions-flat\\abstraction-identity\\rust)\n   Compiling abstraction-facade-service v0.0.0 (<user-home>\\.codex\\worktrees\\oa-storage-vocabulary\\.build\\rsv-at4jz6a5\\source\\openabstractions-flat\\abstraction-facade\\rust)\n   Compiling abstraction-logging-api v0.0.0 (<user-home>\\.codex\\worktrees\\oa-storage-vocabulary\\.build\\rsv-at4jz6a5\\source\\openabstractions-flat\\abstraction-logging\\rust)\n   Compiling abstraction-facade-native v0.0.0 (<user-home>\\.codex\\worktrees\\oa-storage-vocabulary\\.build\\rsv-at4jz6a5\\source\\openabstractions-flat\\abstraction-facade\\rust-native)\n   Compiling abstraction-facade-logging v0.0.0 (<user-home>\\.codex\\worktrees\\oa-storage-vocabulary\\.build\\rsv-at4jz6a5\\source\\openabstractions-flat\\abstraction-facade\\rust-logging)\n   Compiling outside-rust-services-consumer v0.0.0 (<user-home>\\.codex\\worktrees\\oa-storage-vocabulary\\.build\\rsv-at4jz6a5\\source\\conformance\\clients\\rust_services)\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.59s\nconsumer runtime|absent|cancel|forged ENDPOINT [--runtime-endpoint OVERRIDE]\nconsumer installed-candidate  # Linux installed runtime, default discovery and read-only logging call\n  --runtime-endpoint OVERRIDE  runtime mode: the endpoint override, in place of ABSTRACTION_RUNTIME_ENDPOINT\nPASS absent: runtime_unavailable at the explicit endpoint, with source\nPASS installed discovery verifies the selected runtime identity; the endpoint override (variable) is refused: IPC open failed (status 8, confirmed prefix 0) at the installed runtime at \\\\.\\pipe\\oa-rust-service-c8479650852e-service\nPASS Rust history refusal codes forbidden and policy_unavailable\nPASS resolved Rust logging exact record/history, unmet, cancellation, deadline\nPASS installed discovery verifies the selected runtime identity; the endpoint override (option) is refused: IPC open failed (status 8, confirmed prefix 0) at the installed runtime at \\\\.\\pipe\\oa-rust-service-571715f93d63-service\nPASS Rust history refusal codes forbidden and policy_unavailable\nPASS resolved Rust logging exact record/history, unmet, cancellation, deadline\nC++ compiler ID MSVC\r\nC++ compiler VERSION 19.51.36256.0\r\nPASS: real installed static Rust service client packages, logging and shared cancellation on Windows\r\n",
+    "seconds": 20.547
   },
-  "commit": "8d7d7747e323383194561d9d35a01434ca5f7f3d",
-  "record_digest": "fab88ad32c25319d7ef055e4b7f84569b1a2edd1992b57e6cb2ea71c0b90c459"
+  "commit": "536ea6f5505a94192eeb07fc65536855f3a379d6",
+  "record_digest": "cb9b116566cc428a20dd959a71d2d911d20b3b2a2ff32134b2e35092231cfe57"
 }

@@ -6,15 +6,19 @@ import (
 	"errors"
 	"io/fs"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
+	fwire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	iwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	router "github.com/openabstractions/abstraction-router/go"
 )
 
 // No serve test reads a real product record: every runtime a test composes
-// probes an empty fixture machine unless the test sets its own.
+// probes an empty fixture machine unless the test sets its own, or composes
+// through isolatedRuntime's ProductHosts option (supervised_test.go), which
+// rebinds declarationEnv to defaultDeclarationEnv for one runtime.
 func init() { declarationEnv = fixtureDeclarations(nil, nil) }
 
 func fixtureDeclarations(files, env map[string]string) func(func(error)) router.ProbeEnv {
@@ -38,9 +42,9 @@ func fixtureDeclarations(files, env map[string]string) func(func(error)) router.
 	}
 }
 
-// A runtime without local entries lists the hosts products declare, with
-// declared_by; an operator's host joins them; removing a declared host keeps
-// the rest as entries and stops declarations.
+// A runtime without local entries lists the hosts the products declare and
+// the ones the installation declares, each with its declared_by; withdrawing
+// an installed host disables it by name and keeps the rest.
 func TestRuntimeListsProductDeclaredHosts(t *testing.T) {
 	if !statusTransportProvesProgram(t) {
 		t.Skip("Program proof unavailable on current shared transport")
@@ -51,6 +55,7 @@ func TestRuntimeListsProductDeclaredHosts(t *testing.T) {
 	declarationEnv = fixtureDeclarations(map[string]string{"/fixture-home/.lmstudio/.internal/http-server-config.json": `{"port":` + u.Port() + `}`},
 		map[string]string{"OLLAMA_HOST": u.Host})
 	t.Cleanup(func() { declarationEnv = saved })
+	placeInstallationDeclarations(t, "lemonade", "lmstudio", "ollama", "comfyui")
 	options, _ := isolatedRuntime(t)
 	startInferenceRuntime(t, options)
 	endpoint := []string{"--endpoint", options.endpoint, "--timeout", "30s"}
@@ -74,8 +79,12 @@ func TestRuntimeListsProductDeclaredHosts(t *testing.T) {
 	if h := byName["lmstudio"]; h.Entry.DeclaredBy != "lmstudio" || h.Entry.Base != "http://127.0.0.1:"+u.Port() {
 		t.Fatalf("lmstudio %+v", h)
 	}
-	if h := byName["lemonade"]; h.Entry.DeclaredBy != "default" || h.Entry.Base != router.LemonadeDefaultBase {
+	// Lemonade and ComfyUI record no address: the installation declares them.
+	if h := byName["lemonade"]; h.Entry.DeclaredBy != "installation" || h.Entry.Base != router.LemonadeDefaultBase {
 		t.Fatalf("lemonade %+v", h)
+	}
+	if h := byName["comfyui"]; h.Entry.DeclaredBy != "installation" || h.Entry.Base != router.ComfyUIDefaultBase {
+		t.Fatalf("comfyui %+v", h)
 	}
 	if out, err := runInference(t, append([]string{"host", "remove", "lemonade"}, endpoint...)...); err != nil {
 		t.Fatalf("remove a declared host: %v\n%s", err, out)
@@ -85,8 +94,15 @@ func TestRuntimeListsProductDeclaredHosts(t *testing.T) {
 	for _, h := range list.Hosts {
 		names = append(names, h.Entry.Name+"/"+h.Entry.DeclaredBy)
 	}
-	if strings.Join(names, " ") != "lmstudio/lmstudio ollama/ollama comfyui/default" {
+	slices.Sort(names)
+	if strings.Join(names, " ") != "comfyui/installation lmstudio/lmstudio ollama/ollama" {
 		t.Fatalf("after removing lemonade: %v", names)
+	}
+	// The withdrawal is recorded, not performed: the installation's file
+	// stays, and the registry lists it disabled.
+	states := providerStates(t, endpoint)
+	if s := states["lemonade"]; s.Readiness != fwire.DeclarationReadinessDisabled || s.DeclaredBy != "installation" {
+		t.Fatalf("lemonade after the withdrawal %+v", s)
 	}
 }
 

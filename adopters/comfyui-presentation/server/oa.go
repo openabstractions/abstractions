@@ -82,7 +82,7 @@ func (a *oaAdapter) authorize(ctx context.Context, action string) (map[string]an
 		return refusal("unavailable", "rights_unavailable"), false
 	}
 	if decision.Outcome != rightswire.DecisionOutcomePermitted {
-		_ = a.audit(ctx, action, decision.Outcome.String(), operationBinding{})
+		_ = a.audit(ctx, action, decision.Outcome.String(), operationBinding{}) //unchecked: a refused decision is already the answer; a failed audit write must not change it
 		outcome := "forbidden"
 		switch decision.Outcome {
 		case rightswire.DecisionOutcomeInvalid:
@@ -255,7 +255,7 @@ func (a *oaAdapter) activate(ctx context.Context) map[string]any {
 	if err != nil {
 		return refusal("unavailable", "activation_unavailable")
 	}
-	_ = a.audit(ctx, action, result.Outcome.String(), operationBinding{applicationInstance: result.Instance})
+	_ = a.audit(ctx, action, result.Outcome.String(), operationBinding{applicationInstance: result.Instance}) //unchecked: the activation result is already the answer; a failed audit write must not change it
 	return map[string]any{"outcome": result.Outcome.String(), "application_instance": result.Instance, "started": result.Started, "reason": result.Reason}
 }
 

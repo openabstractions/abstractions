@@ -18,7 +18,7 @@ every call. The consumer checks:
 - Six commits past a stale cursor return `gap`; a two-object paged snapshot
   recovers every object and its cursor observes an empty current end.
 - Router Models, Hosts and Pick return service codes `forbidden` and
-  `policy_unavailable`, and Pick without a model refuses locally.
+  `unavailable`, and Pick without a model refuses locally.
 - The log observer waits at the current end until a separate binding writes a
   record, returns `forbidden` and `policy_unavailable` service codes from the
   history policy, and refuses out-of-range bounds locally.

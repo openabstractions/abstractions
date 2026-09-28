@@ -3,9 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
-	"github.com/openabstractions/abstraction-facade/go/resolution"
-	identity "github.com/openabstractions/abstraction-identity"
 	"io"
 	"os"
 	"os/exec"
@@ -13,6 +10,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
+	"github.com/openabstractions/abstraction-facade/go/resolution"
+	identity "github.com/openabstractions/abstraction-identity"
 )
 
 func TestStartHelperProcess(t *testing.T) {
@@ -112,8 +113,19 @@ func exitForStartTest(t *testing.T, code int) error {
 	}
 	return err
 }
+
+// --help asks for help, prints it and returns nil (requested help exits 0,
+// per every other command in this program); a bad flag or a stray argument
+// is a mistake, and returns a non-nil error instead. Neither activates.
 func TestStartFlagsDoNotActivate(t *testing.T) {
-	for _, args := range [][]string{{"--help"}, {"--timeout=0"}, {"unexpected"}} {
+	var help strings.Builder
+	if err := runtimeStart([]string{"--help"}, &help, io.Discard); err != nil {
+		t.Fatalf("--help: %v", err)
+	}
+	if !strings.Contains(help.String(), "Usage: openabstractions start") {
+		t.Fatalf("--help: output %q does not look like startUsage", help.String())
+	}
+	for _, args := range [][]string{{"--timeout=0"}, {"unexpected"}} {
 		if runtimeStart(args, io.Discard, io.Discard) == nil {
 			t.Fatal(args)
 		}
@@ -135,6 +147,10 @@ func TestStartReadyRequiresAllRuntimeContracts(t *testing.T) {
 				t.Fatal(err)
 			}
 			host, err := resolution.Listen(options.endpoint, catalog, func(*identity.Peer, wire.ServiceReference) bool { return true })
+			if !proven && errors.Is(err, identity.ErrNotProven) {
+				assertListenersReleased(t, options)
+				t.Skip("contract-readiness fixture requires Program proof; Unix startup refusal is checked separately")
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -155,6 +171,10 @@ func TestStartReadyRequiresAllRuntimeContracts(t *testing.T) {
 			if (count == 3 || count == 4) && proven {
 				if err == nil || !strings.Contains(err.Error(), "incompatible") {
 					t.Fatalf("missing runtime contract refusal: %v", err)
+				}
+			} else if !proven && err != nil {
+				if !errors.Is(err, identity.ErrNotProven) {
+					t.Fatalf("unproven Unix transport: %v", err)
 				}
 			} else if err != nil {
 				t.Fatal(err)

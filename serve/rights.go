@@ -6,6 +6,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
+	"path"
 	"regexp"
 	"strings"
 	"text/tabwriter"
@@ -13,6 +15,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	"github.com/openabstractions/abstraction-facade/go/client"
 	"github.com/openabstractions/abstraction-facade/go/grants"
 	identity "github.com/openabstractions/abstraction-identity"
@@ -22,57 +25,187 @@ import (
 
 const rightsUsage = `Usage: openabstractions rights <command> [options]
 
-Commands:
-  list      the rules and the action catalogue at the current policy revision
-  grant     set one exact permit rule; --deny sets an exact deny rule
-  revoke    remove one exact rule
-  read      one exact rule with who set it, when, why and its expiry
-  decide    a decision, changing nothing
-  register-action  add --action to the catalogue; grants no permission
-  retire-action    remove --action and its rules from the catalogue
+Lists, grants, revokes and decides exact permit or deny rules; only the
+runtime's own operator programs may list, edit or read them.
+
+  list                    the rules and action catalogue at the current
+                          policy revision (--cursor, --limit, --long)
+  grant                   set one exact permit rule; --deny sets a deny rule
+  grant --for BUNDLE      instead, write each rule of a named bundle
+                          (downloads, inference) for --program, stopping at
+                          the first that does not apply
+  revoke                  remove one exact rule
+  read                    one exact rule with who set it, when, why and its
+                          expiry
+  decide                  a decision, changing nothing; with --program,
+                          answers only a designated enforcer
+  register-action         add --action to the catalogue; grants no permission
+  retire-action           remove --action and its rules from the catalogue
 
 A rule names a proven program and exactly one action on one resource:
-  --program PATH       the subject's absolute executable path
-  --account ID         the subject's account: a Windows SID or a POSIX uid
-                       (default: this account)
-  --action ACTION      a catalogue action, <owner>/<name>
-  --resource RESOURCE  the exact resource the action names
+  --program PATH        the subject's absolute executable path (stored and
+                        compared as its canonical long path)
+  --account ID          the subject's account (default: this account)
+  --action ACTION       a catalogue action, <owner>/<name>
+  --resource RESOURCE   the exact resource the action names
+  --revision REV        apply only at this policy revision (default: read
+                        it now; a change in between is a conflict, not a
+                        retry)
+  --deny --why --ttl    grant: a deny rule, the recorded reason and expiry
+  --registry --host --credential
+                        grant --for: what the bundle covers
+  --endpoint --runtime-program --timeout --json
+                        every command's own runtime connection and output
 
-grant, revoke, register-action and retire-action:
-  --revision REV       apply only at this policy revision; without it, the
-                       revision list reads now, and a change in between is a
-                       conflict, never a retry
-grant:
-  --deny               an exact deny rule
-  --why TEXT           the reason recorded with the rule (0..256 bytes)
-  --ttl DURATION       expire the rule after DURATION (default: no expiry)
-  --for BUNDLE         instead of --action and --resource, write each exact
-                       permit rule of a bundle for --program, one conditional
-                       edit at a time; a rule that does not apply stops the
-                       bundle, and the rules that landed are listed
-                       downloads: abstraction.job/acceptance.submit, model
-                         lookup on each --registry, apply on each --credential
-                       inference: abstraction.router/route, complete on
-                         host:<name> for each --host, apply on each --credential
-  --registry LIST      comma-separated registries for downloads (default hf,ollama)
-  --host LIST          comma-separated inference hosts (required for inference)
-  --credential LIST    comma-separated registered credential names
-                       (default: none); --why defaults to "allow <bundle>"
-list:
-  --cursor C           continue a listing
-  --limit N            rules per page, 1..64 (default 64)
-decide:
-  without --program    Authorization.Decide for this program
-  with --program       Authorization.DecideFor, which answers only a designated
-                       enforcer; the exact rule on record is read beside it
-
-Every command accepts --endpoint, --runtime-program, --timeout and --json.
-Only the runtime's operator programs may list, edit or read rules.
+The endpoint is --endpoint if given, else ABSTRACTION_RUNTIME_ENDPOINT if
+set (connected unverified, with a notice), else the installed runtime,
+verified; --runtime-program verifies an explicit --endpoint instead.
 
 Exit codes: 0 done (a read or decide that answered, whatever it found), 1
 runtime not resolved or transport failure, 2 usage, 3 typed refusal (forbidden,
 conflict, invalid, gap), 4 unavailable.
+
+Learn more: openabstractions-flat/abstraction-rights/CONTRACT.md
 `
+
+// rightsSubUsage is each rights subcommand's own --help: its usage line, its
+// own flags and one example, in place of the whole rightsUsage catalogue.
+func rightsSubUsage(sub string) string {
+	switch sub {
+	case "list":
+		return `Usage: openabstractions rights list [--cursor C] [--limit N] [--long] [options]
+
+Lists the rules and action catalogue at the current policy revision.
+
+  --cursor C   continue a listing
+  --limit N    rules per page, 1..64 (default 64)
+  --long       print each rule's real account and full program path;
+               without it, the caller's own account reads "this account"
+               and each program reads its short file name
+
+Example:
+  openabstractions rights list --long
+
+Every command accepts --endpoint, --runtime-program, --timeout and --json.
+Exit codes: 0 done, 1 runtime not resolved or transport failure, 2 usage,
+3 typed refusal (forbidden), 4 unavailable.
+`
+	case "grant":
+		return `Usage: openabstractions rights grant --program PATH --action ACTION --resource RESOURCE [options]
+       openabstractions rights grant --for BUNDLE --program PATH [options]
+
+Sets one exact permit rule; --deny sets a deny rule. --for writes each rule
+of a named bundle (downloads, inference) for --program instead, one
+conditional edit at a time; the first rule that does not apply stops it.
+
+  --program PATH        the subject's absolute executable path
+  --account ID          the subject's account (default: this account)
+  --action ACTION       a catalogue action, <owner>/<name>
+  --resource RESOURCE   the exact resource the action names
+  --deny                an exact deny rule
+  --why TEXT             the reason recorded with the rule (0..256 bytes)
+  --ttl DURATION         expire the rule after DURATION (default: no expiry)
+  --revision REV         apply only at this policy revision
+  --for BUNDLE           downloads or inference, instead of --action/--resource
+  --registry LIST        grant --for downloads: registries (default hf,ollama)
+  --host LIST            grant --for inference: hosts (required)
+  --credential LIST      grant --for: registered credential names
+
+Example:
+  openabstractions rights grant --program C:\tools\app.exe --action abstraction.credentials/apply --resource credential:hf
+
+Every command accepts --endpoint, --runtime-program, --timeout and --json.
+Exit codes: 0 done, 1 runtime not resolved or transport failure, 2 usage,
+3 typed refusal (forbidden, conflict, invalid), 4 unavailable.
+`
+	case "revoke":
+		return `Usage: openabstractions rights revoke --program PATH --action ACTION --resource RESOURCE [options]
+
+Removes one exact rule.
+
+  --program PATH        the subject's absolute executable path
+  --account ID          the subject's account (default: this account)
+  --action ACTION       a catalogue action, <owner>/<name>
+  --resource RESOURCE   the exact resource the action names
+  --revision REV        apply only at this policy revision
+
+Example:
+  openabstractions rights revoke --program C:\tools\app.exe --action abstraction.credentials/apply --resource credential:hf
+
+Every command accepts --endpoint, --runtime-program, --timeout and --json.
+Exit codes: 0 done, 1 runtime not resolved or transport failure, 2 usage,
+3 typed refusal (forbidden, conflict), 4 unavailable.
+`
+	case "read":
+		return `Usage: openabstractions rights read --program PATH --action ACTION --resource RESOURCE [options]
+
+Prints one exact rule with who set it, when, why and its expiry.
+
+  --program PATH        the subject's absolute executable path
+  --account ID          the subject's account (default: this account)
+  --action ACTION       a catalogue action, <owner>/<name>
+  --resource RESOURCE   the exact resource the action names
+
+Example:
+  openabstractions rights read --program C:\tools\app.exe --action abstraction.credentials/apply --resource credential:hf
+
+Every command accepts --endpoint, --runtime-program, --timeout and --json.
+Exit codes: 0 found or expired, 1 runtime not resolved or transport failure,
+2 usage, 3 typed refusal (forbidden), 4 unavailable.
+`
+	case "decide":
+		return `Usage: openabstractions rights decide --action ACTION --resource RESOURCE [options]
+       openabstractions rights decide --program PATH --action ACTION --resource RESOURCE [options]
+
+Decides whether a rule permits, changing nothing. Without --program, decides
+for this program; with it, answers only a designated enforcer, and the exact
+rule on record is read beside it.
+
+  --program PATH        the subject's absolute executable path
+  --account ID          the subject's account (default: this account)
+  --action ACTION       a catalogue action, <owner>/<name>
+  --resource RESOURCE   the exact resource the action names
+
+Example:
+  openabstractions rights decide --action abstraction.credentials/apply --resource credential:hf
+
+Every command accepts --endpoint, --runtime-program, --timeout and --json.
+Exit codes: 0 permitted, 1 runtime not resolved or transport failure, 2 usage,
+3 forbidden or invalid, 4 unavailable.
+`
+	case "register-action":
+		return `Usage: openabstractions rights register-action --action ACTION [--revision REV] [options]
+
+Adds --action to the catalogue; grants no permission.
+
+  --action ACTION   a catalogue action, <owner>/<name>
+  --revision REV    apply only at this policy revision
+
+Example:
+  openabstractions rights register-action --action abstraction.example/thing
+
+Every command accepts --endpoint, --runtime-program, --timeout and --json.
+Exit codes: 0 done, 1 runtime not resolved or transport failure, 2 usage,
+3 typed refusal (forbidden, conflict), 4 unavailable.
+`
+	case "retire-action":
+		return `Usage: openabstractions rights retire-action --action ACTION [--revision REV] [options]
+
+Removes --action and its rules from the catalogue.
+
+  --action ACTION   a catalogue action, <owner>/<name>
+  --revision REV    apply only at this policy revision
+
+Example:
+  openabstractions rights retire-action --action abstraction.example/thing
+
+Every command accepts --endpoint, --runtime-program, --timeout and --json.
+Exit codes: 0 done, 1 runtime not resolved or transport failure, 2 usage,
+3 typed refusal (forbidden, conflict), 4 unavailable.
+`
+	}
+	return rightsUsage
+}
 
 // rightsRule is one exact rule named on the command line. The checks match the
 // Panel's rights edit (monitor/rights_panel.go): bounded single-line text and
@@ -85,26 +218,40 @@ func rightsText(s string, max int) bool {
 	return len(s) > 0 && len(s) <= max && utf8.ValidString(s) && strings.IndexFunc(s, unicode.IsControl) < 0
 }
 
-func (r rightsRule) check(command string, needProgram bool) error {
+func (r rightsRule) check(diagnostics io.Writer, command, usage string, needProgram bool) error {
 	if needProgram || r.program != "" {
 		if !rightsText(r.program, 4096) || !identity.ValidSubjectProgram(r.program) {
-			return &exitError{exitUsage, fmt.Errorf("%s: --program must be a clean absolute executable path", command)}
+			return flagMistake(diagnostics, command, usage, "--program must be a clean absolute executable path")
 		}
 	}
 	if !rightsText(r.account, 128) {
-		return &exitError{exitUsage, fmt.Errorf("%s: --account must be 1..128 bytes on one line", command)}
+		return flagMistake(diagnostics, command, usage, "--account must be 1..128 bytes on one line")
 	}
 	if !rightsText(r.action, 128) || !strings.Contains(r.action, "/") {
-		return &exitError{exitUsage, fmt.Errorf("%s: --action must be a catalogue action <owner>/<name>", command)}
+		return flagMistake(diagnostics, command, usage, "--action must be a catalogue action <owner>/<name>")
 	}
 	if !rightsText(r.resource, 1024) {
-		return &exitError{exitUsage, fmt.Errorf("%s: --resource must be 1..1024 bytes on one line", command)}
+		return flagMistake(diagnostics, command, usage, "--resource must be 1..1024 bytes on one line")
 	}
 	return nil
 }
 
 func (r rightsRule) subject() rights.Subject {
-	return rights.Subject{Account: r.account, Program: r.program}
+	return rights.Subject{Account: r.account, Program: canonicalSubjectProgram(r.program)}
+}
+
+// canonicalSubjectProgram is a rule's --program as the policy stores and
+// compares it: unchanged for an msix: package subject, and otherwise
+// resolved to its canonical long path (identity.CanonicalProgramPath), so a
+// short DOS 8.3 alias typed or read back on the command line names the same
+// subject as its long spelling. This mirrors what NormalizeDecisionSubject
+// does server-side; canonicalizing here as well keeps what this command
+// prints and what the policy actually matches in agreement.
+func canonicalSubjectProgram(program string) string {
+	if program == "" || strings.HasPrefix(program, identity.PackagedProgramPrefix) {
+		return program
+	}
+	return identity.CanonicalProgramPath(program)
 }
 
 // ruleJSON is one exact rule as the rights command prints it.
@@ -151,28 +298,34 @@ func subjectOf(s rights.Subject) *probeSubject {
 }
 
 func rightsCommand(args []string, output, diagnostics io.Writer) error {
-	if len(args) == 0 || isHelp(args[0]) {
+	if len(args) > 0 && isHelp(args[0]) {
 		_, err := io.WriteString(output, rightsUsage)
 		return err
+	}
+	if len(args) == 0 {
+		return commandMistake(diagnostics, "rights: a command is required", "openabstractions rights --help")
 	}
 	switch args[0] {
 	case "list", "grant", "revoke", "read", "decide", "register-action", "retire-action":
 	default:
-		return &exitError{exitUsage, fmt.Errorf("rights: no command called %q; run openabstractions rights --help", args[0])}
+		return commandMistake(diagnostics, fmt.Sprintf("rights: no command called %q", args[0]), "openabstractions rights --help")
 	}
-	command := "rights " + args[0]
+	sub := args[0]
+	subUsage := rightsSubUsage(sub)
+	if containsHelp(args[1:]) {
+		_, err := io.WriteString(output, subUsage)
+		return err
+	}
+	command := "rights " + sub
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
-	flags.SetOutput(diagnostics)
-	flags.Usage = func() {
-		if _, err := fmt.Fprint(diagnostics, rightsUsage); err == nil {
-			flags.PrintDefaults()
-		}
-	}
+	flags.SetOutput(io.Discard)
+	// badFlag below prints this program's own three-line mistake shape;
+	flags.Usage = func() {} // the flag package's own per-error usage call must print nothing
 	var options probeOptions
 	options.bind(flags)
 	var rule rightsRule
 	var revision, why, cursor string
-	var deny bool
+	var deny, long bool
 	var ttl time.Duration
 	var limit int64
 	flags.StringVar(&rule.program, "program", "", "subject executable path")
@@ -185,22 +338,20 @@ func rightsCommand(args []string, output, diagnostics io.Writer) error {
 	flags.DurationVar(&ttl, "ttl", 0, "expire a grant after this duration")
 	flags.StringVar(&cursor, "cursor", "", "listing continuation")
 	flags.Int64Var(&limit, "limit", 64, "rules per page")
+	flags.BoolVar(&long, "long", false, "list: print each rule's real account and full program path")
 	var bundle, registries, hosts, credentialNames string
 	flags.StringVar(&bundle, "for", "", "grant a bundle: downloads or inference")
 	flags.StringVar(&registries, "registry", "hf,ollama", "registries a downloads bundle may look up")
 	flags.StringVar(&hosts, "host", "", "inference hosts an inference bundle may complete on")
 	flags.StringVar(&credentialNames, "credential", "", "credential names a bundle may have applied")
 	if err := flags.Parse(args[1:]); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return err
-		}
-		return &exitError{exitUsage, err}
+		return badFlag(flags, diagnostics, command, subUsage, args[1:], err)
 	}
 	if flags.NArg() != 0 {
-		return &exitError{exitUsage, fmt.Errorf("%s: unexpected arguments %q", command, flags.Args())}
+		return flagMistake(diagnostics, command, subUsage, fmt.Sprintf("unexpected arguments %q", flags.Args()))
 	}
 	if options.timeout <= 0 {
-		return &exitError{exitUsage, fmt.Errorf("%s: --timeout must be positive", command)}
+		return flagMistake(diagnostics, command, subUsage, "--timeout must be positive")
 	}
 	bundleFlags := false
 	flags.Visit(func(f *flag.Flag) {
@@ -209,7 +360,7 @@ func rightsCommand(args []string, output, diagnostics io.Writer) error {
 	var bundleRules []grants.Rule
 	if bundleFlags {
 		if args[0] != "grant" || bundle == "" || rule.action != "" || rule.resource != "" || deny {
-			return &exitError{exitUsage, fmt.Errorf("%s: --registry, --host and --credential belong to grant --for, which names no --action, --resource or --deny", command)}
+			return flagMistake(diagnostics, command, subUsage, "--registry, --host and --credential belong to grant --for, which names no --action, --resource or --deny")
 		}
 		selection := grants.For{Credentials: splitList(credentialNames), Hosts: splitList(hosts)}
 		if bundle == grants.Downloads {
@@ -217,7 +368,7 @@ func rightsCommand(args []string, output, diagnostics io.Writer) error {
 		}
 		var err error
 		if bundleRules, err = grants.Rules(bundle, selection); err != nil {
-			return &exitError{exitUsage, fmt.Errorf("%s: %w", command, err)}
+			return flagMistake(diagnostics, command, subUsage, err.Error())
 		}
 		if why == "" {
 			why = grants.DefaultWhy(bundle)
@@ -230,7 +381,7 @@ func rightsCommand(args []string, output, diagnostics io.Writer) error {
 		}
 		rule.account = account
 	}
-	machine, err := options.machine()
+	machine, source, err := rightsMachine(options, diagnostics, command, subUsage)
 	if err != nil {
 		return err
 	}
@@ -248,43 +399,109 @@ func rightsCommand(args []string, output, diagnostics io.Writer) error {
 			}
 		})
 		if invalid || !regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}/[a-z0-9][a-z0-9._-]{0,62}$`).MatchString(rule.action) {
-			return &exitError{exitUsage, fmt.Errorf("%s: use --action <owner>/<name> and optional --revision; rule fields do not apply", command)}
+			return flagMistake(diagnostics, command, subUsage, "use --action <owner>/<name> and optional --revision; rule fields do not apply")
 		}
-		return rightsActionEdit(machine, call, command, rule.action, revision, args[0] == "retire-action", options.asJSON, output)
+		return rightsActionEdit(machine, source, call, command, rule.action, revision, args[0] == "retire-action", options.asJSON, output)
 	case "list":
 		if limit < 1 || limit > 64 || len(cursor) > 256 {
-			return &exitError{exitUsage, fmt.Errorf("%s: --limit is 1..64 and --cursor at most 256 bytes", command)}
+			return flagMistake(diagnostics, command, subUsage, "--limit is 1..64 and --cursor at most 256 bytes")
 		}
-		return rightsList(machine, call, command, cursor, limit, options.asJSON, output)
+		return rightsList(machine, source, call, command, cursor, limit, long, rule.account, options.asJSON, output)
 	case "decide":
-		if err := rule.check(command, false); err != nil {
+		if err := rule.check(diagnostics, command, subUsage, false); err != nil {
 			return err
 		}
-		return rightsDecide(machine, call, command, rule, options.asJSON, output)
+		return rightsDecide(machine, source, call, command, rule, options.asJSON, output)
 	}
 	if bundleRules != nil {
 		if !rightsText(rule.program, 4096) || !identity.ValidSubjectProgram(rule.program) {
-			return &exitError{exitUsage, fmt.Errorf("%s: --program must be a clean absolute executable path", command)}
+			return flagMistake(diagnostics, command, subUsage, "--program must be a clean absolute executable path")
 		}
 		if ttl < 0 || len(why) > 256 || strings.IndexFunc(why, unicode.IsControl) >= 0 {
-			return &exitError{exitUsage, fmt.Errorf("%s: --why is 0..256 bytes on one line and --ttl is not negative", command)}
+			return flagMistake(diagnostics, command, subUsage, "--why is 0..256 bytes on one line and --ttl is not negative")
 		}
-		return rightsBundle(machine, call, command, bundle, rule, bundleRules, revision, why, ttl, options.asJSON, output)
+		warnVirtualizedProgram(diagnostics, rule.program, os.Getenv("LOCALAPPDATA"), bootstrap.CurrentProfileView)
+		return rightsBundle(machine, source, call, command, bundle, rule, bundleRules, revision, why, ttl, options.asJSON, output)
 	}
-	if err := rule.check(command, true); err != nil {
+	if err := rule.check(diagnostics, command, subUsage, true); err != nil {
 		return err
 	}
 	if args[0] == "read" {
-		return rightsRead(machine, call, command, rule, options.asJSON, output)
+		return rightsRead(machine, source, call, command, rule, options.asJSON, output)
 	}
 	if ttl < 0 || (args[0] == "revoke" && (deny || why != "" || ttl != 0)) || len(why) > 256 || strings.IndexFunc(why, unicode.IsControl) >= 0 {
-		return &exitError{exitUsage, fmt.Errorf("%s: --deny, --why and --ttl belong to grant; --why is 0..256 bytes on one line", command)}
+		return flagMistake(diagnostics, command, subUsage, "--deny, --why and --ttl belong to grant; --why is 0..256 bytes on one line")
 	}
-	return rightsEdit(machine, call, command, rule, revision, !deny, why, ttl, args[0] == "revoke", options.asJSON, output)
+	if args[0] == "grant" {
+		warnVirtualizedProgram(diagnostics, rule.program, os.Getenv("LOCALAPPDATA"), bootstrap.CurrentProfileView)
+	}
+	return rightsEdit(machine, source, call, command, rule, revision, !deny, why, ttl, args[0] == "revoke", options.asJSON, output)
 }
 
-func rightsActionEdit(machine *client.Machine, call func() (context.Context, context.CancelFunc), command, action, revision string, retire, asJSON bool, output io.Writer) error {
-	operator, err := resolveOperator(machine, call, command)
+// rightsMachine resolves this command's runtime connection and reports which
+// of the three rules resolveEndpoint applies chose it. With --endpoint (and,
+// to verify it, --runtime-program) the caller's own explicit server
+// expectation applies, through options.machine(). With neither flag and
+// runtimeEndpointVar unset, options.machine() selects and verifies the
+// installed runtime, unchanged. With neither flag but the variable naming an
+// endpoint, options.machine() would resolve through client.Discover(), which
+// verifies the installed runtime's registration regardless of which endpoint
+// the variable named (bootstrap.SelectInstalled reads the variable only for
+// the endpoint name, never for the server it expects) — silently applying
+// the wrong identity check to a different server. This instead connects to
+// the named endpoint unverified and says so once. probe uses the same
+// function, under the same name, for the same reason.
+func rightsMachine(options probeOptions, diagnostics io.Writer, command, usage string) (*client.Machine, endpointSource, error) {
+	if options.endpoint == "" && options.runtimeProgram == "" {
+		if endpoint, source := resolveEndpoint(""); source == endpointFromVar {
+			warnUnverifiedEndpoint(diagnostics, command, endpoint)
+			return client.New(endpoint), source, nil
+		}
+	}
+	source := endpointInstalled
+	if options.endpoint != "" {
+		source = endpointExplicit
+	}
+	machine, err := options.machine(diagnostics, command, usage)
+	return machine, source, err
+}
+
+// warnVirtualizedProgram writes a one-line warning to diagnostics when program
+// lies under localAppData (this process's own %LOCALAPPDATA%) and profile
+// reports a virtualized view: a caller there sees a packaged app's private
+// copy of AppData, and the nominal path an operator types and grants can
+// differ from the physical path the runtime's peer identity actually reports
+// and compares rules against. The operator decides whether to grant the
+// physical path instead, or move the program outside AppData; this never
+// blocks the grant. profile is a parameter, in the shape of
+// bootstrap.CurrentProfileView, so a test can supply a fixed view without
+// touching this process's own AppData.
+func warnVirtualizedProgram(diagnostics io.Writer, program, localAppData string, profile func() (bootstrap.ProfileView, error)) {
+	if localAppData == "" || program == "" || !withinFold(program, localAppData) {
+		return
+	}
+	view, err := profile()
+	if err != nil || !view.Virtualized {
+		return
+	}
+	//unchecked: a warning with no return value to report a write failure through
+	fmt.Fprintf(diagnostics, "rights grant: warning: --program %s is under this process's own AppData, and this process sees package %s's private copy of it. The runtime may report a different physical path for a program under a packaged app. Grant the path openabstractions status reports as this program's identity.\n", program, view.Family)
+}
+
+// withinFold reports whether p lies inside folder, comparing case-
+// insensitively and on either separator, as Windows paths compare: p and
+// folder always name Windows paths (a --program value and %LOCALAPPDATA%),
+// whether this process itself runs on Windows or, as in its tests, on Linux,
+// so the comparison cleans by hand instead of through path/filepath, which
+// would only recognize the host's own separator.
+func withinFold(p, folder string) bool {
+	p = path.Clean(strings.ReplaceAll(p, `\`, "/"))
+	folder = path.Clean(strings.ReplaceAll(folder, `\`, "/"))
+	return len(p) > len(folder)+1 && strings.EqualFold(p[:len(folder)], folder) && p[len(folder)] == '/'
+}
+
+func rightsActionEdit(machine *client.Machine, source endpointSource, call func() (context.Context, context.CancelFunc), command, action, revision string, retire, asJSON bool, output io.Writer) error {
+	operator, err := resolveOperator(machine, source, call, command)
 	if err != nil {
 		return err
 	}
@@ -293,10 +510,10 @@ func rightsActionEdit(machine *client.Machine, call func() (context.Context, con
 		page, err := operator.ListPolicyContext(ctx, "", 1)
 		cancel()
 		if err != nil {
-			return notResolved(command, err)
+			return notResolved(command, source, err)
 		}
 		if page.Outcome != rightswire.PolicyPageOutcomePage {
-			return rightsPrint(output, asJSON, rightsReply{Command: command, Outcome: page.Outcome.String()}, refusal(command, page.Outcome.String(), "listing the policy revision"))
+			return rightsPrint(output, asJSON, rightsReply{Command: command, Outcome: page.Outcome.String()}, rightsOperatorRefusal(command, page.Outcome.String(), "listing the policy revision"))
 		}
 		revision = page.Revision
 	}
@@ -319,18 +536,18 @@ func rightsActionEdit(machine *client.Machine, call func() (context.Context, con
 	return rightsPrint(output, asJSON, reply, failure)
 }
 
-func resolveOperator(machine *client.Machine, call func() (context.Context, context.CancelFunc), command string) (*rights.Operator, error) {
+func resolveOperator(machine *client.Machine, source endpointSource, call func() (context.Context, context.CancelFunc), command string) (*rights.Operator, error) {
 	ctx, cancel := call()
 	defer cancel()
 	operator, err := machine.ResolveRightsOperator(ctx, local)
 	if err != nil {
-		return nil, notResolved(command, err)
+		return nil, notResolved(command, source, err)
 	}
 	return operator, nil
 }
 
-func rightsList(machine *client.Machine, call func() (context.Context, context.CancelFunc), command, cursor string, limit int64, asJSON bool, output io.Writer) error {
-	operator, err := resolveOperator(machine, call, command)
+func rightsList(machine *client.Machine, source endpointSource, call func() (context.Context, context.CancelFunc), command, cursor string, limit int64, long bool, self string, asJSON bool, output io.Writer) error {
+	operator, err := resolveOperator(machine, source, call, command)
 	if err != nil {
 		return err
 	}
@@ -350,24 +567,63 @@ func rightsList(machine *client.Machine, call func() (context.Context, context.C
 		}
 	} else if page.Outcome == rightswire.PolicyPageOutcomePage {
 		table := tabwriter.NewWriter(output, 0, 0, 2, ' ', 0)
-		fmt.Fprintf(table, "policy revision %s; %d catalogue actions\n", page.Revision, len(page.Catalog))
+		//unchecked: table buffers in memory; the write to the underlying output surfaces at Flush, which is checked below
 		fmt.Fprintln(table, "RULE\tACCOUNT\tPROGRAM\tACTION\tRESOURCE")
 		for _, r := range page.Rules {
-			fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\n", ruleWord(r.Permit), r.Subject.Account, r.Subject.Program, r.Action, r.Resource)
+			account := r.Subject.Account
+			if !long && account == self {
+				account = "this account"
+			}
+			program := r.Subject.Program
+			if !long {
+				program = shortProgramName(program)
+			}
+			//unchecked: table buffers in memory; the write to the underlying output surfaces at Flush, which is checked below
+			fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\n", ruleWord(r.Permit), account, program, r.Action, r.Resource)
 		}
 		if !page.Complete {
+			//unchecked: table buffers in memory; the write to the underlying output surfaces at Flush, which is checked below
 			fmt.Fprintf(table, "more rules: --cursor %s\n", page.Next)
 		}
 		if err := table.Flush(); err != nil {
 			return err
 		}
-	} else if _, err := fmt.Fprintf(output, "%s: %s\n", command, page.Outcome); err != nil {
-		return err
+		if _, err := fmt.Fprintf(output, "policy revision %s; %d catalogue actions\n", page.Revision, len(page.Catalog)); err != nil {
+			return err
+		}
 	}
 	if page.Outcome != rightswire.PolicyPageOutcomePage {
-		return refusal(command, page.Outcome.String(), "")
+		// The single returned error carries this outcome; nothing prints it a
+		// second time, undecorated, to output first.
+		return rightsOperatorRefusal(command, page.Outcome.String(), "")
 	}
 	return nil
+}
+
+// rightsOperatorRefusal is refusal for a command the runtime gates to its own
+// operator programs: list, grant, revoke, read, decide, register-action and
+// retire-action all resolve the policy through the caller's own resolved
+// operator identity, and answer forbidden the same way when the caller is
+// not one. A forbidden outcome replaces reason with the one fix: no rule can
+// grant operator standing, since the runtime's operator programs are fixed by
+// installation (serve/runtime_credentials.go operatorPrograms), not by a
+// policy rule. Any other outcome keeps its own reason unchanged.
+func rightsOperatorRefusal(command, outcome, reason string) error {
+	if outcome != "forbidden" {
+		return refusal(command, outcome, reason)
+	}
+	return refusal(command, outcome, "run this from the installed openabstractions.exe, its windowless sibling or the Abstraction Panel; those hold operator standing by installation, and no rights grant can extend it to another program")
+}
+
+// shortProgramName is a rule's --program as rights list prints it by default:
+// the file name only, both separators recognized so a policy-stored Windows
+// path reads the same on any host. --long prints the full path this shortens.
+func shortProgramName(program string) string {
+	cleaned := strings.ReplaceAll(program, `\`, "/")
+	if i := strings.LastIndexByte(cleaned, '/'); i >= 0 {
+		return cleaned[i+1:]
+	}
+	return program
 }
 
 func ruleWord(permit bool) string {
@@ -377,8 +633,8 @@ func ruleWord(permit bool) string {
 	return "deny"
 }
 
-func rightsEdit(machine *client.Machine, call func() (context.Context, context.CancelFunc), command string, rule rightsRule, revision string, permit bool, why string, ttl time.Duration, revoke, asJSON bool, output io.Writer) error {
-	operator, err := resolveOperator(machine, call, command)
+func rightsEdit(machine *client.Machine, source endpointSource, call func() (context.Context, context.CancelFunc), command string, rule rightsRule, revision string, permit bool, why string, ttl time.Duration, revoke, asJSON bool, output io.Writer) error {
+	operator, err := resolveOperator(machine, source, call, command)
 	if err != nil {
 		return err
 	}
@@ -390,7 +646,7 @@ func rightsEdit(machine *client.Machine, call func() (context.Context, context.C
 			return &exitError{exitNotResolved, fmt.Errorf("%s: %w", command, err)}
 		}
 		if page.Outcome != rightswire.PolicyPageOutcomePage {
-			return rightsPrint(output, asJSON, rightsReply{Command: command, Outcome: page.Outcome.String()}, refusal(command, page.Outcome.String(), "listing the policy revision"))
+			return rightsPrint(output, asJSON, rightsReply{Command: command, Outcome: page.Outcome.String()}, rightsOperatorRefusal(command, page.Outcome.String(), "listing the policy revision"))
 		}
 		revision = page.Revision
 	}
@@ -449,7 +705,7 @@ func rightsPrint(output io.Writer, asJSON bool, reply rightsReply, failure error
 }
 
 // readRule reads the exact rule through the operator, or says why it could not.
-func readRule(machine *client.Machine, call func() (context.Context, context.CancelFunc), command string, rule rightsRule) (rightsReply, error) {
+func readRule(machine *client.Machine, source endpointSource, call func() (context.Context, context.CancelFunc), command string, rule rightsRule) (rightsReply, error) {
 	subject := rule.subject()
 	reply := rightsReply{Command: command, Subject: subjectOf(subject), Action: rule.action, Resource: rule.resource}
 	ctx, cancel := call()
@@ -460,7 +716,7 @@ func readRule(machine *client.Machine, call func() (context.Context, context.Can
 		if errors.As(err, &resolution) {
 			reply.Outcome = string(resolution.Status)
 		}
-		return reply, notResolved(command, err)
+		return reply, notResolved(command, source, err)
 	}
 	read, err := operator.ReadRuleContext(ctx, subject, rule.action, rule.resource)
 	if err != nil {
@@ -475,8 +731,8 @@ func readRule(machine *client.Machine, call func() (context.Context, context.Can
 	return reply, nil
 }
 
-func rightsRead(machine *client.Machine, call func() (context.Context, context.CancelFunc), command string, rule rightsRule, asJSON bool, output io.Writer) error {
-	reply, err := readRule(machine, call, command, rule)
+func rightsRead(machine *client.Machine, source endpointSource, call func() (context.Context, context.CancelFunc), command string, rule rightsRule, asJSON bool, output io.Writer) error {
+	reply, err := readRule(machine, source, call, command, rule)
 	if err != nil {
 		return err
 	}
@@ -498,18 +754,19 @@ func rightsRead(machine *client.Machine, call func() (context.Context, context.C
 	}
 	if reply.Record != nil {
 		if text, err := jsonText(reply.Record); err == nil {
+			//unchecked: this auxiliary detail line's write failure must not override the outcome this call already means to report
 			fmt.Fprintln(output, text)
 		}
 	}
 	return failure
 }
 
-func rightsDecide(machine *client.Machine, call func() (context.Context, context.CancelFunc), command string, rule rightsRule, asJSON bool, output io.Writer) error {
+func rightsDecide(machine *client.Machine, source endpointSource, call func() (context.Context, context.CancelFunc), command string, rule rightsRule, asJSON bool, output io.Writer) error {
 	ctx, cancel := call()
 	decisions, err := machine.ResolveRights(ctx, local)
 	cancel()
 	if err != nil {
-		return notResolved(command, err)
+		return notResolved(command, source, err)
 	}
 	ctx, cancel = call()
 	var decision rights.Decision
@@ -527,8 +784,9 @@ func rightsDecide(machine *client.Machine, call func() (context.Context, context
 	}
 	reply := rightsReply{Command: command, Outcome: decision.Outcome.String(), Revision: decision.PolicyRevision, Subject: subjectOf(subject), Action: rule.action, Resource: rule.resource}
 	if rule.program != "" {
-		onRecord, _ := readRule(machine, call, "rights read", rule)
-		reply.RuleOnFile = &onRecord
+		if onRecord, err := readRule(machine, source, call, "rights read", rule); err == nil {
+			reply.RuleOnFile = &onRecord
+		}
 	}
 	var failure error
 	switch decision.Outcome {

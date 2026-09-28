@@ -52,7 +52,15 @@ pub enum ServiceReadiness
 pub enum DeclarationTransport
   Native
   Remote
-  pub const ALL: [Self; 2]
+  Http
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum DeclarationRole
+  Provider
+  Host
+  Remote
+  pub const ALL: [Self; 3]
   pub fn as_str(self) -> &'static str
   pub fn from_wire(name: &str) -> Option<Self>
 pub enum Activation
@@ -70,7 +78,8 @@ pub enum DeclarationReadiness
   Refused
   Unreachable
   NotReady
-  pub const ALL: [Self; 7]
+  Disabled
+  pub const ALL: [Self; 8]
   pub fn as_str(self) -> &'static str
   pub fn from_wire(name: &str) -> Option<Self>
 pub enum DeclarationListOutcome
@@ -124,7 +133,7 @@ pub mod service_error_code
   pub const UNKNOWN_METHOD: &str
   pub const WRONG_MODE: &str
   pub const ALL: [&str; 6]
-pub const DECLARATION_RESOURCE_KINDS: [&str; 3]
+pub const DECLARATION_RESOURCE_KINDS: [&str; 4]
 pub const REGISTRY_ACTIONS: [&str; 1]
 pub const DEFAULT_RUNTIME_CONTRACTS: [&str; 5]
 pub struct ResolveRequest
@@ -184,6 +193,19 @@ pub struct RemoteTrust
   certificate: String
   key: String
   credential: String
+pub struct DeclarationCeiling
+  tokens_per_day: i64
+  micros_per_day: i64
+  requests_per_day: i64
+  images_per_day: i64
+  audio_seconds_per_day: i64
+  characters_per_day: i64
+pub struct DeclarationHost
+  base: String
+  kind: String
+  hosted: bool
+  credential: String
+  ceiling: Option<DeclarationCeiling>
 pub struct Declaration
   name: String
   program: String
@@ -196,6 +218,11 @@ pub struct Declaration
   activation: Activation
   remote: Option<RemoteTrust>
   models: Vec<String>
+  role: Option<DeclarationRole>
+  host: Option<DeclarationHost>
+pub struct HostReading
+  up: bool
+  why: String
 pub struct DeclarationState
   declaration: Declaration
   declared_by: String
@@ -205,6 +232,8 @@ pub struct DeclarationState
   restarts: i64
   described: Vec<ServiceState>
   accepted: Vec<String>
+  role: Option<DeclarationRole>
+  host: Option<HostReading>
 pub struct DeclarationList
   outcome: DeclarationListOutcome
   revision: String

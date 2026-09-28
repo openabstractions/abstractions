@@ -659,6 +659,7 @@ func (ChatClient) Start(request Request) (result Admission, err error)
 func (ChatClient) Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (result DeltaPage, err error)
 func (ChatClient) Cancel(operation string) (result Cancellation, err error)
 func (ChatDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ChatDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ChatDispatcher) ServiceContract() string
 func (ChatDispatcher) WriteFrame(frame []byte) error
 func (ChatDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -672,6 +673,7 @@ type EmbedderDispatcher struct
   Handler Embedder
 func (EmbedderClient) Embed(request EmbedRequest) (result Embeddings, err error)
 func (EmbedderDispatcher) DescribeService() (contract string, ready bool, why string)
+func (EmbedderDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (EmbedderDispatcher) ServiceContract() string
 func (EmbedderDispatcher) WriteFrame(frame []byte) error
 func (EmbedderDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -689,6 +691,7 @@ func (TranscriptionClient) Start(request TranscriptionRequest) (result Admission
 func (TranscriptionClient) Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (result DeltaPage, err error)
 func (TranscriptionClient) Cancel(operation string) (result Cancellation, err error)
 func (TranscriptionDispatcher) DescribeService() (contract string, ready bool, why string)
+func (TranscriptionDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (TranscriptionDispatcher) ServiceContract() string
 func (TranscriptionDispatcher) WriteFrame(frame []byte) error
 func (TranscriptionDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -706,6 +709,7 @@ func (SpeechClient) Start(request SpeechRequest) (result Admission, err error)
 func (SpeechClient) Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (result DeltaPage, err error)
 func (SpeechClient) Cancel(operation string) (result Cancellation, err error)
 func (SpeechDispatcher) DescribeService() (contract string, ready bool, why string)
+func (SpeechDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (SpeechDispatcher) ServiceContract() string
 func (SpeechDispatcher) WriteFrame(frame []byte) error
 func (SpeechDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -727,6 +731,7 @@ func (LiveClient) Observe(operation string, cursor, maxDeltas, maxBytes, waitMs 
 func (LiveClient) Commit(operation string) (result LiveInputResult, err error)
 func (LiveClient) Cancel(operation string) (result Cancellation, err error)
 func (LiveDispatcher) DescribeService() (contract string, ready bool, why string)
+func (LiveDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (LiveDispatcher) ServiceContract() string
 func (LiveDispatcher) WriteFrame(frame []byte) error
 func (LiveDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -744,6 +749,7 @@ func (ImageClient) Start(request ImageRequest) (result Admission, err error)
 func (ImageClient) Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (result DeltaPage, err error)
 func (ImageClient) Cancel(operation string) (result Cancellation, err error)
 func (ImageDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ImageDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ImageDispatcher) ServiceContract() string
 func (ImageDispatcher) WriteFrame(frame []byte) error
 func (ImageDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -773,6 +779,7 @@ func (OperatorClient) Audit(cursor, maxEntries int64) (result AuditPage, err err
 func (OperatorClient) Gateway() (result GatewayState, err error)
 func (OperatorClient) SetGateway(expectedRevision string, open bool, address string) (result GatewayChange, err error)
 func (OperatorDispatcher) DescribeService() (contract string, ready bool, why string)
+func (OperatorDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (OperatorDispatcher) ServiceContract() string
 func (OperatorDispatcher) WriteFrame(frame []byte) error
 func (OperatorDispatcher) ExchangeFrame(frame []byte) ([]byte, error)

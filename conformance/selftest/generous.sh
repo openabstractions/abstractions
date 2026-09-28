@@ -10,6 +10,8 @@ while IFS= read -r line; do
     n=$((n + 1))
     case "$line" in
         orphans) answer="ok A B C" ;;
+        'state legacy') answer="not-found" ;;
+        'state canonical') answer="not_found" ;;
         state*)  answer="ok state=failed" ;;
         *)       answer="not a conflict" ;;
     esac

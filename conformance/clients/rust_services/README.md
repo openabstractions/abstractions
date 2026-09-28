@@ -23,3 +23,11 @@ The runner measures Windows/MSVC and Linux/GCC and cleans temporary binaries, so
 copies and provider data. It makes no full Rust language-matrix claim.
 
 The source fixture selects `rust-native` and `rust-logging` explicitly. The pure `rust` resolver core has no logging or native dependency.
+
+For an already installed Linux candidate, `run.py --installed-candidate` builds
+the same native client and runs `consumer installed-candidate` in the caller's
+account. It requires successful native selection, default discovery and a
+read-only logging history call. `--installed-candidate --prepare-only --keep DIR`
+builds without running the consumer and prints the retained executable path;
+an isolated installation harness can execute that binary as its candidate
+account. The consumer accepts no endpoint argument or override in this mode.

@@ -80,3 +80,13 @@ tree with
 `python scripts/matrix_evidence.py run conformance/clients/js_services/manifests/windows-pure.json`.
 The gate's `javascript` section runs the same `--pure` proof and writes one
 verdict per installed package into its record.
+
+For an already installed Linux candidate, `run.py --installed-candidate` builds
+the native addon and source packages, then runs `consumer.mjs installed-candidate`
+in the caller's account. It requires successful native selection, default
+discovery and a read-only logging history call. Use
+`--installed-candidate --prepare-only --keep DIR` to retain the installed
+packages and print the Node consumer path for execution as an isolated
+candidate account. The consumer accepts no endpoint argument or override in
+this mode. The native addon build may fetch the matching Node headers through
+the runner's documented `--node-sdk` cache.

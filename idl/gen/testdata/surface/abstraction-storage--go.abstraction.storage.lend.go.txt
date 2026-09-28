@@ -1,0 +1,137 @@
+type Raw string
+type Link uint32
+const LinkSymbolic
+const LinkHard
+const LinkCopy
+func (Link) String() string
+func (Link) WireName() (string, bool)
+func ParseLink(word string) (Link, bool)
+func (Link) MarshalText() ([]byte, error)
+func (Link) UnmarshalText(text []byte) error
+func (Link) MarshalJSON() ([]byte, error)
+func (Link) UnmarshalJSON(data []byte) error
+func LinkValues() []Link
+func (Link) Known() bool
+type LendOutcome uint32
+const LendOutcomeLent
+const LendOutcomeNotPermitted
+const LendOutcomeUnsupportedEngine
+const LendOutcomeLinkRefused
+const LendOutcomeAlreadyLent
+const LendOutcomeUnknownObject
+const LendOutcomeInvalid
+const LendOutcomeUnavailable
+func (LendOutcome) String() string
+func (LendOutcome) WireName() (string, bool)
+func ParseLendOutcome(word string) (LendOutcome, bool)
+func (LendOutcome) MarshalText() ([]byte, error)
+func (LendOutcome) UnmarshalText(text []byte) error
+func (LendOutcome) MarshalJSON() ([]byte, error)
+func (LendOutcome) UnmarshalJSON(data []byte) error
+func LendOutcomeValues() []LendOutcome
+func (LendOutcome) Known() bool
+type UnlendOutcome uint32
+const UnlendOutcomeUnlent
+const UnlendOutcomeNotPermitted
+const UnlendOutcomeUnknown
+const UnlendOutcomeInvalid
+const UnlendOutcomeUnavailable
+func (UnlendOutcome) String() string
+func (UnlendOutcome) WireName() (string, bool)
+func ParseUnlendOutcome(word string) (UnlendOutcome, bool)
+func (UnlendOutcome) MarshalText() ([]byte, error)
+func (UnlendOutcome) UnmarshalText(text []byte) error
+func (UnlendOutcome) MarshalJSON() ([]byte, error)
+func (UnlendOutcome) UnmarshalJSON(data []byte) error
+func UnlendOutcomeValues() []UnlendOutcome
+func (UnlendOutcome) Known() bool
+type LendsOutcome uint32
+const LendsOutcomePage
+const LendsOutcomeNotPermitted
+const LendsOutcomeInvalid
+const LendsOutcomeUnavailable
+func (LendsOutcome) String() string
+func (LendsOutcome) WireName() (string, bool)
+func ParseLendsOutcome(word string) (LendsOutcome, bool)
+func (LendsOutcome) MarshalText() ([]byte, error)
+func (LendsOutcome) UnmarshalText(text []byte) error
+func (LendsOutcome) MarshalJSON() ([]byte, error)
+func (LendsOutcome) UnmarshalJSON(data []byte) error
+func LendsOutcomeValues() []LendsOutcome
+func (LendsOutcome) Known() bool
+type ServiceErrorCode string
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+const ServiceErrorCodeCallerUnavailable
+const ServiceErrorCodeIdentityRequired
+func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) Known() bool
+var LendingErrorCodes
+type Lend struct
+  ID string
+  Engine string
+  Store string
+  Object string
+  Name string
+  Link string
+  Kind Link
+  Size int64
+  Created string
+type LendResult struct
+  Outcome LendOutcome
+  Lend *Lend
+  Detail string
+type UnlendResult struct
+  Outcome UnlendOutcome
+  Detail string
+type LendPage struct
+  Outcome LendsOutcome
+  Lends []Lend
+  Continuation string
+  Complete bool
+func Encode(v *LendResult) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+func Decode(in []byte) (*LendResult, error)
+type FrameWriter interface
+  WriteFrame(frame []byte) error
+type DispatchError string
+func (DispatchError) Error() string
+type FrameExchanger interface
+  ExchangeFrame(frame []byte) ([]byte, error)
+type ServiceError struct
+  Code ServiceErrorCode
+  Message string
+func (ServiceError) Error() string
+const EndpointContract
+type DescribedService interface
+  DescribeService() (contract string, ready bool, why string)
+func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+type ServedService interface
+  DescribedService
+  ServiceContract() string
+func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+type Lending interface
+  Lend(store, object, engine string, copy_ bool) (LendResult, error)
+  Unlend(entry string) (UnlendResult, error)
+  Lends(continuation string, limit int64) (LendPage, error)
+type LendingTransport interface
+  FrameExchanger
+type LendingClient struct
+func NewLendingClient(t LendingTransport) *LendingClient
+type LendingDispatcher struct
+  Handler Lending
+func (LendingClient) Lend(store, object, engine string, copy_ bool) (result LendResult, err error)
+func (LendingClient) Unlend(entry string) (result UnlendResult, err error)
+func (LendingClient) Lends(continuation string, limit int64) (result LendPage, err error)
+func (LendingDispatcher) DescribeService() (contract string, ready bool, why string)
+func (LendingDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (LendingDispatcher) ServiceContract() string
+func (LendingDispatcher) WriteFrame(frame []byte) error
+func (LendingDispatcher) ExchangeFrame(frame []byte) ([]byte, error)

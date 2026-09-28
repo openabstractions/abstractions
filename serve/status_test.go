@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"runtime"
 	"strings"
@@ -22,6 +23,14 @@ import (
 func TestRuntimeStatusUsesLiveResolver(t *testing.T) {
 	programProven := statusTransportProvesProgram(t)
 	options, _ := isolatedRuntime(t)
+	if !programProven {
+		err := runRuntimeReady(context.Background(), options, func() error { t.Error("unproven runtime acknowledged readiness"); return nil })
+		if !errors.Is(err, identity.ErrNotProven) {
+			t.Fatalf("Unix runtime startup: %v", err)
+		}
+		assertListenersReleased(t, options)
+		t.Skip("live-resolver fixture requires Program proof; Unix startup refusal is checked separately")
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ready := make(chan struct{})
@@ -108,6 +117,15 @@ func TestRuntimeStatusPreservesRefusal(t *testing.T) {
 	}
 	policyCalled := make(chan struct{}, 2)
 	host, err := resolution.Listen(options.endpoint, catalog, func(*identity.Peer, wire.ServiceReference) bool { policyCalled <- struct{}{}; return true })
+	if !programProven && errors.Is(err, identity.ErrNotProven) {
+		select {
+		case <-policyCalled:
+			t.Fatal("unproven peer reached policy")
+		default:
+		}
+		assertListenersReleased(t, options)
+		t.Skip("resolver-refusal fixture requires Program proof; Unix startup refusal is checked separately")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,6 +252,52 @@ func TestRuntimeStatusMissingAndInvalid(t *testing.T) {
 	}
 }
 
+// rights and status follow the same runtime-endpoint rule (rightsMachine in
+// rights.go, runtimeStatus above): with only ABSTRACTION_RUNTIME_ENDPOINT set
+// and no --endpoint, both connect to the named (here, isolated) runtime
+// unverified and say so once, instead of one silently verifying against a
+// different (installed) runtime's registration while the other stays honest
+// (research/packaged-activation/GATEWAY-REFUSAL-2026-09-22.md).
+func TestRightsAndStatusFollowTheSameEnvironmentEndpointRule(t *testing.T) {
+	if !statusTransportProvesProgram(t) {
+		t.Skip("Program proof unavailable on this transport")
+	}
+	options, _ := credentialsRuntime(t)
+	t.Setenv(runtimeEndpointVar, options.endpoint)
+
+	var statusOut, statusDiag bytes.Buffer
+	if err := runtimeStatus([]string{"--json"}, &statusOut, &statusDiag); err != nil {
+		t.Fatalf("status: %v %s", err, statusOut.String())
+	}
+	var rightsOut, rightsDiag bytes.Buffer
+	if err := rightsCommand([]string{"list", "--json"}, &rightsOut, &rightsDiag); err != nil {
+		t.Fatalf("rights list: %v %s", err, rightsOut.String())
+	}
+
+	for _, notice := range []string{statusDiag.String(), rightsDiag.String()} {
+		for _, want := range []string{runtimeEndpointVar, options.endpoint, "unverified"} {
+			if !strings.Contains(notice, want) {
+				t.Fatalf("notice %q does not mention %q", notice, want)
+			}
+		}
+	}
+
+	var report runtimeReport
+	if err := json.Unmarshal(statusOut.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.Error != "" || len(report.Capabilities) != 5 {
+		t.Fatalf("status %s", statusOut.String())
+	}
+	var list rightsReply
+	if err := json.Unmarshal(rightsOut.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	if list.Outcome != "page" {
+		t.Fatalf("rights list %+v", list)
+	}
+}
+
 // Darwin's current peer transport cannot satisfy listen.Program. Exercise its
 // real refusal without representing successful resolution as platform coverage.
 func assertUnprovenStatus(t *testing.T, statusErr error, output []byte) {
@@ -302,4 +366,188 @@ func statusTransportProvesProgram(t *testing.T) bool {
 		t.Fatal(ctx.Err())
 	}
 	return false
+}
+
+// Requested help (--help) prints to stdout and exits 0; a bad flag is a
+// mistake, prints its prose to diagnostics instead, and exits usage (2)
+// rather than the 1 a plain unwrapped error used to carry.
+func TestRuntimeStatusHelpAndBadFlag(t *testing.T) {
+	var out, diagnostics bytes.Buffer
+	if err := runtimeStatus([]string{"--help"}, &out, &diagnostics); err != nil {
+		t.Fatalf("--help: %v", err)
+	}
+	if !strings.Contains(out.String(), "Usage: openabstractions status") {
+		t.Fatalf("--help: output %q does not look like statusUsage", out.String())
+	}
+	if diagnostics.String() != "" {
+		t.Fatalf("--help: diagnostics %q, want none", diagnostics.String())
+	}
+	out.Reset()
+	diagnostics.Reset()
+	err := runtimeStatus([]string{"--not-a-real-flag"}, &out, &diagnostics)
+	var exit *exitError
+	if !errors.As(err, &exit) || exit.code != exitUsage {
+		t.Fatalf("bad flag: err = %v, want *exitError{exitUsage}", err)
+	}
+	if !strings.Contains(diagnostics.String(), "Usage: openabstractions status") {
+		t.Fatalf("bad flag: diagnostics %q does not look like statusUsage", diagnostics.String())
+	}
+}
+
+// TestStatusSplitsUnexpectedArgumentFromBadTimeout is item 3, round 5: an
+// unexpected argument and a non-positive --timeout used to print the same
+// "status: supply valid flags and a positive timeout", with no usage line
+// and no --help pointer. Each now gets its own standard mistake shape: the
+// argument names itself in the flagMistake three-line shape, and a
+// non-positive timeout names the flag, the value as typed, and the accepted
+// form, the same way badFlag already does for a value the flag package's own
+// Parse rejects outright.
+func TestStatusSplitsUnexpectedArgumentFromBadTimeout(t *testing.T) {
+	var out, diagnostics bytes.Buffer
+	err := runtimeStatus([]string{"extra-unexpected-arg"}, &out, &diagnostics)
+	var exit *exitError
+	if !errors.As(err, &exit) || exit.code != exitUsage || out.Len() != 0 {
+		t.Fatalf("unexpected argument: err = %v, out = %q", err, out.String())
+	}
+	if !strings.Contains(diagnostics.String(), `unexpected argument "extra-unexpected-arg"`) {
+		t.Fatalf("unexpected argument: diagnostics %q does not name it", diagnostics.String())
+	}
+	if !strings.Contains(diagnostics.String(), "Usage: openabstractions status") || !strings.Contains(diagnostics.String(), "--help") {
+		t.Fatalf("unexpected argument: diagnostics %q missing the usage line or --help pointer", diagnostics.String())
+	}
+
+	for _, args := range [][]string{{"--timeout", "0"}, {"--timeout", "-5s"}} {
+		out.Reset()
+		diagnostics.Reset()
+		err := runtimeStatus(args, &out, &diagnostics)
+		if !errors.As(err, &exit) || exit.code != exitUsage || out.Len() != 0 {
+			t.Fatalf("%v: err = %v, out = %q", args, err, out.String())
+		}
+		typed := args[1]
+		if !strings.Contains(diagnostics.String(), fmt.Sprintf("--timeout %q", typed)) || !strings.Contains(diagnostics.String(), "positive duration") {
+			t.Fatalf("%v: diagnostics %q does not name --timeout, %q and a positive duration", args, diagnostics.String(), typed)
+		}
+		if !strings.Contains(diagnostics.String(), "Usage: openabstractions status") || !strings.Contains(diagnostics.String(), "--help") {
+			t.Fatalf("%v: diagnostics %q missing the usage line or --help pointer", args, diagnostics.String())
+		}
+		if strings.Contains(diagnostics.String(), "supply valid flags") {
+			t.Fatalf("%v: diagnostics %q still uses the old combined message", args, diagnostics.String())
+		}
+	}
+}
+
+// TestStatusHelpNamesExitCodes is item 1's own test: status --help, like
+// every other command's --help, states its exit codes.
+func TestStatusHelpNamesExitCodes(t *testing.T) {
+	var out bytes.Buffer
+	if err := runtimeStatus([]string{"--help"}, &out, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "Exit codes:") {
+		t.Fatalf("status --help names no exit codes: %q", out.String())
+	}
+}
+
+// TestStatusPrintsThisProgramsOwnIdentity is item 2's own test: status
+// prints, in both the plain and --json forms, the same canonicalized
+// identity path a rights rule's --program names to cover this program
+// (selfProgramPath, the path the runtime derives for the same peer
+// connection) — the path the rights grant warning already tells an operator
+// to read from status.
+func TestStatusPrintsThisProgramsOwnIdentity(t *testing.T) {
+	want := probeSelf().Program
+	if want == "" {
+		t.Skip("this process's own executable path is unavailable")
+	}
+	var out bytes.Buffer
+	// An unreachable endpoint still lets status report this program's own
+	// identity: that line does not depend on the runtime answering.
+	if err := runtimeStatus([]string{"--endpoint", unreachableEndpoint(t), "--timeout", "2s"}, &out, io.Discard); err == nil {
+		t.Fatal("status against an unreachable endpoint: err = nil")
+	}
+	if !strings.Contains(out.String(), "this program: "+want) {
+		t.Fatalf("plain status omits \"this program: %s\": %q", want, out.String())
+	}
+	out.Reset()
+	if err := runtimeStatus([]string{"--json", "--endpoint", unreachableEndpoint(t), "--timeout", "2s"}, &out, io.Discard); err == nil {
+		t.Fatal("status --json against an unreachable endpoint: err = nil")
+	}
+	var report runtimeReport
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("status --json: %v\n%s", err, out.String())
+	}
+	if report.Program != want {
+		t.Fatalf("status --json: program = %q, want %q", report.Program, want)
+	}
+}
+
+// TestStatusDescribeRefusesANonEndpointArgument is item 5's own test: an
+// argument that is not shaped like a platform endpoint path, such as a
+// contract id copied from status's own capability list, refuses with the
+// endpoint form and an example instead of the raw transport error opening
+// it as a file would produce.
+func TestStatusDescribeRefusesANonEndpointArgument(t *testing.T) {
+	var out, diagnostics bytes.Buffer
+	err := statusDescribe([]string{"abstraction.config/reader@1"}, &out, &diagnostics)
+	var exit *exitError
+	if !errors.As(err, &exit) || exit.code != exitUsage {
+		t.Fatalf("err = %v, want *exitError{exitUsage}", err)
+	}
+	// item 6, round 6: this bare refusal now goes through flagMistake, the
+	// same three-line shape every other exit-2 mistake uses.
+	for _, want := range []string{"status describe: takes an endpoint", `\\.\pipe\`, ".sock", "openabstractions status"} {
+		if !strings.Contains(diagnostics.String(), want) {
+			t.Fatalf("diagnostics %q does not mention %q", diagnostics.String(), want)
+		}
+	}
+	if !strings.Contains(diagnostics.String(), "Usage: openabstractions status describe") || !strings.Contains(diagnostics.String(), "--help") {
+		t.Fatalf("diagnostics %q missing the usage line or --help pointer", diagnostics.String())
+	}
+	if strings.Contains(diagnostics.String(), "expected local named pipe") {
+		t.Fatalf("diagnostics %q still carries the raw transport error", diagnostics.String())
+	}
+}
+
+// TestStatusDescribeNamesNoRuntimeListening is item 3's own test: an
+// endpoint that looks like one, but that nothing answers, refuses with a
+// sentence naming the endpoint and the command that lists this runtime's
+// own, not the raw connect failure ("open \\.\pipe\...: The system cannot
+// find the file specified.").
+func TestStatusDescribeNamesNoRuntimeListening(t *testing.T) {
+	endpoint := unreachableEndpoint(t)
+	var out, diagnostics bytes.Buffer
+	err := statusDescribe([]string{endpoint, "--timeout", "2s"}, &out, &diagnostics)
+	var exit *exitError
+	if !errors.As(err, &exit) || exit.code != exitNotResolved {
+		t.Fatalf("err = %v, want *exitError{exitNotResolved}", err)
+	}
+	for _, want := range []string{"no runtime listens at " + endpoint, `run "openabstractions status"`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("err %q does not mention %q", err.Error(), want)
+		}
+	}
+	for _, notWant := range []string{"cannot find the file", "The system cannot", "no such file"} {
+		if strings.Contains(err.Error(), notWant) {
+			t.Fatalf("err %q still carries the raw connect failure", err.Error())
+		}
+	}
+}
+
+// A platform endpoint path shape (a Windows named pipe here) is accepted as
+// an endpoint and reaches the transport, rather than being refused as not
+// looking like one.
+func TestLooksLikeEndpointPath(t *testing.T) {
+	for _, c := range []struct {
+		s    string
+		want bool
+	}{
+		{`\\.\pipe\openabstractions-user-S-1-runtime-v1`, true},
+		{`\\.\PIPE\upper-case`, true},
+		{"abstraction.config/reader@1", false},
+		{"short-name", false},
+	} {
+		if got := looksLikeEndpointPath(c.s); got != c.want {
+			t.Fatalf("looksLikeEndpointPath(%q) = %v, want %v", c.s, got, c.want)
+		}
+	}
 }

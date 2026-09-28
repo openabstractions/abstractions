@@ -168,7 +168,7 @@ fn router_calls(machine: &Machine, set_policy: &dyn Fn(&str)) {
     );
     assert_eq!(pick("rust-model").unwrap().decision.asked, "rust-model");
     assert!(matches!(pick(""), Err(RouterError::Invalid(_))));
-    for (mode, code) in [("router-forbidden", "forbidden"), ("router-unavailable", "policy_unavailable")] {
+    for (mode, code) in [("router-forbidden", "forbidden"), ("router-unavailable", "unavailable")] {
         set_policy(mode);
         assert_eq!(routes.models(false).err().and_then(|e| e.service_code().map(str::to_string)).as_deref(), Some(code), "{mode} models");
         assert_eq!(routes.hosts(false).err().and_then(|e| e.service_code().map(str::to_string)).as_deref(), Some(code), "{mode} hosts");
@@ -176,7 +176,7 @@ fn router_calls(machine: &Machine, set_policy: &dyn Fn(&str)) {
     }
     set_policy("permit");
     assert_eq!(pick("rust-model").unwrap().decision.asked, "rust-model");
-    println!("PASS router live-host inventory, resident/unauthorised/would-load picks, caller-bound audit, forbidden and policy_unavailable codes");
+    println!("PASS router live-host inventory, resident/unauthorised/would-load picks, caller-bound audit, forbidden and unavailable codes");
 }
 
 fn log_observer(machine: &Machine, endpoint: &str, set_policy: &dyn Fn(&str)) {

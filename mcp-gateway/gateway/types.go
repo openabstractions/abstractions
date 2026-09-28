@@ -51,6 +51,13 @@ type Model struct {
 	Family   string   `json:"family"`
 	Aliases  []string `json:"aliases"`
 	Profiles []string `json:"profiles,omitempty"`
+	// Servable is false for a model this machine holds that no host serves.
+	// Such a model carries no aliases to ask for and is listed so the caller
+	// sees the whole machine.
+	Servable bool `json:"servable"`
+	// HeldIn names the storage inventory stores holding this model, empty
+	// when no store reports it. Reading it changes nothing.
+	HeldIn []string `json:"held_in,omitempty"`
 }
 
 type ModelsInput struct {

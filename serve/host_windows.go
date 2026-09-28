@@ -21,7 +21,9 @@ import (
 	"golang.org/x/sys/windows/svc"
 )
 
-// `openabstractions serve host` owns the Windows runtime lifetime in both
+// `openabstractions serve supervisor` (old name `serve host`, accepted for one
+// release and still what the launchers below pass) owns the Windows runtime
+// lifetime in both
 // install scopes. Per-user, a Startup shortcut and `openabstractions start` run
 // it; it holds a hidden session window for Restart Manager shutdown and
 // registers for restart, so an upgrade that ends it gets it back. Machine
@@ -55,31 +57,47 @@ var (
 	unregisterApplicationRestartFn = kernel32.NewProc("UnregisterApplicationRestart")
 )
 
-func serveHost(args []string) error {
-	flags := flag.NewFlagSet("host", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
-	service := flags.Bool("service", false, "run under the service control manager; the registered per-user service template passes this")
-	flags.Usage = func() {
-		fmt.Fprintln(flags.Output(), `Usage: openabstractions serve host [--service]
+const serveHostUsage = `Usage: openabstractions serve supervisor [--service]
 
-Hosts the installed runtime for this user: starts "openabstractions.exe serve
-runtime --supervised" beside this program, restarts it after failure (2s, 10s,
+The per-user service that keeps the runtime running: starts
+"openabstractions.exe serve runtime --supervised" beside this program, restarts it after failure (2s, 10s,
 30s, then exits with failure) and ends it at sign-out or when Windows Installer
-replaces the installation. Refuses with exit status 3 while an upgrade of this
-installation is in progress, and with exit status 4 when this process sees a
-packaged app's private copy of AppData. Diagnostics go to
-%LOCALAPPDATA%\openabstractions\host\host.log.`)
-		flags.PrintDefaults()
-	}
-	if err := flags.Parse(args); err != nil {
+replaces the installation. Diagnostics go to
+%LOCALAPPDATA%\openabstractions\host\host.log.
+
+  --service   run under the service control manager; the registered per-user
+              service template passes this
+
+serve host is this command's old name, accepted until the next release.
+
+Exit codes: 0 a clean stop, 1 the restart budget was used up, 3 an upgrade of
+this installation is in progress, 4 this process sees a packaged app's
+private copy of AppData.
+`
+
+func serveHost(args []string) error {
+	if containsHelp(args) {
+		_, err := io.WriteString(os.Stdout, serveHostUsage)
 		return err
 	}
+	flags := flag.NewFlagSet("host", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	service := flags.Bool("service", false, "run under the service control manager; the registered per-user service template passes this")
+	// serveHostUsage already documents --service; the fallback on a genuine
+	// parse error prints it once, not a second time as flag.PrintDefaults'
+	// own single-dash listing, and flags.SetOutput(io.Discard) keeps the flag
+	// package from also printing its own raw, unprefixed copy of the error.
+	// badFlag below prints this program's own three-line mistake shape;
+	flags.Usage = func() {} // the flag package's own per-error usage call must print nothing
+	if err := flags.Parse(args); err != nil {
+		return badFlag(flags, os.Stderr, "serve supervisor", serveHostUsage, args, err)
+	}
 	if flags.NArg() != 0 {
-		return &exitError{code: 2, err: errors.New("serve host takes no arguments")}
+		return flagMistake(os.Stderr, "serve supervisor", serveHostUsage, "takes no arguments")
 	}
 	if !*service {
 		// Refused before the host log is opened, so a contained host writes nothing.
-		if err := refuseVirtualizedProfile("serve host", bootstrap.CurrentProfileView); err != nil {
+		if err := refuseVirtualizedProfile("serve supervisor", bootstrap.CurrentProfileView); err != nil {
 			return err
 		}
 	}
@@ -111,7 +129,7 @@ func runUserHost(ctx context.Context, plan hostPlan, register func(string, uint3
 	return withSessionShutdown(ctx, func(ctx context.Context) error {
 		if err := register(hostRestartCommand, hostRestartFlags); err != nil {
 			diagnostics.logf("restart registration failed: %v", err)
-			return fmt.Errorf("serve host: register for restart: %w", err)
+			return fmt.Errorf("serve supervisor: register for restart: %w", err)
 		}
 		err := plan.run(ctx)
 		if err != nil {
@@ -162,6 +180,7 @@ func registerForRestart(command string, flags uint32) error {
 	if err := registerApplicationRestart.Find(); err != nil {
 		return err
 	}
+	//unchecked: the HRESULT primary return is checked below; Call's raw GetLastError third field carries no separate information for a COM-style HRESULT call
 	hr, _, _ := registerApplicationRestart.Call(uintptr(unsafe.Pointer(line)), uintptr(flags))
 	if hr != 0 {
 		return fmt.Errorf("RegisterApplicationRestart: HRESULT %#x", uint32(hr))
@@ -170,6 +189,7 @@ func registerForRestart(command string, flags uint32) error {
 }
 
 func unregisterForRestart() error {
+	//unchecked: the HRESULT primary return is checked below; Call's raw GetLastError third field carries no separate information for a COM-style HRESULT call
 	hr, _, _ := unregisterApplicationRestartFn.Call()
 	if hr != 0 {
 		return fmt.Errorf("UnregisterApplicationRestart: HRESULT %#x", uint32(hr))
@@ -183,6 +203,7 @@ func restartSettings(process windows.Handle) (string, uint32, error) {
 	buf := make([]uint16, 32768)
 	size := uint32(len(buf))
 	var flags uint32
+	//unchecked: the HRESULT primary return is checked below; Call's raw GetLastError third field carries no separate information for a COM-style HRESULT call
 	hr, _, _ := getApplicationRestartSettings.Call(uintptr(process), uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&size)), uintptr(unsafe.Pointer(&flags)))
 	if hr != 0 {
 		return "", 0, fmt.Errorf("GetApplicationRestartSettings: HRESULT %#x", uint32(hr))
@@ -199,7 +220,7 @@ func hostStartupDiagnostics(mode string) string {
 		image = "unknown (" + err.Error() + ")"
 	}
 	elevated, elevationType := tokenElevation(windows.GetCurrentProcessToken())
-	return fmt.Sprintf("serve host start: mode=%s pid=%d image=%s TokenElevation=%s TokenElevationType=%s", mode, os.Getpid(), image, elevated, elevationType)
+	return fmt.Sprintf("serve supervisor start: mode=%s pid=%d image=%s TokenElevation=%s TokenElevationType=%s", mode, os.Getpid(), image, elevated, elevationType)
 }
 
 func tokenElevation(token windows.Token) (string, string) {
@@ -235,7 +256,7 @@ func runHostService(diagnostics *hostLog) error {
 	plan := installedHostPlan(diagnostics)
 	err := svc.Run(hostServiceName, hostService{run: plan.run, guard: plan.guard, logf: diagnostics.logf})
 	if errors.Is(err, windows.ERROR_FAILED_SERVICE_CONTROLLER_CONNECT) {
-		return errors.New("serve host --service is how the service manager starts the host; run serve host without --service here")
+		return errors.New("serve supervisor --service is how the service manager starts the supervisor; run serve supervisor without --service here")
 	}
 	return err
 }
@@ -348,6 +369,7 @@ func openHostLogAt(path string) *hostLog {
 		return &hostLog{}
 	}
 	if info, err := os.Stat(path); err == nil && info.Size() > hostLogLimit {
+		//unchecked: best-effort log rotation; a failed rename just leaves the next OpenFile appending to the existing file
 		_ = os.Rename(path, path+".1")
 	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
@@ -361,6 +383,7 @@ func (l *hostLog) logf(format string, args ...any) {
 	if l == nil || l.file == nil {
 		return
 	}
+	//unchecked: l.file is the log sink itself; a failed write here has nowhere else to be reported
 	_, _ = fmt.Fprintf(l.file, "%s [%d] %s\n", time.Now().UTC().Format(time.RFC3339Nano), os.Getpid(), fmt.Sprintf(format, args...))
 }
 

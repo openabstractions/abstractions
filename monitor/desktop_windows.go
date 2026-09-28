@@ -3,16 +3,17 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"os"
-	"time"
+	"strings"
 
 	"github.com/openabstractions/abstractions/monitor/win"
 )
 
 func windowed() bool { return win.Windowed() }
+
+func nativeWebView2Available() bool { return win.WebView2Available() }
 
 // fail says what went wrong somewhere a person will see it. A binary built for
 // the desktop has no stderr at all, so the log line this program would print
@@ -25,53 +26,59 @@ func fail(native bool, err error) {
 	os.Exit(1)
 }
 
-// The service launcher draws a native inventory window. Typed forms and
-// recovery records live in the browser UI.
+// The native window starts at the same size every time and remembers nothing
+// between runs (research/panel-native/DECISION.md item 2). The minimum keeps
+// its WebView content usable while a person resizes it.
+const (
+	panelWindowTitle     = "Abstraction Panel"
+	panelWindowWidth     = 1100
+	panelWindowHeight    = 760
+	panelWindowMinWidth  = 960
+	panelWindowMinHeight = 640
+)
+
+// desktop opens the Panel's own loopback URL — the same page and per-run key
+// a browser tab would get — in a WebView2 window, and returns once that
+// window closes, ending the process the way the Win32 list window it
+// replaced did. When this machine has no WebView2 runtime, it opens the
+// browser instead and blocks so the server (already serving in its own
+// goroutine) stays up for that tab.
 func (p *servicePanel) desktop(url string) error {
-	lifetime, stop := context.WithCancel(context.Background())
-	defer stop()
-	return win.Run("OpenAbstractions services", 780, 440, func(ui *win.Window) {
-		title := ui.Head("Service-owned work for this panel")
-		status := ui.Dim("Refresh to query the runtime. No provider files are opened.")
-		rows := ui.List(win.Column{Title: "Operation", Width: 330}, win.Column{Title: "State", Width: 110}, win.Column{Title: "Progress", Width: 200})
-		busy := false
-		refresh := ui.Button("Refresh", func() {
-			if busy {
-				return
-			}
-			busy = true
-			go func() {
-				ctx, cancel := context.WithTimeout(lifetime, 5*time.Second)
-				defer cancel()
-				_, inventory, _, err := p.binding(ctx)
-				var values [][]string
-				message := ""
-				if err == nil {
-					page, e := inventory.ListWork(ctx, "", 32)
-					err = e
-					if err == nil {
-						message = "Inventory: " + page.Outcome.String()
-						if !page.Complete {
-							message += "; more pages available in full controls"
-						}
-						for _, s := range page.Snapshots {
-							values = append(values, []string{s.Receipt.OperationID, s.State.String(), fmt.Sprintf("%d / %d", s.Progress.Done, s.Progress.Total)})
-						}
-					}
-				}
-				if err != nil {
-					message = "Unavailable: " + err.Error()
-				}
-				ui.Do(func() { busy = false; rows.Set(values); status.SetText(message) })
-			}()
-		})
-		controls := ui.Button("Open full controls", func() { launch(url) })
-		ui.OnSize(func(w, h int) {
-			title.Place(14, 10, w-28, 28)
-			refresh.Place(14, 46, 120, 30)
-			controls.Place(150, 46, 200, 30)
-			rows.Place(14, 90, w-28, h-142)
-			status.Place(14, h-42, w-28, 30)
-		})
-	})
+	if openNativeWindow(url) {
+		return nil
+	}
+	select {}
+}
+
+// openNativeWindow shows url in a WebView2 window (win.OpenWebView2) and
+// blocks until it is closed, reporting true. It reports false, having
+// opened the browser instead and said so on stderr, when the WebView2
+// runtime is absent or the window fails to attach at any step —
+// win.WebView2Available resolves the installed runtime's environment entry point.
+func openNativeWindow(url string) bool {
+	if !win.WebView2Available() {
+		fmt.Fprintln(os.Stderr, "WebView2 runtime not found; opening the Panel in the browser instead.") //unchecked: a notice on stderr; the browser fallback follows either way
+		launch(url)
+		return false
+	}
+	if win.OpenWebView2(panelWindowTitle, panelWindowWidth, panelWindowHeight,
+		panelWindowMinWidth, panelWindowMinHeight, url, openExternal) {
+		return true
+	}
+	fmt.Fprintln(os.Stderr, "WebView2 window failed to open; opening the Panel in the browser instead.") //unchecked: a notice on stderr; the browser fallback follows either way
+	launch(url)
+	return false
+}
+
+// openExternal is win.OpenWebView2's external callback: it is called with
+// the target URI of a link or window.open() that would leave the Panel's
+// own loopback origin — a help link (target="_blank", per help.go) is the
+// only kind this app ever shows. It only ever launches http(s) URLs through
+// the same rundll32 path the browser fallback above already uses, and
+// leaves the Panel window exactly where it was (commit 4608a4da).
+func openExternal(rawURL string) {
+	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
+		return
+	}
+	launch(rawURL)
 }

@@ -13,9 +13,9 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/openabstractions/abstraction-inference/adapters/go/gateway"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	iwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
-	"github.com/openabstractions/abstraction-inference/go/gateway"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 )
 
@@ -42,6 +42,7 @@ func openGateway(address string, r *runtimeInference, record func(inference.Reco
 	if err != nil {
 		return nil, err
 	}
+	//unchecked: last diagnostic before returning the opened window; a failed write to stderr has no fallback destination
 	fmt.Fprintf(os.Stderr, "runtime: inference gateway window on http://%s/v1 (OpenAI) and http://%s (Anthropic)\n", window.Addr(), window.Addr())
 	return window, nil
 }

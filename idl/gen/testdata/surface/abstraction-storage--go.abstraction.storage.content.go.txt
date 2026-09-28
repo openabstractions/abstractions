@@ -625,6 +625,7 @@ func (ContentReaderClient) Open(digest string) (result OpenResult, err error)
 func (ContentReaderClient) Read(handle string, offset, maxBytes int64) (result ReadResult, err error)
 func (ContentReaderClient) Close(handle string) (result CloseResult, err error)
 func (ContentReaderDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ContentReaderDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ContentReaderDispatcher) ServiceContract() string
 func (ContentReaderDispatcher) WriteFrame(frame []byte) error
 func (ContentReaderDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -644,6 +645,7 @@ func (ContentWriterClient) Append(handle string, offset int64, data []byte) (res
 func (ContentWriterClient) Commit(handle string) (result CommitResult, err error)
 func (ContentWriterClient) Abort(handle string) (result AbortResult, err error)
 func (ContentWriterDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ContentWriterDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ContentWriterDispatcher) ServiceContract() string
 func (ContentWriterDispatcher) WriteFrame(frame []byte) error
 func (ContentWriterDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -659,6 +661,7 @@ type ContentChangesDispatcher struct
 func (ContentChangesClient) Observe(cursor string, maxChanges, waitMs int64) (result ChangePage, err error)
 func (ContentChangesClient) List(continuation string, limit int64) (result ListingPage, err error)
 func (ContentChangesDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ContentChangesDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ContentChangesDispatcher) ServiceContract() string
 func (ContentChangesDispatcher) WriteFrame(frame []byte) error
 func (ContentChangesDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -676,6 +679,7 @@ func (HoldsClient) Hold(request, target, purpose string, lifetime Lifetime, leas
 func (HoldsClient) Release(hold string) (result ReleaseResult, err error)
 func (HoldsClient) Renew(hold string, leaseMs int64) (result RenewResult, err error)
 func (HoldsDispatcher) DescribeService() (contract string, ready bool, why string)
+func (HoldsDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (HoldsDispatcher) ServiceContract() string
 func (HoldsDispatcher) WriteFrame(frame []byte) error
 func (HoldsDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -691,6 +695,7 @@ type ManifestsDispatcher struct
 func (ManifestsClient) Describe(id string) (result DescribeResult, err error)
 func (ManifestsClient) Publish(request string, manifest Manifest) (result PublishResult, err error)
 func (ManifestsDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ManifestsDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ManifestsDispatcher) ServiceContract() string
 func (ManifestsDispatcher) WriteFrame(frame []byte) error
 func (ManifestsDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -710,6 +715,7 @@ func (InventoryClient) Holders(target string) (result InventoryPage, err error)
 func (InventoryClient) Unheld(continuation string, limit int64) (result InventoryPage, err error)
 func (InventoryClient) Find(digest string) (result InventoryPage, err error)
 func (InventoryDispatcher) DescribeService() (contract string, ready bool, why string)
+func (InventoryDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (InventoryDispatcher) ServiceContract() string
 func (InventoryDispatcher) WriteFrame(frame []byte) error
 func (InventoryDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -723,6 +729,7 @@ type ContentRemoverDispatcher struct
   Handler ContentRemover
 func (ContentRemoverClient) Remove(target string) (result RemoveResult, err error)
 func (ContentRemoverDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ContentRemoverDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ContentRemoverDispatcher) ServiceContract() string
 func (ContentRemoverDispatcher) WriteFrame(frame []byte) error
 func (ContentRemoverDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -744,6 +751,7 @@ func (InventorySourceClient) Observe(cursor string, maxChanges, waitMs int64) (r
 func (InventorySourceClient) Verify(target string) (result SourcePage, err error)
 func (InventorySourceClient) Remove(target string) (result RemoveResult, err error)
 func (InventorySourceDispatcher) DescribeService() (contract string, ready bool, why string)
+func (InventorySourceDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (InventorySourceDispatcher) ServiceContract() string
 func (InventorySourceDispatcher) WriteFrame(frame []byte) error
 func (InventorySourceDispatcher) ExchangeFrame(frame []byte) ([]byte, error)

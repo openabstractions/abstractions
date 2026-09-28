@@ -470,9 +470,16 @@ func TestOnDemandProviderStartsRestartsAndStops(t *testing.T) {
 	eventually(t, 10*time.Second, "the crash being noticed", func() bool {
 		return providerStates(t, endpoint)[name].Readiness != fwire.DeclarationReadinessReady
 	})
-	if result := resolve(); result.Status != fwire.ResolutionStatusNotReady {
-		t.Fatalf("resolution while restarting %+v", result)
-	}
+	// The declaration's own reading flips the instant the supervisor notices;
+	// the resolution catalogue, rebuilt from the same change notification, can
+	// trail it by the router's own survey of the now-visible not-ready host
+	// (FAC-R8: an on-demand declaration stays a candidate before its first
+	// launch, so a pinned call has a host to wait on).
+	var result fwire.ResolveResult
+	eventually(t, 2*time.Second, "the crash reaching the resolution catalogue", func() bool {
+		result = resolve()
+		return result.Status == fwire.ResolutionStatusNotReady
+	})
 	eventually(t, 20*time.Second, "the provider restarting", func() bool {
 		s := providerStates(t, endpoint)[name]
 		return s.Readiness == fwire.DeclarationReadinessReady && s.Restarts == 1 && len(pids(t, pidDir)) == 2

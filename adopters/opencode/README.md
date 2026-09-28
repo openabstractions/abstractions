@@ -13,22 +13,66 @@ OpenCode's Bun process loads the shared OA C ABI through `bun:ffi`. The runtime
 therefore observes the OpenCode executable as the caller and applies the rights
 granted to that exact program.
 
+The [OpenAbstractions MCP gateway](../../mcp-gateway/README.md) is a second,
+separate integration path: OpenCode reaches OA capabilities as MCP tools over
+a local server process instead of through this native provider.
+
 ## Requirements
 
 - OpenCode 1.18.31, the version used by the controlled integration proof.
-- A running development OA runtime with at least one inference host.
-- The built shared C ABI library and Bun native addon.
-- The generated `@openabstractions/facade`, `@openabstractions/inference` and
-  `@openabstractions/ipc` packages beside this provider during development.
-- An explicit controlled runtime endpoint.
+- A running development OA runtime with at least one model server.
+- The shared C ABI library. OpenCode's Bun runtime loads it through `bun:ffi`;
+  this path does not load the Node addon. `@openabstractions/ipc` resolves it
+  from its platform package, and `ABSTRACTION_IPC_LIBRARY` overrides that with
+  an absolute path during development.
+- The `@openabstractions/facade`, `@openabstractions/inference` and
+  `@openabstractions/ipc` packages, named as dependencies of this package and
+  copied beside this provider when it runs from source.
+- An installed runtime the shared library selects, or an explicit controlled
+  runtime endpoint in `runtimeEndpoint`.
 
-This provider is source for an adopter proof. It is not a published OpenCode
-package.
+This package is `@openabstractions/opencode`. It is not on npm: publication
+needs the owner's npm organization and consent. Until then it is installed from
+a tarball the release packaging job produces, or run from source by file URL.
 
 ## Configure a local model
 
-Point OpenCode at this module's absolute file URL and name a model served by the
-runtime:
+Write the provider block from the models the router already lists, so nobody
+types a model name into OpenCode's config by hand:
+
+```console
+openabstractions opencode configure
+```
+
+This reads the router's servable chat families through the runtime and writes
+or updates only the `provider.openabstractions` block, and a default `model`
+key when OpenCode's config names none, in OpenCode's global config
+(`~/.config/opencode/opencode.json` by default; `--config` names another
+file). It refuses a `.jsonc` file by name, since it cannot preserve comments;
+`--dry-run` prints the block instead of writing it, and a machine with no
+servable chat model writes nothing and says why. Run
+`openabstractions opencode configure --help` for every flag, including
+`--provider-id` and `--scope local|remote`.
+
+Each model's `limit.context` is the host's own reported context window (LM
+Studio's `max_context_length`, Ollama's `model_info` context length,
+Lemonade's `max_context_window`) when the router reports one, and the
+documented 32768 default otherwise.
+
+Naming the package and a model by hand is the same shape configure writes.
+Omitting `runtimeEndpoint` reaches the installed runtime through the shared
+library's own selection.
+
+The provider reads two option fields on every call. `scope` (`"local"` or
+`"remote"`) selects which OA execution binding it asks for and is read
+directly on each request; it defaults to `"local"` when omitted. `guarantees`
+is the explicit request-guarantee list OA checks before running the call;
+when omitted, the provider derives it from `scope` (`abstraction.inference/
+local-only@1` for `"local"`, `abstraction.inference/hosted-allowed@1` for
+`"remote"`), so a configuration naming only `scope` still works:
+
+Point OpenCode at this module's absolute file URL and name an explicit
+controlled endpoint:
 
 ```json
 {
@@ -38,6 +82,33 @@ runtime:
       "npm": "file:///absolute/path/to/adopters/opencode/index.js",
       "options": {
         "runtimeEndpoint": "an explicit controlled OA runtime endpoint",
+        "scope": "local",
+        "guarantees": ["abstraction.inference/local-only@1"]
+      },
+      "models": {
+        "local/chat": {
+          "name": "OA local chat",
+          "limit": {"context": 32768, "output": 4096},
+          "tool_call": true
+        }
+      }
+    }
+  },
+  "model": "openabstractions/local/chat"
+}
+```
+
+Once the package is on npm, `"npm"` names `@openabstractions/opencode` instead
+of the file URL, and a fixed install can drop `runtimeEndpoint` and rely on the
+shared library's own runtime selection:
+
+```json
+{
+  "provider": {
+    "openabstractions": {
+      "name": "OpenAbstractions",
+      "npm": "@openabstractions/opencode",
+      "options": {
         "scope": "local",
         "guarantees": ["abstraction.inference/local-only@1"]
       },
@@ -83,9 +154,9 @@ openabstractions credentials add openrouter \
 Declare the host and grant inference rights:
 
 ```console
-openabstractions inference host add openrouter \
+openabstractions inference server add openrouter \
   --base https://openrouter.ai/api/v1 \
-  --wire openai-compatible \
+  --api openai-compatible \
   --credential openrouter
 openabstractions rights grant --for inference \
   --program /absolute/path/to/opencode \
@@ -119,7 +190,11 @@ with isolated config, data, cache and state directories. They cover:
 - a real OpenCode conversation through native OA IPC;
 - tool-call and tool-result forwarding;
 - typed refusal from a provider that cannot serve tools;
-- cancellation reaching the accepted provider;
+- cancellation reaching the accepted provider, through a separate Node
+  consumer and, through OpenCode's own HTTP session API, with the cancelled
+  call attributed to the OpenCode executable itself
+  (`research/adoption/opencode-cancel-2026-09-22.md`,
+  `TestOpenCodeServerAPICancelsMidStreamAndAttributesToOpenCode`);
 - provider substitution with unchanged OpenCode configuration;
 - named credential application by the real Holder and Applier;
 - revocation preventing later hosted requests;
@@ -131,15 +206,41 @@ paid-provider interoperability result.
 
 ## Current limits
 
-- The native Bun connector requires an explicit controlled runtime endpoint.
-- Installed runtime selection and configured server-expectation verification
-  return `ProofUnavailable`.
-- The packaged dependency layout and release installation remain unfinished.
+- An unresolvable shared library stops the request before IPC; Bun never falls
+  back to the Node addon. A relative `ABSTRACTION_IPC_LIBRARY` is refused, and a
+  platform with no published package is refused by name.
+- The Bun connector selects the installed runtime and enforces a configured
+  server expectation through the shared library. Bun 1.4.2 ran selection, the
+  endpoint query and both an accepted and an Untrusted-refused Describe
+  against an isolated runtime under
+  [`serve/bun_native_binding_test.go`](../../serve/bun_native_binding_test.go)
+  on Windows and Linux. On Linux, no installed product meant `selectRuntime`
+  measured the `Status.Untrusted` refusal branch instead. macOS local sockets
+  prove a non-installed, ad-hoc-signed test binary's identity only at the
+  process-ID level; the gated test's own precondition needs more and skips
+  before any Bun process starts there. XPC, which does carry macOS
+  code-signature identity, remains unexercised. Full evidence:
+  `research/adoption/opencode-bun-binding/RESULTS.md`, a private research note
+  held in this project's own tree.
+- No package is on npm. The release packaging job packs the tarballs and
+  retains them as artifacts; publication awaits the owner's npm organization
+  and consent.
+- Platform packages exist for `win32-x64`, `linux-x64`, `darwin-x64` and
+  `darwin-arm64`. Assembly and installation from the packed tarballs ran on
+  Windows x64; Linux and macOS assembly is unrecorded, and no release workflow
+  run has produced these packages yet.
 - Native program attribution distinguishes executable identities. Multiple
   OpenCode sessions using the same executable share that program principal.
+- A `not_permitted` refusal whose reason is a pending rights question
+  (`rights:...`) reads to OpenCode as one sentence: the program is not yet
+  permitted, a question is waiting in the Abstraction Panel, allow it there
+  and retry. `OAInferenceError`'s typed `outcome` and `reason` still carry
+  the original values for code that wants them.
 
-The development tests stage the provider, generated packages and addon into a
-temporary package tree. Set `ABSTRACTION_IPC_NODE` and
-`ABSTRACTION_IPC_LIBRARY` to absolute paths for the built artifacts. The public
-[coverage page](https://openabstractions.org/coverage.html) records current
-checks; the limits above describe this development integration.
+The development tests stage the provider and generated packages into a
+temporary package tree. Set `ABSTRACTION_IPC_LIBRARY` to the absolute path of
+the built shared library for OpenCode when running from source.
+`ABSTRACTION_IPC_NODE` is used by the separate Node cancellation helper and
+Node consumers. The public [coverage
+page](https://openabstractions.org/coverage.html) records current checks; the
+limits above describe this development integration.

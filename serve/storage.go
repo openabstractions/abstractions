@@ -20,23 +20,27 @@ func storageCommand(args []string, output, diagnostics io.Writer) error {
 		"The result is an advisory snapshot; runtime open rechecks compatibility.\n" +
 		"--read-only takes no host guard and writes nothing. It fails with a live-host\n" +
 		"error while a runtime holds the store's guard; a runtime may start after it.\n"
-	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
+	if containsHelp(args) {
 		_, err := io.WriteString(output, usage)
 		return err
 	}
+	if len(args) == 0 {
+		return commandMistake(diagnostics, "storage: a command is required", "openabstractions storage --help")
+	}
 	if args[0] != "check" {
-		return fmt.Errorf("storage: unknown command %q; use storage --help", args[0])
+		return commandMistake(diagnostics, fmt.Sprintf("storage: no command called %q", args[0]), "openabstractions storage --help")
 	}
 	flags := flag.NewFlagSet("storage check", flag.ContinueOnError)
-	flags.SetOutput(diagnostics)
-	flags.Usage = func() { fmt.Fprint(diagnostics, usage); flags.PrintDefaults() }
+	flags.SetOutput(io.Discard)
+	// badFlag below prints this program's own three-line mistake shape;
+	flags.Usage = func() {} // the flag package's own per-error usage call must print nothing
 	state := flags.String("state-dir", "", "absolute managed runtime state directory (default: current user's runtime-v1)")
 	readOnly := flags.Bool("read-only", false, "inspect metadata without the host guard; writes nothing and reports a live runtime")
 	if err := flags.Parse(args[1:]); err != nil {
-		return err
+		return badFlag(flags, diagnostics, "storage check", usage, args[1:], err)
 	}
 	if flags.NArg() != 0 {
-		return errors.New("storage check: unexpected arguments")
+		return flagMistake(diagnostics, "storage check", usage, "unexpected arguments")
 	}
 	supplied := false
 	flags.Visit(func(f *flag.Flag) {
@@ -45,7 +49,7 @@ func storageCommand(args []string, output, diagnostics io.Writer) error {
 		}
 	})
 	if supplied && !filepath.IsAbs(*state) {
-		return errors.New("storage check: --state-dir must be absolute")
+		return flagMistake(diagnostics, "storage check", usage, "--state-dir must be absolute")
 	}
 	if !supplied {
 		var err error

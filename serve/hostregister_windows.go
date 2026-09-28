@@ -41,13 +41,17 @@ Installer discards the output of the custom actions that run them.
 `
 
 func hostCommand(args []string, output, diagnostics io.Writer) error {
-	if len(args) == 1 && isHelp(args[0]) {
+	if containsHelp(args) {
 		_, err := io.WriteString(output, hostUsage)
 		return err
 	}
-	if len(args) != 1 || (args[0] != "register" && args[0] != "unregister") {
-		io.WriteString(diagnostics, hostUsage)
-		return &exitError{code: 2, err: errors.New("host: give register or unregister")}
+	switch {
+	case len(args) == 0:
+		return commandMistake(diagnostics, "host: a command is required", "openabstractions host --help")
+	case len(args) > 1:
+		return commandMistake(diagnostics, "host: unexpected arguments", "openabstractions host --help")
+	case args[0] != "register" && args[0] != "unregister":
+		return commandMistake(diagnostics, fmt.Sprintf("host: no command called %q", args[0]), "openabstractions host --help")
 	}
 	registrar := systemHostRegistrar(output)
 	var err error

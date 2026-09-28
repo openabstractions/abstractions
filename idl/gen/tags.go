@@ -9,23 +9,54 @@ import (
 	"strings"
 )
 
+// A rule id is a family of capitals, a dash, then any number of capitals and
+// one or more digits: REG-3 and INF-V1 are both valid, the letter after the
+// dash is not required. scripts/check.sh's TAG variable states the same form
+// in its own comment, and the two are kept matching by hand — a citation
+// this backend accepts and the gate's contract-tags rule calls stray, or the
+// reverse, is the defect this pair fixed once (id form unified, gate rules
+// the reviews asked for, 2026-09-23).
 var citedTag = regexp.MustCompile(`\[([A-Z]+-[A-Z]*[0-9]+)\]`)
 
-var ruleDocuments = []string{
-	"LANGUAGE.md",
-	"idl/LANGUAGE.md",
-	"abstraction-job/CONTRACT.md",
-	"abstraction-job/SPEC.md",
-	"abstraction-download/CONTRACT.md",
-	"abstraction-identity/CONTRACT.md",
-	"abstraction-logging/CONTRACT.md",
-	"abstraction-config/CONTRACT.md",
-	"openabstractions-flat/abstraction-job/CONTRACT.md",
-	"openabstractions-flat/abstraction-job/SPEC.md",
-	"openabstractions-flat/abstraction-download/CONTRACT.md",
-	"openabstractions-flat/abstraction-identity/CONTRACT.md",
-	"openabstractions-flat/abstraction-logging/CONTRACT.md",
-	"openabstractions-flat/abstraction-config/CONTRACT.md",
+// ruleDocuments lists the pages checked for a declared tag at one ancestor
+// directory of declaredTags' walk to the root: the two fixed language pages,
+// and every CONTRACT.md or SPEC.md the tree currently holds under an
+// abstraction-* directory, read from dir itself (the public, flat form) and
+// from dir/openabstractions-flat (the private form), because the walk passes
+// through both trees on its way to the root. Derived from the tree rather
+// than typed out: a literal list named five of the seventeen contracts this
+// project has, and REG, ENDPOINT, LEND, HOST, ROUTE, INF, CRED, RES, MODEL
+// and ASK ids were invisible to every rule that read it (gate rules the
+// reviews asked for, 2026-09-23).
+func ruleDocuments(dir string) []string {
+	out := []string{"LANGUAGE.md", "idl/LANGUAGE.md"}
+	for _, prefix := range []string{"", "openabstractions-flat"} {
+		entries, err := os.ReadDir(filepath.Join(dir, filepath.FromSlash(prefix)))
+		if err != nil {
+			continue
+		}
+		var names []string
+		for _, entry := range entries {
+			if entry.IsDir() && strings.HasPrefix(entry.Name(), "abstraction-") {
+				names = append(names, entry.Name())
+			}
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			for _, doc := range []string{"CONTRACT.md", "SPEC.md"} {
+				candidate := filepath.Join(dir, filepath.FromSlash(prefix), name, doc)
+				if _, err := os.Stat(candidate); err != nil {
+					continue
+				}
+				rel := name + "/" + doc
+				if prefix != "" {
+					rel = prefix + "/" + rel
+				}
+				out = append(out, rel)
+			}
+		}
+	}
+	return out
 }
 
 func verifyDocs(e emitted) error {
@@ -188,7 +219,7 @@ func declaredTags(definition string) (map[string]string, []string) {
 		return found, searched
 	}
 	for {
-		for _, rel := range ruleDocuments {
+		for _, rel := range ruleDocuments(dir) {
 			path := filepath.Join(dir, filepath.FromSlash(rel))
 			src, err := os.ReadFile(path)
 			if err != nil {

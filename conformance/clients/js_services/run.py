@@ -8,7 +8,7 @@ from nodejs.org and verifies it against SHASUMS256.txt; later runs reuse it
 offline. Linux links the addon with undefined Node-API symbols that the loading
 node process provides.
 """
-import argparse, os, shutil, subprocess, sys, tempfile
+import argparse, os, shutil, subprocess, sys, tarfile, tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[3]
 HERE=Path(__file__).resolve().parent
@@ -36,6 +36,8 @@ def node_sdk(node,npm_env,sdk,version):
 def main():
  p=argparse.ArgumentParser(description=__doc__,formatter_class=argparse.RawDescriptionHelpFormatter)
  p.add_argument('--run',action='store_true',help='build the native addon and run every installed fixture through NativeConnector')
+ p.add_argument('--installed-candidate',action='store_true',help='Linux only: build the native addon, then prove default selection and a read-only logging call against the account\'s installed runtime')
+ p.add_argument('--prepare-only',action='store_true',help='with --installed-candidate --keep: build the installed client for execution as the installed account, without running it here')
  p.add_argument('--dry-run', action='store_true', help=DRY_RUN_HELP)
  p.add_argument('--pure',action='store_true',help='skip the native addon; check installed metadata and run capability calls through the test-only pipe connector')
  p.add_argument('--cmake',help='CMake executable. Windows: Visual Studio bundled cmake.exe only; --run certifies MSVC from a vcvars64 developer environment and refuses other toolchains before building. Linux: default cmake from PATH')
@@ -45,18 +47,21 @@ def main():
  p.add_argument('--tsc',type=Path,help="TypeScript compiler script (a typescript package's lib/tsc.js or bin/tsc) run with this Node; compiles types.mts (and types_native.mts with --run) against the installed declarations. No compiler is downloaded")
  p.add_argument('--keep',metavar='DIR',help=KEEP_HELP+'; the kept tree holds the addon, the installed packages under outside/ and the npm cache')
  a=p.parse_args()
- if not (a.run or a.pure or a.dry_run):p.print_help();return
+ if not (a.run or a.pure or a.dry_run or a.installed_candidate):p.print_help();return
+ if sum((a.run,a.pure,a.dry_run,a.installed_candidate))!=1:p.error('choose one mode')
+ if a.prepare_only and (not a.installed_candidate or not a.keep):p.error('--prepare-only requires --installed-candidate --keep DIR')
  source_revision()
  if a.dry_run: dry_run_stop('js_services', a)
- if a.run and a.pure:p.error('choose --run or --pure')
  if not WINDOWS and not sys.platform.startswith('linux'):raise RuntimeError('this fixture measures Windows/MSVC and Linux only; other platforms remain unmeasured')
+ if a.installed_candidate and WINDOWS:p.error('--installed-candidate measures Linux only')
+ native_mode=a.run or a.installed_candidate
  def run(args,env=None,cwd=ROOT,timeout=180):subprocess.run(list(map(str,args)),cwd=cwd,env=env,check=True,timeout=timeout)
  try:node=resolved_executable(a.node)
  except RuntimeError:raise SystemExit(f'Node.js not found: {a.node!r} is not on PATH or a file. Install Node.js 18+ or pass --node <path>; this JavaScript level stays unproven on this host.')
  version=subprocess.check_output([node,'--version'],text=True).strip()
  npm=bundled_npm(node)/'bin/npm-cli.js'
  if not npm.is_file():raise RuntimeError('matching Node npm CLI not found: '+str(npm))
- if a.run:
+ if native_mode:
   cmake_env=dict(os.environ);cmake=cmake_for(cmake_env,a.cmake)
  # npm's cache files can stay locked briefly after npm exits on Windows. The
  # proof has finished by then, so a leftover scratch tree under .build is not a
@@ -65,7 +70,7 @@ def main():
  with build_tree('js-',a.keep,build_root() if WINDOWS else None,ignore_cleanup_errors=True) as b:
   sources=[ROOT/f'openabstractions-flat/abstraction-{name}/javascript' for name in PURE]
   npm_env=dict(os.environ,NPM_CONFIG_CACHE=str(b/'npm-cache'),NPM_CONFIG_USERCONFIG=str(b/'empty-npmrc'),NPM_CONFIG_GLOBALCONFIG=str(b/'empty-global-npmrc'))
-  if a.run:
+  if native_mode:
    headers,library=node_sdk(node,npm_env,a.node_sdk.resolve(),version)
    ipc=ROOT/'openabstractions-flat/abstraction-identity/cpp';native=ROOT/'openabstractions-flat/abstraction-identity/javascript'
    # A single-configuration generator takes the build type at configure time on
@@ -83,15 +88,30 @@ def main():
    run([node,npm,'pack','--offline','--ignore-scripts','--pack-destination',b/'packs',source],npm_env)
   tarballs=sorted((b/'packs').glob('*.tgz'))
   if len(tarballs)!=len(sources):raise RuntimeError(f'{len(sources)} actual package tarballs required')
+  if native_mode:
+   native_tarballs=[path for path in tarballs if path.name.startswith('openabstractions-ipc-')]
+   if len(native_tarballs)!=1:raise RuntimeError('one packed @openabstractions/ipc source-build tarball required')
+   with tarfile.open(native_tarballs[0], 'r:gz') as archive:
+    member=archive.getmember('package/native/oa_ipc_node.node')
+    if not member.isfile() or member.size==0:raise RuntimeError('packed native addon is missing or empty')
   run([node,npm,'install','--offline','--ignore-scripts','--no-audit','--no-fund','--no-package-lock','--prefix',b/'outside',*tarballs],npm_env,cwd=b/'outside')
-  assert sorted(p.name for p in packages.iterdir())==sorted(NAMES+(['ipc'] if a.run else []))
-  for file in ('consumer.mjs','pure.mjs','absence.mjs','services.mjs','pipe_connector.mjs','packages.mjs'):shutil.copy2(HERE/file,b/'outside'/file)
+  assert sorted(p.name for p in packages.iterdir())==sorted(NAMES+(['ipc'] if native_mode else []))
+  for file in ('consumer.mjs','pure.mjs','absence.mjs','services.mjs','pipe_connector.mjs','packages.mjs','native_package.mjs'):shutil.copy2(HERE/file,b/'outside'/file)
   env=dict(os.environ);env.pop('ABSTRACTION_IPC_NODE',None);env.pop('NODE_PATH',None)
   run([node,b/'outside/packages.mjs'],env,cwd=b/'outside')
+  if native_mode:run([node,b/'outside/native_package.mjs'],env,cwd=b/'outside')
+  if a.installed_candidate:
+   if a.prepare_only:
+    print(f'READY installed JavaScript client: {node} {b/"outside/consumer.mjs"} installed-candidate',flush=True)
+    return
+   env.pop('ABSTRACTION_RUNTIME_ENDPOINT',None);env.pop('OA_LIVE_PANEL',None)
+   run([node,b/'outside/consumer.mjs','installed-candidate'],env,cwd=b/'outside')
+   print('PASS installed JavaScript client selected the Linux runtime and read logging history'+('; build tree kept' if a.keep else ''),flush=True)
+   return
   if a.tsc:
    # The installed declarations, compiled strictly under both resolutions a
    # TypeScript host uses: package exports (nodenext) and the types field (node10).
-   consumers=['types.mts']+(['types_native.mts'] if a.run else [])
+   consumers=['types.mts']+(['types_native.mts'] if native_mode else [])
    for file in consumers+['types_protocol.mts']:shutil.copy2(HERE/file,b/'outside'/file)
    strict=[node,a.tsc.resolve(),'--noEmit','--strict','--skipLibCheck','false','--target','es2022','--lib','es2022,dom']
    run([*strict,'--module','nodenext','--moduleResolution','nodenext',*consumers,'types_protocol.mts'],env,cwd=b/'outside')

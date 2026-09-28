@@ -255,6 +255,7 @@ func (RecoverableAcceptanceClient) Submit(submission Submission) (result Accepta
 func (RecoverableAcceptanceClient) Reconcile(identity RequestIdentity) (result AcceptanceResult, err error)
 func (RecoverableAcceptanceClient) CancelWork(identity RequestIdentity) (result CancellationResult, err error)
 func (RecoverableAcceptanceDispatcher) DescribeService() (contract string, ready bool, why string)
+func (RecoverableAcceptanceDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (RecoverableAcceptanceDispatcher) ServiceContract() string
 func (RecoverableAcceptanceDispatcher) WriteFrame(frame []byte) error
 func (RecoverableAcceptanceDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -270,6 +271,7 @@ type OperationControlDispatcher struct
 func (OperationControlClient) ObserveWork(identity RequestIdentity) (result ObservationResult, err error)
 func (OperationControlClient) ReadResult(identity RequestIdentity, offset, maxBytes int64) (result ResultRead, err error)
 func (OperationControlDispatcher) DescribeService() (contract string, ready bool, why string)
+func (OperationControlDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (OperationControlDispatcher) ServiceContract() string
 func (OperationControlDispatcher) WriteFrame(frame []byte) error
 func (OperationControlDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -283,6 +285,7 @@ type JobInventoryDispatcher struct
   Handler JobInventory
 func (JobInventoryClient) ListWork(cursor string, limit int64) (result InventoryPage, err error)
 func (JobInventoryDispatcher) DescribeService() (contract string, ready bool, why string)
+func (JobInventoryDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (JobInventoryDispatcher) ServiceContract() string
 func (JobInventoryDispatcher) WriteFrame(frame []byte) error
 func (JobInventoryDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -298,6 +301,7 @@ type JobOperatorDispatcher struct
 func (JobOperatorClient) ListAccountWork(cursor string, limit int64) (result InventoryPage, err error)
 func (JobOperatorClient) CancelOperation(operationID string) (result OperatorCancellation, err error)
 func (JobOperatorDispatcher) DescribeService() (contract string, ready bool, why string)
+func (JobOperatorDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (JobOperatorDispatcher) ServiceContract() string
 func (JobOperatorDispatcher) WriteFrame(frame []byte) error
 func (JobOperatorDispatcher) ExchangeFrame(frame []byte) ([]byte, error)

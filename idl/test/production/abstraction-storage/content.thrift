@@ -250,7 +250,7 @@ struct InventoryPage {
  10: required i64 audit_retention_ms
 }(unknown_fields="refuse",doc="One frozen snapshot across every configured store and designated source; cursor is the content-changes cursor at which it was taken. stores is complete on the first page and empty afterwards. objects carries only objects no manifest entry names. Manifests and objects the caller may not read are omitted without a count. Observed holds carry their observation time and basis, never a promise of current truth. Refusals carry empty lists, empty continuation and cursor, and complete false.")
 service Inventory {
- InventoryPage List(1:string continuation,2:i64 limit)(doc="limit 1..256 manifests plus objects per page. Gated by abstraction.storage/inventory.read; each manifest and object is filtered through content.read for its digests.")
+ InventoryPage List(1:string continuation,2:i64 limit)(doc="limit 1..256 combined manifests, stray objects and dangling references per page. Gated by abstraction.storage/inventory.read; each manifest and object is filtered through content.read for its digests.")
  InventoryPage Holders(1:string target)(doc="Every hold on one manifest id or digest, re-observed at call time through each source's Verify: observed holds return as verified or are omitted; declared holds return as declared. Dangling references naming the target's names are included.")
  InventoryPage Unheld(1:string continuation,2:i64 limit)(doc="Manifests and objects with no declared hold and no verified observed hold at two observations at least grace_ms apart, oldest first.")
  InventoryPage Find(1:string digest)(doc="Manifests and objects carrying this canonical digest with evidence hashed or named, and dangling references whose expected_digest equals it.")

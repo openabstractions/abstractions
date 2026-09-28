@@ -1,0 +1,6 @@
+# requires: store
+state legacy
+state canonical
+
+# expect 1: not_found
+# expect 2: not-found

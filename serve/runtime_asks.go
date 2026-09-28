@@ -55,7 +55,7 @@ func asksEndpoint(options runtimeFlags) (string, error) {
 	case options.endpoint != "":
 		return options.endpoint + "-asks", nil
 	}
-	return bootstrap.Endpoint("asks-application-v1")
+	return options.defaultEndpoint("asks-application-v1")
 }
 
 // composeAsks opens the application book in the runtime state directory. It
@@ -84,6 +84,7 @@ func composeAsks(options runtimeFlags, r *runtimeRights, report func(error)) (*r
 	// The runtime asks as itself, in the scope the application service would
 	// derive for its executable.
 	self := r.self()
+	//unchecked: a []string of plain values, which json.Marshal cannot fail on
 	data, _ := json.Marshal([]string{"asks-owner-program@1", r.kind, self.Account, self.Program})
 	sum := sha256.Sum256(data)
 	a := &runtimeAsks{book: book, endpoint: endpoint, rights: r, report: report,

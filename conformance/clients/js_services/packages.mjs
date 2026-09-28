@@ -34,6 +34,8 @@ for (const name of names) {
   for (const file of walk(dir).filter((path) => /\.(mjs|js)$/.test(path))) {
     for (const match of readFileSync(file, 'utf8').matchAll(importSpecifier)) {
       // A subpath such as @openabstractions/download-request/internal belongs to its package.
+      // Bun exposes ffi as a runtime builtin imported only by the Bun-specific subpath.
+      if (match[1] === 'bun:ffi') continue;
       if (!match[1].startsWith('.') && !match[1].startsWith('node:')) imported.add(match[1].split('/').slice(0, 2).join('/'));
     }
   }

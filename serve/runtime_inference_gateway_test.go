@@ -142,12 +142,14 @@ func TestRuntimeGatewayWindowServesAKeyedProgram(t *testing.T) {
 	if err != nil {
 		t.Fatalf("host add: %v\n%s", err, out)
 	}
-	out, err = runInference(t, append([]string{"host", "add", "openrouter", "--base", "https://openrouter.invalid/api/v1", "--wire", "openai-compatible",
-		"--credential", "openrouter", "--tokens-per-day", "1000", "--profiles", "chat"}, endpoint...)...)
+	// The ollama add above uses the old names (host); this one the new
+	// (server, --api, --modalities), both accepted for one release.
+	out, err = runInference(t, append([]string{"server", "add", "openrouter", "--base", "https://openrouter.invalid/api/v1", "--api", "openai-compatible",
+		"--credential", "openrouter", "--tokens-per-day", "1000", "--modalities", "chat"}, endpoint...)...)
 	if err != nil {
-		t.Fatalf("hosted host add: %v\n%s", err, out)
+		t.Fatalf("hosted server add: %v\n%s", err, out)
 	}
-	out, err = runInference(t, append([]string{"host", "list", "--json"}, endpoint...)...)
+	out, err = runInference(t, append([]string{"server", "list", "--json"}, endpoint...)...)
 	if err != nil || !strings.Contains(out, `"Name":"ollama"`) || !strings.Contains(out, `"TokensPerDay":1000`) || !strings.Contains(out, `"Spend":{"Day"`) ||
 		!strings.Contains(out, `"Profiles":["chat","embed","transcription","speech","image","live"],"DeclaredBy":"operator"`) || !strings.Contains(out, `"Profiles":["chat"],"DeclaredBy":"operator"`) {
 		t.Fatalf("host list: %v\n%s", err, out)
@@ -196,7 +198,7 @@ func TestRuntimeGatewayWindowServesAKeyedProgram(t *testing.T) {
 		// Private development keeps the canonical fixture with the inference
 		// gateway. Publication copies that same file into serve/testdata so a
 		// standalone charter checkout exercises the identical client.
-		script = filepath.Join("..", "openabstractions-flat", "abstraction-inference", "go", "gateway", "testdata", "llm_style.py")
+		script = filepath.Join("..", "openabstractions-flat", "abstraction-inference", "adapters", "go", "gateway", "testdata", "llm_style.py")
 	}
 	llm := func() (map[string]any, int) {
 		cmd := exec.Command(pythonExe, append(pythonArgs, script, "http://"+options.gateway+"/v1", issued.Key, "fixture-chat:1b")...)

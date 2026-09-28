@@ -597,6 +597,7 @@ func (d *applicationDirectory) snapshot(ctx context.Context, s rights.Subject) (
 		return wire.ApplicationPage{Outcome: wire.ApplicationOutcomeUnavailable, Applications: []wire.ApplicationEntry{}}, d.changed, time.Second
 	}
 	sort.Slice(out.Applications, func(i, j int) bool { return out.Applications[i].Descriptor.Name < out.Applications[j].Descriptor.Name })
+	//unchecked: raw only feeds a size guard and a change-cursor hash below, never a returned payload; its wire.ApplicationEntry fields are plain marshalable data
 	raw, _ := json.Marshal(struct {
 		Epoch, Account, Program string
 		Entries                 []wire.ApplicationEntry

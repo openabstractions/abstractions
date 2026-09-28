@@ -134,6 +134,46 @@ Adding a case is adding a file: the drivers read the directory and the
 expectation is the filename, so a sixth implementation is checked against the
 same corpus without touching any of the first five.
 
+## Per-language binding checklist
+
+Every contract's generated binding in each language ships its package
+metadata and a facade resolver accessor for each profile `abstraction-facade`
+serves in that language.
+
+| Language | Package metadata | Facade resolver accessor |
+| --- | --- | --- |
+| Go | `go.mod` | `Resolve<Capability><Profile>` on `client.Machine` |
+| C++17 | a CMake target (an aggregate `Machine` method, or `resolve_<capability>_<profile>` as its own optional package) | `resolve_<capability>_<profile>`, taking a `ResolutionClient` |
+| Python | `pyproject.toml` | `resolve_<capability>_<profile>` on `Machine` |
+| Rust | `Cargo.toml`, one `rust-<capability>` crate | `resolve_<capability>_<profile>` on that crate's extension trait |
+| JavaScript | `package.json` | none — one generic `resolveService(contract)` covers every capability |
+
+The generator emits a contract's records in every declared language from one
+definition. The client wrapper a facade resolver binds to is written
+separately, per language, over those records. A capability with no such
+wrapper in a language is unreachable there, whatever the coverage grid's cell
+for that language says about the contract itself.
+
+A `py/` directory is generator output; a sibling `python/` directory is a
+hand-written package (`abstraction-cas`, `abstraction-config` carry both).
+`rec.h`, `rec.go` and a `py/` directory's `__init__.py` mark the same split
+in every language: each is the generated record codec, and a hand-written
+client sits beside it — `include/abstraction/<contract>/client.hpp` beside
+`rec.h`, `client.go` beside `rec.go`, the sibling `python/` package beside
+`py/`.
+
+`abstraction-resource` is unreachable from C++, Rust and JavaScript: each has
+generated records and no hand-written service client. Go and Python each
+carry both accessors: Go's landed with `leases@1`; Python's
+(`resolve_resource_table`, `resolve_resource_leases`) landed in `f3795592`,
+together with `abstraction-resource/py/pyproject.toml`
+(`research/feedback-archive-2026-09-24/2026-09-22-comfyui-card-hook.md`, item 1).
+
+`scripts/check.sh`'s "generated" section checks both parts: every
+`openabstractions-flat` contract with a Python backend for `pyproject.toml`,
+and every capability the Go facade resolves for a matching Python
+`resolve_*` accessor.
+
 ## What may break
 
 - **A generated reader refuses a terminal record written before

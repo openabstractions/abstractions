@@ -32,6 +32,18 @@ package is signed and notarised; protected service calls retain the documented
 caller-identity limitation. Windows and Linux packages are unsigned.
 [Release verification and limits](https://github.com/openabstractions/abstractions/blob/main/docs/results/release-0.2.0.md).
 
+## Package install status
+
+| Language | **Published today** | With 0.3.0 (not yet) | Install command today |
+| --- | --- | --- | --- |
+| Go | Real tags: `go.mod` files pin `abstraction-facade` go v0.5.0 and each dependency at its own published version, live since 2026-09-20; `go get module@version` fetches them directly today | Real tags (for example `abstraction-facade` go v0.6.0, go-core v0.3.0) that `go get module@version` fetches directly, with no separate registry step | `go get github.com/openabstractions/abstraction-facade/go@v0.5.0` |
+| JavaScript | Source only; no npm package published | An `@openabstractions` npm package, pending the npm organization and owner consent | none yet |
+| Python | A local CMake native build, then `pip install` from local package paths | A PyPI wheel, pending owner consent | `pip install ./abstraction-facade/py` after the local native build |
+| Rust | Source crates at version 0.0.0, not published to crates.io | No registry publish; the crates stay a source checkout | none yet |
+| C++ | Clone the sibling repositories by hand and build with CMake | No registry publish; the sources stay a source checkout | none yet |
+
+Each language's own package README states this same status in one line.
+
 ## What you can build
 
 | Need | Application API | Current provider path |
@@ -111,8 +123,7 @@ credentials, rights, inference hosts, providers and applications. Run
 `<command> --help` before changing machine state.
 
 The control panel in [`monitor/`](monitor/) uses the same generated clients for
-configuration, rights, applications and service status. It is the current OA
-panel. The separate `polite-monitor` repository is a retained legacy program.
+configuration, rights, applications and service status.
 
 ## Use it from an application
 

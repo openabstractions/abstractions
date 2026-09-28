@@ -40,7 +40,7 @@ func storageTree(t *testing.T, root string) map[string]string {
 	return result
 }
 func TestStorageHelpAndArguments(t *testing.T) {
-	for _, args := range [][]string{nil, {"--help"}, {"check", "--help"}} {
+	for _, args := range [][]string{{"--help"}, {"check", "--help"}} {
 		var out, diagnostics bytes.Buffer
 		err := storageCommand(args, &out, &diagnostics)
 		if err != nil && !errors.Is(err, flag.ErrHelp) {
@@ -49,6 +49,20 @@ func TestStorageHelpAndArguments(t *testing.T) {
 		if !strings.Contains(out.String()+diagnostics.String(), "storage check") {
 			t.Fatal("missing help")
 		}
+	}
+	// No arguments at all is a missing-command mistake (item 7), not a help
+	// request: it names what is missing and exits usage, not help's exit 0.
+	var out, diagnostics bytes.Buffer
+	err := storageCommand(nil, &out, &diagnostics)
+	var exit *exitError
+	if !errors.As(err, &exit) || exit.code != exitUsage {
+		t.Fatalf("no arguments: err = %v, want *exitError{exitUsage}", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("no arguments: stdout %q, want none", out.String())
+	}
+	if !strings.Contains(diagnostics.String(), "a command is required") {
+		t.Fatalf("no arguments: diagnostics %q does not name what is missing", diagnostics.String())
 	}
 	for _, args := range [][]string{{"unknown"}, {"check", "extra"}, {"check", "--state-dir", "relative"}, {"check", "--state-dir="}, {"check", "--unknown"}} {
 		if err := storageCommand(args, &bytes.Buffer{}, &bytes.Buffer{}); err == nil {

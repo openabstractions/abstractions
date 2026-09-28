@@ -93,6 +93,7 @@ type SinkDispatcher struct
   Handler Sink
 func (SinkClient) Write(record Record) (err error)
 func (SinkDispatcher) DescribeService() (contract string, ready bool, why string)
+func (SinkDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (SinkDispatcher) ServiceContract() string
 func (SinkDispatcher) WriteFrame(frame []byte) error
 type HistoryReader interface
@@ -105,6 +106,7 @@ type HistoryReaderDispatcher struct
   Handler HistoryReader
 func (HistoryReaderClient) Read(cursor string, maxRecords, maxBytes int64) (result Page, err error)
 func (HistoryReaderDispatcher) DescribeService() (contract string, ready bool, why string)
+func (HistoryReaderDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (HistoryReaderDispatcher) ServiceContract() string
 func (HistoryReaderDispatcher) WriteFrame(frame []byte) error
 func (HistoryReaderDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -118,6 +120,7 @@ type HistoryObserverDispatcher struct
   Handler HistoryObserver
 func (HistoryObserverClient) Observe(cursor string, maxRecords, maxBytes, waitMs int64) (result Page, err error)
 func (HistoryObserverDispatcher) DescribeService() (contract string, ready bool, why string)
+func (HistoryObserverDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (HistoryObserverDispatcher) ServiceContract() string
 func (HistoryObserverDispatcher) WriteFrame(frame []byte) error
 func (HistoryObserverDispatcher) ExchangeFrame(frame []byte) ([]byte, error)

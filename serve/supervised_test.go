@@ -19,6 +19,7 @@ import (
 
 	downloadserve "github.com/openabstractions/abstraction-download/go/serve"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
+	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-identity/listen"
 	logging "github.com/openabstractions/abstraction-logging/go"
 )
@@ -31,7 +32,19 @@ import (
 var endpointSeq atomic.Int64
 
 func testPipe(prefix, service string) string {
-	return fmt.Sprintf(`\\.\pipe\%s-%d-%d-%s`, prefix, os.Getpid(), endpointSeq.Add(1), service)
+	return listen.Endpoint(fmt.Sprintf("%s-%d-%d-%s", prefix, os.Getpid(), endpointSeq.Add(1), service))
+}
+
+// shortSocketDir keeps Unix socket paths below macOS's sun_path limit. Each
+// caller owns and removes its directory; no machine endpoint is reused.
+func shortSocketDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("/tmp", "oa-s-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	return dir
 }
 
 // runtimeWait bounds every wait on an in-process runtime or fixture.
@@ -115,9 +128,35 @@ func helperEnv(role string, args []string) []string {
 	}
 	return append(env, "OA_SUPERVISED_HELPER="+role, "OA_SUPERVISED_ARGS="+string(b))
 }
-func isolatedRuntime(t *testing.T) (runtimeFlags, []string) {
+
+// isolatedRuntimeOptions configures the composition isolatedRuntime builds.
+type isolatedRuntimeOptions struct {
+	// ProductHosts composes the runtime with defaultDeclarationEnv's real
+	// probe of this machine's installed products, the way a person's
+	// `openabstractions serve runtime --isolated` does, instead of this test
+	// binary's package-wide empty-fixture stub (runtime_inference_declared_test.go
+	// init). A live test that expects the hosts a person would see opts in;
+	// every other test stays explicit about composing with none.
+	ProductHosts bool
+}
+
+// isolatedRuntime defaults to no product hosts at all: see isolatedRuntimeOptions.
+func isolatedRuntime(t *testing.T, opts ...isolatedRuntimeOptions) (runtimeFlags, []string) {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "oa-supervised-")
+	var options isolatedRuntimeOptions
+	if len(opts) > 0 {
+		options = opts[0]
+	}
+	if options.ProductHosts {
+		saved := declarationEnv
+		declarationEnv = defaultDeclarationEnv
+		t.Cleanup(func() { declarationEnv = saved })
+	}
+	base := ""
+	if runtime.GOOS == "darwin" {
+		base = "/tmp"
+	}
+	dir, err := os.MkdirTemp(base, "oa-supervised-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,6 +171,26 @@ func isolatedRuntime(t *testing.T) (runtimeFlags, []string) {
 	args := []string{"serve", "runtime", "--supervised", "--endpoint", o.endpoint, "--log-endpoint", o.logEndpoint, "--config-endpoint", o.configEndpoint, "--out", o.out, "--jobs-endpoint", o.jobEndpoint, "--state-dir", o.stateDir}
 	return o, args
 }
+
+// Default isolatedRuntime composes with this test binary's empty-fixture
+// declarationEnv (runtime_inference_declared_test.go init): GOOS "linux"
+// regardless of the machine running the tests. ProductHosts rebinds
+// declarationEnv to defaultDeclarationEnv, which reports this machine's own
+// GOOS, for the call's duration; a t.Cleanup it registers restores the stub
+// so every other test keeps composing with no product hosts.
+func TestIsolatedRuntimeProductHostsRestoresTheRealProbe(t *testing.T) {
+	if runtime.GOOS == "linux" {
+		t.Skip("the stub and the real probe would both report linux here")
+	}
+	if got := declarationEnv(nil).GOOS; got != "linux" {
+		t.Fatalf("isolatedRuntime's default composition probed GOOS %q, want the test binary's stub (linux)", got)
+	}
+	isolatedRuntime(t, isolatedRuntimeOptions{ProductHosts: true})
+	if got := declarationEnv(nil).GOOS; got != runtime.GOOS {
+		t.Fatalf("ProductHosts probed GOOS %q, want this machine's own %q", got, runtime.GOOS)
+	}
+}
+
 func expectLine(t *testing.T, lines <-chan string, want string) {
 	t.Helper()
 	select {
@@ -161,6 +220,16 @@ func processLines(t *testing.T, c *exec.Cmd) <-chan string {
 }
 func assertListenersReleased(t *testing.T, o runtimeFlags) {
 	t.Helper()
+	if runtime.GOOS == "darwin" {
+		for _, endpoint := range []string{o.endpoint, o.logEndpoint, o.configEndpoint, o.jobEndpoint} {
+			l, err := listen.Listen(endpoint)
+			if err != nil {
+				t.Fatalf("listener %s not released: %v", endpoint, err)
+			}
+			l.Close()
+		}
+		return
+	}
 	sink, err := logging.OpenFileSink(o.out)
 	if err != nil {
 		t.Fatal(err)
@@ -172,7 +241,37 @@ func assertListenersReleased(t *testing.T, o runtimeFlags) {
 	}
 	h.Close()
 }
+
+// The test's Unix fixture cannot prove Program on macOS. The installed
+// runtime uses XPC; here startup must refuse before acknowledging readiness
+// and must release every endpoint it briefly opened.
+func assertMacSupervisedProofRefusal(t *testing.T) {
+	t.Helper()
+	o, _ := isolatedRuntime(t)
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	defer w.Close()
+	var ready bytes.Buffer
+	err = superviseRuntime(context.Background(), o, r, &ready)
+	if !errors.Is(err, identity.ErrNotProven) || ready.Len() != 0 {
+		t.Fatalf("Unix Program startup: err %v, readiness %q", err, ready.String())
+	}
+	assertListenersReleased(t, o)
+}
+
+func TestMacUnixSupervisedStartupRefusesProgramProof(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS Unix transport contract")
+	}
+	assertMacSupervisedProofRefusal(t)
+}
 func TestSupervisedParentClose(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("parent-close readiness requires Program proof; Unix refusal is checked separately")
+	}
 	o, args := isolatedRuntime(t)
 	c := exec.Command(os.Args[0], "-test.run=^TestSupervisedProcessHelper$")
 	c.Env = helperEnv("runtime", args)
@@ -200,6 +299,9 @@ func TestSupervisedParentClose(t *testing.T) {
 	assertListenersReleased(t, o)
 }
 func TestSupervisedParentDeath(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("parent-death readiness requires Program proof; Unix refusal is checked separately")
+	}
 	o, args := isolatedRuntime(t)
 	c := exec.Command(os.Args[0], "-test.run=^TestSupervisedProcessHelper$")
 	c.Env = helperEnv("owner", args)
@@ -235,6 +337,9 @@ func TestSupervisedParentDeath(t *testing.T) {
 	assertListenersReleased(t, o)
 }
 func TestSupervisedFailedStartHasNoReadiness(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("occupied-endpoint sequence requires Program proof; Unix refusal is checked separately")
+	}
 	o, args := isolatedRuntime(t)
 	// Force the final resolver initialization to fail after provider setup.
 	sink, err := logging.OpenFileSink(o.out)
@@ -284,6 +389,9 @@ type refusedReady struct{}
 
 func (refusedReady) Write([]byte) (int, error) { return 0, errors.New("ready closed") }
 func TestSupervisedReadinessFailureCleansListeners(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("readiness-writer sequence requires Program proof; Unix refusal is checked separately")
+	}
 	o, _ := isolatedRuntime(t)
 	r, w, _ := os.Pipe()
 	defer r.Close()
@@ -294,6 +402,9 @@ func TestSupervisedReadinessFailureCleansListeners(t *testing.T) {
 	assertListenersReleased(t, o)
 }
 func TestSupervisedCancellationDoesNotWaitForStdin(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("cancellation-after-readiness requires Program proof; Unix refusal is checked separately")
+	}
 	o, _ := isolatedRuntime(t)
 	r, w, _ := os.Pipe()
 	defer r.Close()
@@ -349,6 +460,9 @@ type shortReady struct{}
 
 func (shortReady) Write(p []byte) (int, error) { return len(p) - 1, nil }
 func TestSupervisedShortReadinessCleansListeners(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("short-readiness sequence requires Program proof; Unix refusal is checked separately")
+	}
 	o, _ := isolatedRuntime(t)
 	r, w, _ := os.Pipe()
 	defer r.Close()

@@ -60,6 +60,7 @@ var shellFrameAnchor atomic.Pointer[shellFrame]
 func comCall(object unsafe.Pointer, index int, args ...uintptr) error {
 	table := *(*unsafe.Pointer)(object)
 	method := *(*uintptr)(unsafe.Add(table, index*int(unsafe.Sizeof(uintptr(0)))))
+	//unchecked: the HRESULT primary return is checked below; SyscallN's raw GetLastError third field carries no separate information for a COM-style HRESULT call
 	hr, _, _ := syscall.SyscallN(method, append([]uintptr{uintptr(object)}, args...)...)
 	if int32(hr) < 0 {
 		return fmt.Errorf("COM method %d: HRESULT 0x%08X", index, uint32(hr))
@@ -69,6 +70,7 @@ func comCall(object unsafe.Pointer, index int, args ...uintptr) error {
 
 func comRelease(object unsafe.Pointer) {
 	if object != nil {
+		//unchecked: releasing a COM reference on a cleanup path with no return value to report a failure through
 		comCall(object, 2)
 	}
 }
@@ -77,10 +79,12 @@ func comRelease(object unsafe.Pointer) {
 // process's, so a caller running as another account never launches into the
 // desktop owner's session.
 func shellIsThisAccount(frame *shellFrame) error {
+	//unchecked: the HWND primary return is checked below; Call's raw GetLastError third field carries no separate information here
 	window, _, _ := getShellWindow.Call()
 	if window == 0 {
 		return errNoShell
 	}
+	//unchecked: a failure leaves frame.pid zero, and the OpenProcess call right below fails naturally on that
 	getWindowThreadProcessID.Call(window, uintptr(unsafe.Pointer(&frame.pid)))
 	process, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, frame.pid)
 	if err != nil {
@@ -143,6 +147,7 @@ func launchThroughShellMode(image, dir string, show int, args ...string) error {
 	shellWindows, desktop, provider, browser, view, background, folderView, application, shell :=
 		&frame.objects[0], &frame.objects[1], &frame.objects[2], &frame.objects[3], &frame.objects[4], &frame.objects[5], &frame.objects[6], &frame.objects[7], &frame.objects[8]
 	const clsctxLocalServer = 4
+	//unchecked: the HRESULT primary return is checked in the same statement; Call's raw GetLastError third field carries no separate information for a COM-style HRESULT call
 	if hr, _, _ := coCreateInstance.Call(uintptr(unsafe.Pointer(&clsidShellWindows)), 0, clsctxLocalServer, uintptr(unsafe.Pointer(&iidIShellWindows)), uintptr(unsafe.Pointer(shellWindows))); int32(hr) < 0 {
 		return fmt.Errorf("%w: ShellWindows: HRESULT 0x%08X", errNoShell, uint32(hr))
 	}
@@ -183,6 +188,7 @@ func launchThroughShellMode(image, dir string, show int, args ...string) error {
 		if err != nil {
 			return 0, err
 		}
+		//unchecked: the BSTR primary return is checked below; Call's raw GetLastError third field carries no separate information here
 		b, _, _ := sysAllocString.Call(uintptr(unsafe.Pointer(text)))
 		runtime.KeepAlive(text)
 		if b == 0 {

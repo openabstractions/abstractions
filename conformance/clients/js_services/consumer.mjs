@@ -20,8 +20,19 @@ if(at>=0&&at+1>=argv.length)throw new TypeError('--runtime-endpoint needs a valu
 const [override]=at>=0?argv.splice(at,2).slice(1):[undefined];
 const [mode,endpoint]=argv;
 const connector=override===undefined?new NativeConnector():new EndpointOverride(override);
-const machine=new Machine(endpoint,{connector,timeout:1000});
-if(mode==='roundtrip') {
+const machine=mode==='installed-candidate'?null:new Machine(endpoint,{connector,timeout:1000});
+if(mode==='installed-candidate') {
+ assert.equal(process.platform,'linux');
+ assert.equal(argv.length,1,'installed-candidate takes no endpoint');
+ assert.equal(override,undefined,'installed-candidate takes no endpoint override');
+ assert.equal(process.env.ABSTRACTION_RUNTIME_ENDPOINT,undefined,'installed-candidate requires the default endpoint');
+ const selected=await connector.selectRuntime({timeout:5000});
+ assert.equal(selected.principalKind,2);assert.ok(selected.principal&&selected.program);
+ const reader=(await new Machine(null,{connector,timeout:8000}).resolveService('abstraction.logging/reader@1')).client(HistoryReaderClient);
+ const page=await reader.read('',1n,65536n);
+ assert.equal(page.outcome,'page');
+ console.log(`PASS JavaScript installed-candidate native selection, default discovery and logging read: ${selected.program}`);
+} else if(mode==='roundtrip') {
   assert.equal(connector.runtimeEndpoint(),endpoint);
   const sink=(await machine.resolveService('abstraction.logging/sink@1')).client(SinkClient);
   const record={...newRecord(),schema:1n,time:'2026-09-13T10:00:00.000000Z',level:2n,msg:'JavaScript exact ☃ payload',attrs:{fixture:'js-services'}};

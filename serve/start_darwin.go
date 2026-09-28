@@ -24,11 +24,15 @@ func startGuard() error {
 }
 func hideStartCommand(*exec.Cmd) {}
 func activateInstalled(ctx context.Context) error {
-	home, err := os.UserHomeDir()
+	selected, err := bootstrap.SelectInstalled(ctx)
 	if err != nil {
 		return err
 	}
-	return activateDarwin(ctx, home, os.Getuid(), os.ReadFile, func(ctx context.Context, args ...string) (string, error) {
+	home := filepath.Dir(filepath.Dir(filepath.Dir(selected.Server.Program)))
+	if selected.Server.Principal.Kind != "posix" || selected.Server.Principal.UID < 0 || selected.Server.Program != filepath.Join(home, ".local", "bin", "openabstractions") {
+		return errors.New("start refused: installed runtime selection is inconsistent")
+	}
+	return activateDarwin(ctx, home, selected.Server.Principal.UID, os.ReadFile, func(ctx context.Context, args ...string) (string, error) {
 		cmd := exec.CommandContext(ctx, "/bin/launchctl", args...)
 		cmd.WaitDelay = 10 * time.Millisecond
 		out, err := cmd.Output()

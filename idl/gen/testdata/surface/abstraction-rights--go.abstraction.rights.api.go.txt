@@ -200,6 +200,7 @@ type AuthorizationDispatcher struct
 func (AuthorizationClient) Decide(action, resource string) (result Decision, err error)
 func (AuthorizationClient) DecideFor(subject Subject, action, resource string) (result Decision, err error)
 func (AuthorizationDispatcher) DescribeService() (contract string, ready bool, why string)
+func (AuthorizationDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (AuthorizationDispatcher) ServiceContract() string
 func (AuthorizationDispatcher) WriteFrame(frame []byte) error
 func (AuthorizationDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -225,6 +226,7 @@ func (AuthorizationOperatorClient) ReadRule(subject Subject, action, resource st
 func (AuthorizationOperatorClient) RegisterAction(expectedRevision, action string) (result ActionEdit, err error)
 func (AuthorizationOperatorClient) RetireAction(expectedRevision, action string) (result ActionEdit, err error)
 func (AuthorizationOperatorDispatcher) DescribeService() (contract string, ready bool, why string)
+func (AuthorizationOperatorDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (AuthorizationOperatorDispatcher) ServiceContract() string
 func (AuthorizationOperatorDispatcher) WriteFrame(frame []byte) error
 func (AuthorizationOperatorDispatcher) ExchangeFrame(frame []byte) ([]byte, error)

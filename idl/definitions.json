@@ -1,8 +1,6 @@
 {
   "version": 1,
   "unpackaged_outputs": {
-    "openabstractions-flat/abstraction-cas/py/pyproject.toml": "Direct --no-ipc CAS records; no Python distribution or resolved Python client installs them.",
-    "openabstractions-flat/abstraction-watch/py/pyproject.toml": "Watch notice metadata only; the generic Python subscription stays native and no distribution installs the records.",
     "conformance/clients/fixture/livevoice/wire/py/pyproject.toml": "Private transport-measurement fixture imported directly by its runner; no product distribution installs this test protocol."
   },
   "layers": [
@@ -169,18 +167,26 @@
             "cpp",
             "python"
           ]
+        },
+        {
+          "path": "openabstractions-flat/abstraction-storage/lend.thrift",
+          "mode": "service",
+          "languages": [
+            "go"
+          ]
         }
       ],
       "descriptor_status": "defined",
-      "reason": "Direct Store/Local/Writable remain explicit native adapters; additive authorized read-only content service uses opaque bounded resources.",
+      "reason": "Direct Store/Local/Writable remain explicit native adapters; content has authorized read and write service profiles over opaque bounded resources; lending is a separately authorized storage service with a Go-generated surface.",
       "language_obligations": {
         "go": {
           "generated": [
             "openabstractions-flat/abstraction-storage/storage.thrift",
-            "openabstractions-flat/abstraction-storage/content.thrift"
+            "openabstractions-flat/abstraction-storage/content.thrift",
+            "openabstractions-flat/abstraction-storage/lend.thrift"
           ],
-          "binding": "Native provider/client integration requires separate evidence.",
-          "limitation": "Generation target exists; native provider execution is separate."
+          "binding": "Native provider/client integration requires separate evidence; modelbridge implements storage lending in Go.",
+          "limitation": "Generation targets exist; native provider execution and coverage are separate."
         },
         "cpp": {
           "generated": [
@@ -188,7 +194,7 @@
             "openabstractions-flat/abstraction-storage/content.thrift"
           ],
           "binding": "Native provider/client integration requires separate evidence.",
-          "limitation": "Generation target exists; native provider execution is separate."
+          "limitation": "Store and content generation targets exist; lending has no C++ target or native binding."
         },
         "python": {
           "generated": [
@@ -196,7 +202,7 @@
             "openabstractions-flat/abstraction-storage/content.thrift"
           ],
           "binding": "Native provider/client integration requires separate evidence.",
-          "limitation": "Generation target exists; native provider execution is separate."
+          "limitation": "Store and content generation targets exist; lending has no Python target or native binding."
         },
         "rust": {
           "generated": [],
@@ -211,7 +217,7 @@
       },
       "interface_generation": {
         "status": "described",
-        "reason": "Generated direct Store, optional Local/Writable interfaces; existing providers require explicit adapters; no IPC."
+        "reason": "Generated direct Store, optional Local/Writable interfaces without IPC; separate content and lending service profiles have IPC targets."
       }
     },
     {
@@ -997,6 +1003,58 @@
       "interface_generation": {
         "status": "described",
         "reason": "Resolver service plus client-composed readiness; no new status endpoint."
+      }
+    },
+    {
+      "layer": "resource",
+      "kind": "service",
+      "api": [
+        "openabstractions-flat/abstraction-resource/resource.thrift",
+        "openabstractions-flat/abstraction-resource/go/client/contract.go"
+      ],
+      "providers": [
+        "openabstractions-flat/abstraction-resource/go/service/host.go",
+        "openabstractions-flat/abstraction-resource/go/service/leases.go"
+      ],
+      "definitions": [
+        {
+          "path": "openabstractions-flat/abstraction-resource/resource.thrift",
+          "mode": "service",
+          "languages": ["go", "cpp", "python", "rust", "javascript"]
+        }
+      ],
+      "descriptor_status": "defined",
+      "reason": "Machine resource table and lease protocol; generated clients and server records exist, while native service integration needs separate evidence.",
+      "language_obligations": {
+        "go": {
+          "generated": ["openabstractions-flat/abstraction-resource/resource.thrift"],
+          "binding": "Generated client and server records; native integration requires separate evidence.",
+          "limitation": "Table and lease behavior is implemented in the Go service; generation alone does not prove runtime deployment."
+        },
+        "cpp": {
+          "generated": ["openabstractions-flat/abstraction-resource/resource.thrift"],
+          "binding": "Generated client records and protocol support require separate integration evidence.",
+          "limitation": "No native resource service implementation is claimed."
+        },
+        "python": {
+          "generated": ["openabstractions-flat/abstraction-resource/resource.thrift"],
+          "binding": "Generated client records and protocol support require separate integration evidence.",
+          "limitation": "No native resource service implementation is claimed."
+        },
+        "rust": {
+          "generated": ["openabstractions-flat/abstraction-resource/resource.thrift"],
+          "binding": "Generated records require separate client and service integration evidence.",
+          "limitation": "Generated records do not claim a native resource service."
+        },
+        "javascript": {
+          "generated": ["openabstractions-flat/abstraction-resource/resource.thrift"],
+          "binding": "Generated records require separate client and service integration evidence.",
+          "limitation": "Generated records do not claim a native resource service."
+        }
+      },
+      "interface_generation": {
+        "status": "described",
+        "reason": "Table and leases service profiles are described; bindings and runtime integration remain separately evidenced."
       }
     }
   ]

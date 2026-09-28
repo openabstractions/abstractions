@@ -11,7 +11,7 @@ OpenAbstractions runtime:
 | Tool | OA service | Bound |
 |---|---|---|
 | `oa_applications_list` | `abstraction.facade/applications@1` | permission-filtered local names, titles, instances, interfaces and contexts; 262,144 returned bytes |
-| `oa_models_list` | `abstraction.router/router@1` | servable names only |
+| `oa_models_list` | `abstraction.router/router@1` | servable names, plus `servable` and the `held_in` stores of every model on this machine |
 | `oa_inference_complete` | `abstraction.inference/chat@1` | explicit route, 65,536 input bytes, 4,096 output tokens and 262,144 returned bytes |
 | `oa_inference_job_submit` | `abstraction.job/acceptance@1` plus the inference job document | stable request key, hosted image/video request, immutable receipt identity |
 | `oa_inference_job_status` | `abstraction.job/operations@1` | one opaque handle, result capped at 65,536 bytes |
@@ -69,7 +69,9 @@ Grant only the actions the selected local hosts need to the resulting absolute
 executable path. Application discovery needs
 `abstraction.facade/application.read` on each exact `app:<name>` that should be
 visible. Model inventory needs
-`abstraction.router/inventory.read` on `abstraction.router/inventory`. Text and
+`abstraction.router/inventory.read` on `abstraction.router/inventory`; the
+`held_in` stores travel on that same listing and need no further rule, because
+the runtime composed them into the catalogue before the router answered. Text and
 durable inference need `abstraction.inference/complete` on each selected
 `host:<name>`. Durable submission also needs
 `abstraction.job/acceptance.submit` on `abstraction.job/acceptance@1`. The
@@ -104,12 +106,17 @@ $env:OA_OPENCODE_BINARY = 'C:\path\to\opencode.exe'
 go test ./gateway -run TestOpenCodeInvokesGatewayInventory -count=1 -v
 ```
 
-It discovers the gateway, invokes the five inference and model tools, consumes
-their structured results, cancels an accepted pending job and surfaces a typed
-unknown-handle refusal. It contacts no paid provider. The normal test suite
-skips this test when `OA_OPENCODE_BINARY` is absent.
+It discovers the gateway and invokes five of its six tools — `oa_models_list`,
+`oa_inference_complete`, `oa_inference_job_submit`, `oa_inference_job_status`
+and `oa_inference_job_cancel` — consuming their structured results, cancelling
+an accepted pending job and surfacing a typed unknown-handle refusal from a
+second `oa_inference_job_cancel` call. It leaves `oa_applications_list`
+unexercised, contacts no paid provider, and the normal test suite skips it
+when `OA_OPENCODE_BINARY` is absent.
 
 Hosted completion resolves the runtime's remote-execution binding; local
 completion resolves its local-execution binding. Both use the same authenticated
 native IPC transport to OA. Explicit execution placement is independent of that
-local connection. Recovery-file lock waits honor each tool's context.
+local connection. Saving a handle record acquires the recovery file's lock
+within the calling tool's own bounded context, so a stuck lock wait times out
+with that call's two-minute deadline instead of blocking indefinitely.

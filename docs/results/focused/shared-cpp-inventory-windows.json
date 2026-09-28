@@ -12,6 +12,8 @@
     "platform": "windows/amd64",
     "scenario": "Fresh installed jobs-only C++ client through Go runtime: caller-scoped inventory continuation/replay/gap, policy refusal, bounded cancellation/deadline and accepted operation identity",
     "inputs": [
+      "adopters/comfyui-presentation/server/go.mod",
+      "adopters/comfyui-presentation/server/go.sum",
       "conformance/clients/fixture",
       "conformance/clients/fixture/go.mod",
       "conformance/clients/job_inventory",
@@ -19,11 +21,15 @@
       "conformance/clients/workspace.py",
       "conformance/faults/lostreply/go/go.mod",
       "deploy/nas/mkimage/go.mod",
+      "examples/logging-quickstart/go.mod",
+      "examples/logging-quickstart/go.sum",
       "examples/pretend-lemonade/go.mod",
       "examples/pretend-lemonade/go.sum",
       "go.work",
       "go.work.sum",
       "idl/gen",
+      "mcp-gateway/go.mod",
+      "mcp-gateway/go.sum",
       "monitor/go.mod",
       "monitor/go.sum",
       "openabstractions-flat/abstraction-asks/asks.thrift",
@@ -40,6 +46,8 @@
       "openabstractions-flat/abstraction-config/go",
       "openabstractions-flat/abstraction-config/go/go.mod",
       "openabstractions-flat/abstraction-config/go/go.sum",
+      "openabstractions-flat/abstraction-credentials/go/go.mod",
+      "openabstractions-flat/abstraction-credentials/go/go.sum",
       "openabstractions-flat/abstraction-download/cpp",
       "openabstractions-flat/abstraction-download/download.thrift",
       "openabstractions-flat/abstraction-download/go",
@@ -62,6 +70,11 @@
       "openabstractions-flat/abstraction-identity/go.mod",
       "openabstractions-flat/abstraction-identity/go.sum",
       "openabstractions-flat/abstraction-identity/identity.thrift",
+      "openabstractions-flat/abstraction-inference/adapters/go/go.mod",
+      "openabstractions-flat/abstraction-inference/adapters/go/go.sum",
+      "openabstractions-flat/abstraction-inference/go",
+      "openabstractions-flat/abstraction-inference/go/go.mod",
+      "openabstractions-flat/abstraction-inference/go/go.sum",
       "openabstractions-flat/abstraction-job/acceptance.thrift",
       "openabstractions-flat/abstraction-job/cpp",
       "openabstractions-flat/abstraction-job/go",
@@ -77,7 +90,14 @@
       "openabstractions-flat/abstraction-model/go",
       "openabstractions-flat/abstraction-model/go/go.mod",
       "openabstractions-flat/abstraction-model/go/go.sum",
+      "openabstractions-flat/abstraction-model/identity",
+      "openabstractions-flat/abstraction-model/identity/go.mod",
       "openabstractions-flat/abstraction-model/model.thrift",
+      "openabstractions-flat/abstraction-provider-modelbridge/go/go.mod",
+      "openabstractions-flat/abstraction-provider-modelhost/go/go.mod",
+      "openabstractions-flat/abstraction-resource/go",
+      "openabstractions-flat/abstraction-resource/go/go.mod",
+      "openabstractions-flat/abstraction-resource/go/go.sum",
       "openabstractions-flat/abstraction-rights/cpp",
       "openabstractions-flat/abstraction-rights/go",
       "openabstractions-flat/abstraction-rights/go/go.mod",
@@ -88,6 +108,8 @@
       "openabstractions-flat/abstraction-router/go/go.mod",
       "openabstractions-flat/abstraction-router/go/go.sum",
       "openabstractions-flat/abstraction-router/router.thrift",
+      "openabstractions-flat/abstraction-storage-over-local-stores/go/go.mod",
+      "openabstractions-flat/abstraction-storage-over-local-stores/go/go.sum",
       "openabstractions-flat/abstraction-storage/cpp",
       "openabstractions-flat/abstraction-storage/go",
       "openabstractions-flat/abstraction-storage/go/go.mod",
@@ -127,7 +149,7 @@
       "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe"
     ]
   },
-  "inputs_digest": "9984c221a88825f649a49fd58e008b144c4de2b35a8f2c4cb0fbf6a19c3f1b1a",
+  "inputs_digest": "8bbace91e4e5e3491f73026e481bf253e1f6b34ba70e0372ff1aeaac1658b01d",
   "toolchains": {
     "python": {
       "argv": [
@@ -136,7 +158,7 @@
       ],
       "exit": 0,
       "output": "Python 3.12.10\r\n",
-      "seconds": 2.735
+      "seconds": 0.047
     },
     "go": {
       "argv": [
@@ -145,7 +167,7 @@
       ],
       "exit": 0,
       "output": "go version go1.26.5 windows/amd64\n",
-      "seconds": 1.781
+      "seconds": 0.062
     },
     "cmake": {
       "argv": [
@@ -154,7 +176,7 @@
       ],
       "exit": 0,
       "output": "cmake version 4.3.1-msvc1\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n",
-      "seconds": 0.734
+      "seconds": 0.047
     }
   },
   "result": {
@@ -166,9 +188,9 @@
       "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe"
     ],
     "exit": 0,
-    "output": "source revision: 8d7d7747e323383194561d9d35a01434ca5f7f3d (uncommitted changes present)\r\n-- Building for: Visual Studio 18 2026\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- The CXX compiler identification is MSVC 19.51.36256.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- The C compiler identification is MSVC 19.51.36256.0\n-- Detecting C compiler ABI info\n-- Detecting C compiler ABI info - done\n-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting C compile features\n-- Detecting C compile features - done\n-- Configuring done (15.8s)\n-- Generating done (0.2s)\nCMake Warning:\n  Manually-specified variables were not used by the project:\n\n    ABSTRACTION_IPC_BUILD_TESTS\n    CMAKE_BUILD_TYPE\n    CMAKE_DISABLE_FIND_PACKAGE_abstraction_config\n    CMAKE_DISABLE_FIND_PACKAGE_abstraction_download_request\n    CMAKE_DISABLE_FIND_PACKAGE_abstraction_logging\n    CMAKE_DISABLE_FIND_PACKAGE_abstraction_model\n    CMAKE_DISABLE_FIND_PACKAGE_abstraction_router\n\n\n-- Build files have been written to: <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/.build/sdk-wrqa05ep/n\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\n  1>Checking Build System\r\n  Building Custom Rule <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/openabstractions-flat/abstraction-identity/cpp/CMakeLists.txt\r\n  client.cpp\r\n  abstraction_ipc.vcxproj -> <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\n\\abstraction_ipc-build\\Release\\abstraction_ipc.lib\r\n  Building Custom Rule <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/openabstractions-flat/abstraction-facade/cpp/CMakeLists.txt\r\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/include/abstraction\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/include/abstraction/facade\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/include/abstraction/facade/rec.h\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/lib/abstraction_ipc.lib\n-- Up-to-date: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/include\n-- Up-to-date: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/include/abstraction\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/include/abstraction/ipc\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/include/abstraction/ipc/bootstrap.hpp\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/include/abstraction/ipc/client.h\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/include/abstraction/ipc/client.hpp\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/include/abstraction/ipc/frame.hpp\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/include/abstraction/ipc/process.hpp\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/share/abstraction_ipc/link-dependencies.txt\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/lib/cmake/abstraction_ipc/abstraction_ipcTargets.cmake\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/lib/cmake/abstraction_ipc/abstraction_ipcTargets-release.cmake\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/lib/cmake/abstraction_ipc/abstraction_ipcConfig.cmake\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/lib/cmake/abstraction_ipc/abstraction_ipcConfigVersion.cmake\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/include/abstraction/facade/activation.hpp\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/include/abstraction/facade/resolution.hpp\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/include/abstraction/job/acceptance\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/include/abstraction/job/acceptance/rec.h\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/lib/cmake/abstraction_job_acceptance/abstraction_job_acceptanceTargets.cmake\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/lib/cmake/abstraction_job_acceptance/abstraction_job_acceptanceConfig.cmake\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/lib/cmake/abstraction_job_acceptance/abstraction_job_acceptanceConfigVersion.cmake\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/include/abstraction/facade/inventory.hpp\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/include/abstraction/facade/jobs.hpp\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/lib/cmake/abstraction_facade_resolution/abstraction_facade_resolutionTargets.cmake\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/lib/cmake/abstraction_facade_resolution/abstraction_facade_resolutionConfig.cmake\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/lib/cmake/abstraction_facade/abstraction_facadeTargets.cmake\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/lib/cmake/abstraction_facade/abstraction_facadeConfig.cmake\n-- Installing: <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\sdk-wrqa05ep\\p/lib/cmake/abstraction_facade/abstraction_facadeConfigVersion.cmake\nC++ compiler ID MSVC\r\nC++ compiler VERSION 19.51.36256.0\r\ncmake version 4.3.1-msvc1\r\n\r\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\r\n-- Building for: Visual Studio 18 2026\r\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\r\n-- The CXX compiler identification is MSVC 19.51.36256.0\r\n-- Detecting CXX compiler ABI info\r\n-- Detecting CXX compiler ABI info - done\r\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting CXX compile features\r\n-- Detecting CXX compile features - done\r\n-- Configuring done (1.9s)\r\n-- Generating done (0.0s)\r\n-- Build files have been written to: <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/.build/ji-1t_1316s/cpp\r\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\n  1>Checking Build System\r\n  Building Custom Rule <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/conformance/clients/job_inventory/CMakeLists.txt\r\n  client.cpp\r\n  job_inventory_consumer.vcxproj -> <user-home>\\Documents\\AI abstractions\\.worktrees\\codex-todo-live\\.build\\ji-1t_1316s\\cpp\\Release\\job_inventory_consumer.exe\r\n  Building Custom Rule <user-home>/Documents/AI abstractions/.worktrees/codex-todo-live/conformance/clients/job_inventory/CMakeLists.txt\r\nC++ compiler ID MSVC\r\nC++ compiler VERSION 19.51.36256.0\r\njob_inventory_consumer ENDPOINT pages|denied\r\n=== RUN   TestInstalledInventory\r\n=== RUN   TestInstalledInventory/pages\r\n    fixture_test.go:65: pages continuation replay gap labels cancellation deadline semantic-refusals passed\r\n        \r\n=== RUN   TestInstalledInventory/denied\r\n    fixture_test.go:65: \r\n--- PASS: TestInstalledInventory (0.22s)\r\n    --- PASS: TestInstalledInventory/pages (0.19s)\r\n    --- PASS: TestInstalledInventory/denied (0.03s)\r\nPASS\r\nok  \tcommand-line-arguments\t1.006s\r\nsource-derived SDK removed: jobs\r\n",
-    "seconds": 33.375
+    "output": "source revision: 536ea6f5505a94192eeb07fc65536855f3a379d6 (uncommitted changes present)\r\n-- Building for: Visual Studio 18 2026\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- The CXX compiler identification is MSVC 19.51.36256.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- The C compiler identification is MSVC 19.51.36256.0\n-- Detecting C compiler ABI info\n-- Detecting C compiler ABI info - done\n-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting C compile features\n-- Detecting C compile features - done\n-- Configuring done (5.0s)\n-- Generating done (0.2s)\nCMake Warning:\n  Manually-specified variables were not used by the project:\n\n    ABSTRACTION_IPC_BUILD_TESTS\n    CMAKE_BUILD_TYPE\n    CMAKE_DISABLE_FIND_PACKAGE_abstraction_config\n    CMAKE_DISABLE_FIND_PACKAGE_abstraction_download_request\n    CMAKE_DISABLE_FIND_PACKAGE_abstraction_logging\n    CMAKE_DISABLE_FIND_PACKAGE_abstraction_model\n    CMAKE_DISABLE_FIND_PACKAGE_abstraction_router\n\n\n-- Build files have been written to: <user-home>/.codex/worktrees/oa-router-vocabulary/.build/sdk-uv7z8lhs/n\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\n  1>Checking Build System\r\n  Building Custom Rule <user-home>/.codex/worktrees/oa-router-vocabulary/openabstractions-flat/abstraction-identity/cpp/CMakeLists.txt\r\n  client.cpp\r\n  abstraction_ipc.vcxproj -> <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\n\\abstraction_ipc-build\\Release\\abstraction_ipc.lib\r\n  Building Custom Rule <user-home>/.codex/worktrees/oa-router-vocabulary/openabstractions-flat/abstraction-facade/cpp/CMakeLists.txt\r\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/include/abstraction\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/include/abstraction/facade\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/include/abstraction/facade/rec.h\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/lib/abstraction_ipc.lib\n-- Up-to-date: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/include\n-- Up-to-date: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/include/abstraction\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/include/abstraction/ipc\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/include/abstraction/ipc/bootstrap.hpp\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/include/abstraction/ipc/client.h\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/include/abstraction/ipc/client.hpp\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/include/abstraction/ipc/frame.hpp\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/include/abstraction/ipc/process.hpp\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/share/abstraction_ipc/link-dependencies.txt\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/lib/cmake/abstraction_ipc/abstraction_ipcTargets.cmake\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/lib/cmake/abstraction_ipc/abstraction_ipcTargets-release.cmake\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/lib/cmake/abstraction_ipc/abstraction_ipcConfig.cmake\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/lib/cmake/abstraction_ipc/abstraction_ipcConfigVersion.cmake\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/include/abstraction/facade/activation.hpp\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/include/abstraction/facade/resolution.hpp\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/include/abstraction/job/acceptance\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/include/abstraction/job/acceptance/rec.h\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/lib/cmake/abstraction_job_acceptance/abstraction_job_acceptanceTargets.cmake\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/lib/cmake/abstraction_job_acceptance/abstraction_job_acceptanceConfig.cmake\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/lib/cmake/abstraction_job_acceptance/abstraction_job_acceptanceConfigVersion.cmake\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/include/abstraction/facade/inventory.hpp\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/include/abstraction/facade/jobs.hpp\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/lib/cmake/abstraction_facade_resolution/abstraction_facade_resolutionTargets.cmake\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/lib/cmake/abstraction_facade_resolution/abstraction_facade_resolutionConfig.cmake\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/lib/cmake/abstraction_facade/abstraction_facadeTargets.cmake\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/lib/cmake/abstraction_facade/abstraction_facadeConfig.cmake\n-- Installing: <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\sdk-uv7z8lhs\\p/lib/cmake/abstraction_facade/abstraction_facadeConfigVersion.cmake\nC++ compiler ID MSVC\r\nC++ compiler VERSION 19.51.36256.0\r\ncmake version 4.3.1-msvc1\r\n\r\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\r\n-- Building for: Visual Studio 18 2026\r\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\r\n-- The CXX compiler identification is MSVC 19.51.36256.0\r\n-- Detecting CXX compiler ABI info\r\n-- Detecting CXX compiler ABI info - done\r\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting CXX compile features\r\n-- Detecting CXX compile features - done\r\n-- Configuring done (3.4s)\r\n-- Generating done (0.1s)\r\n-- Build files have been written to: <user-home>/.codex/worktrees/oa-router-vocabulary/.build/ji-twau99rt/cpp\r\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\n  1>Checking Build System\r\n  Building Custom Rule <user-home>/.codex/worktrees/oa-router-vocabulary/conformance/clients/job_inventory/CMakeLists.txt\r\n  client.cpp\r\n  job_inventory_consumer.vcxproj -> <user-home>\\.codex\\worktrees\\oa-router-vocabulary\\.build\\ji-twau99rt\\cpp\\Release\\job_inventory_consumer.exe\r\n  Building Custom Rule <user-home>/.codex/worktrees/oa-router-vocabulary/conformance/clients/job_inventory/CMakeLists.txt\r\nC++ compiler ID MSVC\r\nC++ compiler VERSION 19.51.36256.0\r\njob_inventory_consumer ENDPOINT pages|denied\r\n=== RUN   TestInstalledInventory\r\n=== RUN   TestInstalledInventory/pages\r\n    fixture_test.go:65: pages continuation replay gap labels cancellation deadline semantic-refusals passed\r\n        \r\n=== RUN   TestInstalledInventory/denied\r\n    fixture_test.go:65: \r\n--- PASS: TestInstalledInventory (0.41s)\r\n    --- PASS: TestInstalledInventory/pages (0.37s)\r\n    --- PASS: TestInstalledInventory/denied (0.04s)\r\nPASS\r\nok  \tcommand-line-arguments\t1.248s\r\nsource-derived SDK removed: jobs\r\n",
+    "seconds": 25.016
   },
-  "commit": "8d7d7747e323383194561d9d35a01434ca5f7f3d",
-  "record_digest": "ecd861e439222a578d6fe8169c98c94aa16f1b5c402e6292f514458e9f2f1522"
+  "commit": "536ea6f5505a94192eeb07fc65536855f3a379d6",
+  "record_digest": "43bbe54d7b6cd4c4cf715992b42e9bbfe7e00b203ab1e56c0d0aef94f0b0497c"
 }

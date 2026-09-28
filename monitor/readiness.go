@@ -22,12 +22,17 @@ type readinessRow struct {
 }
 
 type readinessView struct {
-	BootstrapLabel string         `json:"bootstrapLabel"`
-	Bootstrap      string         `json:"bootstrap"`
-	Detail         string         `json:"detail,omitempty"`
-	Capabilities   []readinessRow `json:"capabilities"`
-	Error          string         `json:"error,omitempty"`
-	CheckedAt      string         `json:"checkedAt"`
+	BootstrapLabel string `json:"bootstrapLabel"`
+	Bootstrap      string `json:"bootstrap"`
+	Detail         string `json:"detail,omitempty"`
+	// Explicit is set when this Panel was started against a named runtime
+	// (-runtime-endpoint/-runtime-program) rather than an installed one: the
+	// bootstrap fields above describe installed-runtime detection, which does
+	// not apply and must not contradict this.
+	Explicit     *explicitRuntime `json:"explicit,omitempty"`
+	Capabilities []readinessRow   `json:"capabilities"`
+	Error        string           `json:"error,omitempty"`
+	CheckedAt    string           `json:"checkedAt"`
 }
 
 func readinessPresentation(observation wire.RuntimeObservation, err error) readinessView {
@@ -87,7 +92,9 @@ func collectReadiness(ctx context.Context, machine *facade.Machine, installed fu
 	defer cancel()
 	evidence := installed(ctx)
 	observation, err := machine.Observe(ctx, facade.DefaultStatusRequests(), evidence)
-	return readinessPresentation(observation, err)
+	view := readinessPresentation(observation, err)
+	view.Explicit = panelExplicit
+	return view
 }
 
 func serveReadiness(rw http.ResponseWriter, r *http.Request) {

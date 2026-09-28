@@ -25,7 +25,9 @@ func (o registryOperator) Hosts(_ context.Context, s inference.Subject) iwire.Ho
 	}}
 }
 
-// fixedRegistry answers registry@1 with one declaration and records each call.
+// fixedRegistry answers registry@1 with one declaration of each role -
+// remote, provider and host, in name order as Declarations() promises - and
+// records each call.
 type fixedRegistry struct {
 	mu    sync.Mutex
 	calls int
@@ -35,11 +37,27 @@ func (r *fixedRegistry) Declarations() (fwire.DeclarationList, error) {
 	r.mu.Lock()
 	r.calls++
 	r.mu.Unlock()
-	return fwire.DeclarationList{Outcome: fwire.DeclarationListOutcomePage, Revision: "providers-v2:r", Declarations: []fwire.DeclarationState{{
-		Declaration: fwire.Declaration{Name: "local-stores", Program: "/opt/inventoryd", Arguments: []string{}, Endpoint: "inventoryd-v1", Transport: fwire.DeclarationTransportNative,
-			Contracts: []string{"abstraction.storage/inventory-source@1"}, Activation: fwire.ActivationOnDemand, Resources: []string{"store:ollama", "store:huggingface"}},
-		DeclaredBy: "/opt/oa/openabstractions", Readiness: fwire.DeclarationReadinessReady, Restarts: 2, Accepted: []string{"store:ollama"},
-		Described: []fwire.ServiceState{{Contract: "abstraction.storage/inventory-source@1", Readiness: fwire.ServiceReadinessReady, Guarantees: []string{}, Capabilities: map[string]string{}}}}}}, nil
+	return fwire.DeclarationList{Outcome: fwire.DeclarationListOutcomePage, Revision: "providers-v2:r", Declarations: []fwire.DeclarationState{
+		{
+			Declaration: fwire.Declaration{Name: "lab-remote", Arguments: []string{}, Endpoint: "tls://lab.example:8443", Transport: fwire.DeclarationTransportRemote,
+				Contracts: []string{"abstraction.inference/chat@1"}, Activation: fwire.ActivationRemote, Role: fwire.DeclarationRoleRemote, Resources: []string{"profile:chat"},
+				Remote: &fwire.RemoteTrust{ServerName: "lab.example", Roots: "/etc/oa/lab-roots.pem", Certificate: "/etc/oa/lab-cert.pem", Key: "/etc/oa/lab-key.pem"}},
+			DeclaredBy: "/opt/oa/openabstractions", Readiness: fwire.DeclarationReadinessReady, Role: fwire.DeclarationRoleRemote,
+			Described: []fwire.ServiceState{{Contract: "abstraction.inference/chat@1", Readiness: fwire.ServiceReadinessReady, Guarantees: []string{}, Capabilities: map[string]string{}}},
+		},
+		{
+			Declaration: fwire.Declaration{Name: "local-stores", Program: "/opt/inventoryd", Arguments: []string{}, Endpoint: "inventoryd-v1", Transport: fwire.DeclarationTransportNative,
+				Contracts: []string{"abstraction.storage/inventory-source@1"}, Activation: fwire.ActivationOnDemand, Role: fwire.DeclarationRoleProvider, Resources: []string{"store:ollama", "store:huggingface"}},
+			DeclaredBy: "/opt/oa/openabstractions", Readiness: fwire.DeclarationReadinessReady, Role: fwire.DeclarationRoleProvider, Restarts: 2, Accepted: []string{"store:ollama"},
+			Described: []fwire.ServiceState{{Contract: "abstraction.storage/inventory-source@1", Readiness: fwire.ServiceReadinessReady, Guarantees: []string{}, Capabilities: map[string]string{}}},
+		},
+		{
+			Declaration: fwire.Declaration{Name: "ollama-engine", Arguments: []string{}, Transport: fwire.DeclarationTransportHTTP, Activation: fwire.ActivationAttach,
+				Role: fwire.DeclarationRoleHost, Resources: []string{"profile:chat"}, Host: &fwire.DeclarationHost{Base: "http://127.0.0.1:11500", Kind: "ollama", Hosted: false}},
+			DeclaredBy: "installation", Readiness: fwire.DeclarationReadinessReady, Role: fwire.DeclarationRoleHost, Host: &fwire.HostReading{Up: true},
+			Described: []fwire.ServiceState{},
+		},
+	}}, nil
 }
 func (r *fixedRegistry) Declare(string, fwire.Declaration) (fwire.DeclarationChange, error) {
 	return fwire.DeclarationChange{Outcome: fwire.DeclarationEditOutcomeForbidden}, nil
@@ -124,9 +142,18 @@ func TestPanelRegistryReadsHostsProvidersAndRemotes(t *testing.T) {
 		t.Fatalf("hosts %+v", view)
 	}
 	p := view.Providers.Declarations
-	if view.ProviderError != "" || len(p) != 1 || p[0].Readiness != fwire.DeclarationReadinessReady || p[0].Accepted[0] != "store:ollama" || p[0].Restarts != 2 ||
-		len(p[0].Described) != 1 {
+	if view.ProviderError != "" || len(p) != 3 {
 		t.Fatalf("providers %+v %s", view.Providers, view.ProviderError)
+	}
+	if p[0].Role != fwire.DeclarationRoleRemote || p[0].Declaration.Role != fwire.DeclarationRoleRemote || p[0].Declaration.Remote.ServerName != "lab.example" {
+		t.Fatalf("remote declaration %+v", p[0])
+	}
+	if p[1].Role != fwire.DeclarationRoleProvider || p[1].Readiness != fwire.DeclarationReadinessReady || p[1].Accepted[0] != "store:ollama" || p[1].Restarts != 2 ||
+		len(p[1].Described) != 1 {
+		t.Fatalf("provider declaration %+v", p[1])
+	}
+	if p[2].Role != fwire.DeclarationRoleHost || p[2].Declaration.Host.Base != "http://127.0.0.1:11500" || p[2].DeclaredBy != "installation" || p[2].Host == nil || !p[2].Host.Up {
+		t.Fatalf("host declaration %+v", p[2])
 	}
 	registry.mu.Lock()
 	if registry.calls != 1 {

@@ -48,9 +48,10 @@ Converts legacy job records found in the managed runtime job root
 service-owned records. The mapping file is the only ownership authority:
 nothing is inferred from file names, and active work is never assigned.
 
-  inspect [--state-dir DIR] [--template]
-      List records with state, SHA-256 digest and any refusal, followed by a
-      mapping template. --template prints only the template JSON.
+  inspect [--state-dir DIR] [--template] [--json]
+      List records with state, SHA-256 digest and any refusal, and how many
+      still need a mapping entry. --template prints only the mapping template
+      JSON; --json prints one JSON document with the records and the template.
   apply --mapping FILE [--state-dir DIR]
       Convert every record. All records must be terminal, mapped and unchanged
       since inspection, or nothing is written. Repeating the same mapping is
@@ -59,8 +60,8 @@ nothing is inferred from file names, and active work is never assigned.
       Withdraw an interrupted apply that did not finish. Refuses completed
       migrations and a running runtime job host.
 
-Active legacy records are refused. The legacy provider that could finish them
-was removed in 0.1.8; see docs/REMOVED.md.
+Active legacy records are refused; the legacy provider that could finish them
+was removed in 0.1.8.
 
 Mapping file (JSON, unknown or duplicate fields refused):
   {
@@ -84,9 +85,12 @@ Exit codes: 0 success, 1 other failure, 2 usage or invalid mapping,
 func isHelp(arg string) bool { return arg == "--help" || arg == "-h" || arg == "help" }
 
 func jobsCommand(args []string, output, diagnostics io.Writer) error {
-	if len(args) == 0 || isHelp(args[0]) {
+	if len(args) > 0 && isHelp(args[0]) {
 		_, err := io.WriteString(output, jobsUsage)
 		return err
+	}
+	if len(args) == 0 {
+		return commandMistake(diagnostics, "jobs: a command is required", "openabstractions jobs --help")
 	}
 	switch args[0] {
 	case "migrate-legacy":
@@ -94,52 +98,50 @@ func jobsCommand(args []string, output, diagnostics io.Writer) error {
 	case "list", "show", "wait", "cancel", "result":
 		return jobsServiceCommand(args[0], args[1:], output, diagnostics)
 	}
-	return &exitError{exitUsage, fmt.Errorf("jobs: unknown command %q; use jobs --help", args[0])}
+	return commandMistake(diagnostics, fmt.Sprintf("jobs: no command called %q", args[0]), "openabstractions jobs --help")
 }
 
 func migrateLegacyCommand(args []string, output, diagnostics io.Writer) error {
-	if len(args) == 0 || isHelp(args[0]) {
+	if containsHelp(args) {
 		_, err := io.WriteString(output, migrateUsage)
 		return err
 	}
+	if len(args) == 0 {
+		return commandMistake(diagnostics, "jobs migrate-legacy: a command is required", "openabstractions jobs migrate-legacy --help")
+	}
 	sub := args[0]
 	flags := flag.NewFlagSet("jobs migrate-legacy "+sub, flag.ContinueOnError)
-	flags.SetOutput(diagnostics)
-	flags.Usage = func() {
-		// Defaults follow the usage text only when the usage text was written.
-		if _, err := fmt.Fprint(diagnostics, migrateUsage); err == nil {
-			flags.PrintDefaults()
-		}
-	}
+	flags.SetOutput(io.Discard)
+	// badFlag below prints this program's own three-line mistake shape;
+	flags.Usage = func() {} // the flag package's own per-error usage call must print nothing
 	state := flags.String("state-dir", "", "absolute managed runtime state directory (default: current user's runtime-v1)")
-	var template *bool
+	var template, asJSON *bool
 	var mapping *string
 	switch sub {
 	case "inspect":
 		template = flags.Bool("template", false, "print only the mapping template JSON")
+		asJSON = flags.Bool("json", false, "print one JSON document with the records and the mapping template")
 	case "apply":
 		mapping = flags.String("mapping", "", "operator mapping JSON file")
 	case "abandon":
 	default:
-		return &exitError{exitUsage, fmt.Errorf("jobs migrate-legacy: unknown command %q", sub)}
+		return commandMistake(diagnostics, fmt.Sprintf("jobs migrate-legacy: no command called %q", sub), "openabstractions jobs migrate-legacy --help")
 	}
 	if err := flags.Parse(args[1:]); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return err
-		}
-		return &exitError{exitUsage, err}
+		return badFlag(flags, diagnostics, "jobs migrate-legacy "+sub, migrateUsage, args[1:], err)
 	}
+	command := "jobs migrate-legacy " + sub
 	if flags.NArg() != 0 {
-		return &exitError{exitUsage, errors.New("jobs migrate-legacy: unexpected arguments")}
+		return flagMistake(diagnostics, command, migrateUsage, "unexpected arguments")
 	}
 	supplied := false
 	flags.Visit(func(f *flag.Flag) { supplied = supplied || f.Name == "state-dir" })
 	if supplied && *state == "" {
-		return &exitError{exitUsage, errors.New("jobs migrate-legacy: --state-dir must be absolute")}
+		return flagMistake(diagnostics, command, migrateUsage, "--state-dir must be absolute")
 	}
 	root, err := managedJobRoot(*state)
 	if err != nil {
-		return &exitError{exitUsage, fmt.Errorf("jobs migrate-legacy: %w", err)}
+		return flagMistake(diagnostics, command, migrateUsage, err.Error())
 	}
 	// apply and abandon write the store; the default state is the account's.
 	refuse := func() error {
@@ -150,10 +152,10 @@ func migrateLegacyCommand(args []string, output, diagnostics io.Writer) error {
 	}
 	switch sub {
 	case "inspect":
-		return inspectLegacy(root, *template, output, diagnostics)
+		return inspectLegacy(root, *template, *asJSON, output, diagnostics)
 	case "apply":
 		if *mapping == "" {
-			return &exitError{exitUsage, errors.New("jobs migrate-legacy apply: --mapping is required")}
+			return flagMistake(diagnostics, command, migrateUsage, "--mapping is required")
 		}
 		if err := refuse(); err != nil {
 			return err
@@ -163,7 +165,7 @@ func migrateLegacyCommand(args []string, output, diagnostics io.Writer) error {
 		if err := refuse(); err != nil {
 			return err
 		}
-		return abandonLegacy(root, output)
+		return abandonLegacy(root, output, diagnostics)
 	}
 }
 
@@ -192,7 +194,7 @@ type mappingSubmission struct {
 	RequiredGuarantees []string        `json:"required_guarantees"`
 }
 
-func inspectLegacy(root string, templateOnly bool, output, diagnostics io.Writer) error {
+func inspectLegacy(root string, templateOnly, asJSON bool, output, diagnostics io.Writer) error {
 	jobs, err := acceptanceprovider.InspectLegacyJobs(root)
 	if err != nil {
 		return fmt.Errorf("jobs migrate-legacy inspect %q: %w", root, err)
@@ -209,28 +211,39 @@ func inspectLegacy(root string, templateOnly bool, output, diagnostics io.Writer
 		template.Assignments = append(template.Assignments, mappingEntry{OperationID: j.OperationID, RecordSHA256: j.RecordSHA256,
 			Caller: mappingCaller{AccountKind: accountKind}, Submission: mappingSubmission{Kind: j.Kind, Spec: j.Spec, RequiredGuarantees: []string{}}})
 	}
-	encoded, err := json.MarshalIndent(template, "", "  ")
-	if err != nil {
-		return err
-	}
 	if templateOnly {
+		encoded, err := json.MarshalIndent(template, "", "  ")
+		if err != nil {
+			return err
+		}
 		_, err = fmt.Fprintf(output, "%s\n", encoded)
 		return err
+	}
+	profile, owned, err := acceptanceprovider.RecordedExecutionProfile(root)
+	if err != nil {
+		return fmt.Errorf("jobs migrate-legacy inspect %q: %w", root, err)
+	}
+	if asJSON {
+		type inspectReport struct {
+			Root             string                         `json:"root"`
+			ServiceOwned     bool                           `json:"service_owned"`
+			ExecutionProfile string                         `json:"execution_profile,omitempty"`
+			Jobs             []acceptanceprovider.LegacyJob `json:"jobs"`
+			MappingTemplate  mappingFile                    `json:"mapping_template"`
+		}
+		return writeJSON(output, inspectReport{Root: root, ServiceOwned: owned, ExecutionProfile: profile, Jobs: jobs, MappingTemplate: template})
 	}
 	if _, err := fmt.Fprintf(output, "Legacy job root: %s\n", root); err != nil {
 		return err
 	}
-	if profile, owned, err := acceptanceprovider.RecordedExecutionProfile(root); err != nil {
-		return fmt.Errorf("jobs migrate-legacy inspect %q: %w", root, err)
-	} else if owned {
+	if owned {
 		if _, err := fmt.Fprintf(output, "Service owner already configured (execution profile %q).\n", profile); err != nil {
 			return err
 		}
 	}
 	if len(jobs) == 0 {
-		if _, err := fmt.Fprintln(output, "No job records."); err != nil {
-			return err
-		}
+		_, err := fmt.Fprintln(output, "No job records.")
+		return err
 	}
 	table := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
 	if _, err := fmt.Fprintln(table, "OPERATION\tSTATE\tSHA256\tREFUSAL"); err != nil {
@@ -251,7 +264,10 @@ func inspectLegacy(root string, templateOnly bool, output, diagnostics io.Writer
 	if err := table.Flush(); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(output, "\nMapping template (fill caller and request_key for every record):\n%s\n", encoded)
+	if len(template.Assignments) == 0 {
+		return nil
+	}
+	_, err = fmt.Fprintf(output, "%d record(s) need a mapping entry; run jobs migrate-legacy inspect --json for the fillable template.\n", len(template.Assignments))
 	return err
 }
 
@@ -335,7 +351,7 @@ func decodeLegacyMapping(data []byte) (acceptanceprovider.LegacyMapping, map[str
 	return result, keys, nil
 }
 
-func migrationExit(action string, err error) error {
+func migrationExit(diagnostics io.Writer, action string, err error) error {
 	switch {
 	case errors.Is(err, acceptanceprovider.ErrHostActive):
 		return &exitError{exitHostActive, fmt.Errorf("%s: a runtime job host is running on this root; stop it first: %w", action, err)}
@@ -344,7 +360,7 @@ func migrationExit(action string, err error) error {
 	case errors.Is(err, acceptanceprovider.ErrLegacyMigrationConflict):
 		return &exitError{exitConflict, fmt.Errorf("%s: %w", action, err)}
 	case errors.Is(err, acceptanceprovider.ErrLegacyMappingInvalid):
-		return &exitError{exitUsage, fmt.Errorf("%s: %w", action, err)}
+		return flagMistake(diagnostics, action, migrateUsage, err.Error())
 	}
 	return fmt.Errorf("%s: %w", action, err)
 }
@@ -353,7 +369,9 @@ func applyLegacy(root, path string, output, diagnostics io.Writer) error {
 	const action = "jobs migrate-legacy apply"
 	f, err := os.Open(path)
 	if err != nil {
-		return &exitError{exitUsage, fmt.Errorf("%s: %w", action, err)}
+		// --mapping names a well-formed path; opening it is a run-time
+		// failure (exitNotResolved), not a usage mistake.
+		return &exitError{exitNotResolved, fmt.Errorf("%s: %s", action, pathProblem("--mapping", path, err))}
 	}
 	data, err := io.ReadAll(io.LimitReader(f, maxMappingBytes+1))
 	if closeErr := f.Close(); err == nil {
@@ -364,7 +382,7 @@ func applyLegacy(root, path string, output, diagnostics io.Writer) error {
 	}
 	mapping, keys, err := decodeLegacyMapping(data)
 	if err != nil {
-		return &exitError{exitUsage, fmt.Errorf("%s: invalid mapping file: %w", action, err)}
+		return flagMistake(diagnostics, action, migrateUsage, fmt.Sprintf("invalid mapping file: %v", err))
 	}
 	result, err := acceptanceprovider.MigrateLegacy(root, downloadserve.LegacySinkExecution{}, mapping)
 	// The migration result stands whether or not a refusal line was written; a
@@ -376,7 +394,7 @@ func applyLegacy(root, path string, output, diagnostics io.Writer) error {
 		}
 	}
 	if err != nil {
-		return migrationExit(action, errors.Join(err, refusals))
+		return migrationExit(diagnostics, action, errors.Join(err, refusals))
 	}
 	status := "complete"
 	if result.AlreadyMigrated {
@@ -393,14 +411,14 @@ func applyLegacy(root, path string, output, diagnostics io.Writer) error {
 	return refusals
 }
 
-func abandonLegacy(root string, output io.Writer) error {
+func abandonLegacy(root string, output, diagnostics io.Writer) error {
 	const action = "jobs migrate-legacy abandon"
 	if _, err := os.Stat(root); errors.Is(err, os.ErrNotExist) {
 		_, err = fmt.Fprintf(output, "No managed job root at %s.\n", root)
 		return err
 	}
 	if err := acceptanceprovider.AbandonLegacyMigration(root); err != nil {
-		return migrationExit(action, err)
+		return migrationExit(diagnostics, action, err)
 	}
 	_, err := fmt.Fprintf(output, "No unfinished legacy migration remains in %s.\n", root)
 	return err

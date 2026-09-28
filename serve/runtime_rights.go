@@ -165,22 +165,7 @@ func (r *runtimeRights) install(actions []string, rules []installationRule) erro
 			}
 		}
 	}
-	var failure error
-	for _, program := range r.operators {
-		for _, rule := range rules {
-			key := appliedRule{program, rule.Action, rule.Resource}
-			if applied[key] {
-				continue
-			}
-			if failure = r.setInstallationRule(rwire.Subject{Account: r.owner, Program: program}, rule); failure != nil {
-				break
-			}
-			applied[key] = true
-		}
-		if failure != nil {
-			break
-		}
-	}
+	failure := r.apply(r.operators, rules, applied)
 	marker.Applied = marker.Applied[:0]
 	for key := range applied {
 		marker.Applied = append(marker.Applied, key)
@@ -198,6 +183,58 @@ func (r *runtimeRights) install(actions []string, rules []installationRule) erro
 		r.policy.StateRequired = true
 	}
 	return nil
+}
+
+// installFor writes the same rules for programs that are not operators: a
+// declared provider's own program, which needs a rule of its own because the
+// runtime launches it and it then acts as itself. A rule the person revoked is
+// never written again, and an existing rule on the same target is left as it
+// is.
+func (r *runtimeRights) installFor(programs []string, rules []installationRule) error {
+	if r == nil || len(programs) == 0 || len(rules) == 0 {
+		return nil
+	}
+	marker, err := r.readMarker()
+	if err != nil {
+		return err
+	}
+	applied := map[appliedRule]bool{}
+	for _, a := range marker.Applied {
+		applied[a] = true
+	}
+	failure := r.apply(programs, rules, applied)
+	marker.Applied = marker.Applied[:0]
+	for key := range applied {
+		marker.Applied = append(marker.Applied, key)
+	}
+	slices.SortFunc(marker.Applied, func(a, b appliedRule) int {
+		return strings.Compare(a.Program+"\x00"+a.Action+"\x00"+a.Resource, b.Program+"\x00"+b.Action+"\x00"+b.Resource)
+	})
+	if err := r.writeMarker(marker); err != nil {
+		return errors.Join(failure, err)
+	}
+	return failure
+}
+
+// apply writes each rule a program has not received before and records it.
+func (r *runtimeRights) apply(programs []string, rules []installationRule, applied map[appliedRule]bool) error {
+	var failure error
+	for _, program := range programs {
+		for _, rule := range rules {
+			key := appliedRule{program, rule.Action, rule.Resource}
+			if applied[key] {
+				continue
+			}
+			if failure = r.setInstallationRule(rwire.Subject{Account: r.owner, Program: program}, rule); failure != nil {
+				break
+			}
+			applied[key] = true
+		}
+		if failure != nil {
+			break
+		}
+	}
+	return failure
 }
 
 // setInstallationRule writes one permit rule with why "installation" at the
@@ -270,6 +307,9 @@ func gateByRights(o *host.Options, decider host.Decider) {
 	if o.Router != nil {
 		o.RouterPolicy = host.RouterPolicyFromRights(decider)
 	}
+	if o.ResourceTable != nil {
+		o.ResourceTablePolicy = host.ResourceTablePolicyFromRights(decider)
+	}
 	if o.JobRoot != "" {
 		o.JobMethodPolicy = host.JobPolicyFromRights(decider, host.JobRightsActions)
 	}
@@ -294,6 +334,12 @@ func installationRules(o host.Options, registries []string) []installationRule {
 	}
 	if o.Router != nil {
 		rules = append(rules, installationRule{routerservice.ActionInventory, routerservice.ResourceInventory}, installationRule{routerservice.ActionRoute, host.RoutesResource})
+	}
+	if o.ResourceTable != nil {
+		rules = append(rules, installationRule{host.ResourceTableReadAction, host.ResourceTableReadResource})
+	}
+	if o.ResourceLeases != nil {
+		rules = append(rules, resourceRules()...)
 	}
 	if o.Credentials != nil {
 		rules = append(rules, installationRule{credentials.ActionManage, credentials.ResourceAccount}, installationRule{credentials.ActionRead, credentials.ResourceAccount})

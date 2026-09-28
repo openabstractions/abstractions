@@ -93,7 +93,7 @@ are retained for maintainers tracing the migration.
 - **Replaced by:** `openabstractions download <url> [--sha256 HEX] [--out PATH]`,
   which submits to the installed runtime's job service and copies the result
   out, and `openabstractions jobs list|show|wait|cancel|result`
-  (the 0.1.8 command design, `feedback/cli-service-commands-0.1.8.md` §2, maps
+  (the 0.1.8 command design, `research/feedback-archive-2026-09-24/cli-service-commands-0.1.8.md` §2, maps
   each `dl` use). Downloads a `dl` left unfinished in the legacy store at upgrade are
   abandoned: their records and partial files stay on disk and nothing finishes
   them.
@@ -178,6 +178,22 @@ are retained for maintainers tracing the migration.
   still calls.
 - **In history:** `6709771d`.
 
+### 11. 2026-09-23, `docs/try-it.md`
+
+- **Was:** a walkthrough that built `dl` and `jobd` from `abstraction-download`
+  and ran one download three times: in-process, through BITS and through a NAS
+  running `jobd`. The page existed in this repository alone; no private source
+  produced it.
+- **Went because:** `dl`, `jobd` and the download layer's `cmd` directory
+  retired with entries 2 and 6, and the page kept naming
+  `abstraction-download/go/cmd/jobd` as something to build.
+- **Replaced by:** the installer and the runtime it installs. The website's
+  [adopt page](https://openabstractions.org/adopt.html) is the current
+  walkthrough for people who use applications and for developers, and
+  `openabstractions downloads` is the command line over the same service.
+- **Removed in:** the `drop docs/try-it.md` line in `scripts/split.manifest`
+  (2026-09-23); the next publication of `abstractions` deletes the file.
+
 ### 10. 2026-09-17, the Python and C++ file-store libraries
 
 - **Was:**
@@ -213,3 +229,16 @@ are retained for maintainers tracing the migration.
   of the Python libraries.
 - **In history:** `4533290e`. The last published sources are
   `abstraction-job` and `abstraction-download` at their `go/v0.4.4` commits.
+
+### 12. 2026-09-22, Go `model.Inventory()`
+
+- **Was:** `abstraction-model/go`'s `Inventory()`, which walked Ollama, the
+  Hugging Face cache, LM Studio and `ABSTRACTION_MODEL_ROOTS` directly and
+  grouped what it found into families.
+- **Went because:** it was a second scanner that saw fewer stores than the
+  storage inventory source and named families the descriptor now names; two
+  scanners disagreed, and the one that is a service stayed.
+- **Replaced by:** `abstraction.storage/inventory@1`, composed by the
+  runtime over its declared sources (`abstraction-storage-over-local-stores`
+  is one), which `modelget` and every other caller now read.
+- **In history:** `9876a18d`.

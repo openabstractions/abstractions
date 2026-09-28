@@ -29,11 +29,13 @@ func main() {
 	state := flag.String("state-dir", "", "absolute gateway state directory")
 	flag.Parse()
 	if *endpoint == "" || *state == "" || flag.NArg() != 0 {
+		//unchecked: last diagnostic before os.Exit in a test fixture; a failed write to stderr has no fallback destination
 		fmt.Fprintln(os.Stderr, "nativefixture: runtime and state-dir are required")
 		os.Exit(2)
 	}
 	backend, err := gateway.NewOA(facade.New(*endpoint), *state)
 	if err != nil {
+		//unchecked: last diagnostic before os.Exit in a test fixture; a failed write to stderr has no fallback destination
 		fmt.Fprintln(os.Stderr, "nativefixture:", err)
 		os.Exit(1)
 	}
@@ -42,6 +44,7 @@ func main() {
 		served = dropAfterSubmit{Backend: backend}
 	}
 	if err := gateway.NewServer(served).Run(context.Background(), &mcp.StdioTransport{MaxLineLength: 1 << 20}); err != nil {
+		//unchecked: last diagnostic before os.Exit in a test fixture; a failed write to stderr has no fallback destination
 		fmt.Fprintln(os.Stderr, "nativefixture:", err)
 		os.Exit(1)
 	}

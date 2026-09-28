@@ -1,11 +1,15 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -228,6 +232,16 @@ func findOpenCodeProviderSources(charterRoot string) (openCodeProviderSources, e
 			filepath.Join(filepath.Dir(charterRoot), "abstraction-identity", "javascript"),
 		},
 	}
+	if info, err := os.Stat(filepath.Join(charterRoot, "openabstractions-flat")); err == nil {
+		if !info.IsDir() {
+			return openCodeProviderSources{}, fmt.Errorf("private workspace marker is not a directory")
+		}
+		// A private workspace owns the generated packages itself. A sibling
+		// checkout must not conceal a deleted private package.
+		layouts = layouts[:1]
+	} else if !os.IsNotExist(err) {
+		return openCodeProviderSources{}, err
+	}
 	for _, layout := range layouts {
 		complete := true
 		for _, source := range layout {
@@ -263,6 +277,102 @@ func stageOpenCodeProviderFrom(t *testing.T, charterRoot string) string {
 func stageOpenCodeProvider(t *testing.T) string {
 	t.Helper()
 	return stageOpenCodeProviderFrom(t, filepath.Clean(".."))
+}
+
+func TestOpenCodeProviderNeverFallsBackToNodeAddonUnderBun(t *testing.T) {
+	if _, err := findOpenCodeProviderSources(filepath.Clean("..")); err != nil {
+		if !privateWorkspace(t) && strings.Contains(err.Error(), "generated JavaScript packages absent") {
+			// Public charter jobs need the three layer checkouts beside it.
+			t.Skip("OpenCode provider integration requires facade, inference and identity JavaScript checkouts")
+		}
+		t.Fatal(err)
+	}
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is unavailable for the staged JavaScript provider check")
+	}
+	provider := stageOpenCodeProvider(t)
+	fixtureDir := t.TempDir()
+	addon := filepath.Join(fixtureDir, "node-addon-sentinel.cjs")
+	if err := os.WriteFile(addon, []byte(`
+require('node:fs').writeFileSync(process.env.OA_NODE_ADDON_MARKER, 'loaded');
+module.exports = {};
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	run := func(t *testing.T, bun bool, library *string) (string, bool) {
+		t.Helper()
+		marker := filepath.Join(t.TempDir(), "node-addon-loaded")
+		script := fmt.Sprintf(`
+if (%t) globalThis.Bun = {};
+const {createOpenAbstractions} = await import(%q);
+const model = createOpenAbstractions({runtimeEndpoint: "controlled-test-endpoint"}).languageModel("fixture-model");
+try {
+  await model.doGenerate({prompt: []});
+  console.log(JSON.stringify({error: "request unexpectedly succeeded"}));
+} catch (error) {
+  console.log(JSON.stringify({error: String(error)}));
+}
+`, bun, fileURL(provider))
+		cmd := exec.Command(node, "--input-type=module", "--eval", script)
+		cmd.Env = append(environmentWithout(os.Environ(), "ABSTRACTION_IPC_LIBRARY", "ABSTRACTION_IPC_NODE"),
+			"ABSTRACTION_IPC_NODE="+addon, "OA_NODE_ADDON_MARKER="+marker)
+		if library != nil {
+			cmd.Env = append(cmd.Env, "ABSTRACTION_IPC_LIBRARY="+*library)
+		}
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("staged provider: %v\n%s", err, output)
+		}
+		var result struct {
+			Error string `json:"error"`
+		}
+		if err := json.Unmarshal([]byte(strings.TrimSpace(string(output))), &result); err != nil {
+			t.Fatalf("staged provider output %q: %v", output, err)
+		}
+		_, markerErr := os.Stat(marker)
+		return result.Error, markerErr == nil
+	}
+
+	for _, fixture := range []struct {
+		name    string
+		library *string
+	}{
+		{name: "missing-library"},
+		{name: "relative-library", library: func() *string { value := "relative-library.dll"; return &value }()},
+	} {
+		t.Run("bun/"+fixture.name, func(t *testing.T) {
+			message, loaded := run(t, true, fixture.library)
+			if loaded {
+				t.Fatalf("Bun loaded the Node addon; error = %q", message)
+			}
+			if !strings.Contains(message, "runtime_unavailable") {
+				t.Fatalf("Bun configuration failure = %q", message)
+			}
+		})
+	}
+	t.Run("node", func(t *testing.T) {
+		message, loaded := run(t, false, nil)
+		if !loaded {
+			t.Fatalf("Node did not retain the addon connector; error = %q", message)
+		}
+	})
+}
+
+func environmentWithout(environment []string, names ...string) []string {
+	omit := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		omit[strings.ToUpper(name)] = struct{}{}
+	}
+	filtered := make([]string, 0, len(environment))
+	for _, item := range environment {
+		name, _, _ := strings.Cut(item, "=")
+		if _, found := omit[strings.ToUpper(name)]; !found {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
 }
 
 func TestStageOpenCodeProviderSupportsPublishedSiblingLayout(t *testing.T) {
@@ -307,6 +417,12 @@ func TestStageOpenCodeProviderSupportsPublishedSiblingLayout(t *testing.T) {
 		if err != nil || string(data) != fixture.repository+"\n" {
 			t.Fatalf("staged %s from public sibling: data=%q err=%v", fixture.installed, data, err)
 		}
+	}
+	if err := os.Mkdir(filepath.Join(charter, "openabstractions-flat"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := findOpenCodeProviderSources(charter); err == nil {
+		t.Fatal("private workspace with missing generated packages fell back to public siblings")
 	}
 }
 
@@ -421,9 +537,13 @@ func TestOpenCodeUsesNativeOAProviderAndSurvivesProviderSubstitution(t *testing.
 		return cmd.CombinedOutput()
 	}
 
+	// The adapter renders a not_permitted/rights: refusal as one plain
+	// sentence naming the Panel (adopters/opencode/index.js refusalMessage);
+	// the typed outcome and reason it keeps on OAInferenceError are checked
+	// separately below, through the runtime's own inference audit.
 	denied, _ := run("Use the available tools once, then report the native OA result.")
-	if !strings.Contains(string(denied), "not_permitted") || !strings.Contains(string(denied), "rights:not_granted") {
-		t.Fatalf("typed OA refusal missing:\n%s", denied)
+	if !strings.Contains(string(denied), "not yet permitted") || !strings.Contains(string(denied), "OpenAbstractions Panel") {
+		t.Fatalf("plain-language OA refusal missing:\n%s", denied)
 	}
 	if requests, _ := os.ReadFile(filepath.Join(providerState, "requests.jsonl")); len(requests) != 0 {
 		t.Fatalf("refused OpenCode reached provider: %s", requests)
@@ -506,5 +626,271 @@ await reader.cancel('test cancellation');
 	if !seen[filepath.Clean(opencode)+"\x00not_permitted"] || !seen[filepath.Clean(opencode)+"\x00completed"] ||
 		!seen[filepath.Clean(node)+"\x00cancelled"] {
 		t.Fatalf("audit lacks original OpenCode and cancellation-helper attribution:\n%s", audit)
+	}
+}
+
+// killServeTree stops an `opencode serve` child. On Windows the portable
+// build has been observed running under a different PID than the one Start
+// returns, so a plain Process.Kill can leave the real server running;
+// taskkill's process-tree option reaches it.
+func killServeTree(cmd *exec.Cmd) {
+	if cmd.Process == nil {
+		return
+	}
+	if runtime.GOOS == "windows" {
+		_ = exec.Command("taskkill", "/F", "/T", "/PID", strconv.Itoa(cmd.Process.Pid)).Run()
+		return
+	}
+	_ = cmd.Process.Kill()
+}
+
+// TestOpenCodeServerAPICancelsMidStreamAndAttributesToOpenCode drives the same
+// isolated runtime and slow provider fixture as
+// TestOpenCodeUsesNativeOAProviderAndSurvivesProviderSubstitution through
+// OpenCode's own HTTP session API instead of the TUI, because the Windows
+// console cannot script Escape into the TUI reliably. It starts `opencode
+// serve`, completes one request through the synchronous message endpoint,
+// then starts a second request whose prompt makes the fixture stream
+// indefinitely (openCodeFixtureChat.Observe's "cancel" mode above), waits for
+// that streamed text to arrive on the server's SSE event feed, and calls the
+// session's abort endpoint. The fixture's own cancellation marker file proves
+// Cancel ran; the runtime's inference audit shows the real OpenCode
+// executable, never a helper process, for both the completed and the
+// cancelled call.
+func TestOpenCodeServerAPICancelsMidStreamAndAttributesToOpenCode(t *testing.T) {
+	opencode, addon, library := os.Getenv("OA_OPENCODE_BINARY"), os.Getenv("OA_IPC_NODE"), os.Getenv("OA_IPC_LIBRARY")
+	if opencode == "" || addon == "" || library == "" {
+		t.Skip("set OA_OPENCODE_BINARY, OA_IPC_NODE, and OA_IPC_LIBRARY for the native OpenCode adopter proof")
+	}
+	if !statusTransportProvesProgram(t) {
+		t.Skip("Program proof unavailable on current shared transport")
+	}
+	for _, path := range []string{opencode, addon, library} {
+		if !filepath.IsAbs(path) {
+			t.Fatalf("fixture path must be absolute: %s", path)
+		}
+		if _, err := os.Stat(path); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	options, _ := isolatedRuntime(t)
+	if err := os.MkdirAll(filepath.Join(options.stateDir, "inference"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(options.stateDir, "inference", inferenceHostsFile), []byte(`{"retention_ms":10000}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	startInferenceRuntime(t, options)
+	endpointArgs := []string{"--endpoint", options.endpoint, "--timeout", "30s"}
+	providerProgram := copyTestBinary(t, "oa-opencode-native-provider-server-api")
+	providerState, pidDir := t.TempDir(), t.TempDir()
+	name := "opencode-native-server-api"
+	self, _ := os.Executable()
+
+	declareArgs := []string{"add", name, "--program", providerProgram, "--provider-endpoint", name,
+		"--contract", inference.Contract, "--guarantee", fixtureGuarantee, "--guarantee", "abstraction.inference/local-only@1", "--model", "fixture-model",
+		"--arg", openCodeProviderFixtureArg, "--arg", "{endpoint}", "--arg", providerState,
+		"--arg", "one", "--arg", pidDir, "--arg", self}
+	if out, err := runProvider(t, append(declareArgs, endpointArgs...)...); err != nil {
+		t.Fatalf("declare: %v\n%s", err, out)
+	}
+	t.Cleanup(func() { _, _ = runProvider(t, append([]string{"remove", name}, endpointArgs...)...) })
+	resolveOnce := func() fwire.ResolveResult {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		result, err := resolution.NewUnverifiedClient(options.endpoint, 5*time.Second).Resolve(ctx, fwire.ResolveRequest{
+			Capability: "abstraction.inference", Contracts: []string{inference.Contract},
+			Guarantees: []string{fixtureGuarantee}, Scope: fwire.ScopeLocal})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	eventually(t, 20*time.Second, "OpenCode server-API provider becoming ready", func() bool {
+		return resolveOnce().Status == fwire.ResolutionStatusResolved
+	})
+	setCompleteRule(t, options.endpoint, filepath.Clean(opencode), name, true)
+
+	providerIndex := stageOpenCodeProvider(t)
+	project := t.TempDir()
+	config := map[string]any{
+		"provider": map[string]any{"openabstractions": map[string]any{
+			"name": "OpenAbstractions", "npm": fileURL(providerIndex),
+			"options": map[string]any{"runtimeEndpoint": options.endpoint, "scope": "local", "guarantees": []string{fixtureGuarantee}},
+			"models": map[string]any{"fixture-model": map[string]any{"name": "OA fixture", "tool_call": true,
+				"limit": map[string]any{"context": 32768, "output": 4096}}},
+		}},
+		"model": "openabstractions/fixture-model",
+	}
+	rawConfig, _ := json.MarshalIndent(config, "", "  ")
+	if err := os.WriteFile(filepath.Join(project, "opencode.json"), rawConfig, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	envRoot := t.TempDir()
+	env := isolatedOpenCodeEnvironment(t, envRoot, addon, library)
+
+	address := freeLoopbackPort(t)
+	_, port, err := net.SplitHostPort(address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := "http://127.0.0.1:" + port
+
+	serverCmd := exec.Command(opencode, "--pure", "serve", "--port", port, "--hostname", "127.0.0.1", "--print-logs", "--log-level", "DEBUG")
+	serverCmd.Dir, serverCmd.Env = project, env
+	var serverOut, serverErrOut bytes.Buffer
+	serverCmd.Stdout, serverCmd.Stderr = &serverOut, &serverErrOut
+	if err := serverCmd.Start(); err != nil {
+		t.Fatalf("start opencode serve: %v", err)
+	}
+	t.Cleanup(func() { killServeTree(serverCmd); _ = serverCmd.Wait() })
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	ready := false
+	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); {
+		if serverCmd.ProcessState != nil {
+			break
+		}
+		if resp, err := client.Get(base + "/doc"); err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				ready = true
+				break
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !ready {
+		t.Skipf("OpenCode server API did not become ready on %s:\nstdout:\n%s\nstderr:\n%s", base, serverOut.String(), serverErrOut.String())
+	}
+
+	createSession := func() string {
+		t.Helper()
+		resp, err := client.Post(base+"/session", "application/json", strings.NewReader("{}"))
+		if err != nil {
+			t.Fatalf("create session: %v", err)
+		}
+		defer resp.Body.Close()
+		raw, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("create session status %d: %s", resp.StatusCode, raw)
+		}
+		var session struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(raw, &session); err != nil || session.ID == "" {
+			t.Fatalf("create session response %s: %v", raw, err)
+		}
+		return session.ID
+	}
+	sendMessage := func(sessionID, text string) (int, []byte) {
+		t.Helper()
+		body, _ := json.Marshal(map[string]any{
+			"model": map[string]string{"providerID": "openabstractions", "modelID": "fixture-model"},
+			"parts": []map[string]string{{"type": "text", "text": text}},
+		})
+		resp, err := client.Post(base+"/session/"+sessionID+"/message", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatalf("message: %v", err)
+		}
+		defer resp.Body.Close()
+		raw, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, raw
+	}
+
+	// The baseline: a normal request through the server's synchronous
+	// /message endpoint completes, giving one "completed" audit line
+	// attributed to OpenCode's own executable.
+	completeSession := createSession()
+	if status, raw := sendMessage(completeSession, "Report the native OA result."); status != http.StatusOK || !strings.Contains(string(raw), "native-oa-one") {
+		t.Fatalf("OpenCode server API baseline completion: status=%d\n%s", status, raw)
+	}
+
+	// The cancellation leg. The fixture streams the text "waiting" forever
+	// once the prompt contains OA_CANCEL_PROBE, so the request is sent
+	// asynchronously and the session is aborted once that streamed text is
+	// observed on the server's own SSE feed, proving the abort reaches OA
+	// mid-stream rather than after the fixture would have finished anyway.
+	cancelSession := createSession()
+	events, err := client.Get(base + "/event")
+	if err != nil {
+		t.Fatalf("subscribe to events: %v", err)
+	}
+	t.Cleanup(func() { events.Body.Close() })
+	streaming := make(chan struct{}, 1)
+	go func() {
+		scanner := bufio.NewScanner(events.Body)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
+		for scanner.Scan() {
+			line := scanner.Text()
+			payload, found := strings.CutPrefix(line, "data: ")
+			if !found {
+				continue
+			}
+			if strings.Contains(payload, cancelSession) && strings.Contains(payload, `"type":"message.part.delta"`) && strings.Contains(payload, "waiting") {
+				select {
+				case streaming <- struct{}{}:
+				default:
+				}
+				return
+			}
+		}
+	}()
+
+	asyncBody, _ := json.Marshal(map[string]any{
+		"model": map[string]string{"providerID": "openabstractions", "modelID": "fixture-model"},
+		"parts": []map[string]string{{"type": "text", "text": "OA_CANCEL_PROBE"}},
+	})
+	asyncResp, err := client.Post(base+"/session/"+cancelSession+"/prompt_async", "application/json", bytes.NewReader(asyncBody))
+	if err != nil {
+		t.Fatalf("prompt_async: %v", err)
+	}
+	asyncRaw, _ := io.ReadAll(asyncResp.Body)
+	asyncResp.Body.Close()
+	if asyncResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("prompt_async status %d: %s", asyncResp.StatusCode, asyncRaw)
+	}
+
+	select {
+	case <-streaming:
+	case <-time.After(15 * time.Second):
+		t.Fatal("OpenCode server API never streamed the fixture's part before the abort")
+	}
+
+	abortResp, err := client.Post(base+"/session/"+cancelSession+"/abort", "application/json", nil)
+	if err != nil {
+		t.Fatalf("abort: %v", err)
+	}
+	abortRaw, _ := io.ReadAll(abortResp.Body)
+	abortResp.Body.Close()
+	if abortResp.StatusCode != http.StatusOK || strings.TrimSpace(string(abortRaw)) != "true" {
+		t.Fatalf("abort status %d: %s", abortResp.StatusCode, abortRaw)
+	}
+
+	eventually(t, 5*time.Second, "OA cancellation reaching the native provider through the OpenCode server API", func() bool {
+		matches, _ := filepath.Glob(filepath.Join(providerState, "cancelled-*"))
+		return len(matches) > 0
+	})
+
+	audit, err := runInference(t, append([]string{"audit", "--json"}, endpointArgs...)...)
+	if err != nil {
+		t.Fatalf("audit: %v\n%s", err, audit)
+	}
+	var document struct {
+		Entries []struct {
+			Program string `json:"Program"`
+			Outcome string `json:"Outcome"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal([]byte(audit), &document); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, entry := range document.Entries {
+		seen[filepath.Clean(entry.Program)+"\x00"+entry.Outcome] = true
+	}
+	if !seen[filepath.Clean(opencode)+"\x00completed"] || !seen[filepath.Clean(opencode)+"\x00cancelled"] {
+		t.Fatalf("audit lacks OpenCode server-API attribution for both the completed and the cancelled call:\n%s", audit)
 	}
 }

@@ -90,10 +90,23 @@ func (p *servicePanel) explore(w http.ResponseWriter, r *http.Request) {
 	self := exploreSelf()
 	capability, operation, argument := q.Get("capability"), q.Get("operation"), q.Get("argument")
 	if capability == "" {
+		// ActionPlain rides along the same way /rights already sends it
+		// (rights_panel.go's presentPolicyPage): each card's own deciding
+		// rule used to name itself by its raw action id alone (task
+		// 2026-09-23, seventh first-time visitor, finding 2), and the page
+		// needs this same map to read it in plain words instead.
+		// SelfAccountName reads self.Account through the same
+		// accountDisplayName (identity_panel.go) Identity's own runtime
+		// sentence uses, so the Explore page can put a person's account
+		// name beside the field that must still carry its raw account
+		// value (task 2026-09-23, tenth first-time visitor, finding 4:
+		// the Account field showed the raw SID as its own visible text).
 		panelJSON(w, struct {
-			Self   probe.Subject `json:"self"`
-			Probes []probe.Probe `json:"probes"`
-		}{self, probe.List()})
+			Self            probe.Subject     `json:"self"`
+			SelfAccountName string            `json:"selfAccountName,omitempty"`
+			Probes          []probe.Probe     `json:"probes"`
+			ActionPlain     map[string]string `json:"actionPlain"`
+		}{self, accountDisplayName(self.Account), probe.List(), rightsActionPlain})
 		return
 	}
 	chosen, _, found := probe.Find(capability, operation)

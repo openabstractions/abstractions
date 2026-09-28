@@ -7,7 +7,6 @@ import (
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	"github.com/openabstractions/abstraction-identity/listen"
 	rights "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
-	"runtime"
 	"sync"
 	"time"
 )
@@ -25,12 +24,12 @@ type applicationsHost struct {
 }
 
 func listenApplications(endpoint string, directory *applicationDirectory, owner string, report func(error)) (*applicationsHost, error) {
-	l, err := listen.Listen(endpoint)
+	l, err := listen.ListenFramed(endpoint, listen.Program)
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &applicationsHost{listener: l, directory: directory, owner: owner, report: report, ctx: ctx, cancel: cancel, slots: make(chan struct{}, 64)}, nil
+	return &applicationsHost{listener: listen.Sessions(l, listen.SessionOptions{MaxSessions: 64}), directory: directory, owner: owner, report: report, ctx: ctx, cancel: cancel, slots: make(chan struct{}, 64)}, nil
 }
 
 func (h *applicationsHost) Close() error {
@@ -40,6 +39,7 @@ func (h *applicationsHost) Close() error {
 }
 
 func (h *applicationsHost) Serve(ctx context.Context) error {
+	//unchecked: Close is idempotent (sync.Once); this async cancellation callback has no caller to report the error to, and Serve's own deferred Close below is the same no-op afterward
 	stop := context.AfterFunc(ctx, func() { h.Close() })
 	defer stop()
 	defer h.workers.Wait()
@@ -55,6 +55,7 @@ func (h *applicationsHost) Serve(ctx context.Context) error {
 		select {
 		case h.slots <- struct{}{}:
 		default:
+			//unchecked: dropping a connection because the worker slots are full; nothing here can act on a failed close of the connection it is already refusing
 			conn.Close()
 			continue
 		}
@@ -91,9 +92,6 @@ type applicationsReceiver struct {
 }
 
 func (r *applicationsReceiver) caller() rights.Subject {
-	if runtime.GOOS == "darwin" {
-		return rights.Subject{}
-	}
 	peer, err := r.call.Peer()
 	if err != nil {
 		return rights.Subject{}

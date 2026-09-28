@@ -180,10 +180,10 @@ impl Store {
     }
 
     fn load(&self, id: &str) -> Result<rec::Record, &'static str> {
-        let data = fs::read(self.path(id)).map_err(|_| "not-found")?;
+        let data = fs::read(self.path(id)).map_err(|_| "not_found")?;
         match rec::decode(&data) {
             Ok(r) => Ok(r),
-            Err(e) if e.word == "unknown_critical" => Err("unknown-model"),
+            Err(e) if e.word == "unknown_critical" => Err("unknown_schema"),
             Err(_) => Err("invalid"),
         }
     }
@@ -306,7 +306,7 @@ impl Driver {
     }
 
     fn record(&self, alias: &str) -> Result<(String, rec::Record), &'static str> {
-        let id = self.ids.get(alias).ok_or("not-found")?;
+        let id = self.ids.get(alias).ok_or("not_found")?;
         Ok((id.clone(), self.store.load(id)?))
     }
 
@@ -370,10 +370,10 @@ impl Driver {
         let now = now_us();
         if let Some(o) = owner {
             if self.epochs.get(o).copied().unwrap_or(0) != r.lease.epoch {
-                return self.show("stale-epoch", alias, &r);
+                return self.show("stale_epoch", alias, &r);
             }
             if !live(&r.lease, now) {
-                return self.show("lease-expired", alias, &r);
+                return self.show("lease_expired", alias, &r);
             }
         }
         match change(&mut r, now).and_then(|_| self.store.save(&id, &mut r)) {
@@ -435,7 +435,7 @@ impl Driver {
         }
         let now = now_us();
         if live(&r.lease, now) {
-            return self.show("lease-held", alias, &r);
+            return self.show("lease_held", alias, &r);
         }
         r.lease.epoch += 1;
         r.lease.owner = owner.to_string();
@@ -529,7 +529,7 @@ impl Driver {
         let (keys, shown) = self.snapshot();
         let l = match self.listeners.get_mut(name) {
             Some(l) => l,
-            None => return "not-found".to_string(),
+            None => return "not_found".to_string(),
         };
         if l.closed {
             return "closed".to_string();
@@ -658,7 +658,7 @@ impl Driver {
                     l.closed = true;
                     "ok".to_string()
                 }
-                None => "not-found".to_string(),
+                None => "not_found".to_string(),
             },
             _ => "unknown-op".to_string(),
         }

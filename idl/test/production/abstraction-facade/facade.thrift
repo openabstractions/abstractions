@@ -110,7 +110,7 @@ service Caller {
 
 // Every generated endpoint answers abstraction.facade/endpoint@1 beside its own
 // services: the Go and C++ generators emit it for every dispatcher, so any
-// generated service can be probed with this one call (ENDPOINT-1 to ENDPOINT-3
+// generated service can be probed with this one call (FAC-B1 to FAC-B3
 // in CONTRACT.md).
 enum DescriptionOutcome {
  1: described
@@ -140,23 +140,36 @@ service Endpoint {
  Description Describe()(doc="Describe the services this endpoint hosts and each one's readiness. Grants, checks and changes nothing.")
 }(wire_name="abstraction.facade/endpoint@1",doc="The base-protocol description every generated endpoint serves beside its own contracts. A registry probes readiness with it over a connection that requires the declared program as the server. An endpoint built before this service answers unknown_service.")
 
-// abstraction.facade/registry@1: the provider declarations a person placed in
-// the runtime, which feed its resolution catalogue (REG-1 to REG-5 in
-// CONTRACT.md).
+// abstraction.facade/registry@1: the declarations a person, a product or the
+// installation placed in the runtime, the one directory of the programs it
+// knows (FAC-R1 to FAC-R8 in CONTRACT.md).
 // The transports a declaration names: oa-native@1 is the shared framed IPC
-// every generated dispatcher serves at a local endpoint name, and oa-remote@1
-// another runtime over mutual TLS at tls://<host>:<port>.
+// every generated dispatcher serves at a local endpoint name, oa-remote@1
+// another runtime over mutual TLS at tls://<host>:<port>, and http@1 a
+// foreign HTTP engine whose own wire is named by host.kind.
 enum DeclarationTransport {
  1: native(wire="oa-native@1")
  2: remote(wire="oa-remote@1")
+ 3: http(wire="http@1")
+}(unknown="refuse",reader="act")
+// The role a declaration plays: provider serves OA contracts on an OA
+// endpoint the runtime launches or attaches to, host is a foreign HTTP engine
+// the router reaches at a base URL, and remote is another runtime over mutual
+// TLS. A declaration without a role reads remote for oa-remote@1, host for
+// http@1 and provider otherwise.
+enum DeclarationRole {
+ 1: provider
+ 2: host
+ 3: remote
 }(unknown="refuse",reader="act")
 // The resource kinds a declaration's resources name, as <kind>:<name>. Each
 // capability reads its own acceptance rule for them: storage accepts
-// store:<name> under abstraction.storage/inventory.provide; host:<name> and
+// store:<name> under abstraction.storage/inventory.provide; the resource
+// table accepts card:<n> under abstraction.resource/hold; host:<name> and
 // profile:<name> are recorded for listing.
-const list<string> declaration_resource_kinds = ["store", "host", "profile"]
+const list<string> declaration_resource_kinds = ["store", "host", "profile", "card"]
 // Rights actions the registry enforces, on resource account.
-const list<string> registry_actions = ["abstraction.facade/provider.manage"] (catalogue = "closed", closed_by = "REG-5")
+const list<string> registry_actions = ["abstraction.facade/provider.manage"] (catalogue = "closed", closed_by = "FAC-R5")
 enum Activation {
  1: on_demand
  2: attach
@@ -169,6 +182,21 @@ struct RemoteTrust {
  4: required string key
  5: optional string credential(omit="zero")
 }(unknown_fields="refuse",doc="The explicit mutual-TLS trust of a remote runtime. server_name is the name its certificate must carry. roots, certificate and key are absolute paths of PEM files on this machine: the roots trusted for that server, and this runtime's client certificate and private key, which the remote maps to its own caller. credential, when present, names the abstraction.credentials record the remote holds and applies to requests delegated to it. The paths are configuration; no key material travels in registry@1.")
+struct DeclarationCeiling {
+ 1: optional i64 tokens_per_day(omit="zero")
+ 2: optional i64 micros_per_day(omit="zero")
+ 3: optional i64 requests_per_day(omit="zero")
+ 4: optional i64 images_per_day(omit="zero")
+ 5: optional i64 audio_seconds_per_day(omit="zero")
+ 6: optional i64 characters_per_day(omit="zero")
+}(unknown_fields="refuse",doc="The daily limits of the credential a host declaration names, per UTC day, in the units abstraction.inference/operator@1 CeilingLimit uses: tokens, spend in currency millionths, requests, images, audio seconds and characters. Zero or absent means no limit in that unit.")
+struct DeclarationHost {
+ 1: required string base
+ 2: required string kind
+ 3: required bool hosted
+ 4: optional string credential(omit="zero")
+ 5: optional DeclarationCeiling ceiling(omit="absent")
+}(unknown_fields="refuse",doc="The foreign HTTP engine a declaration of role host names, the fields abstraction.inference/operator@1 HostEntry carries. base is its https or loopback http API root, with no user information, query or fragment. kind is the wire it speaks: an inference local_host_kinds member for a local engine, and a router wire kind or <owner>/<name>@<n> for a hosted one. hosted false is an engine on this machine, which carries no credential and no ceiling; hosted true is a provider endpoint off it, whose credential names the abstraction.credentials record the service applies and whose ceiling limits that credential. The profiles the host serves are its profile:<name> resources.")
 struct Declaration {
  1: required string name
  2: required string program
@@ -181,7 +209,9 @@ struct Declaration {
  9: required Activation activation
  10: optional RemoteTrust remote(omit="absent")
  11: optional list<string> models(omit="zero")
-}(unknown_fields="refuse",doc="One provider outside the runtime. name is 1..64 bytes of a-z 0-9 _ - and unique. program is the absolute executable path the runtime launches and requires of the process serving endpoint; empty for a remote runtime. arguments are 0..64 strings of 1..4096 bytes; the argument {endpoint} is replaced by endpoint. endpoint is a local endpoint name of 1..64 bytes of a-z 0-9 _ . - for oa-native@1, and tls://<host>:<port> for oa-remote@1. transport is a DeclarationTransport member. contracts holds 1..16 distinct wire names of generated services the provider serves. guarantees holds 0..16 distinct names its candidates advertise. resources holds 0..64 distinct <kind>:<name> of declaration_resource_kinds, name 1..64 bytes of a-z 0-9 _ . -. models is the 0..64 distinct model names a native inference provider is trusted to serve, each 1..256 UTF-8 bytes without controls. on_demand launches program as a supervised child when a resolution first needs it; attach reads a provider something else started; remote is exactly the oa-remote@1 activation, and remote is present exactly then.")
+ 12: optional DeclarationRole role(omit="zero")
+ 13: optional DeclarationHost host(omit="absent")
+}(unknown_fields="refuse",doc="One program the runtime knows. name is 1..64 bytes of a-z 0-9 _ - and unique. role names what it is, and each role validates its own fields (FAC-R6). A provider declares program, the absolute executable path the runtime launches and requires of the process serving endpoint, arguments of 0..64 strings of 1..4096 bytes with {endpoint} replaced by endpoint, endpoint a local endpoint name of 1..64 bytes of a-z 0-9 _ . -, transport oa-native@1, activation on_demand or attach, and contracts of 1..16 distinct wire names of generated services it serves. A remote declares transport oa-remote@1, activation remote, endpoint tls://<host>:<port>, the trust record in remote, and no program or arguments. A host declares transport http@1, activation attach, the engine in host, and no program, arguments, endpoint, contracts, guarantees, models or remote. guarantees holds 0..16 distinct names a provider's candidates advertise. resources holds 0..64 distinct <kind>:<name> of declaration_resource_kinds, name 1..64 bytes of a-z 0-9 _ . -; profile:<name> is what a host or a remote serves. models is the 0..64 distinct model names a native inference provider is trusted to serve, each 1..256 UTF-8 bytes without controls. on_demand launches program as a supervised child when a resolution first needs it; attach reads a provider something else started.")
 enum DeclarationReadiness {
  1: ready
  2: idle
@@ -190,7 +220,12 @@ enum DeclarationReadiness {
  5: refused
  6: unreachable
  7: not_ready
+ 8: disabled
 }(unknown="refuse",reader="act")
+struct HostReading {
+ 1: required bool up
+ 2: required string why
+}(unknown_fields="refuse",doc="The router's latest reading of a host declaration: whether its last survey reached the engine, and why it did not.")
 struct DeclarationState {
  1: required Declaration declaration
  2: required string declared_by
@@ -200,7 +235,9 @@ struct DeclarationState {
  6: required i64 restarts
  7: required list<ServiceState> described
  8: optional list<string> accepted(omit="zero")
-}(unknown_fields="refuse",doc="A declaration and the runtime's latest reading of it. declared_by is the operator program that declared it. ready means endpoint@1 Describe, over a connection requiring program as the server, listed every declared contract ready. idle is an on_demand provider nothing has needed yet; starting a launched child not yet ready; restarting a child that exited and waits out its backoff; refused a process at endpoint running another program (why program:<detail>); unreachable a provider whose Describe failed (why describe:<code or detail>); not_ready a provider whose Describe lists a declared contract not ready or absent (why contract:<wire name>:<reason>). described is the last Description's services. accepted holds the resources a capability accepted at the last reading, such as store:<name> described by an inventory source and permitted by inventory.provide. restarts counts launches after the first.")
+ 9: optional DeclarationRole role(omit="zero")
+ 10: optional HostReading host(omit="absent")
+}(unknown_fields="refuse",doc="A declaration and the runtime's latest reading of it. role repeats the declaration's role, which the runtime resolves for a declaration that names none. declared_by is the operator program that declared it, the word installation for a declaration file the installation placed beside the runtime executable, or the product's own word for a host a product record declared. ready means endpoint@1 Describe, over a connection requiring program as the server, listed every declared contract ready; for a host it means the router's last survey reached it. idle is an on_demand provider nothing has needed yet; starting a launched child not yet ready; restarting a child that exited and waits out its backoff; refused a process at endpoint running another program (why program:<detail>); unreachable a provider whose Describe failed (why describe:<code or detail>), or a host the router did not reach (why host:<detail>); not_ready a provider whose Describe lists a declared contract not ready or absent (why contract:<wire name>:<reason>); disabled a declaration of the installation or a product an operator withdrew (why operator). described is the last Description's services, and host the router's reading of a host. accepted holds the resources a capability accepted at the last reading, such as store:<name> described by an inventory source and permitted by inventory.provide. restarts counts launches after the first.")
 enum DeclarationListOutcome {
  1: page
  2: invalid
@@ -233,9 +270,9 @@ struct DeclarationObservation {
 service Registry {
  DeclarationList Declarations()(doc="Read every declaration and its reading. Gated by abstraction.facade/provider.manage on resource account.")
  DeclarationChange Declare(1:string expected_revision,2:Declaration declaration)(doc="Conditionally add one declaration, kept as providers/<name>.json in the runtime state. Gated by provider.manage. A program cannot declare itself (invalid, program:self). A store:<name> resource writes the permit rule abstraction.storage/inventory.provide on store:<name> for program, and a remote declaration writes abstraction.inference/complete on host:<name> for the runtime's operator programs and the caller; an existing rule on a target is left as it is. A declaration grants nothing else.")
- DeclarationChange Withdraw(1:string expected_revision,2:string name)(doc="Conditionally remove one declaration: the runtime withdraws its candidates and hosts and ends a launched child. Gated by provider.manage. Rules are left as they are.")
+ DeclarationChange Withdraw(1:string expected_revision,2:string name)(doc="Conditionally remove one declaration: the runtime withdraws its candidates and hosts and ends a launched child. Gated by provider.manage. A declaration the installation or a product declared is disabled by name instead of removed, so a reinstall or a later probe does not resurrect it, and a later Declare of that name enables it again. Rules are left as they are.")
  DeclarationObservation Observe(1:string cursor,2:i64 wait_ms)(doc="Wait up to wait_ms milliseconds for the declarations or their readings to differ from cursor, then read them. An empty cursor answers at once. Gated by provider.manage.")
-}(wire_name="abstraction.facade/registry@1",doc="The runtime's provider declarations, for operator tools. Applications never read it; they resolve. Each call is a rights decision for the bound operator subject; same-account identity alone grants nothing. A decision point that cannot answer reads unavailable. The registry is local: a remote runtime's services come from its own endpoint@1 Describe, and no registry is read across machines.")
+}(wire_name="abstraction.facade/registry@1",doc="The runtime's one directory of the programs it knows, for operator tools: providers it launches or attaches to, foreign HTTP engines the router reaches, and other runtimes over mutual TLS. Applications never read it; they resolve. Each call is a rights decision for the bound operator subject; same-account identity alone grants nothing. A decision point that cannot answer reads unavailable. The registry is local: a remote runtime's services come from its own endpoint@1 Describe, and no registry is read across machines.")
 
 const list<string> default_runtime_contracts = [
  "abstraction.logging/sink@1",

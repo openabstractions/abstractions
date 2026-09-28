@@ -21,15 +21,20 @@ from workspace import (cmake_for, certify_compiler, build_root, build_tree, CERT
 def main():
  p=argparse.ArgumentParser(description=__doc__+' '+CERTIFIES)
  p.add_argument('--run',action='store_true')
+ p.add_argument('--installed-candidate',action='store_true',help='Linux only: build the installed Rust client, then prove native selection and a read-only logging call against the account\'s installed runtime')
+ p.add_argument('--prepare-only',action='store_true',help='with --installed-candidate --keep: build the client for execution as the installed account, without running it here')
  p.add_argument('--dry-run', action='store_true', help=DRY_RUN_HELP)
  p.add_argument('--cmake',help='CMake executable (Windows: Visual Studio bundled CMake only)')
  p.add_argument('--keep',metavar='DIR',help=KEEP_HELP)
  a=p.parse_args()
- if not (a.run or a.dry_run):p.print_help();return
+ if not (a.run or a.dry_run or a.installed_candidate):p.print_help();return
+ if sum((a.run,a.dry_run,a.installed_candidate))!=1:p.error('choose one mode')
+ if a.prepare_only and (not a.installed_candidate or not a.keep):p.error('--prepare-only requires --installed-candidate --keep DIR')
  source_revision()
  if a.dry_run: dry_run_stop('rust_services', a)
  windows=os.name=='nt'
  if not windows and not sys.platform.startswith('linux'):raise RuntimeError('this fixture measures Windows/MSVC and Linux only')
+ if a.installed_candidate and windows:p.error('--installed-candidate measures Linux only')
  def run(argv,cwd=ROOT,env=None):subprocess.run([str(x) for x in argv],cwd=cwd,env=env,check=True,timeout=300)
  cmake_env=dict(os.environ);cmake=cmake_for(cmake_env,a.cmake)
  with build_tree('rsv-',a.keep,build_root()) as base:
@@ -45,7 +50,16 @@ def main():
   env=dict(os.environ,OA_IPC_PREFIX=str(prefix),CARGO_TARGET_DIR=str(base/'target'))
   run(['cargo','test','--offline','--manifest-path',tree/'openabstractions-flat/abstraction-facade/rust/Cargo.toml'],tree,env)
   run(['cargo','build','--offline','--manifest-path',consumer/'Cargo.toml'],tree,env)
-  executable=host_program(base/'target/debug','consumer');host=host_program(base,'host')
+  executable=host_program(base/'target/debug','consumer')
+  if a.installed_candidate:
+   if a.prepare_only:
+    print(f'READY installed Rust client: {executable} installed-candidate',flush=True)
+    return
+   candidate_env=dict(env);candidate_env.pop('ABSTRACTION_RUNTIME_ENDPOINT',None)
+   run([executable,'installed-candidate'],ROOT,candidate_env)
+   print('PASS installed Rust client selected the Linux runtime and read logging history',flush=True)
+   return
+  host=host_program(base,'host')
   run(['go','build','-o',host,HERE/'host.go'])
   home=base/'empty-home';home.mkdir();child_env=dict(env,HOME=str(home),USERPROFILE=str(home),OA_RUST_HISTORY_POLICY=str(base/'history-policy'))
   run([executable,'--help'],home,child_env)

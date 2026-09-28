@@ -78,7 +78,7 @@ const routes = await bind('abstraction.router/router@1', router.RouterClient);
 }
 const pick = () => routes.pick({...router.newPickRequest(), model: 'js-model'});
 assert.equal((await pick()).decision.asked, 'js-model');
-for (const [mode, code] of [['router-forbidden', 'forbidden'], ['router-unavailable', 'policy_unavailable']]) {
+for (const [mode, code] of [['router-forbidden', 'forbidden'], ['router-unavailable', 'unavailable']]) {
   writeFileSync(editPolicyFile, mode);
   for (const call of [() => routes.models(false), () => routes.hosts(false), pick]) {
     await assert.rejects(call(), (e) => e instanceof router.ServiceError && e.code === code, mode);

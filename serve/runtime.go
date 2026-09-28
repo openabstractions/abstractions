@@ -31,6 +31,7 @@ type runtimeFlags struct {
 	withoutModels                              bool
 	modelEndpoint                              string
 	supervised                                 bool
+	xpc                                        bool
 	executeDownloads                           bool
 	downloadBackend                            string
 	downloadNASRoot                            string
@@ -38,10 +39,74 @@ type runtimeFlags struct {
 	gateway                                    string
 }
 
+const runtimeUsage = `Usage: openabstractions serve runtime [options]
+
+Hosts resolution, logging, config and durable jobs in one process: the
+runtime every other command connects to. Foreground only; it does not
+install or register itself with the OS.
+
+  --endpoint EP             resolver endpoint, a full platform path: \\.\pipe\
+                            <name> on Windows, an absolute socket path
+                            elsewhere (default: the installed runtime's
+                            per-user runtime-v1)
+  --log-endpoint EP         logging service endpoint, same form as --endpoint
+  --config-endpoint EP      configuration service endpoint, same form
+  --out PATH                service-owned log file (default: user cache/
+                            openabstractions/logging/records.jsonl; with
+                            --isolated, <state-dir>/logging/records.jsonl)
+  --state-dir DIR           absolute private durable runtime state directory
+  --without-jobs            omit durable job execution
+  --without-models          omit model registry lookup
+  --model-endpoint EP       model lookup service endpoint (default with
+                            --endpoint: that endpoint followed by -model)
+  --jobs-root DIR           explicit service-owned job store; requires
+                            --jobs-owner
+  --jobs-owner NAME         stable logical owner for --jobs-root; required
+                            together
+  --jobs-endpoint EP        job service endpoint, same form as --endpoint
+  --jobs-run-downloads      execute accepted anonymous HTTP(S) downloads
+                            inside the service-owned jobs root
+  --jobs-download-backend B download provider: native or nas (managed jobs
+                            only)
+  --jobs-download-nas-root D  override the nas_store configuration setting
+                             (NAS backend reads Settings at startup; a changed
+                              store refuses an existing job-provider binding)
+                            download provider
+  --gateway PORT            open the inference gateway window on
+                            127.0.0.1:PORT for programs holding a local key
+                            (default: closed)
+  --isolated NAME            run beside an installed runtime: derive every
+                            endpoint from this name (a-z, 0-9, -); requires
+                            --state-dir
+  --supervised               installed-parent mode: private stdin pipe EOF
+                            cancels; stdout READY 1 after listeners initialize
+  --xpc                      use the installed macOS LaunchAgent Mach
+                            services; requires launchd registration
+
+To run beside an installed runtime, give one name and one directory:
+  openabstractions serve runtime --isolated <name> --state-dir <absolute dir>
+It prints the ABSTRACTION_RUNTIME_ENDPOINT value for its clients.
+
+Exit codes: 0 a supervised runtime told to stop, 1 usage or startup failure,
+4 this process sees a packaged app's private copy of AppData.
+`
+
 func parseRuntime(args []string, output io.Writer) (runtimeFlags, error) {
 	var options runtimeFlags
+	if containsHelp(args) {
+		if _, err := io.WriteString(output, runtimeUsage); err != nil {
+			return options, err
+		}
+		return options, flag.ErrHelp
+	}
 	flags := flag.NewFlagSet("runtime", flag.ContinueOnError)
-	flags.SetOutput(output)
+	flags.SetOutput(io.Discard)
+	// runtimeUsage already documents every option; the fallback on a genuine
+	// parse error prints it once, not a second time as flag.PrintDefaults'
+	// own single-dash listing.
+	// badFlag below prints this program's own three-line mistake shape;
+	flags.Usage = func() {} // the flag package's own per-error usage call must print nothing
+	flags.BoolVar(&options.xpc, "xpc", false, "use the installed macOS LaunchAgent Mach services; requires launchd registration")
 	flags.BoolVar(&options.supervised, "supervised", false, "installed-parent mode: private stdin pipe EOF cancels; stdout READY 1 after listeners initialize")
 	flags.StringVar(&options.isolated, "isolated", "", "run beside an installed runtime: derive every endpoint from this name (a-z, 0-9, -); requires --state-dir")
 	flags.StringVar(&options.endpoint, "endpoint", "", `resolver endpoint as a full platform path: \\.\pipe\<name> on Windows, an absolute socket path elsewhere (default: the installed runtime's per-user runtime-v1)`)
@@ -57,10 +122,10 @@ func parseRuntime(args []string, output io.Writer) (runtimeFlags, error) {
 	flags.StringVar(&options.jobEndpoint, "jobs-endpoint", "", "job service endpoint, same form as --endpoint")
 	flags.BoolVar(&options.executeDownloads, "jobs-run-downloads", false, "execute accepted anonymous HTTP(S) downloads inside the service-owned jobs root")
 	flags.StringVar(&options.downloadBackend, "jobs-download-backend", "", "download provider: native or nas (managed jobs only)")
-	flags.StringVar(&options.downloadNASRoot, "jobs-download-nas-root", "", "absolute shared job store for the NAS download provider")
+	flags.StringVar(&options.downloadNASRoot, "jobs-download-nas-root", "", "override the nas_store configuration setting for the NAS download provider")
 	flags.StringVar(&options.gateway, "gateway", "", "open the inference gateway window on 127.0.0.1:<port> for programs holding a local key (default: closed)")
 	if err := flags.Parse(args); err != nil {
-		return options, err
+		return options, badFlag(flags, output, "serve runtime", runtimeUsage, args, err)
 	}
 	if err := gatewayAddress(options.gateway); err != nil {
 		return options, err
@@ -74,8 +139,10 @@ func parseRuntime(args []string, output io.Writer) (runtimeFlags, error) {
 	if options.withoutJobs && (options.jobRoot != "" || options.jobEndpoint != "" || options.executeDownloads) {
 		return options, fmt.Errorf("runtime: --without-jobs conflicts with job options")
 	}
-	if _, _, err := normalizeDownloadProvider(options.downloadBackend, options.downloadNASRoot); err != nil {
-		return options, err
+	if options.downloadBackend != downloadBackendNAS || options.downloadNASRoot != "" {
+		if _, _, err := normalizeDownloadProvider(options.downloadBackend, options.downloadNASRoot); err != nil {
+			return options, err
+		}
 	}
 	if options.withoutJobs && (options.downloadBackend != "" || options.downloadNASRoot != "") {
 		return options, fmt.Errorf("runtime: --without-jobs conflicts with download provider options")
@@ -90,6 +157,9 @@ func parseRuntime(args []string, output io.Writer) (runtimeFlags, error) {
 		if err := endpointForm(runtime.GOOS, item.flag, item.value); err != nil {
 			return options, err
 		}
+	}
+	if err := validateXPCOptions(options, runtime.GOOS); err != nil {
+		return options, err
 	}
 	if options.isolated != "" {
 		if err := isolateRuntime(&options, bootstrap.Endpoint); err != nil {
@@ -215,19 +285,30 @@ func completeSelection(options runtimeFlags) error {
 // describeIsolated tells the operator where an isolated runtime listens. The
 // resolver endpoint is the value clients take as ABSTRACTION_RUNTIME_ENDPOINT.
 func describeIsolated(w io.Writer, options runtimeFlags) {
+	//unchecked: describeIsolated has no return value to report a write failure through
 	fmt.Fprintf(w, "runtime: isolated runtime %q is listening\n", options.isolated)
+	//unchecked: describeIsolated has no return value to report a write failure through
 	fmt.Fprintf(w, "  ABSTRACTION_RUNTIME_ENDPOINT=%s\n", options.endpoint)
 	for _, item := range []endpointFlag{
 		{"logging", options.logEndpoint}, {"config", options.configEndpoint}, {"jobs", options.jobEndpoint},
 		{"model", options.modelEndpoint}, {"state", options.stateDir}, {"log file", options.out},
 	} {
 		if item.value != "" {
+			//unchecked: describeIsolated has no return value to report a write failure through
 			fmt.Fprintf(w, "  %-8s %s\n", item.flag, item.value)
 		}
 	}
 }
 
 func serveRuntime(args []string) error {
+	// Requested help (--help, help) prints to stdout and exits 0; parseRuntime's
+	// own leading isHelp check would also catch this, but its output goes to
+	// whichever writer this call passes it, which flags.Usage on a genuine
+	// parse error also uses (stderr) below.
+	if len(args) > 0 && isHelp(args[0]) {
+		_, err := io.WriteString(os.Stdout, runtimeUsage)
+		return err
+	}
 	options, err := parseRuntime(args, os.Stderr)
 	if err != nil {
 		return err
@@ -256,6 +337,9 @@ func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() err
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if err := checkRuntimeTransport(options); err != nil {
+		return err
+	}
 	managed := !options.withoutJobs && options.jobRoot == ""
 	if managed {
 		state := options.stateDir
@@ -281,6 +365,12 @@ func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() err
 	}
 	var executor acceptanceprovider.Executor
 	report := func(err error) { complain("runtime:", err) }
+	if (managed || options.executeDownloads) && options.downloadBackend == downloadBackendNAS {
+		options.downloadNASRoot, err = runtimeNASStore(options)
+		if err != nil {
+			return err
+		}
+	}
 	if managed {
 		if executor, err = managedDownloadExecutor(options.jobRoot, report, options.downloadBackend, options.downloadNASRoot); err != nil {
 			return fmt.Errorf("runtime jobs: %w", err)
@@ -322,6 +412,12 @@ func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() err
 	hostOptions.ConfigStore, hostOptions.ConfigUserKey = isolatedConfigStore(options.stateDir)
 	// A runtime with its own configuration file reads no machine rung either.
 	hostOptions.ConfigWithoutMachine = hostOptions.ConfigStore != nil
+	if hostOptions.ConfigStore != nil {
+		// The installed runtime's default store gets its observation source
+		// from abstraction-config/go/service.Listen itself; a state-dir-scoped
+		// store is this process's own file, so this composition supplies one.
+		hostOptions.ConfigObservationSource = fileConfigObservationSource(hostOptions.ConfigUserKey)
+	}
 	credentials.configure(&hostOptions)
 	inference, err := composeInference(options, credentials, sink, report)
 	if err != nil {
@@ -335,7 +431,13 @@ func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() err
 		inference.close()
 		return err
 	}
-	inference.configure(&hostOptions, routerEndpoint)
+	resourceEndpoint, err := resourceTableEndpoint(options)
+	if err != nil {
+		credentials.close()
+		inference.close()
+		return err
+	}
+	inference.configure(&hostOptions, routerEndpoint, resourceEndpoint)
 	questions, err := composeAsks(options, rightsState, report)
 	if err != nil {
 		complain("runtime asks:", err)
@@ -358,6 +460,24 @@ func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() err
 	if rightsState != nil {
 		if err := rightsState.install(hostOptions.RightsActions, installationRules(hostOptions, registries)); err != nil {
 			complain("runtime rights:", err)
+		}
+		// A declaration that names a card resource loads weights into it
+		// itself, so its own program holds the resource; the operators' rules
+		// are not its rules. This covers the installation's and a product's
+		// declarations, already read once the runtime opens, and a provider
+		// declared while the runtime is running gets the rule when its
+		// declaration lands, not at the next start.
+		if inference != nil && inference.providers != nil {
+			written := writeCardHoldRules(inference.operator, inference.providers)
+			written()
+			inference.providers.Watch(written)
+		}
+	}
+	if options.xpc {
+		if err := installedHostEndpoints(&hostOptions, bootstrap.InstalledEndpoint); err != nil {
+			credentials.close()
+			inference.close()
+			return err
 		}
 	}
 	runtime, err := host.Listen(hostOptions)

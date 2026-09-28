@@ -22,6 +22,7 @@ import (
 	inference "github.com/openabstractions/abstraction-inference/go"
 	jobwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/job"
 	inferenceclient "github.com/openabstractions/abstraction-inference/go/client"
+	routerwire "github.com/openabstractions/abstraction-router/go/abstraction/router"
 )
 
 const (
@@ -63,9 +64,15 @@ func (o *OA) Models(ctx context.Context, in ModelsInput) (ModelsOutput, error) {
 	if err != nil {
 		return ModelsOutput{}, err
 	}
-	out := ModelsOutput{ObservedUnixMS: time.Now().UnixMilli(), Models: make([]Model, 0, len(snapshot.Models))}
-	for _, family := range snapshot.Models {
-		m := Model{Family: family.Family}
+	return ModelsOutput{ObservedUnixMS: time.Now().UnixMilli(), Models: modelsFrom(snapshot.Models)}, nil
+}
+
+// modelsFrom is the structured listing: the servable aliases of each family,
+// and the stores holding it, whether or not a host serves it.
+func modelsFrom(families []routerwire.Family) []Model {
+	out := ModelsOutput{Models: make([]Model, 0, len(families))}
+	for _, family := range families {
+		m := Model{Family: family.Family, HeldIn: family.HeldIn}
 		profiles := map[string]bool{}
 		for _, alias := range family.Names {
 			if !alias.Servable {
@@ -81,12 +88,15 @@ func (o *OA) Models(ctx context.Context, in ModelsInput) (ModelsOutput, error) {
 			m.Profiles = append(m.Profiles, profile)
 		}
 		slices.Sort(m.Profiles)
-		if len(m.Aliases) > 0 {
+		m.Servable = len(m.Aliases) > 0
+		// A model the machine holds and no host serves is still on this
+		// machine; a caller asking what exists here is owed it.
+		if m.Servable || len(m.HeldIn) > 0 {
 			out.Models = append(out.Models, m)
 		}
 	}
 	slices.SortFunc(out.Models, func(a, b Model) int { return strings.Compare(a.Family, b.Family) })
-	return out, nil
+	return out.Models
 }
 
 func (o *OA) Complete(ctx context.Context, in CompleteInput) (CompleteOutput, error) {
@@ -126,6 +136,7 @@ func (o *OA) Complete(ctx context.Context, in CompleteInput) (CompleteOutput, er
 			if text.Len()+len(part.Text) > maxCompletionBytes {
 				return CompleteOutput{}, errors.New("gateway: inference result exceeds 262144-byte bound")
 			}
+			//unchecked: strings.Builder.WriteString never returns a non-nil error
 			text.WriteString(part.Text)
 		}
 	}
@@ -370,6 +381,7 @@ func (o *OA) firstSubmit(ctx context.Context, requestPath, digest string, in Job
 	if err := o.save(ctx, handle, rec); err != nil {
 		return JobSubmitOutput{}, fmt.Errorf("gateway: persist recovery handle before submit: %w", err)
 	}
+	//unchecked: requestRecord is plain int/string fields, which json.Marshal cannot fail on
 	mapping, _ := json.Marshal(requestRecord{Version: handleRecordVersion, Digest: digest, Handle: handle})
 	if err := o.state.WriteContext(ctx, requestPath, casapi.Value{}, mapping); err != nil {
 		// A concurrent process may have won creation. Its immutable mapping is

@@ -68,7 +68,8 @@ func (p *servicePanel) inferenceRoutes(mux *http.ServeMux, key string) {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = io.WriteString(w, inferencePage)
+		//unchecked: a failed write means the client is already gone; there is no response left to recover
+		_, _ = io.WriteString(w, panelPage(r, key, "inference", "Inference", inferencePage))
 	})
 	mux.HandleFunc("/inference/hosts", guard(key, p.inferenceHosts))
 	mux.HandleFunc("/inference/keys", guard(key, p.inferenceKeys))
@@ -133,7 +134,7 @@ func (p *servicePanel) inferenceHosts(w http.ResponseWriter, r *http.Request) {
 	var edit inferenceHostEdit
 	if r.Method == "POST" {
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&edit); err != nil || !edit.valid() {
-			http.Error(w, "invalid host edit", 400)
+			http.Error(w, "invalid model server edit", 400)
 			return
 		}
 	}

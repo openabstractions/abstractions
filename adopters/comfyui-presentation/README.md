@@ -1,5 +1,9 @@
 # Preview an assistant's ComfyUI change before applying it
 
+This page documents a fixture-bound demo. Every command below runs against a
+bounded local fixture or a temporary ComfyUI base directory; none starts a real
+ComfyUI installation, calls a model or executes a workflow.
+
 An assistant can find the current ComfyUI workflow, propose changing one numeric
 node parameter, and ask ComfyUI to show the exact before and proposed values.
 The person reveals the node and applies the change with separate buttons inside
@@ -88,8 +92,11 @@ interface:
 name=presentation protocol=oa-local contract=comfy.presentation@1
 ```
 
-The initial announcement has no browser context, allowing A2 readiness to mean
-that the application-side service is loaded. Browser readiness remains separate.
+The initial announcement has no browser context. This document calls that
+announced state "A2 readiness," after the bounded application-activation
+feature that establishes it (`research/application-activation/RESULTS.md`):
+here it means only that the application-side service is loaded. Browser
+readiness remains separate.
 When the operator connects the presentation panel, the bridge renews the same
 OA instance with the current workflow context UUID, display title and revision.
 A workflow reset replaces that context. The browser page UUID remains a distinct
@@ -110,13 +117,13 @@ uses existing dependencies and can target an explicit local runtime endpoint:
 
 ```text
 py -3 adopters/comfyui-presentation/run.py --run --bridge --oa \
-  --python <comfy-python> --comfy <comfy-source> --frontend <frontend-static> \
-  --oa-library <libabstraction_ipc> \
-  --oa-dll-directory <trusted-native-dependency-directory> \
-  --oa-python-path <abstraction-facade-checkout>/py \
-  --oa-python-path <abstraction-identity-checkout>/py \
-  --oa-runtime-endpoint <configured-local-runtime-endpoint> \
-  --oa-runtime-program <absolute-runtime-program>
+  --python C:\comfy\.venv\Scripts\python.exe --comfy C:\comfy\src --frontend C:\comfy\src\web \
+  --oa-library C:\work\ipc-prefix\bin\abstraction_ipc.dll \
+  --oa-dll-directory C:\work\ipc-prefix\bin \
+  --oa-python-path C:\work\abstraction-facade\py \
+  --oa-python-path C:\work\abstraction-identity\py \
+  --oa-runtime-endpoint \\.\pipe\openabstractions-user-S-1-5-21-0-comfy-runtime \
+  --oa-runtime-program C:\work\out\openabstractions.exe
 ```
 
 The explicit endpoint and program are a required pair. Python binds the resolver

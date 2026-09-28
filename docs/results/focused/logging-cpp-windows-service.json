@@ -10,6 +10,8 @@
     "platform": "windows/amd64",
     "scenario": "independent C++ logging client with explicit endpoint -> generated client -> shared named-pipe IPC -> identity-checked Go logging service -> service-owned JSONL sink; multiline Unicode, zero level and empty attrs preserved; verified peer; record survives client exit; schema=2 refused; absent service errors; no client-local storage",
     "inputs": [
+      "adopters/comfyui-presentation/server/go.mod",
+      "adopters/comfyui-presentation/server/go.sum",
       "conformance/clients/fixture/go.mod",
       "conformance/clients/logging/CMakeLists.txt",
       "conformance/clients/logging/client.cpp",
@@ -17,11 +19,15 @@
       "conformance/clients/workspace.py",
       "conformance/faults/lostreply/go/go.mod",
       "deploy/nas/mkimage/go.mod",
+      "examples/logging-quickstart/go.mod",
+      "examples/logging-quickstart/go.sum",
       "examples/pretend-lemonade/go.mod",
       "examples/pretend-lemonade/go.sum",
       "go.work",
       "go.work.sum",
       "idl/gen",
+      "mcp-gateway/go.mod",
+      "mcp-gateway/go.sum",
       "monitor/go.mod",
       "monitor/go.sum",
       "openabstractions-flat/abstraction-asks/go",
@@ -35,6 +41,9 @@
       "openabstractions-flat/abstraction-config/go",
       "openabstractions-flat/abstraction-config/go/go.mod",
       "openabstractions-flat/abstraction-config/go/go.sum",
+      "openabstractions-flat/abstraction-credentials/go",
+      "openabstractions-flat/abstraction-credentials/go/go.mod",
+      "openabstractions-flat/abstraction-credentials/go/go.sum",
       "openabstractions-flat/abstraction-download/CONTRACT.md",
       "openabstractions-flat/abstraction-download/download.thrift",
       "openabstractions-flat/abstraction-download/go",
@@ -52,6 +61,12 @@
       "openabstractions-flat/abstraction-identity",
       "openabstractions-flat/abstraction-identity/go.mod",
       "openabstractions-flat/abstraction-identity/go.sum",
+      "openabstractions-flat/abstraction-inference/adapters/go",
+      "openabstractions-flat/abstraction-inference/adapters/go/go.mod",
+      "openabstractions-flat/abstraction-inference/adapters/go/go.sum",
+      "openabstractions-flat/abstraction-inference/go",
+      "openabstractions-flat/abstraction-inference/go/go.mod",
+      "openabstractions-flat/abstraction-inference/go/go.sum",
       "openabstractions-flat/abstraction-job/CONTRACT.md",
       "openabstractions-flat/abstraction-job/go",
       "openabstractions-flat/abstraction-job/go/go.mod",
@@ -66,6 +81,13 @@
       "openabstractions-flat/abstraction-model/go",
       "openabstractions-flat/abstraction-model/go/go.mod",
       "openabstractions-flat/abstraction-model/go/go.sum",
+      "openabstractions-flat/abstraction-model/identity",
+      "openabstractions-flat/abstraction-model/identity/go.mod",
+      "openabstractions-flat/abstraction-provider-modelbridge/go/go.mod",
+      "openabstractions-flat/abstraction-provider-modelhost/go/go.mod",
+      "openabstractions-flat/abstraction-resource/go",
+      "openabstractions-flat/abstraction-resource/go/go.mod",
+      "openabstractions-flat/abstraction-resource/go/go.sum",
       "openabstractions-flat/abstraction-rights/go",
       "openabstractions-flat/abstraction-rights/go/go.mod",
       "openabstractions-flat/abstraction-rights/go/go.sum",
@@ -74,6 +96,8 @@
       "openabstractions-flat/abstraction-router/go/go.mod",
       "openabstractions-flat/abstraction-router/go/go.sum",
       "openabstractions-flat/abstraction-router/router.thrift",
+      "openabstractions-flat/abstraction-storage-over-local-stores/go/go.mod",
+      "openabstractions-flat/abstraction-storage-over-local-stores/go/go.sum",
       "openabstractions-flat/abstraction-storage/go",
       "openabstractions-flat/abstraction-storage/go/go.mod",
       "openabstractions-flat/abstraction-storage/go/go.sum",
@@ -110,7 +134,7 @@
     ],
     "service_language": "go"
   },
-  "inputs_digest": "998b308441749d87ace16560b4c4a7cb7bee78871fd96b7a8ab15fa40340289d",
+  "inputs_digest": "dbde8bd40e772f2276be4b7fae69ace6b85fc262d09ef9468d0487d7159907d1",
   "toolchains": {
     "python": {
       "argv": [
@@ -119,7 +143,7 @@
       ],
       "exit": 0,
       "output": "Python 3.12.10\r\n",
-      "seconds": 1.016
+      "seconds": 0.016
     },
     "go": {
       "argv": [
@@ -128,7 +152,7 @@
       ],
       "exit": 0,
       "output": "go version go1.26.5 windows/amd64\n",
-      "seconds": 1.328
+      "seconds": 0.094
     },
     "cmake": {
       "argv": [
@@ -137,8 +161,8 @@
         "--toolchain"
       ],
       "exit": 0,
-      "output": "source revision: 054d17095f3bd3cb0c960d042646d89c1be614a2 (uncommitted changes present)\r\ncmake version 4.3.1-msvc1\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n",
-      "seconds": 3.781
+      "output": "cmake version 4.3.1-msvc1\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n",
+      "seconds": 0.203
     }
   },
   "result": {
@@ -149,9 +173,9 @@
       "cpp"
     ],
     "exit": 0,
-    "output": "source revision: 054d17095f3bd3cb0c960d042646d89c1be614a2 (uncommitted changes present)\r\ngo version go1.26.5 windows/amd64\r\n-- Building for: Visual Studio 18 2026\r\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\r\n-- The CXX compiler identification is MSVC 19.51.36256.0\r\n-- Detecting CXX compiler ABI info\r\n-- Detecting CXX compiler ABI info - done\r\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting CXX compile features\r\n-- Detecting CXX compile features - done\r\n-- The C compiler identification is MSVC 19.51.36256.0\r\n-- Detecting C compiler ABI info\r\n-- Detecting C compiler ABI info - done\r\n-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting C compile features\r\n-- Detecting C compile features - done\r\n-- Performing Test CMAKE_HAVE_LIBC_PTHREAD\r\n-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed\r\n-- Looking for pthread_create in pthreads\r\n-- Looking for pthread_create in pthreads - not found\r\n-- Looking for pthread_create in pthread\r\n-- Looking for pthread_create in pthread - not found\r\n-- Found Threads: TRUE\r\n-- Configuring done (19.0s)\r\n-- Generating done (0.3s)\r\n-- Build files have been written to: $ROOT/.build/logging-service-proof/n-c025b78a\r\nC++ compiler ID MSVC\r\nC++ compiler VERSION 19.51.36256.0\r\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\n  1>Checking Build System\r\n  Building Custom Rule $ROOT/openabstractions-flat/abstraction-identity/cpp/CMakeLists.txt\r\n  client.cpp\r\n  abstraction_ipc.vcxproj -> $ROOT\\.build\\logging-service-proof\\n-c025b78a\\abstraction_ipc-build\\Release\\abstraction_ipc.lib\r\n  Building Custom Rule $ROOT/openabstractions-flat/abstraction-logging/cpp/CMakeLists.txt\r\n  attestation_fields.cpp\r\n  abstraction_logging_attestation_fields.vcxproj -> $ROOT\\.build\\logging-service-proof\\n-c025b78a\\Release\\abstraction_logging_attestation_fields.exe\r\n  Building Custom Rule $ROOT/openabstractions-flat/abstraction-logging/cpp/CMakeLists.txt\r\n  sink_outage.cpp\r\n  abstraction_logging_sink_outage.vcxproj -> $ROOT\\.build\\logging-service-proof\\n-c025b78a\\Release\\abstraction_logging_sink_outage.exe\r\n  Building Custom Rule $ROOT/openabstractions-flat/abstraction-logging/cpp/CMakeLists.txt\r\n  unclaimed_hop0.cpp\r\n  abstraction_logging_unclaimed_hop0.vcxproj -> $ROOT\\.build\\logging-service-proof\\n-c025b78a\\Release\\abstraction_logging_unclaimed_hop0.exe\r\n  Building Custom Rule $ROOT/openabstractions-flat/abstraction-logging/cpp/CMakeLists.txt\r\nTest project $ROOT/.build/logging-service-proof/n-c025b78a\r\n    Start 1: logging_attestation_fields\r\n1/3 Test #1: logging_attestation_fields .......   Passed    0.30 sec\r\n    Start 2: logging_unclaimed_hop0\r\n2/3 Test #2: logging_unclaimed_hop0 ...........   Passed    0.27 sec\r\n    Start 3: logging_sink_outage\r\n3/3 Test #3: logging_sink_outage ..............   Passed    0.39 sec\r\n\r\n100% tests passed, 0 tests failed out of 3\r\n\r\nTotal Test time (real) =   1.05 sec\r\nPASS: C++ logging package tests under the certified MSVC toolchain\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-c025b78a/lib/abstraction_ipc.lib\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-c025b78a/include\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-c025b78a/include/abstraction\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-c025b78a/include/abstraction/ipc\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-c025b78a/include/abstraction/ipc/bootstrap.hpp\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-c025b78a/include/abstraction/ipc/client.h\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-c025b78a/include/abstraction/ipc/client.hpp\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-c025b78a/include/abstraction/ipc/frame.hpp\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-c025b78a/include/abstraction/ipc/process.hpp\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-c025b78a/share/abstraction_ipc/link-dependencies.txt\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-c025b78a/lib/cmake/abstraction_ipc/abstraction_ipcTargets.cmake\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-c025b78a/lib/cmake/abstraction_ipc/abstraction_ipcTargets-release.cmake\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-c025b78a/lib/cmake/abstraction_ipc/abstraction_ipcConfig.cmake\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-c025b78a/lib/cmake/abstraction_ipc/abstraction_ipcConfigVersion.cmake\r\n-- Up-to-date: $ROOT\\.build\\logging-service-proof\\s-c025b78a/include\r\n-- Up-to-date: $ROOT\\.build\\logging-service-proof\\s-c025b78a/include/abstraction\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-c025b78a/include/abstraction/logging\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-c025b78a/include/abstraction/logging/async_handler.hpp\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-c025b78a/include/abstraction/logging/client.hpp\r\n-- Up-to-date: $ROOT\\.build\\logging-service-proof\\s-c025b78a/include/abstraction\r\n-- Up-to-date: $ROOT\\.build\\logging-service-proof\\s-c025b78a/include/abstraction/logging\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-c025b78a/include/abstraction/logging/rec.h\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-c025b78a/lib/cmake/abstraction_logging/abstraction_loggingTargets.cmake\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-c025b78a/lib/cmake/abstraction_logging/abstraction_loggingConfig.cmake\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-c025b78a/lib/cmake/abstraction_logging/abstraction_loggingConfigVersion.cmake\r\n-- Building for: Visual Studio 18 2026\r\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\r\n-- The CXX compiler identification is MSVC 19.51.36256.0\r\n-- Detecting CXX compiler ABI info\r\n-- Detecting CXX compiler ABI info - done\r\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting CXX compile features\r\n-- Detecting CXX compile features - done\r\n-- Performing Test CMAKE_HAVE_LIBC_PTHREAD\r\n-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed\r\n-- Looking for pthread_create in pthreads\r\n-- Looking for pthread_create in pthreads - not found\r\n-- Looking for pthread_create in pthread\r\n-- Looking for pthread_create in pthread - not found\r\n-- Found Threads: TRUE\r\n-- Configuring done (12.4s)\r\n-- Generating done (0.1s)\r\n-- Build files have been written to: $ROOT/.build/logging-service-proof/c-c025b78a\r\nC++ compiler ID MSVC\r\nC++ compiler VERSION 19.51.36256.0\r\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\n  1>Checking Build System\r\n  Building Custom Rule $ROOT/conformance/clients/logging/CMakeLists.txt\r\n  client.cpp\r\n  logging_consumer.vcxproj -> $ROOT\\.build\\logging-service-proof\\c-c025b78a\\Release\\logging_consumer.exe\r\n  Building Custom Rule $ROOT/conformance/clients/logging/CMakeLists.txt\r\nPASS: C++ write\r\nPASS: C++ bad-schema\r\nPASS: C++ absent\r\nPASS: cpp independent client -> generated protocol -> shared IPC -> identity-bound Go service -> provider\r\nPASS: client exited; record survived; schema refused; absent service errored; no client store\r\n",
-    "seconds": 64.016
+    "output": "source revision: 536ea6f5505a94192eeb07fc65536855f3a379d6 (uncommitted changes present)\r\ngo version go1.26.5 windows/amd64\r\n-- Building for: Visual Studio 18 2026\r\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\r\n-- The CXX compiler identification is MSVC 19.51.36256.0\r\n-- Detecting CXX compiler ABI info\r\n-- Detecting CXX compiler ABI info - done\r\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting CXX compile features\r\n-- Detecting CXX compile features - done\r\n-- The C compiler identification is MSVC 19.51.36256.0\r\n-- Detecting C compiler ABI info\r\n-- Detecting C compiler ABI info - done\r\n-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting C compile features\r\n-- Detecting C compile features - done\r\n-- Performing Test CMAKE_HAVE_LIBC_PTHREAD\r\n-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed\r\n-- Looking for pthread_create in pthreads\r\n-- Looking for pthread_create in pthreads - not found\r\n-- Looking for pthread_create in pthread\r\n-- Looking for pthread_create in pthread - not found\r\n-- Found Threads: TRUE\r\n-- Configuring done (8.8s)\r\n-- Generating done (0.2s)\r\n-- Build files have been written to: $ROOT/.build/logging-service-proof/n-05541396\r\nC++ compiler ID MSVC\r\nC++ compiler VERSION 19.51.36256.0\r\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\n  1>Checking Build System\r\n  Building Custom Rule $ROOT/openabstractions-flat/abstraction-identity/cpp/CMakeLists.txt\r\n  client.cpp\r\n  abstraction_ipc.vcxproj -> $ROOT\\.build\\logging-service-proof\\n-05541396\\abstraction_ipc-build\\Release\\abstraction_ipc.lib\r\n  Building Custom Rule $ROOT/openabstractions-flat/abstraction-logging/cpp/CMakeLists.txt\r\n  attestation_fields.cpp\r\n  abstraction_logging_attestation_fields.vcxproj -> $ROOT\\.build\\logging-service-proof\\n-05541396\\Release\\abstraction_logging_attestation_fields.exe\r\n  Building Custom Rule $ROOT/openabstractions-flat/abstraction-logging/cpp/CMakeLists.txt\r\n  sink_outage.cpp\r\n  abstraction_logging_sink_outage.vcxproj -> $ROOT\\.build\\logging-service-proof\\n-05541396\\Release\\abstraction_logging_sink_outage.exe\r\n  Building Custom Rule $ROOT/openabstractions-flat/abstraction-logging/cpp/CMakeLists.txt\r\n  unclaimed_hop0.cpp\r\n  abstraction_logging_unclaimed_hop0.vcxproj -> $ROOT\\.build\\logging-service-proof\\n-05541396\\Release\\abstraction_logging_unclaimed_hop0.exe\r\n  Building Custom Rule $ROOT/openabstractions-flat/abstraction-logging/cpp/CMakeLists.txt\r\nTest project $ROOT/.build/logging-service-proof/n-05541396\r\n    Start 1: logging_attestation_fields\r\n1/3 Test #1: logging_attestation_fields .......   Passed    0.05 sec\r\n    Start 2: logging_unclaimed_hop0\r\n2/3 Test #2: logging_unclaimed_hop0 ...........   Passed    0.06 sec\r\n    Start 3: logging_sink_outage\r\n3/3 Test #3: logging_sink_outage ..............   Passed    0.45 sec\r\n\r\n100% tests passed, 0 tests failed out of 3\r\n\r\nTotal Test time (real) =   0.68 sec\r\nPASS: C++ logging package tests under the certified MSVC toolchain\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-05541396/lib/abstraction_ipc.lib\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-05541396/include\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-05541396/include/abstraction\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-05541396/include/abstraction/ipc\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-05541396/include/abstraction/ipc/bootstrap.hpp\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-05541396/include/abstraction/ipc/client.h\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-05541396/include/abstraction/ipc/client.hpp\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-05541396/include/abstraction/ipc/frame.hpp\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-05541396/include/abstraction/ipc/process.hpp\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-05541396/share/abstraction_ipc/link-dependencies.txt\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-05541396/lib/cmake/abstraction_ipc/abstraction_ipcTargets.cmake\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-05541396/lib/cmake/abstraction_ipc/abstraction_ipcTargets-release.cmake\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-05541396/lib/cmake/abstraction_ipc/abstraction_ipcConfig.cmake\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-05541396/lib/cmake/abstraction_ipc/abstraction_ipcConfigVersion.cmake\r\n-- Up-to-date: $ROOT\\.build\\logging-service-proof\\s-05541396/include\r\n-- Up-to-date: $ROOT\\.build\\logging-service-proof\\s-05541396/include/abstraction\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-05541396/include/abstraction/logging\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-05541396/include/abstraction/logging/async_handler.hpp\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-05541396/include/abstraction/logging/client.hpp\r\n-- Up-to-date: $ROOT\\.build\\logging-service-proof\\s-05541396/include/abstraction\r\n-- Up-to-date: $ROOT\\.build\\logging-service-proof\\s-05541396/include/abstraction/logging\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-05541396/include/abstraction/logging/rec.h\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-05541396/lib/cmake/abstraction_logging/abstraction_loggingTargets.cmake\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-05541396/lib/cmake/abstraction_logging/abstraction_loggingConfig.cmake\r\n-- Installing: $ROOT\\.build\\logging-service-proof\\s-05541396/lib/cmake/abstraction_logging/abstraction_loggingConfigVersion.cmake\r\n-- Building for: Visual Studio 18 2026\r\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\r\n-- The CXX compiler identification is MSVC 19.51.36256.0\r\n-- Detecting CXX compiler ABI info\r\n-- Detecting CXX compiler ABI info - done\r\n-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped\r\n-- Detecting CXX compile features\r\n-- Detecting CXX compile features - done\r\n-- Performing Test CMAKE_HAVE_LIBC_PTHREAD\r\n-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed\r\n-- Looking for pthread_create in pthreads\r\n-- Looking for pthread_create in pthreads - not found\r\n-- Looking for pthread_create in pthread\r\n-- Looking for pthread_create in pthread - not found\r\n-- Found Threads: TRUE\r\n-- Configuring done (6.7s)\r\n-- Generating done (0.1s)\r\n-- Build files have been written to: $ROOT/.build/logging-service-proof/c-05541396\r\nC++ compiler ID MSVC\r\nC++ compiler VERSION 19.51.36256.0\r\nMSBuild version 18.9.1+a81b43525 for .NET Framework\r\n\r\n  1>Checking Build System\r\n  Building Custom Rule $ROOT/conformance/clients/logging/CMakeLists.txt\r\n  client.cpp\r\n  logging_consumer.vcxproj -> $ROOT\\.build\\logging-service-proof\\c-05541396\\Release\\logging_consumer.exe\r\n  Building Custom Rule $ROOT/conformance/clients/logging/CMakeLists.txt\r\nPASS: C++ write\r\nPASS: C++ bad-schema\r\nPASS: C++ absent\r\nPASS: cpp independent client -> generated protocol -> shared IPC -> identity-bound Go service -> provider\r\nPASS: client exited; record survived; schema refused; absent service errored; no client store\r\n",
+    "seconds": 34.843
   },
-  "commit": "054d17095f3bd3cb0c960d042646d89c1be614a2",
-  "record_digest": "f6a1d557c19c5e8c145d38d6a4727e7f759b25a0af715f33e06b061c4f3a758f"
+  "commit": "536ea6f5505a94192eeb07fc65536855f3a379d6",
+  "record_digest": "9a097b9e9643faebf4f3d6beb73a45691b5957662f88f4060aacf2db4193c410"
 }

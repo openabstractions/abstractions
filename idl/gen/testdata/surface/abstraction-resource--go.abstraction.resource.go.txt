@@ -1,0 +1,221 @@
+type Raw string
+type Evidence uint32
+const EvidenceVerified
+const EvidenceClaimed
+func (Evidence) String() string
+func (Evidence) WireName() (string, bool)
+func ParseEvidence(word string) (Evidence, bool)
+func (Evidence) MarshalText() ([]byte, error)
+func (Evidence) UnmarshalText(text []byte) error
+func (Evidence) MarshalJSON() ([]byte, error)
+func (Evidence) UnmarshalJSON(data []byte) error
+func EvidenceValues() []Evidence
+func (Evidence) Known() bool
+type ResourceCallOutcome uint32
+const ResourceCallOutcomeOk
+const ResourceCallOutcomeForbidden
+const ResourceCallOutcomeUnavailable
+const ResourceCallOutcomeInvalid
+const ResourceCallOutcomeUnknown
+func (ResourceCallOutcome) String() string
+func (ResourceCallOutcome) WireName() (string, bool)
+func ParseResourceCallOutcome(word string) (ResourceCallOutcome, bool)
+func (ResourceCallOutcome) MarshalText() ([]byte, error)
+func (ResourceCallOutcome) UnmarshalText(text []byte) error
+func (ResourceCallOutcome) MarshalJSON() ([]byte, error)
+func (ResourceCallOutcome) UnmarshalJSON(data []byte) error
+func ResourceCallOutcomeValues() []ResourceCallOutcome
+func (ResourceCallOutcome) Known() bool
+type AcquireOutcome uint32
+const AcquireOutcomeAcquired
+const AcquireOutcomeInsufficient
+const AcquireOutcomeHoldersRefused
+const AcquireOutcomeNotPermitted
+const AcquireOutcomeUnavailable
+const AcquireOutcomeInvalid
+const AcquireOutcomeForbidden
+func (AcquireOutcome) String() string
+func (AcquireOutcome) WireName() (string, bool)
+func ParseAcquireOutcome(word string) (AcquireOutcome, bool)
+func (AcquireOutcome) MarshalText() ([]byte, error)
+func (AcquireOutcome) UnmarshalText(text []byte) error
+func (AcquireOutcome) MarshalJSON() ([]byte, error)
+func (AcquireOutcome) UnmarshalJSON(data []byte) error
+func AcquireOutcomeValues() []AcquireOutcome
+func (AcquireOutcome) Known() bool
+type YieldAnswer uint32
+const YieldAnswerYielded
+const YieldAnswerRefused
+func (YieldAnswer) String() string
+func (YieldAnswer) WireName() (string, bool)
+func ParseYieldAnswer(word string) (YieldAnswer, bool)
+func (YieldAnswer) MarshalText() ([]byte, error)
+func (YieldAnswer) UnmarshalText(text []byte) error
+func (YieldAnswer) MarshalJSON() ([]byte, error)
+func (YieldAnswer) UnmarshalJSON(data []byte) error
+func YieldAnswerValues() []YieldAnswer
+func (YieldAnswer) Known() bool
+type ProcessBindOutcome uint32
+const ProcessBindOutcomeBound
+const ProcessBindOutcomeUnverifiable
+const ProcessBindOutcomeRefused
+const ProcessBindOutcomeInvalid
+const ProcessBindOutcomeForbidden
+const ProcessBindOutcomeUnavailable
+func (ProcessBindOutcome) String() string
+func (ProcessBindOutcome) WireName() (string, bool)
+func ParseProcessBindOutcome(word string) (ProcessBindOutcome, bool)
+func (ProcessBindOutcome) MarshalText() ([]byte, error)
+func (ProcessBindOutcome) UnmarshalText(text []byte) error
+func (ProcessBindOutcome) MarshalJSON() ([]byte, error)
+func (ProcessBindOutcome) UnmarshalJSON(data []byte) error
+func ProcessBindOutcomeValues() []ProcessBindOutcome
+func (ProcessBindOutcome) Known() bool
+type ServiceErrorCode string
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+const ServiceErrorCodeInternal
+const ServiceErrorCodeInvalidRequest
+const ServiceErrorCodeCallerRefused
+const ServiceErrorCodeUnknownResource
+const ServiceErrorCodePolicyUnavailable
+const ServiceErrorCodeForbidden
+func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) Known() bool
+var KnownResources
+var ResourceErrorCodes
+type Holder struct
+  Program string
+  Account string
+  Amount int64
+  Evidence Evidence
+  Lease string
+  Grant string
+  Since string
+  Detail string
+type ResourceState struct
+  Resource string
+  Capacity int64
+  Held int64
+  Holders []Holder
+  Observed string
+  Instrument string
+type HoldersResult struct
+  Outcome ResourceCallOutcome
+  State *ResourceState
+type ResourceList struct
+  Resources []string
+  Observed string
+type ResourcesResult struct
+  Outcome ResourceCallOutcome
+  List *ResourceList
+type Lease struct
+  ID string
+  Resource string
+  Amount int64
+  Since string
+  RenewBy string
+type YieldRecord struct
+  Holder string
+  Amount int64
+  Answer string
+  TookMs int64
+type AcquireResult struct
+  Outcome AcquireOutcome
+  Lease *Lease
+  Asked []YieldRecord
+type YieldRequest struct
+  ID string
+  Resource string
+  Amount int64
+  Reason string
+  At string
+  Lease string
+type YieldPage struct
+  Requests []YieldRequest
+  Next string
+type ObserveResult struct
+  Outcome ResourceCallOutcome
+  Page *YieldPage
+type AnswerResult struct
+  Recorded bool
+type AnswerCallResult struct
+  Outcome ResourceCallOutcome
+  Answer *AnswerResult
+type LeaseChange struct
+  Applied bool
+  Lease *Lease
+type LeaseChangeResult struct
+  Outcome ResourceCallOutcome
+  Change *LeaseChange
+type ProcessBindResult struct
+  Outcome ProcessBindOutcome
+func Encode(v *ResourceState) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+func Decode(in []byte) (*ResourceState, error)
+type FrameWriter interface
+  WriteFrame(frame []byte) error
+type DispatchError string
+func (DispatchError) Error() string
+func ServiceName(frame []byte) (string, error)
+type FrameExchanger interface
+  ExchangeFrame(frame []byte) ([]byte, error)
+type ServiceError struct
+  Code ServiceErrorCode
+  Message string
+func (ServiceError) Error() string
+const EndpointContract
+type DescribedService interface
+  DescribeService() (contract string, ready bool, why string)
+func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+type ServedService interface
+  DescribedService
+  ServiceContract() string
+func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+type Table interface
+  Resources() (ResourcesResult, error)
+  Holders(resource string, fresh bool) (HoldersResult, error)
+type TableTransport interface
+  FrameExchanger
+type TableClient struct
+func NewTableClient(t TableTransport) *TableClient
+type TableDispatcher struct
+  Handler Table
+func (TableClient) Resources() (result ResourcesResult, err error)
+func (TableClient) Holders(resource string, fresh bool) (result HoldersResult, err error)
+func (TableDispatcher) DescribeService() (contract string, ready bool, why string)
+func (TableDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (TableDispatcher) ServiceContract() string
+func (TableDispatcher) WriteFrame(frame []byte) error
+func (TableDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type Leases interface
+  Acquire(resource string, amount, waitMs int64) (AcquireResult, error)
+  Renew(lease string) (LeaseChangeResult, error)
+  Release(lease string) (LeaseChangeResult, error)
+  Observe(cursor string, waitMs int64) (ObserveResult, error)
+  Answer(request string, answer YieldAnswer, reason string) (AnswerCallResult, error)
+  BindProcess(lease string, pid int64) (ProcessBindResult, error)
+type LeasesTransport interface
+  FrameExchanger
+type LeasesClient struct
+func NewLeasesClient(t LeasesTransport) *LeasesClient
+type LeasesDispatcher struct
+  Handler Leases
+func (LeasesClient) Acquire(resource string, amount, waitMs int64) (result AcquireResult, err error)
+func (LeasesClient) Renew(lease string) (result LeaseChangeResult, err error)
+func (LeasesClient) Release(lease string) (result LeaseChangeResult, err error)
+func (LeasesClient) Observe(cursor string, waitMs int64) (result ObserveResult, err error)
+func (LeasesClient) Answer(request string, answer YieldAnswer, reason string) (result AnswerCallResult, err error)
+func (LeasesClient) BindProcess(lease string, pid int64) (result ProcessBindResult, err error)
+func (LeasesDispatcher) DescribeService() (contract string, ready bool, why string)
+func (LeasesDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (LeasesDispatcher) ServiceContract() string
+func (LeasesDispatcher) WriteFrame(frame []byte) error
+func (LeasesDispatcher) ExchangeFrame(frame []byte) ([]byte, error)

@@ -88,6 +88,7 @@ func (ServiceReadiness) Known() bool
 type DeclarationTransport uint32
 const DeclarationTransportNative
 const DeclarationTransportRemote
+const DeclarationTransportHTTP
 func (DeclarationTransport) String() string
 func (DeclarationTransport) WireName() (string, bool)
 func ParseDeclarationTransport(word string) (DeclarationTransport, bool)
@@ -97,6 +98,19 @@ func (DeclarationTransport) MarshalJSON() ([]byte, error)
 func (DeclarationTransport) UnmarshalJSON(data []byte) error
 func DeclarationTransportValues() []DeclarationTransport
 func (DeclarationTransport) Known() bool
+type DeclarationRole uint32
+const DeclarationRoleProvider
+const DeclarationRoleHost
+const DeclarationRoleRemote
+func (DeclarationRole) String() string
+func (DeclarationRole) WireName() (string, bool)
+func ParseDeclarationRole(word string) (DeclarationRole, bool)
+func (DeclarationRole) MarshalText() ([]byte, error)
+func (DeclarationRole) UnmarshalText(text []byte) error
+func (DeclarationRole) MarshalJSON() ([]byte, error)
+func (DeclarationRole) UnmarshalJSON(data []byte) error
+func DeclarationRoleValues() []DeclarationRole
+func (DeclarationRole) Known() bool
 type Activation uint32
 const ActivationOnDemand
 const ActivationAttach
@@ -118,6 +132,7 @@ const DeclarationReadinessRestarting
 const DeclarationReadinessRefused
 const DeclarationReadinessUnreachable
 const DeclarationReadinessNotReady
+const DeclarationReadinessDisabled
 func (DeclarationReadiness) String() string
 func (DeclarationReadiness) WireName() (string, bool)
 func ParseDeclarationReadiness(word string) (DeclarationReadiness, bool)
@@ -263,6 +278,19 @@ type RemoteTrust struct
   Certificate string
   Key string
   Credential string
+type DeclarationCeiling struct
+  TokensPerDay int64
+  MicrosPerDay int64
+  RequestsPerDay int64
+  ImagesPerDay int64
+  AudioSecondsPerDay int64
+  CharactersPerDay int64
+type DeclarationHost struct
+  Base string
+  Kind string
+  Hosted bool
+  Credential string
+  Ceiling *DeclarationCeiling
 type Declaration struct
   Name string
   Program string
@@ -275,6 +303,11 @@ type Declaration struct
   Activation Activation
   Remote *RemoteTrust
   Models []string
+  Role DeclarationRole
+  Host *DeclarationHost
+type HostReading struct
+  Up bool
+  Why string
 type DeclarationState struct
   Declaration Declaration
   DeclaredBy string
@@ -284,6 +317,8 @@ type DeclarationState struct
   Restarts int64
   Described []ServiceState
   Accepted []string
+  Role DeclarationRole
+  Host *HostReading
 type DeclarationList struct
   Outcome DeclarationListOutcome
   Revision string
@@ -377,6 +412,7 @@ type ResolverDispatcher struct
   Handler Resolver
 func (ResolverClient) Resolve(request ResolveRequest) (result ResolveResult, err error)
 func (ResolverDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ResolverDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ResolverDispatcher) ServiceContract() string
 func (ResolverDispatcher) WriteFrame(frame []byte) error
 func (ResolverDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -390,6 +426,7 @@ type CallerDispatcher struct
   Handler Caller
 func (CallerClient) Observe() (result CallerObservation, err error)
 func (CallerDispatcher) DescribeService() (contract string, ready bool, why string)
+func (CallerDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (CallerDispatcher) ServiceContract() string
 func (CallerDispatcher) WriteFrame(frame []byte) error
 func (CallerDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -403,6 +440,7 @@ type EndpointDispatcher struct
   Handler Endpoint
 func (EndpointClient) Describe() (result Description, err error)
 func (EndpointDispatcher) DescribeService() (contract string, ready bool, why string)
+func (EndpointDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (EndpointDispatcher) ServiceContract() string
 func (EndpointDispatcher) WriteFrame(frame []byte) error
 func (EndpointDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -422,6 +460,7 @@ func (RegistryClient) Declare(expectedRevision string, declaration Declaration) 
 func (RegistryClient) Withdraw(expectedRevision, name string) (result DeclarationChange, err error)
 func (RegistryClient) Observe(cursor string, waitMs int64) (result DeclarationObservation, err error)
 func (RegistryDispatcher) DescribeService() (contract string, ready bool, why string)
+func (RegistryDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (RegistryDispatcher) ServiceContract() string
 func (RegistryDispatcher) WriteFrame(frame []byte) error
 func (RegistryDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -445,6 +484,7 @@ func (ApplicationsClient) Withdraw(application, instance string) (result Applica
 func (ApplicationsClient) Observe(cursor string, waitMs int64) (result ApplicationPage, err error)
 func (ApplicationsClient) Activate(application string) (result ApplicationActivationResult, err error)
 func (ApplicationsDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ApplicationsDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ApplicationsDispatcher) ServiceContract() string
 func (ApplicationsDispatcher) WriteFrame(frame []byte) error
 func (ApplicationsDispatcher) ExchangeFrame(frame []byte) ([]byte, error)

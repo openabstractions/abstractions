@@ -309,11 +309,34 @@ class Lifecycle:
         self.verdict("resolution through default bootstrap and installation-selected trust",
                      {"resolved": "RESOLVED" in resolved and len(resolved["RESOLVED"]) == 2}, output=resolved)
         if "candidate" in self.groups:
+            self.grant_candidate_submit(a)
             self.candidate_scenarios(a, work)
         if "python" in self.groups:
             self.python_scenario(a, work)
         if "go" in self.groups:
             self.go_scenario(a, work)
+
+    def grant_candidate_submit(self, account):
+        """Grant only the candidate C++ executable's installed Submit action."""
+        result = account.user([
+            Path(account.home) / ".local/bin/openabstractions", "rights", "grant",
+            "--program", self.app,
+            "--action", "abstraction.job/acceptance.submit",
+            "--resource", "abstraction.job/acceptance@1",
+            "--why", "isolated Linux lifecycle candidate fixture",
+        ], timeout=30, check=False)
+        applied = result.returncode == 0 and "applied" in result.stdout.lower()
+        self.verdict(
+            "operator grants Submit only to the temporary C++ candidate executable",
+            {"exact_program_action_resource_rule_applied": applied},
+            program=str(self.app),
+            action="abstraction.job/acceptance.submit",
+            resource="abstraction.job/acceptance@1",
+            rc=result.returncode,
+            output=(result.stdout + result.stderr).strip(),
+        )
+        if not applied:
+            raise RuntimeError("the exact candidate Submit grant was not applied")
 
     def candidate_scenarios(self, a, work):
         key = "lifecycle-accept-" + uuid.uuid4().hex[:8]

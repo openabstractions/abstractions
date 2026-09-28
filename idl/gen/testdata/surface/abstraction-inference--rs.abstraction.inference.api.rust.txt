@@ -206,7 +206,7 @@ pub const RESOURCE_ACTIONS: [&str; 4]
 pub const LOCAL_KEY_KINDS: [&str; 1]
 pub const LOCAL_HOST_KINDS: [&str; 9]
 pub const HOST_PROFILES: [&str; 6]
-pub const HOST_DECLARERS: [&str; 6]
+pub const HOST_DECLARERS: [&str; 7]
 pub const CREDENTIAL_CONSUMERS: [&str; 5]
 pub const CLAIM_EXTENSIONS: [&str; 1]
 pub struct Part

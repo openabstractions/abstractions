@@ -24,7 +24,7 @@ func TestVirtualizedProfileRefusesWithExitFour(t *testing.T) {
 	} {
 		err := refuseVirtualizedProfile("serve runtime", probe)
 		var exit *exitError
-		if !errors.As(err, &exit) || exit.code != exitVirtualizedProfile || !strings.Contains(err.Error(), "virtualized_profile") {
+		if !errors.As(err, &exit) || exit.code != exitVirtualizedProfile || !strings.Contains(err.Error(), wrongRuntimeFirstLine) {
 			t.Fatalf("%s view: %v", name, err)
 		}
 		if name == "virtualized" && !strings.Contains(err.Error(), "Claude_pzs8sxrjxfjjc") {
@@ -56,7 +56,7 @@ func TestDefaultStateWritersRefuseAVirtualizedView(t *testing.T) {
 		t.Skipf("profile view %s %v: not inside a packaged app", view, err)
 	}
 	for name, run := range map[string]func() error{
-		"credentials backend": func() error { return credentialsBackend(io.Discard, "file", "") },
+		"credentials backend": func() error { return credentialsBackend(io.Discard, io.Discard, "file", "") },
 	} {
 		err := run()
 		var exit *exitError

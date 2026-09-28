@@ -227,6 +227,44 @@ func (p *servicePanel) settings(w http.ResponseWriter, r *http.Request) {
 	}
 	panelJSON(w, result)
 }
+// panelHTMLPage serves one page's document at its own path, keyed the way /
+// is: the per-run key in the query string, not the header guard() expects
+// from that page's own fetch calls.
+func panelHTMLPage(key, active, title, fragment string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("k") != key {
+			http.Error(w, "panel key required", 403)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		//unchecked: a failed write means the client is already gone; there is no response left to recover
+		_, _ = io.WriteString(w, panelPage(r, key, active, title, fragment))
+	}
+}
+
+// pageOrAPI serves one path two ways, for the five paths that already carried
+// a guarded JSON call before this page existed (rights, settings, logging,
+// identity, explore) and now also carry a page of their own at that same
+// path (task 2026-09-23, requirement 1: "the handlers stay"). Every one of
+// those calls, including this very page's own fetch() calls, sends the
+// X-Panel-Key header (guard's own requirement); a plain browser navigation —
+// the nav pane's <a>, a reload, an address typed in — never does. That
+// header's presence is what tells the two apart.
+func pageOrAPI(key, active, title, fragment string, api http.HandlerFunc) http.HandlerFunc {
+	page := panelHTMLPage(key, active, title, fragment)
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Panel-Key") != "" {
+			guard(key, api)(w, r)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.NotFound(w, r)
+			return
+		}
+		page(w, r)
+	}
+}
+
 func (p *servicePanel) handler(key string) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -234,47 +272,57 @@ func (p *servicePanel) handler(key string) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
-		if r.URL.Query().Get("k") != key {
-			http.Error(w, "panel key required", 403)
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = io.WriteString(w, servicePage)
+		panelHTMLPage(key, "status", "OpenAbstractions services", servicePage)(w, r)
 	})
+	mux.HandleFunc("/static/panel.css", servePanelCSS)
 	mux.HandleFunc("/binding", guard(key, p.serveBinding))
 	mux.HandleFunc("/inventory", guard(key, p.serveInventory))
 	mux.HandleFunc("/action", guard(key, p.act))
 	mux.HandleFunc("/account-work", guard(key, p.accountWork))
 	mux.HandleFunc("/result", guard(key, p.result))
-	mux.HandleFunc("/settings", guard(key, p.settings))
+	mux.HandleFunc("/work", panelHTMLPage(key, "work", "OpenAbstractions work", workPage))
+	mux.HandleFunc("/settings", pageOrAPI(key, "settings", "OpenAbstractions settings", settingsPage, p.settings))
 	mux.HandleFunc("/settings/observe", guard(key, p.observeSettings))
 	mux.HandleFunc("/questions", guard(key, p.questions))
-	mux.HandleFunc("/rights", guard(key, p.rights))
+	mux.HandleFunc("/rights", pageOrAPI(key, "rights", "OpenAbstractions questions and rights", rightsPage, p.rights))
 	mux.HandleFunc("/rights/allow", guard(key, p.rightsBundle))
 	mux.HandleFunc("/credentials-page", p.credentialsPageHandler(key))
 	mux.HandleFunc("/credentials", guard(key, p.credentials))
 	mux.HandleFunc("/runtime", guard(key, serveReadiness))
-	mux.HandleFunc("/logging", guard(key, p.logging))
-	mux.HandleFunc("/identity", guard(key, p.identity))
-	mux.HandleFunc("/explore", guard(key, p.explore))
+	mux.HandleFunc("/logging", pageOrAPI(key, "logging", "OpenAbstractions logging", loggingPage, p.logging))
+	mux.HandleFunc("/identity", pageOrAPI(key, "identity", "OpenAbstractions identity", identityPage, p.identity))
+	mux.HandleFunc("/explore", pageOrAPI(key, "explore", "OpenAbstractions explore", explorePage, p.explore))
 	p.inferenceRoutes(mux, key)
 	p.registryRoutes(mux, key)
+	p.cardRoutes(mux, key)
 	return serviceBrowserBoundary(mux)
 }
-func runServicePanel(address string, open, native bool) error {
+// bindPanel starts listening on address and builds this run's key and URL.
+// Every front end this program offers — the browser page, the native
+// inventory window, the tray icon in tray_windows.go — shares this one HTTP
+// server and per-run bearer key.
+func bindPanel(address string) (p *servicePanel, server *http.Server, listener net.Listener, url string, err error) {
 	hostname, _, err := net.SplitHostPort(address)
 	if err != nil || !loopback(hostname) {
-		return errors.New("service panel requires a loopback address")
+		return nil, nil, nil, "", errors.New("service panel requires a loopback address")
 	}
-	p := &servicePanel{}
+	p = &servicePanel{}
 	key := mint()
-	listener, err := net.Listen("tcp", address)
+	listener, err = net.Listen("tcp", address)
+	if err != nil {
+		return nil, nil, nil, "", err
+	}
+	server = &http.Server{Handler: p.handler(key), ReadHeaderTimeout: 5 * time.Second}
+	url = "http://" + listener.Addr().String() + "/?k=" + key
+	return p, server, listener, url, nil
+}
+
+func runServicePanel(address string, open, native bool) error {
+	p, server, listener, url, err := bindPanel(address)
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Handler: p.handler(key), ReadHeaderTimeout: 5 * time.Second}
 	defer server.Close()
-	url := "http://" + listener.Addr().String() + "/?k=" + key
 	fmt.Println("service control panel:", url)
 	if native {
 		go server.Serve(listener)

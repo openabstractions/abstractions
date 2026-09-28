@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os/user"
 	"runtime"
 	"strings"
 	"time"
@@ -63,22 +64,42 @@ type callerAttributeView struct {
 // callerView is the runtime's abstraction.facade/caller@1 answer, or why there
 // is none.
 type callerView struct {
-	Absent     bool                  `json:"absent"`
-	Error      string                `json:"error,omitempty"`
-	Outcome    string                `json:"outcome,omitempty"`
-	Mechanism  string                `json:"mechanism,omitempty"`
-	Account    string                `json:"account,omitempty"`
-	Program    string                `json:"program,omitempty"`
-	PID        int64                 `json:"pid"`
-	Attributes []callerAttributeView `json:"attributes"`
-	Platform   string                `json:"platform,omitempty"`
-	Transport  string                `json:"transport,omitempty"`
-	Bindable   bool                  `json:"bindable"`
-	Stronger   string                `json:"stronger,omitempty"`
+	Absent      bool                  `json:"absent"`
+	Error       string                `json:"error,omitempty"`
+	Outcome     string                `json:"outcome,omitempty"`
+	Mechanism   string                `json:"mechanism,omitempty"`
+	Account     string                `json:"account,omitempty"`
+	AccountName string                `json:"accountName,omitempty"`
+	Program     string                `json:"program,omitempty"`
+	PID         int64                 `json:"pid"`
+	Attributes  []callerAttributeView `json:"attributes"`
+	Platform    string                `json:"platform,omitempty"`
+	Transport   string                `json:"transport,omitempty"`
+	Bindable    bool                  `json:"bindable"`
+	Stronger    string                `json:"stronger,omitempty"`
+}
+
+// accountDisplayName resolves an account id (a Windows SID; already a plain
+// username on POSIX, where user.LookupId's own no-op-like resolution still
+// returns it unchanged) to the short name a person recognizes ("reinis" out
+// of "COMPUTERNAME\reinis"), falling back to the id itself when nothing
+// resolves (task 2026-09-23, eighth first-time visitor, finding 7: a
+// sentence named the raw SID, never anything a person reads as their own
+// account).
+func accountDisplayName(account string) string {
+	u, err := user.LookupId(account)
+	if err != nil || u.Username == "" {
+		return account
+	}
+	name := u.Username
+	if i := strings.LastIndexAny(name, `\/`); i >= 0 {
+		name = name[i+1:]
+	}
+	return name
 }
 
 func presentCaller(o fwire.CallerObservation) callerView {
-	view := callerView{Outcome: o.Outcome.String(), Mechanism: o.Mechanism, Account: o.Account, Program: o.Program, PID: o.PID,
+	view := callerView{Outcome: o.Outcome.String(), Mechanism: o.Mechanism, Account: o.Account, AccountName: accountDisplayName(o.Account), Program: o.Program, PID: o.PID,
 		Attributes: []callerAttributeView{}, Platform: o.Platform, Transport: o.Transport, Bindable: o.Bindable, Stronger: o.Stronger}
 	for _, a := range o.Attributes {
 		view.Attributes = append(view.Attributes, callerAttributeView{Attribute: a.Attribute, Proof: a.Proof, Ceiling: a.Ceiling})
@@ -136,7 +157,7 @@ func selectionStatus(selected core.Selection, err error) selectionView {
 	return selectionView{Status: "UNTRUSTED", Detail: err.Error()}
 }
 
-func itoa(n int) string { b, _ := json.Marshal(n); return string(b) }
+func itoa(n int) string { b, _ := json.Marshal(n); return string(b) } //unchecked: json.Marshal of a plain int cannot fail
 
 // declarationsFor returns the platform declaration entries for goos.
 func declarationsFor(goos string) ([]declarationView, error) {
@@ -291,7 +312,12 @@ func (p *servicePanel) loggingIdentity(ctx context.Context, runtimeView callerVi
 	}
 	cursor := end.Next
 	nonce := mint()[:16]
-	if err := p.log.record(ctx, logging.LevelInfo, "panel identity check", map[string]string{"panel.probe": nonce}); err != nil {
+	// DEBUG, not INFO: this check runs on every "Check identity" click, and
+	// the record exists to bind the Panel's own logging (below), not to tell
+	// the person anything; at INFO it was the Panel's own noise crowding the
+	// Logging page's default view (task 2026-09-23, finding 4). The page's
+	// level filter now also defaults to INFO and above (logging_page.go).
+	if err := p.log.record(ctx, logging.LevelDebug, "panel identity check", map[string]string{"panel.probe": nonce}); err != nil {
 		return failed(err)
 	}
 	observer, err := panelMachine().ResolveLogObserver(ctx, facade.Requirements{Scope: facade.ScopeLocal})

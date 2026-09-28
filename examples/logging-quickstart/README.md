@@ -11,9 +11,9 @@ program and account identity to the runtime. Installed applications should use
 
 ## Windows PowerShell
 
-Requirements: Go 1.26 or newer and the matching OpenAbstractions 0.2.0 source
-and dependencies. This example targets the upcoming release. The published
-v0.1.7 packages have a different API.
+Requirements: Go 1.26 or newer. This example's `go.mod` pins
+`abstraction-facade/go` v0.5.0 and `abstraction-logging/go` v0.4.0, the
+published versions in place since 2026-09-20.
 Run these commands at the checkout root. Build each executable once because the
 history permission names the application's exact executable path.
 
@@ -30,6 +30,9 @@ New-Item -ItemType Directory -Force $state | Out-Null
 
 Keep the runtime running. It prints `ABSTRACTION_RUNTIME_ENDPOINT=...`. In a
 second PowerShell window at the checkout root, copy the value after `=`:
+
+The runtime allows nothing by default; the `rights grant` call below is what
+lets the quickstart's own program read the history back.
 
 ```powershell
 $env:ABSTRACTION_RUNTIME_ENDPOINT = '<printed endpoint>'

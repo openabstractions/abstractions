@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -24,7 +23,7 @@ authority. activate returns ready only after a descriptor-program-and-session-
 bound presence claims the registered readiness interface. It never focuses,
 opens a document, terminates or restarts an application.
 
-Every command accepts --endpoint, --timeout and --json.
+Every command accepts --endpoint, --timeout and --json. The endpoint is --endpoint if given, else ABSTRACTION_RUNTIME_ENDPOINT if set, else the installed runtime.
 
 Exit codes: 0 listed or ready, 1 runtime not resolved or transport failure,
 2 usage, 3 typed refusal (disabled, forbidden, invalid, launch_refused,
@@ -72,47 +71,52 @@ type applicationActivationOutput struct {
 }
 
 func applicationsCommand(args []string, output, diagnostics io.Writer) error {
-	if len(args) == 0 || isHelp(args[0]) {
+	if len(args) > 0 && isHelp(args[0]) {
 		_, err := io.WriteString(output, applicationsUsage)
 		return err
 	}
+	if len(args) == 0 {
+		return commandMistake(diagnostics, "applications: a command is required", "openabstractions applications --help")
+	}
 	command := "applications " + args[0]
 	if args[0] != "list" && args[0] != "activate" {
-		return &exitError{exitUsage, fmt.Errorf("applications: no command called %q; run openabstractions applications --help", args[0])}
+		return commandMistake(diagnostics, fmt.Sprintf("applications: no command called %q", args[0]), "openabstractions applications --help")
+	}
+	if containsHelp(args[1:]) {
+		_, err := io.WriteString(output, applicationsUsage)
+		return err
 	}
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
-	flags.SetOutput(diagnostics)
-	flags.Usage = func() {
-		if _, err := fmt.Fprint(diagnostics, applicationsUsage); err == nil {
-			flags.PrintDefaults()
-		}
-	}
+	flags.SetOutput(io.Discard)
+	// badFlag below prints this program's own three-line mistake shape;
+	flags.Usage = func() {} // the flag package's own per-error usage call must print nothing
 	var options serviceOptions
 	options.bind(flags)
 	positional, err := parsePositional(flags, args[1:])
 	if err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return err
-		}
-		return &exitError{exitUsage, fmt.Errorf("%s: %w", command, err)}
+		return badFlag(flags, diagnostics, command, applicationsUsage, args[1:], err)
 	}
 	if options.budget < 0 {
-		return &exitError{exitUsage, fmt.Errorf("%s: --timeout must not be negative", command)}
+		return flagMistake(diagnostics, command, applicationsUsage, "--timeout must not be negative")
 	}
 	if command == "applications list" && len(positional) != 0 {
-		return &exitError{exitUsage, fmt.Errorf("%s: takes no arguments", command)}
+		return flagMistake(diagnostics, command, applicationsUsage, "takes no arguments")
 	}
-	if command == "applications activate" && (len(positional) != 1 || !providerName.MatchString(positional[0])) {
-		return &exitError{exitUsage, fmt.Errorf("%s: name exactly one application ID", command)}
+	// The name's own format is not checked here: an unregistered or
+	// mis-typed name is the server's own "unknown" outcome (exit 6), not a
+	// usage mistake this command decides client-side.
+	if command == "applications activate" && len(positional) != 1 {
+		return flagMistake(diagnostics, command, applicationsUsage, "name exactly one application ID")
 	}
 
 	w := newWaiting(options.budget)
 	defer w.stop()
+	machine, source := options.machine(diagnostics, command)
 	call, done := w.call()
-	applications, err := options.machine().ResolveApplications(call, client.Requirements{Scope: client.ScopeLocal})
+	applications, err := machine.ResolveApplications(call, client.Requirements{Scope: client.ScopeLocal})
 	done()
 	if err != nil {
-		return notResolved(command, err)
+		return notResolved(command, source, err)
 	}
 	transport := func(err error) error { return &exitError{exitNotResolved, fmt.Errorf("%s: %w", command, err)} }
 
@@ -181,6 +185,7 @@ func projectApplications(page wire.ApplicationPage) applicationListOutput {
 
 func printApplications(output io.Writer, page applicationListOutput) error {
 	table := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
+	//unchecked: table buffers in memory; the write to the underlying output surfaces at Flush, which is checked below
 	fmt.Fprintln(table, "NAME\tTITLE\tSCOPE\tINSTANCES\tINTERFACES\tCONTEXTS")
 	for _, app := range page.Applications {
 		interfaces, contexts := []string{}, []string{}
@@ -192,6 +197,7 @@ func printApplications(output io.Writer, page applicationListOutput) error {
 				contexts = append(contexts, context.Title)
 			}
 		}
+		//unchecked: table buffers in memory; the write to the underlying output surfaces at Flush, which is checked below
 		fmt.Fprintf(table, "%s\t%s\t%s\t%d\t%s\t%s\n", app.Name, app.Title, app.Scope, len(app.Instances), strings.Join(interfaces, ","), strings.Join(contexts, ","))
 	}
 	return table.Flush()

@@ -66,11 +66,15 @@ type registryListing struct {
 	Revision     string
 	Declarations []struct {
 		Declaration struct {
-			Name, Program, Endpoint, Transport, Activation string
-			Contracts, Guarantees, Resources               []string
-			Remote                                         *struct{ ServerName, Roots, Certificate, Key, Credential string }
+			Name, Program, Endpoint, Transport, Activation, Role string
+			Contracts, Guarantees, Resources                     []string
+			Remote                                               *struct{ ServerName, Roots, Certificate, Key, Credential string }
+			Host                                                 *struct {
+				Base, Kind, Credential string
+				Hosted                 bool
+			}
 		}
-		Readiness, Why string
+		Readiness, Why, Role, DeclaredBy string
 	}
 }
 
@@ -172,9 +176,12 @@ func TestAStateDirectoryFromTheRegistrationBuildMigratesOnce(t *testing.T) {
   "declared_unix_ms": 1789000000000
 }
 `)
+	// The installation declares ComfyUI; the operator's own entry declares one
+	// local engine, and both are host declarations after the migration.
+	placeInstallationDeclarations(t, "comfyui")
 	hostsPath := filepath.Join(options.stateDir, "inference", inferenceHostsFile)
 	write(hostsPath, `{
-  "local": [],
+  "local": [{"kind":"ollama","base":"http://127.0.0.1:11434","declared_by":"operator"}],
   "hosted": [
     {
       "name": "lab",
@@ -196,6 +203,7 @@ func TestAStateDirectoryFromTheRegistrationBuildMigratesOnce(t *testing.T) {
 
 	endpoint := []string{"--endpoint", options.endpoint, "--timeout", "30s"}
 	want := map[string]string{"local-chat": "ready", "local-stores": "ready", "lab": "ready"}
+	roles := map[string]string{"local-chat": "provider", "local-stores": "provider", "lab": "remote", "ollama": "host", "comfyui": "host"}
 	check := func(round string) registryListing {
 		t.Helper()
 		var listing registryListing
@@ -211,9 +219,22 @@ func TestAStateDirectoryFromTheRegistrationBuildMigratesOnce(t *testing.T) {
 			}
 			time.Sleep(100 * time.Millisecond)
 		}
+		seen := map[string]bool{}
 		for _, d := range listing.Declarations {
 			decl := d.Declaration
+			seen[decl.Name] = true
+			if role, known := roles[decl.Name]; known && (d.Role != role || decl.Role != role) {
+				t.Fatalf("%s: %s reads role %q/%q, want %q", round, decl.Name, d.Role, decl.Role, role)
+			}
 			switch decl.Name {
+			case "ollama":
+				if d.DeclaredBy != "operator" || decl.Host == nil || decl.Host.Base != "http://127.0.0.1:11434" || decl.Host.Kind != "ollama" {
+					t.Fatalf("%s: ollama %+v declared by %s", round, decl.Host, d.DeclaredBy)
+				}
+			case "comfyui":
+				if d.DeclaredBy != "installation" || decl.Host == nil || decl.Host.Base != "http://127.0.0.1:8188" {
+					t.Fatalf("%s: comfyui %+v declared by %s", round, decl.Host, d.DeclaredBy)
+				}
 			case "local-chat":
 				if decl.Program != chatProgram || decl.Endpoint != chatEndpoint || decl.Transport != "oa-native@1" || decl.Activation != "attach" ||
 					!slices.Equal(decl.Contracts, []string{inference.Contract}) || !slices.Equal(decl.Guarantees, []string{fixtureGuarantee}) ||
@@ -229,6 +250,12 @@ func TestAStateDirectoryFromTheRegistrationBuildMigratesOnce(t *testing.T) {
 					decl.Remote.ServerName != trust.ServerName || decl.Remote.Key != trust.Key || decl.Remote.Credential != "openrouter" {
 					t.Fatalf("%s: lab %+v", round, decl)
 				}
+			}
+		}
+
+		for name := range roles {
+			if !seen[name] {
+				t.Fatalf("%s: the registry lists no %s\n%s", round, name, raw)
 			}
 		}
 
@@ -260,14 +287,15 @@ func TestAStateDirectoryFromTheRegistrationBuildMigratesOnce(t *testing.T) {
 	// The rewrite: resources replace stores and profiles, the remote is a
 	// declaration, and hosts.json keeps no remote entry.
 	files := map[string][]byte{}
-	for _, name := range []string{"local-chat", "local-stores", "lab"} {
+	for _, name := range []string{"local-chat", "local-stores", "lab", "ollama"} {
 		path := filepath.Join(providers, name+".json")
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("declaration %s after the rewrite: %v", name, err)
 		}
 		text := string(raw)
-		if strings.Contains(text, `"stores"`) || strings.Contains(text, `"profiles"`) || !strings.Contains(text, `"resources"`) && name != "lab" {
+		resourced := name != "lab" && name != "ollama"
+		if strings.Contains(text, `"stores"`) || strings.Contains(text, `"profiles"`) || !strings.Contains(text, `"resources"`) && resourced {
 			t.Fatalf("declaration %s was not rewritten:\n%s", name, raw)
 		}
 		files[path] = raw

@@ -9,16 +9,29 @@ import (
 	"testing"
 )
 
+func validStartAgent(executable string) string {
+	services := []string{
+		"runtime-v1", "logging-v1", "config-v1", "job-acceptance-v1", "router-v1", "model-v1", "storage-content-v1",
+		"asks-application-v1", "rights-authorization-v1", "credentials-v1", "inference-v1", "inference-remote-v1", "registry-v1", "applications-v1", "resource-table-v1", "lend-v1",
+	}
+	var registered strings.Builder
+	for _, service := range services {
+		registered.WriteString("<key>com.openabstractions." + service + "</key><true/>")
+	}
+	return "<plist><dict><key>Label</key><string>" + runtimeAgent + "</string>" +
+		"<key>ProgramArguments</key><array><string>" + executable + "</string><string>serve</string><string>runtime</string><string>--xpc</string></array>" +
+		"<key>MachServices</key><dict>" + registered.String() + "</dict></dict></plist>"
+}
+
 func TestDarwinActivationUsesRegisteredRuntime(t *testing.T) {
 	for _, mode := range []string{"present", "absent", "wrong-user", "background", "query-failed", "malformed", "legacy", "missing"} {
 		t.Run(mode, func(t *testing.T) {
 			home := t.TempDir()
 			exe := filepath.Join(home, ".local/bin/openabstractions")
-			program := "runtime"
+			raw := []byte(validStartAgent(exe))
 			if mode == "legacy" {
-				program = "once"
+				raw = []byte(strings.Replace(string(raw), "<string>runtime</string>", "<string>once</string>", 1))
 			}
-			raw := []byte("<plist><dict><key>Label</key><string>" + runtimeAgent + "</string><key>ProgramArguments</key><array><string>" + exe + "</string><string>serve</string><string>" + program + "</string></array></dict></plist>")
 			var calls []string
 			read := func(string) ([]byte, error) {
 				if mode == "missing" {
@@ -83,8 +96,12 @@ func TestDarwinActivationUsesRegisteredRuntime(t *testing.T) {
 func TestRuntimeAgentRejectsAmbiguousDictionary(t *testing.T) {
 	const exe = "/home/user/.local/bin/openabstractions"
 	label := "<key>Label</key><string>" + runtimeAgent + "</string>"
-	args := "<key>ProgramArguments</key><array><string>" + exe + "</string><string>serve</string><string>runtime</string></array>"
-	good := label + args
+	args := "<key>ProgramArguments</key><array><string>" + exe + "</string><string>serve</string><string>runtime</string><string>--xpc</string></array>"
+	valid := validStartAgent(exe)
+	machStart := strings.Index(valid, "<key>MachServices</key>")
+	machEnd := strings.LastIndex(valid, "</dict></dict></plist>") + len("</dict>")
+	mach := valid[machStart:machEnd]
+	good := label + args + mach
 	cases := map[string]string{
 		"program override":    good + "<key>Program</key><string>/other</string>",
 		"duplicate label":     label + good,

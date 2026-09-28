@@ -170,7 +170,7 @@ func TestGeneratedReplyGo(t *testing.T) {
 }
 
 const replyGoTest = `package rec
-import("errors";"testing";"strings")
+import("encoding/json";"errors";"testing";"strings")
 type handler struct{calls int}
 func(h *handler)Echo(r Record,text string,enabled bool,count int64)(Record,error){h.calls++;if text!=""||enabled||count!=0{panic("changed zero values")};return r,nil}
 func(h *handler)Opaque(p Raw)(Raw,error){h.calls++;return p,nil}
@@ -195,6 +195,26 @@ func TestRefusals(t *testing.T){h:=&handler{};d:=&QueryDispatcher{Handler:h};f:=
  good,e:=d.ExchangeFrame([]byte(frame));if e!=nil{t.Fatal(e)};f.err=nil
  for _,bad:=range []string{string(good)+"{}",strings.Replace(string(good),"\"version\": 1","\"version\": 2",1),strings.Replace(string(good),"Echo","Else",1),strings.Replace(string(good),"example.query/query@1","Else",1),strings.Replace(string(good),"\"value\": \"x\"","\"value\": false",1)}{f.response=[]byte(bad);if _,e=c.Echo(Record{Value:"x"},"",false,0);e==nil{t.Fatal("accepted response",bad)}}
  if h.calls!=1{t.Fatal(h.calls)}
+}
+type metadataHandler struct{*handler}
+func(metadataHandler)Ready()(bool,string){return false,"journal:\n\"unreadable\""}
+func(metadataHandler)DescribeMetadata()([]string,map[string]string){return []string{"g\n\"one\"","second"},map[string]string{"z\"":"v\\end","a":"雪"}}
+type readyWithReason struct{*handler}
+func(readyWithReason)Ready()(bool,string){return true,"stale reason"}
+func TestGeneratedEndpointMetadata(t *testing.T){
+ frame:=[]byte("{\"version\":1,\"service\":\"abstraction.facade/endpoint@1\",\"method\":\"Describe\",\"arguments\":{}}")
+ with:=&QueryDispatcher{Handler:metadataHandler{&handler{}}}
+ without:=&QueryDispatcher{Handler:readyWithReason{&handler{}}}
+ reply,err:=ServeEndpoint(frame,"program\n\"x\"","v1",with,without);if err!=nil{t.Fatal(err)}
+ payload,err:=serviceResponse(reply,EndpointContract,"Describe");if err!=nil{t.Fatal(err)}
+ var decoded struct{Value struct{Program string;Services []struct{Contract string;Readiness string;Why string;Guarantees []string;Capabilities map[string]string}}}
+ if err=json.Unmarshal([]byte(payload),&decoded);err!=nil{t.Fatal(err,string(payload))}
+ if decoded.Value.Program!="program\n\"x\""||len(decoded.Value.Services)!=2{t.Fatal(decoded)}
+ first,second:=decoded.Value.Services[0],decoded.Value.Services[1]
+ if first.Readiness!="not_ready"||first.Why!="journal:\n\"unreadable\""||len(first.Guarantees)!=2||first.Guarantees[0]!="g\n\"one\""||first.Capabilities["z\""]!="v\\end"||first.Capabilities["a"]!="雪"{t.Fatal(first)}
+ if second.Readiness!="ready"||second.Why!=""||len(second.Guarantees)!=0||len(second.Capabilities)!=0{t.Fatal(second)}
+ if strings.Index(string(payload),"\"a\":")>strings.Index(string(payload),"\"z\\\"\":"){t.Fatal("capability map order",payload)}
+ again,err:=ServeEndpoint(frame,"program\n\"x\"","v1",with,without);if err!=nil||string(again)!=string(reply){t.Fatal("nondeterministic metadata",err)}
 }
 `
 

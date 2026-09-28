@@ -10,7 +10,7 @@ pub mod service_error_code
   pub const INVALID_REQUEST: &str
   pub const CALLER_REFUSED: &str
   pub const UNKNOWN_OPERATION: &str
-  pub const POLICY_UNAVAILABLE: &str
+  pub const UNAVAILABLE: &str
   pub const FORBIDDEN: &str
   pub const ALL: [&str; 12]
 pub const PROFILES: [&str; 5]
@@ -39,9 +39,18 @@ pub struct Alias
   servable: bool
   hosted: bool
   profiles: Vec<String>
+  held_in: Vec<String>
+  context_length: i64
+pub struct Component
+  store: String
+  role: String
+  name: String
 pub struct Family
   family: String
   names: Vec<Alias>
+  held_in: Vec<String>
+  family_source: String
+  components: Vec<Component>
 pub struct ModelsSnapshot
   observation: Observation
   models: Vec<Family>

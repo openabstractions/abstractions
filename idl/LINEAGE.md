@@ -52,7 +52,7 @@ not read ASN.1. **We took its central idea instead — see the encoding block.**
 
 | refused | whose lesson |
 |---|---|
-| `service`, `exception` | **JSON Schema / OpenAPI**, whose split between shape and behaviour is the one that held when it was tested here: a client generated from a 67-line schema passed 45 behaviour scenarios because every rule stayed in the service. A definition buys the shape and the bytes, never the rules. |
+| `exception`, `throws` | Refusals use declared outcome vocabulary. Behavioral guarantees remain in contract rules and scenario tests; [DEF-F1](LANGUAGE.md) records the restriction. Service declarations are supported under [DEF-S1](LANGUAGE.md#def-s1-service-interfaces-and-protocol). |
 | `union` | **Protobuf 3**'s field-presence rework, which is the same lesson from the other side: one absence mechanism, spelled once. |
 | `set<T>` | **CBOR** and **Protobuf** both refuse to promise map or set ordering. We refuse the type rather than promise an order we cannot keep. |
 | `double` | **I-JSON (RFC 7493 §2.2)** on interoperable numbers, and **RFC 8785 §3.2.2.3**, which had to specify ECMAScript number formatting exactly because "a JSON number" is not one spelling. We avoid the problem instead of specifying our way through it. |
@@ -446,20 +446,23 @@ because JSON-RPC fixes the field names and we generate an envelope whose field
 names the definition chooses, which is what lets an existing hand-written wire
 format be described rather than replaced.
 
-**Two divergences, both from the same decision.** Thrift's `service` and
-Protobuf's `service` both generate a client, a server skeleton and a transport;
-that is why [DEF-F1] forbids `service` and why this construct is not it.
-`protocol` declares the bytes of two messages and the names that travel in them,
-and stops — no stub, no dispatcher, no connection. The second is that JSON-RPC
-carries an error *object* with a numeric code; we carry a verdict *name* drawn
-from a declared enum, for the reason [DEF-A5] gives: a wire name outlives any
-one language's spelling of it, and a number outlives nothing a reader can read.
+`protocol` declares the bytes of two messages and the names that travel in them.
+It supports descriptions of existing wire formats. A separate `service`
+declaration now generates typed interfaces, transport-injected clients and
+dispatchers under [DEF-S1](LANGUAGE.md#def-s1-service-interfaces-and-protocol).
+Shared IPC supplies the connection and caller identity. The earlier restriction
+on service declarations was superseded by this service-generation model.
 
-The measurement that justified stopping there: `test/wire` puts a generated peer
+Protocol verdicts use names from a declared enum. JSON-RPC's error object with
+a numeric code was the comparison point for that choice; [DEF-A5] records the
+wire-enum behavior.
+
+The original record-protocol measurement: `test/wire` puts a generated peer
 and a hand-written one on both ends of the same exchange in both directions. The
 envelope is the same bytes; the framing, the connection lifetime and the
 dispatch are written by hand in each peer and are different lengths in each.
-There was nothing to generate.
+That fixture demonstrates record-protocol compatibility. Current service
+generation has its own interface and dispatch tests.
 
 ---
 

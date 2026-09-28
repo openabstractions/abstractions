@@ -4,16 +4,27 @@ import {
 } from '@openabstractions/inference';
 import {NativeConnector} from '@openabstractions/ipc';
 
-/** A typed OA terminal outcome surfaced through the AI SDK provider boundary. */
+/** A typed OA terminal outcome surfaced through the AI SDK provider boundary.
+ * A not_permitted outcome whose reason is a pending rights question reads as
+ * one sentence naming the Panel; every other outcome keeps its own wording.
+ * The typed outcome and reason stay on the error either way. */
 export class OAInferenceError extends Error {
   constructor(reply) {
-    super(`OpenAbstractions inference ${reply.outcome}${reply.reason ? `: ${reply.reason}` : ''}`);
+    super(refusalMessage(reply));
     this.name = 'OAInferenceError';
     this.outcome = reply.outcome;
     this.reason = reply.reason;
     this.host = reply.host;
     this.model = reply.model;
   }
+}
+
+function refusalMessage(reply) {
+  if (reply.outcome === 'not_permitted' && typeof reply.reason === 'string' && reply.reason.startsWith('rights:')) {
+    return 'OpenAbstractions: this program is not yet permitted to do that. '
+      + 'A question is waiting in the OpenAbstractions Panel; allow it there and retry.';
+  }
+  return `OpenAbstractions inference ${reply.outcome}${reply.reason ? `: ${reply.reason}` : ''}`;
 }
 
 function textOutput(output) {
@@ -119,7 +130,7 @@ class OALanguageModel {
   async chat(options) {
     let connector = this.config.connector;
     if (!connector) {
-      if (globalThis.Bun && process.env.ABSTRACTION_IPC_LIBRARY) {
+      if (typeof globalThis.Bun !== 'undefined') {
         const {BunNativeConnector} = await import('@openabstractions/ipc/bun');
         connector = new BunNativeConnector();
       } else {

@@ -17,7 +17,7 @@ enum ServiceErrorCode
   InvalidRequest
   CallerRefused
   UnknownOperation
-  PolicyUnavailable
+  Unavailable
   Forbidden
 const credentialConsumers
 function decode(data)
@@ -29,6 +29,8 @@ function newAlias()
   servable
   hosted
   profiles
+  heldIn
+  contextLength
 function newAsk()
   at
   caller
@@ -40,6 +42,10 @@ function newAsk()
 function newCaller()
   userDescription
   pathDescription
+function newComponent()
+  store
+  role
+  name
 function newDecision()
   asked
   family
@@ -55,6 +61,9 @@ function newDecision()
 function newFamily()
   family
   names
+  heldIn
+  familySource
+  components
 function newHostAllowance()
   hosts
 function newHostState()

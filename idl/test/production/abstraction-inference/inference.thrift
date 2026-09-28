@@ -64,9 +64,10 @@ const list<string> host_profiles = ["chat", "embed", "transcription", "speech", 
 // The declared_by words of a host: operator for one added through operator@1,
 // the product's name for a host that product's own record declared (its
 // environment variable, server configuration file, settings store or status
-// command, never a port scan), and default for a runtime at the router's
-// built-in address because the product records none.
-const list<string> host_declarers = ["operator", "ollama", "lmstudio", "docker-model-runner", "foundry-local", "default"]
+// command, never a port scan), installation for a declaration file the
+// installation placed beside the runtime executable, and default for a
+// runtime at the router's built-in address because the product records none.
+const list<string> host_declarers = ["operator", "ollama", "lmstudio", "docker-model-runner", "foundry-local", "installation", "default"]
 // The consumer contract name the service gives abstraction.credentials
 // applier@1 for every outgoing request to a hosted host.
 const list<string> credential_consumers = ["abstraction.inference/chat@1", "abstraction.inference/embed@1", "abstraction.inference/transcription@1", "abstraction.inference/speech@1", "abstraction.inference/live@1"]
@@ -472,7 +473,7 @@ struct HostEntry {
  6: optional CeilingLimit ceiling(omit="absent")
  7: optional list<string> profiles(omit="zero")
  8: optional string declared_by(omit="zero")
-}(unknown_fields="refuse",doc="One host the runtime reaches. A remote runtime is an abstraction.facade/registry@1 declaration; router@1 Hosts lists its hosts as <name>/<host>. profiles holds 1..16 distinct host_profiles members or <owner>/<name>@<n>; empty in AddHost selects the wire's default: openai-compatible and every local kind serve chat, embed, transcription, speech and image, and anthropic-messages and any other wire serve chat. declared_by is asserted by the runtime, operator for a host added through AddHost, and AddHost refuses a non-empty value as invalid. name is 1..64 bytes of a-z 0-9 _ - and unique. A local host (hosted false) names a local_host_kinds member as both name and kind, and the base URL of that runtime on this machine, and carries no credential or ceiling. A hosted host names a wire kind (router wire_kinds or <owner>/<name>@<n>), its https or loopback http API root, the abstraction.credentials name the service applies to it, and optionally that credential's ceiling. base carries no user information, query or fragment.")
+}(unknown_fields="refuse",doc="One host the runtime reaches, kept as an abstraction.facade/registry@1 declaration of role host. A remote runtime is a declaration of role remote; router@1 Hosts lists its hosts as <name>/<host>. profiles holds 1..16 distinct host_profiles members or <owner>/<name>@<n>; empty in AddHost selects the wire's default: openai-compatible and every local kind serve chat, embed, transcription, speech and image, and anthropic-messages and any other wire serve chat. declared_by is asserted by the runtime, operator for a host added through AddHost, and AddHost refuses a non-empty value as invalid. name is 1..64 bytes of a-z 0-9 _ - and unique. A local host (hosted false) names a local_host_kinds member as both name and kind, and the base URL of that runtime on this machine, and carries no credential or ceiling. A hosted host names a wire kind (router wire_kinds or <owner>/<name>@<n>), its https or loopback http API root, the abstraction.credentials name the service applies to it, and optionally that credential's ceiling. base carries no user information, query or fragment.")
 struct Spend {
  1: required string day
  2: required i64 tokens
@@ -595,9 +596,9 @@ struct GatewayChange {
  3: required string reason
 }(unknown_fields="refuse",doc="applied carries the new setting revision; the runtime has opened or closed the window before replying. conflict means expected_revision is not current and carries the current revision. invalid carries the field in reason: address when it is not 127.0.0.1:<port>. unavailable carries listen:<detail> in reason when the setting was written and the window could not listen. Other outcomes carry an empty revision.")
 service Operator {
- HostList Hosts()(doc="Read the configured hosts, their router state and each hosted credential's spend today. Gated by abstraction.inference/host.manage on resource account.")
- HostChange AddHost(1:string expected_revision,2:HostEntry host)(doc="Conditionally add one host. Gated by host.manage. For the bound operator program and the runtime's other operator programs it also writes the permit rule abstraction.inference/complete on host:<name>, and for a hosted host with a credential it writes the runtime's own permit rule abstraction.credentials/apply on credential:<name>, which the router's listing reads need. Existing rules are left as they are.")
- HostChange RemoveHost(1:string expected_revision,2:string name)(doc="Conditionally remove one host; operations already admitted run to their end. Gated by host.manage. Rules are left as they are.")
+ HostList Hosts()(doc="Read the configured hosts, their router state and each hosted credential's spend today, from the registry's declarations of role host. Gated by abstraction.inference/host.manage on resource account.")
+ HostChange AddHost(1:string expected_revision,2:HostEntry host)(doc="Conditionally add one host, kept as a registry declaration of role host. Gated by host.manage. For the bound operator program and the runtime's other operator programs it also writes the permit rule abstraction.inference/complete on host:<name>, and for a hosted host with a credential it writes the runtime's own permit rule abstraction.credentials/apply on credential:<name>, which the router's listing reads need. Existing rules are left as they are.")
+ HostChange RemoveHost(1:string expected_revision,2:string name)(doc="Conditionally remove one host; operations already admitted run to their end. Gated by host.manage. A host the installation or a product declared is disabled by name instead of removed. Rules are left as they are.")
  KeyList Keys()(doc="Read the local keys of the receiving account. Gated by abstraction.inference/key.issue on resource account.")
  KeyIssued IssueKey(1:string program,2:string credential)(doc="Mint a local key for program, an absolute executable path, and hold it in the platform store. credential, when not empty, names the hosted credential the window's requests for that program may spend under. Gated by key.issue. The key grants nothing: the window still binds the peer, requires that program, and decides abstraction.inference/complete and credentials apply for it.")
  KeyRevoked RevokeKey(1:string program)(doc="Destroy the active local key of program. Gated by key.issue.")

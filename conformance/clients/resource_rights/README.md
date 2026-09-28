@@ -20,8 +20,9 @@ stages:
   `abstraction.router/routes`, every call succeeds, including a pick of model
   `qwen2.5`;
 - `revoked`: every call is refused again;
-- `outage`: with the rights service stopped, history and router report
-  `policy_unavailable` and model lookup reports `unavailable`.
+- `outage`: with the rights service stopped, history reports
+  `policy_unavailable`, and model lookup and router both report
+  `unavailable`.
 
 The native subject granted is the consumer executable observed by the history
 service. No owner service, registry or installed runtime is used.

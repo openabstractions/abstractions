@@ -4,8 +4,26 @@ import json
 from pathlib import Path
 import re
 
-LAYERS = set('job download storage cas watch logging identity rights asks credentials inference config model router facade'.split())
 LANGUAGES = set('go cpp python rust javascript'.split())
+
+
+def public_definitions(root):
+    """Definitions in public abstraction trees selected by the split manifest."""
+    owners = set()
+    repo = None
+    for line in (root/'scripts/split.manifest').read_text(encoding='utf-8-sig').splitlines():
+        words = line.split('#', 1)[0].split()
+        if not words: continue
+        if words[0] == 'repo':
+            repo = words[1] if len(words) == 2 else None
+        elif (repo and repo.startswith('abstraction-') and len(words) == 3
+              and words[:2] == ['tree', '.']):
+            path = Path(words[2])
+            if path.as_posix() == f'openabstractions-flat/{repo}':
+                owners.add(repo.removeprefix('abstraction-'))
+    return {p.relative_to(root).as_posix()
+            for owner in owners
+            for p in (root/f'openabstractions-flat/abstraction-{owner}').rglob('*.thrift')}
 
 
 def targets(root):
@@ -53,8 +71,8 @@ def profiles(root, inventory):
 
 def validate(root, inventory, complete=False):
     rows=inventory['layers']
-    if inventory.get('version')!=1 or len(rows)!=len(LAYERS) or {r['layer'] for r in rows}!=LAYERS:
-        raise ValueError(f'exactly the {len(LAYERS)} intended layers are required')
+    if inventory.get('version')!=1 or len({r['layer'] for r in rows})!=len(rows):
+        raise ValueError('inventory version 1 and unique schema-owner rows are required')
     declared=set(); pending=[]; generation=targets(root)
     for row in rows:
         name=row['layer']
@@ -84,6 +102,8 @@ def validate(root, inventory, complete=False):
         for definition in row['definitions']:
             path=definition['path']
             if path in declared: raise ValueError(f'duplicate descriptor {path}')
+            if not path.startswith(f'openabstractions-flat/abstraction-{name}/'):
+                raise ValueError(f'{name}: descriptor belongs to another public schema owner: {path}')
             declared.add(path)
             if not (root/path).is_file(): raise ValueError(f'{name}: missing descriptor {path}')
             source=(root/path).read_text(encoding='utf-8-sig')
@@ -104,15 +124,18 @@ def validate(root, inventory, complete=False):
                 if any(r[2]!=no_ipc for r in matches):
                     raise ValueError(f'{name}: incorrect IPC flag for {path}')
             if not any(r[3] for r in rows_for): raise ValueError(f'{name}: API documentation generation missing')
-    actual={p.relative_to(root).as_posix() for name in LAYERS for p in (root/f'openabstractions-flat/abstraction-{name}').glob('*.thrift')}
+    actual=public_definitions(root)
     if actual!=declared: raise ValueError(f'unclassified definitions: {sorted(actual-declared)}; absent: {sorted(declared-actual)}')
+    owners={p.split('/')[1].removeprefix('abstraction-') for p in actual}
+    if {r['layer'] for r in rows}!=owners:
+        raise ValueError(f'unclassified public schema owners: {sorted(owners-{r["layer"] for r in rows})}; absent: {sorted({r["layer"] for r in rows}-owners)}')
     if complete and pending: raise ValueError(f'descriptor obligations remain: {", ".join(pending)}')
     validate_package_metadata(root, inventory)
     backlog = check_contract_rules(root, inventory)
     return {'layers':len(rows),'definitions':len(declared),'profiles':sum(len(v) for v in profiles(root,inventory).values()),'pending':pending,'descriptors_complete':not pending,'pending_interfaces':[r['layer'] for r in rows if r.get('interface_generation',{}).get('status')=='pending'],'contract_rule_backlog':backlog}
 
 
-# Contract rules from feedback/protocol-lessons-audit-2026-09-15.md, "Rules for
+# Contract rules from research/feedback-archive-2026-09-24/protocol-lessons-audit-2026-09-15.md, "Rules for
 # new contracts", the machine-checkable ones:
 #   R1  every service call returns one outcome enum; a call a policy may gate
 #       reserves forbidden, unavailable and invalid; a call addressing a record

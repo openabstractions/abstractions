@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -113,7 +114,7 @@ func served(t *testing.T, body []byte) string {
 // derivation is measured on the same bytes the command would submit.
 func submissionFor(t *testing.T, locator string) api.Submission {
 	t.Helper()
-	source, _, err := downloadSource(locator)
+	source, _, err := downloadSource(io.Discard, locator)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,6 +302,8 @@ func TestServiceCommandsRefuseWithoutARuntime(t *testing.T) {
 	absent := filepath.Join(t.TempDir(), "no-runtime-here")
 	if os.PathSeparator == '\\' {
 		absent = testPipe("oa-absent-runtime", "r")
+	} else if runtime.GOOS == "darwin" {
+		absent = filepath.Join(shortSocketDir(t), "absent.sock")
 	}
 	for name, run := range map[string]func(io.Writer, io.Writer) error{
 		"download": func(out, diag io.Writer) error {
@@ -316,7 +319,10 @@ func TestServiceCommandsRefuseWithoutARuntime(t *testing.T) {
 		var out, diagnostics bytes.Buffer
 		err := run(&out, &diagnostics)
 		exit := assertExit(t, err, exitNotResolved, name)
-		if !strings.Contains(exit.Error(), "no runtime resolved") {
+		// A dead endpoint (nothing listens at absent) gets status describe's
+		// own sentence (item 2, round 5), naming the endpoint, not the raw
+		// dial error noRuntimeFirstLine used to introduce.
+		if !strings.Contains(exit.Error(), "no runtime listens at") || !strings.Contains(exit.Error(), absent) {
 			t.Fatalf("%s: %v", name, exit)
 		}
 		if out.Len() != 0 {
@@ -368,7 +374,7 @@ func TestDownloadAndJobsUsageRefusalsSendNothing(t *testing.T) {
 // Help is available for the new verbs, and it names migrate-legacy's separate
 // command set rather than replacing it.
 func TestDownloadAndJobsHelp(t *testing.T) {
-	for _, args := range [][]string{nil, {"--help"}, {"-h"}} {
+	for _, args := range [][]string{{"--help"}, {"-h"}} {
 		var out bytes.Buffer
 		if err := downloadCommand(args, &out, io.Discard); err != nil {
 			t.Fatalf("download help %v: %v", args, err)
@@ -377,7 +383,28 @@ func TestDownloadAndJobsHelp(t *testing.T) {
 			t.Fatalf("download help: %q", out.String())
 		}
 	}
-	var out bytes.Buffer
+	// nil (no arguments at all) is a missing-argument mistake, not a help
+	// request: one line naming what is missing, the usage line, exit 2, on
+	// stderr, nothing on stdout.
+	var out, diagnostics bytes.Buffer
+	err := downloadCommand(nil, &out, &diagnostics)
+	var exit *exitError
+	if !errors.As(err, &exit) || exit.code != exitUsage {
+		t.Fatalf("download with no URL: err = %v, want *exitError{exitUsage}", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("download with no URL: stdout %q, want none", out.String())
+	}
+	if !strings.Contains(diagnostics.String(), "a URL is required") {
+		t.Fatalf("download with no URL: diagnostics %q does not name what is missing", diagnostics.String())
+	}
+	if !strings.Contains(diagnostics.String(), "Usage: openabstractions download <url>") {
+		t.Fatalf("download with no URL: diagnostics %q does not carry the usage line", diagnostics.String())
+	}
+	if strings.Count(diagnostics.String(), "\n") > 3 {
+		t.Fatalf("download with no URL: diagnostics prints more than the usage line, not the whole help: %q", diagnostics.String())
+	}
+	out.Reset()
 	if err := jobsCommand([]string{"--help"}, &out, io.Discard); err != nil {
 		t.Fatal(err)
 	}
@@ -443,14 +470,14 @@ func TestDownloadEndsFailedOnADigestMismatch(t *testing.T) {
 // The default key is a function of the submission, so an equal command line
 // names one identity and a different one names another.
 func TestSubmissionKeyFollowsTheSubmission(t *testing.T) {
-	source, name, err := downloadSource("https://example.invalid/dir/thing.bin")
+	source, name, err := downloadSource(io.Discard, "https://example.invalid/dir/thing.bin")
 	if err != nil || name != "thing.bin" || source.Scheme != "https" {
 		t.Fatalf("%+v %q %v", source, name, err)
 	}
-	if _, unnamed, err := downloadSource("https://example.invalid"); err != nil || unnamed != "download.bin" {
+	if _, unnamed, err := downloadSource(io.Discard, "https://example.invalid"); err != nil || unnamed != "download.bin" {
 		t.Fatalf("%q %v", unnamed, err)
 	}
-	artifact, err := downloadArtifact(strings.Repeat("AB", 32), 7)
+	artifact, err := downloadArtifact(io.Discard, strings.Repeat("AB", 32), 7)
 	if err != nil || artifact.Digest != "sha256:"+strings.Repeat("ab", 32) || artifact.Size != 7 {
 		t.Fatalf("%+v %v", artifact, err)
 	}

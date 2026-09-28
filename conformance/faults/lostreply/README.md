@@ -57,4 +57,4 @@ importable and `ConnectionResetError` otherwise. It forwards `call_scope` and
 installed C++ application and into the installed Python job client, and wraps the
 Go job client's transport with `go/`. All three run against the installed Linux
 runtime; the report is
-`feedback/linux-complete-lifecycle.md`.
+`research/feedback-archive-2026-09-24/linux-complete-lifecycle.md`.

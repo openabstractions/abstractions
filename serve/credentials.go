@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -52,7 +51,7 @@ echo off. It is never accepted as an argument: a command line is readable by
 every process of this user. add, rotate and revoke print no secret, and no
 command can read one back.
 
-Every command accepts --endpoint, --timeout and --json.
+Every command accepts --endpoint, --timeout and --json. The endpoint is --endpoint if given, else ABSTRACTION_RUNTIME_ENDPOINT if set, else the installed runtime.
 
 Exit codes: 0 done, 1 runtime not resolved or transport failure, 2 usage,
 3 typed refusal (conflict, invalid, forbidden, no_secure_store, ...),
@@ -76,7 +75,7 @@ type secretSource struct {
 	prompt    func(io.Writer) ([]byte, error)
 }
 
-func (s secretSource) read(diagnostics io.Writer) ([]byte, error) {
+func (s secretSource) read(diagnostics io.Writer, command, usage string) ([]byte, error) {
 	if s.fromStdin {
 		data, err := io.ReadAll(io.LimitReader(s.stdin, credentials.MaxSecretBytes+3))
 		if err != nil {
@@ -84,20 +83,20 @@ func (s secretSource) read(diagnostics io.Writer) ([]byte, error) {
 		}
 		data = trimLineEnd(data)
 		if len(data) == 0 || len(data) > credentials.MaxSecretBytes {
-			return nil, &exitError{exitUsage, fmt.Errorf("the secret on stdin must be 1..%d bytes", credentials.MaxSecretBytes)}
+			return nil, flagMistake(diagnostics, command, usage, fmt.Sprintf("the secret on stdin must be 1..%d bytes", credentials.MaxSecretBytes))
 		}
 		return data, nil
 	}
 	if s.prompt == nil {
-		return nil, &exitError{exitUsage, errors.New("no terminal to prompt on; pass --from-stdin and write the secret to stdin")}
+		return nil, flagMistake(diagnostics, command, usage, "no terminal to prompt on; pass --from-stdin and write the secret to stdin")
 	}
 	data, err := s.prompt(diagnostics)
 	if err != nil {
-		return nil, &exitError{exitUsage, fmt.Errorf("no terminal to prompt on (%v); pass --from-stdin", err)}
+		return nil, flagMistake(diagnostics, command, usage, fmt.Sprintf("no terminal to prompt on (%v); pass --from-stdin", err))
 	}
 	data = trimLineEnd(data)
 	if len(data) == 0 {
-		return nil, &exitError{exitUsage, errors.New("empty secret")}
+		return nil, flagMistake(diagnostics, command, usage, "empty secret")
 	}
 	return data, nil
 }
@@ -120,23 +119,27 @@ func zeroSecret(b []byte) {
 }
 
 func credentialsCommand(args []string, stdin io.Reader, output, diagnostics io.Writer) error {
-	if len(args) == 0 || isHelp(args[0]) {
+	if len(args) > 0 && isHelp(args[0]) {
 		_, err := io.WriteString(output, credentialsUsage)
 		return err
+	}
+	if len(args) == 0 {
+		return commandMistake(diagnostics, "credentials: a command is required", "openabstractions credentials --help")
 	}
 	switch args[0] {
 	case "add", "list", "rotate", "revoke", "allow", "audit", "backend":
 	default:
-		return &exitError{exitUsage, fmt.Errorf("credentials: no command called %q; run openabstractions credentials --help", args[0])}
+		return commandMistake(diagnostics, fmt.Sprintf("credentials: no command called %q", args[0]), "openabstractions credentials --help")
 	}
 	command := "credentials " + args[0]
-	flags := flag.NewFlagSet(command, flag.ContinueOnError)
-	flags.SetOutput(diagnostics)
-	flags.Usage = func() {
-		if _, err := fmt.Fprint(diagnostics, credentialsUsage); err == nil {
-			flags.PrintDefaults()
-		}
+	if containsHelp(args[1:]) {
+		_, err := io.WriteString(output, credentialsUsage)
+		return err
 	}
+	flags := flag.NewFlagSet(command, flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	// badFlag below prints this program's own three-line mistake shape;
+	flags.Usage = func() {} // the flag package's own per-error usage call must print nothing
 	var options serviceOptions
 	options.bind(flags)
 	var targets, consumers, useBy repeated
@@ -152,55 +155,52 @@ func credentialsCommand(args []string, stdin io.Reader, output, diagnostics io.W
 	stateDir := flags.String("state-dir", "", "with backend, the runtime's state directory")
 	positional, err := parsePositional(flags, args[1:])
 	if err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return err
-		}
-		return &exitError{exitUsage, fmt.Errorf("%s: %w", command, err)}
+		return badFlag(flags, diagnostics, command, credentialsUsage, args[1:], err)
 	}
 	if options.budget < 0 {
-		return &exitError{exitUsage, fmt.Errorf("%s: --timeout must not be negative", command)}
+		return flagMistake(diagnostics, command, credentialsUsage, "--timeout must not be negative")
 	}
 	wantsName := args[0] != "list" && args[0] != "audit"
 	if wantsName != (len(positional) == 1) || len(positional) > 1 {
 		if wantsName {
-			return &exitError{exitUsage, fmt.Errorf("%s: name exactly one credential", command)}
+			return flagMistake(diagnostics, command, credentialsUsage, "name exactly one credential")
 		}
-		return &exitError{exitUsage, fmt.Errorf("%s: takes no arguments", command)}
+		return flagMistake(diagnostics, command, credentialsUsage, "takes no arguments")
 	}
 	name := ""
 	if wantsName {
 		name = positional[0]
 		if args[0] != "backend" && !validCredentialName(name) {
-			return &exitError{exitUsage, fmt.Errorf("%s: %q must be 1-64 characters from A-Z, a-z, 0-9, _, - and .", command, name)}
+			return flagMistake(diagnostics, command, credentialsUsage, fmt.Sprintf("%q must be 1-64 characters from A-Z, a-z, 0-9, _, - and .", name))
 		}
 	}
 	secrets := secretSource{stdin: stdin, fromStdin: *fromStdin, prompt: promptSecret}
 	switch args[0] {
 	case "backend":
-		return credentialsBackend(output, name, *stateDir)
+		return credentialsBackend(output, diagnostics, name, *stateDir)
 	case "add":
 		reg := cwire.Registration{Name: name, Kind: *kind, Header: *header, Scope: cwire.Scope{Targets: targets, Consumers: consumers}}
 		if len(targets) == 0 || len(consumers) == 0 {
-			return &exitError{exitUsage, fmt.Errorf("%s: give at least one --target and one --for", command)}
+			return flagMistake(diagnostics, command, credentialsUsage, "give at least one --target and one --for")
 		}
 		if *expires != "" {
 			at, err := time.Parse(time.RFC3339, *expires)
 			if err != nil {
-				return &exitError{exitUsage, fmt.Errorf("%s: --expires %q is not RFC 3339", command, *expires)}
+				return flagMistake(diagnostics, command, credentialsUsage, fmt.Sprintf("--expires %q is not RFC 3339", *expires))
 			}
 			reg.Expires = at.UTC().Format("2006-01-02T15:04:05.000000Z")
 		}
-		programs, err := absolutePrograms(command, useBy)
+		programs, err := absolutePrograms(diagnostics, command, credentialsUsage, useBy)
 		if err != nil {
 			return err
 		}
-		secret, err := secrets.read(diagnostics)
+		secret, err := secrets.read(diagnostics, command, credentialsUsage)
 		if err != nil {
 			return err
 		}
 		defer zeroSecret(secret)
 		reg.Secret = secret
-		holder, w, err := resolveHolder(options, command)
+		holder, w, err := resolveHolder(options, diagnostics, command)
 		if err != nil {
 			return err
 		}
@@ -215,13 +215,13 @@ func credentialsCommand(args []string, stdin io.Reader, output, diagnostics io.W
 			return refusal(command, result.Outcome.String(), "")
 		}
 		for _, p := range programs {
-			if err := setApplyRule(options, w, command, name, p, true); err != nil {
+			if err := setApplyRule(options, w, diagnostics, command, name, p, true); err != nil {
 				return err
 			}
 		}
 		return credentialReport(output, options.asJSON, result.Current, fmt.Sprintf("stored %s revision %s", name, result.Revision))
 	case "rotate", "revoke":
-		holder, w, err := resolveHolder(options, command)
+		holder, w, err := resolveHolder(options, diagnostics, command)
 		if err != nil {
 			return err
 		}
@@ -246,11 +246,11 @@ func credentialsCommand(args []string, stdin io.Reader, output, diagnostics io.W
 		if *expires != "" {
 			at, err := time.Parse(time.RFC3339, *expires)
 			if err != nil {
-				return &exitError{exitUsage, fmt.Errorf("%s: --expires %q is not RFC 3339", command, *expires)}
+				return flagMistake(diagnostics, command, credentialsUsage, fmt.Sprintf("--expires %q is not RFC 3339", *expires))
 			}
 			rotation.Expires = at.UTC().Format("2006-01-02T15:04:05.000000Z")
 		}
-		secret, err := secrets.read(diagnostics)
+		secret, err := secrets.read(diagnostics, command, credentialsUsage)
 		if err != nil {
 			return err
 		}
@@ -267,13 +267,13 @@ func credentialsCommand(args []string, stdin io.Reader, output, diagnostics io.W
 		}
 		return credentialReport(output, options.asJSON, result.Current, fmt.Sprintf("rotated %s revision %s", name, result.Revision))
 	case "allow":
-		programs, err := absolutePrograms(command, repeated{*program})
+		programs, err := absolutePrograms(diagnostics, command, credentialsUsage, repeated{*program})
 		if err != nil || *program == "" {
-			return &exitError{exitUsage, fmt.Errorf("%s: --program must name an absolute executable path", command)}
+			return flagMistake(diagnostics, command, credentialsUsage, "--program must name an absolute executable path")
 		}
 		w := newWaiting(options.budget)
 		defer w.stop()
-		if err := setApplyRule(options, w, command, name, programs[0], !*deny); err != nil {
+		if err := setApplyRule(options, w, diagnostics, command, name, programs[0], !*deny); err != nil {
 			return err
 		}
 		verb := "allowed"
@@ -282,7 +282,7 @@ func credentialsCommand(args []string, stdin io.Reader, output, diagnostics io.W
 		}
 		return credentialReport(output, options.asJSON, map[string]string{"name": name, "program": programs[0], "rule": verb}, fmt.Sprintf("%s %s for %s", verb, name, programs[0]))
 	case "list":
-		holder, w, err := resolveHolder(options, command)
+		holder, w, err := resolveHolder(options, diagnostics, command)
 		if err != nil {
 			return err
 		}
@@ -295,14 +295,17 @@ func credentialsCommand(args []string, stdin io.Reader, output, diagnostics io.W
 			return writeJSON(output, map[string]any{"limits": limits, "records": records})
 		}
 		table := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
+		//unchecked: table buffers in memory; the write to the underlying output surfaces at Flush, which is checked below
 		fmt.Fprintln(table, "NAME\tKIND\tSTATE\tREVISION\tTARGETS\tCONSUMERS")
 		for _, r := range records {
+			//unchecked: table buffers in memory; the write to the underlying output surfaces at Flush, which is checked below
 			fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\n", r.Name, r.Kind, r.State, r.Revision, strings.Join(r.Scope.Targets, ","), strings.Join(r.Scope.Consumers, ","))
 		}
+		//unchecked: table buffers in memory; the write to the underlying output surfaces at Flush, which is checked below
 		fmt.Fprintf(table, "store: %s\n", limits.SecureStore)
 		return table.Flush()
 	case "audit":
-		holder, w, err := resolveHolder(options, command)
+		holder, w, err := resolveHolder(options, diagnostics, command)
 		if err != nil {
 			return err
 		}
@@ -329,12 +332,14 @@ func credentialsCommand(args []string, stdin io.Reader, output, diagnostics io.W
 			return writeJSON(output, map[string]any{"entries": entries})
 		}
 		table := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
+		//unchecked: table buffers in memory; the write to the underlying output surfaces at Flush, which is checked below
 		fmt.Fprintln(table, "TIME\tEVENT\tNAME\tOUTCOME\tCONSUMER\tTARGET\tPROGRAM")
 		for _, e := range entries {
 			program := ""
 			if e.Subject != nil {
 				program = e.Subject.Program
 			}
+			//unchecked: table buffers in memory; the write to the underlying output surfaces at Flush, which is checked below
 			fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", e.Time, e.Event, e.Name, e.Outcome, e.Consumer, e.Target, program)
 		}
 		return table.Flush()
@@ -342,14 +347,15 @@ func credentialsCommand(args []string, stdin io.Reader, output, diagnostics io.W
 	return nil
 }
 
-func resolveHolder(options serviceOptions, command string) (*credclient.Holder, *waiting, error) {
+func resolveHolder(options serviceOptions, diagnostics io.Writer, command string) (*credclient.Holder, *waiting, error) {
 	w := newWaiting(options.budget)
 	call, done := w.call()
-	holder, err := options.machine().ResolveCredentials(call, client.Requirements{})
+	machine, source := options.machine(diagnostics, command)
+	holder, err := machine.ResolveCredentials(call, client.Requirements{})
 	done()
 	if err != nil {
 		w.stop()
-		return nil, nil, notResolved(command, err)
+		return nil, nil, notResolved(command, source, err)
 	}
 	return holder, w, nil
 }
@@ -389,14 +395,14 @@ func findCredential(w *waiting, holder *credclient.Holder, command, name string)
 	return cwire.Metadata{}, refusal(command, "unknown", name)
 }
 
-func absolutePrograms(command string, paths []string) ([]string, error) {
+func absolutePrograms(diagnostics io.Writer, command, usage string, paths []string) ([]string, error) {
 	var programs []string
 	for _, p := range paths {
 		if p == "" {
 			continue
 		}
 		if !filepath.IsAbs(p) {
-			return nil, &exitError{exitUsage, fmt.Errorf("%s: program %q must be an absolute executable path", command, p)}
+			return nil, flagMistake(diagnostics, command, usage, fmt.Sprintf("program %q must be an absolute executable path", p))
 		}
 		programs = append(programs, filepath.Clean(p))
 	}
@@ -405,16 +411,17 @@ func absolutePrograms(command string, paths []string) ([]string, error) {
 
 // setApplyRule records the exact abstraction.credentials/apply rule for program
 // on credential:<name> through the runtime's rights operator service.
-func setApplyRule(options serviceOptions, w *waiting, command, name, program string, permit bool) error {
+func setApplyRule(options serviceOptions, w *waiting, diagnostics io.Writer, command, name, program string, permit bool) error {
 	account, err := user.Current()
 	if err != nil {
 		return &exitError{exitNotResolved, fmt.Errorf("%s: account unavailable: %w", command, err)}
 	}
 	call, done := w.call()
-	operator, err := options.machine().ResolveRightsOperator(call, client.Requirements{})
+	machine, source := options.machine(diagnostics, command)
+	operator, err := machine.ResolveRightsOperator(call, client.Requirements{})
 	done()
 	if err != nil {
-		return notResolved(command, err)
+		return notResolved(command, source, err)
 	}
 	rule := rights.PolicyRule{Subject: rights.Subject{Account: account.Uid, Program: program}, Action: credentials.ActionApply, Resource: credentials.ResourceFor(name), Permit: permit}
 	for attempt := 0; attempt < 2; attempt++ {
@@ -444,10 +451,10 @@ func setApplyRule(options serviceOptions, w *waiting, command, name, program str
 	return nil
 }
 
-func credentialsBackend(output io.Writer, choice, state string) error {
+func credentialsBackend(output, diagnostics io.Writer, choice, state string) error {
 	const command = "credentials backend"
 	if choice != credentials.StoreFile && choice != "file" && choice != credentials.StoreSecretService {
-		return &exitError{exitUsage, fmt.Errorf("%s: choose file or secret-service", command)}
+		return flagMistake(diagnostics, command, credentialsUsage, "choose file or secret-service")
 	}
 	if state == "" {
 		// The default state is the account's; a view private to a package must not write it.
@@ -461,7 +468,7 @@ func credentialsBackend(output io.Writer, choice, state string) error {
 		state = filepath.Dir(state)
 	}
 	if !filepath.IsAbs(state) {
-		return &exitError{exitUsage, fmt.Errorf("%s: --state-dir must be absolute", command)}
+		return flagMistake(diagnostics, command, credentialsUsage, "--state-dir must be absolute")
 	}
 	if choice == "file" {
 		choice = credentials.StoreFile

@@ -7,9 +7,12 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"flag"
+	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"runtime"
 )
@@ -18,17 +21,47 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:8734", "address to listen on; loopback only")
 	open := flag.Bool("open", true, "open the window in the default browser")
 	native := flag.Bool("native", windowed(), "draw a window on the desktop instead of serving a page")
+	checkWebView2 := flag.Bool("check-webview2", false, "check installed WebView2 runtime availability without opening a window or browser")
+	tray := flag.Bool("tray", false, "show a notification-area icon instead of serving a page or drawing a window; polls for new pending first-use questions and opens the Panel's Questions page for one, Windows only")
 	endpoint := flag.String("runtime-endpoint", "", "resolver endpoint of a runtime other than the installed one, such as an isolated `openabstractions serve runtime`; requires -runtime-program")
 	program := flag.String("runtime-program", "", "absolute path of the executable that runtime must run as, under this account")
 	flag.Parse()
+	if *checkWebView2 {
+		if code := reportWebView2Availability(os.Stdout, nativeWebView2Available); code != 0 {
+			os.Exit(code)
+		}
+		return
+	}
 	if *endpoint != "" || *program != "" {
 		if err := bindExplicitRuntime(*endpoint, *program); err != nil {
 			fail(*native, err)
 		}
 	}
+	if *tray {
+		if err := runTray(*addr); err != nil {
+			fail(*native, err)
+		}
+		return
+	}
 	if err := runServicePanel(*addr, *open, *native); err != nil {
 		fail(*native, err)
 	}
+}
+
+// reportWebView2Availability is an installed-Panel diagnostic for package
+// qualification. Exit 3 is an explicit unavailable result, consistent with
+// the Panel's browser fallback; it does not mark the installation broken.
+func reportWebView2Availability(out io.Writer, available func() bool) int {
+	if available() {
+		if _, err := fmt.Fprintln(out, "WebView2: available (native rendering untested)"); err != nil {
+			return 1
+		}
+		return 0
+	}
+	if _, err := fmt.Fprintln(out, "WebView2: unavailable (browser fallback)"); err != nil {
+		return 1
+	}
+	return 3
 }
 
 // mint is this run's key. Not persisted: a key on disk is one more file to be

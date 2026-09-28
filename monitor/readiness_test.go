@@ -49,6 +49,25 @@ func TestPanelReadinessRetainsPartialFailure(t *testing.T) {
 	}
 }
 
+// TestPanelReadinessNamesTheExplicitRuntime keeps the "Check the service"
+// sentence from contradicting itself: when this Panel was started against a
+// named runtime (-runtime-endpoint/-runtime-program), the view must say so,
+// not report on installed-runtime detection that never ran for that runtime
+// (2026-09-23 walkthrough finding 1).
+func TestPanelReadinessNamesTheExplicitRuntime(t *testing.T) {
+	previous := panelExplicit
+	panelExplicit = &explicitRuntime{Endpoint: `\\.\pipe\iso`, Program: `C:\oa\openabstractions.exe`, Account: "S-1-5-21-1"}
+	t.Cleanup(func() { panelExplicit = previous })
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	view := collectReadiness(ctx, facade.New("unused"), func(context.Context) wire.BootstrapObservation {
+		return wire.BootstrapObservation{State: wire.BootstrapStateUnknown}
+	})
+	if view.Explicit == nil || *view.Explicit != *panelExplicit {
+		t.Fatalf("readiness view lost the explicit runtime: %+v", view)
+	}
+}
+
 func TestPanelReadinessSharesCancelledBudget(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

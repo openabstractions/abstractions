@@ -118,6 +118,7 @@ type ConfigReaderDispatcher struct
   Handler ConfigReader
 func (ConfigReaderClient) Read(overrides RunOverrides) (result Snapshot, err error)
 func (ConfigReaderDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ConfigReaderDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ConfigReaderDispatcher) ServiceContract() string
 func (ConfigReaderDispatcher) WriteFrame(frame []byte) error
 func (ConfigReaderDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -133,6 +134,7 @@ type ConfigEditorDispatcher struct
 func (ConfigEditorClient) ReadUser() (result UserSnapshot, err error)
 func (ConfigEditorClient) ReplaceUser(expectedRevision string, values UserSettings) (result UserReplaceResult, err error)
 func (ConfigEditorDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ConfigEditorDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ConfigEditorDispatcher) ServiceContract() string
 func (ConfigEditorDispatcher) WriteFrame(frame []byte) error
 func (ConfigEditorDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
@@ -146,6 +148,7 @@ type ConfigObserverDispatcher struct
   Handler ConfigObserver
 func (ConfigObserverClient) Observe(overrides RunOverrides, cursor string, waitMs int64) (result ConfigObservation, err error)
 func (ConfigObserverDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ConfigObserverDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ConfigObserverDispatcher) ServiceContract() string
 func (ConfigObserverDispatcher) WriteFrame(frame []byte) error
 func (ConfigObserverDispatcher) ExchangeFrame(frame []byte) ([]byte, error)

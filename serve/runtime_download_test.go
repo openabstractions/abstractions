@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	config "github.com/openabstractions/abstraction-config/go"
 	download "github.com/openabstractions/abstraction-download/go"
 	request "github.com/openabstractions/abstraction-download/go/abstraction/download/request"
 	nas "github.com/openabstractions/abstraction-download/go/nas"
@@ -23,6 +25,83 @@ import (
 	api "github.com/openabstractions/abstraction-job/go/abstraction/job/acceptance"
 	"github.com/openabstractions/abstraction-job/go/acceptanceprovider"
 )
+
+func TestRuntimeNASStoreUsesConfigAndKeepsPinnedJobs(t *testing.T) {
+	t.Setenv("ABSTRACTION_NAS_STORE", "")
+	state := t.TempDir()
+	options, err := parseRuntime([]string{"--isolated", "nas-config-fixture", "--state-dir", state, "--jobs-download-backend", "nas"}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, path := isolatedConfigStore(state)
+	first := filepath.Join(t.TempDir(), "first")
+	if err := config.Save(path, config.Config{NASStore: first}); err != nil {
+		t.Fatal(err)
+	}
+	selected, err := runtimeNASStore(options)
+	if err != nil || selected != first {
+		t.Fatalf("configured NAS store = %q, %v", selected, err)
+	}
+	root := filepath.Join(state, "jobs")
+	if _, err := managedDownloadExecutor(root, nil, options.downloadBackend, selected); err != nil {
+		t.Fatal(err)
+	}
+	second := filepath.Join(t.TempDir(), "second")
+	if err := config.Save(path, config.Config{NASStore: second}); err != nil {
+		t.Fatal(err)
+	}
+	selected, err = runtimeNASStore(options)
+	if err != nil || selected != second {
+		t.Fatalf("edited NAS store = %q, %v", selected, err)
+	}
+	if _, err := managedDownloadExecutor(root, nil, options.downloadBackend, selected); err == nil {
+		t.Fatal("settings edit silently moved the pinned job store")
+	}
+	// The flag is the same key's run override, and can keep an existing root
+	// bound while the shared setting is changed for another runtime.
+	options.downloadNASRoot = first
+	selected, err = runtimeNASStore(options)
+	if err != nil || selected != first {
+		t.Fatalf("flag override = %q, %v", selected, err)
+	}
+	if _, err := managedDownloadExecutor(root, nil, options.downloadBackend, selected); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRuntimeNASStoreOverridesAndIsolation(t *testing.T) {
+	state := t.TempDir()
+	options := runtimeFlags{stateDir: state, downloadBackend: downloadBackendNAS}
+	t.Setenv("ABSTRACTION_NAS_STORE", "")
+	// An isolated runtime reads its own settings when the user's profile
+	// names a different NAS store.
+	profile := t.TempDir()
+	for _, key := range []string{"HOME", "USERPROFILE", "APPDATA", "XDG_CONFIG_HOME"} {
+		t.Setenv(key, profile)
+	}
+	t.Setenv("ProgramData", filepath.Join(profile, "machine"))
+	if err := config.Save(config.UserPath(), config.Config{NASStore: "profile-sentinel"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := runtimeNASStore(options); err != nil || got != "" {
+		t.Fatalf("isolated store read profile: %q, %v", got, err)
+	}
+	t.Setenv("ABSTRACTION_NAS_STORE", "environment-override")
+	if got, err := runtimeNASStore(options); err != nil || got != "environment-override" {
+		t.Fatalf("environment override: %q, %v", got, err)
+	}
+	options.downloadNASRoot = "flag-override"
+	if got, err := runtimeNASStore(options); err != nil || got != "flag-override" {
+		t.Fatalf("flag precedence: %q, %v", got, err)
+	}
+	_, path := isolatedConfigStore(state)
+	if err := os.MkdirAll(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtimeNASStore(options); err == nil {
+		t.Fatal("unreadable selected configuration was ignored")
+	}
+}
 
 func TestManagedDownloadExecutorPinsNASSelectionAndRejectsReplacement(t *testing.T) {
 	root := t.TempDir()

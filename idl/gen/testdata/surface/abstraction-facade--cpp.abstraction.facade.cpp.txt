@@ -50,7 +50,7 @@ inline constexpr bool operator!=(ServiceReadiness value, std::string_view name)
 inline constexpr bool operator==(std::string_view name, ServiceReadiness value)
 inline constexpr bool operator!=(std::string_view name, ServiceReadiness value)
 inline const std::vector<std::string> kServiceReadinessNames
-enum class DeclarationTransport {Native, Remote}
+enum class DeclarationTransport {Native, Remote, Http}
 inline constexpr std::string_view wire_name(DeclarationTransport value)
 inline std::optional<DeclarationTransport> parse_declaration_transport(std::string_view name)
 inline constexpr bool operator==(DeclarationTransport value, std::string_view name)
@@ -58,6 +58,14 @@ inline constexpr bool operator!=(DeclarationTransport value, std::string_view na
 inline constexpr bool operator==(std::string_view name, DeclarationTransport value)
 inline constexpr bool operator!=(std::string_view name, DeclarationTransport value)
 inline const std::vector<std::string> kDeclarationTransportNames
+enum class DeclarationRole {Provider, Host, Remote}
+inline constexpr std::string_view wire_name(DeclarationRole value)
+inline std::optional<DeclarationRole> parse_declaration_role(std::string_view name)
+inline constexpr bool operator==(DeclarationRole value, std::string_view name)
+inline constexpr bool operator!=(DeclarationRole value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, DeclarationRole value)
+inline constexpr bool operator!=(std::string_view name, DeclarationRole value)
+inline const std::vector<std::string> kDeclarationRoleNames
 enum class Activation {OnDemand, Attach, Remote}
 inline constexpr std::string_view wire_name(Activation value)
 inline std::optional<Activation> parse_activation(std::string_view name)
@@ -66,7 +74,7 @@ inline constexpr bool operator!=(Activation value, std::string_view name)
 inline constexpr bool operator==(std::string_view name, Activation value)
 inline constexpr bool operator!=(std::string_view name, Activation value)
 inline const std::vector<std::string> kActivationNames
-enum class DeclarationReadiness {Ready, Idle, Starting, Restarting, Refused, Unreachable, NotReady}
+enum class DeclarationReadiness {Ready, Idle, Starting, Restarting, Refused, Unreachable, NotReady, Disabled}
 inline constexpr std::string_view wire_name(DeclarationReadiness value)
 inline std::optional<DeclarationReadiness> parse_declaration_readiness(std::string_view name)
 inline constexpr bool operator==(DeclarationReadiness value, std::string_view name)
@@ -173,6 +181,19 @@ struct RemoteTrust
   std::string certificate
   std::string key
   std::string credential
+struct DeclarationCeiling
+  std::int64_t tokens_per_day
+  std::int64_t micros_per_day
+  std::int64_t requests_per_day
+  std::int64_t images_per_day
+  std::int64_t audio_seconds_per_day
+  std::int64_t characters_per_day
+struct DeclarationHost
+  std::string base
+  std::string kind
+  bool hosted
+  std::string credential
+  std::optional<DeclarationCeiling> ceiling
 struct Declaration
   std::string name
   std::string program
@@ -185,6 +206,11 @@ struct Declaration
   Activation activation
   std::optional<RemoteTrust> remote
   std::vector<std::string> models
+  DeclarationRole role
+  std::optional<DeclarationHost> host
+struct HostReading
+  bool up
+  std::string why
 struct DeclarationState
   Declaration declaration
   std::string declared_by
@@ -194,6 +220,8 @@ struct DeclarationState
   std::int64_t restarts
   std::vector<ServiceState> described
   std::vector<std::string> accepted
+  DeclarationRole role
+  std::optional<HostReading> host
 struct DeclarationList
   DeclarationListOutcome outcome
   std::string revision

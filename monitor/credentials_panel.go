@@ -180,6 +180,7 @@ func (p *servicePanel) credentialsPageHandler(key string) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = io.WriteString(w, credentialsPage)
+		//unchecked: a failed write means the client is already gone; there is no response left to recover
+		_, _ = io.WriteString(w, panelPage(r, key, "credentials", "OpenAbstractions credentials", credentialsPage))
 	}
 }

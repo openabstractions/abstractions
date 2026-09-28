@@ -19,14 +19,17 @@ import (
 	"sync"
 	"time"
 
+	cas "github.com/openabstractions/abstraction-cas/go"
 	credentials "github.com/openabstractions/abstraction-credentials/go"
 	cwire "github.com/openabstractions/abstraction-credentials/go/abstraction/credentials/api"
+	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	identity "github.com/openabstractions/abstraction-identity"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	iwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	rights "github.com/openabstractions/abstraction-rights/go"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	router "github.com/openabstractions/abstraction-router/go"
+	routerwire "github.com/openabstractions/abstraction-router/go/abstraction/router"
 )
 
 // Files the inference operator keeps beside hosts.json in <state>/inference.
@@ -36,7 +39,8 @@ const (
 	// localKeyPrefix begins every local key; the name tag follows it.
 	localKeyPrefix = "oalk_"
 	// hostAddWhy is the provenance of the rules AddHost writes.
-	hostAddWhy = "inference host add"
+	hostAddWhy         = "inference server add"
+	credentialStoreWhy = "credential stored for declared inference server"
 	// hostsSurveyAge re-reads the hosts for a listing older than this.
 	hostsSurveyAge = 30 * time.Second
 	// declaredByOperator is the declared_by of a host added through operator@1.
@@ -45,12 +49,15 @@ const (
 
 // defaultProfiles is what a host serves when its entry names no profiles:
 // every seeded profile on the OpenAI-compatible wire, which the local kinds
-// speak, and chat on any other wire.
+// speak, and, for any other hosted wire, router.DefaultProfiles' table for
+// it (openai-realtime serves live, deepgram-prerecorded serves
+// transcription, and so on), read from the same *router.Host construction
+// the router itself routes through, never copied here.
 func defaultProfiles(hosted bool, wire string) []string {
 	if !hosted || wire == router.WireOpenAICompatible {
 		return slices.Clone(iwire.HostProfiles)
 	}
-	return []string{"chat"}
+	return router.DefaultProfiles(router.NewHosted("", "", wire, ""))
 }
 
 func validProfiles(profiles []string) bool {
@@ -114,6 +121,24 @@ var (
 	credentialName    = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
 	ownedWireKind     = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}/[a-z0-9][a-z0-9_.-]{0,62}@[1-9][0-9]{0,5}$`)
 	localKeyShape     = regexp.MustCompile(`^oalk_([0-9a-f]{16})([0-9a-f]{8})_[A-Za-z0-9_-]{43}$`)
+	// hostedWireKinds is every router.thrift wire_kinds member a hosted host
+	// may declare, excluding oa-remote@1: a remote runtime is its own
+	// declaration role, validated by validProviderDeclaration's d.remote()
+	// branch, never by validEntry. router.thrift FAC-R6's HostEntry.profiles
+	// doc already names "a wire kind (router wire_kinds or <owner>/<name>@<n>)"
+	// as the accepted shape; this was openai-compatible and anthropic-messages
+	// only, which left every other wire_kinds member, including
+	// openai-realtime, refused here as "invalid host" with no caller-visible
+	// reason beyond the runtime's own log.
+	hostedWireKinds = func() []string {
+		out := make([]string, 0, len(routerwire.WireKinds))
+		for _, k := range routerwire.WireKinds {
+			if k != router.WireRemote {
+				out = append(out, k)
+			}
+		}
+		return out
+	}()
 )
 
 // localKeyName is the holder record name a presented key names.
@@ -199,15 +224,13 @@ func (o *inferenceOperator) gate(ctx context.Context, caller inference.Subject, 
 }
 
 func writeAtomically(path string, value any) error {
-	raw, err := json.MarshalIndent(value, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, append(raw, '\n'), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return cas.Change(path, func([]byte) ([]byte, error) {
+		raw, err := json.MarshalIndent(value, "", "  ")
+		if err != nil {
+			return nil, err
+		}
+		return append(raw, '\n'), nil
+	})
 }
 
 // readConfig reads hosts.json and its revision, the digest of its bytes.
@@ -227,22 +250,12 @@ func (o *inferenceOperator) readConfig() (inferenceHosts, string, error) {
 	return config, revision, nil
 }
 
-// localHosts is the effective local host list: the configured entries, then
-// the hosts products declare that no entry names.
-func (o *inferenceOperator) localHosts(config inferenceHosts) []inferenceLocalHost {
-	var out []inferenceLocalHost
-	if config.Local != nil {
-		out = append(out, *config.Local...)
+// hostFiles is every host declaration the registry holds, in name order.
+func (o *inferenceOperator) hostFiles() []providerFile {
+	if o.providers == nil {
+		return nil
 	}
-	if !config.usesDeclarations() {
-		return out
-	}
-	for _, h := range declaredLocalHosts(o.report) {
-		if !slices.ContainsFunc(out, func(l inferenceLocalHost) bool { return l.Kind == h.Name }) {
-			out = append(out, inferenceLocalHost{Kind: h.Name, Base: h.Base, DeclaredBy: h.DeclaredBy})
-		}
-	}
-	return out
+	return o.providers.hostFiles()
 }
 
 func loopbackName(host string) bool {
@@ -275,7 +288,7 @@ func validEntry(e iwire.HostEntry) string {
 		}
 		return ""
 	}
-	if e.Kind != router.WireOpenAICompatible && e.Kind != router.WireAnthropicMessages && !ownedWireKind.MatchString(e.Kind) {
+	if !slices.Contains(hostedWireKinds, e.Kind) && !ownedWireKind.MatchString(e.Kind) {
 		return "kind"
 	}
 	if e.Credential != "" && !credentialName.MatchString(e.Credential) {
@@ -287,57 +300,30 @@ func validEntry(e iwire.HostEntry) string {
 	return ""
 }
 
-// apply writes config, gives the router its hosts and the ceilings their
-// limits, and surveys the hosts in the background.
-func (o *inferenceOperator) apply(config inferenceHosts) (string, error) {
-	hosts, err := inferenceHostList(config, o.report)
-	if err != nil {
-		return "", err
-	}
-	if err := writeAtomically(filepath.Join(o.dir, inferenceHostsFile), config); err != nil {
-		return "", err
-	}
-	if o.providers != nil {
-		hosts = append(hosts, o.providers.nativeInferenceHosts()...)
-		hosts = append(hosts, o.providers.remoteHosts()...)
-	}
-	o.router.SetHosts(hosts...)
-	for name, limit := range config.Ceilings {
-		if err := o.ceilings.SetLimit(name, limit); err != nil {
-			o.report(err)
-		}
-	}
-	go o.router.Survey()
-	_, revision, err := o.readConfig()
-	return revision, err
-}
-
-// refreshHosts gives the router the configured hosts and the remote
-// declarations again, after a remote declaration changed.
+// refreshHosts gives the router the declarations again, after one changed.
 func (o *inferenceOperator) refreshHosts() {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	config, _, err := o.readConfig()
-	if err == nil {
-		var hosts []*router.Host
-		if hosts, err = inferenceHostList(config, o.report); err == nil {
-			providerHosts := 0
-			if o.providers != nil {
-				native := o.providers.nativeInferenceHosts()
-				remote := o.providers.remoteHosts()
-				providerHosts = len(native) + len(remote)
-				hosts = append(hosts, native...)
-				hosts = append(hosts, remote...)
-			}
-			o.router.SetHosts(hosts...)
-			if providerHosts > 0 {
-				o.router.Survey()
-			}
-		}
-	}
-	if err != nil {
+	if err := o.ceilings.ReplaceLimits(declarationBudgets(o.hostFiles())); err != nil {
 		o.report(err)
+		return
 	}
+	hosts := routerHosts(o.providers)
+	o.router.SetHosts(hosts...)
+	if len(hosts) > 0 {
+		o.router.Survey()
+	}
+}
+
+// hostRevision is the revision host edits take, the registry's revision.
+func (o *inferenceOperator) hostRevision() (string, error) {
+	if o.providers == nil {
+		return "", errors.New("inference: the runtime holds no declarations")
+	}
+	o.providers.mu.Lock()
+	defer o.providers.mu.Unlock()
+	_, revision, err := o.providers.read()
+	return revision, err
 }
 
 func (o *inferenceOperator) Hosts(ctx context.Context, caller inference.Subject) iwire.HostList {
@@ -348,10 +334,11 @@ func (o *inferenceOperator) Hosts(ctx context.Context, caller inference.Subject)
 		return refused(inferenceListRefusal(word))
 	}
 	o.mu.Lock()
-	config, revision, err := o.readConfig()
+	_, _, err := o.readConfig()
+	revision, revisionErr := o.hostRevision()
 	o.mu.Unlock()
-	if err != nil {
-		o.report(err)
+	if err != nil || revisionErr != nil {
+		o.report(errors.Join(err, revisionErr))
 		return refused(iwire.ListOutcomeUnavailable)
 	}
 	_, _, _, _, at := o.router.Residency(false)
@@ -360,34 +347,22 @@ func (o *inferenceOperator) Hosts(ctx context.Context, caller inference.Subject)
 	for _, s := range states {
 		byName[s.Host] = s
 	}
-	state := func(entry iwire.HostEntry) iwire.HostState {
+	list := iwire.HostList{Outcome: iwire.ListOutcomePage, Revision: revision, Hosts: []iwire.HostState{}}
+	for _, f := range o.hostFiles() {
+		if f.Disabled {
+			continue
+		}
+		entry := f.hostEntry()
 		s, surveyed := byName[entry.Name]
-		out := iwire.HostState{Entry: entry, Up: s.Up, Why: s.Why}
+		state := iwire.HostState{Entry: entry, Up: s.Up, Why: hostedDownReason(s.Why, entry.Credential, o.credentials.operators[0])}
 		if !surveyed {
-			out.Why = "not surveyed yet"
+			state.Why = "not surveyed yet"
 		}
 		if entry.Credential != "" {
 			day, tokens, micros, requests, images, audioSeconds, characters := o.ceilings.SpendUnits(entry.Credential)
-			out.Spend = &iwire.Spend{Day: day, Tokens: tokens, Micros: micros, Requests: requests, Images: images, AudioSeconds: audioSeconds, Characters: characters}
+			state.Spend = &iwire.Spend{Day: day, Tokens: tokens, Micros: micros, Requests: requests, Images: images, AudioSeconds: audioSeconds, Characters: characters}
 		}
-		return out
-	}
-	list := iwire.HostList{Outcome: iwire.ListOutcomePage, Revision: revision, Hosts: []iwire.HostState{}}
-	profiles := func(stored []string, hosted bool, wire string) []string {
-		if len(stored) == 0 {
-			return defaultProfiles(hosted, wire)
-		}
-		return stored
-	}
-	for _, l := range o.localHosts(config) {
-		list.Hosts = append(list.Hosts, state(iwire.HostEntry{Name: l.Kind, Kind: l.Kind, Base: l.Base, Profiles: profiles(l.Profiles, false, ""), DeclaredBy: l.DeclaredBy}))
-	}
-	for _, h := range config.Hosted {
-		entry := iwire.HostEntry{Name: h.Name, Hosted: true, Kind: h.Wire, Base: h.Base, Credential: h.Credential, Profiles: profiles(h.Profiles, true, h.Wire), DeclaredBy: h.DeclaredBy}
-		if limit, ok := config.Ceilings[h.Credential]; ok && h.Credential != "" {
-			entry.Ceiling = ceilingLimit(limit)
-		}
-		list.Hosts = append(list.Hosts, state(entry))
+		list.Hosts = append(list.Hosts, state)
 	}
 	return list
 }
@@ -399,63 +374,43 @@ func (o *inferenceOperator) AddHost(ctx context.Context, caller inference.Subjec
 	if field := validEntry(entry); field != "" {
 		return iwire.HostChange{Outcome: iwire.EditOutcomeInvalid, Reason: field}
 	}
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	config, revision, err := o.readConfig()
-	if err != nil {
-		o.report(err)
+	if o.providers == nil {
 		return iwire.HostChange{Outcome: iwire.EditOutcomeUnavailable}
-	}
-	if expected != revision {
-		return iwire.HostChange{Outcome: iwire.EditOutcomeConflict, Revision: revision, Reason: "revision"}
-	}
-	local := o.localHosts(config)
-	for _, l := range local {
-		if l.Kind == entry.Name {
-			return iwire.HostChange{Outcome: iwire.EditOutcomeConflict, Revision: revision, Reason: "name"}
-		}
-	}
-	for _, h := range config.Hosted {
-		if h.Name == entry.Name {
-			return iwire.HostChange{Outcome: iwire.EditOutcomeConflict, Revision: revision, Reason: "name"}
-		}
-	}
-	if len(local)+len(config.Hosted) >= 64 {
-		return iwire.HostChange{Outcome: iwire.EditOutcomeInvalid, Reason: "hosts"}
 	}
 	if len(entry.Profiles) == 0 {
 		entry.Profiles = defaultProfiles(entry.Hosted, entry.Kind)
 	}
-	if entry.Hosted {
-		config.Hosted = append(config.Hosted, inferenceHostedHost{Name: entry.Name, Base: entry.Base, Wire: entry.Kind, Credential: entry.Credential,
-			Profiles: entry.Profiles, DeclaredBy: declaredByOperator})
-		if c := entry.Ceiling; c != nil {
-			if config.Ceilings == nil {
-				config.Ceilings = map[string]inference.Ceiling{}
-			}
-			config.Ceilings[entry.Credential] = ceilingOf(c)
-		}
-	} else {
-		// Declarations keep adding hosts beside the operator's entries.
-		declared := config.usesDeclarations()
-		entries := []inferenceLocalHost{}
-		if config.Local != nil {
-			entries = append(entries, *config.Local...)
-		}
-		entries = append(entries, inferenceLocalHost{Kind: entry.Kind, Base: entry.Base, Profiles: entry.Profiles, DeclaredBy: declaredByOperator})
-		config.Local, config.Declared = &entries, &declared
+	// A host is a registry declaration of role host: the registry decides the
+	// revision, the name and the count, and its watchers give the router the
+	// new host. The registry's own lock is taken without o.mu.
+	applied := o.providers.add(expected, newHostFile(entry, declaredByOperator))
+	if applied.Outcome != wire.DeclarationEditOutcomeApplied {
+		return iwire.HostChange{Outcome: hostEditOf(applied.Outcome), Revision: applied.Revision, Reason: applied.Reason}
 	}
-	revision, err = o.apply(config)
-	if err != nil {
-		o.report(err)
-		return iwire.HostChange{Outcome: iwire.EditOutcomeUnavailable}
-	}
-	change := iwire.HostChange{Outcome: iwire.EditOutcomeApplied, Revision: revision}
+	o.refreshHosts()
+	change := iwire.HostChange{Outcome: iwire.EditOutcomeApplied, Revision: applied.Revision}
 	if err := o.writeHostRules(caller, entry); err != nil {
 		o.report(err)
 		change.Reason = "rules:" + err.Error()
 	}
 	return change
+}
+
+// hostEditOf is the host edit outcome of a registry edit outcome.
+func hostEditOf(outcome wire.DeclarationEditOutcome) iwire.EditOutcome {
+	switch outcome {
+	case wire.DeclarationEditOutcomeApplied:
+		return iwire.EditOutcomeApplied
+	case wire.DeclarationEditOutcomeConflict:
+		return iwire.EditOutcomeConflict
+	case wire.DeclarationEditOutcomeUnknown:
+		return iwire.EditOutcomeUnknown
+	case wire.DeclarationEditOutcomeInvalid:
+		return iwire.EditOutcomeInvalid
+	case wire.DeclarationEditOutcomeForbidden:
+		return iwire.EditOutcomeForbidden
+	}
+	return iwire.EditOutcomeUnavailable
 }
 
 // writeHostRules writes complete on the host for the runtime's operator
@@ -473,15 +428,62 @@ func (o *inferenceOperator) writeHostRules(caller inference.Subject, entry iwire
 	for _, program := range programs {
 		errs = append(errs, o.permitRule(by, program, inference.ActionComplete, inference.ResourceHost(entry.Name)))
 	}
-	// A remote runtime applies its own credential; this runtime needs no apply rule.
-	if entry.Hosted && entry.Credential != "" && entry.Kind != router.WireRemote {
-		errs = append(errs, o.permitRule(by, r.operators[0], credentials.ActionApply, credentials.ResourceFor(entry.Credential)))
-	}
+	errs = append(errs, o.ensureHostedApplyRule(by, entry, hostAddWhy))
 	return errors.Join(errs...)
 }
 
 func (o *inferenceOperator) permitRule(by rwire.Subject, program, action, resource string) error {
 	return o.permitRuleWhy(by, program, action, resource, hostAddWhy)
+}
+
+// ensureHostedApplyRule gives the runtime's own operator program the
+// abstraction.credentials/apply rule its own survey of a hosted host needs,
+// unless a rule on that target already exists: composeInference's
+// UseCredentials applies every hosted host's credential as the runtime's own
+// program, never the caller's, so this is the one rule that program needs to
+// survey the host at all. writeHostRules calls this when AddHost declares
+// the host after its credential is registered; credentialStored handles the
+// reverse order at the explicit Store edit. A remote runtime applies
+// its own credential; this runtime needs no apply rule for it.
+func (o *inferenceOperator) ensureHostedApplyRule(by rwire.Subject, entry iwire.HostEntry, why string) error {
+	if !entry.Hosted || entry.Credential == "" || entry.Kind == router.WireRemote {
+		return nil
+	}
+	return o.permitRuleWhy(by, o.credentials.operators[0], credentials.ActionApply, credentials.ResourceFor(entry.Credential), why)
+}
+
+// credentialStored joins a newly stored credential to existing declarations.
+// Listing remains observational, and existing deny rules remain authoritative.
+func (o *inferenceOperator) credentialStored(ctx context.Context, caller cwire.Subject, name string) error {
+	var errs []error
+	for _, f := range o.hostFiles() {
+		if err := ctx.Err(); err != nil {
+			return errors.Join(append(errs, err)...)
+		}
+		if f.Disabled || f.Declaration.Host.Credential != name {
+			continue
+		}
+		errs = append(errs, o.ensureHostedApplyRule(rwire.Subject{Account: caller.Account, Program: caller.Program}, f.hostEntry(), credentialStoreWhy))
+	}
+	return errors.Join(errs...)
+}
+
+// hostedDownReason turns the router's own credential:<outcome>:<name> down
+// reason into one naming the subject the missing rule is actually for: a
+// hosted host's survey always applies its credential as runtimeProgram, the
+// runtime's own operator program, never the program asking for this list, so
+// a credential refusal here is always about that program's own rule.
+func hostedDownReason(why, credentialName, runtimeProgram string) string {
+	if credentialName == "" {
+		return why
+	}
+	const prefix = "credential:"
+	suffix := ":" + credentialName
+	if !strings.HasPrefix(why, prefix) || !strings.HasSuffix(why, suffix) {
+		return why
+	}
+	outcome := strings.TrimSuffix(strings.TrimPrefix(why, prefix), suffix)
+	return fmt.Sprintf("credential:%s for %s", outcome, runtimeProgram)
 }
 
 // permitRuleWhy writes one exact permit rule with why as its provenance, unless
@@ -521,48 +523,28 @@ func (o *inferenceOperator) RemoveHost(ctx context.Context, caller inference.Sub
 	if !inferenceHostName.MatchString(name) {
 		return iwire.HostChange{Outcome: iwire.EditOutcomeInvalid, Reason: "name"}
 	}
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	config, revision, err := o.readConfig()
-	if err != nil {
-		o.report(err)
+	if o.providers == nil {
 		return iwire.HostChange{Outcome: iwire.EditOutcomeUnavailable}
 	}
-	if expected != revision {
-		return iwire.HostChange{Outcome: iwire.EditOutcomeConflict, Revision: revision, Reason: "revision"}
-	}
-	found := false
-	if config.Local != nil {
-		entries := *config.Local
-		if i := slices.IndexFunc(entries, func(l inferenceLocalHost) bool { return l.Kind == name }); i >= 0 {
-			entries = append(slices.Clone(entries[:i]), entries[i+1:]...)
-			declared := config.usesDeclarations()
-			config.Local, config.Declared, found = &entries, &declared, true
+	// Only a host leaves through RemoveHost; a provider or a remote runtime
+	// leaves through the registry's own Withdraw.
+	if !slices.ContainsFunc(o.hostFiles(), func(f providerFile) bool { return f.Declaration.Name == name && !f.Disabled }) {
+		revision, err := o.hostRevision()
+		if err != nil {
+			o.report(err)
+			return iwire.HostChange{Outcome: iwire.EditOutcomeUnavailable}
 		}
-	}
-	if !found {
-		// Removing a declared host stops declarations; the others stay as entries.
-		local := o.localHosts(config)
-		if i := slices.IndexFunc(local, func(l inferenceLocalHost) bool { return l.Kind == name }); i >= 0 {
-			local = append(slices.Clone(local[:i]), local[i+1:]...)
-			declared := false
-			config.Local, config.Declared, found = &local, &declared, true
+		if expected != revision {
+			return iwire.HostChange{Outcome: iwire.EditOutcomeConflict, Revision: revision, Reason: "revision"}
 		}
-	}
-	for i, h := range config.Hosted {
-		if h.Name == name {
-			config.Hosted, found = slices.Delete(config.Hosted, i, i+1), true
-			break
-		}
-	}
-	if !found {
 		return iwire.HostChange{Outcome: iwire.EditOutcomeUnknown, Revision: revision}
 	}
-	if revision, err = o.apply(config); err != nil {
-		o.report(err)
-		return iwire.HostChange{Outcome: iwire.EditOutcomeUnavailable}
+	withdrawn := o.providers.remove(expected, name)
+	if withdrawn.Outcome != wire.DeclarationEditOutcomeApplied {
+		return iwire.HostChange{Outcome: hostEditOf(withdrawn.Outcome), Revision: withdrawn.Revision, Reason: withdrawn.Reason}
 	}
-	return iwire.HostChange{Outcome: iwire.EditOutcomeApplied, Revision: revision}
+	o.refreshHosts()
+	return iwire.HostChange{Outcome: iwire.EditOutcomeApplied, Revision: withdrawn.Revision, Reason: withdrawn.Reason}
 }
 
 // holderRecords lists the runtime account's holder records by name.

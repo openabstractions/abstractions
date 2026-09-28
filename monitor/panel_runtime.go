@@ -48,7 +48,9 @@ func currentPrincipal() (identity.User, string, error) {
 }
 
 // bindExplicitRuntime makes every Panel call resolve through the named runtime,
-// verified as program under this process's account.
+// verified as program under this process's account. program is stored and
+// compared as its canonical long path (identity.CanonicalProgramPath), so a
+// short DOS 8.3 launch alias names the same runtime as its long spelling.
 func bindExplicitRuntime(endpoint, program string) error {
 	if endpoint == "" || program == "" {
 		return errors.New("-runtime-endpoint and -runtime-program are required together")
@@ -60,8 +62,9 @@ func bindExplicitRuntime(endpoint, program string) error {
 	if err != nil {
 		return err
 	}
-	machine := client.NewVerified(endpoint, listen.ServerExpectation{Principal: principal, Program: filepath.Clean(program)})
+	program = identity.CanonicalProgramPath(filepath.Clean(program))
+	machine := client.NewVerified(endpoint, listen.ServerExpectation{Principal: principal, Program: program})
 	panelMachine = func() *facade.Machine { return machine }
-	panelExplicit = &explicitRuntime{Endpoint: endpoint, Program: filepath.Clean(program), Account: account}
+	panelExplicit = &explicitRuntime{Endpoint: endpoint, Program: program, Account: account}
 	return nil
 }

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	rights "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 )
@@ -18,7 +17,7 @@ func composeApplications(options runtimeFlags, policy *runtimeRights, report fun
 	}
 	endpoint := options.endpoint + "-applications"
 	if options.endpoint == "" {
-		endpoint, err = bootstrap.Endpoint("applications-v1")
+		endpoint, err = options.defaultEndpoint("applications-v1")
 		if err != nil {
 			return nil, "", err
 		}

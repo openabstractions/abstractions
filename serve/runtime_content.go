@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
@@ -73,15 +72,19 @@ func (c *runtimeContent) commitBytes(digest string, data []byte) inference.Conte
 		return inference.ContentUnavailable
 	}
 	if _, err = f.Write(data); err != nil {
+		//unchecked: best-effort cleanup on a path that already returns ContentUnavailable
 		_ = f.Close()
+		//unchecked: best-effort cleanup on a path that already returns ContentUnavailable
 		_ = os.Remove(path)
 		return inference.ContentUnavailable
 	}
 	if err = f.Close(); err != nil {
+		//unchecked: best-effort cleanup on a path that already returns ContentUnavailable
 		_ = os.Remove(path)
 		return inference.ContentUnavailable
 	}
 	if err := c.store.Commit(ref); err != nil {
+		//unchecked: best-effort cleanup on a path that already returns ContentUnavailable
 		_ = os.Remove(path)
 		return inference.ContentUnavailable
 	}
@@ -148,7 +151,7 @@ func composeContent(options runtimeFlags, state string, rights *runtimeRights) (
 	}
 	endpoint := options.endpoint + "-content"
 	if options.endpoint == "" {
-		endpoint, err = bootstrap.Endpoint("storage-content-v1")
+		endpoint, err = options.defaultEndpoint("storage-content-v1")
 	}
 	if err != nil {
 		return nil, err

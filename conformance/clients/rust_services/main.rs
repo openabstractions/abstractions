@@ -57,6 +57,7 @@ fn main() {
     let mut args: Vec<String> = std::env::args().collect();
     if args.len() == 1 || args[1] == "--help" {
         println!("consumer runtime|absent|cancel|forged ENDPOINT [--runtime-endpoint OVERRIDE]");
+        println!("consumer installed-candidate  # Linux installed runtime, default discovery and read-only logging call");
         println!("  --runtime-endpoint OVERRIDE  runtime mode: the endpoint override, in place of ABSTRACTION_RUNTIME_ENDPOINT");
         return;
     }
@@ -70,6 +71,24 @@ fn main() {
         None => None,
     };
     let mode = &args[1];
+    if mode == "installed-candidate" {
+        assert_eq!(args.len(), 2, "installed-candidate takes no endpoint");
+        assert!(runtime_endpoint.is_none(), "installed-candidate takes no endpoint override");
+        assert!(std::env::var_os("ABSTRACTION_RUNTIME_ENDPOINT").is_none(), "installed-candidate requires the default endpoint");
+        assert!(cfg!(target_os = "linux"), "installed-candidate measures Linux");
+        let selected = abstraction_ipc::select_runtime(Instant::now() + Duration::from_secs(5), None)
+            .expect("native installed runtime selection");
+        assert_eq!(selected.principal_kind, 2);
+        assert!(!selected.principal.is_empty() && !selected.program.is_empty());
+        let reader = abstraction_facade_native::discover()
+            .with_deadline(Instant::now() + Duration::from_secs(8))
+            .resolve_log_reader(vec![], abstraction_facade_native::Scope::Local)
+            .expect("default discovery of installed logging reader");
+        let page = reader.read("".into(), 1, 65536).expect("installed logging history read");
+        assert_eq!(page.outcome, "page");
+        println!("PASS Rust installed-candidate native selection, default discovery and logging read: {}", selected.program);
+        return;
+    }
     let endpoint = &args[2];
     if mode == "absent" {
         // Nobody listens: the facade's resolution error, with the transport failure as its source.

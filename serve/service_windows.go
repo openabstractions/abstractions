@@ -74,14 +74,16 @@ func serviceArguments(args []string) (serviceRequest, error) {
 }
 
 func serviceCommand(args []string, output, diagnostics io.Writer) error {
-	if len(args) == 1 && isHelp(args[0]) {
+	if containsHelp(args) {
 		_, err := io.WriteString(output, serviceUsage)
 		return err
 	}
+	if len(args) == 0 {
+		return commandMistake(diagnostics, "service: a command is required", "openabstractions service --help")
+	}
 	request, err := serviceArguments(args)
 	if err != nil {
-		io.WriteString(diagnostics, serviceUsage)
-		return &exitError{code: 2, err: err}
+		return commandMistake(diagnostics, "service: "+err.Error(), "openabstractions service --help")
 	}
 	switch request.command {
 	case "begin-upgrade":
