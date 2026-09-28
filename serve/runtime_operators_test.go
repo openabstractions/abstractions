@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"slices"
 	"testing"
+
+	identity "github.com/openabstractions/abstraction-identity"
 )
 
 // The installed Panel sets and revokes rights rules and manages credentials, so
@@ -24,6 +26,8 @@ func TestOperatorSiblingsNameTheInstalledPanel(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	exe = identity.CanonicalProgramPath(filepath.Clean(exe))
+	panel = identity.CanonicalProgramPath(filepath.Clean(panel))
 	got := operatorSiblings(exe)
 	if !slices.Contains(got, panel) {
 		t.Fatalf("operators %v do not name the installed Panel %s", got, panel)

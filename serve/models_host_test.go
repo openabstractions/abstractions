@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"io"
+	"os"
 	"os/user"
 	"path/filepath"
 	"slices"
@@ -11,6 +12,7 @@ import (
 
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	"github.com/openabstractions/abstraction-facade/go/client"
+	identity "github.com/openabstractions/abstraction-identity"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	"github.com/openabstractions/abstraction-resource/go/instrument"
 	resourceservice "github.com/openabstractions/abstraction-resource/go/service"
@@ -42,8 +44,16 @@ func TestModelsHostDeclaresTheCardItLoadsInto(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	program := filepath.Join(t.TempDir(), "modelhostd")
-	settings := hostSettings{program: program, endpoint: "modelhost-declares-card", engine: "llama-server", resource: "resource-endpoint"}
+	programDir := filepath.Join(t.TempDir(), "model host program")
+	if err := os.MkdirAll(programDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	program := filepath.Clean(copyTestBinaryTo(t, programDir, modelHostProgram))
+	requestedProgram := program
+	if short, hasAlias := shortSubjectProgramAlias(t, program); hasAlias {
+		requestedProgram = short
+	}
+	settings := hostSettings{program: requestedProgram, endpoint: "modelhost-declares-card", engine: "llama-server", resource: "resource-endpoint"}
 	if err := declareHost(w, registry, list.Revision, settings, nil, "models host", io.Discard, false, "hosting"); err != nil {
 		t.Fatalf("declareHost: %v", err)
 	}
@@ -60,6 +70,9 @@ func TestModelsHostDeclaresTheCardItLoadsInto(t *testing.T) {
 			continue
 		}
 		found = true
+		if d.Declaration.Program != identity.NormalizeSubjectProgram(program) {
+			t.Fatalf("model host declaration program = %q, want canonical path %q", d.Declaration.Program, program)
+		}
 		if !slices.Contains(d.Declaration.Resources, instrument.Card0) || !slices.Contains(d.Declaration.Resources, "profile:chat") {
 			t.Fatalf("the model host declares %v, wants %s and profile:chat among its resources", d.Declaration.Resources, instrument.Card0)
 		}

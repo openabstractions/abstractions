@@ -23,6 +23,7 @@ import (
 	"github.com/openabstractions/abstraction-facade/go/client"
 	identity "github.com/openabstractions/abstraction-identity"
 	inference "github.com/openabstractions/abstraction-inference/go"
+	iwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	rights "github.com/openabstractions/abstraction-rights/go/client"
 )
 
@@ -99,6 +100,10 @@ func TestRuntimeGatewayWindowServesAKeyedProgram(t *testing.T) {
 		t.Skip("this platform cannot bind a loopback peer")
 	}
 	pythonExe, pythonArgs, program := scriptPython(t)
+	keyProgram := program
+	if short, hasAlias := shortSubjectProgramAlias(t, program); hasAlias {
+		keyProgram = short
+	}
 	upstream, chats := fakeOllama(t)
 	options, _ := isolatedRuntime(t)
 	options.gateway = freeLoopbackPort(t)
@@ -180,7 +185,7 @@ func TestRuntimeGatewayWindowServesAKeyedProgram(t *testing.T) {
 	if err != nil {
 		t.Fatalf("host remove: %v\n%s", err, out)
 	}
-	out, err = runInference(t, append([]string{"key", "issue", "--for", program, "--json"}, endpoint...)...)
+	out, err = runInference(t, append([]string{"key", "issue", "--for", keyProgram, "--json"}, endpoint...)...)
 	if err != nil {
 		requireUserScopeAdd(t, err, out)
 	}
@@ -254,15 +259,22 @@ func TestRuntimeGatewayWindowServesAKeyedProgram(t *testing.T) {
 	if strings.Contains(out, issued.Key) {
 		t.Fatal("the audit carries the key")
 	}
-	out, err = runInference(t, append([]string{"key", "revoke", "--for", program}, endpoint...)...)
+	out, err = runInference(t, append([]string{"key", "revoke", "--for", keyProgram}, endpoint...)...)
 	if err != nil {
 		t.Fatalf("key revoke: %v\n%s", err, out)
 	}
 	if result, code := llm(); code != 3 || result["status"] != 401.0 {
 		t.Fatalf("a revoked key: exit %d %v", code, result)
 	}
-	out, err = runInference(t, append([]string{"key", "list"}, endpoint...)...)
-	if err != nil || !strings.Contains(out, "revoked") {
+	out, err = runInference(t, append([]string{"key", "list", "--json"}, endpoint...)...)
+	var keyList struct {
+		Keys []struct {
+			Program string
+			State   iwire.KeyState
+		}
+	}
+	if err != nil || json.Unmarshal([]byte(out), &keyList) != nil || len(keyList.Keys) != 1 ||
+		keyList.Keys[0].Program != identity.NormalizeSubjectProgram(program) || keyList.Keys[0].State != iwire.KeyStateRevoked {
 		t.Fatalf("key list: %v\n%s", err, out)
 	}
 	err = filepath.WalkDir(options.stateDir, func(path string, entry os.DirEntry, err error) error {

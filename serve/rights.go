@@ -240,18 +240,12 @@ func (r rightsRule) subject() rights.Subject {
 	return rights.Subject{Account: r.account, Program: canonicalSubjectProgram(r.program)}
 }
 
-// canonicalSubjectProgram is a rule's --program as the policy stores and
-// compares it: unchanged for an msix: package subject, and otherwise
-// resolved to its canonical long path (identity.CanonicalProgramPath), so a
-// short DOS 8.3 alias typed or read back on the command line names the same
-// subject as its long spelling. This mirrors what NormalizeDecisionSubject
-// does server-side; canonicalizing here as well keeps what this command
-// prints and what the policy actually matches in agreement.
+// canonicalSubjectProgram gives a rights rule the shared subject spelling.
 func canonicalSubjectProgram(program string) string {
-	if program == "" || strings.HasPrefix(program, identity.PackagedProgramPrefix) {
-		return program
+	if program == "" {
+		return ""
 	}
-	return identity.CanonicalProgramPath(program)
+	return identity.NormalizeSubjectProgram(program)
 }
 
 // ruleJSON is one exact rule as the rights command prints it.

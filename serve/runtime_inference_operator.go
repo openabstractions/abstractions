@@ -108,12 +108,9 @@ func (k *keyIndex) byName(name string) (keyRecord, bool) {
 	return keyRecord{}, false
 }
 
-// samePrograms compares executable paths the way the platform names files.
+// samePrograms compares subject programs using the shared identity rules.
 func samePrograms(a, b string) bool {
-	if runtime.GOOS == "windows" {
-		return strings.EqualFold(a, b)
-	}
-	return a == b
+	return identity.SameSubjectProgram(a, b)
 }
 
 var (
@@ -576,6 +573,31 @@ func keyState(r cwire.Metadata, held bool) iwire.KeyState {
 	return iwire.KeyStateActive
 }
 
+// revokeProgramKeys revokes every active key for one subject identity. Older
+// indexes can contain both the long and DOS short spelling of the same file.
+func revokeProgramKeys(keys []keyRecord, records map[string]cwire.Metadata, program string,
+	revoke func(revision, name string) cwire.RevokeOutcome) iwire.EditOutcome {
+	revoked := false
+	for _, k := range keys {
+		held, ok := records[k.Name]
+		if !samePrograms(k.Program, program) || keyState(held, ok) == iwire.KeyStateRevoked {
+			continue
+		}
+		switch revoke(held.Revision, k.Name) {
+		case cwire.RevokeOutcomeRevoked:
+			revoked = true
+		case cwire.RevokeOutcomeUnknown:
+			continue
+		default:
+			return iwire.EditOutcomeUnavailable
+		}
+	}
+	if revoked {
+		return iwire.EditOutcomeApplied
+	}
+	return iwire.EditOutcomeUnknown
+}
+
 func (o *inferenceOperator) Keys(ctx context.Context, caller inference.Subject) iwire.KeyList {
 	if word := o.gate(ctx, caller, inference.ActionKeyIssue); word != "" {
 		return iwire.KeyList{Outcome: inferenceListRefusal(word), Keys: []iwire.LocalKey{}}
@@ -605,6 +627,7 @@ func (o *inferenceOperator) IssueKey(ctx context.Context, caller inference.Subje
 	case credential != "" && !credentialName.MatchString(credential):
 		return iwire.KeyIssued{Outcome: iwire.EditOutcomeInvalid, Reason: "credential"}
 	}
+	program = identity.NormalizeSubjectProgram(program)
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	records, err := o.holderRecords()
@@ -658,6 +681,7 @@ func (o *inferenceOperator) RevokeKey(ctx context.Context, caller inference.Subj
 	if !identity.ValidSubjectProgram(program) {
 		return iwire.KeyRevoked{Outcome: iwire.EditOutcomeInvalid}
 	}
+	program = identity.NormalizeSubjectProgram(program)
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	records, err := o.holderRecords()
@@ -665,21 +689,10 @@ func (o *inferenceOperator) RevokeKey(ctx context.Context, caller inference.Subj
 		o.report(err)
 		return iwire.KeyRevoked{Outcome: iwire.EditOutcomeUnavailable}
 	}
-	for _, k := range o.keys.Keys {
-		held, ok := records[k.Name]
-		if !samePrograms(k.Program, program) || keyState(held, ok) == iwire.KeyStateRevoked {
-			continue
-		}
-		result := o.credentials.holder.Revoke(cwire.Subject{Account: caller.Account, Program: caller.Program}, held.Revision, k.Name)
-		switch result.Outcome {
-		case cwire.RevokeOutcomeRevoked:
-			return iwire.KeyRevoked{Outcome: iwire.EditOutcomeApplied}
-		case cwire.RevokeOutcomeUnknown:
-			return iwire.KeyRevoked{Outcome: iwire.EditOutcomeUnknown}
-		}
-		return iwire.KeyRevoked{Outcome: iwire.EditOutcomeUnavailable}
-	}
-	return iwire.KeyRevoked{Outcome: iwire.EditOutcomeUnknown}
+	outcome := revokeProgramKeys(o.keys.Keys, records, program, func(revision, name string) cwire.RevokeOutcome {
+		return o.credentials.holder.Revoke(cwire.Subject{Account: caller.Account, Program: caller.Program}, revision, name).Outcome
+	})
+	return iwire.KeyRevoked{Outcome: outcome}
 }
 
 func (o *inferenceOperator) Audit(ctx context.Context, caller inference.Subject, cursor, maxEntries int64) iwire.AuditPage {

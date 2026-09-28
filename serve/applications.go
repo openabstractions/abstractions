@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	identity "github.com/openabstractions/abstraction-identity"
+
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	rights "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 )
@@ -177,6 +179,10 @@ func (d *applicationDirectory) register(ctx context.Context, s rights.Subject, v
 	if out := d.authorized(ctx, s, ActionApplicationManage, "account"); out != wire.ApplicationOutcomeApplied {
 		return appChange(out, "")
 	}
+	if !validApplicationDescriptor(v) {
+		return appChange(wire.ApplicationOutcomeInvalid, "descriptor")
+	}
+	v.Program = identity.NormalizeSubjectProgram(v.Program)
 	if !validApplicationDescriptor(v) || samePrograms(s.Program, v.Program) {
 		return appChange(wire.ApplicationOutcomeInvalid, "descriptor")
 	}

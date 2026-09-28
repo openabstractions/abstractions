@@ -272,7 +272,7 @@ func copyTestBinary(t *testing.T, name string) string {
 	if err := out.Close(); err != nil {
 		t.Fatal(err)
 	}
-	return target
+	return identity.CanonicalProgramPath(filepath.Clean(target))
 }
 
 func runProvider(t *testing.T, args ...string) (string, error) {
@@ -367,6 +367,7 @@ func TestOnDemandProviderStartsRestartsAndStops(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	self = identity.CanonicalProgramPath(filepath.Clean(self))
 	out, err := runProvider(t, append([]string{"add", "self", "--program", self, "--provider-endpoint", name + "-self", "--contract", inference.Contract}, endpoint...)...)
 	var exit *exitError
 	if !errors.As(err, &exit) || exit.code != exitRefusedCall || !strings.Contains(err.Error(), "program:self") {
@@ -674,6 +675,7 @@ func TestAnOldProviderWithoutDescribeReadsUnreachable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	self = identity.CanonicalProgramPath(filepath.Clean(self))
 	name := fmt.Sprintf("old-%d", time.Now().UnixNano()%1_000_000_000)
 	old := exec.Command(program, providerFixtureArg, "old", name, t.TempDir(), self)
 	if err := old.Start(); err != nil {
@@ -723,6 +725,7 @@ func TestACallerWithoutProviderManageIsForbidden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	self = identity.CanonicalProgramPath(filepath.Clean(self))
 	account, err := user.Current()
 	if err != nil {
 		t.Fatal(err)

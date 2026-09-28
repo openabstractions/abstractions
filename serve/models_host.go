@@ -368,7 +368,7 @@ func declareHost(w *waiting, registry *client.Registry, revision string, setting
 	// profiles, so Declare writes the program its own abstraction.resource/hold
 	// rule (facade CONTRACT.md FAC-R3): the model host holds what it loads.
 	resources := append([]string{instrument.Card0}, profiles...)
-	declaration := wire.Declaration{Name: modelHostName, Program: filepath.Clean(settings.program), Arguments: arguments,
+	declaration := wire.Declaration{Name: modelHostName, Program: identity.NormalizeSubjectProgram(filepath.Clean(settings.program)), Arguments: arguments,
 		Endpoint: settings.endpoint, Transport: wire.DeclarationTransportNative, Contracts: contracts,
 		Guarantees: []string{inference.GuaranteeLocalOnly}, Resources: resources, Models: names,
 		Activation: wire.ActivationOnDemand, Role: wire.DeclarationRoleProvider}

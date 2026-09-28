@@ -4,6 +4,7 @@ import (
 	"context"
 	cascore "github.com/openabstractions/abstraction-cas/go"
 	"github.com/openabstractions/abstraction-facade/go/client"
+	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-identity/listen"
 	"os"
 	"os/user"
@@ -112,6 +113,59 @@ func TestApplicationPresenceOwnsEpochAndPreservesInstalledDescriptor(t *testing.
 	}
 }
 
+func TestApplicationRegistrationRejectsShortAliasOfCallingProgram(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("DOS short aliases are Windows-specific")
+	}
+	program, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	program = filepath.Clean(program)
+	short, hasAlias := shortSubjectProgramAlias(t, program)
+	if !hasAlias {
+		t.Skip("the filesystem did not provide a distinct DOS short alias")
+	}
+	state := t.TempDir()
+	d, err := openApplications(state, "account", func(context.Context, rights.Subject, string, string) (bool, error) { return true, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := rights.Subject{Account: "account", Program: program}
+	descriptor := wire.ApplicationDescriptor{Name: "self-alias", Program: short, Title: "Self", StartGuidance: "Open"}
+	if got := d.register(context.Background(), caller, descriptor); got.Outcome != wire.ApplicationOutcomeInvalid {
+		t.Fatalf("registration through short alias of caller: %+v", got)
+	}
+}
+
+func TestApplicationRegistrationPersistsNormalizedShortProgramAlias(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("DOS short aliases are Windows-specific")
+	}
+	appDir := filepath.Join(t.TempDir(), "registered program")
+	if err := os.MkdirAll(appDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	appProgram := filepath.Clean(copyTestBinaryTo(t, appDir, "oa-registered-app"))
+	appInput, hasAlias := shortSubjectProgramAlias(t, appProgram)
+	if !hasAlias {
+		t.Skip("the filesystem did not provide a distinct DOS short alias")
+	}
+	state := t.TempDir()
+	d, err := openApplications(state, "account", func(context.Context, rights.Subject, string, string) (bool, error) { return true, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := rights.Subject{Account: "account", Program: filepath.Join(t.TempDir(), "operator.exe")}
+	registered := wire.ApplicationDescriptor{Name: "registered-alias", Program: appInput, Title: "App", StartGuidance: "Open"}
+	if got := d.register(context.Background(), caller, registered); got.Outcome != wire.ApplicationOutcomeApplied {
+		t.Fatalf("register a distinct application through short alias: %+v", got)
+	}
+	if got := d.descriptors[registered.Name].Program; got != identity.NormalizeSubjectProgram(appProgram) {
+		t.Fatalf("persisted program = %q, want normalized %q", got, appProgram)
+	}
+}
+
 func TestApplicationDirectoryFiltersHiddenChangesAndRevokedAccess(t *testing.T) {
 	ctx := context.Background()
 	state := t.TempDir()
@@ -214,6 +268,7 @@ func TestApplicationNativeDirectoryUsesBoundProgram(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	program = identity.CanonicalProgramPath(filepath.Clean(program))
 	operator := rights.Subject{Account: account.Uid, Program: filepath.Join(t.TempDir(), "operator.exe")}
 	app := rights.Subject{Account: account.Uid, Program: program}
 	d, err := openApplications(t.TempDir(), account.Uid, func(_ context.Context, s rights.Subject, action, resource string) (bool, error) {

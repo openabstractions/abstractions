@@ -14,12 +14,63 @@ import (
 	"time"
 
 	credentials "github.com/openabstractions/abstraction-credentials/go"
+	cwire "github.com/openabstractions/abstraction-credentials/go/abstraction/credentials/api"
 	"github.com/openabstractions/abstraction-facade/go/client"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	iwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	rights "github.com/openabstractions/abstraction-rights/go/client"
 	router "github.com/openabstractions/abstraction-router/go"
 )
+
+func TestRevokeProgramKeysRevokesLegacyShortAndLongAliases(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("DOS short aliases are Windows-specific")
+	}
+	dir := filepath.Join(t.TempDir(), "legacy program")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	program := filepath.Join(dir, "subject.exe")
+	if err := os.WriteFile(program, []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	short, hasAlias := shortSubjectProgramAlias(t, program)
+	if !hasAlias {
+		t.Skip("the filesystem did not provide a distinct DOS short alias")
+	}
+	keys := []keyRecord{{Program: program, Name: "legacy-long"}, {Program: short, Name: "legacy-short"}}
+	records := map[string]cwire.Metadata{
+		"legacy-long":  {Name: "legacy-long", Revision: "revision-long", State: cwire.StateActive},
+		"legacy-short": {Name: "legacy-short", Revision: "revision-short", State: cwire.StateActive},
+	}
+	calls := make([]string, 0, 2)
+	outcome := revokeProgramKeys(keys, records, program, func(revision, name string) cwire.RevokeOutcome {
+		calls = append(calls, name)
+		if revision != "revision-"+strings.TrimPrefix(name, "legacy-") {
+			t.Fatalf("revoke %s used revision %q", name, revision)
+		}
+		if name == "legacy-long" {
+			return cwire.RevokeOutcomeUnknown
+		}
+		return cwire.RevokeOutcomeRevoked
+	})
+	if outcome != iwire.EditOutcomeApplied || len(calls) != 2 {
+		t.Fatalf("unknown long alias then revoked short alias: outcome %s, calls %v", outcome, calls)
+	}
+	if got := revokeProgramKeys(keys, records, program, func(_, _ string) cwire.RevokeOutcome {
+		return cwire.RevokeOutcomeUnknown
+	}); got != iwire.EditOutcomeUnknown {
+		t.Fatalf("all matching records unknown returned %s, want unknown", got)
+	}
+	if got := revokeProgramKeys(keys, records, program, func(_, name string) cwire.RevokeOutcome {
+		if name == "legacy-long" {
+			return cwire.RevokeOutcomeRevoked
+		}
+		return cwire.RevokeOutcomeUnavailable
+	}); got != iwire.EditOutcomeUnavailable {
+		t.Fatalf("partial legacy-alias revocation reported %s, want unavailable", got)
+	}
+}
 
 // AddHost entries: profiles are seeded or owned words, declared_by belongs to
 // the runtime, and a ceiling needs a credential.
