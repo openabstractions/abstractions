@@ -39,6 +39,10 @@ func activationFixture(t *testing.T, timeout time.Duration) (*applicationDirecto
 
 func TestApplicationActivationSharesLaunchAndReusesVerifiedPresence(t *testing.T) {
 	d, _, app, descriptor := activationFixture(t, time.Second)
+	wantProgram, err := os.Stat(descriptor.Program)
+	if err != nil {
+		t.Fatal(err)
+	}
 	caller := rights.Subject{Account: app.Account, Program: filepath.Join(t.TempDir(), "caller")}
 	var launches, authorized atomic.Int32
 	entered, release, returned := make(chan struct{}), make(chan struct{}), make(chan struct{})
@@ -50,7 +54,10 @@ func TestApplicationActivationSharesLaunchAndReusesVerifiedPresence(t *testing.T
 	}
 	d.launch = func(program string, arguments []string) error {
 		launches.Add(1)
-		if program != descriptor.Program || len(arguments) != 1 || arguments[0] != "--fixture" {
+		// Registration may expand a DOS alias in the temporary directory.
+		// Activation must launch the requested executable with its arguments.
+		gotProgram, err := os.Stat(program)
+		if err != nil || !os.SameFile(wantProgram, gotProgram) || len(arguments) != 1 || arguments[0] != "--fixture" {
 			t.Errorf("launch %q %q", program, arguments)
 		}
 		close(entered)
