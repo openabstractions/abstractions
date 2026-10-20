@@ -2215,10 +2215,8 @@ class BackendRecipeTests(unittest.TestCase):
         public_script=projected/'scripts/package_comfyui_app.py'
         self.assertEqual(public_script.parent.parent/'adopters/comfyui/upstream/backend-amd-v1.json',projected/app.BACKEND_POLICY.relative_to(root))
         policy=json.loads((projected/app.BACKEND_POLICY.relative_to(root)).read_bytes())
-        archive={'name':'backend.7z','bytes':728835068,
-            'sha256':'25028c3109f3250dc0e2d8c4a21b7bf2d6bb2e32dc04002e2b9fe42ceccdbfd5'}
-        self.assertEqual(app.app_pair_receipt.validate_data_release(policy.get('data_release')),
-            app.app_pair_receipt.backend_data_release(dict(archive,format='7z',parts=[archive])))
+        self.assertEqual(app.app_pair_receipt.validate_data_release_policy(policy.get('data_release')),
+            {'repository':'openabstractions/redist','tag_prefix':'comfyui-data-win-amd-'})
         self.assertEqual(policy['patch_sha256'],hashlib.sha256((projected/app.BACKEND_POLICY.with_suffix('.patch').relative_to(root)).read_bytes()).hexdigest())
 
     def test_limits_links_and_unselected_input_pin_refuse_without_lifecycle(self):
