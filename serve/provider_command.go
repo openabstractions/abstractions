@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -51,11 +52,13 @@ Commands:
                          contracts and accepted resources
   provider add <name> --program PATH --provider-endpoint NAME --contract CONTRACT
                          [--arg ARG]... [--activate on-demand|attach]
-                         [--guarantee NAME]... [--model NAME]... [--profiles LIST] [--store NAME]...
+                         [--guarantee NAME]... [--model NAME]... [--profiles LIST]
+                         [--supported-extension PROFILE:OWNER/NAME]... [--store NAME]...
+                         [--card N]...
                          declare a provider at the listed revision
   provider add <name> --remote HOST:PORT --server-name NAME --trust FILE
                          --client FILE --client-key FILE [--credential NAME]
-                         [--profiles LIST]
+                         [--profiles LIST] [--supported-extension PROFILE:OWNER/NAME]...
                          declare another runtime at the listed revision
   provider remove <name> withdraw a declaration; an on-demand child ends. A
                          declaration of a product or the installation is
@@ -79,14 +82,26 @@ provider add:
                        attach reads a provider something else started
   --guarantee NAME     a guarantee its candidates advertise, repeatable
   --model NAME         a model a native inference provider serves, repeatable;
-                       kept as its explicit mediation allowlist
+                       kept as its explicit mediation allowlist. PROFILE:NAME,
+                       with PROFILE one of --profiles, serves NAME for that
+                       profile only; a bare NAME serves every listed profile
   --profiles LIST      comma-separated profiles it serves, kept as resources
                        profile:NAME
+  --supported-extension PROFILE:OWNER/NAME
+                       a required extension key this provider or remote runtime
+                       can examine for a declared inference profile; repeatable;
+                       requires registry@2 on the selected runtime
   --store NAME         for an inventory source, a store the runtime accepts
                        from it, repeatable and required; kept as the resource
                        store:NAME, and writes the rule
                        abstraction.storage/inventory.provide on store:NAME for
                        the program
+  --card N             a GPU card the provider loads its engine's work onto,
+                       repeatable (0 is the first); kept as the resource
+                       card:N, and writes the rules abstraction.resource/hold
+                       on card:N and on awake for the program, since a card
+                       holder runs GPU work and holds the wake lease while it
+                       does (resource CONTRACT.md RES-A1, RES-G5)
   --remote HOST:PORT   declares another runtime (oa-remote@1) reached over mutual
                        TLS; it serves abstraction.inference/chat@1 and
                        abstraction.router/router@1, and the runtime's operator
@@ -102,6 +117,8 @@ Every command accepts --endpoint, --timeout and --json. The endpoint is
 --endpoint if given, else ABSTRACTION_RUNTIME_ENDPOINT if set, else the
 installed runtime. Declaring needs abstraction.facade/provider.manage, which
 the command line and the Panel hold by installation.
+
+With --endpoint, --runtime-program PATH verifies that absolute executable under this account.
 
 Exit codes: 0 done, 1 runtime not resolved or transport failure, 2 usage,
 3 typed refusal (forbidden, conflict, invalid), 4 unavailable, 6 unknown.
@@ -141,12 +158,14 @@ func providerCommand(args []string, output, diagnostics io.Writer) error {
 	clientCert := flags.String("client", "", "PEM client certificate")
 	clientKey := flags.String("client-key", "", "PEM client private key")
 	credential := flags.String("credential", "", "credential the remote runtime applies")
-	var contracts, arguments, guarantees, models, stores repeated
+	var contracts, arguments, guarantees, models, stores, extensions, cards repeated
 	flags.Var(&contracts, "contract", "contract served")
 	flags.Var(&arguments, "arg", "program argument")
 	flags.Var(&guarantees, "guarantee", "advertised guarantee")
 	flags.Var(&models, "model", "served inference model")
+	flags.Var(&extensions, "supported-extension", "profile and supported extension key")
 	flags.Var(&stores, "store", "accepted inventory store")
+	flags.Var(&cards, "card", "GPU card the provider loads work onto")
 	positional, err := parsePositional(flags, args[1:])
 	if err != nil {
 		return badFlag(flags, diagnostics, command, providerUsage, args[1:], err)
@@ -162,8 +181,8 @@ func providerCommand(args []string, output, diagnostics io.Writer) error {
 	if command == "provider add" {
 		switch {
 		case *remoteAt != "":
-			if *program != "" || *endpoint != "" || len(contracts) > 0 || len(arguments) > 0 || len(models) > 0 || len(stores) > 0 {
-				return flagMistake(diagnostics, command, providerUsage, "--remote takes no --program, --provider-endpoint, --contract, --arg or --store")
+			if *program != "" || *endpoint != "" || len(contracts) > 0 || len(arguments) > 0 || len(models) > 0 || len(stores) > 0 || len(cards) > 0 {
+				return flagMistake(diagnostics, command, providerUsage, "--remote takes no --program, --provider-endpoint, --contract, --arg, --store or --card")
 			}
 			activation = wire.ActivationRemote
 		case *activate == "on-demand":
@@ -181,16 +200,32 @@ func providerCommand(args []string, output, diagnostics io.Writer) error {
 	}
 	w := newWaiting(options.budget)
 	defer w.stop()
-	machine, source := options.machine(diagnostics, command)
+	machine, source, err := options.machine(diagnostics, command, providerUsage)
+	if err != nil {
+		return err
+	}
 	call, done := w.call()
-	registry, err := machine.ResolveRegistry(call, client.Requirements{})
+	useV2 := command == "provider add" && len(extensions) > 0
+	var registry *client.Registry
+	var registryV2 *client.RegistryV2
+	if useV2 {
+		registryV2, err = machine.ResolveRegistryV2(call, client.Requirements{})
+	} else {
+		registry, err = machine.ResolveRegistry(call, client.Requirements{})
+	}
 	done()
 	if err != nil {
 		return notResolved(command, source, err)
 	}
 	transport := func(err error) error { return &exitError{exitNotResolved, fmt.Errorf("%s: %w", command, err)} }
 	call, done = w.call()
-	list, err := registry.Declarations(call)
+	var list wire.DeclarationList
+	if useV2 {
+		page, pageErr := registryV2.Declarations(call)
+		list.Outcome, list.Revision, err = page.Outcome, page.Revision, pageErr
+	} else {
+		list, err = registry.Declarations(call)
+	}
 	done()
 	if err != nil {
 		return transport(err)
@@ -210,6 +245,7 @@ func providerCommand(args []string, output, diagnostics io.Writer) error {
 	if command == "provider add" {
 		declaration := wire.Declaration{Name: name, Program: *program, Arguments: append([]string{}, arguments...), Endpoint: *endpoint,
 			Transport: wire.DeclarationTransportNative, Contracts: contracts, Guarantees: guarantees, Activation: activation}
+		var supported []wire.DeclarationExtension
 		if *program != "" {
 			declaration.Program = identity.CanonicalProgramPath(filepath.Clean(*program))
 		}
@@ -217,14 +253,31 @@ func providerCommand(args []string, output, diagnostics io.Writer) error {
 			declaration.Resources = append(declaration.Resources, "profile:"+profile)
 		}
 		declaration.Models = append([]string{}, models...)
+		for _, item := range extensions {
+			profile, key, ok := strings.Cut(item, ":")
+			if !ok || profile == "" || key == "" {
+				return flagMistake(diagnostics, command, providerUsage, "--supported-extension is PROFILE:OWNER/NAME")
+			}
+			supported = append(supported, wire.DeclarationExtension{Profile: profile, Key: key})
+		}
 		for _, store := range stores {
 			declaration.Resources = append(declaration.Resources, ResourceStore(store))
+		}
+		for _, card := range cards {
+			if n, convErr := strconv.Atoi(card); convErr != nil || n < 0 || strconv.Itoa(n) != card {
+				return flagMistake(diagnostics, command, providerUsage, "--card is a card number: 0, 1, ...")
+			}
+			declaration.Resources = append(declaration.Resources, ResourceCard(card))
 		}
 		if *remoteAt != "" {
 			declaration.Transport, declaration.Endpoint, declaration.Contracts = wire.DeclarationTransportRemote, "tls://"+*remoteAt, append([]string{}, remoteContracts...)
 			declaration.Remote = &wire.RemoteTrust{ServerName: *serverName, Roots: absolute(*trustRoots), Certificate: absolute(*clientCert), Key: absolute(*clientKey), Credential: *credential}
 		}
-		change, err = registry.Declare(call, list.Revision, declaration)
+		if useV2 {
+			change, err = registryV2.Declare(call, list.Revision, wire.DeclarationWithExtensions{Declaration: declaration, SupportedExtensions: supported})
+		} else {
+			change, err = registry.Declare(call, list.Revision, declaration)
+		}
 	} else {
 		change, err = registry.Withdraw(call, list.Revision, name)
 	}

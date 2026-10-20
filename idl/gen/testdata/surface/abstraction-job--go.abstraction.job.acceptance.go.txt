@@ -108,6 +108,27 @@ func (ResultOutcome) MarshalJSON() ([]byte, error)
 func (ResultOutcome) UnmarshalJSON(data []byte) error
 func ResultOutcomeValues() []ResultOutcome
 func (ResultOutcome) Known() bool
+type LinkOutcome uint32
+const LinkOutcomeLinked
+const LinkOutcomeNotReady
+const LinkOutcomeUnavailable
+const LinkOutcomeUnsupported
+const LinkOutcomeUnknown
+const LinkOutcomeForbidden
+const LinkOutcomeInvalid
+const LinkOutcomeExists
+const LinkOutcomeOtherVolume
+const LinkOutcomeNoHardLinks
+const LinkOutcomeRemote
+func (LinkOutcome) String() string
+func (LinkOutcome) WireName() (string, bool)
+func ParseLinkOutcome(word string) (LinkOutcome, bool)
+func (LinkOutcome) MarshalText() ([]byte, error)
+func (LinkOutcome) UnmarshalText(text []byte) error
+func (LinkOutcome) MarshalJSON() ([]byte, error)
+func (LinkOutcome) UnmarshalJSON(data []byte) error
+func LinkOutcomeValues() []LinkOutcome
+func (LinkOutcome) Known() bool
 type InventoryOutcome uint32
 const InventoryOutcomePage
 const InventoryOutcomeGap
@@ -207,6 +228,10 @@ type ResultChunk struct
 type ResultRead struct
   Outcome ResultOutcome
   Chunk *ResultChunk
+type ResultLink struct
+  Outcome LinkOutcome
+  Receipt *Receipt
+  Size int64
 type InventoryPage struct
   Outcome InventoryOutcome
   Snapshots []OperationSnapshot
@@ -262,6 +287,7 @@ func (RecoverableAcceptanceDispatcher) ExchangeFrame(frame []byte) ([]byte, erro
 type OperationControl interface
   ObserveWork(identity RequestIdentity) (ObservationResult, error)
   ReadResult(identity RequestIdentity, offset, maxBytes int64) (ResultRead, error)
+  LinkResult(identity RequestIdentity, destination string) (ResultLink, error)
 type OperationControlTransport interface
   FrameExchanger
 type OperationControlClient struct
@@ -270,6 +296,7 @@ type OperationControlDispatcher struct
   Handler OperationControl
 func (OperationControlClient) ObserveWork(identity RequestIdentity) (result ObservationResult, err error)
 func (OperationControlClient) ReadResult(identity RequestIdentity, offset, maxBytes int64) (result ResultRead, err error)
+func (OperationControlClient) LinkResult(identity RequestIdentity, destination string) (result ResultLink, err error)
 func (OperationControlDispatcher) DescribeService() (contract string, ready bool, why string)
 func (OperationControlDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (OperationControlDispatcher) ServiceContract() string

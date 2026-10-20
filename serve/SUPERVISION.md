@@ -20,7 +20,7 @@ Foreground invocation keeps its existing signal handling. Supervised invocation
 also responds to signals and does not join a blocked stdin reader during shutdown.
 There is no global shutdown endpoint.
 
-The Windows parent is `openabstractions serve host`, with its launcher in
+The Windows parent is `openabstractions serve supervisor`, with its launcher in
 `internal/runtimehost`. The launcher supplies bounded startup, EOF shutdown and
 forced process-tree termination. It attaches a kill-on-close Job Object during
 process creation. Completion checks observe job accounting and captured process
@@ -32,9 +32,9 @@ failure on the fourth consecutive failure; a child that ran five minutes resets
 the count. Before each launch it refuses during an installer upgrade (exit
 status 3) and exits cleanly when another runtime already answers the user's
 endpoint. Per-user, it holds a hidden session window for Restart Manager and
-sign-out shutdown and calls `RegisterApplicationRestart("serve host")` with
+sign-out shutdown and calls `RegisterApplicationRestart("serve supervisor")` with
 `RESTART_NO_CRASH|RESTART_NO_HANG|RESTART_NO_REBOOT` before the child is ready.
-Machine scope registers `openabstractionsw.exe serve host --service` as the
+Machine scope registers `openabstractionsw.exe serve supervisor --service` as the
 per-user service template with `openabstractions host register`; the SCM
 recovery policy restarts a host that fails. Startup diagnostics, including the
 token's `TokenElevation` and `TokenElevationType`, go to
@@ -45,6 +45,14 @@ The runtime defaults to logging, configuration and managed durable jobs.
 through the resolver under the invoking account. It separately reports read-only
 installation/supervision evidence. Running supervision does not establish
 capability readiness; interrupted queries preserve unanswered results.
+
+A runtime built before commit `51b4343b7`, 0.3.0 included, does not read
+`asks/application.json` in the runtime's state directory once a later
+runtime has written it: question records now carry the requester's
+publisher, and the earlier reader refuses unknown fields (asks `ASK-P1`,
+`ASK-A6`). To downgrade, stop the runtime and delete that file. Pending
+questions and the answered question history are lost; the rights rules that
+answers wrote stay in the rights policy and are unaffected.
 
 Disposable installed recovery/removal checks, same-account multi-session
 ownership and accepted-work recovery after forced termination remain pending.

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/user"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"testing"
@@ -54,6 +55,15 @@ func trayTestBook(t *testing.T) (*asks.Book, *askclient.Operator) {
 
 func ask(t *testing.T, book *asks.Book, requestKey, program, action, resource string) string {
 	t.Helper()
+	// Permission occurrences carry a canonical program tuple, even when the
+	// fixture's visible requester name is a short file name.
+	if !filepath.IsAbs(program) {
+		absolute, err := filepath.Abs(program)
+		if err != nil {
+			t.Fatal(err)
+		}
+		program = absolute
+	}
 	record, outcome, err := book.AskApplication("test-scope", "test-program", requestKey, asks.FirstUseKey,
 		map[string]string{"program": program, "action": action, "resource": resource}, listen.Seen{Why: "test"})
 	if err != nil || outcome != "pending" {
@@ -67,23 +77,26 @@ func TestTrayAnnouncerAnnouncesEachNewPendingQuestionOnce(t *testing.T) {
 	firstID := ask(t, book, "q1", "one.exe", "abstraction.model/lookup", "hf")
 
 	announcer := newTrayAnnouncer()
-	fresh, unavailable := pollTray(context.Background(), panelMachine(), announcer)
+	fresh, polled, unavailable := pollTray(context.Background(), panelMachine(), announcer)
 	if unavailable {
 		t.Fatal("runtime reported unavailable")
+	}
+	if polled == nil {
+		t.Fatal("a reachable poll returns the operator it resolved, for the caller's reads")
 	}
 	if len(fresh) != 1 || fresh[0].ID != firstID {
 		t.Fatalf("first poll should announce the one pending question, got %+v", fresh)
 	}
 
 	// Polling again with nothing new announces nothing.
-	fresh, unavailable = pollTray(context.Background(), panelMachine(), announcer)
+	fresh, _, unavailable = pollTray(context.Background(), panelMachine(), announcer)
 	if unavailable || len(fresh) != 0 {
 		t.Fatalf("second poll re-announced: unavailable=%v fresh=%+v", unavailable, fresh)
 	}
 
 	// A second, distinct pending question is announced once, on its own.
 	secondID := ask(t, book, "q2", "two.exe", "abstraction.inference/complete", "openai")
-	fresh, unavailable = pollTray(context.Background(), panelMachine(), announcer)
+	fresh, _, unavailable = pollTray(context.Background(), panelMachine(), announcer)
 	if unavailable || len(fresh) != 1 || fresh[0].ID != secondID {
 		t.Fatalf("third poll should announce only the new question, got unavailable=%v fresh=%+v", unavailable, fresh)
 	}
@@ -96,9 +109,24 @@ func TestTrayAnnouncerAnnouncesEachNewPendingQuestionOnce(t *testing.T) {
 	if _, err := operator.RetireQuestionContext(context.Background(), secondID); err != nil {
 		t.Fatal(err)
 	}
-	fresh, unavailable = pollTray(context.Background(), panelMachine(), announcer)
+	fresh, _, unavailable = pollTray(context.Background(), panelMachine(), announcer)
 	if unavailable || len(fresh) != 0 {
 		t.Fatalf("answered/retired questions were re-announced: unavailable=%v fresh=%+v", unavailable, fresh)
+	}
+}
+
+func TestTrayAnnouncerCanRequeuePromptDismissedBySessionLock(t *testing.T) {
+	announcer := newTrayAnnouncer()
+	record := askclient.RecordMetadata{ID: "lock-question"}
+	if got := announcer.update([]askclient.RecordMetadata{record}); len(got) != 1 {
+		t.Fatalf("first poll should announce the question, got %+v", got)
+	}
+	if got := announcer.update([]askclient.RecordMetadata{record}); len(got) != 0 {
+		t.Fatalf("question should not repeat before lock, got %+v", got)
+	}
+	announcer.forget(record.ID)
+	if got := announcer.update([]askclient.RecordMetadata{record}); len(got) != 1 {
+		t.Fatalf("lock dismissal should leave question ready after unlock, got %+v", got)
 	}
 }
 
@@ -128,25 +156,11 @@ func TestTrayPollUnavailableRuntimeReportsNoQuestions(t *testing.T) {
 	t.Cleanup(func() { panelMachine = previous })
 
 	announcer := newTrayAnnouncer()
-	fresh, unavailable := pollTray(context.Background(), panelMachine(), announcer)
-	if !unavailable {
-		t.Fatal("expected the poll to report the runtime unavailable")
+	fresh, polled, unavailable := pollTray(context.Background(), panelMachine(), announcer)
+	if !unavailable || polled != nil {
+		t.Fatal("expected the poll to report the runtime unavailable with no operator")
 	}
 	if len(fresh) != 0 {
 		t.Fatalf("an unavailable runtime must report no questions, got %+v", fresh)
-	}
-}
-
-func TestTrayNotificationTextNamesTheProgramAndAction(t *testing.T) {
-	record := askclient.RecordMetadata{
-		Key: asks.FirstUseKey, About: `C:\apps\opencode\opencode.exe`,
-		Text: `C:\apps\opencode\opencode.exe wants to abstraction.model/lookup on hf`,
-	}
-	title, body := trayNotificationText(record)
-	if title != "opencode.exe" {
-		t.Fatalf("title should be the program's display name, got %q", title)
-	}
-	if body == "" {
-		t.Fatal("body should name the action")
 	}
 }

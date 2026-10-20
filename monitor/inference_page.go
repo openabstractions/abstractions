@@ -1,153 +1,116 @@
 package main
 
-// inferencePage is the Panel's inference page: model servers with each
-// credential's spend today, the inference gateway and its gateway keys, and
-// the inference audit. It renders every value as text and calls only
-// /inference/* with the panel key. Its words follow
-// research/vocabulary/DECISION.md: model server (D11), modality (D82),
-// inference gateway and gateway key (D59, D60), API (D62) and budget (D64);
-// the JSON fields it reads keep their wire names (Hosts, Profiles, Ceiling)
-// until inference/chat@2 and inference/operator@2.
-// Its own grant widget's status line is a hand-written copy of
-// grantWidgetHTML's markup (panel_shell.go), predating that shared
-// function; it carried the same <pre>-renders-a-plain-sentence-monospace
-// defect that fix corrected there and missed this copy (task 2026-09-23,
-// fourteenth first-time visitor, finding 1).
-const inferencePage = `<h1>Inference</h1><p>Model calls this device makes: model servers, gateway keys, and every decision recorded. Each action below needs its own permission: <span title="abstraction.inference/host.manage">inference server manage</span> to add or remove model servers, <span title="abstraction.inference/key.issue">inference key issue</span> to issue or revoke gateway keys, and <span title="abstraction.inference/audit.read">inference audit read</span> to read the audit log.</p><div class="oa-grant" id="inference-grant" data-grant-rules="abstraction.inference/host.manage,abstraction.inference/key.issue,abstraction.inference/audit.read" data-grant-resource="account"><button type="button">Grant these to this Panel</button><p class="oa-grant-status" aria-live="polite"></p></div>
-<section id="hosts-section"><h2>Model servers and spend</h2><p>Model servers this device calls directly for model completions, separate from the gateway keys other apps use to reach it.</p><button id="hosts-list">Refresh</button><pre id="hosts-status"></pre><div class="oa-table"><table><thead><tr><th>Name</th><th>Kind</th><th>Base</th><th>Credential</th><th>Modalities</th><th>Registered by</th><th>State</th><th>Spend today</th><th>Budget</th><th></th></tr></thead><tbody id="hosts"></tbody></table></div>
-<form id="host-add"><input id="host-name" required placeholder="Name (ollama, lmstudio, or lemonade)"><select id="host-base-select" aria-label="Base URL"></select> <input id="host-base" required placeholder="base URL" hidden><input id="host-wire" placeholder="API, for a hosted server (openai-compatible or anthropic-messages)"><input id="host-credential" placeholder="credential name"><input id="host-profiles" placeholder="Modalities (default depends on the API: chat, embed, transcription, speech, image)"><input id="host-tokens" type="number" min="0" placeholder="tokens per day"><input id="host-micros" type="number" min="0" step="0.01" placeholder="Spend per day, in your currency"><button>Add model server</button></form><p>Adding a model server also sets it up for the command line and this Panel, and applies the credential if it's a hosted server. Whichever finishes second, adding the model server or registering the credential, is what writes this rule.</p></section>
-<section id="gateway"><h2>Inference gateway</h2><p>The inference gateway is a local proxy other apps on this account can call. It lets apps that already speak the OpenAI or Anthropic API reach this device through a local address and key, with no changes to the app. It's off by default, only listens on 127.0.0.1, and stays set after a restart. Changing it needs <span title="abstraction.inference/host.manage">inference server manage</span>.</p><button id="gateway-read">Refresh</button><pre id="gateway-status"></pre><form id="gateway-set"><input id="gateway-address" placeholder="127.0.0.1:PORT (default 127.0.0.1:8793)"><button id="gateway-on" type="submit">Turn on</button><button id="gateway-off" type="button">Turn off</button></form></section>
-<section id="keys-section"><h2>Gateway keys</h2><p>A gateway key lets one other app reach this device through the inference gateway, separate from the model servers this device calls directly. The key alone doesn't grant access: the app also needs <span title="abstraction.inference/complete">inference complete</span> on a model server, and permission to apply a hosted server's credential. The key is shown once, so save it.</p><button id="keys-list">Refresh</button><pre id="keys-status"></pre><div class="oa-table"><table><thead><tr><th>Program</th><th>State</th><th>Credential</th><th>Issued</th><th>Issued by</th><th></th></tr></thead><tbody id="keys"></tbody></table></div>
-<form id="key-issue"><select id="key-program-select" aria-label="Program"></select><input id="key-program" required placeholder="Program path" hidden><input id="key-credential" placeholder="Credential (optional)"><button>Issue key</button></form><div id="key-shown"></div></section>
-<section id="audit-section"><h2>Audit</h2><p>Every decision from direct calls and the gateway, with how strongly each caller's identity was verified.</p><button id="audit-start">Show from the start</button><button id="audit-next" disabled>Next page</button><pre id="audit-status"></pre><div class="oa-table"><table><thead><tr><th>#</th><th>Time</th><th>Route</th><th>Verified</th><th>Program</th><th>Model server</th><th>Model</th><th>Credential</th><th>Outcome</th><th>Reason</th><th>Tokens in/out</th></tr></thead><tbody id="audit"></tbody></table></div></section>
-<script>
-const key=new URLSearchParams(location.search).get('k');let hostsRevision='',gatewayRevision='',auditCursor=0;
-const el=id=>document.getElementById(id);function show(id,x){el(id).textContent=typeof x==='string'?x:JSON.stringify(x,null,2)}
+// inferencePage is the Panel's Models page (research/panel-redesign/SPEC.md
+// §4, Models): "Models your apps can use." It carries the choice group
+// (selection_page.go: Use, per-app choosers, fallback order) and the models
+// available for the chosen use with Add a model. The model calls are
+// Activity's.
+//
+// It calls the router's public offers (/inference/models), the inference
+// operator's server list (/inference/hosts), the provider declarations
+// (/registry/view), the local model setup calls (/setup/modelhost/*,
+// setup_modelhost_chat.go) and the selection policies (/registry/selection),
+// all with the panel key. A model shows by its friendly name (oaModelName in
+// panel_shell.go): never a file path or a hash. Lists update in place while
+// the page is visible; nothing waits for a Refresh. Its words follow
+// research/vocabulary/DECISION.md: model server (D11), modality as "use"
+// (D82); the JSON fields keep their wire names.
+// The page says itself when its first reads are done (oaReady in its
+// script), which the hidden data-ready-owner marker declares.
+var inferencePage = `<div data-ready-owner="page" hidden></div>` + oaPageHead("inference", "Models", "Models your apps can use.") +
+	selectionPolicySection +
+	oaGroup("models-section", "Available models", "", oaStatus("models-status"), `<div id="models"></div>`) +
+	oaGroup("add-model", "Add a model", "", oaStatus("add-model-status"), `<div id="add-model-rows"></div>`,
+		`<div id="add-model-folder" hidden>`+oaRow("Folder", "", `<input id="add-model-path" type="text" data-oa-other aria-label="Folder" autocomplete="off" spellcheck="false"><button id="add-model-check" type="button">Check folder</button>`, "add-model-folder-status")+`</div>`,
+		`<div id="add-model-tech" hidden>`+oaTechnicalDetails(`<pre id="add-model-reason"></pre>`)+`</div>`) +
+	inferenceScript + selectionPolicyScript
+
+const inferenceScript = `<script>
+const key=new URLSearchParams(location.search).get('k');
+const el=id=>document.getElementById(id);
+// oaModelsHooks are the page parts that redraw when the use changes or the
+// page refreshes while visible (selection_page.go registers one).
+var oaModelsHooks=[];
 async function call(path,body){const r=await fetch(path,{method:body?'POST':'GET',headers:{'X-Panel-Key':key,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});if(!r.ok)throw Error(await r.text());return r.json()}
-function shortName(path){const parts=String(path||'').split(/[\\/]/).filter(Boolean);return parts.length?parts[parts.length-1]:path}
-const outcomeText={forbidden:'The runtime did not permit this Panel; nothing was changed.',unavailable:'The runtime could not answer; nothing is assumed. Try again.',conflict:'The configuration changed or the program already holds a key; list again.',invalid:'The runtime refused the request as invalid.',unknown:'Nothing by that name.',no_secure_store:'The runtime has no platform store to hold a key.'};
-function outcome(o,reason){return (outcomeText[o]||oaPlain(o).line)+(reason?' ('+reason+')':'')}
-// row's own titles array names, per cell, the raw value behind a shortened
-// or reformatted display (task 2026-09-23, tenth first-time visitor,
-// findings 2 and 3: the Issued column read a raw ISO timestamp, and Issued
-// by read a full path, both as visible text).
-function row(tbody,cells,titles,button){const tr=document.createElement('tr');cells.forEach((c,i)=>{const td=document.createElement('td');td.textContent=c==null?'':String(c);if(titles&&titles[i])td.title=titles[i];tr.append(td)});const td=document.createElement('td');if(button)td.append(button);tr.append(td);el(tbody).append(tr)}
-function action(label,fn){const b=document.createElement('button');b.textContent=label;b.onclick=fn;return b}
-// hostsStatus keeps the configuration revision off the visible sentence: the
-// revision is a value to compare, not a sentence to read (task 2026-09-23
-// finding 3, "Configuration revision providers-v2:e3b0c44298fc1c149afbf4c8"
-// printed as text). It stays available as a title attribute, muted and small
-// via CSS, for whoever needs to compare it; hostsRevision (the JS variable)
-// still carries it for the conditional edit either way.
-// hostsStatus's empty line now says what to do next, the same shape as the
-// Gateway keys and Audit sections' own empty and end-of-list lines (task
-// 2026-09-23, ninth first-time visitor, finding 3: Show hosts with no hosts
-// left only the table's own headers and no line at all to explain them).
-function hostsStatus(l){const e=el('hosts-status');e.title='Configuration revision '+l.Revision;e.textContent=l.Hosts.length?'':'No model servers registered. Add one below.'}
-// The Kind cell carries both what the Class column used to say and what Kind
-// always said: a local host's Kind is already one of a known set of local
-// backends (ollama, lmstudio, lemonade), and a hosted host's Kind is already
-// one of a known set of wire formats (openai-compatible, anthropic-messages),
-// so "hosted" or "local" was never new information next to it (task
-// 2026-09-23 finding 3, the one visible row reading the same word twice).
-function hostKind(e){return(e.Hosted?'hosted: ':'local: ')+e.Kind}
-// currency turns a spend figure carried on the wire in micros (millionths of
-// the account's currency) into the two-decimal amount a person reads (task
-// 2026-09-23, fourth first-time visitor: "Spend per day (in millionths of
-// your currency)" read as an internal unit). The wire keeps carrying micros;
-// only the display and the form's own entry convert.
-function currency(micros){return (micros/1e6).toFixed(2)}
-// The State column used to read "down: Get \"http://127.0.0.1:9999/api/
-// tags\": dial tcp ...: connectex: ...", a raw connection error as visible
-// text; it now reads oaHostState's own plain word, the error kept as that
-// cell's own title (task 2026-09-23, eleventh first-time visitor, finding
-// 5).
-// hosts, keys and audit each also refresh the grant widget above, the same
-// fetch their own arrival check makes, so a rule granted since this page
-// opened shows up here without a reload (task 2026-09-23, fifteenth
-// first-time visitor, finding 1).
-async function hosts(){if(window.oaGrantRefresh)oaGrantRefresh();try{const l=await call('/inference/hosts');el('hosts').replaceChildren();if(l.Outcome!=='page'){hostsRevision='';el('hosts-status').title='';show('hosts-status',outcome(l.Outcome));return}hostsRevision=l.Revision;hostsStatus(l);for(const h of l.Hosts){const e=h.Entry;row('hosts',[e.Name,hostKind(e),e.Base,e.Credential||'none',(e.Profiles||[]).join(', '),e.DeclaredBy||'',oaHostState(h.Up),h.Spend?h.Spend.Tokens+' tokens, '+currency(h.Spend.Micros)+' ('+h.Spend.Day+')':'0',e.Ceiling?e.Ceiling.TokensPerDay+' tokens, '+currency(e.Ceiling.MicrosPerDay):'no budget'],[null,null,null,null,null,null,h.Why||null],action('Remove',()=>hostEdit({edit:'remove',name:e.Name})));if(e.Base)hostBasesSeen.add(e.Base)}rebuildHostBaseSelect()}catch(e){hostsRevision='';el('hosts-status').title='';oaShowError('hosts-status',e.message)}}
-// hostEdit's applied line used to read "Applied; configuration revision
-// providers-v2:42a6…", the new revision printed as visible text; it now
-// reads "Applied.", the revision kept on the line's own title and in
-// Technical details, oaShowResult's own shape (task 2026-09-23, tenth
-// first-time visitor, finding 1).
-// hostEdit used to refuse before its own list had ever been read
-// ("List hosts before changing them."), even though hosts() below now
-// reads it on arrival, and left the reply as "Applied. ... List again
-// before another change." while the table under it kept its stale rows
-// (task 2026-09-23, fourteenth first-time visitor, findings 2 and 3).
-// hosts() already runs once on load; an edit reads it again on success,
-// which both refreshes the table and gives hostEdit its own revision for
-// the very next edit, so the precondition and the "list again" instruction
-// both go.
-async function hostEdit(body){try{const c=await call('/inference/hosts',{...body,revision:hostsRevision});if(c.Outcome==='applied'){await hosts();oaShowResult('hosts-status','Applied.'+(c.Reason?' Not every rule was written: '+c.Reason+'.':''),c,'Configuration revision '+c.Revision)}else{el('hosts-status').title='';show('hosts-status',outcome(c.Outcome,c.Reason))}}catch(e){oaShowError('hosts-status',e.message)}}
-el('hosts-list').onclick=hosts;
-var hostsReady=hosts();
-// Add host's two required fields now name themselves when left blank (task
-// 2026-09-23, seventh first-time visitor, finding 4, the Issue key
-// pattern): the browser blocks the submit event for a failed required
-// field without running this form's own onsubmit, but always fires
-// "invalid" on the field, submit or not.
-for(const id of ['host-name','host-base']){const label={'host-name':'Name','host-base':'Base URL'}[id];el(id).addEventListener('invalid',()=>show('hosts-status',label+' is required to add a model server.'))}
-// Base URL opened as one empty field with no hint what to type; it now
-// offers ollama's own documented default (serve's own --base help text)
-// and every base this page has already seen among the current hosts,
-// "Other…" revealing the typed field for anything else (task 2026-09-23,
-// eleventh first-time visitor, requirement 3).
-let hostBasesSeen=new Set(['http://127.0.0.1:11434']);
-function rebuildHostBaseSelect(){const select=el('host-base-select');const current=select.value;select.replaceChildren();for(const base of[...hostBasesSeen].sort()){const o=document.createElement('option');o.value=base;o.textContent=base;select.append(o)}const other=document.createElement('option');other.value='__other__';other.textContent='Other…';select.append(other);select.value=current&&(hostBasesSeen.has(current)||current==='__other__')?current:[...hostBasesSeen][0]}
-el('host-base-select').onchange=()=>{const v=el('host-base-select').value;if(v==='__other__'){el('host-base').hidden=false;el('host-base').value='';el('host-base').focus()}else{el('host-base').hidden=true;el('host-base').value=v}};
-el('host-base').hidden=true;rebuildHostBaseSelect();el('host-base').value=el('host-base-select').value;
-el('host-add').onsubmit=ev=>{ev.preventDefault();const wire=el('host-wire').value.trim(),name=el('host-name').value.trim(),tokens=Number(el('host-tokens').value||0),micros=Math.round(Number(el('host-micros').value||0)*1e6);const profiles=el('host-profiles').value.split(',').map(s=>s.trim()).filter(Boolean);const host={Name:name,Hosted:!!wire,Kind:wire||name,Base:el('host-base').value.trim(),Credential:el('host-credential').value.trim()};if(profiles.length)host.Profiles=profiles;if(tokens||micros)host.Ceiling={TokensPerDay:tokens,MicrosPerDay:micros};hostEdit({edit:'add',host})};
-// gatewayText leaves the setting revision out of the sentence, the same
-// treatment hostsStatus gives the hosts revision (task 2026-09-23 finding 3,
-// "Setting revision gateway-v1:e3b0c44298fc1c149afbf4c8." sitting mid-text);
-// gateway() below puts it on the element's title instead.
-function gatewayText(s){return 'Setting: '+(s.Open?'on at '+s.Address:'off')+'\nGateway: '+(s.Listening?'listening on http://'+s.ListeningAddress+'/v1 (OpenAI) and http://'+s.ListeningAddress+' (Anthropic)':'closed'+(s.Why?': '+s.Why:''))}
-async function gateway(){try{const s=await call('/inference/gateway');if(s.Outcome!=='page'){gatewayRevision='';el('gateway-status').title='';show('gateway-status',outcome(s.Outcome));return}gatewayRevision=s.Revision;el('gateway-status').title='Setting revision '+s.Revision;show('gateway-status',gatewayText(s))}catch(e){gatewayRevision='';el('gateway-status').title='';oaShowError('gateway-status',e.message)}}
-// gatewaySet used to refuse before the setting had ever been read; gateway()
-// below now reads it on arrival, so that precondition goes the same way
-// hostEdit's did (task 2026-09-23, fourteenth first-time visitor, findings
-// 2 and 3).
-async function gatewaySet(open){try{const c=await call('/inference/gateway',{revision:gatewayRevision,open,address:open?el('gateway-address').value.trim():''});if(c.Outcome!=='applied'){show('gateway-status',outcome(c.Outcome,c.Reason));return}await gateway()}catch(e){oaShowError('gateway-status',e.message)}}
-el('gateway-read').onclick=gateway;el('gateway-set').onsubmit=ev=>{ev.preventDefault();gatewaySet(true)};el('gateway-off').onclick=()=>gatewaySet(false);
-var gatewayReady=gateway();
-// time reads a raw epoch millisecond value as a local readable time; the
-// raw ISO value moves to the cell's own title (task 2026-09-23, tenth
-// first-time visitor, finding 2: "Issued 2026-09-23T15:09:12.464Z").
-function time(ms){return ms?oaLocalTime(ms):''}
-async function keys(){if(window.oaGrantRefresh)oaGrantRefresh();try{const l=await call('/inference/keys');el('keys').replaceChildren();if(l.Outcome!=='page'){show('keys-status',outcome(l.Outcome));return}show('keys-status',l.Keys.length?'':'No keys issued.');for(const k of l.Keys){row('keys',[k.Program,k.State,k.Credential,time(k.IssuedUnixMs),shortName(k.IssuedBy)],[null,null,null,k.IssuedUnixMs?new Date(k.IssuedUnixMs).toISOString():null,k.IssuedBy],k.State==='active'?action('Revoke',()=>keyEdit({edit:'revoke',program:k.Program})):null);if(k.Program)keyProgramsSeen.add(k.Program)}keyProgramChooser.rebuild()}catch(e){oaShowError('keys-status',e.message)}}
-// Issue key's own Program path was a bare text box while Rights already
-// offered a chooser for the same kind of field; both now build their own
-// equivalent chooser from oaProgramChooser (panel_shell.go), the one
-// shared implementation (task 2026-09-23, fourteenth first-time visitor,
-// finding 8). Known programs here are every program already issued a key
-// (keys() above) and every program the Device page's own resource table
-// shows as a holder.
-let keyProgramsSeen=new Set();
-const keyProgramChooser=oaProgramChooser('key-program-select','key-program',()=>[...keyProgramsSeen]);
-async function loadKeyDeviceHolders(){try{const v=await call('/card/table');for(const r of(v.resources||[]))for(const h of(r.holders||[]))if(h.program)keyProgramsSeen.add(h.program)}catch(e){}keyProgramChooser.rebuild()}
-keyProgramChooser.rebuild();var keyDeviceHoldersReady=loadKeyDeviceHolders();
-// keyEdit's own reply used to say "Issued. List again to refresh." (or
-// "Revoked...") while the table under it kept its stale rows; it now
-// refreshes the table itself before showing the confirmation (task
-// 2026-09-23, fourteenth first-time visitor, finding 3).
-async function keyEdit(body){el('key-shown').replaceChildren();try{const r=await call('/inference/keys',body);if(r.Outcome!=='applied'){show('keys-status',outcome(r.Outcome,r.Reason));return}if(body.edit==='issue'){const p=document.createElement('p');p.textContent='Key for '+r.Record.Program+', shown once. Give it to that program as its API key, with the gateway as its base URL:';const k=document.createElement('div');k.className='key';k.textContent=r.Key;el('key-shown').append(p,k)}await keys();show('keys-status',body.edit==='issue'?'Issued.':'Revoked. The gateway refuses the key from its next request.')}catch(e){oaShowError('keys-status',e.message)}}
-el('keys-list').onclick=keys;
-var keysReady=keys();
-// Issue key used to rely on the input's own "required" attribute alone: with
-// no keys listed yet and the program path left blank, a click showed no row,
-// no error and no field. The browser blocks the submit event itself for a
-// failed required field (this handler never even runs) and auto-focuses
-// that field, but names nothing in keys-status, so the only sign was
-// whatever native validation bubble the browser chose to draw — easy to
-// miss, and never observable at all if a browser suppresses it (task
-// 2026-09-23, fifth first-time visitor, finding 6). The input's own
-// "invalid" event fires exactly when that block happens, submit or not, so
-// keys-status now always names the problem too.
-el('key-program').addEventListener('invalid', () => show('keys-status', 'Program path is required to issue a key.'));
-el('key-issue').onsubmit=ev=>{ev.preventDefault();keyEdit({edit:'issue',program:el('key-program').value.trim(),credential:el('key-credential').value.trim()})};
-async function audit(){if(window.oaGrantRefresh)oaGrantRefresh();try{const p=await call('/inference/audit?cursor='+auditCursor);if(p.Outcome==='gap'){auditCursor=p.Next;show('audit-status','Older entries are no longer retained; reading from '+p.Next+'.');return audit()}if(p.Outcome!=='page'){show('audit-status',outcome(p.Outcome));el('audit-next').disabled=true;return}for(const e of p.Entries)row('audit',[e.Sequence,time(e.UnixMs),e.Route,e.Rung,e.Program,e.Host,e.Model,e.Credential,e.Outcome,e.Reason,e.TokensIn+'/'+e.TokensOut],[null,e.UnixMs?new Date(e.UnixMs).toISOString():null]);auditCursor=p.Next;el('audit-next').disabled=p.AtEnd;show('audit-status',p.AtEnd?'End of the audit; read the next page later for new decisions.':'More entries remain.')}catch(e){oaShowError('audit-status',e.message)}}
-el('audit-start').onclick=()=>{auditCursor=0;el('audit').replaceChildren();audit()};el('audit-next').onclick=audit;
-</script><script>oaGrant('inference-grant','hosts-list,gateway-read,keys-list,audit-start')</script>`
+function node(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!=null)n.textContent=text;return n}
+const modelUses={chat:'Chat',image:'Images',embed:'Embeddings',transcription:'Transcription',speech:'Speech',live:'Live audio',video:'Video'};
+function modelsUse(){return el('models-profile').value||'chat'}
+function modelsUseLabel(use){return modelUses[use]||use}
+// modelsUseWord names a use inside a sentence ("its own speech model").
+const modelUseWords={chat:'chat',image:'picture',embed:'embedding',transcription:'transcription',speech:'speech',live:'live audio',video:'video'};
+function modelsUseWord(use){return modelUseWords[use]||use}
+// Each read below happens once per refresh.
+let offerCache={},hostsRead=null,providersRead=null;
+function modelsOffers(use){if(!offerCache[use])offerCache[use]=call('/inference/models?profile='+encodeURIComponent(use)).then(s=>s.Offers||[]).catch(e=>{delete offerCache[use];throw e});return offerCache[use]}
+// modelsHosts lists the model servers, which tell a local model from a
+// hosted one; an unreadable list counts every server as local.
+function modelsHosts(){if(!hostsRead)hostsRead=call('/inference/hosts').then(h=>h.Hosts||[]).catch(()=>{hostsRead=null;return []});return hostsRead}
+// modelsProviders names this machine's provider declarations, the names a
+// local candidate pins (as Get started's picture chooser does); an
+// unreadable list pins nothing.
+function modelsProviders(){if(!providersRead)providersRead=call('/registry/view').then(v=>((v.providers||{}).Declarations||[]).filter(d=>d.Role==='provider'&&d.Declaration).map(d=>d.Declaration.Name)).catch(()=>{providersRead=null;return []});return providersRead}
+function modelContext(o){return o.Context>0&&o.ContextSource!=='none'&&o.ContextSource!=='unknown'?'Up to '+o.Context.toLocaleString()+' tokens':''}
+// serial runs one pass of fn at a time; a call during a pass runs once
+// after it, and its promise settles after that pass.
+function serial(fn){let running=null,again=false;return function(){if(running){again=true;return running}running=(async()=>{try{do{again=false;await fn()}while(again)}finally{running=null}})();return running}}
+function createModelRow(){const row=node('div','oa-row'),text=node('div','oa-row-text'),label=node('span','oa-row-label'),caption=node('span','oa-row-caption');text.append(label,caption);row.append(text);row.parts={label,caption};return row}
+function updateModelRow(row,o){row.parts.label.textContent=oaModelName(o.Family);row.parts.caption.textContent=modelContext(o);row.parts.caption.hidden=!row.parts.caption.textContent}
+const models=serial(async()=>{const use=modelsUse(),label=modelsUseLabel(use);try{const offers=await modelsOffers(use);if(use!==modelsUse())return;oaKeyedRows(el('models'),offers,o=>o.Family,createModelRow,updateModelRow);if(!offers.length)el('models').replaceChildren(node('p','oa-empty','No models are available for '+label+' yet.'));oaSetStatus('models-status','idle','')}catch(e){if(use!==modelsUse())return;el('models').replaceChildren();oaShowError('models-status',e.message)}});
+el('models-profile').onchange=()=>{oaSetStatus('models-status','loading');models();for(const hook of oaModelsHooks)hook(false)};
+var modelsReady=models();
+
+// Add a model: the local engine, the model folder it reads in place, and
+// each model in it hosted on demand. A step that needs approval asks once
+// more on the same button ("Confirm"), with the exact approval behind the
+// status line's Technical details. One step runs at a time.
+let local=null,localBusy=false,folderPreview=null,localSeq=0;
+const anotherStep='Another step is running.';
+function folderName(path){return oaShortName(path)||'Model folder'}
+function bytes(value){let amount=Number(value)||0;const units=['bytes','KB','MB','GB','TB'];let unit=0;while(amount>=1000&&unit<units.length-1){amount/=1000;unit++}return unit===0?Math.round(amount)+' bytes':amount.toFixed(amount>=10?1:2).replace(/\.?0+$/,'')+' '+units[unit]}
+function localRow(){const row=node('div','oa-row'),text=node('div','oa-row-text'),control=node('div','oa-row-control'),label=node('span','oa-row-label'),caption=node('span','oa-row-caption'),status=node('p','oa-status');status.id='add-model-line-'+(++localSeq);if(status.setAttribute){status.setAttribute('role','status');status.setAttribute('aria-live','polite')}text.append(label,caption);row.append(text,control,status);row.parts={label,caption,control,status};return row}
+function setRowText(row,label,caption){row.parts.label.textContent=label;row.parts.caption.textContent=caption||'';row.parts.caption.hidden=!caption}
+function button(label,onclick){const b=node('button',null,label);b.type='button';b.dataset.label=label;b.onclick=onclick;return b}
+function disarm(b){b.dataset.armed='';b.textContent=b.dataset.label}
+// confirmed runs a step that needs approval: the first click shows the
+// approval and turns the button into Confirm, the second one runs it; the
+// button then reads its own label again, whether the step worked or not.
+// The approval and the step read the row's current item at click time.
+function confirmed(b,row,ask,approval,run){return async()=>{if(localBusy){oaSetStatus(row.parts.status.id,'ok',anotherStep);return}if(b.dataset.armed!=='yes'){b.dataset.armed='yes';b.textContent='Confirm';oaShowResult(row.parts.status.id,ask(),approval());return}try{return await run()}finally{disarm(b)}}}
+// localStep runs one step; its sentence goes to the row's status line, or
+// to the group's when the step finished the row (Add removes its row).
+async function localStep(row,request,done){if(localBusy){oaSetStatus(row.parts.status.id,'ok',anotherStep);return null}localBusy=true;const rowKey=row.dataset.key;oaSetStatus(row.parts.status.id,'loading','Working…');let reply=null;try{reply=await request();await readLocal();const kept=Array.from(el('add-model-rows').children||[]).find(r=>r.dataset&&r.dataset.key===rowKey);oaSetStatus(row.fixed?row.parts.status.id:kept?kept.parts.status.id:'add-model-status','ok',done(reply))}catch(e){oaShowError(row.parts.status.id,e)}finally{localBusy=false}return reply}
+function openFolderRow(row,sentence){el('add-model-folder').hidden=false;oaSetStatus(row.parts.status.id,'ok',sentence)}
+// The rows Add a model shows for the local state: the engine while it is
+// missing, then the model folder and each model in it.
+function localItems(state){const feature=state.feature||{},engine=state.engine||{},root=state.root;if(!feature.installed)return[{key:'feature'}];if(!engine.staged)return[{key:'engine'}];if(!root)return[{key:'folder'}];return[{key:'folder'}].concat((root.models||[]).map(m=>({key:'model:'+m.id,model:m})))}
+function modelLabel(m){return oaModelName(m.name||m.family)}
+function createLocalRow(item){const row=localRow();if(item.key==='unavailable');else if(item.key==='feature')row.parts.control.append(button('Add',()=>localStep(row,()=>call('/setup/modelhost/feature/add',{plan_id:(local||{}).plan_id||'',confirm:true}),r=>r.feature&&r.feature.installed?'The local model engine is added.':'The local model engine was not added.')));
+ else if(item.key==='engine'){const bundled=()=>((local||{}).engine||{}).bundled||{};const prepare=button('Prepare',null);prepare.onclick=confirmed(prepare,row,()=>'Confirm to prepare the included engine; it starts only when an app asks.',()=>bundled().approval,()=>localStep(row,()=>call('/setup/modelhost/engine/bundled',{plan_id:(local||{}).plan_id||'',approval_digest:bundled().approval_digest,confirm:true}),r=>r.staged?'The local model engine is ready.':'The engine was not prepared.'));row.parts.prepare=prepare;const recovery=node('a',null,'Get started');recovery.href='/setup?k='+encodeURIComponent(key)+'#setup-modelhost';row.parts.control.append(prepare,recovery)}
+ else if(item.key==='folder')row.parts.control.append(button('Choose folder…',()=>openFolderRow(row,(local||{}).root?'Name another folder that holds your model files.':'Name the folder that holds your model files.')));
+ else if(!item.model.hosted){const host=button('Host on demand',null);host.onclick=confirmed(host,row,()=>'Confirm to host '+modelLabel(row.model)+'; it starts only when an app asks.',()=>row.model.approval,()=>localStep(row,()=>call('/setup/modelhost/host',{plan_id:(local||{}).plan_id||'',store:((local||{}).root||{}).store,id:row.model.id,approval_digest:row.model.approval_digest,confirm:true}),r=>r.hosted?modelLabel(row.model)+' is hosted on demand.':'The model was not hosted.'));row.parts.control.append(host)}
+ return row}
+function updateLocalRow(row,item){const state=local||{},root=state.root;row.model=item.model;if(item.key==='unavailable')setRowText(row,'Local models',"Can't be added on this computer.");else if(item.key==='feature')setRowText(row,'Local model engine','Not added yet.');else if(item.key==='engine'){const bundled=(state.engine||{}).bundled||{};row.parts.prepare.hidden=!bundled.available;setRowText(row,'Local model engine',bundled.available?'Ready to prepare.':'Prepare it from Get started.')}else if(item.key==='folder'){const models=root&&root.models||[];setRowText(row,root?folderName(root.path):'Model folder',!root?'None chosen yet.':models.length?models.length+(models.length===1?' model, read in place.':' models, read in place.'):'No supported models found.')}else{const m=item.model;setRowText(row,modelLabel(m),[m.family,m.quant,m.size!=null?bytes(m.size):''].filter(Boolean).join(' · '));if(m.hosted&&!row.hosted){row.hosted=true;row.parts.control.replaceChildren(node('span',null,'Hosted on demand'))}}}
+// A computer without local models shows one row saying so, its reason
+// under the group's Technical details.
+function renderLocal(){const box=el('add-model-rows'),state=local||{},reason=state.available?'':String(state.reason||'');el('add-model-reason').textContent=reason;el('add-model-tech').hidden=!reason;oaKeyedRows(box,state.available?localItems(state):[{key:'unavailable'}],item=>item.key,createLocalRow,updateLocalRow);oaSetStatus('add-model-status','idle','')}
+// readLocal rereads the local state and updates the rows in place; a failed
+// reread keeps the rows the page already shows.
+const readLocal=serial(async()=>{try{local=await call('/setup/modelhost/chat')}catch(e){if(!local){el('add-model-rows').replaceChildren();el('add-model-tech').hidden=true;oaShowError('add-model-status',e)}return}renderLocal()});
+// Check folder previews the folder read-only; Confirm registers it. Its
+// row is in the markup, so its status line is fixed.
+const folderCheckRow={fixed:true,dataset:{key:'folder-check'},parts:{status:{id:'add-model-folder-status'}}};
+el('add-model-check').dataset.label='Check folder';
+el('add-model-check').onclick=async()=>{const b=el('add-model-check'),path=el('add-model-path').value.trim(),state=local||{};if(localBusy){oaSetStatus('add-model-folder-status','ok',anotherStep);return}if(!path){oaSetStatus('add-model-folder-status','error','Name a folder first.');return}if(b.dataset.armed==='yes'&&folderPreview){disarm(b);const preview=folderPreview;folderPreview=null;const reply=await localStep(folderCheckRow,()=>call('/setup/modelhost/root',{plan_id:state.plan_id||'',path:preview.root.path,approval_digest:preview.approval_digest,confirm:true}),r=>r.registered?folderName(preview.root.path)+' is added; its models stay where they are.':'The folder was not added.');if(reply&&reply.registered){el('add-model-folder').hidden=true;el('add-model-path').value=''}return}oaSetStatus('add-model-folder-status','loading','Checking the folder without changing it…');try{folderPreview=await call('/setup/modelhost/root/preview',{path});b.dataset.armed='yes';b.textContent='Confirm';oaShowResult('add-model-folder-status','Confirm to read '+folderName(folderPreview.root.path)+' in place.',folderPreview.approval)}catch(e){folderPreview=null;disarm(b);oaShowError('add-model-folder-status',e)}};
+el('add-model-path').oninput=()=>{folderPreview=null;disarm(el('add-model-check'))};
+var localReady=readLocal();
+// The page is ready once its first reads finish: the offers, Add a model
+// and the choice group (selection_page.go adds its pass and calls
+// oaModelsMarkReady).
+var oaModelsFirstReads=[modelsReady,localReady];
+function oaModelsMarkReady(){oaReady()}
+
+// While the page is visible its lists follow the runtime.
+function modelsLive(){if(document.visibilityState==='hidden')return;offerCache={};hostsRead=null;providersRead=null;models();for(const hook of oaModelsHooks)hook(true);if(!localBusy)readLocal()}
+if(typeof setInterval==='function')setInterval(modelsLive,20000);
+if(document.addEventListener)document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')modelsLive()});
+</script>`

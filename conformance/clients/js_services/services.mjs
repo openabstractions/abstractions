@@ -75,20 +75,36 @@ const routes = await bind('abstraction.router/router@1', router.RouterClient);
   const after = await routes.hosts(false);
   assert.equal(after.asked.length, audited + 3, 'audit recorded three picks');
   assert.ok(after.asked.slice(audited).every((a) => a.caller === after.observation.caller.pathDescription && a.user === after.observation.caller.userDescription), 'audit not bound to the JavaScript caller');
+  // ROUTE-D8: Lemonade's loaded ctx_size bounds the shared family; LM Studio's maximum bounds its own.
+  const offerSnapshot = await routes.offer({...router.newOfferRequest(), placement: router.Placement.Any, reserve: 4096n});
+  assert.equal(offerSnapshot.outcome, router.OfferOutcome.Offered);
+  const offered = offerSnapshot.offers;
+  const shared = offered.find((o) => o.servers.includes('lemonade')), studio = offered.find((o) => o.servers.join() === 'lmstudio');
+  assert.deepEqual([shared.names[0], shared.servers, shared.context, shared.contextSource, shared.input],
+    ['Qwen3.6-35B-A3B-GGUF', ['lemonade', 'lmstudio'], 32768n, router.ContextSource.Effective, 28672n], 'Lemonade family offer');
+  assert.deepEqual([studio.names, studio.context, studio.contextSource, studio.input],
+    [['google/gemma-4-26b-it'], 131072n, router.ContextSource.Maximum, 126976n], 'LM Studio family offer');
 }
 const pick = () => routes.pick({...router.newPickRequest(), model: 'js-model'});
+const offer = () => routes.offer({...router.newOfferRequest(), placement: router.Placement.Local});
 assert.equal((await pick()).decision.asked, 'js-model');
-for (const [mode, code] of [['router-forbidden', 'forbidden'], ['router-unavailable', 'unavailable']]) {
+for (const [mode, code, outcome] of [
+  ['router-forbidden', 'forbidden', router.OfferOutcome.NotPermitted],
+  ['router-unavailable', 'unavailable', router.OfferOutcome.Unavailable],
+]) {
   writeFileSync(editPolicyFile, mode);
   for (const call of [() => routes.models(false), () => routes.hosts(false), pick]) {
     await assert.rejects(call(), (e) => e instanceof router.ServiceError && e.code === code, mode);
   }
+  assert.deepEqual(await offer(), {...router.newOfferSnapshot(), outcome}, `${mode}: typed Offer refusal discloses no result`);
 }
 writeFileSync(editPolicyFile, 'permit');
 assert.equal((await pick()).decision.asked, 'js-model');
+assert.equal((await offer()).outcome, router.OfferOutcome.Offered);
 done('Router.Models');
 done('Router.Hosts');
 done('Router.Pick');
+done('Router.Offer');
 
 const acceptance = await bind('abstraction.job/acceptance@1', jobs.RecoverableAcceptanceClient, {maxFrame: 2097152});
 const operations = await bind('abstraction.job/operations@1', jobs.OperationControlClient, {maxFrame: 2097152});

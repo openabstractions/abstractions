@@ -59,7 +59,7 @@ Exit codes: 0 the call answered, 1 no runtime resolved or transport failure,
 2 usage, 3 typed refusal, 4 unavailable. probe all exits 0 once every call
 answered or failed with its own result.
 
-Learn more: openabstractions-flat/abstraction-facade/CONTRACT.md
+Learn more: https://github.com/openabstractions/abstraction-facade/blob/main/CONTRACT.md
 `
 
 // probeUsage lists the probes from the one list the Panel's Explore section
@@ -137,7 +137,7 @@ func (o probeOptions) machine(diagnostics io.Writer, command, usage string) (*cl
 	case o.runtimeProgram == "":
 		return client.New(o.endpoint), nil
 	}
-	if !filepath.IsAbs(o.runtimeProgram) {
+	if !filepath.IsAbs(o.runtimeProgram) || strings.IndexByte(o.runtimeProgram, 0) >= 0 {
 		return nil, flagMistake(diagnostics, command, usage, "--runtime-program must be an absolute executable path")
 	}
 	who, _, err := principal()

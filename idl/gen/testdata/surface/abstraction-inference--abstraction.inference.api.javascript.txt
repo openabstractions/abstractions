@@ -15,11 +15,19 @@ enum CancelOutcome
   Invalid
   Forbidden
   Unavailable
+enum CandidatePlacement
+  Local
+  Hosted
 class ChatClient
   start(request)
   observe(operation, cursor, maxDeltas, maxBytes, waitMs)
   cancel(operation)
 object ChatService {wireName, Client}
+class ChatV2Client
+  start(request)
+  observe(operation, cursor, maxDeltas, maxBytes, waitMs)
+  cancel(operation)
+object ChatV2Service {wireName, Client}
 enum DeltaKind
   Part
   Usage
@@ -59,6 +67,11 @@ enum ImageMode
   Generate
   Edit
 object ImageService {wireName, Client}
+class ImageV2Client
+  start(request)
+  observe(operation, cursor, maxDeltas, maxBytes, waitMs)
+  cancel(operation)
+object ImageV2Service {wireName, Client}
 enum KeyState
   Active
   Revoked
@@ -110,6 +123,20 @@ enum PartKind
   Image
   ToolCall
   ToolResult
+enum PreloadOutcome
+  Evaluated
+  Loaded
+  Busy
+  Refused
+  NotPermitted
+  UnsupportedFeature
+  NoHost
+  Unavailable
+  Invalid
+  Forbidden
+class PreloaderClient
+  preload(request)
+object PreloaderService {wireName, Client}
 class Refusal
 enum ReplyOutcome
   Completed
@@ -131,6 +158,21 @@ enum Role
   User
   Assistant
   Tool
+class SelectionOperatorV2Client
+  read(targetProgram, name)
+  put(targetProgram, expectedRevision, policy)
+  deletePolicy(targetProgram, expectedRevision, name)
+object SelectionOperatorV2Service {wireName, Client}
+enum SelectionReadOutcome
+  Found
+  Unknown
+  Invalid
+  Forbidden
+  Unavailable
+enum SelectionReason
+  ExplicitModel
+  Preferred
+  PreferredRouteUnavailable
 class ServiceError
 enum ServiceErrorCode
   HandlerError
@@ -182,6 +224,21 @@ class TranscriptionClient
   observe(operation, cursor, maxDeltas, maxBytes, waitMs)
   cancel(operation)
 object TranscriptionService {wireName, Client}
+class VideoClient
+  start(request)
+  observe(operation)
+  cancel(operation)
+object VideoService {wireName, Client}
+enum VideoState
+  Queued
+  Generating
+  Completed
+  Failed
+  Cancelled
+  Unknown
+  Invalid
+  Forbidden
+  Unavailable
 const claimExtensions
 const credentialConsumers
 function decode(data)
@@ -200,6 +257,17 @@ function newAdmission()
   retentionMs
   idleMs
   retainedDeltas
+function newAdmissionV2()
+  outcome
+  reason
+  operation
+  host
+  model
+  retentionMs
+  idleMs
+  retainedDeltas
+  preferredModel
+  selectionReason
 function newAudioChunk()
   index
   data
@@ -345,6 +413,22 @@ function newImageRequest()
   credential
   requiredExtensions
   extensions
+function newImageRequestContent()
+  mode
+  prompt
+  size
+  count
+  imageDigest
+  imageMediaType
+  maskDigest
+  maskMediaType
+  guarantees
+  credential
+  requiredExtensions
+  extensions
+function newImageRequestV2()
+  target
+  content
 function newImageResult()
   index
   delivery
@@ -403,6 +487,12 @@ function newPart()
   callId
   name
   arguments
+function newPreloadReply()
+  outcome
+  reason
+  host
+  model
+  tokens
 function newReply()
   outcome
   reason
@@ -421,6 +511,33 @@ function newRequest()
   requiredExtensions
   guarantees
   credential
+function newRequestContent()
+  messages
+  tools
+  options
+  extensions
+  requiredExtensions
+  guarantees
+  credential
+function newRequestV2()
+  target
+  content
+function newSelectionCandidateV2()
+  model
+  placement
+  credential
+  provider
+function newSelectionChange()
+  outcome
+  revision
+  reason
+function newSelectionPolicyV2()
+  name
+  candidates
+function newSelectionReadV2()
+  outcome
+  revision
+  policy
 function newSpeechReply()
   outcome
   reason
@@ -446,6 +563,9 @@ function newSpend()
   audioSeconds
   characters
   images
+function newTarget()
+  model
+  selectionPolicy
 function newTemperature()
   milli
 function newTool()
@@ -480,4 +600,28 @@ function newUsage()
   input
   output
   cached
+function newVideoAdmission()
+  outcome
+  reason
+  operation
+  retentionMs
+function newVideoObservation()
+  status
+  step
+  steps
+  queuePosition
+  reason
+  delivery
+function newVideoRequest()
+  model
+  prompt
+  size
+  durationMs
+  fps
+  seed
+  imageDigest
+  imageMediaType
+  requiredExtensions
+  extensions
+  requestId
 const resourceActions

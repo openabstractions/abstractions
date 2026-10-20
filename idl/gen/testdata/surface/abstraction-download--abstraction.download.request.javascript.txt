@@ -28,4 +28,5 @@ function newSource()
   scheme
   locator
   credential
+const scopedCredentialGuarantees
 const waitingExtensions

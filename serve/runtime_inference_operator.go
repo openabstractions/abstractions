@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -26,6 +25,7 @@ import (
 	identity "github.com/openabstractions/abstraction-identity"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	iwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
+	resourceservice "github.com/openabstractions/abstraction-resource/go/service"
 	rights "github.com/openabstractions/abstraction-rights/go"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	router "github.com/openabstractions/abstraction-router/go"
@@ -66,7 +66,7 @@ func validProfiles(profiles []string) bool {
 	}
 	seen := map[string]bool{}
 	for _, p := range profiles {
-		if seen[p] || !slices.Contains(iwire.HostProfiles, p) && !ownedWireKind.MatchString(p) {
+		if seen[p] || !slices.Contains(iwire.HostProfiles, p) && p != router.ProfileVideo && !ownedWireKind.MatchString(p) {
 			return false
 		}
 		seen[p] = true
@@ -151,11 +151,9 @@ func localKeyName(key string) (string, bool) {
 // that keeps a reissued key's record name distinct from a revoked one's
 // tombstone, and 32 random bytes.
 func mintLocalKey(program string) (name, key string, err error) {
-	normalized := program
-	if runtime.GOOS == "windows" {
-		normalized = strings.ToLower(program)
-	}
-	sum := sha256.Sum256([]byte(normalized))
+	// The tag only names the record: the random suffix keeps names apart and
+	// no lookup recomputes it, so the program's spelling is hashed as given.
+	sum := sha256.Sum256([]byte(program))
 	tag := hex.EncodeToString(sum[:8])
 	var suffix [4]byte
 	var secret [32]byte
@@ -384,12 +382,15 @@ func (o *inferenceOperator) AddHost(ctx context.Context, caller inference.Subjec
 	if applied.Outcome != wire.DeclarationEditOutcomeApplied {
 		return iwire.HostChange{Outcome: hostEditOf(applied.Outcome), Revision: applied.Revision, Reason: applied.Reason}
 	}
-	o.refreshHosts()
 	change := iwire.HostChange{Outcome: iwire.EditOutcomeApplied, Revision: applied.Revision}
 	if err := o.writeHostRules(caller, entry); err != nil {
 		o.report(err)
 		change.Reason = "rules:" + err.Error()
 	}
+	// The declaration watcher may have surveyed before this call could grant
+	// the runtime's credential access. Publish a final post-rule observation so
+	// a newly added hosted server can expose its current models immediately.
+	o.refreshHosts()
 	return change
 }
 
@@ -511,6 +512,23 @@ func (o *inferenceOperator) permitRuleWhy(by rwire.Subject, program, action, res
 		return fmt.Errorf("%s on %s for %s: %s", action, resource, program, edit.Outcome)
 	}
 	return fmt.Errorf("%s on %s for %s: the policy kept changing", action, resource, program)
+}
+
+// permitCardRules is the one writer of a card holder's rules (facade
+// CONTRACT.md FAC-R3): hold on each card the program's declaration names
+// and, with any card, hold on awake, since a card holder runs GPU work and
+// holds the wake lease while it does (resource CONTRACT.md RES-G5, RES-A1).
+// A provider's Declare and the runtime's sweep of declarations both write
+// through it. An existing rule, a deny included, stays as it is.
+func (o *inferenceOperator) permitCardRules(by rwire.Subject, program string, cards []string) []error {
+	var errs []error
+	for _, card := range cards {
+		errs = append(errs, o.permitRuleWhy(by, program, resourceservice.ActionHold, ResourceCard(card), providerAddWhy))
+	}
+	if len(cards) > 0 {
+		errs = append(errs, o.permitRuleWhy(by, program, resourceservice.ActionHold, resourceservice.ResourceAwake, providerAddWhy))
+	}
+	return errs
 }
 
 func (o *inferenceOperator) RemoveHost(ctx context.Context, caller inference.Subject, expected, name string) iwire.HostChange {

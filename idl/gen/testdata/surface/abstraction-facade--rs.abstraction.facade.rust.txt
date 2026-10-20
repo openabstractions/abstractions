@@ -206,6 +206,9 @@ pub struct DeclarationHost
   hosted: bool
   credential: String
   ceiling: Option<DeclarationCeiling>
+pub struct DeclarationExtension
+  profile: String
+  key: String
 pub struct Declaration
   name: String
   program: String
@@ -220,6 +223,9 @@ pub struct Declaration
   models: Vec<String>
   role: Option<DeclarationRole>
   host: Option<DeclarationHost>
+pub struct DeclarationWithExtensions
+  declaration: Declaration
+  supported_extensions: Vec<DeclarationExtension>
 pub struct HostReading
   up: bool
   why: String
@@ -246,6 +252,17 @@ pub struct DeclarationObservation
   outcome: DeclarationListOutcome
   cursor: String
   declarations: Vec<DeclarationState>
+pub struct DeclarationStateV2
+  state: DeclarationState
+  supported_extensions: Vec<DeclarationExtension>
+pub struct DeclarationListV2
+  outcome: DeclarationListOutcome
+  revision: String
+  declarations: Vec<DeclarationStateV2>
+pub struct DeclarationObservationV2
+  outcome: DeclarationListOutcome
+  cursor: String
+  declarations: Vec<DeclarationStateV2>
 pub struct ApplicationInterface
   name: String
   protocol: String
@@ -279,6 +296,7 @@ pub struct ApplicationEntry
   descriptor: ApplicationDescriptor
   instances: Vec<ApplicationInstance>
   scope: Scope
+  self_registered: bool
 pub struct ApplicationChange
   outcome: ApplicationOutcome
   instance: String
@@ -292,6 +310,18 @@ pub struct ApplicationActivationResult
   instance: String
   started: bool
   reason: String
+pub struct ApplicationStart
+  application: String
+  program: String
+  title: String
+  started_unix_ms: i64
+  launched: bool
+pub struct ApplicationStartPage
+  outcome: ApplicationOutcome
+  starts: Vec<ApplicationStart>
+  cursor: String
+  complete: bool
+  complete_since_unix_ms: i64
 pub fn encode(v: &ResolveResult) -> Vec<u8>
 pub struct Refusal
   word: &'static str
@@ -333,14 +363,25 @@ pub trait Registry
 pub struct RegistryClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
+pub trait RegistryV2
+  type Error
+  fn declarations(&self) -> Result<DeclarationListV2, Self::Error>
+  fn declare(&self, expected_revision: String, declaration: DeclarationWithExtensions) -> Result<DeclarationChange, Self::Error>
+  fn withdraw(&self, expected_revision: String, name: String) -> Result<DeclarationChange, Self::Error>
+  fn observe(&self, cursor: String, wait_ms: i64) -> Result<DeclarationObservationV2, Self::Error>
+pub struct RegistryV2Client<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
 pub trait Applications
   type Error
   fn register(&self, descriptor: ApplicationDescriptor) -> Result<ApplicationChange, Self::Error>
+  fn ask_confirmation(&self, application: String) -> Result<ApplicationChange, Self::Error>
   fn remove(&self, application: String) -> Result<ApplicationChange, Self::Error>
   fn announce(&self, presence: ApplicationPresence) -> Result<ApplicationChange, Self::Error>
   fn withdraw(&self, application: String, instance: String) -> Result<ApplicationChange, Self::Error>
   fn observe(&self, cursor: String, wait_ms: i64) -> Result<ApplicationPage, Self::Error>
   fn activate(&self, application: String) -> Result<ApplicationActivationResult, Self::Error>
+  fn list_starts(&self, cursor: String, limit: i64) -> Result<ApplicationStartPage, Self::Error>
 pub struct ApplicationsClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T

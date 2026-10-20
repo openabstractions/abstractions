@@ -509,12 +509,14 @@ struct ManifestsDispatcher : FrameWriter, FrameExchanger
   std::string exchange_frame(std::string_view frame) override
 struct Inventory
   virtual InventoryPage list(const std::string& continuation, const std::int64_t& limit)
+  virtual InventoryPage list_store(const std::string& store, const std::string& continuation, const std::int64_t& limit)
   virtual InventoryPage holders(const std::string& target)
   virtual InventoryPage unheld(const std::string& continuation, const std::int64_t& limit)
   virtual InventoryPage find(const std::string& digest)
 template<class Transport>struct InventoryClient : Inventory
   Transport& transport_
   InventoryPage list(const std::string& continuation, const std::int64_t& limit) override
+  InventoryPage list_store(const std::string& store, const std::string& continuation, const std::int64_t& limit) override
   InventoryPage holders(const std::string& target) override
   InventoryPage unheld(const std::string& continuation, const std::int64_t& limit) override
   InventoryPage find(const std::string& digest) override

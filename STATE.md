@@ -1,55 +1,50 @@
 # Where this stands
 
-A handoff for a fresh session. Everything below is durable in the
-repositories; the conversation that produced it is not needed.
+Updated 2026-09-29. OpenAbstractions 0.3.0 is available from
+[the runtime releases](https://github.com/openabstractions/redist/releases/tag/v0.3.0).
+The [installation guide](https://openabstractions.org/adopt.html) describes the
+packages and setup. Package signing and platform evidence retain their stated
+limits in the release notes and coverage pages.
 
-## What this is
+## Architecture and contracts
 
-A vocabulary for what local software rebuilds on its own, and the corpus that
-holds every implementation to it. `README.md` says what a person can take
-today; `SCOPE.md` says which layers qualify; `METHOD.md` says how one is
-drawn. Adopters depend on a facade, never the reverse.
+Applications use capability interfaces through their language clients. The
+local OA runtime owns service state, provider selection, permissions and
+communication with remote providers. Providers implement the capabilities;
+applications can adopt each capability independently.
 
-## Repositories (github.com/openabstractions)
+Each layer's contract page defines behavioral rules and names the Thrift
+definitions it binds. Those definitions supply shared API vocabulary and
+generated language interfaces; service definitions also supply IPC bindings.
+Conformance scenarios and implementation tests exercise the stated guarantees.
+Read the selected layer's contract and versioned API together. Conflicts are
+defects to resolve, and a generated binding alone proves no runtime behavior.
 
-- `abstraction-*` — one layer each, every language inside: job, download,
-  storage, cas, watch, config, logging, model, identity, asks, rights, facade
-- `service-jobd`, `docker-jobd`, `addon-synology`, `polite-monitor` — things a
-  person installs
-- `adopter-comfyui` — an integration. The other adopter is a Lemonade fork,
-  `ReinisLusis/lemonade@abstraction-job-store`
-- `research` — prior art
-- `.github` — governance, security policy, the organisation page
-- `abstractions` — this repository: method, scope, results, the harness scripts
+For example, [job's contract](https://github.com/openabstractions/abstraction-job/blob/main/CONTRACT.md)
+binds `acceptance.thrift` for service acceptance, observation and control.
+Its separate `job.thrift` describes the legacy store record. This distinction
+replaces this page's earlier unresolved comparison of those definitions.
 
-`openabstractions.org` is registered.
+## Integrations and evidence
 
-## Open, in order
+The [reference](https://openabstractions.org/reference.html),
+[catalogue](https://openabstractions.org/catalogue.html) and
+[coverage](https://openabstractions.org/coverage.html) describe capability scope
+and evidence. This repository carries the [OpenCode adapter](adopters/opencode/README.md),
+[MCP gateway](mcp-gateway/README.md) and
+[Comfy interaction example](adopters/comfyui-presentation/README.md).
+[The ComfyUI integration](https://github.com/openabstractions/adopter-comfyui)
+also demonstrates service-owned model acquisition and observation.
 
-1. **Which written form of a contract is normative.** Three exist: prose with
-   tagged rules on the contract pages, which the scenarios cite; `job.thrift`,
-   published and checked against nothing; and a schema that generated passing
-   clients and describes a wire rather than the record. `METHOD.md` §6 states
-   it as open. Everything built on a schema inherits the answer.
-2. **Move the corpus and the harness here**, so a layer does not own the test
-   it is judged by and a stranger can run it against their own implementation.
-   With it, a `GENERATED` marker, so a generated implementation does not count
-   toward the at-least-two bar.
-3. **One source for the record**: the schema describes the record and either
-   generates `job.thrift` or is generated from it.
+Consult each integration's README for its tested app version, setup and
+distribution status. A fixture proof, a real-app proof and an installed package
+are separate evidence. Modelhost and modelbridge have tagged Go sources;
+their provider-specific documentation describes remaining qualification.
 
-Behind those, two things the record cannot express today: a delegate's failure
-arriving where the request was made, and a credential refusing a delegate
-whose trust posture it cannot vouch for.
+## Versions
 
-## Releases
-
-`vX.Y.Z`; a tag means a release and is cut only for one. The only tag is
-`go/v0.1.0`. `layers.lock` records which commits were proved together.
-
-## How to work
-
-- READMEs follow `docs/readme-contract.md`.
-- The backlog, `docs/backlog.md`, holds design notes; five lines each.
-- A number is claimed only where a transcript in `docs/results/` shows it, and
-  a platform not reached is `UNPROVEN`, never a pass.
+Runtime packages use redist release versions. Language modules have their own
+tags and declared dependencies; use the selected package's installation guide
+and dependency metadata. `layers.lock` retains an early eight-repository
+snapshot. It is historical evidence and is not the dependency set for 0.3.0.
+Its former `scripts/layers.sh` helper is no longer published here.

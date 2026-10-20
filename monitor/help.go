@@ -42,33 +42,37 @@ type helpEntry struct {
 // lands on the same section.
 var helpAnchors = []helpEntry{
 	{"status", "service-check", helpSite + "reference.html#panel-status-service-check"},
-	{"work", "work", helpSite + "reference.html#panel-work-work"},
 	{"work", "account-work", helpSite + "reference.html#panel-work-account-work"},
-	{"work", "download", helpSite + "reference.html#panel-work-download"},
+	{"work", "work", helpSite + "reference.html#panel-work-work"},
+	{"work", "notifications", helpSite + "reference.html#panel-work-notifications"},
+	{"work", "timeline", helpSite + "reference.html#panel-work-account-work"},
+	{"work", "logging", helpSite + "reference.html#panel-logging-logging"},
 	{"rights", "questions", helpSite + "reference.html#panel-rights-questions"},
+	{"rights", "app-questions", helpSite + "reference.html#panel-rights-questions"},
+	{"rights", "assistant", helpSite + "reference.html#panel-rights-questions"},
+	{"rights", "answer-delegation", helpSite + "reference.html#panel-rights-answer-delegation"},
 	{"rights", "rights-section", helpSite + "reference.html#panel-rights-permissions"},
+	{"rights", "defaults", helpSite + "reference.html#panel-rights-permissions"},
 	{"settings", "settings", helpSite + "reference.html#panel-settings-settings"},
-	{"logging", "logging", helpSite + "reference.html#panel-logging-logging"},
-	{"identity", "identity", helpSite + "reference.html#panel-identity-identity"},
+	{"settings", "runtime-support", helpSite + "reference.html#panel-status-service-check"},
+	{"settings", "identity", helpSite + "reference.html#panel-identity-identity"},
 	{"explore", "explore", helpSite + "reference.html#panel-explore-explore"},
 
 	{"card", "holders", helpSite + "reference.html#panel-card-holders"},
-	{"card", "downloads", helpSite + "reference.html#panel-card-downloads"},
 	{"card", "awake-section", helpSite + "reference.html#panel-card-awake"},
 
-	{"inference", "hosts-section", helpSite + "reference.html#panel-inference-servers"},
-	{"inference", "gateway", helpSite + "reference.html#panel-inference-gateway"},
-	{"inference", "keys-section", helpSite + "reference.html#panel-inference-keys"},
-	{"inference", "audit-section", helpSite + "reference.html#panel-inference-audit"},
+	{"inference", "models-section", helpSite + "reference.html#api-router"},
+	{"inference", "selection-section", helpSite + "reference.html#panel-providers-selection"},
+	{"inference", "add-model", helpSite + "reference.html#panel-providers-registered"},
 
 	{"registry", "hosts-section", helpSite + "reference.html#panel-providers-servers"},
+	{"registry", "gateway", helpSite + "reference.html#panel-inference-gateway"},
+	{"registry", "keys-section", helpSite + "reference.html#panel-inference-keys"},
 	{"registry", "providers-section", helpSite + "reference.html#panel-providers-registered"},
 	{"registry", "remote-section", helpSite + "reference.html#panel-providers-remote"},
 
 	{"credentials", "saved", helpSite + "reference.html#panel-credentials-saved"},
 	{"credentials", "new", helpSite + "reference.html#panel-credentials-add"},
-	{"credentials", "rotate", helpSite + "reference.html#panel-credentials-rotate"},
-	{"credentials", "revoke", helpSite + "reference.html#panel-credentials-revoke"},
 	{"credentials", "access", helpSite + "reference.html#panel-credentials-access"},
 }
 

@@ -67,6 +67,18 @@ class JobOperatorClient(JobOperator)
   __init__(transport)
   list_account_work(cursor: str, limit: int) -> InventoryPage
   cancel_operation(operation_id: str) -> OperatorCancellation
+enum LinkOutcome
+  LINKED = 'linked'
+  NOT_READY = 'not_ready'
+  UNAVAILABLE = 'unavailable'
+  UNSUPPORTED = 'unsupported'
+  UNKNOWN = 'unknown'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  EXISTS = 'exists'
+  OTHER_VOLUME = 'other_volume'
+  NO_HARD_LINKS = 'no_hard_links'
+  REMOTE = 'remote'
 enum ObservationOutcome
   OBSERVED = 'observed'
   UNKNOWN = 'unknown'
@@ -80,10 +92,12 @@ dataclass ObservationResult
 class OperationControl
   observe_work(identity: RequestIdentity) -> ObservationResult
   read_result(identity: RequestIdentity, offset: int, max_bytes: int) -> ResultRead
+  link_result(identity: RequestIdentity, destination: str) -> ResultLink
 class OperationControlClient(OperationControl)
   __init__(transport)
   observe_work(identity: RequestIdentity) -> ObservationResult
   read_result(identity: RequestIdentity, offset: int, max_bytes: int) -> ResultRead
+  link_result(identity: RequestIdentity, destination: str) -> ResultLink
 dataclass OperationSnapshot
   receipt: Receipt
   state: WorkState | None
@@ -132,6 +146,10 @@ dataclass ResultChunk
   total: int
   data: bytes
   eof: bool
+dataclass ResultLink
+  outcome: LinkOutcome | None
+  receipt: Receipt | None
+  size: int
 enum ResultOutcome
   DATA = 'data'
   NOT_READY = 'not_ready'

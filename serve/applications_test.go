@@ -53,8 +53,12 @@ func TestApplicationPresenceOwnsEpochAndPreservesInstalledDescriptor(t *testing.
 	operator := rights.Subject{Account: "account", Program: filepath.Join(state, "operator.exe")}
 	app := rights.Subject{Account: "account", Program: filepath.Join(state, "app.exe")}
 	policy := func(_ context.Context, s rights.Subject, action, resource string) (bool, error) {
-		if action == ActionApplicationManage {
+		switch action {
+		case ActionApplicationManage:
 			return s.Program == operator.Program, nil
+		case ActionApplicationRegisterSelf:
+			// The registration default is off for this app.
+			return false, nil
 		}
 		return s.Program == app.Program, nil
 	}
@@ -127,14 +131,71 @@ func TestApplicationRegistrationRejectsShortAliasOfCallingProgram(t *testing.T) 
 		t.Skip("the filesystem did not provide a distinct DOS short alias")
 	}
 	state := t.TempDir()
-	d, err := openApplications(state, "account", func(context.Context, rights.Subject, string, string) (bool, error) { return true, nil })
+	// Only application.manage is held: a descriptor naming the caller through
+	// its short alias is the caller's own, decided under register_self.
+	d, err := openApplications(state, "account", func(_ context.Context, _ rights.Subject, action, _ string) (bool, error) {
+		return action == ActionApplicationManage, nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	caller := rights.Subject{Account: "account", Program: program}
 	descriptor := wire.ApplicationDescriptor{Name: "self-alias", Program: short, Title: "Self", StartGuidance: "Open"}
-	if got := d.register(context.Background(), caller, descriptor); got.Outcome != wire.ApplicationOutcomeInvalid {
+	if got := d.register(context.Background(), caller, descriptor); got.Outcome != wire.ApplicationOutcomeForbidden {
 		t.Fatalf("registration through short alias of caller: %+v", got)
+	}
+}
+
+// APPLICATIONS.md, rights RIGHTS-R22: a program registers its own descriptor
+// under application.register_self, which the registration default permits;
+// application.manage alone never covers it, register_self never covers
+// another program's descriptor, and a self-registration hands its name to the
+// runtime so its operators can list and start it.
+func TestApplicationSelfRegistrationUnderTheRegistrationDefault(t *testing.T) {
+	ctx := context.Background()
+	state := t.TempDir()
+	app := rights.Subject{Account: "account", Program: filepath.Join(state, "app.exe")}
+	other := filepath.Join(state, "other.exe")
+	var mu sync.Mutex
+	on := true
+	var decided []string
+	d, err := openApplications(state, "account", func(_ context.Context, s rights.Subject, action, resource string) (bool, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		decided = append(decided, action+" "+resource)
+		return action == ActionApplicationRegisterSelf && resource == "account" && on && s == app, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var registered []string
+	d.registeredSelf = func(name string) { registered = append(registered, name) }
+	foreign := wire.ApplicationDescriptor{Name: "foreign", Program: other, Title: "Foreign", StartGuidance: "Open"}
+	if r := d.register(ctx, app, foreign); r.Outcome != wire.ApplicationOutcomeForbidden {
+		t.Fatal("register_self covered another program's descriptor", r)
+	}
+	mu.Lock()
+	on = false
+	mu.Unlock()
+	own := wire.ApplicationDescriptor{Name: "own", Program: app.Program, Title: "Own", StartGuidance: "Open"}
+	if r := d.register(ctx, app, own); r.Outcome != wire.ApplicationOutcomeForbidden || len(registered) != 0 {
+		t.Fatal("switch off still registered", r, registered)
+	}
+	mu.Lock()
+	on = true
+	mu.Unlock()
+	if r := d.register(ctx, app, own); r.Outcome != wire.ApplicationOutcomeApplied {
+		t.Fatal(r)
+	}
+	if len(registered) != 1 || registered[0] != "own" {
+		t.Fatal("self-registration did not reach the runtime", registered)
+	}
+	if r := d.register(ctx, app, own); r.Outcome != wire.ApplicationOutcomeConflict || len(registered) != 1 {
+		t.Fatal("second self-registration", r, registered)
+	}
+	want := []string{ActionApplicationManage + " account", ActionApplicationRegisterSelf + " account", ActionApplicationRegisterSelf + " account", ActionApplicationRegisterSelf + " account"}
+	if strings.Join(decided, "|") != strings.Join(want, "|") {
+		t.Fatalf("decisions = %v, want %v", decided, want)
 	}
 }
 

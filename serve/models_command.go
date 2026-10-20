@@ -24,7 +24,7 @@ id that inventory gives it — and never by path. Read the names with
 the provider that holds the store.
 
 A hosted model is the other way round: the model host loads the file itself,
-with a llama.cpp this machine already has, and serves it through the runtime
+with the pinned llama.cpp release modelhostd staged, and serves it through the runtime
 like any other provider. One copy is loaded and every application shares it.
 Its residency is held under a lease of abstraction.resource/leases@1, so the
 card can be asked back: a yield request stops the engine and releases the
@@ -39,26 +39,79 @@ Commands:
   models host <store>/<id> --engine PATH [--as NAME] [--embeddings]
                        declare that object as hosted: the model host serves it
                        as a model of its own, loaded once, under a lease
+  models host --video-model SET (--video-engine PATH |
+              --video-kind torch --torch-python PATH --torch-source DIR)
+              [--image-model SET]
+  models host --image-model SET --torch-python PATH
+                       set the video and image engine: an sd-server video on
+                       the model host, the PyTorch sets on the PyTorch
+                       provider (pytorchd); with an object, both in one
+                       command
   models unhost <store>/<id>
                        stop hosting it; the last one withdraws the model host
                        and stops its engine
   models hosts         every hosted model, and the engine they are loaded with
+  models pack <file or folder> <out>
+                       pack model files into OpenAbstractions' pack format on
+                       this machine, and info, verify, restore and measure;
+                       files only, no service ("models pack --help")
 
 models host:
-  --engine PATH        absolute path of the llama-server this machine already
-                       has. Nothing is bundled and nothing is downloaded: a
-                       call with no engine configured is refused no_engine
+  --engine PATH        absolute path of the llama-server that
+                       "modelhostd engine install --archive ZIP" staged from
+                       the pinned llama.cpp release's archive. Nothing is
+                       bundled and nothing is downloaded. The model host
+                       proves the folder against its pin before the
+                       declaration is written, and refuses any other engine
+                       engine:none
   --as NAME            the name callers ask for; the store's own name for the
                        content by default, so the router's family and the
                        inventory's held_in name the same model
   --embeddings         start the engine with embeddings and publish
                        abstraction.inference/embed@1 beside chat@1
   --idle DURATION      unload a model nothing has asked for
-  --engine-arg ARG     one extra argument for the engine; repeatable
+  --engine-arg ARG     one extra llama-server argument; repeatable. The model
+                       host passes only its reviewed list and engine check
+                       refuses any other option by name before declaring
+  --state DIR          the model host's state folder, where engine install
+                       recorded the engine; passed to engine check and to the
+                       declared provider. The provider's default otherwise.
+                       The PyTorch provider keeps its own in DIR\pytorch
   --program PATH       the model host provider; beside this command by default
+  --pytorch-program PATH
+                       the PyTorch provider, pytorchd; beside this command by
+                       default
+  --video-model SET    a video model set the provider serves for profile video
+                       (fastwan2.2-ti2v-5b, hummingbird-xt-i2v)
+  --video-kind KIND    sdcpp (the default) or torch, the engine the video
+                       runs on; a change of kind drops what only the other
+                       kind reads
+  --video-engine PATH  sdcpp: the sd-server that "modelhostd engine install
+                       --kind sdcpp" staged
+  --torch-python PATH, --torch-source DIR
+                       torch: the reviewed venv's python and AMD's
+                       Hummingbird-XT infer folder; an image set alone needs
+                       the python only. A torch video and an image set are
+                       the PyTorch provider's own declaration, pytorch
+  --video-model-option NAME=VALUE
+                       torch: one model set option, such as decode-dtype=bf16
+  --image-model SET    an image model set the PyTorch provider serves for
+                       profile image (flux2-klein-4b), alone or beside a
+                       --video-kind torch video; never beside sd-server
+  --card N             the card the engines load into; 0 by default
+                       Each engine is proven before declaring, with
+                       "modelhostd engine check" or "pytorchd engine check".
+                       Every setting is kept in one declaration per
+                       provider, replaced in place; a run that would change
+                       nothing writes nothing. A model host declaration that
+                       still carries the PyTorch options moves them to the
+                       PyTorch provider's on the next run
   --provider-endpoint NAME, --resource-endpoint PATH
                        the provider's own OA endpoint, and where
-                       abstraction.resource/leases@1 answers
+                       abstraction.resource/leases@1 answers when it is not
+                       the runtime that starts the provider; by default the
+                       declaration names none and that runtime tells the
+                       provider its own (ABSTRACTION_RESOURCE_ENDPOINT)
 
 A hosted model refuses in its own words: no_engine, not_permitted when no rule
 lets the provider hold the card, insufficient and holders_refused when the card
@@ -82,6 +135,8 @@ is in force.
 
 Every command accepts --endpoint, --timeout and --json. The endpoint is --endpoint if given, else ABSTRACTION_RUNTIME_ENDPOINT if set, else the installed runtime.
 
+With --endpoint, --runtime-program PATH verifies that absolute executable under this account.
+
 Exit codes: 0 done, 1 runtime not resolved or transport failure, 2 usage,
 3 typed refusal (not_permitted, unsupported_engine, link_refused, already_lent,
 unknown_object, invalid), 4 unavailable, 6 unknown.
@@ -97,6 +152,8 @@ func modelsCommand(args []string, output, diagnostics io.Writer) error {
 	}
 	command := "models " + args[0]
 	switch args[0] {
+	case "pack":
+		return modelsPackCommand(args[1:], output, diagnostics)
 	case "host", "unhost", "hosts":
 		return modelsHostCommand(command, args[1:], output, diagnostics)
 	case "lend", "unlend", "lends":
@@ -150,7 +207,10 @@ func modelsCommand(args []string, output, diagnostics io.Writer) error {
 
 	w := newWaiting(options.budget)
 	defer w.stop()
-	machine, source := options.machine(diagnostics, command)
+	machine, source, err := options.machine(diagnostics, command, modelsUsage)
+	if err != nil {
+		return err
+	}
 	call, done := w.call()
 	transport, err := machine.ResolveLending(call, client.Requirements{})
 	done()

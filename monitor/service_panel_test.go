@@ -17,6 +17,7 @@ import (
 	"time"
 
 	downloadserve "github.com/openabstractions/abstraction-download/go/serve"
+	fwire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	"github.com/openabstractions/abstraction-identity/listen"
 	api "github.com/openabstractions/abstraction-job/go/abstraction/job/acceptance"
@@ -28,7 +29,7 @@ func panelServiceRuntime(t *testing.T) {
 		t.Skip("Program proof unavailable")
 	}
 	dir := t.TempDir()
-	prefix := fmt.Sprintf("panel-service-%d", time.Now().UnixNano())
+	prefix := fixtureName("panel-service")
 	o := host.Options{Endpoint: listen.Endpoint(prefix), LogEndpoint: listen.Endpoint(prefix + "l"), ConfigEndpoint: listen.Endpoint(prefix + "c"), JobEndpoint: listen.Endpoint(prefix + "j"), JobRoot: filepath.Join(dir, "private-provider"), JobOwner: "panel-service-owner", JobExecutor: downloadserve.HTTPExecution{}}
 	h, err := host.Listen(o)
 	if err != nil {
@@ -170,5 +171,70 @@ func TestServicePanelBrowserBoundary(t *testing.T) {
 		if w.Code != 403 {
 			t.Fatalf("browser boundary accepted %+v", v)
 		}
+	}
+}
+
+// TestSetupMutatingRoutesRefuseAnUnkeyedOrForeignCaller walks every mutating
+// /setup route through the real mux. Each is refused with 403, and the
+// Applications client sees no call, for no key, a wrong key, a foreign Origin
+// and a non-loopback Host. The keyed same-origin Remove succeeds.
+func TestSetupMutatingRoutesRefuseAnUnkeyedOrForeignCaller(t *testing.T) {
+	const key = "test-key"
+	routes := []string{
+		"/setup/plan", "/setup/intent", "/setup/advance", "/setup/retry", "/setup/recover",
+		"/setup/feature/add",
+		"/setup/modelhost/feature/add", "/setup/modelhost/engine", "/setup/modelhost/root/preview", "/setup/modelhost/root", "/setup/modelhost/host",
+		"/setup/model/start", "/setup/model/advance", "/setup/model/retry", "/setup/model/configure", "/setup/model/reconcile",
+		"/setup/comfy/register", "/setup/comfy/activate", "/setup/comfy/remove",
+	}
+	entry := fwire.ApplicationDescriptor{Name: "comfyui", Program: `C:\OA\python.exe`, Title: "ComfyUI"}
+	newFake := func() *setupApplicationsFake {
+		return &setupApplicationsFake{
+			page:        fwire.ApplicationPage{Outcome: fwire.ApplicationOutcomePage, Applications: []fwire.ApplicationEntry{{Descriptor: entry}}},
+			removeReply: fwire.ApplicationChange{Outcome: fwire.ApplicationOutcomeApplied},
+		}
+	}
+	callers := []struct {
+		name                string
+		host, origin, token string
+	}{
+		{"no key", "127.0.0.1:8734", "http://127.0.0.1:8734", ""},
+		{"wrong key", "127.0.0.1:8734", "http://127.0.0.1:8734", "wrong"},
+		{"foreign origin", "127.0.0.1:8734", "http://evil.example", key},
+		{"non-loopback host", "evil.example", "", key},
+	}
+	for _, route := range routes {
+		for _, caller := range callers {
+			fake := newFake()
+			h := (&servicePanel{comfyApps: fake}).handler(key)
+			r := httptest.NewRequest("POST", route, strings.NewReader(`{"confirm":true,"setup_plan_id":"x"}`))
+			r.Host = caller.host
+			if caller.origin != "" {
+				r.Header.Set("Origin", caller.origin)
+			}
+			if caller.token != "" {
+				r.Header.Set("X-Panel-Key", caller.token)
+			}
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			if w.Code != 403 {
+				t.Fatalf("%s from %s: status %d, want 403", route, caller.name, w.Code)
+			}
+			if len(fake.removed) != 0 || fake.registerCalls != 0 || fake.activateCalls != 0 {
+				t.Fatalf("%s from %s reached the Applications client: removed=%v registered=%d activated=%d",
+					route, caller.name, fake.removed, fake.registerCalls, fake.activateCalls)
+			}
+		}
+	}
+	fake := newFake()
+	h := (&servicePanel{comfyApps: fake}).handler(key)
+	r := httptest.NewRequest("POST", "/setup/comfy/remove", strings.NewReader(`{"confirm":true}`))
+	r.Host = "127.0.0.1:8734"
+	r.Header.Set("Origin", "http://127.0.0.1:8734")
+	r.Header.Set("X-Panel-Key", key)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 200 || len(fake.removed) != 1 || fake.removed[0] != "comfyui" {
+		t.Fatalf("keyed same-origin Remove: status %d removed=%v body=%s", w.Code, fake.removed, w.Body.String())
 	}
 }

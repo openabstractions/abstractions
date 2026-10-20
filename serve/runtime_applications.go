@@ -15,12 +15,9 @@ func composeApplications(options runtimeFlags, policy *runtimeRights, report fun
 	if err != nil {
 		return nil, "", err
 	}
-	endpoint := options.endpoint + "-applications"
-	if options.endpoint == "" {
-		endpoint, err = options.defaultEndpoint("applications-v1")
-		if err != nil {
-			return nil, "", err
-		}
+	endpoint, err := options.companionEndpoint("applications-v1", "", "applications")
+	if err != nil {
+		return nil, "", err
 	}
 	directory, err := openApplications(state, policy.owner, func(ctx context.Context, s rights.Subject, action, resource string) (bool, error) {
 		decision := policy.decide(ctx, s, action, resource)
@@ -32,6 +29,19 @@ func composeApplications(options runtimeFlags, policy *runtimeRights, report fun
 	if err != nil {
 		return nil, "", err
 	}
+	// Only the operator programs read the start log (APPLICATIONS.md).
+	directory.operator = policy.isOperator
+	// A program that registered itself is listed and started by the
+	// operator programs (APPLICATIONS.md): the runtime writes read and
+	// activate on its entry for each operator with no rule there, a Block
+	// included, and reports a failure without undoing the registration.
+	directory.registeredSelf = func(name string) {
+		resource := "app:" + name
+		rules := []installationRule{{ActionApplicationRead, resource}, {ActionApplicationActivate, resource}}
+		if err := policy.permitOperators(rules, registeredSelfWhy); err != nil && report != nil {
+			report(err)
+		}
+	}
 	listener, err := listenApplications(endpoint, directory, policy.owner, report)
 	return listener, endpoint, err
 }
@@ -41,5 +51,9 @@ func configureApplications(o *host.Options, h *applicationsHost, endpoint string
 	}
 	o.Applications = h
 	o.ApplicationsEndpoint = endpoint
-	o.RightsActions = append(o.RightsActions, ActionApplicationManage, ActionApplicationRead, ActionApplicationAnnounce, ActionApplicationActivate)
+	o.RightsActions = append(o.RightsActions, ActionApplicationManage, ActionApplicationRead, ActionApplicationAnnounce, ActionApplicationActivate, ActionApplicationRegisterSelf)
 }
+
+// registeredSelfWhy is the reason on the operator rules a self-registration
+// writes.
+const registeredSelfWhy = "registered by the app"

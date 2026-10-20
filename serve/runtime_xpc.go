@@ -14,9 +14,6 @@ func validateXPCOptions(options runtimeFlags, platform string) error {
 	if platform != "darwin" {
 		return fmt.Errorf("runtime: --xpc requires macOS")
 	}
-	if options.isolated != "" {
-		return fmt.Errorf("runtime: --xpc uses installed Mach services and cannot combine with --isolated")
-	}
 	for _, item := range endpointFlags(options) {
 		if item.value != "" {
 			return fmt.Errorf("runtime: --xpc cannot combine with %s", item.flag)
@@ -27,9 +24,27 @@ func validateXPCOptions(options runtimeFlags, platform string) error {
 
 func (options runtimeFlags) defaultEndpoint(service string) (string, error) {
 	if options.xpc {
+		if options.isolated != "" {
+			return bootstrap.IsolatedXPCEndpoint(options.isolated, service)
+		}
 		return bootstrap.InstalledEndpoint(service)
 	}
 	return bootstrap.Endpoint(service)
+}
+
+// companionEndpoint applies the runtime's single namespace selection to each
+// composed capability. Socket runtimes retain their existing names and suffixes.
+func (options runtimeFlags) companionEndpoint(service, isolatedName, suffix string) (string, error) {
+	if options.xpc {
+		return options.defaultEndpoint(service)
+	}
+	if options.isolated != "" && isolatedName != "" {
+		return bootstrap.Endpoint(options.isolated + "-" + isolatedName)
+	}
+	if options.endpoint != "" {
+		return options.endpoint + "-" + suffix, nil
+	}
+	return options.defaultEndpoint(service)
 }
 
 // Refuse unavailable transports before opening service-owned state.
@@ -44,7 +59,7 @@ func checkRuntimeTransport(options runtimeFlags) error {
 	return listen.CanEver(endpoint, listen.Program)
 }
 
-func installedHostEndpoints(options *host.Options, derive func(string) (string, error)) error {
+func xpcHostEndpoints(options *host.Options, derive func(string) (string, error)) error {
 	for _, item := range []struct {
 		value   *string
 		service string

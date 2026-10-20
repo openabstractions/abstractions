@@ -1,9 +1,21 @@
-# Panel Windows icon
+# Panel application icon
 
-This package holds the Panel's Windows icon source — the brand mark
-(`openabstractions-flat/openabstractions.github.io/brand`) copied and
-resampled to the sizes an ICO wants, packed into `panel.ico` — and the
-generator that builds it, `monitor/icon/gen`.
+This package holds the Panel's native application icons and their generator,
+`monitor/icon/gen`. It places the existing dark brand mark from
+`openabstractions-flat/openabstractions.github.io/brand/mark-512.png` on a pale
+rounded plate. The mark carries its own contrast on light and dark desktop
+themes. Its artwork and ink color come from the unchanged brand source.
+
+The generator produces `mark-{16,24,32,48,64,128,256,512}.png`, a seven-size
+Windows `panel.ico` and a macOS `panel.icns`. The plate has a 2.5% transparent
+outer inset and an 18% corner radius; the original artwork occupies 93.75% of
+its source square. Area-weighted premultiplied alpha keeps the transparent
+corners free of dark resampling halos.
+
+`monitor/macos/build.sh` and `installer/posix/payload.tsv` copy the same
+`panel.icns` to `Contents/Resources/AppIcon.icns`. The ICNS carries the existing
+16, 32, 64, 128, 256 and 512 pixel representations, including their available
+retina counterparts. The source mark supplies a maximum of 512 pixels.
 
 `go build` alone carries the icon and the manifest into the Panel executable:
 `monitor/rsrc_windows_amd64.syso` and `rsrc_windows_arm64.syso` are committed,
@@ -29,10 +41,9 @@ This follows Microsoft's [application manifest schema](https://learn.microsoft.c
 
 `win_windows.go` loads the icon back out of the running executable at
 resource id 1 (`LoadImageW`, `IMAGE_ICON`) for the window's title bar and the
-taskbar, and `win/tray_windows.go` the same way for the notification-area
-icon; a binary built without the `.syso` files carries no such resource, and
-both fall back to the stock `IDI_APPLICATION` icon rather than failing to
-draw.
+taskbar. Native Asks dialogs load the same icon. A binary built without the
+`.syso` files carries no such resource, and those surfaces fall back to the
+stock `IDI_APPLICATION` icon.
 
 Visual Studio 18's `cvtres.exe` stamps every object it writes with an
 absolute `@comp.id` symbol recording its own tool version, which breaks the
@@ -45,5 +56,5 @@ manifest and version block. Reuse this generator
 rather than hand-running `rc.exe`/`cvtres.exe` for any new `.syso` file.
 
 Run `go generate ./monitor/icon/...` after the brand mark changes; that
-rewrites the PNGs, `panel.ico` and `monitor/panel.rc`, and does not touch the
-`.syso` files, which still need the separate `-syso` run above.
+rewrites the PNGs, `panel.ico`, `panel.icns` and `monitor/panel.rc`. The `.syso`
+files still need the separate `-syso` run above.

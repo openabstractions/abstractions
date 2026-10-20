@@ -683,7 +683,10 @@ func cppStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 			fmt.Fprintf(b, "    std::optional<std::vector<std::string>> %s;\n", cppWireLocal(f))
 		}
 	}
-	b.WriteString("    std::uint32_t seen = 0;\n    r.skip_ws();\n")
+	if len(st.Fields) > 0 {
+		b.WriteString("    std::uint32_t seen = 0;\n")
+	}
+	b.WriteString("    r.skip_ws();\n")
 	b.WriteString("    if (r.at() != '}') {\n        for (;;) {\n            r.skip_ws();\n")
 	b.WriteString("            if (r.at() != '\"') r.refuse(\"malformed\");\n            const std::string key = r.str();\n")
 	b.WriteString("            r.skip_ws();\n            if (r.at() != ':') r.refuse(\"malformed\");\n            ++r.pos;\n            r.skip_ws();\n")
@@ -1050,6 +1053,12 @@ func cppEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 		fmt.Fprintf(b, "\ninline void enc_wire_%s(std::string& out, const %s& v) {\n", cppFn(st.Name), st.Name)
 	} else {
 		fmt.Fprintf(b, "\ninline void enc_%s(std::string& out, const %s& v, int depth) {\n", cppFn(st.Name), st.Name)
+	}
+	if len(st.Fields) == 0 {
+		b.WriteString("    (void)v;\n")
+		if !flat {
+			b.WriteString("    (void)depth;\n")
+		}
 	}
 	emitEqualities(b, st, "cpp", true)
 	for _, f := range st.Fields {

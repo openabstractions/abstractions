@@ -293,12 +293,17 @@ func TestApplicationActivationReportsIdentityMissingDisabledAndLaunchFailures(t 
 	result := make(chan wire.ApplicationActivationResult, 1)
 	go func() { result <- d.activate(context.Background(), caller, "editor") }()
 	<-launched
+	// A foreign program's announcement, and one for a name nobody registered,
+	// answer forbidden alike and leave the start waiting for its own program
+	// (default-policy review item 4).
 	wrong := rights.Subject{Account: app.Account, Program: filepath.Join(t.TempDir(), "wrong")}
-	if announced := d.announce(context.Background(), wrong, wire.ApplicationPresence{Application: "editor", Interfaces: []wire.ApplicationInterface{descriptor.Activation.Readiness}, LeaseMs: 1000}); announced.Outcome != wire.ApplicationOutcomeForbidden {
-		t.Fatal(announced)
+	for _, name := range []string{"editor", "missing"} {
+		if announced := d.announce(context.Background(), wrong, wire.ApplicationPresence{Application: name, Interfaces: []wire.ApplicationInterface{descriptor.Activation.Readiness}, LeaseMs: 1000}); announced.Outcome != wire.ApplicationOutcomeForbidden {
+			t.Fatal(name, announced)
+		}
 	}
-	if activated := <-result; activated.Outcome != wire.ApplicationActivationOutcomeIdentityRefused {
-		t.Fatal(activated)
+	if activated := <-result; activated.Outcome != wire.ApplicationActivationOutcomeNotReady {
+		t.Fatal("a foreign announcement ended the start:", activated)
 	}
 	if unknown := d.activate(context.Background(), caller, "missing"); unknown.Outcome != wire.ApplicationActivationOutcomeUnknown {
 		t.Fatal(unknown)

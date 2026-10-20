@@ -53,6 +53,14 @@ inline constexpr bool operator!=(StartOutcome value, std::string_view name)
 inline constexpr bool operator==(std::string_view name, StartOutcome value)
 inline constexpr bool operator!=(std::string_view name, StartOutcome value)
 inline const std::vector<std::string> kStartOutcomeNames
+enum class SelectionReason {ExplicitModel, Preferred, PreferredRouteUnavailable}
+inline constexpr std::string_view wire_name(SelectionReason value)
+inline std::optional<SelectionReason> parse_selection_reason(std::string_view name)
+inline constexpr bool operator==(SelectionReason value, std::string_view name)
+inline constexpr bool operator!=(SelectionReason value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, SelectionReason value)
+inline constexpr bool operator!=(std::string_view name, SelectionReason value)
+inline const std::vector<std::string> kSelectionReasonNames
 enum class PageOutcome {Page, Gap, Unknown, Invalid, Forbidden, Unavailable}
 inline constexpr std::string_view wire_name(PageOutcome value)
 inline std::optional<PageOutcome> parse_page_outcome(std::string_view name)
@@ -69,6 +77,14 @@ inline constexpr bool operator!=(CancelOutcome value, std::string_view name)
 inline constexpr bool operator==(std::string_view name, CancelOutcome value)
 inline constexpr bool operator!=(std::string_view name, CancelOutcome value)
 inline const std::vector<std::string> kCancelOutcomeNames
+enum class PreloadOutcome {Evaluated, Loaded, Busy, Refused, NotPermitted, UnsupportedFeature, NoHost, Unavailable, Invalid, Forbidden}
+inline constexpr std::string_view wire_name(PreloadOutcome value)
+inline std::optional<PreloadOutcome> parse_preload_outcome(std::string_view name)
+inline constexpr bool operator==(PreloadOutcome value, std::string_view name)
+inline constexpr bool operator!=(PreloadOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, PreloadOutcome value)
+inline constexpr bool operator!=(std::string_view name, PreloadOutcome value)
+inline const std::vector<std::string> kPreloadOutcomeNames
 enum class EmbedOutcome {Completed, Refused, NotPermitted, BudgetExceeded, UnsupportedFeature, NoHost, Unavailable, Invalid, Forbidden}
 inline constexpr std::string_view wire_name(EmbedOutcome value)
 inline std::optional<EmbedOutcome> parse_embed_outcome(std::string_view name)
@@ -125,6 +141,14 @@ inline constexpr bool operator!=(ImageMode value, std::string_view name)
 inline constexpr bool operator==(std::string_view name, ImageMode value)
 inline constexpr bool operator!=(std::string_view name, ImageMode value)
 inline const std::vector<std::string> kImageModeNames
+enum class VideoState {Queued, Generating, Completed, Failed, Cancelled, Unknown, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(VideoState value)
+inline std::optional<VideoState> parse_video_state(std::string_view name)
+inline constexpr bool operator==(VideoState value, std::string_view name)
+inline constexpr bool operator!=(VideoState value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, VideoState value)
+inline constexpr bool operator!=(std::string_view name, VideoState value)
+inline const std::vector<std::string> kVideoStateNames
 enum class ListOutcome {Page, Invalid, Forbidden, Unavailable}
 inline constexpr std::string_view wire_name(ListOutcome value)
 inline std::optional<ListOutcome> parse_list_outcome(std::string_view name)
@@ -165,6 +189,22 @@ inline constexpr bool operator!=(AuditOutcome value, std::string_view name)
 inline constexpr bool operator==(std::string_view name, AuditOutcome value)
 inline constexpr bool operator!=(std::string_view name, AuditOutcome value)
 inline const std::vector<std::string> kAuditOutcomeNames
+enum class CandidatePlacement {Local, Hosted}
+inline constexpr std::string_view wire_name(CandidatePlacement value)
+inline std::optional<CandidatePlacement> parse_candidate_placement(std::string_view name)
+inline constexpr bool operator==(CandidatePlacement value, std::string_view name)
+inline constexpr bool operator!=(CandidatePlacement value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, CandidatePlacement value)
+inline constexpr bool operator!=(std::string_view name, CandidatePlacement value)
+inline const std::vector<std::string> kCandidatePlacementNames
+enum class SelectionReadOutcome {Found, Unknown, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(SelectionReadOutcome value)
+inline std::optional<SelectionReadOutcome> parse_selection_read_outcome(std::string_view name)
+inline constexpr bool operator==(SelectionReadOutcome value, std::string_view name)
+inline constexpr bool operator!=(SelectionReadOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, SelectionReadOutcome value)
+inline constexpr bool operator!=(std::string_view name, SelectionReadOutcome value)
+inline const std::vector<std::string> kSelectionReadOutcomeNames
 inline const std::vector<std::string> kServiceErrorCodeNames
 inline constexpr std::string_view kServiceErrorCodeHandlerError
 inline constexpr std::string_view kServiceErrorCodeInvalidResult
@@ -211,6 +251,20 @@ struct Request
   std::vector<std::string> required_extensions
   std::vector<std::string> guarantees
   std::string credential
+struct Target
+  std::string model
+  std::string selection_policy
+struct RequestContent
+  std::vector<Message> messages
+  std::vector<Tool> tools
+  std::optional<Options> options
+  std::map<std::string, std::string> extensions
+  std::vector<std::string> required_extensions
+  std::vector<std::string> guarantees
+  std::string credential
+struct RequestV2
+  Target target
+  RequestContent content
 struct Usage
   std::int64_t input
   std::int64_t output
@@ -311,6 +365,17 @@ struct Admission
   std::int64_t retention_ms
   std::int64_t idle_ms
   std::int64_t retained_deltas
+struct AdmissionV2
+  StartOutcome outcome
+  std::string reason
+  std::string operation
+  std::string host
+  std::string model
+  std::int64_t retention_ms
+  std::int64_t idle_ms
+  std::int64_t retained_deltas
+  std::string preferred_model
+  std::optional<SelectionReason> selection_reason
 struct DeltaPage
   PageOutcome outcome
   std::vector<Delta> deltas
@@ -319,6 +384,12 @@ struct DeltaPage
 struct Cancellation
   CancelOutcome outcome
   std::optional<ReplyOutcome> reply_outcome
+struct PreloadReply
+  PreloadOutcome outcome
+  std::string reason
+  std::string host
+  std::string model
+  std::int64_t tokens
 struct EmbedRequest
   std::string model
   std::vector<std::string> inputs
@@ -376,6 +447,46 @@ struct ImageRequest
   std::string credential
   std::vector<std::string> required_extensions
   std::map<std::string, std::string> extensions
+struct ImageRequestContent
+  ImageMode mode
+  std::string prompt
+  std::string size
+  std::int64_t count
+  std::string image_digest
+  std::string image_media_type
+  std::string mask_digest
+  std::string mask_media_type
+  std::vector<std::string> guarantees
+  std::string credential
+  std::vector<std::string> required_extensions
+  std::map<std::string, std::string> extensions
+struct ImageRequestV2
+  Target target
+  ImageRequestContent content
+struct VideoRequest
+  std::string model
+  std::string prompt
+  std::string size
+  std::int64_t duration_ms
+  std::int64_t fps
+  std::int64_t seed
+  std::string image_digest
+  std::string image_media_type
+  std::vector<std::string> required_extensions
+  std::map<std::string, std::string> extensions
+  std::string request_id
+struct VideoAdmission
+  StartOutcome outcome
+  std::string reason
+  std::string operation
+  std::int64_t retention_ms
+struct VideoObservation
+  VideoState status
+  std::int64_t step
+  std::int64_t steps
+  std::int64_t queue_position
+  std::string reason
+  std::optional<Delivery> delivery
 struct CeilingLimit
   std::int64_t tokens_per_day
   std::int64_t micros_per_day
@@ -469,6 +580,22 @@ struct GatewayChange
   EditOutcome outcome
   std::string revision
   std::string reason
+struct SelectionChange
+  EditOutcome outcome
+  std::string revision
+  std::string reason
+struct SelectionCandidateV2
+  std::string model
+  CandidatePlacement placement
+  std::string credential
+  std::string provider
+struct SelectionPolicyV2
+  std::string name
+  std::vector<SelectionCandidateV2> candidates
+struct SelectionReadV2
+  SelectionReadOutcome outcome
+  std::string revision
+  std::optional<SelectionPolicyV2> policy
 inline std::string encode(const Request& v)
 inline Request decode(std::string_view data)
 struct FrameWriter
@@ -499,6 +626,36 @@ struct ChatService
   inline static constexpr std::string_view kCapability
 struct ChatDispatcher : FrameWriter, FrameExchanger
   Chat& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct ChatV2
+  virtual AdmissionV2 start(const RequestV2& request)
+  virtual DeltaPage observe(const std::string& operation, const std::int64_t& cursor, const std::int64_t& max_deltas, const std::int64_t& max_bytes, const std::int64_t& wait_ms)
+  virtual Cancellation cancel(const std::string& operation)
+template<class Transport>struct ChatV2Client : ChatV2
+  Transport& transport_
+  AdmissionV2 start(const RequestV2& request) override
+  DeltaPage observe(const std::string& operation, const std::int64_t& cursor, const std::int64_t& max_deltas, const std::int64_t& max_bytes, const std::int64_t& wait_ms) override
+  Cancellation cancel(const std::string& operation) override
+struct ChatV2Service
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ChatV2Dispatcher : FrameWriter, FrameExchanger
+  ChatV2& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct Preloader
+  virtual PreloadReply preload(const Request& request)
+template<class Transport>struct PreloaderClient : Preloader
+  Transport& transport_
+  PreloadReply preload(const Request& request) override
+struct PreloaderService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct PreloaderDispatcher : FrameWriter, FrameExchanger
+  Preloader& handler
   DescribedService describe_service() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
@@ -587,6 +744,40 @@ struct ImageDispatcher : FrameWriter, FrameExchanger
   DescribedService describe_service() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
+struct ImageV2
+  virtual AdmissionV2 start(const ImageRequestV2& request)
+  virtual DeltaPage observe(const std::string& operation, const std::int64_t& cursor, const std::int64_t& max_deltas, const std::int64_t& max_bytes, const std::int64_t& wait_ms)
+  virtual Cancellation cancel(const std::string& operation)
+template<class Transport>struct ImageV2Client : ImageV2
+  Transport& transport_
+  AdmissionV2 start(const ImageRequestV2& request) override
+  DeltaPage observe(const std::string& operation, const std::int64_t& cursor, const std::int64_t& max_deltas, const std::int64_t& max_bytes, const std::int64_t& wait_ms) override
+  Cancellation cancel(const std::string& operation) override
+struct ImageV2Service
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ImageV2Dispatcher : FrameWriter, FrameExchanger
+  ImageV2& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct Video
+  virtual VideoAdmission start(const VideoRequest& request)
+  virtual VideoObservation observe(const std::string& operation)
+  virtual Cancellation cancel(const std::string& operation)
+template<class Transport>struct VideoClient : Video
+  Transport& transport_
+  VideoAdmission start(const VideoRequest& request) override
+  VideoObservation observe(const std::string& operation) override
+  Cancellation cancel(const std::string& operation) override
+struct VideoService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct VideoDispatcher : FrameWriter, FrameExchanger
+  Video& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
 struct Operator
   virtual HostList hosts()
   virtual HostChange add_host(const std::string& expected_revision, const HostEntry& host)
@@ -613,6 +804,23 @@ struct OperatorService
   inline static constexpr std::string_view kCapability
 struct OperatorDispatcher : FrameWriter, FrameExchanger
   Operator& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct SelectionOperatorV2
+  virtual SelectionReadV2 read(const std::string& target_program, const std::string& name)
+  virtual SelectionChange put(const std::string& target_program, const std::string& expected_revision, const SelectionPolicyV2& policy)
+  virtual SelectionChange delete_policy(const std::string& target_program, const std::string& expected_revision, const std::string& name)
+template<class Transport>struct SelectionOperatorV2Client : SelectionOperatorV2
+  Transport& transport_
+  SelectionReadV2 read(const std::string& target_program, const std::string& name) override
+  SelectionChange put(const std::string& target_program, const std::string& expected_revision, const SelectionPolicyV2& policy) override
+  SelectionChange delete_policy(const std::string& target_program, const std::string& expected_revision, const std::string& name) override
+struct SelectionOperatorV2Service
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct SelectionOperatorV2Dispatcher : FrameWriter, FrameExchanger
+  SelectionOperatorV2& handler
   DescribedService describe_service() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override

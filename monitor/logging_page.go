@@ -1,8 +1,11 @@
 package main
 
-// loggingPage is the Panel's Logging page: records kept by the runtime (task
-// 2026-09-23, requirement 1: split out of the Status page, its own page at
-// /logging).
+// loggingSection is the Logging section of the Settings page: records kept
+// by the runtime. It had its own page at /logging until the Panel pages audit
+// (research/adopter-boundary/AUDIT-2026-10-06.md, Panel pages) folded it into
+// Settings; /logging still answers the guarded JSON calls this script makes.
+// loggingScript is its script, run inside the Settings page's one script tag
+// after serviceCommonScript (settings_page.go).
 //
 // The page used to open empty: an empty App name field, a level dropdown
 // defaulting to INFO, two raw date-time pickers, and three buttons, nothing
@@ -20,15 +23,16 @@ package main
 // dump instead of a status sentence (task 2026-09-23, fourteenth
 // first-time visitor, finding 1); it is a <p> now, since it only ever
 // carries the one sentence sinkText builds, never a details child.
-const loggingPage = `<h1 id="logging">Logging</h1><p class="oa-note">Records kept by the runtime.</p>
+const loggingSection = `<section id="logging"><h2>Logging</h2><p class="oa-note">Records kept by the runtime.</p>
 <input type="hidden" id="log-custom-active">
 <div id="log-quick"></div>
 <div id="log-custom" hidden><label>From <input id="log-since" type="datetime-local"></label> <label>Until <input id="log-until" type="datetime-local"></label> <button id="log-custom-apply" type="button">Apply</button></div>
 <div><label>Program <select id="log-program-select" aria-label="Program"></select></label> <input id="log-program" placeholder="Program name" hidden></div>
 <div id="log-level-seg"></div>
 <div><label>Show <select id="log-count" aria-label="Record count"><option value="50">50</option><option value="200">200</option><option value="1000">1000</option></select></label></div>
-<button id="log-next" disabled>Next page</button><button id="log-follow">Follow live</button><pre id="log-status"></pre><p id="log-sink"></p><div id="log-records"></div>
-<script>` + serviceCommonScript + `
+<div class="oa-toolbar"><button id="log-next" disabled hidden>Show more</button><button id="log-follow">Follow live</button></div><pre id="log-status" role="status" aria-live="polite"></pre><p id="log-sink"></p><div id="log-records"></div></section>`
+
+const loggingScript = `
 let logCursor=null,logFollowing=false,logLastDate='';const logKept=1000;
 // logTimeParts used to build its own 24-hour clock by hand ("20:32:56")
 // while every other page's time reads through oaLocalTime's 12-hour one
@@ -39,18 +43,20 @@ let logCursor=null,logFollowing=false,logLastDate='';const logKept=1000;
 function logTimeParts(t){const d=new Date(t);return{time:oaClockText(d,true),date:d.toLocaleDateString()}}
 const logLevelWord={WARN:'warning',ERROR:'error'};
 function logLevelText(r){return r.level>=4?(logLevelWord[r.levelName]||String(r.levelName||'').toLowerCase())+' ':''}
-function logDateHeading(list,t){const parts=logTimeParts(t);if(parts.date!==logLastDate){logLastDate=parts.date;const h=document.createElement('h4');h.className='log-date';h.textContent=parts.date;list.append(h)}}
+function logDateHeading(list,t){const parts=logTimeParts(t);if(parts.date!==logLastDate){logLastDate=parts.date;const h=document.createElement('h4');h.textContent=parts.date;list.append(h)}}
 const logOutcomes={gap:'History gap: the cursor no longer names retained history, because the logging service restarted or its history was replaced. Records in between may be missing. Read from the start to continue.',unavailable:'The logging service has no readable history right now.',unsupported:'The logging service does not offer live observation.',invalid_request:'The logging service refused the request as invalid.',record_too_large:'A retained record is larger than one page and cannot be shown.',corrupt:'The retained history is corrupt at this position.'};
 function isoOrEmpty(v){if(!v)return '';const d=new Date(v);return isNaN(d.getTime())?'':d.toISOString()}
 const standingText={established:'verified by the logging service',vouched:'vouched for through a trusted path',asserted:'asserts verification nothing the Panel trusts stands behind'};
 function hopText(h){const who=[h.program&&'program '+h.program,h.exe&&'executable '+h.exe,h.user&&'account '+h.user,h.uid>=0&&'uid '+h.uid,h.pid>=0&&'pid '+h.pid,h.host&&'host '+h.host].filter(Boolean).join(', ');const standing=standingText[h.standing]||(h.by==='unclaimed'?'the writer sent no claim':'the writer\'s own claim, unverified');return 'hop '+h.hop+', '+h.role+' ('+h.by+'): '+standing+(who?'. '+who:'')}
-function hopClass(h){return 'hop '+(h.standing==='established'||h.standing==='vouched'?'verified':h.standing==='asserted'?'asserted':'claim')}
+// hopEvidence is a hop's standing as data-evidence (SPEC §6): verified,
+// asserted (a stamp nothing trusted vouches for) or claimed.
+function hopEvidence(h){return h.standing==='established'||h.standing==='vouched'?'verified':h.standing==='asserted'?'asserted':'claimed'}
 function logRecordVerified(r){return !!r.author}
-function logEntry(r){const box=document.createElement('div');if(r.kind==='sink_gap'){box.className='gap';const t=document.createElement('p');t.textContent='Sink loss: '+r.dropped+' records from '+(r.program||'a writer with no program claim')+' were dropped between '+r.since+' and '+r.until+' while its logging service was unreachable.';box.append(t);return box}
-box.className='record';const line=document.createElement('p');const verified=logRecordVerified(r);const label=document.createElement('span');label.className=verified?'verified':'claim';label.textContent=verified?'verified':'unverified';
+function logEntry(r){const box=document.createElement('div');if(r.kind==='sink_gap'){box.className='oa-row';box.setAttribute('data-state','gap');const t=document.createElement('p');t.textContent='Sink loss: '+r.dropped+' records from '+(r.program||'a writer with no program claim')+' were dropped between '+r.since+' and '+r.until+' while its logging service was unreachable.';box.append(t);return box}
+box.className='oa-row';const line=document.createElement('p');const verified=logRecordVerified(r);const label=document.createElement('span');label.setAttribute('data-evidence',verified?'verified':'claimed');label.textContent=verified?'verified':'unverified';
 line.textContent=logTimeParts(r.time).time+' '+logLevelText(r)+(r.program?shortName(r.program):'(no program claim)')+': '+r.message+(r.job?' [job '+r.job+']':'')+' ';line.append(label);box.append(line);
-const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='Technical details';const hops=document.createElement('ul');for(const h of r.hops){const li=document.createElement('li');li.className=hopClass(h);li.textContent=hopText(h);hops.append(li)}details.append(summary,hops);if(r.attrs){const a=document.createElement('p');a.textContent=JSON.stringify(r.attrs);details.append(a)}box.append(details);
-if(r.disputed){const d=document.createElement('p');d.className='error';d.textContent='Disputed: the writer\'s claim contradicts the stamp about the writer.';box.append(d)}return box}
+const details=oaTechnical(document.createElement('details'));const summary=document.createElement('summary');summary.textContent='Technical details';const hops=document.createElement('ul');for(const h of r.hops){const li=document.createElement('li');li.setAttribute('data-evidence',hopEvidence(h));li.textContent=hopText(h);hops.append(li)}details.append(summary,hops);if(r.attrs){const a=document.createElement('p');a.textContent=JSON.stringify(r.attrs);details.append(a)}box.append(details);
+if(r.disputed){const d=document.createElement('p');d.className='oa-status';d.setAttribute('data-state','error');d.textContent='Disputed: the writer\'s claim contradicts the stamp about the writer.';box.append(d)}return box}
 function sinkText(s){if(!s)return '';if(!s.adopted)return 'This Panel\'s own logging: '+(s.bindError?'not bound. '+s.bindError:'not bound yet; it binds when the Panel first logs an action or checks identity.');return 'This Panel\'s own logging: '+s.state+'. '+s.accepted+' accepted, '+s.written+' written, '+s.queued+' queued, '+s.dropped+' dropped, '+s.failed+' failed, '+s.abandoned+' abandoned'+(s.lastError?'. Last error: '+s.lastError:'')+(s.transition?'. Last transition: '+s.transition:'')}
 function logStop(){logFollowing=false;el('log-follow').textContent='Follow live'}
 // logQuickChoices names each quick range, its own button label, and how to
@@ -86,12 +92,12 @@ function logQuery(extra){const custom=!!el('log-custom-active').value;const sinc
 // visitor, requirement 2: "No records in the last hour." with the next
 // quick choice offered).
 function logEmptyOffer(){const i=logQuickChoices.findIndex(c=>c[0]===logRangeKey);const next=logQuickChoices[i+1];if(!next)return null;const b=document.createElement('button');b.type='button';b.textContent=next[1];b.onclick=()=>{logRangeKey=next[0];el('log-custom-active').value='';el('log-custom').hidden=true;logRenderQuick();return logRestart()};return b}
-function logPage(v,replace){show('log-sink',sinkText(v.sink));const list=el('log-records');if(replace){list.replaceChildren();logLastDate=''}if(v.outcome!=='page'){logStop();el('log-next').disabled=true;if(v.outcome==='gap'){logCursor=null;const g=document.createElement('div');g.className='gap';g.textContent=logOutcomes.gap;list.append(g)}show('log-status',logOutcomes[v.outcome]||'Logging service outcome: '+v.outcome);return false}logCursor=v.next;
+function logPage(v,replace){show('log-sink',sinkText(v.sink));const list=el('log-records');if(replace){list.replaceChildren();logLastDate=''}if(v.outcome!=='page'){logStop();el('log-next').disabled=true;el('log-next').hidden=true;if(v.outcome==='gap'){logCursor=null;const g=document.createElement('div');g.className='oa-row';g.setAttribute('data-state','gap');g.textContent=logOutcomes.gap;list.append(g)}show('log-status',logOutcomes[v.outcome]||'Logging service outcome: '+v.outcome);return false}logCursor=v.next;
 for(const r of v.records){logDateHeading(list,r.time);list.append(logEntry(r));if(r.program)logPrograms.add(r.program)}
 if(replace&&!v.records.length){const status=el('log-status');status.replaceChildren();const rangeLabel=(logQuickChoices.find(c=>c[0]===logRangeKey)||['','a custom range'])[1].toLowerCase();status.textContent='No records in '+(logRangeKey==='all'?'this runtime\'s retained history':rangeLabel)+'.';const offer=logEmptyOffer();if(offer)status.append(offer)}
 else show('log-status',(v.mode==='follow'?'Following live. ':'')+(v.atEnd?'At the current end of history.':'More history remains.')+(v.hidden?' '+v.hidden+' records on this page hidden by the filter.':''));
 logRebuildProgramSelect();
-if(list.children.length>logKept)list.replaceChildren(...[...list.children].slice(-logKept));el('log-next').disabled=v.atEnd||v.mode==='follow';return true}
+if(list.children.length>logKept)list.replaceChildren(...[...list.children].slice(-logKept));el('log-next').disabled=v.atEnd||v.mode==='follow';el('log-next').hidden=el('log-next').disabled;return true}
 async function logRead(){try{logPage(await call(logQuery({})),true)}catch(e){logStop();fail('log-status',e)}}
 function logRestart(){logStop();logCursor=null;return logRead()}
 el('log-next').onclick=()=>{logStop();return logRead()};
@@ -105,4 +111,4 @@ el('log-custom-active').value='';
 el('log-program').hidden=true;
 logRenderQuick();logRenderLevel();logRebuildProgramSelect();el('log-count').value='50';
 logRead();
-</script>`
+`

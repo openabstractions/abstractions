@@ -7,6 +7,17 @@ dataclass Admission
   retention_ms: int
   idle_ms: int
   retained_deltas: int
+dataclass AdmissionV2
+  outcome: StartOutcome | None
+  reason: str
+  operation: str
+  host: str
+  model: str
+  retention_ms: int
+  idle_ms: int
+  retained_deltas: int
+  preferred_model: str
+  selection_reason: SelectionReason | None
 dataclass AudioChunk
   index: int
   data: bytes
@@ -59,6 +70,9 @@ enum CancelOutcome
 dataclass Cancellation
   outcome: CancelOutcome | None
   reply_outcome: ReplyOutcome | None
+enum CandidatePlacement
+  LOCAL = 'local'
+  HOSTED = 'hosted'
 dataclass CeilingLimit
   tokens_per_day: int
   micros_per_day: int
@@ -73,6 +87,15 @@ class Chat
 class ChatClient(Chat)
   __init__(transport)
   start(request: Request) -> Admission
+  observe(operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage
+  cancel(operation: str) -> Cancellation
+class ChatV2
+  start(request: RequestV2) -> AdmissionV2
+  observe(operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage
+  cancel(operation: str) -> Cancellation
+class ChatV2Client(ChatV2)
+  __init__(transport)
+  start(request: RequestV2) -> AdmissionV2
   observe(operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage
   cancel(operation: str) -> Cancellation
 dataclass Cost
@@ -229,9 +252,34 @@ dataclass ImageRequest
   credential: str
   required_extensions: list[str]
   extensions: dict[str, str]
+dataclass ImageRequestContent
+  mode: ImageMode | None
+  prompt: str
+  size: str
+  count: int
+  image_digest: str
+  image_media_type: str
+  mask_digest: str
+  mask_media_type: str
+  guarantees: list[RequestGuarantee | str]
+  credential: str
+  required_extensions: list[str]
+  extensions: dict[str, str]
+dataclass ImageRequestV2
+  target: Target
+  content: ImageRequestContent
 dataclass ImageResult
   index: int
   delivery: Delivery
+class ImageV2
+  start(request: ImageRequestV2) -> AdmissionV2
+  observe(operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage
+  cancel(operation: str) -> Cancellation
+class ImageV2Client(ImageV2)
+  __init__(transport)
+  start(request: ImageRequestV2) -> AdmissionV2
+  observe(operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage
+  cancel(operation: str) -> Cancellation
 dataclass KeyIssued
   outcome: EditOutcome | None
   reason: str
@@ -356,6 +404,28 @@ enum PartKind
   IMAGE = 'image'
   TOOL_CALL = 'tool_call'
   TOOL_RESULT = 'tool_result'
+enum PreloadOutcome
+  EVALUATED = 'evaluated'
+  LOADED = 'loaded'
+  BUSY = 'busy'
+  REFUSED = 'refused'
+  NOT_PERMITTED = 'not_permitted'
+  UNSUPPORTED_FEATURE = 'unsupported_feature'
+  NO_HOST = 'no_host'
+  UNAVAILABLE = 'unavailable'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+dataclass PreloadReply
+  outcome: PreloadOutcome | None
+  reason: str
+  host: str
+  model: str
+  tokens: int
+class Preloader
+  preload(request: Request) -> PreloadReply
+class PreloaderClient(Preloader)
+  __init__(transport)
+  preload(request: Request) -> PreloadReply
 const RESOURCE_ACTIONS
 class Refusal(ValueError)
   __init__(word, offset)
@@ -389,14 +459,60 @@ dataclass Request
   required_extensions: list[str]
   guarantees: list[RequestGuarantee | str]
   credential: str
+dataclass RequestContent
+  messages: list[Message]
+  tools: list[Tool]
+  options: Options | None
+  extensions: dict[str, str]
+  required_extensions: list[str]
+  guarantees: list[RequestGuarantee | str]
+  credential: str
 enum RequestGuarantee
   LOCAL_ONLY = 'abstraction.inference/local-only@1'
   HOSTED_ALLOWED = 'abstraction.inference/hosted-allowed@1'
+dataclass RequestV2
+  target: Target
+  content: RequestContent
 enum Role
   SYSTEM = 'system'
   USER = 'user'
   ASSISTANT = 'assistant'
   TOOL = 'tool'
+dataclass SelectionCandidateV2
+  model: str
+  placement: CandidatePlacement | None
+  credential: str
+  provider: str
+dataclass SelectionChange
+  outcome: EditOutcome | None
+  revision: str
+  reason: str
+class SelectionOperatorV2
+  read(target_program: str, name: str) -> SelectionReadV2
+  put(target_program: str, expected_revision: str, policy: SelectionPolicyV2) -> SelectionChange
+  delete_policy(target_program: str, expected_revision: str, name: str) -> SelectionChange
+class SelectionOperatorV2Client(SelectionOperatorV2)
+  __init__(transport)
+  read(target_program: str, name: str) -> SelectionReadV2
+  put(target_program: str, expected_revision: str, policy: SelectionPolicyV2) -> SelectionChange
+  delete_policy(target_program: str, expected_revision: str, name: str) -> SelectionChange
+dataclass SelectionPolicyV2
+  name: str
+  candidates: list[SelectionCandidateV2]
+enum SelectionReadOutcome
+  FOUND = 'found'
+  UNKNOWN = 'unknown'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass SelectionReadV2
+  outcome: SelectionReadOutcome | None
+  revision: str
+  policy: SelectionPolicyV2 | None
+enum SelectionReason
+  EXPLICIT_MODEL = 'explicit_model'
+  PREFERRED = 'preferred'
+  PREFERRED_ROUTE_UNAVAILABLE = 'preferred_route_unavailable'
 class ServiceError(Exception)
   __init__(code, message)
 enum ServiceErrorCode
@@ -465,6 +581,9 @@ enum StopReason
   TOOL_CALLS = 'tool_calls'
   CONTENT_FILTER = 'content_filter'
   OTHER = 'other'
+dataclass Target
+  model: str
+  selection_policy: str
 dataclass Temperature
   milli: int
 enum TimestampMode
@@ -516,6 +635,49 @@ dataclass Usage
   input: int
   output: int
   cached: int
+class Video
+  start(request: VideoRequest) -> VideoAdmission
+  observe(operation: str) -> VideoObservation
+  cancel(operation: str) -> Cancellation
+dataclass VideoAdmission
+  outcome: StartOutcome | None
+  reason: str
+  operation: str
+  retention_ms: int
+class VideoClient(Video)
+  __init__(transport)
+  start(request: VideoRequest) -> VideoAdmission
+  observe(operation: str) -> VideoObservation
+  cancel(operation: str) -> Cancellation
+dataclass VideoObservation
+  status: VideoState | None
+  step: int
+  steps: int
+  queue_position: int
+  reason: str
+  delivery: Delivery | None
+dataclass VideoRequest
+  model: str
+  prompt: str
+  size: str
+  duration_ms: int
+  fps: int
+  seed: int
+  image_digest: str
+  image_media_type: str
+  required_extensions: list[str]
+  extensions: dict[str, str]
+  request_id: str
+enum VideoState
+  QUEUED = 'queued'
+  GENERATING = 'generating'
+  COMPLETED = 'completed'
+  FAILED = 'failed'
+  CANCELLED = 'cancelled'
+  UNKNOWN = 'unknown'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
 def decode(data)
 def encode(v)
 def service_name(frame)

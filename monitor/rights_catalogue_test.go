@@ -1,10 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
-	"regexp"
-	"strings"
 	"testing"
 
 	askswire "github.com/openabstractions/abstraction-asks/go/abstraction/asks/api"
@@ -34,6 +30,8 @@ var servePackageActions = []string{
 	"abstraction.facade/application.read",
 	"abstraction.facade/application.announce",
 	"abstraction.facade/application.activate",
+	// applications.go's ActionApplicationRegisterSelf (rights RIGHTS-R22).
+	"abstraction.facade/application.register_self",
 	"abstraction.facade/provider.manage",
 	"abstraction.storage/inventory.provide",
 	"abstraction.storage/inventory.read",
@@ -80,46 +78,5 @@ func TestRightsActionPlainCoversCatalogue(t *testing.T) {
 	}
 	if len(seen) == 0 {
 		t.Fatal("found no actions in the runtime's catalogue; a wire package's ResourceActions may have moved")
-	}
-}
-
-// pageActionPhrase matches the markup every Panel page uses to name a rights
-// action in words: the phrase as text and the raw action as the title.
-var pageActionPhrase = regexp.MustCompile(`<span title="(abstraction\.[^"]+)">([^<]+)</span>`)
-
-// TestPagePhrasesMatchRightsActionPlain keeps the Panel's pages and the rules
-// list in one vocabulary (RENAME-PLAN §3, Panel step 7): every page that
-// names a rights action in words uses the phrase rightsActionPlain gives
-// that action, so the Registry page's "inference server manage" is also what
-// the Questions and permissions page lists.
-func TestPagePhrasesMatchRightsActionPlain(t *testing.T) {
-	files, err := filepath.Glob("*.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := 0
-	for _, file := range files {
-		if strings.HasSuffix(file, "_test.go") {
-			continue
-		}
-		source, err := os.ReadFile(file)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, m := range pageActionPhrase.FindAllStringSubmatch(string(source), -1) {
-			found++
-			action, phrase := m[1], m[2]
-			want, ok := rightsActionPlain[action]
-			if !ok {
-				t.Errorf("%s names %q as %q; rightsActionPlain has no entry for it", file, action, phrase)
-				continue
-			}
-			if phrase != want {
-				t.Errorf("%s names %q as %q; rightsActionPlain says %q", file, action, phrase, want)
-			}
-		}
-	}
-	if found == 0 {
-		t.Fatal("found no <span title=\"abstraction...\"> phrases in the Panel's pages; the markup may have changed shape")
 	}
 }

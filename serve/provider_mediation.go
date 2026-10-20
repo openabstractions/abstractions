@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"sync"
 	"time"
 
@@ -34,17 +33,28 @@ var nativeInferenceLaunchBudget = 30 * time.Second
 // passes first reads unavailable with the same reason word the lending
 // forward uses, activating:<name>; the launch keeps running in the
 // background, and the next call finds the provider ready or not_ready with
-// its own reason.
+// its own reason. A model the declaration names for other profiles only
+// reads model:undeclared before any launch, the second line behind the
+// router's own refusal (ROUTE-D9).
 func (p *runtimeProviders) nativeAdmit(ctx context.Context, host *router.Host, model string) (string, bool) {
 	if p == nil || host == nil || host.Wire != router.WireNative {
 		return "", true
+	}
+	if !host.ServesModel(inference.AdmissionProfile(ctx), model) {
+		return "model:undeclared", false
 	}
 	s := p.lookup(host.Name)
 	if s == nil {
 		return "the declared native provider is gone", false
 	}
+	if why := s.unavailableReason(); why != "" {
+		return why, false
+	}
 	if s.ready() {
 		return "", true
+	}
+	if ctx.Err() != nil {
+		return s.activatingReason(), false
 	}
 	deadline := time.Now().Add(nativeInferenceLaunchBudget)
 	for {
@@ -124,7 +134,7 @@ func (m *providerMediation) desired() map[string]inference.ExecutionBinding {
 	desired := map[string]inference.ExecutionBinding{}
 	for _, supervisor := range m.providers.sorted() {
 		declaration := supervisor.file.Declaration
-		if declaration.remote() || !slices.Contains(declaration.Contracts, inference.Contract) || len(declaration.Models) == 0 {
+		if declaration.remote() || len(declaration.mediatedInferenceProfiles()) == 0 || len(declaration.Models) == 0 {
 			continue
 		}
 		bindingID := supervisor.file.bindingID()

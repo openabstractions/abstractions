@@ -1,4 +1,50 @@
 type Raw string
+type AvailabilityCause string
+const AvailabilityCauseTransportUnavailable
+const AvailabilityCauseCredential
+const AvailabilityCauseRights
+const AvailabilityCauseConfiguration
+const AvailabilityCauseMalformed
+const AvailabilityCauseUnknown
+const AvailabilityCauseOther
+func AvailabilityCauseValues() []AvailabilityCause
+func (AvailabilityCause) Known() bool
+type Placement uint32
+const PlacementLocal
+const PlacementHosted
+const PlacementAny
+func (Placement) String() string
+func (Placement) WireName() (string, bool)
+func ParsePlacement(word string) (Placement, bool)
+func (Placement) MarshalText() ([]byte, error)
+func (Placement) UnmarshalText(text []byte) error
+func (Placement) MarshalJSON() ([]byte, error)
+func (Placement) UnmarshalJSON(data []byte) error
+func PlacementValues() []Placement
+func (Placement) Known() bool
+type ContextSource string
+const ContextSourceEffective
+const ContextSourceMaximum
+const ContextSourceDefault
+const ContextSourceUnknown
+const ContextSourceNone
+func ContextSourceValues() []ContextSource
+func (ContextSource) Known() bool
+type OfferOutcome uint32
+const OfferOutcomeOffered
+const OfferOutcomeInvalid
+const OfferOutcomeUnavailable
+const OfferOutcomeForbidden
+const OfferOutcomeNotPermitted
+func (OfferOutcome) String() string
+func (OfferOutcome) WireName() (string, bool)
+func ParseOfferOutcome(word string) (OfferOutcome, bool)
+func (OfferOutcome) MarshalText() ([]byte, error)
+func (OfferOutcome) UnmarshalText(text []byte) error
+func (OfferOutcome) MarshalJSON() ([]byte, error)
+func (OfferOutcome) UnmarshalJSON(data []byte) error
+func OfferOutcomeValues() []OfferOutcome
+func (OfferOutcome) Known() bool
 type ServiceErrorCode string
 const ServiceErrorCodeHandlerError
 const ServiceErrorCodeInvalidResult
@@ -42,6 +88,7 @@ type Alias struct
   Profiles []string
   HeldIn []string
   ContextLength int64
+  EffectiveContextLength int64
 type Component struct
   Store string
   Role string
@@ -69,6 +116,7 @@ type HostState struct
   DeclaredBy string
   Profiles []string
   Domain string
+  AvailabilityCause *AvailabilityCause
 type Ask struct
   At string
   Caller string
@@ -97,6 +145,23 @@ type Decision struct
 type PickResult struct
   Observation Observation
   Decision Decision
+type OfferRequest struct
+  Profile string
+  Placement Placement
+  Reserve int64
+  Fresh bool
+type Offer struct
+  Family string
+  Names []string
+  Servers []string
+  Context int64
+  ContextSource ContextSource
+  Input int64
+  Unknown []string
+type OfferSnapshot struct
+  Observation Observation
+  Offers []Offer
+  Outcome OfferOutcome
 func Encode(v *PickRequest) []byte
 type Refusal struct
   Word string
@@ -125,6 +190,7 @@ type Router interface
   Models(fresh bool) (ModelsSnapshot, error)
   Hosts(fresh bool) (HostsSnapshot, error)
   Pick(request PickRequest) (PickResult, error)
+  Offer(request OfferRequest) (OfferSnapshot, error)
 type RouterTransport interface
   FrameExchanger
 type RouterClient struct
@@ -134,6 +200,7 @@ type RouterDispatcher struct
 func (RouterClient) Models(fresh bool) (result ModelsSnapshot, err error)
 func (RouterClient) Hosts(fresh bool) (result HostsSnapshot, err error)
 func (RouterClient) Pick(request PickRequest) (result PickResult, err error)
+func (RouterClient) Offer(request OfferRequest) (result OfferSnapshot, err error)
 func (RouterDispatcher) DescribeService() (contract string, ready bool, why string)
 func (RouterDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (RouterDispatcher) ServiceContract() string

@@ -70,6 +70,13 @@ pub enum StartOutcome
   pub const ALL: [Self; 9]
   pub fn as_str(self) -> &'static str
   pub fn from_wire(name: &str) -> Option<Self>
+pub enum SelectionReason
+  ExplicitModel
+  Preferred
+  PreferredRouteUnavailable
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
 pub enum PageOutcome
   Page
   Gap
@@ -88,6 +95,20 @@ pub enum CancelOutcome
   Forbidden
   Unavailable
   pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum PreloadOutcome
+  Evaluated
+  Loaded
+  Busy
+  Refused
+  NotPermitted
+  UnsupportedFeature
+  NoHost
+  Unavailable
+  Invalid
+  Forbidden
+  pub const ALL: [Self; 10]
   pub fn as_str(self) -> &'static str
   pub fn from_wire(name: &str) -> Option<Self>
 pub enum EmbedOutcome
@@ -151,6 +172,19 @@ pub enum ImageMode
   pub const ALL: [Self; 2]
   pub fn as_str(self) -> &'static str
   pub fn from_wire(name: &str) -> Option<Self>
+pub enum VideoState
+  Queued
+  Generating
+  Completed
+  Failed
+  Cancelled
+  Unknown
+  Invalid
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 9]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
 pub enum ListOutcome
   Page
   Invalid
@@ -193,6 +227,21 @@ pub enum AuditOutcome
   pub const ALL: [Self; 5]
   pub fn as_str(self) -> &'static str
   pub fn from_wire(name: &str) -> Option<Self>
+pub enum CandidatePlacement
+  Local
+  Hosted
+  pub const ALL: [Self; 2]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum SelectionReadOutcome
+  Found
+  Unknown
+  Invalid
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
 pub mod service_error_code
   pub const HANDLER_ERROR: &str
   pub const INVALID_RESULT: &str
@@ -202,7 +251,7 @@ pub mod service_error_code
   pub const WRONG_MODE: &str
   pub const ALL: [&str; 6]
 pub const FEATURES: [&str; 3]
-pub const RESOURCE_ACTIONS: [&str; 4]
+pub const RESOURCE_ACTIONS: [&str; 6]
 pub const LOCAL_KEY_KINDS: [&str; 1]
 pub const LOCAL_HOST_KINDS: [&str; 9]
 pub const HOST_PROFILES: [&str; 6]
@@ -240,6 +289,20 @@ pub struct Request
   required_extensions: Vec<String>
   guarantees: Vec<String>
   credential: String
+pub struct Target
+  model: String
+  selection_policy: String
+pub struct RequestContent
+  messages: Vec<Message>
+  tools: Vec<Tool>
+  options: Option<Options>
+  extensions: BTreeMap<String, String>
+  required_extensions: Vec<String>
+  guarantees: Vec<String>
+  credential: String
+pub struct RequestV2
+  target: Target
+  content: RequestContent
 pub struct Usage
   input: i64
   output: i64
@@ -281,6 +344,17 @@ pub struct Admission
   retention_ms: i64
   idle_ms: i64
   retained_deltas: i64
+pub struct AdmissionV2
+  outcome: StartOutcome
+  reason: String
+  operation: String
+  host: String
+  model: String
+  retention_ms: i64
+  idle_ms: i64
+  retained_deltas: i64
+  preferred_model: String
+  selection_reason: Option<SelectionReason>
 pub struct DeltaPage
   outcome: PageOutcome
   deltas: Vec<Delta>
@@ -289,6 +363,12 @@ pub struct DeltaPage
 pub struct Cancellation
   outcome: CancelOutcome
   reply_outcome: Option<ReplyOutcome>
+pub struct PreloadReply
+  outcome: PreloadOutcome
+  reason: String
+  host: String
+  model: String
+  tokens: i64
 pub struct EmbedRequest
   model: String
   inputs: Vec<String>
@@ -390,6 +470,22 @@ pub struct ImageRequest
   credential: String
   required_extensions: Vec<String>
   extensions: BTreeMap<String, String>
+pub struct ImageRequestContent
+  mode: ImageMode
+  prompt: String
+  size: String
+  count: i64
+  image_digest: String
+  image_media_type: String
+  mask_digest: String
+  mask_media_type: String
+  guarantees: Vec<String>
+  credential: String
+  required_extensions: Vec<String>
+  extensions: BTreeMap<String, String>
+pub struct ImageRequestV2
+  target: Target
+  content: ImageRequestContent
 pub struct ImageProgress
   percent: i64
   message: String
@@ -405,6 +501,30 @@ pub struct ImageReply
   host: String
   model: String
   cost: Option<Cost>
+pub struct VideoRequest
+  model: String
+  prompt: String
+  size: String
+  duration_ms: i64
+  fps: i64
+  seed: i64
+  image_digest: String
+  image_media_type: String
+  required_extensions: Vec<String>
+  extensions: BTreeMap<String, String>
+  request_id: String
+pub struct VideoAdmission
+  outcome: StartOutcome
+  reason: String
+  operation: String
+  retention_ms: i64
+pub struct VideoObservation
+  status: VideoState
+  step: i64
+  steps: i64
+  queue_position: i64
+  reason: String
+  delivery: Option<Delivery>
 pub struct CeilingLimit
   tokens_per_day: i64
   micros_per_day: i64
@@ -498,6 +618,22 @@ pub struct GatewayChange
   outcome: EditOutcome
   revision: String
   reason: String
+pub struct SelectionChange
+  outcome: EditOutcome
+  revision: String
+  reason: String
+pub struct SelectionCandidateV2
+  model: String
+  placement: CandidatePlacement
+  credential: String
+  provider: String
+pub struct SelectionPolicyV2
+  name: String
+  candidates: Vec<SelectionCandidateV2>
+pub struct SelectionReadV2
+  outcome: SelectionReadOutcome
+  revision: String
+  policy: Option<SelectionPolicyV2>
 pub fn encode(v: &Request) -> Vec<u8>
 pub struct Refusal
   word: &'static str
@@ -518,6 +654,20 @@ pub trait Chat
   fn observe(&self, operation: String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> Result<DeltaPage, Self::Error>
   fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error>
 pub struct ChatClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait ChatV2
+  type Error
+  fn start(&self, request: RequestV2) -> Result<AdmissionV2, Self::Error>
+  fn observe(&self, operation: String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> Result<DeltaPage, Self::Error>
+  fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error>
+pub struct ChatV2Client<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait Preloader
+  type Error
+  fn preload(&self, request: Request) -> Result<PreloadReply, Self::Error>
+pub struct PreloaderClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait Embedder
@@ -560,6 +710,22 @@ pub trait Image
 pub struct ImageClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
+pub trait ImageV2
+  type Error
+  fn start(&self, request: ImageRequestV2) -> Result<AdmissionV2, Self::Error>
+  fn observe(&self, operation: String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> Result<DeltaPage, Self::Error>
+  fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error>
+pub struct ImageV2Client<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait Video
+  type Error
+  fn start(&self, request: VideoRequest) -> Result<VideoAdmission, Self::Error>
+  fn observe(&self, operation: String) -> Result<VideoObservation, Self::Error>
+  fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error>
+pub struct VideoClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
 pub trait Operator
   type Error
   fn hosts(&self) -> Result<HostList, Self::Error>
@@ -572,5 +738,13 @@ pub trait Operator
   fn gateway(&self) -> Result<GatewayState, Self::Error>
   fn set_gateway(&self, expected_revision: String, open: bool, address: String) -> Result<GatewayChange, Self::Error>
 pub struct OperatorClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait SelectionOperatorV2
+  type Error
+  fn read(&self, target_program: String, name: String) -> Result<SelectionReadV2, Self::Error>
+  fn put(&self, target_program: String, expected_revision: String, policy: SelectionPolicyV2) -> Result<SelectionChange, Self::Error>
+  fn delete_policy(&self, target_program: String, expected_revision: String, name: String) -> Result<SelectionChange, Self::Error>
+pub struct SelectionOperatorV2Client<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T

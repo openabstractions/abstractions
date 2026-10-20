@@ -55,6 +55,11 @@ func TestDefaultStateWritersRefuseAVirtualizedView(t *testing.T) {
 	if err != nil || !view.Virtualized {
 		t.Skipf("profile view %s %v: not inside a packaged app", view, err)
 	}
+	// The store choice refuses off Linux first; judge its profile refusal as
+	// the Linux command would reach it.
+	saved := credentialsBackendGOOS
+	credentialsBackendGOOS = "linux"
+	t.Cleanup(func() { credentialsBackendGOOS = saved })
 	for name, run := range map[string]func() error{
 		"credentials backend": func() error { return credentialsBackend(io.Discard, io.Discard, "file", "") },
 	} {

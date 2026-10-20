@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"net/http"
+	"runtime/debug"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -47,4 +49,17 @@ func (p *servicePanel) observeSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	panelJSON(w, value)
+}
+
+// panelVersionText is the About row's Version: the module version this
+// Panel was built from, or "Development build" for a build from a checkout,
+// which carries no release version.
+func panelVersionText() string {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		// A pseudo-version (v0.0.0-<time>-<commit>) names a commit, never shown.
+		if v := info.Main.Version; v != "" && v != "(devel)" && strings.Count(v, "-") < 2 {
+			return v
+		}
+	}
+	return "Development build"
 }

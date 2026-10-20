@@ -39,6 +39,7 @@ dataclass ApplicationEntry
   descriptor: ApplicationDescriptor
   instances: list[ApplicationInstance]
   scope: Scope | None
+  self_registered: bool
 dataclass ApplicationInstance
   instance: str
   interfaces: list[ApplicationInterface]
@@ -67,21 +68,37 @@ dataclass ApplicationPresence
   interfaces: list[ApplicationInterface]
   contexts: list[ApplicationContext]
   lease_ms: int
+dataclass ApplicationStart
+  application: str
+  program: str
+  title: str
+  started_unix_ms: int
+  launched: bool
+dataclass ApplicationStartPage
+  outcome: ApplicationOutcome | None
+  starts: list[ApplicationStart]
+  cursor: str
+  complete: bool
+  complete_since_unix_ms: int
 class Applications
   register(descriptor: ApplicationDescriptor) -> ApplicationChange
+  ask_confirmation(application: str) -> ApplicationChange
   remove(application: str) -> ApplicationChange
   announce(presence: ApplicationPresence) -> ApplicationChange
   withdraw(application: str, instance: str) -> ApplicationChange
   observe(cursor: str, wait_ms: int) -> ApplicationPage
   activate(application: str) -> ApplicationActivationResult
+  list_starts(cursor: str, limit: int) -> ApplicationStartPage
 class ApplicationsClient(Applications)
   __init__(transport)
   register(descriptor: ApplicationDescriptor) -> ApplicationChange
+  ask_confirmation(application: str) -> ApplicationChange
   remove(application: str) -> ApplicationChange
   announce(presence: ApplicationPresence) -> ApplicationChange
   withdraw(application: str, instance: str) -> ApplicationChange
   observe(cursor: str, wait_ms: int) -> ApplicationPage
   activate(application: str) -> ApplicationActivationResult
+  list_starts(cursor: str, limit: int) -> ApplicationStartPage
 dataclass BootstrapObservation
   state: BootstrapState | None
   detail: str
@@ -153,6 +170,9 @@ enum DeclarationEditOutcome
   INVALID = 'invalid'
   FORBIDDEN = 'forbidden'
   UNAVAILABLE = 'unavailable'
+dataclass DeclarationExtension
+  profile: str
+  key: str
 dataclass DeclarationHost
   base: str
   kind: str
@@ -168,10 +188,18 @@ enum DeclarationListOutcome
   INVALID = 'invalid'
   FORBIDDEN = 'forbidden'
   UNAVAILABLE = 'unavailable'
+dataclass DeclarationListV2
+  outcome: DeclarationListOutcome | None
+  revision: str
+  declarations: list[DeclarationStateV2]
 dataclass DeclarationObservation
   outcome: DeclarationListOutcome | None
   cursor: str
   declarations: list[DeclarationState]
+dataclass DeclarationObservationV2
+  outcome: DeclarationListOutcome | None
+  cursor: str
+  declarations: list[DeclarationStateV2]
 enum DeclarationReadiness
   READY = 'ready'
   IDLE = 'idle'
@@ -196,10 +224,16 @@ dataclass DeclarationState
   accepted: list[str]
   role: DeclarationRole | None
   host: HostReading | None
+dataclass DeclarationStateV2
+  state: DeclarationState
+  supported_extensions: list[DeclarationExtension]
 enum DeclarationTransport
   NATIVE = 'oa-native@1'
   REMOTE = 'oa-remote@1'
   HTTP = 'http@1'
+dataclass DeclarationWithExtensions
+  declaration: Declaration
+  supported_extensions: list[DeclarationExtension]
 dataclass Description
   outcome: DescriptionOutcome | None
   program: str
@@ -234,6 +268,17 @@ class RegistryClient(Registry)
   declare(expected_revision: str, declaration: Declaration) -> DeclarationChange
   withdraw(expected_revision: str, name: str) -> DeclarationChange
   observe(cursor: str, wait_ms: int) -> DeclarationObservation
+class RegistryV2
+  declarations() -> DeclarationListV2
+  declare(expected_revision: str, declaration: DeclarationWithExtensions) -> DeclarationChange
+  withdraw(expected_revision: str, name: str) -> DeclarationChange
+  observe(cursor: str, wait_ms: int) -> DeclarationObservationV2
+class RegistryV2Client(RegistryV2)
+  __init__(transport)
+  declarations() -> DeclarationListV2
+  declare(expected_revision: str, declaration: DeclarationWithExtensions) -> DeclarationChange
+  withdraw(expected_revision: str, name: str) -> DeclarationChange
+  observe(cursor: str, wait_ms: int) -> DeclarationObservationV2
 dataclass RemoteTrust
   server_name: str
   roots: str

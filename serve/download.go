@@ -44,6 +44,8 @@ running.
   --quiet            print no progress
   --endpoint EP      runtime bootstrap endpoint (default: the installed
                      runtime)
+  --runtime-program PATH
+                     with --endpoint, verify that absolute executable under this account
   --timeout D        deadline for the whole command; the work continues
                      past it; zero means none
   --json             emit one JSON document on stdout
@@ -56,7 +58,7 @@ Exit codes: 0 done, 1 runtime not resolved or output error, 2 usage,
 cancelled, 6 acceptance uncertain (rerun the same command to reconcile),
 7 still waiting, 130 interrupted while waiting.
 
-Learn more: openabstractions-flat/abstraction-job/CONTRACT.md
+Learn more: https://github.com/openabstractions/abstraction-job/blob/main/CONTRACT.md
 `
 
 // downloadReport is the --json document.
@@ -136,7 +138,10 @@ func downloadCommand(args []string, output, diagnostics io.Writer) error {
 	submission := api.Submission{Kind: download.Kind, Spec: payload, RequiredGuarantees: required, Label: text}
 	w := newWaiting(options.budget)
 	defer w.stop()
-	machine, epSource := options.machine(diagnostics, command)
+	machine, epSource, err := options.machine(diagnostics, command, downloadUsage)
+	if err != nil {
+		return err
+	}
 	// Resolution names every guarantee the submission requires, so a runtime
 	// that cannot keep one is refused as unmet before an identity exists.
 	jobs, err := resolveAcceptanceRequiring(w, command, epSource, machine, required)

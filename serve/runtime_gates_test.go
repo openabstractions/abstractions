@@ -22,11 +22,43 @@ import (
 	"github.com/openabstractions/abstraction-facade/go/client"
 	"github.com/openabstractions/abstraction-facade/go/grants"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
+	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-identity/listen"
+	rights "github.com/openabstractions/abstraction-rights/go"
 	routerservice "github.com/openabstractions/abstraction-router/go/service"
 )
 
 var gatedRuntimeSeq atomic.Int64
+
+func TestOpenCodeFolderLeafUsesNativeOperatorAdmissionOnly(t *testing.T) {
+	options := gatedRuntime(t)
+	// With the ask default off, a generic question needs its own rule.
+	turnDefault(t, options.endpoint, rights.DefaultAsk, false)
+	ctx, cancel := context.WithTimeout(context.Background(), runtimeWait)
+	defer cancel()
+	app, err := client.NewVerified(options.endpoint, runtimeExpectation(t)).ResolveAsks(ctx, local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	folder := t.TempDir()
+	question := askclient.ApplicationQuestion{RequestKey: "opencode-folder-occurrence", Key: "opencode.project.edit",
+		Slots: map[string]string{"folder": folder, "code": "fixture-session-file-identity", "until": "this fixture exits"}}
+	if observation, err := app.AskContext(ctx, question); err != nil || observation.Outcome.String() != "pending" {
+		t.Fatalf("native operator cannot admit folder occurrence: %+v %v", observation, err)
+	}
+	for _, generic := range []askclient.ApplicationQuestion{
+		{RequestKey: "opencode-no-generic-ask", Key: "download.reach", Slots: map[string]string{"host": "example.com"}},
+		{RequestKey: "opencode-no-runtime-key", Key: asks.FirstUseKey, Slots: map[string]string{"program": probeSelf().Program, "action": host.JobSubmitAction, "resource": host.JobResource}},
+	} {
+		if observation, err := app.AskContext(ctx, generic); err != nil || observation.Outcome.String() != "forbidden" {
+			t.Fatalf("leaf admission changed generic/FirstUse policy: %+v %v", observation, err)
+		}
+	}
+	a := &runtimeAsks{rights: &runtimeRights{owner: probeSelf().Account, operators: []string{probeSelf().Program}}}
+	if err := a.askPolicy(nil)(ctx, &identity.Peer{}, "opencode.project.edit"); err == nil {
+		t.Fatal("unproven peer admitted folder occurrence")
+	}
+}
 
 // gatedRuntime starts the shipped runtime composition in this process, as
 // `serve runtime --isolated <name> --state-dir <dir>` selects it, with no local
@@ -45,12 +77,7 @@ func gatedRuntime(t *testing.T) runtimeFlags {
 		"credentials": {credentialsBackendFile, "file-0600\n"},
 		"inference":   {inferenceHostsFile, `{"local": []}`},
 	} {
-		if err := os.MkdirAll(filepath.Join(state, dir), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(state, dir, file[0]), []byte(file[1]), 0o600); err != nil {
-			t.Fatal(err)
-		}
+		writeStateFile(t, filepath.Join(state, dir, file[0]), file[1])
 	}
 	name := fmt.Sprintf("gates-%d-%d", os.Getpid(), gatedRuntimeSeq.Add(1))
 	options, err := parseRuntime([]string{"--isolated", name, "--state-dir", state}, io.Discard)
@@ -144,7 +171,7 @@ func shippedGates(download string) []gateCase {
 		{[]string{"model", "resolve", "hf:org/model@not/a/revision"}, host.ModelLookupAction, "hf", "invalid"},
 		{[]string{"router", "hosts"}, routerservice.ActionInventory, routerservice.ResourceInventory, "listed"},
 		{[]string{"router", "pick", "probe-model"}, routerservice.ActionRoute, host.RoutesResource, "not-here"},
-		{[]string{"jobs", "submit", download}, host.JobSubmitAction, host.JobResource, "accepted"},
+		{[]string{"jobs", "submit", download}, host.JobSubmitAction, host.JobKindResource("download"), "accepted"},
 	}
 }
 
@@ -156,6 +183,9 @@ func shippedGates(download string) []gateCase {
 // the job inventory still answer.
 func TestShippedRuntimeGatesEachActionByItsRule(t *testing.T) {
 	options := gatedRuntime(t)
+	// The download default would admit the probe's submit with no rule;
+	// these cases test each action's own rule (TestShippedRuntimeDownloadDefault).
+	turnDefault(t, options.endpoint, rights.DefaultDownload, false)
 	bin := probeBinary(t)
 	payload := []byte("gated by a rights rule\n")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.Write(payload) }))
@@ -317,6 +347,7 @@ func TestProbeCancelsTheCommandLinesJobOnlyUnderTheCancelRule(t *testing.T) {
 // mistakes send nothing.
 func TestRightsGrantForBundlesWritesEachExactRule(t *testing.T) {
 	options := gatedRuntime(t)
+	turnDefault(t, options.endpoint, rights.DefaultDownload, false)
 	bin := probeBinary(t)
 	payload := []byte("allowed by a bundle\n")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.Write(payload) }))
@@ -372,8 +403,12 @@ func TestRightsGrantForBundlesWritesEachExactRule(t *testing.T) {
 		t.Fatalf("a registry outside the bundle %+v", ollama)
 	}
 
-	inference := bundle(0, "--for", "inference", "--host", "openrouter", "--credential", "openrouter", "--why", "chat for the probe")
-	if inference.Outcome != "applied" || len(inference.Landed) != 4 || inference.Landed[2].Resource != "host:openrouter" || inference.Landed[3].Resource != "credential:openrouter" {
+	// The inference bundle submits jobs (image batches, video) and names the
+	// output profiles it may write and read back.
+	inference := bundle(0, "--for", "inference", "--host", "openrouter", "--credential", "openrouter", "--output", "video", "--why", "chat for the probe")
+	if inference.Outcome != "applied" || len(inference.Landed) != 7 || inference.Landed[2].Resource != "job:inference" ||
+		inference.Landed[3].Resource != "host:openrouter" || inference.Landed[4].Resource != "output:video" || inference.Landed[5].Resource != "output:video" ||
+		inference.Landed[6].Resource != "credential:openrouter" {
 		t.Fatalf("inference bundle %+v", inference)
 	}
 	if pick, _ := probeAs(t, bin, options, "router", "pick", "probe-model"); pick.Outcome == "forbidden" {
@@ -381,6 +416,16 @@ func TestRightsGrantForBundlesWritesEachExactRule(t *testing.T) {
 	}
 	if hosts, _ := probeAs(t, bin, options, "router", "hosts"); hosts.Outcome == "forbidden" {
 		t.Fatalf("inventory under the inference bundle %+v", hosts)
+	}
+	// JOB-A13: the inference bundle's submit covers inference jobs only. With
+	// the downloads bundle's submit rule revoked, the program holds the
+	// inference bundle alone and cannot queue a URL download.
+	if revoked, err := runRightsCommand(t, "revoke", "--endpoint", options.endpoint, "--program", bin, "--action", host.JobSubmitAction,
+		"--resource", host.JobKindResource("download")); err != nil || revoked.Outcome != "applied" {
+		t.Fatalf("revoke the download kind's submit %v %+v", err, revoked)
+	}
+	if refused, _ := probeAs(t, bin, options, "jobs", "submit", server.URL+"/inference-only.bin"); refused.Outcome != "forbidden" {
+		t.Fatalf("a download under the inference bundle alone %+v", refused)
 	}
 }
 
@@ -399,7 +444,9 @@ func pendingFirstUse(t *testing.T, options runtimeFlags) []askclient.RecordMetad
 	}
 	var pending []askclient.RecordMetadata
 	for _, r := range page.Records {
-		if r.Key == asks.FirstUseKey && r.Option == "" {
+		// A refused answer also asks for its answerer's enrollment (asks
+		// ASK-R10); those questions are not this helper's.
+		if _, action, _, ok := asks.FirstUse(r.Key, r.About, r.Text); r.Key == asks.FirstUseKey && r.Option == "" && !(ok && action == asks.AnswerAction) {
 			pending = append(pending, r)
 		}
 	}
@@ -444,12 +491,20 @@ func answerFirstUse(t *testing.T, options runtimeFlags, id, option string) grant
 }
 
 // A refused spending call admits one first-use question and is refused at
-// once. Allow writes the permit with why "asked at first use" and the retry is
-// accepted; never writes an exact deny and admits no further question; refuse
-// writes nothing, and the answered question admits no new one. An application
-// asks only under question.ask and never with the runtime's own key.
-func TestFirstUseAsksOnceAndTheAnswerWritesTheRule(t *testing.T) {
+// once. A second refusal admits no second question: the question book replays
+// the pending one under the same request key, so two refused submissions
+// leave one question. Allow writes the permit with why "asked at first use"
+// and the retry is accepted; never writes an exact deny and admits no further
+// question; refuse writes nothing, and the answered question admits no new
+// one inside the refuse interval (ASK-R2, runtime_asks_reask_test.go). An
+// application asks only under question.ask and never with the runtime's own
+// key.
+func TestFirstUseBookReplaysThePendingQuestionAndTheAnswerWritesTheRule(t *testing.T) {
 	options := gatedRuntime(t)
+	// First use is asked where no default applies: both defaults this test
+	// relies on being absent are off.
+	turnDefault(t, options.endpoint, rights.DefaultDownload, false)
+	turnDefault(t, options.endpoint, rights.DefaultAsk, false)
 	bin := probeBinary(t)
 	payload := []byte("asked at first use\n")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.Write(payload) }))
@@ -463,14 +518,14 @@ func TestFirstUseAsksOnceAndTheAnswerWritesTheRule(t *testing.T) {
 		t.Fatalf("second submit %+v", again)
 	}
 	pending := pendingFirstUse(t, options)
-	if len(pending) != 1 || pending[0].About != bin || !strings.Contains(pending[0].Text, " wants to "+host.JobSubmitAction+" on "+host.JobResource) {
+	if len(pending) != 1 || pending[0].About != bin || !strings.Contains(pending[0].Text, " wants to "+host.JobSubmitAction+" on "+host.JobKindResource("download")) {
 		t.Fatalf("pending questions after two refusals %+v", pending)
 	}
 	allowed := answerFirstUse(t, options, pending[0].ID, "allow")
 	if allowed.Edit == nil || allowed.Edit.Outcome.String() != "applied" || allowed.Rule == nil || !allowed.Rule.Permit || allowed.Rule.Subject.Program != bin {
 		t.Fatalf("allow %+v", allowed)
 	}
-	read, err := runRightsCommand(t, "read", "--endpoint", options.endpoint, "--program", bin, "--action", host.JobSubmitAction, "--resource", host.JobResource)
+	read, err := runRightsCommand(t, "read", "--endpoint", options.endpoint, "--program", bin, "--action", host.JobSubmitAction, "--resource", host.JobKindResource("download"))
 	if err != nil || read.Outcome != "found" || read.Record.Why != grants.FirstUseWhy || !read.Record.Rule.Permit {
 		t.Fatalf("rule written by allow %v %+v", err, read)
 	}
@@ -540,6 +595,12 @@ func TestFirstUseAsksOnceAndTheAnswerWritesTheRule(t *testing.T) {
 	forged := askclient.ApplicationQuestion{RequestKey: "forged", Key: asks.FirstUseKey, Slots: map[string]string{"program": bin, "action": host.JobSubmitAction, "resource": host.JobResource}}
 	if o, err := app.AskContext(ctx, forged); err != nil || o.Outcome.String() != "forbidden" {
 		t.Fatalf("an application admitted the runtime's key %+v %v", o, err)
+	}
+	// ASK-S1: an application cannot admit the system-access question, which
+	// would put OA's name on an administrator prompt it chose.
+	system := askclient.ApplicationQuestion{RequestKey: "forged-system", Key: asks.SystemSecurityLogKey, Slots: map[string]string{"code": "a1b2c3d4", "until": "later"}}
+	if o, err := app.AskContext(ctx, system); err != nil || o.Outcome.String() != "forbidden" {
+		t.Fatalf("an application admitted the system-access question %+v %v", o, err)
 	}
 }
 

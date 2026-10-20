@@ -1,0 +1,422 @@
+{
+  "about": "OpenCode projection of the router's Offer answer (router CONTRACT.md ROUTE-D8; research/opencode-inventory/DECISION.md). The router folds each family's names and conservative context; its cases are openabstractions-flat/abstraction-router/go/testdata/offer.json. Each case here is offers in, at the plugin's 4,096-token answer reserve, and OpenCode models (named family · context · where it runs; a case's localServers are the servers the router offered at placement local, absent meaning all), observed contexts and withheld aliases out. test/inventory-context.test.mjs holds inventory.js to every case and test/configure.test.mjs holds configure.js, which writes OpenCode's config with the same projection, to the same cases. The configure case is the provider block configure.js writes, read by the startup refresh that owns the stale-limit warning.",
+  "outputBudget": 4096,
+  "olderRuntime": "This OpenAbstractions runtime is older than the router Offer method; update OpenAbstractions.",
+  "cases": [
+    {
+      "name": "each offer with input becomes one model named by its family, context and servers",
+      "offers": [
+        {
+          "family": "alpha",
+          "names": [
+            "a-alias",
+            "b-alias"
+          ],
+          "servers": [
+            "ollama"
+          ],
+          "context": 32768,
+          "contextSource": "default",
+          "input": 28672
+        },
+        {
+          "family": "cased",
+          "names": [
+            "B-model",
+            "b-model"
+          ],
+          "servers": [
+            "ollama"
+          ],
+          "context": 32768,
+          "contextSource": "default",
+          "input": 28672
+        },
+        {
+          "family": "wide",
+          "names": [
+            "Ａ-model",
+            "😀-model"
+          ],
+          "servers": [
+            "ollama"
+          ],
+          "context": 32768,
+          "contextSource": "default",
+          "input": 28672
+        }
+      ],
+      "models": {
+        "alpha": {
+          "name": "alpha · 32k · this computer: ollama",
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          },
+          "tool_call": true
+        },
+        "cased": {
+          "name": "cased · 32k · this computer: ollama",
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          },
+          "tool_call": true
+        },
+        "wide": {
+          "name": "wide · 32k · this computer: ollama",
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          },
+          "tool_call": true
+        }
+      },
+      "observed": {
+        "alpha": 32768,
+        "cased": 32768,
+        "wide": 32768
+      },
+      "withheld": []
+    },
+    {
+      "name": "a known context without input beside the reserve is observed and omitted",
+      "offers": [
+        {
+          "family": "effective",
+          "names": [
+            "effective"
+          ],
+          "servers": [
+            "ollama"
+          ],
+          "context": 8192,
+          "contextSource": "effective",
+          "input": 4096
+        },
+        {
+          "family": "reported",
+          "names": [
+            "reported"
+          ],
+          "servers": [
+            "ollama"
+          ],
+          "context": 131072,
+          "contextSource": "maximum",
+          "input": 126976
+        },
+        {
+          "family": "small",
+          "names": [
+            "small"
+          ],
+          "servers": [
+            "ollama"
+          ],
+          "context": 4096,
+          "contextSource": "effective",
+          "input": 0
+        }
+      ],
+      "models": {
+        "effective": {
+          "name": "effective · 8k · this computer: ollama",
+          "limit": {
+            "context": 8192,
+            "output": 4096
+          },
+          "tool_call": true
+        },
+        "reported": {
+          "name": "reported · 128k · this computer: ollama",
+          "limit": {
+            "context": 131072,
+            "output": 4096
+          },
+          "tool_call": true
+        }
+      },
+      "observed": {
+        "effective": 8192,
+        "reported": 131072,
+        "small": 4096
+      },
+      "withheld": []
+    },
+    {
+      "name": "an unknown context withholds its family and names each alias",
+      "offers": [
+        {
+          "family": "loaded-lemonade",
+          "names": [
+            "lemonade-loaded"
+          ],
+          "servers": [
+            "lemonade"
+          ],
+          "context": 16384,
+          "contextSource": "effective",
+          "input": 12288
+        },
+        {
+          "family": "mixed",
+          "names": [
+            "lemonade-unknown",
+            "ollama-known"
+          ],
+          "servers": [
+            "lemonade",
+            "ollama"
+          ],
+          "context": 0,
+          "contextSource": "unknown",
+          "input": 0,
+          "unknown": [
+            "lemonade/lemonade-unknown"
+          ]
+        },
+        {
+          "family": "only-lemonade",
+          "names": [
+            "lemonade-qwen"
+          ],
+          "servers": [
+            "lemonade"
+          ],
+          "context": 0,
+          "contextSource": "unknown",
+          "input": 0,
+          "unknown": [
+            "lemonade/lemonade-qwen"
+          ]
+        }
+      ],
+      "models": {
+        "loaded-lemonade": {
+          "name": "loaded-lemonade · 16k · this computer: lemonade",
+          "limit": {
+            "context": 16384,
+            "output": 4096
+          },
+          "tool_call": true
+        }
+      },
+      "observed": {
+        "loaded-lemonade": 16384
+      },
+      "withheld": [
+        "lemonade/lemonade-qwen",
+        "lemonade/lemonade-unknown"
+      ]
+    },
+    {
+      "name": "a remote runtime's family names the remote as hosted, from the local placement's servers",
+      "offers": [
+        {
+          "family": "qwen",
+          "names": [
+            "qwen",
+            "qwen-east"
+          ],
+          "servers": [
+            "ollama",
+            "east/lemonade"
+          ],
+          "context": 16384,
+          "contextSource": "effective",
+          "input": 12288
+        },
+        {
+          "family": "far",
+          "names": [
+            "far-model"
+          ],
+          "servers": [
+            "east/lemonade"
+          ],
+          "context": 0,
+          "contextSource": "unknown",
+          "input": 0,
+          "unknown": [
+            "east/lemonade/far-model"
+          ]
+        }
+      ],
+      "models": {
+        "qwen": {
+          "name": "qwen · 16k · this computer: ollama; hosted: east/lemonade",
+          "limit": {
+            "context": 16384,
+            "output": 4096
+          },
+          "tool_call": true
+        }
+      },
+      "observed": {
+        "qwen": 16384
+      },
+      "withheld": [
+        "east/lemonade/far-model"
+      ],
+      "localServers": [
+        "ollama"
+      ]
+    },
+    {
+      "name": "an unknown offer naming no alias is withheld under its family",
+      "offers": [
+        {
+          "family": "far",
+          "names": [
+            "far-model"
+          ],
+          "servers": [
+            "east/lemonade"
+          ],
+          "context": 0,
+          "contextSource": "unknown",
+          "input": 0
+        }
+      ],
+      "models": {},
+      "observed": {},
+      "withheld": [
+        "far"
+      ]
+    },
+    {
+      "name": "a context source word this projection has never heard is withheld under its family",
+      "offers": [
+        {
+          "family": "future",
+          "names": [
+            "future-model"
+          ],
+          "servers": [
+            "ollama"
+          ],
+          "context": 65536,
+          "contextSource": "measured-later",
+          "input": 61440
+        }
+      ],
+      "models": {},
+      "observed": {},
+      "withheld": [
+        "future"
+      ]
+    },
+    {
+      "name": "an offer without a context window is no chat model",
+      "offers": [
+        {
+          "family": "voice",
+          "names": [
+            "voice"
+          ],
+          "servers": [
+            "piper"
+          ],
+          "context": 0,
+          "contextSource": "none",
+          "input": 0
+        }
+      ],
+      "models": {},
+      "observed": {},
+      "withheld": []
+    }
+  ],
+  "configure": {
+    "name": "configure keeps a user-edited entry whose limit.context exceeds the observed context",
+    "scope": "local",
+    "offers": [
+      {
+        "family": "llama",
+        "names": [
+          "llama"
+        ],
+        "servers": [
+          "ollama"
+        ],
+        "context": 16384,
+        "contextSource": "maximum",
+        "input": 12288
+      },
+      {
+        "family": "qwen",
+        "names": [
+          "qwen"
+        ],
+        "servers": [
+          "ollama"
+        ],
+        "context": 4096,
+        "contextSource": "effective",
+        "input": 0
+      }
+    ],
+    "existing": {
+      "name": "OpenAbstractions",
+      "npm": "@openabstractions/opencode",
+      "options": {
+        "scope": "local",
+        "guarantees": [
+          "abstraction.inference/local-only@1"
+        ],
+        "oaInventoryManagedModels": {}
+      },
+      "models": {
+        "qwen": {
+          "name": "My Qwen",
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          },
+          "tool_call": true
+        }
+      }
+    },
+    "configured": {
+      "options": {
+        "scope": "local",
+        "oaInventoryManagedModels": {
+          "llama": {
+            "name": "llama · 16k · this computer: ollama",
+            "limit": {
+              "context": 16384,
+              "output": 4096
+            },
+            "tool_call": true
+          }
+        }
+      },
+      "models": {
+        "llama": {
+          "name": "llama · 16k · this computer: ollama",
+          "limit": {
+            "context": 16384,
+            "output": 4096
+          },
+          "tool_call": true
+        },
+        "qwen": {
+          "name": "My Qwen",
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          },
+          "tool_call": true
+        }
+      }
+    },
+    "warnings": [
+      {
+        "model": "qwen",
+        "configured": 32768,
+        "observed": 4096
+      }
+    ]
+  }
+}

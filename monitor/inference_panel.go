@@ -12,6 +12,8 @@ import (
 	facade "github.com/openabstractions/abstraction-facade/go"
 	identity "github.com/openabstractions/abstraction-identity"
 	iclient "github.com/openabstractions/abstraction-inference/go/client"
+	routerwire "github.com/openabstractions/abstraction-router/go/abstraction/router"
+	routerclient "github.com/openabstractions/abstraction-router/go/client"
 )
 
 // inferenceHostEdit is one host change the person made on the inference page.
@@ -57,10 +59,9 @@ func (e inferenceKeyEdit) valid() bool {
 	return false
 }
 
-// inferenceRoutes serves the inference page and its calls. Every call goes
-// through the resolved abstraction.inference/operator@1, which decides
-// host.manage, key.issue or audit.read for this Panel; typed outcomes are
-// returned unchanged and resolution failures read as unavailable.
+// inferenceRoutes serves the Models page through the router's public model
+// offers and the inference operator's server, key, gateway and audit calls.
+// Each service decides this Panel's permission at its own boundary.
 func (p *servicePanel) inferenceRoutes(mux *http.ServeMux, key string) {
 	mux.HandleFunc("/inference", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("k") != key {
@@ -69,12 +70,53 @@ func (p *servicePanel) inferenceRoutes(mux *http.ServeMux, key string) {
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		//unchecked: a failed write means the client is already gone; there is no response left to recover
-		_, _ = io.WriteString(w, panelPage(r, key, "inference", "Inference", inferencePage))
+		_, _ = io.WriteString(w, panelPage(r, key, "inference", "Models", inferencePage))
 	})
 	mux.HandleFunc("/inference/hosts", guard(key, p.inferenceHosts))
+	mux.HandleFunc("/inference/models", guard(key, p.inferenceModels))
 	mux.HandleFunc("/inference/keys", guard(key, p.inferenceKeys))
 	mux.HandleFunc("/inference/audit", guard(key, p.inferenceAudit))
 	mux.HandleFunc("/inference/gateway", guard(key, p.inferenceGateway))
+}
+
+// inferenceModels projects the router's current offer for one modality.
+// The router owns family folding, server availability and context limits.
+func (p *servicePanel) inferenceModels(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "GET required", http.StatusMethodNotAllowed)
+		return
+	}
+	profile := r.URL.Query().Get("profile")
+	if profile == "" {
+		profile = "chat"
+	}
+	if !rightsText(profile, 128) {
+		http.Error(w, "invalid modality", http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := panelCall(r)
+	defer cancel()
+	router, err := panelMachine().ResolveRouter(ctx, facade.Requirements{Scope: facade.ScopeLocal})
+	if err != nil {
+		panelError(w, err)
+		return
+	}
+	snapshot, err := router.OfferContext(ctx, routerclient.OfferRequest{Profile: profile, Placement: routerwire.PlacementAny})
+	if err != nil {
+		panelError(w, err)
+		return
+	}
+	if snapshot.Outcome != routerwire.OfferOutcomeOffered {
+		status := http.StatusServiceUnavailable
+		if snapshot.Outcome == routerwire.OfferOutcomeForbidden || snapshot.Outcome == routerwire.OfferOutcomeNotPermitted {
+			status = http.StatusForbidden
+		} else if snapshot.Outcome == routerwire.OfferOutcomeInvalid {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, "router offer: "+snapshot.Outcome.String(), status)
+		return
+	}
+	panelJSON(w, snapshot)
 }
 
 // inferenceGatewayEdit opens or closes the gateway window at the listed

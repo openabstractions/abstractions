@@ -2,17 +2,21 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
-	"os"
-	"os/exec"
+	"fmt"
+	"path/filepath"
 	"slices"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
+	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-identity/listen"
 	"github.com/openabstractions/abstraction-identity/remote"
-	inference "github.com/openabstractions/abstraction-inference/go"
 	content "github.com/openabstractions/abstraction-storage/go/abstraction/storage/content"
 )
 
@@ -51,7 +55,7 @@ type providerSupervisor struct {
 	readiness wire.DeclarationReadiness
 	why       string
 	restarts  int64
-	child     *os.Process
+	child     providerChild
 	described []wire.ServiceState
 	accepted  []string
 	started   bool
@@ -61,18 +65,65 @@ type providerSupervisor struct {
 	stop       chan struct{}
 	stopOnce   sync.Once
 	done       chan struct{}
+
+	// limit is why this platform cannot run the declared program
+	// (nativeProviderLimit), read when the supervisor is made; "" where it can.
+	limit string
+}
+
+// Wait reports a process exit code separately from a failed containment
+// observation. An observation failure must not be treated as a restartable exit.
+type providerChild interface {
+	PID() int
+	Stop() error
+	Wait() (int, error)
 }
 
 func newProviderSupervisor(p *runtimeProviders, f providerFile) *providerSupervisor {
 	s := &providerSupervisor{p: p, file: f, wanted: make(chan struct{}), stop: make(chan struct{}), done: make(chan struct{})}
 	if !f.Declaration.remote() {
-		s.endpoint = providerEndpointPath(f.Declaration.Endpoint)
+		s.endpoint = p.supervisedEndpoint(f.Declaration)
 	}
 	s.readiness = wire.DeclarationReadinessIdle
 	if f.Declaration.Activation != wire.ActivationOnDemand.String() {
 		s.readiness, s.why = wire.DeclarationReadinessUnreachable, "not probed yet"
 	}
+	// A native provider on a platform that runs none (macOS in 0.4.0) reads
+	// not_ready with the platform's reason from the start, and run never
+	// launches or probes it.
+	if !f.Declaration.remote() && !f.Declaration.host() && nativeProviderLimit != "" {
+		s.limit = nativeProviderLimit
+		s.readiness, s.why = wire.DeclarationReadinessNotReady, s.unavailableReason()
+	}
 	return s
+}
+
+// unavailableReason is the reason every reading and mediated call of a
+// declaration this platform cannot run carries, or "".
+func (s *providerSupervisor) unavailableReason() string {
+	if s.limit == "" {
+		return ""
+	}
+	return "platform:" + s.limit
+}
+
+// supervisedEndpoint gives tokenized runtime-launched providers one stable
+// address within their account and state directory. Attach-only and legacy
+// no-token declarations retain the address their program already chooses.
+func (p *runtimeProviders) supervisedEndpoint(d providerDeclaration) string {
+	if d.Activation != wire.ActivationOnDemand.String() || !slices.Contains(d.Arguments, providerEndpointToken) || p.dir == "" {
+		return providerEndpointPath(d.Endpoint)
+	}
+	// The state folder is keyed by its file identity, so every spelling that
+	// reaches it names one endpoint; a folder that cannot be read keys by its
+	// cleaned path.
+	dir, sid := filepath.Clean(p.dir), p.principal.SID
+	if fileKey, err := identity.FileKey(dir); err == nil {
+		dir = "file:" + fileKey
+	}
+	key := strings.Join([]string{"provider-child-endpoint-v1", dir, p.principal.Kind, sid, strconv.Itoa(p.principal.UID), d.Name, d.Endpoint}, "\x00")
+	sum := sha256.Sum256([]byte(key))
+	return providerEndpointPath("provider-" + hex.EncodeToString(sum[:16]))
 }
 
 // state is the declaration and the supervisor's reading of it.
@@ -132,17 +183,6 @@ func (s *providerSupervisor) start() {
 	if slices.Contains(s.file.Declaration.Contracts, storageInventorySource) {
 		s.activate()
 	}
-	// A native inference provider that declares the profiles it serves is one
-	// the router surveys: the router is the one directory of the models on
-	// this machine, and a model no list names is a model no application can
-	// ask for. Such a provider is activated as soon as the runtime serves. It
-	// costs a process and no weights — the model host loads a file on the
-	// first call that names it — and a declaration that leaves its profiles
-	// out is reached through its own mediated endpoint and stays idle until a
-	// resolution asks for it (FAC-R8).
-	if d := s.file.Declaration; slices.Contains(d.Contracts, inference.Contract) && len(d.Models) > 0 && len(d.resources("profile")) > 0 {
-		s.activate()
-	}
 	go s.run()
 }
 
@@ -164,7 +204,7 @@ func (s *providerSupervisor) pid() int {
 	if s.child == nil {
 		return 0
 	}
-	return s.child.Pid
+	return s.child.PID()
 }
 
 func (s *providerSupervisor) wait(d time.Duration) bool {
@@ -180,6 +220,13 @@ func (s *providerSupervisor) wait(d time.Duration) bool {
 
 func (s *providerSupervisor) run() {
 	defer close(s.done)
+	if why := s.unavailableReason(); why != "" {
+		// Said once per supervisor; nothing is launched, probed or retried.
+		if s.p.report != nil {
+			s.p.report(fmt.Errorf("provider %s: %s", s.file.Declaration.Name, why))
+		}
+		return
+	}
 	if s.file.Declaration.Activation != wire.ActivationOnDemand.String() {
 		s.attach()
 		return
@@ -205,12 +252,14 @@ func (s *providerSupervisor) run() {
 	}
 }
 
-// arguments substitutes the endpoint name into the declared arguments.
+// arguments substitutes the same local endpoint address used for probing and
+// mediation. The declaration stores a short name; leaf listeners need the
+// platform-qualified pipe or socket path.
 func (s *providerSupervisor) arguments() []string {
 	out := slices.Clone(s.file.Declaration.Arguments)
 	for i, a := range out {
 		if a == providerEndpointToken {
-			out[i] = s.file.Declaration.Endpoint
+			out[i] = s.endpoint
 		}
 	}
 	return out
@@ -219,26 +268,40 @@ func (s *providerSupervisor) arguments() []string {
 // launch runs one child until it exits (true) or supervision stops (false).
 func (s *providerSupervisor) launch(launches int) bool {
 	d := s.file.Declaration
-	cmd := exec.Command(d.Program, s.arguments()...)
 	if launches > 0 {
 		s.mu.Lock()
 		s.restarts++
 		s.mu.Unlock()
 	}
-	if err := cmd.Start(); err != nil {
+	logPath := providerLogPath(s.p.dir, d.Name)
+	output, err := openProviderOutput(logPath, s.p.report)
+	if err != nil {
+		s.set(wire.DeclarationReadinessRestarting, "launch:"+err.Error())
+		return true
+	}
+	child, err := startProviderChild(d.Program, s.arguments(), s.p.providerChildEnvironment(), output.write)
+	output.started()
+	if err != nil {
 		s.set(wire.DeclarationReadinessRestarting, "launch:"+err.Error())
 		return true
 	}
 	s.mu.Lock()
-	s.child = cmd.Process
+	s.child = child
 	s.mu.Unlock()
 	s.set(wire.DeclarationReadinessStarting, "launched")
-	exited := make(chan error, 1)
-	go func() { exited <- cmd.Wait() }()
+	type childExit struct {
+		code int
+		err  error
+	}
+	exited := make(chan childExit, 1)
+	go func() { code, err := child.Wait(); exited <- childExit{code, err} }()
+	confirmed := false
 	defer func() {
-		s.mu.Lock()
-		s.child = nil
-		s.mu.Unlock()
+		if confirmed {
+			s.mu.Lock()
+			s.child = nil
+			s.mu.Unlock()
+		}
 	}()
 	ready := false
 	for {
@@ -250,16 +313,43 @@ func (s *providerSupervisor) launch(launches int) bool {
 		select {
 		case <-s.stop:
 			t.Stop()
-			//unchecked: best-effort termination; a failed Kill (e.g. the process already exited) is fine since the wait below still proceeds
-			cmd.Process.Kill()
-			<-exited
-			s.set(wire.DeclarationReadinessIdle, "stopped")
+			stopErr := child.Stop()
+			outcome := <-exited
+			if outcome.err != nil {
+				s.set(wire.DeclarationReadinessUnreachable, "stop-unconfirmed:"+errors.Join(stopErr, outcome.err).Error())
+			} else {
+				// Wait is the proof of exit. Stop can race a natural exit and
+				// report that the process had already ended.
+				confirmed = true
+				s.set(wire.DeclarationReadinessIdle, "stopped")
+			}
 			return false
-		case err := <-exited:
+		case outcome := <-exited:
 			t.Stop()
+			if outcome.err != nil {
+				s.set(wire.DeclarationReadinessUnreachable, "exit-unconfirmed:"+outcome.err.Error())
+				return false
+			}
+			confirmed = true
 			why := "exited"
-			if err != nil {
-				why = "exited:" + err.Error()
+			if outcome.code != 0 {
+				// A provider that fails says why on its output. The whole
+				// output stays in its log file; the reason carries the last
+				// line made safe (safeTail) and names the log; the runtime's
+				// own log records the exit status and the log, never the line.
+				status := fmt.Sprintf("exited:exit status %d", outcome.code)
+				named := ""
+				if logPath != "" {
+					named = "; log " + logPath
+				}
+				why = status
+				if last := output.tail(); last != "" {
+					why += ": " + last
+				}
+				why += named
+				if s.p.report != nil {
+					s.p.report(fmt.Errorf("provider %s %s%s", d.Name, status, named))
+				}
 			}
 			s.set(wire.DeclarationReadinessRestarting, why)
 			return true

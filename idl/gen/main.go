@@ -61,7 +61,7 @@ func (b backend) verify(e emitted) error {
 
 var backends = []backend{
 	{"go", "go/rec/rec.go", genGo, nil, true},
-	{"python", "py/_codec.py", genPy, []string{"__future__", "dataclasses", "enum"}, true},
+	{"python", "py/_codec.py", genPy, []string{"__future__", "base64", "binascii", "dataclasses", "enum"}, true},
 	{"cpp", "cpp/rec.h", genCpp, []string{
 		"cstddef", "cstdint", "map", "optional", "stdexcept", "string", "string_view", "vector"}, true},
 	{"javascript", "js/internal.mjs", genJS, nil, true},

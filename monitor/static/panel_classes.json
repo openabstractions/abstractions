@@ -1,0 +1,14 @@
+{
+  "about": "The class names the Panel shell and shared components emit (research/panel-redesign/SPEC.md §6). The one source: panel_shell.go embeds it as panelShellClasses and panelShellClassPrefixes; static/panel_rules.js reads it for the rendered-DOM class rule.",
+  "classes": [
+    "oa-shell", "oa-nav", "oa-brand", "oa-nav-search", "oa-nav-group", "oa-nav-item", "active",
+    "oa-nav-icon", "oa-icon-setup", "oa-icon-status", "oa-icon-inference", "oa-icon-rights", "oa-icon-work",
+    "oa-icon-card", "oa-icon-registry", "oa-icon-credentials", "oa-icon-settings", "oa-icon-logging",
+    "oa-nav-label", "oa-nav-badge", "oa-nav-sep", "oa-nav-hits", "oa-nav-hit", "oa-nav-hit-page", "oa-nav-nohits",
+    "oa-content", "oa-help-mark", "oa-help-learnmore", "oa-help-float", "oa-error-details",
+    "oa-pagehead", "oa-pagehead-tile", "oa-pagehead-text", "oa-pagehead-title", "oa-caption",
+    "oa-group", "oa-row", "oa-row-nav", "oa-row-text", "oa-row-label", "oa-row-caption", "oa-row-control",
+    "oa-row-chevron", "oa-expander", "oa-expander-body", "oa-status", "oa-empty", "oa-table", "oa-primary", "switch"
+  ],
+  "prefixes": ["oa-icon-"]
+}

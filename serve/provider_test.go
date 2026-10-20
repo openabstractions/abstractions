@@ -23,6 +23,8 @@ import (
 	"github.com/openabstractions/abstraction-identity/listen"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	iwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
+	logclient "github.com/openabstractions/abstraction-logging/go/client"
+	resourceclient "github.com/openabstractions/abstraction-resource/go/client"
 	rights "github.com/openabstractions/abstraction-rights/go/client"
 	content "github.com/openabstractions/abstraction-storage/go/abstraction/storage/content"
 )
@@ -32,6 +34,7 @@ import (
 const providerFixtureArg = "-oa-provider-fixture"
 const mediatedAppFixtureArg = "-oa-mediated-app-fixture"
 const mediatedOperationFixtureArg = "-oa-mediated-operation-fixture"
+const mediatedImageFixtureArg = "-oa-mediated-image-fixture"
 
 // fixtureGuarantee is a guarantee only the fixture provider advertises, so a
 // resolution requiring it passes over the runtime's own chat@1.
@@ -55,10 +58,159 @@ func init() {
 	if len(os.Args) == 5 && os.Args[1] == mediatedOperationFixtureArg {
 		os.Exit(runMediatedOperationFixture(os.Args[2], os.Args[3], os.Args[4]))
 	}
+	if len(os.Args) == 6 && os.Args[1] == mediatedImageFixtureArg {
+		os.Exit(runMediatedImageFixture(os.Args[2], os.Args[3], os.Args[4], os.Args[5]))
+	}
+}
+
+// fixtureClientTimeout bounds one call a fixture application makes. It
+// exceeds the runtime's launch budget (nativeInferenceLaunchBudget, 30 s):
+// a Start may wait out an on-demand provider's launch before it answers.
+const fixtureClientTimeout = 60 * time.Second
+
+// fixtureExit names why a fixture process failed on its error output, which
+// the test reports with the exit status, and returns code.
+func fixtureExit(code int, format string, args ...any) int {
+	fmt.Fprintf(os.Stderr, "fixture exit %d: "+format+"\n", append([]any{code}, args...)...)
+	return code
+}
+
+func fixtureImageReadiness(page iwire.DeltaPage, err error) (bool, error) {
+	if err != nil || page.Outcome != iwire.PageOutcomePage {
+		return false, fmt.Errorf("image readiness Observe: outcome %v, ended %v, %v", page.Outcome, page.AtEnd, err)
+	}
+	for _, delta := range page.Deltas {
+		if delta.Kind == iwire.DeltaKindImageProgress {
+			return true, nil
+		}
+	}
+	if page.AtEnd {
+		return false, fmt.Errorf("image readiness Observe ended without readiness progress")
+	}
+	return false, nil
+}
+
+func TestFixtureImageReadinessRetainedProgress(t *testing.T) {
+	progress := iwire.Delta{Kind: iwire.DeltaKindImageProgress, ImageProgress: &iwire.ImageProgress{Message: "ready"}}
+	terminal := iwire.Delta{Kind: iwire.DeltaKindEnd, ImageEnd: &iwire.ImageReply{Outcome: iwire.ReplyOutcomeCancelled, Reason: "idle"}}
+	for _, test := range []struct {
+		name           string
+		page           iwire.DeltaPage
+		err            error
+		ready, refused bool
+	}{
+		{"retained progress and idle terminal", iwire.DeltaPage{Outcome: iwire.PageOutcomePage, Deltas: []iwire.Delta{progress, terminal}, AtEnd: true}, nil, true, false},
+		{"ended without progress", iwire.DeltaPage{Outcome: iwire.PageOutcomePage, Deltas: []iwire.Delta{terminal}, AtEnd: true}, nil, false, true},
+		{"live progress", iwire.DeltaPage{Outcome: iwire.PageOutcomePage, Deltas: []iwire.Delta{progress}}, nil, true, false},
+		{"live empty", iwire.DeltaPage{Outcome: iwire.PageOutcomePage}, nil, false, false},
+		{"wrong outcome", iwire.DeltaPage{Outcome: iwire.PageOutcomeUnknown, Deltas: []iwire.Delta{progress}}, nil, false, true},
+		{"transport error", iwire.DeltaPage{Outcome: iwire.PageOutcomePage, Deltas: []iwire.Delta{progress}}, errors.New("read failed"), false, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ready, err := fixtureImageReadiness(test.page, test.err)
+			if ready != test.ready || (err != nil) != test.refused {
+				t.Fatalf("readiness = %v, %v; want ready=%v refused=%v", ready, err, test.ready, test.refused)
+			}
+		})
+	}
+}
+
+// The copied application executable calls the public mediated image@1 leaf.
+// Separate copies have distinct kernel-bound program identities.
+func runMediatedImageFixture(endpoint, mode, operation, resultPath string) int {
+	client := iwire.NewImageClient(listen.FrameClient{Endpoint: endpoint, Timeout: fixtureClientTimeout, MaxFrame: 1 << 20})
+	result := struct {
+		Start     string `json:"start"`
+		Cancel    string `json:"cancel"`
+		End       string `json:"end"`
+		Reason    string `json:"reason"`
+		Operation string `json:"operation"`
+		// ElapsedMs is how long Start took from this process's call to the
+		// answer, which excludes this process's own launch.
+		ElapsedMs int64 `json:"elapsed_ms"`
+	}{}
+	switch mode {
+	case "start", "start-observed":
+		request := iwire.ImageRequest{Model: "fixture-model", Mode: iwire.ImageModeGenerate, Prompt: "one light", Size: "auto", Count: 1,
+			Guarantees: []iwire.RequestGuarantee{iwire.RequestGuaranteeLocalOnly}}
+		began := time.Now()
+		admission, err := client.Start(request)
+		if err != nil {
+			return fixtureExit(10, "image Start: %v", err)
+		}
+		result.ElapsedMs = time.Since(began).Milliseconds()
+		result.Start, result.Operation, result.Reason = admission.Outcome.String(), admission.Operation, admission.Reason
+		if mode == "start-observed" && admission.Outcome == iwire.StartOutcomeAccepted {
+			// A relayed progress delta proves the runtime knows the native
+			// admission before this app leaves the operation unobserved.
+			cursor, ready := int64(0), false
+			deadline := time.Now().Add(fixtureClientTimeout)
+			for !ready && time.Now().Before(deadline) {
+				page, err := client.Observe(admission.Operation, cursor, 256, 65536, 250)
+				ready, err = fixtureImageReadiness(page, err)
+				if err != nil {
+					return fixtureExit(16, "%v", err)
+				}
+				cursor = page.Next
+			}
+			if !ready {
+				return fixtureExit(17, "image provider did not relay readiness progress")
+			}
+		}
+	case "cancel":
+		answer, err := client.Cancel(operation)
+		if err != nil {
+			return fixtureExit(11, "image Cancel %s: %v", operation, err)
+		}
+		result.Cancel = answer.Outcome.String()
+		if answer.ReplyOutcome != nil {
+			result.End = answer.ReplyOutcome.String()
+		}
+		if answer.Outcome == iwire.CancelOutcomeEnded {
+			page, err := client.Observe(operation, 0, 256, 65536, 0)
+			if err != nil {
+				result.Reason = fmt.Sprintf("terminal diagnostic: %v", err)
+			} else {
+				for _, delta := range page.Deltas {
+					if delta.ImageEnd != nil {
+						result.End, result.Reason = delta.ImageEnd.Outcome.String(), delta.ImageEnd.Reason
+					}
+				}
+			}
+		}
+	case "terminal":
+		cursor := int64(0)
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			page, err := client.Observe(operation, cursor, 256, 65536, 250)
+			if err != nil || page.Outcome != iwire.PageOutcomePage {
+				return fixtureExit(12, "image Observe %s at %d: outcome %v, %v", operation, cursor, page.Outcome, err)
+			}
+			for _, delta := range page.Deltas {
+				if delta.ImageEnd != nil {
+					result.End, result.Reason = delta.ImageEnd.Outcome.String(), delta.ImageEnd.Reason
+				}
+			}
+			if page.AtEnd {
+				break
+			}
+			cursor = page.Next
+		}
+		if result.End == "" {
+			return fixtureExit(13, "image Observe %s: no end within 10 s", operation)
+		}
+	default:
+		return fixtureExit(14, "image fixture: unknown mode %q", mode)
+	}
+	raw, _ := json.Marshal(result)
+	if err := os.WriteFile(resultPath, raw, 0600); err != nil {
+		return fixtureExit(15, "image fixture result: %v", err)
+	}
+	return 0
 }
 
 func runMediatedOperationFixture(endpoint, operation, resultPath string) int {
-	client := iwire.NewChatClient(listen.FrameClient{Endpoint: endpoint, Timeout: 5 * time.Second, MaxFrame: 1 << 20})
+	client := iwire.NewChatClient(listen.FrameClient{Endpoint: endpoint, Timeout: fixtureClientTimeout, MaxFrame: 1 << 20})
 	page, observeErr := client.Observe(operation, 0, 256, 65536, 0)
 	cancelled, cancelErr := client.Cancel(operation)
 	result := struct {
@@ -68,7 +220,7 @@ func runMediatedOperationFixture(endpoint, operation, resultPath string) int {
 	}{Observe: page.Outcome, Cancel: cancelled.Outcome, Error: observeErr != nil || cancelErr != nil}
 	raw, _ := json.Marshal(result)
 	if err := os.WriteFile(resultPath, raw, 0o600); err != nil {
-		return 13
+		return fixtureExit(13, "operation fixture result: %v", err)
 	}
 	return 0
 }
@@ -81,20 +233,51 @@ func runMediatedOperationFixture(endpoint, operation, resultPath string) int {
 func runProviderFixture(kind, endpoint, dir, brokerProgram string) int {
 	entries, _ := os.ReadDir(dir)
 	if err := os.WriteFile(filepath.Join(dir, strconv.Itoa(os.Getpid())), nil, 0o600); err != nil {
-		return 3
+		return fixtureExit(3, "provider fixture pid file: %v", err)
+	}
+	if kind == "image-exit-before-ready" {
+		return 42
+	}
+	if kind == "env-inventory" {
+		// Record the runtime's services as the environment names them, and
+		// whether the lease service answers there; then serve as a source.
+		resource := os.Getenv(resourceclient.EnvEndpoint)
+		answered := false
+		if conn, err := listen.Dial(resource); err == nil && resource != "" {
+			answered = true
+			conn.Close()
+		}
+		seen, _ := json.Marshal(map[string]any{"resource": resource, "answered": answered,
+			"runtime": os.Getenv(runtimeEndpointVar), "log": os.Getenv(logclient.EnvEndpoint)})
+		if err := os.WriteFile(filepath.Join(dir, "env.json"), seen, 0o600); err != nil {
+			return fixtureExit(3, "provider fixture env.json: %v", err)
+		}
+		kind = "inventory"
+	}
+	if kind == "stderr-exit" {
+		// A provider that cannot start says why on its error output.
+		fmt.Fprintln(os.Stderr, "fixture provider: progress line")
+		fmt.Fprintln(os.Stderr, "fixture provider: the lease endpoint does not answer")
+		return 43
+	}
+	if kind == "stderr-secret" {
+		// A last line carrying a bearer credential and then a terminal colour
+		// sequence.
+		fmt.Fprintln(os.Stderr, "fixture provider: upstream refused Authorization: Bearer fixtureSECRET.123-abc \x1b[31mfailed\x1b[0m")
+		return 44
 	}
 	if len(entries) > 0 {
 		time.Sleep(time.Second)
 	}
 	l, err := listen.Listen(listen.Endpoint(endpoint))
 	if err != nil {
-		return 4
+		return fixtureExit(4, "provider fixture listen %s: %v", endpoint, err)
 	}
-	time.AfterFunc(2*time.Minute, func() { os.Exit(5) })
+	time.AfterFunc(2*time.Minute, func() { os.Exit(fixtureExit(5, "provider fixture: served its two minutes")) })
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			return 6
+			return fixtureExit(6, "provider fixture accept: %v", err)
 		}
 		go func() {
 			defer conn.Close()
@@ -124,8 +307,12 @@ func runProviderFixture(kind, endpoint, dir, brokerProgram string) int {
 			switch kind {
 			case "chat", "chat-delayed":
 				reply, err = (&iwire.ChatDispatcher{Handler: fixtureChat{calls: filepath.Join(dir, "calls"), delayed: kind == "chat-delayed"}}).ExchangeFrame(call.Frame)
+			case "image-blocked", "image-idle", "image-crash-start":
+				reply, err = (&iwire.ImageDispatcher{Handler: fixtureImage{calls: filepath.Join(dir, "calls"), crash: kind == "image-crash-start", progress: kind == "image-idle"}}).ExchangeFrame(call.Frame)
 			case "inventory":
 				reply, err = (&content.InventorySourceDispatcher{Handler: fixtureInventory{}}).ExchangeFrame(call.Frame)
+			case "inventory-object":
+				reply, err = (&content.InventorySourceDispatcher{Handler: fixtureInventory{object: true}}).ExchangeFrame(call.Frame)
 			default:
 				return
 			}
@@ -142,10 +329,10 @@ func runMediatedAppFixture(oaEndpoint, providerEndpoint, resultPath, claim strin
 	req := iwire.Request{Model: "fixture-model", Extensions: map[string]string{inference.ClaimExtension: claim},
 		Messages: []iwire.Message{{Role: iwire.RoleUser, Parts: []iwire.Part{{Kind: iwire.PartKindText, Text: "hello"}}}}}
 	_, directErr := iwire.NewChatClient(listen.FrameClient{Endpoint: providerEndpoint, Timeout: 2 * time.Second, MaxFrame: 1 << 20}).Start(req)
-	client := iwire.NewChatClient(listen.FrameClient{Endpoint: oaEndpoint, Timeout: 5 * time.Second, MaxFrame: 1 << 20})
+	client := iwire.NewChatClient(listen.FrameClient{Endpoint: oaEndpoint, Timeout: fixtureClientTimeout, MaxFrame: 1 << 20})
 	admission, err := client.Start(req)
 	if err != nil {
-		return 10
+		return fixtureExit(10, "chat Start: %v", err)
 	}
 	result := struct {
 		DirectRefused bool                `json:"direct_refused"`
@@ -161,7 +348,7 @@ func runMediatedAppFixture(oaEndpoint, providerEndpoint, resultPath, claim strin
 		for time.Now().Before(deadline) {
 			page, err := client.Observe(admission.Operation, cursor, 256, 65536, 1000)
 			if err != nil || page.Outcome != iwire.PageOutcomePage {
-				return 11
+				return fixtureExit(11, "chat Observe %s at %d: outcome %v, %v", admission.Operation, cursor, page.Outcome, err)
 			}
 			for _, delta := range page.Deltas {
 				if delta.End != nil {
@@ -175,14 +362,14 @@ func runMediatedAppFixture(oaEndpoint, providerEndpoint, resultPath, claim strin
 			}
 		}
 		if end == nil || !terminal {
-			return 11
+			return fixtureExit(11, "chat Observe %s: no end within 10 s", admission.Operation)
 		}
 		outcome := end.Outcome
 		result.Outcome = &outcome
 	}
 	raw, _ := json.Marshal(result)
 	if err := os.WriteFile(resultPath, raw, 0o600); err != nil {
-		return 12
+		return fixtureExit(12, "chat fixture result: %v", err)
 	}
 	return 0
 }
@@ -192,7 +379,63 @@ type fixtureChat struct {
 	delayed bool
 }
 
-type fixtureInventory struct{}
+type fixtureImage struct {
+	calls    string
+	crash    bool
+	progress bool
+}
+
+func (f fixtureImage) Start(iwire.ImageRequest) (iwire.Admission, error) {
+	file, err := os.OpenFile(f.calls, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return iwire.Admission{}, err
+	}
+	_, err = file.WriteString("image-start\n")
+	if err == nil {
+		err = file.Sync()
+	}
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return iwire.Admission{}, err
+	}
+	if f.crash {
+		os.Exit(42)
+	}
+	return iwire.Admission{Outcome: iwire.StartOutcomeAccepted, Operation: "downstream-image", Host: "leaf", Model: "fixture-model", RetentionMs: 60000, IdleMs: 10000, RetainedDeltas: 16}, nil
+}
+func (f fixtureImage) Observe(operation string, cursor, _, _, _ int64) (iwire.DeltaPage, error) {
+	if operation != "downstream-image" {
+		return iwire.DeltaPage{Outcome: iwire.PageOutcomeUnknown}, nil
+	}
+	if f.progress && cursor == 0 {
+		return iwire.DeltaPage{Outcome: iwire.PageOutcomePage, Deltas: []iwire.Delta{{Kind: iwire.DeltaKindImageProgress, ImageProgress: &iwire.ImageProgress{Message: "ready"}}}, Next: 1}, nil
+	}
+	return iwire.DeltaPage{Outcome: iwire.PageOutcomePage, Deltas: []iwire.Delta{}, Next: cursor, AtEnd: false}, nil
+}
+func (f fixtureImage) Cancel(operation string) (iwire.Cancellation, error) {
+	if operation != "downstream-image" {
+		return iwire.Cancellation{Outcome: iwire.CancelOutcomeUnknown}, nil
+	}
+	file, err := os.OpenFile(f.calls, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return iwire.Cancellation{}, err
+	}
+	_, err = file.WriteString("image-cancel\n")
+	if err == nil {
+		err = file.Sync()
+	}
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return iwire.Cancellation{}, err
+	}
+	return iwire.Cancellation{Outcome: iwire.CancelOutcomeCancelled}, nil
+}
+
+type fixtureInventory struct{ object bool }
 
 func (fixtureInventory) Describe() (content.SourceDescription, error) {
 	stores := []content.Store{
@@ -208,8 +451,24 @@ func unavailableSourcePage() content.SourcePage {
 		Objects: []content.ObjectHolders{}, Dangling: []content.Dangling{}, Changes: []content.SourceChange{}}
 }
 
-func (fixtureInventory) Snapshot(string, int64) (content.SourcePage, error) {
-	return unavailableSourcePage(), nil
+// fixtureObject is the one model an object-holding fixture source lists, in
+// its ollama store.
+const fixtureObject = "fixture-tiny"
+
+func (f fixtureInventory) Snapshot(string, int64) (content.SourcePage, error) {
+	if !f.object {
+		return unavailableSourcePage(), nil
+	}
+	description, _ := f.Describe()
+	// A name-addressed manifest whose entry carries no digest: the inventory
+	// has no per-object read to decide for it.
+	manifest := content.Manifest{ID: strings.Repeat("cd", 32), Addressing: content.AddressingName, Kind: "model", Store: "ollama",
+		Entries: []content.Entry{{Role: "weights", Size: 4096, MediaType: "application/octet-stream", Evidence: content.EvidenceNone,
+			Locator: fixtureObject, Annotations: map[string]string{}}},
+		Names: []content.Name{{Scheme: "ollama", Name: fixtureObject}}, Descriptor: map[string]string{}}
+	return content.SourcePage{Outcome: content.SourcePageOutcomePage, Stores: description.Stores,
+		Manifests: []content.ManifestHolders{{Manifest: manifest, Holds: []content.Hold{}}}, Objects: []content.ObjectHolders{},
+		Dangling: []content.Dangling{}, Changes: []content.SourceChange{}, Complete: true, Cursor: "1"}, nil
 }
 func (fixtureInventory) Observe(string, int64, int64) (content.SourcePage, error) {
 	return unavailableSourcePage(), nil
@@ -343,9 +602,183 @@ func answersAt(endpoint string) bool {
 	return true
 }
 
-// An on-demand provider starts on its first resolution and becomes a ready
-// candidate; a crashed provider is not ready until it restarts; removing it
-// ends the child; a program cannot declare itself.
+// This uses the existing isolated runtime and copied provider/app test binary
+// to exercise image@1 through the public mediated endpoint. The child never
+// loads an engine or writes an image.
+func TestOnDemandImageDeniedCancelledAndLostStart(t *testing.T) {
+	if !statusTransportProvesProgram(t) {
+		t.Skip("Program proof unavailable on current shared transport")
+	}
+	for _, scenario := range []struct{ name, kind string }{
+		{"cancel", "image-blocked"},
+		{"idle-before-cancel", "image-blocked"},
+		{"lost-start", "image-crash-start"},
+		{"before-ready", "image-exit-before-ready"},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			program := copyTestBinary(t, "oa-fixture-image-provider")
+			app := copyTestBinary(t, "oa-fixture-image-app")
+			stranger := copyTestBinary(t, "oa-fixture-image-stranger")
+			pidDir := t.TempDir()
+			name := fmt.Sprintf("image-%d", time.Now().UnixNano()%1_000_000_000)
+			if scenario.kind == "image-exit-before-ready" {
+				previous := nativeInferenceLaunchBudget
+				nativeInferenceLaunchBudget = 5 * time.Second
+				t.Cleanup(func() { nativeInferenceLaunchBudget = previous })
+			}
+			options, _ := isolatedRuntime(t)
+			if err := os.MkdirAll(filepath.Join(options.stateDir, "inference"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			// The ownership/cancellation sequence launches two bounded client
+			// processes. Keep its operation active throughout those calls; the
+			// independent production idle timer is exercised separately below.
+			idle := 2 * fixtureClientTimeout
+			fixtureKind, startMode := scenario.kind, "start"
+			if scenario.name == "idle-before-cancel" {
+				idle = 100 * time.Millisecond
+				fixtureKind, startMode = "image-idle", "start-observed"
+			}
+			config := fmt.Sprintf(`{"retention_ms":10000,"idle_ms":%d}`, idle.Milliseconds())
+			if err := os.WriteFile(filepath.Join(options.stateDir, "inference", inferenceHostsFile), []byte(config), 0600); err != nil {
+				t.Fatal(err)
+			}
+			startInferenceRuntime(t, options)
+			cliEndpoint := []string{"--endpoint", options.endpoint, "--timeout", "30s"}
+			self, err := os.Executable()
+			if err != nil {
+				t.Fatal(err)
+			}
+			self = identity.CanonicalProgramPath(filepath.Clean(self))
+			add := []string{"add", name, "--program", program, "--provider-endpoint", name, "--contract", inference.ImageContract,
+				"--profiles", "image", "--guarantee", fixtureGuarantee, "--model", "fixture-model", "--arg", providerFixtureArg, "--arg", fixtureKind,
+				"--arg", "{endpoint}", "--arg", pidDir, "--arg", self}
+			if out, err := runProvider(t, append(add, cliEndpoint...)...); err != nil {
+				t.Fatalf("add image fixture: %v\n%s", err, out)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			resolved, err := resolution.NewUnverifiedClient(options.endpoint, 5*time.Second).Resolve(ctx, fwire.ResolveRequest{
+				Capability: "abstraction.inference", Contracts: []string{inference.ImageContract}, Guarantees: []string{fixtureGuarantee}, Scope: fwire.ScopeLocal})
+			if err != nil || resolved.Status != fwire.ResolutionStatusResolved || resolved.Reference == nil || resolved.Reference.Provider != name {
+				t.Fatalf("mediated image resolution: %+v reference=%+v, %v", resolved, resolved.Reference, err)
+			}
+			if len(pids(t, pidDir)) != 0 {
+				t.Fatal("resolution launched image provider")
+			}
+			runApp := func(executable, mode, operation string) struct {
+				Start     string `json:"start"`
+				Cancel    string `json:"cancel"`
+				End       string `json:"end"`
+				Reason    string `json:"reason"`
+				Operation string `json:"operation"`
+				ElapsedMs int64  `json:"elapsed_ms"`
+			} {
+				path := filepath.Join(t.TempDir(), "result.json")
+				if output, err := exec.Command(executable, mediatedImageFixtureArg, resolved.Reference.Endpoint, mode, operation, path).CombinedOutput(); err != nil {
+					t.Fatalf("%s image fixture: %v: %s", mode, err, output)
+				}
+				var result struct {
+					Start     string `json:"start"`
+					Cancel    string `json:"cancel"`
+					End       string `json:"end"`
+					Reason    string `json:"reason"`
+					Operation string `json:"operation"`
+					ElapsedMs int64  `json:"elapsed_ms"`
+				}
+				raw, err := os.ReadFile(path)
+				if err != nil || json.Unmarshal(raw, &result) != nil {
+					t.Fatalf("image fixture result %q: %v", raw, err)
+				}
+				return result
+			}
+			denied := runApp(app, "start", "")
+			if denied.Start != iwire.StartOutcomeNotPermitted.String() || denied.Operation != "" || len(pids(t, pidDir)) != 0 {
+				t.Fatalf("denied valid image request launched provider: %+v pids=%v", denied, pids(t, pidDir))
+			}
+			setCompleteRule(t, options.endpoint, app, name, true)
+			gwGrant(t, options, app, contentWriteAction, "output:image")
+			gwGrant(t, options, app, contentReadAction, "output:image")
+			if scenario.kind == "image-exit-before-ready" {
+				// The provider exits with status 42 before it listens, every
+				// time it is launched, so it is never ready. Start therefore
+				// waits out the whole launch budget and reads unavailable with
+				// activating:<name>. The Start's own duration, measured inside
+				// the app, proves the wait. No assertion here depends on how
+				// long a process launch takes; that an exit during the wait
+				// leaves the wait running is pinned without processes by
+				// TestNativeAdmitWaitsThroughAnExitBeforeReadiness.
+				failed := runApp(app, "start", "")
+				if failed.Start != iwire.StartOutcomeUnavailable.String() || failed.Reason != "activating:"+name || failed.Operation != "" {
+					t.Fatalf("provider exit before readiness: %+v", failed)
+				}
+				if budget := nativeInferenceLaunchBudget.Milliseconds(); failed.ElapsedMs < budget {
+					t.Fatalf("image Start answered after %d ms, before the %d ms launch budget passed", failed.ElapsedMs, budget)
+				}
+				// The second PID proves the first child exited before any
+				// readiness: supervision launches a replacement only after its
+				// Wait returns. The relaunch may come after Start answered.
+				eventually(t, time.Minute, "the provider's exit and relaunch", func() bool { return len(pids(t, pidDir)) >= 2 })
+				if calls, _ := os.ReadFile(filepath.Join(pidDir, "calls")); len(calls) != 0 {
+					t.Fatalf("failed startup dispatched image Start: %q", calls)
+				}
+				return
+			}
+			admitted := runApp(app, startMode, "")
+			if admitted.Start != iwire.StartOutcomeAccepted.String() || admitted.Operation == "" || len(pids(t, pidDir)) == 0 {
+				t.Fatalf("authorized image not admitted: %+v pids=%v", admitted, pids(t, pidDir))
+			}
+			callsPath := filepath.Join(pidDir, "calls")
+			if scenario.kind == "image-blocked" {
+				if scenario.name == "idle-before-cancel" {
+					// Wait without Observe until the watchdog has cancelled the
+					// upstream. Starting an observer earlier would reset idle.
+					eventually(t, 5*time.Second, "unobserved image idle cancellation", func() bool {
+						calls, _ := os.ReadFile(callsPath)
+						return strings.Count(string(calls), "image-cancel\n") == 1
+					})
+					// Read the terminal before cancelling: its idle reason proves
+					// that an already-ended operation must answer Ended.
+					if end := runApp(app, "terminal", admitted.Operation); end.End != iwire.ReplyOutcomeCancelled.String() || end.Reason != "idle" {
+						t.Fatalf("idle terminal before cancellation: %+v", end)
+					}
+					if owner := runApp(app, "cancel", admitted.Operation); owner.Cancel != iwire.CancelOutcomeEnded.String() || owner.End != iwire.ReplyOutcomeCancelled.String() || owner.Reason != "idle" {
+						t.Fatalf("cancellation after idle terminal: %+v", owner)
+					}
+					if calls, _ := os.ReadFile(callsPath); strings.Count(string(calls), "image-start\n") != 1 || strings.Count(string(calls), "image-cancel\n") != 1 {
+						t.Fatalf("idle cancellation did not reach one owned operation: %q", calls)
+					}
+					return
+				}
+				if outsider := runApp(stranger, "cancel", admitted.Operation); outsider.Cancel != iwire.CancelOutcomeUnknown.String() {
+					t.Fatalf("foreign program cancelled owned image: %+v", outsider)
+				}
+				if owner := runApp(app, "cancel", admitted.Operation); owner.Cancel != iwire.CancelOutcomeCancelled.String() {
+					t.Fatalf("public image cancellation: %+v", owner)
+				}
+				if end := runApp(app, "terminal", admitted.Operation); end.End != iwire.ReplyOutcomeCancelled.String() {
+					t.Fatalf("cancel terminal: %+v", end)
+				}
+				if calls, _ := os.ReadFile(callsPath); strings.Count(string(calls), "image-start\n") != 1 || strings.Count(string(calls), "image-cancel\n") != 1 {
+					t.Fatalf("cancel did not reach one owned operation: %q", calls)
+				}
+			} else {
+				end := runApp(app, "terminal", admitted.Operation)
+				if end.End != iwire.ReplyOutcomeUnavailable.String() || end.Reason != "native:start_unknown" {
+					t.Fatalf("lost Start lacked typed unavailable outcome: %+v", end)
+				}
+				if calls, _ := os.ReadFile(callsPath); strings.Count(string(calls), "image-start\n") != 1 {
+					t.Fatalf("ambiguous image Start replayed: %q", calls)
+				}
+			}
+		})
+	}
+}
+
+// An on-demand provider stays idle through resolution and a denied Start;
+// its first admitted call launches it. A crash restarts the child while the
+// OA mediator stays resolvable; removal ends the child, and a program cannot
+// declare itself.
 func TestOnDemandProviderStartsRestartsAndStops(t *testing.T) {
 	if !statusTransportProvesProgram(t) {
 		t.Skip("Program proof unavailable on current shared transport")
@@ -357,7 +790,15 @@ func TestOnDemandProviderStartsRestartsAndStops(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(options.stateDir, "inference"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(options.stateDir, "inference", inferenceHostsFile), []byte(`{"retention_ms":10000}`), 0o600); err != nil {
+	// The ended operation keeps the withdrawn generation reachable throughout
+	// this native-process journey. Expiry is exercised with a controlled clock
+	// in TestProviderMediationClosesAfterLastRetainedOperationExpires.
+	retention := 10 * time.Minute // bounded fallback for go test -timeout=0
+	if deadline, ok := t.Deadline(); ok {
+		retention = time.Until(deadline) + time.Millisecond
+	}
+	config := fmt.Sprintf(`{"retention_ms":%d}`, retention.Milliseconds())
+	if err := os.WriteFile(filepath.Join(options.stateDir, "inference", inferenceHostsFile), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	startInferenceRuntime(t, options)
@@ -393,21 +834,16 @@ func TestOnDemandProviderStartsRestartsAndStops(t *testing.T) {
 		}
 		return result
 	}
-	if first := resolve(); first.Status != fwire.ResolutionStatusNotReady {
-		t.Fatalf("first resolution %+v", first)
+	resolved := resolve()
+	if resolved.Status != fwire.ResolutionStatusResolved {
+		t.Fatalf("mediator resolution %+v", resolved)
 	}
-	var resolved fwire.ResolveResult
-	eventually(t, 20*time.Second, "the on-demand provider becoming a ready candidate", func() bool {
-		resolved = resolve()
-		return resolved.Status == fwire.ResolutionStatusResolved
-	})
 	if ref := resolved.Reference; ref.Provider != name || ref.Endpoint == options.endpoint+"-inference" || ref.Endpoint == listen.Endpoint(name) || ref.Contract != inference.Contract {
 		t.Fatalf("resolved %+v", ref)
 	}
 	mediatedEndpoint := resolved.Reference.Endpoint
-	launched := pids(t, pidDir)
-	if len(launched) != 1 || providerStates(t, endpoint)[name].Readiness != fwire.DeclarationReadinessReady {
-		t.Fatalf("launched %v, state %+v", launched, providerStates(t, endpoint)[name])
+	if launched := pids(t, pidDir); len(launched) != 0 || providerStates(t, endpoint)[name].Readiness != fwire.DeclarationReadinessIdle {
+		t.Fatalf("resolution started downstream provider: %v, state %+v", launched, providerStates(t, endpoint)[name])
 	}
 	appProgram := copyTestBinary(t, "oa-mediated-app")
 	type mediatedResult struct {
@@ -452,6 +888,9 @@ func TestOnDemandProviderStartsRestartsAndStops(t *testing.T) {
 	if calls, _ := os.ReadFile(filepath.Join(pidDir, "calls")); len(calls) != 0 {
 		t.Fatalf("denied caller reached provider: %q", calls)
 	}
+	if launched := pids(t, pidDir); len(launched) != 0 {
+		t.Fatalf("denied Start launched downstream provider: %v", launched)
+	}
 	setCompleteRule(t, options.endpoint, appProgram, name, true)
 	mediated := runApp("mediated", mediatedEndpoint)
 	if !mediated.DirectRefused || mediated.StartOutcome != iwire.StartOutcomeAccepted || mediated.Outcome == nil || *mediated.Outcome != iwire.ReplyOutcomeCompleted || mediated.Operation == "" || mediated.Operation == "downstream-fixture" {
@@ -459,6 +898,10 @@ func TestOnDemandProviderStartsRestartsAndStops(t *testing.T) {
 	}
 	if calls, _ := os.ReadFile(filepath.Join(pidDir, "calls")); strings.Count(string(calls), "start\n") != 1 {
 		t.Fatalf("permitted caller reached provider %q", calls)
+	}
+	launched := pids(t, pidDir)
+	if len(launched) != 1 || providerStates(t, endpoint)[name].Readiness != fwire.DeclarationReadinessReady {
+		t.Fatalf("admission did not launch provider: %v, state %+v", launched, providerStates(t, endpoint)[name])
 	}
 
 	child, err := os.FindProcess(launched[0])
@@ -471,16 +914,10 @@ func TestOnDemandProviderStartsRestartsAndStops(t *testing.T) {
 	eventually(t, 10*time.Second, "the crash being noticed", func() bool {
 		return providerStates(t, endpoint)[name].Readiness != fwire.DeclarationReadinessReady
 	})
-	// The declaration's own reading flips the instant the supervisor notices;
-	// the resolution catalogue, rebuilt from the same change notification, can
-	// trail it by the router's own survey of the now-visible not-ready host
-	// (FAC-R8: an on-demand declaration stays a candidate before its first
-	// launch, so a pinned call has a host to wait on).
-	var result fwire.ResolveResult
-	eventually(t, 2*time.Second, "the crash reaching the resolution catalogue", func() bool {
-		result = resolve()
-		return result.Status == fwire.ResolutionStatusNotReady
-	})
+	// The OA mediator stays resolvable while the downstream provider restarts.
+	if result := resolve(); result.Status != fwire.ResolutionStatusResolved || result.Reference.Endpoint != mediatedEndpoint {
+		t.Fatalf("mediator after downstream crash %+v", result)
+	}
 	eventually(t, 20*time.Second, "the provider restarting", func() bool {
 		s := providerStates(t, endpoint)[name]
 		return s.Readiness == fwire.DeclarationReadinessReady && s.Restarts == 1 && len(pids(t, pidDir)) == 2
@@ -527,15 +964,15 @@ func TestOnDemandProviderStartsRestartsAndStops(t *testing.T) {
 	if calls, _ := os.ReadFile(filepath.Join(pidDir, "calls")); strings.Count(string(calls), "start\n") != 1 {
 		t.Fatalf("stale endpoint reached replacement provider: %q", calls)
 	}
-	if result := resolve(); result.Status != fwire.ResolutionStatusNotReady {
-		t.Fatalf("first replacement resolution %+v", result)
+	resolved = resolve()
+	if resolved.Status != fwire.ResolutionStatusResolved {
+		t.Fatalf("replacement mediator resolution %+v", resolved)
 	}
-	eventually(t, 20*time.Second, "the replacement provider becoming ready", func() bool {
-		resolved = resolve()
-		return resolved.Status == fwire.ResolutionStatusResolved
-	})
 	if resolved.Reference.Endpoint == mediatedEndpoint {
 		t.Fatalf("replacement reused stale endpoint %q", mediatedEndpoint)
+	}
+	if len(pids(t, pidDir)) != 2 {
+		t.Fatalf("replacement resolution launched downstream provider: %v", pids(t, pidDir))
 	}
 	replaced := runApp("replacement", resolved.Reference.Endpoint)
 	if replaced.StartOutcome != iwire.StartOutcomeAccepted || replaced.Outcome == nil || *replaced.Outcome != iwire.ReplyOutcomeCompleted {
@@ -551,9 +988,6 @@ func TestOnDemandProviderStartsRestartsAndStops(t *testing.T) {
 	if result := resolve(); result.Status != fwire.ResolutionStatusUnmetRequirements {
 		t.Fatalf("resolution after replacement removal %+v", result)
 	}
-	eventually(t, 12*time.Second, "the retired generation endpoint closing after operation retention", func() bool {
-		return !answersAt(mediatedEndpoint)
-	})
 }
 
 // A running provider whose process is another program than the declaration's

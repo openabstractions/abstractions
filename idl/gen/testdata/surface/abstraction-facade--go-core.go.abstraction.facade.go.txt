@@ -291,6 +291,9 @@ type DeclarationHost struct
   Hosted bool
   Credential string
   Ceiling *DeclarationCeiling
+type DeclarationExtension struct
+  Profile string
+  Key string
 type Declaration struct
   Name string
   Program string
@@ -305,6 +308,9 @@ type Declaration struct
   Models []string
   Role DeclarationRole
   Host *DeclarationHost
+type DeclarationWithExtensions struct
+  Declaration Declaration
+  SupportedExtensions []DeclarationExtension
 type HostReading struct
   Up bool
   Why string
@@ -331,6 +337,17 @@ type DeclarationObservation struct
   Outcome DeclarationListOutcome
   Cursor string
   Declarations []DeclarationState
+type DeclarationStateV2 struct
+  State DeclarationState
+  SupportedExtensions []DeclarationExtension
+type DeclarationListV2 struct
+  Outcome DeclarationListOutcome
+  Revision string
+  Declarations []DeclarationStateV2
+type DeclarationObservationV2 struct
+  Outcome DeclarationListOutcome
+  Cursor string
+  Declarations []DeclarationStateV2
 type ApplicationInterface struct
   Name string
   Protocol string
@@ -364,6 +381,7 @@ type ApplicationEntry struct
   Descriptor ApplicationDescriptor
   Instances []ApplicationInstance
   Scope Scope
+  SelfRegistered bool
 type ApplicationChange struct
   Outcome ApplicationOutcome
   Instance string
@@ -377,6 +395,18 @@ type ApplicationActivationResult struct
   Instance string
   Started bool
   Reason string
+type ApplicationStart struct
+  Application string
+  Program string
+  Title string
+  StartedUnixMs int64
+  Launched bool
+type ApplicationStartPage struct
+  Outcome ApplicationOutcome
+  Starts []ApplicationStart
+  Cursor string
+  Complete bool
+  CompleteSinceUnixMs int64
 func Encode(v *ResolveResult) []byte
 type Refusal struct
   Word string
@@ -464,13 +494,35 @@ func (RegistryDispatcher) DescribeServiceMetadata() (guarantees []string, capabi
 func (RegistryDispatcher) ServiceContract() string
 func (RegistryDispatcher) WriteFrame(frame []byte) error
 func (RegistryDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type RegistryV2 interface
+  Declarations() (DeclarationListV2, error)
+  Declare(expectedRevision string, declaration DeclarationWithExtensions) (DeclarationChange, error)
+  Withdraw(expectedRevision, name string) (DeclarationChange, error)
+  Observe(cursor string, waitMs int64) (DeclarationObservationV2, error)
+type RegistryV2Transport interface
+  FrameExchanger
+type RegistryV2Client struct
+func NewRegistryV2Client(t RegistryV2Transport) *RegistryV2Client
+type RegistryV2Dispatcher struct
+  Handler RegistryV2
+func (RegistryV2Client) Declarations() (result DeclarationListV2, err error)
+func (RegistryV2Client) Declare(expectedRevision string, declaration DeclarationWithExtensions) (result DeclarationChange, err error)
+func (RegistryV2Client) Withdraw(expectedRevision, name string) (result DeclarationChange, err error)
+func (RegistryV2Client) Observe(cursor string, waitMs int64) (result DeclarationObservationV2, err error)
+func (RegistryV2Dispatcher) DescribeService() (contract string, ready bool, why string)
+func (RegistryV2Dispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (RegistryV2Dispatcher) ServiceContract() string
+func (RegistryV2Dispatcher) WriteFrame(frame []byte) error
+func (RegistryV2Dispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type Applications interface
   Register(descriptor ApplicationDescriptor) (ApplicationChange, error)
+  AskConfirmation(application string) (ApplicationChange, error)
   Remove(application string) (ApplicationChange, error)
   Announce(presence ApplicationPresence) (ApplicationChange, error)
   Withdraw(application, instance string) (ApplicationChange, error)
   Observe(cursor string, waitMs int64) (ApplicationPage, error)
   Activate(application string) (ApplicationActivationResult, error)
+  ListStarts(cursor string, limit int64) (ApplicationStartPage, error)
 type ApplicationsTransport interface
   FrameExchanger
 type ApplicationsClient struct
@@ -478,11 +530,13 @@ func NewApplicationsClient(t ApplicationsTransport) *ApplicationsClient
 type ApplicationsDispatcher struct
   Handler Applications
 func (ApplicationsClient) Register(descriptor ApplicationDescriptor) (result ApplicationChange, err error)
+func (ApplicationsClient) AskConfirmation(application string) (result ApplicationChange, err error)
 func (ApplicationsClient) Remove(application string) (result ApplicationChange, err error)
 func (ApplicationsClient) Announce(presence ApplicationPresence) (result ApplicationChange, err error)
 func (ApplicationsClient) Withdraw(application, instance string) (result ApplicationChange, err error)
 func (ApplicationsClient) Observe(cursor string, waitMs int64) (result ApplicationPage, err error)
 func (ApplicationsClient) Activate(application string) (result ApplicationActivationResult, err error)
+func (ApplicationsClient) ListStarts(cursor string, limit int64) (result ApplicationStartPage, err error)
 func (ApplicationsDispatcher) DescribeService() (contract string, ready bool, why string)
 func (ApplicationsDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ApplicationsDispatcher) ServiceContract() string

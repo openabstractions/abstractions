@@ -108,6 +108,8 @@ Every command accepts --endpoint, --timeout and --json. The endpoint is
 --endpoint if given, else ABSTRACTION_RUNTIME_ENDPOINT if set, else the
 installed runtime. --timeout D is a deadline for the whole command.
 
+With --endpoint, --runtime-program PATH verifies that absolute executable under this account.
+
 Exit codes: 0 done, 1 runtime not resolved or transport failure, 2 usage,
 3 typed refusal (forbidden, conflict, invalid, no_secure_store), 4 unavailable,
 6 unknown.
@@ -197,7 +199,10 @@ func inferenceCommand(args []string, output, diagnostics io.Writer) error {
 	}
 	w := newWaiting(options.budget)
 	defer w.stop()
-	machine, source := options.machine(diagnostics, command)
+	machine, source, err := options.machine(diagnostics, command, inferenceUsage)
+	if err != nil {
+		return err
+	}
 	call, done := w.call()
 	operator, err := machine.ResolveInferenceOperator(call, client.Requirements{})
 	done()

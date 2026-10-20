@@ -96,6 +96,9 @@ func shellIsThisAccount(frame *shellFrame) error {
 		return fmt.Errorf("%w: %v", errNoShell, err)
 	}
 	defer token.Close()
+	if err := requireUnelevatedShell(token, windows.GetTokenInformation); err != nil {
+		return err
+	}
 	shellUser, err := token.GetTokenUser()
 	if err != nil {
 		return fmt.Errorf("%w: %v", errNoShell, err)
@@ -106,6 +109,20 @@ func shellIsThisAccount(frame *shellFrame) error {
 	}
 	if !windows.EqualSid(shellUser.User.Sid, self.User.Sid) {
 		return fmt.Errorf("%w: the desktop shell runs as %s", errNoShell, shellUser.User.Sid)
+	}
+	return nil
+}
+
+func requireUnelevatedShell(token windows.Token, inspect func(windows.Token, uint32, *byte, uint32, *uint32) error) error {
+	var elevated, size uint32
+	if err := inspect(token, windows.TokenElevation, (*byte)(unsafe.Pointer(&elevated)), 4, &size); err != nil {
+		return fmt.Errorf("%w: desktop shell elevation unavailable: %v", errNoShell, err)
+	}
+	if size != 4 {
+		return fmt.Errorf("%w: desktop shell elevation returned %d bytes", errNoShell, size)
+	}
+	if elevated != 0 {
+		return fmt.Errorf("%w: the desktop shell is elevated", errNoShell)
 	}
 	return nil
 }

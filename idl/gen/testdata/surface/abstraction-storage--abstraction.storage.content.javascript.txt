@@ -94,6 +94,7 @@ class HoldsClient
 object HoldsService {wireName, Client}
 class InventoryClient
   list(continuation, limit)
+  listStore(store, continuation, limit)
   holders(target)
   unheld(continuation, limit)
   find(digest)

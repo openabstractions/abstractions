@@ -401,16 +401,13 @@ func TestPanelSelectionStatusWords(t *testing.T) {
 			t.Fatalf("selection %v: %+v, want %s", c.err, got, c.want)
 		}
 	}
-	if limits := identityLimits("darwin", nil, identity.Limits{Bindable: true}); !strings.Contains(limits[0], "protected calls are refused") {
+	if limits := identityLimits("darwin", nil, identity.Limits{Bindable: true}); !strings.Contains(limits[0], "installed runtime uses XPC") || !strings.Contains(limits[0], "protected calls through it are refused") {
 		t.Fatalf("macOS limits %q", limits)
 	}
 }
 
 func TestPanelPlatformDeclarationIsTheRepositoryCopy(t *testing.T) {
-	source, err := os.ReadFile(filepath.Join("..", "docs", "platforms.json"))
-	if errors.Is(err, os.ErrNotExist) {
-		t.Skip("published Panel tree: docs/platforms.json is not beside it")
-	}
+	source, err := os.ReadFile(privateInput(t, "..", "docs", "platforms.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

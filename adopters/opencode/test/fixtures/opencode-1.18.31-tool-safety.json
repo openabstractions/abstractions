@@ -1,0 +1,167 @@
+{
+  "about": "Every safety clause (NEVER, must, DO NOT, unless explicitly requested and the like) in the OpenCode 1.18.31 tool text the OA plugin compacts, with the phrase compact-tools.js keeps it with. test/compact-tools.test.mjs holds the compact text to every phrase, and the list to every clause of the pinned tool text in opencode-1.18.31-tool/. Re-derive it on an OpenCode version bump.",
+  "opencode": "1.18.31",
+  "clauses": [
+    {
+      "tool": "edit",
+      "source": "packages/opencode/src/tool/edit.txt",
+      "original": "You must use your `Read` tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the file.",
+      "keeps": [
+        "You must read the file first"
+      ]
+    },
+    {
+      "tool": "edit",
+      "source": "packages/opencode/src/tool/edit.txt",
+      "original": "When editing text from Read tool output, ensure you preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix. The line number prefix format is: line number + colon + space (e.g., `1: `). Everything after that space is the actual file content to match. Never include any part of the line number prefix in the oldString or newString.",
+      "keeps": [
+        "keep the exact indentation after the `N: ` line prefix",
+        "never include the prefix"
+      ]
+    },
+    {
+      "tool": "edit",
+      "source": "packages/opencode/src/tool/edit.txt",
+      "original": "ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.",
+      "keeps": [
+        "never write new files unless required"
+      ]
+    },
+    {
+      "tool": "edit",
+      "source": "packages/opencode/src/tool/edit.txt",
+      "original": "Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.",
+      "keeps": [
+        "No emojis unless asked"
+      ]
+    },
+    {
+      "tool": "write",
+      "source": "packages/opencode/src/tool/write.txt",
+      "original": "If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first.",
+      "keeps": [
+        "You must read an existing file first"
+      ]
+    },
+    {
+      "tool": "write",
+      "source": "packages/opencode/src/tool/write.txt",
+      "original": "ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.",
+      "keeps": [
+        "never write new files unless required"
+      ]
+    },
+    {
+      "tool": "write",
+      "source": "packages/opencode/src/tool/write.txt",
+      "original": "NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.",
+      "keeps": [
+        "never create documentation files unless asked"
+      ]
+    },
+    {
+      "tool": "write",
+      "source": "packages/opencode/src/tool/write.txt",
+      "original": "Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.",
+      "keeps": [
+        "No emojis unless asked"
+      ]
+    },
+    {
+      "tool": "grep",
+      "source": "packages/opencode/src/tool/grep.txt",
+      "original": "If you need to identify/count the number of matches within files, use the Bash tool with `rg` (ripgrep) directly. Do NOT use `grep`.",
+      "keeps": [
+        "To count matches, run rg in the shell, never grep"
+      ]
+    },
+    {
+      "tool": "webfetch",
+      "source": "packages/opencode/src/tool/webfetch.txt",
+      "original": "The URL must be a fully-formed valid URL",
+      "keeps": [
+        "it must be full and valid"
+      ]
+    },
+    {
+      "tool": "todowrite",
+      "source": "packages/opencode/src/tool/todowrite.txt",
+      "original": "Mark `completed` only after the required work is actually done, including any required verification. Never based on intent.",
+      "keeps": [
+        "only when done and verified, never on intent"
+      ]
+    },
+    {
+      "tool": "bash",
+      "source": "packages/opencode/src/tool/shell/shell.txt",
+      "original": "IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) - use the specialized tools for this instead.",
+      "keeps": [
+        "Use the read, edit, write, glob and grep tools for files, not shell commands"
+      ]
+    },
+    {
+      "tool": "bash",
+      "source": "packages/opencode/src/tool/shell/shell.txt",
+      "original": "Only commit, amend, push, or create PRs when explicitly requested.",
+      "keeps": [
+        "Commit, amend, push or open PRs only when asked"
+      ]
+    },
+    {
+      "tool": "bash",
+      "source": "packages/opencode/src/tool/shell/shell.txt",
+      "original": "Before committing, inspect `git status`, `git diff`, and `git log --oneline -10`; stage only intended files and never commit secrets.",
+      "keeps": [
+        "never commit secrets"
+      ]
+    },
+    {
+      "tool": "bash",
+      "source": "packages/opencode/src/tool/shell/shell.txt",
+      "original": "Do not update git config, skip hooks, use interactive `-i`, force-push, or create empty commits unless explicitly requested.",
+      "keeps": [
+        "Do not update git config, skip hooks, use interactive -i, force-push or create empty commits unless asked"
+      ]
+    },
+    {
+      "tool": "bash",
+      "source": "packages/opencode/src/tool/shell/shell.txt",
+      "original": "If a commit fails or hooks reject it, fix the issue and create a new commit; do not amend the failed commit.",
+      "keeps": [
+        "make a new commit; do not amend the failed one"
+      ]
+    },
+    {
+      "tool": "bash",
+      "source": "packages/opencode/src/tool/shell/prompt.ts",
+      "original": "If the output exceeds ${limits.maxLines} lines or ${limits.maxBytes} bytes, it will be truncated and the full output will be written to a file. You can use Read with offset/limit to read specific sections or Grep to search the full content. Do NOT use \\`head\\`, \\`tail\\`, or other truncation commands to limit output; the full output will already be captured to a file for more precise searching.",
+      "keeps": [
+        "do not trim it with head, tail or more"
+      ]
+    },
+    {
+      "tool": "bash",
+      "source": "packages/opencode/src/tool/shell/prompt.ts",
+      "original": "DO NOT use newlines to separate commands (newlines are ok in quoted strings)",
+      "keeps": [
+        "do not separate commands with newlines"
+      ]
+    },
+    {
+      "tool": "bash",
+      "source": "packages/opencode/src/tool/shell/prompt.ts",
+      "original": "If the output exceeds ${limits.maxLines} lines or ${limits.maxBytes} bytes, it will be truncated and the full output will be written to a file. You can use Read with offset/limit to read specific sections or Grep to search the full content. Do NOT use \\`Select-Object -First\\`, \\`Select-Object -Last\\`, or other truncation commands to limit output; the full output will already be captured to a file for more precise searching.",
+      "keeps": [
+        "do not trim it with head, tail or more"
+      ]
+    },
+    {
+      "tool": "bash",
+      "source": "packages/opencode/src/tool/shell/prompt.ts",
+      "original": "If the output exceeds ${limits.maxLines} lines or ${limits.maxBytes} bytes, it will be truncated and the full output will be written to a file. You can use Read with offset/limit to read specific sections or Grep to search the full content. Do NOT use \\`more\\` or other pagination commands to limit output; the full output will already be captured to a file for more precise searching.",
+      "keeps": [
+        "do not trim it with head, tail or more"
+      ]
+    }
+  ]
+}

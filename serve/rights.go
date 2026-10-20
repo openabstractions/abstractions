@@ -15,6 +15,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	asks "github.com/openabstractions/abstraction-asks/go"
 	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	"github.com/openabstractions/abstraction-facade/go/client"
 	"github.com/openabstractions/abstraction-facade/go/grants"
@@ -39,8 +40,11 @@ runtime's own operator programs may list, edit or read them.
                           expiry
   decide                  a decision, changing nothing; with --program,
                           answers only a designated enforcer
-  register-action         add --action to the catalogue; grants no permission
+  register-action         add an action or publish --description-file metadata;
+                          grants no permission
   retire-action           remove --action and its rules from the catalogue
+  defaults                the defaults for all apps; --on NAME or --off NAME
+                          turns one
 
 A rule names a proven program and exactly one action on one resource:
   --program PATH        the subject's absolute executable path (stored and
@@ -48,6 +52,13 @@ A rule names a proven program and exactly one action on one resource:
   --account ID          the subject's account (default: this account)
   --action ACTION       a catalogue action, <owner>/<name>
   --resource RESOURCE   the exact resource the action names
+  --answer-program PATH --answer-action ACTION --answer-resource RESOURCE
+  --answer-option allow|refuse
+                        in place of --resource: the one first-use question
+                        a delegated responder may answer, and its answer;
+                        --action defaults to abstraction.asks/question.answer.
+                        Windows PowerShell 5.1 drops the double quotes inside
+                        a first-use@1:[...] resource, so name it this way
   --revision REV        apply only at this policy revision (default: read
                         it now; a change in between is a conflict, not a
                         retry)
@@ -65,7 +76,7 @@ Exit codes: 0 done (a read or decide that answered, whatever it found), 1
 runtime not resolved or transport failure, 2 usage, 3 typed refusal (forbidden,
 conflict, invalid, gap), 4 unavailable.
 
-Learn more: openabstractions-flat/abstraction-rights/CONTRACT.md
+Learn more: https://github.com/openabstractions/abstraction-rights/blob/main/CONTRACT.md
 `
 
 // rightsSubUsage is each rights subcommand's own --help: its usage line, its
@@ -102,6 +113,10 @@ conditional edit at a time; the first rule that does not apply stops it.
   --account ID          the subject's account (default: this account)
   --action ACTION       a catalogue action, <owner>/<name>
   --resource RESOURCE   the exact resource the action names
+  --answer-program PATH --answer-action ACTION --answer-resource RESOURCE
+  --answer-option allow|refuse
+                        in place of --resource, a delegated responder's
+                        first-use answer scope (see rights --help)
   --deny                an exact deny rule
   --why TEXT             the reason recorded with the rule (0..256 bytes)
   --ttl DURATION         expire the rule after DURATION (default: no expiry)
@@ -109,7 +124,16 @@ conditional edit at a time; the first rule that does not apply stops it.
   --for BUNDLE           downloads or inference, instead of --action/--resource
   --registry LIST        grant --for downloads: registries (default hf,ollama)
   --host LIST            grant --for inference: hosts (required)
+  --output LIST          grant --for inference: output profiles, image, video
+                         and speech, the program may write and read back;
+                         each covers only outputs its own work produced
   --credential LIST      grant --for: registered credential names
+
+grant --for inference also writes abstraction.job/acceptance.submit on
+job:inference, since image batches and video are submitted as jobs; it lets
+in no other kind of job, a download among them. --for downloads writes it on
+job:download. An input profile is never in a bundle: the request that
+consumes it asks for it.
 
 Example:
   openabstractions rights grant --program C:\tools\app.exe --action abstraction.credentials/apply --resource credential:hf
@@ -121,16 +145,25 @@ Exit codes: 0 done, 1 runtime not resolved or transport failure, 2 usage,
 	case "revoke":
 		return `Usage: openabstractions rights revoke --program PATH --action ACTION --resource RESOURCE [options]
 
-Removes one exact rule.
+Removes one exact rule. When no rule matches, it says that nothing matched
+and the policy is unchanged.
 
   --program PATH        the subject's absolute executable path
   --account ID          the subject's account (default: this account)
   --action ACTION       a catalogue action, <owner>/<name>
   --resource RESOURCE   the exact resource the action names
+  --answer-program PATH --answer-action ACTION --answer-resource RESOURCE
+  --answer-option allow|refuse
+                        in place of --resource, a delegated responder's
+                        first-use answer scope; --action defaults to
+                        abstraction.asks/question.answer. Windows PowerShell
+                        5.1 drops the double quotes inside a
+                        first-use@1:[...] resource, so name it this way
   --revision REV        apply only at this policy revision
 
 Example:
   openabstractions rights revoke --program C:\tools\app.exe --action abstraction.credentials/apply --resource credential:hf
+  openabstractions rights revoke --program C:\tools\responder.exe --answer-program C:\tools\app.exe --answer-action abstraction.inference/complete --answer-resource host:modelhost --answer-option allow
 
 Every command accepts --endpoint, --runtime-program, --timeout and --json.
 Exit codes: 0 done, 1 runtime not resolved or transport failure, 2 usage,
@@ -177,8 +210,14 @@ Exit codes: 0 permitted, 1 runtime not resolved or transport failure, 2 usage,
 		return `Usage: openabstractions rights register-action --action ACTION [--revision REV] [options]
 
 Adds --action to the catalogue; grants no permission.
+--description-file publishes/corrects a closed action descriptor through the
+operator. Its feature_app is declared app information, separate from grant
+targets; the service records the actual publishing operator. No code behavior
+or vendor publisher is verified by this metadata.
 
   --action ACTION   a catalogue action, <owner>/<name>
+  --description-file FILE  bounded JSON action descriptor; optional --action
+                           must match its action
   --revision REV    apply only at this policy revision
 
 Example:
@@ -203,6 +242,8 @@ Every command accepts --endpoint, --runtime-program, --timeout and --json.
 Exit codes: 0 done, 1 runtime not resolved or transport failure, 2 usage,
 3 typed refusal (forbidden, conflict), 4 unavailable.
 `
+	case "defaults":
+		return rightsDefaultsUsage
 	}
 	return rightsUsage
 }
@@ -248,6 +289,34 @@ func canonicalSubjectProgram(program string) string {
 	return identity.NormalizeSubjectProgram(program)
 }
 
+// firstUseAnswer names a delegated responder's first-use answer scope by
+// its parts, so no shell has to pass the JSON array of a first-use@1:[...]
+// resource: Windows PowerShell 5.1 drops the double quotes inside an argument
+// to a native program (live walkthrough 2026-10-02, D14).
+type firstUseAnswer struct{ program, action, resource, option string }
+
+// apply sets rule's resource to the scope asks.FirstUseAnswerResource names,
+// the helper the Panel and the runtime's answer check use, and its action to
+// the answer action unless the caller named that action already.
+func (a firstUseAnswer) apply(rule *rightsRule, command string, bundle bool) error {
+	switch {
+	case command == "list" || command == "register-action" || command == "retire-action" || bundle:
+		return errors.New("--answer-program, --answer-action, --answer-resource and --answer-option name one rule's resource")
+	case rule.resource != "":
+		return errors.New("name the resource with --resource or with the --answer-* flags, not both")
+	case rule.action != "" && rule.action != asks.AnswerAction:
+		return fmt.Errorf("the --answer-* flags name a resource of %s", asks.AnswerAction)
+	case !identity.ValidSubjectProgram(a.program):
+		return errors.New("--answer-program must be a clean absolute executable path")
+	}
+	resource, err := asks.FirstUseAnswerResource(canonicalSubjectProgram(a.program), a.action, a.resource, a.option)
+	if err != nil {
+		return errors.New("--answer-program, --answer-action and --answer-resource name one first-use question and --answer-option is allow or refuse")
+	}
+	rule.resource, rule.action = resource, asks.AnswerAction
+	return nil
+}
+
 // ruleJSON is one exact rule as the rights command prints it.
 type ruleJSON struct {
 	Subject  probeSubject `json:"subject"`
@@ -271,20 +340,23 @@ type recordJSON struct {
 
 // rightsReply is the JSON document a rights command prints.
 type rightsReply struct {
-	Command    string        `json:"command"`
-	Outcome    string        `json:"outcome"`
-	Revision   string        `json:"revision,omitempty"`
-	Subject    *probeSubject `json:"subject,omitempty"`
-	Action     string        `json:"action,omitempty"`
-	Resource   string        `json:"resource,omitempty"`
-	Permit     *bool         `json:"permit,omitempty"`
-	Current    *ruleJSON     `json:"current,omitempty"`
-	Record     *recordJSON   `json:"record,omitempty"`
-	Rules      []ruleJSON    `json:"rules,omitempty"`
-	Catalog    []string      `json:"catalog,omitempty"`
-	Next       string        `json:"next,omitempty"`
-	Complete   bool          `json:"complete,omitempty"`
-	RuleOnFile *rightsReply  `json:"rule_on_record,omitempty"`
+	Command  string        `json:"command"`
+	Outcome  string        `json:"outcome"`
+	Revision string        `json:"revision,omitempty"`
+	Subject  *probeSubject `json:"subject,omitempty"`
+	Action   string        `json:"action,omitempty"`
+	Resource string        `json:"resource,omitempty"`
+	Permit   *bool         `json:"permit,omitempty"`
+	// Matched is revoke's answer to whether a rule was there to remove.
+	Matched     *bool                     `json:"matched,omitempty"`
+	Current     *ruleJSON                 `json:"current,omitempty"`
+	Record      *recordJSON               `json:"record,omitempty"`
+	Rules       []ruleJSON                `json:"rules,omitempty"`
+	Catalog     []string                  `json:"catalog,omitempty"`
+	Next        string                    `json:"next,omitempty"`
+	Complete    bool                      `json:"complete,omitempty"`
+	RuleOnFile  *rightsReply              `json:"rule_on_record,omitempty"`
+	Description *publishedDescriptionJSON `json:"description,omitempty"`
 }
 
 func subjectOf(s rights.Subject) *probeSubject {
@@ -300,7 +372,7 @@ func rightsCommand(args []string, output, diagnostics io.Writer) error {
 		return commandMistake(diagnostics, "rights: a command is required", "openabstractions rights --help")
 	}
 	switch args[0] {
-	case "list", "grant", "revoke", "read", "decide", "register-action", "retire-action":
+	case "list", "grant", "revoke", "read", "decide", "register-action", "retire-action", "defaults":
 	default:
 		return commandMistake(diagnostics, fmt.Sprintf("rights: no command called %q", args[0]), "openabstractions rights --help")
 	}
@@ -318,14 +390,20 @@ func rightsCommand(args []string, output, diagnostics io.Writer) error {
 	var options probeOptions
 	options.bind(flags)
 	var rule rightsRule
-	var revision, why, cursor string
+	var revision, why, cursor, descriptionFile string
 	var deny, long bool
 	var ttl time.Duration
 	var limit int64
 	flags.StringVar(&rule.program, "program", "", "subject executable path")
 	flags.StringVar(&rule.account, "account", "", "subject account (default: this account)")
 	flags.StringVar(&rule.action, "action", "", "catalogue action")
+	flags.StringVar(&descriptionFile, "description-file", "", "register-action: closed JSON descriptor")
 	flags.StringVar(&rule.resource, "resource", "", "exact resource")
+	var answer firstUseAnswer
+	flags.StringVar(&answer.program, "answer-program", "", "first-use answer scope: the asking program")
+	flags.StringVar(&answer.action, "answer-action", "", "first-use answer scope: the action asked for")
+	flags.StringVar(&answer.resource, "answer-resource", "", "first-use answer scope: the resource asked for")
+	flags.StringVar(&answer.option, "answer-option", "", "first-use answer scope: allow or refuse")
 	flags.StringVar(&revision, "revision", "", "policy revision to apply at")
 	flags.StringVar(&why, "why", "", "reason recorded with a grant")
 	flags.BoolVar(&deny, "deny", false, "grant an exact deny rule")
@@ -333,11 +411,15 @@ func rightsCommand(args []string, output, diagnostics io.Writer) error {
 	flags.StringVar(&cursor, "cursor", "", "listing continuation")
 	flags.Int64Var(&limit, "limit", 64, "rules per page")
 	flags.BoolVar(&long, "long", false, "list: print each rule's real account and full program path")
-	var bundle, registries, hosts, credentialNames string
+	var bundle, registries, hosts, outputs, credentialNames string
 	flags.StringVar(&bundle, "for", "", "grant a bundle: downloads or inference")
 	flags.StringVar(&registries, "registry", "hf,ollama", "registries a downloads bundle may look up")
 	flags.StringVar(&hosts, "host", "", "inference hosts an inference bundle may complete on")
+	flags.StringVar(&outputs, "output", "", "output profiles an inference bundle may write and read back")
 	flags.StringVar(&credentialNames, "credential", "", "credential names a bundle may have applied")
+	var turnOn, turnOff string
+	flags.StringVar(&turnOn, "on", "", "defaults: turn this default on")
+	flags.StringVar(&turnOff, "off", "", "defaults: turn this default off")
 	if err := flags.Parse(args[1:]); err != nil {
 		return badFlag(flags, diagnostics, command, subUsage, args[1:], err)
 	}
@@ -347,16 +429,44 @@ func rightsCommand(args []string, output, diagnostics io.Writer) error {
 	if options.timeout <= 0 {
 		return flagMistake(diagnostics, command, subUsage, "--timeout must be positive")
 	}
+	if descriptionFile != "" && sub != "register-action" {
+		return flagMistake(diagnostics, command, subUsage, "--description-file belongs to register-action")
+	}
+	if sub == "defaults" {
+		invalid := turnOn != "" && turnOff != ""
+		flags.Visit(func(f *flag.Flag) {
+			switch f.Name {
+			case "on", "off", "revision", "endpoint", "runtime-program", "timeout", "json":
+			default:
+				invalid = true
+			}
+		})
+		name := turnOn + turnOff
+		if invalid || (revisionGiven(flags) && name == "") || name != "" && !rightsText(name, 64) {
+			return flagMistake(diagnostics, command, subUsage, "use at most one of --on NAME and --off NAME, with --revision only when turning one; rule fields do not apply")
+		}
+		machine, source, err := rightsMachine(options, diagnostics, command, subUsage)
+		if err != nil {
+			return err
+		}
+		call := func() (context.Context, context.CancelFunc) {
+			return context.WithTimeout(context.Background(), options.timeout)
+		}
+		return rightsDefaults(machine, source, call, command, name, turnOn != "", revision, options.asJSON, output)
+	}
+	if turnOn != "" || turnOff != "" {
+		return flagMistake(diagnostics, command, subUsage, "--on and --off belong to rights defaults")
+	}
 	bundleFlags := false
 	flags.Visit(func(f *flag.Flag) {
-		bundleFlags = bundleFlags || f.Name == "for" || f.Name == "registry" || f.Name == "host" || f.Name == "credential"
+		bundleFlags = bundleFlags || f.Name == "for" || f.Name == "registry" || f.Name == "host" || f.Name == "output" || f.Name == "credential"
 	})
 	var bundleRules []grants.Rule
 	if bundleFlags {
 		if args[0] != "grant" || bundle == "" || rule.action != "" || rule.resource != "" || deny {
-			return flagMistake(diagnostics, command, subUsage, "--registry, --host and --credential belong to grant --for, which names no --action, --resource or --deny")
+			return flagMistake(diagnostics, command, subUsage, "--registry, --host, --output and --credential belong to grant --for, which names no --action, --resource or --deny")
 		}
-		selection := grants.For{Credentials: splitList(credentialNames), Hosts: splitList(hosts)}
+		selection := grants.For{Credentials: splitList(credentialNames), Hosts: splitList(hosts), Outputs: splitList(outputs)}
 		if bundle == grants.Downloads {
 			selection.Registries = splitList(registries)
 		}
@@ -366,6 +476,11 @@ func rightsCommand(args []string, output, diagnostics io.Writer) error {
 		}
 		if why == "" {
 			why = grants.DefaultWhy(bundle)
+		}
+	}
+	if answer != (firstUseAnswer{}) {
+		if err := answer.apply(&rule, args[0], bundleFlags); err != nil {
+			return flagMistake(diagnostics, command, subUsage, err.Error())
 		}
 	}
 	if rule.account == "" {
@@ -387,11 +502,21 @@ func rightsCommand(args []string, output, diagnostics io.Writer) error {
 		invalid := false
 		flags.Visit(func(f *flag.Flag) {
 			switch f.Name {
-			case "action", "revision", "endpoint", "runtime-program", "timeout", "json":
+			case "action", "description-file", "revision", "endpoint", "runtime-program", "timeout", "json":
 			default:
 				invalid = true
 			}
 		})
+		if !invalid && descriptionFile != "" {
+			description, err := readActionDescriptionFile(descriptionFile)
+			if err != nil {
+				return flagMistake(diagnostics, command, subUsage, err.Error())
+			}
+			if rule.action != "" && rule.action != description.Action {
+				return flagMistake(diagnostics, command, subUsage, "--action must match the descriptor action")
+			}
+			return rightsPublishDescription(machine, source, call, command, description, revision, options.asJSON, output)
+		}
 		if invalid || !regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}/[a-z0-9][a-z0-9._-]{0,62}$`).MatchString(rule.action) {
 			return flagMistake(diagnostics, command, subUsage, "use --action <owner>/<name> and optional --revision; rule fields do not apply")
 		}
@@ -471,7 +596,7 @@ func rightsMachine(options probeOptions, diagnostics io.Writer, command, usage s
 // bootstrap.CurrentProfileView, so a test can supply a fixed view without
 // touching this process's own AppData.
 func warnVirtualizedProgram(diagnostics io.Writer, program, localAppData string, profile func() (bootstrap.ProfileView, error)) {
-	if localAppData == "" || program == "" || !withinFold(program, localAppData) {
+	if localAppData == "" || program == "" || !underFolderName(program, localAppData) {
 		return
 	}
 	view, err := profile()
@@ -482,16 +607,13 @@ func warnVirtualizedProgram(diagnostics io.Writer, program, localAppData string,
 	fmt.Fprintf(diagnostics, "rights grant: warning: --program %s is under this process's own AppData, and this process sees package %s's private copy of it. The runtime may report a different physical path for a program under a packaged app. Grant the path openabstractions status reports as this program's identity.\n", program, view.Family)
 }
 
-// withinFold reports whether p lies inside folder, comparing case-
-// insensitively and on either separator, as Windows paths compare: p and
-// folder always name Windows paths (a --program value and %LOCALAPPDATA%),
-// whether this process itself runs on Windows or, as in its tests, on Linux,
-// so the comparison cleans by hand instead of through path/filepath, which
-// would only recognize the host's own separator.
-func withinFold(p, folder string) bool {
-	p = path.Clean(strings.ReplaceAll(p, `\`, "/"))
-	folder = path.Clean(strings.ReplaceAll(folder, `\`, "/"))
-	return len(p) > len(folder)+1 && strings.EqualFold(p[:len(folder)], folder) && p[len(folder)] == '/'
+// underFolderName reports whether p lies inside folder by name
+// (identity.PathNameWithin): p is a --program value a rule names, which may
+// not be installed yet, and folder is %LOCALAPPDATA%. Both are Windows paths
+// whether this process runs on Windows or, as in its tests, on Linux, so they
+// are cleaned on either separator first.
+func underFolderName(p, folder string) bool {
+	return identity.PathNameWithin(path.Clean(strings.ReplaceAll(p, `\`, "/")), path.Clean(strings.ReplaceAll(folder, `\`, "/")))
 }
 
 func rightsActionEdit(machine *client.Machine, source endpointSource, call func() (context.Context, context.CancelFunc), command, action, revision string, retire, asJSON bool, output io.Writer) error {
@@ -601,12 +723,13 @@ func rightsList(machine *client.Machine, source endpointSource, call func() (con
 // not one. A forbidden outcome replaces reason with the one fix: no rule can
 // grant operator standing, since the runtime's operator programs are fixed by
 // installation (serve/runtime_credentials.go operatorPrograms), not by a
-// policy rule. Any other outcome keeps its own reason unchanged.
+// policy rule; an isolated runtime adds the one program named by its
+// --operator-program. Any other outcome keeps its own reason unchanged.
 func rightsOperatorRefusal(command, outcome, reason string) error {
 	if outcome != "forbidden" {
 		return refusal(command, outcome, reason)
 	}
-	return refusal(command, outcome, "run this from the installed openabstractions.exe, its windowless sibling or the Abstraction Panel; those hold operator standing by installation, and no rights grant can extend it to another program")
+	return refusal(command, outcome, "run this from the installed openabstractions.exe, its windowless sibling or the Abstraction Panel; those hold operator standing by installation, and no rights grant can extend it to another program. An isolated runtime also admits the one program it was started with as --operator-program")
 }
 
 // shortProgramName is a rule's --program as rights list prints it by default:
@@ -667,15 +790,29 @@ func rightsEdit(machine *client.Machine, source endpointSource, call func() (con
 	if !revoke {
 		reply.Permit = &permit
 	}
+	// A revoke that removes nothing is applied without a write: the policy
+	// keeps the revision it was applied at.
+	revoked := revoke && edit.Outcome == rightswire.PolicyEditOutcomeApplied
+	matched := revoked && edit.Revision != revision
+	if revoked {
+		reply.Matched = &matched
+	}
 	var failure error
 	if edit.Outcome != rightswire.PolicyEditOutcomeApplied {
 		failure = refusal(command, edit.Outcome.String(), "at revision "+revision)
 	}
 	if !asJSON {
 		text := fmt.Sprintf("%s: %s at revision %s; policy revision now %s", command, edit.Outcome, revision, edit.Revision)
-		if edit.Current != nil {
+		switch {
+		case revoked && !matched:
+			text = fmt.Sprintf("%s: nothing matched: there is no rule of %s running %s for %s on %s; the policy is unchanged at revision %s",
+				command, subject.Account, subject.Program, rule.action, rule.resource, edit.Revision)
+		case revoked:
+			text = fmt.Sprintf("%s: removed the rule of %s running %s for %s on %s; policy revision now %s",
+				command, subject.Account, subject.Program, rule.action, rule.resource, edit.Revision)
+		case edit.Current != nil:
 			text += fmt.Sprintf("; current rule: %s %s on %s for %s running %s", ruleWord(edit.Current.Permit), edit.Current.Action, edit.Current.Resource, edit.Current.Subject.Account, edit.Current.Subject.Program)
-		} else if edit.Outcome == rightswire.PolicyEditOutcomeApplied || edit.Outcome == rightswire.PolicyEditOutcomeConflict {
+		case edit.Outcome == rightswire.PolicyEditOutcomeApplied || edit.Outcome == rightswire.PolicyEditOutcomeConflict:
 			text += "; no exact rule"
 		}
 		_, err := fmt.Fprintln(output, text)

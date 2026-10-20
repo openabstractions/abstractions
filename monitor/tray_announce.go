@@ -2,17 +2,14 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"strings"
 	"time"
 
-	asks "github.com/openabstractions/abstraction-asks/go"
 	askclient "github.com/openabstractions/abstraction-asks/go/client"
 	facade "github.com/openabstractions/abstraction-facade/go"
 )
 
-// trayDisplayName names the program in its own notifications.
-const trayDisplayName = "Abstraction Panel"
+// trayDisplayName names the program in its own dialog titles.
+const trayDisplayName = "OpenAbstractions Panel"
 
 // trayPollInterval and trayPollBudget bound how often and how long the tray
 // checks the question book for new pending questions.
@@ -26,10 +23,17 @@ const (
 // again, whether the question is later answered, retired, or (were an id
 // ever reused, which the runtime does not do) pending again.
 type trayAnnouncer struct {
-	seen map[string]bool
+	seen        map[string]bool
+	choicesSeen map[string]bool
 }
 
-func newTrayAnnouncer() *trayAnnouncer { return &trayAnnouncer{seen: map[string]bool{}} }
+func newTrayAnnouncer() *trayAnnouncer {
+	return &trayAnnouncer{seen: map[string]bool{}, choicesSeen: map[string]bool{}}
+}
+
+// forget lets a question dismissed because Windows locked the session be
+// announced again after the person returns to the interactive desktop.
+func (a *trayAnnouncer) forget(id string) { delete(a.seen, id) }
 
 // update takes one ListQuestions reading, pending and answered records alike,
 // and returns the pending records not yet announced, marking them announced.
@@ -70,42 +74,20 @@ func listQuestions(ctx context.Context, operator *askclient.Operator) ([]askclie
 // the current book within trayPollBudget, and report the pending questions
 // newly seen. unavailable reports whether the runtime could not be reached
 // this poll — not an error to the caller, since a runtime briefly
-// unreachable is ordinary, not exceptional.
-func pollTray(ctx context.Context, machine *facade.Machine, announcer *trayAnnouncer) (fresh []askclient.RecordMetadata, unavailable bool) {
+// unreachable is ordinary, not exceptional. The operator is the one the poll
+// resolved, for reads about the fresh questions.
+func pollTray(ctx context.Context, machine *facade.Machine, announcer *trayAnnouncer) (fresh []askclient.RecordMetadata, operator *askclient.Operator, unavailable bool) {
 	ctx, cancel := context.WithTimeout(ctx, trayPollBudget)
 	defer cancel()
 	operator, err := machine.ResolveAsksOperator(ctx, facade.Requirements{Scope: facade.ScopeLocal})
 	if err != nil {
-		return nil, true
+		return nil, nil, true
 	}
 	records, err := listQuestions(ctx, operator)
 	if err != nil {
-		return nil, true
+		return nil, nil, true
 	}
-	return announcer.update(records), false
-}
-
-// trayNotificationText renders one pending record as a notification title
-// and body: the asking program's display name, and the action waiting on it.
-// A question outside the runtime's own first-use catalog falls back to the
-// question's own rendered sentence under this program's name.
-func trayNotificationText(record askclient.RecordMetadata) (title, body string) {
-	if program, action, resource, ok := asks.FirstUse(record.Key, record.About, record.Text); ok {
-		return trayProgramDisplayName(program), fmt.Sprintf("wants to %s on %s. Allow it in the %s.", action, resource, trayDisplayName)
-	}
-	return trayDisplayName, record.Text
-}
-
-// trayProgramDisplayName takes the file name off a program path recorded by
-// either convention, since the record names a Windows program (the asking
-// application this tray watches for) whether this tray build runs on Windows
-// or, as in its cross-platform tests, on Linux. A plain filepath.Base would
-// only split on the host's own separator and leave a foreign-separated path
-// whole, the way abstraction-resource/go/instrument's fdinfo.go already
-// treats a recorded program path.
-func trayProgramDisplayName(program string) string {
-	if idx := strings.LastIndexAny(program, "/\\"); idx >= 0 && idx+1 < len(program) {
-		return program[idx+1:]
-	}
-	return program
+	typed, typedUnavailable := pollPermissionRecords(ctx, machine)
+	records = append(records, typed...)
+	return announcer.update(records), operator, typedUnavailable
 }

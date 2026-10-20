@@ -10,6 +10,7 @@ import (
 
 	oaprobe "github.com/openabstractions/abstraction-facade/go/probe"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
+	identity "github.com/openabstractions/abstraction-identity"
 )
 
 type probeResult = oaprobe.Result
@@ -120,7 +121,14 @@ func TestProbeWithNoRuntimeIsRuntimeUnavailable(t *testing.T) {
 		t.Fatalf("probe config ran %+v", defaulted)
 	}
 	dir := t.TempDir()
-	if !probeClient(filepath.Join(dir, "OpenAbstractions-Probe.EXE")) || !probeClient(filepath.Join(dir, "openabstractions-probe")) || probeClient(filepath.Join(dir, "openabstractions")) {
+	if !probeClient(filepath.Join(dir, "openabstractions-probe")) || !probeClient(filepath.Join(dir, "openabstractions-probe.exe")) || probeClient(filepath.Join(dir, "openabstractions")) {
 		t.Fatal("probe client name detection")
+	}
+	// The name compares as the file system compares names: another case is
+	// the same program where names ignore case (Windows) and another name
+	// elsewhere.
+	upper := "OpenAbstractions-Probe.EXE"
+	if got, want := probeClient(filepath.Join(dir, upper)), identity.SamePathName(upper, "openabstractions-probe.exe"); got != want {
+		t.Fatalf("probe client %q detected %t, want %t", upper, got, want)
 	}
 }

@@ -17,30 +17,31 @@ contracts and language packages live in the linked repositories.
 [Release notes](https://github.com/openabstractions/redist/releases/latest) name
 the available packages, included features and platform verification.
 
-## Available now: 0.2.0
+## Available runtime
 
-[Download 0.2.0](https://github.com/openabstractions/redist/releases/tag/v0.2.0) for Windows, Linux and macOS.
-Use one runtime to keep accepted work running, call AI providers with named
-credentials, manage application permissions, and find or activate registered
-applications. Windows includes the Panel for inspecting and managing the runtime.
-The SDK sources cover Go, C++17, Python, Rust and JavaScript; package versions
-and registry availability are documented separately by each capability.
+[Download the latest Open Abstractions runtime](https://github.com/openabstractions/redist/releases/latest).
+The runtime provides provider admission and credential protections, resource
+and rights contracts, expanded inference APIs, `inventoryd`, `modelhostd`, an
+optional MCP gateway and the Windows Panel. Windows and Linux packages are
+unsigned; ARM64 packages are cross-built and are not installation-tested.
+Current macOS source uses XPC for
+program identity. The release notes give the attached assets, checksums, signing
+state and package-specific installation evidence.
 
-Windows x64 installation, upgrades, rollback and crash recovery passed.
-Linux amd64 installation and runtime-backed downloading passed. The macOS
-package is signed and notarised; protected service calls retain the documented
-caller-identity limitation. Windows and Linux packages are unsigned.
-[Release verification and limits](https://github.com/openabstractions/abstractions/blob/main/docs/results/release-0.2.0.md).
+The runtime supports accepted work, calls AI providers with named credentials,
+manages application permissions, and finds or activates registered applications.
+SDK sources cover Go, C++17, Python, Rust and JavaScript; each capability documents
+its independent package version and registry availability.
 
 ## Package install status
 
-| Language | **Published today** | With 0.3.0 (not yet) | Install command today |
-| --- | --- | --- | --- |
-| Go | Real tags: `go.mod` files pin `abstraction-facade` go v0.5.0 and each dependency at its own published version, live since 2026-09-20; `go get module@version` fetches them directly today | Real tags (for example `abstraction-facade` go v0.6.0, go-core v0.3.0) that `go get module@version` fetches directly, with no separate registry step | `go get github.com/openabstractions/abstraction-facade/go@v0.5.0` |
-| JavaScript | Source only; no npm package published | An `@openabstractions` npm package, pending the npm organization and owner consent | none yet |
-| Python | A local CMake native build, then `pip install` from local package paths | A PyPI wheel, pending owner consent | `pip install ./abstraction-facade/py` after the local native build |
-| Rust | Source crates at version 0.0.0, not published to crates.io | No registry publish; the crates stay a source checkout | none yet |
-| C++ | Clone the sibling repositories by hand and build with CMake | No registry publish; the sources stay a source checkout | none yet |
+| Language | Current package availability | Install command or source |
+| --- | --- | --- |
+| Go | Published module tags; capability modules set their own versions independently of the runtime. | Use the published version documented by the capability repository. |
+| JavaScript | Source only; no npm package published. | Source checkout. |
+| Python | Local CMake native build and local package installation. | `pip install ./abstraction-facade/py` after the local native build. |
+| Rust | Source crates; not published to crates.io. | Source checkout. |
+| C++ | Clone the sibling repositories and build with CMake. | Source checkout. |
 
 Each language's own package README states this same status in one line.
 
@@ -65,6 +66,12 @@ The [facade](https://github.com/openabstractions/abstraction-facade) is the
 normal application entrypoint. It resolves a service from requirements such as
 contract version, placement, guarantees and readiness. Each capability call is
 authorized again at the service boundary.
+
+The [development permission journey](examples/rights-playground/README.md)
+explains Identity, Rights and Asks through two apps requesting named credential
+access. It records current source/fixture evidence and the accepted one/all and
+finite full-control design. Tested launch instructions, the composed runtime
+journey and human Windows/macOS captures remain pending.
 
 ```text
 application -> facade resolver -> generated capability client -> service -> provider
@@ -143,8 +150,10 @@ published packages and native artifacts are available.
 ## Current limits
 
 - Package availability, signing and installation verification are recorded per release.
-- macOS native IPC lacks the program proof required by protected service calls,
-  and those calls fail closed.
+- The published 0.3.0 macOS package passed installation, runtime/XPC readiness,
+  same-version reinstall, removal and postflight checks on macOS 26.6.2 arm64.
+  Older-system qualification remains open. The macOS Unix-socket path still
+  refuses policies beyond its evidence.
 - JavaScript/Bun native clients require an explicit controlled endpoint.
   Installed selection and configured server-expectation verification return
   `ProofUnavailable`.

@@ -7,6 +7,7 @@ dataclass Alias
   profiles: list[str]
   held_in: list[str]
   context_length: int
+  effective_context_length: int
 dataclass Ask
   at: str
   caller: str
@@ -15,6 +16,14 @@ dataclass Ask
   family: str
   verdict: str
   host: str
+enum AvailabilityCause
+  TRANSPORT_UNAVAILABLE = 'transport_unavailable'
+  CREDENTIAL = 'credential'
+  RIGHTS = 'rights'
+  CONFIGURATION = 'configuration'
+  MALFORMED = 'malformed'
+  UNKNOWN = 'unknown'
+  OTHER = 'other'
 const CREDENTIAL_CONSUMERS
 dataclass Caller
   user_description: str
@@ -23,6 +32,12 @@ dataclass Component
   store: str
   role: str
   name: str
+enum ContextSource
+  EFFECTIVE = 'effective'
+  MAXIMUM = 'maximum'
+  DEFAULT = 'default'
+  UNKNOWN = 'unknown'
+  NONE = 'none'
 dataclass Decision
   asked: str
   family: str
@@ -59,6 +74,7 @@ dataclass HostState
   declared_by: str
   profiles: list[str]
   domain: str
+  availability_cause: AvailabilityCause | None
 dataclass HostsSnapshot
   observation: Observation
   hosts: list[HostState]
@@ -71,6 +87,29 @@ dataclass Observation
   caller: Caller
   took_ms: int
   cache_age_ms: int
+dataclass Offer
+  family: str
+  names: list[str]
+  servers: list[str]
+  context: int
+  context_source: ContextSource | str
+  input: int
+  unknown: list[str]
+enum OfferOutcome
+  OFFERED = 'offered'
+  INVALID = 'invalid'
+  UNAVAILABLE = 'unavailable'
+  FORBIDDEN = 'forbidden'
+  NOT_PERMITTED = 'not_permitted'
+dataclass OfferRequest
+  profile: str
+  placement: Placement | None
+  reserve: int
+  fresh: bool
+dataclass OfferSnapshot
+  observation: Observation
+  offers: list[Offer]
+  outcome: OfferOutcome | None
 const PROFILES
 dataclass PickRequest
   model: str
@@ -80,6 +119,10 @@ dataclass PickRequest
 dataclass PickResult
   observation: Observation
   decision: Decision
+enum Placement
+  LOCAL = 'local'
+  HOSTED = 'hosted'
+  ANY = 'any'
 const ROUTER_ERROR_CODES
 class Refusal(ValueError)
   __init__(word, offset)
@@ -87,11 +130,13 @@ class Router
   models(fresh: bool) -> ModelsSnapshot
   hosts(fresh: bool) -> HostsSnapshot
   pick(request: PickRequest) -> PickResult
+  offer(request: OfferRequest) -> OfferSnapshot
 class RouterClient(Router)
   __init__(transport)
   models(fresh: bool) -> ModelsSnapshot
   hosts(fresh: bool) -> HostsSnapshot
   pick(request: PickRequest) -> PickResult
+  offer(request: OfferRequest) -> OfferSnapshot
 class ServiceError(Exception)
   __init__(code, message)
 enum ServiceErrorCode

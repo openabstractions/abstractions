@@ -62,6 +62,7 @@ type oaPreviewInput struct {
 	NodeID              int64   `json:"node_id" jsonschema:"exact ComfyUI node id"`
 	Widget              string  `json:"widget" jsonschema:"exact numeric widget name"`
 	Value               float64 `json:"value" jsonschema:"proposed numeric value"`
+	RequestSummary      string  `json:"request_summary,omitempty" jsonschema:"optional plain-language summary of the user's actual request; do not invent a request when none was supplied; maximum 512 UTF-8 bytes"`
 }
 
 type oaReadInput struct {
@@ -195,6 +196,9 @@ func (a *oaAdapter) readContext(ctx context.Context) map[string]any {
 }
 
 func (a *oaAdapter) preview(ctx context.Context, input oaPreviewInput) map[string]any {
+	if len(input.RequestSummary) > 512 {
+		return refusal("invalid", "request_summary_exceeds_512_bytes")
+	}
 	if input.ApplicationInstance == "" || input.Instance == "" || input.Context == "" || input.Revision == "" || input.NodeID < 0 || input.Widget == "" {
 		return refusal("invalid", "exact_binding_required")
 	}
@@ -215,7 +219,8 @@ func (a *oaAdapter) preview(ctx context.Context, input oaPreviewInput) map[strin
 	if textField(out, "outcome") == "proposed" && (textField(out, "instance") != input.Instance || textField(out, "context") != input.Context || textField(out, "revision") != input.Revision) {
 		return refusal("stale", "proposal_binding_changed")
 	}
-	result := publicFields(out, "outcome", "instance", "context", "revision", "node", "title", "widget", "before", "after")
+	result := publicFields(out, "outcome", "instance", "context", "revision", "node", "title", "widget", "before", "after", "request_summary")
+	result["workflow_title"] = textField(current, "title")
 	result["application_instance"] = binding.applicationInstance
 	return result
 }
@@ -241,8 +246,9 @@ func (a *oaAdapter) readOutcome(ctx context.Context, input oaReadInput) map[stri
 	if outcome := textField(out, "outcome"); outcome != "unknown" && (textField(out, "instance") != input.Instance || textField(out, "context") != input.Context || textField(out, "revision") != input.Revision) {
 		return refusal("stale", "result_binding_changed")
 	}
-	result := publicFields(out, "outcome", "operation", "instance", "context", "revision", "node", "title", "widget", "before", "after", "actual", "evidence")
+	result := publicFields(out, "outcome", "operation", "instance", "context", "revision", "node", "title", "widget", "before", "after", "actual", "evidence", "request_summary")
 	result["application_instance"] = binding.applicationInstance
+	result["workflow_title"] = textField(current, "title")
 	return result
 }
 
@@ -270,7 +276,7 @@ func newOAServer(adapter *oaAdapter) *mcp.Server {
 		func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, map[string]any, error) {
 			return nil, adapter.readContext(ctx), nil
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "comfy_preview_parameter", Description: "Preview one exact parameter through an OA-authorized application instance. A person separately authorizes apply in ComfyUI.", Annotations: readOnly},
+	mcp.AddTool(server, &mcp.Tool{Name: "comfy_preview_parameter", Description: "Preview one exact parameter through an OA-authorized ComfyUI instance. Include request_summary using only a concise summary of the user's actual request; omit it when no request was supplied. A person separately authorizes apply in ComfyUI.", Annotations: readOnly},
 		func(ctx context.Context, _ *mcp.CallToolRequest, input oaPreviewInput) (*mcp.CallToolResult, map[string]any, error) {
 			return nil, adapter.preview(ctx, input), nil
 		})

@@ -113,7 +113,7 @@ func TestOpenCodeUsesBoundBrowserContext(t *testing.T) {
 				return
 			}
 			wanted = "comfy_preview_parameter"
-			arguments = map[string]any{"instance": binding["instance"], "context": binding["context"], "revision": binding["revision"], "node_id": nodeID, "widget": "steps", "value": 24}
+			arguments = map[string]any{"instance": binding["instance"], "context": binding["context"], "revision": binding["revision"], "node_id": nodeID, "widget": "steps", "value": 24, "request_summary": "Preview node steps at 24"}
 			if oaMode {
 				if binding["application_instance"] == "" {
 					http.Error(w, "OA application instance binding missing", 400)

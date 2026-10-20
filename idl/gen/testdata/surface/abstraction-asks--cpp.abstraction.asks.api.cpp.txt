@@ -34,6 +34,126 @@ inline constexpr bool operator!=(OperatorRetirementOutcome value, std::string_vi
 inline constexpr bool operator==(std::string_view name, OperatorRetirementOutcome value)
 inline constexpr bool operator!=(std::string_view name, OperatorRetirementOutcome value)
 inline const std::vector<std::string> kOperatorRetirementOutcomeNames
+enum class OperatorQuestionOutcome {Found, Unknown, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(OperatorQuestionOutcome value)
+inline std::optional<OperatorQuestionOutcome> parse_operator_question_outcome(std::string_view name)
+inline constexpr bool operator==(OperatorQuestionOutcome value, std::string_view name)
+inline constexpr bool operator!=(OperatorQuestionOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, OperatorQuestionOutcome value)
+inline constexpr bool operator!=(std::string_view name, OperatorQuestionOutcome value)
+inline const std::vector<std::string> kOperatorQuestionOutcomeNames
+enum class Answerer {Operator, Responder}
+inline constexpr std::string_view wire_name(Answerer value)
+inline std::optional<Answerer> parse_answerer(std::string_view name)
+inline constexpr bool operator==(Answerer value, std::string_view name)
+inline constexpr bool operator!=(Answerer value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Answerer value)
+inline constexpr bool operator!=(std::string_view name, Answerer value)
+inline const std::vector<std::string> kAnswererNames
+enum class ChoiceState {Pending, Answered, Dismissed, Expired}
+inline constexpr std::string_view wire_name(ChoiceState value)
+inline std::optional<ChoiceState> parse_choice_state(std::string_view name)
+inline constexpr bool operator==(ChoiceState value, std::string_view name)
+inline constexpr bool operator!=(ChoiceState value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ChoiceState value)
+inline constexpr bool operator!=(std::string_view name, ChoiceState value)
+inline const std::vector<std::string> kChoiceStateNames
+enum class ChoiceOutcome {Pending, Answered, Dismissed, Expired, Gone, Unknown, Conflict, Invalid, Exhausted, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(ChoiceOutcome value)
+inline std::optional<ChoiceOutcome> parse_choice_outcome(std::string_view name)
+inline constexpr bool operator==(ChoiceOutcome value, std::string_view name)
+inline constexpr bool operator!=(ChoiceOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ChoiceOutcome value)
+inline constexpr bool operator!=(std::string_view name, ChoiceOutcome value)
+inline const std::vector<std::string> kChoiceOutcomeNames
+enum class ChoiceAckOutcome {Acknowledged, Conflict, Unknown, Expired, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(ChoiceAckOutcome value)
+inline std::optional<ChoiceAckOutcome> parse_choice_ack_outcome(std::string_view name)
+inline constexpr bool operator==(ChoiceAckOutcome value, std::string_view name)
+inline constexpr bool operator!=(ChoiceAckOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ChoiceAckOutcome value)
+inline constexpr bool operator!=(std::string_view name, ChoiceAckOutcome value)
+inline const std::vector<std::string> kChoiceAckOutcomeNames
+enum class ChoiceDecisionOutcome {Answered, Dismissed, Expired, Gone, Unknown, Conflict, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(ChoiceDecisionOutcome value)
+inline std::optional<ChoiceDecisionOutcome> parse_choice_decision_outcome(std::string_view name)
+inline constexpr bool operator==(ChoiceDecisionOutcome value, std::string_view name)
+inline constexpr bool operator!=(ChoiceDecisionOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ChoiceDecisionOutcome value)
+inline constexpr bool operator!=(std::string_view name, ChoiceDecisionOutcome value)
+inline const std::vector<std::string> kChoiceDecisionOutcomeNames
+enum class ChoiceRoute {Requester, Operator, Responder}
+inline constexpr std::string_view wire_name(ChoiceRoute value)
+inline std::optional<ChoiceRoute> parse_choice_route(std::string_view name)
+inline constexpr bool operator==(ChoiceRoute value, std::string_view name)
+inline constexpr bool operator!=(ChoiceRoute value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ChoiceRoute value)
+inline constexpr bool operator!=(std::string_view name, ChoiceRoute value)
+inline const std::vector<std::string> kChoiceRouteNames
+enum class AnswerKind {Question, Choice}
+inline constexpr std::string_view wire_name(AnswerKind value)
+inline std::optional<AnswerKind> parse_answer_kind(std::string_view name)
+inline constexpr bool operator==(AnswerKind value, std::string_view name)
+inline constexpr bool operator!=(AnswerKind value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, AnswerKind value)
+inline constexpr bool operator!=(std::string_view name, AnswerKind value)
+inline const std::vector<std::string> kAnswerKindNames
+enum class ResponderEffectOutcome {None, Applied, Conflict, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(ResponderEffectOutcome value)
+inline std::optional<ResponderEffectOutcome> parse_responder_effect_outcome(std::string_view name)
+inline constexpr bool operator==(ResponderEffectOutcome value, std::string_view name)
+inline constexpr bool operator!=(ResponderEffectOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ResponderEffectOutcome value)
+inline constexpr bool operator!=(std::string_view name, ResponderEffectOutcome value)
+inline const std::vector<std::string> kResponderEffectOutcomeNames
+enum class PermissionOutcome {Pending, Answered, Unknown, Gone, Invalid, Conflict, Forbidden, Unavailable, Permitted, Denied}
+inline constexpr std::string_view wire_name(PermissionOutcome value)
+inline std::optional<PermissionOutcome> parse_permission_outcome(std::string_view name)
+inline constexpr bool operator==(PermissionOutcome value, std::string_view name)
+inline constexpr bool operator!=(PermissionOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, PermissionOutcome value)
+inline constexpr bool operator!=(std::string_view name, PermissionOutcome value)
+inline const std::vector<std::string> kPermissionOutcomeNames
+enum class NotificationActivation {App, OpenActivity}
+inline constexpr std::string_view wire_name(NotificationActivation value)
+inline std::optional<NotificationActivation> parse_notification_activation(std::string_view name)
+inline constexpr bool operator==(NotificationActivation value, std::string_view name)
+inline constexpr bool operator!=(NotificationActivation value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, NotificationActivation value)
+inline constexpr bool operator!=(std::string_view name, NotificationActivation value)
+inline const std::vector<std::string> kNotificationActivationNames
+enum class NotificationDelivery {Now, OperationEnd}
+inline constexpr std::string_view wire_name(NotificationDelivery value)
+inline std::optional<NotificationDelivery> parse_notification_delivery(std::string_view name)
+inline constexpr bool operator==(NotificationDelivery value, std::string_view name)
+inline constexpr bool operator!=(NotificationDelivery value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, NotificationDelivery value)
+inline constexpr bool operator!=(std::string_view name, NotificationDelivery value)
+inline const std::vector<std::string> kNotificationDeliveryNames
+enum class NotificationState {Scheduled, Posted, Acted, Dismissed, Withdrawn, Expired}
+inline constexpr std::string_view wire_name(NotificationState value)
+inline std::optional<NotificationState> parse_notification_state(std::string_view name)
+inline constexpr bool operator==(NotificationState value, std::string_view name)
+inline constexpr bool operator!=(NotificationState value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, NotificationState value)
+inline constexpr bool operator!=(std::string_view name, NotificationState value)
+inline const std::vector<std::string> kNotificationStateNames
+enum class NotificationOutcome {Scheduled, Posted, Acted, Dismissed, Withdrawn, Expired, Gone, Unknown, Conflict, Invalid, Suppressed, Exhausted, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(NotificationOutcome value)
+inline std::optional<NotificationOutcome> parse_notification_outcome(std::string_view name)
+inline constexpr bool operator==(NotificationOutcome value, std::string_view name)
+inline constexpr bool operator!=(NotificationOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, NotificationOutcome value)
+inline constexpr bool operator!=(std::string_view name, NotificationOutcome value)
+inline const std::vector<std::string> kNotificationOutcomeNames
+enum class NotificationDecisionOutcome {Acted, Dismissed, Withdrawn, Expired, Gone, Unknown, Conflict, Stale, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(NotificationDecisionOutcome value)
+inline std::optional<NotificationDecisionOutcome> parse_notification_decision_outcome(std::string_view name)
+inline constexpr bool operator==(NotificationDecisionOutcome value, std::string_view name)
+inline constexpr bool operator!=(NotificationDecisionOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, NotificationDecisionOutcome value)
+inline constexpr bool operator!=(std::string_view name, NotificationDecisionOutcome value)
+inline const std::vector<std::string> kNotificationDecisionOutcomeNames
 inline const std::vector<std::string> kServiceErrorCodeNames
 inline constexpr std::string_view kServiceErrorCodeHandlerError
 inline constexpr std::string_view kServiceErrorCodeInvalidResult
@@ -96,7 +216,208 @@ struct OperatorDecision
 struct OperatorRetirement
   OperatorRetirementOutcome outcome
   std::optional<RecordMetadata> record
-inline std::string encode(const Request& v)
+struct OperatorQuestion
+  OperatorQuestionOutcome outcome
+  std::optional<RecordMetadata> record
+  std::string publisher
+  bool publisher_trusted
+  std::optional<Answerer> answered_by
+  std::string program_description
+  std::string program_original_name
+struct AttributedQuestion
+  OperatorQuestion question
+  std::string answerer
+struct PermissionTarget
+  std::string account
+  std::string program
+  std::string action
+  std::string resource
+struct PermissionRequest
+  std::vector<PermissionTarget> targets
+struct QuestionDetails
+  AttributedQuestion question
+  std::optional<PermissionRequest> permission
+struct QuestionAsker
+  QuestionDetails details
+  std::string program
+struct RequestRef
+  std::string key
+  std::int64_t replay_until_ms
+struct ChoiceOption
+  std::string id
+  std::string label
+struct ChoiceRequest
+  RequestRef request_ref
+  std::string title
+  std::vector<ChoiceOption> options
+  std::int64_t pending_until_ms
+struct ChoiceAnswer
+  std::string id
+  std::string option
+  std::int64_t answered_ms
+  std::string answered_by
+struct ChoiceObservation
+  ChoiceOutcome outcome
+  std::string id
+  std::optional<ChoiceAnswer> answer
+struct ChoiceAcknowledgement
+  ChoiceAckOutcome outcome
+struct ChoiceRecord
+  std::string id
+  std::string asker
+  ChoiceRequest request
+  ChoiceState state
+  std::int64_t asked_ms
+  std::optional<ChoiceAnswer> answer
+  std::string publisher
+  bool publisher_trusted
+  std::string program_description
+  std::string program_original_name
+struct ChoicePage
+  OperatorPageOutcome outcome
+  std::vector<ChoiceRecord> records
+  std::string next
+  bool complete
+struct ChoiceRead
+  OperatorQuestionOutcome outcome
+  std::optional<ChoiceRecord> record
+struct ChoiceDecision
+  ChoiceDecisionOutcome outcome
+  std::optional<ChoiceRecord> record
+struct ChoiceDetails
+  ChoiceRead choice
+  std::string asker_program
+  std::vector<std::string> assistant_options
+  std::optional<ChoiceRoute> answered_via
+struct AnswerEntry
+  std::string id
+  AnswerKind kind
+  std::string key
+  std::string asker
+  std::string asker_program
+  std::string publisher
+  bool publisher_trusted
+  std::string about
+  std::string title
+  std::string option
+  std::string label
+  Answerer answered_by
+  std::string answerer
+  std::int64_t answered_ms
+struct AnswerEntryPage
+  OperatorPageOutcome outcome
+  std::vector<AnswerEntry> answers
+  std::string next
+  bool complete
+  std::int64_t complete_since_ms
+struct AnswerableChoice
+  std::string id
+  std::string asker
+  std::string title
+  std::vector<ChoiceOption> options
+  std::int64_t pending_until_ms
+  std::string publisher
+  bool publisher_trusted
+struct AnswerableChoicePage
+  OperatorPageOutcome outcome
+  std::vector<AnswerableChoice> choices
+  std::string next
+  bool complete
+struct ResponderDecision
+  OperatorDecisionOutcome outcome
+  std::optional<RecordMetadata> record
+  ResponderEffectOutcome effect
+  std::string target_outcome
+struct PermissionIntent
+  std::string request_key
+  std::optional<::abstraction::rights::api::PermissionSelection> selection
+  std::string bundle_ref
+  std::optional<::abstraction::rights::api::ResourceSelector> bundle_selector
+  std::string purpose
+struct PermissionObservation
+  PermissionOutcome outcome
+  std::optional<Answer> answer
+  std::string policy_revision
+struct PermissionDisplaySelection
+  std::string operation
+  std::string target
+  std::string collection
+  std::string all_effect
+  std::string disclosure
+struct PermissionDisplay
+  std::vector<PermissionDisplaySelection> selections
+  std::string bundle_label
+  std::string bundle_disclosure
+  bool requires_os_authorization
+struct TypedPermissionDetails
+  AttributedQuestion question
+  std::optional<::abstraction::rights::api::PermissionEffect> effect
+  std::string effect_digest
+  std::string origin
+  std::string purpose
+  std::optional<PermissionDisplay> display
+struct NotificationAction
+  std::string id
+  std::string title
+  NotificationActivation activation
+struct NotificationRequest
+  RequestRef request_ref
+  std::string title
+  std::string body
+  std::vector<NotificationAction> actions
+  std::int64_t expires_ms
+  std::string operation_id
+  std::string tag
+  NotificationDelivery delivery
+struct NotificationResult
+  std::string id
+  NotificationState state
+  std::string action
+  std::int64_t decided_ms
+  std::string decided_by
+struct NotificationObservation
+  NotificationOutcome outcome
+  std::string id
+  std::optional<NotificationResult> result
+struct NotificationRecord
+  std::string id
+  std::string asker
+  std::string program
+  NotificationRequest request
+  NotificationState state
+  std::int64_t admitted_ms
+  std::int64_t posted_ms
+  std::optional<NotificationResult> result
+  std::string publisher
+  bool publisher_trusted
+  std::string program_description
+  std::string program_original_name
+  std::string presentation
+struct NotificationPage
+  OperatorPageOutcome outcome
+  std::vector<NotificationRecord> records
+  std::string next
+  bool complete
+struct NotificationRead
+  OperatorQuestionOutcome outcome
+  std::optional<NotificationRecord> record
+struct NotificationDecision
+  NotificationDecisionOutcome outcome
+  std::optional<NotificationRecord> record
+  std::int64_t count
+struct NotifierDay
+  std::int64_t day_ms
+  std::int64_t posts
+struct NotifierCount
+  std::string program
+  std::string asker
+  std::vector<NotifierDay> days
+  std::int64_t last_posted_ms
+struct NotifierPage
+  OperatorPageOutcome outcome
+  std::vector<NotifierCount> notifiers
+  std::string next
+  bool complete
 inline Request decode(std::string_view data)
 struct FrameWriter
   virtual void write_frame(std::string_view frame)
@@ -128,14 +449,32 @@ struct QuestionApplicationDispatcher : FrameWriter, FrameExchanger
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct QuestionOperator
+  virtual ChoicePage list_choices(const std::string& cursor, const std::int64_t& limit)
+  virtual ChoiceRead read_choice(const std::string& id)
+  virtual ChoiceDecision answer_choice(const std::string& id, const std::string& option, const bool& if_pending)
+  virtual ChoiceDecision dismiss_choice(const std::string& id)
   virtual OperatorPage list_questions(const std::string& cursor, const std::int64_t& limit)
   virtual OperatorDecision answer_question(const std::string& id, const std::string& option)
   virtual OperatorRetirement retire_question(const std::string& id)
+  virtual AttributedQuestion read_attributed_question(const std::string& id)
+  virtual ChoiceDetails read_choice_details(const std::string& id)
+  virtual QuestionAsker read_question_asker(const std::string& id)
+  virtual OperatorDecision answer_question_if_pending(const std::string& id, const std::string& option)
+  virtual AnswerEntryPage list_answers(const std::string& cursor, const std::int64_t& limit)
 template<class Transport>struct QuestionOperatorClient : QuestionOperator
   Transport& transport_
+  ChoicePage list_choices(const std::string& cursor, const std::int64_t& limit) override
+  ChoiceRead read_choice(const std::string& id) override
+  ChoiceDecision answer_choice(const std::string& id, const std::string& option, const bool& if_pending) override
+  ChoiceDecision dismiss_choice(const std::string& id) override
   OperatorPage list_questions(const std::string& cursor, const std::int64_t& limit) override
   OperatorDecision answer_question(const std::string& id, const std::string& option) override
   OperatorRetirement retire_question(const std::string& id) override
+  AttributedQuestion read_attributed_question(const std::string& id) override
+  ChoiceDetails read_choice_details(const std::string& id) override
+  QuestionAsker read_question_asker(const std::string& id) override
+  OperatorDecision answer_question_if_pending(const std::string& id, const std::string& option) override
+  AnswerEntryPage list_answers(const std::string& cursor, const std::int64_t& limit) override
 struct QuestionOperatorService
   inline static constexpr std::string_view kWireName
   inline static constexpr std::string_view kCapability
@@ -144,3 +483,218 @@ struct QuestionOperatorDispatcher : FrameWriter, FrameExchanger
   DescribedService describe_service() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
+struct ChoiceApplication
+  virtual ChoiceObservation ask(const ChoiceRequest& request)
+  virtual ChoiceObservation observe(const RequestRef& request_ref, const std::int64_t& wait_ms)
+  virtual ChoiceDecision answer(const RequestRef& request_ref, const std::string& option, const bool& if_pending)
+  virtual ChoiceDecision dismiss(const RequestRef& request_ref)
+  virtual ChoiceObservation share_choice(const ChoiceRequest& request, const std::vector<std::string>& assistant_options)
+  virtual ChoiceAcknowledgement acknowledge(const RequestRef& request_ref, const ChoiceAnswer& answer)
+template<class Transport>struct ChoiceApplicationClient : ChoiceApplication
+  Transport& transport_
+  ChoiceObservation ask(const ChoiceRequest& request) override
+  ChoiceObservation observe(const RequestRef& request_ref, const std::int64_t& wait_ms) override
+  ChoiceDecision answer(const RequestRef& request_ref, const std::string& option, const bool& if_pending) override
+  ChoiceDecision dismiss(const RequestRef& request_ref) override
+  ChoiceObservation share_choice(const ChoiceRequest& request, const std::vector<std::string>& assistant_options) override
+  ChoiceAcknowledgement acknowledge(const RequestRef& request_ref, const ChoiceAnswer& answer) override
+struct ChoiceApplicationService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ChoiceApplicationDispatcher : FrameWriter, FrameExchanger
+  ChoiceApplication& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct QuestionResponder
+  virtual OperatorPage list_answerable(const std::string& cursor, const std::int64_t& limit)
+  virtual ResponderDecision answer(const std::string& id, const std::string& option)
+  virtual AnswerableChoicePage list_choices(const std::string& cursor, const std::int64_t& limit)
+  virtual::abstraction::rights::api::Decision request_answering()
+  virtual ChoiceDecision answer_choice(const std::string& id, const std::string& option)
+template<class Transport>struct QuestionResponderClient : QuestionResponder
+  Transport& transport_
+  OperatorPage list_answerable(const std::string& cursor, const std::int64_t& limit) override
+  ResponderDecision answer(const std::string& id, const std::string& option) override
+  AnswerableChoicePage list_choices(const std::string& cursor, const std::int64_t& limit) override
+  ::abstraction::rights::api::Decision request_answering() override
+  ChoiceDecision answer_choice(const std::string& id, const std::string& option) override
+struct QuestionResponderService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct QuestionResponderDispatcher : FrameWriter, FrameExchanger
+  QuestionResponder& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct PermissionApplication
+  virtual PermissionObservation request(const PermissionIntent& request)
+  virtual PermissionObservation observe(const std::string& request_key, const std::int64_t& wait_ms)
+template<class Transport>struct PermissionApplicationClient : PermissionApplication
+  Transport& transport_
+  PermissionObservation request(const PermissionIntent& request) override
+  PermissionObservation observe(const std::string& request_key, const std::int64_t& wait_ms) override
+struct PermissionApplicationService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct PermissionApplicationDispatcher : FrameWriter, FrameExchanger
+  PermissionApplication& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct PermissionOperator
+  virtual OperatorPage list_permissions(const std::string& cursor, const std::int64_t& limit)
+  virtual TypedPermissionDetails read_permission_details(const std::string& id)
+  virtual OperatorDecision answer_permission_if_pending(const std::string& id, const std::string& option)
+template<class Transport>struct PermissionOperatorClient : PermissionOperator
+  Transport& transport_
+  OperatorPage list_permissions(const std::string& cursor, const std::int64_t& limit) override
+  TypedPermissionDetails read_permission_details(const std::string& id) override
+  OperatorDecision answer_permission_if_pending(const std::string& id, const std::string& option) override
+struct PermissionOperatorService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct PermissionOperatorDispatcher : FrameWriter, FrameExchanger
+  PermissionOperator& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct NotificationApplication
+  virtual NotificationObservation post(const NotificationRequest& request)
+  virtual NotificationObservation observe(const RequestRef& request_ref, const std::int64_t& wait_ms)
+  virtual NotificationObservation withdraw(const RequestRef& request_ref)
+  virtual ChoiceAcknowledgement acknowledge(const RequestRef& request_ref, const NotificationResult& result_)
+template<class Transport>struct NotificationApplicationClient : NotificationApplication
+  Transport& transport_
+  NotificationObservation post(const NotificationRequest& request) override
+  NotificationObservation observe(const RequestRef& request_ref, const std::int64_t& wait_ms) override
+  NotificationObservation withdraw(const RequestRef& request_ref) override
+  ChoiceAcknowledgement acknowledge(const RequestRef& request_ref, const NotificationResult& result_) override
+struct NotificationApplicationService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct NotificationApplicationDispatcher : FrameWriter, FrameExchanger
+  NotificationApplication& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct NotificationOperator
+  virtual NotificationPage list_notifications(const std::string& cursor, const std::int64_t& limit)
+  virtual NotificationRead read_notification(const std::string& id)
+  virtual NotificationDecision act(const std::string& id, const std::string& action, const std::string& presentation)
+  virtual NotificationDecision dismiss(const std::string& id)
+  virtual NotificationDecision withdraw_program(const std::string& program)
+  virtual NotifierPage list_notifiers(const std::string& cursor, const std::int64_t& limit)
+template<class Transport>struct NotificationOperatorClient : NotificationOperator
+  Transport& transport_
+  NotificationPage list_notifications(const std::string& cursor, const std::int64_t& limit) override
+  NotificationRead read_notification(const std::string& id) override
+  NotificationDecision act(const std::string& id, const std::string& action, const std::string& presentation) override
+  NotificationDecision dismiss(const std::string& id) override
+  NotificationDecision withdraw_program(const std::string& program) override
+  NotifierPage list_notifiers(const std::string& cursor, const std::int64_t& limit) override
+struct NotificationOperatorService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct NotificationOperatorDispatcher : FrameWriter, FrameExchanger
+  NotificationOperator& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+inline std::string encode_question(const Question& v)
+inline Question decode_question(std::string_view in)
+inline std::string encode_request(const Request& v)
+inline Request decode_request(std::string_view in)
+inline std::string encode_answer(const Answer& v)
+inline Answer decode_answer(std::string_view in)
+inline std::string encode_record_metadata(const RecordMetadata& v)
+inline RecordMetadata decode_record_metadata(std::string_view in)
+inline std::string encode_response_metadata(const ResponseMetadata& v)
+inline ResponseMetadata decode_response_metadata(std::string_view in)
+inline std::string encode_application_question(const ApplicationQuestion& v)
+inline ApplicationQuestion decode_application_question(std::string_view in)
+inline std::string encode_question_observation(const QuestionObservation& v)
+inline QuestionObservation decode_question_observation(std::string_view in)
+inline std::string encode_operator_page(const OperatorPage& v)
+inline OperatorPage decode_operator_page(std::string_view in)
+inline std::string encode_operator_decision(const OperatorDecision& v)
+inline OperatorDecision decode_operator_decision(std::string_view in)
+inline std::string encode_operator_retirement(const OperatorRetirement& v)
+inline OperatorRetirement decode_operator_retirement(std::string_view in)
+inline std::string encode_operator_question(const OperatorQuestion& v)
+inline OperatorQuestion decode_operator_question(std::string_view in)
+inline std::string encode_attributed_question(const AttributedQuestion& v)
+inline AttributedQuestion decode_attributed_question(std::string_view in)
+inline std::string encode_permission_target(const PermissionTarget& v)
+inline PermissionTarget decode_permission_target(std::string_view in)
+inline std::string encode_permission_request(const PermissionRequest& v)
+inline PermissionRequest decode_permission_request(std::string_view in)
+inline std::string encode_question_details(const QuestionDetails& v)
+inline QuestionDetails decode_question_details(std::string_view in)
+inline std::string encode_question_asker(const QuestionAsker& v)
+inline QuestionAsker decode_question_asker(std::string_view in)
+inline std::string encode_request_ref(const RequestRef& v)
+inline RequestRef decode_request_ref(std::string_view in)
+inline std::string encode_choice_option(const ChoiceOption& v)
+inline ChoiceOption decode_choice_option(std::string_view in)
+inline std::string encode_choice_request(const ChoiceRequest& v)
+inline ChoiceRequest decode_choice_request(std::string_view in)
+inline std::string encode_choice_answer(const ChoiceAnswer& v)
+inline ChoiceAnswer decode_choice_answer(std::string_view in)
+inline std::string encode_choice_observation(const ChoiceObservation& v)
+inline ChoiceObservation decode_choice_observation(std::string_view in)
+inline std::string encode_choice_acknowledgement(const ChoiceAcknowledgement& v)
+inline ChoiceAcknowledgement decode_choice_acknowledgement(std::string_view in)
+inline std::string encode_choice_record(const ChoiceRecord& v)
+inline ChoiceRecord decode_choice_record(std::string_view in)
+inline std::string encode_choice_page(const ChoicePage& v)
+inline ChoicePage decode_choice_page(std::string_view in)
+inline std::string encode_choice_read(const ChoiceRead& v)
+inline ChoiceRead decode_choice_read(std::string_view in)
+inline std::string encode_choice_decision(const ChoiceDecision& v)
+inline ChoiceDecision decode_choice_decision(std::string_view in)
+inline std::string encode_choice_details(const ChoiceDetails& v)
+inline ChoiceDetails decode_choice_details(std::string_view in)
+inline std::string encode_answer_entry(const AnswerEntry& v)
+inline AnswerEntry decode_answer_entry(std::string_view in)
+inline std::string encode_answer_entry_page(const AnswerEntryPage& v)
+inline AnswerEntryPage decode_answer_entry_page(std::string_view in)
+inline std::string encode_answerable_choice(const AnswerableChoice& v)
+inline AnswerableChoice decode_answerable_choice(std::string_view in)
+inline std::string encode_answerable_choice_page(const AnswerableChoicePage& v)
+inline AnswerableChoicePage decode_answerable_choice_page(std::string_view in)
+inline std::string encode_responder_decision(const ResponderDecision& v)
+inline ResponderDecision decode_responder_decision(std::string_view in)
+inline std::string encode_permission_intent(const PermissionIntent& v)
+inline PermissionIntent decode_permission_intent(std::string_view in)
+inline std::string encode_permission_observation(const PermissionObservation& v)
+inline PermissionObservation decode_permission_observation(std::string_view in)
+inline std::string encode_typed_permission_details(const TypedPermissionDetails& v)
+inline TypedPermissionDetails decode_typed_permission_details(std::string_view in)
+inline std::string encode_permission_display_selection(const PermissionDisplaySelection& v)
+inline PermissionDisplaySelection decode_permission_display_selection(std::string_view in)
+inline std::string encode_permission_display(const PermissionDisplay& v)
+inline PermissionDisplay decode_permission_display(std::string_view in)
+inline std::string encode_notification_action(const NotificationAction& v)
+inline NotificationAction decode_notification_action(std::string_view in)
+inline std::string encode_notification_request(const NotificationRequest& v)
+inline NotificationRequest decode_notification_request(std::string_view in)
+inline std::string encode_notification_result(const NotificationResult& v)
+inline NotificationResult decode_notification_result(std::string_view in)
+inline std::string encode_notification_observation(const NotificationObservation& v)
+inline NotificationObservation decode_notification_observation(std::string_view in)
+inline std::string encode_notification_record(const NotificationRecord& v)
+inline NotificationRecord decode_notification_record(std::string_view in)
+inline std::string encode_notification_page(const NotificationPage& v)
+inline NotificationPage decode_notification_page(std::string_view in)
+inline std::string encode_notification_read(const NotificationRead& v)
+inline NotificationRead decode_notification_read(std::string_view in)
+inline std::string encode_notification_decision(const NotificationDecision& v)
+inline NotificationDecision decode_notification_decision(std::string_view in)
+inline std::string encode_notifier_day(const NotifierDay& v)
+inline NotifierDay decode_notifier_day(std::string_view in)
+inline std::string encode_notifier_count(const NotifierCount& v)
+inline NotifierCount decode_notifier_count(std::string_view in)
+inline std::string encode_notifier_page(const NotifierPage& v)
+inline NotifierPage decode_notifier_page(std::string_view in)
+inline std::string encode(const Request& v)

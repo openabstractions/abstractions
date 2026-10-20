@@ -4,12 +4,283 @@ dataclass Answer
   option: str
   yes: bool
   kept: bool
+dataclass AnswerEntry
+  id: str
+  kind: AnswerKind | None
+  key: str
+  asker: str
+  asker_program: str
+  publisher: str
+  publisher_trusted: bool
+  about: str
+  title: str
+  option: str
+  label: str
+  answered_by: Answerer | None
+  answerer: str
+  answered_ms: int
+dataclass AnswerEntryPage
+  outcome: OperatorPageOutcome | None
+  answers: list[AnswerEntry]
+  next: str
+  complete: bool
+  complete_since_ms: int
+enum AnswerKind
+  QUESTION = 'question'
+  CHOICE = 'choice'
+dataclass AnswerableChoice
+  id: str
+  asker: str
+  title: str
+  options: list[ChoiceOption]
+  pending_until_ms: int
+  publisher: str
+  publisher_trusted: bool
+dataclass AnswerableChoicePage
+  outcome: OperatorPageOutcome | None
+  choices: list[AnswerableChoice]
+  next: str
+  complete: bool
+enum Answerer
+  OPERATOR = 'operator'
+  RESPONDER = 'responder'
 dataclass ApplicationQuestion
   request_key: str
   key: str
   slots: dict[str, str]
+dataclass AttributedQuestion
+  question: OperatorQuestion
+  answerer: str
+enum ChoiceAckOutcome
+  ACKNOWLEDGED = 'acknowledged'
+  CONFLICT = 'conflict'
+  UNKNOWN = 'unknown'
+  EXPIRED = 'expired'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass ChoiceAcknowledgement
+  outcome: ChoiceAckOutcome | None
+dataclass ChoiceAnswer
+  id: str
+  option: str
+  answered_ms: int
+  answered_by: str
+class ChoiceApplication
+  ask(request: ChoiceRequest) -> ChoiceObservation
+  observe(request_ref: RequestRef, wait_ms: int) -> ChoiceObservation
+  answer(request_ref: RequestRef, option: str, if_pending: bool) -> ChoiceDecision
+  dismiss(request_ref: RequestRef) -> ChoiceDecision
+  share_choice(request: ChoiceRequest, assistant_options: list[str]) -> ChoiceObservation
+  acknowledge(request_ref: RequestRef, answer: ChoiceAnswer) -> ChoiceAcknowledgement
+class ChoiceApplicationClient(ChoiceApplication)
+  __init__(transport)
+  ask(request: ChoiceRequest) -> ChoiceObservation
+  observe(request_ref: RequestRef, wait_ms: int) -> ChoiceObservation
+  answer(request_ref: RequestRef, option: str, if_pending: bool) -> ChoiceDecision
+  dismiss(request_ref: RequestRef) -> ChoiceDecision
+  share_choice(request: ChoiceRequest, assistant_options: list[str]) -> ChoiceObservation
+  acknowledge(request_ref: RequestRef, answer: ChoiceAnswer) -> ChoiceAcknowledgement
+dataclass ChoiceDecision
+  outcome: ChoiceDecisionOutcome | None
+  record: ChoiceRecord | None
+enum ChoiceDecisionOutcome
+  ANSWERED = 'answered'
+  DISMISSED = 'dismissed'
+  EXPIRED = 'expired'
+  GONE = 'gone'
+  UNKNOWN = 'unknown'
+  CONFLICT = 'conflict'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass ChoiceDetails
+  choice: ChoiceRead
+  asker_program: str
+  assistant_options: list[str]
+  answered_via: ChoiceRoute | None
+dataclass ChoiceObservation
+  outcome: ChoiceOutcome | None
+  id: str
+  answer: ChoiceAnswer | None
+dataclass ChoiceOption
+  id: str
+  label: str
+enum ChoiceOutcome
+  PENDING = 'pending'
+  ANSWERED = 'answered'
+  DISMISSED = 'dismissed'
+  EXPIRED = 'expired'
+  GONE = 'gone'
+  UNKNOWN = 'unknown'
+  CONFLICT = 'conflict'
+  INVALID = 'invalid'
+  EXHAUSTED = 'exhausted'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass ChoicePage
+  outcome: OperatorPageOutcome | None
+  records: list[ChoiceRecord]
+  next: str
+  complete: bool
+dataclass ChoiceRead
+  outcome: OperatorQuestionOutcome | None
+  record: ChoiceRecord | None
+dataclass ChoiceRecord
+  id: str
+  asker: str
+  request: ChoiceRequest
+  state: ChoiceState | None
+  asked_ms: int
+  answer: ChoiceAnswer | None
+  publisher: str
+  publisher_trusted: bool
+  program_description: str
+  program_original_name: str
+dataclass ChoiceRequest
+  request_ref: RequestRef
+  title: str
+  options: list[ChoiceOption]
+  pending_until_ms: int
+enum ChoiceRoute
+  REQUESTER = 'requester'
+  OPERATOR = 'operator'
+  RESPONDER = 'responder'
+enum ChoiceState
+  PENDING = 'pending'
+  ANSWERED = 'answered'
+  DISMISSED = 'dismissed'
+  EXPIRED = 'expired'
 class DispatchError(ValueError)
   __init__(code)
+dataclass NotificationAction
+  id: str
+  title: str
+  activation: NotificationActivation | None
+enum NotificationActivation
+  APP = 'app'
+  OPEN_ACTIVITY = 'open_activity'
+class NotificationApplication
+  post(request: NotificationRequest) -> NotificationObservation
+  observe(request_ref: RequestRef, wait_ms: int) -> NotificationObservation
+  withdraw(request_ref: RequestRef) -> NotificationObservation
+  acknowledge(request_ref: RequestRef, result: NotificationResult) -> ChoiceAcknowledgement
+class NotificationApplicationClient(NotificationApplication)
+  __init__(transport)
+  post(request: NotificationRequest) -> NotificationObservation
+  observe(request_ref: RequestRef, wait_ms: int) -> NotificationObservation
+  withdraw(request_ref: RequestRef) -> NotificationObservation
+  acknowledge(request_ref: RequestRef, result: NotificationResult) -> ChoiceAcknowledgement
+dataclass NotificationDecision
+  outcome: NotificationDecisionOutcome | None
+  record: NotificationRecord | None
+  count: int
+enum NotificationDecisionOutcome
+  ACTED = 'acted'
+  DISMISSED = 'dismissed'
+  WITHDRAWN = 'withdrawn'
+  EXPIRED = 'expired'
+  GONE = 'gone'
+  UNKNOWN = 'unknown'
+  CONFLICT = 'conflict'
+  STALE = 'stale'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+enum NotificationDelivery
+  NOW = 'now'
+  OPERATION_END = 'operation_end'
+dataclass NotificationObservation
+  outcome: NotificationOutcome | None
+  id: str
+  result: NotificationResult | None
+class NotificationOperator
+  list_notifications(cursor: str, limit: int) -> NotificationPage
+  read_notification(id: str) -> NotificationRead
+  act(id: str, action: str, presentation: str) -> NotificationDecision
+  dismiss(id: str) -> NotificationDecision
+  withdraw_program(program: str) -> NotificationDecision
+  list_notifiers(cursor: str, limit: int) -> NotifierPage
+class NotificationOperatorClient(NotificationOperator)
+  __init__(transport)
+  list_notifications(cursor: str, limit: int) -> NotificationPage
+  read_notification(id: str) -> NotificationRead
+  act(id: str, action: str, presentation: str) -> NotificationDecision
+  dismiss(id: str) -> NotificationDecision
+  withdraw_program(program: str) -> NotificationDecision
+  list_notifiers(cursor: str, limit: int) -> NotifierPage
+enum NotificationOutcome
+  SCHEDULED = 'scheduled'
+  POSTED = 'posted'
+  ACTED = 'acted'
+  DISMISSED = 'dismissed'
+  WITHDRAWN = 'withdrawn'
+  EXPIRED = 'expired'
+  GONE = 'gone'
+  UNKNOWN = 'unknown'
+  CONFLICT = 'conflict'
+  INVALID = 'invalid'
+  SUPPRESSED = 'suppressed'
+  EXHAUSTED = 'exhausted'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass NotificationPage
+  outcome: OperatorPageOutcome | None
+  records: list[NotificationRecord]
+  next: str
+  complete: bool
+dataclass NotificationRead
+  outcome: OperatorQuestionOutcome | None
+  record: NotificationRecord | None
+dataclass NotificationRecord
+  id: str
+  asker: str
+  program: str
+  request: NotificationRequest
+  state: NotificationState | None
+  admitted_ms: int
+  posted_ms: int
+  result: NotificationResult | None
+  publisher: str
+  publisher_trusted: bool
+  program_description: str
+  program_original_name: str
+  presentation: str
+dataclass NotificationRequest
+  request_ref: RequestRef
+  title: str
+  body: str
+  actions: list[NotificationAction]
+  expires_ms: int
+  operation_id: str
+  tag: str
+  delivery: NotificationDelivery | None
+dataclass NotificationResult
+  id: str
+  state: NotificationState | None
+  action: str
+  decided_ms: int
+  decided_by: str
+enum NotificationState
+  SCHEDULED = 'scheduled'
+  POSTED = 'posted'
+  ACTED = 'acted'
+  DISMISSED = 'dismissed'
+  WITHDRAWN = 'withdrawn'
+  EXPIRED = 'expired'
+dataclass NotifierCount
+  program: str
+  asker: str
+  days: list[NotifierDay]
+  last_posted_ms: int
+dataclass NotifierDay
+  day_ms: int
+  posts: int
+dataclass NotifierPage
+  outcome: OperatorPageOutcome | None
+  notifiers: list[NotifierCount]
+  next: str
+  complete: bool
 const OPERATIONS
 enum ObservationOutcome
   PENDING = 'pending'
@@ -41,6 +312,20 @@ enum OperatorPageOutcome
   INVALID = 'invalid'
   FORBIDDEN = 'forbidden'
   UNAVAILABLE = 'unavailable'
+dataclass OperatorQuestion
+  outcome: OperatorQuestionOutcome | None
+  record: RecordMetadata | None
+  publisher: str
+  publisher_trusted: bool
+  answered_by: Answerer | None
+  program_description: str
+  program_original_name: str
+enum OperatorQuestionOutcome
+  FOUND = 'found'
+  UNKNOWN = 'unknown'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
 dataclass OperatorRetirement
   outcome: OperatorRetirementOutcome | None
   record: RecordMetadata | None
@@ -50,6 +335,61 @@ enum OperatorRetirementOutcome
   INVALID = 'invalid'
   FORBIDDEN = 'forbidden'
   UNAVAILABLE = 'unavailable'
+class PermissionApplication
+  request(request: PermissionIntent) -> PermissionObservation
+  observe(request_key: str, wait_ms: int) -> PermissionObservation
+class PermissionApplicationClient(PermissionApplication)
+  __init__(transport)
+  request(request: PermissionIntent) -> PermissionObservation
+  observe(request_key: str, wait_ms: int) -> PermissionObservation
+dataclass PermissionDisplay
+  selections: list[PermissionDisplaySelection]
+  bundle_label: str
+  bundle_disclosure: str
+  requires_os_authorization: bool
+dataclass PermissionDisplaySelection
+  operation: str
+  target: str
+  collection: str
+  all_effect: str
+  disclosure: str
+dataclass PermissionIntent
+  request_key: str
+  selection: _dependency_rights.PermissionSelection | None
+  bundle_ref: str
+  bundle_selector: _dependency_rights.ResourceSelector | None
+  purpose: str
+dataclass PermissionObservation
+  outcome: PermissionOutcome | None
+  answer: Answer | None
+  policy_revision: str
+class PermissionOperator
+  list_permissions(cursor: str, limit: int) -> OperatorPage
+  read_permission_details(id: str) -> TypedPermissionDetails
+  answer_permission_if_pending(id: str, option: str) -> OperatorDecision
+class PermissionOperatorClient(PermissionOperator)
+  __init__(transport)
+  list_permissions(cursor: str, limit: int) -> OperatorPage
+  read_permission_details(id: str) -> TypedPermissionDetails
+  answer_permission_if_pending(id: str, option: str) -> OperatorDecision
+enum PermissionOutcome
+  PENDING = 'pending'
+  ANSWERED = 'answered'
+  UNKNOWN = 'unknown'
+  GONE = 'gone'
+  INVALID = 'invalid'
+  CONFLICT = 'conflict'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+  PERMITTED = 'permitted'
+  DENIED = 'denied'
+dataclass PermissionRequest
+  targets: list[PermissionTarget]
+dataclass PermissionTarget
+  account: str
+  program: str
+  action: str
+  resource: str
 dataclass Question
   asker: str
   key: str
@@ -61,18 +401,55 @@ class QuestionApplicationClient(QuestionApplication)
   __init__(transport)
   ask(question: ApplicationQuestion) -> QuestionObservation
   observe(request_key: str, wait_ms: int) -> QuestionObservation
+dataclass QuestionAsker
+  details: QuestionDetails
+  program: str
+dataclass QuestionDetails
+  question: AttributedQuestion
+  permission: PermissionRequest | None
 dataclass QuestionObservation
   outcome: ObservationOutcome | None
   answer: Answer | None
 class QuestionOperator
+  list_choices(cursor: str, limit: int) -> ChoicePage
+  read_choice(id: str) -> ChoiceRead
+  answer_choice(id: str, option: str, if_pending: bool) -> ChoiceDecision
+  dismiss_choice(id: str) -> ChoiceDecision
   list_questions(cursor: str, limit: int) -> OperatorPage
   answer_question(id: str, option: str) -> OperatorDecision
   retire_question(id: str) -> OperatorRetirement
+  read_attributed_question(id: str) -> AttributedQuestion
+  read_choice_details(id: str) -> ChoiceDetails
+  read_question_asker(id: str) -> QuestionAsker
+  answer_question_if_pending(id: str, option: str) -> OperatorDecision
+  list_answers(cursor: str, limit: int) -> AnswerEntryPage
 class QuestionOperatorClient(QuestionOperator)
   __init__(transport)
+  list_choices(cursor: str, limit: int) -> ChoicePage
+  read_choice(id: str) -> ChoiceRead
+  answer_choice(id: str, option: str, if_pending: bool) -> ChoiceDecision
+  dismiss_choice(id: str) -> ChoiceDecision
   list_questions(cursor: str, limit: int) -> OperatorPage
   answer_question(id: str, option: str) -> OperatorDecision
   retire_question(id: str) -> OperatorRetirement
+  read_attributed_question(id: str) -> AttributedQuestion
+  read_choice_details(id: str) -> ChoiceDetails
+  read_question_asker(id: str) -> QuestionAsker
+  answer_question_if_pending(id: str, option: str) -> OperatorDecision
+  list_answers(cursor: str, limit: int) -> AnswerEntryPage
+class QuestionResponder
+  list_answerable(cursor: str, limit: int) -> OperatorPage
+  answer(id: str, option: str) -> ResponderDecision
+  list_choices(cursor: str, limit: int) -> AnswerableChoicePage
+  request_answering() -> _dependency_rights.Decision
+  answer_choice(id: str, option: str) -> ChoiceDecision
+class QuestionResponderClient(QuestionResponder)
+  __init__(transport)
+  list_answerable(cursor: str, limit: int) -> OperatorPage
+  answer(id: str, option: str) -> ResponderDecision
+  list_choices(cursor: str, limit: int) -> AnswerableChoicePage
+  request_answering() -> _dependency_rights.Decision
+  answer_choice(id: str, option: str) -> ChoiceDecision
 const REFUSAL_CODES
 const RESOURCE_ACTIONS
 dataclass RecordMetadata
@@ -96,6 +473,20 @@ dataclass Request
   id: str
   option: str
   admin: str
+dataclass RequestRef
+  key: str
+  replay_until_ms: int
+dataclass ResponderDecision
+  outcome: OperatorDecisionOutcome | None
+  record: RecordMetadata | None
+  effect: ResponderEffectOutcome | None
+  target_outcome: str
+enum ResponderEffectOutcome
+  NONE = 'none'
+  APPLIED = 'applied'
+  CONFLICT = 'conflict'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
 dataclass ResponseMetadata
   code: str
   error: str
@@ -110,6 +501,109 @@ enum ServiceErrorCode
   UNKNOWN_SERVICE = 'unknown_service'
   UNKNOWN_METHOD = 'unknown_method'
   WRONG_MODE = 'wrong_mode'
+dataclass TypedPermissionDetails
+  question: AttributedQuestion
+  effect: _dependency_rights.PermissionEffect | None
+  effect_digest: str
+  origin: str
+  purpose: str
+  display: PermissionDisplay | None
 def decode(data)
+def decode_answer(data)
+def decode_answer_entry(data)
+def decode_answer_entry_page(data)
+def decode_answerable_choice(data)
+def decode_answerable_choice_page(data)
+def decode_application_question(data)
+def decode_attributed_question(data)
+def decode_choice_acknowledgement(data)
+def decode_choice_answer(data)
+def decode_choice_decision(data)
+def decode_choice_details(data)
+def decode_choice_observation(data)
+def decode_choice_option(data)
+def decode_choice_page(data)
+def decode_choice_read(data)
+def decode_choice_record(data)
+def decode_choice_request(data)
+def decode_notification_action(data)
+def decode_notification_decision(data)
+def decode_notification_observation(data)
+def decode_notification_page(data)
+def decode_notification_read(data)
+def decode_notification_record(data)
+def decode_notification_request(data)
+def decode_notification_result(data)
+def decode_notifier_count(data)
+def decode_notifier_day(data)
+def decode_notifier_page(data)
+def decode_operator_decision(data)
+def decode_operator_page(data)
+def decode_operator_question(data)
+def decode_operator_retirement(data)
+def decode_permission_display(data)
+def decode_permission_display_selection(data)
+def decode_permission_intent(data)
+def decode_permission_observation(data)
+def decode_permission_request(data)
+def decode_permission_target(data)
+def decode_question(data)
+def decode_question_asker(data)
+def decode_question_details(data)
+def decode_question_observation(data)
+def decode_record_metadata(data)
+def decode_request(data)
+def decode_request_ref(data)
+def decode_responder_decision(data)
+def decode_response_metadata(data)
+def decode_typed_permission_details(data)
 def encode(v)
+def encode_answer(v)
+def encode_answer_entry(v)
+def encode_answer_entry_page(v)
+def encode_answerable_choice(v)
+def encode_answerable_choice_page(v)
+def encode_application_question(v)
+def encode_attributed_question(v)
+def encode_choice_acknowledgement(v)
+def encode_choice_answer(v)
+def encode_choice_decision(v)
+def encode_choice_details(v)
+def encode_choice_observation(v)
+def encode_choice_option(v)
+def encode_choice_page(v)
+def encode_choice_read(v)
+def encode_choice_record(v)
+def encode_choice_request(v)
+def encode_notification_action(v)
+def encode_notification_decision(v)
+def encode_notification_observation(v)
+def encode_notification_page(v)
+def encode_notification_read(v)
+def encode_notification_record(v)
+def encode_notification_request(v)
+def encode_notification_result(v)
+def encode_notifier_count(v)
+def encode_notifier_day(v)
+def encode_notifier_page(v)
+def encode_operator_decision(v)
+def encode_operator_page(v)
+def encode_operator_question(v)
+def encode_operator_retirement(v)
+def encode_permission_display(v)
+def encode_permission_display_selection(v)
+def encode_permission_intent(v)
+def encode_permission_observation(v)
+def encode_permission_request(v)
+def encode_permission_target(v)
+def encode_question(v)
+def encode_question_asker(v)
+def encode_question_details(v)
+def encode_question_observation(v)
+def encode_record_metadata(v)
+def encode_request(v)
+def encode_request_ref(v)
+def encode_responder_decision(v)
+def encode_response_metadata(v)
+def encode_typed_permission_details(v)
 def service_name(frame)

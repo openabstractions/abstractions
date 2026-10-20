@@ -22,6 +22,7 @@ func TestInstallationWritesTheLeaseRules(t *testing.T) {
 		resourceservice.ActionHold + " " + resourceservice.ResourceAwake: "the wake",
 		resourceservice.ActionYield + " host:lmstudio":                   "LM Studio",
 		resourceservice.ActionYield + " host:ollama":                     "Ollama",
+		resourceservice.ActionYield + " host:lemonade":                   "Lemonade",
 		resourceservice.ActionYield + " host:comfyui":                    "ComfyUI",
 		resourceservice.ActionYield + " host:" + modelHostName:           "the model host",
 	}
@@ -31,7 +32,7 @@ func TestInstallationWritesTheLeaseRules(t *testing.T) {
 	if len(want) != 0 {
 		t.Fatalf("installation writes no rule for %v", want)
 	}
-	if len(rules) != 6 {
+	if len(rules) != 7 {
 		t.Fatalf("installation writes %d rules: %+v", len(rules), rules)
 	}
 }

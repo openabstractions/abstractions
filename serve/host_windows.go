@@ -22,12 +22,12 @@ import (
 )
 
 // `openabstractions serve supervisor` (old name `serve host`, accepted for one
-// release and still what the launchers below pass) owns the Windows runtime
+// release) owns the Windows runtime
 // lifetime in both
 // install scopes. Per-user, a Startup shortcut and `openabstractions start` run
 // it; it holds a hidden session window for Restart Manager shutdown and
 // registers for restart, so an upgrade that ends it gets it back. Machine
-// scope registers `openabstractionsw.exe serve host --service` as the
+// scope registers `openabstractionsw.exe serve supervisor --service` as the
 // per-user service template; the SCM restarts the host and the host restarts
 // its runtime child. The child is `openabstractions.exe serve runtime
 // --supervised` in a kill-on-close job object.
@@ -47,7 +47,7 @@ const (
 	// hostRestartFlags restarts the host only after an update ended it.
 	hostRestartFlags = restartNoCrash | restartNoHang | restartNoReboot
 	// hostRestartCommand is what Windows appends to the image path.
-	hostRestartCommand = "serve host"
+	hostRestartCommand = "serve supervisor"
 )
 
 var (

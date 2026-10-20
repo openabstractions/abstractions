@@ -15,10 +15,13 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
+	asks "github.com/openabstractions/abstraction-asks/go"
 	identity "github.com/openabstractions/abstraction-identity"
 
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
+	"github.com/openabstractions/abstraction-facade/go/client"
 	rights "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 )
 
@@ -27,7 +30,10 @@ const (
 	ActionApplicationRead     = "abstraction.facade/application.read"
 	ActionApplicationAnnounce = "abstraction.facade/application.announce"
 	ActionApplicationActivate = "abstraction.facade/application.activate"
-	ApplicationsContract      = "abstraction.facade/applications@1"
+	// ActionApplicationRegisterSelf is Register of the caller's own program,
+	// decided on account (rights.ActionApplicationRegisterSelf).
+	ActionApplicationRegisterSelf = "abstraction.facade/application.register_self"
+	ApplicationsContract          = "abstraction.facade/applications@2"
 )
 
 type applicationLease struct {
@@ -53,14 +59,35 @@ type applicationDirectory struct {
 	store       cas.BoundedFileStore
 	owner       string
 	descriptors map[string]wire.ApplicationDescriptor
+	// unconfirmed holds the entries their own program registered under the
+	// registration default and the person has not kept, each with the
+	// question asked for that registration and the publisher bound from it,
+	// kept in self-registered.json beside descriptors.json; selfBase is that
+	// file's last read or written value.
+	unconfirmed map[string]selfMark
+	selfBase    cas.Value
 	instances   map[string]applicationLease
 	attempts    map[string]*applicationActivationAttempt
 	generations map[string]uint64
 	changed     chan struct{}
 	now         func() time.Time
 	decide      func(context.Context, rights.Subject, string, string) (bool, error)
-	launch      func(string, []string) error
-	stat        func(string) (os.FileInfo, error)
+	// registeredSelf, when set, runs after a program registered its own
+	// descriptor, outside the directory lock: the runtime lets its operator
+	// programs read and start the entry.
+	registeredSelf func(name string)
+	// askKeep, when set, has the runtime ask the person whether to keep the
+	// self-registered entry name (runtime_self_registered.go).
+	askKeep func(name string) error
+	launch  func(string, []string) error
+	stat    func(string) (os.FileInfo, error)
+	// starts is the start log, oldest first, startsSince its eviction time
+	// and startsBase starts.json's last read or written value
+	// (application_starts.go); operator admits ListStarts' callers.
+	starts      []wire.ApplicationStart
+	startsSince int64
+	startsBase  cas.Value
+	operator    func(program string) bool
 }
 
 func applicationToken() (string, error) {
@@ -99,8 +126,113 @@ func openApplications(state, owner string, decide func(context.Context, rights.S
 			}
 		}
 	}
-
+	d.unconfirmed = map[string]selfMark{}
+	d.selfBase, err = d.store.Read(filepath.Join(d.dir, selfRegisteredFile))
+	if err != nil {
+		return nil, err
+	}
+	if d.selfBase.Data != nil {
+		if json.Unmarshal(d.selfBase.Data, &d.unconfirmed) != nil || d.unconfirmed == nil || len(d.unconfirmed) > 64 {
+			return nil, errors.New("applications: invalid self-registered entries")
+		}
+		for name, mark := range d.unconfirmed {
+			if !providerName.MatchString(name) || !mark.valid() {
+				return nil, errors.New("applications: invalid self-registered entry")
+			}
+		}
+	}
+	d.loadStarts()
 	return d, nil
+}
+
+// selfRegisteredFile holds the unconfirmed self-registered entries.
+const selfRegisteredFile = "self-registered.json"
+
+// selfMark is one unconfirmed self-registered entry: the id of the question
+// the runtime admitted for this registration, empty until one is admitted,
+// and the program and publisher bound from the registering connection, which
+// every question about this registration shows. Program is the path the
+// platform proved for the caller, which may be spelled otherwise than the
+// descriptor's program (a junction, a short name).
+type selfMark struct {
+	Question     string `json:"question,omitempty"`
+	Program      string `json:"program,omitempty"`
+	Publisher    string `json:"publisher,omitempty"`
+	Trusted      bool   `json:"trusted,omitempty"`
+	Description  string `json:"description,omitempty"`
+	OriginalName string `json:"original_name,omitempty"`
+}
+
+func newSelfMark(program string, p asks.Publisher) selfMark {
+	return selfMark{Program: program, Publisher: p.Subject, Trusted: p.Trusted, Description: p.Description, OriginalName: p.OriginalName}
+}
+
+func (m selfMark) publisher() asks.Publisher {
+	return asks.Publisher{Subject: m.Publisher, Trusted: m.Trusted, Description: m.Description, OriginalName: m.OriginalName}
+}
+
+// boundProgram is the program the question names: the caller's bound
+// program, or the descriptor's for a mark written without one.
+func (m selfMark) boundProgram(v wire.ApplicationDescriptor) string {
+	if m.Program != "" {
+		return m.Program
+	}
+	return v.Program
+}
+
+func (m selfMark) valid() bool {
+	for _, s := range []string{m.Question, m.Publisher, m.Description, m.OriginalName} {
+		if len(s) > 1024 || !utf8.ValidString(s) {
+			return false
+		}
+	}
+	return len(m.Program) <= 4096 && utf8.ValidString(m.Program)
+}
+
+// persistUnconfirmedLocked writes next as the unconfirmed entries.
+func (d *applicationDirectory) persistUnconfirmedLocked(ctx context.Context, next map[string]selfMark) error {
+	raw, err := json.Marshal(next)
+	if err != nil {
+		return err
+	}
+	if err = d.store.WriteContext(ctx, filepath.Join(d.dir, selfRegisteredFile), d.selfBase, raw); err != nil {
+		return err
+	}
+	d.selfBase = cas.Value{Data: raw}
+	d.unconfirmed = next
+	return nil
+}
+
+// setMarkLocked records name as unconfirmed with mark.
+func (d *applicationDirectory) setMarkLocked(ctx context.Context, name string, mark selfMark) error {
+	if old, ok := d.unconfirmed[name]; ok && old == mark {
+		return nil
+	}
+	next := maps.Clone(d.unconfirmed)
+	next[name] = mark
+	return d.persistUnconfirmedLocked(ctx, next)
+}
+
+// clearMarkLocked records name as confirmed, writing only on a change.
+func (d *applicationDirectory) clearMarkLocked(ctx context.Context, name string) error {
+	if _, ok := d.unconfirmed[name]; !ok {
+		return nil
+	}
+	next := maps.Clone(d.unconfirmed)
+	delete(next, name)
+	return d.persistUnconfirmedLocked(ctx, next)
+}
+
+// unconfirmedOfLocked names the unconfirmed entries the program registered.
+func (d *applicationDirectory) unconfirmedOfLocked(program string) []string {
+	var names []string
+	for name := range d.unconfirmed {
+		if v, ok := d.descriptors[name]; ok && samePrograms(v.Program, program) {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 func applicationEncodedFits(v any, limit int) bool {
@@ -108,23 +240,10 @@ func applicationEncodedFits(v any, limit int) bool {
 	return err == nil && len(raw) <= limit
 }
 
+// validApplicationDescriptor is the Facade's one manifest check, which the
+// Panel also applies before it shows a manifest for confirmation.
 func validApplicationDescriptor(v wire.ApplicationDescriptor) bool {
-	if !applicationEncodedFits(v, 8192) || !providerName.MatchString(v.Name) || !filepath.IsAbs(v.Program) || filepath.Clean(v.Program) != v.Program || len(v.Program) > 4096 || strings.ContainsRune(v.Program, 0) || len(v.Title) == 0 || len(v.Title) > 256 || len(v.StartGuidance) > 4096 {
-		return false
-	}
-	if v.Activation == nil {
-		return true
-	}
-	r := v.Activation
-	if len(r.Arguments) > 64 || r.ReadinessTimeoutMs < 100 || r.ReadinessTimeoutMs > 30000 || !validApplicationInterface(r.Readiness) {
-		return false
-	}
-	for _, argument := range r.Arguments {
-		if len(argument) == 0 || len(argument) > 4096 || strings.ContainsRune(argument, 0) {
-			return false
-		}
-	}
-	return true
+	return client.ValidApplicationDescriptor(v) == nil
 }
 
 func validApplicationInterface(v wire.ApplicationInterface) bool {
@@ -175,17 +294,62 @@ func appChange(outcome wire.ApplicationOutcome, reason string) wire.ApplicationC
 }
 func (d *applicationDirectory) notifyLocked() { close(d.changed); d.changed = make(chan struct{}) }
 
+// register adds a descriptor. A holder of application.manage registers another
+// program's descriptor; a program registers its own descriptor under
+// application.register_self, which the account-wide registration default
+// permits unless the program's own rule or the switch refuses it
+// (APPLICATIONS.md, rights RIGHTS-R22).
 func (d *applicationDirectory) register(ctx context.Context, s rights.Subject, v wire.ApplicationDescriptor) wire.ApplicationChange {
-	if out := d.authorized(ctx, s, ActionApplicationManage, "account"); out != wire.ApplicationOutcomeApplied {
+	return d.registerFrom(ctx, s, asks.Publisher{}, v)
+}
+
+// registerFrom is register with the publisher bound from the registering
+// connection, which the question about a self-registration shows.
+func (d *applicationDirectory) registerFrom(ctx context.Context, s rights.Subject, publisher asks.Publisher, v wire.ApplicationDescriptor) wire.ApplicationChange {
+	own := validApplicationDescriptor(v) && samePrograms(s.Program, identity.NormalizeSubjectProgram(v.Program))
+	action := ActionApplicationManage
+	if own {
+		action = ActionApplicationRegisterSelf
+	}
+	if out := d.authorized(ctx, s, action, "account"); out != wire.ApplicationOutcomeApplied {
 		return appChange(out, "")
 	}
 	if !validApplicationDescriptor(v) {
 		return appChange(wire.ApplicationOutcomeInvalid, "descriptor")
 	}
 	v.Program = identity.NormalizeSubjectProgram(v.Program)
-	if !validApplicationDescriptor(v) || samePrograms(s.Program, v.Program) {
+	if !validApplicationDescriptor(v) || !own && samePrograms(s.Program, v.Program) {
 		return appChange(wire.ApplicationOutcomeInvalid, "descriptor")
 	}
+	// A title that reads as OpenAbstractions is refused on both paths; an
+	// entry stored before this check keeps loading (client.ReservedApplicationTitle).
+	if client.ReservedApplicationTitle(v.Title) {
+		return appChange(wire.ApplicationOutcomeInvalid, "title")
+	}
+	var mark *selfMark
+	if own {
+		m := newSelfMark(s.Program, publisher)
+		mark = &m
+	}
+	change := d.addDescriptor(ctx, v, mark)
+	if own && change.Outcome == wire.ApplicationOutcomeApplied {
+		if d.registeredSelf != nil {
+			d.registeredSelf(v.Name)
+		}
+		// The person is asked once whether to keep it; a question that cannot
+		// be admitted leaves the entry unconfirmed, and Apps asks again.
+		if d.askKeep != nil {
+			_ = d.askKeep(v.Name)
+		}
+	}
+	return change
+}
+
+// addDescriptor stores a checked descriptor under the directory lock, marked
+// unconfirmed with mark when its own program registered it (mark not nil). A
+// program has at most one unconfirmed entry: a second self-registration
+// while one awaits the person is a conflict, reason "unconfirmed".
+func (d *applicationDirectory) addDescriptor(ctx context.Context, v wire.ApplicationDescriptor, mark *selfMark) wire.ApplicationChange {
 	if !d.lock(ctx) {
 		return appChange(wire.ApplicationOutcomeUnavailable, "")
 	}
@@ -193,8 +357,22 @@ func (d *applicationDirectory) register(ctx context.Context, s rights.Subject, v
 	if _, ok := d.descriptors[v.Name]; ok {
 		return appChange(wire.ApplicationOutcomeConflict, "name")
 	}
+	if mark != nil && len(d.unconfirmedOfLocked(v.Program)) > 0 {
+		return appChange(wire.ApplicationOutcomeConflict, "unconfirmed")
+	}
 	if len(d.descriptors) >= 64 {
 		return appChange(wire.ApplicationOutcomeUnavailable, "capacity")
+	}
+	// The mark is written before the descriptor: a left-over mark for a name
+	// with no descriptor marks nothing, and the next registration rewrites it.
+	var err error
+	if mark != nil {
+		err = d.setMarkLocked(ctx, v.Name, *mark)
+	} else {
+		err = d.clearMarkLocked(ctx, v.Name)
+	}
+	if err != nil {
+		return appChange(wire.ApplicationOutcomeUnavailable, "persistence")
 	}
 	next := maps.Clone(d.descriptors)
 	next[v.Name] = v
@@ -220,11 +398,24 @@ func (d *applicationDirectory) remove(ctx context.Context, s rights.Subject, nam
 	if _, ok := d.descriptors[name]; !ok {
 		return appChange(wire.ApplicationOutcomeUnknown, "")
 	}
+	outcome := d.removeLocked(ctx, name)
+	if outcome != wire.ApplicationOutcomeApplied {
+		return appChange(outcome, "persistence")
+	}
+	return appChange(outcome, "")
+}
+
+// removeLocked removes the registered entry name, its mark, its presence and
+// its activation attempt. The caller holds the directory lock.
+func (d *applicationDirectory) removeLocked(ctx context.Context, name string) wire.ApplicationOutcome {
 	next := maps.Clone(d.descriptors)
 	delete(next, name)
 	if err := d.persistLocked(ctx, next); err != nil {
-		return appChange(wire.ApplicationOutcomeUnavailable, "persistence")
+		return wire.ApplicationOutcomeUnavailable
 	}
+	// The removed entry's mark goes with it; a failed write leaves a mark for
+	// a name with no descriptor, which marks nothing.
+	_ = d.clearMarkLocked(ctx, name)
 
 	for key, l := range d.instances {
 		if l.application == name {
@@ -245,7 +436,130 @@ func (d *applicationDirectory) remove(ctx context.Context, s rights.Subject, nam
 		delete(d.generations, name)
 	}
 	d.notifyLocked()
+	return wire.ApplicationOutcomeApplied
+}
+
+// askConfirmation has the runtime ask the person again whether to keep a
+// self-registered entry (AskConfirmation). It needs application.manage; an
+// entry without the mark applies without asking.
+func (d *applicationDirectory) askConfirmation(ctx context.Context, s rights.Subject, name string) wire.ApplicationChange {
+	if out := d.authorized(ctx, s, ActionApplicationManage, "account"); out != wire.ApplicationOutcomeApplied {
+		return appChange(out, "")
+	}
+	if !providerName.MatchString(name) {
+		return appChange(wire.ApplicationOutcomeInvalid, "application")
+	}
+	if !d.lock(ctx) {
+		return appChange(wire.ApplicationOutcomeUnavailable, "")
+	}
+	_, ok := d.descriptors[name]
+	_, unconfirmed := d.unconfirmed[name]
+	d.mu.Unlock()
+	if !ok {
+		return appChange(wire.ApplicationOutcomeUnknown, "")
+	}
+	if !unconfirmed {
+		return appChange(wire.ApplicationOutcomeApplied, "")
+	}
+	if d.askKeep == nil {
+		return appChange(wire.ApplicationOutcomeUnavailable, "questions")
+	}
+	if err := d.askKeep(name); err != nil {
+		return appChange(wire.ApplicationOutcomeUnavailable, "questions")
+	}
 	return appChange(wire.ApplicationOutcomeApplied, "")
+}
+
+// selfEntry is the unconfirmed entry name with its mark.
+func (d *applicationDirectory) selfEntry(name string) (wire.ApplicationDescriptor, selfMark, bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	v, ok := d.descriptors[name]
+	mark, unconfirmed := d.unconfirmed[name]
+	return v, mark, ok && unconfirmed
+}
+
+// selfEntries lists the unconfirmed entries with their marks.
+func (d *applicationDirectory) selfEntries() map[string]selfMark {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	out := map[string]selfMark{}
+	for name, mark := range d.unconfirmed {
+		if _, ok := d.descriptors[name]; ok {
+			out[name] = mark
+		}
+	}
+	return out
+}
+
+// ownedLocked reports whether name is unconfirmed, registered by program,
+// with question as its registration's question.
+func (d *applicationDirectory) ownedLocked(name, program, question string) bool {
+	v, ok := d.descriptors[name]
+	mark, unconfirmed := d.unconfirmed[name]
+	return ok && unconfirmed && samePrograms(v.Program, program) && question != "" && mark.Question == question
+}
+
+// setQuestion records question as the one asked for the unconfirmed entry
+// name of program. It reports whether the entry was still there.
+func (d *applicationDirectory) setQuestion(ctx context.Context, name, program, question string) bool {
+	if !d.lock(ctx) {
+		return false
+	}
+	defer d.mu.Unlock()
+	v, ok := d.descriptors[name]
+	mark, unconfirmed := d.unconfirmed[name]
+	if !ok || !unconfirmed || !samePrograms(v.Program, program) {
+		return false
+	}
+	mark.Question = question
+	return d.setMarkLocked(ctx, name, mark) == nil
+}
+
+// owned reports whether question is the current registration's question
+// about the unconfirmed entry name of program.
+func (d *applicationDirectory) owned(name, program, question string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.ownedLocked(name, program, question)
+}
+
+// keepOwned marks the entry name confirmed on the person's Keep to question,
+// when that is still the question of the entry's current registration. It
+// reports whether it changed.
+func (d *applicationDirectory) keepOwned(ctx context.Context, name, program, question string) bool {
+	if !d.lock(ctx) {
+		return false
+	}
+	defer d.mu.Unlock()
+	if !d.ownedLocked(name, program, question) {
+		return false
+	}
+	if d.clearMarkLocked(ctx, name) != nil {
+		return false
+	}
+	d.notifyLocked()
+	return true
+}
+
+// removeOwned removes, on the person's Remove to question, every unconfirmed
+// entry of program, when question is still the question of name's current
+// registration. It reports whether it removed name.
+func (d *applicationDirectory) removeOwned(ctx context.Context, name, program, question string) bool {
+	if !d.lock(ctx) {
+		return false
+	}
+	defer d.mu.Unlock()
+	if !d.ownedLocked(name, program, question) {
+		return false
+	}
+	removed := false
+	for _, other := range d.unconfirmedOfLocked(program) {
+		if d.removeLocked(ctx, other) == wire.ApplicationOutcomeApplied && other == name {
+			removed = true
+		}
+	}
+	return removed
 }
 
 // persistLocked uses the shared CAS provider for synced atomic replacement.
@@ -308,17 +622,15 @@ func (d *applicationDirectory) announceInSession(ctx context.Context, s rights.S
 		return appChange(wire.ApplicationOutcomeUnavailable, "")
 	}
 	defer d.mu.Unlock()
-	d.expireLocked()
+	// Ownership is decided before anything changes: a name the caller's
+	// program does not own, registered or not, answers forbidden alike and
+	// touches no entry and no activation attempt, so another program can
+	// neither learn which names exist nor end someone's start.
 	v, ok := d.descriptors[p.Application]
-	if !ok {
-		return appChange(wire.ApplicationOutcomeUnknown, "")
-	}
-	if !samePrograms(v.Program, s.Program) {
-		if attempt := d.attempts[p.Application]; attempt != nil {
-			d.completeActivationLocked(p.Application, attempt, activationResult(wire.ApplicationActivationOutcomeIdentityRefused, "program"), true)
-		}
+	if !ok || !samePrograms(v.Program, s.Program) {
 		return appChange(wire.ApplicationOutcomeForbidden, "")
 	}
+	d.expireLocked()
 	id := p.Instance
 	if id != "" {
 		old, ok := d.instances[id]
@@ -344,6 +656,9 @@ func (d *applicationDirectory) announceInSession(ctx context.Context, s rights.S
 	sort.Slice(contexts, func(i, j int) bool { return contexts[i].Name < contexts[j].Name })
 	deadline := d.now().Add(time.Duration(p.LeaseMs) * time.Millisecond)
 	d.instances[id] = applicationLease{application: p.Application, owner: s, session: session, value: wire.ApplicationInstance{Instance: id, Interfaces: interfaces, Contexts: contexts, ExpiresUnixMs: deadline.UnixMilli()}, deadline: deadline}
+	if p.Instance == "" {
+		d.recordStartLocked(ctx, p.Application, session, id, v)
+	}
 	d.notifyLocked()
 	return wire.ApplicationChange{Outcome: wire.ApplicationOutcomeApplied, Instance: id}
 }
@@ -583,7 +898,8 @@ func (d *applicationDirectory) snapshot(ctx context.Context, s rights.Subject) (
 		if permission != wire.ApplicationOutcomeApplied {
 			continue
 		}
-		entry := wire.ApplicationEntry{Scope: wire.ScopeLocal, Descriptor: v, Instances: []wire.ApplicationInstance{}}
+		_, unconfirmed := d.unconfirmed[name]
+		entry := wire.ApplicationEntry{Scope: wire.ScopeLocal, Descriptor: v, Instances: []wire.ApplicationInstance{}, SelfRegistered: unconfirmed}
 		for _, l := range d.instances {
 			if l.application == name {
 				copy := l.value

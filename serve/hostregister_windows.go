@@ -27,20 +27,28 @@ import (
 const serviceUserOwnProcess = 0x50
 
 const hostUsage = `Usage: openabstractions host register|unregister
+       openabstractions host sandbox-roots grant|revoke|show
 
   register    write the per-user service template OpenAbstractionsSupervisor:
-              image openabstractionsw.exe beside this program, "serve host
+              image openabstractionsw.exe beside this program, "serve supervisor
               --service", automatic start at each sign-in, restart after 3s,
               10s, then every 30s. Rewrites an existing registration.
   unregister  stop and delete every per-session instance and the template,
               confirming each process exit within one 60-second budget.
+  sandbox-roots
+              the machine-wide entry letting every OA sandbox read the
+              attributes of the system drive's root and the profiles folder
+              (a temporary exception; see host sandbox-roots --help).
 
-Both need an administrator token. A failure is also appended to
+register, unregister and sandbox-roots grant|revoke need an administrator token. A failure is also appended to
 %ProgramData%\abstraction\upgrade-v1\installer-actions.txt, because Windows
 Installer discards the output of the custom actions that run them.
 `
 
 func hostCommand(args []string, output, diagnostics io.Writer) error {
+	if len(args) > 0 && args[0] == "sandbox-roots" {
+		return sandboxRootsCommand(args[1:], output, diagnostics, systemSandboxRootOps())
+	}
 	if containsHelp(args) {
 		_, err := io.WriteString(output, hostUsage)
 		return err
@@ -87,7 +95,7 @@ func systemHostRegistrar(output io.Writer) hostRegistrar {
 
 // hostServiceCommand is the registered image path and arguments.
 func hostServiceCommand(image string) string {
-	return windows.EscapeArg(image) + " serve host --service"
+	return windows.EscapeArg(image) + " serve supervisor --service"
 }
 
 // register refuses a missing windowless image before it opens the SCM, so the

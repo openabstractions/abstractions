@@ -48,9 +48,8 @@ package main
 // audio and image edit's uploaded input are stored by the window itself under
 // their own sha256 digest (gateway/transcription.go, gateway/image.go), which
 // this file grants because it fixes those bytes and can compute the digest
-// before the call, and the one generated PNG both images routes return is
-// granted once for content.read since generation and edit answer the same
-// bytes.
+// before the call. Generated results use matching service-authored provenance
+// and the current output-profile read grant, without a known output digest.
 
 import (
 	"bytes"
@@ -60,6 +59,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -80,15 +81,21 @@ import (
 // through the one hosted credential every route's request carries.
 const gwFixtureSecret = "gateway-route-secret"
 
-// gwPNG is a fixed image both images routes answer: images_generations and
-// images_edits share this exact byte sequence so their output digest, and so
-// their content.read grant, is the same for both.
+// gwPNG is a fixed image both images routes answer. Neither route pregrants
+// its digest: generated-output provenance and output:image read authorize it.
 var gwPNG = []byte("\x89PNG\r\n\x1a\ngateway-route-output")
 
 // gwEditInputPNG is a distinct image only images_edits uploads, so its
 // content.write grant (on its own digest) is visibly separate from the
-// output's content.read grant.
-var gwEditInputPNG = []byte("\x89PNG\r\n\x1a\ngateway-route-edit-input")
+// output's content.read grant. It is a real 64 × 64 PNG: an OpenAI-compatible
+// edit reads its header for the size bound (inference CONTRACT.md INF-SD2).
+var gwEditInputPNG = func() []byte {
+	var out bytes.Buffer
+	if err := png.Encode(&out, image.NewNRGBA(image.Rect(0, 0, 64, 64))); err != nil {
+		panic(err)
+	}
+	return out.Bytes()
+}()
 
 // gwWAV is a fixed WAV both the transcription input and the speech output
 // use: RIFF/WAVE bytes satisfy gateway/transcription.go's audioType sniff and
@@ -347,12 +354,7 @@ func TestGatewayRoutes(t *testing.T) {
 		{filepath.Join(options.stateDir, "credentials", credentialsBackendFile), "file-0600\n"},
 		{filepath.Join(options.stateDir, "inference", inferenceHostsFile), hosts},
 	} {
-		if err := os.MkdirAll(filepath.Dir(file.path), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(file.path, []byte(file.body), 0o600); err != nil {
-			t.Fatal(err)
-		}
+		writeStateFile(t, file.path, file.body)
 	}
 	_, _, namespace, err := credentialsEndpoints(options)
 	if err != nil {
@@ -371,6 +373,7 @@ func TestGatewayRoutes(t *testing.T) {
 		t.Fatalf("startup: %v", err)
 	case <-time.After(runtimeWait):
 		cancel()
+		dumpGoroutines()
 		t.Fatalf("runtime not ready within %v", runtimeWait)
 	}
 	t.Cleanup(func() {
@@ -402,18 +405,21 @@ func TestGatewayRoutes(t *testing.T) {
 	gwGrant(t, options, self, contentWriteAction, speechOutputResource)
 	gwGrant(t, options, self, contentWriteAction, "output:image")
 	gwGrant(t, options, self, contentWriteAction, "output:live")
+	gwGrant(t, options, self, contentReadAction, speechOutputResource)
+	gwGrant(t, options, self, contentReadAction, "output:image")
+	gwGrant(t, options, self, contentReadAction, "output:live")
 	// Transcription and image edit carry their input by digest
 	// (wire.TranscriptionRequest.AudioDigest, wire.ImageRequest.ImageDigest);
 	// the core provider reads it back with cfg.ResolveContent
-	// (transcription.go, image.go) before sending it upstream, so each needs
-	// both grants: content.write for the window's own StoreContent call and
-	// content.read for the provider's ResolveContent call, on the same digest.
+	// (transcription.go, image.go) before sending it upstream. Each needs its
+	// input profile (STO-W12, INF-V4): content.write and content.read on
+	// input:audio or input:image cover the window's own StoreContent call and
+	// the provider's ResolveContent call, with no rule naming a digest.
 	transcribeAudio := gwWAV('T')
-	gwGrant(t, options, self, contentWriteAction, gwDigest(transcribeAudio))
-	gwGrant(t, options, self, contentReadAction, gwDigest(transcribeAudio))
-	gwGrant(t, options, self, contentWriteAction, gwDigest(gwEditInputPNG))
-	gwGrant(t, options, self, contentReadAction, gwDigest(gwEditInputPNG))
-	gwGrant(t, options, self, contentReadAction, gwDigest(gwPNG))
+	for _, profile := range inference.InputProfiles {
+		gwGrant(t, options, self, contentWriteAction, inference.InputResource(profile))
+		gwGrant(t, options, self, contentReadAction, inference.InputResource(profile))
+	}
 
 	out, err = runInference(t, append([]string{"key", "issue", "--for", self, "--credential", "gw-cred", "--json"}, endpoint...)...)
 	if err != nil {

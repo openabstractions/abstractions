@@ -35,7 +35,7 @@ func buildLocalStoresInventoryd(t *testing.T) string {
 		name += ".exe"
 	}
 	target := filepath.Join(t.TempDir(), name)
-	module, err := filepath.Abs(filepath.Join("..", "openabstractions-flat", "abstraction-storage-over-local-stores", "go"))
+	module, err := filepath.Abs(privateInput(t, "..", "openabstractions-flat", "abstraction-storage-over-local-stores", "go"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/openabstractions/abstraction-identity/listen"
 	"github.com/openabstractions/abstraction-inference/go"
 	inferenceservice "github.com/openabstractions/abstraction-inference/go/service"
+	router "github.com/openabstractions/abstraction-router/go"
 )
 
 func shortMediationEndpoint(t *testing.T) string {
@@ -118,6 +120,161 @@ func TestResolverSelectionRetainsTheChosenProviderEndpointForSharedModel(t *test
 	}
 	if result.Reference.Provider != "second" || result.Reference.Endpoint != "oa-second" {
 		t.Fatalf("selected %+v", result.Reference)
+	}
+}
+
+func TestImageOnlyNativeProviderRegistersMediatedProfile(t *testing.T) {
+	principal, err := currentPrincipal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &runtimeProviders{principal: principal, report: func(error) {}, supervisors: map[string]*providerSupervisor{}, mediated: map[string]mediatedProvider{}}
+	file := providerFile{Version: providerFileVersion, Generation: "image-generation", DeclaredBy: program,
+		Declaration: providerDeclaration{Name: "image-only", Program: program, Endpoint: "private-image", Transport: transportNative,
+			Contracts: []string{inference.ImageContract}, Resources: []string{"profile:image"}, Models: []string{"stability/sdxl"}, Activation: wire.ActivationOnDemand.String()}}
+	p.supervisors[file.Declaration.Name] = newProviderSupervisor(p, file)
+	p.setMediated(map[string]mediatedProvider{file.bindingID(): {Endpoint: "oa-image", Ready: true}})
+	if hosts := p.nativeInferenceHosts(); len(hosts) != 1 || len(hosts[0].HostProfiles()) != 1 || hosts[0].HostProfiles()[0] != router.ProfileImage {
+		t.Fatalf("image-only router hosts %+v", hosts)
+	}
+	refs := p.Candidates()
+	if len(refs) != 1 || refs[0].Reference.Contract != inference.ImageContract || refs[0].Reference.Endpoint != "oa-image" {
+		t.Fatalf("image-only candidates %+v", refs)
+	}
+	m := &providerMediation{providers: p}
+	if _, ok := m.desired()[file.bindingID()]; !ok {
+		t.Fatal("image-only declaration omitted from mediation")
+	}
+}
+
+// The installed Lemonade declaration's shape: every profile it serves is a
+// resolution candidate at the mediated endpoint, and each model is routed and
+// admitted for its own profile only (router CONTRACT.md ROUTE-D9).
+func TestNativeProviderOffersEveryDeclaredProfileAndScopesItsModels(t *testing.T) {
+	principal, err := currentPrincipal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &runtimeProviders{principal: principal, report: func(error) {}, supervisors: map[string]*providerSupervisor{}, mediated: map[string]mediatedProvider{}, changes: make(chan struct{})}
+	file := providerFile{Version: providerFileVersion, Generation: "speech-generation", DeclaredBy: program,
+		Declaration: providerDeclaration{Name: "lemonade-image", Program: program, Endpoint: "private-lemonade-image", Transport: transportNative,
+			Contracts: []string{inference.ImageContract, inference.TranscriptionContract, inference.SpeechContract},
+			Resources: []string{"profile:image", "profile:transcription", "profile:speech"},
+			Models:    []string{"image:user.LocalApprovedKlein", "transcription:Whisper-Large-v3-Turbo", "speech:kokoro-v1"}, Activation: wire.ActivationOnDemand.String()}}
+	if field := validProviderDeclaration(file.Declaration); field != "" {
+		t.Fatalf("installed declaration shape invalid: %s", field)
+	}
+	p.supervisors[file.Declaration.Name] = newProviderSupervisor(p, file)
+	p.setMediated(map[string]mediatedProvider{file.bindingID(): {Endpoint: "oa-lemonade", Ready: true}})
+
+	contracts := map[string]bool{}
+	for _, c := range p.Candidates() {
+		if c.Reference.Endpoint != "oa-lemonade" || c.Reference.Provider != "lemonade-image" {
+			t.Fatalf("candidate %+v", c.Reference)
+		}
+		contracts[c.Reference.Contract] = true
+	}
+	if len(contracts) != 3 || !contracts[inference.ImageContract] || !contracts[inference.TranscriptionContract] || !contracts[inference.SpeechContract] {
+		t.Fatalf("candidate contracts %v", contracts)
+	}
+	catalog, err := resolution.New(p.Candidates())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, contract := range []string{inference.TranscriptionContract, inference.SpeechContract} {
+		result, err := catalog.ForCaller(func(wire.ServiceReference) bool { return true }).Resolve(wire.ResolveRequest{
+			Capability: "abstraction.inference", Contracts: []string{contract}, Guarantees: []string{}, Scope: wire.ScopeLocal})
+		if err != nil || result.Status != wire.ResolutionStatusResolved || result.Reference == nil || result.Reference.Endpoint != "oa-lemonade" {
+			t.Fatalf("resolve %s: %+v, %v", contract, result, err)
+		}
+	}
+
+	hosts := p.nativeInferenceHosts()
+	if len(hosts) != 1 {
+		t.Fatalf("native hosts %+v", hosts)
+	}
+	routes := router.New(hosts...)
+	routes.Survey()
+	if d, _ := routes.Route(router.Request{Model: "kokoro-v1", Profile: router.ProfileImage}); d.Verdict != router.NoHost {
+		t.Fatalf("image kokoro-v1: %s (%s)", d.Verdict, d.Why)
+	}
+	if d, _ := routes.Route(router.Request{Model: "Whisper-Large-v3-Turbo", Profile: router.ProfileTranscription}); d.Verdict != router.WouldLoad || d.Host != "lemonade-image" {
+		t.Fatalf("transcription Whisper: %s %q (%s)", d.Verdict, d.Host, d.Why)
+	}
+	if hosts[0].TranscriptionURL() == "" || hosts[0].SpeechURL() == "" {
+		t.Fatal("the router answers no audio address for the native host")
+	}
+	// The runtime's own admission is the second line, and refuses before any
+	// launch.
+	ctx := inference.WithAdmissionProfile(context.Background(), router.ProfileImage)
+	if reason, ok := p.nativeAdmit(ctx, hosts[0], "kokoro-v1"); ok || reason != "model:undeclared" || activated(p.supervisors[file.Declaration.Name]) {
+		t.Fatalf("image kokoro-v1 admitted: %q %v", reason, ok)
+	}
+}
+
+// A model entry scoped to a profile the declaration lists without its
+// contract would read as a model named "<profile>:<model>"; it is refused.
+func TestScopedModelNeedsTheProfileContract(t *testing.T) {
+	d := providerDeclaration{Name: "scoped", Program: filepath.Join(t.TempDir(), "provider.exe"), Endpoint: "scoped", Transport: transportNative,
+		Contracts: []string{inference.ImageContract}, Resources: []string{"profile:image", "profile:speech"},
+		Models: []string{"image:picture", "speech:voice"}, Activation: wire.ActivationOnDemand.String()}
+	if field := validProviderDeclaration(d); field != "models" {
+		t.Fatalf("speech-scoped model without speech@1: %q", field)
+	}
+	d.Contracts = append(d.Contracts, inference.SpeechContract)
+	if field := validProviderDeclaration(d); field != "" {
+		t.Fatalf("scoped declaration refused: %q", field)
+	}
+	// An Ollama-style tag is a model name, never a profile.
+	d.Models = []string{"qwen3:8b"}
+	if field := validProviderDeclaration(d); field != "" {
+		t.Fatalf("tagged model name refused: %q", field)
+	}
+}
+
+// A legacy chat-only declaration lists no profile and serves chat
+// implicitly; its entries are read against that chat profile, by the same
+// parser the router host uses (router.DeclaredEntry, ROUTE-D9).
+func TestLegacyChatOnlyDeclarationReadsEntriesAgainstImplicitChat(t *testing.T) {
+	principal, err := currentPrincipal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &runtimeProviders{principal: principal, report: func(error) {}, supervisors: map[string]*providerSupervisor{}, mediated: map[string]mediatedProvider{}}
+	file := providerFile{Version: providerFileVersion, Generation: "legacy-generation", DeclaredBy: program,
+		Declaration: providerDeclaration{Name: "legacy", Program: program, Endpoint: "private-legacy", Transport: transportNative,
+			Contracts: []string{inference.Contract}, Models: []string{"chat:owner/scoped", "qwen3:8b", "chat:chat:x"}, Activation: wire.ActivationAttach.String()}}
+	if field := validProviderDeclaration(file.Declaration); field != "" {
+		t.Fatalf("legacy chat-only declaration with scoped entries refused: %s", field)
+	}
+	p.supervisors[file.Declaration.Name] = newProviderSupervisor(p, file)
+	p.supervisors[file.Declaration.Name].readiness = wire.DeclarationReadinessReady
+	hosts := p.nativeInferenceHosts()
+	if len(hosts) != 1 || !slices.Equal(hosts[0].HostProfiles(), []string{router.ProfileChat}) {
+		t.Fatalf("legacy hosts %+v", hosts)
+	}
+	routes := router.New(hosts...)
+	routes.Survey()
+	// chat:chat:x is the model literally named chat:x, for chat.
+	for _, model := range []string{"owner/scoped", "qwen3:8b", "chat:x"} {
+		if d, _ := routes.Route(router.Request{Model: model, Profile: router.ProfileChat}); d.Verdict != router.WouldLoad || d.Model != model {
+			t.Fatalf("chat %s: %s %q (%s)", model, d.Verdict, d.Model, d.Why)
+		}
+		if !hosts[0].ServesModel(router.ProfileChat, model) {
+			t.Fatalf("host does not serve %s for chat", model)
+		}
 	}
 }
 

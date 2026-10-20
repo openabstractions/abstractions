@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	facade "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
@@ -66,19 +67,19 @@ func oaFixture(t *testing.T) (*oaAdapter, *fakeApplications, *fakeRights, *fakeL
 		kinds = append(kinds, in.Kind)
 		switch in.Kind {
 		case "context":
-			_ = json.NewEncoder(w).Encode(map[string]any{"result": map[string]any{"application_instance": "oa-instance", "instance": "browser-page", "context": "workflow", "revision": "9"}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"result": map[string]any{"application_instance": "oa-instance", "instance": "browser-page", "context": "workflow", "revision": "9", "title": "portrait-workflow.json"}})
 		case "preview":
 			arguments := in.Arguments.(map[string]any)
-			if arguments["application_instance"] != "oa-instance" || arguments["instance"] != "browser-page" || arguments["context"] != "workflow" || arguments["revision"] != "9" {
+			if arguments["application_instance"] != "oa-instance" || arguments["instance"] != "browser-page" || arguments["context"] != "workflow" || arguments["revision"] != "9" || arguments["request_summary"] != "Increase sampling detail for the portrait" {
 				t.Errorf("OA preview bridge arguments = %#v", arguments)
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"result": map[string]any{"outcome": "proposed", "token": "proposal", "instance": "browser-page", "context": "workflow", "revision": "9"}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"result": map[string]any{"outcome": "proposed", "token": "proposal", "instance": "browser-page", "context": "workflow", "revision": "9", "request_summary": arguments["request_summary"]}})
 		case "read":
 			arguments := in.Arguments.(map[string]any)
 			if arguments["application_instance"] != "oa-instance" || arguments["instance"] != "browser-page" || arguments["context"] != "workflow" || arguments["revision"] != "9" || arguments["operation"] != "op-1" {
 				t.Errorf("OA read bridge arguments = %#v", arguments)
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"result": map[string]any{"outcome": "applied", "operation": "op-1", "instance": "browser-page", "context": "workflow", "revision": "9", "actual": 24}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"result": map[string]any{"outcome": "applied", "operation": "op-1", "instance": "browser-page", "context": "workflow", "revision": "9", "actual": 24, "request_summary": "Increase sampling detail for the portrait"}})
 		}
 	}))
 	t.Cleanup(h.Close)
@@ -92,7 +93,7 @@ func oaFixture(t *testing.T) (*oaAdapter, *fakeApplications, *fakeRights, *fakeL
 }
 
 func validOAPreview() oaPreviewInput {
-	return oaPreviewInput{ApplicationInstance: "oa-instance", Instance: "browser-page", Context: "workflow", Revision: "9", NodeID: 1, Widget: "steps", Value: 24}
+	return oaPreviewInput{ApplicationInstance: "oa-instance", Instance: "browser-page", Context: "workflow", Revision: "9", NodeID: 1, Widget: "steps", Value: 24, RequestSummary: "Increase sampling detail for the portrait"}
 }
 
 func validOARead() oaReadInput {
@@ -108,6 +109,16 @@ func TestOADenialHasNoBridgeOrDirectoryEffect(t *testing.T) {
 	}
 	if len(logs.records) != 1 || logs.records[0]["oa.outcome"] != "not_granted" {
 		t.Fatalf("denial audit = %#v", logs.records)
+	}
+}
+
+func TestOARequestSummaryBoundRefusesBeforeReadingWorkflow(t *testing.T) {
+	a, apps, _, _, kinds := oaFixture(t)
+	input := validOAPreview()
+	input.RequestSummary = strings.Repeat("x", 513)
+	result := a.preview(context.Background(), input)
+	if result["outcome"] != "invalid" || result["reason"] != "request_summary_exceeds_512_bytes" || len(*kinds) != 0 || apps.observed != 0 {
+		t.Fatalf("oversized request summary result=%v bridge=%v observed=%d", result, *kinds, apps.observed)
 	}
 }
 
@@ -129,14 +140,14 @@ func TestOAPreviewRequiresBridgeAndDirectoryBindingThenAudits(t *testing.T) {
 	if _, exposed := result["token"]; exposed {
 		t.Fatalf("proposal effect handle exposed to MCP: %v", result)
 	}
-	if result["application_instance"] != "oa-instance" {
+	if result["application_instance"] != "oa-instance" || result["workflow_title"] != "portrait-workflow.json" || result["request_summary"] != "Increase sampling detail for the portrait" {
 		t.Fatalf("verified OA application binding omitted: %v", result)
 	}
 	if len(logs.records) != 1 || logs.records[0]["oa.application_instance"] != "oa-instance" || logs.records[0]["oa.context"] != "workflow" || logs.records[0]["oa.revision"] != "9" {
 		t.Fatalf("preview audit = %#v", logs.records)
 	}
 	read := a.readOutcome(context.Background(), validOARead())
-	if read["outcome"] != "applied" || len(*kinds) != 4 || (*kinds)[2] != "context" || (*kinds)[3] != "read" {
+	if read["outcome"] != "applied" || read["request_summary"] != "Increase sampling detail for the portrait" || read["workflow_title"] != "portrait-workflow.json" || len(*kinds) != 4 || (*kinds)[2] != "context" || (*kinds)[3] != "read" {
 		t.Fatalf("read result=%v bridge=%v", read, *kinds)
 	}
 }

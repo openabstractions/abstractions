@@ -213,7 +213,7 @@ func setCompleteRule(t *testing.T, endpoint, program, host string, permit bool) 
 // registered credential; a program without a complete rule is not permitted
 // and nothing reaches the upstream; with the rule the reply streams, the
 // upstream sees the credential once, and the secret is in no reply, record,
-// log or state file.
+// log or state file. Revocation refuses another call before provider I/O.
 func TestRuntimeInferenceAppliesAHostedCredential(t *testing.T) {
 	if !statusTransportProvesProgram(t) {
 		t.Skip("Program proof unavailable on current shared transport")
@@ -225,12 +225,7 @@ func TestRuntimeInferenceAppliesAHostedCredential(t *testing.T) {
 		{filepath.Join(options.stateDir, "credentials", credentialsBackendFile), "file-0600\n"},
 		{filepath.Join(options.stateDir, "inference", inferenceHostsFile), config},
 	} {
-		if err := os.MkdirAll(filepath.Dir(file.path), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(file.path, []byte(file.body), 0o600); err != nil {
-			t.Fatal(err)
-		}
+		writeStateFile(t, file.path, file.body)
 	}
 	_, _, namespace, err := credentialsEndpoints(options)
 	if err != nil {
@@ -346,7 +341,20 @@ func TestRuntimeInferenceAppliesAHostedCredential(t *testing.T) {
 	if got := upstream.authorizations(); len(got) != 1 || got[0] != "Bearer "+testCredentialSecret {
 		t.Fatalf("upstream chat Authorization %q", got)
 	}
-	replies, _ := json.Marshal([]any{refused, admission, pages})
+	revokedOut, revokedDiag, err := runCredentials(t, "", "revoke", "openrouter", "--endpoint", options.endpoint, "--timeout", "30s")
+	transcript.WriteString(revokedOut + revokedDiag)
+	if err != nil {
+		t.Fatalf("revoke test credential: %v\n%s%s", err, revokedOut, revokedDiag)
+	}
+	postRevoke, err := chat.Start(request)
+	if err != nil || postRevoke.Outcome == iwire.StartOutcomeAccepted ||
+		(postRevoke.Reason != "credential:revoked:openrouter" && postRevoke.Reason != "router:not-here") {
+		t.Fatalf("revoked credential admission: %+v %v", postRevoke, err)
+	}
+	if got := upstream.authorizations(); len(got) != 1 {
+		t.Fatalf("revoked credential caused a provider request: %q", got)
+	}
+	replies, _ := json.Marshal([]any{refused, admission, pages, postRevoke})
 	if bytes.Contains(replies, []byte(testCredentialSecret)) || strings.Contains(transcript.String(), testCredentialSecret) {
 		t.Fatal("a reply or command output carries the secret")
 	}

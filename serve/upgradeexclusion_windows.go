@@ -13,6 +13,7 @@ import (
 	"time"
 	"unsafe"
 
+	identity "github.com/openabstractions/abstraction-identity"
 	"golang.org/x/sys/windows"
 )
 
@@ -21,7 +22,7 @@ import (
 // the record early in its script, removes it when the transaction commits, and
 // releases it during rollback before the rollback activation. Every activation
 // path of the covered folders refuses with exit status 3 while the record is
-// live: `openabstractions start`, `serve host` (per-user and under the SCM)
+// live: `openabstractions start`, `serve supervisor` (per-user and under the SCM)
 // and the SDK's on-demand activation, which runs `start`.
 //
 // The record names its holder by the installer process's PID and creation
@@ -502,10 +503,13 @@ func insideAnyFolder(image string, folders []string) bool {
 	return false
 }
 
+// insideFolder reports whether a running image lies in a covered folder
+// (identity.InsideRel: by file identity when the folder exists). A path
+// identity refuses or cannot read counts as inside: an image that cannot
+// be placed blocks the upgrade (fails closed).
 func insideFolder(image, folder string) bool {
-	image = filepath.Clean(image)
-	prefix := strings.TrimRight(filepath.Clean(folder), `\/`) + `\`
-	return len(image) > len(prefix) && strings.EqualFold(image[:len(prefix)], prefix)
+	_, inside, err := identity.InsideRel(image, folder)
+	return inside || err != nil
 }
 
 func longPath(path string) string {

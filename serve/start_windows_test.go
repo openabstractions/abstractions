@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -14,6 +15,76 @@ import (
 	"testing"
 	"time"
 )
+
+func TestInstalledPresenterUsesSelectedSiblingAndGuardedShell(t *testing.T) {
+	root := t.TempDir()
+	server := filepath.Join(root, "openabstractions.exe")
+	panel := filepath.Join(root, "Abstraction Panel.exe")
+	if err := os.WriteFile(panel, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"ready", "absent", "foreign", "noshell", "stat-error"} {
+		t.Run(mode, func(t *testing.T) {
+			selected := server
+			if mode == "foreign" {
+				selected = filepath.Join(root, "other", "openabstractions.exe")
+			}
+			stat := os.Lstat
+			if mode == "absent" {
+				stat = func(string) (os.FileInfo, error) { return nil, os.ErrNotExist }
+			}
+			if mode == "stat-error" {
+				stat = func(string) (os.FileInfo, error) { return nil, os.ErrPermission }
+			}
+			var calls [][]string
+			var output bytes.Buffer
+			err := activateWindowsPresenter(selected, func() (string, error) { return filepath.Join(root, "openabstractionsw.exe"), nil }, stat,
+				func(image, dir string, args ...string) error {
+					calls = append(calls, append([]string{image, dir}, args...))
+					if mode == "noshell" {
+						return errNoShell
+					}
+					return nil
+				}, &output)
+			switch mode {
+			case "ready":
+				if err != nil || !reflect.DeepEqual(calls, [][]string{{panel, root, "--background"}}) {
+					t.Fatal(err, calls)
+				}
+			case "absent":
+				if err != nil || len(calls) != 0 || !strings.Contains(output.String(), "absent") {
+					t.Fatal(err, calls, output.String())
+				}
+			case "noshell":
+				if !errors.Is(err, errNoShell) || !strings.Contains(err.Error(), "deferred") {
+					t.Fatal(err)
+				}
+			default:
+				if err == nil || len(calls) != 0 {
+					t.Fatal(err, calls)
+				}
+			}
+		})
+	}
+}
+
+func TestPresenterInstallerCommandRetainsScopeAndRefusesExtraArguments(t *testing.T) {
+	for _, scope := range []string{"user", "machine"} {
+		request, err := serviceArguments([]string{"start-presenter", "--" + scope})
+		if err != nil || request.command != "start-presenter" || request.scope != scope {
+			t.Fatal(request, err)
+		}
+		command, loggedScope := installerAction(request)
+		if command != "start-presenter --"+scope || loggedScope != scope {
+			t.Fatal(command, loggedScope)
+		}
+	}
+	for _, args := range [][]string{{"start-presenter"}, {"start-presenter", "--other"}, {"start-presenter", "--user", "foreign.exe"}} {
+		if _, err := serviceArguments(args); err == nil {
+			t.Fatal("accepted arbitrary presenter command", args)
+		}
+	}
+}
 
 func TestWindowsActivationUsesOnlyOwnedInstalledPaths(t *testing.T) {
 	absent := exitForStartTest(t, 1060)
@@ -93,7 +164,7 @@ func TestWindowsActivationUsesOnlyOwnedInstalledPaths(t *testing.T) {
 				return
 			case "virtualized":
 				// A contained caller's host starts through the desktop shell, never directly.
-				if err != nil || len(commands) != 1 || len(launched) != 0 || !reflect.DeepEqual(shelled, [][]string{{twin, root, "serve", "host"}}) {
+				if err != nil || len(commands) != 1 || len(launched) != 0 || !reflect.DeepEqual(shelled, [][]string{{twin, root, "serve", "supervisor"}}) {
 					t.Fatal(err, commands, launched, shelled)
 				}
 				return
@@ -104,7 +175,7 @@ func TestWindowsActivationUsesOnlyOwnedInstalledPaths(t *testing.T) {
 				}
 				return
 			case "user":
-				if err != nil || len(commands) != 1 || !reflect.DeepEqual(launched, [][]string{{twin, "serve", "host"}}) {
+				if err != nil || len(commands) != 1 || !reflect.DeepEqual(launched, [][]string{{twin, "serve", "supervisor"}}) {
 					t.Fatal(err, commands, launched)
 				}
 				return

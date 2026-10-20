@@ -7,7 +7,7 @@ import (
 	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 )
 
-// exitVirtualizedProfile is the status of `start`, `serve host` and `serve
+// exitVirtualizedProfile is the status of `start`, `serve supervisor` and `serve
 // runtime` refused because this process sees a packaged app's private copy of
 // AppData. The SDK's activation reads it from `start` as ErrActivationRefused.
 const exitVirtualizedProfile = 4

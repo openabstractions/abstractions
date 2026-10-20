@@ -128,12 +128,12 @@ func TestApplicationsCommandListsFilteredMetadataAndReusesReadyPresence(t *testi
 }
 
 func TestApplicationsCommandUsageAndAbsentRuntime(t *testing.T) {
-	for _, args := range [][]string{{"unknown"}, {"list", "extra"}, {"activate"}, {"activate", "editor", "extra"}, {"list", "--timeout", "-1s"}} {
+	for _, args := range [][]string{{"unknown"}, {"list", "extra"}, {"activate"}, {"activate", "editor", "extra"}, {"remove"}, {"remove", "editor", "extra"}, {"list", "--timeout", "-1s"}} {
 		err := applicationsCommand(args, io.Discard, io.Discard)
 		assertExit(t, err, exitUsage, strings.Join(args, " "))
 	}
 	var help bytes.Buffer
-	if err := applicationsCommand([]string{"--help"}, &help, io.Discard); err != nil || !strings.Contains(help.String(), "activate <name>") {
+	if err := applicationsCommand([]string{"--help"}, &help, io.Discard); err != nil || !strings.Contains(help.String(), "activate <name>") || !strings.Contains(help.String(), "remove <name>") {
 		t.Fatalf("help: %v %s", err, help.String())
 	}
 	err := applicationsCommand([]string{"list", "--endpoint", unreachableEndpoint(t), "--timeout", "2s"}, io.Discard, io.Discard)
@@ -156,10 +156,45 @@ func TestApplicationsActivateArgumentCount(t *testing.T) {
 	// lowercase-only): the runtime decides unknown, not this command.
 	err := applicationsCommand([]string{"activate", "SingleName", "--endpoint", endpoint, "--timeout", "2s"}, io.Discard, io.Discard)
 	assertExit(t, err, exitNotResolved, "activate SingleName")
-	for _, args := range [][]string{{"activate"}, {"activate", "one", "two"}} {
+	err = applicationsCommand([]string{"remove", "editor", "--endpoint", endpoint, "--timeout", "2s"}, io.Discard, io.Discard)
+	assertExit(t, err, exitNotResolved, "remove editor without runtime")
+	for _, args := range [][]string{{"activate"}, {"activate", "one", "two"}, {"remove"}, {"remove", "one", "two"}} {
 		err := applicationsCommand(append(args, "--endpoint", endpoint, "--timeout", "2s"), io.Discard, io.Discard)
 		assertExit(t, err, exitUsage, strings.Join(args, " "))
 	}
+}
+
+func TestApplicationsRemoveDeletesARegisteredApplicationAndReportsAnUnknownOne(t *testing.T) {
+	options := gatedRuntime(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	apps, err := client.NewVerified(options.endpoint, runtimeExpectation(t)).ResolveApplications(ctx, client.Requirements{Scope: client.ScopeLocal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	program := copyTestBinary(t, "oa-applications-remove-fixture")
+	descriptor := wire.ApplicationDescriptor{Name: "editor", Title: "Example editor", Program: program}
+	if change, err := apps.Register(ctx, descriptor); err != nil || change.Outcome != wire.ApplicationOutcomeApplied {
+		t.Fatalf("register: %+v %v", change, err)
+	}
+
+	var removed bytes.Buffer
+	if err := applicationsCommand([]string{"remove", "editor", "--endpoint", options.endpoint, "--timeout", "10s"}, &removed, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if removed.String() != "removed editor\n" {
+		t.Fatalf("removal sentence: %q", removed.String())
+	}
+
+	var again bytes.Buffer
+	err = applicationsCommand([]string{"remove", "editor", "--endpoint", options.endpoint, "--json", "--timeout", "10s"}, &again, io.Discard)
+	assertExit(t, err, exitUncertain, "applications remove of an already removed application")
+	var result applicationRemovalOutput
+	if err := json.Unmarshal(again.Bytes(), &result); err != nil || result.Outcome != "unknown" || result.Application != "editor" {
+		t.Fatalf("typed removal refusal: %+v %v %s", result, err, again.String())
+	}
+	err = applicationsCommand([]string{"remove", "never-registered", "--endpoint", options.endpoint, "--timeout", "10s"}, io.Discard, io.Discard)
+	assertExit(t, err, exitUncertain, "applications remove of an unknown application")
 }
 
 func TestCredentialAndInferenceHelpNameCurrentHostedRequirements(t *testing.T) {

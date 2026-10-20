@@ -62,6 +62,14 @@ func (b *fixtureBackend) Status(_ context.Context, in JobHandleInput) (JobStatus
 	}
 	return JobStatusOutput{Outcome: "observed", State: b.ledger.state[in.Handle]}, nil
 }
+func (b *fixtureBackend) Diagnose(_ context.Context, in JobHandleInput) (JobDiagnosisOutput, error) {
+	b.ledger.mu.Lock()
+	defer b.ledger.mu.Unlock()
+	if b.ledger.owner[in.Handle] != b.principal {
+		return JobDiagnosisOutput{}, errors.New("unknown handle for integration principal")
+	}
+	return JobDiagnosisOutput{Scope: "this handle", Outcome: "observed", State: b.ledger.state[in.Handle], Guidance: "Check provider status."}, nil
+}
 func (b *fixtureBackend) Cancel(_ context.Context, in JobHandleInput) (JobCancelOutput, error) {
 	b.ledger.mu.Lock()
 	defer b.ledger.mu.Unlock()
@@ -117,7 +125,7 @@ func TestProtocolMatrixAndCuratedToolList(t *testing.T) {
 			for _, tool := range listed.Tools {
 				names = append(names, tool.Name)
 			}
-			want := []string{ToolApplications, ToolComplete, ToolJobCancel, ToolJobStatus, ToolJobSubmit, ToolModels}
+			want := []string{ToolApplications, ToolComplete, ToolJobCancel, ToolJobDiagnose, ToolJobStatus, ToolJobSubmit, ToolModels}
 			slices.Sort(names)
 			slices.Sort(want)
 			if !slices.Equal(names, want) {
@@ -226,5 +234,12 @@ func TestSeparatePrincipalsRejectCrossScopeHandle(t *testing.T) {
 	}
 	if b.providerEffects != 0 {
 		t.Fatalf("cross-principal refusal caused %d provider effects", b.providerEffects)
+	}
+	diagnosis, _ := call[JobDiagnosisOutput](t, bc, ToolJobDiagnose, map[string]any{"handle": submitted.Handle})
+	if !diagnosis.IsError {
+		t.Fatal("cross-principal diagnosis was accepted")
+	}
+	if b.providerEffects != 0 {
+		t.Fatalf("cross-principal diagnosis caused %d provider effects", b.providerEffects)
 	}
 }

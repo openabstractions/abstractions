@@ -12,9 +12,11 @@ import (
 	"slices"
 	"strings"
 
+	asks "github.com/openabstractions/abstraction-asks/go"
 	cas "github.com/openabstractions/abstraction-cas/go"
 	credentials "github.com/openabstractions/abstraction-credentials/go"
 	credservice "github.com/openabstractions/abstraction-credentials/go/service"
+	"github.com/openabstractions/abstraction-facade/go/grants"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	identity "github.com/openabstractions/abstraction-identity"
 	inference "github.com/openabstractions/abstraction-inference/go"
@@ -47,7 +49,13 @@ type runtimeRights struct {
 	operators []string
 	// firstUse admits the first-use question for a not_granted spending
 	// decision (runtime_asks.go). Nil admits none. Assign before serving.
-	firstUse func(subject rwire.Subject, action, resource string)
+	firstUse func(subject rwire.Subject, publisher func() asks.Publisher, action, resource string)
+	// pairedInput admits the paired input-profile question a consuming request
+	// raised (runtime_asks.go, INF-V4). Nil admits none. Assign before serving.
+	pairedInput func(subject rwire.Subject, publisher func() asks.Publisher, resource string)
+	// typedFirstUse admits a canonical service effect after a quiet missing permit.
+	// Assign before serving; the Asks owner owns occurrence and consent lifecycle.
+	typedFirstUse func(context.Context, rwire.PermissionEffect)
 }
 
 // installationRule is one exact rule an installation writes for each operator
@@ -88,7 +96,7 @@ func composeRights(options runtimeFlags) (*runtimeRights, error) {
 	if err != nil || account.Uid == "" {
 		return nil, fmt.Errorf("rights: runtime account unavailable: %v", err)
 	}
-	operators, err := operatorPrograms()
+	operators, err := operatorPrograms(options)
 	if err != nil {
 		return nil, err
 	}
@@ -102,11 +110,47 @@ func composeRights(options runtimeFlags) (*runtimeRights, error) {
 	}
 	// A policy file that cannot be read keeps the policy: every decision reads
 	// unavailable until the file is repaired, and the error is reported.
-	r.policy, err = rights.LoadDecisionPolicy(r.path, rwire.ResourceActions)
+	catalog, definitionErr := grants.SelectorPermissionDefinitions(grants.SelectorServices{})
+	if definitionErr != nil {
+		return nil, definitionErr
+	}
+	r.policy, err = rights.LoadDecisionPolicyWithDefinitions(r.path, rwire.ResourceActions, catalog)
 	if r.policy == nil {
 		return nil, err
 	}
+	r.policy.MetaHolder = r.refuseAnswerer
+	// Account-wide defaults (rights RIGHTS-R22, VISION 2026-10-07): every
+	// program of this account may register itself, ask, announce, notify and
+	// download unless its own rule or the switch says otherwise. A script host
+	// never receives one; a remote peer's mapped namespace is another account.
+	if configureErr := r.policy.ConfigureDefaults(r.owner, grants.RuntimeAccountDefaults(), defaultExcluded); configureErr != nil {
+		return nil, configureErr
+	}
 	return r, err
+}
+
+// defaultExcluded is the one program rule for account-wide defaults: a script
+// host (asks ASK-A8), whose grant would cover every script it runs, never
+// receives one.
+func defaultExcluded(s rwire.Subject) bool {
+	return asks.ScriptHostSubject(s, asks.Publisher{})
+}
+
+// refuseAnswerer refuses enrolling an operator program or a script host as
+// the answerer for every app (rights RIGHTS-R16, asks ASK-R7): optional Stop
+// cleanup takes permits the answerer set, and an operator sets the person's own
+// rules; every script a script host runs would answer.
+func (r *runtimeRights) refuseAnswerer(s rwire.Subject) error {
+	if s.Account != r.owner {
+		return errors.New("an answerer answers for this account only")
+	}
+	if r.isOperator(s.Program) {
+		return errors.New("an operator program is no answerer")
+	}
+	if asks.ScriptHostSubject(s, asks.Publisher{}) {
+		return errors.New("a script host is no answerer")
+	}
+	return nil
 }
 
 // self is the runtime's own subject, the setter of installation rules.
@@ -114,10 +158,17 @@ func (r *runtimeRights) self() rwire.Subject {
 	return rwire.Subject{Account: r.owner, Program: r.operators[0]}
 }
 
+// isOperator compares program with each operator program the way subject
+// programs compare everywhere else (identity.SameSubjectProgram): by file
+// identity when both exist.
+func (r *runtimeRights) isOperator(program string) bool {
+	return slices.ContainsFunc(r.operators, func(operator string) bool { return identity.SameSubjectProgram(operator, program) })
+}
+
 // authorizeOperator admits the operator programs of this account.
 func (r *runtimeRights) authorizeOperator(_ context.Context, peer *identity.Peer) error {
 	subject, err := credservice.SubjectFromPeer(peer)
-	if err != nil || subject.Account != r.owner || !slices.Contains(r.operators, subject.Program) {
+	if err != nil || subject.Account != r.owner || !r.isOperator(subject.Program) {
 		return rightsservice.ErrOperatorForbidden
 	}
 	return nil
@@ -138,41 +189,35 @@ func (r *runtimeRights) decider() host.Decider {
 // existing rule on the same target, a deny included, is left as it is. From
 // then on the policy file is required: a removed file is an outage.
 func (r *runtimeRights) install(actions []string, rules []installationRule) error {
-	_, statErr := os.Stat(r.path)
-	existed := statErr == nil
+	// The marker exists before this installation can create the policy file
+	// (RegisterAction creates it), so a concurrent installation never reads
+	// that new file as one made before the marker.
+	marker, markerErr := r.startMarker()
+	// Without a marker file (an I/O or lock failure) nothing is registered:
+	// a policy file created now would read at the next start as one made
+	// before the marker, crediting credentials rules nobody wrote. An
+	// invalid marker exists, so the actions are still registered.
+	var invalid invalidMarkerError
+	if markerErr != nil && !errors.As(markerErr, &invalid) {
+		return markerErr
+	}
 	for _, action := range actions {
 		if err := r.policy.RegisterAction(action); err != nil {
-			return fmt.Errorf("rights: register %s: %w", action, err)
+			return errors.Join(markerErr, fmt.Errorf("rights: register %s: %w", action, err))
 		}
 	}
-	marker, err := r.readMarker()
-	if err != nil {
-		return err
+	if markerErr != nil {
+		return markerErr
 	}
 	applied := map[appliedRule]bool{}
 	for _, a := range marker.Applied {
 		applied[a] = true
-	}
-	if marker.Profile == "" {
-		marker.Profile = defaultsMarkerProfile
-		// Before the marker, the runtime granted the operators the credentials
-		// rules when it created the policy file. Those count as received.
-		if existed {
-			for _, program := range r.operators {
-				for _, action := range []string{credentials.ActionManage, credentials.ActionRead} {
-					applied[appliedRule{program, action, credentials.ResourceAccount}] = true
-				}
-			}
-		}
 	}
 	failure := r.apply(r.operators, rules, applied)
 	marker.Applied = marker.Applied[:0]
 	for key := range applied {
 		marker.Applied = append(marker.Applied, key)
 	}
-	slices.SortFunc(marker.Applied, func(a, b appliedRule) int {
-		return strings.Compare(a.Program+"\x00"+a.Action+"\x00"+a.Resource, b.Program+"\x00"+b.Action+"\x00"+b.Resource)
-	})
 	if err := r.writeMarker(marker); err != nil {
 		return errors.Join(failure, err)
 	}
@@ -194,7 +239,9 @@ func (r *runtimeRights) installFor(programs []string, rules []installationRule) 
 	if r == nil || len(programs) == 0 || len(rules) == 0 {
 		return nil
 	}
-	marker, err := r.readMarker()
+	// As in install: the marker exists before a rule written here can
+	// create the policy file.
+	marker, err := r.startMarker()
 	if err != nil {
 		return err
 	}
@@ -207,9 +254,6 @@ func (r *runtimeRights) installFor(programs []string, rules []installationRule) 
 	for key := range applied {
 		marker.Applied = append(marker.Applied, key)
 	}
-	slices.SortFunc(marker.Applied, func(a, b appliedRule) int {
-		return strings.Compare(a.Program+"\x00"+a.Action+"\x00"+a.Resource, b.Program+"\x00"+b.Action+"\x00"+b.Resource)
-	})
 	if err := r.writeMarker(marker); err != nil {
 		return errors.Join(failure, err)
 	}
@@ -240,8 +284,29 @@ func (r *runtimeRights) apply(programs []string, rules []installationRule, appli
 // setInstallationRule writes one permit rule with why "installation" at the
 // current revision, unless a rule on that target already exists. A conflict
 // means another edit landed first and nothing was written; the rule is read and
-// tried again.
+// tried again. A file changed outside the policy's lock reads as a conflict
+// too (rights DecisionPolicy.change).
 func (r *runtimeRights) setInstallationRule(subject rwire.Subject, rule installationRule) error {
+	return r.setRuleOnce(subject, rule, installationWhy)
+}
+
+// permitOperators writes each rule for every operator program that has no rule
+// on its target, a deny included, with why. Nothing is recorded in the
+// installation marker: a later event that calls it again writes the rule
+// again only where none exists.
+func (r *runtimeRights) permitOperators(rules []installationRule, why string) error {
+	var errs []error
+	for _, program := range r.operators {
+		for _, rule := range rules {
+			errs = append(errs, r.setRuleOnce(rwire.Subject{Account: r.owner, Program: program}, rule, why))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// setRuleOnce writes one permit rule with why at the current revision, unless a
+// rule on that target already exists.
+func (r *runtimeRights) setRuleOnce(subject rwire.Subject, rule installationRule, why string) error {
 	permit := true
 	for attempt := 0; attempt < installationAttempts; attempt++ {
 		existing := r.policy.ReadRule(subject, rule.Action, rule.Resource)
@@ -253,7 +318,7 @@ func (r *runtimeRights) setInstallationRule(subject rwire.Subject, rule installa
 			return fmt.Errorf("rights: installation rule %s on %s for %s: read %s", rule.Action, rule.Resource, subject.Program, existing.Outcome)
 		}
 		edit, err := r.policy.ChangeRule(existing.Revision, subject, rule.Action, rule.Resource,
-			rights.RuleEdit{Permit: &permit, By: r.self(), Why: installationWhy}, func() error { return nil })
+			rights.RuleEdit{Permit: &permit, By: r.self(), Why: why}, func() error { return nil })
 		if err != nil {
 			return fmt.Errorf("rights: installation rule %s on %s for %s: %w", rule.Action, rule.Resource, subject.Program, err)
 		}
@@ -283,13 +348,98 @@ func (r *runtimeRights) readMarker() (defaultsMarker, error) {
 	return marker, nil
 }
 
+// writeMarker adds the rules marker records to the marker file. The marker
+// only grows: it merges with the file as it is under the file's lock, so a
+// concurrent installation (the runtime's own, installFor for a declared
+// provider, or a second runtime on the same state) never drops a rule another
+// one recorded, and a rule the person revoked is never written again.
 func (r *runtimeRights) writeMarker(marker defaultsMarker) error {
-	data, err := json.MarshalIndent(marker, "", "  ")
-	if err != nil {
-		return err
+	return cas.ChangeLimit(r.marker, maxDefaultsMarker, func(cur []byte) ([]byte, error) {
+		merged := map[appliedRule]bool{}
+		if cur != nil {
+			var current defaultsMarker
+			if err := json.Unmarshal(cur, &current); err != nil || current.Profile != defaultsMarkerProfile {
+				return nil, fmt.Errorf("rights: %s is not %s; no installation rule is recorded until it is repaired or removed", r.marker, defaultsMarkerProfile)
+			}
+			for _, a := range current.Applied {
+				merged[a] = true
+			}
+		}
+		for _, a := range marker.Applied {
+			merged[a] = true
+		}
+		return markerBytes(merged)
+	})
+}
+
+// startMarker reads the marker, creating it under its lock when absent. A
+// policy file that exists while no marker does was made before the marker:
+// the runtime then granted the operators the credentials rules when it
+// created the file, and those count as received. The check and the creation
+// share the marker's lock, and every installation creates the marker before
+// it can create the policy file, so concurrent first installations on one
+// state (two runtime starts) credit nothing that was never written.
+func (r *runtimeRights) startMarker() (defaultsMarker, error) {
+	var marker defaultsMarker
+	var invalid error
+	err := cas.ChangeLimit(r.marker, maxDefaultsMarker, func(cur []byte) ([]byte, error) {
+		if cur != nil {
+			if err := json.Unmarshal(cur, &marker); err != nil || marker.Profile != defaultsMarkerProfile {
+				invalid = invalidMarkerError{path: r.marker}
+				return nil, invalid
+			}
+			return cur, nil
+		}
+		applied := map[appliedRule]bool{}
+		if _, err := os.Stat(r.path); err == nil {
+			for _, program := range r.operators {
+				for _, action := range []string{credentials.ActionManage, credentials.ActionRead} {
+					applied[appliedRule{program, action, credentials.ResourceAccount}] = true
+				}
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("rights: %w", err)
+		}
+		data, err := markerBytes(applied)
+		if err != nil {
+			return nil, err
+		}
+		marker = defaultsMarker{Profile: defaultsMarkerProfile}
+		for a := range applied {
+			marker.Applied = append(marker.Applied, a)
+		}
+		return data, nil
+	})
+	if invalid != nil {
+		return defaultsMarker{}, invalid
 	}
-	data = append(data, '\n')
-	return cas.ChangeLimit(r.marker, maxDefaultsMarker, func([]byte) ([]byte, error) { return data, nil })
+	if err != nil {
+		return defaultsMarker{}, fmt.Errorf("rights: %s: %w", defaultsMarkerFile, err)
+	}
+	return marker, nil
+}
+
+// invalidMarkerError is a marker file that exists but is not this profile's.
+type invalidMarkerError struct{ path string }
+
+func (e invalidMarkerError) Error() string {
+	return fmt.Sprintf("rights: %s is not %s; no installation rule is written until it is repaired or removed", e.path, defaultsMarkerProfile)
+}
+
+// markerBytes is the marker file recording applied, in a stable order.
+func markerBytes(applied map[appliedRule]bool) ([]byte, error) {
+	next := defaultsMarker{Profile: defaultsMarkerProfile, Applied: make([]appliedRule, 0, len(applied))}
+	for a := range applied {
+		next.Applied = append(next.Applied, a)
+	}
+	slices.SortFunc(next.Applied, func(a, b appliedRule) int {
+		return strings.Compare(a.Program+"\x00"+a.Action+"\x00"+a.Resource, b.Program+"\x00"+b.Action+"\x00"+b.Resource)
+	})
+	data, err := json.MarshalIndent(next, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(data, '\n'), nil
 }
 
 // gateByRights has each composed resource service decide its gated actions in
@@ -301,6 +451,8 @@ func (r *runtimeRights) writeMarker(marker defaultsMarker) error {
 func gateByRights(o *host.Options, decider host.Decider) {
 	o.ConfigEditPolicy = host.ConfigEditPolicyFromRights(decider)
 	o.LogHistoryPolicy = host.HistoryPolicyFromRights(decider)
+	o.LogApplicationHistoryPolicy = host.ApplicationHistoryPolicyFromRights(decider)
+	o.LogSourcePolicy = host.SourcePolicyFromRights(decider)
 	if o.ModelRegistry != nil {
 		o.ModelPolicy = host.ModelPolicyFromRights(decider)
 	}
@@ -346,9 +498,14 @@ func installationRules(o host.Options, registries []string) []installationRule {
 	}
 	if o.Inference != nil {
 		rules = append(rules, installationRule{inference.ActionHostManage, credentials.ResourceAccount}, installationRule{inference.ActionKeyIssue, credentials.ResourceAccount},
-			installationRule{inference.ActionAuditRead, credentials.ResourceAccount})
+			installationRule{inference.ActionAuditRead, credentials.ResourceAccount}, installationRule{inference.ActionSelectionManage, credentials.ResourceAccount},
+			installationRule{inference.ActionSelectionManageFor, credentials.ResourceAccount})
 	}
 	if o.Applications != nil {
+		// Operators manage the directory. Reading and starting an entry
+		// follows its registration: the Panel's confirmed Register writes
+		// its own rules, and a self-registration has the runtime write them
+		// (APPLICATIONS.md); installation names no app.
 		rules = append(rules, installationRule{ActionApplicationManage, credentials.ResourceAccount})
 	}
 	if o.Registry != nil {
@@ -363,6 +520,49 @@ func (r *runtimeRights) configure(o *host.Options, actions []string) {
 	if r == nil {
 		return
 	}
+	// Freeze actual receiving presence once, before any composed host serves.
+	// Known target grammar was loaded earlier, even when a receiver is absent.
+	credentialReady := false
+	if scoped, ok := o.Credentials.(interface{ ScopedAvailable() bool }); ok {
+		credentialReady = scoped.ScopedAvailable()
+	}
+	logReady := false
+	if provider, ok := o.Sink.(interface{ ApplicationHistoryAvailable() bool }); ok {
+		logReady = provider.ApplicationHistoryAvailable() && o.LogApplicationHistoryPolicy.Check != nil && o.LogApplicationHistoryPolicy.Fits != nil
+	}
+	catalog, err := grants.SelectorPermissionDefinitions(grants.SelectorServices{Credentials: credentialReady, ApplicationLogs: logReady})
+	if err != nil {
+		if o.OnError != nil {
+			o.OnError(err)
+		}
+		return
+	}
+	r.policy.Definitions = catalog
 	o.RightsPolicy, o.RightsEndpoint, o.RightsOperator = r.policy, r.endpoint, r.authorizeOperator
 	o.RightsActions = append(o.RightsActions, actions...)
+}
+
+// These receiving paths are always quiet and preserve the shared owner snapshot.
+// Captured targets come from the receiving capability and are never re-prepared.
+func (r *runtimeRights) CheckBatchContext(ctx context.Context, subject rwire.Subject, request rwire.CheckBatchRequest) rwire.BatchDecision {
+	if r == nil || r.policy == nil {
+		return rwire.BatchDecision{Outcome: rwire.BatchCheckOutcomeUnavailable, Outcomes: []rwire.DecisionOutcome{}}
+	}
+	if subject.Account != r.owner {
+		return rwire.BatchDecision{Outcome: rwire.BatchCheckOutcomeForbidden, Outcomes: []rwire.DecisionOutcome{}}
+	}
+	ctx, cancel := context.WithTimeout(ctx, decisionBudget)
+	defer cancel()
+	return r.policy.CheckBatchContext(ctx, subject, request)
+}
+func (r *runtimeRights) CheckLegacyOperationContext(ctx context.Context, subject rwire.Subject, request rwire.LegacyOperationRequest) rwire.Decision {
+	if r == nil || r.policy == nil {
+		return rwire.Decision{Outcome: rwire.DecisionOutcomeUnavailable}
+	}
+	if subject.Account != r.owner {
+		return rwire.Decision{Outcome: rwire.DecisionOutcomeForbidden}
+	}
+	ctx, cancel := context.WithTimeout(ctx, decisionBudget)
+	defer cancel()
+	return r.policy.CheckLegacyOperationContext(ctx, subject, request)
 }

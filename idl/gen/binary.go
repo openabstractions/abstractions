@@ -86,39 +86,21 @@ inline std::vector<std::uint8_t> decode_binary(const std::string& text){
 }
 `
 const pyBinary = `
+import base64
+import binascii
+
 def _encode_binary(value):
     if type(value) is not bytes:
         raise Refusal("wrong_type", 0)
-    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-    out = []
-    for i in range(0, len(value), 3):
-        chunk = value[i:i+3]
-        v = int.from_bytes(chunk, "big") << (8 * (3-len(chunk)))
-        out.extend((alphabet[v >> 18], alphabet[(v >> 12) & 63], alphabet[(v >> 6) & 63] if len(chunk)>1 else "=", alphabet[v & 63] if len(chunk)>2 else "="))
-    return "".join(out)
+    return base64.b64encode(value).decode("ascii")
 
 def _decode_binary(text):
-    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
     def bad():
         raise _Reader(b"").refuse("bad_binary")
-    if len(text) % 4: bad()
-    out = bytearray()
-    for i in range(0,len(text),4):
-        v, pad = 0, 0
-        for j,c in enumerate(text[i:i+4]):
-            if c == "=":
-                if j<2 or i+4 != len(text): bad()
-                pad += 1
-                digit = 0
-            else:
-                if pad: bad()
-                digit = alphabet.find(c)
-                if digit < 0: bad()
-            v = (v << 6) | digit
-        out.append(v >> 16)
-        if pad < 2: out.append((v >> 8) & 255)
-        if pad == 0: out.append(v & 255)
-    result = bytes(out)
+    try:
+        result = base64.b64decode(text, validate=True)
+    except (ValueError, binascii.Error):
+        bad()
     if _encode_binary(result) != text: bad()
     return result
 `

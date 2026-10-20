@@ -5,16 +5,17 @@ applications it may know about, hold a bounded model conversation, and submit,
 recover or cancel long-running image and video work. The assistant receives no
 provider key, private application path or general OA administration surface.
 
-The gateway runs locally over stdio and exposes six tools backed by the installed
+The gateway runs locally over stdio and exposes seven tools backed by the installed
 OpenAbstractions runtime:
 
 | Tool | OA service | Bound |
 |---|---|---|
-| `oa_applications_list` | `abstraction.facade/applications@1` | permission-filtered local names, titles, instances, interfaces and contexts; 262,144 returned bytes |
+| `oa_applications_list` | `abstraction.facade/applications@2` | permission-filtered local names, titles, instances, interfaces and contexts; 262,144 returned bytes |
 | `oa_models_list` | `abstraction.router/router@1` | servable names, plus `servable` and the `held_in` stores of every model on this machine |
 | `oa_inference_complete` | `abstraction.inference/chat@1` | explicit route, 65,536 input bytes, 4,096 output tokens and 262,144 returned bytes |
-| `oa_inference_job_submit` | `abstraction.job/acceptance@1` plus the inference job document | stable request key, hosted image/video request, immutable receipt identity |
+| `oa_inference_job_submit` | `abstraction.job/acceptance@1` plus the inference job document | stable request key, local or hosted image/video request, immutable receipt identity |
 | `oa_inference_job_status` | `abstraction.job/operations@1` | one opaque handle, result capped at 65,536 bytes |
+| `oa_inference_job_diagnose` | `abstraction.job/operations@1` | one opaque handle; state, classified failure and fixed guidance; excludes raw failure text and result content |
 | `oa_inference_job_cancel` | `abstraction.job/acceptance@1` | explicit cancellation intent for one handle |
 
 The gateway advertises tools only. It has no roots, resources, prompts,
@@ -47,8 +48,12 @@ Handle records contain no prompt, result, credential, provider header or secret.
 The OA services apply credentials and authorization. Status returns only the
 original principal's bounded operation snapshot and typed inference result.
 Credential fields are OA credential names, never secret values. Durable
-generation currently requires `hosting: "hosted"` and a credential name. Text
-inference requires `hosting: "local"`, or hosted plus a credential name. The
+generation takes `hosting: "local"` with no credential, which runs on this
+computer's servers under the local-only guarantee, or `hosting: "hosted"`
+with a credential name. A local job with a credential, a hosted job without
+one, or any other hosting is refused for good with a sentence that says what
+to send instead, so a model does not guess credential names. Text inference
+requires `hosting: "local"`, or hosted plus a credential name. The
 server allows eight concurrent calls, gives each a two-minute deadline, and
 defaults `max_output` to 1,024 tokens.
 
@@ -106,13 +111,18 @@ $env:OA_OPENCODE_BINARY = 'C:\path\to\opencode.exe'
 go test ./gateway -run TestOpenCodeInvokesGatewayInventory -count=1 -v
 ```
 
-It discovers the gateway and invokes five of its six tools — `oa_models_list`,
+The recorded demonstration invokes five tools — `oa_models_list`,
 `oa_inference_complete`, `oa_inference_job_submit`, `oa_inference_job_status`
 and `oa_inference_job_cancel` — consuming their structured results, cancelling
 an accepted pending job and surfacing a typed unknown-handle refusal from a
 second `oa_inference_job_cancel` call. It leaves `oa_applications_list`
 unexercised, contacts no paid provider, and the normal test suite skips it
 when `OA_OPENCODE_BINARY` is absent.
+
+The diagnosis tool has focused native-service tests for restart recovery,
+cross-principal refusal and sensitive-text exclusion. It diagnoses a known
+durable inference job handle. Recent activity, download diagnosis and operating
+system logs remain separate capabilities to qualify.
 
 Hosted completion resolves the runtime's remote-execution binding; local
 completion resolves its local-execution binding. Both use the same authenticated

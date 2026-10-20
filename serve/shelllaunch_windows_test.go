@@ -1,15 +1,49 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
 
 	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 )
+
+func TestShellElevationRequiresCompleteUnelevatedProof(t *testing.T) {
+	for _, mode := range []string{"unelevated", "elevated", "query-error", "short-result"} {
+		t.Run(mode, func(t *testing.T) {
+			err := requireUnelevatedShell(42, func(token windows.Token, class uint32, value *byte, length uint32, size *uint32) error {
+				if token != 42 || class != windows.TokenElevation || length != 4 {
+					t.Fatal("wrong elevation query")
+				}
+				*size = 4
+				if mode == "elevated" {
+					*(*uint32)(unsafe.Pointer(value)) = 1
+				}
+				if mode == "query-error" {
+					return windows.ERROR_ACCESS_DENIED
+				}
+				if mode == "short-result" {
+					*size = 0
+				}
+				return nil
+			})
+			if mode == "unelevated" {
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else if !errors.Is(err, errNoShell) {
+				t.Fatalf("unproven shell admitted: %v", err)
+			}
+		})
+	}
+}
 
 // From a caller inside a packaged app, a process started through the desktop
 // shell sees the real profile. Outside a packaged app there is nothing to

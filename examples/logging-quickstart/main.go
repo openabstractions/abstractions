@@ -2,13 +2,20 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"os"
+	"os/user"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"time"
 
 	facade "github.com/openabstractions/abstraction-facade/go"
+	"github.com/openabstractions/abstraction-facade/go/client"
+	identity "github.com/openabstractions/abstraction-identity"
+	"github.com/openabstractions/abstraction-identity/listen"
 	logwire "github.com/openabstractions/abstraction-logging/go/abstraction/logging"
 )
 
@@ -25,16 +32,41 @@ func main() {
 		fmt.Println(filepath.Clean(exe))
 		return
 	}
+	flags := flag.NewFlagSet("logging-quickstart", flag.ExitOnError)
+	runtimeProgram := flags.String("runtime-program", "", "verify the selected runtime as this account's named executable")
+	flags.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Usage: logging-quickstart [--runtime-program PATH] [RUNTIME_ENDPOINT]\n       logging-quickstart --program")
+	}
+	flags.Parse(os.Args[1:])
 	endpoint := os.Getenv("ABSTRACTION_RUNTIME_ENDPOINT")
-	if len(os.Args) == 2 {
-		endpoint = os.Args[1]
-	} else if len(os.Args) != 1 || endpoint == "" {
-		log.Fatal("usage: logging-quickstart [RUNTIME_ENDPOINT]")
+	if flags.NArg() == 1 {
+		endpoint = flags.Arg(0)
+	} else if flags.NArg() != 0 || endpoint == "" {
+		flags.Usage()
+		os.Exit(2)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	machine := facade.New(endpoint)
+	if *runtimeProgram != "" {
+		if !filepath.IsAbs(*runtimeProgram) {
+			log.Fatal("--runtime-program requires an absolute executable path")
+		}
+		account, err := user.Current()
+		if err != nil {
+			log.Fatal(err)
+		}
+		who := identity.User{Kind: "windows", SID: account.Uid, UID: -1, GID: -1}
+		if runtime.GOOS != "windows" {
+			uid, err := strconv.Atoi(account.Uid)
+			if err != nil {
+				log.Fatal(err)
+			}
+			who = identity.User{Kind: "posix", UID: uid, GID: -1}
+		}
+		machine = client.NewVerified(endpoint, listen.ServerExpectation{Principal: who, Program: identity.CanonicalProgramPath(filepath.Clean(*runtimeProgram))})
+	}
 	need := facade.Requirements{Scope: facade.ScopeLocal}
 	sink, err := machine.ResolveLog(ctx, need)
 	if err != nil {

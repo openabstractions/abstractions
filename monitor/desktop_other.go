@@ -13,6 +13,6 @@ func nativeWebView2Available() bool { return false }
 
 func fail(_ bool, err error) { log.Fatal(err) }
 
-func (p *servicePanel) desktop(_ string) error {
+func runResourceWindow(_ *panelRun, _ bool) error {
 	return errors.New("native window unavailable on this platform; use -native=false")
 }

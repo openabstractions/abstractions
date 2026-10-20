@@ -43,6 +43,23 @@ func (AcquireOutcome) MarshalJSON() ([]byte, error)
 func (AcquireOutcome) UnmarshalJSON(data []byte) error
 func AcquireOutcomeValues() []AcquireOutcome
 func (AcquireOutcome) Known() bool
+type AcquireFreeOutcome uint32
+const AcquireFreeOutcomeAcquired
+const AcquireFreeOutcomeInsufficient
+const AcquireFreeOutcomeNotPermitted
+const AcquireFreeOutcomeUnavailable
+const AcquireFreeOutcomeInvalid
+const AcquireFreeOutcomeForbidden
+const AcquireFreeOutcomeHeld
+func (AcquireFreeOutcome) String() string
+func (AcquireFreeOutcome) WireName() (string, bool)
+func ParseAcquireFreeOutcome(word string) (AcquireFreeOutcome, bool)
+func (AcquireFreeOutcome) MarshalText() ([]byte, error)
+func (AcquireFreeOutcome) UnmarshalText(text []byte) error
+func (AcquireFreeOutcome) MarshalJSON() ([]byte, error)
+func (AcquireFreeOutcome) UnmarshalJSON(data []byte) error
+func AcquireFreeOutcomeValues() []AcquireFreeOutcome
+func (AcquireFreeOutcome) Known() bool
 type YieldAnswer uint32
 const YieldAnswerYielded
 const YieldAnswerRefused
@@ -128,6 +145,10 @@ type AcquireResult struct
   Outcome AcquireOutcome
   Lease *Lease
   Asked []YieldRecord
+type AcquireFreeResult struct
+  Outcome AcquireFreeOutcome
+  Lease *Lease
+  Asked []YieldRecord
 type YieldRequest struct
   ID string
   Resource string
@@ -197,6 +218,7 @@ func (TableDispatcher) WriteFrame(frame []byte) error
 func (TableDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type Leases interface
   Acquire(resource string, amount, waitMs int64) (AcquireResult, error)
+  AcquireFree(resource string, amount int64) (AcquireFreeResult, error)
   Renew(lease string) (LeaseChangeResult, error)
   Release(lease string) (LeaseChangeResult, error)
   Observe(cursor string, waitMs int64) (ObserveResult, error)
@@ -209,6 +231,7 @@ func NewLeasesClient(t LeasesTransport) *LeasesClient
 type LeasesDispatcher struct
   Handler Leases
 func (LeasesClient) Acquire(resource string, amount, waitMs int64) (result AcquireResult, err error)
+func (LeasesClient) AcquireFree(resource string, amount int64) (result AcquireFreeResult, err error)
 func (LeasesClient) Renew(lease string) (result LeaseChangeResult, err error)
 func (LeasesClient) Release(lease string) (result LeaseChangeResult, err error)
 func (LeasesClient) Observe(cursor string, waitMs int64) (result ObserveResult, err error)

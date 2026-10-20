@@ -17,16 +17,11 @@ import (
 )
 
 // startInferenceRuntime runs an isolated runtime with a file credentials
-// backend until the returned stop is called or the test ends.
+// backend (file-0600 on Linux, the DPAPI file store on Windows) until the
+// returned stop is called or the test ends.
 func startInferenceRuntime(t *testing.T, options runtimeFlags) func() {
 	t.Helper()
-	path := filepath.Join(options.stateDir, "credentials", credentialsBackendFile)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte("file-0600\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeStateFile(t, filepath.Join(options.stateDir, "credentials", credentialsBackendFile), "file-0600\n")
 	ctx, cancel := context.WithCancel(context.Background())
 	ready := make(chan struct{})
 	done := make(chan error, 1)

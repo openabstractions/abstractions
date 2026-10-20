@@ -43,6 +43,18 @@ class JobOperatorClient
   listAccountWork(cursor, limit)
   cancelOperation(operationId)
 object JobOperatorService {wireName, Client}
+enum LinkOutcome
+  Linked
+  NotReady
+  Unavailable
+  Unsupported
+  Unknown
+  Forbidden
+  Invalid
+  Exists
+  OtherVolume
+  NoHardLinks
+  Remote
 enum ObservationOutcome
   Observed
   Unknown
@@ -53,6 +65,7 @@ enum ObservationOutcome
 class OperationControlClient
   observeWork(identity)
   readResult(identity, offset, maxBytes)
+  linkResult(identity, destination)
 object OperationControlService {wireName, Client}
 enum OperatorCancellationOutcome
   Requested
@@ -142,6 +155,10 @@ function newResultChunk()
   total
   data
   eof
+function newResultLink()
+  outcome
+  receipt
+  size
 function newResultRead()
   outcome
   chunk

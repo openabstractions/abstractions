@@ -5,7 +5,6 @@ package main
 import (
 	"fmt"
 	"net"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,12 +12,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openabstractions/abstraction-download/go/powershell"
 	"golang.org/x/sys/windows/registry"
 )
 
 // This file proves the per-user registration installer/abstraction.wxs's
 // PanelTrayLogonStart component ships: a Startup-folder shortcut targeting
-// "Abstraction Panel.exe" with argument "--tray", plus an HKCU marker at
+// "Abstraction Panel.exe" with argument "--background", plus an HKCU marker at
 // Software\OpenAbstractions\Abstraction\Panel, name "trayAtLogon", removed
 // on uninstall through RemoveRegistryKey. WiX authors that shortcut and
 // registry value directly; there is no `openabstractions`-style register
@@ -50,7 +50,7 @@ func panelTrayRegistrationKey() string {
 }
 
 // registerPanelTray reproduces what PanelTrayLogonStart does at install: a
-// Startup-folder shortcut carrying the tray command line, and an HKCU marker
+// Startup-folder shortcut carrying the background command line, and an HKCU marker
 // value. dir stands in for the real Startup folder and keyPath for the real
 // registry key.
 func registerPanelTray(t *testing.T, keyPath, dir, target, args string) string {
@@ -58,7 +58,7 @@ func registerPanelTray(t *testing.T, keyPath, dir, target, args string) string {
 	shortcut := filepath.Join(dir, "Abstraction Panel notifications.lnk")
 	runPowerShell(t, fmt.Sprintf(
 		`$s = (New-Object -ComObject WScript.Shell).CreateShortcut(%s); $s.TargetPath = %s; $s.Arguments = %s; $s.WorkingDirectory = %s; $s.Save()`,
-		psQuote(shortcut), psQuote(target), psQuote(args), psQuote(filepath.Dir(target))))
+		powershell.Literal(shortcut), powershell.Literal(target), powershell.Literal(args), powershell.Literal(filepath.Dir(target))))
 	k, _, err := registry.CreateKey(registry.CURRENT_USER, keyPath, registry.SET_VALUE)
 	if err != nil {
 		t.Fatalf("create registry marker %s: %v", keyPath, err)
@@ -76,7 +76,7 @@ func readPanelTrayCommand(t *testing.T, shortcut string) (target, args string) {
 	t.Helper()
 	out := runPowerShell(t, fmt.Sprintf(
 		`$s = (New-Object -ComObject WScript.Shell).CreateShortcut(%s); $s.TargetPath; $s.Arguments`,
-		psQuote(shortcut)))
+		powershell.Literal(shortcut)))
 	lines := strings.Split(strings.TrimRight(strings.ReplaceAll(out, "\r\n", "\n"), "\n"), "\n")
 	if len(lines) < 2 {
 		t.Fatalf("unexpected shortcut read-back %q", out)
@@ -120,10 +120,6 @@ func runPowerShell(t *testing.T, script string) string {
 	return string(out)
 }
 
-func psQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
-}
-
 // buildPanelExecutableAt builds the real Panel from this checkout to target,
 // the same command validated in
 // research/adoption/asks/first-use-notifier-2026-09-22.md:
@@ -141,11 +137,11 @@ func buildPanelExecutableAt(t *testing.T, target string) {
 // per user" half of TODO.md's "Panel tray logon registration shipped and
 // tested per user": registration and read-back run every time this test
 // runs, proving the Startup-folder shortcut and HKCU marker PanelTrayLogonStart
-// authors carry the exact "Abstraction Panel.exe" "--tray" command line and
+// authors carry the exact "Abstraction Panel.exe" "--background" command line and
 // are fully removable. Actually starting that command line against the real
 // built Panel is gated behind OA_LIVE_PANEL=1, the way serve's other live
 // tests gate a real build (see serve/runtime_inventory_live_test.go), since
-// it needs a real go build and a real notification-area icon.
+// it needs a real go build and a running background presenter.
 func TestPanelTrayLogonRegistersReadsBackLaunchesAndUnregisters(t *testing.T) {
 	startupDir := t.TempDir()
 	keyPath := panelTrayRegistrationKey()
@@ -156,7 +152,7 @@ func TestPanelTrayLogonRegistersReadsBackLaunchesAndUnregisters(t *testing.T) {
 		buildPanelExecutableAt(t, target)
 	}
 
-	shortcut := registerPanelTray(t, keyPath, startupDir, target, "--tray")
+	shortcut := registerPanelTray(t, keyPath, startupDir, target, "--background")
 	t.Cleanup(func() { unregisterPanelTray(keyPath, shortcut) })
 
 	if !markerPresent(keyPath) {
@@ -170,15 +166,15 @@ func TestPanelTrayLogonRegistersReadsBackLaunchesAndUnregisters(t *testing.T) {
 	if !strings.EqualFold(gotTarget, target) {
 		t.Fatalf("read-back target = %q, want %q", gotTarget, target)
 	}
-	if gotArgs != "--tray" {
-		t.Fatalf("read-back arguments = %q, want the registered %q", gotArgs, "--tray")
+	if gotArgs != "--background" {
+		t.Fatalf("read-back arguments = %q, want the registered %q", gotArgs, "--background")
 	}
 
 	if !live {
-		t.Skip("registration and read-back verified; set OA_LIVE_PANEL=1 to also build and run the real tray Panel at the registered command line")
+		t.Log("registration and read-back verified; OA_LIVE_PANEL=1 also builds and runs the background presenter")
+	} else {
+		runAndObserveRegisteredPanel(t, gotTarget, gotArgs)
 	}
-
-	runAndObserveRegisteredPanel(t, gotTarget, gotArgs)
 
 	unregisterPanelTray(keyPath, shortcut)
 	if markerPresent(keyPath) {
@@ -190,16 +186,13 @@ func TestPanelTrayLogonRegistersReadsBackLaunchesAndUnregisters(t *testing.T) {
 }
 
 // runAndObserveRegisteredPanel launches the registered command line exactly
-// once, with an isolated runtime state dir (own(t), the isolation
-// service_panel_test.go's own runtime tests use) so it reads and writes
-// nothing this account's real Panel would, confirms the tray's HTTP server
-// answers its guarded "/" route, and stops it by PID — never by image name
+// with an explicit absent runtime, so it cannot resolve the installed runtime.
+// It confirms the presenter stays alive without occupying the Panel port and
+// repeated startup exits quietly, then stops it by PID — never by image name
 // (AGENTS.md), since another Panel instance may legitimately be running on
 // this machine.
 func runAndObserveRegisteredPanel(t *testing.T, target, args string) {
 	t.Helper()
-	own(t)
-
 	const addr = "127.0.0.1:8734" // the -addr flag's own default; the registered command line carries no override.
 	probe, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -207,52 +200,62 @@ func runAndObserveRegisteredPanel(t *testing.T, target, args string) {
 	}
 	probe.Close()
 
-	cmd := exec.Command(target, strings.Fields(args)...)
+	endpoint := fmt.Sprintf(`\\.\pipe\oa-background-test-%d-%d`, os.Getpid(), time.Now().UnixNano())
+	arguments := append(strings.Fields(args), "-runtime-endpoint", endpoint,
+		"-runtime-program", target, "-runtime-state-dir", t.TempDir())
+	cmd := exec.Command(target, arguments...)
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start %s %s: %v", target, args, err)
 	}
 	pid := cmd.Process.Pid
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
 	stopped := false
 	t.Cleanup(func() {
 		if !stopped {
 			_ = cmd.Process.Kill()
-			_, _ = cmd.Process.Wait()
+			<-done
 		}
 	})
 
-	url := "http://" + addr + "/"
-	client := &http.Client{Timeout: 2 * time.Second}
-	deadline := time.Now().Add(20 * time.Second)
-	var resp *http.Response
-	var lastErr error
-	for time.Now().Before(deadline) {
-		resp, lastErr = client.Get(url)
-		if lastErr == nil {
-			break
+	select {
+	case err := <-done:
+		stopped = true
+		t.Fatalf("background presenter exited before observation: %v", err)
+	case <-time.After(time.Second):
+	}
+	available, err := net.Listen("tcp", addr)
+	if err != nil {
+		t.Fatalf("background presenter occupied the on-demand Panel's port: %v", err)
+	}
+	available.Close()
+	duplicate := exec.Command(target, arguments...)
+	if err := duplicate.Start(); err != nil {
+		t.Fatalf("repeat startup: %v", err)
+	}
+	repeated := make(chan error, 1)
+	go func() { repeated <- duplicate.Wait() }()
+	select {
+	case err := <-repeated:
+		if err != nil {
+			t.Fatalf("repeated startup did not exit quietly: %v", err)
 		}
-		time.Sleep(200 * time.Millisecond)
-	}
-	if lastErr != nil {
-		t.Fatalf("tray Panel (pid %d) never answered %s: %v", pid, url, lastErr)
-	}
-	resp.Body.Close()
-	// "/" without the run's own key refuses rather than serving the page
-	// (monitor/service_panel.go); the refusal itself proves this is the
-	// tray's own guarded server, not some other process on the port.
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("tray Panel (pid %d) answered %s with status %d, want %d (panel key required)", pid, url, resp.StatusCode, http.StatusForbidden)
+	case <-time.After(5 * time.Second):
+		duplicate.Process.Kill()
+		<-repeated
+		t.Fatal("repeated startup created a second background presenter")
 	}
 
 	if err := cmd.Process.Kill(); err != nil {
-		t.Fatalf("stop tray Panel pid %d: %v", pid, err)
+		t.Fatalf("stop background presenter pid %d: %v", pid, err)
 	}
-	_, _ = cmd.Process.Wait()
+	<-done
 	stopped = true
 
 	time.Sleep(300 * time.Millisecond)
 	after, err := net.Listen("tcp", addr)
 	if err != nil {
-		t.Errorf("%s still bound after stopping tray Panel pid %d by PID: %v", addr, pid, err)
+		t.Errorf("%s still bound after stopping background presenter pid %d by PID: %v", addr, pid, err)
 		return
 	}
 	after.Close()

@@ -30,12 +30,14 @@ func ModelHosts(onRequest func(method string)) (lemonade, lmstudio string, close
 			fmt.Fprint(w, body)
 		}))
 	}
+	// Lemonade reports its model maximum and the loaded recipe's ctx_size, the
+	// request limit an offer reads; LM Studio reports each model's maximum.
 	l := host(map[string]string{
-		"/api/v1/models": `{"data":[{"id":"Qwen3.6-35B-A3B-GGUF","downloaded":true}]}`,
-		"/api/v1/health": `{"all_models_loaded":[{"model_name":"Qwen3.6-35B-A3B-GGUF","loaded":true}]}`,
+		"/api/v1/models": `{"data":[{"id":"Qwen3.6-35B-A3B-GGUF","downloaded":true,"max_context_window":262144}]}`,
+		"/api/v1/health": `{"all_models_loaded":[{"model_name":"Qwen3.6-35B-A3B-GGUF","loaded":true,"recipe_options":{"ctx_size":32768}}]}`,
 	})
 	s := host(map[string]string{
-		"/api/v0/models": `{"data":[{"id":"qwen/qwen3.6-35b-a3b","type":"llm","state":"not-loaded"},{"id":"google/gemma-4-26b-it","type":"llm","state":"not-loaded"}]}`,
+		"/api/v0/models": `{"data":[{"id":"qwen/qwen3.6-35b-a3b","type":"llm","state":"not-loaded","max_context_length":262144},{"id":"google/gemma-4-26b-it","type":"llm","state":"not-loaded","max_context_length":131072}]}`,
 	})
 	return l.URL, s.URL, func() { l.Close(); s.Close() }
 }

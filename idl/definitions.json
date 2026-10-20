@@ -1,5 +1,8 @@
 {
   "version": 1,
+  "package_metadata_owners": {
+    "adopters/opencode/session-api/package.json": "adopters/opencode/package.json"
+  },
   "unpackaged_outputs": {
     "conformance/clients/fixture/livevoice/wire/py/pyproject.toml": "Private transport-measurement fixture imported directly by its runner; no product distribution installs this test protocol."
   },

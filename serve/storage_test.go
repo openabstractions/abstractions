@@ -87,6 +87,7 @@ func TestStorageDefaultRootUsesRuntimeState(t *testing.T) {
 	base := t.TempDir()
 	t.Setenv("LOCALAPPDATA", base)
 	t.Setenv("XDG_DATA_HOME", base)
+	t.Setenv("XDG_CACHE_HOME", base)
 	t.Setenv("HOME", base)
 	t.Setenv("USERPROFILE", base)
 	before := storageTree(t, base)

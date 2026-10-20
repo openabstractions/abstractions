@@ -14,7 +14,7 @@ const plainEnd = shellGo.indexOf('`', plainStart);
 const plainScript = shellGo.slice(plainStart, plainEnd).split('<script>')[1].split('</script>')[0];
 const fields = new Map();
 function node() {
- return {value:'', textContent:'', href:'', disabled:false, hidden:false, title:'', selectedOptions:[], listeners:{}, children:[], replaceChildren(){this.children=[]}, append(...v){this.children.push(...v)}, click(){}, reset(){}, addEventListener(type,fn){(this.listeners[type]=this.listeners[type]||[]).push(fn)}, dispatch(type){for(const fn of this.listeners[type]||[])fn()}};
+ return {value:'', textContent:'', href:'', disabled:false, hidden:false, title:'', selectedOptions:[], listeners:{}, children:[], replaceChildren(...v){this.children=[...v]}, append(...v){this.children.push(...v)}, click(){}, reset(){}, addEventListener(type,fn){(this.listeners[type]=this.listeners[type]||[]).push(fn)}, dispatch(type){for(const fn of this.listeners[type]||[])fn()}};
 }
 function element(id) {
  if (!fields.has(id)) fields.set(id, node());
@@ -50,13 +50,16 @@ const rightsCalls = [];
 const rightsPage = {Outcome:'page', Revision:'policy-rev-1', Catalog:['abstraction.credentials/apply'], Rules:[], Next:'', Complete:true};
 const rightsEditReply = {Outcome:'applied', Revision:'policy-rev-2', Current:{Subject:{Account:'alice',Program:'/usr/bin/app'},Action:'abstraction.credentials/apply',Resource:'credential:hf',Permit:true}};
 
-const context = {URLSearchParams, document:{getElementById:element, createElement:node}, location:{search:'?k=test'}, console,
+const context = {URLSearchParams, document:{getElementById:element, createElement:t=>Object.assign(node(),{tagName:String(t).toUpperCase()})}, location:{search:'?k=test'}, console,
  fetch: async (path, opts) => {
   if (path.startsWith('/inference/keys')) return {ok:true, json:async()=>inferenceKeysPage};
   // task 2026-09-23, fourteenth first-time visitor, finding 8: App access'
   // own Program path and Account fields now build the same choosers
-  // Rights' own Program and Account fields already use.
-  if (path === '/card/table') return {ok:true, json:async()=>({resources:[{resource:'card:0', holders:[{program:'C:\\lms\\llama-server.exe'}]}]})};
+  // Rights' own Program and Account fields already use. The program
+  // chooser lists registered applications, never the graphics card's
+  // running holders.
+  if (path === '/card/table') return {ok:true, json:async()=>({resources:[{resource:'card:0', holders:[{program:'C:\\Windows\\System32\\csrss.exe'},{program:'C:\\Windows\\System32\\dwm.exe'}]}]})};
+  if (path === '/apps/registrations?source=applications&wait_ms=0') return {ok:true, json:async()=>({outcome:'page', entries:[{program:'C:\\lms\\llama-server.exe', name:'', role:'application'}]})};
   if (path === '/explore') return {ok:true, json:async()=>({self:{account:'root', program:'/usr/bin/openabstractions'}, selfAccountName:'reinis', probes:[]})};
   if (path.startsWith('/credentials')) {
    if (!opts || !opts.body) return {ok:true, json:async()=>listPage};
@@ -84,17 +87,32 @@ vm.runInNewContext(script, context);
 // only cover 'file-0600', which has no friendly name of its own).
 assert.equal(context.storeLabel('windows-credential-manager'), 'Windows Credential Manager');
 assert.equal(context.storeLabel('macos-keychain'), 'macOS Keychain');
+assert.equal(context.storeLabel('windows-dpapi-file'), 'an encrypted file for this Windows account');
+assert.equal(context.storeLabel('macos-login-keychain'), 'the macOS login Keychain');
 assert.equal(context.storeLabel('some-future-store'), 'some-future-store', 'an unrecognized store word still shows, unchanged');
 
+function pressOnly(value){for(const b of element('add-consumers-select').children)if(!!b.pressed!==(b.value===value))b.onclick()}
 (async () => {
- assert.equal(element('back').href, '/?k=test');
- // The rule-editor mention is a link, not a name with nowhere to go (task
- // 2026-09-23 finding 1: "the same rule editor as Rights on the Status page"
- // sent the reader to another page with no link). It also names the page the
- // way the nav does: Rights moved off the Status page to its own page,
- // "Questions and rights" (task 2026-09-23, fifth first-time visitor, finding
- // 3), so both the link text and its target now point there.
- assert.equal(element('rights-editor-link').href, '/rights?k=test#rights-section');
+ // SPEC §4 (S8): one caption, no "Back to Status", no Refresh button, and
+ // every text field but the secret waits behind a chooser.
+ {
+  const markup = go.slice(go.indexOf('var credentialsPage = '), go.indexOf('<script>'));
+  assert(markup.includes('"Keys your apps use for hosted services."'), 'the page caption');
+  assert(!markup.includes('id="back"') && !markup.includes('Refresh'), 'no back link and no Refresh button');
+  for (const m of markup.matchAll(/<input[^>]*>/g)) assert(/\bhidden\b|data-oa-secret/.test(m[0]), 'a visible input that is not a secret: ' + m[0]);
+ }
+ await context.addForReady;
+ // Nothing is typed until the person asks: the form opens from a row action.
+ assert.equal(element('add-form').hidden, true, 'the add form is closed on arrival');
+ element('add-open').onclick();
+ assert.equal(element('add-form').hidden, false);
+ assert.equal(element('add-open-status').textContent, 'Fill in the form below, then Add.');
+ assert.equal(element('allow-form').hidden, true, 'the app access form is closed on arrival');
+ element('allow-open').onclick();
+ assert.equal(element('allow-open-status').textContent, 'Choose a credential and an app, then Save.');
+ assert.deepEqual([...element('add-consumers-select').children].filter(b=>b.pressed).map(b=>b.value), ['abstraction.inference/chat@1'], 'chat is on by default');
+ assert.deepEqual(element('add-for').children.map(o=>o.value), ['__other__'], 'with no hosted server, For offers only Other…');
+ assert.equal(element('add-name').hidden, false, 'Other… shows the typed name');
 
  // task 2026-09-23, fourteenth first-time visitor, findings 2 and 3: Saved
  // credentials used to open empty until Show credentials was clicked; it
@@ -109,41 +127,28 @@ assert.equal(context.storeLabel('some-future-store'), 'some-future-store', 'an u
  // shared implementation each, seeded the same way Rights' own choosers
  // are.
  await context.allowChoosersReady;
- assert.deepEqual(element('allow-program-select').children.map(o=>o.value), ['C:\\lms\\llama-server.exe','__other__'], 'the program chooser opens with the Device holders this runtime could read, Other\u2026 last');
+ assert.deepEqual(element('allow-program-select').children.map(o=>o.value), ['C:\\lms\\llama-server.exe','__other__'], 'the program chooser opens with the registered applications, Other\u2026 last');
  assert.deepEqual(element('allow-account-select').children.map(o=>[o.value,o.textContent]), [['root','this account, reinis'],['__other__','Other…']], 'the account chooser defaults to this account by name, Other\u2026 last');
  assert.equal(element('allow-account').hidden, true, 'the typed account field stays hidden while the known default is selected');
  assert.equal(element('allow-account').value, 'root');
+ // Each saved credential is one oa-row: name, a caption (state, who
+ // registered it, what uses it) with the raw values on its title and
+ // behind Technical details, and the row actions Replace key… and Remove.
  const activeBox = element('records').children[0];
- // task 2026-09-23, tenth first-time visitor, finding 3: a record's row
- // used to concatenate its id, kind, revision, targets, raw consumer
- // contract ids, the full registered-by path and a raw timestamp onto one
- // dense block. It now reads one summary line, a consumers line in plain
- // words, and every raw value behind Technical details.
- assert.equal(activeBox.children[0].textContent, 'hf · active · registered by app '+context.oaLocalTime('2024-01-01T00:00:00.000000Z'), 'the summary line names the record, its state, and who registered it, by file name and readable time');
- assert.equal(activeBox.children[0].title, 'id: hf; /usr/bin/app; registered 2024-01-01T00:00:00.000000Z', 'the full path and exact timestamp sit on the summary line\'s own title, the raw name (redundant for an ordinary credential) is also there for a gateway key row that needs to name what its own hashed id was');
- assert.equal(activeBox.children[1].textContent, 'Used by: downloads.', 'the raw consumer contract id reads as a plain phrase');
- const activeDetails = activeBox.children[2];
- assert.equal(activeDetails.children[0].textContent, 'Technical details');
+ assert.equal(activeBox.className, 'oa-row');
+ assert.equal(activeBox.label.textContent, 'hf');
+ assert.equal(activeBox.caption.textContent, 'active · registered by app '+context.oaWhen('2024-01-01T00:00:00.000000Z')+' · used by downloads');
+ assert.equal(activeBox.caption.title, 'id: hf; /usr/bin/app; registered 2024-01-01T00:00:00.000000Z');
  for (const raw of ['bearer', 'rev-1', 'huggingface.co', 'abstraction.download/http-execution@1', '/usr/bin/app'])
-  assert(activeDetails.children[1].textContent.includes(raw), raw + ' missing from Technical details: ' + activeDetails.children[1].textContent);
- // task 2026-09-23, fourteenth first-time visitor, finding 7: a fourth
- // child, a plain note, now follows the three buttons, naming which one
- // was chosen right beside them.
- assert.equal(activeBox.children.length, 7, 'an active record offers rotate, revoke and allow buttons, and a chosen-for note, after the summary, consumers line and Technical details');
+  assert(activeBox.pre.textContent.includes(raw), raw + ' missing from Technical details');
+ assert.equal(activeBox.replace.textContent, 'Replace key…');
+ assert.equal(activeBox.remove.textContent, 'Remove');
  const revokedBox = element('records').children[1];
- // consumerServiceName (credentials_page.go) names a consumer the same word
- // the Consumers chooser above uses for it (task 2026-09-23, twelfth
- // first-time visitor, finding 5): "model resolve", not oaServiceName's
- // own generic "model lookup" for the bare model layer.
- assert.equal(revokedBox.children[1].textContent, 'Used by: model resolve.');
- assert.equal(revokedBox.children.length, 3, 'a revoked record offers no conditional-edit buttons');
- // task 2026-09-23, eleventh first-time visitor, finding 7: a gateway key
- // registers a credential named "local-key.<hash>.<random>"; it now reads
- // "Gateway key for <file name>", the program read from Inference's own
- // key list, with the raw id kept on the summary line's own title.
+ assert.equal(revokedBox.caption.textContent, 'revoked · registered by app '+context.oaWhen('2024-01-01T00:00:00.000000Z')+' · used by model resolve');
+ assert.equal(revokedBox.replace.hidden && revokedBox.remove.hidden, true, 'a revoked record offers no row actions');
  const gatewayBox = element('records').children[2];
- assert.equal(gatewayBox.children[0].textContent, 'Gateway key for python3 · active · registered by app '+context.oaLocalTime('2024-01-01T00:00:00.000000Z'));
- assert.equal(gatewayBox.children[0].title, 'id: local-key.7d0c0be6.a1b2; /usr/bin/app; registered 2024-01-01T00:00:00.000000Z');
+ assert.equal(gatewayBox.label.textContent, 'Gateway key for python3');
+ assert.equal(gatewayBox.caption.title, 'id: local-key.7d0c0be6.a1b2; /usr/bin/app; registered 2024-01-01T00:00:00.000000Z');
  // The limits line reads as a sentence, not a "store: ...; kinds: ...; max
  // secret bytes: ...; max credentials: ..." field dump (task 2026-09-23
  // finding 5).
@@ -153,7 +158,7 @@ assert.equal(context.storeLabel('some-future-store'), 'some-future-store', 'an u
  // task 2026-09-23, twelfth first-time visitor, requirement 1: Consumers
  // is now a multi-select of known consumers, plain phrases with the
  // contract id as each option's own value.
- element('add-targets').value = 'a.com'; element('add-consumers-select').selectedOptions = [{value:'abstraction.download/http-execution@1'}];
+ element('add-targets').value = 'a.com'; pressOnly('abstraction.download/http-execution@1');
  element('add-secret').value = secretOne;
  await element('add-form').onsubmit({preventDefault(){}});
  assert.equal(element('add-secret').value, '', 'the secret field is cleared once sent');
@@ -172,63 +177,28 @@ assert.equal(context.storeLabel('some-future-store'), 'some-future-store', 'an u
  assert(!element('add-status').textContent.includes(secretOne), 'the reply never echoes the secret');
  assert.equal(element('records').children.length, 3, 'the list read itself again after a successful add, with no click');
 
- // task 2026-09-23, thirteenth first-time visitor, finding 5: these three
- // buttons used to set the target field's own visible value directly, a
- // raw name a gateway key never made friendly to read (fine for an
- // ordinary name like "hf", the same value a person already chose).
- // They now go through a chooser, built from the credentials this page
- // has listed; the hidden field they still fill keeps reading unchanged.
- const rotateButton = activeBox.children[3];
- assert.equal(rotateButton.textContent, 'Use for rotate');
- rotateButton.onclick();
- assert.equal(element('rotate-name-select').value, 'hf', 'the chooser selects the known name');
- assert.equal(element('rotate-name-select').children.find(o=>o.value==='hf').textContent, 'hf', 'an ordinary name\'s own friendly label is the name itself');
- assert.equal(element('rotate-name').hidden, true, 'the hidden field stays hidden for a known name');
- assert.equal(element('rotate-name').value, 'hf');
- assert.equal(element('rotate-revision').value, 'rev-1');
- // task 2026-09-23, fourteenth first-time visitor, finding 7: the button
- // used to fill a field far below with no visible change here; it now
- // names what it chose right beside itself, the note appended as the
- // fourth child, after the three buttons.
- assert.equal(activeBox.children[6].textContent, 'Chosen for rotate: hf.', 'the note beside the buttons names what was chosen');
- element('rotate-secret').value = secretTwo;
- await element('rotate-form').onsubmit({preventDefault(){}});
- assert.equal(element('rotate-secret').value, '', 'the secret field is cleared once sent');
+ // Replace key… opens the row's editor; Save sends the secret at the
+ // revision the row read and writes one sentence into the row.
+ activeBox.replace.onclick();
+ assert.equal(activeBox.editor.hidden, false);
+ assert.equal(activeBox.status.textContent, 'Type the new key, then Save.');
+ activeBox.secret.value = secretTwo;
+ await activeBox.save.onclick();
+ assert.equal(activeBox.secret.value, '', 'the secret field is cleared once sent');
  assert.deepEqual(credentialCalls[1], {action:'rotate', name:'hf', expected_revision:'rev-1', expires:'', secret:secretTwo});
- // task 2026-09-23, thirteenth first-time visitor, finding 6: the
- // confirmation used to print "Rotated hf to revision rev-3." with the
- // revision as visible text; the revision now sits in Technical details,
- // through oaShowResult, the same shape every other confirmation uses.
- assert.equal(element('rotate-status').textContent, 'Rotated hf.');
- assert.equal(element('rotate-status').title, 'id: hf; revision rev-3');
- assert.equal(element('rotate-status').children[0].children[0].textContent, 'Technical details');
- assert(!element('rotate-status').textContent.includes(secretTwo));
-
- const revokeButton = activeBox.children[4];
- assert.equal(revokeButton.textContent, 'Use for revoke');
- revokeButton.onclick();
- assert.equal(element('revoke-name-select').value, 'hf');
- assert.equal(element('revoke-name').value, 'hf');
- assert.equal(element('revoke-revision').value, 'rev-1');
- await element('revoke-form').onsubmit({preventDefault(){}});
+ assert.equal(activeBox.status.textContent, 'Replaced the key for hf.');
+ assert.equal(activeBox.status.title, 'id: hf; revision rev-3');
+ assert(!activeBox.status.textContent.includes(secretTwo));
+ // Remove asks for a second click, then revokes at the listed revision.
+ await activeBox.remove.onclick();
+ assert.equal(activeBox.status.textContent, 'Click Remove again to delete hf.');
+ assert.equal(credentialCalls.length, 2, 'the first click sends nothing');
+ await activeBox.remove.onclick();
  assert.deepEqual(credentialCalls[2], {action:'revoke', name:'hf', expected_revision:'rev-1'});
- assert.equal(element('revoke-status').textContent, 'Revoked hf.');
- assert.equal(element('revoke-status').title, 'id: hf; revision rev-1');
- assert.equal(element('revoke-status').children[0].children[0].textContent, 'Technical details');
-
- // A gateway key's own name reads through credentialSentenceName's
- // sentence-shaped phrase, "the gateway key for <program>", the same
- // program metaBoxName above already named this same credential by.
- const gatewayRevokeButton = gatewayBox.children[4];
- assert.equal(gatewayRevokeButton.textContent, 'Use for revoke');
- gatewayRevokeButton.onclick();
- assert.equal(element('revoke-name-select').value, 'local-key.7d0c0be6.a1b2', 'the chooser selects the gateway key\'s own raw name');
- assert.equal(element('revoke-name-select').children.find(o=>o.value==='local-key.7d0c0be6.a1b2').textContent, 'Gateway key for python3', 'the option\'s own text is the same friendly name the saved list above already reads this credential as');
- assert.equal(element('revoke-name').value, 'local-key.7d0c0be6.a1b2', 'the hidden field still carries the raw id the service needs');
- await element('revoke-form').onsubmit({preventDefault(){}});
+ assert.equal(activeBox.status.textContent, 'Removed hf.');
+ await gatewayBox.remove.onclick(); await gatewayBox.remove.onclick();
  assert.deepEqual(credentialCalls[3], {action:'revoke', name:'local-key.7d0c0be6.a1b2', expected_revision:'rev-4'});
- assert.equal(element('revoke-status').textContent, 'Revoked the gateway key for python3.', 'a gateway key\'s own confirmation reads the friendly sentence, not its raw name');
- assert.equal(element('revoke-status').title, 'id: local-key.7d0c0be6.a1b2; revision rev-1');
+ assert.equal(gatewayBox.status.textContent, 'Removed the gateway key for python3.', 'a gateway key reads its friendly sentence');
 
  // task 2026-09-23, fourteenth first-time visitor, findings 2 and 3: App
  // access Save used to refuse ("List rights policy before allowing.")
@@ -240,15 +210,14 @@ assert.equal(context.storeLabel('some-future-store'), 'some-future-store', 'an u
  assert.equal(element('allow-status').textContent, 'No app has access yet.');
  assert.equal(element('allow-status').title, 'Policy revision policy-rev-1');
 
- const allowButton = activeBox.children[5];
- assert.equal(allowButton.textContent, 'Allow/block this name');
- allowButton.onclick();
+ element('allow-name-select').value = 'hf'; element('allow-name-select').onchange();
+ assert.equal(element('allow-name').value, 'hf');
  assert.equal(element('allow-name').value, 'hf');
  // A rule that names this credential's own apply action reads as a
  // sentence, not a bare revision line. Refresh (Show policy) still re-reads
  // it manually.
  rightsPage.Rules = [{Subject:{Account:'alice',Program:'/usr/bin/app'},Action:'abstraction.credentials/apply',Resource:'credential:hf',Permit:true}];
- await element('allow-list').onclick();
+ await context.allowPolicyList();
  // task 2026-09-23, fifteenth first-time visitor, finding 4: this line used
  // to read the raw full program path and the raw account SID, a different
  // formatter than Save's own confirmation below used; both now read
@@ -258,7 +227,7 @@ assert.equal(context.storeLabel('some-future-store'), 'some-future-store', 'an u
  // exist.
  assert.equal(element('allow-status').textContent, '');
  assert.equal(element('allow-rules').children.length, 1, 'the granted rule is its own row');
- assert.equal(element('allow-rules').children[0].textContent, 'Allowed app to apply hf for alice.');
+ assert.equal(element('allow-rules').children[0].textContent, 'Allowed app to apply hf for another account on this device.');
  assert.equal(element('allow-rules').children[0].title, '/usr/bin/app; alice; credential:hf', 'the raw path, account and resource stay reachable as the row\'s own title');
  rightsPage.Rules = [];
  element('allow-account').value = 'alice'; element('allow-program').value = '/usr/bin/app'; element('allow-permit').value = 'permit';
@@ -275,24 +244,24 @@ assert.equal(context.storeLabel('some-future-store'), 'some-future-store', 'an u
  // to add "List rights policy again before another edit." while the
  // policy list under it kept its stale state; the policy list reads
  // itself again instead.
- assert.equal(element('allow-status').textContent, 'Allowed app to apply hf for alice.', 'Save\'s own confirmation now reads through the same accessSentence the list rows do, account included');
- assert.equal(element('allow-status').title, 'Program: /usr/bin/app; Account: alice; id: hf; revision policy-rev-1', 'the raw program path and account sit in Technical details, not the visible sentence');
- assert.equal(element('allow-status').children[0].children[0].textContent, 'Technical details');
+ assert.equal(element('allow-save-status').textContent, 'Allowed app to apply hf for another account on this device.', 'Save\'s own confirmation now reads through the same accessSentence the list rows do, account included');
+ assert.equal(element('allow-save-status').title, 'Program: /usr/bin/app; Account: alice; id: hf; revision policy-rev-1', 'the raw program path and account sit in Technical details, not the visible sentence');
+ assert.equal(element('allow-save-status').children[0].children[0].textContent, 'Technical details');
 
  // A raw refusal from the runtime (not the credentials service's own curated
  // "forbidden" outcome) is shown as a plain sentence naming the rule this
  // Panel needs, never the raw backend text; that text stays available
  // behind a "Technical details" disclosure (task 2026-09-23 finding 1).
  element('add-name').value = '__fail_name__'; element('add-kind').value = 'bearer';
- element('add-targets').value = 'a.com'; element('add-consumers-select').selectedOptions = [{value:'abstraction.download/http-execution@1'}];
+ element('add-targets').value = 'a.com'; pressOnly('abstraction.download/http-execution@1');
  element('add-secret').value = secretOne;
  await element('add-form').onsubmit({preventDefault(){}});
- assert.equal(element('add-status').textContent, 'The runtime did not permit this Panel to do this; nothing was changed. It needs the rule abstraction.credentials/holder.manage.');
+ assert.equal(element('add-status').textContent, 'The runtime did not permit this Panel to do this; nothing was changed. It needs the “credentials holder manage” permission.');
  const addDetails = element('add-status').children[0];
  assert.equal(addDetails.className, 'oa-error-details');
  assert.match(addDetails.children[1].textContent, /not permitted for this Panel/);
 
- for (const id of ['list-status','limits','add-status','rotate-status','revoke-status','allow-status']) {
+ for (const id of ['list-status','limits','add-status','allow-status','allow-save-status']) {
   assert(!element(id).textContent.includes(secretOne), id + ' carried the secret');
   assert(!element(id).textContent.includes(secretTwo), id + ' carried the secret');
  }
@@ -308,35 +277,41 @@ assert.equal(context.storeLabel('some-future-store'), 'some-future-store', 'an u
  // capability a gateway key can be issued for, each a plain phrase with
  // the contract id as that option's own value and title; "Other…" reveals
  // the typed field.
+ // Used for: toggle buttons, chat on by default, Other… last.
  const consumerOptions = element('add-consumers-select').children;
  assert.equal(consumerOptions.length, 9, 'eight known consumers plus Other…');
- // Each option's own phrase reads through consumerServiceName, the same
- // function the saved list above reads a stored consumer id through, so
- // the two never carry a different word for the same consumer (task
- // 2026-09-23, twelfth first-time visitor, finding 5).
  assert.deepEqual(consumerOptions.slice(0, 3).map(o => [o.value, o.textContent]),
   [['abstraction.download/http-execution@1', 'downloads'], ['abstraction.model/resolver@1', 'model resolve'], ['abstraction.inference/chat@1', 'chat']]);
- assert.equal(consumerOptions[0].title, 'abstraction.download/http-execution@1', 'the raw id sits on the option\'s own title too');
+ assert.equal(consumerOptions[0].title, 'abstraction.download/http-execution@1', 'the raw id sits on the button\'s own title');
  assert.equal(consumerOptions.at(-1).value, '__other__');
- assert.equal(element('add-consumers').hidden, true, 'the typed field stays hidden until Other… is chosen');
- element('add-consumers-select').selectedOptions = [{value: '__other__'}];
- element('add-consumers-select').onchange();
- assert.equal(element('add-consumers').hidden, false, 'choosing Other… reveals the typed field');
- element('add-consumers-select').selectedOptions = [{value: 'abstraction.download/http-execution@1'}];
- element('add-consumers-select').onchange();
- assert.equal(element('add-consumers').hidden, true, 'choosing a known consumer instead hides it again');
- element('rotate-name').dispatch('invalid');
- assert.equal(element('rotate-status').textContent, 'Name is required.', 'a blank required Rotate field is named');
- element('revoke-revision').dispatch('invalid');
- assert.equal(element('revoke-status').textContent, 'Revision is required.', 'a blank required Revoke field is named');
+ assert.equal(element('add-consumers').hidden, true, 'the typed field stays hidden until Other… is pressed');
+ consumerOptions.at(-1).onclick();
+ assert.equal(element('add-consumers').hidden, false, 'pressing Other… reveals the typed field');
+ assert.equal(element('add-consumers-status').textContent, 'Other… on.', 'a press writes one sentence');
+ consumerOptions.at(-1).onclick();
+ assert.equal(element('add-consumers').hidden, true, 'pressing it again hides it');
  // task 2026-09-23, eighth first-time visitor, finding 4: App access ->
  // Save with a blank required field also showed no result at all.
  element('allow-name').dispatch('invalid');
- assert.equal(element('allow-status').textContent, 'Credential name is required.', 'a blank required Save field is named, the Issue key pattern');
+ assert.equal(element('allow-save-status').textContent, 'Credential name is required.', 'a blank required Save field is named, the Issue key pattern');
  element('allow-account').dispatch('invalid');
- assert.equal(element('allow-status').textContent, 'Account is required.');
+ assert.equal(element('allow-save-status').textContent, 'Account is required.');
  element('allow-program').dispatch('invalid');
- assert.equal(element('allow-status').textContent, 'Program path is required.');
+ assert.equal(element('allow-save-status').textContent, 'Program path is required.');
 
+ // The saved list shows no path, SID or hash as text (static/panel_rules.js).
+ const { assertPanelRules } = require('./static/panel_rules.js');
+ assertPanelRules([element('records'), element('allow-rules')], 'Credentials', { rules: ['raw-value', 'class'], allowClasses: require('./panel_fake_dom_test_helper.js').allowlistedClasses('credentials') });
+ // A click's sentence survives a reread in which the server state changed:
+ // the same row element, its sentence and the updated caption.
+ await require('./panel_fake_dom_test_helper.js').assertLiveUpdateKeepsRow({
+ click: () => element('records').children[1].remove.onclick(),
+ change: () => { activeRecord.State = 'revoked'; listPage.Records = [activeRecord, {...revokedRecord, Registered:'2025-01-01T00:00:00.000000Z'}, gatewayKeyRecord]; },
+ data: () => listPage,
+ tick: async () => { await context.credentialsTick(); await new Promise(r => setTimeout(r, 0)); },
+ row: () => element('records').children[1], status: row => row.status, label: 'Credentials, saved credentials',
+ });
+ const box = element('records').children[1];
+ assert(box.caption.textContent.includes(context.oaLocalTime('2025-01-01T00:00:00.000000Z')), 'the row updated in place');
  console.log('PASS: credentials page lists metadata and limits, adds/rotates/revokes at the listed revision, allows through /rights at the listed policy revision, never echoes a secret, and names a blank required field on each form, App access Save included');
 })().catch(e => { console.error(e); process.exitCode = 1; });

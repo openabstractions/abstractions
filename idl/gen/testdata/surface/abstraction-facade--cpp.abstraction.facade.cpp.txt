@@ -194,6 +194,9 @@ struct DeclarationHost
   bool hosted
   std::string credential
   std::optional<DeclarationCeiling> ceiling
+struct DeclarationExtension
+  std::string profile
+  std::string key
 struct Declaration
   std::string name
   std::string program
@@ -208,6 +211,9 @@ struct Declaration
   std::vector<std::string> models
   DeclarationRole role
   std::optional<DeclarationHost> host
+struct DeclarationWithExtensions
+  Declaration declaration
+  std::vector<DeclarationExtension> supported_extensions
 struct HostReading
   bool up
   std::string why
@@ -234,6 +240,17 @@ struct DeclarationObservation
   DeclarationListOutcome outcome
   std::string cursor
   std::vector<DeclarationState> declarations
+struct DeclarationStateV2
+  DeclarationState state
+  std::vector<DeclarationExtension> supported_extensions
+struct DeclarationListV2
+  DeclarationListOutcome outcome
+  std::string revision
+  std::vector<DeclarationStateV2> declarations
+struct DeclarationObservationV2
+  DeclarationListOutcome outcome
+  std::string cursor
+  std::vector<DeclarationStateV2> declarations
 struct ApplicationInterface
   std::string name
   std::string protocol
@@ -267,6 +284,7 @@ struct ApplicationEntry
   ApplicationDescriptor descriptor
   std::vector<ApplicationInstance> instances
   Scope scope
+  bool self_registered
 struct ApplicationChange
   ApplicationOutcome outcome
   std::string instance
@@ -280,6 +298,18 @@ struct ApplicationActivationResult
   std::string instance
   bool started
   std::string reason
+struct ApplicationStart
+  std::string application
+  std::string program
+  std::string title
+  std::int64_t started_unix_ms
+  bool launched
+struct ApplicationStartPage
+  ApplicationOutcome outcome
+  std::vector<ApplicationStart> starts
+  std::string cursor
+  bool complete
+  std::int64_t complete_since_unix_ms
 inline std::string encode(const ResolveResult& v)
 inline ResolveResult decode(std::string_view data)
 struct FrameWriter
@@ -354,21 +384,44 @@ struct RegistryDispatcher : FrameWriter, FrameExchanger
   DescribedService describe_service() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
+struct RegistryV2
+  virtual DeclarationListV2 declarations()
+  virtual DeclarationChange declare(const std::string& expected_revision, const DeclarationWithExtensions& declaration)
+  virtual DeclarationChange withdraw(const std::string& expected_revision, const std::string& name)
+  virtual DeclarationObservationV2 observe(const std::string& cursor, const std::int64_t& wait_ms)
+template<class Transport>struct RegistryV2Client : RegistryV2
+  Transport& transport_
+  DeclarationListV2 declarations() override
+  DeclarationChange declare(const std::string& expected_revision, const DeclarationWithExtensions& declaration) override
+  DeclarationChange withdraw(const std::string& expected_revision, const std::string& name) override
+  DeclarationObservationV2 observe(const std::string& cursor, const std::int64_t& wait_ms) override
+struct RegistryV2Service
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct RegistryV2Dispatcher : FrameWriter, FrameExchanger
+  RegistryV2& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
 struct Applications
   virtual ApplicationChange register_(const ApplicationDescriptor& descriptor)
+  virtual ApplicationChange ask_confirmation(const std::string& application)
   virtual ApplicationChange remove(const std::string& application)
   virtual ApplicationChange announce(const ApplicationPresence& presence)
   virtual ApplicationChange withdraw(const std::string& application, const std::string& instance)
   virtual ApplicationPage observe(const std::string& cursor, const std::int64_t& wait_ms)
   virtual ApplicationActivationResult activate(const std::string& application)
+  virtual ApplicationStartPage list_starts(const std::string& cursor, const std::int64_t& limit)
 template<class Transport>struct ApplicationsClient : Applications
   Transport& transport_
   ApplicationChange register_(const ApplicationDescriptor& descriptor) override
+  ApplicationChange ask_confirmation(const std::string& application) override
   ApplicationChange remove(const std::string& application) override
   ApplicationChange announce(const ApplicationPresence& presence) override
   ApplicationChange withdraw(const std::string& application, const std::string& instance) override
   ApplicationPage observe(const std::string& cursor, const std::int64_t& wait_ms) override
   ApplicationActivationResult activate(const std::string& application) override
+  ApplicationStartPage list_starts(const std::string& cursor, const std::int64_t& limit) override
 struct ApplicationsService
   inline static constexpr std::string_view kWireName
   inline static constexpr std::string_view kCapability

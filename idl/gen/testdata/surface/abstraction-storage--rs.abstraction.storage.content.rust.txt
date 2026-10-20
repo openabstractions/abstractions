@@ -489,6 +489,7 @@ pub struct ManifestsClient<T>
 pub trait Inventory
   type Error
   fn list(&self, continuation: String, limit: i64) -> Result<InventoryPage, Self::Error>
+  fn list_store(&self, store: String, continuation: String, limit: i64) -> Result<InventoryPage, Self::Error>
   fn holders(&self, target: String) -> Result<InventoryPage, Self::Error>
   fn unheld(&self, continuation: String, limit: i64) -> Result<InventoryPage, Self::Error>
   fn find(&self, digest: String) -> Result<InventoryPage, Self::Error>

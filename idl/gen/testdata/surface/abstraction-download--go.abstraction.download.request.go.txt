@@ -13,6 +13,7 @@ func NetworkValues() []Network
 func (Network) Known() bool
 var DownstreamRecoveryGuarantees
 var CredentialGuarantees
+var ScopedCredentialGuarantees
 var NetworkCostGuarantees
 var WaitingExtensions
 type Constraints struct

@@ -15,6 +15,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/openabstractions/abstraction-identity/listen"
 )
 
 const testCredentialSecret = "hf_RUNTIME_TEST_SECRET_9c41d7a2_EXAMPLE"
@@ -51,20 +53,22 @@ func (o *gatedOrigin) authorizations() []string {
 }
 
 // credentialsRuntime starts an isolated in-process runtime whose credentials
-// live in a test-unique store namespace (Windows) or the file store of its
-// temporary state directory (elsewhere), and removes every item it created.
+// live in its temporary state directory: the DPAPI file store a fresh Windows
+// state binds to, or the file store an operator chooses on Linux (macOS keeps
+// its existing-state Keychain selection). Its test-unique store namespace is
+// cleaned in the Credential Manager as well.
 func credentialsRuntime(t *testing.T) (runtimeFlags, string) {
 	t.Helper()
 	options, _ := isolatedRuntime(t)
-	if err := os.MkdirAll(filepath.Join(options.stateDir, "credentials"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(options.stateDir, "credentials", credentialsBackendFile), []byte("file-0600\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	_, _, namespace, err := credentialsEndpoints(options)
+	writeStateFile(t, filepath.Join(options.stateDir, "credentials", credentialsBackendFile), "file-0600\n")
+	endpoint, _, namespace, err := credentialsEndpoints(options)
 	if err != nil || !strings.HasPrefix(namespace, "oa-runtime-") {
 		t.Fatalf("test namespace %q: %v", namespace, err)
+	}
+	// A socket runtime on macOS refuses to start its Program-proof services;
+	// the installed runtime serves credentials-v1 over XPC there.
+	if err := listen.CanEver(endpoint, listen.Program); err != nil {
+		t.Skipf("this platform's socket endpoint cannot carry Program proof: %v", err)
 	}
 	t.Cleanup(func() { removeStoreItems(t, namespace) })
 	ctx, cancel := context.WithCancel(context.Background())
@@ -87,6 +91,38 @@ func credentialsRuntime(t *testing.T) (runtimeFlags, string) {
 		}
 	})
 	return options, namespace
+}
+
+// writeStateFile writes one file a test runtime reads from its state
+// directory. Only Linux reads the credentials backend choice; on Windows it is
+// left out, so the credentials directory stays absent and the test runtime
+// binds to the fresh-state DPAPI file store (CRED-B1) rather than the
+// account's Credential Manager.
+func writeStateFile(t *testing.T, path, body string) {
+	t.Helper()
+	if runtime.GOOS == "windows" && filepath.Base(path) == credentialsBackendFile && filepath.Base(filepath.Dir(path)) == "credentials" {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// heldItemFiles counts the item files of a credentialsRuntime's file store
+// (windows-dpapi-file or file-0600), or -1 where the store is not a file store.
+func heldItemFiles(t *testing.T, options runtimeFlags) int {
+	t.Helper()
+	if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
+		return -1
+	}
+	entries, err := os.ReadDir(filepath.Join(options.stateDir, "credentials", "items"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(entries)
 }
 
 // Service accounts run machine-scope runtimes, which hold no secrets in this
@@ -145,6 +181,24 @@ func runCredentials(t *testing.T, stdin string, args ...string) (string, string,
 	return out.String(), diagnostics.String(), err
 }
 
+func assertCredentialAuditOutcome(t *testing.T, endpoint, want string) {
+	t.Helper()
+	audit, _, err := runCredentials(t, "", "audit", "--endpoint", endpoint, "--json", "--timeout", "30s")
+	var page struct {
+		Entries []struct{ Event, Outcome string }
+	}
+	if err != nil || json.Unmarshal([]byte(audit), &page) != nil || len(page.Entries) == 0 {
+		t.Fatal("credential audit unavailable")
+	}
+	last := page.Entries[len(page.Entries)-1]
+	if last.Event != "refused" || last.Outcome != want {
+		t.Fatalf("final Rights refusal audit: got %s/%s, want refused/%s", last.Event, last.Outcome, want)
+	}
+	if strings.Contains(audit, testCredentialSecret) {
+		t.Fatal("credential audit disclosed a value")
+	}
+}
+
 // A download names a registered credential; the runtime applies it to the
 // request it sends, and the origin that answers 401 without it serves the
 // bytes. The secret enters once, on stdin, and appears in no reply, command
@@ -176,8 +230,11 @@ func TestDownloadAppliesARegisteredCredential(t *testing.T) {
 	}
 	err = record(runCredentials(t, testCredentialSecret+"\n", "add", "hf", "--target", "127.0.0.1", "--for", "abstraction.download/http-execution@1", "--from-stdin", "--use-by", exe, "--endpoint", endpoint, "--timeout", "30s"))
 	requireUserScopeAdd(t, err, transcript.String())
-	if items := storeItems(t, namespace+"/"); len(items) != 1 && os.PathSeparator == '\\' {
-		t.Fatalf("Credential Manager items under the test namespace: %v", items)
+	if items := storeItems(t, namespace+"/"); len(items) != 0 {
+		t.Fatalf("Credential Manager items under the test namespace of a fresh state: %v", items)
+	}
+	if files := heldItemFiles(t, options); files >= 0 && files != 1 {
+		t.Fatalf("%d item files after one add", files)
 	}
 	listed, diag, err := runCredentials(t, "", "list", "--endpoint", endpoint, "--json", "--timeout", "30s")
 	record(listed, diag, err)
@@ -221,7 +278,7 @@ func TestDownloadAppliesARegisteredCredential(t *testing.T) {
 	}
 
 	// Denying this program's apply rule refuses the next such download at
-	// admission: invalid, credential:not_permitted:hf, and no work [JOB-A16].
+	// admission: forbidden, credential:not_permitted:hf, and no work [JOB-A16].
 	if err := record(runCredentials(t, "", "allow", "hf", "--program", exe, "--deny", "--endpoint", endpoint, "--timeout", "30s")); err != nil {
 		t.Fatalf("credentials allow --deny: %v", err)
 	}
@@ -257,6 +314,9 @@ func TestDownloadAppliesARegisteredCredential(t *testing.T) {
 	}
 	if items := storeItems(t, namespace+"/"); len(items) != 0 {
 		t.Fatalf("revoke left Credential Manager items: %v", items)
+	}
+	if files := heldItemFiles(t, options); files > 0 {
+		t.Fatalf("revoke left %d item files", files)
 	}
 
 	// The secret is in no command output and in no file the runtime wrote.

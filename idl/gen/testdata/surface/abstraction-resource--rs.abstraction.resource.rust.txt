@@ -25,6 +25,17 @@ pub enum AcquireOutcome
   pub const ALL: [Self; 7]
   pub fn as_str(self) -> &'static str
   pub fn from_wire(name: &str) -> Option<Self>
+pub enum AcquireFreeOutcome
+  Acquired
+  Insufficient
+  NotPermitted
+  Unavailable
+  Invalid
+  Forbidden
+  Held
+  pub const ALL: [Self; 7]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
 pub enum YieldAnswer
   Yielded
   Refused
@@ -97,6 +108,10 @@ pub struct AcquireResult
   outcome: AcquireOutcome
   lease: Option<Lease>
   asked: Vec<YieldRecord>
+pub struct AcquireFreeResult
+  outcome: AcquireFreeOutcome
+  lease: Option<Lease>
+  asked: Vec<YieldRecord>
 pub struct YieldRequest
   id: String
   resource: String
@@ -147,6 +162,7 @@ pub struct TableClient<T>
 pub trait Leases
   type Error
   fn acquire(&self, resource: String, amount: i64, wait_ms: i64) -> Result<AcquireResult, Self::Error>
+  fn acquire_free(&self, resource: String, amount: i64) -> Result<AcquireFreeResult, Self::Error>
   fn renew(&self, lease: String) -> Result<LeaseChangeResult, Self::Error>
   fn release(&self, lease: String) -> Result<LeaseChangeResult, Self::Error>
   fn observe(&self, cursor: String, wait_ms: i64) -> Result<ObserveResult, Self::Error>

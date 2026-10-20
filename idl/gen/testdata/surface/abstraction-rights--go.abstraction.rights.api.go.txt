@@ -62,6 +62,19 @@ func (RuleReadOutcome) MarshalJSON() ([]byte, error)
 func (RuleReadOutcome) UnmarshalJSON(data []byte) error
 func RuleReadOutcomeValues() []RuleReadOutcome
 func (RuleReadOutcome) Known() bool
+type PermissionFirstUse uint32
+const PermissionFirstUseNone
+const PermissionFirstUseExact
+const PermissionFirstUseConsumingPaired
+func (PermissionFirstUse) String() string
+func (PermissionFirstUse) WireName() (string, bool)
+func ParsePermissionFirstUse(word string) (PermissionFirstUse, bool)
+func (PermissionFirstUse) MarshalText() ([]byte, error)
+func (PermissionFirstUse) UnmarshalText(text []byte) error
+func (PermissionFirstUse) MarshalJSON() ([]byte, error)
+func (PermissionFirstUse) UnmarshalJSON(data []byte) error
+func PermissionFirstUseValues() []PermissionFirstUse
+func (PermissionFirstUse) Known() bool
 type ActionEditOutcome uint32
 const ActionEditOutcomeApplied
 const ActionEditOutcomeConflict
@@ -79,6 +92,48 @@ func (ActionEditOutcome) MarshalJSON() ([]byte, error)
 func (ActionEditOutcome) UnmarshalJSON(data []byte) error
 func ActionEditOutcomeValues() []ActionEditOutcome
 func (ActionEditOutcome) Known() bool
+type DecisionSource uint32
+const DecisionSourceNone
+const DecisionSourceOwnRule
+const DecisionSourceTypedBlock
+const DecisionSourceAccountDefault
+const DecisionSourceDefaultExcluded
+func (DecisionSource) String() string
+func (DecisionSource) WireName() (string, bool)
+func ParseDecisionSource(word string) (DecisionSource, bool)
+func (DecisionSource) MarshalText() ([]byte, error)
+func (DecisionSource) UnmarshalText(text []byte) error
+func (DecisionSource) MarshalJSON() ([]byte, error)
+func (DecisionSource) UnmarshalJSON(data []byte) error
+func DecisionSourceValues() []DecisionSource
+func (DecisionSource) Known() bool
+type ResourceSelectorKind uint32
+const ResourceSelectorKindOne
+const ResourceSelectorKindAll
+func (ResourceSelectorKind) String() string
+func (ResourceSelectorKind) WireName() (string, bool)
+func ParseResourceSelectorKind(word string) (ResourceSelectorKind, bool)
+func (ResourceSelectorKind) MarshalText() ([]byte, error)
+func (ResourceSelectorKind) UnmarshalText(text []byte) error
+func (ResourceSelectorKind) MarshalJSON() ([]byte, error)
+func (ResourceSelectorKind) UnmarshalJSON(data []byte) error
+func ResourceSelectorKindValues() []ResourceSelectorKind
+func (ResourceSelectorKind) Known() bool
+type BatchCheckOutcome uint32
+const BatchCheckOutcomeChecked
+const BatchCheckOutcomeConflict
+const BatchCheckOutcomeInvalid
+const BatchCheckOutcomeForbidden
+const BatchCheckOutcomeUnavailable
+func (BatchCheckOutcome) String() string
+func (BatchCheckOutcome) WireName() (string, bool)
+func ParseBatchCheckOutcome(word string) (BatchCheckOutcome, bool)
+func (BatchCheckOutcome) MarshalText() ([]byte, error)
+func (BatchCheckOutcome) UnmarshalText(text []byte) error
+func (BatchCheckOutcome) MarshalJSON() ([]byte, error)
+func (BatchCheckOutcome) UnmarshalJSON(data []byte) error
+func BatchCheckOutcomeValues() []BatchCheckOutcome
+func (BatchCheckOutcome) Known() bool
 type ServiceErrorCode string
 const ServiceErrorCodeHandlerError
 const ServiceErrorCodeInvalidResult
@@ -159,10 +214,156 @@ type CatalogEntry struct
   Action string
   RegisteredBy Subject
   RegisteredAt string
+type ActionDescription struct
+  Action string
+  FeatureApp Subject
+  AppLabel string
+  Description string
+  DeclaredRisk string
+type PermissionDefinition struct
+  Action string
+  OwnerContract string
+  Operations []string
+  ResourceProfile string
+  ResourceType string
+  EnforcedBy []string
+  Disclosure string
+  Lifecycle string
+  FirstUse PermissionFirstUse
+  Served bool
+type DescribedAction struct
+  Action string
+  Choices []string
+  Description *ActionDescription
+  PublishedBy *Subject
+  PublishedAt string
 type ActionEdit struct
   Outcome ActionEditOutcome
   Revision string
   Current *CatalogEntry
+type DescriptionEdit struct
+  Outcome ActionEditOutcome
+  Revision string
+  Current *DescribedAction
+type DescriptionPage struct
+  Outcome PolicyPageOutcome
+  Revision string
+  Actions []DescribedAction
+  Next string
+  Complete bool
+type AccountDefault struct
+  Name string
+  Action string
+  Resource string
+  EveryResource bool
+  On bool
+  SetBy *Subject
+  SetAt string
+type DefaultPage struct
+  Outcome PolicyPageOutcome
+  Revision string
+  Defaults []AccountDefault
+type DefaultEdit struct
+  Outcome PolicyEditOutcome
+  Revision string
+  Current *AccountDefault
+type DecisionExplanation struct
+  Outcome DecisionOutcome
+  PolicyRevision string
+  Source *DecisionSource
+  DefaultName string
+type PermissionKey struct
+  Action string
+  ResourceProfile string
+type ResourceSelector struct
+  Kind ResourceSelectorKind
+  Target []byte
+type PermissionSelection struct
+  Permission PermissionKey
+  Selector ResourceSelector
+type ConcreteResource struct
+  Permission PermissionKey
+  Target []byte
+type CheckBatchRequest struct
+  ExpectedRevision string
+  CollectionAdmission *PermissionKey
+  Resources []ConcreteResource
+type BatchDecision struct
+  Outcome BatchCheckOutcome
+  Revision string
+  CollectionOutcome *DecisionOutcome
+  Outcomes []DecisionOutcome
+type SelectorPermissionDefinition struct
+  Definition PermissionDefinition
+  Label string
+  SupportedSelectors []ResourceSelectorKind
+  FirstUseSelectors []ResourceSelectorKind
+  Collection string
+  AllEffect string
+  RequestType string
+type PermissionDefinitionPage struct
+  Outcome PolicyPageOutcome
+  Revision string
+  Definitions []SelectorPermissionDefinition
+  Next string
+  Complete bool
+type PermissionBundleDefinition struct
+  BundleRef string
+  OwnerContract string
+  Label string
+  TargetType string
+  SupportedSelectors []ResourceSelectorKind
+  Members []PermissionKey
+  Disclosure string
+  DefinitionDigest string
+type PermissionBundlePage struct
+  Outcome PolicyPageOutcome
+  Revision string
+  Bundles []PermissionBundleDefinition
+  Next string
+  Complete bool
+type BundleExpansion struct
+  BundleRef string
+  DefinitionDigest string
+  Selector ResourceSelector
+  Selections []PermissionSelection
+type PermissionEffect struct
+  Subject Subject
+  Selections []PermissionSelection
+  Bundle *BundleExpansion
+type SelectorRule struct
+  Subject Subject
+  Selection PermissionSelection
+  Permit bool
+type BundleOrigin struct
+  ID string
+  Expansion BundleExpansion
+type SelectorRuleRecord struct
+  Rule SelectorRule
+  SetBy Subject
+  SetAt string
+  Why string
+  Expires string
+  BundleOrigin *BundleOrigin
+type SelectorRulePage struct
+  Outcome PolicyPageOutcome
+  Revision string
+  Records []SelectorRuleRecord
+  Next string
+  Complete bool
+type SelectorRuleRead struct
+  Outcome RuleReadOutcome
+  Revision string
+  Record *SelectorRuleRecord
+type SelectorEdit struct
+  Outcome PolicyEditOutcome
+  Revision string
+  Current []SelectorRuleRecord
+  BundleOrigin *BundleOrigin
+type LegacyOperationRequest struct
+  LegacyAction string
+  LegacyResource string
+  ConcreteOperation *ConcreteResource
 func Encode(v *Request) []byte
 type Refusal struct
   Word string
@@ -189,6 +390,7 @@ type ServedService interface
   ServiceContract() string
 func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
 type Authorization interface
+  ListActionDescriptions(cursor string, limit int64) (DescriptionPage, error)
   Decide(action, resource string) (Decision, error)
   DecideFor(subject Subject, action, resource string) (Decision, error)
 type AuthorizationTransport interface
@@ -197,6 +399,7 @@ type AuthorizationClient struct
 func NewAuthorizationClient(t AuthorizationTransport) *AuthorizationClient
 type AuthorizationDispatcher struct
   Handler Authorization
+func (AuthorizationClient) ListActionDescriptions(cursor string, limit int64) (result DescriptionPage, err error)
 func (AuthorizationClient) Decide(action, resource string) (result Decision, err error)
 func (AuthorizationClient) DecideFor(subject Subject, action, resource string) (result Decision, err error)
 func (AuthorizationDispatcher) DescribeService() (contract string, ready bool, why string)
@@ -205,28 +408,258 @@ func (AuthorizationDispatcher) ServiceContract() string
 func (AuthorizationDispatcher) WriteFrame(frame []byte) error
 func (AuthorizationDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type AuthorizationOperator interface
+  RegisterDescribedAction(expectedRevision string, description ActionDescription) (DescriptionEdit, error)
+  ApplyFirstUseAllow(expectedRevision, questionID string) (PolicyEdit, error)
   ListPolicy(cursor string, limit int64) (PolicyPage, error)
   SetRule(expectedRevision string, rule PolicyRule) (PolicyEdit, error)
   RevokeRule(expectedRevision string, subject Subject, action, resource string) (PolicyEdit, error)
+  StopAnswerer(expectedRevision string, answerer Subject, alsoRevokeGrants bool) (PolicyEdit, error)
+  RevokeAnswerPermits(expectedRevision string, answerer, target Subject, actions []string, resource, questionID string) (PolicyEdit, error)
   SetRuleFor(expectedRevision string, rule PolicyRule, ttlMs int64, why string) (PolicyEdit, error)
+  SetRulesFor(expectedRevision string, rules []PolicyRule, ttlMs int64, why string) (PolicyEdit, error)
   ReadRule(subject Subject, action, resource string) (RuleRead, error)
   RegisterAction(expectedRevision, action string) (ActionEdit, error)
   RetireAction(expectedRevision, action string) (ActionEdit, error)
+  ExplainFor(subject Subject, action, resource string) (DecisionExplanation, error)
+  ListDefaults() (DefaultPage, error)
+  SetDefault(expectedRevision, name string, on bool) (DefaultEdit, error)
 type AuthorizationOperatorTransport interface
   FrameExchanger
 type AuthorizationOperatorClient struct
 func NewAuthorizationOperatorClient(t AuthorizationOperatorTransport) *AuthorizationOperatorClient
 type AuthorizationOperatorDispatcher struct
   Handler AuthorizationOperator
+func (AuthorizationOperatorClient) RegisterDescribedAction(expectedRevision string, description ActionDescription) (result DescriptionEdit, err error)
+func (AuthorizationOperatorClient) ApplyFirstUseAllow(expectedRevision, questionID string) (result PolicyEdit, err error)
 func (AuthorizationOperatorClient) ListPolicy(cursor string, limit int64) (result PolicyPage, err error)
 func (AuthorizationOperatorClient) SetRule(expectedRevision string, rule PolicyRule) (result PolicyEdit, err error)
 func (AuthorizationOperatorClient) RevokeRule(expectedRevision string, subject Subject, action, resource string) (result PolicyEdit, err error)
+func (AuthorizationOperatorClient) StopAnswerer(expectedRevision string, answerer Subject, alsoRevokeGrants bool) (result PolicyEdit, err error)
+func (AuthorizationOperatorClient) RevokeAnswerPermits(expectedRevision string, answerer, target Subject, actions []string, resource, questionID string) (result PolicyEdit, err error)
 func (AuthorizationOperatorClient) SetRuleFor(expectedRevision string, rule PolicyRule, ttlMs int64, why string) (result PolicyEdit, err error)
+func (AuthorizationOperatorClient) SetRulesFor(expectedRevision string, rules []PolicyRule, ttlMs int64, why string) (result PolicyEdit, err error)
 func (AuthorizationOperatorClient) ReadRule(subject Subject, action, resource string) (result RuleRead, err error)
 func (AuthorizationOperatorClient) RegisterAction(expectedRevision, action string) (result ActionEdit, err error)
 func (AuthorizationOperatorClient) RetireAction(expectedRevision, action string) (result ActionEdit, err error)
+func (AuthorizationOperatorClient) ExplainFor(subject Subject, action, resource string) (result DecisionExplanation, err error)
+func (AuthorizationOperatorClient) ListDefaults() (result DefaultPage, err error)
+func (AuthorizationOperatorClient) SetDefault(expectedRevision, name string, on bool) (result DefaultEdit, err error)
 func (AuthorizationOperatorDispatcher) DescribeService() (contract string, ready bool, why string)
 func (AuthorizationOperatorDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (AuthorizationOperatorDispatcher) ServiceContract() string
 func (AuthorizationOperatorDispatcher) WriteFrame(frame []byte) error
 func (AuthorizationOperatorDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type SelectorAuthorization interface
+  ListPermissionDefinitions(cursor string, limit int64) (PermissionDefinitionPage, error)
+  ListPermissionBundles(cursor string, limit int64) (PermissionBundlePage, error)
+  CheckBatch(request CheckBatchRequest) (BatchDecision, error)
+  CheckBatchFor(subject Subject, request CheckBatchRequest) (BatchDecision, error)
+  CheckLegacyOperationFor(subject Subject, request LegacyOperationRequest) (Decision, error)
+type SelectorAuthorizationTransport interface
+  FrameExchanger
+type SelectorAuthorizationClient struct
+func NewSelectorAuthorizationClient(t SelectorAuthorizationTransport) *SelectorAuthorizationClient
+type SelectorAuthorizationDispatcher struct
+  Handler SelectorAuthorization
+func (SelectorAuthorizationClient) ListPermissionDefinitions(cursor string, limit int64) (result PermissionDefinitionPage, err error)
+func (SelectorAuthorizationClient) ListPermissionBundles(cursor string, limit int64) (result PermissionBundlePage, err error)
+func (SelectorAuthorizationClient) CheckBatch(request CheckBatchRequest) (result BatchDecision, err error)
+func (SelectorAuthorizationClient) CheckBatchFor(subject Subject, request CheckBatchRequest) (result BatchDecision, err error)
+func (SelectorAuthorizationClient) CheckLegacyOperationFor(subject Subject, request LegacyOperationRequest) (result Decision, err error)
+func (SelectorAuthorizationDispatcher) DescribeService() (contract string, ready bool, why string)
+func (SelectorAuthorizationDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (SelectorAuthorizationDispatcher) ServiceContract() string
+func (SelectorAuthorizationDispatcher) WriteFrame(frame []byte) error
+func (SelectorAuthorizationDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type SelectorAuthorizationOperator interface
+  ListSelectorRules(cursor string, limit int64) (SelectorRulePage, error)
+  ReadSelectorRule(subject Subject, selection PermissionSelection) (SelectorRuleRead, error)
+  SetSelectorRule(expectedRevision string, rule SelectorRule, ttlMs int64, why string) (SelectorEdit, error)
+  RemoveSelectorRule(expectedRevision string, subject Subject, selection PermissionSelection) (SelectorEdit, error)
+  ApplyBundle(expectedRevision string, subject Subject, bundleRef string, selector ResourceSelector, ttlMs int64, why string) (SelectorEdit, error)
+  RemoveBundle(expectedRevision string, subject Subject, originID string) (SelectorEdit, error)
+  ApplyPermissionAllow(expectedRevision, questionID string) (SelectorEdit, error)
+  UndoPermissionEffect(expectedRevision, questionID string) (SelectorEdit, error)
+type SelectorAuthorizationOperatorTransport interface
+  FrameExchanger
+type SelectorAuthorizationOperatorClient struct
+func NewSelectorAuthorizationOperatorClient(t SelectorAuthorizationOperatorTransport) *SelectorAuthorizationOperatorClient
+type SelectorAuthorizationOperatorDispatcher struct
+  Handler SelectorAuthorizationOperator
+func (SelectorAuthorizationOperatorClient) ListSelectorRules(cursor string, limit int64) (result SelectorRulePage, err error)
+func (SelectorAuthorizationOperatorClient) ReadSelectorRule(subject Subject, selection PermissionSelection) (result SelectorRuleRead, err error)
+func (SelectorAuthorizationOperatorClient) SetSelectorRule(expectedRevision string, rule SelectorRule, ttlMs int64, why string) (result SelectorEdit, err error)
+func (SelectorAuthorizationOperatorClient) RemoveSelectorRule(expectedRevision string, subject Subject, selection PermissionSelection) (result SelectorEdit, err error)
+func (SelectorAuthorizationOperatorClient) ApplyBundle(expectedRevision string, subject Subject, bundleRef string, selector ResourceSelector, ttlMs int64, why string) (result SelectorEdit, err error)
+func (SelectorAuthorizationOperatorClient) RemoveBundle(expectedRevision string, subject Subject, originID string) (result SelectorEdit, err error)
+func (SelectorAuthorizationOperatorClient) ApplyPermissionAllow(expectedRevision, questionID string) (result SelectorEdit, err error)
+func (SelectorAuthorizationOperatorClient) UndoPermissionEffect(expectedRevision, questionID string) (result SelectorEdit, err error)
+func (SelectorAuthorizationOperatorDispatcher) DescribeService() (contract string, ready bool, why string)
+func (SelectorAuthorizationOperatorDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (SelectorAuthorizationOperatorDispatcher) ServiceContract() string
+func (SelectorAuthorizationOperatorDispatcher) WriteFrame(frame []byte) error
+func (SelectorAuthorizationOperatorDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+func DecodeRequestAt(in []byte, depth, limit int) (*Request, int, error)
+func EncodeRequestAt(v *Request, depth int) []byte
+func EncodeRequest(v *Request) []byte
+func DecodeRequest(in []byte) (*Request, error)
+func DecodeAppMetadataAt(in []byte, depth, limit int) (*AppMetadata, int, error)
+func EncodeAppMetadataAt(v *AppMetadata, depth int) []byte
+func EncodeAppMetadata(v *AppMetadata) []byte
+func DecodeAppMetadata(in []byte) (*AppMetadata, error)
+func DecodeHoldMetadataAt(in []byte, depth, limit int) (*HoldMetadata, int, error)
+func EncodeHoldMetadataAt(v *HoldMetadata, depth int) []byte
+func EncodeHoldMetadata(v *HoldMetadata) []byte
+func DecodeHoldMetadata(in []byte) (*HoldMetadata, error)
+func DecodeResponseMetadataAt(in []byte, depth, limit int) (*ResponseMetadata, int, error)
+func EncodeResponseMetadataAt(v *ResponseMetadata, depth int) []byte
+func EncodeResponseMetadata(v *ResponseMetadata) []byte
+func DecodeResponseMetadata(in []byte) (*ResponseMetadata, error)
+func DecodeSubjectAt(in []byte, depth, limit int) (*Subject, int, error)
+func EncodeSubjectAt(v *Subject, depth int) []byte
+func EncodeSubject(v *Subject) []byte
+func DecodeSubject(in []byte) (*Subject, error)
+func DecodeDecisionAt(in []byte, depth, limit int) (*Decision, int, error)
+func EncodeDecisionAt(v *Decision, depth int) []byte
+func EncodeDecision(v *Decision) []byte
+func DecodeDecision(in []byte) (*Decision, error)
+func DecodePolicyRuleAt(in []byte, depth, limit int) (*PolicyRule, int, error)
+func EncodePolicyRuleAt(v *PolicyRule, depth int) []byte
+func EncodePolicyRule(v *PolicyRule) []byte
+func DecodePolicyRule(in []byte) (*PolicyRule, error)
+func DecodePolicyPageAt(in []byte, depth, limit int) (*PolicyPage, int, error)
+func EncodePolicyPageAt(v *PolicyPage, depth int) []byte
+func EncodePolicyPage(v *PolicyPage) []byte
+func DecodePolicyPage(in []byte) (*PolicyPage, error)
+func DecodePolicyEditAt(in []byte, depth, limit int) (*PolicyEdit, int, error)
+func EncodePolicyEditAt(v *PolicyEdit, depth int) []byte
+func EncodePolicyEdit(v *PolicyEdit) []byte
+func DecodePolicyEdit(in []byte) (*PolicyEdit, error)
+func DecodeRuleRecordAt(in []byte, depth, limit int) (*RuleRecord, int, error)
+func EncodeRuleRecordAt(v *RuleRecord, depth int) []byte
+func EncodeRuleRecord(v *RuleRecord) []byte
+func DecodeRuleRecord(in []byte) (*RuleRecord, error)
+func DecodeRuleReadAt(in []byte, depth, limit int) (*RuleRead, int, error)
+func EncodeRuleReadAt(v *RuleRead, depth int) []byte
+func EncodeRuleRead(v *RuleRead) []byte
+func DecodeRuleRead(in []byte) (*RuleRead, error)
+func DecodeCatalogEntryAt(in []byte, depth, limit int) (*CatalogEntry, int, error)
+func EncodeCatalogEntryAt(v *CatalogEntry, depth int) []byte
+func EncodeCatalogEntry(v *CatalogEntry) []byte
+func DecodeCatalogEntry(in []byte) (*CatalogEntry, error)
+func DecodeActionDescriptionAt(in []byte, depth, limit int) (*ActionDescription, int, error)
+func EncodeActionDescriptionAt(v *ActionDescription, depth int) []byte
+func EncodeActionDescription(v *ActionDescription) []byte
+func DecodeActionDescription(in []byte) (*ActionDescription, error)
+func DecodePermissionDefinitionAt(in []byte, depth, limit int) (*PermissionDefinition, int, error)
+func EncodePermissionDefinitionAt(v *PermissionDefinition, depth int) []byte
+func EncodePermissionDefinition(v *PermissionDefinition) []byte
+func DecodePermissionDefinition(in []byte) (*PermissionDefinition, error)
+func DecodeDescribedActionAt(in []byte, depth, limit int) (*DescribedAction, int, error)
+func EncodeDescribedActionAt(v *DescribedAction, depth int) []byte
+func EncodeDescribedAction(v *DescribedAction) []byte
+func DecodeDescribedAction(in []byte) (*DescribedAction, error)
+func DecodeActionEditAt(in []byte, depth, limit int) (*ActionEdit, int, error)
+func EncodeActionEditAt(v *ActionEdit, depth int) []byte
+func EncodeActionEdit(v *ActionEdit) []byte
+func DecodeActionEdit(in []byte) (*ActionEdit, error)
+func DecodeDescriptionEditAt(in []byte, depth, limit int) (*DescriptionEdit, int, error)
+func EncodeDescriptionEditAt(v *DescriptionEdit, depth int) []byte
+func EncodeDescriptionEdit(v *DescriptionEdit) []byte
+func DecodeDescriptionEdit(in []byte) (*DescriptionEdit, error)
+func DecodeDescriptionPageAt(in []byte, depth, limit int) (*DescriptionPage, int, error)
+func EncodeDescriptionPageAt(v *DescriptionPage, depth int) []byte
+func EncodeDescriptionPage(v *DescriptionPage) []byte
+func DecodeDescriptionPage(in []byte) (*DescriptionPage, error)
+func DecodeAccountDefaultAt(in []byte, depth, limit int) (*AccountDefault, int, error)
+func EncodeAccountDefaultAt(v *AccountDefault, depth int) []byte
+func EncodeAccountDefault(v *AccountDefault) []byte
+func DecodeAccountDefault(in []byte) (*AccountDefault, error)
+func DecodeDefaultPageAt(in []byte, depth, limit int) (*DefaultPage, int, error)
+func EncodeDefaultPageAt(v *DefaultPage, depth int) []byte
+func EncodeDefaultPage(v *DefaultPage) []byte
+func DecodeDefaultPage(in []byte) (*DefaultPage, error)
+func DecodeDefaultEditAt(in []byte, depth, limit int) (*DefaultEdit, int, error)
+func EncodeDefaultEditAt(v *DefaultEdit, depth int) []byte
+func EncodeDefaultEdit(v *DefaultEdit) []byte
+func DecodeDefaultEdit(in []byte) (*DefaultEdit, error)
+func DecodeDecisionExplanationAt(in []byte, depth, limit int) (*DecisionExplanation, int, error)
+func EncodeDecisionExplanationAt(v *DecisionExplanation, depth int) []byte
+func EncodeDecisionExplanation(v *DecisionExplanation) []byte
+func DecodeDecisionExplanation(in []byte) (*DecisionExplanation, error)
+func DecodePermissionKeyAt(in []byte, depth, limit int) (*PermissionKey, int, error)
+func EncodePermissionKeyAt(v *PermissionKey, depth int) []byte
+func EncodePermissionKey(v *PermissionKey) []byte
+func DecodePermissionKey(in []byte) (*PermissionKey, error)
+func DecodeResourceSelectorAt(in []byte, depth, limit int) (*ResourceSelector, int, error)
+func EncodeResourceSelectorAt(v *ResourceSelector, depth int) []byte
+func EncodeResourceSelector(v *ResourceSelector) []byte
+func DecodeResourceSelector(in []byte) (*ResourceSelector, error)
+func DecodePermissionSelectionAt(in []byte, depth, limit int) (*PermissionSelection, int, error)
+func EncodePermissionSelectionAt(v *PermissionSelection, depth int) []byte
+func EncodePermissionSelection(v *PermissionSelection) []byte
+func DecodePermissionSelection(in []byte) (*PermissionSelection, error)
+func DecodeConcreteResourceAt(in []byte, depth, limit int) (*ConcreteResource, int, error)
+func EncodeConcreteResourceAt(v *ConcreteResource, depth int) []byte
+func EncodeConcreteResource(v *ConcreteResource) []byte
+func DecodeConcreteResource(in []byte) (*ConcreteResource, error)
+func DecodeCheckBatchRequestAt(in []byte, depth, limit int) (*CheckBatchRequest, int, error)
+func EncodeCheckBatchRequestAt(v *CheckBatchRequest, depth int) []byte
+func EncodeCheckBatchRequest(v *CheckBatchRequest) []byte
+func DecodeCheckBatchRequest(in []byte) (*CheckBatchRequest, error)
+func DecodeBatchDecisionAt(in []byte, depth, limit int) (*BatchDecision, int, error)
+func EncodeBatchDecisionAt(v *BatchDecision, depth int) []byte
+func EncodeBatchDecision(v *BatchDecision) []byte
+func DecodeBatchDecision(in []byte) (*BatchDecision, error)
+func DecodeSelectorPermissionDefinitionAt(in []byte, depth, limit int) (*SelectorPermissionDefinition, int, error)
+func EncodeSelectorPermissionDefinitionAt(v *SelectorPermissionDefinition, depth int) []byte
+func EncodeSelectorPermissionDefinition(v *SelectorPermissionDefinition) []byte
+func DecodeSelectorPermissionDefinition(in []byte) (*SelectorPermissionDefinition, error)
+func DecodePermissionDefinitionPageAt(in []byte, depth, limit int) (*PermissionDefinitionPage, int, error)
+func EncodePermissionDefinitionPageAt(v *PermissionDefinitionPage, depth int) []byte
+func EncodePermissionDefinitionPage(v *PermissionDefinitionPage) []byte
+func DecodePermissionDefinitionPage(in []byte) (*PermissionDefinitionPage, error)
+func DecodePermissionBundleDefinitionAt(in []byte, depth, limit int) (*PermissionBundleDefinition, int, error)
+func EncodePermissionBundleDefinitionAt(v *PermissionBundleDefinition, depth int) []byte
+func EncodePermissionBundleDefinition(v *PermissionBundleDefinition) []byte
+func DecodePermissionBundleDefinition(in []byte) (*PermissionBundleDefinition, error)
+func DecodePermissionBundlePageAt(in []byte, depth, limit int) (*PermissionBundlePage, int, error)
+func EncodePermissionBundlePageAt(v *PermissionBundlePage, depth int) []byte
+func EncodePermissionBundlePage(v *PermissionBundlePage) []byte
+func DecodePermissionBundlePage(in []byte) (*PermissionBundlePage, error)
+func DecodeBundleExpansionAt(in []byte, depth, limit int) (*BundleExpansion, int, error)
+func EncodeBundleExpansionAt(v *BundleExpansion, depth int) []byte
+func EncodeBundleExpansion(v *BundleExpansion) []byte
+func DecodeBundleExpansion(in []byte) (*BundleExpansion, error)
+func DecodePermissionEffectAt(in []byte, depth, limit int) (*PermissionEffect, int, error)
+func EncodePermissionEffectAt(v *PermissionEffect, depth int) []byte
+func EncodePermissionEffect(v *PermissionEffect) []byte
+func DecodePermissionEffect(in []byte) (*PermissionEffect, error)
+func DecodeSelectorRuleAt(in []byte, depth, limit int) (*SelectorRule, int, error)
+func EncodeSelectorRuleAt(v *SelectorRule, depth int) []byte
+func EncodeSelectorRule(v *SelectorRule) []byte
+func DecodeSelectorRule(in []byte) (*SelectorRule, error)
+func DecodeBundleOriginAt(in []byte, depth, limit int) (*BundleOrigin, int, error)
+func EncodeBundleOriginAt(v *BundleOrigin, depth int) []byte
+func EncodeBundleOrigin(v *BundleOrigin) []byte
+func DecodeBundleOrigin(in []byte) (*BundleOrigin, error)
+func DecodeSelectorRuleRecordAt(in []byte, depth, limit int) (*SelectorRuleRecord, int, error)
+func EncodeSelectorRuleRecordAt(v *SelectorRuleRecord, depth int) []byte
+func EncodeSelectorRuleRecord(v *SelectorRuleRecord) []byte
+func DecodeSelectorRuleRecord(in []byte) (*SelectorRuleRecord, error)
+func DecodeSelectorRulePageAt(in []byte, depth, limit int) (*SelectorRulePage, int, error)
+func EncodeSelectorRulePageAt(v *SelectorRulePage, depth int) []byte
+func EncodeSelectorRulePage(v *SelectorRulePage) []byte
+func DecodeSelectorRulePage(in []byte) (*SelectorRulePage, error)
+func DecodeSelectorRuleReadAt(in []byte, depth, limit int) (*SelectorRuleRead, int, error)
+func EncodeSelectorRuleReadAt(v *SelectorRuleRead, depth int) []byte
+func EncodeSelectorRuleRead(v *SelectorRuleRead) []byte
+func DecodeSelectorRuleRead(in []byte) (*SelectorRuleRead, error)
+func DecodeSelectorEditAt(in []byte, depth, limit int) (*SelectorEdit, int, error)
+func EncodeSelectorEditAt(v *SelectorEdit, depth int) []byte
+func EncodeSelectorEdit(v *SelectorEdit) []byte
+func DecodeSelectorEdit(in []byte) (*SelectorEdit, error)
+func DecodeLegacyOperationRequestAt(in []byte, depth, limit int) (*LegacyOperationRequest, int, error)
+func EncodeLegacyOperationRequestAt(v *LegacyOperationRequest, depth int) []byte
+func EncodeLegacyOperationRequest(v *LegacyOperationRequest) []byte
+func DecodeLegacyOperationRequest(in []byte) (*LegacyOperationRequest, error)

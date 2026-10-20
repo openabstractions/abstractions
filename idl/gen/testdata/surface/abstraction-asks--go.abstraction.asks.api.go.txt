@@ -63,6 +63,249 @@ func (OperatorRetirementOutcome) MarshalJSON() ([]byte, error)
 func (OperatorRetirementOutcome) UnmarshalJSON(data []byte) error
 func OperatorRetirementOutcomeValues() []OperatorRetirementOutcome
 func (OperatorRetirementOutcome) Known() bool
+type OperatorQuestionOutcome uint32
+const OperatorQuestionOutcomeFound
+const OperatorQuestionOutcomeUnknown
+const OperatorQuestionOutcomeInvalid
+const OperatorQuestionOutcomeForbidden
+const OperatorQuestionOutcomeUnavailable
+func (OperatorQuestionOutcome) String() string
+func (OperatorQuestionOutcome) WireName() (string, bool)
+func ParseOperatorQuestionOutcome(word string) (OperatorQuestionOutcome, bool)
+func (OperatorQuestionOutcome) MarshalText() ([]byte, error)
+func (OperatorQuestionOutcome) UnmarshalText(text []byte) error
+func (OperatorQuestionOutcome) MarshalJSON() ([]byte, error)
+func (OperatorQuestionOutcome) UnmarshalJSON(data []byte) error
+func OperatorQuestionOutcomeValues() []OperatorQuestionOutcome
+func (OperatorQuestionOutcome) Known() bool
+type Answerer uint32
+const AnswererOperator
+const AnswererResponder
+func (Answerer) String() string
+func (Answerer) WireName() (string, bool)
+func ParseAnswerer(word string) (Answerer, bool)
+func (Answerer) MarshalText() ([]byte, error)
+func (Answerer) UnmarshalText(text []byte) error
+func (Answerer) MarshalJSON() ([]byte, error)
+func (Answerer) UnmarshalJSON(data []byte) error
+func AnswererValues() []Answerer
+func (Answerer) Known() bool
+type ChoiceState uint32
+const ChoiceStatePending
+const ChoiceStateAnswered
+const ChoiceStateDismissed
+const ChoiceStateExpired
+func (ChoiceState) String() string
+func (ChoiceState) WireName() (string, bool)
+func ParseChoiceState(word string) (ChoiceState, bool)
+func (ChoiceState) MarshalText() ([]byte, error)
+func (ChoiceState) UnmarshalText(text []byte) error
+func (ChoiceState) MarshalJSON() ([]byte, error)
+func (ChoiceState) UnmarshalJSON(data []byte) error
+func ChoiceStateValues() []ChoiceState
+func (ChoiceState) Known() bool
+type ChoiceOutcome uint32
+const ChoiceOutcomePending
+const ChoiceOutcomeAnswered
+const ChoiceOutcomeDismissed
+const ChoiceOutcomeExpired
+const ChoiceOutcomeGone
+const ChoiceOutcomeUnknown
+const ChoiceOutcomeConflict
+const ChoiceOutcomeInvalid
+const ChoiceOutcomeExhausted
+const ChoiceOutcomeForbidden
+const ChoiceOutcomeUnavailable
+func (ChoiceOutcome) String() string
+func (ChoiceOutcome) WireName() (string, bool)
+func ParseChoiceOutcome(word string) (ChoiceOutcome, bool)
+func (ChoiceOutcome) MarshalText() ([]byte, error)
+func (ChoiceOutcome) UnmarshalText(text []byte) error
+func (ChoiceOutcome) MarshalJSON() ([]byte, error)
+func (ChoiceOutcome) UnmarshalJSON(data []byte) error
+func ChoiceOutcomeValues() []ChoiceOutcome
+func (ChoiceOutcome) Known() bool
+type ChoiceAckOutcome uint32
+const ChoiceAckOutcomeAcknowledged
+const ChoiceAckOutcomeConflict
+const ChoiceAckOutcomeUnknown
+const ChoiceAckOutcomeExpired
+const ChoiceAckOutcomeInvalid
+const ChoiceAckOutcomeForbidden
+const ChoiceAckOutcomeUnavailable
+func (ChoiceAckOutcome) String() string
+func (ChoiceAckOutcome) WireName() (string, bool)
+func ParseChoiceAckOutcome(word string) (ChoiceAckOutcome, bool)
+func (ChoiceAckOutcome) MarshalText() ([]byte, error)
+func (ChoiceAckOutcome) UnmarshalText(text []byte) error
+func (ChoiceAckOutcome) MarshalJSON() ([]byte, error)
+func (ChoiceAckOutcome) UnmarshalJSON(data []byte) error
+func ChoiceAckOutcomeValues() []ChoiceAckOutcome
+func (ChoiceAckOutcome) Known() bool
+type ChoiceDecisionOutcome uint32
+const ChoiceDecisionOutcomeAnswered
+const ChoiceDecisionOutcomeDismissed
+const ChoiceDecisionOutcomeExpired
+const ChoiceDecisionOutcomeGone
+const ChoiceDecisionOutcomeUnknown
+const ChoiceDecisionOutcomeConflict
+const ChoiceDecisionOutcomeInvalid
+const ChoiceDecisionOutcomeForbidden
+const ChoiceDecisionOutcomeUnavailable
+func (ChoiceDecisionOutcome) String() string
+func (ChoiceDecisionOutcome) WireName() (string, bool)
+func ParseChoiceDecisionOutcome(word string) (ChoiceDecisionOutcome, bool)
+func (ChoiceDecisionOutcome) MarshalText() ([]byte, error)
+func (ChoiceDecisionOutcome) UnmarshalText(text []byte) error
+func (ChoiceDecisionOutcome) MarshalJSON() ([]byte, error)
+func (ChoiceDecisionOutcome) UnmarshalJSON(data []byte) error
+func ChoiceDecisionOutcomeValues() []ChoiceDecisionOutcome
+func (ChoiceDecisionOutcome) Known() bool
+type ChoiceRoute uint32
+const ChoiceRouteRequester
+const ChoiceRouteOperator
+const ChoiceRouteResponder
+func (ChoiceRoute) String() string
+func (ChoiceRoute) WireName() (string, bool)
+func ParseChoiceRoute(word string) (ChoiceRoute, bool)
+func (ChoiceRoute) MarshalText() ([]byte, error)
+func (ChoiceRoute) UnmarshalText(text []byte) error
+func (ChoiceRoute) MarshalJSON() ([]byte, error)
+func (ChoiceRoute) UnmarshalJSON(data []byte) error
+func ChoiceRouteValues() []ChoiceRoute
+func (ChoiceRoute) Known() bool
+type AnswerKind uint32
+const AnswerKindQuestion
+const AnswerKindChoice
+func (AnswerKind) String() string
+func (AnswerKind) WireName() (string, bool)
+func ParseAnswerKind(word string) (AnswerKind, bool)
+func (AnswerKind) MarshalText() ([]byte, error)
+func (AnswerKind) UnmarshalText(text []byte) error
+func (AnswerKind) MarshalJSON() ([]byte, error)
+func (AnswerKind) UnmarshalJSON(data []byte) error
+func AnswerKindValues() []AnswerKind
+func (AnswerKind) Known() bool
+type ResponderEffectOutcome uint32
+const ResponderEffectOutcomeNone
+const ResponderEffectOutcomeApplied
+const ResponderEffectOutcomeConflict
+const ResponderEffectOutcomeForbidden
+const ResponderEffectOutcomeUnavailable
+func (ResponderEffectOutcome) String() string
+func (ResponderEffectOutcome) WireName() (string, bool)
+func ParseResponderEffectOutcome(word string) (ResponderEffectOutcome, bool)
+func (ResponderEffectOutcome) MarshalText() ([]byte, error)
+func (ResponderEffectOutcome) UnmarshalText(text []byte) error
+func (ResponderEffectOutcome) MarshalJSON() ([]byte, error)
+func (ResponderEffectOutcome) UnmarshalJSON(data []byte) error
+func ResponderEffectOutcomeValues() []ResponderEffectOutcome
+func (ResponderEffectOutcome) Known() bool
+type PermissionOutcome uint32
+const PermissionOutcomePending
+const PermissionOutcomeAnswered
+const PermissionOutcomeUnknown
+const PermissionOutcomeGone
+const PermissionOutcomeInvalid
+const PermissionOutcomeConflict
+const PermissionOutcomeForbidden
+const PermissionOutcomeUnavailable
+const PermissionOutcomePermitted
+const PermissionOutcomeDenied
+func (PermissionOutcome) String() string
+func (PermissionOutcome) WireName() (string, bool)
+func ParsePermissionOutcome(word string) (PermissionOutcome, bool)
+func (PermissionOutcome) MarshalText() ([]byte, error)
+func (PermissionOutcome) UnmarshalText(text []byte) error
+func (PermissionOutcome) MarshalJSON() ([]byte, error)
+func (PermissionOutcome) UnmarshalJSON(data []byte) error
+func PermissionOutcomeValues() []PermissionOutcome
+func (PermissionOutcome) Known() bool
+type NotificationActivation uint32
+const NotificationActivationApp
+const NotificationActivationOpenActivity
+func (NotificationActivation) String() string
+func (NotificationActivation) WireName() (string, bool)
+func ParseNotificationActivation(word string) (NotificationActivation, bool)
+func (NotificationActivation) MarshalText() ([]byte, error)
+func (NotificationActivation) UnmarshalText(text []byte) error
+func (NotificationActivation) MarshalJSON() ([]byte, error)
+func (NotificationActivation) UnmarshalJSON(data []byte) error
+func NotificationActivationValues() []NotificationActivation
+func (NotificationActivation) Known() bool
+type NotificationDelivery uint32
+const NotificationDeliveryNow
+const NotificationDeliveryOperationEnd
+func (NotificationDelivery) String() string
+func (NotificationDelivery) WireName() (string, bool)
+func ParseNotificationDelivery(word string) (NotificationDelivery, bool)
+func (NotificationDelivery) MarshalText() ([]byte, error)
+func (NotificationDelivery) UnmarshalText(text []byte) error
+func (NotificationDelivery) MarshalJSON() ([]byte, error)
+func (NotificationDelivery) UnmarshalJSON(data []byte) error
+func NotificationDeliveryValues() []NotificationDelivery
+func (NotificationDelivery) Known() bool
+type NotificationState uint32
+const NotificationStateScheduled
+const NotificationStatePosted
+const NotificationStateActed
+const NotificationStateDismissed
+const NotificationStateWithdrawn
+const NotificationStateExpired
+func (NotificationState) String() string
+func (NotificationState) WireName() (string, bool)
+func ParseNotificationState(word string) (NotificationState, bool)
+func (NotificationState) MarshalText() ([]byte, error)
+func (NotificationState) UnmarshalText(text []byte) error
+func (NotificationState) MarshalJSON() ([]byte, error)
+func (NotificationState) UnmarshalJSON(data []byte) error
+func NotificationStateValues() []NotificationState
+func (NotificationState) Known() bool
+type NotificationOutcome uint32
+const NotificationOutcomeScheduled
+const NotificationOutcomePosted
+const NotificationOutcomeActed
+const NotificationOutcomeDismissed
+const NotificationOutcomeWithdrawn
+const NotificationOutcomeExpired
+const NotificationOutcomeGone
+const NotificationOutcomeUnknown
+const NotificationOutcomeConflict
+const NotificationOutcomeInvalid
+const NotificationOutcomeSuppressed
+const NotificationOutcomeExhausted
+const NotificationOutcomeForbidden
+const NotificationOutcomeUnavailable
+func (NotificationOutcome) String() string
+func (NotificationOutcome) WireName() (string, bool)
+func ParseNotificationOutcome(word string) (NotificationOutcome, bool)
+func (NotificationOutcome) MarshalText() ([]byte, error)
+func (NotificationOutcome) UnmarshalText(text []byte) error
+func (NotificationOutcome) MarshalJSON() ([]byte, error)
+func (NotificationOutcome) UnmarshalJSON(data []byte) error
+func NotificationOutcomeValues() []NotificationOutcome
+func (NotificationOutcome) Known() bool
+type NotificationDecisionOutcome uint32
+const NotificationDecisionOutcomeActed
+const NotificationDecisionOutcomeDismissed
+const NotificationDecisionOutcomeWithdrawn
+const NotificationDecisionOutcomeExpired
+const NotificationDecisionOutcomeGone
+const NotificationDecisionOutcomeUnknown
+const NotificationDecisionOutcomeConflict
+const NotificationDecisionOutcomeStale
+const NotificationDecisionOutcomeInvalid
+const NotificationDecisionOutcomeForbidden
+const NotificationDecisionOutcomeUnavailable
+func (NotificationDecisionOutcome) String() string
+func (NotificationDecisionOutcome) WireName() (string, bool)
+func ParseNotificationDecisionOutcome(word string) (NotificationDecisionOutcome, bool)
+func (NotificationDecisionOutcome) MarshalText() ([]byte, error)
+func (NotificationDecisionOutcome) UnmarshalText(text []byte) error
+func (NotificationDecisionOutcome) MarshalJSON() ([]byte, error)
+func (NotificationDecisionOutcome) UnmarshalJSON(data []byte) error
+func NotificationDecisionOutcomeValues() []NotificationDecisionOutcome
+func (NotificationDecisionOutcome) Known() bool
 type ServiceErrorCode string
 const ServiceErrorCodeHandlerError
 const ServiceErrorCodeInvalidResult
@@ -127,6 +370,208 @@ type OperatorDecision struct
 type OperatorRetirement struct
   Outcome OperatorRetirementOutcome
   Record *RecordMetadata
+type OperatorQuestion struct
+  Outcome OperatorQuestionOutcome
+  Record *RecordMetadata
+  Publisher string
+  PublisherTrusted bool
+  AnsweredBy *Answerer
+  ProgramDescription string
+  ProgramOriginalName string
+type AttributedQuestion struct
+  Question OperatorQuestion
+  Answerer string
+type PermissionTarget struct
+  Account string
+  Program string
+  Action string
+  Resource string
+type PermissionRequest struct
+  Targets []PermissionTarget
+type QuestionDetails struct
+  Question AttributedQuestion
+  Permission *PermissionRequest
+type QuestionAsker struct
+  Details QuestionDetails
+  Program string
+type RequestRef struct
+  Key string
+  ReplayUntilMs int64
+type ChoiceOption struct
+  ID string
+  Label string
+type ChoiceRequest struct
+  RequestRef RequestRef
+  Title string
+  Options []ChoiceOption
+  PendingUntilMs int64
+type ChoiceAnswer struct
+  ID string
+  Option string
+  AnsweredMs int64
+  AnsweredBy string
+type ChoiceObservation struct
+  Outcome ChoiceOutcome
+  ID string
+  Answer *ChoiceAnswer
+type ChoiceAcknowledgement struct
+  Outcome ChoiceAckOutcome
+type ChoiceRecord struct
+  ID string
+  Asker string
+  Request ChoiceRequest
+  State ChoiceState
+  AskedMs int64
+  Answer *ChoiceAnswer
+  Publisher string
+  PublisherTrusted bool
+  ProgramDescription string
+  ProgramOriginalName string
+type ChoicePage struct
+  Outcome OperatorPageOutcome
+  Records []ChoiceRecord
+  Next string
+  Complete bool
+type ChoiceRead struct
+  Outcome OperatorQuestionOutcome
+  Record *ChoiceRecord
+type ChoiceDecision struct
+  Outcome ChoiceDecisionOutcome
+  Record *ChoiceRecord
+type ChoiceDetails struct
+  Choice ChoiceRead
+  AskerProgram string
+  AssistantOptions []string
+  AnsweredVia *ChoiceRoute
+type AnswerEntry struct
+  ID string
+  Kind AnswerKind
+  Key string
+  Asker string
+  AskerProgram string
+  Publisher string
+  PublisherTrusted bool
+  About string
+  Title string
+  Option string
+  Label string
+  AnsweredBy Answerer
+  Answerer string
+  AnsweredMs int64
+type AnswerEntryPage struct
+  Outcome OperatorPageOutcome
+  Answers []AnswerEntry
+  Next string
+  Complete bool
+  CompleteSinceMs int64
+type AnswerableChoice struct
+  ID string
+  Asker string
+  Title string
+  Options []ChoiceOption
+  PendingUntilMs int64
+  Publisher string
+  PublisherTrusted bool
+type AnswerableChoicePage struct
+  Outcome OperatorPageOutcome
+  Choices []AnswerableChoice
+  Next string
+  Complete bool
+type ResponderDecision struct
+  Outcome OperatorDecisionOutcome
+  Record *RecordMetadata
+  Effect ResponderEffectOutcome
+  TargetOutcome string
+type PermissionIntent struct
+  RequestKey string
+  Selection *oaImported0
+  BundleRef string
+  BundleSelector *oaImported1
+  Purpose string
+type PermissionObservation struct
+  Outcome PermissionOutcome
+  Answer *Answer
+  PolicyRevision string
+type TypedPermissionDetails struct
+  Question AttributedQuestion
+  Effect *oaImported2
+  EffectDigest string
+  Origin string
+  Purpose string
+  Display *PermissionDisplay
+type PermissionDisplaySelection struct
+  Operation string
+  Target string
+  Collection string
+  AllEffect string
+  Disclosure string
+type PermissionDisplay struct
+  Selections []PermissionDisplaySelection
+  BundleLabel string
+  BundleDisclosure string
+  RequiresOSAuthorization bool
+type NotificationAction struct
+  ID string
+  Title string
+  Activation NotificationActivation
+type NotificationRequest struct
+  RequestRef RequestRef
+  Title string
+  Body string
+  Actions []NotificationAction
+  ExpiresMs int64
+  OperationID string
+  Tag string
+  Delivery NotificationDelivery
+type NotificationResult struct
+  ID string
+  State NotificationState
+  Action string
+  DecidedMs int64
+  DecidedBy string
+type NotificationObservation struct
+  Outcome NotificationOutcome
+  ID string
+  Result *NotificationResult
+type NotificationRecord struct
+  ID string
+  Asker string
+  Program string
+  Request NotificationRequest
+  State NotificationState
+  AdmittedMs int64
+  PostedMs int64
+  Result *NotificationResult
+  Publisher string
+  PublisherTrusted bool
+  ProgramDescription string
+  ProgramOriginalName string
+  Presentation string
+type NotificationPage struct
+  Outcome OperatorPageOutcome
+  Records []NotificationRecord
+  Next string
+  Complete bool
+type NotificationRead struct
+  Outcome OperatorQuestionOutcome
+  Record *NotificationRecord
+type NotificationDecision struct
+  Outcome NotificationDecisionOutcome
+  Record *NotificationRecord
+  Count int64
+type NotifierDay struct
+  DayMs int64
+  Posts int64
+type NotifierCount struct
+  Program string
+  Asker string
+  Days []NotifierDay
+  LastPostedMs int64
+type NotifierPage struct
+  Outcome OperatorPageOutcome
+  Notifiers []NotifierCount
+  Next string
+  Complete bool
 func Encode(v *Request) []byte
 type Refusal struct
   Word string
@@ -169,20 +614,354 @@ func (QuestionApplicationDispatcher) ServiceContract() string
 func (QuestionApplicationDispatcher) WriteFrame(frame []byte) error
 func (QuestionApplicationDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type QuestionOperator interface
+  ListChoices(cursor string, limit int64) (ChoicePage, error)
+  ReadChoice(id string) (ChoiceRead, error)
+  AnswerChoice(id, option string, ifPending bool) (ChoiceDecision, error)
+  DismissChoice(id string) (ChoiceDecision, error)
   ListQuestions(cursor string, limit int64) (OperatorPage, error)
   AnswerQuestion(id, option string) (OperatorDecision, error)
   RetireQuestion(id string) (OperatorRetirement, error)
+  ReadAttributedQuestion(id string) (AttributedQuestion, error)
+  ReadChoiceDetails(id string) (ChoiceDetails, error)
+  ReadQuestionAsker(id string) (QuestionAsker, error)
+  AnswerQuestionIfPending(id, option string) (OperatorDecision, error)
+  ListAnswers(cursor string, limit int64) (AnswerEntryPage, error)
 type QuestionOperatorTransport interface
   FrameExchanger
 type QuestionOperatorClient struct
 func NewQuestionOperatorClient(t QuestionOperatorTransport) *QuestionOperatorClient
 type QuestionOperatorDispatcher struct
   Handler QuestionOperator
+func (QuestionOperatorClient) ListChoices(cursor string, limit int64) (result ChoicePage, err error)
+func (QuestionOperatorClient) ReadChoice(id string) (result ChoiceRead, err error)
+func (QuestionOperatorClient) AnswerChoice(id, option string, ifPending bool) (result ChoiceDecision, err error)
+func (QuestionOperatorClient) DismissChoice(id string) (result ChoiceDecision, err error)
 func (QuestionOperatorClient) ListQuestions(cursor string, limit int64) (result OperatorPage, err error)
 func (QuestionOperatorClient) AnswerQuestion(id, option string) (result OperatorDecision, err error)
 func (QuestionOperatorClient) RetireQuestion(id string) (result OperatorRetirement, err error)
+func (QuestionOperatorClient) ReadAttributedQuestion(id string) (result AttributedQuestion, err error)
+func (QuestionOperatorClient) ReadChoiceDetails(id string) (result ChoiceDetails, err error)
+func (QuestionOperatorClient) ReadQuestionAsker(id string) (result QuestionAsker, err error)
+func (QuestionOperatorClient) AnswerQuestionIfPending(id, option string) (result OperatorDecision, err error)
+func (QuestionOperatorClient) ListAnswers(cursor string, limit int64) (result AnswerEntryPage, err error)
 func (QuestionOperatorDispatcher) DescribeService() (contract string, ready bool, why string)
 func (QuestionOperatorDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (QuestionOperatorDispatcher) ServiceContract() string
 func (QuestionOperatorDispatcher) WriteFrame(frame []byte) error
 func (QuestionOperatorDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type ChoiceApplication interface
+  Ask(request ChoiceRequest) (ChoiceObservation, error)
+  Observe(requestRef RequestRef, waitMs int64) (ChoiceObservation, error)
+  Answer(requestRef RequestRef, option string, ifPending bool) (ChoiceDecision, error)
+  Dismiss(requestRef RequestRef) (ChoiceDecision, error)
+  ShareChoice(request ChoiceRequest, assistantOptions []string) (ChoiceObservation, error)
+  Acknowledge(requestRef RequestRef, answer ChoiceAnswer) (ChoiceAcknowledgement, error)
+type ChoiceApplicationTransport interface
+  FrameExchanger
+type ChoiceApplicationClient struct
+func NewChoiceApplicationClient(t ChoiceApplicationTransport) *ChoiceApplicationClient
+type ChoiceApplicationDispatcher struct
+  Handler ChoiceApplication
+func (ChoiceApplicationClient) Ask(request ChoiceRequest) (result ChoiceObservation, err error)
+func (ChoiceApplicationClient) Observe(requestRef RequestRef, waitMs int64) (result ChoiceObservation, err error)
+func (ChoiceApplicationClient) Answer(requestRef RequestRef, option string, ifPending bool) (result ChoiceDecision, err error)
+func (ChoiceApplicationClient) Dismiss(requestRef RequestRef) (result ChoiceDecision, err error)
+func (ChoiceApplicationClient) ShareChoice(request ChoiceRequest, assistantOptions []string) (result ChoiceObservation, err error)
+func (ChoiceApplicationClient) Acknowledge(requestRef RequestRef, answer ChoiceAnswer) (result ChoiceAcknowledgement, err error)
+func (ChoiceApplicationDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ChoiceApplicationDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (ChoiceApplicationDispatcher) ServiceContract() string
+func (ChoiceApplicationDispatcher) WriteFrame(frame []byte) error
+func (ChoiceApplicationDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type QuestionResponder interface
+  ListAnswerable(cursor string, limit int64) (OperatorPage, error)
+  Answer(id, option string) (ResponderDecision, error)
+  ListChoices(cursor string, limit int64) (AnswerableChoicePage, error)
+  RequestAnswering() (oaImported3, error)
+  AnswerChoice(id, option string) (ChoiceDecision, error)
+type QuestionResponderTransport interface
+  FrameExchanger
+type QuestionResponderClient struct
+func NewQuestionResponderClient(t QuestionResponderTransport) *QuestionResponderClient
+type QuestionResponderDispatcher struct
+  Handler QuestionResponder
+func (QuestionResponderClient) ListAnswerable(cursor string, limit int64) (result OperatorPage, err error)
+func (QuestionResponderClient) Answer(id, option string) (result ResponderDecision, err error)
+func (QuestionResponderClient) ListChoices(cursor string, limit int64) (result AnswerableChoicePage, err error)
+func (QuestionResponderClient) RequestAnswering() (result oaImported3, err error)
+func (QuestionResponderClient) AnswerChoice(id, option string) (result ChoiceDecision, err error)
+func (QuestionResponderDispatcher) DescribeService() (contract string, ready bool, why string)
+func (QuestionResponderDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (QuestionResponderDispatcher) ServiceContract() string
+func (QuestionResponderDispatcher) WriteFrame(frame []byte) error
+func (QuestionResponderDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type PermissionApplication interface
+  Request(request PermissionIntent) (PermissionObservation, error)
+  Observe(requestKey string, waitMs int64) (PermissionObservation, error)
+type PermissionApplicationTransport interface
+  FrameExchanger
+type PermissionApplicationClient struct
+func NewPermissionApplicationClient(t PermissionApplicationTransport) *PermissionApplicationClient
+type PermissionApplicationDispatcher struct
+  Handler PermissionApplication
+func (PermissionApplicationClient) Request(request PermissionIntent) (result PermissionObservation, err error)
+func (PermissionApplicationClient) Observe(requestKey string, waitMs int64) (result PermissionObservation, err error)
+func (PermissionApplicationDispatcher) DescribeService() (contract string, ready bool, why string)
+func (PermissionApplicationDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (PermissionApplicationDispatcher) ServiceContract() string
+func (PermissionApplicationDispatcher) WriteFrame(frame []byte) error
+func (PermissionApplicationDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type PermissionOperator interface
+  ListPermissions(cursor string, limit int64) (OperatorPage, error)
+  ReadPermissionDetails(id string) (TypedPermissionDetails, error)
+  AnswerPermissionIfPending(id, option string) (OperatorDecision, error)
+type PermissionOperatorTransport interface
+  FrameExchanger
+type PermissionOperatorClient struct
+func NewPermissionOperatorClient(t PermissionOperatorTransport) *PermissionOperatorClient
+type PermissionOperatorDispatcher struct
+  Handler PermissionOperator
+func (PermissionOperatorClient) ListPermissions(cursor string, limit int64) (result OperatorPage, err error)
+func (PermissionOperatorClient) ReadPermissionDetails(id string) (result TypedPermissionDetails, err error)
+func (PermissionOperatorClient) AnswerPermissionIfPending(id, option string) (result OperatorDecision, err error)
+func (PermissionOperatorDispatcher) DescribeService() (contract string, ready bool, why string)
+func (PermissionOperatorDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (PermissionOperatorDispatcher) ServiceContract() string
+func (PermissionOperatorDispatcher) WriteFrame(frame []byte) error
+func (PermissionOperatorDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type NotificationApplication interface
+  Post(request NotificationRequest) (NotificationObservation, error)
+  Observe(requestRef RequestRef, waitMs int64) (NotificationObservation, error)
+  Withdraw(requestRef RequestRef) (NotificationObservation, error)
+  Acknowledge(requestRef RequestRef, result_ NotificationResult) (ChoiceAcknowledgement, error)
+type NotificationApplicationTransport interface
+  FrameExchanger
+type NotificationApplicationClient struct
+func NewNotificationApplicationClient(t NotificationApplicationTransport) *NotificationApplicationClient
+type NotificationApplicationDispatcher struct
+  Handler NotificationApplication
+func (NotificationApplicationClient) Post(request NotificationRequest) (result NotificationObservation, err error)
+func (NotificationApplicationClient) Observe(requestRef RequestRef, waitMs int64) (result NotificationObservation, err error)
+func (NotificationApplicationClient) Withdraw(requestRef RequestRef) (result NotificationObservation, err error)
+func (NotificationApplicationClient) Acknowledge(requestRef RequestRef, result_ NotificationResult) (result ChoiceAcknowledgement, err error)
+func (NotificationApplicationDispatcher) DescribeService() (contract string, ready bool, why string)
+func (NotificationApplicationDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (NotificationApplicationDispatcher) ServiceContract() string
+func (NotificationApplicationDispatcher) WriteFrame(frame []byte) error
+func (NotificationApplicationDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type NotificationOperator interface
+  ListNotifications(cursor string, limit int64) (NotificationPage, error)
+  ReadNotification(id string) (NotificationRead, error)
+  Act(id, action, presentation string) (NotificationDecision, error)
+  Dismiss(id string) (NotificationDecision, error)
+  WithdrawProgram(program string) (NotificationDecision, error)
+  ListNotifiers(cursor string, limit int64) (NotifierPage, error)
+type NotificationOperatorTransport interface
+  FrameExchanger
+type NotificationOperatorClient struct
+func NewNotificationOperatorClient(t NotificationOperatorTransport) *NotificationOperatorClient
+type NotificationOperatorDispatcher struct
+  Handler NotificationOperator
+func (NotificationOperatorClient) ListNotifications(cursor string, limit int64) (result NotificationPage, err error)
+func (NotificationOperatorClient) ReadNotification(id string) (result NotificationRead, err error)
+func (NotificationOperatorClient) Act(id, action, presentation string) (result NotificationDecision, err error)
+func (NotificationOperatorClient) Dismiss(id string) (result NotificationDecision, err error)
+func (NotificationOperatorClient) WithdrawProgram(program string) (result NotificationDecision, err error)
+func (NotificationOperatorClient) ListNotifiers(cursor string, limit int64) (result NotifierPage, err error)
+func (NotificationOperatorDispatcher) DescribeService() (contract string, ready bool, why string)
+func (NotificationOperatorDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (NotificationOperatorDispatcher) ServiceContract() string
+func (NotificationOperatorDispatcher) WriteFrame(frame []byte) error
+func (NotificationOperatorDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+func DecodeQuestionAt(in []byte, depth, limit int) (*Question, int, error)
+func EncodeQuestionAt(v *Question, depth int) []byte
+func EncodeQuestion(v *Question) []byte
+func DecodeQuestion(in []byte) (*Question, error)
+func DecodeRequestAt(in []byte, depth, limit int) (*Request, int, error)
+func EncodeRequestAt(v *Request, depth int) []byte
+func EncodeRequest(v *Request) []byte
+func DecodeRequest(in []byte) (*Request, error)
+func DecodeAnswerAt(in []byte, depth, limit int) (*Answer, int, error)
+func EncodeAnswerAt(v *Answer, depth int) []byte
+func EncodeAnswer(v *Answer) []byte
+func DecodeAnswer(in []byte) (*Answer, error)
+func DecodeRecordMetadataAt(in []byte, depth, limit int) (*RecordMetadata, int, error)
+func EncodeRecordMetadataAt(v *RecordMetadata, depth int) []byte
+func EncodeRecordMetadata(v *RecordMetadata) []byte
+func DecodeRecordMetadata(in []byte) (*RecordMetadata, error)
+func DecodeResponseMetadataAt(in []byte, depth, limit int) (*ResponseMetadata, int, error)
+func EncodeResponseMetadataAt(v *ResponseMetadata, depth int) []byte
+func EncodeResponseMetadata(v *ResponseMetadata) []byte
+func DecodeResponseMetadata(in []byte) (*ResponseMetadata, error)
+func DecodeApplicationQuestionAt(in []byte, depth, limit int) (*ApplicationQuestion, int, error)
+func EncodeApplicationQuestionAt(v *ApplicationQuestion, depth int) []byte
+func EncodeApplicationQuestion(v *ApplicationQuestion) []byte
+func DecodeApplicationQuestion(in []byte) (*ApplicationQuestion, error)
+func DecodeQuestionObservationAt(in []byte, depth, limit int) (*QuestionObservation, int, error)
+func EncodeQuestionObservationAt(v *QuestionObservation, depth int) []byte
+func EncodeQuestionObservation(v *QuestionObservation) []byte
+func DecodeQuestionObservation(in []byte) (*QuestionObservation, error)
+func DecodeOperatorPageAt(in []byte, depth, limit int) (*OperatorPage, int, error)
+func EncodeOperatorPageAt(v *OperatorPage, depth int) []byte
+func EncodeOperatorPage(v *OperatorPage) []byte
+func DecodeOperatorPage(in []byte) (*OperatorPage, error)
+func DecodeOperatorDecisionAt(in []byte, depth, limit int) (*OperatorDecision, int, error)
+func EncodeOperatorDecisionAt(v *OperatorDecision, depth int) []byte
+func EncodeOperatorDecision(v *OperatorDecision) []byte
+func DecodeOperatorDecision(in []byte) (*OperatorDecision, error)
+func DecodeOperatorRetirementAt(in []byte, depth, limit int) (*OperatorRetirement, int, error)
+func EncodeOperatorRetirementAt(v *OperatorRetirement, depth int) []byte
+func EncodeOperatorRetirement(v *OperatorRetirement) []byte
+func DecodeOperatorRetirement(in []byte) (*OperatorRetirement, error)
+func DecodeOperatorQuestionAt(in []byte, depth, limit int) (*OperatorQuestion, int, error)
+func EncodeOperatorQuestionAt(v *OperatorQuestion, depth int) []byte
+func EncodeOperatorQuestion(v *OperatorQuestion) []byte
+func DecodeOperatorQuestion(in []byte) (*OperatorQuestion, error)
+func DecodeAttributedQuestionAt(in []byte, depth, limit int) (*AttributedQuestion, int, error)
+func EncodeAttributedQuestionAt(v *AttributedQuestion, depth int) []byte
+func EncodeAttributedQuestion(v *AttributedQuestion) []byte
+func DecodeAttributedQuestion(in []byte) (*AttributedQuestion, error)
+func DecodePermissionTargetAt(in []byte, depth, limit int) (*PermissionTarget, int, error)
+func EncodePermissionTargetAt(v *PermissionTarget, depth int) []byte
+func EncodePermissionTarget(v *PermissionTarget) []byte
+func DecodePermissionTarget(in []byte) (*PermissionTarget, error)
+func DecodePermissionRequestAt(in []byte, depth, limit int) (*PermissionRequest, int, error)
+func EncodePermissionRequestAt(v *PermissionRequest, depth int) []byte
+func EncodePermissionRequest(v *PermissionRequest) []byte
+func DecodePermissionRequest(in []byte) (*PermissionRequest, error)
+func DecodeQuestionDetailsAt(in []byte, depth, limit int) (*QuestionDetails, int, error)
+func EncodeQuestionDetailsAt(v *QuestionDetails, depth int) []byte
+func EncodeQuestionDetails(v *QuestionDetails) []byte
+func DecodeQuestionDetails(in []byte) (*QuestionDetails, error)
+func DecodeQuestionAskerAt(in []byte, depth, limit int) (*QuestionAsker, int, error)
+func EncodeQuestionAskerAt(v *QuestionAsker, depth int) []byte
+func EncodeQuestionAsker(v *QuestionAsker) []byte
+func DecodeQuestionAsker(in []byte) (*QuestionAsker, error)
+func DecodeRequestRefAt(in []byte, depth, limit int) (*RequestRef, int, error)
+func EncodeRequestRefAt(v *RequestRef, depth int) []byte
+func EncodeRequestRef(v *RequestRef) []byte
+func DecodeRequestRef(in []byte) (*RequestRef, error)
+func DecodeChoiceOptionAt(in []byte, depth, limit int) (*ChoiceOption, int, error)
+func EncodeChoiceOptionAt(v *ChoiceOption, depth int) []byte
+func EncodeChoiceOption(v *ChoiceOption) []byte
+func DecodeChoiceOption(in []byte) (*ChoiceOption, error)
+func DecodeChoiceRequestAt(in []byte, depth, limit int) (*ChoiceRequest, int, error)
+func EncodeChoiceRequestAt(v *ChoiceRequest, depth int) []byte
+func EncodeChoiceRequest(v *ChoiceRequest) []byte
+func DecodeChoiceRequest(in []byte) (*ChoiceRequest, error)
+func DecodeChoiceAnswerAt(in []byte, depth, limit int) (*ChoiceAnswer, int, error)
+func EncodeChoiceAnswerAt(v *ChoiceAnswer, depth int) []byte
+func EncodeChoiceAnswer(v *ChoiceAnswer) []byte
+func DecodeChoiceAnswer(in []byte) (*ChoiceAnswer, error)
+func DecodeChoiceObservationAt(in []byte, depth, limit int) (*ChoiceObservation, int, error)
+func EncodeChoiceObservationAt(v *ChoiceObservation, depth int) []byte
+func EncodeChoiceObservation(v *ChoiceObservation) []byte
+func DecodeChoiceObservation(in []byte) (*ChoiceObservation, error)
+func DecodeChoiceAcknowledgementAt(in []byte, depth, limit int) (*ChoiceAcknowledgement, int, error)
+func EncodeChoiceAcknowledgementAt(v *ChoiceAcknowledgement, depth int) []byte
+func EncodeChoiceAcknowledgement(v *ChoiceAcknowledgement) []byte
+func DecodeChoiceAcknowledgement(in []byte) (*ChoiceAcknowledgement, error)
+func DecodeChoiceRecordAt(in []byte, depth, limit int) (*ChoiceRecord, int, error)
+func EncodeChoiceRecordAt(v *ChoiceRecord, depth int) []byte
+func EncodeChoiceRecord(v *ChoiceRecord) []byte
+func DecodeChoiceRecord(in []byte) (*ChoiceRecord, error)
+func DecodeChoicePageAt(in []byte, depth, limit int) (*ChoicePage, int, error)
+func EncodeChoicePageAt(v *ChoicePage, depth int) []byte
+func EncodeChoicePage(v *ChoicePage) []byte
+func DecodeChoicePage(in []byte) (*ChoicePage, error)
+func DecodeChoiceReadAt(in []byte, depth, limit int) (*ChoiceRead, int, error)
+func EncodeChoiceReadAt(v *ChoiceRead, depth int) []byte
+func EncodeChoiceRead(v *ChoiceRead) []byte
+func DecodeChoiceRead(in []byte) (*ChoiceRead, error)
+func DecodeChoiceDecisionAt(in []byte, depth, limit int) (*ChoiceDecision, int, error)
+func EncodeChoiceDecisionAt(v *ChoiceDecision, depth int) []byte
+func EncodeChoiceDecision(v *ChoiceDecision) []byte
+func DecodeChoiceDecision(in []byte) (*ChoiceDecision, error)
+func DecodeChoiceDetailsAt(in []byte, depth, limit int) (*ChoiceDetails, int, error)
+func EncodeChoiceDetailsAt(v *ChoiceDetails, depth int) []byte
+func EncodeChoiceDetails(v *ChoiceDetails) []byte
+func DecodeChoiceDetails(in []byte) (*ChoiceDetails, error)
+func DecodeAnswerEntryAt(in []byte, depth, limit int) (*AnswerEntry, int, error)
+func EncodeAnswerEntryAt(v *AnswerEntry, depth int) []byte
+func EncodeAnswerEntry(v *AnswerEntry) []byte
+func DecodeAnswerEntry(in []byte) (*AnswerEntry, error)
+func DecodeAnswerEntryPageAt(in []byte, depth, limit int) (*AnswerEntryPage, int, error)
+func EncodeAnswerEntryPageAt(v *AnswerEntryPage, depth int) []byte
+func EncodeAnswerEntryPage(v *AnswerEntryPage) []byte
+func DecodeAnswerEntryPage(in []byte) (*AnswerEntryPage, error)
+func DecodeAnswerableChoiceAt(in []byte, depth, limit int) (*AnswerableChoice, int, error)
+func EncodeAnswerableChoiceAt(v *AnswerableChoice, depth int) []byte
+func EncodeAnswerableChoice(v *AnswerableChoice) []byte
+func DecodeAnswerableChoice(in []byte) (*AnswerableChoice, error)
+func DecodeAnswerableChoicePageAt(in []byte, depth, limit int) (*AnswerableChoicePage, int, error)
+func EncodeAnswerableChoicePageAt(v *AnswerableChoicePage, depth int) []byte
+func EncodeAnswerableChoicePage(v *AnswerableChoicePage) []byte
+func DecodeAnswerableChoicePage(in []byte) (*AnswerableChoicePage, error)
+func DecodeResponderDecisionAt(in []byte, depth, limit int) (*ResponderDecision, int, error)
+func EncodeResponderDecisionAt(v *ResponderDecision, depth int) []byte
+func EncodeResponderDecision(v *ResponderDecision) []byte
+func DecodeResponderDecision(in []byte) (*ResponderDecision, error)
+func DecodePermissionIntentAt(in []byte, depth, limit int) (*PermissionIntent, int, error)
+func EncodePermissionIntentAt(v *PermissionIntent, depth int) []byte
+func EncodePermissionIntent(v *PermissionIntent) []byte
+func DecodePermissionIntent(in []byte) (*PermissionIntent, error)
+func DecodePermissionObservationAt(in []byte, depth, limit int) (*PermissionObservation, int, error)
+func EncodePermissionObservationAt(v *PermissionObservation, depth int) []byte
+func EncodePermissionObservation(v *PermissionObservation) []byte
+func DecodePermissionObservation(in []byte) (*PermissionObservation, error)
+func DecodeTypedPermissionDetailsAt(in []byte, depth, limit int) (*TypedPermissionDetails, int, error)
+func EncodeTypedPermissionDetailsAt(v *TypedPermissionDetails, depth int) []byte
+func EncodeTypedPermissionDetails(v *TypedPermissionDetails) []byte
+func DecodeTypedPermissionDetails(in []byte) (*TypedPermissionDetails, error)
+func DecodePermissionDisplaySelectionAt(in []byte, depth, limit int) (*PermissionDisplaySelection, int, error)
+func EncodePermissionDisplaySelectionAt(v *PermissionDisplaySelection, depth int) []byte
+func EncodePermissionDisplaySelection(v *PermissionDisplaySelection) []byte
+func DecodePermissionDisplaySelection(in []byte) (*PermissionDisplaySelection, error)
+func DecodePermissionDisplayAt(in []byte, depth, limit int) (*PermissionDisplay, int, error)
+func EncodePermissionDisplayAt(v *PermissionDisplay, depth int) []byte
+func EncodePermissionDisplay(v *PermissionDisplay) []byte
+func DecodePermissionDisplay(in []byte) (*PermissionDisplay, error)
+func DecodeNotificationActionAt(in []byte, depth, limit int) (*NotificationAction, int, error)
+func EncodeNotificationActionAt(v *NotificationAction, depth int) []byte
+func EncodeNotificationAction(v *NotificationAction) []byte
+func DecodeNotificationAction(in []byte) (*NotificationAction, error)
+func DecodeNotificationRequestAt(in []byte, depth, limit int) (*NotificationRequest, int, error)
+func EncodeNotificationRequestAt(v *NotificationRequest, depth int) []byte
+func EncodeNotificationRequest(v *NotificationRequest) []byte
+func DecodeNotificationRequest(in []byte) (*NotificationRequest, error)
+func DecodeNotificationResultAt(in []byte, depth, limit int) (*NotificationResult, int, error)
+func EncodeNotificationResultAt(v *NotificationResult, depth int) []byte
+func EncodeNotificationResult(v *NotificationResult) []byte
+func DecodeNotificationResult(in []byte) (*NotificationResult, error)
+func DecodeNotificationObservationAt(in []byte, depth, limit int) (*NotificationObservation, int, error)
+func EncodeNotificationObservationAt(v *NotificationObservation, depth int) []byte
+func EncodeNotificationObservation(v *NotificationObservation) []byte
+func DecodeNotificationObservation(in []byte) (*NotificationObservation, error)
+func DecodeNotificationRecordAt(in []byte, depth, limit int) (*NotificationRecord, int, error)
+func EncodeNotificationRecordAt(v *NotificationRecord, depth int) []byte
+func EncodeNotificationRecord(v *NotificationRecord) []byte
+func DecodeNotificationRecord(in []byte) (*NotificationRecord, error)
+func DecodeNotificationPageAt(in []byte, depth, limit int) (*NotificationPage, int, error)
+func EncodeNotificationPageAt(v *NotificationPage, depth int) []byte
+func EncodeNotificationPage(v *NotificationPage) []byte
+func DecodeNotificationPage(in []byte) (*NotificationPage, error)
+func DecodeNotificationReadAt(in []byte, depth, limit int) (*NotificationRead, int, error)
+func EncodeNotificationReadAt(v *NotificationRead, depth int) []byte
+func EncodeNotificationRead(v *NotificationRead) []byte
+func DecodeNotificationRead(in []byte) (*NotificationRead, error)
+func DecodeNotificationDecisionAt(in []byte, depth, limit int) (*NotificationDecision, int, error)
+func EncodeNotificationDecisionAt(v *NotificationDecision, depth int) []byte
+func EncodeNotificationDecision(v *NotificationDecision) []byte
+func DecodeNotificationDecision(in []byte) (*NotificationDecision, error)
+func DecodeNotifierDayAt(in []byte, depth, limit int) (*NotifierDay, int, error)
+func EncodeNotifierDayAt(v *NotifierDay, depth int) []byte
+func EncodeNotifierDay(v *NotifierDay) []byte
+func DecodeNotifierDay(in []byte) (*NotifierDay, error)
+func DecodeNotifierCountAt(in []byte, depth, limit int) (*NotifierCount, int, error)
+func EncodeNotifierCountAt(v *NotifierCount, depth int) []byte
+func EncodeNotifierCount(v *NotifierCount) []byte
+func DecodeNotifierCount(in []byte) (*NotifierCount, error)
+func DecodeNotifierPageAt(in []byte, depth, limit int) (*NotifierPage, int, error)
+func EncodeNotifierPageAt(v *NotifierPage, depth int) []byte
+func EncodeNotifierPage(v *NotifierPage) []byte
+func DecodeNotifierPage(in []byte) (*NotifierPage, error)

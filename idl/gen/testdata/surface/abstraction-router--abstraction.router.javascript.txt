@@ -1,9 +1,34 @@
+enum AvailabilityCause
+  TransportUnavailable
+  Credential
+  Rights
+  Configuration
+  Malformed
+  Unknown
+  Other
+enum ContextSource
+  Effective
+  Maximum
+  Default
+  Unknown
+  None
 class DispatchError
+enum OfferOutcome
+  Offered
+  Invalid
+  Unavailable
+  Forbidden
+  NotPermitted
+enum Placement
+  Local
+  Hosted
+  Any
 class Refusal
 class RouterClient
   models(fresh)
   hosts(fresh)
   pick(request)
+  offer(request)
 object RouterService {wireName, Client}
 class ServiceError
 enum ServiceErrorCode
@@ -31,6 +56,7 @@ function newAlias()
   profiles
   heldIn
   contextLength
+  effectiveContextLength
 function newAsk()
   at
   caller
@@ -80,6 +106,7 @@ function newHostState()
   declaredBy
   profiles
   domain
+  availabilityCause
 function newHostsSnapshot()
   observation
   hosts
@@ -92,6 +119,23 @@ function newObservation()
   caller
   tookMs
   cacheAgeMs
+function newOffer()
+  family
+  names
+  servers
+  context
+  contextSource
+  input
+  unknown
+function newOfferRequest()
+  profile
+  placement
+  reserve
+  fresh
+function newOfferSnapshot()
+  observation
+  offers
+  outcome
 function newPickRequest()
   model
   fresh

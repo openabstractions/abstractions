@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"unsafe"
 
+	identity "github.com/openabstractions/abstraction-identity"
 	"golang.org/x/sys/windows"
 )
 
@@ -177,9 +178,19 @@ func userInstallFolder(folder string) (string, error) {
 	return longPath(clean), nil
 }
 
+// containsFolder reports whether folders already lists folder: by file
+// identity when both exist (identity.SameFile), and by name when either is
+// still to be created, as the incoming package's folder can be
+// (identity.SamePathName).
 func containsFolder(folders []string, folder string) bool {
 	for _, f := range folders {
-		if strings.EqualFold(strings.TrimRight(f, `\/`), strings.TrimRight(folder, `\/`)) {
+		if same, err := identity.SameFile(f, folder); err == nil {
+			if same {
+				return true
+			}
+			continue
+		}
+		if identity.SamePathName(strings.TrimRight(f, `\/`), strings.TrimRight(folder, `\/`)) {
 			return true
 		}
 	}

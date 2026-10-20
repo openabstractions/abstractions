@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "pins": [
+    {
+      "component_id": "lemonade-engine",
+      "artifact": {
+        "version": "v2026.39.1",
+        "source_commit": "6ce82052b69c5ffd9157ed102b739d180cdc24a5",
+        "source_url": "https://github.com/lemonade-sdk/lemonade/commit/6ce82052b69c5ffd9157ed102b739d180cdc24a5",
+        "platform": "windows/amd64",
+        "url": "https://github.com/lemonade-sdk/lemonade/releases/download/v2026.39.1/lemonade-embeddable-2026.39.1-windows-x64.zip",
+        "sha256": "235c2361be3a9729a06b92c97e40a9530ebb8e5088bd3334524472d6da7fbbca",
+        "bytes": 5357376,
+        "peak_bytes": 30000000,
+        "license": "Apache-2.0",
+        "publisher": "lemonade-sdk",
+        "signature": "unsigned",
+        "install_identity": "lemonade",
+        "action": "archive_per_user"
+      }
+    },
+    {
+      "component_id": "lemonade-engine",
+      "artifact": {
+        "version": "v2026.39.1",
+        "source_commit": "6ce82052b69c5ffd9157ed102b739d180cdc24a5",
+        "source_url": "https://github.com/lemonade-sdk/lemonade/commit/6ce82052b69c5ffd9157ed102b739d180cdc24a5",
+        "platform": "windows/amd64",
+        "url": "https://github.com/lemonade-sdk/lemonade/releases/download/v2026.39.1/lemonade-embeddable-2026.39.1-windows-x64.zip",
+        "sha256": "235c2361be3a9729a06b92c97e40a9530ebb8e5088bd3334524472d6da7fbbca",
+        "bytes": 5357376,
+        "peak_bytes": 30000000,
+        "license": "Apache-2.0",
+        "publisher": "lemonade-sdk",
+        "signature": "unsigned",
+        "install_identity": "lemonade",
+        "action": "archive_per_user",
+        "tested_backend_sha256": "b9248856707de2e125538ede8a7dc71a9d800bba67e469e60881dae2a5a1c0a2",
+        "tested_model_revision": "5f526678002e43af5551dadb73ce2e8c91b43afe"
+      }
+    },
+    {
+      "component_id": "thenoise-engine",
+      "artifact": {
+        "version": "0.9.1",
+        "source_commit": "5e6218c3a546b124a514d32e505a5f1a064d36c9",
+        "source_url": "https://github.com/lemonade-sdk/thenoise/commit/5e6218c3a546b124a514d32e505a5f1a064d36c9",
+        "platform": "windows/amd64",
+        "url": "https://github.com/lemonade-sdk/thenoise/releases/download/thenoise-0.9.1-rocm10.1.0/thenoise-0.9.1-rocm10.1.0-gfx1151-win-x64.zip",
+        "sha256": "0a639633d6aff9523190c557f2377ba8ef4afab5b02644b3778082793cbdf737",
+        "bytes": 1633390238,
+        "peak_bytes": 7516192768,
+        "license": "Apache-2.0 and bundled dependency licenses",
+        "publisher": "lemonade-sdk",
+        "signature": "unsigned",
+        "install_identity": "tn",
+        "action": "archive_per_user"
+      }
+    }
+  ]
+}

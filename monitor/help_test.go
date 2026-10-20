@@ -20,8 +20,6 @@ var pageFragments = map[string]string{
 	"credentials": credentialsPage,
 	"rights":      rightsPage,
 	"settings":    settingsPage,
-	"logging":     loggingPage,
-	"identity":    identityPage,
 	"explore":     explorePage,
 }
 

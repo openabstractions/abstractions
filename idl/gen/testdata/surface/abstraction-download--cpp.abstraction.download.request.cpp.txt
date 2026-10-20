@@ -12,6 +12,7 @@ inline constexpr bool operator!=(std::string_view name, Network value)
 inline const std::vector<std::string> kNetworkNames
 inline const std::vector<std::string> kDownstreamRecoveryGuarantees
 inline const std::vector<std::string> kCredentialGuarantees
+inline const std::vector<std::string> kScopedCredentialGuarantees
 inline const std::vector<std::string> kNetworkCostGuarantees
 inline const std::vector<std::string> kWaitingExtensions
 struct Constraints

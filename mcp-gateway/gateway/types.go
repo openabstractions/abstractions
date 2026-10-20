@@ -8,6 +8,7 @@ const (
 	ToolComplete     = "oa_inference_complete"
 	ToolJobSubmit    = "oa_inference_job_submit"
 	ToolJobStatus    = "oa_inference_job_status"
+	ToolJobDiagnose  = "oa_inference_job_diagnose"
 	ToolJobCancel    = "oa_inference_job_cancel"
 )
 
@@ -91,8 +92,8 @@ type JobSubmitInput struct {
 	Profile    string `json:"profile" jsonschema:"image_batch or video"`
 	Model      string `json:"model" jsonschema:"model family or alias"`
 	Prompt     string `json:"prompt" jsonschema:"generation prompt, at most 65536 bytes"`
-	Hosting    string `json:"hosting" jsonschema:"must be hosted for the currently supported durable providers"`
-	Credential string `json:"credential" jsonschema:"authorized OA credential name, never a secret value"`
+	Hosting    string `json:"hosting" jsonschema:"local (this computer's servers, no credential) or hosted (with a credential)"`
+	Credential string `json:"credential,omitempty" jsonschema:"for hosted only: an authorized OA credential name, never a secret value; local work takes none"`
 	Size       string `json:"size,omitempty" jsonschema:"provider-supported output size"`
 	Count      int64  `json:"count,omitempty" jsonschema:"image count, 1 to 10"`
 	DurationMS int64  `json:"duration_ms,omitempty" jsonschema:"video duration, 1 to 600000 milliseconds"`
@@ -120,6 +121,19 @@ type JobStatusOutput struct {
 	Result        any              `json:"result,omitempty"`
 }
 
+// JobDiagnosisOutput is a bounded, handle-scoped explanation. It deliberately
+// carries typed failure fields and guidance, never failure text or job content.
+type JobDiagnosisOutput struct {
+	Scope        string           `json:"scope"`
+	Outcome      string           `json:"outcome"`
+	State        string           `json:"state,omitempty"`
+	Waiting      bool             `json:"waiting"`
+	Progress     map[string]int64 `json:"progress,omitempty"`
+	FailureClass string           `json:"failure_class,omitempty"`
+	FailureCause string           `json:"failure_cause,omitempty"`
+	Guidance     string           `json:"guidance"`
+}
+
 type JobCancelOutput struct {
 	Outcome string `json:"outcome"`
 }
@@ -132,5 +146,6 @@ type Backend interface {
 	Complete(context.Context, CompleteInput) (CompleteOutput, error)
 	Submit(context.Context, JobSubmitInput) (JobSubmitOutput, error)
 	Status(context.Context, JobHandleInput) (JobStatusOutput, error)
+	Diagnose(context.Context, JobHandleInput) (JobDiagnosisOutput, error)
 	Cancel(context.Context, JobHandleInput) (JobCancelOutput, error)
 }

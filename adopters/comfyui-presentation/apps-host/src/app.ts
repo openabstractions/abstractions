@@ -13,6 +13,8 @@ type Proposal = {
   revision?: string;
   before?: number;
   after?: number;
+  workflow_title?: string;
+  request_summary?: string;
 };
 
 function text(id: string, value: unknown) {
@@ -24,7 +26,9 @@ export function renderResult(result: CallToolResult) {
   const record = (result.structuredContent ?? {}) as Proposal;
   document.getElementById("loading")!.hidden = true;
   if (record.outcome === "proposed" && Number.isFinite(record.node) && record.widget) {
-    text("target", `Change ${record.title || "the"} node ${record.node}’s ${record.widget} from ${record.before} to ${record.after}?`);
+    text("target", `In ComfyUI’s ${record.workflow_title || "current workflow"}, change ${record.widget} on ${record.title || "node"} node ${record.node} from ${record.before} to ${record.after}?`);
+    text("request-summary", record.request_summary || "No request summary was supplied with this preview.");
+    text("workflow", record.workflow_title || "Untitled workflow");
     text("node", record.node);
     text("widget", record.widget);
     text("instance", record.instance);

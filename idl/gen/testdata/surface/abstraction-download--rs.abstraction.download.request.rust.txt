@@ -7,6 +7,7 @@ pub enum Network
   pub fn from_wire(name: &str) -> Option<Self>
 pub const DOWNSTREAM_RECOVERY_GUARANTEES: [&str; 1]
 pub const CREDENTIAL_GUARANTEES: [&str; 1]
+pub const SCOPED_CREDENTIAL_GUARANTEES: [&str; 1]
 pub const NETWORK_COST_GUARANTEES: [&str; 1]
 pub const WAITING_EXTENSIONS: [&str; 1]
 pub struct Constraints

@@ -99,4 +99,4 @@ for mode in ['normal', 'empty']:
         run([executable, 'absent'], cwd=home, environment=client_env)
         assert not list(home.rglob('*')), 'absent-service fallback created state'
 print('PASS: installed C++ client -> generated RPC -> shared IPC -> identity-bound Go router provider')
-print('Scope: Models/Hosts/Pick subset on ' + ('Windows' if windows else 'Linux') + '; no GPU-cost, HTTP-window or OS-installation claim.')
+print('Scope: Models/Hosts/Pick/Offer subset on ' + ('Windows' if windows else 'Linux') + '; no GPU-cost, HTTP-window or OS-installation claim.')

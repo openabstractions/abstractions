@@ -10,9 +10,9 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -20,12 +20,17 @@ import (
 	"testing"
 	"time"
 
+	asks "github.com/openabstractions/abstraction-asks/go"
 	fwire "github.com/openabstractions/abstraction-facade/go-core/go/abstraction/facade"
 	"github.com/openabstractions/abstraction-facade/go-core/resolution"
+	"github.com/openabstractions/abstraction-facade/go/client"
+	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-identity/listen"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	iwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
+	rights "github.com/openabstractions/abstraction-rights/go/client"
+	routerservice "github.com/openabstractions/abstraction-router/go/service"
 )
 
 const openCodeProviderFixtureArg = "-oa-opencode-provider-fixture"
@@ -100,10 +105,31 @@ func (f openCodeFixtureChat) Observe(operation string, cursor, _, _, waitMS int6
 		return iwire.DeltaPage{Outcome: iwire.PageOutcomePage,
 			Deltas: []iwire.Delta{{Sequence: 0, Kind: iwire.DeltaKindPart, Index: 0, Part: &part}}, Next: 1}, nil
 	}
+	if state.Label == "unavailable" {
+		part := iwire.Part{Kind: iwire.PartKindText, Text: "partial answer"}
+		end := iwire.Reply{Outcome: iwire.ReplyOutcomeUnavailable, Reason: "upstream:error",
+			Message: iwire.Message{Role: iwire.RoleAssistant, Parts: []iwire.Part{}}, StopReason: iwire.StopReasonNoStop,
+			Usage: iwire.Usage{Input: 7, Output: 1}, Host: state.Label, Model: "fixture-model"}
+		return iwire.DeltaPage{Outcome: iwire.PageOutcomePage, Deltas: []iwire.Delta{
+			{Sequence: 0, Kind: iwire.DeltaKindPart, Index: 0, Part: &part},
+			{Sequence: 1, Kind: iwire.DeltaKindEnd, End: &end},
+		}, Next: 2, AtEnd: true}, nil
+	}
 	part := iwire.Part{Kind: iwire.PartKindText, Text: "native-oa-" + state.Label}
 	stop := iwire.StopReasonEnd
 	if state.Mode == "tool" {
 		part = iwire.Part{Kind: iwire.PartKindToolCall, CallID: "oa-native-call", Name: "glob", Arguments: `{"pattern":"native-oa-never-match-*","path":"."}`}
+		if state.Label == "image" {
+			part = iwire.Part{Kind: iwire.PartKindToolCall, CallID: "oa-native-image-call", Name: "openabstractions_generate_image",
+				Arguments: `{"model":"user.LocalApprovedKlein","prompt":"A watercolor fox reading a book under a tree","size":"512x512"}`}
+		} else if state.Label == "question" {
+			args, err := os.ReadFile(filepath.Join(f.dir, "question-call.json"))
+			if err != nil {
+				return iwire.DeltaPage{}, err
+			}
+			part = iwire.Part{Kind: iwire.PartKindToolCall, CallID: "oa-native-question-call",
+				Name: "openabstractions_authorization_questions", Arguments: string(args)}
+		}
 		stop = iwire.StopReasonToolCalls
 	}
 	end := iwire.Reply{Outcome: iwire.ReplyOutcomeCompleted, Message: iwire.Message{Role: iwire.RoleAssistant, Parts: []iwire.Part{}},
@@ -166,6 +192,12 @@ func copyTree(t *testing.T, source, target string) {
 		if walkErr != nil {
 			return walkErr
 		}
+		if path != source && entry.Name() == "node_modules" && entry.IsDir() {
+			return filepath.SkipDir
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
 		rel, err := filepath.Rel(source, path)
 		if err != nil {
 			return err
@@ -192,11 +224,7 @@ func copyTree(t *testing.T, source, target string) {
 }
 
 func fileURL(path string) string {
-	path = filepath.ToSlash(path)
-	if runtime.GOOS == "windows" {
-		path = "/" + path
-	}
-	return (&url.URL{Scheme: "file", Path: path}).String()
+	return openCodeFileURL(path)
 }
 
 type openCodeProviderSources struct {
@@ -204,6 +232,9 @@ type openCodeProviderSources struct {
 	facade    string
 	inference string
 	ipc       string
+	router    string
+	asks      string
+	rights    string
 }
 
 func findOpenCodeProviderSources(charterRoot string) (openCodeProviderSources, error) {
@@ -220,16 +251,22 @@ func findOpenCodeProviderSources(charterRoot string) (openCodeProviderSources, e
 	// The private workspace keeps generated packages under openabstractions-flat.
 	// A public workflow checks the layer repositories out beside the charter
 	// repository, as the facade binding workflow does.
-	layouts := [][3]string{
+	layouts := [][6]string{
 		{
 			filepath.Join(charterRoot, "openabstractions-flat", "abstraction-facade", "javascript"),
 			filepath.Join(charterRoot, "openabstractions-flat", "abstraction-inference", "javascript"),
 			filepath.Join(charterRoot, "openabstractions-flat", "abstraction-identity", "javascript"),
+			filepath.Join(charterRoot, "openabstractions-flat", "abstraction-router", "javascript"),
+			filepath.Join(charterRoot, "openabstractions-flat", "abstraction-asks", "javascript"),
+			filepath.Join(charterRoot, "openabstractions-flat", "abstraction-rights", "javascript"),
 		},
 		{
 			filepath.Join(filepath.Dir(charterRoot), "abstraction-facade", "javascript"),
 			filepath.Join(filepath.Dir(charterRoot), "abstraction-inference", "javascript"),
 			filepath.Join(filepath.Dir(charterRoot), "abstraction-identity", "javascript"),
+			filepath.Join(filepath.Dir(charterRoot), "abstraction-router", "javascript"),
+			filepath.Join(filepath.Dir(charterRoot), "abstraction-asks", "javascript"),
+			filepath.Join(filepath.Dir(charterRoot), "abstraction-rights", "javascript"),
 		},
 	}
 	if info, err := os.Stat(filepath.Join(charterRoot, "openabstractions-flat")); err == nil {
@@ -251,7 +288,7 @@ func findOpenCodeProviderSources(charterRoot string) (openCodeProviderSources, e
 			}
 		}
 		if complete {
-			sources.facade, sources.inference, sources.ipc = layout[0], layout[1], layout[2]
+			sources.facade, sources.inference, sources.ipc, sources.router, sources.asks, sources.rights = layout[0], layout[1], layout[2], layout[3], layout[4], layout[5]
 			return sources, nil
 		}
 	}
@@ -268,9 +305,66 @@ func stageOpenCodeProviderFrom(t *testing.T, charterRoot string) string {
 	provider := filepath.Join(root, "provider")
 	copyTree(t, sources.provider, provider)
 	modules := filepath.Join(provider, "node_modules", "@openabstractions")
+	// The provider imports @ai-sdk/provider at load. Without an explicit
+	// module directory, use the adopter's own installed dependencies
+	// (npm ci in adopters/opencode); without either, the provider cannot load.
+	external := os.Getenv("OA_AI_SDK_PROVIDER_MODULES")
+	if external == "" {
+		local, err := filepath.Abs(filepath.Join(sources.provider, "node_modules"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(filepath.Join(local, "@ai-sdk", "provider")); err != nil {
+			t.Skip("OpenCode provider dependencies are not installed: run npm ci in adopters/opencode or set OA_AI_SDK_PROVIDER_MODULES")
+		}
+		external = local
+	}
+	{
+		if !filepath.IsAbs(external) {
+			t.Fatalf("OA_AI_SDK_PROVIDER_MODULES must be absolute: %s", external)
+		}
+		resolveModule := func(path string) string {
+			for i := 0; i < 8; i++ {
+				link, err := os.Readlink(path)
+				if err != nil {
+					return path
+				}
+				if filepath.IsAbs(link) {
+					path = link
+				} else {
+					path = filepath.Join(filepath.Dir(path), link)
+				}
+			}
+			t.Fatalf("external package link chain is too deep: %s", path)
+			return ""
+		}
+		// Bun's installed node_modules can contain junctions. Copy only the
+		// external runtime dependencies from their resolved package directories.
+		sdk := resolveModule(filepath.Join(external, "@ai-sdk", "provider"))
+		if err := os.MkdirAll(filepath.Join(provider, "node_modules", "@ai-sdk"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		copyTree(t, sdk, filepath.Join(provider, "node_modules", "@ai-sdk", "provider"))
+		plugin := resolveModule(filepath.Join(external, "@opencode-ai", "plugin"))
+		if _, err := os.Stat(plugin); err == nil {
+			if err := os.MkdirAll(filepath.Join(provider, "node_modules", "@opencode-ai"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			copyTree(t, plugin, filepath.Join(provider, "node_modules", "@opencode-ai", "plugin"))
+			// Bun nests zod under the plugin; npm hoists it beside the plugin.
+			zod := resolveModule(filepath.Join(plugin, "node_modules", "zod"))
+			if _, err := os.Stat(zod); err != nil {
+				zod = resolveModule(filepath.Join(external, "zod"))
+			}
+			copyTree(t, zod, filepath.Join(provider, "node_modules", "zod"))
+		}
+	}
 	copyTree(t, sources.facade, filepath.Join(modules, "facade"))
 	copyTree(t, sources.inference, filepath.Join(modules, "inference"))
 	copyTree(t, sources.ipc, filepath.Join(modules, "ipc"))
+	copyTree(t, sources.router, filepath.Join(modules, "router"))
+	copyTree(t, sources.asks, filepath.Join(modules, "asks"))
+	copyTree(t, sources.rights, filepath.Join(modules, "rights"))
 	return filepath.Join(provider, "index.js")
 }
 
@@ -312,7 +406,8 @@ try {
   await model.doGenerate({prompt: []});
   console.log(JSON.stringify({error: "request unexpectedly succeeded"}));
 } catch (error) {
-  console.log(JSON.stringify({error: String(error)}));
+  // The provider shows a safe sentence and keeps the underlying failure as cause.
+  console.log(JSON.stringify({error: String(error) + " | cause: " + String(error?.cause ?? "")}));
 }
 `, bun, fileURL(provider))
 		cmd := exec.Command(node, "--input-type=module", "--eval", script)
@@ -360,6 +455,85 @@ try {
 	})
 }
 
+func TestOpenCodeStartupPluginRefreshesModelsFromRouterInventory(t *testing.T) {
+	opencode, library := os.Getenv("OA_OPENCODE_BINARY"), os.Getenv("OA_IPC_LIBRARY")
+	if opencode == "" || library == "" {
+		t.Skip("set OA_OPENCODE_BINARY and OA_IPC_LIBRARY for the OpenCode startup inventory proof")
+	}
+	if !statusTransportProvesProgram(t) {
+		t.Skip("Program proof unavailable on current shared transport")
+	}
+	upstream, _ := fakeOllama(t)
+	options, _ := isolatedRuntime(t)
+	if err := os.MkdirAll(filepath.Join(options.stateDir, "inference"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(options.stateDir, "inference", inferenceHostsFile), []byte(`{"local":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	startInferenceRuntime(t, options)
+	endpointArgs := []string{"--endpoint", options.endpoint, "--timeout", "30s"}
+	if out, err := runInference(t, append([]string{"host", "add", "ollama", "--base", upstream.URL}, endpointArgs...)...); err != nil {
+		t.Fatalf("register fake local model host: %v\n%s", err, out)
+	}
+
+	account, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	operator, err := client.New(options.endpoint).ResolveRightsOperator(ctx, client.Requirements{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := operator.ListPolicyContext(ctx, "", 1)
+	if err != nil || page.Outcome.String() != "page" {
+		t.Fatalf("list rights policy: %+v %v", page, err)
+	}
+	rule := rights.PolicyRule{Subject: rights.Subject{Account: account.Uid, Program: filepath.Clean(opencode)},
+		Action: routerservice.ActionInventory, Resource: routerservice.ResourceInventory, Permit: true}
+	if edit, err := operator.SetRuleContext(ctx, page.Revision, rule); err != nil || edit.Outcome.String() != "applied" {
+		t.Fatalf("grant inventory visibility to OpenCode: %+v %v", edit, err)
+	}
+
+	providerIndex := stageOpenCodeProvider(t)
+	providerDir := filepath.Dir(providerIndex)
+	project := t.TempDir()
+	configPath := filepath.Join(project, "opencode.json")
+	// The block adopters/opencode/configure.js writes, holding one managed
+	// model the router no longer offers.
+	oldModel := map[string]any{"name": "old", "limit": map[string]any{"context": 32768, "output": 4096}, "tool_call": true}
+	configured, err := json.Marshal(map[string]any{
+		"model":  "openabstractions/removed",
+		"plugin": []any{[]any{providerDir, map[string]string{"providerId": "openabstractions"}}},
+		"provider": map[string]any{"openabstractions": map[string]any{
+			"name": "OpenAbstractions · this computer", "npm": openCodeFileURL(filepath.Join(providerDir, "index.js")),
+			"options": map[string]any{"runtimeEndpoint": options.endpoint, "scope": "local",
+				"guarantees": []string{"abstraction.inference/local-only@1"}, "oaInventoryManagedModels": map[string]any{"removed": oldModel}},
+			"models": map[string]any{"removed": oldModel},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, configured, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := isolatedOpenCodeEnvironment(t, t.TempDir(), "", library)
+	call, stop := context.WithTimeout(context.Background(), 60*time.Second)
+	defer stop()
+	cmd := exec.CommandContext(call, opencode, "--print-logs", "--log-level", "DEBUG", "models", "openabstractions")
+	cmd.Dir, cmd.Env = project, env
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("OpenCode startup model listing: %v\n%s", err, output)
+	}
+	if !strings.Contains(string(output), "openabstractions/fixture-1b") || strings.Contains(string(output), "openabstractions/removed") {
+		t.Fatalf("startup plugin did not replace the old inventory with the live router model:\n%s", output)
+	}
+}
+
 func environmentWithout(environment []string, names ...string) []string {
 	omit := make(map[string]struct{}, len(names))
 	for _, name := range names {
@@ -392,6 +566,9 @@ func TestStageOpenCodeProviderSupportsPublishedSiblingLayout(t *testing.T) {
 		{"abstraction-facade", "facade"},
 		{"abstraction-inference", "inference"},
 		{"abstraction-identity", "ipc"},
+		{"abstraction-router", "router"},
+		{"abstraction-asks", "asks"},
+		{"abstraction-rights", "rights"},
 	} {
 		source := filepath.Join(workspace, fixture.repository, "javascript")
 		write(filepath.Join(source, "package.json"), "{}\n")
@@ -411,6 +588,9 @@ func TestStageOpenCodeProviderSupportsPublishedSiblingLayout(t *testing.T) {
 		{"abstraction-facade", "facade"},
 		{"abstraction-inference", "inference"},
 		{"abstraction-identity", "ipc"},
+		{"abstraction-router", "router"},
+		{"abstraction-asks", "asks"},
+		{"abstraction-rights", "rights"},
 	} {
 		marker := filepath.Join(filepath.Dir(provider), "node_modules", "@openabstractions", fixture.installed, "source-marker")
 		data, err := os.ReadFile(marker)
@@ -431,7 +611,10 @@ func isolatedOpenCodeEnvironment(t *testing.T, root, addon, library string) []st
 	overrides := map[string]string{
 		"XDG_CONFIG_HOME": filepath.Join(root, "xdg-config"), "XDG_DATA_HOME": filepath.Join(root, "xdg-data"),
 		"XDG_CACHE_HOME": filepath.Join(root, "xdg-cache"), "XDG_STATE_HOME": filepath.Join(root, "xdg-state"),
-		"ABSTRACTION_IPC_NODE": addon, "ABSTRACTION_IPC_LIBRARY": library, "NO_COLOR": "1",
+		"ABSTRACTION_IPC_LIBRARY": library, "NO_COLOR": "1",
+	}
+	if addon != "" {
+		overrides["ABSTRACTION_IPC_NODE"] = addon
 	}
 	for key, path := range overrides {
 		if key != "NO_COLOR" {
@@ -451,15 +634,229 @@ func isolatedOpenCodeEnvironment(t *testing.T, root, addon, library string) []st
 	return env
 }
 
-func TestOpenCodeUsesNativeOAProviderAndSurvivesProviderSubstitution(t *testing.T) {
+// This uses OpenCode's --auto tool approval in an isolated runtime. It proves
+// the real tool and caller-bound public IPC path, not a human approval prompt.
+func TestOpenCodeAnswersScopedFirstUseThroughPublicIPC(t *testing.T) {
 	opencode, addon, library := os.Getenv("OA_OPENCODE_BINARY"), os.Getenv("OA_IPC_NODE"), os.Getenv("OA_IPC_LIBRARY")
-	if opencode == "" || addon == "" || library == "" {
-		t.Skip("set OA_OPENCODE_BINARY, OA_IPC_NODE, and OA_IPC_LIBRARY for the native OpenCode adopter proof")
+	if opencode == "" || library == "" {
+		t.Skip("set OA_OPENCODE_BINARY and OA_IPC_LIBRARY for the native OpenCode question proof")
 	}
 	if !statusTransportProvesProgram(t) {
 		t.Skip("Program proof unavailable on current shared transport")
 	}
-	for _, path := range []string{opencode, addon, library} {
+	for _, path := range []string{opencode, library} {
+		if !filepath.IsAbs(path) {
+			t.Fatalf("fixture path must be absolute: %s", path)
+		}
+		if _, err := os.Stat(path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if addon != "" {
+		if _, err := os.Stat(addon); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	options, _ := isolatedRuntime(t)
+	if err := os.MkdirAll(filepath.Join(options.stateDir, "inference"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(options.stateDir, "inference", inferenceHostsFile), []byte(`{"retention_ms":10000}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	startInferenceRuntime(t, options)
+	endpointArgs := []string{"--endpoint", options.endpoint, "--timeout", "30s"}
+	providerProgram := copyTestBinary(t, "oa-opencode-question-provider")
+	providerState, pidDir := t.TempDir(), t.TempDir()
+	self, _ := os.Executable()
+	name := "opencode-question"
+	args := []string{"add", name, "--program", providerProgram, "--provider-endpoint", name,
+		"--contract", inference.Contract, "--guarantee", fixtureGuarantee,
+		"--guarantee", "abstraction.inference/local-only@1", "--model", "fixture-model",
+		"--arg", openCodeProviderFixtureArg, "--arg", "{endpoint}", "--arg", providerState,
+		"--arg", "question", "--arg", pidDir, "--arg", self}
+	if out, err := runProvider(t, append(args, endpointArgs...)...); err != nil {
+		t.Fatalf("declare question provider: %v\n%s", err, out)
+	}
+	t.Cleanup(func() { _, _ = runProvider(t, append([]string{"remove", name}, endpointArgs...)...) })
+	setCompleteRule(t, options.endpoint, filepath.Clean(opencode), name, true)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	machine := client.NewVerified(options.endpoint, runtimeExpectation(t))
+	rightsOperator, err := machine.ResolveRightsOperator(ctx, local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := rightsOperator.ListPolicyContext(ctx, "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inventory := rights.PolicyRule{Subject: rights.Subject{Account: probeSelf().Account, Program: filepath.Clean(opencode)},
+		Action: routerservice.ActionInventory, Resource: routerservice.ResourceInventory, Permit: true}
+	if set, err := rightsOperator.SetRuleContext(ctx, policy.Revision, inventory); err != nil || set.Outcome.String() != "applied" {
+		t.Fatalf("OpenCode model inventory %+v %v", set, err)
+	}
+
+	providerIndex := stageOpenCodeProvider(t)
+	project := t.TempDir()
+	config := map[string]any{
+		// The image and question tools this test calls register only when
+		// enabled (adopters/opencode/README.md "Tools").
+		"plugin": []any{[]any{filepath.Dir(providerIndex), map[string]any{
+			"tools": map[string]any{"generate_image": true, "authorization_questions": true}}}},
+		"provider": map[string]any{"openabstractions": map[string]any{
+			"name": "OpenAbstractions", "npm": fileURL(providerIndex),
+			"options": map[string]any{"runtimeEndpoint": options.endpoint, "scope": "local", "guarantees": []string{fixtureGuarantee}},
+			"models": map[string]any{"fixture-model": map[string]any{"name": "OA fixture", "tool_call": true,
+				"limit": map[string]any{"context": 32768, "output": 4096}}},
+		}},
+		"model": "openabstractions/fixture-model",
+	}
+	rawConfig, _ := json.Marshal(config)
+	if err := os.WriteFile(filepath.Join(project, "opencode.json"), rawConfig, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := isolatedOpenCodeEnvironment(t, t.TempDir(), addon, library)
+	run := func(id string) string {
+		t.Helper()
+		call, _ := json.Marshal(map[string]string{"action": "answer", "id": id, "option": "allow"})
+		if err := os.WriteFile(filepath.Join(providerState, "question-call.json"), call, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		before, _ := os.ReadFile(filepath.Join(providerState, "requests.jsonl"))
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, opencode, "run", "--auto", "--print-logs", "--log-level", "DEBUG", "--model", "openabstractions/fixture-model", "--format", "json", "--dir", project,
+			"Answer the delegated OpenAbstractions authorization question once, then report the tool result.")
+		cmd.Dir, cmd.Env = project, env
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("OpenCode question tool: %v\n%s", err, output)
+		}
+		after, err := os.ReadFile(filepath.Join(providerState, "requests.jsonl"))
+		if err != nil || len(after) <= len(before) {
+			t.Fatalf("OpenCode did not reach OA fixture: %v\n%s", err, output)
+		}
+		var results []string
+		for _, line := range bytes.Split(bytes.TrimSpace(after[len(before):]), []byte{'\n'}) {
+			var request iwire.Request
+			if err := json.Unmarshal(line, &request); err != nil {
+				t.Fatal(err)
+			}
+			for _, message := range request.Messages {
+				for _, part := range message.Parts {
+					if part.Kind == iwire.PartKindToolResult {
+						results = append(results, part.Text)
+					}
+				}
+			}
+		}
+		if len(results) == 0 {
+			t.Fatalf("real OpenCode did not return a tool result; output tail: %s", string(output[max(0, len(output)-2000):]))
+		}
+		if strings.Contains(strings.Join(results, "\n"), "unavailable tool 'openabstractions_authorization_questions'") {
+			t.Fatalf("question plugin unavailable; OpenCode output head: %s", string(output[:min(len(output), 7000)]))
+		}
+		return strings.Join(results, "\n")
+	}
+
+	bin := probeBinary(t)
+	if result, _ := probeAs(t, bin, options, "model", "resolve", "hf:org/model@not/a/revision"); result.Outcome != "forbidden" {
+		t.Fatalf("first-use denial %+v", result)
+	}
+	pending := pendingFirstUse(t, options)
+	if len(pending) != 1 || pending[0].About != bin {
+		t.Fatalf("first-use question %+v", pending)
+	}
+	policy, err = rightsOperator.ListPolicyContext(ctx, "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope, err := asks.FirstUseAnswerResource(bin, host.ModelLookupAction, "hf", "allow")
+	if err != nil {
+		t.Fatal(err)
+	}
+	grant := rights.PolicyRule{Subject: rights.Subject{Account: probeSelf().Account, Program: filepath.Clean(opencode)},
+		Action: asks.AnswerAction, Resource: scope, Permit: true}
+	if set, err := rightsOperator.SetRuleForContext(ctx, policy.Revision, grant, 5*time.Minute, "isolated OpenCode exact first-use proof"); err != nil || set.Outcome.String() != "applied" {
+		t.Fatalf("exact delegation %+v %v", set, err)
+	}
+	allowed := run(pending[0].ID)
+	if !strings.Contains(allowed, `"rightsEffectApplied":true`) || !strings.Contains(allowed, `"targetOutcome":"permitted"`) {
+		t.Fatalf("real OpenCode tool did not apply exact answer: %s", allowed)
+	}
+	target := rights.Subject{Account: probeSelf().Account, Program: bin}
+	read, err := rightsOperator.ReadRuleContext(ctx, target, host.ModelLookupAction, "hf")
+	if err != nil || read.Outcome.String() != "found" || read.Record == nil || !read.Record.Rule.Permit {
+		t.Fatalf("target rule after OpenCode answer %+v %v", read, err)
+	}
+
+	if result, _ := probeAs(t, bin, options, "model", "resolve", "ollama:library/model@not/a/revision"); result.Outcome != "forbidden" {
+		t.Fatalf("out-of-scope denial %+v", result)
+	}
+	other := pendingFirstUse(t, options)
+	if len(other) != 1 {
+		t.Fatalf("out-of-scope question %+v", other)
+	}
+	if refused := run(other[0].ID); !strings.Contains(refused, `"outcome":"not_answerable"`) {
+		t.Fatalf("OpenCode disclosed or answered out-of-scope question: %s", refused)
+	}
+	if revoke, err := rightsOperator.RevokeRuleContext(ctx, read.Revision, target, host.ModelLookupAction, "hf"); err != nil || revoke.Outcome.String() != "applied" {
+		t.Fatalf("revoke target rule %+v %v", revoke, err)
+	}
+	questions, err := machine.ResolveAsksOperator(ctx, local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retired, err := questions.RetireQuestionContext(ctx, pending[0].ID); err != nil || retired.Outcome.String() != "retired" {
+		t.Fatalf("retire answered question %+v %v", retired, err)
+	}
+	if result, _ := probeAs(t, bin, options, "model", "resolve", "hf:org/model@not/a/revision"); result.Outcome != "forbidden" {
+		t.Fatalf("new first-use denial %+v", result)
+	}
+	retry := pendingFirstUse(t, options)
+	if len(retry) != 2 {
+		t.Fatalf("new first-use question %+v", retry)
+	}
+	retryID := ""
+	for _, question := range retry {
+		if question.ID != other[0].ID && question.ID != pending[0].ID {
+			retryID = question.ID
+		}
+	}
+	if retryID == "" {
+		t.Fatalf("new first-use question %+v", retry)
+	}
+	policy, err = rightsOperator.ListPolicyContext(ctx, "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if revoke, err := rightsOperator.RevokeRuleContext(ctx, policy.Revision, grant.Subject, grant.Action, grant.Resource); err != nil || revoke.Outcome.String() != "applied" {
+		t.Fatalf("revoke exact delegation %+v %v", revoke, err)
+	}
+	if denied := run(retryID); !strings.Contains(denied, `"outcome":"not_answerable"`) {
+		t.Fatalf("OpenCode retried after delegation revoke: %s", denied)
+	}
+	read, err = rightsOperator.ReadRuleContext(ctx, target, host.ModelLookupAction, "hf")
+	if err != nil || read.Outcome.String() != "unknown" {
+		t.Fatalf("retry restored revoked target %+v %v", read, err)
+	}
+}
+
+func TestOpenCodeUsesNativeOAProviderAndSurvivesProviderSubstitution(t *testing.T) {
+	opencode, addon, library := os.Getenv("OA_OPENCODE_BINARY"), os.Getenv("OA_IPC_NODE"), os.Getenv("OA_IPC_LIBRARY")
+	if opencode == "" || library == "" {
+		t.Skip("set OA_OPENCODE_BINARY and OA_IPC_LIBRARY for the native OpenCode adopter proof")
+	}
+	if !statusTransportProvesProgram(t) {
+		t.Skip("Program proof unavailable on current shared transport")
+	}
+	paths := []string{opencode, library}
+	if addon != "" {
+		paths = append(paths, addon)
+	}
+	for _, path := range paths {
 		if !filepath.IsAbs(path) {
 			t.Fatalf("fixture path must be absolute: %s", path)
 		}
@@ -536,14 +933,60 @@ func TestOpenCodeUsesNativeOAProviderAndSurvivesProviderSubstitution(t *testing.
 		cmd.Dir, cmd.Env = project, env
 		return cmd.CombinedOutput()
 	}
+	type auditRecord struct {
+		Program string `json:"Program"`
+		Outcome string `json:"Outcome"`
+		Reason  string `json:"Reason"`
+	}
+	readAudit := func() []auditRecord {
+		t.Helper()
+		output, err := runInference(t, append([]string{"audit", "--json"}, endpointArgs...)...)
+		if err != nil {
+			t.Fatalf("audit: %v\n%s", err, output)
+		}
+		var page struct {
+			Entries []auditRecord `json:"entries"`
+		}
+		if err := json.Unmarshal([]byte(output), &page); err != nil {
+			t.Fatal(err)
+		}
+		return page.Entries
+	}
+	countOutcome := func(entries []auditRecord, outcome string) int {
+		count := 0
+		for _, entry := range entries {
+			if filepath.Clean(entry.Program) == filepath.Clean(opencode) && entry.Outcome == outcome {
+				count++
+			}
+		}
+		return count
+	}
+	assertOneStreamPerAgent := func(output []byte) {
+		t.Helper()
+		for _, agent := range []string{"title", "build"} {
+			count := 0
+			for _, line := range strings.Split(string(output), "\n") {
+				if strings.Contains(line, "message=stream providerID=openabstractions") &&
+					strings.Contains(line, "agent="+agent+" mode=primary") {
+					count++
+				}
+			}
+			if count != 1 {
+				t.Fatalf("OpenCode %s model stream count %d, want one:\n%s", agent, count, output)
+			}
+		}
+	}
 
-	// The adapter renders a not_permitted/rights: refusal as one plain
-	// sentence naming the Panel (adopters/opencode/index.js refusalMessage);
-	// the typed outcome and reason it keeps on OAInferenceError are checked
-	// separately below, through the runtime's own inference audit.
+	// A fresh OpenCode run starts one title call and one build call. Count both
+	// separately so an automatic retry cannot hide behind title generation.
+	beforeDenied := countOutcome(readAudit(), "not_permitted")
 	denied, _ := run("Use the available tools once, then report the native OA result.")
 	if !strings.Contains(string(denied), "not yet permitted") || !strings.Contains(string(denied), "OpenAbstractions Panel") {
 		t.Fatalf("plain-language OA refusal missing:\n%s", denied)
+	}
+	assertOneStreamPerAgent(denied)
+	if got := countOutcome(readAudit(), "not_permitted"); got != beforeDenied+2 {
+		t.Fatalf("OpenCode retried denied Start: audit count %d, before %d\n%s", got, beforeDenied, denied)
 	}
 	if requests, _ := os.ReadFile(filepath.Join(providerState, "requests.jsonl")); len(requests) != 0 {
 		t.Fatalf("refused OpenCode reached provider: %s", requests)
@@ -564,19 +1007,63 @@ func TestOpenCodeUsesNativeOAProviderAndSurvivesProviderSubstitution(t *testing.
 	}
 	eventually(t, 10*time.Second, "first provider stopping", func() bool { return !answers(name) })
 	declare("incapable")
+	beforeUnsupported := countOutcome(readAudit(), "unsupported_feature")
 	incapable, _ := run("Use the available tools once, then report the native OA result.")
-	if !strings.Contains(string(incapable), "unsupported_feature") ||
-		!strings.Contains(string(incapable), "native:feature:abstraction.inference/tools@1") {
-		t.Fatalf("native leaf typed refusal missing:\n%s", incapable)
+	if !strings.Contains(string(incapable), "OpenAbstractions could not complete this model call") {
+		t.Fatalf("neutral native refusal missing:\n%s", incapable)
+	}
+	assertOneStreamPerAgent(incapable)
+	unsupported := readAudit()
+	if got := countOutcome(unsupported, "unsupported_feature"); got != beforeUnsupported+1 {
+		t.Fatalf("OpenCode retried unsupported Start: audit count %d, before %d\n%s", got, beforeUnsupported, incapable)
+	}
+	foundReason := false
+	for _, entry := range unsupported {
+		if filepath.Clean(entry.Program) == filepath.Clean(opencode) && entry.Outcome == "unsupported_feature" &&
+			strings.Contains(entry.Reason, "feature:abstraction.inference/tools@1") {
+			foundReason = true
+		}
+	}
+	if !foundReason {
+		t.Fatalf("typed unsupported reason missing from audit: %+v", unsupported)
 	}
 	if out, err := runProvider(t, append([]string{"remove", name}, endpointArgs...)...); err != nil {
 		t.Fatalf("remove incapable provider: %v\n%s", err, out)
 	}
 	eventually(t, 10*time.Second, "incapable provider stopping", func() bool { return !answers(name) })
+	declare("unavailable")
+	beforeUnavailable := countOutcome(readAudit(), "unavailable")
+	partial, _ := run("Use the available tools once, then report the native OA result.")
+	if !strings.Contains(string(partial), "OpenAbstractions could not complete this model call") {
+		t.Fatalf("partial native failure missing neutral refusal:\n%s", partial)
+	}
+	assertOneStreamPerAgent(partial)
+	unavailable := readAudit()
+	if got := countOutcome(unavailable, "unavailable"); got != beforeUnavailable+2 {
+		t.Fatalf("OpenCode retried after accepted partial Start: audit count %d, before %d\n%s", got, beforeUnavailable, partial)
+	}
+	foundUnavailableReason := false
+	for _, entry := range unavailable {
+		if filepath.Clean(entry.Program) == filepath.Clean(opencode) && entry.Outcome == "unavailable" &&
+			entry.Reason == "upstream:error" {
+			foundUnavailableReason = true
+		}
+	}
+	if !foundUnavailableReason {
+		t.Fatalf("typed unavailable reason missing from audit: %+v", unavailable)
+	}
+	if out, err := runProvider(t, append([]string{"remove", name}, endpointArgs...)...); err != nil {
+		t.Fatalf("remove unavailable provider: %v\n%s", err, out)
+	}
+	eventually(t, 10*time.Second, "unavailable provider stopping", func() bool { return !answers(name) })
 	declare("two")
 	second, err := run("Use the available tools once, then report the native OA result.")
 	if err != nil || !strings.Contains(string(second), "native-oa-two") {
 		t.Fatalf("OpenCode substituted provider: %v\n%s", err, second)
+	}
+	if addon == "" {
+		t.Log("Node addon absent; native OpenCode refusal and substitution proof complete, Node cancellation leg skipped")
+		return
 	}
 
 	node, err := exec.LookPath("node")

@@ -1,0 +1,814 @@
+/* Windows 11 skin for the OpenAbstractions Panel
+   (research/panel-redesign/SPEC.md §3 and §5, slice S10).
+
+   static/panel.css carries the shared structure; this sheet carries the
+   Windows look and is linked after it. Every rule is scoped to
+   html[data-skin="windows"], the shell contract's root attribute (SPEC §6).
+
+   Host hooks, all optional:
+   - --oa-accent on the root: the Windows accent colour, with
+     --oa-accent-light2 and --oa-accent-dark1 from the accent palette when
+     Windows has one. The server writes them inline into every page from
+     HKCU\Software\Microsoft\Windows\DWM\AccentColor
+     (panel_accent_windows.go); the native window pushes a change of
+     colour onto the open page.
+   - data-host="webview2" on the root: the page runs in the native window.
+   - data-backdrop="mica" on the root: DWM draws Mica behind the client
+     area and WebView2's default background is transparent
+     (win/webview2_windows.go). html and body are then transparent. Without
+     it the page keeps the solid Windows base, #F3F3F3 light and #202020
+     dark, which is also what a browser tab shows.
+
+   Geometry and colours follow Windows 11 Settings and the WinUI 3 theme
+   resources: Segoe UI Variable type ramp, 4 px in-page corners, 32 px
+   controls, 36 px navigation items, setting cards at most 1000 px wide. */
+
+html[data-skin="windows"] {
+  color-scheme: light;
+  --oa-font-family: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --oa-font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --oa-font-small: "Segoe UI Variable Small", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --oa-font-icons: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+  --oa-font-size: 14px;
+  --oa-nav-width: 280px;
+  --oa-card-radius: 4px;
+  --oa-button-radius: 4px;
+  --oa-button-height: 32px;
+  --oa-switch-w: 40px;
+  --oa-switch-h: 20px;
+  --oa-title-size: 28px;
+  --oa-title-weight: 600;
+
+  /* Windows' default accent until the host injects the person's own. */
+  --oa-accent: #0078d4;
+  --oa-accent-fill: var(--oa-accent-dark1, color-mix(in srgb, var(--oa-accent) 80%, #000));
+  --oa-accent-fill-hover: color-mix(in srgb, var(--oa-accent-fill) 90%, transparent);
+  --oa-accent-fill-pressed: color-mix(in srgb, var(--oa-accent-fill) 80%, transparent);
+  --oa-accent-text: var(--oa-accent-dark1, color-mix(in srgb, var(--oa-accent) 75%, #000));
+  --oa-on-accent: #ffffff;
+
+  --oa-base: #f3f3f3;
+  --oa-page-bg: var(--oa-base);
+  --oa-text: rgba(0, 0, 0, .894);
+  --oa-text-secondary: rgba(0, 0, 0, .62);
+  --oa-text-tertiary: rgba(0, 0, 0, .447);
+  --oa-text-disabled: rgba(0, 0, 0, .361);
+
+  --oa-card-bg: rgba(255, 255, 255, .7);
+  --oa-card-bg-secondary: rgba(246, 246, 246, .5);
+  --oa-card-border: rgba(0, 0, 0, .06);
+  --oa-sep: rgba(0, 0, 0, .08);
+
+  --oa-subtle-hover: rgba(0, 0, 0, .037);
+  --oa-subtle-pressed: rgba(0, 0, 0, .024);
+  --oa-nav-selected-bg: rgba(0, 0, 0, .04);
+  --oa-nav-selected-hover: rgba(0, 0, 0, .06);
+
+  --oa-control-fill: rgba(255, 255, 255, .7);
+  --oa-control-fill-hover: rgba(249, 249, 249, .5);
+  --oa-control-fill-pressed: rgba(249, 249, 249, .3);
+  --oa-control-fill-disabled: rgba(249, 249, 249, .3);
+  --oa-control-fill-input-focus: #ffffff;
+  --oa-control-alt-fill: rgba(0, 0, 0, .024);
+  --oa-control-stroke: rgba(0, 0, 0, .058);
+  --oa-control-stroke-bottom: rgba(0, 0, 0, .162);
+  --oa-control-strong-stroke: rgba(0, 0, 0, .446);
+  --oa-control-strong-fill: rgba(0, 0, 0, .446);
+  --oa-flyout-bg: #f9f9f9;
+
+  --oa-critical: #c42b1c;
+  --oa-caution: #9d5d00;
+  --oa-success: #0f7b0f;
+
+  --oa-chevron-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.15 4.15a.5.5 0 0 1 .7 0L6 7.29l3.15-3.14a.5.5 0 1 1 .7.7l-3.5 3.5a.5.5 0 0 1-.7 0l-3.5-3.5a.5.5 0 0 1 0-.7z' fill='%23000' fill-opacity='.62'/%3E%3C/svg%3E");
+  --oa-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.3l2.3 2.2 4.7-5' fill='none' stroke='%23fff' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --oa-search: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M9.5 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zM4 6.5a5.5 5.5 0 1 1 2.02 4.26l-3.67 3.6a.5.5 0 0 1-.7-.71l3.65-3.6A5.48 5.48 0 0 1 4 6.5z' transform='matrix(-1 0 0 1 16 0)' fill='%23000' fill-opacity='.62'/%3E%3C/svg%3E");
+
+  background: var(--oa-base);
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-skin="windows"] {
+    color-scheme: dark;
+    --oa-accent-fill: var(--oa-accent-light2, color-mix(in srgb, var(--oa-accent) 50%, #fff));
+    --oa-accent-text: var(--oa-accent-light2, color-mix(in srgb, var(--oa-accent) 45%, #fff));
+    --oa-on-accent: #000000;
+
+    --oa-base: #202020;
+    --oa-text: #ffffff;
+    --oa-text-secondary: rgba(255, 255, 255, .786);
+    --oa-text-tertiary: rgba(255, 255, 255, .545);
+    --oa-text-disabled: rgba(255, 255, 255, .363);
+
+    --oa-card-bg: rgba(255, 255, 255, .05);
+    --oa-card-bg-secondary: rgba(255, 255, 255, .03);
+    --oa-card-border: rgba(0, 0, 0, .1);
+    --oa-sep: rgba(255, 255, 255, .084);
+
+    --oa-subtle-hover: rgba(255, 255, 255, .06);
+    --oa-subtle-pressed: rgba(255, 255, 255, .04);
+    --oa-nav-selected-bg: rgba(255, 255, 255, .06);
+    --oa-nav-selected-hover: rgba(255, 255, 255, .084);
+
+    --oa-control-fill: rgba(255, 255, 255, .06);
+    --oa-control-fill-hover: rgba(255, 255, 255, .084);
+    --oa-control-fill-pressed: rgba(255, 255, 255, .033);
+    --oa-control-fill-disabled: rgba(255, 255, 255, .042);
+    --oa-control-fill-input-focus: rgba(30, 30, 30, .7);
+    --oa-control-alt-fill: rgba(0, 0, 0, .1);
+    --oa-control-stroke: rgba(255, 255, 255, .07);
+    --oa-control-stroke-bottom: rgba(255, 255, 255, .093);
+    --oa-control-strong-stroke: rgba(255, 255, 255, .544);
+    --oa-control-strong-fill: rgba(255, 255, 255, .786);
+    --oa-flyout-bg: #2c2c2c;
+
+    --oa-critical: #ff99a4;
+    --oa-caution: #fce100;
+    --oa-success: #6ccb5f;
+
+    --oa-chevron-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.15 4.15a.5.5 0 0 1 .7 0L6 7.29l3.15-3.14a.5.5 0 1 1 .7.7l-3.5 3.5a.5.5 0 0 1-.7 0l-3.5-3.5a.5.5 0 0 1 0-.7z' fill='%23fff' fill-opacity='.786'/%3E%3C/svg%3E");
+    --oa-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.3l2.3 2.2 4.7-5' fill='none' stroke='%23000' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    --oa-search: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M9.5 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zM4 6.5a5.5 5.5 0 1 1 2.02 4.26l-3.67 3.6a.5.5 0 0 1-.7-.71l3.65-3.6A5.48 5.48 0 0 1 4 6.5z' transform='matrix(-1 0 0 1 16 0)' fill='%23fff' fill-opacity='.786'/%3E%3C/svg%3E");
+  }
+}
+
+/* ---- Page surface ------------------------------------------------------ */
+
+html[data-skin="windows"] body {
+  margin: 0;
+  font-family: var(--oa-font-family);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--oa-text);
+  background: var(--oa-base);
+  accent-color: var(--oa-accent-fill);
+}
+/* Mica shows through the native window's transparent WebView2. */
+html[data-skin="windows"][data-backdrop="mica"],
+html[data-skin="windows"][data-backdrop="mica"] body {
+  background: transparent;
+}
+html[data-skin="windows"] ::selection { background: var(--oa-accent-fill); color: var(--oa-on-accent); }
+
+html[data-skin="windows"] a { color: var(--oa-accent-text); text-decoration: none; }
+html[data-skin="windows"] a:hover { text-decoration: underline; }
+html[data-skin="windows"] :is(pre, code) { font-family: "Cascadia Mono", "Cascadia Code", Consolas, monospace; }
+
+/* A thin Windows 11 scroll bar: no track, a rounded thumb, no arrows. */
+html[data-skin="windows"] ::-webkit-scrollbar { width: 12px; height: 12px; background: transparent; }
+html[data-skin="windows"] ::-webkit-scrollbar-button { display: none; }
+html[data-skin="windows"] ::-webkit-scrollbar-thumb {
+  border: 4px solid transparent;
+  border-radius: 6px;
+  background: var(--oa-control-strong-stroke) padding-box;
+}
+html[data-skin="windows"] ::-webkit-scrollbar-thumb:hover { border-width: 3px; }
+
+/* ---- Navigation pane --------------------------------------------------- */
+
+html[data-skin="windows"] .oa-shell { display: flex; align-items: stretch; min-height: 100vh; }
+
+html[data-skin="windows"] .oa-nav {
+  width: var(--oa-nav-width);
+  flex: 0 0 var(--oa-nav-width);
+  display: flex;
+  flex-direction: column;
+  padding: 8px 4px 12px;
+  border: none;
+  background: transparent;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+html[data-skin="windows"] .oa-brand {
+  padding: 8px 16px 12px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+html[data-skin="windows"] .oa-brand span {
+  display: block;
+  margin-top: 0;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  color: var(--oa-text-secondary);
+}
+
+/* Search: 32 px, magnifier at the trailing edge, as in Settings. The extra
+   .oa-nav keeps this above the generic text-box rule further down. */
+html[data-skin="windows"] .oa-nav-search { padding: 0 12px 8px; }
+html[data-skin="windows"] .oa-nav .oa-nav-search input {
+  display: block;
+  width: 100%;
+  height: 32px;
+  margin: 0;
+  padding: 0 36px 0 11px;
+  background: var(--oa-control-fill) var(--oa-search) no-repeat right 11px center / 14px 14px;
+}
+html[data-skin="windows"] .oa-nav .oa-nav-search input:focus { background-color: var(--oa-control-fill-input-focus); }
+html[data-skin="windows"] .oa-nav-search input::-webkit-search-cancel-button { display: none; }
+
+html[data-skin="windows"] .oa-nav-group { display: flex; flex-direction: column; gap: 4px; }
+
+html[data-skin="windows"] .oa-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 36px;
+  margin: 0 4px;
+  padding: 0 12px 0 16px;
+  border-radius: 4px;
+  color: var(--oa-text);
+  font-size: 14px;
+  line-height: 20px;
+  position: relative;
+  text-decoration: none;
+  cursor: default;
+  user-select: none;
+}
+html[data-skin="windows"] .oa-nav-item:hover { background: var(--oa-subtle-hover); text-decoration: none; }
+html[data-skin="windows"] .oa-nav-item:active { background: var(--oa-subtle-pressed); color: var(--oa-text-secondary); }
+html[data-skin="windows"] .oa-nav-item.active { background: var(--oa-nav-selected-bg); border-radius: 4px; }
+html[data-skin="windows"] .oa-nav-item.active:hover { background: var(--oa-nav-selected-hover); }
+/* The 3 x 16 px accent pill on the selected item's leading edge. */
+html[data-skin="windows"] .oa-nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  bottom: auto;
+  width: 3px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 1.5px;
+  background: var(--oa-accent-fill);
+}
+html[data-skin="windows"] .oa-nav-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 16 px glyphs in the item's own colour, without the tile other skins use. */
+html[data-skin="windows"] .oa-nav-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--oa-icon-color, var(--oa-accent-fill));
+}
+html[data-skin="windows"] .oa-nav-icon svg { width: 16px; height: 16px; fill: currentColor; }
+
+/* Waiting-question count: a Windows InfoBadge. The shell's [hidden] rule
+   keeps an empty badge out of sight. */
+html[data-skin="windows"] .oa-nav-badge {
+  flex: 0 0 auto;
+  min-width: 16px;
+  height: 16px;
+  margin-left: auto;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--oa-accent-fill);
+  color: var(--oa-on-accent);
+  font-family: var(--oa-font-small);
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* The separator before Providers takes the free height, so Providers,
+   Credentials and Settings sit at the bottom of the pane. */
+html[data-skin="windows"] .oa-nav-sep {
+  flex: 0 0 1px;
+  height: 1px;
+  margin: auto 16px 4px;
+  background: var(--oa-sep);
+}
+
+/* Search hits replace the item list while the search box has text. */
+html[data-skin="windows"] .oa-nav-hits { display: flex; flex-direction: column; gap: 4px; margin: 0; }
+html[data-skin="windows"] .oa-nav-hit {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 36px;
+  margin: 0 4px;
+  padding: 6px 12px 6px 16px;
+  border-radius: 4px;
+  color: var(--oa-text);
+  cursor: default;
+}
+html[data-skin="windows"] .oa-nav-hit:hover { background: var(--oa-subtle-hover); text-decoration: none; }
+html[data-skin="windows"] .oa-nav-hit-page { font-size: 12px; line-height: 16px; color: var(--oa-text-secondary); }
+html[data-skin="windows"] .oa-nav-nohits { margin: 0; padding: 8px 20px; color: var(--oa-text-secondary); }
+
+/* ---- Content ----------------------------------------------------------- */
+
+html[data-skin="windows"] .oa-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: calc(1000px + 80px);
+  padding: 28px 40px 40px;
+  overflow-x: hidden;
+}
+
+/* Title 28/36 semibold; a breadcrumb's parent links read secondary. */
+html[data-skin="windows"] .oa-content h1 {
+  margin: 0 0 24px;
+  font-family: var(--oa-font-display);
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 600;
+  color: var(--oa-text);
+}
+html[data-skin="windows"] .oa-content h1 a:not(.oa-help-learnmore) { color: var(--oa-text-secondary); text-decoration: none; }
+html[data-skin="windows"] .oa-content h1 a:not(.oa-help-learnmore):hover { color: var(--oa-text); text-decoration: none; }
+
+html[data-skin="windows"] .oa-content p { line-height: 20px; }
+
+/* Section headers: BodyStrong, 30 px above, 6 px below. */
+html[data-skin="windows"] .oa-content h2 {
+  margin: 30px 0 6px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+html[data-skin="windows"] .oa-content h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+html[data-skin="windows"] .oa-help-learnmore { font-size: 14px; line-height: 20px; font-weight: 400; color: var(--oa-accent-text); }
+
+/* Page head: a 40 px tile with a 24 px glyph, 4 px corners as every
+   in-page backplate on Windows, the title at 28/36 and one caption. */
+html[data-skin="windows"] .oa-pagehead {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  max-width: 1000px;
+  margin: 0 0 24px;
+}
+html[data-skin="windows"] .oa-pagehead-tile {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  background: var(--oa-icon-color, var(--oa-accent-fill));
+  color: #ffffff;
+}
+html[data-skin="windows"] .oa-pagehead-tile svg { width: 24px; height: 24px; fill: currentColor; }
+html[data-skin="windows"] .oa-pagehead-text { min-width: 0; }
+html[data-skin="windows"] .oa-content .oa-pagehead-title {
+  margin: 0;
+  font-family: var(--oa-font-display);
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 600;
+}
+html[data-skin="windows"] .oa-pagehead .oa-caption {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--oa-text-secondary);
+}
+
+/* ---- Groups and setting cards ------------------------------------------ */
+
+html[data-skin="windows"] .oa-content section.oa-group {
+  max-width: 1000px;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+}
+html[data-skin="windows"] .oa-content > section.oa-group:first-of-type > h2:first-child,
+html[data-skin="windows"] .oa-pagehead + section.oa-group > h2:first-child { margin-top: 0; }
+html[data-skin="windows"] .oa-content section.oa-group > .oa-caption {
+  margin: -2px 0 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--oa-text-secondary);
+}
+
+/* A setting card: text leading, control trailing (panel.css's grid). */
+html[data-skin="windows"] .oa-row,
+html[data-skin="windows"] details.oa-expander,
+html[data-skin="windows"] .oa-content p.oa-empty {
+  max-width: 1000px;
+  margin: 0 0 4px;
+  background: var(--oa-card-bg);
+  border: 1px solid var(--oa-card-border);
+  border-radius: 4px;
+  color: var(--oa-text);
+}
+html[data-skin="windows"] .oa-row {
+  column-gap: 16px;
+  row-gap: 4px;
+  min-height: 68px;
+  padding: 16px;
+  box-sizing: border-box;
+}
+html[data-skin="windows"] .oa-row-label { display: block; font-size: 14px; line-height: 20px; }
+html[data-skin="windows"] .oa-row-caption {
+  display: block;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--oa-text-secondary);
+}
+html[data-skin="windows"] .oa-row-control { gap: 8px; }
+html[data-skin="windows"] .oa-row-control > :is(button, select, input) { margin: 0; }
+
+/* A navigation row: the whole card is the target. */
+html[data-skin="windows"] a.oa-row-nav { color: var(--oa-text); text-decoration: none; cursor: default; }
+html[data-skin="windows"] a.oa-row-nav:hover { background: var(--oa-card-bg-secondary); text-decoration: none; }
+html[data-skin="windows"] a.oa-row-nav:active { background: var(--oa-control-fill-pressed); }
+/* The row chevron, as in Windows Settings: a glyph about 12 px tall in the
+   secondary text colour, centred in a 32 px box at the trailing edge of a
+   navigation row or an expander header. The :is() outranks panel.css's
+   inline-block rule for the summary chevron, which left the glyph at the top
+   of its box. */
+html[data-skin="windows"] :is(a.oa-row-nav, details.oa-expander > summary) > .oa-row-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  margin: 0 -8px 0 auto;
+  color: var(--oa-text-secondary);
+}
+html[data-skin="windows"] :is(a.oa-row-nav, details.oa-expander > summary) > .oa-row-chevron::after {
+  display: block;
+  position: relative;
+  top: -2px; /* the glyph's ink sits below its em box's centre */
+  color: inherit;
+  font-size: 24px;
+  font-weight: 300;
+  line-height: 1;
+}
+
+/* oa-expander: a card whose header opens one level of nested rows. */
+html[data-skin="windows"] details.oa-expander { padding: 0; }
+html[data-skin="windows"] details.oa-expander > summary {
+  display: flex;
+  align-items: center;
+  min-height: 66px;
+  margin: 0;
+  padding: 0 16px;
+  cursor: default;
+  border-radius: 3px;
+}
+html[data-skin="windows"] details.oa-expander > summary:hover { background: var(--oa-card-bg-secondary); }
+html[data-skin="windows"] details.oa-expander > summary::marker { color: var(--oa-text-secondary); }
+html[data-skin="windows"] details.oa-expander[open] > summary {
+  margin: 0;
+  border-bottom: 1px solid var(--oa-sep);
+  border-radius: 3px 3px 0 0;
+}
+html[data-skin="windows"] .oa-expander-body {
+  padding: 8px 16px;
+  background: var(--oa-card-bg-secondary);
+  border-radius: 0 0 3px 3px;
+}
+/* Rows inside an expander are its nested items, not cards of their own. */
+html[data-skin="windows"] .oa-expander-body .oa-row {
+  min-height: 52px;
+  margin: 0;
+  padding: 12px 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+}
+html[data-skin="windows"] .oa-expander-body .oa-row + .oa-row { border-top: 1px solid var(--oa-sep); }
+/* One level deep: a nested expander is a plain disclosure. */
+html[data-skin="windows"] .oa-expander-body details.oa-expander { margin: 0; background: none; border: none; }
+html[data-skin="windows"] .oa-expander-body details.oa-expander > summary { min-height: 36px; padding: 0; }
+html[data-skin="windows"] .oa-expander-body .oa-expander-body { padding: 4px 0; background: none; }
+
+/* Status lines: Caption, secondary; an error reads in the critical colour. */
+html[data-skin="windows"] .oa-status { margin: 0; font-size: 12px; line-height: 16px; color: var(--oa-text-secondary); }
+html[data-skin="windows"] .oa-status[data-state="error"] { color: var(--oa-critical); }
+html[data-skin="windows"] .oa-status[data-state="loading"]::before { border-top-color: var(--oa-accent-fill); }
+
+html[data-skin="windows"] .oa-content p.oa-empty {
+  display: flex;
+  align-items: center;
+  min-height: 68px;
+  padding: 16px;
+  color: var(--oa-text-secondary);
+}
+
+/* Pages not yet on oa-group/oa-row: each section reads as one card, its
+   heading inside. */
+html[data-skin="windows"] .oa-content section:not(.oa-group) {
+  max-width: 1000px;
+  margin: 0 0 8px;
+  padding: 16px;
+  background: var(--oa-card-bg);
+  border: 1px solid var(--oa-card-border);
+  border-radius: 4px;
+  overflow: visible;
+}
+html[data-skin="windows"] .oa-content section:not(.oa-group) > h2:first-child { margin: 0 0 8px; }
+html[data-skin="windows"] .oa-content section:not(.oa-group) > :last-child { margin-bottom: 0; }
+
+/* ---- Tables (Activity, the Providers server list) ---------------------- */
+
+html[data-skin="windows"] .oa-table {
+  max-width: 1000px;
+  overflow-x: auto;
+  background: var(--oa-card-bg);
+  border: 1px solid var(--oa-card-border);
+  border-radius: 4px;
+}
+html[data-skin="windows"] .oa-content section:not(.oa-group) .oa-table { background: none; border: none; border-radius: 0; }
+html[data-skin="windows"] table { border-collapse: collapse; width: 100%; }
+html[data-skin="windows"] :is(th, td) {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--oa-sep);
+  text-align: left;
+  vertical-align: top;
+  font-size: 14px;
+  line-height: 20px;
+}
+html[data-skin="windows"] th {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  color: var(--oa-text-secondary);
+}
+html[data-skin="windows"] tr:last-child > td { border-bottom: none; }
+html[data-skin="windows"] .oa-content section:not(.oa-group) :is(th, td) { padding-left: 8px; padding-right: 8px; }
+html[data-skin="windows"] .oa-content section:not(.oa-group) :is(th, td):first-child { padding-left: 0; }
+
+/* ---- Controls: 32 px, 4 px corners -------------------------------------- */
+
+html[data-skin="windows"] :is(button, select, input, textarea) {
+  font-family: var(--oa-font-family);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--oa-text);
+  border-radius: 4px;
+  filter: none;
+}
+
+html[data-skin="windows"] button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  min-width: 32px;
+  margin: 4px 8px 4px 0;
+  padding: 0 12px;
+  background: var(--oa-control-fill);
+  border: 1px solid var(--oa-control-stroke);
+  border-bottom-color: var(--oa-control-stroke-bottom);
+  box-shadow: none;
+  color: var(--oa-text);
+  cursor: default;
+  white-space: nowrap;
+}
+html[data-skin="windows"] button:hover { background: var(--oa-control-fill-hover); filter: none; }
+html[data-skin="windows"] button:active { background: var(--oa-control-fill-pressed); border-bottom-color: var(--oa-control-stroke); color: var(--oa-text-secondary); filter: none; }
+html[data-skin="windows"] button:disabled {
+  background: var(--oa-control-fill-disabled);
+  border-color: var(--oa-control-stroke);
+  color: var(--oa-text-disabled);
+}
+/* A chosen quick range or segmented choice. */
+html[data-skin="windows"] button[aria-pressed="true"] { background: var(--oa-nav-selected-bg); border-bottom-color: var(--oa-accent-fill); box-shadow: inset 0 -1px 0 var(--oa-accent-fill); }
+/* The one primary action of a row or group: the accent button. */
+html[data-skin="windows"] button.oa-primary {
+  background: var(--oa-accent-fill);
+  border-color: rgba(255, 255, 255, .08);
+  border-bottom-color: rgba(0, 0, 0, .4);
+  color: var(--oa-on-accent);
+}
+html[data-skin="windows"] button.oa-primary:hover { background: var(--oa-accent-fill-hover); }
+html[data-skin="windows"] button.oa-primary:active { background: var(--oa-accent-fill-pressed); border-bottom-color: rgba(255, 255, 255, .08); color: var(--oa-on-accent); }
+html[data-skin="windows"] button.oa-primary:disabled { background: var(--oa-control-strong-stroke); border-color: transparent; color: var(--oa-on-accent); opacity: .5; }
+
+/* Combo box. */
+html[data-skin="windows"] select {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 32px;
+  min-width: 120px;
+  margin: 4px 8px 4px 0;
+  padding: 0 32px 0 11px;
+  background: var(--oa-control-fill) var(--oa-chevron-down) no-repeat right 10px center / 12px 12px;
+  border: 1px solid var(--oa-control-stroke);
+  border-bottom-color: var(--oa-control-stroke-bottom);
+  cursor: default;
+}
+html[data-skin="windows"] select:hover { background-color: var(--oa-control-fill-hover); }
+html[data-skin="windows"] select:disabled { color: var(--oa-text-disabled); background-color: var(--oa-control-fill-disabled); }
+html[data-skin="windows"] select option { background: var(--oa-flyout-bg); color: var(--oa-text); }
+
+/* Text boxes: an underline that turns accent and 2 px on focus. */
+html[data-skin="windows"] input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="button"], [type="submit"], [type="reset"]),
+html[data-skin="windows"] textarea {
+  height: 32px;
+  margin: 4px 8px 4px 0;
+  padding: 0 10px;
+  background: var(--oa-control-fill);
+  border: 1px solid var(--oa-control-stroke);
+  border-bottom-color: var(--oa-control-strong-stroke);
+  box-shadow: none;
+  outline: none;
+}
+html[data-skin="windows"] textarea { height: auto; min-height: 64px; padding: 6px 10px; }
+html[data-skin="windows"] :is(input, textarea):hover:not(:focus, [type="checkbox"], [type="radio"]) { background-color: var(--oa-control-fill-hover); }
+html[data-skin="windows"] input:not([type="checkbox"], [type="radio"], [type="range"]):focus,
+html[data-skin="windows"] textarea:focus {
+  background-color: var(--oa-control-fill-input-focus);
+  border-bottom-color: var(--oa-accent-fill);
+  box-shadow: inset 0 -1px 0 var(--oa-accent-fill);
+}
+html[data-skin="windows"] :is(input, textarea)::placeholder { color: var(--oa-text-secondary); }
+html[data-skin="windows"] :is(input, textarea):disabled { color: var(--oa-text-disabled); background: var(--oa-control-fill-disabled); border-bottom-color: var(--oa-control-stroke); }
+
+/* Check box: 20 px, 4 px corners. */
+html[data-skin="windows"] input[type="checkbox"]:not(.switch) {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin: 0 8px 0 0;
+  padding: 0;
+  vertical-align: -5px;
+  border: 1px solid var(--oa-control-strong-stroke);
+  border-radius: 4px;
+  background: var(--oa-control-alt-fill);
+  cursor: default;
+}
+html[data-skin="windows"] input[type="checkbox"]:not(.switch):hover { background-color: var(--oa-subtle-hover); }
+html[data-skin="windows"] input[type="checkbox"]:not(.switch):checked {
+  border-color: var(--oa-accent-fill);
+  background: var(--oa-accent-fill) var(--oa-check) no-repeat center / 12px 12px;
+}
+
+/* Radio button: 20 px; the accent ring with an inner dot when chosen. */
+html[data-skin="windows"] input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin: 0 8px 0 0;
+  padding: 0;
+  vertical-align: -5px;
+  border: 1px solid var(--oa-control-strong-stroke);
+  border-radius: 50%;
+  background: var(--oa-control-alt-fill);
+}
+html[data-skin="windows"] input[type="radio"]:checked {
+  border: 5px solid var(--oa-accent-fill);
+  background: var(--oa-on-accent);
+}
+
+/* Toggle switch: 40 x 20, knob 12 px (14 px on hover). */
+html[data-skin="windows"] input.switch[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 20px;
+  margin: 0 8px 0 0;
+  padding: 0;
+  vertical-align: -5px;
+  border: 1px solid var(--oa-control-strong-stroke);
+  border-radius: 10px;
+  background: var(--oa-control-alt-fill);
+  cursor: default;
+  transition: background-color .1s ease;
+}
+html[data-skin="windows"] input.switch[type="checkbox"]:hover { background: var(--oa-subtle-hover); }
+html[data-skin="windows"] input.switch[type="checkbox"]::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--oa-control-strong-fill);
+  transform: none;
+  transition: transform .15s ease, width .1s ease, height .1s ease, top .1s ease, left .1s ease;
+}
+html[data-skin="windows"] input.switch[type="checkbox"]:hover::before { top: 2px; left: 2px; width: 14px; height: 14px; }
+html[data-skin="windows"] input.switch[type="checkbox"]:checked {
+  border-color: var(--oa-accent-fill);
+  background: var(--oa-accent-fill);
+}
+html[data-skin="windows"] input.switch[type="checkbox"]:checked:hover { background: var(--oa-accent-fill-hover); }
+html[data-skin="windows"] input.switch[type="checkbox"]:checked::before {
+  background: var(--oa-on-accent);
+  transform: translateX(20px);
+}
+html[data-skin="windows"] input.switch[type="checkbox"]:checked:hover::before { transform: translateX(19px); }
+html[data-skin="windows"] input.switch[type="checkbox"]:disabled { border-color: var(--oa-text-disabled); background: none; }
+html[data-skin="windows"] input.switch[type="checkbox"]:disabled::before { background: var(--oa-text-disabled); }
+/* In a setting card the toggle carries "On" or "Off" to its left. */
+html[data-skin="windows"] .oa-row-control input.switch[type="checkbox"] { margin: 0 0 0 40px; }
+html[data-skin="windows"] .oa-row-control input.switch[type="checkbox"]::after {
+  content: "Off";
+  position: absolute;
+  right: calc(100% + 13px);
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--oa-text);
+  white-space: nowrap;
+  pointer-events: none;
+}
+html[data-skin="windows"] .oa-row-control input.switch[type="checkbox"]:checked::after { content: "On"; }
+/* Firefox draws no pseudo-elements on an input: the knob is a gradient on
+   the track instead, and the On/Off label is left out. */
+@supports (-moz-appearance: none) {
+  html[data-skin="windows"] input.switch[type="checkbox"],
+  html[data-skin="windows"] input.switch[type="checkbox"]:hover {
+    background: radial-gradient(circle at 9px 50%, var(--oa-control-strong-fill) 0 6px, transparent 6.5px) no-repeat, var(--oa-control-alt-fill);
+  }
+  html[data-skin="windows"] input.switch[type="checkbox"]:checked,
+  html[data-skin="windows"] input.switch[type="checkbox"]:checked:hover {
+    background: radial-gradient(circle at 29px 50%, var(--oa-on-accent) 0 6px, transparent 6.5px) no-repeat, var(--oa-accent-fill);
+  }
+  html[data-skin="windows"] .oa-row-control input.switch[type="checkbox"] { margin-left: 0; }
+}
+
+html[data-skin="windows"] progress {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  max-width: 400px;
+  height: 3px;
+  border: none;
+  border-radius: 1.5px;
+  background: var(--oa-control-strong-stroke);
+  vertical-align: middle;
+}
+html[data-skin="windows"] progress::-webkit-progress-bar { background: var(--oa-control-strong-stroke); border-radius: 1.5px; }
+html[data-skin="windows"] progress::-webkit-progress-value { background: var(--oa-accent-fill); border-radius: 1.5px; }
+
+/* Plain disclosures on pages not yet on oa-expander. */
+html[data-skin="windows"] details > summary { cursor: default; }
+html[data-skin="windows"] details > summary::marker { color: var(--oa-text-secondary); }
+
+/* Keyboard focus: the Windows focus rectangle. */
+html[data-skin="windows"] :is(a, button, select, input, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--oa-text);
+  outline-offset: 1px;
+}
+html[data-skin="windows"] input:not([type="checkbox"], [type="radio"]):focus-visible,
+html[data-skin="windows"] textarea:focus-visible { outline: none; }
+html[data-skin="windows"] .oa-nav-item:focus-visible { outline-offset: -2px; }
+
+/* ---- Messages ------------------------------------------------------------ */
+
+html[data-skin="windows"] details.oa-error-details { font-size: 12px; line-height: 16px; color: var(--oa-text-secondary); }
+html[data-skin="windows"] details.oa-error-details pre {
+  padding: 8px;
+  border-radius: 4px;
+  background: var(--oa-control-alt-fill);
+}
+/* A verified fact colours only its caption or status line; the row's label
+   (an app name) keeps the normal text colour. */
+html[data-skin="windows"] [data-evidence="verified"] :is(.oa-row-caption, .oa-status) { color: var(--oa-success); }
+
+/* ---- High contrast ------------------------------------------------------- */
+
+/* The [data-backdrop] selectors match the transparent Mica rule's
+   specificity and come later, so high contrast always paints Canvas, also
+   on a page that was marked for Mica before the theme changed. */
+@media (forced-colors: active) {
+  html[data-skin="windows"],
+  html[data-skin="windows"] body,
+  html[data-skin="windows"][data-backdrop="mica"],
+  html[data-skin="windows"][data-backdrop="mica"] body { background: Canvas; }
+  html[data-skin="windows"] :is(.oa-row, details.oa-expander, .oa-table, section) { border-color: CanvasText; }
+  html[data-skin="windows"] .oa-nav-item.active::before { background: Highlight; }
+  html[data-skin="windows"] input.switch[type="checkbox"]:checked { background: Highlight; border-color: Highlight; }
+}

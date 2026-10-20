@@ -15,6 +15,7 @@ dataclass Request
   artifact: Artifact
   sources: list[Source]
   constraints: Constraints | None
+const SCOPED_CREDENTIAL_GUARANTEES
 dataclass Source
   scheme: str
   locator: str

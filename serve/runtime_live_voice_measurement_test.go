@@ -589,12 +589,7 @@ func runLivePass(t *testing.T, ctx context.Context, bin, self, uid string, sessi
 		{filepath.Join(state, "credentials", credentialsBackendFile), "file-0600\n"},
 		{filepath.Join(state, "inference", inferenceHostsFile), config},
 	} {
-		if err := os.MkdirAll(filepath.Dir(file.path), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(file.path, []byte(file.body), 0o600); err != nil {
-			t.Fatal(err)
-		}
+		writeStateFile(t, file.path, file.body)
 	}
 
 	name := fmt.Sprintf("oa-live-voice-%d-%d", sessions, time.Now().UnixNano()%1e9)

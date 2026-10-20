@@ -18,7 +18,7 @@ func TestReportWebView2Availability(t *testing.T) {
 		output    string
 	}{
 		{"available", true, 0, "WebView2: available (native rendering untested)\n"},
-		{"missing", false, 3, "WebView2: unavailable (browser fallback)\n"},
+		{"missing", false, 3, "WebView2: unavailable (no Panel window)\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer

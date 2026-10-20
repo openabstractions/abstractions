@@ -38,6 +38,13 @@ pub enum RuleReadOutcome
   pub const ALL: [Self; 6]
   pub fn as_str(self) -> &'static str
   pub fn from_wire(name: &str) -> Option<Self>
+pub enum PermissionFirstUse
+  None
+  Exact
+  ConsumingPaired
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
 pub enum ActionEditOutcome
   Applied
   Conflict
@@ -47,6 +54,30 @@ pub enum ActionEditOutcome
   Forbidden
   Unavailable
   pub const ALL: [Self; 7]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum DecisionSource
+  None
+  OwnRule
+  TypedBlock
+  AccountDefault
+  DefaultExcluded
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum ResourceSelectorKind
+  One
+  All
+  pub const ALL: [Self; 2]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub enum BatchCheckOutcome
+  Checked
+  Conflict
+  Invalid
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 5]
   pub fn as_str(self) -> &'static str
   pub fn from_wire(name: &str) -> Option<Self>
 pub mod service_error_code
@@ -128,10 +159,156 @@ pub struct CatalogEntry
   action: String
   registered_by: Subject
   registered_at: String
+pub struct ActionDescription
+  action: String
+  feature_app: Subject
+  app_label: String
+  description: String
+  declared_risk: String
+pub struct PermissionDefinition
+  action: String
+  owner_contract: String
+  operations: Vec<String>
+  resource_profile: String
+  resource_type: String
+  enforced_by: Vec<String>
+  disclosure: String
+  lifecycle: String
+  first_use: PermissionFirstUse
+  served: bool
+pub struct DescribedAction
+  action: String
+  choices: Vec<String>
+  description: Option<ActionDescription>
+  published_by: Option<Subject>
+  published_at: String
 pub struct ActionEdit
   outcome: ActionEditOutcome
   revision: String
   current: Option<CatalogEntry>
+pub struct DescriptionEdit
+  outcome: ActionEditOutcome
+  revision: String
+  current: Option<DescribedAction>
+pub struct DescriptionPage
+  outcome: PolicyPageOutcome
+  revision: String
+  actions: Vec<DescribedAction>
+  next: String
+  complete: bool
+pub struct AccountDefault
+  name: String
+  action: String
+  resource: String
+  every_resource: bool
+  on: bool
+  set_by: Option<Subject>
+  set_at: String
+pub struct DefaultPage
+  outcome: PolicyPageOutcome
+  revision: String
+  defaults: Vec<AccountDefault>
+pub struct DefaultEdit
+  outcome: PolicyEditOutcome
+  revision: String
+  current: Option<AccountDefault>
+pub struct DecisionExplanation
+  outcome: DecisionOutcome
+  policy_revision: String
+  source: Option<DecisionSource>
+  default_name: String
+pub struct PermissionKey
+  action: String
+  resource_profile: String
+pub struct ResourceSelector
+  kind: ResourceSelectorKind
+  target: Option<Vec<u8>>
+pub struct PermissionSelection
+  permission: PermissionKey
+  selector: ResourceSelector
+pub struct ConcreteResource
+  permission: PermissionKey
+  target: Vec<u8>
+pub struct CheckBatchRequest
+  expected_revision: String
+  collection_admission: Option<PermissionKey>
+  resources: Vec<ConcreteResource>
+pub struct BatchDecision
+  outcome: BatchCheckOutcome
+  revision: String
+  collection_outcome: Option<DecisionOutcome>
+  outcomes: Vec<DecisionOutcome>
+pub struct SelectorPermissionDefinition
+  definition: PermissionDefinition
+  label: String
+  supported_selectors: Vec<ResourceSelectorKind>
+  first_use_selectors: Vec<ResourceSelectorKind>
+  collection: String
+  all_effect: String
+  request_type: String
+pub struct PermissionDefinitionPage
+  outcome: PolicyPageOutcome
+  revision: String
+  definitions: Vec<SelectorPermissionDefinition>
+  next: String
+  complete: bool
+pub struct PermissionBundleDefinition
+  bundle_ref: String
+  owner_contract: String
+  label: String
+  target_type: String
+  supported_selectors: Vec<ResourceSelectorKind>
+  members: Vec<PermissionKey>
+  disclosure: String
+  definition_digest: String
+pub struct PermissionBundlePage
+  outcome: PolicyPageOutcome
+  revision: String
+  bundles: Vec<PermissionBundleDefinition>
+  next: String
+  complete: bool
+pub struct BundleExpansion
+  bundle_ref: String
+  definition_digest: String
+  selector: ResourceSelector
+  selections: Vec<PermissionSelection>
+pub struct PermissionEffect
+  subject: Subject
+  selections: Vec<PermissionSelection>
+  bundle: Option<BundleExpansion>
+pub struct SelectorRule
+  subject: Subject
+  selection: PermissionSelection
+  permit: bool
+pub struct BundleOrigin
+  id: String
+  expansion: BundleExpansion
+pub struct SelectorRuleRecord
+  rule: SelectorRule
+  set_by: Subject
+  set_at: String
+  why: String
+  expires: String
+  bundle_origin: Option<BundleOrigin>
+pub struct SelectorRulePage
+  outcome: PolicyPageOutcome
+  revision: String
+  records: Vec<SelectorRuleRecord>
+  next: String
+  complete: bool
+pub struct SelectorRuleRead
+  outcome: RuleReadOutcome
+  revision: String
+  record: Option<SelectorRuleRecord>
+pub struct SelectorEdit
+  outcome: PolicyEditOutcome
+  revision: String
+  current: Vec<SelectorRuleRecord>
+  bundle_origin: Option<BundleOrigin>
+pub struct LegacyOperationRequest
+  legacy_action: String
+  legacy_resource: String
+  concrete_operation: Option<ConcreteResource>
 pub fn encode(v: &Request) -> Vec<u8>
 pub struct Refusal
   word: &'static str
@@ -148,6 +325,7 @@ pub enum CallError<E>
   Service(ServiceError)
 pub trait Authorization
   type Error
+  fn list_action_descriptions(&self, cursor: String, limit: i64) -> Result<DescriptionPage, Self::Error>
   fn decide(&self, action: String, resource: String) -> Result<Decision, Self::Error>
   fn decide_for(&self, subject: Subject, action: String, resource: String) -> Result<Decision, Self::Error>
 pub struct AuthorizationClient<T>
@@ -155,13 +333,250 @@ pub struct AuthorizationClient<T>
   pub fn transport(&self) -> &T
 pub trait AuthorizationOperator
   type Error
+  fn register_described_action(&self, expected_revision: String, description: ActionDescription) -> Result<DescriptionEdit, Self::Error>
+  fn apply_first_use_allow(&self, expected_revision: String, question_id: String) -> Result<PolicyEdit, Self::Error>
   fn list_policy(&self, cursor: String, limit: i64) -> Result<PolicyPage, Self::Error>
   fn set_rule(&self, expected_revision: String, rule: PolicyRule) -> Result<PolicyEdit, Self::Error>
   fn revoke_rule(&self, expected_revision: String, subject: Subject, action: String, resource: String) -> Result<PolicyEdit, Self::Error>
+  fn stop_answerer(&self, expected_revision: String, answerer: Subject, also_revoke_grants: bool) -> Result<PolicyEdit, Self::Error>
+  fn revoke_answer_permits(&self, expected_revision: String, answerer: Subject, target: Subject, actions: Vec<String>, resource: String, question_id: String) -> Result<PolicyEdit, Self::Error>
   fn set_rule_for(&self, expected_revision: String, rule: PolicyRule, ttl_ms: i64, why: String) -> Result<PolicyEdit, Self::Error>
+  fn set_rules_for(&self, expected_revision: String, rules: Vec<PolicyRule>, ttl_ms: i64, why: String) -> Result<PolicyEdit, Self::Error>
   fn read_rule(&self, subject: Subject, action: String, resource: String) -> Result<RuleRead, Self::Error>
   fn register_action(&self, expected_revision: String, action: String) -> Result<ActionEdit, Self::Error>
   fn retire_action(&self, expected_revision: String, action: String) -> Result<ActionEdit, Self::Error>
+  fn explain_for(&self, subject: Subject, action: String, resource: String) -> Result<DecisionExplanation, Self::Error>
+  fn list_defaults(&self) -> Result<DefaultPage, Self::Error>
+  fn set_default(&self, expected_revision: String, name: String, on: bool) -> Result<DefaultEdit, Self::Error>
 pub struct AuthorizationOperatorClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
+pub trait SelectorAuthorization
+  type Error
+  fn list_permission_definitions(&self, cursor: String, limit: i64) -> Result<PermissionDefinitionPage, Self::Error>
+  fn list_permission_bundles(&self, cursor: String, limit: i64) -> Result<PermissionBundlePage, Self::Error>
+  fn check_batch(&self, request: CheckBatchRequest) -> Result<BatchDecision, Self::Error>
+  fn check_batch_for(&self, subject: Subject, request: CheckBatchRequest) -> Result<BatchDecision, Self::Error>
+  fn check_legacy_operation_for(&self, subject: Subject, request: LegacyOperationRequest) -> Result<Decision, Self::Error>
+pub struct SelectorAuthorizationClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait SelectorAuthorizationOperator
+  type Error
+  fn list_selector_rules(&self, cursor: String, limit: i64) -> Result<SelectorRulePage, Self::Error>
+  fn read_selector_rule(&self, subject: Subject, selection: PermissionSelection) -> Result<SelectorRuleRead, Self::Error>
+  fn set_selector_rule(&self, expected_revision: String, rule: SelectorRule, ttl_ms: i64, why: String) -> Result<SelectorEdit, Self::Error>
+  fn remove_selector_rule(&self, expected_revision: String, subject: Subject, selection: PermissionSelection) -> Result<SelectorEdit, Self::Error>
+  fn apply_bundle(&self, expected_revision: String, subject: Subject, bundle_ref: String, selector: ResourceSelector, ttl_ms: i64, why: String) -> Result<SelectorEdit, Self::Error>
+  fn remove_bundle(&self, expected_revision: String, subject: Subject, origin_id: String) -> Result<SelectorEdit, Self::Error>
+  fn apply_permission_allow(&self, expected_revision: String, question_id: String) -> Result<SelectorEdit, Self::Error>
+  fn undo_permission_effect(&self, expected_revision: String, question_id: String) -> Result<SelectorEdit, Self::Error>
+pub struct SelectorAuthorizationOperatorClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub fn encode_request_document(v: &Request) -> Result<Vec<u8>, Refusal>
+pub fn decode_request_document(data: &[u8]) -> Result<Request, Refusal>
+pub fn encode_app_metadata_document(v: &AppMetadata) -> Result<Vec<u8>, Refusal>
+pub fn decode_app_metadata_document(data: &[u8]) -> Result<AppMetadata, Refusal>
+pub fn encode_hold_metadata_document(v: &HoldMetadata) -> Result<Vec<u8>, Refusal>
+pub fn decode_hold_metadata_document(data: &[u8]) -> Result<HoldMetadata, Refusal>
+pub fn encode_response_metadata_document(v: &ResponseMetadata) -> Result<Vec<u8>, Refusal>
+pub fn decode_response_metadata_document(data: &[u8]) -> Result<ResponseMetadata, Refusal>
+pub fn encode_subject_document(v: &Subject) -> Result<Vec<u8>, Refusal>
+pub fn decode_subject_document(data: &[u8]) -> Result<Subject, Refusal>
+pub fn encode_decision_document(v: &Decision) -> Result<Vec<u8>, Refusal>
+pub fn decode_decision_document(data: &[u8]) -> Result<Decision, Refusal>
+pub fn encode_policy_rule_document(v: &PolicyRule) -> Result<Vec<u8>, Refusal>
+pub fn decode_policy_rule_document(data: &[u8]) -> Result<PolicyRule, Refusal>
+pub fn encode_policy_page_document(v: &PolicyPage) -> Result<Vec<u8>, Refusal>
+pub fn decode_policy_page_document(data: &[u8]) -> Result<PolicyPage, Refusal>
+pub fn encode_policy_edit_document(v: &PolicyEdit) -> Result<Vec<u8>, Refusal>
+pub fn decode_policy_edit_document(data: &[u8]) -> Result<PolicyEdit, Refusal>
+pub fn encode_rule_record_document(v: &RuleRecord) -> Result<Vec<u8>, Refusal>
+pub fn decode_rule_record_document(data: &[u8]) -> Result<RuleRecord, Refusal>
+pub fn encode_rule_read_document(v: &RuleRead) -> Result<Vec<u8>, Refusal>
+pub fn decode_rule_read_document(data: &[u8]) -> Result<RuleRead, Refusal>
+pub fn encode_catalog_entry_document(v: &CatalogEntry) -> Result<Vec<u8>, Refusal>
+pub fn decode_catalog_entry_document(data: &[u8]) -> Result<CatalogEntry, Refusal>
+pub fn encode_action_description_document(v: &ActionDescription) -> Result<Vec<u8>, Refusal>
+pub fn decode_action_description_document(data: &[u8]) -> Result<ActionDescription, Refusal>
+pub fn encode_permission_definition_document(v: &PermissionDefinition) -> Result<Vec<u8>, Refusal>
+pub fn decode_permission_definition_document(data: &[u8]) -> Result<PermissionDefinition, Refusal>
+pub fn encode_described_action_document(v: &DescribedAction) -> Result<Vec<u8>, Refusal>
+pub fn decode_described_action_document(data: &[u8]) -> Result<DescribedAction, Refusal>
+pub fn encode_action_edit_document(v: &ActionEdit) -> Result<Vec<u8>, Refusal>
+pub fn decode_action_edit_document(data: &[u8]) -> Result<ActionEdit, Refusal>
+pub fn encode_description_edit_document(v: &DescriptionEdit) -> Result<Vec<u8>, Refusal>
+pub fn decode_description_edit_document(data: &[u8]) -> Result<DescriptionEdit, Refusal>
+pub fn encode_description_page_document(v: &DescriptionPage) -> Result<Vec<u8>, Refusal>
+pub fn decode_description_page_document(data: &[u8]) -> Result<DescriptionPage, Refusal>
+pub fn encode_account_default_document(v: &AccountDefault) -> Result<Vec<u8>, Refusal>
+pub fn decode_account_default_document(data: &[u8]) -> Result<AccountDefault, Refusal>
+pub fn encode_default_page_document(v: &DefaultPage) -> Result<Vec<u8>, Refusal>
+pub fn decode_default_page_document(data: &[u8]) -> Result<DefaultPage, Refusal>
+pub fn encode_default_edit_document(v: &DefaultEdit) -> Result<Vec<u8>, Refusal>
+pub fn decode_default_edit_document(data: &[u8]) -> Result<DefaultEdit, Refusal>
+pub fn encode_decision_explanation_document(v: &DecisionExplanation) -> Result<Vec<u8>, Refusal>
+pub fn decode_decision_explanation_document(data: &[u8]) -> Result<DecisionExplanation, Refusal>
+pub fn encode_permission_key_document(v: &PermissionKey) -> Result<Vec<u8>, Refusal>
+pub fn decode_permission_key_document(data: &[u8]) -> Result<PermissionKey, Refusal>
+pub fn encode_resource_selector_document(v: &ResourceSelector) -> Result<Vec<u8>, Refusal>
+pub fn decode_resource_selector_document(data: &[u8]) -> Result<ResourceSelector, Refusal>
+pub fn encode_permission_selection_document(v: &PermissionSelection) -> Result<Vec<u8>, Refusal>
+pub fn decode_permission_selection_document(data: &[u8]) -> Result<PermissionSelection, Refusal>
+pub fn encode_concrete_resource_document(v: &ConcreteResource) -> Result<Vec<u8>, Refusal>
+pub fn decode_concrete_resource_document(data: &[u8]) -> Result<ConcreteResource, Refusal>
+pub fn encode_check_batch_request_document(v: &CheckBatchRequest) -> Result<Vec<u8>, Refusal>
+pub fn decode_check_batch_request_document(data: &[u8]) -> Result<CheckBatchRequest, Refusal>
+pub fn encode_batch_decision_document(v: &BatchDecision) -> Result<Vec<u8>, Refusal>
+pub fn decode_batch_decision_document(data: &[u8]) -> Result<BatchDecision, Refusal>
+pub fn encode_selector_permission_definition_document(v: &SelectorPermissionDefinition) -> Result<Vec<u8>, Refusal>
+pub fn decode_selector_permission_definition_document(data: &[u8]) -> Result<SelectorPermissionDefinition, Refusal>
+pub fn encode_permission_definition_page_document(v: &PermissionDefinitionPage) -> Result<Vec<u8>, Refusal>
+pub fn decode_permission_definition_page_document(data: &[u8]) -> Result<PermissionDefinitionPage, Refusal>
+pub fn encode_permission_bundle_definition_document(v: &PermissionBundleDefinition) -> Result<Vec<u8>, Refusal>
+pub fn decode_permission_bundle_definition_document(data: &[u8]) -> Result<PermissionBundleDefinition, Refusal>
+pub fn encode_permission_bundle_page_document(v: &PermissionBundlePage) -> Result<Vec<u8>, Refusal>
+pub fn decode_permission_bundle_page_document(data: &[u8]) -> Result<PermissionBundlePage, Refusal>
+pub fn encode_bundle_expansion_document(v: &BundleExpansion) -> Result<Vec<u8>, Refusal>
+pub fn decode_bundle_expansion_document(data: &[u8]) -> Result<BundleExpansion, Refusal>
+pub fn encode_permission_effect_document(v: &PermissionEffect) -> Result<Vec<u8>, Refusal>
+pub fn decode_permission_effect_document(data: &[u8]) -> Result<PermissionEffect, Refusal>
+pub fn encode_selector_rule_document(v: &SelectorRule) -> Result<Vec<u8>, Refusal>
+pub fn decode_selector_rule_document(data: &[u8]) -> Result<SelectorRule, Refusal>
+pub fn encode_bundle_origin_document(v: &BundleOrigin) -> Result<Vec<u8>, Refusal>
+pub fn decode_bundle_origin_document(data: &[u8]) -> Result<BundleOrigin, Refusal>
+pub fn encode_selector_rule_record_document(v: &SelectorRuleRecord) -> Result<Vec<u8>, Refusal>
+pub fn decode_selector_rule_record_document(data: &[u8]) -> Result<SelectorRuleRecord, Refusal>
+pub fn encode_selector_rule_page_document(v: &SelectorRulePage) -> Result<Vec<u8>, Refusal>
+pub fn decode_selector_rule_page_document(data: &[u8]) -> Result<SelectorRulePage, Refusal>
+pub fn encode_selector_rule_read_document(v: &SelectorRuleRead) -> Result<Vec<u8>, Refusal>
+pub fn decode_selector_rule_read_document(data: &[u8]) -> Result<SelectorRuleRead, Refusal>
+pub fn encode_selector_edit_document(v: &SelectorEdit) -> Result<Vec<u8>, Refusal>
+pub fn decode_selector_edit_document(data: &[u8]) -> Result<SelectorEdit, Refusal>
+pub fn encode_legacy_operation_request_document(v: &LegacyOperationRequest) -> Result<Vec<u8>, Refusal>
+pub fn decode_legacy_operation_request_document(data: &[u8]) -> Result<LegacyOperationRequest, Refusal>
+pub mod internal
+  pub fn decode_request_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Request, usize), super::Refusal>
+  pub fn check_request(v: &super::Request, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_request_at(v: &super::Request, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_app_metadata_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::AppMetadata, usize), super::Refusal>
+  pub fn check_app_metadata(v: &super::AppMetadata, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_app_metadata_at(v: &super::AppMetadata, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_hold_metadata_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::HoldMetadata, usize), super::Refusal>
+  pub fn check_hold_metadata(v: &super::HoldMetadata, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_hold_metadata_at(v: &super::HoldMetadata, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_response_metadata_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ResponseMetadata, usize), super::Refusal>
+  pub fn check_response_metadata(v: &super::ResponseMetadata, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_response_metadata_at(v: &super::ResponseMetadata, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_subject_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Subject, usize), super::Refusal>
+  pub fn check_subject(v: &super::Subject, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_subject_at(v: &super::Subject, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_decision_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Decision, usize), super::Refusal>
+  pub fn check_decision(v: &super::Decision, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_decision_at(v: &super::Decision, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_policy_rule_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::PolicyRule, usize), super::Refusal>
+  pub fn check_policy_rule(v: &super::PolicyRule, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_policy_rule_at(v: &super::PolicyRule, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_policy_page_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::PolicyPage, usize), super::Refusal>
+  pub fn check_policy_page(v: &super::PolicyPage, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_policy_page_at(v: &super::PolicyPage, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_policy_edit_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::PolicyEdit, usize), super::Refusal>
+  pub fn check_policy_edit(v: &super::PolicyEdit, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_policy_edit_at(v: &super::PolicyEdit, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_rule_record_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::RuleRecord, usize), super::Refusal>
+  pub fn check_rule_record(v: &super::RuleRecord, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_rule_record_at(v: &super::RuleRecord, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_rule_read_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::RuleRead, usize), super::Refusal>
+  pub fn check_rule_read(v: &super::RuleRead, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_rule_read_at(v: &super::RuleRead, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_catalog_entry_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::CatalogEntry, usize), super::Refusal>
+  pub fn check_catalog_entry(v: &super::CatalogEntry, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_catalog_entry_at(v: &super::CatalogEntry, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_action_description_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ActionDescription, usize), super::Refusal>
+  pub fn check_action_description(v: &super::ActionDescription, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_action_description_at(v: &super::ActionDescription, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_permission_definition_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::PermissionDefinition, usize), super::Refusal>
+  pub fn check_permission_definition(v: &super::PermissionDefinition, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_permission_definition_at(v: &super::PermissionDefinition, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_described_action_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::DescribedAction, usize), super::Refusal>
+  pub fn check_described_action(v: &super::DescribedAction, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_described_action_at(v: &super::DescribedAction, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_action_edit_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ActionEdit, usize), super::Refusal>
+  pub fn check_action_edit(v: &super::ActionEdit, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_action_edit_at(v: &super::ActionEdit, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_description_edit_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::DescriptionEdit, usize), super::Refusal>
+  pub fn check_description_edit(v: &super::DescriptionEdit, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_description_edit_at(v: &super::DescriptionEdit, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_description_page_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::DescriptionPage, usize), super::Refusal>
+  pub fn check_description_page(v: &super::DescriptionPage, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_description_page_at(v: &super::DescriptionPage, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_account_default_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::AccountDefault, usize), super::Refusal>
+  pub fn check_account_default(v: &super::AccountDefault, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_account_default_at(v: &super::AccountDefault, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_default_page_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::DefaultPage, usize), super::Refusal>
+  pub fn check_default_page(v: &super::DefaultPage, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_default_page_at(v: &super::DefaultPage, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_default_edit_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::DefaultEdit, usize), super::Refusal>
+  pub fn check_default_edit(v: &super::DefaultEdit, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_default_edit_at(v: &super::DefaultEdit, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_decision_explanation_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::DecisionExplanation, usize), super::Refusal>
+  pub fn check_decision_explanation(v: &super::DecisionExplanation, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_decision_explanation_at(v: &super::DecisionExplanation, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_permission_key_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::PermissionKey, usize), super::Refusal>
+  pub fn check_permission_key(v: &super::PermissionKey, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_permission_key_at(v: &super::PermissionKey, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_resource_selector_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ResourceSelector, usize), super::Refusal>
+  pub fn check_resource_selector(v: &super::ResourceSelector, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_resource_selector_at(v: &super::ResourceSelector, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_permission_selection_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::PermissionSelection, usize), super::Refusal>
+  pub fn check_permission_selection(v: &super::PermissionSelection, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_permission_selection_at(v: &super::PermissionSelection, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_concrete_resource_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ConcreteResource, usize), super::Refusal>
+  pub fn check_concrete_resource(v: &super::ConcreteResource, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_concrete_resource_at(v: &super::ConcreteResource, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_check_batch_request_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::CheckBatchRequest, usize), super::Refusal>
+  pub fn check_check_batch_request(v: &super::CheckBatchRequest, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_check_batch_request_at(v: &super::CheckBatchRequest, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_batch_decision_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::BatchDecision, usize), super::Refusal>
+  pub fn check_batch_decision(v: &super::BatchDecision, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_batch_decision_at(v: &super::BatchDecision, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_selector_permission_definition_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::SelectorPermissionDefinition, usize), super::Refusal>
+  pub fn check_selector_permission_definition(v: &super::SelectorPermissionDefinition, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_selector_permission_definition_at(v: &super::SelectorPermissionDefinition, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_permission_definition_page_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::PermissionDefinitionPage, usize), super::Refusal>
+  pub fn check_permission_definition_page(v: &super::PermissionDefinitionPage, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_permission_definition_page_at(v: &super::PermissionDefinitionPage, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_permission_bundle_definition_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::PermissionBundleDefinition, usize), super::Refusal>
+  pub fn check_permission_bundle_definition(v: &super::PermissionBundleDefinition, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_permission_bundle_definition_at(v: &super::PermissionBundleDefinition, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_permission_bundle_page_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::PermissionBundlePage, usize), super::Refusal>
+  pub fn check_permission_bundle_page(v: &super::PermissionBundlePage, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_permission_bundle_page_at(v: &super::PermissionBundlePage, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_bundle_expansion_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::BundleExpansion, usize), super::Refusal>
+  pub fn check_bundle_expansion(v: &super::BundleExpansion, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_bundle_expansion_at(v: &super::BundleExpansion, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_permission_effect_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::PermissionEffect, usize), super::Refusal>
+  pub fn check_permission_effect(v: &super::PermissionEffect, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_permission_effect_at(v: &super::PermissionEffect, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_selector_rule_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::SelectorRule, usize), super::Refusal>
+  pub fn check_selector_rule(v: &super::SelectorRule, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_selector_rule_at(v: &super::SelectorRule, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_bundle_origin_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::BundleOrigin, usize), super::Refusal>
+  pub fn check_bundle_origin(v: &super::BundleOrigin, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_bundle_origin_at(v: &super::BundleOrigin, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_selector_rule_record_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::SelectorRuleRecord, usize), super::Refusal>
+  pub fn check_selector_rule_record(v: &super::SelectorRuleRecord, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_selector_rule_record_at(v: &super::SelectorRuleRecord, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_selector_rule_page_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::SelectorRulePage, usize), super::Refusal>
+  pub fn check_selector_rule_page(v: &super::SelectorRulePage, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_selector_rule_page_at(v: &super::SelectorRulePage, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_selector_rule_read_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::SelectorRuleRead, usize), super::Refusal>
+  pub fn check_selector_rule_read(v: &super::SelectorRuleRead, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_selector_rule_read_at(v: &super::SelectorRuleRead, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_selector_edit_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::SelectorEdit, usize), super::Refusal>
+  pub fn check_selector_edit(v: &super::SelectorEdit, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_selector_edit_at(v: &super::SelectorEdit, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_legacy_operation_request_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::LegacyOperationRequest, usize), super::Refusal>
+  pub fn check_legacy_operation_request(v: &super::LegacyOperationRequest, depth: i32, limit: i32) -> Result<(), super::Refusal>
+  pub fn encode_legacy_operation_request_at(v: &super::LegacyOperationRequest, depth: i32) -> Result<Vec<u8>, super::Refusal>

@@ -8,12 +8,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	"github.com/openabstractions/abstraction-identity/listen"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	inferenceservice "github.com/openabstractions/abstraction-inference/go/service"
-	lend "github.com/openabstractions/abstraction-storage/go/abstraction/storage/lend"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
+	lend "github.com/openabstractions/abstraction-storage/go/abstraction/storage/lend"
 )
 
 // Lending on the provider rail: abstraction.storage/lend@1 is served by a
@@ -45,13 +44,7 @@ var lendingLaunchBudget = 30 * time.Second
 func ResourceEngine(name string) string { return "engine:" + name }
 
 func lendingEndpoint(options runtimeFlags) (string, error) {
-	switch {
-	case options.isolated != "":
-		return bootstrap.Endpoint(options.isolated + "-lend")
-	case options.endpoint != "":
-		return options.endpoint + "-lend", nil
-	}
-	return options.defaultEndpoint("lend-v1")
+	return options.companionEndpoint("lend-v1", "lend", "lend")
 }
 
 // lendingSupervisor is the first declaration serving the lending contract.
@@ -83,6 +76,9 @@ func (p *runtimeProviders) lendingProvider(ctx context.Context) (client *lend.Le
 		s := p.lendingSupervisor()
 		if s == nil {
 			return nil, noneDeclared
+		}
+		if why := s.unavailableReason(); why != "" {
+			return nil, why
 		}
 		s.activate()
 		if s.ready() {
@@ -335,26 +331,32 @@ type lendingReceiver struct {
 	ctx  context.Context
 }
 
-func (r *lendingReceiver) caller() inference.Subject {
+// caller is the call's bound subject and the call's context carrying the peer
+// it was bound from (inference.WithPeer), whose code a first-use question
+// records as its publisher (ASK-A6). An unbound call carries no peer.
+func (r *lendingReceiver) caller() (context.Context, inference.Subject) {
 	peer, err := r.call.Peer()
 	if err != nil {
-		return inference.Subject{}
+		return inference.WithPeer(r.ctx, nil), inference.Subject{}
 	}
 	subject, err := inferenceservice.SubjectFromPeer(peer)
 	if err != nil || subject.Account != r.host.owner || r.call.Recheck() != nil {
-		return inference.Subject{}
+		return inference.WithPeer(r.ctx, nil), inference.Subject{}
 	}
-	return subject
+	return inference.WithPeer(r.ctx, peer), subject
 }
 
 func (r *lendingReceiver) Lend(store, object, engine string, copy_ bool) (lend.LendResult, error) {
-	return r.host.lending.Lend(r.ctx, r.caller(), store, object, engine, copy_), nil
+	ctx, caller := r.caller()
+	return r.host.lending.Lend(ctx, caller, store, object, engine, copy_), nil
 }
 
 func (r *lendingReceiver) Unlend(entry string) (lend.UnlendResult, error) {
-	return r.host.lending.Unlend(r.ctx, r.caller(), entry), nil
+	ctx, caller := r.caller()
+	return r.host.lending.Unlend(ctx, caller, entry), nil
 }
 
 func (r *lendingReceiver) Lends(continuation string, limit int64) (lend.LendPage, error) {
-	return r.host.lending.Lends(r.ctx, r.caller(), continuation, limit), nil
+	ctx, caller := r.caller()
+	return r.host.lending.Lends(ctx, caller, continuation, limit), nil
 }

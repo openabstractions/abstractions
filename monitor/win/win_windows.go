@@ -6,6 +6,9 @@ import (
 	"sync"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 )
 
 var (
@@ -39,6 +42,9 @@ var (
 	dpiAware            = user32.NewProc("SetProcessDPIAware")
 	dpiAwareness        = user32.NewProc("SetProcessDpiAwarenessContext")
 	dpiForWindow        = user32.NewProc("GetDpiForWindow")
+	systemParameters    = user32.NewProc("SystemParametersInfoW")
+
+	dwmSetWindowAttribute = windows.NewLazySystemDLL("dwmapi.dll").NewProc("DwmSetWindowAttribute")
 
 	createSolidBrush = gdi32.NewProc("CreateSolidBrush")
 	createFont       = gdi32.NewProc("CreateFontW")
@@ -60,12 +66,14 @@ const (
 
 	wmDestroy        = 0x0002
 	wmSize           = 0x0005
+	wmSettingChange  = 0x001A
 	wmGetMinMaxInfo  = 0x0024
 	wmSetFont        = 0x0030
 	wmSetText        = 0x000C
 	wmCommand        = 0x0111
 	wmCtlColorEdit   = 0x0133
 	wmCtlColorStatic = 0x0138
+	wmThemeChanged   = 0x031A
 	wmApp            = 0x8000
 	wmQueued         = wmApp + 1
 
@@ -98,6 +106,20 @@ const (
 	// DPI_AWARENESS_CONTEXT_SYSTEM_AWARE, which the header spells as the
 	// pointer-shaped constant -2.
 	dpiContextSystemAware = ^uintptr(1)
+
+	// Documented DWM window attributes. The backdrop is supported from
+	// Windows 11 build 22621; corners and dark captions from build 22000.
+	// Older Windows versions reject these optional attributes.
+	// https://learn.microsoft.com/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute
+	dwmUseImmersiveDarkMode   = 20
+	dwmWindowCornerPreference = 33
+	dwmSystemBackdropType     = 38
+	dwmCornerRound            = 2
+	dwmBackdropNone           = 1
+	dwmBackdropMainWindow     = 2
+
+	spiGetHighContrast = 0x0042
+	hcfHighContrastOn  = 0x0001
 )
 
 // The structs below are the C structs the calls above take. Their field
@@ -128,6 +150,10 @@ type message struct {
 type rect struct{ Left, Top, Right, Bottom int32 }
 type minMaxInfo struct {
 	Reserved, MaxSize, MaxPosition, MinTrack, MaxTrack point
+}
+type highContrast struct {
+	Size, Flags   uint32
+	DefaultScheme *uint16
 }
 
 var (
@@ -203,13 +229,14 @@ func EnableDPIAwareness() { makeDPIAware() }
 
 // Window is one top-level window and everything drawn in it.
 type Window struct {
-	h         syscall.Handle
-	instance  uintptr
-	dpi       int
-	minWidth  int
-	minHeight int
-	body      syscall.Handle
-	brush     syscall.Handle
+	h           syscall.Handle
+	instance    uintptr
+	dpi         int
+	minWidth    int
+	minHeight   int
+	body        syscall.Handle
+	brush       syscall.Handle
+	modernFrame bool
 
 	next  int32
 	click map[int32]func()
@@ -219,6 +246,11 @@ type Window struct {
 	// trayMsg, when set, handles the Shell_NotifyIcon callback message a tray
 	// icon registered on this window (see tray_windows.go, beside this file).
 	trayMsg func(wparam, lparam uintptr)
+
+	// sessionChange receives lock and unlock broadcasts registered through
+	// WatchSessionChanges. The presenter uses it to close an open permission dialog
+	// when Windows moves away from the interactive desktop.
+	sessionChange func(locked bool)
 
 	mu     sync.Mutex
 	queued []func()
@@ -245,9 +277,8 @@ func RunWithMinimum(title string, width, height, minWidth, minHeight int, build 
 }
 
 // RunHidden pumps a window's messages the same way Run does, but never shows
-// it. It is for a window that exists only to receive messages — the tray
-// icon's Shell_NotifyIcon callback, in tray_windows.go beside this file —
-// with no visible surface of its own. Close ends it, since it has no title
+// it. It receives queued work and session-lock messages without a visible
+// surface of its own. Close ends it, since it has no title
 // bar for a person to close.
 func RunHidden(title string, build func(*Window)) error {
 	return run(title, 0, 0, 0, 0, false, build)
@@ -362,6 +393,54 @@ func (w *Window) font(pt, weight int) syscall.Handle {
 
 func (w *Window) px(n int) int { return n * w.dpi / 96 }
 
+// useModernFrame lets Windows render the WebView2 host's standard caption,
+// corners and backdrop. The WebView owns its client pixels; native caption
+// controls, hit testing and sizing remain with DefWindowProc.
+func (w *Window) useModernFrame() {
+	w.modernFrame = true
+	w.refreshFrame()
+}
+
+func (w *Window) refreshFrame() {
+	if !w.modernFrame || dwmSetWindowAttribute.Find() != nil {
+		return
+	}
+	contrast := highContrast{Size: uint32(unsafe.Sizeof(highContrast{}))}
+	if ok, _, _ := systemParameters.Call(spiGetHighContrast, uintptr(contrast.Size), uintptr(unsafe.Pointer(&contrast)), 0); ok == 0 { //unchecked: SystemParametersInfo's BOOL is checked; leave the system frame when the accessibility setting cannot be read
+		return
+	}
+	dark, backdrop := uint32(0), uint32(dwmBackdropNone)
+	if contrast.Flags&hcfHighContrastOn == 0 {
+		backdrop = dwmBackdropMainWindow
+		if appDarkMode() {
+			dark = 1
+		}
+	}
+	w.setFrameAttribute(dwmUseImmersiveDarkMode, dark)
+	w.setFrameAttribute(dwmWindowCornerPreference, dwmCornerRound)
+	w.setFrameAttribute(dwmSystemBackdropType, backdrop)
+}
+
+func (w *Window) setFrameAttribute(attribute, value uint32) {
+	hr, _, _ := dwmSetWindowAttribute.Call(uintptr(w.h), uintptr(attribute), uintptr(unsafe.Pointer(&value)), unsafe.Sizeof(value)) //unchecked: DWM returns HRESULT; unsupported attributes preserve Windows' standard frame
+	if int32(hr) < 0 {
+		return
+	}
+}
+
+// appDarkMode reads the same per-user app theme WebView2 follows. A missing
+// preference keeps Windows' default light caption. Settings changes arrive
+// through the window's normal WM_SETTINGCHANGE / WM_THEMECHANGED messages.
+func appDarkMode() bool {
+	key, err := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`, registry.QUERY_VALUE)
+	if err != nil {
+		return false
+	}
+	light, _, err := key.GetIntegerValue("AppsUseLightTheme")
+	closeErr := key.Close()
+	return err == nil && closeErr == nil && light == 0
+}
+
 // minimumOuterSize converts a logical client minimum to Win32's physical
 // outer-window tracking size. The current frame measurement includes the
 // title bar and resize borders that WM_GETMINMAXINFO expects.
@@ -405,6 +484,11 @@ func (w *Window) Do(f func()) {
 // OnSize lays the controls out. Called once at startup and on every resize,
 // with the client area in 96-dpi units.
 func (w *Window) OnSize(f func(width, height int)) { w.size = f }
+
+// Handle is the window's handle, the owner of the prompts it shows; another
+// window owned by it, such as the platform's administrator prompt, opens in
+// front of it.
+func (w *Window) Handle() uintptr { return uintptr(w.h) }
 
 // Close destroys the window, ending Run's or RunHidden's message pump. A
 // hidden window built with RunHidden has no title bar close button, so this
@@ -492,7 +576,19 @@ func dispatch(hwnd, msg, wparam, lparam uintptr) uintptr {
 		return r
 	}
 	switch msg {
+	case 0x0011: // WM_QUERYENDSESSION: defer cleanup until shutdown commits.
+		return 1
+	case 0x0016: // WM_ENDSESSION: FALSE is a cancelled shutdown.
+		if wparam != 0 {
+			DismissActiveQuestion()
+			w.Close()
+		}
+		return 0
 	case wmDestroy:
+		if w.sessionChange != nil {
+			wtsUnregisterSessionNotification.Call(uintptr(w.h))
+			w.sessionChange = nil
+		}
 		postQuit.Call(0)
 		return 0
 	case wmSize:
@@ -504,6 +600,8 @@ func dispatch(hwnd, msg, wparam, lparam uintptr) uintptr {
 		if w.setMinimumTrackSize(lparam) {
 			return 0
 		}
+	case wmSettingChange, wmThemeChanged:
+		w.refreshFrame()
 	case wmCommand:
 		if do := w.click[controlID(wparam)]; do != nil {
 			do()
@@ -512,6 +610,16 @@ func dispatch(hwnd, msg, wparam, lparam uintptr) uintptr {
 	case wmTrayCallback:
 		if w.trayMsg != nil {
 			w.trayMsg(wparam, lparam)
+		}
+		return 0
+	case wmWtsSessionChange:
+		if w.sessionChange != nil {
+			switch wparam {
+			case wtsSessionLock:
+				w.sessionChange(true)
+			case wtsSessionUnlock:
+				w.sessionChange(false)
+			}
 		}
 		return 0
 	case wmQueued:

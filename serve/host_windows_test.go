@@ -319,7 +319,7 @@ func TestWindowlessImageIsRequired(t *testing.T) {
 	if err != nil || got != twin {
 		t.Fatalf("twin %q err=%v", got, err)
 	}
-	if line := hostServiceCommand(`C:\Program Files\OpenAbstractions\tools\openabstractionsw.exe`); line != `"C:\Program Files\OpenAbstractions\tools\openabstractionsw.exe" serve host --service` {
+	if line := hostServiceCommand(`C:\Program Files\OpenAbstractions\tools\openabstractionsw.exe`); line != `"C:\Program Files\OpenAbstractions\tools\openabstractionsw.exe" serve supervisor --service` {
 		t.Fatalf("registered command %q", line)
 	}
 }

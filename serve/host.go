@@ -13,7 +13,7 @@ import (
 // policy (SCM recovery, the next activation or sign-in) takes over.
 //
 // Linux and macOS need no host: systemd and launchd run `serve runtime`
-// directly with their own restart policy. The Windows command is `serve host`.
+// directly with their own restart policy. The Windows command is `serve supervisor`.
 
 // hostRestartDelays is the wait before each successive restart of a failed
 // child. A fourth failure ends the host.

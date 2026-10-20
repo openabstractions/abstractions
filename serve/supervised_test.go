@@ -47,8 +47,12 @@ func shortSocketDir(t *testing.T) string {
 	return dir
 }
 
-// runtimeWait bounds every wait on an in-process runtime or fixture.
-const runtimeWait = 15 * time.Second
+// runtimeWait bounds every wait on an in-process runtime or fixture. Each
+// such wait ends on its event (the ready callback, a process exit, an
+// answer); the bound only ends a test whose event never comes. A full runtime
+// took more than 15 s to start while another suite ran, and the former 15 s
+// bound failed healthy runs (TestGatewayRoutes, 2026-10-01).
+const runtimeWait = 60 * time.Second
 
 // awaitReadiness returns the runtime's first line, the error the runtime
 // returned before writing one, or a timeout. A runtime that cannot start never

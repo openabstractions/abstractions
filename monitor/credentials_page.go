@@ -4,38 +4,50 @@ package main
 // research/vocabulary/DECISION.md §4: Saved credentials, Add credential
 // (credentials row 9), Allow and Block (D53); the rule it edits keeps its
 // wire action abstraction.credentials/apply.
-const credentialsPage = `<h1>Credentials</h1>
-<p>Secrets registered on this account: their names, kinds, status, targets, consumers, and where they're used. You type the secret once; it's never shown, logged, or sent back to you again.</p>
-<p><a id="back" href="#">Back to Status</a></p>
-<section id="saved"><h2>Saved credentials</h2><button id="list-start">Refresh</button><button id="list-next" disabled>Next page</button><pre id="list-status"></pre><pre id="limits"></pre><div id="records"></div></section>
-<section id="new"><h2>Add credential</h2><p>Register a name that isn't in use yet.</p>
-<form id="add-form"><input id="add-name" required placeholder="name"><select id="add-kind" aria-label="Kind"><option value="bearer">bearer</option><option value="header">header</option></select><input id="add-header" placeholder="Header name (for the header kind)"><input id="add-targets" required placeholder="Targets, separated by commas"><select id="add-consumers-select" multiple required aria-label="Consumers"></select><input id="add-consumers" placeholder="Other consumers, separated by commas" hidden><input id="add-expires" type="datetime-local" aria-label="Expiry (optional)"><input id="add-secret" type="password" autocomplete="off" required placeholder="secret"><button>Add</button></form>
-<pre id="add-status"></pre></section>
-<section id="rotate"><h2>Rotate</h2><p>Replace the secret and expiry for a name you've already listed.</p>
-<form id="rotate-form"><select id="rotate-name-select" aria-label="Name"></select><input id="rotate-name" required placeholder="name" hidden><input id="rotate-revision" required placeholder="Revision (from the list)"><input id="rotate-expires" type="datetime-local" aria-label="Expiry (optional)"><input id="rotate-secret" type="password" autocomplete="off" required placeholder="new secret"><button>Rotate</button></form>
-<pre id="rotate-status"></pre></section>
-<section id="revoke"><h2>Revoke</h2><p>Delete the secret right away and keep a record that it existed, at the revision you've already listed.</p>
-<form id="revoke-form"><select id="revoke-name-select" aria-label="Name"></select><input id="revoke-name" required placeholder="name" hidden><input id="revoke-revision" required placeholder="Revision (from the list)"><button>Revoke</button></form>
-<pre id="revoke-status"></pre></section>
-<section id="access"><h2>App access</h2><p>Set whether one app on one account can use this credential. This uses the rule <span title="abstraction.credentials/apply">credentials apply</span> on that credential (for example credential:huggingface). Applies to the rules as they were when you last clicked Show; if they changed since, Show again first. It's the same rule editor as <a id="rights-editor-link" href="#">Questions and permissions</a>. Listing and editing any of it needs this Panel to hold <span title="abstraction.credentials/holder.manage">credentials manage</span> and <span title="abstraction.credentials/holder.read">credentials list</span>.</p>
-<button id="allow-list">Refresh</button><pre id="allow-status"></pre><div id="allow-rules"></div>
-<form id="allow-form"><select id="allow-name-select" aria-label="Credential name"></select><input id="allow-name" required placeholder="credential name" hidden><select id="allow-account-select" aria-label="Account"></select><input id="allow-account" required placeholder="account" hidden><select id="allow-program-select" aria-label="Program"></select><input id="allow-program" required placeholder="Program path" hidden><select id="allow-permit" aria-label="Allow or block"><option value="permit">Allow</option><option value="deny">Block</option></select><button>Save</button></form></section>
+//
+// Its shape follows the Panel redesign (research/panel-redesign/SPEC.md §4,
+// slice S8): one caption, "Keys your apps use for hosted services."; every
+// field is a chooser except the secret itself. Add picks the hosted model
+// server a key is for (its credential name and address come from the
+// server's own entry), each saved credential carries its own "Replace key…"
+// and "Remove" (a second click confirms), and a typed name or address appears
+// only behind "Other…". Every button writes one sentence into its row's status line.
+var credentialsPage = oaPageHead("credentials", "Credentials", "Keys your apps use for hosted services.") + `<div data-ready-owner="page" hidden></div>` +
+	`<section id="saved" class="oa-group"><h2>Saved credentials</h2>` + oaStatus("list-status") + `<p class="oa-empty" id="records-empty" hidden>No credentials registered.</p><div id="records"></div>` +
+	oaRow("Storage", "", `<button id="list-next" type="button" hidden>Show more</button>`, "limits") + `</section>
+<section id="new" class="oa-group"><h2>Add credential</h2>` +
+	oaRow("Add a credential", "", `<button id="add-open" type="button">Add a credential…</button>`, "add-open-status") +
+	`<form id="add-form" hidden>` +
+	oaRow("For", "", `<select id="add-for" aria-label="For"></select><input id="add-name" aria-label="Name" placeholder="Name" data-oa-other hidden><input id="add-targets" aria-label="Address" placeholder="Address, like api.example.com" data-oa-other hidden>`, "") +
+	oaRow("Kind", "", `<select id="add-kind" aria-label="Kind"><option value="bearer">Bearer token</option><option value="header">Header</option></select><input id="add-header" aria-label="Header name" value="X-Api-Key" hidden>`, "") +
+	oaRow("Used for", "", `<span id="add-consumers-select" aria-label="Used for"></span><input id="add-consumers" aria-label="Other uses" data-oa-other hidden>`, "add-consumers-status") +
+	oaRow("Expires", "", `<select id="add-expires" aria-label="Expires"><option value="">Never</option><option value="30">In 30 days</option><option value="90">In 90 days</option><option value="365">In a year</option></select>`, "") +
+	oaRow("Secret", "", `<input id="add-secret" type="password" autocomplete="off" required aria-label="Secret" data-oa-secret>`, "") +
+	oaRow("Save", "", `<button id="add-button" type="submit" class="oa-primary">Add</button>`, "add-status") + `</form></section>
+<section id="access" class="oa-group"><h2>App access</h2><p class="oa-caption">Which apps may use a credential.</p>` + oaStatus("allow-status") + `<div id="allow-rules"></div>` +
+	oaRow("Set app access", "", `<button id="allow-open" type="button">Set app access…</button>`, "allow-open-status") +
+	`<form id="allow-form" hidden>` +
+	oaRow("Credential", "", `<select id="allow-name-select" aria-label="Credential name"></select><input id="allow-name" aria-label="Credential name" data-oa-other hidden>`, "") +
+	oaRow("Account", "", `<select id="allow-account-select" aria-label="Account"></select><input id="allow-account" aria-label="Account" data-oa-other hidden>`, "") +
+	oaRow("App", "", `<select id="allow-program-select" aria-label="App"></select><input id="allow-program" aria-label="App" data-oa-other hidden>`, "") +
+	oaRow("Access", "", `<select id="allow-permit" aria-label="Allow or block"><option value="permit">Allow</option><option value="deny">Block</option></select>`, "") +
+	oaRow("Save this rule", "", `<button id="allow-button" type="submit">Save</button>`, "allow-save-status") + `</form></section>
 <script>
 const key=new URLSearchParams(location.search).get('k');
 const el=id=>document.getElementById(id);
-function show(id,x){el(id).textContent=typeof x==='string'?x:JSON.stringify(x,null,2)}
+function show(id,x){oaSetStatus(id,'ok',typeof x==='string'?x:JSON.stringify(x,null,2))}
 async function call(path,body){const r=await fetch(path,{method:body?'POST':'GET',headers:{'X-Panel-Key':key,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});if(!r.ok)throw Error(await r.text());return r.json()}
-function shortName(path){const parts=String(path||'').split(/[\\/]/).filter(Boolean);return parts.length?parts[parts.length-1]:path}
-el('back').href='/?k='+encodeURIComponent(key);
-el('rights-editor-link').href='/rights?k='+encodeURIComponent(key)+'#rights-section';
+function shortName(path){return oaShortName(path)}
 function commaList(v){return v.split(',').map(x=>x.trim()).filter(x=>x)}
-function isoOrEmpty(v){if(!v)return '';const d=new Date(v);return isNaN(d.getTime())?'':d.toISOString()}
+// expiresIn reads an Expires choice (Never, or a number of days from now)
+// as the wire's ISO time, or '' for never.
+function expiresIn(days){if(!days)return '';return new Date(Date.now()+Number(days)*864e5).toISOString()}
 const outcomeText={forbidden:'This panel is not authorized for credentials; nothing changed.',unavailable:'The credentials service could not complete this; list again before another conditional edit.',gap:'The listing changed; start again.',invalid:'The credentials service rejected this as invalid.',no_secure_store:'This runtime has no configured platform store; nothing was stored.',exhausted:'This account already holds its maximum number of credentials.',unsupported_kind:'This runtime\'s applier does not support that kind.',unknown:'No credential has that name.',conflict:'The listed revision is stale; list again before retrying.'};
 function outcomeStatus(o){return outcomeText[o]||'Credentials service outcome: '+o}
 // storeLabel names the platform store in words a reader recognizes, for the
 // wire words Limits.SecureStore carries (abstraction-credentials/go/backend.go);
 // an unrecognized future word still shows, unchanged, rather than disappearing.
-function storeLabel(s){const known={'windows-credential-manager':'Windows Credential Manager','secret-service':'the desktop secret service','file-0600':'a local file, restricted to this account','macos-keychain':'macOS Keychain','none':'no platform store'};return known[s]||s}
+function storeLabel(s){const known={'windows-dpapi-file':'an encrypted file for this Windows account','windows-credential-manager':'Windows Credential Manager','macos-login-keychain':'the macOS login Keychain','secret-service':'the desktop secret service','file-0600':'a local file, restricted to this account','macos-keychain':'macOS Keychain','none':'no platform store'};return known[s]||s}
 // limitsText turns the "Show credentials" limits line into a sentence,
 // instead of the "store: ...; kinds: ...; max secret bytes: ...; max
 // credentials: ..." field dump the person read literally (task 2026-09-23
@@ -75,62 +87,94 @@ function credentialSentenceName(name){const program=credentialKeyPrograms&&crede
 // else this runtime's consumers ever carry (today, only downloads).
 const consumerServiceNames={'inference/chat':'chat','inference/embed':'embeddings','inference/image':'image generation','inference/live':'live voice','inference/speech':'speech','inference/transcription':'transcription','model/resolver':'model resolve'};
 function consumerServiceName(id){const contract=oaContractName(id);if(!contract)return id;const full=contract.layer+'/'+contract.name;return consumerServiceNames[full]||oaServiceName(contract)}
-function metaBox(m){const box=document.createElement('div');box.className='record';
-const summary=document.createElement('p');summary.textContent=metaBoxName(m)+' · '+m.State+' · registered by '+shortName(m.RegisteredBy.Program)+' '+oaLocalTime(m.Registered);summary.title='id: '+m.Name+'; '+m.RegisteredBy.Program+'; registered '+m.Registered;box.append(summary);
-const consumers=(m.Scope.Consumers||[]).map(consumerServiceName);
-if(consumers.length){const used=document.createElement('p');used.textContent='Used by: '+consumers.join(', ')+'.';box.append(used)}
-const details=document.createElement('details');const dsummary=document.createElement('summary');dsummary.textContent='Technical details';const pre=document.createElement('pre');pre.textContent=JSON.stringify(m,null,2);details.append(dsummary,pre);box.append(details);
-if(m.State!=='revoked'){const label=metaBoxName(m);const chosen=document.createElement('span');chosen.className='oa-note';const rot=document.createElement('button');rot.textContent='Use for rotate';rot.onclick=()=>{el('rotate-revision').value=m.Revision;chooseForCredential('rotate','rotate','rotate-name-select','rotate-name',m.Name,label,chosen)};const rev=document.createElement('button');rev.textContent='Use for revoke';rev.onclick=()=>{el('revoke-revision').value=m.Revision;chooseForCredential('revoke','revoke','revoke-name-select','revoke-name',m.Name,label,chosen)};const allow=document.createElement('button');allow.textContent='Allow/block this name';allow.onclick=()=>chooseForCredential('allow/block','access','allow-name-select','allow-name',m.Name,label,chosen);box.append(rot,rev,allow,chosen)}
-return box}
-// Use for rotate, Use for revoke and Allow/deny this name used to fill a
-// field in a form far below the saved list with no visible change here at
-// all: the person had to already know to scroll down and look (task
-// 2026-09-23, fourteenth first-time visitor, finding 7). Each button now
-// scrolls that section into view, focuses whichever field selectCredentialName
-// left visible, and names what it chose right beside the button that was
-// clicked, the one place the person was already looking.
-function chooseForCredential(kind,sectionId,selectId,inputId,name,label,note){
- selectCredentialName(selectId,inputId,name);
- const section=el(sectionId);if(section&&section.scrollIntoView)section.scrollIntoView({behavior:'smooth',block:'start'});
- const target=el(inputId).hidden?el(selectId):el(inputId);
- if(target&&target.focus)target.focus();
- note.textContent='Chosen for '+kind+': '+label+'.';
-}
-// Rotate, Revoke and Allow/deny's own name field used to be filled by
-// these buttons with a gateway key's raw name, "local-key.<hash>.
-// <random>", as the field's own visible, editable text; nothing near
-// these forms read it as the friendly name metaBoxName already computes
-// for the very same credential (task 2026-09-23, thirteenth first-time
-// visitor, finding 5). Each of the three now offers a chooser built from
-// the credentials this Panel has listed, the friendly name as each
-// option's own text and the raw name it still sends as the option's
-// value, so typing or reading still works unchanged; "Other…" reveals a
-// typed field for a name not listed yet. credentialNames (raw name ->
-// friendly label) is the one map behind all three and the saved list's
-// own metaBoxName, so a name reads the same word everywhere.
+// credentialRow is one saved credential as an oa-row: its name, a caption
+// (state, who registered it, what uses it), Technical details, the row
+// actions "Replace key…" and "Remove", an editor for the new secret, and
+// the row's own status line. updateCredentialRow refreshes it in place, so
+// a reread keeps the row, its sentence and focus (Panel rules, S8 review).
+function credentialRow(m){
+ const row=document.createElement('div');row.className='oa-row';
+ const text=document.createElement('div');text.className='oa-row-text';
+ const label=document.createElement('span');label.className='oa-row-label';
+ const caption=document.createElement('span');caption.className='oa-row-caption';
+ const details=oaTechnical(document.createElement('details'));details.className='oa-expander';const dsummary=document.createElement('summary');dsummary.textContent='Technical details';const pre=document.createElement('pre');details.append(dsummary,pre);
+ text.append(label,caption,details);
+ const control=document.createElement('div');control.className='oa-row-control';
+ const replace=document.createElement('button');replace.type='button';replace.textContent='Replace key…';
+ const remove=document.createElement('button');remove.type='button';remove.textContent='Remove';
+ control.append(replace,remove);
+ const editor=document.createElement('div');editor.className='oa-row-control';editor.hidden=true;
+ const secret=document.createElement('input');secret.type='password';secret.autocomplete='off';if(secret.setAttribute){secret.setAttribute('aria-label','New secret');secret.setAttribute('data-oa-secret','')}
+ const expires=document.createElement('select');for(const[v,t]of[['','Never'],['30','In 30 days'],['90','In 90 days'],['365','In a year']]){const o=document.createElement('option');o.value=v;o.textContent=t;expires.append(o)}
+ const save=document.createElement('button');save.type='button';save.textContent='Save';
+ const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel';
+ editor.append(secret,expires,save,cancel);
+ const status=document.createElement('p');status.className='oa-status';if(status.setAttribute){status.setAttribute('role','status');status.setAttribute('aria-live','polite')}
+ row.append(text,control,editor,status);
+ Object.assign(row,{label,caption,pre,replace,remove,editor,secret,expires,save,cancel,status});
+ const say=(t,state)=>{status.textContent=t;if(status.setAttribute)status.setAttribute('data-state',state||'ok')};
+ row.say=say;
+ replace.onclick=()=>{editor.hidden=!editor.hidden;say(editor.hidden?'Nothing replaced.':'Type the new key, then Save.');if(!editor.hidden&&secret.focus)secret.focus()};
+ cancel.onclick=()=>{secret.value='';editor.hidden=true;say('Nothing replaced.')};
+ save.onclick=()=>credentialReplace(row);
+ remove.onclick=()=>credentialRemove(row);
+ return row}
+function updateCredentialRow(row,m){
+ row.record=m;
+ row.label.textContent=metaBoxName(m);
+ const consumers=(m.Scope.Consumers||[]).map(consumerServiceName);
+ row.caption.textContent=m.State+' · registered by '+shortName(m.RegisteredBy.Program)+' '+oaWhen(m.Registered)+(consumers.length?' · used by '+consumers.join(', '):'');
+ row.caption.title='id: '+m.Name+'; '+m.RegisteredBy.Program+'; registered '+m.Registered;
+ row.pre.textContent=JSON.stringify(m,null,2);
+ const active=m.State!=='revoked';row.replace.hidden=row.remove.hidden=!active;if(!active)row.editor.hidden=true}
+// Replace key… sends the new secret at the revision this row last read.
+async function credentialReplace(row){const m=row.record,secret=row.secret.value;row.secret.value='';if(!secret){row.say('Type the new key first.');return}
+ try{const r=await call('/credentials',{action:'rotate',name:m.Name,expected_revision:m.Revision,expires:expiresIn(row.expires.value),secret});
+  if(r.Outcome==='rotated'){row.editor.hidden=true;await list();row.say('Replaced the key for '+credentialSentenceName(m.Name)+'.');row.status.title='id: '+m.Name+'; revision '+r.Revision}
+  else row.say(outcomeStatus(r.Outcome))}catch(e){row.say(oaPlain(e.message).line,'error')}}
+// Remove asks for a second click within ten seconds, then revokes.
+async function credentialRemove(row){const m=row.record;
+ if(!row.armed||Date.now()-row.armed>10000){row.armed=Date.now();row.say('Click Remove again to delete '+credentialSentenceName(m.Name)+'.');return}
+ row.armed=0;
+ try{const r=await call('/credentials',{action:'revoke',name:m.Name,expected_revision:m.Revision});
+  if(r.Outcome==='revoked'){await list();row.say('Removed '+credentialSentenceName(m.Name)+'.');row.status.title='id: '+m.Name+'; revision '+r.Revision}
+  else row.say(outcomeStatus(r.Outcome))}catch(e){row.say(oaPlain(e.message).line,'error')}}
+// App access names a credential through a chooser of the listed names,
+// the friendly label as option text and the raw name as its value;
+// "Other…" takes a typed name.
 let credentialNames=new Map();
-const nameChoosers=[['rotate-name-select','rotate-name'],['revoke-name-select','revoke-name'],['allow-name-select','allow-name']];
+const nameChoosers=[['allow-name-select','allow-name']];
 function nameChooserSync(selectId,inputId){const v=el(selectId).value;if(v==='__other__'){el(inputId).hidden=false;if(credentialNames.has(el(inputId).value))el(inputId).value=''}else{el(inputId).hidden=true;el(inputId).value=v}}
-function rebuildNameChooser(selectId,inputId){const select=el(selectId);const current=select.value;select.replaceChildren();for(const[name,label]of credentialNames){const o=document.createElement('option');o.value=name;o.textContent=label;o.title=name;select.append(o)}const other=document.createElement('option');other.value='__other__';other.textContent='Other…';select.append(other);select.value=current&&(credentialNames.has(current)||current==='__other__')?current:'__other__';nameChooserSync(selectId,inputId)}
+function rebuildNameChooser(selectId,inputId){const select=el(selectId);const current=select.value;select.replaceChildren();for(const[name,label]of credentialNames){const o=document.createElement('option');o.value=name;o.textContent=label;o.title=name;select.append(o)}const other=document.createElement('option');other.value='__other__';other.textContent='Other…';select.append(other);const names=[...credentialNames.keys()];select.value=current&&(credentialNames.has(current)||current==='__other__')?current:(names[0]||'__other__');nameChooserSync(selectId,inputId)}
 function selectCredentialName(selectId,inputId,name){el(selectId).value=credentialNames.has(name)?name:'__other__';nameChooserSync(selectId,inputId);if(!credentialNames.has(name))el(inputId).value=name}
 for(const[selectId,inputId] of nameChoosers){el(selectId).onchange=()=>nameChooserSync(selectId,inputId);rebuildNameChooser(selectId,inputId)}
-let listCursor='';
+// An unchanged reading leaves the saved list, its sentences and focus as
+// they are.
+let credentialsLast='';
 // loadKeyPrograms reads Inference's own key list once, best-effort: a
 // Panel without inference key issue still lists credentials, just without
 // a gateway key's own program name filled in (it falls back to "Gateway
 // key" alone).
 let credentialKeyPrograms=null;
 async function loadKeyPrograms(){if(credentialKeyPrograms)return;try{const r=await call('/inference/keys');if(r.Outcome==='page')credentialKeyPrograms=new Map(r.Keys.map(k=>[k.Name,k.Program]))}catch(e){}}
-async function list(){try{await loadKeyPrograms();const p=await call('/credentials?cursor='+encodeURIComponent(listCursor));if(p.Outcome!=='page'){show('list-status',outcomeStatus(p.Outcome));el('list-next').disabled=true;return}listCursor=p.Next;el('list-next').disabled=p.Complete;show('limits',limitsText(p.Limits));show('list-status',p.Records.length?(p.Complete?'End of list.':'More records remain.'):'No credentials registered.');el('records').replaceChildren();for(const m of p.Records){el('records').append(metaBox(m));credentialNames.set(m.Name,metaBoxName(m))}for(const[selectId,inputId] of nameChoosers)rebuildNameChooser(selectId,inputId)}catch(e){oaShowError('list-status',e.message)}}
-el('list-start').onclick=()=>{listCursor='';return list()};el('list-next').onclick=list;
+// list reads as many pages as are shown (Show more adds one), so a reread
+// past the first page keeps every shown row current.
+let listPages=1;
+async function list(){try{await loadKeyPrograms();let cursor='',records=[],p,pages=0;do{p=await call('/credentials?cursor='+encodeURIComponent(cursor));if(p.Outcome!=='page'){show('list-status',outcomeStatus(p.Outcome));el('list-next').hidden=true;return}records.push(...p.Records);cursor=p.Next;pages++}while(!p.Complete&&pages<listPages);
+ const sig=JSON.stringify([records,p.Complete,p.Limits]);if(sig===credentialsLast)return;credentialsLast=sig;
+ if(el('list-status').getAttribute&&el('list-status').getAttribute('data-state')==='loading')oaSetStatus('list-status','ok','');
+ el('list-next').hidden=!!p.Complete;show('limits',limitsText(p.Limits));el('records-empty').hidden=!!records.length;
+ oaKeyedRows(el('records'),records,m=>m.Name,credentialRow,updateCredentialRow);
+ for(const m of records)credentialNames.set(m.Name,metaBoxName(m));for(const[selectId,inputId] of nameChoosers)rebuildNameChooser(selectId,inputId)}catch(e){oaShowError('list-status',e.message)}}
+el('list-next').onclick=()=>{listPages++;return list()};
 var listReady=list();
 // Every required field across Add, Rotate and Revoke now names itself when
 // left blank (task 2026-09-23, seventh first-time visitor, finding 4, the
 // Issue key pattern): the browser blocks the submit event for a failed
 // required field without running the form's own onsubmit, but always
 // fires "invalid" on the field, submit or not.
-const requiredFieldLabel={'add-name':'Name','add-targets':'Targets','add-consumers-select':'Consumers','add-secret':'Secret','rotate-name':'Name','rotate-revision':'Revision','rotate-secret':'New secret','revoke-name':'Name','revoke-revision':'Revision'};
-for(const id in requiredFieldLabel){const status={add:'add-status',rotate:'rotate-status',revoke:'revoke-status'}[id.split('-')[0]];el(id).addEventListener('invalid',()=>show(status,requiredFieldLabel[id]+' is required.'))}
+const requiredFieldLabel={'add-name':'Name','add-targets':'Targets','add-consumers-select':'Consumers','add-secret':'Secret'};
+for(const id in requiredFieldLabel)el(id).addEventListener('invalid',()=>show('add-status',requiredFieldLabel[id]+' is required.'));
 // A stored credential used to print "Stored test-credential at revision
 // 2-3a9e13ed."; the revision now sits on the line's own title and in
 // Technical details, oaShowResult's own shape (task 2026-09-23, tenth
@@ -169,14 +213,21 @@ const credentialConsumerIds=[
  'abstraction.inference/speech@1',
  'abstraction.inference/transcription@1',
 ];
-function renderConsumersSelect(){const select=el('add-consumers-select');select.replaceChildren();for(const id of credentialConsumerIds){const o=document.createElement('option');o.value=id;o.textContent=consumerServiceName(id);o.title=id;select.append(o)}const other=document.createElement('option');other.value='__other__';other.textContent='Other…';select.append(other)}
-function consumersSelected(){return Array.from(el('add-consumers-select').selectedOptions||[]).map(o=>o.value)}
-el('add-consumers-select').onchange=()=>{el('add-consumers').hidden=!consumersSelected().includes('__other__')};
+// Used for is a set of toggle buttons (aria-pressed), chat on by default;
+// Other… shows a typed field. Each press writes one sentence.
+function consumerToggle(value,label,title,pressed){const b=document.createElement('button');b.type='button';b.value=value;b.textContent=label;if(title)b.title=title;const set=v=>{b.pressed=v;if(b.setAttribute)b.setAttribute('aria-pressed',String(v))};set(pressed);b.onclick=()=>{set(!b.pressed);if(value==='__other__')el('add-consumers').hidden=!b.pressed;oaSetStatus('add-consumers-status','ok',label+(b.pressed?' on.':' off.'))};return b}
+function renderConsumersSelect(){const box=el('add-consumers-select');box.replaceChildren();for(const id of credentialConsumerIds)box.append(consumerToggle(id,consumerServiceName(id),id,id==='abstraction.inference/chat@1'));box.append(consumerToggle('__other__','Other…','',false))}
+function consumersSelected(){return [...el('add-consumers-select').children].filter(b=>b.pressed).map(b=>b.value)}
+// Add a credential… shows the form; nothing is typed until the person asks.
+el('add-form').hidden=true;
+el('allow-form').hidden=true;
+el('allow-open').onclick=()=>{const f=el('allow-form');f.hidden=!f.hidden;oaSetStatus('allow-open-status','ok',f.hidden?'The form is closed.':'Choose a credential and an app, then Save.')};
+el('add-open').onclick=()=>{const f=el('add-form');f.hidden=!f.hidden;oaSetStatus('add-open-status','ok',f.hidden?'The form is closed.':'Fill in the form below, then Add.')};
 renderConsumersSelect();
 // Store used to say "Stored testcred. List again to see it." while the
 // list under it kept its stale rows; it now reads the list again itself
 // (task 2026-09-23, fourteenth first-time visitor, findings 2 and 3).
-el('add-form').onsubmit=async e=>{e.preventDefault();const secret=el('add-secret').value;el('add-secret').value='';const consumers=consumersSelected().filter(c=>c!=='__other__').concat(commaList(el('add-consumers').value));const badConsumer=consumers.find(c=>!credentialConsumerPattern.test(c));if(badConsumer){show('add-status','Consumers must each be a contract id like abstraction.download/http-execution@1 ('+badConsumer+' is not); separate several with commas.');return}const body={action:'add',name:el('add-name').value,kind:el('add-kind').value,header:el('add-header').value,targets:commaList(el('add-targets').value),consumers,expires:isoOrEmpty(el('add-expires').value),secret,expected_revision:''};try{const r=await call('/credentials',body);if(r.Outcome==='stored'){el('add-form').reset();el('add-consumers').hidden=true;listCursor='';await list();oaShowResult('add-status','Stored '+body.name+'.',r,'Revision '+r.Revision)}else{el('add-status').title='';show('add-status',outcomeStatus(r.Outcome))}}catch(err){oaShowError('add-status',err.message)}};
+el('add-form').onsubmit=async e=>{e.preventDefault();const secret=el('add-secret').value;el('add-secret').value='';const consumers=consumersSelected().filter(c=>c!=='__other__').concat(commaList(el('add-consumers').value));const badConsumer=consumers.find(c=>!credentialConsumerPattern.test(c));if(badConsumer){show('add-status','Consumers must each be a contract id like abstraction.download/http-execution@1 ('+badConsumer+' is not); separate several with commas.');return}if(!el('add-name').value.trim()||!el('add-targets').value.trim()){show('add-status',(el('add-name').value.trim()?'Address':'Name')+' is required.');return}const body={action:'add',name:el('add-name').value.trim(),kind:el('add-kind').value,header:el('add-kind').value==='header'?el('add-header').value.trim():'',targets:commaList(el('add-targets').value),consumers,expires:expiresIn(el('add-expires').value),secret,expected_revision:''};try{const r=await call('/credentials',body);if(r.Outcome==='stored'){el('add-form').reset();renderConsumersSelect();el('add-consumers').hidden=true;el('add-header').hidden=true;addForSync();await list();oaShowResult('add-status','Stored '+body.name+'.',r,'Revision '+r.Revision)}else{el('add-status').title='';show('add-status',outcomeStatus(r.Outcome))}}catch(err){oaShowError('add-status',err.message)}};
 // Rotate and Revoke's own confirmations used to name a gateway key by its
 // raw "local-key.<hash>.<random>" name, with the revision as visible text
 // too ("Revoked local-key.7d0c0be6.a1b2 at revision 3-f60fe181."); both
@@ -188,9 +239,7 @@ el('add-form').onsubmit=async e=>{e.preventDefault();const secret=el('add-secret
 // table under them kept its stale rows; both now read the list again
 // themselves (task 2026-09-23, fourteenth first-time visitor, findings 2
 // and 3).
-el('rotate-form').onsubmit=async e=>{e.preventDefault();const secret=el('rotate-secret').value;el('rotate-secret').value='';const name=el('rotate-name').value;const body={action:'rotate',name,expected_revision:el('rotate-revision').value,expires:isoOrEmpty(el('rotate-expires').value),secret};try{const r=await call('/credentials',body);if(r.Outcome==='rotated'){listCursor='';await list();oaShowResult('rotate-status','Rotated '+credentialSentenceName(name)+'.',r,'id: '+name+'; revision '+r.Revision)}else{el('rotate-status').title='';show('rotate-status',outcomeStatus(r.Outcome))}}catch(err){oaShowError('rotate-status',err.message)}};
-el('revoke-form').onsubmit=async e=>{e.preventDefault();const name=el('revoke-name').value;const body={action:'revoke',name,expected_revision:el('revoke-revision').value};try{const r=await call('/credentials',body);if(r.Outcome==='revoked'){listCursor='';await list();oaShowResult('revoke-status','Revoked '+credentialSentenceName(name)+'.',r,'id: '+name+'; revision '+r.Revision)}else{el('revoke-status').title='';show('revoke-status',outcomeStatus(r.Outcome))}}catch(err){oaShowError('revoke-status',err.message)}};
-let allowRevision='';
+let allowRevision='',allowLast='';
 const rightsOutcomeText={forbidden:'This panel is not authorized to administer permissions; nothing was changed.',unavailable:'The rights service could not complete this; list again before another edit.',gap:'The policy changed while listing; start again.',invalid:'The rights service rejected this rule as invalid.',conflict:'The policy changed since it was listed; list again before another edit.'};
 function rightsOutcomeStatus(o){return rightsOutcomeText[o]||'Rights service outcome: '+o}
 // accessSentence reads one abstraction.credentials/apply rule as a sentence,
@@ -200,7 +249,9 @@ function rightsOutcomeStatus(o){return rightsOutcomeText[o]||'Rights service out
 // raw full path and the raw account SID with no shortName or accountLabel
 // at all, two different sentences for the same rule (task 2026-09-23,
 // fifteenth first-time visitor, finding 4).
-function accountLabel(account){return allowSelf&&account===allowSelf.account?'this account':account}
+// An account other than this one reads as "another account on this device";
+// its security identifier stays on the row's title, never as text.
+function accountLabel(account){return allowSelf&&account===allowSelf.account?'this account':'another account on this device'}
 function accessSentence(r){return (r.Permit?'Allowed ':'Denied ')+shortName(r.Subject.Program)+' to apply '+credentialSentenceName(r.Resource.replace(/^credential:/,''))+' for '+accountLabel(r.Subject.Account)+'.'}
 // "Show policy" used to write only "Policy revision <rev>. Choose allow or
 // deny below." into allow-status, never the policy itself: a click read as
@@ -218,26 +269,20 @@ function accessSentence(r){return (r.Permit?'Allowed ':'Denied ')+shortName(r.Su
 // running this form's own onsubmit, but always fires "invalid" on the
 // field, submit or not.
 const allowFieldLabel={'allow-name':'Credential name','allow-account':'Account','allow-program':'Program path'};
-for(const id in allowFieldLabel)el(id).addEventListener('invalid',()=>show('allow-status',allowFieldLabel[id]+' is required.'));
+for(const id in allowFieldLabel)el(id).addEventListener('invalid',()=>show('allow-save-status',allowFieldLabel[id]+' is required.'));
 // App access Save used to refuse ("List rights policy before allowing.")
 // unless Show policy had been clicked first; allowPolicyList now reads it
 // on arrival too, the same fix every other list on this page and
 // elsewhere gets (task 2026-09-23, fourteenth first-time visitor,
 // findings 2 and 3).
-// allowPolicyList also refreshes the grant widget above the saved list,
-// the same fetch its own arrival check makes, so a rule granted since
-// this page opened shows up here without a reload (task 2026-09-23,
-// fifteenth first-time visitor, finding 1).
-async function allowPolicyList(){if(window.oaGrantRefresh)oaGrantRefresh();try{const p=await call('/rights?cursor=');if(p.Outcome!=='page'){allowRevision='';el('allow-status').title='';show('allow-status',rightsOutcomeStatus(p.Outcome));el('allow-rules').replaceChildren();return}allowRevision=p.Revision;el('allow-status').title='Policy revision '+p.Revision;const rules=(p.Rules||[]).filter(r=>r.Action==='abstraction.credentials/apply');await ensureAllowSelf();show('allow-status',rules.length?'':'No app has access yet.');el('allow-rules').replaceChildren();for(const r of rules){const row=document.createElement('p');row.textContent=accessSentence(r);row.title=r.Subject.Program+'; '+r.Subject.Account+'; '+r.Resource;el('allow-rules').append(row)}}catch(e){allowRevision='';el('allow-status').title='';oaShowError('allow-status',e.message)}}
-el('allow-list').onclick=allowPolicyList;
+async function allowPolicyList(){try{const p=await call('/rights?cursor=');if(p.Outcome!=='page'){allowRevision='';el('allow-status').title='';show('allow-status',rightsOutcomeStatus(p.Outcome));el('allow-rules').replaceChildren();return}{const sig=JSON.stringify(p);if(sig===allowLast)return;allowLast=sig}allowRevision=p.Revision;el('allow-status').title='Policy revision '+p.Revision;const rules=(p.Rules||[]).filter(r=>r.Action==='abstraction.credentials/apply');await ensureAllowSelf();show('allow-status',rules.length?'':'No app has access yet.');el('allow-rules').replaceChildren();for(const r of rules){const row=document.createElement('p');row.textContent=accessSentence(r);row.title=r.Subject.Program+'; '+r.Subject.Account+'; '+r.Resource;el('allow-rules').append(row)}}catch(e){allowRevision='';el('allow-status').title='';oaShowError('allow-status',e.message)}}
 var allowPolicyReady=allowPolicyList();
 // Program path and Account were bare text boxes here while Rights already
 // offered choosers for both; both now build their own equivalent chooser
 // from oaProgramChooser and oaAccountChooser (panel_shell.go), the one
 // shared implementation each (task 2026-09-23, fourteenth first-time
-// visitor, finding 8).
-let allowProgramsSeen=new Set();
-const allowProgramChooser=oaProgramChooser('allow-program-select','allow-program',()=>[...allowProgramsSeen]);
+// visitor, finding 8). The program chooser lists registered applications.
+const allowProgramChooser=oaProgramChooser('allow-program-select','allow-program');
 let allowSelf=null,allowSelfAccountName='',allowSelfPromise=null;
 const allowAccountChooser=oaAccountChooser('allow-account-select','allow-account',()=>allowSelf&&allowSelf.account,()=>allowSelfAccountName);
 // ensureAllowSelf is accessSentence's own accountLabel, resolved once and
@@ -247,7 +292,7 @@ const allowAccountChooser=oaAccountChooser('allow-account-select','allow-account
 // ensureSelf, the same fix, task 2026-09-23, fifteenth first-time
 // visitor, finding 4).
 function ensureAllowSelf(){if(!allowSelfPromise)allowSelfPromise=call('/explore').then(v=>{allowSelf=v.self;allowSelfAccountName=v.selfAccountName||'';allowAccountChooser.rebuild()}).catch(()=>{});return allowSelfPromise}
-async function loadAllowChoosers(){try{const v=await call('/card/table');for(const r of(v.resources||[]))for(const h of(r.holders||[]))if(h.program)allowProgramsSeen.add(h.program)}catch(e){}allowProgramChooser.rebuild();await ensureAllowSelf()}
+async function loadAllowChoosers(){await allowProgramChooser.ready;await ensureAllowSelf()}
 allowProgramChooser.rebuild();allowAccountChooser.rebuild();var allowChoosersReady=loadAllowChoosers();
 // An applied allow/deny used to print "Allowed C:\test\app.exe to apply
 // huggingface at revision sha256:…", the full program path and the revision
@@ -258,5 +303,29 @@ allowProgramChooser.rebuild();allowAccountChooser.rebuild();var allowChoosersRea
 // edit." while the policy list under it kept its stale state; it now
 // reads the policy list again itself (task 2026-09-23, fourteenth
 // first-time visitor, findings 2 and 3).
-el('allow-form').onsubmit=async e=>{e.preventDefault();const name=el('allow-name').value,program=el('allow-program').value,account=el('allow-account').value,used=allowRevision,permit=el('allow-permit').value==='permit';const resource='credential:'+name;const body={edit:'set',revision:allowRevision,account,program,action:'abstraction.credentials/apply',resource,permit};try{const r=await call('/rights',body);if(r.Outcome==='applied'){await allowPolicyList();oaShowResult('allow-status',accessSentence({Permit:permit,Subject:{Program:program,Account:account},Resource:resource}),r,'Program: '+program+'; Account: '+account+'; id: '+name+'; revision '+used)}else{el('allow-status').title='';show('allow-status',rightsOutcomeStatus(r.Outcome))}}catch(err){oaShowError('allow-status',err.message)}};
+el('allow-form').onsubmit=async e=>{e.preventDefault();const name=el('allow-name').value,program=el('allow-program').value,account=el('allow-account').value,used=allowRevision,permit=el('allow-permit').value==='permit';const resource='credential:'+name;const body={edit:'set',revision:allowRevision,account,program,action:'abstraction.credentials/apply',resource,permit};try{const r=await call('/rights',body);if(r.Outcome==='applied'){await allowPolicyList();oaShowResult('allow-save-status',accessSentence({Permit:permit,Subject:{Program:program,Account:account},Resource:resource}),r,'Program: '+program+'; Account: '+account+'; id: '+name+'; revision '+used)}else{el('allow-save-status').title='';show('allow-save-status',rightsOutcomeStatus(r.Outcome))}}catch(err){oaShowError('allow-save-status',err.message)}};
+// For lists the hosted model servers (Providers' server list); choosing one
+// takes its credential name and its address. A key for anything else takes
+// a typed name and address behind "Other…".
+function addressHost(base){try{return new URL(base).hostname}catch(e){const m=/^[a-z]+:\/\/([^/:]+)/i.exec(String(base||''));return m?m[1]:''}}
+async function loadAddFor(){let hosted=[];try{const l=await call('/inference/hosts');if(l&&l.Outcome==='page')hosted=(l.Hosts||[]).map(h=>h.Entry).filter(e=>e&&e.Hosted)}catch(e){}
+ const select=el('add-for'),current=select.value;select.replaceChildren();
+ for(const e of hosted){const o=document.createElement('option');o.value=JSON.stringify({name:e.Credential||e.Name,target:addressHost(e.Base)});o.textContent=e.Name;select.append(o)}
+ const other=document.createElement('option');other.value='__other__';other.textContent='Other…';select.append(other);
+ const values=hosted.map(e=>JSON.stringify({name:e.Credential||e.Name,target:addressHost(e.Base)}));select.value=values.includes(current)?current:(values[0]||'__other__');addForSync()}
+function addForSync(){const v=el('add-for').value,other=!v||v==='__other__';el('add-name').hidden=el('add-targets').hidden=!other;if(other){el('add-name').value='';el('add-targets').value=''}else{const c=JSON.parse(v);el('add-name').value=c.name;el('add-targets').value=c.target}}
+el('add-for').onchange=addForSync;
+el('add-kind').onchange=()=>{el('add-header').hidden=el('add-kind').value!=='header'};
+var addForReady=loadAddFor();
+// The page tells the screenshot tool it is ready once its first readings
+// have finished (S1's oaReady; data-ready until it exists).
+function oaPageReady(){if(typeof oaReady==='function')oaReady();else if(typeof document!=='undefined'&&document.documentElement)document.documentElement.dataset.ready='1'}
+Promise.all([listReady,allowPolicyReady,addForReady]).then(oaPageReady,oaPageReady);
+// The page updates itself while it is visible; there is no Refresh button.
+// oaQuiet runs one reading at a time: a timer tick while one is still
+// running is skipped.
+function oaQuietOnce(fn){let busy=false;return async()=>{if(busy)return;busy=true;try{await fn()}finally{busy=false}}}
+const credentialsQuiet=oaQuietOnce(()=>Promise.all([list(),allowPolicyList()]));
+window.credentialsTick=credentialsQuiet;
+if(typeof setInterval==='function')setInterval(()=>{if(document.visibilityState!=='hidden')credentialsQuiet()},15000);
 </script>`

@@ -1,8 +1,8 @@
 {
   "schema": "openabstractions.platforms/1",
-  "about": "Released 0.2.0 runtime platform status, from recorded package evidence only. A cross-build or a newer source test is not release qualification. scripts/catalogue.py reads this file, checks every evidence path exists, and publishes it in the layer catalogue. The current facade source may have newer platform paths than this released-package status.",
+  "about": "Runtime platform status from the latest retained installed-package evidence for each platform. Release 0.3.0 supersedes the 0.2.0 macOS limitation; entries without newer installed evidence retain their earlier evidence and limits. A cross-build or newer source test is not release qualification. scripts/catalogue.py reads this file, checks every evidence path exists, and publishes it in the layer catalogue. This catalogue does not qualify 0.4.0.",
   "statuses": {
-    "supported": "The runtime installs, starts its background services, becomes ready, recovers from a crash and uninstalls, and an application's default resolution reaches it.",
+    "supported": "The released runtime installs and uninstalls, its background service starts and becomes ready, and an application's default resolution reaches it. Listed limits bound the platforms and behaviors with recorded qualification.",
     "supported without background services": "The programs install, run in the foreground and uninstall. No background service is registered, and default resolution finds no runtime.",
     "unsupported": "The released package has no qualified protected runtime service on this platform. Its default resolution and protected calls remain unavailable."
   },
@@ -13,14 +13,14 @@
       "status": "supported",
       "runtime": "Per-user MSI; the supervisor starts the runtime in the signed-in session.",
       "limits": [
-        "Windows x64 installation and upgrade are qualified for 0.2.0. Windows MSI packages are unsigned.",
-        "ARM64 is cross-built; installation on ARM64 hardware is untested."
+        "Windows MSI packages are unsigned.",
+        "The 0.3.0 installed job used Windows x64. ARM64 is cross-built; installation on ARM64 hardware is untested."
       ],
       "evidence": [
         {
-          "path": "research/release-0.2.0/published.json",
-          "url": "https://github.com/openabstractions/redist/actions/runs/35572834195",
-          "shows": "0.2.0 candidate: fresh per-user installation, cross-tool calls, upgrade from 0.1.7, reinstall, custom-folder upgrade, forced-failure rollback and complete removal passed."
+          "path": "research/release-0.3.0/qualification-selected.json",
+          "url": "https://github.com/openabstractions/redist/actions/runs/36500317823/job/109190527492",
+          "shows": "Successful 0.3.0 verify job on head ff281d02: private non-admin per-user install and cross-tool compatibility; predecessor upgrade and reinstall; non-default-folder upgrade; failed-upgrade rollback and same-version host restart; uninstall and test-session removal."
         }
       ]
     },
@@ -31,13 +31,14 @@
       "runtime": "Machine MSI; a service template starts a per-session runtime for each signed-in user.",
       "limits": [
         "Everyone installation requires elevation. Runtime instances run in each signed-in user session.",
-        "ARM64 is cross-built; installation on ARM64 hardware is untested."
+        "Windows MSI packages are unsigned.",
+        "The 0.3.0 installed job used Windows x64. ARM64 is cross-built; installation on ARM64 hardware is untested."
       ],
       "evidence": [
         {
-          "path": "research/release-0.2.0/published.json",
-          "url": "https://github.com/openabstractions/redist/actions/runs/35572834195",
-          "shows": "0.2.0 candidate: machine installation, upgrade and forced-failure rollback, fresh-session startup, crash recovery and removal passed."
+          "path": "research/release-0.3.0/qualification-selected.json",
+          "url": "https://github.com/openabstractions/redist/actions/runs/36500317823/job/109190527492",
+          "shows": "Successful 0.3.0 verify job on head ff281d02: machine-scope forced-failure rollback, upgrade exclusion and predecessor removal; fresh interactive session and crash recovery; uninstall for everyone and test-session cleanup."
         }
       ]
     },
@@ -48,9 +49,14 @@
       "runtime": "Per-user tarball; install.sh registers abstraction-runtime.service with the user manager.",
       "limits": [
         "Trusted selection needs clone3 and waitid P_PIDFD (Linux 5.4 or newer); a sandbox denying them returns PROOF_UNAVAILABLE.",
-        "Lifecycle evidence covers WSL2 and a hosted Ubuntu amd64 runner. ARM64 installation, other distributions and graphical sessions are untested."
+        "0.3.0 package qualification passed 26 installed Linux cases, with lifecycle evidence from WSL2 and a hosted Ubuntu amd64 runner. ARM64 installation, other distributions and graphical sessions are untested."
       ],
       "evidence": [
+        {
+          "path": "research/release-0.3.0/qualification-selected.json",
+          "url": "https://github.com/openabstractions/redist/actions/runs/36500317823/job/109189899572",
+          "shows": "Successful 0.3.0 linux-verify job: checksum, install, package inspection and uninstall, plus the Linux disposable-account installed-lifecycle job."
+        },
         {
           "path": "research/release-0.2.0/published.json",
           "url": "https://github.com/openabstractions/redist/actions/runs/35572834195",
@@ -65,9 +71,14 @@
       "runtime": "The same tarball; install.sh installs the programs, reports that no background service will run and records `timer no`.",
       "limits": [
         "Default resolution cannot select a runtime: selection reads the loaded user unit from systemctl, so applications receive runtime_unavailable.",
-        "`openabstractions serve runtime` runs in the foreground; an application reaches it only through an explicit endpoint."
+        "0.3.0 package qualification includes the no-user-manager installation check. `openabstractions serve runtime` runs in the foreground; an application reaches it only through an explicit endpoint."
       ],
       "evidence": [
+        {
+          "path": "research/release-0.3.0/qualification-selected.json",
+          "url": "https://github.com/openabstractions/redist/actions/runs/36500317823/job/109189899572",
+          "shows": "Successful 0.3.0 linux-verify job includes install, package inspection and uninstall; the run's Linux package qualification includes the no-user-manager installation check."
+        },
         {
           "path": "research/release-0.2.0/published.json",
           "url": "https://github.com/openabstractions/redist/actions/runs/35573550787",
@@ -77,31 +88,25 @@
     },
     {
       "id": "macos",
-      "name": "macOS (universal package)",
-      "status": "unsupported",
+      "name": "macOS (universal package; installed qualification on arm64)",
+      "status": "supported",
       "facade_platform": "macos",
-      "runtime": "The released 0.2.0 runtime installs and runs; its protected calls and default resolution remain unqualified.",
+      "runtime": "The signed and notarized 0.3.0 universal package installs for the current user. Installed XPC discovery, capability readiness and protected-call behavior passed on the available arm64 Mac; reinstall and removal passed.",
       "limits": [
-        "The released 0.2.0 package lacks the Program proof needed by protected calls.",
-        "Current development source uses macOS XPC for Program proof and installed-runtime selection. Native tests cover that source path; package installation and end-to-end qualification remain open."
+        "The universal package includes Intel binaries, but installed execution was tested only on arm64 hardware.",
+        "The retained installed receipt covers install, XPC discovery/calls, reinstall and removal; it does not record a separate crash-injection recovery test.",
+        "Path names compare byte for byte on macOS although its volumes ignore case by default, so two names OA keeps apart can name one file (abstraction-identity CONTRACT.md, SamePathName).",
+        "Native providers are not available on macOS in 0.4.0: their caller check needs an XPC endpoint. The macOS package leaves out Local model stores (inventoryd) and the model host (modelhostd)."
       ],
       "evidence": [
         {
-          "path": "research/release-0.2.0/published.json",
-          "url": "https://github.com/openabstractions/redist/actions/runs/35573550787",
-          "shows": "0.2.0 universal package built, signed, notarised and stapled. Package availability does not establish protected-call readiness; the documented identity limitation remains."
+          "path": "research/release-0.3.0/PLAN.md",
+          "url": "https://github.com/openabstractions/redist/releases/tag/v0.3.0",
+          "shows": "The 0.3.0 universal package is signed, notarized and published. Its installed acceptance was run on an arm64 Mac; Intel hardware execution was not tested."
         },
         {
-          "path": "research/feedback-archive-2026-09-24/macos-complete-lifecycle.md",
-          "shows": "Install, upgrade and crash recovery pass; readiness, resolution and held work are REFUSED-BY-PLATFORM-LIMIT."
-        },
-        {
-          "path": "research/feedback-archive-2026-09-24/runtime-macos-native.md",
-          "shows": "Native launchd start, recovery and removal; typed status fails on process proof."
-        },
-        {
-          "path": "openabstractions-flat/abstraction-facade/go-core/bootstrap/selection_darwin.go",
-          "shows": "Current source has a macOS XPC installed-runtime selector. This source path does not change the released 0.2.0 package status."
+          "path": "research/release-0.3.0/macos-installed/receipt.json",
+          "shows": "Exact package SHA-256 82a2ec559ae47cf6f5fe8460fdb98c227867bac19ae855e3e2db4f4851b7b7fa; package verification, install, XPC readiness and protected-call checks, reinstall and removal passed on macOS 26.6.2 arm64."
         }
       ]
     },

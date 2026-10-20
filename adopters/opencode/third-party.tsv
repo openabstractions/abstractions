@@ -1,0 +1,10 @@
+> Third-party components OA ships for OpenCode: the @openabstractions/opencode
+> plugin's npm closure. OpenCode itself comes from its official installer
+> (VISION 2026-10-06); OA builds and packages no OpenCode executable, Bun or
+> ripgrep. scripts/adopter_pins.py reads this file and
+> installer/third-party.tsv documents the columns; VISION 2026-10-01 is the rule.
+> Open rows are adopter-pin rows in scripts/check.baseline.
+
+build	component	kind	version	hash	origin	source	fetched	authority
+opencode	@openabstractions/opencode npm package third-party closure	lockfile	-	-	-	npm	build	adopters/opencode/package-lock.json
+opencode	OpenCode's own plugin installer (opencode plugin @openabstractions/opencode)	updater	unknown	-	-	-	-	-

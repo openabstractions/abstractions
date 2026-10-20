@@ -39,6 +39,12 @@ func TestNoHelpTextContainsATab(t *testing.T) {
 				pos := fset.Position(lit.Pos())
 				t.Errorf("%s:%d: raw string literal contains a tab character; align with spaces", pos.Filename, pos.Line)
 			}
+			// An installed user has no private source tree; help links
+			// the published contract or website (hostile critic A9).
+			if strings.Contains(lit.Value, "openabstractions-flat/") {
+				pos := fset.Position(lit.Pos())
+				t.Errorf("%s:%d: help text names a private source path; link the published contract or website", pos.Filename, pos.Line)
+			}
 			return true
 		})
 	}

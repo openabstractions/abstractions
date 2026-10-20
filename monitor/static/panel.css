@@ -10,17 +10,17 @@ html, body { margin: 0; padding: 0; }
 html[data-platform="windows"] {
   --oa-font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   --oa-font-size: 14px;
-  --oa-nav-width: 320px;
-  --oa-icon-size: 16px;
-  --oa-page-bg: #f3f3f3;
-  --oa-card-bg: #fbfbfb;
-  --oa-card-border: #e5e5e5;
-  --oa-card-radius: 4px;
-  --oa-title-size: 28px;
+  --oa-nav-width: 248px;
+  --oa-icon-size: 28px;
+  --oa-page-bg: #f5f7fb;
+  --oa-card-bg: #ffffff;
+  --oa-card-border: #e1e7ef;
+  --oa-card-radius: 12px;
+  --oa-title-size: 30px;
   --oa-title-weight: 600;
   --oa-accent: #0067c0;
-  --oa-button-height: 32px;
-  --oa-button-radius: 4px;
+  --oa-button-height: 36px;
+  --oa-button-radius: 7px;
   --oa-text: #1b1b1b;
   --oa-text-secondary: #5d5d5d;
   --oa-sep: #e5e5e5;
@@ -121,7 +121,8 @@ html[data-platform="linux"] {
 body {
   font-family: var(--oa-font-family);
   font-size: var(--oa-font-size);
-  background: var(--oa-page-bg);
+  background: radial-gradient(ellipse at top right, color-mix(in srgb, var(--oa-accent) 9%, transparent), transparent 55%), var(--oa-page-bg);
+  background-attachment: fixed;
   color: var(--oa-text);
   accent-color: var(--oa-accent);
 }
@@ -143,7 +144,15 @@ pre { white-space: normal; overflow-wrap: anywhere; }
    breaks and indentation are part of what it shows, so it wraps a long line
    instead of collapsing it to one, rather than reading like ordinary prose. */
 details pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* A status line kept in a <pre> reads as the sentence it is, in the page's
+   own font, the way the Apps page's <p role="status"> lines do (owner,
+   2026-10-06: the Apps page is the reference for style). */
+.oa-content pre[role="status"], .oa-content pre[aria-live] { font: inherit; }
 input, select, textarea { max-width: 100%; }
+.oa-note { color: var(--oa-text-secondary); font-size: .95em; line-height: 1.6; }
+.oa-content > .oa-note { margin: 0 0 1.5rem; }
+.oa-brand { font-weight: 650; font-size: 1.05rem; padding: .5rem .8rem 1.3rem; }
+.oa-brand span { display: block; color: var(--oa-text-secondary); font-size: .8rem; font-weight: 400; margin-top: .25rem; }
 
 .oa-shell { display: flex; min-height: 100vh; align-items: stretch; }
 
@@ -193,23 +202,59 @@ html[data-platform="linux"] .oa-nav-item.active {
   border-radius: 6px;
 }
 
-.oa-nav-icon { display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
-html[data-platform="windows"] .oa-nav-icon {
-  width: var(--oa-icon-size);
-  height: var(--oa-icon-size);
-  color: var(--oa-text-secondary);
-}
-html[data-platform="windows"] .oa-nav-icon svg { width: 16px; height: 16px; fill: currentColor; }
-html[data-platform="macos"] .oa-nav-icon,
-html[data-platform="linux"] .oa-nav-icon {
-  width: var(--oa-icon-size);
-  height: var(--oa-icon-size);
-  border-radius: 6px;
+/* Sidebar search, separator, badge and search hits (panel_shell.go,
+   panelNav). Structure only; the skins size and colour them. */
+.oa-nav-search { padding: 0 0 .6rem; }
+.oa-nav-search input { width: 100%; margin: 0; }
+.oa-nav-sep { height: 1px; margin: .5rem .8em; background: var(--oa-sep); }
+/* Whatever the search or the badge hides in the sidebar stays hidden, over
+   any skin's display rule. */
+.oa-nav [hidden] { display: none !important; }
+/* Anything a page hides stays hidden, over a component's own display (an
+   oa-row is a grid). */
+[hidden] { display: none !important; }
+.oa-nav-badge {
+  margin-left: auto;
+  min-width: 1.4em;
+  padding: 0 .4em;
+  border-radius: .7em;
   background: var(--oa-accent);
   color: #fff;
+  font-size: .8em;
+  line-height: 1.4em;
+  text-align: center;
 }
-html[data-platform="macos"] .oa-nav-icon svg,
-html[data-platform="linux"] .oa-nav-icon svg { width: 14px; height: 14px; fill: currentColor; }
+.oa-nav-hits { display: flex; flex-direction: column; margin-top: .4rem; }
+.oa-nav-hit { display: flex; flex-direction: column; padding: .4em .8em; color: var(--oa-text); border-radius: var(--oa-card-radius); }
+.oa-nav-hit:hover { background: var(--oa-nav-selected-bg); text-decoration: none; }
+.oa-nav-hit-page { color: var(--oa-text-secondary); font-size: .85em; }
+.oa-nav-nohits { color: var(--oa-text-secondary); padding: .4em .8em; margin: 0; }
+
+/* The Device page's one-line answer (hostile critic A11). */
+.oa-device-answer { font-size: 1.15em; margin: .8rem 0 1rem; }
+
+.oa-nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: var(--oa-icon-size);
+  height: var(--oa-icon-size);
+  border-radius: 7px;
+  background: var(--oa-icon-color, var(--oa-accent));
+  color: #fff;
+}
+.oa-nav-icon svg { width: 16px; height: 16px; fill: currentColor; }
+.oa-icon-setup { --oa-icon-color: #9b59c4; }
+.oa-icon-status { --oa-icon-color: #347bd4; }
+.oa-icon-rights { --oa-icon-color: #258a75; }
+.oa-icon-inference { --oa-icon-color: #7665cc; }
+.oa-icon-work { --oa-icon-color: #bd6c31; }
+.oa-icon-card { --oa-icon-color: #53768d; }
+.oa-icon-registry { --oa-icon-color: #548349; }
+.oa-icon-credentials { --oa-icon-color: #a37a24; }
+.oa-icon-settings { --oa-icon-color: #6b7892; }
+.oa-icon-logging { --oa-icon-color: #358c9c; }
 
 /* overflow-x: hidden here, not on html/body, is the backstop for finding 5
    (task 2026-09-23, fifth first-time visitor): a <pre> or <table> cell
@@ -240,6 +285,54 @@ html[data-platform="linux"] .oa-nav-icon svg { width: 14px; height: 14px; fill: 
 }
 .oa-content h2 { font-size: 1.05rem; font-weight: 600; margin: 0 0 .5em; }
 .oa-content h3 { font-size: 1rem; font-weight: 600; }
+.oa-content p { line-height: 1.6; }
+.oa-content pre:empty { display: none; }
+.oa-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: .8rem 0; }
+.oa-empty { border: 1px dashed var(--oa-card-border); border-radius: var(--oa-card-radius); padding: 1.2rem; margin: .8rem 0; }
+.oa-empty h3 { margin: 0 0 .4rem; }
+.oa-empty p { color: var(--oa-text-secondary); margin: 0; }
+.oa-record, .rights-program { border: 1px solid var(--oa-card-border); border-radius: var(--oa-card-radius); padding: 1rem; margin: .8rem 0; }
+.oa-record > pre, .rights-program pre { font: inherit; line-height: 1.6; margin: 0 0 .6rem; }
+.oa-record-state { display: inline-block; font-size: .85em; color: var(--oa-text-secondary); margin: 0 .75rem .6rem 0; }
+.rights-program > h3 { margin: 0 0 .7rem; }
+.rights-program > div, .rights-installed > div { padding: .6rem 0; border-top: 1px solid var(--oa-sep); }
+.rights-program button { margin: .2rem .4rem .2rem 0; }
+.rights-editor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; }
+.rights-editor > label { display: grid; gap: .4rem; }
+.rights-editor select, .rights-editor input { width: 100%; }
+.rights-preview, .rights-editor > .oa-toolbar { grid-column: 1 / -1; }
+.rights-editor .rights-wide { grid-column: 1 / -1; display: block; }
+.rights-editor .rights-wide input { width: auto; }
+.rights-editor > [hidden] { display: none !important; }
+.rights-preview { border-left: 3px solid var(--oa-accent); padding: .2rem 1rem; }
+.rights-preview > p { margin: .5rem 0; }
+@media (max-width: 640px) { .rights-editor { grid-template-columns: minmax(0, 1fr); } }
+.oa-app-table th, .oa-app-table td { padding: .9rem .5rem; }
+.oa-app-table td:first-child { width: 55%; }
+.oa-app-table td > small { display: block; color: var(--oa-text-secondary); margin-top: .3rem; overflow-wrap: anywhere; }
+.oa-app-table td a { font-weight: 600; }
+.oa-app-access { display: inline-block; color: var(--oa-text-secondary); font-size: .9em; }
+.oa-app-roles-table td:first-child { width: 30%; }
+.oa-app-roles-table td:nth-child(3) { white-space: pre-line; }
+.oa-app-roles-table td:last-child > a { display: block; margin-bottom: .4rem; }
+.oa-app-details > td { padding-top: 0; }
+.oa-permission-list { overflow-x: auto; }
+.oa-permission-table { table-layout: fixed; min-width: 650px; }
+.oa-permission-table th, .oa-permission-table td { padding: .65rem .4rem; overflow-wrap: anywhere; vertical-align: top; }
+.oa-permission-table td > small { display: block; color: var(--oa-text-secondary); margin-top: .3rem; }
+.oa-permission-table th:last-child { width: 6.5rem; }
+.oa-permission-row > td { border-bottom: 0; }
+.oa-permission-details > td { padding-top: 0; }
+.oa-permission-table details { margin-top: .4rem; }
+.oa-disclosure { margin: .7rem 0; }
+.oa-disclosure > summary { font-weight: 600; }
+.oa-disclosure[open] > summary { margin-bottom: .8rem; }
+.oa-filter { margin: .8rem 0; }
+@media (forced-colors: active) {
+  body { background: Canvas; }
+  .oa-nav-icon { background: ButtonFace; color: ButtonText; border: 1px solid ButtonText; }
+  .oa-nav-item.active { outline: 1px solid Highlight; }
+}
 
 /* Every existing <section> becomes one grouped row / card. */
 .oa-content section {
@@ -305,6 +398,89 @@ html[data-platform="macos"] .oa-content section > :is(button, select, input, lab
 html[data-platform="linux"] .oa-content section > :is(button, select, input, label, span) + :is(p, div, table, pre, ul, ol, form, textarea) {
   border-top: 1px solid var(--oa-sep);
 }
+
+/* Shared components (research/panel-redesign/SPEC.md §5; the helpers in
+   panel_shell.go build them). Structure only: layout, spacing and the
+   neutral colours above. static/skin-windows.css and static/skin-macos.css
+   own each platform's look on top of these classes. */
+.oa-pagehead { display: flex; align-items: center; gap: 12px; margin: 0 0 1.25rem; }
+.oa-pagehead-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--oa-icon-color, var(--oa-accent));
+  color: #fff;
+}
+.oa-pagehead-tile svg { width: 24px; height: 24px; fill: currentColor; }
+.oa-pagehead-text { min-width: 0; }
+.oa-content .oa-pagehead h1, .oa-pagehead-title { margin: 0; }
+div.oa-pagehead-title { font-weight: 700; font-size: 1.15em; }
+.oa-caption { color: var(--oa-text-secondary); margin: .2rem 0 0; line-height: 1.4; }
+.oa-content section.oa-group > .oa-caption { margin: 0 0 .4rem; }
+
+.oa-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 1rem;
+  min-height: 40px;
+  padding: 10px 0;
+  color: inherit;
+}
+.oa-row + .oa-row, .oa-row + .oa-expander, .oa-expander + .oa-row, .oa-expander + .oa-expander { border-top: 1px solid var(--oa-sep); }
+.oa-row-text { display: flex; flex-direction: column; min-width: 0; }
+/* The job a notification's Open Activity action named (work_page.go). */
+.oa-row[aria-current="true"] { background: var(--oa-nav-selected-bg); }
+.oa-row-caption { color: var(--oa-text-secondary); font-size: .9em; line-height: 1.4; }
+.oa-row-control { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .4rem; }
+.oa-row-control > :is(button, select, input) { margin: 0; }
+.oa-row > .oa-status { grid-column: 1 / -1; }
+a.oa-row-nav { text-decoration: none; }
+a.oa-row-nav:hover { text-decoration: none; background: var(--oa-nav-selected-bg); }
+.oa-row-chevron::after { content: "\203A"; color: var(--oa-text-secondary); font-size: 1.3em; line-height: 1; }
+
+details.oa-expander { padding: 10px 0; }
+/* The expander's own indicator is the row chevron: the native marker goes,
+   the chevron sits at the trailing edge and turns down while open. */
+details.oa-expander > summary { cursor: pointer; min-height: 20px; display: flex; align-items: center; justify-content: space-between; list-style: none; }
+details.oa-expander > summary::-webkit-details-marker { display: none; }
+details.oa-expander > summary > .oa-row-chevron { display: inline-block; transition: transform .15s ease; }
+details.oa-expander[open] > summary > .oa-row-chevron { transform: rotate(90deg); }
+details.oa-expander[open] > summary { margin-bottom: .5rem; }
+.oa-expander-body > :first-child { margin-top: 0; }
+
+.oa-status { margin: .25rem 0 0; line-height: 1.4; }
+.oa-status:empty { display: none; }
+.oa-status[data-state="loading"] { color: var(--oa-text-secondary); }
+.oa-status[data-state="loading"]::before {
+  content: "";
+  display: inline-block;
+  width: .8em;
+  height: .8em;
+  margin-right: .4em;
+  vertical-align: -.05em;
+  border: 2px solid var(--oa-sep);
+  border-top-color: var(--oa-accent);
+  border-radius: 50%;
+  animation: oa-spin .8s linear infinite;
+}
+.oa-status[data-state="error"] { color: #b22; }
+@keyframes oa-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .oa-status[data-state="loading"]::before { animation: none; } }
+
+p.oa-empty { border: 0; padding: .6rem 0; margin: 0; color: var(--oa-text-secondary); }
+
+/* The one primary action of a row or group (Install, Add, Register). */
+html[data-platform] button.oa-primary { background: var(--oa-accent); border-color: transparent; color: #fff; }
+html[data-platform] button.oa-primary:disabled { opacity: .5; cursor: default; }
+
+/* The chosen quick range or segmented choice: a button with
+   aria-pressed="true" among its aria-pressed="false" siblings. */
+html[data-platform] button[aria-pressed="true"] { background: var(--oa-nav-selected-bg); border-color: var(--oa-accent); font-weight: 600; }
 
 input, select, textarea, button {
   font: inherit;
@@ -464,6 +640,16 @@ details.oa-error-details pre { margin: .2rem 0 0; }
    Each platform shows only its own kind. */
 .oa-help-mark, .oa-help-learnmore, .oa-help-float { display: none; }
 
+/* The floating "?" sits fixed at the bottom right, over the content column.
+   Where it shows (macOS and Linux, and the macOS skin), the content keeps
+   room below its last row for the button and its gap twice over, so the
+   last row's controls scroll clear of it. A skin that draws a larger
+   button sets these two sizes. */
+:root { --oa-help-float-size: 20px; --oa-help-float-gap: 24px; }
+html:is([data-platform="macos"], [data-platform="linux"], [data-skin="macos"]) .oa-content:has(> .oa-help-float) {
+  padding-bottom: calc(var(--oa-help-float-size) + 2 * var(--oa-help-float-gap));
+}
+
 html[data-platform="windows"] .oa-help-learnmore {
   display: inline;
   float: right;
@@ -499,10 +685,10 @@ html[data-platform="linux"] .oa-help-float {
   align-items: center;
   justify-content: center;
   position: fixed;
-  right: 24px;
-  bottom: 24px;
-  width: 20px;
-  height: 20px;
+  right: var(--oa-help-float-gap);
+  bottom: var(--oa-help-float-gap);
+  width: var(--oa-help-float-size);
+  height: var(--oa-help-float-size);
   border-radius: 50%;
   background: var(--oa-accent);
   color: #fff;
@@ -516,6 +702,9 @@ html[data-platform="linux"] .oa-help-float {
 @media (max-width: 860px) {
   .oa-shell { flex-direction: column; }
   .oa-nav { width: 100%; display: flex; flex-wrap: wrap; border-right: none; border-bottom: 1px solid var(--oa-card-border); position: static; height: auto; }
+  .oa-brand, .oa-nav-search, .oa-nav-hits, .oa-nav-nohits { flex: 1 1 100%; }
+  .oa-nav-group { display: flex; flex-wrap: wrap; flex: 1 1 auto; }
+  .oa-nav-sep { display: none; }
   .oa-nav-item { flex: 1 1 auto; }
   .oa-content { max-width: none; padding: 1.5rem; }
 }

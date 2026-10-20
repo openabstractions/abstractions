@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	asks "github.com/openabstractions/abstraction-asks/go"
 	credservice "github.com/openabstractions/abstraction-credentials/go/service"
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	"github.com/openabstractions/abstraction-identity/listen"
@@ -104,10 +105,19 @@ func (r *applicationsReceiver) caller() rights.Subject {
 }
 
 func (r *applicationsReceiver) Register(v wire.ApplicationDescriptor) (wire.ApplicationChange, error) {
-	return r.host.directory.register(r.ctx, r.caller(), v), nil
+	// The publisher is the code signer of the peer this call bound; the
+	// question about a self-registration shows it.
+	var publisher asks.Publisher
+	if peer, err := r.call.Peer(); err == nil {
+		publisher = peerPublisher(peer)
+	}
+	return r.host.directory.registerFrom(r.ctx, r.caller(), publisher, v), nil
 }
 func (r *applicationsReceiver) Remove(name string) (wire.ApplicationChange, error) {
 	return r.host.directory.remove(r.ctx, r.caller(), name), nil
+}
+func (r *applicationsReceiver) AskConfirmation(name string) (wire.ApplicationChange, error) {
+	return r.host.directory.askConfirmation(r.ctx, r.caller(), name), nil
 }
 func (r *applicationsReceiver) Announce(v wire.ApplicationPresence) (wire.ApplicationChange, error) {
 	caller := r.caller()
@@ -139,6 +149,9 @@ func (r *applicationsReceiver) Withdraw(name, instance string) (wire.Application
 }
 func (r *applicationsReceiver) Observe(cursor string, waitMs int64) (wire.ApplicationPage, error) {
 	return r.host.directory.observe(r.ctx, r.caller(), cursor, waitMs), nil
+}
+func (r *applicationsReceiver) ListStarts(cursor string, limit int64) (wire.ApplicationStartPage, error) {
+	return r.host.directory.listStarts(r.ctx, r.caller(), cursor, limit), nil
 }
 func (r *applicationsReceiver) Activate(application string) (wire.ApplicationActivationResult, error) {
 	caller := r.caller()

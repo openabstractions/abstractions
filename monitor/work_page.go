@@ -1,195 +1,176 @@
 package main
 
-// workPage is the Panel's Work page: downloads and other work this Panel
-// started, the same work every other app on this account started, and
-// starting a download directly (task 2026-09-23, requirement 1: split out of
-// the Status page, its own page at /work). Its rows say job (D1) and its key
-// field is the idempotency key (D57), research/vocabulary/DECISION.md §4;
-// the headings "Work started from this Panel" and "Work started by apps"
-// stay, and the wire keeps RequestIdentity until job/acceptance@2.
-const workPage = `<h1>Work</h1><p class="oa-note">Downloads and other work started from this Panel or by other apps.</p>
-<section id="work"><h2>Work started from this Panel</h2><button id="restart">Show</button><button id="next" disabled>Next page</button><p id="inventory-status"></p><div id="records"></div></section>
-<section id="account-work"><h2>Work started by apps</h2><p>Background work every app on this account started. You need the rule <span title="abstraction.job/inventory.read">jobs all</span> to see it, and <span title="abstraction.job/acceptance.cancel">jobs cancel</span> to cancel another app's job.</p><button id="account-start">Show all apps' work</button><button id="account-next" disabled>Next page</button><pre id="account-status"></pre><div id="account"></div></section>
-<section id="download"><h2>Download a file</h2><p>The file is checked against the size and hash you enter. If the reply gets lost, the saved record lets you finish or cancel it.</p>
-<form id="submit"><input id="url" type="url" required placeholder="File URL"><input id="digest" required placeholder="Hash (sha256:…)"><input id="size" type="number" min="0" required placeholder="Size in bytes"><input id="requestkey" type="hidden"><button id="requestkey-new" type="button">New key</button><span id="requestkey-note"></span><button>Download</button></form><p class="oa-note">Your own key; a retry with the same key is the same job.</p>
-<select id="saved" aria-label="Saved downloads"></select><button id="reconcile">Continue saved download</button><button id="export">Save download record</button><pre id="operation"></pre></section>
-<script>` + serviceCommonScript + `
-let cursor='',binding=null;const savedKey='openabstractions-panel-request-v1';
+// workPage is the Panel's Activity page (research/panel-redesign/SPEC.md §4,
+// S5): what happened, and who allowed it. A timeline of model calls
+// (/inference/audit), answers to apps' questions, the person's own and an
+// assistant's (/activity/answers, the asks answer audit), and app starts
+// (/activity/starts, the application start log; activity_panel.go), narrowed
+// by a quick range and a chooser of registered apps; downloads and other
+// background work every app started (/account-work, with Cancel); the work
+// this Panel started (/inventory); and the runtime's detailed log behind an
+// expander (logging_page.go). Everything reads on arrival and again every
+// few seconds while the page is visible, so the page has no Refresh button.
+// "Show more" appears only past a page. Section ids account-work and work
+// keep their reference anchors (help.go). Its rows say job (D1) and the wire
+// keeps RequestIdentity until job/acceptance@2,
+// research/vocabulary/DECISION.md §4.
+var workPage = oaPageHead("work", "Activity", "What happened, and who allowed it.") +
+	oaGroup("timeline", "Timeline", "",
+		`<div data-ready-owner="page" hidden></div>`,
+		oaRow("Show", "", `<span id="range" role="group" aria-label="Range"></span><select id="app-filter" aria-label="App"><option value="">All apps</option></select>`, "range-status"),
+		oaStatus("timeline-status"),
+		`<p class="oa-empty" id="timeline-empty" hidden></p>`,
+		oaTable("timeline-table", "Time", "App", "What happened", "Result"),
+		`<div class="oa-toolbar"><button id="timeline-more" type="button" data-status="timeline-status" hidden>Show more</button></div>`) +
+	oaGroup("account-work", "Downloads and background work", "",
+		oaStatus("account-status"),
+		`<p class="oa-empty" id="account-empty" hidden>No downloads or background work right now.</p><div id="account"></div>`,
+		`<div class="oa-toolbar"><button id="account-more" type="button" data-status="account-status" hidden>Show more</button></div>`) +
+	oaGroup("notifications", "Notifications", "Apps that notified you this week, and the switch that stops each one.",
+		oaStatus("notifications-status"),
+		`<p class="oa-empty" id="notifiers-empty" hidden>No app has notified you this week.</p><div id="notifiers"></div>`,
+		// A shown notification keeps its actions here, so one the person
+		// missed stays answerable (actionable-notifications design §4.9).
+		`<div id="notifications-open"></div>`,
+		oaTable("notifications-table", "Time", "App", "Notification", "State")) +
+	oaGroup("work", "Started from this Panel", "",
+		oaStatus("inventory-status"),
+		`<p class="oa-empty" id="records-empty" hidden>This Panel has started no work.</p><div id="records"></div>`,
+		`<div class="oa-toolbar"><button id="next" type="button" data-status="inventory-status" hidden>Show more</button></div>`) +
+	oaExpander("Detailed log", loggingSection) +
+	`<script>` + serviceCommonScript + workScript + loggingScript + `</script>`
+
+const workScript = `
+let binding=null;
 async function bind(){if(!binding)binding=await call('/binding');return binding}
-// recover's own reason ('continue' or 'save') names which button called it,
-// so oaPlain's table (panel_shell.go) can read a plain sentence fitting that
-// button instead of the one technical sentence both used to show unchanged
-// (task 2026-09-23, ninth first-time visitor, finding 2).
-function recover(reason){const value=localStorage.getItem(el('saved').value||savedKey);if(!value)throw Error('No saved request to '+reason+'. Preserve key, epoch, owner, endpoint and request before submission.');return JSON.parse(value)}
-// submitOutcomeText names /action submit's own AcceptanceOutcome vocabulary
-// (abstraction-job/go's acceptance.rec.go). A download once printed the raw
-// {"Outcome":"definitely_not_accepted","Receipt":null,"Reason":"..."} object
-// straight into the status line; submitResultLine now reads one sentence
-// from it, the server's own Reason after a colon, with the full object kept
-// behind Technical details, oaShowResult's own shape (task 2026-09-23, tenth
-// first-time visitor, finding 1).
-const submitOutcomeText={accepted:'Accepted; the runtime queued this download.',definitely_not_accepted:'Not accepted',unknown:'The runtime does not recognize this request.',key_conflict:'This idempotency key already names a different job.',forbidden:'You are not authorized to submit this; nothing was changed.',invalid:'The runtime rejected this request as invalid.',unavailable:'The job service could not accept this; try again.'};
-// A refusal's own Reason used to end the sentence with no next step
-// ("Not accepted: configured executor refused this work."); the previous
-// pass read that one exact reason as meaning this runtime holds no
-// download executor at all, and said so. That reading was wrong: the
-// acceptance provider (openabstractions-flat/abstraction-job/go/
-// acceptanceprovider/provider.go) only reaches this Reason from inside
-// its own "if p.executor != nil" branch, when the configured executor's
-// own Prepare rejected this specific request (a bad digest, a negative
-// size, an unsupported guarantee); a runtime with no executor at all
-// never refuses here, it accepts the work and never runs it. This exact
-// runtime was started with --jobs-run-downloads and other downloads
-// completed, which is what caught the false claim (task 2026-09-23,
-// thirteenth first-time visitor, finding 3). submitReasonExplain is kept
-// for a future Reason this runtime's own jobs executor documents as
-// genuinely meaning no download execution is configured; none does
-// today, so every refusal reason falls to the generic sentence below,
-// naming the download executor rather than the runtime as a whole.
-const submitReasonExplain={};
-// An accepted download's own Reason is boilerplate ("original acceptance",
-// "idempotent replay"), redundant beside the sentence above it; only a
-// refusal's Reason carries information this sentence does not already say.
-function submitResultLine(r){if(r.Outcome==='definitely_not_accepted'&&r.Reason){const explain=submitReasonExplain[r.Reason];return explain?'Not accepted: '+r.Reason+'. '+explain:'The download executor refused this work. Check that the file URL carries no username or password, and that the hash and size are exactly right.'}return (submitOutcomeText[r.Outcome]||'Job service outcome: '+r.Outcome)+(r.Reason&&r.Outcome!=='accepted'?': '+r.Reason+'.':'')}
+// workRow is one oa-row built in the page: a label, an optional caption, the
+// row's buttons and its own status line each button writes one sentence to.
+function workRow(label,caption,title){const row=document.createElement('div');row.className='oa-row';const text=document.createElement('div');text.className='oa-row-text';const l=document.createElement('span');l.className='oa-row-label';text.append(l);const c=document.createElement('span');c.className='oa-row-caption';text.append(c);const control=document.createElement('div');control.className='oa-row-control';const status=document.createElement('p');status.className='oa-status';status.setAttribute('role','status');status.setAttribute('aria-live','polite');row.append(text,control,status);row.status=status;row.control=control;row.label=l;row.caption=c;setRowText(row,label,caption,title);return row}
+// setRowText rewrites a row's label and caption without touching its
+// buttons or status line.
+function setRowText(row,label,caption,title){row.label.textContent=label;row.label.title=title||'';row.caption.textContent=caption||'';row.caption.hidden=!caption}
+function rowButton(row,text,onclick){const b=document.createElement('button');b.type='button';b.textContent=text;b.onclick=onclick;row.control.append(b);return b}
+
+// --- Timeline: model calls, answers and app starts, newest first. ---
+const timelineRanges=[['hour','Last hour',3600e3],['today','Today','today'],['week','7 days',7*86400e3]];
+const rangeSentence={hour:'the last hour',today:'today',week:'the last 7 days'};
+const timelinePage=50;
+let rangeKey='hour',appFilter='',timelineShown=timelinePage,auditCursor=0,auditEntries=[],answers=[],starts=[],ownerSince=0,registered=[];
+function rangeSince(key){const r=timelineRanges.find(x=>x[0]===key);if(r[2]==='today'){const d=new Date();d.setHours(0,0,0,0);return d.getTime()}return Date.now()-r[2]}
+const callResult={completed:'Answered',cancelled:'Cancelled',refused:'Refused',not_permitted:'Not permitted',budget_exceeded:'Budget exceeded',unsupported_feature:'Unsupported feature',no_host:'No model server',unavailable:'Unavailable',invalid:'Invalid',forbidden:'Forbidden',exhausted:'Limit reached'};
+// sameFile matches a model call's program to a registered app's program as
+// the runtime reports both; the page folds no case itself.
+function sameFile(a,b){return !!a&&a===b}
+// appOf names a model call's program by its registered app's name, or by its
+// file name when no registered app matches.
+function appOf(program){const app=registered.find(a=>sameFile(a.program,program));return app?(app.name||oaShortName(app.program)):oaShortName(program)||'Unknown app'}
+// Answers and app starts come worded from their owners (activity_panel.go):
+// the app by the shared naming rule, what was asked or done, and who decided.
+function timelineItems(){const since=rangeSince(rangeKey),chosen=registered.find(a=>a.program===appFilter);const items=[];
+ for(const e of auditEntries){if(!e.UnixMs||e.UnixMs<since)continue;if(chosen&&!sameFile(chosen.program,e.Program))continue;items.push({at:e.UnixMs,app:appOf(e.Program),what:'Model call'+(e.Model?' to '+e.Model:''),result:callResult[e.Outcome]||String(e.Outcome||'unknown').replace(/_/g,' ')})}
+ for(const e of answers.concat(starts)){if(!e.at||e.at<since)continue;if(chosen&&!sameFile(chosen.program,e.program))continue;items.push({at:e.at,app:e.app||'-',what:e.what,result:e.result})}
+ return items.sort((x,y)=>y.at-x.at)}
+// timelineKeys keys each row by what it shows, so a live reread keeps the
+// rows that stay (oaKeyedRows); equal rows are told apart by their order.
+function timelineKeys(items){const seen=new Map();return items.map(i=>{const k=i.at+'\n'+i.app+'\n'+i.what+'\n'+i.result,n=seen.get(k)||0;seen.set(k,n+1);return k+'\n'+n})}
+function timelineRow(){const tr=document.createElement('tr');for(let i=0;i<4;i++)tr.append(document.createElement('td'));return tr}
+function renderTimeline(){const items=timelineItems(),shown=items.slice(0,timelineShown),keys=timelineKeys(shown);
+ oaKeyedRows(el('timeline-table').querySelector('tbody'),shown,(item,i)=>keys[i],timelineRow,(tr,item)=>{const values=[oaLocalTime(new Date(item.at).toISOString()),item.app,item.what,item.result];values.forEach((v,i)=>{if(tr.children[i].textContent!==v)tr.children[i].textContent=v})});
+ const chosen=registered.find(a=>a.program===appFilter);const empty=el('timeline-empty');empty.hidden=items.length>0;empty.textContent='Nothing happened'+(chosen?' with '+(chosen.name||oaShortName(chosen.program)):'')+' in '+rangeSentence[rangeKey]+'.';
+ el('timeline-table').parentNode.hidden=!items.length;el('timeline-more').hidden=items.length<=timelineShown;return items.length}
+function renderRange(){const out=el('range');out.replaceChildren();for(const[k,label]of timelineRanges){const b=document.createElement('button');b.type='button';b.textContent=label;b.setAttribute('aria-pressed',String(k===rangeKey));b.onclick=()=>{rangeKey=k;timelineShown=timelinePage;renderRange();const n=renderTimeline();show('range-status','Showing '+rangeSentence[k]+': '+n+(n===1?' event.':' events.'))};out.append(b)}}
+async function loadApps(){registered=await oaRegisteredApps();const select=el('app-filter'),current=select.value;select.replaceChildren();const all=document.createElement('option');all.value='';all.textContent='All apps';select.append(all);for(const a of registered){const o=document.createElement('option');o.value=a.program;o.textContent=a.name||oaShortName(a.program);o.title=a.program;select.append(o)}select.value=registered.some(a=>a.program===current)?current:''}
+el('app-filter').onchange=()=>{appFilter=el('app-filter').value;timelineShown=timelinePage;const n=renderTimeline();const chosen=registered.find(a=>a.program===appFilter);show('range-status','Showing '+(chosen?(chosen.name||oaShortName(chosen.program)):'all apps')+': '+n+(n===1?' event.':' events.'))};
+el('timeline-more').onclick=()=>{timelineShown+=timelinePage;renderTimeline();oaSetStatus('timeline-status','ok','Showing older events.')};
+// readAudit reads model calls forward from the last cursor. The first pass
+// reads to the end, keeping the newest 2,000, so Last hour is current on
+// arrival; later passes read a few pages. A gap continues from the oldest
+// call still retained.
+let auditRead=false;
+async function readAudit(){for(let i=0;!auditRead||i<8;i++){const p=await call('/inference/audit?cursor='+auditCursor);if(p.Outcome==='gap'){auditCursor=p.Next;continue}if(p.Outcome!=='page')return p.Outcome;auditEntries.push(...(p.Entries||[]));if(auditEntries.length>2000)auditEntries=auditEntries.slice(-2000);auditCursor=p.Next;if(p.AtEnd||!(p.Entries||[]).length){auditRead=true;break}}return 'page'}
+// readOwner reads one owner's events from its first page until they reach
+// back 7 days or the owner has no more, at most 8 pages of 64. A list that
+// changed while paging (gap, stale) reads once more from the start. An
+// owner too old to keep the list (unsupported) lists nothing.
+async function readOwner(path){const back=Date.now()-7*86400e3;for(let attempt=0;attempt<2;attempt++){let cursor='',events=[],changed=false;
+ for(let i=0;i<8;i++){const p=await call(path+'?cursor='+encodeURIComponent(cursor));if(p.outcome==='gap'||p.outcome==='stale'){changed=true;break}if(p.outcome==='unsupported')return {outcome:'page',events:[],since:0};if(p.outcome!=='page')return {outcome:p.outcome};const page=p.events||[];events.push(...page);if(p.complete||!p.next||!page.length||page[page.length-1].at<back)return {outcome:'page',events,since:p.completeSince||0};cursor=p.next}
+ if(!changed)return {outcome:'page',events,since:0}}return {outcome:'gap'}}
+// Answers and app starts change rarely: they reread every 30 seconds, model
+// calls every pass.
+const answersEveryMs=30000;let answersAt=0;
+async function readAnswers(){if(answersAt&&Date.now()-answersAt<answersEveryMs)return 'page';answersAt=Date.now();const a=await readOwner('/activity/answers'),s=await readOwner('/activity/starts');
+ if(a.outcome==='page')answers=a.events;if(s.outcome==='page')starts=s.events;ownerSince=Math.max(a.since||0,s.since||0);return a.outcome!=='page'?a.outcome:s.outcome}
+const timelineOutcome={forbidden:'You hold no rule to read this; nothing was listed.',unavailable:'The runtime could not answer right now.',gap:'The list kept changing; it reads again shortly.'};
+async function timeline(){const problems=[];for(const read of [readAudit,readAnswers]){try{const o=await read();if(o!=='page')problems.push(timelineOutcome[o]||'The runtime answered '+String(o).replace(/_/g,' ')+'.')}catch(e){problems.push(e.message||String(e))}}renderTimeline();if(problems.length)oaShowError('timeline-status',problems.join(' '));else oaSetStatus('timeline-status','ok',ownerSince>rangeSince(rangeKey)?'Answers and app starts before '+oaLocalTime(new Date(ownerSince).toISOString())+' are no longer kept.':'')}
+
+// --- Downloads and background work every app started. ---
+let accountCursor='',accountPages=1;const accountText={forbidden:'You hold no rule for this; nothing was listed or changed.',unavailable:'The runtime could not obtain a decision; nothing was listed or changed. Try again.',gap:'The jobs changed while listing; they read again shortly.',invalid:'The job service rejected this request.',unknown:'No job has this id.'};
+async function accountCancel(row,id){try{const r=await call('/account-work',{operation:id});row.status.textContent=r.Outcome==='requested'?'Cancellation requested; the program that submitted it sees the end.':r.Outcome==='already_terminal'?'Already finished.':(accountText[r.Outcome]||'The job service answered '+r.Outcome+'.')}catch(e){row.status.textContent=e.message||String(e)}}
+const accountRows=new Map();
+function accountRow(s){const id=s.Receipt.OperationID,label=s.Label||'Unlabelled job',state=String(s.State||'').replace(/_/g,' ');let row=accountRows.get(id);if(row){setRowText(row,label,state,id);return row}row=workRow(label,state,id);rowButton(row,'Cancel',()=>accountCancel(row,id));accountRows.set(id,row);return row}
+// accountList reads the first page (more=false, live) or the next one
+// (more=true, Show more).
+async function accountList(more){try{const p=await call('/account-work?cursor='+encodeURIComponent(more?accountCursor:''));if(p.Outcome!=='page'){if(!more){oaPlaceRows(el('account'),[]);accountRows.clear()}oaSetStatus('account-status','ok',accountText[p.Outcome]||'The job service answered '+p.Outcome+'.');el('account-more').hidden=true;el('account-empty').hidden=true;return}accountCursor=p.Next;const rows=(p.Snapshots||[]).map(accountRow);if(more){el('account').append(...rows);accountPages++;oaSetStatus('account-status','ok',rows.length?'Showing more work.':'No more work to show.')}else{oaPlaceRows(el('account'),rows);for(const id of [...accountRows.keys()])if(!rows.includes(accountRows.get(id)))accountRows.delete(id);accountPages=1;oaSetStatus('account-status','ok','')}
+ el('account-empty').hidden=el('account').children.length>0;el('account-more').hidden=!!p.Complete||!p.Snapshots||!p.Snapshots.length}catch(e){fail('account-status',e)}}
+el('account-more').onclick=()=>accountList(true);
+
+// --- Work this Panel started. ---
+let cursor='',inventoryPages=1;
 function jobWaiting(s){return s.Waiting?' (waiting: '+(/^[a-z0-9_.:-]{1,64}$/.test(s.Waiting)?s.Waiting:'unnamed')+')':''}
-function jobLabel(s){return (s.Label?s.Label+(s.LabelDerived?' (derived)':''):'Unlabelled job '+s.Receipt.OperationID)+jobWaiting(s)+' - '+s.State}
-// jobActionSentence turns a cancel or observe call's typed result into one
-// plain sentence, instead of the raw result object show('operation',...)
-// used to write (task 2026-09-23, seventh first-time visitor, finding 4).
-// A cancel against a job that already finished used to look identical to a
-// successful cancel, both a raw {"Outcome":"already_terminal"} dump; it now
-// reads "Nothing to cancel; this work has finished."
+function jobLabel(s){return (s.Label?s.Label+(s.LabelDerived?' (derived)':''):'Unlabelled job')+jobWaiting(s)}
 const cancelOutcomeText={requested:'Cancellation requested; the program that submitted it sees the end.',already_terminal:'Nothing to cancel; this job has finished.',forbidden:'You are not authorized to cancel this; nothing was changed.',unavailable:'The job service could not complete this; try again.',unsupported:'This runtime does not support canceling this way.',unknown:'No job has this id.'};
-function jobActionSentence(action,r){if(action==='cancel')return cancelOutcomeText[r.Outcome]||'Job service outcome: '+r.Outcome;if(action==='observe'){if(r.Outcome!=='observed'||!r.Snapshot)return cancelOutcomeText[r.Outcome]||'Job service outcome: '+r.Outcome;return 'State: '+jobLabel(r.Snapshot)+'.'}return 'Job service outcome: '+(r.Outcome||JSON.stringify(r))}
-async function inventory(){try{const p=await call('/inventory?cursor='+encodeURIComponent(cursor));if(p.Outcome!=='page'){show('inventory-status',p.Outcome==='gap'?'Cursor expired. Start inventory explicitly.':'Inventory: '+p.Outcome);el('next').disabled=true;return}cursor=p.Next;el('next').disabled=p.Complete;
-// Next page used to replace the list with this page's own snapshots
-// unconditionally; a click past the last real page (Complete but with
-// nothing new) wiped the rows already shown and left only a small status
-// change, reading as doing nothing (task 2026-09-23, twelfth first-time
-// visitor, finding 7). The button is already disabled once Complete is
-// true, so this only guards the one click that lands exactly there.
-if(!p.Snapshots.length&&el('records').children.length){show('inventory-status','No more jobs to show.');return}
-show('inventory-status',p.Complete?"That's every job so far. Click Show again to see anything started later.":'More pages remain; some may be empty.');el('records').replaceChildren();const b=await bind();for(const s of p.Snapshots){const box=document.createElement('div');const title=document.createElement('h3');title.textContent=jobLabel(s);const text=document.createElement('pre');text.textContent=JSON.stringify(s,null,2);box.append(title,text);const same=s.Receipt.LogicalOwner===b.history.LogicalOwner;for(const action of ['observe','cancel']){const button=document.createElement('button');button.textContent=action;button.disabled=!same;button.onclick=async()=>{try{show('operation',jobActionSentence(action,await call('/action',{action,endpoint:b.endpoint,owner:b.history.LogicalOwner,identity:s.Receipt.Identity})))}catch(e){fail('operation',e)}};box.append(button)}const result=document.createElement('button');result.textContent='Download completed bytes';result.disabled=!same;result.onclick=()=>{const q=new URLSearchParams({k:key,key:s.Receipt.Identity.Key,epoch:s.Receipt.Identity.HistoryEpoch,owner:b.history.LogicalOwner,endpoint:b.endpoint});location.href='/result?'+q};box.append(result);if(!same){const note=document.createElement('p');note.textContent='Read-only: this inventory owner differs from the selected action provider.';box.append(note)}el('records').append(box)}}catch(e){fail('inventory-status',e)}}
-// savedLabel used to be the saved chooser's whole job: it read a saved
-// record's raw request key, a UUID with no meaning to read (task
-// 2026-09-23, thirteenth first-time visitor, finding 4). It now reads the
-// file name and host out of the record's own URL, with the time it was
-// saved; the raw key still sits on the option's own title, for Reconcile
-// and Save to keep reading unchanged. A URL this can't parse (should not
-// happen; every saved record was itself a validated submission) falls
-// back to the raw key rather than show nothing.
-function savedLabel(record){try{const u=new URL(record.url);const file=u.pathname.split('/').filter(Boolean).pop()||u.hostname;return file+' · '+u.hostname+(record.savedAt?' · '+oaClockText(new Date(record.savedAt),false):'')}catch(e){return record.identity&&record.identity.Key||'saved download'}}
-// savedFileName reads just the file name savedLabel already extracts, for
-// a sentence rather than a chooser option ("Saved the record for
-// rfc2119.txt."). A URL this can't parse falls back to the raw request
-// key, the same way savedLabel does.
-function savedFileName(record){try{const u=new URL(record.url);return u.pathname.split('/').filter(Boolean).pop()||u.hostname}catch(e){return record.identity&&record.identity.Key||'this download'}}
-function savedRequests(selected){el('saved').replaceChildren();for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(!k.startsWith(savedKey+':'))continue;const o=document.createElement('option');o.value=k;try{const record=JSON.parse(localStorage.getItem(k));o.textContent=savedLabel(record);o.title=record.identity.Key}catch{continue}el('saved').append(o)}if(selected)el('saved').value=selected}try{savedRequests()}catch(e){show('operation','Recovery storage unavailable: '+e.message)};
-el('restart').onclick=()=>{cursor='';inventory()};el('next').onclick=inventory;
-// Every required download field now names itself when left blank (task
-// 2026-09-23, seventh first-time visitor, finding 4, the Issue key
-// pattern): a browser that blocks the submit event for a failed required
-// field never runs this form's own onsubmit at all, but always fires
-// "invalid" on the field that failed, submit or not.
-for(const id of ['url','digest','size']){const label={url:'File URL',digest:'Hash',size:'Size in bytes'}[id];el(id).addEventListener('invalid',()=>show('operation',label+' is required to submit a download.'))}
-// Request key opened blank, one more field to fill in before the form
-// could even be tried; it now generates its own key on arrival and offers
-// a fresh one on click, the same way a person expects a "New" control to
-// behave (task 2026-09-23, eleventh first-time visitor, requirement 3).
-function newRequestKey(){try{return crypto.randomUUID()}catch(e){return 'req-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10)}}
-// The generated key used to sit in a visible, required text field, a raw
-// UUID with no meaning to read (task 2026-09-23, thirteenth first-time
-// visitor, finding 2). New key is now the control; the key itself is a
-// hidden field the submit handler still reads unchanged, with the plain
-// sentence in its place and the raw value kept reachable in Technical
-// details.
-function showRequestKey(){el('requestkey-note').replaceChildren();const line=document.createElement('span');line.textContent='An idempotency key was generated for this download.';el('requestkey-note').append(line);const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='Technical details';const pre=document.createElement('pre');pre.textContent='Idempotency key: '+el('requestkey').value;details.append(summary,pre);el('requestkey-note').append(details)}
-el('requestkey-new').onclick=()=>{el('requestkey').value=newRequestKey();showRequestKey()};
-el('requestkey').value=newRequestKey();showRequestKey();
-// A refused download used to read "configured executor refused this
-// work" with no next step, and no way to tell whether the problem was
-// this Panel's own request or something the runtime alone knows. The
-// wire carries no more detail than that one string for a genuine
-// executor refusal: abstraction-job/go's acceptanceprovider (provider.go,
-// the "if err != nil" branch that sets Reason to this exact string)
-// discards the executor's own error unconditionally, every time, for
-// every configured executor, before it ever reaches this Panel; nothing
-// short of a change there could pass the real reason through (task
-// 2026-09-23, fifteenth first-time visitor, finding 5, confirmed again
-// by reading serve/'s own executor, abstraction-download/go/serve/
-// execution.go's HTTPExecution.PrepareScoped). Three of its own refusal
-// shapes a caller can check itself, before ever sending the request: the
-// hash must read sha256:<64 hex characters>, the URL must be an http(s)
-// address naming a host, and that address must carry no username or
-// password (PrepareScoped requires an anonymous source; a credential
-// belongs in Credentials, not the URL) — this last one reproduced
-// "configured executor refused this work" through this exact form (task
-// 2026-09-23, fourteenth and fifteenth first-time visitor, finding 4 and
-// finding 5). Nothing else PrepareScoped can refuse is reachable from
-// this form: it takes no credential reference and asks for no execution
-// guarantee, so the remaining fallback sentence names what a person here
-// can still check, rather than repeating the one word the server itself
-// already gave no more meaning than.
-const submitDigestPattern=/^sha256:[0-9a-f]{64}$/i;
-function submitURLProblem(u){let parsed;try{parsed=new URL(u)}catch(e){return 'File URL must be a full address, starting with http:// or https://.'}if(parsed.protocol!=='http:'&&parsed.protocol!=='https:')return 'File URL must start with http:// or https://.';if(!parsed.hostname)return 'File URL must name a host.';if(parsed.username||parsed.password)return 'File URL must not include a username or password; the download executor requires a plain, anonymous address.';return ''}
-el('submit').onsubmit=async e=>{e.preventDefault();try{const b=await bind();const a={action:'submit',endpoint:b.endpoint,owner:b.history.LogicalOwner,identity:{Key:el('requestkey').value,HistoryEpoch:b.history.HistoryEpoch},url:el('url').value,digest:el('digest').value,size:Number(el('size').value)};if(!Number.isSafeInteger(a.size)||a.size<0)throw Error('Size must be a nonnegative safe integer');if(!submitDigestPattern.test(a.digest))throw Error('Hash must read sha256: followed by 64 hex characters.');const urlProblem=submitURLProblem(a.url);if(urlProblem)throw Error(urlProblem);const recordKey=savedKey+':'+JSON.stringify([a.endpoint,a.owner,a.identity.HistoryEpoch,a.identity.Key]);const previousRaw=localStorage.getItem(recordKey);const previous=previousRaw?JSON.parse(previousRaw):null;
-// The stored record now also carries savedAt, for savedLabel's own use;
-// the equality check below still compares only the fields /action itself
-// sees, so a savedAt this key already carries never counts as "different
-// work" and never blocks a genuine reconcile-by-resubmit.
-if(previous){const{savedAt,...core}=previous;if(JSON.stringify(core)!==JSON.stringify(a))throw Error('This key already names a different job. Reconcile it; choose a new key only for a new job.')}const stored={...a,savedAt:(previous&&previous.savedAt)||new Date().toISOString()};localStorage.setItem(recordKey,JSON.stringify(stored));localStorage.setItem(savedKey,JSON.stringify(stored));savedRequests(recordKey);const r=await call('/action',a);oaShowResult('operation',submitResultLine(r),r)}catch(e){show('operation',e.message+' Retain the saved request; use Reconcile before any new submission.')}};
-// Continue saved download used to read jobActionSentence's own generic
-// fallback, "Job service outcome: definitely_not_accepted", with no reason
-// and no way to see the raw reply. Reconcile answers with the same
-// AcceptanceOutcome vocabulary submit does (both ride the one /action
-// endpoint), so it now reads through submitResultLine the same way
-// (task 2026-09-23, eleventh first-time visitor, finding 3).
-// Continue saved download used to send the saved record's own savedAt
-// field straight to /action along with action, endpoint, owner, identity,
-// url, digest and size; the server's own decoder refuses any field it
-// does not name (service_panel.go's serviceAction, DisallowUnknownFields),
-// so every Continue read "invalid action" from the server, generalized by
-// oaPlain to "The runtime rejected this request." with no way to tell the
-// two apart from the request that had actually just been refused for a
-// different, real reason (task 2026-09-23, fifteenth first-time visitor,
-// finding 5). savedAt is this Panel's own bookkeeping, for savedLabel's
-// sake; the submit handler above already strips it the same way before
-// comparing a saved record against a new one.
-el('reconcile').onclick=async()=>{try{const{savedAt,...saved}=recover('continue');const r=await call('/action',{...saved,action:'reconcile'});oaShowResult('operation',submitResultLine(r),r)}catch(e){fail('operation',e)}};
-// export used to write nothing on success: the file saved, but the status
-// line stayed exactly as the previous click left it, so a click read as
-// producing no result (task 2026-09-23, seventh first-time visitor, finding
-// 4).
-// Save download record used to read "Saved operation-recovery.json for
-// request 55219ba1-…", the file this Panel wrote and the raw request key
-// both visible text; it now names the download itself by its file name,
-// the file this Panel wrote and the raw key kept in Technical details
-// (task 2026-09-23, fourteenth first-time visitor, finding 5).
-el('export').onclick=()=>{try{const saved=recover('save');const url=URL.createObjectURL(new Blob([JSON.stringify(saved,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='operation-recovery.json';a.click();URL.revokeObjectURL(url);oaShowResult('operation','Saved the record for '+savedFileName(saved)+'.',saved,'file: operation-recovery.json; idempotency key: '+saved.identity.Key)}catch(e){fail('operation',e)}};
-// accountList's row used to read "<operation id> - <state> - <label>", the
-// id first and the label an afterthought; the same download reads
-// "<label> - <state>" on the Device page (card_page.go's work()), no id in
-// the line at all (task 2026-09-23, sixth first-time visitor, finding 3).
-// This row now reads the same way Device's does. The id is never visible
-// page text (task 2026-09-23, seventh first-time visitor, finding 2); it
-// sits on the line's own title attribute instead, reachable on hover, the
-// same way this Panel now keeps every other raw id off the page.
-let accountCursor='';const accountText={forbidden:'You hold no rule for this; nothing was listed or changed.',unavailable:'The runtime could not obtain a decision; nothing was listed or changed. Try again.',gap:'The jobs changed while listing; start the list again.',invalid:'The job service rejected this request.',unknown:'No job has this id.'};
-// accountCancel used to name the operation by its raw id ("<id>: already
-// ended."); it now names it by its label, the same one the row itself
-// shows, and never the id (task 2026-09-23, eighth first-time visitor,
-// finding 3).
-async function accountCancel(id,label){try{const r=await call('/account-work',{operation:id});show('account-status',label+': '+(r.Outcome==='requested'?'cancellation requested; the program that submitted it sees the end.':r.Outcome==='already_terminal'?'already finished.':(accountText[r.Outcome]||'Job service outcome: '+r.Outcome)))}catch(e){fail('account-status',e)}}
-// accountList also refreshes the grant widget above it, the same fetch
-// its own arrival check makes, so a rule granted since this page opened
-// shows up here without a reload (task 2026-09-23, fifteenth first-time
-// visitor, finding 1).
-async function accountList(){if(window.oaGrantRefresh)oaGrantRefresh();try{const p=await call('/account-work?cursor='+encodeURIComponent(accountCursor));if(p.Outcome!=='page'){el('account').replaceChildren();show('account-status',accountText[p.Outcome]||'Job service outcome: '+p.Outcome);el('account-next').disabled=true;return}accountCursor=p.Next;el('account-next').disabled=p.Complete;
-// Next page used to clear this list before knowing whether the new page
-// held anything, so a click past the last real page wiped the rows
-// already shown and showed nothing in their place (task 2026-09-23,
-// twelfth first-time visitor, finding 7).
-if(!p.Snapshots.length&&el('account').children.length){show('account-status','No more jobs to show.');return}
-show('account-status',p.Snapshots.length?(p.Complete?'End of jobs.':'More jobs remain.'):'No jobs on this page.');el('account').replaceChildren();for(const s of p.Snapshots){const box=document.createElement('div');const label=s.Label||'Unlabelled job';const text=document.createElement('span');text.textContent=label+' - '+s.State;text.title=s.Receipt.OperationID;const cancel=document.createElement('button');cancel.textContent='Cancel';cancel.onclick=()=>accountCancel(s.Receipt.OperationID,label);box.append(text,cancel);el('account').append(box)}}catch(e){fail('account-status',e)}}
-el('account-start').onclick=()=>{accountCursor='';return accountList()};el('account-next').onclick=accountList;
-</script>`
+function jobActionSentence(action,r){if(action==='cancel')return cancelOutcomeText[r.Outcome]||'The job service answered '+r.Outcome+'.';if(r.Outcome!=='observed'||!r.Snapshot)return cancelOutcomeText[r.Outcome]||'The job service answered '+r.Outcome+'.';return 'State: '+String(r.Snapshot.State||'').replace(/_/g,' ')+'.'}
+const inventoryRows=new Map();
+function inventoryRow(s,b){const id=s.Receipt.OperationID,same=s.Receipt.LogicalOwner===b.history.LogicalOwner;let row=inventoryRows.get(id);if(!row){row=workRow('','',id);row.buttons=[];
+ for(const action of ['observe','cancel'])row.buttons.push(rowButton(row,action==='observe'?'Check state':'Cancel',async()=>{const snap=row.snapshot;try{row.status.textContent=jobActionSentence(action,await call('/action',{action,endpoint:b.endpoint,owner:b.history.LogicalOwner,identity:snap.Receipt.Identity}))}catch(e){row.status.textContent=e.message||String(e)}}));
+ row.buttons.push(rowButton(row,'Download result',()=>{const snap=row.snapshot;row.status.textContent='Downloading the result.';const q=new URLSearchParams({k:key,key:snap.Receipt.Identity.Key,epoch:snap.Receipt.Identity.HistoryEpoch,owner:b.history.LogicalOwner,endpoint:b.endpoint});location.href='/result?'+q}));
+ if(!same)row.status.textContent='Another runtime holds this work, so it is read-only here.';inventoryRows.set(id,row)}
+ row.snapshot=s;setRowText(row,jobLabel(s),String(s.State||'').replace(/_/g,' '),id);for(const button of row.buttons)button.disabled=!same;return row}
+async function inventory(more){try{const p=await call('/inventory?cursor='+encodeURIComponent(more?cursor:''));if(p.Outcome!=='page'){oaSetStatus('inventory-status','ok',p.Outcome==='gap'?'The list changed while reading; it reads again shortly.':'The job service answered '+p.Outcome+'.');el('next').hidden=true;return}cursor=p.Next;const b=await bind();const rows=(p.Snapshots||[]).map(s=>inventoryRow(s,b));if(more){el('records').append(...rows);inventoryPages++;oaSetStatus('inventory-status','ok',rows.length?'Showing more work.':'No more work to show.')}else{oaPlaceRows(el('records'),rows);for(const id of [...inventoryRows.keys()])if(!rows.includes(inventoryRows.get(id)))inventoryRows.delete(id);inventoryPages=1;oaSetStatus('inventory-status','ok','')}
+ el('records-empty').hidden=el('records').children.length>0;el('next').hidden=!!p.Complete||!rows.length}catch(e){fail('inventory-status',e)}}
+el('next').onclick=()=>inventory(true);
+
+// Everything reads on arrival and again while the page is visible. A list
+// the person paged through with Show more keeps its pages until reload.
+const workEveryMs=5000;
+// --- Notifications: per-app counts beside the switch (ASK-N6), and the
+// notifications the runtime holds now. ---
+const notifierRows=new Map();
+const notificationStates={scheduled:'Waiting for its job',posted:'Shown',acted:'Chosen',dismissed:'Closed',withdrawn:'Withdrawn',expired:'Expired'};
+async function notifierSwitch(row,n){const on=n.off;try{await call('/notifications',{program:n.program,on});row.status.textContent=on?'Notifications from '+n.name+' are on.':'Notifications from '+n.name+' are off; its shown notifications were withdrawn.';await notifications()}catch(e){row.status.textContent=e.message||String(e)}}
+function notifierRow(n){let row=notifierRows.get(n.program);const caption=(n.week===1?'1 notification':n.week+' notifications')+' this week'+(n.off?'; turned off':'');if(!row){row=workRow(n.name,caption,n.program);row.button=rowButton(row,'',()=>notifierSwitch(row,row.n));notifierRows.set(n.program,row)}else setRowText(row,n.name,caption,n.program);row.n=n;row.button.textContent=n.off?'Turn on':'Turn off';return row}
+// A shown notification's actions: one button each, sent with the token it was
+// shown with through the native click's path (/notifications/act). The
+// sentence goes to the row, or to the group once the answered row is gone.
+const notificationOpenRows=new Map();
+let notificationsFailed=false;
+function notificationOpenRow(n){let row=notificationOpenRows.get(n.id);const caption=[n.name,n.body].filter(Boolean).join(' · ');if(!row){row=workRow(n.title,caption,'');notificationOpenRows.set(n.id,row)}else setRowText(row,n.title,caption,'');row.n=n;const actions=JSON.stringify(n.actions);if(row.actions!==actions){row.actions=actions;row.control.replaceChildren();for(const a of n.actions)rowButton(row,a.title,()=>notificationAct(row,a))}return row}
+async function notificationAct(row,a){const n=row.n;for(const b of row.control.children)b.disabled=true;let line='',state='ok',operation='';
+ try{const r=await call('/notifications/act',{id:n.id,action:a.id,token:n.token});line=r.message;operation=r.operation||''}catch(e){line=oaPlain(e&&e.message||e).line;state='error'}
+ await notifications();const now=notificationOpenRows.get(n.id);
+ if(now){now.status.textContent=line;for(const b of now.control.children)b.disabled=false}else oaSetStatus('notifications-status',state,line);
+ if(operation)focusJob(operation)}
+async function notifications(){try{const v=await call('/notifications');if(v.outcome!=='page'){oaSetStatus('notifications-status','ok','The notification service answered '+v.outcome+'.');return}
+ const rows=(v.notifiers||[]).map(notifierRow);oaPlaceRows(el('notifiers'),rows);for(const k of [...notifierRows.keys()])if(!rows.includes(notifierRows.get(k)))notifierRows.delete(k);el('notifiers-empty').hidden=rows.length>0;
+ const open=(v.notifications||[]).filter(n=>n.actions&&n.actions.length).map(notificationOpenRow);oaPlaceRows(el('notifications-open'),open);for(const k of [...notificationOpenRows.keys()])if(!open.includes(notificationOpenRows.get(k)))notificationOpenRows.delete(k);
+ const body=el('notifications-table').querySelector('tbody');body.replaceChildren();for(const n of v.notifications||[]){const tr=document.createElement('tr');const state=(notificationStates[n.state]||n.state)+(n.action?': '+n.action:'');for(const value of [n.at?oaLocalTime(new Date(n.at).toISOString()):'',n.name,n.title,state]){const td=document.createElement('td');td.textContent=value;tr.append(td)}body.append(tr)}
+ el('notifications-table').hidden=!(v.notifications||[]).length;
+ // A reread clears only a failure's sentence, so an action's sentence stays.
+ if(notificationsFailed){notificationsFailed=false;oaSetStatus('notifications-status','ok','')}}catch(e){notificationsFailed=true;fail('notifications-status',e)}}
+// A notification's Open Activity action opens this page at its job's row,
+// from a native click (the operation query) or from its button here.
+const focusOperation=new URLSearchParams(location.search).get('operation')||'';
+let focused=false;
+function focusJob(operation){const row=accountRows.get(operation);if(!row){oaSetStatus('account-status','ok','The job this notification named is not in the current list.');return false}row.setAttribute('aria-current','true');row.scrollIntoView({block:'center'});row.status.textContent='This is the job the notification named.';return true}
+function focusRow(){if(!focusOperation||focused)return;focused=focusJob(focusOperation)}
+// workRefresh skips a tick while the previous pass is still reading.
+let workBusy=false;
+async function workRefresh(){if(workBusy)return;workBusy=true;try{await timeline();if(accountPages===1)await accountList(false);if(inventoryPages===1)await inventory(false);await notifications()}finally{workBusy=false}}
+renderRange();
+workBusy=true;
+var workReady=loadApps().then(()=>Promise.all([timeline(),accountList(false).then(focusRow),inventory(false),notifications()])).finally(()=>{workBusy=false});
+// The page is ready for screenshots once its first reads finish, whether
+// they succeeded or failed (oaReady, panel_shell.go).
+workReady.catch(()=>{}).finally(()=>oaReady());
+setInterval(()=>{if(document.visibilityState==='visible')workRefresh()},workEveryMs);
+`

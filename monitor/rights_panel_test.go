@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -24,15 +23,19 @@ const panelRightsAction = "abstraction.storage/content.read"
 // panelRightsRuntime hosts a real decision policy whose operator authorization
 // admits this test process only while allow is set and outage is clear.
 func panelRightsRuntime(t *testing.T, allow, outage *atomic.Bool) *rights.DecisionPolicy {
+	return panelRightsRuntimeWithDefinitions(t, allow, outage, nil)
+}
+
+func panelRightsRuntimeWithDefinitions(t *testing.T, allow, outage *atomic.Bool, definitions *rights.DefinitionCatalog) *rights.DecisionPolicy {
 	t.Helper()
 	if runtime.GOOS == "darwin" {
 		t.Skip("Program proof unavailable")
 	}
-	policy, err := rights.LoadDecisionPolicy(filepath.Join(t.TempDir(), "policy.json"), []string{panelRightsAction})
+	policy, err := rights.LoadDecisionPolicyWithDefinitions(filepath.Join(t.TempDir(), "policy.json"), []string{panelRightsAction}, definitions)
 	if err != nil {
 		t.Fatal(err)
 	}
-	prefix := fmt.Sprintf("panel-rights-%d", time.Now().UnixNano())
+	prefix := fixtureName("panel-rights")
 	o := host.Options{Endpoint: listen.Endpoint(prefix), LogEndpoint: listen.Endpoint(prefix + "l"), ConfigEndpoint: listen.Endpoint(prefix + "c"),
 		RightsPolicy: policy, RightsEndpoint: listen.Endpoint(prefix + "r"),
 		RightsOperator: func(ctx context.Context, peer *identity.Peer) error {
@@ -45,6 +48,15 @@ func panelRightsRuntime(t *testing.T, allow, outage *atomic.Bool) *rights.Decisi
 			}
 			return ctx.Err()
 		}}
+	if definitions != nil {
+		seen := map[string]bool{}
+		for _, definition := range definitions.SelectorDefinitions() {
+			if definition.Definition.Served && !seen[definition.Definition.Action] {
+				seen[definition.Definition.Action] = true
+				o.RightsActions = append(o.RightsActions, definition.Definition.Action)
+			}
+		}
+	}
 	h, err := host.Listen(o)
 	if err != nil {
 		t.Fatal(err)
@@ -153,12 +165,33 @@ func TestServicePanelRightsOperator(t *testing.T) {
 		t.Fatalf("list after revoke %+v", page)
 	}
 
+	// The Panel's lifetime/reason fields use the existing conditional public
+	// SetRuleFor API. List projection reports what the service actually retained.
+	timed := grant(list().Revision, true)
+	timed.TTLMS, timed.Why = 300000, "permission playground"
+	if e := edit(timed); e.Outcome != wire.PolicyEditOutcomeApplied {
+		t.Fatalf("timed permission %+v", e)
+	}
+	response := panelRequest(t, h, "/rights?cursor=", nil)
+	view := decodePanel[policyPageView](t, response.Code, response.Body.Bytes())
+	if len(view.Rules) != 1 || view.Rules[0].Why != timed.Why || view.Rules[0].Expires == "" || view.Rules[0].SetBy == nil {
+		t.Fatalf("timed permission provenance %+v", view)
+	}
+	expires, err := time.Parse(time.RFC3339Nano, view.Rules[0].Expires)
+	if err != nil || !expires.After(time.Now()) || expires.After(time.Now().Add(6*time.Minute)) {
+		t.Fatalf("timed permission expiry %q: %v", view.Rules[0].Expires, err)
+	}
+
 	for _, bad := range []rightsEdit{
 		{Edit: "grant", Revision: "r", Account: "a", Program: target.Program, Action: panelRightsAction, Resource: "x"},
 		{Edit: "set", Revision: "r", Account: "a", Program: "relative/program", Action: panelRightsAction, Resource: "x"},
 		{Edit: "set", Revision: "", Account: "a", Program: target.Program, Action: panelRightsAction, Resource: "x"},
 		{Edit: "set", Revision: "r", Account: "bad\naccount", Program: target.Program, Action: panelRightsAction, Resource: "x"},
 		{Edit: "revoke", Revision: "r", Account: "a", Program: target.Program, Action: panelRightsAction, Resource: "x", Permit: true},
+		{Edit: "set", Revision: "r", Account: "a", Program: target.Program, Action: panelRightsAction, Resource: "x", TTLMS: -1},
+		{Edit: "set", Revision: "r", Account: "a", Program: target.Program, Action: panelRightsAction, Resource: "x", TTLMS: 31536000001},
+		{Edit: "set", Revision: "r", Account: "a", Program: target.Program, Action: panelRightsAction, Resource: "x", Why: "bad\nreason"},
+		{Edit: "revoke", Revision: "r", Account: "a", Program: target.Program, Action: panelRightsAction, Resource: "x", TTLMS: 1},
 	} {
 		if r := panelRequest(t, h, "/rights", bad); r.Code != 400 {
 			t.Fatalf("invalid rights edit %+v reached the service: %d %s", bad, r.Code, r.Body.Bytes())

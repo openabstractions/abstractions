@@ -3,9 +3,55 @@ package win
 import (
 	"fmt"
 	"testing"
+	"time"
 )
 
 const wmClose = 0x0010
+
+func TestHiddenWindowEndsOnlyCommittedSessionShutdown(t *testing.T) {
+	const queryEnd, endSession, closeApp = 0x0011, 0x0016, 1
+	ready := make(chan *Window, 1)
+	done := make(chan error, 1)
+	go func() { done <- RunHidden("owned session-end probe", func(w *Window) { ready <- w }) }()
+	w := <-ready
+	finished := false
+	defer func() {
+		if !finished {
+			w.Do(w.Close)
+			select {
+			case <-done:
+			case <-time.After(2 * time.Second):
+				t.Error("owned window cleanup failed")
+			}
+		}
+	}()
+	processed := make(chan bool, 1)
+	w.Do(func() {
+		accepted := dispatch(uintptr(w.h), queryEnd, 0, closeApp)
+		dispatch(uintptr(w.h), endSession, 0, closeApp)
+		processed <- accepted != 0
+	})
+	if !<-processed {
+		t.Fatal("session query refused")
+	}
+	select {
+	case <-done:
+		finished = true
+		t.Fatal("cancelled shutdown ended window")
+	default:
+	}
+	w.Do(func() { dispatch(uintptr(w.h), endSession, 1, closeApp); processed <- true })
+	<-processed
+	select {
+	case err := <-done:
+		finished = true
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Error("committed ENDSESSION did not end the hidden window")
+	}
+}
 
 type built struct {
 	w     *Window

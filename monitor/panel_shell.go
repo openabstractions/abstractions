@@ -2,31 +2,123 @@ package main
 
 import (
 	"embed"
+	"encoding/json"
+	"fmt"
 	"html"
+	"io/fs"
 	"net/http"
 	"net/url"
+	"regexp"
 	"runtime"
 	"strings"
-
-	credentials "github.com/openabstractions/abstraction-credentials/go"
-	host "github.com/openabstractions/abstraction-facade/go/runtime"
-	resourceservice "github.com/openabstractions/abstraction-resource/go/service"
+	"sync"
 )
 
-// panelCSSFS carries the one stylesheet every page links to: the shared shell
-// and its two skins (research/panel-native/DECISION.md item 1).
+// panelCSSFS carries every stylesheet in static/: panel.css, the shared shell
+// every page links, and each skin a slice adds as static/skin-<skin>.css
+// (SPEC §5, §6). The pattern takes a new skin file without a shell edit.
 //
-//go:embed static/panel.css
+//go:embed static/*.css
 var panelCSSFS embed.FS
 
-func servePanelCSS(w http.ResponseWriter, r *http.Request) {
-	data, err := panelCSSFS.ReadFile("static/panel.css")
+// panelStatic is the file system the shell serves and links stylesheets
+// from; tests replace it to have a skin present or absent.
+var panelStatic fs.FS = panelCSSFS
+
+var staticCSSName = regexp.MustCompile(`^[a-z0-9-]+\.css$`)
+
+// servePanelStatic serves /static/<name>.css from the embedded stylesheets.
+func servePanelStatic(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimPrefix(r.URL.Path, "/static/")
+	if !staticCSSName.MatchString(name) {
+		http.NotFound(w, r)
+		return
+	}
+	data, err := fs.ReadFile(panelStatic, "static/"+name)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.NotFound(w, r)
 		return
 	}
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	//unchecked: a failed write means the client is already gone
 	_, _ = w.Write(data)
+}
+
+// skinStylesheet links static/skin-<skin>.css after panel.css when the skin
+// is windows or macos and its file is embedded, and links nothing otherwise.
+func skinStylesheet(skin string) string {
+	if skin != "windows" && skin != "macos" {
+		return ""
+	}
+	if _, err := fs.Stat(panelStatic, "static/skin-"+skin+".css"); err != nil {
+		return ""
+	}
+	return `<link rel="stylesheet" href="/static/skin-` + skin + `.css">`
+}
+
+// panelSkin names the skin on the document root's data-skin (SPEC §6):
+// "windows" and "macos" on those platforms, "web" for Linux and any other
+// browser render. The screenshot tool may name one with ?skin=.
+func panelSkin(r *http.Request) string {
+	switch skin := r.URL.Query().Get("skin"); skin {
+	case "windows", "macos", "web":
+		return skin
+	}
+	switch panelPlatform(r) {
+	case "windows":
+		return "windows"
+	case "macos":
+		return "macos"
+	default:
+		return "web"
+	}
+}
+
+// panelNativeShell reports a page loaded by a native host that draws its own
+// navigation and title (?shell=native, SPEC §6).
+func panelNativeShell(r *http.Request) bool {
+	return r.URL.Query().Get("shell") == "native"
+}
+
+// accentColors is the accent the root carries: the accent itself and the two
+// shades the Windows palette pairs with it, Light2 for dark mode and Dark1
+// for light mode (the accent fill WinUI uses in each).
+type accentColors struct{ Accent, Light2, Dark1 string }
+
+// panelAccent supplies the root's --oa-accent, --oa-accent-light2 and
+// --oa-accent-dark1. S1 owns this hook and its default, the Windows default
+// blue; the Windows host (S10) sets it from the registry in an init() and
+// pushes later changes to an open page through oaSetAccent, as the macOS
+// host does from NSColor.controlAccentColor.
+var panelAccent = defaultAccent
+
+// defaultAccent is the shell's accent when no host supplies one: the
+// Windows default blue and its Light2 and Dark1 shades.
+func defaultAccent() accentColors {
+	return accentColors{Accent: "#0078D4", Light2: "#60CDFF", Dark1: "#005FB8"}
+}
+
+var accentColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+
+// accentStyle is the root's inline accent properties, each only for a
+// well-formed colour. Only the windows skin carries them: the macOS host
+// injects the system accent itself, and the macOS and web skins keep the
+// stylesheet's neutral system blue until it does.
+func accentStyle(skin string) string {
+	if skin != "windows" {
+		return ""
+	}
+	colors := panelAccent()
+	var style []string
+	for _, p := range []struct{ name, value string }{{"--oa-accent", colors.Accent}, {"--oa-accent-light2", colors.Light2}, {"--oa-accent-dark1", colors.Dark1}} {
+		if accentColor.MatchString(p.value) {
+			style = append(style, p.name+":"+p.value)
+		}
+	}
+	if len(style) == 0 {
+		return ""
+	}
+	return ` style="` + strings.Join(style, ";") + `"`
 }
 
 // panelPlatform names the skin this document renders: the platform this
@@ -47,37 +139,124 @@ func panelPlatform(r *http.Request) string {
 	}
 }
 
+// panelNavItem is one row of the navigation table: the single source of the
+// HTML sidebar, of /panel/nav.json for the native macOS sidebar, and of the
+// search index (research/panel-redesign/SPEC.md §3, §4, §6). Group is "main"
+// or "more", the items after the separator. Segoe is the Segoe Fluent Icons
+// codepoint a Windows host renders, SF the SF Symbol name a macOS host
+// renders; Icon is the SVG the HTML sidebar draws.
 type panelNavItem struct {
 	ID    string
 	Label string
 	Path  string
+	Group string
 	Icon  string
+	Segoe string
+	SF    string
 }
 
-// panelNavItems lists every page in the order the shell's navigation pane
-// shows them, reusing the routes each page already serves. Every item is its
-// own page at its own path (task 2026-09-23, fourth first-time visitor: six
-// items used to scroll one long Status page instead of opening a page of
-// their own); no item carries a hash any more. Labels follow
-// research/vocabulary/DECISION.md §4: "Providers" (D41) and "Questions and
-// permissions" (D53); the ids and paths stay, and help.go anchors by id.
+// panelNavItems is the sidebar in order (SPEC §4). Explore keeps its page at
+// /explore outside the navigation; Logging and Identity are sections of
+// Settings, and a navigation to /logging or /identity lands there
+// (research/adopter-boundary/AUDIT-2026-10-06.md, Panel pages). Labels
+// follow the Panel vocabulary in research/vocabulary/DECISION.md:
+// Permissions (D53), Providers (D41) and Device (D73). Existing page paths
+// and aliases keep working.
+//
+// Segoe Fluent Icons names: Flag E7C1, AllApps E71D, Robot E99A, Shield
+// EA18, History E81C, Devices E772, Cloud E753, Permissions (a key) E8D7,
+// Setting E713.
 var panelNavItems = []panelNavItem{
-	{ID: "status", Label: "Status", Path: "/", Icon: iconStatus},
-	{ID: "work", Label: "Work", Path: "/work", Icon: iconWork},
-	{ID: "card", Label: "Device", Path: "/card", Icon: iconCard},
-	{ID: "inference", Label: "Inference", Path: "/inference", Icon: iconInference},
-	{ID: "registry", Label: "Providers", Path: "/registry", Icon: iconRegistry},
-	{ID: "credentials", Label: "Credentials", Path: "/credentials-page", Icon: iconCredentials},
-	{ID: "rights", Label: "Questions and permissions", Path: "/rights", Icon: iconRights},
-	{ID: "settings", Label: "Settings", Path: "/settings", Icon: iconSettings},
-	{ID: "logging", Label: "Logging", Path: "/logging", Icon: iconLogging},
-	{ID: "identity", Label: "Identity", Path: "/identity", Icon: iconIdentity},
-	{ID: "explore", Label: "Explore", Path: "/explore", Icon: iconExplore},
+	{ID: "setup", Label: "Get started", Path: "/setup", Group: "main", Icon: iconSetup, Segoe: "E7C1", SF: "sparkles"},
+	{ID: "status", Label: "Apps", Path: "/", Group: "main", Icon: iconStatus, Segoe: "E71D", SF: "square.grid.2x2"},
+	{ID: "inference", Label: "Models", Path: "/inference", Group: "main", Icon: iconInference, Segoe: "E99A", SF: "brain"},
+	{ID: "rights", Label: "Permissions", Path: "/rights", Group: "main", Icon: iconRights, Segoe: "EA18", SF: "hand.raised"},
+	{ID: "work", Label: "Activity", Path: "/work", Group: "main", Icon: iconWork, Segoe: "E81C", SF: "clock.arrow.circlepath"},
+	{ID: "card", Label: "Device", Path: "/card", Group: "main", Icon: iconCard, Segoe: "E772", SF: "memorychip"},
+	{ID: "registry", Label: "Providers", Path: "/registry", Group: "more", Icon: iconRegistry, Segoe: "E753", SF: "server.rack"},
+	{ID: "credentials", Label: "Credentials", Path: "/credentials-page", Group: "more", Icon: iconCredentials, Segoe: "E8D7", SF: "key"},
+	{ID: "settings", Label: "Settings", Path: "/settings", Group: "more", Icon: iconSettings, Segoe: "E713", SF: "gearshape"},
 }
 
-// Monochrome 24x24 glyphs, one per nav item; windows renders them plain,
-// macOS and linux render them on a colored tile (see static/panel.css).
+// navBadgeID is the item carrying the number of questions waiting (SPEC §4).
+const navBadgeID = "rights"
+
+// navAliases are task-named paths that redirect to each task item's page,
+// so a link may use either name.
+var navAliases = map[string]string{
+	"/get-started": "/setup",
+	"/apps":        "/",
+	"/models":      "/inference",
+	"/permissions": "/rights",
+	"/activity":    "/work",
+	"/device":      "/card",
+	"/providers":   "/registry",
+}
+
+// navItemByID finds one navigation item.
+func navItemByID(id string) (panelNavItem, bool) {
+	for _, item := range panelNavItems {
+		if item.ID == id {
+			return item, true
+		}
+	}
+	return panelNavItem{}, false
+}
+
+// navItemByPath finds the navigation item a page path or alias belongs to.
+// An app page (/app/<name>, app_page.go) belongs to Apps.
+// Paths reached by a redirect (/questions, /logging, /identity) land on
+// their page's item.
+func navItemByPath(path string) (panelNavItem, bool) {
+	if target, ok := navAliases[path]; ok {
+		path = target
+	}
+	if strings.HasPrefix(path, "/app/") {
+		path = "/"
+	}
+	switch path {
+	case "/questions":
+		path = "/rights"
+	case "/logging", "/identity", "/explore":
+		path = "/settings"
+	}
+	for _, item := range panelNavItems {
+		if item.Path == path {
+			return item, true
+		}
+	}
+	return panelNavItem{}, false
+}
+
+// apiOrPage serves a path that is both a guarded JSON call and a task-named
+// page address: a call carries the X-Panel-Key header, a navigation does
+// not and is sent to the page (/questions: the Questions list and its page).
+func apiOrPage(key string, api http.HandlerFunc, page string) http.HandlerFunc {
+	redirect := redirectAlias(page)
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Panel-Key") == "" && r.Method == http.MethodGet {
+			redirect(w, r)
+			return
+		}
+		guard(key, api)(w, r)
+	}
+}
+
+// redirectAlias sends a task-named path to its page, keeping the query and
+// with it the Panel key.
+func redirectAlias(target string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		to := target
+		if r.URL.RawQuery != "" {
+			to += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, to, http.StatusFound)
+	}
+}
+
+// 24x24 glyphs, one per nav item, rendered on colored tiles by panel.css.
 const (
+	iconSetup       = `<path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7L12 17.2 5.8 20.9l1.6-7L2 9.2l7.1-.6L12 2z"/>`
 	iconStatus      = `<path d="M12 2a10 10 0 100 20 10 10 0 000-20zm-1.2 14.6l-4.4-4.4 1.4-1.4 3 3 6-6 1.4 1.4-7.4 7.4z"/>`
 	iconWork        = `<path d="M10 4h4a2 2 0 012 2v1h3a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9a2 2 0 012-2h3V6a2 2 0 012-2zm0 3h4V6h-4v1zM5 9v9h14V9H5z"/>`
 	iconCard        = `<path d="M7 2v2H5v2H3v2h2v8H3v2h2v2h2v-2h10v2h2v-2h2v-2h-2V8h2V6h-2V4h-2V2h-2v2H9V2H7zm0 6h10v8H7V8z"/>`
@@ -86,43 +265,320 @@ const (
 	iconCredentials = `<path d="M14 2a6 6 0 00-5.65 8.06L2 16.4V20a1 1 0 001 1h3.6l1.35-1.35H10v-2h2v-2h1.94A6 6 0 1014 2zm2 3a2 2 0 110 4 2 2 0 010-4z"/>`
 	iconRights      = `<path d="M12 2l8 3v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5l8-3z"/>`
 	iconSettings    = `<path d="M12 8a4 4 0 100 8 4 4 0 000-8zm9 4a7.4 7.4 0 01-.14 1.4l2.1 1.6-2 3.4-2.5-1a7.6 7.6 0 01-2.4 1.4L18 22H8.4l-.46-2.8a7.6 7.6 0 01-2.4-1.4l-2.5 1-2-3.4 2.1-1.6A7.4 7.4 0 013 12c0-.5.05-1 .14-1.4L1.14 9l2-3.4 2.5 1c.7-.6 1.5-1.05 2.4-1.4L8.4 2h7.2l.46 2.8c.9.35 1.7.8 2.4 1.4l2.5-1 2 3.4-2.1 1.6c.1.45.14.95.14 1.4z"/>`
-	iconLogging     = `<path d="M6 2h9l5 5v15H6V2zm8 1.5V8h4.5L14 3.5zM8 12h8v2H8v-2zm0 4h8v2H8v-2zm0-8h4v2H8V8z"/>`
-	iconIdentity    = `<path d="M12 12a5 5 0 100-10 5 5 0 000 10zm0 2c-4.4 0-8 2.24-8 5v3h16v-3c0-2.76-3.6-5-8-5z"/>`
-	iconExplore     = `<path d="M12 2a10 10 0 100 20 10 10 0 000-20zm3.5 5.5l-2 6-6 2 2-6z"/>`
 )
+
+// navSection is one section title the sidebar search finds: the section's
+// element id on its page and its heading text.
+type navSection struct {
+	ID    string
+	Title string
+}
+
+var (
+	navSectionsOnce sync.Once
+	navSectionsByID map[string][]navSection
+	sectionHeading  = regexp.MustCompile(`(?s)<section id="([A-Za-z0-9_-]+)"([^>]*)>\s*<h2[^>]*>(.*?)</h2>`)
+	markupTag       = regexp.MustCompile(`(?s)<[^>]*>`)
+	hiddenAttr      = regexp.MustCompile(`\bhidden\b`)
+)
+
+// navPageFragments names each navigation item's page fragment, read for
+// the search index's section titles.
+func navPageFragments() map[string]string {
+	return map[string]string{
+		"setup": setupPage, "status": servicePage, "inference": inferencePage, "rights": rightsPage,
+		"work": workPage, "card": cardPage, "registry": registryPage, "credentials": credentialsPage, "settings": settingsPage,
+	}
+}
+
+// navSections lists, per navigation item, the titles of the sections its
+// page shows on arrival (a section rendered hidden is skipped), in page
+// order. The search field filters these and the page labels together.
+func navSections() map[string][]navSection {
+	navSectionsOnce.Do(func() {
+		navSectionsByID = map[string][]navSection{}
+		for id, fragment := range navPageFragments() {
+			for _, m := range sectionHeading.FindAllStringSubmatch(fragment, -1) {
+				if hiddenAttr.MatchString(m[2]) {
+					continue
+				}
+				title := strings.Join(strings.Fields(html.UnescapeString(markupTag.ReplaceAllString(m[3], " "))), " ")
+				if title != "" {
+					navSectionsByID[id] = append(navSectionsByID[id], navSection{ID: m[1], Title: title})
+				}
+			}
+		}
+	})
+	return navSectionsByID
+}
+
+// navSearchText is what one item's search matches: its label and its
+// section titles; navSearchScript compares them in any case.
+func navSearchText(item panelNavItem) string {
+	parts := []string{item.Label}
+	for _, section := range navSections()[item.ID] {
+		parts = append(parts, section.Title)
+	}
+	return strings.Join(parts, " ")
+}
 
 func panelNav(key, active string) string {
 	// Every WriteString below targets a strings.Builder, which never errors.
 	var b strings.Builder
-	//unchecked: strings.Builder never errors
-	b.WriteString(`<nav class="oa-nav" aria-label="Panel pages">`)
-	for _, item := range panelNavItems {
-		href := item.Path + "?k=" + url.QueryEscape(key)
+	keyed := func(path string) string { return path + "?k=" + url.QueryEscape(key) }
+	item := func(entry panelNavItem) {
 		class := "oa-nav-item"
-		if item.ID == active {
+		if entry.ID == active {
 			class += " active"
 		}
 		//unchecked: strings.Builder never errors
-		b.WriteString(`<a class="` + class + `" href="` + html.EscapeString(href) + `">`)
+		b.WriteString(`<a class="` + class + `" href="` + html.EscapeString(keyed(entry.Path)) + `" data-id="` + entry.ID + `" data-search="` + html.EscapeString(navSearchText(entry)) + `">`)
 		//unchecked: strings.Builder never errors
-		b.WriteString(`<span class="oa-nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true">` + item.Icon + `</svg></span>`)
+		b.WriteString(`<span class="oa-nav-icon oa-icon-` + entry.ID + `"><svg viewBox="0 0 24 24" aria-hidden="true">` + entry.Icon + `</svg></span>`)
 		//unchecked: strings.Builder never errors
-		b.WriteString(`<span class="oa-nav-label">` + html.EscapeString(item.Label) + `</span></a>`)
+		b.WriteString(`<span class="oa-nav-label">` + html.EscapeString(entry.Label) + `</span>`)
+		if entry.ID == navBadgeID {
+			//unchecked: strings.Builder never errors
+			b.WriteString(`<span class="oa-nav-badge" data-badge="` + entry.ID + `" hidden></span>`)
+		}
+		//unchecked: strings.Builder never errors
+		b.WriteString(`</a>`)
 	}
 	//unchecked: strings.Builder never errors
-	b.WriteString(`</nav>`)
+	b.WriteString(`<nav class="oa-nav" aria-label="Panel pages">`)
+	//unchecked: strings.Builder never errors
+	b.WriteString(`<div class="oa-brand">OpenAbstractions<span>Panel</span></div>`)
+	//unchecked: strings.Builder never errors
+	b.WriteString(`<div class="oa-nav-search" role="search"><input type="search" id="oa-nav-search" placeholder="Find a setting" aria-label="Find a page or section" autocomplete="off" spellcheck="false"></div>`)
+	group := ""
+	for _, entry := range panelNavItems {
+		if entry.Group != group {
+			if group != "" {
+				//unchecked: strings.Builder never errors
+				b.WriteString(`</div><div class="oa-nav-sep" role="separator"></div>`)
+			}
+			//unchecked: strings.Builder never errors
+			b.WriteString(`<div class="oa-nav-group" data-group="` + entry.Group + `">`)
+			group = entry.Group
+		}
+		item(entry)
+	}
+	//unchecked: strings.Builder never errors
+	b.WriteString(`</div><div class="oa-nav-hits" hidden>`)
+	for _, entry := range panelNavItems {
+		for _, section := range navSections()[entry.ID] {
+			//unchecked: strings.Builder never errors
+			b.WriteString(`<a class="oa-nav-hit" href="` + html.EscapeString(keyed(entry.Path)+"#"+section.ID) + `" data-search="` + html.EscapeString(section.Title) + `" hidden>` +
+				html.EscapeString(section.Title) + `<span class="oa-nav-hit-page">` + html.EscapeString(entry.Label) + `</span></a>`)
+		}
+	}
+	//unchecked: strings.Builder never errors
+	b.WriteString(`</div><p class="oa-nav-nohits" hidden>No page or section matches.</p></nav>`)
 	return b.String()
 }
 
+// panelClassesJSON is the one source of the shell's class names
+// (static/panel_classes.json): this file reads it into panelShellClasses
+// and panelShellClassPrefixes, and static/panel_rules.js reads the same file
+// for its rendered-DOM class rule.
+//
+//go:embed static/panel_classes.json
+var panelClassesJSON []byte
+
+// panelShellClasses are the class names the shell and the shared components
+// emit, the list in research/panel-redesign/SPEC.md §6. S1 owns them; the
+// skins (static/skin-*.css) style these and no others
+// (panel_selector_contract_test.go), and pages use these and no others (the
+// page class contract in panel_lint_test.go). oa-icon-* is one name per
+// navigation id, and oa-icon-logging for the Logging section's tile.
+// panelShellClassPrefixes are the prefixes a page script may complete into
+// a class: oa-icon- plus a navigation id.
+var panelShellClasses, panelShellClassPrefixes = loadPanelClasses()
+
+func loadPanelClasses() ([]string, []string) {
+	var list struct {
+		Classes  []string `json:"classes"`
+		Prefixes []string `json:"prefixes"`
+	}
+	if err := json.Unmarshal(panelClassesJSON, &list); err != nil {
+		panic(fmt.Sprintf("static/panel_classes.json: %v", err))
+	}
+	if err := checkPanelClasses(list.Classes, list.Prefixes); err != nil {
+		panic("static/panel_classes.json: " + err.Error())
+	}
+	return list.Classes, list.Prefixes
+}
+
+// checkPanelClasses holds the class list to the shape panel_rules.js's
+// setClasses accepts: at least one class, no empty name, and each prefix
+// ending in "-" after at least one character.
+func checkPanelClasses(classes, prefixes []string) error {
+	if len(classes) == 0 {
+		return fmt.Errorf("classes must be a non-empty list")
+	}
+	for _, c := range classes {
+		if c == "" {
+			return fmt.Errorf("an empty class name")
+		}
+	}
+	for _, p := range prefixes {
+		if len(p) < 2 || !strings.HasSuffix(p, "-") {
+			return fmt.Errorf("prefix %q must end in \"-\" after at least one character", p)
+		}
+	}
+	return nil
+}
+
+// panelShellAttributes are the attributes a skin's selectors may key on,
+// the list in SPEC.md §6: those the shell and components set, those a host
+// sets on the root (data-backdrop, data-host), and standard HTML state.
+var panelShellAttributes = []string{
+	"data-platform", "data-skin", "data-shell", "data-id", "data-group", "data-badge", "data-state",
+	"aria-pressed", "data-evidence", "data-ready",
+	"data-backdrop", "data-host",
+	"hidden", "open", "disabled", "type", "aria-current", "aria-busy", "href", "tabindex",
+}
+
+// The shared components (SPEC §5). Each returns markup with the class
+// static/panel.css styles; labels, titles and captions are escaped, while
+// controls, rows and bodies are markup the page already built. Every row
+// that holds a control has its own status line for the one sentence a
+// click writes (SPEC §4, the Panel rules lint).
+
+// oaPageHead is the page's head: its icon tile, title and one caption.
+// page is a navigation id, for the tile's colour and glyph.
+func oaPageHead(page, title, caption string) string {
+	icon := ""
+	if item, ok := navItemByID(page); ok {
+		icon = item.Icon
+	}
+	head := `<header class="oa-pagehead"><span class="oa-pagehead-tile oa-icon-` + html.EscapeString(page) + `"><svg viewBox="0 0 24 24" aria-hidden="true">` + icon + `</svg></span><div class="oa-pagehead-text"><h1 class="oa-pagehead-title">` + html.EscapeString(title) + `</h1>`
+	if caption != "" {
+		head += `<p class="oa-caption">` + html.EscapeString(caption) + `</p>`
+	}
+	return head + `</div></header>`
+}
+
+// oaButton is a button; primary marks the one primary action of its row or
+// group (oa-primary).
+func oaButton(id, label string, primary bool) string {
+	class := ""
+	if primary {
+		class = ` class="oa-primary"`
+	}
+	return `<button id="` + html.EscapeString(id) + `"` + class + `>` + html.EscapeString(label) + `</button>`
+}
+
+// oaGroup is one group of rows: a section with its heading and at most one
+// caption. id is the section's anchor (help.go links it).
+func oaGroup(id, title, caption string, rows ...string) string {
+	group := `<section id="` + html.EscapeString(id) + `" class="oa-group"><h2>` + html.EscapeString(title) + `</h2>`
+	if caption != "" {
+		group += `<p class="oa-caption">` + html.EscapeString(caption) + `</p>`
+	}
+	return group + strings.Join(rows, "") + `</section>`
+}
+
+// oaRow is one row: label, optional caption, the trailing control and, when
+// statusID is set, the row's status line.
+func oaRow(label, caption, control, statusID string) string {
+	row := `<div class="oa-row"><div class="oa-row-text"><span class="oa-row-label">` + html.EscapeString(label) + `</span>`
+	if caption != "" {
+		row += `<span class="oa-row-caption">` + html.EscapeString(caption) + `</span>`
+	}
+	row += `</div><div class="oa-row-control">` + control + `</div>`
+	if statusID != "" {
+		row += oaStatusLine(statusID, false)
+	}
+	return row + `</div>`
+}
+
+// oaRowNav is a row that opens another page or section, ending in a chevron.
+func oaRowNav(label, caption, href string) string {
+	row := `<a class="oa-row oa-row-nav" href="` + html.EscapeString(href) + `"><span class="oa-row-text"><span class="oa-row-label">` + html.EscapeString(label) + `</span>`
+	if caption != "" {
+		row += `<span class="oa-row-caption">` + html.EscapeString(caption) + `</span>`
+	}
+	return row + `</span><span class="oa-row-chevron" aria-hidden="true"></span></a>`
+}
+
+// oaExpander holds expert content one level deep, closed on arrival.
+func oaExpander(summary, body string) string {
+	return `<details class="oa-expander"><summary>` + html.EscapeString(summary) + `<span class="oa-row-chevron" aria-hidden="true"></span></summary><div class="oa-expander-body">` + body + `</div></details>`
+}
+
+// oaTechnicalDetails is the expander that holds raw values a page keeps out
+// of its sentences (an id, a path, the raw reply): summary "Technical
+// details", marked data-oa-technical, so the Panel rules spare its body from
+// the raw-value rule only (SPEC §6). Every other expander is judged fully.
+func oaTechnicalDetails(body string) string {
+	return `<details class="oa-expander" data-oa-technical><summary>Technical details<span class="oa-row-chevron" aria-hidden="true"></span></summary><div class="oa-expander-body">` + body + `</div></details>`
+}
+
+// oaStatus is a status line in its loading state: it reads "Loading…" until
+// the page's script writes the first sentence (oaSetStatus), so a page never
+// shows an error before its data has had the chance to arrive.
+func oaStatus(id string) string {
+	return oaStatusLine(id, true)
+}
+
+func oaStatusLine(id string, loading bool) string {
+	if loading {
+		return `<p class="oa-status" id="` + html.EscapeString(id) + `" role="status" aria-live="polite" data-state="loading" aria-busy="true">Loading…</p>`
+	}
+	return `<p class="oa-status" id="` + html.EscapeString(id) + `" role="status" aria-live="polite" data-state="idle"></p>`
+}
+
+// oaEmpty is an empty list's one sentence.
+func oaEmpty(sentence string) string {
+	return `<p class="oa-empty">` + html.EscapeString(sentence) + `</p>`
+}
+
+// oaTable is a table inside its scrolling wrapper; only Activity and the
+// Providers server list use one (SPEC §5). The page's script fills tbody.
+func oaTable(id string, headers ...string) string {
+	table := `<div class="oa-table"><table id="` + html.EscapeString(id) + `"><thead><tr>`
+	for _, header := range headers {
+		table += `<th>` + html.EscapeString(header) + `</th>`
+	}
+	return table + `</tr></thead><tbody></tbody></table></div>`
+}
+
+var firstH1 = regexp.MustCompile(`(?s)<h1([^>]*)>(.*?)</h1>`)
+
+// nativeFragment drops the page's h1 for a native host, which shows the
+// title in its own toolbar (SPEC §6). A page head's title (oaPageHead) stays
+// as the head's text, without the h1 element.
+func nativeFragment(fragment string) string {
+	m := firstH1.FindStringSubmatchIndex(fragment)
+	if m == nil {
+		return fragment
+	}
+	attrs, text := fragment[m[2]:m[3]], fragment[m[4]:m[5]]
+	if strings.Contains(attrs, `class="oa-pagehead-title"`) {
+		return fragment[:m[0]] + `<div class="oa-pagehead-title">` + text + `</div>` + fragment[m[1]:]
+	}
+	return fragment[:m[0]] + fragment[m[1]:]
+}
+
 // panelPage assembles one full document around a page's own fragment (its
-// existing markup and unchanged <script>): doctype, the platform attribute,
-// the shared stylesheet, and the shell's navigation pane. It also links every
-// section to its reference anchor (help.go): a mark inside each section
-// heading, a Learn-more link after each section's first paragraph, and one
-// page-level floating mark, shown per platform by static/panel.css.
+// existing markup and unchanged <script>): doctype, the platform and skin
+// attributes, the shared stylesheet, and the shell's navigation pane. It also
+// links every section to its reference anchor (help.go): a mark inside each
+// section heading, a Learn-more link after each section's first paragraph,
+// and one page-level floating mark, shown per platform by static/panel.css.
+// A page in the navigation table takes its label as the document title. With
+// ?shell=native the navigation and the page's h1 are left to the host.
 func panelPage(r *http.Request, key, active, title, fragment string) string {
 	fragment = injectSectionHelp(active, fragment)
-	fragment = injectGrantControls(active, fragment)
+	if item, ok := navItemByID(active); ok {
+		title = item.Label
+	}
+	native := panelNativeShell(r)
+	shell, nav := "html", panelNav(key, active)+navScript+navSearchScript
+	if native {
+		shell, nav, fragment = "native", nativeShellScript, nativeFragment(fragment)
+	}
 	// The viewport meta tag was missing (task 2026-09-23, fifth first-time
 	// visitor, finding 8): with none, a narrow render of this page falls back
 	// to the 980px layout a touch browser assumes for a page never designed
@@ -131,145 +587,82 @@ func panelPage(r *http.Request, key, active, title, fragment string) string {
 	// static/panel.css's own max-width: 860px stacking rule would otherwise
 	// take over. width=device-width makes the layout viewport track the
 	// window's real width, so that rule engages at the width it names.
-	return `<!doctype html><html lang="en" data-platform="` + panelPlatform(r) + `"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>` + html.EscapeString(title) + `</title><link rel="stylesheet" href="/static/panel.css"></head><body><div class="oa-shell">` + panelNav(key, active) + navScript + plainScript + grantScript + `<main class="oa-content">` + fragment + pageHelpFloat(active) + `</main></div></body></html>`
+	skin := panelSkin(r)
+	return `<!doctype html><html lang="en" data-platform="` + panelPlatform(r) + `" data-skin="` + skin + `" data-shell="` + shell + `"` + accentStyle(skin) + `><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>` + html.EscapeString(title) + `</title><link rel="stylesheet" href="/static/panel.css">` + skinStylesheet(skin) + `</head><body><div class="oa-shell">` + nav + actionPlainScript + plainScript + `<main class="oa-content">` + fragment + pageHelpFloat(active) + `</main></div>` + readyScript + `</body></html>`
 }
 
-// grantEntry names one section that already tells the person which rules it
-// needs (task 2026-09-23, "Work started by apps" and its siblings): the exact
-// rules this Panel's own program must hold as permit, the resource a rule
-// carries none of its own, and the buttons to click again once every rule
-// lands, so the section's own read runs with the new rule in effect. Page and
-// ID locate the block the same way help.go's sectionBlock does: an existing
-// "<section id=...>" that help.go already anchors, so attaching a control
-// here adds no new id for TestHelpAnchorsCoverEverySection to track.
-//
-// The Inference and Registry pages name their rules in an un-sectioned intro
-// with no id of its own; rather than mint one (which would need a matching
-// help.go entry and a matching anchor on the published site), those two
-// pages carry their "Grant" widget inline in inference_page.go and
-// registry_page.go, wired to the same shared grantScript below by id.
-type grantEntry struct {
-	Page     string
-	ID       string
-	Rules    []string // "<action>" (uses Resource) or "<action>|<resource>" naming its own
-	Resource string
-	Rerun    []string // button ids this Panel already renders for that section's read
-}
+// readyScript is the shell's readiness fallback (SPEC §6). After load it sets
+// data-ready="load" on the root, unless the page declared that it owns its
+// readiness with an element carrying data-ready-owner="page" in its markup,
+// or the page already called oaReady. The check reads the parsed document,
+// so a comment or a script string naming the marker does not count.
+const readyScript = `<script>window.addEventListener('load',function(){var root=document.documentElement;if(!root||root.hasAttribute('data-ready')||document.querySelector('[data-ready-owner="page"]'))return;root.setAttribute('data-ready','load')});</script>`
 
-var grantEntries = []grantEntry{
-	// Work, "Work started by apps": JOB-A13 decides both on the one job
-	// acceptance resource (account_work_panel.go).
-	{Page: "work", ID: "account-work",
-		Rules:    []string{host.JobInventoryAction, host.JobCancelAction},
-		Resource: host.JobResource,
-		Rerun:    []string{"account-start"}},
-	// Graphics card: the resource table read, on "account".
-	{Page: "card", ID: "holders",
-		Rules:    []string{resourceservice.ActionTableRead},
-		Resource: resourceservice.ResourceAccount,
-		Rerun:    []string{"refresh"}},
-	// Credentials, "App access": the page's own listing and the allow/deny
-	// editor both need this Panel to hold the credentials holder rules, not
-	// only the dynamic per-name apply rule the section's form itself edits.
-	{Page: "credentials", ID: "access",
-		Rules:    []string{credentials.ActionManage, credentials.ActionRead},
-		Resource: credentials.ResourceAccount,
-		Rerun:    []string{"allow-list"}},
-}
+// navSearchScript filters the sidebar as the person types: page labels and
+// section titles from the navigation table, the matching sections listed as
+// links to their anchors; Enter opens the first match. It also keeps the
+// Permissions badge current from /panel/nav.json while the page is visible.
+const navSearchScript = `<script>
+(function () {
+  var input = document.getElementById('oa-nav-search');
+  if (!input) return;
+  function all(sel) { return Array.prototype.slice.call(document.querySelectorAll(sel)); }
+  // Page labels and section titles match what the person types in any case.
+  function words(text) { return String(text || '').trim().toLowerCase(); }
+  function filter() {
+    var q = words(input.value);
+    var items = all('.oa-nav .oa-nav-item'), hits = all('.oa-nav .oa-nav-hit'), shown = 0;
+    items.forEach(function (a) { var on = !q || words(a.getAttribute('data-search')).indexOf(q) !== -1; a.hidden = !on; if (on) shown++; });
+    hits.forEach(function (a) { var on = !!q && words(a.getAttribute('data-search')).indexOf(q) !== -1; a.hidden = !on; if (on) shown++; });
+    all('.oa-nav .oa-nav-sep').forEach(function (s) { s.hidden = !!q; });
+    all('.oa-nav .oa-nav-hits').forEach(function (h) { h.hidden = !q || !hits.some(function (a) { return !a.hidden; }); });
+    all('.oa-nav .oa-nav-nohits').forEach(function (p) { p.hidden = !q || shown > 0; });
+  }
+  input.addEventListener('input', filter);
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { input.value = ''; filter(); return; }
+    if (e.key !== 'Enter') return;
+    var first = all('.oa-nav .oa-nav-item, .oa-nav .oa-nav-hit').filter(function (a) { return !a.hidden; })[0];
+    if (first) { e.preventDefault(); location.href = first.href; }
+  });
+  var key = new URLSearchParams(location.search).get('k');
+  function badge() {
+    if (!key || document.visibilityState === 'hidden' || typeof fetch !== 'function') return;
+    // path names this page, so nav.json selects it without reading the setup
+    // journal for a landing page on every poll.
+    var page = location.pathname ? '&path=' + encodeURIComponent(location.pathname) : '';
+    fetch('/panel/nav.json?k=' + encodeURIComponent(key) + page).then(function (r) { return r.ok ? r.json() : null; }).then(function (nav) {
+      if (!nav) return;
+      (nav.items || []).forEach(function (item) {
+        all('.oa-nav [data-badge="' + item.id + '"]').forEach(function (b) {
+          var n = typeof item.badge === 'number' ? item.badge : 0;
+          b.textContent = n > 0 ? String(n) : '';
+          b.hidden = !(n > 0);
+          b.setAttribute('aria-label', n === 1 ? '1 question waiting' : n + ' questions waiting');
+        });
+      });
+    }).catch(function () {});
+  }
+  badge();
+  document.addEventListener('visibilitychange', badge);
+  setInterval(badge, 20000);
+})();
+</script>`
 
-// injectGrantControls rewrites one page's fragment to carry a "Grant" control
-// after the first paragraph of every listed section: a button and a status
-// line, wired by the shared grantScript to write the section's exact rules
-// for this Panel's own program at the policy revision the control reads
-// itself, then click the section's own read again. It leaves a section
-// untouched when the map has no entry for this page, and leaves the fragment
-// untouched when a listed section id cannot be found in it.
-//
-// It places the div inline, right after each section's own
-// paragraph, and collects every widget's one-line bootstrap call to append
-// once at the very end of the fragment, after the page's own <script>...
-// </script> block closes: monitor/*_page_test.js extracts each page's script
-// as the text between the first "<script>" and the first "</script>" it
-// finds, so a bootstrap tag placed any earlier would be mistaken for that
-// script and break every one of those tests.
-func injectGrantControls(page, fragment string) string {
-	var trailer strings.Builder
-	for _, g := range grantEntries {
-		if g.Page != page {
-			continue
-		}
-		start, end, ok := sectionBlock(fragment, g.ID)
-		if !ok {
-			continue
-		}
-		block := fragment[start:end]
-		block = injectGrantDivIntoBlock(block, g)
-		fragment = fragment[:start] + block + fragment[end:]
-		//unchecked: strings.Builder never errors
-		trailer.WriteString(grantBootstrapScript(g))
-	}
-	return fragment + trailer.String()
-}
+// nativeShellScript runs in a page a native host loaded with ?shell=native:
+// a link to another Panel page keeps the parameter, so the HTML navigation
+// never appears inside the host's window (SPEC §6).
+const nativeShellScript = `<script>
+(function () {
+  document.addEventListener('click', function (e) {
+    var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    if (!a || a.target === '_blank' || a.origin !== location.origin) return;
+    var u = new URL(a.href);
+    if (u.searchParams.get('shell') !== 'native') { u.searchParams.set('shell', 'native'); a.href = u.toString(); }
+  }, true);
+})();
+</script>`
 
-// injectGrantDivIntoBlock places the widget's div right after the block's
-// first paragraph (the sentence that already names the rules), or after its
-// first heading when the block carries no paragraph of its own.
-func injectGrantDivIntoBlock(block string, g grantEntry) string {
-	widget := grantWidgetHTML(g)
-	if pm := firstPara.FindStringIndex(block); pm != nil {
-		return block[:pm[1]] + widget + block[pm[1]:]
-	}
-	if hm := firstHeading.FindStringSubmatchIndex(block); hm != nil {
-		return block[:hm[7]] + widget + block[hm[7]:]
-	}
-	return block + widget
-}
-
-// grantWidgetHTML renders one section's control: a labelled div carrying the
-// rules and default resource as data attributes for inspection, and a button
-// and a status line the shared grantScript's bootstrap call wires up. The
-// status line is a plain sentence ("Nothing to grant here; you can use this
-// section."), never a JSON dump or a hash; it used to sit in a <pre>, so
-// every such sentence rendered monospace like a data block instead of body
-// text (task 2026-09-23, fourteenth first-time visitor, finding 1). <pre>
-// is reserved for Technical details now; a status sentence is a <p>.
-func grantWidgetHTML(g grantEntry) string {
-	id := g.ID + "-grant"
-	rules := html.EscapeString(strings.Join(g.Rules, ","))
-	resource := html.EscapeString(g.Resource)
-	return `<div class="oa-grant" id="` + id + `" data-grant-rules="` + rules + `" data-grant-resource="` + resource + `"><button type="button">Grant these to this Panel</button><p class="oa-grant-status" aria-live="polite"></p></div>`
-}
-
-// grantBootstrapScript is the one-line call that hands one widget to the
-// shared grantScript once its div exists in the document.
-func grantBootstrapScript(g grantEntry) string {
-	id := g.ID + "-grant"
-	rerun := html.EscapeString(strings.Join(g.Rerun, ","))
-	return `<script>oaGrant('` + id + `','` + rerun + `')</script>`
-}
-
-// grantScript is the one control panelPage embeds before every page's
-// fragment (task 2026-09-23): oaGrant(id, rerun) wires the button inside
-// #id, reading its own configuration back from that div's data attributes
-// rather than from its arguments, so the rendered HTML stays the single
-// source of truth. A rule token of "<action>|<resource>" names its own
-// resource; a bare action uses the div's data-grant-resource. On success it
-// clicks each button id in the comma-separated rerun list, the section's own
-// read. A refusal is shown inline, never assumed to have changed nothing more
-// than the rule it names; forbidden also names the programs that may
-// administer policy instead of asking to elevate this Panel, since no rule
-// this control writes can grant that authority to itself.
-//
-// Every widget's bootstrap call also feeds gLoadHeld (task 2026-09-23,
-// "grant held windows"): an installed Panel already holds its rules from
-// installation (serve/runtime_rights.go, installationRules), so the button
-// and its sentence are wrong on first sight unless the control checks what
-// this Panel's own program already holds. The listing runs once per page,
-// shared by every widget through the memoized gHeldPromise, and never
-// invents a state when that listing is refused or unavailable. A rule
-// granted through the button is known to be held the moment every one of
-// its own tokens lands, so the widget settles into the holds state directly
-// rather than listing the policy again.
 // navScript keeps the navigation pane's highlight on the item the person
 // chose. panelNav marks one item from the page id on the server, and six
 // items (Work, Questions and rights, Settings, Logging, Identity, Explore) are
@@ -305,139 +698,6 @@ const navScript = `<script>
 })();
 </script>`
 
-const grantScript = `<script>
-(function(){
-const gKey=new URLSearchParams(location.search).get('k');
-async function gcall(path,body){const r=await fetch(path,{method:body?'POST':'GET',headers:{'X-Panel-Key':gKey,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});if(!r.ok)throw Error(await r.text());return r.json()}
-const gOperators='the runtime itself and the programs installed beside it: openabstractions, openabstractionsw and Abstraction Panel';
-function gReason(o){switch(o){case 'forbidden':return 'this Panel may not administer policy. The operator programs this installation grants are '+gOperators+'.';case 'unavailable':return 'the rights service could not complete this; list again before another edit.';case 'gap':return 'the policy changed while listing; start again.';case 'invalid':return 'this rule was rejected as invalid.';case 'conflict':return 'the policy changed since it was listed; list again before another edit.';default:return 'outcome '+o+'.'}}
-function gRefused(o){return 'The rights service refused: '+gReason(o)}
-function gRuleKey(action,resource){return action+'|'+resource}
-function gResolveRules(box){
- const defaultResource=box.dataset.grantResource;
- return box.dataset.grantRules.split(',').map(s=>s.trim()).filter(Boolean).map(token=>{
-  const parts=token.split('|');
-  return{action:parts[0],resource:parts[1]||defaultResource}
- })
-}
-// gApplyHeld reflects what this Panel's own program already holds onto one
-// widget: every rule held hides the button and also hides the section's own
-// "you need the rule..." sentence (the <p> the widget's div follows, placed
-// there by injectGrantDivIntoBlock), since a restriction the Panel already
-// clears is not worth threatening the reader with; the status line then
-// carries the whole explanation on its own. Some held keeps the button and
-// the sentence, and narrows the button's label to the rules still missing
-// while the status line names the ones already held. None held is left
-// exactly as rendered (today's behaviour), so this function makes no change
-// at all in that case.
-function gApplyHeld(button,status,resolved,held,box){
- const missing=[],present=[];
- for(const r of resolved)(held.has(gRuleKey(r.action,r.resource))?present:missing).push(r.action);
- if(missing.length===0){
-  button.hidden=true;
-  const sentence=box&&box.previousElementSibling;
-  if(sentence&&sentence.tagName==='P')sentence.hidden=true;
-  status.className='oa-grant-status';
-  status.textContent='Nothing to grant here; you can use this section.';
-  return
- }
- if(present.length===0)return;
- button.hidden=false;
- button.textContent=missing.length===1?'Grant the missing rule to this Panel':'Grant the '+missing.length+' missing rules to this Panel';
- status.className='oa-grant-status';
- status.textContent='This Panel holds '+present.join(', ')+'.';
-}
-// gPlainPhrase and gRewriteSentence replace a section's own "you need the
-// rule <raw action>..." sentence with plain wording (task 2026-09-23,
-// finding 3: the sentence still named the raw action alone, e.g. "You need
-// the rule abstraction.job/inventory.read to see it"). The plain phrase for
-// each action comes from the same ActionPlain map /rights already sends
-// alongside the one listing gLoadHeld makes for every widget on the page, so
-// this costs no extra call; a rule this runtime does not name in that map
-// falls back to oaActionFallback's generic phrase. Neither ever shows the
-// raw action id in the sentence itself; every id resolved names, however
-// many, sits in the sentence's own title attribute instead (task 2026-09-23,
-// seventh first-time visitor, finding 2: an id is never visible page text).
-function gPlainPhrase(action,plain){const p=plain&&plain[action];return p?p.charAt(0).toUpperCase()+p.slice(1):oaActionFallback(action)}
-function gRewriteSentence(box,resolved,plain){
- const sentence=box&&box.previousElementSibling;
- if(!sentence||sentence.tagName!=='P')return;
- const parts=resolved.map(r=>'permission to '+gPlainPhrase(r.action,plain));
- sentence.textContent='You need '+parts.join(' and ')+' to use this section.';
- sentence.title=resolved.map(r=>r.action).join(', ');
-}
-// gLoadHeld lists the policy once per page load (memoized here, so every
-// widget's bootstrap call shares the one listing) and returns the rules this
-// Panel's own program holds as permit, plus the plain-phrase map that same
-// listing carries. A page that comes back refused or unavailable, at any
-// point in the listing, resolves the whole thing to null: every widget then
-// leaves itself exactly as rendered rather than invent a state from a
-// partial answer.
-// gLoadHeld's own listing used to be memoized for the whole page's life
-// with no way to ask it again: a widget that read "Grant these to this
-// Panel" because its very first check (racing the page's own other reads)
-// came back before this Panel actually held the rule stayed wrong until a
-// full reload, "flipping" only when some other, unrelated action happened
-// to reload the page along with it (task 2026-09-23, fifteenth first-time
-// visitor, finding 1). gLoadHeld(true) now forces a fresh listing; every
-// section's own Refresh button calls oaGrantRefresh (below) alongside its
-// own read, the same fetch this held-check itself already makes.
-let gHeldPromise=null;
-function gLoadHeld(force){
- if(force)gHeldPromise=null;
- if(!gHeldPromise)gHeldPromise=(async()=>{
-  const self=(await gcall('/explore')).self;
-  const held=new Set();
-  let cursor='',plain=null;
-  for(;;){
-   const page=await gcall('/rights?cursor='+encodeURIComponent(cursor));
-   if(page.Outcome!=='page')return null;
-   if(!cursor)plain=page.ActionPlain;
-   for(const r of page.Rules)if(r.Permit&&r.Subject&&r.Subject.Program===self.program&&r.Subject.Account===self.account)held.add(gRuleKey(r.Action,r.Resource));
-   if(page.Complete||!page.Next)break;
-   cursor=page.Next
-  }
-  return{self,held,plain}
- })().catch(()=>null);
- return gHeldPromise
-}
-// gWidgets lists every grant widget oaGrant has bootstrapped on this page,
-// so oaGrantRefresh (called from a section's own Refresh handler) can
-// re-check and re-render every one of them from the one fresh listing,
-// without each page needing to know its own widget's id.
-const gWidgets=[];
-window.oaGrantRefresh=function(){
- gLoadHeld(true).then(info=>{if(!info)return;for(const w of gWidgets){gRewriteSentence(w.box,w.resolved,info.plain);gApplyHeld(w.button,w.status,w.resolved,info.held,w.box)}});
-};
-window.oaGrant=function(id,rerun){
- const box=document.getElementById(id);
- const button=box.children[0],status=box.children[1];
- const rerunIds=(rerun||'').split(',').map(s=>s.trim()).filter(Boolean);
- const resolved=gResolveRules(box);
- gWidgets.push({box,button,status,resolved});
- gLoadHeld().then(info=>{if(info){gRewriteSentence(box,resolved,info.plain);gApplyHeld(button,status,resolved,info.held,box)}});
- button.onclick=async function(){
-  button.disabled=true;status.className='oa-grant-status';status.textContent='Granting…';
-  try{
-   const self=(await gcall('/explore')).self;
-   const page=await gcall('/rights?cursor=');
-   if(page.Outcome!=='page'){status.className='oa-grant-status error';status.textContent=gRefused(page.Outcome);button.disabled=false;return}
-   let revision=page.Revision;const landed=[];
-   for(const r of resolved){
-    const reply=await gcall('/rights',{edit:'set',revision,account:self.account,program:self.program,action:r.action,resource:r.resource,permit:true});
-    if(reply.Outcome!=='applied'){status.className='oa-grant-status error';status.textContent=gRefused(reply.Outcome);button.disabled=false;return}
-    revision=reply.Revision;landed.push(r.action)
-   }
-   status.textContent='Granted '+landed.join(', ')+' to this Panel.';
-   gApplyHeld(button,status,resolved,new Set(resolved.map(r=>gRuleKey(r.action,r.resource))),box);
-   for(const rid of rerunIds){const b=document.getElementById(rid);if(b&&b.onclick)b.onclick()}
-  }catch(e){status.className='oa-grant-status error';status.textContent=e.message}
-  button.disabled=false
- }
-};
-})();
-</script>`
-
 // plainScript is the one control every page's fragment can call to keep a raw
 // backend error off the screen (task 2026-09-23, first-time-user walkthrough:
 // a service-resolution failure naming a pipe path and a security identifier
@@ -453,11 +713,24 @@ window.oaGrant=function(id,rerun){
 // oaPlain never repeats the input text in the sentence it returns: no file
 // path, pipe name, security identifier, or contract name (an
 // "abstraction.<x>/<y>@<n>" carries a runtime version and is never a rule to
-// ask for) can survive into it. The one exception is a rule name of the
-// shape "abstraction.<x>/<y>" or "<x>.<y>" found in a permission denial,
-// named so the reader knows what to ask this Panel's operator for; the
-// original text always remains available as the "details" this function also
-// returns, for oaShowError's disclosure.
+// ask for) can survive into it. A rule name of the shape
+// "abstraction.<x>/<y>" or "<x>.<y>" found in a permission denial is named
+// by its plain phrase (oaActionPhrase), so the reader knows what to ask this
+// Panel's operator for; the id itself and the original text remain
+// available as the "details" this function also returns, for oaShowError's
+// disclosure.
+//
+// actionPlainScript hands the shared script the one plain-phrase table,
+// rightsActionPlain, as oaActionPlainTable; every page shell serves it
+// ahead of plainScript.
+var actionPlainScript = func() string {
+	table, err := json.Marshal(rightsActionPlain)
+	if err != nil {
+		panic(err)
+	}
+	return "<script>var oaActionPlainTable=" + string(table) + ";</script>"
+}()
+
 const plainScript = `<script>
 function oaRuleName(text){
  var m=/abstraction\.[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+/.exec(text);
@@ -521,9 +794,29 @@ function oaServiceName(contract){
 // action this runtime knows that the map did not yet name). It is never
 // shown alone: every caller appends the raw id after it in parentheses, the
 // same shape a known action's "phrase (id)" already uses elsewhere.
+// A versioned id ("abstraction.<layer>/<rest>@<n>", a permission set) reads
+// the same without its version; anything else reads "This permission",
+// never the raw text.
+// oaActionPhrase names a rights action in a sentence, never by its id: the
+// shared plain-phrase table (rightsActionPlain, served to every page as
+// oaActionPlainTable by actionPlainScript), else the id's own words
+// ("abstraction.router/inventory.read" reads "router inventory read"). A
+// bare "<x>.<y>" from a denial is the tail of an action: the one table
+// action ending in it, else its words.
+function oaActionPhrase(action){
+ var a=String(action==null?'':action),own=Object.prototype.hasOwnProperty;
+ var table=typeof oaActionPlainTable==='object'&&oaActionPlainTable?oaActionPlainTable:{};
+ if(own.call(table,a)&&table[a])return table[a];
+ var m=/^abstraction\.([a-z][a-z0-9_-]*)\/([a-z][a-z0-9_.-]*?)(?:@\d+)?$/.exec(a);
+ if(m)return m[1]+' '+m[2].replace(/[._]/g,' ');
+ var hits=[];
+ for(var k in table)if(own.call(table,k)&&table[k]&&k.slice(k.indexOf('/')+1)===a)hits.push(table[k]);
+ if(hits.length===1)return hits[0];
+ return a.replace(/[._]/g,' ');
+}
 function oaActionFallback(action){
- var m=/^abstraction\.([a-z][a-z0-9_-]*)\/([a-z][a-z0-9_.-]*)$/.exec(action);
- if(!m)return action;
+ var m=/^abstraction\.([a-z][a-z0-9_-]*)\/([a-z][a-z0-9_.-]*?)(?:@\d+)?$/.exec(String(action==null?'':action));
+ if(!m)return 'This permission';
  return m[1].charAt(0).toUpperCase()+m[1].slice(1)+': '+m[2].replace(/\./g,' ');
 }
 // oaResourceLabel names a graphics-card resource ("card:<n>", the resource
@@ -546,6 +839,9 @@ function oaResourceLabel(resource){
  // capability's own contract" (task 2026-09-23, twelfth first-time visitor,
  // finding 4).
  if(/^abstraction\.[a-z]+\//.test(resource))return "this service";
+ // A content digest ("sha256:<hex>") names stored bytes, never something a
+ // person reads; it stays on the element's title (SPEC §1, no hash as text).
+ if(/^sha256:[0-9a-fA-F]+$/.test(resource))return "Stored content";
  return resource;
 }
 // oaHostState reads a host's Up flag as one plain word, "Up" or "Not
@@ -556,7 +852,7 @@ function oaResourceLabel(resource){
 // visitor, finding 5).
 function oaHostState(up){return up?'Up':'Not reachable'}
 // oaLocalTime reads a raw ISO 8601 timestamp (or an epoch millisecond
-// number) as a local, readable time: "today 6:14 PM" for a moment on
+// number) as a local, readable time: "today at 6:14 PM" for a moment on
 // today's date, a locale date ("9/20/2026") for an older one. The raw ISO
 // value is never the return value; callers keep it as the element's own
 // title, the same convention oaResourceLabel and oaPlain follow for the
@@ -572,45 +868,108 @@ function oaHostState(up){return up?'Up':'Not reachable'}
 function oaClockText(d,seconds){
  return d.toLocaleTimeString([],seconds?{hour:'numeric',minute:'2-digit',second:'2-digit'}:{hour:'numeric',minute:'2-digit'});
 }
+// The phrase reads "today at 1:10 PM", "yesterday at 1:10 PM" or "tomorrow
+// at 1:10 PM" (an expiry), and a locale date for any other day, so it fits
+// after "since", "Until" or in a table cell. oaWhen is the same phrase for a
+// verb ("Checked", "registered by app"): "on 9/20/2026" for another day.
 function oaLocalTime(value){
  if(value===null||value===undefined||value==='')return '';
  var d=new Date(value);
  if(isNaN(d.getTime()))return String(value);
  var now=new Date();
- var time=oaClockText(d,false);
- if(d.toDateString()===now.toDateString())return 'today '+time;
+ var day=function(offset){return new Date(now.getFullYear(),now.getMonth(),now.getDate()+offset).toDateString()};
+ var words={};words[day(0)]='today';words[day(-1)]='yesterday';words[day(1)]='tomorrow';
+ var word=words[d.toDateString()];
+ if(word)return word+' at '+oaClockText(d,false);
  return d.toLocaleDateString();
 }
-function oaShortName(path){var parts=String(path||'').split(/[\\/]/).filter(function(x){return x});return parts.length?parts[parts.length-1]:path}
-// oaProgramChooser builds and keeps in sync a program-path chooser: a
-// <select> of known programs, each by file name with the full path on its
-// own title, plus "Other…" revealing a paired hidden <input> so a page's
-// existing code reading that input's own .value keeps working unchanged.
-// Rights' own Program field built this exact pair on its own; Inference's
-// Issue key and Credentials' App access each left their own program field
-// a bare text box instead (task 2026-09-23, fourteenth first-time visitor,
-// finding 8). One shared implementation now backs all three: knownPrograms
-// is a function returning the current list (a page's own set may still be
-// growing when this chooser first builds), called fresh on every rebuild.
-function oaProgramChooser(selectId,inputId,knownPrograms){
+function oaWhen(value){
+ var phrase=oaLocalTime(value);
+ if(phrase===''||isNaN(new Date(value).getTime())||/^(today|yesterday|tomorrow) at /.test(phrase))return phrase;
+ return 'on '+phrase;
+}
+// oaShortName is the one label a page shows for a path it names: the last
+// part, and for a program without its .exe, .app or .dll, so a program
+// reads by name, never as a file name (the Panel rules' program shape). The
+// full path stays on the element's title. Every page's short-name helper
+// is this one.
+function oaShortName(path){var parts=String(path||'').split(/[\\/]/).filter(function(x){return x});var last=parts.length?parts[parts.length-1]:String(path||'');return last.replace(/\.(?:exe|app|dll)$/i,'')||last}
+// oaModelName is a model's friendly name for page text: the last part of an
+// alias or file name, without its model file type. A name that is only a
+// hash reads "Unnamed model". The raw name never becomes page text; every
+// page that names a model (Models, the app page, Activity) calls this.
+function oaModelName(name){
+ var s=String(name==null?'':name),parts=s.split(/[\\/]/).filter(function(x){return x}),last=parts.length?parts[parts.length-1]:'';
+ var plain=last.replace(/\.(gguf|safetensors|bin|onnx|ggml)$/i,'');
+ if(!plain||/[0-9a-f]{16,}/i.test(plain)||/^sha256[-:]/i.test(plain))return 'Unnamed model';
+ return plain;
+}
+// oaRegisteredApps reads the applications registered with the runtime
+// (/apps/registrations, the Apps page's own source) once per page: each
+// {program, name}. A failed read gives an empty list and is tried again by
+// the next caller.
+var oaRegisteredRead=null;
+function oaRegisteredApps(){
+ if(oaRegisteredRead)return oaRegisteredRead;
+ try{
+  var key=new URLSearchParams(location.search).get('k');
+  oaRegisteredRead=fetch('/apps/registrations?source=applications&wait_ms=0',{headers:{'X-Panel-Key':key}}).then(function(r){
+   if(!r.ok)throw Error('registrations '+r.status);return r.json();
+  }).then(function(page){
+   var apps=[],entries=page&&page.entries||[];
+   for(var i=0;i<entries.length;i++){var e=entries[i];if(e&&e.role==='application'&&e.program)apps.push({program:e.program,name:e.name||''})}
+   return apps;
+  }).catch(function(){oaRegisteredRead=null;return []});
+ }catch(e){return Promise.resolve([])}
+ return oaRegisteredRead;
+}
+// oaProgramChooser builds and keeps in sync a program chooser: a <select>
+// of the applications registered with the runtime, each by its registered
+// name with the full path on its own title, plus "Other…" revealing a
+// paired hidden <input> so a page's existing code reading that input's own
+// .value keeps working unchanged. Rights' own Program field built this
+// exact pair on its own; Inference's Issue key and Credentials' App access
+// each left their own program field a bare text box instead (task
+// 2026-09-23, fourteenth first-time visitor, finding 8). One shared
+// implementation now backs all of them. The list comes from the registry,
+// never from running processes: fed from the graphics card's holders it
+// offered system processes such as csrss and dwm (SPEC §1, §7).
+// knownPrograms, optional, returns programs the page already names in a
+// saved rule (a rule's subject, an enrolled assistant), called fresh on
+// every rebuild.
+function oaProgramChooser(selectId,inputId,knownPrograms,nameOf){
  var select=document.getElementById(selectId),input=document.getElementById(inputId);
+ var registered=[];
+ function programs(){
+  var list=[],i;
+  for(i=0;i<registered.length;i++)list.push(registered[i].program);
+  var extra=knownPrograms?knownPrograms():[];
+  for(i=0;i<extra.length;i++)if(extra[i])list.push(extra[i]);
+  return list;
+ }
+ function label(program){
+  var named=nameOf&&nameOf(program);if(named)return named;
+  for(var i=0;i<registered.length;i++)if(registered[i].program===program&&registered[i].name)return registered[i].name;
+  return oaShortName(program);
+ }
  function sync(){
   var v=select.value;
-  if(v==='__other__'){input.hidden=false;if(knownPrograms().indexOf(input.value)!==-1)input.value=''}
+  if(v==='__other__'){input.hidden=false;if(programs().indexOf(input.value)!==-1)input.value=''}
   else{input.hidden=true;input.value=v}
  }
  select.onchange=sync;
  function rebuild(){
   var current=select.value;
-  var known=[];for(var i=0,list=knownPrograms();i<list.length;i++)if(known.indexOf(list[i])===-1)known.push(list[i]);
-  known.sort();
+  var known=[];for(var i=0,list=programs();i<list.length;i++)if(known.indexOf(list[i])===-1)known.push(list[i]);
+  known.sort(function(a,b){return label(a).localeCompare(label(b))});
   select.replaceChildren();
-  for(var j=0;j<known.length;j++){var o=document.createElement('option');o.value=known[j];o.textContent=oaShortName(known[j]);o.title=known[j];select.append(o)}
+  for(var j=0;j<known.length;j++){var o=document.createElement('option');o.value=known[j];o.textContent=label(known[j]);o.title=known[j];select.append(o)}
   var other=document.createElement('option');other.value='__other__';other.textContent='Other…';select.append(other);
   select.value=current&&known.indexOf(current)!==-1?current:'__other__';
   sync();
  }
- return {rebuild:rebuild};
+ var ready=oaRegisteredApps().then(function(apps){registered=apps;rebuild()});
+ return {rebuild:rebuild,ready:ready};
 }
 // oaAccountChooser is oaProgramChooser's own twin for an account field: it
 // defaults to this Panel's own account, "this account, <name>", the
@@ -645,7 +1004,7 @@ function oaPlain(text){
  var t=text==null?'':String(text);var lower=t.toLowerCase();var line;
  if(lower.indexOf('forbidden')!==-1||lower.indexOf('not permitted')!==-1||lower.indexOf('no rule')!==-1){
   line='The runtime did not permit this Panel to do this; nothing was changed.';
-  var rule=oaRuleName(t);if(rule)line+=' It needs the rule '+rule+'.';
+  var rule=oaRuleName(t);if(rule)line+=' It needs the “'+oaActionPhrase(rule)+'” permission.';
  }else if(lower.indexOf('incompatible')!==-1){
   var ic=oaContractName(t);
   if(ic)line="The runtime provides "+oaServiceName(ic)+" at a version this Panel doesn't understand; update the runtime or the Panel.";
@@ -653,27 +1012,105 @@ function oaPlain(text){
  }else if(lower.indexOf('unavailable')!==-1||lower.indexOf('service resolution')!==-1){
   var uc=oaContractName(t);
   if(uc)line="The runtime is running but doesn't provide "+oaServiceName(uc)+" on this account.";
-  else line="That service isn't running on this account right now. Start the runtime, or check the service on the Status page.";
+  else line="That service isn't running on this account right now. Start the runtime, or check the service on the Apps page.";
  }else if(lower.indexOf('gap')!==-1){
   line='The list changed while reading; start again.';
  }else if(lower.indexOf('invalid')!==-1){
   line='The runtime rejected this request.';
- // task 2026-09-23, ninth first-time visitor, finding 2: Continue saved
- // download and Save download record, called with nothing saved, both threw
- // the one technical sentence "No saved request to <continue|save>. ..."
- // straight to the status line. Each reads its own plain line now.
- }else if(lower.indexOf('no saved request to continue')!==-1){
-  line='Choose a saved download first.';
- }else if(lower.indexOf('no saved request to save')!==-1){
-  line='Start a download first, then save its record.';
  }else{
   line="This didn't work.";
  }
  return{line:line,details:t};
 }
+// oaSetAccent is how a native host pushes a changed accent into an open page
+// (panelAccent writes the first one on the root): the accent and its Light2
+// and Dark1 shades, each applied only when it is a #rrggbb colour.
+function oaSetAccent(accent,light2,dark1){
+ var root=document.documentElement,pairs=[['--oa-accent',accent],['--oa-accent-light2',light2],['--oa-accent-dark1',dark1]];
+ for(var i=0;i<pairs.length;i++)if(/^#[0-9a-fA-F]{6}$/.test(String(pairs[i][1])))root.style.setProperty(pairs[i][0],pairs[i][1]);
+}
+// oaReady marks the page settled: data-ready="1" on the root once its first
+// reads have finished, which the screenshot tool trusts outright. A page
+// that calls it declares data-ready-owner="page" on an element in its
+// markup; any other page gets data-ready="load" from readyScript.
+function oaReady(){
+ var root=document.documentElement;
+ if(root&&root.dataset)root.dataset.ready='1';
+}
+// oaKeyedRows keeps one row per key in a list, so a live reread keeps each
+// row's status sentence and focus (SPEC §4): a row whose key stays is
+// updated in place by update(row, item, i); a new key gets create(item, i),
+// marked with data-key; a gone key's row leaves; the order follows items;
+// a child without data-key (an empty-state sentence) stays.
+// Rows are placed by oaPlaceRows, so a row that stays is never detached.
+function oaKeyedRows(list,items,keyOf,create,update){
+ var old=new Map(),children=Array.prototype.slice.call(list.children||[]);
+ for(var i=0;i<children.length;i++){var c=children[i];if(c.dataset&&c.dataset.key!=null)old.set(c.dataset.key,c)}
+ var rows=[];
+ for(var j=0;j<items.length;j++){
+  var k=String(keyOf(items[j],j)),r=old.get(k);
+  if(!r){r=create(items[j],j);if(!r.dataset)r.dataset={};r.dataset.key=k}else old.delete(k);
+  if(update)update(r,items[j],j);
+  rows.push(r);
+ }
+ var gone=[];old.forEach(function(row){gone.push(row)});
+ return oaPlaceRows(list,rows,gone);
+}
+// oaPlaceRows makes list hold rows in this order without detaching a row
+// that stays: each gone row (by default every child not in rows) leaves
+// with removeChild, and a row is inserted with insertBefore only when it is
+// not already in its place. The control that had focus before keeps it: if
+// it is still in the list but lost focus (a reorder moved its row), it is
+// focused again without scrolling. A list without insertBefore (a minimal
+// test fake) has its children replaced when the set or order changed.
+// Device and Activity place their cached rows with it; oaKeyedRows uses it.
+function oaPlaceRows(list,rows,gone){
+ var children=Array.prototype.slice.call(list.children||[]);
+ if(typeof list.insertBefore!=='function'){
+  var same=rows.length===children.length;
+  for(var n=0;same&&n<rows.length;n++)same=children[n]===rows[n];
+  if(!same)list.replaceChildren.apply(list,rows);
+  return rows;
+ }
+ var doc=typeof document!=='undefined'?document:null,active=doc&&doc.activeElement;
+ if(!gone){gone=[];for(var g=0;g<children.length;g++)if(rows.indexOf(children[g])===-1)gone.push(children[g])}
+ for(var i=0;i<gone.length;i++)if(gone[i].parentNode===list)list.removeChild(gone[i]);
+ for(var m=0;m<rows.length;m++)if(list.children[m]!==rows[m])list.insertBefore(rows[m],list.children[m]||null);
+ if(active&&doc.activeElement!==active&&oaWithin(list,active)&&typeof active.focus==='function')active.focus({preventScroll:true});
+ return rows;
+}
+// oaWithin reports whether node sits inside root.
+function oaWithin(root,node){for(var p=node;p;p=p.parentNode)if(p===root)return true;return false}
+// oaSetStatus writes one sentence into a status line (oaStatus, oaRow) and
+// its state: "loading" until data arrives, then "ok", "error" or "idle".
+// oaShowError and oaShowResult set the state the same way.
+function oaStatusState(el,state){
+ if(!el.setAttribute)return;
+ el.setAttribute('data-state',state);
+ if(state==='loading')el.setAttribute('aria-busy','true');else if(el.removeAttribute)el.removeAttribute('aria-busy');
+}
+function oaSetStatus(id,state,sentence){
+ var el=document.getElementById(id);
+ if(!el)return;
+ if(el.replaceChildren)el.replaceChildren();
+ el.textContent=sentence==null?(state==='loading'?'Loading…':''):String(sentence);
+ oaStatusState(el,state||'ok');
+}
+// oaTechnical marks a <details> a page builds as Technical details: its body
+// holds the raw values kept out of the page's sentences, which the Panel
+// rules spare from raw-value only (SPEC §6). It returns the element.
+function oaTechnical(details){
+ if(!details)return details;
+ if(typeof details.setAttribute==='function')details.setAttribute('data-oa-technical','');
+ // A page test's fake node that cannot read attributes back keeps the mark
+ // as a property, where the Panel rules also look.
+ if(typeof details.getAttribute!=='function')details['data-oa-technical']='true';
+ return details;
+}
 function oaShowError(id,err){
  var el=document.getElementById(id);
  if(!el)return;
+ oaStatusState(el,'error');
  var text=err&&typeof err==='object'&&'message'in err?err.message:err;
  var p=oaPlain(text);
  if(el.replaceChildren)el.replaceChildren();
@@ -695,6 +1132,7 @@ function oaShowError(id,err){
 function oaShowResult(id,line,raw,title){
  var el=document.getElementById(id);
  if(!el)return;
+ oaStatusState(el,'ok');
  if(el.replaceChildren)el.replaceChildren();
  el.textContent=line;
  el.title=title||'';

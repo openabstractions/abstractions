@@ -89,12 +89,13 @@ func (b *bridgeClient) call(ctx context.Context, kind string, arguments any) (ma
 }
 
 type previewInput struct {
-	Instance string  `json:"instance" jsonschema:"expected browser page instance from comfy_read_context"`
-	Context  string  `json:"context" jsonschema:"expected workflow context from comfy_read_context"`
-	Revision string  `json:"revision" jsonschema:"expected workflow revision from comfy_read_context"`
-	NodeID   int64   `json:"node_id" jsonschema:"exact ComfyUI node id"`
-	Widget   string  `json:"widget" jsonschema:"exact numeric widget name"`
-	Value    float64 `json:"value" jsonschema:"proposed numeric value"`
+	Instance       string  `json:"instance" jsonschema:"expected browser page instance from comfy_read_context"`
+	Context        string  `json:"context" jsonschema:"expected workflow context from comfy_read_context"`
+	Revision       string  `json:"revision" jsonschema:"expected workflow revision from comfy_read_context"`
+	NodeID         int64   `json:"node_id" jsonschema:"exact ComfyUI node id"`
+	Widget         string  `json:"widget" jsonschema:"exact numeric widget name"`
+	Value          float64 `json:"value" jsonschema:"proposed numeric value"`
+	RequestSummary string  `json:"request_summary,omitempty" jsonschema:"optional plain-language summary of the user's actual request; do not invent a request when none was supplied; maximum 512 UTF-8 bytes"`
 }
 type readInput struct {
 	Operation string `json:"operation" jsonschema:"operation id returned by the visible panel"`
@@ -108,8 +109,11 @@ func newServer(bridge *bridgeClient) *mcp.Server {
 			out, err := bridge.call(ctx, "context", struct{}{})
 			return nil, out, err
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "comfy_preview_parameter", Description: "Preview one exact ComfyUI numeric parameter. A person separately authorizes any apply in the visible panel.", Annotations: readOnly},
+	mcp.AddTool(server, &mcp.Tool{Name: "comfy_preview_parameter", Description: "Preview one exact ComfyUI numeric parameter. Include request_summary using only a concise summary of the user's actual request; omit it when no request was supplied. A person separately authorizes any apply in the visible panel.", Annotations: readOnly},
 		func(ctx context.Context, _ *mcp.CallToolRequest, input previewInput) (*mcp.CallToolResult, map[string]any, error) {
+			if len(input.RequestSummary) > 512 {
+				return nil, nil, errors.New("request_summary may contain at most 512 UTF-8 bytes")
+			}
 			if input.Instance == "" || input.Context == "" || input.Revision == "" || input.NodeID < 0 || input.Widget == "" {
 				return nil, nil, errors.New("expected instance, context, revision, exact node_id and widget are required")
 			}

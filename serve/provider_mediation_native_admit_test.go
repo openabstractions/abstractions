@@ -41,7 +41,7 @@ func TestNativeAdmitFastReadySucceedsFirstCall(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	reason, ok := p.nativeAdmit(ctx, host, "owner/fixture-model")
+	reason, ok := p.nativeAdmit(inference.WithAdmissionProfile(ctx, router.ProfileChat), host, "owner/fixture-model")
 	if !ok || reason != "" {
 		t.Fatalf("fast provider: ok=%v reason=%q", ok, reason)
 	}
@@ -68,7 +68,7 @@ func TestNativeAdmitActivatingThenReadyOnLaterCall(t *testing.T) {
 
 	shortCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
-	reason, ok := p.nativeAdmit(shortCtx, host, "owner/fixture-model")
+	reason, ok := p.nativeAdmit(inference.WithAdmissionProfile(shortCtx, router.ProfileChat), host, "owner/fixture-model")
 	if ok || reason != "activating:slow" {
 		t.Fatalf("first call under a short deadline: ok=%v reason=%q, want activating:slow", ok, reason)
 	}
@@ -80,7 +80,7 @@ func TestNativeAdmitActivatingThenReadyOnLaterCall(t *testing.T) {
 	// wait finds it ready.
 	laterCtx, cancel2 := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel2()
-	reason, ok = p.nativeAdmit(laterCtx, host, "owner/fixture-model")
+	reason, ok = p.nativeAdmit(inference.WithAdmissionProfile(laterCtx, router.ProfileChat), host, "owner/fixture-model")
 	if !ok || reason != "" {
 		t.Fatalf("later call: ok=%v reason=%q", ok, reason)
 	}
@@ -97,7 +97,7 @@ func TestNativeAdmitLaunchBudgetBoundsANeverReadyProvider(t *testing.T) {
 	p, s, host := newNativeAdmitTestProvider(t, "stuck")
 
 	start := time.Now()
-	reason, ok := p.nativeAdmit(context.Background(), host, "owner/fixture-model")
+	reason, ok := p.nativeAdmit(inference.WithAdmissionProfile(context.Background(), router.ProfileChat), host, "owner/fixture-model")
 	elapsed := time.Since(start)
 	if ok || reason != "activating:stuck" {
 		t.Fatalf("never-ready provider: ok=%v reason=%q, want activating:stuck", ok, reason)
@@ -107,6 +107,37 @@ func TestNativeAdmitLaunchBudgetBoundsANeverReadyProvider(t *testing.T) {
 	}
 	if !activated(s) {
 		t.Fatalf("the launch was not activated")
+	}
+}
+
+// FAC-R8: a launched provider that exits before its first readiness and is
+// relaunched leaves the waiting Start waiting; the Start reads unavailable
+// with activating:<name> once the launch budget passes, never earlier, and
+// never on the exit itself. The supervisor's readings are driven directly:
+// the first exit is recorded before the Start arrives, so no run depends on
+// scheduling, and each later reading wakes the waiting Start.
+func TestNativeAdmitWaitsThroughAnExitBeforeReadiness(t *testing.T) {
+	previous := nativeInferenceLaunchBudget
+	nativeInferenceLaunchBudget = 400 * time.Millisecond
+	t.Cleanup(func() { nativeInferenceLaunchBudget = previous })
+
+	p, s, host := newNativeAdmitTestProvider(t, "crashing")
+	s.set(wire.DeclarationReadinessStarting, "launched")
+	s.set(wire.DeclarationReadinessRestarting, "exited:exit status 42")
+	go func() {
+		<-s.wanted
+		s.set(wire.DeclarationReadinessStarting, "launched")
+		s.set(wire.DeclarationReadinessRestarting, "exited:exit status 42")
+	}()
+
+	start := time.Now()
+	reason, ok := p.nativeAdmit(inference.WithAdmissionProfile(context.Background(), router.ProfileChat), host, "owner/fixture-model")
+	elapsed := time.Since(start)
+	if ok || reason != "activating:crashing" {
+		t.Fatalf("provider that exited before readiness: ok=%v reason=%q, want activating:crashing", ok, reason)
+	}
+	if elapsed < nativeInferenceLaunchBudget {
+		t.Fatalf("the wait ended after %v, before the %v launch budget", elapsed, nativeInferenceLaunchBudget)
 	}
 }
 

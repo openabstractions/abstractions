@@ -26,6 +26,14 @@ inline constexpr bool operator!=(AcquireOutcome value, std::string_view name)
 inline constexpr bool operator==(std::string_view name, AcquireOutcome value)
 inline constexpr bool operator!=(std::string_view name, AcquireOutcome value)
 inline const std::vector<std::string> kAcquireOutcomeNames
+enum class AcquireFreeOutcome {Acquired, Insufficient, NotPermitted, Unavailable, Invalid, Forbidden, Held}
+inline constexpr std::string_view wire_name(AcquireFreeOutcome value)
+inline std::optional<AcquireFreeOutcome> parse_acquire_free_outcome(std::string_view name)
+inline constexpr bool operator==(AcquireFreeOutcome value, std::string_view name)
+inline constexpr bool operator!=(AcquireFreeOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, AcquireFreeOutcome value)
+inline constexpr bool operator!=(std::string_view name, AcquireFreeOutcome value)
+inline const std::vector<std::string> kAcquireFreeOutcomeNames
 enum class YieldAnswer {Yielded, Refused}
 inline constexpr std::string_view wire_name(YieldAnswer value)
 inline std::optional<YieldAnswer> parse_yield_answer(std::string_view name)
@@ -97,6 +105,10 @@ struct AcquireResult
   AcquireOutcome outcome
   std::optional<Lease> lease
   std::vector<YieldRecord> asked
+struct AcquireFreeResult
+  AcquireFreeOutcome outcome
+  std::optional<Lease> lease
+  std::vector<YieldRecord> asked
 struct YieldRequest
   std::string id
   std::string resource
@@ -156,6 +168,7 @@ struct TableDispatcher : FrameWriter, FrameExchanger
   std::string exchange_frame(std::string_view frame) override
 struct Leases
   virtual AcquireResult acquire(const std::string& resource, const std::int64_t& amount, const std::int64_t& wait_ms)
+  virtual AcquireFreeResult acquire_free(const std::string& resource, const std::int64_t& amount)
   virtual LeaseChangeResult renew(const std::string& lease)
   virtual LeaseChangeResult release(const std::string& lease)
   virtual ObserveResult observe(const std::string& cursor, const std::int64_t& wait_ms)
@@ -164,6 +177,7 @@ struct Leases
 template<class Transport>struct LeasesClient : Leases
   Transport& transport_
   AcquireResult acquire(const std::string& resource, const std::int64_t& amount, const std::int64_t& wait_ms) override
+  AcquireFreeResult acquire_free(const std::string& resource, const std::int64_t& amount) override
   LeaseChangeResult renew(const std::string& lease) override
   LeaseChangeResult release(const std::string& lease) override
   ObserveResult observe(const std::string& cursor, const std::int64_t& wait_ms) override

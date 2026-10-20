@@ -16,6 +16,76 @@ func (PageOutcome) MarshalJSON() ([]byte, error)
 func (PageOutcome) UnmarshalJSON(data []byte) error
 func PageOutcomeValues() []PageOutcome
 func (PageOutcome) Known() bool
+type HistoryPageOutcome uint32
+const HistoryPageOutcomePage
+const HistoryPageOutcomeGap
+const HistoryPageOutcomeUnavailable
+const HistoryPageOutcomeInvalid
+const HistoryPageOutcomeRecordTooLarge
+const HistoryPageOutcomeCorrupt
+const HistoryPageOutcomeUnsupported
+const HistoryPageOutcomeForbidden
+const HistoryPageOutcomeNotPermitted
+const HistoryPageOutcomeOSAuthorizationRequired
+const HistoryPageOutcomeOSAuthorizationPending
+func (HistoryPageOutcome) String() string
+func (HistoryPageOutcome) WireName() (string, bool)
+func ParseHistoryPageOutcome(word string) (HistoryPageOutcome, bool)
+func (HistoryPageOutcome) MarshalText() ([]byte, error)
+func (HistoryPageOutcome) UnmarshalText(text []byte) error
+func (HistoryPageOutcome) MarshalJSON() ([]byte, error)
+func (HistoryPageOutcome) UnmarshalJSON(data []byte) error
+func HistoryPageOutcomeValues() []HistoryPageOutcome
+func (HistoryPageOutcome) Known() bool
+type ApplicationLogSelection uint32
+const ApplicationLogSelectionOneApp
+const ApplicationLogSelectionAllApps
+func (ApplicationLogSelection) String() string
+func (ApplicationLogSelection) WireName() (string, bool)
+func ParseApplicationLogSelection(word string) (ApplicationLogSelection, bool)
+func (ApplicationLogSelection) MarshalText() ([]byte, error)
+func (ApplicationLogSelection) UnmarshalText(text []byte) error
+func (ApplicationLogSelection) MarshalJSON() ([]byte, error)
+func (ApplicationLogSelection) UnmarshalJSON(data []byte) error
+func ApplicationLogSelectionValues() []ApplicationLogSelection
+func (ApplicationLogSelection) Known() bool
+type SourceAvailability uint32
+const SourceAvailabilityAvailable
+const SourceAvailabilityPermissionDenied
+const SourceAvailabilityUnavailable
+const SourceAvailabilityUnsupported
+func (SourceAvailability) String() string
+func (SourceAvailability) WireName() (string, bool)
+func ParseSourceAvailability(word string) (SourceAvailability, bool)
+func (SourceAvailability) MarshalText() ([]byte, error)
+func (SourceAvailability) UnmarshalText(text []byte) error
+func (SourceAvailability) MarshalJSON() ([]byte, error)
+func (SourceAvailability) UnmarshalJSON(data []byte) error
+func SourceAvailabilityValues() []SourceAvailability
+func (SourceAvailability) Known() bool
+type SourceLimitation string
+const SourceLimitationRetention
+const SourceLimitationNativeRedaction
+const SourceLimitationCollectionPolicy
+const SourceLimitationNativeAccess
+const SourceLimitationVisibilityUnknown
+func SourceLimitationValues() []SourceLimitation
+func (SourceLimitation) Known() bool
+type SourceCatalogOutcome uint32
+const SourceCatalogOutcomeCatalog
+const SourceCatalogOutcomeForbidden
+const SourceCatalogOutcomeNotPermitted
+const SourceCatalogOutcomeUnavailable
+const SourceCatalogOutcomeInvalid
+func (SourceCatalogOutcome) String() string
+func (SourceCatalogOutcome) WireName() (string, bool)
+func ParseSourceCatalogOutcome(word string) (SourceCatalogOutcome, bool)
+func (SourceCatalogOutcome) MarshalText() ([]byte, error)
+func (SourceCatalogOutcome) UnmarshalText(text []byte) error
+func (SourceCatalogOutcome) MarshalJSON() ([]byte, error)
+func (SourceCatalogOutcome) UnmarshalJSON(data []byte) error
+func SourceCatalogOutcomeValues() []SourceCatalogOutcome
+func (SourceCatalogOutcome) Known() bool
 type ServiceErrorCode string
 const ServiceErrorCodeHandlerError
 const ServiceErrorCodeInvalidResult
@@ -32,6 +102,7 @@ func ServiceErrorCodeValues() []ServiceErrorCode
 func (ServiceErrorCode) Known() bool
 var HistoryErrorCodes
 var HistoryCursorWords
+var HistoryIdentityErrorCodes
 type Attestation struct
   By string
   Verified bool
@@ -56,6 +127,41 @@ type Record struct
 type Page struct
   Outcome PageOutcome
   Records []Record
+  Next string
+  AtEnd bool
+type ApplicationLogTarget struct
+  Selection ApplicationLogSelection
+  Program string
+type ApplicationLogResource struct
+  Program string
+  CapturedFileKey string
+type ApplicationLogPage struct
+  Outcome HistoryPageOutcome
+  Records []Record
+  Next string
+  AtEnd bool
+type SourceDescriptor struct
+  ID string
+  Availability SourceAvailability
+  Limitations []SourceLimitation
+type SourceCatalog struct
+  Sources []SourceDescriptor
+  Outcome SourceCatalogOutcome
+type ProducerClaim struct
+  Provider string
+  Program string
+  Exe string
+  User string
+  PID int64
+  UID int64
+  GID int64
+type SourceRecord struct
+  SourceID string
+  Record Record
+  Producer *ProducerClaim
+type SourcePage struct
+  Outcome HistoryPageOutcome
+  Records []SourceRecord
   Next string
   AtEnd bool
 func Encode(v *Record) []byte
@@ -124,3 +230,93 @@ func (HistoryObserverDispatcher) DescribeServiceMetadata() (guarantees []string,
 func (HistoryObserverDispatcher) ServiceContract() string
 func (HistoryObserverDispatcher) WriteFrame(frame []byte) error
 func (HistoryObserverDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type ApplicationHistoryReader interface
+  Read(target ApplicationLogTarget, cursor string, maxRecords, maxBytes int64) (ApplicationLogPage, error)
+type ApplicationHistoryReaderTransport interface
+  FrameExchanger
+type ApplicationHistoryReaderClient struct
+func NewApplicationHistoryReaderClient(t ApplicationHistoryReaderTransport) *ApplicationHistoryReaderClient
+type ApplicationHistoryReaderDispatcher struct
+  Handler ApplicationHistoryReader
+func (ApplicationHistoryReaderClient) Read(target ApplicationLogTarget, cursor string, maxRecords, maxBytes int64) (result ApplicationLogPage, err error)
+func (ApplicationHistoryReaderDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ApplicationHistoryReaderDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (ApplicationHistoryReaderDispatcher) ServiceContract() string
+func (ApplicationHistoryReaderDispatcher) WriteFrame(frame []byte) error
+func (ApplicationHistoryReaderDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type ApplicationHistoryObserver interface
+  Observe(target ApplicationLogTarget, cursor string, maxRecords, maxBytes, waitMs int64) (ApplicationLogPage, error)
+type ApplicationHistoryObserverTransport interface
+  FrameExchanger
+type ApplicationHistoryObserverClient struct
+func NewApplicationHistoryObserverClient(t ApplicationHistoryObserverTransport) *ApplicationHistoryObserverClient
+type ApplicationHistoryObserverDispatcher struct
+  Handler ApplicationHistoryObserver
+func (ApplicationHistoryObserverClient) Observe(target ApplicationLogTarget, cursor string, maxRecords, maxBytes, waitMs int64) (result ApplicationLogPage, err error)
+func (ApplicationHistoryObserverDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ApplicationHistoryObserverDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (ApplicationHistoryObserverDispatcher) ServiceContract() string
+func (ApplicationHistoryObserverDispatcher) WriteFrame(frame []byte) error
+func (ApplicationHistoryObserverDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type SourceReader interface
+  Sources() (SourceCatalog, error)
+  Read(sourceID, cursor string, maxRecords, maxBytes int64) (SourcePage, error)
+  StartAtEnd(sourceID string) (SourcePage, error)
+type SourceReaderTransport interface
+  FrameExchanger
+type SourceReaderClient struct
+func NewSourceReaderClient(t SourceReaderTransport) *SourceReaderClient
+type SourceReaderDispatcher struct
+  Handler SourceReader
+func (SourceReaderClient) Sources() (result SourceCatalog, err error)
+func (SourceReaderClient) Read(sourceID, cursor string, maxRecords, maxBytes int64) (result SourcePage, err error)
+func (SourceReaderClient) StartAtEnd(sourceID string) (result SourcePage, err error)
+func (SourceReaderDispatcher) DescribeService() (contract string, ready bool, why string)
+func (SourceReaderDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (SourceReaderDispatcher) ServiceContract() string
+func (SourceReaderDispatcher) WriteFrame(frame []byte) error
+func (SourceReaderDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+func DecodeAttestationAt(in []byte, depth, limit int) (*Attestation, int, error)
+func EncodeAttestationAt(v *Attestation, depth int) []byte
+func EncodeAttestation(v *Attestation) []byte
+func DecodeAttestation(in []byte) (*Attestation, error)
+func DecodeRecordAt(in []byte, depth, limit int) (*Record, int, error)
+func EncodeRecordAt(v *Record, depth int) []byte
+func EncodeRecord(v *Record) []byte
+func DecodeRecord(in []byte) (*Record, error)
+func DecodePageAt(in []byte, depth, limit int) (*Page, int, error)
+func EncodePageAt(v *Page, depth int) []byte
+func EncodePage(v *Page) []byte
+func DecodePage(in []byte) (*Page, error)
+func DecodeApplicationLogTargetAt(in []byte, depth, limit int) (*ApplicationLogTarget, int, error)
+func EncodeApplicationLogTargetAt(v *ApplicationLogTarget, depth int) []byte
+func EncodeApplicationLogTarget(v *ApplicationLogTarget) []byte
+func DecodeApplicationLogTarget(in []byte) (*ApplicationLogTarget, error)
+func DecodeApplicationLogResourceAt(in []byte, depth, limit int) (*ApplicationLogResource, int, error)
+func EncodeApplicationLogResourceAt(v *ApplicationLogResource, depth int) []byte
+func EncodeApplicationLogResource(v *ApplicationLogResource) []byte
+func DecodeApplicationLogResource(in []byte) (*ApplicationLogResource, error)
+func DecodeApplicationLogPageAt(in []byte, depth, limit int) (*ApplicationLogPage, int, error)
+func EncodeApplicationLogPageAt(v *ApplicationLogPage, depth int) []byte
+func EncodeApplicationLogPage(v *ApplicationLogPage) []byte
+func DecodeApplicationLogPage(in []byte) (*ApplicationLogPage, error)
+func DecodeSourceDescriptorAt(in []byte, depth, limit int) (*SourceDescriptor, int, error)
+func EncodeSourceDescriptorAt(v *SourceDescriptor, depth int) []byte
+func EncodeSourceDescriptor(v *SourceDescriptor) []byte
+func DecodeSourceDescriptor(in []byte) (*SourceDescriptor, error)
+func DecodeSourceCatalogAt(in []byte, depth, limit int) (*SourceCatalog, int, error)
+func EncodeSourceCatalogAt(v *SourceCatalog, depth int) []byte
+func EncodeSourceCatalog(v *SourceCatalog) []byte
+func DecodeSourceCatalog(in []byte) (*SourceCatalog, error)
+func DecodeProducerClaimAt(in []byte, depth, limit int) (*ProducerClaim, int, error)
+func EncodeProducerClaimAt(v *ProducerClaim, depth int) []byte
+func EncodeProducerClaim(v *ProducerClaim) []byte
+func DecodeProducerClaim(in []byte) (*ProducerClaim, error)
+func DecodeSourceRecordAt(in []byte, depth, limit int) (*SourceRecord, int, error)
+func EncodeSourceRecordAt(v *SourceRecord, depth int) []byte
+func EncodeSourceRecord(v *SourceRecord) []byte
+func DecodeSourceRecord(in []byte) (*SourceRecord, error)
+func DecodeSourcePageAt(in []byte, depth, limit int) (*SourcePage, int, error)
+func EncodeSourcePageAt(v *SourcePage, depth int) []byte
+func EncodeSourcePage(v *SourcePage) []byte
+func DecodeSourcePage(in []byte) (*SourcePage, error)

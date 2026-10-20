@@ -104,6 +104,7 @@ type fixtureRuntime struct {
 	provider *inference.Provider
 	cancel   context.CancelFunc
 	done     chan error
+	stopOnce sync.Once
 }
 
 type fixtureApplications struct {
@@ -193,22 +194,32 @@ func (r fixtureApplicationsReceiver) Observe(string, int64) (wire.ApplicationPag
 func (fixtureApplicationsReceiver) Activate(string) (wire.ApplicationActivationResult, error) {
 	return wire.ApplicationActivationResult{Outcome: wire.ApplicationActivationOutcomeForbidden}, nil
 }
+func (fixtureApplicationsReceiver) AskConfirmation(string) (wire.ApplicationChange, error) {
+	return wire.ApplicationChange{Outcome: wire.ApplicationOutcomeForbidden}, nil
+}
+func (fixtureApplicationsReceiver) ListStarts(string, int64) (wire.ApplicationStartPage, error) {
+	return wire.ApplicationStartPage{Outcome: wire.ApplicationOutcomeForbidden, Starts: []wire.ApplicationStart{}}, nil
+}
 
 func (r *fixtureRuntime) stop(t *testing.T) {
 	t.Helper()
-	r.cancel()
-	_ = r.host.Close()
-	select {
-	case err := <-r.done:
-		if err != nil {
-			t.Fatalf("fixture runtime stopped: %v", err)
+	r.stopOnce.Do(func() {
+		r.cancel()
+		_ = r.host.Close()
+		defer func() {
+			if err := r.provider.Close(); err != nil {
+				t.Errorf("fixture inference provider stopped: %v", err)
+			}
+		}()
+		select {
+		case err := <-r.done:
+			if err != nil {
+				t.Errorf("fixture runtime stopped: %v", err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Error("fixture runtime did not stop")
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("fixture runtime did not stop")
-	}
-	if err := r.provider.Close(); err != nil {
-		t.Fatalf("fixture inference provider stopped: %v", err)
-	}
+	})
 }
 
 type fixtureConfig struct {
@@ -328,23 +339,54 @@ func jobCount(t *testing.T, root string) int {
 	return n
 }
 
+// fixtureStderr reads only a bounded tail after the SDK has closed its child.
+// A file keeps the child's writes independent of diagnostic reads under -race.
+func fixtureStderr(t *testing.T, cmd *exec.Cmd, stderr *os.File, started time.Time) string {
+	t.Helper()
+	info, err := stderr.Stat()
+	if err != nil {
+		return fmt.Sprintf("elapsed=%s stderr stat: %v", time.Since(started), err)
+	}
+	const limit = int64(8192)
+	offset := max(int64(0), info.Size()-limit)
+	tail := make([]byte, info.Size()-offset)
+	if _, err := stderr.ReadAt(tail, offset); err != nil {
+		return fmt.Sprintf("elapsed=%s stderr read: %v", time.Since(started), err)
+	}
+	pid := 0
+	if cmd.Process != nil {
+		pid = cmd.Process.Pid
+	}
+	return fmt.Sprintf("elapsed=%s pid=%d stderr tail (%d/%d bytes):\n%s", time.Since(started), pid, len(tail), info.Size(), tail)
+}
+
 func callFixture[Out any](t *testing.T, binary, endpoint, state, claimedClient, tool string, args any) (*mcp.CallToolResult, Out) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	cmd := exec.Command(binary, "--runtime", endpoint, "--state-dir", state)
+	stderr, err := os.Create(filepath.Join(t.TempDir(), "fixture-stderr.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stderr.Close()
+	started := time.Now()
+	cmd := exec.CommandContext(ctx, binary, "--runtime", endpoint, "--state-dir", state)
+	cmd.Stderr = stderr
 	client := mcp.NewClient(&mcp.Implementation{Name: claimedClient, Version: "forged"}, nil)
 	session, err := client.Connect(ctx, &mcp.CommandTransport{Command: cmd}, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
 	if err != nil {
+		cancel()
 		var zero Out
-		t.Fatalf("connect fixture %s: %v", filepath.Base(binary), err)
+		t.Fatalf("connect fixture %s: %v\n%s", filepath.Base(binary), err, fixtureStderr(t, cmd, stderr, started))
 		return nil, zero
 	}
 	defer session.Close()
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: tool, Arguments: args})
 	if err != nil {
+		cancel()
+		_ = session.Close()
 		var zero Out
-		t.Fatalf("call %s: %v", tool, err)
+		t.Fatalf("call %s: %v\n%s", tool, err, fixtureStderr(t, cmd, stderr, started))
 		return nil, zero
 	}
 	var out Out
@@ -359,16 +401,26 @@ func dropSubmitReply(t *testing.T, binary, endpoint, state string, args any) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	cmd := exec.Command(binary, "--runtime", endpoint, "--state-dir", state)
+	stderr, err := os.Create(filepath.Join(t.TempDir(), "fixture-stderr.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stderr.Close()
+	started := time.Now()
+	cmd := exec.CommandContext(ctx, binary, "--runtime", endpoint, "--state-dir", state)
+	cmd.Stderr = stderr
 	cmd.Env = append(os.Environ(), "OA_MCP_FIXTURE_DROP_AFTER_SUBMIT=1")
 	client := mcp.NewClient(&mcp.Implementation{Name: "forged-after-drop", Version: "forged"}, nil)
 	session, err := client.Connect(ctx, &mcp.CommandTransport{Command: cmd}, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
 	if err != nil {
-		t.Fatal(err)
+		cancel()
+		t.Fatalf("connect drop-reply fixture %s: %v\n%s", filepath.Base(binary), err, fixtureStderr(t, cmd, stderr, started))
 	}
 	defer session.Close()
 	if _, err := session.CallTool(ctx, &mcp.CallToolParams{Name: gateway.ToolJobSubmit, Arguments: args}); err == nil {
-		t.Fatal("fixture returned the MCP reply that it was instructed to drop")
+		cancel()
+		_ = session.Close()
+		t.Fatalf("fixture returned the MCP reply that it was instructed to drop\n%s", fixtureStderr(t, cmd, stderr, started))
 	}
 }
 
@@ -421,6 +473,7 @@ func TestNativePrincipalsAndDurableRecoveryThroughMCP(t *testing.T) {
 	}
 	state := filepath.Join(dir, "gateway-state")
 	first := startFixture(t, cfg)
+	defer first.stop(t)
 	_, applicationsA := callFixture[gateway.ApplicationsOutput](t, a, cfg.runtimeEndpoint, state, "principal-b", gateway.ToolApplications, map[string]any{})
 	_, applicationsB := callFixture[gateway.ApplicationsOutput](t, b, cfg.runtimeEndpoint, filepath.Join(dir, "state-b"), "principal-a", gateway.ToolApplications, map[string]any{})
 	_, deniedApplications := callFixture[gateway.ApplicationsOutput](t, denied, cfg.runtimeEndpoint, filepath.Join(dir, "denied-applications"), "principal-a", gateway.ToolApplications, map[string]any{})
@@ -546,9 +599,17 @@ func TestNativePrincipalsAndDurableRecoveryThroughMCP(t *testing.T) {
 	if status.Outcome != "observed" || status.State != "complete" || status.ResultOutcome != "unsupported" || status.Result != nil {
 		t.Fatalf("persisted status: %+v", status)
 	}
+	_, diagnosis := callFixture[gateway.JobDiagnosisOutput](t, a, cfg.runtimeEndpoint, state, "changed-after-restart", gateway.ToolJobDiagnose, map[string]any{"handle": submitted.Handle})
+	if diagnosis.Outcome != "observed" || diagnosis.State != "complete" || diagnosis.FailureClass != "" || diagnosis.FailureCause != "" || diagnosis.Guidance == "" || strings.Contains(strings.ToLower(diagnosis.Guidance), "retain") {
+		t.Fatalf("safe handle diagnosis: %+v", diagnosis)
+	}
 	cross, crossStatus := callFixture[gateway.JobStatusOutput](t, b, cfg.runtimeEndpoint, state, "principal-a", gateway.ToolJobStatus, map[string]any{"handle": submitted.Handle})
 	if !cross.IsError && crossStatus.Outcome == "observed" {
 		t.Fatalf("different native principal observed handle: %+v", crossStatus)
+	}
+	cross, crossDiagnosis := callFixture[gateway.JobDiagnosisOutput](t, b, cfg.runtimeEndpoint, state, "principal-a", gateway.ToolJobDiagnose, map[string]any{"handle": submitted.Handle})
+	if !cross.IsError && (crossDiagnosis.Outcome == "observed" || crossDiagnosis.State != "" || crossDiagnosis.FailureClass != "" || crossDiagnosis.FailureCause != "") {
+		t.Fatalf("different native principal received diagnosis details: %+v", crossDiagnosis)
 	}
 	before := prepares.Load()
 	deniedSubmit, _ := callFixture[gateway.JobSubmitOutput](t, denied, cfg.runtimeEndpoint, filepath.Join(dir, "denied-jobs"), "principal-a", gateway.ToolJobSubmit, map[string]any{"request_key": "native-denied-1", "profile": "image_batch", "model": "fixture/image", "prompt": "must refuse", "hosting": "hosted", "credential": "fixture", "count": 1})

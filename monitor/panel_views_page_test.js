@@ -14,6 +14,17 @@ function commonScript() {
  assert(start > marker.length - 1, 'serviceCommonScript not found in service_page.go');
  return src.slice(start, src.indexOf('`', start));
 }
+// The Logging and Identity sections now sit on the Settings page
+// (settings_page.go), each with its own script constant; loadSectionScript
+// reads that constant and prefixes serviceCommonScript, as the Settings
+// page's one script tag does.
+function loadSectionScript(file, name) {
+ const go = fs.readFileSync(__dirname + '/' + file, 'utf8');
+ const marker = 'const ' + name + ' = `';
+ const start = go.indexOf(marker) + marker.length;
+ assert(start > marker.length - 1, name + ' not found in ' + file);
+ return commonScript() + go.slice(start, go.indexOf('`', start));
+}
 function loadPageScript(file) {
  const go = fs.readFileSync(__dirname + '/' + file, 'utf8');
  const script = go.split('<script>')[1].split('</script>')[0];
@@ -35,8 +46,8 @@ function plainScript() {
  return shellGo.slice(start, end).split('<script>')[1].split('</script>')[0];
 }
 
-function node() {
- return {value:'', textContent:'', className:'', title:'', disabled:false, hidden:false, checked:false, dataset:{}, listeners:{}, children:[], replaceChildren(...v){this.children=[...v]}, append(...v){this.children.push(...v)}, click(){}, addEventListener(type,fn){(this.listeners[type]=this.listeners[type]||[]).push(fn)}, dispatch(type){for(const fn of this.listeners[type]||[])fn()}};
+function node(tag) {
+ return {tagName:String(tag||'').toUpperCase(), value:'', textContent:'', className:'', title:'', disabled:false, hidden:false, checked:false, dataset:{}, attrs:{}, setAttribute(k,v){this.attrs[k]=String(v);if(k.startsWith('data-'))this.dataset[k.slice(5).replace(/-([a-z])/g,(m,c)=>c.toUpperCase())]=String(v)}, getAttribute(k){if(k in this.attrs)return this.attrs[k];if(k.startsWith('data-')){const d=this.dataset[k.slice(5).replace(/-([a-z])/g,(m,c)=>c.toUpperCase())];return d===undefined?null:d}return null}, listeners:{}, children:[], replaceChildren(...v){this.children=[...v]}, append(...v){this.children.push(...v)}, click(){}, addEventListener(type,fn){(this.listeners[type]=this.listeners[type]||[]).push(fn)}, dispatch(type){for(const fn of this.listeners[type]||[])fn()}};
 }
 function makeElement() {
  const fields = new Map();
@@ -48,7 +59,7 @@ const all = (n, out = []) => { out.push(n); n.children.forEach(c => all(c, out))
 const exe = 'C:\\panel\\monitor.exe';
 
 (async () => {
- // --- Logging page (logging_page.go). ---
+ // --- Settings, Logging section (logging_page.go). ---
  {
   const element = makeElement();
   const claimHop = {hop:0, by:'self', role:'writer claim', standing:'claimed', verified:false, program:'writer', uid:-1, gid:-1, pid:7};
@@ -91,7 +102,7 @@ const exe = 'C:\\panel\\monitor.exe';
   // button, nothing shown until clicked. It now reads the last 50 records
   // of the last hour itself, on arrival, with no click at all.
   vm.runInNewContext(plainScript(), context);
-  vm.runInNewContext(loadPageScript('logging_page.go'), context);
+  vm.runInNewContext(loadSectionScript('logging_page.go', 'loggingScript'), context);
   await tick(); await tick(); await tick();
   const first = new URLSearchParams(requests[base].path.split('?')[1]);
   assert.equal(requests[base].key, 'test', 'panel key sent');
@@ -109,12 +120,12 @@ const exe = 'C:\\panel\\monitor.exe';
   assert.equal(element('log-level-seg').children[0].className, 'active', 'Everything starts active');
   const boxes = element('log-records').children;
   assert.equal(boxes.length, 5, 'four records plus one date heading, since they all fall on the same local day');
-  assert.equal(boxes[0].className, 'log-date', 'a date heading leads the first group');
+  assert.equal(boxes[0].tagName, 'H4', 'a date heading leads the first group');
   assert.equal(boxes[0].textContent, localDate('2026-09-17T10:00:00.000000Z'));
   const [, verified, bare, relayed, sinkGap] = boxes;
   const details = box => box.children[1];
   const hops = box => details(box).children[1].children;
-  assert.equal(verified.className, 'record');
+  assert.equal(verified.className, 'oa-row');
   // task 2026-09-23, eighth first-time visitor, finding 1: hops used to sit
   // under a disclosure that opened by default, showing every hop's raw
   // executable path, account SID and PID as visible text on every record.
@@ -123,21 +134,34 @@ const exe = 'C:\\panel\\monitor.exe';
   // its file name alone, never the full path a hop's own claim carries.
   assert.equal(details(verified).children[0].textContent, 'Technical details', 'hops sit behind the same disclosure every other raw-data block uses');
   assert.equal(details(verified).open, undefined, 'the disclosure is collapsed by default');
-  assert.equal(verified.children[0].children[0].className, 'verified', 'a stamped record is labelled verified on its one line');
-  assert(verified.children[0].textContent.includes(localTime('2026-09-17T10:00:00.000000Z')+' writer.exe: verified record'), 'the visible line names local time, the program\'s file name (not its full path) and the message, with no level word for an ordinary INFO record');
+  assert.equal(verified.children[0].children[0].getAttribute('data-evidence'), 'verified', 'a stamped record is labelled verified on its one line');
+  assert(verified.children[0].textContent.includes(localTime('2026-09-17T10:00:00.000000Z')+' writer: verified record'), 'the visible line names local time, the program\'s name (not its full path or .exe) and the message, with no level word for an ordinary INFO record');
   assert(!verified.children[0].textContent.includes('C:\\apps\\writer.exe'), 'the full program path is not in the visible line');
   assert(hops(verified)[0].textContent.includes('C:\\apps\\writer.exe')||hops(verified)[1].textContent.includes('C:\\apps\\writer.exe'), 'the full program path stays reachable in the record\'s own Technical details');
-  assert.equal(bare.children[0].children[0].className, 'verified', 'the stamp alone still verifies the line even with no writer claim');
-  assert.equal(relayed.children[0].children[0].className, 'claim', 'an unauthored record is unverified');
-  assert.equal(hops(verified)[0].className, 'hop claim', 'a self claim is styled as a claim');
-  assert.equal(hops(verified)[1].className, 'hop verified', 'a service stamp is styled as verified');
-  assert.notEqual(hops(verified)[0].className, hops(verified)[1].className, 'verified and claimed hops look different');
+  assert.equal(bare.children[0].children[0].getAttribute('data-evidence'), 'verified', 'the stamp alone still verifies the line even with no writer claim');
+  assert.equal(relayed.children[0].children[0].getAttribute('data-evidence'), 'claimed', 'an unauthored record is unverified');
+  assert.equal(hops(verified)[0].getAttribute('data-evidence'), 'claimed', 'a self claim is styled as a claim');
+  assert.equal(hops(verified)[1].getAttribute('data-evidence'), 'verified', 'a service stamp is styled as verified');
+  assert.notEqual(hops(verified)[0].getAttribute('data-evidence'), hops(verified)[1].getAttribute('data-evidence'), 'verified and claimed hops look different');
   assert(hops(verified)[0].textContent.includes("writer's own claim, unverified"));
   assert(hops(verified)[1].textContent.includes('verified by the logging service'));
   assert(hops(bare)[0].textContent.includes('the writer sent no claim'), 'unclaimed hop 0 says so');
-  assert.equal(hops(relayed)[1].className, 'hop asserted', 'a relayed stamp nobody vouched for is untrusted');
+  assert.equal(hops(relayed)[1].getAttribute('data-evidence'), 'asserted', 'a relayed stamp nobody vouched for is untrusted');
   assert(hops(relayed)[2].textContent.startsWith('hop 2, relay'), 'relay hop is named');
-  assert.equal(sinkGap.className, 'gap', 'a sink-loss gap record is shown as a gap');
+  // Every hop kind renders with SPEC section 6 classes only: the standing is
+  // data-evidence, never a page-local class (the live rules check).
+  {
+   const rules = require('./static/panel_rules.js');
+   const classes = JSON.parse(fs.readFileSync(__dirname + '/static/panel_classes.json', 'utf8'));
+   const hop = (k, by, standing) => ({hop:k, by, role:k?'relay':'writer claim', standing, verified:standing!=='claimed', program:'', exe:'', user:'', host:'', uid:-1, pid:-1});
+   const every = context.logEntry({kind:'record', time:'2026-09-17T10:00:00Z', level:8, levelName:'ERROR', message:'every hop', program:'', disputed:true, author:false,
+    hops:[hop(0,'self','claimed'), hop(1,'unclaimed','claimed'), hop(2,'tcp','established'), hop(3,'relay','vouched'), hop(4,'relay','asserted')]});
+   const gap = context.logEntry({kind:'sink_gap', dropped:'3', since:'a', until:'b', hops:[]});
+   assert.deepEqual(hops(every).map(h => h.getAttribute('data-evidence')), ['claimed', 'claimed', 'verified', 'verified', 'asserted']);
+   const section = {tagName:'SECTION', className:'oa-group', children:[every, gap], textContent:''};
+   rules.assertPanelRules(section, 'Logging hops', {rules:['class'], classes});
+  }
+  assert.equal(sinkGap.getAttribute('data-state'), 'gap', 'a sink-loss gap record is shown as a gap');
   assert(sinkGap.children[0].textContent.includes('12 records') && sinkGap.children[0].textContent.includes('dropped'), 'gap names the dropped count');
   assert(element('log-status').textContent.includes('More history remains') && element('log-status').textContent.includes('1 records on this page hidden'));
   assert.equal(element('log-next').disabled, false);
@@ -146,7 +170,7 @@ const exe = 'C:\\panel\\monitor.exe';
   // program filter is a dropdown built from the programs seen in the
   // records that have already come back, "All programs" first and
   // "Other…" last for a name not seen yet.
-  assert.equal(element('log-program-select').children.map(o=>o.textContent).join(', '), 'All programs, writer.exe, writer, Other\u2026', 'the dropdown lists every program seen, by its file name');
+  assert.equal(element('log-program-select').children.map(o=>o.textContent).join(', '), 'All programs, writer, writer, Other\u2026', 'the dropdown lists every program seen, by its name without .exe (the path on each title)');
   assert.equal(element('log-program-select').children[1].title, 'C:\\apps\\writer.exe', 'the full path sits on the option\'s own title');
   assert.equal(element('log-program').hidden, true, 'the typed field stays hidden until Other\u2026 is chosen');
 
@@ -158,7 +182,7 @@ const exe = 'C:\\panel\\monitor.exe';
   const list = element('log-records').children;
   assert.equal(list[5].children[0].textContent.includes(localTime('2026-09-17T10:01:00.000000Z')+' error writer: live record'), true, 'live record appended, with its level word since ERROR is warning or higher');
   const observerGap = list[6];
-  assert.equal(observerGap.className, 'gap', 'an observer gap is shown as a gap');
+  assert.equal(observerGap.getAttribute('data-state'), 'gap', 'an observer gap is shown as a gap');
   assert(observerGap.textContent.includes('History gap'));
   assert.equal(element('log-follow').textContent, 'Follow live', 'following stops at a gap');
   assert(element('log-status').textContent.includes('Read from the start'), 'the gap asks for an explicit restart');
@@ -178,7 +202,7 @@ const exe = 'C:\\panel\\monitor.exe';
   // already needs oaClockText for the row times), so the absent-runtime
   // reply reads the one plain sentence oaPlain gives any "service
   // resolution" failure, not the raw "The runtime is absent: ..." text.
-  assert.equal(element('log-status').textContent, "That service isn't running on this account right now. Start the runtime, or check the service on the Status page.", 'absent runtime reported in the logging page, in the one plain sentence oaPlain gives it');
+  assert.equal(element('log-status').textContent, "That service isn't running on this account right now. Start the runtime, or check the service on the Apps page.", 'absent runtime reported in the logging page, in the one plain sentence oaPlain gives it');
   loggingAbsent = false;
 
   // task 2026-09-23, eleventh first-time visitor, requirement 2: a quick
@@ -213,7 +237,7 @@ const exe = 'C:\\panel\\monitor.exe';
   console.log('PASS: Logging page hops styled verified, claimed and untrusted, behind a collapsed Technical details disclosure, the visible line naming the program\'s file name only; unclaimed and relay hops named; sink-loss and observer gaps shown as gaps; follow stops at a gap; panel sink state; absent runtime; reads the last hour on arrival with no click; the program dropdown lists what it has seen; quick choices, level segments and the count choice each restart the read; an empty page offers the next wider range');
  }
 
- // --- Identity page (identity_page.go). ---
+ // --- Settings, Identity section (identity_page.go). ---
  {
   const element = makeElement();
   const claimHop = {hop:0, by:'self', role:'writer claim', standing:'claimed', verified:false, program:'writer', uid:-1, gid:-1, pid:7};
@@ -247,7 +271,7 @@ const exe = 'C:\\panel\\monitor.exe';
   // (panel_shell.go), so this sub-test loads it into the same vm context
   // first too.
   vm.runInNewContext(plainScript(), context);
-  vm.runInNewContext(loadPageScript('identity_page.go'), context);
+  vm.runInNewContext(loadSectionScript('identity_page.go', 'identityScript'), context);
 
   // task 2026-09-23, twelfth first-time visitor, finding 3: the page's own
   // caption states what this section is, once, in the page markup itself
@@ -256,22 +280,25 @@ const exe = 'C:\\panel\\monitor.exe';
   // sentence; everything else this check can also show sits behind a
   // single Technical details disclosure.
   const identityHTML = fs.readFileSync(__dirname + '/identity_page.go', 'utf8');
-  assert(identityHTML.includes('<h1 id="identity">Identity</h1><p>Who this Panel is running as, and how the runtime checked it.</p>'), 'the page states its own one caption once, ahead of any check');
+  assert(identityHTML.includes('<section id="identity" class="oa-group"><h2>About</h2>') && identityHTML.includes('oaRow("Version"'), 'Settings opens on About: version, runtime and this Panel (SPEC S9)');
   // task 2026-09-23, twelfth first-time visitor, finding 1: the page used
   // to show one caption and one button until Check identity was clicked.
   // It now runs the check once, unclicked, as soon as the page's own
   // script loads.
   await context.identityCheckReady;
-  assert.equal(element('identity-view').children[0].className,'verified','the check already ran on arrival, with no click at all');
+  assert.equal(element('identity-status').textContent,'Verified by the operating system.','the check already ran on arrival, with no click at all');
   await element('identity-check').onclick();
   const view = element('identity-view');
   const shown = text(view);
-  const verdict = view.children[0];
-  assert.equal(verdict.className, 'verified');
+  // The row: one caption (when it was checked), a short verdict as its
+  // status line, and the full explanation inside Technical details.
+  assert.equal(element('identity-status').textContent, 'Verified by the operating system.');
+  assert.equal(view.children.length, 1, 'only the one Technical details sits in the row beside its caption and status');
+  const verdict = view.children[0].children[1].children[0];
+  assert.equal(verdict.dataset.evidence, 'verified');
   assert.equal(verdict.textContent, "This Panel is talking to the runtime it was started for. The connection is proven by the operating system; the runtime's program is not code-signed on this machine.", 'the verdict sentence leads, naming both the expectation and the proof strength');
   assert(!verdict.textContent.toLowerCase().includes('pipe'), 'the verdict names no pipe endpoint');
-  assert.equal(view.children.length, 2, 'nothing else sits directly on the page beside the verdict and the one Technical details');
-  const technical = view.children[1];
+  const technical = view.children[0];
   assert.equal(technical.children[0].textContent, 'Technical details');
   const technicalBody = technical.children[1];
   assert(text(technicalBody).toLowerCase().includes('pipe'), 'the raw endpoint is available under the one Technical details');
@@ -284,7 +311,7 @@ const exe = 'C:\\panel\\monitor.exe';
   // Technical details legitimately still carries them, which is why this
   // checks the one sentence's own textContent, not the whole page's).
   const establishedLine = all(view).find(p => p.textContent && p.textContent.startsWith('Your account,'));
-  assert.equal(establishedLine.textContent, 'Your account, reinis, running monitor.exe, established by the Windows identity check over a named pipe.');
+  assert.equal(establishedLine.textContent, 'Your account, reinis, running monitor, established by the Windows identity check over a named pipe.');
   assert.equal(establishedLine.title, 'account S-1-5-21-1; program '+exe+'; pid 4242', 'the raw SID, full path and pid sit on the sentence\'s own title');
   assert(shown.includes('Which program: proven by its path.'), 'the path attribute reads as a plain sentence, not a raw proof/ceiling dump');
   assert(shown.includes('Who is connected: proven by the operating system, the strongest proof this connection allows.'), 'a kernel-proven attribute names the strongest proof this connection allows');
@@ -303,7 +330,7 @@ const exe = 'C:\\panel\\monitor.exe';
   const rightsLine = paragraphs.find(p => p.textContent === 'Rights administration: access denied for this Panel.');
   assert(rightsLine && !rightsLine.textContent.includes('abstraction.rights/operator@1'), 'the contract id is not in this line\'s own visible text');
   assert(rightsLine && rightsLine.title === 'abstraction.rights/operator@1', 'the contract id sits in the line\'s own title attribute instead');
-  assert(paragraphs.some(p => p.className==='claim' && p.textContent.includes('claiming to be Abstraction Panel')), 'the panel claim is a claim');
+  assert(paragraphs.some(p => p.dataset.evidence==='claimed' && p.textContent.includes('claiming to be Abstraction Panel')), 'the panel claim is a claim');
   // task 2026-09-23, ninth first-time visitor, finding 1: this paragraph
   // used to read "The logging service stamped it: executable C:\...\
   // Abstraction Panel.exe, account S-1-5-21-…, pid 7 (identity/windows,
@@ -313,8 +340,8 @@ const exe = 'C:\\panel\\monitor.exe';
   // now asserted the old raw text as correct, which is why this paragraph's
   // leak survived that fix.
   const stampLine = paragraphs.find(p => p.textContent && p.textContent.startsWith('The logging service saw the same:'));
-  assert.equal(stampLine.textContent, 'The logging service saw the same: your account, reinis, running monitor.exe, verified by the Windows identity check.');
-  assert.equal(stampLine.className, 'verified');
+  assert.equal(stampLine.textContent, 'The logging service saw the same: your account, reinis, running monitor, verified by the Windows identity check.');
+  assert.equal(stampLine.dataset.evidence, 'verified');
   assert(!stampLine.textContent.includes(exe) && !stampLine.textContent.includes('S-1-5-'), 'the full path and raw SID are not in the visible line');
   assert.equal(stampLine.title, 'executable '+exe+'; account S-1-5-21-1; pid 7', 'the raw executable, account and pid sit on the sentence\'s own title');
   assert(shown.includes('bound the same program, account and process'));
@@ -322,15 +349,28 @@ const exe = 'C:\\panel\\monitor.exe';
   // task 2026-09-23, tenth first-time visitor, finding 2: "Checked at
   // 2026-09-23T18:14:50+03:00" read a raw ISO timestamp aloud; it now reads
   // a local readable time, the raw value kept on the line's own title.
-  assert.equal(element('identity-status').textContent, 'Checked at '+context.oaLocalTime('2026-09-17T10:02:00Z')+'.');
-  assert(!element('identity-status').textContent.includes('2026-09-17T10:02:00Z'), 'the raw timestamp is not in the visible line');
-  assert.equal(element('identity-status').title, '2026-09-17T10:02:00Z');
+  assert.equal(element('identity-checked').textContent, 'Checked '+context.oaWhen('2026-09-17T10:02:00Z')+'.');
+  assert(!element('identity-checked').textContent.includes('2026-09-17T10:02:00Z'), 'the raw timestamp is not in the visible line');
+  assert.equal(element('identity-checked').title, '2026-09-17T10:02:00Z');
 
+  // Every finding is an .oa-status line with data-state and, for what was
+  // proven, data-evidence: no page-local class (SPEC §6), checked by the
+  // rendered class rule across the ok (verified), claimed and error states.
+  {
+   const all=n=>[n,...(n.children||[]).flatMap(all)];
+   const lines=all(element('identity-view')).filter(n=>n.className==='oa-status');
+   const states=new Set(lines.map(n=>n.dataset.state+'/'+(n.dataset.evidence||'')));
+   for(const want of ['ok/verified','ok/claimed','error/'])assert(states.has(want),'identity shows a '+want+' line: '+[...states]);
+   const tagged=n=>{n.tagName=n.tagName||(n.className==='oa-status'?'P':'DIV');(n.children||[]).forEach(tagged);return n};
+   const { assertPanelRules } = require('./static/panel_rules.js');
+   assertPanelRules(tagged(element('identity-view')),'Settings, About',{rules:['class']});
+  }
   identityReply = identityAbsent;
   await element('identity-check').onclick();
   const absentView = element('identity-view');
   const absent = text(absentView);
-  assert.equal(absentView.children[0].textContent, 'This Panel cannot reach a runtime right now: select installed runtime: bootstrap: no trusted runtime installation.', 'the verdict names the reason a selection failure gives');
+  assert.equal(element('identity-status').textContent, 'No runtime is reachable.');
+  assert.equal(absentView.children[0].children[1].children[0].textContent, 'This Panel cannot reach a runtime right now: select installed runtime: bootstrap: no trusted runtime installation.', 'the verdict names the reason a selection failure gives');
   assert(absent.includes('Installed runtime selection: UNTRUSTED. select installed runtime'));
   assert(absent.includes('The runtime is absent: service resolution: runtime_unavailable: abstraction.facade/caller@1'), 'identity page reports the absent runtime');
   assert(absent.includes('The runtime is absent: service resolution: runtime_unavailable: abstraction.logging/reader@1'), 'logging view reports the absent runtime');
@@ -371,7 +411,7 @@ const exe = 'C:\\panel\\monitor.exe';
     throw Error('unexpected request '+path);
    }};
   vm.runInNewContext(plainScript(), context);
-  vm.runInNewContext(loadPageScript('explore_page.go'), context);
+  vm.runInNewContext(loadSectionScript('explore_page.go', 'exploreScript'), context);
 
   // task 2026-09-23, twelfth first-time visitor, finding 1: the page used
   // to show one sentence and one Load button until clicked. It now loads
@@ -379,7 +419,7 @@ const exe = 'C:\\panel\\monitor.exe';
   // loads; Load still re-runs it for a different program or account.
   await context.exploreLoadReady;
   assert(element('explore-list').children.length>0, 'the capabilities list already renders on arrival, with no click at all');
-  assert.equal(element('explore-status').children[0].textContent, "Showing this Panel's own capabilities. Probes act as monitor.exe. Rules name the program above.", 'the arrival read, with both fields genuinely blank, still says so');
+  assert.equal(element('explore-status').children[0].textContent, "Showing this Panel's own capabilities. Probes act as monitor. Rules name the program above.", 'the arrival read, with both fields genuinely blank, still says so');
   await element('explore-load').onclick();
   assert.equal(element('explore-program').value, exe, 'subject picker defaults to this Panel');
   assert.equal(element('explore-account').value, 'S-1-5-21-1');
@@ -398,7 +438,7 @@ const exe = 'C:\\panel\\monitor.exe';
   // explicit click both fields are already filled from that first read, so
   // this read is no longer "showing this Panel's own capabilities" for the
   // first time.
-  assert.equal(exploreStatus.children[0].textContent, 'Probes act as monitor.exe. Rules name the program above.');
+  assert.equal(exploreStatus.children[0].textContent, 'Probes act as monitor. Rules name the program above.');
   assert(!exploreStatus.children[0].textContent.includes(exe), 'the full path is not in the visible line');
   assert.equal(exploreStatus.title, exe, 'the full path stays reachable as the line\'s own title');
   assert.equal(exploreStatus.children[1].children[0].textContent, 'Technical details');
@@ -407,11 +447,11 @@ const exe = 'C:\\panel\\monitor.exe';
   // task 2026-09-23, thirteenth first-time visitor, finding 8: storage
   // read's own argument field named itself "DIGEST" with no explanation
   // and no example shape.
-  assert.equal(storageReadBox.argument.placeholder, "the object's digest (sha256:…)", 'the field\'s own placeholder gives an example shape, not the raw word DIGEST');
+  assert.equal(storageReadBox.argument.placeholder, 'Content digest', 'the placeholder is plain words, not the raw word DIGEST or a hash shape');
   const storageCaption = storageReadBox.children.find(c=>c.textContent==='Copy a digest from the Device or Work page.');
   assert(storageCaption, 'a caption says where to find one');
   await storageReadBox.children.find(c=>c.textContent==='Call').onclick();
-  assert.equal(storageReadBox.argumentNote.textContent, 'Fill in the object\'s digest (sha256:…) above to call storage read.', 'the missing-argument message sits beside the row\'s own field, in the same friendly words as its placeholder');
+  assert.equal(storageReadBox.argumentNote.textContent, 'Fill in Content digest above to call storage read.', 'the missing-argument message sits beside the row\'s own field, in the same friendly words as its placeholder');
   // task 2026-09-23, tenth first-time visitor, finding 6: a capability
   // needing no rule left Grant and Revoke disabled with no explanation;
   // it now shows the same "Nothing to grant" wording the shared grant
@@ -464,7 +504,7 @@ const exe = 'C:\\panel\\monitor.exe';
   // row reads with, replacing the old generic "Allowed; the call
   // answered." for this case.
   const foundDate = new Date(foundRule.setAt).toLocaleDateString();
-  assert.equal(rewriteBox.result.children[0].textContent, 'Allowed: Config rewrite on this service, set by openabstractions.exe on '+foundDate+'.', 'the deciding rule is named in the one visible line, in plain words, not the raw action id');
+  assert.equal(rewriteBox.result.children[0].textContent, 'Allowed: Config rewrite on this service, set by openabstractions on '+foundDate+'.', 'the deciding rule is named in the one visible line, in plain words, not the raw action id');
   assert(!rewriteBox.result.children[0].textContent.includes(editAction), 'the raw action id is not in the visible line');
   assert(ruleDetailsText(rewriteBox).includes('permit Config rewrite') && ruleDetailsText(rewriteBox).includes('set by C:\\oa\\openabstractions.exe'), 'the deciding rule\'s full record, with the raw path, sits under Technical details');
   assert(ruleDetailsText(rewriteBox).includes('Rules revision: rev-2'), 'the full revision also sits there');
@@ -493,11 +533,11 @@ const exe = 'C:\\panel\\monitor.exe';
   // message used to write to explore-status, shared by every probe on the
   // page; it now sits beside the row's own field instead.
   assert(!element('explore-status').textContent.includes('Fill in'), 'the shared status line is untouched by a per-row validation message');
-  assert(modelBox.argumentNote.textContent.includes('Fill in REGISTRY:REPO[@REVISION] above'), 'the message sits beside the row\'s own field and names it');
+  assert(modelBox.argumentNote.textContent.includes('Fill in Model reference above'), 'the message sits beside the row\'s own field and names it');
   const argumentLabel = modelBox.children.find(c => c.children.includes(modelBox.argument));
   assert(argumentLabel, 'the argument field sits under its own labelled row');
   assert(!argumentLabel.textContent.includes('REGISTRY:REPO[@REVISION]'), 'the placeholder text is not printed as row text (finding 5)');
-  assert.equal(modelBox.argument.placeholder, 'REGISTRY:REPO[@REVISION]', 'the placeholder lives inside the input itself');
+  assert.equal(modelBox.argument.placeholder, 'Model reference', 'the placeholder is plain words inside the input itself');
 
   // A probe this runtime refuses as incompatible marks itself "Not offered"
   // after that first refusal (finding 5) instead of inviting another Call.

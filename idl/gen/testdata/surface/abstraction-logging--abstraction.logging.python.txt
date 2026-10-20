@@ -1,3 +1,27 @@
+class ApplicationHistoryObserver
+  observe(target: ApplicationLogTarget, cursor: str, max_records: int, max_bytes: int, wait_ms: int) -> ApplicationLogPage
+class ApplicationHistoryObserverClient(ApplicationHistoryObserver)
+  __init__(transport)
+  observe(target: ApplicationLogTarget, cursor: str, max_records: int, max_bytes: int, wait_ms: int) -> ApplicationLogPage
+class ApplicationHistoryReader
+  read(target: ApplicationLogTarget, cursor: str, max_records: int, max_bytes: int) -> ApplicationLogPage
+class ApplicationHistoryReaderClient(ApplicationHistoryReader)
+  __init__(transport)
+  read(target: ApplicationLogTarget, cursor: str, max_records: int, max_bytes: int) -> ApplicationLogPage
+dataclass ApplicationLogPage
+  outcome: HistoryPageOutcome | None
+  records: list[Record]
+  next: str
+  at_end: bool
+dataclass ApplicationLogResource
+  program: str
+  captured_file_key: str
+enum ApplicationLogSelection
+  ONE_APP = 'one_app'
+  ALL_APPS = 'all_apps'
+dataclass ApplicationLogTarget
+  selection: ApplicationLogSelection | None
+  program: str
 dataclass Attestation
   by: str
   verified: bool
@@ -15,11 +39,24 @@ class DispatchError(ValueError)
   __init__(code)
 const HISTORY_CURSOR_WORDS
 const HISTORY_ERROR_CODES
+const HISTORY_IDENTITY_ERROR_CODES
 class HistoryObserver
   observe(cursor: str, max_records: int, max_bytes: int, wait_ms: int) -> Page
 class HistoryObserverClient(HistoryObserver)
   __init__(transport)
   observe(cursor: str, max_records: int, max_bytes: int, wait_ms: int) -> Page
+enum HistoryPageOutcome
+  PAGE = 'page'
+  GAP = 'gap'
+  UNAVAILABLE = 'unavailable'
+  INVALID = 'invalid'
+  RECORD_TOO_LARGE = 'record_too_large'
+  CORRUPT = 'corrupt'
+  UNSUPPORTED = 'unsupported'
+  FORBIDDEN = 'forbidden'
+  NOT_PERMITTED = 'not_permitted'
+  OS_AUTHORIZATION_REQUIRED = 'os_authorization_required'
+  OS_AUTHORIZATION_PENDING = 'os_authorization_pending'
 class HistoryReader
   read(cursor: str, max_records: int, max_bytes: int) -> Page
 class HistoryReaderClient(HistoryReader)
@@ -38,6 +75,14 @@ enum PageOutcome
   RECORD_TOO_LARGE = 'record_too_large'
   CORRUPT = 'corrupt'
   UNSUPPORTED = 'unsupported'
+dataclass ProducerClaim
+  provider: str
+  program: str
+  exe: str
+  user: str
+  pid: int
+  uid: int
+  gid: int
 dataclass Record
   schema: int
   time: str
@@ -67,6 +112,70 @@ class Sink
 class SinkClient(Sink)
   __init__(transport)
   write(record: Record) -> None
+enum SourceAvailability
+  AVAILABLE = 'available'
+  PERMISSION_DENIED = 'permission_denied'
+  UNAVAILABLE = 'unavailable'
+  UNSUPPORTED = 'unsupported'
+dataclass SourceCatalog
+  sources: list[SourceDescriptor]
+  outcome: SourceCatalogOutcome | None
+enum SourceCatalogOutcome
+  CATALOG = 'catalog'
+  FORBIDDEN = 'forbidden'
+  NOT_PERMITTED = 'not_permitted'
+  UNAVAILABLE = 'unavailable'
+  INVALID = 'invalid'
+dataclass SourceDescriptor
+  id: str
+  availability: SourceAvailability | None
+  limitations: list[SourceLimitation | str]
+enum SourceLimitation
+  RETENTION = 'retention'
+  NATIVE_REDACTION = 'native_redaction'
+  COLLECTION_POLICY = 'collection_policy'
+  NATIVE_ACCESS = 'native_access'
+  VISIBILITY_UNKNOWN = 'visibility_unknown'
+dataclass SourcePage
+  outcome: HistoryPageOutcome | None
+  records: list[SourceRecord]
+  next: str
+  at_end: bool
+class SourceReader
+  sources() -> SourceCatalog
+  read(source_id: str, cursor: str, max_records: int, max_bytes: int) -> SourcePage
+  start_at_end(source_id: str) -> SourcePage
+class SourceReaderClient(SourceReader)
+  __init__(transport)
+  sources() -> SourceCatalog
+  read(source_id: str, cursor: str, max_records: int, max_bytes: int) -> SourcePage
+  start_at_end(source_id: str) -> SourcePage
+dataclass SourceRecord
+  source_id: str
+  record: Record
+  producer: ProducerClaim | None
 def decode(data)
+def decode_application_log_page(data)
+def decode_application_log_resource(data)
+def decode_application_log_target(data)
+def decode_attestation(data)
+def decode_page(data)
+def decode_producer_claim(data)
+def decode_record(data)
+def decode_source_catalog(data)
+def decode_source_descriptor(data)
+def decode_source_page(data)
+def decode_source_record(data)
 def encode(v)
+def encode_application_log_page(v)
+def encode_application_log_resource(v)
+def encode_application_log_target(v)
+def encode_attestation(v)
+def encode_page(v)
+def encode_producer_claim(v)
+def encode_record(v)
+def encode_source_catalog(v)
+def encode_source_descriptor(v)
+def encode_source_page(v)
+def encode_source_record(v)
 def service_name(frame)

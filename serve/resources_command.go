@@ -30,6 +30,8 @@ is granted at once. Nothing is killed and no model is loaded.
 
 Every command accepts --endpoint and --timeout. The endpoint is --endpoint if given, else ABSTRACTION_RUNTIME_ENDPOINT if set, else the installed runtime.
 
+With --endpoint, --runtime-program PATH verifies that absolute executable under this account.
+
 resources ask is this command's old name, accepted until the next release.
 
 Exit codes: 0 acquired, 1 runtime not resolved or transport failure, 2 usage,
@@ -80,6 +82,8 @@ Subcommands:
   audit                   the record of every ask, yield and refusal
 
 Every command accepts --endpoint and --timeout. The endpoint is --endpoint if given, else ABSTRACTION_RUNTIME_ENDPOINT if set, else the installed runtime.
+
+With --endpoint, --runtime-program PATH verifies that absolute executable under this account.
 
 Exit codes: 0 printed, 1 runtime not resolved or transport failure, 2 usage,
 3 typed refusal, 4 unavailable.
@@ -144,7 +148,10 @@ func resourcesCommand(args []string, output, diagnostics io.Writer) error {
 
 	w := newWaiting(options.budget)
 	defer w.stop()
-	machine, source := options.machine(diagnostics, command)
+	machine, source, err := options.machine(diagnostics, command, resourcesUsage)
+	if err != nil {
+		return err
+	}
 	endpoint, _ := resolveEndpoint(options.endpoint)
 	call, done := w.call()
 	table, err := machine.ResolveResourceTable(call, client.Requirements{Scope: client.ScopeLocal})

@@ -2,10 +2,19 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"os/user"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	asks "github.com/openabstractions/abstraction-asks/go"
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
+	inference "github.com/openabstractions/abstraction-inference/go"
+	rights "github.com/openabstractions/abstraction-rights/go"
+	lend "github.com/openabstractions/abstraction-storage/go/abstraction/storage/lend"
 )
 
 // newLendingTestProvider builds a runtimeProviders holding one on-demand
@@ -104,5 +113,92 @@ func TestLendingProviderLaunchBudgetBoundsANeverReadyProvider(t *testing.T) {
 	}
 	if !activated(s) {
 		t.Fatalf("the launch was not activated")
+	}
+}
+
+// lendingQuestions lists the first-use questions book holds about lending.
+func lendingQuestions(t *testing.T, book *asks.Book) []asks.Record {
+	t.Helper()
+	records, _, err := book.ApplicationHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lending []asks.Record
+	for _, q := range records {
+		if _, action, _, ok := asks.FirstUse(q.Key, q.About, q.Text); ok && action == ActionLend {
+			lending = append(lending, q)
+		}
+	}
+	return lending
+}
+
+// TestLendNotGrantedAdmitsAFirstUseQuestion: a lend refused for want of a
+// rule admits the runtime's first-use question about the engine (VISION
+// 2026-09-22, research/model-bridge/DECISION.md rule 3); listing the ledger
+// admits none. A lend that reaches the decision without the caller's peer
+// records no publisher (ASK-A6).
+func TestLendNotGrantedAdmitsAFirstUseQuestion(t *testing.T) {
+	policy, err := rights.LoadDecisionPolicy(filepath.Join(t.TempDir(), "rights.json"), firstUseActions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, book := firstUseBook(t)
+	r := &runtimeRights{policy: policy, owner: a.rights.owner, firstUse: a.admitFirstUse}
+	a.rights = r
+	l := &runtimeLending{rights: r}
+	caller := inference.Subject{Account: r.owner, Program: filepath.Join(t.TempDir(), "lender.exe")}
+	if page := l.Lends(context.Background(), caller, "", 16); len(lendingQuestions(t, book)) != 0 {
+		t.Fatalf("listing admitted a question: %+v", page)
+	}
+	if result := l.Lend(context.Background(), caller, "hf", "object", "lmstudio", false); result.Outcome != lend.LendOutcomeNotPermitted {
+		t.Fatalf("lend without a rule: %+v", result)
+	}
+	questions := lendingQuestions(t, book)
+	if len(questions) != 1 || questions[0].About != caller.Program || !strings.HasSuffix(questions[0].Text, " on "+ResourceEngine("lmstudio")) {
+		t.Fatalf("one lend question about %s expected: %+v", caller.Program, questions)
+	}
+	if q := questions[0]; q.Publisher != "" || q.PublisherTrusted {
+		t.Fatalf("a lend decided without a peer recorded publisher %q trusted=%v", q.Publisher, q.PublisherTrusted)
+	}
+}
+
+// TestLendFirstUseRecordsTheCallersPublisher: a signed program that opens the
+// runtime's lending pipe itself and is refused a lend gets a first-use
+// question naming its publisher, read from the code of the peer the pipe
+// bound (ASK-A6).
+func TestLendFirstUseRecordsTheCallersPublisher(t *testing.T) {
+	pythonExe, pythonArgs, program, want := signedPythonPublisher(t)
+	account, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := rights.LoadDecisionPolicy(filepath.Join(t.TempDir(), "rights.json"), firstUseActions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, book := firstUseBook(t)
+	r := &runtimeRights{policy: policy, owner: account.Uid, firstUse: a.admitFirstUse}
+	endpoint := fmt.Sprintf(`\\.\pipe\oa-lend-test-%d-%d`, os.Getpid(), time.Now().UnixNano())
+	h, err := listenLending(endpoint, &runtimeLending{rights: r}, r.owner, func(err error) { t.Error(err) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	served := make(chan error, 1)
+	go func() { served <- h.Serve(ctx) }()
+	t.Cleanup(func() { cancel(); <-served })
+
+	var capture frameCapture
+	lend.NewLendingClient(&capture).Lend("hf", "object", "lmstudio", false)
+	capture.reply = runPipePython(t, pythonExe, pythonArgs, endpoint, capture.frame)
+	if result, err := lend.NewLendingClient(&capture).Lend("hf", "object", "lmstudio", false); err != nil || result.Outcome != lend.LendOutcomeNotPermitted {
+		t.Fatalf("lend from python: %+v %v", result, err)
+	}
+	questions := lendingQuestions(t, book)
+	if len(questions) != 1 || !samePrograms(questions[0].About, program) {
+		t.Fatalf("one lend question about %s expected: %+v", program, questions)
+	}
+	if q := questions[0]; q.Publisher != want.Subject || q.PublisherTrusted != want.Trusted {
+		t.Fatalf("the lend question must carry publisher %+v: %+v", want, q)
 	}
 }

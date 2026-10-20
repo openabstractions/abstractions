@@ -15,6 +15,7 @@ import (
 	casapi "github.com/openabstractions/abstraction-cas/go/api"
 	config "github.com/openabstractions/abstraction-config/go"
 	downloadserve "github.com/openabstractions/abstraction-download/go/serve"
+	"github.com/openabstractions/abstraction-facade/go-core/protected"
 	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	jobapi "github.com/openabstractions/abstraction-job/go/abstraction/job/acceptance"
@@ -37,6 +38,7 @@ type runtimeFlags struct {
 	downloadNASRoot                            string
 	isolated                                   string
 	gateway                                    string
+	operatorProgram                            string
 }
 
 const runtimeUsage = `Usage: openabstractions serve runtime [options]
@@ -78,14 +80,21 @@ install or register itself with the OS.
   --isolated NAME            run beside an installed runtime: derive every
                             endpoint from this name (a-z, 0-9, -); requires
                             --state-dir
+  --operator-program PATH    with --isolated and --state-dir only: also
+                            admit this executable as an operator, such
+                            as a Panel built from source; the installed
+                            runtime refuses it
   --supervised               installed-parent mode: private stdin pipe EOF
                             cancels; stdout READY 1 after listeners initialize
-  --xpc                      use the installed macOS LaunchAgent Mach
-                            services; requires launchd registration
+  --xpc                      use macOS LaunchAgent Mach services; requires
+                            launchd registration. With --isolated, every
+                            service uses its own development namespace
 
 To run beside an installed runtime, give one name and one directory:
   openabstractions serve runtime --isolated <name> --state-dir <absolute dir>
 It prints the ABSTRACTION_RUNTIME_ENDPOINT value for its clients.
+On macOS, add --xpc for native Program proof. Register its MachServices in
+the same user's launchd domain as com.openabstractions.isolated.<name>.<service-v1>.
 
 Exit codes: 0 a supervised runtime told to stop, 1 usage or startup failure,
 4 this process sees a packaged app's private copy of AppData.
@@ -106,7 +115,7 @@ func parseRuntime(args []string, output io.Writer) (runtimeFlags, error) {
 	// own single-dash listing.
 	// badFlag below prints this program's own three-line mistake shape;
 	flags.Usage = func() {} // the flag package's own per-error usage call must print nothing
-	flags.BoolVar(&options.xpc, "xpc", false, "use the installed macOS LaunchAgent Mach services; requires launchd registration")
+	flags.BoolVar(&options.xpc, "xpc", false, "use macOS LaunchAgent Mach services; with --isolated derive a development namespace; requires launchd registration")
 	flags.BoolVar(&options.supervised, "supervised", false, "installed-parent mode: private stdin pipe EOF cancels; stdout READY 1 after listeners initialize")
 	flags.StringVar(&options.isolated, "isolated", "", "run beside an installed runtime: derive every endpoint from this name (a-z, 0-9, -); requires --state-dir")
 	flags.StringVar(&options.endpoint, "endpoint", "", `resolver endpoint as a full platform path: \\.\pipe\<name> on Windows, an absolute socket path elsewhere (default: the installed runtime's per-user runtime-v1)`)
@@ -124,6 +133,7 @@ func parseRuntime(args []string, output io.Writer) (runtimeFlags, error) {
 	flags.StringVar(&options.downloadBackend, "jobs-download-backend", "", "download provider: native or nas (managed jobs only)")
 	flags.StringVar(&options.downloadNASRoot, "jobs-download-nas-root", "", "override the nas_store configuration setting for the NAS download provider")
 	flags.StringVar(&options.gateway, "gateway", "", "open the inference gateway window on 127.0.0.1:<port> for programs holding a local key (default: closed)")
+	flags.StringVar(&options.operatorProgram, "operator-program", "", "with --isolated and --state-dir only: also admit this executable as an operator, such as a Panel built from source; the installed runtime refuses it")
 	if err := flags.Parse(args); err != nil {
 		return options, badFlag(flags, output, "serve runtime", runtimeUsage, args, err)
 	}
@@ -162,10 +172,20 @@ func parseRuntime(args []string, output io.Writer) (runtimeFlags, error) {
 		return options, err
 	}
 	if options.isolated != "" {
-		if err := isolateRuntime(&options, bootstrap.Endpoint); err != nil {
+		derive := bootstrap.Endpoint
+		if options.xpc {
+			derive = options.defaultEndpoint
+		}
+		if err := isolateRuntime(&options, derive); err != nil {
 			return options, err
 		}
 	} else if err := completeSelection(options); err != nil {
+		return options, err
+	}
+	if err := checkRuntimeTransport(options); err != nil {
+		return options, err
+	}
+	if _, err := isolatedOperatorProgram(options); err != nil {
 		return options, err
 	}
 	return options, nil
@@ -206,12 +226,12 @@ func endpointForm(platform, flag, value string) error {
 	return nil
 }
 
-// isolateRuntime derives each endpoint the caller left unset from the name, in
-// the per-user namespace the installed runtime uses. Derived service names end
-// in -runtime, -logging, -config, -jobs or -model; installed ones end in -v1.
+// isolateRuntime derives every unset core listener from one private name.
+// Socket names preserve their -runtime/-logging/-config/-jobs/-model suffixes.
+// XPC uses canonical service names beneath the bootstrap owner's isolated prefix.
 func isolateRuntime(options *runtimeFlags, derive func(string) (string, error)) error {
 	name := options.isolated
-	valid := len(name) <= 64
+	valid := len(name) > 0 && len(name) <= 64
 	for _, c := range name {
 		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
 			valid = false
@@ -224,17 +244,22 @@ func isolateRuntime(options *runtimeFlags, derive func(string) (string, error)) 
 		return fmt.Errorf("runtime: --isolated %q requires --state-dir <absolute dir> to keep its jobs and log apart from the installed runtime's", name)
 	}
 	for _, item := range []struct {
-		value   *string
-		service string
-		enabled bool
+		value      *string
+		service    string
+		xpcService string
+		enabled    bool
 	}{
-		{&options.endpoint, "runtime", true}, {&options.logEndpoint, "logging", true}, {&options.configEndpoint, "config", true},
-		{&options.jobEndpoint, "jobs", !options.withoutJobs}, {&options.modelEndpoint, "model", !options.withoutModels},
+		{&options.endpoint, "runtime", "runtime-v1", true}, {&options.logEndpoint, "logging", "logging-v1", true}, {&options.configEndpoint, "config", "config-v1", true},
+		{&options.jobEndpoint, "jobs", "job-acceptance-v1", !options.withoutJobs}, {&options.modelEndpoint, "model", "model-v1", !options.withoutModels},
 	} {
 		if *item.value != "" || !item.enabled {
 			continue
 		}
-		endpoint, err := derive(name + "-" + item.service)
+		service := name + "-" + item.service
+		if options.xpc {
+			service = item.xpcService
+		}
+		endpoint, err := derive(service)
 		if err != nil {
 			return fmt.Errorf("runtime: --isolated %q: %w", name, err)
 		}
@@ -340,6 +365,15 @@ func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() err
 	if err := checkRuntimeTransport(options); err != nil {
 		return err
 	}
+	releaseAppAdmission, err := configureRuntimeAppSandbox(options)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := releaseAppAdmission(); err != nil {
+			complain("runtime app admission cleanup:", err)
+		}
+	}()
 	managed := !options.withoutJobs && options.jobRoot == ""
 	if managed {
 		state := options.stateDir
@@ -402,6 +436,8 @@ func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() err
 	if err != nil {
 		complain("runtime credentials:", err)
 	}
+	// Composed listeners also close on any return before host.Listen owns them.
+	defer credentials.close()
 	executor = credentials.executor(executor)
 	hostOptions := host.Options{Endpoint: options.endpoint, LogEndpoint: options.logEndpoint, ConfigEndpoint: options.configEndpoint, Sink: sink,
 		ModelRegistry: registry, ModelEndpoint: options.modelEndpoint,
@@ -419,10 +455,15 @@ func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() err
 		hostOptions.ConfigObservationSource = fileConfigObservationSource(hostOptions.ConfigUserKey)
 	}
 	credentials.configure(&hostOptions)
-	inference, err := composeInference(options, credentials, sink, report)
+	selfLogs, err := runtimeAttributedLogWriter(sink)
+	if err != nil {
+		return fmt.Errorf("runtime self logging: %w", err)
+	}
+	inference, err := composeInference(options, credentials, selfLogs, report)
 	if err != nil {
 		complain("runtime inference:", err)
 	}
+	defer inference.close()
 	executor = composeInferenceJobs(executor, inference, credentials, report)
 	hostOptions.JobExecutor = executor
 	routerEndpoint, err := runtimeRouterEndpoint(options)
@@ -443,6 +484,13 @@ func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() err
 		complain("runtime asks:", err)
 	}
 	questions.configure(&hostOptions)
+	questions.useTierFacts(inference.hosts(), registries)
+	// The protected Security-log path (logging LOG-N1, facade FAC-H2) exists
+	// only beside a trusted machine-wide helper; elsewhere the denial stays.
+	protectedSources := composeProtected(options, questions, protected.OwnImage)
+	if protectedSources != nil {
+		hostOptions.LogProtectedSources = protectedSources
+	}
 	applications, applicationsEndpoint, appErr := composeApplications(options, rightsState, report)
 	if appErr != nil {
 		complain("runtime applications:", appErr)
@@ -451,12 +499,18 @@ func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() err
 		defer applications.Close()
 	}
 	configureApplications(&hostOptions, applications, applicationsEndpoint)
+	if applications != nil {
+		// A program that registered itself is asked about in the native
+		// prompt (runtime_self_registered.go).
+		questions.keepSelfRegistered(ctx, applications.directory)
+	}
 	var composedActions []string
 	if hostOptions.JobRoot != "" {
 		composedActions = append(composedActions, jobapi.ResourceActions...)
 	}
-	rightsState.configure(&hostOptions, composedActions)
 	gateByRights(&hostOptions, rightsState.decider())
+	gateJobStanding(&hostOptions, rightsState)
+	rightsState.configure(&hostOptions, composedActions)
 	if rightsState != nil {
 		if err := rightsState.install(hostOptions.RightsActions, installationRules(hostOptions, registries)); err != nil {
 			complain("runtime rights:", err)
@@ -474,11 +528,14 @@ func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() err
 		}
 	}
 	if options.xpc {
-		if err := installedHostEndpoints(&hostOptions, bootstrap.InstalledEndpoint); err != nil {
+		if err := xpcHostEndpoints(&hostOptions, options.defaultEndpoint); err != nil {
 			credentials.close()
 			inference.close()
 			return err
 		}
+	}
+	if inference != nil && inference.providers != nil {
+		inference.providers.setChildEnvironment(providerEnvironment(options, hostOptions))
 	}
 	runtime, err := host.Listen(hostOptions)
 	if err != nil {
@@ -487,12 +544,34 @@ func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() err
 		return err
 	}
 	defer runtime.Close()
+	// Pending typed requests follow rights changes while the runtime serves;
+	// deferred after runtime.Close, the stop runs first, so no settling pass
+	// edits the Book once the asks host starts closing (ASK-A13).
+	defer questions.followRights(ctx)()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	// This runtime now owns its endpoints and serves nothing yet: the previous
+	// runtime's pending system-access questions go before any request is
+	// accepted (asks ASK-S1). A runtime that failed to bind returned above.
+	if err := questions.withdrawStale(); err != nil {
+		return err
+	}
+	retentionCtx, stopRetention := context.WithCancel(ctx)
+	waitRetention := inference.serveInputRetention(retentionCtx)
+	if fileSink, ok := sink.(*logging.FileSink); ok {
+		joinLogs := fileSink.MaintainRetention(retentionCtx, func(err error) {
+			fmt.Fprintln(os.Stderr, "runtime: log retention:", err)
+		})
+		defer func() { stopRetention(); joinLogs() }()
+	}
+	defer waitRetention()
+	defer stopRetention()
 	if options.isolated != "" {
 		describeIsolated(os.Stderr, options)
 	}
+	stopProtected := protectedSources.serve(ctx, report)
+	defer stopProtected()
 	if ready != nil {
 		if err := ready(); err != nil {
 			return err
@@ -542,40 +621,14 @@ func managedJobExecutor(root string, onError func(error)) (acceptanceprovider.Ex
 	return execution, nil
 }
 
-// Durable work survives user cache cleanup.
+// Durable work survives user cache cleanup; config.DataDirFor owns the
+// per-user data folder.
 func runtimeStateDir(platform string, getenv func(string) string, home func() (string, error)) (string, error) {
-	var base string
-	switch platform {
-	case "windows":
-		base = getenv("LOCALAPPDATA")
-	case "linux":
-		base = getenv("XDG_DATA_HOME")
-		if base == "" {
-			h, err := home()
-			if err != nil {
-				return "", err
-			}
-			if !filepath.IsAbs(h) {
-				return "", fmt.Errorf("runtime: absolute home required")
-			}
-			base = filepath.Join(h, ".local", "share")
-		}
-	case "darwin":
-		h, err := home()
-		if err != nil {
-			return "", err
-		}
-		if !filepath.IsAbs(h) {
-			return "", fmt.Errorf("runtime: absolute home required")
-		}
-		base = filepath.Join(h, "Library", "Application Support")
-	default:
-		return "", fmt.Errorf("runtime: unsupported state platform %q", platform)
+	base, err := config.DataDirFor(platform, getenv, home)
+	if err != nil {
+		return "", err
 	}
-	if !filepath.IsAbs(base) {
-		return "", fmt.Errorf("runtime: absolute user data directory required")
-	}
-	return filepath.Join(base, "openabstractions", "runtime-v1"), nil
+	return filepath.Join(base, "runtime-v1"), nil
 }
 
 func runtimeLogSink(path string) (logging.Sink, io.Closer, error) {
@@ -589,7 +642,7 @@ func runtimeLogSink(path string) (logging.Sink, io.Closer, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, nil, err
 	}
-	sink, err := logging.OpenFileSink(path)
+	sink, err := logging.OpenDefaultRetainedFileSink(path)
 	if err != nil {
 		return nil, nil, err
 	}

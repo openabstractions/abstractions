@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
+	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-identity/listen"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	iwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
-	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	router "github.com/openabstractions/abstraction-router/go"
 )
 
@@ -109,7 +109,7 @@ func newNativeEmbedTestProvider(t *testing.T, name string, embed func(iwire.Embe
 func runtimeEmbedProvider(t *testing.T, providers *runtimeProviders, host *router.Host) *inference.Provider {
 	t.Helper()
 	p, err := inference.New(inference.Config{Router: router.New(host),
-		Admit: providers.nativeAdmit,
+		Admit:  providers.nativeAdmit,
 		Decide: func(context.Context, inference.Subject, string, string) (string, error) { return "permitted", nil },
 		Apply: func(context.Context, inference.Subject, string, string, string) (map[string]string, string) {
 			return nil, "not_permitted"

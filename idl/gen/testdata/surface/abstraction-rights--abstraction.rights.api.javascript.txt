@@ -7,18 +7,33 @@ enum ActionEditOutcome
   Forbidden
   Unavailable
 class AuthorizationClient
+  listActionDescriptions(cursor, limit)
   decide(action, resource)
   decideFor(subject, action, resource)
 class AuthorizationOperatorClient
+  registerDescribedAction(expectedRevision, description)
+  applyFirstUseAllow(expectedRevision, questionId)
   listPolicy(cursor, limit)
   setRule(expectedRevision, rule)
   revokeRule(expectedRevision, subject, action, resource)
+  stopAnswerer(expectedRevision, answerer, alsoRevokeGrants)
+  revokeAnswerPermits(expectedRevision, answerer, target, actions, resource, questionId)
   setRuleFor(expectedRevision, rule, ttlMs, why)
+  setRulesFor(expectedRevision, rules, ttlMs, why)
   readRule(subject, action, resource)
   registerAction(expectedRevision, action)
   retireAction(expectedRevision, action)
+  explainFor(subject, action, resource)
+  listDefaults()
+  setDefault(expectedRevision, name, on)
 object AuthorizationOperatorService {wireName, Client}
 object AuthorizationService {wireName, Client}
+enum BatchCheckOutcome
+  Checked
+  Conflict
+  Invalid
+  Forbidden
+  Unavailable
 enum DecisionOutcome
   Permitted
   Denied
@@ -27,7 +42,17 @@ enum DecisionOutcome
   Invalid
   Forbidden
   Unavailable
+enum DecisionSource
+  None
+  OwnRule
+  TypedBlock
+  AccountDefault
+  DefaultExcluded
 class DispatchError
+enum PermissionFirstUse
+  None
+  Exact
+  ConsumingPaired
 enum PolicyEditOutcome
   Applied
   Conflict
@@ -41,6 +66,9 @@ enum PolicyPageOutcome
   Forbidden
   Unavailable
 class Refusal
+enum ResourceSelectorKind
+  One
+  All
 enum RuleReadOutcome
   Found
   Expired
@@ -48,6 +76,23 @@ enum RuleReadOutcome
   Invalid
   Forbidden
   Unavailable
+class SelectorAuthorizationClient
+  listPermissionDefinitions(cursor, limit)
+  listPermissionBundles(cursor, limit)
+  checkBatch(request)
+  checkBatchFor(subject, request)
+  checkLegacyOperationFor(subject, request)
+class SelectorAuthorizationOperatorClient
+  listSelectorRules(cursor, limit)
+  readSelectorRule(subject, selection)
+  setSelectorRule(expectedRevision, rule, ttlMs, why)
+  removeSelectorRule(expectedRevision, subject, selection)
+  applyBundle(expectedRevision, subject, bundleRef, selector, ttlMs, why)
+  removeBundle(expectedRevision, subject, originId)
+  applyPermissionAllow(expectedRevision, questionId)
+  undoPermissionEffect(expectedRevision, questionId)
+object SelectorAuthorizationOperatorService {wireName, Client}
+object SelectorAuthorizationService {wireName, Client}
 class ServiceError
 enum ServiceErrorCode
   HandlerError
@@ -57,8 +102,104 @@ enum ServiceErrorCode
   UnknownMethod
   WrongMode
 function decode(data)
+function decodeAccountDefault(data)
+function decodeActionDescription(data)
+function decodeActionEdit(data)
+function decodeAppMetadata(data)
+function decodeBatchDecision(data)
+function decodeBundleExpansion(data)
+function decodeBundleOrigin(data)
+function decodeCatalogEntry(data)
+function decodeCheckBatchRequest(data)
+function decodeConcreteResource(data)
+function decodeDecision(data)
+function decodeDecisionExplanation(data)
+function decodeDefaultEdit(data)
+function decodeDefaultPage(data)
+function decodeDescribedAction(data)
+function decodeDescriptionEdit(data)
+function decodeDescriptionPage(data)
+function decodeHoldMetadata(data)
+function decodeLegacyOperationRequest(data)
+function decodePermissionBundleDefinition(data)
+function decodePermissionBundlePage(data)
+function decodePermissionDefinition(data)
+function decodePermissionDefinitionPage(data)
+function decodePermissionEffect(data)
+function decodePermissionKey(data)
+function decodePermissionSelection(data)
+function decodePolicyEdit(data)
+function decodePolicyPage(data)
+function decodePolicyRule(data)
+function decodeRequest(data)
+function decodeResourceSelector(data)
+function decodeResponseMetadata(data)
+function decodeRuleRead(data)
+function decodeRuleRecord(data)
+function decodeSelectorEdit(data)
+function decodeSelectorPermissionDefinition(data)
+function decodeSelectorRule(data)
+function decodeSelectorRulePage(data)
+function decodeSelectorRuleRead(data)
+function decodeSelectorRuleRecord(data)
+function decodeSubject(data)
 function encode(v)
+function encodeAccountDefault(v)
+function encodeActionDescription(v)
+function encodeActionEdit(v)
+function encodeAppMetadata(v)
+function encodeBatchDecision(v)
+function encodeBundleExpansion(v)
+function encodeBundleOrigin(v)
+function encodeCatalogEntry(v)
+function encodeCheckBatchRequest(v)
+function encodeConcreteResource(v)
+function encodeDecision(v)
+function encodeDecisionExplanation(v)
+function encodeDefaultEdit(v)
+function encodeDefaultPage(v)
+function encodeDescribedAction(v)
+function encodeDescriptionEdit(v)
+function encodeDescriptionPage(v)
+function encodeHoldMetadata(v)
+function encodeLegacyOperationRequest(v)
+function encodePermissionBundleDefinition(v)
+function encodePermissionBundlePage(v)
+function encodePermissionDefinition(v)
+function encodePermissionDefinitionPage(v)
+function encodePermissionEffect(v)
+function encodePermissionKey(v)
+function encodePermissionSelection(v)
+function encodePolicyEdit(v)
+function encodePolicyPage(v)
+function encodePolicyRule(v)
+function encodeRequest(v)
+function encodeResourceSelector(v)
+function encodeResponseMetadata(v)
+function encodeRuleRead(v)
+function encodeRuleRecord(v)
+function encodeSelectorEdit(v)
+function encodeSelectorPermissionDefinition(v)
+function encodeSelectorRule(v)
+function encodeSelectorRulePage(v)
+function encodeSelectorRuleRead(v)
+function encodeSelectorRuleRecord(v)
+function encodeSubject(v)
 const knownRights
+function newAccountDefault()
+  name
+  action
+  resource
+  everyResource
+  on
+  setBy
+  setAt
+function newActionDescription()
+  action
+  featureApp
+  appLabel
+  description
+  declaredRisk
 function newActionEdit()
   outcome
   revision
@@ -68,19 +209,114 @@ function newAppMetadata()
   name
   rights
   registered
+function newBatchDecision()
+  outcome
+  revision
+  collectionOutcome
+  outcomes
+function newBundleExpansion()
+  bundleRef
+  definitionDigest
+  selector
+  selections
+function newBundleOrigin()
+  id
+  expansion
 function newCatalogEntry()
   action
   registeredBy
   registeredAt
+function newCheckBatchRequest()
+  expectedRevision
+  collectionAdmission
+  resources
+function newConcreteResource()
+  permission
+  target
 function newDecision()
   outcome
   policyRevision
+function newDecisionExplanation()
+  outcome
+  policyRevision
+  source
+  defaultName
+function newDefaultEdit()
+  outcome
+  revision
+  current
+function newDefaultPage()
+  outcome
+  revision
+  defaults
+function newDescribedAction()
+  action
+  choices
+  description
+  publishedBy
+  publishedAt
+function newDescriptionEdit()
+  outcome
+  revision
+  current
+function newDescriptionPage()
+  outcome
+  revision
+  actions
+  next
+  complete
 function newHoldMetadata()
   app
   name
   right
   why
   since
+function newLegacyOperationRequest()
+  legacyAction
+  legacyResource
+  concreteOperation
+function newPermissionBundleDefinition()
+  bundleRef
+  ownerContract
+  label
+  targetType
+  supportedSelectors
+  members
+  disclosure
+  definitionDigest
+function newPermissionBundlePage()
+  outcome
+  revision
+  bundles
+  next
+  complete
+function newPermissionDefinition()
+  action
+  ownerContract
+  operations
+  resourceProfile
+  resourceType
+  enforcedBy
+  disclosure
+  lifecycle
+  firstUse
+  served
+function newPermissionDefinitionPage()
+  outcome
+  revision
+  definitions
+  next
+  complete
+function newPermissionEffect()
+  subject
+  selections
+  bundle
+function newPermissionKey()
+  action
+  resourceProfile
+function newPermissionSelection()
+  permission
+  selector
 function newPolicyEdit()
   outcome
   revision
@@ -107,6 +343,9 @@ function newRequest()
   why
   app
   admin
+function newResourceSelector()
+  kind
+  target
 function newResponseMetadata()
   code
   error
@@ -127,6 +366,40 @@ function newRuleRecord()
   setAt
   why
   expires
+function newSelectorEdit()
+  outcome
+  revision
+  current
+  bundleOrigin
+function newSelectorPermissionDefinition()
+  definition
+  label
+  supportedSelectors
+  firstUseSelectors
+  collection
+  allEffect
+  requestType
+function newSelectorRule()
+  subject
+  selection
+  permit
+function newSelectorRulePage()
+  outcome
+  revision
+  records
+  next
+  complete
+function newSelectorRuleRead()
+  outcome
+  revision
+  record
+function newSelectorRuleRecord()
+  rule
+  setBy
+  setAt
+  why
+  expires
+  bundleOrigin
 function newSubject()
   account
   program

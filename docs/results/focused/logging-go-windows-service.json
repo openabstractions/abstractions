@@ -34,6 +34,7 @@
       "openabstractions-flat/abstraction-asks/go/go.sum",
       "openabstractions-flat/abstraction-cas/go",
       "openabstractions-flat/abstraction-cas/go/go.mod",
+      "openabstractions-flat/abstraction-cas/go/go.sum",
       "openabstractions-flat/abstraction-config/CONTRACT.md",
       "openabstractions-flat/abstraction-config/config.thrift",
       "openabstractions-flat/abstraction-config/go",
@@ -79,8 +80,20 @@
       "openabstractions-flat/abstraction-model/go/go.sum",
       "openabstractions-flat/abstraction-model/identity",
       "openabstractions-flat/abstraction-model/identity/go.mod",
+      "openabstractions-flat/abstraction-provider-kit/go/go.mod",
+      "openabstractions-flat/abstraction-provider-kit/go/go.sum",
+      "openabstractions-flat/abstraction-provider-lemonade/go/go.mod",
+      "openabstractions-flat/abstraction-provider-lemonade/go/go.sum",
+      "openabstractions-flat/abstraction-provider-localai/go/go.mod",
+      "openabstractions-flat/abstraction-provider-localai/go/go.sum",
       "openabstractions-flat/abstraction-provider-modelbridge/go/go.mod",
+      "openabstractions-flat/abstraction-provider-modelbridge/go/go.sum",
       "openabstractions-flat/abstraction-provider-modelhost/go/go.mod",
+      "openabstractions-flat/abstraction-provider-modelhost/go/go.sum",
+      "openabstractions-flat/abstraction-provider-pytorch/go/go.mod",
+      "openabstractions-flat/abstraction-provider-pytorch/go/go.sum",
+      "openabstractions-flat/abstraction-provider-thenoise/go/go.mod",
+      "openabstractions-flat/abstraction-provider-thenoise/go/go.sum",
       "openabstractions-flat/abstraction-resource/go",
       "openabstractions-flat/abstraction-resource/go/go.mod",
       "openabstractions-flat/abstraction-resource/go/go.sum",
@@ -124,7 +137,7 @@
     ],
     "service_language": "go"
   },
-  "inputs_digest": "abad6d86a69309e6d9b3f89bf16bb0dd5c08f328e9b807035aaa37308040e94c",
+  "inputs_digest": "dc094bdc84ea98021279f6a11b6c0f5453201449350e2252af79a558b67e30ca",
   "toolchains": {
     "python": {
       "argv": [
@@ -133,7 +146,7 @@
       ],
       "exit": 0,
       "output": "Python 3.12.10\r\n",
-      "seconds": 0.015
+      "seconds": 0.016
     },
     "go": {
       "argv": [
@@ -153,9 +166,9 @@
       "go"
     ],
     "exit": 0,
-    "output": "source revision: 7b38207fe78827c6b071945c79f9195aabefc1cc (uncommitted changes present)\r\ngo version go1.26.5 windows/amd64\r\nPASS: Go write\r\nPASS: Go bad-schema\r\nPASS: Go absent\r\nPASS: go independent client -> generated protocol -> shared IPC -> identity-bound Go service -> provider\r\nPASS: client exited; record survived; schema refused; absent service errored; no client store\r\n",
-    "seconds": 1.688
+    "output": "source revision: 13a7bec8c622b38e7917234e5527786b74260d33 (uncommitted changes present)\r\ngo version go1.26.5 windows/amd64\r\nPASS: Go write\r\nPASS: Go bad-schema\r\nPASS: Go absent\r\nPASS: go independent client -> generated protocol -> shared IPC -> identity-bound Go service -> provider\r\nPASS: client exited; record survived; schema refused; absent service errored; no client store\r\n",
+    "seconds": 1.906
   },
-  "commit": "7b38207fe78827c6b071945c79f9195aabefc1cc",
-  "record_digest": "51d88c15fe42e057efdbee4b0dd2da8d46a9309ce41aed22ccfa46319af70dfd"
+  "commit": "13a7bec8c622b38e7917234e5527786b74260d33",
+  "record_digest": "778f923426dcd36d100edc39aa325b768edf48eb0001ca0eefc003eb0c78459c"
 }

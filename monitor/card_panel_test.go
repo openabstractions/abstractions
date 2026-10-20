@@ -10,11 +10,13 @@ import (
 	"testing"
 	"time"
 
+	fwire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-identity/listen"
 	"github.com/openabstractions/abstraction-resource/go/instrument"
 	resourceservice "github.com/openabstractions/abstraction-resource/go/service"
+	rights "github.com/openabstractions/abstraction-rights/go"
 )
 
 // fakeInstrument reports the samples a test writes, the same fixture shape
@@ -71,6 +73,41 @@ func panelCardRuntime(t *testing.T, policy resourceservice.Policy) {
 // The card table reads every resource the table reports and forwards each
 // row unchanged: a permitted caller sees the machine's rows, verified and
 // claimed alike.
+// A holder takes the title of a local registered application whose program
+// is the same file; a remote entry, an untitled entry, a different program
+// and an unreadable directory leave it untitled.
+func TestCardHolderTitleComesFromTheRegisteredDescriptor(t *testing.T) {
+	dir := t.TempDir()
+	program := filepath.Join(dir, "app", "picture.exe")
+	other := filepath.Join(dir, "other", "picture.exe")
+	for _, file := range []string{program, other} {
+		if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(file, []byte("program"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	holders := func() []cardResourceState {
+		return []cardResourceState{{Resource: "card:0", Holders: []cardHolder{{Program: program}, {Program: other}, {Program: "host:picture"}}}}
+	}
+	entries := []fwire.ApplicationEntry{
+		{Descriptor: fwire.ApplicationDescriptor{Name: "remote", Program: program, Title: "Remote App"}, Scope: fwire.ScopeRemote},
+		{Descriptor: fwire.ApplicationDescriptor{Name: "untitled", Program: other}, Scope: fwire.ScopeLocal},
+		{Descriptor: fwire.ApplicationDescriptor{Name: "picture", Program: program, Title: "Picture App"}, Scope: fwire.ScopeLocal},
+	}
+	resources := holders()
+	(&servicePanel{comfyApps: &setupApplicationsFake{page: fwire.ApplicationPage{Outcome: fwire.ApplicationOutcomePage, Applications: entries}}}).titleCardHolders(context.Background(), resources)
+	if got := resources[0].Holders; got[0].Title != "Picture App" || got[1].Title != "" || got[2].Title != "" {
+		t.Fatalf("titles %+v", got)
+	}
+	resources = holders()
+	(&servicePanel{comfyApps: &setupApplicationsFake{page: fwire.ApplicationPage{Outcome: fwire.ApplicationOutcomeForbidden, Applications: entries}}}).titleCardHolders(context.Background(), resources)
+	if got := resources[0].Holders; got[0].Title != "" {
+		t.Fatalf("an unreadable directory titled a holder: %+v", got)
+	}
+}
+
 func TestCardTableReadsEveryResourceAndRow(t *testing.T) {
 	own(t)
 	panelCardRuntime(t, func(context.Context, *identity.Peer, string, string) error { return nil })
@@ -214,12 +251,17 @@ func TestCardAwakeReadsTheTableFirst(t *testing.T) {
 	}
 }
 
-// A table with no awake resource falls back to the legacy rights read;
-// own(t) leaves no admin.secret, which means no legacy rights service ever
-// ran beside this state, so the table's answer stands: a page with nobody
-// holding awake, and no path or secret in any reason.
-func TestCardAwakeFallsBackWhenTheTableHasNoAwakeResource(t *testing.T) {
+// An empty resource-table result is authoritative even when legacy rights
+// state exists. The card page must not read its admin secret or dial that API.
+func TestCardAwakeEmptyTableDoesNotConsultLegacyRights(t *testing.T) {
 	own(t)
+	legacyState := rights.DefaultStateDir()
+	if err := os.MkdirAll(legacyState, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacyState, "admin.secret"), []byte("legacy-only"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	panelCardRuntimeWithoutAwake(t, func(context.Context, *identity.Peer, string, string) error { return nil })
 	h := newTestPanel(t).handler("test-key")
 
@@ -227,8 +269,8 @@ func TestCardAwakeFallsBackWhenTheTableHasNoAwakeResource(t *testing.T) {
 	if view.Outcome != "page" || view.Source != "table" || len(view.Holds) != 0 || view.Reason != "" {
 		t.Fatalf("awake view %+v", view)
 	}
-	if strings.Contains(view.Reason, "table:") {
-		t.Fatalf("a table that answered with no rows is not a table failure: %q", view.Reason)
+	if strings.Contains(view.Reason, "admin.secret") || strings.Contains(view.Reason, "legacy rights") {
+		t.Fatalf("empty table result consulted legacy rights state: %q", view.Reason)
 	}
 }
 

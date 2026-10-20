@@ -56,6 +56,9 @@ var minMaxInfoW = []cField{
 	{"ptMaxTrackSize", 2 * cInt, cInt},
 }
 
+// HIGHCONTRASTW is two DWORDs followed by an LPWSTR, winuser.h.
+var highContrastW = []cField{{"cbSize", cInt, 0}, {"dwFlags", cInt, 0}, {"lpszDefaultScheme", cPtr, 0}}
+
 // notifyIconDataW is NOTIFYICONDATAW, shellapi.h. Each WCHAR array's own size
 // is its element count times cShort, but a WCHAR array aligns like one WCHAR,
 // not like its whole span, so it carries an explicit align. guidItem is
@@ -108,6 +111,12 @@ func TestMinMaxInfoLayout(t *testing.T) {
 	if unsafe.Sizeof(point{}) != 2*cInt || unsafe.Offsetof(point{}.Y) != cInt {
 		t.Fatal("POINT does not contain two contiguous LONG fields")
 	}
+}
+
+func TestHighContrastLayout(t *testing.T) {
+	var v highContrast
+	match(t, "HIGHCONTRASTW", highContrastW, unsafe.Sizeof(v),
+		unsafe.Offsetof(v.Size), unsafe.Offsetof(v.Flags), unsafe.Offsetof(v.DefaultScheme))
 }
 
 func TestNotifyIconDataLayout(t *testing.T) {

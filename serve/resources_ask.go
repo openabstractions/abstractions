@@ -81,7 +81,10 @@ func resourcesAskCommand(args []string, output, diagnostics io.Writer) error {
 	}
 	w := newWaiting(budget)
 	defer w.stop()
-	machine, source := options.machine(diagnostics, command)
+	machine, source, err := options.machine(diagnostics, command, resourcesAskUsage)
+	if err != nil {
+		return err
+	}
 	endpoint, _ := resolveEndpoint(options.endpoint)
 	call, done := w.call()
 	leases, err := machine.ResolveResourceLeases(call, client.Requirements{Scope: client.ScopeLocal})

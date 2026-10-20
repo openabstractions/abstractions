@@ -8,6 +8,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -52,6 +53,8 @@ every process of this user. add, rotate and revoke print no secret, and no
 command can read one back.
 
 Every command accepts --endpoint, --timeout and --json. The endpoint is --endpoint if given, else ABSTRACTION_RUNTIME_ENDPOINT if set, else the installed runtime.
+
+With --endpoint, --runtime-program PATH verifies that absolute executable under this account.
 
 Exit codes: 0 done, 1 runtime not resolved or transport failure, 2 usage,
 3 typed refusal (conflict, invalid, forbidden, no_secure_store, ...),
@@ -348,9 +351,12 @@ func credentialsCommand(args []string, stdin io.Reader, output, diagnostics io.W
 }
 
 func resolveHolder(options serviceOptions, diagnostics io.Writer, command string) (*credclient.Holder, *waiting, error) {
+	machine, source, err := options.machine(diagnostics, command, credentialsUsage)
+	if err != nil {
+		return nil, nil, err
+	}
 	w := newWaiting(options.budget)
 	call, done := w.call()
-	machine, source := options.machine(diagnostics, command)
 	holder, err := machine.ResolveCredentials(call, client.Requirements{})
 	done()
 	if err != nil {
@@ -416,8 +422,11 @@ func setApplyRule(options serviceOptions, w *waiting, diagnostics io.Writer, com
 	if err != nil {
 		return &exitError{exitNotResolved, fmt.Errorf("%s: account unavailable: %w", command, err)}
 	}
+	machine, source, err := options.machine(diagnostics, command, credentialsUsage)
+	if err != nil {
+		return err
+	}
 	call, done := w.call()
-	machine, source := options.machine(diagnostics, command)
 	operator, err := machine.ResolveRightsOperator(call, client.Requirements{})
 	done()
 	if err != nil {
@@ -451,8 +460,17 @@ func setApplyRule(options serviceOptions, w *waiting, diagnostics io.Writer, com
 	return nil
 }
 
+// credentialsBackendGOOS is the platform credentialsBackend judges; tests set it.
+var credentialsBackendGOOS = runtime.GOOS
+
 func credentialsBackend(output, diagnostics io.Writer, choice, state string) error {
 	const command = "credentials backend"
+	// Only a Linux runtime reads this choice. Elsewhere, writing it would also
+	// create the credentials directory, and a Windows state with that directory
+	// and no store marker binds to the Credential Manager (CRED-B1).
+	if credentialsBackendGOOS != "linux" {
+		return flagMistake(diagnostics, command, credentialsUsage, "only a Linux runtime reads a store choice; this one selects its store itself")
+	}
 	if choice != credentials.StoreFile && choice != "file" && choice != credentials.StoreSecretService {
 		return flagMistake(diagnostics, command, credentialsUsage, "choose file or secret-service")
 	}

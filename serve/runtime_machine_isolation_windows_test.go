@@ -46,12 +46,7 @@ func TestIsolatedRuntimeReadsNoMachineConfiguration(t *testing.T) {
 		"credentials": {credentialsBackendFile, "file-0600\n"},
 		"inference":   {inferenceHostsFile, `{"local": []}`},
 	} {
-		if err := os.MkdirAll(filepath.Join(state, dir), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(state, dir, file[0]), []byte(file[1]), 0o600); err != nil {
-			t.Fatal(err)
-		}
+		writeStateFile(t, filepath.Join(state, dir, file[0]), file[1])
 	}
 	name := fmt.Sprintf("machine-%d", os.Getpid())
 	options, err := parseRuntime([]string{"--isolated", name, "--state-dir", state, "--without-jobs"}, io.Discard)

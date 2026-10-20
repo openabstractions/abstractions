@@ -38,6 +38,36 @@ func TestCppCompleteInferenceHeaderCompiles(t *testing.T) {
 	}
 }
 
+func TestCppEmptyServiceArgumentsCompileWithWarningsAsErrors(t *testing.T) {
+	s, err := parse(head + `struct Record {1: required string value}(document="true",unknown_fields="refuse") service Empty { string Read() oneway void Ping() }(wire_name="example.empty/service@1")`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cxx := os.Getenv("CXX")
+	if cxx == "" {
+		for _, candidate := range []string{"cl", "g++", "clang++"} {
+			if cxx, err = exec.LookPath(candidate); err == nil {
+				break
+			}
+		}
+	}
+	if cxx == "" {
+		t.Skip("C++ requires CXX, cl, g++, or clang++")
+	}
+	dir := t.TempDir()
+	writeNamespaceFile(t, dir, "rec.h", genCpp(s))
+	writeNamespaceFile(t, dir, "probe.cpp", `#include "rec.h"`+"\n")
+	args := []string{"-std=c++17", "-Wall", "-Wextra", "-Werror=unused-parameter", "-Werror=unused-variable", "-fsyntax-only", "probe.cpp"}
+	if n := strings.ToLower(filepath.Base(cxx)); n == "cl" || n == "cl.exe" {
+		args = []string{"/nologo", "/std:c++17", "/EHsc", "/W4", "/WX", "/Zs", "probe.cpp"}
+	}
+	c := exec.Command(cxx, args...)
+	c.Dir = dir
+	if out, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("generated empty-argument service header: %v\n%s", err, out)
+	}
+}
+
 func TestCppStructOrderSkipsImportedAliases(t *testing.T) {
 	s, err := loadDefinition(productionFile(t, "abstraction-model/model.thrift"))
 	if err != nil {

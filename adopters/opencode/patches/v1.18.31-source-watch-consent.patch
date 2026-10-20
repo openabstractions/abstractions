@@ -1,0 +1,141 @@
+diff --git a/packages/tui/src/routes/session/permission-disclosure.ts b/packages/tui/src/routes/session/permission-disclosure.ts
+new file mode 100644
+index 0000000..ba8eb53
+--- /dev/null
++++ b/packages/tui/src/routes/session/permission-disclosure.ts
+@@ -0,0 +1,33 @@
++type Request = {
++  permission: string
++  patterns?: readonly string[]
++  always?: readonly string[]
++}
++
++const sourceRead = "openabstractions_log_source_read"
++const sourceShare = "openabstractions_log_source_share"
++
++export function sourceDisclosure(request: Request) {
++  if (request.permission !== sourceRead && request.permission !== sourceShare) return
++  const pattern = request.patterns?.[0]
++  const valid = request.patterns?.length === 1 && typeof pattern === "string" && pattern.length > 0 &&
++    pattern.length <= 512 && !/[^\x20-\x7e]/.test(pattern)
++  return {
++    title: request.permission === sourceRead ? "Read log source" : "Share log events with assistant",
++    detail: valid ? pattern : "Required disclosure is missing or invalid. Reject this request.",
++    valid,
++  }
++}
++
++export function permissionChoices(request: Request): Record<string, string> {
++  if (sourceDisclosure(request)?.valid === false) return { reject: "Reject" }
++  if (!request.always?.length) return { once: "Allow once", reject: "Reject" }
++  return { once: "Allow once", always: "Allow always", reject: "Reject" }
++}
++
++export function canSelectPermission(request: Request, option: string) {
++  if (option === "reject") return true
++  if (sourceDisclosure(request)?.valid === false) return false
++  if (option === "always") return Boolean(request.always?.length)
++  return option === "once"
++}
+diff --git a/packages/tui/src/routes/session/permission.tsx b/packages/tui/src/routes/session/permission.tsx
+index fbe3aac..49d27e6 100644
+--- a/packages/tui/src/routes/session/permission.tsx
++++ b/packages/tui/src/routes/session/permission.tsx
+@@ -16,6 +16,7 @@ import { getScrollAcceleration } from "../../util/scroll"
+ import { useTuiConfig } from "../../config"
+ import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut } from "../../keymap"
+ import { usePathFormatter } from "../../context/path-format"
++import { canSelectPermission, permissionChoices, sourceDisclosure } from "./permission-disclosure"
+ 
+ type PermissionStage = "permission" | "always" | "reject"
+ 
+@@ -165,6 +166,7 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
+           onSelect={(option) => {
+             setStore("stage", "permission")
+             if (option === "cancel") return
++            if (!canSelectPermission(props.request, "always")) return
+             void sdk.client.permission.reply({
+               reply: "always",
+               requestID: props.request.id,
+@@ -195,6 +197,21 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
+           const info = () => {
+             const permission = props.request.permission
+             const data = input()
++            const disclosure = sourceDisclosure(props.request)
++
++            if (disclosure) {
++              return {
++                icon: "⚙",
++                title: disclosure.title,
++                body: (
++                  <box paddingLeft={1} width="100%">
++                    <text fg={disclosure.valid ? theme.text : theme.error} wrapMode="word" width="100%">
++                      {disclosure.detail}
++                    </text>
++                  </box>
++                ),
++              }
++            }
+ 
+             if (permission === "edit") {
+               const raw = props.request.metadata?.filepath
+@@ -402,10 +419,11 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
+               title="Permission required"
+               header={header()}
+               body={current.body}
+-              options={{ once: "Allow once", always: "Allow always", reject: "Reject" }}
++              options={permissionChoices(props.request)}
+               escapeKey="reject"
+               fullscreen
+               onSelect={(option) => {
++                if (!canSelectPermission(props.request, String(option))) return
+                 if (option === "always") {
+                   setStore("stage", "always")
+                   return
+diff --git a/packages/tui/test/permission-disclosure.test.ts b/packages/tui/test/permission-disclosure.test.ts
+new file mode 100644
+index 0000000..58d1594
+--- /dev/null
++++ b/packages/tui/test/permission-disclosure.test.ts
+@@ -0,0 +1,41 @@
++import { expect, test } from "bun:test"
++import { canSelectPermission, permissionChoices, sourceDisclosure } from "../src/routes/session/permission-disclosure"
++
++test("source and share approvals expose exact bounded disclosure text", () => {
++  const read = {
++    permission: "openabstractions_log_source_read",
++    patterns: ['Read source "fixture/system" for up to 1000 ms, at most 1 records and 4096 bytes. The watch returns counts and status unless event sharing is separately approved.'],
++    always: [],
++  }
++  const share = {
++    permission: "openabstractions_log_source_share",
++    patterns: ["Share native event messages, attributes and unverified producer claims from source \"fixture/system\" observed during the next 1000 ms, up to 1 records and 4096 bytes, with this assistant's model. The model route may use a hosted provider."],
++    always: [],
++  }
++  expect(sourceDisclosure(read)).toEqual({ title: "Read log source", detail: read.patterns[0], valid: true })
++  expect(sourceDisclosure(share)).toEqual({ title: "Share log events with assistant", detail: share.patterns[0], valid: true })
++  expect(permissionChoices(read)).toEqual({ once: "Allow once", reject: "Reject" })
++  expect(permissionChoices(share)).toEqual({ once: "Allow once", reject: "Reject" })
++  expect(canSelectPermission(share, "always")).toBe(false)
++  expect(canSelectPermission(share, "once")).toBe(true)
++})
++
++test("missing, ambiguous, oversized and control-bearing disclosures cannot be approved", () => {
++  const invalid = [[], [""], ["A".repeat(513)], ["Read\nsource"], ["Share \u202eevents"], ["one", "two"]]
++  for (const patterns of invalid) {
++    const request = { permission: "openabstractions_log_source_share", patterns, always: ["*"] }
++    expect(sourceDisclosure(request)?.valid).toBe(false)
++    expect(permissionChoices(request)).toEqual({ reject: "Reject" })
++    expect(canSelectPermission(request, "once")).toBe(false)
++    expect(canSelectPermission(request, "always")).toBe(false)
++    expect(canSelectPermission(request, "reject")).toBe(true)
++  }
++})
++
++test("other permissions retain their display path and valid always choice", () => {
++  const repeatable = { permission: "read", patterns: ["src/*"], always: ["src/*"] }
++  expect(sourceDisclosure(repeatable)).toBeUndefined()
++  expect(permissionChoices(repeatable)).toEqual({ once: "Allow once", always: "Allow always", reject: "Reject" })
++  expect(canSelectPermission(repeatable, "always")).toBe(true)
++  expect(permissionChoices({ ...repeatable, always: [] })).toEqual({ once: "Allow once", reject: "Reject" })
++})

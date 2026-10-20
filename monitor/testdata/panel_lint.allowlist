@@ -1,0 +1,25 @@
+# Panel rules lint allowlist (monitor/panel_lint_test.go, TestPanelRulesLint).
+# One row per page and rule: page<TAB>rule<TAB>count of violations the page
+# had when the lint landed (2026-10-07, research/panel-redesign/SPEC.md S1).
+# The page slices S2-S9 remove them and lower or drop their rows; a row may
+# never rise above the same row at the merge base with origin/main.
+# List every violation with: PANEL_LINT_LIST=1 go test -run TestPanelRulesLint -v
+# Rule class:<name> is the page class contract (SPEC §6): a class a page's
+# markup or script uses that panelShellClasses does not list, seeded
+# 2026-10-07; a page under revision removes its rows.
+# Rule known-value:program:<file name> is a program file name a page still
+# shows in its rendered DOM, allowed exactly that many times in its page test
+# (panel_rules.js knownValues, knownExact) and by the screenshot tool. Only
+# the program shape takes known values; each entry is a whole file name.
+# Rule technical-summary:<summary> is an expander a page test's rendered DOM
+# marks data-oa-technical under a summary other than "Technical details",
+# counted exactly in its page test (panel_rules.js knownSummaries). A served
+# page's own markup takes no such allowance (rule technical-summary).
+# A rule family is judged for raised rows once the merge base governs it.
+# governs: empty-input button-status caption raw-value class secret-scope known-value technical-summary
+card	class:holders	1
+card	class:oa-device-answer	1
+card	class:resource	1
+work	class:log-custom-active	2
+work	class:oa-note	1
+work	class:oa-toolbar	4

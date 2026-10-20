@@ -46,6 +46,8 @@ type comfyAttachedFixture struct {
 	heldBytes int64 // atomic: what /system_stats reports as vram_total-vram_free
 	in        *askerFixture
 	program   string
+	// refuse, when set, is the body /api/free answers with status 500.
+	refuse string
 }
 
 func (f *comfyAttachedFixture) setHeld(n int64) { atomic.StoreInt64(&f.heldBytes, n) }
@@ -79,6 +81,11 @@ func (f *comfyAttachedFixture) server(t *testing.T) *httptest.Server {
 			return
 		}
 		atomic.AddInt32(&f.freed, 1)
+		if f.refuse != "" {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(f.refuse))
+			return
+		}
 		if f.in != nil && f.program != "" {
 			// The real /api/free frees the weights behind the hold; the
 			// fixture instrument's row for ComfyUI's Python drops the same

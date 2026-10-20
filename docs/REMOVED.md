@@ -144,7 +144,7 @@ are retained for maintainers tracing the migration.
   remaining purpose was the provider the owner removed.
 - **Replaced by:** the installed runtime, which runs the same sweep
   (`serve.Pass`) inside its download execution profile, is hosted by
-  `openabstractions serve host` on Windows, `abstraction-runtime.service` on
+  `openabstractions serve supervisor` on Windows, `abstraction-runtime.service` on
   Linux and the LaunchAgent `com.openabstractions.runtime` on macOS, and is
   found by resolution. The legacy client in `abstraction-download/go` remains
   for a program that embeds a store (`NewClient(DiscoverIn(store))`); it works
@@ -242,3 +242,15 @@ are retained for maintainers tracing the migration.
   runtime over its declared sources (`abstraction-storage-over-local-stores`
   is one), which `modelget` and every other caller now read.
 - **In history:** `9876a18d`.
+
+### 13. 2026-10-07, the standalone `rightsd` command
+
+- **Was:** `abstraction-rights/go/cmd/rightsd`, the rights service as its own
+  program, which built an asks client for its registration questions.
+- **Went because:** asks depends on rights for its permission decisions, and
+  rights importing asks made the two modules require each other, which no
+  release can tag in order. Rights now names an `Asker` and the host command
+  supplies one backed by asks.
+- **Replaced by:** `openabstractions serve rights`, with the same flags
+  (`--endpoint`, `--state`, `--asks`) and usage text.
+- **In history:** the commit that adds this entry.

@@ -8,7 +8,7 @@ import (
 // movedSectionNames lists the six sections task 2026-09-23's requirement 1
 // split out of the Status page into their own pages (service_page.go's own
 // comment on servicePage), each now named by its nav label
-// (panel_shell.go's panelNavItems) rather than "on the Status page".
+// (panel_shell.go's panelNavItems) rather than "on the Apps page".
 var movedSectionNames = []string{"Work", "Questions and rights", "Questions and permissions", "Rights", "Permissions", "Settings", "Logging", "Identity", "Explore"}
 
 // staleStatusPageReferencePattern is task 2026-09-23's fifth first-time
@@ -16,7 +16,7 @@ var movedSectionNames = []string{"Work", "Questions and rights", "Questions and 
 // the Status page" after Rights had already moved to its own "Questions and
 // rights" page, naming both a stale location and a name the nav no longer
 // uses. This checks every page fragment for the same mistake: one of the
-// moved sections named immediately before "on the Status page".
+// moved sections named immediately before "on the Apps page".
 func staleStatusPageReferencePattern() *regexp.Regexp {
 	names := ""
 	for i, n := range movedSectionNames {
@@ -25,12 +25,12 @@ func staleStatusPageReferencePattern() *regexp.Regexp {
 		}
 		names += regexp.QuoteMeta(n)
 	}
-	return regexp.MustCompile(`(?:` + names + `)\s+on the Status page`)
+	return regexp.MustCompile(`(?:` + names + `)\s+on the Apps page`)
 }
 
 // TestNoStaleStatusPageSectionReference guards against a page naming a
-// section that moved off Status as still living "on the Status page"; a
-// generic sentence like "check the service on the Status page" (Status
+// section that moved off Status as still living "on the Apps page"; a
+// generic sentence like "check the service on the Apps page" (Status
 // itself still carries the Check the service button) is untouched, since no
 // moved section's name precedes it.
 func TestNoStaleStatusPageSectionReference(t *testing.T) {
@@ -102,9 +102,8 @@ var (
 // visiblePageText strips everything a page fragment's own id patterns can
 // legitimately still appear in, so what remains is only what a reader would
 // actually see: a Go or JS comment; an HTML attribute value (every id this
-// Panel still names — a title attribute, data-grant-rules — is double-quoted
-// HTML, per panel_shell.go's grantScript and every *_page.go edited for task
-// 2026-09-23's seventh first-time visitor, finding 2); and a JS single-quoted
+// Panel still names is a double-quoted title attribute, per every *_page.go
+// edited for task 2026-09-23's seventh first-time visitor, finding 2); and a JS single-quoted
 // string literal (every remaining one compares or sends an id, e.g.
 // credentials_page.go's r.Action==='abstraction.credentials/apply' and its
 // request body's action:'abstraction.credentials/apply', never renders one).

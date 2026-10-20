@@ -701,6 +701,7 @@ func (ManifestsDispatcher) WriteFrame(frame []byte) error
 func (ManifestsDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type Inventory interface
   List(continuation string, limit int64) (InventoryPage, error)
+  ListStore(store, continuation string, limit int64) (InventoryPage, error)
   Holders(target string) (InventoryPage, error)
   Unheld(continuation string, limit int64) (InventoryPage, error)
   Find(digest string) (InventoryPage, error)
@@ -711,6 +712,7 @@ func NewInventoryClient(t InventoryTransport) *InventoryClient
 type InventoryDispatcher struct
   Handler Inventory
 func (InventoryClient) List(continuation string, limit int64) (result InventoryPage, err error)
+func (InventoryClient) ListStore(store, continuation string, limit int64) (result InventoryPage, err error)
 func (InventoryClient) Holders(target string) (result InventoryPage, err error)
 func (InventoryClient) Unheld(continuation string, limit int64) (result InventoryPage, err error)
 func (InventoryClient) Find(digest string) (result InventoryPage, err error)

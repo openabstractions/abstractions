@@ -47,9 +47,11 @@ const list<string> features = ["abstraction.inference/tools@1", "abstraction.inf
 // Rights actions this capability enforces. complete is decided on resource
 // host:<name> for the bound caller before any upstream request; host.manage,
 // key.issue and audit.read are decided on resource account for the operator@1
-// host, key and audit calls. Closed by INF-R1; the next name this list would
-// reserve is abstraction.inference/budget.manage.
-const list<string> resource_actions = ["abstraction.inference/complete", "abstraction.inference/host.manage", "abstraction.inference/key.issue", "abstraction.inference/audit.read"] (catalogue = "closed", closed_by = "INF-R1")
+// host, key and audit calls. selection-operator@2 edits decide selection.manage
+// on resource account; another program's reads and edits decide
+// selection.manage_for. A program reads its own policies without a grant.
+// Closed by INF-R1.
+const list<string> resource_actions = ["abstraction.inference/complete", "abstraction.inference/host.manage", "abstraction.inference/key.issue", "abstraction.inference/audit.read", "abstraction.inference/selection.manage", "abstraction.inference/selection.manage_for"] (catalogue = "closed", closed_by = "INF-R1")
 // The credentials kind a local key minted for the gateway window is held as.
 // The holder never applies it to an outgoing request; the window verifies a
 // presented key against it.
@@ -121,6 +123,25 @@ struct Request {
  7: required list<RequestGuarantee> guarantees
  8: optional string credential(omit="zero")
 }(document="true",unknown_fields="refuse",doc="model is a model family or any alias a host lists it under, as abstraction.router/router@1 folds names. messages is 1..512. tools is 0..128. extensions holds vendor-prefixed keys <owner>/<name> with string values; a host ignores a key it does not know unless required_extensions names it, and then refuses unsupported_feature with reason extension:<key>. guarantees holds RequestGuarantee members. credential names an abstraction.credentials entry of the caller's account that a hosted host may spend under. The request carries no base URL, key, header or host name, and the encoded request fits one 1 MiB control frame.")
+// chat@2 carries the same message and execution controls as chat@1 Request.
+// Target supplies exactly one explicit model or named service-owned policy.
+struct Target {
+ 1: optional string model(omit="zero")
+ 2: optional string selection_policy(omit="zero")
+}(unknown_fields="refuse",doc="Exactly one nonempty member is required. model makes one explicit model request. selection_policy names a policy scoped to the bound account and observed program. The stored policy supplies each candidate's placement and hosted credential as the caller's explicit preference, subject to live rights and budget checks; it grants no authority.")
+struct RequestContent {
+ 1: required list<Message> messages
+ 2: optional list<Tool> tools(omit="zero")
+ 3: optional Options options(omit="absent")
+ 4: optional map<string,string> extensions(omit="zero")
+ 5: optional list<string> required_extensions(omit="zero")
+ 6: required list<RequestGuarantee> guarantees
+ 7: optional string credential(omit="zero")
+}(unknown_fields="refuse",doc="The chat@1 Request fields except model, with identical message, tool, option and extension validation and limits. An explicit model target uses guarantees and credential exactly as chat@1 does. A named policy target requires an empty guarantees list and empty credential; its stored candidates supply those choices for each attempt, and the service checks live rights and budget independently. Nonempty inline values in policy mode are invalid.")
+struct RequestV2 {
+ 1: required Target target
+ 2: required RequestContent content
+}(unknown_fields="refuse",doc="One chat call. Target is exclusive and nonempty. A named policy is resolved by the service for the proven caller before host selection; the caller leaves content.guarantees empty and content.credential empty in policy mode.")
 struct Usage {
  1: required i64 input
  2: required i64 output
@@ -161,7 +182,7 @@ struct Reply {
  6: required string host
  7: required string model
  8: optional Cost cost(omit="absent")
-}(unknown_fields="refuse",doc="The result of one operation. completed carries the assistant message and stop_reason other than no_stop; every other outcome carries no_stop. refused means the host answered and refused the request (reason upstream:<status>). not_permitted carries reason rights:<word> for the complete decision on host:<name>, or credential:<outcome>:<name> for an applier refusal. budget_exceeded carries ceiling:<unit>:<credential>. unsupported_feature carries feature:<name> or extension:<key>. no_host carries router:<verdict>. cancelled carries cancel, idle or caller. unavailable carries rights:unavailable, credential:unavailable:<name> or upstream:<detail>; parts already delivered stay delivered. host and model name what served it, and are empty when nothing did. In the terminal delta message.parts is empty; the parts arrived in the deltas before it.")
+}(unknown_fields="refuse",doc="The result of one operation. completed carries the assistant message and stop_reason other than no_stop; every other outcome carries no_stop. refused means the host answered and refused the request: reason upstream:<status>, or upstream:context_length_exceeded:<window>:<input> when the request exceeds the context window, each number in tokens and 0 when unknown. not_permitted carries reason rights:<word> for the complete decision on host:<name>, or credential:<outcome>:<name> for an applier refusal. budget_exceeded carries ceiling:<unit>:<credential>. unsupported_feature carries feature:<name> or extension:<key>. no_host carries router:<verdict>. cancelled carries cancel, idle or caller. unavailable carries rights:unavailable, credential:unavailable:<name> or upstream:<detail>; parts already delivered stay delivered. host and model name what served it, and are empty when nothing did. In the terminal delta message.parts is empty; the parts arrived in the deltas before it.")
 enum DeltaKind {
  1: part
  2: usage
@@ -210,6 +231,23 @@ struct Admission {
  7: required i64 idle_ms
  8: required i64 retained_deltas
 }(unknown_fields="refuse",doc="accepted carries an operation id of 1..128 bytes, the chosen host and model, and the provider's bounds: an ended operation stays observable for retention_ms; an operation with no Observe in flight or received for idle_ms is cancelled with reason idle, and its upstream request closed; the newest retained_deltas deltas stay readable. Every refusal carries the same reason words as Reply, an empty operation, host and model, and zero bounds. exhausted means the caller's concurrent operations are at the provider's bound.")
+enum SelectionReason {
+ 1: explicit_model
+ 2: preferred
+ 3: preferred_route_unavailable
+}(unknown="refuse",reader="act")
+struct AdmissionV2 {
+ 1: required StartOutcome outcome
+ 2: required string reason
+ 3: required string operation
+ 4: required string host
+ 5: required string model
+ 6: required i64 retention_ms
+ 7: required i64 idle_ms
+ 8: required i64 retained_deltas
+ 9: optional string preferred_model(omit="zero")
+ 10: optional SelectionReason selection_reason(omit="absent")
+}(unknown_fields="refuse",doc="The chat@2 admission. On accepted, host and model are the actual route, preferred_model is the first policy candidate or explicit model, and selection_reason says why that route was selected. preferred_route_unavailable requires fresh definitive pre-dispatch listing unavailability and makes no claim that every host is offline. Every refusal has empty operation, host and model, zero bounds, and omits both selection fields. RequestContent optional tools has the same absent-or-empty meaning as chat@1 Request.tools.")
 enum PageOutcome {
  1: page
  2: gap
@@ -241,6 +279,34 @@ service Chat {
  DeltaPage Observe(1:string operation,2:i64 cursor,3:i64 max_deltas,4:i64 max_bytes,5:i64 wait_ms)(doc="Read a bounded page of an operation's deltas from cursor. max_deltas is 1..256, max_bytes 1..65536 and wait_ms 0..30000. When no delta at cursor exists yet and the operation has not ended, wait up to wait_ms for one, then return what is there. An Observe in flight keeps the operation from idling; a caller that disconnects mid-wait stops the wait. Reconnecting with the last next resumes without loss inside retained_deltas.")
  Cancellation Cancel(1:string operation)(doc="Stop an operation the bound caller started and close its upstream request. Reports whether this call cancelled it or it had already ended.")
 }(wire_name="abstraction.inference/chat@1",doc="Model calls performed by the receiving runtime for the bound caller. Operations are visible only to the account and program that started them. Every request to a hosted host carries headers from abstraction.credentials applier@1 applied for the bound caller, sent once and kept out of every reply, delta, record and log. Caller exit cancels: an operation nobody observes for idle_ms is closed, because a stream nobody reads is spend. A decision point that cannot answer reads unavailable, never permission.")
+service ChatV2 {
+ AdmissionV2 Start(1:RequestV2 request)(doc="Resolve the explicit target or named policy for the bound caller and admit one selected model. Each candidate must pass all chat@1 guarantees, features, rights, credential, budget and capacity checks. A later candidate is considered only after a fresh definitive preferred-route absence before admission or dispatch. A possible send, accepted operation, partial output or tool effect never retries another candidate.")
+ DeltaPage Observe(1:string operation,2:i64 cursor,3:i64 max_deltas,4:i64 max_bytes,5:i64 wait_ms)(doc="Observe the same caller-bound operation registry and DeltaPage as chat@1, without reselecting the model.")
+ Cancellation Cancel(1:string operation)(doc="Cancel the same caller-bound operation as chat@1, without reselecting the model.")
+}(wire_name="abstraction.inference/chat@2",doc="Typed explicit model or named service-owned model selection for a bound caller. A runtime without chat@2 refuses this service version explicitly.")
+
+enum PreloadOutcome {
+ 1: evaluated
+ 2: loaded
+ 3: busy
+ 4: refused
+ 5: not_permitted
+ 6: unsupported_feature
+ 7: no_host
+ 8: unavailable
+ 9: invalid
+ 10: forbidden
+}(unknown="refuse",reader="act")
+struct PreloadReply {
+ 1: required PreloadOutcome outcome
+ 2: required string reason
+ 3: required string host
+ 4: required string model
+ 5: required i64 tokens
+}(unknown_fields="refuse",doc="evaluated means the model is loaded and its server evaluated tokens tokens of the prefix. loaded means the model is loaded and the server evaluated nothing, because the prefix was shorter than the provider's minimum. busy means nothing was evaluated because other work comes first: the model's server has served a request since it loaded (engine:used), another preload runs there (preload:running), another request took the server during the evaluation, or the model is not loaded and loading it would ask another holder to yield (resources:held). refused carries the server's refusal of the prefix in reason. Every other outcome carries the reason words of chat@1 Admission. host and model are the route on evaluated, loaded and busy, and empty otherwise; tokens is zero except on evaluated.")
+service Preloader {
+ PreloadReply Preload(1:Request request)(doc="Load the model a chat request for the bound caller would reach and have its server evaluate the request's messages and tools as the prefix of the caller's next request. request is a chat@1 Request whose last message is not a user message: the caller's next request is these messages followed by its user message. Admission follows chat@1 Start's order: argument shape, guarantees and host selection, host support, the rights decision for abstraction.inference/complete on host:<name>, then the provider's model load. A preload is speculative work: it never asks another holder to yield, and its evaluation is never model use, so a yield stops the server under it and it answers unavailable, reason engine:stopped. The provider keeps nothing of the request after the call. The call returns when the server has evaluated the prefix, refused it, or the call budget ends.")
+}(wire_name="abstraction.inference/preload@1",doc="The first request of a conversation on a local model waits for its whole prompt to be evaluated: OpenCode's Local assistant's first answer on Qwen3.6-35B-A3B took 10.6-12 s, against 3.6 s with its fixed prefix evaluated ahead (research/live-runs/2026-10-02-demo-model-opencode.md). Preload lets an application have its own prefix evaluated before it sends that request. Only a server whose provider evaluates prefixes serves it; every other host answers unsupported_feature.")
 
 struct EmbedRequest {
  1: required string model
@@ -428,6 +494,24 @@ struct ImageRequest {
  12: optional list<string> required_extensions(omit="zero")
  13: optional map<string,string> extensions(omit="zero")
 }(unknown_fields="refuse",doc="One image generation or edit request. prompt is 1..32768 UTF-8 bytes. size is auto or WIDTHxHEIGHT with positive decimal dimensions. count is 1..10. Generate carries no input digests. Edit carries one canonical image SHA-256 digest and media type and may carry one canonical mask digest and media type. Input media types are PNG, JPEG or WebP; masks are PNG. Digests are authorized and resolved only by the selected runtime. extensions holds declared vendor workflow or template controls; a named required extension absent from the selected adapter is refused before paid work. No URL, file path, key, header, inline image or workflow crosses this request.")
+struct ImageRequestContent {
+ 1: required ImageMode mode
+ 2: required string prompt
+ 3: required string size
+ 4: required i64 count
+ 5: optional string image_digest(omit="zero")
+ 6: optional string image_media_type(omit="zero")
+ 7: optional string mask_digest(omit="zero")
+ 8: optional string mask_media_type(omit="zero")
+ 9: required list<RequestGuarantee> guarantees
+ 10: optional string credential(omit="zero")
+ 11: optional list<string> required_extensions(omit="zero")
+ 12: optional map<string,string> extensions(omit="zero")
+}(unknown_fields="refuse",doc="The image@1 ImageRequest fields except model, with identical validation and bounds. An explicit model target uses guarantees and credential as image@1 does. A named policy target requires empty guarantees and credential; each stored candidate supplies these choices under live admission checks.")
+struct ImageRequestV2 {
+ 1: required Target target
+ 2: required ImageRequestContent content
+}(unknown_fields="refuse",doc="One image call with exactly one explicit model or named policy. The policy is scoped to the proven account and observed program. A policy target cannot override candidate placement or credential inline.")
 struct ImageProgress {
  1: optional i64 percent(omit="zero")
  2: required string message
@@ -451,6 +535,58 @@ service Image {
  DeltaPage Observe(1:string operation,2:i64 cursor,3:i64 max_deltas,4:i64 max_bytes,5:i64 wait_ms)(doc="Read retained progress, result and terminal deltas with the shared operation cursor, page, reconnect, wait and idle semantics.")
  Cancellation Cancel(1:string operation)(doc="Stop image work, including queue polling, and cancel the upstream job where its wire supports cancellation.")
 }(wire_name="abstraction.inference/image@1",doc="Image generation and edit with authorized digest inputs, bounded progress and typed result deliveries. Operations are visible only through this profile to the account and program that started them.")
+service ImageV2 {
+ AdmissionV2 Start(1:ImageRequestV2 request)(doc="Select an explicit model or a bounded named policy before image admission. A selected route runs one image@1 admission; fallback is limited to a proven unavailable route before admission.")
+ DeltaPage Observe(1:string operation,2:i64 cursor,3:i64 max_deltas,4:i64 max_bytes,5:i64 wait_ms)(doc="Observe an image@2 operation through the shared image lifecycle.")
+ Cancellation Cancel(1:string operation)(doc="Cancel an image@2 operation through the shared image lifecycle.")
+}(wire_name="abstraction.inference/image@2",doc="Image generation and edit using the account and program scoped selection policy. Image@1 remains available for explicit model calls.")
+// video@1 is the provider-facing half of video generation (INF-G5). An
+// application submits video as job kind inference with profile video
+// (job.thrift); the runtime's job executor selects a native provider that
+// declares profile abstraction.inference/video@1 and calls this service.
+struct VideoRequest {
+ 1: required string model
+ 2: required string prompt
+ 3: required string size
+ 4: required i64 duration_ms
+ 5: optional i64 fps(omit="zero")
+ 6: optional i64 seed(omit="zero")
+ 7: optional string image_digest(omit="zero")
+ 8: optional string image_media_type(omit="zero")
+ 9: optional list<string> required_extensions(omit="zero")
+ 10: optional map<string,string> extensions(omit="zero")
+ 11: required string request_id
+}(unknown_fields="refuse",doc="One video generation forwarded by a designated runtime. request_id is 1..128 bytes the runtime chooses for one piece of work, its job operation id; a Start repeating a request_id the provider holds names that same operation (INF-G7). model is a name the provider lists. prompt is 1..32768 UTF-8 bytes. size is auto or WIDTHxHEIGHT with each side 64..4096 and a multiple of 8. duration_ms is 1..600000. fps is 1..120, and zero selects the model preset's rate. seed is 1..2^53, and zero lets the provider choose. image_digest and image_media_type name one optional PNG, JPEG or WebP initial frame the runtime stages in the provider's content store before Start; a provider refuses a Start naming a digest its store does not hold as invalid with reason content:unknown and never generates that clip from the prompt alone. Steps, guidance scale, flow shift, scheduler and decoder belong to the provider's preset for the model (INF-G8) and have no field here. extensions carries openabstractions/claimed-program and the caller's vendor controls with abstraction.inference/image@1 semantics: a provider ignores an unknown key unless required_extensions names it, refuses a required key it does not support as unsupported_feature with reason extension:<key>, and never applies a key that would override its preset.")
+struct VideoAdmission {
+ 1: required StartOutcome outcome
+ 2: required string reason
+ 3: required string operation
+ 4: required i64 retention_ms
+}(unknown_fields="refuse",doc="accepted carries an operation id of 1..128 bytes and retention_ms, how long the operation stays observable after it ends. An accepted operation runs until it ends or Cancel stops it; it is never cancelled for want of Observe. Every refusal carries the Reply reason words, an empty operation and zero retention_ms.")
+enum VideoState {
+ 1: queued
+ 2: generating
+ 3: completed
+ 4: failed
+ 5: cancelled
+ 6: unknown
+ 7: invalid
+ 8: forbidden
+ 9: unavailable
+}(unknown="refuse",reader="act")
+struct VideoObservation {
+ 1: required VideoState status
+ 2: optional i64 step(omit="zero")
+ 3: optional i64 steps(omit="zero")
+ 4: optional i64 queue_position(omit="zero")
+ 5: optional string reason(omit="zero")
+ 6: optional Delivery delivery(omit="absent")
+}(unknown_fields="refuse",doc="The provider's current view of one operation. queued may carry queue_position, 1 for the next to run, or zero when the engine reports none. generating may carry step of steps, 1 <= step <= steps; a provider that knows only a fraction reports it in its own steps, such as percent of 100. completed carries exactly one local delivery: a canonical sha256 digest in the provider's content store, media_type video/mp4, video/webm or video/avi (video/x-msvideo is read as video/avi), and its size; the container carries any audio track. failed carries reason, at most 4096 UTF-8 bytes with no submitted content or credential material. unknown means no operation of that id is visible to the caller: never started by it, retired after retention, or lost when the provider or its engine restarted. invalid, forbidden and unavailable are refusals of this call. Only completed carries a delivery; only queued and generating carry progress.")
+service Video {
+ VideoAdmission Start(1:VideoRequest request)(doc="Admit one video for the bound designated runtime after argument, model, extension, rights and input checks, before engine work. A Start whose request_id the provider already holds from the same caller starts nothing, ignores the request's frame and returns that operation's admission again, and a runtime whose reply was lost sends the same Start again. Any other Start naming an image_digest the provider's content store does not hold is refused as invalid with reason content:unknown, and nothing is generated from the prompt alone. A provider holds each request_id until at least 24 hours after its operation ends; a provider that restarted holds none and admits the Start as new work (INF-G5, INF-G7).")
+ VideoObservation Observe(1:string operation)(doc="Return the operation's current state without waiting.")
+ Cancellation Cancel(1:string operation)(doc="Stop the operation and its engine job. cancelled means this call stopped it; ended carries how it had already ended; unknown means no such operation is visible.")
+}(wire_name="abstraction.inference/video@1",doc="Video generation by a native provider for its designated runtime. Operations are visible only to the program that started them and live in the provider's memory: a provider or engine restart forgets them, and Observe then answers unknown.")
 
 struct CeilingLimit {
  1: optional i64 tokens_per_day(omit="zero")
@@ -606,3 +742,40 @@ service Operator {
  GatewayState Gateway()(doc="Read the gateway window setting and whether the window listens now. Gated by abstraction.inference/host.manage on resource account.")
  GatewayChange SetGateway(1:string expected_revision,2:bool open,3:string address)(doc="Conditionally write the gateway window setting to the runtime state and apply it to the running runtime: open listens on address, and closed stops the listener and every window connection. address is 127.0.0.1:<port>; empty keeps the recorded address when opening, and 127.0.0.1:8793 when none is recorded. The setting survives a restart. Gated by host.manage.")
 }(wire_name="abstraction.inference/operator@1",doc="Administer the runtime's inference hosts, the gateway window and its local keys, and read the inference audit. Each call is a rights decision for the bound operator subject; same-account identity alone grants nothing. A decision point that cannot answer reads unavailable.")
+
+enum CandidatePlacement {
+ 1: local
+ 2: hosted
+}(unknown="refuse",reader="act")
+enum SelectionReadOutcome {
+ 1: found
+ 2: unknown
+ 3: invalid
+ 4: forbidden
+ 5: unavailable
+}(unknown="refuse",reader="act")
+struct SelectionChange {
+ 1: required EditOutcome outcome
+ 2: required string revision
+ 3: required string reason
+}(unknown_fields="refuse",doc="applied carries the new revision. conflict carries the current revision when expected_revision did not match. unknown is used by Delete for an absent policy. A creation requires an empty expected_revision.")
+struct SelectionCandidateV2 {
+ 1: required string model
+ 2: required CandidatePlacement placement
+ 3: optional string credential(omit="zero")
+ 4: optional string provider(omit="zero")
+}(unknown_fields="refuse",doc="One ordered candidate for chat@2 or image@2. provider optionally pins the logical current registry declaration ID within this candidate. The service checks the current eligible host and declaration generation. A missing or stale pin refuses without another provider choice. A model alias does not assert binary or model artifact identity.")
+struct SelectionPolicyV2 {
+ 1: required string name
+ 2: required list<SelectionCandidateV2> candidates
+}(unknown_fields="refuse",doc="A 1..8 candidate policy in the bound account and observed program. The first candidate is preferred. Pinned and unpinned policies use one service-owned store.")
+struct SelectionReadV2 {
+ 1: required SelectionReadOutcome outcome
+ 2: required string revision
+ 3: optional SelectionPolicyV2 policy(omit="absent")
+}(unknown_fields="refuse",doc="found carries the policy and its revision. Other outcomes carry no policy or revision.")
+service SelectionOperatorV2 {
+ SelectionReadV2 Read(1:string target_program,2:string name)(doc="Read a policy for target_program in the bound account. Empty or the caller's own normalized executable reads self scope with no grant; another absolute canonical executable needs selection.manage_for on account. target_program names the managed scope, never the caller identity.")
+ SelectionChange Put(1:string target_program,2:string expected_revision,3:SelectionPolicyV2 policy)(doc="Conditionally create or replace a policy for target_program in the shared store. Empty or self target needs selection.manage; another program needs selection.manage_for on account.")
+ SelectionChange DeletePolicy(1:string target_program,2:string expected_revision,3:string name)(doc="Conditionally delete a policy for target_program in the shared store. Empty or self target needs selection.manage; another program needs selection.manage_for on account.")
+}(wire_name="abstraction.inference/selection-operator@2",doc="Manage policies for this program or an explicit executable in the bound account, with optional logical provider pins. Cross-program management requires selection.manage_for; the target program is a policy namespace, never requesting identity. Reads of the bound program need no grant; edits retain selection.manage.")

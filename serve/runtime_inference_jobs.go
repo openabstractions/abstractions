@@ -43,7 +43,11 @@ func composeInferenceJobs(base acceptanceprovider.Executor, runtime *runtimeInfe
 		}
 		return inference.Subject{}, inference.ContentForbidden
 	}
-	return &runtimeInferenceJobExecutor{base: base, inference: inference.NewJobExecution(runtime.provider, resolve, report), legacyResolve: resolve}
+	execution := inference.NewJobExecution(runtime.provider, resolve, report)
+	// A job that has not ended holds the edit input or first frame it names
+	// (INF-V4, STO-T7).
+	runtime.content.addInputHolder(execution.NamedInputs)
+	return &runtimeInferenceJobExecutor{base: base, inference: execution, legacyResolve: resolve}
 }
 
 func (e *runtimeInferenceJobExecutor) Profile() string { return e.base.Profile() }
@@ -66,9 +70,12 @@ func (e *runtimeInferenceJobExecutor) PrepareScoped(scope, id, kind string, spec
 	return prepared, nil, err
 }
 
+// PrepareSubjectScoped keeps a native submitter's peer for the inference
+// job's decisions (inference.JobExecution.PrepareForPeer); a remote binding
+// and a binding rebuilt from a journal carry none.
 func (e *runtimeInferenceJobExecutor) PrepareSubjectScoped(binding acceptanceprovider.Binding, id, kind string, spec []byte, required []string) ([]byte, []string, error) {
 	if kind == inference.InferenceJobKind {
-		return e.inference.PrepareScoped(binding.Scope, id, kind, spec, required)
+		return e.inference.PrepareForPeer(binding.Scope, id, kind, spec, required, binding.Peer)
 	}
 	if scoped, ok := e.base.(acceptanceprovider.SubjectScopedPreparer); ok {
 		return scoped.PrepareSubjectScoped(binding, id, kind, spec, required)
@@ -136,7 +143,7 @@ func (e *runtimeInferenceJobExecutor) CheckSubjectAdmission(binding acceptancepr
 		return api.AcceptanceOutcomeUnavailable, "caller:unavailable"
 	}
 	if kind == inference.InferenceJobKind {
-		return e.inference.CheckAdmissionForSubject(binding.Scope, kind, spec, required, inference.Subject{Account: binding.Subject.Account, Program: binding.Subject.Program})
+		return e.inference.CheckAdmissionForSubject(binding.Scope, kind, spec, required, inference.Subject{Account: binding.Subject.Account, Program: binding.Subject.Program}, binding.Peer)
 	}
 	if checker, ok := e.base.(acceptanceprovider.SubjectAdmissionChecker); ok {
 		return checker.CheckSubjectAdmission(binding, kind, spec, required)
@@ -215,6 +222,18 @@ func (e *runtimeInferenceJobExecutor) OperationWaiting(record *job.Record) strin
 	return ""
 }
 
+// RefusedByRights asks the kind's own executor whether a failed record
+// ended only for a refused rights decision (abstraction-job JOB-A19).
+func (e *runtimeInferenceJobExecutor) RefusedByRights(record *job.Record) bool {
+	if record.Kind == inference.InferenceJobKind {
+		return e.inference.RefusedByRights(record)
+	}
+	if reporter, ok := e.base.(acceptanceprovider.RightsRefusalReporter); ok {
+		return reporter.RefusedByRights(record)
+	}
+	return false
+}
+
 func (e *runtimeInferenceJobExecutor) OperationFailure(record *job.Record) *api.WorkFailure {
 	if record.Kind == inference.InferenceJobKind {
 		return e.inference.OperationFailure(record)
@@ -231,6 +250,19 @@ func (e *runtimeInferenceJobExecutor) ResultRetentionMs() int64 {
 		retention = retained.ResultRetentionMs()
 	}
 	return retention
+}
+
+// OperationResultName names the base kind's result file for a hard link
+// (job CONTRACT.md JOB-A17). An inference job's result document is no file
+// to link, and a base without names links nothing.
+func (e *runtimeInferenceJobExecutor) OperationResultName(record *job.Record) (string, error) {
+	if record.Kind == inference.InferenceJobKind {
+		return "", acceptanceprovider.ErrResultNotNamed
+	}
+	if namer, ok := e.base.(acceptanceprovider.ResultNamer); ok {
+		return namer.OperationResultName(record)
+	}
+	return "", acceptanceprovider.ErrResultNotNamed
 }
 
 func (e *runtimeInferenceJobExecutor) ReadOperationResult(root string, record *job.Record, offset, maxBytes int64) ([]byte, int64, error) {

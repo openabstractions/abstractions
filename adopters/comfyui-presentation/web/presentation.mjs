@@ -3,18 +3,18 @@
 export function describePresentation(result = {}) {
   const parameter = result.widget ? result.widget[0].toUpperCase() + result.widget.slice(1) : "Parameter";
   if (result.outcome === "proposed") return {
-    headline: `Change ${result.title ?? "node"} node ${result.node}’s ${result.widget} from ${result.before} to ${result.after}?`,
+    headline: `In ComfyUI’s ${result.workflow_title || "current workflow"}, change ${result.widget} on ${result.title ?? "node"} node ${result.node} from ${result.before} to ${result.after}?`,
     state: "Preview — nothing changed yet",
   };
   if (result.outcome === "applied") return result.evidence === "historical" ? {
-    headline: `Previous result: ${parameter} changed to ${result.actual}`,
+    headline: `Previous ComfyUI result: ${parameter} on ${result.title ?? "node"} node ${result.node} changed from ${result.before} to ${result.actual}`,
     state: "Historical — the target or workflow changed",
   } : {
-    headline: `${parameter} changed to ${result.actual}`,
+    headline: `In ComfyUI’s ${result.workflow_title || "current workflow"}, ${parameter} on ${result.title ?? "node"} node ${result.node} changed from ${result.before} to ${result.actual}`,
     state: "Applied — actual value observed",
   };
   if (result.outcome === "uncertain") return {
-    headline: "The edit may have changed the workflow",
+    headline: `The edit to ${parameter} on ${result.title ?? "node"} node ${result.node} may have changed the workflow`,
     state: "Result uncertain — inspect the parameter before making another edit",
   };
   if (result.outcome === "unknown") return {
@@ -22,7 +22,10 @@ export function describePresentation(result = {}) {
     state: "Inspect the workflow; this does not establish whether the edit happened",
   };
   if (result.outcome === "stale") return { headline: "Preview expired", state: "Nothing changed — refresh the workflow context" };
-  if (result.outcome === "revealed") return { headline: `Revealed node ${result.node}`, state: "Reveal — no value changed" };
+  if (result.outcome === "revealed") return {
+    headline: `Showing ${result.widget} on ${result.title ?? "node"} node ${result.node} in ${result.workflow_title || "the current workflow"}`,
+    state: `Reveal — no value changed; current value is ${result.before}`,
+  };
   if (result.outcome === "context_changed") return { headline: "Workflow context changed", state: "Choose a parameter in the current workflow" };
   return { headline: "Choose a parameter", state: "Preview and Apply are separate" };
 }
@@ -48,10 +51,20 @@ export function presentation(app, { now = () => Date.now(), id = () => crypto.ra
     const widget = widgets[0];
     // Numeric scalar edits give this experiment an explicit, narrow effect.
     if (widget.type !== "number" || !Number.isFinite(widget.value)) return null;
-    const snapshot = bounded({ context, graphVersion: graph._version, node: node.id,
+    const workflow = app.workflowManager?.activeWorkflow;
+    const rawWorkflowTitle = [workflow?.name, workflow?.filename, workflow?.path]
+      .find(value => typeof value === "string" && value.trim()) ?? "Untitled workflow";
+    const workflowLabel = rawWorkflowTitle.split(/[\\/]/).filter(Boolean).at(-1) ?? "Untitled workflow";
+    let workflowTitle = "";
+    for (const character of workflowLabel) {
+      if (new TextEncoder().encode(workflowTitle + character).length > 256) break;
+      workflowTitle += character;
+    }
+    workflowTitle = workflowTitle.trim() || "Untitled workflow";
+    const snapshot = bounded({ context, graphVersion: graph._version, workflowTitle, node: node.id,
       type: node.type, title: node.title, widget: widget.name, value: widget.value,
       options: { min: widget.options?.min, max: widget.options?.max } });
-    return { graph, node, widget, snapshot };
+    return { graph, node, widget, snapshot, workflowTitle };
   }
   function current(record) {
     const found = target(record.node.id, record.widget.name);
@@ -74,8 +87,10 @@ export function presentation(app, { now = () => Date.now(), id = () => crypto.ra
     // ComfyUI calls this after configuring a workflow, including reuse of the
     // same graph object. Every old target loses its epoch.
     reset() { context = id(); pending.clear(); },
-    preview(nodeID, widgetName, value, expected) {
+    preview(nodeID, widgetName, value, expected, requestSummary = "") {
       expire();
+      if (typeof requestSummary !== "string" || new TextEncoder().encode(requestSummary).length > 512)
+        return failure("invalid");
       const bound = binding();
       if (expected && (expected.instance !== bound.instance ||
           expected.context !== bound.context || expected.revision !== bound.revision))
@@ -87,7 +102,9 @@ export function presentation(app, { now = () => Date.now(), id = () => crypto.ra
       if (value < min || value > max) return failure("invalid");
       const token = id();
       const result = { outcome: "proposed", token, ...bound, node: found.node.id,
-        title: found.node.title, widget: found.widget.name, before: found.widget.value, after: value };
+        title: found.node.title, workflow_title: found.workflowTitle,
+        request_summary: requestSummary.trim(), widget: found.widget.name,
+        before: found.widget.value, after: value };
       bounded(result);
       pending.set(token, { ...found, value, expires: now() + 60000, result });
       return result;
@@ -100,7 +117,7 @@ export function presentation(app, { now = () => Date.now(), id = () => crypto.ra
       if (typeof app.canvas?.centerOnNode !== "function") return failure("unsupported");
       // Explicit navigation; preserves node selection and keyboard focus.
       app.canvas.centerOnNode(p.node);
-      return { outcome: "revealed", node: p.node.id };
+      return { ...p.result, outcome: "revealed", token: undefined, node: p.node.id };
     },
     apply(token) {
       expire();

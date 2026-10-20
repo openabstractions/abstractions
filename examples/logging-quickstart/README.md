@@ -12,8 +12,8 @@ program and account identity to the runtime. Installed applications should use
 ## Windows PowerShell
 
 Requirements: Go 1.26 or newer. This example's `go.mod` pins
-`abstraction-facade/go` v0.5.0 and `abstraction-logging/go` v0.4.0, the
-published versions in place since 2026-09-20.
+`abstraction-facade/go` v0.6.0 and `abstraction-logging/go` v0.5.0.
+The checkout's Go workspace selects its current source modules.
 Run these commands at the checkout root. Build each executable once because the
 history permission names the application's exact executable path.
 
@@ -31,15 +31,18 @@ New-Item -ItemType Directory -Force $state | Out-Null
 Keep the runtime running. It prints `ABSTRACTION_RUNTIME_ENDPOINT=...`. In a
 second PowerShell window at the checkout root, copy the value after `=`:
 
-The runtime allows nothing by default; the `rights grant` call below is what
-lets the quickstart's own program read the history back.
+No account-wide default covers reading log history. The `rights grant` call
+below lets the quickstart's own program read the history back; until then its
+read reports `history reading not permitted`.
 
 ```powershell
 $env:ABSTRACTION_RUNTIME_ENDPOINT = '<printed endpoint>'
+$runtimeProgram = (Resolve-Path .\out\openabstractions.exe).Path
 $program = & .\out\logging-quickstart.exe --program
 
 .\out\openabstractions.exe rights grant `
   --endpoint $env:ABSTRACTION_RUNTIME_ENDPOINT `
+  --runtime-program "$runtimeProgram" `
   --program $program `
   --action abstraction.logging/history.read `
   --resource abstraction.logging/history `
@@ -58,6 +61,12 @@ read back: worker started (component=quickstart)
 
 The isolated runtime stores its log at
 `.build\logging-quickstart-state\logging\records.jsonl`.
+
+The compiler-free development pack built by `scripts/panel_review.ps1
+-Examples -PrepareOnly` includes this executable as `Logging.cmd`. That launcher
+passes `--runtime-program` and the pack's explicit endpoint; the program checks
+the runtime's executable and account before using its service clients. Its own
+history-read grant remains separate from the download example's permission.
 
 ## POSIX shell
 
@@ -78,10 +87,12 @@ In a second shell, copy the printed endpoint:
 
 ```sh
 export ABSTRACTION_RUNTIME_ENDPOINT='<printed endpoint>'
+RUNTIME_PROGRAM="$(pwd)/out/openabstractions"
 PROGRAM="$(./out/logging-quickstart --program)"
 
 ./out/openabstractions rights grant \
   --endpoint "$ABSTRACTION_RUNTIME_ENDPOINT" \
+  --runtime-program "$RUNTIME_PROGRAM" \
   --program "$PROGRAM" \
   --action abstraction.logging/history.read \
   --resource abstraction.logging/history \

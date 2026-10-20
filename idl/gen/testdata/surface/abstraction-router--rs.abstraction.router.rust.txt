@@ -1,4 +1,36 @@
 pub type Raw
+pub mod availability_cause
+  pub const TRANSPORT_UNAVAILABLE: &str
+  pub const CREDENTIAL: &str
+  pub const RIGHTS: &str
+  pub const CONFIGURATION: &str
+  pub const MALFORMED: &str
+  pub const UNKNOWN: &str
+  pub const OTHER: &str
+  pub const ALL: [&str; 7]
+pub enum Placement
+  Local
+  Hosted
+  Any
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
+pub mod context_source
+  pub const EFFECTIVE: &str
+  pub const MAXIMUM: &str
+  pub const DEFAULT: &str
+  pub const UNKNOWN: &str
+  pub const NONE: &str
+  pub const ALL: [&str; 5]
+pub enum OfferOutcome
+  Offered
+  Invalid
+  Unavailable
+  Forbidden
+  NotPermitted
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
 pub mod service_error_code
   pub const HANDLER_ERROR: &str
   pub const INVALID_RESULT: &str
@@ -41,6 +73,7 @@ pub struct Alias
   profiles: Vec<String>
   held_in: Vec<String>
   context_length: i64
+  effective_context_length: i64
 pub struct Component
   store: String
   role: String
@@ -68,6 +101,7 @@ pub struct HostState
   declared_by: String
   profiles: Vec<String>
   domain: String
+  availability_cause: Option<String>
 pub struct Ask
   at: String
   caller: String
@@ -96,6 +130,23 @@ pub struct Decision
 pub struct PickResult
   observation: Observation
   decision: Decision
+pub struct OfferRequest
+  profile: String
+  placement: Placement
+  reserve: i64
+  fresh: bool
+pub struct Offer
+  family: String
+  names: Vec<String>
+  servers: Vec<String>
+  context: i64
+  context_source: String
+  input: i64
+  unknown: Vec<String>
+pub struct OfferSnapshot
+  observation: Observation
+  offers: Vec<Offer>
+  outcome: OfferOutcome
 pub fn encode(v: &PickRequest) -> Vec<u8>
 pub struct Refusal
   word: &'static str
@@ -115,6 +166,7 @@ pub trait Router
   fn models(&self, fresh: bool) -> Result<ModelsSnapshot, Self::Error>
   fn hosts(&self, fresh: bool) -> Result<HostsSnapshot, Self::Error>
   fn pick(&self, request: PickRequest) -> Result<PickResult, Self::Error>
+  fn offer(&self, request: OfferRequest) -> Result<OfferSnapshot, Self::Error>
 pub struct RouterClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T

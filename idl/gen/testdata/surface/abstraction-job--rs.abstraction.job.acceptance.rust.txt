@@ -71,6 +71,21 @@ pub enum ResultOutcome
   pub const ALL: [Self; 7]
   pub fn as_str(self) -> &'static str
   pub fn from_wire(name: &str) -> Option<Self>
+pub enum LinkOutcome
+  Linked
+  NotReady
+  Unavailable
+  Unsupported
+  Unknown
+  Forbidden
+  Invalid
+  Exists
+  OtherVolume
+  NoHardLinks
+  Remote
+  pub const ALL: [Self; 11]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> Option<Self>
 pub enum InventoryOutcome
   Page
   Gap
@@ -157,6 +172,10 @@ pub struct ResultChunk
 pub struct ResultRead
   outcome: ResultOutcome
   chunk: Option<ResultChunk>
+pub struct ResultLink
+  outcome: LinkOutcome
+  receipt: Option<Receipt>
+  size: i64
 pub struct InventoryPage
   outcome: InventoryOutcome
   snapshots: Vec<OperationSnapshot>
@@ -191,6 +210,7 @@ pub trait OperationControl
   type Error
   fn observe_work(&self, identity: RequestIdentity) -> Result<ObservationResult, Self::Error>
   fn read_result(&self, identity: RequestIdentity, offset: i64, max_bytes: i64) -> Result<ResultRead, Self::Error>
+  fn link_result(&self, identity: RequestIdentity, destination: String) -> Result<ResultLink, Self::Error>
 pub struct OperationControlClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T

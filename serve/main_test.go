@@ -133,6 +133,9 @@ func TestServeHelpIsItsOwnScopedPage(t *testing.T) {
 	if !strings.Contains(serve, "host is its old name") {
 		t.Fatalf("serve --help does not name host as supervisor's old name: %s", serve)
 	}
+	if !strings.Contains(serve, "legacy standalone question service") || !strings.Contains(serve, "legacy standalone rights service") {
+		t.Fatalf("serve --help does not distinguish standalone services from the runtime: %s", serve)
+	}
 	if strings.Contains(serve, "download") || strings.Contains(serve, "credentials") {
 		t.Fatalf("serve --help names top-level commands, not only its own capabilities: %s", serve)
 	}
@@ -157,6 +160,46 @@ func TestServeSupervisorAcceptsHost(t *testing.T) {
 			t.Fatalf("serve %s: %v, want the Windows-only refusal naming serve supervisor", name, err)
 		}
 	}
+}
+
+// TestNoLaunchPathNamesServeHost is RENAME-PLAN step 4, Windows remainder:
+// every path that launches the supervisor passes `serve supervisor`. `serve
+// host` stays accepted for one release (TestServeSupervisorAcceptsHost) and is
+// named only in prose. The scan covers the launch code (`start`, the service
+// template, the restart registration) and the installer's Startup shortcut.
+func TestNoLaunchPathNamesServeHost(t *testing.T) {
+	old := regexp.MustCompile(`serve host --service|"serve host"|"serve", "host"|Arguments="serve host`)
+	names := []string{"start_windows.go", "host_windows.go", "hostregister_windows.go"}
+	// The installer tree ships in redist; only the private workspace has it beside serve.
+	t.Run("installer", func(t *testing.T) {
+		names = append(names, privateInput(t, "..", "installer", "abstraction.wxs"))
+	})
+	for _, name := range names {
+		source, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, line := range strings.Split(string(source), "\n") {
+			if trimmed := strings.TrimSpace(line); strings.HasPrefix(trimmed, "//") {
+				continue
+			}
+			if old.MatchString(line) {
+				t.Errorf("%s:%d launches the old verb: %s", name, i+1, strings.TrimSpace(line))
+			}
+		}
+	}
+	if !strings.Contains(mustRead(t, "start_windows.go"), `"serve", "supervisor"`) {
+		t.Error("start_windows.go does not launch `serve supervisor`")
+	}
+}
+
+func mustRead(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }
 
 // TestInferenceServerAcceptsOldFlags is RENAME-PLAN §3, Panel and command
@@ -332,9 +375,6 @@ func TestBadFlagShapeAcrossCommands(t *testing.T) {
 		{"provider list", func(args []string, output, diagnostics *bytes.Buffer) error {
 			return providerCommand(append([]string{"list"}, args...), output, diagnostics)
 		}},
-		{"opencode configure", func(args []string, output, diagnostics *bytes.Buffer) error {
-			return opencodeCommand(append([]string{"configure"}, args...), output, diagnostics)
-		}},
 		{"resources", func(args []string, output, diagnostics *bytes.Buffer) error {
 			return resourcesCommand(args, output, diagnostics)
 		}},
@@ -420,9 +460,6 @@ func TestTakesNoArgumentsIsAThreeLineMistake(t *testing.T) {
 		}},
 		{"credentials audit", func(o, d *bytes.Buffer) error {
 			return credentialsCommand([]string{"audit", "extraarg"}, strings.NewReader(""), o, d)
-		}},
-		{"opencode configure", func(o, d *bytes.Buffer) error {
-			return opencodeCommand([]string{"configure", "extraarg"}, o, d)
 		}},
 		{"models hosts", func(o, d *bytes.Buffer) error {
 			return modelsCommand([]string{"hosts", "extraarg"}, o, d)

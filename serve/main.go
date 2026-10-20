@@ -11,7 +11,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 
 	asks "github.com/openabstractions/abstraction-asks/go"
 	config "github.com/openabstractions/abstraction-config/go/service"
@@ -19,19 +18,21 @@ import (
 	rights "github.com/openabstractions/abstraction-rights/go"
 	router "github.com/openabstractions/abstraction-router/go"
 	routerservice "github.com/openabstractions/abstraction-router/go/service"
+
+	identity "github.com/openabstractions/abstraction-identity"
 )
 
 // capabilities maps each `serve <capability>` name to its entry point.
 // "host" is supervisor's old name (RENAME-PLAN §3, Panel and command line
-// step 10), accepted for one release; the installer's shortcut, the service
-// template and the restart registration still launch `serve host` until the
-// release that drops it changes them together with the installer tests.
+// step 10), accepted for one release. The installer's shortcut, the service
+// template, the restart registration and `start` launch `serve supervisor`;
+// TestNoLaunchPathNamesServeHost keeps the old name out of them.
 var capabilities = map[string]func([]string) error{
 	"runtime":    serveRuntime,
 	"supervisor": serveHost,
 	"host":       serveHost,
 	"asks":       wrapCapabilityUsage(asks.Serve, asks.ErrUsage),
-	"rights":     wrapCapabilityUsage(rights.Serve, rights.ErrUsage),
+	"rights":     wrapCapabilityUsage(serveRights, rights.ErrUsage),
 	"router":     wrapCapabilityUsage(router.Serve, router.ErrUsage),
 	"logging":    wrapCapabilityUsage(logging.Serve, logging.ErrUsage),
 	"config":     wrapCapabilityUsage(config.Serve, config.ErrUsage),
@@ -78,6 +79,10 @@ func main() {
 	}
 	if len(os.Args) >= 2 && os.Args[1] == "resources" {
 		exitOnFailure(resourcesCommand(os.Args[2:], os.Stdout, os.Stderr))
+		return
+	}
+	if len(os.Args) >= 2 && os.Args[1] == "questions" {
+		exitOnFailure(questionsCommand(os.Args[2:], os.Stdout, os.Stderr))
 		return
 	}
 	if len(os.Args) >= 2 && os.Args[1] == "models" {
@@ -166,8 +171,9 @@ func main() {
 // probeClient reports whether this image runs as the probe client, which
 // accepts only probe arguments.
 func probeClient(arg0 string) bool {
-	name := strings.ToLower(filepath.Base(arg0))
-	return strings.TrimSuffix(name, ".exe") == probeClientName
+	// A fixed file name, compared as the file system compares names.
+	name := filepath.Base(arg0)
+	return identity.SamePathName(name, probeClientName) || identity.SamePathName(name, probeClientName+".exe")
 }
 
 // exitOnFailure ends the process with the status a failed command carries.
@@ -216,9 +222,10 @@ Credentials and rules:
 Models and inference:
   models                        lends a model file one store holds to an installed engine
   inference                     manages model servers, the inference gateway, its keys and the audit
-  applications                  lists visible applications and requests activation
-  opencode configure            writes OpenCode's provider block from the router's servable models
+  applications                  lists visible applications, requests activation, removes an entry
+  opencode open                 opens the official OpenCode CLI in its Windows sandbox
   resources                     prints who holds the card and each other scarce resource
+  questions                     lists pending questions and records a person's answer
 
 For developers and packagers:
   start                         activates the installed user runtime
@@ -264,8 +271,8 @@ does not install or register it with the OS.
   runtime      hosts resolution, logging, config and durable jobs in one process
   supervisor   the per-user service that keeps the runtime running (Windows);
                host is its old name, accepted until the next release
-  asks         answers questions a person has to answer
-  rights       holds the runtime's granted rights policy
+  asks         legacy standalone question service; runtime uses its own question book
+  rights       legacy standalone rights service; runtime uses its own policy service
   router       reports the model servers on this machine
   logging      receives identity-bound structured log records
   config       answers configuration through the service

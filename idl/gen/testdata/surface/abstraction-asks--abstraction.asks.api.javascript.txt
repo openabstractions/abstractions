@@ -1,4 +1,111 @@
+enum AnswerKind
+  Question
+  Choice
+enum Answerer
+  Operator
+  Responder
+enum ChoiceAckOutcome
+  Acknowledged
+  Conflict
+  Unknown
+  Expired
+  Invalid
+  Forbidden
+  Unavailable
+class ChoiceApplicationClient
+  ask(request)
+  observe(requestRef, waitMs)
+  answer(requestRef, option, ifPending)
+  dismiss(requestRef)
+  shareChoice(request, assistantOptions)
+  acknowledge(requestRef, answer)
+object ChoiceApplicationService {wireName, Client}
+enum ChoiceDecisionOutcome
+  Answered
+  Dismissed
+  Expired
+  Gone
+  Unknown
+  Conflict
+  Invalid
+  Forbidden
+  Unavailable
+enum ChoiceOutcome
+  Pending
+  Answered
+  Dismissed
+  Expired
+  Gone
+  Unknown
+  Conflict
+  Invalid
+  Exhausted
+  Forbidden
+  Unavailable
+enum ChoiceRoute
+  Requester
+  Operator
+  Responder
+enum ChoiceState
+  Pending
+  Answered
+  Dismissed
+  Expired
 class DispatchError
+enum NotificationActivation
+  App
+  OpenActivity
+class NotificationApplicationClient
+  post(request)
+  observe(requestRef, waitMs)
+  withdraw(requestRef)
+  acknowledge(requestRef, result)
+object NotificationApplicationService {wireName, Client}
+enum NotificationDecisionOutcome
+  Acted
+  Dismissed
+  Withdrawn
+  Expired
+  Gone
+  Unknown
+  Conflict
+  Stale
+  Invalid
+  Forbidden
+  Unavailable
+enum NotificationDelivery
+  Now
+  OperationEnd
+class NotificationOperatorClient
+  listNotifications(cursor, limit)
+  readNotification(id)
+  act(id, action, presentation)
+  dismiss(id)
+  withdrawProgram(program)
+  listNotifiers(cursor, limit)
+object NotificationOperatorService {wireName, Client}
+enum NotificationOutcome
+  Scheduled
+  Posted
+  Acted
+  Dismissed
+  Withdrawn
+  Expired
+  Gone
+  Unknown
+  Conflict
+  Invalid
+  Suppressed
+  Exhausted
+  Forbidden
+  Unavailable
+enum NotificationState
+  Scheduled
+  Posted
+  Acted
+  Dismissed
+  Withdrawn
+  Expired
 enum ObservationOutcome
   Pending
   Answered
@@ -21,22 +128,70 @@ enum OperatorPageOutcome
   Invalid
   Forbidden
   Unavailable
+enum OperatorQuestionOutcome
+  Found
+  Unknown
+  Invalid
+  Forbidden
+  Unavailable
 enum OperatorRetirementOutcome
   Retired
   Unknown
   Invalid
   Forbidden
   Unavailable
+class PermissionApplicationClient
+  request(request)
+  observe(requestKey, waitMs)
+object PermissionApplicationService {wireName, Client}
+class PermissionOperatorClient
+  listPermissions(cursor, limit)
+  readPermissionDetails(id)
+  answerPermissionIfPending(id, option)
+object PermissionOperatorService {wireName, Client}
+enum PermissionOutcome
+  Pending
+  Answered
+  Unknown
+  Gone
+  Invalid
+  Conflict
+  Forbidden
+  Unavailable
+  Permitted
+  Denied
 class QuestionApplicationClient
   ask(question)
   observe(requestKey, waitMs)
 object QuestionApplicationService {wireName, Client}
 class QuestionOperatorClient
+  listChoices(cursor, limit)
+  readChoice(id)
+  answerChoice(id, option, ifPending)
+  dismissChoice(id)
   listQuestions(cursor, limit)
   answerQuestion(id, option)
   retireQuestion(id)
+  readAttributedQuestion(id)
+  readChoiceDetails(id)
+  readQuestionAsker(id)
+  answerQuestionIfPending(id, option)
+  listAnswers(cursor, limit)
 object QuestionOperatorService {wireName, Client}
+class QuestionResponderClient
+  listAnswerable(cursor, limit)
+  answer(id, option)
+  listChoices(cursor, limit)
+  requestAnswering()
+  answerChoice(id, option)
+object QuestionResponderService {wireName, Client}
 class Refusal
+enum ResponderEffectOutcome
+  None
+  Applied
+  Conflict
+  Forbidden
+  Unavailable
 class ServiceError
 enum ServiceErrorCode
   HandlerError
@@ -46,17 +201,258 @@ enum ServiceErrorCode
   UnknownMethod
   WrongMode
 function decode(data)
+function decodeAnswer(data)
+function decodeAnswerEntry(data)
+function decodeAnswerEntryPage(data)
+function decodeAnswerableChoice(data)
+function decodeAnswerableChoicePage(data)
+function decodeApplicationQuestion(data)
+function decodeAttributedQuestion(data)
+function decodeChoiceAcknowledgement(data)
+function decodeChoiceAnswer(data)
+function decodeChoiceDecision(data)
+function decodeChoiceDetails(data)
+function decodeChoiceObservation(data)
+function decodeChoiceOption(data)
+function decodeChoicePage(data)
+function decodeChoiceRead(data)
+function decodeChoiceRecord(data)
+function decodeChoiceRequest(data)
+function decodeNotificationAction(data)
+function decodeNotificationDecision(data)
+function decodeNotificationObservation(data)
+function decodeNotificationPage(data)
+function decodeNotificationRead(data)
+function decodeNotificationRecord(data)
+function decodeNotificationRequest(data)
+function decodeNotificationResult(data)
+function decodeNotifierCount(data)
+function decodeNotifierDay(data)
+function decodeNotifierPage(data)
+function decodeOperatorDecision(data)
+function decodeOperatorPage(data)
+function decodeOperatorQuestion(data)
+function decodeOperatorRetirement(data)
+function decodePermissionDisplay(data)
+function decodePermissionDisplaySelection(data)
+function decodePermissionIntent(data)
+function decodePermissionObservation(data)
+function decodePermissionRequest(data)
+function decodePermissionTarget(data)
+function decodeQuestion(data)
+function decodeQuestionAsker(data)
+function decodeQuestionDetails(data)
+function decodeQuestionObservation(data)
+function decodeRecordMetadata(data)
+function decodeRequest(data)
+function decodeRequestRef(data)
+function decodeResponderDecision(data)
+function decodeResponseMetadata(data)
+function decodeTypedPermissionDetails(data)
 function encode(v)
+function encodeAnswer(v)
+function encodeAnswerEntry(v)
+function encodeAnswerEntryPage(v)
+function encodeAnswerableChoice(v)
+function encodeAnswerableChoicePage(v)
+function encodeApplicationQuestion(v)
+function encodeAttributedQuestion(v)
+function encodeChoiceAcknowledgement(v)
+function encodeChoiceAnswer(v)
+function encodeChoiceDecision(v)
+function encodeChoiceDetails(v)
+function encodeChoiceObservation(v)
+function encodeChoiceOption(v)
+function encodeChoicePage(v)
+function encodeChoiceRead(v)
+function encodeChoiceRecord(v)
+function encodeChoiceRequest(v)
+function encodeNotificationAction(v)
+function encodeNotificationDecision(v)
+function encodeNotificationObservation(v)
+function encodeNotificationPage(v)
+function encodeNotificationRead(v)
+function encodeNotificationRecord(v)
+function encodeNotificationRequest(v)
+function encodeNotificationResult(v)
+function encodeNotifierCount(v)
+function encodeNotifierDay(v)
+function encodeNotifierPage(v)
+function encodeOperatorDecision(v)
+function encodeOperatorPage(v)
+function encodeOperatorQuestion(v)
+function encodeOperatorRetirement(v)
+function encodePermissionDisplay(v)
+function encodePermissionDisplaySelection(v)
+function encodePermissionIntent(v)
+function encodePermissionObservation(v)
+function encodePermissionRequest(v)
+function encodePermissionTarget(v)
+function encodeQuestion(v)
+function encodeQuestionAsker(v)
+function encodeQuestionDetails(v)
+function encodeQuestionObservation(v)
+function encodeRecordMetadata(v)
+function encodeRequest(v)
+function encodeRequestRef(v)
+function encodeResponderDecision(v)
+function encodeResponseMetadata(v)
+function encodeTypedPermissionDetails(v)
 function newAnswer()
   id
   pending
   option
   yes
   kept
+function newAnswerEntry()
+  id
+  kind
+  key
+  asker
+  askerProgram
+  publisher
+  publisherTrusted
+  about
+  title
+  option
+  label
+  answeredBy
+  answerer
+  answeredMs
+function newAnswerEntryPage()
+  outcome
+  answers
+  next
+  complete
+  completeSinceMs
+function newAnswerableChoice()
+  id
+  asker
+  title
+  options
+  pendingUntilMs
+  publisher
+  publisherTrusted
+function newAnswerableChoicePage()
+  outcome
+  choices
+  next
+  complete
 function newApplicationQuestion()
   requestKey
   key
   slots
+function newAttributedQuestion()
+  question
+  answerer
+function newChoiceAcknowledgement()
+  outcome
+function newChoiceAnswer()
+  id
+  option
+  answeredMs
+  answeredBy
+function newChoiceDecision()
+  outcome
+  record
+function newChoiceDetails()
+  choice
+  askerProgram
+  assistantOptions
+  answeredVia
+function newChoiceObservation()
+  outcome
+  id
+  answer
+function newChoiceOption()
+  id
+  label
+function newChoicePage()
+  outcome
+  records
+  next
+  complete
+function newChoiceRead()
+  outcome
+  record
+function newChoiceRecord()
+  id
+  asker
+  request
+  state
+  askedMs
+  answer
+  publisher
+  publisherTrusted
+  programDescription
+  programOriginalName
+function newChoiceRequest()
+  requestRef
+  title
+  options
+  pendingUntilMs
+function newNotificationAction()
+  id
+  title
+  activation
+function newNotificationDecision()
+  outcome
+  record
+  count
+function newNotificationObservation()
+  outcome
+  id
+  result
+function newNotificationPage()
+  outcome
+  records
+  next
+  complete
+function newNotificationRead()
+  outcome
+  record
+function newNotificationRecord()
+  id
+  asker
+  program
+  request
+  state
+  admittedMs
+  postedMs
+  result
+  publisher
+  publisherTrusted
+  programDescription
+  programOriginalName
+  presentation
+function newNotificationRequest()
+  requestRef
+  title
+  body
+  actions
+  expiresMs
+  operationId
+  tag
+  delivery
+function newNotificationResult()
+  id
+  state
+  action
+  decidedMs
+  decidedBy
+function newNotifierCount()
+  program
+  asker
+  days
+  lastPostedMs
+function newNotifierDay()
+  dayMs
+  posts
+function newNotifierPage()
+  outcome
+  notifiers
+  next
+  complete
 function newOperatorDecision()
   outcome
   record
@@ -65,13 +461,55 @@ function newOperatorPage()
   records
   next
   complete
+function newOperatorQuestion()
+  outcome
+  record
+  publisher
+  publisherTrusted
+  answeredBy
+  programDescription
+  programOriginalName
 function newOperatorRetirement()
   outcome
   record
+function newPermissionDisplay()
+  selections
+  bundleLabel
+  bundleDisclosure
+  requiresOsAuthorization
+function newPermissionDisplaySelection()
+  operation
+  target
+  collection
+  allEffect
+  disclosure
+function newPermissionIntent()
+  requestKey
+  selection
+  bundleRef
+  bundleSelector
+  purpose
+function newPermissionObservation()
+  outcome
+  answer
+  policyRevision
+function newPermissionRequest()
+  targets
+function newPermissionTarget()
+  account
+  program
+  action
+  resource
 function newQuestion()
   asker
   key
   slots
+function newQuestionAsker()
+  details
+  program
+function newQuestionDetails()
+  question
+  permission
 function newQuestionObservation()
   outcome
   answer
@@ -94,11 +532,26 @@ function newRequest()
   id
   option
   admin
+function newRequestRef()
+  key
+  replayUntilMs
+function newResponderDecision()
+  outcome
+  record
+  effect
+  targetOutcome
 function newResponseMetadata()
   code
   error
   answer
   records
+function newTypedPermissionDetails()
+  question
+  effect
+  effectDigest
+  origin
+  purpose
+  display
 const operations
 const refusalCodes
 const resourceActions

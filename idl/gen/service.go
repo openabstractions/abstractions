@@ -744,7 +744,11 @@ inline std::string service_reply(const OAServiceFrame& request,const Raw& payloa
 				b.WriteString("throw DispatchError(\"wrong_mode\");}\n")
 				continue
 			}
-			fmt.Fprintf(b, "detail::Reader r{v.arguments};r.depth=1;r.skip_ws();auto args=detail::decode_%s(r);r.skip_ws();if(r.pos!=r.buf.size())r.refuse(\"trailing_bytes\");handler.%s(%s);return;}\n", cppFn(argsName(svc, m)), cppMethod(m), callArgs(m, "cpp"))
+			fmt.Fprintf(b, "detail::Reader r{v.arguments};r.depth=1;r.skip_ws();auto args=detail::decode_%s(r);r.skip_ws();if(r.pos!=r.buf.size())r.refuse(\"trailing_bytes\");", cppFn(argsName(svc, m)))
+			if len(m.Args) == 0 {
+				b.WriteString("(void)args;")
+			}
+			fmt.Fprintf(b, "handler.%s(%s);return;}\n", cppMethod(m), callArgs(m, "cpp"))
 		}
 		b.WriteString("throw DispatchError(\"unknown_method\");}\n")
 		if svcReplies(svc) {
@@ -768,6 +772,9 @@ inline std::string service_reply(const OAServiceFrame& request,const Raw& payloa
 					continue
 				}
 				fmt.Fprintf(b, "Raw invoke_%s(const detail::%s&args){\n", cppMethod(m), argsName(svc, m))
+				if len(m.Args) == 0 {
+					b.WriteString("(void)args;\n")
+				}
 				if m.Result.Type != "void" {
 					fmt.Fprintf(b, "%s result{};\n", cppReturn(s, m))
 				}

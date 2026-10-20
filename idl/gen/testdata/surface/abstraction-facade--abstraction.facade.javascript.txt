@@ -23,11 +23,13 @@ enum ApplicationOutcome
   Unavailable
 class ApplicationsClient
   register(descriptor)
+  askConfirmation(application)
   remove(application)
   announce(presence)
   withdraw(application, instance)
   observe(cursor, waitMs)
   activate(application)
+  listStarts(cursor, limit)
 object ApplicationsService {wireName, Client}
 enum BootstrapState
   Unknown
@@ -88,6 +90,12 @@ class RegistryClient
   withdraw(expectedRevision, name)
   observe(cursor, waitMs)
 object RegistryService {wireName, Client}
+class RegistryV2Client
+  declarations()
+  declare(expectedRevision, declaration)
+  withdraw(expectedRevision, name)
+  observe(cursor, waitMs)
+object RegistryV2Service {wireName, Client}
 enum ResolutionStatus
   Resolved
   Unavailable
@@ -146,6 +154,7 @@ function newApplicationEntry()
   descriptor
   instances
   scope
+  selfRegistered
 function newApplicationInstance()
   instance
   interfaces
@@ -165,6 +174,18 @@ function newApplicationPresence()
   interfaces
   contexts
   leaseMs
+function newApplicationStart()
+  application
+  program
+  title
+  startedUnixMs
+  launched
+function newApplicationStartPage()
+  outcome
+  starts
+  cursor
+  complete
+  completeSinceUnixMs
 function newBootstrapObservation()
   state
   detail
@@ -211,6 +232,9 @@ function newDeclarationChange()
   outcome
   revision
   reason
+function newDeclarationExtension()
+  profile
+  key
 function newDeclarationHost()
   base
   kind
@@ -221,7 +245,15 @@ function newDeclarationList()
   outcome
   revision
   declarations
+function newDeclarationListV2()
+  outcome
+  revision
+  declarations
 function newDeclarationObservation()
+  outcome
+  cursor
+  declarations
+function newDeclarationObservationV2()
   outcome
   cursor
   declarations
@@ -236,6 +268,12 @@ function newDeclarationState()
   accepted
   role
   host
+function newDeclarationStateV2()
+  state
+  supportedExtensions
+function newDeclarationWithExtensions()
+  declaration
+  supportedExtensions
 function newDescription()
   outcome
   program

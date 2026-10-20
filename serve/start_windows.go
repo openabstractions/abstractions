@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -44,6 +45,47 @@ func activateInstalled(ctx context.Context) error {
 	})
 }
 
+// activateInstalledPresenter uses the installed selection and the existing
+// account-bound desktop shell. The presenter's session singleton handles
+// duplicate activation; a runtime-only package has no presenter to dispatch.
+func activateInstalledPresenter(ctx context.Context, output io.Writer) error {
+	selection, err := bootstrap.SelectInstalled(ctx)
+	if err != nil {
+		return fmt.Errorf("native presenter activation refused: %w", err)
+	}
+	if selection.EndpointFromEnvironment {
+		return errors.New("native presenter activation refuses an endpoint override")
+	}
+	return activateWindowsPresenter(selection.Server.Program, os.Executable, os.Lstat, launchThroughShell, output)
+}
+
+func activateWindowsPresenter(selected string, executable func() (string, error), stat func(string) (os.FileInfo, error), launch func(string, string, ...string) error, output io.Writer) error {
+	self, err := executable()
+	if err != nil {
+		return err
+	}
+	dir := filepath.Dir(self)
+	server := filepath.Join(dir, "openabstractions.exe")
+	if !samePrograms(selected, server) {
+		return errors.New("native presenter activation refused: this executable differs from the selected installation")
+	}
+	panel := filepath.Join(dir, "Abstraction Panel.exe")
+	info, err := stat(panel)
+	if errors.Is(err, os.ErrNotExist) {
+		return printLine(output, "native presenter absent from this installation")
+	}
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return errors.New("native presenter activation refused: installed Panel is not a regular file")
+	}
+	if err := launch(panel, dir, "--background"); err != nil {
+		return fmt.Errorf("native presenter delivery deferred: %w", err)
+	}
+	return printLine(output, "native presenter dispatched to this account's desktop")
+}
+
 type windowsActivation struct {
 	instance, sc string
 	run          func(context.Context, string, ...string) error
@@ -63,7 +105,7 @@ type windowsActivation struct {
 // per-session service instance is started through the SCM when this sign-in
 // has one. Otherwise, per-user or in the session that installed for everyone,
 // the windowless image beside this program is launched detached as
-// `serve host`. The upgrade exclusion refuses first, with exit status 3.
+// `serve supervisor`. The upgrade exclusion refuses first, with exit status 3.
 func activateWindows(ctx context.Context, a windowsActivation) error {
 	twin, err := windowlessImage(a.executable, a.stat)
 	if err != nil {
@@ -96,14 +138,14 @@ func activateWindows(ctx context.Context, a windowsActivation) error {
 			if a.shellLaunch == nil {
 				return refuseVirtualizedProfile("start", a.profile)
 			}
-			err := a.shellLaunch(twin, filepath.Dir(twin), "serve", "host")
+			err := a.shellLaunch(twin, filepath.Dir(twin), "serve", "supervisor")
 			if errors.Is(err, errNoShell) {
 				return &exitError{code: exitVirtualizedProfile, err: fmt.Errorf("start: virtualized_caller_no_shell: this process sees package %s's private copy of AppData, and no desktop shell of this account can start the runtime: %w", view.Family, err)}
 			}
 			return err
 		}
 	}
-	return a.launch(twin, "serve", "host")
+	return a.launch(twin, "serve", "supervisor")
 }
 
 func hideStartCommand(cmd *exec.Cmd) { cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true} }

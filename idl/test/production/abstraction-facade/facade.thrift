@@ -197,6 +197,10 @@ struct DeclarationHost {
  4: optional string credential(omit="zero")
  5: optional DeclarationCeiling ceiling(omit="absent")
 }(unknown_fields="refuse",doc="The foreign HTTP engine a declaration of role host names, the fields abstraction.inference/operator@1 HostEntry carries. base is its https or loopback http API root, with no user information, query or fragment. kind is the wire it speaks: an inference local_host_kinds member for a local engine, and a router wire kind or <owner>/<name>@<n> for a hosted one. hosted false is an engine on this machine, which carries no credential and no ceiling; hosted true is a provider endpoint off it, whose credential names the abstraction.credentials record the service applies and whose ceiling limits that credential. The profiles the host serves are its profile:<name> resources.")
+struct DeclarationExtension {
+ 1: required string profile
+ 2: required string key
+}(unknown_fields="refuse",doc="One required inference extension key a provider or remote runtime asserts it can examine for a declared profile. This operator-managed inventory lets the selecting runtime refuse unknown required keys before activating a provider; the selected service still validates values and model-specific support before accepting work.")
 struct Declaration {
  1: required string name
  2: required string program
@@ -211,7 +215,11 @@ struct Declaration {
  11: optional list<string> models(omit="zero")
  12: optional DeclarationRole role(omit="zero")
  13: optional DeclarationHost host(omit="absent")
-}(unknown_fields="refuse",doc="One program the runtime knows. name is 1..64 bytes of a-z 0-9 _ - and unique. role names what it is, and each role validates its own fields (FAC-R6). A provider declares program, the absolute executable path the runtime launches and requires of the process serving endpoint, arguments of 0..64 strings of 1..4096 bytes with {endpoint} replaced by endpoint, endpoint a local endpoint name of 1..64 bytes of a-z 0-9 _ . -, transport oa-native@1, activation on_demand or attach, and contracts of 1..16 distinct wire names of generated services it serves. A remote declares transport oa-remote@1, activation remote, endpoint tls://<host>:<port>, the trust record in remote, and no program or arguments. A host declares transport http@1, activation attach, the engine in host, and no program, arguments, endpoint, contracts, guarantees, models or remote. guarantees holds 0..16 distinct names a provider's candidates advertise. resources holds 0..64 distinct <kind>:<name> of declaration_resource_kinds, name 1..64 bytes of a-z 0-9 _ . -; profile:<name> is what a host or a remote serves. models is the 0..64 distinct model names a native inference provider is trusted to serve, each 1..256 UTF-8 bytes without controls. on_demand launches program as a supervised child when a resolution first needs it; attach reads a provider something else started.")
+}(unknown_fields="refuse",doc="One program the runtime knows. name is 1..64 bytes of a-z 0-9 _ - and unique. role names what it is, and each role validates its own fields (FAC-R6). A provider declares program, the absolute executable path the runtime launches and requires of the process serving endpoint, arguments of 0..64 strings of 1..4096 bytes with {endpoint} replaced by endpoint, endpoint a local endpoint name of 1..64 bytes of a-z 0-9 _ . -, transport oa-native@1, activation on_demand or attach, and contracts of 1..16 distinct wire names of generated services it serves. A remote declares transport oa-remote@1, activation remote, endpoint tls://<host>:<port>, the trust record in remote, and no program or arguments. A host declares transport http@1, activation attach, the engine in host, and no program, arguments, endpoint, contracts, guarantees, models or remote. guarantees holds 0..16 distinct names a provider's candidates advertise. resources holds 0..64 distinct <kind>:<name> of declaration_resource_kinds, name 1..64 bytes of a-z 0-9 _ . -; profile:<name> is what a host or a remote serves. models is the 0..64 distinct model names a native inference provider is trusted to serve, each 1..256 UTF-8 bytes without controls; an entry <profile>:<model> whose profile the declaration serves (a listed profile whose contract it declares, or chat for a chat-only declaration listing none) serves model for that profile alone, any other entry serves every served profile, and a model named chat:x is written chat:chat:x (abstraction.router ROUTE-D9). on_demand launches program as a supervised child when a resolution first needs it; attach reads a provider something else started. Extension inventory lives in registry@2 and is omitted from this strict registry@1 projection.")
+struct DeclarationWithExtensions {
+ 1: required Declaration declaration
+ 2: optional list<DeclarationExtension> supported_extensions(omit="zero")
+}(unknown_fields="refuse",doc="One atomic registry@2 edit. The extension inventory is validated against the declaration's served inference profiles and stored with that declaration generation. An empty inventory asserts no required extension support.")
 enum DeclarationReadiness {
  1: ready
  2: idle
@@ -273,6 +281,26 @@ service Registry {
  DeclarationChange Withdraw(1:string expected_revision,2:string name)(doc="Conditionally remove one declaration: the runtime withdraws its candidates and hosts and ends a launched child. Gated by provider.manage. A declaration the installation or a product declared is disabled by name instead of removed, so a reinstall or a later probe does not resurrect it, and a later Declare of that name enables it again. Rules are left as they are.")
  DeclarationObservation Observe(1:string cursor,2:i64 wait_ms)(doc="Wait up to wait_ms milliseconds for the declarations or their readings to differ from cursor, then read them. An empty cursor answers at once. Gated by provider.manage.")
 }(wire_name="abstraction.facade/registry@1",doc="The runtime's one directory of the programs it knows, for operator tools: providers it launches or attaches to, foreign HTTP engines the router reaches, and other runtimes over mutual TLS. Applications never read it; they resolve. Each call is a rights decision for the bound operator subject; same-account identity alone grants nothing. A decision point that cannot answer reads unavailable. The registry is local: a remote runtime's services come from its own endpoint@1 Describe, and no registry is read across machines.")
+struct DeclarationStateV2 {
+ 1: required DeclarationState state
+ 2: optional list<DeclarationExtension> supported_extensions(omit="zero")
+}(unknown_fields="refuse",doc="The registry@1 state and the extension inventory from the same declaration snapshot.")
+struct DeclarationListV2 {
+ 1: required DeclarationListOutcome outcome
+ 2: required string revision
+ 3: required list<DeclarationStateV2> declarations
+}(unknown_fields="refuse",doc="The registry@2 declarations and their edit revision. Refusals carry an empty revision and no declarations.")
+struct DeclarationObservationV2 {
+ 1: required DeclarationListOutcome outcome
+ 2: required string cursor
+ 3: required list<DeclarationStateV2> declarations
+}(unknown_fields="refuse",doc="The registry@2 declarations and readings from one snapshot. The cursor includes extension inventory changes.")
+service RegistryV2 {
+ DeclarationListV2 Declarations()(doc="Read all declarations, readings and extension inventories under provider.manage.")
+ DeclarationChange Declare(1:string expected_revision,2:DeclarationWithExtensions declaration)(doc="Conditionally add the declaration and its extension inventory as one generation, under provider.manage. The registry@1 Declare semantics for rules and ownership apply.")
+ DeclarationChange Withdraw(1:string expected_revision,2:string name)(doc="Conditionally withdraw a declaration under provider.manage, with the registry@1 semantics.")
+ DeclarationObservationV2 Observe(1:string cursor,2:i64 wait_ms)(doc="Wait for declarations, readings or extension inventories to change, under provider.manage.")
+}(wire_name="abstraction.facade/registry@2",doc="The local operator registry with per-profile required extension inventory. It shares the authenticated endpoint, rights decision, revisions and withdrawal authority with registry@1. A registry@1 reading omits extension metadata; a registry@1 Declare creates an empty extension inventory.")
 
 const list<string> default_runtime_contracts = [
  "abstraction.logging/sink@1",
@@ -343,7 +371,8 @@ struct ApplicationEntry {
  1: required ApplicationDescriptor descriptor
  2: required list<ApplicationInstance> instances
  3: required Scope scope
-}(unknown_fields="refuse",doc="One installed application's descriptor with its currently leased instances. scope records directory provenance; this local profile supplies local and never imports remote announcements. An empty instance list makes no claim about whether an unregistered process is running.")
+ 4: optional bool self_registered(omit="zero")
+}(unknown_fields="refuse",doc="One installed application's descriptor with its currently leased instances. scope records directory provenance; this local profile supplies local and never imports remote announcements. An empty instance list makes no claim about whether an unregistered process is running. self_registered is present and true while the entry was registered by its own program under the account-wide registration default and the person has not answered Keep to the runtime's question about it (AskConfirmation). Only such entries carry the field.")
 struct ApplicationChange {
  1: required ApplicationOutcome outcome
  2: required string instance
@@ -360,11 +389,27 @@ struct ApplicationActivationResult {
  3: required bool started
  4: required string reason
 }(unknown_fields="refuse",doc="ready identifies a descriptor-program-and-session-bound presence whose claimed interface matches the recipe; it is not a protocol probe or process-lineage proof. started says the platform launcher accepted the recipe during this shared attempt; the returned instance may be a fresh announcement from an already-running matching program. false means an existing matching instance was reused before launch. Cancellation returns unavailable to that waiter and leaves the bounded attempt and user application alive. Failure outcomes carry no instance.")
+struct ApplicationStart {
+ 1: required string application
+ 2: required string program
+ 3: required string title
+ 4: required i64 started_unix_ms
+ 5: required bool launched
+}(unknown_fields="refuse",doc="One time an application became present in this runtime: the first announced instance of a registered application in a local session where none of its instances was live. application, program and title are the descriptor's at that time. launched is true when this runtime's own activation attempt for the application in that session was waiting for it; false means the application announced itself. It records a fresh announcement, not process lineage, and a runtime restart makes every running application announce again.")
+struct ApplicationStartPage {
+ 1: required ApplicationOutcome outcome
+ 2: required list<ApplicationStart> starts
+ 3: required string cursor
+ 4: required bool complete
+ 5: required i64 complete_since_unix_ms
+}(unknown_fields="refuse",doc="page carries at most the requested 1..64 starts, newest first. complete means the log was exhausted; otherwise cursor continues it. complete_since_unix_ms is zero while every retained start is listed; otherwise starts at or before it may have been evicted. stale means the cursor's log changed or belongs to another runtime: restart from an empty cursor. Other outcomes carry no starts or cursor.")
 service Applications {
- ApplicationChange Register(1:ApplicationDescriptor descriptor)(doc="Add an installed descriptor. Requires application.manage on account; existing names conflict. Does not launch or grant use. Programs cannot self-register.")
+ ApplicationChange Register(1:ApplicationDescriptor descriptor)(doc="Add an installed descriptor. Requires application.manage on account for another program's descriptor, or application.register_self on account for the caller's own program, which the account-wide registration default permits; such an entry is self_registered until confirmed. A title that reads as OpenAbstractions is invalid with reason title. Existing names conflict; a program's second self-registration while one is unconfirmed conflicts with reason unconfirmed. Does not launch or grant use.")
+ ApplicationChange AskConfirmation(1:string application)(doc="Ask the person again, through the runtime's own asks question application.self_registered, whether to keep a self-registered entry. Requires application.manage on account. The person's Keep clears self_registered; Remove removes every unconfirmed entry of its program and blocks that program from registering itself; closing or expiry leaves it unconfirmed. A pending question is replayed. A confirmed or operator-registered entry applies without asking; an unknown name is unknown. An earlier applications@2 service returns unknown_method.")
  ApplicationChange Remove(1:string application)(doc="Remove an installed descriptor and its presence. Requires application.manage on account. Does not terminate user applications.")
  ApplicationChange Announce(1:ApplicationPresence presence)(doc="Publish or renew presence. Requires application.announce on app:<name>, a bound native program and kernel session matching this runtime, and current owner/session/epoch for renewal. Claims never alter descriptors or grants.")
  ApplicationChange Withdraw(1:string application,2:string instance)(doc="Withdraw only the bound program and session's own current instance. Requires application.announce on app:<name>. Does not terminate the application or remove its installed descriptor.")
  ApplicationPage Observe(1:string cursor,2:i64 wait_ms)(doc="Read or wait for a caller-filtered complete snapshot. Requires application.read on each returned app:<name>; hidden entries and changes remain undisclosed. Empty cursor answers immediately. wait_ms is 0..30000; permissions and lease expiry are rechecked while waiting. No activation occurs.")
  ApplicationActivationResult Activate(1:string application)(doc="Reuse a matching descriptor-program-bound presence or share one bounded authorized start attempt in this local runtime session. Requires application.activate on app:<name>. Only the operator-registered typed recipe executes; guidance and announcements remain inert. Caller cancellation stops its wait and never terminates or restarts the application.")
-}(wire_name="abstraction.facade/applications@1",doc="Experimental application-presence profile owned by the OA service. Persistent operator descriptors and transient app announcements have distinct authority and lifetime. This is a local directory; MCP/UI metadata are claims, and invocation remains behind OA capability mediation. Native callers retain their actual account/program identity. Unsupported platform identity refuses access.")
+ ApplicationStartPage ListStarts(1:string cursor,2:i64 limit)(doc="Read the runtime's start log newest first, for this runtime's operator programs only: any other caller, another account and a remote peer get forbidden. Each start is kept seven days, at most 256. limit is 1..64; cursor is empty or a previous page's, at most 256 bytes. An earlier applications@2 service returns unknown_method.")
+}(wire_name="abstraction.facade/applications@2",doc="Experimental application-presence profile owned by the OA service. Persistent operator descriptors and transient app announcements have distinct authority and lifetime. This is a local directory; MCP/UI metadata are claims, and invocation remains behind OA capability mediation. Native callers retain their actual account/program identity. Unsupported platform identity refuses access.")

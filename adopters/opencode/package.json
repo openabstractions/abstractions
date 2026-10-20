@@ -14,15 +14,30 @@
   },
   "type": "module",
   "exports": {
-    ".": {"default": "./index.js"}
+    ".": {"default": "./index.js"},
+    "./server": {"default": "./server.js"},
+    "./tui": {"default": "./tui.js"},
+    "./official-install": {"default": "./official-install.js"}
   },
-  "files": ["index.js", "README.md"],
+  "files": ["index.js", "server.js", "v2.js", "plugin.js", "project-access.js", "session-api/js/opencode/session/internal.mjs", "session-api/js/opencode/session/index.mjs", "session-api/js/opencode/session/index.d.mts", "inventory.js", "panel-launch.js", "selection-policy.js", "source-watch.js", "rights-action-description.template.json", "image-tool.js", "content-delivery.js", "authorization-questions.js", "assistant-answers.js", "tui.js", "oa-models.js", "listen.js", "winmm-capture.js", "speak.js", "compact-tools.js", "tool-config.js", "where.js", "configure.js", "availability.js", "preload.js", "opencode-build.js", "official-install.js", "README.md", "npm-shrinkwrap.json"],
+  "scripts": {
+    "test": "node --test"
+  },
   "engines": {
     "node": ">=18"
   },
+  "peerDependencies": {
+    "@opencode-ai/plugin": "^1.18.31"
+  },
   "dependencies": {
+    "@ai-sdk/provider": "3.0.16",
+    "@openabstractions/asks": "0.0.0",
     "@openabstractions/facade": "0.0.0",
     "@openabstractions/inference": "0.0.0",
-    "@openabstractions/ipc": "0.0.0"
+    "@openabstractions/ipc": "0.0.0",
+    "@openabstractions/logging": "0.0.0",
+    "@openabstractions/rights": "0.0.0",
+    "@openabstractions/router": "0.0.0",
+    "@openabstractions/storage-content": "0.0.0"
   }
 }

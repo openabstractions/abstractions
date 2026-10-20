@@ -1,3 +1,15 @@
+enum AcquireFreeOutcome
+  ACQUIRED = 'acquired'
+  INSUFFICIENT = 'insufficient'
+  NOT_PERMITTED = 'not_permitted'
+  UNAVAILABLE = 'unavailable'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  HELD = 'held'
+dataclass AcquireFreeResult
+  outcome: AcquireFreeOutcome | None
+  lease: Lease | None
+  asked: list[YieldRecord]
 enum AcquireOutcome
   ACQUIRED = 'acquired'
   INSUFFICIENT = 'insufficient'
@@ -47,6 +59,7 @@ dataclass LeaseChangeResult
   change: LeaseChange | None
 class Leases
   acquire(resource: str, amount: int, wait_ms: int) -> AcquireResult
+  acquire_free(resource: str, amount: int) -> AcquireFreeResult
   renew(lease: str) -> LeaseChangeResult
   release(lease: str) -> LeaseChangeResult
   observe(cursor: str, wait_ms: int) -> ObserveResult
@@ -55,6 +68,7 @@ class Leases
 class LeasesClient(Leases)
   __init__(transport)
   acquire(resource: str, amount: int, wait_ms: int) -> AcquireResult
+  acquire_free(resource: str, amount: int) -> AcquireFreeResult
   renew(lease: str) -> LeaseChangeResult
   release(lease: str) -> LeaseChangeResult
   observe(cursor: str, wait_ms: int) -> ObserveResult

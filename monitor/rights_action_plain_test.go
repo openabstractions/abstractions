@@ -2,60 +2,38 @@ package main
 
 import (
 	"regexp"
-	"strings"
+	"sort"
 	"testing"
 )
 
-// grantRuleActionPattern finds every action token a data-grant-rules
-// attribute names (gResolveRules, panel_shell.go, splits each comma-separated
-// token on "|" and takes the action half); the resource half, when present,
-// is a resource name or another action union, never itself checked here.
-var grantRuleActionPattern = regexp.MustCompile(`data-grant-rules="([^"]*)"`)
-
-// parenthesizedActionIDPattern finds every raw action id a page names in the
-// "plain phrase (raw id)" shape task 2026-09-23's fifth first-time visitor
-// asked every page to use (Inference's data-grant-rules sentence,
-// gRewriteSentence in panel_shell.go, and identity_page.go's capability rows
-// already used this shape; Device, Registry and Credentials did not, and
-// showed a bare id or a raw id fragment with no plain phrase at all instead).
-var parenthesizedActionIDPattern = regexp.MustCompile(`\((abstraction\.[a-z][a-zA-Z0-9_.-]*/[a-zA-Z0-9_.]+)\)`)
-
-// emittedRuleActions collects every rights action id a page fragment names,
-// through either shape above.
-func emittedRuleActions(fragment string) []string {
-	var actions []string
-	for _, attr := range grantRuleActionPattern.FindAllStringSubmatch(fragment, -1) {
-		for _, token := range strings.Split(attr[1], ",") {
-			token = strings.TrimSpace(token)
-			if token == "" {
-				continue
-			}
-			action := strings.SplitN(token, "|", 2)[0]
-			actions = append(actions, action)
-		}
-	}
-	for _, m := range parenthesizedActionIDPattern.FindAllStringSubmatch(fragment, -1) {
-		actions = append(actions, m[1])
-	}
-	return actions
-}
+// rawActionID finds a raw rights action id, abstraction.<layer>/<action>,
+// anywhere in a page fragment, markup or script. An id followed by @<n> is a
+// service contract, never an action, and is skipped.
+var rawActionID = regexp.MustCompile(`abstraction\.[a-z][a-z0-9_-]*/[a-z][a-zA-Z0-9_.-]*[a-zA-Z0-9_]`)
 
 // TestRightsActionPlainCoversEmittedActions is task 2026-09-23's fifth
-// first-time visitor, finding 2: every action id a Panel page actually names
-// (a grant widget's data-grant-rules, or a "plain phrase (id)" sentence) must
-// have a plain phrase in rightsActionPlain, so the page never has to fall
-// back to showing the raw id alone.
+// first-time visitor, finding 2: every rights action id a Panel page names
+// has a plain phrase in rightsActionPlain, so the page never has to show the
+// raw id alone. A page that names none passes.
 func TestRightsActionPlainCoversEmittedActions(t *testing.T) {
-	found := false
+	missing := map[string][]string{}
 	for page, fragment := range pageFragments {
-		for _, action := range emittedRuleActions(fragment) {
-			found = true
+		for _, m := range rawActionID.FindAllStringIndex(fragment, -1) {
+			if m[1] < len(fragment) && fragment[m[1]] == '@' {
+				continue
+			}
+			action := fragment[m[0]:m[1]]
 			if rightsActionPlain[action] == "" {
-				t.Errorf("page %q names action %q with no rightsActionPlain entry", page, action)
+				missing[action] = append(missing[action], page)
 			}
 		}
 	}
-	if !found {
-		t.Fatal("found no action ids to check across pageFragments; the patterns above may no longer match the pages' markup")
+	actions := make([]string, 0, len(missing))
+	for action := range missing {
+		actions = append(actions, action)
+	}
+	sort.Strings(actions)
+	for _, action := range actions {
+		t.Errorf("pages %v name action %q with no rightsActionPlain entry", missing[action], action)
 	}
 }

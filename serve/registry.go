@@ -15,12 +15,10 @@ import (
 	"time"
 
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
-	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	"github.com/openabstractions/abstraction-identity/listen"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	iwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	inferenceservice "github.com/openabstractions/abstraction-inference/go/service"
-	resourceservice "github.com/openabstractions/abstraction-resource/go/service"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	router "github.com/openabstractions/abstraction-router/go"
 )
@@ -35,6 +33,7 @@ func ResourceCard(name string) string { return "card:" + name }
 
 // RegistryContract is the registry profile's wire name.
 const RegistryContract = "abstraction.facade/registry@1"
+const RegistryV2Contract = "abstraction.facade/registry@2"
 
 // maxObserveWait bounds Observe's wait_ms.
 const maxObserveWait = 30000
@@ -69,13 +68,7 @@ func declarationEditRefusal(word string) wire.DeclarationEditOutcome {
 }
 
 func registryEndpoint(options runtimeFlags) (string, error) {
-	switch {
-	case options.isolated != "":
-		return bootstrap.Endpoint(options.isolated + "-registry")
-	case options.endpoint != "":
-		return options.endpoint + "-registry", nil
-	}
-	return options.defaultEndpoint("registry-v1")
+	return options.companionEndpoint("registry-v1", "registry", "registry")
 }
 
 func (r *runtimeRegistry) Declarations(ctx context.Context, caller inference.Subject) wire.DeclarationList {
@@ -90,13 +83,34 @@ func (r *runtimeRegistry) Declarations(ctx context.Context, caller inference.Sub
 	return wire.DeclarationList{Outcome: wire.DeclarationListOutcomePage, Revision: revision, Declarations: list}
 }
 
+func (r *runtimeRegistry) DeclarationsV2(ctx context.Context, caller inference.Subject) wire.DeclarationListV2 {
+	if word := r.operator.gate(ctx, caller, ActionProviderManage); word != "" {
+		return wire.DeclarationListV2{Outcome: declarationListRefusal(word), Declarations: []wire.DeclarationStateV2{}}
+	}
+	list, revision, err := r.providers.listV2()
+	if err != nil {
+		r.providers.report(err)
+		return wire.DeclarationListV2{Outcome: wire.DeclarationListOutcomeUnavailable, Declarations: []wire.DeclarationStateV2{}}
+	}
+	return wire.DeclarationListV2{Outcome: wire.DeclarationListOutcomePage, Revision: revision, Declarations: list}
+}
+
 // Declare adds one declaration. A program never declares itself: an adopter
 // cannot register its own program.
 func (r *runtimeRegistry) Declare(ctx context.Context, caller inference.Subject, expected string, declaration wire.Declaration) wire.DeclarationChange {
+	return r.declare(ctx, caller, expected, declaration, nil)
+}
+
+func (r *runtimeRegistry) DeclareV2(ctx context.Context, caller inference.Subject, expected string, declaration wire.DeclarationWithExtensions) wire.DeclarationChange {
+	return r.declare(ctx, caller, expected, declaration.Declaration, declaration.SupportedExtensions)
+}
+
+func (r *runtimeRegistry) declare(ctx context.Context, caller inference.Subject, expected string, declaration wire.Declaration, extensions []wire.DeclarationExtension) wire.DeclarationChange {
 	if word := r.operator.gate(ctx, caller, ActionProviderManage); word != "" {
 		return wire.DeclarationChange{Outcome: declarationEditRefusal(word)}
 	}
 	d := declarationOf(declaration)
+	d.SupportedExtensions = extensionsOf(extensions)
 	if field := validProviderDeclaration(d); field != "" {
 		return wire.DeclarationChange{Outcome: wire.DeclarationEditOutcomeInvalid, Reason: field}
 	}
@@ -120,9 +134,7 @@ func (r *runtimeRegistry) Declare(ctx context.Context, caller inference.Subject,
 	for _, store := range d.resources("store") {
 		errs = append(errs, r.operator.permitRuleWhy(by, d.Program, ActionInventoryProvide, ResourceStore(store), providerAddWhy))
 	}
-	for _, card := range d.resources("card") {
-		errs = append(errs, r.operator.permitRuleWhy(by, d.Program, resourceservice.ActionHold, ResourceCard(card), providerAddWhy))
-	}
+	errs = append(errs, r.operator.permitCardRules(by, d.Program, d.resources("card"))...)
 	if d.host() {
 		errs = append(errs, r.operator.writeHostRules(caller, (providerFile{Declaration: d}).hostEntry()))
 	} else if d.remote() {
@@ -148,48 +160,72 @@ func (r *runtimeRegistry) Withdraw(ctx context.Context, caller inference.Subject
 
 // Observe waits for the declarations or their readings to differ from cursor.
 func (r *runtimeRegistry) Observe(ctx context.Context, caller inference.Subject, cursor string, waitMS int64) wire.DeclarationObservation {
-	refused := func(outcome wire.DeclarationListOutcome) wire.DeclarationObservation {
-		return wire.DeclarationObservation{Outcome: outcome, Declarations: []wire.DeclarationState{}}
+	outcome, now, list := r.observe(ctx, caller, cursor, waitMS, false)
+	states := make([]wire.DeclarationState, len(list))
+	for i, entry := range list {
+		states[i] = entry.State
 	}
+	return wire.DeclarationObservation{Outcome: outcome, Cursor: now, Declarations: states}
+}
+
+func (r *runtimeRegistry) ObserveV2(ctx context.Context, caller inference.Subject, cursor string, waitMS int64) wire.DeclarationObservationV2 {
+	outcome, now, list := r.observe(ctx, caller, cursor, waitMS, true)
+	return wire.DeclarationObservationV2{Outcome: outcome, Cursor: now, Declarations: list}
+}
+
+func (r *runtimeRegistry) observe(ctx context.Context, caller inference.Subject, cursor string, waitMS int64, v2 bool) (wire.DeclarationListOutcome, string, []wire.DeclarationStateV2) {
 	if word := r.operator.gate(ctx, caller, ActionProviderManage); word != "" {
-		return refused(declarationListRefusal(word))
+		return declarationListRefusal(word), "", []wire.DeclarationStateV2{}
 	}
 	if waitMS < 0 || waitMS > maxObserveWait {
-		return refused(wire.DeclarationListOutcomeInvalid)
+		return wire.DeclarationListOutcomeInvalid, "", []wire.DeclarationStateV2{}
 	}
 	deadline := time.NewTimer(time.Duration(waitMS) * time.Millisecond)
 	defer deadline.Stop()
 	expired := false
 	for {
 		if word := r.operator.gate(ctx, caller, ActionProviderManage); word != "" {
-			return refused(declarationListRefusal(word))
+			return declarationListRefusal(word), "", []wire.DeclarationStateV2{}
 		}
 		r.providers.mu.Lock()
 		changes := r.providers.changes
 		r.providers.mu.Unlock()
-		list, _, err := r.providers.list()
+		list, _, err := r.providers.listV2()
 		if err != nil {
 			r.providers.report(err)
-			return refused(wire.DeclarationListOutcomeUnavailable)
+			return wire.DeclarationListOutcomeUnavailable, "", []wire.DeclarationStateV2{}
 		}
-		raw, err := json.Marshal(list)
+		var raw []byte
+		if v2 {
+			raw, err = json.Marshal(list)
+		} else {
+			states := make([]wire.DeclarationState, len(list))
+			for i, entry := range list {
+				states[i] = entry.State
+			}
+			raw, err = json.Marshal(states)
+		}
 		if err != nil {
-			return refused(wire.DeclarationListOutcomeUnavailable)
+			return wire.DeclarationListOutcomeUnavailable, "", []wire.DeclarationStateV2{}
 		}
 		sum := sha256.Sum256(raw)
-		now := "registry-v1:" + hex.EncodeToString(sum[:12])
+		prefix := "registry-v1:"
+		if v2 {
+			prefix = "registry-v2:"
+		}
+		now := prefix + hex.EncodeToString(sum[:12])
 		if cursor == "" || now != cursor || expired {
 			if word := r.operator.gate(ctx, caller, ActionProviderManage); word != "" {
-				return refused(declarationListRefusal(word))
+				return declarationListRefusal(word), "", []wire.DeclarationStateV2{}
 			}
-			return wire.DeclarationObservation{Outcome: wire.DeclarationListOutcomePage, Cursor: now, Declarations: list}
+			return wire.DeclarationListOutcomePage, now, list
 		}
 		select {
 		case <-changes:
 		case <-deadline.C:
 			expired = true
 		case <-ctx.Done():
-			return refused(wire.DeclarationListOutcomeUnavailable)
+			return wire.DeclarationListOutcomeUnavailable, "", []wire.DeclarationStateV2{}
 		}
 	}
 }
@@ -257,7 +293,22 @@ func (h *registryHost) Serve(ctx context.Context) error {
 			if err == nil {
 				var reply []byte
 				receiver := &registryReceiver{host: h, call: call, ctx: callCtx}
-				if reply, err = (&wire.RegistryDispatcher{Handler: receiver}).ExchangeFrame(call.Frame); err == nil {
+				v1 := &wire.RegistryDispatcher{Handler: receiver}
+				v2 := &wire.RegistryV2Dispatcher{Handler: &registryV2Receiver{receiver}}
+				var envelope struct {
+					Service string `json:"service"`
+				}
+				if err = json.Unmarshal(call.Frame, &envelope); err == nil {
+					switch envelope.Service {
+					case RegistryV2Contract:
+						reply, err = v2.ExchangeFrame(call.Frame)
+					case wire.EndpointContract:
+						reply, err = wire.DescribeEndpoint(call.Frame, "", "", v1, v2)
+					default:
+						reply, err = v1.ExchangeFrame(call.Frame)
+					}
+				}
+				if err == nil {
 					err = call.Reply(reply)
 				}
 			}
@@ -301,6 +352,20 @@ func (r *registryReceiver) Withdraw(expectedRevision, name string) (wire.Declara
 
 func (r *registryReceiver) Observe(cursor string, waitMs int64) (wire.DeclarationObservation, error) {
 	return r.host.registry.Observe(r.ctx, r.caller(), cursor, waitMs), nil
+}
+
+type registryV2Receiver struct{ *registryReceiver }
+
+func (r *registryV2Receiver) Declarations() (wire.DeclarationListV2, error) {
+	return r.host.registry.DeclarationsV2(r.ctx, r.caller()), nil
+}
+
+func (r *registryV2Receiver) Declare(expectedRevision string, declaration wire.DeclarationWithExtensions) (wire.DeclarationChange, error) {
+	return r.host.registry.DeclareV2(r.ctx, r.caller(), expectedRevision, declaration), nil
+}
+
+func (r *registryV2Receiver) Observe(cursor string, waitMs int64) (wire.DeclarationObservationV2, error) {
+	return r.host.registry.ObserveV2(r.ctx, r.caller(), cursor, waitMs), nil
 }
 
 // legacyProviderFile is a version 1 declaration, which the registration build

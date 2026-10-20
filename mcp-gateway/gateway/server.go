@@ -54,7 +54,7 @@ func NewServer(backend Backend) *mcp.Server {
 			err := bounded(ctx, func(ctx context.Context) (err error) { out, err = backend.Complete(ctx, in); return err })
 			return nil, out, err
 		})
-	mcp.AddTool(s, &mcp.Tool{Name: ToolJobSubmit, Description: "Idempotently submit durable image or video inference through OA and return an opaque recovery handle.", Annotations: submit},
+	mcp.AddTool(s, &mcp.Tool{Name: ToolJobSubmit, Description: "Idempotently submit durable image or video inference through OA and return an opaque recovery handle. hosting local runs on this computer's servers and takes no credential; hosted needs a credential name the person registered in OA.", Annotations: submit},
 		func(ctx context.Context, _ *mcp.CallToolRequest, in JobSubmitInput) (*mcp.CallToolResult, JobSubmitOutput, error) {
 			var out JobSubmitOutput
 			err := bounded(ctx, func(ctx context.Context) (err error) { out, err = backend.Submit(ctx, in); return err })
@@ -64,6 +64,12 @@ func NewServer(backend Backend) *mcp.Server {
 		func(ctx context.Context, _ *mcp.CallToolRequest, in JobHandleInput) (*mcp.CallToolResult, JobStatusOutput, error) {
 			var out JobStatusOutput
 			err := bounded(ctx, func(ctx context.Context) (err error) { out, err = backend.Status(ctx, in); return err })
+			return nil, out, err
+		})
+	mcp.AddTool(s, &mcp.Tool{Name: ToolJobDiagnose, Description: "Explain the typed outcome of one OA durable inference handle. Reads only that handle under this MCP adapter's OA authorization; returns no prompt, result, credential name, or free-text failure message. Does not list recent activity, inspect downloads or operating-system logs, or change the operation.", Annotations: read},
+		func(ctx context.Context, _ *mcp.CallToolRequest, in JobHandleInput) (*mcp.CallToolResult, JobDiagnosisOutput, error) {
+			var out JobDiagnosisOutput
+			err := bounded(ctx, func(ctx context.Context) (err error) { out, err = backend.Diagnose(ctx, in); return err })
 			return nil, out, err
 		})
 	mcp.AddTool(s, &mcp.Tool{Name: ToolJobCancel, Description: "Explicitly request cancellation of one OA durable inference handle.", Annotations: cancel},

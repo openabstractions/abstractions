@@ -31,6 +31,14 @@ int main(int argc,char**argv){
  bool resident=false;for(const auto&f:models.models)for(const auto&a:f.names)if(a.host=="lemonade"&&a.resident&&a.servable)resident=true;require(resident,"resident alias lost");
  bool down=false;for(const auto&h:hosts.hosts)if(h.host=="ollama")down=!h.up&&!h.why.empty()&&h.installed==0&&h.resident.empty();require(down,"host failure was hidden");
  auto refreshed=client.models(true);require(refreshed.models.size()==models.models.size(),"fresh inventory changed");
+ // ROUTE-D8: Lemonade's loaded ctx_size bounds the shared family; LM Studio's maximum bounds its own.
+ r::OfferRequest wanted;wanted.placement=r::Placement::Any;wanted.reserve=4096;
+ auto offered=generic->offer(wanted);require(offered.outcome==r::OfferOutcome::Offered,"offer refused");caller(offered.observation);require(offered.offers.size()==2,"wrong offer count");
+ bool effective=false,maximum=false;
+ for(const auto&o:offered.offers){
+  if(o.servers==std::vector<std::string>{"lemonade","lmstudio"})effective=o.names.front()=="Qwen3.6-35B-A3B-GGUF"&&o.context==32768&&o.context_source=="effective"&&o.input==28672;
+  if(o.servers==std::vector<std::string>{"lmstudio"})maximum=o.names==std::vector<std::string>{"google/gemma-4-26b-it"}&&o.context==131072&&o.context_source=="maximum"&&o.input==126976;}
+ require(effective&&maximum,"offered context changed");
  r::PickRequest request;request.model="qwen/qwen3.6-35b-a3b";request.fresh=false;
  auto picked=generic->pick(request);caller(picked.observation);require(picked.decision.verdict=="resident"&&picked.decision.loads==0&&!picked.decision.endpoint.empty()&&!picked.decision.authorised.has_value(),"unrestricted resident choice changed");
  request.allowed.emplace(); // Present [] is NONE, not absent/all.
@@ -47,6 +55,6 @@ int main(int argc,char**argv){
  try{r::detail::service_response(response,"abstraction.router/router@1",method);}catch(const r::ServiceError&e){refused=e.code==item.second;}
  require(refused,"wrong typed refusal");}
  require(client.hosts().asked.size()==before.asked.size(),"malformed or spoofed request reached provider");
- std::cout<<"PASS: Models, Hosts, Pick, caller audit, host failure, empty allowance, typed refusals\n";
+ std::cout<<"PASS: Models, Hosts, Pick, Offer, caller audit, host failure, empty allowance, typed refusals\n";
  }catch(const std::exception&e){std::cerr<<e.what()<<'\n';return 1;}
 }

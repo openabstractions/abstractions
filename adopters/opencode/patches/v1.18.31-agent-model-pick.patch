@@ -1,0 +1,233 @@
+diff --git a/packages/tui/src/component/dialog-model.tsx b/packages/tui/src/component/dialog-model.tsx
+--- a/packages/tui/src/component/dialog-model.tsx
++++ b/packages/tui/src/component/dialog-model.tsx
+@@ -1,5 +1,5 @@
+ import { createMemo, createSignal } from "solid-js"
+-import { useLocal } from "../context/local"
++import { agentDefaultPatch, useLocal } from "../context/local"
+ import { map, pipe, flatMap, entries, filter, sortBy, take } from "remeda"
+ import { DialogSelect } from "../ui/dialog-select"
+ import { useDialog } from "../ui/dialog"
+@@ -159,6 +159,26 @@
+       options={options()}
+       actions={[
+         {
++          command: "model.dialog.agent_default",
++          title: "Default for this agent",
++          onTrigger: (option) => {
++            if (typeof option.value === "string") return
++            const agent = local.agent.current()
++            if (!agent) return
++            const model = option.value as { providerID: string; modelID: string }
++            local.model.set(model, { recent: true })
++            void sdk.client.global.config
++              .update({ config: agentDefaultPatch(agent.name, model) as never })
++              .then(() =>
++                toast.show({
++                  message: `${model.providerID}/${model.modelID} is now the ${agent.name} agent's default model`,
++                  variant: "success",
++                }),
++              )
++              .catch(toast.error)
++          },
++        },
++        {
+           command: "model.dialog.provider",
+           title: connected() ? "Connect provider" : "View all providers",
+           onTrigger() {
+diff --git a/packages/tui/src/config/keybind.ts b/packages/tui/src/config/keybind.ts
+--- a/packages/tui/src/config/keybind.ts
++++ b/packages/tui/src/config/keybind.ts
+@@ -123,6 +123,7 @@
+   model_cycle_recent_reverse: keybind("shift+f2", "Previous recently used model"),
+   model_cycle_favorite: keybind("none", "Next favorite model"),
+   model_cycle_favorite_reverse: keybind("none", "Previous favorite model"),
++  model_agent_default: keybind("ctrl+s", "Make the model the current agent's default"),
+   mcp_list: keybind("none", "List MCP servers"),
+   provider_connect: keybind("none", "Connect provider"),
+   console_org_switch: keybind("none", "Switch console organization"),
+@@ -329,6 +330,7 @@
+   model_cycle_recent_reverse: "model.cycle_recent_reverse",
+   model_cycle_favorite: "model.cycle_favorite",
+   model_cycle_favorite_reverse: "model.cycle_favorite_reverse",
++  model_agent_default: "model.dialog.agent_default",
+   mcp_list: "mcp.list",
+   provider_connect: "provider.connect",
+   console_org_switch: "console.org.switch",
+diff --git a/packages/tui/src/context/local.tsx b/packages/tui/src/context/local.tsx
+--- a/packages/tui/src/context/local.tsx
++++ b/packages/tui/src/context/local.tsx
+@@ -48,6 +48,37 @@
+     .map((item) => ({ providerID: item.providerID, modelID: item.modelID }))
+ }
+ 
++type ModelRef = { providerID: string; modelID: string }
++
++/** A model picked for an agent, with the configured model it replaced. */
++export type SavedPick = ModelRef & { over: string }
++
++/** The per-agent picks saved in model.json, keeping well-formed entries. */
++export function persistedAgentModels(value: unknown): Record<string, SavedPick> {
++  const result: Record<string, SavedPick> = {}
++  if (!value || typeof value !== "object" || Array.isArray(value)) return result
++  for (const [agent, pick] of Object.entries(value as Record<string, unknown>)) {
++    if (!pick || typeof pick !== "object") continue
++    const { providerID, modelID, over } = pick as Record<string, unknown>
++    if (typeof providerID !== "string" || !providerID || typeof modelID !== "string" || !modelID) continue
++    if (typeof over !== "string") continue
++    result[agent] = { providerID, modelID, over }
++  }
++  return result
++}
++
++/** A saved pick holds while the configuration still names the model it
++ * replaced; a new configured model for the agent drops it. */
++export function savedPick(pick: SavedPick | undefined, configured: string): ModelRef | undefined {
++  if (!pick || pick.over !== configured) return undefined
++  return { providerID: pick.providerID, modelID: pick.modelID }
++}
++
++/** The global config patch that makes model the default for agent. */
++export function agentDefaultPatch(agent: string, model: ModelRef) {
++  return { agent: { [agent]: { model: `${model.providerID}/${model.modelID}` } } }
++}
++
+ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
+   name: "Local",
+   init: () => {
+@@ -153,9 +184,11 @@
+           modelID: string
+         }[]
+         variant: Record<string, string | undefined>
++        saved: Record<string, SavedPick>
+       }>({
+         ready: false,
+         model: {},
++        saved: {},
+         recent: [],
+         favorite: [],
+         variant: {},
+@@ -176,6 +209,7 @@
+           recent: modelStore.recent,
+           favorite: modelStore.favorite,
+           variant: modelStore.variant,
++          agent: modelStore.saved,
+         })
+       }
+ 
+@@ -187,6 +221,9 @@
+           if (Array.isArray(value.favorite)) setModelStore("favorite", value.favorite)
+           if (typeof value.variant === "object" && value.variant !== null)
+             setModelStore("variant", value.variant as Record<string, string | undefined>)
++          for (const [name, pick] of Object.entries(persistedAgentModels(value.agent))) {
++            if (!modelStore.saved[name]) setModelStore("saved", name, pick)
++          }
+         })
+         .catch(() => {})
+         .finally(() => {
+@@ -233,11 +270,24 @@
+         }
+       })
+ 
++      // The model the configuration gives an agent: its own, else the default.
++      function configuredModel(a: { model?: ModelRef }) {
++        if (a.model) return `${a.model.providerID}/${a.model.modelID}`
++        return args.model ?? sync.data.config.model ?? ""
++      }
++
++      // Pick model for agent a and save the pick with the configured model it replaces.
++      function pick(a: { name: string; model?: ModelRef }, model: ModelRef) {
++        setModelStore("model", a.name, { ...model })
++        setModelStore("saved", a.name, { ...model, over: configuredModel(a) })
++      }
++
+       const currentModel = createMemo(() => {
+         const a = agent.current()
+         return (
+           getFirstValidModel(
+             () => a && modelStore.model[a.name],
++            () => a && savedPick(modelStore.saved[a.name], configuredModel(a)),
+             () => a && a.model,
+             fallbackModel,
+           ) ?? undefined
+@@ -285,7 +335,8 @@
+           if (!val) return
+           const a = agent.current()
+           if (!a) return
+-          setModelStore("model", a.name, { ...val })
++          pick(a, val)
++          save()
+         },
+         cycleFavorite(direction: 1 | -1) {
+           const favorites = modelStore.favorite.filter((item) => isModelValid(item))
+@@ -313,7 +364,7 @@
+           if (!next) return
+           const a = agent.current()
+           if (!a) return
+-          setModelStore("model", a.name, { ...next })
++          pick(a, next)
+           setModelStore("recent", recentModels(next, modelStore.recent))
+           save()
+         },
+@@ -329,11 +380,9 @@
+             }
+             const a = agent.current()
+             if (!a) return
+-            setModelStore("model", a.name, model)
+-            if (options?.recent) {
+-              setModelStore("recent", recentModels(model, modelStore.recent))
+-              save()
+-            }
++            pick(a, model)
++            if (options?.recent) setModelStore("recent", recentModels(model, modelStore.recent))
++            save()
+           })
+         },
+         toggleFavorite(model: { providerID: string; modelID: string }) {
+diff --git a/packages/tui/test/context/local.test.ts b/packages/tui/test/context/local.test.ts
+--- a/packages/tui/test/context/local.test.ts
++++ b/packages/tui/test/context/local.test.ts
+@@ -1,5 +1,5 @@
+ import { expect, test } from "bun:test"
+-import { parseModel, recentModels } from "../../src/context/local"
++import { agentDefaultPatch, parseModel, persistedAgentModels, recentModels, savedPick } from "../../src/context/local"
+ 
+ test("parses model IDs containing slashes", () => {
+   expect(parseModel("provider/family/model")).toEqual({
+@@ -20,3 +20,36 @@
+     ...recent.slice(6, 10),
+   ])
+ })
++
++test("restores each agent's saved model pick and drops malformed entries", () => {
++  expect(
++    persistedAgentModels({
++      local: { providerID: "openabstractions", modelID: "qwen3.6-35b-a3b", over: "openabstractions/qwen3-8b" },
++      build: { providerID: "openabstractions-hosted", modelID: "deepseek-chat", over: "" },
++      unmarked: { providerID: "openabstractions", modelID: "qwen3-8b" },
++      broken: { providerID: "", modelID: "x", over: "" },
++      other: "openabstractions/qwen",
++    }),
++  ).toEqual({
++    local: { providerID: "openabstractions", modelID: "qwen3.6-35b-a3b", over: "openabstractions/qwen3-8b" },
++    build: { providerID: "openabstractions-hosted", modelID: "deepseek-chat", over: "" },
++  })
++  expect(persistedAgentModels(undefined)).toEqual({})
++  expect(persistedAgentModels(["x"])).toEqual({})
++})
++
++test("a saved pick yields once the configuration names a different model", () => {
++  const pick = { providerID: "openabstractions", modelID: "qwen3.6-35b-a3b", over: "openabstractions/qwen3-8b" }
++  expect(savedPick(pick, "openabstractions/qwen3-8b")).toEqual({
++    providerID: "openabstractions",
++    modelID: "qwen3.6-35b-a3b",
++  })
++  expect(savedPick(pick, "openabstractions/gemma4-12b")).toBeUndefined()
++  expect(savedPick(undefined, "")).toBeUndefined()
++})
++
++test("makes a model an agent's default through the global config", () => {
++  expect(agentDefaultPatch("local", { providerID: "openabstractions", modelID: "family/model" })).toEqual({
++    agent: { local: { model: "openabstractions/family/model" } },
++  })
++})

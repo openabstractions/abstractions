@@ -1,3 +1,17 @@
+dataclass AccountDefault
+  name: str
+  action: str
+  resource: str
+  every_resource: bool
+  on: bool
+  set_by: Subject | None
+  set_at: str
+dataclass ActionDescription
+  action: str
+  feature_app: Subject
+  app_label: str
+  description: str
+  declared_risk: str
 dataclass ActionEdit
   outcome: ActionEditOutcome | None
   revision: str
@@ -16,36 +30,85 @@ dataclass AppMetadata
   rights: list[str]
   registered: str
 class Authorization
+  list_action_descriptions(cursor: str, limit: int) -> DescriptionPage
   decide(action: str, resource: str) -> Decision
   decide_for(subject: Subject, action: str, resource: str) -> Decision
 class AuthorizationClient(Authorization)
   __init__(transport)
+  list_action_descriptions(cursor: str, limit: int) -> DescriptionPage
   decide(action: str, resource: str) -> Decision
   decide_for(subject: Subject, action: str, resource: str) -> Decision
 class AuthorizationOperator
+  register_described_action(expected_revision: str, description: ActionDescription) -> DescriptionEdit
+  apply_first_use_allow(expected_revision: str, question_id: str) -> PolicyEdit
   list_policy(cursor: str, limit: int) -> PolicyPage
   set_rule(expected_revision: str, rule: PolicyRule) -> PolicyEdit
   revoke_rule(expected_revision: str, subject: Subject, action: str, resource: str) -> PolicyEdit
+  stop_answerer(expected_revision: str, answerer: Subject, also_revoke_grants: bool) -> PolicyEdit
+  revoke_answer_permits(expected_revision: str, answerer: Subject, target: Subject, actions: list[str], resource: str, question_id: str) -> PolicyEdit
   set_rule_for(expected_revision: str, rule: PolicyRule, ttl_ms: int, why: str) -> PolicyEdit
+  set_rules_for(expected_revision: str, rules: list[PolicyRule], ttl_ms: int, why: str) -> PolicyEdit
   read_rule(subject: Subject, action: str, resource: str) -> RuleRead
   register_action(expected_revision: str, action: str) -> ActionEdit
   retire_action(expected_revision: str, action: str) -> ActionEdit
+  explain_for(subject: Subject, action: str, resource: str) -> DecisionExplanation
+  list_defaults() -> DefaultPage
+  set_default(expected_revision: str, name: str, on: bool) -> DefaultEdit
 class AuthorizationOperatorClient(AuthorizationOperator)
   __init__(transport)
+  register_described_action(expected_revision: str, description: ActionDescription) -> DescriptionEdit
+  apply_first_use_allow(expected_revision: str, question_id: str) -> PolicyEdit
   list_policy(cursor: str, limit: int) -> PolicyPage
   set_rule(expected_revision: str, rule: PolicyRule) -> PolicyEdit
   revoke_rule(expected_revision: str, subject: Subject, action: str, resource: str) -> PolicyEdit
+  stop_answerer(expected_revision: str, answerer: Subject, also_revoke_grants: bool) -> PolicyEdit
+  revoke_answer_permits(expected_revision: str, answerer: Subject, target: Subject, actions: list[str], resource: str, question_id: str) -> PolicyEdit
   set_rule_for(expected_revision: str, rule: PolicyRule, ttl_ms: int, why: str) -> PolicyEdit
+  set_rules_for(expected_revision: str, rules: list[PolicyRule], ttl_ms: int, why: str) -> PolicyEdit
   read_rule(subject: Subject, action: str, resource: str) -> RuleRead
   register_action(expected_revision: str, action: str) -> ActionEdit
   retire_action(expected_revision: str, action: str) -> ActionEdit
+  explain_for(subject: Subject, action: str, resource: str) -> DecisionExplanation
+  list_defaults() -> DefaultPage
+  set_default(expected_revision: str, name: str, on: bool) -> DefaultEdit
+enum BatchCheckOutcome
+  CHECKED = 'checked'
+  CONFLICT = 'conflict'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass BatchDecision
+  outcome: BatchCheckOutcome | None
+  revision: str
+  collection_outcome: DecisionOutcome | None
+  outcomes: list[DecisionOutcome]
+dataclass BundleExpansion
+  bundle_ref: str
+  definition_digest: str
+  selector: ResourceSelector
+  selections: list[PermissionSelection]
+dataclass BundleOrigin
+  id: str
+  expansion: BundleExpansion
 dataclass CatalogEntry
   action: str
   registered_by: Subject
   registered_at: str
+dataclass CheckBatchRequest
+  expected_revision: str
+  collection_admission: PermissionKey | None
+  resources: list[ConcreteResource]
+dataclass ConcreteResource
+  permission: PermissionKey
+  target: bytes
 dataclass Decision
   outcome: DecisionOutcome | None
   policy_revision: str
+dataclass DecisionExplanation
+  outcome: DecisionOutcome | None
+  policy_revision: str
+  source: DecisionSource | None
+  default_name: str
 enum DecisionOutcome
   PERMITTED = 'permitted'
   DENIED = 'denied'
@@ -54,6 +117,36 @@ enum DecisionOutcome
   INVALID = 'invalid'
   FORBIDDEN = 'forbidden'
   UNAVAILABLE = 'unavailable'
+enum DecisionSource
+  NONE = 'none'
+  OWN_RULE = 'own_rule'
+  TYPED_BLOCK = 'typed_block'
+  ACCOUNT_DEFAULT = 'account_default'
+  DEFAULT_EXCLUDED = 'default_excluded'
+dataclass DefaultEdit
+  outcome: PolicyEditOutcome | None
+  revision: str
+  current: AccountDefault | None
+dataclass DefaultPage
+  outcome: PolicyPageOutcome | None
+  revision: str
+  defaults: list[AccountDefault]
+dataclass DescribedAction
+  action: str
+  choices: list[str]
+  description: ActionDescription | None
+  published_by: Subject | None
+  published_at: str
+dataclass DescriptionEdit
+  outcome: ActionEditOutcome | None
+  revision: str
+  current: DescribedAction | None
+dataclass DescriptionPage
+  outcome: PolicyPageOutcome | None
+  revision: str
+  actions: list[DescribedAction]
+  next: str
+  complete: bool
 class DispatchError(ValueError)
   __init__(code)
 dataclass HoldMetadata
@@ -63,7 +156,57 @@ dataclass HoldMetadata
   why: str
   since: str
 const KNOWN_RIGHTS
+dataclass LegacyOperationRequest
+  legacy_action: str
+  legacy_resource: str
+  concrete_operation: ConcreteResource | None
 const OPERATIONS
+dataclass PermissionBundleDefinition
+  bundle_ref: str
+  owner_contract: str
+  label: str
+  target_type: str
+  supported_selectors: list[ResourceSelectorKind]
+  members: list[PermissionKey]
+  disclosure: str
+  definition_digest: str
+dataclass PermissionBundlePage
+  outcome: PolicyPageOutcome | None
+  revision: str
+  bundles: list[PermissionBundleDefinition]
+  next: str
+  complete: bool
+dataclass PermissionDefinition
+  action: str
+  owner_contract: str
+  operations: list[str]
+  resource_profile: str
+  resource_type: str
+  enforced_by: list[str]
+  disclosure: str
+  lifecycle: str
+  first_use: PermissionFirstUse | None
+  served: bool
+dataclass PermissionDefinitionPage
+  outcome: PolicyPageOutcome | None
+  revision: str
+  definitions: list[SelectorPermissionDefinition]
+  next: str
+  complete: bool
+dataclass PermissionEffect
+  subject: Subject
+  selections: list[PermissionSelection]
+  bundle: BundleExpansion | None
+enum PermissionFirstUse
+  NONE = 'none'
+  EXACT = 'exact'
+  CONSUMING_PAIRED = 'consuming_paired'
+dataclass PermissionKey
+  action: str
+  resource_profile: str
+dataclass PermissionSelection
+  permission: PermissionKey
+  selector: ResourceSelector
 dataclass PolicyEdit
   outcome: PolicyEditOutcome | None
   revision: str
@@ -106,6 +249,12 @@ dataclass Request
   why: str
   app: str
   admin: str
+dataclass ResourceSelector
+  kind: ResourceSelectorKind | None
+  target: bytes | None
+enum ResourceSelectorKind
+  ONE = 'one'
+  ALL = 'all'
 dataclass ResponseMetadata
   code: str
   error: str
@@ -133,6 +282,72 @@ dataclass RuleRecord
   set_at: str
   why: str
   expires: str
+class SelectorAuthorization
+  list_permission_definitions(cursor: str, limit: int) -> PermissionDefinitionPage
+  list_permission_bundles(cursor: str, limit: int) -> PermissionBundlePage
+  check_batch(request: CheckBatchRequest) -> BatchDecision
+  check_batch_for(subject: Subject, request: CheckBatchRequest) -> BatchDecision
+  check_legacy_operation_for(subject: Subject, request: LegacyOperationRequest) -> Decision
+class SelectorAuthorizationClient(SelectorAuthorization)
+  __init__(transport)
+  list_permission_definitions(cursor: str, limit: int) -> PermissionDefinitionPage
+  list_permission_bundles(cursor: str, limit: int) -> PermissionBundlePage
+  check_batch(request: CheckBatchRequest) -> BatchDecision
+  check_batch_for(subject: Subject, request: CheckBatchRequest) -> BatchDecision
+  check_legacy_operation_for(subject: Subject, request: LegacyOperationRequest) -> Decision
+class SelectorAuthorizationOperator
+  list_selector_rules(cursor: str, limit: int) -> SelectorRulePage
+  read_selector_rule(subject: Subject, selection: PermissionSelection) -> SelectorRuleRead
+  set_selector_rule(expected_revision: str, rule: SelectorRule, ttl_ms: int, why: str) -> SelectorEdit
+  remove_selector_rule(expected_revision: str, subject: Subject, selection: PermissionSelection) -> SelectorEdit
+  apply_bundle(expected_revision: str, subject: Subject, bundle_ref: str, selector: ResourceSelector, ttl_ms: int, why: str) -> SelectorEdit
+  remove_bundle(expected_revision: str, subject: Subject, origin_id: str) -> SelectorEdit
+  apply_permission_allow(expected_revision: str, question_id: str) -> SelectorEdit
+  undo_permission_effect(expected_revision: str, question_id: str) -> SelectorEdit
+class SelectorAuthorizationOperatorClient(SelectorAuthorizationOperator)
+  __init__(transport)
+  list_selector_rules(cursor: str, limit: int) -> SelectorRulePage
+  read_selector_rule(subject: Subject, selection: PermissionSelection) -> SelectorRuleRead
+  set_selector_rule(expected_revision: str, rule: SelectorRule, ttl_ms: int, why: str) -> SelectorEdit
+  remove_selector_rule(expected_revision: str, subject: Subject, selection: PermissionSelection) -> SelectorEdit
+  apply_bundle(expected_revision: str, subject: Subject, bundle_ref: str, selector: ResourceSelector, ttl_ms: int, why: str) -> SelectorEdit
+  remove_bundle(expected_revision: str, subject: Subject, origin_id: str) -> SelectorEdit
+  apply_permission_allow(expected_revision: str, question_id: str) -> SelectorEdit
+  undo_permission_effect(expected_revision: str, question_id: str) -> SelectorEdit
+dataclass SelectorEdit
+  outcome: PolicyEditOutcome | None
+  revision: str
+  current: list[SelectorRuleRecord]
+  bundle_origin: BundleOrigin | None
+dataclass SelectorPermissionDefinition
+  definition: PermissionDefinition
+  label: str
+  supported_selectors: list[ResourceSelectorKind]
+  first_use_selectors: list[ResourceSelectorKind]
+  collection: str
+  all_effect: str
+  request_type: str
+dataclass SelectorRule
+  subject: Subject
+  selection: PermissionSelection
+  permit: bool
+dataclass SelectorRulePage
+  outcome: PolicyPageOutcome | None
+  revision: str
+  records: list[SelectorRuleRecord]
+  next: str
+  complete: bool
+dataclass SelectorRuleRead
+  outcome: RuleReadOutcome | None
+  revision: str
+  record: SelectorRuleRecord | None
+dataclass SelectorRuleRecord
+  rule: SelectorRule
+  set_by: Subject
+  set_at: str
+  why: str
+  expires: str
+  bundle_origin: BundleOrigin | None
 class ServiceError(Exception)
   __init__(code, message)
 enum ServiceErrorCode
@@ -146,5 +361,87 @@ dataclass Subject
   account: str
   program: str
 def decode(data)
+def decode_account_default(data)
+def decode_action_description(data)
+def decode_action_edit(data)
+def decode_app_metadata(data)
+def decode_batch_decision(data)
+def decode_bundle_expansion(data)
+def decode_bundle_origin(data)
+def decode_catalog_entry(data)
+def decode_check_batch_request(data)
+def decode_concrete_resource(data)
+def decode_decision(data)
+def decode_decision_explanation(data)
+def decode_default_edit(data)
+def decode_default_page(data)
+def decode_described_action(data)
+def decode_description_edit(data)
+def decode_description_page(data)
+def decode_hold_metadata(data)
+def decode_legacy_operation_request(data)
+def decode_permission_bundle_definition(data)
+def decode_permission_bundle_page(data)
+def decode_permission_definition(data)
+def decode_permission_definition_page(data)
+def decode_permission_effect(data)
+def decode_permission_key(data)
+def decode_permission_selection(data)
+def decode_policy_edit(data)
+def decode_policy_page(data)
+def decode_policy_rule(data)
+def decode_request(data)
+def decode_resource_selector(data)
+def decode_response_metadata(data)
+def decode_rule_read(data)
+def decode_rule_record(data)
+def decode_selector_edit(data)
+def decode_selector_permission_definition(data)
+def decode_selector_rule(data)
+def decode_selector_rule_page(data)
+def decode_selector_rule_read(data)
+def decode_selector_rule_record(data)
+def decode_subject(data)
 def encode(v)
+def encode_account_default(v)
+def encode_action_description(v)
+def encode_action_edit(v)
+def encode_app_metadata(v)
+def encode_batch_decision(v)
+def encode_bundle_expansion(v)
+def encode_bundle_origin(v)
+def encode_catalog_entry(v)
+def encode_check_batch_request(v)
+def encode_concrete_resource(v)
+def encode_decision(v)
+def encode_decision_explanation(v)
+def encode_default_edit(v)
+def encode_default_page(v)
+def encode_described_action(v)
+def encode_description_edit(v)
+def encode_description_page(v)
+def encode_hold_metadata(v)
+def encode_legacy_operation_request(v)
+def encode_permission_bundle_definition(v)
+def encode_permission_bundle_page(v)
+def encode_permission_definition(v)
+def encode_permission_definition_page(v)
+def encode_permission_effect(v)
+def encode_permission_key(v)
+def encode_permission_selection(v)
+def encode_policy_edit(v)
+def encode_policy_page(v)
+def encode_policy_rule(v)
+def encode_request(v)
+def encode_resource_selector(v)
+def encode_response_metadata(v)
+def encode_rule_read(v)
+def encode_rule_record(v)
+def encode_selector_edit(v)
+def encode_selector_permission_definition(v)
+def encode_selector_rule(v)
+def encode_selector_rule_page(v)
+def encode_selector_rule_read(v)
+def encode_selector_rule_record(v)
+def encode_subject(v)
 def service_name(frame)

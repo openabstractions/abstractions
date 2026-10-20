@@ -6,14 +6,15 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/openabstractions/abstraction-facade/go/bootstrap"
+	"github.com/openabstractions/abstraction-facade/go-core/redact"
 	identity "github.com/openabstractions/abstraction-identity"
+	job "github.com/openabstractions/abstraction-job/go"
 	rwire "github.com/openabstractions/abstraction-resource/go/abstraction/resource"
 	"github.com/openabstractions/abstraction-resource/go/instrument"
 	resourceservice "github.com/openabstractions/abstraction-resource/go/service"
-	router "github.com/openabstractions/abstraction-router/go"
 	rightswire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	rightsclient "github.com/openabstractions/abstraction-rights/go/client"
+	router "github.com/openabstractions/abstraction-router/go"
 )
 
 // The resource table is who holds a scarce resource on this machine. The
@@ -35,7 +36,7 @@ const claimedHostPrefix = "host:"
 // is fixed because the rules that say whether a host may be unloaded are
 // written by installation, and a rule can only be written for a host that has
 // a name before any survey runs.
-var unloadableHosts = []string{"lmstudio", "ollama", "comfyui"}
+var unloadableHosts = []string{"lmstudio", "ollama", "lemonade", "comfyui"}
 
 // resourceFiles are the lease book and its audit inside the runtime's state
 // directory.
@@ -74,10 +75,16 @@ type runtimeResources struct {
 	book  *resourceservice.Book
 	audit *resourceservice.Audit
 	path  string
+	// unhookStanding removes the rights change hook that rechecks the
+	// book's leases (recheckLeasesOnChange).
+	unhookStanding func()
 }
 
 func (r *runtimeResources) close() {
 	if r != nil {
+		if r.unhookStanding != nil {
+			r.unhookStanding()
+		}
 		//unchecked: shutdown path with no caller to report a close failure to
 		r.audit.Close()
 	}
@@ -119,20 +126,82 @@ func composeResources(state string, r *router.Router, rights *runtimeRights, rep
 		audit.OnError = func(err error) { report(fmt.Errorf("runtime resources: audit: %w", err)) }
 		composed.audit = audit
 	}
-	book, err := resourceservice.OpenBook(resourceservice.BookOptions{
-		Table:    composed.table,
-		Attached: attachedHosts(r),
-		Audit:    composed.audit,
-		Path:     filepath.Join(composed.path, leaseBookFile),
-		Hold:     holdPolicy(rights),
-		Yield:    yieldPolicy(rights),
-	})
+	book, err := resourceservice.OpenBook(leaseBookOptions(composed, r, rights, job.PlatformGPU))
 	if err != nil {
 		report(fmt.Errorf("runtime resources: %w", err))
 		return composed
 	}
 	composed.book = book
+	composed.unhookStanding = recheckLeasesOnChange(rights, book)
 	return composed
+}
+
+// leaseBookOptions is the lease book composeResources opens: the table, the
+// attached hosts, the audit and book files under the runtime's state, the
+// rights decisions, and wake, the platform's idle-sleep inhibitor an
+// acquired wake lease keeps (resource CONTRACT.md RES-A1). GPU work alone
+// takes the wake lease (RES-G5), so the runtime passes job.PlatformGPU,
+// which also keeps the display on: on a Modern Standby machine the display
+// turning off is the standby entry. Tests pass a stand-in.
+func leaseBookOptions(composed *runtimeResources, r *router.Router, rights *runtimeRights, wake job.Holder) resourceservice.BookOptions {
+	return resourceservice.BookOptions{
+		Table:     composed.table,
+		Attached:  attachedHosts(r),
+		Audit:     composed.audit,
+		Path:      filepath.Join(composed.path, leaseBookFile),
+		Hold:      holdPolicy(rights),
+		Yield:     yieldPolicy(rights),
+		KeepAwake: keepAwake(wake),
+		Standing:  standingPolicy(rights),
+	}
+}
+
+// standingPolicy decides ActionHold again for a live lease's holder by the
+// subject the lease names, so the book ends the card and wake leases of a
+// program whose grant was revoked, blocked or expired (resource CONTRACT.md
+// RES-L7, RES-A1). It asks nobody: the holder's next acquire is what asks
+// again.
+func standingPolicy(rights *runtimeRights) resourceservice.SubjectPolicy {
+	return func(ctx context.Context, who resourceservice.Subject, action, resource string) error {
+		if rights == nil {
+			return resourceservice.ErrPolicyUnavailable
+		}
+		decision := rights.decide(ctx, rightswire.Subject{Account: who.Account, Program: who.Program}, action, resource)
+		switch decision.Outcome {
+		case rightswire.DecisionOutcomePermitted:
+			return nil
+		case rightswire.DecisionOutcomeDenied, rightswire.DecisionOutcomeNotGranted, rightswire.DecisionOutcomeForbidden:
+			return errors.New("no rule permits " + who.Program + " to hold " + resource)
+		}
+		return fmt.Errorf("%w: %s", resourceservice.ErrPolicyUnavailable, decision.Outcome)
+	}
+}
+
+// recheckLeasesOnChange has every committed rights change end the leases it
+// revoked before the edit replies, so the person's revoke in the Panel or on
+// the command line ends a card or wake hold at once (resource RES-L7, RES-A1;
+// rights RIGHTS-R23). An expiry commits nothing; the resource host's clock
+// ends it. The returned function removes the hook.
+func recheckLeasesOnChange(rights *runtimeRights, book *resourceservice.Book) func() {
+	if rights == nil || rights.policy == nil || book == nil {
+		return func() {}
+	}
+	return rights.policy.OnChange(func() { book.Recheck(context.Background()) })
+}
+
+// keepAwake adapts a job.Holder to the lease book's KeepAwake: one platform
+// request, released by the book when the last acquired wake lease ends.
+func keepAwake(holder job.Holder) func(why string) (func(), error) {
+	return func(why string) (func(), error) {
+		held, err := holder.Hold("openabstractions", why)
+		if err != nil {
+			return nil, err
+		}
+		return func() {
+			//unchecked: the platform holder's Release reports nothing; the request ends with the call
+			held.Release()
+		}, nil
+	}
 }
 
 // holdPolicy decides ActionHold for the asking caller on the resource it asked
@@ -225,11 +294,16 @@ func (a attachedHost) Holding(context.Context) ([]string, error) {
 
 // Yield asks the host's own API to let go, through the router's adapter for
 // it. What it freed is read from the instrument afterwards, never from this
-// answer.
+// answer. A refusal can carry the engine's own reply, which reaches the
+// program asking for the card as the lease's refused answer; it does so
+// only as redact.Line makes it.
 func (a attachedHost) Yield(ctx context.Context) error {
 	for _, h := range a.router.Hosts() {
 		if h.Name == a.name {
-			return h.Unload(ctx)
+			if err := h.Unload(ctx); err != nil {
+				return errors.New(redact.Line(err.Error(), 0))
+			}
+			return nil
 		}
 	}
 	return errors.New("router: no host called " + a.name)
@@ -264,13 +338,7 @@ func giB(bytes int64) float64 {
 // resourceTableEndpoint follows the runtime's endpoint selection for table@1
 // and leases@1, which share one endpoint.
 func resourceTableEndpoint(options runtimeFlags) (string, error) {
-	switch {
-	case options.isolated != "":
-		return bootstrap.Endpoint(options.isolated + "-resource-table")
-	case options.endpoint != "":
-		return options.endpoint + "-resource-table", nil
-	}
-	return options.defaultEndpoint("resource-table-v1")
+	return options.companionEndpoint("resource-table-v1", "resource-table", "resource-table")
 }
 
 // resourceRules are the exact rules installation writes for each operator

@@ -8,7 +8,7 @@ function fixture() {
   const node = { id: 7, title: "Sampler", type: "KSampler", widgets: [widget] };
   const graph = { _version: 1, getNodeById: (id) => id === 7 ? node : null,
     afterChange() { this._version++; edits++; } };
-  const app = { graph, canvas: { centerOnNode() { revealed++; } } };
+  const app = { graph, workflowManager: { activeWorkflow: { filename: "portrait-workflow.json" } }, canvas: { centerOnNode() { revealed++; } } };
   const demo = presentation(app, { now: () => clock, id: () => String(++serial) });
   return { demo, app, graph, node, widget, tick() { clock += 60000; },
     edits: () => edits, revealed: () => revealed };
@@ -16,9 +16,11 @@ function fixture() {
 
 test("proposal and reveal preserve values; apply records actual current result", () => {
   const f = fixture();
-  const p = f.demo.preview(7, "steps", 24);
+  const p = f.demo.preview(7, "steps", 24, undefined, "Increase sampling detail for the portrait");
   assert.equal(p.outcome, "proposed");
   assert.equal(p.revision, "1");
+  assert.equal(p.workflow_title, "portrait-workflow.json");
+  assert.equal(p.request_summary, "Increase sampling detail for the portrait");
   assert.equal(f.widget.value, 20);
   assert.equal(f.demo.reveal(p.token).outcome, "revealed");
   assert.equal(f.revealed(), 1);
@@ -27,6 +29,8 @@ test("proposal and reveal preserve values; apply records actual current result",
   assert.equal(r.outcome, "applied");
   assert.equal(r.actual, 24);
   assert.equal(r.evidence, "current");
+  assert.equal(r.request_summary, "Increase sampling detail for the portrait");
+  assert.equal(r.workflow_title, "portrait-workflow.json");
   assert.deepEqual({ instance: r.instance, context: r.context, revision: r.revision },
     f.demo.context());
   assert.equal(r.revision, "2");
@@ -38,6 +42,7 @@ test("proposal and reveal preserve values; apply records actual current result",
 
 test("concurrent edit, reopened context and same-ID replacement refuse stale action", () => {
   for (const change of [f => f.widget.value++, f => f.graph._version++,
+    f => { f.app.workflowManager.activeWorkflow.filename = "replacement.json"; },
     f => f.demo.reset(), f => f.app.graph = { ...f.graph },
     f => f.graph.getNodeById = () => ({ ...f.node }),
     f => f.node.widgets = [{ ...f.widget }]]) {
@@ -109,14 +114,37 @@ test("uncertain callback result carries the binding after its attempted change",
     f.demo.context());
 });
 
-test("plain presentation labels distinguish preview current and historical result", () => {
-  assert.deepEqual(describePresentation({ outcome: "proposed", title: "KSampler", node: 1,
-    widget: "steps", before: 20, after: 24 }), {
-    headline: "Change KSampler node 1’s steps from 20 to 24?",
+test("proposal states the request summary, workflow, target, values and unchanged state", () => {
+  const f = fixture();
+  const proposal = f.demo.preview(7, "steps", 24, undefined, "Increase sampling detail for the portrait");
+  assert.equal(proposal.workflow_title, "portrait-workflow.json");
+  assert.equal(proposal.request_summary, "Increase sampling detail for the portrait");
+  assert.deepEqual(describePresentation(proposal), {
+    headline: "In ComfyUI’s portrait-workflow.json, change steps on Sampler node 7 from 20 to 24?",
     state: "Preview — nothing changed yet",
   });
+  assert.equal(f.widget.value, 20);
+  assert.match(describePresentation(f.demo.reveal(proposal.token)).state, /no value changed; current value is 20/);
+  assert.equal(f.widget.value, 20);
+});
+
+test("request summary is bounded and optional", () => {
+  const f = fixture();
+  assert.equal(f.demo.preview(7, "steps", 24, undefined, "x".repeat(513)).outcome, "invalid");
+  const proposal = f.demo.preview(7, "steps", 24);
+  assert.equal(proposal.request_summary, "");
+  assert.equal(f.widget.value, 20);
+});
+
+test("plain presentation labels distinguish preview current and historical result", () => {
+  const f = fixture();
+  const proposal = f.demo.preview(7, "steps", 24);
+  const result = f.demo.apply(proposal.token);
+  assert.equal(result.outcome, "applied");
+  assert.equal(result.actual, 24);
   assert.equal(describePresentation({ outcome: "applied", widget: "steps", actual: 24,
-    evidence: "current" }).headline, "Steps changed to 24");
+    evidence: "current", title: "Sampler", node: 7, before: 20, workflow_title: "portrait-workflow.json" }).headline,
+  "In ComfyUI’s portrait-workflow.json, Steps on Sampler node 7 changed from 20 to 24");
   assert.equal(describePresentation({ outcome: "applied", widget: "steps", actual: 24,
     evidence: "historical" }).state, "Historical — the target or workflow changed");
 });

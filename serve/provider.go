@@ -32,7 +32,7 @@ import (
 )
 
 // Declarations: providers/<name>.json in the runtime state directory, served
-// as abstraction.facade/registry@1 (research/provider-registry DECISION.md).
+// through abstraction.facade/registry@1 and registry@2 (research/provider-registry DECISION.md).
 // The registry is the one directory of the programs the runtime knows, in
 // three roles: a provider it launches on demand or attaches to and binds by
 // program path, a host it reaches over HTTP through the router, and another
@@ -84,19 +84,41 @@ func (f providerFile) bindingID() string {
 }
 
 type providerDeclaration struct {
-	Name       string                `json:"name"`
-	Program    string                `json:"program"`
-	Arguments  []string              `json:"arguments"`
-	Endpoint   string                `json:"endpoint"`
-	Transport  string                `json:"transport"`
-	Contracts  []string              `json:"contracts"`
-	Guarantees []string              `json:"guarantees,omitempty"`
-	Resources  []string              `json:"resources,omitempty"`
-	Models     []string              `json:"models,omitempty"`
-	Activation string                `json:"activation"`
-	Remote     *inferenceRemoteTrust `json:"remote,omitempty"`
-	Role       string                `json:"role,omitempty"`
-	Host       *providerHost         `json:"host,omitempty"`
+	Name                string                `json:"name"`
+	Program             string                `json:"program"`
+	Arguments           []string              `json:"arguments"`
+	Endpoint            string                `json:"endpoint"`
+	Transport           string                `json:"transport"`
+	Contracts           []string              `json:"contracts"`
+	Guarantees          []string              `json:"guarantees,omitempty"`
+	Resources           []string              `json:"resources,omitempty"`
+	Models              []string              `json:"models,omitempty"`
+	SupportedExtensions []providerExtension   `json:"supported_extensions,omitempty"`
+	Activation          string                `json:"activation"`
+	Remote              *inferenceRemoteTrust `json:"remote,omitempty"`
+	Role                string                `json:"role,omitempty"`
+	Host                *providerHost         `json:"host,omitempty"`
+}
+
+type providerExtension struct {
+	Profile string `json:"profile"`
+	Key     string `json:"key"`
+}
+
+func extensionsOf(in []wire.DeclarationExtension) []providerExtension {
+	out := make([]providerExtension, len(in))
+	for i, entry := range in {
+		out[i] = providerExtension{Profile: entry.Profile, Key: entry.Key}
+	}
+	return out
+}
+
+func (d providerDeclaration) wireExtensions() []wire.DeclarationExtension {
+	out := make([]wire.DeclarationExtension, len(d.SupportedExtensions))
+	for i, entry := range d.SupportedExtensions {
+		out[i] = wire.DeclarationExtension{Profile: entry.Profile, Key: entry.Key}
+	}
+	return out
 }
 
 func declarationOf(d wire.Declaration) providerDeclaration {
@@ -161,6 +183,58 @@ func (d providerDeclaration) resources(kind string) []string {
 	return out
 }
 
+// mediatedInferenceProfiles are the declared profiles this runtime can route
+// through the corresponding public native inference contract. A profile name
+// alone must not silently advertise an undeclared service.
+func (d providerDeclaration) mediatedInferenceProfiles() []string {
+	var profiles []string
+	declared := d.resources("profile")
+	if len(declared) == 0 && slices.Contains(d.Contracts, inference.Contract) {
+		// Legacy chat-only native declarations predate explicit profile resources.
+		return []string{router.ProfileChat}
+	}
+	for _, profile := range declared {
+		if contract := profileContracts[profile]; contract != "" && slices.Contains(d.Contracts, contract) {
+			profiles = append(profiles, profile)
+		}
+	}
+	return profiles
+}
+
+// profileContracts is the public native inference contract of each profile
+// the runtime mediates.
+var profileContracts = map[string]string{
+	router.ProfileChat:          inference.Contract,
+	router.ProfileEmbed:         inference.EmbedContract,
+	router.ProfileTranscription: inference.TranscriptionContract,
+	router.ProfileSpeech:        inference.SpeechContract,
+	router.ProfileImage:         inference.ImageContract,
+	router.ProfileLive:          inference.LiveContract,
+	// A video provider is reached by the runtime's job executor alone;
+	// applications submit video as a job (inference CONTRACT.md INF-G5).
+	router.ProfileVideo: inference.VideoContract,
+}
+
+// jobOnlyProfiles are mediated profiles the runtime offers applications no
+// endpoint for: the job executor is their one caller.
+var jobOnlyProfiles = map[string]bool{router.ProfileVideo: true}
+
+// validScopedModels reports whether no model entry is scoped to a profile
+// the declaration lists without serving it. Entries are read against the
+// mediated profiles, the implicit chat profile of a legacy chat-only
+// declaration included (router.DeclaredEntry, ROUTE-D9); an entry scoped to a
+// listed profile whose contract is missing would read as a model named
+// "<profile>:<model>" for every served profile, and is refused.
+func (d providerDeclaration) validScopedModels() bool {
+	listed := d.resources("profile")
+	for _, entry := range d.Models {
+		if _, profile := router.DeclaredEntry(entry, listed); profile != "" && !slices.Contains(d.mediatedInferenceProfiles(), profile) {
+			return false
+		}
+	}
+	return true
+}
+
 func (d providerDeclaration) remote() bool { return d.Transport == transportRemote }
 
 func (d providerDeclaration) host() bool { return d.Transport == transportHTTP }
@@ -180,6 +254,8 @@ func validHostDeclaration(d providerDeclaration) string {
 		return "guarantees"
 	case len(d.Models) > 0:
 		return "models"
+	case len(d.SupportedExtensions) > 0:
+		return "supported_extensions"
 	case d.Remote != nil:
 		return "remote"
 	case d.Activation != wire.ActivationAttach.String():
@@ -272,8 +348,10 @@ func validProviderDeclaration(d providerDeclaration) string {
 		return "guarantees"
 	case !distinct(d.Resources, 64, validResource):
 		return "resources"
-	case !distinct(d.Models, 64, validProviderModel) || d.remote() && len(d.Models) > 0:
+	case !distinct(d.Models, 64, validProviderModel) || d.remote() && len(d.Models) > 0 || !d.validScopedModels():
 		return "models"
+	case !validProviderExtensions(d):
+		return "supported_extensions"
 	case d.remote() != (d.Activation == wire.ActivationRemote.String()),
 		d.Activation != wire.ActivationOnDemand.String() && d.Activation != wire.ActivationAttach.String() && d.Activation != wire.ActivationRemote.String():
 		return "activation"
@@ -284,6 +362,24 @@ func validProviderDeclaration(d providerDeclaration) string {
 		return "remote"
 	}
 	return validProviderStores(d)
+}
+
+func validProviderExtensions(d providerDeclaration) bool {
+	if len(d.SupportedExtensions) > 64 {
+		return false
+	}
+	profiles := d.mediatedInferenceProfiles()
+	seen := make(map[providerExtension]bool, len(d.SupportedExtensions))
+	for _, entry := range d.SupportedExtensions {
+		owner, name, ok := strings.Cut(entry.Key, "/")
+		if !slices.Contains(profiles, entry.Profile) || !ok || owner == "" || name == "" || len(entry.Key) > 128 ||
+			!utf8.ValidString(entry.Key) || strings.ContainsFunc(entry.Key, unicode.IsControl) ||
+			strings.HasPrefix(entry.Key, inference.ReservedExtensionPrefix) || seen[entry] {
+			return false
+		}
+		seen[entry] = true
+	}
+	return true
 }
 
 // validResource reports whether r is <kind>:<name> of a declared resource kind.
@@ -340,6 +436,9 @@ type runtimeProviders struct {
 	mediationMu    sync.Mutex
 	// mediated maps a supported declaration generation to its OA-owned endpoint.
 	mediated map[string]mediatedProvider
+	// childEnv names this runtime's services to the providers it starts
+	// (providerEnvironment); guarded by mu.
+	childEnv []string
 }
 
 type mediatedProvider struct {
@@ -354,7 +453,11 @@ func openProviders(state string, declared bool, report func(error)) (*runtimePro
 	if err != nil {
 		return nil, err
 	}
-	p := &runtimeProviders{dir: filepath.Join(state, providersDir), disabledPath: filepath.Join(state, disabledDeclarationsFile),
+	dir, err := filepath.Abs(filepath.Join(state, providersDir))
+	if err != nil {
+		return nil, err
+	}
+	p := &runtimeProviders{dir: dir, disabledPath: filepath.Join(state, disabledDeclarationsFile),
 		report: report, principal: principal,
 		supervisors: map[string]*providerSupervisor{}, timing: defaultProviderTiming, changes: make(chan struct{}), mediated: map[string]mediatedProvider{}}
 	if declared {
@@ -509,15 +612,17 @@ func (p *runtimeProviders) read() ([]providerFile, string, error) {
 	return files, "providers-v2:" + hex.EncodeToString(digest.Sum(nil)[:12]), nil
 }
 
-// Candidates offers only capability profiles the runtime can mediate. Native
-// chat declarations resolve to this runtime's inference endpoint. Arbitrary
-// declared contracts remain visible through registry@1 and expose no raw
-// provider endpoint to applications.
+// Candidates offers only capability profiles the runtime can mediate. Each
+// profile a native declaration serves resolves its contract (chat@1, embed@1,
+// transcription@1, speech@1, image@1, live@1) to this runtime's mediated
+// inference endpoint, which serves every one of them. Arbitrary declared
+// contracts remain visible through registry@1 and expose no raw provider
+// endpoint to applications.
 func (p *runtimeProviders) Candidates() []resolution.Candidate {
 	var out []resolution.Candidate
 	for _, s := range p.sorted() {
 		d := s.file.Declaration
-		if d.remote() || !slices.Contains(d.Contracts, inference.Contract) || len(d.Models) == 0 {
+		if d.remote() || len(d.Models) == 0 || len(d.mediatedInferenceProfiles()) == 0 {
 			continue
 		}
 		mediation, ok := p.mediatedEndpoint(s.file.bindingID())
@@ -525,13 +630,25 @@ func (p *runtimeProviders) Candidates() []resolution.Candidate {
 			continue
 		}
 		ready := mediation.Ready && s.state().Readiness == wire.DeclarationReadinessReady
+		activate := s.activate
+		if d.Activation == wire.ActivationOnDemand.String() {
+			// The OA mediator can answer before its downstream provider starts.
+			// Inference admission activates that provider after request preflight.
+			ready, activate = mediation.Ready, nil
+		}
 		guarantees := nonNil(d.Guarantees)
 		if !slices.Contains(guarantees, inference.GuaranteeLocalOnly) {
 			guarantees = append(guarantees, inference.GuaranteeLocalOnly)
 		}
-		out = append(out, resolution.Candidate{Ready: ready, Activate: s.activate, Reference: wire.ServiceReference{
-			Provider: d.Name, Capability: "abstraction.inference", Contract: inference.Contract, Scope: wire.ScopeLocal, Transport: resolution.LocalTransport,
-			Endpoint: mediation.Endpoint, Guarantees: guarantees}})
+		for _, profile := range d.mediatedInferenceProfiles() {
+			if jobOnlyProfiles[profile] {
+				continue
+			}
+			contract := profileContracts[profile]
+			out = append(out, resolution.Candidate{Ready: ready, Activate: activate, Reference: wire.ServiceReference{
+				Provider: d.Name, Capability: "abstraction.inference", Contract: contract, Scope: wire.ScopeLocal, Transport: resolution.LocalTransport,
+				Endpoint: mediation.Endpoint, Guarantees: guarantees}})
+		}
 	}
 	return out
 }
@@ -562,15 +679,20 @@ func (p *runtimeProviders) nativeInferenceHosts() []*router.Host {
 		models := d.Models
 		ready := s.state().Readiness == wire.DeclarationReadinessReady
 		onDemand := d.Activation == wire.ActivationOnDemand.String()
-		if d.remote() || !slices.Contains(d.Contracts, inference.Contract) || len(models) == 0 || (!ready && !onDemand) {
+		profiles := d.mediatedInferenceProfiles()
+		if d.remote() || len(profiles) == 0 || len(models) == 0 || (!ready && !onDemand) {
 			continue
 		}
-		h, err := router.NewNative(d.Name, s.endpoint, listen.ServerExpectation{Principal: p.principal, Program: d.Program}, models, d.resources("profile"))
+		h, err := router.NewNative(d.Name, s.endpoint, listen.ServerExpectation{Principal: p.principal, Program: d.Program}, models, profiles)
 		if err != nil {
 			p.report(fmt.Errorf("providers: %s mediation: %w", d.Name, err))
 			continue
 		}
 		h.BindingID, h.DeclaredBy = s.file.bindingID(), s.file.DeclaredBy
+		h.SupportedExtensions = selectedProviderExtensions(d.SupportedExtensions)
+		// A provider that declares preload@1 beside chat@1 evaluates a chat
+		// prefix ahead of the request (inference INF-PL2).
+		h.Preloads = slices.Contains(d.Contracts, inference.PreloadContract) && slices.Contains(profiles, router.ProfileChat)
 		out = append(out, h)
 	}
 	return out
@@ -592,6 +714,7 @@ func (p *runtimeProviders) remoteHosts() []*router.Host {
 		}
 		h.DeclaredBy, h.Profiles = s.file.DeclaredBy, d.resources("profile")
 		h.BindingID = s.file.bindingID()
+		h.SupportedExtensions = selectedProviderExtensions(d.SupportedExtensions)
 		out = append(out, h)
 	}
 	return out
@@ -673,8 +796,29 @@ func (p *runtimeProviders) lookup(name string) *providerSupervisor {
 // provider or remote runtime from its supervisor, a host from the router's
 // survey, and a declaration an operator withdrew as disabled.
 func (p *runtimeProviders) list() ([]wire.DeclarationState, string, error) {
+	v2, revision, err := p.listV2()
+	if err != nil {
+		return nil, "", err
+	}
+	out := make([]wire.DeclarationState, len(v2))
+	for i, entry := range v2 {
+		out[i] = entry.State
+	}
+	return out, revision, nil
+}
+
+// listV2 joins each reading to its declaration and extension inventory from
+// the same registration snapshot. A concurrent supervisor update cannot make a
+// reading claim metadata from another generation.
+func (p *runtimeProviders) listV2() ([]wire.DeclarationStateV2, string, error) {
 	p.mu.Lock()
 	files, revision, err := p.read()
+	// Capture the supervisors under the same lock as the registration files.
+	// A name may be withdrawn and declared again while host readings run.
+	supervisors := make(map[string]*providerSupervisor, len(p.supervisors))
+	for name, supervisor := range p.supervisors {
+		supervisors[name] = supervisor
+	}
 	p.mu.Unlock()
 	if err != nil {
 		return nil, "", err
@@ -683,24 +827,21 @@ func (p *runtimeProviders) list() ([]wire.DeclarationState, string, error) {
 	for _, state := range p.hostStates(files) {
 		hosts[state.Declaration.Name] = state
 	}
-	supervised := map[string]wire.DeclarationState{}
-	for _, s := range p.sorted() {
-		supervised[s.file.Declaration.Name] = s.state()
-	}
-	out := []wire.DeclarationState{}
+	out := []wire.DeclarationStateV2{}
 	for _, f := range files {
 		name := f.Declaration.Name
-		switch state, known := hosts[name]; {
-		case known:
-			out = append(out, state)
-		default:
-			state, known := supervised[name]
+		state, known := hosts[name]
+		if !known {
+			if supervisor := supervisors[name]; supervisor != nil && supervisor.file.bindingID() == f.bindingID() && !f.Disabled {
+				state, known = supervisor.state(), true
+			}
 			if !known {
 				state = wire.DeclarationState{Declaration: f.Declaration.wire(), DeclaredBy: f.DeclaredBy, DeclaredUnixMs: f.DeclaredAt,
 					Role: f.Declaration.role(), Readiness: wire.DeclarationReadinessDisabled, Why: "operator", Described: []wire.ServiceState{}}
 			}
-			out = append(out, state)
 		}
+		state.Declaration = f.Declaration.wire()
+		out = append(out, wire.DeclarationStateV2{State: state, SupportedExtensions: f.Declaration.wireExtensions()})
 	}
 	return out, revision, nil
 }

@@ -7,10 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
-	"strings"
 	"time"
 )
 
@@ -43,8 +42,9 @@ func Executable(name string) (string, error) {
 	return filepath.EvalSymlinks(path)
 }
 
-// SameExecutable reports whether two names resolve to one executable file.
-// Windows paths compare case-insensitively. Unresolvable names never match.
+// SameExecutable reports whether two names resolve to one executable file,
+// asked of the filesystem by file identity (os.SameFile; VISION.md L623).
+// Unresolvable names never match.
 func SameExecutable(a, b string) bool {
 	ra, err := Executable(a)
 	if err != nil {
@@ -54,8 +54,10 @@ func SameExecutable(a, b string) bool {
 	if err != nil {
 		return false
 	}
-	if runtime.GOOS == "windows" {
-		return strings.EqualFold(ra, rb)
+	fa, err := os.Stat(ra)
+	if err != nil {
+		return false
 	}
-	return ra == rb
+	fb, err := os.Stat(rb)
+	return err == nil && os.SameFile(fa, fb)
 }

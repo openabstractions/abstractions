@@ -11,7 +11,6 @@ import (
 	"time"
 
 	cwire "github.com/openabstractions/abstraction-credentials/go/abstraction/credentials/api"
-	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	"github.com/openabstractions/abstraction-inference/adapters/go/gateway"
 	"github.com/openabstractions/abstraction-inference/adapters/go/realtime"
@@ -108,6 +107,9 @@ type runtimeInference struct {
 	// without providers.
 	lending         *lendingHost
 	lendingEndpoint string
+	// unhookStanding removes the rights change hook that rechecks the
+	// provider's running operations (runtime_standing.go).
+	unhookStanding func()
 }
 
 // Serve serves chat@1 and operator@1. The gateway window, when open, closes
@@ -137,6 +139,10 @@ func (r *runtimeInference) Serve(ctx context.Context) error {
 // EmbedAvailable publishes embed@1 beside chat@1 on the same endpoint.
 func (r *runtimeInference) EmbedAvailable() bool { return true }
 
+// PreloadAvailable publishes preload@1 beside chat@1 on the same endpoint.
+// A host whose provider cannot evaluate a prefix answers unsupported_feature.
+func (r *runtimeInference) PreloadAvailable() bool { return true }
+
 // TranscriptionAvailable publishes transcription@1 beside chat@1 on the same endpoint.
 func (r *runtimeInference) TranscriptionAvailable() bool { return true }
 
@@ -144,10 +150,15 @@ func (r *runtimeInference) TranscriptionAvailable() bool { return true }
 func (r *runtimeInference) SpeechAvailable() bool { return true }
 
 // ImageAvailable publishes image@1 beside chat@1 on the same endpoint.
-func (r *runtimeInference) ImageAvailable() bool { return true }
+func (r *runtimeInference) ImageAvailable() bool   { return true }
+func (r *runtimeInference) ImageV2Available() bool { return true }
 
 // OperatorAvailable publishes operator@1 beside chat@1 on the same endpoint.
 func (r *runtimeInference) OperatorAvailable() bool { return r.operator != nil }
+
+func (r *runtimeInference) ChatV2Available() bool { return true }
+
+func (r *runtimeInference) SelectionOperatorV2Available() bool { return r.operator != nil }
 
 func (r *runtimeInference) Close() error {
 	r.gateway.stop()
@@ -164,28 +175,19 @@ func (r *runtimeInference) Close() error {
 	if r.lending != nil {
 		lendingErr = r.lending.Close()
 	}
+	if r.unhookStanding != nil {
+		r.unhookStanding()
+	}
 	r.resources.close()
 	return errors.Join(mediationErr, providersErr, registryErr, lendingErr, r.host.Close(), r.remoteHost.Close(), r.provider.Close())
 }
 
 func inferenceEndpoint(options runtimeFlags) (string, error) {
-	switch {
-	case options.isolated != "":
-		return bootstrap.Endpoint(options.isolated + "-inference")
-	case options.endpoint != "":
-		return options.endpoint + "-inference", nil
-	}
-	return options.defaultEndpoint("inference-v1")
+	return options.companionEndpoint("inference-v1", "inference", "inference")
 }
 
 func inferenceRemoteEndpoint(options runtimeFlags) (string, error) {
-	switch {
-	case options.isolated != "":
-		return bootstrap.Endpoint(options.isolated + "-inference-remote")
-	case options.endpoint != "":
-		return options.endpoint + "-inference-remote", nil
-	}
-	return options.defaultEndpoint("inference-remote-v1")
+	return options.companionEndpoint("inference-remote-v1", "inference-remote", "inference-remote")
 }
 
 func loadInferenceHosts(path string) (inferenceHosts, error) {
@@ -250,6 +252,46 @@ func localRouterHost(l inferenceLocalHost) (*router.Host, error) {
 	}
 	h.DeclaredBy, h.Profiles = l.DeclaredBy, l.Profiles
 	return h, nil
+}
+
+// inferenceRecordContract is the inference contract a record's call came
+// through, read from its profile. A job's record names the contract its work
+// ran on: image@1 for an image job, video@1 for a video job. Every log record
+// of an inference call is named by this one reading; the live walkthrough of
+// 2026-10-02 (D12) found image calls logged as chat@1.
+func inferenceRecordContract(rec inference.Record) string {
+	switch rec.Profile {
+	case "preload":
+		return inference.PreloadContract
+	case router.ProfileEmbed:
+		return inference.EmbedContract
+	case router.ProfileImage:
+		return inference.ImageContract
+	case router.ProfileVideo:
+		return inference.VideoContract
+	case router.ProfileSpeech:
+		return inference.SpeechContract
+	case router.ProfileTranscription:
+		return inference.TranscriptionContract
+	case router.ProfileLive:
+		return inference.LiveContract
+	}
+	return inference.Contract
+}
+
+// inferenceLogRecord is the runtime log's record of one inference call or
+// refusal (inference INF-C3): names and counts, never content.
+func inferenceLogRecord(rec inference.Record, at time.Time) logging.Record {
+	attrs := map[string]string{"profile": rec.Profile, "route": rec.Route, "rung": rec.Rung, "operation": rec.Operation, "account": rec.Account, "program": rec.Program, "host": rec.Host,
+		"model": rec.Model, "family": rec.Family, "credential": rec.Credential, "outcome": rec.Outcome, "reason": rec.Reason,
+		"ceiling": rec.Ceiling, "tokens_in": strconv.FormatInt(rec.TokensIn, 10), "tokens_out": strconv.FormatInt(rec.TokensOut, 10),
+		"audio_seconds": strconv.FormatInt(rec.AudioSeconds, 10), "characters": strconv.FormatInt(rec.Characters, 10), "wall_ms": strconv.FormatInt(rec.WallMS, 10)}
+	for k, v := range attrs {
+		if v == "" {
+			delete(attrs, k)
+		}
+	}
+	return logging.Record{Time: logging.At(at), Level: logging.LevelInfo, Msg: inferenceRecordContract(rec), Attrs: attrs}
 }
 
 // composeInference needs the composed credentials: its policy decides and its
@@ -327,14 +369,28 @@ func composeInference(options runtimeFlags, c *runtimeCredentials, sink logging.
 		return nil, err
 	}
 	cfg := inference.Config{Router: r, Ceilings: ceilings, OnError: report, ResolveContent: content.read, PrepareContentWrite: content.prepareWrite,
-		LiveDialer: realtime.Dial,
+		ResolveSelectionV2: operator.ResolveSelectionV2,
+		LiveDialer:         realtime.Dial,
 		// Admit waits for an on-demand declared native provider's readiness
 		// (FAC-R8) once the router has picked it; nil providers admits every
 		// host unconditionally.
-		Admit: providers.nativeAdmit,
-		Decide: func(ctx context.Context, s inference.Subject, action, resource string) (string, error) {
-			return c.decideAsking(ctx, rwire.Subject{Account: s.Account, Program: s.Program}, action, resource).Outcome.String(), nil
+		Admit:  providers.nativeAdmit,
+		Decide: c.decideInference,
+		// A running operation or job is decided again, asking nobody, on
+		// each live input, each job poll, each committed rights change and
+		// the provider's clock (INF-A6).
+		Standing: c.standingInference,
+		// A refused job's cancel reuses its plan's headers once; the
+		// credential audit records it (credentials CRED-A7).
+		CancelledWith: func(_ context.Context, s inference.Subject, consumer, name, target string) {
+			c.holder.RecordCancel(cwire.Use{Subject: cwire.Subject{Account: s.Account, Program: s.Program}, Consumer: consumer, Name: name, Target: target})
 		},
+		// A consuming request refused for want of its input profile admits the
+		// paired first-use question (INF-V4). A call or job refused for want of
+		// its output profile is asked about by content.prepareWrite, which
+		// every generated output passes, so AskOutput stays nil here and the
+		// question has one owner (INF-S7).
+		AskInput: c.runtimeRights.askInput,
 		Apply: func(ctx context.Context, s inference.Subject, consumer, name, target string) (map[string]string, string) {
 			result := c.holder.Apply(ctx, cwire.Use{Subject: cwire.Subject{Account: s.Account, Program: s.Program}, Consumer: consumer, Name: name, Target: target}, c.decide)
 			return result.Headers, result.Outcome.String()
@@ -346,16 +402,7 @@ func composeInference(options runtimeFlags, c *runtimeCredentials, sink logging.
 			if sink == nil {
 				return
 			}
-			attrs := map[string]string{"profile": rec.Profile, "route": rec.Route, "rung": rec.Rung, "operation": rec.Operation, "account": rec.Account, "program": rec.Program, "host": rec.Host,
-				"model": rec.Model, "family": rec.Family, "credential": rec.Credential, "outcome": rec.Outcome, "reason": rec.Reason,
-				"ceiling": rec.Ceiling, "tokens_in": strconv.FormatInt(rec.TokensIn, 10), "tokens_out": strconv.FormatInt(rec.TokensOut, 10),
-				"audio_seconds": strconv.FormatInt(rec.AudioSeconds, 10), "characters": strconv.FormatInt(rec.Characters, 10), "wall_ms": strconv.FormatInt(rec.WallMS, 10)}
-			for k, v := range attrs {
-				if v == "" {
-					delete(attrs, k)
-				}
-			}
-			if err := sink.Write(logging.Record{Time: logging.At(time.Now()), Level: logging.LevelInfo, Msg: "abstraction.inference/chat@1", Attrs: attrs}); err != nil {
+			if err := sink.Write(inferenceLogRecord(rec, time.Now())); err != nil {
 				report(err)
 			}
 		}}
@@ -369,6 +416,9 @@ func composeInference(options runtimeFlags, c *runtimeCredentials, sink logging.
 	if err != nil {
 		return nil, err
 	}
+	// A live request holds the request input it names (INF-V4, STO-T7).
+	content.sink, content.report = sink, report
+	content.addInputHolder(func() (map[string]bool, error) { return provider.NamedInputs(), nil })
 	endpoint, err := inferenceEndpoint(options)
 	if err != nil {
 		//unchecked: tearing down what was already built before returning err, which this call already reports
@@ -383,6 +433,7 @@ func composeInference(options runtimeFlags, c *runtimeCredentials, sink logging.
 	}
 	h.OnError = report
 	h.Operator = operator
+	h.SelectionOperatorV2 = operator
 	remoteEndpoint, err := inferenceRemoteEndpoint(options)
 	if err != nil {
 		//unchecked: tearing down what was already built before returning err, which this call already reports
@@ -402,6 +453,7 @@ func composeInference(options runtimeFlags, c *runtimeCredentials, sink logging.
 	remoteHost.OnError = report
 	// The original endpoint remains the concrete local-execution binding.
 	composed := &runtimeInference{provider: provider, router: r, resources: resources, host: h, remoteHost: remoteHost, endpoint: endpoint, remoteEndpoint: remoteEndpoint, operator: operator, content: content}
+	composed.unhookStanding = recheckInferenceOnChange(c.runtimeRights, provider)
 	composed.gateway = &gatewayControl{path: filepath.Join(dir, inferenceGatewayFile), report: report,
 		open: func(address string) (*gateway.Window, error) {
 			return openGateway(address, composed, cfg.Record, report)
@@ -487,13 +539,7 @@ func (r *runtimeInference) configure(o *host.Options, routerEndpoint, resourceEn
 
 // runtimeRouterEndpoint follows the runtime's endpoint selection for router@1.
 func runtimeRouterEndpoint(options runtimeFlags) (string, error) {
-	switch {
-	case options.isolated != "":
-		return bootstrap.Endpoint(options.isolated + "-router")
-	case options.endpoint != "":
-		return options.endpoint + "-router", nil
-	}
-	return options.defaultEndpoint("router-v1")
+	return options.companionEndpoint("router-v1", "router", "router")
 }
 
 // mustHosts is the hosts of a configuration inferenceRouter already accepted.
@@ -505,6 +551,15 @@ func (r *runtimeInference) close() {
 		//unchecked: close has no return value to report a close failure through
 		r.Close()
 	}
+}
+
+// serveInputRetention removes request input whose lifetime rule has ended
+// (STO-T7) until ctx ends; the returned function waits for the sweep to stop.
+func (r *runtimeInference) serveInputRetention(ctx context.Context) func() {
+	if r == nil {
+		return func() {}
+	}
+	return r.content.serveInputRetention(ctx)
 }
 
 // LiveAvailable publishes the live profile on the shared inference endpoint.

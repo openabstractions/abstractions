@@ -32,7 +32,7 @@ async function waitForRenderedRecord(page, timeoutMs) {
   while (Date.now() < deadline) {
     for (const frame of page.frames()) {
       const body = await frame.locator("body").textContent({ timeout: 250 }).catch(() => "");
-      if (body?.includes("Demonstration: preview a ComfyUI sampling-steps edit") && body.includes("Change KSampler node 70’s steps from 8 to 12?") && body.includes("Preview — nothing changed yet") && body.includes("workflow-fixture")) return { body, frame };
+      if (body?.includes("ComfyUI workflow proposal") && body.includes("In ComfyUI’s portrait-workflow.json, change steps on KSampler node 70 from 8 to 12?") && body.includes("Request a 4-step increase for the portrait workflow") && body.includes("Preview — nothing changed yet") && body.includes("workflow-fixture")) return { body, frame };
     }
     await page.waitForTimeout(50);
   }
@@ -89,7 +89,7 @@ try {
   assert.match(contextResult, /instance-fixture/);
   await tool.selectOption("comfy_preview_parameter");
   const input = page.locator("textarea");
-  await input.fill(JSON.stringify({ instance: "instance-fixture", context: "workflow-fixture", revision: "r7", node_id: 70, widget: "steps", value: 12 }));
+  await input.fill(JSON.stringify({ instance: "instance-fixture", context: "workflow-fixture", revision: "r7", node_id: 70, widget: "steps", value: 12, request_summary: "Request a 4-step increase for the portrait workflow" }));
   const renderStarted = performance.now();
   await page.getByRole("button", { name: "Call Tool" }).click();
   const renderedView = await waitForRenderedRecord(page, 8_000);
@@ -97,9 +97,11 @@ try {
   const renderMs = Math.round((performance.now() - renderStarted) * 10) / 10;
   assert.match(rendered, /Node\s*70/);
   assert.match(rendered, /Parameter\s*steps/);
-  assert.match(rendered, /Change KSampler node 70’s steps from 8 to 12\?/);
+  assert.match(rendered, /In ComfyUI’s portrait-workflow.json, change steps on KSampler node 70 from 8 to 12\?/);
+  assert.match(rendered, /Request summary\s*Request a 4-step increase for the portrait workflow/);
+  assert.match(rendered, /Workflow\s*portrait-workflow.json/);
   assert.match(rendered, /Preview — nothing changed yet/);
-  assert.match(rendered, /Demonstration: preview a ComfyUI sampling-steps edit/);
+  assert.match(rendered, /ComfyUI workflow proposal/);
   assert.match(rendered, /Instance\s*instance-fixture/);
   assert.match(rendered, /Context\s*workflow-fixture/);
   assert.match(rendered, /Revision\s*r7/);
@@ -121,7 +123,7 @@ try {
     await fs.mkdir(path.dirname(path.resolve(cardScreenshot)), { recursive: true });
     await renderedView.frame.locator("body").screenshot({ path: path.resolve(cardScreenshot) });
   }
-  const record = { outcome: "proposed", token: "fixture-proposal", instance: "instance-fixture", context: "workflow-fixture", revision: "r7", node: 70, title: "KSampler", widget: "steps", before: 8, after: 12 };
+  const record = { outcome: "proposed", token: "fixture-proposal", instance: "instance-fixture", context: "workflow-fixture", revision: "r7", node: 70, title: "KSampler", workflow_title: "portrait-workflow.json", request_summary: "Request a 4-step increase for the portrait workflow", widget: "steps", before: 8, after: 12 };
   const callToolResult = { content: [{ type: "text", text: JSON.stringify(record) }], structuredContent: record };
   const resourceBytes = (await fs.stat(path.join(appRoot, "dist", "app.html"))).size;
   console.log(JSON.stringify({

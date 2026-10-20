@@ -2,6 +2,36 @@ using Raw = std::string
 class Refusal : public std::runtime_error
   const char* word
   std::size_t offset
+inline const std::vector<std::string> kAvailabilityCauseNames
+inline constexpr std::string_view kAvailabilityCauseTransportUnavailable
+inline constexpr std::string_view kAvailabilityCauseCredential
+inline constexpr std::string_view kAvailabilityCauseRights
+inline constexpr std::string_view kAvailabilityCauseConfiguration
+inline constexpr std::string_view kAvailabilityCauseMalformed
+inline constexpr std::string_view kAvailabilityCauseUnknown
+inline constexpr std::string_view kAvailabilityCauseOther
+enum class Placement {Local, Hosted, Any}
+inline constexpr std::string_view wire_name(Placement value)
+inline std::optional<Placement> parse_placement(std::string_view name)
+inline constexpr bool operator==(Placement value, std::string_view name)
+inline constexpr bool operator!=(Placement value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Placement value)
+inline constexpr bool operator!=(std::string_view name, Placement value)
+inline const std::vector<std::string> kPlacementNames
+inline const std::vector<std::string> kContextSourceNames
+inline constexpr std::string_view kContextSourceEffective
+inline constexpr std::string_view kContextSourceMaximum
+inline constexpr std::string_view kContextSourceDefault
+inline constexpr std::string_view kContextSourceUnknown
+inline constexpr std::string_view kContextSourceNone
+enum class OfferOutcome {Offered, Invalid, Unavailable, Forbidden, NotPermitted}
+inline constexpr std::string_view wire_name(OfferOutcome value)
+inline std::optional<OfferOutcome> parse_offer_outcome(std::string_view name)
+inline constexpr bool operator==(OfferOutcome value, std::string_view name)
+inline constexpr bool operator!=(OfferOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, OfferOutcome value)
+inline constexpr bool operator!=(std::string_view name, OfferOutcome value)
+inline const std::vector<std::string> kOfferOutcomeNames
 inline const std::vector<std::string> kServiceErrorCodeNames
 inline constexpr std::string_view kServiceErrorCodeHandlerError
 inline constexpr std::string_view kServiceErrorCodeInvalidResult
@@ -43,6 +73,7 @@ struct Alias
   std::vector<std::string> profiles
   std::vector<std::string> held_in
   std::int64_t context_length
+  std::int64_t effective_context_length
 struct Component
   std::string store
   std::string role
@@ -70,6 +101,7 @@ struct HostState
   std::string declared_by
   std::vector<std::string> profiles
   std::string domain
+  std::optional<std::string> availability_cause
 struct Ask
   std::string at
   std::string caller
@@ -98,6 +130,23 @@ struct Decision
 struct PickResult
   Observation observation
   Decision decision
+struct OfferRequest
+  std::string profile
+  Placement placement
+  std::int64_t reserve
+  bool fresh
+struct Offer
+  std::string family
+  std::vector<std::string> names
+  std::vector<std::string> servers
+  std::int64_t context
+  std::string context_source
+  std::int64_t input
+  std::vector<std::string> unknown
+struct OfferSnapshot
+  Observation observation
+  std::vector<Offer> offers
+  OfferOutcome outcome
 inline std::string encode(const PickRequest& v)
 inline PickRequest decode(std::string_view data)
 struct FrameWriter
@@ -117,11 +166,13 @@ struct Router
   virtual ModelsSnapshot models(const bool& fresh)
   virtual HostsSnapshot hosts(const bool& fresh)
   virtual PickResult pick(const PickRequest& request)
+  virtual OfferSnapshot offer(const OfferRequest& request)
 template<class Transport>struct RouterClient : Router
   Transport& transport_
   ModelsSnapshot models(const bool& fresh) override
   HostsSnapshot hosts(const bool& fresh) override
   PickResult pick(const PickRequest& request) override
+  OfferSnapshot offer(const OfferRequest& request) override
 struct RouterService
   inline static constexpr std::string_view kWireName
   inline static constexpr std::string_view kCapability

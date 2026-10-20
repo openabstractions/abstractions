@@ -16,16 +16,21 @@ const applicationsUsage = `Usage: openabstractions applications <command>
 Commands:
   list                 permission-filtered registered applications and current instances
   activate <name>      request one separately authorized bounded activation
+  remove <name>        delete one registered application and its live instances
 
 list omits executable paths, start guidance and activation recipes. An instance
 lists application-claimed interfaces and contexts; these grant no invocation
 authority. activate returns ready only after a descriptor-program-and-session-
 bound presence claims the registered readiness interface. It never focuses,
-opens a document, terminates or restarts an application.
+opens a document, terminates or restarts an application. remove needs the
+application.manage permission on account; it deletes the registered descriptor
+and its instances and leaves a running application process alone.
 
 Every command accepts --endpoint, --timeout and --json. The endpoint is --endpoint if given, else ABSTRACTION_RUNTIME_ENDPOINT if set, else the installed runtime.
 
-Exit codes: 0 listed or ready, 1 runtime not resolved or transport failure,
+With --endpoint, --runtime-program PATH verifies that absolute executable under this account.
+
+Exit codes: 0 listed, ready or removed, 1 runtime not resolved or transport failure,
 2 usage, 3 typed refusal (disabled, forbidden, invalid, launch_refused,
 identity_refused), 4 unavailable, 6 unknown, 7 not ready.
 `
@@ -70,6 +75,12 @@ type applicationActivationOutput struct {
 	Reason      string `json:"reason,omitempty"`
 }
 
+type applicationRemovalOutput struct {
+	Outcome     string `json:"outcome"`
+	Application string `json:"application"`
+	Reason      string `json:"reason,omitempty"`
+}
+
 func applicationsCommand(args []string, output, diagnostics io.Writer) error {
 	if len(args) > 0 && isHelp(args[0]) {
 		_, err := io.WriteString(output, applicationsUsage)
@@ -79,7 +90,7 @@ func applicationsCommand(args []string, output, diagnostics io.Writer) error {
 		return commandMistake(diagnostics, "applications: a command is required", "openabstractions applications --help")
 	}
 	command := "applications " + args[0]
-	if args[0] != "list" && args[0] != "activate" {
+	if args[0] != "list" && args[0] != "activate" && args[0] != "remove" {
 		return commandMistake(diagnostics, fmt.Sprintf("applications: no command called %q", args[0]), "openabstractions applications --help")
 	}
 	if containsHelp(args[1:]) {
@@ -105,13 +116,16 @@ func applicationsCommand(args []string, output, diagnostics io.Writer) error {
 	// The name's own format is not checked here: an unregistered or
 	// mis-typed name is the server's own "unknown" outcome (exit 6), not a
 	// usage mistake this command decides client-side.
-	if command == "applications activate" && len(positional) != 1 {
+	if (command == "applications activate" || command == "applications remove") && len(positional) != 1 {
 		return flagMistake(diagnostics, command, applicationsUsage, "name exactly one application ID")
 	}
 
 	w := newWaiting(options.budget)
 	defer w.stop()
-	machine, source := options.machine(diagnostics, command)
+	machine, source, err := options.machine(diagnostics, command, applicationsUsage)
+	if err != nil {
+		return err
+	}
 	call, done := w.call()
 	applications, err := machine.ResolveApplications(call, client.Requirements{Scope: client.ScopeLocal})
 	done()
@@ -138,6 +152,28 @@ func applicationsCommand(args []string, output, diagnostics io.Writer) error {
 	}
 
 	name := positional[0]
+	if command == "applications remove" {
+		call, done = w.call()
+		change, err := applications.Remove(call, name)
+		done()
+		if err != nil {
+			return transport(err)
+		}
+		projected := applicationRemovalOutput{Outcome: change.Outcome.String(), Application: name, Reason: change.Reason}
+		if options.asJSON {
+			if err := writeJSON(output, projected); err != nil {
+				return err
+			}
+		}
+		if change.Outcome != wire.ApplicationOutcomeApplied {
+			return refusal(command, change.Outcome.String(), change.Reason)
+		}
+		if options.asJSON {
+			return nil
+		}
+		_, err = fmt.Fprintf(output, "removed %s\n", name)
+		return err
+	}
 	call, done = w.call()
 	result, err := applications.Activate(call, name)
 	done()

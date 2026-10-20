@@ -26,21 +26,43 @@ import (
 	storageservice "github.com/openabstractions/abstraction-storage/go/service"
 )
 
-// liveEngines are where a llama-server was found on this machine on
-// 2026-09-22 (research/model-bridge/EXPERIMENT-2026-09-22.md §3): two inside
-// Lemonade's own cache and one Ollama vendors beside the AMD bundle. The test
-// uses whichever exists; none of them is installed, downloaded or modified by
-// this project, and a machine with none of them skips.
-func liveEngines() []string {
-	home, err := os.UserHomeDir()
+// liveArchive names the publisher's archive of the one llama.cpp release the
+// model host launches (modelhost CONTRACT.md MODELHOST-L3).
+const liveArchive = "OA_LLAMA_B10825_ZIP"
+
+// stagedEngine stages the pinned llama.cpp engine with modelhostd's own
+// `engine install` from the archive OA_LLAMA_B10825_ZIP names, into a fresh
+// folder, and returns the llama-server path the install printed and the
+// private state folder holding the engine record. The install checks the
+// archive's size and SHA-256 and writes the pinned files alone. The test
+// declares the same state folder, so the owner's default engine record is
+// never touched. Cleanup gives the folder back with `engine unlock` and
+// removes both.
+func stagedEngine(t *testing.T, modelhostd, archive string) (string, string) {
+	t.Helper()
+	parent, err := os.MkdirTemp("", "oa-live-llama-")
 	if err != nil {
-		return nil
+		t.Fatal(err)
 	}
-	return []string{
-		filepath.Join(home, ".cache", "lemonade", "bin", "llamacpp", "rocm-stable", "llama-server.exe"),
-		filepath.Join(home, ".cache", "lemonade", "bin", "llamacpp", "vulkan", "llama-server.exe"),
-		filepath.Join(home, "AppData", "Local", "AMD", "AI_Bundle", "Ollama", "lib", "ollama", "llama-server.exe"),
+	dir := filepath.Join(parent, "llama.cpp-b10825")
+	state := filepath.Join(parent, "modelhost-state")
+	t.Cleanup(func() {
+		if out, err := exec.Command(modelhostd, "engine", "unlock", "--dir", dir, "--state", state).CombinedOutput(); err != nil {
+			t.Logf("sweep: engine unlock: %v\n%s", err, out)
+		}
+		if err := os.RemoveAll(parent); err != nil {
+			t.Logf("sweep: %v", err)
+		}
+	})
+	out, err := exec.Command(modelhostd, "engine", "install", "--archive", archive, "--dir", dir, "--state", state).CombinedOutput()
+	if err != nil {
+		t.Fatalf("modelhostd engine install --archive %s: %v\n%s", archive, err, out)
 	}
+	_, program, ok := strings.Cut(strings.TrimSpace(string(out)), "pass --engine ")
+	if !ok || !filepath.IsAbs(program) {
+		t.Fatalf("modelhostd engine install printed no engine path:\n%s", out)
+	}
+	return program, state
 }
 
 // embeddingNames are the words a store's own name for an embedding model
@@ -59,15 +81,6 @@ func embeddingModel(name string) bool {
 	return false
 }
 
-func installedEngine() string {
-	for _, path := range liveEngines() {
-		if _, err := os.Stat(path); err == nil {
-			return path
-		}
-	}
-	return ""
-}
-
 // buildModelhostd builds the real model host provider from this checkout.
 func buildModelhostd(t *testing.T) string {
 	t.Helper()
@@ -76,7 +89,7 @@ func buildModelhostd(t *testing.T) string {
 		name += ".exe"
 	}
 	target := filepath.Join(t.TempDir(), name)
-	module, err := filepath.Abs(filepath.Join("..", "openabstractions-flat", "abstraction-provider-modelhost", "go"))
+	module, err := filepath.Abs(privateInput(t, "..", "openabstractions-flat", "abstraction-provider-modelhost", "go"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,28 +103,31 @@ func buildModelhostd(t *testing.T) string {
 // One model, loaded once, held under a lease, given back when the card is
 // asked for. Live: it builds the real inventoryd and modelhostd, declares both
 // to an isolated runtime, hosts the smallest GGUF the composed inventory lists
-// with the llama-server this machine already has and --embeddings, answers
-// one chat through the runtime, answers a second one off the same load,
-// answers one embed@1 call off the same load, and then asks the card for its
-// whole capacity and asserts the host let go.
+// with the pinned llama.cpp b10825 that modelhostd engine install staged and
+// --embeddings, answers one chat through the runtime, answers a second one
+// off the same load, answers one embed@1 call off the same load, and then
+// asks the card for its whole capacity and asserts the host let go.
 //
-// It installs nothing, downloads nothing and touches no other engine: the only
+// It downloads nothing and touches no other engine: the engine is staged from
+// the archive OA_LLAMA_B10825_ZIP names into a temporary folder, and the only
 // process it stops is the one modelhostd started, by that process's own id.
 func TestLiveHostTheSmallestGGUFUnderALease(t *testing.T) {
 	if os.Getenv("OA_LIVE_MODELHOST") != "1" {
-		t.Skip("set OA_LIVE_MODELHOST=1 to load one of this machine's own model files with its own llama.cpp")
+		t.Skip("set OA_LIVE_MODELHOST=1 to load one of this machine's own model files with the pinned llama.cpp")
+	}
+	archive := os.Getenv(liveArchive)
+	if archive == "" {
+		t.Skipf("set %s to a downloaded llama-b10825-bin-win-vulkan-x64.zip "+
+			"(https://github.com/ggml-org/llama.cpp/releases/download/b10825/); the test stages it with modelhostd engine install", liveArchive)
 	}
 	if !statusTransportProvesProgram(t) {
 		t.Skip("Program proof unavailable on current shared transport")
 	}
-	engine := installedEngine()
-	if engine == "" {
-		t.Skipf("no llama-server at any of the paths the 2026-09-22 experiment found: %v", liveEngines())
-	}
-	t.Logf("engine: %s", engine)
 
 	inventoryd := buildLocalStoresInventoryd(t)
 	modelhostd := buildModelhostd(t)
+	engine, state := stagedEngine(t, modelhostd, archive)
+	t.Logf("engine: %s, state: %s", engine, state)
 	stamp := time.Now().UnixNano() % 1_000_000_000
 
 	options, _ := isolatedRuntime(t)
@@ -218,17 +234,16 @@ func TestLiveHostTheSmallestGGUFUnderALease(t *testing.T) {
 
 	object := smallest.store + "/" + smallest.id
 	providerEndpointName := fmt.Sprintf("live-host-%d", stamp)
-	hostArgs := []string{"host", object, "--engine", engine, "--program", modelhostd,
+	hostArgs := []string{"host", object, "--engine", engine, "--state", state, "--program", modelhostd,
 		"--provider-endpoint", providerEndpointName,
 		"--resource-endpoint", options.endpoint + "-resource-table", "--idle", "10m", "--embeddings",
 		// The smallest GGUF is a chat model, not an embedding one: its own
 		// metadata carries no pooling head, so llama-server's OpenAI-compatible
 		// /v1/embeddings refuses it as "pooling type 'none' is not OAI
-		// compatible" without an explicit pooling choice. --pooling is an
-		// ordinary llama-server flag a person adds with --engine-arg
-		// (CONTRACT.md MODELHOST-L3: this layer chooses none of the engine's own
-		// arguments); a model built for embeddings carries its own pooling
-		// type and needs no override.
+		// compatible" without an explicit pooling choice. --pooling is on the
+		// reviewed list of llama-server options a person adds with
+		// --engine-arg (modelhost CONTRACT.md MODELHOST-L5); a model built for
+		// embeddings carries its own pooling type and needs no override.
 		"--engine-arg", "--pooling", "--engine-arg", "mean"}
 	out, err := runModels(t, append(hostArgs, endpoint...)...)
 	if err != nil {

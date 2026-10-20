@@ -1,0 +1,854 @@
+diff --git a/packages/opencode/src/provider/provider.ts b/packages/opencode/src/provider/provider.ts
+index 867ef2c..676fd97 100644
+--- a/packages/opencode/src/provider/provider.ts
++++ b/packages/opencode/src/provider/provider.ts
+@@ -1167,6 +1167,15 @@ export class InitError extends Schema.TaggedErrorClass<InitError>()("ProviderIni
+   }
+ }
+
++export class ModelRefreshUnavailable extends Schema.TaggedErrorClass<ModelRefreshUnavailable>()(
++  "ProviderModelRefreshUnavailable",
++  { providerID: ProviderV2.ID },
++) {
++  override get message() {
++    return `Provider has no refreshable model hook: ${this.providerID}`
++  }
++}
++
+ export class NoProvidersError extends Schema.TaggedErrorClass<NoProvidersError>()("ProviderNoProvidersError", {}) {
+   override get message() {
+     return "No providers are available"
+@@ -1190,11 +1199,12 @@ export class NoModelsError extends Schema.TaggedErrorClass<NoModelsError>()("Pro
+ }
+
+ export type DefaultModelError = ModelNotFoundError | NoProvidersError | NoModelsError
+-export type Error = ModelNotFoundError | InitError | NoProvidersError | NoModelsError
++export type Error = ModelNotFoundError | InitError | NoProvidersError | NoModelsError | ModelRefreshUnavailable
+
+ export interface Interface {
+   readonly list: () => Effect.Effect<Record<ProviderV2.ID, Info>>
+   readonly getProvider: (providerID: ProviderV2.ID) => Effect.Effect<Info>
++  readonly refreshModels: (providerID: ProviderV2.ID) => Effect.Effect<Info, ModelRefreshUnavailable>
+   readonly getModel: (providerID: ProviderV2.ID, modelID: ModelV2.ID) => Effect.Effect<Model, ModelNotFoundError>
+   readonly getLanguage: (model: Model) => Effect.Effect<LanguageModelV3, ModelNotFoundError>
+   readonly closest: (
+@@ -1212,6 +1222,11 @@ interface State {
+   sdk: Map<string, BundledSDK>
+   modelLoaders: Record<string, CustomModelLoader>
+   varsLoaders: Record<string, CustomVarsLoader>
++  modelRefreshers: Record<
++    ProviderV2.ID,
++    (provider: Info, ctx: { auth: Auth.Info | undefined }) => Promise<Record<string, Model>>
++  >
++  modelRefreshGeneration: Record<ProviderV2.ID, number>
+ }
+
+ export class Service extends Context.Service<Service, Interface>()("@opencode/Provider") {}
+@@ -1413,6 +1428,8 @@ const layer = Layer.effect(
+         const varsLoaders: {
+           [providerID: string]: CustomVarsLoader
+         } = {}
++        const modelRefreshers: State["modelRefreshers"] = {} as State["modelRefreshers"]
++        const modelRefreshGeneration: State["modelRefreshGeneration"] = {} as State["modelRefreshGeneration"]
+         const sdk = new Map<string, BundledSDK>()
+         const discoveryLoaders: {
+           [providerID: string]: CustomDiscoverModels
+@@ -1459,10 +1476,34 @@ const layer = Layer.effect(
+           const providerID = ProviderV2.ID.make(p.id)
+           if (disabled.has(providerID)) continue
+
+-          const provider = database[providerID]
++          const configured = cfg.provider?.[providerID]
++          const provider =
++            database[providerID] ??
++            (configured
++              ? ({
++                  id: providerID,
++                  name: configured.name ?? providerID,
++                  source: "config",
++                  env: configured.env ?? [],
++                  options: configured.options ?? {},
++                  models: {},
++                } satisfies Info)
++              : undefined)
+           if (!provider) continue
++          modelRefreshers[providerID] = async (current, ctx) => {
++            const next = await models(toPublicInfo(current), ctx)
++            return Object.fromEntries(
++              Object.entries(next).map(([id, model]) => [
++                id,
++                {
++                  ...model,
++                  id: ModelV2.ID.make(id),
++                  providerID,
++                },
++              ]),
++            )
++          }
+           const pluginAuth = yield* auth.get(providerID).pipe(Effect.orDie)
+-
+           provider.models = yield* Effect.promise(async () => {
+             const next = await models(toPublicInfo(provider), { auth: pluginAuth })
+             return Object.fromEntries(
+@@ -1476,6 +1517,7 @@ const layer = Layer.effect(
+               ]),
+             )
+           })
++          database[providerID] = provider
+         }
+
+         // extend database from config
+@@ -1725,11 +1767,40 @@ const layer = Layer.effect(
+           sdk,
+           modelLoaders,
+           varsLoaders,
++          modelRefreshers,
++          modelRefreshGeneration,
+         }
+       }),
+     )
+
+     const list = Effect.fn("Provider.list")(() => InstanceState.use(state, (s) => s.providers))
++    const refreshModels = Effect.fn("Provider.refreshModels")(function* (providerID: ProviderV2.ID) {
++      const s = yield* InstanceState.get(state)
++      const current = s.providers[providerID]
++      const refresh = s.modelRefreshers[providerID]
++      if (!current || !refresh) return yield* new ModelRefreshUnavailable({ providerID })
++
++      const generation = (s.modelRefreshGeneration[providerID] ?? 0) + 1
++      s.modelRefreshGeneration[providerID] = generation
++      const pluginAuth = yield* auth.get(providerID).pipe(Effect.orDie)
++      const discovered = yield* Effect.promise(() => refresh(toPublicInfo(current), { auth: pluginAuth }))
++      // A newer refresh has already claimed publication; return its snapshot
++      // rather than allowing an older callback result to roll the catalog back.
++      // A failed newer callback still preserves the last successfully published snapshot.
++      if (s.modelRefreshGeneration[providerID] !== generation) return s.providers[providerID] ?? current
++
++      // Replace inventory copy-on-write. A request already holding its model
++      // and language references continues; later lookups see only this snapshot.
++      const next: Info = {
++        ...current,
++        models: discovered,
++      }
++      s.providers = { ...s.providers, [providerID]: next }
++      for (const key of s.models.keys()) {
++        if (key.startsWith(`${providerID}/`)) s.models.delete(key)
++      }
++      return next
++    })
+
+     async function resolveSDK(model: Model, s: State, envs: Record<string, string | undefined>) {
+       try {
+@@ -2040,7 +2111,7 @@ const layer = Layer.effect(
+       }
+     })
+
+-    return Service.of({ list, getProvider, getModel, getLanguage, closest, getSmallModel, defaultModel })
++    return Service.of({ list, getProvider, refreshModels, getModel, getLanguage, closest, getSmallModel, defaultModel })
+   }),
+ )
+
+diff --git a/packages/opencode/src/server/routes/instance/httpapi/groups/provider.ts b/packages/opencode/src/server/routes/instance/httpapi/groups/provider.ts
+index 3a9ae0c..fd0fdb3 100644
+--- a/packages/opencode/src/server/routes/instance/httpapi/groups/provider.ts
++++ b/packages/opencode/src/server/routes/instance/httpapi/groups/provider.ts
+@@ -31,6 +31,16 @@ export class ProviderAuthApiError extends Schema.ErrorClass<ProviderAuthApiError
+   { httpApiStatus: 400 },
+ ) {}
+
++export class ProviderModelRefreshApiError extends Schema.ErrorClass<ProviderModelRefreshApiError>(
++  "ProviderModelRefreshError",
++)(
++  {
++    name: Schema.Literal("ProviderModelRefreshUnavailable"),
++    data: Schema.Struct({ providerID: ProviderV2.ID, message: Schema.String }),
++  },
++  { httpApiStatus: 404 },
++) {}
++
+ export const ProviderApi = HttpApi.make("provider")
+   .add(
+     HttpApiGroup.make("provider")
+@@ -45,6 +55,18 @@ export const ProviderApi = HttpApi.make("provider")
+             description: "Get a list of all available AI providers, including both available and connected ones.",
+           }),
+         ),
++        HttpApiEndpoint.post("refreshModels", `${root}/:providerID/models/refresh`, {
++          params: { providerID: ProviderV2.ID },
++          query: WorkspaceRoutingQuery,
++          success: described(Schema.Struct({ providerID: ProviderV2.ID }), "Refreshed provider model inventory"),
++          error: ProviderModelRefreshApiError,
++        }).annotateMerge(
++          OpenApi.annotations({
++            identifier: "provider.models.refresh",
++            summary: "Refresh provider models",
++            description: "Refresh one provider's model inventory without restarting the OpenCode instance.",
++          }),
++        ),
+         HttpApiEndpoint.get("auth", `${root}/auth`, {
+           query: WorkspaceRoutingQuery,
+           success: described(ProviderAuth.Methods, "Provider auth methods"),
+diff --git a/packages/opencode/src/server/routes/instance/httpapi/groups/session.ts b/packages/opencode/src/server/routes/instance/httpapi/groups/session.ts
+index 959a303..0602a3b 100644
+--- a/packages/opencode/src/server/routes/instance/httpapi/groups/session.ts
++++ b/packages/opencode/src/server/routes/instance/httpapi/groups/session.ts
+@@ -20,7 +20,7 @@ import {
+   WorkspaceRoutingQuery,
+   WorkspaceRoutingQueryFields,
+ } from "../middleware/workspace-routing"
+-import { ApiNotFoundError, PermissionNotFoundError, SessionBusyError } from "../errors"
++import { ApiNotFoundError, ModelNotFoundError, PermissionNotFoundError, SessionBusyError } from "../errors"
+ import { described } from "./metadata"
+ import { QueryBoolean } from "./query"
+ import { ProviderV2 } from "@opencode-ai/core/provider"
+@@ -318,7 +318,7 @@ export const SessionApi = HttpApi.make("session")
+           query: WorkspaceRoutingQuery,
+           payload: PromptPayload,
+           success: described(SessionV1.WithParts, "Created message"),
+-          error: [HttpApiError.BadRequest, ApiNotFoundError],
++          error: [HttpApiError.BadRequest, ApiNotFoundError, ModelNotFoundError],
+         }).annotateMerge(
+           OpenApi.annotations({
+             identifier: "session.prompt",
+diff --git a/packages/opencode/src/server/routes/instance/httpapi/handlers/provider.ts b/packages/opencode/src/server/routes/instance/httpapi/handlers/provider.ts
+index 6f0e5f6..7b7acc5 100644
+--- a/packages/opencode/src/server/routes/instance/httpapi/handlers/provider.ts
++++ b/packages/opencode/src/server/routes/instance/httpapi/handlers/provider.ts
+@@ -9,7 +9,7 @@ import { Effect, Schema } from "effect"
+ import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
+ import { HttpApiBuilder } from "effect/unstable/httpapi"
+ import { InstanceHttpApi } from "../api"
+-import { ProviderAuthApiError } from "../groups/provider"
++import { ProviderAuthApiError, ProviderModelRefreshApiError } from "../groups/provider"
+ import { ProviderV2 } from "@opencode-ai/core/provider"
+
+ function mapProviderAuthError<A, R>(self: Effect.Effect<A, ProviderAuth.Error, R>) {
+@@ -65,6 +65,21 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
+       return yield* svc.methods()
+     })
+
++    const refreshModels = Effect.fn("ProviderHttpApi.refreshModels")(function* (ctx: {
++      params: { providerID: ProviderV2.ID }
++    }) {
++      yield* provider.refreshModels(ctx.params.providerID).pipe(
++        Effect.mapError(
++          (error) =>
++            new ProviderModelRefreshApiError({
++              name: "ProviderModelRefreshUnavailable",
++              data: { providerID: error.providerID, message: error.message },
++            }),
++        ),
++      )
++      return { providerID: ctx.params.providerID }
++    })
++
+     const authorize = Effect.fn("ProviderHttpApi.authorize")(function* (ctx: {
+       params: { providerID: ProviderV2.ID }
+       payload: ProviderAuth.AuthorizeInput
+@@ -109,6 +124,7 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
+
+     return handlers
+       .handle("list", list)
++      .handle("refreshModels", refreshModels)
+       .handle("auth", auth)
+       .handleRaw("authorize", authorizeRaw)
+       .handle("callback", callback)
+diff --git a/packages/opencode/src/server/routes/instance/httpapi/handlers/session.ts b/packages/opencode/src/server/routes/instance/httpapi/handlers/session.ts
+index 6625850..8bbdf2a 100644
+--- a/packages/opencode/src/server/routes/instance/httpapi/handlers/session.ts
++++ b/packages/opencode/src/server/routes/instance/httpapi/handlers/session.ts
+@@ -1,6 +1,7 @@
+ import { PermissionV1 } from "@opencode-ai/core/v1/permission"
+ import { Agent } from "@/agent/agent"
+ import { SessionV1 } from "@opencode-ai/core/v1/session"
++import { Provider } from "@/provider/provider"
+ import { EventV2Bridge } from "@/event-v2-bridge"
+ import { Command } from "@/command"
+ import { Permission } from "@/permission"
+@@ -36,7 +37,7 @@ import {
+   SummarizePayload,
+   UpdatePayload,
+ } from "../groups/session"
+-import { PermissionNotFoundError } from "../errors"
++import { ModelNotFoundError as ApiModelNotFoundError, PermissionNotFoundError } from "../errors"
+ import * as SessionError from "./session-errors"
+
+ const tryParseJson = (text: string) =>
+@@ -302,7 +303,21 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session",
+           ...ctx.payload,
+           sessionID: ctx.params.sessionID,
+         })
+-        .pipe(Effect.mapError(() => new HttpApiError.BadRequest({})))
++        .pipe(
++          Effect.mapError(() => new HttpApiError.BadRequest({})),
++          Effect.catchCause((cause) => {
++            const defect = cause.reasons.find(Cause.isDieReason)?.defect
++            if (!Provider.ModelNotFoundError.isInstance(defect)) return Effect.failCause(cause)
++            return Effect.fail(
++              new ApiModelNotFoundError({
++                providerID: defect.providerID,
++                modelID: defect.modelID,
++                suggestions: defect.suggestions ?? [],
++                message: defect.message,
++              }),
++            )
++          }),
++        )
+       return HttpServerResponse.stream(Stream.make(JSON.stringify(message)).pipe(Stream.encodeText), {
+         contentType: "application/json",
+       })
+diff --git a/packages/opencode/test/fake/provider.ts b/packages/opencode/test/fake/provider.ts
+index 1dbfa6f..2efaacf 100644
+--- a/packages/opencode/test/fake/provider.ts
++++ b/packages/opencode/test/fake/provider.ts
+@@ -58,6 +58,10 @@ export namespace ProviderTest {
+             if (providerID === row.id) return Effect.succeed(row)
+             return Effect.die(new Error(`Unknown test provider: ${providerID}`))
+           }),
++          refreshModels: Effect.fn("TestProvider.refreshModels")((providerID) => {
++            if (providerID === row.id) return Effect.succeed(row)
++            return Effect.die(new Error(`Unknown test provider: ${providerID}`))
++          }),
+           getModel: Effect.fn("TestProvider.getModel")((providerID, modelID) => {
+             if (providerID === row.id && modelID === mdl.id) return Effect.succeed(mdl)
+             return Effect.die(new Error(`Unknown test model: ${providerID}/${modelID}`))
+diff --git a/packages/opencode/test/fixture/provider-model-refresh-plugin.ts b/packages/opencode/test/fixture/provider-model-refresh-plugin.ts
+new file mode 100644
+index 0000000..857ea43
+--- /dev/null
++++ b/packages/opencode/test/fixture/provider-model-refresh-plugin.ts
+@@ -0,0 +1,11 @@
++import { refreshModels } from "./provider-model-refresh-state"
++
++export default {
++  id: "test.provider-model-refresh",
++  server: async () => ({
++    provider: {
++      id: "oa-hot-refresh-fixture",
++      models: refreshModels,
++    },
++  }),
++}
+diff --git a/packages/opencode/test/fixture/provider-model-refresh-state.ts b/packages/opencode/test/fixture/provider-model-refresh-state.ts
+new file mode 100644
+index 0000000..b81af1f
+--- /dev/null
++++ b/packages/opencode/test/fixture/provider-model-refresh-state.ts
+@@ -0,0 +1,50 @@
++import type { Provider } from "@/provider/provider"
++
++type Inventory = Record<string, Provider.Model>
++type RefreshPlan = () => Promise<Inventory>
++
++const plans: RefreshPlan[] = []
++
++export function enqueueRefreshPlan(plan: RefreshPlan) {
++  plans.push(plan)
++}
++
++export function resetRefreshPlans() {
++  plans.length = 0
++}
++
++export function model(id: string, override: Partial<Provider.Model> = {}): Provider.Model {
++  return {
++    id: id as Provider.Model["id"],
++    providerID: "oa-hot-refresh-fixture" as Provider.Model["providerID"],
++    name: id,
++    family: "openai-compatible",
++    api: { id, url: "https://refresh.test/v1", npm: "@ai-sdk/openai-compatible" },
++    status: "active",
++    capabilities: {
++      temperature: false,
++      reasoning: false,
++      attachment: false,
++      toolcall: true,
++      input: { text: true, audio: false, image: false, video: false, pdf: false },
++      output: { text: true, audio: false, image: false, video: false, pdf: false },
++      interleaved: false,
++    },
++    cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
++    limit: { context: 4096, output: 512 },
++    options: {},
++    headers: {},
++    release_date: "",
++    variants: {},
++    ...override,
++  }
++}
++
++export async function refreshModels(): Promise<Inventory> {
++  const plan = plans.shift()
++  if (plan) return plan()
++  return {
++    "active-model": model("active-model"),
++    "retired-model": model("retired-model"),
++  }
++}
+diff --git a/packages/opencode/test/provider/provider-refresh.test.ts b/packages/opencode/test/provider/provider-refresh.test.ts
+new file mode 100644
+index 0000000..fe8403e
+--- /dev/null
++++ b/packages/opencode/test/provider/provider-refresh.test.ts
+@@ -0,0 +1,207 @@
++import { afterEach, beforeEach, expect } from "bun:test"
++import path from "path"
++import { pathToFileURL } from "node:url"
++import { streamText } from "ai"
++import { LayerNode } from "@opencode-ai/core/effect/layer-node"
++import { FSUtil } from "@opencode-ai/core/fs-util"
++import { Effect, Fiber } from "effect"
++import { Auth } from "@/auth"
++import { Config } from "@/config/config"
++import { Env } from "@/env"
++import { Plugin } from "@/plugin"
++import { Provider } from "@/provider/provider"
++import { ModelsDev } from "@opencode-ai/core/models-dev"
++import { RuntimeFlags } from "@/effect/runtime-flags"
++import { ModelV2 } from "@opencode-ai/core/model"
++import { ProviderV2 } from "@opencode-ai/core/provider"
++import { disposeAllInstances } from "../fixture/fixture"
++import { markPluginDependenciesReady } from "../fixture/plugin"
++import { enqueueRefreshPlan, model, resetRefreshPlans } from "../fixture/provider-model-refresh-state"
++import { testEffect } from "../lib/effect"
++
++beforeEach(() => resetRefreshPlans())
++
++afterEach(async () => {
++  await disposeAllInstances()
++})
++
++const providerID = ProviderV2.ID.make("oa-hot-refresh-fixture")
++const pluginURL = pathToFileURL(path.join(import.meta.dir, "../fixture/provider-model-refresh-plugin.ts")).href
++const it = testEffect(
++  LayerNode.compile(
++    LayerNode.group([
++      Provider.node,
++      FSUtil.node,
++      Env.node,
++      Config.node,
++      Auth.node,
++      Plugin.node,
++      ModelsDev.node,
++      RuntimeFlags.node,
++    ]),
++    [[RuntimeFlags.node, RuntimeFlags.layer()]],
++  ),
++)
++
++it.instance(
++  "refreshes a custom provider catalog while its current stream completes",
++  Effect.gen(function* () {
++    const provider = yield* Provider.Service
++    const item = yield* provider.getProvider(providerID)
++    const retired = yield* provider.getModel(providerID, ModelV2.ID.make("retired-model"))
++    let markStarted!: () => void
++    const fetchStarted = new Promise<void>((resolve) => (markStarted = resolve))
++    let releaseResponse!: (response: Response) => void
++    const responsePending = new Promise<Response>((resolve) => (releaseResponse = resolve))
++    item.options.fetch = async () => {
++      markStarted()
++      return responsePending
++    }
++
++    const active = yield* provider.getModel(providerID, ModelV2.ID.make("active-model"))
++    const language = yield* provider.getLanguage(active)
++    const generation = streamText({
++      model: language,
++      messages: [{ role: "user", content: "finish this request" }],
++    })
++    const text = generation.text
++    yield* Effect.promise(() => fetchStarted)
++
++    enqueueRefreshPlan(() =>
++      Promise.resolve({
++        "active-model": model("active-model", {
++          api: { id: "active-model-v2", url: "https://refresh.test/v1", npm: "@ai-sdk/openai-compatible" },
++        }),
++        "new-model": model("new-model"),
++      }),
++    )
++    const refreshed = yield* provider.refreshModels(providerID)
++    expect(refreshed).not.toBe(item)
++    expect(refreshed.models["active-model"]).toBeDefined()
++    expect(refreshed.models["new-model"]).toBeDefined()
++    expect(refreshed.models["retired-model"]).toBeUndefined()
++    expect(yield* provider.defaultModel()).toEqual({ providerID, modelID: ModelV2.ID.make("active-model") })
++    expect((yield* provider.getModel(providerID, retired.id).pipe(Effect.exit))._tag).toBe("Failure")
++    const refreshedModel = yield* provider.getModel(providerID, ModelV2.ID.make("active-model"))
++    expect(refreshedModel.api.id).toBe("active-model-v2")
++    const refreshedLanguage = yield* provider.getLanguage(refreshedModel)
++    expect(refreshedLanguage).not.toBe(language)
++    expect((refreshedLanguage as { modelId: string }).modelId).toBe("active-model-v2")
++
++    const sse = ['data: {"choices":[{"delta":{"content":"completed"}}]}', "", "data: [DONE]", ""].join("\n")
++    releaseResponse(new Response(sse, { headers: { "content-type": "text/event-stream" } }))
++    expect(yield* Effect.promise(() => text)).toBe("completed")
++
++    const beforeFailure = yield* provider.getProvider(providerID)
++    enqueueRefreshPlan(async () => {
++      throw new Error("fixture refresh failure")
++    })
++    const failure = yield* provider.refreshModels(providerID).pipe(Effect.exit)
++    expect(failure._tag).toBe("Failure")
++    expect(yield* provider.getProvider(providerID)).toBe(beforeFailure)
++    expect((yield* provider.getProvider(providerID)).models["new-model"]).toBeDefined()
++    expect((yield* provider.getProvider(providerID)).models["active-model"]).toBeDefined()
++  }),
++  {
++    init: (directory) => Effect.promise(() => markPluginDependenciesReady(path.join(directory, ".opencode"))),
++    config: {
++      model: "oa-hot-refresh-fixture/active-model",
++      plugin: [pluginURL],
++      provider: {
++        "oa-hot-refresh-fixture": {
++          name: "OA Refresh Fixture",
++          npm: "@ai-sdk/openai-compatible",
++          api: "https://refresh.test/v1",
++          options: { apiKey: "test-key", baseURL: "https://refresh.test/v1" },
++          models: {
++            "active-model": {
++              name: "Active Model",
++              tool_call: true,
++              limit: { context: 4096, output: 512 },
++            },
++          },
++        },
++      },
++    },
++  },
++  30000,
++)
++
++it.instance(
++  "keeps the newest refresh generation when callbacks finish out of order, including after a newer failure",
++  Effect.gen(function* () {
++    const provider = yield* Provider.Service
++    const original = yield* provider.getProvider(providerID)
++    let startedA!: () => void
++    const aStarted = new Promise<void>((resolve) => (startedA = resolve))
++    let releaseA!: () => void
++    const aGate = new Promise<void>((resolve) => (releaseA = resolve))
++    enqueueRefreshPlan(async () => {
++      startedA()
++      await aGate
++      return { "older-model": model("older-model") }
++    })
++    const refreshA = yield* provider.refreshModels(providerID).pipe(Effect.forkChild)
++    yield* Effect.promise(() => aStarted)
++
++    let startedB!: () => void
++    const bStarted = new Promise<void>((resolve) => (startedB = resolve))
++    enqueueRefreshPlan(async () => {
++      startedB()
++      return { "newer-model": model("newer-model") }
++    })
++    const refreshB = yield* provider.refreshModels(providerID).pipe(Effect.forkChild)
++    yield* Effect.promise(() => bStarted)
++    const resultB = yield* Fiber.join(refreshB)
++    expect(resultB.models["newer-model"]).toBeDefined()
++    releaseA()
++    const resultA = yield* Fiber.join(refreshA)
++    expect(resultA).toBe(resultB)
++    expect((yield* provider.getProvider(providerID)).models["older-model"]).toBeUndefined()
++
++    let startedC!: () => void
++    const cStarted = new Promise<void>((resolve) => (startedC = resolve))
++    let releaseC!: () => void
++    const cGate = new Promise<void>((resolve) => (releaseC = resolve))
++    enqueueRefreshPlan(async () => {
++      startedC()
++      await cGate
++      return { "stale-model": model("stale-model") }
++    })
++    const refreshC = yield* provider.refreshModels(providerID).pipe(Effect.forkChild)
++    yield* Effect.promise(() => cStarted)
++    enqueueRefreshPlan(async () => {
++      throw new Error("newest refresh failed")
++    })
++    const failedD = yield* provider.refreshModels(providerID).pipe(Effect.exit)
++    expect(failedD._tag).toBe("Failure")
++    releaseC()
++    const resultC = yield* Fiber.join(refreshC)
++    expect(resultC).toBe(resultB)
++    expect(yield* provider.getProvider(providerID)).toBe(resultB)
++    expect(yield* provider.getProvider(providerID)).not.toBe(original)
++  }),
++  {
++    init: (directory) => Effect.promise(() => markPluginDependenciesReady(path.join(directory, ".opencode"))),
++    config: {
++      model: "oa-hot-refresh-fixture/active-model",
++      plugin: [pluginURL],
++      provider: {
++        "oa-hot-refresh-fixture": {
++          name: "OA Refresh Fixture",
++          npm: "@ai-sdk/openai-compatible",
++          api: "https://refresh.test/v1",
++          options: { apiKey: "test-key", baseURL: "https://refresh.test/v1" },
++          models: {
++            "active-model": {
++              name: "Active Model",
++              tool_call: true,
++              limit: { context: 4096, output: 512 },
++            },
++          },
++        },
++      },
++    },
++  },
++  30000,
++)
+diff --git a/packages/opencode/test/server/httpapi-provider.test.ts b/packages/opencode/test/server/httpapi-provider.test.ts
+index 625ca18..1e408ba 100644
+--- a/packages/opencode/test/server/httpapi-provider.test.ts
++++ b/packages/opencode/test/server/httpapi-provider.test.ts
+@@ -3,6 +3,7 @@ import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+ import { FSUtil } from "@opencode-ai/core/fs-util"
+ import { Effect, Layer } from "effect"
+ import path from "path"
++import { pathToFileURL } from "node:url"
+ import { resetDatabase } from "../fixture/db"
+ import { TestInstance } from "../fixture/fixture"
+ import { markPluginDependenciesReady } from "../fixture/plugin"
+@@ -138,6 +139,62 @@ function writeProviderAuthPlugin(dir: string) {
+   })
+ }
+
++function writeProviderModelRefreshPlugin(dir: string) {
++  return Effect.gen(function* () {
++    const fs = yield* FSUtil.Service
++    const providerID = "oa-hot-refresh-http"
++    const pluginFile = path.join(dir, ".opencode", "plugin", "provider-model-refresh.ts")
++    yield* Effect.promise(() => markPluginDependenciesReady(path.join(dir, ".opencode")))
++    yield* fs.writeWithDirs(
++      pluginFile,
++      [
++        "let refreshCalls = 0",
++        "function model(id) {",
++        "  return {",
++        "    id, name: id, family: 'openai-compatible',",
++        "    api: { id, url: 'https://refresh.test/v1', npm: '@ai-sdk/openai-compatible' },",
++        "    status: 'active',",
++        "    capabilities: { temperature: false, reasoning: false, attachment: false, toolcall: true, input: { text: true, audio: false, image: false, video: false, pdf: false }, output: { text: true, audio: false, image: false, video: false, pdf: false }, interleaved: false },",
++        "    cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },",
++        "    limit: { context: 4096, output: 512 }, options: {}, headers: {}, release_date: '', variants: {},",
++        "  }",
++        "}",
++        "export default {",
++        "  id: 'test.provider-model-refresh-http',",
++        "  server: async () => ({",
++        `    provider: { id: '${providerID}', models: async () => {`,
++        "      refreshCalls += 1",
++        "      return refreshCalls === 1 ? { 'active-model': model('active-model') } : { 'new-model': model('new-model') }",
++        "    } },",
++        "  }),",
++        "}",
++        "",
++      ].join("\n"),
++    )
++    yield* fs.writeWithDirs(
++      path.join(dir, "opencode.json"),
++      JSON.stringify({
++        $schema: "https://opencode.ai/config.json",
++        formatter: false,
++        lsp: false,
++        model: `${providerID}/active-model`,
++        plugin: [pathToFileURL(pluginFile).href],
++        provider: {
++          [providerID]: {
++            name: "OA Refresh HTTP Fixture",
++            npm: "@ai-sdk/openai-compatible",
++            api: "https://refresh.test/v1",
++            options: { apiKey: "test-key", baseURL: "https://refresh.test/v1" },
++            models: {
++              "active-model": { name: "Active Model", tool_call: true, limit: { context: 4096, output: 512 } },
++            },
++          },
++        },
++      }),
++    )
++  })
++}
++
+ function writeProviderAuthValidationPlugin(dir: string) {
+   return Effect.gen(function* () {
+     const fs = yield* FSUtil.Service
+@@ -261,6 +318,29 @@ function setEnvScoped(key: string, value: string) {
+ }
+
+ describe("provider HttpApi", () => {
++  it.instance(
++    "refreshes a configured custom provider's model inventory in the running instance",
++    Effect.gen(function* () {
++      const directory = (yield* TestInstance).directory
++      const headers = { "x-opencode-directory": directory }
++      const response = yield* request(`/provider/oa-hot-refresh-http/models/refresh`, { method: "POST", headers })
++      expect(response.status).toBe(200)
++      const refreshedValue = yield* response.json
++      expect(JSON.stringify(refreshedValue)).not.toContain("test-key")
++      expect(refreshedValue).toEqual({ providerID: "oa-hot-refresh-http" })
++
++      const listed = yield* request("/provider", { headers })
++      expect(listed.status).toBe(200)
++      const body = yield* listed.json
++      const refreshedProvider = providerByID(body, "all", "oa-hot-refresh-http")
++      expect(
++        isRecord(refreshedProvider) && isRecord(refreshedProvider.models) && "new-model" in refreshedProvider.models,
++      ).toBe(true)
++    }),
++    { ...projectOptions, init: writeProviderModelRefreshPlugin },
++    30000,
++  )
++
+   it.instance.skip(
+     "returns public v2 provider not found errors",
+     Effect.gen(function* () {
+diff --git a/packages/opencode/test/server/httpapi-session.test.ts b/packages/opencode/test/server/httpapi-session.test.ts
+index 9d7643c..1b93e2a 100644
+--- a/packages/opencode/test/server/httpapi-session.test.ts
++++ b/packages/opencode/test/server/httpapi-session.test.ts
+@@ -427,6 +427,33 @@ describe("session HttpApi", () => {
+     }).pipe(Effect.provide(TestLLMServer.layer), Effect.provide(AppNodeBuilder.build(CrossSpawnSpawner.node))),
+   )
+
++  it.live("returns a typed model-unavailable error without starting a backend request", () =>
++    Effect.gen(function* () {
++      const llm = yield* TestLLMServer
++      const directory = yield* tmpdirScoped({ git: true, config: testProviderConfig(llm.url) })
++      const session = yield* createSession({ title: "removed model" }).pipe(provideInstanceEffect(directory))
++      const response = yield* request(pathFor(SessionPaths.prompt, { sessionID: session.id }), {
++        method: "POST",
++        headers: { "content-type": "application/json", "x-opencode-directory": directory },
++        body: JSON.stringify({
++          agent: "build",
++          model: { providerID: "test", modelID: "removed-model" },
++          parts: [{ type: "text", text: "use the selected model" }],
++        }),
++      })
++
++      expect(response.status).toBe(404)
++      expect(yield* responseJson(response)).toEqual({
++        _tag: "ModelNotFoundError",
++        providerID: "test",
++        modelID: "removed-model",
++        suggestions: ["test-model"],
++        message: "Model not found: test/removed-model. Did you mean: test-model?",
++      })
++      expect(yield* llm.calls).toBe(0)
++    }).pipe(Effect.provide(TestLLMServer.layer), Effect.provide(AppNodeBuilder.build(CrossSpawnSpawner.node))),
++  )
++
+   it.instance(
+     "returns v2 public request errors for cursor and workspace query failures",
+     () =>
+diff --git a/packages/tui/src/component/dialog-model.tsx b/packages/tui/src/component/dialog-model.tsx
+index 38db569..a449cd1 100644
+--- a/packages/tui/src/component/dialog-model.tsx
++++ b/packages/tui/src/component/dialog-model.tsx
+@@ -8,10 +8,16 @@ import { DialogVariant } from "./dialog-variant"
+ import * as fuzzysort from "fuzzysort"
+ import { useConnected } from "./use-connected"
+ import { useSync } from "../context/sync"
++import { useSDK } from "../context/sdk"
++import { useProject } from "../context/project"
++import { useToast } from "../ui/toast"
+
+ export function DialogModel(props: { providerID?: string }) {
+   const local = useLocal()
+   const sync = useSync()
++  const sdk = useSDK()
++  const project = useProject()
++  const toast = useToast()
+   const dialog = useDialog()
+   const [query, setQuery] = createSignal("")
+
+@@ -173,6 +179,19 @@ export function DialogModel(props: { providerID?: string }) {
+             local.model.toggleFavorite(option.value as { providerID: string; modelID: string })
+           },
+         },
++        {
++          command: "model.dialog.refresh",
++          title: "Refresh provider models",
++          onTrigger: (option) => {
++            const providerID =
++              props.providerID ?? (typeof option.value === "string" ? option.value : option.value.providerID)
++            void sdk
++              .refreshProviderModels(providerID, project.workspace.current())
++              .then(() => sync.refreshProviders())
++              .then(() => toast.show({ message: "Provider models refreshed", variant: "success" }))
++              .catch(toast.error)
++          },
++        },
+       ]}
+       onFilter={setQuery}
+       flat={true}
+diff --git a/packages/tui/src/config/keybind.ts b/packages/tui/src/config/keybind.ts
+index 5dd7e4b..1f51667 100644
+--- a/packages/tui/src/config/keybind.ts
++++ b/packages/tui/src/config/keybind.ts
+@@ -117,6 +117,7 @@ export const Definitions = {
+
+   stash_delete: keybind("ctrl+d", "Delete stash entry"),
+   model_provider_list: keybind("ctrl+a", "Open provider list from model dialog"),
++  model_refresh: keybind("ctrl+alt+r", "Refresh provider models"),
+   model_favorite_toggle: keybind("ctrl+f", "Toggle model favorite status"),
+   model_list: keybind("<leader>m", "List available models"),
+   model_cycle_recent: keybind("f2", "Next recently used model"),
+@@ -323,6 +324,7 @@ export const CommandMap = {
+   session_quick_switch_9: "session.quick_switch.9",
+   stash_delete: "stash.delete",
+   model_provider_list: "model.dialog.provider",
++  model_refresh: "model.dialog.refresh",
+   model_favorite_toggle: "model.dialog.favorite",
+   model_list: "model.list",
+   model_cycle_recent: "model.cycle_recent",
+diff --git a/packages/tui/src/context/sdk.tsx b/packages/tui/src/context/sdk.tsx
+index 93180c6..837a96c 100644
+--- a/packages/tui/src/context/sdk.tsx
++++ b/packages/tui/src/context/sdk.tsx
+@@ -142,6 +142,22 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
+       get client() {
+         return sdk
+       },
++      async refreshProviderModels(providerID: string, workspace?: string) {
++        const url = new URL(`/provider/${encodeURIComponent(providerID)}/models/refresh`, props.url)
++        if (props.directory) url.searchParams.set("directory", props.directory)
++        if (workspace) url.searchParams.set("workspace", workspace)
++        const response = await (props.fetch ?? fetch)(url, { method: "POST", headers: props.headers })
++        if (!response.ok) {
++          const body: unknown = await response.json().catch(() => undefined)
++          const data = typeof body === "object" && body !== null && "data" in body ? body.data : undefined
++          const message =
++            typeof data === "object" && data !== null && "message" in data && typeof data.message === "string"
++              ? data.message
++              : undefined
++          throw new Error(message ?? `Provider model refresh failed (${response.status})`)
++        }
++        await response.json()
++      },
+       directory: props.directory,
+       event: emitter,
+       fetch: props.fetch ?? fetch,
+diff --git a/packages/tui/src/context/sync.tsx b/packages/tui/src/context/sync.tsx
+index 71e050d..63f510b 100644
+--- a/packages/tui/src/context/sync.tsx
++++ b/packages/tui/src/context/sync.tsx
+@@ -558,6 +558,18 @@ export const {
+     const result = {
+       data: store,
+       set: setStore,
++      async refreshProviders() {
++        const workspace = project.workspace.current()
++        const [providers, providerList] = await Promise.all([
++          sdk.client.config.providers({ workspace }, { throwOnError: true }),
++          sdk.client.provider.list({ workspace }, { throwOnError: true }),
++        ])
++        batch(() => {
++          setStore("provider", reconcile(providers.data!.providers))
++          setStore("provider_default", reconcile(providers.data!.default))
++          setStore("provider_next", reconcile(providerList.data!))
++        })
++      },
+       get status() {
+         return store.status
+       },

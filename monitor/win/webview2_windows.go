@@ -14,8 +14,13 @@ package win
 //	EmbeddedBrowserWebView.dll CreateWebViewEnvironmentWithOptionsInternal
 //	ICoreWebView2Environment  CreateCoreWebView2Controller
 //	ICoreWebView2Controller   bounds, visibility, CoreWebView2
+//	ICoreWebView2Controller2  PutDefaultBackgroundColor
 //	ICoreWebView2             Navigate, GetSettings, AddNavigationStarting,
-//	                          AddNewWindowRequested
+//	                          AddNewWindowRequested,
+//	                          AddScriptToExecuteOnDocumentCreated,
+//	                          ExecuteScript, AddWebResourceRequested,
+//	                          AddWebResourceRequestedFilter (the in-process
+//	                          resources, webview2_resources_windows.go)
 //	ICoreWebView2Settings     PutAreDefaultContextMenusEnabled,
 //	                          PutAreDevToolsEnabled
 //
@@ -63,6 +68,7 @@ package win
 // OpenWebView2 call and closing directly over that call's state. There is
 // only ever one instance to dispatch to, so there is nothing to look up.
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"os"
@@ -70,6 +76,8 @@ import (
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 // comProc is a COM vtable slot: a function pointer called with the stdcall
@@ -143,6 +151,18 @@ type coreWebView2ControllerVtbl struct {
 
 type coreWebView2Controller struct {
 	vtbl *coreWebView2ControllerVtbl
+}
+
+// coreWebView2Controller2Vtbl is ICoreWebView2Controller2 (SDK 1.0.774.44):
+// ICoreWebView2Controller's slots, then the default background colour pair.
+type coreWebView2Controller2Vtbl struct {
+	coreWebView2ControllerVtbl
+	GetDefaultBackgroundColor comProc
+	PutDefaultBackgroundColor comProc
+}
+
+type coreWebView2Controller2 struct {
+	vtbl *coreWebView2Controller2Vtbl
 }
 
 // coreWebView2Vtbl is ICoreWebView2. Only a handful of its 58 methods are
@@ -303,15 +323,136 @@ var (
 	iidControllerCompleted  = syscall.GUID{0x6c4819f3, 0xc9b7, 0x4260, [8]byte{0x81, 0x27, 0xc9, 0xf5, 0xbd, 0xe7, 0xf6, 0x8c}}
 	iidNavigationStarting   = syscall.GUID{0x9adbe429, 0xf36d, 0x432b, [8]byte{0x9d, 0xdc, 0xf8, 0x88, 0x1f, 0xbd, 0x76, 0xe3}}
 	iidNewWindowRequested   = syscall.GUID{0xd4c185fe, 0xc81c, 0x4989, [8]byte{0x97, 0xaf, 0x2d, 0x3f, 0xa7, 0xab, 0x56, 0x51}}
+	iidController2          = syscall.GUID{0xc979903e, 0xd4ca, 0x4228, [8]byte{0x92, 0xeb, 0x47, 0xee, 0x3f, 0xa9, 0x6e, 0xab}}
+	iidAddScriptCompleted   = syscall.GUID{0xb99369f3, 0x9b11, 0x47b5, [8]byte{0xbc, 0x6f, 0x8e, 0x78, 0x95, 0xfc, 0xea, 0x17}}
+	iidProcessFailed        = syscall.GUID{0x79e0aea4, 0x990b, 0x42d9, [8]byte{0xaa, 0x1d, 0x0f, 0xcc, 0x2e, 0x5b, 0xc7, 0xf1}}
 )
+
+// coreWebView2ProcessFailedEventArgsVtbl is
+// ICoreWebView2ProcessFailedEventArgs: IUnknown and one getter.
+type coreWebView2ProcessFailedEventArgsVtbl struct {
+	iUnknownVtbl
+	GetProcessFailedKind comProc
+}
+
+type coreWebView2ProcessFailedEventArgs struct {
+	vtbl *coreWebView2ProcessFailedEventArgsVtbl
+}
+
+type addScriptCompletedHandler struct{ vtbl *handlerVtbl }
+type processFailedHandler struct{ vtbl *handlerVtbl }
 
 var (
 	ole32          = syscall.NewLazyDLL("ole32.dll")
 	coInitializeEx = ole32.NewProc("CoInitializeEx")
 	coTaskMemFree  = ole32.NewProc("CoTaskMemFree")
+
+	dwmapi                       = windows.NewLazySystemDLL("dwmapi.dll")
+	dwmGetWindowAttribute        = dwmapi.NewProc("DwmGetWindowAttribute")
+	dwmExtendFrameIntoClientArea = dwmapi.NewProc("DwmExtendFrameIntoClientArea")
+	webViewFillRect              = user32.NewProc("FillRect")
+	webViewCallWindowProc        = user32.NewProc("CallWindowProcW")
+	webViewGetStockObject        = gdi32.NewProc("GetStockObject")
+	webViewInvalidateRect        = user32.NewProc("InvalidateRect")
 )
 
-const coinitApartmentThreaded = 0x2
+const (
+	coinitApartmentThreaded = 0x2
+
+	gwlpWndProc                  = ^uintptr(3) // GWLP_WNDPROC, -4
+	wmEraseBkgnd                 = 0x0014
+	wmDwmColorizationColorChange = 0x0320
+	blackBrush                   = 4 // GetStockObject(BLACK_BRUSH)
+
+	// defaultBackgroundVariable is read by the WebView2 browser process when
+	// the environment starts, before any controller exists, so the first
+	// frame already has the right background (SPEC §3, Windows 11 Settings).
+	defaultBackgroundVariable = "WEBVIEW2_DEFAULT_BACKGROUND_COLOR"
+)
+
+// The solid Windows 11 base the page falls back to without Mica, the same
+// #F3F3F3 and #202020 static/skin-windows.css paints.
+const (
+	solidLightBase = 0xF3F3F3
+	solidDarkBase  = 0x202020
+)
+
+// webViewBackground is the WebView2 default background as
+// COREWEBVIEW2_COLOR {A, R, G, B}, a 4-byte struct passed by value, and as
+// the AARRGGBB hex string WEBVIEW2_DEFAULT_BACKGROUND_COLOR takes. WebView2
+// supports only alpha 0 or 255. With Mica behind the client area it is
+// fully transparent; without it, the opaque Windows base for the current
+// app theme, so neither case paints a white first frame.
+func webViewBackground(mica, dark bool) (color uint32, variable string) {
+	if mica {
+		return 0, "00000000"
+	}
+	rgb := uint32(solidLightBase)
+	if dark {
+		rgb = solidDarkBase
+	}
+	r, g, b := (rgb>>16)&0xff, (rgb>>8)&0xff, rgb&0xff
+	return 0xff | r<<8 | g<<16 | b<<24, fmt.Sprintf("FF%06X", rgb)
+}
+
+// hostScript marks the document root for static/skin-windows.css:
+// data-host="webview2", and data-backdrop="mica" exactly when DWM draws Mica
+// behind the client area, so the page leaves html and body transparent. It
+// runs as a document-created script before the page's own scripts, when the
+// root element does not exist yet; the observer sets the attributes the
+// moment the parser adds it, before the first paint. The same text run on an
+// open page (ExecuteScript) applies at once, which is how a backdrop change
+// reaches it.
+func hostScript(mica bool) string {
+	set := "r.setAttribute('data-host','webview2');"
+	if mica {
+		set += "r.setAttribute('data-backdrop','mica');"
+	} else {
+		set += "r.removeAttribute('data-backdrop');"
+	}
+	return "(function(){var d=document;function apply(){var r=d.documentElement;if(!r)return false;" + set +
+		"return true}if(!apply()){var o=new MutationObserver(function(){if(apply())o.disconnect()});o.observe(d,{childList:true})}})();"
+}
+
+// setEnvironment sets name to value for the WebView2 browser process this
+// process is about to start, and returns the function that puts the
+// previous state back: the earlier value, or no variable at all. Programs
+// the Panel starts later (setup bridges, the Questions window) then inherit
+// the environment the Panel itself was given.
+func setEnvironment(name, value string) (restore func(), err error) {
+	previous, had := os.LookupEnv(name)
+	if err := os.Setenv(name, value); err != nil {
+		return func() {}, err
+	}
+	return func() {
+		if had {
+			os.Setenv(name, previous) //unchecked: restoring a value this process already held cannot fail where setting it succeeded
+			return
+		}
+		os.Unsetenv(name) //unchecked: removing a variable this process just set cannot fail where setting it succeeded
+	}, nil
+}
+
+// processFailedKind names COREWEBVIEW2_PROCESS_FAILED_KIND for the log line
+// a ProcessFailed event writes.
+func processFailedKind(kind uint32) string {
+	names := []string{
+		"browser process exited", "render process exited", "render process unresponsive",
+		"frame render process exited", "utility process exited", "sandbox helper process exited",
+		"GPU process exited", "PPAPI plugin process exited", "PPAPI broker process exited",
+		"unknown process exited",
+	}
+	if int(kind) < len(names) {
+		return names[kind]
+	}
+	return "unrecognised failure"
+}
+
+// margins is MARGINS (uxtheme.h): four ints, checked by
+// TestWebView2MarginsLayout.
+type margins struct {
+	Left, Right, Top, Bottom int32
+}
 
 // webView2Window holds the state OpenWebView2 builds up as WebView2's async
 // callbacks fire, and the pieces the event handlers need.
@@ -326,16 +467,29 @@ const coinitApartmentThreaded = 0x2
 // go-webview2 kept its own four handlers the same way, as fields on its
 // long-lived Chromium struct.
 type webView2Window struct {
-	win           *Window
-	external      func(href string)
-	origin        string // scheme://host[:port] of the page this window opened
-	controller    *coreWebView2Controller
-	envHandler    *environmentCompletedHandler
-	ctrlHandler   *controllerCompletedHandler
-	navHandler    *navigationStartingHandler
-	newWinHandler *newWindowRequestedHandler
-	ready         bool
-	failed        error
+	win             *Window
+	external        func(href string)
+	origin          string // scheme://host[:port] of the page this window opened
+	accent          func() string
+	lastAccent      string // the accent script last applied, so an unchanged colour runs nothing
+	mica            bool
+	prevProc        uintptr
+	wndProc         uintptr
+	webview         *coreWebView2
+	controller      *coreWebView2Controller
+	env             *coreWebView2Environment
+	resources       *Resources
+	ctx             context.Context
+	resourceHandler *webResourceRequestedHandler
+	hostScriptID    string // id of the document-created hostScript, replaced when the backdrop changes
+	envHandler      *environmentCompletedHandler
+	ctrlHandler     *controllerCompletedHandler
+	navHandler      *navigationStartingHandler
+	newWinHandler   *newWindowRequestedHandler
+	scriptHandler   *addScriptCompletedHandler
+	failHandler     *processFailedHandler
+	ready           bool
+	failed          error
 }
 
 // OpenWebView2 shows pageURL in a WebView2-hosted window titled title, sized
@@ -347,11 +501,24 @@ type webView2Window struct {
 // current page are left exactly where they were (research/panel-native/
 // DECISION.md item 2, commit 4608a4da).
 //
+// accentScript, when not nil, returns JavaScript that writes the current
+// Windows accent colour onto an open page. The server writes the accent
+// into every page it serves; this window runs the script only when Windows
+// reports a new accent colour while a page is open, and only when the
+// script differs from the one it last ran.
+//
+// The window keeps the DWM Mica backdrop and caption useModernFrame sets.
+// When Mica is active, the client area becomes part of the frame and the
+// WebView2 background is transparent, so Mica shows behind the page. The
+// window checks again on every settings or theme change (high contrast
+// turns Mica off).
+//
+// resources, when not nil, answers every request under its Origin in process
+// (webview2_resources_windows.go); pageURL must then be under that origin.
+//
 // It reports false, having opened no window, when the WebView2 runtime is
-// absent or environment/controller setup fails at any step; the caller
-// falls back to opening pageURL in the browser itself, the same contract
-// desktop_windows.go already had with the vendored library.
-func OpenWebView2(title string, width, height, minWidth, minHeight int, pageURL string, external func(href string)) bool {
+// absent or environment/controller setup fails at any step.
+func OpenWebView2(title string, width, height, minWidth, minHeight int, pageURL string, resources *Resources, external func(href string), accentScript func() string) bool {
 	if !WebView2Available() {
 		return false
 	}
@@ -359,10 +526,18 @@ func OpenWebView2(title string, width, height, minWidth, minHeight int, pageURL 
 	if err != nil || origin.Host == "" {
 		return false
 	}
+	pageOrigin := origin.Scheme + "://" + origin.Host
+	if resources != nil && resources.Origin != pageOrigin {
+		return false
+	}
 
-	w := &webView2Window{external: external, origin: origin.Scheme + "://" + origin.Host}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	w := &webView2Window{external: external, origin: pageOrigin, accent: accentScript, resources: resources, ctx: ctx}
 	runErr := RunWithMinimum(title, width, height, minWidth, minHeight, func(win *Window) {
 		w.win = win
+		win.useModernFrame()
+		w.useBackdrop()
 		w.attach(pageURL)
 		if w.failed != nil {
 			fmt.Fprintln(os.Stderr, "WebView2:", w.failed) //unchecked: stderr is the final startup diagnostic; a write failure cannot make the native window ready
@@ -370,6 +545,198 @@ func OpenWebView2(title string, width, height, minWidth, minHeight int, pageURL 
 		}
 	})
 	return runErr == nil && w.ready
+}
+
+// useBackdrop extends the frame over the client area when DWM reports the
+// Mica backdrop active, and takes over the window's background painting:
+// with Mica the client erases to black, which DWM composes as the backdrop,
+// where the class brush would paint white. It also follows accent colour
+// and settings changes. Without Mica (high contrast, or Windows before
+// build 22621) the frame stays as it is and the page paints its own solid
+// base.
+func (w *webView2Window) useBackdrop() {
+	w.mica = extendFrame(w.win.h, micaActive(w.win.h))
+	w.wndProc = syscall.NewCallback(w.windowProc)
+	setLong := user32.NewProc("SetWindowLongPtrW")
+	if unsafe.Sizeof(uintptr(0)) == 4 {
+		setLong = user32.NewProc("SetWindowLongW")
+	}
+	w.prevProc, _, _ = setLong.Call(uintptr(w.win.h), gwlpWndProc, w.wndProc) //unchecked: a zero previous procedure is checked in windowProc, which then leaves every message to DefWindowProc
+}
+
+// extendFrame makes the whole client area part of the frame when mica is
+// true, and returns it to the standard frame when false. It reports whether
+// Mica now shows behind the client: false whenever DWM's entry point is
+// missing or refuses the margins.
+func extendFrame(h syscall.Handle, mica bool) bool {
+	if dwmExtendFrameIntoClientArea.Find() != nil {
+		return false
+	}
+	sheet := margins{}
+	if mica {
+		sheet = margins{-1, -1, -1, -1}
+	}
+	hr, _, _ := dwmExtendFrameIntoClientArea.Call(uintptr(h), uintptr(unsafe.Pointer(&sheet))) //unchecked: the HRESULT in r1 decides; LazyProc.Call's error is GetLastError, which DWM does not set
+	return mica && int32(hr) >= 0
+}
+
+// micaActive reads DWMWA_SYSTEMBACKDROP_TYPE back from the window: Windows
+// accepted the main-window (Mica) backdrop refreshFrame asked for. Builds
+// without the attribute fail the read and report false.
+func micaActive(h syscall.Handle) bool {
+	if dwmGetWindowAttribute.Find() != nil {
+		return false
+	}
+	var backdrop uint32
+	hr, _, _ := dwmGetWindowAttribute.Call(uintptr(h), dwmSystemBackdropType, uintptr(unsafe.Pointer(&backdrop)), unsafe.Sizeof(backdrop)) //unchecked: the HRESULT in r1 decides; LazyProc.Call's error is GetLastError, which DWM does not set
+	return int32(hr) >= 0 && backdrop == dwmBackdropMainWindow
+}
+
+// windowProc runs ahead of the package's own window procedure for the
+// WebView2 host window only. Every message it does not finish goes on to
+// that procedure unchanged.
+func (w *webView2Window) windowProc(hwnd, msg, wparam, lparam uintptr) uintptr {
+	switch msg {
+	case wmEraseBkgnd:
+		if w.mica {
+			var client rect
+			getClientRect.Call(hwnd, uintptr(unsafe.Pointer(&client)))            //unchecked: our own live window; an empty rectangle fills nothing
+			brush, _, _ := webViewGetStockObject.Call(blackBrush)                 //unchecked: a stock object always exists
+			webViewFillRect.Call(wparam, uintptr(unsafe.Pointer(&client)), brush) //unchecked: a failed fill leaves the previous frame, never an error to report
+			return 1
+		}
+	case wmDwmColorizationColorChange:
+		w.refreshAccent()
+	case wmSettingChange, wmThemeChanged:
+		// The package's own procedure refreshes the frame first (high
+		// contrast sets the backdrop to none); then the client follows.
+		r := w.forward(hwnd, msg, wparam, lparam)
+		w.refreshBackdrop()
+		return r
+	}
+	return w.forward(hwnd, msg, wparam, lparam)
+}
+
+func (w *webView2Window) forward(hwnd, msg, wparam, lparam uintptr) uintptr {
+	if w.prevProc == 0 {
+		r, _, _ := defWindowProc.Call(hwnd, msg, wparam, lparam)
+		return r
+	}
+	r, _, _ := webViewCallWindowProc.Call(w.prevProc, hwnd, msg, wparam, lparam)
+	return r
+}
+
+// refreshAccent runs the accent script on the open page when Windows
+// reports a colorization change and the script differs from the one last
+// run. Later pages carry the accent the server writes into them.
+func (w *webView2Window) refreshAccent() {
+	if w.webview == nil || w.accent == nil {
+		return
+	}
+	script := w.accent()
+	if script == "" || script == w.lastAccent {
+		return
+	}
+	w.lastAccent = script
+	w.executeScript(script)
+}
+
+// refreshBackdrop follows a settings or theme change: when Mica comes or
+// goes, the frame, the default background, the document-created host script
+// and the open page's data-backdrop all change with it. The solid default
+// background also follows the app theme.
+func (w *webView2Window) refreshBackdrop() {
+	if w.webview == nil {
+		return
+	}
+	mica := extendFrame(w.win.h, micaActive(w.win.h))
+	changed := mica != w.mica
+	w.mica = mica
+	w.putDefaultBackground()
+	if !changed {
+		return
+	}
+	w.replaceHostScript()
+	w.executeScript(hostScript(w.mica))
+	webViewInvalidateRect.Call(uintptr(w.win.h), 0, 1) //unchecked: a failed invalidation leaves the next natural repaint to erase
+}
+
+func (w *webView2Window) executeScript(script string) {
+	text, err := syscall.UTF16PtrFromString(script)
+	if err != nil {
+		return
+	}
+	w.webview.vtbl.ExecuteScript.call(uintptr(unsafe.Pointer(w.webview)), uintptr(unsafe.Pointer(text)), 0)
+}
+
+// putDefaultBackground sets the controller's default background for the
+// current backdrop and app theme. A runtime older than
+// ICoreWebView2Controller2 keeps the environment variable's colour.
+func (w *webView2Window) putDefaultBackground() {
+	var controller2 *coreWebView2Controller2
+	if hr := w.controller.vtbl.QueryInterface.call(
+		uintptr(unsafe.Pointer(w.controller)), uintptr(unsafe.Pointer(&iidController2)), uintptr(unsafe.Pointer(&controller2))); int32(hr) < 0 || controller2 == nil {
+		return
+	}
+	color, _ := webViewBackground(w.mica, appDarkMode())
+	controller2.vtbl.PutDefaultBackgroundColor.call(uintptr(unsafe.Pointer(controller2)), uintptr(color))
+	controller2.vtbl.Release.call(uintptr(unsafe.Pointer(controller2)))
+}
+
+// replaceHostScript removes the previous document-created hostScript, by
+// the id its completion handler recorded, and adds the one for the current
+// backdrop, so later pages get exactly one.
+func (w *webView2Window) replaceHostScript() {
+	if w.hostScriptID != "" {
+		if id, err := syscall.UTF16PtrFromString(w.hostScriptID); err == nil {
+			w.webview.vtbl.RemoveScriptToExecuteOnDocumentCreated.call(uintptr(unsafe.Pointer(w.webview)), uintptr(unsafe.Pointer(id)))
+		}
+		w.hostScriptID = ""
+	}
+	text, err := syscall.UTF16PtrFromString(hostScript(w.mica))
+	if err != nil {
+		return
+	}
+	if w.scriptHandler == nil {
+		w.newAddScriptCompletedHandler()
+	}
+	w.webview.vtbl.AddScriptToExecuteOnDocumentCreated.call(uintptr(unsafe.Pointer(w.webview)), uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(w.scriptHandler)))
+}
+
+// newAddScriptCompletedHandler records the id WebView2 gives each added
+// document-created script; replaceHostScript removes the script by it.
+// The id string is only valid during Invoke and is copied out.
+func (w *webView2Window) newAddScriptCompletedHandler() *addScriptCompletedHandler {
+	invoke := func(this, hr uintptr, id *uint16) uintptr {
+		if int32(hr) >= 0 && id != nil {
+			w.hostScriptID = windows.UTF16PtrToString(id)
+		}
+		return 0
+	}
+	w.scriptHandler = &addScriptCompletedHandler{vtbl: &handlerVtbl{
+		iUnknownVtbl: constUnknown(iidAddScriptCompleted),
+		Invoke:       comProc(syscall.NewCallback(invoke)),
+	}}
+	return w.scriptHandler
+}
+
+// newProcessFailedHandler writes the kind of every WebView2 process failure
+// to stderr (panel.stderr.log under scripts/panel_review.ps1), so a window
+// that disappears leaves its reason behind.
+func (w *webView2Window) newProcessFailedHandler() *processFailedHandler {
+	invoke := func(this, sender uintptr, args *coreWebView2ProcessFailedEventArgs) uintptr {
+		kind := uint32(9) // COREWEBVIEW2_PROCESS_FAILED_KIND_UNKNOWN_PROCESS_EXITED
+		if args != nil {
+			args.vtbl.GetProcessFailedKind.call(uintptr(unsafe.Pointer(args)), uintptr(unsafe.Pointer(&kind)))
+		}
+		fmt.Fprintf(os.Stderr, "WebView2 process failed: %s (kind %d)\n", processFailedKind(kind), kind) //unchecked: stderr is the diagnostic; a failed write has nowhere better to go
+		return 0
+	}
+	w.failHandler = &processFailedHandler{vtbl: &handlerVtbl{
+		iUnknownVtbl: constUnknown(iidProcessFailed),
+		Invoke:       comProc(syscall.NewCallback(invoke)),
+	}}
+	return w.failHandler
 }
 
 // attach kicks off environment creation and pumps this thread's message
@@ -395,6 +762,16 @@ func (w *webView2Window) attach(pageURL string) {
 		return
 	}
 	dataPathPtr, err := syscall.UTF16PtrFromString(filepath.Join(os.Getenv("AppData"), "Abstraction Panel"))
+	if err != nil {
+		w.failed = err
+		return
+	}
+	// The variable only matters while the browser process starts; attach
+	// returns once the controller completed or failed, and the deferred
+	// restore keeps it out of every program the Panel starts afterwards.
+	_, background := webViewBackground(w.mica, appDarkMode())
+	restore, err := setEnvironment(defaultBackgroundVariable, background)
+	defer restore()
 	if err != nil {
 		w.failed = err
 		return
@@ -434,6 +811,7 @@ func (w *webView2Window) newEnvironmentCompletedHandler(pageURL string) *environ
 		// window that painted once and then crashed on the next WM_SIZE,
 		// once WebView2 had released its own temporary reference.
 		env.vtbl.AddRef.call(uintptr(unsafe.Pointer(env)))
+		w.env = env
 		controllerHandler := w.newControllerCompletedHandler(pageURL)
 		if hr := env.vtbl.CreateCoreWebView2Controller.call(
 			uintptr(unsafe.Pointer(env)), uintptr(w.win.h), uintptr(unsafe.Pointer(controllerHandler))); int32(hr) < 0 {
@@ -488,6 +866,22 @@ func (w *webView2Window) finish(pageURL string) error {
 	// library's own CreateCoreWebView2ControllerCompleted, which AddRefs
 	// GetCoreWebView2's result the same way.
 	webview.vtbl.AddRef.call(uintptr(unsafe.Pointer(webview)))
+	w.webview = webview
+
+	// The same background the environment variable gave the first frame,
+	// set on the controller itself for every later navigation.
+	w.putDefaultBackground()
+
+	// Mark the root for the Windows skin before any page script runs.
+	// Scripts added before Navigate apply to it. The accent the page opens
+	// with is the one the server wrote into it; refreshAccent runs only
+	// when the colour changes from here on.
+	w.replaceHostScript()
+	if w.accent != nil {
+		w.lastAccent = w.accent()
+	}
+	var failToken eventRegistrationToken
+	webview.vtbl.AddProcessFailed.call(uintptr(unsafe.Pointer(webview)), uintptr(unsafe.Pointer(w.newProcessFailedHandler())), uintptr(unsafe.Pointer(&failToken)))
 
 	var settings *coreWebView2Settings
 	if hr := webview.vtbl.GetSettings.call(
@@ -510,6 +904,11 @@ func (w *webView2Window) finish(pageURL string) error {
 	newWinHandler := w.newNewWindowRequestedHandler()
 	webview.vtbl.AddNewWindowRequested.call(
 		uintptr(unsafe.Pointer(webview)), uintptr(unsafe.Pointer(newWinHandler)), uintptr(unsafe.Pointer(&token)))
+	if w.resources != nil {
+		if err := w.serveResources(); err != nil {
+			return err
+		}
+	}
 
 	target, err := syscall.UTF16PtrFromString(pageURL)
 	if err != nil {

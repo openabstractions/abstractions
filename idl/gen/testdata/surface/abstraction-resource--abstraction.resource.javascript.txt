@@ -1,3 +1,11 @@
+enum AcquireFreeOutcome
+  Acquired
+  Insufficient
+  NotPermitted
+  Unavailable
+  Invalid
+  Forbidden
+  Held
 enum AcquireOutcome
   Acquired
   Insufficient
@@ -12,6 +20,7 @@ enum Evidence
   Claimed
 class LeasesClient
   acquire(resource, amount, waitMs)
+  acquireFree(resource, amount)
   renew(lease)
   release(lease)
   observe(cursor, waitMs)
@@ -56,6 +65,10 @@ enum YieldAnswer
 function decode(data)
 function encode(v)
 const knownResources
+function newAcquireFreeResult()
+  outcome
+  lease
+  asked
 function newAcquireResult()
   outcome
   lease

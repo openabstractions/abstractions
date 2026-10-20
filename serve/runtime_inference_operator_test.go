@@ -186,12 +186,7 @@ func TestCredentialStoreGrantsHostedSurveyWithoutListing(t *testing.T) {
 		{filepath.Join(options.stateDir, "credentials", credentialsBackendFile), "file-0600\n"},
 		{filepath.Join(options.stateDir, "inference", inferenceHostsFile), config},
 	} {
-		if err := os.MkdirAll(filepath.Dir(file.path), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(file.path, []byte(file.body), 0o600); err != nil {
-			t.Fatal(err)
-		}
+		writeStateFile(t, file.path, file.body)
 	}
 	_, _, namespace, err := credentialsEndpoints(options)
 	if err != nil {

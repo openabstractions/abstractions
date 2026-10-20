@@ -1,18 +1,8 @@
-# Which commit of each repository is known to work with the others.
-#
-# The layers were split so an adopter pulls only what it needs. The cost is that
-# nothing records which versions belong together, so the cross-language proof --
-# the one thing that makes this a contract rather than a file format -- loses
-# its reproducibility. This file is that record.
-#
-# It is what a git submodule would pin, without --recursive, detached heads, or
-# a two-step commit every time a layer moves.
-#
-# scripts/layers.sh reads this. Passing --latest ignores it and takes main,
-# which is how you find out whether a set still agrees before writing a new one.
-#
-# Update by running scripts/layers.sh --latest, then scripts/check.sh, and only
-# writing the shas back once everything passes.
+# Historical eight-repository snapshot, retained unchanged from the early
+# cross-language harness. This is not the OA 0.3.0 dependency set.
+# The former scripts/layers.sh helper is no longer published.
+# For current installation use the selected module's versioned dependency
+# metadata and the runtime release's installation guide. See STATE.md.
 
 abstraction-job       89fe0d6f14bfb516c9a764100e937ef644459d6d
 abstraction-download  c8f6f6f0bfb330b81c33a5f58d338674e0899122

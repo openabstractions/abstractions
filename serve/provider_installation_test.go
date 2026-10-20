@@ -90,14 +90,13 @@ func writeBundledDeclaration(t *testing.T, dir, name, program, endpoint string, 
 func TestAuthoredInstallerDeclarationsLoad(t *testing.T) {
 	for _, platform := range []string{"windows", "posix"} {
 		t.Run(platform, func(t *testing.T) {
-			source := filepath.Join("..", "installer", "declarations")
+			var source string
 			if platform == "posix" {
-				source = filepath.Join("..", "installer", "posix", "declarations")
+				source = privateInput(t, "..", "installer", "posix", "declarations")
+			} else {
+				source = privateInput(t, "..", "installer", "declarations")
 			}
 			entries, err := os.ReadDir(source)
-			if os.IsNotExist(err) && !privateWorkspace(t) {
-				t.Skip("authored declarations are absent from the published serve checkout")
-			}
 			if err != nil {
 				t.Fatal(err)
 			}

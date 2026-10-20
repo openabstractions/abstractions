@@ -92,7 +92,7 @@ func TestOpenCodeCredentialJourneyThroughPanel(t *testing.T) {
 
 	panelAddr := freeLoopbackPort(t)
 	var panelStdout, panelStderr safeBuffer
-	panelCmd := exec.Command(panelExe, "-addr", panelAddr, "-open=false",
+	panelCmd := exec.Command(panelExe, "-native=false", "-addr", panelAddr, "-open=false",
 		"-runtime-endpoint", options.endpoint, "-runtime-program", runtimeProgram)
 	stdoutPipe, err := panelCmd.StdoutPipe()
 	if err != nil {

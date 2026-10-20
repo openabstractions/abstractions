@@ -1,7 +1,28 @@
+class ApplicationHistoryObserverClient
+  observe(target, cursor, maxRecords, maxBytes, waitMs)
+object ApplicationHistoryObserverService {wireName, Client}
+class ApplicationHistoryReaderClient
+  read(target, cursor, maxRecords, maxBytes)
+object ApplicationHistoryReaderService {wireName, Client}
+enum ApplicationLogSelection
+  OneApp
+  AllApps
 class DispatchError
 class HistoryObserverClient
   observe(cursor, maxRecords, maxBytes, waitMs)
 object HistoryObserverService {wireName, Client}
+enum HistoryPageOutcome
+  Page
+  Gap
+  Unavailable
+  Invalid
+  RecordTooLarge
+  Corrupt
+  Unsupported
+  Forbidden
+  NotPermitted
+  OsAuthorizationRequired
+  OsAuthorizationPending
 class HistoryReaderClient
   read(cursor, maxRecords, maxBytes)
 object HistoryReaderService {wireName, Client}
@@ -30,10 +51,66 @@ enum ServiceErrorCode
 class SinkClient
   write(record)
 object SinkService {wireName, Client}
+enum SourceAvailability
+  Available
+  PermissionDenied
+  Unavailable
+  Unsupported
+enum SourceCatalogOutcome
+  Catalog
+  Forbidden
+  NotPermitted
+  Unavailable
+  Invalid
+enum SourceLimitation
+  Retention
+  NativeRedaction
+  CollectionPolicy
+  NativeAccess
+  VisibilityUnknown
+class SourceReaderClient
+  sources()
+  read(sourceId, cursor, maxRecords, maxBytes)
+  startAtEnd(sourceId)
+object SourceReaderService {wireName, Client}
 function decode(data)
+function decodeApplicationLogPage(data)
+function decodeApplicationLogResource(data)
+function decodeApplicationLogTarget(data)
+function decodeAttestation(data)
+function decodePage(data)
+function decodeProducerClaim(data)
+function decodeRecord(data)
+function decodeSourceCatalog(data)
+function decodeSourceDescriptor(data)
+function decodeSourcePage(data)
+function decodeSourceRecord(data)
 function encode(v)
+function encodeApplicationLogPage(v)
+function encodeApplicationLogResource(v)
+function encodeApplicationLogTarget(v)
+function encodeAttestation(v)
+function encodePage(v)
+function encodeProducerClaim(v)
+function encodeRecord(v)
+function encodeSourceCatalog(v)
+function encodeSourceDescriptor(v)
+function encodeSourcePage(v)
+function encodeSourceRecord(v)
 const historyCursorWords
 const historyErrorCodes
+const historyIdentityErrorCodes
+function newApplicationLogPage()
+  outcome
+  records
+  next
+  atEnd
+function newApplicationLogResource()
+  program
+  capturedFileKey
+function newApplicationLogTarget()
+  selection
+  program
 function newAttestation()
   by
   verified
@@ -52,6 +129,14 @@ function newPage()
   records
   next
   atEnd
+function newProducerClaim()
+  provider
+  program
+  exe
+  user
+  pid
+  uid
+  gid
 function newRecord()
   schema
   time
@@ -60,3 +145,19 @@ function newRecord()
   identity
   job
   attrs
+function newSourceCatalog()
+  sources
+  outcome
+function newSourceDescriptor()
+  id
+  availability
+  limitations
+function newSourcePage()
+  outcome
+  records
+  next
+  atEnd
+function newSourceRecord()
+  sourceId
+  record
+  producer

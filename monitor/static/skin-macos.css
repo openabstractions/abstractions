@@ -1,0 +1,519 @@
+/* macOS skin for the Panel (Panel redesign spec, section 5, macOS skin).
+
+   The document root carries data-skin="macos" on macOS. In the native host
+   (the macOS launcher, data-shell="native") the native sidebar and unified
+   toolbar replace the HTML navigation and the page h1, and the host injects
+   the accent variables from the system accent colour. This sheet loads
+   after the shared Panel stylesheet and changes only appearance: colours,
+   type, spacing, corners and controls; structure stays shared. Selectors
+   share the shared sheet's specificity, so the link order decides.
+
+   Colours use WebKit's system colour keywords where WebKit has them, which
+   follow the web view's effective appearance; each has a light and a dark
+   fallback for an engine that lacks the keyword. */
+
+html[data-skin="macos"] {
+  color-scheme: light dark;
+  --oa-font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --oa-font-size: 13px;
+  --oa-mac-caption-size: 11px;
+  --oa-mac-pane-bg: #ffffff;
+  --oa-mac-group-bg: rgba(0, 0, 0, .03);
+  --oa-mac-group-border: rgba(0, 0, 0, .06);
+  --oa-mac-label: #000000d9;
+  --oa-mac-secondary: #00000080;
+  --oa-mac-tertiary: #00000040;
+  --oa-mac-separator: #0000001a;
+  --oa-mac-control-bg: #ffffff;
+  --oa-mac-control-border: rgba(0, 0, 0, .12);
+  --oa-mac-control-shadow: 0 .5px 1px rgba(0, 0, 0, .12);
+  --oa-mac-switch-off: rgba(0, 0, 0, .09);
+  --oa-mac-help-bg: #ffffff;
+  /* The shared tokens the shared sheet reads, mapped onto the native palette. */
+  --oa-page-bg: var(--oa-mac-pane-bg);
+  --oa-card-bg: var(--oa-mac-group-bg);
+  --oa-card-border: var(--oa-mac-group-border);
+  --oa-card-radius: 10px;
+  --oa-text: var(--oa-mac-label);
+  --oa-text-secondary: var(--oa-mac-secondary);
+  --oa-sep: var(--oa-mac-separator);
+  --oa-button-radius: 6px;
+  --oa-button-bg: var(--oa-mac-control-bg);
+  --oa-button-border: var(--oa-mac-control-border);
+  --oa-button-shadow: var(--oa-mac-control-shadow);
+  --oa-switch-w: 26px;
+  --oa-switch-h: 15px;
+}
+@media (prefers-color-scheme: dark) {
+  html[data-skin="macos"] {
+    --oa-mac-pane-bg: #1e1e1e;
+    --oa-mac-group-bg: rgba(255, 255, 255, .04);
+    --oa-mac-group-border: rgba(255, 255, 255, .06);
+    --oa-mac-label: #ffffffd9;
+    --oa-mac-secondary: #ffffff8c;
+    --oa-mac-tertiary: #ffffff40;
+    --oa-mac-separator: #ffffff1a;
+    --oa-mac-control-bg: rgba(255, 255, 255, .14);
+    --oa-mac-control-border: rgba(255, 255, 255, .06);
+    --oa-mac-control-shadow: 0 .5px 1px rgba(0, 0, 0, .3);
+    --oa-mac-switch-off: rgba(255, 255, 255, .14);
+    --oa-mac-help-bg: #4a4a4a;
+  }
+}
+@supports (color: -apple-system-label) {
+  html[data-skin="macos"] {
+    --oa-mac-label: -apple-system-label;
+    --oa-mac-secondary: -apple-system-secondary-label;
+    --oa-mac-tertiary: -apple-system-tertiary-label;
+  }
+}
+@supports (color: -apple-system-separator) {
+  html[data-skin="macos"] { --oa-mac-separator: -apple-system-separator; }
+}
+/* WebKit has no -apple-system-window-background (measured on macOS 26.6);
+   the control background matches the unified toolbar above the pane. */
+@supports (color: -apple-system-control-background) {
+  html[data-skin="macos"] { --oa-mac-pane-bg: -apple-system-control-background; }
+}
+
+html[data-skin="macos"],
+html[data-skin="macos"] body {
+  background: var(--oa-mac-pane-bg);
+}
+html[data-skin="macos"] body {
+  font: var(--oa-font-size)/16px var(--oa-font-family);
+  color: var(--oa-mac-label);
+  accent-color: var(--oa-accent);
+  -webkit-font-smoothing: antialiased;
+  background-attachment: scroll;
+}
+
+/* Pane: 20 px margins and gaps; in the native host the toolbar carries
+   the title. */
+html[data-skin="macos"] .oa-content {
+  max-width: none;
+  margin: 0;
+  padding: 20px 20px 56px;
+}
+html[data-skin="macos"] .oa-content h2 {
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 600;
+}
+html[data-skin="macos"] .oa-content h3 {
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 600;
+}
+html[data-skin="macos"] .oa-content p { line-height: 16px; }
+html[data-skin="macos"] .oa-caption {
+  font-size: var(--oa-mac-caption-size);
+  line-height: 14px;
+  color: var(--oa-mac-secondary);
+}
+
+/* Page head: 40 px tile, 15 bold title, one caption. */
+html[data-skin="macos"] .oa-pagehead {
+  margin: 0 0 20px;
+  padding: 14px 10px;
+  background: var(--oa-mac-group-bg);
+  border: .5px solid var(--oa-mac-group-border);
+  border-radius: 10px;
+}
+html[data-skin="macos"] .oa-pagehead-tile {
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+}
+html[data-skin="macos"] .oa-pagehead-title {
+  margin: 0;
+  font-size: 15px;
+  line-height: 19px;
+  font-weight: 700;
+}
+html[data-skin="macos"] .oa-pagehead .oa-caption { margin: 2px 0 0; }
+
+/* Groups: a 13 semibold header and one caption over grouped inset rows. */
+html[data-skin="macos"] .oa-group { margin: 0 0 20px; }
+html[data-skin="macos"] .oa-group > h2 { margin: 0 0 2px 10px; }
+html[data-skin="macos"] .oa-group > .oa-caption { margin: 0 0 6px 10px; }
+html[data-skin="macos"] .oa-group > :is(.oa-row, .oa-expander, .oa-table, .oa-empty) {
+  margin: 0;
+  padding-left: 10px;
+  padding-right: 10px;
+  background: var(--oa-mac-group-bg);
+  border: .5px solid var(--oa-mac-group-border);
+  border-top-width: 0;
+  border-bottom-width: 0;
+}
+html[data-skin="macos"] .oa-group > :is(.oa-row, .oa-expander, .oa-table, .oa-empty):not(:is(.oa-row, .oa-expander, .oa-table, .oa-empty) ~ *) {
+  border-top-width: .5px;
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+}
+html[data-skin="macos"] .oa-group > :is(.oa-row, .oa-expander, .oa-table, .oa-empty):not(:has(~ :is(.oa-row, .oa-expander, .oa-table, .oa-empty))) {
+  border-bottom-width: .5px;
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+}
+html[data-skin="macos"] .oa-group > :is(.oa-row, .oa-expander, .oa-table, .oa-empty) + :is(.oa-row, .oa-expander, .oa-table, .oa-empty) {
+  border-top-color: transparent;
+  box-shadow: inset 0 .5px 0 var(--oa-mac-separator);
+}
+
+/* Rows: at least 40 px, 10 px vertical padding, label leading, control trailing. */
+html[data-skin="macos"] .oa-row {
+  min-height: 40px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  column-gap: 12px;
+}
+html[data-skin="macos"] .oa-row-label { font-size: 13px; line-height: 16px; }
+html[data-skin="macos"] .oa-row-caption {
+  font-size: var(--oa-mac-caption-size);
+  line-height: 14px;
+  color: var(--oa-mac-secondary);
+}
+html[data-skin="macos"] .oa-row-nav {
+  cursor: default;
+  color: inherit;
+  text-decoration: none;
+}
+html[data-skin="macos"] .oa-row-nav:hover { text-decoration: none; background: var(--oa-mac-group-bg); }
+html[data-skin="macos"] .oa-row-nav:active { background: var(--oa-mac-separator); }
+html[data-skin="macos"] .oa-row-chevron { color: var(--oa-mac-tertiary); }
+html[data-skin="macos"] .oa-row-chevron::after {
+  color: inherit;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+/* One status line per row. */
+html[data-skin="macos"] .oa-status {
+  font-size: var(--oa-mac-caption-size);
+  line-height: 14px;
+  color: var(--oa-mac-secondary);
+}
+html[data-skin="macos"] .oa-status[data-state="error"] { color: #d70015; }
+@media (prefers-color-scheme: dark) {
+  html[data-skin="macos"] .oa-status[data-state="error"] { color: #ff6961; }
+}
+
+/* An empty list is one quiet sentence inside the group. */
+html[data-skin="macos"] .oa-empty {
+  padding-top: 12px;
+  padding-bottom: 12px;
+  text-align: center;
+  color: var(--oa-mac-secondary);
+}
+
+/* Expander: a disclosure row; the summary keeps its own marker. */
+html[data-skin="macos"] details.oa-expander > summary {
+  min-height: 20px;
+  cursor: default;
+}
+html[data-skin="macos"] .oa-expander-body { padding: 0 0 10px; }
+
+/* Tables (Activity, the Providers server list): grouped, hairline rows. */
+html[data-skin="macos"] .oa-table { border-radius: 10px; overflow: auto; }
+html[data-skin="macos"] .oa-table table { border-collapse: collapse; }
+html[data-skin="macos"] .oa-table th {
+  font-size: var(--oa-mac-caption-size);
+  font-weight: 500;
+  color: var(--oa-mac-secondary);
+  padding: 8px 10px 4px;
+  border-bottom: .5px solid var(--oa-mac-separator);
+}
+html[data-skin="macos"] .oa-table td {
+  padding: 8px 10px;
+  border-bottom: .5px solid var(--oa-mac-separator);
+}
+html[data-skin="macos"] .oa-table tr:last-child td { border-bottom: none; }
+
+/* Existing pages that still use plain <section> blocks render as groups;
+   a section that is itself an oa-group leaves the box to its rows. */
+html[data-skin="macos"] .oa-content section:not(.oa-group) {
+  background: var(--oa-mac-group-bg);
+  border: .5px solid var(--oa-mac-group-border);
+  border-radius: 10px;
+  margin: 0 0 20px;
+  padding: 0 10px;
+}
+html[data-skin="macos"] .oa-content section.oa-group {
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  overflow: visible;
+}
+
+/* The HTML shell: a browser on macOS keeps the Panel's own sidebar
+   (data-shell="html") with System Settings proportions. The native host
+   draws its own sidebar and toolbar, so none of this applies there. */
+html[data-skin="macos"][data-shell="html"] {
+  --oa-mac-sidebar-bg: #f2f2f7;
+  --oa-mac-search-bg: rgba(0, 0, 0, .055);
+}
+@media (prefers-color-scheme: dark) {
+  html[data-skin="macos"][data-shell="html"] {
+    --oa-mac-sidebar-bg: #262628;
+    --oa-mac-search-bg: rgba(255, 255, 255, .09);
+  }
+}
+html[data-skin="macos"][data-shell="html"] .oa-nav {
+  width: 215px;
+  padding: 14px 10px;
+  background: var(--oa-mac-sidebar-bg);
+  border-right: .5px solid var(--oa-mac-separator);
+}
+html[data-skin="macos"][data-shell="html"] .oa-brand {
+  padding: 2px 8px 12px;
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 700;
+}
+html[data-skin="macos"][data-shell="html"] .oa-brand span {
+  margin-top: 1px;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--oa-mac-secondary);
+}
+
+/* A rounded search field with a magnifying glass, like the one under the
+   traffic lights in System Settings. */
+html[data-skin="macos"][data-shell="html"] .oa-nav-search {
+  position: relative;
+  padding: 0 0 10px;
+}
+html[data-skin="macos"][data-shell="html"] .oa-nav-search::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 7px;
+  width: 13px;
+  height: 13px;
+  background: var(--oa-mac-secondary);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 13 13'%3E%3Ccircle cx='5.5' cy='5.5' r='4.5' fill='none' stroke='black' stroke-width='1.5'/%3E%3Cpath d='M8.8 8.8L12 12' stroke='black' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 13 13'%3E%3Ccircle cx='5.5' cy='5.5' r='4.5' fill='none' stroke='black' stroke-width='1.5'/%3E%3Cpath d='M8.8 8.8L12 12' stroke='black' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  pointer-events: none;
+}
+html[data-skin="macos"][data-shell="html"] .oa-nav-search input {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  padding: 0 8px 0 28px;
+  font: 13px/28px var(--oa-font-family);
+  color: var(--oa-mac-label);
+  background: var(--oa-mac-search-bg);
+  border: none;
+  border-radius: 7px;
+  box-shadow: none;
+  outline: none;
+}
+html[data-skin="macos"][data-shell="html"] .oa-nav-search input::placeholder { color: var(--oa-mac-secondary); }
+html[data-skin="macos"][data-shell="html"] .oa-nav-search input::-webkit-search-decoration { -webkit-appearance: none; }
+html[data-skin="macos"][data-shell="html"] .oa-nav-search input:focus-visible {
+  box-shadow: 0 0 0 3.5px color-mix(in srgb, var(--oa-accent) 50%, transparent);
+}
+
+/* Rows: label colour, 20 px tiles, the accent fill with white text when
+   selected. */
+html[data-skin="macos"][data-shell="html"] .oa-nav-item {
+  gap: 8px;
+  min-height: 28px;
+  margin: 1px 0;
+  padding: 4px 8px;
+  color: var(--oa-mac-label);
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 16px;
+  text-decoration: none;
+}
+html[data-skin="macos"][data-shell="html"] .oa-nav-item:hover {
+  background: var(--oa-mac-search-bg);
+  text-decoration: none;
+}
+html[data-skin="macos"][data-shell="html"] .oa-nav-item.active,
+html[data-skin="macos"][data-shell="html"] .oa-nav-item[aria-current] {
+  background: var(--oa-accent);
+  color: #ffffff;
+}
+html[data-skin="macos"][data-shell="html"] .oa-nav-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+}
+html[data-skin="macos"][data-shell="html"] .oa-nav-icon svg { width: 13px; height: 13px; }
+html[data-skin="macos"][data-shell="html"] .oa-nav-hit {
+  padding: 4px 8px;
+  color: var(--oa-mac-label);
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 16px;
+}
+html[data-skin="macos"][data-shell="html"] .oa-nav-hit:hover { background: var(--oa-mac-search-bg); text-decoration: none; }
+html[data-skin="macos"][data-shell="html"] .oa-nav-hit-page,
+html[data-skin="macos"][data-shell="html"] .oa-nav-nohits {
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--oa-mac-secondary);
+}
+
+/* Page head: a plain 13 px bold title beside the 40 px tile, no card. */
+html[data-skin="macos"][data-shell="html"] .oa-pagehead {
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+}
+html[data-skin="macos"][data-shell="html"] .oa-pagehead-title {
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 700;
+}
+
+html[data-skin="macos"] .oa-nav-badge {
+  background: #ff3b30;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  min-width: 16px;
+  border-radius: 8px;
+}
+html[data-skin="macos"] .oa-nav-sep { background: transparent; margin: 5px 0; }
+
+/* Controls ------------------------------------------------------------ */
+
+html[data-skin="macos"] :is(input, select, textarea, button) {
+  font: var(--oa-font-size)/16px var(--oa-font-family);
+  color: var(--oa-mac-label);
+}
+html[data-skin="macos"] :is(input, select, textarea, button):focus-visible {
+  outline: 3.5px solid color-mix(in srgb, var(--oa-accent) 50%, transparent);
+  outline-offset: 0;
+}
+
+/* Push buttons: 22 px, rounded, white in light mode, raised by a hairline. */
+html[data-skin="macos"] button,
+html[data-skin="macos"] input:is([type="button"], [type="submit"], [type="reset"]) {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 22px;
+  min-width: 0;
+  padding: 0 10px;
+  line-height: 20px;
+  border-radius: 6px;
+  border: .5px solid var(--oa-mac-control-border);
+  background: var(--oa-mac-control-bg);
+  box-shadow: var(--oa-mac-control-shadow);
+  filter: none;
+}
+html[data-skin="macos"] button:hover { filter: none; }
+html[data-skin="macos"] button:active { filter: brightness(.92); }
+html[data-skin="macos"] button:disabled { color: var(--oa-mac-tertiary); box-shadow: none; }
+html[data-skin="macos"] :is(button.oa-primary, button[type="submit"]) {
+  background: var(--oa-accent);
+  border-color: transparent;
+  color: #ffffff;
+}
+
+/* Pop-up buttons: WebKit draws the native NSPopUpButton look when no
+   author background or border is set, so the skin reverts the shared sheet. */
+html[data-skin="macos"] select {
+  -webkit-appearance: menulist;
+  appearance: auto;
+  height: auto;
+  padding: revert;
+  background: revert;
+  border: revert;
+  border-radius: revert;
+  box-shadow: none;
+}
+
+/* Text fields keep the native field and focus ring for the same reason. */
+html[data-skin="macos"] input:is(:not([type]), [type="text"], [type="search"], [type="password"], [type="number"], [type="url"], [type="email"]),
+html[data-skin="macos"] textarea {
+  -webkit-appearance: auto;
+  appearance: auto;
+  height: auto;
+  padding: revert;
+  background: revert;
+  border: revert;
+  border-radius: revert;
+  box-shadow: none;
+}
+html[data-skin="macos"] input[type="checkbox"]:not(.switch),
+html[data-skin="macos"] input[type="radio"] {
+  -webkit-appearance: auto;
+  appearance: auto;
+  background: revert;
+  border: revert;
+}
+
+/* Mini switches, 26 x 15, accent when on. */
+html[data-skin="macos"] input[type="checkbox"].switch {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 26px;
+  height: 15px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 7.5px;
+  background: var(--oa-mac-switch-off);
+  box-shadow: inset 0 0 0 .5px rgba(0, 0, 0, .08);
+  vertical-align: middle;
+  cursor: default;
+  transition: background .15s ease;
+}
+html[data-skin="macos"] input[type="checkbox"].switch::before {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 0 .5px rgba(0, 0, 0, .12), 0 1px 1.5px rgba(0, 0, 0, .25);
+  transition: transform .15s ease;
+}
+html[data-skin="macos"] input[type="checkbox"].switch:checked { background: var(--oa-accent); }
+html[data-skin="macos"] input[type="checkbox"].switch:checked::before { transform: translateX(11px); }
+html[data-skin="macos"] input[type="checkbox"].switch:disabled { opacity: .5; }
+
+html[data-skin="macos"] :where(.oa-content) a { color: var(--oa-accent); }
+
+/* Help: one round "?" at the bottom right of the pane, the native help
+   button. Section marks and Learn-more links stay hidden on macOS. */
+html[data-skin="macos"] :is(.oa-help-mark, .oa-help-learnmore) { display: none; }
+html[data-skin="macos"] .oa-help-float {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: .5px solid var(--oa-mac-control-border);
+  background: var(--oa-mac-help-bg);
+  box-shadow: var(--oa-mac-control-shadow);
+  color: var(--oa-mac-label);
+  font: 600 13px/1 var(--oa-font-family);
+  text-decoration: none;
+  z-index: 10;
+}
+html[data-skin="macos"] .oa-help-float:hover { text-decoration: none; }
+html[data-skin="macos"] .oa-help-float:active { filter: brightness(.92); }
+
+@media (forced-colors: active) {
+  html[data-skin="macos"] input[type="checkbox"].switch { border: 1px solid ButtonText; }
+}

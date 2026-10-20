@@ -62,6 +62,14 @@ inline constexpr bool operator!=(ResultOutcome value, std::string_view name)
 inline constexpr bool operator==(std::string_view name, ResultOutcome value)
 inline constexpr bool operator!=(std::string_view name, ResultOutcome value)
 inline const std::vector<std::string> kResultOutcomeNames
+enum class LinkOutcome {Linked, NotReady, Unavailable, Unsupported, Unknown, Forbidden, Invalid, Exists, OtherVolume, NoHardLinks, Remote}
+inline constexpr std::string_view wire_name(LinkOutcome value)
+inline std::optional<LinkOutcome> parse_link_outcome(std::string_view name)
+inline constexpr bool operator==(LinkOutcome value, std::string_view name)
+inline constexpr bool operator!=(LinkOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, LinkOutcome value)
+inline constexpr bool operator!=(std::string_view name, LinkOutcome value)
+inline const std::vector<std::string> kLinkOutcomeNames
 enum class InventoryOutcome {Page, Gap, Forbidden, Invalid, Unavailable}
 inline constexpr std::string_view wire_name(InventoryOutcome value)
 inline std::optional<InventoryOutcome> parse_inventory_outcome(std::string_view name)
@@ -144,6 +152,10 @@ struct ResultChunk
 struct ResultRead
   ResultOutcome outcome
   std::optional<ResultChunk> chunk
+struct ResultLink
+  LinkOutcome outcome
+  std::optional<Receipt> receipt
+  std::int64_t size
 struct InventoryPage
   InventoryOutcome outcome
   std::vector<OperationSnapshot> snapshots
@@ -189,10 +201,12 @@ struct RecoverableAcceptanceDispatcher : FrameWriter, FrameExchanger
 struct OperationControl
   virtual ObservationResult observe_work(const RequestIdentity& identity)
   virtual ResultRead read_result(const RequestIdentity& identity, const std::int64_t& offset, const std::int64_t& max_bytes)
+  virtual ResultLink link_result(const RequestIdentity& identity, const std::string& destination)
 template<class Transport>struct OperationControlClient : OperationControl
   Transport& transport_
   ObservationResult observe_work(const RequestIdentity& identity) override
   ResultRead read_result(const RequestIdentity& identity, const std::int64_t& offset, const std::int64_t& max_bytes) override
+  ResultLink link_result(const RequestIdentity& identity, const std::string& destination) override
 struct OperationControlService
   inline static constexpr std::string_view kWireName
   inline static constexpr std::string_view kCapability

@@ -10,6 +10,44 @@ inline constexpr bool operator!=(PageOutcome value, std::string_view name)
 inline constexpr bool operator==(std::string_view name, PageOutcome value)
 inline constexpr bool operator!=(std::string_view name, PageOutcome value)
 inline const std::vector<std::string> kPageOutcomeNames
+enum class HistoryPageOutcome {Page, Gap, Unavailable, Invalid, RecordTooLarge, Corrupt, Unsupported, Forbidden, NotPermitted, OsAuthorizationRequired, OsAuthorizationPending}
+inline constexpr std::string_view wire_name(HistoryPageOutcome value)
+inline std::optional<HistoryPageOutcome> parse_history_page_outcome(std::string_view name)
+inline constexpr bool operator==(HistoryPageOutcome value, std::string_view name)
+inline constexpr bool operator!=(HistoryPageOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, HistoryPageOutcome value)
+inline constexpr bool operator!=(std::string_view name, HistoryPageOutcome value)
+inline const std::vector<std::string> kHistoryPageOutcomeNames
+enum class ApplicationLogSelection {OneApp, AllApps}
+inline constexpr std::string_view wire_name(ApplicationLogSelection value)
+inline std::optional<ApplicationLogSelection> parse_application_log_selection(std::string_view name)
+inline constexpr bool operator==(ApplicationLogSelection value, std::string_view name)
+inline constexpr bool operator!=(ApplicationLogSelection value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ApplicationLogSelection value)
+inline constexpr bool operator!=(std::string_view name, ApplicationLogSelection value)
+inline const std::vector<std::string> kApplicationLogSelectionNames
+enum class SourceAvailability {Available, PermissionDenied, Unavailable, Unsupported}
+inline constexpr std::string_view wire_name(SourceAvailability value)
+inline std::optional<SourceAvailability> parse_source_availability(std::string_view name)
+inline constexpr bool operator==(SourceAvailability value, std::string_view name)
+inline constexpr bool operator!=(SourceAvailability value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, SourceAvailability value)
+inline constexpr bool operator!=(std::string_view name, SourceAvailability value)
+inline const std::vector<std::string> kSourceAvailabilityNames
+inline const std::vector<std::string> kSourceLimitationNames
+inline constexpr std::string_view kSourceLimitationRetention
+inline constexpr std::string_view kSourceLimitationNativeRedaction
+inline constexpr std::string_view kSourceLimitationCollectionPolicy
+inline constexpr std::string_view kSourceLimitationNativeAccess
+inline constexpr std::string_view kSourceLimitationVisibilityUnknown
+enum class SourceCatalogOutcome {Catalog, Forbidden, NotPermitted, Unavailable, Invalid}
+inline constexpr std::string_view wire_name(SourceCatalogOutcome value)
+inline std::optional<SourceCatalogOutcome> parse_source_catalog_outcome(std::string_view name)
+inline constexpr bool operator==(SourceCatalogOutcome value, std::string_view name)
+inline constexpr bool operator!=(SourceCatalogOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, SourceCatalogOutcome value)
+inline constexpr bool operator!=(std::string_view name, SourceCatalogOutcome value)
+inline const std::vector<std::string> kSourceCatalogOutcomeNames
 inline const std::vector<std::string> kServiceErrorCodeNames
 inline constexpr std::string_view kServiceErrorCodeHandlerError
 inline constexpr std::string_view kServiceErrorCodeInvalidResult
@@ -24,6 +62,7 @@ inline constexpr std::string_view kServiceErrorCodePolicyUnavailable
 inline constexpr std::string_view kServiceErrorCodeForbidden
 inline const std::vector<std::string> kHistoryErrorCodes
 inline const std::vector<std::string> kHistoryCursorWords
+inline const std::vector<std::string> kHistoryIdentityErrorCodes
 struct Attestation
   std::string by
   bool verified
@@ -48,6 +87,41 @@ struct Record
 struct Page
   PageOutcome outcome
   std::vector<Record> records
+  std::string next
+  bool at_end
+struct ApplicationLogTarget
+  ApplicationLogSelection selection
+  std::string program
+struct ApplicationLogResource
+  std::string program
+  std::string captured_file_key
+struct ApplicationLogPage
+  HistoryPageOutcome outcome
+  std::vector<Record> records
+  std::string next
+  bool at_end
+struct SourceDescriptor
+  std::string id
+  SourceAvailability availability
+  std::vector<std::string> limitations
+struct SourceCatalog
+  std::vector<SourceDescriptor> sources
+  SourceCatalogOutcome outcome
+struct ProducerClaim
+  std::string provider
+  std::string program
+  std::string exe
+  std::string user
+  std::int64_t pid
+  std::int64_t uid
+  std::int64_t gid
+struct SourceRecord
+  std::string source_id
+  Record record
+  std::optional<ProducerClaim> producer
+struct SourcePage
+  HistoryPageOutcome outcome
+  std::vector<SourceRecord> records
   std::string next
   bool at_end
 inline std::string encode(const Record& v)
@@ -104,3 +178,68 @@ struct HistoryObserverDispatcher : FrameWriter, FrameExchanger
   DescribedService describe_service() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
+struct ApplicationHistoryReader
+  virtual ApplicationLogPage read(const ApplicationLogTarget& target, const std::string& cursor, const std::int64_t& max_records, const std::int64_t& max_bytes)
+template<class Transport>struct ApplicationHistoryReaderClient : ApplicationHistoryReader
+  Transport& transport_
+  ApplicationLogPage read(const ApplicationLogTarget& target, const std::string& cursor, const std::int64_t& max_records, const std::int64_t& max_bytes) override
+struct ApplicationHistoryReaderService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ApplicationHistoryReaderDispatcher : FrameWriter, FrameExchanger
+  ApplicationHistoryReader& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct ApplicationHistoryObserver
+  virtual ApplicationLogPage observe(const ApplicationLogTarget& target, const std::string& cursor, const std::int64_t& max_records, const std::int64_t& max_bytes, const std::int64_t& wait_ms)
+template<class Transport>struct ApplicationHistoryObserverClient : ApplicationHistoryObserver
+  Transport& transport_
+  ApplicationLogPage observe(const ApplicationLogTarget& target, const std::string& cursor, const std::int64_t& max_records, const std::int64_t& max_bytes, const std::int64_t& wait_ms) override
+struct ApplicationHistoryObserverService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ApplicationHistoryObserverDispatcher : FrameWriter, FrameExchanger
+  ApplicationHistoryObserver& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct SourceReader
+  virtual SourceCatalog sources()
+  virtual SourcePage read(const std::string& source_id, const std::string& cursor, const std::int64_t& max_records, const std::int64_t& max_bytes)
+  virtual SourcePage start_at_end(const std::string& source_id)
+template<class Transport>struct SourceReaderClient : SourceReader
+  Transport& transport_
+  SourceCatalog sources() override
+  SourcePage read(const std::string& source_id, const std::string& cursor, const std::int64_t& max_records, const std::int64_t& max_bytes) override
+  SourcePage start_at_end(const std::string& source_id) override
+struct SourceReaderService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct SourceReaderDispatcher : FrameWriter, FrameExchanger
+  SourceReader& handler
+  DescribedService describe_service() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+inline std::string encode_attestation(const Attestation& v)
+inline Attestation decode_attestation(std::string_view in)
+inline std::string encode_record(const Record& v)
+inline Record decode_record(std::string_view in)
+inline std::string encode_page(const Page& v)
+inline Page decode_page(std::string_view in)
+inline std::string encode_application_log_target(const ApplicationLogTarget& v)
+inline ApplicationLogTarget decode_application_log_target(std::string_view in)
+inline std::string encode_application_log_resource(const ApplicationLogResource& v)
+inline ApplicationLogResource decode_application_log_resource(std::string_view in)
+inline std::string encode_application_log_page(const ApplicationLogPage& v)
+inline ApplicationLogPage decode_application_log_page(std::string_view in)
+inline std::string encode_source_descriptor(const SourceDescriptor& v)
+inline SourceDescriptor decode_source_descriptor(std::string_view in)
+inline std::string encode_source_catalog(const SourceCatalog& v)
+inline SourceCatalog decode_source_catalog(std::string_view in)
+inline std::string encode_producer_claim(const ProducerClaim& v)
+inline ProducerClaim decode_producer_claim(std::string_view in)
+inline std::string encode_source_record(const SourceRecord& v)
+inline SourceRecord decode_source_record(std::string_view in)
+inline std::string encode_source_page(const SourcePage& v)
+inline SourcePage decode_source_page(std::string_view in)

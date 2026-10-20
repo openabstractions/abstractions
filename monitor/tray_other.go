@@ -4,6 +4,6 @@ package main
 
 import "errors"
 
-func runTray(_ string) error {
-	return errors.New("notification tray unavailable on this platform")
+func runBackground() error {
+	return errors.New("background question presentation requires Windows; on macOS use Abstraction Panel.app")
 }

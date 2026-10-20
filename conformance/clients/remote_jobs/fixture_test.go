@@ -122,6 +122,7 @@ func TestRemoteJobRecoveryScopesAndPolicy(t *testing.T) {
 			guard.Close()
 			t.Fatal(e)
 		}
+		// loopback-scan: judged address starts as 127.0.0.1:0 and then holds this listener's own loopback address
 		listener, e := net.Listen("tcp", address)
 		if e != nil {
 			guard.Close()

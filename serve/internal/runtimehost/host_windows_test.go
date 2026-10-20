@@ -79,7 +79,12 @@ func TestReadyCloseWait(t *testing.T) {
 	defer h.Close()
 	var inJob uint32
 	p := h.child.(*windowsProcess)
-	result, _, callErr := windows.NewLazySystemDLL("kernel32.dll").NewProc("IsProcessInJob").Call(uintptr(p.handle), uintptr(p.job), uintptr(unsafe.Pointer(&inJob)))
+	proc, openErr := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(p.pid()))
+	if openErr != nil {
+		t.Fatal(openErr)
+	}
+	defer windows.CloseHandle(proc)
+	result, _, callErr := windows.NewLazySystemDLL("kernel32.dll").NewProc("IsProcessInJob").Call(uintptr(proc), 0, uintptr(unsafe.Pointer(&inJob)))
 	if result == 0 || inJob == 0 {
 		err := callErr
 		t.Fatalf("job membership: %v %v", inJob, err)

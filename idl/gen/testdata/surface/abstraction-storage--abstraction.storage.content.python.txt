@@ -187,12 +187,14 @@ class HoldsClient(Holds)
 const INVENTORY_SOURCE_ERROR_CODES
 class Inventory
   list(continuation: str, limit: int) -> InventoryPage
+  list_store(store: str, continuation: str, limit: int) -> InventoryPage
   holders(target: str) -> InventoryPage
   unheld(continuation: str, limit: int) -> InventoryPage
   find(digest: str) -> InventoryPage
 class InventoryClient(Inventory)
   __init__(transport)
   list(continuation: str, limit: int) -> InventoryPage
+  list_store(store: str, continuation: str, limit: int) -> InventoryPage
   holders(target: str) -> InventoryPage
   unheld(continuation: str, limit: int) -> InventoryPage
   find(digest: str) -> InventoryPage

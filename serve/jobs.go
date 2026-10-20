@@ -69,24 +69,27 @@ its id, or by the request identity --key K [--epoch E] [--attempt N] the
 submitting command printed; without --attempt, --key names its latest
 attempt.
 
+With --endpoint, --runtime-program PATH verifies that absolute executable under this account.
+
 Exit codes: 0 done, 1 runtime not resolved or transport failure, 2 usage,
 3 typed refusal, 4 unavailable (repeat later), 5 work failed or was cancelled,
 6 acceptance or observation uncertain, 7 still waiting, 130 interrupted.
 
 Run "openabstractions jobs migrate-legacy --help" for its own commands and codes.
-Learn more: openabstractions-flat/abstraction-job/CONTRACT.md
+Learn more: https://github.com/openabstractions/abstraction-job/blob/main/CONTRACT.md
 `
 
 // serviceOptions are the flags every service-backed command shares with status.
 type serviceOptions struct {
-	endpoint string
-	budget   time.Duration
-	asJSON   bool
-	quiet    bool
+	endpoint, runtimeProgram string
+	budget                   time.Duration
+	asJSON                   bool
+	quiet                    bool
 }
 
 func (o *serviceOptions) bind(flags *flag.FlagSet) {
 	flags.StringVar(&o.endpoint, "endpoint", "", "runtime bootstrap endpoint (default: the installed runtime)")
+	flags.StringVar(&o.runtimeProgram, "runtime-program", "", "with --endpoint, the absolute executable the runtime must run as under this account")
 	flags.DurationVar(&o.budget, "timeout", 0, "deadline for the whole command; zero means none")
 	flags.BoolVar(&o.asJSON, "json", false, "emit one JSON document on stdout")
 }
@@ -96,19 +99,24 @@ func (o *serviceOptions) bind(flags *flag.FlagSet) {
 // is a deliberately supplied provider; ABSTRACTION_RUNTIME_ENDPOINT alone
 // connects to the named endpoint unverified, and diagnostics gets the one-line
 // notice once (research/packaged-activation/GATEWAY-REFUSAL-2026-09-22.md);
-// with neither, this resolves through installation evidence, the trust path
+// --runtime-program adds independent current-account and executable proof to an
+// explicit endpoint. With neither, this resolves through installation evidence, the trust path
 // `status` and `start` use. No command reads a store directory or falls back
 // to a local file store.
-func (o serviceOptions) machine(diagnostics io.Writer, command string) (*client.Machine, endpointSource) {
+func (o serviceOptions) machine(diagnostics io.Writer, command, usage string) (*client.Machine, endpointSource, error) {
 	endpoint, source := resolveEndpoint(o.endpoint)
+	if o.runtimeProgram != "" {
+		machine, err := (probeOptions{endpoint: o.endpoint, runtimeProgram: o.runtimeProgram}).machine(diagnostics, command, usage)
+		return machine, source, err
+	}
 	switch source {
 	case endpointFromVar:
 		warnUnverifiedEndpoint(diagnostics, command, endpoint)
-		return client.New(endpoint), source
+		return client.New(endpoint), source, nil
 	case endpointExplicit:
-		return client.New(endpoint), source
+		return client.New(endpoint), source, nil
 	default:
-		return client.Discover(), source
+		return client.Discover(), source, nil
 	}
 }
 
@@ -813,7 +821,10 @@ func jobsServiceCommand(sub string, args []string, output, diagnostics io.Writer
 	}
 	w := newWaiting(options.budget)
 	defer w.stop()
-	machine, source := options.machine(diagnostics, command)
+	machine, source, err := options.machine(diagnostics, command, jobsServiceUsage)
+	if err != nil {
+		return err
+	}
 	jobs, err := resolveOperations(w, command, source, machine)
 	if err != nil {
 		return err
@@ -842,7 +853,10 @@ func jobsList(options serviceOptions, diagnostics io.Writer, all bool, output io
 	if all {
 		list = listAccount
 	}
-	machine, source := options.machine(diagnostics, command)
+	machine, source, err := options.machine(diagnostics, command, jobsServiceUsage)
+	if err != nil {
+		return err
+	}
 	snapshots, err := list(w, command, source, machine)
 	if err != nil {
 		return err
@@ -924,7 +938,10 @@ func jobsCancelOperation(options serviceOptions, diagnostics io.Writer, operatio
 	const command = "jobs cancel --all"
 	w := newWaiting(options.budget)
 	defer w.stop()
-	machine, source := options.machine(diagnostics, command)
+	machine, source, err := options.machine(diagnostics, command, jobsServiceUsage)
+	if err != nil {
+		return err
+	}
 	call, done := w.call()
 	operator, err := machine.ResolveJobOperator(call, admission())
 	done()

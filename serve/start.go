@@ -74,6 +74,12 @@ func runtimeStart(args []string, output, diagnostics io.Writer) error {
 	if err := startInstalled(ctx, hooks); err != nil {
 		return err
 	}
+	if err := activateInstalledPresenter(ctx, output); err != nil {
+		// Runtime readiness succeeds independently of optional desktop delivery.
+		if _, writeErr := fmt.Fprintln(diagnostics, err); writeErr != nil {
+			return writeErr
+		}
+	}
 	_, err = fmt.Fprintln(output, "runtime ready")
 	return err
 }

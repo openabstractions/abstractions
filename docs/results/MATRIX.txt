@@ -1,5 +1,5 @@
-# MATRIX  produced by scripts/matrix.sh on 2026-09-28, commit b1ddaf0ec
-# measures  openabstractions-flat/abstraction-asks@652b3243c openabstractions-flat/abstraction-cas@15cb201e2 openabstractions-flat/abstraction-config@0a69b278b openabstractions-flat/abstraction-credentials@15f6c704c openabstractions-flat/abstraction-download@47350341d openabstractions-flat/abstraction-facade@b7d5fc4cd openabstractions-flat/abstraction-identity@cc2d8bbcc openabstractions-flat/abstraction-inference@d0230f1c0 openabstractions-flat/abstraction-job@840b5d20c openabstractions-flat/abstraction-logging@7ac628384 openabstractions-flat/abstraction-model@da1d64180 openabstractions-flat/abstraction-provider-modelbridge@94b8ba338 openabstractions-flat/abstraction-provider-modelhost@d4ff5a5ec openabstractions-flat/abstraction-resource@a8dcc0204 openabstractions-flat/abstraction-rights@e9b8f197c openabstractions-flat/abstraction-router@6fa6d44e6 openabstractions-flat/abstraction-storage@1a3b65adb openabstractions-flat/abstraction-storage-over-local-stores@f3b3996e6 openabstractions-flat/abstraction-watch@0a8596adf
+# MATRIX  produced by scripts/matrix.sh on 2026-10-20, commit d150ba52f
+# measures  openabstractions-flat/abstraction-asks@e8eb5051a openabstractions-flat/abstraction-cas@832cf4c92 openabstractions-flat/abstraction-config@ff8ef6e64 openabstractions-flat/abstraction-credentials@315c52aaa openabstractions-flat/abstraction-download@9e8ef688a openabstractions-flat/abstraction-facade@4a19dd211 openabstractions-flat/abstraction-identity@812cd7fb5 openabstractions-flat/abstraction-inference@00b2a5c03 openabstractions-flat/abstraction-job@9e95e1ffd openabstractions-flat/abstraction-logging@0d592e0e0 openabstractions-flat/abstraction-model@28ac846eb openabstractions-flat/abstraction-provider-kit@6ec642ce6 openabstractions-flat/abstraction-provider-lemonade@5d12258ba openabstractions-flat/abstraction-provider-localai@8efc1b8d3 openabstractions-flat/abstraction-provider-modelbridge@666a11483 openabstractions-flat/abstraction-provider-modelhost@00e3e2a9d openabstractions-flat/abstraction-provider-pytorch@2948f20c7 openabstractions-flat/abstraction-provider-thenoise@941a08cf2 openabstractions-flat/abstraction-resource@0dfd3f88a openabstractions-flat/abstraction-rights@97fc56872 openabstractions-flat/abstraction-router@19d9174b5 openabstractions-flat/abstraction-storage@0f4c7c068 openabstractions-flat/abstraction-storage-over-local-stores@bc40cd189 openabstractions-flat/abstraction-watch@62239c4fa
 # regenerate  sh scripts/matrix.sh   (--check refuses a grid the evidence no longer produces)
 # scope     this tree only. It reads what is committed here and the transcripts
 #           in docs/results/; it runs no implementation and no harness. Each
@@ -37,8 +37,13 @@ abstraction-inference                 UNPROVEN  UNPROVEN  UNPROVEN  UNPROVEN  UN
 abstraction-job                       UNPROVEN  UNPROVEN  UNPROVEN  UNPROVEN  UNPROVEN
 abstraction-logging                   UNPROVEN  UNPROVEN  UNPROVEN  UNPROVEN  UNPROVEN
 abstraction-model                     UNPROVEN  UNPROVEN  UNPROVEN  UNPROVEN  UNPROVEN
+abstraction-provider-kit              UNPROVEN  —         —         —         —
+abstraction-provider-lemonade         UNPROVEN  —         —         —         —
+abstraction-provider-localai          UNPROVEN  —         —         —         —
 abstraction-provider-modelbridge      UNPROVEN  —         —         —         —
 abstraction-provider-modelhost        UNPROVEN  —         —         —         —
+abstraction-provider-pytorch          UNPROVEN  —         —         —         —
+abstraction-provider-thenoise         UNPROVEN  —         —         —         —
 abstraction-resource                  UNPROVEN  UNPROVEN  UNPROVEN  UNPROVEN  UNPROVEN
 abstraction-rights                    UNPROVEN  UNPROVEN  UNPROVEN  UNPROVEN  UNPROVEN
 abstraction-router                    UNPROVEN  UNPROVEN  UNPROVEN  UNPROVEN  UNPROVEN
@@ -46,9 +51,9 @@ abstraction-storage                   UNPROVEN  UNPROVEN  UNPROVEN  UNPROVEN  UN
 abstraction-storage-over-local-stores UNPROVEN  —         —         —         —
 abstraction-watch                     UNPROVEN  UNPROVEN  UNPROVEN  —         —
 
-95 cells over 19 layers: 0 PASS, 0 FAIL, 79 UNPROVEN, 0 ABSENT, 16 with no implementation.
-79 implementations exist and 79 of them carry no verdict attributed to this tree.
-* Documented platform limitation: historical macOS Unix-socket tests could not supply the required caller proof. Current source implements XPC caller identity; its 0.3.0 installed-package qualification remains pending. Matching FAIL* cells retain their recorded failures, and changed test inputs remain UNPROVEN.
+120 cells over 24 layers: 0 PASS, 0 FAIL, 84 UNPROVEN, 0 ABSENT, 36 with no implementation.
+84 implementations exist and 84 of them carry no verdict attributed to this tree.
+* Documented platform limitation: historical macOS Unix-socket tests could not supply the required caller proof. Current source implements XPC caller identity; the 0.3.0 release notes state the package-specific macOS installation evidence. Matching FAIL* cells retain their recorded failures, and changed test inputs remain UNPROVEN.
 
 CAPABILITY COVERAGE
 API = handwritten public API; Interface = generated API; Types = record codec only. Tested = recorded layer checks; Service, Native and Adapter = scoped runtime evidence. Green availability is not a runtime PASS. Expand a cell for platforms and evidence.
@@ -66,9 +71,10 @@ asks | cpp | API, Interface
 asks | rust | Interface
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
   Current layer verification pending.
-asks | javascript | Interface
+asks | javascript | Interface, Service
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
   Current layer verification pending.
+  Service client: PASS. windows/amd64; host: go; transport: test-pipe-connector; shared-javascript-capabilities-windows (PASS)
 cas | go | API, Interface
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
@@ -96,9 +102,10 @@ config | cpp | API, Interface
 config | rust | Interface
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
   Current layer verification pending.
-config | javascript | Interface
+config | javascript | Interface, Service
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
   Current layer verification pending.
+  Service client: PASS. windows/amd64; host: go; transport: test-pipe-connector; shared-javascript-capabilities-windows (PASS)
 credentials | go | API, Interface
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
@@ -129,9 +136,10 @@ download | cpp | Types
 download | rust | Types
   Generated record types and codec only; no generated service interface established.
   Current layer verification pending.
-download | javascript | Types
+download | javascript | Types, Service
   Generated record types and codec only; no generated service interface established.
   Current layer verification pending.
+  Service client: PASS. windows/amd64; host: go; transport: test-pipe-connector; shared-javascript-capabilities-windows (PASS)
 facade | go | API, Interface
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
@@ -148,10 +156,11 @@ facade | rust | API, Interface
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
   Current layer verification pending.
-facade | javascript | API, Interface
+facade | javascript | API, Interface, Service
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
   Current layer verification pending.
+  Service client: PASS. windows/amd64; host: go; transport: test-pipe-connector; shared-javascript-capabilities-windows (PASS)
 identity | go | API, Types
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Generated record types and codec only; no generated service interface established.
@@ -202,9 +211,10 @@ job | cpp | Interface
 job | rust | Interface
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
   Current layer verification pending.
-job | javascript | Interface
+job | javascript | Interface, Service
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
   Current layer verification pending.
+  Service client: PASS. windows/amd64; host: go; transport: test-pipe-connector; shared-javascript-capabilities-windows (PASS)
 logging | go | API, Interface
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
@@ -220,9 +230,10 @@ logging | cpp | API, Interface
 logging | rust | Interface
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
   Current layer verification pending.
-logging | javascript | Interface
+logging | javascript | Interface, Service
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
   Current layer verification pending.
+  Service client: PASS. windows/amd64; host: go; transport: test-pipe-connector; shared-javascript-capabilities-windows (PASS)
 model | go | API, Interface
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
@@ -238,13 +249,29 @@ model | cpp | API, Interface
 model | rust | Interface
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
   Current layer verification pending.
-model | javascript | Interface
+model | javascript | Interface, Service
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
+  Current layer verification pending.
+  Service client: PASS. windows/amd64; host: go; transport: test-pipe-connector; shared-javascript-capabilities-windows (PASS)
+provider-kit | go | API
+  Handwritten public API source available; not a generated interface or runtime test PASS.
+  Current layer verification pending.
+provider-lemonade | go | API
+  Handwritten public API source available; not a generated interface or runtime test PASS.
+  Current layer verification pending.
+provider-localai | go | API
+  Handwritten public API source available; not a generated interface or runtime test PASS.
   Current layer verification pending.
 provider-modelbridge | go | API
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Current layer verification pending.
 provider-modelhost | go | API
+  Handwritten public API source available; not a generated interface or runtime test PASS.
+  Current layer verification pending.
+provider-pytorch | go | API
+  Handwritten public API source available; not a generated interface or runtime test PASS.
+  Current layer verification pending.
+provider-thenoise | go | API
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Current layer verification pending.
 resource | go | API, Interface
@@ -279,9 +306,10 @@ rights | cpp | API, Interface
 rights | rust | Interface
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
   Current layer verification pending.
-rights | javascript | Interface
+rights | javascript | Interface, Service
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
   Current layer verification pending.
+  Service client: PASS. windows/amd64; host: go; transport: test-pipe-connector; shared-javascript-capabilities-windows (PASS)
 router | go | API, Interface
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
@@ -296,9 +324,10 @@ router | cpp | API, Interface
 router | rust | Interface
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
   Current layer verification pending.
-router | javascript | Interface
+router | javascript | Interface, Service
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
   Current layer verification pending.
+  Service client: PASS. windows/amd64; host: go; transport: test-pipe-connector; shared-javascript-capabilities-windows (PASS)
 storage | go | API, Interface
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
@@ -314,9 +343,10 @@ storage | cpp | API, Interface
 storage | rust | Interface
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
   Current layer verification pending.
-storage | javascript | Interface
+storage | javascript | Interface, Service
   Generated API source available; may be direct or service-based. Transport and runtime test PASS are not implied.
   Current layer verification pending.
+  Service client: PASS. windows/amd64; host: go; transport: test-pipe-connector; shared-javascript-capabilities-windows (PASS)
 storage-over-local-stores | go | API
   Handwritten public API source available; not a generated interface or runtime test PASS.
   Current layer verification pending.
@@ -334,12 +364,17 @@ watch | cpp | API, Types
   Current layer verification pending.
 INFERENCE PROFILES (source API; provider support is separate)
 abstraction.inference/chat@1 | Start, Observe, Cancel
+abstraction.inference/chat@2 | Start, Observe, Cancel
+abstraction.inference/preload@1 | Preload
 abstraction.inference/embed@1 | Embed
 abstraction.inference/transcription@1 | Start, Observe, Cancel
 abstraction.inference/speech@1 | Start, Observe, Cancel
 abstraction.inference/live@1 | Start, Append, Observe, Commit, Cancel
 abstraction.inference/image@1 | Start, Observe, Cancel
+abstraction.inference/image@2 | Start, Observe, Cancel
+abstraction.inference/video@1 | Start, Observe, Cancel
 abstraction.inference/operator@1 | Hosts, AddHost, RemoveHost, Keys, IssueKey, RevokeKey, Audit, Gateway, SetGateway
+abstraction.inference/selection-operator@2 | Read, Put, DeletePolicy
 Shared IPC runtime source: reusable C ABI client binding, C++ wrapper, native transport; source availability is separate from full identity provider conformance.
 SERVICE CLIENTS / focused checks (separate from capability conformance; no provider verdict is replaced):
   config-cpp-windows-service | - | - | - | - | UNPROVEN | declared inputs drifted | -
@@ -349,105 +384,139 @@ SERVICE CLIENTS / focused checks (separate from capability conformance; no provi
   shared-cpp-inventory-windows | - | - | - | - | UNPROVEN | declared inputs drifted | -
   shared-cpp-log-history-windows | - | - | - | - | UNPROVEN | declared inputs drifted | -
   shared-cpp-model-windows | - | - | - | - | UNPROVEN | declared inputs drifted | -
-  shared-javascript-capabilities-windows | - | - | - | - | UNPROVEN | declared inputs drifted | -
+  shared-javascript-capabilities-windows | openabstractions-flat/abstraction-asks | javascript | client | windows/amd64 | PASS | npm-packed JavaScript packages installed offline with scripts disabled; metadata and dependency declarations; pure facade binding, deadlines and reference refusal with no native import; 27 generated methods through the test-only pipe connector against one production Go runtime: model lookup with the imported download Request, router models/hosts/pick with live fake hosts, job submit attempts/unavailable/cancel, log history observation, config read/edit/observe, rights decide/decideFor and operator list/set/revoke, storage changes and content writer begin/append/commit/abort with read-back, asks ask/observe/list/answer/retire; refusal codes forbidden, unavailable and policy_unavailable. Native server identity (run.py --run) is not part of this record | python: Python 3.12.10; go: go version go1.26.5 windows/amd64; node: v24.19.0
+  shared-javascript-capabilities-windows | openabstractions-flat/abstraction-config | javascript | client | windows/amd64 | PASS | npm-packed JavaScript packages installed offline with scripts disabled; metadata and dependency declarations; pure facade binding, deadlines and reference refusal with no native import; 27 generated methods through the test-only pipe connector against one production Go runtime: model lookup with the imported download Request, router models/hosts/pick with live fake hosts, job submit attempts/unavailable/cancel, log history observation, config read/edit/observe, rights decide/decideFor and operator list/set/revoke, storage changes and content writer begin/append/commit/abort with read-back, asks ask/observe/list/answer/retire; refusal codes forbidden, unavailable and policy_unavailable. Native server identity (run.py --run) is not part of this record | python: Python 3.12.10; go: go version go1.26.5 windows/amd64; node: v24.19.0
+  shared-javascript-capabilities-windows | openabstractions-flat/abstraction-download | javascript | client | windows/amd64 | PASS | npm-packed JavaScript packages installed offline with scripts disabled; metadata and dependency declarations; pure facade binding, deadlines and reference refusal with no native import; 27 generated methods through the test-only pipe connector against one production Go runtime: model lookup with the imported download Request, router models/hosts/pick with live fake hosts, job submit attempts/unavailable/cancel, log history observation, config read/edit/observe, rights decide/decideFor and operator list/set/revoke, storage changes and content writer begin/append/commit/abort with read-back, asks ask/observe/list/answer/retire; refusal codes forbidden, unavailable and policy_unavailable. Native server identity (run.py --run) is not part of this record | python: Python 3.12.10; go: go version go1.26.5 windows/amd64; node: v24.19.0
+  shared-javascript-capabilities-windows | openabstractions-flat/abstraction-facade | javascript | client | windows/amd64 | PASS | npm-packed JavaScript packages installed offline with scripts disabled; metadata and dependency declarations; pure facade binding, deadlines and reference refusal with no native import; 27 generated methods through the test-only pipe connector against one production Go runtime: model lookup with the imported download Request, router models/hosts/pick with live fake hosts, job submit attempts/unavailable/cancel, log history observation, config read/edit/observe, rights decide/decideFor and operator list/set/revoke, storage changes and content writer begin/append/commit/abort with read-back, asks ask/observe/list/answer/retire; refusal codes forbidden, unavailable and policy_unavailable. Native server identity (run.py --run) is not part of this record | python: Python 3.12.10; go: go version go1.26.5 windows/amd64; node: v24.19.0
+  shared-javascript-capabilities-windows | openabstractions-flat/abstraction-job | javascript | client | windows/amd64 | PASS | npm-packed JavaScript packages installed offline with scripts disabled; metadata and dependency declarations; pure facade binding, deadlines and reference refusal with no native import; 27 generated methods through the test-only pipe connector against one production Go runtime: model lookup with the imported download Request, router models/hosts/pick with live fake hosts, job submit attempts/unavailable/cancel, log history observation, config read/edit/observe, rights decide/decideFor and operator list/set/revoke, storage changes and content writer begin/append/commit/abort with read-back, asks ask/observe/list/answer/retire; refusal codes forbidden, unavailable and policy_unavailable. Native server identity (run.py --run) is not part of this record | python: Python 3.12.10; go: go version go1.26.5 windows/amd64; node: v24.19.0
+  shared-javascript-capabilities-windows | openabstractions-flat/abstraction-logging | javascript | client | windows/amd64 | PASS | npm-packed JavaScript packages installed offline with scripts disabled; metadata and dependency declarations; pure facade binding, deadlines and reference refusal with no native import; 27 generated methods through the test-only pipe connector against one production Go runtime: model lookup with the imported download Request, router models/hosts/pick with live fake hosts, job submit attempts/unavailable/cancel, log history observation, config read/edit/observe, rights decide/decideFor and operator list/set/revoke, storage changes and content writer begin/append/commit/abort with read-back, asks ask/observe/list/answer/retire; refusal codes forbidden, unavailable and policy_unavailable. Native server identity (run.py --run) is not part of this record | python: Python 3.12.10; go: go version go1.26.5 windows/amd64; node: v24.19.0
+  shared-javascript-capabilities-windows | openabstractions-flat/abstraction-model | javascript | client | windows/amd64 | PASS | npm-packed JavaScript packages installed offline with scripts disabled; metadata and dependency declarations; pure facade binding, deadlines and reference refusal with no native import; 27 generated methods through the test-only pipe connector against one production Go runtime: model lookup with the imported download Request, router models/hosts/pick with live fake hosts, job submit attempts/unavailable/cancel, log history observation, config read/edit/observe, rights decide/decideFor and operator list/set/revoke, storage changes and content writer begin/append/commit/abort with read-back, asks ask/observe/list/answer/retire; refusal codes forbidden, unavailable and policy_unavailable. Native server identity (run.py --run) is not part of this record | python: Python 3.12.10; go: go version go1.26.5 windows/amd64; node: v24.19.0
+  shared-javascript-capabilities-windows | openabstractions-flat/abstraction-rights | javascript | client | windows/amd64 | PASS | npm-packed JavaScript packages installed offline with scripts disabled; metadata and dependency declarations; pure facade binding, deadlines and reference refusal with no native import; 27 generated methods through the test-only pipe connector against one production Go runtime: model lookup with the imported download Request, router models/hosts/pick with live fake hosts, job submit attempts/unavailable/cancel, log history observation, config read/edit/observe, rights decide/decideFor and operator list/set/revoke, storage changes and content writer begin/append/commit/abort with read-back, asks ask/observe/list/answer/retire; refusal codes forbidden, unavailable and policy_unavailable. Native server identity (run.py --run) is not part of this record | python: Python 3.12.10; go: go version go1.26.5 windows/amd64; node: v24.19.0
+  shared-javascript-capabilities-windows | openabstractions-flat/abstraction-router | javascript | client | windows/amd64 | PASS | npm-packed JavaScript packages installed offline with scripts disabled; metadata and dependency declarations; pure facade binding, deadlines and reference refusal with no native import; 27 generated methods through the test-only pipe connector against one production Go runtime: model lookup with the imported download Request, router models/hosts/pick with live fake hosts, job submit attempts/unavailable/cancel, log history observation, config read/edit/observe, rights decide/decideFor and operator list/set/revoke, storage changes and content writer begin/append/commit/abort with read-back, asks ask/observe/list/answer/retire; refusal codes forbidden, unavailable and policy_unavailable. Native server identity (run.py --run) is not part of this record | python: Python 3.12.10; go: go version go1.26.5 windows/amd64; node: v24.19.0
+  shared-javascript-capabilities-windows | openabstractions-flat/abstraction-storage | javascript | client | windows/amd64 | PASS | npm-packed JavaScript packages installed offline with scripts disabled; metadata and dependency declarations; pure facade binding, deadlines and reference refusal with no native import; 27 generated methods through the test-only pipe connector against one production Go runtime: model lookup with the imported download Request, router models/hosts/pick with live fake hosts, job submit attempts/unavailable/cancel, log history observation, config read/edit/observe, rights decide/decideFor and operator list/set/revoke, storage changes and content writer begin/append/commit/abort with read-back, asks ask/observe/list/answer/retire; refusal codes forbidden, unavailable and policy_unavailable. Native server identity (run.py --run) is not part of this record | python: Python 3.12.10; go: go version go1.26.5 windows/amd64; node: v24.19.0
   shared-python-config-windows | - | - | - | - | UNPROVEN | declared inputs drifted | -
   shared-python-logging-windows | - | - | - | - | UNPROVEN | declared inputs drifted | -
   shared-rust-logging-windows | - | - | - | - | UNPROVEN | declared inputs drifted | -
 
 why each cell reads as it does
-  abstraction-asks                      go         UNPROVEN  drifted     GATE recorded FAIL at openabstractions-flat/abstraction-asks@7e9ea82; the tree is openabstractions-flat/abstraction-asks@652b3243c
+  abstraction-asks                      go         UNPROVEN  drifted     GATE recorded FAIL at openabstractions-flat/abstraction-asks@7e9ea82; the tree is openabstractions-flat/abstraction-asks@e8eb5051a
   abstraction-asks                      python     UNPROVEN  unreached   openabstractions-flat/abstraction-asks/py exists with 0 test files and nothing the gate runs names it
   abstraction-asks                      cpp        UNPROVEN  unreached   openabstractions-flat/abstraction-asks/cpp exists with 0 test files and nothing the gate runs names it
   abstraction-asks                      rust       UNPROVEN  unreached   openabstractions-flat/abstraction-asks/rust exists with 0 test files and nothing the gate runs names it
-  abstraction-asks                      javascript UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-asks@26c5fc11; the tree is openabstractions-flat/abstraction-asks@652b3243c
-  abstraction-cas                       go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-cas@15cb201e; the tree is openabstractions-flat/abstraction-cas@15cb201e2
-  abstraction-cas                       python     UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-cas@15cb201e; the tree is openabstractions-flat/abstraction-cas@15cb201e2
-  abstraction-cas                       cpp        UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-cas@15cb201e; the tree is openabstractions-flat/abstraction-cas@15cb201e2
+  abstraction-asks                      javascript UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-asks@26c5fc11; the tree is openabstractions-flat/abstraction-asks@e8eb5051a
+  abstraction-cas                       go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-cas@15cb201e; the tree is openabstractions-flat/abstraction-cas@832cf4c92
+  abstraction-cas                       python     UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-cas@15cb201e; the tree is openabstractions-flat/abstraction-cas@832cf4c92
+  abstraction-cas                       cpp        UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-cas@15cb201e; the tree is openabstractions-flat/abstraction-cas@832cf4c92
   abstraction-cas                       rust       —         undeclared  no rust implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-cas
   abstraction-cas                       javascript —         undeclared  no javascript implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-cas
-  abstraction-config                    go         UNPROVEN  drifted     GATE recorded FAIL at openabstractions-flat/abstraction-config@9c4cbe5; the tree is openabstractions-flat/abstraction-config@0a69b278b
-  abstraction-config                    python     UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-config@91492d66; the tree is openabstractions-flat/abstraction-config@0a69b278b
+  abstraction-config                    go         UNPROVEN  drifted     GATE recorded FAIL at openabstractions-flat/abstraction-config@9c4cbe5; the tree is openabstractions-flat/abstraction-config@ff8ef6e64
+  abstraction-config                    python     UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-config@91492d66; the tree is openabstractions-flat/abstraction-config@ff8ef6e64
   abstraction-config                    cpp        UNPROVEN  unreached   openabstractions-flat/abstraction-config/cpp exists with 0 test files and nothing the gate runs names it
   abstraction-config                    rust       UNPROVEN  unreached   openabstractions-flat/abstraction-config/rust exists with 0 test files and nothing the gate runs names it
-  abstraction-config                    javascript UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-config@91492d66; the tree is openabstractions-flat/abstraction-config@0a69b278b
-  abstraction-credentials               go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-credentials@afa990a8; the tree is openabstractions-flat/abstraction-credentials@15f6c704c
+  abstraction-config                    javascript UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-config@91492d66; the tree is openabstractions-flat/abstraction-config@ff8ef6e64
+  abstraction-credentials               go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-credentials@afa990a8; the tree is openabstractions-flat/abstraction-credentials@315c52aaa
   abstraction-credentials               python     UNPROVEN  unreached   openabstractions-flat/abstraction-credentials/py exists with 0 test files and nothing the gate runs names it
   abstraction-credentials               cpp        UNPROVEN  unreached   openabstractions-flat/abstraction-credentials/cpp exists with 0 test files and nothing the gate runs names it
   abstraction-credentials               rust       UNPROVEN  unreached   openabstractions-flat/abstraction-credentials/rust exists with 0 test files and nothing the gate runs names it
   abstraction-credentials               javascript UNPROVEN  unreached   openabstractions-flat/abstraction-credentials/javascript exists with 0 test files and nothing the gate runs names it
-  abstraction-download                  go         UNPROVEN  drifted     GATE recorded FAIL at openabstractions-flat/abstraction-download@43ab3b5; the tree is openabstractions-flat/abstraction-download@47350341d
+  abstraction-download                  go         UNPROVEN  drifted     GATE recorded FAIL at openabstractions-flat/abstraction-download@43ab3b5; the tree is openabstractions-flat/abstraction-download@9e8ef688a
   abstraction-download                  python     UNPROVEN  unreached   openabstractions-flat/abstraction-download/py exists with 0 test files and nothing the gate runs names it
-  abstraction-download                  cpp        UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-download@43ab3b5; the tree is openabstractions-flat/abstraction-download@47350341d
+  abstraction-download                  cpp        UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-download@43ab3b5; the tree is openabstractions-flat/abstraction-download@9e8ef688a
   abstraction-download                  rust       UNPROVEN  unreached   openabstractions-flat/abstraction-download/rust exists with 0 test files and nothing the gate runs names it
-  abstraction-download                  javascript UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-download@500ab862; the tree is openabstractions-flat/abstraction-download@47350341d
-  abstraction-facade                    go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-facade@4fee870; the tree is openabstractions-flat/abstraction-facade@b7d5fc4cd
+  abstraction-download                  javascript UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-download@500ab862; the tree is openabstractions-flat/abstraction-download@9e8ef688a
+  abstraction-facade                    go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-facade@4fee870; the tree is openabstractions-flat/abstraction-facade@4a19dd211
   abstraction-facade                    python     UNPROVEN  unreached   openabstractions-flat/abstraction-facade/py exists with 3 test files and nothing the gate runs names it
-  abstraction-facade                    cpp        UNPROVEN  drifted     GATE recorded UNPROVEN at openabstractions-flat/abstraction-facade@b1fe7813; the tree is openabstractions-flat/abstraction-facade@b7d5fc4cd
+  abstraction-facade                    cpp        UNPROVEN  drifted     GATE recorded UNPROVEN at openabstractions-flat/abstraction-facade@b1fe7813; the tree is openabstractions-flat/abstraction-facade@4a19dd211
   abstraction-facade                    rust       UNPROVEN  unreached   openabstractions-flat/abstraction-facade/rust exists with 0 test files and nothing the gate runs names it
-  abstraction-facade                    javascript UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-facade@b1fe7813; the tree is openabstractions-flat/abstraction-facade@b7d5fc4cd
-  abstraction-identity                  go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-identity@b812381; the tree is openabstractions-flat/abstraction-identity@cc2d8bbcc
+  abstraction-facade                    javascript UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-facade@b1fe7813; the tree is openabstractions-flat/abstraction-facade@4a19dd211
+  abstraction-identity                  go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-identity@b812381; the tree is openabstractions-flat/abstraction-identity@812cd7fb5
   abstraction-identity                  python     UNPROVEN  unreached   openabstractions-flat/abstraction-identity/py exists with 3 test files and nothing the gate runs names it
-  abstraction-identity                  cpp        UNPROVEN  drifted     GATE recorded UNPROVEN at openabstractions-flat/abstraction-identity@10b33d6a; the tree is openabstractions-flat/abstraction-identity@cc2d8bbcc
+  abstraction-identity                  cpp        UNPROVEN  drifted     GATE recorded UNPROVEN at openabstractions-flat/abstraction-identity@10b33d6a; the tree is openabstractions-flat/abstraction-identity@812cd7fb5
   abstraction-identity                  rust       UNPROVEN  unreached   openabstractions-flat/abstraction-identity/rust exists with 1 test file and nothing the gate runs names it
-  abstraction-identity                  javascript UNPROVEN  drifted     GATE recorded UNPROVEN at openabstractions-flat/abstraction-identity@10b33d6a; the tree is openabstractions-flat/abstraction-identity@cc2d8bbcc
-  abstraction-inference                 go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-inference@58805907; the tree is openabstractions-flat/abstraction-inference@d0230f1c0
+  abstraction-identity                  javascript UNPROVEN  drifted     GATE recorded UNPROVEN at openabstractions-flat/abstraction-identity@10b33d6a; the tree is openabstractions-flat/abstraction-identity@812cd7fb5
+  abstraction-inference                 go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-inference@58805907; the tree is openabstractions-flat/abstraction-inference@00b2a5c03
   abstraction-inference                 python     UNPROVEN  unreached   openabstractions-flat/abstraction-inference/py exists with 0 test files and nothing the gate runs names it
   abstraction-inference                 cpp        UNPROVEN  unreached   openabstractions-flat/abstraction-inference/cpp exists with 0 test files and nothing the gate runs names it
   abstraction-inference                 rust       UNPROVEN  unreached   openabstractions-flat/abstraction-inference/rust exists with 0 test files and nothing the gate runs names it
   abstraction-inference                 javascript UNPROVEN  unreached   openabstractions-flat/abstraction-inference/javascript exists with 1 test file and nothing the gate runs names it
-  abstraction-job                       go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-job@30ffc73; the tree is openabstractions-flat/abstraction-job@840b5d20c
-  abstraction-job                       python     UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-job@fa004bed; the tree is openabstractions-flat/abstraction-job@840b5d20c
-  abstraction-job                       cpp        UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-job@30ffc73; the tree is openabstractions-flat/abstraction-job@840b5d20c
+  abstraction-job                       go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-job@30ffc73; the tree is openabstractions-flat/abstraction-job@9e95e1ffd
+  abstraction-job                       python     UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-job@fa004bed; the tree is openabstractions-flat/abstraction-job@9e95e1ffd
+  abstraction-job                       cpp        UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-job@30ffc73; the tree is openabstractions-flat/abstraction-job@9e95e1ffd
   abstraction-job                       rust       UNPROVEN  unreached   openabstractions-flat/abstraction-job/rust exists with 0 test files and nothing the gate runs names it
-  abstraction-job                       javascript UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-job@fa004bed; the tree is openabstractions-flat/abstraction-job@840b5d20c
-  abstraction-logging                   go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-logging@12a4d337; the tree is openabstractions-flat/abstraction-logging@7ac628384
-  abstraction-logging                   python     UNPROVEN  unreached   openabstractions-flat/abstraction-logging/py exists with 4 test files and nothing the gate runs names it
-  abstraction-logging                   cpp        UNPROVEN  drifted     GATE recorded UNPROVEN at openabstractions-flat/abstraction-logging@12a4d337; the tree is openabstractions-flat/abstraction-logging@7ac628384
-  abstraction-logging                   rust       UNPROVEN  unreached   openabstractions-flat/abstraction-logging/rust exists with 0 test files and nothing the gate runs names it
-  abstraction-logging                   javascript UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-logging@12a4d337; the tree is openabstractions-flat/abstraction-logging@7ac628384
-  abstraction-model                     go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-model@7cf857e; the tree is openabstractions-flat/abstraction-model@da1d64180
-  abstraction-model                     python     UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-model@c2ff2eac; the tree is openabstractions-flat/abstraction-model@da1d64180
-  abstraction-model                     cpp        UNPROVEN  drifted     GATE recorded UNPROVEN at openabstractions-flat/abstraction-model@c2ff2eac; the tree is openabstractions-flat/abstraction-model@da1d64180
+  abstraction-job                       javascript UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-job@fa004bed; the tree is openabstractions-flat/abstraction-job@9e95e1ffd
+  abstraction-logging                   go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-logging@12a4d337; the tree is openabstractions-flat/abstraction-logging@0d592e0e0
+  abstraction-logging                   python     UNPROVEN  unreached   openabstractions-flat/abstraction-logging/py exists with 5 test files and nothing the gate runs names it
+  abstraction-logging                   cpp        UNPROVEN  drifted     GATE recorded UNPROVEN at openabstractions-flat/abstraction-logging@12a4d337; the tree is openabstractions-flat/abstraction-logging@0d592e0e0
+  abstraction-logging                   rust       UNPROVEN  unreached   openabstractions-flat/abstraction-logging/rust exists with 1 test file and nothing the gate runs names it
+  abstraction-logging                   javascript UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-logging@12a4d337; the tree is openabstractions-flat/abstraction-logging@0d592e0e0
+  abstraction-model                     go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-model@7cf857e; the tree is openabstractions-flat/abstraction-model@28ac846eb
+  abstraction-model                     python     UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-model@c2ff2eac; the tree is openabstractions-flat/abstraction-model@28ac846eb
+  abstraction-model                     cpp        UNPROVEN  drifted     GATE recorded UNPROVEN at openabstractions-flat/abstraction-model@c2ff2eac; the tree is openabstractions-flat/abstraction-model@28ac846eb
   abstraction-model                     rust       UNPROVEN  unreached   openabstractions-flat/abstraction-model/rust exists with 0 test files and nothing the gate runs names it
-  abstraction-model                     javascript UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-model@c2ff2eac; the tree is openabstractions-flat/abstraction-model@da1d64180
-  abstraction-provider-modelbridge      go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-provider-modelbridge@6dbbd7f4; the tree is openabstractions-flat/abstraction-provider-modelbridge@94b8ba338
+  abstraction-model                     javascript UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-model@c2ff2eac; the tree is openabstractions-flat/abstraction-model@28ac846eb
+  abstraction-provider-kit              go         UNPROVEN  gate        the gate builds and tests openabstractions-flat/abstraction-provider-kit/go (10 test files) every run and records no per-cell result
+  abstraction-provider-kit              python     —         undeclared  no python implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-kit
+  abstraction-provider-kit              cpp        —         undeclared  no cpp implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-kit
+  abstraction-provider-kit              rust       —         undeclared  no rust implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-kit
+  abstraction-provider-kit              javascript —         undeclared  no javascript implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-kit
+  abstraction-provider-lemonade         go         UNPROVEN  gate        the gate builds and tests openabstractions-flat/abstraction-provider-lemonade/go (44 test files) every run and records no per-cell result
+  abstraction-provider-lemonade         python     —         undeclared  no python implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-lemonade
+  abstraction-provider-lemonade         cpp        —         undeclared  no cpp implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-lemonade
+  abstraction-provider-lemonade         rust       —         undeclared  no rust implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-lemonade
+  abstraction-provider-lemonade         javascript —         undeclared  no javascript implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-lemonade
+  abstraction-provider-localai          go         UNPROVEN  gate        the gate builds and tests openabstractions-flat/abstraction-provider-localai/go (6 test files) every run and records no per-cell result
+  abstraction-provider-localai          python     —         undeclared  no python implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-localai
+  abstraction-provider-localai          cpp        —         undeclared  no cpp implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-localai
+  abstraction-provider-localai          rust       —         undeclared  no rust implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-localai
+  abstraction-provider-localai          javascript —         undeclared  no javascript implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-localai
+  abstraction-provider-modelbridge      go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-provider-modelbridge@6dbbd7f4; the tree is openabstractions-flat/abstraction-provider-modelbridge@666a11483
   abstraction-provider-modelbridge      python     —         undeclared  no python implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-modelbridge
   abstraction-provider-modelbridge      cpp        —         undeclared  no cpp implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-modelbridge
   abstraction-provider-modelbridge      rust       —         undeclared  no rust implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-modelbridge
   abstraction-provider-modelbridge      javascript —         undeclared  no javascript implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-modelbridge
-  abstraction-provider-modelhost        go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-provider-modelhost@d6b45f99; the tree is openabstractions-flat/abstraction-provider-modelhost@d4ff5a5ec
+  abstraction-provider-modelhost        go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-provider-modelhost@d6b45f99; the tree is openabstractions-flat/abstraction-provider-modelhost@00e3e2a9d
   abstraction-provider-modelhost        python     —         undeclared  no python implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-modelhost
   abstraction-provider-modelhost        cpp        —         undeclared  no cpp implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-modelhost
   abstraction-provider-modelhost        rust       —         undeclared  no rust implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-modelhost
   abstraction-provider-modelhost        javascript —         undeclared  no javascript implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-modelhost
-  abstraction-resource                  go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-resource@748cfa08; the tree is openabstractions-flat/abstraction-resource@a8dcc0204
+  abstraction-provider-pytorch          go         UNPROVEN  gate        the gate builds and tests openabstractions-flat/abstraction-provider-pytorch/go (16 test files) every run and records no per-cell result
+  abstraction-provider-pytorch          python     —         undeclared  no python implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-pytorch
+  abstraction-provider-pytorch          cpp        —         undeclared  no cpp implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-pytorch
+  abstraction-provider-pytorch          rust       —         undeclared  no rust implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-pytorch
+  abstraction-provider-pytorch          javascript —         undeclared  no javascript implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-pytorch
+  abstraction-provider-thenoise         go         UNPROVEN  gate        the gate builds and tests openabstractions-flat/abstraction-provider-thenoise/go (17 test files) every run and records no per-cell result
+  abstraction-provider-thenoise         python     —         undeclared  no python implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-thenoise
+  abstraction-provider-thenoise         cpp        —         undeclared  no cpp implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-thenoise
+  abstraction-provider-thenoise         rust       —         undeclared  no rust implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-thenoise
+  abstraction-provider-thenoise         javascript —         undeclared  no javascript implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-provider-thenoise
+  abstraction-resource                  go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-resource@748cfa08; the tree is openabstractions-flat/abstraction-resource@0dfd3f88a
   abstraction-resource                  python     UNPROVEN  unreached   openabstractions-flat/abstraction-resource/py exists with 0 test files and nothing the gate runs names it
-  abstraction-resource                  cpp        UNPROVEN  drifted     GATE recorded UNPROVEN at openabstractions-flat/abstraction-resource@748cfa08; the tree is openabstractions-flat/abstraction-resource@a8dcc0204
+  abstraction-resource                  cpp        UNPROVEN  drifted     GATE recorded UNPROVEN at openabstractions-flat/abstraction-resource@748cfa08; the tree is openabstractions-flat/abstraction-resource@0dfd3f88a
   abstraction-resource                  rust       UNPROVEN  unreached   openabstractions-flat/abstraction-resource/rust exists with 0 test files and nothing the gate runs names it
   abstraction-resource                  javascript UNPROVEN  unreached   openabstractions-flat/abstraction-resource/javascript exists with 0 test files and nothing the gate runs names it
-  abstraction-rights                    go         UNPROVEN  drifted     GATE recorded FAIL at openabstractions-flat/abstraction-rights@6fff1f5; the tree is openabstractions-flat/abstraction-rights@e9b8f197c
+  abstraction-rights                    go         UNPROVEN  drifted     GATE recorded FAIL at openabstractions-flat/abstraction-rights@6fff1f5; the tree is openabstractions-flat/abstraction-rights@97fc56872
   abstraction-rights                    python     UNPROVEN  unreached   openabstractions-flat/abstraction-rights/py exists with 0 test files and nothing the gate runs names it
   abstraction-rights                    cpp        UNPROVEN  unreached   openabstractions-flat/abstraction-rights/cpp exists with 0 test files and nothing the gate runs names it
   abstraction-rights                    rust       UNPROVEN  unreached   openabstractions-flat/abstraction-rights/rust exists with 0 test files and nothing the gate runs names it
-  abstraction-rights                    javascript UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-rights@40736ed9; the tree is openabstractions-flat/abstraction-rights@e9b8f197c
-  abstraction-router                    go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-router@a56ecb2; the tree is openabstractions-flat/abstraction-router@6fa6d44e6
+  abstraction-rights                    javascript UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-rights@40736ed9; the tree is openabstractions-flat/abstraction-rights@97fc56872
+  abstraction-router                    go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-router@a56ecb2; the tree is openabstractions-flat/abstraction-router@19d9174b5
   abstraction-router                    python     UNPROVEN  unreached   openabstractions-flat/abstraction-router/py exists with 0 test files and nothing the gate runs names it
   abstraction-router                    cpp        UNPROVEN  unreached   openabstractions-flat/abstraction-router/cpp exists with 0 test files and nothing the gate runs names it
   abstraction-router                    rust       UNPROVEN  unreached   openabstractions-flat/abstraction-router/rust exists with 0 test files and nothing the gate runs names it
-  abstraction-router                    javascript UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-router@b13c0888; the tree is openabstractions-flat/abstraction-router@6fa6d44e6
-  abstraction-storage                   go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-storage@ce299996; the tree is openabstractions-flat/abstraction-storage@1a3b65adb
+  abstraction-router                    javascript UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-router@b13c0888; the tree is openabstractions-flat/abstraction-router@19d9174b5
+  abstraction-storage                   go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-storage@ce299996; the tree is openabstractions-flat/abstraction-storage@0f4c7c068
   abstraction-storage                   python     UNPROVEN  unreached   openabstractions-flat/abstraction-storage/py exists with 0 test files and nothing the gate runs names it
-  abstraction-storage                   cpp        UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-storage@ce299996; the tree is openabstractions-flat/abstraction-storage@1a3b65adb
+  abstraction-storage                   cpp        UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-storage@ce299996; the tree is openabstractions-flat/abstraction-storage@0f4c7c068
   abstraction-storage                   rust       UNPROVEN  unreached   openabstractions-flat/abstraction-storage/rust exists with 0 test files and nothing the gate runs names it
-  abstraction-storage                   javascript UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-storage@ce299996; the tree is openabstractions-flat/abstraction-storage@1a3b65adb
-  abstraction-storage-over-local-stores go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-storage-over-local-stores@1dcfabdd; the tree is openabstractions-flat/abstraction-storage-over-local-stores@f3b3996e6
+  abstraction-storage                   javascript UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-storage@ce299996; the tree is openabstractions-flat/abstraction-storage@0f4c7c068
+  abstraction-storage-over-local-stores go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-storage-over-local-stores@1dcfabdd; the tree is openabstractions-flat/abstraction-storage-over-local-stores@bc40cd189
   abstraction-storage-over-local-stores python     —         undeclared  no python implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-storage-over-local-stores
   abstraction-storage-over-local-stores cpp        —         undeclared  no cpp implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-storage-over-local-stores
   abstraction-storage-over-local-stores rust       —         undeclared  no rust implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-storage-over-local-stores
   abstraction-storage-over-local-stores javascript —         undeclared  no javascript implementation/client found; the inventory carries no row for openabstractions-flat/abstraction-storage-over-local-stores
-  abstraction-watch                     go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-watch@0a8596ad; the tree is openabstractions-flat/abstraction-watch@0a8596adf
-  abstraction-watch                     python     UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-watch@0a8596ad; the tree is openabstractions-flat/abstraction-watch@0a8596adf
-  abstraction-watch                     cpp        UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-watch@0a8596ad; the tree is openabstractions-flat/abstraction-watch@0a8596adf
+  abstraction-watch                     go         UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-watch@0a8596ad; the tree is openabstractions-flat/abstraction-watch@62239c4fa
+  abstraction-watch                     python     UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-watch@0a8596ad; the tree is openabstractions-flat/abstraction-watch@62239c4fa
+  abstraction-watch                     cpp        UNPROVEN  drifted     GATE recorded PASS at openabstractions-flat/abstraction-watch@0a8596ad; the tree is openabstractions-flat/abstraction-watch@62239c4fa
   abstraction-watch                     rust       —         none        no rust implementation/client found; no inventory claim establishes why it is missing
   abstraction-watch                     javascript —         none        no javascript implementation/client found; no inventory claim establishes why it is missing
 

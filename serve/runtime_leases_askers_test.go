@@ -42,8 +42,8 @@ func newAskerFixture(capacity int64) *askerFixture {
 	return &askerFixture{capacity: capacity, samples: map[string]int64{}, at: time.Now()}
 }
 
-func (f *askerFixture) Name() string          { return instrument.NameNone }
-func (f *askerFixture) Resources() []string   { return []string{instrument.Card0} }
+func (f *askerFixture) Name() string        { return instrument.NameNone }
+func (f *askerFixture) Resources() []string { return []string{instrument.Card0} }
 func (f *askerFixture) Read(resource string) (instrument.Reading, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

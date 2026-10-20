@@ -21,15 +21,17 @@ function mountPanel() {
   const panel = document.createElement("details");
   panel.style.cssText = "position:fixed;right:16px;bottom:80px;z-index:10000;background:#20242a;color:#fff;padding:12px;width:320px;border:1px solid #888;border-radius:8px;font:14px sans-serif";
   const title = document.createElement("summary");
-  title.textContent = "Demonstration: preview a sampling-steps edit";
+  title.textContent = "ComfyUI workflow change proposal";
   panel.append(title);
   const taskContext = document.createElement("p");
-  taskContext.textContent = "This ComfyUI demonstration lets you review a proposed change to a node’s sampling steps. Apply change updates the displayed target in this workflow.";
+  taskContext.textContent = "Review the request summary and exact workflow change here. Preview and Reveal do not edit the workflow. Apply proposed change is a separate action.";
+  const requestContext = document.createElement("p");
+  const workflowContext = document.createElement("p");
   const headline = document.createElement("strong");
   headline.style.cssText = "display:block;font-size:16px;margin:8px 0 4px";
   const state = document.createElement("p");
   state.style.cssText = "margin:0 0 8px";
-  panel.append(taskContext, headline, state);
+  panel.append(taskContext, requestContext, workflowContext, headline, state);
   const target = document.createElement("select");
   target.setAttribute("aria-label", "Node parameter");
   const value = document.createElement("input");
@@ -41,10 +43,11 @@ function mountPanel() {
   let targets = [], proposal, operation, bridgeSession, bridgeCredential, bridgeStop = false;
   const bridgeContext = () => {
     const active = app.workflowManager?.activeWorkflow;
-    const rawTitle = [active?.filename, active?.name, active?.path]
+    const rawTitle = [active?.name, active?.filename, active?.path]
       .find(value => typeof value === "string" && value.trim()) ?? "Untitled workflow";
+    const workflowLabel = rawTitle.split(/[\\/]/).filter(Boolean).at(-1) ?? "Untitled workflow";
     let title = "";
-    for (const character of rawTitle) {
+    for (const character of workflowLabel) {
       if (new TextEncoder().encode(title + character).length > 256) break;
       title += character;
     }
@@ -56,6 +59,12 @@ function mountPanel() {
   technical.append(technicalTitle, output);
   const show = result => {
     const description = describePresentation(result);
+    if (result.request_summary !== undefined || result.workflow_title !== undefined || result.outcome === "proposed") {
+      requestContext.textContent = result.request_summary
+        ? `Supplied request summary: “${result.request_summary}”`
+        : "No request summary was supplied with this preview.";
+      workflowContext.textContent = `Workflow: ${result.workflow_title || "Untitled workflow"}`;
+    }
     headline.textContent = description.headline;
     state.textContent = description.state;
     output.textContent = JSON.stringify(result, null, 2);
@@ -140,7 +149,7 @@ function mountPanel() {
           const args = command.arguments ?? {};
           proposal = demo.preview(args.node_id, args.widget, args.value, {
             instance: args.instance, context: args.context, revision: args.revision,
-          });
+          }, args.request_summary ?? "");
           if (proposal.outcome === "proposed") {
             const index = targets.findIndex(item => item.node === proposal.node && item.name === proposal.widget);
             if (index >= 0) {

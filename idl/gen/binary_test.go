@@ -51,16 +51,24 @@ func TestBinaryPython(t *testing.T) {
 	s := binaryDefinition(t)
 	dir := t.TempDir()
 	writeNamespaceFile(t, dir, "rec.py", genPy(s))
-	writeNamespaceFile(t, dir, "test.py", `import rec,base64
-for data in [None,b'',b'\x00',b'\xff\x00',bytes(range(256))]:
+	writeNamespaceFile(t, dir, "test.py", `import rec,base64,json
+for data in [None,b'',b'\x00',b'\xff\x00',bytes(range(256)),bytes(range(256))*256]:
  v=rec.Value();v.data=data
  raw=rec.encode(v);back=rec.decode(raw)
  assert back.data==data
  if data is not None: assert b'"'+base64.b64encode(data)+b'"' in raw
-for value in ['A','AA','AAA','AB==','AAB=','AA=A','====','AA==AAAA','AA-_']:
- try: rec.decode(('{"data":"'+value+'"}').encode())
- except rec.Refusal as e: assert e.word=='bad_binary',e
+for value in ['A','AA','AAA','AB==','AAB=','AA=A','====','AA==AAAA','AA-_',
+              'A===','AAAA=','AAAA====','AA===','AA== ',' AA==','A A=',
+              'AA==\n','AA==\t','AA==\u00a0','é','😀']:
+ try: rec.decode(json.dumps({'data':value},ensure_ascii=False).encode())
+ except rec.Refusal as e: assert e.word=='bad_binary' and e.offset==0,(value,e)
  else: raise AssertionError(value)
+for value in ['AA==','AAA=','AAAA']:
+ assert rec.decode(json.dumps({'data':value}).encode()).data==base64.b64decode(value)
+assert rec.decode(b'{"data":"\\u0041A=="}').data==b'\x00'
+try: rec.decode(b'{"data":"\\ud800"}')
+except rec.Refusal as e: assert e.word=='bad_string',e
+else: raise AssertionError('accepted lone surrogate')
 v=rec.Value();v.data='text'
 try:rec.encode(v)
 except rec.Refusal as e:assert e.word=='wrong_type'

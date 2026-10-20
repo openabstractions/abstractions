@@ -54,7 +54,7 @@ func TestModelsHostDeclaresTheCardItLoadsInto(t *testing.T) {
 		requestedProgram = short
 	}
 	settings := hostSettings{program: requestedProgram, endpoint: "modelhost-declares-card", engine: "llama-server", resource: "resource-endpoint"}
-	if err := declareHost(w, registry, list.Revision, settings, nil, "models host", io.Discard, false, "hosting"); err != nil {
+	if err := declareHost(w, registry, list, settings, []hostedModel{{Name: "tiny", Store: "fake", Object: "tiny"}}, "models host", io.Discard, false, "hosting"); err != nil {
 		t.Fatalf("declareHost: %v", err)
 	}
 
@@ -142,10 +142,18 @@ func TestADeclarationNamingACardGetsTheHoldRuleAndOneNamingNoneGetsNone(t *testi
 	if err != nil || read.Outcome.String() != "found" || !read.Record.Rule.Permit || read.Record.Why != providerAddWhy {
 		t.Fatalf("abstraction.resource/hold for the declared card: %+v %v", read, err)
 	}
+	// A card holder runs GPU work and holds the wake lease while it does
+	// (resource CONTRACT.md RES-G5, RES-A1).
+	read, err = operator.ReadRuleContext(call, held, resourceservice.ActionHold, resourceservice.ResourceAwake)
+	if err != nil || read.Outcome.String() != "found" || !read.Record.Rule.Permit || read.Record.Why != providerAddWhy {
+		t.Fatalf("abstraction.resource/hold on awake for the card holder: %+v %v", read, err)
+	}
 
 	unheld := rights.Subject{Account: account.Uid, Program: filepath.Clean(bystander)}
-	read, err = operator.ReadRuleContext(call, unheld, resourceservice.ActionHold, instrument.Card0)
-	if err != nil || read.Outcome.String() != "unknown" {
-		t.Fatalf("a declaration naming no resource wrote %+v %v", read, err)
+	for _, resource := range []string{instrument.Card0, resourceservice.ResourceAwake} {
+		read, err = operator.ReadRuleContext(call, unheld, resourceservice.ActionHold, resource)
+		if err != nil || read.Outcome.String() != "unknown" {
+			t.Fatalf("a declaration naming no resource wrote hold on %s: %+v %v", resource, read, err)
+		}
 	}
 }

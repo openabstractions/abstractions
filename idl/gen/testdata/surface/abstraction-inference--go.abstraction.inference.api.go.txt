@@ -107,6 +107,19 @@ func (StartOutcome) MarshalJSON() ([]byte, error)
 func (StartOutcome) UnmarshalJSON(data []byte) error
 func StartOutcomeValues() []StartOutcome
 func (StartOutcome) Known() bool
+type SelectionReason uint32
+const SelectionReasonExplicitModel
+const SelectionReasonPreferred
+const SelectionReasonPreferredRouteUnavailable
+func (SelectionReason) String() string
+func (SelectionReason) WireName() (string, bool)
+func ParseSelectionReason(word string) (SelectionReason, bool)
+func (SelectionReason) MarshalText() ([]byte, error)
+func (SelectionReason) UnmarshalText(text []byte) error
+func (SelectionReason) MarshalJSON() ([]byte, error)
+func (SelectionReason) UnmarshalJSON(data []byte) error
+func SelectionReasonValues() []SelectionReason
+func (SelectionReason) Known() bool
 type PageOutcome uint32
 const PageOutcomePage
 const PageOutcomeGap
@@ -139,6 +152,26 @@ func (CancelOutcome) MarshalJSON() ([]byte, error)
 func (CancelOutcome) UnmarshalJSON(data []byte) error
 func CancelOutcomeValues() []CancelOutcome
 func (CancelOutcome) Known() bool
+type PreloadOutcome uint32
+const PreloadOutcomeEvaluated
+const PreloadOutcomeLoaded
+const PreloadOutcomeBusy
+const PreloadOutcomeRefused
+const PreloadOutcomeNotPermitted
+const PreloadOutcomeUnsupportedFeature
+const PreloadOutcomeNoHost
+const PreloadOutcomeUnavailable
+const PreloadOutcomeInvalid
+const PreloadOutcomeForbidden
+func (PreloadOutcome) String() string
+func (PreloadOutcome) WireName() (string, bool)
+func ParsePreloadOutcome(word string) (PreloadOutcome, bool)
+func (PreloadOutcome) MarshalText() ([]byte, error)
+func (PreloadOutcome) UnmarshalText(text []byte) error
+func (PreloadOutcome) MarshalJSON() ([]byte, error)
+func (PreloadOutcome) UnmarshalJSON(data []byte) error
+func PreloadOutcomeValues() []PreloadOutcome
+func (PreloadOutcome) Known() bool
 type EmbedOutcome uint32
 const EmbedOutcomeCompleted
 const EmbedOutcomeRefused
@@ -242,6 +275,25 @@ func (ImageMode) MarshalJSON() ([]byte, error)
 func (ImageMode) UnmarshalJSON(data []byte) error
 func ImageModeValues() []ImageMode
 func (ImageMode) Known() bool
+type VideoState uint32
+const VideoStateQueued
+const VideoStateGenerating
+const VideoStateCompleted
+const VideoStateFailed
+const VideoStateCancelled
+const VideoStateUnknown
+const VideoStateInvalid
+const VideoStateForbidden
+const VideoStateUnavailable
+func (VideoState) String() string
+func (VideoState) WireName() (string, bool)
+func ParseVideoState(word string) (VideoState, bool)
+func (VideoState) MarshalText() ([]byte, error)
+func (VideoState) UnmarshalText(text []byte) error
+func (VideoState) MarshalJSON() ([]byte, error)
+func (VideoState) UnmarshalJSON(data []byte) error
+func VideoStateValues() []VideoState
+func (VideoState) Known() bool
 type ListOutcome uint32
 const ListOutcomePage
 const ListOutcomeInvalid
@@ -314,6 +366,33 @@ func (AuditOutcome) MarshalJSON() ([]byte, error)
 func (AuditOutcome) UnmarshalJSON(data []byte) error
 func AuditOutcomeValues() []AuditOutcome
 func (AuditOutcome) Known() bool
+type CandidatePlacement uint32
+const CandidatePlacementLocal
+const CandidatePlacementHosted
+func (CandidatePlacement) String() string
+func (CandidatePlacement) WireName() (string, bool)
+func ParseCandidatePlacement(word string) (CandidatePlacement, bool)
+func (CandidatePlacement) MarshalText() ([]byte, error)
+func (CandidatePlacement) UnmarshalText(text []byte) error
+func (CandidatePlacement) MarshalJSON() ([]byte, error)
+func (CandidatePlacement) UnmarshalJSON(data []byte) error
+func CandidatePlacementValues() []CandidatePlacement
+func (CandidatePlacement) Known() bool
+type SelectionReadOutcome uint32
+const SelectionReadOutcomeFound
+const SelectionReadOutcomeUnknown
+const SelectionReadOutcomeInvalid
+const SelectionReadOutcomeForbidden
+const SelectionReadOutcomeUnavailable
+func (SelectionReadOutcome) String() string
+func (SelectionReadOutcome) WireName() (string, bool)
+func ParseSelectionReadOutcome(word string) (SelectionReadOutcome, bool)
+func (SelectionReadOutcome) MarshalText() ([]byte, error)
+func (SelectionReadOutcome) UnmarshalText(text []byte) error
+func (SelectionReadOutcome) MarshalJSON() ([]byte, error)
+func (SelectionReadOutcome) UnmarshalJSON(data []byte) error
+func SelectionReadOutcomeValues() []SelectionReadOutcome
+func (SelectionReadOutcome) Known() bool
 type ServiceErrorCode string
 const ServiceErrorCodeHandlerError
 const ServiceErrorCodeInvalidResult
@@ -362,6 +441,20 @@ type Request struct
   RequiredExtensions []string
   Guarantees []RequestGuarantee
   Credential string
+type Target struct
+  Model string
+  SelectionPolicy string
+type RequestContent struct
+  Messages []Message
+  Tools []Tool
+  Options *Options
+  Extensions map[string]string
+  RequiredExtensions []string
+  Guarantees []RequestGuarantee
+  Credential string
+type RequestV2 struct
+  Target Target
+  Content RequestContent
 type Usage struct
   Input int64
   Output int64
@@ -403,6 +496,17 @@ type Admission struct
   RetentionMs int64
   IdleMs int64
   RetainedDeltas int64
+type AdmissionV2 struct
+  Outcome StartOutcome
+  Reason string
+  Operation string
+  Host string
+  Model string
+  RetentionMs int64
+  IdleMs int64
+  RetainedDeltas int64
+  PreferredModel string
+  SelectionReason *SelectionReason
 type DeltaPage struct
   Outcome PageOutcome
   Deltas []Delta
@@ -411,6 +515,12 @@ type DeltaPage struct
 type Cancellation struct
   Outcome CancelOutcome
   ReplyOutcome *ReplyOutcome
+type PreloadReply struct
+  Outcome PreloadOutcome
+  Reason string
+  Host string
+  Model string
+  Tokens int64
 type EmbedRequest struct
   Model string
   Inputs []string
@@ -512,6 +622,22 @@ type ImageRequest struct
   Credential string
   RequiredExtensions []string
   Extensions map[string]string
+type ImageRequestContent struct
+  Mode ImageMode
+  Prompt string
+  Size string
+  Count int64
+  ImageDigest string
+  ImageMediaType string
+  MaskDigest string
+  MaskMediaType string
+  Guarantees []RequestGuarantee
+  Credential string
+  RequiredExtensions []string
+  Extensions map[string]string
+type ImageRequestV2 struct
+  Target Target
+  Content ImageRequestContent
 type ImageProgress struct
   Percent int64
   Message string
@@ -527,6 +653,30 @@ type ImageReply struct
   Host string
   Model string
   Cost *Cost
+type VideoRequest struct
+  Model string
+  Prompt string
+  Size string
+  DurationMs int64
+  Fps int64
+  Seed int64
+  ImageDigest string
+  ImageMediaType string
+  RequiredExtensions []string
+  Extensions map[string]string
+  RequestID string
+type VideoAdmission struct
+  Outcome StartOutcome
+  Reason string
+  Operation string
+  RetentionMs int64
+type VideoObservation struct
+  Status VideoState
+  Step int64
+  Steps int64
+  QueuePosition int64
+  Reason string
+  Delivery *Delivery
 type CeilingLimit struct
   TokensPerDay int64
   MicrosPerDay int64
@@ -620,6 +770,22 @@ type GatewayChange struct
   Outcome EditOutcome
   Revision string
   Reason string
+type SelectionChange struct
+  Outcome EditOutcome
+  Revision string
+  Reason string
+type SelectionCandidateV2 struct
+  Model string
+  Placement CandidatePlacement
+  Credential string
+  Provider string
+type SelectionPolicyV2 struct
+  Name string
+  Candidates []SelectionCandidateV2
+type SelectionReadV2 struct
+  Outcome SelectionReadOutcome
+  Revision string
+  Policy *SelectionPolicyV2
 func Encode(v *Request) []byte
 type Refusal struct
   Word string
@@ -663,6 +829,38 @@ func (ChatDispatcher) DescribeServiceMetadata() (guarantees []string, capabiliti
 func (ChatDispatcher) ServiceContract() string
 func (ChatDispatcher) WriteFrame(frame []byte) error
 func (ChatDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type ChatV2 interface
+  Start(request RequestV2) (AdmissionV2, error)
+  Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (DeltaPage, error)
+  Cancel(operation string) (Cancellation, error)
+type ChatV2Transport interface
+  FrameExchanger
+type ChatV2Client struct
+func NewChatV2Client(t ChatV2Transport) *ChatV2Client
+type ChatV2Dispatcher struct
+  Handler ChatV2
+func (ChatV2Client) Start(request RequestV2) (result AdmissionV2, err error)
+func (ChatV2Client) Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (result DeltaPage, err error)
+func (ChatV2Client) Cancel(operation string) (result Cancellation, err error)
+func (ChatV2Dispatcher) DescribeService() (contract string, ready bool, why string)
+func (ChatV2Dispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (ChatV2Dispatcher) ServiceContract() string
+func (ChatV2Dispatcher) WriteFrame(frame []byte) error
+func (ChatV2Dispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type Preloader interface
+  Preload(request Request) (PreloadReply, error)
+type PreloaderTransport interface
+  FrameExchanger
+type PreloaderClient struct
+func NewPreloaderClient(t PreloaderTransport) *PreloaderClient
+type PreloaderDispatcher struct
+  Handler Preloader
+func (PreloaderClient) Preload(request Request) (result PreloadReply, err error)
+func (PreloaderDispatcher) DescribeService() (contract string, ready bool, why string)
+func (PreloaderDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (PreloaderDispatcher) ServiceContract() string
+func (PreloaderDispatcher) WriteFrame(frame []byte) error
+func (PreloaderDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type Embedder interface
   Embed(request EmbedRequest) (Embeddings, error)
 type EmbedderTransport interface
@@ -753,6 +951,42 @@ func (ImageDispatcher) DescribeServiceMetadata() (guarantees []string, capabilit
 func (ImageDispatcher) ServiceContract() string
 func (ImageDispatcher) WriteFrame(frame []byte) error
 func (ImageDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type ImageV2 interface
+  Start(request ImageRequestV2) (AdmissionV2, error)
+  Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (DeltaPage, error)
+  Cancel(operation string) (Cancellation, error)
+type ImageV2Transport interface
+  FrameExchanger
+type ImageV2Client struct
+func NewImageV2Client(t ImageV2Transport) *ImageV2Client
+type ImageV2Dispatcher struct
+  Handler ImageV2
+func (ImageV2Client) Start(request ImageRequestV2) (result AdmissionV2, err error)
+func (ImageV2Client) Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (result DeltaPage, err error)
+func (ImageV2Client) Cancel(operation string) (result Cancellation, err error)
+func (ImageV2Dispatcher) DescribeService() (contract string, ready bool, why string)
+func (ImageV2Dispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (ImageV2Dispatcher) ServiceContract() string
+func (ImageV2Dispatcher) WriteFrame(frame []byte) error
+func (ImageV2Dispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type Video interface
+  Start(request VideoRequest) (VideoAdmission, error)
+  Observe(operation string) (VideoObservation, error)
+  Cancel(operation string) (Cancellation, error)
+type VideoTransport interface
+  FrameExchanger
+type VideoClient struct
+func NewVideoClient(t VideoTransport) *VideoClient
+type VideoDispatcher struct
+  Handler Video
+func (VideoClient) Start(request VideoRequest) (result VideoAdmission, err error)
+func (VideoClient) Observe(operation string) (result VideoObservation, err error)
+func (VideoClient) Cancel(operation string) (result Cancellation, err error)
+func (VideoDispatcher) DescribeService() (contract string, ready bool, why string)
+func (VideoDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (VideoDispatcher) ServiceContract() string
+func (VideoDispatcher) WriteFrame(frame []byte) error
+func (VideoDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type Operator interface
   Hosts() (HostList, error)
   AddHost(expectedRevision string, host HostEntry) (HostChange, error)
@@ -783,3 +1017,21 @@ func (OperatorDispatcher) DescribeServiceMetadata() (guarantees []string, capabi
 func (OperatorDispatcher) ServiceContract() string
 func (OperatorDispatcher) WriteFrame(frame []byte) error
 func (OperatorDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type SelectionOperatorV2 interface
+  Read(targetProgram, name string) (SelectionReadV2, error)
+  Put(targetProgram, expectedRevision string, policy SelectionPolicyV2) (SelectionChange, error)
+  DeletePolicy(targetProgram, expectedRevision, name string) (SelectionChange, error)
+type SelectionOperatorV2Transport interface
+  FrameExchanger
+type SelectionOperatorV2Client struct
+func NewSelectionOperatorV2Client(t SelectionOperatorV2Transport) *SelectionOperatorV2Client
+type SelectionOperatorV2Dispatcher struct
+  Handler SelectionOperatorV2
+func (SelectionOperatorV2Client) Read(targetProgram, name string) (result SelectionReadV2, err error)
+func (SelectionOperatorV2Client) Put(targetProgram, expectedRevision string, policy SelectionPolicyV2) (result SelectionChange, err error)
+func (SelectionOperatorV2Client) DeletePolicy(targetProgram, expectedRevision, name string) (result SelectionChange, err error)
+func (SelectionOperatorV2Dispatcher) DescribeService() (contract string, ready bool, why string)
+func (SelectionOperatorV2Dispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (SelectionOperatorV2Dispatcher) ServiceContract() string
+func (SelectionOperatorV2Dispatcher) WriteFrame(frame []byte) error
+func (SelectionOperatorV2Dispatcher) ExchangeFrame(frame []byte) ([]byte, error)

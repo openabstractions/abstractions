@@ -175,9 +175,28 @@ struct ResultRead {
   1: required ResultOutcome outcome
   2: optional ResultChunk chunk (omit = "absent")
 } (unknown_fields = "refuse", doc="Exactly data carries a chunk; other outcomes forbid it. Only complete immutable results produce data. Incomplete work is not_ready; missing completed bytes are unavailable. Unsupported access, unknown identity, forbidden access and invalid bounds remain distinct.")
+enum LinkOutcome {
+  1: linked
+  2: not_ready
+  3: unavailable
+  4: unsupported
+  5: unknown
+  6: forbidden
+  7: invalid
+  8: exists
+  9: other_volume
+  10: no_hard_links
+  11: remote
+} (unknown = "refuse",reader="act")
+struct ResultLink {
+  1: required LinkOutcome outcome
+  2: optional Receipt receipt (omit = "absent")
+  3: required i64 size
+} (unknown_fields = "refuse", doc="Exactly linked carries the original receipt and the result's size in bytes; other outcomes forbid a receipt and carry size zero. Linked means the destination is a second name for the provider's own verified result bytes; the provider keeps its name and retention. Other_volume and no_hard_links name why no hard link could be made; remote refuses a caller without receiver-verified local peer evidence, which keeps reading with ReadResult; exists names a destination already present, which stays as it was (JOB-A17).")
 service OperationControl {
   ObservationResult ObserveWork(1: RequestIdentity identity) (doc="Observe in the original authenticated acceptance scope. Absent identities remain unsealed; may recover an already accepted journal.")
   ResultRead ReadResult(1: RequestIdentity identity, 2: i64 offset, 3: i64 max_bytes) (doc="Read complete immutable bytes without exposing paths. Offset must be nonnegative; max_bytes must be in 1..65536. Data obeys ResultChunk bounds. Absence, failure, incomplete work and transport errors are never EOF. This read never seals an absent identity.")
+  ResultLink LinkResult(1: RequestIdentity identity, 2: string destination) (doc="Hard-link a complete result to destination for a local caller on this machine, under the caller's own authority to create that path, and never copy it. Destination is an absolute clean path of 1..4096 bytes whose parent directory exists, outside the provider's own root, and that does not exist yet. This call never seals an absent identity (JOB-A17).")
 } (wire_name = "abstraction.job/operations@1", doc="Observation and result access use the same authenticated caller scope and request identity as RecoverableAcceptance despite their separate service wire identity. Existing acceptance methods and wire contract remain unchanged.")
 
 

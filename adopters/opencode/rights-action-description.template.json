@@ -1,0 +1,10 @@
+{
+  "action": "opencode/log-source.share",
+  "feature_app": {
+    "account": "<actual account ID>",
+    "program": "<final installed absolute OpenCode executable>"
+  },
+  "app_label": "OpenCode",
+  "description": "Share event contents from the named log source with OpenCode's assistant model; that model may be hosted",
+  "declared_risk": "sensitive"
+}

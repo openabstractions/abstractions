@@ -1,15 +1,16 @@
-// Command gen builds the Panel's Windows icon and resource script from the
-// brand mark, and — on Windows, with -syso — compiles the linkable resource
-// objects go build picks up on its own.
+// Command gen builds the Panel's native application icons and resource script
+// from the brand mark, and — on Windows, with -syso — compiles the linkable
+// resource objects go build picks up on its own.
 //
 // Default run (any OS, standard library only):
 //
 //	go run ./monitor/icon/gen
 //
-// reads openabstractions-flat/openabstractions.github.io/brand/mark-*.png,
-// copies the sizes the brand ships as-is and derives the rest by box-average
-// downscaling, writes them beside this program's package
-// (monitor/icon/mark-<n>.png), packs them into monitor/icon/panel.ico, and
+// reads openabstractions-flat/openabstractions.github.io/brand/mark-512.png,
+// places the existing mark on a pale rounded plate for contrast on either
+// desktop theme, and derives the native sizes by area-average downscaling.
+// It writes them beside this program's package (monitor/icon/mark-<n>.png),
+// packs them into monitor/icon/panel.ico and panel.icns, and
 // writes monitor/panel.rc referencing that ICO, monitor/panel.manifest and a
 // VERSIONINFO block.
 //
@@ -31,7 +32,9 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
 	"image/png"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -45,19 +48,9 @@ import (
 // and wherever monitor grows a real version source.
 const panelVersion = "0.3.0"
 
-// iconSizes are the ICO's entries, in the brand's own preferred order
-// (small to large). sourceSize names the brand mark PNG each is built from;
-// a size equal to its source is a byte-for-byte copy, everything else is a
-// downscale of that source.
-var iconSizes = []struct{ size, sourceSize int }{
-	{16, 16},
-	{24, 32},
-	{32, 32},
-	{48, 64},
-	{64, 64},
-	{128, 256},
-	{256, 256},
-}
+// nativeSizes include the Windows ICO sizes and macOS's largest source size.
+// ICO entries stop at 256; the 512 image belongs to the ICNS and PNG outputs.
+var nativeSizes = []int{16, 24, 32, 48, 64, 128, 256, 512}
 
 func main() {
 	syso := flag.Bool("syso", false, "compile monitor/rsrc_windows_amd64.syso and monitor/rsrc_windows_arm64.syso from monitor/panel.rc via rc.exe and cvtres.exe (Windows only; run the default generation first)")
@@ -105,53 +98,44 @@ func layout() (iconDir, monitorDir string, err error) {
 	return iconDir, monitorDir, nil
 }
 
-// generateAssets copies and resamples the brand mark into iconDir, packs
-// panel.ico there, and writes monitorDir/panel.rc.
+// generateAssets plates and resamples the brand mark into iconDir, packs
+// panel.ico and panel.icns there, and writes monitorDir/panel.rc.
 func generateAssets(brandDir, iconDir, monitorDir string) error {
-	bySource := map[int]image.Image{}
-	sourcePaths := map[int]string{}
-	for _, e := range iconSizes {
-		sourcePaths[e.sourceSize] = filepath.Join(brandDir, fmt.Sprintf("mark-%d.png", e.sourceSize))
+	sourcePath := filepath.Join(brandDir, "mark-512.png")
+	source, err := loadPNG(sourcePath)
+	if err != nil {
+		return fmt.Errorf("load brand mark: %w", err)
 	}
-	for size, path := range sourcePaths {
-		img, err := loadPNG(path)
-		if err != nil {
-			return fmt.Errorf("load brand mark: %w", err)
-		}
-		b := img.Bounds()
-		if b.Dx() != size || b.Dy() != size {
-			return fmt.Errorf("%s: is %dx%d, want %dx%d", path, b.Dx(), b.Dy(), size, size)
-		}
-		bySource[size] = img
+	if b := source.Bounds(); b.Dx() != 512 || b.Dy() != 512 {
+		return fmt.Errorf("%s: is %dx%d, want 512x512", sourcePath, b.Dx(), b.Dy())
 	}
+	plated := plateMark(source)
 
 	if err := os.MkdirAll(iconDir, 0o755); err != nil {
 		return err
 	}
 
 	var entries []builtIcon
-	for _, e := range iconSizes {
-		out := filepath.Join(iconDir, fmt.Sprintf("mark-%d.png", e.size))
-		var data []byte
-		var err error
-		if e.size == e.sourceSize {
-			data, err = os.ReadFile(sourcePaths[e.sourceSize])
-			if err != nil {
-				return err
-			}
-		} else {
-			resized := boxDownscale(bySource[e.sourceSize], e.size, e.size)
-			var buf bytes.Buffer
-			enc := png.Encoder{CompressionLevel: png.BestCompression}
-			if err := enc.Encode(&buf, resized); err != nil {
-				return fmt.Errorf("encode mark-%d.png: %w", e.size, err)
-			}
-			data = buf.Bytes()
+	bySize := map[int][]byte{}
+	for _, size := range nativeSizes {
+		out := filepath.Join(iconDir, fmt.Sprintf("mark-%d.png", size))
+		img := plated
+		if size != 512 {
+			img = boxDownscale(plated, size, size)
 		}
+		var buf bytes.Buffer
+		enc := png.Encoder{CompressionLevel: png.BestCompression}
+		if err := enc.Encode(&buf, img); err != nil {
+			return fmt.Errorf("encode mark-%d.png: %w", size, err)
+		}
+		data := buf.Bytes()
 		if err := os.WriteFile(out, data, 0o644); err != nil {
 			return err
 		}
-		entries = append(entries, builtIcon{e.size, data})
+		bySize[size] = data
+		if size <= 256 {
+			entries = append(entries, builtIcon{size, data})
+		}
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].size < entries[j].size })
 
@@ -160,6 +144,11 @@ func generateAssets(brandDir, iconDir, monitorDir string) error {
 		return fmt.Errorf("write panel.ico: %w", err)
 	}
 	fmt.Printf("wrote %s (%d entries)\n", icoPath, len(entries)) //unchecked: a build tool's progress line on stdout; a failed write there changes nothing it produced
+	icnsPath := filepath.Join(iconDir, "panel.icns")
+	if err := writeICNS(icnsPath, bySize); err != nil {
+		return fmt.Errorf("write panel.icns: %w", err)
+	}
+	fmt.Println("wrote", icnsPath) //unchecked: a build tool's progress line on stdout; a failed write there changes nothing it produced
 
 	rcPath := filepath.Join(monitorDir, "panel.rc")
 	if err := writeRC(rcPath); err != nil {
@@ -178,45 +167,103 @@ func loadPNG(path string) (image.Image, error) {
 	return png.Decode(f)
 }
 
-// boxDownscale resamples src to exactly w by h by averaging, in straight
-// (non-premultiplied) alpha space, every source pixel each destination
-// pixel covers. It is a plain area-average filter — the standard library's
-// image/draw does not resample at all, only compositing pixel-for-pixel —
-// good enough for shrinking a flat-color brand mark by the small factors an
-// icon needs (32 to 24, 64 to 48, 256 to 128).
+// plateMark carries a stable light ground behind the original dark artwork.
+// The plate has a 2.5% outer inset and an 18% corner radius. The unchanged
+// artwork occupies 93.75% of its source square, leaving its strokes inside
+// the plate. Subpixel coverage keeps the transparent corners smooth.
+func plateMark(src image.Image) *image.NRGBA {
+	const size = 512
+	dst := image.NewNRGBA(image.Rect(0, 0, size, size))
+	const inset = size * 0.025
+	const radius = size * 0.18
+	const edge = size - inset
+	const samples = 8
+	for y := 0; y < size; y++ {
+		for x := 0; x < size; x++ {
+			inside := 0
+			for yy := 0; yy < samples; yy++ {
+				for xx := 0; xx < samples; xx++ {
+					px := float64(x) + (float64(xx)+0.5)/samples
+					py := float64(y) + (float64(yy)+0.5)/samples
+					if px < inset || px > edge || py < inset || py > edge {
+						continue
+					}
+					cx := math.Max(inset+radius, math.Min(edge-radius, px))
+					cy := math.Max(inset+radius, math.Min(edge-radius, py))
+					if (px-cx)*(px-cx)+(py-cy)*(py-cy) <= radius*radius {
+						inside++
+					}
+				}
+			}
+			dst.SetNRGBA(x, y, color.NRGBA{R: 0xf4, G: 0xf7, B: 0xfb, A: uint8((inside*255 + samples*samples/2) / (samples * samples))})
+		}
+	}
+	mark := boxDownscale(src, 480, 480)
+	draw.Draw(dst, image.Rect(16, 16, 496, 496), mark, mark.Bounds().Min, draw.Over)
+	return dst
+}
+
+// boxDownscale uses area-weighted premultiplied alpha. Transparent corner
+// pixels cannot darken the pale edge, and fractional ratios (512 to 24 or
+// 48) cover every source pixel evenly.
 func boxDownscale(src image.Image, w, h int) *image.NRGBA {
 	sb := src.Bounds()
 	sw, sh := sb.Dx(), sb.Dy()
 	dst := image.NewNRGBA(image.Rect(0, 0, w, h))
 	for y := 0; y < h; y++ {
-		sy0 := y * sh / h
-		sy1 := (y + 1) * sh / h
-		if sy1 <= sy0 {
-			sy1 = sy0 + 1
-		}
+		sy0 := float64(y) * float64(sh) / float64(h)
+		sy1 := float64(y+1) * float64(sh) / float64(h)
 		for x := 0; x < w; x++ {
-			sx0 := x * sw / w
-			sx1 := (x + 1) * sw / w
-			if sx1 <= sx0 {
-				sx1 = sx0 + 1
-			}
-			var r, g, b, a, n uint64
-			for yy := sy0; yy < sy1; yy++ {
-				for xx := sx0; xx < sx1; xx++ {
+			sx0 := float64(x) * float64(sw) / float64(w)
+			sx1 := float64(x+1) * float64(sw) / float64(w)
+			var r, g, b, a float64
+			for yy := int(math.Floor(sy0)); yy < int(math.Ceil(sy1)); yy++ {
+				for xx := int(math.Floor(sx0)); xx < int(math.Ceil(sx1)); xx++ {
+					weight := (math.Min(sx1, float64(xx+1)) - math.Max(sx0, float64(xx))) *
+						(math.Min(sy1, float64(yy+1)) - math.Max(sy0, float64(yy)))
 					c := color.NRGBAModel.Convert(src.At(sb.Min.X+xx, sb.Min.Y+yy)).(color.NRGBA)
-					r += uint64(c.R)
-					g += uint64(c.G)
-					b += uint64(c.B)
-					a += uint64(c.A)
-					n++
+					alpha := float64(c.A) * weight
+					r += float64(c.R) * alpha
+					g += float64(c.G) * alpha
+					b += float64(c.B) * alpha
+					a += alpha
 				}
 			}
-			dst.SetNRGBA(x, y, color.NRGBA{
-				R: uint8(r / n), G: uint8(g / n), B: uint8(b / n), A: uint8(a / n),
-			})
+			if a > 0 {
+				dst.SetNRGBA(x, y, color.NRGBA{
+					R: uint8(math.Round(r / a)), G: uint8(math.Round(g / a)), B: uint8(math.Round(b / a)),
+					A: uint8(math.Round(a / ((sx1 - sx0) * (sy1 - sy0)))),
+				})
+			}
 		}
 	}
 	return dst
+}
+
+// writeICNS stores the native PNGs in modern ICNS chunks. Each big-endian
+// chunk length includes its eight-byte header, as does the container length.
+// The retina entries carry the same images the previous iconutil iconset
+// recipe used; the source artwork's largest representation is 512 pixels.
+func writeICNS(path string, bySize map[int][]byte) error {
+	var payload bytes.Buffer
+	for _, e := range []struct {
+		kind string
+		size int
+	}{
+		{"icp4", 16}, {"icp5", 32}, {"icp6", 64},
+		{"ic07", 128}, {"ic08", 256}, {"ic09", 512},
+		{"ic11", 32}, {"ic12", 64}, {"ic13", 256}, {"ic14", 512},
+	} {
+		data := bySize[e.size]
+		payload.WriteString(e.kind)                                   //unchecked: a write into a bytes.Buffer cannot fail
+		binary.Write(&payload, binary.BigEndian, uint32(len(data)+8)) //unchecked: a write into a bytes.Buffer cannot fail
+		payload.Write(data)                                           //unchecked: a write into a bytes.Buffer cannot fail
+	}
+	var buf bytes.Buffer
+	buf.WriteString("icns")                                       //unchecked: a write into a bytes.Buffer cannot fail
+	binary.Write(&buf, binary.BigEndian, uint32(payload.Len()+8)) //unchecked: a write into a bytes.Buffer cannot fail
+	buf.Write(payload.Bytes())                                    //unchecked: a write into a bytes.Buffer cannot fail
+	return os.WriteFile(path, buf.Bytes(), 0o644)
 }
 
 // builtIcon is one generated ICO entry: its pixel size and the PNG bytes

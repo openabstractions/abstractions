@@ -67,11 +67,6 @@ func TestEnvironmentEndpointHonoredPerCommand(t *testing.T) {
 			err := providerCommand([]string{"list", "--timeout", "2s"}, &out, &diag)
 			return diag.String(), err
 		}},
-		{"opencode", func() (string, error) {
-			var out, diag bytes.Buffer
-			err := opencodeCommand([]string{"configure", "--dry-run", "--timeout", "2s"}, &out, &diag)
-			return diag.String(), err
-		}},
 	}
 	for _, c := range commands {
 		t.Run(c.name, func(t *testing.T) {

@@ -11,7 +11,29 @@ import (
 	"time"
 
 	"golang.org/x/sys/windows"
+
+	identity "github.com/openabstractions/abstraction-identity"
 )
+
+// An image identity refuses blocks the upgrade: the question could not be
+// asked, so it fails closed (ID-F1).
+func TestImageOnARefusedDriveBlocksTheUpgrade(t *testing.T) {
+	restore := identity.TreatDriveAsNetwork('Y')
+	defer restore()
+	local := t.TempDir()
+	for _, c := range [][2]string{
+		{`Y:\OpenAbstractions\serve.exe`, `Y:\OpenAbstractions`},
+		{`Y:\elsewhere\app.exe`, local},
+		{filepath.Join(local, "serve.exe"), `Y:\OpenAbstractions`},
+	} {
+		if !insideFolder(c[0], c[1]) {
+			t.Errorf("insideFolder(%q, %q) = false; a refused path must block", c[0], c[1])
+		}
+	}
+	if insideFolder(filepath.Join(t.TempDir(), "app.exe"), local) {
+		t.Error("a local image outside the folder blocked the upgrade")
+	}
+}
 
 const (
 	testFolder    = `C:\Users\oa-test\AppData\Local\Programs\OpenAbstractions`
@@ -283,6 +305,7 @@ func TestUpgradeServiceArguments(t *testing.T) {
 		{[]string{"upgrade-check"}, serviceRequest{command: "upgrade-check"}},
 		{[]string{"start", "--machine"}, serviceRequest{command: "start", scope: "machine"}},
 		{[]string{"start", "--related", codeA}, serviceRequest{command: "start", scope: "user", related: codeA}},
+		{[]string{"remove-sandboxes"}, serviceRequest{command: "remove-sandboxes", scope: "user"}},
 	} {
 		got, err := serviceArguments(tc.args)
 		if err != nil || got != tc.want {
@@ -296,6 +319,7 @@ func TestUpgradeServiceArguments(t *testing.T) {
 		{"end-upgrade"}, {"end-upgrade", "--user", "extra"}, {"upgrade-check", "--user"},
 		{"start"}, {"start", "--runtime"}, {"start", "--related"}, {"start", "--related", ""},
 		{"start", "--machine", "extra"}, {"start", "--user"}, {"start", "--related", codeA, "--user", testFolder},
+		{"remove-sandboxes", "--user"}, {"remove-sandboxes", "extra"},
 	} {
 		if _, err := serviceArguments(args); err == nil {
 			t.Fatalf("accepted %v", args)

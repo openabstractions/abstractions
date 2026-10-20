@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	asks "github.com/openabstractions/abstraction-asks/go"
 	"github.com/openabstractions/abstraction-facade/go/client"
 	identity "github.com/openabstractions/abstraction-identity"
 	inference "github.com/openabstractions/abstraction-inference/go"
@@ -111,12 +112,7 @@ func TestRuntimeGatewayWindowServesAKeyedProgram(t *testing.T) {
 		{filepath.Join(options.stateDir, "credentials", credentialsBackendFile), "file-0600\n"},
 		{filepath.Join(options.stateDir, "inference", inferenceHostsFile), `{"local":[]}`},
 	} {
-		if err := os.MkdirAll(filepath.Dir(file.path), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(file.path, []byte(file.body), 0o600); err != nil {
-			t.Fatal(err)
-		}
+		writeStateFile(t, file.path, file.body)
 	}
 	_, _, namespace, err := credentialsEndpoints(options)
 	if err != nil {
@@ -134,6 +130,7 @@ func TestRuntimeGatewayWindowServesAKeyedProgram(t *testing.T) {
 		t.Fatalf("startup: %v", err)
 	case <-time.After(runtimeWait):
 		cancel()
+		dumpGoroutines()
 		t.Fatalf("runtime not ready within %v", runtimeWait)
 	}
 	t.Cleanup(func() {
@@ -203,7 +200,7 @@ func TestRuntimeGatewayWindowServesAKeyedProgram(t *testing.T) {
 		// Private development keeps the canonical fixture with the inference
 		// gateway. Publication copies that same file into serve/testdata so a
 		// standalone charter checkout exercises the identical client.
-		script = filepath.Join("..", "openabstractions-flat", "abstraction-inference", "adapters", "go", "gateway", "testdata", "llm_style.py")
+		script = privateInput(t, "..", "openabstractions-flat", "abstraction-inference", "adapters", "go", "gateway", "testdata", "llm_style.py")
 	}
 	llm := func() (map[string]any, int) {
 		cmd := exec.Command(pythonExe, append(pythonArgs, script, "http://"+options.gateway+"/v1", issued.Key, "fixture-chat:1b")...)
@@ -224,6 +221,27 @@ func TestRuntimeGatewayWindowServesAKeyedProgram(t *testing.T) {
 	}
 	if result, code := llm(); code != 3 || result["status"] != 403.0 || !strings.Contains(fmt.Sprint(result["body"]), "rights:not_granted") {
 		t.Fatalf("before a complete rule: exit %d %v", code, result)
+	}
+	// The window verifies its loopback caller's code at bind and decides with
+	// that peer: the first-use question the refusal admitted records the
+	// publisher the native pipe binds for the same interpreter (ASK-A6). A
+	// loopback peer outside Windows carries no code evidence (identity ID-T4).
+	want := asks.Publisher{}
+	if runtime.GOOS == "windows" {
+		_, _, _, want = pythonPublisher(t)
+	}
+	asked := false
+	for _, q := range pendingFirstUse(t, options) {
+		if !samePrograms(q.About, program) {
+			continue
+		}
+		asked = true
+		if publisher, trusted := questionPublisher(t, options, q.ID); publisher != want.Subject || trusted != want.Trusted {
+			t.Fatalf("a window question records publisher %q trusted=%v, want %+v", publisher, trusted, want)
+		}
+	}
+	if !asked {
+		t.Fatal("the window's not_granted refusal admitted no first-use question")
 	}
 	setCompleteRule(t, options.endpoint, program, "ollama", true)
 	if result, code := llm(); code != 0 || result["text"] != "Hello through the runtime" {

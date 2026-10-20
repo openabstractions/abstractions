@@ -84,6 +84,8 @@ func modelsFrom(families []routerwire.Family) []Model {
 			}
 		}
 		slices.Sort(m.Aliases)
+		// The router lists a name once per server serving it (ROUTE-D7).
+		m.Aliases = slices.Compact(m.Aliases)
 		for profile := range profiles {
 			m.Profiles = append(m.Profiles, profile)
 		}
@@ -333,8 +335,8 @@ func (o *OA) Submit(ctx context.Context, in JobSubmitInput) (JobSubmitOutput, er
 	if in.RequestKey == "" || len(in.RequestKey) > 128 || !utf8.ValidString(in.RequestKey) || in.Model == "" || in.Prompt == "" || len(in.Model) > 256 || len(in.Prompt) > 65536 || (in.Profile != "image_batch" && in.Profile != "video") {
 		return JobSubmitOutput{}, errors.New("gateway: invalid durable inference request")
 	}
-	if in.Hosting != "hosted" || !credentialName(in.Credential) {
-		return JobSubmitOutput{}, errors.New("gateway: durable inference requires hosted routing and an authorized named credential")
+	if err := jobRouting(in); err != nil {
+		return JobSubmitOutput{}, err
 	}
 	if in.Count == 0 {
 		in.Count = 1
@@ -422,10 +424,53 @@ func (o *OA) reconcileOrSubmit(ctx context.Context, handle string, in JobSubmitI
 	return out, nil
 }
 
-func (o *OA) submitWith(ctx context.Context, jobs *facade.JobsClient, handle string, id facade.RequestIdentity, in JobSubmitInput) (JobSubmitOutput, error) {
+// Each refusal of a job's routing is terminal and says what to send instead,
+// so a model does not guess credential names.
+var (
+	errLocalJobCredential  = errors.New("gateway: refused for good: local work needs no credential; send hosting local with no credential, or use OpenCode's openabstractions_generate_image for one image")
+	errHostedJobCredential = errors.New("gateway: refused for good: hosted work needs the name of a credential the person registered in OA; for this computer's servers send hosting local with no credential, or use OpenCode's openabstractions_generate_image for one image")
+	errJobHosting          = errors.New("gateway: refused for good: hosting must be local (this computer, no credential) or hosted (with a registered credential name)")
+)
+
+// jobRouting checks a job's routing: local with no credential runs on this
+// computer's servers under the local-only guarantee (inference job
+// executor, job_video_test's local video job); hosted names a credential.
+func jobRouting(in JobSubmitInput) error {
+	switch in.Hosting {
+	case "local":
+		if in.Credential != "" {
+			return errLocalJobCredential
+		}
+	case "hosted":
+		if !credentialName(in.Credential) {
+			return errHostedJobCredential
+		}
+	default:
+		return errJobHosting
+	}
+	return nil
+}
+
+// jobRequest is the inference job document's request for in: local work is
+// local-only with no credential, hosted work hosted-allowed with its
+// credential.
+func jobRequest(in JobSubmitInput) jobwire.Request {
 	profile, _ := jobwire.ParseProfile(in.Profile)
-	request := jobwire.Request{Profile: profile, DurationMs: in.DurationMS, Image: jobwire.ImageRequest{Model: in.Model, Mode: jobwire.ModeGenerate, Prompt: in.Prompt, Size: in.Size, Count: in.Count, Guarantees: []jobwire.RequestGuarantee{jobwire.RequestGuaranteeHostedAllowed}, Credential: in.Credential}}
-	submission := facade.Submission{Identity: id, Kind: inference.InferenceJobKind, Spec: jobwire.Encode(&jobwire.Document{Request: &request}), RequiredGuarantees: []string{inference.RecoverableUpstreamGuarantee}, Label: "MCP inference"}
+	guarantee, credential := jobwire.RequestGuaranteeHostedAllowed, in.Credential
+	if in.Hosting == "local" {
+		guarantee, credential = jobwire.RequestGuaranteeLocalOnly, ""
+	}
+	return jobwire.Request{Profile: profile, DurationMs: in.DurationMS, Image: jobwire.ImageRequest{Model: in.Model, Mode: jobwire.ModeGenerate, Prompt: in.Prompt, Size: in.Size, Count: in.Count, Guarantees: []jobwire.RequestGuarantee{guarantee}, Credential: credential}}
+}
+
+// jobSpec is the inference job document the gateway submits for in.
+func jobSpec(in JobSubmitInput) []byte {
+	request := jobRequest(in)
+	return jobwire.Encode(&jobwire.Document{Request: &request})
+}
+
+func (o *OA) submitWith(ctx context.Context, jobs *facade.JobsClient, handle string, id facade.RequestIdentity, in JobSubmitInput) (JobSubmitOutput, error) {
+	submission := facade.Submission{Identity: id, Kind: inference.InferenceJobKind, Spec: jobSpec(in), RequiredGuarantees: []string{inference.RecoverableUpstreamGuarantee}, Label: "MCP inference"}
 	accepted, submitErr := jobs.Submit(ctx, submission)
 	out := JobSubmitOutput{Handle: handle, Outcome: accepted.Outcome.String(), Reason: accepted.Reason}
 	if submitErr != nil {
@@ -448,15 +493,30 @@ func (o *OA) restored(ctx context.Context, in JobHandleInput) (*facade.JobsClien
 	return jobs, rec, err
 }
 
-func (o *OA) Status(ctx context.Context, in JobHandleInput) (JobStatusOutput, error) {
+type observedJob struct {
+	jobs     *facade.JobsClient
+	identity facade.RequestIdentity
+	result   facade.ObservationResult
+}
+
+func (o *OA) observeJob(ctx context.Context, in JobHandleInput) (observedJob, error) {
 	jobs, rec, err := o.restored(ctx, in)
 	if err != nil {
-		return JobStatusOutput{}, err
+		return observedJob{}, err
 	}
 	observed, err := jobs.ObserveWork(ctx, rec.Identity)
 	if err != nil {
+		return observedJob{}, err
+	}
+	return observedJob{jobs: jobs, identity: rec.Identity, result: observed}, nil
+}
+
+func (o *OA) Status(ctx context.Context, in JobHandleInput) (JobStatusOutput, error) {
+	job, err := o.observeJob(ctx, in)
+	if err != nil {
 		return JobStatusOutput{}, err
 	}
+	observed := job.result
 	out := JobStatusOutput{Outcome: observed.Outcome.String()}
 	if observed.Snapshot == nil {
 		return out, nil
@@ -468,7 +528,7 @@ func (o *OA) Status(ctx context.Context, in JobHandleInput) (JobStatusOutput, er
 		out.Failure = s.Failure.Message
 	}
 	if s.State == facade.WorkStateComplete {
-		read, err := jobs.ReadResult(ctx, rec.Identity, 0, maxResultBytes)
+		read, err := job.jobs.ReadResult(ctx, job.identity, 0, maxResultBytes)
 		if err != nil {
 			return JobStatusOutput{}, err
 		}
@@ -488,6 +548,78 @@ func (o *OA) Status(ctx context.Context, in JobHandleInput) (JobStatusOutput, er
 		}
 	}
 	return out, nil
+}
+
+func (o *OA) Diagnose(ctx context.Context, in JobHandleInput) (JobDiagnosisOutput, error) {
+	job, err := o.observeJob(ctx, in)
+	if err != nil {
+		return JobDiagnosisOutput{}, err
+	}
+	return diagnosisFromObservation(job.result), nil
+}
+
+func diagnosisFromObservation(observed facade.ObservationResult) JobDiagnosisOutput {
+	out := JobDiagnosisOutput{
+		Scope:   "the durable inference job addressed by this handle under this MCP adapter's OA authorization",
+		Outcome: observed.Outcome.String(),
+	}
+	if observed.Snapshot == nil {
+		out.Guidance = "OA could not provide an operation snapshot. Check the handle and OA availability, then ask OA to observe it again."
+		return out
+	}
+	s := observed.Snapshot
+	out.State = s.State.String()
+	out.Waiting = s.Waiting != ""
+	out.Progress = map[string]int64{"done": s.Progress.Done, "total": s.Progress.Total}
+	if s.Failure == nil {
+		if out.Waiting {
+			out.Guidance = "The operation is waiting on a provider-reported condition. Check the provider's status for details; this diagnosis does not change the operation."
+		} else {
+			out.Guidance = "OA reports no failure for this operation. Use the status tool for its current state and result."
+		}
+		return out
+	}
+
+	class := s.Failure.Classification.String()
+	if class == "" {
+		class = "unknown"
+	}
+	out.FailureClass = class
+	out.FailureCause = safeFailureCause(string(s.Failure.Cause))
+	out.Guidance = diagnosisGuidance(class, out.FailureCause)
+	return out
+}
+
+func safeFailureCause(cause string) string {
+	switch cause {
+	case "digest_mismatch", "oversize", "short_transfer", "unauthorized", "not_found", "refused", "server_error", "transport", "result_lost", "credential":
+		return cause
+	default:
+		return "other"
+	}
+}
+
+func diagnosisGuidance(class, cause string) string {
+	if class == "retryable" {
+		return "The provider classifies this failure as retryable. Check provider availability and decide whether to retry; diagnosis never retries automatically."
+	}
+	if class == "permanent" {
+		switch cause {
+		case "credential":
+			return "The provider reports a credential problem. Review the authorized credential setup in OA; no credential value is shown."
+		case "unauthorized", "refused":
+			return "The provider refused the operation. Review its authorization or policy settings before submitting again."
+		case "transport":
+			return "The provider reports a transport failure. Check that the selected provider is reachable and available."
+		case "server_error":
+			return "The provider reports a server-side failure. Check the provider's own status before submitting again."
+		case "result_lost":
+			return "The operation result is unavailable. Check provider status; submitting again could duplicate work."
+		default:
+			return "The provider reports a permanent failure. Check provider status for details before submitting again."
+		}
+	}
+	return "OA reports an unknown failure classification. Check provider status for details before taking action."
 }
 
 func (o *OA) Cancel(ctx context.Context, in JobHandleInput) (JobCancelOutput, error) {

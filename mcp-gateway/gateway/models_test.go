@@ -31,3 +31,17 @@ func TestModelsListCarriesStoreProvenance(t *testing.T) {
 		t.Fatalf("held model %+v", models[1])
 	}
 }
+
+// The router lists a name two servers serve once per server (ROUTE-D7). The
+// structured listing offers that name once.
+func TestModelsListNamesASharedAliasOnce(t *testing.T) {
+	models := modelsFrom([]routerwire.Family{
+		{Family: "qwen3-8b", Names: []routerwire.Alias{
+			{Host: "a", Name: "qwen3-8b", Servable: true, Profiles: []string{"chat"}},
+			{Host: "b", Name: "qwen3-8b", Servable: true, Profiles: []string{"chat"}},
+		}},
+	})
+	if len(models) != 1 || !slices.Equal(models[0].Aliases, []string{"qwen3-8b"}) {
+		t.Fatalf("models %+v", models)
+	}
+}

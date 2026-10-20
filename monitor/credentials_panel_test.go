@@ -21,6 +21,7 @@ import (
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-identity/listen"
+	inference "github.com/openabstractions/abstraction-inference/go"
 	rights "github.com/openabstractions/abstraction-rights/go"
 	wire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	rightsservice "github.com/openabstractions/abstraction-rights/go/authorization"
@@ -67,12 +68,16 @@ func (b *memCredentialBackend) Delete(key string) error {
 // itself permits this process to manage and read its own credentials, the way
 // an installed operator program would after setup.
 func panelCredentialsRuntime(t *testing.T) *rights.DecisionPolicy {
+	return panelCredentialsRuntimeWith(t, nil)
+}
+
+func panelCredentialsRuntimeWith(t *testing.T, configure func(*host.Options)) *rights.DecisionPolicy {
 	t.Helper()
 	if runtime.GOOS == "darwin" {
 		t.Skip("Program proof unavailable")
 	}
 	policy, err := rights.LoadDecisionPolicy(filepath.Join(t.TempDir(), "policy.json"),
-		[]string{credentials.ActionManage, credentials.ActionRead, credentials.ActionApply})
+		[]string{credentials.ActionManage, credentials.ActionRead, credentials.ActionApply, inference.ActionComplete})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +104,7 @@ func panelCredentialsRuntime(t *testing.T) *rights.DecisionPolicy {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prefix := fmt.Sprintf("panel-credentials-%d", time.Now().UnixNano())
+	prefix := fixtureName("panel-credentials")
 	credEndpoint := listen.Endpoint(prefix + "-cred")
 	credHost, err := credservice.Listen(credEndpoint, holderStore, decide, nil)
 	if err != nil {
@@ -116,6 +121,9 @@ func panelCredentialsRuntime(t *testing.T) *rights.DecisionPolicy {
 			}
 			return ctx.Err()
 		},
+	}
+	if configure != nil {
+		configure(&o)
 	}
 	h, err := host.Listen(o)
 	if err != nil {

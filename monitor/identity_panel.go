@@ -271,7 +271,7 @@ func (p *servicePanel) identity(w http.ResponseWriter, r *http.Request) {
 func identityLimits(goos string, declarations []declarationView, limits identity.Limits) []string {
 	statements := []string{}
 	if goos == "darwin" {
-		statements = append(statements, "On macOS, protected calls are refused: a socket peer cannot reach the Program proof (user kernel, process kernel, path bound) every runtime service requires, so readiness, resolution and history are refused on this platform.")
+		statements = append(statements, "On macOS, the installed runtime uses XPC to prove the calling program for protected calls. A standalone Unix socket cannot supply that proof and protected calls through it are refused.")
 	}
 	if platform := core.UnsupportedPlatform(goos); platform != "" {
 		statements = append(statements, "The platform declaration lists "+platform+" as unsupported: no application can use a runtime service here.")
@@ -350,7 +350,7 @@ func (p *servicePanel) loggingIdentity(ctx context.Context, runtimeView callerVi
 				}
 			}
 			if result.Stamp != nil && runtimeView.Outcome == fwire.CallerOutcomeObserved.String() {
-				agrees := strings.EqualFold(result.Stamp.Exe, runtimeView.Program) && int64(result.Stamp.PID) == runtimeView.PID &&
+				agrees := sameExecutable(result.Stamp.Exe, runtimeView.Program) && int64(result.Stamp.PID) == runtimeView.PID &&
 					(result.Stamp.User == runtimeView.Account || itoa(result.Stamp.UID) == runtimeView.Account)
 				result.Agrees = &agrees
 			}
@@ -359,4 +359,11 @@ func (p *servicePanel) loggingIdentity(ctx context.Context, runtimeView callerVi
 	}
 	state := p.log.state()
 	return loggingIdentityView{Outcome: "not_found", Error: "the Panel's record did not reach history within four seconds; its sink is " + state.State}
+}
+
+// sameExecutable reports whether the stamped executable and the runtime's
+// program are one file, by file identity (identity.SameFile).
+func sameExecutable(a, b string) bool {
+	same, err := identity.SameFile(a, b)
+	return err == nil && same
 }
