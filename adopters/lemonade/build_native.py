@@ -537,7 +537,7 @@ def prepare(args):
                'package_project': pin(build / 'wix_installer_minimal.vcxproj'),
                'product_source': pin(build / 'installer/Product.wxs'),
                'cmake_cache': pin(build / 'CMakeCache.txt'),
-               'source': str(source.relative_to(out)), 'build': 'build', 'sdk_builds': sdk_builds,
+               'source': source.relative_to(out).as_posix(), 'build': 'build', 'sdk_builds': sdk_builds,
                'own_pe': [{'table': 'File', 'id': name, 'file': 'build/Release/' + name,
                            **outputs[name]} for name in OWN_PE]}
     if producer_sources() != own_sources:
@@ -621,7 +621,7 @@ def source_payload(product, fragments, variables, roots, supplier, *, capture=No
         kind = tag(node)
         if kind in ('StandardDirectory', 'Directory', 'DirectoryRef'):
             directory = directories[node.attrib['Id']]
-        if kind == 'Component' and 'Directory' in node.attrib:
+        if kind in ('Component', 'ComponentGroup') and 'Directory' in node.attrib:
             directory = directories[node.attrib['Directory']]
         if kind in ('File', 'Icon'):
             key = (kind, node.attrib['Id'])

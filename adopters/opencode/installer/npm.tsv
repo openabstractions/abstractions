@@ -1,0 +1,36 @@
+> Package-name roster for the OpenCode installer's offline composition.
+> The release's npm.tsv independently selects the current exact source commits.
+> bundle_plugin uses this committed sibling's first column for closure.
+>
+> package	the npm name. @openabstractions/ipc also produces one platform
+>		package per qualified platform; those are assembled by
+>		scripts/npm_packages.py from binaries this workflow builds and
+>		have no row of their own
+> repository	owner/name on github.com, public and readable by a stranger
+> commit		the exact published commit this package is built from, 40
+>		lowercase hexadecimal digits. A branch is refused: a release
+>		built from a moving ref is a release nobody can rebuild. These
+>		directories carry no tag of their own — the Go module tags in
+>		tools.tsv name Go modules and say nothing about the JavaScript
+>		beside them — so the commit is what identifies them
+> directory	the package directory inside that repository
+>
+> Every package here is packed and retained as an artifact. Nothing is
+> published to npm: that needs the owner's npm organization and consent.
+
+package	repository	commit	directory
+@openabstractions/ipc	openabstractions/abstraction-identity	24b9c57fad7ca9934d527b776752da87cbd48758	javascript
+@openabstractions/facade	openabstractions/abstraction-facade	5c2de82c6a2328190428a241d6d93bc186d8a233	javascript
+@openabstractions/inference	openabstractions/abstraction-inference	b1678c9249e26a9687e58b04a18d6e5dffe4bd97	javascript
+@openabstractions/asks	openabstractions/abstraction-asks	7b845fd7412873491aa252a0031e991688ad963f	javascript
+@openabstractions/rights	openabstractions/abstraction-rights	950af1dcf79adba4bc09edb0271dc2af6bc1cc2c	javascript
+@openabstractions/router	openabstractions/abstraction-router	f77a920e0d9eb712b34fc5db88f40a10e8beb815	javascript
+@openabstractions/logging	openabstractions/abstraction-logging	ae96c21789c46d66a0cf5f64be90df99a8ac383e	javascript
+@openabstractions/storage-content	openabstractions/abstraction-storage	96631b9852ccb3c5d2327a92a97b9717449a42b6	javascript
+@openabstractions/opencode	openabstractions/abstractions	4fda05279051a43307cfa2782ab05877316dfa23	adopters/opencode
+@openabstractions/config	openabstractions/abstraction-config	8461ef1c79eeea6329b5d170fe63fce8762709f5	javascript
+@openabstractions/credentials	openabstractions/abstraction-credentials	63a881f1266f4eb23764091f9b1a462af4ac005b	javascript
+@openabstractions/download-request	openabstractions/abstraction-download	72999c6ca49282047a5dffcf03ceffe1966c7a8a	javascript
+@openabstractions/job-acceptance	openabstractions/abstraction-job	911c7b060d5389f089c1092d5eb91cea0e80f80f	javascript
+@openabstractions/model	openabstractions/abstraction-model	c4177535afcbf3e5a5f64f785058e43963685bd0	javascript
+@openabstractions/resource	openabstractions/abstraction-resource	dcc4f81c1da2e49e9240f2bc2e199a340c000c68	javascript

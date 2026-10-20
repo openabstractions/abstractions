@@ -7,8 +7,8 @@ Usage: build_installer.py --plugin TGZ --plugin-sha256 HEX --plugin-bytes N
          [--desktop-fix DIR]
 The official Desktop installer is a separate pinned bootstrapper input.
 --desktop-fix names the folder holding OA's patched watcher.node and its
-LICENSE (DESKTOP_FIX); it defaults to the primary checkout's
-.forks/opencode-patched/artifact and both files must match their pins.
+LICENSE (DESKTOP_FIX); it defaults to the committed desktop-fix folder beside
+this owner and both files must match their pins.
 Release order: --phase prepare-native, sign the two own native outputs through
 the release signing owner, then --phase package with their exact path/hash/size
 inputs. Packaging consumes those bytes and runs no compiler. The existing
@@ -266,7 +266,7 @@ DESKTOP_FIX = {
     # Earlier OA builds of the same fix. Install replaces them; Remove restores
     # the kept stock bytes over them. 9ec8ac8a carried a local PDB path.
     'earlier': ('9ec8ac8abf41c8ff2a7cc2298961f2165e14939e8e3a6d9d2aa49757697e4fed',),
-    'directory': '.forks/opencode-patched/artifact',
+    'directory': 'desktop-fix',
 }
 
 
@@ -288,14 +288,8 @@ def setup_fixup_declaration():
 
 
 def desktop_fix_directory():
-    """The pinned artifact folder in the primary checkout's ignored .forks/."""
-    try:
-        common = subprocess.run(['git', '-C', str(ROOT), 'rev-parse', '--path-format=absolute', '--git-common-dir'],
-                                capture_output=True, text=True, check=True).stdout.strip()
-        primary = Path(common).parent
-    except (OSError, subprocess.CalledProcessError):
-        primary = ROOT
-    return primary/DESKTOP_FIX['directory']
+    """The exact reviewed supplier bytes in this selected public installer."""
+    return Path(__file__).resolve().parent/DESKTOP_FIX['directory']
 
 
 def pe_debug_paths(data):
@@ -517,13 +511,15 @@ def bundle_plugin(plugin, digest, size, packages, dependency_cache, output):
     """
     raw = pinned(plugin, digest, size)
     manifest, _ = plugin_files(raw, bundled=False)
-    selected = ROOT/'scripts/npm_packages.py'
+    # The selected shared package owner supplies the matching release npm
+    # receiver in both private installer/apps and public Redist/windows/apps.
+    selected = Path(app_builder().__file__).resolve().parents[2]/'scripts/npm_packages.py'
     if str(selected.parent) not in sys.path:
         sys.path.insert(0,str(selected.parent))
     spec = importlib.util.spec_from_file_location('oa_opencode_npm_owner', selected)
     npm = importlib.util.module_from_spec(spec)
     exec(compile(selected.read_bytes(), str(selected), 'exec'), npm.__dict__)
-    expected = npm.package_roster(ROOT/'research/org-edits/redist/npm.tsv') | {
+    expected = npm.package_roster(Path(__file__).with_name('npm.tsv')) | {
         '@openabstractions/ipc-win32-x64', npm.FACADE_NATIVE['prefix']+'win32-x64'}
     packed, pins, names = [], {}, set()
     for path in sorted(Path(packages).glob('*.tgz')):
@@ -564,7 +560,7 @@ def bundle_plugin(plugin, digest, size, packages, dependency_cache, output):
         npm.copy_dependency_cache(dependency_cache,target/'npm-cache',external,environment=environment)
         versions=npm.resolve_packed_dependencies(packed,target,environment,external)
         admitted={name:(target/name).read_bytes() for name in ('package.json','package-lock.json')}
-        subprocess.run(['npm','install','--offline','--ignore-scripts','--no-save','--no-audit','--no-fund','--prefix',str(target)],
+        subprocess.run(['npm','install','--offline','--ignore-scripts','--no-save','--no-audit','--no-fund'],
                        cwd=target,env=environment,check=True,shell=os.name=='nt')
         if any((target/name).read_bytes()!=value for name,value in admitted.items()):
             raise ValueError('installer npm install changed the admitted lock')
@@ -1022,7 +1018,7 @@ def main(argv=None):
     parser.add_argument('--parser-tgz', type=Path)
     parser.add_argument('--bootstrap', type=Path, help='Exact source-lock-selected upstream helper TGZ directory')
     parser.add_argument('--ripgrep', type=Path, help='Exact selected Windows x64 ripgrep ZIP')
-    parser.add_argument('--desktop-fix', type=Path, help="Folder with OA's patched watcher.node and LICENSE (default: the primary checkout's "+DESKTOP_FIX['directory']+')')
+    parser.add_argument('--desktop-fix', type=Path, help="Folder with OA's patched watcher.node and LICENSE (default: this installer's "+DESKTOP_FIX['directory']+')')
     parser.add_argument('--package-set',type=Path,help='Normal complete npm archive set to bundle into the installer plugin')
     parser.add_argument('--dependency-cache',type=Path,help='Existing lock-bound offline cache for --package-set')
     parser.add_argument('--out', type=Path, required=True)
