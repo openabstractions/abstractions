@@ -1,0 +1,38 @@
+# requires: fileid
+#
+# Relations by FileID, a held folder's names and the one name rule (ID-F6).
+file d/x.txt
+folder top
+link top/l d
+relate d/x.txt d
+relate d d/x.txt
+relate d/x.txt d/x.txt
+hardlink e/x.txt d/x.txt
+relate e/x.txt d
+relate d/x.txt d
+beneath d x.txt
+beneath top l/x.txt
+beneath d ..
+create d new.txt
+create d new.txt
+create d CON
+safename model.gguf
+safename name.
+safename a:b
+safename lpt1.log
+
+# expect 4: ok inside [ID-F6]
+# expect 5: ok outside [ID-F6]
+# expect 6: ok same [ID-F6]
+# expect 8: ok outside multi [ID-F6]
+# expect 9: ok inside multi [ID-F6]
+# expect 10: ok kind=file links=2 [ID-F6]
+# expect 11: refused link [ID-F6]
+# expect 12: refused unsafe [ID-F6]
+# expect 13: ok [ID-F6]
+# expect 14: refused exists [ID-F6]
+# expect 15: refused unsafe [ID-F6]
+# expect 16: ok [ID-F6]
+# expect 17: refused unsafe [ID-F6]
+# expect 18: refused unsafe [ID-F6]
+# expect 19: refused unsafe [ID-F6]

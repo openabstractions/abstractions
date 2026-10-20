@@ -20,6 +20,26 @@ import (
 	api "github.com/openabstractions/abstraction-job/go/abstraction/job/acceptance"
 )
 
+// The connection file names the development runtime [FAC-B5]; a file without
+// an endpoint is refused even when the variable names one, and its program
+// must be absolute.
+func TestSelectedMachineBindsOnlyTheConnectionRuntime(t *testing.T) {
+	program, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(bootstrap.RuntimeEndpointVariable, "from-environment")
+	if _, err := selectedMachine(connection{RuntimeProgram: program}); !errors.Is(err, bootstrap.ErrNoDevelopmentRuntime) {
+		t.Fatalf("connection without an endpoint: %v", err)
+	}
+	if _, err := selectedMachine(connection{Endpoint: "playground", RuntimeProgram: "runtime.exe"}); !errors.Is(err, bootstrap.ErrDevelopmentProgram) {
+		t.Fatalf("relative runtime program: %v", err)
+	}
+	if m, err := selectedMachine(connection{Endpoint: "playground", RuntimeProgram: program}); err != nil || m == nil {
+		t.Fatalf("connection runtime: %v", err)
+	}
+}
+
 func TestTypedUseRequiresExplicitRouteAndFreshIntent(t *testing.T) {
 	f, _ := fixtureFor("alpha")
 	j := &completedJobs{body: f.artifact}
@@ -191,11 +211,17 @@ func TestReceiverDistinctNamesAndSecretFreeStats(t *testing.T) {
 func TestConnectionRefusesInstalledEndpointAndIdentityAliases(t *testing.T) {
 	dir := t.TempDir()
 	c := connection{Version: 1, Isolated: "rights-playground-unit", RuntimeProgram: filepath.Join(dir, "openabstractions"), StateDir: filepath.Join(dir, "state"), AppA: filepath.Join(dir, "A"), AppB: filepath.Join(dir, "B"), Origin: "http://127.0.0.1:1234"}
-	c.Endpoint, _ = playgroundEndpoint(c.Isolated, runtime.GOOS)
+	c.Endpoint = "fixture-runtime"
 	for _, p := range []string{c.AppA, c.AppB} {
 		if err := os.WriteFile(p, []byte("same build, two files"), 0o700); err != nil {
 			t.Fatal(err)
 		}
+	}
+	endpointFor := func(name, platform string) (string, error) {
+		if name != c.Isolated || platform != runtime.GOOS {
+			t.Fatal(name, platform)
+		}
+		return "fixture-runtime", nil
 	}
 	path := filepath.Join(dir, "connection.json")
 	write := func() {
@@ -205,23 +231,28 @@ func TestConnectionRefusesInstalledEndpointAndIdentityAliases(t *testing.T) {
 		}
 	}
 	write()
-	if _, err := loadConnection(path); err != nil {
+	if runtime.GOOS != "darwin" {
+		if _, err := loadConnection(path); err == nil {
+			t.Fatal("default wrapper escaped test refusal")
+		}
+	}
+	if _, err := loadConnectionWithEndpoint(path, endpointFor); err != nil {
 		t.Fatal(err)
 	}
-	c.Endpoint, _ = bootstrap.Endpoint(c.Isolated)
+	c.Endpoint = "fixture-without-runtime-suffix"
 	write()
-	if _, err := loadConnection(path); err == nil {
+	if _, err := loadConnectionWithEndpoint(path, endpointFor); err == nil {
 		t.Fatal("isolated bootstrap endpoint must use the runtime owner's -runtime suffix")
 	}
 	c.Endpoint = "the-installed-runtime"
 	write()
-	if _, err := loadConnection(path); err == nil {
+	if _, err := loadConnectionWithEndpoint(path, endpointFor); err == nil {
 		t.Fatal("setup must not accept a connection to an unrelated runtime")
 	}
-	c.Endpoint, _ = playgroundEndpoint(c.Isolated, runtime.GOOS)
+	c.Endpoint = "fixture-runtime"
 	c.AppB = c.AppA
 	write()
-	if _, err := loadConnection(path); err == nil {
+	if _, err := loadConnectionWithEndpoint(path, endpointFor); err == nil {
 		t.Fatal("A/B alias must not count as independent identities")
 	}
 }

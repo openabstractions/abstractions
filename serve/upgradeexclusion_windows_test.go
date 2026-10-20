@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -198,6 +201,326 @@ func TestBeginRefusesAnotherLiveInstaller(t *testing.T) {
 	}
 }
 
+func TestBeginUpgradeChainKeepsBurnHolderAndV1Record(t *testing.T) {
+	x := newTestExclusion(t)
+	x.alive[7], x.alive[8] = true, true
+	token := strings.Repeat("a", 32)
+	if err := x.env.beginContext(t.Context(), "machine", []string{machineFolder}, holderFor(7), token); err != nil {
+		t.Fatal(err)
+	}
+	custom := filepath.Join(t.TempDir(), "custom")
+	if err := x.env.beginContext(t.Context(), "machine", []string{machineFolder, custom}, holderFor(8), token); err != nil {
+		t.Fatal(err)
+	}
+	path, _ := x.env.path("machine")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := decodeExclusion(data)
+	if err != nil || record.Installer != holderFor(7) || !reflect.DeepEqual(record.Folders, []string{machineFolder, custom}) {
+		t.Fatalf("record=%+v err=%v", record, err)
+	}
+	if notes := x.env.release("machine"); len(notes) != 0 {
+		t.Fatal(notes)
+	}
+	for _, name := range []string{path, chainPath(path)} {
+		if fileExists(name) {
+			t.Fatalf("release retained %s", name)
+		}
+	}
+}
+
+func TestBeginUpgradeChainRefusesForeignOrUntrustedAdmission(t *testing.T) {
+	for _, fault := range []string{"missing-token", "wrong-token", "scope", "holder", "untrusted", "missing-chain", "unknown-field", "interrupted-before-exclusion"} {
+		t.Run(fault, func(t *testing.T) {
+			x := newTestExclusion(t)
+			x.alive[7], x.alive[8] = true, true
+			token := strings.Repeat("a", 32)
+			if err := x.env.beginContext(t.Context(), "machine", []string{machineFolder}, holderFor(7), token); err != nil {
+				t.Fatal(err)
+			}
+			path, _ := x.env.path("machine")
+			sidecar := chainPath(path)
+			chain := upgradeChain{Version: 1, Scope: "machine", Token: token, Holder: holderFor(7)}
+			switch fault {
+			case "missing-token":
+				token = ""
+			case "wrong-token":
+				token = strings.Repeat("b", 32)
+			case "scope":
+				chain.Scope = "user"
+			case "holder":
+				chain.Holder = holderFor(9)
+			case "untrusted":
+				x.untrusted[sidecar] = true
+			case "missing-chain":
+				if err := os.Remove(sidecar); err != nil {
+					t.Fatal(err)
+				}
+			case "interrupted-before-exclusion":
+				chain.Holder = holderFor(8)
+			}
+			if fault != "missing-chain" {
+				data, _ := json.Marshal(chain)
+				if fault == "unknown-field" {
+					data = append(data[:len(data)-1], []byte(`,"extra":true}`)...)
+				}
+				if err := os.WriteFile(sidecar, data, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := x.env.beginContext(t.Context(), "machine", []string{machineFolder}, holderFor(8), token); err == nil || !strings.Contains(err.Error(), "installer process 7") {
+				t.Fatalf("foreign admission: %v", err)
+			}
+			record, _, _ := x.env.load("machine")
+			if record.Installer != holderFor(7) {
+				t.Fatal("foreign holder replaced")
+			}
+		})
+	}
+}
+
+func TestBeginUpgradeChainInterruptedWritesRemainRecoverable(t *testing.T) {
+	for _, failAt := range []int{1, 2} {
+		for _, successor := range []uint32{7, 8} {
+			t.Run(fmt.Sprintf("cut%d/holder%d", failAt, successor), func(t *testing.T) {
+				x := newTestExclusion(t)
+				x.alive[7], x.alive[8] = true, true
+				write := x.env.write
+				writes := 0
+				x.env.write = func(path, scope string, data []byte) error {
+					writes++
+					if writes == failAt {
+						return errors.New("inert write interruption")
+					}
+					if writes == 1 && filepath.Base(path) != "chain.json" {
+						t.Fatal("v1 written before chain")
+					}
+					return write(path, scope, data)
+				}
+				token := strings.Repeat("a", 32)
+				if err := x.env.beginContext(t.Context(), "machine", []string{machineFolder}, holderFor(7), token); err == nil {
+					t.Fatal("write interruption ignored")
+				}
+				path, _ := x.env.path("machine")
+				if fileExists(path) {
+					t.Fatal("interrupted admission wrote exclusion")
+				}
+				x.env.write = write
+				if successor == 8 {
+					token = strings.Repeat("b", 32)
+				}
+				if err := x.env.beginContext(t.Context(), "machine", []string{machineFolder}, holderFor(successor), token); err != nil {
+					t.Fatal(err)
+				}
+				if !x.env.matchingChain(path, "machine", token, holderFor(successor)) {
+					t.Fatal("retry lost chain")
+				}
+				if record, _, err := x.env.load("machine"); err != nil || record.Installer != holderFor(successor) {
+					t.Fatalf("record=%+v err=%v", record, err)
+				}
+			})
+		}
+	}
+}
+
+func TestBeginUpgradeChainSerializesContendersBeforeReading(t *testing.T) {
+	for _, mode := range []string{"deadline", "cancel"} {
+		t.Run(mode, func(t *testing.T) {
+			x := newTestExclusion(t)
+			x.env.lock = lockUpgradeScope
+			x.alive[7], x.alive[8], x.alive[9] = true, true, true
+			tokenA, tokenB := strings.Repeat("a", 32), strings.Repeat("b", 32)
+			paused, proceed, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			resume := sync.OnceFunc(func() { close(proceed) })
+			write := x.env.write
+			x.env.write = func(path, scope string, data []byte) error {
+				if err := write(path, scope, data); err != nil {
+					return err
+				}
+				if filepath.Base(path) == "chain.json" {
+					var chain upgradeChain
+					if err := json.Unmarshal(data, &chain); err != nil {
+						return err
+					}
+					if chain.Token == tokenA {
+						close(paused)
+						<-proceed
+					}
+				}
+				return nil
+			}
+			var firstErr error
+			go func() {
+				defer close(finished)
+				firstErr = x.env.beginContext(t.Context(), "user", []string{testFolder}, holderFor(7), tokenA)
+			}()
+			defer func() {
+				resume()
+				select {
+				case <-finished:
+				case <-time.After(3 * time.Second):
+					t.Error("first begin did not join")
+				}
+			}()
+			select {
+			case <-paused:
+			case <-time.After(3 * time.Second):
+				t.Fatal("first chain was not written")
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), 80*time.Millisecond)
+			defer cancel()
+			var err error
+			if mode == "cancel" {
+				ctx, cancel = context.WithCancel(t.Context())
+				defer cancel()
+				attempted, done := make(chan struct{}), make(chan struct{})
+				signal := sync.OnceFunc(func() { close(attempted) })
+				x.env.lock = func(ctx context.Context, path, scope string) (func(), error) {
+					signal()
+					return lockUpgradeScope(ctx, path, scope)
+				}
+				go func() {
+					defer close(done)
+					err = x.env.beginContext(ctx, "user", []string{testFolder}, holderFor(8), tokenB)
+				}()
+				defer func() {
+					cancel()
+					resume()
+					select {
+					case <-done:
+					case <-time.After(3 * time.Second):
+						t.Error("cancelled contender did not join")
+					}
+				}()
+				select {
+				case <-attempted:
+				case <-time.After(3 * time.Second):
+					t.Fatal("contender did not try the scope lock")
+				}
+				cancel()
+				select {
+				case <-done:
+				case <-time.After(3 * time.Second):
+					t.Fatal("scope wait ignored cancellation")
+				}
+			} else {
+				err = x.env.beginContext(ctx, "user", []string{testFolder}, holderFor(8), tokenB)
+			}
+			want := context.DeadlineExceeded
+			if mode == "cancel" {
+				want = context.Canceled
+			}
+			if !errors.Is(err, want) {
+				t.Fatalf("contender entered incomplete admission: %v", err)
+			}
+			path, _ := x.env.path("user")
+			if fileExists(path) || !x.env.matchingChain(path, "user", tokenA, holderFor(7)) {
+				t.Fatal("contender changed the first admission")
+			}
+			resume()
+			<-finished
+			if firstErr != nil {
+				t.Fatal(firstErr)
+			}
+			if err := x.env.beginContext(t.Context(), "user", []string{testFolder}, holderFor(8), tokenB); err == nil || !strings.Contains(err.Error(), "installer process 7") {
+				t.Fatalf("foreign contender accepted: %v", err)
+			}
+			if err := x.env.beginContext(t.Context(), "user", []string{testFolder}, holderFor(9), tokenA); err != nil {
+				t.Fatalf("winner lost its nested admission: %v", err)
+			}
+			record, _, err := x.env.load("user")
+			if err != nil || record.Installer != holderFor(7) {
+				t.Fatalf("winner=%+v err=%v", record, err)
+			}
+		})
+	}
+}
+
+func TestUpgradeChainReleaseSerializesWithNewAdmission(t *testing.T) {
+	x := newTestExclusion(t)
+	x.env.lock = lockUpgradeScope
+	x.alive[7], x.alive[8] = true, true
+	tokenA, tokenB := strings.Repeat("a", 32), strings.Repeat("b", 32)
+	if err := x.env.beginContext(t.Context(), "user", []string{testFolder}, holderFor(7), tokenA); err != nil {
+		t.Fatal(err)
+	}
+	path, _ := x.env.path("user")
+	paused, proceed, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	resume := sync.OnceFunc(func() { close(proceed) })
+	remove := x.env.remove
+	x.env.remove = func(name string) error {
+		err := remove(name)
+		if name == path && err == nil {
+			close(paused)
+			<-proceed
+		}
+		return err
+	}
+	var releaseErr error
+	go func() { defer close(finished); _, releaseErr = x.env.removeContext(t.Context(), "user") }()
+	defer func() {
+		resume()
+		select {
+		case <-finished:
+		case <-time.After(3 * time.Second):
+			t.Error("release did not join")
+		}
+	}()
+	select {
+	case <-paused:
+	case <-time.After(3 * time.Second):
+		t.Fatal("release did not reach the record cut")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 80*time.Millisecond)
+	defer cancel()
+	if err := x.env.beginContext(ctx, "user", []string{testFolder}, holderFor(8), tokenB); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("admission passed incomplete release: %v", err)
+	}
+	if !x.env.matchingChain(path, "user", tokenA, holderFor(7)) {
+		t.Fatal("release waiter changed the old sidecar")
+	}
+	resume()
+	<-finished
+	if releaseErr != nil {
+		t.Fatal(releaseErr)
+	}
+	if err := x.env.beginContext(t.Context(), "user", []string{testFolder}, holderFor(8), tokenB); err != nil {
+		t.Fatal(err)
+	}
+	if !x.env.matchingChain(path, "user", tokenB, holderFor(8)) {
+		t.Fatal("old release erased the new sidecar")
+	}
+}
+
+func TestUpgradeChainFailedRecordRemovalKeepsNestedAdmission(t *testing.T) {
+	x := newTestExclusion(t)
+	x.env.lock = lockUpgradeScope
+	x.alive[7], x.alive[8] = true, true
+	token := strings.Repeat("a", 32)
+	if err := x.env.beginContext(t.Context(), "user", []string{testFolder}, holderFor(7), token); err != nil {
+		t.Fatal(err)
+	}
+	path, _ := x.env.path("user")
+	remove := x.env.remove
+	x.env.remove = func(name string) error {
+		if name == path {
+			return errors.New("inert removal refusal")
+		}
+		return remove(name)
+	}
+	if _, err := x.env.removeContext(t.Context(), "user"); err == nil {
+		t.Fatal("removal refusal ignored")
+	}
+	if !x.env.matchingChain(path, "user", token, holderFor(7)) {
+		t.Fatal("failed guard removal destroyed its sidecar")
+	}
+	if err := x.env.beginContext(t.Context(), "user", []string{testFolder}, holderFor(8), token); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestBeginRefusesAnotherLiveUnreadableHolder(t *testing.T) {
 	x := newTestExclusion(t)
 	first := processIdentity{PID: 7, Image: "msiexec.exe"}
@@ -234,6 +557,33 @@ func TestReleaseRemovesTheRecordAndNamesAMissingOne(t *testing.T) {
 
 // Real files, owners and process identities on this machine. No installer,
 // service or other account is involved.
+func TestExclusionOwnerUsesNativeSIDEquality(t *testing.T) {
+	if err := trustedExclusionOwner(nil, "user"); err == nil {
+		t.Fatal("missing native owner accepted")
+	}
+	account, err := currentUserSID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := windows.StringToSid(account)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := trustedExclusionOwner(owner, "user"); err != nil {
+		t.Fatalf("current native account refused: %v", err)
+	}
+	foreign, err := windows.CreateWellKnownSid(windows.WinAnonymousSid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if windows.EqualSid(owner, foreign) {
+		t.Fatal("fixture account unexpectedly anonymous")
+	}
+	if err := trustedExclusionOwner(foreign, "user"); err == nil {
+		t.Fatal("foreign native account accepted")
+	}
+}
+
 func TestExclusionFilesAndIdentitiesOnThisMachine(t *testing.T) {
 	if _, err := windows.SecurityDescriptorFromString(machineUpgradeSDDL); err != nil {
 		t.Fatal(err)
@@ -300,11 +650,14 @@ func TestUpgradeServiceArguments(t *testing.T) {
 	}{
 		{[]string{"begin-upgrade", "--user", testFolder + `\.`, "--related", codeA}, serviceRequest{command: "begin-upgrade", scope: "user", folder: testFolder + `\.`, related: codeA}},
 		{[]string{"begin-upgrade", "--machine", machineFolder, "--related", codeA}, serviceRequest{command: "begin-upgrade", scope: "machine", folder: machineFolder, related: codeA}},
+		{[]string{"begin-removal", "--user", testFolder + `\.`}, serviceRequest{command: "begin-removal", scope: "user", folder: testFolder + `\.`}},
+		{[]string{"begin-removal", "--machine", machineFolder}, serviceRequest{command: "begin-removal", scope: "machine", folder: machineFolder}},
 		{[]string{"end-upgrade", "--user"}, serviceRequest{command: "end-upgrade", scope: "user"}},
 		{[]string{"end-upgrade", "--machine"}, serviceRequest{command: "end-upgrade", scope: "machine"}},
 		{[]string{"upgrade-check"}, serviceRequest{command: "upgrade-check"}},
 		{[]string{"start", "--machine"}, serviceRequest{command: "start", scope: "machine"}},
 		{[]string{"start", "--related", codeA}, serviceRequest{command: "start", scope: "user", related: codeA}},
+		{[]string{"start", "--user", testFolder, "0.8.0"}, serviceRequest{command: "start", scope: "user", folder: testFolder, version: "0.8.0"}},
 		{[]string{"remove-sandboxes"}, serviceRequest{command: "remove-sandboxes", scope: "user"}},
 	} {
 		got, err := serviceArguments(tc.args)
@@ -316,6 +669,8 @@ func TestUpgradeServiceArguments(t *testing.T) {
 		nil, {"stop"}, {"stop", "--user", testFolder}, {"install"}, {"uninstall"}, {"run"},
 		{"begin-upgrade", "--user", testFolder}, {"begin-upgrade", "--session", testFolder, "--related", codeA},
 		{"begin-upgrade", "--user", "", "--related", codeA}, {"begin-upgrade", "--user", testFolder, "--related", ""},
+		{"begin-removal"}, {"begin-removal", "--user", ""}, {"begin-removal", "--session", testFolder},
+		{"begin-removal", "--machine", machineFolder, "--related", codeA},
 		{"end-upgrade"}, {"end-upgrade", "--user", "extra"}, {"upgrade-check", "--user"},
 		{"start"}, {"start", "--runtime"}, {"start", "--related"}, {"start", "--related", ""},
 		{"start", "--machine", "extra"}, {"start", "--user"}, {"start", "--related", codeA, "--user", testFolder},

@@ -18,3 +18,5 @@ class Writable
   commit(reference: Ref) -> None
 def decode(data)
 def encode(v)
+def from_json(kind, data)
+def to_json(value)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -68,82 +69,87 @@ var installationDeclarationPath = func() (string, error) {
 
 // disabledDeclarations is the names an operator withdrew, and the file's bytes
 // so the revision changes with them.
-func (p *runtimeProviders) disabledDeclarations() (map[string]bool, []byte) {
+func (p *runtimeProviders) disabledDeclarations() (map[string]bool, []byte, error) {
 	raw, err := os.ReadFile(p.disabledPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return map[string]bool{}, nil, nil
+	}
 	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			p.report(err)
-		}
-		return map[string]bool{}, nil
+		return nil, nil, err
 	}
 	var names []string
 	if err := json.Unmarshal(raw, &names); err != nil {
-		p.report(err)
-		return map[string]bool{}, raw
+		return nil, raw, err
 	}
 	out := map[string]bool{}
-	for _, n := range names {
-		out[n] = true
+	for _, name := range names {
+		out[name] = true
 	}
-	return out, raw
+	return out, raw, nil
 }
 
-// disable records name as withdrawn, so no product probe and no reinstall
-// brings it back.
-func (p *runtimeProviders) disable(name string) error {
-	disabled, _ := p.disabledDeclarations()
-	if disabled[name] {
-		return nil
-	}
-	names := make([]string, 0, len(disabled)+1)
-	for n := range disabled {
-		names = append(names, n)
-	}
-	names = append(names, name)
-	sort.Strings(names)
-	return writeAtomically(p.disabledPath, names)
-}
-
-// enable forgets an operator's withdrawal of name.
-func (p *runtimeProviders) enable(name string) error {
-	disabled, _ := p.disabledDeclarations()
-	if !disabled[name] {
-		return nil
-	}
-	names := make([]string, 0, len(disabled))
-	for n := range disabled {
-		if n != name {
-			names = append(names, n)
-		}
-	}
-	sort.Strings(names)
-	if len(names) == 0 {
-		if err := os.Remove(p.disabledPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+func (p *runtimeProviders) setDisabledObserved(ctx context.Context, name string, disabled bool, base []byte, admit func() error) error {
+	var names []string
+	if len(base) > 0 {
+		if err := json.Unmarshal(base, &names); err != nil {
 			return err
 		}
+	}
+	current := slices.Contains(names, name)
+	if current == disabled {
 		return nil
 	}
-	return writeAtomically(p.disabledPath, names)
+	if disabled {
+		names = append(names, name)
+	} else {
+		names = slices.DeleteFunc(names, func(n string) bool { return n == name })
+	}
+	sort.Strings(names)
+	var value any = names
+	if len(names) == 0 {
+		value = nil
+	}
+	return providerMutator(ctx, admit)(p.disabledPath, base, value)
+}
+
+// Trusted internal callers still use the same observed-byte mutation owner.
+func (p *runtimeProviders) disable(name string) error {
+	_, raw, err := p.disabledDeclarations()
+	if err != nil {
+		return err
+	}
+	return p.setDisabledObserved(context.Background(), name, true, raw, nil)
+}
+func (p *runtimeProviders) enable(name string) error {
+	_, raw, err := p.disabledDeclarations()
+	if err != nil {
+		return err
+	}
+	return p.setDisabledObserved(context.Background(), name, false, raw, nil)
 }
 
 // installedDeclarations is every valid declaration file the installation
 // placed, with declared_by asserted as installation and a bare program name
 // resolved against the tools directory.
 func (p *runtimeProviders) installedDeclarations(digest io.Writer) []providerFile {
+	files, err := p.readInstalledDeclarations(digest)
+	if err != nil {
+		p.report(err)
+	}
+	return files
+}
+func (p *runtimeProviders) readInstalledDeclarations(digest io.Writer) ([]providerFile, error) {
 	if p.installation == "" {
-		return nil
+		return nil, nil
 	}
 	files, err := p.readDeclarationDir(p.installation, digest, true)
 	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			p.report(err)
-		}
-		return nil
+		return nil, err
 	}
 	for i := range files {
 		files[i].DeclaredBy, files[i].Source = declaredByInstallation, declarationSourceInstallation
 	}
-	return files
+	return files, nil
 }
 
 // resolveBundledProgram resolves a bare program name shipped in a

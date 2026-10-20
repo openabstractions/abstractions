@@ -4,48 +4,51 @@ pub enum Network
   Unmetered
   pub const ALL: [Self; 2]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub const DOWNSTREAM_RECOVERY_GUARANTEES: [&str; 1]
 pub const CREDENTIAL_GUARANTEES: [&str; 1]
 pub const SCOPED_CREDENTIAL_GUARANTEES: [&str; 1]
 pub const NETWORK_COST_GUARANTEES: [&str; 1]
 pub const WAITING_EXTENSIONS: [&str; 1]
 pub struct Constraints
-  network: Option<Network>
+  network: ::std::option::Option<Network>
 pub struct Artifact
-  digest: String
+  digest: ::std::string::String
   size: i64
 pub struct Source
-  scheme: String
-  locator: String
-  credential: String
+  scheme: ::std::string::String
+  locator: ::std::string::String
+  credential: ::std::string::String
 pub struct Request
   artifact: Artifact
-  sources: Vec<Source>
-  constraints: Option<Constraints>
-pub fn encode(v: &Request) -> Vec<u8>
+  sources: ::std::vec::Vec<Source>
+  constraints: ::std::option::Option<Constraints>
+pub fn encode(v: &Request) -> ::std::vec::Vec<u8>
 pub struct Refusal
   word: &'static str
   offset: usize
-pub fn decode(data: &[u8]) -> Result<Request, Refusal>
-pub fn encode_constraints_document(v: &Constraints) -> Result<Vec<u8>, Refusal>
-pub fn decode_constraints_document(data: &[u8]) -> Result<Constraints, Refusal>
-pub fn encode_artifact_document(v: &Artifact) -> Result<Vec<u8>, Refusal>
-pub fn decode_artifact_document(data: &[u8]) -> Result<Artifact, Refusal>
-pub fn encode_source_document(v: &Source) -> Result<Vec<u8>, Refusal>
-pub fn decode_source_document(data: &[u8]) -> Result<Source, Refusal>
-pub fn encode_request_document(v: &Request) -> Result<Vec<u8>, Refusal>
-pub fn decode_request_document(data: &[u8]) -> Result<Request, Refusal>
+pub fn decode(data: &[u8]) -> ::std::result::Result<Request, Refusal>
+pub trait JsonRecord: ::std::marker::Sized
+  fn to_json(&self) -> ::std::vec::Vec<u8>
+  fn from_json(data: &[u8]) -> ::std::result::Result<Self, Refusal>
+pub fn encode_constraints_document(v: &Constraints) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_constraints_document(data: &[u8]) -> ::std::result::Result<Constraints, Refusal>
+pub fn encode_artifact_document(v: &Artifact) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_artifact_document(data: &[u8]) -> ::std::result::Result<Artifact, Refusal>
+pub fn encode_source_document(v: &Source) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_source_document(data: &[u8]) -> ::std::result::Result<Source, Refusal>
+pub fn encode_request_document(v: &Request) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_request_document(data: &[u8]) -> ::std::result::Result<Request, Refusal>
 pub mod internal
-  pub fn decode_constraints_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Constraints, usize), super::Refusal>
-  pub fn check_constraints(v: &super::Constraints, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_constraints_at(v: &super::Constraints, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_artifact_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Artifact, usize), super::Refusal>
-  pub fn check_artifact(v: &super::Artifact, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_artifact_at(v: &super::Artifact, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_source_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Source, usize), super::Refusal>
-  pub fn check_source(v: &super::Source, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_source_at(v: &super::Source, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_request_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Request, usize), super::Refusal>
-  pub fn check_request(v: &super::Request, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_request_at(v: &super::Request, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_constraints_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Constraints, usize), super::Refusal>
+  pub fn check_constraints(v: &super::Constraints, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_constraints_at(v: &super::Constraints, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_artifact_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Artifact, usize), super::Refusal>
+  pub fn check_artifact(v: &super::Artifact, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_artifact_at(v: &super::Artifact, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_source_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Source, usize), super::Refusal>
+  pub fn check_source(v: &super::Source, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_source_at(v: &super::Source, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Request, usize), super::Refusal>
+  pub fn check_request(v: &super::Request, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_request_at(v: &super::Request, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>

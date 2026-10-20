@@ -1,31 +1,24 @@
 package setup
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
 
 	facade "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
+	"github.com/openabstractions/abstraction-facade/go/programfiles"
 	identity "github.com/openabstractions/abstraction-identity"
+	"github.com/openabstractions/abstraction-storage/go/layout"
 )
-
-const comfyImagePolicy = "oa-image-default"
 
 const (
 	comfyPortableDirectory  = "ComfyUI_windows_portable"
 	comfyPythonRelativePath = comfyPortableDirectory + "/python_embeded/python.exe"
+	comfyLauncherName       = "oa_comfyui_launch.py"
 )
-
-type comfyImageRecipe struct {
-	Version         int    `json:"version"`
-	SelectionPolicy string `json:"selection_policy"`
-}
 
 // ComfyPaths contains paths derived from the current approved setup journal and
 // an intact, catalog-pinned ComfyUI install receipt. Obtain it for setup or an
@@ -33,17 +26,13 @@ type comfyImageRecipe struct {
 type ComfyPaths struct {
 	install string
 	caller  string
+	native  string
 	user    string
 	input   string
 	temp    string
 	output  string
 	recipe  string
-	// launch holds the launcher's record of its last full RECORD check.
-	launch string
-	// records is the reviewed RECORD-set SHA-256 of the installed package's
-	// private Python, carried by its catalog Artifact as RecordsSHA256. The
-	// activation recipe passes it to the launcher as --records, so a
-	// distribution planted with its own RECORD refuses the launch.
+	// records retains the historical package's RECORD-set receipt pin.
 	records string
 }
 
@@ -59,76 +48,83 @@ func OpenInstalledComfy(ctx context.Context, journal Journal) (ComfyPaths, error
 		return ComfyPaths{}, err
 	}
 	if state.ApprovedPlanID == "" || state.ApprovedPlanID != state.Plan.ID {
-		return ComfyPaths{}, errors.New("ComfyUI setup plan is not approved")
+		return ComfyPaths{}, errors.New(nativeArchiveAppTitle + " setup plan is not approved")
 	}
 	// During an update the retained earlier version stays the active one until
 	// the new version is checked and activated.
-	artifact, err := journal.knownInstalledArtifact(state, "comfyui-app")
+	artifact, err := journal.knownInstalledArtifact(state, retainedArchiveComponent)
 	if err != nil {
-		return ComfyPaths{}, fmt.Errorf("ComfyUI app pin: %w", err)
+		return ComfyPaths{}, fmt.Errorf("%s app pin: %w", nativeArchiveAppTitle, err)
 	}
 	root, err := installPath(artifact)
 	if err != nil {
 		return ComfyPaths{}, err
 	}
-	installed, err := ArchiveInstalled(artifact, root)
+	installed, err := archiveInstalledContext(ctx, artifact, root)
 	if err != nil {
-		return ComfyPaths{}, fmt.Errorf("ComfyUI install receipt: %w", err)
+		return ComfyPaths{}, fmt.Errorf("%s install receipt: %w", nativeArchiveAppTitle, err)
 	}
 	if !installed {
-		return ComfyPaths{}, errors.New("ComfyUI install receipt or installed files no longer match the approved package")
+		return ComfyPaths{}, errors.New(nativeArchiveAppTitle + " install receipt or installed files no longer match the approved package")
 	}
-	python := filepath.Join(root, filepath.FromSlash(comfyPythonRelativePath))
-	info, err := os.Lstat(python)
+	paths, err := comfyPathsForArtifact(artifact)
 	if err != nil {
-		return ComfyPaths{}, fmt.Errorf("ComfyUI embedded Python: %w", err)
+		return ComfyPaths{}, err
 	}
-	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
-		return ComfyPaths{}, errors.New("ComfyUI embedded Python is not a regular installed file")
+	for _, program := range []string{paths.caller, paths.Program()} {
+		info, err := os.Lstat(program)
+		if err != nil {
+			return ComfyPaths{}, fmt.Errorf("%s installed program: %w", nativeArchiveAppTitle, err)
+		}
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+			return ComfyPaths{}, errors.New(nativeArchiveAppTitle + " program is not a regular installed file")
+		}
 	}
-	return comfyPathsForArtifact(artifact)
+	if artifact.NativeResources != nil {
+		user, err := nativeArchiveUserDirectory(ctx, artifact, root)
+		if err != nil {
+			return ComfyPaths{}, err
+		}
+		paths.user = user
+		paths.recipe = filepath.Join(user, filepath.FromSlash(oaArchiveLayout.ImageRecipe))
+	}
+	return paths, nil
 }
 
 // comfyPathsForArtifact derives the fixed paths of one pinned ComfyUI version
 // without reading its files. Callers that launch must verify the receipt.
 func comfyPathsForArtifact(artifact Artifact) (ComfyPaths, error) {
-	if artifact.Platform != "windows/amd64" || artifact.Action != "archive_per_user" {
-		return ComfyPaths{}, errors.New("ComfyUI app is not a Windows x64 portable archive")
-	}
-	root, err := installPath(artifact)
+	root, caller, native, err := archiveProgramPaths(artifact, comfyPythonRelativePath, nativeArchiveAppTitle)
 	if err != nil {
 		return ComfyPaths{}, err
 	}
-	python := filepath.Join(root, filepath.FromSlash(comfyPythonRelativePath))
 	home, err := CurrentHome()
 	if err != nil {
 		return ComfyPaths{}, fmt.Errorf("ComfyUI local app data: %w", err)
 	}
 	localData, pictures := home.Data, home.Pictures
 	if pictures == "" {
-		if pictures, err = comfyPicturesDirectory(); err != nil {
+		if pictures, err = layout.ResolvePerson(layout.Current(), layout.Pictures); err != nil {
 			return ComfyPaths{}, fmt.Errorf("ComfyUI Pictures directory: %w", err)
 		}
 	}
-	paths, err := comfyPathsAt(root, identity.CanonicalProgramPath(filepath.Clean(python)), localData, pictures)
+	paths, err := comfyPathsAt(root, caller, localData, pictures)
 	if err != nil {
 		return ComfyPaths{}, err
 	}
 	paths.records = artifact.RecordsSHA256
+	paths.native = native
 	return paths, nil
 }
 
-// EarlierComfyDescriptors returns the activation descriptors this Setup
-// built for ComfyUI versions an update replaced or is replacing. A registered
-// entry equal to one of them is this Setup's own earlier registration, which
-// the updated version's registration may replace; any other entry is
-// preserved.
+// EarlierComfyDescriptors returns receipt-derived display records for retained
+// versions. The registration owner preserves foreign entries.
 func EarlierComfyDescriptors(ctx context.Context, journal Journal) ([]facade.ApplicationDescriptor, error) {
 	state, err := journal.Load(ctx)
 	if err != nil {
 		return nil, err
 	}
-	effect := state.Effects["comfyui-app"]
+	effect := state.Effects[retainedArchiveComponent]
 	earlier := slices.Clone(effect.Retired)
 	if effect.Retained != nil {
 		earlier = append(earlier, *effect.Retained)
@@ -146,6 +142,42 @@ func EarlierComfyDescriptors(ctx context.Context, journal Journal) ([]facade.App
 	return descriptors, nil
 }
 
+// InstalledComfyProgram names the program the installed ComfyUI's
+// registration names, from the journal alone: the version in use and its
+// fixed member path. It reads no installed file and confers no authority to
+// launch or register; those open the receipt (OpenInstalledComfy). Setup's
+// install state compares it with the registered entry.
+func InstalledComfyProgram(ctx context.Context, journal Journal) (string, error) {
+	state, err := journal.Load(ctx)
+	if err != nil {
+		return "", err
+	}
+	if state.ApprovedPlanID == "" || state.ApprovedPlanID != state.Plan.ID {
+		return "", errors.New("ComfyUI setup plan is not approved")
+	}
+	artifact, err := activeArtifact(state, retainedArchiveComponent)
+	if err != nil {
+		return "", err
+	}
+	paths, err := comfyPathsForArtifact(artifact)
+	if err != nil {
+		return "", err
+	}
+	return paths.Program(), nil
+}
+
+// ComfyInstallFolderHolds reports whether a program lies below a native
+// or portable archive root where Setup installs versioned packages.
+func ComfyInstallFolderHolds(program string) bool {
+	return archiveRootsHold(program, oaArchiveLayout.NativeRoot, oaArchiveLayout.PortableRoot)
+}
+
+// ComfyNativeRootHolds reports whether a program lies below the native
+// archive root. Setup only re-pins installed versions within that root.
+func ComfyNativeRootHolds(program string) bool {
+	return archiveRootsHold(program, oaArchiveLayout.NativeRoot)
+}
+
 // ProgramWithin reports whether a registered program path lies inside an
 // installed version's folder, ignoring case as Windows paths do. The Panel's
 // retire guard keeps a version a registered entry still names, so a path
@@ -159,6 +191,26 @@ func ProgramWithin(root, program string) bool {
 	return withinPath(root, program)
 }
 
+// comfyDataRoot matches the host and node pack's shared mutable directory
+// beneath either the account's known folders or Setup's isolated home.
+func comfyDataRoot(base string) string {
+	return filepath.Join(base, filepath.FromSlash(oaArchiveLayout.DataRoot))
+}
+
+// nativeSealRecord matches the seal-backend command's record for the pinned
+// backend manifest under the host's mutable data directory.
+func nativeSealRecord(a Artifact) (string, error) {
+	home, err := CurrentHome()
+	if err != nil {
+		return "", err
+	}
+	sha := a.NativeResources.Backend.Provenance.Manifest.SHA256
+	if !sha256Hex.MatchString(sha) {
+		return "", errors.New("invalid native manifest pin")
+	}
+	return filepath.Join(comfyDataRoot(home.Data), "native", sha, programfiles.NativeTreeRecordName), nil
+}
+
 func comfyPathsAt(installRoot, caller, localData, pictures string) (ComfyPaths, error) {
 	for _, item := range [][2]string{{"install root", installRoot}, {"caller", caller},
 		{"local app data", localData}, {"Pictures", pictures}} {
@@ -170,17 +222,16 @@ func comfyPathsAt(installRoot, caller, localData, pictures string) (ComfyPaths, 
 	if !withinPath(installRoot, caller) {
 		return ComfyPaths{}, errors.New("ComfyUI caller is outside the receipt-bound installation")
 	}
-	dataRoot := filepath.Join(localData, "OpenAbstractions", "ComfyUI")
-	user := filepath.Join(dataRoot, "user")
+	dataRoot := comfyDataRoot(localData)
+	user := filepath.Join(dataRoot, oaArchiveLayout.User)
 	return ComfyPaths{
 		install: installRoot,
 		caller:  caller,
 		user:    user,
-		input:   filepath.Join(dataRoot, "input"),
-		temp:    filepath.Join(dataRoot, "temp"),
-		output:  filepath.Join(pictures, "OpenAbstractions", "ComfyUI"),
-		recipe:  filepath.Join(user, "openabstractions", "image-recipe.json"),
-		launch:  filepath.Join(dataRoot, "launch"),
+		input:   filepath.Join(dataRoot, oaArchiveLayout.Input),
+		temp:    filepath.Join(dataRoot, oaArchiveLayout.Temp),
+		output:  comfyDataRoot(pictures),
+		recipe:  filepath.Join(user, filepath.FromSlash(oaArchiveLayout.ImageRecipe)),
 	}, nil
 }
 
@@ -189,9 +240,20 @@ func comfyPathsAt(installRoot, caller, localData, pictures string) (ComfyPaths, 
 // false when identity refuses either path).
 func withinPath(root, target string) bool { return identity.Inside(target, root) }
 
-// CallerProgram returns the receipt-bound embedded Python executable used as
-// the target program for caller-scoped public setup operations.
-func (p ComfyPaths) CallerProgram() string { return p.caller }
+// Program is the receipt-bound program OpenAbstractions records when this
+// application calls it, and so the one program its registration and its
+// granted rules name. In the native package that is the host: it starts the
+// application with a relay variable naming its own image, and the
+// application's relay (oa_relay.py) runs every OA call through
+// "<host> native-relay". The venv interpreter the package also carries makes
+// none of those calls. A retained earlier portable version names the
+// interpreter its receipt binds.
+func (p ComfyPaths) Program() string {
+	if p.native != "" {
+		return p.native
+	}
+	return p.caller
+}
 
 // UserDirectory returns ComfyUI's stable per-user data directory.
 func (p ComfyPaths) UserDirectory() string { return p.user }
@@ -205,106 +267,22 @@ func (p ComfyPaths) TempDirectory() string { return p.temp }
 // OutputDirectory returns the application output directory under Pictures.
 func (p ComfyPaths) OutputDirectory() string { return p.output }
 
-// LaunchStateDirectory returns where the ComfyUI launcher keeps the record of
-// its last full RECORD check. ComfyUI's own HTTP API serves none of it.
-func (p ComfyPaths) LaunchStateDirectory() string { return p.launch }
-
 // PrepareDataDirectories creates only the fixed app-owned directories used by
 // ComfyUI. It never writes into the immutable versioned application tree.
 func (p ComfyPaths) PrepareDataDirectories() error {
-	for _, path := range []string{p.user, p.input, p.temp, p.output, p.launch, filepath.Dir(p.recipe)} {
-		if err := os.MkdirAll(path, 0o700); err != nil {
-			return err
-		}
-		info, err := os.Lstat(path)
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("ComfyUI data path is not a regular directory: %s", path)
-		}
+	directories := []string{p.user, p.input, p.temp, p.output, filepath.Dir(p.recipe)}
+	if p.native != "" {
+		directories = []string{p.user, filepath.Dir(p.recipe)}
 	}
-	return nil
+	return prepareArchiveDataDirectories(directories, nativeArchiveAppTitle)
 }
 
-// WriteImagePolicy atomically saves the one fixed policy name after setup has
-// successfully created and publicly confirmed its caller-scoped selection.
+// WriteImagePolicy saves the pinned recipe after the caller confirms selection.
 func (p ComfyPaths) WriteImagePolicy() error {
-	if _, err := os.Lstat(p.recipe); err == nil {
-		if err := p.VerifyImagePolicy(); err == nil {
-			return nil
-		}
-		return errors.New("an existing ComfyUI image recipe differs from OA setup; its contents were preserved")
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	if err := p.PrepareDataDirectories(); err != nil {
-		return err
-	}
-	data, err := json.Marshal(comfyImageRecipe{Version: 1, SelectionPolicy: comfyImagePolicy})
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	parent := filepath.Dir(p.recipe)
-	temporary, err := os.CreateTemp(parent, ".image-recipe-*.tmp")
-	if err != nil {
-		return err
-	}
-	temporaryName := temporary.Name()
-	defer os.Remove(temporaryName)
-	if err := temporary.Chmod(0o600); err != nil {
-		temporary.Close()
-		return err
-	}
-	if _, err := temporary.Write(data); err != nil {
-		temporary.Close()
-		return err
-	}
-	if err := temporary.Sync(); err != nil {
-		temporary.Close()
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	// Linking publishes a complete file atomically and fails if another setup
-	// action or the user created the destination after the initial check.
-	if err := os.Link(temporaryName, p.recipe); err != nil {
-		if errors.Is(err, os.ErrExist) && p.VerifyImagePolicy() == nil {
-			return nil
-		}
-		return err
-	}
-	return os.Remove(temporaryName)
+	return writeArchiveImageRecipe(p.recipe, nativeArchiveAppTitle, oaArchiveLayout.ImagePolicy, p.PrepareDataDirectories)
 }
 
-// VerifyImagePolicy validates the exact versioned recipe written by setup.
-// Extra keys and alternate policy names are rejected.
+// VerifyImagePolicy validates the exact versioned recipe written by Setup.
 func (p ComfyPaths) VerifyImagePolicy() error {
-	info, err := os.Lstat(p.recipe)
-	if err != nil {
-		return err
-	}
-	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() > 4096 {
-		return errors.New("ComfyUI image recipe is not a small regular file")
-	}
-	data, err := os.ReadFile(p.recipe)
-	if err != nil {
-		return err
-	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	var recipe comfyImageRecipe
-	if err := decoder.Decode(&recipe); err != nil {
-		return fmt.Errorf("ComfyUI image recipe is invalid: %w", err)
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return errors.New("ComfyUI image recipe contains trailing data")
-	}
-	if recipe.Version != 1 || recipe.SelectionPolicy != comfyImagePolicy {
-		return errors.New("ComfyUI image recipe does not select the configured OA image policy")
-	}
-	return nil
+	return verifyArchiveImageRecipe(p.recipe, nativeArchiveAppTitle, oaArchiveLayout.ImagePolicy)
 }

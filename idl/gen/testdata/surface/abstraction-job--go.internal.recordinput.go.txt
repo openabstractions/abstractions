@@ -1,0 +1,53 @@
+type Raw string
+type LegacyHeader struct
+  Schema int32
+  Extras map[string]Raw
+type InputRecord struct
+  Schema int32
+  Content []string
+  Critical []string
+  ID string
+  Kind string
+  Envelope *oaImported0
+  State string
+  Spec Raw
+  Checkpoint Raw
+  Progress *oaImported1
+  Lease *oaImported2
+  Delegation *oaImported3
+  Requires []string
+  Error string
+  Intent *oaImported4
+  Extensions map[string]Raw
+  CreatedAt string
+  UpdatedAt string
+type Payload struct
+  Value Raw
+type TimestampValue struct
+  Value string
+func Encode(v *InputRecord) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+const TimestampLayout
+func FormatTimestamp(at time.Time) string
+func Decode(in []byte) (*InputRecord, error)
+func ToJSON(v any) (out []byte, err error)
+func FromJSON(data []byte, v any) error
+func DecodeLegacyHeaderAt(in []byte, depth, limit int) (*LegacyHeader, int, error)
+func EncodeLegacyHeaderAt(v *LegacyHeader, depth int) []byte
+func EncodeLegacyHeader(v *LegacyHeader) []byte
+func DecodeLegacyHeader(in []byte) (*LegacyHeader, error)
+func DecodeInputRecordAt(in []byte, depth, limit int) (*InputRecord, int, error)
+func EncodeInputRecordAt(v *InputRecord, depth int) []byte
+func EncodeInputRecord(v *InputRecord) []byte
+func DecodeInputRecord(in []byte) (*InputRecord, error)
+func DecodePayloadAt(in []byte, depth, limit int) (*Payload, int, error)
+func EncodePayloadAt(v *Payload, depth int) []byte
+func EncodePayload(v *Payload) []byte
+func DecodePayload(in []byte) (*Payload, error)
+func DecodeTimestampValueAt(in []byte, depth, limit int) (*TimestampValue, int, error)
+func EncodeTimestampValueAt(v *TimestampValue, depth int) []byte
+func EncodeTimestampValue(v *TimestampValue) []byte
+func DecodeTimestampValue(in []byte) (*TimestampValue, error)

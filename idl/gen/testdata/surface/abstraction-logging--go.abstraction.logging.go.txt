@@ -15,7 +15,24 @@ func (PageOutcome) UnmarshalText(text []byte) error
 func (PageOutcome) MarshalJSON() ([]byte, error)
 func (PageOutcome) UnmarshalJSON(data []byte) error
 func PageOutcomeValues() []PageOutcome
+func (PageOutcome) IsKnown() bool
 func (PageOutcome) Known() bool
+type HistoryUsageOutcome uint32
+const HistoryUsageOutcomeAvailable
+const HistoryUsageOutcomeUnavailable
+const HistoryUsageOutcomeCorrupt
+const HistoryUsageOutcomeForbidden
+const HistoryUsageOutcomeInvalid
+func (HistoryUsageOutcome) String() string
+func (HistoryUsageOutcome) WireName() (string, bool)
+func ParseHistoryUsageOutcome(word string) (HistoryUsageOutcome, bool)
+func (HistoryUsageOutcome) MarshalText() ([]byte, error)
+func (HistoryUsageOutcome) UnmarshalText(text []byte) error
+func (HistoryUsageOutcome) MarshalJSON() ([]byte, error)
+func (HistoryUsageOutcome) UnmarshalJSON(data []byte) error
+func HistoryUsageOutcomeValues() []HistoryUsageOutcome
+func (HistoryUsageOutcome) IsKnown() bool
+func (HistoryUsageOutcome) Known() bool
 type HistoryPageOutcome uint32
 const HistoryPageOutcomePage
 const HistoryPageOutcomeGap
@@ -36,6 +53,7 @@ func (HistoryPageOutcome) UnmarshalText(text []byte) error
 func (HistoryPageOutcome) MarshalJSON() ([]byte, error)
 func (HistoryPageOutcome) UnmarshalJSON(data []byte) error
 func HistoryPageOutcomeValues() []HistoryPageOutcome
+func (HistoryPageOutcome) IsKnown() bool
 func (HistoryPageOutcome) Known() bool
 type ApplicationLogSelection uint32
 const ApplicationLogSelectionOneApp
@@ -48,6 +66,7 @@ func (ApplicationLogSelection) UnmarshalText(text []byte) error
 func (ApplicationLogSelection) MarshalJSON() ([]byte, error)
 func (ApplicationLogSelection) UnmarshalJSON(data []byte) error
 func ApplicationLogSelectionValues() []ApplicationLogSelection
+func (ApplicationLogSelection) IsKnown() bool
 func (ApplicationLogSelection) Known() bool
 type SourceAvailability uint32
 const SourceAvailabilityAvailable
@@ -62,6 +81,7 @@ func (SourceAvailability) UnmarshalText(text []byte) error
 func (SourceAvailability) MarshalJSON() ([]byte, error)
 func (SourceAvailability) UnmarshalJSON(data []byte) error
 func SourceAvailabilityValues() []SourceAvailability
+func (SourceAvailability) IsKnown() bool
 func (SourceAvailability) Known() bool
 type SourceLimitation string
 const SourceLimitationRetention
@@ -70,6 +90,7 @@ const SourceLimitationCollectionPolicy
 const SourceLimitationNativeAccess
 const SourceLimitationVisibilityUnknown
 func SourceLimitationValues() []SourceLimitation
+func (SourceLimitation) IsKnown() bool
 func (SourceLimitation) Known() bool
 type SourceCatalogOutcome uint32
 const SourceCatalogOutcomeCatalog
@@ -85,6 +106,7 @@ func (SourceCatalogOutcome) UnmarshalText(text []byte) error
 func (SourceCatalogOutcome) MarshalJSON() ([]byte, error)
 func (SourceCatalogOutcome) UnmarshalJSON(data []byte) error
 func SourceCatalogOutcomeValues() []SourceCatalogOutcome
+func (SourceCatalogOutcome) IsKnown() bool
 func (SourceCatalogOutcome) Known() bool
 type ServiceErrorCode string
 const ServiceErrorCodeHandlerError
@@ -99,7 +121,97 @@ const ServiceErrorCodeWrongUser
 const ServiceErrorCodePolicyUnavailable
 const ServiceErrorCodeForbidden
 func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) IsKnown() bool
 func (ServiceErrorCode) Known() bool
+type EndpointServiceReadiness uint32
+const EndpointServiceReadinessReady
+const EndpointServiceReadinessNotReady
+const EndpointServiceReadinessUnknown
+func (EndpointServiceReadiness) String() string
+func (EndpointServiceReadiness) WireName() (string, bool)
+func ParseEndpointServiceReadiness(word string) (EndpointServiceReadiness, bool)
+func (EndpointServiceReadiness) MarshalText() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalText(text []byte) error
+func (EndpointServiceReadiness) MarshalJSON() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalJSON(data []byte) error
+func EndpointServiceReadinessValues() []EndpointServiceReadiness
+func (EndpointServiceReadiness) IsKnown() bool
+func (EndpointServiceReadiness) Known() bool
+type EndpointRefusalSource string
+const EndpointRefusalSourceRights
+const EndpointRefusalSourceCredentials
+const EndpointRefusalSourceLicense
+const EndpointRefusalSourceTerms
+const EndpointRefusalSourceIdentity
+const EndpointRefusalSourceOS
+func EndpointRefusalSourceValues() []EndpointRefusalSource
+func (EndpointRefusalSource) IsKnown() bool
+func (EndpointRefusalSource) Known() bool
+type EndpointRefusalDecision uint32
+const EndpointRefusalDecisionDenied
+const EndpointRefusalDecisionNotGranted
+const EndpointRefusalDecisionPersonOnly
+func (EndpointRefusalDecision) String() string
+func (EndpointRefusalDecision) WireName() (string, bool)
+func ParseEndpointRefusalDecision(word string) (EndpointRefusalDecision, bool)
+func (EndpointRefusalDecision) MarshalText() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalText(text []byte) error
+func (EndpointRefusalDecision) MarshalJSON() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalJSON(data []byte) error
+func EndpointRefusalDecisionValues() []EndpointRefusalDecision
+func (EndpointRefusalDecision) IsKnown() bool
+func (EndpointRefusalDecision) Known() bool
+type EndpointRefusalAsk uint32
+const EndpointRefusalAskAvailable
+const EndpointRefusalAskNone
+func (EndpointRefusalAsk) String() string
+func (EndpointRefusalAsk) WireName() (string, bool)
+func ParseEndpointRefusalAsk(word string) (EndpointRefusalAsk, bool)
+func (EndpointRefusalAsk) MarshalText() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalText(text []byte) error
+func (EndpointRefusalAsk) MarshalJSON() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalJSON(data []byte) error
+func EndpointRefusalAskValues() []EndpointRefusalAsk
+func (EndpointRefusalAsk) IsKnown() bool
+func (EndpointRefusalAsk) Known() bool
+type EndpointProducerCheckState uint32
+const EndpointProducerCheckStateCurrent
+const EndpointProducerCheckStateRepaired
+const EndpointProducerCheckStateStale
+const EndpointProducerCheckStateRefused
+const EndpointProducerCheckStateUnverified
+func (EndpointProducerCheckState) String() string
+func (EndpointProducerCheckState) WireName() (string, bool)
+func ParseEndpointProducerCheckState(word string) (EndpointProducerCheckState, bool)
+func (EndpointProducerCheckState) MarshalText() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalText(text []byte) error
+func (EndpointProducerCheckState) MarshalJSON() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalJSON(data []byte) error
+func EndpointProducerCheckStateValues() []EndpointProducerCheckState
+func (EndpointProducerCheckState) IsKnown() bool
+func (EndpointProducerCheckState) Known() bool
+type EndpointDescriptionOutcome uint32
+const EndpointDescriptionOutcomeDescribed
+const EndpointDescriptionOutcomeForbidden
+const EndpointDescriptionOutcomeUnavailable
+const EndpointDescriptionOutcomeInvalid
+const EndpointDescriptionOutcomeUnsupported
+func (EndpointDescriptionOutcome) String() string
+func (EndpointDescriptionOutcome) WireName() (string, bool)
+func ParseEndpointDescriptionOutcome(word string) (EndpointDescriptionOutcome, bool)
+func (EndpointDescriptionOutcome) MarshalText() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalText(text []byte) error
+func (EndpointDescriptionOutcome) MarshalJSON() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalJSON(data []byte) error
+func EndpointDescriptionOutcomeValues() []EndpointDescriptionOutcome
+func (EndpointDescriptionOutcome) IsKnown() bool
+func (EndpointDescriptionOutcome) Known() bool
+const DefaultAsyncCapacity
+const DefaultInitialBackoffMs
+const DefaultMaxBackoffMs
+const DefaultWriteTimeoutMs
+const WriterBackoffJitterPercent
+const WriterGapMessage
 var HistoryErrorCodes
 var HistoryCursorWords
 var HistoryIdentityErrorCodes
@@ -129,6 +241,14 @@ type Page struct
   Records []Record
   Next string
   AtEnd bool
+type HistoryUsage struct
+  RetainedBytes int64
+  Oldest string
+  MaxUse *int64
+  MaxRetentionMs *int64
+type HistoryUsageResult struct
+  Outcome HistoryUsageOutcome
+  Usage *HistoryUsage
 type ApplicationLogTarget struct
   Selection ApplicationLogSelection
   Program string
@@ -164,17 +284,53 @@ type SourcePage struct
   Records []SourceRecord
   Next string
   AtEnd bool
+type EndpointRefusalDetail struct
+  Source EndpointRefusalSource
+  Decision EndpointRefusalDecision
+  Ask EndpointRefusalAsk
+  Action string
+  Question string
+  Credential string
+  RetryAfterMs int64
+type EndpointProducerCheck struct
+  Kind string
+  Copy string
+  State EndpointProducerCheckState
+  Reason string
+  Checked string
+type EndpointServiceState struct
+  Service string
+  Readiness EndpointServiceReadiness
+  Reason string
+  Guarantees []string
+  Capabilities map[string]string
+  DefinitionHash string
+type EndpointDescription struct
+  Outcome EndpointDescriptionOutcome
+  Program string
+  Version string
+  Services []EndpointServiceState
+  Refusal *EndpointRefusalDetail
+  Reason string
+  Checks []EndpointProducerCheck
+type EndpointDescriptionResult struct
+  Value EndpointDescription
 func Encode(v *Record) []byte
 type Refusal struct
   Word string
   Offset int
 func (Refusal) Error() string
+const TimestampLayout
+func FormatTimestamp(at time.Time) string
 func Decode(in []byte) (*Record, error)
+func ToJSON(v any) (out []byte, err error)
+func FromJSON(data []byte, v any) error
 type FrameWriter interface
   WriteFrame(frame []byte) error
 type DispatchError string
 func (DispatchError) Error() string
 func ServiceName(frame []byte) (string, error)
+func ServiceMethod(frame []byte) (service string, method string, err error)
 type FrameExchanger interface
   ExchangeFrame(frame []byte) ([]byte, error)
 type ServiceError struct
@@ -182,13 +338,18 @@ type ServiceError struct
   Message string
 func (ServiceError) Error() string
 const EndpointContract
+const EndpointV2Contract
 type DescribedService interface
   DescribeService() (contract string, ready bool, why string)
 func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+func DescribeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...DescribedService) ([]byte, error)
 type ServedService interface
   DescribedService
   ServiceContract() string
 func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+func ServeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...ServedService) ([]byte, error)
+func ServeEndpointRemote(frame []byte, program, version string, admit func(contract, method, profile string) error, services ...ServedService) ([]byte, error)
+func RemoteMethodProfile(service interface{}, contract, method string) string
 type Sink interface
   Write(record Record) error
 type SinkTransport interface
@@ -197,12 +358,15 @@ type SinkClient struct
 func NewSinkClient(t SinkTransport) *SinkClient
 type SinkDispatcher struct
   Handler Sink
+func (SinkDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (SinkClient) Write(record Record) (err error)
 func (SinkDispatcher) DescribeService() (contract string, ready bool, why string)
 func (SinkDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (SinkDispatcher) ServiceContract() string
+func (SinkDispatcher) DescribeServiceDefinitionHash() string
 func (SinkDispatcher) WriteFrame(frame []byte) error
 type HistoryReader interface
+  Usage() (HistoryUsageResult, error)
   Read(cursor string, maxRecords, maxBytes int64) (Page, error)
 type HistoryReaderTransport interface
   FrameExchanger
@@ -210,10 +374,13 @@ type HistoryReaderClient struct
 func NewHistoryReaderClient(t HistoryReaderTransport) *HistoryReaderClient
 type HistoryReaderDispatcher struct
   Handler HistoryReader
+func (HistoryReaderDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
+func (HistoryReaderClient) Usage() (result HistoryUsageResult, err error)
 func (HistoryReaderClient) Read(cursor string, maxRecords, maxBytes int64) (result Page, err error)
 func (HistoryReaderDispatcher) DescribeService() (contract string, ready bool, why string)
 func (HistoryReaderDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (HistoryReaderDispatcher) ServiceContract() string
+func (HistoryReaderDispatcher) DescribeServiceDefinitionHash() string
 func (HistoryReaderDispatcher) WriteFrame(frame []byte) error
 func (HistoryReaderDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type HistoryObserver interface
@@ -224,24 +391,30 @@ type HistoryObserverClient struct
 func NewHistoryObserverClient(t HistoryObserverTransport) *HistoryObserverClient
 type HistoryObserverDispatcher struct
   Handler HistoryObserver
+func (HistoryObserverDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (HistoryObserverClient) Observe(cursor string, maxRecords, maxBytes, waitMs int64) (result Page, err error)
 func (HistoryObserverDispatcher) DescribeService() (contract string, ready bool, why string)
 func (HistoryObserverDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (HistoryObserverDispatcher) ServiceContract() string
+func (HistoryObserverDispatcher) DescribeServiceDefinitionHash() string
 func (HistoryObserverDispatcher) WriteFrame(frame []byte) error
 func (HistoryObserverDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type ApplicationHistoryReader interface
   Read(target ApplicationLogTarget, cursor string, maxRecords, maxBytes int64) (ApplicationLogPage, error)
+  ReadAboutCaller(since, cursor string, maxRecords, maxBytes int64) (ApplicationLogPage, error)
 type ApplicationHistoryReaderTransport interface
   FrameExchanger
 type ApplicationHistoryReaderClient struct
 func NewApplicationHistoryReaderClient(t ApplicationHistoryReaderTransport) *ApplicationHistoryReaderClient
 type ApplicationHistoryReaderDispatcher struct
   Handler ApplicationHistoryReader
+func (ApplicationHistoryReaderDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (ApplicationHistoryReaderClient) Read(target ApplicationLogTarget, cursor string, maxRecords, maxBytes int64) (result ApplicationLogPage, err error)
+func (ApplicationHistoryReaderClient) ReadAboutCaller(since, cursor string, maxRecords, maxBytes int64) (result ApplicationLogPage, err error)
 func (ApplicationHistoryReaderDispatcher) DescribeService() (contract string, ready bool, why string)
 func (ApplicationHistoryReaderDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ApplicationHistoryReaderDispatcher) ServiceContract() string
+func (ApplicationHistoryReaderDispatcher) DescribeServiceDefinitionHash() string
 func (ApplicationHistoryReaderDispatcher) WriteFrame(frame []byte) error
 func (ApplicationHistoryReaderDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type ApplicationHistoryObserver interface
@@ -252,10 +425,12 @@ type ApplicationHistoryObserverClient struct
 func NewApplicationHistoryObserverClient(t ApplicationHistoryObserverTransport) *ApplicationHistoryObserverClient
 type ApplicationHistoryObserverDispatcher struct
   Handler ApplicationHistoryObserver
+func (ApplicationHistoryObserverDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (ApplicationHistoryObserverClient) Observe(target ApplicationLogTarget, cursor string, maxRecords, maxBytes, waitMs int64) (result ApplicationLogPage, err error)
 func (ApplicationHistoryObserverDispatcher) DescribeService() (contract string, ready bool, why string)
 func (ApplicationHistoryObserverDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ApplicationHistoryObserverDispatcher) ServiceContract() string
+func (ApplicationHistoryObserverDispatcher) DescribeServiceDefinitionHash() string
 func (ApplicationHistoryObserverDispatcher) WriteFrame(frame []byte) error
 func (ApplicationHistoryObserverDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type SourceReader interface
@@ -268,12 +443,14 @@ type SourceReaderClient struct
 func NewSourceReaderClient(t SourceReaderTransport) *SourceReaderClient
 type SourceReaderDispatcher struct
   Handler SourceReader
+func (SourceReaderDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (SourceReaderClient) Sources() (result SourceCatalog, err error)
 func (SourceReaderClient) Read(sourceID, cursor string, maxRecords, maxBytes int64) (result SourcePage, err error)
 func (SourceReaderClient) StartAtEnd(sourceID string) (result SourcePage, err error)
 func (SourceReaderDispatcher) DescribeService() (contract string, ready bool, why string)
 func (SourceReaderDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (SourceReaderDispatcher) ServiceContract() string
+func (SourceReaderDispatcher) DescribeServiceDefinitionHash() string
 func (SourceReaderDispatcher) WriteFrame(frame []byte) error
 func (SourceReaderDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 func DecodeAttestationAt(in []byte, depth, limit int) (*Attestation, int, error)
@@ -288,6 +465,14 @@ func DecodePageAt(in []byte, depth, limit int) (*Page, int, error)
 func EncodePageAt(v *Page, depth int) []byte
 func EncodePage(v *Page) []byte
 func DecodePage(in []byte) (*Page, error)
+func DecodeHistoryUsageAt(in []byte, depth, limit int) (*HistoryUsage, int, error)
+func EncodeHistoryUsageAt(v *HistoryUsage, depth int) []byte
+func EncodeHistoryUsage(v *HistoryUsage) []byte
+func DecodeHistoryUsage(in []byte) (*HistoryUsage, error)
+func DecodeHistoryUsageResultAt(in []byte, depth, limit int) (*HistoryUsageResult, int, error)
+func EncodeHistoryUsageResultAt(v *HistoryUsageResult, depth int) []byte
+func EncodeHistoryUsageResult(v *HistoryUsageResult) []byte
+func DecodeHistoryUsageResult(in []byte) (*HistoryUsageResult, error)
 func DecodeApplicationLogTargetAt(in []byte, depth, limit int) (*ApplicationLogTarget, int, error)
 func EncodeApplicationLogTargetAt(v *ApplicationLogTarget, depth int) []byte
 func EncodeApplicationLogTarget(v *ApplicationLogTarget) []byte

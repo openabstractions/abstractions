@@ -1,0 +1,365 @@
+type Raw string
+type MachineScopeKind uint32
+const MachineScopeKindNone
+const MachineScopeKindOneHostInference
+func (MachineScopeKind) String() string
+func (MachineScopeKind) WireName() (string, bool)
+func ParseMachineScopeKind(word string) (MachineScopeKind, bool)
+func (MachineScopeKind) MarshalText() ([]byte, error)
+func (MachineScopeKind) UnmarshalText(text []byte) error
+func (MachineScopeKind) MarshalJSON() ([]byte, error)
+func (MachineScopeKind) UnmarshalJSON(data []byte) error
+func MachineScopeKindValues() []MachineScopeKind
+func (MachineScopeKind) IsKnown() bool
+func (MachineScopeKind) Known() bool
+type MachinePhase uint32
+const MachinePhaseOffering
+const MachinePhaseConnecting
+const MachinePhaseChecking
+const MachinePhaseAwaitingPerson
+const MachinePhaseConsentSent
+const MachinePhaseReconciling
+const MachinePhasePaired
+const MachinePhaseRefused
+const MachinePhaseCancelled
+const MachinePhaseExpired
+const MachinePhaseUncertain
+func (MachinePhase) String() string
+func (MachinePhase) WireName() (string, bool)
+func ParseMachinePhase(word string) (MachinePhase, bool)
+func (MachinePhase) MarshalText() ([]byte, error)
+func (MachinePhase) UnmarshalText(text []byte) error
+func (MachinePhase) MarshalJSON() ([]byte, error)
+func (MachinePhase) UnmarshalJSON(data []byte) error
+func MachinePhaseValues() []MachinePhase
+func (MachinePhase) IsKnown() bool
+func (MachinePhase) Known() bool
+type MachineStartOutcome uint32
+const MachineStartOutcomeStarted
+const MachineStartOutcomeExisting
+const MachineStartOutcomeForbidden
+const MachineStartOutcomeUnavailable
+const MachineStartOutcomeInvalid
+const MachineStartOutcomeConflict
+const MachineStartOutcomeExhausted
+const MachineStartOutcomeExpired
+func (MachineStartOutcome) String() string
+func (MachineStartOutcome) WireName() (string, bool)
+func ParseMachineStartOutcome(word string) (MachineStartOutcome, bool)
+func (MachineStartOutcome) MarshalText() ([]byte, error)
+func (MachineStartOutcome) UnmarshalText(text []byte) error
+func (MachineStartOutcome) MarshalJSON() ([]byte, error)
+func (MachineStartOutcome) UnmarshalJSON(data []byte) error
+func MachineStartOutcomeValues() []MachineStartOutcome
+func (MachineStartOutcome) IsKnown() bool
+func (MachineStartOutcome) Known() bool
+type MachineObserveOutcome uint32
+const MachineObserveOutcomeChanged
+const MachineObserveOutcomeUnchanged
+const MachineObserveOutcomeGap
+const MachineObserveOutcomeUnknown
+const MachineObserveOutcomeForbidden
+const MachineObserveOutcomeUnavailable
+const MachineObserveOutcomeInvalid
+const MachineObserveOutcomeExhausted
+const MachineObserveOutcomeFailed
+func (MachineObserveOutcome) String() string
+func (MachineObserveOutcome) WireName() (string, bool)
+func ParseMachineObserveOutcome(word string) (MachineObserveOutcome, bool)
+func (MachineObserveOutcome) MarshalText() ([]byte, error)
+func (MachineObserveOutcome) UnmarshalText(text []byte) error
+func (MachineObserveOutcome) MarshalJSON() ([]byte, error)
+func (MachineObserveOutcome) UnmarshalJSON(data []byte) error
+func MachineObserveOutcomeValues() []MachineObserveOutcome
+func (MachineObserveOutcome) IsKnown() bool
+func (MachineObserveOutcome) Known() bool
+type MachineCancelOutcome uint32
+const MachineCancelOutcomeUpdated
+const MachineCancelOutcomeUnknown
+const MachineCancelOutcomeForbidden
+const MachineCancelOutcomeUnavailable
+const MachineCancelOutcomeInvalid
+func (MachineCancelOutcome) String() string
+func (MachineCancelOutcome) WireName() (string, bool)
+func ParseMachineCancelOutcome(word string) (MachineCancelOutcome, bool)
+func (MachineCancelOutcome) MarshalText() ([]byte, error)
+func (MachineCancelOutcome) UnmarshalText(text []byte) error
+func (MachineCancelOutcome) MarshalJSON() ([]byte, error)
+func (MachineCancelOutcome) UnmarshalJSON(data []byte) error
+func MachineCancelOutcomeValues() []MachineCancelOutcome
+func (MachineCancelOutcome) IsKnown() bool
+func (MachineCancelOutcome) Known() bool
+type MachineListOutcome uint32
+const MachineListOutcomePage
+const MachineListOutcomeGap
+const MachineListOutcomeForbidden
+const MachineListOutcomeUnavailable
+const MachineListOutcomeInvalid
+func (MachineListOutcome) String() string
+func (MachineListOutcome) WireName() (string, bool)
+func ParseMachineListOutcome(word string) (MachineListOutcome, bool)
+func (MachineListOutcome) MarshalText() ([]byte, error)
+func (MachineListOutcome) UnmarshalText(text []byte) error
+func (MachineListOutcome) MarshalJSON() ([]byte, error)
+func (MachineListOutcome) UnmarshalJSON(data []byte) error
+func MachineListOutcomeValues() []MachineListOutcome
+func (MachineListOutcome) IsKnown() bool
+func (MachineListOutcome) Known() bool
+type MachineRemoveOutcome uint32
+const MachineRemoveOutcomeRemoved
+const MachineRemoveOutcomeCleanupPending
+const MachineRemoveOutcomeConflict
+const MachineRemoveOutcomeNotFound
+const MachineRemoveOutcomeForbidden
+const MachineRemoveOutcomeUnavailable
+const MachineRemoveOutcomeInvalid
+func (MachineRemoveOutcome) String() string
+func (MachineRemoveOutcome) WireName() (string, bool)
+func ParseMachineRemoveOutcome(word string) (MachineRemoveOutcome, bool)
+func (MachineRemoveOutcome) MarshalText() ([]byte, error)
+func (MachineRemoveOutcome) UnmarshalText(text []byte) error
+func (MachineRemoveOutcome) MarshalJSON() ([]byte, error)
+func (MachineRemoveOutcome) UnmarshalJSON(data []byte) error
+func MachineRemoveOutcomeValues() []MachineRemoveOutcome
+func (MachineRemoveOutcome) IsKnown() bool
+func (MachineRemoveOutcome) Known() bool
+type ServiceErrorCode string
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) IsKnown() bool
+func (ServiceErrorCode) Known() bool
+type EndpointServiceReadiness uint32
+const EndpointServiceReadinessReady
+const EndpointServiceReadinessNotReady
+const EndpointServiceReadinessUnknown
+func (EndpointServiceReadiness) String() string
+func (EndpointServiceReadiness) WireName() (string, bool)
+func ParseEndpointServiceReadiness(word string) (EndpointServiceReadiness, bool)
+func (EndpointServiceReadiness) MarshalText() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalText(text []byte) error
+func (EndpointServiceReadiness) MarshalJSON() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalJSON(data []byte) error
+func EndpointServiceReadinessValues() []EndpointServiceReadiness
+func (EndpointServiceReadiness) IsKnown() bool
+func (EndpointServiceReadiness) Known() bool
+type EndpointRefusalSource string
+const EndpointRefusalSourceRights
+const EndpointRefusalSourceCredentials
+const EndpointRefusalSourceLicense
+const EndpointRefusalSourceTerms
+const EndpointRefusalSourceIdentity
+const EndpointRefusalSourceOS
+func EndpointRefusalSourceValues() []EndpointRefusalSource
+func (EndpointRefusalSource) IsKnown() bool
+func (EndpointRefusalSource) Known() bool
+type EndpointRefusalDecision uint32
+const EndpointRefusalDecisionDenied
+const EndpointRefusalDecisionNotGranted
+const EndpointRefusalDecisionPersonOnly
+func (EndpointRefusalDecision) String() string
+func (EndpointRefusalDecision) WireName() (string, bool)
+func ParseEndpointRefusalDecision(word string) (EndpointRefusalDecision, bool)
+func (EndpointRefusalDecision) MarshalText() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalText(text []byte) error
+func (EndpointRefusalDecision) MarshalJSON() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalJSON(data []byte) error
+func EndpointRefusalDecisionValues() []EndpointRefusalDecision
+func (EndpointRefusalDecision) IsKnown() bool
+func (EndpointRefusalDecision) Known() bool
+type EndpointRefusalAsk uint32
+const EndpointRefusalAskAvailable
+const EndpointRefusalAskNone
+func (EndpointRefusalAsk) String() string
+func (EndpointRefusalAsk) WireName() (string, bool)
+func ParseEndpointRefusalAsk(word string) (EndpointRefusalAsk, bool)
+func (EndpointRefusalAsk) MarshalText() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalText(text []byte) error
+func (EndpointRefusalAsk) MarshalJSON() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalJSON(data []byte) error
+func EndpointRefusalAskValues() []EndpointRefusalAsk
+func (EndpointRefusalAsk) IsKnown() bool
+func (EndpointRefusalAsk) Known() bool
+type EndpointProducerCheckState uint32
+const EndpointProducerCheckStateCurrent
+const EndpointProducerCheckStateRepaired
+const EndpointProducerCheckStateStale
+const EndpointProducerCheckStateRefused
+const EndpointProducerCheckStateUnverified
+func (EndpointProducerCheckState) String() string
+func (EndpointProducerCheckState) WireName() (string, bool)
+func ParseEndpointProducerCheckState(word string) (EndpointProducerCheckState, bool)
+func (EndpointProducerCheckState) MarshalText() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalText(text []byte) error
+func (EndpointProducerCheckState) MarshalJSON() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalJSON(data []byte) error
+func EndpointProducerCheckStateValues() []EndpointProducerCheckState
+func (EndpointProducerCheckState) IsKnown() bool
+func (EndpointProducerCheckState) Known() bool
+type EndpointDescriptionOutcome uint32
+const EndpointDescriptionOutcomeDescribed
+const EndpointDescriptionOutcomeForbidden
+const EndpointDescriptionOutcomeUnavailable
+const EndpointDescriptionOutcomeInvalid
+const EndpointDescriptionOutcomeUnsupported
+func (EndpointDescriptionOutcome) String() string
+func (EndpointDescriptionOutcome) WireName() (string, bool)
+func ParseEndpointDescriptionOutcome(word string) (EndpointDescriptionOutcome, bool)
+func (EndpointDescriptionOutcome) MarshalText() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalText(text []byte) error
+func (EndpointDescriptionOutcome) MarshalJSON() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalJSON(data []byte) error
+func EndpointDescriptionOutcomeValues() []EndpointDescriptionOutcome
+func (EndpointDescriptionOutcome) IsKnown() bool
+func (EndpointDescriptionOutcome) Known() bool
+type MachinePreparation struct
+  Request MachineScopeKind
+  Offer MachineScopeKind
+  OfferHost string
+  NormalServiceAddress string
+  BindingName string
+type MachineRequestIdentity struct
+  Epoch string
+  ExpiresMs int64
+  Nonce string
+type MachineDirection struct
+  Kind MachineScopeKind
+  Host string
+  ServiceAddress string
+type MachineAgreement struct
+  PeerKey string
+  Check string
+  Transcript string
+  Semantics string
+  Given MachineDirection
+  Received MachineDirection
+type MachineOperation struct
+  ID string
+  Phase MachinePhase
+  ExpiresMs int64
+  Reason string
+  Agreement *MachineAgreement
+  QuestionID string
+  Revision string
+type MachineStart struct
+  Outcome MachineStartOutcome
+  Operation *MachineOperation
+  Code string
+type MachineObservation struct
+  Outcome MachineObserveOutcome
+  Cursor string
+  Operation *MachineOperation
+type MachineCancellation struct
+  Outcome MachineCancelOutcome
+  Operation *MachineOperation
+type MachineRecord struct
+  PeerKey string
+  State string
+  ServiceAddress string
+  LastCallUnixMs int64
+  BindingName string
+type MachinePage struct
+  Outcome MachineListOutcome
+  Epoch string
+  RequestExpiresMs int64
+  Revision string
+  NextCursor string
+  Machines []MachineRecord
+  LocalServiceAddress string
+type MachineRemoval struct
+  Outcome MachineRemoveOutcome
+  Revision string
+type EndpointRefusalDetail struct
+  Source EndpointRefusalSource
+  Decision EndpointRefusalDecision
+  Ask EndpointRefusalAsk
+  Action string
+  Question string
+  Credential string
+  RetryAfterMs int64
+type EndpointProducerCheck struct
+  Kind string
+  Copy string
+  State EndpointProducerCheckState
+  Reason string
+  Checked string
+type EndpointServiceState struct
+  Service string
+  Readiness EndpointServiceReadiness
+  Reason string
+  Guarantees []string
+  Capabilities map[string]string
+  DefinitionHash string
+type EndpointDescription struct
+  Outcome EndpointDescriptionOutcome
+  Program string
+  Version string
+  Services []EndpointServiceState
+  Refusal *EndpointRefusalDetail
+  Reason string
+  Checks []EndpointProducerCheck
+type EndpointDescriptionResult struct
+  Value EndpointDescription
+func Encode(v *MachineStart) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+const TimestampLayout
+func FormatTimestamp(at time.Time) string
+func Decode(in []byte) (*MachineStart, error)
+func ToJSON(v any) (out []byte, err error)
+func FromJSON(data []byte, v any) error
+type FrameWriter interface
+  WriteFrame(frame []byte) error
+type DispatchError string
+func (DispatchError) Error() string
+type FrameExchanger interface
+  ExchangeFrame(frame []byte) ([]byte, error)
+type ServiceError struct
+  Code ServiceErrorCode
+  Message string
+func (ServiceError) Error() string
+const EndpointContract
+const EndpointV2Contract
+type DescribedService interface
+  DescribeService() (contract string, ready bool, why string)
+func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+func DescribeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...DescribedService) ([]byte, error)
+type ServedService interface
+  DescribedService
+  ServiceContract() string
+func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+func ServeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...ServedService) ([]byte, error)
+func ServeEndpointRemote(frame []byte, program, version string, admit func(contract, method, profile string) error, services ...ServedService) ([]byte, error)
+func RemoteMethodProfile(service interface{}, contract, method string) string
+type MachineControl interface
+  StartOffer(request MachineRequestIdentity, invitationAddress string, preparation MachinePreparation) (MachineStart, error)
+  Enter(request MachineRequestIdentity, code string, preparation MachinePreparation) (MachineStart, error)
+  Observe(operationID, after string, waitMs int64) (MachineObservation, error)
+  Cancel(operationID string) (MachineCancellation, error)
+  List(cursor string, limit int64) (MachinePage, error)
+  Remove(expectedRevision, peerKey string) (MachineRemoval, error)
+type MachineControlTransport interface
+  FrameExchanger
+type MachineControlClient struct
+func NewMachineControlClient(t MachineControlTransport) *MachineControlClient
+type MachineControlDispatcher struct
+  Handler MachineControl
+func (MachineControlDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
+func (MachineControlClient) StartOffer(request MachineRequestIdentity, invitationAddress string, preparation MachinePreparation) (result MachineStart, err error)
+func (MachineControlClient) Enter(request MachineRequestIdentity, code string, preparation MachinePreparation) (result MachineStart, err error)
+func (MachineControlClient) Observe(operationID, after string, waitMs int64) (result MachineObservation, err error)
+func (MachineControlClient) Cancel(operationID string) (result MachineCancellation, err error)
+func (MachineControlClient) List(cursor string, limit int64) (result MachinePage, err error)
+func (MachineControlClient) Remove(expectedRevision, peerKey string) (result MachineRemoval, err error)
+func (MachineControlDispatcher) DescribeService() (contract string, ready bool, why string)
+func (MachineControlDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (MachineControlDispatcher) ServiceContract() string
+func (MachineControlDispatcher) DescribeServiceDefinitionHash() string
+func (MachineControlDispatcher) WriteFrame(frame []byte) error
+func (MachineControlDispatcher) ExchangeFrame(frame []byte) ([]byte, error)

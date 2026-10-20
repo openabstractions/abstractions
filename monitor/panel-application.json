@@ -1,0 +1,14 @@
+{
+  "version": "applications@3",
+  "name": "openabstractions-panel",
+  "title": "OpenAbstractions Panel",
+  "description": "Open the native Panel credentials page.",
+  "offers": {"version":"appmodel@1","commands":[]},
+  "host": {"arguments":["-owned-host","-native","-quiet","-page","credentials"],"readiness_deadline_ms":15000},
+  "script_host": false,
+  "requests": [],
+  "network": {"hosts":[]},
+  "needs": {"files":[],"models":[]},
+  "purpose": "",
+  "verbs": [{"name":"open","class":"reveal","input_schema":{"type":"object","properties":{"page":{"type":"string","enum":["credentials"]}},"required":["page"],"additionalProperties":false}}]
+}

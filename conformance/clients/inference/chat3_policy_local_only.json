@@ -1,0 +1,1 @@
+{"identity":{"key":"privacy-key","history_epoch":"epoch","attempt":0},"target":{"selection_policy":"private"},"content":{"messages":[{"role":"user","parts":[{"kind":"text","text":"prompt"}]}],"guarantees":["abstraction.inference/local-only@1"],"credential":""}}

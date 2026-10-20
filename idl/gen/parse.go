@@ -29,7 +29,7 @@ var encodingKeys = map[string][]string{
 	"escape":         {"minimal", "ascii"},
 	"map_keys":       {"utf8-bytes"},
 	"numbers":        {"integer-decimal"},
-	"opaque":         {"verbatim"},
+	"opaque":         {"verbatim", "reindent"},
 	"terminator":     {"newline", "none"},
 	"duplicate_keys": {"refuse", "last"},
 }
@@ -192,8 +192,8 @@ func (p *parser) setEncoding(key, val string, line int) error {
 	}
 	if key == "depth_limit" {
 		n, err := strconv.Atoi(val)
-		if err != nil || n < 1 || n > 1024 {
-			return fmt.Errorf("line %d: depth_limit is a nesting depth from 1 to 1024", line)
+		if err != nil || n < 1 || n > 1000 {
+			return fmt.Errorf("line %d: depth_limit is a nesting depth from 1 to 1000", line)
 		}
 		p.def.Encoding.DepthLimit = n
 		return nil
@@ -236,19 +236,32 @@ func (p *parser) typedef() error {
 		return fmt.Errorf("line %d: a typedef renames a scalar, not %q", p.peek().line, base)
 	}
 	line := p.peek().line
-	ann, err := p.annotations()
+	ann, err := p.annotations(false)
 	if err != nil {
 		return err
 	}
+	for key := range ann {
+		if key != "read" && key != "write" && key != "length" && key != "pattern" {
+			return fmt.Errorf("line %d: typedef %s carries unsupported annotation %q", line, alias, key)
+		}
+	}
+	if _, exists := p.typedefs[alias]; exists {
+		return fmt.Errorf("line %d: duplicate typedef %s", line, alias)
+	}
+	if (ann["length"] != "" || ann["pattern"] != "") && base != "string" {
+		return fmt.Errorf("line %d: typedef value constraints require string", line)
+	}
 	g := Grammar{Read: ann["read"], Write: ann["write"]}
-	if g.Read != "" || g.Write != "" {
+	_, readDeclared := ann["read"]
+	_, writeDeclared := ann["write"]
+	if readDeclared || writeDeclared {
 		if err := checkGrammars(alias, base, g, line); err != nil {
 			return err
 		}
 	}
 	p.typedefs[alias] = base
 	p.grammars[alias] = g
-	p.def.Typedefs = append(p.def.Typedefs, Typedef{Alias: alias, Base: base, Grammar: g})
+	p.def.Typedefs = append(p.def.Typedefs, Typedef{Alias: alias, Base: base, Grammar: g, Ann: ann})
 	return nil
 }
 
@@ -301,7 +314,7 @@ func (p *parser) vocabularyDef() error {
 			return fmt.Errorf("line %d: %q appears twice in %s", line, nameTok.text, name)
 		}
 		seen[nameTok.text] = true
-		ann, err := p.annotations()
+		ann, err := p.annotations(false)
 		if err != nil {
 			return err
 		}
@@ -327,7 +340,7 @@ func (p *parser) vocabularyDef() error {
 		v.Terms = append(v.Terms, Term{ID: id, Name: nameTok.text, When: when, Is: is, StripCritical: ann["strip_critical"] == "true"})
 	}
 	p.i++
-	ann, err := p.annotations()
+	ann, err := p.annotations(false)
 	if err != nil {
 		return err
 	}
@@ -383,7 +396,7 @@ func (p *parser) refusalDef() error {
 			return fmt.Errorf("line %d: %q is declared twice", line, word)
 		}
 		seen[word] = true
-		ann, err := p.annotations()
+		ann, err := p.annotations(false)
 		if err != nil {
 			return err
 		}
@@ -441,7 +454,7 @@ func (p *parser) protocolDef() error {
 			return fmt.Errorf("line %d: operation %q appears twice in %s", line, op, name)
 		}
 		seen[op] = true
-		if _, err := p.annotations(); err != nil {
+		if _, err := p.annotations(false); err != nil {
 			return err
 		}
 		if p.at(",") || p.at(";") {
@@ -450,7 +463,7 @@ func (p *parser) protocolDef() error {
 		pr.Operations = append(pr.Operations, Operation{ID: id, Name: op})
 	}
 	p.i++
-	ann, err := p.annotations()
+	ann, err := p.annotations(false)
 	if err != nil {
 		return err
 	}
@@ -474,7 +487,7 @@ func (p *parser) protocolDef() error {
 // judges as contract rule R4.
 func fieldAnnotation(k string) bool {
 	switch k {
-	case "omit", "equals", "equals_refusal", "service_raw", "catalogue", "closed_by":
+	case "omit", "equals", "equals_refusal", "length", "range", "pattern", "service_raw", "catalogue", "closed_by", "secret", "local":
 		return true
 	}
 	return strings.HasSuffix(k, ".name") && k != ".name"
@@ -496,7 +509,7 @@ func catalogueAnnotation(ann map[string]string, line int, name string) error {
 	return nil
 }
 
-func (p *parser) annotations() (map[string]string, error) {
+func (p *parser) annotations(structure bool) (map[string]string, error) {
 	ann := map[string]string{}
 	if !p.at("(") {
 		return ann, nil
@@ -515,6 +528,22 @@ func (p *parser) annotations() (map[string]string, error) {
 		if val.kind != "string" {
 			return nil, fmt.Errorf("line %d: an annotation value is quoted", line)
 		}
+		if key == "remote" || key == "secret" || key == "local" || key == "idempotent" || key == "readonly" || key == "idempotency_key" {
+			if _, exists := ann[key]; exists {
+				return nil, fmt.Errorf("line %d: %s is declared twice", line, key)
+			}
+		}
+		if key == "schema_members" {
+			if !structure {
+				return nil, fmt.Errorf("line %d: schema_members belongs to a struct", line)
+			}
+			if _, exists := ann[key]; exists {
+				return nil, fmt.Errorf("line %d: schema_members is declared twice", line)
+			}
+			if _, _, err := parseBounds(val.text, 63, true); err != nil {
+				return nil, fmt.Errorf("line %d: schema_members %w", line, err)
+			}
+		}
 		ann[key] = val.text
 		if p.at(",") {
 			p.i++
@@ -530,8 +559,8 @@ func (p *parser) typeRef() (string, error) {
 		return "", fmt.Errorf("line %d: expected a type, found %q", t.line, t.text)
 	}
 	name := t.text
-	if base, ok := p.typedefs[name]; ok {
-		return base, nil
+	if td, ok := p.def.scalarAlias(name); ok {
+		return td.Base, nil
 	}
 	if name != "list" && name != "map" {
 		return name, nil
@@ -556,6 +585,49 @@ func (p *parser) typeRef() (string, error) {
 		return "", err
 	}
 	return name + "<" + strings.Join(parts, ",") + ">", nil
+}
+
+// typeUse retains the local named scalar at each already-supported position.
+// Type spelling and codec carriers still use the resolved primitive.
+func (p *parser) typeUse() (string, map[string]string, error) {
+	start := p.i
+	typ, err := p.typeRef()
+	if err != nil {
+		return "", nil, err
+	}
+	var spelling strings.Builder
+	for _, tok := range p.toks[start:p.i] {
+		spelling.WriteString(tok.text)
+	}
+	uses := map[string]string{}
+	var positionError error
+	add := func(position, name string) {
+		if td, ok := p.def.scalarAlias(name); ok {
+			if position != "" && strings.Contains(name, ".") && td.Grammar.Named() {
+				positionError = fmt.Errorf("imported grammar alias %s requires a scalar field or method value", name)
+			}
+			uses[position] = name
+		}
+	}
+	name := spelling.String()
+	add("", name)
+	if element := listElement(name); element != "" {
+		add("[]", element)
+	}
+	if strings.HasPrefix(name, "map<") && strings.HasSuffix(name, ">") {
+		if key, value, ok := strings.Cut(name[4:len(name)-1], ","); ok {
+			add("[key]", key)
+			add("[value]", value)
+		}
+	}
+	return typ, uses, positionError
+}
+
+func (p *parser) typeGrammar(name string) Grammar {
+	if td, ok := p.def.scalarAlias(name); ok {
+		return td.Grammar
+	}
+	return Grammar{}
 }
 
 func (p *parser) structDef() error {
@@ -584,7 +656,7 @@ func (p *parser) structDef() error {
 		st.Fields = append(st.Fields, f)
 	}
 	p.i++
-	st.Ann, err = p.annotations()
+	st.Ann, err = p.annotations(true)
 	if err != nil {
 		return err
 	}
@@ -635,7 +707,7 @@ func (p *parser) field() (Field, error) {
 		return Field{}, fmt.Errorf("line %d: a field is required or optional, not %q", line, req)
 	}
 	alias := p.peek().text
-	typ, err := p.typeRef()
+	typ, uses, err := p.typeUse()
 	if err != nil {
 		return Field{}, err
 	}
@@ -646,7 +718,7 @@ func (p *parser) field() (Field, error) {
 	if p.at("=") {
 		return Field{}, fmt.Errorf("line %d: %s carries a default value; a default written back is not an absence, so this profile has none", line, name)
 	}
-	ann, err := p.annotations()
+	ann, err := p.annotations(false)
 	if err != nil {
 		return Field{}, err
 	}
@@ -655,11 +727,17 @@ func (p *parser) field() (Field, error) {
 	}
 	for k := range ann {
 		if !fieldAnnotation(k) {
-			return Field{}, fmt.Errorf("line %d: %s carries %q, and a field takes omit, equals, equals_refusal, service_raw, <language>.name, catalogue and closed_by; a flag this profile does not read is a rule nobody enforces", line, name, k)
+			return Field{}, fmt.Errorf("line %d: %s carries %q, and a field takes omit, equals, equals_refusal, length, range, pattern, service_raw, <language>.name, catalogue and closed_by; a flag this profile does not read is a rule nobody enforces", line, name, k)
 		}
 	}
 	if err := catalogueAnnotation(ann, line, name); err != nil {
 		return Field{}, err
+	}
+	if value, ok := ann["secret"]; ok && value != "true" {
+		return Field{}, fmt.Errorf("line %d: secret must be true", line)
+	}
+	if value, ok := ann["local"]; ok && value != "path" && value != "pid" && value != "handle" {
+		return Field{}, fmt.Errorf("line %d: local must be path, pid or handle", line)
 	}
 	omit := ann["omit"]
 	switch {
@@ -673,10 +751,10 @@ func (p *parser) field() (Field, error) {
 		return Field{}, fmt.Errorf("line %d: omit = %q; this profile defines zero and absent", line, omit)
 	}
 	named := ""
-	if _, ok := p.typedefs[alias]; ok {
+	if _, ok := p.def.scalarAlias(alias); ok {
 		named = alias
 	}
-	return Field{ID: id, Type: typ, Alias: named, Name: name, Omit: omit, Grammar: p.grammars[alias], Ann: ann, Line: line}, nil
+	return Field{ID: id, Type: typ, Alias: named, Name: name, Omit: omit, Grammar: p.typeGrammar(alias), Ann: ann, Line: line, TypeAliases: uses}, nil
 }
 
 func (p *parser) enumDef() error {
@@ -703,7 +781,7 @@ func (p *parser) enumDef() error {
 		if err != nil {
 			return err
 		}
-		ann, err := p.annotations()
+		ann, err := p.annotations(false)
 		if err != nil {
 			return err
 		}
@@ -713,7 +791,7 @@ func (p *parser) enumDef() error {
 		en.Members = append(en.Members, Member{ID: id, Name: member, Ann: ann})
 	}
 	p.i++
-	en.Ann, err = p.annotations()
+	en.Ann, err = p.annotations(false)
 	if err != nil {
 		return err
 	}
@@ -721,8 +799,8 @@ func (p *parser) enumDef() error {
 		return fmt.Errorf("enum %s does not say what an unknown member does; this profile defines unknown = \"grant\" and unknown = \"refuse\"", name)
 	}
 	for k := range en.Ann {
-		if k != "unknown" && k != "reader" {
-			return fmt.Errorf("enum %s carries %q, and an enum takes unknown and reader; a flag this profile does not read is a rule nobody enforces", name, k)
+		if k != "unknown" && k != "reader" && k != "doc" {
+			return fmt.Errorf("enum %s carries %q, and an enum takes unknown, reader and doc; a flag this profile does not read is a rule nobody enforces", name, k)
 		}
 	}
 	if r, ok := en.Ann["reader"]; ok && r != "display" && r != "validate" && r != "act" {
@@ -749,8 +827,8 @@ func (p *parser) constDef() error {
 	if err != nil {
 		return err
 	}
-	if typ != "list<i32>" && typ != "list<string>" {
-		return fmt.Errorf("line %d: a const is list<i32> or list<string>, not %s", p.peek().line, typ)
+	if typ != "list<i32>" && typ != "list<string>" && typ != "i32" && typ != "i64" && typ != "string" {
+		return fmt.Errorf("line %d: a const is i32, i64, string, list<i32> or list<string>, not %s", p.peek().line, typ)
 	}
 	name, err := p.ident()
 	if err != nil {
@@ -759,11 +837,30 @@ func (p *parser) constDef() error {
 	if err := p.want("="); err != nil {
 		return err
 	}
-	if err := p.want("["); err != nil {
+	c := Const{Name: name, Type: typ}
+	scalar := c.Scalar() || c.StringScalar()
+	if c.Scalar() {
+		// One integer, written once and printed by every backend ([DEF-A6]).
+		t := p.next()
+		bits := 64
+		if typ == "i32" {
+			bits = 32
+		}
+		n, e := strconv.ParseInt(t.text, 10, bits)
+		if t.kind != "int" || e != nil || strconv.FormatInt(n, 10) != t.text {
+			return fmt.Errorf("line %d: const %s is a canonical in-range %s decimal, not %q", t.line, name, typ, t.text)
+		}
+		c.Ints = []int64{n}
+	} else if c.StringScalar() {
+		t := p.next()
+		if t.kind != "string" {
+			return fmt.Errorf("line %d: const %s requires a quoted string", t.line, name)
+		}
+		c.Strings = []string{t.text}
+	} else if err := p.want("["); err != nil {
 		return err
 	}
-	c := Const{Name: name, Type: typ}
-	for !p.at("]") {
+	for !scalar && !p.at("]") {
 		t := p.next()
 		switch {
 		case typ == "list<i32>" && t.kind == "int":
@@ -778,9 +875,11 @@ func (p *parser) constDef() error {
 			p.i++
 		}
 	}
-	p.i++
+	if !scalar {
+		p.i++
+	}
 	line := p.peek().line
-	if c.Ann, err = p.annotations(); err != nil {
+	if c.Ann, err = p.annotations(false); err != nil {
 		return err
 	}
 	for k := range c.Ann {
@@ -813,9 +912,6 @@ func (p *parser) validate() error {
 		for _, f := range st.Fields {
 			if isCollection(f.Type) && f.Omit == "absent" {
 				return fmt.Errorf("line %d: %s is a collection omitted when absent, and an absent collection and an empty one are one thing on the wire; a collection says omit = \"zero\"", f.Line, f.Name)
-			}
-			if (f.Type == "i32" || f.Type == "i64" || f.Type == "bool") && f.Omit == "absent" {
-				return fmt.Errorf("line %d: %s is an optional %s omitted when absent; generated bindings carry %s as a value without presence, so it says omit = \"zero\" or is required", f.Line, f.Name, f.Type, f.Type)
 			}
 			if scalarTypes[f.Type] || p.def.Enum(f.Type) != nil || p.def.Enum(listElement(f.Type)) != nil || encodableCollections[f.Type] {
 				continue
@@ -853,13 +949,19 @@ func (p *parser) validate() error {
 	if len(p.def.Refusals) == 0 {
 		return fmt.Errorf("the definition declares no refusals, and a decoder's public surface is the word it says no with")
 	}
-	if err := p.validateEqualities(); err != nil {
+	if err := p.lowerDefinitionChecks(); err != nil {
 		return err
 	}
 	if err := p.validateVocabulary(); err != nil {
 		return err
 	}
 	if err := p.validateServices(); err != nil {
+		return err
+	}
+	if err := p.validateTraitKeys(); err != nil {
+		return err
+	}
+	if err := p.def.validateSizes(); err != nil {
 		return err
 	}
 	return p.validateProtocol()
@@ -904,7 +1006,7 @@ func (p *parser) validateProtocol() error {
 		return fmt.Errorf("protocol %s does not omit %s.%s on zero; an answer that succeeded says nothing, and a peer reading a present-but-empty verdict has to know that empty means yes", pr.Name, pr.Response, pr.Verdict)
 	}
 	en := p.def.Enum(pr.Verdicts)
-	if en == nil {
+	if en == nil || strings.Contains(pr.Verdicts, ".") {
 		return fmt.Errorf("protocol %s draws its verdicts from %s, which this definition does not declare as an enum", pr.Name, pr.Verdicts)
 	}
 	if en.Ann["unknown"] != "grant" {

@@ -43,6 +43,13 @@ func TestSetupIncompleteCopyCheckRequiresBesideChoiceForEachSelectedApp(t *testi
 	if got := plan(`{"selected":["comfyui","lemonade"],"beside":["comfyui"]}`); got.Code != http.StatusOK {
 		t.Fatalf("explicit install-beside was refused: %d %s", got.Code, got.Body.String())
 	}
+	location := filepath.Join(t.TempDir(), "ComfyUI")
+	findOtherCopies = func() ([]setup.OtherCopy, error) {
+		return []setup.OtherCopy{{App: setup.ComfyUI, Title: "ComfyUI", Location: location}}, errors.New("uninstall registry unreadable")
+	}
+	if got := plan(`{"selected":["comfyui"]}`); got.Code != http.StatusConflict || !strings.Contains(got.Body.String(), location) {
+		t.Fatalf("incomplete scan hid a known copy: %d %s", got.Code, got.Body.String())
+	}
 }
 
 func withOtherCopies(t *testing.T, copies []setup.OtherCopy) {

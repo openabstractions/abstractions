@@ -37,7 +37,10 @@
 // reads and one illegal escape three levels down makes the whole file
 // unreadable. Carried, because without it 1.50 comes back 1.5 and "a\/b" comes
 // back "a/b" — somebody else's value, re-spelled in transit, in the one file
-// three implementations compare byte for byte.
+// three implementations compare byte for byte. "reindent" keeps every token as
+// it arrived and lays the payload's whitespace out again at the record's
+// indent, because JOB-J7 leaves that whitespace out and JOB-J1 fixes the
+// layout of the whole file ([DEF-E6] in ../idl/LANGUAGE.md).
 //
 // Every setting here that restricts the record restricts an opaque value the
 // same way, at the same depth: duplicate_keys, depth_limit and the string rules
@@ -48,7 +51,7 @@ encoding json {
   indent         = "2"
   map_keys       = "utf8-bytes"
   numbers        = "integer-decimal"
-  opaque         = "verbatim"
+  opaque         = "reindent"
   terminator     = "newline"
   duplicate_keys = "refuse"
   depth_limit    = "64"
@@ -117,7 +120,7 @@ enum Verdict {
    9: unknown_op     (transcript = "refused")
   10: not_supported  (transcript = "refused")
   11: other          (transcript = "refused")
-} (unknown = "grant")
+} (unknown = "grant",doc="[Verdict](https://openabstractions.github.io/reference.html#concept-job.wire-verdict): The job service's wire error classification, mapping native sentinel errors into the shared declared vocabulary and reconstructing those classes for callers.")
 
 // The data models a record can carry, named in `content`, and the subset a
 // reader must understand or refuse the record in `critical`.
@@ -201,7 +204,7 @@ struct Progress {
   2: optional i64 total          (omit = "zero")
   3: required timestamp updated_at
   4: optional Step step          (omit = "absent")
-} (unknown_fields = "refuse")
+} (unknown_fields = "refuse", doc="[Progress](https://openabstractions.github.io/reference.html#concept-job.progress): Best-effort work counters and their update time; they may decrease after recovery and confer no authority.")
 
 // The issuer's demand about the resource, as against intent, which is the
 // user's wish about the job. Addressed to one holding: a claim replaces it with
@@ -229,7 +232,7 @@ struct Lease {
   2: required i64 epoch
   3: required timestamp expires_at
   4: optional Recall recall      (omit = "absent")
-} (unknown_fields = "refuse")
+} (unknown_fields = "refuse", doc="[Lease](https://openabstractions.github.io/reference.html#concept-job.lease): The bounded execution ownership of one job, with an epoch that fences an earlier owner.")
 
 // The work has been handed to something outside this process entirely — a
 // system service, a daemon on another machine — which is now doing it. When
@@ -261,7 +264,7 @@ struct Intent {
   1: required string want
   2: optional string by          (omit = "zero")
   3: optional timestamp at       (omit = "zero")
-} (unknown_fields = "refuse")
+} (unknown_fields = "refuse", doc="[Intent](https://openabstractions.github.io/reference.html#concept-job.intent): The requested run, pause or cancel state of a job, recorded independently of its execution owner.")
 
 // The base envelope: which schema this kind's opaque data follows, and which
 // actions may be asked of a job of that kind.
@@ -400,4 +403,5 @@ protocol Store {
   10: recall
   11: write
 } (request = "Request", response = "Response", operation = "op",
-   verdict = "kind", verdicts = "Verdict", unknown_operation = "unknown_op")
+   verdict = "kind", verdicts = "Verdict", unknown_operation = "unknown_op",
+   doc = "Deprecated for direct application use; removal is scheduled for Train E (0.12.0), after the named consumer replacements. The runtime still uses this protocol as its execution store. Managed acceptance is the application-facing service; retained store records and calls keep their existing semantics.")

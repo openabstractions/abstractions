@@ -287,7 +287,9 @@ function encodeStore(v)
 function encodeStoreError(v)
 function encodeStored(v)
 function encodeUpload(v)
+function fromJson(kind, data)
 const inventorySourceErrorCodes
+number maxAppendBytes
 function newAbortResult()
   outcome
 function newAppendResult()
@@ -474,3 +476,4 @@ function newUpload()
   digest
   size
   received
+function toJson(kind, value)

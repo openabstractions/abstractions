@@ -1,10 +1,44 @@
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import OpenAbstractionsPlugin from '../plugin.js';
-import {Machine} from '../../../openabstractions-flat/abstraction-facade/javascript/index.js';
-import {SourceReaderClient} from '../../../openabstractions-flat/abstraction-logging/javascript/js/abstraction/logging/index.mjs';
-import {AuthorizationClient, AuthorizationOperatorClient} from '../../../openabstractions-flat/abstraction-rights/javascript/js/abstraction/rights/api/index.mjs';
-import {BunNativeConnector} from '../../../openabstractions-flat/abstraction-identity/javascript/bun.js';
+import {Machine} from '@openabstractions/facade';
+import {SourceReaderClient} from '@openabstractions/logging';
+import {AuthorizationClient, AuthorizationOperatorClient} from '@openabstractions/rights';
+import {BunNativeConnector} from '@openabstractions/ipc/bun';
+import {Availability} from '../availability.js';
+
+// This fixture serves logging and Rights, not a runtime/router endpoint.
+// Its existing native publication reply is the observed startup answer.
+export function sourceWatchFixtureDependencies({tool, published, resolveAuthorization, resolveSourceReader}) {
+  assert.equal(published?.outcome, 'page');
+  assert.equal(published.complete, true);
+  return {
+    tool,
+    availability: new Availability(),
+    probeRuntime: async () => published,
+    readInventory: async () => ({offers: []}),
+    readSelectionPolicy: async () => ({outcome: 'unknown'}),
+    readCapability: async () => false,
+    readAnswerable: async () => false,
+    // The synthetic fixture records the full requested bounds in `asks`.
+    showsDisclosure: async () => true,
+    resolveAuthorization,
+    resolveSourceReader,
+  };
+}
+
+export function parseSourceWatchFixtureReply(raw, {mode, sharing, report = console.error} = {}) {
+  try { return JSON.parse(raw); }
+  catch (cause) {
+    const diagnostic = {boundary: 'source-watch tool result', mode, sharing,
+      pid: process.pid, bytes: new TextEncoder().encode(String(raw)).byteLength,
+      reply: String(raw).slice(0, 4096)};
+    report(`OA_SOURCE_WATCH_FIXTURE_DIAGNOSTIC=${JSON.stringify(diagnostic)}`);
+    throw new SyntaxError('source-watch tool returned a non-JSON result; bounded diagnostic retained', {cause});
+  }
+}
+
+async function main() {
 
 const endpoint = process.argv[2];
 const mode = process.argv[3];
@@ -86,9 +120,9 @@ async function operatorMutation(kind) {
   process.stdin.pause();
   assert.equal(response.toString().trim(), 'changed');
 }
-const plugin = await OpenAbstractionsPlugin({client: {}}, {tools: {watch_logs: true}}, {
+const plugin = await OpenAbstractionsPlugin({client: {}}, {tools: {watch_logs: true}}, sourceWatchFixtureDependencies({
   tool,
-  readInventory: async () => ({offers: []}),
+  published,
   resolveAuthorization: async (_options, signal) => {
     if (++sharingDecisions === 3) {
       if (mode === 'revoke' || mode === 'outage') await operatorMutation(mode);
@@ -124,7 +158,7 @@ const plugin = await OpenAbstractionsPlugin({client: {}}, {tools: {watch_logs: t
       return client;
     } catch (error) { console.error('facade resolution failed:', error); throw error; }
   },
-});
+}));
 await plugin.config({provider: {openabstractions: {
   npm: '@openabstractions/opencode', options: {runtimeEndpoint: endpoint, scope: 'local'}, models: {},
 }}});
@@ -134,9 +168,9 @@ const ask = async (request) => { asks.push(request); };
 const execute = async (shareEvents = false) => {
   sharing = shareEvents;
   sourceReads = 0;
-  return JSON.parse(await plugin.tool.openabstractions_watch_logs.execute({
+  return parseSourceWatchFixtureReply(await plugin.tool.oa_logs_watch.execute({
     sourceId, durationMs: 1000, maxRecords: mode === 'partial-error' && shareEvents ? 2 : 1, maxBytes: 4096, shareEvents,
-  }, {ask, signal: caller.signal}));
+  }, {ask, signal: caller.signal}), {mode, sharing: shareEvents});
 };
 const reply = await execute();
 let shared;
@@ -185,3 +219,6 @@ if (mode !== 'deny') {
   assert.deepEqual(asks.map((request) => request.permission), ['openabstractions_log_source_read']);
 }
 console.log(`OA_SOURCE_WATCH_FIXTURE_RESULT=${JSON.stringify({mode, reply, shared, asks: asks.map((request) => request.permission)})}`);
+}
+
+if (import.meta.main) await main();

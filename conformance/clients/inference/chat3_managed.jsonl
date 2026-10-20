@@ -1,0 +1,15 @@
+{"sequence":0,"kind":"progress","progress":{"phase":"loading","done":0,"unit":"bytes"}}
+{"sequence":1,"kind":"part","part":{"block":0,"kind":"reasoning","text":"private display","seal":{"origin":"vendor/opaque","bytes":"AP9B"}}}
+{"sequence":2,"kind":"block_end","block_end":{"block":0}}
+{"sequence":3,"kind":"part","part":{"block":1,"kind":"reasoning_summary","text":"summary"}}
+{"sequence":4,"kind":"block_end","block_end":{"block":1,"seal_omitted":"encoded_size"}}
+{"sequence":5,"kind":"part","part":{"block":2,"kind":"text","text":"Hello "}}
+{"sequence":6,"kind":"part","part":{"block":2,"kind":"text","text":"world"}}
+{"sequence":7,"kind":"block_end","block_end":{"block":2}}
+{"sequence":8,"kind":"part","part":{"block":3,"kind":"tool_call","call_id":"call","name":"tool","arguments":"{"}}
+{"sequence":9,"kind":"part","part":{"block":3,"kind":"tool_call","arguments":"}"}}
+{"sequence":10,"kind":"block_end","block_end":{"block":3}}
+{"sequence":11,"kind":"part","part":{"block":4,"kind":"model_refusal","text":"declined"}}
+{"sequence":12,"kind":"block_end","block_end":{"block":4}}
+{"sequence":13,"kind":"usage","usage":{"input":0,"output":5}}
+{"sequence":14,"kind":"end","end":{"outcome":"completed","cause":"","finish_reason":"future_vendor_finish","usage":{"input":0,"output":5},"served_by":{"place":"local","server":"fixture"},"timing":{"queue_ms":0,"load_ms":31,"prefill_ms":14,"decode_ms":20,"reused_tokens":0,"load":"future_load","load_source":"future_source"}}}

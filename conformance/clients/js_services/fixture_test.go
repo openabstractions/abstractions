@@ -45,6 +45,10 @@ import (
 
 type forged struct{}
 
+func (r forged) ResolveOnMachine(q wire.ResolveRequest, _ string) (wire.ResolveResult, error) {
+	return r.Resolve(q)
+}
+
 func (forged) Resolve(q wire.ResolveRequest) (wire.ResolveResult, error) {
 	return wire.ResolveResult{Status: wire.ResolutionStatusResolved, Reference: &wire.ServiceReference{Provider: "test", Capability: "wrong", Contract: q.Contracts[0], Scope: wire.ScopeLocal, Transport: "oa-framed-local@1", Endpoint: "must-not-connect", Guarantees: []string{}}}, nil
 }

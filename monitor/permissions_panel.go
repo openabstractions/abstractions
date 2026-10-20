@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"slices"
 	"unicode/utf8"
 
 	askclient "github.com/openabstractions/abstraction-asks/go/client"
@@ -76,8 +77,8 @@ func (p *servicePanel) permissions(w http.ResponseWriter, r *http.Request) {
 		decoder.DisallowUnknownFields()
 		var extra any
 		if err := decoder.Decode(&action); err != nil || decoder.Decode(&extra) != io.EOF || !questionWord(action.ID) ||
-			(action.Option != "allow" && action.Option != "refuse") || !questionWord(action.Digest) {
-			http.Error(w, "choose one waiting permission request and Allow or Don't allow", http.StatusBadRequest)
+			(action.Option != "allow" && action.Option != "once" && action.Option != "refuse") || !questionWord(action.Digest) {
+			http.Error(w, "choose an offered answer for one waiting permission request", http.StatusBadRequest)
 			return
 		}
 	} else if cursor := r.URL.Query().Get("cursor"); len(cursor) > 256 || !utf8.ValidString(cursor) {
@@ -108,7 +109,7 @@ func (p *servicePanel) permissions(w http.ResponseWriter, r *http.Request) {
 			if record.Option != "" {
 				continue
 			}
-			details, err := askclient.ReadPermissionDetailsContext(ctx, operator, account, record.ID)
+			details, err := readTypedPermissionDetails(ctx, operator, account, record.ID)
 			read := details.Question.Question
 			if err != nil || read.Outcome != askclient.OperatorQuestionOutcomeFound || read.Record == nil || read.Record.Option != "" {
 				continue // answered or withdrawn since the listing, or unreadable
@@ -126,7 +127,7 @@ func (p *servicePanel) permissions(w http.ResponseWriter, r *http.Request) {
 	p.logAction(ctx, "permission.answer", map[string]string{"question.id": action.ID})
 	// The native dialog's re-read (ASK-O10): the request must still be
 	// pending with the effect the page showed.
-	details, err := askclient.ReadPermissionDetailsContext(ctx, operator, account, action.ID)
+	details, err := readTypedPermissionDetails(ctx, operator, account, action.ID)
 	if err != nil {
 		panelError(w, err)
 		return
@@ -142,6 +143,9 @@ func (p *servicePanel) permissions(w http.ResponseWriter, r *http.Request) {
 	case read.Record.Option != "" || details.EffectDigest != action.Digest:
 		panelJSON(w, permissionAnswerResult{Outcome: "conflict", Message: "This request was answered or changed while the page was open; nothing was changed. The list is fresh now."})
 		return
+	case !slices.Contains(read.Record.Options, action.Option):
+		panelJSON(w, permissionAnswerResult{Outcome: "invalid", Message: questionOutcomeSentence("invalid")})
+		return
 	}
 	answered, err := grants.AnswerPermissionQuestion(ctx, operator, permissionsRules(), account, action.ID, action.Option)
 	outcome := answered.Decision.Outcome.String()
@@ -150,11 +154,27 @@ func (p *servicePanel) permissions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result := permissionAnswerResult{Outcome: outcome, RuleOutcome: answered.RuleOutcome}
+	_, _, message := grants.AgentMessageLegacyEffect(*details.Effect)
 	switch {
 	case outcome != "answered":
 		result.Message = questionOutcomeSentence(outcome)
+	case message && action.Option == "refuse":
+		result.Message = messagePermissionAnsweredSentence(p.programTitler(ctx), details, action.Option)
 	case action.Option == "refuse":
 		result.Message = "Not allowed. No permission was changed."
+	case action.Option == "once":
+		result.Message = "Allowed for this request."
+	case answered.NotSaved:
+		result.Message = grants.PermissionNotSaved(permissionRequesterTitle(p.programTitler(ctx), details))
+	case message:
+		switch {
+		case typedPermissionEffectUnconfirmed(answered, err):
+			result.Message = "Allow is saved but not confirmed yet. Ask your agent to continue in the same chat to check again."
+		case answered.Edit == nil || answered.Edit.Outcome.String() != "applied":
+			result.Message = "Allow was recorded, but this answer did not save a permission change. Review Questions before asking your agent to continue."
+		default:
+			result.Message = messagePermissionAnsweredSentence(p.programTitler(ctx), details, action.Option)
+		}
 	case err != nil || answered.Edit == nil || answered.Edit.Outcome.String() != "applied":
 		result.Message = "Allowed, but the permission was not saved yet; it is saved on the next try."
 	default:

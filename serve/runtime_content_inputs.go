@@ -133,6 +133,27 @@ func (c *runtimeContent) profileGrants(ctx context.Context, subject rwire.Subjec
 // published, owning the bytes only when the store did not hold them already.
 // A call that names no stage is decided by digest alone.
 func (c *runtimeContent) authorizeWrite(ctx context.Context, subject rwire.Subject, digest string, call service.WriteCall) error {
+	_, err := c.authorizeWriteProfile(ctx, subject, digest, call)
+	return err
+}
+
+// authorizeWriteProfile is authorizeWrite that also reports, for a publication
+// refused only because the writer lacks the input profile its verified head
+// names, that profile. Every other outcome reports "".
+func (c *runtimeContent) authorizeWriteProfile(ctx context.Context, subject rwire.Subject, digest string, call service.WriteCall) (string, error) {
+	err := c.authorizeWriteDecision(ctx, subject, digest, call)
+	if !errors.Is(err, errInputNotGranted) {
+		return "", err
+	}
+	return inference.InputProfileOf(call.Head), errContentDenied
+}
+
+// errInputNotGranted is authorizeWriteDecision's refusal of a publication
+// whose writer holds no exact-digest rule and not both content rights on the
+// input profile its head names.
+var errInputNotGranted = fmt.Errorf("%w: input profile not granted", errContentDenied)
+
+func (c *runtimeContent) authorizeWriteDecision(ctx context.Context, subject rwire.Subject, digest string, call service.WriteCall) error {
 	if c == nil || c.rights == nil || subject.Account != c.rights.owner || !identity.ValidSubjectProgram(subject.Program) {
 		return errContentDenied
 	}
@@ -188,7 +209,7 @@ func (c *runtimeContent) authorizeWrite(ctx context.Context, subject rwire.Subje
 	case rwire.DecisionOutcomeUnavailable:
 		return service.ErrPolicyUnavailable
 	default:
-		return errContentDenied
+		return errInputNotGranted
 	}
 	entry := requestInput{Account: subject.Account, Program: identity.NormalizeSubjectProgram(subject.Program), Digest: digest, Profile: profile,
 		Written: c.stamp(), Owned: !call.Existing}
@@ -348,8 +369,9 @@ func ownsBytes(index requestInputIndex) bool {
 
 // sweepInputs ends request input whose lifetime rule has ended: every
 // writer's identity retention has passed and no request or job names it
-// (STO-T7). Its record goes; its bytes go when the record owned them and no
-// generated output names them. It returns how many objects it removed. A
+// (STO-T7). Its record goes, except an exact-digest write's mark, which stays
+// alone; its bytes go when the record owned them and no generated output
+// names them. It returns how many objects it removed. A
 // holder that cannot answer keeps everything for this sweep.
 func (c *runtimeContent) sweepInputs(ctx context.Context) int {
 	if c == nil || c.inputs == "" {
@@ -382,7 +404,7 @@ func (c *runtimeContent) sweepInputs(ctx context.Context) int {
 				continue
 			}
 			digest := "sha256:" + name
-			if !validGeneratedDigest(digest) || name[:2] != shard.Name() || named[digest] {
+			if !validGeneratedDigest(digest) || name[:2] != shard.Name() || named[digest] || c.onlyKept(ctx, digest) {
 				continue
 			}
 			if c.removeInput(ctx, digest) {
@@ -391,6 +413,18 @@ func (c *runtimeContent) sweepInputs(ctx context.Context) int {
 		}
 	}
 	return removed
+}
+
+// onlyKept reports whether the record of digest is only an exact-digest mark,
+// which the sweep leaves alone. An unreadable record is left to removeInput,
+// which reports it.
+func (c *runtimeContent) onlyKept(ctx context.Context, digest string) bool {
+	raw, err := cas.ReadLimitContext(ctx, c.inputPath(digest), requestInputLimit)
+	if err != nil {
+		return false
+	}
+	index, err := decodeRequestInputs(raw)
+	return err == nil && len(raw) > 0 && index.Kept && len(index.Inputs) == 0 && index.Touched == ""
 }
 
 // removeInput ends one record whose lifetime rule has ended. It holds the
@@ -413,6 +447,17 @@ func (c *runtimeContent) removeInput(ctx context.Context, digest string) bool {
 		return false
 	}
 	if !inputExpired(index, c.clock()) {
+		return false
+	}
+	// An exact-digest write marked the digest: the application's own upload
+	// outlives request input. Its records go and the mark stays, which holds
+	// the bytes for the generated-output pass too (INF-V5).
+	if index.Kept {
+		if err := cas.ChangeLimitContext(ctx, path, requestInputLimit, func([]byte) ([]byte, error) {
+			return json.Marshal(requestInputIndex{Version: 1, Kept: true})
+		}); err != nil {
+			c.reportErr(fmt.Errorf("request input %s: %w", digest, err))
+		}
 		return false
 	}
 	removedBytes := false
@@ -461,7 +506,8 @@ func (c *runtimeContent) reportErr(err error) {
 }
 
 // serveInputRetention sweeps request input every inputSweepInterval until ctx
-// ends. The returned function waits for the loop to stop.
+// ends, and generated output at most once an hour (runtime_content_outputs.go).
+// The returned function waits for the loop to stop.
 func (c *runtimeContent) serveInputRetention(ctx context.Context) func() {
 	done := make(chan struct{})
 	if c == nil {
@@ -474,6 +520,7 @@ func (c *runtimeContent) serveInputRetention(ctx context.Context) func() {
 		defer ticker.Stop()
 		for {
 			c.sweepInputs(ctx)
+			c.serveOutputRetention(ctx)
 			select {
 			case <-ctx.Done():
 				return

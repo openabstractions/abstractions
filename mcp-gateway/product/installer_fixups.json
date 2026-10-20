@@ -1,0 +1,23 @@
+{
+  "opencode-official": {
+    "File": "resources/app.asar.unpacked/node_modules/@parcel/watcher-win32-x64/watcher.node",
+    "Stock": [
+      "a8199cf7b6c5102267a5889f80321a4cc92e631d7504c474d32a35b4d440f315"
+    ],
+    "Fixed": [
+      "0251ee3ba7027af84a0cb8e0c2ffa1c5989eacf21bc091f95a7c5c00cc486e12"
+    ],
+    "Versions": [
+      "1.18.34",
+      "1.19.5"
+    ],
+    "ProgramSHA256": {
+      "1.18.34": "b82ea814eb265c07c97df0e112f673c8be4718e00c311c154db85e06d3c1f9ac",
+      "1.19.5": "64f43dc4e75cee06c85f03361d12a7791a60873114a2420cbdd94ae7f0c5da3f"
+    },
+    "Package": "Programs/OpenAbstractions/apps/opencode",
+    "PackageFile": "desktop-fix/watcher.node",
+    "Purpose": "It stops a crash that takes OpenCode's server down.",
+    "RepairUpgradeCode": "{8E0B8005-0E00-5720-9556-E5B984F15A96}"
+  }
+}

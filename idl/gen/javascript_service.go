@@ -75,8 +75,8 @@ func validateJSServices(s *Definition) error {
 	for _, n := range strings.Fields(reserved) {
 		used[n] = true
 	}
-	valid := func(n string) bool {
-		if n == "" || strings.Contains(n, ".") || namespaceKeyword("javascript", n) {
+	validProperty := func(n string) bool {
+		if n == "" || strings.Contains(n, ".") {
 			return false
 		}
 		for i := 0; i < len(n); i++ {
@@ -86,12 +86,13 @@ func validateJSServices(s *Definition) error {
 		}
 		return true
 	}
+	valid := func(n string) bool { return validProperty(n) && !namespaceKeyword("javascript", n) }
 	for _, st := range s.Structs {
 		if !valid(jsStem(st.Name)) || used[jsStem(st.Name)] {
 			return fmt.Errorf("javascript service record name %q is reserved", st.Name)
 		}
 		for _, f := range st.Fields {
-			if !valid(f.Ident("javascript")) {
+			if !validProperty(f.Ident("javascript")) {
 				return fmt.Errorf("javascript field identifier %q is invalid", f.Ident("javascript"))
 			}
 			if strings.Contains(f.Type, ".") && !jsImportedType(s, f.Type) {
@@ -139,7 +140,8 @@ func jsService(b *strings.Builder, s *Definition) {
 	if len(s.Services) == 0 {
 		return
 	}
-	common := jsServiceCommon
+	emitDecodedCleanupPrimitive(b, s, "javascript")
+	common := jsScalarPresenceChecks(s, jsServiceCommon)
 	if hasBinary(s) {
 		common = strings.Replace(common, `else if (kind === "json")`, `else if (kind === "binary") valid = value instanceof Uint8Array;
   else if (kind === "json")`, 1)
@@ -184,16 +186,18 @@ function _serviceResponse(frame, service, method) {
 			for _, f := range m.Args {
 				fmt.Fprintf(b, "    _args.%s = %s;\n", f.Ident("javascript"), f.Ident("javascript"))
 			}
-			fmt.Fprintf(b, "    _serviceCheck(%q, _args);\n    const _payload = _serviceEncode(write%s, _args, 1);\n    _serviceDecode(read%s, _payload, 1);\n    const _request = _serviceRequest(%q, %q, _payload);\n", argsName(svc, m), args, args, svc.WireName, m.Name)
+			fmt.Fprintf(b, "    _serviceCheck(%q, _args);\n    const _payload = _serviceEncode(write%s, _args, %s);\n    _serviceDecode(read%s, _payload, 1);\n    const _request = _serviceRequest(%q, %q, _payload);\n", argsName(svc, m), args, "1", args, svc.WireName, m.Name)
 			if m.Oneway {
 				b.WriteString("    await this._transport.writeFrame(_request);\n")
 			} else {
 				fmt.Fprintf(b, "    const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), %q, %q);\n    const _result = _serviceDecode(read%s, _reply, 1);\n", svc.WireName, m.Name, jsStem(resultName(svc, m)))
 				if m.Result.Type != "void" {
+					emitClientResultPostcondition(b, m, "javascript", "_result.value")
 					b.WriteString("    return _result.value;\n")
 				}
 			}
 			b.WriteString("  }\n")
+			jsObserve(b, s, svc, m)
 		}
 		b.WriteString("}\n")
 		fmt.Fprintf(b, "export const %sService = Object.freeze({wireName:%s,Client:%sClient});\n", pascalCase(svc.Name), strconv.Quote(svc.WireName), pascalCase(svc.Name))

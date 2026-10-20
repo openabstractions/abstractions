@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/openabstractions/abstraction-identity/go/privatedir/privatetest"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -21,14 +22,14 @@ import (
 func protectedFixture(t *testing.T) (*runtimeProtected, *asks.Book, string, []byte) {
 	t.Helper()
 	a, book := firstUseBook(t)
-	p := newRuntimeProtected(a, filepath.Join(t.TempDir(), protected.HelperFile), func(*identity.Peer) (identity.Process, error) {
+	p := newRuntimeProtected(a, filepath.Join(privatetest.Dir(t), protected.HelperFile), func(*identity.Peer) (identity.Process, error) {
 		return identity.Process{PID: 7, StartTime: time.Unix(7, 0)}, nil
 	})
 	request, err := logservice.EncodeProtectedSourceRequest(logservice.ProtectedSourceRequest{Source: logservice.ProtectedSourceID, MaxRecords: 8, MaxBytes: 8192})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return p, book, filepath.Join(t.TempDir(), "reader.exe"), request
+	return p, book, filepath.Join(privatetest.Dir(t), "reader.exe"), request
 }
 
 func noPublisher() asks.Publisher { return asks.Publisher{} }
@@ -177,7 +178,9 @@ func TestProtectedReadRefusals(t *testing.T) {
 		p.readFor(ctx, program, noPublisher, request)
 		q := pendingSystemQuestion(t, book)
 		book.AnswerApplication(q.ID, "once")
-		p.now = func() time.Time { return time.Now().Add(protected.ClaimWindow + protected.HelperDeadline + 16*time.Second) }
+		p.now = func() time.Time {
+			return time.Now().Add(protected.ClaimWindow + protected.HelperDeadline + 16*time.Second)
+		}
 		if _, err := p.readFor(ctx, program, noPublisher, request); !errors.Is(err, logservice.ErrOSAuthorizationRequired) {
 			t.Fatalf("%v", err)
 		}
@@ -199,7 +202,7 @@ func TestProtectedReadRefusals(t *testing.T) {
 		p, book, program, request := protectedFixture(t)
 		p.readFor(ctx, program, noPublisher, request)
 		q := pendingSystemQuestion(t, book)
-		if _, _, err := book.AnswerApplicationAsResponder(q.ID, "once", filepath.Join(t.TempDir(), "assistant.exe"), func(asks.Record, string) error { return nil }); err != nil {
+		if _, _, err := book.AnswerApplicationAsResponder(q.ID, "once", filepath.Join(privatetest.Dir(t), "assistant.exe"), func(asks.Record, string) error { return nil }); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := p.approve(ctx, q.ID); err == nil {
@@ -276,7 +279,7 @@ func restartedRuntime(t *testing.T, path string) (*runtimeProtected, *asks.Book,
 	}
 	startReports := reports
 	a.report = func(err error) { t.Error(err) }
-	return newRuntimeProtected(a, filepath.Join(t.TempDir(), protected.HelperFile), func(*identity.Peer) (identity.Process, error) {
+	return newRuntimeProtected(a, filepath.Join(privatetest.Dir(t), protected.HelperFile), func(*identity.Peer) (identity.Process, error) {
 		return identity.Process{PID: 7, StartTime: time.Unix(7, 0)}, nil
 	}), book, startReports
 }
@@ -290,7 +293,7 @@ func TestRuntimeWithoutItsEndpointsWithdrawsNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	program := filepath.Join(t.TempDir(), "reader.exe")
+	program := filepath.Join(privatetest.Dir(t), "reader.exe")
 	live, outcome, err := book.AskApplicationAs("asks-owner-program@1:live", program, "system-access:live", asks.SystemSecurityLogKey,
 		map[string]string{"code": "a1b2c3d4", "until": "later"}, listen.Seen{}, asks.Publisher{})
 	if err != nil || outcome != "pending" {
@@ -300,7 +303,7 @@ func TestRuntimeWithoutItsEndpointsWithdrawsNothing(t *testing.T) {
 	// the whole composition, Book included, and fails only at host.Listen.
 	ctx, cancel := context.WithTimeout(context.Background(), runtimeWait)
 	defer cancel()
-	bin := filepath.Join(t.TempDir(), "openabstractions.exe")
+	bin := filepath.Join(privatetest.Dir(t), "openabstractions.exe")
 	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
@@ -323,12 +326,12 @@ func TestRuntimeWithoutItsEndpointsWithdrawsNothing(t *testing.T) {
 // next read on B asks a new question.
 func TestProtectedOnceDoesNotSurviveARestart(t *testing.T) {
 	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "application.json")
+	path := filepath.Join(privatetest.Dir(t), "application.json")
 	request, err := logservice.EncodeProtectedSourceRequest(logservice.ProtectedSourceRequest{Source: logservice.ProtectedSourceID, MaxRecords: 8, MaxBytes: 8192})
 	if err != nil {
 		t.Fatal(err)
 	}
-	program := filepath.Join(t.TempDir(), "reader.exe")
+	program := filepath.Join(privatetest.Dir(t), "reader.exe")
 	a, book, _ := restartedRuntime(t, path)
 	if _, err := a.readFor(ctx, program, noPublisher, request); !errors.Is(err, logservice.ErrOSAuthorizationRequired) {
 		t.Fatal(err)
@@ -366,7 +369,7 @@ func TestProtectedOnceDoesNotSurviveARestart(t *testing.T) {
 // claimed, and the next read asks a new question.
 func TestProtectedQuestionDoesNotOutliveItsRuntime(t *testing.T) {
 	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "application.json")
+	path := filepath.Join(privatetest.Dir(t), "application.json")
 	start := func() (*runtimeProtected, *asks.Book, []error) {
 		return restartedRuntime(t, path)
 	}
@@ -374,7 +377,7 @@ func TestProtectedQuestionDoesNotOutliveItsRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	program := filepath.Join(t.TempDir(), "reader.exe")
+	program := filepath.Join(privatetest.Dir(t), "reader.exe")
 
 	before, book, _ := start()
 	if _, err := before.readFor(ctx, program, noPublisher, request); !errors.Is(err, logservice.ErrOSAuthorizationRequired) {
@@ -408,7 +411,7 @@ func TestProtectedQuestionDoesNotOutliveItsRuntime(t *testing.T) {
 // beside a helper this account can change.
 func TestProtectedPathExistsOnlyBesideATrustedHelper(t *testing.T) {
 	a, _ := firstUseBook(t)
-	image := func() (string, error) { return filepath.Join(t.TempDir(), "openabstractions.exe"), nil }
+	image := func() (string, error) { return filepath.Join(privatetest.Dir(t), "openabstractions.exe"), nil }
 	for name, options := range map[string]runtimeFlags{
 		"default":   {},
 		"isolated":  {isolated: "test"},

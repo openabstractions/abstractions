@@ -21,7 +21,8 @@ refusal {
  8: unknown_field(stage="structure")
  9: missing_field(stage="structure")
  10: bad_enum(stage="structure")
- 11: trailing_bytes(stage="document")
+ 11: bad_value(stage="structure")
+ 12: trailing_bytes(stage="document")
 }
 
 enum Scope { 1: any 2: local 3: remote }(unknown="refuse")
@@ -48,13 +49,14 @@ struct ServiceReference {
  5: required Scope scope
  6: required string transport
  7: required string endpoint
-}(unknown_fields="refuse",doc="A candidate service binding, not acceptance or authority. Provider identifies a logical provider, not a PID. Scope is the concrete execution placement, local or remote; transport and endpoint describe the application connection. Both placements can bind a local OA endpoint whose service enforces that placement. Contract is an exact versioned service identity; endpoint is opaque to application code.")
+}(unknown_fields="refuse",doc="[ServiceReference](https://openabstractions.github.io/reference.html#concept-facade.service-reference): A candidate service binding, not acceptance or authority. Provider identifies a logical provider, not a PID. Scope is the concrete execution placement, local or remote; transport and endpoint describe the application connection. Both placements can bind a local OA endpoint whose service enforces that placement. Contract is an exact versioned service identity; endpoint is opaque to application code.")
 struct ResolveResult {
  1: required ResolutionStatus status
  2: optional ServiceReference reference(omit="absent")
 }(document="true",unknown_fields="refuse",doc="Reference is present exactly when resolved. Failure status describes the first unsatisfied resolution stage without exposing disallowed provider metadata. Service authentication and acceptance remain necessary after resolution.")
 service Resolver {
- ResolveResult Resolve(1:ResolveRequest request)(doc="Find an authorized ready candidate satisfying an exact acceptable contract and all required guarantees. Does not submit work, activate an embedded provider, or transfer ownership.")
+ ResolveResult Resolve(1:ResolveRequest request)(readonly="true",doc="Find an authorized ready candidate satisfying an exact acceptable contract and all required guarantees. Does not submit work, activate an embedded provider, or transfer ownership.")
+ ResolveResult ResolveOnMachine(1:ResolveRequest request, 2:string binding_name(length="..64",pattern="no_control"))(remote="local",readonly="true",doc="Resolve on the exact current paired machine binding. Empty binding_name follows Resolve. A named binding with local scope is invalid. Named resolution never falls back to another machine or the local runtime; the returned local mediator retains the exact pairing generation and contract authority through calls.")
 }(wire_name="abstraction.facade/resolver@1",doc="Common provider resolution vocabulary. Authorization comes from the receiving boundary, never from request fields. See RESOLUTION.md for selection and refusal semantics.")
 
 // Platform evidence and resolver evidence are independent observations.
@@ -105,7 +107,7 @@ struct CallerObservation {
  10: required string stronger
 }(unknown_fields="refuse",doc="The receiving runtime's assertion of how it bound the caller. mechanism names the establishing facility as the logging service stamp does, identity/<os>. account is the Windows SID or the decimal POSIX uid, and program the executable path, each at the proof its attribute reports. pid is -1 where unestablished. platform, transport, bindable and stronger restate the receiving platform's identity ceiling: whether a binding pins the caller's process, and which transport would prove more (empty when none). Only observed carries identity; forbidden, unavailable and invalid carry empty strings, pid -1, no attributes, and bindable false.")
 service Caller {
- CallerObservation Observe()(doc="Return what the receiving boundary bound for this connection's caller. It is the same Program evidence every runtime-hosted local service requires. unavailable means the binding could not be rechecked; forbidden is reserved for a boundary policy that withholds the echo; invalid for a request this provider cannot interpret. Observe grants, checks and changes nothing.")
+ CallerObservation Observe()(readonly="true",doc="Return what the receiving boundary bound for this connection's caller. It is the same [Program](https://openabstractions.github.io/reference.html#concept-identity.listener-program-need) evidence every runtime-hosted local service requires. unavailable means the binding could not be rechecked; forbidden is reserved for a boundary policy that withholds the echo; invalid for a request this provider cannot interpret. Observe grants, checks and changes nothing.")
 }(wire_name="abstraction.facade/caller@1",doc="The runtime resolver endpoint's echo of its bound caller, for diagnostics such as the control panel. Local transport only: a remote service states its own authentication and never inherits these proofs.")
 
 // Every generated endpoint answers abstraction.facade/endpoint@1 beside its own
@@ -129,15 +131,15 @@ struct ServiceState {
  3: required string why
  4: required list<string> guarantees
  5: required map<string,string> capabilities
-}(unknown_fields="refuse",doc="One service an endpoint hosts. contract is its wire name. readiness is ready unless the handler's readiness hook reports otherwise; why names the reason when it is not ready and is empty when ready. guarantees are those the provider states for the service. capabilities is an open map of display facts, such as profiles: chat,embed. None of it is authority.")
+}(unknown_fields="refuse",doc="[ServiceState](https://openabstractions.github.io/reference.html#concept-facade.endpoint-service-state): one service an endpoint hosts. contract is its wire name. readiness is ready unless the handler's readiness hook reports otherwise; why names the reason when it is not ready and is empty when ready. guarantees are those the provider states for the service. capabilities is an open map of display facts, such as profiles: chat,embed. None of it is authority.")
 struct Description {
  1: required DescriptionOutcome outcome
  2: required string program
  3: required string version
  4: required list<ServiceState> services
-}(unknown_fields="refuse",doc="described lists every service the endpoint hosts, in the endpoint's order. program and version are the display name and version the provider gives itself, possibly empty, and never authority: the caller binds the server by its own connection proof. forbidden is reserved for a boundary policy that withholds the description, unavailable for an endpoint that cannot describe itself now, and invalid for a request it cannot interpret. Refusals carry empty strings and no services.")
+}(unknown_fields="refuse",doc="[Description](https://openabstractions.github.io/reference.html#concept-facade.endpoint-description): described lists every service the endpoint hosts, in the endpoint's order. program and version are the display name and version the provider gives itself, possibly empty, and never authority: the caller binds the server by its own connection proof. forbidden is reserved for a boundary policy that withholds the description, unavailable for an endpoint that cannot describe itself now, and invalid for a request it cannot interpret. Refusals carry empty strings and no services.")
 service Endpoint {
- Description Describe()(doc="Describe the services this endpoint hosts and each one's readiness. Grants, checks and changes nothing.")
+ Description Describe()(remote="see", readonly="true", doc="Describe the services this endpoint hosts and each one's readiness. Grants, checks and changes nothing.")
 }(wire_name="abstraction.facade/endpoint@1",doc="The base-protocol description every generated endpoint serves beside its own contracts. A registry probes readiness with it over a connection that requires the declared program as the server. An endpoint built before this service answers unknown_service.")
 
 // abstraction.facade/registry@1: the declarations a person, a product or the
@@ -174,14 +176,14 @@ enum Activation {
  1: on_demand
  2: attach
  3: remote
-}(unknown="refuse",reader="act")
+}(unknown="refuse",reader="act",doc="[Activation](https://openabstractions.github.io/reference.html#concept-facade.declaration-activation): A provider declaration's activation mode: supervised on-demand launch, attachment to an existing provider or connection to a configured remote runtime.")
 struct RemoteTrust {
  1: required string server_name
  2: required string roots
  3: required string certificate
  4: required string key
  5: optional string credential(omit="zero")
-}(unknown_fields="refuse",doc="The explicit mutual-TLS trust of a remote runtime. server_name is the name its certificate must carry. roots, certificate and key are absolute paths of PEM files on this machine: the roots trusted for that server, and this runtime's client certificate and private key, which the remote maps to its own caller. credential, when present, names the abstraction.credentials record the remote holds and applies to requests delegated to it. The paths are configuration; no key material travels in registry@1.")
+}(unknown_fields="refuse",doc="[RemoteTrust](https://openabstractions.github.io/reference.html#concept-facade.registry-remote-trust): The explicit mutual-TLS trust of a remote runtime. server_name is the name its certificate must carry. roots, certificate and key are absolute paths of PEM files on this machine: the roots trusted for that server, and this runtime's client certificate and private key, which the remote maps to its own caller. credential, when present, names the abstraction.credentials record the remote holds and applies to requests delegated to it. The paths are configuration; no key material travels in registry@1.")
 struct DeclarationCeiling {
  1: optional i64 tokens_per_day(omit="zero")
  2: optional i64 micros_per_day(omit="zero")
@@ -276,10 +278,10 @@ struct DeclarationObservation {
  3: required list<DeclarationState> declarations
 }(unknown_fields="refuse",doc="page carries every declaration and cursor, a digest of the declarations and their readings. It answers once cursor differs from the cursor given, or when wait_ms ends. invalid means wait_ms is outside 0..30000. Refusals carry an empty cursor and no declarations.")
 service Registry {
- DeclarationList Declarations()(doc="Read every declaration and its reading. Gated by abstraction.facade/provider.manage on resource account.")
- DeclarationChange Declare(1:string expected_revision,2:Declaration declaration)(doc="Conditionally add one declaration, kept as providers/<name>.json in the runtime state. Gated by provider.manage. A program cannot declare itself (invalid, program:self). A store:<name> resource writes the permit rule abstraction.storage/inventory.provide on store:<name> for program, and a remote declaration writes abstraction.inference/complete on host:<name> for the runtime's operator programs and the caller; an existing rule on a target is left as it is. A declaration grants nothing else.")
- DeclarationChange Withdraw(1:string expected_revision,2:string name)(doc="Conditionally remove one declaration: the runtime withdraws its candidates and hosts and ends a launched child. Gated by provider.manage. A declaration the installation or a product declared is disabled by name instead of removed, so a reinstall or a later probe does not resurrect it, and a later Declare of that name enables it again. Rules are left as they are.")
- DeclarationObservation Observe(1:string cursor,2:i64 wait_ms)(doc="Wait up to wait_ms milliseconds for the declarations or their readings to differ from cursor, then read them. An empty cursor answers at once. Gated by provider.manage.")
+ DeclarationList Declarations()(readonly="true",doc="Read every declaration and its reading. Gated by abstraction.facade/provider.manage on resource account.")
+ DeclarationChange Declare(1:string expected_revision,2:Declaration declaration)(idempotent="true",doc="Conditionally add one native or HTTP declaration, kept as providers/<name>.json in the runtime state. Gated by provider.manage. A remote declaration refuses as invalid, remote:registry@2, before writes, grants or TLS; use registry@2 with an explicit pin. A program cannot declare itself (invalid, program:self). A store:<name> resource writes the permit rule abstraction.storage/inventory.provide on store:<name> for program; an existing rule on a target is left as it is. A declaration grants nothing else.")
+ DeclarationChange Withdraw(1:string expected_revision,2:string name)(idempotent="true",doc="Conditionally remove one declaration: the runtime withdraws its candidates and hosts and ends a launched child. Gated by provider.manage. A declaration the installation or a product declared is disabled by name instead of removed, so a reinstall or a later probe does not resurrect it, and a later Declare of that name enables it again. Rules are left as they are.")
+ DeclarationObservation Observe(1:string cursor,2:i64 wait_ms)(readonly="true",doc="Wait up to wait_ms milliseconds for the declarations or their readings to differ from cursor, then read them. An empty cursor answers at once. Gated by provider.manage.")
 }(wire_name="abstraction.facade/registry@1",doc="The runtime's one directory of the programs it knows, for operator tools: providers it launches or attaches to, foreign HTTP engines the router reaches, and other runtimes over mutual TLS. Applications never read it; they resolve. Each call is a rights decision for the bound operator subject; same-account identity alone grants nothing. A decision point that cannot answer reads unavailable. The registry is local: a remote runtime's services come from its own endpoint@1 Describe, and no registry is read across machines.")
 struct DeclarationStateV2 {
  1: required DeclarationState state
@@ -294,13 +296,37 @@ struct DeclarationObservationV2 {
  1: required DeclarationListOutcome outcome
  2: required string cursor
  3: required list<DeclarationStateV2> declarations
-}(unknown_fields="refuse",doc="The registry@2 declarations and readings from one snapshot. The cursor includes extension inventory changes.")
+}(unknown_fields="refuse",doc="The registry@2 declarations and readings from one snapshot. The cursor includes extension inventory. Remote server pins are omitted from this published projection.")
+struct PinnedDeclaration {
+ 1: required Declaration declaration
+ 2: optional list<DeclarationExtension> supported_extensions(omit="zero",length="..64")
+ 3: optional string remote_server_key_sha256(omit="zero",length="64..64")
+}(unknown_fields="refuse",doc="One atomic registry@2 edit: base declaration, extension inventory and explicit remote server leaf SPKI SHA-256 pin. A remote edit requires remote_server_key_sha256 as 64 lowercase hexadecimal digits; native and HTTP edits must omit it. The inventory is validated against served inference profiles. All fields are stored in the same declaration generation; the pin is configuration, not authentication evidence.")
+struct PinnedDeclarationState {
+ 1: required DeclarationState state
+ 2: optional list<DeclarationExtension> supported_extensions(omit="zero",length="..64")
+ 3: optional string remote_server_key_sha256(omit="zero",length="64..64")
+}(unknown_fields="refuse",doc="The registry@1 state, extension inventory and remote server leaf SPKI pin from the same declaration snapshot. Old CA-only records have no pin and remain inert; native and HTTP records omit it.")
+struct PinnedDeclarationList {
+ 1: required DeclarationListOutcome outcome
+ 2: required string revision(length="..128",pattern="no_control")
+ 3: required list<PinnedDeclarationState> declarations(length="..64")
+}(unknown_fields="refuse",doc="Complete registry@2 configuration and readings at one edit revision. Pins configure remote servers; they are not caller or process authentication evidence. Refusals carry empty revision and declarations.")
+struct PinnedDeclarationObservation {
+ 1: required DeclarationListOutcome outcome
+ 2: required string cursor(length="..128",pattern="no_control")
+ 3: required list<PinnedDeclarationState> declarations(length="..64")
+}(unknown_fields="refuse",doc="Complete registry@2 configuration and readings from one snapshot, including extension inventory and remote pin changes. Refusals carry empty cursor and declarations.")
 service RegistryV2 {
- DeclarationListV2 Declarations()(doc="Read all declarations, readings and extension inventories under provider.manage.")
- DeclarationChange Declare(1:string expected_revision,2:DeclarationWithExtensions declaration)(doc="Conditionally add the declaration and its extension inventory as one generation, under provider.manage. The registry@1 Declare semantics for rules and ownership apply.")
- DeclarationChange Withdraw(1:string expected_revision,2:string name)(doc="Conditionally withdraw a declaration under provider.manage, with the registry@1 semantics.")
- DeclarationObservationV2 Observe(1:string cursor,2:i64 wait_ms)(doc="Wait for declarations, readings or extension inventories to change, under provider.manage.")
-}(wire_name="abstraction.facade/registry@2",doc="The local operator registry with per-profile required extension inventory. It shares the authenticated endpoint, rights decision, revisions and withdrawal authority with registry@1. A registry@1 reading omits extension metadata; a registry@1 Declare creates an empty extension inventory.")
+ DeclarationListV2 Declarations()(readonly="true",doc="Read all declarations, readings and extension inventories under provider.manage.")
+ DeclarationChange Declare(1:string expected_revision,2:DeclarationWithExtensions declaration)(idempotent="true",doc="Conditionally add native or HTTP declarations and extension inventory under provider.manage. Pinless remote edits refuse before writes, rules or TLS; use DeclarePinned with explicit server configuration.")
+ DeclarationChange Withdraw(1:string expected_revision,2:string name)(idempotent="true",doc="Conditionally withdraw a declaration under provider.manage, with the registry@1 semantics.")
+ DeclarationObservationV2 Observe(1:string cursor,2:i64 wait_ms)(readonly="true",doc="Wait for declarations, readings or extension inventories to change, under provider.manage.")
+ PinnedDeclarationList DeclarationsPinned()(remote="local",readonly="true",doc="Read complete configuration, extension inventories, remote server pins and readings under provider.manage.")
+ DeclarationChange DeclarePinned(1:string expected_revision(length="1..128",pattern="no_control"),2:PinnedDeclaration declaration)(remote="local",idempotent="true",doc="Conditionally add complete configuration as one generation under provider.manage. Remote edits require the explicit server SPKI pin; native and HTTP edits omit it. No fallback to pinless methods.")
+ DeclarationChange ReplacePinned(1:string expected_revision(length="1..128",pattern="no_control"),2:PinnedDeclaration declaration)(remote="local",idempotent="true",doc="Conditionally replace an enabled operator record of the same name under provider.manage. Installed/product and disabled records refuse; stale revisions and precommit rejection retain the prior declaration. One new generation invalidates old readiness. Postcommit rule errors remain Applied; write uncertainty requires reread, never blind rollback.")
+ PinnedDeclarationObservation ObservePinned(1:string cursor(length="..128",pattern="no_control"),2:i64 wait_ms)(remote="local",readonly="true",doc="Wait for complete configuration and readings, including remote server pin changes, under provider.manage.")
+}(wire_name="abstraction.facade/registry@2",doc="The local operator registry with extension inventory and explicit remote server pins. It shares the authenticated endpoint, rights decision, revisions and withdrawal authority with registry@1. A registry@1 reading omits successor metadata and remains readable by published decoders. A registry@1 Declare refuses remote declarations; native and HTTP Declare create an empty inventory.")
 
 const list<string> default_runtime_contracts = [
  "abstraction.logging/sink@1",
@@ -408,8 +434,8 @@ service Applications {
  ApplicationChange AskConfirmation(1:string application)(doc="Ask the person again, through the runtime's own asks question application.self_registered, whether to keep a self-registered entry. Requires application.manage on account. The person's Keep clears self_registered; Remove removes every unconfirmed entry of its program and blocks that program from registering itself; closing or expiry leaves it unconfirmed. A pending question is replayed. A confirmed or operator-registered entry applies without asking; an unknown name is unknown. An earlier applications@2 service returns unknown_method.")
  ApplicationChange Remove(1:string application)(doc="Remove an installed descriptor and its presence. Requires application.manage on account. Does not terminate user applications.")
  ApplicationChange Announce(1:ApplicationPresence presence)(doc="Publish or renew presence. Requires application.announce on app:<name>, a bound native program and kernel session matching this runtime, and current owner/session/epoch for renewal. Claims never alter descriptors or grants.")
- ApplicationChange Withdraw(1:string application,2:string instance)(doc="Withdraw only the bound program and session's own current instance. Requires application.announce on app:<name>. Does not terminate the application or remove its installed descriptor.")
- ApplicationPage Observe(1:string cursor,2:i64 wait_ms)(doc="Read or wait for a caller-filtered complete snapshot. Requires application.read on each returned app:<name>; hidden entries and changes remain undisclosed. Empty cursor answers immediately. wait_ms is 0..30000; permissions and lease expiry are rechecked while waiting. No activation occurs.")
+ ApplicationChange Withdraw(1:string application,2:string instance)(idempotent="true",doc="Withdraw only the bound program and session's own current instance. Requires application.announce on app:<name>. Does not terminate the application or remove its installed descriptor.")
+ ApplicationPage Observe(1:string cursor,2:i64 wait_ms)(readonly="true",doc="Read or wait for a caller-filtered complete snapshot. Requires application.read on each returned app:<name>; hidden entries and changes remain undisclosed. Empty cursor answers immediately. wait_ms is 0..30000; permissions and lease expiry are rechecked while waiting. No activation occurs.")
  ApplicationActivationResult Activate(1:string application)(doc="Reuse a matching descriptor-program-bound presence or share one bounded authorized start attempt in this local runtime session. Requires application.activate on app:<name>. Only the operator-registered typed recipe executes; guidance and announcements remain inert. Caller cancellation stops its wait and never terminates or restarts the application.")
- ApplicationStartPage ListStarts(1:string cursor,2:i64 limit)(doc="Read the runtime's start log newest first, for this runtime's operator programs only: any other caller, another account and a remote peer get forbidden. Each start is kept seven days, at most 256. limit is 1..64; cursor is empty or a previous page's, at most 256 bytes. An earlier applications@2 service returns unknown_method.")
-}(wire_name="abstraction.facade/applications@2",doc="Experimental application-presence profile owned by the OA service. Persistent operator descriptors and transient app announcements have distinct authority and lifetime. This is a local directory; MCP/UI metadata are claims, and invocation remains behind OA capability mediation. Native callers retain their actual account/program identity. Unsupported platform identity refuses access.")
+ ApplicationStartPage ListStarts(1:string cursor,2:i64 limit)(readonly="true",doc="Read the runtime's start log newest first, for this runtime's operator programs only: any other caller, another account and a remote peer get forbidden. Each start is kept seven days, at most 256. limit is 1..64; cursor is empty or a previous page's, at most 256 bytes. An earlier applications@2 service returns unknown_method.")
+}(wire_name="abstraction.facade/applications@2",doc="[Applications](https://openabstractions.github.io/reference.html#concept-facade.applications-rpc): Experimental application-presence profile owned by the OA service. Persistent operator descriptors and transient app announcements have distinct authority and lifetime. This is a local directory; MCP/UI metadata are claims, and invocation remains behind OA capability mediation. Native callers retain their actual account/program identity. Unsupported platform identity refuses access.")

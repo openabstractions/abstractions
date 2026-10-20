@@ -121,6 +121,53 @@ inline constexpr std::string_view kServiceErrorCodeUnknownVersion
 inline constexpr std::string_view kServiceErrorCodeUnknownService
 inline constexpr std::string_view kServiceErrorCodeUnknownMethod
 inline constexpr std::string_view kServiceErrorCodeWrongMode
+enum class EndpointServiceReadiness {Ready, NotReady, Unknown}
+inline constexpr std::string_view wire_name(EndpointServiceReadiness value)
+inline std::optional<EndpointServiceReadiness> parse_endpoint_service_readiness(std::string_view name)
+inline constexpr bool operator==(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator!=(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointServiceReadiness value)
+inline constexpr bool operator!=(std::string_view name, EndpointServiceReadiness value)
+inline const std::vector<std::string> kEndpointServiceReadinessNames
+inline const std::vector<std::string> kEndpointRefusalSourceNames
+inline constexpr std::string_view kEndpointRefusalSourceRights
+inline constexpr std::string_view kEndpointRefusalSourceCredentials
+inline constexpr std::string_view kEndpointRefusalSourceLicense
+inline constexpr std::string_view kEndpointRefusalSourceTerms
+inline constexpr std::string_view kEndpointRefusalSourceIdentity
+inline constexpr std::string_view kEndpointRefusalSourceOs
+enum class EndpointRefusalDecision {Denied, NotGranted, PersonOnly}
+inline constexpr std::string_view wire_name(EndpointRefusalDecision value)
+inline std::optional<EndpointRefusalDecision> parse_endpoint_refusal_decision(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalDecision value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalDecision value)
+inline const std::vector<std::string> kEndpointRefusalDecisionNames
+enum class EndpointRefusalAsk {Available, None}
+inline constexpr std::string_view wire_name(EndpointRefusalAsk value)
+inline std::optional<EndpointRefusalAsk> parse_endpoint_refusal_ask(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalAsk value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalAsk value)
+inline const std::vector<std::string> kEndpointRefusalAskNames
+enum class EndpointProducerCheckState {Current, Repaired, Stale, Refused, Unverified}
+inline constexpr std::string_view wire_name(EndpointProducerCheckState value)
+inline std::optional<EndpointProducerCheckState> parse_endpoint_producer_check_state(std::string_view name)
+inline constexpr bool operator==(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator!=(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointProducerCheckState value)
+inline constexpr bool operator!=(std::string_view name, EndpointProducerCheckState value)
+inline const std::vector<std::string> kEndpointProducerCheckStateNames
+enum class EndpointDescriptionOutcome {Described, Forbidden, Unavailable, Invalid, Unsupported}
+inline constexpr std::string_view wire_name(EndpointDescriptionOutcome value)
+inline std::optional<EndpointDescriptionOutcome> parse_endpoint_description_outcome(std::string_view name)
+inline constexpr bool operator==(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator!=(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointDescriptionOutcome value)
+inline constexpr bool operator!=(std::string_view name, EndpointDescriptionOutcome value)
+inline const std::vector<std::string> kEndpointDescriptionOutcomeNames
 inline const std::vector<std::string> kDeclarationResourceKinds
 inline const std::vector<std::string> kRegistryActions
 inline const std::vector<std::string> kDefaultRuntimeContracts
@@ -251,6 +298,22 @@ struct DeclarationObservationV2
   DeclarationListOutcome outcome
   std::string cursor
   std::vector<DeclarationStateV2> declarations
+struct PinnedDeclaration
+  Declaration declaration
+  std::vector<DeclarationExtension> supported_extensions
+  std::string remote_server_key_sha256
+struct PinnedDeclarationState
+  DeclarationState state
+  std::vector<DeclarationExtension> supported_extensions
+  std::string remote_server_key_sha256
+struct PinnedDeclarationList
+  DeclarationListOutcome outcome
+  std::string revision
+  std::vector<PinnedDeclarationState> declarations
+struct PinnedDeclarationObservation
+  DeclarationListOutcome outcome
+  std::string cursor
+  std::vector<PinnedDeclarationState> declarations
 struct ApplicationInterface
   std::string name
   std::string protocol
@@ -310,8 +373,130 @@ struct ApplicationStartPage
   std::string cursor
   bool complete
   std::int64_t complete_since_unix_ms
+struct EndpointRefusalDetail
+  std::string source
+  EndpointRefusalDecision decision
+  EndpointRefusalAsk ask
+  std::string action
+  std::string question
+  std::string credential
+  std::int64_t retry_after_ms
+struct EndpointProducerCheck
+  std::string kind
+  std::string copy
+  EndpointProducerCheckState state
+  std::string reason
+  std::string checked
+struct EndpointServiceState
+  std::string service
+  EndpointServiceReadiness readiness
+  std::string reason
+  std::vector<std::string> guarantees
+  std::map<std::string, std::string> capabilities
+  std::string definition_hash
+struct EndpointDescription
+  EndpointDescriptionOutcome outcome
+  std::string program
+  std::string version
+  std::vector<EndpointServiceState> services
+  std::optional<EndpointRefusalDetail> refusal
+  std::string reason
+  std::vector<EndpointProducerCheck> checks
+struct EndpointDescriptionResult
+  EndpointDescription value
 inline std::string encode(const ResolveResult& v)
 inline ResolveResult decode(std::string_view data)
+T from_json(std::string_view data)
+inline std::string to_json(const ResolveRequest& v)
+inline ResolveRequest from_json<ResolveRequest>(std::string_view data)
+inline std::string to_json(const ServiceReference& v)
+inline ServiceReference from_json<ServiceReference>(std::string_view data)
+inline std::string to_json(const ResolveResult& v)
+inline ResolveResult from_json<ResolveResult>(std::string_view data)
+inline std::string to_json(const BootstrapObservation& v)
+inline BootstrapObservation from_json<BootstrapObservation>(std::string_view data)
+inline std::string to_json(const CapabilityObservation& v)
+inline CapabilityObservation from_json<CapabilityObservation>(std::string_view data)
+inline std::string to_json(const RuntimeObservation& v)
+inline RuntimeObservation from_json<RuntimeObservation>(std::string_view data)
+inline std::string to_json(const CallerAttribute& v)
+inline CallerAttribute from_json<CallerAttribute>(std::string_view data)
+inline std::string to_json(const CallerObservation& v)
+inline CallerObservation from_json<CallerObservation>(std::string_view data)
+inline std::string to_json(const ServiceState& v)
+inline ServiceState from_json<ServiceState>(std::string_view data)
+inline std::string to_json(const Description& v)
+inline Description from_json<Description>(std::string_view data)
+inline std::string to_json(const RemoteTrust& v)
+inline RemoteTrust from_json<RemoteTrust>(std::string_view data)
+inline std::string to_json(const DeclarationCeiling& v)
+inline DeclarationCeiling from_json<DeclarationCeiling>(std::string_view data)
+inline std::string to_json(const DeclarationHost& v)
+inline DeclarationHost from_json<DeclarationHost>(std::string_view data)
+inline std::string to_json(const DeclarationExtension& v)
+inline DeclarationExtension from_json<DeclarationExtension>(std::string_view data)
+inline std::string to_json(const Declaration& v)
+inline Declaration from_json<Declaration>(std::string_view data)
+inline std::string to_json(const DeclarationWithExtensions& v)
+inline DeclarationWithExtensions from_json<DeclarationWithExtensions>(std::string_view data)
+inline std::string to_json(const HostReading& v)
+inline HostReading from_json<HostReading>(std::string_view data)
+inline std::string to_json(const DeclarationState& v)
+inline DeclarationState from_json<DeclarationState>(std::string_view data)
+inline std::string to_json(const DeclarationList& v)
+inline DeclarationList from_json<DeclarationList>(std::string_view data)
+inline std::string to_json(const DeclarationChange& v)
+inline DeclarationChange from_json<DeclarationChange>(std::string_view data)
+inline std::string to_json(const DeclarationObservation& v)
+inline DeclarationObservation from_json<DeclarationObservation>(std::string_view data)
+inline std::string to_json(const DeclarationStateV2& v)
+inline DeclarationStateV2 from_json<DeclarationStateV2>(std::string_view data)
+inline std::string to_json(const DeclarationListV2& v)
+inline DeclarationListV2 from_json<DeclarationListV2>(std::string_view data)
+inline std::string to_json(const DeclarationObservationV2& v)
+inline DeclarationObservationV2 from_json<DeclarationObservationV2>(std::string_view data)
+inline std::string to_json(const PinnedDeclaration& v)
+inline PinnedDeclaration from_json<PinnedDeclaration>(std::string_view data)
+inline std::string to_json(const PinnedDeclarationState& v)
+inline PinnedDeclarationState from_json<PinnedDeclarationState>(std::string_view data)
+inline std::string to_json(const PinnedDeclarationList& v)
+inline PinnedDeclarationList from_json<PinnedDeclarationList>(std::string_view data)
+inline std::string to_json(const PinnedDeclarationObservation& v)
+inline PinnedDeclarationObservation from_json<PinnedDeclarationObservation>(std::string_view data)
+inline std::string to_json(const ApplicationInterface& v)
+inline ApplicationInterface from_json<ApplicationInterface>(std::string_view data)
+inline std::string to_json(const ApplicationActivationRecipe& v)
+inline ApplicationActivationRecipe from_json<ApplicationActivationRecipe>(std::string_view data)
+inline std::string to_json(const ApplicationDescriptor& v)
+inline ApplicationDescriptor from_json<ApplicationDescriptor>(std::string_view data)
+inline std::string to_json(const ApplicationContext& v)
+inline ApplicationContext from_json<ApplicationContext>(std::string_view data)
+inline std::string to_json(const ApplicationPresence& v)
+inline ApplicationPresence from_json<ApplicationPresence>(std::string_view data)
+inline std::string to_json(const ApplicationInstance& v)
+inline ApplicationInstance from_json<ApplicationInstance>(std::string_view data)
+inline std::string to_json(const ApplicationEntry& v)
+inline ApplicationEntry from_json<ApplicationEntry>(std::string_view data)
+inline std::string to_json(const ApplicationChange& v)
+inline ApplicationChange from_json<ApplicationChange>(std::string_view data)
+inline std::string to_json(const ApplicationPage& v)
+inline ApplicationPage from_json<ApplicationPage>(std::string_view data)
+inline std::string to_json(const ApplicationActivationResult& v)
+inline ApplicationActivationResult from_json<ApplicationActivationResult>(std::string_view data)
+inline std::string to_json(const ApplicationStart& v)
+inline ApplicationStart from_json<ApplicationStart>(std::string_view data)
+inline std::string to_json(const ApplicationStartPage& v)
+inline ApplicationStartPage from_json<ApplicationStartPage>(std::string_view data)
+inline std::string to_json(const EndpointRefusalDetail& v)
+inline EndpointRefusalDetail from_json<EndpointRefusalDetail>(std::string_view data)
+inline std::string to_json(const EndpointProducerCheck& v)
+inline EndpointProducerCheck from_json<EndpointProducerCheck>(std::string_view data)
+inline std::string to_json(const EndpointServiceState& v)
+inline EndpointServiceState from_json<EndpointServiceState>(std::string_view data)
+inline std::string to_json(const EndpointDescription& v)
+inline EndpointDescription from_json<EndpointDescription>(std::string_view data)
+inline std::string to_json(const EndpointDescriptionResult& v)
+inline EndpointDescriptionResult from_json<EndpointDescriptionResult>(std::string_view data)
 struct FrameWriter
   virtual void write_frame(std::string_view frame)
 struct DispatchError : std::runtime_error
@@ -321,22 +506,28 @@ struct FrameExchanger
 struct ServiceError : std::runtime_error
   std::string code, message
 inline constexpr std::string_view kEndpointContract
+inline constexpr std::string_view kEndpointV2Contract
 struct DescribedService
   std::string contract
   bool ready
   std::string why
+std::string describe_endpoint_with_checks(std::string_view frame, const std::string& program, const std::string& version, const std::vector<EndpointProducerCheck>& checks, const Services& . . . services)
 std::string describe_endpoint(std::string_view frame, const std::string& program, const std::string& version, const Services& . . . services)
 struct Resolver
   virtual ResolveResult resolve(const ResolveRequest& request)
+  virtual ResolveResult resolve_on_machine(const ResolveRequest& request, const std::string& binding_name)
 template<class Transport>struct ResolverClient : Resolver
   Transport& transport_
   ResolveResult resolve(const ResolveRequest& request) override
+  ResolveResult resolve_on_machine(const ResolveRequest& request, const std::string& binding_name) override
 struct ResolverService
   inline static constexpr std::string_view kWireName
   inline static constexpr std::string_view kCapability
 struct ResolverDispatcher : FrameWriter, FrameExchanger
   Resolver& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct Caller
@@ -350,6 +541,8 @@ struct CallerService
 struct CallerDispatcher : FrameWriter, FrameExchanger
   Caller& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct Endpoint
@@ -363,6 +556,8 @@ struct EndpointService
 struct EndpointDispatcher : FrameWriter, FrameExchanger
   Endpoint& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct Registry
@@ -382,6 +577,8 @@ struct RegistryService
 struct RegistryDispatcher : FrameWriter, FrameExchanger
   Registry& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct RegistryV2
@@ -389,18 +586,28 @@ struct RegistryV2
   virtual DeclarationChange declare(const std::string& expected_revision, const DeclarationWithExtensions& declaration)
   virtual DeclarationChange withdraw(const std::string& expected_revision, const std::string& name)
   virtual DeclarationObservationV2 observe(const std::string& cursor, const std::int64_t& wait_ms)
+  virtual PinnedDeclarationList declarations_pinned()
+  virtual DeclarationChange declare_pinned(const std::string& expected_revision, const PinnedDeclaration& declaration)
+  virtual DeclarationChange replace_pinned(const std::string& expected_revision, const PinnedDeclaration& declaration)
+  virtual PinnedDeclarationObservation observe_pinned(const std::string& cursor, const std::int64_t& wait_ms)
 template<class Transport>struct RegistryV2Client : RegistryV2
   Transport& transport_
   DeclarationListV2 declarations() override
   DeclarationChange declare(const std::string& expected_revision, const DeclarationWithExtensions& declaration) override
   DeclarationChange withdraw(const std::string& expected_revision, const std::string& name) override
   DeclarationObservationV2 observe(const std::string& cursor, const std::int64_t& wait_ms) override
+  PinnedDeclarationList declarations_pinned() override
+  DeclarationChange declare_pinned(const std::string& expected_revision, const PinnedDeclaration& declaration) override
+  DeclarationChange replace_pinned(const std::string& expected_revision, const PinnedDeclaration& declaration) override
+  PinnedDeclarationObservation observe_pinned(const std::string& cursor, const std::int64_t& wait_ms) override
 struct RegistryV2Service
   inline static constexpr std::string_view kWireName
   inline static constexpr std::string_view kCapability
 struct RegistryV2Dispatcher : FrameWriter, FrameExchanger
   RegistryV2& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct Applications
@@ -428,5 +635,87 @@ struct ApplicationsService
 struct ApplicationsDispatcher : FrameWriter, FrameExchanger
   Applications& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
+inline std::string encode_resolve_request(const ResolveRequest& v)
+inline ResolveRequest decode_resolve_request(std::string_view in)
+inline std::string encode_service_reference(const ServiceReference& v)
+inline ServiceReference decode_service_reference(std::string_view in)
+inline std::string encode_resolve_result(const ResolveResult& v)
+inline ResolveResult decode_resolve_result(std::string_view in)
+inline std::string encode_bootstrap_observation(const BootstrapObservation& v)
+inline BootstrapObservation decode_bootstrap_observation(std::string_view in)
+inline std::string encode_capability_observation(const CapabilityObservation& v)
+inline CapabilityObservation decode_capability_observation(std::string_view in)
+inline std::string encode_runtime_observation(const RuntimeObservation& v)
+inline RuntimeObservation decode_runtime_observation(std::string_view in)
+inline std::string encode_caller_attribute(const CallerAttribute& v)
+inline CallerAttribute decode_caller_attribute(std::string_view in)
+inline std::string encode_caller_observation(const CallerObservation& v)
+inline CallerObservation decode_caller_observation(std::string_view in)
+inline std::string encode_service_state(const ServiceState& v)
+inline ServiceState decode_service_state(std::string_view in)
+inline std::string encode_description(const Description& v)
+inline Description decode_description(std::string_view in)
+inline std::string encode_remote_trust(const RemoteTrust& v)
+inline RemoteTrust decode_remote_trust(std::string_view in)
+inline std::string encode_declaration_ceiling(const DeclarationCeiling& v)
+inline DeclarationCeiling decode_declaration_ceiling(std::string_view in)
+inline std::string encode_declaration_host(const DeclarationHost& v)
+inline DeclarationHost decode_declaration_host(std::string_view in)
+inline std::string encode_declaration_extension(const DeclarationExtension& v)
+inline DeclarationExtension decode_declaration_extension(std::string_view in)
+inline std::string encode_declaration(const Declaration& v)
+inline Declaration decode_declaration(std::string_view in)
+inline std::string encode_declaration_with_extensions(const DeclarationWithExtensions& v)
+inline DeclarationWithExtensions decode_declaration_with_extensions(std::string_view in)
+inline std::string encode_host_reading(const HostReading& v)
+inline HostReading decode_host_reading(std::string_view in)
+inline std::string encode_declaration_state(const DeclarationState& v)
+inline DeclarationState decode_declaration_state(std::string_view in)
+inline std::string encode_declaration_list(const DeclarationList& v)
+inline DeclarationList decode_declaration_list(std::string_view in)
+inline std::string encode_declaration_change(const DeclarationChange& v)
+inline DeclarationChange decode_declaration_change(std::string_view in)
+inline std::string encode_declaration_observation(const DeclarationObservation& v)
+inline DeclarationObservation decode_declaration_observation(std::string_view in)
+inline std::string encode_declaration_state_v2(const DeclarationStateV2& v)
+inline DeclarationStateV2 decode_declaration_state_v2(std::string_view in)
+inline std::string encode_declaration_list_v2(const DeclarationListV2& v)
+inline DeclarationListV2 decode_declaration_list_v2(std::string_view in)
+inline std::string encode_declaration_observation_v2(const DeclarationObservationV2& v)
+inline DeclarationObservationV2 decode_declaration_observation_v2(std::string_view in)
+inline std::string encode_pinned_declaration(const PinnedDeclaration& v)
+inline PinnedDeclaration decode_pinned_declaration(std::string_view in)
+inline std::string encode_pinned_declaration_state(const PinnedDeclarationState& v)
+inline PinnedDeclarationState decode_pinned_declaration_state(std::string_view in)
+inline std::string encode_pinned_declaration_list(const PinnedDeclarationList& v)
+inline PinnedDeclarationList decode_pinned_declaration_list(std::string_view in)
+inline std::string encode_pinned_declaration_observation(const PinnedDeclarationObservation& v)
+inline PinnedDeclarationObservation decode_pinned_declaration_observation(std::string_view in)
+inline std::string encode_application_interface(const ApplicationInterface& v)
+inline ApplicationInterface decode_application_interface(std::string_view in)
+inline std::string encode_application_activation_recipe(const ApplicationActivationRecipe& v)
+inline ApplicationActivationRecipe decode_application_activation_recipe(std::string_view in)
+inline std::string encode_application_descriptor(const ApplicationDescriptor& v)
+inline ApplicationDescriptor decode_application_descriptor(std::string_view in)
+inline std::string encode_application_context(const ApplicationContext& v)
+inline ApplicationContext decode_application_context(std::string_view in)
+inline std::string encode_application_presence(const ApplicationPresence& v)
+inline ApplicationPresence decode_application_presence(std::string_view in)
+inline std::string encode_application_instance(const ApplicationInstance& v)
+inline ApplicationInstance decode_application_instance(std::string_view in)
+inline std::string encode_application_entry(const ApplicationEntry& v)
+inline ApplicationEntry decode_application_entry(std::string_view in)
+inline std::string encode_application_change(const ApplicationChange& v)
+inline ApplicationChange decode_application_change(std::string_view in)
+inline std::string encode_application_page(const ApplicationPage& v)
+inline ApplicationPage decode_application_page(std::string_view in)
+inline std::string encode_application_activation_result(const ApplicationActivationResult& v)
+inline ApplicationActivationResult decode_application_activation_result(std::string_view in)
+inline std::string encode_application_start(const ApplicationStart& v)
+inline ApplicationStart decode_application_start(std::string_view in)
+inline std::string encode_application_start_page(const ApplicationStartPage& v)
+inline ApplicationStartPage decode_application_start_page(std::string_view in)

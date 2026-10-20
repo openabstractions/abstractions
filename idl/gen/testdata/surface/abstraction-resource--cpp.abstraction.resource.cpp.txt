@@ -63,6 +63,53 @@ inline constexpr std::string_view kServiceErrorCodeCallerRefused
 inline constexpr std::string_view kServiceErrorCodeUnknownResource
 inline constexpr std::string_view kServiceErrorCodePolicyUnavailable
 inline constexpr std::string_view kServiceErrorCodeForbidden
+enum class EndpointServiceReadiness {Ready, NotReady, Unknown}
+inline constexpr std::string_view wire_name(EndpointServiceReadiness value)
+inline std::optional<EndpointServiceReadiness> parse_endpoint_service_readiness(std::string_view name)
+inline constexpr bool operator==(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator!=(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointServiceReadiness value)
+inline constexpr bool operator!=(std::string_view name, EndpointServiceReadiness value)
+inline const std::vector<std::string> kEndpointServiceReadinessNames
+inline const std::vector<std::string> kEndpointRefusalSourceNames
+inline constexpr std::string_view kEndpointRefusalSourceRights
+inline constexpr std::string_view kEndpointRefusalSourceCredentials
+inline constexpr std::string_view kEndpointRefusalSourceLicense
+inline constexpr std::string_view kEndpointRefusalSourceTerms
+inline constexpr std::string_view kEndpointRefusalSourceIdentity
+inline constexpr std::string_view kEndpointRefusalSourceOs
+enum class EndpointRefusalDecision {Denied, NotGranted, PersonOnly}
+inline constexpr std::string_view wire_name(EndpointRefusalDecision value)
+inline std::optional<EndpointRefusalDecision> parse_endpoint_refusal_decision(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalDecision value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalDecision value)
+inline const std::vector<std::string> kEndpointRefusalDecisionNames
+enum class EndpointRefusalAsk {Available, None}
+inline constexpr std::string_view wire_name(EndpointRefusalAsk value)
+inline std::optional<EndpointRefusalAsk> parse_endpoint_refusal_ask(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalAsk value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalAsk value)
+inline const std::vector<std::string> kEndpointRefusalAskNames
+enum class EndpointProducerCheckState {Current, Repaired, Stale, Refused, Unverified}
+inline constexpr std::string_view wire_name(EndpointProducerCheckState value)
+inline std::optional<EndpointProducerCheckState> parse_endpoint_producer_check_state(std::string_view name)
+inline constexpr bool operator==(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator!=(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointProducerCheckState value)
+inline constexpr bool operator!=(std::string_view name, EndpointProducerCheckState value)
+inline const std::vector<std::string> kEndpointProducerCheckStateNames
+enum class EndpointDescriptionOutcome {Described, Forbidden, Unavailable, Invalid, Unsupported}
+inline constexpr std::string_view wire_name(EndpointDescriptionOutcome value)
+inline std::optional<EndpointDescriptionOutcome> parse_endpoint_description_outcome(std::string_view name)
+inline constexpr bool operator==(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator!=(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointDescriptionOutcome value)
+inline constexpr bool operator!=(std::string_view name, EndpointDescriptionOutcome value)
+inline const std::vector<std::string> kEndpointDescriptionOutcomeNames
 inline const std::vector<std::string> kKnownResources
 inline const std::vector<std::string> kResourceErrorCodes
 struct Holder
@@ -135,8 +182,83 @@ struct LeaseChangeResult
   std::optional<LeaseChange> change
 struct ProcessBindResult
   ProcessBindOutcome outcome
-inline std::string encode(const ResourceState& v)
+struct EndpointRefusalDetail
+  std::string source
+  EndpointRefusalDecision decision
+  EndpointRefusalAsk ask
+  std::string action
+  std::string question
+  std::string credential
+  std::int64_t retry_after_ms
+struct EndpointProducerCheck
+  std::string kind
+  std::string copy
+  EndpointProducerCheckState state
+  std::string reason
+  std::string checked
+struct EndpointServiceState
+  std::string service
+  EndpointServiceReadiness readiness
+  std::string reason
+  std::vector<std::string> guarantees
+  std::map<std::string, std::string> capabilities
+  std::string definition_hash
+struct EndpointDescription
+  EndpointDescriptionOutcome outcome
+  std::string program
+  std::string version
+  std::vector<EndpointServiceState> services
+  std::optional<EndpointRefusalDetail> refusal
+  std::string reason
+  std::vector<EndpointProducerCheck> checks
+struct EndpointDescriptionResult
+  EndpointDescription value
 inline ResourceState decode(std::string_view data)
+T from_json(std::string_view data)
+inline std::string to_json(const Holder& v)
+inline Holder from_json<Holder>(std::string_view data)
+inline std::string to_json(const ResourceState& v)
+inline ResourceState from_json<ResourceState>(std::string_view data)
+inline std::string to_json(const HoldersResult& v)
+inline HoldersResult from_json<HoldersResult>(std::string_view data)
+inline std::string to_json(const ResourceList& v)
+inline ResourceList from_json<ResourceList>(std::string_view data)
+inline std::string to_json(const ResourcesResult& v)
+inline ResourcesResult from_json<ResourcesResult>(std::string_view data)
+inline std::string to_json(const Lease& v)
+inline Lease from_json<Lease>(std::string_view data)
+inline std::string to_json(const YieldRecord& v)
+inline YieldRecord from_json<YieldRecord>(std::string_view data)
+inline std::string to_json(const AcquireResult& v)
+inline AcquireResult from_json<AcquireResult>(std::string_view data)
+inline std::string to_json(const AcquireFreeResult& v)
+inline AcquireFreeResult from_json<AcquireFreeResult>(std::string_view data)
+inline std::string to_json(const YieldRequest& v)
+inline YieldRequest from_json<YieldRequest>(std::string_view data)
+inline std::string to_json(const YieldPage& v)
+inline YieldPage from_json<YieldPage>(std::string_view data)
+inline std::string to_json(const ObserveResult& v)
+inline ObserveResult from_json<ObserveResult>(std::string_view data)
+inline std::string to_json(const AnswerResult& v)
+inline AnswerResult from_json<AnswerResult>(std::string_view data)
+inline std::string to_json(const AnswerCallResult& v)
+inline AnswerCallResult from_json<AnswerCallResult>(std::string_view data)
+inline std::string to_json(const LeaseChange& v)
+inline LeaseChange from_json<LeaseChange>(std::string_view data)
+inline std::string to_json(const LeaseChangeResult& v)
+inline LeaseChangeResult from_json<LeaseChangeResult>(std::string_view data)
+inline std::string to_json(const ProcessBindResult& v)
+inline ProcessBindResult from_json<ProcessBindResult>(std::string_view data)
+inline std::string to_json(const EndpointRefusalDetail& v)
+inline EndpointRefusalDetail from_json<EndpointRefusalDetail>(std::string_view data)
+inline std::string to_json(const EndpointProducerCheck& v)
+inline EndpointProducerCheck from_json<EndpointProducerCheck>(std::string_view data)
+inline std::string to_json(const EndpointServiceState& v)
+inline EndpointServiceState from_json<EndpointServiceState>(std::string_view data)
+inline std::string to_json(const EndpointDescription& v)
+inline EndpointDescription from_json<EndpointDescription>(std::string_view data)
+inline std::string to_json(const EndpointDescriptionResult& v)
+inline EndpointDescriptionResult from_json<EndpointDescriptionResult>(std::string_view data)
 struct FrameWriter
   virtual void write_frame(std::string_view frame)
 struct DispatchError : std::runtime_error
@@ -146,10 +268,12 @@ struct FrameExchanger
 struct ServiceError : std::runtime_error
   std::string code, message
 inline constexpr std::string_view kEndpointContract
+inline constexpr std::string_view kEndpointV2Contract
 struct DescribedService
   std::string contract
   bool ready
   std::string why
+std::string describe_endpoint_with_checks(std::string_view frame, const std::string& program, const std::string& version, const std::vector<EndpointProducerCheck>& checks, const Services& . . . services)
 std::string describe_endpoint(std::string_view frame, const std::string& program, const std::string& version, const Services& . . . services)
 struct Table
   virtual ResourcesResult resources()
@@ -164,9 +288,12 @@ struct TableService
 struct TableDispatcher : FrameWriter, FrameExchanger
   Table& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct Leases
+  virtual AcquireResult acquire_for(const::abstraction::rights::api::Subject& subject, const std::string& resource, const std::int64_t& amount, const std::int64_t& wait_ms)
   virtual AcquireResult acquire(const std::string& resource, const std::int64_t& amount, const std::int64_t& wait_ms)
   virtual AcquireFreeResult acquire_free(const std::string& resource, const std::int64_t& amount)
   virtual LeaseChangeResult renew(const std::string& lease)
@@ -174,8 +301,10 @@ struct Leases
   virtual ObserveResult observe(const std::string& cursor, const std::int64_t& wait_ms)
   virtual AnswerCallResult answer(const std::string& request, const YieldAnswer& answer, const std::string& reason)
   virtual ProcessBindResult bind_process(const std::string& lease, const std::int64_t& pid)
+  virtual LeaseChangeResult label(const std::string& lease, const std::string& text)
 template<class Transport>struct LeasesClient : Leases
   Transport& transport_
+  AcquireResult acquire_for(const::abstraction::rights::api::Subject& subject, const std::string& resource, const std::int64_t& amount, const std::int64_t& wait_ms) override
   AcquireResult acquire(const std::string& resource, const std::int64_t& amount, const std::int64_t& wait_ms) override
   AcquireFreeResult acquire_free(const std::string& resource, const std::int64_t& amount) override
   LeaseChangeResult renew(const std::string& lease) override
@@ -183,11 +312,49 @@ template<class Transport>struct LeasesClient : Leases
   ObserveResult observe(const std::string& cursor, const std::int64_t& wait_ms) override
   AnswerCallResult answer(const std::string& request, const YieldAnswer& answer, const std::string& reason) override
   ProcessBindResult bind_process(const std::string& lease, const std::int64_t& pid) override
+  LeaseChangeResult label(const std::string& lease, const std::string& text) override
 struct LeasesService
   inline static constexpr std::string_view kWireName
   inline static constexpr std::string_view kCapability
 struct LeasesDispatcher : FrameWriter, FrameExchanger
   Leases& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
+inline std::string encode_holder(const Holder& v)
+inline Holder decode_holder(std::string_view in)
+inline std::string encode_resource_state(const ResourceState& v)
+inline ResourceState decode_resource_state(std::string_view in)
+inline std::string encode_holders_result(const HoldersResult& v)
+inline HoldersResult decode_holders_result(std::string_view in)
+inline std::string encode_resource_list(const ResourceList& v)
+inline ResourceList decode_resource_list(std::string_view in)
+inline std::string encode_resources_result(const ResourcesResult& v)
+inline ResourcesResult decode_resources_result(std::string_view in)
+inline std::string encode_lease(const Lease& v)
+inline Lease decode_lease(std::string_view in)
+inline std::string encode_yield_record(const YieldRecord& v)
+inline YieldRecord decode_yield_record(std::string_view in)
+inline std::string encode_acquire_result(const AcquireResult& v)
+inline AcquireResult decode_acquire_result(std::string_view in)
+inline std::string encode_acquire_free_result(const AcquireFreeResult& v)
+inline AcquireFreeResult decode_acquire_free_result(std::string_view in)
+inline std::string encode_yield_request(const YieldRequest& v)
+inline YieldRequest decode_yield_request(std::string_view in)
+inline std::string encode_yield_page(const YieldPage& v)
+inline YieldPage decode_yield_page(std::string_view in)
+inline std::string encode_observe_result(const ObserveResult& v)
+inline ObserveResult decode_observe_result(std::string_view in)
+inline std::string encode_answer_result(const AnswerResult& v)
+inline AnswerResult decode_answer_result(std::string_view in)
+inline std::string encode_answer_call_result(const AnswerCallResult& v)
+inline AnswerCallResult decode_answer_call_result(std::string_view in)
+inline std::string encode_lease_change(const LeaseChange& v)
+inline LeaseChange decode_lease_change(std::string_view in)
+inline std::string encode_lease_change_result(const LeaseChangeResult& v)
+inline LeaseChangeResult decode_lease_change_result(std::string_view in)
+inline std::string encode_process_bind_result(const ProcessBindResult& v)
+inline ProcessBindResult decode_process_bind_result(std::string_view in)
+inline std::string encode(const ResourceState& v)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/openabstractions/abstraction-identity/go/budget"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -14,16 +15,22 @@ import (
 
 	asks "github.com/openabstractions/abstraction-asks/go"
 	cas "github.com/openabstractions/abstraction-cas/go"
+	configwire "github.com/openabstractions/abstraction-config/go/abstraction/config"
 	credentials "github.com/openabstractions/abstraction-credentials/go"
 	credservice "github.com/openabstractions/abstraction-credentials/go/service"
 	"github.com/openabstractions/abstraction-facade/go/grants"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	identity "github.com/openabstractions/abstraction-identity"
+	"github.com/openabstractions/abstraction-identity/fileid"
+	"github.com/openabstractions/abstraction-identity/listen"
+	"github.com/openabstractions/abstraction-identity/remote"
 	inference "github.com/openabstractions/abstraction-inference/go"
+	"github.com/openabstractions/abstraction-model/go/releasefiles"
 	rights "github.com/openabstractions/abstraction-rights/go"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	rightsservice "github.com/openabstractions/abstraction-rights/go/authorization"
 	routerservice "github.com/openabstractions/abstraction-router/go/service"
+	storageservice "github.com/openabstractions/abstraction-storage/go/service"
 )
 
 // Installation provenance and the marker that records it
@@ -40,22 +47,60 @@ const (
 // the in-process decision point its resource services ask, the operator
 // programs that administer it, and the installation rules those programs hold.
 type runtimeRights struct {
-	policy    *rights.DecisionPolicy
-	path      string
-	marker    string
-	owner     string
-	kind      string
-	endpoint  string
-	operators []string
+	policy                   *rights.DecisionPolicy
+	path                     string
+	marker                   string
+	owner                    string
+	kind                     string
+	endpoint                 string
+	operators                []string
+	panels                   panelRoster
+	applications             *applicationDirectory
+	messagePairing           *runtimePairingState
+	applicationRolesRequired bool
+	// Current independent operator defaults are composed by the Config owner.
+	// This lookup preserves its claim during provider cleanup; Rights still
+	// decides every read and retains person edits/revocations.
+	configReadDefault func(program, key string) bool
 	// firstUse admits the first-use question for a not_granted spending
-	// decision (runtime_asks.go). Nil admits none. Assign before serving.
-	firstUse func(subject rwire.Subject, publisher func() asks.Publisher, action, resource string)
+	// decision (runtime_asks.go) and returns the id of the question that is
+	// pending for it, or "". Nil admits none. Assign before serving.
+	firstUse func(subject rwire.Subject, publisher func() asks.Publisher, action, resource string) string
+	// awaitQuestions waits for the first-use questions firstUse returned
+	// (runtime_asks.go, INF-W10). Nil waits for none. Assign before serving.
+	awaitQuestions func(ctx context.Context, subject rwire.Subject, ids []string) bool
+	// pendingQuestions returns which of the first-use questions firstUse
+	// returned are still pending about subject (runtime_asks.go, INF-W11).
+	// Nil names none. Assign before serving.
+	pendingQuestions func(subject rwire.Subject, ids []string) ([]string, error)
 	// pairedInput admits the paired input-profile question a consuming request
 	// raised (runtime_asks.go, INF-V4). Nil admits none. Assign before serving.
-	pairedInput func(subject rwire.Subject, publisher func() asks.Publisher, resource string)
-	// typedFirstUse admits a canonical service effect after a quiet missing permit.
+	pairedInput func(subject rwire.Subject, publisher func() asks.Publisher, resource string) string
+	// typedFirstUse admits a canonical service effect after a quiet missing
+	// permit and returns the id of the question pending for it, or "".
 	// Assign before serving; the Asks owner owns occurrence and consent lifecycle.
-	typedFirstUse func(context.Context, rwire.PermissionEffect)
+	typedFirstUse      func(context.Context, rwire.PermissionEffect) string
+	providerSetupGuard func(context.Context, asks.PermissionRequest) (func() error, error)
+	// peerElevated classifies a bound peer for the elevated-callers default
+	// (runtime_elevated.go); nil is identity's bound attribute. Tests set it.
+	peerElevated func(*identity.Peer) bool
+	// elevated records what the elevated-callers default admitted.
+	elevated elevatedAdmissions
+}
+
+// decideRemote maps the live paired key for each evaluation. The optional
+// minimum is receiving configuration; no remote frame supplies this fence.
+func (r *runtimeRights) decideRemote(ctx context.Context, peer remote.Peer, admit func(remote.Peer) error, action, resource, minimum string) rwire.Decision {
+	if r == nil || r.policy == nil || r.owner == "" || ctx.Err() != nil {
+		return rwire.Decision{Outcome: rwire.DecisionOutcomeUnavailable}
+	}
+	mapped, err := remote.SubjectOf(peer, admit)
+	if err != nil {
+		return rwire.Decision{Outcome: rwire.DecisionOutcomeForbidden}
+	}
+	ctx, cancel := budget.Within(ctx, decisionBudget, decisionBudget)
+	defer cancel()
+	return r.policy.DecideForAtLeastRevisionContext(ctx, rwire.Subject{Account: r.owner, Program: mapped.Program()}, action, resource, minimum).Decision
 }
 
 // installationRule is one exact rule an installation writes for each operator
@@ -73,14 +118,16 @@ type appliedRule struct {
 }
 
 type defaultsMarker struct {
-	Profile string        `json:"profile"`
-	Applied []appliedRule `json:"applied"`
+	Profile        string              `json:"profile"`
+	Applied        []appliedRule       `json:"applied"`
+	ConfigRemoved  []configRemovedRule `json:"config_removed,omitempty"`
+	ProviderConfig []appliedRule       `json:"provider_config,omitempty"`
 }
 
 // composeRights opens the decision policy in the runtime's state directory, or
 // returns nil when the runtime selected explicit endpoints without one. Every
 // gated action is then unavailable: an absent policy is never permission.
-func composeRights(options runtimeFlags) (*runtimeRights, error) {
+func composeRights(options runtimeFlags) (retained *runtimeRights, _ error) {
 	state, err := credentialsState(options)
 	if err != nil || state == "" {
 		return nil, err
@@ -96,12 +143,17 @@ func composeRights(options runtimeFlags) (*runtimeRights, error) {
 	if err != nil || account.Uid == "" {
 		return nil, fmt.Errorf("rights: runtime account unavailable: %v", err)
 	}
-	operators, err := operatorPrograms(options)
+	operators, panels, err := operatorPrograms(options)
 	if err != nil {
 		return nil, err
 	}
-	r := &runtimeRights{owner: account.Uid, kind: "posix", endpoint: endpoint, operators: operators,
+	r := &runtimeRights{owner: account.Uid, kind: "posix", endpoint: endpoint, operators: operators, panels: panels,
 		path: filepath.Join(state, "rights", "decisions.json"), marker: filepath.Join(state, "rights", defaultsMarkerFile)}
+	defer func() {
+		if retained == nil {
+			r.close()
+		}
+	}()
 	if runtime.GOOS == "windows" {
 		r.kind = "windows"
 	}
@@ -123,7 +175,7 @@ func composeRights(options runtimeFlags) (*runtimeRights, error) {
 	// program of this account may register itself, ask, announce, notify and
 	// download unless its own rule or the switch says otherwise. A script host
 	// never receives one; a remote peer's mapped namespace is another account.
-	if configureErr := r.policy.ConfigureDefaults(r.owner, grants.RuntimeAccountDefaults(), defaultExcluded); configureErr != nil {
+	if configureErr := r.policy.ConfigureDefaults(r.owner, r.accountDefaults(), defaultExcluded); configureErr != nil {
 		return nil, configureErr
 	}
 	return r, err
@@ -136,21 +188,153 @@ func defaultExcluded(s rwire.Subject) bool {
 	return asks.ScriptHostSubject(s, asks.Publisher{})
 }
 
-// refuseAnswerer refuses enrolling an operator program or a script host as
-// the answerer for every app (rights RIGHTS-R16, asks ASK-R7): optional Stop
-// cleanup takes permits the answerer set, and an operator sets the person's own
-// rules; every script a script host runs would answer.
+// accountDefaults is the facade's runtime defaults, the agent-messages
+// default: the person's one switch for messages between their kept agents,
+// off until they turn it on, covering only the current kept-agent class
+// (agentMessageCovered), and the elevated-callers default: on after a fresh
+// install, covering an elevated local native peer of this account
+// (runtime_elevated.go, rights RIGHTS-R27).
+func (r *runtimeRights) accountDefaults() []rights.AccountDefault {
+	return append(grants.RuntimeAccountDefaults(),
+		rights.AccountDefault{Name: rights.DefaultAgentMessages, Action: ActionApplicationMessage, EveryResource: true, Off: true, Covers: r.agentMessageCovered},
+		r.elevatedCallers())
+}
+
+// agentMessageCovered is the agent-messages default's class: the subject is
+// the program of one enrolled agent application (an OA agent connector's
+// helper, as the messaging facts record it) and resource names another one.
+// It reads the published messaging facts, or while a registration write has
+// cleared them the last facts prepared (applicationDirectory.agentClass), so
+// a message accepted under the switch is not refused by a routine
+// registration write. It opens nothing but file identities, so it is safe
+// under the policy CAS. Current membership of each party stays checked by
+// the messaging owners (messageSendTargetEligible and the progress pass).
+// Before any facts were prepared the class is empty and the person is asked.
+func (r *runtimeRights) agentMessageCovered(_ context.Context, s rwire.Subject, resource string) bool {
+	name, ok := messageApplicationResource(resource)
+	if !ok || r.applications == nil || !identity.ValidSubjectProgram(s.Program) {
+		return false
+	}
+	var facts *messagePartyFacts
+	if roles := r.applications.roles.Load(); roles != nil {
+		facts = roles.messaging
+	}
+	if facts == nil {
+		facts = r.applications.agentClass.Load()
+	}
+	if facts == nil || facts.owner != r.owner {
+		return false
+	}
+	// The subject's file identity is read at most once per decision.
+	program := identity.NormalizeSubjectProgram(s.Program)
+	key, keyed := "", false
+	subjectKey := func() string {
+		if !keyed {
+			key, keyed = identity.ProgramKey(program), true
+		}
+		return key
+	}
+	sender, receiver := false, false
+	for _, agent := range facts.agents {
+		other := identity.NormalizeSubjectProgram(agent.program)
+		same := identity.SameNormalizedSubjectProgramKeyed(other, program, func() string { return identity.ProgramKey(other) }, subjectKey)
+		if agent.name == name {
+			if same {
+				return false
+			}
+			receiver = true
+		} else if same {
+			sender = true
+		}
+	}
+	return sender && receiver
+}
+
+// prepareAgentMessageClass publishes the messaging facts the agent-messages
+// default reads when a registration write cleared them. Call it outside Book,
+// directory and policy locks; a failure leaves the class empty.
+func (r *runtimeRights) prepareAgentMessageClass(ctx context.Context) {
+	if r == nil || r.applications == nil {
+		return
+	}
+	//unchecked: best effort; the decision without facts covers nothing and asks
+	_, _ = r.applications.currentMessagingFacts(ctx)
+}
+
+// refuseAnswerer refuses enrolling an operator program or a program that
+// runs foreign code as the answerer for every app (rights RIGHTS-R16, asks
+// ASK-R7): optional Stop cleanup takes permits the answerer set, and an
+// operator sets the person's own rules; every script a script host runs, or
+// any code a Bun standalone executable that honours BUN_BE_BUN is handed,
+// would answer. The foreign-code part is the answerer rule's own
+// (asks.AnswererRule), so an enrollment the rule would always refuse is never
+// written.
 func (r *runtimeRights) refuseAnswerer(s rwire.Subject) error {
 	if s.Account != r.owner {
-		return errors.New("an answerer answers for this account only")
+		return rights.ErrMetaHolder
 	}
 	if r.isOperator(s.Program) {
-		return errors.New("an operator program is no answerer")
+		return rights.ErrMetaHolder
 	}
-	if asks.ScriptHostSubject(s, asks.Publisher{}) {
-		return errors.New("a script host is no answerer")
+	if _, err := r.answererCheck(s.Account, s.Program, asks.Publisher{}); err != nil {
+		if errors.Is(err, rights.ErrMetaHolderUnavailable) {
+			return err
+		}
+		return rights.ErrMetaHolder
 	}
 	return nil
+}
+
+// answererCheck reads only immutable directory facts. It is safe under policy
+// CAS and Asks guards; refreshing is an outer operation under the caller's ctx.
+func (r *runtimeRights) answererCheck(account, program string, publisher asks.Publisher) (*asks.AnswerCheck, error) {
+	var hosts []asks.DeclaredHost
+	if r.applications == nil && r.applicationRolesRequired {
+		return nil, rights.ErrMetaHolderUnavailable
+	}
+	if r.applications != nil {
+		roles := r.applications.roles.Load()
+		if roles == nil {
+			return nil, rights.ErrMetaHolderUnavailable
+		}
+		hosts = roles.hosts
+	}
+	return r.answererRule().AnswererWithDeclaredHosts(account, program, publisher, hosts)
+}
+
+// Actual runtime startup arms this before fallible application joins. Generic
+// standalone policy composition keeps its existing optional nil semantics.
+func (r *runtimeRights) requireApplicationRoles() {
+	if r == nil || r.policy == nil {
+		return
+	}
+	r.applicationRolesRequired = true
+	if r.applications != nil {
+		r.applications.roles.Store(nil)
+	}
+	r.applications = nil
+	r.policy.RefreshMetaHolder = r.refreshApplicationRoles
+}
+
+func (r *runtimeRights) refreshApplicationRoles(ctx context.Context) error {
+	if r.applications == nil {
+		return rights.ErrMetaHolderUnavailable
+	}
+	if err := r.applications.refreshRoles(ctx); err != nil {
+		return err
+	}
+	if err := r.applications.refreshMessageParties(ctx); err != nil {
+		return err
+	}
+	r.refreshMessagePeerFacts(ctx)
+	return nil
+}
+
+// answererRule is the asks answerer rule composed with this runtime's facts:
+// its account, its own program and the operator programs (asks
+// AnswererRule).
+func (r *runtimeRights) answererRule() asks.AnswererRule {
+	return asks.AnswererRule{Account: r.owner, Runtime: r.self().Program, Operators: r.operators}
 }
 
 // self is the runtime's own subject, the setter of installation rules.
@@ -163,6 +347,83 @@ func (r *runtimeRights) self() rwire.Subject {
 // identity when both exist.
 func (r *runtimeRights) isOperator(program string) bool {
 	return slices.ContainsFunc(r.operators, func(operator string) bool { return identity.SameSubjectProgram(operator, program) })
+}
+
+// panelRoster records the exact installed and explicitly admitted isolated
+// Panel files. Reserved locations can gain their own images after startup.
+type panelRoster struct {
+	images   []fileid.Handle
+	reserved []string
+}
+
+func openPanelImage(ctx context.Context, peer fileid.Peer, program string, links fileid.Links) (fileid.Handle, error) {
+	held, err := fileid.Open(ctx, peer, program, fileid.Options{Links: links})
+	if err != nil {
+		return fileid.Handle{}, err
+	}
+	id := held.FileID()
+	info, err := held.File().Stat()
+	if err != nil {
+		return fileid.Handle{}, errors.Join(err, held.Close())
+	}
+	if !info.Mode().IsRegular() || id.Durability() != fileid.Persistent {
+		return fileid.Handle{}, errors.Join(errors.New("the Panel image needs a persistent identity of a regular local file"), held.Close())
+	}
+	return held, nil
+}
+
+func panelImage(ctx context.Context, peer fileid.Peer, program string, links fileid.Links) (fileid.FileID, error) {
+	held, err := openPanelImage(ctx, peer, program, links)
+	if err != nil {
+		return fileid.FileID{}, err
+	}
+	defer held.Close()
+	return held.FileID(), nil
+}
+
+func (p panelRoster) contains(image fileid.FileID) bool {
+	return slices.ContainsFunc(p.images, func(held fileid.Handle) bool { return image.Equal(held.FileID()) })
+}
+
+func (p *panelRoster) close() {
+	for _, held := range p.images {
+		held.Close()
+	}
+	p.images = nil
+}
+
+func (r *runtimeRights) close() {
+	if r != nil {
+		r.panels.close()
+	}
+}
+
+func (p panelRoster) excludes(ctx context.Context, image fileid.FileID) bool {
+	for _, program := range p.reserved {
+		if reserved, err := panelImage(ctx, fileid.Self, program, fileid.FollowLocalLinks); err == nil && image.Equal(reserved) {
+			return true
+		}
+	}
+	return false
+}
+
+// isPanel matches a stored program subject against this runtime's admitted
+// native images. At live ingress, isPanelPeer also requires the peer view.
+func (r *runtimeRights) isPanel(program string) bool {
+	return r.matchesPanel(context.Background(), fileid.Self, program, fileid.FollowLocalLinks)
+}
+
+func (r *runtimeRights) isPanelPeer(ctx context.Context, peer *identity.Peer) bool {
+	path, err := peer.Path.AtLeast(listen.Program.Path)
+	return err == nil && r.matchesPanel(ctx, peer, path, fileid.RefuseLinks)
+}
+
+func (r *runtimeRights) matchesPanel(ctx context.Context, peer fileid.Peer, program string, links fileid.Links) bool {
+	if len(r.panels.images) == 0 {
+		return false
+	}
+	image, err := panelImage(ctx, peer, program, links)
+	return err == nil && r.panels.contains(image) && !r.panels.excludes(ctx, image)
 }
 
 // authorizeOperator admits the operator programs of this account.
@@ -189,6 +450,13 @@ func (r *runtimeRights) decider() host.Decider {
 // existing rule on the same target, a deny included, is left as it is. From
 // then on the policy file is required: a removed file is an outage.
 func (r *runtimeRights) install(actions []string, rules []installationRule) error {
+	// An installation may create the policy and then stop on a later rule.
+	// Its absence must remain an outage on every return path.
+	defer func() {
+		if _, err := os.Stat(r.path); err == nil {
+			r.policy.StateRequired = true
+		}
+	}()
 	// The marker exists before this installation can create the policy file
 	// (RegisterAction creates it), so a concurrent installation never reads
 	// that new file as one made before the marker.
@@ -223,9 +491,6 @@ func (r *runtimeRights) install(actions []string, rules []installationRule) erro
 	}
 	if failure != nil {
 		return failure
-	}
-	if _, err := os.Stat(r.path); err == nil {
-		r.policy.StateRequired = true
 	}
 	return nil
 }
@@ -356,6 +621,8 @@ func (r *runtimeRights) readMarker() (defaultsMarker, error) {
 func (r *runtimeRights) writeMarker(marker defaultsMarker) error {
 	return cas.ChangeLimit(r.marker, maxDefaultsMarker, func(cur []byte) ([]byte, error) {
 		merged := map[appliedRule]bool{}
+		var removed []configRemovedRule
+		var providers []appliedRule
 		if cur != nil {
 			var current defaultsMarker
 			if err := json.Unmarshal(cur, &current); err != nil || current.Profile != defaultsMarkerProfile {
@@ -364,11 +631,28 @@ func (r *runtimeRights) writeMarker(marker defaultsMarker) error {
 			for _, a := range current.Applied {
 				merged[a] = true
 			}
+			removed = current.ConfigRemoved
+			providers = current.ProviderConfig
 		}
 		for _, a := range marker.Applied {
 			merged[a] = true
 		}
-		return markerBytes(merged)
+		for _, a := range marker.ProviderConfig {
+			if !slices.Contains(providers, a) {
+				providers = append(providers, a)
+			}
+		}
+		data, err := markerBytes(merged)
+		if err != nil || len(removed)+len(providers) == 0 {
+			return data, err
+		}
+		var result defaultsMarker
+		if err := json.Unmarshal(data, &result); err != nil {
+			return nil, err
+		}
+		result.ConfigRemoved = removed
+		result.ProviderConfig = providers
+		return json.Marshal(result)
 	})
 }
 
@@ -476,6 +760,12 @@ func installationRules(o host.Options, registries []string) []installationRule {
 		{host.ConfigEditAction, host.ConfigEditResource},
 		{host.LogHistoryAction, host.LogHistoryResource},
 	}
+	// Settings reads are a separate exact grant, not an implication of editing.
+	if o.ConfigTyped.ReadPolicy != nil {
+		for _, descriptor := range configwire.ConfigKeyDescriptors() {
+			rules = append(rules, installationRule{host.ConfigKeyReadAction, descriptor.Key})
+		}
+	}
 	if o.JobRoot != "" {
 		for _, action := range []string{host.JobSubmitAction, host.JobCancelAction, host.JobInventoryAction} {
 			rules = append(rules, installationRule{action, host.JobResource})
@@ -486,6 +776,19 @@ func installationRules(o host.Options, registries []string) []installationRule {
 	}
 	if o.Router != nil {
 		rules = append(rules, installationRule{routerservice.ActionInventory, routerservice.ResourceInventory}, installationRule{routerservice.ActionRoute, host.RoutesResource})
+	}
+	if o.StorageInventoryPolicy != nil {
+		// Setup in the Panel finds a model this machine already holds
+		// through the composed storage inventory, as the Models page reads
+		// the router's inventory.
+		rules = append(rules, installationRule{ActionInventoryRead, storageservice.InventoryResource})
+		// The composed inventory hides a record that carries a digest from a
+		// reader without content.read on that exact digest. Setup looks for
+		// a copy of each release model file before it asks the person, so
+		// operators read exactly those digests and no other.
+		for _, digest := range releasefiles.ModelDigests() {
+			rules = append(rules, installationRule{contentReadAction, "sha256:" + digest})
+		}
 	}
 	if o.ResourceTable != nil {
 		rules = append(rules, installationRule{host.ResourceTableReadAction, host.ResourceTableReadResource})
@@ -538,6 +841,21 @@ func (r *runtimeRights) configure(o *host.Options, actions []string) {
 		return
 	}
 	r.policy.Definitions = catalog
+	// Revision initialization can create the policy file. Establish the existing
+	// installation marker first, while absence still distinguishes a fresh state
+	// from a genuine policy predating the marker.
+	_, markerErr := r.startMarker()
+	var invalid invalidMarkerError
+	if markerErr != nil && !errors.As(markerErr, &invalid) {
+		if o.OnError != nil {
+			o.OnError(markerErr)
+		}
+		return
+	}
+	// This owner versions native defaultExcluded semantics. Bump on a semantic change.
+	if err := r.policy.EnableRevisionDecisions("openabstractions.user-runtime.rights/v1"); err != nil && o.OnError != nil {
+		o.OnError(err)
+	}
 	o.RightsPolicy, o.RightsEndpoint, o.RightsOperator = r.policy, r.endpoint, r.authorizeOperator
 	o.RightsActions = append(o.RightsActions, actions...)
 }
@@ -551,9 +869,14 @@ func (r *runtimeRights) CheckBatchContext(ctx context.Context, subject rwire.Sub
 	if subject.Account != r.owner {
 		return rwire.BatchDecision{Outcome: rwire.BatchCheckOutcomeForbidden, Outcomes: []rwire.DecisionOutcome{}}
 	}
-	ctx, cancel := context.WithTimeout(ctx, decisionBudget)
+	ctx, cancel := budget.Within(ctx, decisionBudget, decisionBudget)
 	defer cancel()
-	return r.policy.CheckBatchContext(ctx, subject, request)
+	ctx, note := r.bindCaller(ctx, subject)
+	decision := r.policy.CheckBatchContext(ctx, subject, request)
+	if decision.Outcome == rwire.BatchCheckOutcomeChecked && len(request.Resources) > 0 && slices.Contains(decision.Outcomes, rwire.DecisionOutcomePermitted) {
+		r.admitted(note, true, subject, request.Resources[0].Permission.Action, "typed")
+	}
+	return decision
 }
 func (r *runtimeRights) CheckLegacyOperationContext(ctx context.Context, subject rwire.Subject, request rwire.LegacyOperationRequest) rwire.Decision {
 	if r == nil || r.policy == nil {
@@ -562,7 +885,10 @@ func (r *runtimeRights) CheckLegacyOperationContext(ctx context.Context, subject
 	if subject.Account != r.owner {
 		return rwire.Decision{Outcome: rwire.DecisionOutcomeForbidden}
 	}
-	ctx, cancel := context.WithTimeout(ctx, decisionBudget)
+	ctx, cancel := budget.Within(ctx, decisionBudget, decisionBudget)
 	defer cancel()
-	return r.policy.CheckLegacyOperationContext(ctx, subject, request)
+	ctx, note := r.bindCaller(ctx, subject)
+	decision := r.policy.CheckLegacyOperationContext(ctx, subject, request)
+	r.admitted(note, decision.Outcome == rwire.DecisionOutcomePermitted, subject, request.LegacyAction, request.LegacyResource)
+	return decision
 }

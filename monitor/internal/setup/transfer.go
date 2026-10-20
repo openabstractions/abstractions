@@ -75,9 +75,16 @@ type TransferObservation struct {
 	Done    int64  `json:"done"`
 	Total   int64  `json:"total"`
 	Failure string `json:"failure,omitempty"`
+	// Operation is the public job operation the receipt names.
+	Operation string `json:"operation,omitempty"`
 }
 
-type PublicTransfer struct{ Machine *client.Machine }
+type PublicTransfer struct {
+	Machine *client.Machine
+	// LocalOnly keeps coding-model results on this computer for LinkResult.
+	LocalOnly     bool
+	qualification *qualificationSources
+}
 
 // discoverRuntime selects the installed runtime in production. The package's
 // TestMain points it at an endpoint nobody serves, so no test reaches the
@@ -100,48 +107,62 @@ func (t PublicTransfer) Reserve(ctx context.Context, p PinnedDownload, key strin
 	if key == "" {
 		return WorkIdentity{}, errors.New("download request key is empty")
 	}
+	if file := localPackage(p); file != "" {
+		return localPackageWork(key, file), nil
+	}
 	machine := t.machine()
 	need := client.Requirements{Guarantees: api.AdmissionGuarantees}
+	if t.LocalOnly {
+		need.Scope = client.ScopeLocal
+	}
 	acceptance, err := machine.ResolveJobs(ctx, need)
 	if err != nil {
-		return WorkIdentity{}, err
+		return WorkIdentity{}, unavailable(err)
 	}
 	window, err := acceptance.GetHistoryWindow(ctx)
 	if err != nil {
-		return WorkIdentity{}, err
+		return WorkIdentity{}, unavailable(err)
 	}
 	operations, err := machine.ResolveJobOperations(ctx, need)
 	if err != nil {
-		return WorkIdentity{}, err
+		return WorkIdentity{}, unavailable(err)
 	}
 	other, err := operations.GetHistoryWindow(ctx)
 	if err != nil {
-		return WorkIdentity{}, err
+		return WorkIdentity{}, unavailable(err)
 	}
 	if window.HistoryEpoch != other.HistoryEpoch || window.LogicalOwner != other.LogicalOwner {
 		return WorkIdentity{}, errors.New("download acceptance and operations resolve to different histories")
 	}
-	return WorkIdentity{Key: key, HistoryEpoch: window.HistoryEpoch,
-		Binding: acceptance.Binding(), OperationsBinding: operations.Binding()}, nil
+	work := WorkIdentity{Key: key, HistoryEpoch: window.HistoryEpoch,
+		Binding: acceptance.Binding(), OperationsBinding: operations.Binding()}
+	return work, nil
 }
 
 func (t PublicTransfer) Submit(ctx context.Context, p PinnedDownload, work WorkIdentity) error {
 	if err := p.validate(); err != nil {
 		return err
 	}
+	if isLocalPackageWork(work) {
+		return nil
+	}
 	parsed, err := url.Parse(p.URL)
+	if err != nil {
+		return err
+	}
+	sources, err := t.downloadSources(p, parsed.Scheme)
 	if err != nil {
 		return err
 	}
 	jobs, err := t.machine().RestoreJobs(ctx, work.Binding)
 	if err != nil {
-		return err
+		return unavailable(err)
 	}
 	id := api.RequestIdentity{Key: work.Key, HistoryEpoch: work.HistoryEpoch, Attempt: work.Attempt}
 	submission := api.Submission{Identity: id, Kind: download.Kind, RequiredGuarantees: api.AdmissionGuarantees,
 		Label: p.Label,
 		Spec: request.Encode(&request.Request{Artifact: request.Artifact{Digest: "sha256:" + p.SHA256, Size: p.Bytes},
-			Sources: []request.Source{{Scheme: parsed.Scheme, Locator: p.URL}}})}
+			Sources: sources})}
 	result, err := jobs.Submit(ctx, submission)
 	if err != nil {
 		// A lost reply is not a failed submission. Reconcile the exact saved
@@ -149,15 +170,28 @@ func (t PublicTransfer) Submit(ctx context.Context, p PinnedDownload, work WorkI
 		result, err = jobs.Reconcile(ctx, id)
 	}
 	if err != nil {
-		return fmt.Errorf("download acceptance remains uncertain: %w", err)
+		return unavailable(fmt.Errorf("download acceptance remains uncertain: %w", err))
 	}
-	if result.Outcome != api.AcceptanceOutcomeAccepted {
-		return fmt.Errorf("download acceptance %s: %s", result.Outcome, result.Reason)
+	return acceptanceError(result.Outcome, result.Reason)
+}
+
+// acceptanceError labels only a service that could not or did not take the
+// download as downloads unavailable; a key conflict, refusal or invalid
+// request is an ordinary failure.
+func acceptanceError(outcome api.AcceptanceOutcome, reason string) error {
+	switch outcome {
+	case api.AcceptanceOutcomeAccepted:
+		return nil
+	case api.AcceptanceOutcomeUnavailable, api.AcceptanceOutcomeUnknown, api.AcceptanceOutcomeDefinitelyNotAccepted:
+		return unavailable(fmt.Errorf("download acceptance %s: %s", outcome, reason))
 	}
-	return nil
+	return fmt.Errorf("download acceptance %s: %s", outcome, reason)
 }
 
 func (t PublicTransfer) Observe(ctx context.Context, work WorkIdentity) (TransferObservation, error) {
+	if isLocalPackageWork(work) {
+		return observeLocalPackage(work), nil
+	}
 	jobs, err := t.machine().RestoreJobs(ctx, work.OperationsBinding)
 	if err != nil {
 		return TransferObservation{}, err
@@ -170,7 +204,7 @@ func (t PublicTransfer) Observe(ctx context.Context, work WorkIdentity) (Transfe
 		return TransferObservation{State: result.Outcome.String()}, nil
 	}
 	snapshot := result.Snapshot
-	observation := TransferObservation{State: snapshot.State.String(), Done: snapshot.Progress.Done, Total: snapshot.Progress.Total}
+	observation := TransferObservation{State: snapshot.State.String(), Done: snapshot.Progress.Done, Total: snapshot.Progress.Total, Operation: snapshot.Receipt.OperationID}
 	if snapshot.Failure != nil {
 		observation.Failure = snapshot.Failure.Classification.String() + ": " + snapshot.Failure.Message
 	}
@@ -185,6 +219,9 @@ type transferCanceller interface {
 // Cancel asks the public job service to cancel the exact saved request.
 // Requested records intent; the job service owns what happens to the bytes.
 func (t PublicTransfer) Cancel(ctx context.Context, work WorkIdentity) error {
+	if isLocalPackageWork(work) {
+		return nil
+	}
 	jobs, err := t.machine().RestoreJobs(ctx, work.Binding)
 	if err != nil {
 		return err
@@ -210,6 +247,9 @@ type ResultLinker interface {
 // Link asks the public job service to give the exact saved request's result
 // a second name at destination. It never copies; a refusal is its outcome.
 func (t PublicTransfer) Link(ctx context.Context, work WorkIdentity, destination string) (api.LinkOutcome, error) {
+	if isLocalPackageWork(work) {
+		return 0, errors.New("a local package is copied, never linked")
+	}
 	jobs, err := t.machine().RestoreJobs(ctx, work.OperationsBinding)
 	if err != nil {
 		return 0, err
@@ -222,9 +262,24 @@ func (t PublicTransfer) Link(ctx context.Context, work WorkIdentity, destination
 }
 
 func (t PublicTransfer) Copy(ctx context.Context, work WorkIdentity, dst io.Writer) (int64, error) {
+	if isLocalPackageWork(work) {
+		return copyLocalPackage(ctx, work, dst)
+	}
 	jobs, err := t.machine().RestoreJobs(ctx, work.OperationsBinding)
 	if err != nil {
 		return 0, err
 	}
 	return jobs.CopyResult(ctx, api.RequestIdentity{Key: work.Key, HistoryEpoch: work.HistoryEpoch, Attempt: work.Attempt}, dst)
+}
+
+// ErrDownloadsUnavailable marks the download service being unreachable or
+// refusing to accept a package's download: the Setup page states it as
+// "Downloads are unavailable. Check the internet connection." A refused pin
+// or a conflicting job identity is no such refusal and stays unmarked.
+var ErrDownloadsUnavailable = errors.New("downloads are unavailable")
+
+// unavailable marks err, a transport failure or an admission refusal of the
+// download service, ErrDownloadsUnavailable.
+func unavailable(err error) error {
+	return fmt.Errorf("%w: %w", ErrDownloadsUnavailable, err)
 }

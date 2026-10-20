@@ -11,6 +11,7 @@ func (Scope) UnmarshalText(text []byte) error
 func (Scope) MarshalJSON() ([]byte, error)
 func (Scope) UnmarshalJSON(data []byte) error
 func ScopeValues() []Scope
+func (Scope) IsKnown() bool
 func (Scope) Known() bool
 type ResolutionStatus uint32
 const ResolutionStatusResolved
@@ -28,6 +29,7 @@ func (ResolutionStatus) UnmarshalText(text []byte) error
 func (ResolutionStatus) MarshalJSON() ([]byte, error)
 func (ResolutionStatus) UnmarshalJSON(data []byte) error
 func ResolutionStatusValues() []ResolutionStatus
+func (ResolutionStatus) IsKnown() bool
 func (ResolutionStatus) Known() bool
 type BootstrapState uint32
 const BootstrapStateUnknown
@@ -43,6 +45,7 @@ func (BootstrapState) UnmarshalText(text []byte) error
 func (BootstrapState) MarshalJSON() ([]byte, error)
 func (BootstrapState) UnmarshalJSON(data []byte) error
 func BootstrapStateValues() []BootstrapState
+func (BootstrapState) IsKnown() bool
 func (BootstrapState) Known() bool
 type CallerOutcome uint32
 const CallerOutcomeObserved
@@ -57,6 +60,7 @@ func (CallerOutcome) UnmarshalText(text []byte) error
 func (CallerOutcome) MarshalJSON() ([]byte, error)
 func (CallerOutcome) UnmarshalJSON(data []byte) error
 func CallerOutcomeValues() []CallerOutcome
+func (CallerOutcome) IsKnown() bool
 func (CallerOutcome) Known() bool
 type DescriptionOutcome uint32
 const DescriptionOutcomeDescribed
@@ -71,6 +75,7 @@ func (DescriptionOutcome) UnmarshalText(text []byte) error
 func (DescriptionOutcome) MarshalJSON() ([]byte, error)
 func (DescriptionOutcome) UnmarshalJSON(data []byte) error
 func DescriptionOutcomeValues() []DescriptionOutcome
+func (DescriptionOutcome) IsKnown() bool
 func (DescriptionOutcome) Known() bool
 type ServiceReadiness uint32
 const ServiceReadinessReady
@@ -84,6 +89,7 @@ func (ServiceReadiness) UnmarshalText(text []byte) error
 func (ServiceReadiness) MarshalJSON() ([]byte, error)
 func (ServiceReadiness) UnmarshalJSON(data []byte) error
 func ServiceReadinessValues() []ServiceReadiness
+func (ServiceReadiness) IsKnown() bool
 func (ServiceReadiness) Known() bool
 type DeclarationTransport uint32
 const DeclarationTransportNative
@@ -97,6 +103,7 @@ func (DeclarationTransport) UnmarshalText(text []byte) error
 func (DeclarationTransport) MarshalJSON() ([]byte, error)
 func (DeclarationTransport) UnmarshalJSON(data []byte) error
 func DeclarationTransportValues() []DeclarationTransport
+func (DeclarationTransport) IsKnown() bool
 func (DeclarationTransport) Known() bool
 type DeclarationRole uint32
 const DeclarationRoleProvider
@@ -110,6 +117,7 @@ func (DeclarationRole) UnmarshalText(text []byte) error
 func (DeclarationRole) MarshalJSON() ([]byte, error)
 func (DeclarationRole) UnmarshalJSON(data []byte) error
 func DeclarationRoleValues() []DeclarationRole
+func (DeclarationRole) IsKnown() bool
 func (DeclarationRole) Known() bool
 type Activation uint32
 const ActivationOnDemand
@@ -123,6 +131,7 @@ func (Activation) UnmarshalText(text []byte) error
 func (Activation) MarshalJSON() ([]byte, error)
 func (Activation) UnmarshalJSON(data []byte) error
 func ActivationValues() []Activation
+func (Activation) IsKnown() bool
 func (Activation) Known() bool
 type DeclarationReadiness uint32
 const DeclarationReadinessReady
@@ -141,6 +150,7 @@ func (DeclarationReadiness) UnmarshalText(text []byte) error
 func (DeclarationReadiness) MarshalJSON() ([]byte, error)
 func (DeclarationReadiness) UnmarshalJSON(data []byte) error
 func DeclarationReadinessValues() []DeclarationReadiness
+func (DeclarationReadiness) IsKnown() bool
 func (DeclarationReadiness) Known() bool
 type DeclarationListOutcome uint32
 const DeclarationListOutcomePage
@@ -155,6 +165,7 @@ func (DeclarationListOutcome) UnmarshalText(text []byte) error
 func (DeclarationListOutcome) MarshalJSON() ([]byte, error)
 func (DeclarationListOutcome) UnmarshalJSON(data []byte) error
 func DeclarationListOutcomeValues() []DeclarationListOutcome
+func (DeclarationListOutcome) IsKnown() bool
 func (DeclarationListOutcome) Known() bool
 type DeclarationEditOutcome uint32
 const DeclarationEditOutcomeApplied
@@ -171,6 +182,7 @@ func (DeclarationEditOutcome) UnmarshalText(text []byte) error
 func (DeclarationEditOutcome) MarshalJSON() ([]byte, error)
 func (DeclarationEditOutcome) UnmarshalJSON(data []byte) error
 func DeclarationEditOutcomeValues() []DeclarationEditOutcome
+func (DeclarationEditOutcome) IsKnown() bool
 func (DeclarationEditOutcome) Known() bool
 type ApplicationOutcome uint32
 const ApplicationOutcomeApplied
@@ -189,6 +201,7 @@ func (ApplicationOutcome) UnmarshalText(text []byte) error
 func (ApplicationOutcome) MarshalJSON() ([]byte, error)
 func (ApplicationOutcome) UnmarshalJSON(data []byte) error
 func ApplicationOutcomeValues() []ApplicationOutcome
+func (ApplicationOutcome) IsKnown() bool
 func (ApplicationOutcome) Known() bool
 type ApplicationActivationOutcome uint32
 const ApplicationActivationOutcomeReady
@@ -208,6 +221,7 @@ func (ApplicationActivationOutcome) UnmarshalText(text []byte) error
 func (ApplicationActivationOutcome) MarshalJSON() ([]byte, error)
 func (ApplicationActivationOutcome) UnmarshalJSON(data []byte) error
 func ApplicationActivationOutcomeValues() []ApplicationActivationOutcome
+func (ApplicationActivationOutcome) IsKnown() bool
 func (ApplicationActivationOutcome) Known() bool
 type ServiceErrorCode string
 const ServiceErrorCodeHandlerError
@@ -217,7 +231,91 @@ const ServiceErrorCodeUnknownService
 const ServiceErrorCodeUnknownMethod
 const ServiceErrorCodeWrongMode
 func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) IsKnown() bool
 func (ServiceErrorCode) Known() bool
+type EndpointServiceReadiness uint32
+const EndpointServiceReadinessReady
+const EndpointServiceReadinessNotReady
+const EndpointServiceReadinessUnknown
+func (EndpointServiceReadiness) String() string
+func (EndpointServiceReadiness) WireName() (string, bool)
+func ParseEndpointServiceReadiness(word string) (EndpointServiceReadiness, bool)
+func (EndpointServiceReadiness) MarshalText() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalText(text []byte) error
+func (EndpointServiceReadiness) MarshalJSON() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalJSON(data []byte) error
+func EndpointServiceReadinessValues() []EndpointServiceReadiness
+func (EndpointServiceReadiness) IsKnown() bool
+func (EndpointServiceReadiness) Known() bool
+type EndpointRefusalSource string
+const EndpointRefusalSourceRights
+const EndpointRefusalSourceCredentials
+const EndpointRefusalSourceLicense
+const EndpointRefusalSourceTerms
+const EndpointRefusalSourceIdentity
+const EndpointRefusalSourceOS
+func EndpointRefusalSourceValues() []EndpointRefusalSource
+func (EndpointRefusalSource) IsKnown() bool
+func (EndpointRefusalSource) Known() bool
+type EndpointRefusalDecision uint32
+const EndpointRefusalDecisionDenied
+const EndpointRefusalDecisionNotGranted
+const EndpointRefusalDecisionPersonOnly
+func (EndpointRefusalDecision) String() string
+func (EndpointRefusalDecision) WireName() (string, bool)
+func ParseEndpointRefusalDecision(word string) (EndpointRefusalDecision, bool)
+func (EndpointRefusalDecision) MarshalText() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalText(text []byte) error
+func (EndpointRefusalDecision) MarshalJSON() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalJSON(data []byte) error
+func EndpointRefusalDecisionValues() []EndpointRefusalDecision
+func (EndpointRefusalDecision) IsKnown() bool
+func (EndpointRefusalDecision) Known() bool
+type EndpointRefusalAsk uint32
+const EndpointRefusalAskAvailable
+const EndpointRefusalAskNone
+func (EndpointRefusalAsk) String() string
+func (EndpointRefusalAsk) WireName() (string, bool)
+func ParseEndpointRefusalAsk(word string) (EndpointRefusalAsk, bool)
+func (EndpointRefusalAsk) MarshalText() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalText(text []byte) error
+func (EndpointRefusalAsk) MarshalJSON() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalJSON(data []byte) error
+func EndpointRefusalAskValues() []EndpointRefusalAsk
+func (EndpointRefusalAsk) IsKnown() bool
+func (EndpointRefusalAsk) Known() bool
+type EndpointProducerCheckState uint32
+const EndpointProducerCheckStateCurrent
+const EndpointProducerCheckStateRepaired
+const EndpointProducerCheckStateStale
+const EndpointProducerCheckStateRefused
+const EndpointProducerCheckStateUnverified
+func (EndpointProducerCheckState) String() string
+func (EndpointProducerCheckState) WireName() (string, bool)
+func ParseEndpointProducerCheckState(word string) (EndpointProducerCheckState, bool)
+func (EndpointProducerCheckState) MarshalText() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalText(text []byte) error
+func (EndpointProducerCheckState) MarshalJSON() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalJSON(data []byte) error
+func EndpointProducerCheckStateValues() []EndpointProducerCheckState
+func (EndpointProducerCheckState) IsKnown() bool
+func (EndpointProducerCheckState) Known() bool
+type EndpointDescriptionOutcome uint32
+const EndpointDescriptionOutcomeDescribed
+const EndpointDescriptionOutcomeForbidden
+const EndpointDescriptionOutcomeUnavailable
+const EndpointDescriptionOutcomeInvalid
+const EndpointDescriptionOutcomeUnsupported
+func (EndpointDescriptionOutcome) String() string
+func (EndpointDescriptionOutcome) WireName() (string, bool)
+func ParseEndpointDescriptionOutcome(word string) (EndpointDescriptionOutcome, bool)
+func (EndpointDescriptionOutcome) MarshalText() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalText(text []byte) error
+func (EndpointDescriptionOutcome) MarshalJSON() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalJSON(data []byte) error
+func EndpointDescriptionOutcomeValues() []EndpointDescriptionOutcome
+func (EndpointDescriptionOutcome) IsKnown() bool
+func (EndpointDescriptionOutcome) Known() bool
 var DeclarationResourceKinds
 var RegistryActions
 var DefaultRuntimeContracts
@@ -348,6 +446,22 @@ type DeclarationObservationV2 struct
   Outcome DeclarationListOutcome
   Cursor string
   Declarations []DeclarationStateV2
+type PinnedDeclaration struct
+  Declaration Declaration
+  SupportedExtensions []DeclarationExtension
+  RemoteServerKeySHA256 string
+type PinnedDeclarationState struct
+  State DeclarationState
+  SupportedExtensions []DeclarationExtension
+  RemoteServerKeySHA256 string
+type PinnedDeclarationList struct
+  Outcome DeclarationListOutcome
+  Revision string
+  Declarations []PinnedDeclarationState
+type PinnedDeclarationObservation struct
+  Outcome DeclarationListOutcome
+  Cursor string
+  Declarations []PinnedDeclarationState
 type ApplicationInterface struct
   Name string
   Protocol string
@@ -407,17 +521,53 @@ type ApplicationStartPage struct
   Cursor string
   Complete bool
   CompleteSinceUnixMs int64
+type EndpointRefusalDetail struct
+  Source EndpointRefusalSource
+  Decision EndpointRefusalDecision
+  Ask EndpointRefusalAsk
+  Action string
+  Question string
+  Credential string
+  RetryAfterMs int64
+type EndpointProducerCheck struct
+  Kind string
+  Copy string
+  State EndpointProducerCheckState
+  Reason string
+  Checked string
+type EndpointServiceState struct
+  Service string
+  Readiness EndpointServiceReadiness
+  Reason string
+  Guarantees []string
+  Capabilities map[string]string
+  DefinitionHash string
+type EndpointDescription struct
+  Outcome EndpointDescriptionOutcome
+  Program string
+  Version string
+  Services []EndpointServiceState
+  Refusal *EndpointRefusalDetail
+  Reason string
+  Checks []EndpointProducerCheck
+type EndpointDescriptionResult struct
+  Value EndpointDescription
 func Encode(v *ResolveResult) []byte
 type Refusal struct
   Word string
   Offset int
 func (Refusal) Error() string
+const TimestampLayout
+func FormatTimestamp(at time.Time) string
 func Decode(in []byte) (*ResolveResult, error)
+func ToJSON(v any) (out []byte, err error)
+func FromJSON(data []byte, v any) error
 type FrameWriter interface
   WriteFrame(frame []byte) error
 type DispatchError string
 func (DispatchError) Error() string
 func ServiceName(frame []byte) (string, error)
+func ServiceMethod(frame []byte) (service string, method string, err error)
 type FrameExchanger interface
   ExchangeFrame(frame []byte) ([]byte, error)
 type ServiceError struct
@@ -425,25 +575,34 @@ type ServiceError struct
   Message string
 func (ServiceError) Error() string
 const EndpointContract
+const EndpointV2Contract
 type DescribedService interface
   DescribeService() (contract string, ready bool, why string)
 func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+func DescribeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...DescribedService) ([]byte, error)
 type ServedService interface
   DescribedService
   ServiceContract() string
 func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+func ServeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...ServedService) ([]byte, error)
+func ServeEndpointRemote(frame []byte, program, version string, admit func(contract, method, profile string) error, services ...ServedService) ([]byte, error)
+func RemoteMethodProfile(service interface{}, contract, method string) string
 type Resolver interface
   Resolve(request ResolveRequest) (ResolveResult, error)
+  ResolveOnMachine(request ResolveRequest, bindingName string) (ResolveResult, error)
 type ResolverTransport interface
   FrameExchanger
 type ResolverClient struct
 func NewResolverClient(t ResolverTransport) *ResolverClient
 type ResolverDispatcher struct
   Handler Resolver
+func (ResolverDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (ResolverClient) Resolve(request ResolveRequest) (result ResolveResult, err error)
+func (ResolverClient) ResolveOnMachine(request ResolveRequest, bindingName string) (result ResolveResult, err error)
 func (ResolverDispatcher) DescribeService() (contract string, ready bool, why string)
 func (ResolverDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ResolverDispatcher) ServiceContract() string
+func (ResolverDispatcher) DescribeServiceDefinitionHash() string
 func (ResolverDispatcher) WriteFrame(frame []byte) error
 func (ResolverDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type Caller interface
@@ -454,10 +613,12 @@ type CallerClient struct
 func NewCallerClient(t CallerTransport) *CallerClient
 type CallerDispatcher struct
   Handler Caller
+func (CallerDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (CallerClient) Observe() (result CallerObservation, err error)
 func (CallerDispatcher) DescribeService() (contract string, ready bool, why string)
 func (CallerDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (CallerDispatcher) ServiceContract() string
+func (CallerDispatcher) DescribeServiceDefinitionHash() string
 func (CallerDispatcher) WriteFrame(frame []byte) error
 func (CallerDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type Endpoint interface
@@ -468,10 +629,12 @@ type EndpointClient struct
 func NewEndpointClient(t EndpointTransport) *EndpointClient
 type EndpointDispatcher struct
   Handler Endpoint
+func (EndpointDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (EndpointClient) Describe() (result Description, err error)
 func (EndpointDispatcher) DescribeService() (contract string, ready bool, why string)
 func (EndpointDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (EndpointDispatcher) ServiceContract() string
+func (EndpointDispatcher) DescribeServiceDefinitionHash() string
 func (EndpointDispatcher) WriteFrame(frame []byte) error
 func (EndpointDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type Registry interface
@@ -485,6 +648,7 @@ type RegistryClient struct
 func NewRegistryClient(t RegistryTransport) *RegistryClient
 type RegistryDispatcher struct
   Handler Registry
+func (RegistryDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (RegistryClient) Declarations() (result DeclarationList, err error)
 func (RegistryClient) Declare(expectedRevision string, declaration Declaration) (result DeclarationChange, err error)
 func (RegistryClient) Withdraw(expectedRevision, name string) (result DeclarationChange, err error)
@@ -492,6 +656,7 @@ func (RegistryClient) Observe(cursor string, waitMs int64) (result DeclarationOb
 func (RegistryDispatcher) DescribeService() (contract string, ready bool, why string)
 func (RegistryDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (RegistryDispatcher) ServiceContract() string
+func (RegistryDispatcher) DescribeServiceDefinitionHash() string
 func (RegistryDispatcher) WriteFrame(frame []byte) error
 func (RegistryDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type RegistryV2 interface
@@ -499,19 +664,29 @@ type RegistryV2 interface
   Declare(expectedRevision string, declaration DeclarationWithExtensions) (DeclarationChange, error)
   Withdraw(expectedRevision, name string) (DeclarationChange, error)
   Observe(cursor string, waitMs int64) (DeclarationObservationV2, error)
+  DeclarationsPinned() (PinnedDeclarationList, error)
+  DeclarePinned(expectedRevision string, declaration PinnedDeclaration) (DeclarationChange, error)
+  ReplacePinned(expectedRevision string, declaration PinnedDeclaration) (DeclarationChange, error)
+  ObservePinned(cursor string, waitMs int64) (PinnedDeclarationObservation, error)
 type RegistryV2Transport interface
   FrameExchanger
 type RegistryV2Client struct
 func NewRegistryV2Client(t RegistryV2Transport) *RegistryV2Client
 type RegistryV2Dispatcher struct
   Handler RegistryV2
+func (RegistryV2Dispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (RegistryV2Client) Declarations() (result DeclarationListV2, err error)
 func (RegistryV2Client) Declare(expectedRevision string, declaration DeclarationWithExtensions) (result DeclarationChange, err error)
 func (RegistryV2Client) Withdraw(expectedRevision, name string) (result DeclarationChange, err error)
 func (RegistryV2Client) Observe(cursor string, waitMs int64) (result DeclarationObservationV2, err error)
+func (RegistryV2Client) DeclarationsPinned() (result PinnedDeclarationList, err error)
+func (RegistryV2Client) DeclarePinned(expectedRevision string, declaration PinnedDeclaration) (result DeclarationChange, err error)
+func (RegistryV2Client) ReplacePinned(expectedRevision string, declaration PinnedDeclaration) (result DeclarationChange, err error)
+func (RegistryV2Client) ObservePinned(cursor string, waitMs int64) (result PinnedDeclarationObservation, err error)
 func (RegistryV2Dispatcher) DescribeService() (contract string, ready bool, why string)
 func (RegistryV2Dispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (RegistryV2Dispatcher) ServiceContract() string
+func (RegistryV2Dispatcher) DescribeServiceDefinitionHash() string
 func (RegistryV2Dispatcher) WriteFrame(frame []byte) error
 func (RegistryV2Dispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type Applications interface
@@ -529,6 +704,7 @@ type ApplicationsClient struct
 func NewApplicationsClient(t ApplicationsTransport) *ApplicationsClient
 type ApplicationsDispatcher struct
   Handler Applications
+func (ApplicationsDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (ApplicationsClient) Register(descriptor ApplicationDescriptor) (result ApplicationChange, err error)
 func (ApplicationsClient) AskConfirmation(application string) (result ApplicationChange, err error)
 func (ApplicationsClient) Remove(application string) (result ApplicationChange, err error)
@@ -540,5 +716,166 @@ func (ApplicationsClient) ListStarts(cursor string, limit int64) (result Applica
 func (ApplicationsDispatcher) DescribeService() (contract string, ready bool, why string)
 func (ApplicationsDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ApplicationsDispatcher) ServiceContract() string
+func (ApplicationsDispatcher) DescribeServiceDefinitionHash() string
 func (ApplicationsDispatcher) WriteFrame(frame []byte) error
 func (ApplicationsDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+func DecodeResolveRequestAt(in []byte, depth, limit int) (*ResolveRequest, int, error)
+func EncodeResolveRequestAt(v *ResolveRequest, depth int) []byte
+func EncodeResolveRequest(v *ResolveRequest) []byte
+func DecodeResolveRequest(in []byte) (*ResolveRequest, error)
+func DecodeServiceReferenceAt(in []byte, depth, limit int) (*ServiceReference, int, error)
+func EncodeServiceReferenceAt(v *ServiceReference, depth int) []byte
+func EncodeServiceReference(v *ServiceReference) []byte
+func DecodeServiceReference(in []byte) (*ServiceReference, error)
+func DecodeResolveResultAt(in []byte, depth, limit int) (*ResolveResult, int, error)
+func EncodeResolveResultAt(v *ResolveResult, depth int) []byte
+func EncodeResolveResult(v *ResolveResult) []byte
+func DecodeResolveResult(in []byte) (*ResolveResult, error)
+func DecodeBootstrapObservationAt(in []byte, depth, limit int) (*BootstrapObservation, int, error)
+func EncodeBootstrapObservationAt(v *BootstrapObservation, depth int) []byte
+func EncodeBootstrapObservation(v *BootstrapObservation) []byte
+func DecodeBootstrapObservation(in []byte) (*BootstrapObservation, error)
+func DecodeCapabilityObservationAt(in []byte, depth, limit int) (*CapabilityObservation, int, error)
+func EncodeCapabilityObservationAt(v *CapabilityObservation, depth int) []byte
+func EncodeCapabilityObservation(v *CapabilityObservation) []byte
+func DecodeCapabilityObservation(in []byte) (*CapabilityObservation, error)
+func DecodeRuntimeObservationAt(in []byte, depth, limit int) (*RuntimeObservation, int, error)
+func EncodeRuntimeObservationAt(v *RuntimeObservation, depth int) []byte
+func EncodeRuntimeObservation(v *RuntimeObservation) []byte
+func DecodeRuntimeObservation(in []byte) (*RuntimeObservation, error)
+func DecodeCallerAttributeAt(in []byte, depth, limit int) (*CallerAttribute, int, error)
+func EncodeCallerAttributeAt(v *CallerAttribute, depth int) []byte
+func EncodeCallerAttribute(v *CallerAttribute) []byte
+func DecodeCallerAttribute(in []byte) (*CallerAttribute, error)
+func DecodeCallerObservationAt(in []byte, depth, limit int) (*CallerObservation, int, error)
+func EncodeCallerObservationAt(v *CallerObservation, depth int) []byte
+func EncodeCallerObservation(v *CallerObservation) []byte
+func DecodeCallerObservation(in []byte) (*CallerObservation, error)
+func DecodeServiceStateAt(in []byte, depth, limit int) (*ServiceState, int, error)
+func EncodeServiceStateAt(v *ServiceState, depth int) []byte
+func EncodeServiceState(v *ServiceState) []byte
+func DecodeServiceState(in []byte) (*ServiceState, error)
+func DecodeDescriptionAt(in []byte, depth, limit int) (*Description, int, error)
+func EncodeDescriptionAt(v *Description, depth int) []byte
+func EncodeDescription(v *Description) []byte
+func DecodeDescription(in []byte) (*Description, error)
+func DecodeRemoteTrustAt(in []byte, depth, limit int) (*RemoteTrust, int, error)
+func EncodeRemoteTrustAt(v *RemoteTrust, depth int) []byte
+func EncodeRemoteTrust(v *RemoteTrust) []byte
+func DecodeRemoteTrust(in []byte) (*RemoteTrust, error)
+func DecodeDeclarationCeilingAt(in []byte, depth, limit int) (*DeclarationCeiling, int, error)
+func EncodeDeclarationCeilingAt(v *DeclarationCeiling, depth int) []byte
+func EncodeDeclarationCeiling(v *DeclarationCeiling) []byte
+func DecodeDeclarationCeiling(in []byte) (*DeclarationCeiling, error)
+func DecodeDeclarationHostAt(in []byte, depth, limit int) (*DeclarationHost, int, error)
+func EncodeDeclarationHostAt(v *DeclarationHost, depth int) []byte
+func EncodeDeclarationHost(v *DeclarationHost) []byte
+func DecodeDeclarationHost(in []byte) (*DeclarationHost, error)
+func DecodeDeclarationExtensionAt(in []byte, depth, limit int) (*DeclarationExtension, int, error)
+func EncodeDeclarationExtensionAt(v *DeclarationExtension, depth int) []byte
+func EncodeDeclarationExtension(v *DeclarationExtension) []byte
+func DecodeDeclarationExtension(in []byte) (*DeclarationExtension, error)
+func DecodeDeclarationAt(in []byte, depth, limit int) (*Declaration, int, error)
+func EncodeDeclarationAt(v *Declaration, depth int) []byte
+func EncodeDeclaration(v *Declaration) []byte
+func DecodeDeclaration(in []byte) (*Declaration, error)
+func DecodeDeclarationWithExtensionsAt(in []byte, depth, limit int) (*DeclarationWithExtensions, int, error)
+func EncodeDeclarationWithExtensionsAt(v *DeclarationWithExtensions, depth int) []byte
+func EncodeDeclarationWithExtensions(v *DeclarationWithExtensions) []byte
+func DecodeDeclarationWithExtensions(in []byte) (*DeclarationWithExtensions, error)
+func DecodeHostReadingAt(in []byte, depth, limit int) (*HostReading, int, error)
+func EncodeHostReadingAt(v *HostReading, depth int) []byte
+func EncodeHostReading(v *HostReading) []byte
+func DecodeHostReading(in []byte) (*HostReading, error)
+func DecodeDeclarationStateAt(in []byte, depth, limit int) (*DeclarationState, int, error)
+func EncodeDeclarationStateAt(v *DeclarationState, depth int) []byte
+func EncodeDeclarationState(v *DeclarationState) []byte
+func DecodeDeclarationState(in []byte) (*DeclarationState, error)
+func DecodeDeclarationListAt(in []byte, depth, limit int) (*DeclarationList, int, error)
+func EncodeDeclarationListAt(v *DeclarationList, depth int) []byte
+func EncodeDeclarationList(v *DeclarationList) []byte
+func DecodeDeclarationList(in []byte) (*DeclarationList, error)
+func DecodeDeclarationChangeAt(in []byte, depth, limit int) (*DeclarationChange, int, error)
+func EncodeDeclarationChangeAt(v *DeclarationChange, depth int) []byte
+func EncodeDeclarationChange(v *DeclarationChange) []byte
+func DecodeDeclarationChange(in []byte) (*DeclarationChange, error)
+func DecodeDeclarationObservationAt(in []byte, depth, limit int) (*DeclarationObservation, int, error)
+func EncodeDeclarationObservationAt(v *DeclarationObservation, depth int) []byte
+func EncodeDeclarationObservation(v *DeclarationObservation) []byte
+func DecodeDeclarationObservation(in []byte) (*DeclarationObservation, error)
+func DecodeDeclarationStateV2At(in []byte, depth, limit int) (*DeclarationStateV2, int, error)
+func EncodeDeclarationStateV2At(v *DeclarationStateV2, depth int) []byte
+func EncodeDeclarationStateV2(v *DeclarationStateV2) []byte
+func DecodeDeclarationStateV2(in []byte) (*DeclarationStateV2, error)
+func DecodeDeclarationListV2At(in []byte, depth, limit int) (*DeclarationListV2, int, error)
+func EncodeDeclarationListV2At(v *DeclarationListV2, depth int) []byte
+func EncodeDeclarationListV2(v *DeclarationListV2) []byte
+func DecodeDeclarationListV2(in []byte) (*DeclarationListV2, error)
+func DecodeDeclarationObservationV2At(in []byte, depth, limit int) (*DeclarationObservationV2, int, error)
+func EncodeDeclarationObservationV2At(v *DeclarationObservationV2, depth int) []byte
+func EncodeDeclarationObservationV2(v *DeclarationObservationV2) []byte
+func DecodeDeclarationObservationV2(in []byte) (*DeclarationObservationV2, error)
+func DecodePinnedDeclarationAt(in []byte, depth, limit int) (*PinnedDeclaration, int, error)
+func EncodePinnedDeclarationAt(v *PinnedDeclaration, depth int) []byte
+func EncodePinnedDeclaration(v *PinnedDeclaration) []byte
+func DecodePinnedDeclaration(in []byte) (*PinnedDeclaration, error)
+func DecodePinnedDeclarationStateAt(in []byte, depth, limit int) (*PinnedDeclarationState, int, error)
+func EncodePinnedDeclarationStateAt(v *PinnedDeclarationState, depth int) []byte
+func EncodePinnedDeclarationState(v *PinnedDeclarationState) []byte
+func DecodePinnedDeclarationState(in []byte) (*PinnedDeclarationState, error)
+func DecodePinnedDeclarationListAt(in []byte, depth, limit int) (*PinnedDeclarationList, int, error)
+func EncodePinnedDeclarationListAt(v *PinnedDeclarationList, depth int) []byte
+func EncodePinnedDeclarationList(v *PinnedDeclarationList) []byte
+func DecodePinnedDeclarationList(in []byte) (*PinnedDeclarationList, error)
+func DecodePinnedDeclarationObservationAt(in []byte, depth, limit int) (*PinnedDeclarationObservation, int, error)
+func EncodePinnedDeclarationObservationAt(v *PinnedDeclarationObservation, depth int) []byte
+func EncodePinnedDeclarationObservation(v *PinnedDeclarationObservation) []byte
+func DecodePinnedDeclarationObservation(in []byte) (*PinnedDeclarationObservation, error)
+func DecodeApplicationInterfaceAt(in []byte, depth, limit int) (*ApplicationInterface, int, error)
+func EncodeApplicationInterfaceAt(v *ApplicationInterface, depth int) []byte
+func EncodeApplicationInterface(v *ApplicationInterface) []byte
+func DecodeApplicationInterface(in []byte) (*ApplicationInterface, error)
+func DecodeApplicationActivationRecipeAt(in []byte, depth, limit int) (*ApplicationActivationRecipe, int, error)
+func EncodeApplicationActivationRecipeAt(v *ApplicationActivationRecipe, depth int) []byte
+func EncodeApplicationActivationRecipe(v *ApplicationActivationRecipe) []byte
+func DecodeApplicationActivationRecipe(in []byte) (*ApplicationActivationRecipe, error)
+func DecodeApplicationDescriptorAt(in []byte, depth, limit int) (*ApplicationDescriptor, int, error)
+func EncodeApplicationDescriptorAt(v *ApplicationDescriptor, depth int) []byte
+func EncodeApplicationDescriptor(v *ApplicationDescriptor) []byte
+func DecodeApplicationDescriptor(in []byte) (*ApplicationDescriptor, error)
+func DecodeApplicationContextAt(in []byte, depth, limit int) (*ApplicationContext, int, error)
+func EncodeApplicationContextAt(v *ApplicationContext, depth int) []byte
+func EncodeApplicationContext(v *ApplicationContext) []byte
+func DecodeApplicationContext(in []byte) (*ApplicationContext, error)
+func DecodeApplicationPresenceAt(in []byte, depth, limit int) (*ApplicationPresence, int, error)
+func EncodeApplicationPresenceAt(v *ApplicationPresence, depth int) []byte
+func EncodeApplicationPresence(v *ApplicationPresence) []byte
+func DecodeApplicationPresence(in []byte) (*ApplicationPresence, error)
+func DecodeApplicationInstanceAt(in []byte, depth, limit int) (*ApplicationInstance, int, error)
+func EncodeApplicationInstanceAt(v *ApplicationInstance, depth int) []byte
+func EncodeApplicationInstance(v *ApplicationInstance) []byte
+func DecodeApplicationInstance(in []byte) (*ApplicationInstance, error)
+func DecodeApplicationEntryAt(in []byte, depth, limit int) (*ApplicationEntry, int, error)
+func EncodeApplicationEntryAt(v *ApplicationEntry, depth int) []byte
+func EncodeApplicationEntry(v *ApplicationEntry) []byte
+func DecodeApplicationEntry(in []byte) (*ApplicationEntry, error)
+func DecodeApplicationChangeAt(in []byte, depth, limit int) (*ApplicationChange, int, error)
+func EncodeApplicationChangeAt(v *ApplicationChange, depth int) []byte
+func EncodeApplicationChange(v *ApplicationChange) []byte
+func DecodeApplicationChange(in []byte) (*ApplicationChange, error)
+func DecodeApplicationPageAt(in []byte, depth, limit int) (*ApplicationPage, int, error)
+func EncodeApplicationPageAt(v *ApplicationPage, depth int) []byte
+func EncodeApplicationPage(v *ApplicationPage) []byte
+func DecodeApplicationPage(in []byte) (*ApplicationPage, error)
+func DecodeApplicationActivationResultAt(in []byte, depth, limit int) (*ApplicationActivationResult, int, error)
+func EncodeApplicationActivationResultAt(v *ApplicationActivationResult, depth int) []byte
+func EncodeApplicationActivationResult(v *ApplicationActivationResult) []byte
+func DecodeApplicationActivationResult(in []byte) (*ApplicationActivationResult, error)
+func DecodeApplicationStartAt(in []byte, depth, limit int) (*ApplicationStart, int, error)
+func EncodeApplicationStartAt(v *ApplicationStart, depth int) []byte
+func EncodeApplicationStart(v *ApplicationStart) []byte
+func DecodeApplicationStart(in []byte) (*ApplicationStart, error)
+func DecodeApplicationStartPageAt(in []byte, depth, limit int) (*ApplicationStartPage, int, error)
+func EncodeApplicationStartPageAt(v *ApplicationStartPage, depth int) []byte
+func EncodeApplicationStartPage(v *ApplicationStartPage) []byte
+func DecodeApplicationStartPage(in []byte) (*ApplicationStartPage, error)

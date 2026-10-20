@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -56,46 +57,28 @@ func (p *runtimeProviders) nativeAdmit(ctx context.Context, host *router.Host, m
 	if ctx.Err() != nil {
 		return s.activatingReason(), false
 	}
-	deadline := time.Now().Add(nativeInferenceLaunchBudget)
-	for {
-		s.activate()
-		if s.ready() {
-			return "", true
-		}
-		if ctx.Err() != nil || !time.Now().Before(deadline) {
-			return s.activatingReason(), false
-		}
-		p.mu.Lock()
-		changes := p.changes
-		p.mu.Unlock()
-		wait := 200 * time.Millisecond
-		if remaining := time.Until(deadline); remaining < wait {
-			wait = remaining
-		}
-		timer := time.NewTimer(wait)
-		select {
-		case <-changes:
-		case <-timer.C:
-		case <-ctx.Done():
-		}
-		timer.Stop()
+	if _, why := p.awaitReady(ctx, nativeInferenceLaunchBudget, func() (*providerSupervisor, string) { return s, "" }); why != "" {
+		return why, false
 	}
+	return "", true
 }
 
 // providerMediation owns one application-facing endpoint for every supported
 // declaration generation. Resolution therefore chooses the exact router host
 // and a replacement cannot inherit calls made through a stale reference.
 type providerMediation struct {
-	mu        sync.Mutex
-	base      string
-	provider  *inference.Provider
-	providers *runtimeProviders
-	report    func(error)
-	routes    map[string]*providerMediationRoute
-	ctx       context.Context
-	cancel    context.CancelFunc
-	closed    bool
-	workers   sync.WaitGroup
+	mu               sync.Mutex
+	base             string
+	provider         *inference.Provider
+	providers        *runtimeProviders
+	report           func(error)
+	awaitQuestions   func(context.Context, inference.Subject, []string) (bool, error)
+	pendingQuestions func(context.Context, inference.Subject, []string) ([]string, error)
+	routes           map[string]*providerMediationRoute
+	ctx              context.Context
+	cancel           context.CancelFunc
+	closed           bool
+	workers          sync.WaitGroup
 }
 
 type providerMediationRoute struct {
@@ -106,8 +89,8 @@ type providerMediationRoute struct {
 	sweeping bool
 }
 
-func newProviderMediation(base string, provider *inference.Provider, providers *runtimeProviders, report func(error)) (*providerMediation, error) {
-	m := &providerMediation{base: base, provider: provider, providers: providers, report: report, routes: map[string]*providerMediationRoute{}}
+func newProviderMediation(base string, provider *inference.Provider, providers *runtimeProviders, report func(error), awaitQuestions func(context.Context, inference.Subject, []string) (bool, error), pendingQuestions func(context.Context, inference.Subject, []string) ([]string, error)) (*providerMediation, error) {
+	m := &providerMediation{base: base, provider: provider, providers: providers, report: report, awaitQuestions: awaitQuestions, pendingQuestions: pendingQuestions, routes: map[string]*providerMediationRoute{}}
 	if err := m.sync(); err != nil {
 		//unchecked: cleaning up partial state before returning sync's own error, which is what this call already reports
 		m.Close()
@@ -139,6 +122,15 @@ func (m *providerMediation) desired() map[string]inference.ExecutionBinding {
 		}
 		bindingID := supervisor.file.bindingID()
 		desired[bindingID] = inference.ExecutionBinding{Host: declaration.Name, BindingID: bindingID}
+	}
+	hosts, err := m.providers.readPairedHosts()
+	if err != nil && m.report != nil {
+		m.report(err)
+	}
+	if err == nil {
+		for _, host := range hosts {
+			desired[host.BindingID] = inference.ExecutionBinding{Host: host.Name, BindingID: host.BindingID}
+		}
 	}
 	return desired
 }
@@ -185,7 +177,11 @@ func (m *providerMediation) sync() error {
 			endpoints[bindingID] = mediatedProvider{Endpoint: endpoint}
 			continue
 		}
-		host, err := inferenceservice.ListenMediated(endpoint, m.provider, inference.ExecutionLocal, binding)
+		placement := inference.ExecutionLocal
+		if strings.HasPrefix(bindingID, "paired:") {
+			placement = inference.ExecutionRemote
+		}
+		host, err := inferenceservice.ListenMediated(endpoint, m.provider, placement, binding)
 		if err != nil {
 			endpoints[bindingID] = mediatedProvider{Endpoint: endpoint}
 			if m.report != nil {
@@ -194,6 +190,8 @@ func (m *providerMediation) sync() error {
 			continue
 		}
 		host.OnError = m.report
+		host.AwaitQuestions = m.awaitQuestions
+		host.PendingQuestions = m.pendingQuestions
 		route := &providerMediationRoute{endpoint: endpoint, host: host}
 		m.routes[bindingID] = route
 		m.startLocked(route)

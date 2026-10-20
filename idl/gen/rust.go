@@ -7,7 +7,7 @@ import (
 )
 
 const rsEscMinimal = `
-fn esc(out: &mut Vec<u8>, s: &str) {
+fn esc(out: &mut ::std::vec::Vec<u8>, s: &str) {
     out.push(b'"');
     for c in s.as_bytes() {
         esc_byte(out, *c);
@@ -17,14 +17,14 @@ fn esc(out: &mut Vec<u8>, s: &str) {
 `
 
 const rsEscASCII = `
-fn unit(out: &mut Vec<u8>, u: u32) {
+fn unit(out: &mut ::std::vec::Vec<u8>, u: u32) {
     out.extend_from_slice(b"\\u");
     for shift in [12, 8, 4, 0] {
         out.push(HEX[((u >> shift) & 0xF) as usize]);
     }
 }
 
-fn esc(out: &mut Vec<u8>, s: &str) {
+fn esc(out: &mut ::std::vec::Vec<u8>, s: &str) {
     out.push(b'"');
     for ch in s.chars() {
         let cp = ch as u32;
@@ -42,15 +42,14 @@ fn esc(out: &mut Vec<u8>, s: &str) {
 }
 `
 
-const rsCommon = `use std::collections::BTreeMap;
-
+const rsCommon = `
 // An opaque payload is bytes the contract forbids us to reinterpret, and String
 // would refuse to hold one that is not UTF-8 rather than carry it back out.
-pub type Raw = Vec<u8>;
+pub type Raw = ::std::vec::Vec<u8>;
 
 const HEX: &[u8; 16] = b"0123456789abcdef";
 
-fn esc_byte(out: &mut Vec<u8>, c: u8) {
+fn esc_byte(out: &mut ::std::vec::Vec<u8>, c: u8) {
     match c {
         b'"' => out.extend_from_slice(b"\\\""),
         b'\\' => out.extend_from_slice(b"\\\\"),
@@ -68,17 +67,17 @@ fn esc_byte(out: &mut Vec<u8>, c: u8) {
     }
 }
 
-fn num(out: &mut Vec<u8>, n: i64) {
+fn num(out: &mut ::std::vec::Vec<u8>, n: i64) {
     out.extend_from_slice(n.to_string().as_bytes());
 }
 
-fn pad(out: &mut Vec<u8>, depth: i32) {
+fn pad(out: &mut ::std::vec::Vec<u8>, depth: i32) {
     for _ in 0..depth * @INDENT@ {
         out.push(b' ');
     }
 }
 
-fn strs(out: &mut Vec<u8>, v: &[String], depth: i32) {
+fn strs(out: &mut ::std::vec::Vec<u8>, v: &[::std::string::String], depth: i32) {
     if v.is_empty() {
         out.extend_from_slice(b"[]");
         return;
@@ -102,66 +101,22 @@ fn ws(c: u8) -> bool {
     c == b' ' || c == b'\t' || c == b'\n' || c == b'\r'
 }
 
-fn raw(out: &mut Vec<u8>, b: &[u8], depth: i32) {
-    let mut depth = depth;
-    let mut i = 0;
-    while i < b.len() {
-        let c = b[i];
-        if ws(c) {
-            i += 1;
-        } else if c == b'"' {
-            let mut j = i + 1;
-            while j < b.len() {
-                if b[j] == b'\\' {
-                    j += 2;
-                    continue;
-                }
-                if b[j] == b'"' {
-                    j += 1;
-                    break;
-                }
-                j += 1;
-            }
-            out.extend_from_slice(&b[i..j]);
-            i = j;
-        } else if c == b'{' || c == b'[' {
-            out.push(c);
-            i += 1;
-            let mut j = i;
-            while j < b.len() && ws(b[j]) {
-                j += 1;
-            }
-            if j < b.len() && (b[j] == b'}' || b[j] == b']') {
-                out.push(b[j]);
-                i = j + 1;
-            } else {
-                depth += 1;
-                out.push(b'\n');
-                pad(out, depth);
-            }
-        } else if c == b'}' || c == b']' {
-            depth -= 1;
-            out.push(b'\n');
-            pad(out, depth);
-            out.push(c);
-            i += 1;
-        } else if c == b',' {
-            out.extend_from_slice(b",\n");
-            pad(out, depth);
-            i += 1;
-        } else if c == b':' {
-            out.extend_from_slice(b": ");
-            i += 1;
-        } else {
-            out.push(c);
-            i += 1;
-        }
+// raw writes an opaque value's bytes as they are ([DEF-A3]).
+fn raw(out: &mut ::std::vec::Vec<u8>, b: &[u8], _depth: i32) {
+    // Whitespace around the value is not part of it.
+    let (mut i, mut j) = (0, b.len());
+    while i < j && ws(b[i]) {
+        i += 1;
     }
+    while j > i && ws(b[j - 1]) {
+        j -= 1;
+    }
+    out.extend_from_slice(&b[i..j]);
 }
 
 // A BTreeMap<String, _> walks its keys in String's Ord, which compares the
 // UTF-8 bytes — the order the definition declares. Nothing sorts here.
-fn rawmap(out: &mut Vec<u8>, m: &BTreeMap<String, Raw>, depth: i32) {
+fn rawmap(out: &mut ::std::vec::Vec<u8>, m: &::std::collections::BTreeMap<::std::string::String, Raw>, depth: i32) {
     if m.is_empty() {
         out.extend_from_slice(b"{}");
         return;
@@ -182,7 +137,7 @@ fn rawmap(out: &mut Vec<u8>, m: &BTreeMap<String, Raw>, depth: i32) {
 }
 `
 
-const rsEnumListHelper = `fn enum_strs<E, F: Fn(&E) -> &str>(out: &mut Vec<u8>, v: &[E], depth: i32, word: F) {
+const rsEnumListHelper = `fn enum_strs<E, F: ::std::ops::Fn(&E) -> &str>(out: &mut ::std::vec::Vec<u8>, v: &[E], depth: i32, word: F) {
     if v.is_empty() { out.extend_from_slice(b"[]"); return; }
     out.extend_from_slice(b"[\n");
     for (i, item) in v.iter().enumerate() {
@@ -197,7 +152,7 @@ const rsEnumListHelper = `fn enum_strs<E, F: Fn(&E) -> &str>(out: &mut Vec<u8>, 
 `
 
 const rsStrMap = `
-fn strmap(out: &mut Vec<u8>, m: &BTreeMap<String, String>, depth: i32) {
+fn strmap(out: &mut ::std::vec::Vec<u8>, m: &::std::collections::BTreeMap<::std::string::String, ::std::string::String>, depth: i32) {
     if m.is_empty() {
         out.extend_from_slice(b"{}");
         return;
@@ -219,7 +174,7 @@ fn strmap(out: &mut Vec<u8>, m: &BTreeMap<String, String>, depth: i32) {
 `
 
 const rsEncList = `
-fn enc_list<T>(out: &mut Vec<u8>, v: &[T], depth: i32, enc: fn(&mut Vec<u8>, &T, i32)) {
+fn enc_list<T>(out: &mut ::std::vec::Vec<u8>, v: &[T], depth: i32, enc: fn(&mut ::std::vec::Vec<u8>, &T, i32)) {
     if v.is_empty() {
         out.extend_from_slice(b"[]");
         return;
@@ -247,15 +202,15 @@ pub struct Refusal {
     pub offset: usize,
 }
 
-impl std::fmt::Display for Refusal {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl ::std::fmt::Display for Refusal {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         write!(f, "refused: {} at byte {}", self.word, self.offset)
     }
 }
 
-impl std::error::Error for Refusal {}
+impl ::std::error::Error for Refusal {}
 
-fn append_rune(out: &mut Vec<u8>, cp: u32) {
+fn append_rune(out: &mut ::std::vec::Vec<u8>, cp: u32) {
     if cp < 0x80 {
         out.push(cp as u8);
     } else if cp < 0x800 {
@@ -280,7 +235,7 @@ struct Reader<'a> {
 }
 
 impl<'a> Reader<'a> {
-    fn refuse<T>(&self, word: &'static str) -> Result<T, Refusal> {
+    fn refuse<T>(&self, word: &'static str) -> ::std::result::Result<T, Refusal> {
         Err(Refusal { word, offset: self.pos })
     }
 
@@ -294,7 +249,7 @@ impl<'a> Reader<'a> {
         }
     }
 
-    fn enter(&mut self) -> Result<(), Refusal> {
+    fn enter(&mut self) -> ::std::result::Result<(), Refusal> {
         self.depth += 1;
         if self.depth > DEPTH_LIMIT {
             return self.refuse("depth_exceeded");
@@ -302,12 +257,12 @@ impl<'a> Reader<'a> {
         Ok(())
     }
 
-    fn string(&mut self) -> Result<String, Refusal> {
+    fn string(&mut self) -> ::std::result::Result<::std::string::String, Refusal> {
         if self.at() != b'"' {
             return self.refuse("wrong_type");
         }
         self.pos += 1;
-        let mut out: Vec<u8> = Vec::new();
+        let mut out: ::std::vec::Vec<u8> = ::std::vec::Vec::new();
         loop {
             if self.pos >= self.buf.len() {
                 return self.refuse("malformed");
@@ -315,7 +270,7 @@ impl<'a> Reader<'a> {
             let c = self.buf[self.pos];
             if c == b'"' {
                 self.pos += 1;
-                return match String::from_utf8(out) {
+                return match ::std::string::String::from_utf8(out) {
                     Ok(s) => Ok(s),
                     Err(_) => self.refuse("bad_string"),
                 };
@@ -332,7 +287,7 @@ impl<'a> Reader<'a> {
         }
     }
 
-    fn escape(&mut self, out: &mut Vec<u8>) -> Result<(), Refusal> {
+    fn escape(&mut self, out: &mut ::std::vec::Vec<u8>) -> ::std::result::Result<(), Refusal> {
         self.pos += 1;
         if self.pos >= self.buf.len() {
             return self.refuse("malformed");
@@ -372,7 +327,7 @@ impl<'a> Reader<'a> {
         Ok(())
     }
 
-    fn hex4(&mut self) -> Result<u32, Refusal> {
+    fn hex4(&mut self) -> ::std::result::Result<u32, Refusal> {
         if self.pos + 4 > self.buf.len() {
             return self.refuse("bad_string");
         }
@@ -391,7 +346,7 @@ impl<'a> Reader<'a> {
         Ok(u)
     }
 
-    fn integer(&mut self, low: i64, high: i64) -> Result<i64, Refusal> {
+    fn integer(&mut self, low: i64, high: i64) -> ::std::result::Result<i64, Refusal> {
         let c = self.at();
         if c != b'-' && !c.is_ascii_digit() {
             return self.refuse("wrong_type");
@@ -439,7 +394,7 @@ impl<'a> Reader<'a> {
         Ok(n)
     }
 
-    fn boolean(&mut self) -> Result<bool, Refusal> {
+    fn boolean(&mut self) -> ::std::result::Result<bool, Refusal> {
         match self.at() {
             b't' => {
                 self.literal(b"true")?;
@@ -453,7 +408,7 @@ impl<'a> Reader<'a> {
         }
     }
 
-    fn literal(&mut self, word: &[u8]) -> Result<(), Refusal> {
+    fn literal(&mut self, word: &[u8]) -> ::std::result::Result<(), Refusal> {
         if self.pos + word.len() > self.buf.len() || &self.buf[self.pos..self.pos + word.len()] != word {
             return self.refuse("malformed");
         }
@@ -461,13 +416,13 @@ impl<'a> Reader<'a> {
         Ok(())
     }
 
-    fn str_list(&mut self) -> Result<Vec<String>, Refusal> {
+    fn str_list(&mut self) -> ::std::result::Result<::std::vec::Vec<::std::string::String>, Refusal> {
         if self.at() != b'[' {
             return self.refuse("wrong_type");
         }
         self.enter()?;
         self.pos += 1;
-        let mut out = Vec::new();
+        let mut out = ::std::vec::Vec::new();
         self.skip_ws();
         if self.at() != b']' {
             loop {
@@ -488,13 +443,13 @@ impl<'a> Reader<'a> {
         Ok(out)
     }
 
-    fn raw_map(&mut self) -> Result<BTreeMap<String, Raw>, Refusal> {
+    fn raw_map(&mut self) -> ::std::result::Result<::std::collections::BTreeMap<::std::string::String, Raw>, Refusal> {
         if self.at() != b'{' {
             return self.refuse("wrong_type");
         }
         self.enter()?;
         self.pos += 1;
-        let mut out = BTreeMap::new();
+        let mut out = ::std::collections::BTreeMap::new();
         self.skip_ws();
         if self.at() != b'}' {
             loop {
@@ -526,13 +481,13 @@ impl<'a> Reader<'a> {
         Ok(out)
     }
 
-    fn raw_value(&mut self) -> Result<Raw, Refusal> {
+    fn raw_value(&mut self) -> ::std::result::Result<Raw, Refusal> {
         let start = self.pos;
         self.skip_value()?;
         Ok(self.buf[start..self.pos].to_vec())
     }
 
-    fn skip_value(&mut self) -> Result<(), Refusal> {
+    fn skip_value(&mut self) -> ::std::result::Result<(), Refusal> {
         let c = self.at();
         match c {
             b'"' => self.skip_string(),
@@ -552,12 +507,12 @@ impl<'a> Reader<'a> {
     // to spell, it keeps: the bytes between these two offsets are what a writer
     // re-emits. A number is walked, never converted, so a value no host type
     // holds survives the reader that carried it.
-    fn skip_string(&mut self) -> Result<(), Refusal> {
+    fn skip_string(&mut self) -> ::std::result::Result<(), Refusal> {
         self.string()?;
         Ok(())
     }
 
-    fn some_digits(&mut self) -> Result<(), Refusal> {
+    fn some_digits(&mut self) -> ::std::result::Result<(), Refusal> {
         let mut n = 0;
         while self.at().is_ascii_digit() {
             self.pos += 1;
@@ -569,7 +524,7 @@ impl<'a> Reader<'a> {
         Ok(())
     }
 
-    fn skip_number(&mut self) -> Result<(), Refusal> {
+    fn skip_number(&mut self) -> ::std::result::Result<(), Refusal> {
         if self.at() == b'-' {
             self.pos += 1;
         }
@@ -596,7 +551,7 @@ impl<'a> Reader<'a> {
         Ok(())
     }
 
-    fn skip_container(&mut self) -> Result<(), Refusal> {
+    fn skip_container(&mut self) -> ::std::result::Result<(), Refusal> {
         let opener = self.at();
         let shut = if opener == b'{' { b'}' } else { b']' };
         self.enter()?;
@@ -636,13 +591,13 @@ impl<'a> Reader<'a> {
 `
 
 const rsStrMapDecode = `
-fn str_map(r: &mut Reader) -> Result<BTreeMap<String, String>, Refusal> {
+fn str_map(r: &mut Reader) -> ::std::result::Result<::std::collections::BTreeMap<::std::string::String, ::std::string::String>, Refusal> {
     if r.at() != b'{' {
         return r.refuse("wrong_type");
     }
     r.enter()?;
     r.pos += 1;
-    let mut out = BTreeMap::new();
+    let mut out = ::std::collections::BTreeMap::new();
     r.skip_ws();
     if r.at() != b'}' {
         loop {
@@ -678,14 +633,14 @@ fn str_map(r: &mut Reader) -> Result<BTreeMap<String, String>, Refusal> {
 const rsDecodeList = `
 fn decode_list<T>(
     r: &mut Reader,
-    elem: fn(&mut Reader) -> Result<T, Refusal>,
-) -> Result<Vec<T>, Refusal> {
+    elem: fn(&mut Reader) -> ::std::result::Result<T, Refusal>,
+) -> ::std::result::Result<::std::vec::Vec<T>, Refusal> {
     if r.at() != b'[' {
         return r.refuse("wrong_type");
     }
     r.enter()?;
     r.pos += 1;
-    let mut out = Vec::new();
+    let mut out = ::std::vec::Vec::new();
     r.skip_ws();
     if r.at() != b']' {
         loop {
@@ -769,7 +724,7 @@ fn micros_timestamp(text: &str) -> bool {
     text.len() == 27 && normalized_timestamp(text) == text
 }
 
-fn read_timestamp(r: &mut Reader) -> Result<String, Refusal> {
+fn read_timestamp(r: &mut Reader) -> ::std::result::Result<::std::string::String, Refusal> {
     let at = r.pos;
     let s = r.string()?;
     if !wide_timestamp(&s) {
@@ -781,11 +736,12 @@ fn read_timestamp(r: &mut Reader) -> Result<String, Refusal> {
 `
 
 func rsDecoder(b *strings.Builder, s *Definition) {
+	emitMaxEncodedReader(b, s, "rust")
 	for _, st := range s.Structs {
 		rsStructDecoder(b, s, st)
 	}
 	if s.Document != "" {
-		fmt.Fprintf(b, "\npub fn decode(data: &[u8]) -> Result<%s, Refusal> {\n", s.Document)
+		fmt.Fprintf(b, "\npub fn decode(data: &[u8]) -> ::std::result::Result<%s, Refusal> {\n", s.Document)
 		b.WriteString("    let mut r = Reader { buf: data, pos: 0, depth: 0 };\n    r.skip_ws();\n")
 		bind := "let v"
 		if s.Vocab != nil {
@@ -802,18 +758,22 @@ func rsDecoder(b *strings.Builder, s *Definition) {
 }
 
 func rsStructDecoder(b *strings.Builder, s *Definition, st Struct) {
-	fmt.Fprintf(b, "\nfn decode_%s(r: &mut Reader) -> Result<%s, Refusal> {\n", rsFn(st.Name), st.Name)
+	fmt.Fprintf(b, "\nfn decode_%s(r: &mut Reader) -> ::std::result::Result<%s, Refusal> {\n", rsFn(st.Name), st.Name)
 	b.WriteString("    if r.at() != b'{' {\n        return r.refuse(\"wrong_type\");\n    }\n")
+	emitMaxEncodedDecode(b, st, "rust")
 	b.WriteString("    r.enter()?;\n    r.pos += 1;\n")
 	for _, f := range st.Fields {
-		init := "Default::default()"
+		init := "::std::default::Default::default()"
 		if rsLocalOptional(s, f) {
 			init = "None"
 		}
 		fmt.Fprintf(b, "    let mut %s: %s = %s;\n", rsLocal(f), rsLocalType(s, f), init)
 	}
 	if st.PreservesUnknown() {
-		b.WriteString("    let mut extras: BTreeMap<String, Raw> = BTreeMap::new();\n")
+		b.WriteString("    let mut extras: ::std::collections::BTreeMap<::std::string::String, Raw> = ::std::collections::BTreeMap::new();\n")
+	}
+	if tracksSkippedKeys(s, st) {
+		b.WriteString("    let mut unknown_keys: ::std::collections::BTreeMap<::std::string::String, bool> = ::std::collections::BTreeMap::new();\n")
 	}
 	if len(st.Fields) > 0 {
 		b.WriteString("    let mut seen: u32 = 0;\n")
@@ -829,7 +789,7 @@ func rsStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 	} else {
 		b.WriteString("    if r.at() != b'}' {\n        loop {\n            r.skip_ws();\n")
 		b.WriteString("            if r.at() != b'\"' {\n                return r.refuse(\"malformed\");\n            }\n")
-		if len(st.Fields) == 0 && !st.PreservesUnknown() {
+		if len(st.Fields) == 0 && !st.PreservesUnknown() && !tracksSkippedKeys(s, st) {
 			b.WriteString("            r.string()?;\n            r.skip_ws();\n")
 		} else {
 			b.WriteString("            let key = r.string()?;\n            r.skip_ws();\n")
@@ -843,6 +803,9 @@ func rsStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 				}
 				fmt.Fprintf(b, "%slet raw = r.raw_value()?;\n%sextras.insert(key, raw);\n", ind, ind)
 			} else {
+				if tracksSkippedKeys(s, st) {
+					fmt.Fprintf(b, "%sif unknown_keys.insert(key, true).is_some() { return r.refuse(\"duplicate_key\"); }\n", ind)
+				}
 				fmt.Fprintf(b, "%sr.skip_value()?;\n", ind)
 			}
 		}
@@ -875,17 +838,11 @@ func rsStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 			fmt.Fprintf(b, "    let Some(%[1]s) = %[1]s else {\n        return r.refuse(\"missing_field\");\n    };\n", rsLocal(f))
 		}
 	}
-	for _, f := range st.Fields {
-		value, has := f.Ann["equals"]
-		if !has {
-			continue
-		}
-		fmt.Fprintf(b, "    if %s != %s {\n        return r.refuse(%q);\n    }\n", rsLocal(f), value, f.Ann["equals_refusal"])
-	}
+	emitChecks(b, lowerChecks(st), "rust", siteRustLocals)
 	for _, f := range st.Fields {
 		if rsClosedEnumList(f) {
 			enum := rsEnumName(f.EnumType)
-			fmt.Fprintf(b, "    let mut parsed_%[1]s = Vec::with_capacity(%[1]s.len());\n    for name in %[1]s {\n        let Some(value) = %[2]s::from_wire(&name) else { return r.refuse(\"bad_enum\"); };\n        parsed_%[1]s.push(value);\n    }\n    let %[1]s = parsed_%[1]s;\n", rsLocal(f), enum)
+			fmt.Fprintf(b, "    let mut parsed_%[1]s = ::std::vec::Vec::with_capacity(%[1]s.len());\n    for name in %[1]s {\n        let Some(value) = %[2]s::from_wire(&name) else { return r.refuse(\"bad_enum\"); };\n        parsed_%[1]s.push(value);\n    }\n    let %[1]s = parsed_%[1]s;\n", rsLocal(f), enum)
 			continue
 		}
 		if !rsClosedEnum(f) {
@@ -898,6 +855,7 @@ func rsStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 		}
 		fmt.Fprintf(b, "    let %[1]s = match %[1]s {\n        Some(name) => match %[2]s::from_wire(&name) {\n            Some(value) => Some(value),\n            None => return r.refuse(\"bad_enum\"),\n        },\n        None => None,\n    };\n", rsLocal(f), enum)
 	}
+	configValueDecodeCheck(b, s, st, "rust")
 	fmt.Fprintf(b, "    Ok(%s {", st.Name)
 	for _, f := range st.Fields {
 		fmt.Fprintf(b, "\n        %s: %s,", f.Ident("rust"), rsLocal(f))
@@ -912,6 +870,10 @@ func rsStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 }
 
 func rsRead(s *Definition, f Field) string {
+	if scalarAbsent(f) {
+		f.Omit = "never"
+		return "Some(" + rsRead(s, f) + ")"
+	}
 	if enumAbsent(f) {
 		return "Some(r.string()?)"
 	}
@@ -979,10 +941,10 @@ func rsDerive(b *strings.Builder, s *Definition) {
 		fmt.Fprintf(b, "%q", t.Name)
 	}
 	b.WriteString("];\n")
-	fmt.Fprintf(b, "\nfn derive(r: &Reader, v: &mut %s) -> Result<(), Refusal> {\n", v.Of)
+	fmt.Fprintf(b, "\nfn derive(r: &Reader, v: &mut %s) -> ::std::result::Result<(), Refusal> {\n", v.Of)
 	fmt.Fprintf(b, "    let names = v.%s.clone();\n", snakeName(v.Names))
 	b.WriteString("    let present = |n: &str| names.iter().any(|x| x == n);\n")
-	b.WriteString("    let mut kept: Vec<String> = Vec::new();\n")
+	b.WriteString("    let mut kept: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();\n")
 	fmt.Fprintf(b, "    for name in &v.%s {\n", snakeName(v.Critical))
 	fmt.Fprintf(b, "        if %s_STRIP_CRITICAL.contains(&name.as_str()) {\n            continue;\n        }\n", screamingName(v.Name))
 	fmt.Fprintf(b, "        if !%s_TERMS.contains(&name.as_str()) {\n            return r.refuse(\"unknown_critical\");\n        }\n", screamingName(v.Name))
@@ -1102,15 +1064,15 @@ const rsInternalMember = `
 
 // %[1]s record, %[2]s lower record.
 const rsInternalNamedCodec = `
-    pub fn decode_%[2]s_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::%[1]s, usize), super::Refusal> {
+    pub fn decode_%[2]s_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::%[1]s, usize), super::Refusal> {
         super::decode_%[2]s_at(data, depth, limit)
     }
 
-    pub fn check_%[2]s(v: &super::%[1]s, depth: i32, limit: i32) -> Result<(), super::Refusal> {
+    pub fn check_%[2]s(v: &super::%[1]s, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal> {
         super::check_%[2]s(v, depth, limit)
     }
 
-    pub fn encode_%[2]s_at(v: &super::%[1]s, depth: i32) -> Result<Vec<u8>, super::Refusal> {
+    pub fn encode_%[2]s_at(v: &super::%[1]s, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal> {
         super::encode_%[2]s_at(v, depth)
     }
 `
@@ -1149,6 +1111,14 @@ func rsVocabulary(b *strings.Builder, s *Definition) {
 		b.WriteString("}\n")
 	}
 	for _, c := range s.Consts {
+		if c.StringScalar() {
+			fmt.Fprintf(b, "\npub const %s: &str = %s;\n", screamingName(c.Name), constantString(c.Strings[0], "rust"))
+			continue
+		}
+		if c.Scalar() {
+			fmt.Fprintf(b, "\npub const %s: %s = %d;\n", screamingName(c.Name), c.Type, c.Ints[0])
+			continue
+		}
 		if c.Type == "list<i32>" {
 			fmt.Fprintf(b, "\npub const %s: [i32; %d] = [", screamingName(c.Name), len(c.Ints))
 			for i, n := range c.Ints {
@@ -1177,10 +1147,11 @@ func rsEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 		v, depth = "_v", "_depth"
 	}
 	if flat {
-		fmt.Fprintf(b, "\nfn enc_wire_%s(out: &mut Vec<u8>, %s: &%s) {\n", rsFn(st.Name), v, st.Name)
+		fmt.Fprintf(b, "\nfn enc_wire_%s(out: &mut ::std::vec::Vec<u8>, %s: &%s) {\n", rsFn(st.Name), v, st.Name)
 	} else {
-		fmt.Fprintf(b, "\nfn enc_%s(out: &mut Vec<u8>, %s: &%s, %s: i32) {\n", rsFn(st.Name), v, st.Name, depth)
+		fmt.Fprintf(b, "\nfn enc_%s(out: &mut ::std::vec::Vec<u8>, %s: &%s, %s: i32) {\n", rsFn(st.Name), v, st.Name, depth)
 	}
+	emitMaxEncodedStart(b, st, "rust")
 	emitEqualities(b, st, "rust", true)
 	b.WriteString("    out.push(b'{');\n")
 	// A flat encoder reads the flag only before a later member, so a clear
@@ -1235,6 +1206,7 @@ func rsEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 		if f.Omit != "never" {
 			b.WriteString("    }\n")
 		}
+		emitMaxEncodedEnd(b, st, "rust")
 	}
 	if st.PreservesUnknown() {
 		fmt.Fprintf(b, "    first = extra_fields(out, &v.extras, &[%s], depth, first);\n", quotedFieldNames(st))
@@ -1247,30 +1219,36 @@ func rsEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 			b.WriteString("    if !first {\n        out.push(b'\\n');\n        pad(out, depth);\n    }\n")
 		}
 	}
-	b.WriteString("    out.push(b'}');\n}\n")
+	b.WriteString("    out.push(b'}');\n")
+	emitMaxEncodedEnd(b, st, "rust")
+	b.WriteString("}\n")
 }
 
 func rsType(s *Definition, f Field) string {
+	if scalarAbsent(f) {
+		f.Omit = "never"
+		return "::std::option::Option<" + rsType(s, f) + ">"
+	}
 	if rsClosedEnumList(f) {
-		return "Vec<" + rsEnumName(f.EnumType) + ">"
+		return "::std::vec::Vec<" + rsEnumName(f.EnumType) + ">"
 	}
 	if rsClosedEnum(f) {
 		if f.Omit != "never" {
-			return "Option<" + rsEnumName(f.EnumType) + ">"
+			return "::std::option::Option<" + rsEnumName(f.EnumType) + ">"
 		}
 		return rsEnumName(f.EnumType)
 	}
 	if enumAbsent(f) {
-		return "Option<String>"
+		return "::std::option::Option<::std::string::String>"
 	}
 	switch f.Type {
 	case "binary":
 		if f.Omit == "absent" {
-			return "Option<Vec<u8>>"
+			return "::std::option::Option<::std::vec::Vec<u8>>"
 		}
-		return "Vec<u8>"
+		return "::std::vec::Vec<u8>"
 	case "string":
-		return "String"
+		return "::std::string::String"
 	case "json":
 		return "Raw"
 	case "i32":
@@ -1280,19 +1258,19 @@ func rsType(s *Definition, f Field) string {
 	case "bool":
 		return "bool"
 	case "list<string>":
-		return "Vec<String>"
+		return "::std::vec::Vec<::std::string::String>"
 	case "map<string,json>":
-		return "BTreeMap<String, Raw>"
+		return "::std::collections::BTreeMap<::std::string::String, Raw>"
 	case "list<json>":
-		return "Vec<Raw>"
+		return "::std::vec::Vec<Raw>"
 	case "map<string,string>":
-		return "BTreeMap<String, String>"
+		return "::std::collections::BTreeMap<::std::string::String, ::std::string::String>"
 	}
 	if elem := s.Repeated(f.Type); elem != "" {
-		return "Vec<" + elem + ">"
+		return "::std::vec::Vec<" + elem + ">"
 	}
 	if f.Omit == "absent" {
-		return "Option<" + f.Type + ">"
+		return "::std::option::Option<" + f.Type + ">"
 	}
 	return f.Type
 }
@@ -1354,9 +1332,9 @@ func rsValue(s *Definition, f Field, e string) string {
 
 // Binary uses the same padded, canonical base64 spelling as the other backends.
 const rsBinary = `
-fn encode_binary(value: &[u8]) -> String {
+fn encode_binary(value: &[u8]) -> ::std::string::String {
     const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::new();
+    let mut out = ::std::string::String::new();
     for chunk in value.chunks(3) {
         let mut v = (chunk[0] as u32) << 16;
         if chunk.len() > 1 { v |= (chunk[1] as u32) << 8; }
@@ -1368,11 +1346,11 @@ fn encode_binary(value: &[u8]) -> String {
     }
     out
 }
-fn read_binary(r: &mut Reader) -> Result<Vec<u8>, Refusal> {
+fn read_binary(r: &mut Reader) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal> {
     let text = r.string()?;
     let bytes = text.as_bytes();
     if bytes.len() % 4 != 0 { return r.refuse("bad_binary"); }
-    let mut out = Vec::new();
+    let mut out = ::std::vec::Vec::new();
     for (i, chunk) in bytes.chunks(4).enumerate() {
         let mut v = 0u32;
         let mut pad = 0;
@@ -1404,6 +1382,11 @@ fn read_binary(r: &mut Reader) -> Result<Vec<u8>, Refusal> {
 `
 
 func genRustBody(s *Definition) string {
+	if rsConstantsOnly(s) {
+		var b strings.Builder
+		rsVocabulary(&b, s)
+		return b.String()
+	}
 	if !s.NoIPC {
 		s = serviceTypes(s)
 	}
@@ -1424,7 +1407,7 @@ func genRustBody(s *Definition) string {
 	if s.HasRepeated() {
 		prelude += rsEncList
 	}
-	b.WriteString(strings.NewReplacer("@INDENT@", strconv.Itoa(s.Encoding.Indent)).Replace(prelude))
+	b.WriteString(strings.NewReplacer("@INDENT@", strconv.Itoa(s.Encoding.Indent)).Replace(opaqueLayout(s, "rust", prelude)))
 	rsVocabulary(&b, s)
 	carriers := rsCarriers(s)
 	for _, st := range s.Structs {
@@ -1441,7 +1424,7 @@ func genRustBody(s *Definition) string {
 			fmt.Fprintf(&b, "    %s%s: %s,\n", vis, f.Ident("rust"), rsType(s, f))
 		}
 		if st.PreservesUnknown() {
-			fmt.Fprintf(&b, "    %sextras: BTreeMap<String, Raw>,\n", vis)
+			fmt.Fprintf(&b, "    %sextras: ::std::collections::BTreeMap<::std::string::String, Raw>,\n", vis)
 		}
 		b.WriteString("}\n")
 	}
@@ -1455,13 +1438,13 @@ func genRustBody(s *Definition) string {
 		tail = "    out.push(b'\\n');\n"
 	}
 	if s.Document != "" {
-		fmt.Fprintf(&b, "\npub fn encode(v: &%s) -> Vec<u8> {\n    let mut out = Vec::new();\n    enc_%s(&mut out, v, 0);\n%s    out\n}\n",
+		fmt.Fprintf(&b, "\npub fn encode(v: &%s) -> ::std::vec::Vec<u8> {\n    let mut out = ::std::vec::Vec::new();\n    enc_%s(&mut out, v, 0);\n%s    out\n}\n",
 			s.Document, rsFn(s.Document), tail)
 	}
 	dup, skipSeen, skipKey, skipDup, strDup := "", "", "", "", ""
 	if s.Encoding.RefuseDuplicateKeys() {
 		dup = rsDupKeyRefuse
-		skipSeen = "        let mut seen: BTreeMap<String, bool> = BTreeMap::new();\n"
+		skipSeen = "        let mut seen: ::std::collections::BTreeMap<::std::string::String, bool> = ::std::collections::BTreeMap::new();\n"
 		skipKey = "let k = "
 		skipDup = rsSkipDupKey
 		strDup = rsStrDupKey
@@ -1492,9 +1475,19 @@ func genRustBody(s *Definition) string {
 		b.WriteString(rsBinary)
 	}
 	rsDecoder(&b, s)
+	rsJSONAPI(&b, s)
 	rsProtocol(&b, s)
 	rsServices(&b, s)
+	configCatalogueRust(&b, s)
 	return b.String()
+}
+
+// A selected constants projection has no values to encode or decode. Keep
+// record, vocabulary, service and included definitions on the codec path.
+func rsConstantsOnly(s *Definition) bool {
+	return len(s.Consts) > 0 && len(s.Structs) == 0 && len(s.Services) == 0 &&
+		len(s.Enums) == 0 && len(s.Imports) == 0 && len(s.Typedefs) == 0 &&
+		s.Vocab == nil && s.Proto == nil && s.Document == ""
 }
 
 func rsClosedVocabulary(b *strings.Builder, en Enum) {
@@ -1519,13 +1512,13 @@ func rsClosedVocabulary(b *strings.Builder, en Enum) {
 		fmt.Fprintf(b, "            Self::%s => %q,\n", upperCamelName(m.Name), m.WireName())
 	}
 	b.WriteString("        }\n    }\n\n")
-	b.WriteString("    /// The member a wire name spells, or `None` for a name this vocabulary refuses.\n    pub fn from_wire(name: &str) -> Option<Self> {\n        match name {\n")
+	b.WriteString("    /// The member a wire name spells, or `None` for a name this vocabulary refuses.\n    pub fn from_wire(name: &str) -> ::std::option::Option<Self> {\n        match name {\n")
 	for _, m := range en.Members {
 		fmt.Fprintf(b, "            %q => Some(Self::%s),\n", m.WireName(), upperCamelName(m.Name))
 	}
 	b.WriteString("            _ => None,\n        }\n    }\n")
 	for _, key := range en.MemberAnn() {
-		fmt.Fprintf(b, "\n    /// The member's %q annotation, where the definition gives one.\n    pub fn %s(self) -> Option<&'static str> {\n        match self {\n", key, rustIdent(key))
+		fmt.Fprintf(b, "\n    /// The member's %q annotation, where the definition gives one.\n    pub fn %s(self) -> ::std::option::Option<&'static str> {\n        match self {\n", key, rustIdent(key))
 		all := true
 		for _, m := range en.Members {
 			if v, ok := m.Ann[key]; ok {
@@ -1540,12 +1533,16 @@ func rsClosedVocabulary(b *strings.Builder, en Enum) {
 		b.WriteString("        }\n    }\n")
 	}
 	b.WriteString("}\n")
-	fmt.Fprintf(b, "\nimpl std::fmt::Display for %s {\n    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n        f.write_str(self.as_str())\n    }\n}\n", name)
+	fmt.Fprintf(b, "\nimpl ::std::fmt::Display for %s {\n    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {\n        f.write_str(self.as_str())\n    }\n}\n", name)
 	// A member equals its wire name, so code holding the contract's word compares directly.
-	fmt.Fprintf(b, "\nimpl PartialEq<str> for %[1]s {\n    fn eq(&self, other: &str) -> bool {\n        self.as_str() == other\n    }\n}\n\nimpl PartialEq<&str> for %[1]s {\n    fn eq(&self, other: &&str) -> bool {\n        self.as_str() == *other\n    }\n}\n", name)
+	fmt.Fprintf(b, "\nimpl ::std::cmp::PartialEq<str> for %[1]s {\n    fn eq(&self, other: &str) -> bool {\n        self.as_str() == other\n    }\n}\n\nimpl ::std::cmp::PartialEq<&str> for %[1]s {\n    fn eq(&self, other: &&str) -> bool {\n        self.as_str() == *other\n    }\n}\n", name)
 }
 
 func rsSomeValue(s *Definition, f Field) string {
+	if scalarAbsent(f) {
+		f.Omit = "never"
+		return rsValue(s, f, "*value")
+	}
 	switch {
 	case rsClosedEnum(f):
 		return "esc(out, value.as_str());"
@@ -1574,7 +1571,7 @@ func rsOptional(s *Definition, f Field) bool {
 	if rsClosedEnum(f) {
 		return f.Omit != "never"
 	}
-	return f.Omit == "absent" && (s.IsStruct(f.Type) || f.EnumType != nil || f.Type == "binary")
+	return f.Omit == "absent" && (s.IsStruct(f.Type) || f.EnumType != nil || f.Type == "binary" || scalarAbsent(f))
 }
 
 func rsRequiredWithoutDefault(s *Definition, f Field) bool {
@@ -1590,11 +1587,11 @@ func rsLocalOptional(s *Definition, f Field) bool {
 func rsLocalType(s *Definition, f Field) string {
 	switch {
 	case rsClosedEnumList(f):
-		return "Vec<String>"
+		return "::std::vec::Vec<::std::string::String>"
 	case rsClosedEnum(f):
-		return "Option<String>"
+		return "::std::option::Option<::std::string::String>"
 	case rsRequiredWithoutDefault(s, f):
-		return "Option<" + rsType(s, f) + ">"
+		return "::std::option::Option<" + rsType(s, f) + ">"
 	}
 	return rsType(s, f)
 }

@@ -39,11 +39,15 @@ int main(int argc,char**argv){
   if(o.servers==std::vector<std::string>{"lemonade","lmstudio"})effective=o.names.front()=="Qwen3.6-35B-A3B-GGUF"&&o.context==32768&&o.context_source=="effective"&&o.input==28672;
   if(o.servers==std::vector<std::string>{"lmstudio"})maximum=o.names==std::vector<std::string>{"google/gemma-4-26b-it"}&&o.context==131072&&o.context_source=="maximum"&&o.input==126976;}
  require(effective&&maximum,"offered context changed");
+ // ObserveOffer: an empty cursor answers at once with Offer's offers and a cursor; that cursor with no wait answers the same.
+ auto observed=generic->observe_offer(wanted,"",0);require(observed.outcome==r::OfferOutcome::Offered&&!observed.cursor.empty()&&observed.offers.size()==2,"observe offer changed");caller(observed.observation);
+ auto unchanged=client.observe_offer(wanted,observed.cursor,0);require(unchanged.outcome==r::OfferOutcome::Offered&&unchanged.cursor==observed.cursor,"unchanged observation moved its cursor");
+ auto badwait=client.observe_offer(wanted,observed.cursor,30001);require(badwait.outcome==r::OfferOutcome::Invalid&&badwait.cursor.empty()&&badwait.offers.empty(),"wait bound not refused");
  r::PickRequest request;request.model="qwen/qwen3.6-35b-a3b";request.fresh=false;
- auto picked=generic->pick(request);caller(picked.observation);require(picked.decision.verdict=="resident"&&picked.decision.loads==0&&!picked.decision.endpoint.empty()&&!picked.decision.authorised.has_value(),"unrestricted resident choice changed");
+ auto picked=generic->pick(request);caller(picked.observation);require(picked.decision.verdict=="resident"&&picked.decision.loads==0&&picked.decision.endpoint.empty()&&!picked.decision.authorised.has_value(),"unrestricted resident choice changed");
  request.allowed.emplace(); // Present [] is NONE, not absent/all.
  auto denied=client.pick(request);require(denied.decision.verdict=="unauthorised"&&denied.decision.endpoint.empty()&&denied.decision.authorised.has_value()&&denied.decision.authorised->hosts.empty()&&!denied.decision.withheld.empty(),"empty allowance broadened");
- request.allowed->hosts={"lmstudio"};auto cold=client.pick(request);require(cold.decision.verdict=="would-load"&&cold.decision.loads==1&&cold.decision.host=="lmstudio","permitted fallback changed");
+ request.allowed->hosts={"lmstudio"};auto cold=client.pick(request);require(cold.decision.verdict=="would-load"&&cold.decision.loads==1&&cold.decision.host=="lmstudio"&&cold.decision.endpoint.empty(),"permitted fallback changed");
  request.model="";auto empty=client.pick(request);require(empty.decision.asked.empty()&&empty.decision.verdict=="unparseable"&&empty.decision.endpoint.empty(),"empty model changed");
  auto before=client.hosts();require(before.asked.size()==4,"audit lost decisions");for(const auto&a:before.asked)require(a.caller==before.observation.caller.path_description&&a.user==before.observation.caller.user_description,"audit not bound to caller");
  abstraction::ipc::FrameTransport transport(r::default_endpoint(),10000,1<<20);
@@ -55,6 +59,6 @@ int main(int argc,char**argv){
  try{r::detail::service_response(response,"abstraction.router/router@1",method);}catch(const r::ServiceError&e){refused=e.code==item.second;}
  require(refused,"wrong typed refusal");}
  require(client.hosts().asked.size()==before.asked.size(),"malformed or spoofed request reached provider");
- std::cout<<"PASS: Models, Hosts, Pick, Offer, caller audit, host failure, empty allowance, typed refusals\n";
+ std::cout<<"PASS: Models, Hosts, Pick, Offer, ObserveOffer, caller audit, host failure, empty allowance, typed refusals\n";
  }catch(const std::exception&e){std::cerr<<e.what()<<'\n';return 1;}
 }

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openabstractions/abstraction-download/go/powershell"
+	"github.com/openabstractions/abstraction-facade/go-core/powershell"
 	"golang.org/x/sys/windows/registry"
 )
 

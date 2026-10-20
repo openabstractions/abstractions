@@ -72,9 +72,13 @@ func TestPanelConfigServiceAdoption(t *testing.T) {
 	original := read()
 	draft := original
 	draft.Values.Store = "selected-by-user"
+	draft.Values.NasStore = "network-job-store"
 	applied := replace(draft)
 	if applied.Outcome != wire.UserReplaceOutcomeApplied {
 		t.Fatalf("apply: %+v", applied)
+	}
+	if current := read(); current.Values.NasStore != "network-job-store" {
+		t.Fatalf("network job store was not saved: %+v", current)
 	}
 	next := observe(first.Cursor)
 	if next.Outcome != wire.ConfigObservationOutcomeSnapshot || next.Snapshot == nil || next.Snapshot.Store != "selected-by-user" {

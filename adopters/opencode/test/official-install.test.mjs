@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, readFileSync, rmdirSync, rmSync, unlinkSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import {findConfig, findPlugin, findProgram, officialInstalls, sandboxArguments} from '../official-install.js';
 
 function fixture(t) {
@@ -89,4 +91,35 @@ test('OpenCode\'s global config and the full sandboxed start', (t) => {
   assert.throws(() => sandboxArguments({project: 'relative', env: f.env, path}), /--project/);
   f.env.OPENCODE_CONFIG = f.place(f.root, 'elsewhere.json');
   assert.equal(findConfig({env: f.env, path}), f.env.OPENCODE_CONFIG);
+});
+
+test('the diagnostic launcher names project and ancestor config without changing either or its command', {skip: process.platform !== 'win32'}, (t) => {
+  const f = fixture(t);
+  const project = path.join(f.root, 'ancestor', 'project');
+  const own = f.place(project, '.opencode', 'instructions.md');
+  const ancestor = f.place(f.root, 'ancestor', '.opencode', 'instructions.md');
+  const program = f.place(f.root, 'program', 'opencode.exe');
+  const plugin = path.dirname(f.place(f.root, 'plugin', 'package.json'));
+  const config = f.place(f.root, 'opencode.json');
+  const launcher = fileURLToPath(new URL('../official-install.js', import.meta.url));
+  const args = ['--project', project, '--program', program, '--plugin', plugin, '--config', config];
+  const launch = () => spawnSync(process.execPath, [launcher, ...args], {encoding: 'utf8'});
+  const result = launch();
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(result.stderr.includes(path.dirname(own)));
+  assert.ok(result.stderr.includes(path.dirname(ancestor)));
+  assert.match(result.stderr, /Prepare project dependencies with OpenCode outside the sandbox/);
+  assert.match(result.stderr, /does not grant this folder or disable project configuration/);
+  assert.doesNotMatch(result.stdout, /OPENCODE_DISABLE_PROJECT_CONFIG|--tool/);
+  assert.match(result.stdout, /openabstractions opencode open/);
+  assert.equal(readFileSync(own, 'utf8'), 'fixture');
+  assert.equal(readFileSync(ancestor, 'utf8'), 'fixture');
+  unlinkSync(own);
+  rmdirSync(path.dirname(own));
+  unlinkSync(ancestor);
+  rmdirSync(path.dirname(ancestor));
+  const clear = launch();
+  assert.equal(clear.status, 0, clear.stderr);
+  assert.equal(clear.stdout, result.stdout, 'diagnostics preserve the same protected launch command');
+  assert.equal(clear.stderr, '');
 });

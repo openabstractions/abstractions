@@ -9,7 +9,7 @@ pub enum AcceptanceOutcome
   Unavailable
   pub const ALL: [Self; 7]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum CancellationOutcome
   Requested
   AlreadyTerminal
@@ -19,7 +19,7 @@ pub enum CancellationOutcome
   Unavailable
   pub const ALL: [Self; 6]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum WorkState
   Pending
   Running
@@ -29,14 +29,14 @@ pub enum WorkState
   Cancelled
   pub const ALL: [Self; 6]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum FailureClass
   Retryable
   Permanent
   Unknown
   pub const ALL: [Self; 3]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub mod failure_cause
   pub const OTHER: &str
   pub const DIGEST_MISMATCH: &str
@@ -59,7 +59,7 @@ pub enum ObservationOutcome
   Unavailable
   pub const ALL: [Self; 6]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum ResultOutcome
   Data
   NotReady
@@ -70,7 +70,7 @@ pub enum ResultOutcome
   Invalid
   pub const ALL: [Self; 7]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum LinkOutcome
   Linked
   NotReady
@@ -85,7 +85,25 @@ pub enum LinkOutcome
   Remote
   pub const ALL: [Self; 11]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum WorkObservationOutcome
+  Changed
+  Unchanged
+  Gap
+  Unknown
+  Forbidden
+  Invalid
+  Unavailable
+  Unsupported
+  pub const ALL: [Self; 8]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum WorkObservationMechanism
+  Native
+  Polled
+  pub const ALL: [Self; 2]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum InventoryOutcome
   Page
   Gap
@@ -94,7 +112,7 @@ pub enum InventoryOutcome
   Unavailable
   pub const ALL: [Self; 5]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum OperatorCancellationOutcome
   Requested
   AlreadyTerminal
@@ -104,7 +122,7 @@ pub enum OperatorCancellationOutcome
   Unavailable
   pub const ALL: [Self; 6]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub mod service_error_code
   pub const HANDLER_ERROR: &str
   pub const INVALID_RESULT: &str
@@ -118,28 +136,28 @@ pub const ADMISSION_GUARANTEES: [&str; 3]
 pub const ACCEPTANCE_ERROR_CODES: [&str; 1]
 pub const RESOURCE_ACTIONS: [&str; 3]
 pub struct RequestIdentity
-  key: String
-  history_epoch: String
+  key: ::std::string::String
+  history_epoch: ::std::string::String
   attempt: i64
 pub struct Submission
   identity: RequestIdentity
-  kind: String
-  spec: Vec<u8>
-  required_guarantees: Vec<String>
-  label: String
+  kind: ::std::string::String
+  spec: ::std::vec::Vec<u8>
+  required_guarantees: ::std::vec::Vec<::std::string::String>
+  label: ::std::string::String
 pub struct Receipt
   identity: RequestIdentity
-  logical_owner: String
-  operation_id: String
-  accepted_guarantees: Vec<String>
+  logical_owner: ::std::string::String
+  operation_id: ::std::string::String
+  accepted_guarantees: ::std::vec::Vec<::std::string::String>
   history_retention_ms: i64
 pub struct AcceptanceResult
   outcome: AcceptanceOutcome
-  receipt: Option<Receipt>
-  reason: String
+  receipt: ::std::option::Option<Receipt>
+  reason: ::std::string::String
 pub struct HistoryWindow
-  logical_owner: String
-  history_epoch: String
+  logical_owner: ::std::string::String
+  history_epoch: ::std::string::String
   minimum_retention_ms: i64
   result_retention_ms: i64
 pub struct CancellationResult
@@ -149,49 +167,57 @@ pub struct WorkProgress
   total: i64
 pub struct WorkFailure
   classification: FailureClass
-  message: String
-  cause: String
+  message: ::std::string::String
+  cause: ::std::string::String
 pub struct OperationSnapshot
   receipt: Receipt
   state: WorkState
   progress: WorkProgress
   cancellation_requested: bool
-  failure: Option<WorkFailure>
-  label: String
+  failure: ::std::option::Option<WorkFailure>
+  label: ::std::string::String
   label_derived: bool
-  waiting: String
+  waiting: ::std::string::String
 pub struct ObservationResult
   outcome: ObservationOutcome
-  snapshot: Option<OperationSnapshot>
+  snapshot: ::std::option::Option<OperationSnapshot>
 pub struct ResultChunk
   receipt: Receipt
   offset: i64
   total: i64
-  data: Vec<u8>
+  data: ::std::vec::Vec<u8>
   eof: bool
 pub struct ResultRead
   outcome: ResultOutcome
-  chunk: Option<ResultChunk>
+  chunk: ::std::option::Option<ResultChunk>
 pub struct ResultLink
   outcome: LinkOutcome
-  receipt: Option<Receipt>
+  receipt: ::std::option::Option<Receipt>
   size: i64
+pub struct WorkObservation
+  outcome: WorkObservationOutcome
+  next: ::std::string::String
+  snapshot: ::std::option::Option<OperationSnapshot>
+  mechanism: WorkObservationMechanism
 pub struct InventoryPage
   outcome: InventoryOutcome
-  snapshots: Vec<OperationSnapshot>
-  next: String
+  snapshots: ::std::vec::Vec<OperationSnapshot>
+  next: ::std::string::String
   complete: bool
 pub struct OperatorCancellation
   outcome: OperatorCancellationOutcome
-pub fn encode(v: &AcceptanceResult) -> Vec<u8>
+pub fn encode(v: &AcceptanceResult) -> ::std::vec::Vec<u8>
 pub struct Refusal
   word: &'static str
   offset: usize
-pub fn decode(data: &[u8]) -> Result<AcceptanceResult, Refusal>
+pub fn decode(data: &[u8]) -> ::std::result::Result<AcceptanceResult, Refusal>
+pub trait JsonRecord: ::std::marker::Sized
+  fn to_json(&self) -> ::std::vec::Vec<u8>
+  fn from_json(data: &[u8]) -> ::std::result::Result<Self, Refusal>
 pub use abstraction_frame::FrameTransport
 pub struct ServiceError
-  code: String
-  message: String
+  code: ::std::string::String
+  message: ::std::string::String
 pub enum CallError<E>
   Transport(E)
   Refusal(Refusal)
@@ -199,31 +225,114 @@ pub enum CallError<E>
   Service(ServiceError)
 pub trait RecoverableAcceptance
   type Error
-  fn get_history_window(&self) -> Result<HistoryWindow, Self::Error>
-  fn submit(&self, submission: Submission) -> Result<AcceptanceResult, Self::Error>
-  fn reconcile(&self, identity: RequestIdentity) -> Result<AcceptanceResult, Self::Error>
-  fn cancel_work(&self, identity: RequestIdentity) -> Result<CancellationResult, Self::Error>
+  fn get_history_window(&self) -> ::std::result::Result<HistoryWindow, Self::Error>
+  fn submit(&self, submission: Submission) -> ::std::result::Result<AcceptanceResult, Self::Error>
+  fn reconcile(&self, identity: RequestIdentity) -> ::std::result::Result<AcceptanceResult, Self::Error>
+  fn cancel_work(&self, identity: RequestIdentity) -> ::std::result::Result<CancellationResult, Self::Error>
 pub struct RecoverableAcceptanceClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait OperationControl
   type Error
-  fn observe_work(&self, identity: RequestIdentity) -> Result<ObservationResult, Self::Error>
-  fn read_result(&self, identity: RequestIdentity, offset: i64, max_bytes: i64) -> Result<ResultRead, Self::Error>
-  fn link_result(&self, identity: RequestIdentity, destination: String) -> Result<ResultLink, Self::Error>
+  fn observe_work(&self, identity: RequestIdentity) -> ::std::result::Result<ObservationResult, Self::Error>
+  fn follow_work(&self, identity: RequestIdentity, after: ::std::string::String, wait_ms: i64) -> ::std::result::Result<WorkObservation, Self::Error>
+  fn read_result(&self, identity: RequestIdentity, offset: i64, max_bytes: i64) -> ::std::result::Result<ResultRead, Self::Error>
+  fn link_result(&self, identity: RequestIdentity, destination: ::std::string::String) -> ::std::result::Result<ResultLink, Self::Error>
 pub struct OperationControlClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
+  pub fn follow_work_pages(&self, identity: RequestIdentity, after: ::std::string::String, wait_ms: i64) -> impl ::std::iter::Iterator<Item=::std::result::Result<WorkObservation,CallError<T::Error>>> + '_
 pub trait JobInventory
   type Error
-  fn list_work(&self, cursor: String, limit: i64) -> Result<InventoryPage, Self::Error>
+  fn list_work(&self, cursor: ::std::string::String, limit: i64) -> ::std::result::Result<InventoryPage, Self::Error>
 pub struct JobInventoryClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait JobOperator
   type Error
-  fn list_account_work(&self, cursor: String, limit: i64) -> Result<InventoryPage, Self::Error>
-  fn cancel_operation(&self, operation_id: String) -> Result<OperatorCancellation, Self::Error>
+  fn list_account_work(&self, cursor: ::std::string::String, limit: i64) -> ::std::result::Result<InventoryPage, Self::Error>
+  fn cancel_operation(&self, operation_id: ::std::string::String) -> ::std::result::Result<OperatorCancellation, Self::Error>
 pub struct JobOperatorClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
+pub fn encode_request_identity_document(v: &RequestIdentity) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_request_identity_document(data: &[u8]) -> ::std::result::Result<RequestIdentity, Refusal>
+pub fn encode_submission_document(v: &Submission) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_submission_document(data: &[u8]) -> ::std::result::Result<Submission, Refusal>
+pub fn encode_receipt_document(v: &Receipt) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_receipt_document(data: &[u8]) -> ::std::result::Result<Receipt, Refusal>
+pub fn encode_acceptance_result_document(v: &AcceptanceResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_acceptance_result_document(data: &[u8]) -> ::std::result::Result<AcceptanceResult, Refusal>
+pub fn encode_history_window_document(v: &HistoryWindow) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_history_window_document(data: &[u8]) -> ::std::result::Result<HistoryWindow, Refusal>
+pub fn encode_cancellation_result_document(v: &CancellationResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_cancellation_result_document(data: &[u8]) -> ::std::result::Result<CancellationResult, Refusal>
+pub fn encode_work_progress_document(v: &WorkProgress) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_work_progress_document(data: &[u8]) -> ::std::result::Result<WorkProgress, Refusal>
+pub fn encode_work_failure_document(v: &WorkFailure) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_work_failure_document(data: &[u8]) -> ::std::result::Result<WorkFailure, Refusal>
+pub fn encode_operation_snapshot_document(v: &OperationSnapshot) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_operation_snapshot_document(data: &[u8]) -> ::std::result::Result<OperationSnapshot, Refusal>
+pub fn encode_observation_result_document(v: &ObservationResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_observation_result_document(data: &[u8]) -> ::std::result::Result<ObservationResult, Refusal>
+pub fn encode_result_chunk_document(v: &ResultChunk) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_result_chunk_document(data: &[u8]) -> ::std::result::Result<ResultChunk, Refusal>
+pub fn encode_result_read_document(v: &ResultRead) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_result_read_document(data: &[u8]) -> ::std::result::Result<ResultRead, Refusal>
+pub fn encode_result_link_document(v: &ResultLink) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_result_link_document(data: &[u8]) -> ::std::result::Result<ResultLink, Refusal>
+pub fn encode_work_observation_document(v: &WorkObservation) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_work_observation_document(data: &[u8]) -> ::std::result::Result<WorkObservation, Refusal>
+pub fn encode_inventory_page_document(v: &InventoryPage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_inventory_page_document(data: &[u8]) -> ::std::result::Result<InventoryPage, Refusal>
+pub fn encode_operator_cancellation_document(v: &OperatorCancellation) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_operator_cancellation_document(data: &[u8]) -> ::std::result::Result<OperatorCancellation, Refusal>
+pub mod internal
+  pub fn decode_request_identity_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::RequestIdentity, usize), super::Refusal>
+  pub fn check_request_identity(v: &super::RequestIdentity, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_request_identity_at(v: &super::RequestIdentity, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_submission_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Submission, usize), super::Refusal>
+  pub fn check_submission(v: &super::Submission, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_submission_at(v: &super::Submission, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_receipt_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Receipt, usize), super::Refusal>
+  pub fn check_receipt(v: &super::Receipt, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_receipt_at(v: &super::Receipt, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_acceptance_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AcceptanceResult, usize), super::Refusal>
+  pub fn check_acceptance_result(v: &super::AcceptanceResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_acceptance_result_at(v: &super::AcceptanceResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_history_window_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::HistoryWindow, usize), super::Refusal>
+  pub fn check_history_window(v: &super::HistoryWindow, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_history_window_at(v: &super::HistoryWindow, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_cancellation_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::CancellationResult, usize), super::Refusal>
+  pub fn check_cancellation_result(v: &super::CancellationResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_cancellation_result_at(v: &super::CancellationResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_work_progress_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::WorkProgress, usize), super::Refusal>
+  pub fn check_work_progress(v: &super::WorkProgress, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_work_progress_at(v: &super::WorkProgress, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_work_failure_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::WorkFailure, usize), super::Refusal>
+  pub fn check_work_failure(v: &super::WorkFailure, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_work_failure_at(v: &super::WorkFailure, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_operation_snapshot_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::OperationSnapshot, usize), super::Refusal>
+  pub fn check_operation_snapshot(v: &super::OperationSnapshot, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_operation_snapshot_at(v: &super::OperationSnapshot, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_observation_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ObservationResult, usize), super::Refusal>
+  pub fn check_observation_result(v: &super::ObservationResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_observation_result_at(v: &super::ObservationResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_result_chunk_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ResultChunk, usize), super::Refusal>
+  pub fn check_result_chunk(v: &super::ResultChunk, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_result_chunk_at(v: &super::ResultChunk, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_result_read_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ResultRead, usize), super::Refusal>
+  pub fn check_result_read(v: &super::ResultRead, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_result_read_at(v: &super::ResultRead, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_result_link_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ResultLink, usize), super::Refusal>
+  pub fn check_result_link(v: &super::ResultLink, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_result_link_at(v: &super::ResultLink, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_work_observation_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::WorkObservation, usize), super::Refusal>
+  pub fn check_work_observation(v: &super::WorkObservation, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_work_observation_at(v: &super::WorkObservation, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_inventory_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::InventoryPage, usize), super::Refusal>
+  pub fn check_inventory_page(v: &super::InventoryPage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_inventory_page_at(v: &super::InventoryPage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_operator_cancellation_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::OperatorCancellation, usize), super::Refusal>
+  pub fn check_operator_cancellation(v: &super::OperatorCancellation, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_operator_cancellation_at(v: &super::OperatorCancellation, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>

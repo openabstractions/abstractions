@@ -30,13 +30,19 @@ func (a *runtimeAsks) notificationPolicy(ctx context.Context, peer *identity.Pee
 	}
 	var decision *rightsclient.DecisionError
 	if errors.As(err, &decision) {
-		switch decision.Outcome {
-		case rwire.DecisionOutcomeDenied.String():
+		outcome := decision.DecisionOutcome()
+		switch {
+		case outcome == rwire.DecisionOutcomeDenied:
 			return asks.ErrNotificationSuppressed
-		case rwire.DecisionOutcomeNotGranted.String(), rwire.DecisionOutcomeForbidden.String():
+		case outcome == rwire.DecisionOutcomeForbidden:
+			// This capability exposes its peer-boundary refusal directly.
+			return err
+		case rightsclient.Evaluated(outcome) && outcome != rwire.DecisionOutcomeUnknownAction:
 			return err
 		}
 	}
+	// An evaluated unknown action leaves the notification operation unregistered;
+	// this capability keeps its existing unavailable mapping.
 	return errors.Join(asksservice.ErrAskPolicyUnavailable, err)
 }
 

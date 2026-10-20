@@ -25,12 +25,12 @@ func buildInventoryd(t *testing.T) string {
 
 func startInventoryd(t *testing.T, binary, endpoint string) {
 	t.Helper()
-	cmd := exec.Command(binary, providerFixtureArg, "inventory", endpoint, t.TempDir())
+	cmd := exec.Command(binary, providerFixtureArg, "inventory", mustProviderEndpoint(t, endpoint), t.TempDir())
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { cmd.Process.Kill(); cmd.Wait() })
-	eventually(t, 20*time.Second, "inventoryd listening on "+endpoint, func() bool { return answers(endpoint) })
+	eventually(t, 20*time.Second, "inventoryd listening on "+endpoint, func() bool { return answers(t, endpoint) })
 }
 
 // inventoryd reaches the runtime through a provider declaration: the runtime
@@ -134,8 +134,9 @@ func inventorySourcesOf(t *testing.T, options runtimeFlags) []inventorySource {
 	return out
 }
 
-// Stores belong to inventory sources only, and a source names at least one.
-func TestProviderStoresBelongToInventorySources(t *testing.T) {
+// An inventory source names at least one valid store; a store named without
+// the inventory-source contract is file-backed.
+func TestProviderStoresAreInventorySourcedOrFileBacked(t *testing.T) {
 	program := filepath.Join(t.TempDir(), "inventoryd")
 	source := providerDeclaration{Name: "local-stores", Program: program, Endpoint: "inventory", Transport: transportNative,
 		Contracts: []string{storageInventorySource}, Activation: "on_demand", Resources: []string{"store:ollama"}}
@@ -147,12 +148,18 @@ func TestProviderStoresBelongToInventorySources(t *testing.T) {
 		func(d *providerDeclaration) { d.Resources = []string{"profile:chat"} },
 		func(d *providerDeclaration) { d.Resources = []string{"store:Ollama"} },
 		func(d *providerDeclaration) { d.Resources = []string{"store:ollama", "store:ollama"} },
-		func(d *providerDeclaration) { d.Contracts = []string{"abstraction.inference/chat@1"} },
 	} {
 		d := source
 		edit(&d)
 		if field := validProviderDeclaration(d); field != "resources" {
 			t.Fatalf("%+v: %q", d, field)
 		}
+	}
+	// A store a provider names without the inventory-source contract is
+	// file-backed: its installed.json is the store (provider_installed.go).
+	backed := source
+	backed.Contracts = []string{"abstraction.inference/chat@1"}
+	if field := validProviderDeclaration(backed); field != "" {
+		t.Fatalf("file-backed store: %q", field)
 	}
 }

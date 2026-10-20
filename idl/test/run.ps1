@@ -3,7 +3,9 @@
 #   powershell -File test/run.ps1 -Scratch <dir> [-Definition <file>] [-Reference <file>]
 #
 # Needs go. Every other toolchain is optional and a missing one is reported
-# UNPROVEN, never skipped. Writes only under <Scratch>.
+# UNPROVEN, never skipped. Writes only under <Scratch>. Exits 1 when a record
+# differs, a language disagrees or a reference is not reproduced;
+# idl/gen TestJobRecordReferences makes the same comparisons in go test.
 
 param(
   [Parameter(Mandatory = $true)][string]$Scratch,
@@ -35,6 +37,7 @@ foreach ($d in "gocache", "gomodcache", "gotmp", "cargo") {
 }
 
 $script:results = @()
+$script:failed = $false
 
 function Bytes($p) { [System.IO.File]::ReadAllBytes($p) }
 
@@ -122,7 +125,7 @@ function CompareRefusals($ran, $res) {
   $rows = @{}
   foreach ($n in $ran) {
     $p = "$res\$n-corpus.txt"
-    if (-not (Test-Path $p)) { Write-Host ("{0,-4} corpus: NOT PRODUCED" -f $n); return }
+    if (-not (Test-Path $p)) { Write-Host ("{0,-4} corpus: NOT PRODUCED" -f $n); $script:failed = $true; return }
     $rows[$n] = Get-Content $p
   }
   $wrong = 0
@@ -130,6 +133,7 @@ function CompareRefusals($ran, $res) {
     $p = $line -split "`t"
     if ($expected[$p[0]] -ne $p[1]) {
       Write-Host ("  {0}: expected {1}, {2} said {3}" -f $p[0], $expected[$p[0]], $first, $p[1])
+      $script:failed = $true
       $wrong++
     }
   }
@@ -137,6 +141,7 @@ function CompareRefusals($ran, $res) {
   foreach ($n in $ran) {
     if (Compare-Object $rows[$first] $rows[$n]) {
       Write-Host ("  {0,-4} DISAGREES with {1}" -f $n, $first)
+      $script:failed = $true
       Compare-Object $rows[$first] $rows[$n] | ForEach-Object { Write-Host ("      " + $_.InputObject) }
       $disagreed++
     }
@@ -154,8 +159,8 @@ function CompareRoundTrip($ran, $res, $record) {
   foreach ($n in $ran) {
     $a = "$res\$n-$record.json"
     $b = "$res\$n-rt-$record.json"
-    if (-not (Test-Path $b)) { Write-Host ("  {0,-4} {1}: NO ROUND TRIP" -f $n, $record); continue }
-    $verdict = if (Same (Bytes $a) (Bytes $b)) { "identical" } else { "DIFFERS" }
+    if (-not (Test-Path $b)) { Write-Host ("  {0,-4} {1}: NO ROUND TRIP" -f $n, $record); $script:failed = $true; continue }
+    $verdict = if (Same (Bytes $a) (Bytes $b)) { "identical" } else { $script:failed = $true; "DIFFERS" }
     Write-Host ("  {0,-4} decode then encode  {1}" -f $n, $verdict)
   }
 }
@@ -165,11 +170,11 @@ function CompareAll($ran, $res, $record) {
   foreach ($n in $ran) {
     $p = "$res\$n-$record.json"
     if (Test-Path $p) { $data[$n] = Bytes $p }
-    else { Write-Host ("{0,-8} {1}: NOT PRODUCED" -f $n, $record); return $null }
+    else { Write-Host ("{0,-8} {1}: NOT PRODUCED" -f $n, $record); $script:failed = $true; return $null }
   }
   $first = $ran[0]
   foreach ($n in $ran) {
-    $verdict = if (Same $data[$first] $data[$n]) { "identical" } else { "DIFFERS" }
+    $verdict = if (Same $data[$first] $data[$n]) { "identical" } else { $script:failed = $true; "DIFFERS" }
     Write-Host ("  {0,-4} {1,6} bytes  {2}" -f $n, $data[$n].Length, $verdict)
   }
   return $data[$first]
@@ -203,7 +208,7 @@ foreach ($pair in @(@($Reference, $rng), @($Terminal, $trm))) {
   $ref, $got = $pair
   if (-not (Test-Path $ref)) { Write-Host "reference: UNPROVEN, $ref is not on this machine"; continue }
   if ($null -ne $got -and (Same (Bytes $ref) $got)) { Write-Host "reference: reproduces $ref byte for byte" }
-  else { Write-Host "reference: DIFFERS from $ref" }
+  else { Write-Host "reference: DIFFERS from $ref"; $script:failed = $true }
 }
 
 Write-Host ""
@@ -222,3 +227,4 @@ if ($null -ne $awk -and $null -ne $awk2) {
 }
 
 foreach ($r in $script:results) { Write-Host $r }
+if ($script:failed) { exit 1 }

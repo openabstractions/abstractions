@@ -1,3 +1,17 @@
+const IPC_CANCELLED
+const IPC_CLIENT_MAX_FRAME
+const IPC_DEFAULT_CALL_BUDGET_MS
+const IPC_DEFAULT_MAX_FRAME
+const IPC_DISCONNECTED
+const IPC_INTERNAL_ERROR
+const IPC_INVALID_ARGUMENT
+const IPC_IO_ERROR
+const IPC_NO_MEMORY
+const IPC_OK
+const IPC_PROOF_UNAVAILABLE
+const IPC_TIMEOUT
+const IPC_UNTRUSTED
+const IPC_WIRE_MAX_FRAME
 const NATIVE_BINDING_TYPES
 const NATIVE_OPERATIONS
 enum Proof
@@ -25,3 +39,5 @@ class Refusal(ValueError)
   __init__(word, offset)
 def decode(data)
 def encode(v)
+def from_json(kind, data)
+def to_json(value)

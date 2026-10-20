@@ -14,6 +14,7 @@ import (
 	"slices"
 
 	cas "github.com/openabstractions/abstraction-cas/go"
+	"github.com/openabstractions/abstraction-identity/fileid"
 	jobapi "github.com/openabstractions/abstraction-job/go/abstraction/job/acceptance"
 )
 
@@ -50,6 +51,10 @@ type ModelState struct {
 	ProviderConfigured  bool                   `json:"provider_configured"`
 	ProviderConfiguring bool                   `json:"provider_configuring"`
 	ProviderFailure     string                 `json:"provider_failure,omitempty"`
+	// DefaultWritten records that Setup made this starter model the
+	// account's picture default once (StarterDefaultPending); a later
+	// choice of the person's stays as they set it.
+	DefaultWritten bool `json:"default_written,omitempty"`
 }
 
 type ModelAssetStatus struct {
@@ -79,6 +84,8 @@ type ModelDiskStatus struct {
 }
 
 type ModelController struct {
+	// LocalResults requires local hard-link publication and refuses remote copies.
+	LocalResults bool
 	JournalPath  string
 	StageDir     string
 	ProviderRoot string
@@ -86,9 +93,14 @@ type ModelController struct {
 	Stage        ModelStager
 	Probe        ModelProbe
 	FreeBytes    func(string) (uint64, error)
-	// Selected must read the public program-scoped selection policy and
-	// confirm this exact model is selected for the target application.
+	// Selected optionally reads the public program-scoped selection policy and
+	// confirms this exact model is selected for the target application. A nil
+	// observer reports persisted engine preparation readiness.
 	Selected func(context.Context) (bool, error)
+	// Refresh optionally brings the engine's registration up to the models
+	// already prepared, when Selected reads it as behind them; Configure
+	// runs it for a prepared model and then reads Selected again.
+	Refresh func(context.Context) error
 	// Plan is an offered picture model's plan (PictureModelChoices); nil is
 	// the starter plan (ApprovedBF16Plan). An offered plan is staged into the
 	// configured provider through StageModel, and its assets whose SHA-256 a
@@ -96,6 +108,10 @@ type ModelController struct {
 	Plan         *ModelPlan
 	StagedModels func(context.Context) ([]string, error)
 	StageModel   func(ctx context.Context, root, model string, files map[string]string, progress func(int64, int64) error) error
+	// OperationLock is the record whose native lock serializes provider
+	// operations; empty is the journal's own. The PyTorch engine's picture
+	// models share one, since each configures the one provider.
+	OperationLock string
 	// Guard revalidates the fixed engine's current approved package and
 	// ownership before each action, including recovery and transfer retries.
 	Guard func(context.Context) error
@@ -254,6 +270,9 @@ func (c ModelController) Status(ctx context.Context) (ModelStatus, error) {
 		}
 		status.Assets = append(status.Assets, row)
 	}
+	// Successful guarded staging/reconciliation publishes preparation. An
+	// explicit observer retains its caller-specific false/error/success result.
+	status.Ready = state.ProviderConfigured && c.Selected == nil
 	if state.ProviderConfigured && c.Selected != nil {
 		selected, err := c.Selected(ctx)
 		if err != nil {
@@ -268,6 +287,64 @@ func (c ModelController) Status(ctx context.Context) (ModelStatus, error) {
 // The public request identity is saved before submission.
 func (c ModelController) Advance(ctx context.Context, assetID string) (ModelStatus, error) {
 	return c.AdvanceWithProgress(ctx, assetID, nil)
+}
+
+// StartAccepted records consent and obtains public acceptance before success.
+// An uncertain reply retains Requested and its original identity for reopening.
+// It does no result staging, so repeated Start does not rehash a finished model.
+func (c ModelController) StartAccepted(ctx context.Context, approval ModelApproval) (ModelStatus, error) {
+	if err := c.guard(ctx); err != nil {
+		return ModelStatus{}, err
+	}
+	plan := c.plan()
+	if approval.PlanID != plan.ID || approval.DownloadBytes != plan.DownloadBytes || approval.PeakBytes != plan.PeakBytes || !slices.Equal(approval.Licenses, plan.Licenses) {
+		return ModelStatus{}, errors.New("model approval differs from the reviewed plan")
+	}
+	state, err := c.load(ctx)
+	if err != nil {
+		return ModelStatus{}, err
+	}
+	// Saved public work reconciles its existing bytes. Only an unreserved
+	// acquisition needs the full fresh-download disk budget again.
+	fresh := !state.Approved
+	for _, effect := range state.Effects {
+		fresh = fresh || effect.Phase == Pending
+	}
+	if fresh {
+		if _, err := c.Start(ctx, approval); err != nil {
+			return c.statusWithError(ctx, err)
+		}
+		state, err = c.load(ctx)
+		if err != nil {
+			return ModelStatus{}, err
+		}
+	}
+	for _, a := range c.plan().Assets {
+		effect := state.Effects[a.ID]
+		if effect.Phase == Pending {
+			sum := sha256.Sum256([]byte(state.PlanID + "\x00" + a.ID))
+			work, err := c.transfer().Reserve(ctx, a.Download, "model-"+hex.EncodeToString(sum[:16]))
+			if err != nil {
+				return c.statusWithError(ctx, err)
+			}
+			next := ModelEffect{Phase: Requested, Work: &work}
+			if err := c.change(ctx, a.ID, effect, next); err != nil {
+				return c.statusWithError(ctx, err)
+			}
+			effect = next
+		}
+		if effect.Phase == Requested {
+			if effect.Work == nil {
+				return c.statusWithError(ctx, errors.New("requested model transfer has no saved identity"))
+			}
+			if err := c.transfer().Submit(ctx, a.Download, *effect.Work); err != nil {
+				return c.statusWithError(ctx, err)
+			}
+		} else if effect.Phase != Verified {
+			return c.statusWithError(ctx, errors.New("download needs an explicit retry after its terminal failure"))
+		}
+	}
+	return c.Status(ctx)
 }
 
 // AdvanceWithProgress reports local transfer-result staging progress. The
@@ -313,7 +390,7 @@ func (c ModelController) AdvanceWithProgress(ctx context.Context, assetID string
 			return c.statusWithError(ctx, err)
 		}
 		switch observation.State {
-		case "complete":
+		case jobapi.WorkStateComplete.String():
 			path, err := c.stage(ctx, a, *effect.Work, progress)
 			if err != nil {
 				return ModelStatus{}, err
@@ -321,7 +398,7 @@ func (c ModelController) AdvanceWithProgress(ctx context.Context, assetID string
 			if err := c.change(ctx, assetID, effect, ModelEffect{Phase: Verified, Work: effect.Work, StagedPath: path}); err != nil {
 				return ModelStatus{}, err
 			}
-		case "failed", "cancelled":
+		case jobapi.WorkStateFailed.String(), jobapi.WorkStateCancelled.String():
 			if err := c.change(ctx, assetID, effect, ModelEffect{Phase: Failed, Work: effect.Work, Reason: observation.Failure}); err != nil {
 				return ModelStatus{}, err
 			}
@@ -365,6 +442,14 @@ func (c ModelController) Configure(ctx context.Context, replace bool, progress f
 				if err != nil {
 					return err
 				}
+				if !ready && c.Refresh != nil {
+					if err := c.Refresh(ctx); err != nil {
+						return err
+					}
+					if ready, err = c.Selected(ctx); err != nil {
+						return err
+					}
+				}
 				if !ready {
 					return errors.New("the configured provider no longer matches the approved engine; inspect its registration before recovery")
 				}
@@ -372,10 +457,28 @@ func (c ModelController) Configure(ctx context.Context, replace bool, progress f
 			return nil
 		}
 		if state.ProviderConfiguring {
-			return c.reconcileProviderLocked(ctx)
+			// This call holds the provider operation lock, so the
+			// operation that set the marker has ended: a crash, a closed
+			// page or a lost reply. A finished preparation is recorded;
+			// otherwise the marker is cleared and the step runs again.
+			if state, err = c.resumeStaleConfiguring(ctx); err != nil || state.ProviderConfigured {
+				return err
+			}
 		}
 		if c.Plan != nil {
 			return c.configureChoice(ctx, state, progress)
+		}
+		if !stagedFilesPresent(state) && c.Probe != nil {
+			// The provider moved the downloads into its models folder at
+			// the first preparation, and an engine update cleared the
+			// record (clearConfigured): the provider's own deep check
+			// decides whether it still holds the verified setup.
+			if ready, err := c.Probe(ctx, c.ProviderRoot); err == nil && ready {
+				if err := c.setConfiguring(ctx, true); err != nil {
+					return err
+				}
+				return c.setConfigured(ctx)
+			}
 		}
 		files := BF16StageFiles{}
 		for _, a := range ApprovedBF16Plan().Assets {
@@ -384,7 +487,7 @@ func (c ModelController) Configure(ctx context.Context, replace bool, progress f
 				return errors.New("all four image assets must be verified first")
 			}
 			switch a.ID {
-			case "backend":
+			case pictureBackendAssetID:
 				files.BackendArchive = e.StagedPath
 			case "main":
 				files.Main = e.StagedPath
@@ -453,13 +556,53 @@ func (c ModelController) reconcileProviderLocked(ctx context.Context) error {
 	return c.setConfigureFailure(ctx, errors.New("private model preparation was not completed"))
 }
 
+// resumeStaleConfiguring resolves a configuring marker left by an ended
+// operation; the caller holds the provider operation lock. The exact probe
+// records a finished preparation. An unfinished one is cleared so Configure
+// runs its idempotent staging again from the verified files. A plan's own
+// engine staging rewrites a partial result; the shared BF16 provider keeps
+// a probe error, which the explicit replace path resolves.
+func (c ModelController) resumeStaleConfiguring(ctx context.Context) (ModelState, error) {
+	if c.Probe == nil {
+		return ModelState{}, errors.New("provider model probe is unavailable")
+	}
+	ready, err := c.Probe(ctx, c.ProviderRoot)
+	if err != nil && c.Plan == nil {
+		return ModelState{}, err
+	}
+	if err == nil && ready {
+		if err := c.setConfigured(ctx); err != nil {
+			return ModelState{}, err
+		}
+		return c.load(ctx)
+	}
+	if err := cas.ChangeLimitContext(ctx, c.JournalPath, maxJournalBytes, func(raw []byte) ([]byte, error) {
+		state, err := c.decode(raw)
+		if err != nil {
+			return nil, err
+		}
+		if !state.ProviderConfiguring || state.ProviderConfigured {
+			return nil, errors.New("provider staging state changed")
+		}
+		state.ProviderConfiguring = false
+		return json.Marshal(state)
+	}); err != nil {
+		return ModelState{}, err
+	}
+	return c.load(ctx)
+}
+
 // A separate CAS record holds the native cross-process lock throughout the
 // private staging or exact probe. Journal status reads remain responsive.
 func (c ModelController) withProviderOperation(ctx context.Context, operation func() error) error {
 	if c.JournalPath == "" {
 		return errors.New("model journal path is empty")
 	}
-	return cas.ChangeLimitContext(ctx, c.JournalPath+".provider-op", 64, func([]byte) ([]byte, error) {
+	lock := c.OperationLock
+	if lock == "" {
+		lock = c.JournalPath + ".provider-op"
+	}
+	return cas.ChangeLimitContext(ctx, lock, 64, func([]byte) ([]byte, error) {
 		if err := operation(); err != nil {
 			return nil, err
 		}
@@ -623,6 +766,42 @@ func (c ModelController) setConfigureFailure(ctx context.Context, cause error) e
 	})
 }
 
+// stagedFilesPresent reports whether every verified download of state is
+// still at its staged path.
+func stagedFilesPresent(state ModelState) bool {
+	for _, effect := range state.Effects {
+		if effect.Shared {
+			continue
+		}
+		if effect.Phase != Verified || effect.StagedPath == "" {
+			return false
+		}
+		if _, err := os.Lstat(effect.StagedPath); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// clearConfigured takes back the record that the provider holds the
+// prepared model, after a change to the provider, such as another engine
+// version's activation, that the record predates. The next Configure checks
+// the provider again; a journal with no preparation is left as it is.
+func (c ModelController) clearConfigured(ctx context.Context) error {
+	state, err := c.load(ctx)
+	if err != nil || !state.ProviderConfigured {
+		return err
+	}
+	return cas.ChangeLimitContext(ctx, c.JournalPath, maxJournalBytes, func(raw []byte) ([]byte, error) {
+		state, err := c.decode(raw)
+		if err != nil {
+			return nil, err
+		}
+		state.ProviderConfigured = false
+		return json.Marshal(state)
+	})
+}
+
 func (c ModelController) setConfigured(ctx context.Context) error {
 	return cas.ChangeLimitContext(ctx, c.JournalPath, maxJournalBytes, func(raw []byte) ([]byte, error) {
 		state, err := c.decode(raw)
@@ -639,15 +818,17 @@ func (c ModelController) setConfigured(ctx context.Context) error {
 }
 
 func (c ModelController) modelStagePath(a ModelAsset) string {
-	if c.plan().Engine == PyTorch {
-		return filepath.Join(c.StageDir, filepath.FromSlash(a.Path))
-	}
-	return filepath.Join(c.StageDir, a.Download.SHA256+filepath.Ext(a.Path))
+	return c.plan().stagePath(c.StageDir, a)
 }
 
 func (c ModelController) stage(ctx context.Context, a ModelAsset, work WorkIdentity, progress func(int64, int64) error) (string, error) {
 	if c.StageDir == "" {
 		return "", errors.New("model stage directory is empty")
+	}
+	if home, err := CurrentHome(); err == nil {
+		if err := markNoBackupClass(home, c.StageDir); err != nil {
+			return "", err
+		}
 	}
 	if err := os.MkdirAll(c.StageDir, 0700); err != nil {
 		return "", err
@@ -658,9 +839,8 @@ func (c ModelController) stage(ctx context.Context, a ModelAsset, work WorkIdent
 	}
 	if err := checkModelStage(ctx, target, a.Download); err == nil {
 		return target, nil
-	} else if _, statErr := os.Lstat(target); statErr == nil {
-		// A name that does not verify is this folder's own leftover.
-		if err := os.Remove(target); err != nil {
+	} else if !errors.Is(err, os.ErrNotExist) {
+		if err := removeMismatchedModelStage(ctx, target, err); err != nil {
 			return "", err
 		}
 	}
@@ -678,9 +858,10 @@ func (c ModelController) stage(ctx context.Context, a ModelAsset, work WorkIdent
 	switch outcome {
 	case jobapi.LinkOutcomeLinked:
 		if err := checkModelStage(ctx, target, a.Download); err != nil {
-			//unchecked: the refusal is primary; this removes only Setup's own name
-			_ = os.Remove(target)
-			return "", fmt.Errorf("model asset %s differs from reviewed size or digest", a.ID)
+			if cleanupErr := removeMismatchedModelStage(ctx, target, err); cleanupErr != nil {
+				return "", cleanupErr
+			}
+			return "", err
 		}
 		if progress != nil {
 			if err := progress(a.Download.Bytes, a.Download.Bytes); err != nil {
@@ -689,6 +870,9 @@ func (c ModelController) stage(ctx context.Context, a ModelAsset, work WorkIdent
 		}
 		return target, nil
 	case jobapi.LinkOutcomeRemote:
+		if c.LocalResults {
+			return "", errors.New("coding model requires a local linked model file; no copy was made")
+		}
 		// A remote download service keeps streaming (bindings never cross
 		// machines).
 	case jobapi.LinkOutcomeOtherVolume:
@@ -723,8 +907,12 @@ func (c ModelController) stage(ctx context.Context, a ModelAsset, work WorkIdent
 		return "", err
 	}
 	if err := os.Link(partial.Name(), target); err != nil {
-		if checkModelStage(ctx, target, a.Download) == nil {
+		if checkErr := checkModelStage(ctx, target, a.Download); checkErr == nil {
 			return target, nil
+		} else if !errors.Is(checkErr, os.ErrNotExist) {
+			// A racing existing target is not this call's publication.
+			// Preserve it and the verification failure, including cancellation.
+			return "", checkErr
 		}
 		return "", err
 	}
@@ -752,18 +940,57 @@ func (w *modelProgressWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
+// modelStageMismatch distinguishes proven content failure from an interrupted
+// or unavailable read. Its file identity limits cleanup to the checked name.
+type modelStageMismatch struct {
+	reason string
+	file   os.FileInfo
+	id     fileid.FileID
+}
+
+func (e *modelStageMismatch) Error() string { return e.reason }
+
+// removeMismatchedModelStage applies the same cleanup rule before acquisition
+// and after a locally linked result. Uncertainty preserves the name and error.
+func removeMismatchedModelStage(ctx context.Context, target string, failure error) error {
+	var mismatch *modelStageMismatch
+	if !errors.As(failure, &mismatch) {
+		return failure
+	}
+	current, statErr := os.Lstat(target)
+	if errors.Is(statErr, os.ErrNotExist) {
+		return nil
+	}
+	held, identityErr := fileid.Open(ctx, fileid.Self, target, fileid.Options{Links: fileid.RefuseLinks})
+	if identityErr == nil {
+		defer held.Close()
+	}
+	if statErr != nil || identityErr != nil || !current.Mode().IsRegular() || !mismatch.id.Equal(held.FileID()) ||
+		current.Size() != mismatch.file.Size() || !current.ModTime().Equal(mismatch.file.ModTime()) {
+		return failure
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return os.Remove(target)
+}
+
 func checkModelStage(ctx context.Context, path string, pin PinnedDownload) error {
-	f, err := os.Open(path)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	held, err := fileid.Open(ctx, fileid.Self, path, fileid.Options{Read: true})
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer held.Close()
+	f := held.File()
 	info, err := f.Stat()
 	if err != nil {
 		return err
 	}
 	if info.Size() != pin.Bytes {
-		return errors.New("model stage has wrong size")
+		return &modelStageMismatch{reason: "model stage has wrong size", file: info, id: held.FileID()}
 	}
 	h := sha256.New()
 	buf := make([]byte, 1<<20)
@@ -783,7 +1010,7 @@ func checkModelStage(ctx context.Context, path string, pin PinnedDownload) error
 		}
 	}
 	if hex.EncodeToString(h.Sum(nil)) != pin.SHA256 {
-		return errors.New("model stage digest differs from pin")
+		return &modelStageMismatch{reason: "model stage digest differs from pin", file: info, id: held.FileID()}
 	}
 	return nil
 }

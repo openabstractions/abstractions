@@ -9,6 +9,9 @@ import (
 
 func includeImports(b backend, s *Definition) []string {
 	out := append([]string(nil), b.imports...)
+	if b.lang == "go" && goMicrosTimestamps(serviceTypes(s, !s.SuppressIntrinsicEndpoint)) {
+		out = append(out, strconv.Quote("time"))
+	}
 	for _, imp := range s.Imports {
 		switch b.lang {
 		case "go":
@@ -24,6 +27,35 @@ func includeImports(b backend, s *Definition) []string {
 	return out
 }
 func importPrelude(s *Definition, lang string) string {
+	return enumImportPrelude(s, lang) + recordImportPrelude(s, lang)
+}
+func enumImportPrelude(s *Definition, lang string) string {
+	var b strings.Builder
+	for _, n := range foreignEnumNames(s) {
+		imp := s.ForeignEnums[n]
+		switch lang {
+		case "go":
+			fmt.Fprintf(&b, "type %s = %s.%s\n", goName(n), dependencyAlias(imp.Alias), goName(imp.Name))
+			fmt.Fprintf(&b, "func %sValues() []%s { return %s.%sValues() }\n", goName(n), goName(n), dependencyAlias(imp.Alias), goName(imp.Name))
+			if imp.Def.Enum(imp.Name).Ann["unknown"] == "refuse" {
+				fmt.Fprintf(&b, "func Parse%s(word string)(%s,bool){return %s.Parse%s(word)}\n", goName(n), goName(n), dependencyAlias(imp.Alias), goName(imp.Name))
+			}
+		case "cpp":
+			if imp.Def.Enum(imp.Name).Ann["unknown"] != "refuse" {
+				continue
+			}
+			ns := "::" + strings.ReplaceAll(namespaceFor(imp.Def.Namespaces, lang), ".", "::") + "::"
+			fmt.Fprintf(&b, "using %s = %s%s;\n", upperCamelName(n), ns, upperCamelName(imp.Name))
+			if imp.Def.Enum(imp.Name).Ann["unknown"] == "refuse" {
+				fmt.Fprintf(&b, "inline auto parse_%s(std::string_view word){return %sparse_%s(word);}\n", snakeName(n), ns, snakeName(imp.Name))
+			}
+		case "python":
+			fmt.Fprintf(&b, "\n%s = %s.%s\n", pyClass(s, n), pyDependency(imp.Alias), pascalCase(imp.Name))
+		}
+	}
+	return b.String()
+}
+func recordImportPrelude(s *Definition, lang string) string {
 	var b strings.Builder
 	for _, n := range foreignNames(s) {
 		imp := s.Foreign[n]
@@ -38,33 +70,39 @@ func importPrelude(s *Definition, lang string) string {
 	}
 	return b.String()
 }
-func emitIncluded(b backend, s *Definition) string {
+func emitIncluded(b backend, s *Definition) (string, error) {
+	if err := validateObserveMethodRanges(s); err != nil {
+		return "", err
+	}
 	if len(s.Imports) == 0 && !s.NamedCodecs {
 		return b.emit(s)
 	}
 	if b.lang == "docs" {
-		body := b.emit(s)
+		body, err := b.emit(s)
+		if err != nil {
+			return "", err
+		}
 		var links strings.Builder
 		links.WriteString("<section><h2>Included definitions</h2><ul>")
 		for _, imp := range s.Imports {
 			fmt.Fprintf(&links, "<li>%s: <code>%s</code>; qualified record types retain the included definition's codec policy.</li>", imp.Alias, html.EscapeString(imp.Path))
 		}
 		links.WriteString("</ul></section>")
-		return strings.Replace(body, "</body>", links.String()+"</body>", 1)
+		return strings.Replace(body, "</body>", links.String()+"</body>", 1), nil
 	}
 	if b.lang == "javascript" {
 		return emitJSIncluded(b, s)
 	}
 	if b.lang == "rust" {
-		return emitRustIncluded(b, s)
+		return emitRustIncluded(b, s), nil
 	}
 	s = importCarriers(s)
-	body := b.emit(s)
-	var imports strings.Builder
-	used := map[string]bool{}
-	for _, n := range foreignNames(s) {
-		used[s.Foreign[n].Alias] = true
+	body, err := b.emit(s)
+	if err != nil {
+		return "", err
 	}
+	var imports strings.Builder
+	used := usedIncludes(s)
 	for _, imp := range s.Imports {
 		if !used[imp.Alias] {
 			continue
@@ -81,13 +119,8 @@ func emitIncluded(b backend, s *Definition) string {
 	switch b.lang {
 	case "go":
 		body = strings.Replace(body, "package rec\n", "package rec\n"+imports.String(), 1)
-		body = strings.Replace(body, "depth int\n}", "depth int\n limit int\n}", 1)
-		body = strings.ReplaceAll(body, "r.depth > depthLimit", "r.depth > r.depthLimit()")
-		body += "\nfunc(r *reader)depthLimit()int{if r.limit>0 && r.limit<depthLimit{return r.limit};return depthLimit}\n"
 	case "cpp":
 		body = imports.String() + body
-		body = strings.Replace(body, "int depth = 0;", "int depth = 0;\n int limit = kDepthLimit;", 1)
-		body = strings.ReplaceAll(body, "++depth > kDepthLimit", "++depth > limit")
 	case "python":
 		body = strings.Replace(body, "import enum\n", "import enum\n\n"+imports.String(), 1)
 		body = strings.Replace(body, `("buf", "pos", "depth")`, `("buf", "pos", "depth", "limit")`, 1)
@@ -105,7 +138,7 @@ func emitIncluded(b backend, s *Definition) string {
 			fmt.Fprintf(&tail, "\nfunc enc%s(out []byte,v *%s,depth int)(result []byte){defer func(){if p:=recover();p!=nil{if e,ok:=p.(*%s.Refusal);ok{panic(&Refusal{Word:e.Word,Offset:e.Offset})};panic(p)}}();return append(out,%s.Encode%sAt(v,depth)...)}\nfunc(r *reader)decode%s()(*%s,error){v,n,e:=%s.Decode%sAt(r.buf[r.pos:],r.depth,r.depthLimit());if x,ok:=e.(*%s.Refusal);ok{e=&Refusal{Word:x.Word,Offset:r.pos+x.Offset}};r.pos+=n;return v,e}\n", n, n, dependencyAlias(imp.Alias), dependencyAlias(imp.Alias), imp.Name, n, n, dependencyAlias(imp.Alias), imp.Name, dependencyAlias(imp.Alias))
 		case "cpp":
 			ns := "::" + strings.ReplaceAll(namespaceFor(imp.Def.Namespaces, b.lang), ".", "::") + "::"
-			fmt.Fprintf(&tail, "\nnamespace detail {\ninline void enc_%s(std::string& out,const %s& v,int depth){try{out += %sdetail::encode_%s_at(v,depth);}catch(const %sRefusal& e){throw Refusal(e.word,e.offset);}}\ninline %s decode_%s(Reader& r){try{std::size_t n=0;auto v=%sdetail::decode_%s_at(r.buf.substr(r.pos),r.depth,r.limit,n);r.pos+=n;return v;}catch(const %sRefusal& e){throw Refusal(e.word,r.pos+e.offset);}}\n}  // namespace detail\n", cppFn(n), n, ns, cppFn(imp.Name), ns, n, cppFn(n), ns, cppFn(imp.Name), ns)
+			fmt.Fprintf(&tail, "\nnamespace detail {\ninline void enc_%s(std::string& out,const %s& v,int depth){try{out += %sdetail::encode_%s_at(v,depth);}catch(const %sRefusal& e){throw Refusal(e.word,e.offset);}}\ninline %s decode_%s(Reader& r){try{std::size_t n=0;auto v=%sdetail::decode_%s_at(r.buf.substr(r.pos),r.depth,r.depth_limit(),n);r.pos+=n;return v;}catch(const %sRefusal& e){throw Refusal(e.word,r.pos+e.offset);}}\n}  // namespace detail\n", cppFn(n), n, ns, cppFn(imp.Name), ns, n, cppFn(n), ns, cppFn(imp.Name), ns)
 		case "python":
 			dep := pyDependency(imp.Alias)
 			fmt.Fprintf(&tail, "\n\ndef %s(out, v, depth):\n    try:\n        out += %s._encode_%s_at(v, depth)\n    except %s.Refusal as e:\n        raise Refusal(e.word, e.offset) from e\n\n\ndef %s(r):\n    try:\n        v, n = %s._decode_%s_at(r.buf[r.pos:], r.depth, r.limit)\n    except %s.Refusal as e:\n        raise Refusal(e.word, r.pos + e.offset) from e\n    r.pos += n\n    return v\n", pyWriter(n), dep, pyStem(imp.Name), dep, pyReader(n), dep, pyStem(imp.Name), dep)
@@ -124,15 +157,19 @@ func emitIncluded(b backend, s *Definition) string {
 		if len(s.Imports) > 0 && s.Document != "" {
 			fmt.Fprintf(&tail, "\ninline std::string encode(const %s& v){return encode_%s(v);}\n", s.Document, cppFn(s.Document))
 		}
-		return strings.Replace(body, "\n}  // namespace rec\n", tail.String()+"\n}  // namespace rec\n", 1)
+		return strings.Replace(body, "\n}  // namespace rec\n", tail.String()+"\n}  // namespace rec\n", 1), nil
 	}
 	if b.lang == "go" {
-		return goUnexportCarriers(body+tail.String(), s)
+		return goUnexportCarriers(body+tail.String(), s), nil
 	}
-	return body + tail.String()
+	return body + tail.String(), nil
 }
 func emitNamed(b *strings.Builder, s *Definition, st Struct, lang string) {
 	n := st.Name
+	ownerDepth := s.Encoding.DepthLimit
+	if st.CodecDepthLimit > 0 {
+		ownerDepth = st.CodecDepthLimit
+	}
 	l := lower(n)
 	if lang == "cpp" {
 		l = cppFn(n)
@@ -157,19 +194,19 @@ func emitNamed(b *strings.Builder, s *Definition, st Struct, lang string) {
 	case "go":
 		fmt.Fprintf(b, `
 func Decode%[1]sAt(in []byte,depth,limit int)(*%[1]s,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decode%[1]s();%[3]sreturn v,r.pos,e}
-func Encode%[1]sAt(v *%[1]s,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=enc%[1]s(nil,v,depth);if _,_,e:=Decode%[1]sAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func Encode%[1]sAt(v *%[1]s,depth int)[]byte{if depth<0||depth>=%[4]d{panic(&Refusal{Word:"depth_exceeded"})};out:=enc%[1]s(nil,v,depth);if _,_,e:=Decode%[1]sAt(out,depth,%[4]d);e!=nil{panic(e)};return out}
 func Encode%[1]s(v *%[1]s)[]byte{return append(Encode%[1]sAt(v,0),%[2]s...)}
-func Decode%[1]s(in []byte)(*%[1]s,error){v,n,e:=Decode%[1]sAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
-`, n, q, derive)
+func Decode%[1]s(in []byte)(*%[1]s,error){v,n,e:=Decode%[1]sAt(in,0,%[4]d);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+`, n, q, derive, ownerDepth)
 	case "cpp":
 		fmt.Fprintf(b, `
 namespace detail {
-inline %[1]s decode_%[2]s_at(std::string_view in,int depth,int limit,std::size_t& consumed){detail::Reader r{in};if(depth<0||limit<1)r.refuse("depth_exceeded");r.depth=depth;r.limit=limit<detail::kDepthLimit?limit:detail::kDepthLimit;r.skip_ws();auto v=detail::decode_%[2]s(r);%[4]sconsumed=r.pos;return v;}
-inline std::string encode_%[2]s_at(const %[1]s& v,int depth){detail::Reader r{""};if(depth<0||depth>=detail::kDepthLimit)r.refuse("depth_exceeded");std::string out;detail::enc_%[2]s(out,v,depth);std::size_t n=0;decode_%[2]s_at(out,depth,detail::kDepthLimit,n);return out;}
+inline %[1]s decode_%[2]s_at(std::string_view in,int depth,int limit,std::size_t& consumed){detail::Reader r{in};if(depth<0||limit<1)r.refuse("depth_exceeded");r.depth=depth;r.limit=limit<%[5]d?limit:%[5]d;r.skip_ws();auto v=detail::decode_%[2]s(r);%[4]sconsumed=r.pos;return v;}
+inline std::string encode_%[2]s_at(const %[1]s& v,int depth){detail::Reader r{""};if(depth<0||depth>=%[5]d)r.refuse("depth_exceeded");std::string out;detail::enc_%[2]s(out,v,depth);std::size_t n=0;decode_%[2]s_at(out,depth,%[5]d,n);return out;}
 }  // namespace detail
 inline std::string encode_%[2]s(const %[1]s& v){return detail::encode_%[2]s_at(v,0)+%[3]s;}
-inline %[1]s decode_%[2]s(std::string_view in){std::size_t n=0;auto v=detail::decode_%[2]s_at(in,0,detail::kDepthLimit,n);detail::Reader r{in};r.pos=n;r.skip_ws();if(r.pos!=in.size())r.refuse("trailing_bytes");return v;}
-`, n, l, q, derive)
+inline %[1]s decode_%[2]s(std::string_view in){std::size_t n=0;auto v=detail::decode_%[2]s_at(in,0,%[5]d,n);detail::Reader r{in};r.pos=n;r.skip_ws();if(r.pos!=in.size())r.refuse("trailing_bytes");return v;}
+`, n, l, q, derive, ownerDepth)
 	case "python":
 		fmt.Fprintf(b, `
 

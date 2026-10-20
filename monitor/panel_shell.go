@@ -10,8 +10,11 @@ import (
 	"net/url"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
+
+	"github.com/openabstractions/abstractions/mcp-gateway/product"
 )
 
 // panelCSSFS carries every stylesheet in static/: panel.css, the shared shell
@@ -155,7 +158,9 @@ type panelNavItem struct {
 	SF    string
 }
 
-// panelNavItems is the sidebar in order (SPEC §4). Explore keeps its page at
+// panelNavItems is the sidebar in order (SPEC §4; P-J1a, T13's page table:
+// Apps, Activity, Device and Permissions lead, Models sits in the second
+// group). Explore keeps its page at
 // /explore outside the navigation; Logging and Identity are sections of
 // Settings, and a navigation to /logging or /identity lands there
 // (research/adopter-boundary/AUDIT-2026-10-06.md, Panel pages). Labels
@@ -167,13 +172,14 @@ type panelNavItem struct {
 // EA18, History E81C, Devices E772, Cloud E753, Permissions (a key) E8D7,
 // Setting E713.
 var panelNavItems = []panelNavItem{
-	{ID: "setup", Label: "Get started", Path: "/setup", Group: "main", Icon: iconSetup, Segoe: "E7C1", SF: "sparkles"},
 	{ID: "status", Label: "Apps", Path: "/", Group: "main", Icon: iconStatus, Segoe: "E71D", SF: "square.grid.2x2"},
-	{ID: "inference", Label: "Models", Path: "/inference", Group: "main", Icon: iconInference, Segoe: "E99A", SF: "brain"},
-	{ID: "rights", Label: "Permissions", Path: "/rights", Group: "main", Icon: iconRights, Segoe: "EA18", SF: "hand.raised"},
 	{ID: "work", Label: "Activity", Path: "/work", Group: "main", Icon: iconWork, Segoe: "E81C", SF: "clock.arrow.circlepath"},
 	{ID: "card", Label: "Device", Path: "/card", Group: "main", Icon: iconCard, Segoe: "E772", SF: "memorychip"},
+	{ID: "rights", Label: "Permissions", Path: "/rights", Group: "main", Icon: iconRights, Segoe: "EA18", SF: "hand.raised"},
+	{ID: "setup", Label: "Catalog", Path: "/setup", Group: "main", Icon: iconSetup, Segoe: "E7C1", SF: "sparkles"},
+	{ID: "inference", Label: "Models", Path: "/inference", Group: "more", Icon: iconInference, Segoe: "E99A", SF: "brain"},
 	{ID: "registry", Label: "Providers", Path: "/registry", Group: "more", Icon: iconRegistry, Segoe: "E753", SF: "server.rack"},
+	{ID: "machines", Label: "Paired PCs", Path: "/machines", Group: "more", Icon: iconMachines, Segoe: "E977", SF: "desktopcomputer"},
 	{ID: "credentials", Label: "Credentials", Path: "/credentials-page", Group: "more", Icon: iconCredentials, Segoe: "E8D7", SF: "key"},
 	{ID: "settings", Label: "Settings", Path: "/settings", Group: "more", Icon: iconSettings, Segoe: "E713", SF: "gearshape"},
 }
@@ -262,25 +268,45 @@ const (
 	iconCard        = `<path d="M7 2v2H5v2H3v2h2v8H3v2h2v2h2v-2h10v2h2v-2h2v-2h-2V8h2V6h-2V4h-2V2h-2v2H9V2H7zm0 6h10v8H7V8z"/>`
 	iconInference   = `<path d="M4 4h16a1 1 0 011 1v11a1 1 0 01-1 1H9l-5 4V17a1 1 0 01-1-1V5a1 1 0 011-1z"/>`
 	iconRegistry    = `<path d="M12 2l10 6-10 6L2 8l10-6zm-8 9.2L12 16l8-4.8V16l-8 4.8L4 16z"/>`
+	iconMachines    = `<path d="M3 4h18a1 1 0 011 1v11a1 1 0 01-1 1h-7v2h3v2H7v-2h3v-2H3a1 1 0 01-1-1V5a1 1 0 011-1zm1 2v9h16V6H4z"/>`
 	iconCredentials = `<path d="M14 2a6 6 0 00-5.65 8.06L2 16.4V20a1 1 0 001 1h3.6l1.35-1.35H10v-2h2v-2h1.94A6 6 0 1014 2zm2 3a2 2 0 110 4 2 2 0 010-4z"/>`
 	iconRights      = `<path d="M12 2l8 3v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5l8-3z"/>`
 	iconSettings    = `<path d="M12 8a4 4 0 100 8 4 4 0 000-8zm9 4a7.4 7.4 0 01-.14 1.4l2.1 1.6-2 3.4-2.5-1a7.6 7.6 0 01-2.4 1.4L18 22H8.4l-.46-2.8a7.6 7.6 0 01-2.4-1.4l-2.5 1-2-3.4 2.1-1.6A7.4 7.4 0 013 12c0-.5.05-1 .14-1.4L1.14 9l2-3.4 2.5 1c.7-.6 1.5-1.05 2.4-1.4L8.4 2h7.2l.46 2.8c.9.35 1.7.8 2.4 1.4l2.5-1 2 3.4-2.1 1.6c.1.45.14.95.14 1.4z"/>`
 )
 
-// navSection is one section title the sidebar search finds: the section's
-// element id on its page and its heading text.
+// navSection is one section the sidebar search finds: the section's element
+// id on its page, its heading text, and the words its rows carry (row
+// labels, expander summaries and the section's search keywords), so a
+// search for a row such as "Fallback order" lands on its section.
 type navSection struct {
 	ID    string
 	Title string
+	Words string
 }
 
 var (
 	navSectionsOnce sync.Once
 	navSectionsByID map[string][]navSection
 	sectionHeading  = regexp.MustCompile(`(?s)<section id="([A-Za-z0-9_-]+)"([^>]*)>\s*<h2[^>]*>(.*?)</h2>`)
+	sectionRowText  = regexp.MustCompile(`(?s)<span class="oa-row-label">(.*?)</span>|<summary>(.*?)<span`)
 	markupTag       = regexp.MustCompile(`(?s)<[^>]*>`)
 	hiddenAttr      = regexp.MustCompile(`\bhidden\b`)
 )
+
+// navSectionKeywords names what a section holds when its rows are drawn by
+// the page's script, so a search for the plain word still finds it. Keys
+// are page id and section id.
+var navSectionKeywords = map[string]string{
+	"inference#selection-section": "router routing fallback default model",
+	"registry#hosts-section":      "budget spend spending cost tokens model server",
+	"work#account-work":           "job jobs download downloads queue",
+	"work#timeline":               "log history",
+	"settings#settings":           "folders locations disk space download",
+	"card#holders":                "GPU graphics memory VRAM",
+	"card#storage-section":        "storage cache disk space temporary files",
+	"card#awake-section":          "sleep wake awake",
+	"credentials#saved":           "key keys API token",
+}
 
 // navPageFragments names each navigation item's page fragment, read for
 // the search index's section titles.
@@ -291,21 +317,41 @@ func navPageFragments() map[string]string {
 	}
 }
 
-// navSections lists, per navigation item, the titles of the sections its
-// page shows on arrival (a section rendered hidden is skipped), in page
-// order. The search field filters these and the page labels together.
+// plainText reads markup as its visible words.
+func plainText(s string) string {
+	return strings.Join(strings.Fields(html.UnescapeString(markupTag.ReplaceAllString(s, " "))), " ")
+}
+
+// navSections lists, per navigation item, the sections its page shows on
+// arrival (a section rendered hidden is skipped), in page order. The search
+// field filters these and the page labels together.
 func navSections() map[string][]navSection {
 	navSectionsOnce.Do(func() {
 		navSectionsByID = map[string][]navSection{}
 		for id, fragment := range navPageFragments() {
-			for _, m := range sectionHeading.FindAllStringSubmatch(fragment, -1) {
-				if hiddenAttr.MatchString(m[2]) {
+			for _, at := range sectionHeading.FindAllStringSubmatchIndex(fragment, -1) {
+				if hiddenAttr.MatchString(fragment[at[4]:at[5]]) {
 					continue
 				}
-				title := strings.Join(strings.Fields(html.UnescapeString(markupTag.ReplaceAllString(m[3], " "))), " ")
-				if title != "" {
-					navSectionsByID[id] = append(navSectionsByID[id], navSection{ID: m[1], Title: title})
+				title := plainText(fragment[at[6]:at[7]])
+				if title == "" {
+					continue
 				}
+				body := fragment[at[1]:]
+				if end := strings.Index(body, "</section>"); end >= 0 {
+					body = body[:end]
+				}
+				words := []string{}
+				for _, m := range sectionRowText.FindAllStringSubmatch(body, -1) {
+					if w := plainText(m[1] + m[2]); w != "" && !slices.Contains(words, w) {
+						words = append(words, w)
+					}
+				}
+				sectionID := fragment[at[2]:at[3]]
+				if k := navSectionKeywords[id+"#"+sectionID]; k != "" {
+					words = append(words, k)
+				}
+				navSectionsByID[id] = append(navSectionsByID[id], navSection{ID: sectionID, Title: title, Words: strings.Join(words, " ")})
 			}
 		}
 	})
@@ -313,13 +359,18 @@ func navSections() map[string][]navSection {
 }
 
 // navSearchText is what one item's search matches: its label and its
-// section titles; navSearchScript compares them in any case.
+// sections' titles and words; navSearchScript compares them in any case.
 func navSearchText(item panelNavItem) string {
 	parts := []string{item.Label}
 	for _, section := range navSections()[item.ID] {
-		parts = append(parts, section.Title)
+		parts = append(parts, section.Search())
 	}
 	return strings.Join(parts, " ")
+}
+
+// Search is what one section's search hit matches.
+func (s navSection) Search() string {
+	return strings.TrimSpace(s.Title + " " + s.Words)
 }
 
 func panelNav(key, active string) string {
@@ -368,7 +419,7 @@ func panelNav(key, active string) string {
 	for _, entry := range panelNavItems {
 		for _, section := range navSections()[entry.ID] {
 			//unchecked: strings.Builder never errors
-			b.WriteString(`<a class="oa-nav-hit" href="` + html.EscapeString(keyed(entry.Path)+"#"+section.ID) + `" data-search="` + html.EscapeString(section.Title) + `" hidden>` +
+			b.WriteString(`<a class="oa-nav-hit" href="` + html.EscapeString(keyed(entry.Path)+"#"+section.ID) + `" data-search="` + html.EscapeString(section.Search()) + `" hidden>` +
 				html.EscapeString(section.Title) + `<span class="oa-nav-hit-page">` + html.EscapeString(entry.Label) + `</span></a>`)
 		}
 	}
@@ -588,15 +639,142 @@ func panelPage(r *http.Request, key, active, title, fragment string) string {
 	// take over. width=device-width makes the layout viewport track the
 	// window's real width, so that rule engages at the width it names.
 	skin := panelSkin(r)
-	return `<!doctype html><html lang="en" data-platform="` + panelPlatform(r) + `" data-skin="` + skin + `" data-shell="` + shell + `"` + accentStyle(skin) + `><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>` + html.EscapeString(title) + `</title><link rel="stylesheet" href="/static/panel.css">` + skinStylesheet(skin) + `</head><body><div class="oa-shell">` + nav + actionPlainScript + plainScript + `<main class="oa-content">` + fragment + pageHelpFloat(active) + `</main></div>` + readyScript + `</body></html>`
+	return `<!doctype html><html lang="en" data-platform="` + panelPlatform(r) + `" data-skin="` + skin + `" data-shell="` + shell + `"` + accentStyle(skin) + `><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>` + html.EscapeString(title) + `</title><link rel="stylesheet" href="/static/panel.css">` + skinStylesheet(skin) + panelRecordImports + `</head><body><div class="oa-shell">` + nav + actionPlainScript + panelProductTitleScript + "<script>" + panelRecordScript + "</script>" + plainScript + runtimeScript + `<main class="oa-content">` + withRuntimeBanner(fragment) + pageHelpFloat(active) + `</main></div>` + readyScript + `</body></html>`
 }
+
+// runtimeBanner is the page's one runtime-down sentence (owner, 2026-11-09:
+// "Show one runtime-down sentence per Panel page"). It is the Apps health
+// banner's shape: the first sentence as the row's label, the second as its
+// caption, and Check again as its one action, since the Panel has no way to
+// start the runtime. runtimeScript shows it while the runtime is down.
+const runtimeBanner = `<div id="oa-runtime" hidden><div class="oa-row"><div class="oa-row-text"><span class="oa-row-label" id="oa-runtime-label">OpenAbstractions is not running</span><span class="oa-row-caption" id="oa-runtime-caption">Open OpenAbstractions from the Start menu, then check again</span></div>` +
+	`<div class="oa-row-control"><button id="oa-runtime-retry">Check again</button></div>` +
+	`<p class="oa-status" id="oa-runtime-status" role="status" aria-live="polite" data-state="idle"></p></div></div>`
+
+// runtimeEcho marks element, a read-status line or row that holds nothing
+// but its read's outcome, whose failure sentence only repeats the
+// runtime-down banner ("The list of apps is unavailable right now."):
+// panel.css hides it while the root carries data-runtime="down", so the
+// banner is the page's one sentence (owner, 2026-11-09). A line that also
+// carries action results or verdicts writes through oaRuntimeEcho instead.
+// The attribute goes on element's first tag.
+func runtimeEcho(element string) string {
+	end := strings.IndexAny(element, " >")
+	if !strings.HasPrefix(element, "<") || end < 0 {
+		return element
+	}
+	return element[:end] + " data-runtime-echo" + element[end:]
+}
+
+// runtimeGroup marks a whole oaGroup read from the runtime, which then
+// holds nothing while the runtime is down: panel.css hides it under
+// data-runtime="down", so the page shows no heading over an emptied list
+// (R19b render check, 2026-11-09). The mark follows the section's id, which
+// help.go's sectionBlock finds first.
+func runtimeGroup(group string) string {
+	return strings.Replace(group, ` class="oa-group"`, ` data-runtime-echo class="oa-group"`, 1)
+}
+
+// withRuntimeBanner places runtimeBanner directly under the page head, or at
+// the top of a fragment that has none.
+func withRuntimeBanner(fragment string) string {
+	const open, closing = `<header class="oa-pagehead"`, `</header>`
+	if head := strings.Index(fragment, open); head >= 0 {
+		if end := strings.Index(fragment[head:], closing); end >= 0 {
+			at := head + end + len(closing)
+			return fragment[:at] + runtimeBanner + fragment[at:]
+		}
+	}
+	return runtimeBanner + fragment
+}
+
+// runtimeScript owns the page's runtime-down state, so a stopped runtime
+// reads as one sentence per page instead of one per section (owner,
+// 2026-11-09). It reads /runtime on arrival; a section read that fails with
+// runtime_unavailable (oaShowError, oaSetStatus in plainScript) stays empty
+// and asks for a check instead of writing the sentence again. While the
+// runtime is down the root carries data-runtime="down", the banner is shown,
+// and /runtime is read every five seconds while the page is visible. Every
+// other failure still reads as itself in its section. When the runtime
+// answers again the banner goes and each reread the page registered with
+// oaOnRuntimeBack runs; a page that emptied a section and registered none is
+// reloaded. A check that finds the runtime running while a section stands
+// emptied runs the rereads once and never reloads. oaReady and
+// readyScript wait for the arrival check, so a screenshot shows the banner.
+const runtimeScript = `<script>
+var oaRuntimeState={down:false,checking:null,timer:null,back:[],quiet:0,first:null};
+function oaRuntimeIsDown(){return oaRuntimeState.down}
+function oaOnRuntimeBack(fn){if(typeof fn==='function')oaRuntimeState.back.push(fn)}
+function oaRuntimeQuieted(){oaRuntimeState.quiet++}
+function oaRuntimeShow(){
+ var root=document.documentElement,banner=document.getElementById('oa-runtime');
+ if(root&&root.setAttribute){if(oaRuntimeState.down)root.setAttribute('data-runtime','down');else if(root.removeAttribute)root.removeAttribute('data-runtime')}
+ if(banner)banner.hidden=!oaRuntimeState.down;
+ var caption=document.getElementById('oa-runtime-caption');if(caption&&oaRuntimeState.down&&typeof oaStartAgain==='function')caption.textContent=oaStartAgain();
+ if(oaRuntimeState.down){var echoes=oaRuntimeState.echoes||[];oaRuntimeState.echoes=[];for(var i=0;i<echoes.length;i++)if(echoes[i].el.textContent===echoes[i].text&&typeof oaRuntimeQuiet==='function')oaRuntimeQuiet(echoes[i].el)}
+}
+// oaRuntimeBack runs the page's registered rereads. reload marks a runtime
+// that came back after the banner showed: a page that emptied a section and
+// registered no reread is then reloaded. A check that finds the runtime
+// running after a section was emptied (it stopped and came back between two
+// checks) only rereads.
+function oaRuntimeBack(reload){
+ var fns=oaRuntimeState.back.slice(),quiet=oaRuntimeState.quiet;oaRuntimeState.quiet=0;
+ if(!fns.length){if(reload&&quiet&&typeof location!=='undefined'&&typeof location.reload==='function')location.reload();return}
+ for(var i=0;i<fns.length;i++){try{var r=fns[i]();if(r&&typeof r.catch==='function')r.catch(function(){})}catch(e){}}
+}
+function oaRuntimeFollow(){
+ if(oaRuntimeState.timer||typeof setTimeout!=='function')return;
+ oaRuntimeState.timer=setTimeout(function(){oaRuntimeState.timer=null;if(!oaRuntimeState.down)return;
+  if(typeof document.visibilityState==='string'&&document.visibilityState==='hidden'){oaRuntimeFollow();return}
+  oaRuntimeCheck().then(function(){if(oaRuntimeState.down)oaRuntimeFollow()})},5000);
+}
+function oaRuntimeMark(down){
+ var was=oaRuntimeState.down;oaRuntimeState.down=!!down;oaRuntimeShow();
+ if(oaRuntimeState.down)oaRuntimeFollow();
+ else if(was){if(oaRuntimeState.timer&&typeof clearTimeout==='function')clearTimeout(oaRuntimeState.timer);oaRuntimeState.timer=null;oaRuntimeBack(true)}
+}
+// oaRuntimeCheck reads /runtime once at a time: an error in its answer is a
+// runtime that is not running (the Apps banner's reading). A Panel that does
+// not answer changes nothing here.
+function oaRuntimeCheck(){
+ if(oaRuntimeState.checking)return oaRuntimeState.checking;
+ if(typeof fetch!=='function')return Promise.resolve(null);
+ var key=new URLSearchParams(location.search).get('k')||'';
+ var done=function(v){
+  oaRuntimeState.checking=null;
+  if(v&&typeof v==='object'){var was=oaRuntimeState.down;oaRuntimeMark(!!v.error);if(!v.error&&!was&&oaRuntimeState.quiet>0)oaRuntimeBack(false)}
+  return v;
+ };
+ oaRuntimeState.checking=fetch('/runtime',{headers:{'X-Panel-Key':key}}).then(function(r){return r&&r.ok?r.json():null}).then(done,function(){return done(null)});
+ return oaRuntimeState.checking;
+}
+// oaRuntimeSuspect is a section's report of runtime_unavailable: the check
+// decides, so one stale answer never shows the banner alone.
+function oaRuntimeSuspect(){if(!oaRuntimeState.down)oaRuntimeCheck()}
+// oaAfterRuntimeCheck runs fn once the arrival check has answered, which
+// decides whether the banner shows; oaReady and readyScript mark the page
+// settled through it.
+function oaAfterRuntimeCheck(fn){var first=oaRuntimeState.first;if(first&&typeof first.then==='function')first.then(fn,fn);else fn()}
+oaRuntimeState.first=oaRuntimeCheck();
+(function(){
+ function bind(){
+  oaRuntimeShow();
+  var retry=document.getElementById('oa-runtime-retry');if(!retry)return;
+  retry.onclick=function(){return oaRuntimeCheck().then(function(){if(oaRuntimeState.down)oaSetStatus('oa-runtime-status','idle','Checked '+oaLocalTime(new Date())+'; still not running.')})};
+ }
+ if(document.readyState==='loading'&&typeof document.addEventListener==='function')document.addEventListener('DOMContentLoaded',bind);else bind();
+ if(typeof document.addEventListener==='function')document.addEventListener('visibilitychange',function(){if(oaRuntimeState.down&&document.visibilityState!=='hidden')oaRuntimeCheck()});
+})();
+</script>`
 
 // readyScript is the shell's readiness fallback (SPEC §6). After load it sets
 // data-ready="load" on the root, unless the page declared that it owns its
 // readiness with an element carrying data-ready-owner="page" in its markup,
 // or the page already called oaReady. The check reads the parsed document,
-// so a comment or a script string naming the marker does not count.
-const readyScript = `<script>window.addEventListener('load',function(){var root=document.documentElement;if(!root||root.hasAttribute('data-ready')||document.querySelector('[data-ready-owner="page"]'))return;root.setAttribute('data-ready','load')});</script>`
+// so a comment or a script string naming the marker does not count. The mark
+// waits for runtimeScript's arrival check when the page has one.
+const readyScript = `<script>window.addEventListener('load',function(){var root=document.documentElement;if(!root||root.hasAttribute('data-ready')||document.querySelector('[data-ready-owner="page"]'))return;function mark(){if(!root.hasAttribute('data-ready'))root.setAttribute('data-ready','load')}if(typeof oaAfterRuntimeCheck==='function')oaAfterRuntimeCheck(mark);else mark()});</script>`
 
 // navSearchScript filters the sidebar as the person types: page labels and
 // section titles from the navigation table, the matching sections listed as
@@ -728,7 +906,24 @@ var actionPlainScript = func() string {
 	if err != nil {
 		panic(err)
 	}
-	return "<script>var oaActionPlainTable=" + string(table) + ";</script>"
+	settings, err := json.Marshal(panelSettingLabels)
+	if err != nil {
+		panic(err)
+	}
+	return "<script>var oaActionPlainTable=" + string(table) + ";var oaSettingLabels=" + string(settings) + ";</script>"
+}()
+
+// panelProductTitleScript supplies the product's engine and resource labels.
+var panelProductTitleScript = func() string {
+	engines, resources := product.ModelTitles()
+	raw, err := json.Marshal(struct {
+		Engines   map[string]string `json:"engines"`
+		Resources map[string]string `json:"resources"`
+	}{Engines: engines, Resources: resources})
+	if err != nil {
+		panic(err)
+	}
+	return "<script>var oaProductTitles=" + string(raw) + ";</script>"
 }()
 
 const plainScript = `<script>
@@ -778,6 +973,10 @@ var oaServiceNames=[
  ['credentials','credentials'],
  ['asks','questions'],
  ['model','model lookup'],
+ ['asks/notification-operator','notifications'],
+ ['facade/messages','messages'],
+ ['facade/applications','the app list'],
+ ['rights','permissions'],
 ];
 function oaServiceName(contract){
  if(!contract)return'that service';
@@ -819,6 +1018,8 @@ function oaActionFallback(action){
  if(!m)return 'This permission';
  return m[1].charAt(0).toUpperCase()+m[1].slice(1)+': '+m[2].replace(/\./g,' ');
 }
+var oaTitles=typeof oaProductTitles==='object'&&oaProductTitles||{};
+var oaResourceTitles=oaTitles.resources||{};
 // oaResourceLabel names a graphics-card resource ("card:<n>", the resource
 // table's own index for that card) "Graphics card" for the first one and
 // "Graphics card <n+1>" for each after it, instead of the raw id (task
@@ -829,6 +1030,18 @@ function oaActionFallback(action){
 function oaResourceLabel(resource){
  var m=/^card:(\d+)$/.exec(resource);
  if(m){var n=Number(m[1]);return 'Graphics card'+(n>0?' '+(n+1):'')}
+ // A store ("store:<name>") reads as the models of the app that keeps it,
+ // and wake ("awake") as what it does (architect ruling 2026-11-09).
+ // A bare name ("hf", a model registry) reads as its app's name, else its
+ // words.
+ // A trailing "-<hex>" instance or digest part names no product.
+ var title=function(name){name=name.replace(/-[0-9a-f]{4,}$/,'');var words=name.replace(/[-_.]+/g,' ');return Object.prototype.hasOwnProperty.call(oaResourceTitles,name)&&oaResourceTitles[name]?oaResourceTitles[name]:words.charAt(0).toUpperCase()+words.slice(1)};
+ var store=/^store:([a-z0-9][a-z0-9_.-]*)$/.exec(resource);
+ if(store)return title(store[1])+' models';
+ if(resource==='awake')return 'Keeping this device awake';
+ // A config key reads as its Settings label (panelSettingLabels).
+ if(typeof oaSettingLabels==='object'&&oaSettingLabels&&Object.prototype.hasOwnProperty.call(oaSettingLabels,resource))return oaSettingLabels[resource];
+ if(/^[a-z][a-z0-9_.-]*$/.test(resource))return title(resource);
  // A resource shaped like a contract id ("abstraction.job/acceptance@1")
  // names the whole surface a job-shaped rule is scoped to, never a value
  // typed or chosen; the same generic word Explore's own argumentPhrase
@@ -902,11 +1115,69 @@ function oaModelName(name){
  var s=String(name==null?'':name),parts=s.split(/[\\/]/).filter(function(x){return x}),last=parts.length?parts[parts.length-1]:'';
  var plain=last.replace(/\.(gguf|safetensors|bin|onnx|ggml)$/i,'');
  if(!plain||/[0-9a-f]{16,}/i.test(plain)||/^sha256[-:]/i.test(plain))return 'Unnamed model';
- return plain;
+ return oaModelWords(plain);
+}
+// oaModelWords reads a bare lowercase model id in words (architect ruling
+// 2026-11-09, second block): the family keeps its spelling ("Qwen3 0.6B",
+// "SmolLM2 135M", "FLUX.2 klein 4B", "Whisper large v3 turbo"), size,
+// quantisation and accelerator parts read in capitals, and the other words
+// stay lowercase. A name with a capital or a space is the provider's own
+// spelling and stays as written.
+var oaModelFamilies={qwen:'Qwen',llama:'Llama',smollm:'SmolLM',flux:'FLUX',sdxl:'SDXL',sd:'SD',gemma:'Gemma',mistral:'Mistral',phi:'Phi',deepseek:'DeepSeek',nomic:'Nomic',whisper:'Whisper',gpt:'GPT',glm:'GLM',kokoro:'Kokoro',minicpm:'MiniCPM',llava:'LLaVA',granite:'Granite',olmo:'OLMo'};
+function oaModelWords(id){
+ if(!/^[a-z0-9][a-z0-9_.:+-]*$/.test(id))return id;
+ var has=function(k){return Object.prototype.hasOwnProperty.call(oaModelFamilies,k)};
+ // Z-Image's family name holds a hyphen: "z-image-turbo" reads "Z-Image turbo".
+ if(/^z-image(?:[-:]|$)/.test(id))return ['Z-Image'].concat(oaModelWords('x'+id.slice(7)).split(' ').slice(1)).join(' ');
+ return id.split(/[-:]+/).filter(function(w){return w}).map(function(w,i){
+  if(/^\d+(?:\.\d+)?[bmk]$|^a\d+(?:\.\d+)?b$/.test(w))return w.toUpperCase();
+  if(/^(?:i?q\d[a-z0-9_]*|f16|f32|bf16|fp16|fp8|int4|int8|awq|gptq|gguf|onnx|mlx|npu\d*|gpu|cpu)$/.test(w))return w.toUpperCase();
+  if(i>0)return w.replace(/_/g,' ');
+  if(w==='whisper.cpp')return 'Whisper';
+  var m=/^([a-z]+)(.*)$/.exec(w);if(!m)return w.replace(/_/g,' ');
+  var family=has(m[1])?oaModelFamilies[m[1]]:m[1].charAt(0).toUpperCase()+m[1].slice(1);
+  if(family==='FLUX'&&/^\d$/.test(m[2]))return 'FLUX.'+m[2];
+  return (family+m[2]).replace(/_/g,' ');
+ }).join(' ');
+}
+// oaEngineName names an engine or a model server by its upstream project
+// (architect ruling 2026-11-09, second block): "llama.cpp" for the model
+// server modelhost, "Diffusers" for the picture and video engine, never an
+// internal program name. An unknown one reads its name in words with a
+// leading capital; a trailing "-<hex>" instance part names nothing.
+var oaEngineTitles=oaTitles.engines||{};
+function oaEngineName(name){
+ var s=String(name==null?'':name).trim(),key=s.toLowerCase().replace(/-[0-9a-f]{4,}$/,'');
+ if(!s)return 'Unnamed engine';
+ if(Object.prototype.hasOwnProperty.call(oaEngineTitles,key))return oaEngineTitles[key];
+ return oaNameWords(s.replace(/-[0-9a-f]{4,}$/,''));
+}
+// oaBytes writes a size as Windows Explorer and Task Manager do (architect
+// ruling 2026-11-09): 1024 bytes to a KB, the units named KB, MB, GB and TB,
+// three significant digits with trailing zeros dropped ("512 bytes",
+// "1.5 KB", "7.7 GB", "21.3 GB", "412 GB"). oaBytesOf writes progress in the
+// unit of its total ("5.77 of 15 GB"). Go's asks.SetupGigabytes is the same
+// rule.
+function oaByteUnit(value){var n=Math.max(0,Number(value)||0),base=1024,units=['bytes','KB','MB','GB','TB','PB'],unit=0,scale=1;while(n/scale>=999.5&&unit<units.length-1){scale*=base;unit++}return {name:units[unit],scale:scale}}
+function oaByteAmount(n,unit){if(unit.name==='bytes')return String(Math.round(n));var v=n/unit.scale,text=v.toFixed(v>=99.5?0:v>=9.995?1:2);return text.indexOf('.')<0?text:text.replace(/0+$/,'').replace(/\.$/,'')}
+function oaBytes(value){var n=Math.max(0,Number(value)||0),unit=oaByteUnit(n);if(unit.name==='bytes')return Math.round(n)===1?'1 byte':Math.round(n)+' bytes';return oaByteAmount(n,unit)+' '+unit.name}
+function oaBytesOf(done,total){var t=Math.max(0,Number(total)||0),unit=oaByteUnit(t),d=Math.max(0,Math.min(Number(done)||0,t));return oaByteAmount(d,unit)+' of '+oaByteAmount(t,unit)+' '+unit.name}
+// oaNameWords reads a bare lowercase name ("local-http", "llama-server") in
+// words with a leading capital ("Local http", "Llama server"), and a
+// CamelCase stem as its words ("WorkloadsSessionHost" reads "Workloads
+// session host"); any other name with a capital or a space is already words
+// and stays as written.
+function oaNameWords(name){
+ var s=String(name==null?'':name).trim();
+ if(/^[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+$/.test(s)){var parts=s.replace(/([a-z0-9])([A-Z])/g,'$1 $2').split(' ');return parts[0]+' '+parts.slice(1).join(' ').toLowerCase()}
+ if(/[A-Z ]/.test(s))return s;
+ var words=s.replace(/[-_.:\/]+/g,' ').trim();
+ return words.charAt(0).toUpperCase()+words.slice(1);
 }
 // oaRegisteredApps reads the applications registered with the runtime
 // (/apps/registrations, the Apps page's own source) once per page: each
-// {program, name}. A failed read gives an empty list and is tried again by
+// {program, name, title}. Name stays the registration key; title is the
+// server's display name. A failed read gives an empty list and is tried again by
 // the next caller.
 var oaRegisteredRead=null;
 function oaRegisteredApps(){
@@ -917,7 +1188,7 @@ function oaRegisteredApps(){
    if(!r.ok)throw Error('registrations '+r.status);return r.json();
   }).then(function(page){
    var apps=[],entries=page&&page.entries||[];
-   for(var i=0;i<entries.length;i++){var e=entries[i];if(e&&e.role==='application'&&e.program)apps.push({program:e.program,name:e.name||''})}
+   for(var i=0;i<entries.length;i++){var e=entries[i];if(e&&e.role==='application'&&e.program)apps.push({program:e.program,name:e.name||'',title:e.title||''})}
    return apps;
   }).catch(function(){oaRegisteredRead=null;return []});
  }catch(e){return Promise.resolve([])}
@@ -1000,23 +1271,33 @@ function oaAccountChooser(selectId,inputId,selfAccount,selfAccountName){
  }
  return {rebuild:rebuild};
 }
+// oaStartAgain is the runtime-down banner's caption: where a person opens
+// OpenAbstractions on this platform, then Check again.
+function oaStartAgain(){var root=typeof document!=='undefined'&&document.documentElement,mac=!!(root&&root.getAttribute&&root.getAttribute('data-platform')==='macos');return 'Open OpenAbstractions from '+(mac?'Applications':'the Start menu')+', then check again'}
 function oaPlain(text){
  var t=text==null?'':String(text);var lower=t.toLowerCase();var line;
- if(lower.indexOf('forbidden')!==-1||lower.indexOf('not permitted')!==-1||lower.indexOf('no rule')!==-1){
-  line='The runtime did not permit this Panel to do this; nothing was changed.';
+ if(lower.indexOf('runtime_unavailable')!==-1){
+  // No runtime answered: the Apps banner's sentence, naming what this read
+  // needed when the text carries its contract and the table names it.
+  var rs=oaServiceName(oaContractName(t));
+  line='OpenAbstractions is not running'+(rs!==oaServiceName(null)?', so '+rs+' cannot be read':'')+'. '+oaStartAgain()+'.';
+ }else if(lower.indexOf('forbidden')!==-1||lower.indexOf('not permitted')!==-1||lower.indexOf('no rule')!==-1){
+  line='OpenAbstractions did not permit this Panel to do this; nothing was changed.';
   var rule=oaRuleName(t);if(rule)line+=' It needs the “'+oaActionPhrase(rule)+'” permission.';
- }else if(lower.indexOf('incompatible')!==-1){
+ }else if(lower.indexOf('integration update stopped')!==-1&&lower.indexOf('share access flags')!==-1){
+  line='The connection helper is still in use. Fully quit the agent and close other connection setup windows, then check again. Recovery files were preserved.';
+ }else if(lower.trim()==='incompatible'||lower.indexOf('service resolution: incompatible')!==-1||(lower.indexOf('incompatible')!==-1&&oaContractName(t))){
   var ic=oaContractName(t);
-  if(ic)line="The runtime provides "+oaServiceName(ic)+" at a version this Panel doesn't understand; update the runtime or the Panel.";
-  else line="This Panel and the runtime don't speak the same version of this service; update one of them.";
+  if(ic)line="OpenAbstractions provides "+oaServiceName(ic)+" at a version this Panel doesn't understand; update OpenAbstractions.";
+  else line="This Panel and OpenAbstractions don't speak the same version of this service; update OpenAbstractions.";
  }else if(lower.indexOf('unavailable')!==-1||lower.indexOf('service resolution')!==-1){
   var uc=oaContractName(t);
-  if(uc)line="The runtime is running but doesn't provide "+oaServiceName(uc)+" on this account.";
-  else line="That service isn't running on this account right now. Start the runtime, or check the service on the Apps page.";
+  if(uc)line="OpenAbstractions is running but doesn't provide "+oaServiceName(uc)+" on this account.";
+  else line="That service isn't running on this account right now. Check it on the Apps page.";
  }else if(lower.indexOf('gap')!==-1){
   line='The list changed while reading; start again.';
  }else if(lower.indexOf('invalid')!==-1){
-  line='The runtime rejected this request.';
+  line='OpenAbstractions rejected this request.';
  }else{
   line="This didn't work.";
  }
@@ -1035,7 +1316,33 @@ function oaSetAccent(accent,light2,dark1){
 // markup; any other page gets data-ready="load" from readyScript.
 function oaReady(){
  var root=document.documentElement;
- if(root&&root.dataset)root.dataset.ready='1';
+ function mark(){if(root&&root.dataset)root.dataset.ready='1'}
+ // The page is settled once runtimeScript's arrival check has answered.
+ if(typeof oaAfterRuntimeCheck==='function')oaAfterRuntimeCheck(mark);else mark();
+}
+// oaRuntimeDownText reports a failure that only says the runtime is not
+// running: the raw runtime_unavailable resolution, or oaPlain's sentence for
+// it. runtimeScript's banner says that once per page, so a section that gets
+// one stays empty (oaRuntimeQuiet) and asks the banner for a check.
+function oaRuntimeDownText(text){var t=String(text==null?'':text);return t.toLowerCase().indexOf('runtime_unavailable')!==-1||/^OpenAbstractions is not running\b/.test(t)}
+// oaRuntimeEcho writes a section's own sentence for a failed read with
+// write(), unless the runtime is down or raw says it is (R19 render check,
+// 2026-11-09): the banner says that once. A sentence written before the
+// banner shows is emptied when it shows, while the line still reads it; a
+// later result in the same line reads as itself.
+function oaRuntimeEcho(id,write,raw){
+ var el=document.getElementById(id);
+ if(!el)return;
+ if((typeof oaRuntimeIsDown==='function'&&oaRuntimeIsDown())||oaRuntimeDownText(raw)){oaRuntimeQuiet(el);return}
+ write();
+ if(typeof oaRuntimeState==='object'&&oaRuntimeState)(oaRuntimeState.echoes=oaRuntimeState.echoes||[]).push({el:el,text:el.textContent});
+}
+function oaRuntimeQuiet(el){
+ if(el.replaceChildren)el.replaceChildren();
+ el.textContent='';
+ oaStatusState(el,'idle');
+ if(typeof oaRuntimeQuieted==='function')oaRuntimeQuieted();
+ if(typeof oaRuntimeSuspect==='function')oaRuntimeSuspect();
 }
 // oaKeyedRows keeps one row per key in a list, so a live reread keeps each
 // row's status sentence and focus (SPEC §4): a row whose key stays is
@@ -1092,6 +1399,7 @@ function oaStatusState(el,state){
 function oaSetStatus(id,state,sentence){
  var el=document.getElementById(id);
  if(!el)return;
+ if(state==='error'&&oaRuntimeDownText(sentence)){oaRuntimeQuiet(el);return}
  if(el.replaceChildren)el.replaceChildren();
  el.textContent=sentence==null?(state==='loading'?'Loading…':''):String(sentence);
  oaStatusState(el,state||'ok');
@@ -1107,15 +1415,22 @@ function oaTechnical(details){
  if(typeof details.getAttribute!=='function')details['data-oa-technical']='true';
  return details;
 }
+function oaHasDetails(value){
+ if(value==null)return false;
+ if(typeof value==='string')return value.trim().length>0;
+ if(typeof value==='object')return Object.keys(value).length>0;
+ return true;
+}
 function oaShowError(id,err){
  var el=document.getElementById(id);
  if(!el)return;
- oaStatusState(el,'error');
  var text=err&&typeof err==='object'&&'message'in err?err.message:err;
+ if(oaRuntimeDownText(text)){oaRuntimeQuiet(el);return}
+ oaStatusState(el,'error');
  var p=oaPlain(text);
  if(el.replaceChildren)el.replaceChildren();
  el.textContent=p.line;
- if(p.details&&p.details!==p.line){
+ if(oaHasDetails(p.details)&&p.details!==p.line){
   var details=document.createElement('details');details.className='oa-error-details';
   var summary=document.createElement('summary');summary.textContent='Technical details';
   var pre=document.createElement('pre');pre.textContent=p.details;
@@ -1136,7 +1451,7 @@ function oaShowResult(id,line,raw,title){
  if(el.replaceChildren)el.replaceChildren();
  el.textContent=line;
  el.title=title||'';
- if(raw!==undefined&&raw!==null){
+ if(oaHasDetails(raw)){
   var details=document.createElement('details');details.className='oa-error-details';
   var summary=document.createElement('summary');summary.textContent='Technical details';
   var pre=document.createElement('pre');pre.textContent=typeof raw==='string'?raw:JSON.stringify(raw,null,2);

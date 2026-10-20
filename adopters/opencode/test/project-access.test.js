@@ -1,3 +1,4 @@
+import {tool as hostTool} from '@opencode-ai/plugin/tool';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -23,12 +24,26 @@ const receipt = (outcome = 'approved_pending_close', key = requestKey) => ({outc
   receipt: ['approved_pending_close', 'receipt_recorded'].includes(outcome) ? 'owner-receipt' : '',
   questionId: 'question_exact', message: 'Follow the native owner instructions to close and reopen this conversation.'});
 const completed = (approved) => ({id: 'part_exact', sessionID: 'ses_current', messageID: 'msg_current', type: 'tool',
-  callID: 'call_exact', tool: 'openabstractions_project_access', state: {status: 'completed', input: {folder},
+  callID: 'call_exact', tool: 'oa_project_request_access', state: {status: 'completed', input: {folder},
     title: 'Project access', output: 'Approved', metadata: {oaProjectReceipt: approved}, time: {start: 1, end: 1730000000002}}});
 const savedMessage = (part) => ({info: {id: 'msg_current', sessionID: 'ses_current', role: 'assistant', time: {created: 1}}, parts: [part]});
 const completionEvent = (part) => ({event: {type: 'message.part.updated', properties: {part}}});
+const sessionUpdated = {event: {type: 'session.updated', properties: {info: {id: 'ses_current', directory: folder}}}};
 const completion = {requestKey, sessionId: 'ses_current', messageId: 'msg_current', partId: 'part_exact',
   toolCallId: 'call_exact', receipt: 'owner-receipt', completedAt: 1730000000002n};
+
+test('plugin publishes only its trusted host contexts and withdraws on SDK disposal', async () => {
+  const calls = [];
+  const applications = {announce: async p => { calls.push(p); return {outcome: 'applied', instance: 'owned'}; },
+    withdraw: async (...v) => { calls.push(v); return {outcome: 'applied'}; }};
+  const plugin = await OpenAbstractionsPlugin({client: {}, directory: 'project'}, {},
+    {tool: hostTool, env: {}, resolveApplications: async () => applications});
+  for (const id of ['one', 'two']) await plugin.event({event: {type: 'session.created', properties: {info: {id, directory: 'project'}}}});
+  await plugin.event({event: {type: 'message.part.updated', properties: {part: {sessionID: 'forged'}}}});
+  await plugin.dispose();
+  assert.deepEqual(calls.filter(v => !Array.isArray(v)).at(-1).contexts.map(v => v.name), ['one', 'two']);
+  assert.deepEqual(calls.at(-1), ['opencode', 'owned']);
+});
 
 async function approvedFixture(overrides = {}) {
   const notices = [];
@@ -41,7 +56,7 @@ async function approvedFixture(overrides = {}) {
     status: async () => { throw new Error('No idle claim is made.'); }}};
   const endpoint = {requestProject: async (request) => { calls.push(['request', request]); return approved; },
     acknowledgeReceipt: async (value) => { calls.push(['acknowledge', value]); return receipt('receipt_recorded'); }};
-  const access = createProjectAccess({tool, session, client: api, uuid: () => requestKey,
+  const access = createProjectAccess({tool: hostTool, session, client: api, uuid: () => requestKey,
     resolveClient: async (selected, signal) => { connections.push({selected, signal}); return endpoint; },
     announce: async (message) => notices.push(message), ...overrides});
   const output = await access.definition.execute({folder}, context());
@@ -50,7 +65,7 @@ async function approvedFixture(overrides = {}) {
 
 test('the native session activates only with all six valid launch values', () => {
   assert.equal(projectSessionEnvironment({}), null);
-  assert.equal(createProjectAccess({tool, session: null}), null);
+  assert.equal(createProjectAccess({tool: hostTool, session: null}), null);
   for (const field of Object.keys(env)) {
     const missing = {...env}; delete missing[field];
     assert.equal(projectSessionEnvironment(missing), null, field);
@@ -65,22 +80,22 @@ test('outside the sandbox every tool but folder requests registers and one toast
   const toasts = [];
   const logs = [];
   const client = {tui: {showToast: async ({body}) => toasts.push(body)}, app: {log: async ({body}) => logs.push(body)}};
-  const plugin = await OpenAbstractionsPlugin({client}, {tools: {watch_logs: true, selection_policy: true}}, {tool, env: {}});
-  assert.deepEqual(Object.keys(plugin.tool).sort(), ['openabstractions_selection_policy', 'openabstractions_watch_logs']);
-  for (const name of ['chat.message', 'command.execute.before', 'shell.env', 'tool.execute.before', 'dispose']) {
+  const plugin = await OpenAbstractionsPlugin({client}, {tools: {watch_logs: true, selection_policy: true}}, {tool: hostTool, env: {}});
+  assert.deepEqual(Object.keys(plugin.tool).sort(), ['oa_selection_manage', 'oa_logs_watch'].sort());
+  for (const name of ['chat.message', 'command.execute.before', 'shell.env', 'tool.execute.before']) {
     assert.equal(plugin[name], undefined, name);
   }
   assert.equal(toasts.length, 0, 'nothing is said before OpenCode delivers its first event');
   await plugin.event({event: {type: 'server.connected', properties: {}}});
-  await plugin.event({event: {type: 'session.updated', properties: {}}});
+  await plugin.event(sessionUpdated);
   await plugin.event(completionEvent(completed(receipt())));
   assert.deepEqual(toasts, [{title: 'OpenAbstractions', message: outsideSandboxMessage, variant: 'info'}],
     'outside the sandbox the search notice never shows');
-  assert.equal(outsideSandboxMessage, 'OpenCode is running outside the OA sandbox. To start it protected, run: node <plugin folder>/official-install.js --project <folder> --run');
+  assert.equal(outsideSandboxMessage, 'OpenCode is running outside the OA sandbox. Folder permission requests are available only in a protected OA session.');
   assert.deepEqual(logs.map((entry) => entry.message), [outsideSandboxMessage]);
-  const quiet = await OpenAbstractionsPlugin({client: {tui: {showToast: async () => { throw new Error('no TUI'); }}}}, {}, {tool, env: {}});
+  const quiet = await OpenAbstractionsPlugin({client: {tui: {showToast: async () => { throw new Error('no TUI'); }}}}, {}, {tool: hostTool, env: {}});
   await quiet.event({event: {type: 'server.connected'}});
-  const partial = await OpenAbstractionsPlugin({client: {}}, {}, {tool, env: {...env, OA_OPENCODE_RUNTIME_ACCOUNT: ''}});
+  const partial = await OpenAbstractionsPlugin({client: {}}, {}, {tool: hostTool, env: {...env, OA_OPENCODE_RUNTIME_ACCOUNT: ''}});
   assert.deepEqual(Object.keys(partial.tool), []);
   assert.equal(typeof partial.event, 'function', 'a partial session environment counts as outside');
 });
@@ -89,20 +104,20 @@ test('inside the sandbox the project-access tool registers and the one notice sa
   const toasts = [];
   const logs = [];
   const client = {tui: {showToast: async ({body}) => toasts.push(body)}, app: {log: async ({body}) => logs.push(body)}};
-  const native = await OpenAbstractionsPlugin({client}, {}, {tool, env});
-  assert.deepEqual(Object.keys(native.tool), ['openabstractions_project_access']);
+  const native = await OpenAbstractionsPlugin({client}, {}, {tool: hostTool, env});
+  assert.deepEqual(Object.keys(native.tool), ['oa_project_request_access']);
   assert.equal(typeof native.event, 'function');
   assert.equal(toasts.length, 0, 'nothing is said before OpenCode delivers its first event');
   await native.event({event: {type: 'server.connected', properties: {}}});
-  await native.event({event: {type: 'session.updated', properties: {}}});
+  await native.event(sessionUpdated);
   assert.deepEqual(toasts, [{title: 'OpenAbstractions', message: searchToolMissingMessage, variant: 'warning'}],
     'once per start, and never the outside-the-sandbox toast');
   assert.equal(searchToolMissingMessage, 'Search tools aren\'t available inside the OA sandbox yet.');
   assert.deepEqual(logs.map((entry) => [entry.level, entry.message]), [['warn', searchToolMissingMessage]]);
-  for (const name of ['chat.message', 'command.execute.before', 'shell.env', 'tool.execute.before', 'dispose']) {
+  for (const name of ['chat.message', 'command.execute.before', 'shell.env', 'tool.execute.before']) {
     assert.equal(native[name], undefined, name);
   }
-  const quiet = await OpenAbstractionsPlugin({client: {tui: {showToast: async () => { throw new Error('no TUI'); }}}}, {}, {tool, env});
+  const quiet = await OpenAbstractionsPlugin({client: {tui: {showToast: async () => { throw new Error('no TUI'); }}}}, {}, {tool: hostTool, env});
   await quiet.event({event: {type: 'server.connected'}});
 });
 
@@ -147,7 +162,7 @@ test('native server-proof refusal sends no request retry or receipt acknowledgme
   class BunNativeConnector {
     connect() { return {exchangeFrame: async () => { calls++; throw Object.assign(new Error('Untrusted host'), {status: 8}); }}; }
   }
-  const access = createProjectAccess({tool, session, uuid: () => requestKey,
+  const access = createProjectAccess({tool: hostTool, session, uuid: () => requestKey,
     resolveClient: (s, signal) => resolveProjectClient(s, signal, {ipc: {BunNativeConnector}, protocol})});
   await assert.rejects(access.definition.execute({folder}, context()), {status: 8});
   assert.equal(calls, 1);
@@ -156,7 +171,7 @@ test('native server-proof refusal sends no request retry or receipt acknowledgme
 test('pending retries retain the same UUID and exact folder/conversation tuple', async () => {
   let generated = 0;
   const requests = [];
-  const access = createProjectAccess({tool, session, uuid: () => { generated++; return requestKey; }, wait: async () => {},
+  const access = createProjectAccess({tool: hostTool, session, uuid: () => { generated++; return requestKey; }, wait: async () => {},
     resolveClient: async () => ({requestProject: async (request) => {
       requests.push(request); return receipt(requests.length < 3 ? 'pending' : 'denied');
     }})});
@@ -172,7 +187,7 @@ test('pending retries retain the same UUID and exact folder/conversation tuple',
 test('pending wait honors abort and never starts another tuple', async () => {
   const controller = new AbortController();
   let calls = 0;
-  const access = createProjectAccess({tool, session, uuid: () => requestKey,
+  const access = createProjectAccess({tool: hostTool, session, uuid: () => requestKey,
     resolveClient: async () => ({requestProject: async () => { calls++; return receipt('pending'); }}),
     wait: async (signal) => { assert.equal(signal, controller.signal); controller.abort(); }});
   await assert.rejects(access.definition.execute({folder}, context(controller.signal)), {name: 'AbortError'});
@@ -182,7 +197,7 @@ test('pending wait honors abort and never starts another tuple', async () => {
 test('denied, expired, conflict and unavailable results never become approval receipts', async () => {
   for (const outcome of ['denied', 'expired', 'conflict', 'unavailable']) {
     let calls = 0;
-    const access = createProjectAccess({tool, session, uuid: () => requestKey,
+    const access = createProjectAccess({tool: hostTool, session, uuid: () => requestKey,
       resolveClient: async () => ({requestProject: async () => { calls++; return receipt(outcome); }})});
     const result = await access.definition.execute({folder}, context());
     assert.equal(result.metadata.oaProjectOutcome, outcome);
@@ -193,7 +208,7 @@ test('denied, expired, conflict and unavailable results never become approval re
 
 test('relative folders, extra fields and missing context refuse before IPC', async () => {
   let calls = 0;
-  const access = createProjectAccess({tool, session, resolveClient: async () => { calls++; }});
+  const access = createProjectAccess({tool: hostTool, session, resolveClient: async () => { calls++; }});
   for (const args of [{folder: 'relative'}, {folder: '\\\\server\\share'}, {folder, access: 'all'}, {folder: folder+'\0'}]) {
     await assert.rejects(access.definition.execute(args, context()), /exact absolute local folder/);
   }
@@ -204,7 +219,7 @@ test('relative folders, extra fields and missing context refuse before IPC', asy
 test('wrong request, incomplete approval and premature or unknown acknowledgment replies refuse', async () => {
   for (const reply of [receipt('approved_pending_close', 'another-key'), {...receipt(), receipt: ''},
     receipt('receipt_recorded'), receipt('unrecognized'), {...receipt(), extra: 'ambiguous'}]) {
-    const access = createProjectAccess({tool, session, uuid: () => requestKey,
+    const access = createProjectAccess({tool: hostTool, session, uuid: () => requestKey,
       resolveClient: async () => ({requestProject: async () => reply})});
     await assert.rejects(access.definition.execute({folder}, context()), /ambiguous|incomplete|cannot confirm/);
   }
@@ -332,11 +347,14 @@ test('receipt acknowledgment requires no idle or finished assistant claim and a 
 
 // Test real resolver bodies with the imported constructors replaced. No native
 // library is loaded, and every affected Machine option is observed directly.
-async function resolverFixture(file, exports) {
-  const source = await readFile(new URL(`../${file}`, import.meta.url), 'utf8');
+async function resolverFixture(file, exports, dependencies = []) {
+  const sources = await Promise.all([...dependencies, file].map(name => readFile(new URL(`../${name}`, import.meta.url), 'utf8')));
+  const source = sources.join('\n');
   const body = source.replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export default .*;\r?$/gm, '').replace(/^export /gm, '')
-    .replace(/import\('([^']+)'\)/g, (_, name) => `Promise.resolve(modules[${JSON.stringify(name)}])`);
-  return new Function('modules', `${body}\nreturn {${exports.join(',')}};`);
+    .replace(/import\('([^']+)'\)/g, (_, name) => name === './runtime-connector.js'
+      ? 'Promise.resolve({runtimeConnector: fixtureConnector})' : `Promise.resolve(modules[${JSON.stringify(name)}])`);
+  return new Function('modules', `const fixtureConnector = async (injected) => injected ?? new modules['@openabstractions/ipc/bun'].BunNativeConnector();
+const runtimeConnector = fixtureConnector;\n${body}\nreturn {${exports.join(',')}};`);
 }
 
 test('content, speech, preload, dictation and all six plugin Machine constructors retain selected runtime proof', async () => {
@@ -351,16 +369,16 @@ test('content, speech, preload, dictation and all six plugin Machine constructor
     '@openabstractions/inference/protocol': {ImageClient: Client, ImageV2Client: Client, SpeechClient: Client},
     '@openabstractions/storage-content': {ContentReaderClient: Client}, '@openabstractions/router': {RouterClient: Client},
     '@openabstractions/logging': {SourceReaderClient: Client}, '@openabstractions/rights': {AuthorizationClient: Client},
-    '@openabstractions/asks': {QuestionResponderClient: Client}};
+    '@openabstractions/asks': {PermissionApplicationClient: Client}};
   const options = {runtimeEndpoint: 'exact-runtime', server: session.runtimeServer};
   const signal = new AbortController().signal;
   for (const [file, name] of [['content-delivery.js', 'resolveContentReader'], ['speak.js', 'resolveSpeechClient'], ['preload.js', 'resolvePreloader']]) {
     await (await resolverFixture(file, [name]))(modules)[name](options, signal);
   }
-  const names = ['resolveRouter', 'resolveSelectionOperator', 'resolveSourceReader', 'resolveAuthorization', 'resolveImageClient', 'resolveQuestionResponder'];
+  const names = ['resolveRouter', 'resolveSelectionOperator', 'resolveSourceReader', 'resolveAuthorization', 'resolveImageClient', 'resolvePermission'];
   const dictation = (await resolverFixture('listen.js', ['resolveService']))(modules);
   await dictation.resolveService(options, 'abstraction.inference/transcription@1', signal, async () => Client);
-  const plugin = (await resolverFixture('plugin.js', names))(modules);
+  const plugin = (await resolverFixture('plugin.js', names, ['permission-wait.js']))(modules);
   for (const name of names) await plugin[name](options, signal);
   assert.equal(waiting.length, 10);
   for (const entry of waiting) {
@@ -374,14 +392,14 @@ test('content, speech, preload, dictation and all six plugin Machine constructor
 
 test('plugin surveys and runtime tool resolvers retain the launch-selected server', async () => {
   const observed = [];
-  const plugin = await OpenAbstractionsPlugin({client: {}}, {tools: {selection_policy: true}}, {tool, env,
-    readInventory: async (options) => { observed.push(options); return {offers: []}; },
+  const plugin = await OpenAbstractionsPlugin({client: {}}, {tools: {selection_policy: true}}, {tool: hostTool, env,
+    probeRuntime: async () => true, readInventory: async (options) => { observed.push(options); return {offers: []}; },
     readCapability: async (options) => { observed.push(options); return false; },
     readAnswerable: async (options) => { observed.push(options); return false; },
     resolveSelectionOperator: async (options) => { observed.push(options); throw new Error('end at resolver'); }});
   await plugin.config({provider: {openabstractions: {npm: '@openabstractions/opencode',
     options: {runtimeEndpoint: 'exact-runtime', server: {principalKind: 1, principal: 'other', program: 'C:\\other.exe'}}, models: {}}}});
-  await assert.rejects(plugin.tool.openabstractions_selection_policy.execute({action: 'read', name: 'selected'}, {abort: new AbortController().signal}), /end at resolver/);
+  await assert.rejects(plugin.tool.oa_selection_manage.execute({action: 'read', name: 'selected'}, {abort: new AbortController().signal}), /end at resolver/);
   assert.ok(observed.length >= 4);
   for (const options of observed) assert.deepEqual(options.server, session.runtimeServer);
 });
@@ -404,7 +422,7 @@ test('TUI speech keeps the selected runtime server when reconstructing resolver 
   // The runtime options are constructed before registration; the resolver
   // closures are exercised by the actual completed tool event below.
   assert.equal(typeof listener, 'function');
-  listener({properties: {part: {type: 'tool', tool: 'openabstractions_speak', state: {status: 'completed', metadata: {
+  listener({properties: {part: {type: 'tool', tool: 'oa_speech_speak', state: {status: 'completed', metadata: {
     operation: 'op', mediaType: 'audio/wav', digest: 'sha256:'+ '0'.repeat(64), bytes: 4}}}}});
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(observed.length, 1);

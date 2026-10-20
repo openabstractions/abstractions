@@ -45,10 +45,14 @@ func TestPermissionRendererUsesNativeClientVersion(t *testing.T) {
 		if got := modernPermissionFor(QuestionPrompt{Permission: true}, v); got != tc.want {
 			t.Fatalf("native %d/%d: modern=%t", tc.build, tc.product, got)
 		}
-		for _, prompt := range []QuestionPrompt{{Title: "Permission", Instruction: "Administrator"}, {Permission: true, AppChoice: true}} {
-			if modernPermissionFor(prompt, v) {
-				t.Fatal("only the typed permission marker can select modern rendering")
-			}
+		// One popup style (owner, 2026-11-01): OpenAbstractions' own questions
+		// and results share the permission dialog; an application's own
+		// choice keeps the TaskDialog's command links.
+		if got := modernPermissionFor(QuestionPrompt{Title: "Connect an app", Instruction: "Example wants to connect to OpenAbstractions."}, v); got != tc.want {
+			t.Fatalf("native %d/%d: OpenAbstractions' own question modern=%t", tc.build, tc.product, got)
+		}
+		if modernPermissionFor(QuestionPrompt{Permission: true, AppChoice: true}, v) || modernPermissionFor(QuestionPrompt{AppChoice: true}, v) {
+			t.Fatal("an application's own choice selected the permission dialog")
 		}
 	}
 	if modernPermissionFor(QuestionPrompt{Permission: true}, nil) {

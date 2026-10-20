@@ -78,6 +78,19 @@ func TestServiceOptionsCredentialsVerifiedRuntime(t *testing.T) {
 	}
 }
 
+// TestProbeAllWrongRuntimeIsWrongRuntime: a runtime that answers but fails
+// the server-trust check makes probe all report the wrong runtime, as the
+// single probes do, and never "no runtime answered" (W0-06(j) review).
+func TestProbeAllWrongRuntimeIsWrongRuntime(t *testing.T) {
+	options, _ := credentialsRuntime(t)
+	wrong := filepath.Join(t.TempDir(), "different-runtime")
+	_, err := runProbeCommand(t, "all", "--endpoint", options.endpoint, "--runtime-program", wrong, "--timeout", "3s")
+	exit := assertExit(t, err, exitNotResolved, "probe all wrong runtime")
+	if msg := exit.Error(); !strings.Contains(msg, wrongRuntimeFirstLine) || strings.Contains(msg, noRuntimeFirstLine) {
+		t.Fatalf("probe all wrong runtime says %q", msg)
+	}
+}
+
 func TestServiceOptionsHelpNamesIndependentRuntimeProof(t *testing.T) {
 	for name, usage := range map[string]string{
 		"applications": applicationsUsage, "credentials": credentialsUsage, "download": downloadUsage,

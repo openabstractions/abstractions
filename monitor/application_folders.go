@@ -1,16 +1,13 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"io"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
+	asks "github.com/openabstractions/abstraction-asks/go"
 	identity "github.com/openabstractions/abstraction-identity"
 )
 
@@ -34,31 +31,9 @@ var manifestPlaceholder = regexp.MustCompile(`^\{([a-z_]+)\}(?:[\\/](.*))?$`)
 // one, is refused. An absolute value without one must lie inside one of the
 // folders. The program must lie inside {app}. Any other value is literal.
 func (f manifestFolders) resolve(value string, program bool) (string, error) {
-	path, root := value, ""
-	if strings.Contains(value, "{") {
-		m := manifestPlaceholder.FindStringSubmatch(value)
-		if m == nil {
-			return "", errors.New("a placeholder must begin the value and name a folder: {app}, {local_app_data} or {pictures}")
-		}
-		folder, known := f[m[1]]
-		if !known {
-			return "", fmt.Errorf("unknown placeholder {%s}", m[1])
-		}
-		if m[2] == "" {
-			return "", fmt.Errorf("{%s} must be followed by a path inside it", m[1])
-		}
-		// A manifest is portable text: the rest separates with \ or / on
-		// every OS and joins with the native separator.
-		rest := filepath.FromSlash(strings.ReplaceAll(m[2], `\`, "/"))
-		path, root = filepath.Join(folder, rest), folder
-	} else if !filepath.IsAbs(value) {
-		if program {
-			return "", errors.New("the program must be {app}/... or an absolute path inside the application's folder")
-		}
-		return value, nil
-	}
-	if err := identity.LocalPath(path); err != nil {
-		return "", err
+	path, root, literal, err := f.place(value, program)
+	if err != nil || literal {
+		return path, err
 	}
 	roots := []string{root}
 	switch {
@@ -86,110 +61,109 @@ func (f manifestFolders) resolve(value string, program bool) (string, error) {
 	return "", fmt.Errorf("%s is outside the application's folders", path)
 }
 
-// An application's own interpreter is a program image inside its folder, a
-// copy and never the shared interpreter (VISION 2026-10-07). Python reads the
-// pyvenv.cfg beside its program, or else the one in the folder above, and
-// runs from the `home` folder it names; a program that is the same file as a
-// file in that home, such as a hard link to its python.exe, is the shared
-// interpreter under another name, and registering it would make one grant
-// cover every program that interpreter runs.
+// place is the path a value names before any folder check: a placeholder's
+// folder joined with the rest (root that folder), an absolute path (root ""),
+// or a literal value that names no path (literal), refused for the program.
+func (f manifestFolders) place(value string, program bool) (path, root string, literal bool, err error) {
+	path = value
+	if strings.Contains(value, "{") {
+		m := manifestPlaceholder.FindStringSubmatch(value)
+		if m == nil {
+			return "", "", false, errors.New("a placeholder must begin the value and name a folder: {app}, {local_app_data} or {pictures}")
+		}
+		folder, known := f[m[1]]
+		if !known {
+			return "", "", false, fmt.Errorf("unknown placeholder {%s}", m[1])
+		}
+		if m[2] == "" {
+			return "", "", false, fmt.Errorf("{%s} must be followed by a path inside it", m[1])
+		}
+		// A manifest is portable text: the rest separates with \ or / on
+		// every OS and joins with the native separator.
+		rest := filepath.FromSlash(strings.ReplaceAll(m[2], `\`, "/"))
+		path, root = filepath.Join(folder, rest), folder
+	} else if !filepath.IsAbs(value) {
+		if program {
+			return "", "", false, errors.New("the program must be {app}/... or an absolute path inside the application's folder")
+		}
+		return value, "", true, nil
+	}
+	if err := identity.LocalPath(path); err != nil {
+		return "", "", false, err
+	}
+	return path, root, false, nil
+}
 
-// venvConfigLimit bounds the pyvenv.cfg read; Python's own files are a few
-// hundred bytes.
-const venvConfigLimit = 64 << 10
+// officialProgram is the official program OA's compiled Setup catalog names
+// for the app a manifest registers (setup.OfficialProgramOf): its path for
+// this account and the signer its file must carry. It is the only trust
+// anchor for a program outside {app}; an install record is no anchor, since
+// any process of the account can write one.
+type officialProgram struct {
+	Program string
+	Signer  string
+}
 
-// refuseSharedInterpreter refuses program when it is the same file, by file
-// identity, as a file in the home folder of the pyvenv.cfg Python reads for
-// it. A program with no pyvenv.cfg beside or above it is not a venv's and
-// passes; a home that is not on a local drive (identity.LocalPath) is refused
-// before anything in it is opened.
+// officialSigner is the Authenticode signer the Panel verifies on program
+// itself (identity.VerifyFile, asks.CodePublisher); ok is false for a file
+// without a trusted signature. Tests stand in for it.
+var officialSigner = func(program string) (subject string, ok bool) {
+	code, _, err := identity.VerifyFile(program, nil)
+	if err != nil {
+		return "", false
+	}
+	publisher := asks.CodePublisher(code)
+	return publisher.Subject, publisher.Trusted && publisher.Subject != ""
+}
+
+// resolveProgram resolves the manifest's program with the one exception to
+// "the program lies inside {app}" (P-J1a, coordinator ruling 2026-11-01): an
+// integration manifest may name the official app's program outside {app}
+// only when OA's compiled catalog names that official program for the app,
+// the manifest's program is that program (identity.SameSubjectProgram), and
+// its file carries the catalog's signer, verified here. A placeholder path
+// must still stay inside its own folder, and a script host is never an app.
+// Any other program outside {app} is refused.
+func (f manifestFolders) resolveProgram(value string, official officialProgram) (string, error) {
+	path, err := f.resolve(value, true)
+	if err == nil || official.Program == "" || official.Signer == "" {
+		return path, err
+	}
+	outside, root, _, placeErr := f.place(value, true)
+	if placeErr != nil {
+		return "", placeErr
+	}
+	if root != "" {
+		if inside, withinErr := identity.Within(outside, root); withinErr != nil || !inside {
+			return "", err
+		}
+	}
+	if !identity.SameSubjectProgram(outside, official.Program) {
+		return "", err
+	}
+	if signer, ok := officialSigner(outside); !ok || signer != official.Signer {
+		return "", fmt.Errorf("%s does not carry its official publisher's signature", outside)
+	}
+	if shared := refuseSharedInterpreter(outside); shared != nil {
+		return "", shared
+	}
+	return outside, nil
+}
+
+// refuseSharedInterpreter refuses a script host as an app's program: one
+// identity reads as a shared interpreter by its names or signature (identity
+// ID-I1, SharedInterpreterProgram: PowerShell, cmd, Node, Python and the
+// rest), or by the pyvenv.cfg rule (SharedInterpreterVenv). Registering one
+// would make one grant cover every script it runs; an application's own
+// interpreter is a copy inside its folder (VISION 2026-10-07: interpreters
+// are not programs). A config, home or program that cannot be verified is
+// refused the same way.
 func refuseSharedInterpreter(program string) error {
-	home, config, err := venvHome(program)
-	if err != nil || home == "" {
+	if err := identity.SharedInterpreterVenv(program); err != nil {
 		return err
 	}
-	if !filepath.IsAbs(home) {
-		return fmt.Errorf("%s names a home folder that is not an absolute path", config)
-	}
-	if err := identity.LocalPath(home); err != nil {
-		return fmt.Errorf("%s names a home folder that is not on a local drive: %w", config, err)
-	}
-	key, err := identity.FileKey(program)
-	if err != nil {
-		return fmt.Errorf("the program %s could not be read: %w", program, err)
-	}
-	entries, err := os.ReadDir(home)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil // Python could not run from it either
-	}
-	if err != nil {
-		return fmt.Errorf("the home folder %s that %s names could not be read: %w", home, config, err)
-	}
-	for _, entry := range entries {
-		if !entry.Type().IsRegular() {
-			continue
-		}
-		shared := filepath.Join(home, entry.Name())
-		if other, err := identity.FileKey(shared); err == nil && other == key {
-			return fmt.Errorf("the program %s is the same file as the shared interpreter %s; an application's interpreter is a copy inside its own folder", program, shared)
-		}
+	if identity.SharedInterpreterProgram(program, identity.Code{}) {
+		return fmt.Errorf("%s runs scripts for any program, so it cannot be registered as an app", program)
 	}
 	return nil
-}
-
-// venvHome returns the home value of the pyvenv.cfg Python reads for program
-// and that file's path, or "" when there is none.
-func venvHome(program string) (home, config string, err error) {
-	for _, folder := range []string{filepath.Dir(program), filepath.Dir(filepath.Dir(program))} {
-		config = filepath.Join(folder, "pyvenv.cfg")
-		info, err := os.Lstat(config)
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		}
-		if err == nil && !info.Mode().IsRegular() {
-			// A link would let the file Python reads differ from the one
-			// checked here, or name a home in another folder's venv.
-			return "", config, fmt.Errorf("%s is a link or not a file", config)
-		}
-		file, err := os.Open(config)
-		if err != nil {
-			return "", config, fmt.Errorf("%s could not be read: %w", config, err)
-		}
-		data, err := io.ReadAll(io.LimitReader(file, venvConfigLimit+1))
-		file.Close()
-		if err != nil || len(data) > venvConfigLimit {
-			return "", config, fmt.Errorf("%s could not be read or is over 64 KiB", config)
-		}
-		return venvConfigHome(data), config, nil
-	}
-	return "", "", nil
-}
-
-// venvConfigHome is the value of the first `home = ...` line, as Python's
-// getpath reads it: the key trimmed and compared without regard to ASCII
-// case, the value trimmed.
-func venvConfigHome(data []byte) string {
-	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
-	for _, line := range bytes.Split(data, []byte("\n")) {
-		key, value, found := bytes.Cut(line, []byte("="))
-		if found && homeKey(bytes.TrimSpace(key)) {
-			return string(bytes.TrimSpace(value))
-		}
-	}
-	return ""
-}
-
-// homeKey reports whether a pyvenv.cfg key is "home" in any ASCII case; the
-// key is a configuration word, no path.
-func homeKey(key []byte) bool {
-	const want = "home"
-	if len(key) != len(want) {
-		return false
-	}
-	for i := range key {
-		if key[i]|0x20 != want[i] {
-			return false
-		}
-	}
-	return true
 }

@@ -8,13 +8,20 @@ end for shutdown. Parent death also closes that end; the child must not inherit
 a copy of the writer. The Windows process tests exercise this ownership.
 
 EOF requests cooperative context cancellation. Unexpected control bytes and
-read errors fail the child. Resolver initialization must succeed before the
+read errors fail the child. The [service resolver](https://openabstractions.github.io/reference.html#concept-facade.resolver-service) must initialize before the
 acknowledgment is written. Independent provider failures remain observable
 through resolution while healthy capabilities stay available. A failed or short readiness write
 closes initialized listeners and fails startup. The marker reports local listener
 initialization; capability-specific readiness remains available through the
 resolver. Diagnostics use stderr. The parent must consume stdout and observe
 both readiness and process exit.
+
+A supervised runtime compares its image with the path it was started from
+every 15 s, by the rule clients apply to it (`identity.SameSubjectProgram`).
+When an installer has moved its image aside and another file holds the path,
+every client refuses it ("server program mismatch"), so it exits with an error
+and the host starts the installed file. The host's restart limit bounds a
+mismatch that persists.
 
 Foreground invocation keeps its existing signal handling. Supervised invocation
 also responds to signals and does not join a blocked stdin reader during shutdown.
@@ -29,9 +36,13 @@ observation is reported as an error.
 
 The host restarts a failed child after 2 s, 10 s and 30 s, and exits with
 failure on the fourth consecutive failure; a child that ran five minutes resets
-the count. Before each launch it refuses during an installer upgrade (exit
-status 3) and exits cleanly when another runtime already answers the user's
-endpoint. Per-user, it holds a hidden session window for Restart Manager and
+the count. Before its first launch it takes the account's supervisor claim
+(`supervisor.lock` beside `host.log`) and exits cleanly when another
+supervisor holds it, so concurrent starts from `start`, Restart Manager and
+client activation run one runtime. The runtime takes its own state
+directory's instance claim before it opens its log or binds a listener. Before
+each launch the host refuses during an installer upgrade (exit status 3) and
+exits cleanly when another runtime already answers the user's endpoint. Per-user, it holds a hidden session window for Restart Manager and
 sign-out shutdown and calls `RegisterApplicationRestart("serve supervisor")` with
 `RESTART_NO_CRASH|RESTART_NO_HANG|RESTART_NO_REBOOT` before the child is ready.
 Machine scope registers `openabstractionsw.exe serve supervisor --service` as the

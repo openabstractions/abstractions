@@ -15,6 +15,7 @@ func (AcceptanceOutcome) UnmarshalText(text []byte) error
 func (AcceptanceOutcome) MarshalJSON() ([]byte, error)
 func (AcceptanceOutcome) UnmarshalJSON(data []byte) error
 func AcceptanceOutcomeValues() []AcceptanceOutcome
+func (AcceptanceOutcome) IsKnown() bool
 func (AcceptanceOutcome) Known() bool
 type CancellationOutcome uint32
 const CancellationOutcomeRequested
@@ -31,6 +32,7 @@ func (CancellationOutcome) UnmarshalText(text []byte) error
 func (CancellationOutcome) MarshalJSON() ([]byte, error)
 func (CancellationOutcome) UnmarshalJSON(data []byte) error
 func CancellationOutcomeValues() []CancellationOutcome
+func (CancellationOutcome) IsKnown() bool
 func (CancellationOutcome) Known() bool
 type WorkState uint32
 const WorkStatePending
@@ -47,6 +49,7 @@ func (WorkState) UnmarshalText(text []byte) error
 func (WorkState) MarshalJSON() ([]byte, error)
 func (WorkState) UnmarshalJSON(data []byte) error
 func WorkStateValues() []WorkState
+func (WorkState) IsKnown() bool
 func (WorkState) Known() bool
 type FailureClass uint32
 const FailureClassRetryable
@@ -60,6 +63,7 @@ func (FailureClass) UnmarshalText(text []byte) error
 func (FailureClass) MarshalJSON() ([]byte, error)
 func (FailureClass) UnmarshalJSON(data []byte) error
 func FailureClassValues() []FailureClass
+func (FailureClass) IsKnown() bool
 func (FailureClass) Known() bool
 type FailureCause string
 const FailureCauseOther
@@ -74,6 +78,7 @@ const FailureCauseTransport
 const FailureCauseResultLost
 const FailureCauseCredential
 func FailureCauseValues() []FailureCause
+func (FailureCause) IsKnown() bool
 func (FailureCause) Known() bool
 type ObservationOutcome uint32
 const ObservationOutcomeObserved
@@ -90,6 +95,7 @@ func (ObservationOutcome) UnmarshalText(text []byte) error
 func (ObservationOutcome) MarshalJSON() ([]byte, error)
 func (ObservationOutcome) UnmarshalJSON(data []byte) error
 func ObservationOutcomeValues() []ObservationOutcome
+func (ObservationOutcome) IsKnown() bool
 func (ObservationOutcome) Known() bool
 type ResultOutcome uint32
 const ResultOutcomeData
@@ -107,6 +113,7 @@ func (ResultOutcome) UnmarshalText(text []byte) error
 func (ResultOutcome) MarshalJSON() ([]byte, error)
 func (ResultOutcome) UnmarshalJSON(data []byte) error
 func ResultOutcomeValues() []ResultOutcome
+func (ResultOutcome) IsKnown() bool
 func (ResultOutcome) Known() bool
 type LinkOutcome uint32
 const LinkOutcomeLinked
@@ -128,7 +135,40 @@ func (LinkOutcome) UnmarshalText(text []byte) error
 func (LinkOutcome) MarshalJSON() ([]byte, error)
 func (LinkOutcome) UnmarshalJSON(data []byte) error
 func LinkOutcomeValues() []LinkOutcome
+func (LinkOutcome) IsKnown() bool
 func (LinkOutcome) Known() bool
+type WorkObservationOutcome uint32
+const WorkObservationOutcomeChanged
+const WorkObservationOutcomeUnchanged
+const WorkObservationOutcomeGap
+const WorkObservationOutcomeUnknown
+const WorkObservationOutcomeForbidden
+const WorkObservationOutcomeInvalid
+const WorkObservationOutcomeUnavailable
+const WorkObservationOutcomeUnsupported
+func (WorkObservationOutcome) String() string
+func (WorkObservationOutcome) WireName() (string, bool)
+func ParseWorkObservationOutcome(word string) (WorkObservationOutcome, bool)
+func (WorkObservationOutcome) MarshalText() ([]byte, error)
+func (WorkObservationOutcome) UnmarshalText(text []byte) error
+func (WorkObservationOutcome) MarshalJSON() ([]byte, error)
+func (WorkObservationOutcome) UnmarshalJSON(data []byte) error
+func WorkObservationOutcomeValues() []WorkObservationOutcome
+func (WorkObservationOutcome) IsKnown() bool
+func (WorkObservationOutcome) Known() bool
+type WorkObservationMechanism uint32
+const WorkObservationMechanismNative
+const WorkObservationMechanismPolled
+func (WorkObservationMechanism) String() string
+func (WorkObservationMechanism) WireName() (string, bool)
+func ParseWorkObservationMechanism(word string) (WorkObservationMechanism, bool)
+func (WorkObservationMechanism) MarshalText() ([]byte, error)
+func (WorkObservationMechanism) UnmarshalText(text []byte) error
+func (WorkObservationMechanism) MarshalJSON() ([]byte, error)
+func (WorkObservationMechanism) UnmarshalJSON(data []byte) error
+func WorkObservationMechanismValues() []WorkObservationMechanism
+func (WorkObservationMechanism) IsKnown() bool
+func (WorkObservationMechanism) Known() bool
 type InventoryOutcome uint32
 const InventoryOutcomePage
 const InventoryOutcomeGap
@@ -143,6 +183,7 @@ func (InventoryOutcome) UnmarshalText(text []byte) error
 func (InventoryOutcome) MarshalJSON() ([]byte, error)
 func (InventoryOutcome) UnmarshalJSON(data []byte) error
 func InventoryOutcomeValues() []InventoryOutcome
+func (InventoryOutcome) IsKnown() bool
 func (InventoryOutcome) Known() bool
 type OperatorCancellationOutcome uint32
 const OperatorCancellationOutcomeRequested
@@ -159,6 +200,7 @@ func (OperatorCancellationOutcome) UnmarshalText(text []byte) error
 func (OperatorCancellationOutcome) MarshalJSON() ([]byte, error)
 func (OperatorCancellationOutcome) UnmarshalJSON(data []byte) error
 func OperatorCancellationOutcomeValues() []OperatorCancellationOutcome
+func (OperatorCancellationOutcome) IsKnown() bool
 func (OperatorCancellationOutcome) Known() bool
 type ServiceErrorCode string
 const ServiceErrorCodeHandlerError
@@ -169,7 +211,91 @@ const ServiceErrorCodeUnknownMethod
 const ServiceErrorCodeWrongMode
 const ServiceErrorCodeForbidden
 func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) IsKnown() bool
 func (ServiceErrorCode) Known() bool
+type EndpointServiceReadiness uint32
+const EndpointServiceReadinessReady
+const EndpointServiceReadinessNotReady
+const EndpointServiceReadinessUnknown
+func (EndpointServiceReadiness) String() string
+func (EndpointServiceReadiness) WireName() (string, bool)
+func ParseEndpointServiceReadiness(word string) (EndpointServiceReadiness, bool)
+func (EndpointServiceReadiness) MarshalText() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalText(text []byte) error
+func (EndpointServiceReadiness) MarshalJSON() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalJSON(data []byte) error
+func EndpointServiceReadinessValues() []EndpointServiceReadiness
+func (EndpointServiceReadiness) IsKnown() bool
+func (EndpointServiceReadiness) Known() bool
+type EndpointRefusalSource string
+const EndpointRefusalSourceRights
+const EndpointRefusalSourceCredentials
+const EndpointRefusalSourceLicense
+const EndpointRefusalSourceTerms
+const EndpointRefusalSourceIdentity
+const EndpointRefusalSourceOS
+func EndpointRefusalSourceValues() []EndpointRefusalSource
+func (EndpointRefusalSource) IsKnown() bool
+func (EndpointRefusalSource) Known() bool
+type EndpointRefusalDecision uint32
+const EndpointRefusalDecisionDenied
+const EndpointRefusalDecisionNotGranted
+const EndpointRefusalDecisionPersonOnly
+func (EndpointRefusalDecision) String() string
+func (EndpointRefusalDecision) WireName() (string, bool)
+func ParseEndpointRefusalDecision(word string) (EndpointRefusalDecision, bool)
+func (EndpointRefusalDecision) MarshalText() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalText(text []byte) error
+func (EndpointRefusalDecision) MarshalJSON() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalJSON(data []byte) error
+func EndpointRefusalDecisionValues() []EndpointRefusalDecision
+func (EndpointRefusalDecision) IsKnown() bool
+func (EndpointRefusalDecision) Known() bool
+type EndpointRefusalAsk uint32
+const EndpointRefusalAskAvailable
+const EndpointRefusalAskNone
+func (EndpointRefusalAsk) String() string
+func (EndpointRefusalAsk) WireName() (string, bool)
+func ParseEndpointRefusalAsk(word string) (EndpointRefusalAsk, bool)
+func (EndpointRefusalAsk) MarshalText() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalText(text []byte) error
+func (EndpointRefusalAsk) MarshalJSON() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalJSON(data []byte) error
+func EndpointRefusalAskValues() []EndpointRefusalAsk
+func (EndpointRefusalAsk) IsKnown() bool
+func (EndpointRefusalAsk) Known() bool
+type EndpointProducerCheckState uint32
+const EndpointProducerCheckStateCurrent
+const EndpointProducerCheckStateRepaired
+const EndpointProducerCheckStateStale
+const EndpointProducerCheckStateRefused
+const EndpointProducerCheckStateUnverified
+func (EndpointProducerCheckState) String() string
+func (EndpointProducerCheckState) WireName() (string, bool)
+func ParseEndpointProducerCheckState(word string) (EndpointProducerCheckState, bool)
+func (EndpointProducerCheckState) MarshalText() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalText(text []byte) error
+func (EndpointProducerCheckState) MarshalJSON() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalJSON(data []byte) error
+func EndpointProducerCheckStateValues() []EndpointProducerCheckState
+func (EndpointProducerCheckState) IsKnown() bool
+func (EndpointProducerCheckState) Known() bool
+type EndpointDescriptionOutcome uint32
+const EndpointDescriptionOutcomeDescribed
+const EndpointDescriptionOutcomeForbidden
+const EndpointDescriptionOutcomeUnavailable
+const EndpointDescriptionOutcomeInvalid
+const EndpointDescriptionOutcomeUnsupported
+func (EndpointDescriptionOutcome) String() string
+func (EndpointDescriptionOutcome) WireName() (string, bool)
+func ParseEndpointDescriptionOutcome(word string) (EndpointDescriptionOutcome, bool)
+func (EndpointDescriptionOutcome) MarshalText() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalText(text []byte) error
+func (EndpointDescriptionOutcome) MarshalJSON() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalJSON(data []byte) error
+func EndpointDescriptionOutcomeValues() []EndpointDescriptionOutcome
+func (EndpointDescriptionOutcome) IsKnown() bool
+func (EndpointDescriptionOutcome) Known() bool
 var AdmissionGuarantees
 var AcceptanceErrorCodes
 var ResourceActions
@@ -232,6 +358,11 @@ type ResultLink struct
   Outcome LinkOutcome
   Receipt *Receipt
   Size int64
+type WorkObservation struct
+  Outcome WorkObservationOutcome
+  Next string
+  Snapshot *OperationSnapshot
+  Mechanism WorkObservationMechanism
 type InventoryPage struct
   Outcome InventoryOutcome
   Snapshots []OperationSnapshot
@@ -239,17 +370,53 @@ type InventoryPage struct
   Complete bool
 type OperatorCancellation struct
   Outcome OperatorCancellationOutcome
+type EndpointRefusalDetail struct
+  Source EndpointRefusalSource
+  Decision EndpointRefusalDecision
+  Ask EndpointRefusalAsk
+  Action string
+  Question string
+  Credential string
+  RetryAfterMs int64
+type EndpointProducerCheck struct
+  Kind string
+  Copy string
+  State EndpointProducerCheckState
+  Reason string
+  Checked string
+type EndpointServiceState struct
+  Service string
+  Readiness EndpointServiceReadiness
+  Reason string
+  Guarantees []string
+  Capabilities map[string]string
+  DefinitionHash string
+type EndpointDescription struct
+  Outcome EndpointDescriptionOutcome
+  Program string
+  Version string
+  Services []EndpointServiceState
+  Refusal *EndpointRefusalDetail
+  Reason string
+  Checks []EndpointProducerCheck
+type EndpointDescriptionResult struct
+  Value EndpointDescription
 func Encode(v *AcceptanceResult) []byte
 type Refusal struct
   Word string
   Offset int
 func (Refusal) Error() string
+const TimestampLayout
+func FormatTimestamp(at time.Time) string
 func Decode(in []byte) (*AcceptanceResult, error)
+func ToJSON(v any) (out []byte, err error)
+func FromJSON(data []byte, v any) error
 type FrameWriter interface
   WriteFrame(frame []byte) error
 type DispatchError string
 func (DispatchError) Error() string
 func ServiceName(frame []byte) (string, error)
+func ServiceMethod(frame []byte) (service string, method string, err error)
 type FrameExchanger interface
   ExchangeFrame(frame []byte) ([]byte, error)
 type ServiceError struct
@@ -257,13 +424,18 @@ type ServiceError struct
   Message string
 func (ServiceError) Error() string
 const EndpointContract
+const EndpointV2Contract
 type DescribedService interface
   DescribeService() (contract string, ready bool, why string)
 func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+func DescribeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...DescribedService) ([]byte, error)
 type ServedService interface
   DescribedService
   ServiceContract() string
 func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+func ServeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...ServedService) ([]byte, error)
+func ServeEndpointRemote(frame []byte, program, version string, admit func(contract, method, profile string) error, services ...ServedService) ([]byte, error)
+func RemoteMethodProfile(service interface{}, contract, method string) string
 type RecoverableAcceptance interface
   GetHistoryWindow() (HistoryWindow, error)
   Submit(submission Submission) (AcceptanceResult, error)
@@ -275,6 +447,7 @@ type RecoverableAcceptanceClient struct
 func NewRecoverableAcceptanceClient(t RecoverableAcceptanceTransport) *RecoverableAcceptanceClient
 type RecoverableAcceptanceDispatcher struct
   Handler RecoverableAcceptance
+func (RecoverableAcceptanceDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (RecoverableAcceptanceClient) GetHistoryWindow() (result HistoryWindow, err error)
 func (RecoverableAcceptanceClient) Submit(submission Submission) (result AcceptanceResult, err error)
 func (RecoverableAcceptanceClient) Reconcile(identity RequestIdentity) (result AcceptanceResult, err error)
@@ -282,10 +455,12 @@ func (RecoverableAcceptanceClient) CancelWork(identity RequestIdentity) (result 
 func (RecoverableAcceptanceDispatcher) DescribeService() (contract string, ready bool, why string)
 func (RecoverableAcceptanceDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (RecoverableAcceptanceDispatcher) ServiceContract() string
+func (RecoverableAcceptanceDispatcher) DescribeServiceDefinitionHash() string
 func (RecoverableAcceptanceDispatcher) WriteFrame(frame []byte) error
 func (RecoverableAcceptanceDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type OperationControl interface
   ObserveWork(identity RequestIdentity) (ObservationResult, error)
+  FollowWork(identity RequestIdentity, after string, waitMs int64) (WorkObservation, error)
   ReadResult(identity RequestIdentity, offset, maxBytes int64) (ResultRead, error)
   LinkResult(identity RequestIdentity, destination string) (ResultLink, error)
 type OperationControlTransport interface
@@ -294,12 +469,16 @@ type OperationControlClient struct
 func NewOperationControlClient(t OperationControlTransport) *OperationControlClient
 type OperationControlDispatcher struct
   Handler OperationControl
+func (OperationControlDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (OperationControlClient) ObserveWork(identity RequestIdentity) (result ObservationResult, err error)
+func (OperationControlClient) FollowWork(identity RequestIdentity, after string, waitMs int64) (result WorkObservation, err error)
+func (OperationControlClient) FollowWorkPages(identity RequestIdentity, after string, waitMs int64) func(func(WorkObservation, error) bool)
 func (OperationControlClient) ReadResult(identity RequestIdentity, offset, maxBytes int64) (result ResultRead, err error)
 func (OperationControlClient) LinkResult(identity RequestIdentity, destination string) (result ResultLink, err error)
 func (OperationControlDispatcher) DescribeService() (contract string, ready bool, why string)
 func (OperationControlDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (OperationControlDispatcher) ServiceContract() string
+func (OperationControlDispatcher) DescribeServiceDefinitionHash() string
 func (OperationControlDispatcher) WriteFrame(frame []byte) error
 func (OperationControlDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type JobInventory interface
@@ -310,10 +489,12 @@ type JobInventoryClient struct
 func NewJobInventoryClient(t JobInventoryTransport) *JobInventoryClient
 type JobInventoryDispatcher struct
   Handler JobInventory
+func (JobInventoryDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (JobInventoryClient) ListWork(cursor string, limit int64) (result InventoryPage, err error)
 func (JobInventoryDispatcher) DescribeService() (contract string, ready bool, why string)
 func (JobInventoryDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (JobInventoryDispatcher) ServiceContract() string
+func (JobInventoryDispatcher) DescribeServiceDefinitionHash() string
 func (JobInventoryDispatcher) WriteFrame(frame []byte) error
 func (JobInventoryDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type JobOperator interface
@@ -325,10 +506,76 @@ type JobOperatorClient struct
 func NewJobOperatorClient(t JobOperatorTransport) *JobOperatorClient
 type JobOperatorDispatcher struct
   Handler JobOperator
+func (JobOperatorDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (JobOperatorClient) ListAccountWork(cursor string, limit int64) (result InventoryPage, err error)
 func (JobOperatorClient) CancelOperation(operationID string) (result OperatorCancellation, err error)
 func (JobOperatorDispatcher) DescribeService() (contract string, ready bool, why string)
 func (JobOperatorDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (JobOperatorDispatcher) ServiceContract() string
+func (JobOperatorDispatcher) DescribeServiceDefinitionHash() string
 func (JobOperatorDispatcher) WriteFrame(frame []byte) error
 func (JobOperatorDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+func DecodeRequestIdentityAt(in []byte, depth, limit int) (*RequestIdentity, int, error)
+func EncodeRequestIdentityAt(v *RequestIdentity, depth int) []byte
+func EncodeRequestIdentity(v *RequestIdentity) []byte
+func DecodeRequestIdentity(in []byte) (*RequestIdentity, error)
+func DecodeSubmissionAt(in []byte, depth, limit int) (*Submission, int, error)
+func EncodeSubmissionAt(v *Submission, depth int) []byte
+func EncodeSubmission(v *Submission) []byte
+func DecodeSubmission(in []byte) (*Submission, error)
+func DecodeReceiptAt(in []byte, depth, limit int) (*Receipt, int, error)
+func EncodeReceiptAt(v *Receipt, depth int) []byte
+func EncodeReceipt(v *Receipt) []byte
+func DecodeReceipt(in []byte) (*Receipt, error)
+func DecodeAcceptanceResultAt(in []byte, depth, limit int) (*AcceptanceResult, int, error)
+func EncodeAcceptanceResultAt(v *AcceptanceResult, depth int) []byte
+func EncodeAcceptanceResult(v *AcceptanceResult) []byte
+func DecodeAcceptanceResult(in []byte) (*AcceptanceResult, error)
+func DecodeHistoryWindowAt(in []byte, depth, limit int) (*HistoryWindow, int, error)
+func EncodeHistoryWindowAt(v *HistoryWindow, depth int) []byte
+func EncodeHistoryWindow(v *HistoryWindow) []byte
+func DecodeHistoryWindow(in []byte) (*HistoryWindow, error)
+func DecodeCancellationResultAt(in []byte, depth, limit int) (*CancellationResult, int, error)
+func EncodeCancellationResultAt(v *CancellationResult, depth int) []byte
+func EncodeCancellationResult(v *CancellationResult) []byte
+func DecodeCancellationResult(in []byte) (*CancellationResult, error)
+func DecodeWorkProgressAt(in []byte, depth, limit int) (*WorkProgress, int, error)
+func EncodeWorkProgressAt(v *WorkProgress, depth int) []byte
+func EncodeWorkProgress(v *WorkProgress) []byte
+func DecodeWorkProgress(in []byte) (*WorkProgress, error)
+func DecodeWorkFailureAt(in []byte, depth, limit int) (*WorkFailure, int, error)
+func EncodeWorkFailureAt(v *WorkFailure, depth int) []byte
+func EncodeWorkFailure(v *WorkFailure) []byte
+func DecodeWorkFailure(in []byte) (*WorkFailure, error)
+func DecodeOperationSnapshotAt(in []byte, depth, limit int) (*OperationSnapshot, int, error)
+func EncodeOperationSnapshotAt(v *OperationSnapshot, depth int) []byte
+func EncodeOperationSnapshot(v *OperationSnapshot) []byte
+func DecodeOperationSnapshot(in []byte) (*OperationSnapshot, error)
+func DecodeObservationResultAt(in []byte, depth, limit int) (*ObservationResult, int, error)
+func EncodeObservationResultAt(v *ObservationResult, depth int) []byte
+func EncodeObservationResult(v *ObservationResult) []byte
+func DecodeObservationResult(in []byte) (*ObservationResult, error)
+func DecodeResultChunkAt(in []byte, depth, limit int) (*ResultChunk, int, error)
+func EncodeResultChunkAt(v *ResultChunk, depth int) []byte
+func EncodeResultChunk(v *ResultChunk) []byte
+func DecodeResultChunk(in []byte) (*ResultChunk, error)
+func DecodeResultReadAt(in []byte, depth, limit int) (*ResultRead, int, error)
+func EncodeResultReadAt(v *ResultRead, depth int) []byte
+func EncodeResultRead(v *ResultRead) []byte
+func DecodeResultRead(in []byte) (*ResultRead, error)
+func DecodeResultLinkAt(in []byte, depth, limit int) (*ResultLink, int, error)
+func EncodeResultLinkAt(v *ResultLink, depth int) []byte
+func EncodeResultLink(v *ResultLink) []byte
+func DecodeResultLink(in []byte) (*ResultLink, error)
+func DecodeWorkObservationAt(in []byte, depth, limit int) (*WorkObservation, int, error)
+func EncodeWorkObservationAt(v *WorkObservation, depth int) []byte
+func EncodeWorkObservation(v *WorkObservation) []byte
+func DecodeWorkObservation(in []byte) (*WorkObservation, error)
+func DecodeInventoryPageAt(in []byte, depth, limit int) (*InventoryPage, int, error)
+func EncodeInventoryPageAt(v *InventoryPage, depth int) []byte
+func EncodeInventoryPage(v *InventoryPage) []byte
+func DecodeInventoryPage(in []byte) (*InventoryPage, error)
+func DecodeOperatorCancellationAt(in []byte, depth, limit int) (*OperatorCancellation, int, error)
+func EncodeOperatorCancellationAt(v *OperatorCancellation, depth int) []byte
+func EncodeOperatorCancellation(v *OperatorCancellation) []byte
+func DecodeOperatorCancellation(in []byte) (*OperatorCancellation, error)

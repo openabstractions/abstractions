@@ -15,9 +15,12 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	identity "github.com/openabstractions/abstraction-identity"
+	"github.com/openabstractions/abstraction-identity/fileid"
+	"github.com/openabstractions/abstraction-identity/go/privatedir"
 )
 
 const archiveChunk = 64 << 10
@@ -31,6 +34,7 @@ type archiveFileRecord struct {
 
 type archiveReceipt struct {
 	Format          int                 `json:"format"`
+	ArchivePath     string              `json:"archive_path,omitempty"`
 	ArtifactSHA256  string              `json:"artifact_sha256"`
 	Version         string              `json:"version"`
 	InstallIdentity string              `json:"install_identity"`
@@ -64,7 +68,7 @@ func InstallArchive(ctx context.Context, a Artifact, zipPath, destination string
 	if err := absent(destination); err != nil {
 		return err
 	}
-	input, err := os.Open(zipPath)
+	input, err := openArchiveSource(ctx, zipPath)
 	if err != nil {
 		return err
 	}
@@ -86,22 +90,18 @@ func InstallArchive(ctx context.Context, a Artifact, zipPath, destination string
 	if a.InstallIdentity == "tn" {
 		// The pinned upstream archive uses ./ for its root. Normalize only
 		// this fixed package before the ordinary member checks.
-		members := make([]*zip.File, 0, len(reader.File))
-		for _, member := range reader.File {
-			if member.Name == "./" && member.Mode().IsDir() {
-				continue
-			}
-			copy := *member
-			copy.Name = strings.TrimPrefix(copy.Name, "./")
-			members = append(members, &copy)
-		}
-		reader.File = members
+		reader.File = normalizedArchiveMembers(a, reader.File)
 		if err := theNoiseEnginePath(filepath.Join(destination, "e")); err != nil {
 			return err
 		}
 	}
 	if err := validateMembers(reader.File, a.PeakBytes); err != nil {
 		return err
+	}
+	if home, err := CurrentHome(); err == nil {
+		if err := markNoBackupClass(home, destination); err != nil {
+			return err
+		}
 	}
 	parent := filepath.Dir(destination)
 	if err := os.MkdirAll(parent, 0o700); err != nil {
@@ -115,16 +115,29 @@ func InstallArchive(ctx context.Context, a Artifact, zipPath, destination string
 	if err != nil {
 		return err
 	}
+	stageFile, err := fileid.Open(ctx, fileid.Self, stage, fileid.Options{Links: fileid.RefuseLinks})
+	if err != nil {
+		return err
+	}
+	stageKey, keyErr := fileid.FileKeyOf(stageFile.File())
+	if err := errors.Join(keyErr, stageFile.Close()); err != nil {
+		return err
+	}
+	defer func() {
+		if stage != "" {
+			cleanArchiveStage(stage, stageKey)
+		}
+	}()
 	// The staging folder must sit directly in parent: its own parent is parent
 	// by file identity (identity.SameFile).
 	if same, err := identity.SameFile(filepath.Dir(stage), parent); err != nil || !same {
 		return errors.New("setup archive: staging directory escaped destination parent")
 	}
-	defer func() {
-		if stage != "" {
-			_ = os.RemoveAll(stage) // only the unique same-parent directory created above
+	if a.NativeResources != nil {
+		if err := privatedir.Tighten(stage); err != nil {
+			return err
 		}
-	}()
+	}
 	extractRoot := stage
 	if a.InstallIdentity == "tn" {
 		extractRoot = filepath.Join(stage, "e")
@@ -145,7 +158,7 @@ func InstallArchive(ctx context.Context, a Artifact, zipPath, destination string
 		}
 		dirs = append(dirs, "e")
 	}
-	if err := writeArchiveReceipt(stage, a, files, dirs); err != nil {
+	if err := writeArchiveReceipt(stage, a, input.Name(), files, dirs); err != nil {
 		return err
 	}
 	// The source may have changed after the first hash. Recheck the same open
@@ -159,7 +172,7 @@ func InstallArchive(ctx context.Context, a Artifact, zipPath, destination string
 	if err := absent(destination); err != nil {
 		return err
 	}
-	if err := os.Rename(stage, destination); err != nil {
+	if err := publishArchiveDirectory(ctx, stage, destination, stageKey); err != nil {
 		return fmt.Errorf("setup archive: publish staged app: %w", err)
 	}
 	stage = ""
@@ -170,47 +183,121 @@ func InstallArchive(ctx context.Context, a Artifact, zipPath, destination string
 // file. An unmarked directory is never treated as an installed app. This is a
 // recovery check; large archives can take time to rehash.
 func ArchiveInstalled(a Artifact, destination string) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	return archiveInstalledContext(ctx, a, destination)
+}
+
+// ArchiveReceiptMatches reads only the installed receipt: whether the folder
+// holds the pinned artifact's receipt, by its SHA-256, version and install
+// identity. It reads no package file and runs nothing from the package; a
+// display that needs no authority uses it in place of ArchiveInstalled.
+func ArchiveReceiptMatches(a Artifact, destination string) (bool, error) {
+	_, ok, err := archiveReceiptFor(a, destination)
+	return ok, err
+}
+
+// treeSampleFiles is how many of the receipt's first files, and how many of
+// its programs, a status read checks by size.
+const treeSampleFiles = 16
+
+// archiveReceiptAndSizes reads the installed receipt and checks that a small
+// fixed sample of the files it lists, its first files and its programs, are
+// still regular files of their recorded sizes. It walks no tree and hashes
+// nothing, so a status read can afford it for a package of many thousand
+// files; ArchiveInstalled hashes on demand. Reason names the first missing or
+// changed file.
+func archiveReceiptAndSizes(a Artifact, destination string) (ok bool, reason string, err error) {
+	receipt, ok, err := archiveReceiptFor(a, destination)
+	if err != nil {
+		return false, "", err
+	}
+	if !ok {
+		return false, "its install receipt is missing or names another version", nil
+	}
+	sample := receipt.Files[:min(len(receipt.Files), treeSampleFiles)]
+	programs := 0
+	for _, file := range receipt.Files[len(sample):] {
+		if programs < treeSampleFiles && strings.EqualFold(path.Ext(file.Path), ".exe") {
+			sample = append(sample[:len(sample):len(sample)], file)
+			programs++
+		}
+	}
+	for _, file := range sample {
+		if !safeMemberPath(file.Path) {
+			return false, "", errors.New("setup archive: unsafe install receipt")
+		}
+		if err := verifyInstalledPath(destination, file.Path); errors.Is(err, os.ErrNotExist) {
+			return false, file.Path + " is missing", nil
+		} else if err != nil {
+			return false, "", err
+		}
+		info, err := os.Lstat(filepath.Join(destination, filepath.FromSlash(file.Path)))
+		if err != nil {
+			return false, "", err
+		}
+		if info.Size() != file.Size {
+			return false, file.Path + " changed size", nil
+		}
+	}
+	return true, "", nil
+}
+
+// archiveReceiptFor reads destination's receipt and reports whether it names
+// artifact a.
+func archiveReceiptFor(a Artifact, destination string) (archiveReceipt, bool, error) {
 	if err := a.validate(); err != nil {
-		return false, err
+		return archiveReceipt{}, false, err
 	}
 	if a.Action != "archive_per_user" || !filepath.IsAbs(destination) || filepath.Clean(destination) != destination {
-		return false, errors.New("setup archive: invalid installed archive target")
+		return archiveReceipt{}, false, errors.New("setup archive: invalid installed archive target")
 	}
 	if err := identity.LocalPath(destination); err != nil {
-		return false, fmt.Errorf("setup archive: the installed target must be on a local drive: %w", err)
+		return archiveReceipt{}, false, fmt.Errorf("setup archive: the installed target must be on a local drive: %w", err)
 	}
 	root, err := os.Lstat(destination)
 	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
+		return archiveReceipt{}, false, nil
 	}
 	if err != nil {
-		return false, err
+		return archiveReceipt{}, false, err
 	}
 	if !root.IsDir() || root.Mode()&os.ModeSymlink != 0 {
-		return false, errors.New("setup archive: installed target is not a directory")
+		return archiveReceipt{}, false, errors.New("setup archive: installed target is not a directory")
 	}
 	markerPath := filepath.Join(destination, archiveMarker)
 	markerInfo, err := os.Lstat(markerPath)
 	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
+		return archiveReceipt{}, false, nil
 	}
 	if err != nil {
-		return false, err
+		return archiveReceipt{}, false, err
 	}
 	if !markerInfo.Mode().IsRegular() || markerInfo.Size() <= 0 || markerInfo.Size() > 16<<20 {
-		return false, errors.New("setup archive: invalid install receipt")
+		return archiveReceipt{}, false, errors.New("setup archive: invalid install receipt")
 	}
 	data, err := os.ReadFile(markerPath)
 	if err != nil {
-		return false, err
+		return archiveReceipt{}, false, err
 	}
 	var receipt archiveReceipt
 	if err := json.Unmarshal(data, &receipt); err != nil {
-		return false, fmt.Errorf("setup archive: invalid receipt: %w", err)
+		return archiveReceipt{}, false, fmt.Errorf("setup archive: invalid receipt: %w", err)
 	}
-	if receipt.Format != 1 || !strings.EqualFold(receipt.ArtifactSHA256, a.SHA256) ||
+	if receipt.Format != 2 || !strings.EqualFold(receipt.ArtifactSHA256, a.SHA256) ||
 		receipt.Version != a.Version || receipt.InstallIdentity != a.InstallIdentity || len(receipt.Files) == 0 || len(receipt.Files) > 100000 {
-		return false, nil
+		return archiveReceipt{}, false, nil
+	}
+	return receipt, true, nil
+}
+
+func archiveInstalledContext(ctx context.Context, a Artifact, destination string) (bool, error) {
+	receipt, ok, err := archiveReceiptFor(a, destination)
+	if err != nil || !ok {
+		return false, err
+	}
+	if err := receiptHasExpectedRoster(ctx, a, receipt); err != nil {
+		return false, err
 	}
 	seen := make(map[string]bool, len(receipt.Files)+len(receipt.Dirs)+1)
 	expected := map[string]bool{archiveMarker: false}
@@ -262,6 +349,11 @@ func ArchiveInstalled(a Artifact, destination string) (bool, error) {
 		}
 		if !strings.EqualFold(hex.EncodeToString(h.Sum(nil)), file.SHA256) {
 			return false, nil
+		}
+	}
+	if a.NativeResources != nil {
+		if err := nativeInstalledInventory(ctx, a, destination, receipt.ArchivePath, expected); err != nil {
+			return false, err
 		}
 	}
 	if err := exactArchiveTree(destination, expected); errors.Is(err, errArchiveTreeMismatch) {
@@ -327,15 +419,23 @@ func verifyInstalledPath(root, name string) error {
 	return nil
 }
 
-func writeArchiveReceipt(stage string, a Artifact, files []archiveFileRecord, dirs []string) error {
+func writeArchiveReceipt(stage string, a Artifact, source string, files []archiveFileRecord, dirs []string) error {
 	if len(files) == 0 {
 		return errors.New("setup archive: no installed files")
+	}
+	if a.NativeResources != nil {
+		if err := validateNativeMarkerBudget(a, files, dirs); err != nil {
+			return err
+		}
+		if a.NativeResources.MarkerBytes+nativeArchivePathBytes(source) > 16<<20 {
+			return errors.New("native install receipt exceeds writer bound")
+		}
 	}
 	marker, err := os.OpenFile(filepath.Join(stage, archiveMarker), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
-	receipt := archiveReceipt{Format: 1, ArtifactSHA256: a.SHA256, Version: a.Version, InstallIdentity: a.InstallIdentity, Dirs: dirs, Files: files}
+	receipt := archiveReceipt{Format: 2, ArchivePath: source, ArtifactSHA256: a.SHA256, Version: a.Version, InstallIdentity: a.InstallIdentity, Dirs: dirs, Files: files}
 	encodeErr := json.NewEncoder(marker).Encode(receipt)
 	if encodeErr == nil {
 		var info os.FileInfo

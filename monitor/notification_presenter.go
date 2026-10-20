@@ -182,11 +182,12 @@ type notificationRules interface {
 
 // notificationClicks carries out clicks against the service.
 type notificationClicks struct {
-	operator func(context.Context) (notificationOperator, error)
-	rules    func(context.Context) (notificationRules, string, error)
-	activity func(operationID string) error
-	surface  notificationSurface
-	budget   time.Duration
+	operator    func(context.Context) (notificationOperator, error)
+	rules       func(context.Context) (notificationRules, string, error)
+	activity    func(operationID string) error
+	application func(context.Context, askclient.NotificationRecord, string) error
+	surface     notificationSurface
+	budget      time.Duration
 }
 
 // handle carries out one click (ASK-N4). A body click acts on the
@@ -245,6 +246,9 @@ func (c notificationClicks) handle(ctx context.Context, args string) error {
 	case askclient.NotificationDecisionActed:
 		if decision.Record != nil && decision.Record.Result != nil && decision.Record.Result.Action == action {
 			for _, a := range record.Request.Actions {
+				if a.ID == action && a.Activation == askclient.NotificationActivationApp && c.application != nil {
+					return c.application(ctx, *decision.Record, action)
+				}
 				if a.ID == action && a.Activation == askclient.NotificationActivationOpenActivity && c.activity != nil {
 					return c.activity(record.Request.OperationID)
 				}
@@ -307,9 +311,10 @@ func panelNotificationClicks(surface notificationSurface) notificationClicks {
 			operator, err := panelMachine().ResolveRightsOperator(ctx, facade.Requirements{Scope: facade.ScopeLocal})
 			return operator, subject.Account, err
 		},
-		activity: launchActivityPanel,
-		surface:  surface,
-		budget:   10 * time.Second,
+		activity:    launchActivityPanel,
+		application: activatePanelApplicationNotification,
+		surface:     surface,
+		budget:      10 * time.Second,
 	}
 }
 

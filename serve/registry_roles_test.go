@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -9,8 +11,10 @@ import (
 	"testing"
 
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
+	identity "github.com/openabstractions/abstraction-identity"
 	iwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	router "github.com/openabstractions/abstraction-router/go"
+	"github.com/openabstractions/abstraction-storage/go/layout"
 )
 
 // No serve test reads the installation this machine actually has: a test that
@@ -19,33 +23,38 @@ func init() {
 	installationDeclarationPath = func() (string, error) { return "", nil }
 }
 
-// shippedDeclarations is the directory the installer ships the four default
-// host declarations from.
+// shippedDeclarations holds the OA provider declarations supplied by optional
+// installer features.
 func shippedDeclarations(t *testing.T) string {
 	t.Helper()
-	dir, err := filepath.Abs(filepath.Join("..", "installer", "declarations"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	var dir string
+	// A published checkout still runs the owned fallback-host assertions below.
+	// Only its private shipped-source lookup is skipped.
+	t.Run("private-shipped-source", func(t *testing.T) {
+		privateInput(t, "..", "openabstractions-flat")
+		dir = privateInput(t, "..", "installer", "declarations")
+		info, err := os.Stat(dir)
+		if err != nil || !info.IsDir() {
+			t.Fatalf("private installer declarations %s are not a directory: %v", dir, err)
+		}
+	})
 	return dir
 }
 
-// The private source workspace owns installer and generated layer trees. A
-// published charter checkout has neither, as declared by split.manifest.
+// privateWorkspace preserves the caller's choice between a published skip and
+// an unexpected fixture failure. Only the private marker lookup may skip.
 func privateWorkspace(t *testing.T) bool {
 	t.Helper()
-	marker := filepath.Join("..", "openabstractions-flat")
-	info, err := os.Stat(marker)
-	if os.IsNotExist(err) {
-		return false
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !info.IsDir() {
-		t.Fatalf("private workspace marker %s is not a directory", marker)
-	}
-	return true
+	found := false
+	t.Run("private-workspace-source", func(t *testing.T) {
+		marker := privateInput(t, "..", "openabstractions-flat")
+		info, err := os.Stat(marker)
+		if err != nil || !info.IsDir() {
+			t.Fatalf("private workspace marker %s is not a directory: %v", marker, err)
+		}
+		found = true
+	})
+	return found
 }
 
 // placeInstallationDeclarations copies the shipped declaration files into a
@@ -53,40 +62,31 @@ func privateWorkspace(t *testing.T) bool {
 func placeInstallationDeclarations(t *testing.T, names ...string) string {
 	t.Helper()
 	shipped := shippedDeclarations(t)
-	_, shippedErr := os.Stat(shipped)
-	if shippedErr != nil && (!os.IsNotExist(shippedErr) || privateWorkspace(t)) {
-		t.Fatal(shippedErr)
-	}
 	dir := filepath.Join(t.TempDir(), installationDeclarationsDir)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range names {
-		raw, err := os.ReadFile(filepath.Join(shipped, name+".json"))
+		var raw []byte
+		err := os.ErrNotExist
+		if shipped != "" {
+			raw, err = os.ReadFile(filepath.Join(shipped, name+".json"))
+		}
+		if os.IsNotExist(err) {
+			// These tests explicitly install fixture host declarations to exercise
+			// precedence and withdrawal. The OA package supplies none of them.
+			bases := map[string]string{"lemonade": router.LemonadeDefaultBase, "lmstudio": router.LMStudioDefaultBase,
+				"ollama": router.OllamaDefaultBase, "comfyui": router.ComfyUIDefaultBase}
+			base, ok := bases[name]
+			if !ok {
+				t.Fatalf("no fixture declaration named %q", name)
+			}
+			file := newHostFile(iwire.HostEntry{Name: name, Kind: name, Base: base}, declaredByInstallation)
+			file.DeclaredAt = 0
+			raw, err = json.Marshal(file)
+		}
 		if err != nil {
-			if shippedErr == nil || !os.IsNotExist(err) {
-				t.Fatal(err)
-			}
-			// The published charter checkout has no installer tree. Keep the
-			// runtime role tests self-contained using the router's public
-			// default-host contract; the byte-for-byte installer check below
-			// still runs in the private workspace that owns both packages.
-			var found bool
-			for _, h := range router.Installed() {
-				if h.Name == name {
-					file := newHostFile(iwire.HostEntry{Name: name, Kind: name, Base: h.Base}, declaredByInstallation)
-					file.DeclaredAt = 0
-					raw, err = json.Marshal(file)
-					if err != nil {
-						t.Fatal(err)
-					}
-					found = true
-					break
-				}
-			}
-			if !found {
-				t.Fatalf("no router default host named %q", name)
-			}
+			t.Fatal(err)
 		}
 		if err := os.WriteFile(filepath.Join(dir, name+".json"), raw, 0o600); err != nil {
 			t.Fatal(err)
@@ -98,74 +98,153 @@ func placeInstallationDeclarations(t *testing.T, names ...string) string {
 	return dir
 }
 
-// The installer ships one declaration file for each of the four runtimes the
-// router's Installed() names, at the same address, and both packages ship the
-// same bytes.
-func TestTheInstallerShipsTheFourDefaultHostDeclarations(t *testing.T) {
-	windows := shippedDeclarations(t)
-	if _, err := os.Stat(windows); os.IsNotExist(err) {
-		if privateWorkspace(t) {
-			t.Fatalf("private workspace is missing installer declarations at %s", windows)
-		}
-		t.Skip("installer/posix declaration byte-identity requires the private installer tree")
-	} else if err != nil {
-		t.Fatal(err)
-	}
-	posix := filepath.Join(filepath.Dir(windows), "posix", "declarations")
-	for _, h := range router.Installed() {
-		raw, err := os.ReadFile(filepath.Join(windows, h.Name+".json"))
-		if err != nil {
-			t.Fatalf("the installer ships no declaration for %s: %v", h.Name, err)
-		}
-		var f providerFile
-		if err := json.Unmarshal(raw, &f); err != nil {
-			t.Fatalf("%s: %v", h.Name, err)
-		}
-		d := f.Declaration
-		if f.Version != providerFileVersion || d.role() != wire.DeclarationRoleHost || d.Host == nil {
-			t.Fatalf("%s is not a version %d host declaration: %+v", h.Name, providerFileVersion, f)
-		}
-		if d.Host.Base != h.Base || d.Host.Kind != h.Name || d.Host.Hosted {
-			t.Fatalf("%s declares %+v, Installed() says %s", h.Name, d.Host, h.Base)
-		}
-		if field := validProviderDeclaration(d); field != "" {
-			t.Fatalf("%s: invalid %s", h.Name, field)
-		}
-		other, err := os.ReadFile(filepath.Join(posix, h.Name+".json"))
-		if err != nil || string(other) != string(raw) {
-			t.Fatalf("the Linux and macOS package ships different bytes for %s: %v", h.Name, err)
-		}
-	}
-	// Every other shipped file is a provider declaration the installer's
-	// optional features carry (local-stores discovery today); hosts are
-	// exactly Installed().
-	entries, err := os.ReadDir(windows)
-	if err != nil {
-		t.Fatal(err)
-	}
-	hosts := 0
-	for _, e := range entries {
-		raw, err := os.ReadFile(filepath.Join(windows, e.Name()))
+// Generic OA installation ships its own providers, with no presumed third-party
+// HTTP servers. An explicitly installed host declaration remains supported.
+func TestTheInstallerShipsOnlyItsOwnProviderDeclarations(t *testing.T) {
+	privateInput(t, "..", "openabstractions-flat")
+	windows := privateInput(t, "..", "installer", "declarations")
+	for _, dir := range []string{windows, filepath.Join(filepath.Dir(windows), "posix", "declarations")} {
+		entries, err := os.ReadDir(dir)
 		if err != nil {
 			t.Fatal(err)
 		}
-		var f providerFile
-		if err := json.Unmarshal(raw, &f); err != nil {
-			t.Fatalf("%s: %v", e.Name(), err)
-		}
-		switch f.Declaration.role() {
-		case wire.DeclarationRoleHost:
-			hosts++
-		case wire.DeclarationRoleProvider:
-			if field := validProviderDeclaration(f.Declaration); field != "" && field != "program" {
-				t.Fatalf("%s: invalid %s", e.Name(), field)
+		localStores := false
+		for _, entry := range entries {
+			raw, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+			if err != nil {
+				t.Fatal(err)
 			}
-		default:
-			t.Fatalf("%s ships with role %v", e.Name(), f.Declaration.role())
+			f := authoredInstallerSpec(t, raw)
+			if len(f.Providers) == 0 || len(f.Servers)+len(f.Remotes)+len(f.Applications) != 0 {
+				t.Fatalf("generic install assumes third-party host: %s", entry.Name())
+			}
+			for _, provider := range f.Providers {
+				if provider.Name == "local-stores" && f.Program != "" {
+					localStores = true
+				}
+			}
+		}
+		if !localStores {
+			t.Fatalf("%s lost the OA local-stores provider", dir)
 		}
 	}
-	if hosts != len(router.Installed()) {
-		t.Fatalf("the installer ships %d host declarations, Installed() names %d", hosts, len(router.Installed()))
+}
+
+// Registration is independent from reachability: a clean machine has no fake
+// hosts, and an explicitly saved offline host retains its exact operator identity.
+func TestCleanInstallHasNoAssumedHostsAndRetainsExplicitOfflineHost(t *testing.T) {
+	placeInstallationDeclarations(t)
+	p, err := openFixtureProviders(t, t.TempDir(), true, func(err error) { t.Error(err) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, revision, err := p.read()
+	if err != nil || len(files) != 0 {
+		t.Fatalf("clean registration: %+v %v", files, err)
+	}
+	entry := iwire.HostEntry{Name: "ollama", Kind: "ollama", Base: "http://127.0.0.1:45678"}
+	if change := p.add(revision, newHostFile(entry, declaredByOperator)); change.Outcome != wire.DeclarationEditOutcomeApplied {
+		t.Fatalf("save offline host: %+v", change)
+	}
+	states, _, err := p.list()
+	if err != nil || len(states) != 1 {
+		t.Fatalf("offline registration: %+v %v", states, err)
+	}
+	if state := states[0]; state.Declaration.Name != entry.Name || state.DeclaredBy != declaredByOperator || state.Readiness != wire.DeclarationReadinessUnreachable {
+		t.Fatalf("offline operator host lost: %+v", state)
+	}
+}
+
+// Reset removes the selected account settings. Reopening the ordinary runtime
+// must not reconstruct the four old port presets as registrations, and it must
+// still read an actually installed on-demand provider without activating it.
+func TestFreshAndResetRegistriesHaveNoAssumedThirdPartyHosts(t *testing.T) {
+	saved := declarationEnv
+	declarationEnv = fixtureDeclarations(nil, nil)
+	t.Cleanup(func() { declarationEnv = saved })
+	installation := placeInstallationDeclarations(t)
+	program := filepath.Join(filepath.Dir(installation), "managed-provider")
+	resetWrite(t, program, "inert installed program fixture")
+	writeBundledDeclaration(t, installation, "managed", "managed-provider", "managed-fixture", []string{})
+	roots, _ := resetFixture(t)
+	state := filepath.Join(roots.Local, layout.Name, "runtime-v1")
+	model := filepath.Join(roots.Local, layout.Name, "models", "model.bin")
+	resetWrite(t, model, "owned model fixture")
+	open := func() *runtimeProviders {
+		t.Helper()
+		config, err := loadInferenceHosts(filepath.Join(state, "inference", inferenceHostsFile))
+		if err != nil {
+			t.Fatal(err)
+		}
+		p, err := openFixtureRuntimeProviders(t, runtimeFlags{}, state, config, func(err error) { t.Error(err) })
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { p.Close() })
+		return p
+	}
+	checkEmpty := func(p *runtimeProviders) {
+		t.Helper()
+		if hosts := p.hostFiles(); len(hosts) != 0 {
+			t.Fatalf("uninstalled hosts registered: %+v", hosts)
+		}
+		files, _, err := p.read()
+		if err != nil || len(files) != 1 || files[0].Declaration.Name != "managed" ||
+			files[0].Declaration.Program != program || files[0].DeclaredBy != declaredByInstallation ||
+			files[0].Declaration.Activation != wire.ActivationOnDemand.String() {
+			t.Fatalf("installed managed provider lost: %+v %v", files, err)
+		}
+	}
+	p := open()
+	checkEmpty(p)
+	for name, base := range map[string]string{"comfyui": router.ComfyUIDefaultBase, "lemonade": router.LemonadeDefaultBase,
+		"lmstudio": router.LMStudioDefaultBase, "ollama": router.OllamaDefaultBase} {
+		_, revision, err := p.read()
+		if err != nil {
+			t.Fatal(err)
+		}
+		entry := iwire.HostEntry{Name: name, Kind: name, Base: base}
+		if change := p.add(revision, newHostFile(entry, declaredByOperator)); change.Outcome != wire.DeclarationEditOutcomeApplied {
+			t.Fatalf("explicit offline host %s: %+v", name, change)
+		}
+	}
+	for _, host := range p.hostStates(p.hostFiles()) {
+		if host.DeclaredBy != declaredByOperator || host.Readiness != wire.DeclarationReadinessUnreachable {
+			t.Fatalf("offline configuration changed: %+v", host)
+		}
+	}
+	if len(p.hostFiles()) != 4 {
+		t.Fatal("explicit offline hosts were removed without a reset")
+	}
+	if err := p.Close(); err != nil {
+		t.Fatal(err)
+	}
+	paths, err := settingsPaths(roots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := moveSettings(context.Background(), paths, "host-fixture", os.Rename, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	checkEmpty(open())
+	resetRead(t, model, "owned model fixture")
+}
+
+func TestResetJournalExceptionDoesNotHideInvalidDeclarations(t *testing.T) {
+	dir := t.TempDir()
+	resetWrite(t, filepath.Join(dir, "ollama.json.oa-reset-fixture.manifest.json"), `{"version":1,"entries":[]}`)
+	var reports []error
+	p := &runtimeProviders{report: func(err error) { reports = append(reports, err) }}
+	if files, err := p.readDeclarationDir(dir, nil, false); err != nil || len(files) != 0 || len(reports) != 0 {
+		t.Fatalf("account reset journal: %+v %v %v", files, err, reports)
+	}
+	resetWrite(t, filepath.Join(dir, "unrelated.manifest.json"), "invalid JSON")
+	if _, err := p.readDeclarationDir(dir, nil, false); err != nil || len(reports) != 1 {
+		t.Fatalf("unrelated invalid file was hidden: %v %v", err, reports)
+	}
+	reports = nil
+	if _, err := p.readDeclarationDir(dir, nil, true); err != nil || len(reports) != 2 {
+		t.Fatalf("installation reader lost strict diagnostics: %v %v", err, reports)
 	}
 }
 
@@ -252,7 +331,7 @@ func TestHostsJSONEntriesBecomeHostDeclarationsOnce(t *testing.T) {
 	if err := migrateProviderState(state, report); err != nil {
 		t.Fatal(err)
 	}
-	p, err := openProviders(state, false, report)
+	p, err := openFixtureProviders(t, state, false, report)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +410,7 @@ func TestAnInstallationDeclarationIsDisabledAndNotResurrected(t *testing.T) {
 	dir := placeInstallationDeclarations(t, "lemonade", "ollama", "comfyui")
 	state := t.TempDir()
 	report := func(err error) { t.Errorf("providers reported %v", err) }
-	p, err := openProviders(state, false, report)
+	p, err := openFixtureProviders(t, state, false, report)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,7 +463,7 @@ func TestAnInstallationDeclarationIsDisabledAndNotResurrected(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "ollama.json"), raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := openProviders(state, false, report)
+	reopened, err := openFixtureProviders(t, state, false, report)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,22 +505,26 @@ func TestAnInstallationDeclarationIsDisabledAndNotResurrected(t *testing.T) {
 // A product record shadows the installation's default address, and an
 // operator's declaration shadows both.
 func TestADeclarationShadowsTheOneBelowIt(t *testing.T) {
-	placeInstallationDeclarations(t, "ollama", "lemonade")
+	if !identity.LoopbackCeiling().Bindable {
+		t.Skip("native product precedence requires loopback Program proof")
+	}
+	engine := startGatewayEngine(t)
+	placeInstallationDeclarations(t, "lmstudio", "lemonade")
 	state := t.TempDir()
 	report := func(err error) { t.Errorf("providers reported %v", err) }
-	p, err := openProviders(state, true, report)
+	p, err := openFixtureProviders(t, state, true, report)
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved := declarationEnv
-	declarationEnv = fixtureDeclarations(nil, map[string]string{"OLLAMA_HOST": "127.0.0.1:9999"})
-	t.Cleanup(func() { declarationEnv = saved })
+	defer p.Close()
+	useGatewayProductRecord(t, engine.home)
 	p.forgetProducts()
 	byName := map[string]providerFile{}
 	for _, f := range p.hostFiles() {
 		byName[f.Declaration.Name] = f
 	}
-	if f := byName["ollama"]; f.DeclaredBy != "ollama" || f.Declaration.Host.Base != "http://127.0.0.1:9999" {
+	if f := byName["lmstudio"]; f.DeclaredBy != "lmstudio" || f.Declaration.Host.Base != engine.base ||
+		f.Source != declarationSourceProduct || f.ProductPresence != "verified" || !identity.SameSubjectProgram(f.ProductProgram, engine.program) {
 		t.Fatalf("a product record did not shadow the installation: %+v", f)
 	}
 	if f := byName["lemonade"]; f.DeclaredBy != declaredByInstallation {
@@ -451,7 +534,7 @@ func TestADeclarationShadowsTheOneBelowIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry := iwire.HostEntry{Name: "ollama", Kind: "ollama", Base: "http://127.0.0.1:1", Profiles: []string{"chat"}}
+	entry := iwire.HostEntry{Name: "lmstudio", Kind: "lmstudio", Base: "http://127.0.0.1:1", Profiles: []string{"chat"}}
 	if change := p.add(revision, newHostFile(entry, declaredByOperator)); change.Outcome != wire.DeclarationEditOutcomeConflict || change.Reason != "name" {
 		t.Fatalf("declaring over a product's host %+v", change)
 	}
@@ -463,7 +546,7 @@ func TestProviderListPrintsTheThreeRolesAndTheirProvenance(t *testing.T) {
 	placeInstallationDeclarations(t, "lemonade", "comfyui")
 	state := t.TempDir()
 	report := func(err error) { t.Errorf("providers reported %v", err) }
-	p, err := openProviders(state, false, report)
+	p, err := openFixtureProviders(t, state, false, report)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -478,11 +561,11 @@ func TestProviderListPrintsTheThreeRolesAndTheirProvenance(t *testing.T) {
 		t.Fatalf("declaring a hosted host %+v", change)
 	}
 	for _, d := range []providerDeclaration{
-		{Name: "local-stores", Program: absoluteFixtureProgram(), Arguments: []string{}, Endpoint: "local-stores", Transport: transportNative,
+		{Name: "local-stores", Program: presentFixtureProgram(), Arguments: []string{}, Endpoint: "local-stores", Transport: transportNative,
 			Contracts: []string{storageInventorySource}, Resources: []string{"store:ollama"}, Activation: wire.ActivationOnDemand.String()},
 		{Name: "far", Program: "", Arguments: []string{}, Endpoint: "tls://far.invalid:7443", Transport: transportRemote,
 			Contracts: slices.Clone(remoteContracts), Activation: wire.ActivationRemote.String(),
-			Remote: &inferenceRemoteTrust{ServerName: "far.invalid", Roots: absoluteFixtureProgram(), Certificate: absoluteFixtureProgram(), Key: absoluteFixtureProgram()}},
+			Remote: &inferenceRemoteTrust{ServerName: "far.invalid", Roots: absoluteFixtureProgram(), Certificate: absoluteFixtureProgram(), Key: absoluteFixtureProgram(), ServerKeySHA256: strings.Repeat("a", 64)}},
 	} {
 		if field := validProviderDeclaration(d); field != "" {
 			t.Fatalf("%s: invalid %s", d.Name, field)

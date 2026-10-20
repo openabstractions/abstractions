@@ -44,3 +44,5 @@ enum RequestGuarantee
   HOSTED_ALLOWED = 'abstraction.inference/hosted-allowed@1'
 def decode(data)
 def encode(v)
+def from_json(kind, data)
+def to_json(value)

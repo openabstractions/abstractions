@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openabstractions/abstraction-facade/go/abstraction/facade/registration"
 	inference "github.com/openabstractions/abstraction-inference/go"
 )
 
@@ -84,6 +85,26 @@ func writeBundledDeclaration(t *testing.T, dir, name, program, endpoint string, 
 	}
 }
 
+// Installer platforms currently ship both the native spec and the retained
+// version 2 declaration. Keep their authored program spelling for the tools
+// placeholder; runtime loading below owns installed-path resolution.
+func authoredInstallerSpec(t *testing.T, raw []byte) registration.RegistrationSpec {
+	t.Helper()
+	if spec, err := registration.DecodeRegistrationSpec(raw); err == nil {
+		return *spec
+	}
+	var file providerFile
+	if err := json.Unmarshal(raw, &file); err != nil || file.Version != providerFileVersion {
+		t.Fatalf("invalid authored installer declaration: %v", err)
+	}
+	_, spec, err := legacyRegistrationSpec(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec.Program = file.Declaration.Program
+	return spec
+}
+
 // Parse every authored installer declaration through the runtime's installed
 // reader. This exercises bundled-program resolution and field validation, not
 // a separate spelling list in the package tests.
@@ -114,11 +135,8 @@ func TestAuthoredInstallerDeclarationsLoad(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				var file providerFile
-				if err := json.Unmarshal(raw, &file); err != nil {
-					t.Fatal(err)
-				}
-				if program := file.Declaration.Program; program != "" {
+				file := authoredInstallerSpec(t, raw)
+				if program := file.Program; program != "" {
 					if err := os.WriteFile(filepath.Join(tools, program), nil, 0o700); err != nil {
 						t.Fatal(err)
 					}
@@ -173,7 +191,7 @@ func TestInstallationBundledProgramResolvesAndLaunches(t *testing.T) {
 	writeBundledDeclaration(t, dir, name, shipped, name, []string{providerFixtureArg, "chat", providerEndpointToken, pidDir})
 
 	report, reported := reportCollector()
-	p, err := openProviders(t.TempDir(), false, report)
+	p, err := openFixtureProviders(t, t.TempDir(), false, report)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +240,7 @@ func TestInstallationMissingBundledProgramIsRefused(t *testing.T) {
 	wantResolved := filepath.Join(tools, shipped)
 
 	report, reported := reportCollector()
-	p, err := openProviders(t.TempDir(), false, report)
+	p, err := openFixtureProviders(t, t.TempDir(), false, report)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +290,7 @@ func TestProviderOperatorBareProgramIsRefused(t *testing.T) {
 	}
 
 	report, reported := reportCollector()
-	p, err := openProviders(state, false, report)
+	p, err := openFixtureProviders(t, state, false, report)
 	if err != nil {
 		t.Fatal(err)
 	}

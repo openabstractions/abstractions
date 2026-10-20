@@ -9,10 +9,13 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/openabstractions/abstractions/examples/rights-playground/internal/personfolders"
 )
 
 // The copied test image stands in for the operator CLI and refuses missing
 // independent server proof, reproducing the native XPC setup integration gap.
+// The tests run with the person's per-user folders inside a temporary folder.
 func TestMain(m *testing.M) {
 	if os.Getenv("OA_PLAYGROUND_OPERATOR_PROOF_TEST") == "1" {
 		program, err := os.Executable()
@@ -26,7 +29,7 @@ func TestMain(m *testing.M) {
 		fmt.Print(`{"records":[]}`)
 		os.Exit(0)
 	}
-	os.Exit(m.Run())
+	os.Exit(personfolders.Main(m))
 }
 
 func TestOperatorCallSendsIndependentRuntimeProof(t *testing.T) {

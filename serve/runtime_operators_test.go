@@ -35,7 +35,8 @@ func TestOperatorSiblingsNameTheInstalledPanel(t *testing.T) {
 	}
 	exe = identity.CanonicalProgramPath(filepath.Clean(exe))
 	panel = identity.CanonicalProgramPath(filepath.Clean(panel))
-	got := operatorSiblings(exe)
+	got, panels := operatorSiblings(exe, "")
+	defer panels.close()
 	if !slices.Contains(got, panel) {
 		t.Fatalf("operators %v do not name the installed Panel %s", got, panel)
 	}
@@ -44,6 +45,10 @@ func TestOperatorSiblingsNameTheInstalledPanel(t *testing.T) {
 	}
 	if n := len(got); n != 2 {
 		t.Fatalf("operators %v: want the runtime and the Panel only", got)
+	}
+	rights := &runtimeRights{operators: got, panels: panels}
+	if len(panels.images) != 1 || !rights.isPanel(panel) {
+		t.Fatalf("operator roster did not name exactly the installed Panel %s", panel)
 	}
 }
 
@@ -87,7 +92,7 @@ func isolatedName() string { return fmt.Sprintf("oaop-%d", time.Now().UnixNano()
 // D7).
 func TestIsolatedRuntimeAdmitsItsNamedOperatorProgram(t *testing.T) {
 	panel := operatorProgramFixture(t)
-	options, err := parseRuntime([]string{"--isolated", isolatedName(), "--state-dir", t.TempDir(), "--operator-program", panel}, io.Discard)
+	options, err := parseTestRuntime(t, []string{"--isolated", isolatedName(), "--state-dir", t.TempDir(), "--operator-program", panel}, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,9 +100,13 @@ func TestIsolatedRuntimeAdmitsItsNamedOperatorProgram(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(r.close)
 	want := identity.CanonicalProgramPath(filepath.Clean(panel))
 	if !slices.Contains(r.operators, want) {
 		t.Fatalf("operators %v do not name the isolated runtime's operator program %s", r.operators, want)
+	}
+	if !r.isPanel(want) {
+		t.Fatal("the admitted isolated development Panel lacks the Panel role")
 	}
 	exe, err := os.Executable()
 	if err != nil {
@@ -105,6 +114,68 @@ func TestIsolatedRuntimeAdmitsItsNamedOperatorProgram(t *testing.T) {
 	}
 	if r.operators[0] != identity.CanonicalProgramPath(filepath.Clean(exe)) {
 		t.Fatalf("the runtime's own program must stay first, the setter of installation rules: %v", r.operators)
+	}
+	if r.isPanel(r.operators[0]) {
+		t.Fatal("the runtime image received the Panel role")
+	}
+}
+
+func TestPanelRoleKeepsUnlinkedFileUntilRuntimeCloses(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX unlink lifetime")
+	}
+	runtimePath := filepath.Join(t.TempDir(), "openabstractions")
+	panel := filepath.Join(t.TempDir(), "built-panel")
+	for _, path := range []string{runtimePath, panel} {
+		if err := os.WriteFile(path, []byte("original"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	operators, panels := operatorSiblings(runtimePath, panel)
+	r := &runtimeRights{operators: operators, panels: panels}
+	defer r.close()
+	if !r.isPanel(panel) {
+		t.Fatal("approved Panel refused")
+	}
+	held := panels.images[0].File()
+	before, err := held.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(panel); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(panel, []byte("replacement"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	after, err := held.Stat()
+	if err != nil || !os.SameFile(before, after) || r.isPanel(panel) {
+		t.Fatalf("unlinked Panel lost custody or the replacement received it: %v", err)
+	}
+	r.close()
+	if _, err := held.Stat(); !errors.Is(err, os.ErrClosed) {
+		t.Fatalf("runtime close left its Panel handle open: %v", err)
+	}
+}
+
+func TestIsolatedPanelNominationPreservesReservedFilenameRefusal(t *testing.T) {
+	exe := filepath.Join(t.TempDir(), "runtime-fixture.exe")
+	if err := os.WriteFile(exe, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"OPENABSTRACTIONS.exe", "OpenAbstractionsW.exe", "openabstractions PRESENTER.preview", "openabſtractions.exe"} {
+		t.Run(name, func(t *testing.T) {
+			declared := filepath.Join(t.TempDir(), name)
+			if err := os.WriteFile(declared, nil, 0600); err != nil {
+				t.Fatal(err)
+			}
+			operators, panels := operatorSiblings(exe, declared)
+			r := &runtimeRights{operators: operators, panels: panels}
+			defer r.close()
+			if !r.isOperator(declared) || r.isPanel(declared) {
+				t.Fatal("the reserved name may remain an isolated operator, but cannot nominate the Panel")
+			}
+		})
 	}
 }
 
@@ -138,7 +209,11 @@ func TestOperatorProgramIsRefusedOutsideAnIsolatedRuntime(t *testing.T) {
 		"missing program":           {"--isolated", isolatedName(), "--state-dir", t.TempDir(), "--operator-program", panel + ".absent"},
 		"installed runtime's state": {"--isolated", isolatedName(), "--state-dir", installed, "--operator-program", panel},
 	} {
-		if _, err := parseRuntime(args, io.Discard); err == nil || !strings.Contains(err.Error(), "--operator-program") {
+		parse := func(args []string) (runtimeFlags, error) { return parseTestRuntime(t, args, io.Discard) }
+		if name == "installed runtime" {
+			parse = func(args []string) (runtimeFlags, error) { return parseRuntime(args, io.Discard) }
+		}
+		if _, err := parse(args); err == nil || !strings.Contains(err.Error(), "--operator-program") {
 			t.Errorf("%s: --operator-program accepted, or refused for another reason: %v", name, err)
 		}
 	}
@@ -146,7 +221,7 @@ func TestOperatorProgramIsRefusedOutsideAnIsolatedRuntime(t *testing.T) {
 	// A share spelling of the absent installed folder resolves apart from
 	// its drive path, so it is refused before anything is created.
 	for name, share := range shareAliases(t, installed) {
-		if _, err := parseRuntime([]string{"--isolated", isolatedName(), "--state-dir", share, "--operator-program", panel}, io.Discard); err == nil || !strings.Contains(err.Error(), "--operator-program") {
+		if _, err := parseTestRuntime(t, []string{"--isolated", isolatedName(), "--state-dir", share, "--operator-program", panel}, io.Discard); err == nil || !strings.Contains(err.Error(), "--operator-program") {
 			t.Errorf("%s (%s): --operator-program accepted, or refused for another reason: %v", name, share, err)
 		}
 		absentAfterRefusal(installed)
@@ -162,7 +237,7 @@ func TestOperatorProgramIsRefusedOutsideAnIsolatedRuntime(t *testing.T) {
 	// \\?\ prefix.
 	refused := func(name, state string) {
 		t.Helper()
-		if _, err := parseRuntime([]string{"--isolated", isolatedName(), "--state-dir", state, "--operator-program", panel}, io.Discard); err == nil || !strings.Contains(err.Error(), "--operator-program") {
+		if _, err := parseTestRuntime(t, []string{"--isolated", isolatedName(), "--state-dir", state, "--operator-program", panel}, io.Discard); err == nil || !strings.Contains(err.Error(), "--operator-program") {
 			t.Errorf("%s (%s): --operator-program accepted, or refused for another reason: %v", name, state, err)
 		}
 	}
@@ -190,7 +265,7 @@ func TestOperatorProgramIsRefusedOutsideAnIsolatedRuntime(t *testing.T) {
 	}
 	absentAfterRefusal(absent)
 	// A folder of its own is accepted beside the faked installed one.
-	if _, err := parseRuntime([]string{"--isolated", isolatedName(), "--state-dir", t.TempDir(), "--operator-program", panel}, io.Discard); err != nil {
+	if _, err := parseTestRuntime(t, []string{"--isolated", isolatedName(), "--state-dir", t.TempDir(), "--operator-program", panel}, io.Discard); err != nil {
 		t.Fatalf("a state directory of its own: %v", err)
 	}
 }
@@ -239,7 +314,7 @@ func TestOperatorProgramAcceptsAStateFolderNotYetMade(t *testing.T) {
 	}
 	panel := operatorProgramFixture(t)
 	state := filepath.Join(t.TempDir(), "new", "state")
-	options, err := parseRuntime([]string{"--isolated", isolatedName(), "--state-dir", state, "--operator-program", panel}, io.Discard)
+	options, err := parseTestRuntime(t, []string{"--isolated", isolatedName(), "--state-dir", state, "--operator-program", panel}, io.Discard)
 	if err != nil {
 		t.Fatalf("a state folder not yet made: %v", err)
 	}

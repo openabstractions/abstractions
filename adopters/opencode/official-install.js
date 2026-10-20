@@ -1,4 +1,7 @@
 /**
+ * Development diagnostic for the separate protected CLI-session entrypoint.
+ * The Windows application installer configures ordinary OpenCode Desktop
+ * without requiring a user-installed Node or this manual command.
  * Finds the official OpenCode CLI, this plugin as OpenCode installed it and
  * OpenCode's global config, and names them to OA's sandboxed start:
  *
@@ -17,7 +20,7 @@
  * It prints the command; with --run it starts it.
  */
 import {spawnSync} from 'node:child_process';
-import {statSync, readdirSync} from 'node:fs';
+import {statSync, lstatSync, readdirSync} from 'node:fs';
 import {dirname, basename, isAbsolute, win32} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -138,6 +141,33 @@ function parse(argv) {
   return options;
 }
 
+// These are observations for the person running the diagnostic launcher. No
+// ancestor configuration is granted, followed, disabled or copied into a guest.
+function startupWarnings(project, path = win32) {
+  const warnings = [];
+  const inspect = (candidate) => {
+    try { return lstatSync(candidate); }
+    catch (error) {
+      if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') {
+        warnings.push(`Cannot inspect ${candidate}: ${error.message}`);
+      }
+      return undefined;
+    }
+  };
+  const own = path.join(project, '.opencode');
+  if (inspect(own)) {
+    warnings.push(`Project configuration ${own} remains enabled. OpenCode may try to prepare its dependencies at start; the OA sandbox has no network. Prepare project dependencies with OpenCode outside the sandbox before starting a protected session.`);
+  }
+  for (let current = path.dirname(project); current !== project; current = path.dirname(current)) {
+    const candidate = path.join(current, '.opencode');
+    if (inspect(candidate)) {
+      warnings.push(`Ancestor configuration ${candidate} is outside the project folder grant. An OpenCode build that fails on unreadable ancestor configuration may stop at start. OA does not grant this folder or disable project configuration.`);
+    }
+    if (path.dirname(current) === current) break;
+  }
+  return warnings;
+}
+
 const usage = `Usage: node official-install.js --project <folder> [--program EXE] [--plugin DIR] [--config FILE] [--run]
 
 Finds the official OpenCode CLI, the installed OA plugin and OpenCode's global
@@ -152,6 +182,7 @@ if (process.argv[1] && isAbsolute(process.argv[1]) && basename(process.argv[1]) 
       process.stdout.write(usage);
     } else {
       const {args} = sandboxArguments(options);
+      for (const warning of startupWarnings(options.project)) process.stderr.write(`${warning}\n`);
       process.stdout.write(`openabstractions ${args.map((arg) => /[\s"']/.test(arg) ? JSON.stringify(arg) : arg).join(' ')}\n`);
       if (options.run) process.exitCode = spawnSync('openabstractions', args, {stdio: 'inherit'}).status ?? 1;
     }

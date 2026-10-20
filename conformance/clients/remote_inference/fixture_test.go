@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -24,6 +25,8 @@ import (
 	wire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	"github.com/openabstractions/abstraction-inference/go/service"
 	router "github.com/openabstractions/abstraction-router/go"
+	routerwire "github.com/openabstractions/abstraction-router/go/abstraction/router"
+	routerservice "github.com/openabstractions/abstraction-router/go/service"
 )
 
 const (
@@ -134,6 +137,7 @@ func (r *records) all() []inference.Record {
 // the remote's domain. An unmapped certificate is refused.
 func TestRemoteRuntimeHostsDelegationAndAttributedClaim(t *testing.T) {
 	serverTLS, originTLS, strangerTLS, originKey := trust(t)
+	remoteSubjectProgram := fmt.Sprintf("remote:%x", originKey)
 	up := newUpstream(t)
 
 	// The remote fixture runtime: a hosted host whose credential its own holder
@@ -161,22 +165,36 @@ func TestRemoteRuntimeHostsDelegationAndAttributedClaim(t *testing.T) {
 	remoteRecords := &records{}
 	remoteProvider, err := inference.New(inference.Config{Router: remoteRouter, Record: remoteRecords.add,
 		Decide: func(_ context.Context, s inference.Subject, action, resource string) (string, error) {
-			if s.Account == namespace && s.Program == remoteProgram && action == inference.ActionComplete && resource == "host:openrouter" {
+			if s.Account == "remote-runtime" && s.Program == remoteSubjectProgram && action == inference.ActionComplete && resource == "host:openrouter" {
 				return "permitted", nil
 			}
 			return "not_granted", nil
 		},
-		Apply: func(_ context.Context, s inference.Subject, _, name, _ string) (map[string]string, string) { return holder(s, name) }})
+		Apply: func(_ context.Context, s inference.Subject, _, name, _ string) (map[string]string, string) {
+			return holder(s, name)
+		}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { remoteProvider.Close() })
-	authorize := func(_ context.Context, peer remote.Peer) (inference.Subject, string, error) {
-		if peer.Key != originKey {
-			return inference.Subject{}, "", errors.New("unmapped certificate key")
-		}
-		return inference.Subject{Account: namespace, Program: remoteProgram}, namespace, nil
-	}
+	var inventoryMu sync.Mutex
+	inventoryAllowed := false
+	remoteConfig := service.RemoteConfig{Account: "remote-runtime", Admit: remoteTestPin(t, originTLS),
+		Domain: func(context.Context, remote.Peer) (string, error) { return namespace, nil },
+		RouterPolicy: func(_ context.Context, caller routerservice.RemoteCaller, action, resource string) error {
+			inventoryMu.Lock()
+			defer inventoryMu.Unlock()
+			if caller.Peer.Program() != remoteSubjectProgram {
+				return errors.New("unmapped router caller")
+			}
+			if action == routerservice.ActionInventory && !inventoryAllowed {
+				return errors.New("no inventory rule for mapped key")
+			}
+			if action == routerservice.ActionInventory && resource == routerservice.ResourceInventory || action == routerservice.ActionRoute && resource == routerservice.ResourceRoutes {
+				return nil
+			}
+			return errors.New("router action refused")
+		}}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -184,7 +202,7 @@ func TestRemoteRuntimeHostsDelegationAndAttributedClaim(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	served := make(chan error, 1)
 	go func() {
-		served <- (remote.Server{TLS: serverTLS, Handler: service.RemoteHandler(remoteProvider, remoteRouter, authorize), Timeout: 30 * time.Second,
+		served <- (remote.Server{TLS: serverTLS, Admit: remoteTestPin(t, originTLS), Handler: service.RemoteHandler(remoteProvider, remoteRouter, remoteConfig), Timeout: 30 * time.Second,
 			MaxFrame: 8 << 20, MaxConnections: 16}).Serve(ctx, listener)
 	}()
 	t.Cleanup(func() {
@@ -194,9 +212,23 @@ func TestRemoteRuntimeHostsDelegationAndAttributedClaim(t *testing.T) {
 		}
 	})
 	address := listener.Addr().String()
+	// A mapped TLS key has no inventory authority until an explicit receiving
+	// policy permits it. Authentication alone cannot expose router views.
+	transport, err := remote.Client(address, originTLS, time.Second, 8<<20, remoteTestPin(t, serverTLS))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = routerwire.NewRouterClient(transport).Models(false)
+	var refusal *routerwire.ServiceError
+	if !errors.As(err, &refusal) || refusal.Code != routerwire.ServiceErrorCode(routerservice.CodeForbidden) {
+		t.Fatalf("mapped key without inventory rule: %v", err)
+	}
+	inventoryMu.Lock()
+	inventoryAllowed = true
+	inventoryMu.Unlock()
 
 	// The origin runtime: one oa-remote@1 host and no credential of its own.
-	lab, err := router.NewRemote("lab", address, originTLS, "openrouter")
+	lab, err := router.NewRemote("lab", address, originTLS, "openrouter", remoteTestPin(t, serverTLS))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +299,7 @@ func TestRemoteRuntimeHostsDelegationAndAttributedClaim(t *testing.T) {
 	applyMu.Lock()
 	sawMapped := false
 	for _, a := range applied {
-		sawMapped = sawMapped || a == namespace+" "+remoteProgram+" openrouter"
+		sawMapped = sawMapped || a == "remote-runtime "+remoteSubjectProgram+" openrouter"
 	}
 	applyMu.Unlock()
 	if !sawMapped || localApplies != 0 {
@@ -290,8 +322,8 @@ func TestRemoteRuntimeHostsDelegationAndAttributedClaim(t *testing.T) {
 		return inference.Record{}
 	}
 	remoteRec := eventuallyRecord(remoteRecords, func(r inference.Record) bool { return r.Outcome == "completed" })
-	if remoteRec.Route != inference.RouteRemote || remoteRec.Account != namespace || remoteRec.Program != remoteProgram ||
-		remoteRec.Claim != localProgram || remoteRec.Domain != namespace || remoteRec.Host != "openrouter" || remoteRec.Credential != "openrouter" {
+	if remoteRec.Route != inference.RouteRemote || remoteRec.Account != "remote-runtime" || remoteRec.Program != remoteSubjectProgram ||
+		remoteRec.Claim != filepath.Base(localProgram) || remoteRec.Domain != namespace || remoteRec.Host != "openrouter" || remoteRec.Credential != "openrouter" {
 		t.Fatalf("remote record %+v", remoteRec)
 	}
 	localRec := eventuallyRecord(localRecords, func(r inference.Record) bool { return r.Outcome == "completed" })
@@ -305,7 +337,7 @@ func TestRemoteRuntimeHostsDelegationAndAttributedClaim(t *testing.T) {
 	}
 
 	// A certificate the remote does not map reads nothing.
-	stranger, err := router.NewRemote("stranger", address, strangerTLS, "openrouter")
+	stranger, err := router.NewRemote("stranger", address, strangerTLS, "openrouter", remoteTestPin(t, serverTLS))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,5 +345,21 @@ func TestRemoteRuntimeHostsDelegationAndAttributedClaim(t *testing.T) {
 	strangers.Survey()
 	if states, _, _, _, _ := strangers.Residency(false); len(states) != 1 || states[0].Up {
 		t.Fatalf("an unmapped certificate read %+v", states)
+	}
+}
+
+// remoteTestPin admits exactly the isolated fixture certificate's leaf key.
+func remoteTestPin(t *testing.T, config *tls.Config) func(remote.Peer) error {
+	t.Helper()
+	cert, err := x509.ParseCertificate(config.Certificates[0].Certificate[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+	return func(peer remote.Peer) error {
+		if peer.Key != key {
+			return remote.ErrTrust
+		}
+		return nil
 	}
 }

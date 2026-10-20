@@ -27,6 +27,6 @@ combinations, result total/operation changes, short writers, no-progress chunks,
 duplicate inventory and stalled cursor. Direct mock replies target semantic
 validation; the runtime proof exercises actual generated wire codecs/native IPC.
 
-Native Windows is measured. macOS Program proof remains unavailable. No full
+Native Windows is measured. macOS [Program](https://openabstractions.github.io/reference.html#concept-identity.listener-program-need) proof remains unavailable. No full
 matrix or platform activation test is part of this fixture. Generated request
 packaging is added for typed application input; it contains no provider code.

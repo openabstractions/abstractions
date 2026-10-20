@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"os"
-	"os/user"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -16,13 +15,14 @@ import (
 	inference "github.com/openabstractions/abstraction-inference/go"
 	"github.com/openabstractions/abstraction-resource/go/instrument"
 	resourceservice "github.com/openabstractions/abstraction-resource/go/service"
-	rights "github.com/openabstractions/abstraction-rights/go/client"
+	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 )
 
 // A models host declaration names the card its engine loads weights into
 // beside its profiles (facade CONTRACT.md FAC-R3): the accelerator it holds is
 // what it declares, not an inference from its contracts or models.
 func TestModelsHostDeclaresTheCardItLoadsInto(t *testing.T) {
+	requireNativeModelHostRegistration(t)
 	if !statusTransportProvesProgram(t) {
 		t.Skip("Program proof unavailable on current shared transport")
 	}
@@ -54,7 +54,7 @@ func TestModelsHostDeclaresTheCardItLoadsInto(t *testing.T) {
 		requestedProgram = short
 	}
 	settings := hostSettings{program: requestedProgram, endpoint: "modelhost-declares-card", engine: "llama-server", resource: "resource-endpoint"}
-	if err := declareHost(w, registry, list, settings, []hostedModel{{Name: "tiny", Store: "fake", Object: "tiny"}}, "models host", io.Discard, false, "hosting"); err != nil {
+	if err := declareHost(w, pinnedModelHostEditor(t, w, options), list, settings, []hostedModel{{Name: "tiny", Store: "fake", Object: "tiny"}}, "models host", io.Discard, false, "hosting"); err != nil {
 		t.Fatalf("declareHost: %v", err)
 	}
 
@@ -90,20 +90,21 @@ func TestModelsHostDeclaresTheCardItLoadsInto(t *testing.T) {
 // writes a store's inventory.provide; a declaration naming no resource gets
 // no rule (facade CONTRACT.md FAC-R3).
 func TestADeclarationNamingACardGetsTheHoldRuleAndOneNamingNoneGetsNone(t *testing.T) {
-	if !statusTransportProvesProgram(t) {
-		t.Skip("Program proof unavailable on current shared transport")
-	}
-	options, _ := isolatedRuntime(t)
-	startInferenceRuntime(t, options)
-
 	call, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	machine := client.New(options.endpoint)
-	registry, err := machine.ResolveRegistry(call, client.Requirements{})
-	if err != nil {
+	// Exercise the declaration/rule owner without starting unrelated pairing
+	// reconciliation. Native registry dispatch has its own transport controls.
+	r := testRights(t, t.TempDir())
+	if err := r.install([]string{ActionProviderManage, resourceservice.ActionHold},
+		[]installationRule{{ActionProviderManage, "account"}}); err != nil {
 		t.Fatal(err)
 	}
-	list, err := registry.Declarations(call)
+	p := &runtimeProviders{dir: t.TempDir(), disabledPath: filepath.Join(t.TempDir(), "disabled.json"),
+		supervisors: map[string]*providerSupervisor{}, changes: make(chan struct{}), report: func(err error) { t.Errorf("provider: %v", err) }}
+	o := &inferenceOperator{credentials: &runtimeCredentials{runtimeRights: r}, providers: p, report: func(err error) { t.Errorf("operator: %v", err) }}
+	registry := &runtimeRegistry{providers: p, operator: o}
+	caller := inference.Subject{Account: r.owner, Program: r.operators[0]}
+	_, revision, err := p.read()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,48 +113,40 @@ func TestADeclarationNamingACardGetsTheHoldRuleAndOneNamingNoneGetsNone(t *testi
 	holding := wire.Declaration{Name: "card-holder", Program: holder, Arguments: []string{}, Endpoint: "card-holder",
 		Transport: wire.DeclarationTransportNative, Contracts: []string{inference.Contract}, Resources: []string{"card:0"},
 		Activation: wire.ActivationAttach}
-	change, err := registry.Declare(call, list.Revision, holding)
-	if err != nil || change.Outcome != wire.DeclarationEditOutcomeApplied {
-		t.Fatalf("declaring card-holder: %+v %v", change, err)
+	change := registry.Declare(call, caller, revision, holding)
+	if change.Outcome != wire.DeclarationEditOutcomeApplied || change.Reason != "" {
+		t.Fatalf("declaring card-holder: %+v", change)
 	}
 
-	list, err = registry.Declarations(call)
+	_, revision, err = p.read()
 	if err != nil {
 		t.Fatal(err)
 	}
 	bystander := filepath.Join(t.TempDir(), "no-resource")
 	naming := wire.Declaration{Name: "no-resource", Program: bystander, Arguments: []string{}, Endpoint: "no-resource",
 		Transport: wire.DeclarationTransportNative, Contracts: []string{inference.Contract}, Activation: wire.ActivationAttach}
-	change, err = registry.Declare(call, list.Revision, naming)
-	if err != nil || change.Outcome != wire.DeclarationEditOutcomeApplied {
-		t.Fatalf("declaring no-resource: %+v %v", change, err)
+	change = registry.Declare(call, caller, revision, naming)
+	if change.Outcome != wire.DeclarationEditOutcomeApplied || change.Reason != "" {
+		t.Fatalf("declaring no-resource: %+v", change)
 	}
 
-	account, err := user.Current()
-	if err != nil {
-		t.Fatal(err)
-	}
-	operator, err := machine.ResolveRightsOperator(call, client.Requirements{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	held := rights.Subject{Account: account.Uid, Program: filepath.Clean(holder)}
-	read, err := operator.ReadRuleContext(call, held, resourceservice.ActionHold, instrument.Card0)
-	if err != nil || read.Outcome.String() != "found" || !read.Record.Rule.Permit || read.Record.Why != providerAddWhy {
-		t.Fatalf("abstraction.resource/hold for the declared card: %+v %v", read, err)
+	held := rwire.Subject{Account: r.owner, Program: filepath.Clean(holder)}
+	read := r.policy.ReadRule(held, resourceservice.ActionHold, instrument.Card0)
+	if read.Outcome.String() != "found" || !read.Record.Rule.Permit || read.Record.Why != providerAddWhy {
+		t.Fatalf("abstraction.resource/hold for the declared card: %+v", read)
 	}
 	// A card holder runs GPU work and holds the wake lease while it does
 	// (resource CONTRACT.md RES-G5, RES-A1).
-	read, err = operator.ReadRuleContext(call, held, resourceservice.ActionHold, resourceservice.ResourceAwake)
-	if err != nil || read.Outcome.String() != "found" || !read.Record.Rule.Permit || read.Record.Why != providerAddWhy {
-		t.Fatalf("abstraction.resource/hold on awake for the card holder: %+v %v", read, err)
+	read = r.policy.ReadRule(held, resourceservice.ActionHold, resourceservice.ResourceAwake)
+	if read.Outcome.String() != "found" || !read.Record.Rule.Permit || read.Record.Why != providerAddWhy {
+		t.Fatalf("abstraction.resource/hold on awake for the card holder: %+v", read)
 	}
 
-	unheld := rights.Subject{Account: account.Uid, Program: filepath.Clean(bystander)}
+	unheld := rwire.Subject{Account: r.owner, Program: filepath.Clean(bystander)}
 	for _, resource := range []string{instrument.Card0, resourceservice.ResourceAwake} {
-		read, err = operator.ReadRuleContext(call, unheld, resourceservice.ActionHold, resource)
-		if err != nil || read.Outcome.String() != "unknown" {
-			t.Fatalf("a declaration naming no resource wrote hold on %s: %+v %v", resource, read, err)
+		read = r.policy.ReadRule(unheld, resourceservice.ActionHold, resource)
+		if read.Outcome.String() != "unknown" {
+			t.Fatalf("a declaration naming no resource wrote hold on %s: %+v", resource, read)
 		}
 	}
 }

@@ -8,7 +8,10 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"encoding/pem"
+	"errors"
+	"github.com/openabstractions/abstraction-identity/remote"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -53,7 +56,7 @@ func remoteTrustFiles(t *testing.T, dir string) (*tls.Config, [32]byte, inferenc
 		parsed, _ := x509.ParseCertificate(der)
 		return der, key, sha256.Sum256(parsed.RawSubjectPublicKeyInfo)
 	}
-	serverDER, serverKey, _ := issue(2, x509.ExtKeyUsageServerAuth)
+	serverDER, serverKey, serverDigest := issue(2, x509.ExtKeyUsageServerAuth)
 	clientDER, clientKey, clientDigest := issue(3, x509.ExtKeyUsageClientAuth)
 	write := func(name, kind string, der []byte) string {
 		path := filepath.Join(dir, name)
@@ -67,9 +70,64 @@ func remoteTrustFiles(t *testing.T, dir string) (*tls.Config, [32]byte, inferenc
 		t.Fatal(err)
 	}
 	trust := inferenceRemoteTrust{ServerName: "lab.runtime.test", Roots: write("roots.pem", "CERTIFICATE", caDER),
-		Certificate: write("client.pem", "CERTIFICATE", clientDER), Key: write("client-key.pem", "PRIVATE KEY", keyDER)}
+		Certificate: write("client.pem", "CERTIFICATE", clientDER), Key: write("client-key.pem", "PRIVATE KEY", keyDER), ServerKeySHA256: hex.EncodeToString(serverDigest[:])}
 	server := &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{serverDER}, PrivateKey: serverKey}}, ClientCAs: roots}
 	return server, clientDigest, trust
+}
+
+func TestRemoteAdmissionTracksCurrentRegistry(t *testing.T) {
+	key := [32]byte{1}
+	file := providerFile{Generation: "first", Declaration: providerDeclaration{Name: "lab", Remote: &inferenceRemoteTrust{ServerKeySHA256: hex.EncodeToString(key[:])}}}
+	supervisor := &providerSupervisor{file: file}
+	p := &runtimeProviders{supervisors: map[string]*providerSupervisor{"lab": supervisor}}
+	admit := p.remoteAdmit(file)
+	peer := remote.Peer{Key: key}
+	if err := admit(peer); err != nil {
+		t.Fatal(err)
+	}
+	if err := admit(remote.Peer{Key: [32]byte{2}}); !errors.Is(err, remote.ErrTrust) {
+		t.Fatalf("wrong key: %v", err)
+	}
+	// A pin-only edit keeps the published V1 projection and generation, but
+	// must invalidate a retained TLS client against the current internal record.
+	replacement := *file.Declaration.Remote
+	replacement.ServerKeySHA256 = hex.EncodeToString(make([]byte, 32))
+	supervisor.file.Declaration.Remote = &replacement
+	if err := admit(peer); !errors.Is(err, remote.ErrTrust) {
+		t.Fatalf("same-generation pin edit retained client: %v", err)
+	}
+	supervisor.file = file
+	supervisor.file.Disabled = true
+	if err := admit(peer); !errors.Is(err, remote.ErrTrust) {
+		t.Fatalf("disabled retained client: %v", err)
+	}
+	supervisor.file.Disabled = false
+	delete(p.supervisors, "lab")
+	if err := admit(peer); !errors.Is(err, remote.ErrTrust) {
+		t.Fatalf("removed retained client: %v", err)
+	}
+	p.supervisors["lab"] = supervisor
+	supervisor.file.Generation = "replacement"
+	if err := admit(peer); !errors.Is(err, remote.ErrTrust) {
+		t.Fatalf("replaced retained client: %v", err)
+	}
+	supervisor.file = file
+	if err := admit(peer); err != nil {
+		t.Fatalf("restored declaration: %v", err)
+	}
+	p.closed = true
+	if err := admit(peer); !errors.Is(err, remote.ErrTrust) {
+		t.Fatalf("closed owner: %v", err)
+	}
+}
+
+func TestRemotePinRequiresCanonicalExplicitValue(t *testing.T) {
+	for _, value := range []string{"", strings.Repeat("a", 63), strings.Repeat("A", 64), strings.Repeat("g", 64)} {
+		r := &inferenceRemoteTrust{ServerKeySHA256: value}
+		if _, err := r.config(); !errors.Is(err, remote.ErrTrust) {
+			t.Fatalf("pin %q before file access: %v", value, err)
+		}
+	}
 }
 
 // The shipped runtime declares another runtime with provider add --remote: the
@@ -94,7 +152,7 @@ func TestRuntimeRegistersARemoteRuntime(t *testing.T) {
 	endpoint := []string{"--endpoint", options.endpoint, "--timeout", "30s"}
 	args := func(key string) []string {
 		return append([]string{"add", "lab", "--remote", address, "--credential", "openrouter", "--server-name", trust.ServerName,
-			"--trust", trust.Roots, "--client", trust.Certificate, "--client-key", key}, endpoint...)
+			"--trust", trust.Roots, "--client", trust.Certificate, "--client-key", key, "--server-key-sha256", trust.ServerKeySHA256}, endpoint...)
 	}
 	if out, err := runProvider(t, args(filepath.Join(t.TempDir(), "missing.pem"))...); err == nil || !strings.Contains(err.Error(), "remote") {
 		t.Fatalf("a missing key file: %v\n%s", err, out)
@@ -134,9 +192,30 @@ func TestRuntimeRegistersARemoteRuntime(t *testing.T) {
 	if hosts := routerHosts(); !slices.Contains(hosts, "lab/openrouter@lab") {
 		t.Fatalf("router@1 hosts lack the remote's host: %v", hosts)
 	}
-	raw, err := os.ReadFile(filepath.Join(options.stateDir, providersDir, "lab.json"))
-	if err != nil || strings.Contains(string(raw), "PRIVATE KEY") || !strings.Contains(string(raw), `"server_name": "lab.runtime.test"`) {
-		t.Fatalf("the declaration keeps paths only: %v\n%s", err, raw)
+	call, stop := context.WithTimeout(context.Background(), 30*time.Second)
+	registry, err := client.New(options.endpoint).ResolveRegistryV3(call, client.Requirements{})
+	if err != nil {
+		stop()
+		t.Fatal(err)
+	}
+	page, err := registry.Registrations(call, "", 64)
+	stop()
+	if err != nil || page.Outcome.String() != "page" {
+		t.Fatalf("registered remote: %+v %v", page, err)
+	}
+	found := false
+	for _, record := range page.Registrations {
+		for _, remote := range record.Spec.Remotes {
+			if remote.Name == "lab" {
+				found = true
+				if remote.ServerName != trust.ServerName || remote.ServerKeySHA256 != trust.ServerKeySHA256 || remote.Endpoint != "tls://"+address || remote.Credential != "openrouter" || record.Spec.Program != "" {
+					t.Fatalf("registered remote trust: %+v", remote)
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatal("registry lost the paired remote")
 	}
 	hosts, err := os.ReadFile(filepath.Join(options.stateDir, "inference", inferenceHostsFile))
 	if err != nil || strings.Contains(string(hosts), "lab") {
@@ -147,5 +226,21 @@ func TestRuntimeRegistersARemoteRuntime(t *testing.T) {
 	}
 	if hosts := routerHosts(); slices.ContainsFunc(hosts, func(h string) bool { return strings.HasPrefix(h, "lab/") }) {
 		t.Fatalf("router@1 still lists the withdrawn remote: %v", hosts)
+	}
+}
+
+// remoteTestPin admits exactly the isolated fixture certificate's leaf key.
+func remoteTestPin(t *testing.T, config *tls.Config) func(remote.Peer) error {
+	t.Helper()
+	cert, err := x509.ParseCertificate(config.Certificates[0].Certificate[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+	return func(peer remote.Peer) error {
+		if peer.Key != key {
+			return remote.ErrTrust
+		}
+		return nil
 	}
 }

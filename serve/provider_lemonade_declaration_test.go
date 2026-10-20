@@ -11,8 +11,23 @@ import (
 	"time"
 
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
+	registration "github.com/openabstractions/abstraction-facade/go/abstraction/facade/registration"
+	identity "github.com/openabstractions/abstraction-identity"
 	resourceservice "github.com/openabstractions/abstraction-resource/go/service"
 )
+
+func installedProviderFixture(t *testing.T, raw []byte) providerFile {
+	t.Helper()
+	var legacy providerFile
+	if json.Unmarshal(raw, &legacy) == nil && legacy.Version == providerFileVersion {
+		return legacy
+	}
+	spec, err := registration.DecodeRegistrationSpec(raw)
+	if err != nil || len(spec.Providers) != 1 {
+		t.Fatalf("typed declaration: %+v %v", spec, err)
+	}
+	return providerFacetCompatibility(spec.Program, spec.Providers[0])
+}
 
 // The installed Lemonade image declaration names lemonade/seed for the image
 // profile, and the runtime reads it as a valid provider declaration that
@@ -24,10 +39,7 @@ func TestInstalledLemonadeDeclarationCarriesTheSeedExtension(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var f providerFile
-	if err := json.Unmarshal(raw, &f); err != nil || f.Version != providerFileVersion {
-		t.Fatalf("declaration %v, version %d", err, f.Version)
-	}
+	f := installedProviderFixture(t, raw)
 	f.Declaration.Program = filepath.Join(t.TempDir(), "lemonaded.exe")
 	if field := validProviderDeclaration(f.Declaration); field != "" {
 		t.Fatalf("invalid %s", field)
@@ -46,10 +58,7 @@ func TestInstalledLemonadeDeclarationGetsTheCardRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var f providerFile
-	if err := json.Unmarshal(raw, &f); err != nil {
-		t.Fatal(err)
-	}
+	f := installedProviderFixture(t, raw)
 	if cards := f.Declaration.resources("card"); len(cards) != 1 || cards[0] != "0" {
 		t.Fatalf("card resources %q", cards)
 	}
@@ -73,7 +82,7 @@ func TestInstalledLemonadeDeclarationGetsTheCardRules(t *testing.T) {
 	}
 	var written []string
 	for _, rule := range snapshot.Rules {
-		if rule.Subject.Program == filepath.Clean(program) {
+		if identity.SameSubjectProgram(rule.Subject.Program, program) {
 			written = append(written, fmt.Sprintf("%s %s %t", rule.Action, rule.Resource, rule.Permit))
 		}
 	}

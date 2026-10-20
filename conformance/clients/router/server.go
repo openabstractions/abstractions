@@ -9,12 +9,12 @@ import (
 	"github.com/openabstractions/abstraction-facade/go/resolution"
 	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-identity/listen"
+	"github.com/openabstractions/abstraction-rights/go/authorization/gate"
 	router "github.com/openabstractions/abstraction-router/go"
 	"github.com/openabstractions/abstraction-router/go/service"
 	"github.com/openabstractions/abstractions/conformance/clients/fixture"
 	"os"
 	"os/user"
-	"strconv"
 	"sync"
 )
 
@@ -48,6 +48,15 @@ func main() {
 		panic(err)
 	}
 	defer h.Close()
+	// The fixture runs without the rights service; it installs the same
+	// explicit local gate serve router-v1 does.
+	local, err := gate.Local("abstraction.router")
+	if err != nil {
+		panic(err)
+	}
+	if err := h.EnablePolicy(local); err != nil {
+		panic(err)
+	}
 	h.OnError = func(e error) { fmt.Fprintln(os.Stderr, e) }
 	owner, e := user.Current()
 	if e != nil {
@@ -59,14 +68,8 @@ func main() {
 		panic(e)
 	}
 	resolver, e := resolution.Listen(*resolverEndpoint, catalog, func(peer *identity.Peer, _ wire.ServiceReference) bool {
-		observed, e := peer.User.AtLeast(listen.Program.User)
-		if e != nil {
-			return false
-		}
-		if observed.Kind == "windows" {
-			return observed.SID == owner.Uid
-		}
-		return strconv.Itoa(observed.UID) == owner.Uid
+		subject, e := identity.SubjectOf(peer, identity.Need{User: listen.Program.User})
+		return e == nil && subject.Account == owner.Uid
 	})
 	if e != nil {
 		panic(e)

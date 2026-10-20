@@ -27,41 +27,11 @@ func pollPermissionRecords(ctx context.Context, machine *facade.Machine) ([]askc
 }
 
 func listPermissionQuestions(ctx context.Context, operator presenterPermissionOperator) ([]askclient.RecordMetadata, error) {
-	for attempt := 0; attempt < 2; attempt++ {
-		var records []askclient.RecordMetadata
-		cursor, gap := "", false
-		for page := 0; page < 64; page++ {
-			result, err := operator.ListPermissionsContext(ctx, cursor, 64)
-			if err != nil {
-				return nil, err
-			}
-			switch result.Outcome {
-			case askclient.OperatorPageOutcomePage:
-			case askclient.OperatorPageOutcomeGap:
-				gap = true
-			default:
-				return nil, &presenterRefusal{outcome: result.Outcome.String()}
-			}
-			if gap {
-				break
-			}
-			for _, record := range result.Records {
-				if record.Key != asksTypedPermissionKey {
-					return nil, &presenterRefusal{outcome: "foreign permission record"}
-				}
-			}
-			records = append(records, result.Records...)
-			if result.Complete {
-				return records, nil
-			}
-			if result.Next == "" || result.Next == cursor {
-				return nil, &presenterRefusal{outcome: "incomplete permission page"}
-			}
-			cursor = result.Next
-		}
-		if !gap {
-			return nil, &presenterRefusal{outcome: "incomplete"}
+	records, err := presenterList(operator.ListAllPermissionsContext(ctx))
+	for _, record := range records {
+		if record.Key != asksTypedPermissionKey {
+			return nil, &presenterRefusal{outcome: "foreign permission record"}
 		}
 	}
-	return nil, &presenterRefusal{outcome: "gap"}
+	return records, err
 }

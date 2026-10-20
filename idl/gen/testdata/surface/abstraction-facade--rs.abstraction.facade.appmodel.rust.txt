@@ -1,0 +1,467 @@
+pub type Raw
+pub enum CommandClass
+  Read
+  Reveal
+  Propose
+  Edit
+  Commit
+  Destroy
+  Spend
+  Send
+  pub const ALL: [Self; 8]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum CommandOutcome
+  Applied
+  Proposed
+  Accepted
+  Conflict
+  Stale
+  Invalid
+  Unsupported
+  Forbidden
+  NotPermitted
+  Refused
+  Exhausted
+  NotFound
+  Unknown
+  Unavailable
+  Failed
+  pub const ALL: [Self; 15]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum ReadingOutcome
+  Page
+  Gap
+  Conflict
+  Stale
+  Invalid
+  Unsupported
+  NotPermitted
+  Refused
+  Exhausted
+  NotFound
+  Unavailable
+  pub const ALL: [Self; 11]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum FieldRole
+  Ordinary
+  Derived
+  Ephemeral
+  Secret
+  pub const ALL: [Self; 4]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum CollectionOp
+  Add
+  Remove
+  Move
+  Replace
+  Reset
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum InvokeMode
+  Propose
+  Apply
+  pub const ALL: [Self; 2]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub mod reveal_style
+  pub const HIGHLIGHT: &str
+  pub const SCROLL_TO: &str
+  pub const FRAME: &str
+  pub const ALL: [&str; 3]
+pub const VERSIONS: [&str; 1]
+pub const EXTENSIONS: [&str; 4]
+pub const BINDING_TOOLS: [&str; 7]
+pub const GATEWAY_TOOLS: [&str; 4]
+pub const META_KEYS: [&str; 2]
+pub const COMMAND_ACTIONS: [&str; 8]
+pub struct ContextRef
+  instance: ::std::string::String
+  context: ::std::string::String
+  epoch: ::std::string::String
+pub struct ContextEntry
+  context: ContextRef
+  title: ::std::string::String
+  revision: ::std::string::String
+pub struct ContextPage
+  outcome: ReadingOutcome
+  contexts: ::std::vec::Vec<ContextEntry>
+  reason: ::std::string::String
+pub struct KindField
+  name: ::std::string::String
+  role: FieldRole
+pub struct Kind
+  name: ::std::string::String
+  title: ::std::string::String
+  schema: Raw
+  fields: ::std::vec::Vec<KindField>
+pub struct Entity
+  id: ::std::string::String
+  kind: ::std::string::String
+  label: ::std::string::String
+  parent: ::std::string::String
+  properties: Raw
+pub struct Collection
+  parent: ::std::string::String
+  kind: ::std::string::String
+  ids: ::std::vec::Vec<::std::string::String>
+pub struct Selection
+  view: ::std::string::String
+  entities: ::std::vec::Vec<::std::string::String>
+  focus: ::std::string::String
+pub struct ContextSnapshot
+  outcome: ReadingOutcome
+  context: ContextRef
+  revision: ::std::string::String
+  entities: ::std::vec::Vec<Entity>
+  collections: ::std::vec::Vec<Collection>
+  selections: ::std::vec::Vec<Selection>
+  cursor: ::std::string::String
+  reason: ::std::string::String
+pub struct ReadRequest
+  context: ContextRef
+  entities: ::std::vec::Vec<::std::string::String>
+  cursor: ::std::string::String
+  limit: i64
+pub struct Change
+  base_revision: ::std::string::String
+  revision: ::std::string::String
+  patch: Raw
+pub struct ChangesRequest
+  context: ContextRef
+  after_revision: ::std::string::String
+  wait_ms: i64
+pub struct ChangeBatch
+  outcome: ReadingOutcome
+  context: ContextRef
+  changes: ::std::vec::Vec<Change>
+  revision: ::std::string::String
+  reason: ::std::string::String
+pub struct CommandSpec
+  name: ::std::string::String
+  title: ::std::string::String
+  description: ::std::string::String
+  class: CommandClass
+  input_schema: Raw
+  output_schema: Raw
+  targets: ::std::vec::Vec<::std::string::String>
+  proposable: bool
+  undoable: bool
+  idempotent: bool
+  long_running: bool
+pub struct ContextBounds
+  snapshot_bytes: i64
+  change_bytes: i64
+  retained_revisions: i64
+  pending_proposals: i64
+  calls_in_flight: i64
+pub struct Description
+  version: ::std::string::String
+  kinds: ::std::vec::Vec<Kind>
+  commands: ::std::vec::Vec<CommandSpec>
+  extensions: ::std::vec::Vec<::std::string::String>
+  bounds: ContextBounds
+pub struct DescriptionResult
+  outcome: ReadingOutcome
+  description: ::std::option::Option<Description>
+  reason: ::std::string::String
+pub struct Invocation
+  context: ContextRef
+  arguments: Raw
+  mode: InvokeMode
+  expected_revision: ::std::string::String
+  idempotency_key: ::std::string::String
+  proposal: ::std::string::String
+pub struct CommandResult
+  outcome: CommandOutcome
+  reason: ::std::string::String
+  revision: ::std::string::String
+  proposal: ::std::string::String
+  summary: ::std::string::String
+  job: ::std::string::String
+  effects: Raw
+  undo_group: ::std::string::String
+  idempotency_key: ::std::string::String
+pub struct Reveal
+  context: ContextRef
+  entities: ::std::vec::Vec<::std::string::String>
+  style: ::std::string::String
+pub struct UndoRequest
+  context: ContextRef
+  undo_group: ::std::string::String
+  expected_revision: ::std::string::String
+  idempotency_key: ::std::string::String
+pub struct JobRequest
+  instance: ::std::string::String
+  job: ::std::string::String
+pub struct DeclaredCommand
+  name: ::std::string::String
+  class: CommandClass
+pub struct CommandDeclaration
+  version: ::std::string::String
+  commands: ::std::vec::Vec<DeclaredCommand>
+pub struct ApplicationsQuery
+  application: ::std::string::String
+pub struct ListedInstance
+  instance: ::std::string::String
+  interface: ::std::string::String
+  contexts: ::std::vec::Vec<ContextEntry>
+  reason: ::std::string::String
+pub struct ListedApplication
+  application: ::std::string::String
+  title: ::std::string::String
+  instances: ::std::vec::Vec<ListedInstance>
+pub struct ListedOpenVerb
+  name: ::std::string::String
+  description: ::std::string::String
+  input_schema: Raw
+pub struct ApplicationOpenVerbs
+  application: ::std::string::String
+  verbs: ::std::vec::Vec<ListedOpenVerb>
+pub struct ApplicationListing
+  outcome: ReadingOutcome
+  applications: ::std::vec::Vec<ListedApplication>
+  reason: ::std::string::String
+  open_verbs: ::std::vec::Vec<ApplicationOpenVerbs>
+pub struct CommandsQuery
+  application: ::std::string::String
+  instance: ::std::string::String
+pub struct CommandListing
+  outcome: ReadingOutcome
+  application: ::std::string::String
+  instance: ::std::string::String
+  commands: ::std::vec::Vec<CommandSpec>
+  reason: ::std::string::String
+pub struct GatewayCall
+  application: ::std::string::String
+  instance: ::std::string::String
+  tool: ::std::string::String
+  arguments: Raw
+  mode: ::std::option::Option<InvokeMode>
+  expected_revision: ::std::string::String
+  idempotency_key: ::std::string::String
+  context: ::std::string::String
+  proposal: ::std::string::String
+  require_read_permit: ::std::option::Option<bool>
+pub struct CallRecord
+  subject: ::std::string::String
+  client_label: ::std::string::String
+  application: ::std::string::String
+  instance: ::std::string::String
+  context: ::std::option::Option<ContextRef>
+  command: ::std::string::String
+  class: ::std::option::Option<CommandClass>
+  revision_before: ::std::string::String
+  revision_after: ::std::string::String
+  outcome: ::std::string::String
+  reason: ::std::string::String
+  idempotency_key: ::std::string::String
+  arguments_digest: ::std::string::String
+  result_digest: ::std::string::String
+pub struct Envelope
+  description: ::std::option::Option<DescriptionResult>
+  contexts: ::std::option::Option<ContextPage>
+  read: ::std::option::Option<ReadRequest>
+  snapshot: ::std::option::Option<ContextSnapshot>
+  changes_request: ::std::option::Option<ChangesRequest>
+  changes: ::std::option::Option<ChangeBatch>
+  invocation: ::std::option::Option<Invocation>
+  result: ::std::option::Option<CommandResult>
+  reveal: ::std::option::Option<Reveal>
+  undo: ::std::option::Option<UndoRequest>
+  job: ::std::option::Option<JobRequest>
+  declaration: ::std::option::Option<CommandDeclaration>
+  record: ::std::option::Option<CallRecord>
+  applications_query: ::std::option::Option<ApplicationsQuery>
+  applications: ::std::option::Option<ApplicationListing>
+  commands_query: ::std::option::Option<CommandsQuery>
+  commands: ::std::option::Option<CommandListing>
+  call: ::std::option::Option<GatewayCall>
+pub fn encode(v: &Envelope) -> ::std::vec::Vec<u8>
+pub struct Refusal
+  word: &'static str
+  offset: usize
+pub fn decode(data: &[u8]) -> ::std::result::Result<Envelope, Refusal>
+pub trait JsonRecord: ::std::marker::Sized
+  fn to_json(&self) -> ::std::vec::Vec<u8>
+  fn from_json(data: &[u8]) -> ::std::result::Result<Self, Refusal>
+pub fn encode_context_ref_document(v: &ContextRef) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_context_ref_document(data: &[u8]) -> ::std::result::Result<ContextRef, Refusal>
+pub fn encode_context_entry_document(v: &ContextEntry) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_context_entry_document(data: &[u8]) -> ::std::result::Result<ContextEntry, Refusal>
+pub fn encode_context_page_document(v: &ContextPage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_context_page_document(data: &[u8]) -> ::std::result::Result<ContextPage, Refusal>
+pub fn encode_kind_field_document(v: &KindField) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_kind_field_document(data: &[u8]) -> ::std::result::Result<KindField, Refusal>
+pub fn encode_kind_document(v: &Kind) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_kind_document(data: &[u8]) -> ::std::result::Result<Kind, Refusal>
+pub fn encode_entity_document(v: &Entity) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_entity_document(data: &[u8]) -> ::std::result::Result<Entity, Refusal>
+pub fn encode_collection_document(v: &Collection) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_collection_document(data: &[u8]) -> ::std::result::Result<Collection, Refusal>
+pub fn encode_selection_document(v: &Selection) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_selection_document(data: &[u8]) -> ::std::result::Result<Selection, Refusal>
+pub fn encode_context_snapshot_document(v: &ContextSnapshot) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_context_snapshot_document(data: &[u8]) -> ::std::result::Result<ContextSnapshot, Refusal>
+pub fn encode_read_request_document(v: &ReadRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_read_request_document(data: &[u8]) -> ::std::result::Result<ReadRequest, Refusal>
+pub fn encode_change_document(v: &Change) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_change_document(data: &[u8]) -> ::std::result::Result<Change, Refusal>
+pub fn encode_changes_request_document(v: &ChangesRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_changes_request_document(data: &[u8]) -> ::std::result::Result<ChangesRequest, Refusal>
+pub fn encode_change_batch_document(v: &ChangeBatch) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_change_batch_document(data: &[u8]) -> ::std::result::Result<ChangeBatch, Refusal>
+pub fn encode_command_spec_document(v: &CommandSpec) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_command_spec_document(data: &[u8]) -> ::std::result::Result<CommandSpec, Refusal>
+pub fn encode_context_bounds_document(v: &ContextBounds) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_context_bounds_document(data: &[u8]) -> ::std::result::Result<ContextBounds, Refusal>
+pub fn encode_description_document(v: &Description) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_description_document(data: &[u8]) -> ::std::result::Result<Description, Refusal>
+pub fn encode_description_result_document(v: &DescriptionResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_description_result_document(data: &[u8]) -> ::std::result::Result<DescriptionResult, Refusal>
+pub fn encode_invocation_document(v: &Invocation) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_invocation_document(data: &[u8]) -> ::std::result::Result<Invocation, Refusal>
+pub fn encode_command_result_document(v: &CommandResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_command_result_document(data: &[u8]) -> ::std::result::Result<CommandResult, Refusal>
+pub fn encode_reveal_document(v: &Reveal) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_reveal_document(data: &[u8]) -> ::std::result::Result<Reveal, Refusal>
+pub fn encode_undo_request_document(v: &UndoRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_undo_request_document(data: &[u8]) -> ::std::result::Result<UndoRequest, Refusal>
+pub fn encode_job_request_document(v: &JobRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_job_request_document(data: &[u8]) -> ::std::result::Result<JobRequest, Refusal>
+pub fn encode_declared_command_document(v: &DeclaredCommand) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_declared_command_document(data: &[u8]) -> ::std::result::Result<DeclaredCommand, Refusal>
+pub fn encode_command_declaration_document(v: &CommandDeclaration) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_command_declaration_document(data: &[u8]) -> ::std::result::Result<CommandDeclaration, Refusal>
+pub fn encode_applications_query_document(v: &ApplicationsQuery) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_applications_query_document(data: &[u8]) -> ::std::result::Result<ApplicationsQuery, Refusal>
+pub fn encode_listed_instance_document(v: &ListedInstance) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_listed_instance_document(data: &[u8]) -> ::std::result::Result<ListedInstance, Refusal>
+pub fn encode_listed_application_document(v: &ListedApplication) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_listed_application_document(data: &[u8]) -> ::std::result::Result<ListedApplication, Refusal>
+pub fn encode_listed_open_verb_document(v: &ListedOpenVerb) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_listed_open_verb_document(data: &[u8]) -> ::std::result::Result<ListedOpenVerb, Refusal>
+pub fn encode_application_open_verbs_document(v: &ApplicationOpenVerbs) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_application_open_verbs_document(data: &[u8]) -> ::std::result::Result<ApplicationOpenVerbs, Refusal>
+pub fn encode_application_listing_document(v: &ApplicationListing) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_application_listing_document(data: &[u8]) -> ::std::result::Result<ApplicationListing, Refusal>
+pub fn encode_commands_query_document(v: &CommandsQuery) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_commands_query_document(data: &[u8]) -> ::std::result::Result<CommandsQuery, Refusal>
+pub fn encode_command_listing_document(v: &CommandListing) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_command_listing_document(data: &[u8]) -> ::std::result::Result<CommandListing, Refusal>
+pub fn encode_gateway_call_document(v: &GatewayCall) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_gateway_call_document(data: &[u8]) -> ::std::result::Result<GatewayCall, Refusal>
+pub fn encode_call_record_document(v: &CallRecord) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_call_record_document(data: &[u8]) -> ::std::result::Result<CallRecord, Refusal>
+pub fn encode_envelope_document(v: &Envelope) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_envelope_document(data: &[u8]) -> ::std::result::Result<Envelope, Refusal>
+pub mod internal
+  pub fn decode_context_ref_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ContextRef, usize), super::Refusal>
+  pub fn check_context_ref(v: &super::ContextRef, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_context_ref_at(v: &super::ContextRef, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_context_entry_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ContextEntry, usize), super::Refusal>
+  pub fn check_context_entry(v: &super::ContextEntry, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_context_entry_at(v: &super::ContextEntry, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_context_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ContextPage, usize), super::Refusal>
+  pub fn check_context_page(v: &super::ContextPage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_context_page_at(v: &super::ContextPage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_kind_field_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::KindField, usize), super::Refusal>
+  pub fn check_kind_field(v: &super::KindField, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_kind_field_at(v: &super::KindField, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_kind_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Kind, usize), super::Refusal>
+  pub fn check_kind(v: &super::Kind, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_kind_at(v: &super::Kind, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_entity_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Entity, usize), super::Refusal>
+  pub fn check_entity(v: &super::Entity, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_entity_at(v: &super::Entity, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_collection_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Collection, usize), super::Refusal>
+  pub fn check_collection(v: &super::Collection, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_collection_at(v: &super::Collection, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_selection_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Selection, usize), super::Refusal>
+  pub fn check_selection(v: &super::Selection, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_selection_at(v: &super::Selection, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_context_snapshot_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ContextSnapshot, usize), super::Refusal>
+  pub fn check_context_snapshot(v: &super::ContextSnapshot, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_context_snapshot_at(v: &super::ContextSnapshot, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_read_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ReadRequest, usize), super::Refusal>
+  pub fn check_read_request(v: &super::ReadRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_read_request_at(v: &super::ReadRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_change_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Change, usize), super::Refusal>
+  pub fn check_change(v: &super::Change, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_change_at(v: &super::Change, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_changes_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChangesRequest, usize), super::Refusal>
+  pub fn check_changes_request(v: &super::ChangesRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_changes_request_at(v: &super::ChangesRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_change_batch_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChangeBatch, usize), super::Refusal>
+  pub fn check_change_batch(v: &super::ChangeBatch, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_change_batch_at(v: &super::ChangeBatch, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_command_spec_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::CommandSpec, usize), super::Refusal>
+  pub fn check_command_spec(v: &super::CommandSpec, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_command_spec_at(v: &super::CommandSpec, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_context_bounds_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ContextBounds, usize), super::Refusal>
+  pub fn check_context_bounds(v: &super::ContextBounds, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_context_bounds_at(v: &super::ContextBounds, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_description_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Description, usize), super::Refusal>
+  pub fn check_description(v: &super::Description, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_description_at(v: &super::Description, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_description_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::DescriptionResult, usize), super::Refusal>
+  pub fn check_description_result(v: &super::DescriptionResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_description_result_at(v: &super::DescriptionResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_invocation_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Invocation, usize), super::Refusal>
+  pub fn check_invocation(v: &super::Invocation, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_invocation_at(v: &super::Invocation, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_command_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::CommandResult, usize), super::Refusal>
+  pub fn check_command_result(v: &super::CommandResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_command_result_at(v: &super::CommandResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_reveal_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Reveal, usize), super::Refusal>
+  pub fn check_reveal(v: &super::Reveal, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_reveal_at(v: &super::Reveal, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_undo_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::UndoRequest, usize), super::Refusal>
+  pub fn check_undo_request(v: &super::UndoRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_undo_request_at(v: &super::UndoRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_job_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::JobRequest, usize), super::Refusal>
+  pub fn check_job_request(v: &super::JobRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_job_request_at(v: &super::JobRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_declared_command_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::DeclaredCommand, usize), super::Refusal>
+  pub fn check_declared_command(v: &super::DeclaredCommand, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_declared_command_at(v: &super::DeclaredCommand, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_command_declaration_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::CommandDeclaration, usize), super::Refusal>
+  pub fn check_command_declaration(v: &super::CommandDeclaration, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_command_declaration_at(v: &super::CommandDeclaration, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_applications_query_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ApplicationsQuery, usize), super::Refusal>
+  pub fn check_applications_query(v: &super::ApplicationsQuery, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_applications_query_at(v: &super::ApplicationsQuery, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_listed_instance_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ListedInstance, usize), super::Refusal>
+  pub fn check_listed_instance(v: &super::ListedInstance, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_listed_instance_at(v: &super::ListedInstance, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_listed_application_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ListedApplication, usize), super::Refusal>
+  pub fn check_listed_application(v: &super::ListedApplication, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_listed_application_at(v: &super::ListedApplication, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_listed_open_verb_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ListedOpenVerb, usize), super::Refusal>
+  pub fn check_listed_open_verb(v: &super::ListedOpenVerb, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_listed_open_verb_at(v: &super::ListedOpenVerb, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_application_open_verbs_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ApplicationOpenVerbs, usize), super::Refusal>
+  pub fn check_application_open_verbs(v: &super::ApplicationOpenVerbs, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_application_open_verbs_at(v: &super::ApplicationOpenVerbs, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_application_listing_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ApplicationListing, usize), super::Refusal>
+  pub fn check_application_listing(v: &super::ApplicationListing, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_application_listing_at(v: &super::ApplicationListing, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_commands_query_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::CommandsQuery, usize), super::Refusal>
+  pub fn check_commands_query(v: &super::CommandsQuery, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_commands_query_at(v: &super::CommandsQuery, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_command_listing_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::CommandListing, usize), super::Refusal>
+  pub fn check_command_listing(v: &super::CommandListing, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_command_listing_at(v: &super::CommandListing, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_gateway_call_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::GatewayCall, usize), super::Refusal>
+  pub fn check_gateway_call(v: &super::GatewayCall, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_gateway_call_at(v: &super::GatewayCall, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_call_record_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::CallRecord, usize), super::Refusal>
+  pub fn check_call_record(v: &super::CallRecord, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_call_record_at(v: &super::CallRecord, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_envelope_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Envelope, usize), super::Refusal>
+  pub fn check_envelope(v: &super::Envelope, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_envelope_at(v: &super::Envelope, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>

@@ -143,8 +143,10 @@ func TestInstallerActionFailureIsRecordedBestEffort(t *testing.T) {
 		command, scope string
 	}{
 		{serviceRequest{command: "begin-upgrade", scope: "user"}, "begin-upgrade --user", "user"},
+		{serviceRequest{command: "begin-removal", scope: "machine"}, "begin-removal --machine", "machine"},
 		{serviceRequest{command: "end-upgrade", scope: "machine"}, "end-upgrade --machine", "machine"},
 		{serviceRequest{command: "start", scope: "user", related: "{X}"}, "start --related", "user"},
+		{serviceRequest{command: "start", scope: "user", folder: testFolder, version: "0.8.0"}, "start --user", "user"},
 		{serviceRequest{command: "start", scope: "machine"}, "start --machine", "machine"},
 		{serviceRequest{command: "upgrade-check"}, "", ""},
 	} {

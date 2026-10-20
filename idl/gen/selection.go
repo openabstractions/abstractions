@@ -132,6 +132,9 @@ func selected(s *Definition, only []string) (*Definition, error) {
 			if _, imported := s.importedRecord(d); imported {
 				continue
 			}
+			if strings.Contains(d, ".") && s.Enum(d) != nil {
+				continue
+			}
 			if contains(only, d) {
 				continue
 			}
@@ -150,8 +153,9 @@ func selected(s *Definition, only []string) (*Definition, error) {
 
 func prune(s *Definition, only []string) *Definition {
 	out := &Definition{
-		Encoding: s.Encoding,
-		Imports:  s.Imports, Foreign: s.Foreign, NamedCodecs: s.NamedCodecs, GoImports: s.GoImports, JSImports: s.JSImports, RustImports: s.RustImports,
+		ConfigCatalogue: s.ConfigCatalogue,
+		Encoding:        s.Encoding,
+		Imports:         s.Imports, Foreign: s.Foreign, ForeignEnums: s.ForeignEnums, NamedCodecs: s.NamedCodecs, GoImports: s.GoImports, JSImports: s.JSImports, RustImports: s.RustImports,
 		Namespaces: s.Namespaces,
 		Typedefs:   s.Typedefs,
 		Refusals:   s.Refusals,

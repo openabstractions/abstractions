@@ -140,7 +140,7 @@ fn router_calls(machine: &Machine, set_policy: &dyn Fn(&str)) {
     };
     let resident = pick(live).unwrap().decision;
     assert!(
-        resident.verdict == "resident" && resident.loads == 0 && !resident.endpoint.is_empty() && resident.authorised.is_none(),
+        resident.verdict == "resident" && resident.loads == 0 && resident.endpoint.is_empty() && resident.authorised.is_none(),
         "resident pick {}",
         resident.verdict
     );
@@ -155,7 +155,7 @@ fn router_calls(machine: &Machine, set_policy: &dyn Fn(&str)) {
     );
     let cold = allowed(&["lmstudio"]);
     assert!(
-        cold.verdict == "would-load" && cold.loads == 1 && cold.host == "lmstudio" && !cold.endpoint.is_empty(),
+        cold.verdict == "would-load" && cold.loads == 1 && cold.host == "lmstudio" && cold.endpoint.is_empty(),
         "cold pick {}",
         cold.verdict
     );

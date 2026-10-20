@@ -98,11 +98,11 @@ assert down and not down[0].up and down[0].why and down[0].installed == 0 and do
 audited = len(hosts.asked)
 live = "qwen/qwen3.6-35b-a3b"
 resident = routes.pick(PickRequest(model=live, fresh=False)).decision
-assert resident.verdict == "resident" and resident.loads == 0 and resident.endpoint and resident.authorised is None, resident.verdict
+assert resident.verdict == "resident" and resident.loads == 0 and not resident.endpoint and resident.authorised is None, resident.verdict
 refused = routes.pick(PickRequest(model=live, fresh=False, allowed=HostAllowance(hosts=[]))).decision
 assert refused.verdict == "unauthorised" and not refused.endpoint and refused.authorised.hosts == [] and refused.withheld, refused.verdict
 cold = routes.pick(PickRequest(model=live, fresh=False, allowed=HostAllowance(hosts=["lmstudio"]))).decision
-assert cold.verdict == "would-load" and cold.loads == 1 and cold.host == "lmstudio" and cold.endpoint, cold.verdict
+assert cold.verdict == "would-load" and cold.loads == 1 and cold.host == "lmstudio" and not cold.endpoint, cold.verdict
 after = routes.hosts(False)
 assert len(after.asked) == audited + 3, (audited, len(after.asked))
 assert all(a.caller == after.observation.caller.path_description and a.user == after.observation.caller.user_description

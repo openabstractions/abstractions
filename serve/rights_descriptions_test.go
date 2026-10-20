@@ -24,7 +24,7 @@ func TestActionDescriptionFileIsClosedAndBounded(t *testing.T) {
 		t.Fatal(err)
 	}
 	d, err := readActionDescriptionFile(path)
-	if err != nil || d.Action != "opencode/log-source.share" || d.FeatureApp.Program != program {
+	if err != nil || d.Action != "opencode/log-source.share" || d.FeatureApp.Program != expectedSubjectProgram(program) {
 		t.Fatalf("valid declaration: %+v %v", d, err)
 	}
 	for name, data := range map[string]string{

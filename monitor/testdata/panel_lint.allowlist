@@ -18,7 +18,6 @@
 # A rule family is judged for raised rows once the merge base governs it.
 # governs: empty-input button-status caption raw-value class secret-scope known-value technical-summary
 card	class:holders	1
-card	class:oa-device-answer	1
 card	class:resource	1
 work	class:log-custom-active	2
 work	class:oa-note	1

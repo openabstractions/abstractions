@@ -1,0 +1,29 @@
+# requires: fileid
+#
+# A path is read in its caller's view (ID-F2): a peer of this account over a
+# local transport reads it as this process does, and every other caller is
+# refused before anything is opened. A relative path names a file only for
+# this process, so one from a peer is refused before anything is opened.
+file f.txt
+resolve f.txt
+resolve f.txt peer=same-account
+opens
+resolve f.txt peer=other-account
+resolve f.txt peer=remote
+resolve f.txt peer=other-platform
+resolve f.txt peer=none
+opens
+resolve f.txt peer=same-account relative=yes
+opens
+resolve f.txt relative=yes
+
+# expect 2: ok kind=file links=1 [ID-F2]
+# expect 3: ok kind=file links=1 [ID-F2]
+# expect 5: refused other-view [ID-F2]
+# expect 6: refused other-view [ID-F2]
+# expect 7: refused other-view [ID-F2]
+# expect 8: refused other-view [ID-F2]
+# expect 9: ok 0 [ID-F2]
+# expect 10: refused unsafe [ID-F2]
+# expect 11: ok 0 [ID-F2]
+# expect 12: ok kind=file links=1 [ID-F2]

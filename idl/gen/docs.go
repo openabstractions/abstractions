@@ -3,12 +3,50 @@ package main
 import (
 	"fmt"
 	"html"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 )
 
 func mono(s string) string { return "<code>" + html.EscapeString(s) + "</code>" }
+
+// Schema prose supports only canonical public-definition links. All other
+// source text remains escaped, including HTML and unsupported link syntax.
+var definitionDocLink = regexp.MustCompile(`\[([^\[\]\r\n]+)\]\((https://openabstractions\.github\.io/reference\.html#concept-[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*)\)`)
+
+func docHTML(text string) string {
+	var b strings.Builder
+	end := 0
+	for _, match := range definitionDocLink.FindAllStringSubmatchIndex(text, -1) {
+		b.WriteString(html.EscapeString(text[end:match[0]]))
+		b.WriteString(`<a href="` + html.EscapeString(text[match[4]:match[5]]) + `">`)
+		b.WriteString(html.EscapeString(text[match[2]:match[3]]))
+		b.WriteString(`</a>`)
+		end = match[1]
+	}
+	b.WriteString(html.EscapeString(text[end:]))
+	return b.String()
+}
+
+// A declaration's heading can reuse its own exact-name canonical link. Links
+// about other symbols do not define this one; conflicting targets stay plain.
+func symbolDocHTML(name, doc string) string {
+	target := ""
+	for _, match := range definitionDocLink.FindAllStringSubmatch(doc, -1) {
+		if match[1] != name {
+			continue
+		}
+		if target != "" && target != match[2] {
+			return mono(name)
+		}
+		target = match[2]
+	}
+	if target == "" {
+		return mono(name)
+	}
+	return `<a href="` + html.EscapeString(target) + `">` + mono(name) + `</a>`
+}
 
 func rule(tag string) string { return `<span class="tag">[` + tag + `]</span>` }
 
@@ -58,11 +96,11 @@ func docsOpen(b *strings.Builder, s *Definition) {
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Open Abstractions — schema</title>
+<title>OpenAbstractions — schema</title>
 <link rel="stylesheet" href="style.css">
 
 <main>
-<nav class="site" aria-label="Primary navigation"><a class="name" href="index.html">Open Abstractions</a>
+<nav class="site" aria-label="Primary navigation"><a class="name" href="index.html">OpenAbstractions</a>
 <a href="adopt.html">Adopt</a><a href="cases.html">Cases</a><span class="nav-devs-label">for developers</span><a href="reference.html">Reference</a><a href="coverage.html">Coverage</a><a href="catalogue.html">Catalogue</a><a href="https://github.com/openabstractions">GitHub</a></nav>
 
 
@@ -194,6 +232,15 @@ func docsTypes(b *strings.Builder, s *Definition) {
 	fmt.Fprintf(b, "<p class=\"meta\">One spelling is written %s and a wider set is read %s; the width between them is the interoperability guarantee.</p>\n",
 		rule("DEF-G2"), rule("DEF-G1"))
 	rows = make([][]string, 0, len(s.Typedefs))
+	namedBounds := false
+	for _, td := range s.Typedefs {
+		if _, ok := td.Ann["length"]; ok {
+			namedBounds = true
+		}
+		if _, ok := td.Ann["pattern"]; ok {
+			namedBounds = true
+		}
+	}
 	for _, td := range s.Typedefs {
 		w, r := "—", "—"
 		if td.Grammar.Write != "" {
@@ -202,20 +249,39 @@ func docsTypes(b *strings.Builder, s *Definition) {
 		if td.Grammar.Read != "" {
 			r = mono(td.Grammar.Read)
 		}
-		rows = append(rows, []string{mono(td.Alias), mono(td.Base), w, r})
+		row := []string{mono(td.Alias), mono(td.Base), w, r}
+		if namedBounds {
+			var bounds []string
+			if spec, ok := td.Ann["length"]; ok {
+				bounds = append(bounds, "length "+spec+" UTF-8 bytes")
+			}
+			if spec, ok := td.Ann["pattern"]; ok {
+				bounds = append(bounds, "pattern "+spec)
+			}
+			row = append(row, mono(strings.Join(bounds, "; ")))
+		}
+		rows = append(rows, row)
 	}
-	table(b, []string{"name", "is", "written", "read"}, rows)
+	columns := []string{"name", "is", "written", "read"}
+	if namedBounds {
+		columns = append(columns, "constraints")
+	}
+	table(b, columns, rows)
 }
 
 func presence(f Field) string {
+	bound := ""
+	if text := constraintText(f); text != "" {
+		bound = "; " + html.EscapeString(text) + "; refusal " + mono(boundWord)
+	}
 	switch f.Omit {
 	case "never":
 		if value, ok := f.Ann["equals"]; ok {
-			return "required; equals " + mono(value) + "; refusal " + mono(f.Ann["equals_refusal"])
+			return "required; equals " + mono(value) + "; refusal " + mono(f.Ann["equals_refusal"]) + bound
 		}
-		return "required"
+		return "required" + bound
 	default:
-		return "optional · omitted when " + html.EscapeString(f.Omit)
+		return "optional · omitted when " + html.EscapeString(f.Omit) + bound
 	}
 }
 
@@ -237,7 +303,7 @@ func otherNames(f Field) string {
 	return strings.Join(out, ", ")
 }
 
-func structNotes(s *Definition, st Struct) []string {
+func structNotes(s *Definition, st Struct, citeSize bool) []string {
 	var notes []string
 	if st.Document {
 		notes = append(notes, "the document "+rule("DEF-A1"))
@@ -249,6 +315,16 @@ func structNotes(s *Definition, st Struct) []string {
 		notes = append(notes, `the <a href="#protocol">protocol response</a>`)
 	}
 	notes = append(notes, "unknown fields "+mono(st.UnknownFields))
+	sizeRule := ""
+	if citeSize {
+		sizeRule = " " + rule("DEF-A12")
+	}
+	if st.Ann["chunk"] == "true" {
+		notes = append(notes, "one chunk of a stream"+sizeRule)
+	}
+	if n := st.maxEncoded(); n > 0 {
+		notes = append(notes, fmt.Sprintf("compact value span at most %d bytes; raw value span at most %d bytes%s", n, recordCeiling, sizeRule))
+	}
 	return notes
 }
 
@@ -256,9 +332,11 @@ func docsStructs(b *strings.Builder, s *Definition) {
 	heading(b, 2, "structs", "Structs", "DEF-T1")
 	fmt.Fprintf(b, "<p class=\"meta\">A field is required, or says when it is omitted %s. Each struct says on its own what it does with a field name it has never heard of %s. A wire name never moves; where a language must spell it differently the field says so %s.</p>\n",
 		rule("DEF-A4"), rule("DEF-A7"), rule("DEF-A2"))
+	sizeCited := false
 	for _, st := range s.Structs {
-		fmt.Fprintf(b, "<h3 id=%q>%s</h3>\n", "struct-"+st.Name, mono(st.Name))
-		fmt.Fprintf(b, "<p class=\"meta\">%s</p>\n", strings.Join(structNotes(s, st), " · "))
+		fmt.Fprintf(b, "<h3 id=%q>%s</h3>\n", "struct-"+st.Name, symbolDocHTML(st.Name, st.Ann["doc"]))
+		fmt.Fprintf(b, "<p class=\"meta\">%s</p>\n", strings.Join(structNotes(s, st, !sizeCited), " · "))
+		sizeCited = sizeCited || st.Ann["chunk"] == "true" || st.maxEncoded() > 0
 		rows := make([][]string, 0, len(st.Fields))
 		for _, f := range st.Fields {
 			t := f.Type
@@ -283,7 +361,7 @@ func docsEnums(b *strings.Builder, s *Definition) {
 	}
 	fmt.Fprintf(b, "<p class=\"meta\">An enumeration is a closed vocabulary of wire names, and each one says on its own what a reader does with a member it has never heard of %s.</p>\n", rule("DEF-A5"))
 	for _, en := range s.Enums {
-		fmt.Fprintf(b, "<h3 id=%q>%s</h3>\n", "enum-"+en.Name, mono(en.Name))
+		fmt.Fprintf(b, "<h3 id=%q>%s</h3>\n", "enum-"+en.Name, symbolDocHTML(en.Name, en.Ann["doc"]))
 		fmt.Fprintf(b, "<p class=\"meta\">a member this reader does not know is %s</p>\n",
 			mono(en.Ann["unknown"]))
 		keys := en.MemberAnn()
@@ -390,8 +468,8 @@ func docsServices(b *strings.Builder, s *Definition) {
 		if s.NoIPC {
 			label = "Interface "
 		}
-		heading(b, 2, "service-"+svc.Name, label+mono(svc.Name), "DEF-S1")
-		fmt.Fprintf(b, "<p>%s</p>\n", html.EscapeString(svc.Doc))
+		heading(b, 2, "service-"+svc.Name, label+symbolDocHTML(svc.Name, svc.Doc), "DEF-S1")
+		fmt.Fprintf(b, "<p>%s</p>\n", docHTML(svc.Doc))
 		if s.NoIPC {
 			b.WriteString("<p>Interface-only output: implement these methods directly. No IPC client, dispatcher, message envelope or transport binding is emitted. Record codecs remain available. Method return/error signatures are retained; oneway marks the schema declaration, not a delivery or persistence guarantee for a direct call.</p>\n")
 		} else {
@@ -404,26 +482,38 @@ func docsServices(b *strings.Builder, s *Definition) {
 				fmt.Fprintf(b, "<p>Handler error codes, declared by %s: %s. Generated bindings name each as a ServiceErrorCode member beside the dispatcher's own codes.</p>\n", mono(svc.ErrorCodesConst), strings.Join(codes, ", "))
 			}
 			if len(s.Services) > 1 {
-				b.WriteString("<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>\n")
+				b.WriteString("<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. Go ServiceMethod returns the service and method routing pair through the same strict decoder, exposing no arguments. The selected generated dispatcher validates the method and typed arguments; these selectors do not authorize callers or establish a handler outcome.</p>\n")
 			}
 			b.WriteString("<p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>\n")
 			if svcReplies(svc) {
 				b.WriteString("<p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>\n")
 			}
 		}
+		traitCited := false
 		for _, m := range svc.Methods {
-			fmt.Fprintf(b, "<p>%s</p>\n", html.EscapeString(m.Doc))
+			fmt.Fprintf(b, "<p>%s</p>\n", docHTML(m.Doc))
 			mode := "request-response"
 			result := m.Result.Type
 			if m.Oneway {
 				mode = "oneway"
 				result = "void"
 			}
-			fmt.Fprintf(b, "<h3>%s</h3><p>%s %s</p><ul>\n", mono(m.Name), mono(mode), mono(result))
+			trait := ""
+			if text := traitText(m); text != "" {
+				trait = " · " + html.EscapeString(text)
+				if !traitCited {
+					trait += " " + rule("DEF-S3")
+					traitCited = true
+				}
+			}
+			fmt.Fprintf(b, "<h3>%s</h3><p>%s %s%s</p><ul>\n", mono(m.Name), mono(mode), mono(result), trait)
 			for _, f := range m.Args {
 				fmt.Fprintf(b, "<li>Argument %d: %s %s (%s, including zero/false/empty)</li>\n", f.ID, mono(f.Type), mono(f.Name), presence(f))
 			}
 			b.WriteString("</ul>\n")
+			if p := m.ResultPostcondition; p != nil {
+				fmt.Fprintf(b, "<p>Service result postcondition: %s is present exactly when %s is %s. Clients validate before return; dispatchers validate before reply. Standalone record codecs remain structural.</p>\n", mono(p.Payload.Name), mono(p.Discriminator.Name), mono(strings.Join(p.Members, " or ")))
+			}
 		}
 	}
 }

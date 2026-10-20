@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import {runtimeConnector} from './runtime-connector.js';
+import {parseTree} from 'jsonc-parser';
 // configure.js writes OpenCode's own configuration from the router's offers,
 // so nobody types a model name into opencode.json by hand. It belongs to the
 // OpenCode adopter: OA's runtime carries no OpenCode code (VISION 2026-10-06,
@@ -7,16 +9,16 @@
 // and projects the offers with inventory.js, the projection the plugin
 // applies at every OpenCode start.
 //
-// Run it with Node (node configure.js ...). OA never runs it through
-// OpenCode's own program: that would make OpenCode's identity a script host,
-// and OpenCode answers OA's asks as the assistant.
+// The development configure command uses Node (node configure.js ...).
+// The fixed app-installer helper imports only its config file/merge owners
+// under the private CLI's Bun host mode; that helper makes no OA requests.
 import {closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync,
   renameSync, statSync, unlinkSync, writeSync} from 'node:fs';
 import {homedir, tmpdir} from 'node:os';
-import {basename, dirname, extname, isAbsolute, join, normalize} from 'node:path';
+import {basename, dirname, extname, isAbsolute, join, normalize, resolve} from 'node:path';
 import {createHash, randomBytes} from 'node:crypto';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {defaultChatFamily, localServers, olderRuntimeMessage, outputReserve, readOffers, servableChatModels} from './inventory.js';
+import {defaultChatFamily, hostedHeading, localServers, modelHeadings as headings, olderRuntimeMessage, ownHeadingName, outputReserve, readOffers, servableChatModels} from './inventory.js';
 
 export const usage = `Usage: configure.js <command> [flags]
 
@@ -37,6 +39,7 @@ configure [--config PATH] [--provider-id ID] [--scope local|remote]
           [--adapter PACKAGE_OR_DIR] [--selection-policy NAME]
           [--model FAMILY] [--profile local|default]
           [--opencode-zen hide|show] [--dry-run]
+          [--mcp-launcher ABSOLUTE_PATH]
   --config PATH      OpenCode's config file
                       (default: ~/.config/opencode/opencode.json)
   --provider-id ID   the provider key configure writes (default: openabstractions)
@@ -62,13 +65,19 @@ configure [--config PATH] [--provider-id ID] [--scope local|remote]
                       show removes the entry configure added. Choosing one
                       of those models sends your code to their servers
   --dry-run           print the merged config instead of writing it
+  --mcp-launcher PATH  optionally register the explicitly selected standard OA
+                      openabstractions-mcp launcher, with a 30-minute call timeout.
+                      Existing different OpenAbstractions MCP entries refuse.
+                      Native plugin messaging keeps its own identity.
 
 configure reads the router's servable chat families through the runtime and
 writes or updates the provider.<id> block (headed "OpenAbstractions · this
 computer"), a "via hosted servers" block when a credential makes hosted models
 servable, registers the startup adapter in the "plugin" list, and writes a
 "model" key when the config names no default, leaving every other key
-untouched. It also registers the same adapter source's TUI module (Ctrl+Alt+M
+untouched. A selected local OA model disables the title request unless a
+title setting exists or --profile is supplied. It also registers the same
+adapter source's TUI module (Ctrl+Alt+M
 dictation) in the "plugin" list of tui.json beside that config; an adapter
 without a ./tui module leaves tui.json alone, and an existing tui.jsonc is left
 for the person to edit with the entry printed. A changed file, or a linked
@@ -77,6 +86,8 @@ file's target, is replaced atomically, its previous version kept as
 refused. It refuses a .jsonc config by name: this command cannot preserve its
 comments. Running it again writes the identical file unchanged. A machine with
 no servable chat family writes nothing and says why.
+With --mcp-launcher, an empty model inventory still permits the optional MCP
+entry; existing provider/model settings stay as they are.
 
 Both commands accept --endpoint ENDPOINT (default: the installed runtime) and
 --timeout DURATION (such as 20s; default 10s).
@@ -100,15 +111,12 @@ const selectionPolicyPattern = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const knownSources = new Set(['effective', 'maximum', 'default']);
 
 // OpenCode's model picker groups models by provider name, so configure gives
-// OA's models one heading per placement: the models on this computer, the
-// models on hosted servers (written when a credential makes any servable),
-// and a person's saved preferences, which are not models of their own. The
-// picker sorts providers by name, so the headings read in this order.
-export const headings = Object.freeze({
-  local: 'OpenAbstractions · this computer',
-  hosted: 'OpenAbstractions · via hosted servers',
-  preferences: 'OpenAbstractions · your saved preferences',
-});
+// OA's models one heading per placement: "OpenAbstractions" for the models on
+// this computer, "<service> · OpenAbstractions" for the models on hosted
+// servers (written when a credential makes any servable), which keeps them
+// apart from OpenCode's own group for that service, and a person's saved
+// preferences, which are not models of their own.
+export {headings};
 const hostedSuffix = '-hosted';
 const preferencesSuffix = '-preferences';
 
@@ -192,7 +200,7 @@ Be concise, direct and to the point. Your output is shown in a terminal as GitHu
 - Refer to code as file_path:line_number.
 
 # OpenAbstractions
-OpenCode reaches models through OpenAbstractions, which runs them on this computer. Its tools are named openabstractions_*. Call openabstractions_tools to list what this machine offers (pictures, speech, logs, credentials, questions) and to read a tool's full description before its first use. When a call is refused for a missing permission, a question is waiting in the OpenAbstractions Panel: tell the user to allow it there rather than working around it. Never ask for or handle passwords, API keys or tokens; the person enters them in the Panel.`;
+OpenCode reaches models through OpenAbstractions, which runs them on this computer. Its tools use canonical oa_area_verb names. Call oa_tools_list to list what this machine offers (pictures, speech, logs, credentials, questions) and to read a tool's full description before its first use. When a call is refused for a missing permission, a question is waiting in the OpenAbstractions Panel: tell the user to allow it there rather than working around it. Never ask for or handle passwords, API keys or tokens; the person enters them in the Panel.`;
 
 /** A refusal with this command's exit code. */
 export class ConfigureError extends Error {
@@ -226,10 +234,97 @@ export function render(doc) {
 
 const sameJSON = (left, right) => JSON.stringify(sortKeys(left)) === JSON.stringify(sortKeys(right));
 
+/** One explicitly supplied OA MCP image. The name selects routing; native
+ * proof and the person's enrollment remain with OA. */
+function mcpProgram(launcher) {
+  if (typeof launcher !== 'string' || !isAbsolute(launcher) || /[\0\r\n]/.test(launcher)
+    || !['openabstractions-mcp', 'openabstractions-mcp.exe', 'oa-opencode-integration', 'oa-opencode-integration.exe'].includes(basename(launcher).toLowerCase())) {
+    throw new Error('MCP launcher must be an absolute OA gateway or OpenCode integration program path');
+  }
+  return launcher;
+}
+
+export function mcpConfiguration(launcher) {
+  mcpProgram(launcher);
+  for (let at = launcher; ; at = dirname(at)) {
+    const info = lstatSync(at);
+    if (info.isSymbolicLink() || at === launcher && !info.isFile()) throw new Error(`MCP launcher path is linked or not a regular program: ${at}`);
+    if (dirname(at) === at) break;
+  }
+  return {type: 'local', command: [launcher], timeout: mcpCallTimeout};
+}
+
+// mcpCallTimeout is OpenCode's limit on one OA tool call: 30 minutes, the
+// ceiling of an agent's wait_ms. An entry OA wrote with the earlier 60000 is
+// still OA's own and is rewritten to this value.
+export const mcpCallTimeout = 1800000;
+const earlierMCPCallTimeouts = [60000];
+
+export function sameMCPConfiguration(left, right) {
+  try {
+    return Array.isArray(right?.command) && right.command.length === 1
+      && [mcpCallTimeout, ...earlierMCPCallTimeouts].includes(right.timeout)
+      && sameJSON(right, {type: 'local', command: [mcpProgram(right.command[0])], timeout: right.timeout})
+      && sameJSON(left, right);
+  } catch { return false; }
+}
+
+export function mergeMCPConfiguration(doc, launcher) {
+  if((Array.isArray(doc.plugin)?doc.plugin:[]).some(entry=>registeredAdapter(pluginEntry(entry).name,'./server'))) {
+    throw new Error('The native OA plugin already hosts Messages and Asks; a global OpenAbstractions MCP connection would duplicate its tools');
+  }
+  const expected = mcpConfiguration(launcher);
+  if (doc.mcp !== undefined && (!doc.mcp || typeof doc.mcp !== 'object' || Array.isArray(doc.mcp))) throw new Error('Invalid MCP configuration');
+  const earlier = earlierMCPCallTimeouts.some(timeout => sameJSON(doc.mcp?.OpenAbstractions, {...expected, timeout}));
+  if (Object.hasOwn(doc.mcp ?? {}, 'OpenAbstractions') && !sameJSON(doc.mcp.OpenAbstractions, expected) && !earlier) {
+    throw new Error('The OpenAbstractions MCP entry is already owned by different settings');
+  }
+  doc.mcp ??= {};
+  doc.mcp.OpenAbstractions = expected;
+  return expected;
+}
+
+// Readers and offset editors must select the same interpreted properties.
+// Inspect decoded AST keys before JSON.parse/parse can discard a duplicate.
+export function validateMCPProperties(text) {
+  const errors = [];
+  const source = text === null || text === undefined ? '' : String(text);
+  const tree = parseTree(source.trim() ? source : '{}', errors, {allowTrailingComma: true});
+  if (errors.length || tree?.type !== 'object') throw new Error('Invalid config document');
+  const unique = (node, key, owner = 'MCP') => {
+    const properties = node?.type === 'object' ? node.children.filter(property => property.children[0].value === key) : [];
+    if (properties.length > 1) throw new Error(`Duplicate ${owner} configuration property`);
+    return properties[0]?.children[1];
+  };
+  const unambiguous = (node, owner) => {
+    if (node?.type === 'object') {
+      const names = new Set();
+      for (const property of node.children) {
+        const name = property.children[0].value;
+        if (names.has(name)) throw new Error(`Duplicate ${owner} configuration property`);
+        names.add(name); unambiguous(property.children[1], owner);
+      }
+    } else if (node?.type === 'array') for (const child of node.children) unambiguous(child, owner);
+  };
+  unambiguous(unique(tree, 'plugin', 'plugin'), 'plugin');
+  unambiguous(unique(tree, 'provider', 'provider'), 'provider');
+  const mcp = unique(tree, 'mcp');
+  const own = unique(mcp, 'OpenAbstractions');
+  if (own?.type === 'object') {
+    const names = new Set();
+    for (const property of own.children) {
+      const name = property.children[0].value;
+      if (names.has(name)) throw new Error('Duplicate MCP configuration property');
+      names.add(name);
+    }
+  }
+}
+
 /** The JSON object a config file holds; empty or absent is {}. */
 function parseObject(text) {
   const trimmed = text === null || text === undefined ? '' : String(text).trim();
   if (!trimmed) return {};
+  validateMCPProperties(trimmed);
   let doc;
   try {
     doc = JSON.parse(trimmed);
@@ -285,14 +380,7 @@ export function guaranteeFor(scope) {
   throw mistake(`--scope must be local or remote, not ${JSON.stringify(scope)}`);
 }
 
-async function connector() {
-  if (typeof Bun !== 'undefined') {
-    const {BunNativeConnector} = await import('@openabstractions/ipc/bun');
-    return new BunNativeConnector();
-  }
-  const {NativeConnector} = await import('@openabstractions/ipc');
-  return new NativeConnector();
-}
+async function connector() { return runtimeConnector(); }
 
 async function resolveRouter({endpoint, timeout}) {
   const [{Machine}, {RouterClient}] = await Promise.all([import('@openabstractions/facade'), import('@openabstractions/router')]);
@@ -300,12 +388,39 @@ async function resolveRouter({endpoint, timeout}) {
   return new RouterClient(await machine.resolveService(routerContract, {scope: 'local'}));
 }
 
+async function resolveSelectionOperator({endpoint, timeout}) {
+  const [{Machine}, {SelectionOperatorV2Client}] = await Promise.all([import('@openabstractions/facade'), import('@openabstractions/inference')]);
+  const machine = new Machine(endpoint || null, {connector: await connector(), timeout});
+  return new SelectionOperatorV2Client(await machine.resolveService('abstraction.inference/selection-operator@2', {scope: 'local'}));
+}
+
+async function resolveTitleChat({endpoint, timeout}) {
+  const {Machine} = await import('@openabstractions/facade');
+  const machine = new Machine(endpoint || null, {connector: await connector(), timeout});
+  return machine.resolveService('abstraction.inference/chat@3', {scope: 'local'});
+}
+
+async function titlePolicyAt(options) {
+  try {
+    const operator = await (options.resolveSelectionOperator ?? resolveSelectionOperator)(options);
+    const read = await operator.readEffective('title');
+    if (read.outcome !== 'found' || read.policy?.name !== 'title') return false;
+    await (options.resolveTitleChat ?? resolveTitleChat)(options);
+    return true;
+  } catch {
+    // Enable the title alias only when its required contract resolves here.
+    return false;
+  }
+}
+
 /** A router failure as this command's exit: the missing right names the Panel,
  * an older runtime asks for an update, and a transport failure is exit 1. */
-export function routerRefusal(error) {
+export function routerRefusal(error, operation = null) {
   if (error?.outcome === 'not_permitted' || (error?.outcome === undefined && error?.code === 'forbidden')) {
-    return new ConfigureError(3, `${error.outcome ?? error.code}: this program lacks abstraction.router/inventory.read on abstraction.router/inventory; ` +
-      'grant it in the OpenAbstractions Panel, then retry');
+    const permission = operation === 'Offer'
+      ? 'this program lacks abstraction.router/inventory.read on abstraction.router/inventory; grant it in the OpenAbstractions Panel, then retry'
+      : 'the runtime refused access to the model router; check the OpenAbstractions Panel for the refusal';
+    return new ConfigureError(3, `${error.outcome ?? error.code}: ${permission}`);
   }
   if (error?.outcome === 'unavailable') return new ConfigureError(4, `unavailable: ${error.message}`);
   if (typeof error?.outcome === 'string') return new ConfigureError(3, `${error.outcome}: ${error.message}`);
@@ -316,11 +431,16 @@ export function routerRefusal(error) {
 
 /** The router's offers for placement at configure's answer reserve. */
 async function offersAt(options, placement) {
+  let client;
   try {
-    const client = await (options.resolveRouter ?? resolveRouter)(options);
-    return (await readOffers(client, placement))?.offers ?? [];
+    client = await (options.resolveRouter ?? resolveRouter)(options);
   } catch (error) {
     throw routerRefusal(error);
+  }
+  try {
+    return (await readOffers(client, placement))?.offers ?? [];
+  } catch (error) {
+    throw routerRefusal(error, 'Offer');
   }
 }
 
@@ -508,9 +628,9 @@ export function mergeProvider(existing, provider) {
     put(managed, id, model);
   }
   current.models = models;
-  // configure's earlier single heading becomes the placement's heading; a
-  // name the person chose stays.
-  if (current.name === undefined || current.name === null || current.name === displayName) current.name = provider.name;
+  // A heading name configure or the plugin wrote, today's or an earlier
+  // version's, becomes the placement's heading; a name the person chose stays.
+  if (current.name === undefined || current.name === null || ownHeadingName(current.name)) current.name = provider.name;
   if (provider.replacePackage || current.npm === undefined || current.npm === null) current.npm = provider.npm;
   const options = {...oldOptions};
   options.scope = provider.options.scope;
@@ -536,6 +656,22 @@ export function mergeProvider(existing, provider) {
   if (provider.options.runtimeEndpoint) options.runtimeEndpoint = provider.options.runtimeEndpoint;
   if (provider.options.placement) options.oaPlacement = provider.options.placement;
   if (provider.options.inventory !== undefined) options.oaInventory = provider.options.inventory;
+  if (provider.options.chatGuarantees !== undefined) {
+    const valid = value => isObject(value) && Object.values(value).every(required =>
+      Array.isArray(required) && required.every(word => typeof word === 'string'));
+    const prior = Object.hasOwn(oldOptions, 'oaChatGuarantees') ? oldOptions.oaChatGuarantees : {};
+    if (!valid(prior) || !valid(provider.options.chatGuarantees)) {
+      throw new Error('oaChatGuarantees must map aliases to string lists');
+    }
+    const required = {...prior};
+    for (const [alias, words] of Object.entries(provider.options.chatGuarantees)) {
+      if (Object.hasOwn(required, alias) && !sameJSON(required[alias], words)) {
+        throw new Error(`the preference alias ${JSON.stringify(alias)} already requires different chat guarantees`);
+      }
+      put(required, alias, words);
+    }
+    options.oaChatGuarantees = required;
+  }
   current.options = options;
   return current;
 }
@@ -578,25 +714,27 @@ export function mergeConfig(existing, providerID, provider, defaultModel, reques
   return {doc, registration};
 }
 
-/** The model a config selects under providerID, or ''. */
-export function selectedModel(existing, providerID) {
-  let doc;
-  try {
-    doc = parseObject(existing);
-  } catch {
-    return '';
-  }
+function selectedModelOf(doc, providerID) {
   const model = doc.model;
   if (typeof model === 'string') return model.startsWith(`${providerID}/`) ? model.slice(providerID.length + 1) : '';
   if (isObject(model) && model.providerID === providerID && typeof model.model === 'string') return model.model;
   return '';
 }
 
+/** The model a config selects under providerID, or ''. */
+export function selectedModel(existing, providerID) {
+  try {
+    return selectedModelOf(parseObject(existing), providerID);
+  } catch {
+    return '';
+  }
+}
+
 /** The hosted heading when there are hosted models, and the saved-preferences
  * heading when a selection policy is named, beside the main provider and with
  * its package. */
 function extraProviders(doc, app) {
-  if (!Object.keys(app.hostedModels ?? {}).length && !app.selectionPolicy) return;
+  if (!Object.keys(app.hostedModels ?? {}).length && !app.selectionPolicy && !app.titlePolicy) return;
   const providers = doc.provider;
   const npm = providers[app.providerID]?.npm;
   if (typeof npm !== 'string' || !npm) throw new Error('the OpenAbstractions provider block names no package');
@@ -604,19 +742,21 @@ function extraProviders(doc, app) {
   if (Object.keys(app.hostedModels ?? {}).length) {
     const id = app.providerID + hostedSuffix;
     try {
-      put(providers, id, mergeProvider(existing(id), {name: headings.hosted, npm, models: app.hostedModels, options: {
+      put(providers, id, mergeProvider(existing(id), {name: app.hostedHeading ?? headings.hosted, npm, models: app.hostedModels, options: {
         runtimeEndpoint: app.runtimeEndpoint, scope: 'remote', guarantees: [guaranteeFor('remote')], placement: 'hosted',
       }}));
     } catch (error) {
       throw new Error(`hosted heading: ${error.message}`);
     }
   }
-  if (app.selectionPolicy) {
+  if (app.selectionPolicy || app.titlePolicy) {
     const id = app.providerID + preferencesSuffix;
     try {
       put(providers, id, mergeProvider(existing(id), {name: headings.preferences, npm, models: {}, options: {
         runtimeEndpoint: app.runtimeEndpoint, scope: app.scope, guarantees: [app.guarantee], inventory: false,
-        selectionPolicies: {[selectionAlias(app.selectionPolicy)]: app.selectionPolicy},
+        selectionPolicies: {...(app.selectionPolicy ? {[selectionAlias(app.selectionPolicy)]: app.selectionPolicy} : {}),
+          ...(app.titlePolicy ? {[selectionAlias('title')]: 'title'} : {})},
+        chatGuarantees: app.titlePolicy ? {[selectionAlias('title')]: [guaranteeFor('local'), 'abstraction.inference/free-capacity@1']} : {},
       }}));
     } catch (error) {
       throw new Error(`saved preferences heading: ${error.message}`);
@@ -732,17 +872,33 @@ function pruneEmpty(doc, ...path) {
  * not set, replaces one that still holds the value the profile last wrote,
  * and keeps one a person changed, naming it in the notes; default removes
  * each setting that still holds the value the profile wrote. Every other key
- * stays, OpenCode's build and plan agents included. Returns the notes. */
-export function applyProfile(doc, providerID, profile) {
-  if (!profile) return [];
+ * stays, OpenCode's build and plan agents included. Without a profile, a
+ * selected local OA model gets only its absent title-disable setting.
+ * Returns the notes. */
+export function applyProfile(doc, providerID, profile, titlePolicy = false) {
+  const provider = isObject(doc.provider) ? doc.provider[providerID] : null;
+  const agent = doc.agent;
+  const title = isObject(agent) ? agent.title : null;
+  const priorWrote = provider?.options?.[profileMarker]?.wrote;
+  const titleOnly = !profile && Boolean(selectedModelOf(doc, providerID)) &&
+    isObject(provider?.options) && provider.options.scope === defaultScope &&
+    (!Object.hasOwn(doc, 'agent') || isObject(agent)) &&
+    (!isObject(agent) || !Object.hasOwn(agent, 'title') || isObject(title)) &&
+    (!isObject(title) || !Object.hasOwn(title, 'disable') || isObject(priorWrote) &&
+      Object.hasOwn(priorWrote, 'agent.title.disable') && sameJSON(title.disable, priorWrote['agent.title.disable']));
+  if (!profile && !titleOnly) return [];
   const options = objectAt(doc, true, 'provider', providerID, 'options');
   const plugin = pluginOptions(doc, providerID);
   const marker = options[profileMarker];
   const record = isObject(marker) && isObject(marker.wrote) ? marker.wrote : {};
   const notes = [];
-  if (profile === 'local') {
-    const wrote = {};
-    for (const key of retiredSettings) {
+  if (profile === 'local' || titleOnly) {
+    const wrote = titleOnly ? {...record} : {};
+    if (!titlePolicy && Object.hasOwn(record, 'small_model') && doc.small_model === record.small_model) {
+      delete doc.small_model;
+      delete wrote.small_model;
+    }
+    for (const key of titleOnly ? [] : retiredSettings) {
       if (!Object.hasOwn(record, key)) continue;
       try {
         const {parent, name} = settingParent(doc, plugin, key.split('.'), false);
@@ -751,8 +907,14 @@ export function applyProfile(doc, providerID, profile) {
         // A person's own non-object setting stays.
       }
     }
-    for (const [path, value] of localSettings()) {
+    const titleModel = `${providerID}${preferencesSuffix}/${selectionAlias('title')}`;
+    const useTitle = titlePolicy && (doc.small_model === undefined || doc.small_model === titleModel ||
+      Object.hasOwn(record, 'small_model') && doc.small_model === record.small_model);
+    const settings = localSettings().map(([path, value]) => [path, path.join('.') === 'agent.title.disable' && useTitle ? false : value]);
+    if (useTitle) settings.push([['small_model'], titleModel]);
+    for (const [path, value] of settings) {
       const key = path.join('.');
+      if (titleOnly && key !== 'agent.title.disable' && key !== 'small_model') continue;
       let parent;
       let name;
       try {
@@ -873,6 +1035,54 @@ function readOrNull(path) {
 /** A config document through its link target; null when absent. */
 export function readConfig(path) {
   return readOrNull(resolveLink(path));
+}
+
+/** Canonical write target, including an absent file below an existing linked
+ * directory. Absence retains its parent binding for later rollback. */
+export function configIdentity(path) {
+  let candidate = resolve(resolveLink(path));
+  const missing = [];
+  for (;;) {
+    try { return join(realpathSync.native(candidate), ...missing); }
+    catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      const parent = dirname(candidate);
+      if (parent === candidate) throw error;
+      missing.unshift(basename(candidate));
+      candidate = parent;
+    }
+  }
+}
+
+function ownedLeafState(path) {
+  if (!isAbsolute(path) || resolve(path) !== path || path.startsWith('\\\\')) throw new Error('Owned leaf requires a local absolute path');
+  let file=null,links=0;const parents=[];
+  for(let current=path;;current=dirname(current)) {
+    let info;
+    try {info=lstatSync(current,{bigint:true});} catch(error) {if(error.code!=='ENOENT')throw error;}
+    if(info) {
+      if(info.isSymbolicLink() || (current===path?!info.isFile():!info.isDirectory())) throw new Error('Owned leaf passes through a link or wrong file kind');
+      const key=String(info.dev)+':'+String(info.ino);
+      if(current===path){file=key;links=Number(info.nlink);}else parents.push({path:current,key});
+    }
+    if(dirname(current)===current)break;
+  }
+  return {file,links,parents};
+}
+
+function sameOwnedLeaf(expected,current) {
+  return expected.file===current.file && expected.links===current.links
+    && expected.parents.every(parent=>current.parents.some(row=>row.path===parent.path&&row.key===parent.key));
+}
+
+export function readConfigSnapshot(path, {ownedLeaf=false} = {}) {
+  const leaf=ownedLeaf?ownedLeafState(path):null;
+  if(ownedLeaf&&typeof ownedLeaf==='object'&&!sameOwnedLeaf(ownedLeaf,leaf))throw new Error('Owned leaf identity changed while installer ran');
+  const identity = configIdentity(path);
+  const bytes = readOrNull(identity);
+  if (configIdentity(path) !== identity) throw new Error(`${path} target identity changed while reading config`);
+  if(ownedLeaf&&!sameOwnedLeaf(leaf,ownedLeafState(path)))throw new Error('Owned leaf changed while reading');
+  return ownedLeaf?{bytes,identity,leaf}:{bytes, identity};
 }
 
 const sameBytes = (left, right) => (left === null) === (right === null) && (left === null || left.equals(right));
@@ -1017,13 +1227,20 @@ function writeWhole(target, data) {
  * read it (null when absent), with data. It first keeps previous as
  * <file>.openabstractions.bak, OA's own backup name, so a person's <file>.bak
  * is never touched; a file changed since configure read it is refused. */
-export function replaceConfig(path, previous, data) {
-  const target = resolveLink(path);
+export function replaceConfig(path, previous, data, identity = configIdentity(path), {backup=true,leaf=null} = {}) {
+  const assertIdentity = () => {
+    if (typeof identity !== 'string' || configIdentity(path) !== identity) throw new Error(`${path} target identity changed while configure ran`);
+    if(leaf&&!sameOwnedLeaf(leaf,ownedLeafState(path)))throw new Error('Owned leaf identity changed while installer ran');
+  };
+  assertIdentity();
+  const target = identity;
   mkdirSync(dirname(target), {recursive: true});
   const release = lock(target);
   try {
+    assertIdentity();
     sweep(target);
-    if (previous !== null && previous.toString('utf8').trim() !== '') {
+    if (!sameBytes(readOrNull(target), previous)) throw new Error(`${target} changed while configure ran; run configure again`);
+    if (backup && previous !== null && previous.toString('utf8').trim() !== '') {
       const backup = `${target}.openabstractions.bak`;
       const current = readOrNull(backup);
       if (current === null || !current.equals(previous)) {
@@ -1031,8 +1248,12 @@ export function replaceConfig(path, previous, data) {
         writeWhole(backup, previous);
       }
     }
+    assertIdentity();
     if (!sameBytes(readOrNull(target), previous)) throw new Error(`${target} changed while configure ran; run configure again`);
-    writeWhole(target, Buffer.from(data, 'utf8'));
+    // Installer rollback restores absence only after the same byte comparison.
+    if (data === null) {
+      if (readOrNull(target) !== null) unlinkSync(target);
+    } else writeWhole(target, Buffer.from(data, 'utf8'));
   } finally {
     release();
   }
@@ -1066,10 +1287,26 @@ export function apply(app, io, deps = {}) {
   app = {...app, unusableModels: unusable, profile: app.profile ?? '', zen: app.zen ?? ''};
   for (const warning of app.inventoryWarnings ?? []) io.err(`${app.command}: ${warning}\n`);
   const families = Object.keys(app.models).sort();
+  if(families.length&&app.mcpLauncher!==undefined)throw mistake('The native OA plugin hosts Messages and Asks; configure its connection without --mcp-launcher');
+  if (!families.length && app.mcpLauncher !== undefined) {
+    if (app.chosenModel) throw new ConfigureError(4, `--model ${JSON.stringify(app.chosenModel)} is not a servable chat model on this machine now`);
+    try {
+      const {bytes, identity} = readConfigSnapshot(app.path);
+      const doc = parseObject(bytes);
+      mergeMCPConfiguration(doc, app.mcpLauncher);
+      const text = render(doc);
+      if (app.dryRun) io.out(text);
+      else {
+        if (bytes?.toString('utf8').trim() !== text.trim()) replace(app.path, bytes, text, identity);
+        io.out(`${app.command}: configured optional standard MCP in ${app.path}; no model settings changed\n`);
+      }
+      return;
+    } catch (error) { throw mistake(`${app.path}: ${error.message}`); }
+  }
   if (!families.length && Object.keys(unusable).length) throw new ConfigureError(3, contextWarning(app));
   if (!families.length) {
     io.out(`${app.command}: no servable chat model on this machine; add a model server (openabstractions inference server add) ` +
-      'and grant this program abstraction.router/inventory.read and abstraction.inference/complete, then retry\n');
+      'and grant this program abstraction.router/inventory.read on abstraction.router/inventory and abstraction.inference/complete for that server, then retry\n');
     return;
   }
   const requested = app.pluginEntry || providerPackage;
@@ -1078,8 +1315,9 @@ export function apply(app, io, deps = {}) {
   if (Object.keys(unusable).length) io.err(`${app.command}: ${contextWarning(app)}\n`);
 
   let existing;
+  let identity;
   try {
-    existing = readConfig(app.path);
+    ({bytes: existing, identity} = readConfigSnapshot(app.path));
   } catch (error) {
     throw mistake(`read ${app.path}: ${error.message}`);
   }
@@ -1101,7 +1339,8 @@ export function apply(app, io, deps = {}) {
     if (app.chosenModel) merged.model = defaultModel;
     extraProviders(merged, app);
     zenNote = applyZen(merged, app.providerID, app.zen);
-    profileNotes = applyProfile(merged, app.providerID, app.profile);
+    profileNotes = applyProfile(merged, app.providerID, app.profile, app.titlePolicy);
+    if (app.mcpLauncher !== undefined) mergeMCPConfiguration(merged, app.mcpLauncher);
   } catch (error) {
     if (error instanceof ConfigureError) throw error;
     throw mistake(`${app.path}: ${error.message}`);
@@ -1114,11 +1353,12 @@ export function apply(app, io, deps = {}) {
   const tuiPath = join(dirname(app.path), 'tui.json');
   const tuiJSONC = join(dirname(app.path), 'tui.jsonc');
   let tuiExisting = null;
+  let tuiIdentity;
   let tuiText = null;
   let handEdit = '';
   if (adapterOffersTUI(source)) {
     try {
-      tuiExisting = readConfig(tuiPath);
+      ({bytes: tuiExisting, identity: tuiIdentity} = readConfigSnapshot(tuiPath));
     } catch (error) {
       throw mistake(`read ${tuiPath}: ${error.message}`);
     }
@@ -1152,7 +1392,7 @@ export function apply(app, io, deps = {}) {
     io.out(`${app.command}: ${app.path} already carries this provider block; unchanged\n`);
   } else {
     try {
-      replace(app.path, existing, text);
+      replace(app.path, existing, text, identity);
     } catch (error) {
       throw mistake(error.message);
     }
@@ -1164,7 +1404,7 @@ export function apply(app, io, deps = {}) {
     return;
   }
   try {
-    replace(tuiPath, tuiExisting, tuiText);
+    replace(tuiPath, tuiExisting, tuiText, tuiIdentity);
   } catch (error) {
     throw mistake(error.message);
   }
@@ -1173,7 +1413,7 @@ export function apply(app, io, deps = {}) {
 
 // ---- Command line ----
 
-const valueFlags = new Set(['config', 'provider-id', 'scope', 'adapter', 'selection-policy', 'model', 'profile', 'opencode-zen',
+const valueFlags = new Set(['config', 'provider-id', 'scope', 'adapter', 'selection-policy', 'model', 'profile', 'opencode-zen', 'mcp-launcher',
   'endpoint', 'timeout']);
 const boolFlags = new Set(['dry-run', 'json']);
 
@@ -1207,7 +1447,8 @@ export function parseDuration(text) {
 
 function runtimeOptions(flags, deps) {
   return {endpoint: flags.endpoint || null, timeout: flags.timeout === undefined ? 10000 : parseDuration(flags.timeout),
-    resolveRouter: deps.resolveRouter};
+    resolveRouter: deps.resolveRouter, resolveSelectionOperator: deps.resolveSelectionOperator,
+    resolveTitleChat: deps.resolveTitleChat};
 }
 
 async function modelsCommand(args, io, deps) {
@@ -1237,6 +1478,9 @@ async function configureCommand(args, io, deps) {
   let profile = flags.profile ?? '';
   const zen = flags['opencode-zen'] ?? 'hide';
   const selectionPolicy = flags['selection-policy'] ?? '';
+  if (flags['mcp-launcher'] !== undefined) {
+    try { mcpConfiguration(flags['mcp-launcher']); } catch (error) { throw mistake(error.message); }
+  }
   const options = runtimeOptions(flags, deps);
   if (chosen && (chosen.length > 256 || /[\r\n\t"]/.test(chosen))) throw mistake('--model must name one model family');
   if (!['', 'local', 'default'].includes(profile)) throw mistake('--profile must be local or default');
@@ -1258,7 +1502,12 @@ async function configureCommand(args, io, deps) {
   // With --scope local, models on hosted servers (those a credential makes
   // servable) get their own heading in OpenCode's picker.
   let hostedModels = {};
-  if (scope === defaultScope) hostedModels = project(await offersAt(options, 'hosted'), () => false).models;
+  let hostedName;
+  if (scope === defaultScope) {
+    const hostedOffers = await offersAt(options, 'hosted');
+    hostedModels = project(hostedOffers, () => false).models;
+    hostedName = hostedHeading(hostedOffers);
+  }
   let isLocal = () => true;
   // --scope remote offers hosted servers too: each model's place comes from
   // the router's local-placement offers.
@@ -1267,8 +1516,10 @@ async function configureCommand(args, io, deps) {
   if (selectionPolicy && Object.hasOwn(models, selectionAlias(selectionPolicy))) {
     throw mistake(`--selection-policy alias ${JSON.stringify(selectionAlias(selectionPolicy))} conflicts with a discovered model family`);
   }
+  const titlePolicy = scope === defaultScope && await titlePolicyAt(options);
   apply({command, path, providerID, scope, guarantee, pluginEntry: entry, providerPackage: npm, runtimeEndpoint: options.endpoint ?? '',
-    selectionPolicy, chosenModel: chosen, profile, zen, hostedModels, dryRun: Boolean(flags['dry-run']), models,
+    selectionPolicy, titlePolicy, chosenModel: chosen, profile, zen, hostedModels, hostedHeading: hostedName, dryRun: Boolean(flags['dry-run']), models,
+    mcpLauncher: flags['mcp-launcher'],
     unusableModels: unusable, inventoryWarnings: warnings}, io, deps);
 }
 

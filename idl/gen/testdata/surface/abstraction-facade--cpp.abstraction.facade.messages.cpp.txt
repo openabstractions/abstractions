@@ -1,0 +1,477 @@
+using Raw = std::string
+class Refusal : public std::runtime_error
+  const char* word
+  std::size_t offset
+enum class Kind {Note, Question, Reply}
+inline constexpr std::string_view wire_name(Kind value)
+inline std::optional<Kind> parse_kind(std::string_view name)
+inline constexpr bool operator==(Kind value, std::string_view name)
+inline constexpr bool operator!=(Kind value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Kind value)
+inline constexpr bool operator!=(std::string_view name, Kind value)
+inline const std::vector<std::string> kKindNames
+enum class TaskState {Submitted, Completed, Canceled, Failed, AuthRequired, Rejected}
+inline constexpr std::string_view wire_name(TaskState value)
+inline std::optional<TaskState> parse_task_state(std::string_view name)
+inline constexpr bool operator==(TaskState value, std::string_view name)
+inline constexpr bool operator!=(TaskState value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, TaskState value)
+inline constexpr bool operator!=(std::string_view name, TaskState value)
+inline const std::vector<std::string> kTaskStateNames
+enum class Delivery {Queued, Delivered, Undelivered}
+inline constexpr std::string_view wire_name(Delivery value)
+inline std::optional<Delivery> parse_delivery(std::string_view name)
+inline constexpr bool operator==(Delivery value, std::string_view name)
+inline constexpr bool operator!=(Delivery value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Delivery value)
+inline constexpr bool operator!=(std::string_view name, Delivery value)
+inline const std::vector<std::string> kDeliveryNames
+inline const std::vector<std::string> kUndeliveredReasonNames
+inline constexpr std::string_view kUndeliveredReasonExpired
+inline constexpr std::string_view kUndeliveredReasonRefused
+inline constexpr std::string_view kUndeliveredReasonContextClosed
+inline constexpr std::string_view kUndeliveredReasonReceiverRemoved
+inline constexpr std::string_view kUndeliveredReasonPeerRemoved
+inline constexpr std::string_view kUndeliveredReasonLost
+inline constexpr std::string_view kUndeliveredReasonUnconfirmed
+enum class DeliveryObservationOutcome {Observed, Unknown, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(DeliveryObservationOutcome value)
+inline std::optional<DeliveryObservationOutcome> parse_delivery_observation_outcome(std::string_view name)
+inline constexpr bool operator==(DeliveryObservationOutcome value, std::string_view name)
+inline constexpr bool operator!=(DeliveryObservationOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, DeliveryObservationOutcome value)
+inline constexpr bool operator!=(std::string_view name, DeliveryObservationOutcome value)
+inline const std::vector<std::string> kDeliveryObservationOutcomeNames
+enum class Outcome {Sent, Opened, Held, Page, Gap, Conflict, Forbidden, Invalid, Exhausted, Unavailable, Unknown, Ended}
+inline constexpr std::string_view wire_name(Outcome value)
+inline std::optional<Outcome> parse_outcome(std::string_view name)
+inline constexpr bool operator==(Outcome value, std::string_view name)
+inline constexpr bool operator!=(Outcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Outcome value)
+inline constexpr bool operator!=(std::string_view name, Outcome value)
+inline const std::vector<std::string> kOutcomeNames
+enum class View {Body, Headers}
+inline constexpr std::string_view wire_name(View value)
+inline std::optional<View> parse_view(std::string_view name)
+inline constexpr bool operator==(View value, std::string_view name)
+inline constexpr bool operator!=(View value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, View value)
+inline constexpr bool operator!=(std::string_view name, View value)
+inline const std::vector<std::string> kViewNames
+enum class InboxReach {Open, Queued, StartsOnQuestion}
+inline constexpr std::string_view wire_name(InboxReach value)
+inline std::optional<InboxReach> parse_inbox_reach(std::string_view name)
+inline constexpr bool operator==(InboxReach value, std::string_view name)
+inline constexpr bool operator!=(InboxReach value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, InboxReach value)
+inline constexpr bool operator!=(std::string_view name, InboxReach value)
+inline const std::vector<std::string> kInboxReachNames
+inline const std::vector<std::string> kChatOriginNames
+inline constexpr std::string_view kChatOriginDesktop
+inline constexpr std::string_view kChatOriginCli
+inline const std::vector<std::string> kChatModeNames
+inline constexpr std::string_view kChatModePlan
+inline constexpr std::string_view kChatModeReadOnly
+inline constexpr std::string_view kChatModeDefault
+inline constexpr std::string_view kChatModeAcceptEdits
+inline const std::vector<std::string> kServiceErrorCodeNames
+inline constexpr std::string_view kServiceErrorCodeHandlerError
+inline constexpr std::string_view kServiceErrorCodeInvalidResult
+inline constexpr std::string_view kServiceErrorCodeUnknownVersion
+inline constexpr std::string_view kServiceErrorCodeUnknownService
+inline constexpr std::string_view kServiceErrorCodeUnknownMethod
+inline constexpr std::string_view kServiceErrorCodeWrongMode
+enum class EndpointServiceReadiness {Ready, NotReady, Unknown}
+inline constexpr std::string_view wire_name(EndpointServiceReadiness value)
+inline std::optional<EndpointServiceReadiness> parse_endpoint_service_readiness(std::string_view name)
+inline constexpr bool operator==(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator!=(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointServiceReadiness value)
+inline constexpr bool operator!=(std::string_view name, EndpointServiceReadiness value)
+inline const std::vector<std::string> kEndpointServiceReadinessNames
+inline const std::vector<std::string> kEndpointRefusalSourceNames
+inline constexpr std::string_view kEndpointRefusalSourceRights
+inline constexpr std::string_view kEndpointRefusalSourceCredentials
+inline constexpr std::string_view kEndpointRefusalSourceLicense
+inline constexpr std::string_view kEndpointRefusalSourceTerms
+inline constexpr std::string_view kEndpointRefusalSourceIdentity
+inline constexpr std::string_view kEndpointRefusalSourceOs
+enum class EndpointRefusalDecision {Denied, NotGranted, PersonOnly}
+inline constexpr std::string_view wire_name(EndpointRefusalDecision value)
+inline std::optional<EndpointRefusalDecision> parse_endpoint_refusal_decision(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalDecision value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalDecision value)
+inline const std::vector<std::string> kEndpointRefusalDecisionNames
+enum class EndpointRefusalAsk {Available, None}
+inline constexpr std::string_view wire_name(EndpointRefusalAsk value)
+inline std::optional<EndpointRefusalAsk> parse_endpoint_refusal_ask(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalAsk value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalAsk value)
+inline const std::vector<std::string> kEndpointRefusalAskNames
+enum class EndpointProducerCheckState {Current, Repaired, Stale, Refused, Unverified}
+inline constexpr std::string_view wire_name(EndpointProducerCheckState value)
+inline std::optional<EndpointProducerCheckState> parse_endpoint_producer_check_state(std::string_view name)
+inline constexpr bool operator==(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator!=(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointProducerCheckState value)
+inline constexpr bool operator!=(std::string_view name, EndpointProducerCheckState value)
+inline const std::vector<std::string> kEndpointProducerCheckStateNames
+enum class EndpointDescriptionOutcome {Described, Forbidden, Unavailable, Invalid, Unsupported}
+inline constexpr std::string_view wire_name(EndpointDescriptionOutcome value)
+inline std::optional<EndpointDescriptionOutcome> parse_endpoint_description_outcome(std::string_view name)
+inline constexpr bool operator==(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator!=(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointDescriptionOutcome value)
+inline constexpr bool operator!=(std::string_view name, EndpointDescriptionOutcome value)
+inline const std::vector<std::string> kEndpointDescriptionOutcomeNames
+struct ObserveDeliveryResult
+  DeliveryObservationOutcome outcome
+  std::optional<Delivery> delivery
+  std::optional<std::string> undelivered
+struct OriginClaim
+  std::string namespace_
+  std::string application
+  std::string program_label
+  std::string return_context
+struct RemoteOrigin
+  std::string peer_key
+  OriginClaim claim
+struct MessageRef
+  std::string owner_peer_key
+  std::string message_id
+struct InboxQuery
+  std::string cursor
+  std::string peer_key
+  std::string pairing_epoch
+  std::string receiver
+struct SendRequest
+  std::string to
+  std::string context
+  Kind kind
+  std::string subject
+  std::string body
+  std::string idempotency_key
+  std::int64_t expires_unix_ms
+  std::string reply_to
+  std::string withdraw
+  std::int64_t answer_by_unix_ms
+  std::string peer_key
+  std::optional<OriginClaim> origin
+  std::optional<MessageRef> reply_reference
+  std::optional<MessageRef> withdraw_reference
+  std::string pairing_epoch
+  std::optional<bool> notify_delivered
+struct ChatSendRequest
+  SendRequest request
+  std::string return_context
+struct SendResult
+  Outcome outcome
+  std::string message_id
+  std::string context_id
+  bool receiver_watching
+  bool awaiting_permission
+  std::int64_t retry_after_ms
+  std::optional<MessageRef> reference
+  std::string reason
+  bool refused
+  std::optional<::abstraction::rights::api::RefusalDetail> refusal
+  std::string context
+  std::string chat_title
+struct PrepareRequest
+  std::string receiver
+  std::string body
+  std::string context
+  std::optional<Kind> kind
+  std::string subject
+  std::int64_t ttl_ms
+  std::int64_t answer_within_ms
+  std::string context_title
+struct Inbox
+  std::string program
+  std::string context
+  std::string status
+  std::string revision
+  bool watching
+  std::int64_t last_seen_unix_ms
+  std::optional<InboxReach> reach
+  std::string chat_title
+  std::optional<bool> mine
+struct PrepareResult
+  Outcome outcome
+  std::optional<SendRequest> send_request
+  std::string reason
+  std::vector<Inbox> choices
+  std::string chat_title
+struct StopResult
+  Outcome outcome
+  std::string reason
+struct TurnWakeResult
+  Outcome outcome
+  std::string reason
+struct ChatLaunch
+  std::string session
+  std::string origin
+  std::string cwd
+  std::string mode
+struct ChatBinding
+  std::string chat_id
+  std::string chat_title
+  std::string source_instance
+  std::optional<ChatLaunch> launch
+struct InboxChange
+  Outcome outcome
+  std::string revision
+  std::string holder
+  std::int64_t opened_unix_ms
+struct ChatInboxChange
+  Outcome outcome
+  std::string context
+  std::string revision
+  std::string holder
+  std::int64_t opened_unix_ms
+struct AgentApplication
+  std::string program
+  std::string title
+struct ProgramChats
+  std::string program
+  std::int32_t chats
+struct InboxPage
+  Outcome outcome
+  std::string cursor
+  std::vector<Inbox> inboxes
+  std::string reason
+  std::vector<AgentApplication> needs_permission
+  std::vector<ProgramChats> other_chats
+struct Header
+  std::string message_id
+  std::string from
+  std::string from_context
+  std::string to
+  std::string context
+  Kind kind
+  std::string subject
+  std::string context_id
+  std::int64_t expires_unix_ms
+  std::string reply_to
+  std::int64_t answer_by_unix_ms
+  std::optional<TaskState> task_state
+  bool refused
+  std::optional<MessageRef> reference
+  std::optional<RemoteOrigin> remote_origin
+  std::optional<MessageRef> reply_reference
+  std::optional<Delivery> delivery
+  std::optional<std::string> undelivered
+  std::optional<std::int64_t> count
+struct Message
+  Header header
+  std::string idempotency_key
+  std::string body
+struct Page
+  Outcome outcome
+  std::string cursor
+  std::string revision
+  std::vector<Message> messages
+  std::vector<Header> headers
+  std::int64_t pending_until_unix_ms
+  std::int64_t reply_until_unix_ms
+  std::string wake
+  std::optional<std::int64_t> unread
+  std::optional<std::int64_t> pending_questions
+  std::optional<std::int64_t> oldest_unread_unix_ms
+  std::optional<std::int64_t> newest_unread_unix_ms
+  std::optional<std::int64_t> awaited_replies
+  std::string oldest_wake
+struct EndpointRefusalDetail
+  std::string source
+  EndpointRefusalDecision decision
+  EndpointRefusalAsk ask
+  std::string action
+  std::string question
+  std::string credential
+  std::int64_t retry_after_ms
+struct EndpointProducerCheck
+  std::string kind
+  std::string copy
+  EndpointProducerCheckState state
+  std::string reason
+  std::string checked
+struct EndpointServiceState
+  std::string service
+  EndpointServiceReadiness readiness
+  std::string reason
+  std::vector<std::string> guarantees
+  std::map<std::string, std::string> capabilities
+  std::string definition_hash
+struct EndpointDescription
+  EndpointDescriptionOutcome outcome
+  std::string program
+  std::string version
+  std::vector<EndpointServiceState> services
+  std::optional<EndpointRefusalDetail> refusal
+  std::string reason
+  std::vector<EndpointProducerCheck> checks
+struct EndpointDescriptionResult
+  EndpointDescription value
+inline Page decode(std::string_view data)
+T from_json(std::string_view data)
+inline std::string to_json(const ObserveDeliveryResult& v)
+inline ObserveDeliveryResult from_json<ObserveDeliveryResult>(std::string_view data)
+inline std::string to_json(const OriginClaim& v)
+inline OriginClaim from_json<OriginClaim>(std::string_view data)
+inline std::string to_json(const RemoteOrigin& v)
+inline RemoteOrigin from_json<RemoteOrigin>(std::string_view data)
+inline std::string to_json(const MessageRef& v)
+inline MessageRef from_json<MessageRef>(std::string_view data)
+inline std::string to_json(const InboxQuery& v)
+inline InboxQuery from_json<InboxQuery>(std::string_view data)
+inline std::string to_json(const SendRequest& v)
+inline SendRequest from_json<SendRequest>(std::string_view data)
+inline std::string to_json(const ChatSendRequest& v)
+inline ChatSendRequest from_json<ChatSendRequest>(std::string_view data)
+inline std::string to_json(const SendResult& v)
+inline SendResult from_json<SendResult>(std::string_view data)
+inline std::string to_json(const PrepareRequest& v)
+inline PrepareRequest from_json<PrepareRequest>(std::string_view data)
+inline std::string to_json(const PrepareResult& v)
+inline PrepareResult from_json<PrepareResult>(std::string_view data)
+inline std::string to_json(const StopResult& v)
+inline StopResult from_json<StopResult>(std::string_view data)
+inline std::string to_json(const TurnWakeResult& v)
+inline TurnWakeResult from_json<TurnWakeResult>(std::string_view data)
+inline std::string to_json(const ChatLaunch& v)
+inline ChatLaunch from_json<ChatLaunch>(std::string_view data)
+inline std::string to_json(const ChatBinding& v)
+inline ChatBinding from_json<ChatBinding>(std::string_view data)
+inline std::string to_json(const InboxChange& v)
+inline InboxChange from_json<InboxChange>(std::string_view data)
+inline std::string to_json(const ChatInboxChange& v)
+inline ChatInboxChange from_json<ChatInboxChange>(std::string_view data)
+inline std::string to_json(const Inbox& v)
+inline Inbox from_json<Inbox>(std::string_view data)
+inline std::string to_json(const AgentApplication& v)
+inline AgentApplication from_json<AgentApplication>(std::string_view data)
+inline std::string to_json(const ProgramChats& v)
+inline ProgramChats from_json<ProgramChats>(std::string_view data)
+inline std::string to_json(const InboxPage& v)
+inline InboxPage from_json<InboxPage>(std::string_view data)
+inline std::string to_json(const Header& v)
+inline Header from_json<Header>(std::string_view data)
+inline std::string to_json(const Message& v)
+inline Message from_json<Message>(std::string_view data)
+inline std::string to_json(const Page& v)
+inline Page from_json<Page>(std::string_view data)
+inline std::string to_json(const EndpointRefusalDetail& v)
+inline EndpointRefusalDetail from_json<EndpointRefusalDetail>(std::string_view data)
+inline std::string to_json(const EndpointProducerCheck& v)
+inline EndpointProducerCheck from_json<EndpointProducerCheck>(std::string_view data)
+inline std::string to_json(const EndpointServiceState& v)
+inline EndpointServiceState from_json<EndpointServiceState>(std::string_view data)
+inline std::string to_json(const EndpointDescription& v)
+inline EndpointDescription from_json<EndpointDescription>(std::string_view data)
+inline std::string to_json(const EndpointDescriptionResult& v)
+inline EndpointDescriptionResult from_json<EndpointDescriptionResult>(std::string_view data)
+struct FrameWriter
+  virtual void write_frame(std::string_view frame)
+struct DispatchError : std::runtime_error
+struct FrameExchanger
+  virtual std::string exchange_frame(std::string_view frame)
+struct ServiceError : std::runtime_error
+  std::string code, message
+inline constexpr std::string_view kEndpointContract
+inline constexpr std::string_view kEndpointV2Contract
+struct DescribedService
+  std::string contract
+  bool ready
+  std::string why
+std::string describe_endpoint_with_checks(std::string_view frame, const std::string& program, const std::string& version, const std::vector<EndpointProducerCheck>& checks, const Services& . . . services)
+std::string describe_endpoint(std::string_view frame, const std::string& program, const std::string& version, const Services& . . . services)
+struct Messages
+  virtual ObserveDeliveryResult observe_delivery(const MessageRef& reference, const std::string& pairing_epoch)
+  virtual InboxPage inboxes_for_person(const std::string& cursor)
+  virtual ChatInboxChange inbox_open_chat(const std::string& instance, const std::string& source_context, const std::string& status, const ChatBinding& binding)
+  virtual SendResult send_chat(const std::string& instance, const std::string& source_context, const ChatSendRequest& request)
+  virtual PrepareResult prepare(const std::string& instance, const std::string& source_context, const PrepareRequest& request)
+  virtual SendResult reply(const std::string& instance, const std::string& source_context, const std::string& message_id, const std::string& body)
+  virtual InboxChange inbox_open(const std::string& instance, const std::string& context, const std::string& status)
+  virtual InboxPage inboxes_list(const InboxQuery& query)
+  virtual SendResult send(const std::string& instance, const std::string& source_context, const SendRequest& request)
+  virtual Page wait(const std::string& instance, const std::string& context, const View& view, const std::string& after, const std::string& revision, const std::int64_t& wait_ms)
+  virtual Page read_for_person(const std::string& message_id)
+  virtual StopResult stop_for_person(const std::string& message_id)
+  virtual TurnWakeResult turn_wake(const std::string& instance, const std::string& source_context, const std::string& wake)
+template<class Transport>struct MessagesClient : Messages
+  Transport& transport_
+  ObserveDeliveryResult observe_delivery(const MessageRef& reference, const std::string& pairing_epoch) override
+  InboxPage inboxes_for_person(const std::string& cursor) override
+  ChatInboxChange inbox_open_chat(const std::string& instance, const std::string& source_context, const std::string& status, const ChatBinding& binding) override
+  SendResult send_chat(const std::string& instance, const std::string& source_context, const ChatSendRequest& request) override
+  PrepareResult prepare(const std::string& instance, const std::string& source_context, const PrepareRequest& request) override
+  SendResult reply(const std::string& instance, const std::string& source_context, const std::string& message_id, const std::string& body) override
+  InboxChange inbox_open(const std::string& instance, const std::string& context, const std::string& status) override
+  InboxPage inboxes_list(const InboxQuery& query) override
+  SendResult send(const std::string& instance, const std::string& source_context, const SendRequest& request) override
+  Page wait(const std::string& instance, const std::string& context, const View& view, const std::string& after, const std::string& revision, const std::int64_t& wait_ms) override
+  Page read_for_person(const std::string& message_id) override
+  StopResult stop_for_person(const std::string& message_id) override
+  TurnWakeResult turn_wake(const std::string& instance, const std::string& source_context, const std::string& wake) override
+struct MessagesService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct MessagesDispatcher : FrameWriter, FrameExchanger
+  Messages& handler
+  DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+inline std::string encode_observe_delivery_result(const ObserveDeliveryResult& v)
+inline ObserveDeliveryResult decode_observe_delivery_result(std::string_view in)
+inline std::string encode_origin_claim(const OriginClaim& v)
+inline OriginClaim decode_origin_claim(std::string_view in)
+inline std::string encode_remote_origin(const RemoteOrigin& v)
+inline RemoteOrigin decode_remote_origin(std::string_view in)
+inline std::string encode_message_ref(const MessageRef& v)
+inline MessageRef decode_message_ref(std::string_view in)
+inline std::string encode_inbox_query(const InboxQuery& v)
+inline InboxQuery decode_inbox_query(std::string_view in)
+inline std::string encode_send_request(const SendRequest& v)
+inline SendRequest decode_send_request(std::string_view in)
+inline std::string encode_chat_send_request(const ChatSendRequest& v)
+inline ChatSendRequest decode_chat_send_request(std::string_view in)
+inline std::string encode_send_result(const SendResult& v)
+inline SendResult decode_send_result(std::string_view in)
+inline std::string encode_prepare_request(const PrepareRequest& v)
+inline PrepareRequest decode_prepare_request(std::string_view in)
+inline std::string encode_prepare_result(const PrepareResult& v)
+inline PrepareResult decode_prepare_result(std::string_view in)
+inline std::string encode_stop_result(const StopResult& v)
+inline StopResult decode_stop_result(std::string_view in)
+inline std::string encode_turn_wake_result(const TurnWakeResult& v)
+inline TurnWakeResult decode_turn_wake_result(std::string_view in)
+inline std::string encode_chat_launch(const ChatLaunch& v)
+inline ChatLaunch decode_chat_launch(std::string_view in)
+inline std::string encode_chat_binding(const ChatBinding& v)
+inline ChatBinding decode_chat_binding(std::string_view in)
+inline std::string encode_inbox_change(const InboxChange& v)
+inline InboxChange decode_inbox_change(std::string_view in)
+inline std::string encode_chat_inbox_change(const ChatInboxChange& v)
+inline ChatInboxChange decode_chat_inbox_change(std::string_view in)
+inline std::string encode_inbox(const Inbox& v)
+inline Inbox decode_inbox(std::string_view in)
+inline std::string encode_agent_application(const AgentApplication& v)
+inline AgentApplication decode_agent_application(std::string_view in)
+inline std::string encode_program_chats(const ProgramChats& v)
+inline ProgramChats decode_program_chats(std::string_view in)
+inline std::string encode_inbox_page(const InboxPage& v)
+inline InboxPage decode_inbox_page(std::string_view in)
+inline std::string encode_header(const Header& v)
+inline Header decode_header(std::string_view in)
+inline std::string encode_message(const Message& v)
+inline Message decode_message(std::string_view in)
+inline std::string encode_page(const Page& v)
+inline Page decode_page(std::string_view in)
+inline std::string encode(const Page& v)

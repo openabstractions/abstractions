@@ -99,7 +99,8 @@ func TestModelsHostDeclaresNoLeaseEndpointOfItsOwn(t *testing.T) {
 // case on Windows; an endpoint variable it does not set is removed; the rest
 // of the environment passes through, also when the runtime sets nothing.
 func TestChildEnvironmentReplacesTheRuntimesVariables(t *testing.T) {
-	base := []string{"PATH=/bin", "ABSTRACTION_RESOURCE_ENDPOINT=stale", "ABSTRACTION_LOG_ENDPOINT=stale", "HOME=/home/a"}
+	base := []string{"PATH=/bin", "ABSTRACTION_RESOURCE_ENDPOINT=stale", "ABSTRACTION_LOG_ENDPOINT=stale", "HOME=/home/a",
+		"ABSTRACTION_CRED_HF=hf_TESTSECRET", "ABSTRACTION_CRED_HF_HOSTS=huggingface.co"}
 	if runtime.GOOS == "windows" {
 		base = append(base, "abstraction_resource_endpoint=stale-lower", "=C:=C:\\work")
 	}

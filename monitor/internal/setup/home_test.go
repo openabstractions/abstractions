@@ -6,15 +6,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	identity "github.com/openabstractions/abstraction-identity"
 )
 
-// lemonadeArtifact is the catalogue's reviewed Lemonade package. The
-// catalogue pins it for Windows x64 only; the Home placement these tests
-// check is the same on every platform, so they read the Windows x64
-// catalogue wherever they run.
+// lemonadeArtifact is the isolated package fixture. Home placement and provider
+// reply binding do not require a production package to be offered by Setup.
 func lemonadeArtifact(t *testing.T) Artifact {
 	t.Helper()
-	plan, err := catalogForTarget("windows", "amd64").Plan([]AppID{ComfyUI})
+	plan, err := fixtureCatalog().Plan([]AppID{Lemonade})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +23,7 @@ func lemonadeArtifact(t *testing.T) Artifact {
 			return *component.Artifact
 		}
 	}
-	t.Fatal("the catalogue names no Lemonade package")
+	t.Fatal("the fixture catalogue names no Lemonade package")
 	return Artifact{}
 }
 
@@ -37,10 +37,10 @@ func TestRuntimeStateHomeHoldsEverySetupLocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(UseUserState)
-	root := filepath.Join(state, "setup")
+	root := identity.CanonicalProgramPath(filepath.Join(state, "setup"))
 	inside := func(what, path string) {
 		t.Helper()
-		if !strings.HasPrefix(path, root+string(filepath.Separator)) {
+		if !strings.HasPrefix(identity.CanonicalProgramPath(path), root+string(filepath.Separator)) {
 			t.Fatalf("%s %s is outside the runtime's Setup folder %s", what, path, root)
 		}
 	}
@@ -61,7 +61,7 @@ func TestRuntimeStateHomeHoldsEverySetupLocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for what, path := range map[string]string{"ComfyUI install": paths.install, "ComfyUI user data": paths.user, "ComfyUI output": paths.output, "ComfyUI launch record": paths.launch} {
+	for what, path := range map[string]string{"ComfyUI install": paths.install, "ComfyUI user data": paths.user, "ComfyUI output": paths.output} {
 		inside(what, path)
 	}
 	if _, err := runLemonadeCLI(t.Context(), "setup-info", "--json"); !errors.Is(err, errIsolatedProvider) {

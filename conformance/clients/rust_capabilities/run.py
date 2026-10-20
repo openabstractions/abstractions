@@ -8,7 +8,7 @@ installed link-dependencies.txt.
 import argparse, os, shutil, subprocess, sys, tempfile
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from workspace import source_revision, dry_run_stop, DRY_RUN_HELP
+from workspace import source_revision, dry_run_stop, DRY_RUN_HELP, copy_native_rust_identity
 ROOT = Path(__file__).resolve().parents[3]
 HERE = Path(__file__).resolve().parent
 CHECK = ROOT/"openabstractions-flat/abstraction-identity/cpp/check_link_dependencies.py"
@@ -45,7 +45,8 @@ def main():
         run([a.cmake, "-S", ROOT/"openabstractions-flat/abstraction-identity/cpp", "-B", b/"static-build", "-DBUILD_SHARED_LIBS=OFF", "-DABSTRACTION_IPC_BUILD_TESTS=OFF", "-DCMAKE_BUILD_TYPE=Release", "-DCMAKE_INSTALL_PREFIX="+str(b/"static")])
         run([a.cmake, "--build", b/"static-build", "--config", "Release"])
         run([a.cmake, "--install", b/"static-build", "--config", "Release"])
-        for component, part in [("identity", "rust"), ("facade", "rust-native")]:
+        copy_native_rust_identity(ROOT/'openabstractions-flat/abstraction-identity',tree/'openabstractions-flat/abstraction-identity/rust')
+        for component, part in [("facade", "rust-native")]:
             rel = Path("openabstractions-flat")/("abstraction-"+component)/part
             shutil.copytree(ROOT/rel, tree/rel)
         consumer = tree/"conformance/clients/rust_capabilities"; shutil.copytree(HERE, consumer)

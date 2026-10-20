@@ -5,6 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	casapi "github.com/openabstractions/abstraction-cas/go/api"
+	config "github.com/openabstractions/abstraction-config/go"
+	configservice "github.com/openabstractions/abstraction-config/go/service"
 	request "github.com/openabstractions/abstraction-download/go/abstraction/download/request"
 	"github.com/openabstractions/abstractions/conformance/clients/fixture"
 	"net/http"
@@ -58,6 +61,10 @@ func TestInstalledRustJobs(t *testing.T) {
 	defer source.Close()
 	prefix := fmt.Sprintf("rust-jobs-%d-%d", os.Getpid(), time.Now().UnixNano())
 	options := host.Options{Endpoint: listen.Endpoint(prefix), LogEndpoint: listen.Endpoint(prefix + "l"), ConfigEndpoint: listen.Endpoint(prefix + "c"), ModelEndpoint: listen.Endpoint(prefix + "m"), JobEndpoint: listen.Endpoint(prefix + "j"), JobRoot: filepath.Join(home, "private"), JobOwner: "rust-jobs-owner", JobExecutor: meteredExecution()}
+	options.ConfigStore = casapi.BoundedFileStore{MaxBytes: config.MaxUserFileBytes}
+	options.ConfigUserKey = filepath.Join(home, "config", "user.json")
+	options.ConfigWithoutMachine = true
+	options.ConfigObservationSource = configservice.FileObservation(options.ConfigUserKey)
 	h, err := host.Listen(options)
 	if err != nil {
 		t.Fatal(err)

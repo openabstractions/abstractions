@@ -21,11 +21,7 @@ import (
 // questions need no browser server. Applications present ordinary choices.
 // Only an explicit window request opens the Panel, and the window's requests
 // come back over the same pipes (native_panel_bridge.go): nothing listens.
-//
-// An installer's -register-application or -remove-application run asks only
-// that confirmation (application_native.go) and exits: 0 when the entry is
-// as asked, an error otherwise. It presents no other question.
-func runNativeAsks(request applicationStart) error {
+func runNativeAsks() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	bridge := newNativeAsksBridge(ctx, os.Stdout)
@@ -34,35 +30,24 @@ func runNativeAsks(request applicationStart) error {
 		if err != nil {
 			return err
 		}
+		// The review is the Panel's page; its Allow button is the one
+		// confirmation (ARCHITECTURE.md: the Panel draws no native question).
+		resources, start := run.resources(panelResourceOriginMacOS)
+		bridge.servePanel(newNativePanelServer(ctx, resources, bridge.write))
+		openReview := func(string) error {
+			bridge.outMu.Lock()
+			defer bridge.outMu.Unlock()
+			return writePanelURL(os.Stdout, start, false)
+		}
 		go func() {
-			bridge.close(bridge.read(os.Stdin, func(string) error { return errors.New("standalone review opens no Panel page") }))
+			bridge.close(bridge.read(os.Stdin, openReview))
 			stop()
 		}()
-		// The launcher first sends its current interactive-session state.
-		ticker := time.NewTicker(50 * time.Millisecond)
-		defer ticker.Stop()
-		for !bridge.Unlocked() {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-ticker.C:
-			}
-		}
-		err = run.panel.askPersonalPermissionReview(ctx, bridge, bridge)
-		return finishPersonalPermissionReview(err, bridge.showReport)
-	}
-	if request != (applicationStart{}) {
-		run, err := newPanelRun("overview")
-		if err != nil {
+		if err := openReview(""); err != nil {
 			return err
 		}
-		run.panel.appRequest.register, run.panel.appRequest.remove = request.register, request.remove
-		go func() {
-			// This run opens no Panel window.
-			bridge.close(bridge.read(os.Stdin, func(string) error { return nil }))
-			stop()
-		}()
-		return run.panel.askApplicationRequest(ctx, bridge)
+		<-ctx.Done()
+		return nil
 	}
 	var panelURL string
 	var panelMu sync.Mutex
@@ -115,7 +100,7 @@ func runNativeAsks(request applicationStart) error {
 		readDone <- err
 		stop()
 	}()
-	presenter := &questionPresenter{session: bridge, surface: bridge, operator: defaultPresenterOperator,
+	presenter := &questionPresenter{session: bridge, surface: bridge, operator: defaultPresenterOperator, spend: presenterSpend, providerForms: nativeProviderForm, providerComplete: completeProviderConnection,
 		account: probe.Self().Account, watchEvery: trayPollInterval}
 	announcer := newTrayAnnouncer()
 	ticker := time.NewTicker(trayPollInterval)
@@ -133,7 +118,7 @@ func runNativeAsks(request applicationStart) error {
 					if err := bridge.write(nativeAsksFrame{Kind: "open-panel", Content: "questions"}); err != nil {
 						log.Printf("open Questions: %v", err)
 					}
-				}, bridge.showReport) {
+				}) {
 				break
 			}
 		}

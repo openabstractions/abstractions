@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/openabstractions/abstractions/idl/gen/internal/personfolders"
 )
 
 // testPython is the interpreter every Python-backed test runs. TestMain sets it
@@ -22,21 +24,35 @@ var pythonSkipped string
 
 const withoutPythonEnv = "IDL_GEN_TESTS_WITHOUT_PYTHON"
 
+// TestMain runs the tests, and the interpreter probe before them, with the
+// person's per-user folders inside a temporary folder (personfolders.Enter):
+// on macOS the system python3 writes its bytecode cache under
+// ~/Library/Caches.
 func TestMain(m *testing.M) {
+	os.Exit(runTests(m))
+}
+
+func runTests(m *testing.M) int {
 	flag.Parse()
+	person, err := personfolders.Enter()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	defer personfolders.Leave(person)
 	if reason := pythonOptOut(testing.Short(), os.Getenv(withoutPythonEnv)); reason != "" {
 		pythonSkipped = reason
 		fmt.Fprintln(os.Stderr, "idl/gen tests: Python-backed tests skip ("+reason+"); Go, C++, Rust and JavaScript backend tests run")
-		os.Exit(m.Run())
+		return m.Run()
 	}
 	path, problem := resolveTestPython(os.Getenv("PYTHON"), exec.LookPath, pythonVersion)
 	if problem != "" {
 		fmt.Fprintln(os.Stderr, "idl/gen tests need a real Python interpreter: "+problem+
 			"; run with -short or "+withoutPythonEnv+"=1 to skip the Python-backed tests")
-		os.Exit(2)
+		return 2
 	}
 	testPython = path
-	os.Exit(m.Run())
+	return m.Run()
 }
 
 // pythonOptOut names why Python-backed tests skip, or returns "" when they run.

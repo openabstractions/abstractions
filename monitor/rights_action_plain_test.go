@@ -4,12 +4,22 @@ import (
 	"regexp"
 	"sort"
 	"testing"
+
+	inference "github.com/openabstractions/abstraction-inference/go"
 )
 
 // rawActionID finds a raw rights action id, abstraction.<layer>/<action>,
 // anywhere in a page fragment, markup or script. An id followed by @<n> is a
 // service contract, never an action, and is skipped.
 var rawActionID = regexp.MustCompile(`abstraction\.[a-z][a-z0-9_-]*/[a-z][a-zA-Z0-9_.-]*[a-zA-Z0-9_]`)
+
+// Complete covers model modalities and preload; its saved-access label must
+// preserve that breadth wherever the shared table is presented.
+func TestRightsActionPlainModelAccess(t *testing.T) {
+	if rightsActionPlain[inference.ActionComplete] != "use models" {
+		t.Fatal("model access label lost the shared action's scope")
+	}
+}
 
 // TestRightsActionPlainCoversEmittedActions is task 2026-09-23's fifth
 // first-time visitor, finding 2: every rights action id a Panel page names

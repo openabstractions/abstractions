@@ -21,6 +21,67 @@ import (
 	"github.com/openabstractions/abstractions/monitor/internal/setup"
 )
 
+type codingPanelTransfer struct {
+	*panelTransfer
+	failure  error
+	submits  int
+	reserves int
+}
+
+func (f *codingPanelTransfer) Reserve(ctx context.Context, pin setup.PinnedDownload, key string) (setup.WorkIdentity, error) {
+	f.reserves++
+	return f.panelTransfer.Reserve(ctx, pin, key)
+}
+
+func (f *codingPanelTransfer) Submit(context.Context, setup.PinnedDownload, setup.WorkIdentity) error {
+	f.submits++
+	return f.failure
+}
+
+func TestCodingModelHandlerRequiresExactConsentAndAcceptedWork(t *testing.T) {
+	plan := setup.CodingModelPlan()
+	root := t.TempDir()
+	transfer := &codingPanelTransfer{panelTransfer: &panelTransfer{}}
+	c := setup.ModelController{Plan: &plan, JournalPath: filepath.Join(root, "coding.json"), StageDir: root, ProviderRoot: root, Transfer: transfer, LocalResults: true, FreeBytes: func(string) (uint64, error) { return 1 << 50, nil }}
+	p := &servicePanel{codingController: &c}
+	h := p.handler("setup-test-key")
+	call := installHandlerFor(h)
+	a := setup.ModelApproval{PlanID: plan.ID, DownloadBytes: plan.DownloadBytes, PeakBytes: plan.PeakBytes, Licenses: plan.Licenses}
+	body := func(action string, approval setup.ModelApproval) string {
+		raw, _ := json.Marshal(map[string]any{"action": action, "confirm": true, "approval": approval})
+		return string(raw)
+	}
+	if got := call("GET", "/setup/modelhost/coding", ""); got.Code != 200 {
+		t.Fatal(got.Body.String())
+	}
+	bad := a
+	bad.PlanID = "stale"
+	if got := call("POST", "/setup/modelhost/coding", body("start", bad)); got.Code != 400 || transfer.submits != 0 {
+		t.Fatalf("stale plan reached submit: %d", got.Code)
+	}
+	transfer.failure = errors.New("acceptance uncertain")
+	if got := call("POST", "/setup/modelhost/coding", body("start", a)); got.Code != 409 || strings.Contains(got.Body.String(), `"accepted":true`) {
+		t.Fatalf("uncertain accepted: %d %s", got.Code, got.Body.String())
+	}
+	first := transfer.work
+	transfer.failure = nil
+	// A new Panel/controller reads the same intent after the window closes.
+	reopened := c
+	h = (&servicePanel{codingController: &reopened}).handler("setup-test-key")
+	call = installHandlerFor(h)
+	got := call("POST", "/setup/modelhost/coding", body("start", a))
+	if got.Code != 200 || !strings.Contains(got.Body.String(), `"accepted":true`) || transfer.work.Key != first.Key {
+		t.Fatalf("resume failed: %d %s", got.Code, got.Body.String())
+	}
+	before := transfer.submits
+	if got := call("GET", "/setup/modelhost/coding", ""); got.Code != 200 || transfer.submits != before {
+		t.Fatal("status dispatched new work")
+	}
+	if got := call("POST", "/setup/modelhost/coding", `{"confirm":true,"foreign":true}`); got.Code != 400 {
+		t.Fatal("unknown request field accepted")
+	}
+}
+
 func TestModelHostEngineFormRemovesTempArchiveWhenNextPartIsMalformed(t *testing.T) {
 	tempDir := t.TempDir()
 	var createdPath string
@@ -85,6 +146,36 @@ func TestModelHostMutationPlanRequiresTheCurrentPlanID(t *testing.T) {
 	p := &servicePanel{}
 	if _, _, err := p.modelHostMutationPlan(context.Background(), ""); err == nil || !strings.Contains(err.Error(), "plan ID") {
 		t.Fatalf("missing plan ID was accepted: %v", err)
+	}
+}
+
+// R16: the model host facts read without an approved current plan (an
+// earlier release's plan, or none) and name no plan; a change sent with that
+// reply's empty plan ID is refused.
+func TestModelHostFactsReadWithoutAPlanAndChangesNeedOne(t *testing.T) {
+	journal := setup.Journal{Path: filepath.Join(t.TempDir(), "setup", "plan.json")}
+	feature := setup.FeatureStatus{Available: true, Reason: "Add the ModelHost feature."}
+	p := &servicePanel{setupJournal: &journal, modelHostFeatureCheck: func() (setup.FeatureStatus, error) { return feature, nil }}
+	h := p.handler("setup-test-key")
+	send := func(method, path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path+"?k=setup-test-key", strings.NewReader(body))
+		req.Host = "127.0.0.1"
+		req.Header.Set("X-Panel-Key", "setup-test-key")
+		got := httptest.NewRecorder()
+		h.ServeHTTP(got, req)
+		return got
+	}
+	got := send(http.MethodGet, "/setup/modelhost/chat", "")
+	var view modelHostChatView
+	if err := json.Unmarshal(got.Body.Bytes(), &view); got.Code != http.StatusOK || err != nil {
+		t.Fatalf("facts read: %d %s", got.Code, got.Body.String())
+	}
+	if view.PlanID != "" || !view.Available || !view.Feature.Available || view.Feature.Installed || view.Reason != feature.Reason {
+		t.Fatalf("the facts did not come from the feature check: %+v", view)
+	}
+	body, _ := json.Marshal(modelHostPlanRequest{PlanID: view.PlanID, Confirm: true})
+	if got := send(http.MethodPost, "/setup/modelhost/feature/add", string(body)); got.Code != http.StatusConflict || !strings.Contains(got.Body.String(), "plan ID") {
+		t.Fatalf("a change without the current plan was not refused: %d %s", got.Code, got.Body.String())
 	}
 }
 
@@ -253,7 +344,7 @@ func TestParseModelHostPinJSON(t *testing.T) {
 	const archiveDigest = "8907e5f3b74cb57d93fd94e187a87d85be24dc64e3b0ff2bc1b287da17b31446"
 	const bundle = "llama-b10825-oa-win-vulkan-x64.zip"
 	const bundleDigest = "bfed6c062e89fec3ba594da6d826703258079ca57fcea10c834e4014b9bafceb"
-	pinJSON := []byte(`{"schema":1,"release":"b10825","program":"llama-server.exe","archive":{"name":"` + archive + `","url":"https://github.com/ggml-org/llama.cpp/releases/download/b10825/` + archive + `","source_commit":"9e0e220594af405a62835dc3a27495729fd8506b","size_bytes":35227898,"sha256":"` + archiveDigest + `"},"bundle":{"name":"` + bundle + `","size_bytes":96902073,"sha256":"` + bundleDigest + `"},"files":[{"path":"llama-server.exe","size_bytes":1,"sha256":"` + strings.Repeat("a", 64) + `"}]}`)
+	pinJSON := []byte(`{"schema":1,"release":"b10825","program":"llama-server.exe","archive":{"name":"` + archive + `","url":"https://github.com/ggml-org/llama.cpp/releases/download/b10825/` + archive + `","source_commit":"9e0e220594af405a62835dc3a27495729fd8506b","size_bytes":35227898,"sha256":"` + archiveDigest + `"},"bundle":{"name":"` + bundle + `","size_bytes":96902073,"sha256":"` + bundleDigest + `"},"files":[{"path":"llama-server.exe","size_bytes":1,"sha256":"` + strings.Repeat("a", 64) + `"}],"runtime":{"name":"Microsoft Visual C++ 2015-2026 Redistributable (x64)","version":"14.51.36231","folder":"Microsoft.VC145.CRT","files":[]}}`)
 	cache := filepath.Join(t.TempDir(), "Local", "OpenAbstractions")
 	pin, err := parseModelHostPin(pinJSON, cache)
 	if err != nil {
@@ -267,6 +358,35 @@ func TestParseModelHostPinJSON(t *testing.T) {
 	}
 	if !modelHostSameDigest(strings.ToUpper(archiveDigest), archiveDigest) || modelHostSameDigest("not-a-digest", archiveDigest) {
 		t.Fatal("archive digest comparison did not accept the same hexadecimal digest and reject malformed input")
+	}
+	// CQ-12 reads both sides through digest.Normalize: a labelled or padded
+	// spelling of the same sha256 matches, and anything that is not 64 hex
+	// digits matches nothing, the empty pair and a 128-digit value included.
+	for _, c := range []struct {
+		a, b string
+		same bool
+	}{
+		{"", "", false},
+		{"sha256:" + archiveDigest, archiveDigest, true},
+		{"sha256-" + archiveDigest, archiveDigest, true},
+		{" " + archiveDigest + "\n", archiveDigest, true},
+		{archiveDigest + archiveDigest, archiveDigest + archiveDigest, false},
+		{archiveDigest[:62], archiveDigest[:62], false},
+		{archiveDigest, bundleDigest, false},
+	} {
+		if got := modelHostSameDigest(c.a, c.b); got != c.same {
+			t.Errorf("modelHostSameDigest(%q, %q) = %v, want %v", c.a, c.b, got, c.same)
+		}
+	}
+	if pin.ArchiveRefused || modelHostRestage(pin) != "choose the pinned archive again" {
+		t.Fatal("a pin without runtime files retired the publisher archive")
+	}
+	// A pin whose folder holds app-local runtime files retires the archive
+	// route (MODELHOST-L3): the Panel offers the included engine instead.
+	withRuntime := strings.Replace(string(pinJSON), `"files":[]}`, `"files":["vcruntime140.dll"]}`, 1)
+	retired, err := parseModelHostPin([]byte(withRuntime), cache)
+	if err != nil || !retired.ArchiveRefused || modelHostRestage(retired) != "stage the included engine again" {
+		t.Fatalf("a pin with runtime files: %+v %v", retired, err)
 	}
 	if _, err := parseModelHostPin([]byte(strings.ReplaceAll(string(pinJSON), archive, `../outside.zip`)), cache); err == nil {
 		t.Fatal("a path-bearing archive name was accepted from ModelHost JSON")

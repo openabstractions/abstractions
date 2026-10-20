@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"unsafe"
 
 	identity "github.com/openabstractions/abstraction-identity"
+	"github.com/openabstractions/abstraction-identity/fileid"
 	"golang.org/x/sys/windows"
 )
 
@@ -40,8 +42,8 @@ import (
 // record began. When the parent is readable, the record carries its creation
 // time and full verification applies.
 //
-// The record holds no list of stopped processes: the package stops nothing,
-// and every restart path is an idempotent activation. A 0.1.7 reader accepts
+// The record holds no list of stopped processes; every restart path is an
+// idempotent activation. A 0.1.7 reader accepts
 // this record, which only omits the two lists it declared.
 
 var errUpgradeInProgress = errors.New("an upgrade of this installation is in progress")
@@ -66,6 +68,61 @@ type upgradeExclusion struct {
 	Folders   []string        `json:"folders"`
 	Installer processIdentity `json:"installer"`
 	Begun     time.Time       `json:"begun"`
+}
+
+// Chain admission is separate so installed v1 activation readers keep decoding
+// exclusion.json with their existing DisallowUnknownFields policy.
+type upgradeChain struct {
+	Version int             `json:"version"`
+	Scope   string          `json:"scope"`
+	Token   string          `json:"token"`
+	Holder  processIdentity `json:"holder"`
+}
+
+func validUpgradeChain(token string) bool {
+	if len(token) != 32 {
+		return false
+	}
+	for _, c := range token {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+func chainPath(path string) string { return filepath.Join(filepath.Dir(path), "chain.json") }
+
+func decodeUpgradeChain(data []byte) (*upgradeChain, error) {
+	if len(data) > exclusionMaxBytes {
+		return nil, errors.New("upgrade chain is too large")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	var chain upgradeChain
+	if err := decoder.Decode(&chain); err != nil {
+		return nil, err
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		return nil, errors.New("upgrade chain has trailing data")
+	}
+	if chain.Version != 1 || (chain.Scope != "user" && chain.Scope != "machine") || !validUpgradeChain(chain.Token) || chain.Holder.PID == 0 || chain.Holder.Created < 0 {
+		return nil, errors.New("invalid upgrade chain")
+	}
+	return &chain, nil
+}
+
+func (e exclusionEnv) matchingChain(path, scope, token string, holder processIdentity) bool {
+	if !validUpgradeChain(token) {
+		return false
+	}
+	path = chainPath(path)
+	data, err := e.read(path)
+	if err != nil || len(data) > exclusionMaxBytes || e.trusted(path, scope) != nil {
+		return false
+	}
+	chain, err := decodeUpgradeChain(data)
+	return err == nil && chain.Scope == scope && chain.Token == token && chain.Holder == holder
 }
 
 func decodeExclusion(data []byte) (*upgradeExclusion, error) {
@@ -119,25 +176,49 @@ func (r *upgradeExclusion) covers(image string) bool {
 // exclusionEnv is the record's storage, trust and liveness. Tests substitute
 // each part; systemExclusionEnv is the installed behaviour.
 type exclusionEnv struct {
-	path    func(scope string) (string, error)
-	read    func(path string) ([]byte, error)
-	write   func(path, scope string, data []byte) error
-	remove  func(path string) error
-	trusted func(path, scope string) error
-	alive   func(holder processIdentity, begun time.Time) bool
-	now     func() time.Time
+	lock         func(context.Context, string, string) (func(), error)
+	path         func(scope string) (string, error)
+	read         func(path string) ([]byte, error)
+	write        func(path, scope string, data []byte) error
+	writeContext func(context.Context, string, string, []byte) error
+	remove       func(path string) error
+	trusted      func(path, scope string) error
+	alive        func(holder processIdentity, begun time.Time) bool
+	ended        func(holder processIdentity) bool
+	now          func() time.Time
 }
 
 func systemExclusionEnv() exclusionEnv {
 	return exclusionEnv{
-		path:    exclusionPath,
-		read:    readExclusionFile,
-		write:   writeExclusionFile,
-		remove:  os.Remove,
-		trusted: trustedExclusionFile,
-		alive:   func(holder processIdentity, begun time.Time) bool { return processAlive(holder, begun, time.Now()) },
-		now:     time.Now,
+		lock:         lockUpgradeScope,
+		path:         exclusionPath,
+		read:         readExclusionFile,
+		write:        writeExclusionFile,
+		writeContext: writeExclusionFileContext,
+		remove:       removeExclusionFile,
+		trusted:      trustedExclusionFile,
+		alive:        func(holder processIdentity, begun time.Time) bool { return processAlive(holder, begun, time.Now()) },
+		ended:        upgradeInstallerEnded,
+		now:          time.Now,
 	}
+}
+
+func (e exclusionEnv) lockScope(ctx context.Context, scope string) (string, func(), error) {
+	if err := ctx.Err(); err != nil {
+		return "", nil, err
+	}
+	path, err := e.path(scope)
+	if err != nil {
+		return "", nil, err
+	}
+	unlock := func() {}
+	if e.lock != nil {
+		unlock, err = e.lock(ctx, path, scope)
+		if err != nil {
+			return "", nil, fmt.Errorf("upgrade exclusion stage=scope-lock scope=%s: %w", scope, err)
+		}
+	}
+	return path, unlock, nil
 }
 
 func exclusionPath(scope string) (string, error) {
@@ -160,14 +241,14 @@ func (e exclusionEnv) load(scope string) (*upgradeExclusion, string, error) {
 		return nil, path, nil
 	}
 	if err != nil {
-		return nil, path, err
+		return nil, path, fmt.Errorf("upgrade exclusion stage=read scope=%s path=%q: %w", scope, path, err)
 	}
 	if err := e.trusted(path, scope); err != nil {
-		return nil, path, err
+		return nil, path, fmt.Errorf("upgrade exclusion stage=verify-file-owner scope=%s path=%q: %w", scope, path, err)
 	}
 	record, err := decodeExclusion(data)
 	if err != nil {
-		return nil, path, err
+		return nil, path, fmt.Errorf("upgrade exclusion stage=decode scope=%s path=%q: %w", scope, path, err)
 	}
 	if record.Scope != scope {
 		return nil, path, fmt.Errorf("upgrade exclusion record %s is for scope %s", path, record.Scope)
@@ -176,6 +257,13 @@ func (e exclusionEnv) load(scope string) (*upgradeExclusion, string, error) {
 }
 
 func (e exclusionEnv) store(scope string, record *upgradeExclusion) error {
+	return e.storeContext(context.Background(), scope, record)
+}
+
+func (e exclusionEnv) storeContext(ctx context.Context, scope string, record *upgradeExclusion) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := record.validate(); err != nil {
 		return err
 	}
@@ -186,6 +274,9 @@ func (e exclusionEnv) store(scope string, record *upgradeExclusion) error {
 	data, err := json.MarshalIndent(record, "", "  ")
 	if err != nil {
 		return err
+	}
+	if e.writeContext != nil {
+		return e.writeContext(ctx, path, scope, append(data, '\n'))
 	}
 	return e.write(path, scope, append(data, '\n'))
 }
@@ -213,28 +304,100 @@ func (e exclusionEnv) active(image string) (*upgradeExclusion, []string) {
 }
 
 func (e exclusionEnv) begin(scope string, folders []string, holder processIdentity) error {
+	return e.beginContext(context.Background(), scope, folders, holder)
+}
+
+func (e exclusionEnv) beginContext(ctx context.Context, scope string, folders []string, holder processIdentity, tokens ...string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	token := ""
+	if len(tokens) > 0 {
+		token = tokens[0]
+	}
+	if token != "" && !validUpgradeChain(token) {
+		return errors.New("invalid upgrade chain token")
+	}
+	path, unlock, err := e.lockScope(ctx, scope)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	existing, _, err := e.load(scope)
 	if err == nil && existing != nil && existing.Installer != holder && e.alive(existing.Installer, existing.Begun) {
-		return fmt.Errorf("installer process %d already holds the %s upgrade exclusion for %s",
-			existing.Installer.PID, scope, strings.Join(existing.Folders, "; "))
+		if !e.matchingChain(path, scope, token, existing.Installer) {
+			return fmt.Errorf("installer process %d already holds the %s upgrade exclusion for %s",
+				existing.Installer.PID, scope, strings.Join(existing.Folders, "; "))
+		}
+		for _, folder := range folders {
+			if !containsFolder(existing.Folders, folder) {
+				existing.Folders = append(existing.Folders, folder)
+			}
+		}
+		if err := e.storeContext(ctx, scope, existing); err != nil {
+			return err
+		}
+		return e.storeJoinedUpgrade(ctx, path, existing, holder)
 	}
-	return e.store(scope, &upgradeExclusion{Version: exclusionVersion, Scope: scope, Folders: folders, Installer: holder, Begun: e.now().UTC()})
+	if token != "" {
+		if path == "" {
+			var err error
+			path, err = e.path(scope)
+			if err != nil {
+				return err
+			}
+		}
+		data, err := json.Marshal(upgradeChain{Version: 1, Scope: scope, Token: token, Holder: holder})
+		if err != nil {
+			return err
+		}
+		if e.writeContext != nil {
+			err = e.writeContext(ctx, chainPath(path), scope, append(data, '\n'))
+		} else {
+			err = e.write(chainPath(path), scope, append(data, '\n'))
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return e.storeContext(ctx, scope, &upgradeExclusion{Version: exclusionVersion, Scope: scope, Folders: folders, Installer: holder, Begun: e.now().UTC()})
 }
 
 // release removes the record. Rollback releases before activating, so the
 // activation is not refused by its own record.
 func (e exclusionEnv) release(scope string) []string {
-	var notes []string
-	path, err := e.path(scope)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	notes, _ := e.removeContext(ctx, scope)
+	return notes
+}
+
+func (e exclusionEnv) removeContext(ctx context.Context, scope string) ([]string, error) {
+	path, unlock, err := e.lockScope(ctx, scope)
 	if err != nil {
-		return []string{fmt.Sprintf("no %s upgrade exclusion path: %v", scope, err)}
+		return []string{fmt.Sprintf("could not release %s upgrade exclusion: %v", scope, err)}, err
 	}
+	defer unlock()
+	return e.removeLocked(path, scope)
+}
+
+func (e exclusionEnv) removeLocked(path, scope string) ([]string, error) {
+	var notes []string
 	if err := e.remove(path); errors.Is(err, fs.ErrNotExist) {
 		notes = append(notes, fmt.Sprintf("no %s upgrade exclusion was held", scope))
 	} else if err != nil {
 		notes = append(notes, fmt.Sprintf("could not remove upgrade exclusion %s: %v", path, err))
+		return notes, err // Keep the matching sidecar when the guard could not be removed.
 	}
-	return notes
+	if err := e.remove(chainPath(path)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		notes = append(notes, fmt.Sprintf("could not remove upgrade chain: %v", err))
+		return notes, err
+	}
+	if err := e.remove(joinedUpgradePath(path)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		notes = append(notes, fmt.Sprintf("could not remove joined upgrade admission: %v", err))
+		return notes, err
+	}
+	return notes, nil
 }
 
 func (e exclusionEnv) refusal(image string) error {
@@ -268,23 +431,44 @@ func upgradeRefusal(err error) error {
 
 // Storage, trust and liveness on Windows.
 
-func readExclusionFile(path string) ([]byte, error) {
+func openExclusionRead(path string) (fileid.Handle, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
-		return nil, err
+		return fileid.Handle{}, err
 	}
 	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("upgrade exclusion %s is not a regular file", path)
+		return fileid.Handle{}, fmt.Errorf("upgrade exclusion %s is not a regular file", path)
 	}
-	f, err := os.Open(path)
+	// The existing file-identity reader shares delete on Windows. A retained
+	// old reader therefore keeps its old bytes while atomic replacement gives
+	// new readers the new record. Links remain refused and ownership is still
+	// checked by exclusionEnv.load before a record can exclude activation.
+	return fileid.Open(context.Background(), fileid.Self, path, fileid.Options{Read: true, Links: fileid.RefuseLinks})
+}
+
+func readExclusionFile(path string) ([]byte, error) {
+	held, err := openExclusionRead(path)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
-	return io.ReadAll(io.LimitReader(f, exclusionMaxBytes+1))
+	defer held.Close()
+	return io.ReadAll(io.LimitReader(held.File(), exclusionMaxBytes+1))
 }
 
 func writeExclusionFile(path, scope string, data []byte) error {
+	return writeExclusionFileContext(context.Background(), path, scope, data)
+}
+
+func writeExclusionFileContext(ctx context.Context, path, scope string, data []byte) (failure error) {
+	stage := "secure-directories"
+	defer func() {
+		if failure != nil {
+			failure = fmt.Errorf("upgrade exclusion stage=%s scope=%s path=%q: %w", stage, scope, path, failure)
+		}
+	}()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	dir := filepath.Dir(path)
 	if scope == "machine" {
 		if err := secureMachineDirectories(dir); err != nil {
@@ -293,32 +477,91 @@ func writeExclusionFile(path, scope string, data []byte) error {
 	} else if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
+	stage = "open-storage-root"
+	held, err := fileid.Open(context.Background(), fileid.Self, dir, fileid.Options{Links: fileid.RefuseLinks})
+	if err != nil {
+		return err
+	}
+	defer held.Close()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	stage = "create-temporary"
 	tmp, err := os.CreateTemp(dir, "exclusion-*.tmp")
 	if err != nil {
 		return err
 	}
 	name := tmp.Name()
+	stage = "write-temporary"
 	_, err = tmp.Write(data)
 	if err == nil {
+		stage = "sync-temporary"
 		err = tmp.Sync()
 	}
 	if closeErr := tmp.Close(); err == nil {
+		stage = "close-temporary"
 		err = closeErr
 	}
 	if err == nil {
-		var from, to *uint16
-		if from, err = windows.UTF16PtrFromString(name); err == nil {
-			if to, err = windows.UTF16PtrFromString(path); err == nil {
-				err = windows.MoveFileEx(from, to, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH)
+		stage = "replace-record"
+		// Root.Rename uses Windows' native replace/POSIX rename, also used by
+		// the CAS owner. Legacy MoveFileEx refuses a live destination reader.
+		// The temporary bytes were synced above; both names stay in this root.
+		var root *os.Root
+		root, err = os.OpenRoot(dir)
+		if err == nil {
+			var descriptor *os.File
+			descriptor, err = root.Open(".")
+			if err == nil {
+				actual, identityErr := fileid.FromFile(context.Background(), descriptor)
+				err = identityErr
+				if err == nil {
+					if !actual.FileID().Equal(held.FileID()) {
+						err = errors.New("exclusion replacement root changed after no-link admission")
+					}
+					err = errors.Join(err, actual.Close())
+				}
+				err = errors.Join(err, descriptor.Close())
+			}
+		}
+		if err == nil {
+			err = replaceExclusionContext(ctx, root, held.FileID(), path, name, scope, data)
+		}
+		if root != nil {
+			if closeErr := root.Close(); err == nil {
+				err = closeErr
 			}
 		}
 	}
 	if err != nil {
-		if removeErr := os.Remove(name); removeErr != nil && !errors.Is(removeErr, fs.ErrNotExist) {
+		if removeErr := removeExclusionFile(name); removeErr != nil && !errors.Is(removeErr, fs.ErrNotExist) {
 			err = errors.Join(err, fmt.Errorf("remove temporary exclusion %s: %w", name, removeErr))
 		}
 	}
 	return err
+}
+
+// Native deletion keeps read-only attributes intact. os.Remove on Windows
+// retries after clearing FILE_ATTRIBUTE_READONLY, which is inappropriate for
+// an exclusion whose removal failed. Sharing failures leave the guard held.
+func removeExclusionFile(path string) (failure error) {
+	held, err := openExclusionRead(path)
+	if err != nil {
+		return fmt.Errorf("upgrade exclusion stage=remove-admission path=%q: %w", path, err)
+	}
+	defer func() {
+		if err := held.Close(); err != nil {
+			failure = errors.Join(failure, fmt.Errorf("upgrade exclusion stage=close-removal-handle path=%q: %w", path, err))
+		}
+	}()
+	name, err := windows.UTF16PtrFromString(longPath(path))
+	if err != nil {
+		return err
+	}
+	if err := windows.DeleteFile(name); err != nil {
+		return fmt.Errorf("upgrade exclusion stage=remove-record path=%q: %w", path, err)
+	}
+	return nil
 }
 
 // trustedExclusionFile accepts a machine record only from SYSTEM or
@@ -329,13 +572,23 @@ func trustedExclusionFile(path, scope string) error {
 	if err != nil {
 		return err
 	}
+	return trustedExclusionOwner(owner, scope)
+}
+
+func trustedExclusionOwner(owner *windows.SID, scope string) error {
+	if owner == nil {
+		return errors.New("upgrade exclusion has no native owner")
+	}
 	if administrativeSID(owner) {
 		return nil
 	}
 	if scope == "user" {
 		sid, err := currentUserSID()
-		if err == nil && strings.EqualFold(owner.String(), sid) {
-			return nil
+		if err == nil {
+			current, parseErr := windows.StringToSid(sid)
+			if parseErr == nil && windows.EqualSid(owner, current) {
+				return nil
+			}
 		}
 	}
 	return fmt.Errorf("owned by %s, which cannot hold the %s upgrade exclusion", owner, scope)

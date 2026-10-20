@@ -48,7 +48,7 @@
       ],
       "models": {
         "alpha": {
-          "name": "alpha · 32k · this computer: ollama",
+          "name": "alpha",
           "limit": {
             "context": 32768,
             "output": 4096
@@ -56,7 +56,7 @@
           "tool_call": true
         },
         "cased": {
-          "name": "cased · 32k · this computer: ollama",
+          "name": "cased",
           "limit": {
             "context": 32768,
             "output": 4096
@@ -64,7 +64,7 @@
           "tool_call": true
         },
         "wide": {
-          "name": "wide · 32k · this computer: ollama",
+          "name": "wide",
           "limit": {
             "context": 32768,
             "output": 4096
@@ -121,7 +121,7 @@
       ],
       "models": {
         "effective": {
-          "name": "effective · 8k · this computer: ollama",
+          "name": "effective",
           "limit": {
             "context": 8192,
             "output": 4096
@@ -129,7 +129,7 @@
           "tool_call": true
         },
         "reported": {
-          "name": "reported · 128k · this computer: ollama",
+          "name": "reported",
           "limit": {
             "context": 131072,
             "output": 4096
@@ -194,7 +194,7 @@
       ],
       "models": {
         "loaded-lemonade": {
-          "name": "loaded-lemonade · 16k · this computer: lemonade",
+          "name": "loaded-lemonade",
           "limit": {
             "context": 16384,
             "output": 4096
@@ -245,7 +245,7 @@
       ],
       "models": {
         "qwen": {
-          "name": "qwen · 16k · this computer: ollama; hosted: east/lemonade",
+          "name": "qwen",
           "limit": {
             "context": 16384,
             "output": 4096
@@ -383,7 +383,7 @@
         "scope": "local",
         "oaInventoryManagedModels": {
           "llama": {
-            "name": "llama · 16k · this computer: ollama",
+            "name": "llama",
             "limit": {
               "context": 16384,
               "output": 4096
@@ -394,7 +394,7 @@
       },
       "models": {
         "llama": {
-          "name": "llama · 16k · this computer: ollama",
+          "name": "llama",
           "limit": {
             "context": 16384,
             "output": 4096

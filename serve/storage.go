@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	"github.com/openabstractions/abstraction-job/go/acceptanceprovider"
+	"github.com/openabstractions/abstraction-provider-kit/go/modelplace"
 )
 
 func storageCommand(args []string, output, diagnostics io.Writer) error {
@@ -58,7 +60,7 @@ func storageCommand(args []string, output, diagnostics io.Writer) error {
 			return fmt.Errorf("storage check: %w", err)
 		}
 	}
-	root := filepath.Join(*state, "jobs")
+	root := modelplace.JobStoreIn(*state)
 	// A guarded check of an existing store writes host-guard metadata into the
 	// account's default state.
 	if _, err := os.Stat(root); err == nil && !supplied && !*readOnly {
@@ -74,6 +76,20 @@ func storageCommand(args []string, output, diagnostics io.Writer) error {
 	// or journals, for both modes.
 	if err := acceptanceprovider.CheckManaged(root, executor); err != nil {
 		return fmt.Errorf("storage check %q: %w", root, err)
+	}
+	// Reuse read-only compatibility inspection before a writer guard may create
+	// coordination metadata. Existing compatible stores are still rechecked
+	// under both the settings lifecycle and host guards below.
+	if _, err := os.Stat(root); err == nil && !*readOnly {
+		guardState := ""
+		if supplied {
+			guardState = *state
+		}
+		release, err := selectedStateGuard(context.Background(), guardState)
+		if err != nil {
+			return err
+		}
+		defer release()
 	}
 	if *readOnly {
 		// No guard: a sidecar lock outside the store would exclude nobody, since

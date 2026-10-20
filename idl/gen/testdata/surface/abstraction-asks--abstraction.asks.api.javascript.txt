@@ -143,6 +143,7 @@ enum OperatorRetirementOutcome
 class PermissionApplicationClient
   request(request)
   observe(requestKey, waitMs)
+  observeQuestion(id, waitMs)
 object PermissionApplicationService {wireName, Client}
 class PermissionOperatorClient
   listPermissions(cursor, limit)
@@ -165,6 +166,8 @@ class QuestionApplicationClient
   observe(requestKey, waitMs)
 object QuestionApplicationService {wireName, Client}
 class QuestionOperatorClient
+  readQuestionContent(id)
+  listAnswerContents(cursor, limit)
   listChoices(cursor, limit)
   readChoice(id)
   answerChoice(id, option, ifPending)
@@ -202,12 +205,15 @@ enum ServiceErrorCode
   WrongMode
 function decode(data)
 function decodeAnswer(data)
+function decodeAnswerContent(data)
+function decodeAnswerContentPage(data)
 function decodeAnswerEntry(data)
 function decodeAnswerEntryPage(data)
 function decodeAnswerableChoice(data)
 function decodeAnswerableChoicePage(data)
 function decodeApplicationQuestion(data)
 function decodeAttributedQuestion(data)
+function decodeCatalogueContent(data)
 function decodeChoiceAcknowledgement(data)
 function decodeChoiceAnswer(data)
 function decodeChoiceDecision(data)
@@ -233,6 +239,7 @@ function decodeOperatorDecision(data)
 function decodeOperatorPage(data)
 function decodeOperatorQuestion(data)
 function decodeOperatorRetirement(data)
+function decodePendingQuestion(data)
 function decodePermissionDisplay(data)
 function decodePermissionDisplaySelection(data)
 function decodePermissionIntent(data)
@@ -241,6 +248,7 @@ function decodePermissionRequest(data)
 function decodePermissionTarget(data)
 function decodeQuestion(data)
 function decodeQuestionAsker(data)
+function decodeQuestionContent(data)
 function decodeQuestionDetails(data)
 function decodeQuestionObservation(data)
 function decodeRecordMetadata(data)
@@ -251,12 +259,15 @@ function decodeResponseMetadata(data)
 function decodeTypedPermissionDetails(data)
 function encode(v)
 function encodeAnswer(v)
+function encodeAnswerContent(v)
+function encodeAnswerContentPage(v)
 function encodeAnswerEntry(v)
 function encodeAnswerEntryPage(v)
 function encodeAnswerableChoice(v)
 function encodeAnswerableChoicePage(v)
 function encodeApplicationQuestion(v)
 function encodeAttributedQuestion(v)
+function encodeCatalogueContent(v)
 function encodeChoiceAcknowledgement(v)
 function encodeChoiceAnswer(v)
 function encodeChoiceDecision(v)
@@ -282,6 +293,7 @@ function encodeOperatorDecision(v)
 function encodeOperatorPage(v)
 function encodeOperatorQuestion(v)
 function encodeOperatorRetirement(v)
+function encodePendingQuestion(v)
 function encodePermissionDisplay(v)
 function encodePermissionDisplaySelection(v)
 function encodePermissionIntent(v)
@@ -290,6 +302,7 @@ function encodePermissionRequest(v)
 function encodePermissionTarget(v)
 function encodeQuestion(v)
 function encodeQuestionAsker(v)
+function encodeQuestionContent(v)
 function encodeQuestionDetails(v)
 function encodeQuestionObservation(v)
 function encodeRecordMetadata(v)
@@ -298,12 +311,22 @@ function encodeRequestRef(v)
 function encodeResponderDecision(v)
 function encodeResponseMetadata(v)
 function encodeTypedPermissionDetails(v)
+function fromJson(kind, data)
 function newAnswer()
   id
   pending
   option
   yes
   kept
+function newAnswerContent()
+  answer
+  content
+function newAnswerContentPage()
+  outcome
+  answers
+  next
+  complete
+  completeSinceMs
 function newAnswerEntry()
   id
   kind
@@ -345,6 +368,9 @@ function newApplicationQuestion()
 function newAttributedQuestion()
   question
   answerer
+function newCatalogueContent()
+  slots
+  permission
 function newChoiceAcknowledgement()
   outcome
 function newChoiceAnswer()
@@ -472,6 +498,9 @@ function newOperatorQuestion()
 function newOperatorRetirement()
   outcome
   record
+function newPendingQuestion()
+  observation
+  pendingUntilMs
 function newPermissionDisplay()
   selections
   bundleLabel
@@ -507,6 +536,9 @@ function newQuestion()
 function newQuestionAsker()
   details
   program
+function newQuestionContent()
+  question
+  content
 function newQuestionDetails()
   question
   permission
@@ -555,3 +587,4 @@ function newTypedPermissionDetails()
 const operations
 const refusalCodes
 const resourceActions
+function toJson(kind, value)

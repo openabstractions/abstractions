@@ -16,26 +16,26 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"os/user"
-	"path/filepath"
-	"runtime"
 	"strconv"
-	"strings"
 	"time"
 
 	request "github.com/openabstractions/abstraction-download/go/abstraction/download/request"
 	facade "github.com/openabstractions/abstraction-facade/go"
+	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	"github.com/openabstractions/abstraction-facade/go/client"
 	identity "github.com/openabstractions/abstraction-identity"
-	"github.com/openabstractions/abstraction-identity/listen"
 	api "github.com/openabstractions/abstraction-job/go/abstraction/job/acceptance"
 	logging "github.com/openabstractions/abstraction-logging/go"
+	watch "github.com/openabstractions/abstraction-watch/go"
 )
 
 // machine selects the installed runtime. Tests supply a verified fixture binding.
 var machine = facade.Discover
 
 func main() {
+	if ownedHost() {
+		return
+	}
 	if err := run(os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -50,8 +50,8 @@ const usage = `Usage: pretend-lemonade [--out DIR] [--ask-before-replace] [--wai
 
 Downloads verified bytes through the selected runtime. The same URL, size and
 digest retain the same request identity. --out chooses where this application
-copies the result (default files). --runtime-program verifies the runtime at
-ABSTRACTION_RUNTIME_ENDPOINT as this account's named executable.
+copies the result (default files). --runtime-program verifies the development runtime
+the facade selects (FAC-B5) as this account's named executable.
 --ask-before-replace presents Replace, Keep or Cancel in this app's terminal.
 Type the word or r/k/c, then press Enter. Closing input retains the existing file.
 --wait-output-choice waits for an external answer instead of reading terminal input;
@@ -149,9 +149,6 @@ func runInput(args []string, out io.Writer, stdin *os.File) error {
 	// The same URL, size and digest are the same request: a rerun reconciles
 	// with the work already accepted instead of starting it twice.
 	requestID := api.RequestIdentity{Key: fmt.Sprintf("pretend-lemonade-%x", sha256.Sum256([]byte(args[0]+"\n"+args[1]+"\n"+args[2]))), HistoryEpoch: window.HistoryEpoch}
-	if requestID, err = currentAttempt(ctx, jobs, requestID, out); err != nil {
-		return err
-	}
 	sink, err := selected.ResolveLog(ctx, facade.Requirements{Scope: facade.ScopeLocal})
 	if err != nil {
 		return fmt.Errorf("logging service: %w", err)
@@ -213,10 +210,19 @@ func runInput(args []string, out io.Writer, stdin *os.File) error {
 		}
 		acknowledge = ack
 	}
+	follower := watch.Follow(ctx, "", func(ctx context.Context, after string) func(func(api.WorkObservation, error) bool) {
+		return jobs.FollowWorkPages(ctx, requestID, after, 1000)
+	}, func(page api.WorkObservation) (string, bool) {
+		return page.Next, page.Outcome == api.WorkObservationOutcomeGap
+	})
+	defer follower.Close()
 	for {
-		observed, err := jobs.ObserveWork(ctx, requestID)
+		observed, err := follower.Next(ctx)
 		if err != nil {
 			return err
+		}
+		if observed.Outcome == api.WorkObservationOutcomeUnchanged {
+			continue
 		}
 		if observed.Snapshot == nil {
 			return fmt.Errorf("download unobservable: %s", observed.Outcome)
@@ -241,41 +247,7 @@ func runInput(args []string, out io.Writer, stdin *os.File) error {
 			}
 			return fmt.Errorf("download %s", ended)
 		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(100 * time.Millisecond):
-		}
 	}
-}
-
-// currentAttempt returns the attempt of id a new run uses. A request whose
-// latest attempt ended on a rights refusal, for example because the person
-// blocked this app's downloads while it ran, is tried again as the next
-// attempt (job JOB-A7): the person can lift that refusal, and running the app
-// again is asking again. Any other failure, and a live, completed or cancelled
-// attempt, is reused as it is. Once the job layer stops replaying a rights
-// refusal for a resubmitted request, this step finds nothing to retry.
-func currentAttempt(ctx context.Context, jobs *client.JobsClient, id api.RequestIdentity, out io.Writer) (api.RequestIdentity, error) {
-	for {
-		observed, err := jobs.ObserveWork(ctx, id)
-		if err != nil {
-			return id, err
-		}
-		if !rightsRefused(observed.Snapshot) {
-			return id, nil
-		}
-		if _, err := fmt.Fprintf(out, "attempt %d failed%s; trying again as attempt %d\n", id.Attempt, failureDetail(observed.Snapshot), id.Attempt+1); err != nil {
-			return id, err
-		}
-		id.Attempt++
-	}
-}
-
-// rightsRefused reports whether a job failed on a rights decision, the one
-// failure the person can fix by changing a permission.
-func rightsRefused(snapshot *api.OperationSnapshot) bool {
-	return snapshot != nil && snapshot.State == api.WorkStateFailed && snapshot.Failure != nil && strings.HasPrefix(snapshot.Failure.Message, "rights:")
 }
 
 // failureDetail names a failed job's recorded reason, such as rights:denied.
@@ -290,21 +262,9 @@ func selectMachine(program string) (*facade.Machine, error) {
 	if program == "" {
 		return machine(), nil
 	}
-	endpoint := os.Getenv("ABSTRACTION_RUNTIME_ENDPOINT")
-	if endpoint == "" || !filepath.IsAbs(program) {
-		return nil, errors.New("--runtime-program requires ABSTRACTION_RUNTIME_ENDPOINT and an absolute executable path")
-	}
-	account, err := user.Current()
+	selected, err := bootstrap.SelectDevelopment("", program)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("--runtime-program: %w", err)
 	}
-	who := identity.User{Kind: "windows", SID: account.Uid, UID: -1, GID: -1}
-	if runtime.GOOS != "windows" {
-		uid, err := strconv.Atoi(account.Uid)
-		if err != nil {
-			return nil, err
-		}
-		who = identity.User{Kind: "posix", UID: uid, GID: -1}
-	}
-	return client.NewVerified(endpoint, listen.ServerExpectation{Principal: who, Program: identity.CanonicalProgramPath(filepath.Clean(program))}), nil
+	return client.NewVerified(selected.Endpoint, selected.Server), nil
 }

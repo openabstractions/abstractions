@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"time"
@@ -15,8 +16,7 @@ import (
 // of programs: the fields abstraction.inference/operator@1 HostEntry carries,
 // under the facade registry's role host (facade CONTRACT.md FAC-R6). The
 // operator adds one through AddHost, a product declares one from its own
-// record (INF-H1), and the installation ships the four default local engines
-// as declaration files.
+// record (INF-H1), and the installation declares OA providers it actually ships.
 
 // providerHost is a host declaration's engine, as kept on disk.
 type providerHost struct {
@@ -73,10 +73,7 @@ func (f providerFile) hostEntry() iwire.HostEntry {
 	d := f.Declaration
 	h := d.Host
 	entry := iwire.HostEntry{Name: d.Name, Hosted: h.Hosted, Kind: h.Kind, Base: h.Base, Credential: h.Credential, DeclaredBy: f.DeclaredBy}
-	entry.Profiles = d.resources("profile")
-	if len(entry.Profiles) == 0 {
-		entry.Profiles = defaultProfiles(h.Hosted, h.Kind)
-	}
+	entry.Profiles = entryProfiles(h.Hosted, h.Kind, h.Base, d.resources("profile"))
 	if c := h.Ceiling; c != nil {
 		entry.Ceiling = ceilingLimit(*c)
 	}
@@ -84,7 +81,7 @@ func (f providerFile) hostEntry() iwire.HostEntry {
 }
 
 // routerHost is the router host of a host declaration.
-func (f providerFile) routerHost() (*router.Host, error) {
+func (f providerFile) routerHost(aliases ...func(context.Context, string, string, string) ([]string, error)) (*router.Host, error) {
 	d := f.Declaration
 	h := d.Host
 	if h == nil {
@@ -94,8 +91,14 @@ func (f providerFile) routerHost() (*router.Host, error) {
 	if h.Hosted {
 		out = router.NewHosted(d.Name, h.Base, h.Kind, h.Credential)
 	} else {
+		var lookup func(context.Context) ([]string, error)
+		if len(aliases) > 0 && aliases[0] != nil {
+			bindingID, kind, base, eligible := f.bindingID(), h.Kind, h.Base, aliases[0]
+			lookup = func(ctx context.Context) ([]string, error) { return eligible(ctx, bindingID, kind, base) }
+		}
 		var err error
-		if out, err = localRouterHost(inferenceLocalHost{Kind: h.Kind, Base: h.Base}); err != nil {
+		out, err = router.NewLocal(h.Kind, h.Base, lookup)
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -103,20 +106,59 @@ func (f providerFile) routerHost() (*router.Host, error) {
 	if profiles := d.resources("profile"); len(profiles) > 0 {
 		out.Profiles = profiles
 	}
+	if h.Hosted {
+		out.Profiles = entryProfiles(true, h.Kind, h.Base, out.Profiles)
+	}
 	out.DeclaredBy = f.DeclaredBy
 	out.BindingID = f.bindingID()
 	return out, nil
 }
 
-// productHostFiles is the host declarations the products on this machine make
-// from their own records (INF-H1). They are read at each refresh and never
-// written: a product that moves its server moves its declaration with it.
-func productHostFiles(report func(error)) []providerFile {
+// productHostFiles promotes live servers from the products' recorded endpoint
+// candidates (INF-H1). Read-only probes and the shared bounded router survey
+// supply the snapshot; no discovered declaration is written to disk.
+func productHostFiles(report func(error), snapshot func() ([]router.HostState, time.Time)) ([]providerFile, time.Time) {
 	var out []providerFile
-	for _, h := range declaredLocalHosts(report) {
+	readings, observed := declaredLocalHosts(report, snapshot)
+	for _, reading := range readings {
+		h := reading.Host
 		entry := iwire.HostEntry{Name: h.Name, Kind: h.Name, Base: h.Base, Profiles: h.Profiles}
 		out = append(out, providerFile{Version: providerFileVersion, Declaration: hostDeclaration(entry),
-			DeclaredBy: h.DeclaredBy, Source: declarationSourceProduct})
+			DeclaredBy: h.DeclaredBy, Source: declarationSourceProduct, ProductPresence: reading.Presence, ProductProgram: reading.Program})
+	}
+	return out, observed
+}
+
+// Canonical records retain registration intent and receiver epochs. Native
+// product evidence remains an ephemeral observation of the complete producer
+// declaration and owner, revalidated by the engine transport on each request.
+func (p *runtimeProviders) withCurrentProductObservations(canonical []providerFile) []providerFile {
+	p.productsMu.Lock()
+	var current []providerFile
+	if age := time.Since(p.productAt); p.productHas && age >= 0 && age < productDeclarationAge {
+		current = slices.Clone(p.product)
+	}
+	p.productsMu.Unlock()
+	out := slices.Clone(canonical)
+	for i := range out {
+		out[i].ProductPresence, out[i].ProductProgram = "", ""
+		if out[i].Source != declarationSourceProduct {
+			continue
+		}
+		for _, observed := range current {
+			if observed.Source != declarationSourceProduct || observed.Generation != "" || observed.ProductPresence != "verified" || observed.ProductProgram == "" {
+				continue
+			}
+			// Only the receiver-owned epoch differs from this product's empty
+			// producer generation. bindingID compares every static declaration
+			// field, Version, DeclaredBy and DeclaredAt together.
+			descriptor := out[i]
+			descriptor.Generation = ""
+			if descriptor.bindingID() == observed.bindingID() {
+				out[i].ProductPresence, out[i].ProductProgram = observed.ProductPresence, observed.ProductProgram
+				break
+			}
+		}
 	}
 	return out
 }
@@ -144,7 +186,7 @@ func (p *runtimeProviders) hostRouterHosts() []*router.Host {
 		if f.Disabled {
 			continue
 		}
-		h, err := f.routerHost()
+		h, err := f.routerHost(p.hostAliases)
 		if err != nil {
 			p.report(err)
 			continue
@@ -152,6 +194,24 @@ func (p *runtimeProviders) hostRouterHosts() []*router.Host {
 		out = append(out, h)
 	}
 	return out
+}
+
+// currentHostBinding reads operator generations and explicit disabled state at
+// every adapter boundary. Product declarations retain the shared discovery
+// snapshot, bounded by productDeclarationAge or invalidated by forgetProducts.
+// A refreshed Host pointer alone cannot preserve a withdrawn operator generation.
+func (p *runtimeProviders) currentHostBinding(ctx context.Context, bindingID, kind, base string) bool {
+	if p == nil || ctx.Err() != nil || bindingID == "" || kind == "" || base == "" {
+		return false
+	}
+	matches := 0
+	for _, file := range p.hostFiles() {
+		host := file.Declaration.Host
+		if !file.Disabled && host != nil && !host.Hosted && host.Kind == kind && host.Base == base && file.bindingID() == bindingID {
+			matches++
+		}
+	}
+	return matches == 1
 }
 
 // hostStates is the registry reading of every host declaration: the router's
@@ -167,13 +227,20 @@ func (p *runtimeProviders) hostStates(files []providerFile) []wire.DeclarationSt
 			Role: wire.DeclarationRoleHost, Described: []wire.ServiceState{}}
 		switch s, surveyed := reading[f.Declaration.Name]; {
 		case f.Disabled:
-			state.Readiness, state.Why = wire.DeclarationReadinessDisabled, "operator"
+			state.Readiness, state.Why = wire.DeclarationReadinessDisabled, f.disabledReason()
 		case !surveyed:
 			state.Readiness, state.Why = wire.DeclarationReadinessUnreachable, "host:not surveyed yet"
 			state.Host = &wire.HostReading{Why: "not surveyed yet"}
 		case s.Up:
 			state.Readiness = wire.DeclarationReadinessReady
 			state.Host = &wire.HostReading{Up: true, Why: s.Why}
+			if f.Source == declarationSourceProduct && (f.ProductPresence == "verified" || f.ProductPresence == "unverified") {
+				state.Why = "host:presence_" + f.ProductPresence
+				if state.Host.Why != "" {
+					state.Host.Why += "; "
+				}
+				state.Host.Why += "program presence " + f.ProductPresence
+			}
 		default:
 			state.Readiness, state.Why = wire.DeclarationReadinessUnreachable, "host:"+s.Why
 			state.Host = &wire.HostReading{Why: s.Why}
@@ -200,20 +267,7 @@ const routerHostSurveyAge = 30 * time.Second
 
 // newHostFile is a host declaration a caller's entry becomes.
 func newHostFile(entry iwire.HostEntry, declaredBy string) providerFile {
-	if len(entry.Profiles) == 0 {
-		entry.Profiles = defaultProfiles(entry.Hosted, entry.Kind)
-	}
+	entry.Profiles = entryProfiles(entry.Hosted, entry.Kind, entry.Base, entry.Profiles)
 	return providerFile{Version: providerFileVersion, Declaration: hostDeclaration(entry), DeclaredBy: declaredBy,
 		DeclaredAt: time.Now().UnixMilli(), Source: declarationSourceOperator}
-}
-
-// hostNames is the names every host declaration holds, disabled included.
-func (p *runtimeProviders) hostNames() []string {
-	var out []string
-	for _, f := range p.hostFiles() {
-		if !slices.Contains(out, f.Declaration.Name) {
-			out = append(out, f.Declaration.Name)
-		}
-	}
-	return out
 }

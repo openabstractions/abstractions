@@ -12,9 +12,12 @@ import (
 type backend struct {
 	lang      string
 	path      string
-	emit      func(*Definition) string
+	emit      func(*Definition) (string, error)
 	imports   []string
 	emitsCode bool
+	// clients and dispatchers say which service roles the backend emits when
+	// it generates services; gen --backends reports them (backends.go).
+	clients, dispatchers bool
 }
 
 // comment is the marker each language's own tooling looks for. Go's exact form
@@ -53,6 +56,9 @@ type emitted struct {
 }
 
 func (b backend) verify(e emitted) error {
+	if b.lang == "jsonschema" {
+		return verifyJSONSchema(e)
+	}
 	if b.emitsCode {
 		return verifyCode(e)
 	}
@@ -60,13 +66,14 @@ func (b backend) verify(e emitted) error {
 }
 
 var backends = []backend{
-	{"go", "go/rec/rec.go", genGo, nil, true},
-	{"python", "py/_codec.py", genPy, []string{"__future__", "base64", "binascii", "dataclasses", "enum"}, true},
-	{"cpp", "cpp/rec.h", genCpp, []string{
-		"cstddef", "cstdint", "map", "optional", "stdexcept", "string", "string_view", "vector"}, true},
-	{"javascript", "js/internal.mjs", genJS, nil, true},
-	{"rust", "rs/rec.rs", genRust, []string{"std::collections::BTreeMap"}, true},
-	{"docs", "schema.html", genDocs, nil, false},
+	{"go", "go/rec/rec.go", checkedEmitter(genGo), nil, true, true, true},
+	{"python", "py/_codec.py", checkedEmitter(genPy), []string{"__future__", "base64", "binascii", "dataclasses", "enum"}, true, true, false},
+	{"cpp", "cpp/rec.h", checkedEmitter(genCpp), []string{
+		"cstddef", "cstdint", "map", "optional", "stdexcept", "string", "string_view", "vector"}, true, true, true},
+	{"javascript", "js/internal.mjs", checkedEmitter(genJS), nil, true, true, false},
+	{"rust", "rs/rec.rs", checkedEmitter(genRust), []string{"std::collections::BTreeMap"}, true, true, false},
+	{"docs", "schema.html", checkedEmitter(genDocs), nil, false, false, false},
+	{"jsonschema", "jsonschema/index.json", checkedEmitter(genJSONSchema), nil, false, false, false},
 }
 
 // publicModules are the modules an application imports, beside a backend's
@@ -94,7 +101,7 @@ func publicPath(lang, path string) (string, bool) {
 	return filepath.ToSlash(filepath.Join(filepath.Dir(path), m.file)), true
 }
 
-const usage ="usage: gen <definition.thrift> <outdir> [-only=<surface,...>] [--no-ipc] [--shared-rust-transport] [language ...]\n       gen <definition.thrift> --paths [language ...]"
+const usage = "usage: gen <definition.thrift> <outdir> [-only=<surface,...>] [--no-ipc] [--shared-rust-transport] [language ...]\n       gen <definition.thrift> --paths [language ...]\n       gen --compat <published.thrift> <candidate.thrift>\n       gen --hash <definition.thrift>\n       gen --backends"
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
@@ -103,20 +110,39 @@ func main() {
 }
 
 func run(args []string, stdout io.Writer) error {
+	if len(args) == 1 && args[0] == "--backends" {
+		_, err := io.WriteString(stdout, backendsTable())
+		return err
+	}
 	if len(args) == 0 || len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
 		fmt.Fprintln(stdout, usage)
-		fmt.Fprintln(stdout, "Languages: go python cpp javascript rust docs. Omit languages for all backends.")
-		fmt.Fprintln(stdout, "--no-ipc emits service interfaces and record types/codecs without IPC bindings (Go, C++, Python, Rust).")
+		fmt.Fprintln(stdout, "Languages: go python cpp javascript rust docs jsonschema. Omit languages for every backend except jsonschema, which is named explicitly.")
+		fmt.Fprintln(stdout, "--no-ipc emits service interfaces and record types/codecs without IPC bindings (Go, C++, Python, Rust, JavaScript).")
 		fmt.Fprintln(stdout, "--shared-rust-transport uses the pure abstraction-frame crate for Rust IPC; standalone and --no-ipc outputs remain independent.")
 		fmt.Fprintln(stdout, "--go-alias-package=import-path emits Go compatibility exports forwarding to the canonical generated package.")
+		fmt.Fprintln(stdout, "--go-client-aliases emits go/client/contract.go from the client API's reachable generated types.")
+		fmt.Fprintln(stdout, "--go-client-alias=Name=import-path.Type retains one published client alias as a compatibility root.")
 		fmt.Fprintln(stdout, "--named-codecs exports composable per-record codecs; generate dependencies with this flag.")
+		fmt.Fprintln(stdout, "--mcp emits a Go MCP method catalogue and typed invocation adapter beside native Go codecs.")
+		fmt.Fprintln(stdout, "--config-catalogue=keys.json embeds the sibling config@2 descriptor catalogue and its generic process overlay after schema validation.")
 		fmt.Fprintln(stdout, "--go-import=alias=package-path maps an include filename alias to its generated Go package; repeat per dependency.")
 		fmt.Fprintln(stdout, "--js-import=alias=module-specifier maps an include filename alias to its generated JavaScript module or package; repeat per dependency.")
 		fmt.Fprintln(stdout, "--rust-import=alias=crate-path maps an include filename alias to the Rust crate holding its generated records; repeat per dependency.")
+		fmt.Fprintln(stdout, "--namespace=language=dotted.name places this artefact's output for one language under that namespace, overriding the definition's; names and paths change, the wire does not.")
+		fmt.Fprintln(stdout, "--backends prints what each backend generates as a Markdown table; idl/LANGUAGE.md and idl/README.md embed it.")
 		fmt.Fprintln(stdout, "--paths lists output locations without generating code or claiming backend support for a schema's features.")
+		fmt.Fprintln(stdout, "--compat refuses a candidate that changes a published service version (one that keeps its wire_name) in any way idl/LANGUAGE.md DEF-V1 lists; when compatible it prints each service's definition hash.")
+		fmt.Fprintln(stdout, "--hash prints each service version's definition hash, sha256 over its canonical wire form (idl/LANGUAGE.md DEF-V2).")
+		fmt.Fprintln(stdout, "--sizes <definition.thrift> prints each record's and each method's largest encoding in bytes, or the first value without a declared bound (idl/LANGUAGE.md DEF-A12).")
 		fmt.Fprintln(stdout, "Run the generator and its tests with GOWORK=off (PowerShell: $env:GOWORK=\"off\") so a surrounding go.work does not replace this module.")
 		fmt.Fprintln(stdout, "Tests: GOWORK=off go test ./... ; Python-backed tests use PYTHON, else python on PATH, and need a real interpreter (on Windows the Store python alias fails; see idl/test/production/README.md).")
 		return nil
+	}
+	if handled, err := runVersioning(args, stdout); handled {
+		return err
+	}
+	if handled, err := runSizes(args, stdout); handled {
+		return err
 	}
 	if len(args) < 2 {
 		return fmt.Errorf("%s", usage)
@@ -135,11 +161,53 @@ func run(args []string, stdout io.Writer) error {
 			return err
 		}
 	}
+	if err := validateObserveRanges(whole); err != nil {
+		return fmt.Errorf("%s: %w", args[0], err)
+	}
 	var want, only []string
 	goAlias := ""
+	clientAliases := false
+	clientRetained := map[string]clientType{}
 	noIPC := false
+	placed := map[string]bool{}
+	configCatalogue := false
+	mcp := false
 	for _, a := range args[2:] {
 		switch {
+		case a == "--mcp":
+			if mcp {
+				return fmt.Errorf("--mcp may be supplied once")
+			}
+			mcp = true
+		case strings.HasPrefix(a, "--go-client-alias="):
+			pair := strings.SplitN(strings.TrimPrefix(a, "--go-client-alias="), "=", 2)
+			if len(pair) != 2 || !clientAliasName(pair[0]) {
+				return fmt.Errorf("--go-client-alias requires Name=import-path.Type")
+			}
+			i := strings.LastIndex(pair[1], ".")
+			if i < 1 || !strings.HasPrefix(pair[1], "github.com/openabstractions/") || !clientAliasName(pair[1][i+1:]) {
+				return fmt.Errorf("--go-client-alias requires Name=import-path.Type")
+			}
+			if _, ok := clientRetained[pair[0]]; ok {
+				return fmt.Errorf("duplicate retained client alias %s", pair[0])
+			}
+			target := clientType{pair[1][:i], pair[1][i+1:]}
+			for _, existing := range clientRetained {
+				if existing == target {
+					return fmt.Errorf("duplicate retained generated type %s", pair[1])
+				}
+			}
+			clientRetained[pair[0]] = target
+		case a == "--go-client-aliases":
+			if clientAliases {
+				return fmt.Errorf("--go-client-aliases may be supplied once")
+			}
+			clientAliases = true
+		case strings.HasPrefix(a, "--config-catalogue="):
+			if configCatalogue || strings.TrimPrefix(a, "--config-catalogue=") != "keys.json" {
+				return fmt.Errorf("--config-catalogue requires the one sibling keys.json")
+			}
+			configCatalogue = true
 		case strings.HasPrefix(a, "--go-alias-package="):
 			value := strings.TrimPrefix(a, "--go-alias-package=")
 			if goAlias != "" || value == "" || strings.ContainsAny(value, "\"\\ \n\r\t") {
@@ -189,6 +257,24 @@ func run(args []string, stdout io.Writer) error {
 				return fmt.Errorf("duplicate Rust import mapping %s", pair[0])
 			}
 			whole.RustImports[pair[0]] = pair[1]
+		case strings.HasPrefix(a, "--namespace="):
+			pair := strings.SplitN(strings.TrimPrefix(a, "--namespace="), "=", 2)
+			if len(pair) != 2 || pair[0] == "*" {
+				return fmt.Errorf("--namespace requires language=dotted.name for one language")
+			}
+			if err := validateNamespace(pair[0], pair[1]); err != nil {
+				return fmt.Errorf("--namespace: %w", err)
+			}
+			if placed[pair[0]] {
+				return fmt.Errorf("--namespace names %s twice", pair[0])
+			}
+			placed[pair[0]] = true
+			names := map[string]string{}
+			for k, v := range whole.Namespaces {
+				names[k] = v
+			}
+			names[pair[0]] = pair[1]
+			whole.Namespaces = names
 		case a == "--no-ipc":
 			if noIPC {
 				return fmt.Errorf("--no-ipc may be supplied once")
@@ -221,9 +307,17 @@ func run(args []string, stdout io.Writer) error {
 			want = append(want, a)
 		}
 	}
+	if configCatalogue {
+		if err := loadConfigCatalogue(whole, filepath.Join(filepath.Dir(args[0]), "keys.json")); err != nil {
+			return err
+		}
+	}
 	def, err := selected(whole, only)
 	if err != nil {
 		return fmt.Errorf("%s: %w", args[0], err)
+	}
+	if configCatalogue && !configCatalogueReady(def) {
+		return fmt.Errorf("--config-catalogue selection requires KeyDescriptor, Entry and Change with their closed dependencies")
 	}
 	if noIPC {
 		if def.Proto != nil {
@@ -234,13 +328,35 @@ func run(args []string, stdout io.Writer) error {
 		def = &copy
 	}
 	out := args[1]
+	if mcp && (noIPC || skips(backends[0], want) || goAlias != "" || len(def.Services) == 0) {
+		return fmt.Errorf("--mcp requires native Go codecs")
+	}
+	if mcp {
+		if err := validateMCP(def); err != nil {
+			return err
+		}
+	}
+	if len(clientRetained) > 0 && !clientAliases {
+		return fmt.Errorf("--go-client-alias requires --go-client-aliases")
+	}
+	if clientAliases && (skips(backends[0], want) || len(only) != 0) {
+		return fmt.Errorf("--go-client-aliases requires the complete Go backend")
+	}
 	if out == "--paths" {
+		if !noIPC && !skips(backends[0], want) && len(def.Services) > 0 {
+			path, _ := namespacedOutput(backend{lang: "go", path: "go/rec/mcp.go"}, def.Namespaces, "")
+			fmt.Fprintln(stdout, path)
+			fmt.Fprintln(stdout, strings.TrimSuffix(path, ".go")+".json")
+		}
 		for _, b := range backends {
-			if len(want) > 0 && !contains(want, b.lang) {
+			if skips(b, want) {
 				continue
 			}
 			path, _ := namespacedOutput(b, def.Namespaces, "")
 			fmt.Fprintln(stdout, path)
+			if b.lang == "go" {
+				fmt.Fprintln(stdout, "go/client/contract.go")
+			}
 			if public, ok := publicPath(b.lang, path); ok {
 				fmt.Fprintln(stdout, public)
 			}
@@ -252,10 +368,16 @@ func run(args []string, stdout io.Writer) error {
 	}
 	type artifact struct{ path, body, report string }
 	var artifacts []artifact
+	if mcp {
+		path, body := namespacedOutput(backend{lang: "go", path: "go/rec/mcp.go"}, def.Namespaces, genMCP(def))
+		artifacts = append(artifacts, artifact{path, banner("go", args[0], body), "mcp " + path + "\n"})
+		metadataPath := strings.TrimSuffix(path, ".go") + ".json"
+		artifacts = append(artifacts, artifact{metadataPath, mcpManifest(def), "mcp " + metadataPath + "\n"})
+	}
 	// Validate and render the entire request before changing any output. A
 	// misspelt or unsupported backend must not leave a plausible partial build.
 	for _, b := range backends {
-		if len(want) > 0 && !contains(want, b.lang) {
+		if skips(b, want) {
 			continue
 		}
 		if err := validateIncludes(def, b.lang); err != nil {
@@ -269,10 +391,13 @@ func run(args []string, stdout io.Writer) error {
 		}
 	}
 	for _, b := range backends {
-		if len(want) > 0 && !contains(want, b.lang) {
+		if skips(b, want) {
 			continue
 		}
-		body := emitIncluded(b, def)
+		body, err := emitIncluded(b, def)
+		if err != nil {
+			return err
+		}
 		entire := body
 		if def != whole {
 			verificationDefinition := whole
@@ -281,9 +406,14 @@ func run(args []string, stdout io.Writer) error {
 				// declared refusal words, including the service frame's grammar.
 				verificationDefinition = serviceTypes(whole)
 			}
-			entire = emitIncluded(b, verificationDefinition)
+			entire, err = emitIncluded(b, verificationDefinition)
+			if err != nil {
+				return err
+			}
 		}
-		if err := b.verify(emitted{def, b.lang, includeImports(b, def), body, args[0], entire}); err != nil {
+		verification := *def
+		verification.VerificationWhole = whole
+		if err := b.verify(emitted{&verification, b.lang, includeImports(b, def), body, args[0], entire}); err != nil {
 			return err
 		}
 		if b.lang == "rust" {
@@ -292,6 +422,37 @@ func run(args []string, stdout io.Writer) error {
 			body = rsPrune(body)
 		}
 		path, body := namespacedOutput(b, def.Namespaces, body)
+		if b.lang == "go" && clientAliases {
+			root, err := filepath.Abs(filepath.Dir(args[0]))
+			if err != nil {
+				return err
+			}
+			sourceDir := root
+			for {
+				if _, err := os.Stat(filepath.Join(root, "go.work")); err == nil {
+					break
+				}
+				parent := filepath.Dir(root)
+				if parent == root {
+					return fmt.Errorf("client aliases require a repository go.work")
+				}
+				root = parent
+			}
+			rel, err := filepath.Rel(filepath.Join(root, "openabstractions-flat"), filepath.Join(sourceDir, path))
+			if err != nil {
+				return err
+			}
+			freshPath := "github.com/openabstractions/" + filepath.ToSlash(filepath.Dir(rel))
+			if goAlias != "" {
+				freshPath = goAlias
+			}
+			aliases, err := goClientAliases(root, filepath.Join(sourceDir, "go/client"), freshPath, body, clientRetained)
+			if err != nil {
+				return fmt.Errorf("client aliases: %w", err)
+			}
+			text := banner("go", args[0], aliases)
+			artifacts = append(artifacts, artifact{"go/client/contract.go", text, "go client aliases\n"})
+		}
 		if b.lang == "go" && goAlias != "" {
 			body, err = goExportAliases(body, goAlias)
 			if err != nil {
@@ -302,6 +463,19 @@ func run(args []string, stdout io.Writer) error {
 			text := banner(b.lang, args[0], publicModules[b.lang].emit(def, body))
 			artifacts = append(artifacts, artifact{public, text,
 				fmt.Sprintf("%-12s %-16s %5d lines  %s\n", b.lang, public, strings.Count(text, "\n"), "public names")})
+		}
+		if b.lang == "jsonschema" {
+			records := jsonSchemaRecords(def)
+			files := make([]string, 0, len(records))
+			for f := range records {
+				files = append(files, f)
+			}
+			sort.Strings(files)
+			for _, f := range files {
+				p := jsonSchemaPath(path, f)
+				artifacts = append(artifacts, artifact{p, records[f],
+					fmt.Sprintf("%-12s %s  %d lines  %s\n", b.lang, p, strings.Count(records[f], "\n"), "record schema")})
+			}
 		}
 		if b.lang == "javascript" {
 			decl, err := genJSTypes(def, body)
@@ -314,6 +488,11 @@ func run(args []string, stdout io.Writer) error {
 				fmt.Sprintf("%-12s %-16s %5d lines  %s\n", b.lang, typesPath, strings.Count(text, "\n"), "declarations")})
 		}
 		body = banner(b.lang, args[0], body)
+		if b.lang == "jsonschema" {
+			artifacts = append(artifacts, artifact{path, body,
+				fmt.Sprintf("%-12s %s  %d lines  %s\n", b.lang, path, strings.Count(body, "\n"), "record index")})
+			continue
+		}
 		artifacts = append(artifacts, artifact{path, body,
 			fmt.Sprintf("%-12s %-16s %5d lines  %s\n", b.lang, path, strings.Count(body, "\n"), carries(whole, def))})
 	}
@@ -342,4 +521,14 @@ func carries(whole, def *Definition) string {
 func fail(err error) {
 	fmt.Fprintln(os.Stderr, "gen:", err)
 	os.Exit(1)
+}
+
+// skips reports a backend this run leaves out: one not named, or jsonschema
+// when no backend is named, since its record schemas are an artefact a target
+// asks for by name.
+func skips(b backend, want []string) bool {
+	if len(want) == 0 {
+		return b.lang == "jsonschema"
+	}
+	return !contains(want, b.lang)
 }

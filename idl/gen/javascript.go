@@ -80,46 +80,14 @@ function strs(out, v, depth) {
 
 const isWs = (c) => c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0d;
 
+// raw writes an opaque value's bytes as they are ([DEF-A3]).
 function raw(out, s, depth) {
   const b = typeof s === "string" ? ENC.encode(s) : s;
-  let i = 0;
-  while (i < b.length) {
-    const c = b[i];
-    if (isWs(c)) { i++; continue; }
-    if (c === 0x22) {
-      let j = i + 1;
-      while (j < b.length) {
-        if (b[j] === 0x5c) { j += 2; continue; }
-        if (b[j] === 0x22) { j++; break; }
-        j++;
-      }
-      for (let k = i; k < j; k++) out.byte(b[k]);
-      i = j;
-    } else if (c === 0x7b || c === 0x5b) {
-      out.byte(c);
-      i++;
-      let j = i;
-      while (j < b.length && isWs(b[j])) j++;
-      if (j < b.length && (b[j] === 0x7d || b[j] === 0x5d)) { out.byte(b[j]); i = j + 1; }
-      else { depth++; out.byte(0x0a); pad(out, depth); }
-    } else if (c === 0x7d || c === 0x5d) {
-      depth--;
-      out.byte(0x0a);
-      pad(out, depth);
-      out.byte(c);
-      i++;
-    } else if (c === 0x2c) {
-      out.ascii(",\n");
-      pad(out, depth);
-      i++;
-    } else if (c === 0x3a) {
-      out.ascii(": ");
-      i++;
-    } else {
-      out.byte(c);
-      i++;
-    }
-  }
+  // Whitespace around the value is not part of it.
+  let i = 0, j = b.length;
+  while (i < j && isWs(b[i])) i++;
+  while (j > i && isWs(b[j - 1])) j--;
+  for (let k = i; k < j; k++) out.byte(b[k]);
 }
 
 // A JavaScript string sorts by UTF-16 code unit, which puts U+1D11E before
@@ -573,6 +541,7 @@ func jsInternalRecord(s *Definition, name string) bool { return pyInternalRecord
 func jsStem(name string) string { return pascalCase(name) }
 
 func jsDecoder(b *strings.Builder, s *Definition) {
+	emitMaxEncodedReader(b, s, "javascript")
 	for _, st := range s.Structs {
 		export := "export "
 		if jsInternalRecord(s, st.Name) {
@@ -609,8 +578,13 @@ func jsDecoder(b *strings.Builder, s *Definition) {
 
 func jsStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 	fmt.Fprintf(b, "\nfunction read%s(r) {\n", jsStem(st.Name))
-	b.WriteString("  if (r.at() !== 0x7b) throw r.refuse(\"wrong_type\");\n  r.enter();\n  r.pos++;\n")
+	b.WriteString("  if (r.at() !== 0x7b) throw r.refuse(\"wrong_type\");\n")
+	emitMaxEncodedDecode(b, st, "javascript")
+	b.WriteString("  r.enter();\n  r.pos++;\n")
 	fmt.Fprintf(b, "  const v = new%s();\n  let seen = 0;\n  r.ws();\n", jsStem(st.Name))
+	if tracksSkippedKeys(s, st) {
+		b.WriteString("  const unknownKeys = new Set();\n")
+	}
 	b.WriteString("  if (r.at() !== 0x7d) {\n    for (;;) {\n      r.ws();\n")
 	b.WriteString("      if (r.at() !== 0x22) throw r.refuse(\"malformed\");\n      const key = r.string();\n")
 	b.WriteString("      r.ws();\n      if (r.at() !== 0x3a) throw r.refuse(\"malformed\");\n      r.pos++;\n      r.ws();\n")
@@ -636,6 +610,9 @@ func jsStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 		}
 		b.WriteString("        v.extras[key] = r.rawValue();\n")
 	} else {
+		if tracksSkippedKeys(s, st) {
+			b.WriteString("        if (unknownKeys.has(key)) throw r.refuse(\"duplicate_key\");\n        unknownKeys.add(key);\n")
+		}
 		b.WriteString("        r.skipValue();\n")
 	}
 	b.WriteString("      }\n      r.ws();\n      if (r.at() !== 0x2c) break;\n      r.pos++;\n    }\n  }\n")
@@ -645,11 +622,15 @@ func jsStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 	}
 	emitEqualities(b, st, "javascript", false)
 	emitEnumChecks(b, st, "javascript", false)
+	configValueDecodeCheck(b, s, st, "javascript")
 	b.WriteString("  return v;\n}\n")
 }
 
 func jsDefault(s *Definition, f Field) string {
-	if f.Omit == "absent" && (s.IsStruct(f.Type) || enumAbsent(f) || f.Type == "binary") {
+	if scalarAbsent(f) {
+		return "undefined"
+	}
+	if f.Omit == "absent" && (s.IsStruct(f.Type) || enumAbsent(f) || f.Type == "binary" || scalarAbsent(f)) {
 		return "null"
 	}
 	switch f.Type {
@@ -824,7 +805,7 @@ func genJS(s *Definition) string {
 	if s.HasRepeated() {
 		prelude += jsEncList
 	}
-	b.WriteString(strings.NewReplacer("@INDENT@", strconv.Itoa(s.Encoding.Indent)).Replace(prelude))
+	b.WriteString(strings.NewReplacer("@INDENT@", strconv.Itoa(s.Encoding.Indent)).Replace(opaqueLayout(s, "javascript", prelude)))
 	jsVocabulary(&b, s)
 	for _, st := range s.Structs {
 		if !s.Envelope(st.Name) {
@@ -864,8 +845,10 @@ func genJS(s *Definition) string {
 		b.WriteString(jsPreserve)
 	}
 	jsDecoder(&b, s)
+	jsJSONAPI(&b, s)
 	jsProtocol(&b, s)
 	jsService(&b, s)
+	configCatalogueJS(&b, s)
 	return b.String()
 }
 
@@ -896,6 +879,18 @@ func jsVocabulary(b *strings.Builder, s *Definition) {
 		}
 	}
 	for _, c := range s.Consts {
+		if c.StringScalar() {
+			fmt.Fprintf(b, "\nexport const %s = %s;\n", camelCase(c.Name), constantString(c.Strings[0], "javascript"))
+			continue
+		}
+		if c.Scalar() {
+			suffix := ""
+			if c.Type == "i64" {
+				suffix = "n"
+			}
+			fmt.Fprintf(b, "\nexport const %s = %d%s;\n", camelCase(c.Name), c.Ints[0], suffix)
+			continue
+		}
 		fmt.Fprintf(b, "\nexport const %s = [", camelCase(c.Name))
 		if c.Type == "list<i32>" {
 			for i, n := range c.Ints {
@@ -923,6 +918,8 @@ func jsEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 	} else {
 		fmt.Fprintf(b, "\nfunction write%s(out, v, depth) {\n", jsStem(st.Name))
 	}
+	emitMaxEncodedStart(b, st, "javascript")
+	emitScalarPresenceTypes(b, st, "javascript")
 	emitEqualities(b, st, "javascript", true)
 	emitEnumChecks(b, st, "javascript", true)
 	b.WriteString("  out.byte(0x7b);\n")
@@ -956,6 +953,7 @@ func jsEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 		if f.Omit != "never" {
 			b.WriteString("  }\n")
 		}
+		emitMaxEncodedEnd(b, st, "javascript")
 	}
 	if st.PreservesUnknown() {
 		fmt.Fprintf(b, "  first = extraFields(out, v.extras, [%s], depth, first);\n", quotedFieldNames(st))
@@ -968,11 +966,16 @@ func jsEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 			b.WriteString("  if (!first) { out.byte(0x0a); pad(out, depth); }\n")
 		}
 	}
-	b.WriteString("  out.byte(0x7d);\n}\n")
+	b.WriteString("  out.byte(0x7d);\n")
+	emitMaxEncodedEnd(b, st, "javascript")
+	b.WriteString("}\n")
 }
 
 func jsPresent(s *Definition, f Field, e string) string {
-	if f.Omit == "absent" && (s.IsStruct(f.Type) || enumAbsent(f) || f.Type == "binary") {
+	if scalarAbsent(f) {
+		return e + " !== undefined"
+	}
+	if f.Omit == "absent" && (s.IsStruct(f.Type) || enumAbsent(f) || f.Type == "binary" || scalarAbsent(f)) {
 		return e + " !== undefined && " + e + " !== null"
 	}
 	switch f.Type {

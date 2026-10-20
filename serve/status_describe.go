@@ -13,7 +13,6 @@ import (
 
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	"github.com/openabstractions/abstraction-facade/go/client"
-	"github.com/openabstractions/abstraction-identity/listen"
 )
 
 // notAnEndpoint is what status describe says when its argument is neither a
@@ -79,7 +78,10 @@ func statusDescribe(args []string, output, diagnostics io.Writer) error {
 	}
 	endpoint := positional[0]
 	if providerEndpoint.MatchString(endpoint) {
-		endpoint = listen.Endpoint(endpoint)
+		endpoint, err = providerEndpointPath(endpoint)
+		if err != nil {
+			return &exitError{exitNotResolved, fmt.Errorf("status describe endpoint: %w", err)}
+		}
 	} else if !looksLikeEndpointPath(endpoint) {
 		return flagMistake(diagnostics, "status describe", statusDescribeUsage, notAnEndpoint)
 	}

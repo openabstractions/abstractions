@@ -1,0 +1,27 @@
+# requires: fileid
+#
+# The three name comparisons (ID-F7): a leaf beneath its folder keeps one key
+# through a folder link and across a rename-over; a pending name keeps one
+# key through a link and once it exists; a collision is the file system's.
+folder real
+link l real
+leaf real/counter.json l/counter.json
+file real/counter.json
+leaf real/counter.json l/counter.json
+replace real/counter.json
+leaf real/counter.json l/counter.json
+leaf real/counter.json real/other.json
+pending real/new/a.txt l/new/a.txt
+pending real/new/a.txt real/new/b.txt
+file real/new/a.txt
+pending real/new/a.txt l/new/a.txt
+create real counter.json
+
+# expect 3: ok same [ID-F7]
+# expect 5: ok same [ID-F7]
+# expect 7: ok same [ID-F7]
+# expect 8: ok different [ID-F7]
+# expect 9: ok same [ID-F7]
+# expect 10: ok different [ID-F7]
+# expect 12: ok same [ID-F7]
+# expect 13: refused exists [ID-F7]

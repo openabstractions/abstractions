@@ -20,14 +20,15 @@ import (
 
 	asks "github.com/openabstractions/abstraction-asks/go"
 	asksclient "github.com/openabstractions/abstraction-asks/go/client"
-	"github.com/openabstractions/abstraction-download/go/powershell"
+	cas "github.com/openabstractions/abstraction-cas/go"
+	"github.com/openabstractions/abstraction-facade/go-core/powershell"
 	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	"github.com/openabstractions/abstraction-facade/go/client"
+	"github.com/openabstractions/abstraction-facade/go/programfiles"
 	"github.com/openabstractions/abstraction-facade/go/supervision"
 	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-identity/go/privatedir"
 	"github.com/openabstractions/abstraction-identity/listen"
-	"github.com/openabstractions/abstraction-inference/go/providerhost/enginefiles"
 	"github.com/openabstractions/abstraction-provider-kit/go/sandbox"
 	projectwire "github.com/openabstractions/abstractions/serve/go/opencode/session"
 	"golang.org/x/sys/windows"
@@ -99,32 +100,15 @@ func openCodeNonce() (string, error) {
 	return hex.EncodeToString(value[:]), nil
 }
 
-func openCodeWriteRecord(path string, value any) (err error) {
+// A session record or guest config replaces its file as indented JSON through
+// the atomic state owner. Its lock file sits beside the file; no reader lists
+// the authority or guest config folder.
+func openCodeWriteRecord(path string, value any) error {
 	raw, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		return err
 	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".session-*")
-	if err != nil {
-		return err
-	}
-	name := temporary.Name()
-	defer func() {
-		if err != nil {
-			_ = temporary.Close()
-		}
-		_ = os.Remove(name)
-	}()
-	if _, err = temporary.Write(append(raw, '\n')); err != nil {
-		return err
-	}
-	if err = temporary.Sync(); err != nil {
-		return err
-	}
-	if err = temporary.Close(); err != nil {
-		return err
-	}
-	return os.Rename(name, path)
+	return cas.Change(path, func([]byte) ([]byte, error) { return append(raw, '\n'), nil })
 }
 
 func (s *openCodeNativeSession) save() error { return openCodeWriteRecord(s.recordPath, s.record) }
@@ -146,7 +130,7 @@ func openCodeRuntime(ctx context.Context, options openCodeSessionOptions, self i
 	if !filepath.IsAbs(program) || identity.LocalPath(program) != nil {
 		return bootstrap.Selection{}, errors.New("OpenCode: absolute local runtime program required")
 	}
-	if err := enginefiles.CheckPlainPath(program); err != nil {
+	if err := programfiles.CheckPlainPath(program); err != nil {
 		return bootstrap.Selection{}, err
 	}
 	return bootstrap.Selection{Endpoint: options.endpoint, EndpointFromEnvironment: true,
@@ -275,7 +259,7 @@ func (s *openCodeNativeSession) authorize(call *listen.FramedCall) error {
 	if err != nil {
 		return err
 	}
-	user, err := peer.User.AtLeast(identity.ProofKernel)
+	subject, err := identity.SubjectOf(peer, identity.Need{User: identity.ProofKernel})
 	if err != nil {
 		return err
 	}
@@ -287,7 +271,7 @@ func (s *openCodeNativeSession) authorize(call *listen.FramedCall) error {
 	if err != nil {
 		return err
 	}
-	if user.Kind != "windows" || user.SID != s.record.Account || process.Recycled || process.StartTime.IsZero() {
+	if subject.AccountKind != "windows" || subject.Account != s.record.Account || process.Recycled || process.StartTime.IsZero() {
 		return errors.New("OpenCode: native account/process instance refused")
 	}
 	id, err := identity.FileKey(program)
@@ -522,20 +506,39 @@ func (s *openCodeNativeSession) listen(endpoint string) (func() error, error) {
 			}()
 		}
 	}()
-	var once sync.Once
-	var closeErr error
+	return closeSessionAdmission(func() error {
+		cancel()
+		err := listener.Close()
+		<-acceptDone
+		workers.Wait()
+		return err
+	}, restore, release), nil
+}
+
+// Stop and join every listener/call before ending either admission. A failed
+// query-lease restoration retains its callback for the next explicit close.
+func closeSessionAdmission(stop, restore func() error, release func()) func() error {
+	var mu sync.Mutex
+	var stopped, restored, released bool
+	var stopErr error
 	return func() error {
-		once.Do(func() {
-			cancel()
-			closeErr = listener.Close()
-			<-acceptDone
-			workers.Wait()
-			// Every listener and in-flight call is closed before admission ends.
-			closeErr = errors.Join(closeErr, restore())
+		mu.Lock()
+		defer mu.Unlock()
+		if !stopped {
+			stopErr = stop()
+			stopped = true
+		}
+		var restoreErr error
+		if !restored {
+			restoreErr = restore()
+			restored = restoreErr == nil
+		}
+		if !released {
 			release()
-		})
-		return closeErr
-	}, nil
+			released = true
+		}
+		return errors.Join(stopErr, restoreErr)
+	}
 }
 
 func openCodeGuestEnvironment(installed *installedOpenCode, data, endpoint, ownerProgram, account, launchID string, runtime bootstrap.Selection) ([]string, error) {
@@ -646,7 +649,7 @@ func sandboxInstallation(options openCodeSessionOptions, diagnostics io.Writer) 
 			return nil, errors.New("sandbox: local official installation paths required")
 		}
 	}
-	if err := enginefiles.CheckPlainPath(installed.Program); err != nil {
+	if err := programfiles.CheckPlainPath(installed.Program); err != nil {
 		return nil, err
 	}
 	// The AppContainer profile the runtime's endpoint admission
@@ -690,6 +693,11 @@ func startOpenCodeSession(options openCodeSessionOptions, output, diagnostics io
 	if err != nil {
 		return err
 	}
+	releaseSettings, err := selectedStateGuard(ctx, options.state)
+	if err != nil {
+		return err
+	}
+	defer releaseSettings()
 	selection, err := openCodeRuntime(ctx, options, self)
 	if err != nil {
 		return err

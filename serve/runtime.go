@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -14,6 +16,8 @@ import (
 
 	casapi "github.com/openabstractions/abstraction-cas/go/api"
 	config "github.com/openabstractions/abstraction-config/go"
+	configservice "github.com/openabstractions/abstraction-config/go/service"
+	archive "github.com/openabstractions/abstraction-download/go/archive"
 	downloadserve "github.com/openabstractions/abstraction-download/go/serve"
 	"github.com/openabstractions/abstraction-facade/go-core/protected"
 	"github.com/openabstractions/abstraction-facade/go/bootstrap"
@@ -21,7 +25,9 @@ import (
 	jobapi "github.com/openabstractions/abstraction-job/go/abstraction/job/acceptance"
 	"github.com/openabstractions/abstraction-job/go/acceptanceprovider"
 	logging "github.com/openabstractions/abstraction-logging/go"
+	logservice "github.com/openabstractions/abstraction-logging/go/service"
 	model "github.com/openabstractions/abstraction-model/go"
+	"github.com/openabstractions/abstraction-provider-kit/go/modelplace"
 )
 
 type runtimeFlags struct {
@@ -38,7 +44,16 @@ type runtimeFlags struct {
 	downloadNASRoot                            string
 	isolated                                   string
 	gateway                                    string
-	operatorProgram                            string
+	// Only the in-process isolated test fixture sets this; no CLI/config field.
+	// The state guard must prove private ownership before composition can bind.
+	gatewayEphemeral    bool
+	operatorProgram     string
+	remoteConfiguration func(context.Context) (*runtimeRemoteConfig, error)
+	// Set only after runRuntimeReady proves the effective state disjoint and
+	// acquires its guard; CLI text and endpoint spelling do not set this bit.
+	privateState bool
+	// Private composition seams; CLI callers retain the bootstrap owners.
+	endpointFor, installedEndpointFor func(string) (string, error)
 }
 
 const runtimeUsage = `Usage: openabstractions serve runtime [options]
@@ -66,7 +81,7 @@ install or register itself with the OS.
   --jobs-owner NAME         stable logical owner for --jobs-root; required
                             together
   --jobs-endpoint EP        job service endpoint, same form as --endpoint
-  --jobs-run-downloads      execute accepted anonymous HTTP(S) downloads
+  --jobs-run-downloads      execute accepted HTTP(S) downloads
                             inside the service-owned jobs root
   --jobs-download-backend B download provider: native or nas (managed jobs
                             only)
@@ -93,15 +108,27 @@ install or register itself with the OS.
 To run beside an installed runtime, give one name and one directory:
   openabstractions serve runtime --isolated <name> --state-dir <absolute dir>
 It prints the ABSTRACTION_RUNTIME_ENDPOINT value for its clients.
+
+To require explicit download grants for ordinary clients, turn off the download
+account default in this isolated runtime, then grant the chosen program:
+  openabstractions rights defaults --off download --endpoint <isolated-endpoint>
+  openabstractions rights grant --program <absolute-app> --action abstraction.job/acceptance.submit --resource job:download --endpoint <isolated-endpoint>
+The grant uses the existing Rights policy; it does not grant another job kind.
+
 On macOS, add --xpc for native Program proof. Register its MachServices in
 the same user's launchd domain as com.openabstractions.isolated.<name>.<service-v1>.
 
-Exit codes: 0 a supervised runtime told to stop, 1 usage or startup failure,
+Exit codes: 0 a supervised runtime told to stop, 1 an unexpected argument, a
+refused value or a startup failure, 2 an unknown flag or a malformed value,
 4 this process sees a packaged app's private copy of AppData.
 `
 
 func parseRuntime(args []string, output io.Writer) (runtimeFlags, error) {
-	var options runtimeFlags
+	return parseRuntimeWithEndpoints(args, output, nil, nil)
+}
+
+func parseRuntimeWithEndpoints(args []string, output io.Writer, endpointFor, installedEndpointFor func(string) (string, error)) (runtimeFlags, error) {
+	options := runtimeFlags{endpointFor: endpointFor, installedEndpointFor: installedEndpointFor}
 	if containsHelp(args) {
 		if _, err := io.WriteString(output, runtimeUsage); err != nil {
 			return options, err
@@ -129,7 +156,7 @@ func parseRuntime(args []string, output io.Writer) (runtimeFlags, error) {
 	flags.StringVar(&options.jobRoot, "jobs-root", "", "explicit service-owned job store; requires --jobs-owner")
 	flags.StringVar(&options.jobOwner, "jobs-owner", "", "stable logical owner for --jobs-root; required together")
 	flags.StringVar(&options.jobEndpoint, "jobs-endpoint", "", "job service endpoint, same form as --endpoint")
-	flags.BoolVar(&options.executeDownloads, "jobs-run-downloads", false, "execute accepted anonymous HTTP(S) downloads inside the service-owned jobs root")
+	flags.BoolVar(&options.executeDownloads, "jobs-run-downloads", false, "execute accepted HTTP(S) downloads inside the service-owned jobs root")
 	flags.StringVar(&options.downloadBackend, "jobs-download-backend", "", "download provider: native or nas (managed jobs only)")
 	flags.StringVar(&options.downloadNASRoot, "jobs-download-nas-root", "", "override the nas_store configuration setting for the NAS download provider")
 	flags.StringVar(&options.gateway, "gateway", "", "open the inference gateway window on 127.0.0.1:<port> for programs holding a local key (default: closed)")
@@ -172,7 +199,7 @@ func parseRuntime(args []string, output io.Writer) (runtimeFlags, error) {
 		return options, err
 	}
 	if options.isolated != "" {
-		derive := bootstrap.Endpoint
+		derive := options.bootstrapEndpoint
 		if options.xpc {
 			derive = options.defaultEndpoint
 		}
@@ -185,7 +212,7 @@ func parseRuntime(args []string, output io.Writer) (runtimeFlags, error) {
 	if err := checkRuntimeTransport(options); err != nil {
 		return options, err
 	}
-	if _, err := isolatedOperatorProgram(options); err != nil {
+	if _, err := isolatedOperatorProgramWithState(options, false); err != nil {
 		return options, err
 	}
 	return options, nil
@@ -358,7 +385,43 @@ func runRuntime(ctx context.Context, options runtimeFlags) error {
 	return runRuntimeReady(ctx, options, nil)
 }
 
+// runtimeModelEndpoint is the one name of the model listener: the explicit
+// --model-endpoint, else the runtime namespace's model companion.
+func runtimeModelEndpoint(options runtimeFlags) (string, error) {
+	if options.modelEndpoint != "" {
+		return options.modelEndpoint, nil
+	}
+	return options.companionEndpoint("model-v1", "", "model")
+}
+
 func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() error) error {
+	var receive func(string) error
+	if ready != nil {
+		receive = func(string) error { return ready() }
+	}
+	return runRuntimeReadyAddress(ctx, options, receive)
+}
+
+// runRuntimeReadyAddress is the same startup owner with the actual gateway
+// listener address available to private in-process readiness receiving.
+func runRuntimeReadyAddress(ctx context.Context, options runtimeFlags, ready func(string) error) error {
+	ctx, cancelRuntime := context.WithCancel(ctx)
+	defer cancelRuntime()
+	releaseSettings, err := runtimeSettingsGuard(ctx, options)
+	if err != nil {
+		return err
+	}
+	defer releaseSettings()
+	// The instance claim comes before retained logging and every listener: a
+	// runtime that loses it opens and binds nothing (RUN-R11).
+	releaseClaim, err := claimRuntime(ctx, options)
+	if err != nil {
+		return err
+	}
+	defer releaseClaim()
+	options.privateState = options.stateDir != ""
+	speakRuntime(options)
+	useHostLogLines()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -379,7 +442,7 @@ func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() err
 		state := options.stateDir
 		if state == "" {
 			var err error
-			state, err = runtimeStateDir(runtime.GOOS, os.Getenv, os.UserHomeDir)
+			state, err = defaultRuntimeStateDir()
 			if err != nil {
 				return err
 			}
@@ -387,32 +450,38 @@ func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() err
 		if !filepath.IsAbs(state) {
 			return fmt.Errorf("runtime: absolute state directory required")
 		}
-		options.jobRoot = filepath.Join(state, "jobs")
+		options.jobRoot = modelplace.JobStoreIn(state)
 		options.executeDownloads = true
+		// The download service checks the person's download archive, which
+		// the Panel sets, before the network, resumes the copies queued for
+		// it, and hashes the archive's plain-named files in the background
+		// [DL-R44].
+		if dir, err := archive.StateFor(options.stateDir); err != nil {
+			complain("runtime: download archive:", err)
+		} else {
+			archive.UseState(dir)
+			archive.ResumeWrites()
+			archive.StartInventory()
+		}
 	}
 	sink, closeSink, err := runtimeLogSink(options.out)
-	if err != nil {
-		complain("runtime logging:", err)
+	if err := composeCollision("runtime logging:", err); err != nil {
+		return err
 	}
 	if closeSink != nil {
 		defer closeSink.Close()
 	}
 	var executor acceptanceprovider.Executor
-	report := func(err error) { complain("runtime:", err) }
-	if (managed || options.executeDownloads) && options.downloadBackend == downloadBackendNAS {
-		options.downloadNASRoot, err = runtimeNASStore(options)
-		if err != nil {
-			return err
-		}
-	}
-	if managed {
-		if executor, err = managedDownloadExecutor(options.jobRoot, report, options.downloadBackend, options.downloadNASRoot); err != nil {
+	var restartState *configservice.RestartState
+	report := runtimeReporter(os.Stderr)
+	// A managed runtime always executes downloads (set above).
+	if options.executeDownloads {
+		if executor, err = configuredDownloadExecutor(options, report); err != nil {
 			return fmt.Errorf("runtime jobs: %w", err)
 		}
-	} else if options.executeDownloads {
-		executor, err = managedDownloadExecutor(options.jobRoot, report, options.downloadBackend, options.downloadNASRoot)
-		if err != nil {
-			return fmt.Errorf("runtime jobs: %w", err)
+		if nas, ok := executor.(*runtimeNASExecutor); ok {
+			restartState = new(configservice.RestartState)
+			nas.admit = func(selected string) error { return admitRuntimeNASStore(restartState, selected) }
 		}
 	}
 	var registry *model.Registry
@@ -424,26 +493,31 @@ func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() err
 			registries = append(registries, r.Registry())
 		}
 		// Explicit bootstrap endpoints also isolate companion model listeners.
-		if options.modelEndpoint == "" && options.endpoint != "" {
-			options.modelEndpoint = options.endpoint + "-model"
+		if options.endpoint != "" {
+			if options.modelEndpoint, err = runtimeModelEndpoint(options); err != nil {
+				return err
+			}
 		}
 	}
 	rightsState, err := composeRights(options)
-	if err != nil {
-		complain("runtime rights:", err)
+	defer rightsState.close()
+	if err := composeCollision("runtime rights:", err); err != nil {
+		return err
 	}
 	credentials, err := composeCredentials(options, rightsState, report)
-	if err != nil {
-		complain("runtime credentials:", err)
-	}
-	// Composed listeners also close on any return before host.Listen owns them.
+	// The deferred closes unwind composed applications, inference and credentials
+	// on return. host.Listen also closes hosts it has taken over when it fails;
+	// these deferred closes still run.
 	defer credentials.close()
+	if err := composeCollision("runtime credentials:", err); err != nil {
+		return err
+	}
 	executor = credentials.executor(executor)
 	hostOptions := host.Options{Endpoint: options.endpoint, LogEndpoint: options.logEndpoint, ConfigEndpoint: options.configEndpoint, Sink: sink,
 		ModelRegistry: registry, ModelEndpoint: options.modelEndpoint,
 		JobRoot: options.jobRoot, JobOwner: options.jobOwner, JobEndpoint: options.jobEndpoint,
 		JobExecutor: executor, ManagedJobs: managed,
-		OnError: func(err error) { fmt.Fprintln(os.Stderr, "runtime:", err) },
+		OnError: func(err error) { writeHostLogLine(os.Stderr, "runtime: "+err.Error()) },
 	}
 	hostOptions.ConfigStore, hostOptions.ConfigUserKey = isolatedConfigStore(options.stateDir)
 	// A runtime with its own configuration file reads no machine rung either.
@@ -452,7 +526,7 @@ func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() err
 		// The installed runtime's default store gets its observation source
 		// from abstraction-config/go/service.Listen itself; a state-dir-scoped
 		// store is this process's own file, so this composition supplies one.
-		hostOptions.ConfigObservationSource = fileConfigObservationSource(hostOptions.ConfigUserKey)
+		hostOptions.ConfigObservationSource = configservice.FileObservation(hostOptions.ConfigUserKey)
 	}
 	credentials.configure(&hostOptions)
 	selfLogs, err := runtimeAttributedLogWriter(sink)
@@ -460,60 +534,90 @@ func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() err
 		return fmt.Errorf("runtime self logging: %w", err)
 	}
 	inference, err := composeInference(options, credentials, selfLogs, report)
-	if err != nil {
-		complain("runtime inference:", err)
-	}
 	defer inference.close()
+	if err := composeCollision("runtime inference:", err); err != nil {
+		return err
+	}
 	executor = composeInferenceJobs(executor, inference, credentials, report)
 	hostOptions.JobExecutor = executor
 	routerEndpoint, err := runtimeRouterEndpoint(options)
 	if err != nil {
-		credentials.close()
-		inference.close()
 		return err
 	}
 	resourceEndpoint, err := resourceTableEndpoint(options)
 	if err != nil {
-		credentials.close()
-		inference.close()
 		return err
 	}
 	inference.configure(&hostOptions, routerEndpoint, resourceEndpoint)
 	questions, err := composeAsks(options, rightsState, report)
-	if err != nil {
-		complain("runtime asks:", err)
+	if err := composeCollision("runtime asks:", err); err != nil {
+		return err
 	}
 	questions.configure(&hostOptions)
-	questions.useTierFacts(inference.hosts(), registries)
+	inference.configureStorageRemoval(&hostOptions, questions)
+	questions.useLogs(selfLogs)
+	rightsState.useLogs(selfLogs)
+	questions.useTierFacts(inference.hosts(), inference.managedHost(), registries)
 	// The protected Security-log path (logging LOG-N1, facade FAC-H2) exists
 	// only beside a trusted machine-wide helper; elsewhere the denial stays.
 	protectedSources := composeProtected(options, questions, protected.OwnImage)
 	if protectedSources != nil {
 		hostOptions.LogProtectedSources = protectedSources
 	}
+	rightsState.requireApplicationRoles()
 	applications, applicationsEndpoint, appErr := composeApplications(options, rightsState, report)
-	if appErr != nil {
-		complain("runtime applications:", appErr)
+	if appErr == nil && applications != nil {
+		if err := applications.configureMessageAudit(selfLogs); err != nil {
+			applications.Close()
+			applications, appErr = nil, err
+		}
+	}
+	if err := composeCollision("runtime applications:", appErr); err != nil {
+		return err
 	}
 	if applications != nil {
 		defer applications.Close()
+		applications.messageNotices = questions
+		if err := composeCollision("runtime native applications:", enableApplicationV3(ctx, applications, rightsState, questions, sink)); err != nil {
+			return err
+		}
 	}
 	configureApplications(&hostOptions, applications, applicationsEndpoint)
+	if inference != nil {
+		bindSetupCheck(applications, hostOptions.Router, hostOptions.ResourceTable, hostOptions.ResourceLeases, inference.operator)
+	}
 	if applications != nil {
 		// A program that registered itself is asked about in the native
 		// prompt (runtime_self_registered.go).
-		questions.keepSelfRegistered(ctx, applications.directory)
+		var review *shippedProgramReview
+		if inference != nil {
+			review = inference.programReview
+		}
+		questions.keepSelfRegisteredWithProgramReview(ctx, applications.directory, review)
+		// The person's Set up answer keeps the apps Setup's question named.
+		applications.setup.resumeSetupKeep(ctx, applications.directory, report)
+		if inference != nil && inference.providers != nil && applications.v3 != nil {
+			inference.providers.readyRegistrationDirectory.Store(applications.directory)
+		}
 	}
-	var composedActions []string
+	stopApplicationsLogon := startApplicationsLogon(ctx, options, applications, reconcileRuntimeLogon, report)
+	defer stopApplicationsLogon()
+	composedActions := []string{remoteServeAction, host.ConfigKeyReadAction}
 	if hostOptions.JobRoot != "" {
 		composedActions = append(composedActions, jobapi.ResourceActions...)
 	}
 	gateByRights(&hostOptions, rightsState.decider())
+	configureRuntimeTypedConfig(&hostOptions, applications, rightsState, options.out)
+	hostOptions.ConfigTyped.RestartState = restartState
+	configureRuntimeMessageStartSettings(applications, options)
 	gateJobStanding(&hostOptions, rightsState)
 	rightsState.configure(&hostOptions, composedActions)
 	if rightsState != nil {
 		if err := rightsState.install(hostOptions.RightsActions, installationRules(hostOptions, registries)); err != nil {
 			complain("runtime rights:", err)
+		}
+		if err := rightsState.installStorageRemovalRules(hostOptions); err != nil {
+			complain("runtime storage removal:", err)
 		}
 		// A declaration that names a card resource loads weights into it
 		// itself, so its own program holds the resource; the operators' rules
@@ -521,29 +625,81 @@ func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() err
 		// declarations, already read once the runtime opens, and a provider
 		// declared while the runtime is running gets the rule when its
 		// declaration lands, not at the next start.
+		// An inventory source's declaration names the stores it reads; its
+		// own program provides them. The installation's local-stores
+		// declaration reaches the runtime only this way.
 		if inference != nil && inference.providers != nil {
-			written := writeCardHoldRules(inference.operator, inference.providers)
-			written()
-			inference.providers.Watch(written)
+			for _, written := range []func(){
+				writeCardHoldRules(inference.operator, inference.providers),
+				writeStoreRules(inference.operator, inference.providers),
+			} {
+				written()
+				inference.providers.Watch(written)
+			}
+		}
+	}
+	// Catalogue lookup and receiving policy are configured above; the exact
+	// action is registered before existing kept-provider grants are reconciled.
+	if applications != nil && applications.directory != nil {
+		if err := applications.directory.reconcileProviderConfigGrants(ctx); err != nil {
+			report(fmt.Errorf("config provider key grants: %w", err))
+		}
+		// A kept integration's hold rules, written once its Keep lands, are
+		// written again here for a Keep given before they existed.
+		if hostOptions.ResourceLeases != nil {
+			applications.directory.writeKeptHolds(ctx)
 		}
 	}
 	if options.xpc {
 		if err := xpcHostEndpoints(&hostOptions, options.defaultEndpoint); err != nil {
-			credentials.close()
-			inference.close()
 			return err
 		}
 	}
 	if inference != nil && inference.providers != nil {
 		inference.providers.setChildEnvironment(providerEnvironment(options, hostOptions))
 	}
+	// MachineControl is composed beside the native registry. Its explicit
+	// receiving preparation owns paired listeners; startup creates no default.
+	pairing, err := composeRuntimePairing(ctx, options, questions, inference, sink, report, applications)
+	if err != nil {
+		report(fmt.Errorf("runtime pairing unavailable: %w", err))
+	} else {
+		defer pairing.Close()
+	}
+	remoteListener, err := prepareRuntimeRemoteHost(ctx, options, rightsState, inference, sink, report)
+	if err != nil {
+		return err
+	}
 	runtime, err := host.Listen(hostOptions)
 	if err != nil {
-		credentials.close()
-		inference.close()
 		return err
 	}
 	defer runtime.Close()
+	var copyProviders *runtimeProviders
+	if inference != nil {
+		copyProviders = inference.providers
+	}
+	stopCopyChecks := startRuntimeSetupCopies(ctx, options, applications, copyProviders, report, selfLogs)
+	defer stopCopyChecks()
+	remoteFailure := make(chan error, 1)
+	stopRemote, err := remoteListener.start(ctx, func(err error) {
+		if errors.Is(err, errRemoteExposure) {
+			report(err)
+			return
+		}
+		remoteFailure <- err
+		cancelRuntime()
+	}, func(network, address string) (net.Listener, error) { return listenRuntimeRemote(ctx, network, address) })
+	if err != nil {
+		if !errors.Is(err, errRemoteExposure) {
+			return err
+		}
+		report(err)
+		stopRemote = func() {}
+	}
+	defer stopRemote()
+	stopLegacy := serveLegacyCompatibility(ctx, options, report)
+	defer stopLegacy()
 	// Pending typed requests follow rights changes while the runtime serves;
 	// deferred after runtime.Close, the stop runs first, so no settling pass
 	// edits the Book once the asks host starts closing (ASK-A13).
@@ -557,13 +713,19 @@ func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() err
 	if err := questions.withdrawStale(); err != nil {
 		return err
 	}
+	if pairing != nil {
+		if err := pairing.restoreNormal(); err != nil {
+			report(err)
+		}
+	}
 	retentionCtx, stopRetention := context.WithCancel(ctx)
 	waitRetention := inference.serveInputRetention(retentionCtx)
 	if fileSink, ok := sink.(*logging.FileSink); ok {
+		joinSettings := followRuntimeLogSettings(retentionCtx, options, fileSink, report)
 		joinLogs := fileSink.MaintainRetention(retentionCtx, func(err error) {
-			fmt.Fprintln(os.Stderr, "runtime: log retention:", err)
+			writeHostLogLine(os.Stderr, "runtime: log retention: "+err.Error())
 		})
-		defer func() { stopRetention(); joinLogs() }()
+		defer func() { stopRetention(); joinSettings(); joinLogs() }()
 	}
 	defer waitRetention()
 	defer stopRetention()
@@ -572,12 +734,31 @@ func runRuntimeReady(ctx context.Context, options runtimeFlags, ready func() err
 	}
 	stopProtected := protectedSources.serve(ctx, report)
 	defer stopProtected()
-	if ready != nil {
-		if err := ready(); err != nil {
+	// Adoption can give a declaration its canonical generation and a new
+	// binding ID. It completes, and the router reads the adopted hosts,
+	// before the runtime reports ready, so no early request carries the
+	// replaced binding. It follows withdrawStale: questions it opens stay.
+	if inference != nil && inference.providers != nil {
+		if err := inference.providers.adoptAtStartup(ctx); err != nil {
 			return err
 		}
 	}
-	return runtime.Serve(ctx)
+	if ready != nil {
+		address := ""
+		if inference != nil {
+			address = inference.gateway.boundAddress()
+		}
+		if err := ready(address); err != nil {
+			return err
+		}
+	}
+	err = runtime.Serve(ctx)
+	select {
+	case failure := <-remoteFailure:
+		return failure
+	default:
+		return err
+	}
 }
 
 // isolatedConfigStore selects the configuration file an isolated runtime
@@ -595,16 +776,25 @@ func isolatedConfigStore(stateDir string) (casapi.Store, string) {
 // managedJobRoot is the managed job store the runtime opens for a state
 // directory; an empty state selects the current user's runtime-v1 directory.
 func managedJobRoot(state string) (string, error) {
+	return managedJobRootFrom(state, func() (string, error) {
+		return runtimeStateDir(runtime.GOOS, os.Getenv, os.UserHomeDir)
+	}, func() string { return modelplace.DefaultJobStore(os.Getenv) })
+}
+
+func managedJobRootFrom(state string, stateDirectory func() (string, error), defaultStore func() string) (string, error) {
 	if state == "" {
 		var err error
-		if state, err = runtimeStateDir(runtime.GOOS, os.Getenv, os.UserHomeDir); err != nil {
+		if state, err = stateDirectory(); err != nil {
 			return "", err
+		}
+		if root := defaultStore(); root != "" {
+			return root, nil
 		}
 	}
 	if !filepath.IsAbs(state) {
 		return "", fmt.Errorf("runtime: absolute state directory required")
 	}
-	return filepath.Join(state, "jobs"), nil
+	return modelplace.JobStoreIn(state), nil
 }
 
 // managedJobExecutor is used by storage inspection and migration commands.
@@ -622,22 +812,28 @@ func managedJobExecutor(root string, onError func(error)) (acceptanceprovider.Ex
 }
 
 // Durable work survives user cache cleanup; config.DataDirFor owns the
-// per-user data folder.
+// per-user data folder and modelplace.RuntimeStateFor the runtime's folder
+// in it, beside its job store.
+func defaultRuntimeStateDir() (string, error) {
+	return runtimeStateDir(runtime.GOOS, os.Getenv, os.UserHomeDir)
+}
+
 func runtimeStateDir(platform string, getenv func(string) string, home func() (string, error)) (string, error) {
-	base, err := config.DataDirFor(platform, getenv, home)
-	if err != nil {
-		return "", err
+	return modelplace.RuntimeStateFor(platform, getenv, home)
+}
+
+// runtimeLogPath resolves only metadata; selecting a guard must not open a log.
+func runtimeLogPath(path string) (string, error) {
+	if path == "" {
+		return logservice.DefaultRecordsPath()
 	}
-	return filepath.Join(base, "runtime-v1"), nil
+	return path, nil
 }
 
 func runtimeLogSink(path string) (logging.Sink, io.Closer, error) {
-	if path == "" {
-		cache, err := os.UserCacheDir()
-		if err != nil {
-			return nil, nil, err
-		}
-		path = filepath.Join(cache, "openabstractions", "logging", "records.jsonl")
+	path, err := runtimeLogPath(path)
+	if err != nil {
+		return nil, nil, err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, nil, err

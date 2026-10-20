@@ -61,10 +61,10 @@ func newNativeEmbedTestProvider(t *testing.T, name string, embed func(iwire.Embe
 	p := &runtimeProviders{principal: principal, supervisors: map[string]*providerSupervisor{}, changes: make(chan struct{}), report: func(error) {}}
 	f := providerFile{Declaration: providerDeclaration{Name: name, Program: exe, Endpoint: "oa-test-native-embed-" + name,
 		Transport: transportNative, Contracts: []string{inference.Contract}, Models: []string{"owner/fixture-model"}, Activation: wire.ActivationOnDemand.String()}}
-	s := newProviderSupervisor(p, f)
+	s := newFixtureProviderSupervisor(t, p, f)
 	p.supervisors[name] = s
 
-	endpoint := providerEndpointPath(f.Declaration.Endpoint)
+	endpoint := mustProviderEndpoint(t, f.Declaration.Endpoint)
 	l, err := listen.ListenFramed(endpoint, listen.Program)
 	if err != nil {
 		t.Fatal(err)

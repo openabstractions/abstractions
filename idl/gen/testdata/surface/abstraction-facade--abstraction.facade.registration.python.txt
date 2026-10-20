@@ -1,0 +1,330 @@
+enum Activation
+  ON_DEMAND = 'on_demand'
+  ATTACH = 'attach'
+dataclass ActivationVerb
+  name: str
+  class_: _ImportedEnum3 | None
+  input_schema: bytes | str
+dataclass ApplicationFacet
+  name: str
+  manifest: Manifest
+dataclass ApplicationReading
+  name: str
+  manifest_digest: str
+  instances: list[_dependency_facade.ApplicationInstance]
+  owned_instances: list[str]
+dataclass Change
+  outcome: Outcome | None
+  revision: str
+  reason: str
+  removal: RemovalReceipt | None
+  refusal: _dependency_rights.RefusalDetail | None
+dataclass Chooser
+  name: str
+  modality: str
+dataclass Choosers
+  entries: list[Chooser]
+dataclass Cleanup
+  owner: str
+  state: CleanupState | None
+  reason: str
+enum CleanupState
+  DONE = 'done'
+  PENDING = 'pending'
+  FAILED = 'failed'
+dataclass Description
+  outcome: DescriptionOutcome | None
+  program: str
+  version: str
+  services: list[ServiceState]
+  refusal: _dependency_rights.RefusalDetail | None
+  reason: str
+  checks: list[ProducerCheck]
+enum DescriptionOutcome
+  DESCRIBED = 'described'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+  INVALID = 'invalid'
+  UNSUPPORTED = 'unsupported'
+class DispatchError(ValueError)
+  __init__(code)
+class EndpointV2
+  describe() -> Description
+class EndpointV2Client(EndpointV2)
+  __init__(transport)
+  describe() -> Description
+dataclass EngineFact
+  id: str
+  name: str
+  version: str
+enum FacetKind
+  PROVIDER = 'provider'
+  HOST = 'host'
+  REMOTE = 'remote'
+  APPLICATION = 'application'
+dataclass FacetReference
+  kind: FacetKind | None
+  name: str
+dataclass HostRecipe
+  arguments: list[str]
+  readiness_deadline_ms: int
+enum IdentityEvidence
+  NONE = 'none'
+  PROGRAM = 'program'
+  REMOTE = 'remote'
+dataclass Manifest
+  version: str
+  name: str
+  title: str
+  description: str
+  offers: _dependency_appmodel.CommandDeclaration
+  host: HostRecipe
+  script_host: bool
+  requests: list[RequestedPermission]
+  network: NetworkRequirement
+  needs: Needs
+  purpose: str
+  verbs: list[ActivationVerb]
+  choosers: Choosers | None
+dataclass ModelNeed
+  modality: str
+  required_features: list[str]
+  minimum_context: int
+  placement: Placement | None
+  reserve: int
+dataclass ModelRecipe
+  model: str
+  engine: str
+  modalities: list[str]
+  objects: list[RecipeObject]
+dataclass Needs
+  files: list[_dependency_request.Request]
+  models: list[ModelNeed]
+dataclass NetworkRequirement
+  hosts: list[str]
+enum Outcome
+  APPLIED = 'applied'
+  PAGE = 'page'
+  NOT_FOUND = 'not_found'
+  CONFLICT = 'conflict'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+  UNSUPPORTED = 'unsupported'
+  GAP = 'gap'
+dataclass Page
+  outcome: Outcome | None
+  revision: str
+  cursor: str
+  registrations: list[Registration]
+  removals: list[RemovalReceipt]
+  reason: str
+  refusal: _dependency_rights.RefusalDetail | None
+enum Placement
+  LOCAL = 'local'
+  HOSTED = 'hosted'
+  ANY = 'any'
+dataclass ProducerCheck
+  kind: str
+  copy: str
+  state: ProducerCheckState | None
+  reason: str
+  checked: str
+enum ProducerCheckState
+  CURRENT = 'current'
+  REPAIRED = 'repaired'
+  STALE = 'stale'
+  REFUSED = 'refused'
+  UNVERIFIED = 'unverified'
+dataclass ProviderFacet
+  name: str
+  arguments: list[str]
+  endpoint: str
+  services: list[str]
+  guarantees: list[str]
+  activation: Activation | None
+  resources: list[str]
+  models: list[ScopedModel]
+  required_extensions: list[RequiredExtension]
+  engines: list[EngineFact]
+  recipes: list[ModelRecipe]
+  config_keys: list[str]
+dataclass Publisher
+  key: str
+  subject: str
+  issuer: str
+  checked: str
+dataclass RecipeObject
+  role: str
+  digest: str
+  store: str
+  object: str
+class Refusal(ValueError)
+  __init__(word, offset)
+dataclass Registration
+  key: str
+  spec: RegistrationSpec
+  revision: str
+  epoch: str
+  source: Source | None
+  product_name: str
+  state: State | None
+  identity_evidence: IdentityEvidence | None
+  reason: str
+  publisher: Publisher | None
+  shadowed_by: FacetReference | None
+  applications: list[ApplicationReading]
+  described: list[ServiceState]
+  accepted: str
+  verification: Verification | None
+  verification_reason: str
+  verified: str
+  checks: list[ProducerCheck]
+dataclass RegistrationSpec
+  program: str
+  providers: list[ProviderFacet]
+  servers: list[ServerFacet]
+  remotes: list[RemoteFacet]
+  applications: list[ApplicationFacet]
+class RegistryV3
+  registrations(cursor: str, limit: int) -> Page
+  register(registration: RegistrationSpec) -> Change
+  replace(expected_revision: str, registration: RegistrationSpec) -> Change
+  remove(expected_revision: str, facet: FacetReference) -> Change
+  set_enabled(expected_revision: str, facet: FacetReference, enabled: bool) -> Change
+  observe(cursor: str, wait_ms: int) -> Page
+class RegistryV3Client(RegistryV3)
+  __init__(transport)
+  registrations(cursor: str, limit: int) -> Page
+  register(registration: RegistrationSpec) -> Change
+  replace(expected_revision: str, registration: RegistrationSpec) -> Change
+  remove(expected_revision: str, facet: FacetReference) -> Change
+  set_enabled(expected_revision: str, facet: FacetReference, enabled: bool) -> Change
+  observe(cursor: str, wait_ms: int) -> Page
+dataclass RemoteFacet
+  name: str
+  endpoint: str
+  server_name: str
+  server_key_sha256: str
+  credential: str
+  modalities: list[str]
+dataclass RemovalReceipt
+  id: str
+  facet: FacetReference
+  revision: str
+  cleanup: list[Cleanup]
+  accepted: str
+dataclass RequestedPermission
+  action: str
+  resource: bytes | str
+  purpose: str
+dataclass RequiredExtension
+  modality: str
+  key: str
+dataclass ScopedModel
+  modality: str
+  model: str
+dataclass ServerFacet
+  name: str
+  base: str
+  kind: str
+  hosted: bool
+  modalities: list[str]
+  credential: str
+  ceiling: _dependency_facade.DeclarationCeiling | None
+class ServiceError(Exception)
+  __init__(code, message)
+enum ServiceErrorCode
+  HANDLER_ERROR = 'handler_error'
+  INVALID_RESULT = 'invalid_result'
+  UNKNOWN_VERSION = 'unknown_version'
+  UNKNOWN_SERVICE = 'unknown_service'
+  UNKNOWN_METHOD = 'unknown_method'
+  WRONG_MODE = 'wrong_mode'
+dataclass ServiceState
+  service: str
+  readiness: _ImportedEnum0 | None
+  reason: str
+  guarantees: list[str]
+  capabilities: dict[str, str]
+  definition_hash: str
+enum Source
+  INSTALLATION = 'installation'
+  OPERATOR = 'operator'
+  SELF_REGISTRATION = 'self_registration'
+  PRODUCT_RECORD = 'product_record'
+  BUILT_IN = 'built_in'
+enum State
+  PENDING_APPROVAL = 'pending_approval'
+  ENABLED = 'enabled'
+  DISABLED = 'disabled'
+enum Verification
+  VERIFIED = 'verified'
+  MISSING = 'missing'
+  CHANGED = 'changed'
+  UNVERIFIED = 'unverified'
+def decode(data)
+def decode_activation_verb(data)
+def decode_application_facet(data)
+def decode_application_reading(data)
+def decode_change(data)
+def decode_chooser(data)
+def decode_choosers(data)
+def decode_cleanup(data)
+def decode_description(data)
+def decode_engine_fact(data)
+def decode_facet_reference(data)
+def decode_host_recipe(data)
+def decode_manifest(data)
+def decode_model_need(data)
+def decode_model_recipe(data)
+def decode_needs(data)
+def decode_network_requirement(data)
+def decode_page(data)
+def decode_producer_check(data)
+def decode_provider_facet(data)
+def decode_publisher(data)
+def decode_recipe_object(data)
+def decode_registration(data)
+def decode_registration_spec(data)
+def decode_remote_facet(data)
+def decode_removal_receipt(data)
+def decode_requested_permission(data)
+def decode_required_extension(data)
+def decode_scoped_model(data)
+def decode_server_facet(data)
+def decode_service_state(data)
+def encode(v)
+def encode_activation_verb(v)
+def encode_application_facet(v)
+def encode_application_reading(v)
+def encode_change(v)
+def encode_chooser(v)
+def encode_choosers(v)
+def encode_cleanup(v)
+def encode_description(v)
+def encode_engine_fact(v)
+def encode_facet_reference(v)
+def encode_host_recipe(v)
+def encode_manifest(v)
+def encode_model_need(v)
+def encode_model_recipe(v)
+def encode_needs(v)
+def encode_network_requirement(v)
+def encode_page(v)
+def encode_producer_check(v)
+def encode_provider_facet(v)
+def encode_publisher(v)
+def encode_recipe_object(v)
+def encode_registration(v)
+def encode_registration_spec(v)
+def encode_remote_facet(v)
+def encode_removal_receipt(v)
+def encode_requested_permission(v)
+def encode_required_extension(v)
+def encode_scoped_model(v)
+def encode_server_facet(v)
+def encode_service_state(v)
+def from_json(kind, data)
+def service_name(frame)
+def to_json(value)

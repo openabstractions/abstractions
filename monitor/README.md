@@ -13,17 +13,31 @@ bearer credential, so keep it private.
 
 ## Running the Panel
 
+Native question families come from Asks' Go presentation metadata. Monitor's
+`native_question_presentation.go` validates that selection before Windows
+`trayWindowsQuestionPrompt` or the macOS native bridge renders it. Windows
+`win` owns OS-generation/theme/viewport selection and its existing alert sound;
+`macos/PanelLauncher.swift` owns native rendering. Catalogue-to-adapter tests
+(`TestQuestionPresentationCatalogueToNativeBridge` and
+`TestQuestionPresentationCatalogueToWindows`) exercise this boundary. Local
+installer confirmations use Asks' ordinary local-confirmation policy; ordinary app choices keep
+their application policy. Presentation grants no authority.
+Automatic Windows/macOS polling admits only Asks service-reserved occurrences.
+Legacy application questions remain ordinary explicit manual review; catalogue
+approval words, a publisher or a local Go helper cannot select security consent.
+
 ```bash
-cd monitor && go run .
+go -C monitor run . -native=false
 ```
 
-This listens on `127.0.0.1:8734` and prints a URL carrying this run's key.
-Windows opens the local browser at that URL automatically; on other
-platforms, open the printed URL yourself. Pass `-open=false` to suppress the
-automatic open.
+This developer mode listens on `127.0.0.1:8734`, prints a URL carrying this
+run's key, and opens it in the default browser. Pass `-open=false` to suppress
+the automatic open. The installed desktop window uses native mode and opens
+no listener.
 
 `-page` selects the initial page from `overview` (the default), `questions`,
-or `credentials`. The Panel maps those names to its own existing pages; it
+`credentials`, `setup`, `activity` or `agent:<registered application>`.
+The Panel maps those names to its own existing pages; it
 does not accept a path or URL. For example, `-page credentials` opens the
 Credentials page in this Panel run. `-quiet` suppresses printing the keyed URL
 for a launcher that only needs the Panel to open its own window or browser.
@@ -138,31 +152,40 @@ revoke exact rules at the listed policy revision. The owning service decides
 whether this panel may act. Answering a runtime's first-use question
 (`rights.first_use`) writes its rule: allow writes the permit and never an exact
 deny, both with why "asked at first use", and refuse writes nothing. The answer
-and its rule are two edits: when the rule write meets a conflict, the list shows
-the question as "Answered, rule not written" with a Retry rule button, which
-answers the same option again and writes the rule at the current revision. "Allow
+and its rule are two edits. When the rule write meets a conflict, the list shows
+"Permission not saved" with a "Retry saving permission" button. The retry uses
+the recorded answer to write the rule at the current revision. "Allow
 downloads for…" and "Allow inference for…" write each exact rule of the bundle
 for the program chosen from the listed rules or typed in, one edit at a time;
 the first rule that does not apply stops the bundle, and the status names the
 rules that landed.
 
-**Settings** — read the user settings and replace them at their
-revision. Watch settings shows live service snapshots and their provenance
-without replacing an editing draft. A conflicting edit preserves the draft; save
-it before reading and reconciling the current revision. Stop watching cancels the
-wait. A lost cursor or unavailable service stops observation and reports why.
+**Settings** shows About on arrival (version, runtime and this Panel's
+identity), then Locations, Downloads and Developer tools behind expanders.
+Locations names where each value lives in words (Default location or Custom
+location, and whether it is set for you, for this device or for this run); the
+path sits on the row's title. Log file and Logging service, and under
+Advanced › Job folders the Job folder and Network job folder, each have a
+chooser for the default or a custom location. A custom location must be
+nonempty and contain no control characters. Save and Cancel appear on a row
+once it changes; Save writes one sentence in that row. Saving a network job
+folder only updates configuration; it does not connect to the share. Downloads exposes
+Windows Background Transfer (BITS); the NAS download switch remains hidden
+while NAS use for models and setup is deferred. Every save sends the whole
+user settings document at its revision;
+a conflicting save rereads and says the settings changed elsewhere. Developer
+tools holds the runtime check and Explore.
 
-**Logging**, a section of Settings, reads retained records through `abstraction.logging/reader@1` page
-by page, or follows them live through `abstraction.logging/observer@1`, filtered
-by program, lowest level and time. Following continues from the last page read,
-and with no page read it starts at the history end (the `end` cursor word), so
-only new records arrive. Every record lists its attestation hops. The
-writer's own claim is styled as an unverified claim, and the stamp the logging
-service made itself as verified. A stamp another relay asserted stays untrusted,
-because the panel authorises no relay. A handler's sink-loss record (LOG-S13)
-and a history gap are shown as gaps, and a gap stops following until the person
-reads from the start or follows from the end again. The panel logs its own actions and identity checks
-through a resolved sink, and the section shows that sink's counts.
+**Detailed log**, an expander on Activity, reads retained records through
+`abstraction.logging/reader@1` from the last hour on arrival, with quick ranges
+(Last hour, Today, Last 7 days, All), level choices and a program chooser. An
+empty range offers the next wider one. Follow live continues through
+`abstraction.logging/observer@1` from the last page read. Each line names its
+program by file name and marks the writer's claim unverified or the logging
+service's own stamp verified; the attestation hops sit behind Technical
+details. A sink-loss record (LOG-S13) and a history gap are shown as gaps, and
+a gap stops following. The Panel logs its own actions and identity checks
+through a resolved sink, and one sentence says whether its records are sent.
 
 **Identity**, a section of Settings, shows which runtime installed selection chose (`TRUSTED`,
 `UNTRUSTED` or `PROOF_UNAVAILABLE`) and the platform declaration for this
@@ -193,14 +216,14 @@ named `openabstractions-probe` acts as a second program.
 
 Every page shares one stylesheet, served at `/static/panel.css`
 (`monitor/static/panel.css`, embedded), and one shell: a navigation pane
-listing Get started, Apps, Requests and permissions, Models, Activity, Device,
+listing Apps, Activity, Device, Permissions and Get started, then Models,
 Providers, Credentials and Settings, with the current page marked,
 and a content pane where each page's own sections become grouped rows.
 Explore (`/explore`) keeps its page outside the
 navigation. Every page keeps its
 route (`/`, `/rights`, `/inference`, `/work`, `/card` and the rest), and
 `/apps`, `/questions`, `/models`, `/activity`, `/device` and `/get-started`
-redirect to their pages, and `/logging` and `/identity` to Settings.
+redirect to their pages, and `/logging` and `/identity` to Settings (the detailed log itself is on Activity).
 
 The document carries `data-platform="windows"`, `"macos"` or `"linux"`, set
 by the server from `runtime.GOOS`. The stylesheet reads that attribute to
@@ -232,12 +255,20 @@ comes from `--panel-url` against `scripts/panel_review.ps1 -Examples`; without
 
 ```bash
 cd monitor
-go build -ldflags="-H windowsgui" -o "Abstraction Panel.exe" .
+go build -tags panel -ldflags="-H windowsgui" -o "Abstraction Panel.exe" .
+go build -tags presenter -ldflags="-H windowsgui" -o "OpenAbstractions Presenter.exe" .
 ```
 
-`go build` alone carries the icon and the manifest, from the committed
-`.syso` files [`monitor/icon`](icon) builds; see that package's README for
-the `rc.exe`/`cvtres.exe` rebuild.
+This package builds two Windows programs. The Panel (`-tags panel`, as the
+installer builds it) links no native question, credential-form or toast
+code. The Asks presenter (`-tags presenter`) is the one program that draws
+native questions and notifications; Task Manager names it "OpenAbstractions".
+A build without either tag is the Panel with the presenter's files compiled
+in, which is what `go test` runs. Each program carries its icon, manifest and
+version from committed `.syso` files in its own package
+(`internal/panelres`, `internal/presenterres`), which
+[`monitor/icon`](icon) builds; see that package's README for the
+`rc.exe`/`cvtres.exe` rebuild.
 
 Double-click the built executable and a
 [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) window
@@ -264,13 +295,17 @@ installation through Windows registration and loads its architecture-matched
 `EmbeddedBrowserWebView.dll`. The package ships no separate SDK loader. The
 message loop and DPI awareness are supplied by the same native wrapper.
 
-`monitor -background` (built as `Abstraction Panel.exe --background`, Windows
-only) starts the account's native question presenter at sign-in. A hidden
+`OpenAbstractions Presenter.exe --background` (Windows only) is the account's
+native question presenter. The runtime's sign-in entry starts it, and the
+runtime's user-mode supervisor starts it again after it exits. The Panel's
+`--background` starts it and exits. A Panel operation that needs the person's
+own answer (Setup's question, Finish setup's credential form) starts it with
+`-present <Book id>` and waits for the outcome in its exit code. A hidden
 window receives session-lock messages and runs the native dialog thread. A
 session-local kernel object admits one presenter for the selected runtime;
 repeated startup exits quietly. Its handle is released when the process ends.
 `--tray` remains a compatibility alias for existing Startup shortcuts. It
-polls `QuestionOperator.ListQuestions` every three seconds with a two-second
+presenter polls `QuestionOperator.ListQuestions` every three seconds with a two-second
 budget, remembers which pending question ids it has already announced, and
 presents each new pending question as a centered Windows permission prompt
 (a TaskDialog, [`tray_presenter.go`](tray_presenter.go)). The prompt names the
@@ -450,7 +485,7 @@ read the URL can drive the Panel.
 - **The window is Windows only.** Elsewhere `-native` refuses and says so.
 - **The window's styling comes from `panel.manifest`, embedded as a resource**
   rather than shipped beside the binary. A build missing
-  `monitor/rsrc_windows_*.syso` — a plain checkout is not one, since both are
+  `monitor/internal/panelres/rsrc_windows_*.syso` — a plain checkout is not one, since both are
   committed — carries no manifest, and the controls fall back to the
   pre-2001 style; everything still works. The manifest's Common-Controls
   dependency names `processorArchitecture="amd64"`; on the arm64 build this

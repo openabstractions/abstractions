@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"github.com/openabstractions/abstraction-identity/go/privatedir/privatetest"
 	"os"
+	"path/filepath"
+	"runtime"
 	"sync/atomic"
 	"testing"
 )
@@ -30,4 +33,14 @@ func TestFixtureNamesAreUniqueWithinOneClockTick(t *testing.T) {
 		}
 		seen[name] = true
 	}
+}
+
+// fixtureEndpoint is an explicit address owned by this test, without default lookup.
+func fixtureEndpoint(t *testing.T, prefix string) string {
+	t.Helper()
+	name := fixtureName(prefix)
+	if runtime.GOOS == "windows" {
+		return `\\.\pipe\oa-test-` + name
+	}
+	return filepath.Join(privatetest.SocketDir(t), name+".sock")
 }

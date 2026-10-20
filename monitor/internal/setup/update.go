@@ -14,7 +14,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/openabstractions/abstraction-inference/go/providerhost/enginefiles"
+	"github.com/openabstractions/abstraction-facade/go/programfiles"
 )
 
 // HealthCheck decides whether a staged package version may be activated. It
@@ -35,22 +35,74 @@ func unhealthy(format string, args ...any) error {
 	return &UnhealthyError{Reason: fmt.Sprintf(format, args...)}
 }
 
-// firstInstallChecked names the package kinds whose first installation also
-// passes Staged and Checked. Lemonade's check is the provider's
-// `package check`, which proves any root.
+// packageUpdateProvider maps a shipped or historical engine component to
+// its compiled controller. The compiled choice survives an unavailable
+// release pin and remains the owner of retained and retired effects.
+var packageUpdateProvider = func() map[string]string {
+	providers := map[string]string{}
+	for _, choice := range compiledCatalog().Choices {
+		if choice.Host != "" && len(choice.Components) == 1 {
+			providers[choice.Components[0]] = choice.Host
+		}
+	}
+	return providers
+}()
+
+// packageLifecycle defines the provider operations that surround Setup's
+// Staged, Checked, Installed and Retired receipt transitions.
+type packageLifecycle struct {
+	health        func(context.Context, Artifact, string) error
+	activate      func(context.Context, Runner, Artifact, Effect) error
+	afterActivate string
+	retire        func(context.Context, Runner, Artifact, *Artifact) error
+}
+
+var providerPackageLifecycles = map[string]packageLifecycle{
+	lemonadeProviderID: lemonadePackageLifecycle,
+}
+
+func packageLifecycleFor(componentID string) packageLifecycle {
+	return providerPackageLifecycles[packageUpdateProvider[componentID]]
+}
+
+// firstInstallChecked names the packages that also pass Staged and Checked
+// on their first installation.
 func firstInstallChecked(componentID string) bool {
-	return componentID == "comfyui-app" || componentID == "lemonade-engine" || componentID == "thenoise-engine" || componentID == "pytorch-engine" ||
-		testPackageKinds[componentID] != nil
+	if componentID == retainedArchiveComponent || testPackageKinds[componentID] != nil || packageLifecycleFor(componentID).health != nil {
+		return true
+	}
+	switch packageUpdateProvider[componentID] {
+	case theNoiseProviderID, pyTorchProviderID:
+		return true
+	default:
+		return false
+	}
+}
+
+// retiresAfterRegistration keeps the previous registered build until its
+// successor owns registration. Automatic driving and removal share this rule.
+func retiresAfterRegistration(componentID string) bool {
+	return componentID == retainedArchiveComponent
 }
 
 // packageHealth is the health check of each package kind. It reads the
 // receipt-verified tree and runs none of the package's programs.
 func packageHealth(ctx context.Context, componentID string, a Artifact, root string) error {
-	switch componentID {
-	case "comfyui-app":
+	if a.NativeResources != nil {
+		installed, err := archiveInstalledContext(ctx, a, root)
+		if err != nil {
+			return err
+		}
+		if !installed {
+			return errors.New("native logical installation is incomplete")
+		}
+		return nil
+	}
+	if componentID == retainedArchiveComponent {
 		return comfyHealth(a, root)
-	case "lemonade-engine":
-		return lemonadeHealth(ctx, a, root)
+	}
+	if check := packageLifecycleFor(componentID).health; check != nil {
+		return check(ctx, a, root)
 	}
 	if check := testPackageKinds[componentID]; check != nil {
 		return check(a, root)
@@ -96,92 +148,6 @@ func comfyHealth(a Artifact, root string) error {
 		}
 	}
 	return nil
-}
-
-// lemonadeHealth asks the installed OA provider to prove the staged tree
-// against its table entry for the pin's version (`package check`, which reads
-// the tree and runs nothing), and compares the pairing the entry was tested
-// with to the catalog's. A provider refusal (exit 2) or another pairing is a
-// definitive refusal; any other failure leaves the version staged.
-func lemonadeHealth(ctx context.Context, a Artifact, root string) error {
-	raw, err := lemonadeCLI(ctx, "package", "check", "--version", a.Version, "--root", root, "--json")
-	if lemonadeExitCode(err) == 2 {
-		return unhealthy("the OpenAbstractions Lemonade provider refused the staged version: %v", err)
-	}
-	if err != nil {
-		return err
-	}
-	var reply struct {
-		Version              int    `json:"version"`
-		OK                   bool   `json:"ok"`
-		BackendArchiveSHA256 string `json:"backend_archive_sha256"`
-		ModelRevision        string `json:"model_revision"`
-	}
-	if err := decodeProviderReply(raw, &reply); err != nil {
-		return err
-	}
-	if reply.Version != 1 || !reply.OK {
-		return errors.New("installed Lemonade provider returned an unknown package check reply")
-	}
-	if a.TestedBackendSHA256 == "" || !strings.EqualFold(reply.BackendArchiveSHA256, a.TestedBackendSHA256) || reply.ModelRevision != a.TestedModelRevision {
-		return unhealthy("the OpenAbstractions Lemonade provider pairs %s with backend %s and model %s; the catalog's pin was tested with %s and %s",
-			a.Version, reply.BackendArchiveSHA256, reply.ModelRevision, a.TestedBackendSHA256, a.TestedModelRevision)
-	}
-	return nil
-}
-
-// activateLemonade moves the provider's binding to a: `package activate`
-// installs its engine files and paired backends and selects it last. The
-// image backend archive the model step staged is passed when it is still on
-// disk; otherwise the provider stages the backend from the version it runs
-// now. Only the provider's success object counts.
-func (r Runner) activateLemonade(ctx context.Context, a Artifact) error {
-	args := []string{"package", "activate", "--version", a.Version}
-	if archive := r.stagedBackendArchive(ctx); archive != "" {
-		args = append(args, "--vulkan-backend-archive", archive)
-	}
-	raw, err := lemonadeCLI(ctx, args...)
-	if err != nil {
-		return err
-	}
-	var reply struct {
-		Version       int    `json:"version"`
-		OK            bool   `json:"ok"`
-		ActiveVersion string `json:"active_version"`
-	}
-	if err := decodeProviderReply(raw, &reply); err != nil {
-		return err
-	}
-	if reply.Version != 1 || !reply.OK || reply.ActiveVersion != a.Version {
-		return errors.New("installed Lemonade provider did not confirm the activation")
-	}
-	return nil
-}
-
-// stagedBackendArchive is the image backend archive the Lemonade model step
-// verified, when its staged copy is still on disk and still matches the pin.
-func (r Runner) stagedBackendArchive(ctx context.Context) string {
-	path := filepath.Join(filepath.Dir(r.Journal.Path), "model.json")
-	state, err := (ModelController{JournalPath: path}).load(ctx)
-	if err != nil {
-		return ""
-	}
-	backend, ok := (ModelController{}).asset("backend")
-	effect := state.Effects["backend"]
-	if !ok || effect.Phase != Verified || effect.StagedPath == "" || checkModelStage(ctx, effect.StagedPath, backend.Download) != nil {
-		return ""
-	}
-	return effect.StagedPath
-}
-
-// retireLemonade asks the provider to remove what it kept for a retired
-// version before Setup removes the version's package folder.
-func retireLemonade(ctx context.Context, retired Artifact) error {
-	_, err := lemonadeCLI(ctx, "package", "retire", "--version", retired.Version)
-	if lemonadeExitCode(err) == 3 {
-		return fmt.Errorf("the earlier Lemonade version is in use; it is removed once the image engine stops: %w", err)
-	}
-	return err
 }
 
 func readPackageJSON(path string, target any) error {
@@ -238,7 +204,8 @@ func (r Runner) checkHealth(ctx context.Context, state State, componentID string
 		return r.status(ctx, state), err
 	}
 	check := r.healthCheck
-	if check == nil && componentID == "pytorch-engine" {
+	provider := packageUpdateProvider[componentID]
+	if check == nil && provider == pyTorchProviderID {
 		state, err = r.preparePyTorchComponent(ctx, state, a, root)
 		if err != nil {
 			return r.status(ctx, state), err
@@ -248,7 +215,7 @@ func (r Runner) checkHealth(ctx context.Context, state State, componentID string
 	}
 	if check == nil {
 		check = packageHealth
-		if componentID == "thenoise-engine" {
+		if provider == theNoiseProviderID {
 			check = func(ctx context.Context, _ string, _ Artifact, root string) error {
 				return r.installTheNoiseFiles(ctx, a, root, effect.StagedPath)
 			}
@@ -258,15 +225,7 @@ func (r Runner) checkHealth(ctx context.Context, state State, componentID string
 	var refused *UnhealthyError
 	if errors.As(err, &refused) {
 		reason := "the new version failed its health check and is removed; " + keptVersion(effect) + ": " + refused.Reason
-		state, updateErr := r.Journal.Update(ctx, state.Plan.ID, componentID, effect, Effect{Phase: Failed, Reason: reason})
-		if updateErr != nil {
-			return Status{}, updateErr
-		}
-		if status, retireErr := r.retire(ctx, state, componentID); retireErr != nil {
-			return status, fmt.Errorf("%s; %w", reason, retireErr)
-		}
-		state, _ = r.Journal.Load(ctx)
-		return r.status(ctx, state), errors.New(reason)
+		return r.rejectStagedUpdate(ctx, state, componentID, effect, reason)
 	}
 	if err != nil {
 		return r.status(ctx, state), fmt.Errorf("health check did not finish; the update stays staged: %w", err)
@@ -281,6 +240,20 @@ func (r Runner) checkHealth(ctx context.Context, state State, componentID string
 		return Status{}, err
 	}
 	return r.status(ctx, state), nil
+}
+
+// rejectStagedUpdate keeps the active receipt and retires the candidate
+// after a definitive provider or health refusal.
+func (r Runner) rejectStagedUpdate(ctx context.Context, state State, componentID string, effect Effect, reason string) (Status, error) {
+	state, updateErr := r.Journal.Update(ctx, state.Plan.ID, componentID, effect, Effect{Phase: Failed, Reason: reason})
+	if updateErr != nil {
+		return Status{}, updateErr
+	}
+	if status, retireErr := r.retire(ctx, state, componentID); retireErr != nil {
+		return status, fmt.Errorf("%s; %w", reason, retireErr)
+	}
+	state, _ = r.Journal.Load(ctx)
+	return r.status(ctx, state), errors.New(reason)
 }
 
 // activate makes the checked version the active one. It rechecks what the
@@ -314,7 +287,7 @@ func (r Runner) activate(ctx context.Context, state State, componentID string, a
 		}
 		return status, errors.New(reason)
 	}
-	if componentID == "pytorch-engine" {
+	if packageUpdateProvider[componentID] == pyTorchProviderID {
 		_, component, _, _, err := pyTorchFolders(a)
 		if err != nil {
 			return r.status(ctx, state), err
@@ -323,30 +296,27 @@ func (r Runner) activate(ctx context.Context, state State, componentID string, a
 		if err != nil || !ready {
 			return r.status(ctx, state), errors.New("the original PyTorch component changed before activation; preserve it for inspection")
 		}
-	}
-	// A Lemonade update moves the provider's binding before the journal
-	// names the new version installed; a first installation has no binding
-	// yet, and the Lemonade model step creates it.
-	if componentID == "lemonade-engine" && effect.Retained != nil {
-		if err := r.activateLemonade(ctx, a); lemonadeExitCode(err) == 2 {
-			// A definitive refusal fails the update as a refused health
-			// check does; the provider writes its selection last, so the
-			// earlier version is still the selected one.
-			reason := fmt.Sprintf("the Lemonade provider refused to activate %s, which is removed; %s: %v", a.Version, keptVersion(effect), err)
-			state, updateErr := r.Journal.Update(ctx, state.Plan.ID, componentID, effect, Effect{Phase: Failed, Reason: reason})
-			if updateErr != nil {
-				return Status{}, updateErr
+		// The current archive must switch to the new component before Setup
+		// activates it and retires the preceding version.
+		if effect.Retained != nil {
+			if err := r.resealCurrentArchiveEngine(ctx, state, pyTorchSitePackages(component), a.Version); err != nil {
+				return r.status(ctx, state), err
 			}
-			if status, retireErr := r.retire(ctx, state, componentID); retireErr != nil {
-				return status, fmt.Errorf("%s; %w", reason, retireErr)
-			}
-			state, _ = r.Journal.Load(ctx)
-			return r.status(ctx, state), errors.New(reason)
-		} else if err != nil {
-			return r.status(ctx, state), fmt.Errorf("the Lemonade provider did not activate %s; the earlier version stays active: %w", a.Version, err)
 		}
-		if r.crashAfter != nil {
-			if err := r.crashAfter("lemonade-activate"); err != nil {
+	}
+	// The provider's binding moves before Setup commits Installed. A first
+	// install leaves that binding to the provider's normal configuration.
+	lifecycle := packageLifecycleFor(componentID)
+	if lifecycle.activate != nil && effect.Retained != nil {
+		err := lifecycle.activate(ctx, r, a, effect)
+		if refused, ok := err.(*UnhealthyError); ok {
+			return r.rejectStagedUpdate(ctx, state, componentID, effect, refused.Reason)
+		}
+		if err != nil {
+			return r.status(ctx, state), err
+		}
+		if r.crashAfter != nil && lifecycle.afterActivate != "" {
+			if err := r.crashAfter(lifecycle.afterActivate); err != nil {
 				return Status{}, err
 			}
 		}
@@ -410,22 +380,15 @@ func (r Runner) removeRetired(ctx context.Context, state State, componentID stri
 	}
 	component, _ := planComponent(state.Plan, componentID)
 	neverActive := effect.Phase == Failed && component.Artifact != nil && sameArtifact(&retired, component.Artifact)
-	// The Lemonade provider removes its cache, config and records of the
-	// version first. It refuses while a launch holds the version, and
-	// refuses the version its selection names, which keeps a version an
-	// interrupted activation selected from being removed.
-	if componentID == "lemonade-engine" {
-		// A version that was never active in the journal may still be the
-		// provider's selection: an activation that the receipt check or an
-		// earlier plan's reconciliation overtook. The version in use is
-		// selected again first.
+	if retire := packageLifecycleFor(componentID).retire; retire != nil {
+		// A candidate that never became active in the journal may have
+		// been selected by the provider. Pass the recorded active pin
+		// so the provider can reselect it before removing the candidate.
+		var reselect *Artifact
 		if active, err := activeArtifact(state, componentID); neverActive && err == nil {
-			if err := r.activateLemonade(ctx, active); err != nil {
-				return 0, root, fmt.Errorf("Setup stopped: the Lemonade provider cannot select %s again, so %s stays on disk; if the private model was replaced, install a Lemonade version tested with it, then retry: %w",
-					active.Version, retired.Version, err)
-			}
+			reselect = &active
 		}
-		if err := retireLemonade(ctx, retired); err != nil {
+		if err := retire(ctx, r, retired, reselect); err != nil {
 			return 0, root, err
 		}
 	}
@@ -434,7 +397,7 @@ func (r Runner) removeRetired(ctx context.Context, state State, componentID stri
 		if err := r.RetireGuard(ctx, componentID, root); err != nil {
 			return 0, root, err
 		}
-	case componentID == "comfyui-app" && !neverActive:
+	case retiresAfterRegistration(componentID) && !neverActive:
 		return 0, root, errors.New("register the updated ComfyUI before its earlier version is removed")
 	}
 	kept, err := removePackageTree(retired, root)
@@ -450,12 +413,16 @@ func (r Runner) removeRetired(ctx context.Context, state State, componentID stri
 // Files the person added or changed stay, restored to the version's folder.
 // An interrupted removal resumes from the sibling.
 func removePackageTree(a Artifact, root string) (int, error) {
+	return removePackageTreeContext(context.Background(), a, root)
+}
+
+func removePackageTreeContext(ctx context.Context, a Artifact, root string) (int, error) {
 	aside := filepath.Join(filepath.Dir(root), "."+filepath.Base(root)+".removing")
 	if _, err := os.Lstat(root); err == nil {
 		if _, err := os.Lstat(aside); !errors.Is(err, fs.ErrNotExist) {
 			return 0, fmt.Errorf("%s holds files from an unfinished removal of this version, and the version's folder exists again; move what you need out of %s, delete it, then retry", aside, aside)
 		}
-		if _, err := matchingReceipt(a, root); errors.Is(err, fs.ErrNotExist) {
+		if _, err := matchingReceiptContext(ctx, a, root); errors.Is(err, fs.ErrNotExist) {
 			// An earlier removal finished and restored only kept files.
 			return countFiles(root)
 		} else if err != nil {
@@ -466,24 +433,39 @@ func removePackageTree(a Artifact, root string) (int, error) {
 		}
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return 0, err
-	} else if _, err := os.Lstat(aside); errors.Is(err, fs.ErrNotExist) {
+	} else if info, err := os.Lstat(aside); errors.Is(err, fs.ErrNotExist) {
 		return 0, nil
+	} else if err != nil {
+		return 0, err
+	} else if info.Mode().Type() != fs.ModeDir {
+		// A junction or link is no folder this removal moved aside.
+		return 0, fmt.Errorf("%s is not a folder from this removal; remove it, then retry", aside)
 	}
 	// An engine folder a provider installed in the version, such as
 	// Lemonade's package folder, is read-only for the account (inference
 	// CONTRACT.md INF-F3); it is given back before its files go. The move to
 	// the sibling name proved that nothing in the version ran.
-	if err := enginefiles.UnlockWithin(aside); err != nil {
+	receipt, err := matchingReceiptContext(ctx, a, aside)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return 0, err
+	}
+	if err := programfiles.UnlockWithin(aside); err != nil {
 		return 0, fmt.Errorf("the engine folders in %s could not be made removable: %w", aside, err)
 	}
-	receipt, err := matchingReceipt(a, aside)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		// The receipt goes last; only kept files remain.
 	case err != nil:
 		return 0, err
 	default:
-		for _, file := range receipt.Files {
+		reportProgress(ctx, 0, len(receipt.Files))
+		for i, file := range receipt.Files {
+			if err := ctx.Err(); err != nil {
+				return 0, err
+			}
+			if i%100 == 0 {
+				reportProgress(ctx, i, len(receipt.Files))
+			}
 			if verifyInstalledPath(aside, file.Path) != nil {
 				continue
 			}
@@ -495,6 +477,7 @@ func removePackageTree(a Artifact, root string) (int, error) {
 				return 0, err
 			}
 		}
+		reportProgress(ctx, len(receipt.Files), len(receipt.Files))
 		removeEmptyDirectories(aside)
 		if err := os.Remove(filepath.Join(aside, archiveMarker)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return 0, err
@@ -533,6 +516,10 @@ func countFiles(root string) (int, error) {
 }
 
 func matchingReceipt(a Artifact, root string) (archiveReceipt, error) {
+	return matchingReceiptContext(context.Background(), a, root)
+}
+
+func matchingReceiptContext(ctx context.Context, a Artifact, root string) (archiveReceipt, error) {
 	markerPath := filepath.Join(root, archiveMarker)
 	info, err := os.Lstat(markerPath)
 	if err != nil {
@@ -546,14 +533,20 @@ func matchingReceipt(a Artifact, root string) (archiveReceipt, error) {
 		return archiveReceipt{}, err
 	}
 	var receipt archiveReceipt
-	if err := json.Unmarshal(data, &receipt); err != nil || receipt.Format != 1 ||
+	if err := json.Unmarshal(data, &receipt); err != nil || receipt.Format != 2 ||
 		!strings.EqualFold(receipt.ArtifactSHA256, a.SHA256) || receipt.Version != a.Version || receipt.InstallIdentity != a.InstallIdentity {
 		return archiveReceipt{}, errors.New("the folder's install receipt names another package; nothing was removed")
+	}
+	if err := receiptHasExpectedRoster(ctx, a, receipt); err != nil {
+		return archiveReceipt{}, err
 	}
 	for _, file := range receipt.Files {
 		if !safeMemberPath(file.Path) || foldName(file.Path) == foldName(archiveMarker) {
 			return archiveReceipt{}, errors.New("the folder's install receipt is unsafe; nothing was removed")
 		}
+	}
+	if a.NativeResources != nil {
+		return nativeRemovalReceipt(ctx, a, root, receipt)
 	}
 	return receipt, nil
 }

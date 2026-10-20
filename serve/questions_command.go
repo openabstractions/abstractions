@@ -122,7 +122,9 @@ func questionsCommand(args []string, output, diagnostics io.Writer) error {
 		if err != nil {
 			return err
 		}
-		return printPendingQuestions(output, records, questionAskers(w.ctx, operator, records), options.asJSON)
+		providers := map[string]asks.PermissionRequest{}
+		askers := questionAskers(w.ctx, operator, records, providers)
+		return printPendingQuestions(output, records, askers, options.asJSON, providers)
 	}
 	records, err := listQuestions(w.ctx, operator)
 	if err != nil {
@@ -254,7 +256,7 @@ func answerQuestion(ctx context.Context, operator questionOperator, id, option s
 // asked it (asks ASK-O11), so two programs with one file name read apart. A
 // question without a recorded program, a failed read and an operator
 // service older than the read leave the record's display name alone.
-func questionAskers(ctx context.Context, operator questionOperator, records []askswire.RecordMetadata) map[string]string {
+func questionAskers(ctx context.Context, operator questionOperator, records []askswire.RecordMetadata, providers ...map[string]asks.PermissionRequest) map[string]string {
 	reader, ok := operator.(askclient.AskerReader)
 	if !ok {
 		return nil
@@ -262,6 +264,11 @@ func questionAskers(ctx context.Context, operator questionOperator, records []as
 	var askers map[string]string
 	for _, record := range records {
 		read, err := reader.ReadQuestionAskerContext(ctx, record.ID)
+		if err == nil && read.Details.Permission != nil && len(providers) > 0 {
+			if _, providerPair := asks.ProviderPermissionName(*read.Details.Permission); providerPair {
+				providers[0][record.ID] = *read.Details.Permission
+			}
+		}
 		if err != nil || read.Program == "" {
 			continue
 		}
@@ -275,13 +282,18 @@ func questionAskers(ctx context.Context, operator questionOperator, records []as
 
 // printPendingQuestions lists each question with its asker: the bound
 // program when the service recorded one, else the record's display name.
-func printPendingQuestions(output io.Writer, records []askswire.RecordMetadata, askers map[string]string, asJSON bool) error {
+func printPendingQuestions(output io.Writer, records []askswire.RecordMetadata, askers map[string]string, asJSON bool, providers ...map[string]asks.PermissionRequest) error {
+	var permissions map[string]asks.PermissionRequest
+	if len(providers) > 0 {
+		permissions = providers[0]
+	}
 	if asJSON {
 		return json.NewEncoder(output).Encode(struct {
-			Outcome string                    `json:"outcome"`
-			Records []askswire.RecordMetadata `json:"records"`
-			Askers  map[string]string         `json:"askers,omitempty"`
-		}{"page", records, askers})
+			Outcome     string                            `json:"outcome"`
+			Records     []askswire.RecordMetadata         `json:"records"`
+			Askers      map[string]string                 `json:"askers,omitempty"`
+			Permissions map[string]asks.PermissionRequest `json:"permissions,omitempty"`
+		}{"page", records, askers, permissions})
 	}
 	if len(records) == 0 {
 		_, err := io.WriteString(output, "No pending questions.\n")
@@ -293,8 +305,22 @@ func printPendingQuestions(output io.Writer, records []askswire.RecordMetadata, 
 		if program := askers[record.ID]; program != "" {
 			asker = program
 		}
-		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", record.ID, record.Text, strings.Join(record.Options, "|"), asker); err != nil {
+		options := strings.Join(record.Options, "|")
+		if _, providerPair := permissions[record.ID]; providerPair {
+			options = "native permission prompt"
+		}
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", record.ID, record.Text, options, asker); err != nil {
 			return err
+		}
+		if permission, ok := permissions[record.ID]; ok {
+			for _, target := range permission.Targets {
+				if _, err := fmt.Fprintf(w, "\t%s\t%s\t%s\n", target.Action, target.Resource, target.Program); err != nil {
+					return err
+				}
+			}
+			if _, err := io.WriteString(w, "\tFinish provider setup in the native OpenAbstractions permission prompt.\n"); err != nil {
+				return err
+			}
 		}
 	}
 	return w.Flush()

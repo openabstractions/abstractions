@@ -7,10 +7,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/openabstractions/abstraction-facade/go-core/bootstrap"
 	facade "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
+	facadeclient "github.com/openabstractions/abstraction-facade/go/client"
+	identity "github.com/openabstractions/abstraction-identity"
+	"github.com/openabstractions/abstraction-identity/listen"
 	rightswire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	rights "github.com/openabstractions/abstraction-rights/go/client"
 )
@@ -226,13 +231,47 @@ func TestOAActivationRequiresAuditBeforeDirectoryCall(t *testing.T) {
 }
 
 func TestOAMachineRequiresPairedTrustedRuntimeFlags(t *testing.T) {
+	oldSelect, oldVerified := selectOADevelopment, newOAVerifiedMachine
+	t.Cleanup(func() { selectOADevelopment, newOAVerifiedMachine = oldSelect, oldVerified })
+	program := filepath.Join(t.TempDir(), "runtime.exe")
+	selected := bootstrap.Selection{Endpoint: "selected-endpoint", Server: listen.ServerExpectation{Principal: identity.User{Kind: "posix", UID: 7, GID: 8}, Program: program}}
+	var selectErr error
+	var selectedArgs []string
+	verified := 0
+	selectOADevelopment = func(endpoint, program string) (bootstrap.Selection, error) {
+		selectedArgs = append(selectedArgs, endpoint, program)
+		return selected, selectErr
+	}
+	newOAVerifiedMachine = func(endpoint string, server listen.ServerExpectation) *facadeclient.Machine {
+		verified++
+		if endpoint != selected.Endpoint || !reflect.DeepEqual(server, selected.Server) {
+			t.Fatalf("selected trust changed: %q %+v", endpoint, server)
+		}
+		return oldVerified(endpoint, server)
+	}
+	if machine, err := oaMachine("", ""); err != nil || machine == nil || len(selectedArgs) != 0 || verified != 0 {
+		t.Fatalf("installed discovery selected development: %v %v", machine, err)
+	}
 	if _, err := oaMachine("endpoint", ""); err == nil {
 		t.Fatal("endpoint without runtime program accepted")
 	}
-	if _, err := oaMachine("endpoint", "relative.exe"); err == nil {
+	if _, err := oaMachine("", program); err == nil || len(selectedArgs) != 0 || verified != 0 {
+		t.Fatal("paired explicit flags bypassed")
+	}
+	selectErr = bootstrap.ErrDevelopmentProgram
+	if _, err := oaMachine("endpoint", "relative.exe"); !errors.Is(err, selectErr) || verified != 0 {
 		t.Fatal("relative runtime program accepted")
 	}
-	if machine, err := oaMachine("endpoint", filepath.Join(t.TempDir(), "runtime.exe")); err != nil || machine == nil {
+	selectErr = errors.New("current account unavailable")
+	if _, err := oaMachine("endpoint", program); !errors.Is(err, selectErr) || verified != 0 {
+		t.Fatal("account lookup failure did not stop verified construction")
+	}
+	selectErr = nil
+	t.Setenv(bootstrap.RuntimeEndpointVariable, "from-environment")
+	if machine, err := oaMachine("endpoint", program); err != nil || machine == nil || verified != 1 {
 		t.Fatal(machine, err)
+	}
+	if !reflect.DeepEqual(selectedArgs[len(selectedArgs)-2:], []string{"endpoint", program}) {
+		t.Fatalf("explicit selection arguments changed: %v", selectedArgs)
 	}
 }

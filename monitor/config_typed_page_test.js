@@ -1,0 +1,64 @@
+// Inert DOM/HTTP fixture for the actual generic typed settings script.
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const source=fs.readFileSync(__dirname+'/config_typed_page.go','utf8');
+const script=process.env.OA_TYPED_SETTINGS_SCRIPT||source.split('const typedSettingsBody = `')[1].split('`')[0];
+function node(){return {children:[],textContent:'',disabled:false,append(...v){this.children.push(...v)},replaceChildren(...v){this.children=[...v]},setAttribute(k,v){this[k]=v}}}
+const fields=new Map(),el=id=>{if(!fields.has(id))fields.set(id,node());return fields.get(id)};
+const descriptors=[{key:'fixture_toggle',kind:'boolean',description:'Fixture toggle',default:{kind:'boolean',boolean:true}},{key:'logs_max_use',kind:'bytes',description:'Keep logs up to',presets:[{kind:'bytes',bytes:64}],allows_unlimited:true},{key:'nas_store',kind:'text',description:'Network job store'},{key:'messages_start_notes',group:'messages',kind:'boolean',description:'Start for notes'},{key:'prompt_cache_persist',group:'models',kind:'boolean',description:'Dormant prompt cache'},{key:'disabled_download_delegates',group:'downloads',kind:'text_map',description:'Download delegates that are switched off, with their reasons.'},{key:'tmp_max_retention',kind:'duration',description:'Keep temporary objects for this long.',default:{kind:'duration',duration_ms:864000000},presets:[{kind:'duration',duration_ms:86400000},{kind:'duration',duration_ms:864000000},{kind:'duration',duration_ms:2592000000}]}];
+let entries=[{key:descriptors[0].key,value:{kind:'boolean',boolean:false},origin:{state:'locked',location:'machine'}},{key:descriptors[1].key,value:{kind:'bytes',bytes:64},origin:{state:'effective',location:'user'}},{key:'nas_store',value:{kind:'text',text:'fixture'},origin:{state:'pending'}},{key:'tmp_max_retention',value:{kind:'duration',duration_ms:864000000},origin:{state:'effective',location:'default'}}];
+let writes=[],outcome='applied',revision='r1',fail=false;
+const context={typedLocationCaptions:{machine:'For this device',user:'For you',process:'For this run'},typedLabels:{nas_store:'Network job folder',logs_max_use:'Log size limit',tmp_max_retention:'Keep temporary data for',messages_start_notes:'Start closed agents for notes'},el,document:{createElement:node},call:async(path,body)=>{if(fail)throw Error('offline');if(body){writes.push(body);return {outcome:outcome,snapshot:{revision:'r2',entries:[]}}}if(path.includes('describe'))return {outcome:'read',descriptors:descriptors};if(path.includes('user'))return {outcome:'read',snapshot:{revision:revision,entries:[]}};return {outcome:'read',entries:entries}},URLSearchParams,encodeURIComponent};
+const settings=fs.readFileSync(__dirname+'/settings_page.go','utf8');
+vm.runInNewContext(settings.slice(settings.indexOf('function settingsRowShell('),settings.indexOf('function settingsCurrentOff(')),context);
+// plainScript (panel_shell.go) is embedded ahead of every page; it owns oaBytes.
+const shellGo=fs.readFileSync(__dirname+'/panel_shell.go','utf8'),plainStart=shellGo.indexOf('const plainScript = `')+'const plainScript = `'.length;
+vm.runInNewContext(shellGo.slice(plainStart,shellGo.indexOf('`',plainStart)).split('<script>')[1].split('</script>')[0],context);
+vm.runInNewContext(script,context);
+(async()=>{
+ await context.typedSettingsReady;
+ assert.equal(context.typedCaption({}, {origin:{location:'machine'}}),'For this device');
+ assert.equal(context.typedCaption({}, {origin:{location:'user'}}),'For you');
+ assert.equal(context.typedCaption({}, {origin:{location:'process'}}),'For this run','a value set for this run says so');
+ assert.deepEqual(context.typedChosen({value:{kind:'bytes',bytes:5},origin:{location:'process'}}),{kind:'bytes',bytes:5},'any set location shows its value');
+ assert.equal(context.typedChosen({value:{kind:'bytes',bytes:5},origin:{}}),null,'a default shows Default');
+ assert.equal(context.typedCaption({default_description:'Definition default'}, {origin:{location:'future'}}),'Definition default');
+ assert.equal(context.typedCaption({}, {origin:{location:'constructor'}}),'','a default with nothing to add has no caption beside its chooser');
+ assert.equal(context.typedValueText({kind:'future'}),'Managed automatically');
+ let rows=el('typed-settings-rows').children;
+ assert.equal(rows.length,4,'supported rows have state on arrival; dormant prompt cache, agent starts and download keys are left off');
+ assert.deepEqual(rows.map(r=>r.children[0].children[0].textContent),['Fixture toggle','Log size limit','Network job folder','Keep temporary data for'],'labels are names without a final period');
+ const tmp=rows[3].children[1].children[0];
+ assert.deepEqual(tmp.children.map(o=>o.textContent),['Default (10 days)','1 day','10 days','30 days'],'durations read in days');
+ assert.equal(tmp.value,'0','an unset value shows Default');assert(rows[3].children[0].children[1].hidden,'a default row has no caption');
+ require('./static/panel_rules.js').assertPanelRules({tagName:'SECTION',children:rows},'Settings preferences',{rules:['raw-value','raw-name','label-period','caption-repeat']});
+ const starts=el('typed-advanced-rows').children;
+ assert.equal(el('typed-advanced-starts').hidden,false,'agent starts show under Advanced');
+ assert.deepEqual(starts.map(r=>r.children[0].children[0].textContent),['Start closed agents for notes']);
+ assert.equal(starts[0].children[1].children[0].textContent,'Default','an agent start reads its value as text');assert.equal(starts[0].children[1].children.length,1,'with no control');
+ assert.equal(rows[0].children[0].children[1].textContent,'Locked by your administrator');
+ assert.equal(rows[0].children[1].children[0].checked,false);assert(rows[0].children[1].children[0].disabled);
+ assert.equal(rows[2].children[0].children[1].textContent,'Takes effect after restart');
+ const chooser=rows[1].children[1].children[0];assert(chooser.children.some(o=>o.textContent==='No limit'));
+ chooser.value='2';await chooser.onchange();
+ assert.deepEqual(JSON.parse(JSON.stringify(writes[0])),{revision:'r1',changes:[{key:'logs_max_use',set:{kind:'unlimited'}}]});
+ assert.equal(el('typed-settings-status').textContent,'Saved.');
+ outcome='conflict';rows=el('typed-settings-rows').children;rows[1].children[1].children[0].value='0';await rows[1].children[1].children[0].onchange();
+ assert(!('set' in writes[1].changes[0]),'default unsets only the selected key');
+ assert.match(el('typed-settings-status').textContent,/changed elsewhere/);
+ assert.equal(context.typedValueText({kind:'bytes'}),'0 bytes','codec-omitted zero remains a real zero');
+ assert.equal(context.typedValueText({kind:'duration'}),'0 seconds');
+ assert.deepEqual(['1','5'].map(choice=>context.typedKeyValueText('messages_start_per_hour',{kind:'choice',choice})),['1 start an hour','5 starts an hour'],'an agent start limit reads with its unit');
+ assert.equal(context.typedKeyValueText('messages_start_per_hour',null),'Default','an unread limit reads Default');
+ assert.deepEqual([1073741824,4294967296,17179869184,68719476736,1536,700].map(bytes=>context.typedValueText({kind:'bytes',bytes})),['1 GB','4 GB','16 GB','64 GB','1.5 KB','700 bytes']);
+ assert.deepEqual([604800000,7776000000,3600000,90000].map(duration_ms=>context.typedValueText({kind:'duration',duration_ms})),['7 days','90 days','1 hour','90 seconds']);
+ assert.equal(context.typedValueText({kind:'bytes',bytes:9223372036854775807}),'Custom amount','unsafe browser integers are never represented as an exact bound');
+ entries[0].origin={state:'effective',location:'user'};entries[0].value.boolean=true;await context.typedLoad();
+ rows=el('typed-settings-rows').children;assert.equal(rows[0].children[1].children[0].disabled,false,'lock removal refreshes writability');assert.equal(rows[0].children[1].children[0].checked,true);
+ // A changed owner observation refreshes a lock through the same load path.
+ const baseCall=context.call,run=new AbortController();let observations=0;
+ context.call=async(path,body,signal)=>{if(path.includes('action=observe')){observations++;if(observations===1){entries[0].origin={state:'locked',location:'machine'};return {outcome:'changed',cursor:'fixture'}}run.abort();return {outcome:'unchanged',cursor:'fixture'}}return baseCall(path,body,signal)};
+ await context.typedFollow(run);assert.equal(observations,2);assert(el('typed-settings-rows').children[0].children[1].children[0].disabled,'lock changes from observation disable the row');
+ context.call=baseCall;
+ fail=true;await context.typedLoad();rows=el('typed-settings-rows').children;assert(rows[0].children[1].children[0].disabled&&rows[1].children[1].children[0].disabled,'unavailable authority disables edits');
+ console.log('typed settings DOM controls PASS');
+})().catch(error=>{console.error(error);process.exitCode=1});

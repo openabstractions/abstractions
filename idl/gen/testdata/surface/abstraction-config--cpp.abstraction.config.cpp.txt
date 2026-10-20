@@ -18,6 +18,71 @@ inline constexpr bool operator!=(ConfigObservationOutcome value, std::string_vie
 inline constexpr bool operator==(std::string_view name, ConfigObservationOutcome value)
 inline constexpr bool operator!=(std::string_view name, ConfigObservationOutcome value)
 inline const std::vector<std::string> kConfigObservationOutcomeNames
+enum class ValueKind {Boolean, Integer, Bytes, Duration, Text, Choice, TextList, TextMap, Unlimited}
+inline constexpr std::string_view wire_name(ValueKind value)
+inline std::optional<ValueKind> parse_value_kind(std::string_view name)
+inline constexpr bool operator==(ValueKind value, std::string_view name)
+inline constexpr bool operator!=(ValueKind value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ValueKind value)
+inline constexpr bool operator!=(std::string_view name, ValueKind value)
+inline const std::vector<std::string> kValueKindNames
+enum class Location {Machine, User, Process}
+inline constexpr std::string_view wire_name(Location value)
+inline std::optional<Location> parse_location(std::string_view name)
+inline constexpr bool operator==(Location value, std::string_view name)
+inline constexpr bool operator!=(Location value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Location value)
+inline constexpr bool operator!=(std::string_view name, Location value)
+inline const std::vector<std::string> kLocationNames
+inline const std::vector<std::string> kKeyStateNames
+inline constexpr std::string_view kKeyStateSet
+inline constexpr std::string_view kKeyStateDefault
+inline constexpr std::string_view kKeyStateLocked
+inline constexpr std::string_view kKeyStateIgnored
+inline constexpr std::string_view kKeyStatePending
+enum class ApplyMode {Live, Restart}
+inline constexpr std::string_view wire_name(ApplyMode value)
+inline std::optional<ApplyMode> parse_apply_mode(std::string_view name)
+inline constexpr bool operator==(ApplyMode value, std::string_view name)
+inline constexpr bool operator!=(ApplyMode value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ApplyMode value)
+inline constexpr bool operator!=(std::string_view name, ApplyMode value)
+inline const std::vector<std::string> kApplyModeNames
+enum class KeyRefusalReason {NotGranted, UnknownKey}
+inline constexpr std::string_view wire_name(KeyRefusalReason value)
+inline std::optional<KeyRefusalReason> parse_key_refusal_reason(std::string_view name)
+inline constexpr bool operator==(KeyRefusalReason value, std::string_view name)
+inline constexpr bool operator!=(KeyRefusalReason value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, KeyRefusalReason value)
+inline constexpr bool operator!=(std::string_view name, KeyRefusalReason value)
+inline const std::vector<std::string> kKeyRefusalReasonNames
+enum class ReadOutcome {Read, Corrupt, NotPermitted, Unavailable, Invalid, Forbidden}
+inline constexpr std::string_view wire_name(ReadOutcome value)
+inline std::optional<ReadOutcome> parse_read_outcome(std::string_view name)
+inline constexpr bool operator==(ReadOutcome value, std::string_view name)
+inline constexpr bool operator!=(ReadOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ReadOutcome value)
+inline constexpr bool operator!=(std::string_view name, ReadOutcome value)
+inline const std::vector<std::string> kReadOutcomeNames
+inline const std::vector<std::string> kIgnoredFieldReasonNames
+inline constexpr std::string_view kIgnoredFieldReasonUnknownKey
+inline constexpr std::string_view kIgnoredFieldReasonInvalidName
+enum class ReplaceOutcome {Applied, Conflict, NotPermitted, Invalid, Unavailable, Corrupt, Forbidden}
+inline constexpr std::string_view wire_name(ReplaceOutcome value)
+inline std::optional<ReplaceOutcome> parse_replace_outcome(std::string_view name)
+inline constexpr bool operator==(ReplaceOutcome value, std::string_view name)
+inline constexpr bool operator!=(ReplaceOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ReplaceOutcome value)
+inline constexpr bool operator!=(std::string_view name, ReplaceOutcome value)
+inline const std::vector<std::string> kReplaceOutcomeNames
+enum class ObservationOutcomeV2 {Changed, Unchanged, Gap, Unavailable, Unsupported, Invalid, NotPermitted, Corrupt, Forbidden, Failed}
+inline constexpr std::string_view wire_name(ObservationOutcomeV2 value)
+inline std::optional<ObservationOutcomeV2> parse_observation_outcome_v2(std::string_view name)
+inline constexpr bool operator==(ObservationOutcomeV2 value, std::string_view name)
+inline constexpr bool operator!=(ObservationOutcomeV2 value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ObservationOutcomeV2 value)
+inline constexpr bool operator!=(std::string_view name, ObservationOutcomeV2 value)
+inline const std::vector<std::string> kObservationOutcomeV2Names
 inline const std::vector<std::string> kServiceErrorCodeNames
 inline constexpr std::string_view kServiceErrorCodeHandlerError
 inline constexpr std::string_view kServiceErrorCodeInvalidResult
@@ -30,8 +95,56 @@ inline constexpr std::string_view kServiceErrorCodeCallerUnavailable
 inline constexpr std::string_view kServiceErrorCodeIdentityRequired
 inline constexpr std::string_view kServiceErrorCodeWrongUser
 inline constexpr std::string_view kServiceErrorCodeInvalidRevision
+enum class EndpointServiceReadiness {Ready, NotReady, Unknown}
+inline constexpr std::string_view wire_name(EndpointServiceReadiness value)
+inline std::optional<EndpointServiceReadiness> parse_endpoint_service_readiness(std::string_view name)
+inline constexpr bool operator==(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator!=(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointServiceReadiness value)
+inline constexpr bool operator!=(std::string_view name, EndpointServiceReadiness value)
+inline const std::vector<std::string> kEndpointServiceReadinessNames
+inline const std::vector<std::string> kEndpointRefusalSourceNames
+inline constexpr std::string_view kEndpointRefusalSourceRights
+inline constexpr std::string_view kEndpointRefusalSourceCredentials
+inline constexpr std::string_view kEndpointRefusalSourceLicense
+inline constexpr std::string_view kEndpointRefusalSourceTerms
+inline constexpr std::string_view kEndpointRefusalSourceIdentity
+inline constexpr std::string_view kEndpointRefusalSourceOs
+enum class EndpointRefusalDecision {Denied, NotGranted, PersonOnly}
+inline constexpr std::string_view wire_name(EndpointRefusalDecision value)
+inline std::optional<EndpointRefusalDecision> parse_endpoint_refusal_decision(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalDecision value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalDecision value)
+inline const std::vector<std::string> kEndpointRefusalDecisionNames
+enum class EndpointRefusalAsk {Available, None}
+inline constexpr std::string_view wire_name(EndpointRefusalAsk value)
+inline std::optional<EndpointRefusalAsk> parse_endpoint_refusal_ask(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalAsk value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalAsk value)
+inline const std::vector<std::string> kEndpointRefusalAskNames
+enum class EndpointProducerCheckState {Current, Repaired, Stale, Refused, Unverified}
+inline constexpr std::string_view wire_name(EndpointProducerCheckState value)
+inline std::optional<EndpointProducerCheckState> parse_endpoint_producer_check_state(std::string_view name)
+inline constexpr bool operator==(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator!=(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointProducerCheckState value)
+inline constexpr bool operator!=(std::string_view name, EndpointProducerCheckState value)
+inline const std::vector<std::string> kEndpointProducerCheckStateNames
+enum class EndpointDescriptionOutcome {Described, Forbidden, Unavailable, Invalid, Unsupported}
+inline constexpr std::string_view wire_name(EndpointDescriptionOutcome value)
+inline std::optional<EndpointDescriptionOutcome> parse_endpoint_description_outcome(std::string_view name)
+inline constexpr bool operator==(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator!=(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointDescriptionOutcome value)
+inline constexpr bool operator!=(std::string_view name, EndpointDescriptionOutcome value)
+inline const std::vector<std::string> kEndpointDescriptionOutcomeNames
 inline const std::vector<std::string> kReaderErrorCodes
 inline const std::vector<std::string> kEditorErrorCodes
+inline const std::vector<std::string> kResourceActions
 struct RunOverrides
   std::string nas_store
   std::string store
@@ -70,8 +183,193 @@ struct ConfigObservation
   ConfigObservationOutcome outcome
   std::string cursor
   std::optional<Snapshot> snapshot
-inline std::string encode(const Snapshot& v)
+struct Value
+  ValueKind kind
+  bool boolean
+  std::int64_t integer
+  std::int64_t bytes
+  std::int64_t duration_ms
+  std::string text
+  std::string choice
+  std::vector<std::string> text_list
+  std::map<std::string, std::string> text_map
+struct ConfigSource
+  Location location
+  std::string path
+struct KeyOrigin
+  Location location
+  std::string path
+  std::string state
+  std::string reason
+  std::vector<ConfigSource> shadowed
+struct Entry
+  std::string key
+  std::optional<Value> value
+  KeyOrigin origin
+struct ValueRange
+  std::int64_t min
+  std::int64_t max
+struct KeyDescriptor
+  std::string key
+  ValueKind kind
+  std::optional<Value> default_
+  std::optional<ValueRange> range
+  std::vector<std::string> choices
+  std::vector<Value> presets
+  std::string description
+  std::string group
+  ApplyMode apply
+  bool lockable
+  Location lowest_location
+  std::string deprecated
+  std::string default_description
+  bool allows_unlimited
+struct Change
+  std::string key
+  std::optional<Value> set
+struct KeyRefusal
+  std::string key
+  KeyRefusalReason reason
+  std::optional<::abstraction::rights::api::RefusalDetail> refusal
+struct KeyProblem
+  std::string key
+  std::string reason
+struct IgnoredField
+  std::int64_t offset
+  std::string name_excerpt
+  std::string reason
+  ConfigSource source
+struct ReadResult
+  ReadOutcome outcome
+  std::vector<Entry> entries
+  std::string revision
+  std::vector<KeyRefusal> refused
+  std::optional<KeyProblem> problem
+  std::int64_t corrupt_offset
+  std::vector<IgnoredField> ignored_fields
+  std::int64_t ignored_omitted
+  std::optional<ConfigSource> corrupt_source
+  std::optional<::abstraction::rights::api::RefusalDetail> refusal
+struct UserSnapshotV2
+  std::vector<Entry> entries
+  std::string revision
+struct UserReadResultV2
+  ReadOutcome outcome
+  std::optional<UserSnapshotV2> snapshot
+  std::optional<KeyProblem> problem
+  std::int64_t corrupt_offset
+  std::optional<::abstraction::rights::api::RefusalDetail> refusal
+struct UserReplaceResultV2
+  ReplaceOutcome outcome
+  std::optional<UserSnapshotV2> snapshot
+  std::vector<KeyProblem> refused
+  std::int64_t corrupt_offset
+  std::optional<::abstraction::rights::api::RefusalDetail> refusal
+struct ConfigObservationV2
+  ObservationOutcomeV2 outcome
+  std::string cursor
+  std::optional<ReadResult> snapshot
+  std::optional<KeyProblem> problem
+  std::int64_t corrupt_offset
+  std::optional<ConfigSource> corrupt_source
+  std::optional<::abstraction::rights::api::RefusalDetail> refusal
+  std::optional<std::int64_t> age_ms
+  std::string cause
+struct DescribeResult
+  ReadOutcome outcome
+  std::vector<KeyDescriptor> descriptors
+  std::optional<::abstraction::rights::api::RefusalDetail> refusal
+struct EndpointRefusalDetail
+  std::string source
+  EndpointRefusalDecision decision
+  EndpointRefusalAsk ask
+  std::string action
+  std::string question
+  std::string credential
+  std::int64_t retry_after_ms
+struct EndpointProducerCheck
+  std::string kind
+  std::string copy
+  EndpointProducerCheckState state
+  std::string reason
+  std::string checked
+struct EndpointServiceState
+  std::string service
+  EndpointServiceReadiness readiness
+  std::string reason
+  std::vector<std::string> guarantees
+  std::map<std::string, std::string> capabilities
+  std::string definition_hash
+struct EndpointDescription
+  EndpointDescriptionOutcome outcome
+  std::string program
+  std::string version
+  std::vector<EndpointServiceState> services
+  std::optional<EndpointRefusalDetail> refusal
+  std::string reason
+  std::vector<EndpointProducerCheck> checks
+struct EndpointDescriptionResult
+  EndpointDescription value
 inline Snapshot decode(std::string_view data)
+T from_json(std::string_view data)
+inline std::string to_json(const RunOverrides& v)
+inline RunOverrides from_json<RunOverrides>(std::string_view data)
+inline std::string to_json(const Origin& v)
+inline Origin from_json<Origin>(std::string_view data)
+inline std::string to_json(const Origins& v)
+inline Origins from_json<Origins>(std::string_view data)
+inline std::string to_json(const Snapshot& v)
+inline Snapshot from_json<Snapshot>(std::string_view data)
+inline std::string to_json(const UserSettings& v)
+inline UserSettings from_json<UserSettings>(std::string_view data)
+inline std::string to_json(const UserSnapshot& v)
+inline UserSnapshot from_json<UserSnapshot>(std::string_view data)
+inline std::string to_json(const UserReplaceResult& v)
+inline UserReplaceResult from_json<UserReplaceResult>(std::string_view data)
+inline std::string to_json(const ConfigObservation& v)
+inline ConfigObservation from_json<ConfigObservation>(std::string_view data)
+inline std::string to_json(const Value& v)
+inline Value from_json<Value>(std::string_view data)
+inline std::string to_json(const ConfigSource& v)
+inline ConfigSource from_json<ConfigSource>(std::string_view data)
+inline std::string to_json(const KeyOrigin& v)
+inline KeyOrigin from_json<KeyOrigin>(std::string_view data)
+inline std::string to_json(const Entry& v)
+inline Entry from_json<Entry>(std::string_view data)
+inline std::string to_json(const ValueRange& v)
+inline ValueRange from_json<ValueRange>(std::string_view data)
+inline std::string to_json(const KeyDescriptor& v)
+inline KeyDescriptor from_json<KeyDescriptor>(std::string_view data)
+inline std::string to_json(const Change& v)
+inline Change from_json<Change>(std::string_view data)
+inline std::string to_json(const KeyRefusal& v)
+inline KeyRefusal from_json<KeyRefusal>(std::string_view data)
+inline std::string to_json(const KeyProblem& v)
+inline KeyProblem from_json<KeyProblem>(std::string_view data)
+inline std::string to_json(const IgnoredField& v)
+inline IgnoredField from_json<IgnoredField>(std::string_view data)
+inline std::string to_json(const ReadResult& v)
+inline ReadResult from_json<ReadResult>(std::string_view data)
+inline std::string to_json(const UserSnapshotV2& v)
+inline UserSnapshotV2 from_json<UserSnapshotV2>(std::string_view data)
+inline std::string to_json(const UserReadResultV2& v)
+inline UserReadResultV2 from_json<UserReadResultV2>(std::string_view data)
+inline std::string to_json(const UserReplaceResultV2& v)
+inline UserReplaceResultV2 from_json<UserReplaceResultV2>(std::string_view data)
+inline std::string to_json(const ConfigObservationV2& v)
+inline ConfigObservationV2 from_json<ConfigObservationV2>(std::string_view data)
+inline std::string to_json(const DescribeResult& v)
+inline DescribeResult from_json<DescribeResult>(std::string_view data)
+inline std::string to_json(const EndpointRefusalDetail& v)
+inline EndpointRefusalDetail from_json<EndpointRefusalDetail>(std::string_view data)
+inline std::string to_json(const EndpointProducerCheck& v)
+inline EndpointProducerCheck from_json<EndpointProducerCheck>(std::string_view data)
+inline std::string to_json(const EndpointServiceState& v)
+inline EndpointServiceState from_json<EndpointServiceState>(std::string_view data)
+inline std::string to_json(const EndpointDescription& v)
+inline EndpointDescription from_json<EndpointDescription>(std::string_view data)
+inline std::string to_json(const EndpointDescriptionResult& v)
+inline EndpointDescriptionResult from_json<EndpointDescriptionResult>(std::string_view data)
 struct FrameWriter
   virtual void write_frame(std::string_view frame)
 struct DispatchError : std::runtime_error
@@ -81,10 +379,12 @@ struct FrameExchanger
 struct ServiceError : std::runtime_error
   std::string code, message
 inline constexpr std::string_view kEndpointContract
+inline constexpr std::string_view kEndpointV2Contract
 struct DescribedService
   std::string contract
   bool ready
   std::string why
+std::string describe_endpoint_with_checks(std::string_view frame, const std::string& program, const std::string& version, const std::vector<EndpointProducerCheck>& checks, const Services& . . . services)
 std::string describe_endpoint(std::string_view frame, const std::string& program, const std::string& version, const Services& . . . services)
 struct ConfigReader
   virtual Snapshot read(const RunOverrides& overrides)
@@ -97,6 +397,8 @@ struct ConfigReaderService
 struct ConfigReaderDispatcher : FrameWriter, FrameExchanger
   ConfigReader& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct ConfigEditor
@@ -112,6 +414,8 @@ struct ConfigEditorService
 struct ConfigEditorDispatcher : FrameWriter, FrameExchanger
   ConfigEditor& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct ConfigObserver
@@ -119,11 +423,117 @@ struct ConfigObserver
 template<class Transport>struct ConfigObserverClient : ConfigObserver
   Transport& transport_
   ConfigObservation observe(const RunOverrides& overrides, const std::string& cursor, const std::int64_t& wait_ms) override
+  auto observe_pages(const RunOverrides& overrides, const std::string& cursor, const std::int64_t& wait_ms)
 struct ConfigObserverService
   inline static constexpr std::string_view kWireName
   inline static constexpr std::string_view kCapability
 struct ConfigObserverDispatcher : FrameWriter, FrameExchanger
   ConfigObserver& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
+struct ConfigReaderV2
+  virtual ReadResult read(const std::vector<std::string>& names)
+  virtual DescribeResult describe()
+template<class Transport>struct ConfigReaderV2Client : ConfigReaderV2
+  Transport& transport_
+  ReadResult read(const std::vector<std::string>& names) override
+  DescribeResult describe() override
+struct ConfigReaderV2Service
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ConfigReaderV2Dispatcher : FrameWriter, FrameExchanger
+  ConfigReaderV2& handler
+  DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct ConfigEditorV2
+  virtual UserReadResultV2 read_user()
+  virtual UserReplaceResultV2 replace_user(const std::string& expected_revision, const std::vector<Change>& changes)
+template<class Transport>struct ConfigEditorV2Client : ConfigEditorV2
+  Transport& transport_
+  UserReadResultV2 read_user() override
+  UserReplaceResultV2 replace_user(const std::string& expected_revision, const std::vector<Change>& changes) override
+struct ConfigEditorV2Service
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ConfigEditorV2Dispatcher : FrameWriter, FrameExchanger
+  ConfigEditorV2& handler
+  DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct ConfigObserverV2
+  virtual ConfigObservationV2 observe(const std::string& cursor, const std::int64_t& wait_ms)
+template<class Transport>struct ConfigObserverV2Client : ConfigObserverV2
+  Transport& transport_
+  ConfigObservationV2 observe(const std::string& cursor, const std::int64_t& wait_ms) override
+  auto observe_pages(const std::string& cursor, const std::int64_t& wait_ms)
+struct ConfigObserverV2Service
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ConfigObserverV2Dispatcher : FrameWriter, FrameExchanger
+  ConfigObserverV2& handler
+  DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+inline constexpr std::string_view kConfigCatalogueJSON
+inline void validate_config_value(const Value& v)
+inline std::vector<KeyDescriptor> config_key_descriptors()
+inline std::vector<Entry> overlay_config_process(const std::vector<Entry>& entries, const std::vector<Change>& changes)
+inline std::string encode_run_overrides(const RunOverrides& v)
+inline RunOverrides decode_run_overrides(std::string_view in)
+inline std::string encode_origin(const Origin& v)
+inline Origin decode_origin(std::string_view in)
+inline std::string encode_origins(const Origins& v)
+inline Origins decode_origins(std::string_view in)
+inline std::string encode_snapshot(const Snapshot& v)
+inline Snapshot decode_snapshot(std::string_view in)
+inline std::string encode_user_settings(const UserSettings& v)
+inline UserSettings decode_user_settings(std::string_view in)
+inline std::string encode_user_snapshot(const UserSnapshot& v)
+inline UserSnapshot decode_user_snapshot(std::string_view in)
+inline std::string encode_user_replace_result(const UserReplaceResult& v)
+inline UserReplaceResult decode_user_replace_result(std::string_view in)
+inline std::string encode_config_observation(const ConfigObservation& v)
+inline ConfigObservation decode_config_observation(std::string_view in)
+inline std::string encode_value(const Value& v)
+inline Value decode_value(std::string_view in)
+inline std::string encode_config_source(const ConfigSource& v)
+inline ConfigSource decode_config_source(std::string_view in)
+inline std::string encode_key_origin(const KeyOrigin& v)
+inline KeyOrigin decode_key_origin(std::string_view in)
+inline std::string encode_entry(const Entry& v)
+inline Entry decode_entry(std::string_view in)
+inline std::string encode_value_range(const ValueRange& v)
+inline ValueRange decode_value_range(std::string_view in)
+inline std::string encode_key_descriptor(const KeyDescriptor& v)
+inline KeyDescriptor decode_key_descriptor(std::string_view in)
+inline std::string encode_change(const Change& v)
+inline Change decode_change(std::string_view in)
+inline std::string encode_key_refusal(const KeyRefusal& v)
+inline KeyRefusal decode_key_refusal(std::string_view in)
+inline std::string encode_key_problem(const KeyProblem& v)
+inline KeyProblem decode_key_problem(std::string_view in)
+inline std::string encode_ignored_field(const IgnoredField& v)
+inline IgnoredField decode_ignored_field(std::string_view in)
+inline std::string encode_read_result(const ReadResult& v)
+inline ReadResult decode_read_result(std::string_view in)
+inline std::string encode_user_snapshot_v2(const UserSnapshotV2& v)
+inline UserSnapshotV2 decode_user_snapshot_v2(std::string_view in)
+inline std::string encode_user_read_result_v2(const UserReadResultV2& v)
+inline UserReadResultV2 decode_user_read_result_v2(std::string_view in)
+inline std::string encode_user_replace_result_v2(const UserReplaceResultV2& v)
+inline UserReplaceResultV2 decode_user_replace_result_v2(std::string_view in)
+inline std::string encode_config_observation_v2(const ConfigObservationV2& v)
+inline ConfigObservationV2 decode_config_observation_v2(std::string_view in)
+inline std::string encode_describe_result(const DescribeResult& v)
+inline DescribeResult decode_describe_result(std::string_view in)
+inline std::string encode(const Snapshot& v)

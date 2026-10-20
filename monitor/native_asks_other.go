@@ -4,6 +4,6 @@ package main
 
 import "errors"
 
-func runNativeAsks(applicationStart) error {
+func runNativeAsks() error {
 	return errors.New("native Asks bridge requires the macOS launcher")
 }

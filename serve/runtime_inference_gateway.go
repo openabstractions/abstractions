@@ -11,6 +11,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/openabstractions/abstraction-inference/adapters/go/gateway"
@@ -32,27 +33,61 @@ func gatewayAddress(address string) error {
 	return nil
 }
 
+// gatewayQuestionWait is how long the window holds a chat call for its
+// first-use questions; tests shorten it.
+var gatewayQuestionWait = gateway.DefaultQuestionWait
+
 // openGateway opens the window over the composed provider. Keys are verified
 // against the holder, decisions and records are the provider's own, and a
 // window refusal before admission is recorded through record.
 func openGateway(address string, r *runtimeInference, record func(inference.Record), report func(error)) (*gateway.Window, error) {
 	o := r.operator
-	window, err := gateway.Listen(address, gateway.Config{Chat: r.provider, Account: o.credentials.owner, Keys: o.verifyKey, StoreContent: r.content.write, ReadContent: r.content.read,
-		Models: o.windowModels, Record: record, OnError: report})
+	cfg := gateway.Config{Chat: r.provider, Account: o.credentials.owner, Keys: o.verifyKey, StoreContent: r.content.write, ReadContent: r.content.read,
+		Models: o.windowModels, Record: record, OnError: report, QuestionWait: gatewayQuestionWait}
+	// A chat call refused for want of a first-use answer waits for it
+	// (INF-W10).
+	if rights := o.credentials.runtimeRights; rights != nil && rights.awaitQuestions != nil {
+		cfg.Await = func(ctx context.Context, s inference.Subject, ids []string) bool {
+			return rights.awaitQuestions(ctx, rwire.Subject{Account: s.Account, Program: s.Program}, ids)
+		}
+		if rights.pendingQuestions != nil {
+			cfg.Pending = func(_ context.Context, s inference.Subject, ids []string) []string {
+				pending, err := rights.pendingQuestions(rwire.Subject{Account: s.Account, Program: s.Program}, ids)
+				if err != nil {
+					report(err)
+					return nil
+				}
+				return pending
+			}
+		}
+	}
+	window, err := gateway.Listen(address, cfg)
 	if err != nil {
 		return nil, err
 	}
 	//unchecked: last diagnostic before returning the opened window; a failed write to stderr has no fallback destination
-	fmt.Fprintf(os.Stderr, "runtime: inference gateway window on http://%s/v1 (OpenAI) and http://%s (Anthropic)\n", window.Addr(), window.Addr())
+	writeHostLogLine(os.Stderr, fmt.Sprintf("runtime: inference gateway window on http://%s/v1 (OpenAI) and http://%s (Anthropic)", window.Addr(), window.Addr()))
 	return window, nil
 }
 
 // verifyKey resolves a presented key to its record, verifies it against the
-// platform store, and requires the bound program the key was issued to.
+// platform store, and requires the bound program the key was issued to. Any
+// other non-empty key is a placeholder (INF-W4): desktop clients refuse an
+// empty key field, and the window already bound the program from its
+// connection. Its grant spends under each hosted server's declared
+// credential, which the program's own rules decide (INF-W5).
 func (o *inferenceOperator) verifyKey(_ context.Context, subject inference.Subject, key string) (gateway.Grant, string) {
+	if key == "" {
+		return gateway.Grant{}, gateway.KeyUnknown
+	}
 	name, ok := localKeyName(key)
 	if !ok {
-		return gateway.Grant{}, gateway.KeyUnknown
+		// A key in the minted spelling that does not parse is a damaged local
+		// key, never a placeholder.
+		if strings.HasPrefix(key, localKeyPrefix) {
+			return gateway.Grant{}, gateway.KeyUnknown
+		}
+		return gateway.Grant{Declared: true}, gateway.KeyVerified
 	}
 	o.mu.Lock()
 	record, found := o.keys.byName(name)
@@ -76,9 +111,23 @@ func (o *inferenceOperator) verifyKey(_ context.Context, subject inference.Subje
 }
 
 // windowModels lists every model name a host serves on which subject holds
-// abstraction.inference/complete, from the router's latest reading.
+// abstraction.inference/complete, from the router's latest reading, and the
+// names of each hosted server that names a credential where complete reads
+// not_granted while first-use questions are asked: a client that fills its
+// model chooser from this list reaches its first call, which asks the
+// person (INF-W10). A listed name grants nothing; complete and
+// abstraction.credentials/apply decide each call.
 func (o *inferenceOperator) windowModels(ctx context.Context, subject inference.Subject) []string {
 	families, _ := o.router.Models(false)
+	rights := o.credentials.runtimeRights
+	askable := map[string]bool{}
+	if rights.firstUse != nil {
+		for _, h := range o.router.Hosts() {
+			if h.Hosted && h.Credential != "" {
+				askable[h.Name] = true
+			}
+		}
+	}
 	permitted := map[string]bool{}
 	seen := map[string]bool{}
 	var names []string
@@ -89,8 +138,9 @@ func (o *inferenceOperator) windowModels(ctx context.Context, subject inference.
 			}
 			allowed, asked := permitted[alias.Host]
 			if !asked {
-				decision := o.credentials.runtimeRights.decide(ctx, rwire.Subject{Account: subject.Account, Program: subject.Program}, inference.ActionComplete, inference.ResourceHost(alias.Host))
-				allowed = decision.Outcome == rwire.DecisionOutcomePermitted
+				decision := rights.decide(ctx, rwire.Subject{Account: subject.Account, Program: subject.Program}, inference.ActionComplete, inference.ResourceHost(alias.Host))
+				allowed = decision.Outcome == rwire.DecisionOutcomePermitted ||
+					decision.Outcome == rwire.DecisionOutcomeNotGranted && askable[alias.Host]
 				permitted[alias.Host] = allowed
 			}
 			if allowed {
@@ -132,6 +182,20 @@ type gatewayControl struct {
 	served  chan error
 	why     string
 	stopped bool
+}
+
+// boundAddress reads the existing listener owner; an unopened window has no
+// address. The ready callback never substitutes its requested :0 spelling.
+func (g *gatewayControl) boundAddress() string {
+	if g == nil {
+		return ""
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.window == nil {
+		return ""
+	}
+	return g.window.Addr().String()
 }
 
 // readSetting reads the setting and its revision, the digest of its bytes.

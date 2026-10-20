@@ -21,7 +21,7 @@ func TestPreserveIsExplicitAndReservesItsStorage(t *testing.T) {
 		t.Fatal("preserve not recorded")
 	}
 	for _, b := range backends {
-		body := b.emit(def)
+		body := mustEmit(t, b, def)
 		if err := b.verify(emitted{def: def, lang: b.lang, imports: b.imports, body: body, source: "preserve.thrift", whole: body}); err != nil {
 			t.Fatalf("%s: %v", b.lang, err)
 		}

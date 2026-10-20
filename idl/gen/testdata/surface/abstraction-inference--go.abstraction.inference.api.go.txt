@@ -3,6 +3,7 @@ type RequestGuarantee string
 const RequestGuaranteeLocalOnly
 const RequestGuaranteeHostedAllowed
 func RequestGuaranteeValues() []RequestGuarantee
+func (RequestGuarantee) IsKnown() bool
 func (RequestGuarantee) Known() bool
 type Role uint32
 const RoleSystem
@@ -17,6 +18,7 @@ func (Role) UnmarshalText(text []byte) error
 func (Role) MarshalJSON() ([]byte, error)
 func (Role) UnmarshalJSON(data []byte) error
 func RoleValues() []Role
+func (Role) IsKnown() bool
 func (Role) Known() bool
 type PartKind uint32
 const PartKindText
@@ -31,6 +33,7 @@ func (PartKind) UnmarshalText(text []byte) error
 func (PartKind) MarshalJSON() ([]byte, error)
 func (PartKind) UnmarshalJSON(data []byte) error
 func PartKindValues() []PartKind
+func (PartKind) IsKnown() bool
 func (PartKind) Known() bool
 type ReplyOutcome uint32
 const ReplyOutcomeCompleted
@@ -52,6 +55,7 @@ func (ReplyOutcome) UnmarshalText(text []byte) error
 func (ReplyOutcome) MarshalJSON() ([]byte, error)
 func (ReplyOutcome) UnmarshalJSON(data []byte) error
 func ReplyOutcomeValues() []ReplyOutcome
+func (ReplyOutcome) IsKnown() bool
 func (ReplyOutcome) Known() bool
 type StopReason uint32
 const StopReasonNoStop
@@ -69,6 +73,7 @@ func (StopReason) UnmarshalText(text []byte) error
 func (StopReason) MarshalJSON() ([]byte, error)
 func (StopReason) UnmarshalJSON(data []byte) error
 func StopReasonValues() []StopReason
+func (StopReason) IsKnown() bool
 func (StopReason) Known() bool
 type DeltaKind uint32
 const DeltaKindPart
@@ -87,6 +92,7 @@ func (DeltaKind) UnmarshalText(text []byte) error
 func (DeltaKind) MarshalJSON() ([]byte, error)
 func (DeltaKind) UnmarshalJSON(data []byte) error
 func DeltaKindValues() []DeltaKind
+func (DeltaKind) IsKnown() bool
 func (DeltaKind) Known() bool
 type StartOutcome uint32
 const StartOutcomeAccepted
@@ -106,6 +112,7 @@ func (StartOutcome) UnmarshalText(text []byte) error
 func (StartOutcome) MarshalJSON() ([]byte, error)
 func (StartOutcome) UnmarshalJSON(data []byte) error
 func StartOutcomeValues() []StartOutcome
+func (StartOutcome) IsKnown() bool
 func (StartOutcome) Known() bool
 type SelectionReason uint32
 const SelectionReasonExplicitModel
@@ -119,6 +126,7 @@ func (SelectionReason) UnmarshalText(text []byte) error
 func (SelectionReason) MarshalJSON() ([]byte, error)
 func (SelectionReason) UnmarshalJSON(data []byte) error
 func SelectionReasonValues() []SelectionReason
+func (SelectionReason) IsKnown() bool
 func (SelectionReason) Known() bool
 type PageOutcome uint32
 const PageOutcomePage
@@ -135,6 +143,7 @@ func (PageOutcome) UnmarshalText(text []byte) error
 func (PageOutcome) MarshalJSON() ([]byte, error)
 func (PageOutcome) UnmarshalJSON(data []byte) error
 func PageOutcomeValues() []PageOutcome
+func (PageOutcome) IsKnown() bool
 func (PageOutcome) Known() bool
 type CancelOutcome uint32
 const CancelOutcomeCancelled
@@ -151,7 +160,196 @@ func (CancelOutcome) UnmarshalText(text []byte) error
 func (CancelOutcome) MarshalJSON() ([]byte, error)
 func (CancelOutcome) UnmarshalJSON(data []byte) error
 func CancelOutcomeValues() []CancelOutcome
+func (CancelOutcome) IsKnown() bool
 func (CancelOutcome) Known() bool
+type ChatProgressPhase string
+const ChatProgressPhaseQueued
+const ChatProgressPhaseLoading
+const ChatProgressPhaseWarming
+func ChatProgressPhaseValues() []ChatProgressPhase
+func (ChatProgressPhase) IsKnown() bool
+func (ChatProgressPhase) Known() bool
+type ChatPartKind uint32
+const ChatPartKindText
+const ChatPartKindReasoning
+const ChatPartKindReasoningSummary
+const ChatPartKindToolCall
+const ChatPartKindModelRefusal
+func (ChatPartKind) String() string
+func (ChatPartKind) WireName() (string, bool)
+func ParseChatPartKind(word string) (ChatPartKind, bool)
+func (ChatPartKind) MarshalText() ([]byte, error)
+func (ChatPartKind) UnmarshalText(text []byte) error
+func (ChatPartKind) MarshalJSON() ([]byte, error)
+func (ChatPartKind) UnmarshalJSON(data []byte) error
+func ChatPartKindValues() []ChatPartKind
+func (ChatPartKind) IsKnown() bool
+func (ChatPartKind) Known() bool
+type FinishReason string
+const FinishReasonStop
+const FinishReasonLength
+const FinishReasonToolCalls
+const FinishReasonContentFilter
+const FinishReasonModelRefusal
+const FinishReasonContextWindow
+const FinishReasonMalformedToolCall
+const FinishReasonPaused
+const FinishReasonOther
+func FinishReasonValues() []FinishReason
+func (FinishReason) IsKnown() bool
+func (FinishReason) Known() bool
+type ChatToolChoiceKind uint32
+const ChatToolChoiceKindAuto
+const ChatToolChoiceKindNone
+const ChatToolChoiceKindRequired
+const ChatToolChoiceKindNamed
+func (ChatToolChoiceKind) String() string
+func (ChatToolChoiceKind) WireName() (string, bool)
+func ParseChatToolChoiceKind(word string) (ChatToolChoiceKind, bool)
+func (ChatToolChoiceKind) MarshalText() ([]byte, error)
+func (ChatToolChoiceKind) UnmarshalText(text []byte) error
+func (ChatToolChoiceKind) MarshalJSON() ([]byte, error)
+func (ChatToolChoiceKind) UnmarshalJSON(data []byte) error
+func ChatToolChoiceKindValues() []ChatToolChoiceKind
+func (ChatToolChoiceKind) IsKnown() bool
+func (ChatToolChoiceKind) Known() bool
+type ChatReasoningEffort uint32
+const ChatReasoningEffortNone
+const ChatReasoningEffortLow
+const ChatReasoningEffortMedium
+const ChatReasoningEffortHigh
+func (ChatReasoningEffort) String() string
+func (ChatReasoningEffort) WireName() (string, bool)
+func ParseChatReasoningEffort(word string) (ChatReasoningEffort, bool)
+func (ChatReasoningEffort) MarshalText() ([]byte, error)
+func (ChatReasoningEffort) UnmarshalText(text []byte) error
+func (ChatReasoningEffort) MarshalJSON() ([]byte, error)
+func (ChatReasoningEffort) UnmarshalJSON(data []byte) error
+func ChatReasoningEffortValues() []ChatReasoningEffort
+func (ChatReasoningEffort) IsKnown() bool
+func (ChatReasoningEffort) Known() bool
+type SealOmission string
+const SealOmissionEncodedSize
+const SealOmissionIncompatibleOrigin
+func SealOmissionValues() []SealOmission
+func (SealOmission) IsKnown() bool
+func (SealOmission) Known() bool
+type ServedPlace string
+const ServedPlaceLocal
+const ServedPlaceHosted
+const ServedPlaceRemote
+func ServedPlaceValues() []ServedPlace
+func (ServedPlace) IsKnown() bool
+func (ServedPlace) Known() bool
+type ChatEventKind uint32
+const ChatEventKindProgress
+const ChatEventKindPart
+const ChatEventKindBlockEnd
+const ChatEventKindUsage
+const ChatEventKindEnd
+func (ChatEventKind) String() string
+func (ChatEventKind) WireName() (string, bool)
+func ParseChatEventKind(word string) (ChatEventKind, bool)
+func (ChatEventKind) MarshalText() ([]byte, error)
+func (ChatEventKind) UnmarshalText(text []byte) error
+func (ChatEventKind) MarshalJSON() ([]byte, error)
+func (ChatEventKind) UnmarshalJSON(data []byte) error
+func ChatEventKindValues() []ChatEventKind
+func (ChatEventKind) IsKnown() bool
+func (ChatEventKind) Known() bool
+type ChatGuarantee string
+const ChatGuaranteeLocalOnly
+const ChatGuaranteeHostedAllowed
+const ChatGuaranteeNoRetention
+const ChatGuaranteeFreeCapacity
+func ChatGuaranteeValues() []ChatGuarantee
+func (ChatGuarantee) IsKnown() bool
+func (ChatGuarantee) Known() bool
+type ChatUse uint32
+const ChatUseTitle
+func (ChatUse) String() string
+func (ChatUse) WireName() (string, bool)
+func ParseChatUse(word string) (ChatUse, bool)
+func (ChatUse) MarshalText() ([]byte, error)
+func (ChatUse) UnmarshalText(text []byte) error
+func (ChatUse) MarshalJSON() ([]byte, error)
+func (ChatUse) UnmarshalJSON(data []byte) error
+func ChatUseValues() []ChatUse
+func (ChatUse) IsKnown() bool
+func (ChatUse) Known() bool
+type ChatResultOutcome uint32
+const ChatResultOutcomeCompleted
+const ChatResultOutcomeFailed
+const ChatResultOutcomeCancelled
+func (ChatResultOutcome) String() string
+func (ChatResultOutcome) WireName() (string, bool)
+func ParseChatResultOutcome(word string) (ChatResultOutcome, bool)
+func (ChatResultOutcome) MarshalText() ([]byte, error)
+func (ChatResultOutcome) UnmarshalText(text []byte) error
+func (ChatResultOutcome) MarshalJSON() ([]byte, error)
+func (ChatResultOutcome) UnmarshalJSON(data []byte) error
+func ChatResultOutcomeValues() []ChatResultOutcome
+func (ChatResultOutcome) IsKnown() bool
+func (ChatResultOutcome) Known() bool
+type ChatLoad string
+const ChatLoadCold
+const ChatLoadWarm
+const ChatLoadLoaded
+func ChatLoadValues() []ChatLoad
+func (ChatLoad) IsKnown() bool
+func (ChatLoad) Known() bool
+type ChatLoadSource string
+const ChatLoadSourceDisk
+const ChatLoadSourceAdopted
+const ChatLoadSourceLent
+func ChatLoadSourceValues() []ChatLoadSource
+func (ChatLoadSource) IsKnown() bool
+func (ChatLoadSource) Known() bool
+type ChatReasoningSupport string
+const ChatReasoningSupportApplied
+const ChatReasoningSupportApproximated
+const ChatReasoningSupportNotSupported
+const ChatReasoningSupportOverridden
+func ChatReasoningSupportValues() []ChatReasoningSupport
+func (ChatReasoningSupport) IsKnown() bool
+func (ChatReasoningSupport) Known() bool
+type ChatStartOutcome uint32
+const ChatStartOutcomeAccepted
+const ChatStartOutcomeNotPermitted
+const ChatStartOutcomeBudgetExceeded
+const ChatStartOutcomeUnsupported
+const ChatStartOutcomeNoHost
+const ChatStartOutcomeUnavailable
+const ChatStartOutcomeInvalid
+const ChatStartOutcomeForbidden
+const ChatStartOutcomeExhausted
+const ChatStartOutcomeConflict
+const ChatStartOutcomeUnknown
+func (ChatStartOutcome) String() string
+func (ChatStartOutcome) WireName() (string, bool)
+func ParseChatStartOutcome(word string) (ChatStartOutcome, bool)
+func (ChatStartOutcome) MarshalText() ([]byte, error)
+func (ChatStartOutcome) UnmarshalText(text []byte) error
+func (ChatStartOutcome) MarshalJSON() ([]byte, error)
+func (ChatStartOutcome) UnmarshalJSON(data []byte) error
+func ChatStartOutcomeValues() []ChatStartOutcome
+func (ChatStartOutcome) IsKnown() bool
+func (ChatStartOutcome) Known() bool
+type ChatHistoryOutcome uint32
+const ChatHistoryOutcomeAvailable
+const ChatHistoryOutcomeForbidden
+const ChatHistoryOutcomeInvalid
+const ChatHistoryOutcomeUnavailable
+func (ChatHistoryOutcome) String() string
+func (ChatHistoryOutcome) WireName() (string, bool)
+func ParseChatHistoryOutcome(word string) (ChatHistoryOutcome, bool)
+func (ChatHistoryOutcome) MarshalText() ([]byte, error)
+func (ChatHistoryOutcome) UnmarshalText(text []byte) error
+func (ChatHistoryOutcome) MarshalJSON() ([]byte, error)
+func (ChatHistoryOutcome) UnmarshalJSON(data []byte) error
+func ChatHistoryOutcomeValues() []ChatHistoryOutcome
+func (ChatHistoryOutcome) IsKnown() bool
+func (ChatHistoryOutcome) Known() bool
 type PreloadOutcome uint32
 const PreloadOutcomeEvaluated
 const PreloadOutcomeLoaded
@@ -171,6 +369,7 @@ func (PreloadOutcome) UnmarshalText(text []byte) error
 func (PreloadOutcome) MarshalJSON() ([]byte, error)
 func (PreloadOutcome) UnmarshalJSON(data []byte) error
 func PreloadOutcomeValues() []PreloadOutcome
+func (PreloadOutcome) IsKnown() bool
 func (PreloadOutcome) Known() bool
 type EmbedOutcome uint32
 const EmbedOutcomeCompleted
@@ -190,6 +389,7 @@ func (EmbedOutcome) UnmarshalText(text []byte) error
 func (EmbedOutcome) MarshalJSON() ([]byte, error)
 func (EmbedOutcome) UnmarshalJSON(data []byte) error
 func EmbedOutcomeValues() []EmbedOutcome
+func (EmbedOutcome) IsKnown() bool
 func (EmbedOutcome) Known() bool
 type TranscriptUnitKind uint32
 const TranscriptUnitKindSegment
@@ -202,6 +402,7 @@ func (TranscriptUnitKind) UnmarshalText(text []byte) error
 func (TranscriptUnitKind) MarshalJSON() ([]byte, error)
 func (TranscriptUnitKind) UnmarshalJSON(data []byte) error
 func TranscriptUnitKindValues() []TranscriptUnitKind
+func (TranscriptUnitKind) IsKnown() bool
 func (TranscriptUnitKind) Known() bool
 type TimestampMode uint32
 const TimestampModeNone
@@ -216,6 +417,7 @@ func (TimestampMode) UnmarshalText(text []byte) error
 func (TimestampMode) MarshalJSON() ([]byte, error)
 func (TimestampMode) UnmarshalJSON(data []byte) error
 func TimestampModeValues() []TimestampMode
+func (TimestampMode) IsKnown() bool
 func (TimestampMode) Known() bool
 type SpeechFormat uint32
 const SpeechFormatMp3
@@ -232,6 +434,7 @@ func (SpeechFormat) UnmarshalText(text []byte) error
 func (SpeechFormat) MarshalJSON() ([]byte, error)
 func (SpeechFormat) UnmarshalJSON(data []byte) error
 func SpeechFormatValues() []SpeechFormat
+func (SpeechFormat) IsKnown() bool
 func (SpeechFormat) Known() bool
 type LiveFormat uint32
 const LiveFormatPcm1624000
@@ -243,6 +446,7 @@ func (LiveFormat) UnmarshalText(text []byte) error
 func (LiveFormat) MarshalJSON() ([]byte, error)
 func (LiveFormat) UnmarshalJSON(data []byte) error
 func LiveFormatValues() []LiveFormat
+func (LiveFormat) IsKnown() bool
 func (LiveFormat) Known() bool
 type LiveInputOutcome uint32
 const LiveInputOutcomeAccepted
@@ -262,6 +466,7 @@ func (LiveInputOutcome) UnmarshalText(text []byte) error
 func (LiveInputOutcome) MarshalJSON() ([]byte, error)
 func (LiveInputOutcome) UnmarshalJSON(data []byte) error
 func LiveInputOutcomeValues() []LiveInputOutcome
+func (LiveInputOutcome) IsKnown() bool
 func (LiveInputOutcome) Known() bool
 type ImageMode uint32
 const ImageModeGenerate
@@ -274,6 +479,7 @@ func (ImageMode) UnmarshalText(text []byte) error
 func (ImageMode) MarshalJSON() ([]byte, error)
 func (ImageMode) UnmarshalJSON(data []byte) error
 func ImageModeValues() []ImageMode
+func (ImageMode) IsKnown() bool
 func (ImageMode) Known() bool
 type VideoState uint32
 const VideoStateQueued
@@ -293,6 +499,7 @@ func (VideoState) UnmarshalText(text []byte) error
 func (VideoState) MarshalJSON() ([]byte, error)
 func (VideoState) UnmarshalJSON(data []byte) error
 func VideoStateValues() []VideoState
+func (VideoState) IsKnown() bool
 func (VideoState) Known() bool
 type ListOutcome uint32
 const ListOutcomePage
@@ -307,6 +514,7 @@ func (ListOutcome) UnmarshalText(text []byte) error
 func (ListOutcome) MarshalJSON() ([]byte, error)
 func (ListOutcome) UnmarshalJSON(data []byte) error
 func ListOutcomeValues() []ListOutcome
+func (ListOutcome) IsKnown() bool
 func (ListOutcome) Known() bool
 type EditOutcome uint32
 const EditOutcomeApplied
@@ -324,6 +532,7 @@ func (EditOutcome) UnmarshalText(text []byte) error
 func (EditOutcome) MarshalJSON() ([]byte, error)
 func (EditOutcome) UnmarshalJSON(data []byte) error
 func EditOutcomeValues() []EditOutcome
+func (EditOutcome) IsKnown() bool
 func (EditOutcome) Known() bool
 type KeyState uint32
 const KeyStateActive
@@ -337,6 +546,7 @@ func (KeyState) UnmarshalText(text []byte) error
 func (KeyState) MarshalJSON() ([]byte, error)
 func (KeyState) UnmarshalJSON(data []byte) error
 func KeyStateValues() []KeyState
+func (KeyState) IsKnown() bool
 func (KeyState) Known() bool
 type AuditRoute uint32
 const AuditRouteNative
@@ -350,6 +560,7 @@ func (AuditRoute) UnmarshalText(text []byte) error
 func (AuditRoute) MarshalJSON() ([]byte, error)
 func (AuditRoute) UnmarshalJSON(data []byte) error
 func AuditRouteValues() []AuditRoute
+func (AuditRoute) IsKnown() bool
 func (AuditRoute) Known() bool
 type AuditOutcome uint32
 const AuditOutcomePage
@@ -365,7 +576,41 @@ func (AuditOutcome) UnmarshalText(text []byte) error
 func (AuditOutcome) MarshalJSON() ([]byte, error)
 func (AuditOutcome) UnmarshalJSON(data []byte) error
 func AuditOutcomeValues() []AuditOutcome
+func (AuditOutcome) IsKnown() bool
 func (AuditOutcome) Known() bool
+type ProgramBudgetReadOutcome uint32
+const ProgramBudgetReadOutcomePage
+const ProgramBudgetReadOutcomeInvalid
+const ProgramBudgetReadOutcomeForbidden
+const ProgramBudgetReadOutcomeUnavailable
+const ProgramBudgetReadOutcomeUnsupported
+func (ProgramBudgetReadOutcome) String() string
+func (ProgramBudgetReadOutcome) WireName() (string, bool)
+func ParseProgramBudgetReadOutcome(word string) (ProgramBudgetReadOutcome, bool)
+func (ProgramBudgetReadOutcome) MarshalText() ([]byte, error)
+func (ProgramBudgetReadOutcome) UnmarshalText(text []byte) error
+func (ProgramBudgetReadOutcome) MarshalJSON() ([]byte, error)
+func (ProgramBudgetReadOutcome) UnmarshalJSON(data []byte) error
+func ProgramBudgetReadOutcomeValues() []ProgramBudgetReadOutcome
+func (ProgramBudgetReadOutcome) IsKnown() bool
+func (ProgramBudgetReadOutcome) Known() bool
+type ProgramBudgetEditOutcome uint32
+const ProgramBudgetEditOutcomeApplied
+const ProgramBudgetEditOutcomeConflict
+const ProgramBudgetEditOutcomeInvalid
+const ProgramBudgetEditOutcomeForbidden
+const ProgramBudgetEditOutcomeUnavailable
+const ProgramBudgetEditOutcomeUnsupported
+func (ProgramBudgetEditOutcome) String() string
+func (ProgramBudgetEditOutcome) WireName() (string, bool)
+func ParseProgramBudgetEditOutcome(word string) (ProgramBudgetEditOutcome, bool)
+func (ProgramBudgetEditOutcome) MarshalText() ([]byte, error)
+func (ProgramBudgetEditOutcome) UnmarshalText(text []byte) error
+func (ProgramBudgetEditOutcome) MarshalJSON() ([]byte, error)
+func (ProgramBudgetEditOutcome) UnmarshalJSON(data []byte) error
+func ProgramBudgetEditOutcomeValues() []ProgramBudgetEditOutcome
+func (ProgramBudgetEditOutcome) IsKnown() bool
+func (ProgramBudgetEditOutcome) Known() bool
 type CandidatePlacement uint32
 const CandidatePlacementLocal
 const CandidatePlacementHosted
@@ -377,6 +622,7 @@ func (CandidatePlacement) UnmarshalText(text []byte) error
 func (CandidatePlacement) MarshalJSON() ([]byte, error)
 func (CandidatePlacement) UnmarshalJSON(data []byte) error
 func CandidatePlacementValues() []CandidatePlacement
+func (CandidatePlacement) IsKnown() bool
 func (CandidatePlacement) Known() bool
 type SelectionReadOutcome uint32
 const SelectionReadOutcomeFound
@@ -392,6 +638,7 @@ func (SelectionReadOutcome) UnmarshalText(text []byte) error
 func (SelectionReadOutcome) MarshalJSON() ([]byte, error)
 func (SelectionReadOutcome) UnmarshalJSON(data []byte) error
 func SelectionReadOutcomeValues() []SelectionReadOutcome
+func (SelectionReadOutcome) IsKnown() bool
 func (SelectionReadOutcome) Known() bool
 type ServiceErrorCode string
 const ServiceErrorCodeHandlerError
@@ -401,7 +648,91 @@ const ServiceErrorCodeUnknownService
 const ServiceErrorCodeUnknownMethod
 const ServiceErrorCodeWrongMode
 func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) IsKnown() bool
 func (ServiceErrorCode) Known() bool
+type EndpointServiceReadiness uint32
+const EndpointServiceReadinessReady
+const EndpointServiceReadinessNotReady
+const EndpointServiceReadinessUnknown
+func (EndpointServiceReadiness) String() string
+func (EndpointServiceReadiness) WireName() (string, bool)
+func ParseEndpointServiceReadiness(word string) (EndpointServiceReadiness, bool)
+func (EndpointServiceReadiness) MarshalText() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalText(text []byte) error
+func (EndpointServiceReadiness) MarshalJSON() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalJSON(data []byte) error
+func EndpointServiceReadinessValues() []EndpointServiceReadiness
+func (EndpointServiceReadiness) IsKnown() bool
+func (EndpointServiceReadiness) Known() bool
+type EndpointRefusalSource string
+const EndpointRefusalSourceRights
+const EndpointRefusalSourceCredentials
+const EndpointRefusalSourceLicense
+const EndpointRefusalSourceTerms
+const EndpointRefusalSourceIdentity
+const EndpointRefusalSourceOS
+func EndpointRefusalSourceValues() []EndpointRefusalSource
+func (EndpointRefusalSource) IsKnown() bool
+func (EndpointRefusalSource) Known() bool
+type EndpointRefusalDecision uint32
+const EndpointRefusalDecisionDenied
+const EndpointRefusalDecisionNotGranted
+const EndpointRefusalDecisionPersonOnly
+func (EndpointRefusalDecision) String() string
+func (EndpointRefusalDecision) WireName() (string, bool)
+func ParseEndpointRefusalDecision(word string) (EndpointRefusalDecision, bool)
+func (EndpointRefusalDecision) MarshalText() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalText(text []byte) error
+func (EndpointRefusalDecision) MarshalJSON() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalJSON(data []byte) error
+func EndpointRefusalDecisionValues() []EndpointRefusalDecision
+func (EndpointRefusalDecision) IsKnown() bool
+func (EndpointRefusalDecision) Known() bool
+type EndpointRefusalAsk uint32
+const EndpointRefusalAskAvailable
+const EndpointRefusalAskNone
+func (EndpointRefusalAsk) String() string
+func (EndpointRefusalAsk) WireName() (string, bool)
+func ParseEndpointRefusalAsk(word string) (EndpointRefusalAsk, bool)
+func (EndpointRefusalAsk) MarshalText() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalText(text []byte) error
+func (EndpointRefusalAsk) MarshalJSON() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalJSON(data []byte) error
+func EndpointRefusalAskValues() []EndpointRefusalAsk
+func (EndpointRefusalAsk) IsKnown() bool
+func (EndpointRefusalAsk) Known() bool
+type EndpointProducerCheckState uint32
+const EndpointProducerCheckStateCurrent
+const EndpointProducerCheckStateRepaired
+const EndpointProducerCheckStateStale
+const EndpointProducerCheckStateRefused
+const EndpointProducerCheckStateUnverified
+func (EndpointProducerCheckState) String() string
+func (EndpointProducerCheckState) WireName() (string, bool)
+func ParseEndpointProducerCheckState(word string) (EndpointProducerCheckState, bool)
+func (EndpointProducerCheckState) MarshalText() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalText(text []byte) error
+func (EndpointProducerCheckState) MarshalJSON() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalJSON(data []byte) error
+func EndpointProducerCheckStateValues() []EndpointProducerCheckState
+func (EndpointProducerCheckState) IsKnown() bool
+func (EndpointProducerCheckState) Known() bool
+type EndpointDescriptionOutcome uint32
+const EndpointDescriptionOutcomeDescribed
+const EndpointDescriptionOutcomeForbidden
+const EndpointDescriptionOutcomeUnavailable
+const EndpointDescriptionOutcomeInvalid
+const EndpointDescriptionOutcomeUnsupported
+func (EndpointDescriptionOutcome) String() string
+func (EndpointDescriptionOutcome) WireName() (string, bool)
+func ParseEndpointDescriptionOutcome(word string) (EndpointDescriptionOutcome, bool)
+func (EndpointDescriptionOutcome) MarshalText() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalText(text []byte) error
+func (EndpointDescriptionOutcome) MarshalJSON() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalJSON(data []byte) error
+func EndpointDescriptionOutcomeValues() []EndpointDescriptionOutcome
+func (EndpointDescriptionOutcome) IsKnown() bool
+func (EndpointDescriptionOutcome) Known() bool
 var Features
 var ResourceActions
 var LocalKeyKinds
@@ -515,6 +846,150 @@ type DeltaPage struct
 type Cancellation struct
   Outcome CancelOutcome
   ReplyOutcome *ReplyOutcome
+type ChatProgress struct
+  Phase ChatProgressPhase
+  Done *int64
+  Total *int64
+  Unit string
+type ChatUsage struct
+  Input *int64
+  Output *int64
+  CacheRead *int64
+  CacheWrite *int64
+  Reasoning *int64
+type ChatToolChoice struct
+  Kind ChatToolChoiceKind
+  Name string
+type ChatTool struct
+  Name string
+  Description string
+  Parameters string
+  Strict *bool
+type ChatReasoning struct
+  Effort ChatReasoningEffort
+  Budget *int64
+type ChatOptions struct
+  MaxOutput int64
+  Temperature *Temperature
+  Stop []string
+  JSONSchema string
+  ToolChoice *ChatToolChoice
+  ParallelTools *bool
+  Reasoning *ChatReasoning
+type ChatPart struct
+  Block int64
+  Kind ChatPartKind
+  Text string
+  CallID string
+  Name string
+  Arguments string
+  Seal *ReasoningSeal
+type ChatBlockEnd struct
+  Block int64
+  SealOmitted *SealOmission
+type ReasoningSeal struct
+  Origin string
+  Bytes []byte
+type ServedBy struct
+  Place ServedPlace
+  Server string
+  Machine string
+type ChatInputPart struct
+  Kind PartKind
+  Text string
+  Digest string
+  MediaType string
+  CallID string
+  Name string
+  Arguments string
+type ChatReplay struct
+  Block int64
+  Seal ReasoningSeal
+type ChatMessage struct
+  Role Role
+  Parts []ChatInputPart
+  Reasoning []ChatReplay
+type ChatTarget struct
+  Model string
+  SelectionPolicy string
+type ChatContent struct
+  Messages []ChatMessage
+  Tools []ChatTool
+  Options *ChatOptions
+  Extensions map[string]string
+  RequiredExtensions []string
+  Guarantees []ChatGuarantee
+  Credential string
+type RequestV3 struct
+  Identity oaImported0
+  Target ChatTarget
+  Content ChatContent
+  ModelRef string
+  Conversation string
+  Use *ChatUse
+type ChatTiming struct
+  QueueMs *int64
+  LoadMs *int64
+  RestoreMs *int64
+  PrefillMs *int64
+  DecodeMs *int64
+  PrefillTokens *int64
+  ReusedTokens *int64
+  Load *ChatLoad
+  LoadSource *ChatLoadSource
+type ChatReasoningApplied struct
+  Effort *ChatReasoningEffort
+  Budget *int64
+  Support ChatReasoningSupport
+  BudgetSupport *ChatReasoningSupport
+type ChatResult struct
+  Outcome ChatResultOutcome
+  Cause string
+  FinishReason *FinishReason
+  StopSequence string
+  Usage ChatUsage
+  ServedBy *ServedBy
+  Cost *Cost
+  Refusal *oaImported1
+  RetryAfterMs *int64
+  Timing *ChatTiming
+  ReasoningApplied *ChatReasoningApplied
+  DroppedExtensions []string
+type ChatEvent struct
+  Sequence int64
+  Kind ChatEventKind
+  Progress *ChatProgress
+  Part *ChatPart
+  BlockEnd *ChatBlockEnd
+  Usage *ChatUsage
+  End *ChatResult
+type ChatAdmission struct
+  Outcome ChatStartOutcome
+  Reason string
+  Request string
+  Server string
+  Model string
+  RetentionMs int64
+  IdleMs int64
+  RetainedDeltas int64
+  PreferredModel string
+  SelectionReason *SelectionReason
+  Refusal *oaImported1
+  RetryAfterMs *int64
+type ChatPage struct
+  Outcome PageOutcome
+  Events []ChatEvent
+  Next int64
+  AtEnd bool
+  Refusal *oaImported1
+type ChatCancellation struct
+  Outcome CancelOutcome
+  ResultOutcome *ChatResultOutcome
+  Refusal *oaImported1
+type ChatHistoryRead struct
+  Outcome ChatHistoryOutcome
+  Window *oaImported2
+  Refusal *oaImported1
 type PreloadReply struct
   Outcome PreloadOutcome
   Reason string
@@ -758,6 +1233,17 @@ type AuditPage struct
   Entries []AuditEntry
   Next int64
   AtEnd bool
+type RequestEntry struct
+  Entry AuditEntry
+  PreferredModel string
+  UnavailableHosts []string
+  Selection string
+  Placement *ServedPlace
+type RequestPage struct
+  Outcome AuditOutcome
+  Entries []RequestEntry
+  Next int64
+  AtEnd bool
 type GatewayState struct
   Outcome ListOutcome
   Revision string
@@ -770,6 +1256,32 @@ type GatewayChange struct
   Outcome EditOutcome
   Revision string
   Reason string
+type ProgramBudget struct
+  TokensPerDay int64
+  MicrosPerDay int64
+  RequestsPerDay int64
+  ImagesPerDay int64
+  AudioSecondsPerDay int64
+  CharactersPerDay int64
+type ProgramBudgetEntry struct
+  Program string
+  Budget *ProgramBudget
+  Spend Spend
+  CostUnreported bool
+type ProgramBudgetPage struct
+  Outcome ProgramBudgetReadOutcome
+  Revision string
+  Entries []ProgramBudgetEntry
+  Profiles []string
+type ProgramBudgetResult struct
+  Outcome ProgramBudgetEditOutcome
+  Revision string
+  Reason string
+type ProgramBudgetChange struct
+  ExpectedRevision string
+  Credential string
+  Program string
+  Budget *ProgramBudget
 type SelectionChange struct
   Outcome EditOutcome
   Revision string
@@ -786,17 +1298,53 @@ type SelectionReadV2 struct
   Outcome SelectionReadOutcome
   Revision string
   Policy *SelectionPolicyV2
+type EndpointRefusalDetail struct
+  Source EndpointRefusalSource
+  Decision EndpointRefusalDecision
+  Ask EndpointRefusalAsk
+  Action string
+  Question string
+  Credential string
+  RetryAfterMs int64
+type EndpointProducerCheck struct
+  Kind string
+  Copy string
+  State EndpointProducerCheckState
+  Reason string
+  Checked string
+type EndpointServiceState struct
+  Service string
+  Readiness EndpointServiceReadiness
+  Reason string
+  Guarantees []string
+  Capabilities map[string]string
+  DefinitionHash string
+type EndpointDescription struct
+  Outcome EndpointDescriptionOutcome
+  Program string
+  Version string
+  Services []EndpointServiceState
+  Refusal *EndpointRefusalDetail
+  Reason string
+  Checks []EndpointProducerCheck
+type EndpointDescriptionResult struct
+  Value EndpointDescription
 func Encode(v *Request) []byte
 type Refusal struct
   Word string
   Offset int
 func (Refusal) Error() string
+const TimestampLayout
+func FormatTimestamp(at time.Time) string
 func Decode(in []byte) (*Request, error)
+func ToJSON(v any) (out []byte, err error)
+func FromJSON(data []byte, v any) error
 type FrameWriter interface
   WriteFrame(frame []byte) error
 type DispatchError string
 func (DispatchError) Error() string
 func ServiceName(frame []byte) (string, error)
+func ServiceMethod(frame []byte) (service string, method string, err error)
 type FrameExchanger interface
   ExchangeFrame(frame []byte) ([]byte, error)
 type ServiceError struct
@@ -804,13 +1352,18 @@ type ServiceError struct
   Message string
 func (ServiceError) Error() string
 const EndpointContract
+const EndpointV2Contract
 type DescribedService interface
   DescribeService() (contract string, ready bool, why string)
 func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+func DescribeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...DescribedService) ([]byte, error)
 type ServedService interface
   DescribedService
   ServiceContract() string
 func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+func ServeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...ServedService) ([]byte, error)
+func ServeEndpointRemote(frame []byte, program, version string, admit func(contract, method, profile string) error, services ...ServedService) ([]byte, error)
+func RemoteMethodProfile(service interface{}, contract, method string) string
 type Chat interface
   Start(request Request) (Admission, error)
   Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (DeltaPage, error)
@@ -821,15 +1374,18 @@ type ChatClient struct
 func NewChatClient(t ChatTransport) *ChatClient
 type ChatDispatcher struct
   Handler Chat
+func (ChatDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (ChatClient) Start(request Request) (result Admission, err error)
 func (ChatClient) Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (result DeltaPage, err error)
 func (ChatClient) Cancel(operation string) (result Cancellation, err error)
 func (ChatDispatcher) DescribeService() (contract string, ready bool, why string)
 func (ChatDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ChatDispatcher) ServiceContract() string
+func (ChatDispatcher) DescribeServiceDefinitionHash() string
 func (ChatDispatcher) WriteFrame(frame []byte) error
 func (ChatDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type ChatV2 interface
+  StartWithGuarantees(request RequestV2, guarantees []RequestGuarantee) (AdmissionV2, error)
   Start(request RequestV2) (AdmissionV2, error)
   Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (DeltaPage, error)
   Cancel(operation string) (Cancellation, error)
@@ -839,14 +1395,39 @@ type ChatV2Client struct
 func NewChatV2Client(t ChatV2Transport) *ChatV2Client
 type ChatV2Dispatcher struct
   Handler ChatV2
+func (ChatV2Dispatcher) RemoteMethodProfile(contract, method string) (string, bool)
+func (ChatV2Client) StartWithGuarantees(request RequestV2, guarantees []RequestGuarantee) (result AdmissionV2, err error)
 func (ChatV2Client) Start(request RequestV2) (result AdmissionV2, err error)
 func (ChatV2Client) Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (result DeltaPage, err error)
 func (ChatV2Client) Cancel(operation string) (result Cancellation, err error)
 func (ChatV2Dispatcher) DescribeService() (contract string, ready bool, why string)
 func (ChatV2Dispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ChatV2Dispatcher) ServiceContract() string
+func (ChatV2Dispatcher) DescribeServiceDefinitionHash() string
 func (ChatV2Dispatcher) WriteFrame(frame []byte) error
 func (ChatV2Dispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type ChatV3 interface
+  GetHistoryWindow() (ChatHistoryRead, error)
+  Start(request RequestV3) (ChatAdmission, error)
+  Observe(request string, cursor, maxDeltas, maxBytes, waitMs int64) (ChatPage, error)
+  Cancel(request string) (ChatCancellation, error)
+type ChatV3Transport interface
+  FrameExchanger
+type ChatV3Client struct
+func NewChatV3Client(t ChatV3Transport) *ChatV3Client
+type ChatV3Dispatcher struct
+  Handler ChatV3
+func (ChatV3Dispatcher) RemoteMethodProfile(contract, method string) (string, bool)
+func (ChatV3Client) GetHistoryWindow() (result ChatHistoryRead, err error)
+func (ChatV3Client) Start(request RequestV3) (result ChatAdmission, err error)
+func (ChatV3Client) Observe(request string, cursor, maxDeltas, maxBytes, waitMs int64) (result ChatPage, err error)
+func (ChatV3Client) Cancel(request string) (result ChatCancellation, err error)
+func (ChatV3Dispatcher) DescribeService() (contract string, ready bool, why string)
+func (ChatV3Dispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (ChatV3Dispatcher) ServiceContract() string
+func (ChatV3Dispatcher) DescribeServiceDefinitionHash() string
+func (ChatV3Dispatcher) WriteFrame(frame []byte) error
+func (ChatV3Dispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type Preloader interface
   Preload(request Request) (PreloadReply, error)
 type PreloaderTransport interface
@@ -855,10 +1436,12 @@ type PreloaderClient struct
 func NewPreloaderClient(t PreloaderTransport) *PreloaderClient
 type PreloaderDispatcher struct
   Handler Preloader
+func (PreloaderDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (PreloaderClient) Preload(request Request) (result PreloadReply, err error)
 func (PreloaderDispatcher) DescribeService() (contract string, ready bool, why string)
 func (PreloaderDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (PreloaderDispatcher) ServiceContract() string
+func (PreloaderDispatcher) DescribeServiceDefinitionHash() string
 func (PreloaderDispatcher) WriteFrame(frame []byte) error
 func (PreloaderDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type Embedder interface
@@ -869,10 +1452,12 @@ type EmbedderClient struct
 func NewEmbedderClient(t EmbedderTransport) *EmbedderClient
 type EmbedderDispatcher struct
   Handler Embedder
+func (EmbedderDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (EmbedderClient) Embed(request EmbedRequest) (result Embeddings, err error)
 func (EmbedderDispatcher) DescribeService() (contract string, ready bool, why string)
 func (EmbedderDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (EmbedderDispatcher) ServiceContract() string
+func (EmbedderDispatcher) DescribeServiceDefinitionHash() string
 func (EmbedderDispatcher) WriteFrame(frame []byte) error
 func (EmbedderDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type Transcription interface
@@ -885,12 +1470,14 @@ type TranscriptionClient struct
 func NewTranscriptionClient(t TranscriptionTransport) *TranscriptionClient
 type TranscriptionDispatcher struct
   Handler Transcription
+func (TranscriptionDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (TranscriptionClient) Start(request TranscriptionRequest) (result Admission, err error)
 func (TranscriptionClient) Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (result DeltaPage, err error)
 func (TranscriptionClient) Cancel(operation string) (result Cancellation, err error)
 func (TranscriptionDispatcher) DescribeService() (contract string, ready bool, why string)
 func (TranscriptionDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (TranscriptionDispatcher) ServiceContract() string
+func (TranscriptionDispatcher) DescribeServiceDefinitionHash() string
 func (TranscriptionDispatcher) WriteFrame(frame []byte) error
 func (TranscriptionDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type Speech interface
@@ -903,12 +1490,14 @@ type SpeechClient struct
 func NewSpeechClient(t SpeechTransport) *SpeechClient
 type SpeechDispatcher struct
   Handler Speech
+func (SpeechDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (SpeechClient) Start(request SpeechRequest) (result Admission, err error)
 func (SpeechClient) Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (result DeltaPage, err error)
 func (SpeechClient) Cancel(operation string) (result Cancellation, err error)
 func (SpeechDispatcher) DescribeService() (contract string, ready bool, why string)
 func (SpeechDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (SpeechDispatcher) ServiceContract() string
+func (SpeechDispatcher) DescribeServiceDefinitionHash() string
 func (SpeechDispatcher) WriteFrame(frame []byte) error
 func (SpeechDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type Live interface
@@ -923,6 +1512,7 @@ type LiveClient struct
 func NewLiveClient(t LiveTransport) *LiveClient
 type LiveDispatcher struct
   Handler Live
+func (LiveDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (LiveClient) Start(request LiveRequest) (result Admission, err error)
 func (LiveClient) Append(operation string, sequence int64, audio []byte) (result LiveInputResult, err error)
 func (LiveClient) Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (result DeltaPage, err error)
@@ -931,6 +1521,7 @@ func (LiveClient) Cancel(operation string) (result Cancellation, err error)
 func (LiveDispatcher) DescribeService() (contract string, ready bool, why string)
 func (LiveDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (LiveDispatcher) ServiceContract() string
+func (LiveDispatcher) DescribeServiceDefinitionHash() string
 func (LiveDispatcher) WriteFrame(frame []byte) error
 func (LiveDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type Image interface
@@ -943,15 +1534,18 @@ type ImageClient struct
 func NewImageClient(t ImageTransport) *ImageClient
 type ImageDispatcher struct
   Handler Image
+func (ImageDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (ImageClient) Start(request ImageRequest) (result Admission, err error)
 func (ImageClient) Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (result DeltaPage, err error)
 func (ImageClient) Cancel(operation string) (result Cancellation, err error)
 func (ImageDispatcher) DescribeService() (contract string, ready bool, why string)
 func (ImageDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ImageDispatcher) ServiceContract() string
+func (ImageDispatcher) DescribeServiceDefinitionHash() string
 func (ImageDispatcher) WriteFrame(frame []byte) error
 func (ImageDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type ImageV2 interface
+  StartWithGuarantees(request ImageRequestV2, guarantees []RequestGuarantee) (AdmissionV2, error)
   Start(request ImageRequestV2) (AdmissionV2, error)
   Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (DeltaPage, error)
   Cancel(operation string) (Cancellation, error)
@@ -961,12 +1555,15 @@ type ImageV2Client struct
 func NewImageV2Client(t ImageV2Transport) *ImageV2Client
 type ImageV2Dispatcher struct
   Handler ImageV2
+func (ImageV2Dispatcher) RemoteMethodProfile(contract, method string) (string, bool)
+func (ImageV2Client) StartWithGuarantees(request ImageRequestV2, guarantees []RequestGuarantee) (result AdmissionV2, err error)
 func (ImageV2Client) Start(request ImageRequestV2) (result AdmissionV2, err error)
 func (ImageV2Client) Observe(operation string, cursor, maxDeltas, maxBytes, waitMs int64) (result DeltaPage, err error)
 func (ImageV2Client) Cancel(operation string) (result Cancellation, err error)
 func (ImageV2Dispatcher) DescribeService() (contract string, ready bool, why string)
 func (ImageV2Dispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ImageV2Dispatcher) ServiceContract() string
+func (ImageV2Dispatcher) DescribeServiceDefinitionHash() string
 func (ImageV2Dispatcher) WriteFrame(frame []byte) error
 func (ImageV2Dispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type Video interface
@@ -979,12 +1576,14 @@ type VideoClient struct
 func NewVideoClient(t VideoTransport) *VideoClient
 type VideoDispatcher struct
   Handler Video
+func (VideoDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (VideoClient) Start(request VideoRequest) (result VideoAdmission, err error)
 func (VideoClient) Observe(operation string) (result VideoObservation, err error)
 func (VideoClient) Cancel(operation string) (result Cancellation, err error)
 func (VideoDispatcher) DescribeService() (contract string, ready bool, why string)
 func (VideoDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (VideoDispatcher) ServiceContract() string
+func (VideoDispatcher) DescribeServiceDefinitionHash() string
 func (VideoDispatcher) WriteFrame(frame []byte) error
 func (VideoDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type Operator interface
@@ -995,14 +1594,18 @@ type Operator interface
   IssueKey(program, credential string) (KeyIssued, error)
   RevokeKey(program string) (KeyRevoked, error)
   Audit(cursor, maxEntries int64) (AuditPage, error)
+  Requests(cursor, maxEntries int64) (RequestPage, error)
   Gateway() (GatewayState, error)
   SetGateway(expectedRevision string, open bool, address string) (GatewayChange, error)
+  ProgramBudgets(credential string) (ProgramBudgetPage, error)
+  SetProgramBudget(request ProgramBudgetChange) (ProgramBudgetResult, error)
 type OperatorTransport interface
   FrameExchanger
 type OperatorClient struct
 func NewOperatorClient(t OperatorTransport) *OperatorClient
 type OperatorDispatcher struct
   Handler Operator
+func (OperatorDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (OperatorClient) Hosts() (result HostList, err error)
 func (OperatorClient) AddHost(expectedRevision string, host HostEntry) (result HostChange, err error)
 func (OperatorClient) RemoveHost(expectedRevision, name string) (result HostChange, err error)
@@ -1010,28 +1613,398 @@ func (OperatorClient) Keys() (result KeyList, err error)
 func (OperatorClient) IssueKey(program, credential string) (result KeyIssued, err error)
 func (OperatorClient) RevokeKey(program string) (result KeyRevoked, err error)
 func (OperatorClient) Audit(cursor, maxEntries int64) (result AuditPage, err error)
+func (OperatorClient) Requests(cursor, maxEntries int64) (result RequestPage, err error)
 func (OperatorClient) Gateway() (result GatewayState, err error)
 func (OperatorClient) SetGateway(expectedRevision string, open bool, address string) (result GatewayChange, err error)
+func (OperatorClient) ProgramBudgets(credential string) (result ProgramBudgetPage, err error)
+func (OperatorClient) SetProgramBudget(request ProgramBudgetChange) (result ProgramBudgetResult, err error)
 func (OperatorDispatcher) DescribeService() (contract string, ready bool, why string)
 func (OperatorDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (OperatorDispatcher) ServiceContract() string
+func (OperatorDispatcher) DescribeServiceDefinitionHash() string
 func (OperatorDispatcher) WriteFrame(frame []byte) error
 func (OperatorDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type SelectionOperatorV2 interface
+  ReadEffective(name string) (SelectionReadV2, error)
   Read(targetProgram, name string) (SelectionReadV2, error)
   Put(targetProgram, expectedRevision string, policy SelectionPolicyV2) (SelectionChange, error)
   DeletePolicy(targetProgram, expectedRevision, name string) (SelectionChange, error)
+  ReadAccountDefault(name string) (SelectionReadV2, error)
+  PutAccountDefault(expectedRevision string, policy SelectionPolicyV2) (SelectionChange, error)
+  DeleteAccountDefault(expectedRevision, name string) (SelectionChange, error)
 type SelectionOperatorV2Transport interface
   FrameExchanger
 type SelectionOperatorV2Client struct
 func NewSelectionOperatorV2Client(t SelectionOperatorV2Transport) *SelectionOperatorV2Client
 type SelectionOperatorV2Dispatcher struct
   Handler SelectionOperatorV2
+func (SelectionOperatorV2Dispatcher) RemoteMethodProfile(contract, method string) (string, bool)
+func (SelectionOperatorV2Client) ReadEffective(name string) (result SelectionReadV2, err error)
 func (SelectionOperatorV2Client) Read(targetProgram, name string) (result SelectionReadV2, err error)
 func (SelectionOperatorV2Client) Put(targetProgram, expectedRevision string, policy SelectionPolicyV2) (result SelectionChange, err error)
 func (SelectionOperatorV2Client) DeletePolicy(targetProgram, expectedRevision, name string) (result SelectionChange, err error)
+func (SelectionOperatorV2Client) ReadAccountDefault(name string) (result SelectionReadV2, err error)
+func (SelectionOperatorV2Client) PutAccountDefault(expectedRevision string, policy SelectionPolicyV2) (result SelectionChange, err error)
+func (SelectionOperatorV2Client) DeleteAccountDefault(expectedRevision, name string) (result SelectionChange, err error)
 func (SelectionOperatorV2Dispatcher) DescribeService() (contract string, ready bool, why string)
 func (SelectionOperatorV2Dispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (SelectionOperatorV2Dispatcher) ServiceContract() string
+func (SelectionOperatorV2Dispatcher) DescribeServiceDefinitionHash() string
 func (SelectionOperatorV2Dispatcher) WriteFrame(frame []byte) error
 func (SelectionOperatorV2Dispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+func DecodePartAt(in []byte, depth, limit int) (*Part, int, error)
+func EncodePartAt(v *Part, depth int) []byte
+func EncodePart(v *Part) []byte
+func DecodePart(in []byte) (*Part, error)
+func DecodeMessageAt(in []byte, depth, limit int) (*Message, int, error)
+func EncodeMessageAt(v *Message, depth int) []byte
+func EncodeMessage(v *Message) []byte
+func DecodeMessage(in []byte) (*Message, error)
+func DecodeToolAt(in []byte, depth, limit int) (*Tool, int, error)
+func EncodeToolAt(v *Tool, depth int) []byte
+func EncodeTool(v *Tool) []byte
+func DecodeTool(in []byte) (*Tool, error)
+func DecodeTemperatureAt(in []byte, depth, limit int) (*Temperature, int, error)
+func EncodeTemperatureAt(v *Temperature, depth int) []byte
+func EncodeTemperature(v *Temperature) []byte
+func DecodeTemperature(in []byte) (*Temperature, error)
+func DecodeOptionsAt(in []byte, depth, limit int) (*Options, int, error)
+func EncodeOptionsAt(v *Options, depth int) []byte
+func EncodeOptions(v *Options) []byte
+func DecodeOptions(in []byte) (*Options, error)
+func DecodeRequestAt(in []byte, depth, limit int) (*Request, int, error)
+func EncodeRequestAt(v *Request, depth int) []byte
+func EncodeRequest(v *Request) []byte
+func DecodeRequest(in []byte) (*Request, error)
+func DecodeTargetAt(in []byte, depth, limit int) (*Target, int, error)
+func EncodeTargetAt(v *Target, depth int) []byte
+func EncodeTarget(v *Target) []byte
+func DecodeTarget(in []byte) (*Target, error)
+func DecodeRequestContentAt(in []byte, depth, limit int) (*RequestContent, int, error)
+func EncodeRequestContentAt(v *RequestContent, depth int) []byte
+func EncodeRequestContent(v *RequestContent) []byte
+func DecodeRequestContent(in []byte) (*RequestContent, error)
+func DecodeRequestV2At(in []byte, depth, limit int) (*RequestV2, int, error)
+func EncodeRequestV2At(v *RequestV2, depth int) []byte
+func EncodeRequestV2(v *RequestV2) []byte
+func DecodeRequestV2(in []byte) (*RequestV2, error)
+func DecodeUsageAt(in []byte, depth, limit int) (*Usage, int, error)
+func EncodeUsageAt(v *Usage, depth int) []byte
+func EncodeUsage(v *Usage) []byte
+func DecodeUsage(in []byte) (*Usage, error)
+func DecodeCostAt(in []byte, depth, limit int) (*Cost, int, error)
+func EncodeCostAt(v *Cost, depth int) []byte
+func EncodeCost(v *Cost) []byte
+func DecodeCost(in []byte) (*Cost, error)
+func DecodeReplyAt(in []byte, depth, limit int) (*Reply, int, error)
+func EncodeReplyAt(v *Reply, depth int) []byte
+func EncodeReply(v *Reply) []byte
+func DecodeReply(in []byte) (*Reply, error)
+func DecodeDeltaAt(in []byte, depth, limit int) (*Delta, int, error)
+func EncodeDeltaAt(v *Delta, depth int) []byte
+func EncodeDelta(v *Delta) []byte
+func DecodeDelta(in []byte) (*Delta, error)
+func DecodeAdmissionAt(in []byte, depth, limit int) (*Admission, int, error)
+func EncodeAdmissionAt(v *Admission, depth int) []byte
+func EncodeAdmission(v *Admission) []byte
+func DecodeAdmission(in []byte) (*Admission, error)
+func DecodeAdmissionV2At(in []byte, depth, limit int) (*AdmissionV2, int, error)
+func EncodeAdmissionV2At(v *AdmissionV2, depth int) []byte
+func EncodeAdmissionV2(v *AdmissionV2) []byte
+func DecodeAdmissionV2(in []byte) (*AdmissionV2, error)
+func DecodeDeltaPageAt(in []byte, depth, limit int) (*DeltaPage, int, error)
+func EncodeDeltaPageAt(v *DeltaPage, depth int) []byte
+func EncodeDeltaPage(v *DeltaPage) []byte
+func DecodeDeltaPage(in []byte) (*DeltaPage, error)
+func DecodeCancellationAt(in []byte, depth, limit int) (*Cancellation, int, error)
+func EncodeCancellationAt(v *Cancellation, depth int) []byte
+func EncodeCancellation(v *Cancellation) []byte
+func DecodeCancellation(in []byte) (*Cancellation, error)
+func DecodeChatProgressAt(in []byte, depth, limit int) (*ChatProgress, int, error)
+func EncodeChatProgressAt(v *ChatProgress, depth int) []byte
+func EncodeChatProgress(v *ChatProgress) []byte
+func DecodeChatProgress(in []byte) (*ChatProgress, error)
+func DecodeChatUsageAt(in []byte, depth, limit int) (*ChatUsage, int, error)
+func EncodeChatUsageAt(v *ChatUsage, depth int) []byte
+func EncodeChatUsage(v *ChatUsage) []byte
+func DecodeChatUsage(in []byte) (*ChatUsage, error)
+func DecodeChatToolChoiceAt(in []byte, depth, limit int) (*ChatToolChoice, int, error)
+func EncodeChatToolChoiceAt(v *ChatToolChoice, depth int) []byte
+func EncodeChatToolChoice(v *ChatToolChoice) []byte
+func DecodeChatToolChoice(in []byte) (*ChatToolChoice, error)
+func DecodeChatToolAt(in []byte, depth, limit int) (*ChatTool, int, error)
+func EncodeChatToolAt(v *ChatTool, depth int) []byte
+func EncodeChatTool(v *ChatTool) []byte
+func DecodeChatTool(in []byte) (*ChatTool, error)
+func DecodeChatReasoningAt(in []byte, depth, limit int) (*ChatReasoning, int, error)
+func EncodeChatReasoningAt(v *ChatReasoning, depth int) []byte
+func EncodeChatReasoning(v *ChatReasoning) []byte
+func DecodeChatReasoning(in []byte) (*ChatReasoning, error)
+func DecodeChatOptionsAt(in []byte, depth, limit int) (*ChatOptions, int, error)
+func EncodeChatOptionsAt(v *ChatOptions, depth int) []byte
+func EncodeChatOptions(v *ChatOptions) []byte
+func DecodeChatOptions(in []byte) (*ChatOptions, error)
+func DecodeChatPartAt(in []byte, depth, limit int) (*ChatPart, int, error)
+func EncodeChatPartAt(v *ChatPart, depth int) []byte
+func EncodeChatPart(v *ChatPart) []byte
+func DecodeChatPart(in []byte) (*ChatPart, error)
+func DecodeChatBlockEndAt(in []byte, depth, limit int) (*ChatBlockEnd, int, error)
+func EncodeChatBlockEndAt(v *ChatBlockEnd, depth int) []byte
+func EncodeChatBlockEnd(v *ChatBlockEnd) []byte
+func DecodeChatBlockEnd(in []byte) (*ChatBlockEnd, error)
+func DecodeReasoningSealAt(in []byte, depth, limit int) (*ReasoningSeal, int, error)
+func EncodeReasoningSealAt(v *ReasoningSeal, depth int) []byte
+func EncodeReasoningSeal(v *ReasoningSeal) []byte
+func DecodeReasoningSeal(in []byte) (*ReasoningSeal, error)
+func DecodeServedByAt(in []byte, depth, limit int) (*ServedBy, int, error)
+func EncodeServedByAt(v *ServedBy, depth int) []byte
+func EncodeServedBy(v *ServedBy) []byte
+func DecodeServedBy(in []byte) (*ServedBy, error)
+func DecodeChatInputPartAt(in []byte, depth, limit int) (*ChatInputPart, int, error)
+func EncodeChatInputPartAt(v *ChatInputPart, depth int) []byte
+func EncodeChatInputPart(v *ChatInputPart) []byte
+func DecodeChatInputPart(in []byte) (*ChatInputPart, error)
+func DecodeChatReplayAt(in []byte, depth, limit int) (*ChatReplay, int, error)
+func EncodeChatReplayAt(v *ChatReplay, depth int) []byte
+func EncodeChatReplay(v *ChatReplay) []byte
+func DecodeChatReplay(in []byte) (*ChatReplay, error)
+func DecodeChatMessageAt(in []byte, depth, limit int) (*ChatMessage, int, error)
+func EncodeChatMessageAt(v *ChatMessage, depth int) []byte
+func EncodeChatMessage(v *ChatMessage) []byte
+func DecodeChatMessage(in []byte) (*ChatMessage, error)
+func DecodeChatTargetAt(in []byte, depth, limit int) (*ChatTarget, int, error)
+func EncodeChatTargetAt(v *ChatTarget, depth int) []byte
+func EncodeChatTarget(v *ChatTarget) []byte
+func DecodeChatTarget(in []byte) (*ChatTarget, error)
+func DecodeChatContentAt(in []byte, depth, limit int) (*ChatContent, int, error)
+func EncodeChatContentAt(v *ChatContent, depth int) []byte
+func EncodeChatContent(v *ChatContent) []byte
+func DecodeChatContent(in []byte) (*ChatContent, error)
+func DecodeRequestV3At(in []byte, depth, limit int) (*RequestV3, int, error)
+func EncodeRequestV3At(v *RequestV3, depth int) []byte
+func EncodeRequestV3(v *RequestV3) []byte
+func DecodeRequestV3(in []byte) (*RequestV3, error)
+func DecodeChatTimingAt(in []byte, depth, limit int) (*ChatTiming, int, error)
+func EncodeChatTimingAt(v *ChatTiming, depth int) []byte
+func EncodeChatTiming(v *ChatTiming) []byte
+func DecodeChatTiming(in []byte) (*ChatTiming, error)
+func DecodeChatReasoningAppliedAt(in []byte, depth, limit int) (*ChatReasoningApplied, int, error)
+func EncodeChatReasoningAppliedAt(v *ChatReasoningApplied, depth int) []byte
+func EncodeChatReasoningApplied(v *ChatReasoningApplied) []byte
+func DecodeChatReasoningApplied(in []byte) (*ChatReasoningApplied, error)
+func DecodeChatResultAt(in []byte, depth, limit int) (*ChatResult, int, error)
+func EncodeChatResultAt(v *ChatResult, depth int) []byte
+func EncodeChatResult(v *ChatResult) []byte
+func DecodeChatResult(in []byte) (*ChatResult, error)
+func DecodeChatEventAt(in []byte, depth, limit int) (*ChatEvent, int, error)
+func EncodeChatEventAt(v *ChatEvent, depth int) []byte
+func EncodeChatEvent(v *ChatEvent) []byte
+func DecodeChatEvent(in []byte) (*ChatEvent, error)
+func DecodeChatAdmissionAt(in []byte, depth, limit int) (*ChatAdmission, int, error)
+func EncodeChatAdmissionAt(v *ChatAdmission, depth int) []byte
+func EncodeChatAdmission(v *ChatAdmission) []byte
+func DecodeChatAdmission(in []byte) (*ChatAdmission, error)
+func DecodeChatPageAt(in []byte, depth, limit int) (*ChatPage, int, error)
+func EncodeChatPageAt(v *ChatPage, depth int) []byte
+func EncodeChatPage(v *ChatPage) []byte
+func DecodeChatPage(in []byte) (*ChatPage, error)
+func DecodeChatCancellationAt(in []byte, depth, limit int) (*ChatCancellation, int, error)
+func EncodeChatCancellationAt(v *ChatCancellation, depth int) []byte
+func EncodeChatCancellation(v *ChatCancellation) []byte
+func DecodeChatCancellation(in []byte) (*ChatCancellation, error)
+func DecodeChatHistoryReadAt(in []byte, depth, limit int) (*ChatHistoryRead, int, error)
+func EncodeChatHistoryReadAt(v *ChatHistoryRead, depth int) []byte
+func EncodeChatHistoryRead(v *ChatHistoryRead) []byte
+func DecodeChatHistoryRead(in []byte) (*ChatHistoryRead, error)
+func DecodePreloadReplyAt(in []byte, depth, limit int) (*PreloadReply, int, error)
+func EncodePreloadReplyAt(v *PreloadReply, depth int) []byte
+func EncodePreloadReply(v *PreloadReply) []byte
+func DecodePreloadReply(in []byte) (*PreloadReply, error)
+func DecodeEmbedRequestAt(in []byte, depth, limit int) (*EmbedRequest, int, error)
+func EncodeEmbedRequestAt(v *EmbedRequest, depth int) []byte
+func EncodeEmbedRequest(v *EmbedRequest) []byte
+func DecodeEmbedRequest(in []byte) (*EmbedRequest, error)
+func DecodeEmbeddingsAt(in []byte, depth, limit int) (*Embeddings, int, error)
+func EncodeEmbeddingsAt(v *Embeddings, depth int) []byte
+func EncodeEmbeddings(v *Embeddings) []byte
+func DecodeEmbeddings(in []byte) (*Embeddings, error)
+func DecodeTranscriptionRequestAt(in []byte, depth, limit int) (*TranscriptionRequest, int, error)
+func EncodeTranscriptionRequestAt(v *TranscriptionRequest, depth int) []byte
+func EncodeTranscriptionRequest(v *TranscriptionRequest) []byte
+func DecodeTranscriptionRequest(in []byte) (*TranscriptionRequest, error)
+func DecodeTranscriptSegmentAt(in []byte, depth, limit int) (*TranscriptSegment, int, error)
+func EncodeTranscriptSegmentAt(v *TranscriptSegment, depth int) []byte
+func EncodeTranscriptSegment(v *TranscriptSegment) []byte
+func DecodeTranscriptSegment(in []byte) (*TranscriptSegment, error)
+func DecodeTranscriptionReplyAt(in []byte, depth, limit int) (*TranscriptionReply, int, error)
+func EncodeTranscriptionReplyAt(v *TranscriptionReply, depth int) []byte
+func EncodeTranscriptionReply(v *TranscriptionReply) []byte
+func DecodeTranscriptionReply(in []byte) (*TranscriptionReply, error)
+func DecodeSpeechRequestAt(in []byte, depth, limit int) (*SpeechRequest, int, error)
+func EncodeSpeechRequestAt(v *SpeechRequest, depth int) []byte
+func EncodeSpeechRequest(v *SpeechRequest) []byte
+func DecodeSpeechRequest(in []byte) (*SpeechRequest, error)
+func DecodeAudioChunkAt(in []byte, depth, limit int) (*AudioChunk, int, error)
+func EncodeAudioChunkAt(v *AudioChunk, depth int) []byte
+func EncodeAudioChunk(v *AudioChunk) []byte
+func DecodeAudioChunk(in []byte) (*AudioChunk, error)
+func DecodeDeliveryAt(in []byte, depth, limit int) (*Delivery, int, error)
+func EncodeDeliveryAt(v *Delivery, depth int) []byte
+func EncodeDelivery(v *Delivery) []byte
+func DecodeDelivery(in []byte) (*Delivery, error)
+func DecodeSpeechReplyAt(in []byte, depth, limit int) (*SpeechReply, int, error)
+func EncodeSpeechReplyAt(v *SpeechReply, depth int) []byte
+func EncodeSpeechReply(v *SpeechReply) []byte
+func DecodeSpeechReply(in []byte) (*SpeechReply, error)
+func DecodeLiveRequestAt(in []byte, depth, limit int) (*LiveRequest, int, error)
+func EncodeLiveRequestAt(v *LiveRequest, depth int) []byte
+func EncodeLiveRequest(v *LiveRequest) []byte
+func DecodeLiveRequest(in []byte) (*LiveRequest, error)
+func DecodeLiveInputResultAt(in []byte, depth, limit int) (*LiveInputResult, int, error)
+func EncodeLiveInputResultAt(v *LiveInputResult, depth int) []byte
+func EncodeLiveInputResult(v *LiveInputResult) []byte
+func DecodeLiveInputResult(in []byte) (*LiveInputResult, error)
+func DecodeLiveTranscriptAt(in []byte, depth, limit int) (*LiveTranscript, int, error)
+func EncodeLiveTranscriptAt(v *LiveTranscript, depth int) []byte
+func EncodeLiveTranscript(v *LiveTranscript) []byte
+func DecodeLiveTranscript(in []byte) (*LiveTranscript, error)
+func DecodeLiveReplyAt(in []byte, depth, limit int) (*LiveReply, int, error)
+func EncodeLiveReplyAt(v *LiveReply, depth int) []byte
+func EncodeLiveReply(v *LiveReply) []byte
+func DecodeLiveReply(in []byte) (*LiveReply, error)
+func DecodeImageRequestAt(in []byte, depth, limit int) (*ImageRequest, int, error)
+func EncodeImageRequestAt(v *ImageRequest, depth int) []byte
+func EncodeImageRequest(v *ImageRequest) []byte
+func DecodeImageRequest(in []byte) (*ImageRequest, error)
+func DecodeImageRequestContentAt(in []byte, depth, limit int) (*ImageRequestContent, int, error)
+func EncodeImageRequestContentAt(v *ImageRequestContent, depth int) []byte
+func EncodeImageRequestContent(v *ImageRequestContent) []byte
+func DecodeImageRequestContent(in []byte) (*ImageRequestContent, error)
+func DecodeImageRequestV2At(in []byte, depth, limit int) (*ImageRequestV2, int, error)
+func EncodeImageRequestV2At(v *ImageRequestV2, depth int) []byte
+func EncodeImageRequestV2(v *ImageRequestV2) []byte
+func DecodeImageRequestV2(in []byte) (*ImageRequestV2, error)
+func DecodeImageProgressAt(in []byte, depth, limit int) (*ImageProgress, int, error)
+func EncodeImageProgressAt(v *ImageProgress, depth int) []byte
+func EncodeImageProgress(v *ImageProgress) []byte
+func DecodeImageProgress(in []byte) (*ImageProgress, error)
+func DecodeImageResultAt(in []byte, depth, limit int) (*ImageResult, int, error)
+func EncodeImageResultAt(v *ImageResult, depth int) []byte
+func EncodeImageResult(v *ImageResult) []byte
+func DecodeImageResult(in []byte) (*ImageResult, error)
+func DecodeImageReplyAt(in []byte, depth, limit int) (*ImageReply, int, error)
+func EncodeImageReplyAt(v *ImageReply, depth int) []byte
+func EncodeImageReply(v *ImageReply) []byte
+func DecodeImageReply(in []byte) (*ImageReply, error)
+func DecodeVideoRequestAt(in []byte, depth, limit int) (*VideoRequest, int, error)
+func EncodeVideoRequestAt(v *VideoRequest, depth int) []byte
+func EncodeVideoRequest(v *VideoRequest) []byte
+func DecodeVideoRequest(in []byte) (*VideoRequest, error)
+func DecodeVideoAdmissionAt(in []byte, depth, limit int) (*VideoAdmission, int, error)
+func EncodeVideoAdmissionAt(v *VideoAdmission, depth int) []byte
+func EncodeVideoAdmission(v *VideoAdmission) []byte
+func DecodeVideoAdmission(in []byte) (*VideoAdmission, error)
+func DecodeVideoObservationAt(in []byte, depth, limit int) (*VideoObservation, int, error)
+func EncodeVideoObservationAt(v *VideoObservation, depth int) []byte
+func EncodeVideoObservation(v *VideoObservation) []byte
+func DecodeVideoObservation(in []byte) (*VideoObservation, error)
+func DecodeCeilingLimitAt(in []byte, depth, limit int) (*CeilingLimit, int, error)
+func EncodeCeilingLimitAt(v *CeilingLimit, depth int) []byte
+func EncodeCeilingLimit(v *CeilingLimit) []byte
+func DecodeCeilingLimit(in []byte) (*CeilingLimit, error)
+func DecodeHostEntryAt(in []byte, depth, limit int) (*HostEntry, int, error)
+func EncodeHostEntryAt(v *HostEntry, depth int) []byte
+func EncodeHostEntry(v *HostEntry) []byte
+func DecodeHostEntry(in []byte) (*HostEntry, error)
+func DecodeSpendAt(in []byte, depth, limit int) (*Spend, int, error)
+func EncodeSpendAt(v *Spend, depth int) []byte
+func EncodeSpend(v *Spend) []byte
+func DecodeSpend(in []byte) (*Spend, error)
+func DecodeHostStateAt(in []byte, depth, limit int) (*HostState, int, error)
+func EncodeHostStateAt(v *HostState, depth int) []byte
+func EncodeHostState(v *HostState) []byte
+func DecodeHostState(in []byte) (*HostState, error)
+func DecodeHostListAt(in []byte, depth, limit int) (*HostList, int, error)
+func EncodeHostListAt(v *HostList, depth int) []byte
+func EncodeHostList(v *HostList) []byte
+func DecodeHostList(in []byte) (*HostList, error)
+func DecodeHostChangeAt(in []byte, depth, limit int) (*HostChange, int, error)
+func EncodeHostChangeAt(v *HostChange, depth int) []byte
+func EncodeHostChange(v *HostChange) []byte
+func DecodeHostChange(in []byte) (*HostChange, error)
+func DecodeLocalKeyAt(in []byte, depth, limit int) (*LocalKey, int, error)
+func EncodeLocalKeyAt(v *LocalKey, depth int) []byte
+func EncodeLocalKey(v *LocalKey) []byte
+func DecodeLocalKey(in []byte) (*LocalKey, error)
+func DecodeKeyListAt(in []byte, depth, limit int) (*KeyList, int, error)
+func EncodeKeyListAt(v *KeyList, depth int) []byte
+func EncodeKeyList(v *KeyList) []byte
+func DecodeKeyList(in []byte) (*KeyList, error)
+func DecodeKeyIssuedAt(in []byte, depth, limit int) (*KeyIssued, int, error)
+func EncodeKeyIssuedAt(v *KeyIssued, depth int) []byte
+func EncodeKeyIssued(v *KeyIssued) []byte
+func DecodeKeyIssued(in []byte) (*KeyIssued, error)
+func DecodeKeyRevokedAt(in []byte, depth, limit int) (*KeyRevoked, int, error)
+func EncodeKeyRevokedAt(v *KeyRevoked, depth int) []byte
+func EncodeKeyRevoked(v *KeyRevoked) []byte
+func DecodeKeyRevoked(in []byte) (*KeyRevoked, error)
+func DecodeAuditEntryAt(in []byte, depth, limit int) (*AuditEntry, int, error)
+func EncodeAuditEntryAt(v *AuditEntry, depth int) []byte
+func EncodeAuditEntry(v *AuditEntry) []byte
+func DecodeAuditEntry(in []byte) (*AuditEntry, error)
+func DecodeAuditPageAt(in []byte, depth, limit int) (*AuditPage, int, error)
+func EncodeAuditPageAt(v *AuditPage, depth int) []byte
+func EncodeAuditPage(v *AuditPage) []byte
+func DecodeAuditPage(in []byte) (*AuditPage, error)
+func DecodeRequestEntryAt(in []byte, depth, limit int) (*RequestEntry, int, error)
+func EncodeRequestEntryAt(v *RequestEntry, depth int) []byte
+func EncodeRequestEntry(v *RequestEntry) []byte
+func DecodeRequestEntry(in []byte) (*RequestEntry, error)
+func DecodeRequestPageAt(in []byte, depth, limit int) (*RequestPage, int, error)
+func EncodeRequestPageAt(v *RequestPage, depth int) []byte
+func EncodeRequestPage(v *RequestPage) []byte
+func DecodeRequestPage(in []byte) (*RequestPage, error)
+func DecodeGatewayStateAt(in []byte, depth, limit int) (*GatewayState, int, error)
+func EncodeGatewayStateAt(v *GatewayState, depth int) []byte
+func EncodeGatewayState(v *GatewayState) []byte
+func DecodeGatewayState(in []byte) (*GatewayState, error)
+func DecodeGatewayChangeAt(in []byte, depth, limit int) (*GatewayChange, int, error)
+func EncodeGatewayChangeAt(v *GatewayChange, depth int) []byte
+func EncodeGatewayChange(v *GatewayChange) []byte
+func DecodeGatewayChange(in []byte) (*GatewayChange, error)
+func DecodeProgramBudgetAt(in []byte, depth, limit int) (*ProgramBudget, int, error)
+func EncodeProgramBudgetAt(v *ProgramBudget, depth int) []byte
+func EncodeProgramBudget(v *ProgramBudget) []byte
+func DecodeProgramBudget(in []byte) (*ProgramBudget, error)
+func DecodeProgramBudgetEntryAt(in []byte, depth, limit int) (*ProgramBudgetEntry, int, error)
+func EncodeProgramBudgetEntryAt(v *ProgramBudgetEntry, depth int) []byte
+func EncodeProgramBudgetEntry(v *ProgramBudgetEntry) []byte
+func DecodeProgramBudgetEntry(in []byte) (*ProgramBudgetEntry, error)
+func DecodeProgramBudgetPageAt(in []byte, depth, limit int) (*ProgramBudgetPage, int, error)
+func EncodeProgramBudgetPageAt(v *ProgramBudgetPage, depth int) []byte
+func EncodeProgramBudgetPage(v *ProgramBudgetPage) []byte
+func DecodeProgramBudgetPage(in []byte) (*ProgramBudgetPage, error)
+func DecodeProgramBudgetResultAt(in []byte, depth, limit int) (*ProgramBudgetResult, int, error)
+func EncodeProgramBudgetResultAt(v *ProgramBudgetResult, depth int) []byte
+func EncodeProgramBudgetResult(v *ProgramBudgetResult) []byte
+func DecodeProgramBudgetResult(in []byte) (*ProgramBudgetResult, error)
+func DecodeProgramBudgetChangeAt(in []byte, depth, limit int) (*ProgramBudgetChange, int, error)
+func EncodeProgramBudgetChangeAt(v *ProgramBudgetChange, depth int) []byte
+func EncodeProgramBudgetChange(v *ProgramBudgetChange) []byte
+func DecodeProgramBudgetChange(in []byte) (*ProgramBudgetChange, error)
+func DecodeSelectionChangeAt(in []byte, depth, limit int) (*SelectionChange, int, error)
+func EncodeSelectionChangeAt(v *SelectionChange, depth int) []byte
+func EncodeSelectionChange(v *SelectionChange) []byte
+func DecodeSelectionChange(in []byte) (*SelectionChange, error)
+func DecodeSelectionCandidateV2At(in []byte, depth, limit int) (*SelectionCandidateV2, int, error)
+func EncodeSelectionCandidateV2At(v *SelectionCandidateV2, depth int) []byte
+func EncodeSelectionCandidateV2(v *SelectionCandidateV2) []byte
+func DecodeSelectionCandidateV2(in []byte) (*SelectionCandidateV2, error)
+func DecodeSelectionPolicyV2At(in []byte, depth, limit int) (*SelectionPolicyV2, int, error)
+func EncodeSelectionPolicyV2At(v *SelectionPolicyV2, depth int) []byte
+func EncodeSelectionPolicyV2(v *SelectionPolicyV2) []byte
+func DecodeSelectionPolicyV2(in []byte) (*SelectionPolicyV2, error)
+func DecodeSelectionReadV2At(in []byte, depth, limit int) (*SelectionReadV2, int, error)
+func EncodeSelectionReadV2At(v *SelectionReadV2, depth int) []byte
+func EncodeSelectionReadV2(v *SelectionReadV2) []byte
+func DecodeSelectionReadV2(in []byte) (*SelectionReadV2, error)

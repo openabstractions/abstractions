@@ -2,14 +2,78 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	asks "github.com/openabstractions/abstraction-asks/go"
+	"github.com/openabstractions/abstraction-facade/go/grants"
+	"github.com/openabstractions/abstraction-identity/listen"
 	rights "github.com/openabstractions/abstraction-rights/go"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 )
+
+func TestSavedDefaultsSettleOnlyTheCompletePendingTypedEffect(t *testing.T) {
+	f := applicationPermissionRuntime(t)
+	permission, err := grants.ApplicationPermission(f.comfy, "app:editor", "Editor", "read")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defaults := make([]rights.AccountDefault, 0, len(permission.Effect.Selections))
+	for i, selection := range permission.Effect.Selections {
+		if err := f.a.rights.policy.RegisterAction(selection.Permission.Action); err != nil {
+			t.Fatal(err)
+		}
+		defaults = append(defaults, rights.AccountDefault{Name: fmt.Sprintf("typed-default-%d", i), Action: selection.Permission.Action, Resource: "app:editor"})
+	}
+	if len(defaults) < 2 {
+		t.Fatal("fixture must require a complete multi-action effect")
+	}
+	if err := f.a.rights.policy.ConfigureDefaults(f.answerer.Account, defaults, nil); err != nil {
+		t.Fatal(err)
+	}
+	set := func(name string, enabled bool) {
+		t.Helper()
+		revision, _, err := f.a.rights.policy.DefaultsSnapshot(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		edit, err := f.a.rights.policy.SetDefault(revision, name, enabled, f.panel, func() error { return nil })
+		if err != nil || edit.Outcome != rwire.PolicyEditOutcomeApplied {
+			t.Fatal(edit, err)
+		}
+	}
+	for _, d := range defaults {
+		set(d.Name, false)
+	}
+	record, outcome, err := f.a.book.AskTypedPermissionOccurrenceAuthorizedFrom(f.a.scope, "runtime", "saved-default-effect", permission, listen.Seen{}, asks.Publisher{}, func() error { return nil })
+	if err != nil || outcome != "pending" {
+		t.Fatal(outcome, err)
+	}
+	passes := make(chan struct{}, 16)
+	f.a.settler.done = func() { passes <- struct{}{} }
+	stop := f.a.followRights(t.Context())
+	defer stop()
+	waitPass(t, passes)
+	for i, d := range defaults {
+		set(d.Name, true)
+		waitPass(t, passes)
+		pending, err := f.a.book.PendingTypedPermissions()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i < len(defaults)-1 && (len(pending) != 1 || pending[0].ID != record.ID) {
+			t.Fatal("partial default effect withdrew request", pending)
+		}
+		if i == len(defaults)-1 && len(pending) != 0 {
+			t.Fatal("complete saved default left request pending", pending)
+		}
+	}
+	if _, found, err := f.a.book.ApplicationRecord(record.ID); err != nil || found {
+		t.Fatal("settled occurrence remained", found, err)
+	}
+}
 
 // settledRuntime is typedRuntime following rights changes as composeAsks
 // does, with a channel that receives after every settling pass.

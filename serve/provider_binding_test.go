@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openabstractions/abstraction-facade/go-core/bootstrap"
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	"github.com/openabstractions/abstraction-facade/go/resolution"
 	identity "github.com/openabstractions/abstraction-identity"
@@ -33,10 +34,50 @@ func shortMediationEndpoint(t *testing.T) string {
 	return filepath.Join(dir, "s")
 }
 
+func TestProviderProjectionRetiresStartedSupervisorAndStartsReplacement(t *testing.T) {
+	p, err := openFixtureProviders(t, t.TempDir(), false, func(err error) { t.Error(err) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.Close() })
+	program, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := providerFile{Version: providerFileVersion, Generation: "before", Source: declarationSourceProduct,
+		Declaration: providerDeclaration{Name: "projection-replacement", Program: program, Endpoint: "projection-replacement", Transport: transportNative,
+			Contracts: []string{inference.Contract}, Activation: wire.ActivationOnDemand.String(), Arguments: []string{providerEndpointToken}}}
+	next := previous
+	next.Generation = "after"
+	p.productsMu.Lock()
+	p.product, p.productHas = []providerFile{next}, true
+	p.productsMu.Unlock()
+	old := newFixtureProviderSupervisor(t, p, previous)
+	p.supervisors[previous.Declaration.Name] = old
+	p.serving = true
+	old.start()
+	p.refreshProgramRegistrations(context.Background())
+	select {
+	case <-old.done:
+	default:
+		t.Fatal("projection retained its started predecessor")
+	}
+	replacement := p.supervisors[next.Declaration.Name]
+	if replacement == nil || replacement == old || replacement.file.bindingID() != next.bindingID() {
+		t.Fatal("projection did not install the replacement")
+	}
+	replacement.mu.Lock()
+	started := replacement.started
+	replacement.mu.Unlock()
+	if !started || p.retiring[next.Declaration.Name] != nil {
+		t.Fatal("projection did not finish retirement and start the replacement")
+	}
+}
+
 func TestProviderBindingSurvivesRestartAndChangesOnRedeclaration(t *testing.T) {
 	state := t.TempDir()
 	report := func(err error) { t.Errorf("providers: %v", err) }
-	p, err := openProviders(state, false, report)
+	p, err := openFixtureProviders(t, state, false, report)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,15 +97,30 @@ func TestProviderBindingSurvivesRestartAndChangesOnRedeclaration(t *testing.T) {
 		t.Fatalf("add: %+v", added)
 	}
 	original := p.supervisors["binding"].file
+	originalEndpoint := p.supervisors["binding"].endpoint
+	if originalEndpoint == "" || p.supervisors["binding"].endpointErr != nil {
+		t.Fatalf("injected constructor did not reach added supervisor: %q %v", originalEndpoint, p.supervisors["binding"].endpointErr)
+	}
 	if original.Generation == "" {
 		t.Fatal("new declaration has no persisted generation")
 	}
-	reopened, err := openProviders(state, false, report)
+	reopened, err := openFixtureProviders(t, state, false, report)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if reopened.supervisors["binding"].file.bindingID() != original.bindingID() {
 		t.Fatal("ordinary restart changed binding")
+	}
+	if reopened.supervisors["binding"].endpoint != originalEndpoint || reopened.supervisors["binding"].endpointErr != nil {
+		t.Fatal("injected constructor did not preserve the loaded supervisor endpoint")
+	}
+	defaults, err := openProviders(state, false, report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused := defaults.supervisors["binding"]
+	if refused.endpoint != "" || !errors.Is(refused.endpointErr, bootstrap.ErrNoTrustedInstallation) {
+		t.Fatalf("default constructor escaped test refusal: %q %v", refused.endpoint, refused.endpointErr)
 	}
 	removed := p.remove(added.Revision, "binding")
 	if removed.Outcome != wire.DeclarationEditOutcomeApplied {
@@ -102,8 +158,8 @@ func TestResolverSelectionRetainsTheChosenProviderEndpointForSharedModel(t *test
 	}
 	first := provider("first", "first-generation", "fixture/first@1")
 	second := provider("second", "second-generation", "fixture/second@1")
-	p.supervisors["first"] = newProviderSupervisor(p, first)
-	p.supervisors["second"] = newProviderSupervisor(p, second)
+	p.supervisors["first"] = newFixtureProviderSupervisor(t, p, first)
+	p.supervisors["second"] = newFixtureProviderSupervisor(t, p, second)
 	p.supervisors["first"].readiness = wire.DeclarationReadinessReady
 	p.supervisors["second"].readiness = wire.DeclarationReadinessReady
 	p.setMediated(map[string]mediatedProvider{first.bindingID(): {Endpoint: "oa-first", Ready: true}, second.bindingID(): {Endpoint: "oa-second", Ready: true}})
@@ -136,7 +192,7 @@ func TestImageOnlyNativeProviderRegistersMediatedProfile(t *testing.T) {
 	file := providerFile{Version: providerFileVersion, Generation: "image-generation", DeclaredBy: program,
 		Declaration: providerDeclaration{Name: "image-only", Program: program, Endpoint: "private-image", Transport: transportNative,
 			Contracts: []string{inference.ImageContract}, Resources: []string{"profile:image"}, Models: []string{"stability/sdxl"}, Activation: wire.ActivationOnDemand.String()}}
-	p.supervisors[file.Declaration.Name] = newProviderSupervisor(p, file)
+	p.supervisors[file.Declaration.Name] = newFixtureProviderSupervisor(t, p, file)
 	p.setMediated(map[string]mediatedProvider{file.bindingID(): {Endpoint: "oa-image", Ready: true}})
 	if hosts := p.nativeInferenceHosts(); len(hosts) != 1 || len(hosts[0].HostProfiles()) != 1 || hosts[0].HostProfiles()[0] != router.ProfileImage {
 		t.Fatalf("image-only router hosts %+v", hosts)
@@ -172,7 +228,7 @@ func TestNativeProviderOffersEveryDeclaredProfileAndScopesItsModels(t *testing.T
 	if field := validProviderDeclaration(file.Declaration); field != "" {
 		t.Fatalf("installed declaration shape invalid: %s", field)
 	}
-	p.supervisors[file.Declaration.Name] = newProviderSupervisor(p, file)
+	p.supervisors[file.Declaration.Name] = newFixtureProviderSupervisor(t, p, file)
 	p.setMediated(map[string]mediatedProvider{file.bindingID(): {Endpoint: "oa-lemonade", Ready: true}})
 
 	contracts := map[string]bool{}
@@ -259,7 +315,7 @@ func TestLegacyChatOnlyDeclarationReadsEntriesAgainstImplicitChat(t *testing.T) 
 	if field := validProviderDeclaration(file.Declaration); field != "" {
 		t.Fatalf("legacy chat-only declaration with scoped entries refused: %s", field)
 	}
-	p.supervisors[file.Declaration.Name] = newProviderSupervisor(p, file)
+	p.supervisors[file.Declaration.Name] = newFixtureProviderSupervisor(t, p, file)
 	p.supervisors[file.Declaration.Name].readiness = wire.DeclarationReadinessReady
 	hosts := p.nativeInferenceHosts()
 	if len(hosts) != 1 || !slices.Equal(hosts[0].HostProfiles(), []string{router.ProfileChat}) {
@@ -279,24 +335,38 @@ func TestLegacyChatOnlyDeclarationReadsEntriesAgainstImplicitChat(t *testing.T) 
 }
 
 func TestProviderMediationRepeatsTheRegistryRouteBound(t *testing.T) {
-	p := &runtimeProviders{report: func(error) {}, supervisors: map[string]*providerSupervisor{}, mediated: map[string]mediatedProvider{}}
 	program, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i <= maxProviders; i++ {
-		name := fmt.Sprintf("provider-%02d", i)
-		file := providerFile{Version: providerFileVersion, Generation: fmt.Sprintf("generation-%02d", i), DeclaredBy: program,
-			Declaration: providerDeclaration{Name: name, Program: program, Endpoint: "private-" + name, Transport: transportNative,
-				Contracts: []string{inference.Contract}, Models: []string{"shared-model"}, Activation: wire.ActivationAttach.String()}}
-		p.supervisors[name] = newProviderSupervisor(p, file)
-	}
-	m := &providerMediation{base: "unused", providers: p, routes: map[string]*providerMediationRoute{}}
-	if err := m.sync(); err == nil {
-		t.Fatalf("more than %d mediation listeners were accepted", maxProviders)
-	}
-	if len(m.routes) != 0 || len(p.mediated) != 0 {
-		t.Fatalf("over-limit mediation published routes: %d, %d", len(m.routes), len(p.mediated))
+	for _, row := range []struct {
+		name   string
+		paired int
+	}{{"native", 0}, {"mixed", 1}, {"paired", maxProviders + 1}} {
+		t.Run(row.name, func(t *testing.T) {
+			p := &runtimeProviders{report: func(error) {}, supervisors: map[string]*providerSupervisor{}, mediated: map[string]mediatedProvider{}}
+			for i := 0; i < maxProviders+1-row.paired; i++ {
+				name := fmt.Sprintf("provider-%02d", i)
+				file := providerFile{Version: providerFileVersion, Generation: fmt.Sprintf("generation-%02d", i), DeclaredBy: program,
+					Declaration: providerDeclaration{Name: name, Program: program, Endpoint: "private-" + name, Transport: transportNative,
+						Contracts: []string{inference.Contract}, Models: []string{"shared-model"}, Activation: wire.ActivationAttach.String()}}
+				p.supervisors[name] = newFixtureProviderSupervisor(t, p, file)
+			}
+			p.pairedHostSource = func() ([]*router.Host, error) {
+				var hosts []*router.Host
+				for i := 0; i < row.paired; i++ {
+					hosts = append(hosts, &router.Host{Name: fmt.Sprintf("paired-%02d", i), BindingID: fmt.Sprintf("paired:%02d", i)})
+				}
+				return hosts, nil
+			}
+			m := &providerMediation{base: "unused", providers: p, routes: map[string]*providerMediationRoute{}}
+			if err := m.sync(); err == nil {
+				t.Fatalf("more than %d mediation listeners were accepted", maxProviders)
+			}
+			if len(m.routes) != 0 || len(p.mediated) != 0 {
+				t.Fatalf("over-limit mediation published routes: %d, %d", len(m.routes), len(p.mediated))
+			}
+		})
 	}
 }
 
@@ -306,6 +376,82 @@ func TestProviderMediationEndpointIncludesTheOwningRuntime(t *testing.T) {
 	second := mediatedProviderEndpoint(listen.Endpoint("second-runtime"), binding)
 	if first == second || first != mediatedProviderEndpoint(listen.Endpoint("first-runtime"), binding) {
 		t.Fatalf("runtime endpoints %q and %q", first, second)
+	}
+}
+
+func TestProviderRoutingBusyPairingRetainsDirectAndWithdrawsPeer(t *testing.T) {
+	principal, err := currentPrincipal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	p := &runtimeProviders{dir: root, disabledPath: filepath.Join(root, "disabled.json"), principal: principal, report: func(error) {}, supervisors: map[string]*providerSupervisor{}}
+	file := providerFile{Version: providerFileVersion, Generation: "direct-generation", DeclaredBy: program, Declaration: providerDeclaration{Name: "direct", Program: program, Endpoint: "inert-direct", Transport: transportNative, Contracts: []string{inference.Contract}, Models: []string{"shared-model"}, Activation: wire.ActivationAttach.String()}}
+	p.supervisors["direct"] = newFixtureProviderSupervisor(t, p, file)
+	p.supervisors["direct"].readiness = wire.DeclarationReadinessReady
+	// The paired contribution is inert: a declared model list performs no IPC.
+	peer, err := router.NewNative("peer", "inert-peer", listen.ServerExpectation{}, []string{"shared-model"}, []string{router.ProfileChat})
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer.Domain, peer.BindingID = "peer", "paired:fixture"
+	busy, duplicate, conflict := false, false, false
+	p.pairedHostSource = func() ([]*router.Host, error) {
+		if busy {
+			return []*router.Host{peer}, errPairingBusy
+		} // Even supplied rows are unusable with an error.
+		if conflict {
+			// pairedHosts reports a local declaration holding the peer's name.
+			return nil, errPairingConflict
+		}
+		if duplicate {
+			return []*router.Host{{Name: "direct"}}, nil
+		}
+		return []*router.Host{peer}, nil
+	}
+	routes := router.New()
+	ceilings, err := inference.OpenCeilings(filepath.Join(t.TempDir(), "ceilings.json"), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reported error
+	op := &inferenceOperator{providers: p, router: routes, ceilings: ceilings, report: func(err error) { reported = err }}
+	if err := op.refreshHosts(); err != nil {
+		t.Fatal(err)
+	}
+	peerOnly := []string{"peer"}
+	request := router.Request{Model: "shared-model", Profile: router.ProfileChat, Hosts: &peerOnly}
+	if decision, _ := routes.Route(request); decision.Host != "peer" {
+		t.Fatal("fixture peer route unavailable", decision)
+	}
+	busy = true
+	if err := op.refreshHosts(); !errors.Is(err, errPairingBusy) || !errors.Is(reported, errPairingBusy) {
+		t.Fatal("paired error lost", err, reported)
+	}
+	if hosts := routes.Hosts(); len(hosts) != 1 || hosts[0].Name != "direct" {
+		t.Fatal("independent host lost or failed peer retained", hosts)
+	}
+	if decision, _ := routes.Route(request); decision.Verdict != router.Unauthorised || decision.Host != "" || !slices.Equal(decision.Withheld, []string{"direct"}) {
+		t.Fatal("peer-scoped request substituted another host", decision)
+	}
+	directOnly := []string{"direct"}
+	request.Hosts = &directOnly
+	if decision, _ := routes.Route(request); decision.Host != "direct" {
+		t.Fatal("independent route unavailable", decision)
+	}
+	busy, duplicate = false, true
+	if err := op.refreshHosts(); err == nil || len(routes.Hosts()) != 0 {
+		t.Fatal("ambiguous known names published", err, routes.Hosts())
+	}
+	// Source1903: a paired name conflict is a known ambiguous name, distinct
+	// from an unavailable paired read, and publishes no host.
+	duplicate, conflict = false, true
+	if err := op.refreshHosts(); !errors.Is(err, errPairingConflict) || !errors.Is(reported, errPairingConflict) || len(routes.Hosts()) != 0 {
+		t.Fatal("paired name conflict published hosts", err, reported, routes.Hosts())
 	}
 }
 
@@ -355,8 +501,8 @@ func TestOneMediationListenerFailureLeavesOtherCandidatesAvailable(t *testing.T)
 				Contracts: []string{inference.Contract}, Models: []string{"shared-model"}, Activation: wire.ActivationAttach.String()}}
 	}
 	blocked, healthy := provider("blocked"), provider("healthy")
-	p.supervisors["blocked"] = newProviderSupervisor(p, blocked)
-	p.supervisors["healthy"] = newProviderSupervisor(p, healthy)
+	p.supervisors["blocked"] = newFixtureProviderSupervisor(t, p, blocked)
+	p.supervisors["healthy"] = newFixtureProviderSupervisor(t, p, healthy)
 	p.supervisors["blocked"].readiness = wire.DeclarationReadinessReady
 	p.supervisors["healthy"].readiness = wire.DeclarationReadinessReady
 	base := listen.Endpoint(fmt.Sprintf("mediation-isolation-%d", time.Now().UnixNano()))
@@ -366,7 +512,7 @@ func TestOneMediationListenerFailureLeavesOtherCandidatesAvailable(t *testing.T)
 	}
 	defer occupied.Close()
 	var reported []error
-	m, err := newProviderMediation(base, &inference.Provider{}, p, func(err error) { reported = append(reported, err) })
+	m, err := newProviderMediation(base, &inference.Provider{}, p, func(err error) { reported = append(reported, err) }, func(context.Context, inference.Subject, []string) (bool, error) { return false, nil }, func(context.Context, inference.Subject, []string) ([]string, error) { return nil, nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,6 +530,9 @@ func TestOneMediationListenerFailureLeavesOtherCandidatesAvailable(t *testing.T)
 	}
 	if len(reported) != 1 {
 		t.Fatalf("listener failures reported %d times: %v", len(reported), reported)
+	}
+	if m.routes[healthy.bindingID()].host.AwaitQuestions == nil {
+		t.Fatal("application-facing mediated host omitted native question owner")
 	}
 	states := map[string]bool{}
 	for _, candidate := range p.Candidates() {
@@ -424,8 +573,8 @@ func TestNativeCandidatesUseMediationAndUnsupportedContractsStayPrivate(t *testi
 	unsupported := providerFile{Version: providerFileVersion, Generation: "other-generation", DeclaredBy: program,
 		Declaration: providerDeclaration{Name: "other", Program: program, Endpoint: "private-other", Transport: transportNative,
 			Contracts: []string{"example.unsupported/service@1"}, Models: []string{"owner/fixture-model"}, Activation: wire.ActivationAttach.String()}}
-	p.supervisors["chat"] = newProviderSupervisor(p, chat)
-	p.supervisors["other"] = newProviderSupervisor(p, unsupported)
+	p.supervisors["chat"] = newFixtureProviderSupervisor(t, p, chat)
+	p.supervisors["other"] = newFixtureProviderSupervisor(t, p, unsupported)
 	p.supervisors["chat"].readiness = wire.DeclarationReadinessReady
 	p.supervisors["other"].readiness = wire.DeclarationReadinessReady
 	p.setMediated(map[string]mediatedProvider{chat.bindingID(): {Endpoint: "oa-inference", Ready: true}})

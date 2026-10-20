@@ -21,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	identity "github.com/openabstractions/abstraction-identity"
 	"golang.org/x/sys/unix"
 )
@@ -403,7 +404,7 @@ func runLifecycle(args []string, out io.Writer) error {
 	endpoint, _ := playgroundEndpoint(record.Name, "darwin")
 	if err := waitMac(func() error {
 		data, err := os.ReadFile(filepath.Join(run, "runtime.stderr.log"))
-		if err != nil || !bytes.Contains(data, []byte("ABSTRACTION_RUNTIME_ENDPOINT="+endpoint)) {
+		if err != nil || !bytes.Contains(data, []byte(bootstrap.RuntimeEndpointVariable+"="+endpoint)) {
 			return errors.New("runtime readiness pending")
 		}
 		return nil

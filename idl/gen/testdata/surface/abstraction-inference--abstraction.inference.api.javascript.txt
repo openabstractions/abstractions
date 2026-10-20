@@ -22,12 +22,86 @@ class ChatClient
   start(request)
   observe(operation, cursor, maxDeltas, maxBytes, waitMs)
   cancel(operation)
+enum ChatEventKind
+  Progress
+  Part
+  BlockEnd
+  Usage
+  End
+enum ChatGuarantee
+  LocalOnly
+  HostedAllowed
+  NoRetention
+  FreeCapacity
+enum ChatHistoryOutcome
+  Available
+  Forbidden
+  Invalid
+  Unavailable
+enum ChatLoad
+  Cold
+  Warm
+  Loaded
+enum ChatLoadSource
+  Disk
+  Adopted
+  Lent
+enum ChatPartKind
+  Text
+  Reasoning
+  ReasoningSummary
+  ToolCall
+  ModelRefusal
+enum ChatProgressPhase
+  Queued
+  Loading
+  Warming
+enum ChatReasoningEffort
+  None
+  Low
+  Medium
+  High
+enum ChatReasoningSupport
+  Applied
+  Approximated
+  NotSupported
+  Overridden
+enum ChatResultOutcome
+  Completed
+  Failed
+  Cancelled
 object ChatService {wireName, Client}
+enum ChatStartOutcome
+  Accepted
+  NotPermitted
+  BudgetExceeded
+  Unsupported
+  NoHost
+  Unavailable
+  Invalid
+  Forbidden
+  Exhausted
+  Conflict
+  Unknown
+enum ChatToolChoiceKind
+  Auto
+  None
+  Required
+  Named
+enum ChatUse
+  Title
 class ChatV2Client
+  startWithGuarantees(request, guarantees)
   start(request)
   observe(operation, cursor, maxDeltas, maxBytes, waitMs)
   cancel(operation)
 object ChatV2Service {wireName, Client}
+class ChatV3Client
+  getHistoryWindow()
+  start(request)
+  observe(request, cursor, maxDeltas, maxBytes, waitMs)
+  cancel(request)
+object ChatV3Service {wireName, Client}
 enum DeltaKind
   Part
   Usage
@@ -59,6 +133,16 @@ enum EmbedOutcome
 class EmbedderClient
   embed(request)
 object EmbedderService {wireName, Client}
+enum FinishReason
+  Stop
+  Length
+  ToolCalls
+  ContentFilter
+  ModelRefusal
+  ContextWindow
+  MalformedToolCall
+  Paused
+  Other
 class ImageClient
   start(request)
   observe(operation, cursor, maxDeltas, maxBytes, waitMs)
@@ -68,6 +152,7 @@ enum ImageMode
   Edit
 object ImageService {wireName, Client}
 class ImageV2Client
+  startWithGuarantees(request, guarantees)
   start(request)
   observe(operation, cursor, maxDeltas, maxBytes, waitMs)
   cancel(operation)
@@ -108,8 +193,11 @@ class OperatorClient
   issueKey(program, credential)
   revokeKey(program)
   audit(cursor, maxEntries)
+  requests(cursor, maxEntries)
   gateway()
   setGateway(expectedRevision, open, address)
+  programBudgets(credential)
+  setProgramBudget(request)
 object OperatorService {wireName, Client}
 enum PageOutcome
   Page
@@ -137,6 +225,19 @@ enum PreloadOutcome
 class PreloaderClient
   preload(request)
 object PreloaderService {wireName, Client}
+enum ProgramBudgetEditOutcome
+  Applied
+  Conflict
+  Invalid
+  Forbidden
+  Unavailable
+  Unsupported
+enum ProgramBudgetReadOutcome
+  Page
+  Invalid
+  Forbidden
+  Unavailable
+  Unsupported
 class Refusal
 enum ReplyOutcome
   Completed
@@ -158,10 +259,17 @@ enum Role
   User
   Assistant
   Tool
+enum SealOmission
+  EncodedSize
+  IncompatibleOrigin
 class SelectionOperatorV2Client
+  readEffective(name)
   read(targetProgram, name)
   put(targetProgram, expectedRevision, policy)
   deletePolicy(targetProgram, expectedRevision, name)
+  readAccountDefault(name)
+  putAccountDefault(expectedRevision, policy)
+  deleteAccountDefault(expectedRevision, name)
 object SelectionOperatorV2Service {wireName, Client}
 enum SelectionReadOutcome
   Found
@@ -173,6 +281,10 @@ enum SelectionReason
   ExplicitModel
   Preferred
   PreferredRouteUnavailable
+enum ServedPlace
+  Local
+  Hosted
+  Remote
 class ServiceError
 enum ServiceErrorCode
   HandlerError
@@ -242,8 +354,187 @@ enum VideoState
 const claimExtensions
 const credentialConsumers
 function decode(data)
+function decodeAdmission(data)
+function decodeAdmissionV2(data)
+function decodeAudioChunk(data)
+function decodeAuditEntry(data)
+function decodeAuditPage(data)
+function decodeCancellation(data)
+function decodeCeilingLimit(data)
+function decodeChatAdmission(data)
+function decodeChatBlockEnd(data)
+function decodeChatCancellation(data)
+function decodeChatContent(data)
+function decodeChatEvent(data)
+function decodeChatHistoryRead(data)
+function decodeChatInputPart(data)
+function decodeChatMessage(data)
+function decodeChatOptions(data)
+function decodeChatPage(data)
+function decodeChatPart(data)
+function decodeChatProgress(data)
+function decodeChatReasoning(data)
+function decodeChatReasoningApplied(data)
+function decodeChatReplay(data)
+function decodeChatResult(data)
+function decodeChatTarget(data)
+function decodeChatTiming(data)
+function decodeChatTool(data)
+function decodeChatToolChoice(data)
+function decodeChatUsage(data)
+function decodeCost(data)
+function decodeDelivery(data)
+function decodeDelta(data)
+function decodeDeltaPage(data)
+function decodeEmbedRequest(data)
+function decodeEmbeddings(data)
+function decodeGatewayChange(data)
+function decodeGatewayState(data)
+function decodeHostChange(data)
+function decodeHostEntry(data)
+function decodeHostList(data)
+function decodeHostState(data)
+function decodeImageProgress(data)
+function decodeImageReply(data)
+function decodeImageRequest(data)
+function decodeImageRequestContent(data)
+function decodeImageRequestV2(data)
+function decodeImageResult(data)
+function decodeKeyIssued(data)
+function decodeKeyList(data)
+function decodeKeyRevoked(data)
+function decodeLiveInputResult(data)
+function decodeLiveReply(data)
+function decodeLiveRequest(data)
+function decodeLiveTranscript(data)
+function decodeLocalKey(data)
+function decodeMessage(data)
+function decodeOptions(data)
+function decodePart(data)
+function decodePreloadReply(data)
+function decodeProgramBudget(data)
+function decodeProgramBudgetChange(data)
+function decodeProgramBudgetEntry(data)
+function decodeProgramBudgetPage(data)
+function decodeProgramBudgetResult(data)
+function decodeReasoningSeal(data)
+function decodeReply(data)
+function decodeRequest(data)
+function decodeRequestContent(data)
+function decodeRequestEntry(data)
+function decodeRequestPage(data)
+function decodeRequestV2(data)
+function decodeRequestV3(data)
+function decodeSelectionCandidateV2(data)
+function decodeSelectionChange(data)
+function decodeSelectionPolicyV2(data)
+function decodeSelectionReadV2(data)
+function decodeServedBy(data)
+function decodeSpeechReply(data)
+function decodeSpeechRequest(data)
+function decodeSpend(data)
+function decodeTarget(data)
+function decodeTemperature(data)
+function decodeTool(data)
+function decodeTranscriptSegment(data)
+function decodeTranscriptionReply(data)
+function decodeTranscriptionRequest(data)
+function decodeUsage(data)
+function decodeVideoAdmission(data)
+function decodeVideoObservation(data)
+function decodeVideoRequest(data)
 function encode(v)
+function encodeAdmission(v)
+function encodeAdmissionV2(v)
+function encodeAudioChunk(v)
+function encodeAuditEntry(v)
+function encodeAuditPage(v)
+function encodeCancellation(v)
+function encodeCeilingLimit(v)
+function encodeChatAdmission(v)
+function encodeChatBlockEnd(v)
+function encodeChatCancellation(v)
+function encodeChatContent(v)
+function encodeChatEvent(v)
+function encodeChatHistoryRead(v)
+function encodeChatInputPart(v)
+function encodeChatMessage(v)
+function encodeChatOptions(v)
+function encodeChatPage(v)
+function encodeChatPart(v)
+function encodeChatProgress(v)
+function encodeChatReasoning(v)
+function encodeChatReasoningApplied(v)
+function encodeChatReplay(v)
+function encodeChatResult(v)
+function encodeChatTarget(v)
+function encodeChatTiming(v)
+function encodeChatTool(v)
+function encodeChatToolChoice(v)
+function encodeChatUsage(v)
+function encodeCost(v)
+function encodeDelivery(v)
+function encodeDelta(v)
+function encodeDeltaPage(v)
+function encodeEmbedRequest(v)
+function encodeEmbeddings(v)
+function encodeGatewayChange(v)
+function encodeGatewayState(v)
+function encodeHostChange(v)
+function encodeHostEntry(v)
+function encodeHostList(v)
+function encodeHostState(v)
+function encodeImageProgress(v)
+function encodeImageReply(v)
+function encodeImageRequest(v)
+function encodeImageRequestContent(v)
+function encodeImageRequestV2(v)
+function encodeImageResult(v)
+function encodeKeyIssued(v)
+function encodeKeyList(v)
+function encodeKeyRevoked(v)
+function encodeLiveInputResult(v)
+function encodeLiveReply(v)
+function encodeLiveRequest(v)
+function encodeLiveTranscript(v)
+function encodeLocalKey(v)
+function encodeMessage(v)
+function encodeOptions(v)
+function encodePart(v)
+function encodePreloadReply(v)
+function encodeProgramBudget(v)
+function encodeProgramBudgetChange(v)
+function encodeProgramBudgetEntry(v)
+function encodeProgramBudgetPage(v)
+function encodeProgramBudgetResult(v)
+function encodeReasoningSeal(v)
+function encodeReply(v)
+function encodeRequest(v)
+function encodeRequestContent(v)
+function encodeRequestEntry(v)
+function encodeRequestPage(v)
+function encodeRequestV2(v)
+function encodeRequestV3(v)
+function encodeSelectionCandidateV2(v)
+function encodeSelectionChange(v)
+function encodeSelectionPolicyV2(v)
+function encodeSelectionReadV2(v)
+function encodeServedBy(v)
+function encodeSpeechReply(v)
+function encodeSpeechRequest(v)
+function encodeSpend(v)
+function encodeTarget(v)
+function encodeTemperature(v)
+function encodeTool(v)
+function encodeTranscriptSegment(v)
+function encodeTranscriptionReply(v)
+function encodeTranscriptionRequest(v)
+function encodeUsage(v)
+function encodeVideoAdmission(v)
+function encodeVideoObservation(v)
+function encodeVideoRequest(v)
 const features
+function fromJson(kind, data)
 const hostDeclarers
 const hostProfiles
 const localHostKinds
@@ -308,6 +599,136 @@ function newCeilingLimit()
   imagesPerDay
   audioSecondsPerDay
   charactersPerDay
+function newChatAdmission()
+  outcome
+  reason
+  request
+  server
+  model
+  retentionMs
+  idleMs
+  retainedDeltas
+  preferredModel
+  selectionReason
+  refusal
+  retryAfterMs
+function newChatBlockEnd()
+  block
+  sealOmitted
+function newChatCancellation()
+  outcome
+  resultOutcome
+  refusal
+function newChatContent()
+  messages
+  tools
+  options
+  extensions
+  requiredExtensions
+  guarantees
+  credential
+function newChatEvent()
+  sequence
+  kind
+  progress
+  part
+  blockEnd
+  usage
+  end
+function newChatHistoryRead()
+  outcome
+  window
+  refusal
+function newChatInputPart()
+  kind
+  text
+  digest
+  mediaType
+  callId
+  name
+  arguments
+function newChatMessage()
+  role
+  parts
+  reasoning
+function newChatOptions()
+  maxOutput
+  temperature
+  stop
+  jsonSchema
+  toolChoice
+  parallelTools
+  reasoning
+function newChatPage()
+  outcome
+  events
+  next
+  atEnd
+  refusal
+function newChatPart()
+  block
+  kind
+  text
+  callId
+  name
+  arguments
+  seal
+function newChatProgress()
+  phase
+  done
+  total
+  unit
+function newChatReasoning()
+  effort
+  budget
+function newChatReasoningApplied()
+  effort
+  budget
+  support
+  budgetSupport
+function newChatReplay()
+  block
+  seal
+function newChatResult()
+  outcome
+  cause
+  finishReason
+  stopSequence
+  usage
+  servedBy
+  cost
+  refusal
+  retryAfterMs
+  timing
+  reasoningApplied
+  droppedExtensions
+function newChatTarget()
+  model
+  selectionPolicy
+function newChatTiming()
+  queueMs
+  loadMs
+  restoreMs
+  prefillMs
+  decodeMs
+  prefillTokens
+  reusedTokens
+  load
+  loadSource
+function newChatTool()
+  name
+  description
+  parameters
+  strict
+function newChatToolChoice()
+  kind
+  name
+function newChatUsage()
+  input
+  output
+  cacheRead
+  cacheWrite
+  reasoning
 function newCost()
   micros
   currency
@@ -493,6 +914,35 @@ function newPreloadReply()
   host
   model
   tokens
+function newProgramBudget()
+  tokensPerDay
+  microsPerDay
+  requestsPerDay
+  imagesPerDay
+  audioSecondsPerDay
+  charactersPerDay
+function newProgramBudgetChange()
+  expectedRevision
+  credential
+  program
+  budget
+function newProgramBudgetEntry()
+  program
+  budget
+  spend
+  costUnreported
+function newProgramBudgetPage()
+  outcome
+  revision
+  entries
+  profiles
+function newProgramBudgetResult()
+  outcome
+  revision
+  reason
+function newReasoningSeal()
+  origin
+  bytes
 function newReply()
   outcome
   reason
@@ -519,9 +969,27 @@ function newRequestContent()
   requiredExtensions
   guarantees
   credential
+function newRequestEntry()
+  entry
+  preferredModel
+  unavailableHosts
+  selection
+  placement
+function newRequestPage()
+  outcome
+  entries
+  next
+  atEnd
 function newRequestV2()
   target
   content
+function newRequestV3()
+  identity
+  target
+  content
+  modelRef
+  conversation
+  use
 function newSelectionCandidateV2()
   model
   placement
@@ -538,6 +1006,10 @@ function newSelectionReadV2()
   outcome
   revision
   policy
+function newServedBy()
+  place
+  server
+  machine
 function newSpeechReply()
   outcome
   reason
@@ -625,3 +1097,4 @@ function newVideoRequest()
   extensions
   requestId
 const resourceActions
+function toJson(kind, value)

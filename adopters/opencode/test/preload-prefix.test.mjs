@@ -1,11 +1,16 @@
+import {FixtureMachine, nativeChatFixture} from './native-chat-fixture.mjs';
+import {DeltaKind, Fold} from '@openabstractions/inference';
+import {tool as hostTool} from '@opencode-ai/plugin/tool';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync} from 'node:fs';
 import {readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {runtimeConnector} from '../runtime-connector.js';
 import * as oaAvailability from '../availability.js';
 import OpenAbstractionsPlugin from '../plugin.js';
+import {messageToolNames} from '../messages.js';
 import {createOpenAbstractions} from '../index.js';
 import {keptPrefixes, preloadKeptPrefix, pruneKept, recallPrefix, rememberSessionStart, sessionStartPrefix} from '../preload.js';
 import {localBuildPrompt} from '../configure.js';
@@ -23,7 +28,7 @@ import {localBuildPrompt} from '../configure.js';
 const pinned = new URL('./fixtures/opencode-1.18.31-tool/', import.meta.url);
 const hostFixture = new URL('../../../openabstractions-flat/abstraction-provider-modelhost/go/host/testdata/opencode-1.18.31-local.json', import.meta.url);
 
-const optional = () => ({optional() { return this; }});
+const optional = () => ({optional() { return this; }, describe(description) { this.description = description; return this; }});
 const fakeTool = Object.assign((definition) => definition, {schema: {
   object: (value) => value, string: optional, number: optional, boolean: optional, enum: optional, array: optional,
 }});
@@ -51,13 +56,14 @@ async function localTools() {
   return tools;
 }
 
-/** The provider with its package imports replaced; complete records each
- * chat@1 request it is given. */
+/** The provider with explicit import bindings and an inert connector;
+ * complete records each chat@1 request it is given. */
 async function provider(requests) {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-  const body = source.replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export /gm, '');
+  const permissionSource = await readFile(new URL('../permission-wait.js', import.meta.url), 'utf8');
+  const body = permissionSource.replace(/^export /gm, '') + '\n' + source.replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export /gm, '');
   const make = new Function('availability', 'runtimeUnavailable', 'runtimeUntrusted', 'unavailableMessage', 'untrustedMessage', 'Machine',
-    'APICallError', 'resolveInference', 'resolveInferenceV2', 'NativeConnector', 'DeltaKind', 'Fold', 'PartKind',
+    'APICallError', 'resolveInference', 'resolveInferenceV2', 'runtimeConnector', 'DeltaKind', 'Fold', 'PartKind',
     'ReplyOutcome', 'RequestGuarantee', 'Role', 'StopReason', `${body}\nreturn {createOpenAbstractions};`);
   const chat = {complete: async (request) => {
     requests.push(request);
@@ -65,8 +71,8 @@ async function provider(requests) {
       message: {parts: [{kind: 'text', text: 'ok'}]}};
   }};
   const {createOpenAbstractions} = make(oaAvailability.availability, oaAvailability.runtimeUnavailable, oaAvailability.runtimeUntrusted,
-    oaAvailability.unavailableMessage, oaAvailability.untrustedMessage, class {}, class extends Error {}, async () => chat,
-    async () => { throw new Error('unexpected chat@2 resolution'); }, class {}, {}, class {}, {Text: 'text', ToolCall: 'tool_call'},
+    oaAvailability.unavailableMessage, oaAvailability.untrustedMessage, FixtureMachine, class extends Error {}, async () => nativeChatFixture(chat),
+    async () => { throw new Error('unexpected chat@2 resolution'); }, runtimeConnector, DeltaKind, Fold, {Text: 'text', ToolCall: 'tool_call'},
     {Completed: 'completed'}, {LocalOnly: 'local-only'}, {}, {End: 'end'});
   return createOpenAbstractions({connector: {}}).languageModel('qwen3.6-35b-a3b');
 }
@@ -144,7 +150,8 @@ test('the kept prefix is the next session start without its user message', async
   const system = fixture().system[0];
   const requests = [];
   const model = createOpenAbstractions({connector: {}, preloadStateDir: dir}).languageModel('qwen3.6-35b-a3b');
-  model.chat = async () => ({complete: async (request) => {
+  model.finalChat = async () => null; // This fixture owns frozen chat@1 receiving.
+  model.chat = async () => nativeChatFixture({complete: async (request) => {
     requests.push(request);
     return {outcome: 'completed', stopReason: 'end', usage: {}, host: '', model: 'qwen3.6-35b-a3b', message: {parts: [{kind: 'text', text: 'ok'}]}};
   }});
@@ -169,7 +176,8 @@ test('the kept prefix is the next session start without its user message', async
 test('a request without the Local assistant\'s project keeps nothing', async (t) => {
   const dir = tempDir(t);
   const model = createOpenAbstractions({connector: {}, preloadStateDir: dir}).languageModel('m');
-  model.chat = async () => ({complete: async () => ({outcome: 'completed', stopReason: 'end', usage: {}, host: '', model: 'm', message: {parts: []}})});
+  model.finalChat = async () => null;
+  model.chat = async () => nativeChatFixture({complete: async () => ({outcome: 'completed', stopReason: 'end', usage: {}, host: '', model: 'm', message: {parts: []}})});
   await model.doGenerate({prompt: [{role: 'system', content: 'rules'}, {role: 'user', content: [{type: 'text', text: 'hi'}]}]});
   await new Promise((resolve) => setTimeout(resolve, 50));
   assert.deepEqual(readdirSync(dir), [], 'a request with no project was kept');
@@ -190,30 +198,45 @@ test('preload sends the kept prefix, and nothing when none is kept', async (t) =
   assert.deepEqual(sent, [{...request, messages: request.messages.slice(0, 1)}]);
 });
 
+test('initial startup warms only the chosen local model with an empty prefix', async (t) => {
+  let sent;
+  await preloadKeptPrefix({dir: tempDir(t), project: 'new', model: 'chosen', warmIfMissing: true,
+    resolve: async () => ({preload: async (request) => { sent = request; return {outcome: 'loaded'}; }})});
+  assert.equal(sent.model, 'chosen');
+  assert.deepEqual(sent.guarantees, ['abstraction.inference/local-only@1']);
+  assert.deepEqual(sent.messages, [{role: 'system', parts: [{kind: 'text', text: ''}]}]);
+});
+
 test('at start the plugin preloads the Local assistant\'s model with the project\'s kept prefix, beside the startup', async () => {
   const calls = [];
   const logged = [];
   const client = {app: {log: async ({body}) => { logged.push(body); }}};
-  const plugin = await OpenAbstractionsPlugin({client, directory: 'C:\\work\\wordstat'}, {compactTools: true, tools: {}}, {
-    tool: fakeTool,
+  const connected = async () => ({outcome: 'connected', hostRegistered: true, helperEnrolled: true});
+  const plugin = await OpenAbstractionsPlugin({client, directory: 'C:\\work\\wordstat'}, {compactTools: true, tools: Object.fromEntries(messageToolNames.map(name=>[name,false]))}, {
+    tool: hostTool,
     preloadStateDir: 'unused',
+    probeRuntime: async () => ({}),
+    requestOpenCodeConnection: connected,
     preloadKeptPrefix: async (args) => { calls.push(args); return {outcome: 'evaluated', reason: '', tokens: 2294n}; },
     readCapability: async () => false,
     readInventory: async () => ({offers: []}),
   });
   await plugin.config({model: 'openabstractions/qwen3.6-35b-a3b', agent: {local: {mode: 'primary'}},
     provider: {openabstractions: {npm: '@openabstractions/opencode', options: {runtimeEndpoint: 'x'}, models: {}}}});
+  assert.equal(logged.some(entry => entry.message.includes('could not read its configuration')), false);
   await until(() => calls.length === 1);
   assert.equal(calls[0].project, 'C:\\work\\wordstat');
   assert.equal(calls[0].model, 'qwen3.6-35b-a3b');
   assert.equal(calls[0].options.runtimeEndpoint, 'x');
   const params = {options: {}};
-  await plugin['chat.params']({agent: 'local'}, params);
+  await plugin['chat.params']({agent: 'local', model: {providerID: 'openabstractions', api: {npm: '@openabstractions/opencode'}}}, params);
   assert.deepEqual(params.options, {oaLocalOnly: true, oaProject: 'C:\\work\\wordstat'});
 
   const other = [];
-  const build = await OpenAbstractionsPlugin({client, directory: 'C:\\work'}, {tools: {}}, {
-    tool: fakeTool, preloadKeptPrefix: async (args) => { other.push(args); return null; },
+  const build = await OpenAbstractionsPlugin({client, directory: 'C:\\work'}, {tools: Object.fromEntries(messageToolNames.map(name=>[name,false]))}, {
+    tool: hostTool, preloadKeptPrefix: async (args) => { other.push(args); return null; },
+    probeRuntime: async () => ({}),
+    requestOpenCodeConnection: connected,
     readCapability: async () => false, readInventory: async () => ({offers: []}),
   });
   await build.config({model: 'openabstractions/m', agent: {local: {mode: 'primary'}},

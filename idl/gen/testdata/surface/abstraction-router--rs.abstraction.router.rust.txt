@@ -1,4 +1,17 @@
 pub type Raw
+pub mod reasoning_effort
+  pub const NONE: &str
+  pub const LOW: &str
+  pub const MEDIUM: &str
+  pub const HIGH: &str
+  pub const ALL: [&str; 4]
+pub mod engine_cause
+  pub const BOUND: &str
+  pub const SOURCE_ONLY: &str
+  pub const INCOMPATIBLE: &str
+  pub const UNKNOWN: &str
+  pub const OTHER: &str
+  pub const ALL: [&str; 5]
 pub mod availability_cause
   pub const TRANSPORT_UNAVAILABLE: &str
   pub const CREDENTIAL: &str
@@ -14,7 +27,7 @@ pub enum Placement
   Any
   pub const ALL: [Self; 3]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub mod context_source
   pub const EFFECTIVE: &str
   pub const MAXIMUM: &str
@@ -30,7 +43,17 @@ pub enum OfferOutcome
   NotPermitted
   pub const ALL: [Self; 5]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum ModalityOutcome
+  Page
+  Gap
+  Invalid
+  Forbidden
+  Unavailable
+  NotPermitted
+  pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub mod service_error_code
   pub const HANDLER_ERROR: &str
   pub const INVALID_RESULT: &str
@@ -45,117 +68,170 @@ pub mod service_error_code
   pub const UNAVAILABLE: &str
   pub const FORBIDDEN: &str
   pub const ALL: [&str; 12]
-pub const PROFILES: [&str; 5]
+pub const PROFILES: [&str; 7]
 pub const VERDICTS: [&str; 8]
 pub const WIRE_KINDS: [&str; 9]
 pub const CREDENTIAL_CONSUMERS: [&str; 1]
 pub const ROUTER_ERROR_CODES: [&str; 6]
 pub struct HostAllowance
-  hosts: Vec<String>
+  hosts: ::std::vec::Vec<::std::string::String>
 pub struct PickRequest
-  model: String
+  model: ::std::string::String
   fresh: bool
-  allowed: Option<HostAllowance>
-  profile: String
+  allowed: ::std::option::Option<HostAllowance>
+  profile: ::std::string::String
 pub struct Caller
-  user_description: String
-  path_description: String
+  user_description: ::std::string::String
+  path_description: ::std::string::String
 pub struct Observation
   caller: Caller
   took_ms: i64
   cache_age_ms: i64
+pub struct ReasoningSupport
+  efforts: ::std::vec::Vec<::std::string::String>
+  budget: bool
+  default_effort: ::std::option::Option<::std::string::String>
+pub struct ModelCapabilities
+  input: ::std::vec::Vec<::std::string::String>
+  output: ::std::vec::Vec<::std::string::String>
+  tools: ::std::option::Option<bool>
+  structured_output: ::std::option::Option<bool>
+  reasoning: ::std::option::Option<ReasoningSupport>
+  extensions: ::std::vec::Vec<::std::string::String>
 pub struct Alias
-  host: String
-  name: String
+  host: ::std::string::String
+  name: ::std::string::String
   resident: bool
   servable: bool
   hosted: bool
-  profiles: Vec<String>
-  held_in: Vec<String>
+  profiles: ::std::vec::Vec<::std::string::String>
+  held_in: ::std::vec::Vec<::std::string::String>
   context_length: i64
   effective_context_length: i64
+  capabilities: ::std::option::Option<ModelCapabilities>
 pub struct Component
-  store: String
-  role: String
-  name: String
+  store: ::std::string::String
+  role: ::std::string::String
+  name: ::std::string::String
+pub struct Engine
+  id: ::std::string::String
+  name: ::std::string::String
+  version: ::std::string::String
+  source: ::std::string::String
+pub struct ModelEngine
+  host: ::std::string::String
+  model: ::std::string::String
+  engine: ::std::string::String
+  profiles: ::std::vec::Vec<::std::string::String>
+  source: ::std::string::String
+  role: ::std::string::String
+pub struct ModelObject
+  domain: ::std::string::String
+  store: ::std::string::String
+  name: ::std::string::String
+  object: ::std::string::String
+  digest: ::std::string::String
+  format: ::std::string::String
+  architecture: ::std::string::String
+  role: ::std::string::String
+  engines: ::std::vec::Vec<ModelEngine>
+  cause: ::std::string::String
+  why: ::std::string::String
 pub struct Family
-  family: String
-  names: Vec<Alias>
-  held_in: Vec<String>
-  family_source: String
-  components: Vec<Component>
+  family: ::std::string::String
+  names: ::std::vec::Vec<Alias>
+  held_in: ::std::vec::Vec<::std::string::String>
+  family_source: ::std::string::String
+  components: ::std::vec::Vec<Component>
+  title: ::std::string::String
+  objects: ::std::vec::Vec<ModelObject>
 pub struct ModelsSnapshot
   observation: Observation
-  models: Vec<Family>
+  models: ::std::vec::Vec<Family>
 pub struct HostState
-  host: String
-  base: String
+  host: ::std::string::String
+  base: ::std::string::String
   up: bool
-  why: String
+  why: ::std::string::String
   installed: i64
-  resident: Vec<String>
+  resident: ::std::vec::Vec<::std::string::String>
   servable: bool
   hosted: bool
-  wire: String
-  credential: String
-  declared_by: String
-  profiles: Vec<String>
-  domain: String
-  availability_cause: Option<String>
+  wire: ::std::string::String
+  credential: ::std::string::String
+  declared_by: ::std::string::String
+  profiles: ::std::vec::Vec<::std::string::String>
+  domain: ::std::string::String
+  availability_cause: ::std::option::Option<::std::string::String>
+  engines: ::std::vec::Vec<Engine>
 pub struct Ask
-  at: String
-  caller: String
-  user: String
-  model: String
-  family: String
-  verdict: String
-  host: String
+  at: ::std::string::String
+  caller: ::std::string::String
+  user: ::std::string::String
+  model: ::std::string::String
+  family: ::std::string::String
+  verdict: ::std::string::String
+  host: ::std::string::String
 pub struct HostsSnapshot
   observation: Observation
-  hosts: Vec<HostState>
-  doubled: Vec<String>
-  asked: Vec<Ask>
+  hosts: ::std::vec::Vec<HostState>
+  doubled: ::std::vec::Vec<::std::string::String>
+  asked: ::std::vec::Vec<Ask>
 pub struct Decision
-  asked: String
-  family: String
-  verdict: String
-  host: String
-  model: String
-  endpoint: String
-  installed_on: Vec<String>
-  authorised: Option<HostAllowance>
-  withheld: Vec<String>
+  asked: ::std::string::String
+  family: ::std::string::String
+  verdict: ::std::string::String
+  host: ::std::string::String
+  model: ::std::string::String
+  endpoint: ::std::string::String
+  installed_on: ::std::vec::Vec<::std::string::String>
+  authorised: ::std::option::Option<HostAllowance>
+  withheld: ::std::vec::Vec<::std::string::String>
   loads: i64
-  why: String
+  why: ::std::string::String
 pub struct PickResult
   observation: Observation
   decision: Decision
 pub struct OfferRequest
-  profile: String
+  profile: ::std::string::String
   placement: Placement
   reserve: i64
   fresh: bool
 pub struct Offer
-  family: String
-  names: Vec<String>
-  servers: Vec<String>
+  family: ::std::string::String
+  names: ::std::vec::Vec<::std::string::String>
+  servers: ::std::vec::Vec<::std::string::String>
   context: i64
-  context_source: String
+  context_source: ::std::string::String
   input: i64
-  unknown: Vec<String>
+  unknown: ::std::vec::Vec<::std::string::String>
+  title: ::std::string::String
 pub struct OfferSnapshot
   observation: Observation
-  offers: Vec<Offer>
+  offers: ::std::vec::Vec<Offer>
   outcome: OfferOutcome
-pub fn encode(v: &PickRequest) -> Vec<u8>
+pub struct OfferObservation
+  observation: Observation
+  offers: ::std::vec::Vec<Offer>
+  outcome: OfferOutcome
+  cursor: ::std::string::String
+pub struct ModalityPage
+  outcome: ModalityOutcome
+  modalities: ::std::vec::Vec<::std::string::String>
+  next: ::std::string::String
+  complete: bool
+pub fn encode(v: &PickRequest) -> ::std::vec::Vec<u8>
 pub struct Refusal
   word: &'static str
   offset: usize
-pub fn decode(data: &[u8]) -> Result<PickRequest, Refusal>
+pub fn decode(data: &[u8]) -> ::std::result::Result<PickRequest, Refusal>
+pub trait JsonRecord: ::std::marker::Sized
+  fn to_json(&self) -> ::std::vec::Vec<u8>
+  fn from_json(data: &[u8]) -> ::std::result::Result<Self, Refusal>
 pub use abstraction_frame::FrameTransport
 pub struct ServiceError
-  code: String
-  message: String
+  code: ::std::string::String
+  message: ::std::string::String
 pub enum CallError<E>
   Transport(E)
   Refusal(Refusal)
@@ -163,10 +239,12 @@ pub enum CallError<E>
   Service(ServiceError)
 pub trait Router
   type Error
-  fn models(&self, fresh: bool) -> Result<ModelsSnapshot, Self::Error>
-  fn hosts(&self, fresh: bool) -> Result<HostsSnapshot, Self::Error>
-  fn pick(&self, request: PickRequest) -> Result<PickResult, Self::Error>
-  fn offer(&self, request: OfferRequest) -> Result<OfferSnapshot, Self::Error>
+  fn modalities(&self, cursor: ::std::string::String, limit: i64) -> ::std::result::Result<ModalityPage, Self::Error>
+  fn models(&self, fresh: bool) -> ::std::result::Result<ModelsSnapshot, Self::Error>
+  fn hosts(&self, fresh: bool) -> ::std::result::Result<HostsSnapshot, Self::Error>
+  fn pick(&self, request: PickRequest) -> ::std::result::Result<PickResult, Self::Error>
+  fn offer(&self, request: OfferRequest) -> ::std::result::Result<OfferSnapshot, Self::Error>
+  fn observe_offer(&self, request: OfferRequest, cursor: ::std::string::String, wait_ms: i64) -> ::std::result::Result<OfferObservation, Self::Error>
 pub struct RouterClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T

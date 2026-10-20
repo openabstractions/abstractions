@@ -12,6 +12,7 @@ func (UserReplaceOutcome) UnmarshalText(text []byte) error
 func (UserReplaceOutcome) MarshalJSON() ([]byte, error)
 func (UserReplaceOutcome) UnmarshalJSON(data []byte) error
 func UserReplaceOutcomeValues() []UserReplaceOutcome
+func (UserReplaceOutcome) IsKnown() bool
 func (UserReplaceOutcome) Known() bool
 type ConfigObservationOutcome uint32
 const ConfigObservationOutcomeSnapshot
@@ -28,7 +29,139 @@ func (ConfigObservationOutcome) UnmarshalText(text []byte) error
 func (ConfigObservationOutcome) MarshalJSON() ([]byte, error)
 func (ConfigObservationOutcome) UnmarshalJSON(data []byte) error
 func ConfigObservationOutcomeValues() []ConfigObservationOutcome
+func (ConfigObservationOutcome) IsKnown() bool
 func (ConfigObservationOutcome) Known() bool
+type ValueKind uint32
+const ValueKindBoolean
+const ValueKindInteger
+const ValueKindBytes
+const ValueKindDuration
+const ValueKindText
+const ValueKindChoice
+const ValueKindTextList
+const ValueKindTextMap
+const ValueKindUnlimited
+func (ValueKind) String() string
+func (ValueKind) WireName() (string, bool)
+func ParseValueKind(word string) (ValueKind, bool)
+func (ValueKind) MarshalText() ([]byte, error)
+func (ValueKind) UnmarshalText(text []byte) error
+func (ValueKind) MarshalJSON() ([]byte, error)
+func (ValueKind) UnmarshalJSON(data []byte) error
+func ValueKindValues() []ValueKind
+func (ValueKind) IsKnown() bool
+func (ValueKind) Known() bool
+type Location uint32
+const LocationMachine
+const LocationUser
+const LocationProcess
+func (Location) String() string
+func (Location) WireName() (string, bool)
+func ParseLocation(word string) (Location, bool)
+func (Location) MarshalText() ([]byte, error)
+func (Location) UnmarshalText(text []byte) error
+func (Location) MarshalJSON() ([]byte, error)
+func (Location) UnmarshalJSON(data []byte) error
+func LocationValues() []Location
+func (Location) IsKnown() bool
+func (Location) Known() bool
+type KeyState string
+const KeyStateSet
+const KeyStateDefault
+const KeyStateLocked
+const KeyStateIgnored
+const KeyStatePending
+func KeyStateValues() []KeyState
+func (KeyState) IsKnown() bool
+func (KeyState) Known() bool
+type ApplyMode uint32
+const ApplyModeLive
+const ApplyModeRestart
+func (ApplyMode) String() string
+func (ApplyMode) WireName() (string, bool)
+func ParseApplyMode(word string) (ApplyMode, bool)
+func (ApplyMode) MarshalText() ([]byte, error)
+func (ApplyMode) UnmarshalText(text []byte) error
+func (ApplyMode) MarshalJSON() ([]byte, error)
+func (ApplyMode) UnmarshalJSON(data []byte) error
+func ApplyModeValues() []ApplyMode
+func (ApplyMode) IsKnown() bool
+func (ApplyMode) Known() bool
+type KeyRefusalReason uint32
+const KeyRefusalReasonNotGranted
+const KeyRefusalReasonUnknownKey
+func (KeyRefusalReason) String() string
+func (KeyRefusalReason) WireName() (string, bool)
+func ParseKeyRefusalReason(word string) (KeyRefusalReason, bool)
+func (KeyRefusalReason) MarshalText() ([]byte, error)
+func (KeyRefusalReason) UnmarshalText(text []byte) error
+func (KeyRefusalReason) MarshalJSON() ([]byte, error)
+func (KeyRefusalReason) UnmarshalJSON(data []byte) error
+func KeyRefusalReasonValues() []KeyRefusalReason
+func (KeyRefusalReason) IsKnown() bool
+func (KeyRefusalReason) Known() bool
+type ReadOutcome uint32
+const ReadOutcomeRead
+const ReadOutcomeCorrupt
+const ReadOutcomeNotPermitted
+const ReadOutcomeUnavailable
+const ReadOutcomeInvalid
+const ReadOutcomeForbidden
+func (ReadOutcome) String() string
+func (ReadOutcome) WireName() (string, bool)
+func ParseReadOutcome(word string) (ReadOutcome, bool)
+func (ReadOutcome) MarshalText() ([]byte, error)
+func (ReadOutcome) UnmarshalText(text []byte) error
+func (ReadOutcome) MarshalJSON() ([]byte, error)
+func (ReadOutcome) UnmarshalJSON(data []byte) error
+func ReadOutcomeValues() []ReadOutcome
+func (ReadOutcome) IsKnown() bool
+func (ReadOutcome) Known() bool
+type IgnoredFieldReason string
+const IgnoredFieldReasonUnknownKey
+const IgnoredFieldReasonInvalidName
+func IgnoredFieldReasonValues() []IgnoredFieldReason
+func (IgnoredFieldReason) IsKnown() bool
+func (IgnoredFieldReason) Known() bool
+type ReplaceOutcome uint32
+const ReplaceOutcomeApplied
+const ReplaceOutcomeConflict
+const ReplaceOutcomeNotPermitted
+const ReplaceOutcomeInvalid
+const ReplaceOutcomeUnavailable
+const ReplaceOutcomeCorrupt
+const ReplaceOutcomeForbidden
+func (ReplaceOutcome) String() string
+func (ReplaceOutcome) WireName() (string, bool)
+func ParseReplaceOutcome(word string) (ReplaceOutcome, bool)
+func (ReplaceOutcome) MarshalText() ([]byte, error)
+func (ReplaceOutcome) UnmarshalText(text []byte) error
+func (ReplaceOutcome) MarshalJSON() ([]byte, error)
+func (ReplaceOutcome) UnmarshalJSON(data []byte) error
+func ReplaceOutcomeValues() []ReplaceOutcome
+func (ReplaceOutcome) IsKnown() bool
+func (ReplaceOutcome) Known() bool
+type ObservationOutcomeV2 uint32
+const ObservationOutcomeV2Changed
+const ObservationOutcomeV2Unchanged
+const ObservationOutcomeV2Gap
+const ObservationOutcomeV2Unavailable
+const ObservationOutcomeV2Unsupported
+const ObservationOutcomeV2Invalid
+const ObservationOutcomeV2NotPermitted
+const ObservationOutcomeV2Corrupt
+const ObservationOutcomeV2Forbidden
+const ObservationOutcomeV2Failed
+func (ObservationOutcomeV2) String() string
+func (ObservationOutcomeV2) WireName() (string, bool)
+func ParseObservationOutcomeV2(word string) (ObservationOutcomeV2, bool)
+func (ObservationOutcomeV2) MarshalText() ([]byte, error)
+func (ObservationOutcomeV2) UnmarshalText(text []byte) error
+func (ObservationOutcomeV2) MarshalJSON() ([]byte, error)
+func (ObservationOutcomeV2) UnmarshalJSON(data []byte) error
+func ObservationOutcomeV2Values() []ObservationOutcomeV2
+func (ObservationOutcomeV2) IsKnown() bool
+func (ObservationOutcomeV2) Known() bool
 type ServiceErrorCode string
 const ServiceErrorCodeHandlerError
 const ServiceErrorCodeInvalidResult
@@ -42,9 +175,94 @@ const ServiceErrorCodeIdentityRequired
 const ServiceErrorCodeWrongUser
 const ServiceErrorCodeInvalidRevision
 func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) IsKnown() bool
 func (ServiceErrorCode) Known() bool
+type EndpointServiceReadiness uint32
+const EndpointServiceReadinessReady
+const EndpointServiceReadinessNotReady
+const EndpointServiceReadinessUnknown
+func (EndpointServiceReadiness) String() string
+func (EndpointServiceReadiness) WireName() (string, bool)
+func ParseEndpointServiceReadiness(word string) (EndpointServiceReadiness, bool)
+func (EndpointServiceReadiness) MarshalText() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalText(text []byte) error
+func (EndpointServiceReadiness) MarshalJSON() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalJSON(data []byte) error
+func EndpointServiceReadinessValues() []EndpointServiceReadiness
+func (EndpointServiceReadiness) IsKnown() bool
+func (EndpointServiceReadiness) Known() bool
+type EndpointRefusalSource string
+const EndpointRefusalSourceRights
+const EndpointRefusalSourceCredentials
+const EndpointRefusalSourceLicense
+const EndpointRefusalSourceTerms
+const EndpointRefusalSourceIdentity
+const EndpointRefusalSourceOS
+func EndpointRefusalSourceValues() []EndpointRefusalSource
+func (EndpointRefusalSource) IsKnown() bool
+func (EndpointRefusalSource) Known() bool
+type EndpointRefusalDecision uint32
+const EndpointRefusalDecisionDenied
+const EndpointRefusalDecisionNotGranted
+const EndpointRefusalDecisionPersonOnly
+func (EndpointRefusalDecision) String() string
+func (EndpointRefusalDecision) WireName() (string, bool)
+func ParseEndpointRefusalDecision(word string) (EndpointRefusalDecision, bool)
+func (EndpointRefusalDecision) MarshalText() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalText(text []byte) error
+func (EndpointRefusalDecision) MarshalJSON() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalJSON(data []byte) error
+func EndpointRefusalDecisionValues() []EndpointRefusalDecision
+func (EndpointRefusalDecision) IsKnown() bool
+func (EndpointRefusalDecision) Known() bool
+type EndpointRefusalAsk uint32
+const EndpointRefusalAskAvailable
+const EndpointRefusalAskNone
+func (EndpointRefusalAsk) String() string
+func (EndpointRefusalAsk) WireName() (string, bool)
+func ParseEndpointRefusalAsk(word string) (EndpointRefusalAsk, bool)
+func (EndpointRefusalAsk) MarshalText() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalText(text []byte) error
+func (EndpointRefusalAsk) MarshalJSON() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalJSON(data []byte) error
+func EndpointRefusalAskValues() []EndpointRefusalAsk
+func (EndpointRefusalAsk) IsKnown() bool
+func (EndpointRefusalAsk) Known() bool
+type EndpointProducerCheckState uint32
+const EndpointProducerCheckStateCurrent
+const EndpointProducerCheckStateRepaired
+const EndpointProducerCheckStateStale
+const EndpointProducerCheckStateRefused
+const EndpointProducerCheckStateUnverified
+func (EndpointProducerCheckState) String() string
+func (EndpointProducerCheckState) WireName() (string, bool)
+func ParseEndpointProducerCheckState(word string) (EndpointProducerCheckState, bool)
+func (EndpointProducerCheckState) MarshalText() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalText(text []byte) error
+func (EndpointProducerCheckState) MarshalJSON() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalJSON(data []byte) error
+func EndpointProducerCheckStateValues() []EndpointProducerCheckState
+func (EndpointProducerCheckState) IsKnown() bool
+func (EndpointProducerCheckState) Known() bool
+type EndpointDescriptionOutcome uint32
+const EndpointDescriptionOutcomeDescribed
+const EndpointDescriptionOutcomeForbidden
+const EndpointDescriptionOutcomeUnavailable
+const EndpointDescriptionOutcomeInvalid
+const EndpointDescriptionOutcomeUnsupported
+func (EndpointDescriptionOutcome) String() string
+func (EndpointDescriptionOutcome) WireName() (string, bool)
+func ParseEndpointDescriptionOutcome(word string) (EndpointDescriptionOutcome, bool)
+func (EndpointDescriptionOutcome) MarshalText() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalText(text []byte) error
+func (EndpointDescriptionOutcome) MarshalJSON() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalJSON(data []byte) error
+func EndpointDescriptionOutcomeValues() []EndpointDescriptionOutcome
+func (EndpointDescriptionOutcome) IsKnown() bool
+func (EndpointDescriptionOutcome) Known() bool
 var ReaderErrorCodes
 var EditorErrorCodes
+var ResourceActions
 type RunOverrides struct
   NasStore string
   Store string
@@ -83,17 +301,149 @@ type ConfigObservation struct
   Outcome ConfigObservationOutcome
   Cursor string
   Snapshot *Snapshot
+type Value struct
+  Kind ValueKind
+  Boolean bool
+  Integer int64
+  Bytes int64
+  DurationMs int64
+  Text string
+  Choice string
+  TextList []string
+  TextMap map[string]string
+type ConfigSource struct
+  Location Location
+  Path string
+type KeyOrigin struct
+  Location Location
+  Path string
+  State KeyState
+  Reason string
+  Shadowed []ConfigSource
+type Entry struct
+  Key string
+  Value *Value
+  Origin KeyOrigin
+type ValueRange struct
+  Min int64
+  Max int64
+type KeyDescriptor struct
+  Key string
+  Kind ValueKind
+  Default *Value
+  Range *ValueRange
+  Choices []string
+  Presets []Value
+  Description string
+  Group string
+  Apply ApplyMode
+  Lockable bool
+  LowestLocation Location
+  Deprecated string
+  DefaultDescription string
+  AllowsUnlimited bool
+type Change struct
+  Key string
+  Set *Value
+type KeyRefusal struct
+  Key string
+  Reason KeyRefusalReason
+  Refusal *oaImported0
+type KeyProblem struct
+  Key string
+  Reason string
+type IgnoredField struct
+  Offset int64
+  NameExcerpt string
+  Reason IgnoredFieldReason
+  Source ConfigSource
+type ReadResult struct
+  Outcome ReadOutcome
+  Entries []Entry
+  Revision string
+  Refused []KeyRefusal
+  Problem *KeyProblem
+  CorruptOffset int64
+  IgnoredFields []IgnoredField
+  IgnoredOmitted int64
+  CorruptSource *ConfigSource
+  Refusal *oaImported0
+type UserSnapshotV2 struct
+  Entries []Entry
+  Revision string
+type UserReadResultV2 struct
+  Outcome ReadOutcome
+  Snapshot *UserSnapshotV2
+  Problem *KeyProblem
+  CorruptOffset int64
+  Refusal *oaImported0
+type UserReplaceResultV2 struct
+  Outcome ReplaceOutcome
+  Snapshot *UserSnapshotV2
+  Refused []KeyProblem
+  CorruptOffset int64
+  Refusal *oaImported0
+type ConfigObservationV2 struct
+  Outcome ObservationOutcomeV2
+  Cursor string
+  Snapshot *ReadResult
+  Problem *KeyProblem
+  CorruptOffset int64
+  CorruptSource *ConfigSource
+  Refusal *oaImported0
+  AgeMs *int64
+  Cause string
+type DescribeResult struct
+  Outcome ReadOutcome
+  Descriptors []KeyDescriptor
+  Refusal *oaImported0
+type EndpointRefusalDetail struct
+  Source EndpointRefusalSource
+  Decision EndpointRefusalDecision
+  Ask EndpointRefusalAsk
+  Action string
+  Question string
+  Credential string
+  RetryAfterMs int64
+type EndpointProducerCheck struct
+  Kind string
+  Copy string
+  State EndpointProducerCheckState
+  Reason string
+  Checked string
+type EndpointServiceState struct
+  Service string
+  Readiness EndpointServiceReadiness
+  Reason string
+  Guarantees []string
+  Capabilities map[string]string
+  DefinitionHash string
+type EndpointDescription struct
+  Outcome EndpointDescriptionOutcome
+  Program string
+  Version string
+  Services []EndpointServiceState
+  Refusal *EndpointRefusalDetail
+  Reason string
+  Checks []EndpointProducerCheck
+type EndpointDescriptionResult struct
+  Value EndpointDescription
 func Encode(v *Snapshot) []byte
 type Refusal struct
   Word string
   Offset int
 func (Refusal) Error() string
+const TimestampLayout
+func FormatTimestamp(at time.Time) string
 func Decode(in []byte) (*Snapshot, error)
+func ToJSON(v any) (out []byte, err error)
+func FromJSON(data []byte, v any) error
 type FrameWriter interface
   WriteFrame(frame []byte) error
 type DispatchError string
 func (DispatchError) Error() string
 func ServiceName(frame []byte) (string, error)
+func ServiceMethod(frame []byte) (service string, method string, err error)
 type FrameExchanger interface
   ExchangeFrame(frame []byte) ([]byte, error)
 type ServiceError struct
@@ -101,13 +451,18 @@ type ServiceError struct
   Message string
 func (ServiceError) Error() string
 const EndpointContract
+const EndpointV2Contract
 type DescribedService interface
   DescribeService() (contract string, ready bool, why string)
 func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+func DescribeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...DescribedService) ([]byte, error)
 type ServedService interface
   DescribedService
   ServiceContract() string
 func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+func ServeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...ServedService) ([]byte, error)
+func ServeEndpointRemote(frame []byte, program, version string, admit func(contract, method, profile string) error, services ...ServedService) ([]byte, error)
+func RemoteMethodProfile(service interface{}, contract, method string) string
 type ConfigReader interface
   Read(overrides RunOverrides) (Snapshot, error)
 type ConfigReaderTransport interface
@@ -116,10 +471,12 @@ type ConfigReaderClient struct
 func NewConfigReaderClient(t ConfigReaderTransport) *ConfigReaderClient
 type ConfigReaderDispatcher struct
   Handler ConfigReader
+func (ConfigReaderDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (ConfigReaderClient) Read(overrides RunOverrides) (result Snapshot, err error)
 func (ConfigReaderDispatcher) DescribeService() (contract string, ready bool, why string)
 func (ConfigReaderDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ConfigReaderDispatcher) ServiceContract() string
+func (ConfigReaderDispatcher) DescribeServiceDefinitionHash() string
 func (ConfigReaderDispatcher) WriteFrame(frame []byte) error
 func (ConfigReaderDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type ConfigEditor interface
@@ -131,11 +488,13 @@ type ConfigEditorClient struct
 func NewConfigEditorClient(t ConfigEditorTransport) *ConfigEditorClient
 type ConfigEditorDispatcher struct
   Handler ConfigEditor
+func (ConfigEditorDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (ConfigEditorClient) ReadUser() (result UserSnapshot, err error)
 func (ConfigEditorClient) ReplaceUser(expectedRevision string, values UserSettings) (result UserReplaceResult, err error)
 func (ConfigEditorDispatcher) DescribeService() (contract string, ready bool, why string)
 func (ConfigEditorDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ConfigEditorDispatcher) ServiceContract() string
+func (ConfigEditorDispatcher) DescribeServiceDefinitionHash() string
 func (ConfigEditorDispatcher) WriteFrame(frame []byte) error
 func (ConfigEditorDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type ConfigObserver interface
@@ -146,9 +505,165 @@ type ConfigObserverClient struct
 func NewConfigObserverClient(t ConfigObserverTransport) *ConfigObserverClient
 type ConfigObserverDispatcher struct
   Handler ConfigObserver
+func (ConfigObserverDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (ConfigObserverClient) Observe(overrides RunOverrides, cursor string, waitMs int64) (result ConfigObservation, err error)
+func (ConfigObserverClient) ObservePages(overrides RunOverrides, cursor string, waitMs int64) func(func(ConfigObservation, error) bool)
 func (ConfigObserverDispatcher) DescribeService() (contract string, ready bool, why string)
 func (ConfigObserverDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ConfigObserverDispatcher) ServiceContract() string
+func (ConfigObserverDispatcher) DescribeServiceDefinitionHash() string
 func (ConfigObserverDispatcher) WriteFrame(frame []byte) error
 func (ConfigObserverDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type ConfigReaderV2 interface
+  Read(names []string) (ReadResult, error)
+  Describe() (DescribeResult, error)
+type ConfigReaderV2Transport interface
+  FrameExchanger
+type ConfigReaderV2Client struct
+func NewConfigReaderV2Client(t ConfigReaderV2Transport) *ConfigReaderV2Client
+type ConfigReaderV2Dispatcher struct
+  Handler ConfigReaderV2
+func (ConfigReaderV2Dispatcher) RemoteMethodProfile(contract, method string) (string, bool)
+func (ConfigReaderV2Client) Read(names []string) (result ReadResult, err error)
+func (ConfigReaderV2Client) Describe() (result DescribeResult, err error)
+func (ConfigReaderV2Dispatcher) DescribeService() (contract string, ready bool, why string)
+func (ConfigReaderV2Dispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (ConfigReaderV2Dispatcher) ServiceContract() string
+func (ConfigReaderV2Dispatcher) DescribeServiceDefinitionHash() string
+func (ConfigReaderV2Dispatcher) WriteFrame(frame []byte) error
+func (ConfigReaderV2Dispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type ConfigEditorV2 interface
+  ReadUser() (UserReadResultV2, error)
+  ReplaceUser(expectedRevision string, changes []Change) (UserReplaceResultV2, error)
+type ConfigEditorV2Transport interface
+  FrameExchanger
+type ConfigEditorV2Client struct
+func NewConfigEditorV2Client(t ConfigEditorV2Transport) *ConfigEditorV2Client
+type ConfigEditorV2Dispatcher struct
+  Handler ConfigEditorV2
+func (ConfigEditorV2Dispatcher) RemoteMethodProfile(contract, method string) (string, bool)
+func (ConfigEditorV2Client) ReadUser() (result UserReadResultV2, err error)
+func (ConfigEditorV2Client) ReplaceUser(expectedRevision string, changes []Change) (result UserReplaceResultV2, err error)
+func (ConfigEditorV2Dispatcher) DescribeService() (contract string, ready bool, why string)
+func (ConfigEditorV2Dispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (ConfigEditorV2Dispatcher) ServiceContract() string
+func (ConfigEditorV2Dispatcher) DescribeServiceDefinitionHash() string
+func (ConfigEditorV2Dispatcher) WriteFrame(frame []byte) error
+func (ConfigEditorV2Dispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type ConfigObserverV2 interface
+  Observe(cursor string, waitMs int64) (ConfigObservationV2, error)
+type ConfigObserverV2Transport interface
+  FrameExchanger
+type ConfigObserverV2Client struct
+func NewConfigObserverV2Client(t ConfigObserverV2Transport) *ConfigObserverV2Client
+type ConfigObserverV2Dispatcher struct
+  Handler ConfigObserverV2
+func (ConfigObserverV2Dispatcher) RemoteMethodProfile(contract, method string) (string, bool)
+func (ConfigObserverV2Client) Observe(cursor string, waitMs int64) (result ConfigObservationV2, err error)
+func (ConfigObserverV2Client) ObservePages(cursor string, waitMs int64) func(func(ConfigObservationV2, error) bool)
+func (ConfigObserverV2Dispatcher) DescribeService() (contract string, ready bool, why string)
+func (ConfigObserverV2Dispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (ConfigObserverV2Dispatcher) ServiceContract() string
+func (ConfigObserverV2Dispatcher) DescribeServiceDefinitionHash() string
+func (ConfigObserverV2Dispatcher) WriteFrame(frame []byte) error
+func (ConfigObserverV2Dispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+const ConfigCatalogueJSON
+func ValidateConfigValue(v *Value) error
+func ConfigKeyDescriptors() []KeyDescriptor
+func OverlayConfigProcess(entries []Entry, changes []Change) ([]Entry, error)
+func DecodeRunOverridesAt(in []byte, depth, limit int) (*RunOverrides, int, error)
+func EncodeRunOverridesAt(v *RunOverrides, depth int) []byte
+func EncodeRunOverrides(v *RunOverrides) []byte
+func DecodeRunOverrides(in []byte) (*RunOverrides, error)
+func DecodeOriginAt(in []byte, depth, limit int) (*Origin, int, error)
+func EncodeOriginAt(v *Origin, depth int) []byte
+func EncodeOrigin(v *Origin) []byte
+func DecodeOrigin(in []byte) (*Origin, error)
+func DecodeOriginsAt(in []byte, depth, limit int) (*Origins, int, error)
+func EncodeOriginsAt(v *Origins, depth int) []byte
+func EncodeOrigins(v *Origins) []byte
+func DecodeOrigins(in []byte) (*Origins, error)
+func DecodeSnapshotAt(in []byte, depth, limit int) (*Snapshot, int, error)
+func EncodeSnapshotAt(v *Snapshot, depth int) []byte
+func EncodeSnapshot(v *Snapshot) []byte
+func DecodeSnapshot(in []byte) (*Snapshot, error)
+func DecodeUserSettingsAt(in []byte, depth, limit int) (*UserSettings, int, error)
+func EncodeUserSettingsAt(v *UserSettings, depth int) []byte
+func EncodeUserSettings(v *UserSettings) []byte
+func DecodeUserSettings(in []byte) (*UserSettings, error)
+func DecodeUserSnapshotAt(in []byte, depth, limit int) (*UserSnapshot, int, error)
+func EncodeUserSnapshotAt(v *UserSnapshot, depth int) []byte
+func EncodeUserSnapshot(v *UserSnapshot) []byte
+func DecodeUserSnapshot(in []byte) (*UserSnapshot, error)
+func DecodeUserReplaceResultAt(in []byte, depth, limit int) (*UserReplaceResult, int, error)
+func EncodeUserReplaceResultAt(v *UserReplaceResult, depth int) []byte
+func EncodeUserReplaceResult(v *UserReplaceResult) []byte
+func DecodeUserReplaceResult(in []byte) (*UserReplaceResult, error)
+func DecodeConfigObservationAt(in []byte, depth, limit int) (*ConfigObservation, int, error)
+func EncodeConfigObservationAt(v *ConfigObservation, depth int) []byte
+func EncodeConfigObservation(v *ConfigObservation) []byte
+func DecodeConfigObservation(in []byte) (*ConfigObservation, error)
+func DecodeValueAt(in []byte, depth, limit int) (*Value, int, error)
+func EncodeValueAt(v *Value, depth int) []byte
+func EncodeValue(v *Value) []byte
+func DecodeValue(in []byte) (*Value, error)
+func DecodeConfigSourceAt(in []byte, depth, limit int) (*ConfigSource, int, error)
+func EncodeConfigSourceAt(v *ConfigSource, depth int) []byte
+func EncodeConfigSource(v *ConfigSource) []byte
+func DecodeConfigSource(in []byte) (*ConfigSource, error)
+func DecodeKeyOriginAt(in []byte, depth, limit int) (*KeyOrigin, int, error)
+func EncodeKeyOriginAt(v *KeyOrigin, depth int) []byte
+func EncodeKeyOrigin(v *KeyOrigin) []byte
+func DecodeKeyOrigin(in []byte) (*KeyOrigin, error)
+func DecodeEntryAt(in []byte, depth, limit int) (*Entry, int, error)
+func EncodeEntryAt(v *Entry, depth int) []byte
+func EncodeEntry(v *Entry) []byte
+func DecodeEntry(in []byte) (*Entry, error)
+func DecodeValueRangeAt(in []byte, depth, limit int) (*ValueRange, int, error)
+func EncodeValueRangeAt(v *ValueRange, depth int) []byte
+func EncodeValueRange(v *ValueRange) []byte
+func DecodeValueRange(in []byte) (*ValueRange, error)
+func DecodeKeyDescriptorAt(in []byte, depth, limit int) (*KeyDescriptor, int, error)
+func EncodeKeyDescriptorAt(v *KeyDescriptor, depth int) []byte
+func EncodeKeyDescriptor(v *KeyDescriptor) []byte
+func DecodeKeyDescriptor(in []byte) (*KeyDescriptor, error)
+func DecodeChangeAt(in []byte, depth, limit int) (*Change, int, error)
+func EncodeChangeAt(v *Change, depth int) []byte
+func EncodeChange(v *Change) []byte
+func DecodeChange(in []byte) (*Change, error)
+func DecodeKeyRefusalAt(in []byte, depth, limit int) (*KeyRefusal, int, error)
+func EncodeKeyRefusalAt(v *KeyRefusal, depth int) []byte
+func EncodeKeyRefusal(v *KeyRefusal) []byte
+func DecodeKeyRefusal(in []byte) (*KeyRefusal, error)
+func DecodeKeyProblemAt(in []byte, depth, limit int) (*KeyProblem, int, error)
+func EncodeKeyProblemAt(v *KeyProblem, depth int) []byte
+func EncodeKeyProblem(v *KeyProblem) []byte
+func DecodeKeyProblem(in []byte) (*KeyProblem, error)
+func DecodeIgnoredFieldAt(in []byte, depth, limit int) (*IgnoredField, int, error)
+func EncodeIgnoredFieldAt(v *IgnoredField, depth int) []byte
+func EncodeIgnoredField(v *IgnoredField) []byte
+func DecodeIgnoredField(in []byte) (*IgnoredField, error)
+func DecodeReadResultAt(in []byte, depth, limit int) (*ReadResult, int, error)
+func EncodeReadResultAt(v *ReadResult, depth int) []byte
+func EncodeReadResult(v *ReadResult) []byte
+func DecodeReadResult(in []byte) (*ReadResult, error)
+func DecodeUserSnapshotV2At(in []byte, depth, limit int) (*UserSnapshotV2, int, error)
+func EncodeUserSnapshotV2At(v *UserSnapshotV2, depth int) []byte
+func EncodeUserSnapshotV2(v *UserSnapshotV2) []byte
+func DecodeUserSnapshotV2(in []byte) (*UserSnapshotV2, error)
+func DecodeUserReadResultV2At(in []byte, depth, limit int) (*UserReadResultV2, int, error)
+func EncodeUserReadResultV2At(v *UserReadResultV2, depth int) []byte
+func EncodeUserReadResultV2(v *UserReadResultV2) []byte
+func DecodeUserReadResultV2(in []byte) (*UserReadResultV2, error)
+func DecodeUserReplaceResultV2At(in []byte, depth, limit int) (*UserReplaceResultV2, int, error)
+func EncodeUserReplaceResultV2At(v *UserReplaceResultV2, depth int) []byte
+func EncodeUserReplaceResultV2(v *UserReplaceResultV2) []byte
+func DecodeUserReplaceResultV2(in []byte) (*UserReplaceResultV2, error)
+func DecodeConfigObservationV2At(in []byte, depth, limit int) (*ConfigObservationV2, int, error)
+func EncodeConfigObservationV2At(v *ConfigObservationV2, depth int) []byte
+func EncodeConfigObservationV2(v *ConfigObservationV2) []byte
+func DecodeConfigObservationV2(in []byte) (*ConfigObservationV2, error)
+func DecodeDescribeResultAt(in []byte, depth, limit int) (*DescribeResult, int, error)
+func EncodeDescribeResultAt(v *DescribeResult, depth int) []byte
+func EncodeDescribeResult(v *DescribeResult) []byte
+func DecodeDescribeResult(in []byte) (*DescribeResult, error)

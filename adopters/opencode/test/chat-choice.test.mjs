@@ -5,22 +5,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {chatModelAtStart, defaultChatFamily, defaultSelectionPolicies} from '../inventory.js';
+import {chatChoiceModel, chatModelAtStart, defaultChatFamily, defaultSelectionPolicies} from '../inventory.js';
 import OpenAbstractionsPlugin from '../plugin.js';
+import {tool as hostTool} from '@opencode-ai/plugin/tool';
 
 function offer(family, context = 32768) {
   return {family, names: [family], servers: ['local'], context: BigInt(context), contextSource: 'effective',
     input: BigInt(Math.max(context - 4096, 0)), unknown: []};
 }
-
-const fakeTool = Object.assign((definition) => definition, {schema: {
-  object: (value) => value,
-  string: () => ({optional() { return this; }}),
-  number: () => ({optional() { return this; }}),
-  boolean: () => ({optional() { return this; }}),
-  enum: (value) => ({value, optional() { return this; }}),
-  array: (value) => ({value, optional() { return this; }}),
-}});
 
 const found = (name) => ({outcome: 'found', revision: 'r1', policy: {name, candidates: [{model: 'qwen', placement: 'local', credential: ''}]}});
 
@@ -30,7 +22,7 @@ async function start(model, read) {
   const logs = [];
   const asked = [];
   const plugin = await OpenAbstractionsPlugin({client: {app: {log: async ({body}) => logs.push(body)}}}, {}, {
-    tool: fakeTool, readCapability: async () => false,
+    tool: hostTool, probeRuntime: async () => true, readCapability: async () => false,
     readInventory: async () => ({offers: [offer('qwen'), offer('gemma')]}),
     readSelectionPolicy: async (_options, name) => { asked.push(name); return typeof read === 'function' ? read(name) : read; },
   });
@@ -40,49 +32,59 @@ async function start(model, read) {
   return {config, logs, asked};
 }
 
-test('chatModelAtStart: a listed chat policy replaces a model under the OA provider only', () => {
+test('chatModelAtStart: OA\'s choice fills a config that names no model, and a person\'s pick stays', () => {
   const discovered = {qwen: {}, gemma: {}};
-  const base = {providerID: 'openabstractions', listed: true, read: found('oa-chat-default'), discovered};
-  assert.equal(chatModelAtStart({...base, selected: 'openabstractions/qwen'}), 'openabstractions/oa-chat');
-  assert.equal(chatModelAtStart({...base, selected: ''}), 'openabstractions/oa-chat');
-  assert.equal(chatModelAtStart({...base, selected: 'openabstractions/oa-chat'}), '', 'already selected');
+  const base = {providerID: 'openabstractions', choice: 'openabstractions/qwen', discovered};
+  assert.equal(chatModelAtStart({...base, selected: ''}), 'openabstractions/qwen', 'OA\'s choice is the real model');
+  assert.equal(chatModelAtStart({...base, selected: 'openabstractions/oa-chat'}), 'openabstractions/qwen',
+    'the policy route names no picker entry');
+  assert.equal(chatModelAtStart({...base, selected: 'openabstractions/gemma'}), '', 'a person\'s pick stays');
   assert.equal(chatModelAtStart({...base, selected: 'anthropic/claude'}), '', 'another provider\'s model stays');
   assert.equal(chatModelAtStart({...base, selected: {providerID: 'x'}}), '', 'a model the plugin cannot read stays');
 });
 
-test('chatModelAtStart: with no policy stored, OA\'s default fills an empty or vanished choice', () => {
+test('chatModelAtStart: with no choice OA\'s default fills an empty or vanished choice', () => {
   const discovered = {qwen: {}, gemma: {}};
-  const base = {providerID: 'openabstractions', listed: false, read: {outcome: 'unknown'}, discovered};
+  const base = {providerID: 'openabstractions', choice: '', discovered};
   assert.equal(defaultChatFamily(discovered), 'gemma', 'the first family by name, as configure.js writes it');
   assert.equal(chatModelAtStart({...base, selected: ''}), 'openabstractions/gemma');
   assert.equal(chatModelAtStart({...base, selected: 'openabstractions/oa-chat'}), 'openabstractions/gemma');
-  assert.equal(chatModelAtStart({...base, selected: 'openabstractions/qwen'}), '', 'the app\'s own choice stays');
+  assert.equal(chatModelAtStart({...base, selected: 'openabstractions/qwen'}), '', 'a person\'s pick stays');
   assert.equal(chatModelAtStart({...base, selected: '', discovered: {}}), '', 'no servable family, no default');
 });
 
-test('chatModelAtStart: an unreadable or ineligible policy keeps the configured model', () => {
-  const base = {providerID: 'openabstractions', listed: false, discovered: {qwen: {}}};
-  for (const outcome of ['forbidden', 'unavailable', 'invalid', 'found']) {
-    assert.equal(chatModelAtStart({...base, read: {outcome}, selected: ''}), '', outcome);
-    assert.equal(chatModelAtStart({...base, read: {outcome}, selected: 'openabstractions/oa-chat'}), '', outcome);
-  }
-  assert.equal(chatModelAtStart({...base, read: null, selected: ''}), '');
+test('chatChoiceModel: the first offered candidate, as the picker lists it', () => {
+  const offers = {local: [offer('qwen'), offer('gemma')], hosted: [{...offer('deepseek-chat'), servers: ['deepseek']}]};
+  const discovered = {qwen: {}, gemma: {}};
+  const policy = (...candidates) => ({outcome: 'found', policy: {name: 'oa-chat-default', candidates}});
+  assert.equal(chatChoiceModel('openabstractions', policy({model: 'gone', placement: 'local'}, {model: 'gemma', placement: 'local'}),
+    offers, discovered), 'openabstractions/gemma');
+  assert.equal(chatChoiceModel('openabstractions', policy({model: 'deepseek-chat', placement: 'hosted'}), offers, discovered),
+    'openabstractions-hosted/deepseek-chat');
+  assert.equal(chatChoiceModel('openabstractions', {outcome: 'unknown'}, offers, discovered), '');
 });
 
-test('at start OpenCode uses the chat model the person chose for it in OpenAbstractions', async () => {
-  const {config, logs, asked} = await start('openabstractions/qwen', found);
-  assert.deepEqual(asked, ['oa-chat-default'], 'the plugin reads its own policy through the selection service');
-  assert.equal(config.model, 'openabstractions/oa-chat');
+test('at start OpenCode preselects the real model chosen for it in OpenAbstractions', async () => {
+  const {config, logs, asked} = await start(undefined, found);
+  assert.deepEqual(asked, ['oa-chat-default'], JSON.stringify(logs));
+  assert.equal(config.model, 'openabstractions/qwen');
   assert.equal(config.provider.openabstractions.options.oaSelectionPolicies['oa-chat'], 'oa-chat-default',
-    'requests on that entry name the policy, so the runtime applies the stored candidates');
+    'the policy route stays for requests that name it');
+  const route = config.provider.openabstractions.models['oa-chat'];
+  assert.equal(route.name, 'Default (qwen)', 'the policy route is the Default row of the picker');
+  assert.equal(route.id, 'Default (qwen)', 'the OpenCode prompt names the Default row');
+  assert.equal(route.release_date, undefined);
+  assert.deepEqual(config.provider.openabstractions.options.oaRouteModels, {'Default (qwen)': 'oa-chat'});
+  assert.deepEqual(Object.keys(config.provider.openabstractions.models).sort(), ['gemma', 'oa-chat', 'qwen']);
   assert.ok(logs.some((entry) => entry.level === 'info' && entry.message === 'OpenCode uses the chat model chosen for it in OpenAbstractions'));
   assert.equal(logs.some((entry) => entry.message.includes('no longer in the current inventory')), false);
 });
 
-test('at start a model under another provider stays when a chat policy is stored', async () => {
-  const {config} = await start('anthropic/claude', found);
-  assert.equal(config.model, 'anthropic/claude');
-  assert.ok(config.provider.openabstractions.models['oa-chat'], 'the chosen model is still listed');
+test('at start a model the person picked stays when a chat policy is stored', async () => {
+  assert.equal((await start('anthropic/claude', found)).config.model, 'anthropic/claude');
+  assert.equal((await start('openabstractions/gemma', found)).config.model, 'openabstractions/gemma');
+  assert.equal((await start('openabstractions/oa-chat', found)).config.model, 'openabstractions/qwen',
+    'the policy route is no pick');
 });
 
 test('at start with no chat policy OpenCode keeps its own choice, or takes OA\'s default when it has none', async () => {

@@ -47,12 +47,12 @@ func TestPromptLevelForTable(t *testing.T) {
 		{"Panel, administrative tier", promptEvidence{Program: panel, Tier: asks.TierAdministrative}, promptLevelOrange},
 		{"CLI, administrative tier", promptEvidence{Program: cli, Publisher: oaSigned, Tier: asks.TierAdministrative}, promptLevelOrange},
 		{"CLI, every item", promptEvidence{Program: cli, Publisher: oaSigned, AllItems: true}, promptLevelOrange},
-		{"verified CLI, routine tier", promptEvidence{Program: cli, Publisher: oaSigned, Tier: asks.TierRoutine}, promptLevelGray},
+		{"verified CLI, routine tier", promptEvidence{Program: cli, Publisher: oaSigned, Tier: asks.TierRoutine}, promptLevelBlue},
 		{"unsigned CLI, routine tier", promptEvidence{Program: cli, Tier: asks.TierRoutine}, promptLevelYellow},
 		{"unsigned windowless CLI, routine tier", promptEvidence{Program: cliw, Tier: asks.TierRoutine}, promptLevelYellow},
-		{"verified, routine", promptEvidence{Program: app, Publisher: verified, Tier: asks.TierRoutine}, promptLevelGray},
-		{"verified, sensitive", promptEvidence{Program: app, Publisher: verified, Tier: asks.TierSensitive}, promptLevelGray},
-		{"verified, no permission", promptEvidence{Program: app, Publisher: verified}, promptLevelGray},
+		{"verified, routine", promptEvidence{Program: app, Publisher: verified, Tier: asks.TierRoutine}, promptLevelBlue},
+		{"verified, sensitive", promptEvidence{Program: app, Publisher: verified, Tier: asks.TierSensitive}, promptLevelBlue},
+		{"verified, no permission", promptEvidence{Program: app, Publisher: verified}, promptLevelBlue},
 		{"unverified, routine", promptEvidence{Program: app, Tier: asks.TierRoutine}, promptLevelYellow},
 		{"untrusted subject named", promptEvidence{Program: app, Publisher: trayPublisher{Subject: "OpenCode Inc."}}, promptLevelYellow},
 		{"no program recorded", promptEvidence{}, promptLevelYellow},
@@ -111,16 +111,16 @@ func TestPromptBuildersCarryTheLevel(t *testing.T) {
 		view trayQuestionPresentation
 		want promptLevel
 	}{
-		{"verified first use", trayQuestionViewForPermission(record, verified, permission(app, grants.ModelLookupAction, "hf")), promptLevelGray},
+		{"verified first use", trayQuestionViewForPermission(record, verified, permission(app, grants.ModelLookupAction, "hf")), promptLevelBlue},
 		{"unverified first use", trayQuestionViewForPermission(record, trayPublisher{}, permission(app, grants.ModelLookupAction, "hf")), promptLevelYellow},
 		{"verified rights change", trayQuestionViewForPermission(record, verified, permission(app, "abstraction.rights/selector.manage", "rules")), promptLevelOrange},
 		{"Panel first use", trayQuestionViewForPermission(record, trayPublisher{}, permission(panel, grants.ModelLookupAction, "hf")), promptLevelBlue},
 		{"unsigned CLI first use", trayQuestionViewForPermission(record, trayPublisher{}, permission(cli, grants.ModelLookupAction, "hf")), promptLevelYellow},
 		{"CLI rights change", trayQuestionViewForPermission(record, trayPublisher{}, permission(cli, "abstraction.rights/selector.manage", "rules")), promptLevelOrange},
-		{"verified question", trayQuestionViewForAsker(record, verified, nil, app), promptLevelGray},
+		{"verified question", trayQuestionViewForAsker(record, verified, nil, app), promptLevelBlue},
 		{"unattributed question", trayQuestionViewForAsker(record, trayPublisher{}, nil, ""), promptLevelYellow},
 		{"verified app choice", trayChoiceView(askclient.ChoiceRecord{ID: "c", Asker: app, Publisher: "OpenCode Inc.", PublisherTrusted: true,
-			ProgramDescription: "OpenCode", ProgramOriginalName: "opencode.exe"}, nil), promptLevelGray},
+			ProgramDescription: "OpenCode", ProgramOriginalName: "opencode.exe"}, nil), promptLevelBlue},
 		{"unverified app choice", trayChoiceView(askclient.ChoiceRecord{ID: "c", Asker: app}, nil), promptLevelYellow},
 	} {
 		if tc.view.Level != tc.want {
@@ -137,7 +137,7 @@ func TestPromptBuildersCarryTheLevel(t *testing.T) {
 
 	_, details := typedNativeFixture(t, false, false)
 	typedRecord, _ := typedNativeFixture(t, false, false)
-	if got := trayTypedPermissionView(typedRecord, details, nil).Level; got != promptLevelGray {
+	if got := trayTypedPermissionView(typedRecord, details, nil).Level; got != promptLevelBlue {
 		t.Errorf("verified typed permission for one item: level %s, want gray", got)
 	}
 	allRecord, all := typedNativeFixture(t, true, false)
@@ -165,5 +165,38 @@ func TestPromptLevelIgnoresApplicationWords(t *testing.T) {
 		Request: askclient.ChoiceRequest{Title: "OpenAbstractions system request"}}, nil)
 	if choice.Level != promptLevelYellow {
 		t.Fatalf("an app choice titled as OpenAbstractions chose level %s", choice.Level)
+	}
+}
+
+// A blue header never sits above "Publisher: not verified": OpenAbstractions
+// asking on its own behalf shows no publisher line at all.
+func TestBlueHeaderNeverShowsUnverifiedPublisher(t *testing.T) {
+	panel, cli, _ := levelOwnPrograms(t)
+	app := nativePresenterProgram("opencode", "opencode.exe")
+	publishers := []trayPublisher{{}, {Subject: "Claimed"}, {Trusted: true}, {Trusted: true, Subject: "OpenCode Inc."}}
+	permission := func(program, action string) *askclient.PermissionRequest {
+		return &askclient.PermissionRequest{Targets: []askclient.PermissionTarget{{Account: "S-1-5-21-test", Program: program, Action: action, Resource: "hf"}}}
+	}
+	update := askclient.RecordMetadata{ID: "cef113e9a7c41d55", Key: asks.AgentUpdateKey, Options: []string{"update", "not_now"}, Asker: "openabstractions.exe",
+		Text: "Update the Claude integration and OpenCode connections? Keep them. Request cef113e9" + strings.Repeat("0", 40) + "."}
+	for _, pub := range publishers {
+		views := []trayQuestionPresentation{trayQuestionViewForContent(update, pub, nil, "", nil)}
+		for _, program := range []string{"", panel, cli, app} {
+			views = append(views, trayQuestionViewForAsker(pendingFixture(), pub, nil, program))
+			for _, action := range []string{grants.ModelLookupAction, "abstraction.rights/selector.manage"} {
+				if program != "" {
+					views = append(views, trayQuestionViewForPermission(pendingFixture(), pub, permission(program, action)))
+				}
+			}
+		}
+		for i, v := range views {
+			shown := v.Content
+			if v.Permission != nil {
+				shown += v.Permission.Publisher + v.Permission.Content
+			}
+			if v.Level == promptLevelBlue && strings.Contains(shown, "not verified") {
+				t.Errorf("view %d (publisher %+v): blue header with unverified publisher line: %q", i, pub, shown)
+			}
+		}
 	}
 }

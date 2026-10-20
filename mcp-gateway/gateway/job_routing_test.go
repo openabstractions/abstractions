@@ -2,9 +2,11 @@ package gateway
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	jobwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/job"
 )
 
@@ -47,7 +49,7 @@ func TestJobRoutingRefusalsSayWhatToSend(t *testing.T) {
 		if c.hosting != "local" && c.hosting != "hosted" {
 			continue
 		}
-		if !strings.Contains(err.Error(), "openabstractions_generate_image") {
+		if !strings.Contains(err.Error(), "send hosting local with no credential") {
 			t.Fatalf("%s/%q names no way forward: %v", c.hosting, c.credential, err)
 		}
 	}
@@ -70,5 +72,66 @@ func TestJobSpecCarriesTheLocalRequest(t *testing.T) {
 	if image.Model != "flux" || image.Prompt != "a fox" || image.Size != "512x512" || image.Credential != "" ||
 		len(image.Guarantees) != 1 || image.Guarantees[0] != jobwire.RequestGuaranteeLocalOnly {
 		t.Fatalf("local job document %+v", image)
+	}
+}
+
+// Owner report R20c (2026-11-10): a job naming a size the engine does not make
+// was accepted and failed at status. A size of another shape is refused at
+// submit with its allowed values, before any runtime call; an absent size is
+// auto, and the schema's description states both. The schema carries no
+// default a client would fill in beside a handle (R35).
+func TestJobSizeIsCheckedAtSubmitAndDefaultsToAuto(t *testing.T) {
+	o := &OA{}
+	for _, size := range []string{"1024", "big", "1024 x 1024", "0x512", "512x512x2"} {
+		_, err := o.Submit(context.Background(), JobSubmitInput{RequestKey: "k1", Profile: "image_batch", Model: "flux", Prompt: "a fox", Hosting: "local", Size: size})
+		if err == nil || !strings.Contains(err.Error(), "size must be auto or WIDTHxHEIGHT such as 512x512; leave it out for auto") {
+			t.Fatalf("%q: %v", size, err)
+		}
+	}
+	for _, size := range []string{"", "auto", "512x512", "1024x768"} {
+		if err := jobSize(JobSubmitInput{Size: size}); err != nil {
+			t.Fatalf("%q refused: %v", size, err)
+		}
+	}
+	document, err := jobwire.Decode(jobSpec(JobSubmitInput{Profile: "image_batch", Model: "flux", Prompt: "a fox", Hosting: "local", Count: 1}))
+	if err != nil || document.Request == nil || document.Request.Image.Size != "auto" {
+		t.Fatalf("an absent size is not auto: %v %+v", err, document)
+	}
+	size := imageSchema().Properties["size"]
+	if len(size.Default) != 0 || size.Pattern != "" || !strings.HasPrefix(size.Description, "auto (default)") {
+		t.Fatalf("size schema %+v", size)
+	}
+	if slices.Contains(imageSchema().Required, "size") {
+		t.Fatal("size is required")
+	}
+	// The job tools carry video only: count and size moved with pictures.
+	for _, moved := range []string{"count", "size"} {
+		if _, ok := jobSubmitSchema().Properties[moved]; ok {
+			t.Fatalf("job submit still offers %s", moved)
+		}
+	}
+	// The profile names video alone. It has no enum: the handler answers a
+	// picture with its sentence, which a schema check would replace.
+	if profile := jobSubmitSchema().Properties["profile"]; len(profile.Enum) != 0 || profile.Description != "video" {
+		t.Fatalf("job submit profile %+v", profile)
+	}
+}
+
+// PICTURES-STORAGE amendments (coordinator, 2026-11-10): a picture sent to the job tools is refused for good with one
+// sentence, before the backend sees it.
+func TestJobSubmitRefusesAPicture(t *testing.T) {
+	b := &fixtureBackend{principal: "a", ledger: &fixtureLedger{owner: map[string]string{}, state: map[string]string{}}}
+	_, cs := connected(t, b, "picture-client", "2026-07-28")
+	result, err := cs.CallTool(t.Context(), &mcp.CallToolParams{Name: ToolJobSubmit, Arguments: map[string]any{
+		"request_key": "k1", "profile": "image_batch", "model": "flux", "prompt": "a fox", "hosting": "local"}})
+	if err != nil || !result.IsError || len(result.Content) == 0 {
+		t.Fatal(result, err)
+	}
+	text, _ := result.Content[0].(*mcp.TextContent)
+	if text == nil || text.Text != "Pictures use oa_image_generate." {
+		t.Fatalf("%+v", result.Content[0])
+	}
+	if b.providerEffects != 0 {
+		t.Fatal("a picture reached the backend")
 	}
 }

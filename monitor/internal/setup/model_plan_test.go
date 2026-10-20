@@ -8,6 +8,20 @@ import (
 	"testing"
 )
 
+func TestCodingPlanBindsRetainedArtifactAndLicense(t *testing.T) {
+	p := CodingModelPlan()
+	if len(p.Assets) != 1 || p.DownloadBytes != 22853663008 || p.Revision != "5bc3e238d916f48a861bac2f8a1990a0e9b7e98d" || p.Licenses[0] != "Apache-2.0" {
+		t.Fatalf("wrong coding plan: %+v", p)
+	}
+	a := p.Assets[0]
+	if a.Download.SHA256 != "55983c5a75a1ab969824077b3bb3de4146e82a9234072b48ad4e8f92ad3fe9f1" || a.Download.validate() != nil {
+		t.Fatalf("unusable fixed pin: %+v", a)
+	}
+	if p.ID == "" || p.ID != CodingModelPlan().ID {
+		t.Fatal("unstable consent identity")
+	}
+}
+
 // lemonadePackagingManifest is the Lemonade provider's reviewed packaging
 // manifest in the private workspace.
 func lemonadePackagingManifest(t *testing.T) string {
@@ -209,5 +223,24 @@ func TestPictureModelChoicesMatchProviderPackagingManifest(t *testing.T) {
 	}
 	if choices[0].Model != "user.Z-Image-Turbo" || choices[1].Model != "user.Qwen-Image-2512" {
 		t.Fatalf("choices = %s, %s", choices[0].Model, choices[1].Model)
+	}
+}
+
+func TestProviderOwnedPictureFactsPreserveApprovedPlanIDs(t *testing.T) {
+	choices := PictureModelChoices()
+	if len(choices) != 2 {
+		t.Fatalf("picture choices %d, want the reviewed pair", len(choices))
+	}
+	for _, item := range []struct {
+		plan ModelPlan
+		want string
+	}{
+		{choices[0], "3f7db93ab9bc9076abcfd55d3ece366ab6d3c6564b3dbaee2e1b0372e1a035d8"},
+		{choices[1], "0b2c5837f855cf190f55b3956169deccaa8999bccc8d0f07babe4244824e9c5a"},
+		{ZImageComfyModelPlan(), "fac481977fec914568d09fe8124c6774867b9fc9f95e9fbb4850c6a8131227a5"},
+	} {
+		if item.plan.ID != item.want {
+			t.Errorf("%s identity %q, want %q", item.plan.Model, item.plan.ID, item.want)
+		}
 	}
 }

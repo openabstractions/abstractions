@@ -13,6 +13,19 @@ enum ContextSource
   Unknown
   None
 class DispatchError
+enum EngineCause
+  Bound
+  SourceOnly
+  Incompatible
+  Unknown
+  Other
+enum ModalityOutcome
+  Page
+  Gap
+  Invalid
+  Forbidden
+  Unavailable
+  NotPermitted
 enum OfferOutcome
   Offered
   Invalid
@@ -23,12 +36,19 @@ enum Placement
   Local
   Hosted
   Any
+enum ReasoningEffort
+  None
+  Low
+  Medium
+  High
 class Refusal
 class RouterClient
+  modalities(cursor, limit)
   models(fresh)
   hosts(fresh)
   pick(request)
   offer(request)
+  observeOffer(request, cursor, waitMs)
 object RouterService {wireName, Client}
 class ServiceError
 enum ServiceErrorCode
@@ -47,6 +67,7 @@ enum ServiceErrorCode
 const credentialConsumers
 function decode(data)
 function encode(v)
+function fromJson(kind, data)
 function newAlias()
   host
   name
@@ -57,6 +78,7 @@ function newAlias()
   heldIn
   contextLength
   effectiveContextLength
+  capabilities
 function newAsk()
   at
   caller
@@ -84,12 +106,19 @@ function newDecision()
   withheld
   loads
   why
+function newEngine()
+  id
+  name
+  version
+  source
 function newFamily()
   family
   names
   heldIn
   familySource
   components
+  title
+  objects
 function newHostAllowance()
   hosts
 function newHostState()
@@ -107,11 +136,43 @@ function newHostState()
   profiles
   domain
   availabilityCause
+  engines
 function newHostsSnapshot()
   observation
   hosts
   doubled
   asked
+function newModalityPage()
+  outcome
+  modalities
+  next
+  complete
+function newModelCapabilities()
+  input
+  output
+  tools
+  structuredOutput
+  reasoning
+  extensions
+function newModelEngine()
+  host
+  model
+  engine
+  profiles
+  source
+  role
+function newModelObject()
+  domain
+  store
+  name
+  object
+  digest
+  format
+  architecture
+  role
+  engines
+  cause
+  why
 function newModelsSnapshot()
   observation
   models
@@ -127,6 +188,12 @@ function newOffer()
   contextSource
   input
   unknown
+  title
+function newOfferObservation()
+  observation
+  offers
+  outcome
+  cursor
 function newOfferRequest()
   profile
   placement
@@ -144,7 +211,12 @@ function newPickRequest()
 function newPickResult()
   observation
   decision
+function newReasoningSupport()
+  efforts
+  budget
+  defaultEffort
 const profiles
 const routerErrorCodes
+function toJson(kind, value)
 const verdicts
 const wireKinds

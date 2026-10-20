@@ -1,12 +1,30 @@
+import {tool as hostTool} from '@opencode-ai/plugin/tool';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {resolve} from 'node:path';
-import {servableChatModels, refreshProviderInventory, refreshSelectionPolicyModels, inventoryMarkerOption, selectionPolicyMarkerOption, readOffers} from '../inventory.js';
+import {servableChatModels, refreshProviderInventory, refreshSelectionPolicyModels, inventoryMarkerOption, selectionPolicyMarkerOption, readOffers, currentRememberedProviders} from '../inventory.js';
 import OpenAbstractionsPlugin from '../plugin.js';
 import {Availability} from '../availability.js';
 import {readFileSync} from 'node:fs';
 
 const contextTable = JSON.parse(readFileSync(new URL('./fixtures/inventory-context.json', import.meta.url), 'utf8'));
+
+// Review MN-1, 2026-11-01: a name whose last part is plain still carried a
+// digest in an earlier part, and the label showed it. No label carries 16 or
+// more hex digits in a row, wherever in a name they sit.
+test('a picker label never carries a digest from any part of a name', () => {
+  const digest = 'a'.repeat(64);
+  const commit = '5bc3e238d916f48a861bac2f8a1990a0e9b7e98d';
+  const offer = (family, names) => ({family, names, servers: ['modelhost'], context: 32768, contextSource: 'default', input: 28672});
+  const models = servableChatModels([
+    offer(digest, [`models/${digest}/model.gguf`]),
+    offer(`models--Qwen--x/snapshots/${commit}/qwen.gguf`, [`models--Qwen--x/snapshots/${commit}/qwen.gguf`]),
+    offer(`sha256:${digest}`, [`blobs/sha256-${digest}`]),
+  ]);
+  const labels = Object.values(models).map((m) => m.name);
+  assert.deepEqual(labels, ['model', 'qwen', 'Unnamed model']);
+  for (const label of labels) assert.doesNotMatch(label, /[0-9a-f]{16,}/i);
+});
 
 test('router typed refusals never become a successful empty or supplied inventory', async () => {
   for (const outcome of ['not_permitted', 'forbidden', 'unavailable', 'invalid', undefined]) {
@@ -28,14 +46,7 @@ function unknownOffer(family, unknown, fields = {}) {
   return offer(family, 0, {contextSource: 'unknown', unknown, ...fields});
 }
 
-const fakeTool = Object.assign((definition) => definition, {schema: {
-  object: (value) => value,
-  string: () => ({optional() { return this; }}),
-  number: () => ({optional() { return this; }}),
-  boolean: () => ({optional() { return this; }}),
-  enum: (value) => ({value, optional() { return this; }}),
-  array: (value) => ({value, optional() { return this; }}),
-}});
+
 
 test('inventory projects each offer with input under its family, context and place', () => {
   const models = servableChatModels([
@@ -45,8 +56,24 @@ test('inventory projects each offer with input under its family, context and pla
   ]);
 
   assert.deepEqual(Object.keys(models), ['mixed']);
-  assert.equal(models.mixed.name, 'mixed · 8k · this computer: local');
+  assert.equal(models.mixed.name, 'mixed');
   assert.deepEqual(models.mixed.limit, {context: 8192, output: 4096});
+});
+
+// A model OA hosts because the person added it in another app (the runtime's
+// model host reconciler) is offered under its family, with the context its
+// weights were trained for as the maximum: the picker shows that plain name
+// and never the store's object id or file.
+test('a model added in another app reads by its family and trained context', () => {
+  const models = servableChatModels([
+    offer('tiny-135m', 8192, {names: ['tiny-135m'], servers: ['modelhost']}),
+    offer('qwen2.5-0.5b', 32768, {names: ['qwen2.5-0.5b'], servers: ['modelhost']}),
+  ]);
+  assert.deepEqual(Object.keys(models).sort(), ['qwen2.5-0.5b', 'tiny-135m']);
+  assert.equal(models['tiny-135m'].name, 'tiny-135m');
+  assert.deepEqual(models['tiny-135m'].limit, {context: 8192, output: 4096});
+  assert.equal(models['qwen2.5-0.5b'].name, 'qwen2.5-0.5b');
+  for (const model of Object.values(models)) assert.doesNotMatch(model.name, /sha256|[0-9a-f]{16,}|\.gguf/i);
 });
 
 test('an unknown offer withholds its family and names each alias', () => {
@@ -77,7 +104,7 @@ test('refresh replaces only untouched managed entries and preserves edits and cu
   assert.deepEqual(provider.models, {
     customized,
     manual: {name: 'Manual model'},
-    new: {name: 'new · 32k · this computer: local', limit: {context: 32768, output: 4096}, tool_call: true},
+    new: {name: 'new', limit: {context: 32768, output: 4096}, tool_call: true},
   });
   assert.deepEqual(result, {added: 1, removed: 1, preserved: 2, diagnostics: [], warnings: []});
 });
@@ -116,8 +143,8 @@ test('the plugin logs a stale manual context limit as its own warning', async ()
   }}};
   const logs = [];
   const plugin = await OpenAbstractionsPlugin({client: {app: {log: async (entry) => logs.push(entry)}}}, {}, {
-    tool: fakeTool,
-    readInventory: async () => ({offers: [offer('qwen', 4096, {servers: ['lemonade'], contextSource: 'effective'})]}),
+    tool: hostTool,
+    probeRuntime: async () => true, readInventory: async () => ({offers: [offer('qwen', 4096, {servers: ['lemonade'], contextSource: 'effective'})]}),
   });
   await plugin.config(config);
   const warnings = logs.filter((entry) => entry.body.level === 'warn' && entry.body.extra.model === 'qwen');
@@ -130,8 +157,8 @@ test('the plugin logs an unknown-context alias by its server and name', async ()
   const config = {provider: {openabstractions: {npm: '@openabstractions/opencode', options: {scope: 'local'}, models: {}}}};
   const logs = [];
   const plugin = await OpenAbstractionsPlugin({client: {app: {log: async (entry) => logs.push(entry)}}}, {}, {
-    tool: fakeTool,
-    readInventory: async () => ({offers: [unknownOffer('qwen', ['lemonade/qwen-gguf'])]}),
+    tool: hostTool,
+    probeRuntime: async () => true, readInventory: async () => ({offers: [unknownOffer('qwen', ['lemonade/qwen-gguf'])]}),
   });
   await plugin.config(config);
   const omitted = logs.filter((entry) => entry.body.message === 'OpenAbstractions model is omitted because its server reported no request limit');
@@ -162,11 +189,11 @@ test('prototype-named model and marker IDs stay ordinary own entries', () => {
   };
   refreshProviderInventory(provider, [offer('__proto__', 32768, {names: ['after']})]);
   assert.equal(Object.hasOwn(provider.models, '__proto__'), true);
-  assert.equal(provider.models.__proto__.name, '__proto__ · 32k · this computer: local');
+  assert.equal(provider.models.__proto__.name, '__proto__');
   assert.equal(Object.getPrototypeOf(provider.models), Object.prototype);
 });
 
-test('policy models use available fallback candidates and the strictest known context', () => {
+test('saved preferences use matching family metadata and the strictest known display context', () => {
   const provider = {options: {oaSelectionPolicies: {'oa-preference-cloud-local': 'cloud-local'}}, models: {manual: {name: 'Manual'}}};
   const result = refreshSelectionPolicyModels(provider, {local: [
     offer('local-model', 8192, {contextSource: 'effective'}),
@@ -177,11 +204,23 @@ test('policy models use available fallback candidates and the strictest known co
     {model: 'local-small', placement: 'local', credential: ''},
   ]}}});
   assert.deepEqual(provider.models['oa-preference-cloud-local'], {
-    name: 'Preference: cloud-local', limit: {context: 6144, output: 4096}, tool_call: true,
+    name: 'Saved preference: cloud-local', limit: {context: 6144, output: 4096}, tool_call: true,
   });
   assert.deepEqual(provider.models.manual, {name: 'Manual'});
   assert.equal(result.added, 1);
   assert.deepEqual(result.diagnostics, []);
+});
+
+test('a stale provider pin stays a saved reference rather than an executable-model claim', () => {
+  const provider={options:{oaSelectionPolicies:{saved:'pinned'}},models:{}};
+  const policy={name:'pinned',candidates:[{model:'shared',placement:'local',provider:'absent-provider'}]};
+  const before=structuredClone(policy);
+  const result=refreshSelectionPolicyModels(provider,{local:[offer('shared',8192,{servers:['other-provider']})]},
+    {pinned:{outcome:'found',revision:'selection-v1:1',policy}});
+  assert.equal(provider.models.saved.name,'Saved preference: pinned');
+  assert.equal(provider.models.saved.limit.context,8192);
+  assert.equal(result.added,1);
+  assert.deepEqual(policy,before,'displaying the saved reference changes no provider or candidate');
 });
 
 test('policy candidates read the offers of their own placement', () => {
@@ -225,7 +264,7 @@ test('selection preference omits a family target whose offer has an unknown cont
     {model: 'local-model', placement: 'local', credential: ''},
   ]}}});
   assert.equal(Object.hasOwn(provider.models, 'oa-preference'), false);
-  assert.match(result.diagnostics[0].reason, /unknown for eligible policy model lemonade\/lemonade-unknown/);
+  assert.match(result.diagnostics[0].reason, /unknown for saved preference model lemonade\/lemonade-unknown/);
 });
 
 test('selection preference omits a concrete alias target when its family offer has an unknown context', () => {
@@ -236,7 +275,7 @@ test('selection preference omits a concrete alias target when its family offer h
     {model: 'ollama-known', placement: 'local', credential: ''},
   ]}}});
   assert.equal(Object.hasOwn(provider.models, 'oa-preference'), false);
-  assert.match(result.diagnostics[0].reason, /unknown for eligible policy model lemonade\/lemonade-unknown/);
+  assert.match(result.diagnostics[0].reason, /unknown for saved preference model lemonade\/lemonade-unknown/);
 });
 
 test('selection preference explains a candidate whose server reported no request limit', () => {
@@ -251,7 +290,7 @@ test('selection preference explains a candidate whose server reported no request
 });
 
 test('policy model collisions and edited managed entries remain user-owned', () => {
-  const generated = {name: 'Preference: local-first', limit: {context: 8192, output: 4096}, tool_call: true};
+  const generated = {name: 'Saved preference: local-first', limit: {context: 8192, output: 4096}, tool_call: true};
   const provider = {options: {
     oaSelectionPolicies: {collision: 'local-first', edited: 'edited-policy'},
     [selectionPolicyMarkerOption]: {edited: generated},
@@ -271,7 +310,7 @@ test('policy model collisions and edited managed entries remain user-owned', () 
   assert.equal(result.preserved, 2);
 });
 
-test('actual plugin config hook queries once and leaves credentials, defaults, and model selection intact', async () => {
+test('actual plugin config hook reads each placement and leaves credentials, defaults, and model selection intact', async () => {
   const old = {name: 'old', limit: {context: 32768, output: 4096}, tool_call: true};
   const config = {
     model: 'openabstractions/gone',
@@ -285,20 +324,20 @@ test('actual plugin config hook queries once and leaves credentials, defaults, a
   const logs = [];
   let calls = 0;
   const plugin = await OpenAbstractionsPlugin({client: {app: {log: async (entry) => logs.push(entry)}}}, {tools: {generate_image: true, speak: true, selection_policy: true, watch_logs: true, open_credentials_panel: true, authorization_questions: true}}, {
-    tool: fakeTool,
-    readInventory: async (options, placement) => {
+    tool: hostTool,
+    probeRuntime: async () => true, readInventory: async (options, placement) => {
       calls++;
       assert.equal(options.credential, 'deepseek');
       assert.equal(options.runtimeEndpoint, 'controlled');
-      assert.equal(placement, 'local');
-      return {offers: [offer('fresh')]};
+      assert.ok(['local','hosted'].includes(placement));
+      return {offers: placement==='local'?[offer('fresh')]:[]};
     },
   });
-  assert.equal(typeof plugin.tool.openabstractions_open_credentials_panel.execute, 'function');
-  assert.equal(typeof plugin.tool.openabstractions_watch_logs.execute, 'function');
+  assert.equal(typeof plugin.tool.oa_credentials_open.execute, 'function');
+  assert.equal(typeof plugin.tool.oa_logs_watch.execute, 'function');
   await plugin.config(config);
 
-  assert.equal(calls, 1);
+  assert.equal(calls, 2);
   assert.equal(config.model, 'openabstractions/gone');
   assert.equal(config.provider.openabstractions.options.credential, 'deepseek');
   assert.equal(config.provider.openabstractions.models.gone, undefined);
@@ -309,8 +348,8 @@ test('actual plugin config hook queries once and leaves credentials, defaults, a
 test('scope remote reads the offers of every placement, and the local placement to name where each runs', async () => {
   const placements = [];
   const plugin = await OpenAbstractionsPlugin({client: {}}, {}, {
-    tool: fakeTool,
-    readInventory: async (_options, placement) => { placements.push(placement); return {offers: [offer('cloud')]}; },
+    tool: hostTool,
+    probeRuntime: async () => true, readInventory: async (_options, placement) => { placements.push(placement); return {offers: [offer('cloud')]}; },
   });
   const config = {provider: {openabstractions: {npm: '@openabstractions/opencode', options: {scope: 'remote'}, models: {}}}};
   await plugin.config(config);
@@ -324,8 +363,8 @@ test('an older runtime without router Offer keeps configured entries and asks fo
   const logs = [];
   const older = Object.assign(new Error('unknown method'), {code: 'unknown_method'});
   const plugin = await OpenAbstractionsPlugin({client: {app: {log: async (entry) => logs.push(entry)}}}, {}, {
-    tool: fakeTool,
-    readInventory: async () => { throw older; },
+    tool: hostTool,
+    probeRuntime: async () => true, readInventory: async () => { throw older; },
     readCapability: async () => false,
   });
   await plugin.config(config);
@@ -349,8 +388,8 @@ test('an unavailable runtime keeps the configured entries in the listing and fai
   const logs = [];
   const down = Object.assign(new Error('native operation failed'), {code: 'runtime_unavailable'});
   const plugin = await OpenAbstractionsPlugin({client: {app: {log: async (entry) => logs.push(entry)}}}, {}, {
-    tool: fakeTool, availability: new Availability(),
-    readInventory: async () => { throw down; },
+    tool: hostTool, availability: new Availability(),
+    probeRuntime: async () => true, readInventory: async () => { throw down; },
     readCapability: async () => false,
   });
   await plugin.config(config);
@@ -365,7 +404,7 @@ test('a router client without offer reads as an older runtime', async () => {
   const config = {provider: {openabstractions: {npm: '@openabstractions/opencode', options: {scope: 'local'}, models}}};
   const logs = [];
   const plugin = await OpenAbstractionsPlugin({client: {app: {log: async (entry) => logs.push(entry)}}}, {}, {
-    tool: fakeTool,
+    tool: hostTool,
     // A router package published before Offer: its client has models and no offer.
     resolveRouter: async () => ({models: async () => ({models: []})}),
   });
@@ -376,8 +415,8 @@ test('a router client without offer reads as an older runtime', async () => {
 
 test('source-watch tool resolves a local reader only after approval and binds its cancellation signal', async () => {
   const plugin = await OpenAbstractionsPlugin({client: {}}, {tools: {watch_logs: true}}, {
-    tool: fakeTool,
-    readInventory: async () => ({offers: []}),
+    tool: hostTool,
+    probeRuntime: async () => true, readInventory: async () => ({offers: []}),
     resolveSourceReader: async (_options, signal) => {
       assert.ok(signal instanceof AbortSignal);
       return {
@@ -390,7 +429,7 @@ test('source-watch tool resolves a local reader only after approval and binds it
     },
   });
   const permissions = [];
-  const output = await plugin.tool.openabstractions_watch_logs.execute({
+  const output = await plugin.tool.oa_logs_watch.execute({
     sourceId: 'runtime/log', durationMs: 1000, maxRecords: 1, maxBytes: 4096,
   }, {
     signal: new AbortController().signal,
@@ -405,8 +444,8 @@ test('source-watch tool resolves a local reader only after approval and binds it
 test('tool clients use the configured provider endpoint when multiple OA providers exist', async () => {
   const resolved = [];
   const plugin = await OpenAbstractionsPlugin({client: {}}, {providerId: 'oa-custom', tools: {generate_image: true, speak: true, selection_policy: true, watch_logs: true, open_credentials_panel: true, authorization_questions: true}}, {
-    tool: fakeTool,
-    readInventory: async () => ({offers: []}),
+    tool: hostTool,
+    probeRuntime: async () => true, readInventory: async () => ({offers: []}),
     resolveSelectionOperator: async (options) => {
       resolved.push(['policy', options.runtimeEndpoint]);
       return {read: async () => ({outcome: 'unknown', revision: ''})};
@@ -425,9 +464,9 @@ test('tool clients use the configured provider endpoint when multiple OA provide
     'oa-custom': {npm: '@openabstractions/opencode', options: {runtimeEndpoint: 'custom-endpoint'}, models: {}},
     openabstractions: {npm: '@openabstractions/opencode', options: {runtimeEndpoint: 'other-endpoint'}, models: {}},
   }});
-  const policyReply = await plugin.tool.openabstractions_selection_policy.execute({action: 'read', name: 'local-first'});
+  const policyReply = await plugin.tool.oa_selection_manage.execute({action: 'read', name: 'local-first'});
   assert.equal(JSON.parse(policyReply).outcome, 'unknown');
-  const watchReply = await plugin.tool.openabstractions_watch_logs.execute({
+  const watchReply = await plugin.tool.oa_logs_watch.execute({
     sourceId: 'runtime/log', durationMs: 1000, maxRecords: 1, maxBytes: 4096,
   }, {ask: async () => {}});
   assert.equal(JSON.parse(watchReply).status, 'unsupported');
@@ -440,8 +479,8 @@ test('provider.models refresh accepts public Provider.Info after config verifies
   let inventoryRevision = 0;
   let clock = 0;
   const plugin = await OpenAbstractionsPlugin({client: {app: {log: async (entry) => logs.push(entry)}}}, {providerId: 'oa-custom'}, {
-    tool: fakeTool, now: () => clock,
-    readInventory: async (options, placement) => {
+    tool: hostTool, now: () => clock,
+    probeRuntime: async () => true, readInventory: async (options, placement) => {
       calls.push({kind: 'inventory', options, placement});
       if (placement === 'hosted') return {offers: []};
       inventoryRevision++;
@@ -483,7 +522,7 @@ test('provider.models refresh accepts public Provider.Info after config verifies
   assert.deepEqual(discovered, {
     id: 'inventory-2', providerID: 'oa-custom',
     api: {id: 'inventory-2', url: '', npm: '@openabstractions/opencode@0.4.0'},
-    name: 'inventory-2 · 8k · this computer: local', family: '', status: 'active',
+    name: 'inventory-2', family: '', status: 'active',
     capabilities: {
       temperature: false, reasoning: false, attachment: false, toolcall: true,
       input: {text: true, audio: false, image: false, video: false, pdf: false},
@@ -494,19 +533,19 @@ test('provider.models refresh accepts public Provider.Info after config verifies
     limit: {context: 8192, output: 4096},
     options: {}, headers: {}, release_date: '', variants: {},
   });
-  assert.equal(first['oa-preference-cloud-local'].name, 'Preference: cloud-local');
+  assert.equal(first['oa-preference-cloud-local'].name, 'Saved preference: cloud-local');
   assert.deepEqual(first['oa-preference-cloud-local'].limit, {context: 8192, output: 4096});
   assert.equal(first['oa-preference-cloud-local'].capabilities.toolcall, true);
   assert.equal(first.manual.name, 'Manual');
   // Each refresh reads the provider's placement, the saved preference, and
   // the hosted offers its hosted candidate needs.
   assert.deepEqual(calls.map((call) => call.kind === 'inventory' ? `inventory:${call.placement}` : call.kind), [
-    'inventory:local', 'policy', 'inventory:hosted', // verified startup config refresh
-    'inventory:local', 'policy', 'inventory:hosted', // public Provider.Info refresh
+    'inventory:local', 'inventory:hosted', 'policy', // verified startup config refresh
+    'inventory:local', 'inventory:hosted', 'policy', // public Provider.Info refresh
   ]);
   assert.equal(calls[3].options.runtimeEndpoint, 'local-endpoint');
   assert.equal(calls[4].options.credential, 'deepseek');
-  assert.equal(calls[4].name, 'cloud-local');
+  assert.equal(calls[5].name, 'cloud-local');
   assert.equal(JSON.stringify(first).includes('auth-secret-must-not-be-forwarded'), false);
   assert.equal(JSON.stringify(logs).includes('auth-secret-must-not-be-forwarded'), false);
 
@@ -525,7 +564,7 @@ test('provider.models refresh accepts public Provider.Info after config verifies
 
 test('provider.models refuses an unverified or differently named public provider', async () => {
   const plugin = await OpenAbstractionsPlugin({client: {}}, {providerId: 'oa-custom'}, {
-    tool: fakeTool, readInventory: async () => ({offers: []}),
+    tool: hostTool, probeRuntime: async () => true, readInventory: async () => ({offers: []}),
   });
   await assert.rejects(() => plugin.provider.models({id: 'oa-custom', options: {}, models: {}}), /unverified/);
   await plugin.config({provider: {'oa-custom': {npm: '@other/provider', options: {}, models: {}}}});
@@ -536,23 +575,26 @@ test('provider.models refuses an unverified or differently named public provider
 
 test('config verifies a local OA package without treating the inventory marker as identity', async () => {
   const plugin = await OpenAbstractionsPlugin({client: {}}, {providerId: 'oa-custom'}, {
-    tool: fakeTool,
-    readInventory: async () => ({offers: [offer('fresh-local')]}),
+    tool: hostTool,
+    probeRuntime: async () => true, readInventory: async () => ({offers: [offer('fresh-local')]}),
   });
   const configuredProvider = {
     npm: new URL('../index.js', import.meta.url).href,
     options: {scope: 'local'},
     models: {manual: {name: 'Manual model'}},
   };
-  await plugin.config({provider: {'oa-custom': configuredProvider}});
-  assert.ok(Object.hasOwn(configuredProvider.options, inventoryMarkerOption));
-  assert.equal(configuredProvider.models.manual.name, 'Manual model');
+  const config = {provider: {'oa-custom': configuredProvider}};
+  await plugin.config(config);
+  // The hook writes the instance's own heading; the host's object stays.
+  assert.ok(!Object.hasOwn(configuredProvider.options, inventoryMarkerOption));
+  assert.ok(Object.hasOwn(config.provider['oa-custom'].options, inventoryMarkerOption));
+  assert.equal(config.provider['oa-custom'].models.manual.name, 'Manual model');
 
   // This is the public Provider.Info shape passed to provider.models; it has
   // no npm field, so the hook must rely on the earlier verified config entry.
   const publicProviderInfo = {
     id: 'oa-custom', name: 'OA Custom', source: 'config', env: [],
-    options: configuredProvider.options, models: configuredProvider.models,
+    options: config.provider['oa-custom'].options, models: config.provider['oa-custom'].models,
   };
   const models = await plugin.provider.models(publicProviderInfo);
   assert.equal(models['fresh-local'].id, 'fresh-local');
@@ -566,8 +608,8 @@ test('refresh failure leaves provider config intact and is logged', async () => 
   const config = {provider: {openabstractions: {npm: '@openabstractions/opencode', options: {}, models}}};
   const logs = [];
   const plugin = await OpenAbstractionsPlugin({client: {app: {log: async (entry) => logs.push(entry)}}}, {}, {
-    tool: fakeTool,
-    readInventory: async () => { throw new Error('inventory refused'); },
+    tool: hostTool,
+    probeRuntime: async () => true, readInventory: async () => { throw new Error('inventory refused'); },
   });
   await plugin.config(config);
   assert.equal(config.provider.openabstractions.models, models);
@@ -584,8 +626,8 @@ test('plugin does not attach OA inventory to a provider ID owned by another pack
   const logs = [];
   let calls = 0;
   const plugin = await OpenAbstractionsPlugin({client: {app: {log: async (entry) => logs.push(entry)}}}, {}, {
-    tool: fakeTool,
-    readInventory: async () => { calls++; return {offers: []}; },
+    tool: hostTool,
+    probeRuntime: async () => true, readInventory: async () => { calls++; return {offers: []}; },
   });
   await plugin.config(config);
   assert.equal(calls, 0);
@@ -602,8 +644,8 @@ test('plugin rejects a forged local adopter path suffix without package identity
   }}};
   let calls = 0;
   const plugin = await OpenAbstractionsPlugin({client: {app: {log: async () => {}}}}, {}, {
-    tool: fakeTool,
-    readInventory: async () => { calls++; return {offers: []}; },
+    tool: hostTool,
+    probeRuntime: async () => true, readInventory: async () => { calls++; return {offers: []}; },
   });
   await plugin.config(config);
   assert.equal(calls, 0);
@@ -614,8 +656,8 @@ test('the plugin lists its own chat selection policy with no configure step', as
   const config = {provider: {openabstractions: {npm: '@openabstractions/opencode', options: {scope: 'local'}, models: {}}}};
   const asked = [];
   const plugin = await OpenAbstractionsPlugin({client: {app: {log: async () => {}}}}, {}, {
-    tool: fakeTool, readCapability: async () => false,
-    readInventory: async () => ({offers: [offer('qwen', 32768, {contextSource: 'effective'})]}),
+    tool: hostTool, readCapability: async () => false,
+    probeRuntime: async () => true, readInventory: async () => ({offers: [offer('qwen', 32768, {contextSource: 'effective'})]}),
     readSelectionPolicy: async (_options, name) => {
       asked.push(name);
       return {outcome: 'found', policy: {name, candidates: [{model: 'qwen', placement: 'local', credential: ''}]}};
@@ -624,15 +666,18 @@ test('the plugin lists its own chat selection policy with no configure step', as
   await plugin.config(config);
   assert.deepEqual(asked, ['oa-chat-default']);
   assert.equal(config.provider.openabstractions.options.oaSelectionPolicies['oa-chat'], 'oa-chat-default');
-  assert.equal(config.provider.openabstractions.models['oa-chat'].name, 'Preference: oa-chat-default');
+  assert.equal(config.provider.openabstractions.models['oa-chat'].name, 'Default (qwen)', 'the policy route is the Default row');
+  assert.equal(config.provider.openabstractions.models['oa-chat'].limit.context, 32768);
+  assert.ok(config.provider.openabstractions.models.qwen);
+  assert.equal(config.model, 'openabstractions/qwen', 'the policy\'s real model is preselected');
 });
 
 test('the app\'s own policy is quiet until it exists, and a configured entry under its ID wins', async () => {
   const unknown = {provider: {openabstractions: {npm: '@openabstractions/opencode', options: {scope: 'local'}, models: {}}}};
   const logs = [];
   const plugin = await OpenAbstractionsPlugin({client: {app: {log: async (entry) => logs.push(entry)}}}, {}, {
-    tool: fakeTool, readCapability: async () => false,
-    readInventory: async () => ({offers: []}),
+    tool: hostTool, readCapability: async () => false,
+    probeRuntime: async () => true, readInventory: async () => ({offers: []}),
     readSelectionPolicy: async () => ({outcome: 'unknown'}),
   });
   await plugin.config(unknown);
@@ -643,8 +688,8 @@ test('the app\'s own policy is quiet until it exists, and a configured entry und
     options: {scope: 'local', oaSelectionPolicies: {'oa-chat': 'my-chat'}}, models: {}}}};
   const asked = [];
   const second = await OpenAbstractionsPlugin({client: {app: {log: async () => {}}}}, {}, {
-    tool: fakeTool, readCapability: async () => false,
-    readInventory: async () => ({offers: []}),
+    tool: hostTool, readCapability: async () => false,
+    probeRuntime: async () => true, readInventory: async () => ({offers: []}),
     readSelectionPolicy: async (_options, name) => { asked.push(name); return {outcome: 'unknown'}; },
   });
   await second.config(configured);
@@ -659,18 +704,97 @@ test('the first listing right after startup reuses the startup survey', async ()
   let clock = 1000;
   const models = {configured: {name: 'Configured', limit: {context: 8192, output: 4096}}};
   const plugin = await OpenAbstractionsPlugin({client: {}}, {}, {
-    tool: fakeTool, now: () => clock, availability: new Availability(),
-    readInventory: async () => { reads += 1; return {offers: [offer('fresh', 8192, {contextSource: 'effective'})]}; },
+    tool: hostTool, now: () => clock, availability: new Availability(),
+    probeRuntime: async () => true, readInventory: async () => { reads += 1; return {offers: [offer('fresh', 8192, {contextSource: 'effective'})]}; },
     readCapability: async () => false,
   });
   const config = {provider: {openabstractions: {npm: '@openabstractions/opencode', options: {scope: 'local'}, models}}};
   await plugin.config(config);
-  assert.equal(reads, 1);
+  assert.equal(reads, 2);
   const surveyed = config.provider.openabstractions.models;
   clock += 2000;
   const listing = await plugin.provider.models({id: 'openabstractions', options: {scope: 'local'}, models: surveyed});
-  assert.equal(reads, 1, 'the listing surveys nothing');
+  assert.equal(reads, 2, 'the listing surveys nothing');
   assert.ok(listing.fresh, 'the startup survey answers it');
   await plugin.provider.models({id: 'openabstractions', options: {scope: 'local'}, models: surveyed});
-  assert.equal(reads, 2, 'a refresh always surveys');
+  assert.equal(reads, 4, 'a refresh reads both watched placements');
+});
+
+test('connected hosted offers create their provider group during config without changing access or selection', async () => {
+  const config={model:'openabstractions/local',provider:{openabstractions:{npm:'@openabstractions/opencode',options:{scope:'local',runtimeEndpoint:'owned-endpoint'},models:{}}}};
+  let connected=false;
+  const reads=[];
+  const plugin=await OpenAbstractionsPlugin({client:{}},{},{tool:hostTool,inventoryWatch:false,readCapability:async()=>false,
+    probeRuntime: async () => true, readInventory:async(_options,placement)=>{reads.push(placement);return{offers:placement==='hosted'?(connected?[offer('deepseek-chat',65536,{title:'DeepSeek Chat',servers:['deepseek']})]:[]):[offer('local',32768)]}}});
+  await plugin.config(config);
+  assert(!Object.hasOwn(config.provider,'openabstractions-hosted'));
+  assert.deepEqual(reads,['local','hosted'],'the absent hosted group is already observed');
+  connected=true;
+  await plugin.config(config);
+  const hosted=config.provider['openabstractions-hosted'];
+  assert.equal(hosted.name,'DeepSeek · OpenAbstractions');
+  assert.equal(hosted.models['deepseek-chat'].name,'DeepSeek Chat');
+  assert.equal(hosted.options.scope,'remote');
+  assert.deepEqual(hosted.options.guarantees,['abstraction.inference/hosted-allowed@1']);
+  assert.equal(hosted.options.runtimeEndpoint,'owned-endpoint');
+  assert.equal(hosted.options.oaPlacement,'hosted');
+  assert.equal(config.model,'openabstractions/local');
+  assert.equal(config.provider.openabstractions.options.scope,'local');
+  assert(!Object.hasOwn(hosted.options,'oaSelectionPolicies'));
+  const manual={npm:'another-package',models:{manual:{name:'My model'}}};
+  config.provider['openabstractions-hosted']=manual;
+  await plugin.config(config);
+  assert.equal(config.provider['openabstractions-hosted'],manual,'existing provider IDs are never replaced');
+});
+
+test('the app\'s own chat policy lists one Default row named after the Panel\'s default and keeps its policy', () => {
+  const earlier={name:'Default · Qwen3.6 35B',limit:{context:32768,output:4096},tool_call:true};
+  const provider={options:{oaSelectionPolicies:{'oa-chat':'oa-chat-default'},[selectionPolicyMarkerOption]:{'oa-chat':{...earlier}}},models:{'oa-chat':earlier}};
+  const policy={name:'oa-chat-default',candidates:[{model:'legacy-hash-alias',placement:'local'}]};
+  refreshSelectionPolicyModels(provider,{local:[offer('canonical-family',32768,{title:'Qwen3.6 35B',names:['legacy-hash-alias']})]}, {'oa-chat-default':{outcome:'found',policy}});
+  assert.deepEqual(provider.models,{'oa-chat':{id:'Default (Qwen3.6 35B)',name:'Default (Qwen3.6 35B)',limit:{context:32768,output:4096},tool_call:true}});
+  assert.deepEqual(provider.options.oaRouteModels,{'Default (Qwen3.6 35B)':'oa-chat'});
+  // The Panel's default moves: the next read renames the row and its route.
+  refreshSelectionPolicyModels(provider,{hosted:[offer('deepseek-flash',1048576,{servers:['deepseek']})]},
+    {'oa-chat-default':{outcome:'found',policy:{name:'oa-chat-default',candidates:[{model:'deepseek-flash',placement:'hosted'}]}}});
+  assert.deepEqual(provider.models,{'oa-chat':{id:'Default (deepseek-flash)',name:'Default (deepseek-flash)',limit:{context:1048576,output:4096},tool_call:true}});
+  assert.deepEqual(provider.options.oaRouteModels,{'Default (deepseek-flash)':'oa-chat'});
+  assert.deepEqual(policy,{name:'oa-chat-default',candidates:[{model:'legacy-hash-alias',placement:'local'}]});
+});
+
+test('an earlier version\'s remembered models read under today\'s names with a Default row', () => {
+  const npm = '@openabstractions/opencode';
+  const local = {
+    'qwen3.6-35b-a3b': {name: 'Qwen3.6 35B · 256k', limit: {context: 262144, output: 4096}, tool_call: true},
+    mine: {name: 'My model · custom', limit: {context: 8192, output: 1024}},
+    'oa-chat': {name: 'Default · Qwen3.6 35B', limit: {context: 262144, output: 4096}, tool_call: true},
+  };
+  const hosted = {'deepseek-flash': {name: 'deepseek-flash · 1024k · hosted: deepseek', limit: {context: 1048576, output: 4096}, tool_call: true}};
+  const providers = [
+    ['openabstractions', {npm, name: 'OpenAbstractions · this computer', models: structuredClone(local), options: {
+      [inventoryMarkerOption]: {'qwen3.6-35b-a3b': structuredClone(local['qwen3.6-35b-a3b'])},
+      [selectionPolicyMarkerOption]: {'oa-chat': structuredClone(local['oa-chat'])},
+      oaSelectionPolicies: {'oa-chat': 'oa-chat-default'}}}],
+    ['openabstractions-hosted', {npm, name: 'OpenAbstractions · via hosted servers', models: structuredClone(hosted),
+      options: {[inventoryMarkerOption]: structuredClone(hosted)}}],
+  ];
+  const [main, remote] = currentRememberedProviders(providers, {choice: 'openabstractions/qwen3.6-35b-a3b'}, 'openabstractions').map(([, p]) => p);
+  assert.equal(main.name, 'OpenAbstractions');
+  assert.equal(main.models['qwen3.6-35b-a3b'].name, 'Qwen3.6 35B');
+  assert.equal(main.models.mine.name, 'My model · custom', 'the person\'s own entry stays');
+  assert.deepEqual(main.models['oa-chat'], {id: 'Default (Qwen3.6 35B)', name: 'Default (Qwen3.6 35B)',
+    limit: {context: 262144, output: 4096}, tool_call: true});
+  assert.deepEqual(main.options.oaRouteModels, {'Default (Qwen3.6 35B)': 'oa-chat'});
+  assert.deepEqual(main.options[inventoryMarkerOption]['qwen3.6-35b-a3b'], main.models['qwen3.6-35b-a3b'],
+    'the converted entry stays OA\'s, so the next answer replaces it');
+  assert.deepEqual(main.options[selectionPolicyMarkerOption]['oa-chat'], main.models['oa-chat']);
+  assert.equal(remote.name, 'Hosted · OpenAbstractions');
+  assert.equal(remote.models['deepseek-flash'].name, 'deepseek-flash');
+  assert.equal(providers[0][1].name, 'OpenAbstractions · this computer', 'the answer itself is not changed');
+  // An answer without a route entry (R13 kept none) gets the Default row from its chat choice.
+  const plain = [['openabstractions', {npm, name: 'OpenAbstractions', models: {fixture: {name: 'fixture', limit: {context: 32768, output: 4096}}},
+    options: {[inventoryMarkerOption]: {fixture: {name: 'fixture', limit: {context: 32768, output: 4096}}}}}]];
+  const [[, only]] = currentRememberedProviders(plain, {choice: 'openabstractions/fixture'}, 'openabstractions');
+  assert.equal(only.models['oa-chat'].name, 'Default (fixture)');
+  assert.equal(only.models['oa-chat'].limit.context, 32768);
 });

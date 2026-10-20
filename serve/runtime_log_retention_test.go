@@ -21,8 +21,9 @@ func TestRuntimeLogSinkUsesRetainedProvider(t *testing.T) {
 		t.Fatalf("runtime selected %T", sink)
 	}
 	// The runtime default must select the retained constructor. Native policy
-	// replacement is unavailable on the shared append-only provider.
-	if err := fileSink.SetRetention(logging.LogsRetention{MaxUse: 100}); err != nil {
+	// replacement is unavailable on the shared append-only provider. The bound
+	// counts the private sink instant every retained row carries (LOG-P9).
+	if err := fileSink.SetRetention(logging.LogsRetention{MaxUse: 150}); err != nil {
 		t.Fatal(err)
 	}
 	record := logging.Record{Schema: 1, Time: logging.Timestamp{Time: time.Now().UTC()}, Msg: "small"}

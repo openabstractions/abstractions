@@ -6,8 +6,22 @@ codecs and API reference. The notation is a profile of Apache Thrift's IDL. See
 for their origins.
 
 Go, C++, Python, Rust and JavaScript generate typed request-response and one-way
-clients with injected transports. Generated dispatchers and callable interfaces
-are language/profile-specific; a generated protocol does not supply an OS server
+clients with injected transports. Go and C++ also generate dispatchers. `gen --backends` prints what each
+backend generates:
+
+<!-- gen --backends: begin; regenerate with GOWORK=off go -C idl/gen run . --backends -->
+| Backend | Records | Services | Clients | Dispatchers | `--no-ipc` | Includes and `--named-codecs` | `binary` |
+|---|---|---|---|---|---|---|---|
+| go | yes | yes | yes | yes | yes | yes | yes |
+| python | yes | yes | yes | no | yes | yes | yes |
+| cpp | yes | yes | yes | yes | yes | yes | yes |
+| javascript | yes | yes | yes | no | yes | yes | yes |
+| rust | yes | yes | yes | no | yes | yes | yes |
+| docs | documented | documented | no | no | documented | documented | documented |
+| jsonschema | documented | no | no | no | documented | documented | documented |
+<!-- gen --backends: end -->
+
+Callable interfaces are profile-specific; a generated protocol does not supply an OS server
 or provider. Shared transport owns framing, connections, deadlines, cancellation
 and peer verification. A transport failure preserves uncertainty; generation
 supplies no automatic retry or provider switching.
@@ -30,8 +44,7 @@ GOWORK=off go -C gen run . example.thrift output --no-ipc go cpp python rust jav
 
 Replace the example paths with your definition and output directory. Go, C++,
 Python and Rust expose their direct interfaces; JavaScript emits overridable
-asynchronous interface classes. The current CLI help omits JavaScript from its
-`--no-ipc` list, but the backend and focused test implement it. Unsupported
+asynchronous interface classes. Unsupported
 schema features fail explicitly. Legacy `protocol` declarations do not become
 service interfaces through this flag.
 
@@ -134,45 +147,30 @@ Adding a case is adding a file: the drivers read the directory and the
 expectation is the filename, so a sixth implementation is checked against the
 same corpus without touching any of the first five.
 
-## Per-language binding checklist
+## Language packages and client ownership
 
-Every contract's generated binding in each language ships its package
-metadata and a facade resolver accessor for each profile `abstraction-facade`
-serves in that language.
+Generated bindings ship their language's package metadata: `go.mod`, CMake
+targets, `pyproject.toml`, `Cargo.toml` or `package.json`. Package exports,
+native-value conversion and language memory/lifetime marshalling remain binding
+work. Repetitive accessors belong to generation.
 
-| Language | Package metadata | Facade resolver accessor |
-| --- | --- | --- |
-| Go | `go.mod` | `Resolve<Capability><Profile>` on `client.Machine` |
-| C++17 | a CMake target (an aggregate `Machine` method, or `resolve_<capability>_<profile>` as its own optional package) | `resolve_<capability>_<profile>`, taking a `ResolutionClient` |
-| Python | `pyproject.toml` | `resolve_<capability>_<profile>` on `Machine` |
-| Rust | `Cargo.toml`, one `rust-<capability>` crate | `resolve_<capability>_<profile>` on that crate's extension trait |
-| JavaScript | `package.json` | none — one generic `resolveService(contract)` covers every capability |
+New shared client behavior belongs in the definition, generator or existing
+shared native owner, following [the architecture](../ARCHITECTURE.md#definitions-languages-and-shared-state).
+Extend that owner and receive its language bindings together for resolution,
+validation, deadlines, cancellation and other recurring semantics. Services own
+shared state and authority; native facilities retain their shared implementation.
 
-The generator emits a contract's records in every declared language from one
-definition. The client wrapper a facade resolver binds to is written
-separately, per language, over those records. A capability with no such
-wrapper in a language is unreachable there, whatever the coverage grid's cell
-for that language says about the contract itself.
+Current clients still carry handwritten wrappers and resolver accessors in
+several languages. The [27 October audit](../research/client-architecture/2026-10-27/report.md)
+records this consolidation debt. Generated records and wire clients alone do
+not establish a usable client or shared behavior. Generated and handwritten
+files also coexist under `py/`; use the declared generation owner and actual
+execution path to identify the boundary.
 
-A `py/` directory is generator output; a sibling `python/` directory is a
-hand-written package (`abstraction-cas`, `abstraction-config` carry both).
-`rec.h`, `rec.go` and a `py/` directory's `__init__.py` mark the same split
-in every language: each is the generated record codec, and a hand-written
-client sits beside it — `include/abstraction/<contract>/client.hpp` beside
-`rec.h`, `client.go` beside `rec.go`, the sibling `python/` package beside
-`py/`.
-
-`abstraction-resource` is unreachable from C++, Rust and JavaScript: each has
-generated records and no hand-written service client. Go and Python each
-carry both accessors: Go's landed with `leases@1`; Python's
-(`resolve_resource_table`, `resolve_resource_leases`) landed in `f3795592`,
-together with `abstraction-resource/py/pyproject.toml`
-(`research/feedback-archive-2026-09-24/2026-09-22-comfyui-card-hook.md`, item 1).
-
-`scripts/check.sh`'s "generated" section checks both parts: every
-`openabstractions-flat` contract with a Python backend for `pyproject.toml`,
-and every capability the Go facade resolves for a matching Python
-`resolve_*` accessor.
+`scripts/check.sh`'s "generated" section checks Python package metadata and
+matching Python accessors for capabilities resolved by the Go facade. Those
+presence checks and generated-byte equality retain their scoped meaning;
+handwritten semantic wrappers require their owning-boundary review.
 
 ## What may break
 
@@ -215,3 +213,11 @@ stable `wire_name`; replies contain typed results or stable error codes. No sock
 or storage implementation is generated.
 See [the service language rule](LANGUAGE.md#def-s1-service-interfaces-and-protocol)
 for framing, errors, opaque arguments and transport lifetime requirements.
+
+### Staged Rust qualification
+
+The IDL generator module runs its Rust corpus and compile tests on Windows,
+Linux, and macOS with `rustc` and Cargo. The Windows leg also runs
+`TestConfigCatalogueRustIdioms` through `cargo clippy` with warnings denied.
+Staged preflight requires that Clippy component on Windows. The test reports
+its Windows assignment on Linux and macOS.

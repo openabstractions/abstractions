@@ -10,14 +10,17 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	casapi "github.com/openabstractions/abstraction-cas/go/api"
+	credentials "github.com/openabstractions/abstraction-credentials/go"
 	facade "github.com/openabstractions/abstraction-facade/go/client"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	jobwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/job"
@@ -41,6 +44,21 @@ type OA struct {
 	machine  *facade.Machine
 	stateDir string
 	state    casapi.BoundedFileStore
+	// picturesAt replaces storage layout's Pictures folder in tests.
+	picturesAt func() (string, error)
+	// videosAt replaces storage layout's Videos folder in tests.
+	videosAt func() (string, error)
+	// statusAt replaces the runtime read of a job's state and result, and
+	// readClipAt the content read of a clip, in tests.
+	statusAt   func(context.Context, JobHandleInput) (JobStatusOutput, *jobwire.JobResult, error)
+	readClipAt func(context.Context, jobwire.Delivery) ([]byte, error)
+	// videoWatch is the state of the clips this process saves when their
+	// jobs end (video_watch.go).
+	videoWatch videoWatch
+	// imageReader and imageWriter replace this caller's content reader and
+	// writer for a chat image in tests.
+	imageReader func(context.Context) (contentReader, error)
+	imageWriter func(context.Context) (contentWriter, error)
 }
 
 // NewOA binds all calls to the identity that OA observes for this executable.
@@ -64,7 +82,114 @@ func (o *OA) Models(ctx context.Context, in ModelsInput) (ModelsOutput, error) {
 	if err != nil {
 		return ModelsOutput{}, err
 	}
-	return ModelsOutput{ObservedUnixMS: time.Now().UnixMilli(), Models: modelsFrom(snapshot.Models)}, nil
+	models := modelsFrom(snapshot.Models)
+	models = append(models, o.setupNeeded(ctx, models)...)
+	return ModelsOutput{ObservedUnixMS: time.Now().UnixMilli(), Models: models}, nil
+}
+
+// digestText is a content digest or commit anywhere in a name: 16 or more
+// hex digits in a row, or a sha256 prefix. It names no model to a person.
+var digestText = regexp.MustCompile(`(?i)[0-9a-f]{16,}|(?:^|[\\/:])sha256[-:]`)
+
+// modelFileType is the model file extension a plain name drops.
+var modelFileType = regexp.MustCompile(`(?i)\.(gguf|safetensors|bin|onnx|ggml)$`)
+
+// unnamedModel names a model nothing names readably (owner, 2026-11-01: a
+// digest is never shown to a person).
+const unnamedModel = "Unnamed model"
+
+// plainModelName is the first of names no part of which carries a digest,
+// else the plain last part of one without its file type, else "": the
+// OpenCode plugin's rule (adopters/opencode inventory.js plainModelName), so
+// both clients name a model alike.
+func plainModelName(names []string) string {
+	for _, name := range names {
+		if name != "" && !digestText.MatchString(name) {
+			return name
+		}
+	}
+	for _, name := range names {
+		parts := strings.FieldsFunc(name, func(r rune) bool { return r == '/' || r == '\\' })
+		if len(parts) == 0 {
+			continue
+		}
+		if plain := modelFileType.ReplaceAllString(parts[len(parts)-1], ""); plain != "" && !digestText.MatchString(plain) {
+			return plain
+		}
+	}
+	return ""
+}
+
+// headerModelName is what a held object's own header states it is, the
+// architecture a store read from a GGUF, for a model whose names are all
+// digests; "" when no object states one.
+func headerModelName(objects []routerwire.ModelObject) string {
+	for _, o := range objects {
+		if o.Architecture != "" && !digestText.MatchString(o.Architecture) {
+			return o.Architecture
+		}
+	}
+	return ""
+}
+
+// modelName is how a person is shown a family: the catalogue's title, else
+// its family or a servable alias when one is readable (the name a model host
+// declaration gave it), else what its file's header states. A family with
+// none of these is listed as unnamedModel and the log names its family.
+func modelName(family routerwire.Family, aliases []string) string {
+	if family.Title != "" {
+		return family.Title
+	}
+	if name := plainModelName(append([]string{family.Family}, aliases...)); name != "" {
+		return name
+	}
+	if name := headerModelName(family.Objects); name != "" {
+		return name
+	}
+	log.Printf("oa_models_list: model %s has no readable name or header; listed as %q", family.Family, unnamedModel)
+	return unnamedModel
+}
+
+// plainAliases drops the aliases that carry a digest (digestText), such as a
+// model host serving a store's object under its file name
+// 55983c5a….gguf, when a plain alias remains: a digest names no model to a
+// person. A model whose every alias is a digest keeps them all, since a call
+// asks for it by one of them.
+func plainAliases(aliases []string) []string {
+	plain := slices.DeleteFunc(slices.Clone(aliases), func(alias string) bool { return digestText.MatchString(alias) })
+	if len(plain) == 0 {
+		return aliases
+	}
+	return plain
+}
+
+// servedFrom names the stores whose copy of family a servable local alias
+// serves, from the router's engine associations (Family.Objects), when
+// held lists a copy in another store that no engine here serves: the R34
+// live test's Qwen3.6 35B held in huggingface (22.85 GB) and in Setup's
+// store, served from Setup's store alone (D10). It is nil when every held
+// copy is served, or when no engine association names a store.
+func servedFrom(family routerwire.Family, held []string) []string {
+	servable := map[string]bool{}
+	for _, alias := range family.Names {
+		if alias.Servable && !alias.Hosted {
+			servable[alias.Host+"\x00"+alias.Name] = true
+		}
+	}
+	var served []string
+	for _, object := range family.Objects {
+		if object.Domain != "" || object.Store == "" || slices.Contains(served, object.Store) {
+			continue
+		}
+		if slices.ContainsFunc(object.Engines, func(e routerwire.ModelEngine) bool { return servable[e.Host+"\x00"+e.Model] }) {
+			served = append(served, object.Store)
+		}
+	}
+	if len(served) == 0 || !slices.ContainsFunc(held, func(store string) bool { return !slices.Contains(served, store) }) {
+		return nil
+	}
+	slices.Sort(served)
+	return served
 }
 
 // modelsFrom is the structured listing: the servable aliases of each family,
@@ -74,11 +199,13 @@ func modelsFrom(families []routerwire.Family) []Model {
 	for _, family := range families {
 		m := Model{Family: family.Family, HeldIn: family.HeldIn}
 		profiles := map[string]bool{}
+		lines := map[string][]string{}
 		for _, alias := range family.Names {
 			if !alias.Servable {
 				continue
 			}
 			m.Aliases = append(m.Aliases, alias.Name)
+			lines[alias.Name] = append(lines[alias.Name], capabilityLine(alias))
 			for _, profile := range alias.Profiles {
 				profiles[profile] = true
 			}
@@ -91,6 +218,15 @@ func modelsFrom(families []routerwire.Family) []Model {
 		}
 		slices.Sort(m.Profiles)
 		m.Servable = len(m.Aliases) > 0
+		m.Name = modelName(family, m.Aliases)
+		m.Aliases = plainAliases(m.Aliases)
+		// A hidden digest alias takes its capability line with it.
+		for _, alias := range m.Aliases {
+			m.Capabilities = append(m.Capabilities, lines[alias]...)
+		}
+		slices.Sort(m.Capabilities)
+		m.Capabilities = slices.Compact(m.Capabilities)
+		m.ServedFrom = servedFrom(family, m.HeldIn)
 		// A model the machine holds and no host serves is still on this
 		// machine; a caller asking what exists here is owed it.
 		if m.Servable || len(m.HeldIn) > 0 {
@@ -101,35 +237,148 @@ func modelsFrom(families []routerwire.Family) []Model {
 	return out.Models
 }
 
+// Complete runs one bounded text inference attempt. The MCP tool middleware
+// owns waiting for pending first-use questions and the one permitted retry.
 func (o *OA) Complete(ctx context.Context, in CompleteInput) (CompleteOutput, error) {
+	return o.completeOnce(ctx, in)
+}
+
+func (o *OA) completeOnce(ctx context.Context, in CompleteInput) (CompleteOutput, error) {
+	if in.IncludeReasoning || completesOnChat3(in) {
+		return o.completeChat3(ctx, in)
+	}
+	if in.RequestKey != "" {
+		return CompleteOutput{}, errors.New("gateway: request_key requires include_reasoning")
+	}
+	resume := in.OperationID != ""
+	if resume {
+		if len(in.OperationID) > 256 || in.Cursor == nil || *in.Cursor < 0 || in.Model != "" || in.Prompt != "" || in.Hosting != "" || in.Credential != "" || in.MaxOutput != 0 || in.Conversation != "" {
+			return CompleteOutput{}, errors.New("gateway: resume requires only operation_id and nonnegative cursor")
+		}
+		if out, ok, err := o.resumeChat3(ctx, in.OperationID, *in.Cursor); ok {
+			return out, err
+		}
+		c, err := o.machine.ResolveInferenceChatV2(ctx, facade.Requirements{Scope: facade.ScopeAny})
+		if err != nil {
+			return CompleteOutput{}, err
+		}
+		return waitCompletion(ctx, c, in.OperationID, *in.Cursor)
+	}
+	if in.Cursor != nil {
+		return CompleteOutput{}, errors.New("gateway: cursor requires operation_id")
+	}
 	if in.Model == "" || in.Prompt == "" || len(in.Model) > 256 || len(in.Prompt) > 65536 || in.MaxOutput < 0 || in.MaxOutput > 4096 {
 		return CompleteOutput{}, errors.New("gateway: invalid bounded inference request")
 	}
 	if (in.Hosting != "local" && in.Hosting != "hosted") || in.Hosting == "hosted" && !credentialName(in.Credential) || in.Hosting == "local" && in.Credential != "" {
 		return CompleteOutput{}, errors.New("gateway: inference requires explicit local or named-credential hosted routing")
 	}
+	if in.Conversation != "" && (!validConversation(in.Conversation) || in.Hosting != "local") {
+		return CompleteOutput{}, errors.New("gateway: conversation is a local call's label of at most 128 bytes without control characters")
+	}
 	if in.MaxOutput == 0 {
 		in.MaxOutput = defaultMaxOutput
+	}
+	if in.Conversation != "" {
+		if out, ok, err := o.completeLabelled(ctx, in); ok {
+			return out, err
+		}
 	}
 	scope := facade.ScopeLocal
 	if in.Hosting == "hosted" {
 		scope = facade.ScopeRemote
 	}
-	c, err := o.machine.ResolveInference(ctx, facade.Requirements{Scope: scope})
+	c, err := o.machine.ResolveInferenceChatV2(ctx, facade.Requirements{Scope: scope})
 	if err != nil {
 		return CompleteOutput{}, err
 	}
-	request := inferenceclient.Request{Model: in.Model, Messages: []inferenceclient.Message{{Role: inferenceclient.RoleUser, Parts: []inferenceclient.Part{{Kind: inferenceclient.PartKindText, Text: in.Prompt}}}}}
+	request := inferenceclient.RequestV2{Target: inferenceclient.Target{Model: in.Model},
+		Content: inferenceclient.RequestContent{Messages: []inferenceclient.Message{{Role: inferenceclient.RoleUser, Parts: []inferenceclient.Part{{Kind: inferenceclient.PartKindText, Text: in.Prompt}}}}}}
 	if in.Hosting == "hosted" {
-		request.Guarantees, request.Credential = []inferenceclient.RequestGuarantee{inferenceclient.RequestGuaranteeHostedAllowed}, in.Credential
+		request.Content.Guarantees, request.Content.Credential = []inferenceclient.RequestGuarantee{inferenceclient.RequestGuaranteeHostedAllowed}, in.Credential
 	} else {
-		request.Guarantees = []inferenceclient.RequestGuarantee{inferenceclient.RequestGuaranteeLocalOnly}
+		request.Content.Guarantees = []inferenceclient.RequestGuarantee{inferenceclient.RequestGuaranteeLocalOnly}
 	}
 	if in.MaxOutput > 0 {
-		request.Options = &inferenceclient.Options{MaxOutput: in.MaxOutput}
+		request.Content.Options = &inferenceclient.Options{MaxOutput: in.MaxOutput}
 	}
-	reply, err := foldCompletion(c.Stream(ctx, request))
+	follow, admission, err := startCompletionAwaitingHost(ctx, in.Hosting == "local", func() (inferenceclient.AdmissionV2, error) {
+		return c.Start(ctx, request)
+	}, func(a inferenceclient.AdmissionV2) bool {
+		return a.Outcome == inferenceclient.StartOutcomeUnavailable && activatingCompletionHost(a.Reason)
+	})
 	if err != nil {
+		return CompleteOutput{}, err
+	}
+	if admission.Outcome != inferenceclient.StartOutcomeAccepted {
+		return CompleteOutput{State: "ended", Outcome: admission.Outcome.String(), Reason: admission.Reason, StopReason: inferenceclient.StopReasonNoStop.String(),
+			Message: o.plainRefusal(ctx, admission.Reason, in.Model, "chat")}, nil
+	}
+	return waitCompletion(follow, c, admission.Operation, 0)
+}
+
+// waitCompletion observes an existing operation under the native caller binding.
+// Ending this wait preserves accepted work; explicit Cancel remains separate.
+func waitCompletion(ctx context.Context, c *inferenceclient.ChatV2, operation string, cursor int64) (CompleteOutput, error) {
+	until, bounded := followUntil(ctx)
+	started := time.Now()
+	pending, ended, received, observationFailed := false, false, false, false
+	stream := func(yield func(inferenceclient.Delta, error) bool) {
+		for {
+			line, done, total := progressLine("Working", 0, 0, "", time.Since(started))
+			reportProgress(ctx, line, done, total)
+			wait, more := observeWait(until, bounded, inferenceclient.PageWait)
+			if !more {
+				pending = true
+				yield(inferenceclient.Delta{Kind: inferenceclient.DeltaKindEnd, End: &inferenceclient.Reply{Outcome: inferenceclient.ReplyOutcomeCompleted}}, nil)
+				return
+			}
+			page, err := c.Observe(ctx, operation, cursor, inferenceclient.PageDeltas, inferenceclient.PageBytes, wait.Milliseconds())
+			if err != nil {
+				observationFailed = true
+				if ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+					pending = true
+					// A local folding sentinel retains bounded text already read.
+					// It is never emitted as a native operation delta.
+					yield(inferenceclient.Delta{Kind: inferenceclient.DeltaKindEnd, End: &inferenceclient.Reply{Outcome: inferenceclient.ReplyOutcomeCompleted}}, nil)
+				} else {
+					yield(inferenceclient.Delta{}, err)
+				}
+				return
+			}
+			if page.Outcome != inferenceclient.PageOutcomePage {
+				observationFailed = true
+				if page.Outcome == inferenceclient.PageOutcomeGap {
+					yield(inferenceclient.Delta{}, inferenceclient.ErrGap)
+				} else {
+					yield(inferenceclient.Delta{}, &inferenceclient.PageRefusal{Outcome: page.Outcome})
+				}
+				return
+			}
+			received = received || len(page.Deltas) > 0
+			for _, delta := range page.Deltas {
+				if delta.Kind == inferenceclient.DeltaKindEnd {
+					ended = true
+				}
+				if !yield(delta, nil) {
+					return
+				}
+			}
+			cursor = page.Next
+			if page.AtEnd {
+				ended = true
+				return
+			}
+		}
+	}
+	reply, err := foldCompletion(stream)
+	if err != nil {
+		if received && !observationFailed && !ended && ctx.Err() == nil {
+			cancelCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+			//unchecked: preserve the bounded local folding failure after best-effort cleanup
+			c.Cancel(cancelCtx, operation)
+			cancel()
+		}
 		return CompleteOutput{}, err
 	}
 	var text strings.Builder
@@ -142,7 +391,12 @@ func (o *OA) Complete(ctx context.Context, in CompleteInput) (CompleteOutput, er
 			text.WriteString(part.Text)
 		}
 	}
-	return CompleteOutput{Outcome: reply.Outcome.String(), Reason: reply.Reason, Text: text.String(), Host: reply.Host, Model: reply.Model, StopReason: reply.StopReason.String()}, nil
+	out := CompleteOutput{OperationID: operation, Cursor: cursor, State: "ended", Outcome: reply.Outcome.String(), Reason: reply.Reason, Text: text.String(), Host: reply.Host, Model: reply.Model, StopReason: reply.StopReason.String()}
+	if pending {
+		line, _, _ := progressLine("Working", 0, 0, "", time.Since(started))
+		out.State, out.Outcome, out.Message, out.StopReason = "working", "pending", line+".", ""
+	}
+	return out, nil
 }
 
 type partFields struct {
@@ -212,24 +466,17 @@ func foldCompletion(stream iter.Seq2[inferenceclient.Delta, error]) (inferencecl
 	return reply, nil
 }
 
-func credentialName(value string) bool {
-	if value == "" || len(value) > 64 {
-		return false
-	}
-	for _, r := range value {
-		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-' || r == '.' {
-			continue
-		}
-		return false
-	}
-	return true
-}
+// credentialName is the credentials provider's one name rule.
+func credentialName(value string) bool { return credentials.ValidName(value) }
 
 type handleRecord struct {
 	Version  int                    `json:"version"`
 	Schema   string                 `json:"schema"`
 	Binding  facade.JobsBinding     `json:"binding"`
 	Identity facade.RequestIdentity `json:"identity"`
+	// LocalVideo marks a local video job, whose clip the gateway saves when
+	// it ends (video_watch.go).
+	LocalVideo bool `json:"local_video,omitempty"`
 }
 
 type requestRecord struct {
@@ -274,7 +521,7 @@ func (o *OA) requestPath(key string) string {
 }
 
 func jobDigest(in JobSubmitInput) (string, error) {
-	in.RequestKey = ""
+	in.RequestKey, in.WaitMS = "", 0
 	b, err := json.Marshal(in)
 	if err != nil {
 		return "", err
@@ -331,11 +578,21 @@ func readBounded(path string, limit int64) ([]byte, error) {
 	return b, nil
 }
 
+// Submit submits or reconciles durable inference under its stable request key.
+// The MCP tool middleware owns the one explicit permission retry.
 func (o *OA) Submit(ctx context.Context, in JobSubmitInput) (JobSubmitOutput, error) {
-	if in.RequestKey == "" || len(in.RequestKey) > 128 || !utf8.ValidString(in.RequestKey) || in.Model == "" || in.Prompt == "" || len(in.Model) > 256 || len(in.Prompt) > 65536 || (in.Profile != "image_batch" && in.Profile != "video") {
+	return o.submitOnce(ctx, in)
+}
+
+func (o *OA) submitOnce(ctx context.Context, in JobSubmitInput) (JobSubmitOutput, error) {
+	_, knownProfile := jobwire.ParseProfile(in.Profile)
+	if in.RequestKey == "" || len(in.RequestKey) > 128 || !utf8.ValidString(in.RequestKey) || in.Model == "" || in.Prompt == "" || len(in.Model) > 256 || len(in.Prompt) > 65536 || !knownProfile {
 		return JobSubmitOutput{}, errors.New("gateway: invalid durable inference request")
 	}
 	if err := jobRouting(in); err != nil {
+		return JobSubmitOutput{}, err
+	}
+	if err := jobSize(in); err != nil {
 		return JobSubmitOutput{}, err
 	}
 	if in.Count == 0 {
@@ -353,9 +610,12 @@ func (o *OA) Submit(ctx context.Context, in JobSubmitInput) (JobSubmitOutput, er
 		if existing.Digest != digest {
 			return JobSubmitOutput{}, errors.New("gateway: request key already binds a different immutable specification")
 		}
-		return o.reconcileOrSubmit(ctx, existing.Handle, in)
+		return o.resubmit(ctx, existing.Handle, in)
 	} else if !os.IsNotExist(err) {
 		return JobSubmitOutput{}, err
+	}
+	if retry, _ := ctx.Value(permissionRetryKey{}).(bool); retry {
+		return JobSubmitOutput{}, errors.New("gateway: permission retry lost its original request mapping")
 	}
 	return o.firstSubmit(ctx, requestPath, digest, in)
 }
@@ -379,7 +639,8 @@ func (o *OA) firstSubmit(ctx context.Context, requestPath, digest string, in Job
 		return JobSubmitOutput{}, err
 	}
 	id := facade.RequestIdentity{Key: "mcp-" + base64.RawURLEncoding.EncodeToString(keyBytes), HistoryEpoch: history.HistoryEpoch}
-	rec := handleRecord{Version: handleRecordVersion, Schema: jobSchema, Binding: jobs.Binding(), Identity: id}
+	rec := handleRecord{Version: handleRecordVersion, Schema: jobSchema, Binding: jobs.Binding(), Identity: id,
+		LocalVideo: in.Profile == profileWord(jobwire.ProfileVideo) && in.Hosting == "local"}
 	if err := o.save(ctx, handle, rec); err != nil {
 		return JobSubmitOutput{}, fmt.Errorf("gateway: persist recovery handle before submit: %w", err)
 	}
@@ -395,40 +656,31 @@ func (o *OA) firstSubmit(ctx context.Context, requestPath, digest string, in Job
 		if existing.Digest != digest {
 			return JobSubmitOutput{}, errors.New("gateway: request key already binds a different immutable specification")
 		}
-		return o.reconcileOrSubmit(ctx, existing.Handle, in)
+		return o.resubmit(ctx, existing.Handle, in)
 	}
 	return o.submitWith(ctx, jobs, handle, id, in)
 }
 
-func (o *OA) reconcileOrSubmit(ctx context.Context, handle string, in JobSubmitInput) (JobSubmitOutput, error) {
-	rec, err := o.load(handle)
+// resubmit presents a repeated request key's identical arguments again under
+// its recorded handle and identity. A duplicate Submit returns the accepted
+// job's receipt (JOB-A2), and a key the executor refused at admission is
+// decided again, so it is admitted once the person answers its question
+// (JOB-A16). Reconcile is never used here: it seals an identity with no
+// journal against every later acceptance (JOB-A4), and an admission refusal
+// leaves no journal.
+func (o *OA) resubmit(ctx context.Context, handle string, in JobSubmitInput) (JobSubmitOutput, error) {
+	jobs, rec, err := o.restored(ctx, JobHandleInput{Handle: handle})
 	if err != nil {
 		return JobSubmitOutput{}, err
 	}
-	jobs, err := o.machine.RestoreJobs(ctx, rec.Binding)
-	if err != nil {
-		return JobSubmitOutput{}, err
-	}
-	result, err := jobs.Reconcile(ctx, rec.Identity)
-	if err != nil {
-		return JobSubmitOutput{}, err
-	}
-	if result.Outcome == facade.AcceptanceOutcomeDefinitelyNotAccepted {
-		return o.submitWith(ctx, jobs, handle, rec.Identity, in)
-	}
-	out := JobSubmitOutput{Handle: handle, Outcome: result.Outcome.String(), Reason: result.Reason}
-	if result.Receipt != nil {
-		out.OperationID = result.Receipt.OperationID
-		out.Guarantees = slices.Clone(result.Receipt.AcceptedGuarantees)
-	}
-	return out, nil
+	return o.submitWith(ctx, jobs, handle, rec.Identity, in)
 }
 
 // Each refusal of a job's routing is terminal and says what to send instead,
 // so a model does not guess credential names.
 var (
-	errLocalJobCredential  = errors.New("gateway: refused for good: local work needs no credential; send hosting local with no credential, or use OpenCode's openabstractions_generate_image for one image")
-	errHostedJobCredential = errors.New("gateway: refused for good: hosted work needs the name of a credential the person registered in OA; for this computer's servers send hosting local with no credential, or use OpenCode's openabstractions_generate_image for one image")
+	errLocalJobCredential  = errors.New("gateway: refused for good: local work needs no credential; send hosting local with no credential")
+	errHostedJobCredential = errors.New("gateway: refused for good: hosted work needs the name of a credential the person registered in OA; for this computer's servers send hosting local with no credential")
 	errJobHosting          = errors.New("gateway: refused for good: hosting must be local (this computer, no credential) or hosted (with a registered credential name)")
 )
 
@@ -451,6 +703,23 @@ func jobRouting(in JobSubmitInput) error {
 	return nil
 }
 
+// jobSizePattern is the size a job may name: auto or WIDTHxHEIGHT.
+const jobSizePattern = `^(auto|[1-9][0-9]{0,4}x[1-9][0-9]{0,4})$`
+
+var jobSizeShape = regexp.MustCompile(jobSizePattern)
+
+// errJobSize is the refusal of a size of another shape, naming the values.
+var errJobSize = errors.New("gateway: refused for good: size must be auto or WIDTHxHEIGHT such as 512x512; leave it out for auto")
+
+// jobSize refuses at submit a size that is neither absent, auto nor
+// WIDTHxHEIGHT. Which WIDTHxHEIGHT the engine makes is its own answer.
+func jobSize(in JobSubmitInput) error {
+	if in.Size != "" && !jobSizeShape.MatchString(in.Size) {
+		return errJobSize
+	}
+	return nil
+}
+
 // jobRequest is the inference job document's request for in: local work is
 // local-only with no credential, hosted work hosted-allowed with its
 // credential.
@@ -460,7 +729,17 @@ func jobRequest(in JobSubmitInput) jobwire.Request {
 	if in.Hosting == "local" {
 		guarantee, credential = jobwire.RequestGuaranteeLocalOnly, ""
 	}
-	return jobwire.Request{Profile: profile, DurationMs: in.DurationMS, Image: jobwire.ImageRequest{Model: in.Model, Mode: jobwire.ModeGenerate, Prompt: in.Prompt, Size: in.Size, Count: in.Count, Guarantees: []jobwire.RequestGuarantee{guarantee}, Credential: credential}}
+	size := in.Size
+	if size == "" {
+		size = "auto" // A picture's or video's size is auto unless the caller names one.
+	}
+	mode := jobwire.ModeGenerate
+	if in.InputImage != "" {
+		mode = jobwire.ModeEdit
+	}
+	return jobwire.Request{Profile: profile, DurationMs: in.DurationMS, Image: jobwire.ImageRequest{Model: in.Model, Mode: mode, Prompt: in.Prompt, Size: size, Count: in.Count,
+		ImageDigest: in.InputImage, ImageMediaType: in.InputMediaType, MaskDigest: in.Mask, MaskMediaType: in.MaskMediaType,
+		Guarantees: []jobwire.RequestGuarantee{guarantee}, Credential: credential}}
 }
 
 // jobSpec is the inference job document the gateway submits for in.
@@ -481,7 +760,75 @@ func (o *OA) submitWith(ctx context.Context, jobs *facade.JobsClient, handle str
 		out.OperationID = accepted.Receipt.OperationID
 		out.Guarantees = slices.Clone(accepted.Receipt.AcceptedGuarantees)
 	}
+	if out.Message == "" {
+		out.Message = o.plainRefusal(ctx, out.Reason, in.Model, in.Profile)
+	}
+	if out.Outcome != "accepted" {
+		o.keepRefusal(handle, jobRefusal{Outcome: out.Outcome, Reason: out.Reason, Message: out.Message})
+	} else {
+		o.keepRefusal(handle, jobRefusal{})
+		if in.Profile == profileWord(jobwire.ProfileVideo) && in.Hosting == "local" {
+			o.watchVideo(handle)
+		}
+	}
 	return out, nil
+}
+
+// jobRefusal is a submit the runtime refused at once, kept beside its handle:
+// such a job has no journal for diagnose to read (JOB-A16).
+type jobRefusal struct {
+	Outcome string `json:"outcome"`
+	Reason  string `json:"reason,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+func (o *OA) refusalPath(handle string) (string, error) {
+	path, err := o.recordPath(handle)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSuffix(path, ".json") + ".refused.json", nil
+}
+
+// keepRefusal records the latest refusal of handle's submit, or clears it
+// once a submit is accepted. It is display data: a failed write is dropped.
+func (o *OA) keepRefusal(handle string, refusal jobRefusal) {
+	path, err := o.refusalPath(handle)
+	if err != nil {
+		return
+	}
+	if refusal.Outcome == "" {
+		_ = os.Remove(path)
+		return
+	}
+	//unchecked: jobRefusal is plain string fields, which json.Marshal cannot fail on
+	data, _ := json.Marshal(refusal)
+	_ = os.WriteFile(path, data, 0o600)
+}
+
+func (o *OA) refusalOf(handle string) (jobRefusal, bool) {
+	path, err := o.refusalPath(handle)
+	if err != nil {
+		return jobRefusal{}, false
+	}
+	data, err := readBounded(path, maxRequestRecordBytes*4)
+	if err != nil {
+		return jobRefusal{}, false
+	}
+	var refusal jobRefusal
+	if json.Unmarshal(data, &refusal) != nil || refusal.Outcome == "" {
+		return jobRefusal{}, false
+	}
+	return refusal, true
+}
+
+// jobReasonSentence is the sentence a model passes to the person for a
+// provider refusal word found in a job's reason or failure text, or "".
+func jobReasonSentence(text string) string {
+	if strings.Contains(text, "gpu:standby") {
+		return "The computer is going to sleep; try again when it's awake."
+	}
+	return startFailedSentence(text)
 }
 
 func (o *OA) restored(ctx context.Context, in JobHandleInput) (*facade.JobsClient, handleRecord, error) {
@@ -494,9 +841,10 @@ func (o *OA) restored(ctx context.Context, in JobHandleInput) (*facade.JobsClien
 }
 
 type observedJob struct {
-	jobs     *facade.JobsClient
-	identity facade.RequestIdentity
-	result   facade.ObservationResult
+	jobs       *facade.JobsClient
+	identity   facade.RequestIdentity
+	result     facade.ObservationResult
+	localVideo bool
 }
 
 func (o *OA) observeJob(ctx context.Context, in JobHandleInput) (observedJob, error) {
@@ -508,46 +856,78 @@ func (o *OA) observeJob(ctx context.Context, in JobHandleInput) (observedJob, er
 	if err != nil {
 		return observedJob{}, err
 	}
-	return observedJob{jobs: jobs, identity: rec.Identity, result: observed}, nil
+	return observedJob{jobs: jobs, identity: rec.Identity, result: observed, localVideo: rec.LocalVideo}, nil
 }
 
+// Status reads a job's state and result by its handle. A finished video is
+// saved in the person's Videos folder once; every later read answers the
+// same path.
 func (o *OA) Status(ctx context.Context, in JobHandleInput) (JobStatusOutput, error) {
-	job, err := o.observeJob(ctx, in)
+	read := o.readStatus
+	if o.statusAt != nil {
+		read = o.statusAt
+	}
+	out, result, err := read(ctx, in)
 	if err != nil {
 		return JobStatusOutput{}, err
+	}
+	if result != nil && result.Profile == jobwire.ProfileVideo {
+		reportProgress(ctx, "saving", 0, 0)
+		out.Path, out.Message = o.saveVideo(ctx, in.Handle, result)
+	}
+	return out, nil
+}
+
+// readStatus observes the job and reads a complete job's result document.
+func (o *OA) readStatus(ctx context.Context, in JobHandleInput) (JobStatusOutput, *jobwire.JobResult, error) {
+	job, err := o.observeJob(ctx, in)
+	if err != nil {
+		return JobStatusOutput{}, nil, err
 	}
 	observed := job.result
 	out := JobStatusOutput{Outcome: observed.Outcome.String()}
 	if observed.Snapshot == nil {
-		return out, nil
+		return out, nil, nil
 	}
 	s := observed.Snapshot
 	out.State, out.Waiting = s.State.String(), s.Waiting
 	out.Progress = map[string]int64{"done": s.Progress.Done, "total": s.Progress.Total}
+	restarted := false
 	if s.Failure != nil {
-		out.Failure = s.Failure.Message
-	}
-	if s.State == facade.WorkStateComplete {
-		read, err := job.jobs.ReadResult(ctx, job.identity, 0, maxResultBytes)
-		if err != nil {
-			return JobStatusOutput{}, err
-		}
-		out.ResultOutcome = read.Outcome.String()
-		if read.Outcome != facade.ResultOutcomeData {
-			return out, nil
-		}
-		if read.Chunk != nil && !read.Chunk.EOF {
-			return JobStatusOutput{}, errors.New("gateway: durable result exceeds 65536-byte MCP bound")
-		}
-		if read.Chunk != nil {
-			doc, err := jobwire.Decode(read.Chunk.Data)
-			if err != nil || doc.Result == nil {
-				return JobStatusOutput{}, errors.New("gateway: invalid durable inference result")
+		// A retryable provider:lost on unfinished work is the runtime
+		// sending the work again after a restart (inference INF-G7).
+		restarted = s.State != facade.WorkStateFailed && s.Failure.Classification == facade.FailureClassRetryable && s.Failure.Message == "provider:lost"
+		if !restarted {
+			out.Failure = s.Failure.Message
+			if sentence := jobReasonSentence(s.Failure.Message); sentence != "" {
+				out.Failure = sentence
 			}
-			out.Result = doc.Result
 		}
 	}
-	return out, nil
+	out.Phase = jobPhase(out.State, out.Waiting, s.Progress.Done, s.Progress.Total, job.localVideo)
+	if restarted || out.Waiting == restartingWord {
+		out.Message = restartedSentence
+	}
+	if s.State != facade.WorkStateComplete {
+		return out, nil, nil
+	}
+	read, err := job.jobs.ReadResult(ctx, job.identity, 0, maxResultBytes)
+	if err != nil {
+		return JobStatusOutput{}, nil, err
+	}
+	out.ResultOutcome = read.Outcome.String()
+	if read.Outcome != facade.ResultOutcomeData || read.Chunk == nil {
+		return out, nil, nil
+	}
+	if !read.Chunk.EOF {
+		return JobStatusOutput{}, nil, errors.New("gateway: durable result exceeds 65536-byte MCP bound")
+	}
+	doc, err := jobwire.Decode(read.Chunk.Data)
+	if err != nil || doc.Result == nil {
+		return JobStatusOutput{}, nil, errors.New("gateway: invalid durable inference result")
+	}
+	out.Result = doc.Result
+	return out, doc.Result, nil
 }
 
 func (o *OA) Diagnose(ctx context.Context, in JobHandleInput) (JobDiagnosisOutput, error) {
@@ -555,7 +935,18 @@ func (o *OA) Diagnose(ctx context.Context, in JobHandleInput) (JobDiagnosisOutpu
 	if err != nil {
 		return JobDiagnosisOutput{}, err
 	}
-	return diagnosisFromObservation(job.result), nil
+	out := diagnosisFromObservation(job.result)
+	// A submit refused at once left no operation: its refusal says why.
+	if job.result.Snapshot == nil {
+		if refusal, ok := o.refusalOf(in.Handle); ok {
+			out.Outcome, out.Reason = refusal.Outcome, refusal.Reason
+			out.Guidance = refusal.Message
+			if out.Guidance == "" {
+				out.Guidance = fmt.Sprintf("OpenAbstractions refused this job when it was submitted: %s.", refusal.Reason)
+			}
+		}
+	}
+	return out, nil
 }
 
 func diagnosisFromObservation(observed facade.ObservationResult) JobDiagnosisOutput {
@@ -591,29 +982,29 @@ func diagnosisFromObservation(observed facade.ObservationResult) JobDiagnosisOut
 }
 
 func safeFailureCause(cause string) string {
-	switch cause {
-	case "digest_mismatch", "oversize", "short_transfer", "unauthorized", "not_found", "refused", "server_error", "transport", "result_lost", "credential":
-		return cause
-	default:
-		return "other"
+	for _, member := range facade.FailureCauseValues() {
+		if cause == string(member) {
+			return cause
+		}
 	}
+	return "other"
 }
 
 func diagnosisGuidance(class, cause string) string {
-	if class == "retryable" {
+	if class == facade.FailureClassRetryable.String() {
 		return "The provider classifies this failure as retryable. Check provider availability and decide whether to retry; diagnosis never retries automatically."
 	}
-	if class == "permanent" {
+	if class == facade.FailureClassPermanent.String() {
 		switch cause {
-		case "credential":
+		case string(facade.FailureCauseCredential):
 			return "The provider reports a credential problem. Review the authorized credential setup in OA; no credential value is shown."
-		case "unauthorized", "refused":
+		case string(facade.FailureCauseUnauthorized), string(facade.FailureCauseRefused):
 			return "The provider refused the operation. Review its authorization or policy settings before submitting again."
-		case "transport":
+		case string(facade.FailureCauseTransport):
 			return "The provider reports a transport failure. Check that the selected provider is reachable and available."
-		case "server_error":
+		case string(facade.FailureCauseServerError):
 			return "The provider reports a server-side failure. Check the provider's own status before submitting again."
-		case "result_lost":
+		case string(facade.FailureCauseResultLost):
 			return "The operation result is unavailable. Check provider status; submitting again could duplicate work."
 		default:
 			return "The provider reports a permanent failure. Check provider status for details before submitting again."

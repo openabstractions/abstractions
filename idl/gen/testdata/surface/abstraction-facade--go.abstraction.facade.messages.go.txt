@@ -1,0 +1,583 @@
+type Raw string
+type Kind uint32
+const KindNote
+const KindQuestion
+const KindReply
+func (Kind) String() string
+func (Kind) WireName() (string, bool)
+func ParseKind(word string) (Kind, bool)
+func (Kind) MarshalText() ([]byte, error)
+func (Kind) UnmarshalText(text []byte) error
+func (Kind) MarshalJSON() ([]byte, error)
+func (Kind) UnmarshalJSON(data []byte) error
+func KindValues() []Kind
+func (Kind) IsKnown() bool
+func (Kind) Known() bool
+type TaskState uint32
+const TaskStateSubmitted
+const TaskStateCompleted
+const TaskStateCanceled
+const TaskStateFailed
+const TaskStateAuthRequired
+const TaskStateRejected
+func (TaskState) String() string
+func (TaskState) WireName() (string, bool)
+func ParseTaskState(word string) (TaskState, bool)
+func (TaskState) MarshalText() ([]byte, error)
+func (TaskState) UnmarshalText(text []byte) error
+func (TaskState) MarshalJSON() ([]byte, error)
+func (TaskState) UnmarshalJSON(data []byte) error
+func TaskStateValues() []TaskState
+func (TaskState) IsKnown() bool
+func (TaskState) Known() bool
+type Delivery uint32
+const DeliveryQueued
+const DeliveryDelivered
+const DeliveryUndelivered
+func (Delivery) String() string
+func (Delivery) WireName() (string, bool)
+func ParseDelivery(word string) (Delivery, bool)
+func (Delivery) MarshalText() ([]byte, error)
+func (Delivery) UnmarshalText(text []byte) error
+func (Delivery) MarshalJSON() ([]byte, error)
+func (Delivery) UnmarshalJSON(data []byte) error
+func DeliveryValues() []Delivery
+func (Delivery) IsKnown() bool
+func (Delivery) Known() bool
+type UndeliveredReason string
+const UndeliveredReasonExpired
+const UndeliveredReasonRefused
+const UndeliveredReasonContextClosed
+const UndeliveredReasonReceiverRemoved
+const UndeliveredReasonPeerRemoved
+const UndeliveredReasonLost
+const UndeliveredReasonUnconfirmed
+func UndeliveredReasonValues() []UndeliveredReason
+func (UndeliveredReason) IsKnown() bool
+func (UndeliveredReason) Known() bool
+type DeliveryObservationOutcome uint32
+const DeliveryObservationOutcomeObserved
+const DeliveryObservationOutcomeUnknown
+const DeliveryObservationOutcomeInvalid
+const DeliveryObservationOutcomeForbidden
+const DeliveryObservationOutcomeUnavailable
+func (DeliveryObservationOutcome) String() string
+func (DeliveryObservationOutcome) WireName() (string, bool)
+func ParseDeliveryObservationOutcome(word string) (DeliveryObservationOutcome, bool)
+func (DeliveryObservationOutcome) MarshalText() ([]byte, error)
+func (DeliveryObservationOutcome) UnmarshalText(text []byte) error
+func (DeliveryObservationOutcome) MarshalJSON() ([]byte, error)
+func (DeliveryObservationOutcome) UnmarshalJSON(data []byte) error
+func DeliveryObservationOutcomeValues() []DeliveryObservationOutcome
+func (DeliveryObservationOutcome) IsKnown() bool
+func (DeliveryObservationOutcome) Known() bool
+type Outcome uint32
+const OutcomeSent
+const OutcomeOpened
+const OutcomeHeld
+const OutcomePage
+const OutcomeGap
+const OutcomeConflict
+const OutcomeForbidden
+const OutcomeInvalid
+const OutcomeExhausted
+const OutcomeUnavailable
+const OutcomeUnknown
+const OutcomeEnded
+func (Outcome) String() string
+func (Outcome) WireName() (string, bool)
+func ParseOutcome(word string) (Outcome, bool)
+func (Outcome) MarshalText() ([]byte, error)
+func (Outcome) UnmarshalText(text []byte) error
+func (Outcome) MarshalJSON() ([]byte, error)
+func (Outcome) UnmarshalJSON(data []byte) error
+func OutcomeValues() []Outcome
+func (Outcome) IsKnown() bool
+func (Outcome) Known() bool
+type View uint32
+const ViewBody
+const ViewHeaders
+func (View) String() string
+func (View) WireName() (string, bool)
+func ParseView(word string) (View, bool)
+func (View) MarshalText() ([]byte, error)
+func (View) UnmarshalText(text []byte) error
+func (View) MarshalJSON() ([]byte, error)
+func (View) UnmarshalJSON(data []byte) error
+func ViewValues() []View
+func (View) IsKnown() bool
+func (View) Known() bool
+type InboxReach uint32
+const InboxReachOpen
+const InboxReachQueued
+const InboxReachStartsOnQuestion
+func (InboxReach) String() string
+func (InboxReach) WireName() (string, bool)
+func ParseInboxReach(word string) (InboxReach, bool)
+func (InboxReach) MarshalText() ([]byte, error)
+func (InboxReach) UnmarshalText(text []byte) error
+func (InboxReach) MarshalJSON() ([]byte, error)
+func (InboxReach) UnmarshalJSON(data []byte) error
+func InboxReachValues() []InboxReach
+func (InboxReach) IsKnown() bool
+func (InboxReach) Known() bool
+type ChatOrigin string
+const ChatOriginDesktop
+const ChatOriginCli
+func ChatOriginValues() []ChatOrigin
+func (ChatOrigin) IsKnown() bool
+func (ChatOrigin) Known() bool
+type ChatMode string
+const ChatModePlan
+const ChatModeReadOnly
+const ChatModeDefault
+const ChatModeAcceptEdits
+func ChatModeValues() []ChatMode
+func (ChatMode) IsKnown() bool
+func (ChatMode) Known() bool
+type ServiceErrorCode string
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) IsKnown() bool
+func (ServiceErrorCode) Known() bool
+type EndpointServiceReadiness uint32
+const EndpointServiceReadinessReady
+const EndpointServiceReadinessNotReady
+const EndpointServiceReadinessUnknown
+func (EndpointServiceReadiness) String() string
+func (EndpointServiceReadiness) WireName() (string, bool)
+func ParseEndpointServiceReadiness(word string) (EndpointServiceReadiness, bool)
+func (EndpointServiceReadiness) MarshalText() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalText(text []byte) error
+func (EndpointServiceReadiness) MarshalJSON() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalJSON(data []byte) error
+func EndpointServiceReadinessValues() []EndpointServiceReadiness
+func (EndpointServiceReadiness) IsKnown() bool
+func (EndpointServiceReadiness) Known() bool
+type EndpointRefusalSource string
+const EndpointRefusalSourceRights
+const EndpointRefusalSourceCredentials
+const EndpointRefusalSourceLicense
+const EndpointRefusalSourceTerms
+const EndpointRefusalSourceIdentity
+const EndpointRefusalSourceOS
+func EndpointRefusalSourceValues() []EndpointRefusalSource
+func (EndpointRefusalSource) IsKnown() bool
+func (EndpointRefusalSource) Known() bool
+type EndpointRefusalDecision uint32
+const EndpointRefusalDecisionDenied
+const EndpointRefusalDecisionNotGranted
+const EndpointRefusalDecisionPersonOnly
+func (EndpointRefusalDecision) String() string
+func (EndpointRefusalDecision) WireName() (string, bool)
+func ParseEndpointRefusalDecision(word string) (EndpointRefusalDecision, bool)
+func (EndpointRefusalDecision) MarshalText() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalText(text []byte) error
+func (EndpointRefusalDecision) MarshalJSON() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalJSON(data []byte) error
+func EndpointRefusalDecisionValues() []EndpointRefusalDecision
+func (EndpointRefusalDecision) IsKnown() bool
+func (EndpointRefusalDecision) Known() bool
+type EndpointRefusalAsk uint32
+const EndpointRefusalAskAvailable
+const EndpointRefusalAskNone
+func (EndpointRefusalAsk) String() string
+func (EndpointRefusalAsk) WireName() (string, bool)
+func ParseEndpointRefusalAsk(word string) (EndpointRefusalAsk, bool)
+func (EndpointRefusalAsk) MarshalText() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalText(text []byte) error
+func (EndpointRefusalAsk) MarshalJSON() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalJSON(data []byte) error
+func EndpointRefusalAskValues() []EndpointRefusalAsk
+func (EndpointRefusalAsk) IsKnown() bool
+func (EndpointRefusalAsk) Known() bool
+type EndpointProducerCheckState uint32
+const EndpointProducerCheckStateCurrent
+const EndpointProducerCheckStateRepaired
+const EndpointProducerCheckStateStale
+const EndpointProducerCheckStateRefused
+const EndpointProducerCheckStateUnverified
+func (EndpointProducerCheckState) String() string
+func (EndpointProducerCheckState) WireName() (string, bool)
+func ParseEndpointProducerCheckState(word string) (EndpointProducerCheckState, bool)
+func (EndpointProducerCheckState) MarshalText() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalText(text []byte) error
+func (EndpointProducerCheckState) MarshalJSON() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalJSON(data []byte) error
+func EndpointProducerCheckStateValues() []EndpointProducerCheckState
+func (EndpointProducerCheckState) IsKnown() bool
+func (EndpointProducerCheckState) Known() bool
+type EndpointDescriptionOutcome uint32
+const EndpointDescriptionOutcomeDescribed
+const EndpointDescriptionOutcomeForbidden
+const EndpointDescriptionOutcomeUnavailable
+const EndpointDescriptionOutcomeInvalid
+const EndpointDescriptionOutcomeUnsupported
+func (EndpointDescriptionOutcome) String() string
+func (EndpointDescriptionOutcome) WireName() (string, bool)
+func ParseEndpointDescriptionOutcome(word string) (EndpointDescriptionOutcome, bool)
+func (EndpointDescriptionOutcome) MarshalText() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalText(text []byte) error
+func (EndpointDescriptionOutcome) MarshalJSON() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalJSON(data []byte) error
+func EndpointDescriptionOutcomeValues() []EndpointDescriptionOutcome
+func (EndpointDescriptionOutcome) IsKnown() bool
+func (EndpointDescriptionOutcome) Known() bool
+type ObserveDeliveryResult struct
+  Outcome DeliveryObservationOutcome
+  Delivery *Delivery
+  Undelivered *UndeliveredReason
+type OriginClaim struct
+  Namespace string
+  Application string
+  ProgramLabel string
+  ReturnContext string
+type RemoteOrigin struct
+  PeerKey string
+  Claim OriginClaim
+type MessageRef struct
+  OwnerPeerKey string
+  MessageID string
+type InboxQuery struct
+  Cursor string
+  PeerKey string
+  PairingEpoch string
+  Receiver string
+type SendRequest struct
+  To string
+  Context string
+  Kind Kind
+  Subject string
+  Body string
+  IdempotencyKey string
+  ExpiresUnixMs int64
+  ReplyTo string
+  Withdraw string
+  AnswerByUnixMs int64
+  PeerKey string
+  Origin *OriginClaim
+  ReplyReference *MessageRef
+  WithdrawReference *MessageRef
+  PairingEpoch string
+  NotifyDelivered *bool
+type ChatSendRequest struct
+  Request SendRequest
+  ReturnContext string
+type SendResult struct
+  Outcome Outcome
+  MessageID string
+  ContextID string
+  ReceiverWatching bool
+  AwaitingPermission bool
+  RetryAfterMs int64
+  Reference *MessageRef
+  Reason string
+  Refused bool
+  Refusal *oaImported0
+  Context string
+  ChatTitle string
+type PrepareRequest struct
+  Receiver string
+  Body string
+  Context string
+  Kind *Kind
+  Subject string
+  TTLMs int64
+  AnswerWithinMs int64
+  ContextTitle string
+type PrepareResult struct
+  Outcome Outcome
+  SendRequest *SendRequest
+  Reason string
+  Choices []Inbox
+  ChatTitle string
+type StopResult struct
+  Outcome Outcome
+  Reason string
+type TurnWakeResult struct
+  Outcome Outcome
+  Reason string
+type ChatLaunch struct
+  Session string
+  Origin ChatOrigin
+  Cwd string
+  Mode ChatMode
+type ChatBinding struct
+  ChatID string
+  ChatTitle string
+  SourceInstance string
+  Launch *ChatLaunch
+type InboxChange struct
+  Outcome Outcome
+  Revision string
+  Holder string
+  OpenedUnixMs int64
+type ChatInboxChange struct
+  Outcome Outcome
+  Context string
+  Revision string
+  Holder string
+  OpenedUnixMs int64
+type Inbox struct
+  Program string
+  Context string
+  Status string
+  Revision string
+  Watching bool
+  LastSeenUnixMs int64
+  Reach *InboxReach
+  ChatTitle string
+  Mine *bool
+type AgentApplication struct
+  Program string
+  Title string
+type ProgramChats struct
+  Program string
+  Chats int32
+type InboxPage struct
+  Outcome Outcome
+  Cursor string
+  Inboxes []Inbox
+  Reason string
+  NeedsPermission []AgentApplication
+  OtherChats []ProgramChats
+type Header struct
+  MessageID string
+  From string
+  FromContext string
+  To string
+  Context string
+  Kind Kind
+  Subject string
+  ContextID string
+  ExpiresUnixMs int64
+  ReplyTo string
+  AnswerByUnixMs int64
+  TaskState *TaskState
+  Refused bool
+  Reference *MessageRef
+  RemoteOrigin *RemoteOrigin
+  ReplyReference *MessageRef
+  Delivery *Delivery
+  Undelivered *UndeliveredReason
+  Count *int64
+type Message struct
+  Header Header
+  IdempotencyKey string
+  Body string
+type Page struct
+  Outcome Outcome
+  Cursor string
+  Revision string
+  Messages []Message
+  Headers []Header
+  PendingUntilUnixMs int64
+  ReplyUntilUnixMs int64
+  Wake string
+  Unread *int64
+  PendingQuestions *int64
+  OldestUnreadUnixMs *int64
+  NewestUnreadUnixMs *int64
+  AwaitedReplies *int64
+  OldestWake string
+type EndpointRefusalDetail struct
+  Source EndpointRefusalSource
+  Decision EndpointRefusalDecision
+  Ask EndpointRefusalAsk
+  Action string
+  Question string
+  Credential string
+  RetryAfterMs int64
+type EndpointProducerCheck struct
+  Kind string
+  Copy string
+  State EndpointProducerCheckState
+  Reason string
+  Checked string
+type EndpointServiceState struct
+  Service string
+  Readiness EndpointServiceReadiness
+  Reason string
+  Guarantees []string
+  Capabilities map[string]string
+  DefinitionHash string
+type EndpointDescription struct
+  Outcome EndpointDescriptionOutcome
+  Program string
+  Version string
+  Services []EndpointServiceState
+  Refusal *EndpointRefusalDetail
+  Reason string
+  Checks []EndpointProducerCheck
+type EndpointDescriptionResult struct
+  Value EndpointDescription
+func Encode(v *Page) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+const TimestampLayout
+func FormatTimestamp(at time.Time) string
+func Decode(in []byte) (*Page, error)
+func ToJSON(v any) (out []byte, err error)
+func FromJSON(data []byte, v any) error
+type FrameWriter interface
+  WriteFrame(frame []byte) error
+type DispatchError string
+func (DispatchError) Error() string
+type FrameExchanger interface
+  ExchangeFrame(frame []byte) ([]byte, error)
+type ServiceError struct
+  Code ServiceErrorCode
+  Message string
+func (ServiceError) Error() string
+const EndpointContract
+const EndpointV2Contract
+type DescribedService interface
+  DescribeService() (contract string, ready bool, why string)
+func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+func DescribeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...DescribedService) ([]byte, error)
+type ServedService interface
+  DescribedService
+  ServiceContract() string
+func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+func ServeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...ServedService) ([]byte, error)
+func ServeEndpointRemote(frame []byte, program, version string, admit func(contract, method, profile string) error, services ...ServedService) ([]byte, error)
+func RemoteMethodProfile(service interface{}, contract, method string) string
+type Messages interface
+  ObserveDelivery(reference MessageRef, pairingEpoch string) (ObserveDeliveryResult, error)
+  InboxesForPerson(cursor string) (InboxPage, error)
+  InboxOpenChat(instance, sourceContext, status string, binding ChatBinding) (ChatInboxChange, error)
+  SendChat(instance, sourceContext string, request ChatSendRequest) (SendResult, error)
+  Prepare(instance, sourceContext string, request PrepareRequest) (PrepareResult, error)
+  Reply(instance, sourceContext, messageID, body string) (SendResult, error)
+  InboxOpen(instance, context, status string) (InboxChange, error)
+  InboxesList(query InboxQuery) (InboxPage, error)
+  Send(instance, sourceContext string, request SendRequest) (SendResult, error)
+  Wait(instance, context string, view View, after, revision string, waitMs int64) (Page, error)
+  ReadForPerson(messageID string) (Page, error)
+  StopForPerson(messageID string) (StopResult, error)
+  TurnWake(instance, sourceContext, wake string) (TurnWakeResult, error)
+type MessagesTransport interface
+  FrameExchanger
+type MessagesClient struct
+func NewMessagesClient(t MessagesTransport) *MessagesClient
+type MessagesDispatcher struct
+  Handler Messages
+func (MessagesDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
+func (MessagesClient) ObserveDelivery(reference MessageRef, pairingEpoch string) (result ObserveDeliveryResult, err error)
+func (MessagesClient) InboxesForPerson(cursor string) (result InboxPage, err error)
+func (MessagesClient) InboxOpenChat(instance, sourceContext, status string, binding ChatBinding) (result ChatInboxChange, err error)
+func (MessagesClient) SendChat(instance, sourceContext string, request ChatSendRequest) (result SendResult, err error)
+func (MessagesClient) Prepare(instance, sourceContext string, request PrepareRequest) (result PrepareResult, err error)
+func (MessagesClient) Reply(instance, sourceContext, messageID, body string) (result SendResult, err error)
+func (MessagesClient) InboxOpen(instance, context, status string) (result InboxChange, err error)
+func (MessagesClient) InboxesList(query InboxQuery) (result InboxPage, err error)
+func (MessagesClient) Send(instance, sourceContext string, request SendRequest) (result SendResult, err error)
+func (MessagesClient) Wait(instance, context string, view View, after, revision string, waitMs int64) (result Page, err error)
+func (MessagesClient) ReadForPerson(messageID string) (result Page, err error)
+func (MessagesClient) StopForPerson(messageID string) (result StopResult, err error)
+func (MessagesClient) TurnWake(instance, sourceContext, wake string) (result TurnWakeResult, err error)
+func (MessagesDispatcher) DescribeService() (contract string, ready bool, why string)
+func (MessagesDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (MessagesDispatcher) ServiceContract() string
+func (MessagesDispatcher) DescribeServiceDefinitionHash() string
+func (MessagesDispatcher) WriteFrame(frame []byte) error
+func (MessagesDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+func DecodeObserveDeliveryResultAt(in []byte, depth, limit int) (*ObserveDeliveryResult, int, error)
+func EncodeObserveDeliveryResultAt(v *ObserveDeliveryResult, depth int) []byte
+func EncodeObserveDeliveryResult(v *ObserveDeliveryResult) []byte
+func DecodeObserveDeliveryResult(in []byte) (*ObserveDeliveryResult, error)
+func DecodeOriginClaimAt(in []byte, depth, limit int) (*OriginClaim, int, error)
+func EncodeOriginClaimAt(v *OriginClaim, depth int) []byte
+func EncodeOriginClaim(v *OriginClaim) []byte
+func DecodeOriginClaim(in []byte) (*OriginClaim, error)
+func DecodeRemoteOriginAt(in []byte, depth, limit int) (*RemoteOrigin, int, error)
+func EncodeRemoteOriginAt(v *RemoteOrigin, depth int) []byte
+func EncodeRemoteOrigin(v *RemoteOrigin) []byte
+func DecodeRemoteOrigin(in []byte) (*RemoteOrigin, error)
+func DecodeMessageRefAt(in []byte, depth, limit int) (*MessageRef, int, error)
+func EncodeMessageRefAt(v *MessageRef, depth int) []byte
+func EncodeMessageRef(v *MessageRef) []byte
+func DecodeMessageRef(in []byte) (*MessageRef, error)
+func DecodeInboxQueryAt(in []byte, depth, limit int) (*InboxQuery, int, error)
+func EncodeInboxQueryAt(v *InboxQuery, depth int) []byte
+func EncodeInboxQuery(v *InboxQuery) []byte
+func DecodeInboxQuery(in []byte) (*InboxQuery, error)
+func DecodeSendRequestAt(in []byte, depth, limit int) (*SendRequest, int, error)
+func EncodeSendRequestAt(v *SendRequest, depth int) []byte
+func EncodeSendRequest(v *SendRequest) []byte
+func DecodeSendRequest(in []byte) (*SendRequest, error)
+func DecodeChatSendRequestAt(in []byte, depth, limit int) (*ChatSendRequest, int, error)
+func EncodeChatSendRequestAt(v *ChatSendRequest, depth int) []byte
+func EncodeChatSendRequest(v *ChatSendRequest) []byte
+func DecodeChatSendRequest(in []byte) (*ChatSendRequest, error)
+func DecodeSendResultAt(in []byte, depth, limit int) (*SendResult, int, error)
+func EncodeSendResultAt(v *SendResult, depth int) []byte
+func EncodeSendResult(v *SendResult) []byte
+func DecodeSendResult(in []byte) (*SendResult, error)
+func DecodePrepareRequestAt(in []byte, depth, limit int) (*PrepareRequest, int, error)
+func EncodePrepareRequestAt(v *PrepareRequest, depth int) []byte
+func EncodePrepareRequest(v *PrepareRequest) []byte
+func DecodePrepareRequest(in []byte) (*PrepareRequest, error)
+func DecodePrepareResultAt(in []byte, depth, limit int) (*PrepareResult, int, error)
+func EncodePrepareResultAt(v *PrepareResult, depth int) []byte
+func EncodePrepareResult(v *PrepareResult) []byte
+func DecodePrepareResult(in []byte) (*PrepareResult, error)
+func DecodeStopResultAt(in []byte, depth, limit int) (*StopResult, int, error)
+func EncodeStopResultAt(v *StopResult, depth int) []byte
+func EncodeStopResult(v *StopResult) []byte
+func DecodeStopResult(in []byte) (*StopResult, error)
+func DecodeTurnWakeResultAt(in []byte, depth, limit int) (*TurnWakeResult, int, error)
+func EncodeTurnWakeResultAt(v *TurnWakeResult, depth int) []byte
+func EncodeTurnWakeResult(v *TurnWakeResult) []byte
+func DecodeTurnWakeResult(in []byte) (*TurnWakeResult, error)
+func DecodeChatLaunchAt(in []byte, depth, limit int) (*ChatLaunch, int, error)
+func EncodeChatLaunchAt(v *ChatLaunch, depth int) []byte
+func EncodeChatLaunch(v *ChatLaunch) []byte
+func DecodeChatLaunch(in []byte) (*ChatLaunch, error)
+func DecodeChatBindingAt(in []byte, depth, limit int) (*ChatBinding, int, error)
+func EncodeChatBindingAt(v *ChatBinding, depth int) []byte
+func EncodeChatBinding(v *ChatBinding) []byte
+func DecodeChatBinding(in []byte) (*ChatBinding, error)
+func DecodeInboxChangeAt(in []byte, depth, limit int) (*InboxChange, int, error)
+func EncodeInboxChangeAt(v *InboxChange, depth int) []byte
+func EncodeInboxChange(v *InboxChange) []byte
+func DecodeInboxChange(in []byte) (*InboxChange, error)
+func DecodeChatInboxChangeAt(in []byte, depth, limit int) (*ChatInboxChange, int, error)
+func EncodeChatInboxChangeAt(v *ChatInboxChange, depth int) []byte
+func EncodeChatInboxChange(v *ChatInboxChange) []byte
+func DecodeChatInboxChange(in []byte) (*ChatInboxChange, error)
+func DecodeInboxAt(in []byte, depth, limit int) (*Inbox, int, error)
+func EncodeInboxAt(v *Inbox, depth int) []byte
+func EncodeInbox(v *Inbox) []byte
+func DecodeInbox(in []byte) (*Inbox, error)
+func DecodeAgentApplicationAt(in []byte, depth, limit int) (*AgentApplication, int, error)
+func EncodeAgentApplicationAt(v *AgentApplication, depth int) []byte
+func EncodeAgentApplication(v *AgentApplication) []byte
+func DecodeAgentApplication(in []byte) (*AgentApplication, error)
+func DecodeProgramChatsAt(in []byte, depth, limit int) (*ProgramChats, int, error)
+func EncodeProgramChatsAt(v *ProgramChats, depth int) []byte
+func EncodeProgramChats(v *ProgramChats) []byte
+func DecodeProgramChats(in []byte) (*ProgramChats, error)
+func DecodeInboxPageAt(in []byte, depth, limit int) (*InboxPage, int, error)
+func EncodeInboxPageAt(v *InboxPage, depth int) []byte
+func EncodeInboxPage(v *InboxPage) []byte
+func DecodeInboxPage(in []byte) (*InboxPage, error)
+func DecodeHeaderAt(in []byte, depth, limit int) (*Header, int, error)
+func EncodeHeaderAt(v *Header, depth int) []byte
+func EncodeHeader(v *Header) []byte
+func DecodeHeader(in []byte) (*Header, error)
+func DecodeMessageAt(in []byte, depth, limit int) (*Message, int, error)
+func EncodeMessageAt(v *Message, depth int) []byte
+func EncodeMessage(v *Message) []byte
+func DecodeMessage(in []byte) (*Message, error)
+func DecodePageAt(in []byte, depth, limit int) (*Page, int, error)
+func EncodePageAt(v *Page, depth int) []byte
+func EncodePage(v *Page) []byte
+func DecodePage(in []byte) (*Page, error)

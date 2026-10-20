@@ -26,9 +26,25 @@ func genJSTypes(def *Definition, private string) (string, error) {
 	if err := d.collect(); err != nil {
 		return "", err
 	}
+	if configCatalogueReady(s) {
+		d.values["CONFIG_CATALOGUE_JSON"] = "export declare const CONFIG_CATALOGUE_JSON: string;\n"
+		d.values["configKeyDescriptors"] = "export declare function configKeyDescriptors(): KeyDescriptor[];\n"
+		d.values["validateConfigValue"] = "export declare function validateConfigValue(value: Value): void;\n"
+		d.values["overlayConfigProcess"] = "export declare function overlayConfigProcess(entries: Entry[], changes: Change[]): Entry[];\n"
+	}
 	// The declarations spell these built-ins; a contract type of the same name
 	// would shadow them inside the module.
-	for _, n := range []string{"Array", "Error", "Promise", "Readonly", "Uint8Array"} {
+	reserved := []string{"Array", "Error", "Promise", "Readonly", "Uint8Array"}
+	if !s.NoIPC {
+		for _, svc := range s.Services {
+			for _, m := range svc.Methods {
+				if m.Observe != "" {
+					reserved = append(reserved, "AsyncIterableIterator")
+				}
+			}
+		}
+	}
+	for _, n := range reserved {
 		if _, ok := d.types[n]; ok {
 			return "", fmt.Errorf("javascript declarations: contract type %s shadows the TypeScript built-in the declarations use; rename it", n)
 		}
@@ -139,6 +155,18 @@ func (d *jsTypes) collect() error {
 		}
 	}
 	for _, c := range s.Consts {
+		if c.StringScalar() {
+			d.values[camelCase(c.Name)] = fmt.Sprintf("export declare const %s: string;\n", camelCase(c.Name))
+			continue
+		}
+		if c.Scalar() {
+			typ := "number"
+			if c.Type == "i64" {
+				typ = "bigint"
+			}
+			d.values[camelCase(c.Name)] = fmt.Sprintf("export declare const %s: %s;\n", camelCase(c.Name), typ)
+			continue
+		}
 		var items []string
 		if c.Type == "list<i32>" {
 			for _, n := range c.Ints {
@@ -187,6 +215,7 @@ func (d *jsTypes) collect() error {
 			d.values["decode"+stem] = fmt.Sprintf("export declare function decode%s(data: Uint8Array): %s;\n", stem, stem)
 		}
 	}
+	jsJSONAPITypes(s, d.types, d.values)
 	if v := s.Vocab; v != nil {
 		var terms, strip []string
 		for _, t := range v.Terms {
@@ -257,6 +286,9 @@ func (d *jsTypes) methods(svc Service) (string, error) {
 			result = t
 		}
 		fmt.Fprintf(&b, "%s  %s(%s): Promise<%s>;\n", jsDoc(m.Doc, "  "), camelCase(m.Name), strings.Join(params, ", "), result)
+		if m.Observe != "" && !d.s.NoIPC {
+			fmt.Fprintf(&b, "  %s(%s): AsyncIterableIterator<%s>;\n", camelCase(m.Name+"Pages"), strings.Join(params, ", "), result)
+		}
 	}
 	return b.String(), nil
 }
@@ -271,12 +303,16 @@ func (d *jsTypes) field(f Field) (string, error) {
 		// An open vocabulary keeps an unrecognized word as a plain string.
 		t += " | (string & {})"
 	}
-	absent := f.Omit == "absent" && (d.s.IsStruct(f.Type) || d.s.Enum(f.Type) != nil || f.Type == "binary")
+	absent := f.Omit == "absent" && (d.s.IsStruct(f.Type) || d.s.Enum(f.Type) != nil || f.Type == "binary" || scalarAbsent(f))
 	if _, imported := d.s.importedRecord(f.Type); imported && f.Omit == "absent" {
 		absent = true
 	}
 	if absent {
-		t += " | null"
+		if scalarAbsent(f) {
+			t += " | undefined"
+		} else {
+			t += " | null"
+		}
 	}
 	return t, nil
 }
@@ -314,6 +350,10 @@ func (d *jsTypes) typ(t string) (string, error) {
 		return inner + "[]", nil
 	}
 	if en := d.s.Enum(t); en != nil {
+		if alias, local, ok := strings.Cut(t, "."); ok {
+			d.aliases[alias] = true
+			return jsDependency(alias) + "." + pascalCase(local), nil
+		}
 		return pascalCase(en.Name), nil
 	}
 	if imp, ok := d.s.importedRecord(t); ok {

@@ -29,6 +29,52 @@ const (
 
 var procMsiGetProductInfoEx = windows.NewLazySystemDLL("msi.dll").NewProc("MsiGetProductInfoExW")
 
+const coreUpgradeCode = "{CEEF6550-5E44-4E83-8E18-A855C9D941CA}"
+
+// MSI owns the UpgradeCode relation. Only product codes returned by its native
+// resolver are passed through the existing registration/folder reader.
+func installedCoreProducts() ([]string, error) {
+	proc := windows.NewLazySystemDLL("msi.dll").NewProc("MsiEnumRelatedProductsW")
+	if err := proc.Find(); err != nil {
+		return nil, err
+	}
+	upgrade, err := windows.UTF16PtrFromString(coreUpgradeCode)
+	if err != nil {
+		return nil, err
+	}
+	var codes []string
+	for index := uint32(0); ; index++ {
+		var code [39]uint16
+		result, _, callErr := proc.Call(uintptr(unsafe.Pointer(upgrade)), 0, uintptr(index), uintptr(unsafe.Pointer(&code[0])))
+		if result == uintptr(windows.ERROR_NO_MORE_ITEMS) {
+			return codes, nil
+		}
+		if result != 0 {
+			return nil, msiError(result, callErr)
+		}
+		codes = append(codes, windows.UTF16ToString(code[:]))
+	}
+}
+
+func installedCoreFolders(info productInfoFunc, enumerate func() ([]string, error), canonical func() (string, error)) ([]string, []string, error) {
+	codes, err := enumerate()
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(codes) == 0 {
+		return nil, nil, nil
+	}
+	products, err := relatedProducts(strings.Join(codes, ";"), info)
+	if err != nil {
+		return nil, nil, err
+	}
+	folder, err := canonical()
+	if err != nil {
+		return nil, nil, err
+	}
+	return upgradeFolders(folder, products)
+}
+
 var productCodePattern = regexp.MustCompile(`^\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}$`)
 
 // productInfoFunc reads one product property for the current user's per-user
@@ -174,6 +220,17 @@ func userInstallFolder(folder string) (string, error) {
 	clean := filepath.Clean(folder)
 	if filepath.Dir(clean) == clean {
 		return "", fmt.Errorf("install folder %q is a volume root; refusing to cover every folder on it", folder)
+	}
+	path, err := windows.UTF16PtrFromString(clean)
+	if err != nil {
+		return "", err
+	}
+	attributes, err := windows.GetFileAttributes(path)
+	if err == nil && attributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+		return "", fmt.Errorf("install folder %q is a reparse point; choose a regular local folder in the installer, such as a new folder under Program Files", folder)
+	}
+	if err != nil && !errors.Is(err, windows.ERROR_FILE_NOT_FOUND) && !errors.Is(err, windows.ERROR_PATH_NOT_FOUND) {
+		return "", fmt.Errorf("inspect install folder %q: %w", folder, err)
 	}
 	return longPath(clean), nil
 }

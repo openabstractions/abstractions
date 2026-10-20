@@ -35,7 +35,6 @@ type rsItem struct {
 	name       string
 	method     bool
 	start, end int // line indexes, end exclusive
-	use        *regexp.Regexp
 }
 
 func rsItems(lines []string) []rsItem {
@@ -82,11 +81,7 @@ func rsItems(lines []string) []rsItem {
 				end++
 			}
 		}
-		pattern := `\b` + regexp.QuoteMeta(m[1]) + `\b`
-		if inReader {
-			pattern = `\.` + regexp.QuoteMeta(m[1]) + `\b`
-		}
-		items = append(items, rsItem{name: m[1], method: inReader, start: start, end: end, use: regexp.MustCompile(pattern)})
+		items = append(items, rsItem{name: m[1], method: inReader, start: start, end: end})
 		i = end - 1
 	}
 	return items
@@ -105,29 +100,52 @@ func rsPruneOnce(body string) string {
 			owner[j] = k
 		}
 	}
-	var outside strings.Builder
-	inside := make([]strings.Builder, len(items))
-	for j, l := range code {
-		if owner[j] < 0 {
-			outside.WriteString(l)
+	// Index uses once, rather than searching every kept item's text once per
+	// candidate helper. These are the same ASCII word boundaries as Go's \b;
+	// a Reader method additionally requires the immediately preceding dot.
+	free, methods := map[string][]int{}, map[string][]int{}
+	for k, it := range items {
+		if it.method {
+			methods[it.name] = append(methods[it.name], k)
 		} else {
-			inside[owner[j]].WriteString(l)
+			free[it.name] = append(free[it.name], k)
 		}
 	}
+	edges := make([][]int, len(items))
 	kept := make([]bool, len(items))
 	var queue []int
-	for k, it := range items {
-		if it.use.MatchString(outside.String()) {
-			kept[k] = true
-			queue = append(queue, k)
+	link := func(from int, matches []int) {
+		for _, to := range matches {
+			if from >= 0 {
+				edges[from] = append(edges[from], to)
+			} else if !kept[to] {
+				kept[to] = true
+				queue = append(queue, to)
+			}
+		}
+	}
+	for line, text := range code {
+		for pos := 0; pos < len(text); {
+			if !rsWordByte(text[pos]) {
+				pos++
+				continue
+			}
+			start := pos
+			for pos < len(text) && rsWordByte(text[pos]) {
+				pos++
+			}
+			word := text[start:pos]
+			link(owner[line], free[word])
+			if start > 0 && text[start-1] == '.' {
+				link(owner[line], methods[word])
+			}
 		}
 	}
 	for len(queue) > 0 {
 		k := queue[0]
 		queue = queue[1:]
-		text := inside[k].String()
-		for other, it := range items {
-			if !kept[other] && it.use.MatchString(text) {
+		for _, other := range edges[k] {
+			if !kept[other] {
 				kept[other] = true
 				queue = append(queue, other)
 			}
@@ -151,6 +169,10 @@ func rsPruneOnce(body string) string {
 		result = strings.ReplaceAll(result, "\n\n\n", "\n\n")
 	}
 	return result
+}
+
+func rsWordByte(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '_'
 }
 
 func rsPruneImports(body string) string {

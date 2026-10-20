@@ -10,6 +10,7 @@ func (Network) UnmarshalText(text []byte) error
 func (Network) MarshalJSON() ([]byte, error)
 func (Network) UnmarshalJSON(data []byte) error
 func NetworkValues() []Network
+func (Network) IsKnown() bool
 func (Network) Known() bool
 var DownstreamRecoveryGuarantees
 var CredentialGuarantees
@@ -35,6 +36,8 @@ type Refusal struct
   Offset int
 func (Refusal) Error() string
 func Decode(in []byte) (*Request, error)
+func ToJSON(v any) (out []byte, err error)
+func FromJSON(data []byte, v any) error
 func DecodeConstraintsAt(in []byte, depth, limit int) (*Constraints, int, error)
 func EncodeConstraintsAt(v *Constraints, depth int) []byte
 func EncodeConstraints(v *Constraints) []byte

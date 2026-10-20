@@ -28,7 +28,7 @@ func resourceParityPaths() []string {
 		"/setup/other-copies", "/setup/install", "/setup/install/grants", "/setup/state", "/setup/feature",
 		"/setup/model", "/settings", "/settings/observe?cursor=", "/questions", "/choices", "/rights",
 		"/rights/observe", "/rights/delegation", "/rights/assistant", "/rights/answered", "/activity/answers", "/activity/starts", "/credentials-page",
-		"/credentials", "/runtime", "/logging", "/identity", "/explore", "/application/register",
+		"/credentials", "/runtime", "/logging", "/identity", "/explore", "/apps/pending",
 		"/application/remove", "/inference", "/inference/hosts", "/registry", "/registry/view", "/card",
 		"/apps/registrations?source=applications&wait_ms=0", "/app/example", "/panel/nav.json", "/start",
 		"/no-such-page"}

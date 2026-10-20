@@ -39,6 +39,8 @@ operations need which capability, one line per capability.
 | `wire` | the same over HTTP against the fixture named by `ABSTRACTION_FIXTURE` |
 | `wanted` | answer a drop folder of requests |
 | `identity` | say who is on the other end of a connection, and how well |
+| `fileid` | say which file a path names, in whose view, and what a stored key now names |
+| `lease` | set an instrument's readings, acquire leases against them and read the resource table |
 | `logging` | encode and read the part of a log line that leaves the process, pick the sink a machine offers, and assess the identity chain a record carries |
 
 What a scenario needs is read from the operations in it, by that list, and
@@ -300,7 +302,7 @@ belong to one operation each.
     terminal
     unknown_schema
 
-Each word comes from a Verdict member in `openabstractions-flat/abstraction-job/job.thrift`.
+Each word comes from a [Verdict](https://openabstractions.github.io/reference.html#concept-job.wire-verdict) member in `openabstractions-flat/abstraction-job/job.thrift`.
 The four members without a refusal word of their own carry `transcript =
 "refused"`. A driver that can derive the roster from the definition should;
 one that spells it by hand is conformant when the roster agrees. Through one
@@ -415,6 +417,7 @@ body means empty.
 | `attr <alias> <key> <value>` | set a string attribute |
 | `group <alias> <group> <key> <value>` | pass one grouped attribute through the language's logging handler, which flattens it |
 | `msg <alias> <n> [wide]` | set the message to `n` characters, two-byte characters with `wide` |
+| `text <alias> <content>` | put the content in the message, the job and the attribute `text`, then encode and decode the record: `ok same=yes` when all three come back byte-identical, `ok same=no` otherwise |
 | `job <alias> <n>` | set the job field to `n` characters |
 | `read <alias> <key>` | `ok type=string value=<v>`, or `no-answer absent` |
 | `keys <alias>` | `ok` and the attribute keys sorted and comma-separated |
@@ -440,6 +443,77 @@ describe, and `LOG-S8` judges only that chain's default: Go answers them with
 `logging.LegacyDefault` and `logging.LegacyAuto`. A binding's resolved-service
 default (Go `logging.Default`) is a separate entry point with no operation here.
 LOG-S8 does not require it to write to stderr when no runtime answers.
+
+## `lease`
+
+The resource layer's table and leases, measured through an instrument the
+scenario sets. Capacity is what a `measure` line says and nothing else, so a
+24 GiB discrete card and a 128 GiB shared-memory pool are both reachable
+without the hardware. Every subject runs under one account the driver picks.
+Sizes are written `24GiB`, `512MiB` or a byte count, and printed the same way:
+a whole number of GiB as `NGiB`, else a whole number of MiB as `NMiB`, else
+bytes.
+
+The rules are on the resource contract page (`RES-` tags). The scenarios live in
+`abstraction-resource/testdata/scenarios` and are run with
+`run.sh --scenarios <that directory> -- <driver>`.
+
+| operation | what it does | answer |
+|---|---|---|
+| `measure RES [capacity=SIZE] [pool=RES2]` | the instrument reports RES with that capacity; `pool=` says RES is carved from RES2 | `ok` |
+| `sample RES PROGRAM SIZE` | the instrument sees PROGRAM hold SIZE of RES; `image:NAME` is a process the platform would not attribute | `ok` |
+| `engine RES PROGRAM SIZE` | a server claims RES and reports SIZE as its capacity | `ok` |
+| `permit PROGRAM` | the rights decision permits PROGRAM to hold | `ok` |
+| `outage` / `restore` | the rights decision point stops and starts answering | `ok` |
+| `acquire PROGRAM RES SIZE [wait=MS]` | `Acquire` | the outcome word, then `asked=` the holders asked as `program:answer` in order, comma-separated, or `none` |
+| `nowait PROGRAM RES SIZE` | `AcquireFree` | the outcome word |
+| `table RES` | a fresh `Holders` | `ok capacity=SIZE held=SIZE rows=` each row as `program/account/evidence/amount`, sorted, with `-` for an empty account |
+
+An answer's reason after `": "` is left out of `asked`: its wording is not a
+contract.
+
+## `fileid`
+
+The rules are identity's `ID-F` rules (the file-identity owner, `fileid`).
+The scenarios are `testdata/scenarios/fileid-*.txt` in the identity module,
+and `TestFileIDScenarios` there is a driver for them. Every `<name>` is a
+path below the workdir with `/` between its parts; the driver spells it for
+its platform. The workdir is on a local file system whose file IDs survive a
+reboot (NTFS, APFS, ext4), since `keep` refuses a volatile key. A body
+carries kinds, counts and relation words and never a path, a key or a link
+target, which are one machine's.
+
+### The verdict
+
+| word | meaning |
+|---|---|
+| `refused` | the owner refused; the body is one word: `other-view`, `not-local`, `link`, `unsafe`, `volatile` or `exists` |
+| `missing` | the path names no file |
+
+### The operations
+
+| operation | what it does |
+|---|---|
+| `file <name>` | create a regular file and the folders above it |
+| `folder <name>` | create a folder |
+| `link <name> <target>` | a folder link to the folder target: a junction on Windows, a symbolic link elsewhere |
+| `sharelink <name>` | a folder link whose target is a network share: on Windows a junction naming a share of 192.0.2.1 (TEST-NET-1), elsewhere a symbolic link to a folder the driver marks as a network volume. Making it contacts no host |
+| `hardlink <name> <target>` | a second name for the file target |
+| `replace <name>` | rename a new file over name |
+| `remove <name>` | delete the file |
+| `resolve <name> [peer=<kind>] [links=refuse] [relative=yes]` | `Resolve`: `ok kind=file links=<n>`, `ok kind=folder`, `refused <why>` or `missing`. A peer kind is `self` (the default), `same-account`, `other-account`, `other-platform`, `remote` or `none`. `relative=yes` spells name relative to the driver's working folder |
+| `relate <a> <b>` | `Relate` of a to b: `ok same`, `ok inside` or `ok outside`, then `multi` when a has more than one name |
+| `beneath <folder> <rel>` | `Beneath` from the held folder: as `resolve` |
+| `create <folder> <name>` | `CreateExclusive`: `ok`, `refused exists` or `refused unsafe` |
+| `safename <name>` | `SafeName`: `ok` or `refused unsafe`; name is the word as written |
+| `leaf <a> <b>` | `ResolveLeaf` of each: `ok same` or `ok different` by key |
+| `pending <a> <b>` | `Pending` of each: `ok same` or `ok different` by key |
+| `keep <slot> <name>` | resolve name and keep its `StoredFileID` in slot: `ok` or `refused volatile` |
+| `revalidate <slot>` | `Revalidate`: `ok same`, `ok replaced`, `ok gone` or `ok moved` |
+| `samefile <a> <b>` | identity's `SameFile` (ID-F9): `ok same`, `ok different`, `missing` or `refused not-local` |
+| `within <a> <b>` | identity's `Within` (ID-F9): `ok within` or `ok outside` |
+| `opens` | `ok <n>`: the opens the owner attempted since the previous `opens` |
+| `remotes` | `ok <n>`: the opens the owner attempted at or below a sharelink's target since the scenario began; the driver stops each before it reaches the system |
 
 ## Joining with a third layer
 

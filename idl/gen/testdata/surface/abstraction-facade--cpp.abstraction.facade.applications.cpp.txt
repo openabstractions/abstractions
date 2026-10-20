@@ -1,0 +1,495 @@
+using Raw = std::string
+class Refusal : public std::runtime_error
+  const char* word
+  std::size_t offset
+enum class Outcome {Applied, Page, Unknown, Stale, Conflict, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(Outcome value)
+inline std::optional<Outcome> parse_outcome(std::string_view name)
+inline constexpr bool operator==(Outcome value, std::string_view name)
+inline constexpr bool operator!=(Outcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Outcome value)
+inline constexpr bool operator!=(std::string_view name, Outcome value)
+inline const std::vector<std::string> kOutcomeNames
+enum class ActivationOutcome {Ready, Unknown, Disabled, Forbidden, Invalid, LaunchRefused, IdentityRefused, NotReady, Unavailable}
+inline constexpr std::string_view wire_name(ActivationOutcome value)
+inline std::optional<ActivationOutcome> parse_activation_outcome(std::string_view name)
+inline constexpr bool operator==(ActivationOutcome value, std::string_view name)
+inline constexpr bool operator!=(ActivationOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ActivationOutcome value)
+inline constexpr bool operator!=(std::string_view name, ActivationOutcome value)
+inline const std::vector<std::string> kActivationOutcomeNames
+enum class HostActivationOutcome {Applied, Refused, Unavailable}
+inline constexpr std::string_view wire_name(HostActivationOutcome value)
+inline std::optional<HostActivationOutcome> parse_host_activation_outcome(std::string_view name)
+inline constexpr bool operator==(HostActivationOutcome value, std::string_view name)
+inline constexpr bool operator!=(HostActivationOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, HostActivationOutcome value)
+inline constexpr bool operator!=(std::string_view name, HostActivationOutcome value)
+inline const std::vector<std::string> kHostActivationOutcomeNames
+enum class AgentEnrollmentState {None, Pending, Enrolled}
+inline constexpr std::string_view wire_name(AgentEnrollmentState value)
+inline std::optional<AgentEnrollmentState> parse_agent_enrollment_state(std::string_view name)
+inline constexpr bool operator==(AgentEnrollmentState value, std::string_view name)
+inline constexpr bool operator!=(AgentEnrollmentState value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, AgentEnrollmentState value)
+inline constexpr bool operator!=(std::string_view name, AgentEnrollmentState value)
+inline const std::vector<std::string> kAgentEnrollmentStateNames
+enum class AgentUpdatePhase {Staged, Committed, Ready}
+inline constexpr std::string_view wire_name(AgentUpdatePhase value)
+inline std::optional<AgentUpdatePhase> parse_agent_update_phase(std::string_view name)
+inline constexpr bool operator==(AgentUpdatePhase value, std::string_view name)
+inline constexpr bool operator!=(AgentUpdatePhase value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, AgentUpdatePhase value)
+inline constexpr bool operator!=(std::string_view name, AgentUpdatePhase value)
+inline const std::vector<std::string> kAgentUpdatePhaseNames
+enum class SetupOutcome {Asked, AlreadySetUp, CannotRun, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(SetupOutcome value)
+inline std::optional<SetupOutcome> parse_setup_outcome(std::string_view name)
+inline constexpr bool operator==(SetupOutcome value, std::string_view name)
+inline constexpr bool operator!=(SetupOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, SetupOutcome value)
+inline constexpr bool operator!=(std::string_view name, SetupOutcome value)
+inline const std::vector<std::string> kSetupOutcomeNames
+enum class SetupReceiptOutcome {Started, Completed}
+inline constexpr std::string_view wire_name(SetupReceiptOutcome value)
+inline std::optional<SetupReceiptOutcome> parse_setup_receipt_outcome(std::string_view name)
+inline constexpr bool operator==(SetupReceiptOutcome value, std::string_view name)
+inline constexpr bool operator!=(SetupReceiptOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, SetupReceiptOutcome value)
+inline constexpr bool operator!=(std::string_view name, SetupReceiptOutcome value)
+inline const std::vector<std::string> kSetupReceiptOutcomeNames
+inline const std::vector<std::string> kServiceErrorCodeNames
+inline constexpr std::string_view kServiceErrorCodeHandlerError
+inline constexpr std::string_view kServiceErrorCodeInvalidResult
+inline constexpr std::string_view kServiceErrorCodeUnknownVersion
+inline constexpr std::string_view kServiceErrorCodeUnknownService
+inline constexpr std::string_view kServiceErrorCodeUnknownMethod
+inline constexpr std::string_view kServiceErrorCodeWrongMode
+enum class EndpointServiceReadiness {Ready, NotReady, Unknown}
+inline constexpr std::string_view wire_name(EndpointServiceReadiness value)
+inline std::optional<EndpointServiceReadiness> parse_endpoint_service_readiness(std::string_view name)
+inline constexpr bool operator==(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator!=(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointServiceReadiness value)
+inline constexpr bool operator!=(std::string_view name, EndpointServiceReadiness value)
+inline const std::vector<std::string> kEndpointServiceReadinessNames
+inline const std::vector<std::string> kEndpointRefusalSourceNames
+inline constexpr std::string_view kEndpointRefusalSourceRights
+inline constexpr std::string_view kEndpointRefusalSourceCredentials
+inline constexpr std::string_view kEndpointRefusalSourceLicense
+inline constexpr std::string_view kEndpointRefusalSourceTerms
+inline constexpr std::string_view kEndpointRefusalSourceIdentity
+inline constexpr std::string_view kEndpointRefusalSourceOs
+enum class EndpointRefusalDecision {Denied, NotGranted, PersonOnly}
+inline constexpr std::string_view wire_name(EndpointRefusalDecision value)
+inline std::optional<EndpointRefusalDecision> parse_endpoint_refusal_decision(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalDecision value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalDecision value)
+inline const std::vector<std::string> kEndpointRefusalDecisionNames
+enum class EndpointRefusalAsk {Available, None}
+inline constexpr std::string_view wire_name(EndpointRefusalAsk value)
+inline std::optional<EndpointRefusalAsk> parse_endpoint_refusal_ask(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalAsk value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalAsk value)
+inline const std::vector<std::string> kEndpointRefusalAskNames
+enum class EndpointProducerCheckState {Current, Repaired, Stale, Refused, Unverified}
+inline constexpr std::string_view wire_name(EndpointProducerCheckState value)
+inline std::optional<EndpointProducerCheckState> parse_endpoint_producer_check_state(std::string_view name)
+inline constexpr bool operator==(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator!=(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointProducerCheckState value)
+inline constexpr bool operator!=(std::string_view name, EndpointProducerCheckState value)
+inline const std::vector<std::string> kEndpointProducerCheckStateNames
+enum class EndpointDescriptionOutcome {Described, Forbidden, Unavailable, Invalid, Unsupported}
+inline constexpr std::string_view wire_name(EndpointDescriptionOutcome value)
+inline std::optional<EndpointDescriptionOutcome> parse_endpoint_description_outcome(std::string_view name)
+inline constexpr bool operator==(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator!=(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointDescriptionOutcome value)
+inline constexpr bool operator!=(std::string_view name, EndpointDescriptionOutcome value)
+inline const std::vector<std::string> kEndpointDescriptionOutcomeNames
+struct NamedApplicationTarget
+  std::string name
+struct CapturedAgentApplication
+  std::string name
+  std::string program
+  std::string file_key
+  std::string enrollment_revision
+struct AgentMessageResource
+  CapturedAgentApplication sender
+  CapturedAgentApplication receiver
+struct HostActivationResult
+  HostActivationOutcome outcome
+  std::string reason
+struct RegisterRequest
+  std::string program
+  std::string expected_revision
+struct ConnectExpectation
+  std::string application
+  std::string program
+  std::string sha256
+struct ChangeRequest
+  std::string application
+  std::string expected_revision
+struct AgentEnrollmentRequest
+  std::string application
+  std::string expected_revision
+  bool enabled
+  std::optional<bool> bind_catalogue_host
+struct AgentEnrollment
+  std::string application
+  std::string program
+  std::string revision
+  AgentEnrollmentState state
+struct AgentEnrollmentResult
+  Outcome outcome
+  std::optional<AgentEnrollment> enrollment
+  std::string reason
+struct AgentUpdateMember
+  std::string application
+  std::string expected_revision
+  std::string staged_program
+struct AgentUpdateRequest
+  std::vector<AgentUpdateMember> members
+  std::string source_program
+  std::string undo_of
+  std::string review_of
+struct AgentUpdateImage
+  std::string application
+  std::string program
+  std::string file_key
+struct AgentUpdateResult
+  Outcome outcome
+  std::string intent
+  std::string question
+  std::vector<AgentEnrollment> enrollments
+  std::string reason
+  std::vector<AgentUpdateImage> staged_images
+  std::optional<AgentUpdatePhase> phase
+  std::optional<std::int64_t> ready_unix_ms
+struct SignInStart
+  bool wanted
+  bool runtime
+  bool presenter
+struct SignInStartResult
+  Outcome outcome
+  std::optional<SignInStart> state
+  std::string reason
+struct SetupResult
+  SetupOutcome outcome
+  std::string reason
+struct SetupRequest
+  std::string id
+  std::string use
+  std::string application
+struct SetupRequestRead
+  Outcome outcome
+  std::optional<SetupRequest> request
+  std::string reason
+struct SetupPresenterReceipt
+  SetupReceiptOutcome outcome
+  std::string occurrence
+  std::string request
+  std::map<std::string, std::string> facts
+  std::string key
+struct SetupStepReport
+  Outcome outcome
+  std::string reason
+  std::string question
+struct ActivateRequest
+  std::string application
+  std::string verb
+  Raw payload
+  std::string context
+  std::optional<bool> default_verb
+struct Query
+  std::string application
+  std::string cursor
+  std::int32_t limit
+  std::int32_t wait_ms
+struct Change
+  Outcome outcome
+  std::string revision
+  std::string reason
+struct Page
+  Outcome outcome
+  std::string cursor
+  std::vector<::abstraction::facade::registration::Registration> registrations
+  std::string reason
+struct ActivationResult
+  ActivationOutcome outcome
+  std::string instance
+  bool started
+  std::string reason
+  std::string title
+struct DescribeResult
+  Outcome outcome
+  std::optional<::abstraction::facade::appmodel::ApplicationListing> answer
+  std::string reason
+struct CommandsResult
+  Outcome outcome
+  std::optional<::abstraction::facade::appmodel::CommandListing> answer
+  std::string reason
+struct CallResult
+  Outcome outcome
+  std::optional<::abstraction::facade::appmodel::Envelope> answer
+  std::string reason
+struct ActivationConfiguration
+  ::abstraction::facade::ApplicationDescriptor expected
+  std::optional<::abstraction::facade::ApplicationActivationRecipe> activation
+struct EndpointRefusalDetail
+  std::string source
+  EndpointRefusalDecision decision
+  EndpointRefusalAsk ask
+  std::string action
+  std::string question
+  std::string credential
+  std::int64_t retry_after_ms
+struct EndpointProducerCheck
+  std::string kind
+  std::string copy
+  EndpointProducerCheckState state
+  std::string reason
+  std::string checked
+struct EndpointServiceState
+  std::string service
+  EndpointServiceReadiness readiness
+  std::string reason
+  std::vector<std::string> guarantees
+  std::map<std::string, std::string> capabilities
+  std::string definition_hash
+struct EndpointDescription
+  EndpointDescriptionOutcome outcome
+  std::string program
+  std::string version
+  std::vector<EndpointServiceState> services
+  std::optional<EndpointRefusalDetail> refusal
+  std::string reason
+  std::vector<EndpointProducerCheck> checks
+struct EndpointDescriptionResult
+  EndpointDescription value
+inline HostActivationResult decode(std::string_view data)
+T from_json(std::string_view data)
+inline std::string to_json(const NamedApplicationTarget& v)
+inline NamedApplicationTarget from_json<NamedApplicationTarget>(std::string_view data)
+inline std::string to_json(const CapturedAgentApplication& v)
+inline CapturedAgentApplication from_json<CapturedAgentApplication>(std::string_view data)
+inline std::string to_json(const AgentMessageResource& v)
+inline AgentMessageResource from_json<AgentMessageResource>(std::string_view data)
+inline std::string to_json(const HostActivationResult& v)
+inline HostActivationResult from_json<HostActivationResult>(std::string_view data)
+inline std::string to_json(const RegisterRequest& v)
+inline RegisterRequest from_json<RegisterRequest>(std::string_view data)
+inline std::string to_json(const ConnectExpectation& v)
+inline ConnectExpectation from_json<ConnectExpectation>(std::string_view data)
+inline std::string to_json(const ChangeRequest& v)
+inline ChangeRequest from_json<ChangeRequest>(std::string_view data)
+inline std::string to_json(const AgentEnrollmentRequest& v)
+inline AgentEnrollmentRequest from_json<AgentEnrollmentRequest>(std::string_view data)
+inline std::string to_json(const AgentEnrollment& v)
+inline AgentEnrollment from_json<AgentEnrollment>(std::string_view data)
+inline std::string to_json(const AgentEnrollmentResult& v)
+inline AgentEnrollmentResult from_json<AgentEnrollmentResult>(std::string_view data)
+inline std::string to_json(const AgentUpdateMember& v)
+inline AgentUpdateMember from_json<AgentUpdateMember>(std::string_view data)
+inline std::string to_json(const AgentUpdateRequest& v)
+inline AgentUpdateRequest from_json<AgentUpdateRequest>(std::string_view data)
+inline std::string to_json(const AgentUpdateImage& v)
+inline AgentUpdateImage from_json<AgentUpdateImage>(std::string_view data)
+inline std::string to_json(const AgentUpdateResult& v)
+inline AgentUpdateResult from_json<AgentUpdateResult>(std::string_view data)
+inline std::string to_json(const SignInStart& v)
+inline SignInStart from_json<SignInStart>(std::string_view data)
+inline std::string to_json(const SignInStartResult& v)
+inline SignInStartResult from_json<SignInStartResult>(std::string_view data)
+inline std::string to_json(const SetupResult& v)
+inline SetupResult from_json<SetupResult>(std::string_view data)
+inline std::string to_json(const SetupRequest& v)
+inline SetupRequest from_json<SetupRequest>(std::string_view data)
+inline std::string to_json(const SetupRequestRead& v)
+inline SetupRequestRead from_json<SetupRequestRead>(std::string_view data)
+inline std::string to_json(const SetupPresenterReceipt& v)
+inline SetupPresenterReceipt from_json<SetupPresenterReceipt>(std::string_view data)
+inline std::string to_json(const SetupStepReport& v)
+inline SetupStepReport from_json<SetupStepReport>(std::string_view data)
+inline std::string to_json(const ActivateRequest& v)
+inline ActivateRequest from_json<ActivateRequest>(std::string_view data)
+inline std::string to_json(const Query& v)
+inline Query from_json<Query>(std::string_view data)
+inline std::string to_json(const Change& v)
+inline Change from_json<Change>(std::string_view data)
+inline std::string to_json(const Page& v)
+inline Page from_json<Page>(std::string_view data)
+inline std::string to_json(const ActivationResult& v)
+inline ActivationResult from_json<ActivationResult>(std::string_view data)
+inline std::string to_json(const DescribeResult& v)
+inline DescribeResult from_json<DescribeResult>(std::string_view data)
+inline std::string to_json(const CommandsResult& v)
+inline CommandsResult from_json<CommandsResult>(std::string_view data)
+inline std::string to_json(const CallResult& v)
+inline CallResult from_json<CallResult>(std::string_view data)
+inline std::string to_json(const ActivationConfiguration& v)
+inline ActivationConfiguration from_json<ActivationConfiguration>(std::string_view data)
+inline std::string to_json(const EndpointRefusalDetail& v)
+inline EndpointRefusalDetail from_json<EndpointRefusalDetail>(std::string_view data)
+inline std::string to_json(const EndpointProducerCheck& v)
+inline EndpointProducerCheck from_json<EndpointProducerCheck>(std::string_view data)
+inline std::string to_json(const EndpointServiceState& v)
+inline EndpointServiceState from_json<EndpointServiceState>(std::string_view data)
+inline std::string to_json(const EndpointDescription& v)
+inline EndpointDescription from_json<EndpointDescription>(std::string_view data)
+inline std::string to_json(const EndpointDescriptionResult& v)
+inline EndpointDescriptionResult from_json<EndpointDescriptionResult>(std::string_view data)
+struct FrameWriter
+  virtual void write_frame(std::string_view frame)
+struct DispatchError : std::runtime_error
+inline std::string service_name(std::string_view frame)
+struct FrameExchanger
+  virtual std::string exchange_frame(std::string_view frame)
+struct ServiceError : std::runtime_error
+  std::string code, message
+inline constexpr std::string_view kEndpointContract
+inline constexpr std::string_view kEndpointV2Contract
+struct DescribedService
+  std::string contract
+  bool ready
+  std::string why
+std::string describe_endpoint_with_checks(std::string_view frame, const std::string& program, const std::string& version, const std::vector<EndpointProducerCheck>& checks, const Services& . . . services)
+std::string describe_endpoint(std::string_view frame, const std::string& program, const std::string& version, const Services& . . . services)
+struct Applications
+  virtual AgentUpdateResult find_agent_update(const AgentUpdateRequest& request)
+  virtual AgentUpdateResult prepare_agent_update(const AgentUpdateRequest& request)
+  virtual AgentUpdateResult commit_agent_update(const std::string& intent)
+  virtual::abstraction::facade::ApplicationChange set_activation(const ActivationConfiguration& request)
+  virtual::abstraction::facade::ApplicationChange reconcile_activation(const::abstraction::facade::ApplicationDescriptor& expected)
+  virtual::abstraction::facade::ApplicationChange confirm_receiver_start(const std::string& recipe_digest)
+  virtual AgentEnrollmentResult read_agent_enrollment(const std::string& application)
+  virtual AgentEnrollmentResult set_agent_enrollment(const AgentEnrollmentRequest& request)
+  virtual Change register_(const RegisterRequest& request)
+  virtual::abstraction::facade::ApplicationChange ask_confirmation(const std::string& application)
+  virtual Change remove(const ChangeRequest& request)
+  virtual::abstraction::facade::ApplicationChange announce(const std::string& key, const::abstraction::facade::ApplicationPresence& presence)
+  virtual::abstraction::facade::ApplicationChange withdraw(const std::string& application, const std::string& instance)
+  virtual Page observe(const Query& query)
+  virtual ActivationResult activate(const std::string& key, const ActivateRequest& request)
+  virtual DescribeResult describe(const::abstraction::facade::appmodel::ApplicationsQuery& query)
+  virtual CommandsResult commands(const::abstraction::facade::appmodel::CommandsQuery& query)
+  virtual CallResult call(const std::string& key, const::abstraction::facade::appmodel::GatewayCall& call)
+  virtual SignInStartResult read_sign_in_start()
+  virtual SetupResult request_setup(const std::string& use)
+  virtual SetupRequestRead receive_setup_request(const std::string& after)
+  virtual SetupStepReport report_setup_step(const SetupPresenterReceipt& receipt)
+template<class Transport>struct ApplicationsClient : Applications
+  Transport& transport_
+  AgentUpdateResult find_agent_update(const AgentUpdateRequest& request) override
+  AgentUpdateResult prepare_agent_update(const AgentUpdateRequest& request) override
+  AgentUpdateResult commit_agent_update(const std::string& intent) override
+  ::abstraction::facade::ApplicationChange set_activation(const ActivationConfiguration& request) override
+  ::abstraction::facade::ApplicationChange reconcile_activation(const::abstraction::facade::ApplicationDescriptor& expected) override
+  ::abstraction::facade::ApplicationChange confirm_receiver_start(const std::string& recipe_digest) override
+  AgentEnrollmentResult read_agent_enrollment(const std::string& application) override
+  AgentEnrollmentResult set_agent_enrollment(const AgentEnrollmentRequest& request) override
+  Change register_(const RegisterRequest& request) override
+  ::abstraction::facade::ApplicationChange ask_confirmation(const std::string& application) override
+  Change remove(const ChangeRequest& request) override
+  ::abstraction::facade::ApplicationChange announce(const std::string& key, const::abstraction::facade::ApplicationPresence& presence) override
+  ::abstraction::facade::ApplicationChange withdraw(const std::string& application, const std::string& instance) override
+  Page observe(const Query& query) override
+  ActivationResult activate(const std::string& key, const ActivateRequest& request) override
+  DescribeResult describe(const::abstraction::facade::appmodel::ApplicationsQuery& query) override
+  CommandsResult commands(const::abstraction::facade::appmodel::CommandsQuery& query) override
+  CallResult call(const std::string& key, const::abstraction::facade::appmodel::GatewayCall& call) override
+  SignInStartResult read_sign_in_start() override
+  SetupResult request_setup(const std::string& use) override
+  SetupRequestRead receive_setup_request(const std::string& after) override
+  SetupStepReport report_setup_step(const SetupPresenterReceipt& receipt) override
+struct ApplicationsService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ApplicationsDispatcher : FrameWriter, FrameExchanger
+  Applications& handler
+  DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct ApplicationsOperator
+  virtual::abstraction::facade::ApplicationChange expect_connect(const ConnectExpectation& expectation)
+template<class Transport>struct ApplicationsOperatorClient : ApplicationsOperator
+  Transport& transport_
+  ::abstraction::facade::ApplicationChange expect_connect(const ConnectExpectation& expectation) override
+struct ApplicationsOperatorService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ApplicationsOperatorDispatcher : FrameWriter, FrameExchanger
+  ApplicationsOperator& handler
+  DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+inline std::string encode_named_application_target(const NamedApplicationTarget& v)
+inline NamedApplicationTarget decode_named_application_target(std::string_view in)
+inline std::string encode_captured_agent_application(const CapturedAgentApplication& v)
+inline CapturedAgentApplication decode_captured_agent_application(std::string_view in)
+inline std::string encode_agent_message_resource(const AgentMessageResource& v)
+inline AgentMessageResource decode_agent_message_resource(std::string_view in)
+inline std::string encode_host_activation_result(const HostActivationResult& v)
+inline HostActivationResult decode_host_activation_result(std::string_view in)
+inline std::string encode_register_request(const RegisterRequest& v)
+inline RegisterRequest decode_register_request(std::string_view in)
+inline std::string encode_connect_expectation(const ConnectExpectation& v)
+inline ConnectExpectation decode_connect_expectation(std::string_view in)
+inline std::string encode_change_request(const ChangeRequest& v)
+inline ChangeRequest decode_change_request(std::string_view in)
+inline std::string encode_agent_enrollment_request(const AgentEnrollmentRequest& v)
+inline AgentEnrollmentRequest decode_agent_enrollment_request(std::string_view in)
+inline std::string encode_agent_enrollment(const AgentEnrollment& v)
+inline AgentEnrollment decode_agent_enrollment(std::string_view in)
+inline std::string encode_agent_enrollment_result(const AgentEnrollmentResult& v)
+inline AgentEnrollmentResult decode_agent_enrollment_result(std::string_view in)
+inline std::string encode_agent_update_member(const AgentUpdateMember& v)
+inline AgentUpdateMember decode_agent_update_member(std::string_view in)
+inline std::string encode_agent_update_request(const AgentUpdateRequest& v)
+inline AgentUpdateRequest decode_agent_update_request(std::string_view in)
+inline std::string encode_agent_update_image(const AgentUpdateImage& v)
+inline AgentUpdateImage decode_agent_update_image(std::string_view in)
+inline std::string encode_agent_update_result(const AgentUpdateResult& v)
+inline AgentUpdateResult decode_agent_update_result(std::string_view in)
+inline std::string encode_sign_in_start(const SignInStart& v)
+inline SignInStart decode_sign_in_start(std::string_view in)
+inline std::string encode_sign_in_start_result(const SignInStartResult& v)
+inline SignInStartResult decode_sign_in_start_result(std::string_view in)
+inline std::string encode_setup_result(const SetupResult& v)
+inline SetupResult decode_setup_result(std::string_view in)
+inline std::string encode_setup_request(const SetupRequest& v)
+inline SetupRequest decode_setup_request(std::string_view in)
+inline std::string encode_setup_request_read(const SetupRequestRead& v)
+inline SetupRequestRead decode_setup_request_read(std::string_view in)
+inline std::string encode_setup_presenter_receipt(const SetupPresenterReceipt& v)
+inline SetupPresenterReceipt decode_setup_presenter_receipt(std::string_view in)
+inline std::string encode_setup_step_report(const SetupStepReport& v)
+inline SetupStepReport decode_setup_step_report(std::string_view in)
+inline std::string encode_activate_request(const ActivateRequest& v)
+inline ActivateRequest decode_activate_request(std::string_view in)
+inline std::string encode_query(const Query& v)
+inline Query decode_query(std::string_view in)
+inline std::string encode_change(const Change& v)
+inline Change decode_change(std::string_view in)
+inline std::string encode_page(const Page& v)
+inline Page decode_page(std::string_view in)
+inline std::string encode_activation_result(const ActivationResult& v)
+inline ActivationResult decode_activation_result(std::string_view in)
+inline std::string encode_describe_result(const DescribeResult& v)
+inline DescribeResult decode_describe_result(std::string_view in)
+inline std::string encode_commands_result(const CommandsResult& v)
+inline CommandsResult decode_commands_result(std::string_view in)
+inline std::string encode_call_result(const CallResult& v)
+inline CallResult decode_call_result(std::string_view in)
+inline std::string encode_activation_configuration(const ActivationConfiguration& v)
+inline ActivationConfiguration decode_activation_configuration(std::string_view in)
+inline std::string encode(const HostActivationResult& v)

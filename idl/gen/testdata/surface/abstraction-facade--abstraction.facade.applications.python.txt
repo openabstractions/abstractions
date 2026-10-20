@@ -1,0 +1,300 @@
+dataclass ActivateRequest
+  application: str
+  verb: str
+  payload: bytes | str
+  context: str
+  default_verb: bool | None
+dataclass ActivationConfiguration
+  expected: _dependency_facade.ApplicationDescriptor
+  activation: _dependency_facade.ApplicationActivationRecipe | None
+enum ActivationOutcome
+  READY = 'ready'
+  UNKNOWN = 'unknown'
+  DISABLED = 'disabled'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  LAUNCH_REFUSED = 'launch_refused'
+  IDENTITY_REFUSED = 'identity_refused'
+  NOT_READY = 'not_ready'
+  UNAVAILABLE = 'unavailable'
+dataclass ActivationResult
+  outcome: ActivationOutcome | None
+  instance: str
+  started: bool
+  reason: str
+  title: str
+dataclass AgentEnrollment
+  application: str
+  program: str
+  revision: str
+  state: AgentEnrollmentState | None
+dataclass AgentEnrollmentRequest
+  application: str
+  expected_revision: str
+  enabled: bool
+  bind_catalogue_host: bool | None
+dataclass AgentEnrollmentResult
+  outcome: Outcome | None
+  enrollment: AgentEnrollment | None
+  reason: str
+enum AgentEnrollmentState
+  NONE = 'none'
+  PENDING = 'pending'
+  ENROLLED = 'enrolled'
+dataclass AgentMessageResource
+  sender: CapturedAgentApplication
+  receiver: CapturedAgentApplication
+dataclass AgentUpdateImage
+  application: str
+  program: str
+  file_key: str
+dataclass AgentUpdateMember
+  application: str
+  expected_revision: str
+  staged_program: str
+enum AgentUpdatePhase
+  STAGED = 'staged'
+  COMMITTED = 'committed'
+  READY = 'ready'
+dataclass AgentUpdateRequest
+  members: list[AgentUpdateMember]
+  source_program: str
+  undo_of: str
+  review_of: str
+dataclass AgentUpdateResult
+  outcome: Outcome | None
+  intent: str
+  question: str
+  enrollments: list[AgentEnrollment]
+  reason: str
+  staged_images: list[AgentUpdateImage]
+  phase: AgentUpdatePhase | None
+  ready_unix_ms: int | None
+class Applications
+  find_agent_update(request: AgentUpdateRequest) -> AgentUpdateResult
+  prepare_agent_update(request: AgentUpdateRequest) -> AgentUpdateResult
+  commit_agent_update(intent: str) -> AgentUpdateResult
+  set_activation(request: ActivationConfiguration) -> _dependency_facade.ApplicationChange
+  reconcile_activation(expected: _dependency_facade.ApplicationDescriptor) -> _dependency_facade.ApplicationChange
+  confirm_receiver_start(recipe_digest: str) -> _dependency_facade.ApplicationChange
+  read_agent_enrollment(application: str) -> AgentEnrollmentResult
+  set_agent_enrollment(request: AgentEnrollmentRequest) -> AgentEnrollmentResult
+  register(request: RegisterRequest) -> Change
+  ask_confirmation(application: str) -> _dependency_facade.ApplicationChange
+  remove(request: ChangeRequest) -> Change
+  announce(key: str, presence: _dependency_facade.ApplicationPresence) -> _dependency_facade.ApplicationChange
+  withdraw(application: str, instance: str) -> _dependency_facade.ApplicationChange
+  observe(query: Query) -> Page
+  activate(key: str, request: ActivateRequest) -> ActivationResult
+  describe(query: _dependency_appmodel.ApplicationsQuery) -> DescribeResult
+  commands(query: _dependency_appmodel.CommandsQuery) -> CommandsResult
+  call(key: str, call: _dependency_appmodel.GatewayCall) -> CallResult
+  read_sign_in_start() -> SignInStartResult
+  request_setup(use: str) -> SetupResult
+  receive_setup_request(after: str) -> SetupRequestRead
+  report_setup_step(receipt: SetupPresenterReceipt) -> SetupStepReport
+class ApplicationsClient(Applications)
+  __init__(transport)
+  find_agent_update(request: AgentUpdateRequest) -> AgentUpdateResult
+  prepare_agent_update(request: AgentUpdateRequest) -> AgentUpdateResult
+  commit_agent_update(intent: str) -> AgentUpdateResult
+  set_activation(request: ActivationConfiguration) -> _dependency_facade.ApplicationChange
+  reconcile_activation(expected: _dependency_facade.ApplicationDescriptor) -> _dependency_facade.ApplicationChange
+  confirm_receiver_start(recipe_digest: str) -> _dependency_facade.ApplicationChange
+  read_agent_enrollment(application: str) -> AgentEnrollmentResult
+  set_agent_enrollment(request: AgentEnrollmentRequest) -> AgentEnrollmentResult
+  register(request: RegisterRequest) -> Change
+  ask_confirmation(application: str) -> _dependency_facade.ApplicationChange
+  remove(request: ChangeRequest) -> Change
+  announce(key: str, presence: _dependency_facade.ApplicationPresence) -> _dependency_facade.ApplicationChange
+  withdraw(application: str, instance: str) -> _dependency_facade.ApplicationChange
+  observe(query: Query) -> Page
+  activate(key: str, request: ActivateRequest) -> ActivationResult
+  describe(query: _dependency_appmodel.ApplicationsQuery) -> DescribeResult
+  commands(query: _dependency_appmodel.CommandsQuery) -> CommandsResult
+  call(key: str, call: _dependency_appmodel.GatewayCall) -> CallResult
+  read_sign_in_start() -> SignInStartResult
+  request_setup(use: str) -> SetupResult
+  receive_setup_request(after: str) -> SetupRequestRead
+  report_setup_step(receipt: SetupPresenterReceipt) -> SetupStepReport
+class ApplicationsOperator
+  expect_connect(expectation: ConnectExpectation) -> _dependency_facade.ApplicationChange
+class ApplicationsOperatorClient(ApplicationsOperator)
+  __init__(transport)
+  expect_connect(expectation: ConnectExpectation) -> _dependency_facade.ApplicationChange
+dataclass CallResult
+  outcome: Outcome | None
+  answer: _dependency_appmodel.Envelope | None
+  reason: str
+dataclass CapturedAgentApplication
+  name: str
+  program: str
+  file_key: str
+  enrollment_revision: str
+dataclass Change
+  outcome: Outcome | None
+  revision: str
+  reason: str
+dataclass ChangeRequest
+  application: str
+  expected_revision: str
+dataclass CommandsResult
+  outcome: Outcome | None
+  answer: _dependency_appmodel.CommandListing | None
+  reason: str
+dataclass ConnectExpectation
+  application: str
+  program: str
+  sha256: str
+dataclass DescribeResult
+  outcome: Outcome | None
+  answer: _dependency_appmodel.ApplicationListing | None
+  reason: str
+class DispatchError(ValueError)
+  __init__(code)
+enum HostActivationOutcome
+  APPLIED = 'applied'
+  REFUSED = 'refused'
+  UNAVAILABLE = 'unavailable'
+dataclass HostActivationResult
+  outcome: HostActivationOutcome | None
+  reason: str
+dataclass NamedApplicationTarget
+  name: str
+enum Outcome
+  APPLIED = 'applied'
+  PAGE = 'page'
+  UNKNOWN = 'unknown'
+  STALE = 'stale'
+  CONFLICT = 'conflict'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass Page
+  outcome: Outcome | None
+  cursor: str
+  registrations: list[_dependency_registration.Registration]
+  reason: str
+dataclass Query
+  application: str
+  cursor: str
+  limit: int
+  wait_ms: int
+class Refusal(ValueError)
+  __init__(word, offset)
+dataclass RegisterRequest
+  program: str
+  expected_revision: str
+class ServiceError(Exception)
+  __init__(code, message)
+enum ServiceErrorCode
+  HANDLER_ERROR = 'handler_error'
+  INVALID_RESULT = 'invalid_result'
+  UNKNOWN_VERSION = 'unknown_version'
+  UNKNOWN_SERVICE = 'unknown_service'
+  UNKNOWN_METHOD = 'unknown_method'
+  WRONG_MODE = 'wrong_mode'
+enum SetupOutcome
+  ASKED = 'asked'
+  ALREADY_SET_UP = 'already_set_up'
+  CANNOT_RUN = 'cannot_run'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass SetupPresenterReceipt
+  outcome: SetupReceiptOutcome | None
+  occurrence: str
+  request: str
+  facts: dict[str, str]
+  key: str
+enum SetupReceiptOutcome
+  STARTED = 'started'
+  COMPLETED = 'completed'
+dataclass SetupRequest
+  id: str
+  use: str
+  application: str
+dataclass SetupRequestRead
+  outcome: Outcome | None
+  request: SetupRequest | None
+  reason: str
+dataclass SetupResult
+  outcome: SetupOutcome | None
+  reason: str
+dataclass SetupStepReport
+  outcome: Outcome | None
+  reason: str
+  question: str
+dataclass SignInStart
+  wanted: bool
+  runtime: bool
+  presenter: bool
+dataclass SignInStartResult
+  outcome: Outcome | None
+  state: SignInStart | None
+  reason: str
+def decode(data)
+def decode_activate_request(data)
+def decode_activation_configuration(data)
+def decode_activation_result(data)
+def decode_agent_enrollment(data)
+def decode_agent_enrollment_request(data)
+def decode_agent_enrollment_result(data)
+def decode_agent_message_resource(data)
+def decode_agent_update_image(data)
+def decode_agent_update_member(data)
+def decode_agent_update_request(data)
+def decode_agent_update_result(data)
+def decode_call_result(data)
+def decode_captured_agent_application(data)
+def decode_change(data)
+def decode_change_request(data)
+def decode_commands_result(data)
+def decode_connect_expectation(data)
+def decode_describe_result(data)
+def decode_host_activation_result(data)
+def decode_named_application_target(data)
+def decode_page(data)
+def decode_query(data)
+def decode_register_request(data)
+def decode_setup_presenter_receipt(data)
+def decode_setup_request(data)
+def decode_setup_request_read(data)
+def decode_setup_result(data)
+def decode_setup_step_report(data)
+def decode_sign_in_start(data)
+def decode_sign_in_start_result(data)
+def encode(v)
+def encode_activate_request(v)
+def encode_activation_configuration(v)
+def encode_activation_result(v)
+def encode_agent_enrollment(v)
+def encode_agent_enrollment_request(v)
+def encode_agent_enrollment_result(v)
+def encode_agent_message_resource(v)
+def encode_agent_update_image(v)
+def encode_agent_update_member(v)
+def encode_agent_update_request(v)
+def encode_agent_update_result(v)
+def encode_call_result(v)
+def encode_captured_agent_application(v)
+def encode_change(v)
+def encode_change_request(v)
+def encode_commands_result(v)
+def encode_connect_expectation(v)
+def encode_describe_result(v)
+def encode_host_activation_result(v)
+def encode_named_application_target(v)
+def encode_page(v)
+def encode_query(v)
+def encode_register_request(v)
+def encode_setup_presenter_receipt(v)
+def encode_setup_request(v)
+def encode_setup_request_read(v)
+def encode_setup_result(v)
+def encode_setup_step_report(v)
+def encode_sign_in_start(v)
+def encode_sign_in_start_result(v)
+def from_json(kind, data)
+def service_name(frame)
+def to_json(value)

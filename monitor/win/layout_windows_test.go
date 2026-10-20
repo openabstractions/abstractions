@@ -59,24 +59,6 @@ var minMaxInfoW = []cField{
 // HIGHCONTRASTW is two DWORDs followed by an LPWSTR, winuser.h.
 var highContrastW = []cField{{"cbSize", cInt, 0}, {"dwFlags", cInt, 0}, {"lpszDefaultScheme", cPtr, 0}}
 
-// notifyIconDataW is NOTIFYICONDATAW, shellapi.h. Each WCHAR array's own size
-// is its element count times cShort, but a WCHAR array aligns like one WCHAR,
-// not like its whole span, so it carries an explicit align. guidItem is
-// GUID's 16 bytes (DWORD, two WORDs, eight BYTEs), which align like its
-// widest member, a DWORD. DUMMYUNIONNAME (uTimeout/uVersion) is one UINT.
-var notifyIconDataW = []cField{
-	{"cbSize", cInt, 0}, {"hWnd", cPtr, 0}, {"uID", cInt, 0}, {"uFlags", cInt, 0},
-	{"uCallbackMessage", cInt, 0}, {"hIcon", cPtr, 0},
-	{"szTip", 128 * cShort, cShort},
-	{"dwState", cInt, 0}, {"dwStateMask", cInt, 0},
-	{"szInfo", 256 * cShort, cShort},
-	{"DUMMYUNIONNAME", cInt, 0},
-	{"szInfoTitle", 64 * cShort, cShort},
-	{"dwInfoFlags", cInt, 0},
-	{"guidItem", 16, cInt},
-	{"hBalloonIcon", cPtr, 0},
-}
-
 func TestWndClassExLayout(t *testing.T) {
 	var v wndClassEx
 	match(t, "WNDCLASSEXW", wndClassExW, unsafe.Sizeof(v),
@@ -117,21 +99,6 @@ func TestHighContrastLayout(t *testing.T) {
 	var v highContrast
 	match(t, "HIGHCONTRASTW", highContrastW, unsafe.Sizeof(v),
 		unsafe.Offsetof(v.Size), unsafe.Offsetof(v.Flags), unsafe.Offsetof(v.DefaultScheme))
-}
-
-func TestNotifyIconDataLayout(t *testing.T) {
-	var v notifyIconData
-	match(t, "NOTIFYICONDATAW", notifyIconDataW, unsafe.Sizeof(v),
-		unsafe.Offsetof(v.Size), unsafe.Offsetof(v.Wnd), unsafe.Offsetof(v.ID), unsafe.Offsetof(v.Flags),
-		unsafe.Offsetof(v.CallbackMessage), unsafe.Offsetof(v.Icon),
-		unsafe.Offsetof(v.Tip),
-		unsafe.Offsetof(v.State), unsafe.Offsetof(v.StateMask),
-		unsafe.Offsetof(v.Info),
-		unsafe.Offsetof(v.Version),
-		unsafe.Offsetof(v.InfoTitle),
-		unsafe.Offsetof(v.InfoFlags),
-		unsafe.Offsetof(v.GUIDItem),
-		unsafe.Offsetof(v.BalloonIcon))
 }
 
 // match reports every place the Go struct disagrees with the transcribed header.

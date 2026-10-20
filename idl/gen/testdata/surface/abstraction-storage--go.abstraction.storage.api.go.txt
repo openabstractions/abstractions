@@ -13,6 +13,8 @@ type Refusal struct
   Offset int
 func (Refusal) Error() string
 func Decode(in []byte) (*Ref, error)
+func ToJSON(v any) (out []byte, err error)
+func FromJSON(data []byte, v any) error
 type Store interface
   Name() (string, error)
   Find(digest string) (FindResult, error)

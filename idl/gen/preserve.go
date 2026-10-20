@@ -14,8 +14,9 @@ func quotedFieldNames(st Struct) string {
 }
 
 // Extra values go through the existing grammar scanner, at their enclosing
-// object's actual depth. Validation must precede raw reflow, which assumes
-// valid JSON. None of these helpers changes the grant/drop path.
+// object's actual depth. Validation precedes raw, which writes the value as
+// the definition's opaque layout says ([DEF-E6]) and assumes valid JSON. None
+// of these helpers changes the grant/drop path.
 const goPreserve = `
 func extraFields(out []byte, extras map[string]Raw, known []string, depth int, first bool) ([]byte, bool) {
  for _, key := range sortedKeys(extras) {
@@ -124,7 +125,7 @@ inline bool extra_fields(std::string& out, const std::map<std::string, Raw>& ext
 `
 
 const rsPreserve = `
-fn extra_fields(out: &mut Vec<u8>, extras: &BTreeMap<String, Raw>, known: &[&str], depth: i32, mut first: bool) -> bool {
+fn extra_fields(out: &mut ::std::vec::Vec<u8>, extras: &::std::collections::BTreeMap<::std::string::String, Raw>, known: &[&str], depth: i32, mut first: bool) -> bool {
     for (key,value) in extras {
         assert!(!known.contains(&key.as_str()), "duplicate_field");
         let mut r=Reader{buf:value,pos:0,depth};

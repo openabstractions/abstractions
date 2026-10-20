@@ -56,6 +56,13 @@ func recordInstallerFailure(path func(scope string) (string, error), scope, comm
 		now.UTC().Format(time.RFC3339), command, strings.Join(strings.Fields(err.Error()), " ")))
 }
 
+// Keep one summary for Burn's early stop because its exit code does not say
+// whether an installed product or matching runtime was found.
+func recordEarlyUpgradeStop(path func(string) (string, error), outcome string, report earlyUpgradeStop, now time.Time) {
+	appendInstallerAction(path, "machine", now.UTC().Format(time.RFC3339)+
+		" service begin-upgrade --machine --installed: "+outcome+" "+report.summary()+"\n")
+}
+
 // appendInstallerAction creates the machine directory with its protected ACL,
 // as the exclusion record does, and ignores every failure.
 func appendInstallerAction(path func(scope string) (string, error), scope, line string) {
@@ -97,10 +104,10 @@ func secureMachineDirectories(dir string) error {
 			return err
 		}
 		if err := windows.CreateDirectory(p, attributes); err != nil && !errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
-			return err
+			return fmt.Errorf("upgrade storage stage=create-directory path=%q: %w", d, err)
 		}
 		if err := requireAdministrativeOwner(d); err != nil {
-			return err
+			return fmt.Errorf("upgrade storage stage=verify-directory-owner path=%q: %w", d, err)
 		}
 	}
 	return nil

@@ -149,7 +149,12 @@ def validate(root, inventory, complete=False):
                 if not matches: raise ValueError(f'{name}: missing {language} generation target for {path}')
                 if any(r[2]!=no_ipc for r in matches):
                     raise ValueError(f'{name}: incorrect IPC flag for {path}')
-            if not any(r[3] for r in rows_for): raise ValueError(f'{name}: API documentation generation missing')
+            private = definition.get('private', False)
+            if not isinstance(private, bool):
+                raise ValueError(f'{name}: incorrect private classification for {path}')
+            if private and any(r[3] for r in rows_for):
+                raise ValueError(f'{name}: private definition has API documentation generation')
+            if not private and not any(r[3] for r in rows_for): raise ValueError(f'{name}: API documentation generation missing')
     actual=public_definitions(root)
     if actual!=declared: raise ValueError(f'unclassified definitions: {sorted(actual-declared)}; absent: {sorted(declared-actual)}')
     owners={p.split('/')[1].removeprefix('abstraction-') for p in actual}
@@ -165,7 +170,8 @@ def validate(root, inventory, complete=False):
 # new contracts", the machine-checkable ones:
 #   R1  every service call returns one outcome enum; a call a policy may gate
 #       reserves forbidden, unavailable and invalid; a call addressing a record
-#       (RequestIdentity, id, identity) reserves unknown; a conditional write
+#       (RequestIdentity, id, identity) reserves unknown, or not_found where
+#       absence is provable (idl/CONVENTIONS.md CONV-E2); a conditional write
 #       (an expected_* parameter) reserves conflict.
 #   R3  enums named *Cause declare unknown = "grant" and a member named other.
 #   R4  a catalogue says so: catalogue = "open" on a const, struct or field needs
@@ -178,6 +184,27 @@ def validate(root, inventory, complete=False):
 #   R7  every enum declares reader = "display", "validate" or "act". Displayed
 #       and semantically validated vocabularies carry unknown words; vocabularies
 #       acted on directly refuse them.
+#   R8  the refusal record is declared once, in rights (idl/CONVENTIONS.md
+#       CONV-E5): a definition other than REFUSAL_OWNER that declares a struct
+#       or enum named in REFUSAL_RECORD declares a second one.
+#   R9  every binary, string, json, list and map field and method argument
+#       declares a length (idl/LANGUAGE.md DEF-A11, DEF-A12): a value with no
+#       bound gives its record no largest encoding. A grammar bounds a field
+#       and never a collection element: a string typedef with a read/write
+#       grammar bounds a field or argument of that type, and a list or map
+#       element resolves to its base type, since the generator (typeRef
+#       resolves list<stamp> to list<string>) checks no grammar inside a list
+#       or map. A list or map whose elements (a map's keys included) are a
+#       large type fails as `<field>[]` whatever its entry count, since the
+#       language declares no bound for an element; gen --sizes reports the
+#       same record as unbounded "(elements)". R9 also
+#       judges the definitions scripts/generate.targets names outside the
+#       public inventory.
+#   R10 every service method declares a trait, readonly, idempotent or
+#       idempotency_key (idl/LANGUAGE.md DEF-S3, idl/CONVENTIONS.md CONV-I2,
+#       abstraction-ipc IPC-I1).
+#   R11 every code a service declares in error_codes has a row in the one
+#       status mapping, abstraction-ipc CONTRACT.md IPC-E2, read from that page.
 # Current violations are recorded whole in CONTRACT_RULES_RECORDED. A violation
 # not recorded fails, and so does a recorded one that no longer occurs: the file
 # is the fix backlog and only shrinks.
@@ -186,6 +213,8 @@ POLICY_REFUSALS = ('forbidden', 'unavailable', 'invalid')
 CATALOGUE = re.compile(r'_(actions|keys|questions)$')
 FIELD = re.compile(r'\d+\s*:\s*(?:required\s+|optional\s+)?([\w.]+(?:<[^>]*>)?)\s+(\w+)')
 READERS = {'display': 'grant', 'validate': 'grant', 'act': 'refuse'}
+REFUSAL_OWNER = 'openabstractions-flat/abstraction-rights/rights.thrift'
+REFUSAL_RECORD = ('RefusalDetail', 'RefusalSource', 'RefusalDecision', 'RefusalAsk')
 
 
 def _blank(text):
@@ -230,10 +259,50 @@ def _annotations(text, blank, pos):
     return dict(re.findall(r'(\w+)\s*=\s*"((?:[^"\\]|\\.)*)"', inner))
 
 
+def _type_at(blank, pos):
+    match = re.match(r'\s*([\w.]+)', blank[pos:])
+    if not match: raise ValueError('missing declared type')
+    start = pos + match.start(1); end = pos + match.end()
+    while end < len(blank) and blank[end].isspace(): end += 1
+    if end < len(blank) and blank[end] == '<': end = _closing(blank, end, '<', '>') + 1
+    return re.sub(r'\s+', '', blank[start:end]), end
+
+
+def _fields(blank):
+    for match in re.finditer(r'\b\d+\s*:\s*(?:(required|optional)\s+)?', blank):
+        kind, end = _type_at(blank, match.end())
+        name = re.match(r'\s*(\w+)', blank[end:])
+        if not name: raise ValueError('missing declared field name')
+        yield kind, name[1], end + name.end(), match[1] == 'optional'
+
+
+def _methods(body):
+    pos = 0
+    while pos < len(body):
+        while pos < len(body) and (body[pos].isspace() or body[pos] in ',;'): pos += 1
+        if pos == len(body): break
+        keyword = re.match(r'oneway\b', body[pos:])
+        if keyword: pos += keyword.end()
+        kind, end = _type_at(body, pos)
+        name = re.match(r'\s*(\w+)\s*\(', body[end:])
+        if not name: raise ValueError('missing service method declaration')
+        opened = end + name.end() - 1; closed = _closing(body, opened, '(', ')')
+        yield kind, name[1], opened + 1, closed
+        pos = closed + 1
+        while pos < len(body) and body[pos].isspace(): pos += 1
+        if pos < len(body) and body[pos] == '(': pos = _closing(body, pos, '(', ')') + 1
+
+
 def contract_model(text):
     """Enums, structs, services and consts declared in one Thrift definition."""
     blank = _blank(text)
-    model = {'enums': {}, 'structs': {}, 'services': {}, 'consts': {}, 'includes': {}}
+    model = {'enums': {}, 'structs': {}, 'services': {}, 'consts': {}, 'includes': {}, 'typedefs': {},
+             'service_annotations': {}, 'const_words': {}}
+    for m in re.finditer(r'(?m)^\s*typedef\s+', blank):
+        base, end = _type_at(blank, m.end())
+        name = re.match(r'\s*(\w+)', blank[end:])
+        if not name: raise ValueError('missing typedef name')
+        model['typedefs'][name[1]] = {'base': base, 'annotations': _annotations(text, blank, end + name.end())}
     for m in re.finditer(r'(?m)^\s*include\s+', blank):
         included = re.match(r'"([^"\r\n]+)"', text[m.end():])
         if not included: raise ValueError('include requires a quoted relative Thrift path')
@@ -254,21 +323,27 @@ def contract_model(text):
                                     'unknown': annotations.get('unknown'), 'reader': annotations.get('reader')}
         elif kind == 'service':
             methods = {}
-            for method in re.finditer(r'(?m)^\s*(?:oneway\s+)?([\w.]+(?:<[^>]*>)?)\s+(\w+)\s*\(', body):
-                close = _closing(body, method.end() - 1, '(', ')')
-                methods[method[2]] = {'result': method[1], 'params': FIELD.findall(body[method.end():close])}
+            for result, method, opened, close in _methods(body):
+                start = m.end() + opened
+                params = blank[start:m.end() + close]
+                fields = list(_fields(params))
+                methods[method] = {'result': result, 'params': [(kind, name) for kind, name, _, _ in fields],
+                                   'param_annotations': {name: _annotations(text, blank, start + end)
+                                                         for _, name, end, _ in fields},
+                                   'annotations': _annotations(text, blank, m.end() + close + 1)}
             model['services'][name] = methods
+            model['service_annotations'][name] = _annotations(text, blank, end + 1)
         else:
-            fields = []
-            for field in FIELD.finditer(body):
-                fields.append((field[1], field[2], _annotations(text, blank, m.end() + field.end())))
-            optional = {field[2] for field in FIELD.finditer(body)
-                        if re.match(r'\d+\s*:\s*optional\s+', field[0])}
+            parsed = list(_fields(body))
+            fields = [(kind, name, _annotations(text, blank, m.end() + end)) for kind, name, end, _ in parsed]
+            optional = {name for _, name, _, optional in parsed if optional}
             model['structs'][name] = {'fields': fields, 'optional': optional,
                                       'annotations': _annotations(text, blank, end + 1)}
     for m in re.finditer(r'(?m)^const\s+[\w.]+(?:<[^>]*>)?\s+(\w+)\s*=\s*', blank):
         end = _closing(blank, m.end(), '[', ']') + 1 if blank[m.end():m.end() + 1] == '[' else blank.find('\n', m.end())
         model['consts'][m[1]] = _annotations(text, blank, end if end >= 0 else len(blank))
+        if blank[m.end():m.end() + 1] == '[':
+            model['const_words'][m[1]] = re.findall(r'"((?:[^"\\]|\\.)*)"', text[m.end():end])
     return model
 
 
@@ -296,7 +371,7 @@ def _outcome_enum(result, path, models):
         if resolved is None: return [], False
         owner, name = resolved
         model = models[owner]
-        if name in model['enums']: return [(name, model['enums'][name])], False
+        if name in model['enums']: return [(owner, name, model['enums'][name])], False
         struct = model['structs'].get(name)
         if struct is None: return [], False
         if resolved in active: return [], True
@@ -311,7 +386,7 @@ def _outcome_enum(result, path, models):
         if candidates:
             if len(candidates) != 1 or candidates[0][0] in struct['optional']: return [], True
             _, (target_owner, target_name) = candidates[0]
-            return [(target_name, models[target_owner]['enums'][target_name])], False
+            return [(target_owner, target_name, models[target_owner]['enums'][target_name])], False
         found = []; invalid = False
         for field_type, field_name, _ in fields:
             if field_name in struct['optional']: continue
@@ -336,6 +411,198 @@ def _catalogue(path, subject, annotations, registers):
     return None
 
 
+LARGE_TYPES = ('binary', 'string', 'json')
+
+
+def _named_string_bound(typedef):
+    """A named string's valid finite UTF-8 length bounds its scalar/elements."""
+    if not typedef or typedef['base'] != 'string': return False
+    spec = typedef['annotations'].get('length', '')
+    match = re.fullmatch(r'(0|[1-9][0-9]*)?\.\.(0|[1-9][0-9]*)', spec)
+    if not match: return False
+    low, high = int(match[1] or 0), int(match[2])
+    return low <= high < 2**62  # gen parseBounds uses signed 63-bit counts
+
+
+def _large(type_name, model):
+    """The large type a field of type_name carries, or None when it is bounded by its type."""
+    typedef = model.get('typedefs', {}).get(type_name)
+    if typedef is not None:
+        if _named_string_bound(typedef): return None
+        if typedef['annotations'].get('read') or typedef['annotations'].get('write'):
+            return None
+        type_name = typedef['base']
+    if type_name in LARGE_TYPES or type_name.startswith(('list<', 'map<')):
+        return type_name
+    return None
+
+
+def _large_elements(collection, model):
+    """The large type a list's elements or a map's keys or values carry, or None."""
+    m = re.fullmatch(r'(?:list|map)<(.*)>', collection.replace(' ', ''))
+    if not m:
+        return None
+    def element_large(element):
+        # A grammar bounds a field's text, never an element's: gen --sizes reports
+        # list<stamp> unbounded, so the element resolves to its base type here.
+        typedef = model.get('typedefs', {}).get(element)
+        if _named_string_bound(typedef): return None
+        base = typedef['base'] if typedef is not None else element
+        return base if base in LARGE_TYPES or base.startswith(('list<', 'map<')) else None
+    return next((large for element in m[1].split(',') if (large := element_large(element))), None)
+
+
+def large_field_violations(path, model):
+    """R9: a binary, string, json, list or map field or argument without a declared length,
+    and a list or map whose elements no declaration can bound."""
+    found = []
+    def judge(subject, type_name, annotations):
+        large = _large(type_name, model)
+        if large and 'length' not in annotations:
+            found.append(('R9', path, subject, f'unbounded {large}: declare length (idl/LANGUAGE.md DEF-A12)'))
+        inner = _large_elements(large, model) if large else None
+        if inner:
+            found.append(('R9', path, subject + '[]',
+                          f'unbounded {inner} elements: the language declares no element bound (idl/LANGUAGE.md DEF-A12)'))
+    for name, struct in model['structs'].items():
+        for field_type, field_name, annotations in struct['fields']:
+            judge(f'{name}.{field_name}', field_type, annotations)
+    for service, methods in model['services'].items():
+        for method, call in methods.items():
+            for param_type, param_name in call['params']:
+                judge(f'{service}.{method}({param_name})', param_type, call.get('param_annotations', {}).get(param_name, {}))
+    return found
+
+
+STATUS_MAPPING = 'openabstractions-flat/abstraction-ipc/CONTRACT.md'
+
+
+def method_trait_violations(path, model):
+    """R10: a service method without a declared trait."""
+    return [('R10', path, f'{service}.{method}', 'declares no trait: readonly, idempotent or idempotency_key (idl/LANGUAGE.md DEF-S3)')
+            for service, methods in model['services'].items()
+            for method, call in methods.items()
+            if call.get('annotations', {}).get('readonly') != 'true'
+            and call.get('annotations', {}).get('idempotent') not in ('true', 'false')
+            and not call.get('annotations', {}).get('idempotency_key')]
+
+
+REMOTE_PROFILES = {'local', 'see', 'call', 'delegate', 'person'}
+JOB_DEFINITION = 'openabstractions-flat/abstraction-job/acceptance.thrift'
+
+
+def _type_children(name):
+    if '<' not in name: return []
+    container, inner = name.split('<', 1)
+    inner = inner[:-1]; depth = 0; start = 0; parts = []
+    for index, char in enumerate(inner):
+        if char == '<': depth += 1
+        elif char == '>': depth -= 1
+        elif char == ',' and depth == 0: parts.append(inner[start:index]); start = index + 1
+    parts.append(inner[start:])
+    if container not in ('list', 'map') or len(parts) != (2 if container == 'map' else 1):
+        raise ValueError('unsupported declared container ' + name)
+    return parts
+
+
+def remote_violations(path, model, models):
+    """R12: explicit profiles, recovery agreement and declared local/secret leaves."""
+    found = []
+    def problem(subject, reason): found.append(('R12', path, subject, reason))
+    def marker(ann, chain):
+        if 'secret' in ann and ann['secret'] != 'true': return chain + ': invalid secret marker'
+        if 'local' in ann and ann['local'] not in ('path', 'pid', 'handle'): return chain + ': invalid local marker'
+        if ann.get('secret') == 'true': return chain + ': secret'
+        if 'local' in ann: return chain + ': local ' + ann['local']
+        return None
+    def walk(kind, owner, chain, active):
+        children = _type_children(kind)
+        if children:
+            return [reason for i, child in enumerate(children) for reason in walk(child, owner, chain + ('[key]' if len(children) == 2 and i == 0 else '[]'), active)]
+        resolved = _resolved_type(kind, owner, models)
+        if resolved is None: return [chain + ': unresolved owner-qualified type ' + kind]
+        owner, name = resolved; current = models[owner]
+        if resolved in active: return []
+        active = active | {resolved}
+        if name in current['typedefs']:
+            alias = current['typedefs'][name]
+            return walk(alias['base'], owner, chain + ' -> ' + owner + ':' + name, active)
+        record = current['structs'].get(name)
+        if record is None:
+            if name in {'void','bool','i16','i32','i64','double','string','binary','json'} or name in current['enums']: return []
+            return [chain + ': unresolved declared type ' + name]
+        reasons = []
+        for field_type, field, ann in record['fields']:
+            leaf = chain + ' -> ' + owner + ':' + name + '.' + field
+            reason = marker(ann, leaf)
+            if reason: reasons.append(reason)
+            reasons.extend(walk(field_type, owner, leaf, active))
+        return reasons
+    def job_identity(kind, owner, active):
+        # A scalar required result path to recoverable acceptance evidence.
+        if _type_children(kind): return False
+        resolved = _resolved_type(kind, owner, models)
+        if resolved is None or resolved in active: return False
+        owner, name = resolved; current = models[owner]; active = active | {resolved}
+        if owner == JOB_DEFINITION and name == 'Receipt': return True
+        if name in current['typedefs']: return job_identity(current['typedefs'][name]['base'], owner, active)
+        record = current['structs'].get(name)
+        return bool(record and any(field not in record['optional'] and job_identity(kind, owner, active)
+                                   for kind, field, _ in record['fields']))
+    for record, body in model['structs'].items():
+        for _, field, ann in body['fields']:
+            if ('secret' in ann and ann['secret'] != 'true') or ('local' in ann and ann['local'] not in ('path','pid','handle')):
+                problem(record + '.' + field, 'invalid secret/local marker')
+    for service, methods in model['services'].items():
+        default = model['service_annotations'].get(service, {}).get('remote', 'local')
+        if default not in REMOTE_PROFILES: problem(service, 'unknown or empty remote service profile')
+        for method, call in methods.items():
+            subject = service + '.' + method; ann = call['annotations']; profile = ann.get('remote', default)
+            if profile not in REMOTE_PROFILES: problem(subject, 'unknown or empty remote method profile'); continue
+            if profile == 'local': continue
+            if profile == 'see' and ann.get('readonly') != 'true': problem(subject, 'remote see requires readonly')
+            if profile == 'delegate' and ('idempotency_key' not in ann or not job_identity(call['result'], path, set())):
+                problem(subject, 'remote delegate requires keyed recovery and canonical job acceptance Receipt identity')
+            for kind, argument in call['params']:
+                chain = subject + '.argument.' + argument
+                direct = marker(call['param_annotations'].get(argument, {}), chain)
+                if direct: problem(subject, direct)
+                for reason in walk(kind, path, chain, set()): problem(subject, reason)
+            for reason in walk(call['result'], path, subject + '.result', set()): problem(subject, reason)
+    return found
+
+
+def status_words(root):
+    """The OA words and codes IPC-E2's one status mapping has a row for, or None without the page."""
+    page = root/STATUS_MAPPING
+    if not page.is_file():
+        return None
+    text = page.read_text(encoding='utf-8')
+    start = text.find('**[IPC-E2]')
+    if start < 0:
+        raise ValueError(f'{STATUS_MAPPING} declares no IPC-E2 status mapping')
+    end = text.find('**[IPC-', start + 1)
+    words = set()
+    for line in text[start:end if end > 0 else len(text)].splitlines():
+        cells = line.split('|')
+        if len(cells) > 2 and not set(cells[1].strip()) <= set('-: '):
+            words.update(re.findall(r'`([a-z_]+)`', cells[1]))
+    if not words:
+        raise ValueError(f'{STATUS_MAPPING} IPC-E2 table has no rows')
+    return words
+
+
+def status_mapping_violations(path, model, words):
+    """R11: an error code a service declares with no IPC-E2 row."""
+    found = []
+    for service, annotations in model.get('service_annotations', {}).items():
+        const = annotations.get('error_codes')
+        for code in model.get('const_words', {}).get(const, []) if const else []:
+            if code not in words:
+                found.append(('R11', path, f'{service}:{code}', 'error code without a row in abstraction-ipc IPC-E2'))
+    return found
+
+
 def definition_violations(path, model, service_calls, pending_catalogues=(), models=None):
     """(rule, path, subject, detail) for one definition, resolving its declared includes.
 
@@ -351,6 +618,10 @@ def definition_violations(path, model, service_calls, pending_catalogues=(), mod
             found.append(('R7', path, name, f'reader = "{reader}" requires unknown = "{READERS[reader]}", found {unknown}'))
         if name.endswith('Cause') and (unknown != 'grant' or 'other' not in enum['members']):
             found.append(('R3', path, name, 'a cause enum is unknown = "grant" with member other'))
+    if path != REFUSAL_OWNER:
+        for name in REFUSAL_RECORD:
+            if name in model['structs'] or name in model['enums']:
+                found.append(('R8', path, name, f'declares the refusal record a second time; include {REFUSAL_OWNER}'))
     registers = any(method.startswith('Register') for methods in model['services'].values() for method in methods)
     subjects = {}
     for name, annotations in model['consts'].items():
@@ -375,14 +646,26 @@ def definition_violations(path, model, service_calls, pending_catalogues=(), mod
                     found.append(('R1', path, subject, f'returns {call["result"]} without an outcome enum'))
                     continue
                 need = list(POLICY_REFUSALS)
+                outcome_owner, outcome_name, enum = outcome
                 if any(_local(t) == 'RequestIdentity' or n in ('id', 'identity') for t, n in call['params']):
-                    need.append('unknown')
+                    # CONV-E2: not_found answers a provable absence in unknown's place.
+                    need.append('not_found' if 'not_found' in enum['members'] else 'unknown')
                 if any(n.startswith('expected') for _, n in call['params']):
                     need.append('conflict')
-                outcome_name, enum = outcome
-                missing = [word for word in need if word not in enum['members']]
+                # The published Facade enum has always spelled this semantic
+                # refusal invalid_request. Never accept that spelling by name
+                # alone in another definition or a newly authored enum.
+                legacy_invalid = (outcome_owner == 'openabstractions-flat/abstraction-facade/facade.thrift'
+                                  and outcome_name == 'ResolutionStatus'
+                                  and 'invalid_request' in enum['members'])
+                missing = [word for word in need if word not in enum['members']
+                           and not (word == 'invalid' and legacy_invalid)]
                 if missing:
                     found.append(('R1', path, subject, f'{outcome_name} lacks {", ".join(missing)}'))
+    found += large_field_violations(path, model)
+    found += remote_violations(path, model, models)
+    if service_calls:
+        found += method_trait_violations(path, model)
     return found
 
 
@@ -408,9 +691,17 @@ def contract_violations(root, inventory, recorded=None):
         return path
     for path, _ in definitions: load(path)
     found = []
+    words = status_words(root)
     for path, mode in definitions:
         pending = {s for r, p, s, _ in recorded if r == 'R4' and p == path and (s in models[path]['structs'] or '.' in s)}
         found += definition_violations(path, models[path], mode == 'service', pending, models)
+        if words is not None:
+            found += status_mapping_violations(path, models[path], words)
+    inventoried = {path for path, _ in definitions}
+    declared = targets(root) if (root/'scripts/generate.targets').is_file() else {}
+    for path in sorted(declared):
+        if path not in inventoried and (root/path).is_file():
+            found += large_field_violations(path, contract_model((root/path).read_text(encoding='utf-8-sig')))
     return sorted(set(found))
 
 
@@ -429,7 +720,7 @@ def read_recorded(path):
 def write_recorded(path, violations):
     header = ('# Contract rule violations recorded when the rules were introduced: the fix\n'
               '# backlog. idl/inventory.py fails on any violation not listed here and on any\n'
-              '# listed one that no longer occurs. Rules: idl/inventory.py, R1 R3 R4 R7.\n'
+              '# listed one that no longer occurs. Rules: idl/inventory.py, R1 R3 R4 R7 R8 R9 R10 R11.\n'
               '# rule<TAB>definition<TAB>subject<TAB>detail\n')
     path.write_text(header + ''.join('\t'.join(v) + '\n' for v in violations), encoding='utf-8', newline='\n')
 

@@ -45,7 +45,7 @@ func TestNotificationPresenterSync(t *testing.T) {
 	}
 	p.sync([]askclient.NotificationRecord{record}, true, nil)
 	p.sync([]askclient.NotificationRecord{record}, true, nil)
-	if len(surface.shown) != 1 || surface.shown[0].Silently || surface.shown[0].Sender != "poster (not registered)" || surface.shown[0].Token != "t1" {
+	if len(surface.shown) != 1 || surface.shown[0].Silently || surface.shown[0].Sender != "poster" || surface.shown[0].Token != "t1" {
 		t.Fatalf("shown once with its sender: %+v", surface.shown)
 	}
 	record.Presentation = "t2"

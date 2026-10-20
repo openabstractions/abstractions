@@ -1,15 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {chosenText, installModels, modelOptions, oaProvider} from '../oa-models.js';
-import {servesProviderRefresh} from '../opencode-build.js';
+import {chosenText, installModels, modelOptions, oaProvider, personPick} from '../oa-models.js';
 import {tuiFeatures} from '../tui.js';
 
 const providers = [
   {id: 'anthropic', name: 'Anthropic', models: {'claude-x': {name: 'Claude X'}}},
-  {id: 'openabstractions-hosted', name: 'OpenAbstractions · via hosted servers',
-    models: {'deepseek-chat': {name: 'deepseek-chat · 64k · hosted: deepseek'}}},
-  {id: 'openabstractions', name: 'OpenAbstractions · this computer',
-    models: {'qwen3.6-35b-a3b': {name: 'qwen3.6-35b-a3b · 32k · this computer: lemonade'}}},
+  {id: 'openabstractions-hosted', name: 'DeepSeek · OpenAbstractions',
+    models: {'deepseek-chat': {name: 'DeepSeek Chat'}}},
+  {id: 'openabstractions', name: 'OpenAbstractions',
+    models: {'qwen3.6-35b-a3b': {name: 'Qwen3.6 35B'}, 'qwen3-0.6b': {name: 'Qwen3 0.6B'}}},
 ];
 
 // A fake TUI: the registered command, the dialog it opens, toasts.
@@ -22,71 +21,132 @@ function fakeApi() {
   return api;
 }
 
-test('/oa lists only OA models, this computer first, with the default marked', () => {
+test('/oa lists only OA models, this computer first, under their headings', () => {
   assert.equal(oaProvider('openabstractions'), true);
   assert.equal(oaProvider('openabstractions-preferences'), true);
   assert.equal(oaProvider('openai'), false);
   assert.equal(oaProvider('oa-custom-hosted', 'oa-custom'), true);
-  const entries = modelOptions(providers, 'openabstractions/qwen3.6-35b-a3b');
-  assert.equal(entries[0].title, 'Refresh the list from OpenAbstractions');
-  assert.deepEqual(entries.slice(1).map((entry) => [entry.category, entry.value, entry.description]), [
-    ['OpenAbstractions · this computer', 'openabstractions/qwen3.6-35b-a3b', 'default'],
-    ['OpenAbstractions · via hosted servers', 'openabstractions-hosted/deepseek-chat', undefined],
+  const entries = modelOptions(providers);
+  assert.deepEqual(entries.map((entry) => [entry.category, entry.value, entry.title]), [
+    ['OpenAbstractions', 'openabstractions/qwen3.6-35b-a3b', 'Qwen3.6 35B'],
+    ['OpenAbstractions', 'openabstractions/qwen3-0.6b', 'Qwen3 0.6B'],
+    ['DeepSeek · OpenAbstractions', 'openabstractions-hosted/deepseek-chat', 'DeepSeek Chat'],
   ]);
-  assert.match(entries[2].title, /hosted: deepseek/, 'names say where a model runs');
+  assert.equal(personPick(undefined), '');
+  assert.equal(personPick('openabstractions/oa-chat'), '', 'the policy route is no pick');
+  assert.equal(personPick('anthropic/claude-x'), 'anthropic/claude-x');
 });
 
-test('choosing a model makes it OpenCode\'s default and says what that changes', async () => {
+async function chooseWith(ownSetting, value) {
   const api = fakeApi();
   const saved = [];
-  await installModels(api, {}, {readProviders: async () => ({providers, defaultModel: 'openabstractions/qwen3.6-35b-a3b'}),
-    setDefault: async (model) => saved.push(model)});
+  const written = [];
+  api.client = {global: {config: {update: async (body) => { written.push(body); }}}};
+  await installModels(api, {}, {
+    readProviders: async () => ({providers, selected: 'openabstractions/qwen3.6-35b-a3b', ownSetting}),
+    writeChatChoice: async (candidate) => saved.push(candidate),
+  });
   assert.deepEqual(api.commands.map((command) => [command.name, command.slashName]), [['openabstractions.models', 'oa']]);
   await api.commands[0].run();
   const dialog = api.dialogs.at(-1);
-  assert.equal(dialog.current, 'openabstractions/qwen3.6-35b-a3b');
-  const hosted = dialog.options.find((entry) => entry.value === 'openabstractions-hosted/deepseek-chat');
-  await dialog.onSelect(hosted);
-  assert.deepEqual(saved, ['openabstractions-hosted/deepseek-chat']);
+  assert.equal(dialog.current, 'openabstractions/qwen3.6-35b-a3b', 'the tick is the model OpenCode selected');
+  await dialog.onSelect(dialog.options.find((entry) => entry.value === value));
+  return {api, saved, written};
+}
+
+test('/oa with no person pick saves OA\'s choice and never writes OpenCode\'s model', async () => {
+  const {api, saved, written} = await chooseWith(undefined, 'openabstractions/qwen3-0.6b');
+  assert.deepEqual(saved, [{model: 'qwen3-0.6b', placement: 'local', credential: ''}]);
+  assert.deepEqual(written, [], 'config.model is left unwritten');
   assert.equal(api.cleared, 1);
   assert.equal(api.toasts.at(-1).variant, 'success');
-  assert.equal(api.toasts.at(-1).message, chosenText(hosted.title, true));
-  assert.match(api.toasts.at(-1).message, /keeps it until you pick again/);
-  assert.match(api.toasts.at(-1).message, /Local assistant stays on this computer and refuses it/);
-  await api.commands[0].run();
-  await api.dialogs.at(-1).onSelect(api.dialogs.at(-1).options.find((entry) => entry.value === 'openabstractions/qwen3.6-35b-a3b'));
-  assert.doesNotMatch(api.toasts.at(-1).message, /refuses/, 'a model on this computer needs no warning');
+  assert.equal(api.toasts.at(-1).message, chosenText('Qwen3 0.6B'));
+  assert.match(api.toasts.at(-1).message, /OpenAbstractions' choice for OpenCode/);
 });
 
-// OpenCode refreshes only the provider the OA plugin registers its model
-// hook for; the headings beside it are read when OpenCode starts.
-test('refresh asks OA again through the plugin\'s provider and reopens the list', async () => {
+/** OA's selection service as /oa meets it, with the service's candidate rule
+ * (abstraction-inference/go/selection.go validSelectionCandidate): a local
+ * candidate names no credential and a hosted one names its credential. */
+function selectionService() {
+  const service = {stored: null, revision: '', puts: []};
+  service.operator = {
+    read: async (_program, name) => service.stored
+      ? {outcome: 'found', revision: service.revision, policy: service.stored} : {outcome: 'unknown', revision: ''},
+    put: async (_program, expected, policy) => {
+      service.puts.push(policy);
+      if (expected !== service.revision) return {outcome: 'conflict', revision: service.revision};
+      const valid = policy.candidates.every((candidate) => candidate.model && ['local', 'hosted'].includes(candidate.placement)
+        && (candidate.placement === 'local' ? candidate.credential === '' : candidate.credential !== ''));
+      if (!valid) return {outcome: 'invalid', revision: service.revision};
+      service.stored = policy;
+      service.revision = `r${service.puts.length}`;
+      return {outcome: 'applied', revision: service.revision};
+    },
+  };
+  return service;
+}
+
+// The router's hosted offer for DeepSeek Chat and the host behind it, which
+// declares the credential the person saved in OA.
+const router = {
+  offer: async ({placement}) => ({outcome: 'offered', offers: placement === 'hosted'
+    ? [{family: 'deepseek-chat', names: ['deepseek-chat'], servers: ['deepseek'], context: 65536n, contextSource: 'maximum', input: 61440n}] : []}),
+  hosts: async () => ({hosts: [{host: 'ollama', credential: ''}, {host: 'deepseek', hosted: true, credential: 'deepseek-api'}]}),
+};
+
+async function chooseThroughService(service, value, routerClient = router) {
   const api = fakeApi();
-  const refreshed = [];
-  let reads = 0;
-  await installModels(api, {}, {readProviders: async () => { reads += 1; return {providers, defaultModel: ''}; },
-    servesRefresh: async () => true, refreshProvider: async (id) => refreshed.push(id), setDefault: async () => assert.fail('refresh sets nothing')});
+  await installModels(api, {}, {
+    readProviders: async () => ({providers, selected: 'openabstractions/qwen3.6-35b-a3b', ownSetting: undefined}),
+    resolveOperator: async () => service.operator,
+    resolveRouter: async () => routerClient,
+  });
   await api.commands[0].run();
-  await api.dialogs.at(-1).onSelect(api.dialogs.at(-1).options[0]);
-  assert.deepEqual(refreshed, ['openabstractions']);
-  assert.equal(reads, 2, 'the list is read again after the refresh');
-  assert.equal(api.dialogs.length, 2);
+  const dialog = api.dialogs.at(-1);
+  await dialog.onSelect(dialog.options.find((entry) => entry.value === value));
+  return api;
+}
+
+test('/oa saves a DeepSeek choice as hosted under the credential its host declares', async () => {
+  const service = selectionService();
+  const api = await chooseThroughService(service, 'openabstractions-hosted/deepseek-chat');
+  assert.deepEqual(service.stored, {name: 'oa-chat-default',
+    candidates: [{model: 'deepseek-chat', placement: 'hosted', credential: 'deepseek-api'}]});
   assert.equal(api.toasts.at(-1).variant, 'success');
+  assert.match(api.toasts.at(-1).message, /Local assistant stays on this computer and refuses it/);
+
+  const local = await chooseThroughService(service, 'openabstractions/qwen3-0.6b');
+  assert.deepEqual(service.stored.candidates, [{model: 'qwen3-0.6b', placement: 'local', credential: ''}],
+    'the second save replaces the first over its revision');
+  assert.equal(local.toasts.at(-1).variant, 'success');
+
+  const unnamed = selectionService();
+  const refused = await chooseThroughService(unnamed, 'openabstractions-hosted/deepseek-chat',
+    {...router, hosts: async () => ({hosts: [{host: 'deepseek', hosted: true}]})});
+  assert.equal(unnamed.puts.length, 0, 'a hosted choice without a credential is never sent');
+  assert.match(refused.toasts.at(-1).message, /deepseek-chat names no hosted credential in OpenAbstractions/);
 });
 
-test('a failed refresh, read or save says so and changes nothing', async () => {
+test('/oa with a person pick saves OA\'s choice, leaves the pick and says how to use the choice', async () => {
+  const {api, saved, written} = await chooseWith('anthropic/claude-x', 'openabstractions/qwen3-0.6b');
+  assert.deepEqual(saved, [{model: 'qwen3-0.6b', placement: 'local', credential: ''}]);
+  assert.deepEqual(written, [], 'the person\'s pick is unchanged');
+  assert.equal(api.toasts.at(-1).message,
+    'OpenCode\'s own setting picks Claude X. Choose Qwen3 0.6B in the model menu to use it.');
+  const same = await chooseWith('openabstractions/qwen3-0.6b', 'openabstractions/qwen3-0.6b');
+  assert.equal(same.api.toasts.at(-1).message, chosenText('Qwen3 0.6B'), 'a pick of the same model needs no hint');
+});
+
+test('a failed read or save says so and changes nothing', async () => {
   const api = fakeApi();
-  await installModels(api, {}, {readProviders: async () => ({providers, defaultModel: ''}), servesRefresh: async () => true,
-    refreshProvider: async () => { throw new Error('this OpenCode cannot refresh a provider\'s models'); },
-    setDefault: async () => { throw new Error('config is read-only'); }});
+  await installModels(api, {}, {readProviders: async () => ({providers, ownSetting: ''}),
+    writeChatChoice: async () => { throw new Error('the chat choice was not saved (forbidden)'); }});
   await api.commands[0].run();
   await api.dialogs.at(-1).onSelect(api.dialogs.at(-1).options[0]);
-  assert.match(api.toasts.find((toast) => toast.variant === 'error').message, /could not refresh the models: this OpenCode cannot refresh/);
-  await api.dialogs.at(-1).onSelect(api.dialogs.at(-1).options[1]);
-  assert.match(api.toasts.at(-1).message, /did not save the default model: config is read-only/);
+  assert.match(api.toasts.at(-1).message, /did not save OpenCode's chat choice: the chat choice was not saved \(forbidden\)/);
 
   const empty = fakeApi();
-  await installModels(empty, {}, {readProviders: async () => ({providers: [providers[0]], defaultModel: ''})});
+  await installModels(empty, {}, {readProviders: async () => ({providers: [providers[0]], ownSetting: ''})});
   await empty.commands[0].run();
   assert.match(empty.toasts[0].message, /no OpenAbstractions model/);
   const down = fakeApi();
@@ -94,38 +154,6 @@ test('a failed refresh, read or save says so and changes nothing', async () => {
   await down.commands[0].run();
   assert.equal(down.dialogs.length, 0);
   assert.match(down.toasts[0].message, /could not read OpenCode's models: server stopped/);
-});
-
-// The refresh route belongs to OA's provider refresh patch. The official
-// OpenCode's OpenAPI document lacks it, so /oa lists models only.
-test('on the official OpenCode /oa lists no refresh entry and says nothing about it', async () => {
-  const stock = {paths: {'/provider': {}, '/provider/auth': {}, '/config/providers': {}}};
-  const patched = {paths: {...stock.paths, '/provider/{providerID}/models/refresh': {post: {}}}};
-  const asked = [];
-  const http = (doc) => ({client: {get: async (options) => { asked.push(options.url); return {data: doc, response: {ok: true}}; }}});
-  assert.equal(await servesProviderRefresh(http(stock)), false);
-  assert.equal(await servesProviderRefresh(http(patched)), true);
-  assert.deepEqual(asked, ['/doc', '/doc']);
-  assert.equal(await servesProviderRefresh({client: {get: async () => { throw new Error('no server'); }}}), false);
-  assert.equal(await servesProviderRefresh({client: {get: async () => ({error: {}, response: {ok: false, status: 404}})}}), false);
-  assert.equal(await servesProviderRefresh(undefined), false);
-
-  const api = {...fakeApi(), client: http(stock)};
-  await installModels(api, {}, {readProviders: async () => ({providers, defaultModel: ''}),
-    refreshProvider: async () => assert.fail('the official OpenCode is never asked to refresh')});
-  await api.commands[0].run();
-  await api.commands[0].run();
-  const entries = api.dialogs.at(-1).options;
-  assert.deepEqual(entries.map((entry) => entry.value), ['openabstractions/qwen3.6-35b-a3b', 'openabstractions-hosted/deepseek-chat']);
-  assert.equal(api.toasts.length, 0);
-  assert.equal(asked.filter((url) => url === '/doc').length, 3, 'the route is looked up once per TUI start');
-  assert.deepEqual(modelOptions(providers, '', 'openabstractions', false).map((entry) => entry.value),
-    entries.map((entry) => entry.value));
-
-  const empty = {...fakeApi(), client: http(stock)};
-  await installModels(empty, {}, {readProviders: async () => ({providers: [providers[0]], defaultModel: ''})});
-  await empty.commands[0].run();
-  assert.match(empty.toasts[0].message, /no OpenAbstractions model/);
 });
 
 test('the TUI module installs /oa beside its other features', () => {

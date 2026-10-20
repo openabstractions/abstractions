@@ -1,7 +1,7 @@
 /**
  * Each TUI feature module, imported when the TUI starts: dictation
  * (listen.js, Ctrl+Alt+M and /listen), Speak replies with the playback of
- * `openabstractions_speak` (speak.js, /speak), where each reply ran
+ * `oa_speech_speak` (speak.js, /speak), where each reply ran
  * (where.js: this computer or a hosted server), and /oa, OA's models in one
  * list (oa-models.js). A feature imports inside its own attempt, so a module
  * that fails to load leaves the others running.

@@ -23,10 +23,19 @@ func earlierLemonadePlan(t *testing.T) setup.Plan {
 	if err != nil {
 		t.Fatal(err)
 	}
-	earlier := *plan.Components[0].Artifact
-	earlier.TestedBackendSHA256, earlier.TestedModelRevision = "", ""
+	var earlier *setup.Artifact
+	for _, pin := range setup.NewCatalog().PreviousInstallPins {
+		if pin.ComponentID == "lemonade-engine" && pin.Artifact.TestedBackendSHA256 == "" {
+			artifact := pin.Artifact
+			earlier = &artifact
+			break
+		}
+	}
+	if earlier == nil {
+		t.Fatal("the release no longer records the historical Lemonade installation")
+	}
 	plan.Components = append([]setup.PlannedComponent(nil), plan.Components...)
-	plan.Components[0].Artifact = &earlier
+	plan.Components[0].Artifact = earlier
 	plan.CatalogSHA256 = strings.Repeat("a", 64)
 	key, _ := json.Marshal(struct {
 		Catalog  string        `json:"catalog"`
@@ -65,10 +74,18 @@ func TestSetupPlanReviewNamesTheInstalledVersionItReplaces(t *testing.T) {
 	if got.Code != http.StatusOK || json.Unmarshal(got.Body.Bytes(), &review) != nil {
 		t.Fatalf("plan review: %d %s", got.Code, got.Body.String())
 	}
-	if len(review.Replaces) != 1 || review.Replaces[0].From != "v2026.38.0" || review.Replaces[0].To != "v2026.39.1" {
-		t.Fatalf("the review does not name the replaced version: %+v", review.Replaces)
+	if len(review.Replaces) != 1 || review.Replaces[0].From != "v2026.38.0" || review.Replaces[0].To != "v2026.39.1" ||
+		!review.Preparable || len(review.Components) != 1 || review.Components[0].Artifact == nil {
+		t.Fatalf("the review does not name the installed Lemonade version it replaces: %+v", review)
 	}
-	if setupReplacements(review.Plan, map[string]setup.Artifact{"lemonade-engine": *review.Plan.Components[0].Artifact}) != nil {
+	// The replacement projection itself still names both exact versions
+	// when an explicitly supplied plan has an artifact.
+	known := earlierLemonadePlan(t)
+	replacements := setupReplacements(known, map[string]setup.Artifact{"lemonade-engine": older})
+	if len(replacements) != 1 || replacements[0].From != "v2026.38.0" || replacements[0].To != "v2026.39.1" {
+		t.Fatalf("the artifact projection lost the replaced version: %+v", replacements)
+	}
+	if setupReplacements(known, map[string]setup.Artifact{"lemonade-engine": *known.Components[0].Artifact}) != nil {
 		t.Fatal("an unchanged installed version was named as replaced")
 	}
 }
@@ -125,5 +142,61 @@ func TestSetupRecoverSettlesAnEarlierPlansInterruptedInstall(t *testing.T) {
 	}
 	if got := post("/setup/intent", approve); got.Code != http.StatusOK {
 		t.Fatalf("the settled earlier plan still blocks the current one: %d %s", got.Code, got.Body.String())
+	}
+}
+
+// R19 render check, 2026-11-09: the update that interrupted an install also
+// changed the catalogue. GET /setup/install keeps the earlier release's
+// approval of the journal's plan, marked interrupted, so the page can show
+// it stopped; an approval of another plan stays hidden.
+func TestInstallStateKeepsAnEarlierCatalogsInterruptedApproval(t *testing.T) {
+	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
+		t.Skip("the recorded Lemonade pins are Windows x64 only")
+	}
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	journal := setup.Journal{Path: filepath.Join(t.TempDir(), "setup", "plan.json")}
+	plan := earlierLemonadePlan(t)
+	state := setup.State{Plan: plan, ApprovedPlanID: plan.ID, Configuration: map[string]bool{"lemonade-model": false},
+		Effects: map[string]setup.Effect{"lemonade-engine": {Revision: 3, Phase: setup.Requested}}}
+	data, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(journal.Path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(journal.Path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	previous := setup.PanelBuild
+	setup.PanelBuild = func() string { return "r19" }
+	t.Cleanup(func() { setup.PanelBuild = previous })
+	record := `{"plan_id":"` + plan.ID + `","rules_digest":"","approved_at":"2026-11-09T10:29:05Z","build":"r18"}`
+	installPath := filepath.Join(filepath.Dir(journal.Path), "install.json")
+	if err := os.WriteFile(installPath, []byte(record), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	call := installHandler(t, &journal)
+	read := func() setupInstallReply {
+		t.Helper()
+		got := call("GET", "/setup/install", "")
+		var reply setupInstallReply
+		if got.Code != 200 || json.Unmarshal(got.Body.Bytes(), &reply) != nil {
+			t.Fatalf("read: %d %s", got.Code, got.Body.String())
+		}
+		return reply
+	}
+	reply := read()
+	if reply.CurrentCatalog || reply.Approved || reply.Plan.ID != plan.ID || reply.Install.PlanID != plan.ID || reply.Install.Interrupted != setup.InterruptedByUpdate {
+		t.Fatalf("the earlier approval is not shown stopped: current %v approved %v plan %s install %+v", reply.CurrentCatalog, reply.Approved, reply.Plan.ID, reply.Install)
+	}
+	if phase := reply.Components[0].Effect.Phase; phase != setup.Requested {
+		t.Fatalf("reading the stopped install changed its row: %s", phase)
+	}
+	if err := os.WriteFile(installPath, []byte(`{"plan_id":"another-plan","approved_at":"2026-11-09T10:29:05Z"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if reply := read(); reply.Install.PlanID != "" {
+		t.Fatalf("an approval of another plan was shown: %+v", reply.Install)
 	}
 }

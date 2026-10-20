@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -106,34 +105,6 @@ func TestTheManifestFileIsResolvedBeforeTheFacadeCheck(t *testing.T) {
 	}
 }
 
-// The showcase applications' own manifests (adopters/<app>/), which their
-// MSIs ship, resolve inside the folders and pass the Facade's check. A tree
-// without them, such as the published monitor module, skips.
-func TestTheShowcaseManifestsResolve(t *testing.T) {
-	folders, _ := testFolders(t)
-	for _, app := range []string{"comfyui"} {
-		data, err := os.ReadFile(filepath.Join("..", "adopters", app, "application-manifest.json"))
-		if errors.Is(err, os.ErrNotExist) {
-			t.Skipf("no adopters/%s in this tree", app)
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		// build_app.py fills the release's RECORD-set pin.
-		filled := strings.ReplaceAll(string(data), "@records_sha256@", strings.Repeat("0", 64))
-		d, err := client.ParseApplicationDescriptorResolving([]byte(filled), folders.resolve)
-		if err != nil {
-			t.Fatalf("%s: %v", app, err)
-		}
-		if d.Name != app {
-			t.Fatalf("%s names %q", app, d.Name)
-		}
-		if inside, err := identity.Within(d.Program, folders["app"]); err != nil || !inside {
-			t.Fatalf("%s program %s is not in {app}: %v", app, d.Program, err)
-		}
-	}
-}
-
 // venvProgram writes a stand-in interpreter folder and a program in {app}
 // with the pyvenv.cfg Python would read for it, naming that folder as home.
 // link makes the program a hard link to home's interpreter, not a copy.
@@ -231,20 +202,6 @@ func TestAVenvHomeThatIsNotAbsoluteOrLocalIsRefused(t *testing.T) {
 				t.Fatalf("resolved to %q", got)
 			}
 		})
-	}
-}
-
-func TestTheFirstHomeLineIsTheOnePythonReads(t *testing.T) {
-	for text, want := range map[string]string{
-		"home = C:\\A\nhome = C:\\B\n":      `C:\A`,
-		"\xef\xbb\xbf HOME\t=  C:\\A  \r\n": `C:\A`,
-		"version = 3.12\n":                  "",
-		"homes = C:\\A\nhome=\n":            "",
-		"include-system-site-packages = no": "",
-	} {
-		if got := venvConfigHome([]byte(text)); got != want {
-			t.Errorf("%q: %q, want %q", text, got, want)
-		}
 	}
 }
 

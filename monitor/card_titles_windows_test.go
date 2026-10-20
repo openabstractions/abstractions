@@ -45,15 +45,15 @@ func TestCardHolderTitleIsAskedOfTheFilesystem(t *testing.T) {
 	apps := &setupApplicationsFake{page: fwire.ApplicationPage{Outcome: fwire.ApplicationOutcomePage, Applications: []fwire.ApplicationEntry{
 		{Descriptor: fwire.ApplicationDescriptor{Name: "link", Program: registered, Title: "Link App"}, Scope: fwire.ScopeLocal},
 	}}}
-	(&servicePanel{comfyApps: apps}).titleCardHolders(context.Background(), resources)
+	titles := (&servicePanel{comfyApps: apps}).titleCardHolders(context.Background(), resources)
 	got := resources[0].Holders
-	if got[0].Title != "Link App" {
+	if titles[got[0].Program] != "Link App" {
 		t.Errorf("another case spelling of the registered program is untitled: %+v", got[0])
 	}
-	if got[1].Title != "Link App" {
+	if titles[got[1].Program] != "Link App" {
 		t.Errorf("the registered program through a junction is untitled: %+v", got[1])
 	}
-	if got[2].Title != "" {
+	if titles[got[2].Program] != "" {
 		t.Errorf("a twin name the volume keeps apart took the registered title: %+v", got[2])
 	}
 }

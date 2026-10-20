@@ -1,0 +1,15 @@
+class Refusal
+number ipcCancelled
+number ipcClientMaxFrame
+number ipcDefaultCallBudgetMs
+number ipcDefaultMaxFrame
+number ipcDisconnected
+number ipcInternalError
+number ipcInvalidArgument
+number ipcIoError
+number ipcNoMemory
+number ipcOk
+number ipcProofUnavailable
+number ipcTimeout
+number ipcUntrusted
+number ipcWireMaxFrame

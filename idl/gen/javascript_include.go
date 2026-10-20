@@ -20,7 +20,7 @@ func jsImportedType(s *Definition, t string) bool {
 		t = e
 	}
 	_, ok := s.importedRecord(t)
-	return ok
+	return ok || (strings.Contains(t, ".") && s.Enum(t) != nil)
 }
 
 func validateJSIncludes(s *Definition) error {
@@ -87,9 +87,12 @@ func validateJSIncludes(s *Definition) error {
 	return nil
 }
 
-func emitJSIncluded(b backend, s *Definition) string {
+func emitJSIncluded(b backend, s *Definition) (string, error) {
 	s = importCarriers(s)
-	body := b.emit(s)
+	body, err := b.emit(s)
+	if err != nil {
+		return "", err
+	}
 	body = jsMustReplace(body, "constructor(buf) { this.buf = buf; this.pos = 0; this.depth = 0; }", "constructor(buf) { this.buf = buf; this.pos = 0; this.depth = 0; this.limit = DEPTH_LIMIT; }")
 	body = jsMustReplace(body, "if (this.depth > DEPTH_LIMIT) throw", "if (this.depth > this.limit) throw")
 	if len(s.Foreign) > 0 && strings.Contains(body, "function _serviceCheck(") {
@@ -104,9 +107,11 @@ func emitJSIncluded(b backend, s *Definition) string {
 		body = jsMustReplace(body, plain, fmt.Sprintf("\nexport function encode(v) {\n  return encode%s(v);\n}\n", jsStem(s.Document)))
 	}
 	var head strings.Builder
+	// Enum strings are checked inline. Only records need the dependency's
+	// private depth-aware codecs; enum-only owners need no runtime import.
 	used := map[string]bool{}
-	for _, n := range foreignNames(s) {
-		used[s.Foreign[n].Alias] = true
+	for _, record := range s.Foreign {
+		used[record.Alias] = true
 	}
 	for _, imp := range s.Imports {
 		if used[imp.Alias] {
@@ -142,7 +147,7 @@ func emitJSIncluded(b backend, s *Definition) string {
 		}
 		fmt.Fprintf(&tail, jsNamedCodec, jsStem(st.Name), derive, result)
 	}
-	return head.String() + body + tail.String()
+	return head.String() + body + tail.String(), nil
 }
 
 // Standalone records reuse the generated service value checker. Imported
@@ -158,7 +163,7 @@ func jsNamedChecks(s *Definition) string {
 		}
 		b.WriteString("];\n")
 	}
-	checker := jsServiceCommon[strings.Index(jsServiceCommon, "function _serviceCheck("):]
+	checker := jsScalarPresenceChecks(s, jsServiceCommon[strings.Index(jsServiceCommon, "function _serviceCheck("):])
 	if hasBinary(s) {
 		checker = jsMustReplace(checker, `else if (kind === "json")`, `else if (kind === "binary") valid = value instanceof Uint8Array;
   else if (kind === "json")`)

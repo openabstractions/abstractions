@@ -77,6 +77,109 @@ inline constexpr bool operator!=(CancelOutcome value, std::string_view name)
 inline constexpr bool operator==(std::string_view name, CancelOutcome value)
 inline constexpr bool operator!=(std::string_view name, CancelOutcome value)
 inline const std::vector<std::string> kCancelOutcomeNames
+inline const std::vector<std::string> kChatProgressPhaseNames
+inline constexpr std::string_view kChatProgressPhaseQueued
+inline constexpr std::string_view kChatProgressPhaseLoading
+inline constexpr std::string_view kChatProgressPhaseWarming
+enum class ChatPartKind {Text, Reasoning, ReasoningSummary, ToolCall, ModelRefusal}
+inline constexpr std::string_view wire_name(ChatPartKind value)
+inline std::optional<ChatPartKind> parse_chat_part_kind(std::string_view name)
+inline constexpr bool operator==(ChatPartKind value, std::string_view name)
+inline constexpr bool operator!=(ChatPartKind value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ChatPartKind value)
+inline constexpr bool operator!=(std::string_view name, ChatPartKind value)
+inline const std::vector<std::string> kChatPartKindNames
+inline const std::vector<std::string> kFinishReasonNames
+inline constexpr std::string_view kFinishReasonStop
+inline constexpr std::string_view kFinishReasonLength
+inline constexpr std::string_view kFinishReasonToolCalls
+inline constexpr std::string_view kFinishReasonContentFilter
+inline constexpr std::string_view kFinishReasonModelRefusal
+inline constexpr std::string_view kFinishReasonContextWindow
+inline constexpr std::string_view kFinishReasonMalformedToolCall
+inline constexpr std::string_view kFinishReasonPaused
+inline constexpr std::string_view kFinishReasonOther
+enum class ChatToolChoiceKind {Auto, None, Required, Named}
+inline constexpr std::string_view wire_name(ChatToolChoiceKind value)
+inline std::optional<ChatToolChoiceKind> parse_chat_tool_choice_kind(std::string_view name)
+inline constexpr bool operator==(ChatToolChoiceKind value, std::string_view name)
+inline constexpr bool operator!=(ChatToolChoiceKind value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ChatToolChoiceKind value)
+inline constexpr bool operator!=(std::string_view name, ChatToolChoiceKind value)
+inline const std::vector<std::string> kChatToolChoiceKindNames
+enum class ChatReasoningEffort {None, Low, Medium, High}
+inline constexpr std::string_view wire_name(ChatReasoningEffort value)
+inline std::optional<ChatReasoningEffort> parse_chat_reasoning_effort(std::string_view name)
+inline constexpr bool operator==(ChatReasoningEffort value, std::string_view name)
+inline constexpr bool operator!=(ChatReasoningEffort value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ChatReasoningEffort value)
+inline constexpr bool operator!=(std::string_view name, ChatReasoningEffort value)
+inline const std::vector<std::string> kChatReasoningEffortNames
+inline const std::vector<std::string> kSealOmissionNames
+inline constexpr std::string_view kSealOmissionEncodedSize
+inline constexpr std::string_view kSealOmissionIncompatibleOrigin
+inline const std::vector<std::string> kServedPlaceNames
+inline constexpr std::string_view kServedPlaceLocal
+inline constexpr std::string_view kServedPlaceHosted
+inline constexpr std::string_view kServedPlaceRemote
+enum class ChatEventKind {Progress, Part, BlockEnd, Usage, End}
+inline constexpr std::string_view wire_name(ChatEventKind value)
+inline std::optional<ChatEventKind> parse_chat_event_kind(std::string_view name)
+inline constexpr bool operator==(ChatEventKind value, std::string_view name)
+inline constexpr bool operator!=(ChatEventKind value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ChatEventKind value)
+inline constexpr bool operator!=(std::string_view name, ChatEventKind value)
+inline const std::vector<std::string> kChatEventKindNames
+inline const std::vector<std::string> kChatGuaranteeNames
+inline constexpr std::string_view kChatGuaranteeLocalOnly
+inline constexpr std::string_view kChatGuaranteeHostedAllowed
+inline constexpr std::string_view kChatGuaranteeNoRetention
+inline constexpr std::string_view kChatGuaranteeFreeCapacity
+enum class ChatUse {Title}
+inline constexpr std::string_view wire_name(ChatUse value)
+inline std::optional<ChatUse> parse_chat_use(std::string_view name)
+inline constexpr bool operator==(ChatUse value, std::string_view name)
+inline constexpr bool operator!=(ChatUse value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ChatUse value)
+inline constexpr bool operator!=(std::string_view name, ChatUse value)
+inline const std::vector<std::string> kChatUseNames
+enum class ChatResultOutcome {Completed, Failed, Cancelled}
+inline constexpr std::string_view wire_name(ChatResultOutcome value)
+inline std::optional<ChatResultOutcome> parse_chat_result_outcome(std::string_view name)
+inline constexpr bool operator==(ChatResultOutcome value, std::string_view name)
+inline constexpr bool operator!=(ChatResultOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ChatResultOutcome value)
+inline constexpr bool operator!=(std::string_view name, ChatResultOutcome value)
+inline const std::vector<std::string> kChatResultOutcomeNames
+inline const std::vector<std::string> kChatLoadNames
+inline constexpr std::string_view kChatLoadCold
+inline constexpr std::string_view kChatLoadWarm
+inline constexpr std::string_view kChatLoadLoaded
+inline const std::vector<std::string> kChatLoadSourceNames
+inline constexpr std::string_view kChatLoadSourceDisk
+inline constexpr std::string_view kChatLoadSourceAdopted
+inline constexpr std::string_view kChatLoadSourceLent
+inline const std::vector<std::string> kChatReasoningSupportNames
+inline constexpr std::string_view kChatReasoningSupportApplied
+inline constexpr std::string_view kChatReasoningSupportApproximated
+inline constexpr std::string_view kChatReasoningSupportNotSupported
+inline constexpr std::string_view kChatReasoningSupportOverridden
+enum class ChatStartOutcome {Accepted, NotPermitted, BudgetExceeded, Unsupported, NoHost, Unavailable, Invalid, Forbidden, Exhausted, Conflict, Unknown}
+inline constexpr std::string_view wire_name(ChatStartOutcome value)
+inline std::optional<ChatStartOutcome> parse_chat_start_outcome(std::string_view name)
+inline constexpr bool operator==(ChatStartOutcome value, std::string_view name)
+inline constexpr bool operator!=(ChatStartOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ChatStartOutcome value)
+inline constexpr bool operator!=(std::string_view name, ChatStartOutcome value)
+inline const std::vector<std::string> kChatStartOutcomeNames
+enum class ChatHistoryOutcome {Available, Forbidden, Invalid, Unavailable}
+inline constexpr std::string_view wire_name(ChatHistoryOutcome value)
+inline std::optional<ChatHistoryOutcome> parse_chat_history_outcome(std::string_view name)
+inline constexpr bool operator==(ChatHistoryOutcome value, std::string_view name)
+inline constexpr bool operator!=(ChatHistoryOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ChatHistoryOutcome value)
+inline constexpr bool operator!=(std::string_view name, ChatHistoryOutcome value)
+inline const std::vector<std::string> kChatHistoryOutcomeNames
 enum class PreloadOutcome {Evaluated, Loaded, Busy, Refused, NotPermitted, UnsupportedFeature, NoHost, Unavailable, Invalid, Forbidden}
 inline constexpr std::string_view wire_name(PreloadOutcome value)
 inline std::optional<PreloadOutcome> parse_preload_outcome(std::string_view name)
@@ -189,6 +292,22 @@ inline constexpr bool operator!=(AuditOutcome value, std::string_view name)
 inline constexpr bool operator==(std::string_view name, AuditOutcome value)
 inline constexpr bool operator!=(std::string_view name, AuditOutcome value)
 inline const std::vector<std::string> kAuditOutcomeNames
+enum class ProgramBudgetReadOutcome {Page, Invalid, Forbidden, Unavailable, Unsupported}
+inline constexpr std::string_view wire_name(ProgramBudgetReadOutcome value)
+inline std::optional<ProgramBudgetReadOutcome> parse_program_budget_read_outcome(std::string_view name)
+inline constexpr bool operator==(ProgramBudgetReadOutcome value, std::string_view name)
+inline constexpr bool operator!=(ProgramBudgetReadOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ProgramBudgetReadOutcome value)
+inline constexpr bool operator!=(std::string_view name, ProgramBudgetReadOutcome value)
+inline const std::vector<std::string> kProgramBudgetReadOutcomeNames
+enum class ProgramBudgetEditOutcome {Applied, Conflict, Invalid, Forbidden, Unavailable, Unsupported}
+inline constexpr std::string_view wire_name(ProgramBudgetEditOutcome value)
+inline std::optional<ProgramBudgetEditOutcome> parse_program_budget_edit_outcome(std::string_view name)
+inline constexpr bool operator==(ProgramBudgetEditOutcome value, std::string_view name)
+inline constexpr bool operator!=(ProgramBudgetEditOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ProgramBudgetEditOutcome value)
+inline constexpr bool operator!=(std::string_view name, ProgramBudgetEditOutcome value)
+inline const std::vector<std::string> kProgramBudgetEditOutcomeNames
 enum class CandidatePlacement {Local, Hosted}
 inline constexpr std::string_view wire_name(CandidatePlacement value)
 inline std::optional<CandidatePlacement> parse_candidate_placement(std::string_view name)
@@ -212,6 +331,53 @@ inline constexpr std::string_view kServiceErrorCodeUnknownVersion
 inline constexpr std::string_view kServiceErrorCodeUnknownService
 inline constexpr std::string_view kServiceErrorCodeUnknownMethod
 inline constexpr std::string_view kServiceErrorCodeWrongMode
+enum class EndpointServiceReadiness {Ready, NotReady, Unknown}
+inline constexpr std::string_view wire_name(EndpointServiceReadiness value)
+inline std::optional<EndpointServiceReadiness> parse_endpoint_service_readiness(std::string_view name)
+inline constexpr bool operator==(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator!=(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointServiceReadiness value)
+inline constexpr bool operator!=(std::string_view name, EndpointServiceReadiness value)
+inline const std::vector<std::string> kEndpointServiceReadinessNames
+inline const std::vector<std::string> kEndpointRefusalSourceNames
+inline constexpr std::string_view kEndpointRefusalSourceRights
+inline constexpr std::string_view kEndpointRefusalSourceCredentials
+inline constexpr std::string_view kEndpointRefusalSourceLicense
+inline constexpr std::string_view kEndpointRefusalSourceTerms
+inline constexpr std::string_view kEndpointRefusalSourceIdentity
+inline constexpr std::string_view kEndpointRefusalSourceOs
+enum class EndpointRefusalDecision {Denied, NotGranted, PersonOnly}
+inline constexpr std::string_view wire_name(EndpointRefusalDecision value)
+inline std::optional<EndpointRefusalDecision> parse_endpoint_refusal_decision(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalDecision value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalDecision value)
+inline const std::vector<std::string> kEndpointRefusalDecisionNames
+enum class EndpointRefusalAsk {Available, None}
+inline constexpr std::string_view wire_name(EndpointRefusalAsk value)
+inline std::optional<EndpointRefusalAsk> parse_endpoint_refusal_ask(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalAsk value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalAsk value)
+inline const std::vector<std::string> kEndpointRefusalAskNames
+enum class EndpointProducerCheckState {Current, Repaired, Stale, Refused, Unverified}
+inline constexpr std::string_view wire_name(EndpointProducerCheckState value)
+inline std::optional<EndpointProducerCheckState> parse_endpoint_producer_check_state(std::string_view name)
+inline constexpr bool operator==(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator!=(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointProducerCheckState value)
+inline constexpr bool operator!=(std::string_view name, EndpointProducerCheckState value)
+inline const std::vector<std::string> kEndpointProducerCheckStateNames
+enum class EndpointDescriptionOutcome {Described, Forbidden, Unavailable, Invalid, Unsupported}
+inline constexpr std::string_view wire_name(EndpointDescriptionOutcome value)
+inline std::optional<EndpointDescriptionOutcome> parse_endpoint_description_outcome(std::string_view name)
+inline constexpr bool operator==(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator!=(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointDescriptionOutcome value)
+inline constexpr bool operator!=(std::string_view name, EndpointDescriptionOutcome value)
+inline const std::vector<std::string> kEndpointDescriptionOutcomeNames
 inline const std::vector<std::string> kFeatures
 inline const std::vector<std::string> kResourceActions
 inline const std::vector<std::string> kLocalKeyKinds
@@ -384,6 +550,150 @@ struct DeltaPage
 struct Cancellation
   CancelOutcome outcome
   std::optional<ReplyOutcome> reply_outcome
+struct ChatProgress
+  std::string phase
+  std::optional<std::int64_t> done
+  std::optional<std::int64_t> total
+  std::string unit
+struct ChatUsage
+  std::optional<std::int64_t> input
+  std::optional<std::int64_t> output
+  std::optional<std::int64_t> cache_read
+  std::optional<std::int64_t> cache_write
+  std::optional<std::int64_t> reasoning
+struct ChatToolChoice
+  ChatToolChoiceKind kind
+  std::string name
+struct ChatTool
+  std::string name
+  std::string description
+  std::string parameters
+  std::optional<bool> strict
+struct ChatReasoning
+  ChatReasoningEffort effort
+  std::optional<std::int64_t> budget
+struct ChatOptions
+  std::int64_t max_output
+  std::optional<Temperature> temperature
+  std::vector<std::string> stop
+  std::string json_schema
+  std::optional<ChatToolChoice> tool_choice
+  std::optional<bool> parallel_tools
+  std::optional<ChatReasoning> reasoning
+struct ReasoningSeal
+  std::string origin
+  std::vector<std::uint8_t> bytes
+struct ChatPart
+  std::int64_t block
+  ChatPartKind kind
+  std::string text
+  std::string call_id
+  std::string name
+  std::string arguments
+  std::optional<ReasoningSeal> seal
+struct ChatBlockEnd
+  std::int64_t block
+  std::optional<std::string> seal_omitted
+struct ServedBy
+  std::string place
+  std::string server
+  std::string machine
+struct ChatInputPart
+  PartKind kind
+  std::string text
+  std::string digest
+  std::string media_type
+  std::string call_id
+  std::string name
+  std::string arguments
+struct ChatReplay
+  std::int64_t block
+  ReasoningSeal seal
+struct ChatMessage
+  Role role
+  std::vector<ChatInputPart> parts
+  std::vector<ChatReplay> reasoning
+struct ChatTarget
+  std::string model
+  std::string selection_policy
+struct ChatContent
+  std::vector<ChatMessage> messages
+  std::vector<ChatTool> tools
+  std::optional<ChatOptions> options
+  std::map<std::string, std::string> extensions
+  std::vector<std::string> required_extensions
+  std::vector<std::string> guarantees
+  std::string credential
+struct RequestV3
+  ::abstraction::job::acceptance::RequestIdentity identity
+  ChatTarget target
+  ChatContent content
+  std::string model_ref
+  std::string conversation
+  std::optional<ChatUse> use
+struct ChatTiming
+  std::optional<std::int64_t> queue_ms
+  std::optional<std::int64_t> load_ms
+  std::optional<std::int64_t> restore_ms
+  std::optional<std::int64_t> prefill_ms
+  std::optional<std::int64_t> decode_ms
+  std::optional<std::int64_t> prefill_tokens
+  std::optional<std::int64_t> reused_tokens
+  std::optional<std::string> load
+  std::optional<std::string> load_source
+struct ChatReasoningApplied
+  std::optional<ChatReasoningEffort> effort
+  std::optional<std::int64_t> budget
+  std::string support
+  std::optional<std::string> budget_support
+struct ChatResult
+  ChatResultOutcome outcome
+  std::string cause
+  std::optional<std::string> finish_reason
+  std::string stop_sequence
+  ChatUsage usage
+  std::optional<ServedBy> served_by
+  std::optional<Cost> cost
+  std::optional<::abstraction::rights::api::RefusalDetail> refusal
+  std::optional<std::int64_t> retry_after_ms
+  std::optional<ChatTiming> timing
+  std::optional<ChatReasoningApplied> reasoning_applied
+  std::vector<std::string> dropped_extensions
+struct ChatEvent
+  std::int64_t sequence
+  ChatEventKind kind
+  std::optional<ChatProgress> progress
+  std::optional<ChatPart> part
+  std::optional<ChatBlockEnd> block_end
+  std::optional<ChatUsage> usage
+  std::optional<ChatResult> end
+struct ChatAdmission
+  ChatStartOutcome outcome
+  std::string reason
+  std::string request
+  std::string server
+  std::string model
+  std::int64_t retention_ms
+  std::int64_t idle_ms
+  std::int64_t retained_deltas
+  std::string preferred_model
+  std::optional<SelectionReason> selection_reason
+  std::optional<::abstraction::rights::api::RefusalDetail> refusal
+  std::optional<std::int64_t> retry_after_ms
+struct ChatPage
+  PageOutcome outcome
+  std::vector<ChatEvent> events
+  std::int64_t next
+  bool at_end
+  std::optional<::abstraction::rights::api::RefusalDetail> refusal
+struct ChatCancellation
+  CancelOutcome outcome
+  std::optional<ChatResultOutcome> result_outcome
+  std::optional<::abstraction::rights::api::RefusalDetail> refusal
+struct ChatHistoryRead
+  ChatHistoryOutcome outcome
+  std::optional<::abstraction::job::acceptance::HistoryWindow> window
+  std::optional<::abstraction::rights::api::RefusalDetail> refusal
 struct PreloadReply
   PreloadOutcome outcome
   std::string reason
@@ -568,6 +878,17 @@ struct AuditPage
   std::vector<AuditEntry> entries
   std::int64_t next
   bool at_end
+struct RequestEntry
+  AuditEntry entry
+  std::string preferred_model
+  std::vector<std::string> unavailable_hosts
+  std::string selection
+  std::optional<std::string> placement
+struct RequestPage
+  AuditOutcome outcome
+  std::vector<RequestEntry> entries
+  std::int64_t next
+  bool at_end
 struct GatewayState
   ListOutcome outcome
   std::string revision
@@ -580,6 +901,32 @@ struct GatewayChange
   EditOutcome outcome
   std::string revision
   std::string reason
+struct ProgramBudget
+  std::int64_t tokens_per_day
+  std::int64_t micros_per_day
+  std::int64_t requests_per_day
+  std::int64_t images_per_day
+  std::int64_t audio_seconds_per_day
+  std::int64_t characters_per_day
+struct ProgramBudgetEntry
+  std::string program
+  std::optional<ProgramBudget> budget
+  Spend spend
+  bool cost_unreported
+struct ProgramBudgetPage
+  ProgramBudgetReadOutcome outcome
+  std::string revision
+  std::vector<ProgramBudgetEntry> entries
+  std::vector<std::string> profiles
+struct ProgramBudgetResult
+  ProgramBudgetEditOutcome outcome
+  std::string revision
+  std::string reason
+struct ProgramBudgetChange
+  std::string expected_revision
+  std::string credential
+  std::string program
+  std::optional<ProgramBudget> budget
 struct SelectionChange
   EditOutcome outcome
   std::string revision
@@ -596,8 +943,227 @@ struct SelectionReadV2
   SelectionReadOutcome outcome
   std::string revision
   std::optional<SelectionPolicyV2> policy
-inline std::string encode(const Request& v)
+struct EndpointRefusalDetail
+  std::string source
+  EndpointRefusalDecision decision
+  EndpointRefusalAsk ask
+  std::string action
+  std::string question
+  std::string credential
+  std::int64_t retry_after_ms
+struct EndpointProducerCheck
+  std::string kind
+  std::string copy
+  EndpointProducerCheckState state
+  std::string reason
+  std::string checked
+struct EndpointServiceState
+  std::string service
+  EndpointServiceReadiness readiness
+  std::string reason
+  std::vector<std::string> guarantees
+  std::map<std::string, std::string> capabilities
+  std::string definition_hash
+struct EndpointDescription
+  EndpointDescriptionOutcome outcome
+  std::string program
+  std::string version
+  std::vector<EndpointServiceState> services
+  std::optional<EndpointRefusalDetail> refusal
+  std::string reason
+  std::vector<EndpointProducerCheck> checks
+struct EndpointDescriptionResult
+  EndpointDescription value
 inline Request decode(std::string_view data)
+T from_json(std::string_view data)
+inline std::string to_json(const Part& v)
+inline Part from_json<Part>(std::string_view data)
+inline std::string to_json(const Message& v)
+inline Message from_json<Message>(std::string_view data)
+inline std::string to_json(const Tool& v)
+inline Tool from_json<Tool>(std::string_view data)
+inline std::string to_json(const Temperature& v)
+inline Temperature from_json<Temperature>(std::string_view data)
+inline std::string to_json(const Options& v)
+inline Options from_json<Options>(std::string_view data)
+inline std::string to_json(const Request& v)
+inline Request from_json<Request>(std::string_view data)
+inline std::string to_json(const Target& v)
+inline Target from_json<Target>(std::string_view data)
+inline std::string to_json(const RequestContent& v)
+inline RequestContent from_json<RequestContent>(std::string_view data)
+inline std::string to_json(const RequestV2& v)
+inline RequestV2 from_json<RequestV2>(std::string_view data)
+inline std::string to_json(const Usage& v)
+inline Usage from_json<Usage>(std::string_view data)
+inline std::string to_json(const Cost& v)
+inline Cost from_json<Cost>(std::string_view data)
+inline std::string to_json(const Reply& v)
+inline Reply from_json<Reply>(std::string_view data)
+inline std::string to_json(const Delta& v)
+inline Delta from_json<Delta>(std::string_view data)
+inline std::string to_json(const Admission& v)
+inline Admission from_json<Admission>(std::string_view data)
+inline std::string to_json(const AdmissionV2& v)
+inline AdmissionV2 from_json<AdmissionV2>(std::string_view data)
+inline std::string to_json(const DeltaPage& v)
+inline DeltaPage from_json<DeltaPage>(std::string_view data)
+inline std::string to_json(const Cancellation& v)
+inline Cancellation from_json<Cancellation>(std::string_view data)
+inline std::string to_json(const ChatProgress& v)
+inline ChatProgress from_json<ChatProgress>(std::string_view data)
+inline std::string to_json(const ChatUsage& v)
+inline ChatUsage from_json<ChatUsage>(std::string_view data)
+inline std::string to_json(const ChatToolChoice& v)
+inline ChatToolChoice from_json<ChatToolChoice>(std::string_view data)
+inline std::string to_json(const ChatTool& v)
+inline ChatTool from_json<ChatTool>(std::string_view data)
+inline std::string to_json(const ChatReasoning& v)
+inline ChatReasoning from_json<ChatReasoning>(std::string_view data)
+inline std::string to_json(const ChatOptions& v)
+inline ChatOptions from_json<ChatOptions>(std::string_view data)
+inline std::string to_json(const ChatPart& v)
+inline ChatPart from_json<ChatPart>(std::string_view data)
+inline std::string to_json(const ChatBlockEnd& v)
+inline ChatBlockEnd from_json<ChatBlockEnd>(std::string_view data)
+inline std::string to_json(const ReasoningSeal& v)
+inline ReasoningSeal from_json<ReasoningSeal>(std::string_view data)
+inline std::string to_json(const ServedBy& v)
+inline ServedBy from_json<ServedBy>(std::string_view data)
+inline std::string to_json(const ChatInputPart& v)
+inline ChatInputPart from_json<ChatInputPart>(std::string_view data)
+inline std::string to_json(const ChatReplay& v)
+inline ChatReplay from_json<ChatReplay>(std::string_view data)
+inline std::string to_json(const ChatMessage& v)
+inline ChatMessage from_json<ChatMessage>(std::string_view data)
+inline std::string to_json(const ChatTarget& v)
+inline ChatTarget from_json<ChatTarget>(std::string_view data)
+inline std::string to_json(const ChatContent& v)
+inline ChatContent from_json<ChatContent>(std::string_view data)
+inline std::string to_json(const RequestV3& v)
+inline RequestV3 from_json<RequestV3>(std::string_view data)
+inline std::string to_json(const ChatTiming& v)
+inline ChatTiming from_json<ChatTiming>(std::string_view data)
+inline std::string to_json(const ChatReasoningApplied& v)
+inline ChatReasoningApplied from_json<ChatReasoningApplied>(std::string_view data)
+inline std::string to_json(const ChatResult& v)
+inline ChatResult from_json<ChatResult>(std::string_view data)
+inline std::string to_json(const ChatEvent& v)
+inline ChatEvent from_json<ChatEvent>(std::string_view data)
+inline std::string to_json(const ChatAdmission& v)
+inline ChatAdmission from_json<ChatAdmission>(std::string_view data)
+inline std::string to_json(const ChatPage& v)
+inline ChatPage from_json<ChatPage>(std::string_view data)
+inline std::string to_json(const ChatCancellation& v)
+inline ChatCancellation from_json<ChatCancellation>(std::string_view data)
+inline std::string to_json(const ChatHistoryRead& v)
+inline ChatHistoryRead from_json<ChatHistoryRead>(std::string_view data)
+inline std::string to_json(const PreloadReply& v)
+inline PreloadReply from_json<PreloadReply>(std::string_view data)
+inline std::string to_json(const EmbedRequest& v)
+inline EmbedRequest from_json<EmbedRequest>(std::string_view data)
+inline std::string to_json(const Embeddings& v)
+inline Embeddings from_json<Embeddings>(std::string_view data)
+inline std::string to_json(const TranscriptionRequest& v)
+inline TranscriptionRequest from_json<TranscriptionRequest>(std::string_view data)
+inline std::string to_json(const TranscriptSegment& v)
+inline TranscriptSegment from_json<TranscriptSegment>(std::string_view data)
+inline std::string to_json(const TranscriptionReply& v)
+inline TranscriptionReply from_json<TranscriptionReply>(std::string_view data)
+inline std::string to_json(const SpeechRequest& v)
+inline SpeechRequest from_json<SpeechRequest>(std::string_view data)
+inline std::string to_json(const AudioChunk& v)
+inline AudioChunk from_json<AudioChunk>(std::string_view data)
+inline std::string to_json(const Delivery& v)
+inline Delivery from_json<Delivery>(std::string_view data)
+inline std::string to_json(const SpeechReply& v)
+inline SpeechReply from_json<SpeechReply>(std::string_view data)
+inline std::string to_json(const LiveRequest& v)
+inline LiveRequest from_json<LiveRequest>(std::string_view data)
+inline std::string to_json(const LiveInputResult& v)
+inline LiveInputResult from_json<LiveInputResult>(std::string_view data)
+inline std::string to_json(const LiveTranscript& v)
+inline LiveTranscript from_json<LiveTranscript>(std::string_view data)
+inline std::string to_json(const LiveReply& v)
+inline LiveReply from_json<LiveReply>(std::string_view data)
+inline std::string to_json(const ImageRequest& v)
+inline ImageRequest from_json<ImageRequest>(std::string_view data)
+inline std::string to_json(const ImageRequestContent& v)
+inline ImageRequestContent from_json<ImageRequestContent>(std::string_view data)
+inline std::string to_json(const ImageRequestV2& v)
+inline ImageRequestV2 from_json<ImageRequestV2>(std::string_view data)
+inline std::string to_json(const ImageProgress& v)
+inline ImageProgress from_json<ImageProgress>(std::string_view data)
+inline std::string to_json(const ImageResult& v)
+inline ImageResult from_json<ImageResult>(std::string_view data)
+inline std::string to_json(const ImageReply& v)
+inline ImageReply from_json<ImageReply>(std::string_view data)
+inline std::string to_json(const VideoRequest& v)
+inline VideoRequest from_json<VideoRequest>(std::string_view data)
+inline std::string to_json(const VideoAdmission& v)
+inline VideoAdmission from_json<VideoAdmission>(std::string_view data)
+inline std::string to_json(const VideoObservation& v)
+inline VideoObservation from_json<VideoObservation>(std::string_view data)
+inline std::string to_json(const CeilingLimit& v)
+inline CeilingLimit from_json<CeilingLimit>(std::string_view data)
+inline std::string to_json(const HostEntry& v)
+inline HostEntry from_json<HostEntry>(std::string_view data)
+inline std::string to_json(const Spend& v)
+inline Spend from_json<Spend>(std::string_view data)
+inline std::string to_json(const HostState& v)
+inline HostState from_json<HostState>(std::string_view data)
+inline std::string to_json(const HostList& v)
+inline HostList from_json<HostList>(std::string_view data)
+inline std::string to_json(const HostChange& v)
+inline HostChange from_json<HostChange>(std::string_view data)
+inline std::string to_json(const LocalKey& v)
+inline LocalKey from_json<LocalKey>(std::string_view data)
+inline std::string to_json(const KeyList& v)
+inline KeyList from_json<KeyList>(std::string_view data)
+inline std::string to_json(const KeyIssued& v)
+inline KeyIssued from_json<KeyIssued>(std::string_view data)
+inline std::string to_json(const KeyRevoked& v)
+inline KeyRevoked from_json<KeyRevoked>(std::string_view data)
+inline std::string to_json(const AuditEntry& v)
+inline AuditEntry from_json<AuditEntry>(std::string_view data)
+inline std::string to_json(const AuditPage& v)
+inline AuditPage from_json<AuditPage>(std::string_view data)
+inline std::string to_json(const RequestEntry& v)
+inline RequestEntry from_json<RequestEntry>(std::string_view data)
+inline std::string to_json(const RequestPage& v)
+inline RequestPage from_json<RequestPage>(std::string_view data)
+inline std::string to_json(const GatewayState& v)
+inline GatewayState from_json<GatewayState>(std::string_view data)
+inline std::string to_json(const GatewayChange& v)
+inline GatewayChange from_json<GatewayChange>(std::string_view data)
+inline std::string to_json(const ProgramBudget& v)
+inline ProgramBudget from_json<ProgramBudget>(std::string_view data)
+inline std::string to_json(const ProgramBudgetEntry& v)
+inline ProgramBudgetEntry from_json<ProgramBudgetEntry>(std::string_view data)
+inline std::string to_json(const ProgramBudgetPage& v)
+inline ProgramBudgetPage from_json<ProgramBudgetPage>(std::string_view data)
+inline std::string to_json(const ProgramBudgetResult& v)
+inline ProgramBudgetResult from_json<ProgramBudgetResult>(std::string_view data)
+inline std::string to_json(const ProgramBudgetChange& v)
+inline ProgramBudgetChange from_json<ProgramBudgetChange>(std::string_view data)
+inline std::string to_json(const SelectionChange& v)
+inline SelectionChange from_json<SelectionChange>(std::string_view data)
+inline std::string to_json(const SelectionCandidateV2& v)
+inline SelectionCandidateV2 from_json<SelectionCandidateV2>(std::string_view data)
+inline std::string to_json(const SelectionPolicyV2& v)
+inline SelectionPolicyV2 from_json<SelectionPolicyV2>(std::string_view data)
+inline std::string to_json(const SelectionReadV2& v)
+inline SelectionReadV2 from_json<SelectionReadV2>(std::string_view data)
+inline std::string to_json(const EndpointRefusalDetail& v)
+inline EndpointRefusalDetail from_json<EndpointRefusalDetail>(std::string_view data)
+inline std::string to_json(const EndpointProducerCheck& v)
+inline EndpointProducerCheck from_json<EndpointProducerCheck>(std::string_view data)
+inline std::string to_json(const EndpointServiceState& v)
+inline EndpointServiceState from_json<EndpointServiceState>(std::string_view data)
+inline std::string to_json(const EndpointDescription& v)
+inline EndpointDescription from_json<EndpointDescription>(std::string_view data)
+inline std::string to_json(const EndpointDescriptionResult& v)
+inline EndpointDescriptionResult from_json<EndpointDescriptionResult>(std::string_view data)
 struct FrameWriter
   virtual void write_frame(std::string_view frame)
 struct DispatchError : std::runtime_error
@@ -607,10 +1173,12 @@ struct FrameExchanger
 struct ServiceError : std::runtime_error
   std::string code, message
 inline constexpr std::string_view kEndpointContract
+inline constexpr std::string_view kEndpointV2Contract
 struct DescribedService
   std::string contract
   bool ready
   std::string why
+std::string describe_endpoint_with_checks(std::string_view frame, const std::string& program, const std::string& version, const std::vector<EndpointProducerCheck>& checks, const Services& . . . services)
 std::string describe_endpoint(std::string_view frame, const std::string& program, const std::string& version, const Services& . . . services)
 struct Chat
   virtual Admission start(const Request& request)
@@ -627,14 +1195,18 @@ struct ChatService
 struct ChatDispatcher : FrameWriter, FrameExchanger
   Chat& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct ChatV2
+  virtual AdmissionV2 start_with_guarantees(const RequestV2& request, const std::vector<std::string>& guarantees)
   virtual AdmissionV2 start(const RequestV2& request)
   virtual DeltaPage observe(const std::string& operation, const std::int64_t& cursor, const std::int64_t& max_deltas, const std::int64_t& max_bytes, const std::int64_t& wait_ms)
   virtual Cancellation cancel(const std::string& operation)
 template<class Transport>struct ChatV2Client : ChatV2
   Transport& transport_
+  AdmissionV2 start_with_guarantees(const RequestV2& request, const std::vector<std::string>& guarantees) override
   AdmissionV2 start(const RequestV2& request) override
   DeltaPage observe(const std::string& operation, const std::int64_t& cursor, const std::int64_t& max_deltas, const std::int64_t& max_bytes, const std::int64_t& wait_ms) override
   Cancellation cancel(const std::string& operation) override
@@ -644,6 +1216,29 @@ struct ChatV2Service
 struct ChatV2Dispatcher : FrameWriter, FrameExchanger
   ChatV2& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct ChatV3
+  virtual ChatHistoryRead get_history_window()
+  virtual ChatAdmission start(const RequestV3& request)
+  virtual ChatPage observe(const std::string& request, const std::int64_t& cursor, const std::int64_t& max_deltas, const std::int64_t& max_bytes, const std::int64_t& wait_ms)
+  virtual ChatCancellation cancel(const std::string& request)
+template<class Transport>struct ChatV3Client : ChatV3
+  Transport& transport_
+  ChatHistoryRead get_history_window() override
+  ChatAdmission start(const RequestV3& request) override
+  ChatPage observe(const std::string& request, const std::int64_t& cursor, const std::int64_t& max_deltas, const std::int64_t& max_bytes, const std::int64_t& wait_ms) override
+  ChatCancellation cancel(const std::string& request) override
+struct ChatV3Service
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ChatV3Dispatcher : FrameWriter, FrameExchanger
+  ChatV3& handler
+  DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct Preloader
@@ -657,6 +1252,8 @@ struct PreloaderService
 struct PreloaderDispatcher : FrameWriter, FrameExchanger
   Preloader& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct Embedder
@@ -670,6 +1267,8 @@ struct EmbedderService
 struct EmbedderDispatcher : FrameWriter, FrameExchanger
   Embedder& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct Transcription
@@ -687,6 +1286,8 @@ struct TranscriptionService
 struct TranscriptionDispatcher : FrameWriter, FrameExchanger
   Transcription& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct Speech
@@ -704,6 +1305,8 @@ struct SpeechService
 struct SpeechDispatcher : FrameWriter, FrameExchanger
   Speech& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct Live
@@ -725,6 +1328,8 @@ struct LiveService
 struct LiveDispatcher : FrameWriter, FrameExchanger
   Live& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct Image
@@ -742,14 +1347,18 @@ struct ImageService
 struct ImageDispatcher : FrameWriter, FrameExchanger
   Image& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct ImageV2
+  virtual AdmissionV2 start_with_guarantees(const ImageRequestV2& request, const std::vector<std::string>& guarantees)
   virtual AdmissionV2 start(const ImageRequestV2& request)
   virtual DeltaPage observe(const std::string& operation, const std::int64_t& cursor, const std::int64_t& max_deltas, const std::int64_t& max_bytes, const std::int64_t& wait_ms)
   virtual Cancellation cancel(const std::string& operation)
 template<class Transport>struct ImageV2Client : ImageV2
   Transport& transport_
+  AdmissionV2 start_with_guarantees(const ImageRequestV2& request, const std::vector<std::string>& guarantees) override
   AdmissionV2 start(const ImageRequestV2& request) override
   DeltaPage observe(const std::string& operation, const std::int64_t& cursor, const std::int64_t& max_deltas, const std::int64_t& max_bytes, const std::int64_t& wait_ms) override
   Cancellation cancel(const std::string& operation) override
@@ -759,6 +1368,8 @@ struct ImageV2Service
 struct ImageV2Dispatcher : FrameWriter, FrameExchanger
   ImageV2& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct Video
@@ -776,6 +1387,8 @@ struct VideoService
 struct VideoDispatcher : FrameWriter, FrameExchanger
   Video& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct Operator
@@ -786,8 +1399,11 @@ struct Operator
   virtual KeyIssued issue_key(const std::string& program, const std::string& credential)
   virtual KeyRevoked revoke_key(const std::string& program)
   virtual AuditPage audit(const std::int64_t& cursor, const std::int64_t& max_entries)
+  virtual RequestPage requests(const std::int64_t& cursor, const std::int64_t& max_entries)
   virtual GatewayState gateway()
   virtual GatewayChange set_gateway(const std::string& expected_revision, const bool& open, const std::string& address)
+  virtual ProgramBudgetPage program_budgets(const std::string& credential)
+  virtual ProgramBudgetResult set_program_budget(const ProgramBudgetChange& request)
 template<class Transport>struct OperatorClient : Operator
   Transport& transport_
   HostList hosts() override
@@ -797,30 +1413,224 @@ template<class Transport>struct OperatorClient : Operator
   KeyIssued issue_key(const std::string& program, const std::string& credential) override
   KeyRevoked revoke_key(const std::string& program) override
   AuditPage audit(const std::int64_t& cursor, const std::int64_t& max_entries) override
+  RequestPage requests(const std::int64_t& cursor, const std::int64_t& max_entries) override
   GatewayState gateway() override
   GatewayChange set_gateway(const std::string& expected_revision, const bool& open, const std::string& address) override
+  ProgramBudgetPage program_budgets(const std::string& credential) override
+  ProgramBudgetResult set_program_budget(const ProgramBudgetChange& request) override
 struct OperatorService
   inline static constexpr std::string_view kWireName
   inline static constexpr std::string_view kCapability
 struct OperatorDispatcher : FrameWriter, FrameExchanger
   Operator& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct SelectionOperatorV2
+  virtual SelectionReadV2 read_effective(const std::string& name)
   virtual SelectionReadV2 read(const std::string& target_program, const std::string& name)
   virtual SelectionChange put(const std::string& target_program, const std::string& expected_revision, const SelectionPolicyV2& policy)
   virtual SelectionChange delete_policy(const std::string& target_program, const std::string& expected_revision, const std::string& name)
+  virtual SelectionReadV2 read_account_default(const std::string& name)
+  virtual SelectionChange put_account_default(const std::string& expected_revision, const SelectionPolicyV2& policy)
+  virtual SelectionChange delete_account_default(const std::string& expected_revision, const std::string& name)
 template<class Transport>struct SelectionOperatorV2Client : SelectionOperatorV2
   Transport& transport_
+  SelectionReadV2 read_effective(const std::string& name) override
   SelectionReadV2 read(const std::string& target_program, const std::string& name) override
   SelectionChange put(const std::string& target_program, const std::string& expected_revision, const SelectionPolicyV2& policy) override
   SelectionChange delete_policy(const std::string& target_program, const std::string& expected_revision, const std::string& name) override
+  SelectionReadV2 read_account_default(const std::string& name) override
+  SelectionChange put_account_default(const std::string& expected_revision, const SelectionPolicyV2& policy) override
+  SelectionChange delete_account_default(const std::string& expected_revision, const std::string& name) override
 struct SelectionOperatorV2Service
   inline static constexpr std::string_view kWireName
   inline static constexpr std::string_view kCapability
 struct SelectionOperatorV2Dispatcher : FrameWriter, FrameExchanger
   SelectionOperatorV2& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
+inline std::string encode_part(const Part& v)
+inline Part decode_part(std::string_view in)
+inline std::string encode_message(const Message& v)
+inline Message decode_message(std::string_view in)
+inline std::string encode_tool(const Tool& v)
+inline Tool decode_tool(std::string_view in)
+inline std::string encode_temperature(const Temperature& v)
+inline Temperature decode_temperature(std::string_view in)
+inline std::string encode_options(const Options& v)
+inline Options decode_options(std::string_view in)
+inline std::string encode_request(const Request& v)
+inline Request decode_request(std::string_view in)
+inline std::string encode_target(const Target& v)
+inline Target decode_target(std::string_view in)
+inline std::string encode_request_content(const RequestContent& v)
+inline RequestContent decode_request_content(std::string_view in)
+inline std::string encode_request_v2(const RequestV2& v)
+inline RequestV2 decode_request_v2(std::string_view in)
+inline std::string encode_usage(const Usage& v)
+inline Usage decode_usage(std::string_view in)
+inline std::string encode_cost(const Cost& v)
+inline Cost decode_cost(std::string_view in)
+inline std::string encode_reply(const Reply& v)
+inline Reply decode_reply(std::string_view in)
+inline std::string encode_delta(const Delta& v)
+inline Delta decode_delta(std::string_view in)
+inline std::string encode_admission(const Admission& v)
+inline Admission decode_admission(std::string_view in)
+inline std::string encode_admission_v2(const AdmissionV2& v)
+inline AdmissionV2 decode_admission_v2(std::string_view in)
+inline std::string encode_delta_page(const DeltaPage& v)
+inline DeltaPage decode_delta_page(std::string_view in)
+inline std::string encode_cancellation(const Cancellation& v)
+inline Cancellation decode_cancellation(std::string_view in)
+inline std::string encode_chat_progress(const ChatProgress& v)
+inline ChatProgress decode_chat_progress(std::string_view in)
+inline std::string encode_chat_usage(const ChatUsage& v)
+inline ChatUsage decode_chat_usage(std::string_view in)
+inline std::string encode_chat_tool_choice(const ChatToolChoice& v)
+inline ChatToolChoice decode_chat_tool_choice(std::string_view in)
+inline std::string encode_chat_tool(const ChatTool& v)
+inline ChatTool decode_chat_tool(std::string_view in)
+inline std::string encode_chat_reasoning(const ChatReasoning& v)
+inline ChatReasoning decode_chat_reasoning(std::string_view in)
+inline std::string encode_chat_options(const ChatOptions& v)
+inline ChatOptions decode_chat_options(std::string_view in)
+inline std::string encode_chat_part(const ChatPart& v)
+inline ChatPart decode_chat_part(std::string_view in)
+inline std::string encode_chat_block_end(const ChatBlockEnd& v)
+inline ChatBlockEnd decode_chat_block_end(std::string_view in)
+inline std::string encode_reasoning_seal(const ReasoningSeal& v)
+inline ReasoningSeal decode_reasoning_seal(std::string_view in)
+inline std::string encode_served_by(const ServedBy& v)
+inline ServedBy decode_served_by(std::string_view in)
+inline std::string encode_chat_input_part(const ChatInputPart& v)
+inline ChatInputPart decode_chat_input_part(std::string_view in)
+inline std::string encode_chat_replay(const ChatReplay& v)
+inline ChatReplay decode_chat_replay(std::string_view in)
+inline std::string encode_chat_message(const ChatMessage& v)
+inline ChatMessage decode_chat_message(std::string_view in)
+inline std::string encode_chat_target(const ChatTarget& v)
+inline ChatTarget decode_chat_target(std::string_view in)
+inline std::string encode_chat_content(const ChatContent& v)
+inline ChatContent decode_chat_content(std::string_view in)
+inline std::string encode_request_v3(const RequestV3& v)
+inline RequestV3 decode_request_v3(std::string_view in)
+inline std::string encode_chat_timing(const ChatTiming& v)
+inline ChatTiming decode_chat_timing(std::string_view in)
+inline std::string encode_chat_reasoning_applied(const ChatReasoningApplied& v)
+inline ChatReasoningApplied decode_chat_reasoning_applied(std::string_view in)
+inline std::string encode_chat_result(const ChatResult& v)
+inline ChatResult decode_chat_result(std::string_view in)
+inline std::string encode_chat_event(const ChatEvent& v)
+inline ChatEvent decode_chat_event(std::string_view in)
+inline std::string encode_chat_admission(const ChatAdmission& v)
+inline ChatAdmission decode_chat_admission(std::string_view in)
+inline std::string encode_chat_page(const ChatPage& v)
+inline ChatPage decode_chat_page(std::string_view in)
+inline std::string encode_chat_cancellation(const ChatCancellation& v)
+inline ChatCancellation decode_chat_cancellation(std::string_view in)
+inline std::string encode_chat_history_read(const ChatHistoryRead& v)
+inline ChatHistoryRead decode_chat_history_read(std::string_view in)
+inline std::string encode_preload_reply(const PreloadReply& v)
+inline PreloadReply decode_preload_reply(std::string_view in)
+inline std::string encode_embed_request(const EmbedRequest& v)
+inline EmbedRequest decode_embed_request(std::string_view in)
+inline std::string encode_embeddings(const Embeddings& v)
+inline Embeddings decode_embeddings(std::string_view in)
+inline std::string encode_transcription_request(const TranscriptionRequest& v)
+inline TranscriptionRequest decode_transcription_request(std::string_view in)
+inline std::string encode_transcript_segment(const TranscriptSegment& v)
+inline TranscriptSegment decode_transcript_segment(std::string_view in)
+inline std::string encode_transcription_reply(const TranscriptionReply& v)
+inline TranscriptionReply decode_transcription_reply(std::string_view in)
+inline std::string encode_speech_request(const SpeechRequest& v)
+inline SpeechRequest decode_speech_request(std::string_view in)
+inline std::string encode_audio_chunk(const AudioChunk& v)
+inline AudioChunk decode_audio_chunk(std::string_view in)
+inline std::string encode_delivery(const Delivery& v)
+inline Delivery decode_delivery(std::string_view in)
+inline std::string encode_speech_reply(const SpeechReply& v)
+inline SpeechReply decode_speech_reply(std::string_view in)
+inline std::string encode_live_request(const LiveRequest& v)
+inline LiveRequest decode_live_request(std::string_view in)
+inline std::string encode_live_input_result(const LiveInputResult& v)
+inline LiveInputResult decode_live_input_result(std::string_view in)
+inline std::string encode_live_transcript(const LiveTranscript& v)
+inline LiveTranscript decode_live_transcript(std::string_view in)
+inline std::string encode_live_reply(const LiveReply& v)
+inline LiveReply decode_live_reply(std::string_view in)
+inline std::string encode_image_request(const ImageRequest& v)
+inline ImageRequest decode_image_request(std::string_view in)
+inline std::string encode_image_request_content(const ImageRequestContent& v)
+inline ImageRequestContent decode_image_request_content(std::string_view in)
+inline std::string encode_image_request_v2(const ImageRequestV2& v)
+inline ImageRequestV2 decode_image_request_v2(std::string_view in)
+inline std::string encode_image_progress(const ImageProgress& v)
+inline ImageProgress decode_image_progress(std::string_view in)
+inline std::string encode_image_result(const ImageResult& v)
+inline ImageResult decode_image_result(std::string_view in)
+inline std::string encode_image_reply(const ImageReply& v)
+inline ImageReply decode_image_reply(std::string_view in)
+inline std::string encode_video_request(const VideoRequest& v)
+inline VideoRequest decode_video_request(std::string_view in)
+inline std::string encode_video_admission(const VideoAdmission& v)
+inline VideoAdmission decode_video_admission(std::string_view in)
+inline std::string encode_video_observation(const VideoObservation& v)
+inline VideoObservation decode_video_observation(std::string_view in)
+inline std::string encode_ceiling_limit(const CeilingLimit& v)
+inline CeilingLimit decode_ceiling_limit(std::string_view in)
+inline std::string encode_host_entry(const HostEntry& v)
+inline HostEntry decode_host_entry(std::string_view in)
+inline std::string encode_spend(const Spend& v)
+inline Spend decode_spend(std::string_view in)
+inline std::string encode_host_state(const HostState& v)
+inline HostState decode_host_state(std::string_view in)
+inline std::string encode_host_list(const HostList& v)
+inline HostList decode_host_list(std::string_view in)
+inline std::string encode_host_change(const HostChange& v)
+inline HostChange decode_host_change(std::string_view in)
+inline std::string encode_local_key(const LocalKey& v)
+inline LocalKey decode_local_key(std::string_view in)
+inline std::string encode_key_list(const KeyList& v)
+inline KeyList decode_key_list(std::string_view in)
+inline std::string encode_key_issued(const KeyIssued& v)
+inline KeyIssued decode_key_issued(std::string_view in)
+inline std::string encode_key_revoked(const KeyRevoked& v)
+inline KeyRevoked decode_key_revoked(std::string_view in)
+inline std::string encode_audit_entry(const AuditEntry& v)
+inline AuditEntry decode_audit_entry(std::string_view in)
+inline std::string encode_audit_page(const AuditPage& v)
+inline AuditPage decode_audit_page(std::string_view in)
+inline std::string encode_request_entry(const RequestEntry& v)
+inline RequestEntry decode_request_entry(std::string_view in)
+inline std::string encode_request_page(const RequestPage& v)
+inline RequestPage decode_request_page(std::string_view in)
+inline std::string encode_gateway_state(const GatewayState& v)
+inline GatewayState decode_gateway_state(std::string_view in)
+inline std::string encode_gateway_change(const GatewayChange& v)
+inline GatewayChange decode_gateway_change(std::string_view in)
+inline std::string encode_program_budget(const ProgramBudget& v)
+inline ProgramBudget decode_program_budget(std::string_view in)
+inline std::string encode_program_budget_entry(const ProgramBudgetEntry& v)
+inline ProgramBudgetEntry decode_program_budget_entry(std::string_view in)
+inline std::string encode_program_budget_page(const ProgramBudgetPage& v)
+inline ProgramBudgetPage decode_program_budget_page(std::string_view in)
+inline std::string encode_program_budget_result(const ProgramBudgetResult& v)
+inline ProgramBudgetResult decode_program_budget_result(std::string_view in)
+inline std::string encode_program_budget_change(const ProgramBudgetChange& v)
+inline ProgramBudgetChange decode_program_budget_change(std::string_view in)
+inline std::string encode_selection_change(const SelectionChange& v)
+inline SelectionChange decode_selection_change(std::string_view in)
+inline std::string encode_selection_candidate_v2(const SelectionCandidateV2& v)
+inline SelectionCandidateV2 decode_selection_candidate_v2(std::string_view in)
+inline std::string encode_selection_policy_v2(const SelectionPolicyV2& v)
+inline SelectionPolicyV2 decode_selection_policy_v2(std::string_view in)
+inline std::string encode_selection_read_v2(const SelectionReadV2& v)
+inline SelectionReadV2 decode_selection_read_v2(std::string_view in)
+inline std::string encode(const Request& v)

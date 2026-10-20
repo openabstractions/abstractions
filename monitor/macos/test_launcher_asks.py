@@ -37,6 +37,79 @@ def fixture_source(scratch, suffix):
 
 @unittest.skipUnless(sys.platform == "darwin", "Native AppKit/XPC Asks fixture requires macOS")
 class LauncherAsks(unittest.TestCase):
+    def test_pairing_cancel_refuses_and_close_or_escape_stays_unanswered(self):
+        with tempfile.TemporaryDirectory(prefix="oa-native-pairing-display-") as temp:
+            scratch = Path(temp)
+            contents = scratch / "Pairing Fixture.app/Contents"
+            macos = contents / "MacOS"
+            macos.mkdir(parents=True)
+            with (contents / "Info.plist").open("wb") as metadata:
+                plistlib.dump({"CFBundleIdentifier": "org.openabstractions.panel.pairing-fixture",
+                              "CFBundleName": "OA Pairing Fixture", "CFBundlePackageType": "APPL",
+                              "CFBundleExecutable": "Pairing Fixture", "LSUIElement": True}, metadata)
+            child = macos / "panel"
+            child.write_text("#!/bin/sh\nexec /bin/sleep 30\n")
+            child.chmod(0o755)
+            source = fixture_source(scratch, r'''
+nativePermissionAlertSound = {}
+extension AppDelegate {
+    func checkPairingDisplay() {
+        sessionEvidence = { true }
+        openWhenReady = false
+        launchPanel()
+        defer { stopPanel() }
+        let captured = Pipe()
+        nativeInput = captured.fileHandleForWriting
+        var shown = 0
+        fixturePresentation = { frame, alert in
+            shown += 1
+            precondition(alert.messageText == "Pair these computers?")
+            precondition(alert.buttons.map { $0.title } == ["Pair with these permissions", "Cancel", "Close"])
+            precondition(alert.buttons.last!.keyEquivalent == "\u{1b}")
+            precondition(alert.buttons.allSatisfy { !$0.isEnabled })
+            let timer = Timer(timeInterval: nativeQuestionArmDelay + 0.1, repeats: false) { _ in
+                precondition(alert.window.defaultButtonCell === alert.buttons[1].cell,
+                             "Enter must select refusal, not pairing or unanswered close")
+                if frame.id == "refuse" { alert.buttons[1].performClick(nil) }
+                else if frame.id == "close" { alert.buttons[2].performClick(nil) }
+                else { alert.window.cancelOperation(nil) }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+        }
+        for id in ["refuse", "close", "escape"] {
+            let json = #"{"kind":"question","id":""# + id + #"","prompt":{"Title":"Pair these computers?","Instruction":"Pair these computers?","Content":"Full frozen agreement","PermissionContent":"Full frozen agreement","PermissionPrompt":true,"PairingPrompt":true,"Details":"Technical provenance","Footer":"Cancel refuses. Closing leaves unanswered.","Choices":[{"label":"Pair with these permissions","option":"once"},{"label":"Cancel","option":"refuse"}],"Default":"refuse"}}"#
+            let frame = try! JSONDecoder().decode(NativeAsksFrame.self, from: Data(json.utf8))
+            receiveNative(frame, from: panel!)
+        }
+        let deadline = Date().addingTimeInterval(10)
+        while (shown < 3 || activeDialogID != nil) && Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        }
+        precondition(shown == 3 && activeDialogID == nil, "pairing fixture did not finish")
+        try! captured.fileHandleForWriting.close()
+        nativeInput = nil
+        let output = String(data: captured.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)!
+        var replies: [String: [String: Any]] = [:]
+        for line in output.split(separator: "\n") {
+            let reply = try! JSONSerialization.jsonObject(with: Data(line.utf8)) as! [String: Any]
+            if let id = reply["id"] as? String { replies[id] = reply }
+        }
+        precondition(replies["refuse"]?["kind"] as? String == "answer" && replies["refuse"]?["option"] as? String == "refuse")
+        for id in ["close", "escape"] {
+            precondition(replies[id]?["kind"] as? String == "close" && replies[id]?["option"] == nil)
+        }
+    }
+}
+let app = NSApplication.shared
+app.setActivationPolicy(.accessory)
+AppDelegate().checkPairingDisplay()
+print("pairing refusal and unanswered dismissal fixture passed")
+''')
+            executable = macos / "Pairing Fixture"
+            run("swiftc", "-D", "PANEL_ASKS_FIXTURE", source, "-o", executable, timeout=90)
+            completed = run(executable, capture_output=True, timeout=20)
+            self.assertIn("pairing refusal and unanswered dismissal fixture passed", completed.stdout)
+
     def test_typed_permission_body_is_bounded_without_losing_operations(self):
         with tempfile.TemporaryDirectory(prefix="oa-native-typed-body-") as temp:
             scratch = Path(temp)

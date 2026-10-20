@@ -322,8 +322,27 @@ html[data-skin="windows"] .oa-content {
   min-width: 0;
   max-width: calc(1000px + 80px);
   padding: 28px 40px 40px;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
+
+/* The summary footer: a card held at the window's bottom edge. */
+html[data-skin="windows"] .oa-row.oa-footer {
+  background: linear-gradient(var(--oa-card-bg), var(--oa-card-bg)), var(--oa-page-bg);
+  margin: 16px 0 0;
+  border-color: var(--oa-card-border);
+  box-shadow: 0 -8px 16px rgba(0, 0, 0, .08);
+}
+html[data-skin="windows"] .oa-footer .oa-row-label { font-weight: 600; }
+/* A subgroup heading inside a group (Setup's Chat and coding, Pictures). */
+html[data-skin="windows"] .oa-content section.oa-group > h3 { margin: 14px 0 6px; }
+/* A group that opens with an expander card keeps the gap a heading gives. */
+html[data-skin="windows"] .oa-content section.oa-group:has(> details.oa-expander:first-child),
+html[data-skin="windows"] .oa-content section.oa-group:has(> div:first-child > details.oa-expander) { margin-top: 30px; }
+/* Ticked rows inside an expander (Setup's engines) keep a card's height. */
+html[data-skin="windows"] .oa-expander-body details.oa-expander > summary:has(> .oa-row-text) { min-height: 56px; padding: 8px 0; }
+html[data-skin="windows"] .oa-expander-body details.oa-expander + details.oa-expander { border-top: 1px solid var(--oa-sep); }
+html[data-skin="windows"] input[type="checkbox"]:not(.switch):disabled { border-color: var(--oa-text-disabled); background-color: var(--oa-control-fill-disabled); }
+html[data-skin="windows"] input[type="checkbox"]:not(.switch):checked:disabled { border-color: transparent; background-color: var(--oa-text-disabled); }
 
 /* Title 28/36 semibold; a breadcrumb's parent links read secondary. */
 html[data-skin="windows"] .oa-content h1 {

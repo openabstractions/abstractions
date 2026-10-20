@@ -14,3 +14,10 @@ struct Stamp
   std::string value
 inline std::string encode(const NoticeMetadata& v)
 inline NoticeMetadata decode(std::string_view data)
+T from_json(std::string_view data)
+inline std::string to_json(const NoticeMetadata& v)
+inline NoticeMetadata from_json<NoticeMetadata>(std::string_view data)
+inline std::string to_json(const WatchOptions& v)
+inline WatchOptions from_json<WatchOptions>(std::string_view data)
+inline std::string to_json(const Stamp& v)
+inline Stamp from_json<Stamp>(std::string_view data)

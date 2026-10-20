@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
+import {tool as hostTool} from '@opencode-ai/plugin/tool';
 import test from 'node:test';
 import {readFile} from 'node:fs/promises';
 import OpenAbstractionsPlugin from '../plugin.js';
 import {createSourceWatchTool} from '../source-watch.js';
+import {Availability, unavailableMessage} from '../availability.js';
+import {sourceWatchFixtureDependencies, parseSourceWatchFixtureReply} from '../fixtures/source-watch-ipc-fixture.mjs';
 
 const sourceId = 'fixture/system';
 const event = (msg = 'fixture secret message') => ({sourceId, record: {
@@ -56,6 +59,116 @@ function makeTool(reader, calls, extras = {}) {
 
 const args = (extra = {}) => ({sourceId, durationMs: 100, maxRecords: 4, maxBytes: 4096, ...extra});
 
+const nativeFixtureModes = ['allow', 'deny', 'not-granted', 'share-denied', 'wrong-resource', 'wrong-program',
+  'revoke', 'outage', 'cancel', 'partial-error'];
+
+test('Bun fixture startup text is produced by the availability guard before JSON consumption', async (t) => {
+  const prior = Object.getOwnPropertyDescriptor(globalThis, 'Bun');
+  Object.defineProperty(globalThis, 'Bun', {configurable: true, value: {}});
+  try {
+    for (const mode of nativeFixtureModes) await t.test(mode, async () => {
+      const calls = [];
+      const state = new Availability();
+      const plugin = await OpenAbstractionsPlugin({client: {}}, {tools: {watch_logs: true}}, {
+        tool: hostTool, availability: state, readInventory: async () => ({offers: []}),
+        resolveRouter: async (options) => {
+          calls.push(['router', options.runtimeEndpoint]);
+          throw Object.assign(new Error('logging fixture does not serve the resolver'),
+            {name: 'ResolutionError', status: 'runtime_unavailable'});
+        },
+        resolveSourceReader: async () => { calls.push(['reader']); throw Error('reader must remain uncalled'); },
+      });
+      await plugin.config({provider: {openabstractions: {npm: '@openabstractions/opencode',
+        options: {runtimeEndpoint: 'logging-only-fixture', scope: 'local'}, models: {}}}});
+      const raw = await plugin.tool.oa_logs_watch.execute(args(), {ask: async () => {}});
+      assert.equal(raw, unavailableMessage);
+      assert.deepEqual(calls, [['router', 'logging-only-fixture']]);
+      const diagnostics = [];
+      assert.throws(() => parseSourceWatchFixtureReply(raw, {mode, sharing: false, report: value => diagnostics.push(value)}), SyntaxError);
+      const detail = JSON.parse(diagnostics[0].slice('OA_SOURCE_WATCH_FIXTURE_DIAGNOSTIC='.length));
+      assert.equal(detail.reply, unavailableMessage);
+      assert.equal(detail.mode, mode);
+      assert.equal(detail.boundary, 'source-watch tool result');
+    });
+  } finally {
+    if (prior) Object.defineProperty(globalThis, 'Bun', prior);
+    else delete globalThis.Bun;
+  }
+});
+
+test('native source-watch fixture setup keeps every mode on its declared reader and Rights boundary', async (t) => {
+  const prior = Object.getOwnPropertyDescriptor(globalThis, 'Bun');
+  Object.defineProperty(globalThis, 'Bun', {configurable: true, value: {}});
+  try {
+    for (const mode of nativeFixtureModes) await t.test(mode, async () => {
+      const caller = new AbortController();
+      const asks = [];
+      let sharing = false, decisions = 0, reads = 0, unowned = 0;
+      const reader = syntheticReader({read: async (_id, _cursor, _records, _bytes) => {
+        if (sharing && mode === 'partial-error' && ++reads === 2) throw Error('inert partial read');
+        return {outcome: 'page', records: [event()], next: `fixture:after-${reads}`, atEnd: !(sharing && mode === 'partial-error')};
+      }});
+      if (mode === 'deny') reader.sources = async () => { throw Object.assign(Error('inert source refusal'), {code: 'permission_denied'}); };
+      const dependencies = sourceWatchFixtureDependencies({tool: fakeTool,
+        published: {outcome: 'page', complete: true, actions: []},
+        resolveSourceReader: async () => reader,
+        resolveAuthorization: async () => ({decide: async () => {
+          decisions += 1;
+          if (['not-granted', 'wrong-resource', 'wrong-program'].includes(mode)) return {outcome: 'not_granted'};
+          if (mode === 'share-denied') return {outcome: 'denied'};
+          if (decisions === 3) {
+            if (mode === 'revoke') return {outcome: 'not_granted'};
+            if (mode === 'outage') throw Error('inert Rights outage');
+            if (mode === 'cancel') caller.abort();
+          }
+          return {outcome: 'permitted'};
+        }}),
+      });
+      dependencies.resolveRouter = async () => { unowned += 1; throw Error('undeclared router boundary'); };
+      const plugin = await OpenAbstractionsPlugin({client: {}}, {tools: {watch_logs: true}}, dependencies);
+      await plugin.config({provider: {openabstractions: {npm: '@openabstractions/opencode',
+        options: {runtimeEndpoint: 'logging-only-fixture', scope: 'local'}, models: {}}}});
+      const execute = async share => {
+        sharing = share; reads = 0;
+        const raw = await plugin.tool.oa_logs_watch.execute(args({shareEvents: share,
+          maxRecords: mode === 'partial-error' && share ? 2 : 1}),
+        {ask: async request => asks.push(request), signal: caller.signal});
+        return parseSourceWatchFixtureReply(raw, {mode, sharing: share});
+      };
+      const reply = await execute(false);
+      assert.equal(reply.status, mode === 'deny' ? 'permission_denied' : 'limit_reached');
+      assert.equal(reply.events, undefined);
+      assert.equal(decisions, 0);
+      if (mode !== 'deny') {
+        const shared = await execute(true);
+        const status = {allow: 'limit_reached', 'not-granted': 'sharing_not_granted', 'share-denied': 'sharing_permission_denied',
+          'wrong-resource': 'sharing_not_granted', 'wrong-program': 'sharing_not_granted', revoke: 'sharing_not_granted',
+          outage: 'sharing_unavailable', cancel: 'cancelled', 'partial-error': 'unavailable'};
+        assert.equal(shared.status, status[mode]);
+        if (mode === 'allow') assert.equal(shared.events.length, 1);
+        else { assert.equal(shared.events, undefined); assert.equal(shared.provenance, undefined); }
+        assert.match(asks.at(-1).patterns[0], /hosted provider/);
+      }
+      assert.equal(unowned, 0);
+    });
+  } finally {
+    if (prior) Object.defineProperty(globalThis, 'Bun', prior);
+    else delete globalThis.Bun;
+  }
+});
+
+test('fixture JSON diagnostics stay bounded and never accept a substring or banner', () => {
+  const diagnostics = [];
+  for (const raw of [unavailableMessage, 'banner {"kind":"source_watch"}', '{"kind":"source_watch"} trailing', 'x'.repeat(8192)]) {
+    assert.throws(() => parseSourceWatchFixtureReply(raw, {mode: 'allow', report: value => diagnostics.push(value)}), SyntaxError);
+  }
+  const detail = JSON.parse(diagnostics.at(-1).slice('OA_SOURCE_WATCH_FIXTURE_DIAGNOSTIC='.length));
+  assert.equal(detail.bytes, 8192);
+  assert.equal(detail.reply.length, 4096);
+  assert.deepEqual(parseSourceWatchFixtureReply('{"kind":"source_watch"}', {}), {kind: 'source_watch'});
+  assert.throws(() => sourceWatchFixtureDependencies({published: {outcome: 'unavailable', complete: true}}));
+});
+
 async function registeredWatch(resolveSourceReader, resolveAuthorization = async () => ({decide: async () => ({outcome: 'permitted'})})) {
   const plugin = await OpenAbstractionsPlugin({client: {}}, {providerId: 'oa-fixture', tools: {watch_logs: true}}, {
     tool: fakeTool,
@@ -70,7 +183,7 @@ async function registeredWatch(resolveSourceReader, resolveAuthorization = async
     options: {runtimeEndpoint: 'fixture-runtime', scope: 'local'},
     models: {},
   }}});
-  return plugin.tool.openabstractions_watch_logs;
+  return plugin.tool.oa_logs_watch;
 }
 
 function syntheticReader({onCall = () => {}, read} = {}) {
@@ -139,7 +252,7 @@ test('on the official OpenCode a sharing request is unavailable before its quest
       resolveSourceReader: async () => syntheticReader({onCall: (name) => reads.push(name)}),
       resolveAuthorization: async () => ({decide: async () => ({outcome: 'permitted'})}),
     });
-    const watch = plugin.tool.openabstractions_watch_logs;
+    const watch = plugin.tool.oa_logs_watch;
     const shared = JSON.parse(await watch.execute(args({durationMs: 20, shareEvents: true}), {ask: async (request) => asked.push(request.permission)}));
     if (shares) {
       assert.deepEqual(asked, ['openabstractions_log_source_read', 'openabstractions_log_source_share']);

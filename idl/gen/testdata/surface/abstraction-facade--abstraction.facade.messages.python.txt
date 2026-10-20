@@ -1,0 +1,306 @@
+dataclass AgentApplication
+  program: str
+  title: str
+dataclass ChatBinding
+  chat_id: str
+  chat_title: str
+  source_instance: str
+  launch: ChatLaunch | None
+dataclass ChatInboxChange
+  outcome: Outcome | None
+  context: str
+  revision: str
+  holder: str
+  opened_unix_ms: int
+dataclass ChatLaunch
+  session: str
+  origin: ChatOrigin | str
+  cwd: str
+  mode: ChatMode | str
+enum ChatMode
+  PLAN = 'plan'
+  READ_ONLY = 'read_only'
+  DEFAULT = 'default'
+  ACCEPT_EDITS = 'accept_edits'
+enum ChatOrigin
+  DESKTOP = 'desktop'
+  CLI = 'cli'
+dataclass ChatSendRequest
+  request: SendRequest
+  return_context: str
+enum Delivery
+  QUEUED = 'queued'
+  DELIVERED = 'delivered'
+  UNDELIVERED = 'undelivered'
+enum DeliveryObservationOutcome
+  OBSERVED = 'observed'
+  UNKNOWN = 'unknown'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+class DispatchError(ValueError)
+  __init__(code)
+dataclass Header
+  message_id: str
+  from_: str
+  from_context: str
+  to: str
+  context: str
+  kind: Kind | None
+  subject: str
+  context_id: str
+  expires_unix_ms: int
+  reply_to: str
+  answer_by_unix_ms: int
+  task_state: TaskState | None
+  refused: bool
+  reference: MessageRef | None
+  remote_origin: RemoteOrigin | None
+  reply_reference: MessageRef | None
+  delivery: Delivery | None
+  undelivered: UndeliveredReason | None
+  count: int | None
+dataclass Inbox
+  program: str
+  context: str
+  status: str
+  revision: str
+  watching: bool
+  last_seen_unix_ms: int
+  reach: InboxReach | None
+  chat_title: str
+  mine: bool | None
+dataclass InboxChange
+  outcome: Outcome | None
+  revision: str
+  holder: str
+  opened_unix_ms: int
+dataclass InboxPage
+  outcome: Outcome | None
+  cursor: str
+  inboxes: list[Inbox]
+  reason: str
+  needs_permission: list[AgentApplication]
+  other_chats: list[ProgramChats]
+dataclass InboxQuery
+  cursor: str
+  peer_key: str
+  pairing_epoch: str
+  receiver: str
+enum InboxReach
+  OPEN = 'open'
+  QUEUED = 'queued'
+  STARTS_ON_QUESTION = 'starts_on_question'
+enum Kind
+  NOTE = 'note'
+  QUESTION = 'question'
+  REPLY = 'reply'
+dataclass Message
+  header: Header
+  idempotency_key: str
+  body: str
+dataclass MessageRef
+  owner_peer_key: str
+  message_id: str
+class Messages
+  observe_delivery(reference: MessageRef, pairing_epoch: str) -> ObserveDeliveryResult
+  inboxes_for_person(cursor: str) -> InboxPage
+  inbox_open_chat(instance: str, source_context: str, status: str, binding: ChatBinding) -> ChatInboxChange
+  send_chat(instance: str, source_context: str, request: ChatSendRequest) -> SendResult
+  prepare(instance: str, source_context: str, request: PrepareRequest) -> PrepareResult
+  reply(instance: str, source_context: str, message_id: str, body: str) -> SendResult
+  inbox_open(instance: str, context: str, status: str) -> InboxChange
+  inboxes_list(query: InboxQuery) -> InboxPage
+  send(instance: str, source_context: str, request: SendRequest) -> SendResult
+  wait(instance: str, context: str, view: View | None, after: str, revision: str, wait_ms: int) -> Page
+  read_for_person(message_id: str) -> Page
+  stop_for_person(message_id: str) -> StopResult
+  turn_wake(instance: str, source_context: str, wake: str) -> TurnWakeResult
+class MessagesClient(Messages)
+  __init__(transport)
+  observe_delivery(reference: MessageRef, pairing_epoch: str) -> ObserveDeliveryResult
+  inboxes_for_person(cursor: str) -> InboxPage
+  inbox_open_chat(instance: str, source_context: str, status: str, binding: ChatBinding) -> ChatInboxChange
+  send_chat(instance: str, source_context: str, request: ChatSendRequest) -> SendResult
+  prepare(instance: str, source_context: str, request: PrepareRequest) -> PrepareResult
+  reply(instance: str, source_context: str, message_id: str, body: str) -> SendResult
+  inbox_open(instance: str, context: str, status: str) -> InboxChange
+  inboxes_list(query: InboxQuery) -> InboxPage
+  send(instance: str, source_context: str, request: SendRequest) -> SendResult
+  wait(instance: str, context: str, view: View | None, after: str, revision: str, wait_ms: int) -> Page
+  read_for_person(message_id: str) -> Page
+  stop_for_person(message_id: str) -> StopResult
+  turn_wake(instance: str, source_context: str, wake: str) -> TurnWakeResult
+dataclass ObserveDeliveryResult
+  outcome: DeliveryObservationOutcome | None
+  delivery: Delivery | None
+  undelivered: UndeliveredReason | None
+dataclass OriginClaim
+  namespace: str
+  application: str
+  program_label: str
+  return_context: str
+enum Outcome
+  SENT = 'sent'
+  OPENED = 'opened'
+  HELD = 'held'
+  PAGE = 'page'
+  GAP = 'gap'
+  CONFLICT = 'conflict'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  EXHAUSTED = 'exhausted'
+  UNAVAILABLE = 'unavailable'
+  UNKNOWN = 'unknown'
+  ENDED = 'ended'
+dataclass Page
+  outcome: Outcome | None
+  cursor: str
+  revision: str
+  messages: list[Message]
+  headers: list[Header]
+  pending_until_unix_ms: int
+  reply_until_unix_ms: int
+  wake: str
+  unread: int | None
+  pending_questions: int | None
+  oldest_unread_unix_ms: int | None
+  newest_unread_unix_ms: int | None
+  awaited_replies: int | None
+  oldest_wake: str
+dataclass PrepareRequest
+  receiver: str
+  body: str
+  context: str
+  kind: Kind | None
+  subject: str
+  ttl_ms: int
+  answer_within_ms: int
+  context_title: str
+dataclass PrepareResult
+  outcome: Outcome | None
+  send_request: SendRequest | None
+  reason: str
+  choices: list[Inbox]
+  chat_title: str
+dataclass ProgramChats
+  program: str
+  chats: int
+class Refusal(ValueError)
+  __init__(word, offset)
+dataclass RemoteOrigin
+  peer_key: str
+  claim: OriginClaim
+dataclass SendRequest
+  to: str
+  context: str
+  kind: Kind | None
+  subject: str
+  body: str
+  idempotency_key: str
+  expires_unix_ms: int
+  reply_to: str
+  withdraw: str
+  answer_by_unix_ms: int
+  peer_key: str
+  origin: OriginClaim | None
+  reply_reference: MessageRef | None
+  withdraw_reference: MessageRef | None
+  pairing_epoch: str
+  notify_delivered: bool | None
+dataclass SendResult
+  outcome: Outcome | None
+  message_id: str
+  context_id: str
+  receiver_watching: bool
+  awaiting_permission: bool
+  retry_after_ms: int
+  reference: MessageRef | None
+  reason: str
+  refused: bool
+  refusal: _dependency_rights.RefusalDetail | None
+  context: str
+  chat_title: str
+class ServiceError(Exception)
+  __init__(code, message)
+enum ServiceErrorCode
+  HANDLER_ERROR = 'handler_error'
+  INVALID_RESULT = 'invalid_result'
+  UNKNOWN_VERSION = 'unknown_version'
+  UNKNOWN_SERVICE = 'unknown_service'
+  UNKNOWN_METHOD = 'unknown_method'
+  WRONG_MODE = 'wrong_mode'
+dataclass StopResult
+  outcome: Outcome | None
+  reason: str
+enum TaskState
+  SUBMITTED = 'submitted'
+  COMPLETED = 'completed'
+  CANCELED = 'canceled'
+  FAILED = 'failed'
+  AUTH_REQUIRED = 'auth_required'
+  REJECTED = 'rejected'
+dataclass TurnWakeResult
+  outcome: Outcome | None
+  reason: str
+enum UndeliveredReason
+  EXPIRED = 'expired'
+  REFUSED = 'refused'
+  CONTEXT_CLOSED = 'context_closed'
+  RECEIVER_REMOVED = 'receiver_removed'
+  PEER_REMOVED = 'peer_removed'
+  LOST = 'lost'
+  UNCONFIRMED = 'unconfirmed'
+enum View
+  BODY = 'body'
+  HEADERS = 'headers'
+def decode(data)
+def decode_agent_application(data)
+def decode_chat_binding(data)
+def decode_chat_inbox_change(data)
+def decode_chat_launch(data)
+def decode_chat_send_request(data)
+def decode_header(data)
+def decode_inbox(data)
+def decode_inbox_change(data)
+def decode_inbox_page(data)
+def decode_inbox_query(data)
+def decode_message(data)
+def decode_message_ref(data)
+def decode_observe_delivery_result(data)
+def decode_origin_claim(data)
+def decode_page(data)
+def decode_prepare_request(data)
+def decode_prepare_result(data)
+def decode_program_chats(data)
+def decode_remote_origin(data)
+def decode_send_request(data)
+def decode_send_result(data)
+def decode_stop_result(data)
+def decode_turn_wake_result(data)
+def encode(v)
+def encode_agent_application(v)
+def encode_chat_binding(v)
+def encode_chat_inbox_change(v)
+def encode_chat_launch(v)
+def encode_chat_send_request(v)
+def encode_header(v)
+def encode_inbox(v)
+def encode_inbox_change(v)
+def encode_inbox_page(v)
+def encode_inbox_query(v)
+def encode_message(v)
+def encode_message_ref(v)
+def encode_observe_delivery_result(v)
+def encode_origin_claim(v)
+def encode_page(v)
+def encode_prepare_request(v)
+def encode_prepare_result(v)
+def encode_program_chats(v)
+def encode_remote_origin(v)
+def encode_send_request(v)
+def encode_send_result(v)
+def encode_stop_result(v)
+def encode_turn_wake_result(v)
+def from_json(kind, data)
+def to_json(value)

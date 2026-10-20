@@ -19,6 +19,7 @@ enum Evidence
   Verified
   Claimed
 class LeasesClient
+  acquireFor(subject, resource, amount, waitMs)
   acquire(resource, amount, waitMs)
   acquireFree(resource, amount)
   renew(lease)
@@ -26,6 +27,7 @@ class LeasesClient
   observe(cursor, waitMs)
   answer(request, answer, reason)
   bindProcess(lease, pid)
+  label(lease, text)
 object LeasesService {wireName, Client}
 enum ProcessBindOutcome
   Bound
@@ -63,7 +65,42 @@ enum YieldAnswer
   Yielded
   Refused
 function decode(data)
+function decodeAcquireFreeResult(data)
+function decodeAcquireResult(data)
+function decodeAnswerCallResult(data)
+function decodeAnswerResult(data)
+function decodeHolder(data)
+function decodeHoldersResult(data)
+function decodeLease(data)
+function decodeLeaseChange(data)
+function decodeLeaseChangeResult(data)
+function decodeObserveResult(data)
+function decodeProcessBindResult(data)
+function decodeResourceList(data)
+function decodeResourceState(data)
+function decodeResourcesResult(data)
+function decodeYieldPage(data)
+function decodeYieldRecord(data)
+function decodeYieldRequest(data)
 function encode(v)
+function encodeAcquireFreeResult(v)
+function encodeAcquireResult(v)
+function encodeAnswerCallResult(v)
+function encodeAnswerResult(v)
+function encodeHolder(v)
+function encodeHoldersResult(v)
+function encodeLease(v)
+function encodeLeaseChange(v)
+function encodeLeaseChangeResult(v)
+function encodeObserveResult(v)
+function encodeProcessBindResult(v)
+function encodeResourceList(v)
+function encodeResourceState(v)
+function encodeResourcesResult(v)
+function encodeYieldPage(v)
+function encodeYieldRecord(v)
+function encodeYieldRequest(v)
+function fromJson(kind, data)
 const knownResources
 function newAcquireFreeResult()
   outcome
@@ -136,3 +173,4 @@ function newYieldRequest()
   at
   lease
 const resourceErrorCodes
+function toJson(kind, value)

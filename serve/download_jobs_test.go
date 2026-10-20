@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +16,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -60,6 +62,143 @@ type decodedSnapshot struct {
 	} `json:"failure"`
 	Label        string `json:"label"`
 	LabelDerived bool   `json:"label_derived"`
+	Progress     struct {
+		Done int64 `json:"done"`
+	} `json:"progress"`
+}
+
+// The Setup caller returns after acceptance. Restarting this isolated runtime
+// resumes the same pinned work from its durable prefix, without fetching that
+// prefix again. The real 22-GB catalogue pin stays in the Setup owner tests.
+func TestPinnedModelJobSurvivesCallerCloseAndRuntimeRestart(t *testing.T) {
+	if !statusTransportProvesProgram(t) {
+		t.Skip("Program proof unavailable on current shared transport")
+	}
+	body := bytes.Repeat([]byte("tiny coding-model fixture\n"), 4096)
+	const prefix = 32768
+	var mu sync.Mutex
+	var ranges []string
+	var sent int
+	firstSent := make(chan struct{})
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		first := len(ranges) == 0
+		ranges = append(ranges, r.Header.Get("Range"))
+		mu.Unlock()
+		w.Header().Set("ETag", `"pinned-fixture"`)
+		if first {
+			w.Header().Set("Content-Length", fmt.Sprint(len(body)))
+			n, _ := w.Write(body[:prefix])
+			mu.Lock()
+			sent += n
+			mu.Unlock()
+			w.(http.Flusher).Flush()
+			close(firstSent)
+			<-r.Context().Done()
+			return
+		}
+		// Every resumed response must start after the already durable bytes.
+		if r.Header.Get("Range") != fmt.Sprintf("bytes=%d-", prefix) {
+			t.Errorf("refetched prefix: Range %q", r.Header.Get("Range"))
+		}
+		rw := &countDownloadWrites{ResponseWriter: w}
+		http.ServeContent(rw, r, "model.gguf", time.Time{}, bytes.NewReader(body))
+		mu.Lock()
+		sent += rw.bytes
+		mu.Unlock()
+	}))
+	t.Cleanup(origin.Close)
+	options, _ := isolatedRuntime(t)
+	start := func() (context.CancelFunc, chan error) {
+		ctx, cancel := context.WithCancel(context.Background())
+		ready := make(chan struct{})
+		done := make(chan error, 1)
+		go func() { done <- runRuntimeReady(ctx, options, func() error { close(ready); return nil }) }()
+		select {
+		case <-ready:
+		case err := <-done:
+			cancel()
+			t.Fatalf("runtime startup: %v", err)
+		case <-time.After(runtimeWait):
+			cancel()
+			t.Fatal("runtime startup timeout")
+		}
+		return cancel, done
+	}
+	stop, done := start()
+	stopped := false
+	t.Cleanup(func() {
+		if !stopped {
+			stop()
+			_ = awaitStopped(t, done, "coding fixture runtime")
+		}
+	})
+	sum := sha256.Sum256(body)
+	args := []string{origin.URL + "/model.gguf", "--endpoint", options.endpoint, "--key", "setup-coding-fixture", "--sha256", hex.EncodeToString(sum[:]), "--label", "Recommended coding model", "--no-wait", "--json"}
+	accepted := runJSON(t, "coding acceptance", func(out, diag io.Writer) error { return downloadCommand(args, out, diag) })
+	select {
+	case <-firstSent:
+	case <-time.After(runtimeWait):
+		t.Fatal("no fixture download")
+	}
+	// The public progress is persisted by the existing execution owner.
+	deadline := time.Now().Add(runtimeWait)
+	for {
+		observed := runJSON(t, "coding Activity", func(out, diag io.Writer) error {
+			return jobsCommand([]string{"show", accepted.Receipt.OperationID, "--endpoint", options.endpoint, "--json"}, out, diag)
+		})
+		if observed.Snapshot != nil && observed.Snapshot.Label != "Recommended coding model" {
+			t.Fatal("coding work lost its Activity label")
+		}
+		if observed.Snapshot != nil && observed.Snapshot.Progress.Done >= prefix {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("durable prefix not observed")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	stop()
+	if err := awaitStopped(t, done, "first coding runtime"); err != nil {
+		t.Fatal(err)
+	}
+	stopped = true
+	stop, done = start()
+	stopped = false
+	// Replayed acceptance after reopening must name the original operation.
+	again := runJSON(t, "reopened coding acceptance", func(out, diag io.Writer) error { return downloadCommand(args, out, diag) })
+	if again.Receipt.OperationID != accepted.Receipt.OperationID {
+		t.Fatal("reopen created another job")
+	}
+	deadline = time.Now().Add(runtimeWait)
+	for {
+		observed := runJSON(t, "resumed coding Activity", func(out, diag io.Writer) error {
+			return jobsCommand([]string{"show", accepted.Receipt.OperationID, "--endpoint", options.endpoint, "--json"}, out, diag)
+		})
+		if observed.Snapshot != nil && observed.Snapshot.State == "complete" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("coding resume incomplete: %+v", observed.Snapshot)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(ranges) != 2 || sent != len(body) {
+		t.Fatalf("download duplicated bytes: ranges=%v sent=%d want=%d", ranges, sent, len(body))
+	}
+}
+
+type countDownloadWrites struct {
+	http.ResponseWriter
+	bytes int
+}
+
+func (w *countDownloadWrites) Write(p []byte) (int, error) {
+	n, err := w.ResponseWriter.Write(p)
+	w.bytes += n
+	return n, err
 }
 
 func assertExit(t *testing.T, err error, code int, what string) *exitError {
@@ -168,6 +307,11 @@ func TestDownloadAndJobsThroughTheRuntime(t *testing.T) {
 	}
 	if first.Out != filepath.Join(sink, "thing.bin") || first.Bytes != int64(len(body)) {
 		t.Fatalf("reported sink or size: %q %d", first.Out, first.Bytes)
+	}
+	// The sink shares the job store's volume, so the runtime links the
+	// result there and nothing is copied (JOB-A17).
+	if n := linkCount(t, first.Out); n != 2 {
+		t.Fatalf("the delivered file has %d names; the result was copied, not linked", n)
 	}
 
 	shown := runJSON(t, "jobs show", func(out, diag io.Writer) error {

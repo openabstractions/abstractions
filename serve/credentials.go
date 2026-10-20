@@ -1,13 +1,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
-	"os"
 	"os/user"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strings"
 	"text/tabwriter"
@@ -61,9 +60,7 @@ Exit codes: 0 done, 1 runtime not resolved or transport failure, 2 usage,
 4 unavailable (repeat later).
 `
 
-var credentialNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
-
-func validCredentialName(name string) bool { return credentialNamePattern.MatchString(name) }
+func validCredentialName(name string) bool { return credentials.ValidName(name) }
 
 // repeated collects a repeatable flag.
 type repeated []string
@@ -113,12 +110,6 @@ func trimLineEnd(data []byte) []byte {
 		}
 	}
 	return data
-}
-
-func zeroSecret(b []byte) {
-	for i := range b {
-		b[i] = 0
-	}
 }
 
 func credentialsCommand(args []string, stdin io.Reader, output, diagnostics io.Writer) error {
@@ -191,7 +182,7 @@ func credentialsCommand(args []string, stdin io.Reader, output, diagnostics io.W
 			if err != nil {
 				return flagMistake(diagnostics, command, credentialsUsage, fmt.Sprintf("--expires %q is not RFC 3339", *expires))
 			}
-			reg.Expires = at.UTC().Format("2006-01-02T15:04:05.000000Z")
+			reg.Expires = cwire.FormatTimestamp(at)
 		}
 		programs, err := absolutePrograms(diagnostics, command, credentialsUsage, useBy)
 		if err != nil {
@@ -201,7 +192,7 @@ func credentialsCommand(args []string, stdin io.Reader, output, diagnostics io.W
 		if err != nil {
 			return err
 		}
-		defer zeroSecret(secret)
+		defer clear(secret)
 		reg.Secret = secret
 		holder, w, err := resolveHolder(options, diagnostics, command)
 		if err != nil {
@@ -251,13 +242,13 @@ func credentialsCommand(args []string, stdin io.Reader, output, diagnostics io.W
 			if err != nil {
 				return flagMistake(diagnostics, command, credentialsUsage, fmt.Sprintf("--expires %q is not RFC 3339", *expires))
 			}
-			rotation.Expires = at.UTC().Format("2006-01-02T15:04:05.000000Z")
+			rotation.Expires = cwire.FormatTimestamp(at)
 		}
 		secret, err := secrets.read(diagnostics, command, credentialsUsage)
 		if err != nil {
 			return err
 		}
-		defer zeroSecret(secret)
+		defer clear(secret)
 		rotation.Secret = secret
 		call, done := w.call()
 		result, err := holder.Rotate(call, current.Revision, rotation)
@@ -474,6 +465,7 @@ func credentialsBackend(output, diagnostics io.Writer, choice, state string) err
 	if choice != credentials.StoreFile && choice != "file" && choice != credentials.StoreSecretService {
 		return flagMistake(diagnostics, command, credentialsUsage, "choose file or secret-service")
 	}
+	guardState := state
 	if state == "" {
 		// The default state is the account's; a view private to a package must not write it.
 		if err := refuseVirtualizedProfile(command, bootstrap.CurrentProfileView); err != nil {
@@ -488,17 +480,18 @@ func credentialsBackend(output, diagnostics io.Writer, choice, state string) err
 	if !filepath.IsAbs(state) {
 		return flagMistake(diagnostics, command, credentialsUsage, "--state-dir must be absolute")
 	}
+	releaseSettings, err := selectedStateGuard(context.Background(), guardState)
+	if err != nil {
+		return err
+	}
+	defer releaseSettings()
 	if choice == "file" {
 		choice = credentials.StoreFile
 	}
-	dir := filepath.Join(state, "credentials")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := credentials.WriteLinuxStoreChoice(filepath.Join(state, "credentials"), choice); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, credentialsBackendFile), []byte(choice+"\n"), 0o600); err != nil {
-		return err
-	}
-	_, err := fmt.Fprintf(output, "credentials store for %s: %s (restart the runtime to apply)\n", state, choice)
+	_, err = fmt.Fprintf(output, "credentials store for %s: %s (restart the runtime to apply)\n", state, choice)
 	return err
 }
 

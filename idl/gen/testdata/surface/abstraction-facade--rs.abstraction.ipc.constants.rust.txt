@@ -1,0 +1,3 @@
+pub const IPC_DEFAULT_MAX_FRAME: i32
+pub const IPC_CLIENT_MAX_FRAME: i32
+pub const IPC_DEFAULT_CALL_BUDGET_MS: i32

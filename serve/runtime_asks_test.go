@@ -13,9 +13,16 @@ import (
 
 	asks "github.com/openabstractions/abstraction-asks/go"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
+	identity "github.com/openabstractions/abstraction-identity"
 	rights "github.com/openabstractions/abstraction-rights/go"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 )
+
+// Inputs retain their authored spelling; expected records use identity's
+// subject-program owner, including an 8.3 TEMP parent.
+func expectedSubjectProgram(program string) string {
+	return identity.NormalizeSubjectProgram(program)
+}
 
 func firstUseBook(t *testing.T) (*runtimeAsks, *asks.Book) {
 	t.Helper()
@@ -49,7 +56,7 @@ func TestFirstUseAdmissionRecordsRequesterPublisher(t *testing.T) {
 	if err != nil || len(records) != 1 {
 		t.Fatalf("one first-use question expected: %+v %v", records, err)
 	}
-	if r := records[0]; r.About != subject.Program || r.Publisher != "Test Signer" || !r.PublisherTrusted {
+	if r := records[0]; r.About != expectedSubjectProgram(subject.Program) || r.Publisher != "Test Signer" || !r.PublisherTrusted {
 		t.Fatalf("the question must carry the requester's publisher: %+v", r)
 	}
 	if calls != 1 {
@@ -80,7 +87,7 @@ func TestExpiredFirstUseQuestionIsAskedAgain(t *testing.T) {
 	if err != nil || len(second) != 1 || second[0].ID == first[0].ID || !second[0].Pending() {
 		t.Fatalf("a refusal after expiry must ask again: %+v %v", second, err)
 	}
-	sum := sha256.Sum256([]byte(subject.Program + "\x00" + host.ModelLookupAction + "\x00" + "hf"))
+	sum := sha256.Sum256([]byte(expectedSubjectProgram(subject.Program) + "\x00" + host.ModelLookupAction + "\x00" + "hf"))
 	if _, outcome, err := book.ObserveApplication(a.scope, "first-use:"+hex.EncodeToString(sum[:20])); err != nil || outcome != "pending" {
 		t.Fatalf("the new question must reuse generation 0 of the key: %q %v", outcome, err)
 	}

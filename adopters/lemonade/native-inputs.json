@@ -1,0 +1,243 @@
+{
+  "schema": 1,
+  "status": "preserved native source with explicit QA/release package phases; signing and SDK0.8 producer wiring pending",
+  "upstream": {
+    "url": "https://github.com/lemonade-sdk/lemonade.git",
+    "stable_tag": "v2026.43.3",
+    "commit": "b48d190a9b00a417fda9cbf206fcec5691e5578b",
+    "tree": "a2a460b2f03ca5ab7e0d832cb0eac622da405058",
+    "tag_authenticity": "unsigned annotated upstream tag; exact commit/tree pinned"
+  },
+  "oa_delta": {
+    "file": "oa-native.patch",
+    "sha256": "92f607d55e42ea3854d53528ee79fe5c31413bd4c3f05af5c90f5b7eb0cc0188",
+    "expected_commit_identity": null,
+    "expected_tree": "45e8c0713b1368067c0e4d000a245ec0c2ec1110",
+    "files_changed": 34,
+    "public_source_url": null,
+    "scope": "complete OA delta from upstream, including native IPC, packaging, licensing and regression sources",
+    "reviewed_parent_commit": "5afc0b9b8330133b3d090e8c3776dc127136e336",
+    "prior_qa_tree": "93df1585e8ac7edeb8b5752a928c517408a230d4"
+  },
+  "native_dependencies": [
+    {
+      "name": "json",
+      "root_gitlinks": [],
+      "pin": "9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03",
+      "commit": "9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03",
+      "tree": "5af76d5aa32f4b473b5dd7f82fb9f2a4257322c6",
+      "url": "https://github.com/nlohmann/json.git"
+    },
+    {
+      "name": "cli11",
+      "root_gitlinks": [],
+      "pin": "6c7b07a878ad834957b98d0f9ce1dbe0cb204fc9",
+      "commit": "6c7b07a878ad834957b98d0f9ce1dbe0cb204fc9",
+      "tree": "3b019c68806a882b684810b5e41bc82ec90c2ede",
+      "url": "https://github.com/CLIUtils/CLI11.git"
+    },
+    {
+      "commit": "7161cb17c01dcff1dc5bf89a18437d9d729f1ecd",
+      "root_gitlinks": [],
+      "pin": "55b5fafb094ebe07ca8a5d4f79813c8b40670795",
+      "tree": "d7b9eaef056c09ae6f0fdb3cea8b564be2630d06",
+      "name": "curl",
+      "tag": "curl-8_5_0",
+      "url": "https://github.com/curl/curl.git"
+    },
+    {
+      "commit": "f8745da6ff1ad1e7bab384bd1f9d742439278e99",
+      "root_gitlinks": [],
+      "pin": "ac66b19e6bd6b83238bf008eecc1298105298532",
+      "tree": "1a3cb277e9b9b37b01811a3c65f6c25d46a8f241",
+      "name": "zstd",
+      "tag": "v1.5.7",
+      "url": "https://github.com/facebook/zstd.git"
+    },
+    {
+      "name": "httplib",
+      "root_gitlinks": [],
+      "pin": "d66d9a95997d51a8ba9822a611d1267757741535",
+      "commit": "d66d9a95997d51a8ba9822a611d1267757741535",
+      "tree": "933c6eb0704835d39afff7a64817d1f73c3cb529",
+      "url": "https://github.com/yhirose/cpp-httplib.git"
+    },
+    {
+      "name": "mbedtls",
+      "root_gitlinks": [
+        {
+          "path": "framework",
+          "sha": "94599c0e3b5036e086446a51a3f79640f70f22f6"
+        }
+      ],
+      "pin": "107ea89daaefb9867ea9121002fbbdf926780e98",
+      "commit": "107ea89daaefb9867ea9121002fbbdf926780e98",
+      "tree": "b5e49e1c0647cf293b0d4e53fedf57520eca9571",
+      "url": "https://github.com/Mbed-TLS/mbedtls.git"
+    },
+    {
+      "name": "libwebsockets",
+      "root_gitlinks": [],
+      "pin": "4415e84c095857629863804e941b9e1c2e9347ef",
+      "commit": "4415e84c095857629863804e941b9e1c2e9347ef",
+      "tree": "ee0b8e3b1784b9b478931ee262a2500c4e5cf96a",
+      "url": "https://github.com/warmcat/libwebsockets.git"
+    },
+    {
+      "name": "mbedtls-framework",
+      "url": "https://github.com/Mbed-TLS/mbedtls-framework.git",
+      "commit": "94599c0e3b5036e086446a51a3f79640f70f22f6",
+      "tree": "ae9077dee494a434386a2f3e686a028c0b354a4f",
+      "destination": "DEPS_DIR/mbedtls/framework"
+    }
+  ],
+  "sdk": {
+    "compatibility": "Exact QA build used released0.4 protocol/source closure. Future0.8 product requires deliberate current SDK rebuild and current-byte qualification. No cpp/v0.4 tag claim.",
+    "components": [
+      {
+        "url": "https://github.com/openabstractions/abstraction-identity.git",
+        "commit": "1267f150df094a372b29080fe110fe82c955c295",
+        "subtree": "cpp",
+        "tree": "d91a527eaffe1bff6ae9a03c1860abba38ad199f",
+        "destination": "SDK_DIR/abstraction-identity/cpp"
+      },
+      {
+        "url": "https://github.com/openabstractions/abstraction-facade.git",
+        "commit": "f77d816b427aa25049b10b939cbc04ee9bdaba80",
+        "subtree": "cpp",
+        "tree": "731f851bffbef18eb494884df16ed70241e61a78",
+        "destination": "SDK_DIR/abstraction-facade/cpp"
+      },
+      {
+        "url": "https://github.com/openabstractions/abstraction-job.git",
+        "commit": "0e015a123b6111aaabb8b58a4939fe567a95335e",
+        "subtree": "cpp",
+        "tree": "8a45180be2dccc92851a38c3c0c1536285b8f4ad",
+        "destination": "SDK_DIR/abstraction-job/cpp"
+      },
+      {
+        "url": "https://github.com/openabstractions/abstraction-download.git",
+        "commit": "8acda85d35cec78bf7a4fa1b270150bb152fa8ed",
+        "subtree": "cpp",
+        "tree": "b0316282050500726e01f4935f3331905d99e6ac",
+        "destination": "SDK_DIR/abstraction-download/cpp"
+      },
+      {
+        "url": "https://github.com/openabstractions/abstraction-logging.git",
+        "commit": "962eb6bb6d06cb2e09051aa00d96e5cabb6f7187",
+        "subtree": "cpp",
+        "tree": "7b063081ac7cc2f949d72cf66fdb64485f6815ec",
+        "destination": "SDK_DIR/abstraction-logging/cpp"
+      }
+    ],
+    "qa_export_sha256": "3b874c6db26d32e02226d64b61bda2cb6361b4f94a9d49fa4dfcd8cb43479c74",
+    "qa_export_public_url": null,
+    "license": {
+      "destination": "SDK_DIR/LICENSE",
+      "sha256": "c26143f461affea0c769629b2b72c4219fc268f2542fb59b3b3714a43cf14e3e",
+      "utf8_text": "                                 Apache License\n                           Version 2.0, January 2004\n                        http://www.apache.org/licenses/\n\n   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n   1. Definitions.\n\n      \"License\" shall mean the terms and conditions for use, reproduction,\n      and distribution as defined by Sections 1 through 9 of this document.\n\n      \"Licensor\" shall mean the copyright owner or entity authorized by\n      the copyright owner that is granting the License.\n\n      \"Legal Entity\" shall mean the union of the acting entity and all\n      other entities that control, are controlled by, or are under common\n      control with that entity. For the purposes of this definition,\n      \"control\" means (i) the power, direct or indirect, to cause the\n      direction or management of such entity, whether by contract or\n      otherwise, or (ii) ownership of fifty percent (50%) or more of the\n      outstanding shares, or (iii) beneficial ownership of such entity.\n\n      \"You\" (or \"Your\") shall mean an individual or Legal Entity\n      exercising permissions granted by this License.\n\n      \"Source\" form shall mean the preferred form for making modifications,\n      including but not limited to software source code, documentation\n      source, and configuration files.\n\n      \"Object\" form shall mean any form resulting from mechanical\n      transformation or translation of a Source form, including but\n      not limited to compiled object code, generated documentation,\n      and conversions to other media types.\n\n      \"Work\" shall mean the work of authorship, whether in Source or\n      Object form, made available under the License, as indicated by a\n      copyright notice that is included in or attached to the work\n      (an example is provided in the Appendix below).\n\n      \"Derivative Works\" shall mean any work, whether in Source or Object\n      form, that is based on (or derived from) the Work and for which the\n      editorial revisions, annotations, elaborations, or other modifications\n      represent, as a whole, an original work of authorship. For the purposes\n      of this License, Derivative Works shall not include works that remain\n      separable from, or merely link (or bind by name) to the interfaces of,\n      the Work and Derivative Works thereof.\n\n      \"Contribution\" shall mean any work of authorship, including\n      the original version of the Work and any modifications or additions\n      to that Work or Derivative Works thereof, that is intentionally\n      submitted to Licensor for inclusion in the Work by the copyright owner\n      or by an individual or Legal Entity authorized to submit on behalf of\n      the copyright owner. For the purposes of this definition, \"submitted\"\n      means any form of electronic, verbal, or written communication sent\n      to the Licensor or its representatives, including but not limited to\n      communication on electronic mailing lists, source code control systems,\n      and issue tracking systems that are managed by, or on behalf of, the\n      Licensor for the purpose of discussing and improving the Work, but\n      excluding communication that is conspicuously marked or otherwise\n      designated in writing by the copyright owner as \"Not a Contribution.\"\n\n      \"Contributor\" shall mean Licensor and any individual or Legal Entity\n      on behalf of whom a Contribution has been received by Licensor and\n      subsequently incorporated within the Work.\n\n   2. Grant of Copyright License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      copyright license to reproduce, prepare Derivative Works of,\n      publicly display, publicly perform, sublicense, and distribute the\n      Work and such Derivative Works in Source or Object form.\n\n   3. Grant of Patent License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      (except as stated in this section) patent license to make, have made,\n      use, offer to sell, sell, import, and otherwise transfer the Work,\n      where such license applies only to those patent claims licensable\n      by such Contributor that are necessarily infringed by their\n      Contribution(s) alone or by combination of their Contribution(s)\n      with the Work to which such Contribution(s) was submitted. If You\n      institute patent litigation against any entity (including a\n      cross-claim or counterclaim in a lawsuit) alleging that the Work\n      or a Contribution incorporated within the Work constitutes direct\n      or contributory patent infringement, then any patent licenses\n      granted to You under this License for that Work shall terminate\n      as of the date such litigation is filed.\n\n   4. Redistribution. You may reproduce and distribute copies of the\n      Work or Derivative Works thereof in any medium, with or without\n      modifications, and in Source or Object form, provided that You\n      meet the following conditions:\n\n      (a) You must give any other recipients of the Work or\n          Derivative Works a copy of this License; and\n\n      (b) You must cause any modified files to carry prominent notices\n          stating that You changed the files; and\n\n      (c) You must retain, in the Source form of any Derivative Works\n          that You distribute, all copyright, patent, trademark, and\n          attribution notices from the Source form of the Work,\n          excluding those notices that do not pertain to any part of\n          the Derivative Works; and\n\n      (d) If the Work includes a \"NOTICE\" text file as part of its\n          distribution, then any Derivative Works that You distribute must\n          include a readable copy of the attribution notices contained\n          within such NOTICE file, excluding those notices that do not\n          pertain to any part of the Derivative Works, in at least one\n          of the following places: within a NOTICE text file distributed\n          as part of the Derivative Works; within the Source form or\n          documentation, if provided along with the Derivative Works; or,\n          within a display generated by the Derivative Works, if and\n          wherever such third-party notices normally appear. The contents\n          of the NOTICE file are for informational purposes only and\n          do not modify the License. You may add Your own attribution\n          notices within Derivative Works that You distribute, alongside\n          or as an addendum to the NOTICE text from the Work, provided\n          that such additional attribution notices cannot be construed\n          as modifying the License.\n\n      You may add Your own copyright statement to Your modifications and\n      may provide additional or different license terms and conditions\n      for use, reproduction, or distribution of Your modifications, or\n      for any such Derivative Works as a whole, provided Your use,\n      reproduction, and distribution of the Work otherwise complies with\n      the conditions stated in this License.\n\n   5. Submission of Contributions. Unless You explicitly state otherwise,\n      any Contribution intentionally submitted for inclusion in the Work\n      by You to the Licensor shall be under the terms and conditions of\n      this License, without any additional terms or conditions.\n      Notwithstanding the above, nothing herein shall supersede or modify\n      the terms of any separate license agreement you may have executed\n      with Licensor regarding such Contributions.\n\n   6. Trademarks. This License does not grant permission to use the trade\n      names, trademarks, service marks, or product names of the Licensor,\n      except as required for reasonable and customary use in describing the\n      origin of the Work and reproducing the content of the NOTICE file.\n\n   7. Disclaimer of Warranty. Unless required by applicable law or\n      agreed to in writing, Licensor provides the Work (and each\n      Contributor provides its Contributions) on an \"AS IS\" BASIS,\n      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or\n      implied, including, without limitation, any warranties or conditions\n      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A\n      PARTICULAR PURPOSE. You are solely responsible for determining the\n      appropriateness of using or redistributing the Work and assume any\n      risks associated with Your exercise of permissions under this License.\n\n   8. Limitation of Liability. In no event and under no legal theory,\n      whether in tort (including negligence), contract, or otherwise,\n      unless required by applicable law (such as deliberate and grossly\n      negligent acts) or agreed to in writing, shall any Contributor be\n      liable to You for damages, including any direct, indirect, special,\n      incidental, or consequential damages of any character arising as a\n      result of this License or out of the use or inability to use the\n      Work (including but not limited to damages for loss of goodwill,\n      work stoppage, computer failure or malfunction, or any and all\n      other commercial damages or losses), even if such Contributor\n      has been advised of the possibility of such damages.\n\n   9. Accepting Warranty or Additional Liability. While redistributing\n      the Work or Derivative Works thereof, You may choose to offer,\n      and charge a fee for, acceptance of support, warranty, indemnity,\n      or other liability obligations and/or rights consistent with this\n      License. However, in accepting such obligations, You may act only\n      on Your own behalf and on Your sole responsibility, not on behalf\n      of any other Contributor, and only if You agree to indemnify,\n      defend, and hold each Contributor harmless for any liability\n      incurred by, or claims asserted against, such Contributor by reason\n      of your accepting any such warranty or additional liability.\n\n   END OF TERMS AND CONDITIONS\n\n   APPENDIX: How to apply the Apache License to your work.\n\n      To apply the Apache License to your work, attach the following\n      boilerplate notice, with the fields enclosed by brackets \"[]\"\n      replaced with your own identifying information. (Don't include\n      the brackets!)  The text should be enclosed in the appropriate\n      comment syntax for the file format. We also recommend that a\n      file or class name and description of purpose be included on the\n      same \"printed page\" as the copyright notice for easier\n      identification within third-party archives.\n\n   Copyright 2026 the openabstractions contributors\n\n   Licensed under the Apache License, Version 2.0 (the \"License\");\n   you may not use this file except in compliance with the License.\n   You may obtain a copy of the License at\n\n       http://www.apache.org/licenses/LICENSE-2.0\n\n   Unless required by applicable law or agreed to in writing, software\n   distributed under the License is distributed on an \"AS IS\" BASIS,\n   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n   See the License for the specific language governing permissions and\n   limitations under the License.\n\n"
+    },
+    "configure": {
+      "facade": [
+        "ABSTRACTION_FACADE_BUILD_AGGREGATE=OFF",
+        "ABSTRACTION_FACADE_BUILD_JOBS=ON",
+        "ABSTRACTION_FACADE_BUILD_LOGGING=ON"
+      ],
+      "download": "existing request-only cpp target",
+      "runtime_library": "MultiThreaded"
+    }
+  },
+  "web": {
+    "lock_file": "src/web-app/package-lock.json",
+    "sha256": "ff115571bfa896fd4d49edf3ab4d33a545811399d6a6abc08098acf09b52c85d",
+    "packages": 216,
+    "acquisition": "lock-resolved tarballs, verify all integrity fields; offline ci --ignore-scripts --no-audit --no-fund",
+    "notices": "existing BuildWebApp copies214 package notice files plus full KaTeX font OFL;65 shipped original assets; all source notices retained"
+  },
+  "toolchain_qa": {
+    "msvc": "19.51.36256 x64",
+    "cmake": "4.4.1",
+    "powershell": "7.6.5",
+    "node": "24.19.0",
+    "wix": "5.0.2",
+    "crt": "static MultiThreaded",
+    "architecture": "windows-x64",
+    "parallel": 1
+  },
+  "package_identity": {
+    "product_name": "Lemonade (OA build)",
+    "manufacturer": "Open Abstractions",
+    "scope": "perUser",
+    "upgrade_code": "12AEAA56-CA1A-55B2-9836-7D4EBAB5344D",
+    "oa_msi_version": "0.8.0",
+    "upstream_version": "2026.43.3",
+    "qa_label": "qa.938"
+  },
+  "licensing": {
+    "native": "Existing CMake/WiX owner admits10 native license/notice files from pinned source components and SDK license; preserve complete dependency notices",
+    "fonts": "Full KaTeX font OFL text and provenance is in patched src/web-app/KaTeX-fonts-OFL.txt",
+    "upstream": "Preserve all upstream copyright/license files"
+  },
+  "required_producer_companion": {
+    "status": "CMake release mode/packaging-only source implemented; shared producer/signing contract and exact0.8 SDK source selection remain pending",
+    "owner": "existing shared producer and sign-pe/sign-msi receivers",
+    "minimum": "Admit closed ownPE/supplier inventory and signing facts before invoking packaging-only release target; bind actual File/Binary streams before/after MSI signing; preserve exact source/version/SDK inputs and unchanged bundle-app row. No new builder API or published SourceURL claim."
+  },
+  "release_recipe": {
+    "owner": "existing CMakeLists.txt / Product.wxs.in / tools/source_archive.py",
+    "package_mode": "LEMONADE_OA_PACKAGE_MODE=qa (default) or release",
+    "qa": "requires filename-safe QA_LABEL, preserves normal compile/web dependencies",
+    "release": "requires empty QA_LABEL, explicit valid OA_MSI_VERSION, exact source .version upstream+oa.MSI_VERSION, explicit existing selected WiX UI DLL",
+    "source_export": "tools/source_archive.py --version UPSTREAM_VERSION+oa.OA_VERSION; build from exact exported source",
+    "phases": [
+      "prepare native3PE+web/resources",
+      "existing shared sign-pe admits exact ownPE roster",
+      "existing wix_installer_minimal in release mode packages only, no native/web target dependencies",
+      "File/Binary actual readback against signed receipt",
+      "existing sign-msi then repeated internal readback and existing bundle row reseal"
+    ],
+    "own_file_pe_keys": [
+      "lemond.exe",
+      "lemonade.exe",
+      "LemonadeServer.exe"
+    ],
+    "own_binary_pe_keys": [],
+    "supplier_binary_pe_keys": [
+      "WixUiCa_X64"
+    ],
+    "shared_signing_receipt_authority": "pending existing shared owner contract; native recipe grants no signing authority",
+    "release_filename": "lemonade-UPSTREAM_VERSION-oa-OA_VERSION-windows-x64.msi",
+    "SDK0_8": "required separately selected exact replacement and current-byte qualification; preserved SDK is QA0.4 lineage"
+  },
+  "producer_companion": {
+    "entrypoint": "build_native.py",
+    "phases": [
+      "prepare-native",
+      "package"
+    ],
+    "input_schema": "app_producer_inputs.pinned_input_receipt: schema1,sources,build_inputs",
+    "release_version": "Plan-selected 0.8 app version; capability module versions independent",
+    "sdk_selection": "current independently authenticated clean public sources, no historical QA fallback",
+    "sdk_components": [
+      "abstraction-identity",
+      "abstraction-facade",
+      "abstraction-job",
+      "abstraction-download",
+      "abstraction-logging"
+    ],
+    "outputs": [
+      "native-receipt.json",
+      "bundle-app.json",
+      "installer-receipt.json"
+    ],
+    "payload_expectations": "source-derived File/Binary/Icon rows; shared signer independently joins role proofs",
+    "supplier_owner": "independently selected public redist checkout windows/wix_packages.py ui_source_resources evaluated without bytecode",
+    "effects_qualification": "inert source tests only; current native build/sign/install/runtime pending",
+    "release_ui_selection": "LEMONADE_OA_WIX_UI_EXTENSION explicit measured pinned DLL; source-derived resources through existing wix_packages owner",
+    "source_parent": "76542aaf53c094193d342c541222888c784e9deb",
+    "host_tools": "build_inputs-pinned host-tools.json schema1 finite named sha256/bytes; explicit absolute installed paths, actualpath+pin measured before/after",
+    "prepared_packaging_inputs": "configured Product.wxs, package target project, CMakeCache, prepared source/resources/native/SDK bytes pinned before/after",
+    "source_receipt_requires": "five SDK sources plus charter and independently pinned public redist candidate source",
+    "package_search": "SDK and native CMake disable system/environment/package registries; preserve selected sibling SDK fallback and explicit staged prefix"
+  }
+}

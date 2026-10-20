@@ -44,6 +44,43 @@ assert.equal(await new Memory().load('key'),value);`)
 	}
 }
 
+func TestJavaScriptServiceKeywordProperties(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node unavailable")
+	}
+	s, err := parse(head + `struct Record {1:required string class 2:required string default 3:required string return}(document="true",unknown_fields="refuse") service Store {Record Load(1:string key)}(wire_name="example/store@1")`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = validateServiceBackend(s, "javascript"); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeNamespaceFile(t, dir, "rec.mjs", genJS(s))
+	writeNamespaceFile(t, dir, "test.mjs", `import assert from 'node:assert/strict';import * as r from './rec.mjs';
+const value={class:'read',default:'fallback',return:'answer'};
+assert.deepEqual(r.decode(r.encode(value)),value);
+const client=new r.StoreClient({exchangeFrame:async bytes=>{
+const request=JSON.parse(new TextDecoder().decode(bytes));assert.equal(request.method,'Load');
+return new TextEncoder().encode('{"version":1,"service":"example/store@1","method":"Load","ok":true,"payload":'+JSON.stringify({value})+'}');}});
+assert.deepEqual(await client.load('key'),value);`)
+	c := exec.Command(node, "test.mjs")
+	c.Dir = dir
+	if out, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("keyword properties %v\n%s", err, out)
+	}
+	for _, word := range []string{"class", "default", "return"} {
+		bad, err := parse(head + `struct Record {1:required string value}(document="true",unknown_fields="refuse") service Store {Record Load(1:string ` + word + `)}(wire_name="example/store@1")`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := validateServiceBackend(bad, "javascript"); err == nil || !strings.Contains(err.Error(), "reserved word") {
+			t.Fatalf("parameter %s: %v", word, err)
+		}
+	}
+}
+
 func TestJavaScriptServiceExchange(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {

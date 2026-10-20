@@ -6,7 +6,7 @@ pub enum UserReplaceOutcome
   Unavailable
   pub const ALL: [Self; 4]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum ConfigObservationOutcome
   Snapshot
   Unchanged
@@ -16,7 +16,85 @@ pub enum ConfigObservationOutcome
   Invalid
   pub const ALL: [Self; 6]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum ValueKind
+  Boolean
+  Integer
+  Bytes
+  Duration
+  Text
+  Choice
+  TextList
+  TextMap
+  Unlimited
+  pub const ALL: [Self; 9]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum Location
+  Machine
+  User
+  Process
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub mod key_state
+  pub const SET: &str
+  pub const DEFAULT: &str
+  pub const LOCKED: &str
+  pub const IGNORED: &str
+  pub const PENDING: &str
+  pub const ALL: [&str; 5]
+pub enum ApplyMode
+  Live
+  Restart
+  pub const ALL: [Self; 2]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum KeyRefusalReason
+  NotGranted
+  UnknownKey
+  pub const ALL: [Self; 2]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum ReadOutcome
+  Read
+  Corrupt
+  NotPermitted
+  Unavailable
+  Invalid
+  Forbidden
+  pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub mod ignored_field_reason
+  pub const UNKNOWN_KEY: &str
+  pub const INVALID_NAME: &str
+  pub const ALL: [&str; 2]
+pub enum ReplaceOutcome
+  Applied
+  Conflict
+  NotPermitted
+  Invalid
+  Unavailable
+  Corrupt
+  Forbidden
+  pub const ALL: [Self; 7]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum ObservationOutcomeV2
+  Changed
+  Unchanged
+  Gap
+  Unavailable
+  Unsupported
+  Invalid
+  NotPermitted
+  Corrupt
+  Forbidden
+  Failed
+  pub const ALL: [Self; 10]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub mod service_error_code
   pub const HANDLER_ERROR: &str
   pub const INVALID_RESULT: &str
@@ -32,14 +110,15 @@ pub mod service_error_code
   pub const ALL: [&str; 11]
 pub const READER_ERROR_CODES: [&str; 4]
 pub const EDITOR_ERROR_CODES: [&str; 5]
+pub const RESOURCE_ACTIONS: [&str; 2]
 pub struct RunOverrides
-  nas_store: String
-  store: String
-  log_sink: String
-  log_service: String
+  nas_store: ::std::string::String
+  store: ::std::string::String
+  log_sink: ::std::string::String
+  log_service: ::std::string::String
 pub struct Origin
-  rung: String
-  path: String
+  rung: ::std::string::String
+  path: ::std::string::String
 pub struct Origins
   nas_store: Origin
   store: Origin
@@ -47,38 +126,137 @@ pub struct Origins
   log_service: Origin
   off: Origin
 pub struct Snapshot
-  nas_store: String
-  store: String
-  log_sink: String
-  log_service: String
-  off: BTreeMap<String, String>
+  nas_store: ::std::string::String
+  store: ::std::string::String
+  log_sink: ::std::string::String
+  log_service: ::std::string::String
+  off: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>
   origins: Origins
-  stamp: String
+  stamp: ::std::string::String
 pub struct UserSettings
-  nas_store: String
-  store: String
-  log_sink: String
-  log_service: String
-  off: BTreeMap<String, String>
+  nas_store: ::std::string::String
+  store: ::std::string::String
+  log_sink: ::std::string::String
+  log_service: ::std::string::String
+  off: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>
 pub struct UserSnapshot
   values: UserSettings
-  revision: String
+  revision: ::std::string::String
 pub struct UserReplaceResult
   outcome: UserReplaceOutcome
   snapshot: UserSnapshot
 pub struct ConfigObservation
   outcome: ConfigObservationOutcome
-  cursor: String
-  snapshot: Option<Snapshot>
-pub fn encode(v: &Snapshot) -> Vec<u8>
+  cursor: ::std::string::String
+  snapshot: ::std::option::Option<Snapshot>
+pub struct Value
+  kind: ValueKind
+  boolean: bool
+  integer: i64
+  bytes: i64
+  duration_ms: i64
+  text: ::std::string::String
+  choice: ::std::string::String
+  text_list: ::std::vec::Vec<::std::string::String>
+  text_map: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>
+pub struct ConfigSource
+  location: Location
+  path: ::std::string::String
+pub struct KeyOrigin
+  location: ::std::option::Option<Location>
+  path: ::std::string::String
+  state: ::std::string::String
+  reason: ::std::string::String
+  shadowed: ::std::vec::Vec<ConfigSource>
+pub struct Entry
+  key: ::std::string::String
+  value: ::std::option::Option<Value>
+  origin: KeyOrigin
+pub struct ValueRange
+  min: i64
+  max: i64
+pub struct KeyDescriptor
+  key: ::std::string::String
+  kind: ValueKind
+  default: ::std::option::Option<Value>
+  range: ::std::option::Option<ValueRange>
+  choices: ::std::vec::Vec<::std::string::String>
+  presets: ::std::vec::Vec<Value>
+  description: ::std::string::String
+  group: ::std::string::String
+  apply: ApplyMode
+  lockable: bool
+  lowest_location: Location
+  deprecated: ::std::string::String
+  default_description: ::std::string::String
+  allows_unlimited: bool
+pub struct Change
+  key: ::std::string::String
+  set: ::std::option::Option<Value>
+pub struct KeyRefusal
+  key: ::std::string::String
+  reason: KeyRefusalReason
+  refusal: ::std::option::Option<OAImported0>
+pub struct KeyProblem
+  key: ::std::string::String
+  reason: ::std::string::String
+pub struct IgnoredField
+  offset: i64
+  name_excerpt: ::std::string::String
+  reason: ::std::string::String
+  source: ConfigSource
+pub struct ReadResult
+  outcome: ReadOutcome
+  entries: ::std::vec::Vec<Entry>
+  revision: ::std::string::String
+  refused: ::std::vec::Vec<KeyRefusal>
+  problem: ::std::option::Option<KeyProblem>
+  corrupt_offset: i64
+  ignored_fields: ::std::vec::Vec<IgnoredField>
+  ignored_omitted: i64
+  corrupt_source: ::std::option::Option<ConfigSource>
+  refusal: ::std::option::Option<OAImported0>
+pub struct UserSnapshotV2
+  entries: ::std::vec::Vec<Entry>
+  revision: ::std::string::String
+pub struct UserReadResultV2
+  outcome: ReadOutcome
+  snapshot: ::std::option::Option<UserSnapshotV2>
+  problem: ::std::option::Option<KeyProblem>
+  corrupt_offset: i64
+  refusal: ::std::option::Option<OAImported0>
+pub struct UserReplaceResultV2
+  outcome: ReplaceOutcome
+  snapshot: ::std::option::Option<UserSnapshotV2>
+  refused: ::std::vec::Vec<KeyProblem>
+  corrupt_offset: i64
+  refusal: ::std::option::Option<OAImported0>
+pub struct ConfigObservationV2
+  outcome: ObservationOutcomeV2
+  cursor: ::std::string::String
+  snapshot: ::std::option::Option<ReadResult>
+  problem: ::std::option::Option<KeyProblem>
+  corrupt_offset: i64
+  corrupt_source: ::std::option::Option<ConfigSource>
+  refusal: ::std::option::Option<OAImported0>
+  age_ms: ::std::option::Option<i64>
+  cause: ::std::string::String
+pub struct DescribeResult
+  outcome: ReadOutcome
+  descriptors: ::std::vec::Vec<KeyDescriptor>
+  refusal: ::std::option::Option<OAImported0>
+pub fn encode(v: &Snapshot) -> ::std::vec::Vec<u8>
 pub struct Refusal
   word: &'static str
   offset: usize
-pub fn decode(data: &[u8]) -> Result<Snapshot, Refusal>
+pub fn decode(data: &[u8]) -> ::std::result::Result<Snapshot, Refusal>
+pub trait JsonRecord: ::std::marker::Sized
+  fn to_json(&self) -> ::std::vec::Vec<u8>
+  fn from_json(data: &[u8]) -> ::std::result::Result<Self, Refusal>
 pub use abstraction_frame::FrameTransport
 pub struct ServiceError
-  code: String
-  message: String
+  code: ::std::string::String
+  message: ::std::string::String
 pub enum CallError<E>
   Transport(E)
   Refusal(Refusal)
@@ -86,20 +264,167 @@ pub enum CallError<E>
   Service(ServiceError)
 pub trait ConfigReader
   type Error
-  fn read(&self, overrides: RunOverrides) -> Result<Snapshot, Self::Error>
+  fn read(&self, overrides: RunOverrides) -> ::std::result::Result<Snapshot, Self::Error>
 pub struct ConfigReaderClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait ConfigEditor
   type Error
-  fn read_user(&self) -> Result<UserSnapshot, Self::Error>
-  fn replace_user(&self, expected_revision: String, values: UserSettings) -> Result<UserReplaceResult, Self::Error>
+  fn read_user(&self) -> ::std::result::Result<UserSnapshot, Self::Error>
+  fn replace_user(&self, expected_revision: ::std::string::String, values: UserSettings) -> ::std::result::Result<UserReplaceResult, Self::Error>
 pub struct ConfigEditorClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait ConfigObserver
   type Error
-  fn observe(&self, overrides: RunOverrides, cursor: String, wait_ms: i64) -> Result<ConfigObservation, Self::Error>
+  fn observe(&self, overrides: RunOverrides, cursor: ::std::string::String, wait_ms: i64) -> ::std::result::Result<ConfigObservation, Self::Error>
 pub struct ConfigObserverClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
+  pub fn observe_pages(&self, overrides: RunOverrides, cursor: ::std::string::String, wait_ms: i64) -> impl ::std::iter::Iterator<Item=::std::result::Result<ConfigObservation,CallError<T::Error>>> + '_
+pub trait ConfigReaderV2
+  type Error
+  fn read(&self, names: ::std::vec::Vec<::std::string::String>) -> ::std::result::Result<ReadResult, Self::Error>
+  fn describe(&self) -> ::std::result::Result<DescribeResult, Self::Error>
+pub struct ConfigReaderV2Client<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait ConfigEditorV2
+  type Error
+  fn read_user(&self) -> ::std::result::Result<UserReadResultV2, Self::Error>
+  fn replace_user(&self, expected_revision: ::std::string::String, changes: ::std::vec::Vec<Change>) -> ::std::result::Result<UserReplaceResultV2, Self::Error>
+pub struct ConfigEditorV2Client<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait ConfigObserverV2
+  type Error
+  fn observe(&self, cursor: ::std::string::String, wait_ms: i64) -> ::std::result::Result<ConfigObservationV2, Self::Error>
+pub struct ConfigObserverV2Client<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+  pub fn observe_pages(&self, cursor: ::std::string::String, wait_ms: i64) -> impl ::std::iter::Iterator<Item=::std::result::Result<ConfigObservationV2,CallError<T::Error>>> + '_
+pub const CONFIG_CATALOGUE_JSON: &str
+pub fn validate_config_value(v: &Value) -> ::std::result::Result<(),Refusal> { if !((v.kind.as_str() == "unlimited" || v.kind.as_str() == "boolean" || v.kind.as_str() == "integer" || v.kind.as_str() == "bytes" || v.kind.as_str() == "duration" || v.kind.as_str() == "text" || v.kind.as_str() == "choice" || v.kind.as_str() == "text_list" || v.kind.as_str() == "text_map") && (v.kind.as_str() == "boolean" || !v.boolean) && (v.kind.as_str() == "integer" || v.integer == 0) && (v.kind.as_str() == "bytes" || v.bytes == 0) && (v.kind.as_str() == "duration" || v.duration_ms == 0) && (v.kind.as_str() == "text" || v.text.is_empty()) && (v.kind.as_str() == "choice" || v.choice.is_empty()) && (v.kind.as_str() == "text_list" || v.text_list.is_empty()) && (v.kind.as_str() == "text_map" || v.text_map.is_empty())) { return Err(Refusal{word:"bad_value",offset:0}); }
+pub fn config_key_descriptors() -> ::std::vec::Vec<KeyDescriptor>
+pub fn overlay_config_process(entries:&[Entry],changes:&[Change])->::std::result::Result<::std::vec::Vec<Entry>,Refusal>
+pub fn encode_run_overrides_document(v: &RunOverrides) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_run_overrides_document(data: &[u8]) -> ::std::result::Result<RunOverrides, Refusal>
+pub fn encode_origin_document(v: &Origin) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_origin_document(data: &[u8]) -> ::std::result::Result<Origin, Refusal>
+pub fn encode_origins_document(v: &Origins) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_origins_document(data: &[u8]) -> ::std::result::Result<Origins, Refusal>
+pub fn encode_snapshot_document(v: &Snapshot) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_snapshot_document(data: &[u8]) -> ::std::result::Result<Snapshot, Refusal>
+pub fn encode_user_settings_document(v: &UserSettings) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_user_settings_document(data: &[u8]) -> ::std::result::Result<UserSettings, Refusal>
+pub fn encode_user_snapshot_document(v: &UserSnapshot) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_user_snapshot_document(data: &[u8]) -> ::std::result::Result<UserSnapshot, Refusal>
+pub fn encode_user_replace_result_document(v: &UserReplaceResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_user_replace_result_document(data: &[u8]) -> ::std::result::Result<UserReplaceResult, Refusal>
+pub fn encode_config_observation_document(v: &ConfigObservation) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_config_observation_document(data: &[u8]) -> ::std::result::Result<ConfigObservation, Refusal>
+pub fn encode_value_document(v: &Value) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_value_document(data: &[u8]) -> ::std::result::Result<Value, Refusal>
+pub fn encode_config_source_document(v: &ConfigSource) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_config_source_document(data: &[u8]) -> ::std::result::Result<ConfigSource, Refusal>
+pub fn encode_key_origin_document(v: &KeyOrigin) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_key_origin_document(data: &[u8]) -> ::std::result::Result<KeyOrigin, Refusal>
+pub fn encode_entry_document(v: &Entry) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_entry_document(data: &[u8]) -> ::std::result::Result<Entry, Refusal>
+pub fn encode_value_range_document(v: &ValueRange) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_value_range_document(data: &[u8]) -> ::std::result::Result<ValueRange, Refusal>
+pub fn encode_key_descriptor_document(v: &KeyDescriptor) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_key_descriptor_document(data: &[u8]) -> ::std::result::Result<KeyDescriptor, Refusal>
+pub fn encode_change_document(v: &Change) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_change_document(data: &[u8]) -> ::std::result::Result<Change, Refusal>
+pub fn encode_key_refusal_document(v: &KeyRefusal) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_key_refusal_document(data: &[u8]) -> ::std::result::Result<KeyRefusal, Refusal>
+pub fn encode_key_problem_document(v: &KeyProblem) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_key_problem_document(data: &[u8]) -> ::std::result::Result<KeyProblem, Refusal>
+pub fn encode_ignored_field_document(v: &IgnoredField) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_ignored_field_document(data: &[u8]) -> ::std::result::Result<IgnoredField, Refusal>
+pub fn encode_read_result_document(v: &ReadResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_read_result_document(data: &[u8]) -> ::std::result::Result<ReadResult, Refusal>
+pub fn encode_user_snapshot_v2_document(v: &UserSnapshotV2) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_user_snapshot_v2_document(data: &[u8]) -> ::std::result::Result<UserSnapshotV2, Refusal>
+pub fn encode_user_read_result_v2_document(v: &UserReadResultV2) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_user_read_result_v2_document(data: &[u8]) -> ::std::result::Result<UserReadResultV2, Refusal>
+pub fn encode_user_replace_result_v2_document(v: &UserReplaceResultV2) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_user_replace_result_v2_document(data: &[u8]) -> ::std::result::Result<UserReplaceResultV2, Refusal>
+pub fn encode_config_observation_v2_document(v: &ConfigObservationV2) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_config_observation_v2_document(data: &[u8]) -> ::std::result::Result<ConfigObservationV2, Refusal>
+pub fn encode_describe_result_document(v: &DescribeResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_describe_result_document(data: &[u8]) -> ::std::result::Result<DescribeResult, Refusal>
+pub mod internal
+  pub fn decode_run_overrides_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::RunOverrides, usize), super::Refusal>
+  pub fn check_run_overrides(v: &super::RunOverrides, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_run_overrides_at(v: &super::RunOverrides, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_origin_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Origin, usize), super::Refusal>
+  pub fn check_origin(v: &super::Origin, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_origin_at(v: &super::Origin, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_origins_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Origins, usize), super::Refusal>
+  pub fn check_origins(v: &super::Origins, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_origins_at(v: &super::Origins, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_snapshot_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Snapshot, usize), super::Refusal>
+  pub fn check_snapshot(v: &super::Snapshot, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_snapshot_at(v: &super::Snapshot, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_user_settings_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::UserSettings, usize), super::Refusal>
+  pub fn check_user_settings(v: &super::UserSettings, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_user_settings_at(v: &super::UserSettings, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_user_snapshot_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::UserSnapshot, usize), super::Refusal>
+  pub fn check_user_snapshot(v: &super::UserSnapshot, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_user_snapshot_at(v: &super::UserSnapshot, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_user_replace_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::UserReplaceResult, usize), super::Refusal>
+  pub fn check_user_replace_result(v: &super::UserReplaceResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_user_replace_result_at(v: &super::UserReplaceResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_config_observation_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ConfigObservation, usize), super::Refusal>
+  pub fn check_config_observation(v: &super::ConfigObservation, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_config_observation_at(v: &super::ConfigObservation, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_value_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Value, usize), super::Refusal>
+  pub fn check_value(v: &super::Value, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_value_at(v: &super::Value, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_config_source_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ConfigSource, usize), super::Refusal>
+  pub fn check_config_source(v: &super::ConfigSource, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_config_source_at(v: &super::ConfigSource, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_key_origin_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::KeyOrigin, usize), super::Refusal>
+  pub fn check_key_origin(v: &super::KeyOrigin, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_key_origin_at(v: &super::KeyOrigin, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_entry_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Entry, usize), super::Refusal>
+  pub fn check_entry(v: &super::Entry, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_entry_at(v: &super::Entry, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_value_range_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ValueRange, usize), super::Refusal>
+  pub fn check_value_range(v: &super::ValueRange, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_value_range_at(v: &super::ValueRange, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_key_descriptor_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::KeyDescriptor, usize), super::Refusal>
+  pub fn check_key_descriptor(v: &super::KeyDescriptor, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_key_descriptor_at(v: &super::KeyDescriptor, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_change_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Change, usize), super::Refusal>
+  pub fn check_change(v: &super::Change, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_change_at(v: &super::Change, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_key_refusal_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::KeyRefusal, usize), super::Refusal>
+  pub fn check_key_refusal(v: &super::KeyRefusal, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_key_refusal_at(v: &super::KeyRefusal, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_key_problem_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::KeyProblem, usize), super::Refusal>
+  pub fn check_key_problem(v: &super::KeyProblem, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_key_problem_at(v: &super::KeyProblem, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_ignored_field_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::IgnoredField, usize), super::Refusal>
+  pub fn check_ignored_field(v: &super::IgnoredField, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_ignored_field_at(v: &super::IgnoredField, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_read_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ReadResult, usize), super::Refusal>
+  pub fn check_read_result(v: &super::ReadResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_read_result_at(v: &super::ReadResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_user_snapshot_v2_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::UserSnapshotV2, usize), super::Refusal>
+  pub fn check_user_snapshot_v2(v: &super::UserSnapshotV2, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_user_snapshot_v2_at(v: &super::UserSnapshotV2, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_user_read_result_v2_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::UserReadResultV2, usize), super::Refusal>
+  pub fn check_user_read_result_v2(v: &super::UserReadResultV2, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_user_read_result_v2_at(v: &super::UserReadResultV2, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_user_replace_result_v2_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::UserReplaceResultV2, usize), super::Refusal>
+  pub fn check_user_replace_result_v2(v: &super::UserReplaceResultV2, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_user_replace_result_v2_at(v: &super::UserReplaceResultV2, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_config_observation_v2_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ConfigObservationV2, usize), super::Refusal>
+  pub fn check_config_observation_v2(v: &super::ConfigObservationV2, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_config_observation_v2_at(v: &super::ConfigObservationV2, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_describe_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::DescribeResult, usize), super::Refusal>
+  pub fn check_describe_result(v: &super::DescribeResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_describe_result_at(v: &super::DescribeResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>

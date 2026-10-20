@@ -6,11 +6,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	jobwire "github.com/openabstractions/abstraction-job/go/abstraction/job/acceptance"
 	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	identity "github.com/openabstractions/abstraction-identity"
 )
@@ -35,12 +37,13 @@ type Runner struct {
 	// RetireGuard is consulted before an earlier version's files are removed.
 	// ComfyUI's earlier versions stay until a guard confirms no registered
 	// application entry still names them.
-	RetireGuard          RetireGuard
-	featureCheck         func() (FeatureStatus, error)                // focused qualification seam only
-	modelHostFeatureAdd  func(context.Context) (FeatureStatus, error) // focused maintenance seam
-	modelHostHomeAllowed func() error                                 // focused isolation check seam
-	healthCheck          HealthCheck                                  // test seam; packageHealth otherwise
-	crashAfter           func(step string) error                      // test seam: stop between an effect and its journal record
+	RetireGuard            RetireGuard
+	featureCheck           func() (FeatureStatus, error)                // focused qualification seam only
+	modelHostFeatureAdd    func(context.Context) (FeatureStatus, error) // focused maintenance seam
+	modelHostHomeAllowed   func() error                                 // focused isolation check seam
+	nativeArchiveFreeBytes func(string) (uint64, error)                 // focused disk-admission seam; real platform owner otherwise
+	healthCheck            HealthCheck                                  // test seam; packageHealth otherwise
+	crashAfter             func(step string) error                      // test seam: stop between an effect and its journal record
 }
 
 func NewRunner(j Journal, transfer Transfer) Runner {
@@ -74,7 +77,10 @@ func (r Runner) Status(ctx context.Context) (Status, error) {
 		return Status{Configuration: map[string]bool{}}, nil
 	}
 	if err := r.Journal.Authorize(state.Plan); err != nil {
-		if priorErr := r.Journal.recognizePriorPlan(state.Plan); priorErr != nil {
+		// A package pin this release does not carry (an earlier preview's
+		// local package) leaves the earlier plan review-only; the Panel
+		// still shows every choice and offers the current release.
+		if priorErr := r.Journal.recognizePriorIdentity(state.Plan); priorErr != nil {
 			return Status{}, priorErr
 		}
 		return r.priorStatus(state), nil
@@ -83,8 +89,11 @@ func (r Runner) Status(ctx context.Context) (Status, error) {
 }
 
 // priorStatus reports old work without observing or advancing its job. An
-// installed row is shown as installed only after its pinned receipt and files
-// still pass verification. The returned plan is visibly review-only.
+// installed row is shown as installed while its folder holds the pinned
+// receipt. The check reads the receipt alone: it runs nothing from the
+// package and rehashes no file, so the Panel's state read stays quick; the
+// paths that launch or update a package verify its files themselves. The
+// returned plan is visibly review-only.
 func (r Runner) priorStatus(state State) Status {
 	plan := state.Plan
 	plan.Preparable = false
@@ -95,14 +104,23 @@ func (r Runner) priorStatus(state State) Status {
 		effect := state.Effects[component.ID]
 		if effect.Phase == Installed {
 			artifact, err := r.Journal.knownInstalledArtifact(state, component.ID)
+			if errors.Is(err, errUnknownInstalledPin) {
+				// The journal's own pin names the receipt for this display.
+				// An earlier pin authorizes nothing, except re-selecting
+				// served sets for its own still-verified registration
+				// (installedPyTorch); Install replaces it with the current
+				// release's package.
+				artifact, err = activeArtifact(state, component.ID)
+				effect.Reason = "from an earlier build; Install updates it to this release"
+			}
 			if err == nil {
 				var destination string
 				destination, err = installPath(artifact)
 				if err == nil {
 					var installed bool
-					installed, err = archiveInstalled(artifact, destination)
+					installed, err = ArchiveReceiptMatches(artifact, destination)
 					if err == nil && !installed {
-						err = errors.New("installed package receipt or files changed")
+						err = errors.New("installed package receipt changed")
 					}
 				}
 			}
@@ -120,6 +138,12 @@ func (r Runner) status(ctx context.Context, state State) Status {
 	status := Status{Plan: state.Plan, Configuration: state.Configuration, Ready: state.Ready(), CurrentCatalog: true}
 	for _, component := range state.Plan.Components {
 		effect := state.Effects[component.ID]
+		if reason := r.installedTreeMissing(state, component.ID); reason != "" {
+			// The journal records the install; the folder decides whether
+			// it is still there, by its receipt and file sizes.
+			effect.Phase, effect.Reason = Uncertain, reason
+			status.Ready = false
+		}
 		row := ComponentStatus{ID: component.ID, Effect: effect}
 		if effect.Phase == Requested && effect.Work != nil {
 			observation, err := r.Transfer.Observe(ctx, *effect.Work)
@@ -154,16 +178,20 @@ func (r Runner) Advance(ctx context.Context, componentID string) (Status, error)
 		return r.status(ctx, state), errors.New("setup packages are not fully pinned and reviewed")
 	}
 	component, _ := planComponent(state.Plan, componentID)
-	for _, dependency := range component.Dependencies {
-		if state.Effects[dependency].Phase != Installed {
-			return r.status(ctx, state), fmt.Errorf("%s waits for %s to be installed", componentID, dependency)
-		}
+	if err := r.dependenciesInstalled(state, componentID, component); err != nil {
+		return r.status(ctx, state), err
 	}
 	effect := state.Effects[componentID]
+	if effect.Removing || effect.Phase == Removed {
+		return r.status(ctx, state), errors.New("explicit uninstall or reviewed reinstall is required")
+	}
+	if a.NativeResources != nil && slices.Contains([]Phase{Pending, Requested, Verified, Installing}, effect.Phase) {
+		return r.advanceNativeArchive(ctx, state, componentID, a, effect)
+	}
 	pin := a.DownloadPin()
 	// An update publishes the new version beside the retained one and stops
 	// at Staged; the health check and activation follow as separate steps.
-	// A first ComfyUI installation passes the same steps.
+	// First installations selected for health checks pass the same steps.
 	published := Installed
 	if effect.Retained != nil || firstInstallChecked(componentID) {
 		published = Staged
@@ -197,14 +225,6 @@ func (r Runner) Advance(ctx context.Context, componentID string) (Status, error)
 		if err := absent(destination); err != nil {
 			return r.status(ctx, state), fmt.Errorf("existing app data is preserved: %w", err)
 		}
-		if componentID == "pytorch-engine" {
-			staged, err := r.stageInstalledPyTorchInputs(ctx, a)
-			if err != nil {
-				return r.status(ctx, state), err
-			}
-			state, err = r.Journal.Update(ctx, state.Plan.ID, componentID, effect, Effect{Phase: Verified, StagedPath: staged})
-			return r.status(ctx, state), err
-		}
 		key := workKey(componentID, a)
 		work, err := r.Transfer.Reserve(ctx, pin, key)
 		if err != nil {
@@ -229,7 +249,7 @@ func (r Runner) Advance(ctx context.Context, componentID string) (Status, error)
 			return r.status(ctx, state), err
 		}
 		switch observation.State {
-		case "complete":
+		case jobwire.WorkStateComplete.String():
 			staged, err := r.stage(ctx, a, *effect.Work)
 			if err != nil {
 				return r.status(ctx, state), err
@@ -238,7 +258,7 @@ func (r Runner) Advance(ctx context.Context, componentID string) (Status, error)
 			if err != nil {
 				return Status{}, err
 			}
-		case "failed", "cancelled":
+		case jobwire.WorkStateFailed.String(), jobwire.WorkStateCancelled.String():
 			state, err = r.Journal.Update(ctx, state.Plan.ID, componentID, effect, Effect{Phase: Failed, Reason: observation.Failure})
 			if err != nil {
 				return Status{}, err
@@ -287,6 +307,7 @@ func (r Runner) Advance(ctx context.Context, componentID string) (Status, error)
 			if err != nil {
 				return Status{}, err
 			}
+			sweepStalePartials(filepath.Dir(effect.StagedPath), processStart)
 			return r.status(ctx, state), nil
 		}
 		reason := "archive installation outcome needs inspection"
@@ -364,17 +385,15 @@ func (r Runner) Retry(ctx context.Context, componentID string) (Status, error) {
 		return r.status(ctx, state), errors.New("setup packages are not fully pinned and reviewed")
 	}
 	component, _ := planComponent(state.Plan, componentID)
-	for _, dependency := range component.Dependencies {
-		if state.Effects[dependency].Phase != Installed {
-			return r.status(ctx, state), fmt.Errorf("%s waits for %s to be installed", componentID, dependency)
-		}
+	if err := r.dependenciesInstalled(state, componentID, component); err != nil {
+		return r.status(ctx, state), err
 	}
 	effect := state.Effects[componentID]
 	published := Installed
 	if effect.Retained != nil || firstInstallChecked(componentID) {
 		published = Staged
 	}
-	if effect.Phase == Failed && (effect.Retained != nil || firstInstallChecked(componentID)) && effect.StagedPath != "" && len(effect.Retired) == 0 && a.Action == "archive_per_user" {
+	if a.NativeResources == nil && effect.Phase == Failed && (effect.Retained != nil || firstInstallChecked(componentID)) && effect.StagedPath != "" && len(effect.Retired) == 0 && a.Action == "archive_per_user" {
 		// A staged update that failed its check or changed before activation
 		// was removed. Its verified download remains; an explicit retry
 		// installs it again beside the still-active earlier version.
@@ -391,18 +410,66 @@ func (r Runner) Retry(ctx context.Context, componentID string) (Status, error) {
 		state, err = r.Journal.Update(ctx, state.Plan.ID, componentID, effect, Effect{Phase: Verified, StagedPath: effect.StagedPath, Reason: "explicit retry of the update"})
 		return r.status(ctx, state), err
 	}
+	if effect.Phase == Installed && a.Action == "archive_per_user" && r.installedTreeMissing(state, componentID) != "" {
+		// The journal records an install whose folder no longer holds it
+		// (status reads Uncertain). An absent folder is installed again: from
+		// the verified download, or by a new transfer when it is gone. A
+		// partial folder is the person's data and is preserved.
+		destination, err := installPath(a)
+		if err != nil {
+			return r.status(ctx, state), err
+		}
+		if err := absent(destination); err != nil {
+			return r.status(ctx, state), fmt.Errorf("existing app data is preserved: %w", err)
+		}
+		if effect.StagedPath != "" && verifyFile(effect.StagedPath, a) == nil {
+			state, err = r.Journal.Update(ctx, state.Plan.ID, componentID, effect, Effect{Phase: Verified, StagedPath: effect.StagedPath, Reason: "explicit archive retry after absent identity"})
+			return r.status(ctx, state), err
+		}
+		pin := a.DownloadPin()
+		if a.NativeResources != nil {
+			if pin, err = nativeResourceDownload(a, effect.ResourceIndex); err != nil {
+				return r.status(ctx, state), err
+			}
+		}
+		var work WorkIdentity
+		if effect.Work != nil {
+			work = *effect.Work
+			work.Attempt++
+		} else if work, err = r.Transfer.Reserve(ctx, pin, workKey(componentID, a)); err != nil {
+			return r.status(ctx, state), err
+		}
+		state, err = r.Journal.Update(ctx, state.Plan.ID, componentID, effect, Effect{Phase: Requested, Work: &work})
+		if err != nil {
+			return Status{}, err
+		}
+		return r.status(ctx, state), r.Transfer.Submit(ctx, pin, work)
+	}
 	if effect.Phase == Uncertain && a.Action == "archive_per_user" {
 		destination, err := installPath(a)
 		if err != nil {
 			return r.status(ctx, state), err
 		}
 		installed, err := archiveInstalled(a, destination)
-		if err != nil {
+		if err != nil && a.NativeResources == nil {
 			return r.status(ctx, state), err
 		}
 		if installed {
 			state, err = r.Journal.Update(ctx, state.Plan.ID, componentID, effect, Effect{Phase: published})
 			return r.status(ctx, state), err
+		}
+		if a.NativeResources != nil {
+			sweepClearedNative(destination)
+		}
+		if a.NativeResources != nil && absent(destination) != nil {
+			// A native install Setup left partial is redone from the
+			// verified downloads, checked before the partial is removed.
+			if err := r.verifiedNativeDownloads(a, effect.StagedPath); err != nil {
+				return r.status(ctx, state), err
+			}
+			if err := clearPartialNative(ctx, a, destination); err != nil {
+				return r.status(ctx, state), err
+			}
 		}
 		if err := absent(destination); err != nil {
 			return r.status(ctx, state), fmt.Errorf("existing app data is preserved: %w", err)
@@ -426,7 +493,14 @@ func (r Runner) Retry(ctx context.Context, componentID string) (Status, error) {
 	if err != nil {
 		return Status{}, err
 	}
-	if err := r.Transfer.Submit(ctx, a.DownloadPin(), nextWork); err != nil {
+	pin := a.DownloadPin()
+	if a.NativeResources != nil {
+		pin, err = nativeResourceDownload(a, effect.ResourceIndex)
+		if err != nil {
+			return r.status(ctx, state), err
+		}
+	}
+	if err := r.Transfer.Submit(ctx, pin, nextWork); err != nil {
 		return r.status(ctx, state), err
 	}
 	return r.status(ctx, state), nil
@@ -451,6 +525,8 @@ func installPath(a Artifact) (string, error) {
 		}
 	} else if a.InstallIdentity == "pt" {
 		destination = filepath.Join(home.Data, "OA", "e", "pt", a.Version, "i")
+	} else if a.InstallIdentity == "oa-comfyui-native" && a.NativeResources != nil {
+		destination = filepath.Join(home.Data, filepath.FromSlash(oaArchiveLayout.NativeRoot), a.Version)
 	}
 	// Every step that installs, probes or recovers the folder takes it from
 	// here, so a folder off a local drive is refused before any of them opens
@@ -464,6 +540,36 @@ func installPath(a Artifact) (string, error) {
 // archiveInstalled is ArchiveInstalled; tests count the runner's probes.
 var archiveInstalled = ArchiveInstalled
 
+// installedTreeCheck is the status read's receipt-and-size check of an
+// installed package folder (archiveReceiptAndSizes); tests replace it.
+var installedTreeCheck = archiveReceiptAndSizes
+
+// installedTreeMissing says why the folder of componentID, which the journal
+// records as installed, no longer holds the installed package; "" while it
+// does, and for every row in another phase or with no package folder.
+func (r Runner) installedTreeMissing(state State, componentID string) string {
+	effect := state.Effects[componentID]
+	if effect.Phase != Installed || effect.Removing {
+		return ""
+	}
+	a, err := r.Journal.ComponentArtifact(state, componentID)
+	if err != nil || a.Action != "archive_per_user" {
+		return ""
+	}
+	destination, err := installPath(a)
+	if err != nil {
+		return "the installed folder cannot be read: " + err.Error()
+	}
+	ok, reason, err := installedTreeCheck(a, destination)
+	switch {
+	case err != nil:
+		return "the installed folder cannot be read: " + err.Error()
+	case !ok:
+		return "the installed files changed: " + reason
+	}
+	return ""
+}
+
 func workKey(componentID string, a Artifact) string {
 	sum := sha256.Sum256([]byte(componentID + "\x00" + a.SHA256))
 	return "setup-" + hex.EncodeToString(sum[:16])
@@ -474,10 +580,14 @@ func workKey(componentID string, a Artifact) string {
 // a complete, correctly hashed artifact.
 func (r Runner) stage(ctx context.Context, a Artifact, work WorkIdentity) (string, error) {
 	dir := filepath.Join(filepath.Dir(r.Journal.Path), "downloads")
+	return r.stageArchivePart(ctx, a, work, filepath.Join(dir, a.SHA256+".zip"))
+}
+
+func (r Runner) stageArchivePart(ctx context.Context, a Artifact, work WorkIdentity, target string) (string, error) {
+	dir := filepath.Dir(target)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", err
 	}
-	target := filepath.Join(dir, a.SHA256+".zip")
 	if _, err := os.Stat(target); err == nil {
 		if err := verifyFile(target, a); err != nil {
 			return "", err
@@ -519,6 +629,32 @@ func (r Runner) stage(ctx context.Context, a Artifact, work WorkIdentity) (strin
 	return target, nil
 }
 
+// processStart is when this process began. Every stage this process runs
+// writes its partial after it, so a partial last written before it belongs
+// to an earlier, interrupted process.
+var processStart = time.Now()
+
+// sweepStalePartials removes the .partial-* files an interrupted earlier
+// process left in dir once a component's install is done: those last
+// written before start. A partial of this process, live or stalled, stays;
+// an uninterrupted stage removes its own.
+func sweepStalePartials(dir string, start time.Time) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.Type().IsRegular() || !strings.HasPrefix(e.Name(), ".partial-") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || !info.ModTime().Before(start) {
+			continue
+		}
+		os.Remove(filepath.Join(dir, e.Name()))
+	}
+}
+
 type boundedWriter struct {
 	writer    io.Writer
 	remaining int64
@@ -534,21 +670,54 @@ func (w *boundedWriter) Write(p []byte) (int, error) {
 }
 
 func verifyFile(path string, a Artifact) error {
+	return verifyFileContext(context.Background(), path, a)
+}
+
+func verifyFileContext(ctx context.Context, path string, a Artifact) error {
 	file, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 	info, err := file.Stat()
-	if err != nil || info.Size() != a.Bytes {
-		return errors.New("staged artifact size differs from release pin")
+	if err != nil {
+		return err
+	}
+	if info.Size() != a.Bytes {
+		return errPinnedSize
 	}
 	sum := sha256.New()
-	if _, err := io.Copy(sum, file); err != nil {
+	var total int64
+	if err := copyBounded(ctx, sum, file, make([]byte, archiveChunk), &total, a.Bytes); err != nil {
 		return err
 	}
 	if !strings.EqualFold(hex.EncodeToString(sum.Sum(nil)), a.SHA256) {
-		return errors.New("staged artifact digest differs from release pin")
+		return errPinnedDigest
+	}
+	return nil
+}
+
+var (
+	errPinnedSize   = errors.New("staged artifact size differs from release pin")
+	errPinnedDigest = errors.New("staged artifact digest differs from release pin")
+)
+
+// dependenciesInstalled requires each dependency installed, at the version
+// the component names for it.
+func (r Runner) dependenciesInstalled(state State, componentID string, component PlannedComponent) error {
+	for _, dependency := range component.Dependencies {
+		if state.Effects[dependency].Phase != Installed {
+			return fmt.Errorf("%s waits for %s to be installed", componentID, dependency)
+		}
+		if want := component.DependencyVersions[dependency]; want != "" {
+			installed, err := r.Journal.ComponentArtifact(state, dependency)
+			if err != nil {
+				return err
+			}
+			if installed.Version != want {
+				return fmt.Errorf("%s needs %s %s; %s is installed", componentID, dependency, want, installed.Version)
+			}
+		}
 	}
 	return nil
 }

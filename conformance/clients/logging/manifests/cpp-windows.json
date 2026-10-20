@@ -82,6 +82,7 @@
     "openabstractions-flat/abstraction-model/identity/go.mod",
     "openabstractions-flat/abstraction-provider-kit/go/go.mod",
     "openabstractions-flat/abstraction-provider-kit/go/go.sum",
+    "openabstractions-flat/abstraction-provider-kit/go/sandbox",
     "openabstractions-flat/abstraction-provider-lemonade/go/go.mod",
     "openabstractions-flat/abstraction-provider-lemonade/go/go.sum",
     "openabstractions-flat/abstraction-provider-localai/go/go.mod",

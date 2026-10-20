@@ -6,47 +6,30 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
+	"io/fs"
+	"log"
 	"net/http"
-	"reflect"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
 	facade "github.com/openabstractions/abstraction-facade/go"
 	fwire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
+	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstractions/monitor/internal/setup"
 )
 
-type setupApplications interface {
-	Register(context.Context, fwire.ApplicationDescriptor) (fwire.ApplicationChange, error)
-	Remove(context.Context, string) (fwire.ApplicationChange, error)
-	Observe(context.Context, string, int64) (fwire.ApplicationPage, error)
-	Activate(context.Context, string) (fwire.ApplicationActivationResult, error)
-}
-
-type comfyApplicationReply struct {
-	Available  bool   `json:"available"`
-	Registered bool   `json:"registered"`
-	Readable   bool   `json:"readable"`
-	Matching   bool   `json:"matching"`
-	Ready      bool   `json:"ready"`
-	WebReady   bool   `json:"web_ready"`
-	WebURL     string `json:"web_url,omitempty"`
-	Starting   bool   `json:"starting"`
-	Reason     string `json:"reason,omitempty"`
-	Outcome    string `json:"outcome,omitempty"`
-	Started    bool   `json:"started,omitempty"`
-	// Conflict marks a registered entry that differs from this build's recipe;
-	// the page offers Remove beside Reason and keeps Command in its details.
-	Conflict bool `json:"conflict,omitempty"`
-	// Foreign marks a conflicting entry registered by another program; Name
-	// is the entry's title or its program's file name.
-	Foreign bool   `json:"foreign,omitempty"`
-	Name    string `json:"name,omitempty"`
-	Command string `json:"command,omitempty"`
-	// Message is the one sentence a completed Remove writes.
-	Message string `json:"message,omitempty"`
+func (pkg *officialPackagePanel) retainedShortcut() extensionShortcut {
+	const description = " with OpenAbstractions image tools"
+	registration := pkg.archive.Registration()
+	if shortcut, ok := declaredExtensionShortcut(registration, description); ok && shortcut.application == registration {
+		return shortcut
+	}
+	// The retained workspace routes keep their historical registration.
+	title := pkg.retainedTitle
+	return extensionShortcut{application: registration, title: title, description: title + description}
 }
 
 type comfyApplicationRequest struct {
@@ -72,6 +55,12 @@ func (p *servicePanel) setupApplicationsForPanel(ctx context.Context) (setupAppl
 	return apps, nil
 }
 
+func (p *servicePanel) cachedSetupApplications() setupApplications {
+	p.comfyAppsMu.Lock()
+	defer p.comfyAppsMu.Unlock()
+	return p.comfyApps
+}
+
 func (p *servicePanel) openComfyForActivation(ctx context.Context, journal setup.Journal) (setup.ComfyPaths, error) {
 	if p.comfyActivationOpen != nil {
 		return p.comfyActivationOpen(ctx, journal)
@@ -79,168 +68,128 @@ func (p *servicePanel) openComfyForActivation(ctx context.Context, journal setup
 	return setup.OpenInstalledComfy(ctx, journal)
 }
 
-func comfyDescriptorEqual(a, b fwire.ApplicationDescriptor) bool {
-	return reflect.DeepEqual(a, b)
+func (pkg *officialPackagePanel) findWorkspaceDescriptor(page fwire.ApplicationPage) (fwire.ApplicationDescriptor, bool, error) {
+	registration := pkg.archive.Registration()
+	return findRegistrationDescriptor(page, registration)
 }
 
-// comfyRemoveCommand is the command line equivalent of the Panel's Remove
-// action, shown in the details.
-const comfyRemoveCommand = "openabstractions applications remove " + setup.ComfyApplicationName
-
-// comfyConflictSummary is the one visible sentence for a registered
-// picture workspace entry that differs from this build's recipe. The entry's
-// application id appears only in the details' command.
-func comfyConflictSummary(registered, current fwire.ApplicationDescriptor) string {
-	if registered.Program == current.Program {
-		return "The registered picture workspace entry is from an earlier OpenAbstractions build; it was preserved."
+func (pkg *officialPackagePanel) retainedWorkspaceRegistration() workspaceRegistrationPolicy {
+	registration := pkg.archive.Registration()
+	return workspaceRegistrationPolicy{
+		registration: registration, title: pkg.retainedShortcut().title,
+		replaceable: comfyEntryReplaceable, nativeRootOwns: setup.ComfyNativeRootHolds,
 	}
-	return "A picture workspace entry for another program is already registered; it was preserved."
 }
 
-// comfyDescriptorConflict explains a registered entry that differs from this
-// build's recipe. The entry is preserved; the Panel's Remove action deletes
-// it, after which this build registers its own.
-func comfyDescriptorConflict(registered, current fwire.ApplicationDescriptor) string {
-	return comfyConflictSummary(registered, current)
-}
-
-// comfyConflictReply is the status the setup page shows for a differing
-// entry: the summary sentence, the registered entry's name, the Remove action
-// and the command in the details.
-func comfyConflictReply(registered, current fwire.ApplicationDescriptor) comfyApplicationReply {
-	return comfyApplicationReply{Available: true, Registered: true, Conflict: true,
-		Foreign: registered.Program != current.Program, Name: comfyEntryName(registered),
-		Reason: comfyConflictSummary(registered, current), Command: comfyRemoveCommand}
-}
-
-// comfyEntryName names a registered entry in the Panel's sentences: its
-// title, else its program's stem and "(registered app)", never its file name
-// and never the registered name, which would read as this workspace for another
-// program's entry. A reserved title reads as appPageTitle reads it.
-func comfyEntryName(descriptor fwire.ApplicationDescriptor) string {
-	if strings.TrimSpace(descriptor.Title) == "" {
-		return programStem(descriptor.Program) + " (registered app)"
-	}
-	return appPageTitle(descriptor)
-}
-
-func findComfyDescriptor(page fwire.ApplicationPage) (fwire.ApplicationDescriptor, bool, error) {
-	if page.Outcome != fwire.ApplicationOutcomePage && page.Outcome != fwire.ApplicationOutcomeStale {
-		return fwire.ApplicationDescriptor{}, false, fmt.Errorf("application list is %s", page.Outcome.String())
-	}
-	for _, entry := range page.Applications {
-		if entry.Descriptor.Name == setup.ComfyApplicationName {
-			return entry.Descriptor, true, nil
-		}
-	}
-	return fwire.ApplicationDescriptor{}, false, nil
-}
-
-func comfyReadyPresence(page fwire.ApplicationPage) bool {
-	for _, entry := range page.Applications {
-		if entry.Descriptor.Name != setup.ComfyApplicationName {
-			continue
-		}
-		for _, instance := range entry.Instances {
-			for _, iface := range instance.Interfaces {
-				if iface.Name == "oa-integration-loaded" && iface.Protocol == "oa-comfyui" && iface.Contract == "openabstractions.comfyui/integration-ready@1" {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
-const comfyWebURL = "http://127.0.0.1:8188/"
-
-// checkComfyWebUI is a short fixed loopback availability probe, used only
-// after the public Applications service observes the exact OA integration
-// interface. Its result only controls whether the browser link is shown; it
-// never establishes caller identity, permissions, or inference availability.
-func checkComfyWebUI(ctx context.Context) bool {
-	ctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
-	defer cancel()
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, comfyWebURL+"system_stats", nil)
-	if err != nil {
-		return false
-	}
-	client := &http.Client{
-		Timeout: 1500 * time.Millisecond,
-		Transport: &http.Transport{
-			Proxy:       nil,
-			DialContext: (&net.Dialer{Timeout: 750 * time.Millisecond}).DialContext,
-		},
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
-	response, err := client.Do(request)
-	if err != nil {
-		return false
-	}
-	defer response.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
-	return response.StatusCode == http.StatusOK
-}
-
-// registerSetupEntry is Setup's confirmed registration of its fixed entry. The
+// registerWorkspaceEntry is Setup's confirmed registration of its fixed entry. The
 // Panel's read and activate rules on the name are written first, and
 // rewriting them is idempotent: the Panel then sees whatever entry holds the
 // name. A registration refused as a conflict, from an entry the Panel could
 // not read before, is checked once more against the now readable entry, so a
 // matching entry reads as registered and a different one as a reviewable
 // conflict.
-func registerSetupEntry(ctx context.Context, apps setupApplications, reads applicationReadRules, descriptor fwire.ApplicationDescriptor, earlier []fwire.ApplicationDescriptor) (bool, error) {
+func (pkg *officialPackagePanel) registerWorkspaceEntry(ctx context.Context, apps setupApplications, reads applicationReadRules, descriptor fwire.ApplicationDescriptor, earlier []fwire.ApplicationDescriptor, native *workspaceNative) (workspaceRegistration, error) {
+	workspace := pkg.retainedWorkspaceRegistration()
+	if err := workspace.checkTarget(descriptor); err != nil {
+		return workspaceUnchanged, err
+	}
 	if err := reads.allowPanelRead(ctx, descriptor.Name); err != nil {
-		return false, fmt.Errorf("the Panel could not save its permission to list and open this entry: %w", err)
+		return workspaceUnchanged, fmt.Errorf("the Panel could not save its permission to list and open this entry: %w", err)
 	}
 	for retried := false; ; retried = true {
-		created, err := ensureComfyDescriptorRegistered(ctx, apps, descriptor, earlier)
+		done, err := workspace.ensureRegistered(ctx, apps, descriptor, earlier, native)
 		if retried || err == nil || !strings.Contains(err.Error(), "("+fwire.ApplicationOutcomeConflict.String()+")") {
-			return created, err
+			return done, err
 		}
 	}
 }
 
-// ensureComfyDescriptorRegistered registers this build's fixed entry. An
-// entry equal to one Setup built for a version an update replaced is Setup's
-// own earlier registration: it is removed and the updated entry registered,
-// with the same application.manage right the first registration used. Any
-// other differing entry is preserved.
-func ensureComfyDescriptorRegistered(ctx context.Context, apps setupApplications, descriptor fwire.ApplicationDescriptor, earlier []fwire.ApplicationDescriptor) (bool, error) {
-	page, err := apps.Observe(ctx, "", 0)
+// completeWorkspace is the workspace step's work: the installed build's
+// entry in Apps (registerWorkspaceEntry), then the Start-menu shortcut that opens
+// it through the same owned launch the app page's Open uses.
+func (pkg *officialPackagePanel) completeWorkspace(ctx context.Context, apps setupApplications, reads applicationReadRules, descriptor fwire.ApplicationDescriptor, earlier []fwire.ApplicationDescriptor, native *workspaceNative) (workspaceRegistration, error) {
+	done, err := pkg.registerWorkspaceEntry(ctx, apps, reads, descriptor, earlier, native)
 	if err != nil {
-		return false, err
+		return done, err
 	}
-	registered, found, err := findComfyDescriptor(page)
-	if err != nil {
-		return false, err
+	shortcut := pkg.retainedShortcut()
+	if err := shortcut.ensure(); err != nil {
+		return done, fmt.Errorf("%s is in Apps, but its Start menu shortcut was not saved: %w", shortcut.title, err)
 	}
-	if found {
-		if comfyDescriptorEqual(registered, descriptor) {
-			return false, nil
-		}
-		if !slices.ContainsFunc(earlier, func(own fwire.ApplicationDescriptor) bool { return comfyDescriptorEqual(registered, own) }) {
-			return false, errors.New(comfyDescriptorConflict(registered, descriptor))
-		}
-		change, err := apps.Remove(ctx, setup.ComfyApplicationName)
-		if err != nil {
-			return false, err
-		}
-		if change.Outcome != fwire.ApplicationOutcomeApplied {
-			return false, fmt.Errorf("the earlier ComfyUI entry was not removed (%s); it was preserved", change.Outcome.String())
-		}
-	}
-	change, err := apps.Register(ctx, descriptor)
-	if err != nil {
-		return false, err
-	}
-	if change.Outcome != fwire.ApplicationOutcomeApplied {
-		return false, fmt.Errorf("ComfyUI descriptor was not registered (%s); refresh and inspect the current entry", change.Outcome.String())
-	}
-	return true, nil
+	return done, nil
 }
 
-func (p *servicePanel) setupComfyPlan(ctx context.Context, setupPlanID string, requireCurrent bool) (setup.Journal, error) {
+// comfyEntryReplaceable reports whether a registered comfyui entry for
+// another program is one Setup replaces with the installed build: its
+// program is gone, it lies in a folder Setup installs versions into, or it is
+// an OpenAbstractions build of ComfyUI registered before Setup installed one.
+// A signed Panel recognises that build by its own signer (oaSameSigner). An
+// unsigned preview Panel has no signer to compare, and recognises it by the
+// title OpenAbstractions' builds register under (setup.ComfyApplicationTitle):
+// an entry claiming that title gives up the name to the build the person
+// installed, and removing it changes no file and grants nothing. Every other
+// program's entry belongs to a third party and is preserved. Tests replace it.
+var comfyEntryReplaceable = func(registered fwire.ApplicationDescriptor) bool {
+	program := registered.Program
+	if !filepath.IsAbs(program) || filepath.Clean(program) != program || identity.LocalPath(program) != nil {
+		return false
+	}
+	if setup.ComfyInstallFolderHolds(program) {
+		return true
+	}
+	registration := officialPicture.archive.Registration()
+	if registered.Name == registration && registered.Title == setup.ComfyApplicationTitle && !panelSigned() {
+		return true
+	}
+	if _, err := os.Lstat(program); errors.Is(err, fs.ErrNotExist) {
+		return true
+	}
+	return oaSameSigner(program)
+}
+
+// panelSigned reports whether this Panel's own file carries a signer that
+// oaSameSigner can compare others with. Tests replace it.
+var panelSigned = func() bool {
+	self, err := panelExecutable()
+	return err == nil && oaSameSigner(self)
+}
+
+// comfyWorkspaceState reads whether the installed ComfyUI an approved plan
+// selected is in Apps and in the Start menu: "ready"; "unregistered" with no
+// entry; "stale" with an entry Setup replaces (comfyEntryReplaceable);
+// "other" with another program's entry, which stays, and note its sentence;
+// "no_shortcut" with the entry in place and no current shortcut. It answers ""
+// when the plan has no installed ComfyUI or the runtime cannot be read, and
+// the page then decides from its other steps. The read opens no installed
+// file.
+func (pkg *officialPackagePanel) workspaceState(p *servicePanel, ctx context.Context, journal setup.Journal, plan setup.Plan) (state, note string) {
+	if !slices.Contains(plan.Selected, pkg.retainedApp) {
+		return "", ""
+	}
+	archive := pkg.archive
+	component, registration := archive.Component(), archive.Registration()
+	recorded, err := journal.Load(ctx)
+	if err != nil || recorded.Effects[component].Phase != setup.Installed {
+		return "", ""
+	}
+	program, err := comfyInstalledProgram(ctx, journal)
+	if err != nil {
+		return "", ""
+	}
+	apps, err := p.nativeApplicationsForPanel(ctx, registration)
+	if err != nil {
+		return "", ""
+	}
+	return pkg.retainedWorkspaceRegistration().installedState(ctx, apps, program, pkg.retainedShortcut().current)
+}
+
+// comfyInstalledProgram is setup.InstalledComfyProgram. Tests replace it.
+var comfyInstalledProgram = setup.InstalledComfyProgram
+
+// approvedWorkspacePlan checks that the plan the request names is the installed,
+// approved plan that selected ComfyUI. An update that changed the catalogue
+// leaves it in force: registration installs nothing.
+func (pkg *officialPackagePanel) approvedWorkspacePlan(p *servicePanel, ctx context.Context, setupPlanID string) (setup.Journal, error) {
 	runner, journal, err := p.setupRunnerForPanel()
 	if err != nil {
 		return setup.Journal{}, err
@@ -249,17 +198,12 @@ func (p *servicePanel) setupComfyPlan(ctx context.Context, setupPlanID string, r
 	if err != nil {
 		return setup.Journal{}, err
 	}
-	if setupPlanID == "" || state.Plan.ID != setupPlanID || !slices.Contains(state.Plan.Selected, setup.ComfyUI) {
+	if setupPlanID == "" || state.Plan.ID != setupPlanID || !slices.Contains(state.Plan.Selected, pkg.retainedApp) {
 		return setup.Journal{}, errors.New("the approved picture setup plan changed; review and approve it again")
 	}
-	if requireCurrent && !state.Approved {
-		return setup.Journal{}, errors.New("the picture setup catalog changed; review and approve the current plan")
-	}
-	if !requireCurrent {
-		prior, err := journal.Load(ctx)
-		if err != nil || prior.ApprovedPlanID != setupPlanID {
-			return setup.Journal{}, errors.New("the installed picture setup has no approved plan")
-		}
+	prior, err := journal.Load(ctx)
+	if err != nil || prior.ApprovedPlanID != setupPlanID {
+		return setup.Journal{}, errors.New("the installed picture setup has no approved plan")
 	}
 	return journal, nil
 }
@@ -284,8 +228,43 @@ func decodeComfyApplicationRequest(w http.ResponseWriter, r *http.Request) (comf
 	return request, true
 }
 
-func (p *servicePanel) setupComfyRegister(w http.ResponseWriter, r *http.Request) {
-	p.setupActionMu.Lock()
+// settleWorkspaceRegistration records what Setup's registration did: the entry
+// it registered, the Activity line for a re-pinned update,
+// and for an app registration the service refused for its image, the Not
+// connected request Apps lists with Connect. A completed registration ends
+// any such request.
+func (pkg *officialPackagePanel) settleWorkspaceRegistration(p *servicePanel, descriptor fwire.ApplicationDescriptor, done workspaceRegistration, err error) {
+	if done != workspaceUnchanged || err == nil {
+		p.comfyAppsMu.Lock()
+		p.comfyRegisteredDescriptor = &descriptor
+		p.comfyAppsMu.Unlock()
+	}
+	if done == workspaceUpdated {
+		title := pkg.retainedShortcut().title
+		p.appActivity.add(applicationActivity{App: title, Program: descriptor.Program, What: "Updated " + title, Outcome: "Updated"})
+	}
+	switch {
+	case errors.Is(err, setup.ErrRegistrationIdentity):
+		p.recordNativeIdentityRequest(descriptor.Name, descriptor.Program)
+	case err == nil:
+		p.removeApplicationRequest(descriptor.Name)
+	}
+}
+
+// retainedWorkspaceNative is the installed native package's registration:
+// its launch helper's register-self, and the hold of that helper after the
+// package receipt check.
+func retainedWorkspaceNative(archive setup.RetainedArchive, journal setup.Journal) *workspaceNative {
+	return &workspaceNative{
+		register: func(ctx context.Context) error { return archive.RegisterSelf(ctx, journal) },
+		hold:     func(ctx context.Context) (setup.HeldProgram, error) { return archive.HoldProgram(ctx, journal) },
+	}
+}
+
+func (pkg *officialPackagePanel) serveWorkspaceRegister(p *servicePanel, w http.ResponseWriter, r *http.Request) {
+	if !p.setupTryStart(w) {
+		return
+	}
 	defer p.setupActionMu.Unlock()
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST required", http.StatusMethodNotAllowed)
@@ -297,7 +276,9 @@ func (p *servicePanel) setupComfyRegister(w http.ResponseWriter, r *http.Request
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Minute)
 	defer cancel()
-	journal, err := p.setupComfyPlan(ctx, request.SetupPlanID, true)
+	// The approved plan that installed the package and its receipt check are
+	// the authority (approvedWorkspacePlan).
+	journal, err := pkg.approvedWorkspacePlan(p, ctx, request.SetupPlanID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
@@ -311,30 +292,14 @@ func (p *servicePanel) setupComfyRegister(w http.ResponseWriter, r *http.Request
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
-	if err := p.ensureComfyImagePolicy(ctx, paths); err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
-	}
-	controller, err := p.setupModelForPanel()
-	if err != nil {
-		panelError(w, err)
-		return
-	}
-	model, err := controller.Status(ctx)
-	if err != nil {
-		panelError(w, err)
-		return
-	}
-	if !model.Ready {
-		http.Error(w, "the reviewed picture model and exact app policy are not ready yet", http.StatusConflict)
-		return
-	}
+	// Registration publishes the receipt-bound app entry. Model selection,
+	// provider readiness and inference consent belong to their explicit steps.
 	descriptor, err := setup.ComfyApplicationDescriptor(paths)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
-	apps, err := p.setupApplicationsForPanel(ctx)
+	apps, err := p.nativeApplicationsForPanel(ctx, descriptor.Name)
 	if err != nil {
 		panelError(w, err)
 		return
@@ -344,7 +309,17 @@ func (p *servicePanel) setupComfyRegister(w http.ResponseWriter, r *http.Request
 		panelError(w, err)
 		return
 	}
-	created, err := registerSetupEntry(ctx, apps, p.applicationReads(), descriptor, earlier)
+	archive := pkg.archive
+	var native *workspaceNative
+	if isNative, err := archive.UsesNativeResources(ctx, journal); err != nil {
+		panelError(w, err)
+		return
+	} else if isNative {
+		native = retainedWorkspaceNative(archive, journal)
+	}
+	done, err := pkg.completeWorkspace(ctx, apps, p.applicationReads(), descriptor, earlier, native)
+	created := done == workspaceCreated
+	pkg.settleWorkspaceRegistration(p, descriptor, done, err)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			panelError(w, err)
@@ -353,15 +328,14 @@ func (p *servicePanel) setupComfyRegister(w http.ResponseWriter, r *http.Request
 		}
 		return
 	}
-	p.comfyAppsMu.Lock()
-	p.comfyRegisteredDescriptor = &descriptor
-	p.comfyAppsMu.Unlock()
-	reply := comfyApplicationReply{Available: true, Registered: true, Readable: !created, Matching: true}
+	shortcut := true
+	reply := workspaceApplicationReply{Available: true, Registered: true, Readable: !created, Matching: true, Shortcut: &shortcut, Application: descriptor.Name}
 	// The registration no longer starts an earlier version; remove it now.
-	if state, err := journal.Load(ctx); err == nil && len(state.Effects["comfyui-app"].Retired) > 0 {
+	component := archive.Component()
+	if state, err := journal.Load(ctx); err == nil && len(state.Effects[component].Retired) > 0 {
 		runner, _, err := p.setupRunnerForPanel()
 		if err == nil {
-			_, err = runner.Advance(ctx, "comfyui-app")
+			_, err = runner.Advance(ctx, component)
 		}
 		if err != nil {
 			reply.Reason = "The updated ComfyUI is registered. The earlier version stays for now: " + err.Error()
@@ -370,11 +344,12 @@ func (p *servicePanel) setupComfyRegister(w http.ResponseWriter, r *http.Request
 	panelJSON(w, reply)
 }
 
-// setupComfyRemove deletes the registered comfyui entry through the same
-// Applications client Register and Activate use. The entry's name is fixed
-// here; the request carries only the person's confirmation.
-func (p *servicePanel) setupComfyRemove(w http.ResponseWriter, r *http.Request) {
-	p.setupActionMu.Lock()
+// serveWorkspaceRemove removes the route's fixed registration. The shortcut
+// opens that entry, and the request carries only the person's confirmation.
+func (pkg *officialPackagePanel) serveWorkspaceRemove(p *servicePanel, w http.ResponseWriter, r *http.Request) {
+	if !p.setupTryStart(w) {
+		return
+	}
 	defer p.setupActionMu.Unlock()
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST required", http.StatusMethodNotAllowed)
@@ -398,7 +373,8 @@ func (p *servicePanel) setupComfyRemove(w http.ResponseWriter, r *http.Request) 
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 35*time.Second)
 	defer cancel()
-	apps, err := p.setupApplicationsForPanel(ctx)
+	shortcut := pkg.retainedShortcut()
+	apps, err := p.nativeApplicationsForPanel(ctx, shortcut.application)
 	if err != nil {
 		panelError(w, err)
 		return
@@ -406,14 +382,12 @@ func (p *servicePanel) setupComfyRemove(w http.ResponseWriter, r *http.Request) 
 	// The sentence names the entry as registered. A Panel without the read
 	// permission still removes it and names it plainly.
 	name := "the picture workspace entry"
-	if page, err := apps.Observe(ctx, "", 0); err == nil {
-		if registered, found, _ := findComfyDescriptor(page); found {
-			if entryName := comfyEntryName(registered); entryName != "" {
-				name = entryName
-			}
+	if registered, found, err := observeRegisteredApplication(ctx, apps, shortcut.application); err == nil && found {
+		if entryName := workspaceEntryName(registered); entryName != "" {
+			name = entryName
 		}
 	}
-	change, err := apps.Remove(ctx, setup.ComfyApplicationName)
+	change, err := apps.Remove(ctx, shortcut.application)
 	if err != nil {
 		panelError(w, err)
 		return
@@ -430,122 +404,18 @@ func (p *servicePanel) setupComfyRemove(w http.ResponseWriter, r *http.Request) 
 	p.comfyRegisteredDescriptor = nil
 	p.comfyActivationStarted = false
 	p.comfyAppsMu.Unlock()
-	panelJSON(w, comfyApplicationReply{Available: true, Message: "Removed " + name + "."})
+	// The shortcut opens the entry just removed.
+	if err := shortcut.remove(); err != nil {
+		log.Printf("setup: %s Start menu shortcut: %v", shortcut.title, err)
+	}
+	panelJSON(w, workspaceApplicationReply{Available: true, Message: "Removed " + name + "."})
 }
 
-func (p *servicePanel) setupComfyActivate(w http.ResponseWriter, r *http.Request) {
-	p.setupActionMu.Lock()
-	defer p.setupActionMu.Unlock()
-	if r.Method != http.MethodPost {
-		http.Error(w, "POST required", http.StatusMethodNotAllowed)
-		return
-	}
-	request, ok := decodeComfyApplicationRequest(w, r)
-	if !ok {
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 35*time.Second)
-	defer cancel()
-	journal, err := p.setupComfyPlan(ctx, request.SetupPlanID, false)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
-	}
-	// Activation is an explicit launch boundary. Reopen through the shared
-	// receipt verifier here so a changed installation cannot reuse paths that
-	// were validated earlier during setup or status polling.
-	paths, err := p.openComfyForActivation(ctx, journal)
-	if err != nil {
-		http.Error(w, "ComfyUI installation did not pass its pinned receipt check", http.StatusConflict)
-		return
-	}
-	p.comfyPathsMu.Lock()
-	p.comfyPaths = &paths
-	p.comfyPathsMu.Unlock()
-	descriptor, err := setup.ComfyApplicationDescriptor(paths)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
-	}
-	apps, err := p.setupApplicationsForPanel(ctx)
-	if err != nil {
-		panelError(w, err)
-		return
-	}
-	page, err := apps.Observe(ctx, "", 0)
-	if err != nil {
-		panelError(w, err)
-		return
-	}
-	registered, found, err := findComfyDescriptor(page)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
-	}
-	if !found || !comfyDescriptorEqual(registered, descriptor) {
-		http.Error(w, "the exact reviewed ComfyUI descriptor is not registered yet", http.StatusConflict)
-		return
-	}
-	controller, err := p.setupModelForPanel()
-	if err != nil {
-		panelError(w, err)
-		return
-	}
-	model, err := controller.Status(ctx)
-	if err != nil {
-		panelError(w, err)
-		return
-	}
-	if !model.Ready {
-		http.Error(w, "the reviewed picture model and exact app policy are not ready yet", http.StatusConflict)
-		return
-	}
-	if comfyReadyPresence(page) {
-		webReady := checkComfyWebUI(ctx)
-		p.comfyAppsMu.Lock()
-		p.comfyActivationStarted = false
-		p.comfyAppsMu.Unlock()
-		reply := comfyApplicationReply{Available: true, Registered: true, Readable: true, Matching: true, Ready: true, WebReady: webReady, Outcome: "ready"}
-		if webReady {
-			reply.WebURL = comfyWebURL
-		}
-		panelJSON(w, reply)
-		return
-	}
-	p.comfyAppsMu.Lock()
-	if p.comfyActivationStarted {
-		p.comfyAppsMu.Unlock()
-		panelJSON(w, comfyApplicationReply{Available: true, Registered: true, Readable: true, Matching: true, Starting: true, Outcome: "not_ready", Started: true, Reason: "ComfyUI is still starting; setup is checking its OpenAbstractions integration."})
-		return
-	}
-	p.comfyAppsMu.Unlock()
-	result, err := apps.Activate(ctx, setup.ComfyApplicationName)
-	if err != nil {
-		panelError(w, err)
-		return
-	}
-	if result.Outcome == fwire.ApplicationActivationOutcomeReady || result.Outcome == fwire.ApplicationActivationOutcomeNotReady {
-		p.comfyAppsMu.Lock()
-		p.comfyActivationStarted = true
-		p.comfyAppsMu.Unlock()
-	}
-	webReady := result.Outcome == fwire.ApplicationActivationOutcomeReady && checkComfyWebUI(ctx)
-	if result.Outcome == fwire.ApplicationActivationOutcomeReady {
-		p.comfyAppsMu.Lock()
-		p.comfyActivationStarted = false
-		p.comfyAppsMu.Unlock()
-	}
-	reply := comfyApplicationReply{Available: true, Registered: true, Matching: true,
-		Ready:    result.Outcome == fwire.ApplicationActivationOutcomeReady,
-		Starting: result.Outcome == fwire.ApplicationActivationOutcomeNotReady,
-		Outcome:  result.Outcome.String(), Started: result.Started, Reason: result.Reason, WebReady: webReady}
-	if webReady {
-		reply.WebURL = comfyWebURL
-	}
-	panelJSON(w, reply)
+func (pkg *officialPackagePanel) serveWorkspaceActivate(p *servicePanel, w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "Use the application's page in Apps to send its startup request.", http.StatusGone)
 }
 
-func (p *servicePanel) setupComfyStatus(w http.ResponseWriter, r *http.Request) {
+func (pkg *officialPackagePanel) serveWorkspaceStatus(p *servicePanel, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "GET required", http.StatusMethodNotAllowed)
 		return
@@ -554,60 +424,25 @@ func (p *servicePanel) setupComfyStatus(w http.ResponseWriter, r *http.Request) 
 	paths := p.comfyPaths
 	p.comfyPathsMu.Unlock()
 	if paths == nil {
-		panelJSON(w, comfyApplicationReply{Reason: "Use the explicit setup step to verify the installed ComfyUI package."})
+		panelJSON(w, workspaceApplicationReply{Available: true, Reason: "Register the installed application; Setup verifies its package receipt before changing the app entry."})
 		return
 	}
 	ctx, cancel := panelCall(r)
 	defer cancel()
 	descriptor, err := setup.ComfyApplicationDescriptor(*paths)
 	if err != nil {
-		panelJSON(w, comfyApplicationReply{Reason: err.Error()})
+		panelJSON(w, workspaceApplicationReply{Reason: err.Error()})
 		return
 	}
-	apps, err := p.setupApplicationsForPanel(ctx)
+	workspace := pkg.retainedWorkspaceRegistration()
+	if err := workspace.checkTarget(descriptor); err != nil {
+		panelJSON(w, workspaceApplicationReply{Reason: err.Error()})
+		return
+	}
+	apps, err := p.nativeApplicationsForPanel(ctx, workspace.registration)
 	if err != nil {
-		panelJSON(w, comfyApplicationReply{Available: true, Reason: err.Error()})
+		panelJSON(w, workspaceApplicationReply{Available: true, Reason: err.Error()})
 		return
 	}
-	page, err := apps.Observe(ctx, "", 0)
-	if err != nil {
-		panelJSON(w, comfyApplicationReply{Available: true, Reason: err.Error()})
-		return
-	}
-	registered, found, err := findComfyDescriptor(page)
-	if err != nil {
-		panelJSON(w, comfyApplicationReply{Available: true, Reason: err.Error()})
-		return
-	}
-	if !found {
-		p.comfyAppsMu.Lock()
-		registeredByPanel := p.comfyRegisteredDescriptor != nil && comfyDescriptorEqual(*p.comfyRegisteredDescriptor, descriptor)
-		p.comfyAppsMu.Unlock()
-		if registeredByPanel {
-			panelJSON(w, comfyApplicationReply{Available: true, Registered: true, Matching: true, Reason: "The Panel registered the picture workspace but cannot check it. Restore the Panel's permissions on the Permissions page."})
-			return
-		}
-		panelJSON(w, comfyApplicationReply{Available: true, Reason: "The picture workspace is not registered yet. Prepare it, or restore the Panel's permissions on the Permissions page to check an existing one."})
-		return
-	}
-	if !comfyDescriptorEqual(registered, descriptor) {
-		panelJSON(w, comfyConflictReply(registered, descriptor))
-		return
-	}
-	ready := comfyReadyPresence(page)
-	webReady := false
-	if ready {
-		webReady = checkComfyWebUI(ctx)
-	}
-	p.comfyAppsMu.Lock()
-	starting := p.comfyActivationStarted && !ready
-	if ready {
-		p.comfyActivationStarted = false
-	}
-	p.comfyAppsMu.Unlock()
-	reply := comfyApplicationReply{Available: true, Registered: true, Readable: true, Matching: true, Ready: ready, Starting: starting, WebReady: webReady}
-	if webReady {
-		reply.WebURL = comfyWebURL
-	}
-	panelJSON(w, reply)
+	panelJSON(w, workspace.status(ctx, apps, descriptor, pkg.retainedShortcut().current))
 }

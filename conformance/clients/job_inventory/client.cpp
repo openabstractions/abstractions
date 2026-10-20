@@ -25,6 +25,25 @@ int main(int argc,char** argv) {
    auto r=acceptance->submit(s);require(r.outcome=="accepted");submitted.insert(r.receipt->operation_id);labels[r.receipt->operation_id]=s.label;
    require(acceptance->reconcile(s.identity).receipt->operation_id==r.receipt->operation_id);
    require(operations->observe_work(s.identity).outcome=="observed");
+   auto followed=jobs.follow_work(s.identity,"",0);
+   require(followed.outcome=="changed" && followed.snapshot && !followed.next.empty());
+   require(followed.snapshot->receipt.operation_id==r.receipt->operation_id);
+   if(i==0) {
+    auto unchanged=jobs.follow_work(s.identity,followed.next,0);
+    require(unchanged.outcome=="unchanged" && unchanged.next==followed.next && !unchanged.snapshot);
+    auto malformed=followed;
+    malformed.next.clear();
+    refuses([&]{facade::job_detail::validate_work_observation(malformed,"");});
+    refuses([&]{facade::job_detail::validate_work_observation(followed,followed.next);});
+    malformed=unchanged;
+    malformed.next.clear();
+    refuses([&]{facade::job_detail::validate_work_observation(malformed,followed.next);});
+    malformed.outcome=facade::job_api::WorkObservationOutcome::Gap;
+    refuses([&]{facade::job_detail::validate_work_observation(malformed,"");});
+    malformed=unchanged;
+    malformed.outcome=facade::job_api::WorkObservationOutcome::Forbidden;
+    refuses([&]{facade::job_detail::validate_work_observation(malformed,followed.next);});
+   }
   }
   auto first=generic->list_work("",2);require(first.outcome=="page" && !first.complete);
   auto labelled=[&](const facade::job_api::OperationSnapshot& s){require(s.label==labels.at(s.receipt.operation_id) && !s.label_derived);};

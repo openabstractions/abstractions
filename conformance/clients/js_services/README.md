@@ -59,7 +59,7 @@ early commit, beyond-size append, and revoked append/commit with owned abort
 are checked too. With `--run` it uses the native connector.
 `--pure` skips the native addon and Node SDK, installs the nine pure packages,
 and uses `pipe_connector.mjs`, a test-only connector that verifies no server
-identity. The Go services still verify the Node process's Program identity.
+identity. The Go services still verify the Node process's [Program](https://openabstractions.github.io/reference.html#concept-identity.listener-program-need) identity.
 Pure-path evidence qualifies generated clients and service behavior; native
 trust evidence for those methods requires `--run`.
 

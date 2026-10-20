@@ -96,8 +96,8 @@ func TestPanelLoggingAndIdentityWithNoRuntime(t *testing.T) {
 		}
 	}
 	r := panelRequest(t, h, "/identity", nil)
-	view := decodePanel[identityView](t, r.Code, r.Body.Bytes())
-	if view.Selection.Status != "UNTRUSTED" || view.Runtime.Outcome != "" || !view.Runtime.Absent || view.Runtime.PID != -1 {
+	view := decodeIdentityView(t, r.Code, r.Body.Bytes())
+	if view.Selection.Status != "UNTRUSTED" || view.Runtime.Outcome.String() != "" || !view.Runtime.Absent || view.Runtime.PID != 0 {
 		t.Fatalf("identity runtime with no runtime %+v %+v", view.Selection, view.Runtime)
 	}
 	if !view.Logging.Absent || view.Logging.Stamp != nil || view.Logging.Record != nil {
@@ -255,7 +255,7 @@ func TestPanelIdentityShowsHowServicesBoundThePanel(t *testing.T) {
 	p := newTestPanel(t)
 	h := p.handler("test-key")
 	r := panelRequest(t, h, "/identity", nil)
-	view := decodePanel[identityView](t, r.Code, r.Body.Bytes())
+	view := decodeIdentityView(t, r.Code, r.Body.Bytes())
 	principal, account, err := currentPrincipal()
 	if err != nil {
 		t.Fatal(err)
@@ -269,7 +269,7 @@ func TestPanelIdentityShowsHowServicesBoundThePanel(t *testing.T) {
 	if principal.Kind == "posix" {
 		want = fmt.Sprint(principal.UID)
 	}
-	if rt.Outcome != "observed" || rt.Account != want || !sameFile(rt.Program, exe) || rt.PID != int64(os.Getpid()) || rt.Mechanism != "identity/"+runtime.GOOS || len(rt.Attributes) != 5 {
+	if rt.Outcome.String() != "observed" || rt.Account != want || !sameFile(rt.Program, exe) || rt.PID != int64(os.Getpid()) || rt.Mechanism != "identity/"+runtime.GOOS || len(rt.Attributes) != 5 {
 		t.Fatalf("runtime caller %+v", rt)
 	}
 	limits := identity.Ceiling()
@@ -292,7 +292,7 @@ func TestPanelIdentityShowsHowServicesBoundThePanel(t *testing.T) {
 	}
 	// A second check starts again at the history end.
 	r = panelRequest(t, h, "/identity", nil)
-	if again := decodePanel[identityView](t, r.Code, r.Body.Bytes()); again.Logging.Outcome != "found" || again.Logging.Record.Attrs["panel.probe"] == L.Record.Attrs["panel.probe"] {
+	if again := decodeIdentityView(t, r.Code, r.Body.Bytes()); again.Logging.Outcome != "found" || again.Logging.Record.Attrs["panel.probe"] == L.Record.Attrs["panel.probe"] {
 		t.Fatalf("second identity check %+v", again.Logging)
 	}
 	r = panelRequest(t, h, "/logging?cursor=", nil)
@@ -325,7 +325,7 @@ func TestPanelIdentityStartsAtTheHistoryEnd(t *testing.T) {
 		t.Fatalf("history from the start was readable: %s", r.Body.String())
 	}
 	r := panelRequest(t, h, "/identity", nil)
-	if view := decodePanel[identityView](t, r.Code, r.Body.Bytes()); view.Logging.Outcome != "found" || view.Logging.Stamp == nil {
+	if view := decodeIdentityView(t, r.Code, r.Body.Bytes()); view.Logging.Outcome != "found" || view.Logging.Stamp == nil {
 		t.Fatalf("identity check behind unreadable history %+v", view.Logging)
 	}
 	r = panelRequest(t, h, "/logging?follow=1&wait=50&cursor=end", nil)
@@ -350,8 +350,8 @@ func TestPanelIdentityRefusals(t *testing.T) {
 		t.Cleanup(func() { panelMachine = previous })
 		h := newTestPanel(t).handler("test-key")
 		r := panelRequest(t, h, "/identity", nil)
-		view := decodePanel[identityView](t, r.Code, r.Body.Bytes())
-		if view.Runtime.Outcome != "" || view.Runtime.Account != "" || !strings.Contains(view.Runtime.Error, "not trusted") {
+		view := decodeIdentityView(t, r.Code, r.Body.Bytes())
+		if view.Runtime.Outcome.String() != "" || view.Runtime.Account != "" || !strings.Contains(view.Runtime.Error, "not trusted") {
 			t.Fatalf("untrusted runtime echoed a caller %+v", view.Runtime)
 		}
 		if view.Logging.Stamp != nil || !strings.Contains(view.Logging.Error, "not trusted") {
@@ -369,8 +369,8 @@ func TestPanelIdentityRefusals(t *testing.T) {
 		stubSelection(t, core.ErrNoTrustedInstallation)
 		h := newTestPanel(t).handler("test-key")
 		r := panelRequest(t, h, "/identity", nil)
-		view := decodePanel[identityView](t, r.Code, r.Body.Bytes())
-		if view.Runtime.Outcome != "observed" {
+		view := decodeIdentityView(t, r.Code, r.Body.Bytes())
+		if view.Runtime.Outcome.String() != "observed" {
 			t.Fatalf("runtime echo under a history policy %+v", view.Runtime)
 		}
 		if view.Logging.Outcome != "error" || view.Logging.Absent || view.Logging.Stamp != nil || !strings.Contains(view.Logging.Error, "forbidden") {

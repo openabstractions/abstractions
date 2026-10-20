@@ -133,7 +133,7 @@ export function compactSchema(schema) {
 
 /** Applies the compact text and schema to one tool definition in place.
  * short maps an OA tool ID to its one-line description; its full text stays
- * available through openabstractions_tools. */
+ * available through oa_tools_list. */
 export function compactDefinition(toolID, output, short = {}) {
   if (toolID === 'bash') output.description = compactShell(output.description);
   else if (CORE[toolID]) output.description = CORE[toolID];

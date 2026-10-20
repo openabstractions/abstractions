@@ -14,7 +14,7 @@ through the facade-native connector, and checks Cargo's native link lines
 against the installed `link-dependencies.txt`.
 
 The Go fixture hosts a private runtime with an isolated home, an explicit edit
-policy read from a mode file, and an application Book whose operator policy
+policy read from a mode file, and an application [Book](https://openabstractions.github.io/reference.html#concept-asks.book) whose operator policy
 admits only the probe executable. The consumer:
 
 - replaces the user rung (`applied`), observes `conflict` for a stale revision,

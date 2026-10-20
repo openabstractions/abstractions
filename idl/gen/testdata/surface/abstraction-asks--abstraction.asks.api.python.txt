@@ -4,6 +4,15 @@ dataclass Answer
   option: str
   yes: bool
   kept: bool
+dataclass AnswerContent
+  answer: AnswerEntry
+  content: CatalogueContent | None
+dataclass AnswerContentPage
+  outcome: OperatorPageOutcome | None
+  answers: list[AnswerContent]
+  next: str
+  complete: bool
+  complete_since_ms: int
 dataclass AnswerEntry
   id: str
   kind: AnswerKind | None
@@ -51,6 +60,9 @@ dataclass ApplicationQuestion
 dataclass AttributedQuestion
   question: OperatorQuestion
   answerer: str
+dataclass CatalogueContent
+  slots: dict[str, str]
+  permission: PermissionRequest | None
 enum ChoiceAckOutcome
   ACKNOWLEDGED = 'acknowledged'
   CONFLICT = 'conflict'
@@ -335,13 +347,18 @@ enum OperatorRetirementOutcome
   INVALID = 'invalid'
   FORBIDDEN = 'forbidden'
   UNAVAILABLE = 'unavailable'
+dataclass PendingQuestion
+  observation: PermissionObservation
+  pending_until_ms: int
 class PermissionApplication
   request(request: PermissionIntent) -> PermissionObservation
   observe(request_key: str, wait_ms: int) -> PermissionObservation
+  observe_question(id: str, wait_ms: int) -> PendingQuestion
 class PermissionApplicationClient(PermissionApplication)
   __init__(transport)
   request(request: PermissionIntent) -> PermissionObservation
   observe(request_key: str, wait_ms: int) -> PermissionObservation
+  observe_question(id: str, wait_ms: int) -> PendingQuestion
 dataclass PermissionDisplay
   selections: list[PermissionDisplaySelection]
   bundle_label: str
@@ -404,6 +421,9 @@ class QuestionApplicationClient(QuestionApplication)
 dataclass QuestionAsker
   details: QuestionDetails
   program: str
+dataclass QuestionContent
+  question: QuestionAsker
+  content: CatalogueContent | None
 dataclass QuestionDetails
   question: AttributedQuestion
   permission: PermissionRequest | None
@@ -411,6 +431,8 @@ dataclass QuestionObservation
   outcome: ObservationOutcome | None
   answer: Answer | None
 class QuestionOperator
+  read_question_content(id: str) -> QuestionContent
+  list_answer_contents(cursor: str, limit: int) -> AnswerContentPage
   list_choices(cursor: str, limit: int) -> ChoicePage
   read_choice(id: str) -> ChoiceRead
   answer_choice(id: str, option: str, if_pending: bool) -> ChoiceDecision
@@ -425,6 +447,8 @@ class QuestionOperator
   list_answers(cursor: str, limit: int) -> AnswerEntryPage
 class QuestionOperatorClient(QuestionOperator)
   __init__(transport)
+  read_question_content(id: str) -> QuestionContent
+  list_answer_contents(cursor: str, limit: int) -> AnswerContentPage
   list_choices(cursor: str, limit: int) -> ChoicePage
   read_choice(id: str) -> ChoiceRead
   answer_choice(id: str, option: str, if_pending: bool) -> ChoiceDecision
@@ -510,12 +534,15 @@ dataclass TypedPermissionDetails
   display: PermissionDisplay | None
 def decode(data)
 def decode_answer(data)
+def decode_answer_content(data)
+def decode_answer_content_page(data)
 def decode_answer_entry(data)
 def decode_answer_entry_page(data)
 def decode_answerable_choice(data)
 def decode_answerable_choice_page(data)
 def decode_application_question(data)
 def decode_attributed_question(data)
+def decode_catalogue_content(data)
 def decode_choice_acknowledgement(data)
 def decode_choice_answer(data)
 def decode_choice_decision(data)
@@ -541,6 +568,7 @@ def decode_operator_decision(data)
 def decode_operator_page(data)
 def decode_operator_question(data)
 def decode_operator_retirement(data)
+def decode_pending_question(data)
 def decode_permission_display(data)
 def decode_permission_display_selection(data)
 def decode_permission_intent(data)
@@ -549,6 +577,7 @@ def decode_permission_request(data)
 def decode_permission_target(data)
 def decode_question(data)
 def decode_question_asker(data)
+def decode_question_content(data)
 def decode_question_details(data)
 def decode_question_observation(data)
 def decode_record_metadata(data)
@@ -559,12 +588,15 @@ def decode_response_metadata(data)
 def decode_typed_permission_details(data)
 def encode(v)
 def encode_answer(v)
+def encode_answer_content(v)
+def encode_answer_content_page(v)
 def encode_answer_entry(v)
 def encode_answer_entry_page(v)
 def encode_answerable_choice(v)
 def encode_answerable_choice_page(v)
 def encode_application_question(v)
 def encode_attributed_question(v)
+def encode_catalogue_content(v)
 def encode_choice_acknowledgement(v)
 def encode_choice_answer(v)
 def encode_choice_decision(v)
@@ -590,6 +622,7 @@ def encode_operator_decision(v)
 def encode_operator_page(v)
 def encode_operator_question(v)
 def encode_operator_retirement(v)
+def encode_pending_question(v)
 def encode_permission_display(v)
 def encode_permission_display_selection(v)
 def encode_permission_intent(v)
@@ -598,6 +631,7 @@ def encode_permission_request(v)
 def encode_permission_target(v)
 def encode_question(v)
 def encode_question_asker(v)
+def encode_question_content(v)
 def encode_question_details(v)
 def encode_question_observation(v)
 def encode_record_metadata(v)
@@ -606,4 +640,6 @@ def encode_request_ref(v)
 def encode_responder_decision(v)
 def encode_response_metadata(v)
 def encode_typed_permission_details(v)
+def from_json(kind, data)
 def service_name(frame)
+def to_json(value)

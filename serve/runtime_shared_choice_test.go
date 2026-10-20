@@ -75,6 +75,15 @@ func TestSharedChoiceHelper(t *testing.T) {
 		}
 		if args[2] == "list" {
 			page, err := responder.ListChoicesContext(ctx, "", 16)
+			// Readiness follows the current role transaction through the public
+			// responder. Persistent unavailable still fails this bounded call.
+			for err == nil && page.Outcome.String() == "unavailable" && ctx.Err() == nil {
+				select {
+				case <-ctx.Done():
+				case <-time.After(10 * time.Millisecond):
+				}
+				page, err = responder.ListChoicesContext(ctx, "", 16)
+			}
 			if err != nil {
 				fail(err)
 			}

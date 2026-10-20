@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
 	"strings"
@@ -27,6 +29,7 @@ type appPageDirectory struct {
 	activated []string
 	removed   []string
 	activate  fwire.ApplicationActivationOutcome
+	outcome   fwire.ApplicationOutcome
 }
 
 func (f *appPageDirectory) Register(context.Context, fwire.ApplicationDescriptor) (fwire.ApplicationChange, error) {
@@ -45,7 +48,11 @@ func (f *appPageDirectory) Remove(_ context.Context, name string) (fwire.Applica
 }
 
 func (f *appPageDirectory) Observe(context.Context, string, int64) (fwire.ApplicationPage, error) {
-	return fwire.ApplicationPage{Outcome: fwire.ApplicationOutcomePage, Applications: f.entries}, nil
+	outcome := f.outcome
+	if outcome == 0 {
+		outcome = fwire.ApplicationOutcomePage
+	}
+	return fwire.ApplicationPage{Outcome: outcome, Applications: f.entries}, nil
 }
 
 func (f *appPageDirectory) Activate(_ context.Context, name string) (fwire.ApplicationActivationResult, error) {
@@ -113,12 +120,13 @@ func TestAppPageShowsTheRegisteredApp(t *testing.T) {
 	for _, want := range []string{
 		`<h1 class="oa-pagehead-title"><a href="/?k=` + appPageKey + `">Apps</a> › Example &lt;b&gt;</h1>`,
 		`document.title="Apps › Example \u003cb\u003e";`,
-		`<section id="app-models" class="oa-group"><h2>Models it uses</h2>`,
+		`<section id="app-models" class="oa-group" hidden><h2>Models it uses</h2>`,
+		`function appNeedsInference(){`,
 		`<section id="app-permissions" class="oa-group"><h2>Permissions</h2>`,
 		`<section id="app-answering" class="oa-group" hidden><h2>Answering for you</h2>`,
 		`<section id="app-activity" class="oa-group"><h2>Recent activity</h2>`,
-		`<span class="oa-row-label">Start Example &lt;b&gt;</span><span class="oa-row-caption">Running now.</span>`,
-		`<button id="app-start" class="oa-primary">Start</button>`,
+		`</h1></div><div class="oa-pagehead-action"><button id="app-open" data-status="app-open-status" disabled>Running</button></div></header>`,
+		`<p class="oa-status" id="app-open-status" role="status" aria-live="polite" data-state="idle"></p>`,
 		`<button id="app-remove">Remove…</button>`,
 		`class="oa-nav-item active" href="/?k=` + appPageKey + `"`,
 	} {
@@ -126,7 +134,7 @@ func TestAppPageShowsTheRegisteredApp(t *testing.T) {
 			t.Errorf("the page lacks %s", want)
 		}
 	}
-	if order := []string{"app-models", "app-permissions", "app-answering", "app-activity", "app-start-section", "app-remove-section"}; !inOrder(doc, order) {
+	if order := []string{"app-open", "app-open-status", "app-models", "app-permissions", "app-answering", "app-activity", "app-remove-section"}; !inOrder(doc, order) {
 		t.Errorf("sections out of order %v", order)
 	}
 	if strings.Contains(doc, "<b>") {
@@ -142,6 +150,43 @@ func TestAppPageShowsTheRegisteredApp(t *testing.T) {
 	mac := appPageGet(t, p, "/app/example?k="+appPageKey+"&platform=macos&shell=native").Body.String()
 	if !strings.Contains(mac, `document.title="Example \u003cb\u003e";`) || strings.Contains(mac, "<h1") || strings.Contains(mac, `class="oa-nav"`) {
 		t.Error("a native macOS host takes the app's name as its title and draws its own navigation")
+	}
+}
+
+func TestAppPageGeneralApplicationHasRegisteredStateWithoutAnnouncements(t *testing.T) {
+	apps, panel := appPagePanel(t, true)
+	apps.entries[0].Descriptor.Name = "private-notes-key"
+	apps.entries[0].Descriptor.Title = "Plain Notes"
+	apps.entries[0].Instances = nil
+	response := appPageGet(t, panel, "/app/private-notes-key?k="+appPageKey+"&platform=windows")
+	if response.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", response.Code, response.Body)
+	}
+	doc := response.Body.String()
+	for _, want := range []string{`Apps › Plain Notes`, `<div class="oa-pagehead-action"><button id="app-open" class="oa-primary" data-status="app-open-status">Open</button></div></header>`, `<section id="app-models" class="oa-group" hidden>`} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("general app page lacks %q", want)
+		}
+	}
+	if strings.Contains(doc, "Not running") || strings.Contains(doc, ">private-notes-key<") {
+		t.Error("announcement absence became a process claim or a registration key became visible text")
+	}
+	if len(apps.activated)+len(apps.removed) != 0 {
+		t.Error("opening a general app page mutated the application")
+	}
+}
+
+func TestAppPageOffersPicturePermissionReviewForTheDeclaredRegistration(t *testing.T) {
+	apps, panel := appPagePanel(t, true)
+	const linkText = "Review picture workflow permissions"
+	ordinary := appPageGet(t, panel, "/app/example?k="+appPageKey)
+	if ordinary.Code != http.StatusOK || strings.Contains(ordinary.Body.String(), linkText) {
+		t.Fatalf("ordinary app permission review: status %d", ordinary.Code)
+	}
+	apps.entries[0].Descriptor.Name = "comfyui"
+	picture := appPageGet(t, panel, "/app/comfyui?k="+appPageKey)
+	if picture.Code != http.StatusOK || !strings.Contains(picture.Body.String(), linkText) {
+		t.Fatalf("declared picture app permission review: status %d", picture.Code)
 	}
 }
 
@@ -171,8 +216,8 @@ func inOrder(doc string, ids []string) bool {
 func TestAppPageWithoutRecipeMissingAppAndKey(t *testing.T) {
 	_, p := appPagePanel(t, false)
 	doc := appPageGet(t, p, "/app/example?k="+appPageKey).Body.String()
-	if !strings.Contains(doc, `<span class="oa-row-caption">Open it from the Start menu.</span>`) || strings.Contains(doc, `id="app-start"`) {
-		t.Error("an app without a recipe shows its guidance instead of Start")
+	if !strings.Contains(doc, `<span class="oa-row-caption">Open it from the Start menu.</span>`) || strings.Contains(doc, `id="app-open"`) {
+		t.Error("an app without an open verb shows its guidance and no Open")
 	}
 	missing := appPageGet(t, p, "/app/nothing?k="+appPageKey)
 	if missing.Code != 200 || !strings.Contains(missing.Body.String(), `<p class="oa-empty">This app is no longer registered.</p>`) {
@@ -224,7 +269,8 @@ func TestPagesThatCallOaReadyOwnTheirReadiness(t *testing.T) {
 // OpenAbstractions' own programs by product name, a registered app by its
 // title, any other program by its file stem and "(not registered)". A
 // program named openabstractions.exe in some other folder is no
-// OpenAbstractions program.
+// OpenAbstractions program. The runtime beside this Panel counts when this
+// Panel's signer signed it (product standing).
 func TestProgramTitlesNameOwnProgramsAndRegisteredApps(t *testing.T) {
 	apps, p := appPagePanel(t, false)
 	exe, err := os.Executable()
@@ -238,6 +284,7 @@ func TestProgramTitlesNameOwnProgramsAndRegisteredApps(t *testing.T) {
 	runtimeProgram := filepath.Join(filepath.Dir(exe), "openabstractions"+suffix)
 	impostor := filepath.Join(t.TempDir(), "openabstractions"+suffix)
 	stranger := filepath.Join(t.TempDir(), "stranger.exe")
+	signedByPanelSigner(t, runtimeProgram)
 	names := p.programTitler(context.Background())
 	want := map[string]string{exe: "OpenAbstractions Panel", runtimeProgram: "OpenAbstractions", apps.entries[0].Descriptor.Program: "Example <b>",
 		impostor: "openabstractions (not registered)", stranger: "stranger (not registered)"}
@@ -275,11 +322,11 @@ func TestPromptPutsTheSignedDescriptionFirstAndPagesTheTitle(t *testing.T) {
 	if got := programDisplayName(unsigned.forPrompt(names), program); got != "Coder" {
 		t.Errorf("the prompt names an unsigned registered program %q", got)
 	}
-	if got := programDisplayName(unsigned.forPrompt(nil), program); got != "coder (not registered)" {
+	if got := programDisplayName(unsigned.forPrompt(nil), program); got != "coder" {
 		t.Errorf("the prompt names an unsigned unregistered program %q", got)
 	}
-	view := trayQuestionViewForAsker(askclient.RecordMetadata{ID: "q", Asker: "coder.exe", Text: "x", Options: []string{"once"}}, trayPublisher{}, nil, "")
-	if !strings.HasPrefix(view.Instruction, "coder needs") {
+	view := trayQuestionViewForAsker(askclient.RecordMetadata{ID: "q", Asker: "coder.exe", Text: "coder.exe asks x", Options: []string{"once"}}, trayPublisher{}, nil, "")
+	if view.Instruction != "coder asks x" {
 		t.Errorf("an asker without a program reads by its stem: %q", view.Instruction)
 	}
 }
@@ -351,7 +398,7 @@ func TestAppPageStartAndRemove(t *testing.T) {
 	}
 	rec := appPagePost(t, p, "/app/example/start", body(true, shown))
 	var reply appActionReply
-	if err := json.Unmarshal(rec.Body.Bytes(), &reply); err != nil || reply.Outcome != "ready" || reply.Message != "Example <b> is running." || len(apps.activated) != 1 || apps.activated[0] != "example" {
+	if err := json.Unmarshal(rec.Body.Bytes(), &reply); err != nil || reply.Outcome != "ready" || reply.Message != "Example <b> is open." || len(apps.activated) != 1 || apps.activated[0] != "example" {
 		t.Errorf("start: %d %s %v", rec.Code, rec.Body, apps.activated)
 	}
 	if rec := appPageGet(t, p, "/app/example/start?k="+appPageKey); rec.Code != 405 {
@@ -363,5 +410,153 @@ func TestAppPageStartAndRemove(t *testing.T) {
 	}
 	if rec := appPagePost(t, p, "/app/example/remove", body(true, shown)); rec.Code != 409 || len(apps.removed) != 1 {
 		t.Errorf("a second remove of a gone entry: %d", rec.Code)
+	}
+}
+
+// An app registered through the facade directory (pretend-lemonade
+// --register) is listed by Apps from applications@2 while the native
+// applications@3 owner holds no entry for it. Its page shows it, and Start
+// and Remove act on the directory entry (panel audit 2026-11-01: "This app
+// is no longer registered." on a row Apps listed).
+func TestAppPageFindsAnAppTheApplicationsDirectoryLists(t *testing.T) {
+	directory, p := appPagePanel(t, true)
+	native := &appPageDirectory{}
+	saved := appPageNative
+	appPageNative = func(*servicePanel, context.Context, string) (setupApplications, error) { return native, nil }
+	t.Cleanup(func() { appPageNative = saved })
+	doc := appPageGet(t, p, "/app/example?k="+appPageKey+"&platform=windows").Body.String()
+	if strings.Contains(doc, `<p class="oa-empty">This app is no longer registered.</p>`) || !strings.Contains(doc, `<button id="app-open" data-status="app-open-status" disabled>Running</button>`) {
+		t.Fatalf("a directory-registered app has no page:\n%s", doc)
+	}
+	shown := applicationDigest(&directory.entries[0].Descriptor)
+	program := directory.entries[0].Descriptor.Program
+	raw, _ := json.Marshal(appActionBody{Confirm: true, Shown: shown})
+	if rec := appPagePost(t, p, "/app/example/start", string(raw)); rec.Code != 200 || len(directory.activated) != 1 || len(native.activated) != 0 {
+		t.Errorf("start of a directory entry: %d %s", rec.Code, rec.Body)
+	}
+	if rec := appPagePost(t, p, "/app/example/remove", string(raw)); rec.Code != 200 || len(directory.removed) != 1 || len(native.removed) != 0 {
+		t.Errorf("remove of a directory entry: %d %s", rec.Code, rec.Body)
+	}
+
+	// An entry the native owner lists is still started through it.
+	native.entries = []fwire.ApplicationEntry{{Descriptor: fwire.ApplicationDescriptor{Name: "native-app", Program: program, Title: "Native app", Activation: &fwire.ApplicationActivationRecipe{}}, Scope: fwire.ScopeLocal}}
+	native.activate = fwire.ApplicationActivationOutcomeReady
+	raw, _ = json.Marshal(appActionBody{Confirm: true, Shown: applicationDigest(&native.entries[0].Descriptor)})
+	if rec := appPagePost(t, p, "/app/native-app/start", string(raw)); rec.Code != 200 || len(native.activated) != 1 {
+		t.Errorf("start of a native entry: %d %s", rec.Code, rec.Body)
+	}
+}
+
+func TestAppPageDoesNotCallAnUnreadableDirectoryEntryRemoved(t *testing.T) {
+	directory, panel := appPagePanel(t, true)
+	saved := appPageNative
+	appPageNative = func(*servicePanel, context.Context, string) (setupApplications, error) {
+		return nil, fmt.Errorf("native service unavailable")
+	}
+	t.Cleanup(func() { appPageNative = saved })
+	shown := applicationDigest(&directory.entries[0].Descriptor)
+	raw, _ := json.Marshal(appActionBody{Confirm: true, Shown: shown})
+	for _, outcome := range []fwire.ApplicationOutcome{fwire.ApplicationOutcomeStale, fwire.ApplicationOutcomeForbidden, fwire.ApplicationOutcomeUnavailable} {
+		directory.outcome = outcome
+		doc := appPageGet(t, panel, "/app/example?k="+appPageKey).Body.String()
+		if !strings.Contains(doc, "The list of apps is unavailable right now.") || strings.Contains(doc, "This app is no longer registered.") {
+			t.Errorf("%s was presented as absence: %s", outcome, doc)
+		}
+		for _, action := range []string{"start", "remove"} {
+			if reply := appPagePost(t, panel, "/app/example/"+action, string(raw)); reply.Code != http.StatusConflict {
+				t.Errorf("%s on %s: %d", action, outcome, reply.Code)
+			}
+		}
+	}
+	if len(directory.activated) != 0 || len(directory.removed) != 0 {
+		t.Fatal("unreadable state allowed an action")
+	}
+	directory.outcome, directory.entries = fwire.ApplicationOutcomePage, nil
+	doc := appPageGet(t, panel, "/app/example?k="+appPageKey).Body.String()
+	if !strings.Contains(doc, "The list of apps is unavailable right now.") {
+		t.Fatal("unreadable native owner became proof of removal")
+	}
+}
+
+// appPageSlowOpen is a registry whose Activate waits until its caller's
+// deadline: the person has not answered, or the app is still starting.
+type appPageSlowOpen struct{ *appPageDirectory }
+
+func (f appPageSlowOpen) Activate(ctx context.Context, name string) (fwire.ApplicationActivationResult, error) {
+	f.activated = append(f.activated, name)
+	<-ctx.Done()
+	return fwire.ApplicationActivationResult{}, ctx.Err()
+}
+
+// Owner report on R20c, 2026-11-10: Open showed an Allow, then "This didn't
+// work." with the details "context deadline exceeded". An Open whose wait
+// runs out now answers not_ready with a sentence, and the budget covers the
+// wait policy's 40 s answer and the app's 30 s start.
+func TestAppPageOpenThatOutwaitsItsBudgetSaysWhatIsPending(t *testing.T) {
+	if appOpenBudget < 70*time.Second {
+		t.Fatalf("Open waits %v, less than the 40 s answer and the 30 s start", appOpenBudget)
+	}
+	apps, p := appPagePanel(t, true)
+	p.comfyApps = appPageSlowOpen{apps}
+	saved := appOpenBudget
+	appOpenBudget = 50 * time.Millisecond
+	t.Cleanup(func() { appOpenBudget = saved })
+	raw, _ := json.Marshal(appActionBody{Confirm: true, Shown: applicationDigest(&apps.entries[0].Descriptor)})
+	rec := appPagePost(t, p, "/app/example/start", string(raw))
+	var reply appActionReply
+	if err := json.Unmarshal(rec.Body.Bytes(), &reply); err != nil || rec.Code != 200 || reply.Outcome != "not_ready" ||
+		reply.Message != "Example <b> is still opening. If OpenAbstractions asked you to allow it, answer, then select Open again." {
+		t.Fatalf("an Open that outwaited its budget: %d %s", rec.Code, rec.Body)
+	}
+	if strings.Contains(rec.Body.String(), "deadline") {
+		t.Fatalf("the reply names the bare deadline: %s", rec.Body)
+	}
+}
+
+// Each runtime answer to Open reads as one sentence.
+func TestAppOpenSentences(t *testing.T) {
+	for _, c := range []struct {
+		result fwire.ApplicationActivationResult
+		want   string
+	}{
+		{fwire.ApplicationActivationResult{Outcome: fwire.ApplicationActivationOutcomeReady}, "ComfyUI is open."},
+		{fwire.ApplicationActivationResult{Outcome: fwire.ApplicationActivationOutcomeNotReady, Reason: "consent"}, "OpenAbstractions is waiting for your answer to open ComfyUI. Answer its question, then select Open again."},
+		{fwire.ApplicationActivationResult{Outcome: fwire.ApplicationActivationOutcomeNotReady, Reason: "owned_host"}, "ComfyUI is opening."},
+		{fwire.ApplicationActivationResult{Outcome: fwire.ApplicationActivationOutcomeForbidden, Reason: "consent"}, "You answered Not now. ComfyUI stays closed."},
+		{fwire.ApplicationActivationResult{Outcome: fwire.ApplicationActivationOutcomeForbidden, Reason: "rights"}, "OpenAbstractions did not let the Panel open ComfyUI."},
+		{fwire.ApplicationActivationResult{Outcome: fwire.ApplicationActivationOutcomeIdentityRefused, Reason: "owned_host"}, "OpenAbstractions could not start ComfyUI's program."},
+	} {
+		if got := appOpenSentence("ComfyUI", c.result); got != c.want {
+			t.Errorf("%+v: %q, want %q", c.result, got, c.want)
+		}
+	}
+}
+
+// The Panel's applications@3 calls carry a budget that outlasts an Open;
+// the transport's 5 s default cut the Open while the person read the Allow.
+func TestPanelApplicationsTransportOutlastsAnOpen(t *testing.T) {
+	if got := panelApplicationsTransport(listen.FrameClient{Endpoint: "x"}).Timeout; got < appOpenBudget {
+		t.Fatalf("applications@3 call budget %v is shorter than an Open's %v", got, appOpenBudget)
+	}
+	if got := panelApplicationsTransport(listen.FrameClient{Endpoint: "x", Timeout: time.Second}).Timeout; got != time.Second {
+		t.Fatalf("an explicit budget was replaced: %v", got)
+	}
+}
+
+// A refused Remove logs the service's outcome and reason and the contract the
+// Panel used (owner R27, 2026-11-11: the log held no reason).
+func TestAppRemoveFailureNamesTheRefusal(t *testing.T) {
+	refused := appRemoveFailure(&appPageDirectory{}, "comfyui", fwire.ApplicationChange{Outcome: fwire.ApplicationOutcomeConflict, Reason: "applications_v3"})
+	want := map[string]string{"application.name": "comfyui", "application.outcome": "conflict", "application.reason": "applications_v3", "application.client": "legacy"}
+	if !reflect.DeepEqual(refused, want) {
+		t.Fatalf("refused Remove logged %v", refused)
+	}
+	if got := appRemoveFailure(&nativeApplications{}, "comfyui", fwire.ApplicationChange{Outcome: fwire.ApplicationOutcomeUnavailable, Reason: "message_binding"}); got["application.client"] != "native" || got["application.reason"] != "message_binding" {
+		t.Fatalf("native refusal logged %v", got)
+	}
+	for _, outcome := range []fwire.ApplicationOutcome{fwire.ApplicationOutcomeApplied, fwire.ApplicationOutcomeUnknown} {
+		if got := appRemoveFailure(&appPageDirectory{}, "comfyui", fwire.ApplicationChange{Outcome: outcome}); got != nil {
+			t.Fatalf("%v logged as a failure: %v", outcome, got)
+		}
 	}
 }

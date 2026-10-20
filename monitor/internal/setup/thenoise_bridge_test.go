@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -21,9 +22,12 @@ func shortTheNoiseHome(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	created := root
+	t.Cleanup(func() { _ = os.RemoveAll(created) })
+	root = shortTheNoiseFixturePath(t, root)
 	previous := chosenHome.Load()
 	chosenHome.Store(&homeChoice{home: Home{Config: filepath.Join(root, "c"), Data: root}})
-	t.Cleanup(func() { chosenHome.Store(previous); _ = os.RemoveAll(root) })
+	t.Cleanup(func() { chosenHome.Store(previous) })
 	return root
 }
 
@@ -111,6 +115,8 @@ func TestTheNoiseModelApprovalAndGuardAreSeparate(t *testing.T) {
 type theNoiseRegistryFake struct {
 	declaration     *fwire.DeclarationWithExtensions
 	readiness       fwire.DeclarationReadiness
+	why             string
+	declaredBy      string
 	withdrawOutcome fwire.DeclarationEditOutcome
 	declareOutcome  fwire.DeclarationEditOutcome
 	declareError    error
@@ -121,9 +127,30 @@ type theNoiseRegistryFake struct {
 func (r *theNoiseRegistryFake) Declarations(context.Context) (fwire.DeclarationListV2, error) {
 	page := fwire.DeclarationListV2{Outcome: fwire.DeclarationListOutcomePage, Revision: "revision"}
 	if r.declaration != nil {
-		page.Declarations = []fwire.DeclarationStateV2{{State: fwire.DeclarationState{Declaration: r.declaration.Declaration, Readiness: r.readiness}, SupportedExtensions: r.declaration.SupportedExtensions}}
+		page.Declarations = []fwire.DeclarationStateV2{{State: fwire.DeclarationState{Declaration: r.declaration.Declaration, Readiness: r.readiness, Why: r.why, DeclaredBy: r.declaredBy}, SupportedExtensions: r.declaration.SupportedExtensions}}
 	}
-	return page, nil
+	return wirePage(page)
+}
+
+// wirePage is page as Setup reads it from the runtime: encoded and decoded
+// by the registry codec, which drops empty optional lists.
+func wirePage(page fwire.DeclarationListV2) (fwire.DeclarationListV2, error) {
+	if page.Declarations == nil {
+		page.Declarations = []fwire.DeclarationStateV2{}
+	}
+	for i := range page.Declarations {
+		if page.Declarations[i].State.Readiness == 0 {
+			page.Declarations[i].State.Readiness = fwire.DeclarationReadinessIdle
+		}
+		if page.Declarations[i].State.Described == nil {
+			page.Declarations[i].State.Described = []fwire.ServiceState{}
+		}
+	}
+	decoded, err := fwire.DecodeDeclarationListV2(fwire.EncodeDeclarationListV2(&page))
+	if err != nil {
+		return fwire.DeclarationListV2{}, err
+	}
+	return *decoded, nil
 }
 func (r *theNoiseRegistryFake) Declare(_ context.Context, _ string, d fwire.DeclarationWithExtensions) (fwire.DeclarationChange, error) {
 	r.declares++
@@ -229,6 +256,14 @@ func TestTheNoiseConfirmedRegistrationRefusalCannotClaimIdenticalForeignRow(t *t
 		})
 	}
 }
+func (r *theNoiseRegistryFake) ReplacePinned(_ context.Context, _ string, d fwire.PinnedDeclaration) (fwire.DeclarationChange, error) {
+	*r.events = append(*r.events, "replace")
+	if r.declaration == nil {
+		return fwire.DeclarationChange{Outcome: fwire.DeclarationEditOutcomeConflict, Reason: "name"}, nil
+	}
+	r.declaration = &fwire.DeclarationWithExtensions{Declaration: d.Declaration, SupportedExtensions: d.SupportedExtensions}
+	return fwire.DeclarationChange{Outcome: fwire.DeclarationEditOutcomeApplied}, nil
+}
 func (r *theNoiseRegistryFake) Withdraw(context.Context, string, string) (fwire.DeclarationChange, error) {
 	*r.events = append(*r.events, "withdraw/halt")
 	if r.withdrawOutcome == fwire.DeclarationEditOutcomeApplied {
@@ -246,10 +281,11 @@ func ownedTheNoiseFixture(t *testing.T) (Journal, string, fwire.DeclarationWithE
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The catalogue pins TheNoise for Windows x64 only; the ownership and
-	// readiness rules these tests check read the journal's catalogue and are
-	// the same on every platform.
-	windows := catalogForTarget("windows", "amd64")
+	// The catalogue pinned TheNoise for Windows x64 only until it stopped
+	// shipping (withTheNoisePin); the ownership and readiness rules these
+	// tests check read the journal's catalogue and are the same on every
+	// platform.
+	windows := withTheNoisePin(catalogForTarget("windows", "amd64"))
 	j.catalogOverride = &windows
 	plan, err := j.Catalog().Plan([]AppID{TheNoise})
 	if err != nil {
@@ -268,6 +304,18 @@ func ownedTheNoiseFixture(t *testing.T) (Journal, string, fwire.DeclarationWithE
 	if err := InstallArchive(ctx, pin, zipPath, root); err != nil {
 		t.Fatal(err)
 	}
+	// This removal-order fixture substitutes only its actual tiny ZIP's
+	// source observation. The ordinary source owner still verifies that ZIP's
+	// exact pin and roster. It supplies no upstream archive qualification.
+	oldRoster := receiptArchiveRoster
+	fixtureSource := ""
+	receiptArchiveRoster = func(ctx context.Context, a Artifact, source string) ([]archiveFileRecord, []string, error) {
+		if source == fixtureSource && a.SHA256 == theNoiseArtifact().SHA256 {
+			return expectedArchiveRoster(ctx, pin, source)
+		}
+		return oldRoster(ctx, a, source)
+	}
+	t.Cleanup(func() { receiptArchiveRoster = oldRoster })
 	raw, err := os.ReadFile(filepath.Join(root, archiveMarker))
 	if err != nil {
 		t.Fatal(err)
@@ -276,6 +324,7 @@ func ownedTheNoiseFixture(t *testing.T) (Journal, string, fwire.DeclarationWithE
 	if err := json.Unmarshal(raw, &receipt); err != nil {
 		t.Fatal(err)
 	}
+	fixtureSource = receipt.ArchivePath
 	a := theNoiseArtifact()
 	receipt.ArtifactSHA256, receipt.Version = a.SHA256, a.Version
 	raw, _ = json.Marshal(receipt)
@@ -320,7 +369,11 @@ func TestTheNoiseRemovalWithdrawsBeforeUnlockAndPreservesPersonalData(t *testing
 		return nil
 	}
 	t.Cleanup(func() { setupEngineRegistry, theNoiseCLI = oldRegistry, oldCLI })
-	if err := NewRunner(j, nil).RemoveTheNoise(context.Background()); err != nil {
+	remove := PictureEngineRemoval(TheNoise)
+	if remove == nil {
+		t.Fatal("the reviewed recipe has no engine removal")
+	}
+	if err := remove(NewRunner(j, nil), context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Equal(events, []string{"withdraw/halt", "unlock"}) {
@@ -401,5 +454,102 @@ func TestTheNoiseDeclarationIdentityPreservesArgumentsAndSamePlanOwnership(t *te
 	state, err := j.SavePlan(context.Background(), state.Plan)
 	if err != nil || len(state.EngineDeclarations) != 1 {
 		t.Fatalf("same plan lost declaration ownership: %+v %v", state, err)
+	}
+}
+
+// A row the runtime disabled because its program is missing is a leftover of a
+// deleted program: Setup withdraws it and declares afresh. A row the person
+// turned off stays theirs.
+func TestSetupWithdrawsDeclarationWhoseProgramIsMissing(t *testing.T) {
+	for _, why := range []string{"program:missing", ""} {
+		t.Run("why="+why, func(t *testing.T) {
+			j, _, d := ownedTheNoiseFixture(t)
+			state, _ := j.Load(context.Background())
+			delete(state.EngineDeclarations, TheNoise)
+			raw, _ := json.Marshal(state)
+			if err := os.WriteFile(j.Path, raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+			stale := d
+			stale.Declaration.Program = filepath.Join(t.TempDir(), "gone", "thenoise.exe")
+			events := []string{}
+			r := &theNoiseRegistryFake{declaration: &stale, readiness: fwire.DeclarationReadinessDisabled, why: why, withdrawOutcome: fwire.DeclarationEditOutcomeApplied, declareOutcome: fwire.DeclarationEditOutcomeApplied, events: &events}
+			oldRegistry := setupEngineRegistry
+			setupEngineRegistry = func(context.Context) (engineRegistry, error) { return r, nil }
+			t.Cleanup(func() { setupEngineRegistry = oldRegistry })
+			err := registerTheNoise(context.Background(), j, state, d)
+			if why == "" {
+				if err == nil || len(events) != 0 || r.declares != 0 {
+					t.Fatalf("person-disabled row changed: %v %v %d", err, events, r.declares)
+				}
+				return
+			}
+			if err != nil || len(events) != 1 || r.declares != 1 || r.declaration == nil || !sameEngineDeclaration(*r.declaration, d) {
+				t.Fatalf("missing-program row not replaced: %v %v %d", err, events, r.declares)
+			}
+		})
+	}
+}
+
+// A product's declaration whose program is missing stays the product's:
+// Setup withdraws nothing and reports the name as owned elsewhere.
+func TestSetupKeepsProductDeclarationWhoseProgramIsMissing(t *testing.T) {
+	j, _, d := ownedTheNoiseFixture(t)
+	state, _ := j.Load(context.Background())
+	delete(state.EngineDeclarations, TheNoise)
+	stale := d
+	stale.Declaration.Program = filepath.Join(t.TempDir(), "gone", "thenoise.exe")
+	events := []string{}
+	r := &theNoiseRegistryFake{declaration: &stale, readiness: fwire.DeclarationReadinessDisabled, why: "program:missing", declaredBy: "product", withdrawOutcome: fwire.DeclarationEditOutcomeApplied, declareOutcome: fwire.DeclarationEditOutcomeApplied, events: &events}
+	oldRegistry := setupEngineRegistry
+	setupEngineRegistry = func(context.Context) (engineRegistry, error) { return r, nil }
+	t.Cleanup(func() { setupEngineRegistry = oldRegistry })
+	err := registerTheNoise(context.Background(), j, state, d)
+	if err == nil || !strings.Contains(err.Error(), "a different provider declaration owns this name") || len(events) != 0 || r.declares != 0 {
+		t.Fatalf("product row changed: %v %v %d", err, events, r.declares)
+	}
+}
+
+// Status reads a missing-program row as not ready; removal withdraws it when
+// Setup owns it and preserves it otherwise.
+func TestTheNoiseMissingProgramStatusAndRemoval(t *testing.T) {
+	for _, owned := range []bool{true, false} {
+		t.Run(fmt.Sprint("owned=", owned), func(t *testing.T) {
+			j, root, d := ownedTheNoiseFixture(t)
+			if !owned {
+				state, _ := j.Load(context.Background())
+				delete(state.EngineDeclarations, TheNoise)
+				raw, _ := json.Marshal(state)
+				if err := os.WriteFile(j.Path, raw, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			events := []string{}
+			r := &theNoiseRegistryFake{declaration: &d, readiness: fwire.DeclarationReadinessDisabled, why: "program:missing", withdrawOutcome: fwire.DeclarationEditOutcomeApplied, events: &events}
+			oldRegistry, oldCLI := setupEngineRegistry, theNoiseCLI
+			setupEngineRegistry = func(context.Context) (engineRegistry, error) { return r, nil }
+			theNoiseCLI = func(context.Context, ...string) error { events = append(events, "unlock"); return nil }
+			t.Cleanup(func() { setupEngineRegistry, theNoiseCLI = oldRegistry, oldCLI })
+			c, err := DefaultTheNoiseController(j)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if status, err := c.Status(context.Background()); err != nil || status.Ready {
+				t.Fatalf("status of a missing program: %+v %v", status, err)
+			}
+			err = NewRunner(j, nil).RemoveTheNoise(context.Background())
+			if owned {
+				if err != nil || !slices.Equal(events, []string{"withdraw/halt", "unlock"}) {
+					t.Fatalf("owned removal: %v %v", err, events)
+				}
+				return
+			}
+			if err == nil || len(events) != 0 {
+				t.Fatalf("unowned removal: %v %v", err, events)
+			}
+			if _, err := os.Stat(filepath.Join(root, "e", "engine.bat")); err != nil {
+				t.Fatal("unowned tree removed")
+			}
+		})
 	}
 }

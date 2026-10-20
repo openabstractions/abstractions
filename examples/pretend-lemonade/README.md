@@ -1,5 +1,17 @@
 # The five-abstraction journey
 
+The normal Windows `panel_review.ps1 -Examples` producer now embeds each
+example's applications@3 manifest and ships its application-local ABI2 DLL.
+Its exact private `--owned-host` recipe uses native applications@3 announcement,
+the service-issued instance, renewal and withdrawal, then serves the shared
+native AppModel core over owned stdio. Both manifests declare empty commands
+and explicit empty model profiles: neither example consumes a model policy.
+Ordinary `go build` CLI behavior remains available on its supported platforms;
+owned-host mode currently supports Windows 64-bit only (x64 received).
+Signing, person-kept registration and complete installed host startup remain
+separate qualification; an unsigned review image is still refused by native
+registration. No source fixture supplies that approval.
+
 This Windows development folder combines `pretend-lemonade`,
 `logging-quickstart`, the runtime and the existing Control Panel. The download
 app exercises identity, durable jobs, Asks, rights and attributed logging on
@@ -47,11 +59,10 @@ the person's yes for each app.
    **New-download.cmd** is now refused with `forbidden`, and no question
    appears: the Block wins over the default.
 5. **Unblock.** Remove that rule with **Remove rule**. Run Slow-download.cmd
-   again. The app prints `attempt 0 failed: rights:denied; trying again as
-   attempt 1`, and the download completes under the default. A request that
-   a rights refusal ended runs as its next attempt when the app runs again,
-   since the person can lift that refusal; a request that failed for another
-   reason, completed or was cancelled is reused.
+   again. The download completes under the default as a new operation of the
+   same request: the job service runs a request that a rights refusal ended
+   again once the person lifts that refusal (JOB-A19); a request that failed
+   for another reason, completed or was cancelled is reused.
 6. **A permission no default covers.** In **Credentials**, add a secret named
    `mirror-token` with any harmless value, target `127.0.0.1`, for downloads.
    Double-click **Read-secret.cmd**. The first attempt prints `read

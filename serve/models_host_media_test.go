@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -149,6 +150,7 @@ func declarationsNamed(t *testing.T, w *waiting, registry *client.Registry) (hos
 // video to the PyTorch provider and withdraws the model host left with
 // nothing to serve.
 func TestModelsHostSetsUpVideoAndImageIdempotently(t *testing.T) {
+	requireNativeModelHostRegistration(t)
 	if !statusTransportProvesProgram(t) {
 		t.Skip("Program proof unavailable on current shared transport")
 	}
@@ -236,11 +238,38 @@ func TestModelsHostSetsUpVideoAndImageIdempotently(t *testing.T) {
 		t.Fatalf("a second run changed the declaration: %q %+v", again, second)
 	}
 
-	said := run("--video-kind", "torch", "--video-model", "hummingbird-xt-i2v", "--torch-python", python, "--torch-source", source,
-		"--image-model", "flux2-klein-4b")
+	videoSet, imageSet := "hummingbird-xt-i2v", "flux2-klein-4b"
+	media := []string{"--video-kind", "torch", "--video-model", videoSet, "--torch-python", python, "--torch-source", source, "--image-model", imageSet}
+	videoCheck := []string{"engine", "check", "--set", videoSet, argPython, python, argSource, source}
+	imageCheck := []string{"engine", "check", "--set", imageSet, argPython, python}
+	for _, refuse := range []string{videoSet, imageSet} {
+		t.Setenv("STANDIN_REFUSE_SET", refuse)
+		before := len(recordedChecks(t, record))
+		var out, diagnostics bytes.Buffer
+		err := modelsHostCommand("models host", append(slices.Clone(media), endpoint...), &out, &diagnostics)
+		if err == nil || !strings.Contains(diagnostics.String(), "fixture refused "+refuse) {
+			t.Fatalf("the %s refusal did not stop configuration: %v %s", refuse, err, diagnostics.String())
+		}
+		if current, added := declarationsNamed(t, w, registry); current == nil || !slices.Equal(current.Arguments, d.Arguments) || added != nil {
+			t.Fatalf("the %s refusal edited the registry: %+v %+v", refuse, current, added)
+		}
+		want := [][]string{videoCheck}
+		if refuse == imageSet {
+			want = append(want, imageCheck)
+		}
+		if checks := recordedChecks(t, record)[before:]; !slices.EqualFunc(checks, want, slices.Equal[[]string]) {
+			t.Fatalf("checks for the %s refusal = %q, want %q", refuse, checks, want)
+		}
+	}
+	t.Setenv("STANDIN_REFUSE_SET", "")
+	before := len(recordedChecks(t, record))
+	said := run(media...)
+	if checks := recordedChecks(t, record)[before:]; !slices.EqualFunc(checks, [][]string{videoCheck, imageCheck}, slices.Equal[[]string]) {
+		t.Fatalf("successful configuration did not prove both sets: %q", checks)
+	}
 	host, s := declarationsNamed(t, w, registry)
-	if host != nil {
-		t.Fatalf("the model host serves nothing after the switch and is still declared: %+v", host)
+	if host == nil || !slices.Equal(host.Contracts, []string{storageInventorySource}) || len(host.Models) != 0 || !slices.Contains(host.Resources, "store:ollama") {
+		t.Fatalf("the nonmanaged inventory service was lost or retained managed models: %+v", host)
 	}
 	if s == nil || s.Program != identity.NormalizeSubjectProgram(filepath.Clean(torchProgram)) || !slices.Contains(s.Resources, "card:0") ||
 		!slices.Contains(s.Models, "video:hummingbird-xt-i2v") || !slices.Contains(s.Models, "image:flux2-klein-4b") ||
@@ -255,7 +284,7 @@ func TestModelsHostSetsUpVideoAndImageIdempotently(t *testing.T) {
 	// sd-server's arguments belong to the sdcpp kind: the switch drops them
 	// and says so.
 	if slices.Contains(s.Arguments, argVideoEngineArg) || slices.Contains(s.Arguments, "--temporal-tiling") || !strings.Contains(said, "--temporal-tiling dropped") ||
-		!strings.Contains(said, "the model host is withdrawn") {
+		!strings.Contains(said, "the model host declaration is updated") {
 		t.Fatalf("after the switch %v; said %q", s.Arguments, said)
 	}
 	if again := run("--video-kind", "torch", "--video-model", "hummingbird-xt-i2v"); !strings.Contains(again, "already says this") {
@@ -277,6 +306,7 @@ func TestModelsHostSetsUpVideoAndImageIdempotently(t *testing.T) {
 // the model host, and the image set moves to the PyTorch provider's own
 // declaration with card:0, proven by pytorchd engine check.
 func TestModelsHostSplitsADeclarationThatCarriedThePyTorchEngine(t *testing.T) {
+	requireNativeModelHostRegistration(t)
 	if !statusTransportProvesProgram(t) {
 		t.Skip("Program proof unavailable on current shared transport")
 	}
@@ -339,12 +369,12 @@ func TestModelsHostSplitsADeclarationThatCarriedThePyTorchEngine(t *testing.T) {
 		"--endpoint", options.endpoint, "--timeout", "30s"}, &output, &diagnostics); err != nil {
 		t.Fatalf("models host: %v\n%s", err, diagnostics.String())
 	}
-	if !strings.Contains(output.String(), "move from the model host's declaration to the PyTorch provider's") {
+	if !strings.Contains(output.String(), "move from the model host's declaration to the Diffusers provider's") {
 		t.Fatalf("the split was not said: %q", output.String())
 	}
 	host, torch := declarationsNamed(t, w, registry)
 	if host == nil || !slices.Equal(host.Contracts, []string{inference.Contract, inference.PreloadContract}) || !slices.Equal(host.Resources, []string{"card:0", "profile:chat"}) ||
-		!slices.Equal(host.Models, []string{"tiny"}) || host.Activation != wire.ActivationAttach {
+		!slices.Equal(host.Models, []string{"chat:tiny"}) || host.Activation != wire.ActivationAttach {
 		t.Fatalf("the model host after the split %+v", host)
 	}
 	for _, moved := range []string{argTorchPython, argImageModel, argImageTimeLimit, videoKindTorch} {
@@ -419,7 +449,7 @@ func TestModelsHostRefusesAnIncompleteMediaEngine(t *testing.T) {
 		{[]string{"--image-model", "flux2-klein-4b", "--pytorch-program", "pytorchd"}, "--pytorch-program must be an absolute path"},
 	} {
 		var output, diagnostics bytes.Buffer
-		err := modelsHostCommand("models host", append(c.args, "--program", filepath.Join(t.TempDir(), "modelhostd"),
+		err := modelsHostCommandOn("windows", "models host", append(c.args, "--program", filepath.Join(t.TempDir(), "modelhostd"),
 			"--endpoint", options.endpoint, "--timeout", "30s"), &output, &diagnostics)
 		if err == nil || !strings.Contains(diagnostics.String()+err.Error(), c.says) {
 			t.Fatalf("%v: %v, diagnostics %q; wanted %q", c.args, err, diagnostics.String(), c.says)
@@ -427,10 +457,8 @@ func TestModelsHostRefusesAnIncompleteMediaEngine(t *testing.T) {
 	}
 }
 
-// Replacing a declaration withdraws it first, since the registry takes a name
-// once. When the registry refuses the new one, the withdrawn declaration is
-// declared again as it was, so a refused run leaves the model host serving.
-func TestModelsHostRestoresTheDeclarationARefusalWithdrew(t *testing.T) {
+// An invalid atomic replacement leaves the prior declaration and revision.
+func TestModelsHostRefusedReplacementKeepsTheDeclaration(t *testing.T) {
 	if !statusTransportProvesProgram(t) {
 		t.Skip("Program proof unavailable on current shared transport")
 	}
@@ -454,7 +482,7 @@ func TestModelsHostRestoresTheDeclarationARefusalWithdrew(t *testing.T) {
 		}
 		return list
 	}
-	program := filepath.Join(t.TempDir(), "modelhostd.exe")
+	program := recordingModelHost(t, t.TempDir())
 	handMade := wire.Declaration{Name: modelHostName, Program: identity.CanonicalProgramPath(program),
 		Arguments: []string{"serve", "--endpoint", providerEndpointToken, "--video-model", "fastwan2.2-ti2v-5b", "--video-engine", program},
 		Endpoint:  "modelhost-video", Transport: wire.DeclarationTransportNative, Contracts: []string{inference.VideoContract},
@@ -475,13 +503,17 @@ func TestModelsHostRestoresTheDeclarationARefusalWithdrew(t *testing.T) {
 	}
 	settings := hostSettings{program: self, endpoint: "modelhost-video", resource: "leases",
 		media: hostMedia{videoModel: "fastwan2.2-ti2v-5b", videoKind: videoKindSdCpp, videoEngine: program}}
-	err = declareHost(w, registry, list, settings, nil, "models host", &bytes.Buffer{}, false, "serving")
-	if err == nil || !strings.Contains(err.Error(), "declared again as it was") {
+	err = declareHost(w, pinnedModelHostEditor(t, w, options), list, settings, nil, "models host", &bytes.Buffer{}, false, "serving")
+	if err == nil || !strings.Contains(err.Error(), "program:self") {
 		t.Fatalf("a refused replacement: %v", err)
 	}
-	after := existingHostDeclaration(listed())
+	current := listed()
+	after := existingHostDeclaration(current)
 	if after == nil || after.Program != existing.Program || !slices.Equal(after.Arguments, existing.Arguments) || after.Endpoint != existing.Endpoint {
 		t.Fatalf("the withdrawn declaration was not restored: %+v", after)
+	}
+	if current.Revision != list.Revision {
+		t.Fatal("refused replacement changed revision")
 	}
 }
 
@@ -493,6 +525,7 @@ func TestModelsHostRestoresTheDeclarationARefusalWithdrew(t *testing.T) {
 // itself is the stand-in of the PyTorch provider's own image tests: a real
 // launch needs the pinned venv and the set's files.
 func TestModelsHostImageSetRunsOnTheRealPytorchProvider(t *testing.T) {
+	requireNativeModelHostRegistration(t)
 	if !statusTransportProvesProgram(t) {
 		t.Skip("Program proof unavailable on current shared transport")
 	}
@@ -638,6 +671,203 @@ func TestTheServeLineReaderTakesEveryFlagSpelling(t *testing.T) {
 	}
 }
 
+func TestEngineLife1676ServeReadersKeepStoppedArguments(t *testing.T) {
+	for _, stop := range []string{"--", "stray"} {
+		t.Run(stop, func(t *testing.T) {
+			settings, models := readServeArguments([]string{"serve", "--engine", "kept", stop, "--engine", "wrong", "--model", "bad=store/object"})
+			if settings.engine != "kept" || len(models) != 0 || !slices.Equal(settings.passthrough, []string{stop, "--engine", "wrong", "--model", "bad=store/object"}) {
+				t.Fatalf("modelhost read beyond stop: %+v %v", settings, models)
+			}
+			torch, media := readPytorchArguments([]string{"serve", "--python", "kept", stop, "--python", "wrong", "--image-model", "bad"})
+			if media.torchPython != "kept" || media.imageModel != "" || !slices.Equal(torch.passthrough, []string{stop, "--python", "wrong", "--image-model", "bad"}) {
+				t.Fatalf("PyTorch read beyond stop: %+v %+v", torch, media)
+			}
+		})
+	}
+}
+
+func TestEngineLife1676RetainedProfilesKeepOnlyTheirModels(t *testing.T) {
+	d := wire.Declaration{Name: modelHostName, Program: filepath.Join(t.TempDir(), "modelhostd.exe"),
+		Arguments: []string{"serve"}, Contracts: []string{inference.Contract, inference.ImageContract, inference.SpeechContract},
+		Resources: []string{"card:2", "profile:chat", "profile:image", "profile:speech", "store:kept"},
+		Models:    []string{"chat:removed", "image:removed", "speech:kept", "shared", "urn:literal"}, Activation: wire.ActivationAttach, Transport: wire.DeclarationTransportNative}
+	kept, card := readDeclared(&d, hostContracts)
+	settings := hostSettings{program: d.Program, endpoint: "fixture", card: card, declared: kept}
+	next := modelHostDeclaration(settings, []hostedModel{{Name: "new", Store: "store", Object: "object"}}, nil)
+	if !slices.Contains(next.Models, "speech:kept") || slices.Contains(next.Models, "chat:removed") || slices.Contains(next.Models, "image:removed") ||
+		!slices.Contains(next.Resources, "profile:speech") || !slices.Contains(next.Resources, "store:kept") || !slices.Contains(next.Contracts, inference.SpeechContract) {
+		t.Fatalf("retained profile/model lost or removed model resurrected: %+v", next)
+	}
+	if !slices.Contains(next.Models, "chat:new") || slices.Contains(next.Models, "new") {
+		t.Fatal("managed chat model was broadened into the retained speech profile", next.Models)
+	}
+	_, byProfile := router.DeclaredModels(next.Models, declarationOf(next).mediatedInferenceProfiles())
+	if !slices.Equal(byProfile["speech"], []string{"kept", "shared", "urn:literal"}) || !slices.Equal(byProfile["chat"], []string{"new"}) {
+		t.Fatalf("retained model semantics changed: %+v", byProfile)
+	}
+	read, models := readHostDeclaration(wire.DeclarationList{Declarations: []wire.DeclarationState{{Declaration: next}}})
+	if repeated := modelHostDeclaration(read, models, nil); !sameHostDeclaration(&next, repeated) {
+		t.Fatalf("retained declaration round-trip changed: %+v", repeated)
+	}
+	d.Models = nil
+	settings.declared, _ = readDeclared(&d, hostContracts)
+	next = modelHostDeclaration(settings, []hostedModel{{Name: "new", Store: "store", Object: "object"}}, nil)
+	_, byProfile = router.DeclaredModels(next.Models, declarationOf(next).mediatedInferenceProfiles())
+	if len(byProfile["speech"]) != 0 || !slices.Equal(byProfile["chat"], []string{"new"}) {
+		t.Fatalf("empty retained profile gained a managed model: %+v", byProfile)
+	}
+}
+
+func TestEngineLife1676RegistryRetryRunsOneFreshRead(t *testing.T) {
+	ordinary := errors.New("ordinary refusal")
+	for _, tc := range []struct {
+		name    string
+		results []error
+		want    error
+		calls   int
+	}{
+		{"success", []error{nil}, nil, 1},
+		{"refusal", []error{ordinary}, ordinary, 1},
+		{"retry", []error{&hostConflict{ordinary}, nil}, nil, 2},
+		{"second-conflict", []error{&hostConflict{ordinary}, &hostConflict{ordinary}}, ordinary, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			err := retryHostConflict(func() error {
+				if calls >= len(tc.results) {
+					t.Fatal("extra registry retry")
+				}
+				value := tc.results[calls]
+				calls++
+				return value
+			})
+			if calls != tc.calls || !errors.Is(err, tc.want) {
+				t.Fatalf("calls=%d err=%v", calls, err)
+			}
+		})
+	}
+}
+
+type engineLife1676Edits struct {
+	declared  []wire.Declaration
+	withdrawn []string
+}
+
+func (e *engineLife1676Edits) DeclarePinned(_ context.Context, _ string, pinned wire.PinnedDeclaration) (wire.DeclarationChange, error) {
+	e.declared = append(e.declared, pinned.Declaration)
+	return wire.DeclarationChange{Outcome: wire.DeclarationEditOutcomeApplied, Revision: "next"}, nil
+}
+
+func (e *engineLife1676Edits) ReplacePinned(ctx context.Context, expected string, d wire.PinnedDeclaration) (wire.DeclarationChange, error) {
+	return e.DeclarePinned(ctx, expected, d)
+}
+
+func (e *engineLife1676Edits) Withdraw(_ context.Context, _, name string) (wire.DeclarationChange, error) {
+	e.withdrawn = append(e.withdrawn, name)
+	return wire.DeclarationChange{Outcome: wire.DeclarationEditOutcomeApplied, Revision: "next"}, nil
+}
+
+func TestEngineLife1676LastManagedModelKeepsOtherServices(t *testing.T) {
+	for _, retainSpeech := range []bool{false, true} {
+		t.Run(fmt.Sprintf("retain-speech=%t", retainSpeech), func(t *testing.T) {
+			removed := hostedModel{Name: "removed", Store: "fixture-store", Object: "last"}
+			host := wire.Declaration{Name: modelHostName, Program: filepath.Join(t.TempDir(), "provider.exe"), Endpoint: "fixture",
+				Arguments: []string{"serve", argModel, removed.argument()}, Contracts: []string{inference.Contract},
+				Resources: []string{"profile:chat", "card:2"}, Models: []string{"chat:removed"},
+				Activation: wire.ActivationAttach, Transport: wire.DeclarationTransportNative, Role: wire.DeclarationRoleProvider}
+			if retainSpeech {
+				host.Contracts = append(host.Contracts, inference.SpeechContract)
+				host.Resources = append(host.Resources, "profile:speech")
+				host.Models = append(host.Models, "speech:kept")
+			}
+			torch := wire.Declaration{Name: pytorchName, Program: filepath.Join(t.TempDir(), "provider.exe"), Endpoint: "torch",
+				Arguments: []string{"serve"}, Contracts: []string{inference.SpeechContract},
+				Resources: []string{"profile:speech", "card:3"}, Models: []string{"speech:torch-kept"},
+				Activation: wire.ActivationAttach, Transport: wire.DeclarationTransportNative, Role: wire.DeclarationRoleProvider}
+			torch.Arguments = append(torch.Arguments, argPython, filepath.Join(t.TempDir(), "python.exe"), argSource, t.TempDir())
+			list := wire.DeclarationList{Declarations: []wire.DeclarationState{{Declaration: host}, {Declaration: torch}}}
+			settings, models := readHostDeclaration(list)
+			if len(models) != 1 || models[0].argument() != removed.argument() {
+				t.Fatalf("fixture must start with exactly the managed object being unhosted: %+v", models)
+			}
+			edits := &engineLife1676Edits{}
+			w := newWaiting(time.Second)
+			defer w.stop()
+			if err := declareHost(w, edits, list, settings, models[:0], "models unhost", &bytes.Buffer{}, false, "removed"); err != nil {
+				t.Fatal(err)
+			}
+			if !retainSpeech {
+				if len(edits.declared) != 0 || !slices.Equal(edits.withdrawn, []string{modelHostName}) {
+					t.Fatalf("only the empty ModelHost should be withdrawn: %+v", edits)
+				}
+				return
+			}
+			if len(edits.withdrawn) != 0 || len(edits.declared) != 1 {
+				t.Fatalf("only the retained ModelHost should be replaced: %+v", edits)
+			}
+			updated := edits.declared[0]
+			if updated.Name != modelHostName || !slices.Equal(updated.Contracts, []string{inference.SpeechContract}) ||
+				!slices.Equal(updated.Models, []string{"speech:kept"}) || slices.Contains(updated.Arguments, argModel) {
+				t.Fatalf("ModelHost should retain only its speech service: %+v", updated)
+			}
+		})
+	}
+}
+
+func TestEngineLife1676UnrepresentableRetentionRefusesBeforeEdits(t *testing.T) {
+	d := wire.Declaration{Name: modelHostName, Program: filepath.Join(t.TempDir(), "provider.exe"), Endpoint: "fixture",
+		Arguments: []string{"serve"}, Contracts: []string{inference.SpeechContract, inference.TranscriptionContract},
+		Resources:  []string{"profile:speech", "profile:transcription"},
+		Activation: wire.ActivationAttach, Transport: wire.DeclarationTransportNative, Role: wire.DeclarationRoleProvider}
+	for i := 0; i < 33; i++ {
+		d.Models = append(d.Models, fmt.Sprintf("shared-%d", i))
+	}
+	list := wire.DeclarationList{Declarations: []wire.DeclarationState{{Declaration: d}}}
+	settings, models := readHostDeclaration(list)
+	edits := &engineLife1676Edits{}
+	err := declareHost(nil, edits, list, settings, models, "models host", &bytes.Buffer{}, false, "")
+	if err == nil || !strings.Contains(err.Error(), "models") || len(edits.declared) != 0 || len(edits.withdrawn) != 0 {
+		t.Fatalf("unrepresentable plan edited registry: %v %+v", err, edits)
+	}
+}
+
+func TestEngineLife1676HoldLastFlagWins(t *testing.T) {
+	for _, tc := range []struct {
+		values []string
+		valid  bool
+		card   string
+	}{
+		{[]string{"gpu:1", "card:2"}, true, "2"},
+		{[]string{"card:2", "gpu:1"}, false, ""},
+		{[]string{"card:0"}, true, "0"},
+	} {
+		args := []string{"serve"}
+		for _, value := range tc.values {
+			args = append(args, "--resource", value)
+		}
+		host, _ := readServeArguments(args)
+		torch, _ := readPytorchArguments(args)
+		if (host.invalidHold == "") != tc.valid || (torch.invalidHold == "") != tc.valid || host.card != tc.card || torch.card != tc.card {
+			t.Fatalf("%v host=%+v torch=%+v", tc.values, host, torch)
+		}
+	}
+}
+
+func TestEngineLife1676UnknownHoldRefusesBeforeRegistry(t *testing.T) {
+	for _, value := range []string{"gpu:1", "", "card:", "card:-1", "card:01"} {
+		for _, name := range []string{modelHostName, pytorchName} {
+			list := wire.DeclarationList{Declarations: []wire.DeclarationState{{Declaration: wire.Declaration{Name: name, Arguments: []string{"serve", "--resource", value}, Resources: []string{"card:0"}}}}}
+			settings, _ := readHostDeclaration(list)
+			// No registry object exists: the declared-resource admission must
+			// refuse before it can attempt an edit or choose default card:0.
+			err := declareHost(nil, nil, wire.DeclarationList{}, settings, nil, "models host", &bytes.Buffer{}, false, "")
+			if err == nil || !strings.Contains(err.Error(), "--resource") {
+				t.Fatalf("%s %q silently defaulted: %v", name, value, err)
+			}
+		}
+	}
+}
+
 // A registry that changed between the read and the first write answers
 // conflict before anything was withdrawn; declareHost says so as a
 // hostConflict, which the command answers by reading again once. A
@@ -662,7 +892,7 @@ func TestModelsHostConflictBeforeAnyWriteIsRetryable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	program := filepath.Join(t.TempDir(), "modelhostd.exe")
+	program := recordingModelHost(t, t.TempDir())
 	other := wire.Declaration{Name: "other-provider", Program: identity.CanonicalProgramPath(program), Arguments: []string{"serve"},
 		Endpoint: "other-provider", Transport: wire.DeclarationTransportNative, Contracts: []string{inference.ImageContract},
 		Resources: []string{"profile:image"}, Models: []string{"image:other"}, Activation: wire.ActivationAttach, Role: wire.DeclarationRoleProvider}
@@ -674,13 +904,77 @@ func TestModelsHostConflictBeforeAnyWriteIsRetryable(t *testing.T) {
 	}
 	settings := hostSettings{program: program, endpoint: "modelhost", resource: "leases",
 		media: hostMedia{imageModel: "flux2-klein-4b", torchPython: program}, torch: torchSettings{program: program}}
-	err = declareHost(w, registry, stale, settings, nil, "models host", &bytes.Buffer{}, false, "serving")
+	err = declareHost(w, pinnedModelHostEditor(t, w, options), stale, settings, nil, "models host", &bytes.Buffer{}, false, "serving")
 	var conflict *hostConflict
 	if !errors.As(err, &conflict) {
 		t.Fatalf("a write at a stale revision: %v", err)
 	}
-	if said := restoreHost(w, registry, stale.Revision, &other); !strings.Contains(said, "it read: "+other.Program+" serve") {
-		t.Fatalf("a refused restore said %q", said)
+
+}
+
+type modelHostRegistryOwnerFixture struct {
+	registry *runtimeRegistry
+	caller   inference.Subject
+}
+
+func (r modelHostRegistryOwnerFixture) Declare(ctx context.Context, expected string, d wire.Declaration) (wire.DeclarationChange, error) {
+	return r.registry.Declare(ctx, r.caller, expected, d), nil
+}
+func (r modelHostRegistryOwnerFixture) DeclarePinned(ctx context.Context, expected string, d wire.PinnedDeclaration) (wire.DeclarationChange, error) {
+	return r.registry.DeclarePinned(ctx, r.caller, expected, d), nil
+}
+func (r modelHostRegistryOwnerFixture) ReplacePinned(ctx context.Context, expected string, d wire.PinnedDeclaration) (wire.DeclarationChange, error) {
+	return r.registry.ReplacePinned(ctx, r.caller, expected, d), nil
+}
+
+func pinnedModelHostEditor(t *testing.T, w *waiting, options runtimeFlags) *client.RegistryV2 {
+	t.Helper()
+	call, done := w.call()
+	defer done()
+	r, err := client.New(options.endpoint).ResolveRegistryV2(call, client.Requirements{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+func (r modelHostRegistryOwnerFixture) Withdraw(ctx context.Context, expected, name string) (wire.DeclarationChange, error) {
+	return r.registry.Withdraw(ctx, r.caller, expected, name), nil
+}
+
+func TestEngineLife1676WithdrawConflictKeepsThePriorDeclaration(t *testing.T) {
+	registry, caller := registryObserverFixture(t)
+	editor := modelHostRegistryOwnerFixture{registry, caller}
+	ctx := context.Background()
+	w := newWaiting(30 * time.Second)
+	defer w.stop()
+	initial := registry.Declarations(ctx, caller)
+	prior := wire.Declaration{Name: modelHostName, Program: identity.CanonicalProgramPath(filepath.Join(t.TempDir(), "modelhostd.exe")), Arguments: []string{"serve"},
+		Endpoint: "fixture-modelhost", Transport: wire.DeclarationTransportNative, Contracts: []string{inference.Contract},
+		Resources: []string{"profile:chat"}, Models: []string{"tiny"}, Activation: wire.ActivationAttach, Role: wire.DeclarationRoleProvider}
+	added, err := editor.Declare(ctx, initial.Revision, prior)
+	if err != nil || added.Outcome != wire.DeclarationEditOutcomeApplied {
+		t.Fatalf("prior declaration: %+v %v", added, err)
+	}
+	stale := registry.Declarations(ctx, caller)
+	other := prior
+	other.Name = "other-provider"
+	other.Endpoint = "fixture-other"
+	other.Program = identity.CanonicalProgramPath(filepath.Join(t.TempDir(), "other.exe"))
+	changed, err := editor.Declare(ctx, stale.Revision, other)
+	if err != nil || changed.Outcome != wire.DeclarationEditOutcomeApplied {
+		t.Fatalf("competing declaration: %+v %v", changed, err)
+	}
+	next := prior
+	next.Arguments = []string{"serve", "--model", "changed=store/object"}
+	_, _, err = (declarationStep{name: modelHostName, who: "model host", existing: &prior, next: &next}).apply(w, editor, stale.Revision, "models host", true)
+	var conflict *hostConflict
+	if !errors.As(err, &conflict) {
+		t.Fatalf("withdraw at stale revision: %v", err)
+	}
+	current := registry.Declarations(ctx, caller)
+	if current.Revision != changed.Revision || !sameHostDeclaration(existingDeclaration(current, modelHostName), prior) {
+		t.Fatalf("conflict changed prior declaration: %+v", current)
 	}
 }
 
@@ -746,9 +1040,9 @@ func TestModelsHostSaysToRunAgainWhenTheSecondDeclarationFails(t *testing.T) {
 	}
 	settings := hostSettings{program: self, endpoint: "modelhost", engine: "llama-server",
 		media: hostMedia{imageModel: "flux2-klein-4b", torchPython: filepath.Join(t.TempDir(), "python.exe")},
-		torch: torchSettings{program: filepath.Join(t.TempDir(), "pytorchd.exe")}}
-	err = declareHost(w, registry, list, settings, []hostedModel{{Name: "tiny", Store: "fake", Object: "tiny"}}, "models host", &bytes.Buffer{}, false, "hosting")
-	if err == nil || !strings.Contains(err.Error(), "the PyTorch provider's declaration is written and the model host's is not") ||
+		torch: torchSettings{program: recordingPytorch(t)}}
+	err = declareHost(w, pinnedModelHostEditor(t, w, options), list, settings, []hostedModel{{Name: "tiny", Store: "fake", Object: "tiny"}}, "models host", &bytes.Buffer{}, false, "hosting")
+	if err == nil || !strings.Contains(err.Error(), "the Diffusers provider's declaration is written and the model host's is not") ||
 		!strings.Contains(err.Error(), "run `openabstractions models host` again") {
 		t.Fatalf("a refused second declaration: %v", err)
 	}

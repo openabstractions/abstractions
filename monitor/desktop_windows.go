@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net/url"
 	"os"
 	"strings"
 
@@ -18,18 +19,30 @@ func nativeWebView2Available() bool { return win.WebView2Available() }
 
 // resourceWindowAvailable is win.WebView2Available; tests replace it.
 var resourceWindowAvailable = win.WebView2Available
-var personalPermissionWindow = runPersonalPermissionWindow
+var resourceWindowOpen = win.OpenWebView2
 
-// fail says what went wrong somewhere a person will see it. A binary built for
-// the desktop has no stderr at all, so the log line this program would print
-// goes nowhere and the window simply never appears.
+// fail ends the Panel. A Panel that stops shows no popup (architect popup
+// ruling 2026-11-10, row 33); the next open starts it again. A missing
+// WebView2 Runtime, which only the person can install, is one notification:
+// the Panel draws no native question (ARCHITECTURE.md).
 func fail(native bool, err error) {
 	if !native {
 		log.Fatal(err)
 	}
-	win.Say(panelWindowTitle, err.Error())
+	log.Print(err)
+	if errors.Is(err, errNoWebView2) {
+		ctx, cancel := context.WithTimeout(context.Background(), trayAnswerBudget)
+		if err := postPresenterNotice(ctx, webView2MissingNotice); err != nil {
+			log.Printf("WebView2 notice: %v", err)
+		}
+		cancel()
+	}
 	os.Exit(1)
 }
+
+// webView2MissingNotice is the notification a Panel without the WebView2
+// Runtime posts.
+var webView2MissingNotice = presenterNotice{Title: "The Panel can't open", Body: "Install the Microsoft Edge WebView2 Runtime to open the Panel."}
 
 // The native window starts at the same size every time and remembers nothing
 // between runs (research/panel-native/DECISION.md item 2). The minimum keeps
@@ -51,62 +64,63 @@ var errNoWebView2 = errors.New("The Panel window needs the Microsoft Edge WebVie
 // the Panel answers in process (panel_resource.go); nothing listens. It
 // returns once the window closes.
 func runResourceWindow(run *panelRun, quiet bool) error {
-	if run.start.path == "/permission-review" && startPermissionReview != (permissionReviewContext{}) {
-		return personalPermissionWindow(run.panel)
-	}
 	if !resourceWindowAvailable() {
 		return errNoWebView2
 	}
 	resources, start := run.resources(panelResourceOriginWindows)
-	if err := writePanelURL(os.Stdout, panelWindowAnnouncement, quiet); err != nil {
-		return err
+	// A Start-menu GUI launch has no console. Its optional announcement must
+	// leave window creation independent of that missing output handle.
+	//unchecked: the native window is the result; stdout is an optional announcement
+	if run.owned == nil {
+		writePanelURL(os.Stdout, panelWindowAnnouncement, quiet)
 	}
 	title := run.panel.windowTitle
 	if title == "" {
 		title = panelWindowTitle
 	}
 	serve := &win.Resources{Origin: panelResourceOriginWindows, Headers: panelResourceHeaders,
+		BindDirectoryPicker: func(window context.Context, pick func(context.Context) (string, error)) {
+			control := run.panel.claudeConnectionsForPanel()
+			run.panel.mu.Lock()
+			run.panel.directoryPicker = pick
+			run.panel.mu.Unlock()
+			control.mu.Lock()
+			control.picker = pick
+			control.window = window
+			control.mu.Unlock()
+			context.AfterFunc(window, control.close)
+			context.AfterFunc(window, run.panel.codexConnectionsForPanel().close)
+		},
 		Serve: func(ctx context.Context, r win.ResourceRequest) win.ResourceResponse {
 			out := resources.serve(ctx, panelResourceRequest{Method: r.Method, URL: r.URL, Header: r.Header, Body: r.Body})
 			return win.ResourceResponse{Status: out.Status, Header: out.Header, Body: out.Body, Aborted: out.Aborted}
 		}}
+	if run.owned == nil {
+		serve.SettingsInstance = "installed"
+		if panelExplicit != nil {
+			serve.SettingsInstance = panelExplicit.Endpoint
+		}
+	}
+	if run.owned != nil {
+		serve.DocumentURL = start
+		serve.BindVisible = run.owned.bindVisible
+		serve.BodyLimit = func(method, raw string) int {
+			u, err := url.Parse(raw)
+			if err == nil && strings.HasPrefix(u.Path, "/native-host/") {
+				return panelOwnedFrameLimit
+			}
+			return 16 << 20
+		}
+	}
 	// The window keeps DWM Mica behind a transparent WebView2 and pushes a
 	// change of Windows accent colour onto the open page
 	// (panelAccentScript) for static/skin-windows.css
 	// (research/panel-redesign/SPEC.md §5).
-	if !win.OpenWebView2(title, panelWindowWidth, panelWindowHeight,
+	if !resourceWindowOpen(title, panelWindowWidth, panelWindowHeight,
 		panelWindowMinWidth, panelWindowMinHeight, start, serve, openExternal, panelAccentScript) {
 		return errors.New("The Panel window could not open.")
 	}
 	return nil
-}
-
-// The standalone review uses the same session-aware native surface as Asks.
-// Its hidden message-loop owner never creates a WebView or management page.
-func runPersonalPermissionWindow(panel *servicePanel) error {
-	done := make(chan error, 1)
-	err := win.RunHidden(panelWindowTitle, func(w *win.Window) {
-		session := &trayWindowsSession{prompting: true}
-		if err := w.WatchSessionChanges(func(locked bool) {
-			if locked {
-				session.revision.Add(1)
-				win.DismissActiveQuestion()
-			}
-		}); err != nil {
-			done <- err
-			w.Close()
-			return
-		}
-		surface := &trayWindowsSurface{w: w, session: session}
-		go func() {
-			done <- panel.askPersonalPermissionReview(context.Background(), session, surface)
-			w.Do(w.Close)
-		}()
-	})
-	if err != nil {
-		return err
-	}
-	return finishPersonalPermissionReview(<-done, nil)
 }
 
 // openExternal is win.OpenWebView2's external callback: it is called with
@@ -114,9 +128,10 @@ func runPersonalPermissionWindow(panel *servicePanel) error {
 // own origin — a help link (target="_blank", per help.go) is the only kind
 // this app ever shows. It only ever launches http(s) URLs through
 // rundll32, and leaves the Panel window exactly where it was
-// (commit 4608a4da).
+// (commit 4608a4da). The one other target is Windows Settings at Apps,
+// Setup uses that link for app removal.
 func openExternal(rawURL string) {
-	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
+	if !externalTarget(rawURL) {
 		return
 	}
 	launch(rawURL)

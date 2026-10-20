@@ -23,7 +23,7 @@ func registryObserverFixture(t *testing.T) (*runtimeRegistry, inference.Subject)
 	if err := r.install([]string{ActionProviderManage}, []installationRule{{ActionProviderManage, credentials.ResourceAccount}}); err != nil {
 		t.Fatal(err)
 	}
-	p, err := openProviders(t.TempDir(), false, func(err error) { t.Logf("provider: %v", err) })
+	p, err := openFixtureProviders(t, t.TempDir(), false, func(err error) { t.Logf("provider: %v", err) })
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -16,7 +16,6 @@ import (
 )
 
 const oaUpgradeCode = "{CEEF6550-5E44-4E83-8E18-A855C9D941CA}"
-const lemonadeFeatureID = "LemonadeImage"
 const modelHostFeatureID = "ModelHost"
 
 const (
@@ -35,7 +34,7 @@ var queryFeature = msi.NewProc("MsiQueryFeatureStateW")
 var configureFeature = msi.NewProc("MsiConfigureFeatureW")
 
 func queryLemonadeFeature() (FeatureStatus, string, error) {
-	return queryPictureFeature(lemonadeFeatureID, "lemonaded.exe", "Lemonade Image")
+	return queryAdapter("lemonaded.exe", engineFeatureTitle(Lemonade))
 }
 
 func queryEngineFeature(engine AppID) (FeatureStatus, string, error) {
@@ -43,15 +42,17 @@ func queryEngineFeature(engine AppID) (FeatureStatus, string, error) {
 	case Lemonade:
 		return queryLemonadeFeature()
 	case TheNoise:
-		return queryPictureFeature("TheNoiseImage", "thenoise-provider.exe", "TheNoise Image")
+		return queryAdapter("thenoise-provider.exe", engineFeatureTitle(TheNoise))
 	case PyTorch:
-		return queryPictureFeature("PyTorchImage", "pytorchd.exe", "PyTorch Image")
+		return queryAdapter("pytorchd.exe", engineFeatureTitle(PyTorch))
 	default:
 		return FeatureStatus{}, "", errors.New("unknown installed engine feature")
 	}
 }
 
-func queryPictureFeature(featureID, providerBinary, title string) (FeatureStatus, string, error) {
+// queryAdapter reads an adapter every x64 core installs by its program beside
+// the Panel (adapterPresence); it queries no Windows Installer product.
+func queryAdapter(providerBinary, title string) (FeatureStatus, string, error) {
 	if runtime.GOARCH != "amd64" {
 		return FeatureStatus{Reason: "The OpenAbstractions " + title + " feature requires Windows x64"}, "", nil
 	}
@@ -59,89 +60,7 @@ func queryPictureFeature(featureID, providerBinary, title string) (FeatureStatus
 	if err != nil {
 		return FeatureStatus{}, "", err
 	}
-	if !identity.SamePathName(filepath.Base(program), "Abstraction Panel.exe") ||
-		!identity.SamePathName(filepath.Base(filepath.Dir(program)), "tools") {
-		return FeatureStatus{Reason: "Open the installed Abstraction Panel to add the " + title + " feature"}, "", nil
-	}
-	root := filepath.Dir(filepath.Dir(program))
-	products, err := relatedProducts()
-	if err != nil {
-		return FeatureStatus{}, "", err
-	}
-	var selected string
-	for _, product := range products {
-		location, err := getProductInfo(product, "InstallLocation")
-		if err != nil || !sameInstallPath(location, root) {
-			continue
-		}
-		if selected != "" {
-			return FeatureStatus{}, "", fmt.Errorf("multiple OA products own Panel install %q", root)
-		}
-		selected = product
-	}
-	if selected == "" {
-		return FeatureStatus{Reason: "Install the current OpenAbstractions core package before adding " + title}, "", nil
-	}
-	feature, _ := windows.UTF16PtrFromString(featureID)
-	product, _ := windows.UTF16PtrFromString(selected)
-	state, _, _ := queryFeature.Call(uintptr(unsafe.Pointer(product)), uintptr(unsafe.Pointer(feature)))
-	switch int32(state) {
-	case msiAbsent:
-		return FeatureStatus{Available: true, Reason: "Add the optional " + title + " feature to this OpenAbstractions installation"}, selected, nil
-	case msiLocal:
-		binary := filepath.Join(root, "tools", providerBinary)
-		info, err := os.Lstat(binary)
-		if err != nil || !info.Mode().IsRegular() {
-			return FeatureStatus{Available: true, Reason: "Repair the " + title + " feature; its provider program is missing"}, selected, nil
-		}
-		return FeatureStatus{Available: true, Installed: true}, selected, nil
-	case msiUnknown:
-		return FeatureStatus{Reason: "Update the OpenAbstractions core package to one with " + title}, selected, nil
-	default:
-		return FeatureStatus{Available: true, Reason: "The " + title + " feature must be installed locally"}, selected, nil
-	}
-}
-
-func addLemonadeFeature(ctx context.Context) (FeatureStatus, error) {
-	return addEngineFeature(ctx, Lemonade)
-}
-
-func addEngineFeature(ctx context.Context, engine AppID) (FeatureStatus, error) {
-	featureID := lemonadeFeatureID
-	title := "Lemonade Image"
-	if engine == TheNoise {
-		featureID = "TheNoiseImage"
-		title = "TheNoise Image"
-	} else if engine == PyTorch {
-		featureID = "PyTorchImage"
-		title = "PyTorch Image"
-	}
-	status, product, err := queryEngineFeature(engine)
-	if err != nil || status.Installed {
-		return status, err
-	}
-	if !status.Available || product == "" {
-		return status, errors.New(status.Reason)
-	}
-	if err := ctx.Err(); err != nil {
-		return status, err
-	}
-	productText, _ := windows.UTF16PtrFromString(product)
-	featureText, _ := windows.UTF16PtrFromString(featureID)
-	code, _, _ := configureFeature.Call(uintptr(unsafe.Pointer(productText)), uintptr(unsafe.Pointer(featureText)), msiLocal)
-	// Windows Installer owns the operation once it starts. A caller disconnect or
-	// result error is reconciled against the installed feature and program.
-	after, _, inspectErr := queryEngineFeature(engine)
-	if inspectErr != nil {
-		return FeatureStatus{}, inspectErr
-	}
-	if after.Installed {
-		return after, nil
-	}
-	if code != msiSuccess {
-		return after, fmt.Errorf("Windows Installer did not add %s (code %d): %s", title, code, after.Reason)
-	}
-	return after, fmt.Errorf("Windows Installer returned success but %s is not installed: %s", title, after.Reason)
+	return adapterPresence(program, providerBinary, title), "", nil
 }
 
 func queryModelHostFeature() (FeatureStatus, string, error) {
@@ -154,10 +73,10 @@ func queryModelHostFeature() (FeatureStatus, string, error) {
 	}
 	if !identity.SamePathName(filepath.Base(program), "Abstraction Panel.exe") ||
 		!identity.SamePathName(filepath.Base(filepath.Dir(program)), "tools") {
-		return FeatureStatus{Reason: "Open the installed Abstraction Panel to add the ModelHost feature"}, "", nil
+		return FeatureStatus{Reason: "Open the installed OpenAbstractions Panel to add the llama.cpp feature"}, "", nil
 	}
 	root := filepath.Dir(filepath.Dir(program))
-	products, err := relatedProducts()
+	products, err := relatedProducts(oaUpgradeCode)
 	if err != nil {
 		return FeatureStatus{}, "", err
 	}
@@ -222,8 +141,10 @@ func addModelHostFeature(ctx context.Context) (FeatureStatus, error) {
 	return after, fmt.Errorf("Windows Installer returned success but ModelHost is not installed: %s", after.Reason)
 }
 
-func relatedProducts() ([]string, error) {
-	upgrade, _ := windows.UTF16PtrFromString(oaUpgradeCode)
+// relatedProducts are the product codes Windows Installer relates to
+// upgradeCode for this account: its per-user and per-machine installs.
+func relatedProducts(upgradeCode string) ([]string, error) {
+	upgrade, _ := windows.UTF16PtrFromString(upgradeCode)
 	var products []string
 	for index := uint32(0); ; index++ {
 		var code [39]uint16

@@ -40,8 +40,17 @@ type activityEvent struct {
 	At      int64  `json:"at"`
 	App     string `json:"app"`
 	Program string `json:"program,omitempty"`
-	What    string `json:"what"`
-	Result  string `json:"result"`
+	// Also is the other program a line is about, matched by the app filter
+	// like Program (a Memory line names the asker and the holder).
+	Also   string `json:"also,omitempty"`
+	What   string `json:"what"`
+	Result string `json:"result"`
+	// Answer audit evidence, separate from the timeline's display words.
+	QuestionID string `json:"questionId,omitempty"`
+	AnsweredBy string `json:"answeredBy,omitempty"`
+	// Undo names the rule the row's Undo removes (activity_setup_grants.go).
+	Undo    *activityUndo `json:"undo,omitempty"`
+	Restore string        `json:"restore,omitempty"`
 }
 
 // activityPageSize is the owner page this Panel asks for (1..64 at both
@@ -50,7 +59,7 @@ const activityPageSize = 64
 
 // answerAuditReader is the asks operator surface the timeline reads.
 type answerAuditReader interface {
-	ListAnswersContext(ctx context.Context, cursor string, limit int64) (askclient.AnswerEntryPage, error)
+	ListAnswerContentsContext(ctx context.Context, cursor string, limit int64) (askclient.AnswerContentPage, error)
 }
 
 // answerAuditOperator resolves the asks operator per request. Tests replace it.
@@ -102,7 +111,7 @@ func (p *servicePanel) activityAnswers(w http.ResponseWriter, r *http.Request) {
 		panelError(w, err)
 		return
 	}
-	page, err := operator.ListAnswersContext(ctx, cursor, activityPageSize)
+	page, err := operator.ListAnswerContentsContext(ctx, cursor, activityPageSize)
 	switch {
 	case unknownMethod(err):
 		panelJSON(w, activityPage{Outcome: "unsupported", Events: []activityEvent{}})
@@ -122,33 +131,62 @@ func (p *servicePanel) activityAnswers(w http.ResponseWriter, r *http.Request) {
 // answerOptionWords word a catalogue question's options.
 var answerOptionWords = map[string]string{"allow": "Allowed", "once": "Allowed once", "refuse": "Refused", "never": "Refused for good", "keep": "Kept", "remove": "Removed"}
 
-// answerEvent words one audited answer: the app it concerns, what was asked,
-// and the answer with who gave it, "you" for the person's own answer through
-// this Panel or the native prompt.
-func answerEvent(a askclient.AnswerEntry, names *programTitler) activityEvent {
-	by := "you"
+// answerEvent words one audited answer from its immutable retained content:
+// the app it concerns, what was asked,
+// and the answer. Only the retained responder program supplies an actor name;
+// the operator route alone supplies no person or automatic-actor provenance.
+func answerEvent(content askclient.AnswerContent, names *programTitler) activityEvent {
+	a := content.Answer
+	by := ""
 	if a.AnsweredBy == askclient.AnswererResponder {
 		by = names.name(a.Answerer)
 	}
 	program := a.AskerProgram
-	e := activityEvent{At: a.AnsweredMs}
+	e := activityEvent{At: a.AnsweredMs, QuestionID: a.ID}
+	switch a.AnsweredBy {
+	case askclient.AnswererOperator, askclient.AnswererResponder:
+		e.AnsweredBy = a.AnsweredBy.String()
+	}
 	if a.Kind == askclient.AnswerKindChoice {
 		e.What = "Asked: “" + a.Title + "”"
-		e.Result = a.Label + ", chosen by " + by
+		e.Result = a.Label + ", chosen"
+		if by != "" {
+			e.Result += " by " + by
+		}
 	} else {
 		word := answerOptionWords[a.Option]
 		if word == "" {
 			word = a.Option
 		}
-		e.Result = word + " by " + by
+		e.Result = word
+		if by != "" {
+			e.Result += " by " + by
+		}
 		switch {
+		case a.Key == asks.SetupModelsKey:
+			if content.Content != nil {
+				facts, err := asks.SetupFactsFromSlots(content.Content.Slots)
+				if err == nil && facts.Occurrence != "" && facts.Occurrence == a.About {
+					if body, err := asks.SetupQuestionPresentation(content.Content.Slots); err == nil {
+						e.What = body.Title + "\n" + body.Instruction + "\n" + body.Details
+					}
+				}
+			}
 		case a.Key == asks.FirstUseKey:
-			if target, action, resource, ok := asks.FirstUse(a.Key, a.About, a.Title); ok {
-				program = target
-				e.What = firstUseSentence(trayPublisher{Subject: a.Publisher, Trusted: a.PublisherTrusted, Names: names}, target, action, resource)
+			// This immutable permission snapshot supplies historical display
+			// details after retirement. Rule writes use fresh occurrence reads.
+			if content.Content != nil && content.Content.Permission != nil && len(content.Content.Permission.Targets) > 0 {
+				target := content.Content.Permission.Targets[0]
+				program = target.Program
+				e.What = firstUseSentence(trayPublisher{Subject: a.Publisher, Trusted: a.PublisherTrusted, Names: names}, target.Program, target.Action, target.Resource)
+				if _, providerPair := asks.ProviderPermissionName(*content.Content.Permission); providerPair {
+					for _, companion := range content.Content.Permission.Targets[1:] {
+						e.What += "\n" + firstUseSentence(trayPublisher{Subject: a.Publisher, Trusted: a.PublisherTrusted, Names: names}, companion.Program, companion.Action, companion.Resource)
+					}
+				}
 			}
 		case a.Key == asks.SelfRegisteredKey:
-			if registered, _, ok := asks.SelfRegistered(a.Key, a.About, a.Title); ok {
+			if registered, _, ok := selfRegisteredTarget(a.Key, a.About, a.AskerProgram, content.Content); ok {
 				program = registered
 				e.What = "Added itself to OpenAbstractions"
 			}
@@ -176,38 +214,11 @@ func answerEvent(a askclient.AnswerEntry, names *programTitler) activityEvent {
 	return e
 }
 
-// catalogueWords is the sentence for a catalogue question other than first
-// use, self-registration and typed permission, chosen by the catalogue's own
-// slots and built from its About slot only: the recorded text carries
-// request codes, digests, full paths and raw permission lists, none of which
-// a row shows. A folder is named by its last element (oaShortName). The
-// catalogue names no app here, so an adopter's question keeps its own key.
-// An unknown key reads as a question.
+// catalogueWords reads the shared short display projection. Trusted first-use,
+// self-registration and typed-permission projections remain above.
 func catalogueWords(key, about string) string {
-	if key == asks.SystemSecurityLogKey {
-		return "Asked to read the Windows Security log"
-	}
-	q, ok := asks.Find(key)
-	if !ok {
-		return "Asked a question"
-	}
-	switch {
-	case q.About == "folder":
-		if leaf := programFileName(strings.TrimRight(about, `/\`)); leaf != "" {
-			return "Asked to edit files in " + leaf
-		}
-		return "Asked to edit files in a folder"
-	case q.About == "target":
-		return "Asked to replace stored content once"
-	case q.About == "host":
-		if about != "" {
-			return "Asked to fetch from " + about
-		}
-		return "Asked to fetch from the internet"
-	case strings.Contains(q.Text, "{rights}"):
-		return "Asked for permissions"
-	}
-	return "Asked a question"
+	q, _ := asks.Find(key)
+	return q.Summary(about)
 }
 
 // activityStarts answers GET with one page of the application start log.
@@ -235,16 +246,23 @@ func (p *servicePanel) activityStarts(w http.ResponseWriter, r *http.Request) {
 	out := activityPage{Outcome: page.Outcome.String(), Events: []activityEvent{}, Next: page.Cursor, Complete: page.Complete, CompleteSince: page.CompleteSinceUnixMs}
 	names := p.programTitler(ctx)
 	for _, s := range page.Starts {
-		result := "On its own"
+		result := ""
 		if s.Launched {
-			result = "By OpenAbstractions"
+			result = "Open requested"
 		}
-		out.Events = append(out.Events, activityEvent{At: s.StartedUnixMs, App: names.name(s.Program), Program: s.Program, What: "App started", Result: result})
+		out.Events = append(out.Events, activityEvent{At: s.StartedUnixMs, App: names.name(s.Program), Program: s.Program, What: "Became available", Result: result})
 	}
 	panelJSON(w, out)
 }
 
 func (p *servicePanel) activityRoutes(mux *http.ServeMux, key string) {
+	p.messageActivityRoutes(mux, key)
+	mux.HandleFunc("/activity/agent-exits", guard(key, p.activityAgentExits))
 	mux.HandleFunc("/activity/answers", guard(key, p.activityAnswers))
+	mux.HandleFunc("/activity/storage", guard(key, p.activityStorage))
 	mux.HandleFunc("/activity/starts", guard(key, p.activityStarts))
+	mux.HandleFunc("/activity/setup-grants", guard(key, p.activitySetupGrants))
+	mux.HandleFunc("/activity/app-requests", guard(key, p.activityAppRequests))
+	mux.HandleFunc("/activity/elevated", guard(key, p.activityElevated))
+	mux.HandleFunc("/activity/memory", guard(key, p.activityMemory))
 }

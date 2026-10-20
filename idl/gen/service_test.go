@@ -1,6 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"go/ast"
+	goparser "go/parser"
+	gotoken "go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -8,9 +12,260 @@ import (
 	"testing"
 )
 
+func TestRemoteCanonicalReceiptAndKeywordPrefix(t *testing.T) {
+	prefix, err := parse(head + `struct onewayRecord {1:required string value}(document="true",unknown_fields="refuse")
+service S {onewayRecord Read()(remote="call") oneway void Send(1:onewayRecord request)(remote="call")}(wire_name="test/prefix@1")`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prefix.Services[0].Methods[0].Result.Type != "onewayRecord" || prefix.Services[0].Methods[1].Result.Type != "void" {
+		t.Fatal(prefix.Services[0].Methods)
+	}
+	actual, err := os.ReadFile(productionFile(t, "abstraction-job/acceptance.thrift"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "acceptance.thrift"), actual, 0600); err != nil {
+		t.Fatal(err)
+	}
+	// Reuse the existing imported-record fixture's plain-record grammar.
+	grammar, err := os.ReadFile("../test/includes/model.thrift")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := string(grammar)
+	plain = plain[strings.Index(plain, "encoding json"):strings.Index(plain, "struct Ref")]
+	source := "include \"acceptance.thrift\"\n" + plain + `struct Result {1:required acceptance.Receipt receipt}(document="true",unknown_fields="refuse")
+service S {Result Submit(1:string key)(remote="delegate",idempotency_key="key")}(wire_name="test/receipt@1")`
+	path := filepath.Join(dir, "main.thrift")
+	if err := os.WriteFile(path, []byte(source), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{path, filepath.Join(dir, "out"), "go", "--go-import=acceptance=github.com/openabstractions/abstraction-job/go/abstraction/job/acceptance"}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 const serviceFixture = `struct Record {1: required string value} (document="true", unknown_fields="grant")
 service Events { oneway void Write(1: Record record,2: string text,3: bool enabled,4: i64 count) oneway void Ping() oneway void Opaque(1: json payload) } (wire_name="example.events/events@1")
 `
+
+func TestGeneratedRemoteEndpointAdmission(t *testing.T) {
+	source := head + `struct Record {1:required string value}(document="true",unknown_fields="refuse")
+service Query {Record Read()(readonly="true",remote="see") Record Call()(remote="call") Record Local() Record Person()(remote="person") oneway void Send()(remote="call")}(wire_name="test/query@1")
+service One {oneway void Ping()(remote="call")}(wire_name="test/one@1")`
+	def, err := parse(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, declaration := range []string{`struct ServeEndpointRemote {1:required bool value}(unknown_fields="refuse")`, `service ServeEndpointRemote {Record Read()}(wire_name="test/collision@1")`} {
+		if _, err := parse(source + declaration); err == nil {
+			t.Fatal("remote helper name collision accepted", declaration)
+		}
+	}
+	actual, err := loadDefinition(productionFile(t, "abstraction-facade/facade.thrift"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "facade"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{"go.mod": "module remote.test\n\ngo 1.22\n", "rec.go": genGo(def), "facade/rec.go": genGo(actual), "rec_test.go": remoteEndpointGoTest} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	aliases, err := goExportAliases(genGo(actual), "remote.test/facade")
+	if err != nil || !strings.Contains(aliases, "func ServeEndpointRemote(") {
+		t.Fatal("missing alias", err)
+	}
+	command := exec.Command("go", "test", ".")
+	command.Dir = dir
+	command.Env = append(os.Environ(), "GOWORK=off")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, output)
+	}
+}
+
+const remoteEndpointGoTest = `package rec
+import("errors";"testing";facade "remote.test/facade")
+func serviceRequest(contract,method string,arguments Raw)[]byte{return encOAServiceFrame(nil,&oaServiceFrame{Version:1,Service:contract,Method:method,Arguments:arguments},0)}
+type handler struct{calls int;admitted *bool}
+func(h *handler)Read()(Record,error){if h.admitted!=nil&&!*h.admitted{panic("handler before admission")};h.calls++;return Record{Value:"ok"},nil}
+func(h *handler)Call()(Record,error){return h.Read()}
+func(h *handler)Local()(Record,error){return h.Read()}
+func(h *handler)Person()(Record,error){return h.Read()}
+func(h *handler)Send()error{h.calls++;return nil}
+func(h *handler)Ping()error{h.calls++;return nil}
+type transport func([]byte)([]byte,error)
+func(f transport)ExchangeFrame(b []byte)([]byte,error){return f(b)}
+func(f transport)WriteFrame([]byte)error{return DispatchError("wrong_mode")}
+type legacy struct{contract string;calls *int}
+func(l legacy)ServiceContract()string{return l.contract}
+func(l legacy)DescribeService()(string,bool,string){return l.contract,true,""}
+func(l legacy)ExchangeFrame([]byte)([]byte,error){*l.calls++;panic("legacy handler reached")}
+type unknown struct{*QueryDispatcher}
+func(unknown)RemoteMethodProfile(string,string)(string,bool){return "unknown",true}
+func errorCode(t *testing.T,err error,code,message string){t.Helper();var se *ServiceError;if !errors.As(err,&se)||string(se.Code)!=code||se.Message!=message{t.Fatalf("want %s/%s, got %#v",code,message,err)}}
+func TestRemoteAdmission(t *testing.T){
+ admitted:=false;h:=&handler{admitted:&admitted};d:=&QueryDispatcher{Handler:h};calls:=0
+ allow:=func(contract,method,profile string)error{if contract!="test/query@1"||(method!="Read"&&method!="Call")||(profile!="see"&&profile!="call"){t.Fatal(contract,method,profile)};calls++;admitted=true;return nil}
+ c:=NewQueryClient(transport(func(b []byte)([]byte,error){return ServeEndpointRemote(b,"p","v",allow,d)}))
+ if v,e:=c.Read();e!=nil||v.Value!="ok"{t.Fatal(v,e)};admitted=false;if _,e:=c.Call();e!=nil{t.Fatal(e)};if calls!=2||h.calls!=2{t.Fatal(calls,h.calls)}
+ denied:=NewQueryClient(transport(func(b []byte)([]byte,error){return ServeEndpointRemote(b,"p","v",func(string,string,string)error{return &ServiceError{Code:"denied",Message:"no"}},d)}));_,deniedError:=denied.Read();errorCode(t,deniedError,"denied","no");if h.calls!=2{t.Fatal("denied client reached handler")}
+ for _,tc:=range []struct{name,code,message string;admit func(string,string,string)error}{{"Read","forbidden","remote admission required",nil},{"Local","unsupported","remote:local_only",allow},{"Person","forbidden","remote:person_only",allow},{"Missing","unsupported","remote:local_only",allow},{"Read","denied","no",func(string,string,string)error{return &ServiceError{Code:"denied",Message:"no"}}},{"Read","handler_error","handler failed",func(string,string,string)error{panic("private")}}}{
+  before:=h.calls;b,e:=ServeEndpointRemote(serviceRequest("test/query@1",tc.name,Raw("{}")),"p","v",tc.admit,d);if e!=nil{t.Fatal(e)};_,e=serviceResponse(b,"test/query@1",tc.name);errorCode(t,e,tc.code,tc.message);if h.calls!=before{t.Fatal("refused handler called")}
+ }
+ before:=h.calls
+ for _,service:=range []ServedService{legacy{"test/query@1",&h.calls},unknown{d}}{b,e:=ServeEndpointRemote(serviceRequest("test/query@1","Read",Raw("{}")),"p","v",allow,service);if e!=nil{t.Fatal(e)};_,e=serviceResponse(b,"test/query@1","Read");errorCode(t,e,"unsupported","remote:local_only")};if h.calls!=before{t.Fatal("legacy/unknown called")}
+ noAdmission:=func(string,string,string)error{t.Fatal("unexpected admission");return nil}
+ for _,frame:=range [][]byte{[]byte("{}"),append(serviceRequest("test/query@1","Read",Raw("{}")),[]byte("{}")...)}{if _,e:=ServeEndpointRemote(frame,"p","v",noAdmission,d);e==nil{t.Fatal("malformed frame accepted")}}
+ for _,tc:=range []struct{contract,method,code string;services []ServedService}{{"absent","Read","unknown_service",[]ServedService{d}},{"test/one@1","Ping","wrong_mode",[]ServedService{&OneDispatcher{Handler:h}}}}{b,e:=ServeEndpointRemote(serviceRequest(tc.contract,tc.method,Raw("{}")),"p","v",noAdmission,tc.services...);if e!=nil{t.Fatal(e)};_,e=serviceResponse(b,tc.contract,tc.method);errorCode(t,e,tc.code,"")}
+ // The existing local helper still routes a local method without admission.
+ c=NewQueryClient(transport(func(b []byte)([]byte,error){return ServeEndpoint(b,"p","v",d)}));admitted=true;if _,e:=c.Local();e!=nil{t.Fatal(e)}
+}
+func TestDescribeUsesActualEndpointMetadata(t *testing.T){
+ h:=&handler{};d:=&QueryDispatcher{Handler:h};calls:=0
+ allow:=func(contract,method,profile string)error{if contract!=EndpointContract||method!="Describe"||profile!="see"{t.Fatal(contract,method,profile)};calls++;return nil}
+ // Core facade owns the actual Endpoint.Describe definition.
+ c:=facade.NewEndpointClient(transport(func(b []byte)([]byte,error){return facade.ServeEndpointRemote(b,"actual","v1",allow,d)}))
+ description,e:=c.Describe();if e!=nil||description.Program!="actual"||calls!=1{t.Fatal(description,e,calls)}
+ // Another package requires an explicit metadata-bearing Endpoint service.
+ c=facade.NewEndpointClient(transport(func(b []byte)([]byte,error){return ServeEndpointRemote(b,"explicit","v1",allow,d,&facade.EndpointDispatcher{})}))
+ description,e=c.Describe();if e!=nil||description.Program!="explicit"||calls!=2{t.Fatal(description,e,calls)}
+ c=facade.NewEndpointClient(transport(func(b []byte)([]byte,error){return ServeEndpointRemote(b,"missing","v1",allow,d)}));_,e=c.Describe();var se *facade.ServiceError;if !errors.As(e,&se)||se.Code!="unsupported"||se.Message!="remote:local_only"{t.Fatal(e)}
+ // An explicit legacy Endpoint cannot inherit the core package's default.
+ c=facade.NewEndpointClient(transport(func(b []byte)([]byte,error){return facade.ServeEndpointRemote(b,"legacy","v1",allow,legacy{EndpointContract,&h.calls})}));_,e=c.Describe();if !errors.As(e,&se)||se.Code!="unsupported"||se.Message!="remote:local_only"{t.Fatal(e)}
+ if calls!=2||h.calls!=0{t.Fatal(calls,h.calls)}
+}
+`
+
+func TestRemoteAnnotationValuesAndTraitAgreement(t *testing.T) {
+	source := head + `struct Box {1: required string value}(document="true",unknown_fields="grant")
+service S {Box Read()(readonly="true") Box Local()(remote="local") Box Call()(remote="call")}(wire_name="test/s@1",remote="see")`
+	def, err := parse(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []string{"see", "local", "call"} {
+		if def.Services[0].Methods[i].Remote != want {
+			t.Fatal(def.Services[0].Methods)
+		}
+	}
+	for _, replacement := range []string{`remote=""`, `remote="unknown"`, `remote="see",remote="local"`} {
+		if _, err := parse(strings.Replace(source, `remote="call"`, replacement, 1)); err == nil {
+			t.Fatal("accepted", replacement)
+		}
+	}
+	for _, replacement := range []string{`remote="see"`, `remote="delegate"`} {
+		if _, err := parse(strings.Replace(source, `remote="call"`, replacement, 1)); err == nil {
+			t.Fatal("trait disagreement", replacement)
+		}
+	}
+	for _, marker := range []string{`secret="false"`, `secret=""`, `local=""`, `local="host"`, `local="pid",local="path"`} {
+		if _, err := parse(strings.Replace(source, `string value`, `string value(`+marker+`)`, 1)); err == nil {
+			t.Fatal("accepted field", marker)
+		}
+	}
+	for _, marker := range []string{`secret="true"`, `local="path"`, `local="pid"`, `local="handle"`} {
+		if _, err := parse(strings.Replace(source, `string value`, `string value(`+marker+`)`, 1)); err != nil {
+			t.Fatal(marker, err)
+		}
+	}
+	for _, name := range []string{"RemoteMethodProfile", "remote_method_profile"} {
+		if _, err := parse(strings.Replace(source, `Box Call()`, `Box `+name+`()`, 1)); err == nil {
+			t.Fatal("collision accepted", name)
+		}
+	}
+}
+
+func TestDispatcherTableCarriesRemoteProfile(t *testing.T) {
+	source := head + `struct Box {1:required string value}(document="true",unknown_fields="grant")
+service S { Box Read()(readonly="true",remote="see") Box Call()(remote="call") Box Local() }(wire_name="test/s@1")`
+	def, err := parse(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := genGo(def)
+	if !strings.Contains(output, "if contract != d.ServiceContract()") {
+		t.Fatal("profile lookup must reuse its dispatcher contract owner")
+	}
+	if strings.Contains(output, "if contract != \"test/s@1\"") {
+		t.Fatal("profile lookup repeats the service wire name")
+	}
+	file, err := goparser.ParseFile(gotoken.NewFileSet(), "generated.go", output, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var required []string
+	for _, decl := range file.Decls {
+		if group, ok := decl.(*ast.GenDecl); ok {
+			for _, spec := range group.Specs {
+				if kind, ok := spec.(*ast.TypeSpec); ok && kind.Name.Name == "ServedService" {
+					for _, field := range kind.Type.(*ast.InterfaceType).Methods.List {
+						if len(field.Names) == 0 {
+							required = append(required, field.Type.(*ast.Ident).Name)
+						} else {
+							required = append(required, field.Names[0].Name)
+						}
+					}
+				}
+			}
+		}
+	}
+	if strings.Join(required, ",") != "DescribedService,ServiceContract" {
+		t.Fatal("required interface changed", required)
+	}
+	aliases, err := goExportAliases(output, "example.test/canonical")
+	if err != nil || !strings.Contains(aliases, "func RemoteMethodProfile(") {
+		t.Fatal("alias lookup missing", err)
+	}
+	dir := t.TempDir()
+	test := `package rec
+import "testing"
+type oldService struct{}
+func(oldService)DescribeService()(string,bool,string){return "old",true,""}
+func(oldService)ServiceContract()string{return "old"}
+var _ ServedService=oldService{}
+type unknown struct{}
+func(unknown)RemoteMethodProfile(string,string)(string,bool){return "unrecognized",true}
+func TestLookup(t *testing.T){d:=&SDispatcher{};for _,tc:=range []struct{contract,method,want string}{{"test/s@1","Read","see"},{"test/s@1","Call","call"},{"test/s@1","Local","local"},{EndpointContract,"Describe","see"},{"wrong","Read","local"},{"test/s@1","missing","local"}}{if got:=RemoteMethodProfile(d,tc.contract,tc.method);got!=tc.want{t.Fatal(tc,got)}};if RemoteMethodProfile(oldService{},"old","Read")!="local"||RemoteMethodProfile(unknown{},"x","y")!="local"{t.Fatal("missing/unknown metadata escaped local")}}
+func TestNilDispatcherContract(t *testing.T){var d *SDispatcher; if profile,ok:=d.RemoteMethodProfile(d.ServiceContract(),"Read");!ok||profile!="see"{t.Fatal(profile,ok)};if profile,ok:=d.RemoteMethodProfile("foreign","Read");ok||profile!="local"{t.Fatal(profile,ok)}}
+`
+	for name, body := range map[string]string{"go.mod": "module profile.test\n\ngo 1.22\n", "rec.go": output, "rec_test.go": test} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	command := exec.Command("go", "test", ".")
+	command.Dir = dir
+	command.Env = append(os.Environ(), "GOWORK=off")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, output)
+	}
+}
+
+func TestRemoteMetadataKeepsWireHashes(t *testing.T) {
+	source := head + `struct Box {1:required string value}(document="true",unknown_fields="refuse") service S {Box Read(1:Box box)}(wire_name="test/s@1")`
+	before, err := parse(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterSource := strings.Replace(source, "string value", `string value(secret="true",local="path")`, 1)
+	afterSource = strings.Replace(afterSource, "Box box)", `Box box)(remote="call")`, 1)
+	after, err := parse(afterSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a, b := definitionHashes(before), definitionHashes(after); len(a) != 1 || len(b) != 1 || a[0] != b[0] {
+		t.Fatal("metadata changed wire hash", a, b)
+	}
+	if problems := compatibility(before, after); len(problems) != 0 {
+		t.Fatal(problems)
+	}
+}
 
 func TestServiceParse(t *testing.T) {
 	s, e := parse(head + serviceFixture)
@@ -71,9 +326,19 @@ func TestGeneratedServiceGo(t *testing.T) {
 		t.Fatalf("%v\n%s", e, out)
 	}
 }
-func TestServiceRejectsNestedOpaque(t *testing.T) {
+
+// Every record encoder writes opaque values verbatim ([DEF-A3]), so a service
+// may carry a record another definition owns, with or without opaque fields.
+func TestServiceNestedOpaqueImportedRecord(t *testing.T) {
 	source := head + `struct Record{1:required json payload}(document="true",unknown_fields="grant") service S{oneway void Write(1:Record r)}(wire_name="test/s@1")`
-	if _, e := parse(source); e == nil || !strings.Contains(e.Error(), "nested opaque") {
+	if _, e := parse(source); e != nil {
+		t.Fatal(e)
+	}
+	load := func(string) (*Definition, error) {
+		return parse("namespace * dep.payload\n" + head + `struct Box{1:required json payload}(document="true",unknown_fields="grant")`)
+	}
+	root := "namespace * root.service\ninclude \"dep.thrift\"\n" + head + `struct Doc{1:required string id}(document="true",unknown_fields="grant") service S{oneway void Write(1:dep.Box r)}(wire_name="test/s@1")`
+	if _, e := parseWithIncludes(root, load); e != nil {
 		t.Fatal(e)
 	}
 }

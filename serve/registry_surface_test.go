@@ -21,17 +21,18 @@ func TestProviderListAndStatusDescribePrintTheRegistryReading(t *testing.T) {
 	}
 	program := copyTestBinary(t, "oa-listed-provider")
 	name := fmt.Sprintf("listed-%d", time.Now().UnixNano()%1_000_000_000)
-	chat := exec.Command(program, providerFixtureArg, "chat", name, t.TempDir())
+	endpointName := name + ".v1_test"
+	chat := exec.Command(program, providerFixtureArg, "chat", mustProviderEndpoint(t, endpointName), t.TempDir())
 	if err := chat.Start(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { chat.Process.Kill(); chat.Wait() })
-	eventually(t, 10*time.Second, "the provider listening", func() bool { return answers(name) })
+	eventually(t, 10*time.Second, "the provider listening", func() bool { return answers(t, endpointName) })
 
 	options, _ := isolatedRuntime(t)
 	startInferenceRuntime(t, options)
 	endpoint := []string{"--endpoint", options.endpoint, "--timeout", "30s"}
-	if out, err := runProvider(t, append([]string{"add", name, "--program", program, "--provider-endpoint", name, "--contract", inference.Contract,
+	if out, err := runProvider(t, append([]string{"add", name, "--program", program, "--provider-endpoint", endpointName, "--contract", inference.Contract,
 		"--activate", "attach", "--profiles", "chat"}, endpoint...)...); err != nil {
 		t.Fatalf("provider add: %v\n%s", err, out)
 	}
@@ -55,14 +56,14 @@ func TestProviderListAndStatusDescribePrintTheRegistryReading(t *testing.T) {
 	}
 
 	var text, diagnostics strings.Builder
-	if err := statusDescribe([]string{name}, &text, &diagnostics); err != nil {
+	if err := statusDescribe([]string{mustProviderEndpoint(t, endpointName)}, &text, &diagnostics); err != nil {
 		t.Fatalf("status describe: %v\n%s%s", err, text.String(), diagnostics.String())
 	}
 	if !strings.Contains(text.String(), "outcome: described") || !strings.Contains(text.String(), inference.Contract) || !strings.Contains(text.String(), "ready") {
 		t.Fatalf("status describe:\n%s", text.String())
 	}
 	var asJSON strings.Builder
-	if err := statusDescribe([]string{name, "--json"}, &asJSON, &diagnostics); err != nil {
+	if err := statusDescribe([]string{mustProviderEndpoint(t, endpointName), "--json"}, &asJSON, &diagnostics); err != nil {
 		t.Fatalf("status describe --json: %v", err)
 	}
 	var description fwire.Description
@@ -71,7 +72,7 @@ func TestProviderListAndStatusDescribePrintTheRegistryReading(t *testing.T) {
 		t.Fatalf("status describe --json: %v\n%s", err, asJSON.String())
 	}
 	var missing strings.Builder
-	if err := statusDescribe([]string{name + "-absent", "--timeout", "1s"}, &missing, &diagnostics); err == nil {
+	if err := statusDescribe([]string{endpointName + "-absent", "--timeout", "1s"}, &missing, &diagnostics); err == nil {
 		t.Fatalf("status describe of an absent endpoint answered:\n%s", missing.String())
 	}
 }

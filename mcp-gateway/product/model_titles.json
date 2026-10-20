@@ -1,0 +1,20 @@
+[
+  {"provider":"modelhost","engines":["llama.cpp","llamacpp","modelhostd"],"resources":["modelhost"]},
+  {"provider":"pytorch-image","engines":["pytorchd","diffusers"]},
+  {"provider":"lemonade-image","resources":["lemonade"]},
+  {"title":"ComfyUI","engines":["comfyui","comfy-image"],"resources":["comfyui"]},
+  {"title":"Hugging Face","resources":["hf","huggingface"]},
+  {"title":"Civitai","resources":["civitai"]},
+  {"title":"LM Studio","engines":["lmstudio","lm-studio"],"resources":["lmstudio"]},
+  {"title":"Ollama","engines":["ollama"],"resources":["ollama"]},
+  {"title":"Jan","resources":["jan"]},
+  {"title":"FastFlowLM","engines":["flm","fastflowlm"],"resources":["fastflowlm"]},
+  {"title":"DeepSeek","engines":["deepseek"],"resources":["deepseek"]},
+  {"title":"Setup chat","resources":["oa-chat"]},
+  {"title":"stable-diffusion.cpp","engines":["sdcpp","sd-server","sd.cpp","stable-diffusion.cpp"]},
+  {"title":"whisper.cpp","engines":["whispercpp","whisper.cpp"]},
+  {"title":"Kokoros","engines":["kokoros"]},
+  {"title":"LocalAI","engines":["localai"]},
+  {"title":"OpenAI","engines":["openai"]},
+  {"title":"vLLM","engines":["vllm"]}
+]

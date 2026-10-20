@@ -43,7 +43,7 @@ Each is refused by name, with the reason in the error.
 | **[DEF-F3]** `set<T>` | A set has no order that three languages share. Use `list`. |
 | **[DEF-F4]** `double`, and any float | A float has more than one spelling. `1.50` and `1.5` are one value and two records. Numbers inside an *opaque* field keep whatever spelling they arrived with ([DEF-E5]); the definition itself has no float. |
 | **[DEF-F5]** `binary` on unsupported backends | Arbitrary octets, distinct from UTF-8 `string` and verbatim `json`. Go/C++/Python/Rust/JavaScript support it; unsupported backends refuse it explicitly. See binary values below. |
-| **[DEF-F6]** unsupported cross-definition references | Qualified included records are supported in Go/C++/Python/docs as described below. Imported enums/typedefs, cyclic include graphs and unsupported backends are refused. |
+| **[DEF-F6]** unsupported cross-definition references | Qualified records, field/service enums and scalar typedefs from a direct include are supported. Scalar aliases retain their primitive, declared grammar and value constraints. Unqualified imported names, typedef chains, enum typedefs/maps, multi-hop qualified references, cyclic include graphs and unsupported backends are refused. Imported named grammars require a scalar field or method value; collection-element grammar projection is unsupported. Protocol outcome enums remain local. |
 | **[DEF-F7]** default values (`1: optional i32 n = 3`) | A default written back is not an absence, and the difference is load-bearing. A reader that supplies a default on read and a writer that records one are doing different things, and one syntax for both hides it. |
 | **[DEF-F8]** `i8`, `i16`, `byte` | Integer width is pinned per field and we need two widths. Offering more invites a third. |
 | **[DEF-F9]** an `optional` field with no `omit` | See [DEF-A4]. |
@@ -92,18 +92,32 @@ an integer, written in plain decimal with no sign on zero, no exponent and no
 leading zero. Numbers inside an opaque field are not the definition's and are
 carried verbatim.
 
-**[DEF-E6] `opaque = "verbatim"`** — see [DEF-A3].
+**[DEF-E6] `opaque`** — how a writer lays out an opaque value ([DEF-A3]).
+Both values keep every string token, escape, number spelling, member and member
+order exactly as they arrived, and both drop the whitespace around the value.
+`"verbatim"` keeps the value's interior whitespace as the caller holds it.
+`"reindent"` writes the value's insignificant whitespace again at the declared
+`indent`, one member or element per line, so one value spelled on one line and
+on six is written as the same bytes. A definition whose record files are
+compared byte for byte between implementations declares `"reindent"`:
+`abstraction-job/job.thrift` does, because JOB-J1 compares record bytes and
+JOB-J7 leaves a payload's whitespace out. A service frame carries opaque bytes
+verbatim ([DEF-S1]). A definition declaring `"reindent"` therefore declares
+no service, and no service argument or return value reaches an opaque value
+through a record a `"reindent"` definition owns; the generator refuses both.
+`gen/job_reference_test.go` holds five generated job encoders to the two
+hand-written job references.
 
 **[DEF-E7] `terminator`** — `"newline"` ends the document with one LF,
 `"none"` ends it with the closing brace. LF, never CRLF, on every platform.
 
 **[DEF-E8] `duplicate_keys`** — `"refuse"` or `"last"`, what a reader does with a
-map key it has already seen. The writer cannot produce one, so this is a rule
-about reading only, and it is here because a rule nobody states is decided
-five times by five libraries: `encoding/json` keeps the last, Python's `json`
-keeps the last, and neither says so where a contract could cite it.
+repeated key of a map or a repeated member of an object inside a `json` value.
+Under `"refuse"` either refuses with `duplicate_key`. Under `"last"` a map keeps
+the final value, and a `json` value is carried as the bytes it arrived as, its
+repeated members included; its consumer's parser decides which member it reads.
 
-**[DEF-E9] `depth_limit`** — 1 to 1024, the deepest nesting a reader accepts,
+**[DEF-E9] `depth_limit`** — 1 to 1000, the deepest nesting a reader accepts,
 counted from the document object and *including* nesting inside an opaque value.
 A reader with no limit is a denial of service on untrusted input, and a reader
 whose limit is its own stack is a limit nobody can write down.
@@ -112,6 +126,22 @@ whose limit is its own stack is a limit nobody can write down.
 
 Exactly one struct carries it. It is the type `encode` takes, and the thing the
 encoding declaration describes.
+
+### `schema_members = "<min>..<max>"`
+
+A struct may declare JSON Schema property-count bounds with `schema_members`,
+for example `(schema_members = "1..1")`. It uses the canonical non-negative
+count grammar of [DEF-A11]: either bound may be open, at least one is present,
+and min is at most max. The JSON Schema generator emits `minProperties` and
+`maxProperties` for the declared bounds, including a referenced record's schema.
+The declaration applies only to that struct; `document = "true"` identifies the
+encoding root and carries no property-count rule.
+
+This is a schema declaration. Generated codecs retain their existing behavior;
+owning readers enforce their contract's member-count rule. FAC-M33 schemas
+require a generator supporting this annotation. Earlier generators may ignore it
+and provide no proof of the declared count. Fields, enums and other declarations
+cannot carry `schema_members`.
 
 ### [DEF-A2] `(<language>.name = "...")`
 
@@ -124,15 +154,17 @@ cannot invalidate an existing definition.
 ### [DEF-A3] The `json` type
 
 One syntactically valid JSON value, **validated in full and carried as the bytes
-it arrived as**: not re-indented by its own rules, not re-escaped, its number
-spellings and its key order preserved exactly as they arrived. The escape
+it arrived as**: not re-escaped, its number spellings and its key order
+preserved exactly as they arrived. Its whitespace follows the definition's
+`opaque` layout ([DEF-E6]). The escape
 *policy* in [DEF-E2] applies to strings **this definition owns** and never
 inside a `json` field; the JSON *grammar* applies everywhere, at every depth.
 
 So a reader checks escapes, delimiters, separators, literals, number grammar,
 control characters, UTF-8 and the declared depth limit inside a `json` value,
 and it checks nothing about what the value means. Every restriction the encoding
-block declares reaches inside — `duplicate_keys` included — because a payload
+block declares reaches inside, as [DEF-E8] states for each `duplicate_keys`
+policy, because a payload
 that only our reader can parse is not a payload anybody can hand on. And no
 number is converted to a host type in order to be validated: an integer past
 every float and every 64-bit width is legal JSON, and a reader that widened it
@@ -155,6 +187,16 @@ They are different rules and the shipped record uses both in one struct: a step
 count of `0` is omitted, and a step that has not started is omitted. A struct
 field may only be `omit = "absent"` — a struct has no zero to omit on.
 
+For `i32`, `i64` and `bool`, `omit = "absent"` retains a present `0` or
+`false`. Go uses pointers, Python uses `None`, JavaScript uses `undefined`,
+Rust uses `Option<T>` and C++ uses
+`std::optional<T>`. A missing member decodes as absent; an explicit JSON `null`
+is refused like an optional record. Declared range constraints apply to every
+present value, including zero, and skip an absent value. Required scalars and
+scalars with `omit = "zero"` keep their value representation. JavaScript
+encoders refuse a present `null`. Changing a published field's omission rule
+requires its service's version window under CONV-V1.
+
 **And a collection field may only be `omit = "zero"`**, which is the mirror
 image and was added 2026-09-08 because the profile accepted the other half in
 silence. No backend can tell an empty collection from a missing one: there is no
@@ -173,6 +215,15 @@ annotations, and the enum body carries `(unknown = "grant")` or
 The unknown-member policy applies during encoding and decoding. `grant`
 preserves an unknown word; `refuse` rejects it. Authority and supported request
 semantics are enforced by the service before it performs work.
+
+The enum body may also carry `(doc = "...")` for descriptive documentation.
+The documentation generator links a heading only when that enum's own `doc`
+contains a canonical public-definition link with the exact enum name as its
+label. The heading retains its ID and escaped symbol text. Documentation changes no member spelling,
+unknown-member policy, authority or wire-compatibility identity.
+This annotation is supported by the 0.8.0 development profile. Earlier
+generators accept only `unknown` and `reader` on an enum body and refuse an
+input containing `doc`; existing published archives remain unchanged.
 
 The `reader` annotation records what happens after decoding. `display` carries
 unknown words for presentation. `validate` carries them to a service boundary
@@ -207,11 +258,27 @@ the parser rejects duplicate effective spellings before generation. `wire` is
 semantic metadata and is displayed in enum documentation rather than emitted
 as a member annotation table.
 
-### [DEF-A6] `const list<i32>` and `const list<string>`
+### [DEF-A6] `const list<i32>`, `const list<string>`, `const i32`, `const i64` and `const string`
 
 A closed list, generated once per language instead of transcribed once per
 language. The ten status codes that mean *no, permanently* were written by hand
 in three languages and disagreed by four rows.
+
+    const i32 ipc_default_call_budget_ms = 5000
+
+A scalar `i32` or `i64` is one canonical decimal within its width, printed as
+Go `const IPCDefaultCallBudgetMs int32 = 5000`, Python
+`IPC_DEFAULT_CALL_BUDGET_MS = 5000`, C++ `inline constexpr std::int32_t
+kIpcDefaultCallBudgetMs = 5000;`, Rust `pub const IPC_DEFAULT_CALL_BUDGET_MS:
+i32 = 5000;` and JavaScript `export const ipcDefaultCallBudgetMs = 5000;` (an
+`i64` is a `BigInt` there). The transport's status codes, frame bounds and
+call budget are declared this way in `abstraction-identity/identity.thrift`,
+and every hand-written IPC binding reads them from its generated artefact.
+
+A scalar `string` is one UTF-8 JSON quoted literal, decoded once by the
+compiler. Each binding emits that value as its language's immutable string
+constant. Escaped quotes, control characters, backslashes and Unicode keep the
+same bytes. Existing annotation and list-string literals retain their spelling.
 
 ### [DEF-A7] `(unknown_fields = "refuse" | "grant" | "preserve")`
 
@@ -249,8 +316,10 @@ such as `__proto__` remain data.
 The writer emits known fields in definition order, then extra fields sorted by
 the UTF-8 bytes of their decoded names. It emits every extra value, including
 null, false, zero, empty strings, empty arrays and empty objects. Extra values
-follow the existing opaque-JSON rule: string escapes, number spellings and member
-order are retained; surrounding whitespace may be reflowed. Unknown keys use the
+follow the opaque-JSON rule ([DEF-A3], [DEF-E6]): string escapes, number
+spellings, members and member order are retained byte for byte, whitespace
+around the value is dropped, and interior whitespace is kept under
+`opaque = "verbatim"` and laid out again under `"reindent"`. Unknown keys use the
 declared string escaping policy. **This guarantees unknown value preservation,
 not whole-object byte identity:** promoting an unknown field to a declared field
 can change its placement and apply that field's type/omission rules. Adopters
@@ -420,6 +489,147 @@ name: a value that is not a JSON string is `wrong_type` at that value's first
 byte, and that is a refusal an opaque map cannot make. Headers and labels are
 strings we escape; a payload is bytes we carry ([DEF-A3]), and one type cannot
 be both.
+
+### [DEF-A11] Declared value constraints: `length`, `range` and `pattern`
+
+    1: required string request_key (length = "1..128", pattern = "no_control")
+    2: required i64 wait_ms (range = "0..30000")
+
+A field or a method argument declares the bounds its owner enforces, once, and
+every generated reader and writer checks them. The names are Smithy's
+constraint traits; the departures are listed in [LINEAGE](LINEAGE.md).
+
+- **`length = "<min>..<max>"`** bounds a `string` in UTF-8 bytes, a `binary`
+  in decoded bytes, a `json` value in the bytes of the value as held, and a
+  `list` or `map` in entries. Either side may be left open (`"..64"`,
+  `"1.."`); both are canonical non-negative decimals and min is at most max.
+- **`range = "<min>..<max>"`** bounds an `i32` or
+  `i64`, inclusive, in the same spelling with signed decimals inside the
+  field's width.
+- **`pattern = "<class>"`** requires every character of a `string` to belong
+  to a named class: `no_control` refuses U+0000 to U+001F and U+007F to
+  U+009F, the Unicode control characters; `ascii_name` admits only ASCII
+  letters, digits, `_`, `.` and `-`; `ascii_lower_token` admits lowercase ASCII
+  letters, digits, `_`, `.`, `:` and `-`. The empty string belongs to every class.
+
+A required field is always checked. A scalar with `omit = "absent"` is checked
+when present, including a present zero, and skips an absent value ([DEF-A4]).
+Any other optional field holding its type's zero
+(an empty string, binary, list or map, or `0`) carries nothing and is not
+checked, which is the one reading Go, Python, C++, JavaScript and Rust share
+for an omitted value. A violation reads **`bad_value`**, a structure-stage
+word the definition declares in its refusal block whenever one field declares
+a constraint; the generator refuses the definition otherwise, and refuses a
+constraint the field's type cannot carry. All five readers check at the
+record's boundary, after `missing_field` and in field order, so a decoder
+refuses an out-of-bound value before a dispatcher calls a handler. All five
+writers refuse before they emit the record, so a generated client refuses an
+out-of-bound argument before its transport is called (abstraction-ipc
+`IPC-A6`): Go panics with `*Refusal` and its clients return it as the call's
+error, C++ throws `Refusal`, Python and JavaScript raise or throw `Refusal`,
+and Rust's clients return `CallError::Refusal` from the same check its record
+writer panics on. A reader's offset is the end of the record and a writer's
+is zero, as for required integer equality below. The reference page states each bound beside the field's presence, and the
+JSON Schema output states ranges, entry counts, patterns and a string's byte
+bound as the character bound it implies.
+
+A declaration records a bound the owning service already enforces. A new or
+narrower bound on a published field is a wire change and waits for that
+service's next version ([DEF-V1]).
+
+A local `typedef string Name (length="1..128", pattern="no_control")`
+declares these same constraints once for every scalar use and every element
+of an already-supported `list<Name>` or string-map key/value position.
+The wire and native carrier remain strings. A scalar field's own length
+intersects with the named length; contradictory bounds refuse the definition.
+Patterns both apply. Present elements are checked even when empty; an optional
+scalar retains the existing zero/absence rule. Typedefs accept only `read`,
+`write`, `length` and the existing `pattern` classes; unsupported or malformed
+annotations refuse. Qualified scalar typedefs from a direct include retain these
+constraints at the same supported positions. Unqualified imported names, typedef
+chains, enum typedefs and new container forms remain
+outside this profile.
+
+### [DEF-A12] The large-field rule, and `(chunk = "true")`
+
+Bytes do not travel through a record: a large value is a reference to content
+a store holds. Every `binary`, `string`, `json`, `list` and `map` field and
+method argument declares a `length` ([DEF-A11]); a `string` typedef with a
+read and write grammar ([DEF-G1]) is bounded by it, and an enum by its longest
+word. From the bounds the generator computes each record's largest encoding,
+escapes and indentation included, and refuses a record, or a method's
+argument set, whose largest encoding exceeds 1,048,576 bytes, one frame's
+default (abstraction-ipc `IPC-F1`), unless the record says `chunk = "true"`:
+one bounded piece of a stream a reference names. A record holding a value
+without a bound has no largest encoding, and `idl/inventory.py` rule R9 lists
+every such field: the list in `idl/contract_rules.recorded` only shrinks, and a
+new field without a bound fails the inventory.
+
+**A struct or document may declare `max_encoded = "<n>"`.** The 2026-11-02
+architectural ruling uses this aggregate ceiling for legitimately composed
+records whose independent field maxima exceed a frame. `<n>` is a canonical
+positive decimal at most 1048576 (IPC-F1's default frame). The definition
+declares `encoded_size(stage="structure")`, the typed refusal for exceeding it.
+
+The ceiling counts the record **compact value span**, from its opening `{`
+through its closing `}`, excluding insignificant JSON whitespace outside
+strings. UTF-8 bytes and whitespace inside strings count. This count is
+independent of nesting depth. Writers count newly emitted bytes while writing;
+readers count actual input bytes during a pre-scan before decoding members,
+without normalizing or re-encoding. Escaped strings retain their actual byte
+spelling in the reader's count.
+
+Annotated writers and readers independently enforce a **raw value-span guard**
+of 1048576 bytes, including interior whitespace. It bounds reader whitespace
+scanning work and keeps successful emitted spans readable. The scan allocates
+no decoded content and retains the definition's depth limit. Leading/trailing
+document whitespace and the declared LF terminator are outside both spans.
+Document wrappers and transports still own their raw-document/whole-frame
+bounds, including envelope overhead; a record guard proves no envelope fit.
+
+Only the annotated record suppresses its own static worst-case failure.
+Every parent's proof retains each child's full physical worst case at its
+actual nesting depth, ignoring child annotations. A parent needs its own
+annotation if its composed proof fails. Compact ceilings never substitute for
+physical size in that proof. Per-field caps and R9 remain mandatory. A record
+cannot combine `max_encoded` with `chunk="true"`; stream chunks keep their
+separate semantics. Unannotated oversized records keep the static refusal,
+and unannotated generic codecs remain unchanged. A service maps only the typed
+`encoded_size` refusal to whole-response
+`unavailable` / `bound:reply_bytes`; it never truncates a record. Adding or
+narrowing an aggregate ceiling on a published shape requires its successor
+window; widening or removing one preserves compatibility. Unannotated
+definitions retain their existing hashes and generated bytes.
+
+Restoration of an accounted immutable published shape under [DEF-V1] can expose
+existing rows hidden by a rejected narrowing change. An explicit compatibility
+disposition records only those inherited rows with publication/source provenance;
+the default refusal of new unlisted findings remains. This accounting changes
+no decoder acceptance and establishes no bounds compliance.
+
+A `length` on a list or map
+counts entries; a local string typedef's finite length bounds its elements or
+string-map keys/values. Plain `string`, `json` or `binary` elements stay open. R9 lists each
+such collection as `<field>[]` whatever its declared entry count, and a new one
+fails the inventory until its element is bounded (W1-23a retains the remaining
+element forms). `gen --sizes <definition>` prints each record's largest
+encoding, or the first value without a bound.
+
+GeneratedRecords1722 explicitly accounts the private Go legacy/proposal input
+profile's like-for-like copies of already recorded Job Record fields and its
+existing opaque-value grammar in `contract_rules.recorded`. This migration of
+handwritten accepted input adds no RPC root or logical payload capacity. The
+recorded provenance names the canonical fields and frozen source; unlisted new
+unbounded declarations continue to fail R9.
+
+### [DEF-A13] Secret and local-only field metadata
+
+A field may declare `secret="true"`, and independently
+`local="path"`, `local="pid"` or `local="handle"`. Other and empty values
+refuse. These are compiler/inventory metadata and change no codec or wire
+field. The owning contract declares the semantics; names alone supply none.
+R12 applies DEF-S4 to every reachable field, including optional/container
+members. Credentials raw secret values and applied headers remain local.
 
 ### [DEF-R1] `refusal` — the words a decoder may say, in the order it says them
 
@@ -622,6 +832,23 @@ and `member` predicates the conformance drivers under `idl/test` probe.
 `scripts/idiom_check.py` refuses each private helper name on a public surface,
 and the surface snapshots under `idl/gen/testdata/surface/` record the rest.
 
+Every binding that declares the `wrong_type` refusal exports one record codec
+(CC-8). It writes one record as JSON laid out as the definition's documents
+are (the declared `indent`, opaque values laid out per [DEF-E6]) and without
+the document terminator. It reads one record and refuses what the record's
+reader refuses, `trailing_bytes` included.
+
+| Language | Write | Read | A value that is not a record of the module |
+|---|---|---|---|
+| Go | `ToJSON(v any) ([]byte, error)` | `FromJSON(data []byte, v any) error` | `*Refusal` with `wrong_type`, a nil record pointer included |
+| Python | `to_json(value) -> bytes` | `from_json(kind, data)` | `TypeError` |
+| JavaScript | `toJson(kind, value)` | `fromJson(kind, data)` | `TypeError` |
+| Rust | `JsonRecord::to_json(&self)` | `JsonRecord::from_json(data)` | refused at compile time |
+| C++ | `to_json(const T&)` | `from_json<T>(data)` | refused at compile time |
+
+Go has no generic record type to check at compile time, so a foreign value
+is a refusal there; Python and JavaScript raise the language's own type error.
+
 ## What the generator does not emit, and will not
 
 **A generator that opens a socket has left its jurisdiction.** The definition
@@ -658,7 +885,7 @@ have to admit it was trying to.
 
 A decoder's public surface is its refusals, so they are a closed list, and they
 are declared in the definition ([DEF-R1]) rather than transcribed into five
-backends. Fifteen words; five implementations; the same word at the same byte
+backends. Seventeen words; five implementations; the same word at the same byte
 offset for the same input, checked by `test/corpus` on every run.
 
 **The rows are in the order two of them are chosen between.** An input that
@@ -673,10 +900,13 @@ case for each pair that can arise.
 | `wrong_type` | grammar | a value whose JSON type is not the field's |
 | `bad_timestamp` | grammar | a string outside the declared read grammar ([DEF-G1]) |
 | `depth_exceeded` | grammar | nesting past `depth_limit` ([DEF-E9]) |
-| `duplicate_key` | grammar | one map key twice, under `duplicate_keys = "refuse"` ([DEF-E8]) |
+| `duplicate_key` | grammar | a repeated map key or object member inside a `json` value, under `duplicate_keys = "refuse"` ([DEF-E8]) |
 | `duplicate_field` | structure | one field name twice in one struct |
 | `unknown_field` | structure | a field name in a scope declared `unknown_fields = "refuse"` ([DEF-A7]) |
 | `missing_field` | structure | a `required` field absent |
+| `bad_enum` | structure | a word a closed vocabulary does not list, `unknown = "refuse"` (Enum fields below) |
+| `bad_binary` | structure | Base64 that is not the canonical padded spelling (Binary values below); `abstraction-cas` and `abstraction-inference` declare it at the grammar stage |
+| `bad_value` | structure | a value outside its declared `length`, `range` or `pattern` ([DEF-A11]) |
 | `trailing_bytes` | document | anything but whitespace after the document |
 | `unknown_critical` | derivation | a critical name the reader does not know ([DEF-A8]) |
 | `not_a_subset` | derivation | a critical name absent from the derived list |
@@ -690,11 +920,10 @@ the order is declaration order and nothing recovers it but the corpus** — whic
 is why the corpus is where a pair goes, not a comment.
 
 **What a decoder does not judge is as declared as what it refuses.** Inside an
-opaque value ([DEF-A3]) the reader validates the shape of the JSON and nothing
-else: escapes are not decoded, number spellings are not checked, and repeated
-keys are not refused, because a document we are carrying is not a document we
-are reading. `depth_limit` is the one rule that reaches inside, because it is
-about the reader's own stack and not about the payload's meaning.
+opaque value ([DEF-A3]) the reader validates JSON grammar and the declared
+`depth_limit`. Repeated object members follow [DEF-E8]: `refuse` rejects them
+and `last` retains their bytes. String escapes and number spellings remain in
+the carried value; its consumer reads their meaning.
 
 **The read grammar is wider than the write grammar everywhere, not only for
 timestamps.** A generated decoder accepts any JSON whitespace, any field order,
@@ -734,8 +963,37 @@ Transport adapters own waiting budgets and cancellation. Generated calls never
 retry, and a transport error leaves receiver acceptance unresolved. One-way
 completion confirms local submission only. Rust `--no-ipc` emits capability
 traits and record codecs. Rust typed includes reference dependency crates named by `--rust-import`; `--named-codecs` exports `encode_x_document` and `decode_x_document`, and puts `encode_x_at`, `decode_x_at` and `check_x` in the crate's `internal` module.
-JavaScript refuses service-bearing definitions.
-The docs backend includes the method signatures and semantics.
+JavaScript generates typed asynchronous service clients and no dispatcher.
+The `jsonschema` output, named explicitly, writes one JSON Schema (draft
+2020-12) document per record, `jsonschema/<namespace>/<Record>.schema.json`,
+each self-contained with the records it references in `$defs`, and an
+`index.json` listing them. It states members, required fields, closed
+objects, closed enum words, integer ranges and opaque values as any JSON.
+For a declared finite vocabulary it also states each existing derivation
+predicate, known critical words and the critical subset rule with standard
+conditionals and contains. Unknown noncritical names remain valid, and
+strip_critical words keep their reader allowance before the subset check.
+The generated readers stay the authority for duplicate members, `depth_limit`,
+number spellings and timestamp grammar. Unpaired-surrogate escape spelling
+also remains a reader grammar check when a JSON loader repairs it to U+FFFD:
+a schema sees the parsed instance and cannot distinguish that repair from a
+valid U+FFFD. This exception covers that lost lexical information; valid
+paired Unicode and other malformed-string refusals keep their existing rules.
+`gen --backends` prints what each output supports:
+
+<!-- gen --backends: begin; regenerate with GOWORK=off go -C idl/gen run . --backends -->
+| Backend | Records | Services | Clients | Dispatchers | `--no-ipc` | Includes and `--named-codecs` | `binary` |
+|---|---|---|---|---|---|---|---|
+| go | yes | yes | yes | yes | yes | yes | yes |
+| python | yes | yes | yes | no | yes | yes | yes |
+| cpp | yes | yes | yes | yes | yes | yes | yes |
+| javascript | yes | yes | yes | no | yes | yes | yes |
+| rust | yes | yes | yes | no | yes | yes | yes |
+| docs | documented | documented | no | no | documented | documented | documented |
+| jsonschema | documented | no | no | no | documented | documented | documented |
+<!-- gen --backends: end -->
+
+The `docs` output includes the method signatures and semantics.
 
 Each call is JSON bytes, possibly containing whitespace/newlines and without a
 transport delimiter:
@@ -768,6 +1026,11 @@ not alter wire bytes. Identifiers follow each language's convention (Python
 snake_case members and CapWords classes, JavaScript camelCase members and
 PascalCase classes); a field's `python.name` or `javascript.name` annotation
 overrides the mapped spelling, and the wire name never changes.
+`--namespace=<language>=<dotted.name>` on one generator run places that
+artefact's output for one language under another namespace, so a selected
+subset of a definition (`-only=`) can live inside the package that uses it:
+the IPC bindings carry identity's transport constants under
+`abstraction.ipc.constants`.
 
 Rust, C++ and Go follow the same rule with their own conventions. Rust uses
 snake_case functions, methods, fields and parameters, UpperCamelCase types and
@@ -807,11 +1070,22 @@ presence mask, not a limit imposed by transport.
 An explicit data-only `-only` selection may still target other code backends;
 only a selected service requires service-capable generation.
 
-Nested opaque JSON inside structured service arguments/results (and raw-value maps) is
-currently rejected: the legacy document encoders reflow it despite DEF-A3.
-Direct `json` arguments are supported with a service-specific verbatim carrier.
-This restriction prevents silent mutation until nested opaque encoding is fixed
-consistently; record-only selections keep their existing codec behavior.
+Opaque JSON nested inside structured service arguments and results (including
+raw-value maps) travels verbatim, as direct `json` arguments do. Under
+`opaque = "verbatim"` every record encoder (document, `to_json` and service
+frame) writes each opaque value's bytes as the caller holds them, at any record
+depth ([DEF-A3], [DEF-E6]): interior whitespace, escapes, number spellings,
+members and member order are kept, and whitespace around the value is dropped.
+A `"reindent"` definition carries no service. Every reader still validates the value in full.
+Under `duplicate_keys = "refuse"`, a duplicate member at any depth is refused;
+nesting past `depth_limit` is refused under either policy, before a request
+leaves and when a reply arrives, identically in Go, C++, Python, Rust and
+JavaScript. A definition whose `depth_limit` is past 256 gets a
+Python reader that walks opaque values with an explicit stack, so the refusal
+is `depth_exceeded` and never Python's recursion limit. A record another
+`"verbatim"` definition owns carries its opaque values the same way; one a
+`"reindent"` definition owns is refused in a service, because its encoder lives
+in that definition's generated package and lays the value out again.
 
 ### [DEF-S2] The endpoint description every dispatcher answers
 
@@ -841,6 +1115,69 @@ still send `abstraction.facade/endpoint@1` frames to one of these calls. The
 names `EndpointContract`, `DescribedService`, `DescribeEndpoint`,
 `ServedService` and `ServeEndpoint` are reserved. Python, Rust and JavaScript generate no dispatcher; they reach the
 service through the facade definition's generated `Endpoint` client.
+
+### [DEF-S3] Method traits
+
+    Record Read(1: string id) (readonly = "true")
+    Receipt Submit(1: Job job) (idempotency_key = "job.key")
+
+A method says how a repeat of it recovers after a lost reply
+(abstraction-ipc `IPC-I1`, CONVENTIONS.md `CONV-I2`): `readonly = "true"`
+changes no requested domain state, `idempotent = "true"` has the first call's effect when
+repeated with equal arguments, and `idempotency_key = "<argument>"` or
+`"<argument>.<field>"` names the caller-owned key, a required string, that
+makes a repeat safe. A method declares one trait.
+`idempotent = "false"` explicitly declares no idempotency or replay guarantee;
+it has the same unsafe runtime trait as an undeclared method and cannot be
+combined with another trait. It authorizes no automatic retry. The generator refuses a
+trait it does not define and a key that names no required string argument or
+record field; the reference page states each trait. Generated clients retry
+nothing whatever the trait says (`IPC-I2`). `idl/inventory.py` rule R10 holds
+every method to a trait: the methods that declared none when the rule came are
+its shrink-only list in `idl/contract_rules.recorded`.
+
+A caller MAY repeat a `readonly` call after an unknown outcome, and an
+`idempotent` call with the same arguments when no later call of its own
+changed the same state (`IPC-I2`). A keyed call is reconciled through its key
+and never blindly resent.
+
+Readonly describes the requested domain effect. Incidental read-audit,
+diagnostic recording and cache maintenance are permitted. Model/provider
+actuation, registry/policy/grant/budget mutation, accepted work, leases and
+operation-lifetime changes are excluded. Per-request logging follows the
+safe-method distinction in [RFC 9110 sections 9.2.1–9.2.2](https://www.rfc-editor.org/rfc/rfc9110.html#section-9.2.1).
+This permits Router.Pick's ROUTE-U1 audit; it does not cover [Chat.Observe](https://openabstractions.github.io/reference.html#concept-inference.chat-service)'s
+explicit idle protection. Generated clients continue to retry nothing.
+
+### [DEF-S4] Remote method metadata
+
+`remote="local|see|call|delegate|person"` belongs to a method or service.
+The method overrides its service default; absence means `local`. Empty,
+unknown and duplicate explicit values refuse. The words belong to this IDL
+annotation family (C-69), and grant no authority. Rights and the receiving
+transport remain responsible for admission. `see` requires `readonly`;
+`call` promises no replay guarantee and retains R10's existing trait debt;
+`delegate` requires keyed recovery and a required return-value path to the actual
+Job owner's `acceptance.thrift` [Receipt](https://openabstractions.github.io/reference.html#concept-job.acceptance-receipt) identity through a required scalar
+return-value path, including required record wrappers. Existing typedefs rename
+scalars; a typedef of a Receipt record remains a compiler refusal. Optional-only
+and collection-only receipts do not establish that identity. The receipt
+binds RequestIdentity, logical_owner and operation_id; a same-named foreign
+record does not qualify. No delegate/person method is promoted here.
+
+R12 follows every argument and return value through owner-qualified includes,
+typedefs, all record fields including optional fields, lists and map keys
+and values. It refuses every nonlocal method reaching a field marked
+`secret="true"` or `local="path|pid|handle"`, reporting the full chain.
+Cycles do not hide sibling fields. These markers state owning-contract
+semantics; arbitrary message text and opaque bytes receive no inferred
+classification from their contents or field names.
+
+Generated Go dispatchers offer optional `RemoteMethodProfile` metadata;
+the lookup returns local for missing/unknown metadata. Required ServedService
+and closed endpoint@1 [Description](https://openabstractions.github.io/reference.html#concept-facade.endpoint-description)/[ServiceState](https://openabstractions.github.io/reference.html#concept-facade.endpoint-service-state) remain unchanged, as do their
+wire hashes. Generated source must be regenerated and rebuilt. Wire policy
+descriptions require their separate IPC-V3 version window.
 
 ### Request-response methods
 
@@ -873,6 +1210,41 @@ Direct `json` results preserve raw tokens, as direct arguments do. Generated C++
 dispatchers are pure codec/test infrastructure; no C++ IPC listening server is
 supplied. Cross-language tests exchange complete buffers between a C++ client and
 Go dispatcher; they do not prove an installed service.
+
+### Service reply postconditions
+
+A reply method may declare `(result_present="state", result_when="outcome",
+result_is="ok")`. The reply value must be a record. `result_present` names one
+optional `omit="absent"` field; `result_when` names a required sibling enum;
+`result_is` is one declared member's exact wire spelling, or a comma-separated
+set of declared wire spellings, such as `"pending,answered"`. An exact declared
+wire spelling takes precedence, preserving existing single-member definitions
+whose spelling contains a comma. Empty, duplicate
+and undeclared members are refused. The set lowers in enum declaration order.
+All three annotations
+are required together. The payload is present **if and only if** the enum holds
+any member of that set. No paths, expressions, defaults or implicit retries are supported.
+
+The compiler resolves this relation once and emits it at RPC reply boundaries
+in all five languages. A client validates after structural reply decoding and
+before return; generated Go/C++ dispatchers validate a successful handler reply
+before sending it. A mismatch is the existing generated `invalid_result` service
+error. Ordinary structural/enum failures retain their existing handling.
+
+Before that client semantic refusal, generated clients clear the freshly decoded
+mutable buffers of logical `binary` fields, including existing nested records,
+record lists and optional values. Successful returned values keep their bytes.
+Input/request and transport-frame ownership stays with its existing caller or
+transport owner. Dispatcher handler results retain provider ownership and are
+never cleared by this client-only operation. Immutable Python bytes and logical
+JSON/string fields are excluded. Other heap copies may remain after this
+mutable-buffer clearing operation.
+
+This is non-wire method behavior metadata, like observation traits. Standalone
+record readers/writers keep their structural accepted language and refusal
+tables. The canonical wire definition hash and shape compatibility exclude this
+metadata; source/producer qualification binds the generated behavioral change.
+Field names/order/types, method signatures and valid reply bytes are unchanged.
 
 ### Required integer equality
 
@@ -982,8 +1354,16 @@ service signature uses `model.Ref`; an unqualified `Ref` remains local. Paths
 resolve from the including source file. The loader refuses missing files,
 unresolved types, duplicate aliases and cyclic include graphs. Canonical file
 paths identify memoized dependencies; include nesting is bounded at 64 definitions. The supported
-subset imports record types, including optional and repeated records. Imported
-enums, typedefs and recursive record layouts remain unsupported and are refused.
+subset imports record, enum and qualified direct-include scalar typedefs, including optional and repeated fields
+and service arguments/results. Each imported enum keeps its owner's wire words
+and unknown-member policy; native closed-enum types are aliases to that owner,
+and open string carriers retain unfamiliar words. A selected artifact names
+its local declarations; their imported record/enum dependencies stay imported.
+Scalar aliases retain their owner's primitive, grammar and constraints; imported
+named grammars require a scalar field or method value. Unqualified imported
+names, typedef chains, enum typedefs/maps, multi-hop qualified references and
+recursive record layouts remain unsupported and are refused. Protocol outcome
+enums remain declared in the protocol's own definition.
 Includes sharing a target namespace are ambiguous and refused.
 
 Each included record keeps its generated language identity, encoding policy,
@@ -1015,7 +1395,8 @@ For example, generate `model.thrift` and `request.thrift` with
 gen resolver.thrift out --go-import=model=example.org/model/abstraction/model/api --go-import=request=example.org/download/abstraction/download/request go cpp python docs
 ```
 
-Go mappings are explicit build metadata. C++ consumers add the generated `cpp/`
+Go mappings are explicit build metadata and supply the package identity for a
+included definition without a namespace. C++ consumers add the generated `cpp/`
 roots to their include paths; Python consumers install the generated `py/`
 namespace trees. A selection lists local surfaces; imported record dependencies
 remain linked through their owning modules. `--no-ipc` retains typed interfaces
@@ -1027,3 +1408,66 @@ keys; generation refuses that combination with an explicit `--no-ipc` option.
 Compatible policies support generated IPC. This restriction also covers
 transitive dependencies. Direct record codecs can compose different policies.
 Definitions without includes or `--named-codecs` retain their generated bytes.
+
+## Versions
+
+A service version is its `wire_name`. These two rules hold the versioning
+convention every contract carries
+([CONVENTIONS.md, C3](CONVENTIONS.md#c3-one-breaking-window-per-service)).
+
+### [DEF-V1] Compatibility between a published definition and a candidate
+
+    gen --compat <published.thrift> <candidate.thrift>
+
+compares every service the published definition declares with the candidate's
+service of the same `wire_name`, over the methods and every struct and enum
+those methods reach, through nested records, repeated records and included
+definitions. It refuses, naming the service, the declaration and the member:
+
+- a published method that was removed or changed its arguments, their order,
+  its result or `oneway`;
+- a member added to a closed struct (`unknown_fields = "refuse"`) or a closed
+  enum (`unknown = "refuse"`);
+- a required member added to an open struct;
+- a member removed or changed in any reached struct or enum, an enum member's
+  wire spelling included;
+- two members of any reached struct that changed their relative order, since a
+  writer emits members in declaration order and a reader reports refusals
+  within one stage in that order;
+- a published error code removed from the service's `error_codes`;
+- a changed unknown-member policy, document flag or encoding declaration;
+- a first-added or narrowed `length` or `range` ([DEF-A11]) on a published
+  member, argument or service answer, or a first-added or changed `pattern` class;
+  inherited named-string constraints participate at the same scalar or
+  collection-element position.
+
+A first declaration adds a generated refusal for bytes a published writer
+could send. It is narrowing even when an application previously enforced a
+similar rule itself. A widened or removed bound is compatible.
+
+A method added to a kept service version, an optional member added to an open
+struct at any position, a member added to an open enum and an error code added
+to `error_codes` are compatible. An error code joins the open
+`ServiceErrorCode` vocabulary, whose reader carries a code it never saw. The
+order of an enum's members is compatible, since an enum is written as its
+member's word. A service the candidate no longer declares under the published
+`wire_name` is not compared: it was retired or replaced by a new version. When
+nothing is refused, the command prints each candidate service's definition
+hash ([DEF-V2]) and exits 0.
+
+### [DEF-V2] The definition hash
+
+    gen --hash <definition.thrift>
+
+prints one line per service, `<wire_name> sha256:<lowercase hex>`, in
+declaration order. The hash is SHA-256 over the service's canonical wire form:
+its `wire_name`, the encoding declaration, its error codes in sorted order, its
+methods by name with their arguments in declaration order, and every struct and
+enum the methods reach, by name. A struct's members appear in declaration
+order and an enum's members by name, each with its presence, omission, grammar
+and equality rules, unknown-member policy and wire spelling, and with its
+declared `length`, `range` and `pattern` when it declares one; a definition
+that declares none hashes as it did before [DEF-A11]. Comments, `doc`
+annotations, language-name annotations, field ids, the order of declarations
+and the order of an enum's members are outside it. Two definitions with the
+same hash for a service put the same bytes on the wire for every call of it.

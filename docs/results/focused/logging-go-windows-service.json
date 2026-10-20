@@ -82,6 +82,7 @@
       "openabstractions-flat/abstraction-model/identity/go.mod",
       "openabstractions-flat/abstraction-provider-kit/go/go.mod",
       "openabstractions-flat/abstraction-provider-kit/go/go.sum",
+      "openabstractions-flat/abstraction-provider-kit/go/sandbox",
       "openabstractions-flat/abstraction-provider-lemonade/go/go.mod",
       "openabstractions-flat/abstraction-provider-lemonade/go/go.sum",
       "openabstractions-flat/abstraction-provider-localai/go/go.mod",
@@ -137,7 +138,7 @@
     ],
     "service_language": "go"
   },
-  "inputs_digest": "dc094bdc84ea98021279f6a11b6c0f5453201449350e2252af79a558b67e30ca",
+  "inputs_digest": "d1e9425012bcf9dddce61595c34676c68985410e53c1cca245a5d88899617457",
   "toolchains": {
     "python": {
       "argv": [
@@ -146,7 +147,7 @@
       ],
       "exit": 0,
       "output": "Python 3.12.10\r\n",
-      "seconds": 0.016
+      "seconds": 0.032
     },
     "go": {
       "argv": [
@@ -155,7 +156,7 @@
       ],
       "exit": 0,
       "output": "go version go1.26.5 windows/amd64\n",
-      "seconds": 0.031
+      "seconds": 0.234
     }
   },
   "result": {
@@ -166,9 +167,9 @@
       "go"
     ],
     "exit": 0,
-    "output": "source revision: 13a7bec8c622b38e7917234e5527786b74260d33 (uncommitted changes present)\r\ngo version go1.26.5 windows/amd64\r\nPASS: Go write\r\nPASS: Go bad-schema\r\nPASS: Go absent\r\nPASS: go independent client -> generated protocol -> shared IPC -> identity-bound Go service -> provider\r\nPASS: client exited; record survived; schema refused; absent service errored; no client store\r\n",
-    "seconds": 1.906
+    "output": "source revision: 5c39a7622d115b2b4f71c0c1a15df9196b93b56a (uncommitted changes present)\r\ngo version go1.26.5 windows/amd64\r\nPASS: Go write\r\nPASS: Go bad-schema\r\nPASS: Go absent\r\nPASS: go independent client -> generated protocol -> shared IPC -> identity-bound Go service -> provider\r\nPASS: client exited; record survived; schema refused; absent service errored; no client store\r\n",
+    "seconds": 6.563
   },
-  "commit": "13a7bec8c622b38e7917234e5527786b74260d33",
-  "record_digest": "778f923426dcd36d100edc39aa325b768edf48eb0001ca0eefc003eb0c78459c"
+  "commit": "5c39a7622d115b2b4f71c0c1a15df9196b93b56a",
+  "record_digest": "32facf9477c8700c0450cd426249c8a81e864ecdaee7930926bdec2920f5607b"
 }

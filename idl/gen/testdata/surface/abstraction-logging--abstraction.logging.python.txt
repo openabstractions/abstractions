@@ -5,9 +5,11 @@ class ApplicationHistoryObserverClient(ApplicationHistoryObserver)
   observe(target: ApplicationLogTarget, cursor: str, max_records: int, max_bytes: int, wait_ms: int) -> ApplicationLogPage
 class ApplicationHistoryReader
   read(target: ApplicationLogTarget, cursor: str, max_records: int, max_bytes: int) -> ApplicationLogPage
+  read_about_caller(since: str, cursor: str, max_records: int, max_bytes: int) -> ApplicationLogPage
 class ApplicationHistoryReaderClient(ApplicationHistoryReader)
   __init__(transport)
   read(target: ApplicationLogTarget, cursor: str, max_records: int, max_bytes: int) -> ApplicationLogPage
+  read_about_caller(since: str, cursor: str, max_records: int, max_bytes: int) -> ApplicationLogPage
 dataclass ApplicationLogPage
   outcome: HistoryPageOutcome | None
   records: list[Record]
@@ -35,6 +37,10 @@ dataclass Attestation
   pid: int
   key: str
   mac: str
+const DEFAULT_ASYNC_CAPACITY
+const DEFAULT_INITIAL_BACKOFF_MS
+const DEFAULT_MAX_BACKOFF_MS
+const DEFAULT_WRITE_TIMEOUT_MS
 class DispatchError(ValueError)
   __init__(code)
 const HISTORY_CURSOR_WORDS
@@ -58,10 +64,26 @@ enum HistoryPageOutcome
   OS_AUTHORIZATION_REQUIRED = 'os_authorization_required'
   OS_AUTHORIZATION_PENDING = 'os_authorization_pending'
 class HistoryReader
+  usage() -> HistoryUsageResult
   read(cursor: str, max_records: int, max_bytes: int) -> Page
 class HistoryReaderClient(HistoryReader)
   __init__(transport)
+  usage() -> HistoryUsageResult
   read(cursor: str, max_records: int, max_bytes: int) -> Page
+dataclass HistoryUsage
+  retained_bytes: int
+  oldest: str
+  max_use: int | None
+  max_retention_ms: int | None
+enum HistoryUsageOutcome
+  AVAILABLE = 'available'
+  UNAVAILABLE = 'unavailable'
+  CORRUPT = 'corrupt'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+dataclass HistoryUsageResult
+  outcome: HistoryUsageOutcome | None
+  usage: HistoryUsage | None
 dataclass Page
   outcome: PageOutcome | None
   records: list[Record]
@@ -154,11 +176,15 @@ dataclass SourceRecord
   source_id: str
   record: Record
   producer: ProducerClaim | None
+const WRITER_BACKOFF_JITTER_PERCENT
+const WRITER_GAP_MESSAGE
 def decode(data)
 def decode_application_log_page(data)
 def decode_application_log_resource(data)
 def decode_application_log_target(data)
 def decode_attestation(data)
+def decode_history_usage(data)
+def decode_history_usage_result(data)
 def decode_page(data)
 def decode_producer_claim(data)
 def decode_record(data)
@@ -171,6 +197,8 @@ def encode_application_log_page(v)
 def encode_application_log_resource(v)
 def encode_application_log_target(v)
 def encode_attestation(v)
+def encode_history_usage(v)
+def encode_history_usage_result(v)
 def encode_page(v)
 def encode_producer_claim(v)
 def encode_record(v)
@@ -178,4 +206,6 @@ def encode_source_catalog(v)
 def encode_source_descriptor(v)
 def encode_source_page(v)
 def encode_source_record(v)
+def from_json(kind, data)
 def service_name(frame)
+def to_json(value)

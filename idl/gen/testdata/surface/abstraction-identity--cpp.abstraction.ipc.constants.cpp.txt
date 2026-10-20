@@ -1,0 +1,18 @@
+using Raw = std::string
+class Refusal : public std::runtime_error
+  const char* word
+  std::size_t offset
+inline constexpr std::int32_t kIpcOk
+inline constexpr std::int32_t kIpcTimeout
+inline constexpr std::int32_t kIpcDisconnected
+inline constexpr std::int32_t kIpcIoError
+inline constexpr std::int32_t kIpcInvalidArgument
+inline constexpr std::int32_t kIpcNoMemory
+inline constexpr std::int32_t kIpcInternalError
+inline constexpr std::int32_t kIpcCancelled
+inline constexpr std::int32_t kIpcUntrusted
+inline constexpr std::int32_t kIpcProofUnavailable
+inline constexpr std::int32_t kIpcDefaultMaxFrame
+inline constexpr std::int32_t kIpcClientMaxFrame
+inline constexpr std::int32_t kIpcWireMaxFrame
+inline constexpr std::int32_t kIpcDefaultCallBudgetMs

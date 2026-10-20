@@ -97,13 +97,15 @@ func TestCardHolderTitleComesFromTheRegisteredDescriptor(t *testing.T) {
 		{Descriptor: fwire.ApplicationDescriptor{Name: "picture", Program: program, Title: "Picture App"}, Scope: fwire.ScopeLocal},
 	}
 	resources := holders()
-	(&servicePanel{comfyApps: &setupApplicationsFake{page: fwire.ApplicationPage{Outcome: fwire.ApplicationOutcomePage, Applications: entries}}}).titleCardHolders(context.Background(), resources)
-	if got := resources[0].Holders; got[0].Title != "Picture App" || got[1].Title != "" || got[2].Title != "" {
+	titles := (&servicePanel{comfyApps: &setupApplicationsFake{page: fwire.ApplicationPage{Outcome: fwire.ApplicationOutcomePage, Applications: entries}}}).titleCardHolders(context.Background(), resources)
+	// A registered app without a title reads by its registered name, as on
+	// every other page (programTitler).
+	if got := titles; got[program] != "Picture App" || got[other] != "untitled" || got["host:picture"] != "" {
 		t.Fatalf("titles %+v", got)
 	}
 	resources = holders()
-	(&servicePanel{comfyApps: &setupApplicationsFake{page: fwire.ApplicationPage{Outcome: fwire.ApplicationOutcomeForbidden, Applications: entries}}}).titleCardHolders(context.Background(), resources)
-	if got := resources[0].Holders; got[0].Title != "" {
+	titles = (&servicePanel{comfyApps: &setupApplicationsFake{page: fwire.ApplicationPage{Outcome: fwire.ApplicationOutcomeForbidden, Applications: entries}}}).titleCardHolders(context.Background(), resources)
+	if got := titles; len(got) != 0 {
 		t.Fatalf("an unreadable directory titled a holder: %+v", got)
 	}
 }
@@ -116,7 +118,7 @@ func TestCardTableReadsEveryResourceAndRow(t *testing.T) {
 	if r := panelRequest(t, h, "/card?k=wrong", nil); r.Code != 403 {
 		t.Fatalf("page without the key: %d", r.Code)
 	}
-	view := decodePanel[cardTableView](t, 200, panelRequest(t, h, "/card/table", nil).Body.Bytes())
+	view := decodeCardTable(t, 200, panelRequest(t, h, "/card/table", nil).Body.Bytes())
 	if len(view.Resources) != 1 {
 		t.Fatalf("resources %+v", view.Resources)
 	}
@@ -129,7 +131,7 @@ func TestCardTableReadsEveryResourceAndRow(t *testing.T) {
 	}
 	var verified, claimed int
 	for _, row := range state.Holders {
-		switch row.Evidence {
+		switch row.Evidence.String() {
 		case "verified":
 			verified++
 			if row.Amount == 0 {
@@ -150,7 +152,7 @@ func TestCardTableReadsEveryResourceAndRow(t *testing.T) {
 	if verified != 2 || claimed != 1 {
 		t.Fatalf("verified %d claimed %d, want 2 and 1: %+v", verified, claimed, state.Holders)
 	}
-	fresh := decodePanel[cardTableView](t, 200, panelRequest(t, h, "/card/table?fresh=1", nil).Body.Bytes())
+	fresh := decodeCardTable(t, 200, panelRequest(t, h, "/card/table?fresh=1", nil).Body.Bytes())
 	if len(fresh.Resources) != 1 || len(fresh.Resources[0].Holders) != 3 {
 		t.Fatalf("a fresh read %+v", fresh)
 	}
@@ -166,7 +168,7 @@ func TestCardTableNarrowsToOwnRowsWhenRefused(t *testing.T) {
 	})
 	h := newTestPanel(t).handler("test-key")
 
-	view := decodePanel[cardTableView](t, 200, panelRequest(t, h, "/card/table", nil).Body.Bytes())
+	view := decodeCardTable(t, 200, panelRequest(t, h, "/card/table", nil).Body.Bytes())
 	if len(view.Resources) != 1 {
 		t.Fatalf("resources %+v", view.Resources)
 	}
@@ -174,7 +176,7 @@ func TestCardTableNarrowsToOwnRowsWhenRefused(t *testing.T) {
 	if len(holders) != 1 {
 		t.Fatalf("a refused caller read %d rows, want its own 1: %+v", len(holders), holders)
 	}
-	if holders[0].Program != selfExe(t) || holders[0].Evidence != "verified" {
+	if holders[0].Program != selfExe(t) || holders[0].Evidence != cardEvidenceVerified {
 		t.Fatalf("the narrowed row was not this caller's own: %+v", holders[0])
 	}
 }

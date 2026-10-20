@@ -135,7 +135,7 @@ func (d *applicationDirectory) listStarts(ctx context.Context, s rights.Subject,
 	if !d.lock(ctx) {
 		return refused(wire.ApplicationOutcomeUnavailable)
 	}
-	defer d.mu.Unlock()
+	defer d.unlock()
 	d.collectStartsLocked()
 	prefix := d.epoch + "." + d.startsRevisionLocked() + "."
 	offset := 0

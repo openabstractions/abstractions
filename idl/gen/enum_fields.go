@@ -58,7 +58,7 @@ func emitEnumChecks(b *strings.Builder, st Struct, lang string, encode bool) {
 		}
 		e := "v." + name
 		if f.EnumList {
-			if !encode {
+			if !encode && lang != "javascript" {
 				continue // native conversion at the reader boundary applies the unknown policy
 			}
 			switch lang {
@@ -179,7 +179,7 @@ func emitEnumChecks(b *strings.Builder, st Struct, lang string, encode bool) {
 		case "rust":
 			action = `return r.refuse("bad_enum")`
 			if encode {
-				action = `std::panic::panic_any(Refusal{word:"bad_enum",offset:0})`
+				action = `::std::panic::panic_any(Refusal{word:"bad_enum",offset:0})`
 			}
 		case "python":
 			action = `raise r.refuse("bad_enum")`

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 )
 
@@ -21,7 +20,6 @@ func activateInstalled(ctx context.Context) error {
 	}
 	return activateLinux(ctx, home, os.Stat, startCommand)
 }
-func hideStartCommand(*exec.Cmd) {}
 
 func activateLinux(ctx context.Context, home string, stat func(string) (os.FileInfo, error), run func(context.Context, string, ...string) error) error {
 	unit := filepath.Join(home, ".config", "systemd", "user", "abstraction-runtime.service")

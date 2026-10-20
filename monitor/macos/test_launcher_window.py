@@ -52,18 +52,18 @@ def fixture_bundle(scratch, name, identifier):
 
 # The stub navigation table, in sidebar order, as the contract states it.
 NAV_ITEMS = [
-    {"id": "setup", "label": "Get started", "path": "/setup", "group": "main",
-     "glyph": {"segoe": "", "sf": "star.fill"}},
     {"id": "status", "label": "Apps", "path": "/", "group": "main",
      "glyph": {"segoe": "", "sf": "square.grid.2x2.fill"}},
-    {"id": "inference", "label": "Models", "path": "/inference", "group": "main",
-     "glyph": {"segoe": "", "sf": "cpu.fill"}},
-    {"id": "rights", "label": "Permissions", "path": "/rights", "group": "main",
-     "glyph": {"segoe": "", "sf": "hand.raised.fill"}, "badge": 2},
     {"id": "work", "label": "Activity", "path": "/work", "group": "main",
      "glyph": {"segoe": "", "sf": "clock.fill"}},
     {"id": "card", "label": "Device", "path": "/card", "group": "main",
      "glyph": {"segoe": "", "sf": "desktopcomputer"}},
+    {"id": "rights", "label": "Permissions", "path": "/rights", "group": "main",
+     "glyph": {"segoe": "", "sf": "hand.raised.fill"}, "badge": 2},
+    {"id": "setup", "label": "Get started", "path": "/setup", "group": "main",
+     "glyph": {"segoe": "", "sf": "star.fill"}},
+    {"id": "inference", "label": "Models", "path": "/inference", "group": "more",
+     "glyph": {"segoe": "", "sf": "cpu.fill"}},
     {"id": "registry", "label": "Providers", "path": "/registry", "group": "more",
      "glyph": {"segoe": "", "sf": "server.rack"}},
     {"id": "credentials", "label": "Credentials", "path": "/credentials-page", "group": "more",
@@ -195,7 +195,7 @@ extension AppDelegate {
 
         precondition(spin(15) { side.rows.count == 10 && settled("/") && win.title == "Apps" && side.selectedID == "status" },
                      "rows \(side.rows.count) title \(win.title) selected \(String(describing: side.selectedID))")
-        precondition(side.rows[6].item == nil && !side.outlineView(side.outline, shouldSelectItem: side.rows[6]),
+        precondition(side.rows[5].item == nil && !side.outlineView(side.outline, shouldSelectItem: side.rows[5]),
                      "the group gap is a separator row")
         precondition(query("shell") == "native" && query("k") == "fixture")
         let guide = win.contentLayoutGuide as! NSLayoutGuide
@@ -230,17 +230,17 @@ extension AppDelegate {
 
         // Menus: App, Edit, View (pages, Back), Window.
         let menu = NSApp.mainMenu!
-        precondition(menu.items.map(\.title) == ["Abstraction Panel", "Edit", "View", "Window"], "\(menu.items.map(\.title))")
+        precondition(menu.items.map(\.title) == ["OpenAbstractions Panel", "Edit", "View", "Window"], "\(menu.items.map(\.title))")
         let edit = menu.items[1].submenu!
         for (key, action) in [("c", #selector(NSText.copy(_:))), ("v", #selector(NSText.paste(_:))), ("x", #selector(NSText.cut(_:))), ("a", #selector(NSText.selectAll(_:)))] {
             precondition(edit.items.contains { $0.keyEquivalent == key && $0.action == action && $0.target == nil }, "edit \(key)")
         }
         let view = menu.items[2].submenu!
-        precondition(Array(view.items.prefix(9).map(\.title)) == ["Get started", "Apps", "Models", "Permissions", "Activity", "Device", "Providers", "Credentials", "Settings"])
+        precondition(Array(view.items.prefix(9).map(\.title)) == ["Apps", "Activity", "Device", "Permissions", "Get started", "Models", "Providers", "Credentials", "Settings"])
         precondition(Array(view.items.prefix(9).map(\.keyEquivalent)) == ["1", "2", "3", "4", "5", "6", "7", "8", "9"])
         precondition(view.items.contains { $0.title == "Back" && $0.keyEquivalent == "[" })
         precondition(NSApp.windowsMenu === menu.items[3].submenu)
-        precondition(press("5") && spin(10) { settled("/work") && side.selectedID == "work" }, "⌘5")
+        precondition(press("2") && spin(10) { settled("/work") && side.selectedID == "work" }, "⌘2")
         precondition(press("[") && spin(10) { settled("/rights") }, "⌘[")
 
         // The host's accent, injected and re-injected on a system colour change.
@@ -517,7 +517,9 @@ print("panel responses fixture passed")
         self.assertIn("minimum-macos.txt", (HERE / "build.sh").read_text(encoding="utf-8"),
                       "build.sh does not build for the declared minimum")
         target = "%s-apple-macos%s" % (platform.machine(), declared)
-        subprocess.run(["swiftc", "-typecheck", "-target", target, str(HERE / "PanelLauncher.swift")],
+        subprocess.run(["swiftc", "-typecheck", "-target", target,
+                        "-import-objc-header", str(HERE / "NativePresence.h"),
+                        str(HERE / "PanelLauncher.swift")],
                        check=True, timeout=120)
 
 

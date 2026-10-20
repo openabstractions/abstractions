@@ -26,7 +26,7 @@ func newLendingTestProvider(t *testing.T, name string) (*runtimeProviders, *prov
 	p := &runtimeProviders{supervisors: map[string]*providerSupervisor{}, changes: make(chan struct{}), report: func(error) {}}
 	f := providerFile{Declaration: providerDeclaration{Name: name, Program: "unused", Endpoint: "oa-test-lend-" + name,
 		Transport: transportNative, Contracts: []string{storageLending}, Activation: wire.ActivationOnDemand.String()}}
-	s := newProviderSupervisor(p, f)
+	s := newFixtureProviderSupervisor(t, p, f)
 	p.supervisors[name] = s
 	return p, s
 }
@@ -116,6 +116,34 @@ func TestLendingProviderLaunchBudgetBoundsANeverReadyProvider(t *testing.T) {
 	}
 }
 
+// The lending wait reads the declarations again on every pass: a declaration
+// withdrawn while a call waits for its first readiness ends the wait with the
+// none-declared reason, without spending the launch budget.
+func TestLendingProviderDeclarationRemovedDuringWait(t *testing.T) {
+	p, s := newLendingTestProvider(t, "withdrawn")
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		// The registry's own withdrawal: drop the supervisor, then notify.
+		p.mu.Lock()
+		delete(p.supervisors, "withdrawn")
+		p.mu.Unlock()
+		p.notify()
+	}()
+
+	start := time.Now()
+	client, reason := p.lendingProvider(context.Background())
+	elapsed := time.Since(start)
+	if client != nil || reason != "no lending provider is declared and ready" {
+		t.Fatalf("withdrawn provider: client=%v reason=%q, want the none-declared reason", client, reason)
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("the wait outlived the withdrawal: %v of a %v budget", elapsed, lendingLaunchBudget)
+	}
+	if !activated(s) {
+		t.Fatalf("the launch was not activated before the withdrawal")
+	}
+}
+
 // lendingQuestions lists the first-use questions book holds about lending.
 func lendingQuestions(t *testing.T, book *asks.Book) []asks.Record {
 	t.Helper()
@@ -154,7 +182,7 @@ func TestLendNotGrantedAdmitsAFirstUseQuestion(t *testing.T) {
 		t.Fatalf("lend without a rule: %+v", result)
 	}
 	questions := lendingQuestions(t, book)
-	if len(questions) != 1 || questions[0].About != caller.Program || !strings.HasSuffix(questions[0].Text, " on "+ResourceEngine("lmstudio")) {
+	if len(questions) != 1 || questions[0].About != expectedSubjectProgram(caller.Program) || !strings.HasSuffix(questions[0].Text, " on "+ResourceEngine("lmstudio")) {
 		t.Fatalf("one lend question about %s expected: %+v", caller.Program, questions)
 	}
 	if q := questions[0]; q.Publisher != "" || q.PublisherTrusted {

@@ -4,13 +4,14 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	asks "github.com/openabstractions/abstraction-asks/go"
 	config "github.com/openabstractions/abstraction-config/go/service"
@@ -23,20 +24,36 @@ import (
 )
 
 // capabilities maps each `serve <capability>` name to its entry point.
-// "host" is supervisor's old name (RENAME-PLAN §3, Panel and command line
-// step 10), accepted for one release. The installer's shortcut, the service
-// template, the restart registration and `start` launch `serve supervisor`;
-// TestNoLaunchPathNamesServeHost keeps the old name out of them.
+// The installer's shortcut, service template, restart registration and `start`
+// launch `serve supervisor`; TestNoLaunchPathNamesServeHost keeps them current.
 var capabilities = map[string]func([]string) error{
 	"runtime":    serveRuntime,
 	"supervisor": serveHost,
-	"host":       serveHost,
-	"asks":       wrapCapabilityUsage(asks.Serve, asks.ErrUsage),
-	"rights":     wrapCapabilityUsage(serveRights, rights.ErrUsage),
-	"router":     wrapCapabilityUsage(router.Serve, router.ErrUsage),
-	"logging":    wrapCapabilityUsage(logging.Serve, logging.ErrUsage),
-	"config":     wrapCapabilityUsage(config.Serve, config.ErrUsage),
-	"router-v1":  wrapCapabilityUsage(routerservice.Serve, routerservice.ErrUsage),
+	"asks":       accountCapability(asks.Serve, asks.ErrUsage),
+	"rights":     accountCapability(serveRights, rights.ErrUsage),
+	"router":     accountCapability(router.Serve, router.ErrUsage),
+	"logging":    accountCapability(logging.Serve, logging.ErrUsage),
+	"config":     accountCapability(config.Serve, config.ErrUsage),
+	"router-v1":  accountCapability(routerservice.Serve, routerservice.ErrUsage),
+}
+
+// Legacy capability modules combine parsing and account storage in Serve.
+// They make no private-state claim. Keep their lifetime lock and help behavior
+// without duplicating each module's flag parser here.
+func accountCapability(serve func([]string) error, usageErr error) func([]string) error {
+	run := wrapCapabilityUsage(serve, usageErr)
+	return func(args []string) error {
+		if containsHelp(args) {
+			return run(args)
+		}
+		release, err := runtimeSettingsGuard(context.Background(), runtimeFlags{})
+		if err != nil {
+			return err
+		}
+		defer release()
+		speakSomewhere()
+		return run(args)
+	}
 }
 
 // wrapCapabilityUsage gives a capability module's Serve the same usage-error
@@ -57,10 +74,19 @@ func wrapCapabilityUsage(serve func([]string) error, usageErr error) func([]stri
 
 // complain writes a last diagnostic to standard error ahead of an exit status
 // that already reports the failure; it is where a failed diagnostic write ends.
-func complain(v ...any) { log.New(os.Stderr, "", 0).Println(v...) }
+func complain(v ...any) {
+	writeHostLogLine(os.Stderr, strings.TrimSuffix(fmt.Sprintln(v...), "\n"))
+}
 
 func main() {
-	speakSomewhere()
+	if len(os.Args) >= 2 && os.Args[1] == "logs" {
+		exitOnFailure(logsCommand(os.Args[2:], os.Stdout, os.Stderr))
+		return
+	}
+	if len(os.Args) >= 2 && os.Args[1] == "factory-reset" {
+		exitOnFailure(factoryResetCommand(os.Args[2:], os.Stdout))
+		return
+	}
 	if probeClient(os.Args[0]) {
 		exitOnFailure(probeCommand(os.Args[1:], os.Stdout, os.Stderr))
 		return
@@ -83,6 +109,10 @@ func main() {
 	}
 	if len(os.Args) >= 2 && os.Args[1] == "questions" {
 		exitOnFailure(questionsCommand(os.Args[2:], os.Stdout, os.Stderr))
+		return
+	}
+	if len(os.Args) >= 2 && os.Args[1] == "machines" {
+		exitOnFailure(machinesCommand(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 		return
 	}
 	if len(os.Args) >= 2 && os.Args[1] == "models" {
@@ -205,6 +235,7 @@ func exitStatus(err error) int {
 // line.
 const usageGroups = `
 See what is running:
+  factory-reset                preview or reset this account's saved OA settings
   status                       queries what the runtime can currently do
   status describe <endpoint>   prints one endpoint's own description
   probe                        calls one capability directly and prints its outcome
@@ -218,6 +249,7 @@ Downloads and work:
 Credentials and rules:
   credentials                   registers secrets by name; the runtime applies them
   rights                        lists, grants, revokes and decides exact rights rules
+  machines                      prepares pairing, observes native consent and removes local trust
 
 Models and inference:
   models                        lends a model file one store holds to an installed engine
@@ -226,6 +258,7 @@ Models and inference:
   opencode open                 opens the official OpenCode CLI in its Windows sandbox
   resources                     prints who holds the card and each other scarce resource
   questions                     lists pending questions and records a person's answer
+  logs --app PROGRAM --follow   follows one application's OA logs from the current end
 
 For developers and packagers:
   start                         activates the installed user runtime
@@ -233,8 +266,7 @@ For developers and packagers:
   host register|unregister      writes or removes the Windows per-user service template
   service <command>             Windows Installer upgrade actions
   serve runtime                 hosts resolution, logging, config and durable jobs in one process
-  serve supervisor              the per-user service that keeps the runtime running (Windows);
-                                serve host is its old name, accepted until the next release
+  serve supervisor              the per-user service that keeps the runtime running (Windows)
   serve asks                    answers questions a person has to answer
   serve rights                  holds the runtime's granted rights policy
   serve router                  reports the model servers on this machine
@@ -269,8 +301,7 @@ Hosts one capability's own service process in the foreground. Starting it
 does not install or register it with the OS.
 
   runtime      hosts resolution, logging, config and durable jobs in one process
-  supervisor   the per-user service that keeps the runtime running (Windows);
-               host is its old name, accepted until the next release
+  supervisor   the per-user service that keeps the runtime running (Windows)
   asks         legacy standalone question service; runtime uses its own question book
   rights       legacy standalone rights service; runtime uses its own policy service
   router       reports the model servers on this machine

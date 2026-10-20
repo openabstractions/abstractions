@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -40,10 +41,17 @@ type fakeSurface struct {
 	block     bool
 	dismissed chan struct{}
 	shown     []trayQuestionPresentation
-	once      sync.Once
+	// occurrences are the Book ids of the shown prompts, in order.
+	occurrences []string
+	once        sync.Once
+	// cancelAnswers makes a Dismiss return the prompt's Dismiss option, as
+	// the Windows dialog's cancel does.
+	cancelAnswers bool
 }
 
-func (s *fakeSurface) Ask(p trayQuestionPresentation) (string, error) {
+func (s *fakeSurface) Ask(occurrence bookOccurrence) (string, error) {
+	p := occurrence.Presentation()
+	s.occurrences = append(s.occurrences, occurrence.ID())
 	s.shown = append(s.shown, p)
 	if s.during != nil {
 		s.during()
@@ -51,6 +59,9 @@ func (s *fakeSurface) Ask(p trayQuestionPresentation) (string, error) {
 	if s.block {
 		select {
 		case <-s.dismissed:
+			if s.cancelAnswers {
+				return p.Dismiss, nil
+			}
 			return "", nil
 		case <-time.After(5 * time.Second):
 			return "", errors.New("prompt was never dismissed")
@@ -71,11 +82,21 @@ type fakeOperator struct {
 	answers      []string
 	publishers   map[string]askclient.OperatorQuestion
 	details      map[string]askclient.QuestionDetails
+	contents     map[string]askclient.QuestionContent
 	detailsErr   error
 	afterDetails func()
 	// beforeAnswer runs as an answer call arrives, before it is applied: an
 	// answer from another path that lands after the presenter's re-read.
 	beforeAnswer func()
+}
+
+func (o *fakeOperator) ReadQuestionContentContext(_ context.Context, id string) (askclient.QuestionContent, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if content, ok := o.contents[id]; ok {
+		return content, nil
+	}
+	return askclient.QuestionContent{}, &askclient.ServiceError{Code: askclient.ServiceErrorCodeUnknownMethod}
 }
 
 func (o *fakeOperator) ReadQuestionAskerContext(_ context.Context, id string) (askclient.QuestionAsker, error) {
@@ -115,7 +136,8 @@ func TestPresenterUsesFullStructuredTargetsAndRejectsChanges(t *testing.T) {
 	for _, changed := range []string{"", "program", "action", "resource"} {
 		t.Run(changed, func(t *testing.T) {
 			details := typedPresenterDetails(t, record, target)
-			operator := &fakeOperator{records: []askclient.RecordMetadata{record}, details: map[string]askclient.QuestionDetails{record.ID: details}}
+			operator := &fakeOperator{records: []askclient.RecordMetadata{record}, details: map[string]askclient.QuestionDetails{record.ID: details},
+				contents: map[string]askclient.QuestionContent{record.ID: {Question: askclient.QuestionAsker{Details: details}}}}
 			surface := &fakeSurface{option: "refuse"}
 			if changed != "" {
 				surface.during = func() {
@@ -149,7 +171,7 @@ func TestPresenterUsesFullStructuredTargetsAndRejectsChanges(t *testing.T) {
 					t.Fatalf("missing exact %q in %q", full, prompt.Details)
 				}
 			}
-			if !strings.Contains(prompt.Instruction, "Recorded Application") || !strings.Contains(prompt.Content, "Recorded Signer") || !strings.Contains(prompt.Footer, "reading this application's content back") {
+			if !strings.Contains(prompt.Instruction, "Recorded Application") || !strings.Contains(prompt.Details, "Publisher: Recorded Signer (verified)") || !strings.Contains(prompt.Details, "reading this app's content back") {
 				t.Fatalf("structured publisher/effect missing: %+v", prompt)
 			}
 			if changed == "" {
@@ -257,6 +279,14 @@ func (o *fakeOperator) ListQuestionsContext(context.Context, string, int64) (ask
 	return askclient.OperatorPage{Outcome: askclient.OperatorPageOutcomePage, Records: append([]askclient.RecordMetadata(nil), o.records...), Complete: true}, nil
 }
 
+func (o *fakeOperator) ListAllQuestionsContext(ctx context.Context) ([]askclient.RecordMetadata, error) {
+	page, err := o.ListQuestionsContext(ctx, "", 64)
+	if err != nil {
+		return nil, err
+	}
+	return page.Records, nil
+}
+
 // AnswerQuestionContext follows ASK-O3: a same-option answer to an answered
 // question replays it, another option conflicts.
 func (o *fakeOperator) AnswerQuestionContext(_ context.Context, id, option string) (askclient.OperatorDecision, error) {
@@ -357,21 +387,21 @@ func TestPresenterShowsPublisherRecordedAtAdmission(t *testing.T) {
 		publisher string
 		program   string
 	}{
-		{"trusted", askclient.OperatorQuestion{Publisher: "Recorded Signer", PublisherTrusted: true}, "Publisher: Recorded Signer (signature verified when the application asked).", "opencode (not registered)"},
+		{"trusted", askclient.OperatorQuestion{Publisher: "Recorded Signer", PublisherTrusted: true}, "Publisher: Recorded Signer (verified)", "opencode"},
 		{"trusted without a recorded signer name", askclient.OperatorQuestion{PublisherTrusted: true},
-			"Publisher: signature verified when the application asked; no publisher name was recorded.", "opencode (not registered)"},
+			"Publisher: verified; no name was recorded", "opencode"},
 		{"script host", askclient.OperatorQuestion{Publisher: "Microsoft Windows", PublisherTrusted: true,
 			ProgramDescription: "Windows PowerShell", ProgramOriginalName: "PowerShell.EXE"},
-			"Publisher: Microsoft Windows (signature verified when the application asked).\n\n" + hostSentence, "Windows PowerShell"},
-		{"untrusted", askclient.OperatorQuestion{Publisher: "Recorded Signer"}, "Publisher: not verified.", "opencode (not registered)"},
-		{"none", askclient.OperatorQuestion{}, "Publisher: not verified.", "opencode (not registered)"},
+			"Publisher: Microsoft Windows (verified)\nDescription: Windows PowerShell\nOriginal file name: PowerShell.EXE\n" + hostSentence, "Windows PowerShell"},
+		{"untrusted", askclient.OperatorQuestion{Publisher: "Recorded Signer"}, "Publisher: not verified", "opencode"},
+		{"none", askclient.OperatorQuestion{}, "Publisher: not verified", "opencode"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			operator := &fakeOperator{records: []askclient.RecordMetadata{record}, publishers: map[string]askclient.OperatorQuestion{record.ID: tc.read}}
 			surface := &fakeSurface{}
 			testPresenter(unlockedSession(), surface, operator, &fakeRules{}).present(context.Background(), record)
-			if len(surface.shown) != 1 || !strings.Contains(surface.shown[0].Content, tc.publisher) ||
+			if len(surface.shown) != 1 || !strings.Contains(surface.shown[0].Details, tc.publisher) ||
 				surface.shown[0].Instruction != "Allow "+tc.program+" to look up models?" {
 				t.Fatalf("prompt must name %q and show %q: %+v", tc.program, tc.publisher, surface.shown)
 			}
@@ -442,17 +472,17 @@ func TestPresenterCompletesPermissionWithoutSuccessModal(t *testing.T) {
 				p.rules = func() grants.RuleOperator { return unappliedRules{RuleOperator: rules, err: tc.err} }
 			}
 			var result presentResult
-			var reports []presenterReport
+			var notices []presenterNotice
+			saved := postPresenterNotice
+			postPresenterNotice = func(_ context.Context, n presenterNotice) error { notices = append(notices, n); return nil }
+			t.Cleanup(func() { postPresenterNotice = saved })
 			opened := 0
 			ok := presentFresh(context.Background(), []askclient.RecordMetadata{record},
 				func(ctx context.Context, current askclient.RecordMetadata) presentResult {
 					result = p.present(ctx, current)
 					return result
-				}, newTrayAnnouncer(), func() { opened++ }, func(report presenterReport) bool {
-					reports = append(reports, report)
-					return true
-				})
-			if !ok || len(surface.shown) != 1 || surface.shown[0].Instruction != "Allow opencode (not registered) to look up models?" {
+				}, newTrayAnnouncer(), func() { opened++ })
+			if !ok || len(surface.shown) != 1 || surface.shown[0].Instruction != "Allow opencode to look up models?" {
 				t.Fatalf("ok=%v prompt shown = %+v", ok, surface.shown)
 			}
 			if result.Outcome != presentAnswered || result.Answered.Decision.Outcome != askclient.OperatorDecisionOutcomeAnswered {
@@ -472,12 +502,15 @@ func TestPresenterCompletesPermissionWithoutSuccessModal(t *testing.T) {
 			if len(rules.edits) != wantEdits {
 				t.Fatalf("rule edits = %+v, want %d", rules.edits, wantEdits)
 			}
-			if tc.failure {
-				if opened != 1 || len(reports) != 1 || !strings.Contains(reports[0].Content, "permission rule was not written") {
-					t.Fatalf("failed effect must report and open Questions: opened=%d reports=%+v", opened, reports)
-				}
-			} else if opened != 0 || len(reports) != 0 {
-				t.Fatalf("successful answer produced a second dialog: opened=%d reports=%+v", opened, reports)
+			// Architect popup ruling 2026-11-10, rows 29 to 32: no popup after
+			// an answer; an Allow whose rule was not written is one notice.
+			wantNotices := 0
+			if tc.failure && tc.err == nil {
+				wantNotices = 1
+			}
+			if opened != 0 || len(notices) != wantNotices ||
+				wantNotices == 1 && (notices[0].Title != "Couldn't save that permission" || notices[0].Body != "opencode will ask again.") {
+				t.Fatalf("answer reports: opened=%d notices=%+v", opened, notices)
 			}
 		})
 	}
@@ -521,33 +554,36 @@ func TestPresentFreshAppliesEachReport(t *testing.T) {
 		presented int
 		requeued  []string
 		opened    int
-		shown     int
 	}{
-		{"all answered", []presentResult{{Outcome: presentAnswered, Answered: answered}, {Outcome: presentAnswered, Answered: answered}, {Outcome: presentAnswered, Answered: answered}}, 3, nil, 0, 0},
-		{"second deferred", []presentResult{{Outcome: presentAnswered, Answered: answered}, {Outcome: presentDeferred}}, 2, []string{"q2", "q3"}, 0, 0},
-		{"first deferred", []presentResult{{Outcome: presentDeferred}}, 1, []string{"q1", "q2", "q3"}, 0, 0},
-		{"failed opens Questions", []presentResult{{Outcome: presentFailed, Err: errors.New("no dialog")}, {Outcome: presentClosed}, {Outcome: presentClosed}}, 3, nil, 1, 0},
-		{"stale shows and opens", []presentResult{{Outcome: presentStale, Stale: askclient.OperatorDecisionOutcomeConflict}, {Outcome: presentStale, Stale: askclient.OperatorDecisionOutcomeConflict, ClosedElsewhere: true}, {Outcome: presentUnavailable}}, 3, nil, 2, 2},
+		{"all answered", []presentResult{{Outcome: presentAnswered, Answered: answered}, {Outcome: presentAnswered, Answered: answered}, {Outcome: presentAnswered, Answered: answered}}, 3, nil, 0},
+		{"second deferred", []presentResult{{Outcome: presentAnswered, Answered: answered}, {Outcome: presentDeferred}}, 2, []string{"q2", "q3"}, 0},
+		{"first deferred", []presentResult{{Outcome: presentDeferred}}, 1, []string{"q1", "q2", "q3"}, 0},
+		{"failed opens Questions", []presentResult{{Outcome: presentFailed, Err: errors.New("no dialog")}, {Outcome: presentClosed}, {Outcome: presentClosed}}, 3, nil, 1},
+		// No answer was sent: the Questions page in the Panel window shows the
+		// question as it now is, and no popup reports it.
+		{"stale opens Questions", []presentResult{{Outcome: presentStale, Stale: askclient.OperatorDecisionOutcomeConflict}, {Outcome: presentStale, Stale: askclient.OperatorDecisionOutcomeConflict, ClosedElsewhere: true}, {Outcome: presentUnavailable}}, 3, nil, 2},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			announcer := newTrayAnnouncer()
 			var fresh []askclient.RecordMetadata
 			for _, id := range ids {
-				fresh = append(fresh, askclient.RecordMetadata{ID: id})
+				pending := record
+				pending.ID = id
+				fresh = append(fresh, pending)
 			}
 			if got := announcer.update(fresh); len(got) != len(ids) {
 				t.Fatalf("setup announced %d", len(got))
 			}
-			presented, opened, shown := 0, 0, 0
+			presented, opened := 0, 0
 			present := func(context.Context, askclient.RecordMetadata) presentResult {
 				result := tc.results[presented]
 				presented++
 				return result
 			}
-			ok := presentFresh(context.Background(), fresh, present, announcer, func() { opened++ }, func(presenterReport) bool { shown++; return true })
-			if !ok || presented != tc.presented || opened != tc.opened || shown != tc.shown {
-				t.Fatalf("ok=%v presented=%d opened=%d shown=%d", ok, presented, opened, shown)
+			ok := presentFresh(context.Background(), fresh, present, announcer, func() { opened++ })
+			if !ok || presented != tc.presented || opened != tc.opened {
+				t.Fatalf("ok=%v presented=%d opened=%d", ok, presented, opened)
 			}
 			var requeued []string
 			for _, record := range announcer.update(fresh) {
@@ -589,7 +625,7 @@ func TestPresenterRefusesStaleAnswer(t *testing.T) {
 				t.Fatalf("stale answer must be refused with %s and never sent: %+v sent=%v", tc.want, result, operator.sent())
 			}
 			report := presenterResultReport(result)
-			if !report.Show || !report.OpenQuestions || report.Requeue {
+			if !report.OpenQuestions || report.Requeue || report.Notice != nil {
 				t.Fatalf("report = %+v", report)
 			}
 		})
@@ -615,7 +651,7 @@ func TestPresenterAnswerCannotReplayADelegatedAnswer(t *testing.T) {
 	if result.Outcome != presentAnswered || result.Answered.Decision.Outcome != askclient.OperatorDecisionOutcomeConflict || len(rules.edits) != 0 {
 		t.Fatalf("a delegated answer that landed first must be conflict with no rule written: %+v edits=%+v", result, rules.edits)
 	}
-	if report := presenterResultReport(result); !report.OpenQuestions || report.Content != trayQuestionOutcomeMessage("conflict") {
+	if report := presenterResultReport(result); report.OpenQuestions || report.Notice != nil {
 		t.Fatalf("report = %+v", report)
 	}
 }
@@ -646,8 +682,53 @@ func TestPresenterClosesPromptAnsweredElsewhere(t *testing.T) {
 	if result.Outcome != presentStale || !result.ClosedElsewhere || len(operator.sent()) != 0 {
 		t.Fatalf("prompt for a question answered elsewhere must close without an answer: %+v sent=%v", result, operator.sent())
 	}
-	if report := presenterResultReport(result); report.Show || report.Requeue {
+	if report := presenterResultReport(result); report.Requeue {
 		t.Fatalf("closing for an answer elsewhere needs no second dialog: %+v", report)
+	}
+}
+
+// agentUpdateFixture is the "Update connections" question, whose Dismiss
+// option "not_now" is one of its answers.
+func agentUpdateFixture() askclient.RecordMetadata {
+	return askclient.RecordMetadata{ID: "update-1", Asker: "abstraction-runtime.exe", Key: asks.AgentUpdateKey,
+		Asked: "2026-11-10T19:00:00Z", Options: []string{"update", "not_now"},
+		Text: "Update the OpenCode connections? Keep these updated connections as your assistants. Restart OpenCode to finish. Request " + strings.Repeat("c", 48) + "."}
+}
+
+// A question the system withdraws while it is shown closes silently. The
+// Windows dialog's cancel returns the Dismiss option, a real answer such as
+// "refuse" or "not_now"; it is never sent and never reported (R23, 2026-11-10:
+// "This question changed while it was open" after an install withdrew one).
+func TestPresenterWithdrawnQuestionClosesSilentlyThroughDismissOption(t *testing.T) {
+	record := agentUpdateFixture()
+	operator := &fakeOperator{records: []askclient.RecordMetadata{record}}
+	surface := &fakeSurface{block: true, cancelAnswers: true, dismissed: make(chan struct{}), during: func() { operator.set() }}
+	p := testPresenter(unlockedSession(), surface, operator, &fakeRules{})
+	p.watchEvery = 5 * time.Millisecond
+	result := p.present(context.Background(), record)
+	if len(surface.shown) != 1 || surface.shown[0].Dismiss == "" || !slices.Contains(record.Options, surface.shown[0].Dismiss) {
+		t.Fatalf("fixture must offer a real Dismiss option: %+v", surface.shown)
+	}
+	if result.Outcome != presentStale || !result.ClosedElsewhere || len(operator.sent()) != 0 {
+		t.Fatalf("a withdrawn question must close with no answer: %+v sent=%v", result, operator.sent())
+	}
+	if report := presenterResultReport(result); report.Requeue || report.OpenQuestions {
+		t.Fatalf("a withdrawn question needs no report: %+v", report)
+	}
+}
+
+// The person's own answer to a question withdrawn at that moment could not be
+// delivered: that is reported.
+func TestPresenterReportsPersonsAnswerToWithdrawnQuestion(t *testing.T) {
+	record := agentUpdateFixture()
+	operator := &fakeOperator{records: []askclient.RecordMetadata{record}}
+	surface := &fakeSurface{option: "update", during: func() { operator.set() }}
+	result := testPresenter(unlockedSession(), surface, operator, &fakeRules{}).present(context.Background(), record)
+	if result.Outcome != presentStale || result.ClosedElsewhere || len(operator.sent()) != 0 {
+		t.Fatalf("an undeliverable answer must be stale and unsent: %+v sent=%v", result, operator.sent())
+	}
+	if report := presenterResultReport(result); !report.OpenQuestions {
+		t.Fatalf("the person's undeliverable answer must open the Questions page: %+v", report)
 	}
 }
 
@@ -660,17 +741,32 @@ func TestPresenterClosedPromptSendsNothing(t *testing.T) {
 	}
 }
 
+func TestPresenterCatalogueReplacementNotNowDoesNotAnswer(t *testing.T) {
+	record := pendingFixture()
+	record.Key, record.Text = "content.replace", "Editor requests a one-time replacement."
+	record.Options = []string{"once", "never"}
+	operator := &fakeOperator{records: []askclient.RecordMetadata{record}}
+	surface := &fakeSurface{option: trayNotNow}
+	result := testPresenter(unlockedSession(), surface, operator, &fakeRules{}).present(t.Context(), record)
+	if len(surface.shown) != 1 || surface.shown[0].Dismiss != trayNotNow || result.Outcome != presentClosed || len(operator.sent()) != 0 {
+		t.Fatalf("replacement Not now: shown=%+v result=%+v sent=%v", surface.shown, result, operator.sent())
+	}
+}
+
 func TestPresenterReportKeepsRecordedAnswerDistinctFromRule(t *testing.T) {
 	rule := rightsclient.PolicyRule{Action: "a", Resource: "r", Permit: true}
 	record := pendingFixture()
+	record.Option, record.Yes = "allow", true
 	answered := grants.Answered{Decision: askclient.OperatorDecision{Outcome: askclient.OperatorDecisionOutcomeAnswered, Record: &record}, Rule: &rule,
 		Edit: &rightsclient.PolicyEdit{Outcome: rightsclient.PolicyEditOutcomeConflict}}
-	report := presenterResultReport(presentResult{Outcome: presentAnswered, Answered: answered})
-	if !report.Show || !report.OpenQuestions || report.Content != "Your answer was recorded, but the related permission rule was not written. Review the Questions page before retrying." {
+	// Architect popup ruling 2026-11-10, row 31: an Allow whose rule was not
+	// written is the one "Couldn't save that permission" notification.
+	report := presenterResultReport(presentResult{Outcome: presentAnswered, Answered: answered, Requester: "OpenCode"})
+	if report.OpenQuestions || report.Notice == nil || report.Notice.Title != "Couldn't save that permission" || report.Notice.Body != "OpenCode will ask again." {
 		t.Fatalf("incomplete rule report = %+v", report)
 	}
 	refused := presenterResultReport(presentResult{Outcome: presentAnswered, Answered: grants.Answered{Decision: askclient.OperatorDecision{Outcome: askclient.OperatorDecisionOutcomeForbidden}}})
-	if !refused.OpenQuestions || refused.Content != trayQuestionOutcomeMessage("forbidden") {
+	if refused.OpenQuestions || refused.Notice != nil {
 		t.Fatalf("typed refusal report = %+v", refused)
 	}
 }
@@ -685,7 +781,7 @@ func TestPresenterStopsPresentingAnExpiredQuestion(t *testing.T) {
 	}
 	ctx := context.Background()
 	id := ask(t, book, "expiring", `C:\apps\one.exe`, "abstraction.model/lookup", "hf")
-	records, err := listQuestions(ctx, operator)
+	records, err := listPresenterQuestions(ctx, operator)
 	if err != nil || len(records) != 1 || records[0].ID != id {
 		t.Fatalf("question before expiry %+v %v", records, err)
 	}
@@ -703,7 +799,7 @@ func TestPresenterStopsPresentingAnExpiredQuestion(t *testing.T) {
 	if len(surface.shown) != 1 || result.Outcome != presentStale || !result.ClosedElsewhere || len(rules.edits) != 0 {
 		t.Fatalf("an expiring prompt must close with nothing sent: %+v shown=%d edits=%+v", result, len(surface.shown), rules.edits)
 	}
-	if after, err := listQuestions(ctx, operator); err != nil || len(after) != 0 {
+	if after, err := listPresenterQuestions(ctx, operator); err != nil || len(after) != 0 {
 		t.Fatalf("an expired question must not be listed for presenting: %+v %v", after, err)
 	}
 	if _, found, err := book.ApplicationRecord(id); err != nil || found {
@@ -721,7 +817,7 @@ func TestPresenterAnswersThroughRuntimeOperator(t *testing.T) {
 	ctx := context.Background()
 	first := ask(t, book, "live-1", `C:\apps\one.exe`, "abstraction.model/lookup", "hf")
 	second := ask(t, book, "live-2", `C:\apps\two.exe`, "abstraction.model/lookup", "hf")
-	records, err := listQuestions(ctx, operator)
+	records, err := listPresenterQuestions(ctx, operator)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -750,7 +846,7 @@ func TestPresenterAnswersThroughRuntimeOperator(t *testing.T) {
 	if stale.Outcome != presentStale || stale.Stale != askclient.OperatorDecisionOutcomeConflict {
 		t.Fatalf("stale prompt = %+v", stale)
 	}
-	after, err := listQuestions(ctx, operator)
+	after, err := listPresenterQuestions(ctx, operator)
 	if err != nil {
 		t.Fatal(err)
 	}

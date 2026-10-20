@@ -9,7 +9,16 @@ pub enum PageOutcome
   Unsupported
   pub const ALL: [Self; 7]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum HistoryUsageOutcome
+  Available
+  Unavailable
+  Corrupt
+  Forbidden
+  Invalid
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum HistoryPageOutcome
   Page
   Gap
@@ -24,13 +33,13 @@ pub enum HistoryPageOutcome
   OsAuthorizationPending
   pub const ALL: [Self; 11]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum ApplicationLogSelection
   OneApp
   AllApps
   pub const ALL: [Self; 2]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum SourceAvailability
   Available
   PermissionDenied
@@ -38,7 +47,7 @@ pub enum SourceAvailability
   Unsupported
   pub const ALL: [Self; 4]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub mod source_limitation
   pub const RETENTION: &str
   pub const NATIVE_REDACTION: &str
@@ -54,7 +63,7 @@ pub enum SourceCatalogOutcome
   Invalid
   pub const ALL: [Self; 5]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub mod service_error_code
   pub const HANDLER_ERROR: &str
   pub const INVALID_RESULT: &str
@@ -68,79 +77,96 @@ pub mod service_error_code
   pub const POLICY_UNAVAILABLE: &str
   pub const FORBIDDEN: &str
   pub const ALL: [&str; 11]
+pub const DEFAULT_ASYNC_CAPACITY: i32
+pub const DEFAULT_INITIAL_BACKOFF_MS: i32
+pub const DEFAULT_MAX_BACKOFF_MS: i32
+pub const DEFAULT_WRITE_TIMEOUT_MS: i32
+pub const WRITER_BACKOFF_JITTER_PERCENT: i32
+pub const WRITER_GAP_MESSAGE: &str
 pub const HISTORY_ERROR_CODES: [&str; 5]
 pub const HISTORY_CURSOR_WORDS: [&str; 1]
 pub const HISTORY_IDENTITY_ERROR_CODES: [&str; 3]
 pub struct Attestation
-  by: String
+  by: ::std::string::String
   verified: bool
   hop: i64
-  program: String
-  host: String
-  user: String
-  exe: String
+  program: ::std::string::String
+  host: ::std::string::String
+  user: ::std::string::String
+  exe: ::std::string::String
   uid: i64
   gid: i64
   pid: i64
-  key: String
-  mac: String
+  key: ::std::string::String
+  mac: ::std::string::String
 pub struct Record
   schema: i64
-  time: String
+  time: ::std::string::String
   level: i64
-  msg: String
-  identity: Vec<Attestation>
-  job: String
-  attrs: BTreeMap<String, String>
+  msg: ::std::string::String
+  identity: ::std::vec::Vec<Attestation>
+  job: ::std::string::String
+  attrs: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>
 pub struct Page
   outcome: PageOutcome
-  records: Vec<Record>
-  next: String
+  records: ::std::vec::Vec<Record>
+  next: ::std::string::String
   at_end: bool
+pub struct HistoryUsage
+  retained_bytes: i64
+  oldest: ::std::string::String
+  max_use: ::std::option::Option<i64>
+  max_retention_ms: ::std::option::Option<i64>
+pub struct HistoryUsageResult
+  outcome: HistoryUsageOutcome
+  usage: ::std::option::Option<HistoryUsage>
 pub struct ApplicationLogTarget
   selection: ApplicationLogSelection
-  program: String
+  program: ::std::string::String
 pub struct ApplicationLogResource
-  program: String
-  captured_file_key: String
+  program: ::std::string::String
+  captured_file_key: ::std::string::String
 pub struct ApplicationLogPage
   outcome: HistoryPageOutcome
-  records: Vec<Record>
-  next: String
+  records: ::std::vec::Vec<Record>
+  next: ::std::string::String
   at_end: bool
 pub struct SourceDescriptor
-  id: String
+  id: ::std::string::String
   availability: SourceAvailability
-  limitations: Vec<String>
+  limitations: ::std::vec::Vec<::std::string::String>
 pub struct SourceCatalog
-  sources: Vec<SourceDescriptor>
+  sources: ::std::vec::Vec<SourceDescriptor>
   outcome: SourceCatalogOutcome
 pub struct ProducerClaim
-  provider: String
-  program: String
-  exe: String
-  user: String
+  provider: ::std::string::String
+  program: ::std::string::String
+  exe: ::std::string::String
+  user: ::std::string::String
   pid: i64
   uid: i64
   gid: i64
 pub struct SourceRecord
-  source_id: String
+  source_id: ::std::string::String
   record: Record
-  producer: Option<ProducerClaim>
+  producer: ::std::option::Option<ProducerClaim>
 pub struct SourcePage
   outcome: HistoryPageOutcome
-  records: Vec<SourceRecord>
-  next: String
+  records: ::std::vec::Vec<SourceRecord>
+  next: ::std::string::String
   at_end: bool
-pub fn encode(v: &Record) -> Vec<u8>
+pub fn encode(v: &Record) -> ::std::vec::Vec<u8>
 pub struct Refusal
   word: &'static str
   offset: usize
-pub fn decode(data: &[u8]) -> Result<Record, Refusal>
+pub fn decode(data: &[u8]) -> ::std::result::Result<Record, Refusal>
+pub trait JsonRecord: ::std::marker::Sized
+  fn to_json(&self) -> ::std::vec::Vec<u8>
+  fn from_json(data: &[u8]) -> ::std::result::Result<Self, Refusal>
 pub use abstraction_frame::FrameTransport
 pub struct ServiceError
-  code: String
-  message: String
+  code: ::std::string::String
+  message: ::std::string::String
 pub enum CallError<E>
   Transport(E)
   Refusal(Refusal)
@@ -148,97 +174,109 @@ pub enum CallError<E>
   Service(ServiceError)
 pub trait Sink
   type Error
-  fn write(&self, record: Record) -> Result<(), Self::Error>
+  fn write(&self, record: Record) -> ::std::result::Result<(), Self::Error>
 pub struct SinkClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait HistoryReader
   type Error
-  fn read(&self, cursor: String, max_records: i64, max_bytes: i64) -> Result<Page, Self::Error>
+  fn usage(&self) -> ::std::result::Result<HistoryUsageResult, Self::Error>
+  fn read(&self, cursor: ::std::string::String, max_records: i64, max_bytes: i64) -> ::std::result::Result<Page, Self::Error>
 pub struct HistoryReaderClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait HistoryObserver
   type Error
-  fn observe(&self, cursor: String, max_records: i64, max_bytes: i64, wait_ms: i64) -> Result<Page, Self::Error>
+  fn observe(&self, cursor: ::std::string::String, max_records: i64, max_bytes: i64, wait_ms: i64) -> ::std::result::Result<Page, Self::Error>
 pub struct HistoryObserverClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait ApplicationHistoryReader
   type Error
-  fn read(&self, target: ApplicationLogTarget, cursor: String, max_records: i64, max_bytes: i64) -> Result<ApplicationLogPage, Self::Error>
+  fn read(&self, target: ApplicationLogTarget, cursor: ::std::string::String, max_records: i64, max_bytes: i64) -> ::std::result::Result<ApplicationLogPage, Self::Error>
+  fn read_about_caller(&self, since: ::std::string::String, cursor: ::std::string::String, max_records: i64, max_bytes: i64) -> ::std::result::Result<ApplicationLogPage, Self::Error>
 pub struct ApplicationHistoryReaderClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait ApplicationHistoryObserver
   type Error
-  fn observe(&self, target: ApplicationLogTarget, cursor: String, max_records: i64, max_bytes: i64, wait_ms: i64) -> Result<ApplicationLogPage, Self::Error>
+  fn observe(&self, target: ApplicationLogTarget, cursor: ::std::string::String, max_records: i64, max_bytes: i64, wait_ms: i64) -> ::std::result::Result<ApplicationLogPage, Self::Error>
 pub struct ApplicationHistoryObserverClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait SourceReader
   type Error
-  fn sources(&self) -> Result<SourceCatalog, Self::Error>
-  fn read(&self, source_id: String, cursor: String, max_records: i64, max_bytes: i64) -> Result<SourcePage, Self::Error>
-  fn start_at_end(&self, source_id: String) -> Result<SourcePage, Self::Error>
+  fn sources(&self) -> ::std::result::Result<SourceCatalog, Self::Error>
+  fn read(&self, source_id: ::std::string::String, cursor: ::std::string::String, max_records: i64, max_bytes: i64) -> ::std::result::Result<SourcePage, Self::Error>
+  fn start_at_end(&self, source_id: ::std::string::String) -> ::std::result::Result<SourcePage, Self::Error>
 pub struct SourceReaderClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
-pub fn encode_attestation_document(v: &Attestation) -> Result<Vec<u8>, Refusal>
-pub fn decode_attestation_document(data: &[u8]) -> Result<Attestation, Refusal>
-pub fn encode_record_document(v: &Record) -> Result<Vec<u8>, Refusal>
-pub fn decode_record_document(data: &[u8]) -> Result<Record, Refusal>
-pub fn encode_page_document(v: &Page) -> Result<Vec<u8>, Refusal>
-pub fn decode_page_document(data: &[u8]) -> Result<Page, Refusal>
-pub fn encode_application_log_target_document(v: &ApplicationLogTarget) -> Result<Vec<u8>, Refusal>
-pub fn decode_application_log_target_document(data: &[u8]) -> Result<ApplicationLogTarget, Refusal>
-pub fn encode_application_log_resource_document(v: &ApplicationLogResource) -> Result<Vec<u8>, Refusal>
-pub fn decode_application_log_resource_document(data: &[u8]) -> Result<ApplicationLogResource, Refusal>
-pub fn encode_application_log_page_document(v: &ApplicationLogPage) -> Result<Vec<u8>, Refusal>
-pub fn decode_application_log_page_document(data: &[u8]) -> Result<ApplicationLogPage, Refusal>
-pub fn encode_source_descriptor_document(v: &SourceDescriptor) -> Result<Vec<u8>, Refusal>
-pub fn decode_source_descriptor_document(data: &[u8]) -> Result<SourceDescriptor, Refusal>
-pub fn encode_source_catalog_document(v: &SourceCatalog) -> Result<Vec<u8>, Refusal>
-pub fn decode_source_catalog_document(data: &[u8]) -> Result<SourceCatalog, Refusal>
-pub fn encode_producer_claim_document(v: &ProducerClaim) -> Result<Vec<u8>, Refusal>
-pub fn decode_producer_claim_document(data: &[u8]) -> Result<ProducerClaim, Refusal>
-pub fn encode_source_record_document(v: &SourceRecord) -> Result<Vec<u8>, Refusal>
-pub fn decode_source_record_document(data: &[u8]) -> Result<SourceRecord, Refusal>
-pub fn encode_source_page_document(v: &SourcePage) -> Result<Vec<u8>, Refusal>
-pub fn decode_source_page_document(data: &[u8]) -> Result<SourcePage, Refusal>
+pub fn encode_attestation_document(v: &Attestation) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_attestation_document(data: &[u8]) -> ::std::result::Result<Attestation, Refusal>
+pub fn encode_record_document(v: &Record) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_record_document(data: &[u8]) -> ::std::result::Result<Record, Refusal>
+pub fn encode_page_document(v: &Page) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_page_document(data: &[u8]) -> ::std::result::Result<Page, Refusal>
+pub fn encode_history_usage_document(v: &HistoryUsage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_history_usage_document(data: &[u8]) -> ::std::result::Result<HistoryUsage, Refusal>
+pub fn encode_history_usage_result_document(v: &HistoryUsageResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_history_usage_result_document(data: &[u8]) -> ::std::result::Result<HistoryUsageResult, Refusal>
+pub fn encode_application_log_target_document(v: &ApplicationLogTarget) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_application_log_target_document(data: &[u8]) -> ::std::result::Result<ApplicationLogTarget, Refusal>
+pub fn encode_application_log_resource_document(v: &ApplicationLogResource) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_application_log_resource_document(data: &[u8]) -> ::std::result::Result<ApplicationLogResource, Refusal>
+pub fn encode_application_log_page_document(v: &ApplicationLogPage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_application_log_page_document(data: &[u8]) -> ::std::result::Result<ApplicationLogPage, Refusal>
+pub fn encode_source_descriptor_document(v: &SourceDescriptor) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_source_descriptor_document(data: &[u8]) -> ::std::result::Result<SourceDescriptor, Refusal>
+pub fn encode_source_catalog_document(v: &SourceCatalog) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_source_catalog_document(data: &[u8]) -> ::std::result::Result<SourceCatalog, Refusal>
+pub fn encode_producer_claim_document(v: &ProducerClaim) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_producer_claim_document(data: &[u8]) -> ::std::result::Result<ProducerClaim, Refusal>
+pub fn encode_source_record_document(v: &SourceRecord) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_source_record_document(data: &[u8]) -> ::std::result::Result<SourceRecord, Refusal>
+pub fn encode_source_page_document(v: &SourcePage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_source_page_document(data: &[u8]) -> ::std::result::Result<SourcePage, Refusal>
 pub mod internal
   pub fn micros_timestamp(text: &str) -> bool
   pub fn wide_timestamp(text: &str) -> bool
-  pub fn decode_attestation_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Attestation, usize), super::Refusal>
-  pub fn check_attestation(v: &super::Attestation, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_attestation_at(v: &super::Attestation, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_record_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Record, usize), super::Refusal>
-  pub fn check_record(v: &super::Record, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_record_at(v: &super::Record, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_page_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Page, usize), super::Refusal>
-  pub fn check_page(v: &super::Page, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_page_at(v: &super::Page, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_application_log_target_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ApplicationLogTarget, usize), super::Refusal>
-  pub fn check_application_log_target(v: &super::ApplicationLogTarget, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_application_log_target_at(v: &super::ApplicationLogTarget, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_application_log_resource_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ApplicationLogResource, usize), super::Refusal>
-  pub fn check_application_log_resource(v: &super::ApplicationLogResource, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_application_log_resource_at(v: &super::ApplicationLogResource, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_application_log_page_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ApplicationLogPage, usize), super::Refusal>
-  pub fn check_application_log_page(v: &super::ApplicationLogPage, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_application_log_page_at(v: &super::ApplicationLogPage, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_source_descriptor_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::SourceDescriptor, usize), super::Refusal>
-  pub fn check_source_descriptor(v: &super::SourceDescriptor, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_source_descriptor_at(v: &super::SourceDescriptor, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_source_catalog_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::SourceCatalog, usize), super::Refusal>
-  pub fn check_source_catalog(v: &super::SourceCatalog, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_source_catalog_at(v: &super::SourceCatalog, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_producer_claim_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ProducerClaim, usize), super::Refusal>
-  pub fn check_producer_claim(v: &super::ProducerClaim, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_producer_claim_at(v: &super::ProducerClaim, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_source_record_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::SourceRecord, usize), super::Refusal>
-  pub fn check_source_record(v: &super::SourceRecord, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_source_record_at(v: &super::SourceRecord, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_source_page_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::SourcePage, usize), super::Refusal>
-  pub fn check_source_page(v: &super::SourcePage, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_source_page_at(v: &super::SourcePage, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_attestation_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Attestation, usize), super::Refusal>
+  pub fn check_attestation(v: &super::Attestation, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_attestation_at(v: &super::Attestation, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_record_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Record, usize), super::Refusal>
+  pub fn check_record(v: &super::Record, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_record_at(v: &super::Record, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Page, usize), super::Refusal>
+  pub fn check_page(v: &super::Page, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_page_at(v: &super::Page, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_history_usage_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::HistoryUsage, usize), super::Refusal>
+  pub fn check_history_usage(v: &super::HistoryUsage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_history_usage_at(v: &super::HistoryUsage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_history_usage_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::HistoryUsageResult, usize), super::Refusal>
+  pub fn check_history_usage_result(v: &super::HistoryUsageResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_history_usage_result_at(v: &super::HistoryUsageResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_application_log_target_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ApplicationLogTarget, usize), super::Refusal>
+  pub fn check_application_log_target(v: &super::ApplicationLogTarget, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_application_log_target_at(v: &super::ApplicationLogTarget, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_application_log_resource_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ApplicationLogResource, usize), super::Refusal>
+  pub fn check_application_log_resource(v: &super::ApplicationLogResource, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_application_log_resource_at(v: &super::ApplicationLogResource, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_application_log_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ApplicationLogPage, usize), super::Refusal>
+  pub fn check_application_log_page(v: &super::ApplicationLogPage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_application_log_page_at(v: &super::ApplicationLogPage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_source_descriptor_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::SourceDescriptor, usize), super::Refusal>
+  pub fn check_source_descriptor(v: &super::SourceDescriptor, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_source_descriptor_at(v: &super::SourceDescriptor, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_source_catalog_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::SourceCatalog, usize), super::Refusal>
+  pub fn check_source_catalog(v: &super::SourceCatalog, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_source_catalog_at(v: &super::SourceCatalog, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_producer_claim_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ProducerClaim, usize), super::Refusal>
+  pub fn check_producer_claim(v: &super::ProducerClaim, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_producer_claim_at(v: &super::ProducerClaim, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_source_record_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::SourceRecord, usize), super::Refusal>
+  pub fn check_source_record(v: &super::SourceRecord, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_source_record_at(v: &super::SourceRecord, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_source_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::SourcePage, usize), super::Refusal>
+  pub fn check_source_page(v: &super::SourcePage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_source_page_at(v: &super::SourcePage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>

@@ -25,15 +25,10 @@ type rightsPageReport struct {
 		Outcome string `json:"outcome"`
 		Writes  int    `json:"writes"`
 	} `json:"typedJourney"`
-	ChoicesStatus      string          `json:"choicesStatus"`
-	Choices            []choicePageRow `json:"choices"`
-	ChoiceHistory      []choicePageRow `json:"choiceHistory"`
-	DelegationStatus   string          `json:"delegationStatus"`
-	DelegationRequests []struct {
-		Value string `json:"value"`
-		Text  string `json:"text"`
-	} `json:"delegationRequests"`
-	QuestionsStatus string `json:"questionsStatus"`
+	ChoicesStatus   string          `json:"choicesStatus"`
+	Choices         []choicePageRow `json:"choices"`
+	ChoiceHistory   []choicePageRow `json:"choiceHistory"`
+	QuestionsStatus string          `json:"questionsStatus"`
 	Questions       []struct {
 		Lines   []string `json:"lines"`
 		Buttons []string `json:"buttons"`
@@ -46,8 +41,18 @@ type rightsPageReport struct {
 	DefaultsStatus      string           `json:"defaultsStatus"`
 	DefaultsAfter       []defaultPageRow `json:"defaultsAfter"`
 	DefaultsAfterStatus string           `json:"defaultsAfterStatus"`
-	AnsweredStatus      string           `json:"answeredStatus"`
-	Answered            []struct {
+	// Agents is the "Ask me first" switch of Messages between agents: on
+	// arrival, then after each turn; AgentsSaved is the default read back
+	// after the first turn.
+	Agents []struct {
+		On       bool   `json:"on"`
+		Disabled bool   `json:"disabled"`
+		Hidden   bool   `json:"hidden"`
+		Status   string `json:"status"`
+	} `json:"agents"`
+	AgentsSaved    *defaultView `json:"agentsSaved"`
+	AnsweredStatus string       `json:"answeredStatus"`
+	Answered       []struct {
 		Lines   []string `json:"lines"`
 		Buttons []string `json:"buttons"`
 	} `json:"answered"`
@@ -98,6 +103,23 @@ func runRightsPageMode(t *testing.T, mode string) rightsPageReport {
 	return report
 }
 
+func TestRightsPageFixtureFailureDrainsPendingArrivals(t *testing.T) {
+	nodePath, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is not installed; the page script cannot run")
+	}
+	server := httptest.NewServer((&servicePanel{}).handler("test-key"))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, nodePath, "testdata/rights_page_handler.js", server.URL, "test-key", "fixture-error")
+	output, err := cmd.CombinedOutput()
+	exit, ok := err.(*exec.ExitError)
+	if !ok || exit.ExitCode() != 1 || !strings.Contains(string(output), "fixture failure while page arrivals are pending") || strings.Contains(string(output), "Assertion failed") {
+		t.Fatalf("page failure must drain I/O and retain its error: %v\n%s", err, output)
+	}
+}
+
 func TestRightsPageTypedReviewReachesNativePublicHandler(t *testing.T) {
 	own(t)
 	var allow, outage atomic.Bool
@@ -135,38 +157,14 @@ func TestRightsPageTypedReviewReachesNativePublicHandler(t *testing.T) {
 	}
 }
 
-// The delegation form lists the pending first-use request the real handler
-// returns (live walkthrough 2026-10-02, D2): the page read p.Outcome from a
-// reply whose key is outcome, so the list stayed empty and the status read
-// "Service result: undefined".
-func TestRightsPageDelegationFormListsTheHandlersPendingRequest(t *testing.T) {
-	const action, resource = "abstraction.model/lookup", "hf"
-	book, _, program := panelFirstUseRuntime(t, action)
-	slots := map[string]string{"program": program, "action": action, "resource": resource}
-	record, outcome, err := book.AskApplication("runtime-scope", "runtime", "first-use:panel", asks.FirstUseKey, slots, listen.Seen{Why: "test"})
-	if err != nil || outcome != "pending" {
-		t.Fatalf("first-use admission %q %v", outcome, err)
+// Answering access replaces the historical five-minute setup. The native
+// exact-delegation API remains available to existing clients.
+func TestRightsPageUsesEnrolledAnsweringAccess(t *testing.T) {
+	if strings.Contains(rightsPage, `id="delegation-form"`) || strings.Contains(rightsPage, `call('/rights/delegation'`) {
+		t.Fatal("Panel still offers exact-question delegation setup")
 	}
-	report := runRightsPage(t)
-	if strings.Contains(report.DelegationStatus, "undefined") || strings.HasPrefix(report.DelegationStatus, "Service result") {
-		t.Fatalf("delegation status reads the reply's outcome wrongly: %q", report.DelegationStatus)
-	}
-	var listed []string
-	sentence := firstUseSentence(trayPublisher{}, program, action, resource)
-	for _, option := range report.DelegationRequests {
-		if option.Value != "" {
-			listed = append(listed, option.Value)
-			// The request reads as the native prompt words it (D5).
-			if option.Text != sentence {
-				t.Errorf("delegation request reads %q, want %q", option.Text, sentence)
-			}
-		}
-	}
-	if len(listed) != 1 || listed[0] != record.ID {
-		t.Fatalf("delegation form lists %v, want the pending request %s; status %q", report.DelegationRequests, record.ID, report.DelegationStatus)
-	}
-	if !strings.Contains(report.DelegationStatus, "Choose a request, answer and executable.") {
-		t.Fatalf("delegation status %q does not invite a choice", report.DelegationStatus)
+	if !strings.Contains(rightsPage, `id="assistant-form"`) || !strings.Contains(rightsPage, `id="answered-list"`) {
+		t.Fatal("Panel lacks enrolled answering access and attributed answers")
 	}
 }
 
@@ -184,9 +182,12 @@ func TestRightsPageQuestionReadsAsTheNativePrompt(t *testing.T) {
 		t.Fatalf("first-use admission %q %v", outcome, err)
 	}
 	prompt := trayQuestionView(askclient.RecordMetadata{ID: record.ID, Key: record.Key, About: record.About, Text: record.Text, Options: record.Options}, trayPublisher{})
-	sentence, _, _ := strings.Cut(prompt.Content, "\n")
-	if sentence != newProgramTitler(nil).name(program)+" wants to save the videos it makes and read them back." {
-		t.Fatalf("native prompt sentence %q", sentence)
+	// The popup's heading asks the page's sentence as a question
+	// (architect popup ruling 2026-11-10).
+	name := newProgramTitler(nil).name(program)
+	sentence := name + " wants to save the videos it makes and read them back."
+	if prompt.Instruction != "Allow "+name+" to save the videos it makes and read them back?" {
+		t.Fatalf("native prompt heading %q", prompt.Instruction)
 	}
 	var labels []string
 	for _, choice := range prompt.Choices {
@@ -197,7 +198,9 @@ func TestRightsPageQuestionReadsAsTheNativePrompt(t *testing.T) {
 		t.Fatalf("questions shown %+v; status %q", report.Questions, report.QuestionsStatus)
 	}
 	shown := report.Questions[0]
-	if line, _, _ := strings.Cut(shown.Lines[0], "\n"); line != sentence {
+	// The row label is the prompt's sentence without its final period
+	// (architect ruling 2026-11-09: a label never ends in a period).
+	if line, _, _ := strings.Cut(shown.Lines[0], "\n"); line != strings.TrimSuffix(sentence, ".") {
 		t.Fatalf("Questions page reads %q, the native prompt %q", line, sentence)
 	}
 	if want := append(labels, "Dismiss"); strings.Join(shown.Buttons, "|") != strings.Join(want, "|") {

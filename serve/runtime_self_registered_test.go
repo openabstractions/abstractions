@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	asks "github.com/openabstractions/abstraction-asks/go"
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
-	"github.com/openabstractions/abstraction-facade/go/grants"
+	registration "github.com/openabstractions/abstraction-facade/go/abstraction/facade/registration"
+	identity "github.com/openabstractions/abstraction-identity"
 	rights "github.com/openabstractions/abstraction-rights/go"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 )
@@ -18,12 +20,255 @@ import (
 // application.manage, and the self-registration question connected. state is
 // the directory's state folder, which a restart opens again.
 type selfRegisteredRun struct {
-	f      *answererFixture
-	d      *applicationDirectory
-	k      *selfRegisteredQuestions
-	ctx    context.Context
-	cancel context.CancelFunc
-	state  string
+	f                     *answererFixture
+	d                     *applicationDirectory
+	k                     *selfRegisteredQuestions
+	ctx                   context.Context
+	cancel                context.CancelFunc
+	state                 string
+	syntheticProgramImage bool
+	// native attaches the applications@3 registry before the questions
+	// connect, in the runtime's start order (enableApplicationV3, then
+	// keepSelfRegisteredWithProgramReview).
+	native bool
+}
+
+func TestSelfRegistrationProductionScopeGenerationRemainsReadable(t *testing.T) {
+	run := newSelfRegisteredRun(t)
+	run.f.a.scope = "asks-owner-program@1:" + strings.Repeat("a", 64)
+	if err := run.d.attachApplicationV3(run.ctx, registration1459Decoder); err != nil {
+		t.Fatal(err)
+	}
+	revision := registration1459Publish(t, run.d, "scope-self", run.f.comfy.Program, "Fixture self", "self", "")
+	q := selfRegisteredQuestion(t, run.f, run.d, "scope-self")
+	if !q.Pending() || q.Key != asks.SelfRegisteredKey {
+		t.Fatal("self registration pending occurrence changed")
+	}
+	scope := selfRegistrationScope(run.f.a.scope, revision)
+	if !asks.ValidRequestKey(scope) || scope == agentEnrollmentScope(run.f.a.scope, revision) {
+		t.Fatal("invalid/shared question domain")
+	}
+	if err := run.k.ask("scope-self"); err != nil {
+		t.Fatal(err)
+	}
+	if again := selfRegisteredQuestion(t, run.f, run.d, "scope-self"); again.ID != q.ID {
+		t.Fatal("retry replaced original occurrence")
+	}
+}
+
+func pendingProgramRegistration(t *testing.T, run *selfRegisteredRun, name string, source registration.Source) registration.Registration {
+	t.Helper()
+	run.syntheticProgramImage = true
+	run.d.programKeepImage = registry3SyntheticKeepImage
+	if run.d.v3 == nil {
+		if err := run.d.attachApplicationV3(run.ctx, registration1459Decoder); err != nil {
+			t.Fatal(err)
+		}
+	}
+	candidate := registry3Candidate(t, name)
+	candidate.Key, candidate.Spec.Program = run.f.comfy.Program, run.f.comfy.Program
+	candidate.ProductName = "Captured provider"
+	candidate.Source, candidate.State = source, registration.StatePendingApproval
+	_, captured := registration1459File(t, name, candidate.Spec.Program, candidate.ProductName)
+	captured.Source.FileKey = identity.ProgramKey(candidate.Spec.Program)
+	if captured.Source.FileKey == "" {
+		t.Fatal("fixture program identity unavailable")
+	}
+	out := run.d.publishProgramRegistration(run.ctx, "", true, candidate, &captured.Source, "operator")
+	if out.Outcome != registration.OutcomeApplied {
+		t.Fatal(out)
+	}
+	candidate.Revision = out.Revision
+	return candidate
+}
+
+func programRegistrationNow(d *applicationDirectory, key string) (registration.Registration, bool) {
+	d.mu.Lock()
+	defer d.unlock()
+	if d.v3 == nil {
+		return registration.Registration{}, false
+	}
+	v, ok := d.v3.programs[key]
+	return v, ok
+}
+
+func programKeepQuestion(t *testing.T, run *selfRegisteredRun, key string) asks.Record {
+	t.Helper()
+	_, _, mark, ok := run.d.programSelfEntry(key)
+	if ok && mark.Question == "" && run.d.askKeep != nil {
+		// Registration asks nothing: the person's review in the Panel asks.
+		if err := run.d.askKeep(selfRegisteredProgramName(key)); err != nil {
+			t.Fatal("person review", err)
+		}
+		_, _, mark, ok = run.d.programSelfEntry(key)
+	}
+	if !ok || mark.Question == "" {
+		t.Fatal("pending PROGRAM has no person question", key, mark)
+	}
+	q, found, err := run.f.a.book.ApplicationRecord(mark.Question)
+	if err != nil || !found || !q.Pending() {
+		t.Fatal("PROGRAM question unavailable", found, err, q)
+	}
+	return q
+}
+
+func TestProgramSelfRegistrationKeepsProviderOnlyWithCapturedPublisher(t *testing.T) {
+	for _, source := range []registration.Source{registration.SourceOperator, registration.SourceSelfRegistration} {
+		t.Run(source.String(), func(t *testing.T) {
+			run := newSelfRegisteredRun(t)
+			candidate := pendingProgramRegistration(t, run, "provider", source)
+			q := programKeepQuestion(t, run, candidate.Key)
+			if q.Key != asks.SelfRegisteredKey || q.About != candidate.Spec.Program || q.AskerProgram != "" ||
+				q.Text != candidate.Spec.Program+" was added to OpenAbstractions as Captured provider. Keep it?" ||
+				q.Publisher != "synthetic test provenance" || !q.PublisherTrusted || !slices.Equal(q.Options, []string{"keep", "remove"}) {
+				t.Fatalf("PROGRAM question lost captured source/person semantics: %+v", q)
+			}
+			run.f.enroll(t, run.f.answerer)
+			if _, err := run.f.a.authorizeAnswerer(run.ctx, answerer{subject: run.f.answerer}, q, run.f.a.scope, "keep"); err == nil {
+				t.Fatal("ordinary answerer may Keep a PROGRAM")
+			}
+			answer(t, run.f, q.ID, "keep")
+			waitDirectory(t, run.d, func() bool {
+				v, ok := programRegistrationNow(run.d, candidate.Key)
+				return ok && v.State == registration.StateEnabled
+			})
+			run.d.mu.Lock()
+			applications := len(run.d.descriptors)
+			run.d.unlock()
+			if applications != 0 {
+				t.Fatal("provider-only Keep invented an application facet")
+			}
+		})
+	}
+}
+
+func TestProgramSelfRegistrationRemoveBlocksOnlySelfRegistration(t *testing.T) {
+	run := newSelfRegisteredRun(t)
+	if err := run.f.a.rights.policy.RegisterAction(ActionProviderManage); err != nil {
+		t.Fatal(err)
+	}
+	if err := run.f.a.rights.policy.Set(run.f.panel, ActionProviderManage, "account", true); err != nil {
+		t.Fatal(err)
+	}
+	candidate := pendingProgramRegistration(t, run, "provider", registration.SourceOperator)
+	q := programKeepQuestion(t, run, candidate.Key)
+	answer(t, run.f, q.ID, "remove")
+	waitDirectory(t, run.d, func() bool { _, ok := programRegistrationNow(run.d, candidate.Key); return !ok })
+	read := run.f.a.rights.policy.ReadRule(run.f.comfy, ActionApplicationRegisterSelf, "account")
+	if read.Record == nil || read.Record.Rule.Permit || read.Record.Why != "removed by the person from OpenAbstractions" {
+		t.Fatalf("Remove lost actual PROGRAM block: %+v", read)
+	}
+	if run.d.keepProgramOwned(run.ctx, candidate.Key, candidate.Spec.Program, q.ID) {
+		t.Fatal("removed PROGRAM consumed old Keep")
+	}
+	management := run.f.a.rights.policy.ReadRule(run.f.panel, ActionProviderManage, "account")
+	if management.Record == nil || !management.Record.Rule.Permit {
+		t.Fatal("Remove changed separately authorized operator management", management)
+	}
+}
+
+func TestProgramSelfRegistrationRetainsOnlyCurrentAnswerAcrossRestart(t *testing.T) {
+	run := newSelfRegisteredRun(t)
+	candidate := pendingProgramRegistration(t, run, "provider", registration.SourceOperator)
+	first := programKeepQuestion(t, run, candidate.Key)
+	_, image, _, ok := run.d.programSelfEntry(candidate.Key)
+	if !ok {
+		t.Fatal("missing captured PROGRAM")
+	}
+	candidate.ProductName = "Replacement provider"
+	replaced := run.d.publishProgramRegistration(run.ctx, candidate.Revision, false, candidate, &image, "operator")
+	if replaced.Outcome != registration.OutcomeApplied || replaced.Revision == candidate.Revision {
+		t.Fatal(replaced)
+	}
+	second := programKeepQuestion(t, run, candidate.Key)
+	if first.ID == second.ID {
+		t.Fatal("replacement reused earlier consent")
+	}
+	answer(t, run.f, first.ID, "keep")
+	waitUnfollowed(t, run.k, first.ID)
+	if v, ok := programRegistrationNow(run.d, candidate.Key); !ok || v.State != registration.StatePendingApproval {
+		t.Fatal("old answer confirmed replacement", v, ok)
+	}
+	run.cancel()
+	waitUnfollowed(t, run.k, second.ID)
+	answer(t, run.f, second.ID, "keep")
+	run.start(t)
+	if err := run.d.attachApplicationV3(run.ctx, registration1459Decoder); err != nil {
+		t.Fatal(err)
+	}
+	run.k.resume()
+	if v, ok := programRegistrationNow(run.d, candidate.Key); !ok || v.State != registration.StateEnabled {
+		t.Fatal("restart lost current retained Keep", v, ok)
+	}
+	if run.d.keepProgramOwned(run.ctx, candidate.Key, candidate.Spec.Program, first.ID) {
+		t.Fatal("earlier occurrence acted after restart")
+	}
+}
+
+// A pending program nobody asked about waits across a restart without a
+// question (VISION 2026-10-06, amended 2026-11-10); the person's review asks
+// once, and a later restart follows that same question.
+func TestProgramSelfRegistrationUnaskedPendingWaitsAcrossRestart(t *testing.T) {
+	run := newSelfRegisteredRun(t)
+	run.d.askKeep = nil
+	candidate := pendingProgramRegistration(t, run, "provider", registration.SourceOperator)
+	if _, _, mark, ok := run.d.programSelfEntry(candidate.Key); !ok || mark.Question != "" {
+		t.Fatal("fixture did not retain unasked custody", ok, mark)
+	}
+	run.start(t)
+	if err := run.d.attachApplicationV3(run.ctx, registration1459Decoder); err != nil {
+		t.Fatal(err)
+	}
+	run.k.resume()
+	if _, _, mark, ok := run.d.programSelfEntry(candidate.Key); !ok || mark.Question != "" {
+		t.Fatal("a restart asked about an unasked program", ok, mark)
+	}
+	first := programKeepQuestion(t, run, candidate.Key)
+	run.k.resume()
+	if second := programKeepQuestion(t, run, candidate.Key); second.ID != first.ID {
+		t.Fatal("restart duplicated initial PROGRAM admission")
+	}
+	if v, ok := programRegistrationNow(run.d, candidate.Key); !ok || v.State != registration.StatePendingApproval {
+		t.Fatal("question admission changed pending intent", v, ok)
+	}
+}
+
+func TestProgramSelfRegistrationExpiryKeepsPending(t *testing.T) {
+	run := newSelfRegisteredRun(t)
+	candidate := pendingProgramRegistration(t, run, "provider", registration.SourceOperator)
+	first := programKeepQuestion(t, run, candidate.Key)
+	if err := run.f.a.book.SetPendingLifetime(time.Nanosecond); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := run.f.a.book.ApplicationRecord(first.ID); err != nil || found {
+		t.Fatal("question did not expire", found, err)
+	}
+	if _, outcome, err := run.f.a.book.AnswerApplication(first.ID, "keep"); err != nil || outcome != "unknown" {
+		t.Fatal("expired occurrence accepted an answer", outcome, err)
+	}
+	if v, ok := programRegistrationNow(run.d, candidate.Key); !ok || v.State != registration.StatePendingApproval {
+		t.Fatal("expiry changed PROGRAM intent", v, ok)
+	}
+	// A restart asks again about the program whose question expired, with a
+	// new question; the expired one stays gone. The Book's clock stays past
+	// the first question's lifetime until the new question is written.
+	run.k.resume()
+	if err := run.f.a.book.SetPendingLifetime(asks.DefaultPendingLifetime); err != nil {
+		t.Fatal(err)
+	}
+	_, _, mark, ok := run.d.programSelfEntry(candidate.Key)
+	if !ok || mark.Question == "" || mark.Question == first.ID {
+		t.Fatal("resume did not ask again about the expired program question", ok, mark)
+	}
+	if q, found, err := run.f.a.book.ApplicationRecord(mark.Question); err != nil || !found || !q.Pending() {
+		t.Fatal("the question asked again is not pending", found, err)
+	}
+	if _, found, err := run.f.a.book.ApplicationRecord(first.ID); err != nil || found {
+		t.Fatal("resume revived the expired question", found, err)
+	}
+	if v, ok := programRegistrationNow(run.d, candidate.Key); !ok || v.State != registration.StatePendingApproval {
+		t.Fatal("asking again changed PROGRAM intent", v, ok)
+	}
 }
 
 func selfRegisteredFixture(t *testing.T) (*answererFixture, *applicationDirectory, context.Context) {
@@ -33,6 +278,11 @@ func selfRegisteredFixture(t *testing.T) (*answererFixture, *applicationDirector
 
 func newSelfRegisteredRun(t *testing.T) *selfRegisteredRun {
 	t.Helper()
+	return newSelfRegisteredRunWith(t, false)
+}
+
+func newSelfRegisteredRunWith(t *testing.T, native bool) *selfRegisteredRun {
+	t.Helper()
 	f := newAnswererFixture(t)
 	policy := f.a.rights.policy
 	for _, action := range []string{ActionApplicationRegisterSelf, ActionApplicationManage} {
@@ -40,13 +290,13 @@ func newSelfRegisteredRun(t *testing.T) *selfRegisteredRun {
 			t.Fatal(err)
 		}
 	}
-	if err := policy.ConfigureDefaults(f.answerer.Account, grants.RuntimeAccountDefaults(), defaultExcluded); err != nil {
+	if err := policy.ConfigureDefaults(f.answerer.Account, f.a.rights.accountDefaults(), defaultExcluded); err != nil {
 		t.Fatal(err)
 	}
 	if err := policy.Set(f.panel, ActionApplicationManage, "account", true); err != nil {
 		t.Fatal(err)
 	}
-	run := &selfRegisteredRun{f: f, state: t.TempDir()}
+	run := &selfRegisteredRun{f: f, state: t.TempDir(), native: native}
 	run.start(t)
 	return run
 }
@@ -68,6 +318,14 @@ func (run *selfRegisteredRun) start(t *testing.T) {
 	run.ctx, run.cancel = context.WithCancel(context.Background())
 	t.Cleanup(run.cancel)
 	run.d = d
+	if run.syntheticProgramImage {
+		d.programKeepImage = registry3SyntheticKeepImage
+	}
+	if run.native {
+		if err := d.attachApplicationV3(run.ctx, registration1459Decoder); err != nil {
+			t.Fatal(err)
+		}
+	}
 	run.k = f.a.keepSelfRegistered(run.ctx, d)
 }
 
@@ -75,7 +333,18 @@ func (run *selfRegisteredRun) start(t *testing.T) {
 // registration.
 func selfRegisteredQuestion(t *testing.T, f *answererFixture, d *applicationDirectory, name string) asks.Record {
 	t.Helper()
-	_, mark, ok := d.selfEntry(name)
+	// Read the question through the same PROGRAM/legacy routing owner used by
+	// the runtime, including application facets of a shared PROGRAM.
+	owner := &selfRegisteredQuestions{d: d}
+	_, mark, ok := owner.selfEntry(name)
+	if ok && mark.Question == "" && d.askKeep != nil {
+		// Registration asks nothing: the person's action in Apps asks
+		// (AskConfirmation).
+		if err := d.askKeep(name); err != nil {
+			t.Fatalf("person action in Apps for %s: %v", name, err)
+		}
+		_, mark, ok = owner.selfEntry(name)
+	}
 	if !ok || mark.Question == "" {
 		t.Fatalf("no question recorded for %s", name)
 	}
@@ -149,7 +418,7 @@ func TestSelfRegistrationAsksThePersonToKeepIt(t *testing.T) {
 		t.Fatal("a self-registered entry reads confirmed")
 	}
 	q := selfRegisteredQuestion(t, f, d, "editor")
-	if q.Text != f.comfy.Program+" added itself to OpenAbstractions as Editor. Keep it?" || q.About != f.comfy.Program ||
+	if q.Text != f.comfy.Program+" was added to OpenAbstractions as Editor. Keep it?" || q.About != f.comfy.Program ||
 		!slices.Equal(q.Options, []string{"keep", "remove"}) || q.Key != asks.SelfRegisteredKey || q.AskerProgram != "" {
 		t.Fatalf("question %+v", q)
 	}

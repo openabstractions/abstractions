@@ -204,6 +204,23 @@ func TestTypedIncludeSelectionAndPolicies(t *testing.T) {
 	}
 	source = strings.Replace(source, `unknown_fields = "refuse", doc="A location`, `unknown_fields = "preserve", doc="A location`, 1)
 	writeNamespaceFile(t, dir, "request.thrift", source)
+	// A primitive alias brings its scalar bounds, with no object decoder or
+	// duplicate-key policy from otherwise unused records in its definition.
+	scalarSource := strings.Replace(source, `9: trailing_bytes (stage = "document")`, "9: bad_value(stage=\"structure\")\n 10: trailing_bytes(stage=\"document\")", 1)
+	writeNamespaceFile(t, dir, "request.thrift", scalarSource+"\ntypedef string ScalarKey(length=\"1..64\",pattern=\"ascii_name\")\n")
+	rootBytes, _ := os.ReadFile(filepath.Join(dir, "resolver.thrift"))
+	prefix := string(rootBytes[:bytes.Index(rootBytes, []byte("namespace * cross.resolver"))])
+	prefix = strings.Replace(prefix, `10: trailing_bytes(stage="document")`, "10: bad_value(stage=\"structure\")\n 11: trailing_bytes(stage=\"document\")", 1)
+	writeNamespaceFile(t, dir, "scalar.thrift", prefix+`namespace * scalar.consumer
+include "request.thrift"
+struct Carrier {1:required request.ScalarKey key}(document="true",unknown_fields="refuse")
+service Keys {Carrier Read(1:request.ScalarKey key)}(wire_name="test.scalar/keys@1")
+`)
+	var scalarReport bytes.Buffer
+	if err := run([]string{filepath.Join(dir, "scalar.thrift"), filepath.Join(dir, "scalar"), "--go-import=request=example.test/abstraction/download/request", "--rust-import=request=abstraction_download_request", "--js-import=request=@test/request", "go", "cpp", "python", "rust", "javascript", "docs"}, &scalarReport); err != nil {
+		t.Fatal("scalar-only include inherited unused object policy", err)
+	}
+	writeNamespaceFile(t, dir, "request.thrift", source)
 	var refusal bytes.Buffer
 	if err := run([]string{filepath.Join(dir, "resolver.thrift"), out, "--go-import=model=example.test/abstraction/model/api", "--go-import=request=example.test/abstraction/download/request", "go"}, &refusal); err == nil || !strings.Contains(err.Error(), "IPC envelope") {
 		t.Fatalf("mixed IPC policy accepted: %v", err)

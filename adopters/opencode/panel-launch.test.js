@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import test from 'node:test';
 
-import {createOpenAbstractionsPanelTool, launchCredentialsPanel, resolveInstalledPanel} from './panel-launch.js';
+import {createOpenAbstractionsPanelTool, installedRegistrationManifest, launchCredentialsPanel, requestApplicationRegistration, requestOpenCodeConnection,
+  resolveInstalledPanel} from './panel-launch.js';
 
 const runtimeProgram = 'C:\\Program Files\\OpenAbstractions\\tools\\openabstractions.exe';
 const panelProgram = 'C:\\Program Files\\OpenAbstractions\\tools\\Abstraction Panel.exe';
@@ -186,3 +187,109 @@ function fakeChildWithSpawn(child, args) {
   child.spawnArgs = args;
   return child;
 }
+
+const integrationRoot = 'C:\\Users\\person\\AppData\\Local\\Programs\\OpenAbstractions\\apps\\opencode';
+const integrationManifest = integrationRoot + '\\openabstractions-application.json';
+
+// The Panel request is Windows-only (requestInstalledPanel); file: URLs with a
+// drive letter convert to Windows paths only there.
+test('the registration manifest is the integration root beside plugin/<version>, and none elsewhere', {skip: process.platform !== 'win32' && 'Windows install layout'}, () => {
+  assert.equal(installedRegistrationManifest('file:///C:/Users/person/AppData/Local/Programs/OpenAbstractions/apps/opencode/plugin/0.8.0/panel-launch.js'),
+    integrationManifest);
+  assert.equal(installedRegistrationManifest('file:///C:/work/abstractions/adopters/opencode/panel-launch.js'), '');
+  assert.equal(installedRegistrationManifest('not a url'), '');
+});
+
+test('a registration request starts the selected Panel with the integration manifest only', async () => {
+  const spawned = [];
+  const started = await requestApplicationRegistration({
+    platform: 'win32', manifest: integrationManifest, env: {PATH: 'p', OPENAI_API_KEY: 'secret'},
+    selectRuntime: async () => ({program: runtimeProgram}),
+    stat: async () => ({isFile: () => true}),
+    spawn: (program, args, options) => {
+      spawned.push({program, args, options});
+      const child = fakeChild();
+      setImmediate(() => child.emit('spawn'));
+      return child;
+    },
+  });
+  assert.equal(started, true);
+  assert.equal(spawned.length, 1);
+  assert.equal(spawned[0].program, panelProgram);
+  assert.deepEqual(spawned[0].args, ['--register-application', integrationManifest]);
+  assert.equal(spawned[0].options.detached, true);
+  assert.deepEqual(spawned[0].options.env, {PATH: 'p'}, 'no secret reaches the Panel environment');
+});
+
+test('without an installed manifest, a Panel or Windows, nothing starts', async () => {
+  let spawns = 0;
+  const spawn = () => { spawns += 1; return fakeChild(); };
+  const runtime = async () => ({program: runtimeProgram});
+  assert.equal(await requestApplicationRegistration({platform: 'win32', manifest: '', spawn, selectRuntime: runtime}), false);
+  assert.equal(await requestApplicationRegistration({platform: 'win32', manifest: integrationManifest, spawn, selectRuntime: runtime,
+    stat: async () => { throw new Error('absent'); }}), false);
+  assert.equal(await requestApplicationRegistration({platform: 'win32', manifest: integrationManifest, spawn,
+    selectRuntime: async () => { throw new Error('no runtime'); }, stat: async () => ({isFile: () => true})}), false);
+  assert.equal(await requestApplicationRegistration({platform: 'linux', manifest: integrationManifest, spawn, selectRuntime: runtime}), false);
+  assert.equal(spawns, 0);
+});
+
+test('OpenCode connection first use starts the selected common Panel owner without authority metadata', async () => {
+  const spawned = [];
+  let child;
+  let settled = false;
+  const work = requestOpenCodeConnection({platform: 'win32', manifest: integrationManifest,
+    env: {PATH: 'p', OPENAI_API_KEY: 'secret'}, selectRuntime: async () => ({program: runtimeProgram}),
+    stat: async () => ({isFile: () => true}), spawn: (program, args, options) => {
+      spawned.push({program, args, options}); child = fakeChild(); child.stdout = new EventEmitter();
+      return child;
+    }}).then(value => { settled = true; return value; });
+  await new Promise(setImmediate);
+  child.emit('spawn'); child.emit('exit', 0);
+  await new Promise(setImmediate);
+  assert.equal(settled, false, 'spawn and exit do not provide native proof or join stdout');
+  child.stdout.emit('data', '{"outcome":"connected","hostRegistered":true,"helperEnrolled":true}\n');
+  child.emit('close', 0);
+  assert.deepEqual(await work, {outcome: 'connected', hostRegistered: true, helperEnrolled: true});
+  assert.equal(spawned[0].program, panelProgram);
+  assert.deepEqual(spawned[0].args, ['--connect-opencode']);
+  assert.deepEqual(spawned[0].options.env, {PATH: 'p'});
+  assert.notEqual(spawned[0].options.detached, true);
+  assert.equal(child.unrefCalled, false);
+  assert.equal(await requestOpenCodeConnection({platform: 'win32', manifest: '', spawn: () => { throw new Error('development must not launch'); }}), false);
+});
+
+test('typed native completion requires both proofs, a joined successful child and one closed result', async () => {
+  const good = '{"outcome":"connected","hostRegistered":true,"helperEnrolled":true}';
+  for (const [body, code] of [['', 0], [good, 1], [good.replace('true', 'false'), 0],
+    [good.replace(',"helperEnrolled":true', ''), 0], [good.replace('}', ',"extra":true}'), 0],
+    [good.replace('}', ',"hostRegistered":true}'), 0], ['x'.repeat(1025), 0]]) {
+    const result = await requestOpenCodeConnection({platform: 'win32', manifest: integrationManifest,
+      selectRuntime: async () => ({program: runtimeProgram}), stat: async () => ({isFile: () => true}),
+      spawn: () => { const child = fakeChild(); child.stdout = new EventEmitter();
+        setImmediate(() => { child.stdout.emit('data', body); child.emit('close', code); }); return child; }});
+    assert.deepEqual(result, {outcome: 'not_connected'});
+  }
+});
+
+test('only the typed pending answer reports a waiting native question', async () => {
+  const pending = '{"outcome":"connect_pending","hostRegistered":false,"helperEnrolled":false}';
+  for (const [body, code, outcome] of [[pending, 0, 'connect_pending'], [pending, 1, 'not_connected'], ['', 1, 'not_connected'],
+    ['{"outcome":"not_connected","hostRegistered":false,"helperEnrolled":false}', 0, 'not_connected']]) {
+    const result = await requestOpenCodeConnection({platform: 'win32', manifest: integrationManifest,
+      selectRuntime: async () => ({program: runtimeProgram}), stat: async () => ({isFile: () => true}),
+      spawn: () => { const child = fakeChild(); child.stdout = new EventEmitter();
+        setImmediate(() => { child.stdout.emit('data', body); child.emit('close', code); }); return child; }});
+    assert.deepEqual(result, {outcome}, body + ' ' + code);
+  }
+});
+
+test('an explicit pending-state recheck uses the read-only native owner', async () => {
+  let argumentsSeen;
+  const result = await requestOpenCodeConnection({platform: 'win32', manifest: integrationManifest, readOnly: true,
+    selectRuntime: async () => ({program: runtimeProgram}), stat: async () => ({isFile: () => true}),
+    spawn: (_program, args) => { argumentsSeen = args; const child = fakeChild(); child.stdout = new EventEmitter();
+      setImmediate(() => { child.stdout.emit('data', '{"outcome":"connected","hostRegistered":true,"helperEnrolled":true}\n'); child.emit('close', 0); }); return child; }});
+  assert.deepEqual(argumentsSeen, ['--read-opencode-connection']);
+  assert.equal(result.outcome, 'connected');
+});

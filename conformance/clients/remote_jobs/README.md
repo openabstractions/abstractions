@@ -9,7 +9,7 @@ go test -race -count=1 -v conformance/clients/remote_jobs/fixture_test.go
 The fixture creates an isolated certificate authority and three client keys,
 listens only on loopback, and gives the real acceptance provider its own temporary
 root. Applications use generated acceptance, operation and inventory clients
-through the shared remote TLS FrameClient. Host policy maps certificate keys to
+through the shared remote TLS [FrameClient](https://openabstractions.github.io/reference.html#concept-identity.frame-client). Host policy maps certificate keys to
 stable caller namespaces; identical certificate display names confer no scope.
 
 The first Submit response is dropped after dispatch, then the TLS host/provider

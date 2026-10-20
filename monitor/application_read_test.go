@@ -42,46 +42,42 @@ func TestAConfirmedRegistrationAllowsThePanelReadAndRemoveClearsIt(t *testing.T)
 	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{}}
 	p, h := applicationPanel(t, apps, manifestText(applicationTestProgram(t), "Example"))
 	reads := p.appReadRules.(*applicationReadFake)
-	shown := shownDigest(t, applicationCall(t, h, "GET", "/application/register", "").Body.String())
+	row := pendingRows(t, h)[0]
 	if len(reads.allowed) != 0 {
-		t.Fatalf("showing the page wrote a rule: %v", reads.allowed)
+		t.Fatalf("showing the row wrote a rule: %v", reads.allowed)
 	}
-	if rec := applicationCall(t, h, "POST", "/application/register/confirm", `{"confirm":true,"shown":"`+shown+`"}`); rec.Code != 200 {
-		t.Fatalf("confirm %d: %s", rec.Code, rec.Body.String())
+	if rec := connectRow(t, h, row); rec.Code != 200 {
+		t.Fatalf("allow %d: %s", rec.Code, rec.Body.String())
 	}
 	if !slices.Equal(reads.allowed, []string{"example"}) || len(reads.cleared) != 0 {
 		t.Fatalf("the confirmed registration wrote %v, cleared %v", reads.allowed, reads.cleared)
 	}
-	p.appRequest.remove, p.appRequest.done = "example", ""
-	shown = buttonDigest(t, applicationCall(t, h, "GET", "/application/remove", "").Body.String(), "/application/remove/confirm")
-	if rec := applicationCall(t, h, "POST", "/application/remove/confirm", `{"confirm":true,"shown":"`+shown+`"}`); rec.Code != 200 {
-		t.Fatalf("remove %d: %s", rec.Code, rec.Body.String())
+	p.appRequests.appFolder = func(string) string { return applicationTestDir(t) }
+	p.appActivity = applicationActivityLog{path: filepath.Join(t.TempDir(), "activity.json")}
+	if err := p.applyApplicationRequest(context.Background(), applicationStart{remove: "example"}); err != nil {
+		t.Fatalf("remove: %v", err)
 	}
 	if !slices.Equal(reads.cleared, []string{"example"}) || len(reads.allowed) != 1 {
 		t.Fatalf("the confirmed removal cleared %v, allowed %v", reads.cleared, reads.allowed)
 	}
 }
 
-func TestAnUnconfirmedRegistrationWritesNoReadRule(t *testing.T) {
+func TestANotConnectedRequestWritesNoReadRule(t *testing.T) {
 	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{}}
 	p, h := applicationPanel(t, apps, manifestText(applicationTestProgram(t), "Example"))
 	reads := p.appReadRules.(*applicationReadFake)
-	applicationCall(t, h, "GET", "/application/register", "")
-	if rec := applicationCall(t, h, "POST", "/application/register/confirm", `{"confirm":false,"shown":""}`); rec.Code != http.StatusBadRequest {
-		t.Fatalf("an unconfirmed click: %d", rec.Code)
+	pendingRows(t, h)
+	if rec := applicationCall(t, h, "POST", "/apps/pending/connect", `{"name":"example","digest":""}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("a Connect without the shown request: %d", rec.Code)
 	}
-	if rec := applicationCall(t, h, "POST", "/application/register/cancel", `{"confirm":false,"shown":""}`); rec.Code != 200 {
-		t.Fatalf("cancel %d", rec.Code)
-	}
-	applicationCall(t, h, "POST", "/application/register/confirm", `{"confirm":true,"shown":""}`)
 	if len(reads.allowed) != 0 || len(reads.cleared) != 0 || len(apps.entries) != 0 {
-		t.Fatalf("without the confirmation: allowed %v cleared %v entries %v", reads.allowed, reads.cleared, apps.entries)
+		t.Fatalf("without the click: allowed %v cleared %v entries %v", reads.allowed, reads.cleared, apps.entries)
 	}
-	// A cancelled removal clears nothing either.
-	p.appRequest.remove, p.appRequest.done = "example", ""
-	applicationCall(t, h, "POST", "/application/remove/cancel", `{"confirm":false,"shown":""}`)
-	if len(reads.cleared) != 0 {
-		t.Fatalf("a cancelled removal cleared %v", reads.cleared)
+	// A removal of another program's entry clears nothing either.
+	apps.entries["example"] = fwire.ApplicationDescriptor{Name: "example", Program: filepath.Join(t.TempDir(), "other.exe"), Title: "Other"}
+	p.appActivity = applicationActivityLog{path: filepath.Join(t.TempDir(), "activity.json")}
+	if err := p.applyApplicationRequest(context.Background(), applicationStart{remove: "example"}); !errors.Is(err, errApplicationNotChanged) || len(reads.cleared) != 0 {
+		t.Fatalf("a refused removal cleared %v: %v", reads.cleared, err)
 	}
 }
 
@@ -89,8 +85,8 @@ func TestAFailedReadRuleKeepsTheRegistrationAndSaysSo(t *testing.T) {
 	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{}}
 	p, h := applicationPanel(t, apps, manifestText(applicationTestProgram(t), "Example"))
 	p.appReadRules.(*applicationReadFake).err = errors.New("permission service down")
-	rec := applicationCall(t, h, "POST", "/application/register/confirm", `{"confirm":true,"shown":""}`)
-	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "Registered Example.") || !strings.Contains(rec.Body.String(), "permission service down") {
+	rec := connectRow(t, h, pendingRows(t, h)[0])
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "Example is connected to OpenAbstractions.") || !strings.Contains(rec.Body.String(), "permission service down") {
 		t.Fatalf("confirm %d: %s", rec.Code, rec.Body.String())
 	}
 	if _, ok := apps.entries["example"]; !ok {
@@ -169,17 +165,17 @@ func TestTheConfirmedRegistrationListsTheAppForThePanelUntilRevoked(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := &servicePanel{comfyApps: apps}
-	p.appRequest.register = request.register
+	p := &servicePanel{comfyApps: apps, appRequests: applicationRequestsFor(t, nil), appActivity: applicationActivityLog{path: filepath.Join(t.TempDir(), "activity.json")}}
+	p.recordApplicationRequest(request)
 	h := p.handler(applicationTestKey)
 
-	// Fresh runtime: no rule, and showing the page writes none.
-	shown := shownDigest(t, applicationCall(t, h, "GET", "/application/register", "").Body.String())
+	// Fresh runtime: no rule, and showing the row writes none.
+	row := pendingRows(t, h)[0]
 	if read := policy.ReadRule(reader, applicationReadAction, "app:example"); read.Outcome != rwire.RuleReadOutcomeUnknown {
 		t.Fatalf("a rule exists before the click: %+v", read)
 	}
-	rec := applicationCall(t, h, "POST", "/application/register/confirm", `{"confirm":true,"shown":"`+shown+`"}`)
-	if rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != `{"message":"Registered Example."}` {
+	rec := connectRow(t, h, row)
+	if rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != `{"message":"Example is connected to OpenAbstractions."}` {
 		t.Fatalf("confirm %d: %s", rec.Code, rec.Body.String())
 	}
 	if got := apps.listed(t); !slices.Equal(got, []string{"example"}) {
@@ -206,30 +202,19 @@ func TestTheConfirmedRegistrationListsTheAppForThePanelUntilRevoked(t *testing.T
 		t.Fatalf("Apps lists %v after the revoke", got)
 	}
 
-	// The installer asks again (a reinstall). The page cannot show the hidden
-	// entry; the person's confirmation writes the rule again, the name's
-	// holder conflicts, and the request waits for a review of what is there.
-	p.appRequest.register, p.appRequest.done = request.register, ""
-	shown = shownDigest(t, applicationCall(t, h, "GET", "/application/register", "").Body.String())
-	rec = applicationCall(t, h, "POST", "/application/register/confirm", `{"confirm":true,"shown":"`+shown+`"}`)
-	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "reload to review it") {
-		t.Fatalf("second confirm %d: %s", rec.Code, rec.Body.String())
+	// The installer asks again (a reinstall): the same program's request
+	// updates its entry silently, and the Panel may list it again.
+	if err := p.applyApplicationRequest(ctx, request); err != nil {
+		t.Fatalf("reinstall: %v", err)
 	}
-	if got := apps.listed(t); !slices.Equal(got, []string{"example"}) {
-		t.Fatalf("Apps lists %v after the second confirmed registration", got)
-	}
-	page := applicationCall(t, h, "GET", "/application/register", "").Body.String()
-	rec = applicationCall(t, h, "POST", "/application/register/confirm", `{"confirm":true,"shown":"`+shownDigest(t, page)+`"}`)
-	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "Example is already registered.") || len(apps.entries) != 1 {
-		t.Fatalf("the reviewed confirm %d: %s", rec.Code, rec.Body.String())
+	if got := apps.listed(t); !slices.Equal(got, []string{"example"}) || len(apps.entries) != 1 {
+		t.Fatalf("Apps lists %v after the reinstall", got)
 	}
 
-	// A confirmed Remove clears the rule.
-	p.appRequest.remove, p.appRequest.done = "example", ""
-	shown = buttonDigest(t, applicationCall(t, h, "GET", "/application/remove", "").Body.String(), "/application/remove/confirm")
-	rec = applicationCall(t, h, "POST", "/application/remove/confirm", `{"confirm":true,"shown":"`+shown+`"}`)
-	if rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != `{"message":"Removed Example."}` {
-		t.Fatalf("remove %d: %s", rec.Code, rec.Body.String())
+	// Its uninstaller removes it and clears the rule.
+	p.appRequests.appFolder = func(string) string { return applicationTestDir(t) }
+	if err := p.applyApplicationRequest(ctx, applicationStart{remove: "example"}); err != nil {
+		t.Fatalf("remove: %v", err)
 	}
 	for _, action := range panelEntryActions {
 		if read := policy.ReadRule(reader, action, "app:example"); read.Outcome != rwire.RuleReadOutcomeUnknown {
@@ -242,7 +227,7 @@ func TestTheConfirmedRegistrationListsTheAppForThePanelUntilRevoked(t *testing.T
 	}
 }
 
-func TestAnUnconfirmedRegistrationWritesNoRuleOnTheRuntime(t *testing.T) {
+func TestANotConnectedRequestWritesNoRuleOnTheRuntime(t *testing.T) {
 	own(t)
 	policy := panelApplicationRuntime(t)
 	self := exploreSelf()
@@ -252,12 +237,11 @@ func TestAnUnconfirmedRegistrationWritesNoRuleOnTheRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := &servicePanel{comfyApps: apps}
-	p.appRequest.register = request.register
+	p := &servicePanel{comfyApps: apps, appRequests: applicationRequestsFor(t, nil)}
+	p.recordApplicationRequest(request)
 	h := p.handler(applicationTestKey)
-	applicationCall(t, h, "GET", "/application/register", "")
-	applicationCall(t, h, "POST", "/application/register/confirm", `{"confirm":false,"shown":""}`)
-	applicationCall(t, h, "POST", "/application/register/cancel", `{"confirm":false,"shown":""}`)
+	pendingRows(t, h)
+	applicationCall(t, h, "POST", "/apps/pending/connect", `{"name":"example","digest":""}`)
 	if read := policy.ReadRule(reader, applicationReadAction, "app:example"); read.Outcome != rwire.RuleReadOutcomeUnknown || len(apps.entries) != 0 {
 		t.Fatalf("an unconfirmed registration wrote %+v, entries %v", read, apps.entries)
 	}

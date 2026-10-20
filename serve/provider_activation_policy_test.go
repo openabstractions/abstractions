@@ -29,7 +29,7 @@ func TestNativeProfileInventoryDoesNotActivateOnDemandProvider(t *testing.T) {
 			p := &runtimeProviders{principal: principal, report: func(error) {}, supervisors: map[string]*providerSupervisor{}, changes: make(chan struct{})}
 			f := providerFile{Declaration: providerDeclaration{Name: tc.name + "-idle", Program: program, Endpoint: "private-" + tc.name + "-idle", Transport: transportNative,
 				Contracts: []string{tc.contract}, Models: []string{"owner/fixture-model"}, Resources: []string{"profile:" + tc.profile}, Activation: wire.ActivationOnDemand.String()}}
-			s := newProviderSupervisor(p, f)
+			s := newFixtureProviderSupervisor(t, p, f)
 			p.supervisors[f.Declaration.Name] = s
 			s.start()
 			defer s.halt()
@@ -42,6 +42,11 @@ func TestNativeProfileInventoryDoesNotActivateOnDemandProvider(t *testing.T) {
 			}
 			if activated(s) || s.pid() != 0 {
 				t.Fatal("router inventory read activated an idle provider")
+			}
+			routes := router.New(hosts...)
+			decision, _ := routes.Route(router.Request{Model: "owner/fixture-model", Profile: tc.profile, Fresh: true})
+			if decision == nil || decision.Host != f.Declaration.Name || activated(s) || s.pid() != 0 {
+				t.Fatalf("passively surveyed route did not retain the idle declaration: %+v", decision)
 			}
 			p.setMediated(map[string]mediatedProvider{f.bindingID(): {Endpoint: "oa-" + tc.name + "-mediator", Ready: true}})
 			candidates := p.Candidates()

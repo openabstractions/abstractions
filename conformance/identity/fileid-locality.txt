@@ -1,0 +1,18 @@
+# requires: fileid
+#
+# Nothing is opened off a local drive (ID-F3): a local link whose target is a
+# share is read, its target refused, and no open reaches the share. Every
+# form that resolves a path below the link refuses the same way. identity's
+# older functions follow such a link (ID-F9); this scenario asks none of them.
+sharelink s
+resolve s/file.txt
+resolve s
+leaf s/file.txt s/file.txt
+pending s/new/file.txt s/new/file.txt
+remotes
+
+# expect 2: refused not-local [ID-F3] [ID-F4]
+# expect 3: refused not-local [ID-F3] [ID-F4]
+# expect 4: refused not-local [ID-F3]
+# expect 5: refused not-local [ID-F3]
+# expect 6: ok 0 [ID-F3] [ID-F4]

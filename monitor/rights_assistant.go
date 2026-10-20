@@ -302,29 +302,58 @@ func assistantOutcomeSentence(outcome string) string {
 	return "The permissions service could not complete this; nothing is assumed changed."
 }
 
-// refuseAssistant refuses what the runtime refuses (asks ASK-R7, rights
-// RIGHTS-R16) before anything is written: a script host, the runtime and
-// this Panel.
-func (p *servicePanel) refuseAssistant(ctx context.Context, program string) error {
-	if asks.ScriptHostSubject(rwire.Subject{Program: program}, asks.Publisher{}) {
-		return errors.New(p.programTitle(ctx, program) + " runs scripts, and every script it runs would answer; choose the app's own program")
+// assistantAnswererRule composes Asks' eligibility owner with the facts this
+// Panel knows. It has no peer publisher evidence or runtime operator inventory.
+func assistantAnswererRule(ctx context.Context) asks.AnswererRule {
+	self := probe.Self()
+	return asks.AnswererRule{Account: self.Account, Runtime: panelRuntimeProgram(ctx), Operators: []string{self.Program}}
+}
+
+// assistantEligible is the enrollment part shared by the chooser and its write
+// path (ASK-R7, ASK-R10). Answerer permits a runtime check for party decisions;
+// enrollment must explicitly refuse that check too.
+func assistantEligible(rule asks.AnswererRule, program string) bool {
+	check, err := rule.Answerer(rule.Account, program, asks.Publisher{})
+	return err == nil && !check.Runtime()
+}
+
+// Quiet Rights applies the current runtime holder ceiling, including declared
+// hosts hidden from this caller's application listing. not_granted means the
+// ceiling passed; it supplies no permission to answer.
+var assistantHolderDecision = func(ctx context.Context, program string) (rwire.DecisionExplanation, error) {
+	operator, err := panelMachine().ResolveRightsOperator(ctx, facade.Requirements{Scope: facade.ScopeLocal})
+	if err != nil {
+		return rwire.DecisionExplanation{}, err
 	}
-	for _, own := range []string{panelRuntimeProgram(ctx), probe.Self().Program} {
-		if own != "" && identity.SameSubjectProgram(program, own) {
-			return errors.New("OpenAbstractions' own programs do not answer for you; choose an app")
-		}
+	return operator.ExplainForContext(ctx, rightsclient.Subject{Account: probe.Self().Account, Program: program}, asks.AnswerAction, rights.MetaScopeApps)
+}
+
+func assistantHolderEligible(ctx context.Context, program string) bool {
+	decision, err := assistantHolderDecision(ctx, program)
+	return err == nil && (decision.Outcome == rwire.DecisionOutcomePermitted || decision.Outcome == rwire.DecisionOutcomeNotGranted)
+}
+
+// refuseAssistant applies the shared enrollment rule before anything is written.
+func (p *servicePanel) refuseAssistant(ctx context.Context, program string) error {
+	if !assistantEligible(assistantAnswererRule(ctx), program) || !assistantHolderEligible(ctx, program) {
+		return errors.New(p.programTitle(ctx, program) + " cannot answer questions for you; choose another app")
 	}
 	return nil
 }
 
 // assistantCandidates are the programs the chooser offers: each registered
 // local application's program first, as its own descriptor names it, then
-// every program a rule names. A script host is left out.
+// every program a rule names, evaluated for this account's enrollment. Both
+// sources use the same Asks eligibility rule as enrollment (ASK-R7, ASK-R10).
 func (p *servicePanel) assistantCandidates(ctx context.Context, rules []rightsclient.PolicyRule) []string {
 	var out []string
+	rule := assistantAnswererRule(ctx)
 	add := func(program string) {
-		if !identity.ValidSubjectProgram(program) || asks.ScriptHostSubject(rwire.Subject{Program: program}, asks.Publisher{}) ||
+		if !identity.ValidSubjectProgram(program) || !assistantEligible(rule, program) ||
 			slices.ContainsFunc(out, func(seen string) bool { return identity.SameSubjectProgram(seen, program) }) {
+			return
+		}
+		if !assistantHolderEligible(ctx, program) {
 			return
 		}
 		out = append(out, program)
@@ -528,7 +557,7 @@ func (p *servicePanel) answered(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for _, record := range page.Records {
-			if record.Key == asks.FirstUseKey && record.Option != "" {
+			if (record.Key == asks.FirstUseKey || record.Key == asks.TypedPermissionKey) && record.Option != "" {
 				answeredRecords = append(answeredRecords, record)
 			}
 		}
@@ -536,6 +565,26 @@ func (p *servicePanel) answered(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		cursor = page.Next
+	}
+	// Typed history has its own existing operator list. The legacy list
+	// deliberately excludes these records and cannot supply their effects.
+	typedOperator, err := permissionsOperator(ctx)
+	if err != nil {
+		if !ordinaryUnsupported(err) {
+			panelError(w, err)
+			return
+		}
+	} else {
+		typedRecords, err := typedOperator.ListAllPermissionsContext(ctx)
+		if err != nil {
+			panelError(w, err)
+			return
+		}
+		for _, record := range typedRecords {
+			if record.Key == asks.TypedPermissionKey && record.Option != "" {
+				answeredRecords = append(answeredRecords, record)
+			}
+		}
 	}
 	slices.SortFunc(answeredRecords, func(a, b askclient.RecordMetadata) int { return strings.Compare(b.Answered, a.Answered) })
 	out := answeredPage{Outcome: "page", Answers: []answeredEntry{}}
@@ -579,7 +628,39 @@ func (p *servicePanel) answered(w http.ResponseWriter, r *http.Request) {
 		if len(out.Answers) == 2*answeredShown {
 			break
 		}
-		read, err := askclient.ReadDetailsContext(ctx, operator, account, record.ID)
+		if record.Key == asks.TypedPermissionKey {
+			typed, err := permissionsOperator(ctx)
+			if err != nil {
+				panelError(w, err)
+				return
+			}
+			details, err := readTypedPermissionDetails(ctx, typed, account, record.ID)
+			if err != nil {
+				panelError(w, err)
+				return
+			}
+			entry, targets, ok := answeredApplicationRecord(details, names)
+			if !ok || answerer != nil && !answerer.is(entry.Answerer) {
+				continue
+			}
+			entry.State = "refused"
+			if entry.Option == "allow" {
+				entry.State = "ended"
+				for _, target := range targets {
+					state, _, err := answeredState(ctx, rules, account, entry.Answerer, target.Subject.Program, target.Action, target.Resource)
+					if err != nil {
+						panelError(w, err)
+						return
+					}
+					if state == "in_force" || state == "changed" && entry.State == "ended" {
+						entry.State = state
+					}
+				}
+			}
+			out.Answers = append(out.Answers, entry)
+			continue
+		}
+		read, err := readQuestionDetails(ctx, operator, account, record.ID)
 		if err != nil {
 			panelError(w, err)
 			return
@@ -604,6 +685,25 @@ func (p *servicePanel) answered(w http.ResponseWriter, r *http.Request) {
 	panelJSON(w, out)
 }
 
+// The typed read validates the immutable complete effect and actor. Every
+// retained operation is shown; archival question text supplies no targets.
+func answeredApplicationRecord(details askclient.TypedPermissionDetails, names *programTitler) (answeredEntry, []rightsclient.PolicyRule, bool) {
+	q := details.Question.Question
+	if q.Outcome != askclient.OperatorQuestionOutcomeFound || q.Record == nil || q.AnsweredBy == nil || *q.AnsweredBy != askclient.AnswererResponder || details.Question.Answerer == "" || details.Effect == nil || details.Display == nil || q.Record.Option == "" {
+		return answeredEntry{}, nil, false
+	}
+	targets, _, ok := grants.ApplicationPermissionRules(*details.Effect)
+	if !ok || !grants.FirstUseTier(targets[0].Action, targets[0].Resource, grants.TierFacts{}).Answerable() || len(details.Display.Selections) != len(targets) {
+		return answeredEntry{}, nil, false
+	}
+	var operations []string
+	for _, words := range details.Display.Selections {
+		operations = append(operations, words.Operation+" in "+words.Target)
+	}
+	program, actor := details.Effect.Subject.Program, details.Question.Answerer
+	return answeredEntry{ID: q.Record.ID, Sentence: program + ": " + strings.Join(operations, "; "), Option: q.Record.Option, Answered: q.Record.Answered, Answerer: actor, AnswererName: names.name(actor), Program: program, ProgramName: names.name(program)}, targets, true
+}
+
 // answeredSortKey orders entries by answer time; both kinds carry RFC 3339
 // UTC times, normalized here to one fixed width.
 func answeredSortKey(e answeredEntry) string {
@@ -619,6 +719,34 @@ func answeredSortKey(e answeredEntry) string {
 // rights owner checks the private question identity and all paired effects
 // together under that revision. The historical answer is left intact.
 func (p *servicePanel) undoAnswer(ctx context.Context, w http.ResponseWriter, operator answeredReader, rules assistantRules, account, id string) {
+	if typed, err := permissionsOperator(ctx); err == nil {
+		details, readErr := readTypedPermissionDetails(ctx, typed, account, id)
+		if readErr == nil && details.Question.Question.Outcome == askclient.OperatorQuestionOutcomeFound && details.Effect != nil {
+			q := details.Question.Question
+			targets, _, app := grants.ApplicationPermissionRules(*details.Effect)
+			if !app || !grants.FirstUseTier(targets[0].Action, targets[0].Resource, grants.TierFacts{}).Answerable() || q.Record == nil || q.Record.Option != "allow" || q.AnsweredBy == nil || *q.AnsweredBy != askclient.AnswererResponder {
+				http.Error(w, "choose an assistant's Allow for reading and suggesting changes", http.StatusBadRequest)
+				return
+			}
+			undo, ok := permissionsRules().(grants.PermissionEffectUndoOperator)
+			if !ok {
+				panelError(w, errors.New("rights: permission Undo unavailable"))
+				return
+			}
+			edit, err := grants.UndoPermissionQuestion(ctx, typed, undo, account, id)
+			if err != nil {
+				panelError(w, err)
+				return
+			}
+			message := "Undone: the current permissions from this answer were removed. The app may ask again."
+			if edit.Outcome != rightsclient.PolicyEditOutcomeApplied {
+				message = assistantOutcomeSentence(edit.Outcome.String())
+			}
+			p.logAction(ctx, "rights.assistant_undo", map[string]string{"question.id": id})
+			panelJSON(w, assistantResult{Outcome: edit.Outcome.String(), Message: message})
+			return
+		}
+	}
 	revision, _, outcome, err := listRules(ctx, rules)
 	if err != nil {
 		panelError(w, err)
@@ -628,9 +756,13 @@ func (p *servicePanel) undoAnswer(ctx context.Context, w http.ResponseWriter, op
 		panelJSON(w, assistantResult{Outcome: outcome, Message: assistantOutcomeSentence(outcome)})
 		return
 	}
-	read, err := askclient.ReadDetailsContext(ctx, operator, account, id)
+	read, err := readQuestionDetails(ctx, operator, account, id)
 	if err != nil {
 		panelError(w, err)
+		return
+	}
+	if read.Question.Question.Outcome == askclient.OperatorQuestionOutcomeUnknown {
+		panelJSON(w, assistantResult{Outcome: "unknown", Message: "The saved answer details are no longer available. Review the saved permission on Permissions."})
 		return
 	}
 	entry, program, action, resource, ok := answeredRecord(read, nil)

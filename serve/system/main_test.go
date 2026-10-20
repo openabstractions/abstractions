@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openabstractions/abstraction-facade/go-core/protected"
 	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-identity/listen"
-	"github.com/openabstractions/abstraction-facade/go-core/protected"
 )
 
 const ticket = "0123456789abcdef0123456789abcdef"
@@ -33,7 +33,9 @@ func fakeEnv(r *recorded) helperEnv {
 		servers: func(helper string, self identity.User) ([]listen.ServerExpectation, error) {
 			return []listen.ServerExpectation{{Principal: identity.User{Kind: "windows", SID: self.SID}, Program: `C:\Program Files\OpenAbstractions\tools\openabstractionsw.exe`}}, nil
 		},
-		endpoint: func(service string) (string, error) { return `\\.\pipe\openabstractions-user-S-1-5-21-1-2-3-1001-` + service, nil },
+		endpoint: func(service string) (string, error) {
+			return `\\.\pipe\openabstractions-user-S-1-5-21-1-2-3-1001-` + service, nil
+		},
 		run: func(_ context.Context, endpoint string, servers []listen.ServerExpectation, op, tkt string, act protected.Act) error {
 			r.ran, r.endpoint, r.servers, r.op, r.tkt = true, endpoint, servers, op, tkt
 			if act == nil {
@@ -58,7 +60,10 @@ func TestHelperCommandLine(t *testing.T) {
 	} {
 		var r recorded
 		env := fakeEnv(&r)
-		env.self = func() (identity.User, error) { t.Fatal("read the token for a refused command line"); return identity.User{}, nil }
+		env.self = func() (identity.User, error) {
+			t.Fatal("read the token for a refused command line")
+			return identity.User{}, nil
+		}
 		var stderr bytes.Buffer
 		if code := run(args, &stderr, env); code != exitUsage || r.ran {
 			t.Fatalf("%q: exit %d ran %v", args, code, r.ran)
@@ -123,7 +128,9 @@ func TestHelperRefusesWithoutElevation(t *testing.T) {
 	} {
 		var r recorded
 		env := fakeEnv(&r)
-		env.run = func(context.Context, string, []listen.ServerExpectation, string, string, protected.Act) error { return err }
+		env.run = func(context.Context, string, []listen.ServerExpectation, string, string, protected.Act) error {
+			return err
+		}
 		var stderr bytes.Buffer
 		if code := run([]string{"security-log-page", "--ticket", ticket}, &stderr, env); code != want {
 			t.Fatalf("%v: exit %d want %d", err, code, want)

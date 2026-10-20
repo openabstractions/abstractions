@@ -23,7 +23,7 @@ func TestEverySurfaceSelectedEqualsNoSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, b := range backends {
-		if b.emit(got) != b.emit(def) {
+		if mustEmit(t, b, got) != mustEmit(t, b, def) {
 			t.Fatalf("the %s backend emits different bytes when every surface is named", b.lang)
 		}
 	}
@@ -74,11 +74,11 @@ func TestASelectionCannotHideAnUnreachableRefusal(t *testing.T) {
 		if !b.emitsCode {
 			continue
 		}
-		body := b.emit(narrow)
+		body := mustEmit(t, b, narrow)
 		if err := checkWords(emitted{def: narrow, lang: b.lang, body: body, whole: body}); err == nil {
 			t.Fatalf("the %s backend answered for words its selection cannot reach", b.lang)
 		}
-		if err := checkWords(emitted{def: narrow, lang: b.lang, body: body, whole: b.emit(def)}); err != nil {
+		if err := checkWords(emitted{def: narrow, lang: b.lang, body: body, whole: mustEmit(t, b, def)}); err != nil {
 			t.Fatalf("the %s backend was refused for a word the whole definition reaches: %v", b.lang, err)
 		}
 	}

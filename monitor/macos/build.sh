@@ -11,9 +11,12 @@ set -eu
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 root=$(CDPATH= cd -- "$here/../.." && pwd)
 out=${1:-$here/build/Abstraction Panel.app}
+native_root=${2:?build.sh requires the explicit native source assembly as argument 2}
+native_roster=${3:?build.sh requires the selected pypi.tsv as argument 3}
+native_provenance=${4:?build.sh requires module-provenance.json as argument 4}
 
 [ "$(uname -s)" = Darwin ] || { echo "build.sh: macOS only" >&2; exit 1; }
-for tool in go swiftc; do
+for tool in go swiftc clang clang++ python3; do
     command -v "$tool" >/dev/null 2>&1 || { echo "build.sh: $tool not on PATH" >&2; exit 1; }
 done
 
@@ -33,10 +36,12 @@ echo "building the Swift launcher"
 # installer/posix/build.py and the launcher's tests read it, and the
 # installer checks its Info.plist LSMinimumSystemVersion against it.
 minimum=$(tr -d '[:space:]' < "$here/minimum-macos.txt")
-swiftc -O -target "$(uname -m)-apple-macos$minimum" "$here/PanelLauncher.swift" -o "$macos/Abstraction Panel"
+python3 "$here/build_launcher.py" --arch "$(uname -m)" --minimum "$minimum" --output "$macos/Abstraction Panel" \
+    --native-source-root "$native_root" --native-source-roster "$native_roster" --native-provenance "$native_provenance"
 
 echo "building the app icon"
 cp "$icon/panel.icns" "$resources/AppIcon.icns"
+cp "$root/monitor/panel-application.json" "$resources/OA_APPLICATION_MANIFEST.json"
 
 cp "$root/installer/posix/macos/Info.plist" "$contents/Info.plist"
 chmod 755 "$macos/panel" "$macos/Abstraction Panel"

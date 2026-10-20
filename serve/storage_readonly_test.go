@@ -16,7 +16,7 @@ import (
 
 func managedStore(t *testing.T) (state, root string) {
 	t.Helper()
-	state = t.TempDir()
+	state = privateTestState(t)
 	root = filepath.Join(state, "jobs")
 	if _, err := acceptanceprovider.OpenManaged(root, downloadserve.HTTPExecution{}); err != nil {
 		t.Fatal(err)

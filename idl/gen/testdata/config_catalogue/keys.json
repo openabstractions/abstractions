@@ -1,0 +1,106 @@
+[
+  {
+    "key": "boolean",
+    "kind": "boolean",
+    "description": "Fixture setting.",
+    "group": "fixture",
+    "apply": "live",
+    "lockable": true,
+    "lowest_location": "machine",
+    "allows_unlimited": false
+  },
+  {
+    "key": "integer",
+    "kind": "integer",
+    "description": "Fixture setting.",
+    "group": "fixture",
+    "apply": "live",
+    "lockable": true,
+    "lowest_location": "machine",
+    "range": {
+      "min": 0,
+      "max": 100
+    },
+    "allows_unlimited": false
+  },
+  {
+    "key": "bytes",
+    "kind": "bytes",
+    "description": "Fixture setting.",
+    "group": "fixture",
+    "apply": "live",
+    "lockable": true,
+    "lowest_location": "machine",
+    "range": {
+      "min": 0,
+      "max": 100
+    },
+    "allows_unlimited": true,
+    "presets": [
+      {
+        "kind": "bytes"
+      },
+      {
+        "kind": "unlimited"
+      }
+    ]
+  },
+  {
+    "key": "duration",
+    "kind": "duration",
+    "description": "Fixture setting.",
+    "group": "fixture",
+    "apply": "live",
+    "lockable": true,
+    "lowest_location": "machine",
+    "range": {
+      "min": 0,
+      "max": 100
+    },
+    "allows_unlimited": true
+  },
+  {
+    "key": "text",
+    "kind": "text",
+    "description": "Fixture setting.",
+    "group": "fixture",
+    "apply": "live",
+    "lockable": true,
+    "lowest_location": "machine",
+    "allows_unlimited": false
+  },
+  {
+    "key": "choice",
+    "kind": "choice",
+    "description": "Fixture setting.",
+    "group": "fixture",
+    "apply": "live",
+    "lockable": true,
+    "lowest_location": "machine",
+    "choices": [
+      "first",
+      "second"
+    ],
+    "allows_unlimited": false
+  },
+  {
+    "key": "text_list",
+    "kind": "text_list",
+    "description": "Fixture setting.",
+    "group": "fixture",
+    "apply": "live",
+    "lockable": true,
+    "lowest_location": "machine",
+    "allows_unlimited": false
+  },
+  {
+    "key": "text_map",
+    "kind": "text_map",
+    "description": "Fixture setting.",
+    "group": "fixture",
+    "apply": "live",
+    "lockable": true,
+    "lowest_location": "machine",
+    "allows_unlimited": false
+  }
+]

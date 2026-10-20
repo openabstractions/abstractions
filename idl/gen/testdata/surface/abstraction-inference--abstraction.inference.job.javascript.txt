@@ -11,6 +11,7 @@ enum RequestGuarantee
 function decode(data)
 function encode(v)
 const executionGuarantees
+function fromJson(kind, data)
 const kinds
 function newDelivery()
   digest
@@ -43,3 +44,4 @@ function newRequest()
   profile
   image
   durationMs
+function toJson(kind, value)

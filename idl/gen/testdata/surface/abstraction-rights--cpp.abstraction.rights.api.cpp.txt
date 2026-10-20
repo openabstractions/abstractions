@@ -10,6 +10,29 @@ inline constexpr bool operator!=(DecisionOutcome value, std::string_view name)
 inline constexpr bool operator==(std::string_view name, DecisionOutcome value)
 inline constexpr bool operator!=(std::string_view name, DecisionOutcome value)
 inline const std::vector<std::string> kDecisionOutcomeNames
+inline const std::vector<std::string> kRefusalSourceNames
+inline constexpr std::string_view kRefusalSourceRights
+inline constexpr std::string_view kRefusalSourceCredentials
+inline constexpr std::string_view kRefusalSourceLicense
+inline constexpr std::string_view kRefusalSourceTerms
+inline constexpr std::string_view kRefusalSourceIdentity
+inline constexpr std::string_view kRefusalSourceOs
+enum class RefusalDecision {Denied, NotGranted, PersonOnly}
+inline constexpr std::string_view wire_name(RefusalDecision value)
+inline std::optional<RefusalDecision> parse_refusal_decision(std::string_view name)
+inline constexpr bool operator==(RefusalDecision value, std::string_view name)
+inline constexpr bool operator!=(RefusalDecision value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, RefusalDecision value)
+inline constexpr bool operator!=(std::string_view name, RefusalDecision value)
+inline const std::vector<std::string> kRefusalDecisionNames
+enum class RefusalAsk {Available, None}
+inline constexpr std::string_view wire_name(RefusalAsk value)
+inline std::optional<RefusalAsk> parse_refusal_ask(std::string_view name)
+inline constexpr bool operator==(RefusalAsk value, std::string_view name)
+inline constexpr bool operator!=(RefusalAsk value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, RefusalAsk value)
+inline constexpr bool operator!=(std::string_view name, RefusalAsk value)
+inline const std::vector<std::string> kRefusalAskNames
 enum class PolicyPageOutcome {Page, Gap, Invalid, Forbidden, Unavailable}
 inline constexpr std::string_view wire_name(PolicyPageOutcome value)
 inline std::optional<PolicyPageOutcome> parse_policy_page_outcome(std::string_view name)
@@ -18,6 +41,22 @@ inline constexpr bool operator!=(PolicyPageOutcome value, std::string_view name)
 inline constexpr bool operator==(std::string_view name, PolicyPageOutcome value)
 inline constexpr bool operator!=(std::string_view name, PolicyPageOutcome value)
 inline const std::vector<std::string> kPolicyPageOutcomeNames
+enum class PolicyObservationOutcome {Changed, Unchanged, Gap, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(PolicyObservationOutcome value)
+inline std::optional<PolicyObservationOutcome> parse_policy_observation_outcome(std::string_view name)
+inline constexpr bool operator==(PolicyObservationOutcome value, std::string_view name)
+inline constexpr bool operator!=(PolicyObservationOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, PolicyObservationOutcome value)
+inline constexpr bool operator!=(std::string_view name, PolicyObservationOutcome value)
+inline const std::vector<std::string> kPolicyObservationOutcomeNames
+enum class PolicyObservationMechanism {Native}
+inline constexpr std::string_view wire_name(PolicyObservationMechanism value)
+inline std::optional<PolicyObservationMechanism> parse_policy_observation_mechanism(std::string_view name)
+inline constexpr bool operator==(PolicyObservationMechanism value, std::string_view name)
+inline constexpr bool operator!=(PolicyObservationMechanism value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, PolicyObservationMechanism value)
+inline constexpr bool operator!=(std::string_view name, PolicyObservationMechanism value)
+inline const std::vector<std::string> kPolicyObservationMechanismNames
 enum class PolicyEditOutcome {Applied, Conflict, Invalid, Forbidden, Unavailable}
 inline constexpr std::string_view wire_name(PolicyEditOutcome value)
 inline std::optional<PolicyEditOutcome> parse_policy_edit_outcome(std::string_view name)
@@ -81,6 +120,53 @@ inline constexpr std::string_view kServiceErrorCodeUnknownVersion
 inline constexpr std::string_view kServiceErrorCodeUnknownService
 inline constexpr std::string_view kServiceErrorCodeUnknownMethod
 inline constexpr std::string_view kServiceErrorCodeWrongMode
+enum class EndpointServiceReadiness {Ready, NotReady, Unknown}
+inline constexpr std::string_view wire_name(EndpointServiceReadiness value)
+inline std::optional<EndpointServiceReadiness> parse_endpoint_service_readiness(std::string_view name)
+inline constexpr bool operator==(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator!=(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointServiceReadiness value)
+inline constexpr bool operator!=(std::string_view name, EndpointServiceReadiness value)
+inline const std::vector<std::string> kEndpointServiceReadinessNames
+inline const std::vector<std::string> kEndpointRefusalSourceNames
+inline constexpr std::string_view kEndpointRefusalSourceRights
+inline constexpr std::string_view kEndpointRefusalSourceCredentials
+inline constexpr std::string_view kEndpointRefusalSourceLicense
+inline constexpr std::string_view kEndpointRefusalSourceTerms
+inline constexpr std::string_view kEndpointRefusalSourceIdentity
+inline constexpr std::string_view kEndpointRefusalSourceOs
+enum class EndpointRefusalDecision {Denied, NotGranted, PersonOnly}
+inline constexpr std::string_view wire_name(EndpointRefusalDecision value)
+inline std::optional<EndpointRefusalDecision> parse_endpoint_refusal_decision(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalDecision value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalDecision value)
+inline const std::vector<std::string> kEndpointRefusalDecisionNames
+enum class EndpointRefusalAsk {Available, None}
+inline constexpr std::string_view wire_name(EndpointRefusalAsk value)
+inline std::optional<EndpointRefusalAsk> parse_endpoint_refusal_ask(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalAsk value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalAsk value)
+inline const std::vector<std::string> kEndpointRefusalAskNames
+enum class EndpointProducerCheckState {Current, Repaired, Stale, Refused, Unverified}
+inline constexpr std::string_view wire_name(EndpointProducerCheckState value)
+inline std::optional<EndpointProducerCheckState> parse_endpoint_producer_check_state(std::string_view name)
+inline constexpr bool operator==(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator!=(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointProducerCheckState value)
+inline constexpr bool operator!=(std::string_view name, EndpointProducerCheckState value)
+inline const std::vector<std::string> kEndpointProducerCheckStateNames
+enum class EndpointDescriptionOutcome {Described, Forbidden, Unavailable, Invalid, Unsupported}
+inline constexpr std::string_view wire_name(EndpointDescriptionOutcome value)
+inline std::optional<EndpointDescriptionOutcome> parse_endpoint_description_outcome(std::string_view name)
+inline constexpr bool operator==(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator!=(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointDescriptionOutcome value)
+inline constexpr bool operator!=(std::string_view name, EndpointDescriptionOutcome value)
+inline const std::vector<std::string> kEndpointDescriptionOutcomeNames
 inline const std::vector<std::string> kOperations
 inline const std::vector<std::string> kKnownRights
 inline const std::vector<std::string> kRefusalCodes
@@ -122,6 +208,17 @@ struct Subject
 struct Decision
   DecisionOutcome outcome
   std::string policy_revision
+struct RevisionDecision
+  Decision decision
+  std::string observed_revision
+struct RefusalDetail
+  std::string source
+  RefusalDecision decision
+  RefusalAsk ask
+  std::string action
+  std::string question
+  std::string credential
+  std::int64_t retry_after_ms
 struct PolicyRule
   Subject subject
   std::string action
@@ -134,6 +231,11 @@ struct PolicyPage
   std::vector<PolicyRule> rules
   std::string next
   bool complete
+struct PolicyObservation
+  PolicyObservationOutcome outcome
+  std::string next
+  std::string revision
+  PolicyObservationMechanism mechanism
 struct PolicyEdit
   PolicyEditOutcome outcome
   std::string revision
@@ -302,8 +404,138 @@ struct LegacyOperationRequest
   std::string legacy_action
   std::string legacy_resource
   std::optional<ConcreteResource> concrete_operation
+struct EndpointRefusalDetail
+  std::string source
+  EndpointRefusalDecision decision
+  EndpointRefusalAsk ask
+  std::string action
+  std::string question
+  std::string credential
+  std::int64_t retry_after_ms
+struct EndpointProducerCheck
+  std::string kind
+  std::string copy
+  EndpointProducerCheckState state
+  std::string reason
+  std::string checked
+struct EndpointServiceState
+  std::string service
+  EndpointServiceReadiness readiness
+  std::string reason
+  std::vector<std::string> guarantees
+  std::map<std::string, std::string> capabilities
+  std::string definition_hash
+struct EndpointDescription
+  EndpointDescriptionOutcome outcome
+  std::string program
+  std::string version
+  std::vector<EndpointServiceState> services
+  std::optional<EndpointRefusalDetail> refusal
+  std::string reason
+  std::vector<EndpointProducerCheck> checks
+struct EndpointDescriptionResult
+  EndpointDescription value
 inline std::string encode(const Request& v)
 inline Request decode(std::string_view data)
+T from_json(std::string_view data)
+inline std::string to_json(const Request& v)
+inline Request from_json<Request>(std::string_view data)
+inline std::string to_json(const AppMetadata& v)
+inline AppMetadata from_json<AppMetadata>(std::string_view data)
+inline std::string to_json(const HoldMetadata& v)
+inline HoldMetadata from_json<HoldMetadata>(std::string_view data)
+inline std::string to_json(const ResponseMetadata& v)
+inline ResponseMetadata from_json<ResponseMetadata>(std::string_view data)
+inline std::string to_json(const Subject& v)
+inline Subject from_json<Subject>(std::string_view data)
+inline std::string to_json(const Decision& v)
+inline Decision from_json<Decision>(std::string_view data)
+inline std::string to_json(const RevisionDecision& v)
+inline RevisionDecision from_json<RevisionDecision>(std::string_view data)
+inline std::string to_json(const RefusalDetail& v)
+inline RefusalDetail from_json<RefusalDetail>(std::string_view data)
+inline std::string to_json(const PolicyRule& v)
+inline PolicyRule from_json<PolicyRule>(std::string_view data)
+inline std::string to_json(const PolicyPage& v)
+inline PolicyPage from_json<PolicyPage>(std::string_view data)
+inline std::string to_json(const PolicyObservation& v)
+inline PolicyObservation from_json<PolicyObservation>(std::string_view data)
+inline std::string to_json(const PolicyEdit& v)
+inline PolicyEdit from_json<PolicyEdit>(std::string_view data)
+inline std::string to_json(const RuleRecord& v)
+inline RuleRecord from_json<RuleRecord>(std::string_view data)
+inline std::string to_json(const RuleRead& v)
+inline RuleRead from_json<RuleRead>(std::string_view data)
+inline std::string to_json(const CatalogEntry& v)
+inline CatalogEntry from_json<CatalogEntry>(std::string_view data)
+inline std::string to_json(const ActionDescription& v)
+inline ActionDescription from_json<ActionDescription>(std::string_view data)
+inline std::string to_json(const PermissionDefinition& v)
+inline PermissionDefinition from_json<PermissionDefinition>(std::string_view data)
+inline std::string to_json(const DescribedAction& v)
+inline DescribedAction from_json<DescribedAction>(std::string_view data)
+inline std::string to_json(const ActionEdit& v)
+inline ActionEdit from_json<ActionEdit>(std::string_view data)
+inline std::string to_json(const DescriptionEdit& v)
+inline DescriptionEdit from_json<DescriptionEdit>(std::string_view data)
+inline std::string to_json(const DescriptionPage& v)
+inline DescriptionPage from_json<DescriptionPage>(std::string_view data)
+inline std::string to_json(const AccountDefault& v)
+inline AccountDefault from_json<AccountDefault>(std::string_view data)
+inline std::string to_json(const DefaultPage& v)
+inline DefaultPage from_json<DefaultPage>(std::string_view data)
+inline std::string to_json(const DefaultEdit& v)
+inline DefaultEdit from_json<DefaultEdit>(std::string_view data)
+inline std::string to_json(const DecisionExplanation& v)
+inline DecisionExplanation from_json<DecisionExplanation>(std::string_view data)
+inline std::string to_json(const PermissionKey& v)
+inline PermissionKey from_json<PermissionKey>(std::string_view data)
+inline std::string to_json(const ResourceSelector& v)
+inline ResourceSelector from_json<ResourceSelector>(std::string_view data)
+inline std::string to_json(const PermissionSelection& v)
+inline PermissionSelection from_json<PermissionSelection>(std::string_view data)
+inline std::string to_json(const ConcreteResource& v)
+inline ConcreteResource from_json<ConcreteResource>(std::string_view data)
+inline std::string to_json(const CheckBatchRequest& v)
+inline CheckBatchRequest from_json<CheckBatchRequest>(std::string_view data)
+inline std::string to_json(const BatchDecision& v)
+inline BatchDecision from_json<BatchDecision>(std::string_view data)
+inline std::string to_json(const SelectorPermissionDefinition& v)
+inline SelectorPermissionDefinition from_json<SelectorPermissionDefinition>(std::string_view data)
+inline std::string to_json(const PermissionDefinitionPage& v)
+inline PermissionDefinitionPage from_json<PermissionDefinitionPage>(std::string_view data)
+inline std::string to_json(const PermissionBundleDefinition& v)
+inline PermissionBundleDefinition from_json<PermissionBundleDefinition>(std::string_view data)
+inline std::string to_json(const PermissionBundlePage& v)
+inline PermissionBundlePage from_json<PermissionBundlePage>(std::string_view data)
+inline std::string to_json(const BundleExpansion& v)
+inline BundleExpansion from_json<BundleExpansion>(std::string_view data)
+inline std::string to_json(const PermissionEffect& v)
+inline PermissionEffect from_json<PermissionEffect>(std::string_view data)
+inline std::string to_json(const SelectorRule& v)
+inline SelectorRule from_json<SelectorRule>(std::string_view data)
+inline std::string to_json(const BundleOrigin& v)
+inline BundleOrigin from_json<BundleOrigin>(std::string_view data)
+inline std::string to_json(const SelectorRuleRecord& v)
+inline SelectorRuleRecord from_json<SelectorRuleRecord>(std::string_view data)
+inline std::string to_json(const SelectorRulePage& v)
+inline SelectorRulePage from_json<SelectorRulePage>(std::string_view data)
+inline std::string to_json(const SelectorRuleRead& v)
+inline SelectorRuleRead from_json<SelectorRuleRead>(std::string_view data)
+inline std::string to_json(const SelectorEdit& v)
+inline SelectorEdit from_json<SelectorEdit>(std::string_view data)
+inline std::string to_json(const LegacyOperationRequest& v)
+inline LegacyOperationRequest from_json<LegacyOperationRequest>(std::string_view data)
+inline std::string to_json(const EndpointRefusalDetail& v)
+inline EndpointRefusalDetail from_json<EndpointRefusalDetail>(std::string_view data)
+inline std::string to_json(const EndpointProducerCheck& v)
+inline EndpointProducerCheck from_json<EndpointProducerCheck>(std::string_view data)
+inline std::string to_json(const EndpointServiceState& v)
+inline EndpointServiceState from_json<EndpointServiceState>(std::string_view data)
+inline std::string to_json(const EndpointDescription& v)
+inline EndpointDescription from_json<EndpointDescription>(std::string_view data)
+inline std::string to_json(const EndpointDescriptionResult& v)
+inline EndpointDescriptionResult from_json<EndpointDescriptionResult>(std::string_view data)
 struct FrameWriter
   virtual void write_frame(std::string_view frame)
 struct DispatchError : std::runtime_error
@@ -313,17 +545,21 @@ struct FrameExchanger
 struct ServiceError : std::runtime_error
   std::string code, message
 inline constexpr std::string_view kEndpointContract
+inline constexpr std::string_view kEndpointV2Contract
 struct DescribedService
   std::string contract
   bool ready
   std::string why
+std::string describe_endpoint_with_checks(std::string_view frame, const std::string& program, const std::string& version, const std::vector<EndpointProducerCheck>& checks, const Services& . . . services)
 std::string describe_endpoint(std::string_view frame, const std::string& program, const std::string& version, const Services& . . . services)
 struct Authorization
+  virtual RevisionDecision decide_for_at_least_revision(const Subject& subject, const std::string& action, const std::string& resource, const std::string& at_least_revision)
   virtual DescriptionPage list_action_descriptions(const std::string& cursor, const std::int64_t& limit)
   virtual Decision decide(const std::string& action, const std::string& resource)
   virtual Decision decide_for(const Subject& subject, const std::string& action, const std::string& resource)
 template<class Transport>struct AuthorizationClient : Authorization
   Transport& transport_
+  RevisionDecision decide_for_at_least_revision(const Subject& subject, const std::string& action, const std::string& resource, const std::string& at_least_revision) override
   DescriptionPage list_action_descriptions(const std::string& cursor, const std::int64_t& limit) override
   Decision decide(const std::string& action, const std::string& resource) override
   Decision decide_for(const Subject& subject, const std::string& action, const std::string& resource) override
@@ -333,9 +569,12 @@ struct AuthorizationService
 struct AuthorizationDispatcher : FrameWriter, FrameExchanger
   Authorization& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct AuthorizationOperator
+  virtual PolicyObservation observe_policy(const std::string& after, const std::int64_t& wait_ms)
   virtual DescriptionEdit register_described_action(const std::string& expected_revision, const ActionDescription& description)
   virtual PolicyEdit apply_first_use_allow(const std::string& expected_revision, const std::string& question_id)
   virtual PolicyPage list_policy(const std::string& cursor, const std::int64_t& limit)
@@ -353,6 +592,7 @@ struct AuthorizationOperator
   virtual DefaultEdit set_default(const std::string& expected_revision, const std::string& name, const bool& on)
 template<class Transport>struct AuthorizationOperatorClient : AuthorizationOperator
   Transport& transport_
+  PolicyObservation observe_policy(const std::string& after, const std::int64_t& wait_ms) override
   DescriptionEdit register_described_action(const std::string& expected_revision, const ActionDescription& description) override
   PolicyEdit apply_first_use_allow(const std::string& expected_revision, const std::string& question_id) override
   PolicyPage list_policy(const std::string& cursor, const std::int64_t& limit) override
@@ -368,12 +608,15 @@ template<class Transport>struct AuthorizationOperatorClient : AuthorizationOpera
   DecisionExplanation explain_for(const Subject& subject, const std::string& action, const std::string& resource) override
   DefaultPage list_defaults() override
   DefaultEdit set_default(const std::string& expected_revision, const std::string& name, const bool& on) override
+  auto observe_policy_pages(const std::string& after, const std::int64_t& wait_ms)
 struct AuthorizationOperatorService
   inline static constexpr std::string_view kWireName
   inline static constexpr std::string_view kCapability
 struct AuthorizationOperatorDispatcher : FrameWriter, FrameExchanger
   AuthorizationOperator& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct SelectorAuthorization
@@ -395,6 +638,8 @@ struct SelectorAuthorizationService
 struct SelectorAuthorizationDispatcher : FrameWriter, FrameExchanger
   SelectorAuthorization& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct SelectorAuthorizationOperator
@@ -422,6 +667,8 @@ struct SelectorAuthorizationOperatorService
 struct SelectorAuthorizationOperatorDispatcher : FrameWriter, FrameExchanger
   SelectorAuthorizationOperator& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 inline std::string encode_request(const Request& v)
@@ -436,10 +683,16 @@ inline std::string encode_subject(const Subject& v)
 inline Subject decode_subject(std::string_view in)
 inline std::string encode_decision(const Decision& v)
 inline Decision decode_decision(std::string_view in)
+inline std::string encode_revision_decision(const RevisionDecision& v)
+inline RevisionDecision decode_revision_decision(std::string_view in)
+inline std::string encode_refusal_detail(const RefusalDetail& v)
+inline RefusalDetail decode_refusal_detail(std::string_view in)
 inline std::string encode_policy_rule(const PolicyRule& v)
 inline PolicyRule decode_policy_rule(std::string_view in)
 inline std::string encode_policy_page(const PolicyPage& v)
 inline PolicyPage decode_policy_page(std::string_view in)
+inline std::string encode_policy_observation(const PolicyObservation& v)
+inline PolicyObservation decode_policy_observation(std::string_view in)
 inline std::string encode_policy_edit(const PolicyEdit& v)
 inline PolicyEdit decode_policy_edit(std::string_view in)
 inline std::string encode_rule_record(const RuleRecord& v)

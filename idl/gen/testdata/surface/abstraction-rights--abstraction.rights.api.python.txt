@@ -30,15 +30,18 @@ dataclass AppMetadata
   rights: list[str]
   registered: str
 class Authorization
+  decide_for_at_least_revision(subject: Subject, action: str, resource: str, at_least_revision: str) -> RevisionDecision
   list_action_descriptions(cursor: str, limit: int) -> DescriptionPage
   decide(action: str, resource: str) -> Decision
   decide_for(subject: Subject, action: str, resource: str) -> Decision
 class AuthorizationClient(Authorization)
   __init__(transport)
+  decide_for_at_least_revision(subject: Subject, action: str, resource: str, at_least_revision: str) -> RevisionDecision
   list_action_descriptions(cursor: str, limit: int) -> DescriptionPage
   decide(action: str, resource: str) -> Decision
   decide_for(subject: Subject, action: str, resource: str) -> Decision
 class AuthorizationOperator
+  observe_policy(after: str, wait_ms: int) -> PolicyObservation
   register_described_action(expected_revision: str, description: ActionDescription) -> DescriptionEdit
   apply_first_use_allow(expected_revision: str, question_id: str) -> PolicyEdit
   list_policy(cursor: str, limit: int) -> PolicyPage
@@ -56,6 +59,8 @@ class AuthorizationOperator
   set_default(expected_revision: str, name: str, on: bool) -> DefaultEdit
 class AuthorizationOperatorClient(AuthorizationOperator)
   __init__(transport)
+  observe_policy(after: str, wait_ms: int) -> PolicyObservation
+  observe_policy_pages(after: str, wait_ms: int)
   register_described_action(expected_revision: str, description: ActionDescription) -> DescriptionEdit
   apply_first_use_allow(expected_revision: str, question_id: str) -> PolicyEdit
   list_policy(cursor: str, limit: int) -> PolicyPage
@@ -217,6 +222,20 @@ enum PolicyEditOutcome
   INVALID = 'invalid'
   FORBIDDEN = 'forbidden'
   UNAVAILABLE = 'unavailable'
+dataclass PolicyObservation
+  outcome: PolicyObservationOutcome | None
+  next: str
+  revision: str
+  mechanism: PolicyObservationMechanism | None
+enum PolicyObservationMechanism
+  NATIVE = 'native'
+enum PolicyObservationOutcome
+  CHANGED = 'changed'
+  UNCHANGED = 'unchanged'
+  GAP = 'gap'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
 dataclass PolicyPage
   outcome: PolicyPageOutcome | None
   revision: str
@@ -239,6 +258,28 @@ const REFUSAL_CODES
 const RESOURCE_ACTIONS
 class Refusal(ValueError)
   __init__(word, offset)
+enum RefusalAsk
+  AVAILABLE = 'available'
+  NONE = 'none'
+enum RefusalDecision
+  DENIED = 'denied'
+  NOT_GRANTED = 'not_granted'
+  PERSON_ONLY = 'person_only'
+dataclass RefusalDetail
+  source: RefusalSource | str
+  decision: RefusalDecision | None
+  ask: RefusalAsk | None
+  action: str
+  question: str
+  credential: str
+  retry_after_ms: int
+enum RefusalSource
+  RIGHTS = 'rights'
+  CREDENTIALS = 'credentials'
+  LICENSE = 'license'
+  TERMS = 'terms'
+  IDENTITY = 'identity'
+  OS = 'os'
 dataclass Request
   op: str
   name: str
@@ -265,6 +306,9 @@ dataclass ResponseMetadata
   right: str
   apps: list[AppMetadata]
   holds: list[HoldMetadata]
+dataclass RevisionDecision
+  decision: Decision
+  observed_revision: str
 dataclass RuleRead
   outcome: RuleReadOutcome | None
   revision: str
@@ -388,11 +432,14 @@ def decode_permission_effect(data)
 def decode_permission_key(data)
 def decode_permission_selection(data)
 def decode_policy_edit(data)
+def decode_policy_observation(data)
 def decode_policy_page(data)
 def decode_policy_rule(data)
+def decode_refusal_detail(data)
 def decode_request(data)
 def decode_resource_selector(data)
 def decode_response_metadata(data)
+def decode_revision_decision(data)
 def decode_rule_read(data)
 def decode_rule_record(data)
 def decode_selector_edit(data)
@@ -430,11 +477,14 @@ def encode_permission_effect(v)
 def encode_permission_key(v)
 def encode_permission_selection(v)
 def encode_policy_edit(v)
+def encode_policy_observation(v)
 def encode_policy_page(v)
 def encode_policy_rule(v)
+def encode_refusal_detail(v)
 def encode_request(v)
 def encode_resource_selector(v)
 def encode_response_metadata(v)
+def encode_revision_decision(v)
 def encode_rule_read(v)
 def encode_rule_record(v)
 def encode_selector_edit(v)
@@ -444,4 +494,6 @@ def encode_selector_rule_page(v)
 def encode_selector_rule_read(v)
 def encode_selector_rule_record(v)
 def encode_subject(v)
+def from_json(kind, data)
 def service_name(frame)
+def to_json(value)

@@ -1,9 +1,11 @@
 import {randomBytes} from 'node:crypto';
-import {mkdir, realpath, rename, rm, stat, writeFile} from 'node:fs/promises';
+import {mkdir, readFile, realpath, rename, rm, stat, writeFile} from 'node:fs/promises';
 import {dirname, extname, isAbsolute, relative, resolve, sep, win32} from 'node:path';
 import {within} from '@openabstractions/ipc/path';
 import {newImageRequest, newImageRequestV2} from '@openabstractions/inference/protocol';
 import {mediaMatchers, readDelivery} from './content-delivery.js';
+import {failureNote} from './failure-logs.js';
+import {invokeWithPermission} from './permission-wait.js';
 
 const digestPattern = /^sha256:[0-9a-f]{64}$/;
 const mediaTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
@@ -11,30 +13,89 @@ const maxImageBytes = 8 * 1024 * 1024;
 const policyName = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 // The file extensions save_to accepts for each media type the tool returns.
 const extensions = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp'};
+// What the person reads when no provider serves image@1: the router refuses
+// no_host with reason router:no-host. OA ships no picture engine of its own;
+// registered providers such as Lemonade and TheNoise serve image@1
+// (architect ruling, 2026-11-09).
+export const noPictureEngine = 'Pictures are not set up yet. Open Catalog to add them.';
+// What the person reads while this chat's OA connection, which makes the
+// pictures, is not ready.
+export const pictureConnectionPending = 'Pictures need this chat\'s OpenAbstractions connection, which is not ready yet. Try again in a moment.';
 
 function sniffMediaType(bytes) {
   for (const mediaType of mediaTypes) if (mediaMatchers[mediaType](bytes)) return mediaType;
   return '';
 }
 
+// The account's picture policy Setup writes when it installs the starter
+// picture model (monitor setup_step.go imagePolicy); a call that names no
+// model or policy uses it through image@2.
+export const defaultPicturePolicy = 'oa-image-default';
+const argumentNames = ['prompt', 'size', 'model', 'selectionPolicy', 'save_to', 'overwrite', 'inputImage', 'mask', 'handle', 'wait_ms'];
+const sizePattern = /^(auto|[1-9][0-9]{0,4}x[1-9][0-9]{0,4})$/;
+const handlePattern = /^[A-Za-z0-9_-]{32}$/;
+// The folder of the person's Pictures folder that pictures saved with no
+// save_to go into (backlog/PICTURES-STORAGE.md ruling 2). The gateway's
+// oa_image_generate resolves Pictures and writes the file.
+export const defaultPictureFolder = 'OpenAbstractions';
+
+// One short sentence per wrong argument, naming the values it takes. The
+// returned copy carries the defaults: size auto, and the account's picture
+// policy when neither model nor selectionPolicy is given.
 function validRequest(args) {
-  const explicit = typeof args?.model === 'string' && args.model.trim().length > 0;
-  const policy = typeof args?.selectionPolicy === 'string' && policyName.test(args.selectionPolicy);
-  if (!args || Object.keys(args).some((key) => !['model', 'selectionPolicy', 'prompt', 'size', 'inputImage', 'mask', 'save_to', 'overwrite'].includes(key))
-      || explicit === policy || (args.selectionPolicy !== undefined && !policy)
-      || (args.model !== undefined && !explicit)
-      || typeof args.prompt !== 'string' || !args.prompt.trim()
-      || Buffer.byteLength(args.prompt) > 32768
-      || typeof args.size !== 'string' || !/^(auto|[1-9][0-9]*x[1-9][0-9]*)$/.test(args.size)
-      || (args.inputImage !== undefined && !digestPattern.test(args.inputImage))
-      || (args.mask !== undefined && (args.inputImage === undefined || !digestPattern.test(args.mask)))
-      || (args.save_to !== undefined && typeof args.save_to !== 'string')
-      || (args.overwrite !== undefined && (typeof args.overwrite !== 'boolean' || args.save_to === undefined))) {
-    throw new TypeError('Provide exactly one model or saved selectionPolicy, a nonempty prompt, size auto or WIDTHxHEIGHT, '
-      + 'and to edit, an inputImage OA content digest with an optional PNG mask digest; save_to is a path inside the project, '
-      + 'and overwrite goes only with save_to.');
+  const refuse = (text) => { throw new TypeError(text); };
+  if (!args || typeof args !== 'object') refuse('prompt is required: describe the picture.');
+  const unknown = Object.keys(args).find((key) => !argumentNames.includes(key));
+  if (unknown) refuse(`Unknown argument ${unknown}; allowed: ${argumentNames.join(', ')}.`);
+  if (args.wait_ms !== undefined && (!Number.isInteger(args.wait_ms) || args.wait_ms < 0)) refuse('wait_ms must be a whole number of milliseconds; leave it out for 20000.');
+  if (args.wait_ms !== undefined && args.save_to !== undefined) refuse('wait_ms goes only without save_to.');
+  if (args.handle !== undefined) {
+    // An argument left null, empty or at its default (size auto) is one a
+    // client filled in; any other describes a new picture (R35).
+    const conflict = Object.keys(args).sort().find((key) => key !== 'handle' && key !== 'wait_ms'
+      && args[key] !== null && args[key] !== undefined && args[key] !== '' && !(key === 'size' && args[key] === 'auto'));
+    if (conflict) refuse(`${conflict} describes a new picture, and handle continues one already started: to wait for it, call oa_image_generate with the handle and optionally wait_ms; to start another, leave out handle.`);
+    if (typeof args.handle !== 'string' || !handlePattern.test(args.handle)) refuse('handle must be the handle an earlier oa_image_generate call answered with.');
+    return args.wait_ms === undefined ? {handle: args.handle} : {handle: args.handle, wait_ms: args.wait_ms};
   }
+  if (typeof args.prompt !== 'string' || !args.prompt.trim()) refuse('prompt is required: describe the picture.');
+  if (Buffer.byteLength(args.prompt) > 32768) refuse('prompt is too long: at most 32768 bytes.');
+  if (args.size !== undefined && (typeof args.size !== 'string' || !sizePattern.test(args.size))) {
+    refuse('size must be auto or WIDTHxHEIGHT such as 512x512; leave it out for auto.');
+  }
+  if (args.model !== undefined && (typeof args.model !== 'string' || !args.model.trim())) refuse('model must be a model name; leave it out for the picture default.');
+  if (args.selectionPolicy !== undefined && (typeof args.selectionPolicy !== 'string' || !policyName.test(args.selectionPolicy))) {
+    refuse('selectionPolicy must be a saved policy name; leave it out for the picture default.');
+  }
+  if (args.model !== undefined && args.selectionPolicy !== undefined) refuse('Give model or selectionPolicy, not both; leave both out for the picture default.');
+  if (args.inputImage !== undefined && !digestPattern.test(args.inputImage)) refuse('inputImage must be an OA image digest sha256:<64 hex>.');
+  if (args.mask !== undefined && (args.inputImage === undefined || !digestPattern.test(args.mask))) refuse('mask must be a sha256 digest and goes only with inputImage.');
+  if (args.save_to !== undefined && typeof args.save_to !== 'string') refuse('save_to must be a project path ending .png, .jpg, .jpeg or .webp.');
+  if (args.overwrite !== undefined && (typeof args.overwrite !== 'boolean' || args.save_to === undefined)) refuse('overwrite is true or false and goes only with save_to.');
+  const request = {...args, size: args.size ?? 'auto'};
+  if (request.model === undefined && request.selectionPolicy === undefined) request.selectionPolicy = defaultPicturePolicy;
+  return request;
 }
+
+// delegates says whether the call goes to the gateway's oa_image_generate:
+// a continuation, or a picture for the person's Pictures folder, an edit and a
+// saved policy included. A call naming save_to stays in this plugin, which
+// saves into the project.
+function delegates(input) {
+  return input.handle !== undefined || input.save_to === undefined;
+}
+
+// The gateway's arguments a delegated call carries, as the person gave them.
+const delegatedArguments = ['prompt', 'size', 'model', 'selectionPolicy', 'inputImage', 'mask', 'wait_ms'];
+
+// sizeRefusal is the tool's answer when the engine does not make the
+// requested size: the sizes it names (a reason ending size:WxH,WxH), else auto.
+function sizeRefusal(size, reason) {
+  const listed = /(?:^|:)size:([0-9x,]+)$/.exec(String(reason ?? ''))?.[1];
+  const allowed = ['auto', ...(listed ? listed.split(',').filter(Boolean) : [])];
+  return `This picture model does not make ${size}. Allowed sizes: ${allowed.join(', ')}. Leave size out for auto.`;
+}
+const sizeReason = /(?:^|:)size(?::[0-9x,]+)?$/;
 
 /**
  * The file save_to names inside the project directory, checked before the
@@ -89,7 +150,7 @@ export async function saveImage(target, bytes, mediaType, overwrite) {
       if (error?.code === 'EEXIST') return `Not saved: ${target.shown} appeared meanwhile; set overwrite to true to replace it.`;
       throw error;
     }
-    return `Saved to ${target.shown}.`;
+    return `Saved to ${target.path}.`;
   }
   const temporary = `${target.path}.${randomBytes(6).toString('hex')}.oa-tmp`;
   try {
@@ -99,7 +160,7 @@ export async function saveImage(target, bytes, mediaType, overwrite) {
     await rm(temporary, {force: true}).catch(() => {});
     throw error;
   }
-  return `Saved to ${target.shown}.`;
+  return `Saved to ${target.path}.`;
 }
 
 // inputMediaType opens one OA content digest the caller may read and names
@@ -118,47 +179,135 @@ async function inputMediaType(reader, digest) {
   }
 }
 
-export function createImageTool({tool, resolveImage, resolveReader}) {
+// described adds a parameter description where the schema builder has one.
+function described(schema, text) {
+  return typeof schema?.describe === 'function' ? schema.describe(text) : schema;
+}
+
+// A picture belongs to the program that saved it: calls without save_to run
+// as the gateway helper, calls with save_to as OpenCode, and a content read
+// admits only the same program's pictures.
+const savedInProject = 'That picture was saved in the project; pass save_to to edit it.';
+const savedInPictures = 'That picture was saved in Pictures; leave out save_to to edit it.';
+
+// crossedIdentity says whether a delegated edit's input image belongs to the
+// other program identity.
+function crossedIdentity(answer) {
+  return (answer?.outcome === 'forbidden' || answer?.outcome === 'unknown')
+    && String(answer?.message ?? '').startsWith('Input image unavailable');
+}
+
+// The gateway outcomes a person decides on, passed on whole as before.
+const permissionOutcomes = new Set(['awaiting_permission', 'permission_refused', 'permission_blocked', 'unknown']);
+// Gateway outcomes that are an answer, not a failed OA operation (A-F19).
+const answeredOutcomes = new Set(['saved', 'working', 'invalid', 'not_set_up', 'hosted', 'no_pictures_folder', 'cancelled']);
+const savedTypes = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp'};
+
+/**
+ * The tool's result for the gateway's oa_image_generate answer: its sentence
+ * unchanged, with the saved picture attached so the model can look at it.
+ */
+async function delegatedAnswer(answer, failures) {
+  if (!answer || typeof answer !== 'object' || typeof answer.outcome !== 'string') return pictureConnectionPending;
+  if (answer.outcome === 'unavailable' && answer.reason === 'native_helper_unavailable') return pictureConnectionPending;
+  if (permissionOutcomes.has(answer.outcome)) return JSON.stringify(answer);
+  const message = typeof answer.message === 'string' && answer.message ? answer.message : `Image generation refused: ${answer.outcome}.`;
+  if (answer.outcome !== 'saved') {
+    if (answeredOutcomes.has(answer.outcome)) return message;
+    return message + failureNote(failures?.record({operation: 'image', outcome: answer.outcome}));
+  }
+  const result = {title: 'OpenAbstractions image', output: message,
+    metadata: {digest: answer.digest ?? '', path: answer.path ?? '', savedTo: ''}};
+  const mime = savedTypes[extname(String(answer.path ?? '')).toLowerCase()];
+  try {
+    const bytes = mime && isAbsolute(answer.path) ? await readFile(answer.path) : null;
+    if (bytes && bytes.length <= maxImageBytes && mediaMatchers[mime](bytes)) {
+      Object.assign(result.metadata, {mediaType: mime, bytes: bytes.length});
+      result.attachments = [{type: 'file', mime, url: `data:${mime};base64,${bytes.toString('base64')}`}];
+    }
+  } catch {
+    // The saved file stays the answer; the attachment is a convenience.
+  }
+  return result;
+}
+
+/**
+ * OpenCode's oa_image_generate. A picture for the person's Pictures folder,
+ * an edit and a saved policy included, and a continuation by handle go to the
+ * gateway's oa_image_generate through delegate(args, context), this chat's OA
+ * connection: one implementation resolves Pictures, runs the durable job and
+ * saves the file. A call naming save_to runs here through image@1/image@2 and
+ * saves into the project.
+ */
+export function createImageTool({tool, resolveImage, resolveReader, resolvePermission, failures, delegate}) {
   if (typeof tool !== 'function' || typeof resolveImage !== 'function' || typeof resolveReader !== 'function') {
     throw new TypeError('Image tool requires generated image and content-reader resolvers.');
   }
   return tool({
-    description: 'Generate one image through an explicit OpenAbstractions model or saved selection policy, or edit one: '
-      + 'inputImage is the SHA-256 digest (sha256:...) of an OA image, such as an earlier result, and mask an optional digest of a PNG '
-      + "of the input's pixel size whose fully transparent pixels mark the area to change; other pixels are kept. "
-      + 'Returns the verified image as an OpenCode attachment. save_to, a path relative to the project such as '
-      + 'assets/fox.png, also writes it there; the extension must match the image type, and an existing file is kept '
-      + 'unless overwrite is true. Only prompt, target, size and these inputs are supported.',
-    args: {model: tool.schema.string().optional(), selectionPolicy: tool.schema.string().optional(),
-      prompt: tool.schema.string(), size: tool.schema.string(),
+    description: 'Make one picture and save it in the person\'s Pictures folder; the result names the file. '
+      + 'Only prompt is needed; leave out model and size. Waits wait_ms (default 20000); if the result gives progress and a handle, call again with that handle. '
+      + 'save_to: a project path ending .png, .jpg or .webp instead. '
+      + 'To edit, give inputImage, an OA image digest (sha256:...); '
+      + "mask is a PNG digest of the input's pixel size whose fully transparent pixels mark the area to change. "
+      + 'For a workflow in an app such as ComfyUI, use oa_applications_command_call.',
+    args: {prompt: described(tool.schema.string(), 'What the picture shows.'),
+      size: described(tool.schema.string(), 'auto (default): the model\'s own size; or WIDTHxHEIGHT such as 512x512.').optional(),
+      model: described(tool.schema.string(), 'Leave out for the person\'s picture model.').optional(),
+      selectionPolicy: described(tool.schema.string(), 'A saved policy name; leave out for the picture default.').optional(),
+      save_to: tool.schema.string().optional(), overwrite: tool.schema.boolean().optional(),
       inputImage: tool.schema.string().optional(), mask: tool.schema.string().optional(),
-      save_to: tool.schema.string().optional(), overwrite: tool.schema.boolean().optional()},
-    async execute(args, context) {
-      validRequest(args);
+      handle: described(tool.schema.string(), 'Only to wait for a picture still being made: the handle an earlier call gave, alone or with wait_ms.').optional(),
+      wait_ms: described(tool.schema.number(), 'Milliseconds to wait before answering with a handle; default 20000.').optional()},
+    async execute(input, context) {
+      const args = validRequest(input);
       const signal = context?.abort ?? context?.signal;
       if (signal?.aborted) return 'Image generation cancelled.';
-      if (typeof context?.ask !== 'function') return 'Image generation needs an available approval prompt.';
-      const target = args.selectionPolicy ? `saved policy ${JSON.stringify(args.selectionPolicy)}`
-        : `model ${JSON.stringify(args.model)}`;
-      const edit = args.inputImage !== undefined;
-      // The save path is checked before anything is generated or asked.
-      let save = null;
-      if (args.save_to !== undefined) {
-        save = await savePath(context?.directory, args.save_to, args.overwrite === true);
-        if (save.refused) return `Image not generated: ${save.refused}.`;
+      if (delegates(input ?? {})) {
+        if (typeof delegate !== 'function') return pictureConnectionPending;
+        let forward = args.wait_ms === undefined ? {handle: args.handle} : {handle: args.handle, wait_ms: args.wait_ms};
+        if (args.handle === undefined) {
+          if (typeof context?.ask !== 'function') return 'Image generation needs an available approval prompt.';
+          const sized = args.size === 'auto' ? '' : ` ${args.size}`;
+          const named = input.selectionPolicy !== undefined;
+          const target = args.model !== undefined ? `model ${JSON.stringify(args.model)}`
+            : named ? `saved policy ${JSON.stringify(args.selectionPolicy)}` : 'your picture model';
+          const edit = args.inputImage !== undefined;
+          const saying = ` and save it in Pictures/${defaultPictureFolder}`;
+          await context.ask({permission: 'openabstractions_image_generate',
+            patterns: [edit ? `Edit one${sized} picture ${args.inputImage.slice(0, 19)}... with ${target}${saying}.`
+              : `Make one${sized} picture with ${target}${saying}.`],
+            always: [], metadata: {model: args.model ?? '', selectionPolicy: named ? args.selectionPolicy : '', size: args.size, count: 1,
+              mode: edit ? 'edit' : 'generate', inputImage: args.inputImage ?? '', mask: args.mask ?? '',
+              saveTo: `Pictures/${defaultPictureFolder}`, overwrite: false}});
+          if (signal?.aborted) return 'Image generation cancelled.';
+          forward = {size: args.size};
+          for (const name of delegatedArguments) if (input[name] !== undefined) forward[name] = input[name];
+        }
+        const answer = await delegate(forward, context);
+        if (forward.inputImage !== undefined && crossedIdentity(answer)) return savedInProject;
+        return delegatedAnswer(answer, failures);
       }
-      const saying = save ? ` and ${args.overwrite ? 'save or replace' : 'save'} it as ${save.shown}` : '';
+      if (typeof context?.ask !== 'function') return 'Image generation needs an available approval prompt.';
+      const target = args.model !== undefined ? `model ${JSON.stringify(args.model)}`
+        : args.selectionPolicy === defaultPicturePolicy ? 'your picture model' : `saved policy ${JSON.stringify(args.selectionPolicy)}`;
+      const edit = args.inputImage !== undefined;
+      // The save_to path is checked before anything is generated or asked.
+      let save = await savePath(context?.directory, args.save_to, args.overwrite === true);
+      if (save.refused) return `Image not generated: ${save.refused}.`;
+      const saying = ` and ${args.overwrite ? 'save or replace' : 'save'} it as ${save.shown}`;
+      const sized = args.size === 'auto' ? '' : ` ${args.size}`;
       await context.ask({permission: 'openabstractions_image_generate',
-        patterns: [edit ? `Edit one ${args.size} image ${args.inputImage.slice(0, 19)}... with OA ${target}${saying}.`
-          : `Generate one ${args.size} image with OA ${target}${saying}.`],
+        patterns: [edit ? `Edit one${sized} picture ${args.inputImage.slice(0, 19)}... with ${target}${saying}.`
+          : `Make one${sized} picture with ${target}${saying}.`],
         always: [], metadata: {model: args.model ?? '', selectionPolicy: args.selectionPolicy ?? '', size: args.size, count: 1,
           mode: edit ? 'edit' : 'generate', inputImage: args.inputImage ?? '', mask: args.mask ?? '',
-          saveTo: save?.shown ?? '', overwrite: args.overwrite === true}});
+          saveTo: save.shown, overwrite: args.overwrite === true}});
       if (signal?.aborted) return 'Image generation cancelled.';
       const inputs = {};
       if (edit) {
         const reader = await resolveReader({signal});
         const image = await inputMediaType(reader, args.inputImage);
+        if (image.error === 'forbidden' || image.error === 'unknown') return savedInPictures;
         if (image.error) return `Input image unavailable: ${image.error}.`;
         if (!image.mediaType) return 'The input image must be a PNG, JPEG or WebP image.';
         Object.assign(inputs, {imageDigest: args.inputImage, imageMediaType: image.mediaType});
@@ -184,14 +333,21 @@ export function createImageTool({tool, resolveImage, resolveReader}) {
         } else {
           Object.assign(request, {model: args.model, ...content});
         }
-        const admission = await image.start(request);
+        const admission = await invokeWithPermission(() => image.start(request), {resolvePermission, signal});
+        if (['awaiting_permission', 'permission_refused', 'permission_blocked'].includes(admission?.outcome)) return JSON.stringify(admission);
+        if (admission?.outcome === 'no_host' && /^router:no-host(?:\s|$)/.test(String(admission.reason ?? ''))) return noPictureEngine;
+        if (admission?.outcome === 'no_host' && args.selectionPolicy === defaultPicturePolicy
+            && /^selection:(?:unknown|no_route)(?:\s|$)/.test(String(admission.reason ?? ''))) return noPictureEngine;
+        if (admission?.outcome === 'unsupported_feature' && sizeReason.test(String(admission.reason ?? ''))) return sizeRefusal(args.size, admission.reason);
         if (admission?.outcome !== 'accepted' || !admission.operation) {
-          const refused = `Image generation refused: ${admission?.outcome ?? 'unavailable'} (${admission?.reason ?? ''}).`;
-          // A not_granted refusal leaves a first-use question pending (asks
-          // ASK-R2); the sentence names it as the chat refusal does.
+          // An OA refusal is a failure the person may ask about (A-F19).
+          const note = failureNote(failures?.record({operation: 'image', outcome: admission?.outcome ?? 'unavailable'}));
+          // The person reads the grant words; a question's id is never page text.
+          const shown = String(admission?.reason ?? '').split(/\s+/).filter((word) => word && !word.startsWith('rights:question_pending:')).join(' ');
+          const refused = `Image generation refused: ${admission?.outcome ?? 'unavailable'} (${shown}).${note}`;
           const reason = admission?.outcome === 'not_permitted' ? admission?.reason ?? '' : '';
           if (/^rights:not_granted(?:\s|$)/.test(reason)) {
-            return `${refused} A question is waiting in the OpenAbstractions Panel; allow it there and retry.`;
+            return `${refused} No question is waiting; allow it on the Permissions page of the OpenAbstractions Panel.`;
           }
           if (/^rights:denied(?:\s|$)/.test(reason)) {
             return `${refused} This program is blocked from doing that; to change that, allow it on the Permissions page of the OpenAbstractions Panel.`;
@@ -212,16 +368,23 @@ export function createImageTool({tool, resolveImage, resolveReader}) {
             if (delta.imageEnd) {
               const end = delta.imageEnd;
               complete = true;
-              if (end.outcome !== 'completed') return `Image generation ${end.outcome}: ${end.reason}.`;
+              if (end.outcome === 'unsupported_feature' && sizeReason.test(String(end.reason ?? ''))) return sizeRefusal(args.size, end.reason);
+              if (end.outcome !== 'completed') {
+                const note = end.outcome === 'cancelled' ? '' : failureNote(failures?.record({operation: 'image', host: end.host ?? '', outcome: end.outcome}));
+                return `Image generation ${end.outcome}: ${end.reason}.${note}`;
+              }
               if (end.deliveries?.length !== 1 || !result || result.index !== 0n
                   || result.delivery?.digest !== end.deliveries[0].digest) throw new Error('Image result and terminal delivery disagree.');
               const reader = await resolveReader({signal});
               const bytes = await readDelivery(reader, end.deliveries[0], {mediaTypes, maxBytes: maxImageBytes, what: 'Image'});
-              const saved = save ? ` ${await saveImage(save, bytes, end.deliveries[0].mediaType, args.overwrite === true)}` : '';
+              const mediaType = end.deliveries[0].mediaType;
+              const saved = await saveImage(save, bytes, mediaType, args.overwrite === true);
+              if (!saved.startsWith('Saved')) save = null;
+              const digest = end.deliveries[0].digest;
               return {title: 'OpenAbstractions image',
-                output: `Generated one ${end.deliveries[0].mediaType} image with ${end.host}/${end.model}; SHA-256 ${end.deliveries[0].digest}.${saved}`,
-                metadata: {operation, host: end.host, model: end.model, digest: end.deliveries[0].digest,
-                  mediaType: end.deliveries[0].mediaType, bytes: Number(end.deliveries[0].size), savedTo: saved.startsWith(' Saved') ? save.shown : ''},
+                output: `${saved} To edit it, pass inputImage ${digest} with save_to.`,
+                metadata: {operation, host: end.host, model: end.model, digest,
+                  mediaType, bytes: Number(end.deliveries[0].size), savedTo: save?.shown ?? '', path: save?.path ?? ''},
                 attachments: [{type: 'file', mime: end.deliveries[0].mediaType,
                   url: `data:${end.deliveries[0].mediaType};base64,${bytes.toString('base64')}`}]};
             }

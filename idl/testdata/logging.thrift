@@ -30,10 +30,17 @@ refusal {
   9: missing_field (stage = "structure")
  10: bad_schema (stage = "structure")
  11: bad_enum (stage = "structure")
- 12: trailing_bytes (stage = "document")
+ 12: bad_value (stage = "structure")
+ 13: trailing_bytes (stage = "document")
 }
 // Same built-in grammar as job.thrift, not a logging-specific instant.
 typedef string timestamp (write = "rfc3339-micros", read = "rfc3339-wide")
+const i32 default_async_capacity = 1024
+const i32 default_initial_backoff_ms = 100
+const i32 default_max_backoff_ms = 5000
+const i32 default_write_timeout_ms = 5000
+const i32 writer_backoff_jitter_percent = 20
+const string writer_gap_message = "records dropped while the sink was unreachable"
 // Preserve the existing ordered logging provenance chain. These are claims;
 // decoding them confers no trust or additional identity proof.
 struct Attestation {
@@ -43,10 +50,10 @@ struct Attestation {
   4: optional string program (omit = "zero")
   5: optional string host (omit = "zero")
   6: optional string user (omit = "zero")
-  7: optional string exe (omit = "zero")
+  7: optional string exe (omit = "zero", local = "path")
   8: required i64 uid
   9: required i64 gid
- 10: required i64 pid
+ 10: required i64 pid (local = "pid")
  11: optional string key (omit = "zero")
  12: optional string mac (omit = "zero")
 } (unknown_fields = "grant", doc = "One hop of the provenance chain. program is the name a party gives itself and appears on the writer's self claim. exe is the executable path the attesting mechanism resolved for the party it established; a receiving service's stamp sets exe and leaves program empty. user is the account name or Windows SID; uid and gid are -1 where unestablished.")
@@ -58,13 +65,13 @@ struct Record {
   5: optional list<Attestation> identity (omit = "zero")
   6: optional string job (omit = "zero")
   7: optional map<string,string> attrs (omit = "zero")
-} (document = "true", unknown_fields = "grant")
+} (document = "true", unknown_fields = "grant", doc="[Record](https://openabstractions.github.io/reference.html#concept-log.record)")
 // The generated service protocol carries version, service, method and typed
 // arguments. It is distinct from the legacy raw-record stream. Success means
 // local submission, not receiver acceptance or durable storage.
 service Sink {
   oneway void Write(1: Record record) (doc="Submit a log record. Completion confirms local transport submission only.")
-} (wire_name = "abstraction.logging/sink@1", doc="A sink for structured log records across a service boundary.")
+} (wire_name = "abstraction.logging/sink@1", doc="[Sink](https://openabstractions.github.io/reference.html#concept-log.sink). A sink for structured log records across a service boundary.")
 
 
 enum PageOutcome {
@@ -90,12 +97,24 @@ const list<string> history_error_codes = ["caller_unavailable", "identity_requir
 // current end of retained history. A provider never issues a word as next.
 const list<string> history_cursor_words = ["end"]
 
+enum HistoryUsageOutcome { 1: available 2: unavailable 3: corrupt 4: forbidden 5: invalid }(unknown="refuse",reader="act")
+struct HistoryUsage {
+ 1: required i64 retained_bytes(range="0..9223372036854775807")
+ 2: optional timestamp oldest(omit="absent")
+ 3: optional i64 max_use(omit="absent",range="0..9223372036854775807")
+ 4: optional i64 max_retention_ms(omit="absent",range="0..9223372036854775807")
+}(unknown_fields="refuse",doc="A snapshot of retained history bytes and effective provider budgets. max_use is bytes; max_retention_ms is milliseconds. An absent limit is known unlimited; a present value of zero is zero. Unknown budgets make Usage unavailable. Absent oldest means empty history. oldest follows append order, not timestamp sorting.")
+struct HistoryUsageResult {
+ 1: required HistoryUsageOutcome outcome
+ 2: optional HistoryUsage usage(omit="absent")
+}(unknown_fields="grant",doc="usage is present exactly for available; unavailable and corrupt expose no usage snapshot.")
 service HistoryReader {
-  Page Read(1: string cursor, 2: i64 max_records, 3: i64 max_bytes) (doc="Read retained records through the service. Empty cursor starts at earliest retained history. Cursor end (history_cursor_words) starts at the current end: the page holds no records, at_end is true and next continues from that end. Limits are 1..256 records and 1..65536 encoded-record bytes; a first record that exceeds the byte limit gives record_too_large. A provider without history gives unavailable. Cursors may expire on restart or retention changes, reported as gap. Snapshot reads may be repeated at end; this method promises no subscription or persistence acknowledgement. The receiving service authorizes history access from native caller evidence.")
+  HistoryUsageResult Usage()(readonly="true",result_present="usage",result_when="outcome",result_is="available",doc="Read the retained provider's current physical byte count and effective active budgets under the same native authorization as Read. An absent budget means known unlimited; a present limit of zero is zero. A provider that cannot establish its active budget returns unavailable. oldest is the first retained record's time in append/Read order, absent on empty history. No cleanup authority or file location is exposed. An earlier reader@1 returns unknown_method.")
+  Page Read(1: string cursor, 2: i64 max_records, 3: i64 max_bytes) (readonly="true",doc="Read retained records through the service. Empty cursor starts at earliest retained history. Cursor end (history_cursor_words) starts at the current end: the page holds no records, at_end is true and next continues from that end. Limits are 1..256 records and 1..65536 encoded-record bytes; a first record that exceeds the byte limit gives record_too_large. A provider without history gives unavailable. Cursors may expire on restart or retention changes, reported as gap. Snapshot reads may be repeated at end; this method promises no subscription or persistence acknowledgement. The receiving service authorizes history access from native caller evidence.")
 } (wire_name = "abstraction.logging/reader@1", error_codes = "history_error_codes", doc="Authorized bounded access to retained logging history. Applications receive records and opaque cursors; history location and retention belong to the provider.")
 
 service HistoryObserver {
-  Page Observe(1: string cursor, 2: i64 max_records, 3: i64 max_bytes, 4: i64 wait_ms) (doc="Read with the same bounds and cursor semantics as HistoryReader. Cursor end fixes the current end when the call begins and returns only records appended after it. At an empty current end, wait up to wait_ms (0..30000) for a provider notification, then reread once; expiry may return an empty current-end page. Cancellation stops waiting and does not undo logging. Providers without observation return unsupported. Bounded waiter capacity exhaustion returns unavailable. Authorization is rechecked before records return. This is long-poll observation; external file writers have no notification promise.")
+  Page Observe(1: string cursor, 2: i64 max_records, 3: i64 max_bytes, 4: i64 wait_ms) (readonly="true",doc="Read with the same bounds and cursor semantics as HistoryReader. Cursor end fixes the current end when the call begins and returns only records appended after it. At an empty current end, wait up to wait_ms (0..30000) for a provider notification, then reread once; expiry may return an empty current-end page. Cancellation stops waiting and does not undo logging. Providers without observation return unsupported. Bounded waiter capacity exhaustion returns unavailable. Authorization is rechecked before records return. This is long-poll observation; external file writers have no notification promise.")
 } (wire_name = "abstraction.logging/observer@1", error_codes = "history_error_codes", doc="Authorized bounded long-poll history observation with provider-owned notifications.")
 
 // New history services carry business refusals in their typed result.
@@ -131,10 +150,11 @@ struct ApplicationLogPage {
   4: required bool at_end
 } (unknown_fields="refuse",doc="Bounded attributed history. Empty advancing non-end pages report finite scan progress. Refusals preserve the supplied cursor and contain no records. Cursors bind caller, selection, captured target, history instance and position; gap requires explicit restart.")
 service ApplicationHistoryReader {
-  ApplicationLogPage Read(1:ApplicationLogTarget target,2:string cursor,3:i64 max_records,4:i64 max_bytes)(doc="Read one or all emitting programs. Bounds are 1..256 returned records and 1..65536 encoded Record bytes; scan work is independently bounded. Empty cursor starts earliest retained history; end fixes the current physical end. One consistent Rights snapshot governs selection and concrete outgoing emitters. No fallback to account-wide reader@1 is permitted.")
+  ApplicationLogPage Read(1:ApplicationLogTarget target,2:string cursor,3:i64 max_records,4:i64 max_bytes)(readonly="true",doc="Read one or all emitting programs. Bounds are 1..256 returned records and 1..65536 encoded Record bytes; scan work is independently bounded. Empty cursor starts earliest retained history; end fixes the current physical end. One consistent Rights snapshot governs selection and concrete outgoing emitters. No fallback to account-wide reader@1 is permitted.")
+  ApplicationLogPage ReadAboutCaller(1:timestamp since,2:string cursor(length="0..131072"),3:i64 max_records,4:i64 max_bytes)(readonly="true",doc="Read the records this receiving runtime wrote about the proven caller's own requests, from since onward: its request records, which name a paired host by its binding name, and its application command audit. The subject is the bound caller and never an argument; records other programs wrote are excluded. Bounds, sealed cursors, gap and outcomes follow Read; the cursor also binds since. Admission is abstraction.logging/history.read on profile abstraction.logging/caller-log@1. An earlier reader@2 service answers unknown_method.")
 }(wire_name="abstraction.logging/reader@2",error_codes="history_identity_error_codes")
 service ApplicationHistoryObserver {
-  ApplicationLogPage Observe(1:ApplicationLogTarget target,2:string cursor,3:i64 max_records,4:i64 max_bytes,5:i64 wait_ms)(doc="Read with reader@2 semantics, waiting once at an empty physical end for 0..30000 ms. Unrelated writes can produce filtered progress. Cancellation, fixed deadline and bounded waiter capacity apply. Authorization is reevaluated before delivery; no decision is retained across waits or pages.")
+  ApplicationLogPage Observe(1:ApplicationLogTarget target,2:string cursor,3:i64 max_records,4:i64 max_bytes,5:i64 wait_ms)(readonly="true",doc="Read with reader@2 semantics, waiting once at an empty physical end for 0..30000 ms. Unrelated writes can produce filtered progress. Cancellation, fixed deadline and bounded waiter capacity apply. Authorization is reevaluated before delivery; no decision is retained across waits or pages.")
 }(wire_name="abstraction.logging/observer@2",error_codes="history_identity_error_codes")
 
 enum SourceAvailability {
@@ -169,9 +189,9 @@ struct SourceCatalog {
 struct ProducerClaim {
   1: optional string provider (omit = "zero")
   2: optional string program (omit = "zero")
-  3: optional string exe (omit = "zero")
+  3: optional string exe (omit = "zero", local = "path")
   4: optional string user (omit = "zero")
-  5: optional i64 pid (omit = "zero")
+  5: optional i64 pid (omit = "zero", local = "pid")
   6: optional i64 uid (omit = "zero")
   7: optional i64 gid (omit = "zero")
 } (unknown_fields = "refuse", doc="Untrusted claims copied from a native source row. These values are never verified OA identity.")
@@ -188,7 +208,7 @@ struct SourcePage {
 } (unknown_fields = "refuse", doc="A bounded page from exactly one source. Limits count encoded SourceRecord bytes and entries. Cursors bind source ID and reader instance. at_end means the observed end during this call; later native entries may appear. A gap requires an explicit restart with empty cursor; refusal never advances a supplied cursor.")
 
 service SourceReader {
-  SourceCatalog Sources() (doc="List the runtime's fixed platform source identifiers and current access status. Source IDs are not paths or query expressions. Per-source OA rights are checked before native probing; a refused source is listed as permission_denied without a native access attempt.")
-  SourcePage Read(1: string source_id, 2: string cursor, 3: i64 max_records, 4: i64 max_bytes) (doc="Read one fixed source with bounds of 1..256 entries and 1..65536 encoded SourceRecord bytes. The service checks the exact source-specific right before native access. A provider without a source returns unsupported; OA policy denial returns not_permitted, known native access denial returns forbidden and uncertainty returns unavailable. Invalid semantic bounds return invalid. Refusals contain no records, preserve the supplied cursor and never announce end. Empty cursor starts at the earliest visible retained entry the native API exposes. Cursors bind source ID and reader instance; source mismatch, restart or retention loss returns gap and preserves the cursor. No cross-source ordering, complete-capture claim or observation guarantee is made.")
-  SourcePage StartAtEnd(1: string source_id) (doc="Return an opaque baseline cursor at the source's current end without returning records. The exact source-specific right is checked before native access and rechecked before the cursor is returned. A source without a safe current-position operation returns unsupported. Use the returned cursor with Read to request entries that follow this observed end; an empty source produces a valid empty baseline. If no native entry exists at the baseline, a later retention loss before the first read may be undetectable. Cursors bind source ID and reader instance; restart or detectable retention loss returns gap. This is a cursor operation, not a watch or complete-capture guarantee.")
+  SourceCatalog Sources() (readonly="true",doc="List the runtime's fixed platform source identifiers and current access status. Source IDs are not paths or query expressions. Per-source OA rights are checked before native probing; a refused source is listed as permission_denied without a native access attempt.")
+  SourcePage Read(1: string source_id, 2: string cursor, 3: i64 max_records, 4: i64 max_bytes) (readonly="true",doc="Read one fixed source with bounds of 1..256 entries and 1..65536 encoded SourceRecord bytes. The service checks the exact source-specific right before native access. A provider without a source returns unsupported; OA policy denial returns not_permitted, known native access denial returns forbidden and uncertainty returns unavailable. Invalid semantic bounds return invalid. Refusals contain no records, preserve the supplied cursor and never announce end. Empty cursor starts at the earliest visible retained entry the native API exposes. Cursors bind source ID and reader instance; source mismatch, restart or retention loss returns gap and preserves the cursor. No cross-source ordering, complete-capture claim or observation guarantee is made.")
+  SourcePage StartAtEnd(1: string source_id) (readonly="true",doc="Return an opaque baseline cursor at the source's current end without returning records. The exact source-specific right is checked before native access and rechecked before the cursor is returned. A source without a safe current-position operation returns unsupported. Use the returned cursor with Read to request entries that follow this observed end; an empty source produces a valid empty baseline. If no native entry exists at the baseline, a later retention loss before the first read may be undetectable. Cursors bind source ID and reader instance; restart or detectable retention loss returns gap. This is a cursor operation, not a watch or complete-capture guarantee.")
 } (wire_name = "abstraction.logging/source-reader@1", error_codes = "history_identity_error_codes", doc="Authorized bounded reads from fixed, read-only operating-system log sources.")

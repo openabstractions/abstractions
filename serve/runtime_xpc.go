@@ -22,14 +22,28 @@ func validateXPCOptions(options runtimeFlags, platform string) error {
 	return nil
 }
 
+func (options runtimeFlags) bootstrapEndpoint(service string) (string, error) {
+	if options.endpointFor != nil {
+		return options.endpointFor(service)
+	}
+	return bootstrap.Endpoint(service)
+}
+
+func (options runtimeFlags) installedEndpoint(service string) (string, error) {
+	if options.installedEndpointFor != nil {
+		return options.installedEndpointFor(service)
+	}
+	return bootstrap.InstalledEndpoint(service)
+}
+
 func (options runtimeFlags) defaultEndpoint(service string) (string, error) {
 	if options.xpc {
 		if options.isolated != "" {
 			return bootstrap.IsolatedXPCEndpoint(options.isolated, service)
 		}
-		return bootstrap.InstalledEndpoint(service)
+		return options.installedEndpoint(service)
 	}
-	return bootstrap.Endpoint(service)
+	return options.bootstrapEndpoint(service)
 }
 
 // companionEndpoint applies the runtime's single namespace selection to each
@@ -39,7 +53,7 @@ func (options runtimeFlags) companionEndpoint(service, isolatedName, suffix stri
 		return options.defaultEndpoint(service)
 	}
 	if options.isolated != "" && isolatedName != "" {
-		return bootstrap.Endpoint(options.isolated + "-" + isolatedName)
+		return options.bootstrapEndpoint(options.isolated + "-" + isolatedName)
 	}
 	if options.endpoint != "" {
 		return options.endpoint + "-" + suffix, nil

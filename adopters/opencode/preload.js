@@ -1,3 +1,4 @@
+import {runtimeConnector} from './runtime-connector.js';
 // The Local assistant's prefix preload (inference preload@1, INF-PL1..INF-PL4;
 // modelhost MODELHOST-W1..W3).
 //
@@ -108,23 +109,26 @@ export async function recallPrefix({dir = prefixStateDir(), project, model}) {
  * model and evaluating the prefix can take tens of seconds; the service's own
  * call budget bounds it. */
 export async function resolvePreloader(options, signal) {
-  const [{Machine}, {resolvePreload}, {BunNativeConnector}] = await Promise.all([
+  const [{Machine}, {resolvePreload}] = await Promise.all([
     import('@openabstractions/facade'),
     import('@openabstractions/inference'),
-    import('@openabstractions/ipc/bun'),
   ]);
   const machine = new Machine(options?.runtimeEndpoint ?? null, {
-    connector: new BunNativeConnector(), timeout: 60000, cancellation: signal ?? null,
+    connector: await runtimeConnector(), timeout: 60000, cancellation: signal ?? null,
     server: options?.server ?? null,
   });
   return resolvePreload(machine, {scope: 'local'});
 }
 
 /** Sends the prefix kept for project and model as preload@1 and resolves its
- * reply, or null when none is kept (the first conversation ever, or one in a
- * project this OpenCode has not opened). */
-export async function preloadKeptPrefix({dir, project, model, resolve = resolvePreloader, options, signal}) {
-  const request = await recallPrefix({dir, project, model});
+ * reply, or null when none is kept. Startup opts into warmIfMissing to load
+ * its selected local model with an empty prefix before its first conversation. */
+export async function preloadKeptPrefix({dir, project, model, resolve = resolvePreloader, options, signal, warmIfMissing = false}) {
+  const request = await recallPrefix({dir, project, model}) ?? (warmIfMissing ? {
+    model, messages: [{role: 'system', parts: [{kind: 'text', text: ''}]}],
+    tools: [], options: null, extensions: {}, requiredExtensions: [],
+    guarantees: ['abstraction.inference/local-only@1'], credential: '',
+  } : null);
   if (!request) return null;
   const preloader = await resolve(options, signal);
   return preloader.preload(request);

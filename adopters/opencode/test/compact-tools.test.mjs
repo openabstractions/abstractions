@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {compactDefinition, compactSchema, compactShell, condensedFrom, condensedText, pinnedTools} from '../compact-tools.js';
 import OpenAbstractionsPlugin from '../plugin.js';
-import {shortToolText, toolNames} from '../tool-config.js';
+import {shortToolText, toolNames, toolNameFor} from '../tool-config.js';
 
-const optional = () => ({optional() { return this; }});
+const optional = () => ({optional() { return this; }, min() { return this; }, max() { return this; }, int() { return this; }, regex() { return this; }, describe(description) { this.description = description; return this; }});
 const fakeTool = Object.assign((definition) => definition, {schema: {
   object: (value) => value, string: optional, number: optional, boolean: optional, enum: optional, array: optional,
 }});
@@ -42,15 +42,17 @@ test('compact definitions replace core text and schemas, shorten OA tools and le
   assert.deepEqual(read.jsonSchema.required, ['filePath']);
   assert.equal(read.jsonSchema.$schema, undefined);
   const image = {description: 'long image text', jsonSchema: {$schema: 'x', type: 'object', properties: {prompt: {type: 'string'}}, required: ['prompt']}};
-  compactDefinition('openabstractions_generate_image', image, shortToolText);
-  assert.equal(image.description, shortToolText.openabstractions_generate_image);
+  compactDefinition('oa_image_generate', image, shortToolText);
+  assert.equal(image.description, shortToolText.oa_image_generate);
   assert.deepEqual(image.jsonSchema, {type: 'object', properties: {prompt: {type: 'string'}}, required: ['prompt']});
   const task = {description: 'task text', parameters: {}};
   compactDefinition('task', task, shortToolText);
   assert.equal(task.description, 'task text');
   assert.equal(task.jsonSchema, undefined);
-  for (const name of toolNames) assert.ok(shortToolText[`openabstractions_${name}`], `no short text for ${name}`);
-  assert.match(shortToolText.openabstractions_open_credentials_panel, /never ask for or pass a secret/);
+  for (const name of toolNames.filter(name => name !== 'authorization_questions')) {
+    assert.ok(shortToolText[toolNameFor(name)], `no short text for ${name}`);
+  }
+  assert.match(shortToolText.oa_credentials_open, /never ask for or pass a secret/);
 });
 
 const pinnedText = (tool) => readFile(new URL(`./fixtures/opencode-${condensedFrom}-tool/${tool}.txt`, import.meta.url), 'utf8');
@@ -76,7 +78,7 @@ test('compact mode turns itself off once OpenCode\'s core tool text differs from
   await plugin['tool.definition']({toolID: 'edit'}, later);
   assert.equal(later.description, await pinnedText('edit'), 'every later tool keeps its full text');
   const speak = {description: 'full speak text', parameters: {}};
-  await plugin['tool.definition']({toolID: 'openabstractions_speak'}, speak);
+  await plugin['tool.definition']({toolID: 'oa_speech_speak'}, speak);
   assert.equal(speak.description, 'full speak text');
   assert.equal(logs.filter((entry) => /compact tool text off/.test(entry.message)).length, 1);
   assert.match(logs[0].message, new RegExp(`OpenCode ${condensedFrom.replaceAll('.', '\\.')}`));
@@ -87,21 +89,38 @@ test('compactTools turns on the hook and the discovery tool; without it nothing 
   const untouched = {description: 'long', parameters: {}};
   await plain['tool.definition']({toolID: 'read'}, untouched);
   assert.equal(untouched.description, 'long');
-  assert.equal(plain.tool.openabstractions_tools, undefined);
+  assert.equal(plain.tool.oa_tools_list, undefined);
 
   const compact = await OpenAbstractionsPlugin({client: {}}, {compactTools: true, tools: {speak: true, watch_logs: true}}, {tool: fakeTool});
   const output = {description: await pinnedText('read'), parameters: {}};
   await compact['tool.definition']({toolID: 'read'}, output);
   assert.match(output.description, /filePath must be absolute/);
-  const discovery = compact.tool.openabstractions_tools;
+  const discovery = compact.tool.oa_tools_list;
   assert.match(discovery.description, /List and describe the OpenAbstractions capabilities/);
+  assert.match(discovery.description, /exact registered name such as oa_image_generate/);
+  assert.match(discovery.args.name.description, /Exact registered tool name/);
   const list = JSON.parse(await discovery.execute({}));
-  assert.deepEqual(list.tools.map((entry) => entry.name), ['openabstractions_speak', 'openabstractions_watch_logs']);
-  assert.ok(list.notRegistered.includes('openabstractions_generate_image'));
-  const speak = JSON.parse(await discovery.execute({name: 'openabstractions_speak'}));
-  assert.equal(speak.description, compact.tool.openabstractions_speak.description, 'the full description comes back');
+  assert.deepEqual(list.tools.map((entry) => entry.name), ['oa_speech_speak', 'oa_logs_watch'].sort());
+  assert.ok(list.notRegistered.includes('oa_image_generate'));
+  const speak = JSON.parse(await discovery.execute({name: 'oa_speech_speak'}));
+  assert.equal(speak.description, compact.tool.oa_speech_speak.description, 'the full description comes back');
   assert.match(speak.description, /Read a chosen text aloud/);
-  assert.equal(JSON.parse(await discovery.execute({name: 'openabstractions_generate_image'})).outcome, 'not_registered');
+  assert.equal(JSON.parse(await discovery.execute({name: 'oa_image_generate'})).outcome, 'not_registered');
+});
+
+test('image discovery uses the exposed full name and keeps the picture default and size check', async () => {
+  const plugin = await OpenAbstractionsPlugin({client: {}}, {compactTools: true, tools: {generate_image: true}}, {tool: fakeTool});
+  const discovery = plugin.tool.oa_tools_list;
+  const list = JSON.parse(await discovery.execute({}));
+  const image = list.tools.find((entry) => entry.name === 'oa_image_generate');
+  assert.ok(image, 'the catalog exposes the callable image tool');
+  assert.match(image.summary, /only prompt is needed/);
+  const full = JSON.parse(await discovery.execute({name: image.name}));
+  assert.equal(full.description, plugin.tool[image.name].description);
+  assert.ok(full.parameters.properties.model && full.parameters.properties.selectionPolicy);
+  assert.equal(JSON.parse(await discovery.execute({name: 'image'})).outcome, 'not_registered', 'a capability label never grants or aliases a tool');
+  await assert.rejects(plugin.tool[image.name].execute({prompt: 'fox', size: 'large'}, {}), /size must be auto or WIDTHxHEIGHT/);
+  assert.equal(await plugin.tool[image.name].execute({prompt: 'fox'}, {}), 'Image generation needs an available approval prompt.');
 });
 
 // Every safety clause of the pinned OpenCode 1.18.31 tool text survives in

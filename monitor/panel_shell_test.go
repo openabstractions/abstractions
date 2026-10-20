@@ -45,6 +45,40 @@ func TestNoPageGrantsRulesToThePanelOrShowsARuleID(t *testing.T) {
 	}
 }
 
+// Every page carries one runtime-down banner, hidden, directly under its page
+// head, and the script that shows it (owner, 2026-11-09: one runtime-down
+// sentence per Panel page). The banner's label is the only place a served
+// page's markup says the runtime is not running.
+func TestEveryPageCarriesOneRuntimeBanner(t *testing.T) {
+	pages := map[string]string{"setup": setupPage}
+	for name, fragment := range pageFragments {
+		pages[name] = fragment
+	}
+	scripts := regexp.MustCompile(`(?s)<script>.*?</script>`)
+	for name, fragment := range pages {
+		for _, query := range []string{"/?k=test", "/?k=test&shell=native"} {
+			doc := panelPage(httptest.NewRequest("GET", query, nil), "test", name, "OpenAbstractions", fragment)
+			if n := strings.Count(doc, `id="oa-runtime"`); n != 1 {
+				t.Errorf("%s (%s): %d runtime banners, want 1", name, query, n)
+			}
+			if n := strings.Count(doc, runtimeScript); n != 1 {
+				t.Errorf("%s (%s): runtimeScript served %d times, want 1", name, query, n)
+			}
+			if head := strings.Index(doc, `<header class="oa-pagehead"`); head >= 0 {
+				if end := strings.Index(doc[head:], `</header>`); end < 0 || !strings.HasPrefix(doc[head+end+len(`</header>`):], runtimeBanner) {
+					t.Errorf("%s (%s): the runtime banner does not follow the page head", name, query)
+				}
+			}
+			if n := strings.Count(scripts.ReplaceAllString(doc, ""), "OpenAbstractions is not running"); n != 1 {
+				t.Errorf("%s (%s): markup says the runtime is not running %d times, want 1 (the banner)", name, query, n)
+			}
+		}
+	}
+	if got := withRuntimeBanner(`<p>No head.</p>`); got != runtimeBanner+`<p>No head.</p>` {
+		t.Errorf("a fragment without a page head starts with the banner: %q", got)
+	}
+}
+
 // Every choice stays visible on each page. A person can open Permissions or
 // any support page without expanding another navigation control.
 func TestNavigationKeepsEveryChoiceVisible(t *testing.T) {
@@ -61,12 +95,12 @@ func TestNavigationKeepsEveryChoiceVisible(t *testing.T) {
 	for _, m := range labels.FindAllStringSubmatchIndex(nav, -1) {
 		choices = append(choices, nav[m[2]:m[3]])
 	}
-	if strings.Join(choices, ",") != "Get started,Apps,Models,Permissions,Activity,Device,Providers,Credentials,Settings" {
+	if strings.Join(choices, ",") != "Apps,Activity,Device,Permissions,Catalog,Models,Providers,Paired PCs,Credentials,Settings" {
 		t.Fatalf("visible choices %v", choices)
 	}
-	// One separator, before Providers (SPEC §4).
-	if strings.Count(nav, `class="oa-nav-sep"`) != 1 || strings.Index(nav, `class="oa-nav-sep"`) > strings.Index(nav, `data-id="registry"`) || strings.Index(nav, `class="oa-nav-sep"`) < strings.Index(nav, `data-id="card"`) {
-		t.Fatalf("the separator is not between Device and Providers: %s", nav)
+	// One separator, after Get started and before Models (P-J1a).
+	if strings.Count(nav, `class="oa-nav-sep"`) != 1 || strings.Index(nav, `class="oa-nav-sep"`) > strings.Index(nav, `data-id="inference"`) || strings.Index(nav, `class="oa-nav-sep"`) < strings.Index(nav, `data-id="setup"`) {
+		t.Fatalf("the separator is not between Get started and Models: %s", nav)
 	}
 	if !strings.Contains(nav, `data-badge="rights"`) {
 		t.Fatal("Permissions carries no badge for waiting questions")
@@ -106,8 +140,8 @@ func TestTaskPathsRedirectToTheirPages(t *testing.T) {
 
 // GET /panel/nav.json is the shell contract S10 and S11 build against
 // (research/panel-redesign/SPEC.md §6): exactly these fields, sidebar order,
-// group main or more, a badge only on Permissions and only when questions
-// wait, and the same key as the pages.
+// group main or more, a known count only on Permissions, and the same key as
+// the pages. Sidebar renderers hide a known zero count.
 func TestNavJSONFollowsTheShellContract(t *testing.T) {
 	const key = "nav-test-key"
 	journal := setup.Journal{Path: filepath.Join(t.TempDir(), "setup", "plan.json")}
@@ -116,9 +150,6 @@ func TestNavJSONFollowsTheShellContract(t *testing.T) {
 	saved := panelWaitingCount
 	panelWaitingCount = func(context.Context) (int, bool) { return waiting, known }
 	t.Cleanup(func() { panelWaitingCount = saved })
-	savedApps := panelRegisteredApps
-	panelRegisteredApps = func(context.Context) (int, bool) { return 1, true }
-	t.Cleanup(func() { panelRegisteredApps = savedApps })
 	get := func(target string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest("GET", target, nil)
 		req.Host = "127.0.0.1"
@@ -163,12 +194,12 @@ func TestNavJSONFollowsTheShellContract(t *testing.T) {
 			t.Errorf("item %s badge present = %v", id, has)
 		}
 	}
-	if strings.Join(ids, ",") != "setup,status,inference,rights,work,card,registry,credentials,settings" {
+	if strings.Join(ids, ",") != "status,work,card,rights,setup,inference,registry,machines,credentials,settings" {
 		t.Fatalf("order %v", ids)
 	}
 	var view navJSON
 	_ = json.Unmarshal(got.Body.Bytes(), &view)
-	if view.Selected != "status" || view.Items[3].Badge == nil || *view.Items[3].Badge != 3 || view.Items[6].Group != "more" || view.Items[5].Group != "main" {
+	if view.Selected != "status" || view.Items[3].Badge == nil || *view.Items[3].Badge != 3 || view.Items[5].Group != "more" || view.Items[4].Group != "main" {
 		t.Fatalf("view %+v", view)
 	}
 	if err := json.Unmarshal(get("/panel/nav.json?k="+key+"&path=/questions").Body.Bytes(), &view); err != nil || view.Selected != "rights" {
@@ -177,12 +208,20 @@ func TestNavJSONFollowsTheShellContract(t *testing.T) {
 	for _, none := range []struct {
 		n  int
 		ok bool
-	}{{0, true}, {5, false}} {
+	}{{0, true}, {-1, true}, {5, false}} {
 		waiting, known = none.n, none.ok
 		view = navJSON{}
 		_ = json.Unmarshal(get("/panel/nav.json?k="+key).Body.Bytes(), &view)
-		if len(view.Items) != len(panelNavItems) || view.Items[3].Badge != nil {
+		if len(view.Items) != len(panelNavItems) {
 			t.Errorf("waiting %d known %v: items %+v", none.n, none.ok, view.Items)
+		}
+		badge := view.Items[3].Badge
+		if none.ok && none.n >= 0 {
+			if badge == nil || *badge != none.n {
+				t.Errorf("known count %d lost: %+v", none.n, badge)
+			}
+		} else if badge != nil {
+			t.Errorf("unknown count serialized: %+v", badge)
 		}
 	}
 }
@@ -355,7 +394,7 @@ func TestShellReadyFallbackIsAlwaysServed(t *testing.T) {
 			t.Errorf("fragment %q: readyScript served %d times", fragment, strings.Count(doc, readyScript))
 		}
 	}
-	if !strings.Contains(plainScript, "if(root&&root.dataset)root.dataset.ready='1';") {
+	if !strings.Contains(plainScript, "if(root&&root.dataset)root.dataset.ready='1'") {
 		t.Error("oaReady does not set data-ready=1 on the root")
 	}
 	if !strings.Contains(readyScript, "setAttribute('data-ready','load')") || strings.Contains(readyScript, "oaReady()") {
@@ -450,6 +489,48 @@ func TestSearchIndexHoldsPageAndSectionTitles(t *testing.T) {
 	}
 }
 
+// The search finds rows and drawn-by-script sections by their own words,
+// not only by section titles (Panel audit 2026-11-01: nothing for router,
+// fallback, storage, budget, spend, job or cache).
+func TestSearchIndexHoldsRowsAndKeywords(t *testing.T) {
+	find := func(page, word string) string {
+		for _, s := range navSections()[page] {
+			if strings.Contains(strings.ToLower(s.Search()), strings.ToLower(word)) {
+				return s.ID
+			}
+		}
+		return ""
+	}
+	for _, c := range []struct{ page, word, section string }{
+		{"inference", "Fallback order", "selection-section"},
+		{"inference", "router", "selection-section"},
+		{"registry", "Spend per day", "hosts-section"},
+		{"registry", "budget", "hosts-section"},
+		{"work", "job", "account-work"},
+		{"card", "storage", "storage-section"},
+		{"card", "cache", "storage-section"},
+		{"card", "wake", "awake-section"},
+	} {
+		if got := find(c.page, c.word); got != c.section {
+			t.Errorf("search %q on %s: section %q, want %q", c.word, c.page, got, c.section)
+		}
+	}
+	for key := range navSectionKeywords {
+		page, id, _ := strings.Cut(key, "#")
+		found := false
+		for _, s := range navSections()[page] {
+			found = found || s.ID == id
+		}
+		if !found {
+			t.Errorf("keywords name %s, a section no page shows on arrival", key)
+		}
+	}
+	nav := panelNav("k", "status")
+	if !strings.Contains(nav, `href="/inference?k=k#selection-section"`) || !strings.Contains(nav, "Fallback order") {
+		t.Errorf("the Fallback order row has no search hit: %s", nav)
+	}
+}
+
 // Every page serves the one plain-phrase table ahead of the shared script,
 // so a permission refusal names its action by phrase, never by its id.
 func TestPanelPageServesActionPlainTable(t *testing.T) {
@@ -458,7 +539,7 @@ func TestPanelPageServesActionPlainTable(t *testing.T) {
 	if table < 0 || plain < 0 || table > plain {
 		t.Fatalf("table at %d, shared script at %d: the table must come first", table, plain)
 	}
-	if !strings.Contains(actionPlainScript, `"abstraction.router/inventory.read":"router servers"`) {
+	if !strings.Contains(actionPlainScript, `"abstraction.router/inventory.read":"see models and model servers"`) {
 		t.Errorf("the table lacks the router inventory phrase: %s", actionPlainScript)
 	}
 	if !strings.Contains(plainScript, "' It needs the “'+oaActionPhrase(rule)+'” permission.'") {

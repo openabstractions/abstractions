@@ -4,10 +4,10 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strings"
 
 	facade "github.com/openabstractions/abstraction-facade/go"
-	fwire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
-	identity "github.com/openabstractions/abstraction-identity"
+	resourcewire "github.com/openabstractions/abstraction-resource/go/abstraction/resource"
 	resource "github.com/openabstractions/abstraction-resource/go/client"
 )
 
@@ -28,39 +28,22 @@ func (p *servicePanel) cardRoutes(mux *http.ServeMux, key string) {
 	})
 	mux.HandleFunc("/card/table", guard(key, p.cardTable))
 	mux.HandleFunc("/card/awake", guard(key, p.cardAwake))
+	mux.HandleFunc("/card/storage", guard(key, p.storageInventory))
+	mux.HandleFunc("/card/storage/logs", guard(key, p.storageLogs))
+	mux.HandleFunc("/card/storage/remove", guard(key, p.storageRemove))
+	p.deviceRoutes(mux, key)
 }
 
-// cardHolder is one row of a resource, projected for the page the same way
-// serve/resources_command.go projects one for the command line.
-type cardHolder struct {
-	Program  string `json:"program"`
-	Account  string `json:"account,omitempty"`
-	Amount   int64  `json:"amount"`
-	Evidence string `json:"evidence"`
-	Lease    string `json:"lease,omitempty"`
-	Grant    string `json:"grant,omitempty"`
-	Since    string `json:"since,omitempty"`
-	Detail   string `json:"detail,omitempty"`
-	// Title is the title of the registered local application whose
-	// descriptor names this holder's program (titleCardHolders).
-	Title string `json:"title,omitempty"`
-}
+// Native records remain with their generated codec; titles are page composition.
+type cardHolder = resource.Holder
+type cardResourceState = resource.ResourceState
 
-// cardResourceState is one resource's held state. capacity, held and observed
-// describe the machine; held sums verified rows only, and a reader never adds
-// two resources' held figures together (CONTRACT.md, card:<n> and memory on an
-// APU report the same bytes).
-type cardResourceState struct {
-	Resource   string       `json:"resource"`
-	Capacity   int64        `json:"capacity"`
-	Held       int64        `json:"held"`
-	Observed   string       `json:"observed"`
-	Instrument string       `json:"instrument"`
-	Holders    []cardHolder `json:"holders"`
-}
+const cardEvidenceVerified = resourcewire.EvidenceVerified
+const cardEvidenceClaimed = resourcewire.EvidenceClaimed
 
 type cardTableView struct {
-	Resources []cardResourceState `json:"resources"`
+	Resources []string          `json:"resources"`
+	Titles    map[string]string `json:"titles,omitempty"`
 }
 
 // cardTable reads every resource the table reports: Resources() names them,
@@ -74,72 +57,69 @@ func (p *servicePanel) cardTable(w http.ResponseWriter, r *http.Request) {
 	fresh := r.URL.Query().Get("fresh") == "1"
 	ctx, cancel := panelCall(r)
 	defer cancel()
-	table, err := panelMachine().ResolveResourceTable(ctx, facade.Requirements{Scope: facade.ScopeLocal})
+	resources, err := readCardResources(ctx, fresh)
 	if err != nil {
 		panelError(w, err)
 		return
 	}
-	list, err := table.ResourcesContext(ctx)
-	if err != nil {
-		panelError(w, err)
-		return
+	view := cardTableView{Resources: []string{}, Titles: p.titleCardHolders(ctx, resources)}
+	logForeignNamedByFile(resources, view.Titles)
+	for i := range resources {
+		view.Resources = append(view.Resources, string(resourcewire.EncodeResourceState(&resources[i])))
 	}
-	view := cardTableView{Resources: []cardResourceState{}}
-	for _, name := range list.Resources {
-		state, err := table.HoldersContext(ctx, name, fresh)
-		if err != nil {
-			panelError(w, err)
-			return
-		}
-		view.Resources = append(view.Resources, projectCardResource(state))
-	}
-	p.titleCardHolders(ctx, view.Resources)
 	panelJSON(w, view)
 }
 
-// titleCardHolders gives each holder the title of the registered local
-// application whose descriptor names its program, read from the application
-// directory the Apps page reads. An unreadable directory leaves every holder
-// untitled; the page then names it by its file name.
-func (p *servicePanel) titleCardHolders(ctx context.Context, resources []cardResourceState) {
-	apps, err := p.setupApplicationsForPanel(ctx)
+// readCardResources reads every resource the table reports with its
+// holders; the Device page and the Models page's Running now read it.
+func readCardResources(ctx context.Context, fresh bool) ([]cardResourceState, error) {
+	table, err := panelMachine().ResolveResourceTable(ctx, facade.Requirements{Scope: facade.ScopeLocal})
 	if err != nil {
-		return
+		return nil, err
 	}
-	page, err := apps.Observe(ctx, "", 0)
-	if err != nil || page.Outcome != fwire.ApplicationOutcomePage && page.Outcome != fwire.ApplicationOutcomeStale {
-		return
+	list, err := table.ResourcesContext(ctx)
+	if err != nil {
+		return nil, err
 	}
-	titleHolders(resources, page.Applications)
+	resources := []cardResourceState{}
+	for _, name := range list.Resources {
+		state, err := table.HoldersContext(ctx, name, fresh)
+		if err != nil {
+			return nil, err
+		}
+		resources = append(resources, state)
+	}
+	return resources, nil
 }
 
-// titleHolders asks the filesystem whether a holder's program and a
-// descriptor's program are one file (identity.SameSubjectProgram): a junction
-// or an 8.3 alias of the registered program matches, and a twin name the
-// volume keeps apart does not.
-func titleHolders(resources []cardResourceState, apps []fwire.ApplicationEntry) {
+// titleCardHolders names each holder the way the shared program titler
+// does (architect ruling 2026-11-09, second block): a registered app by its
+// title, a provider's program by its provider title, OpenAbstractions' own
+// programs by the product names, and any other program by its signed file
+// description. A holder no rule names stays out of the map; the page then
+// reads its file stem in words.
+func (p *servicePanel) titleCardHolders(ctx context.Context, resources []cardResourceState) map[string]string {
+	return titleHolders(resources, p.programTitler(ctx))
+}
+
+// titleHolders asks the titler for each holder's name; the titler decides
+// whether two spellings are one file (identity.SameSubjectProgram), so a
+// junction or an 8.3 alias of the registered program matches, and a twin
+// name the volume keeps apart does not.
+func titleHolders(resources []cardResourceState, titler *programTitler) map[string]string {
+	titles := map[string]string{}
 	for i := range resources {
 		for j := range resources[i].Holders {
-			holder := &resources[i].Holders[j]
-			for _, app := range apps {
-				d := app.Descriptor
-				if app.Scope == fwire.ScopeLocal && d.Title != "" && identity.SameSubjectProgram(holder.Program, d.Program) {
-					holder.Title = appEntryTitle(app)
-					break
-				}
+			program := resources[i].Holders[j].Program
+			if _, done := titles[program]; done || program == "" {
+				continue
+			}
+			if name := titler.deviceName(program); name != "" {
+				titles[program] = name
 			}
 		}
 	}
-}
-
-func projectCardResource(state resource.ResourceState) cardResourceState {
-	out := cardResourceState{Resource: state.Resource, Capacity: state.Capacity, Held: state.Held,
-		Observed: state.Observed, Instrument: state.Instrument, Holders: []cardHolder{}}
-	for _, row := range state.Holders {
-		out.Holders = append(out.Holders, cardHolder{Program: row.Program, Account: row.Account, Amount: row.Amount,
-			Evidence: row.Evidence.String(), Lease: row.Lease, Grant: row.Grant, Since: row.Since, Detail: row.Detail})
-	}
-	return out
+	return titles
 }
 
 // cardAwakeHold is one program's hold of the machine's awake resource, as
@@ -208,4 +188,23 @@ func (p *servicePanel) cardAwake(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	panelJSON(w, cardAwakeView{Outcome: "page", Source: "table", Holds: holds})
+}
+
+// logForeignNamedByFile logs, once per program (logNameFallback), each
+// measured graphics card row no lease covers whose foreign-memory sentence
+// on the Device page names it by its file: the page's foreignWords shows
+// it for a program with a path and at least half a GB, and titles holds no
+// registered title or signed description for it.
+func logForeignNamedByFile(resources []cardResourceState, titles map[string]string) {
+	for i := range resources {
+		if !strings.HasPrefix(resources[i].Resource, "card:") {
+			continue
+		}
+		for _, h := range resources[i].Holders {
+			if h.Evidence != cardEvidenceVerified || h.Lease != "" || h.Amount < 1<<29 || !strings.ContainsAny(h.Program, `\/`) || titles[h.Program] != "" {
+				continue
+			}
+			logNameFallback(h.Program)
+		}
+	}
 }

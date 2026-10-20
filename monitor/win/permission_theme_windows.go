@@ -1,9 +1,10 @@
-//go:build windows
+//go:build windows && !panel
 
 package win
 
 import (
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
@@ -20,18 +21,17 @@ type permissionColors struct {
 }
 
 // permissionHeaders are the header band and its text for each level, in the
-// light and dark app themes. They follow the UAC banners: blue for Windows
-// itself, gray for a verified publisher, yellow for an unknown one. Light
-// blue is Windows 11's default accent (#005FB8) and dark blue its darker
-// shade (#003E92); light yellow is the Windows caution yellow (#FFB900) and
-// light orange the Windows orange (#F7630C). The dark yellow (#7A5C00) and
-// orange (#9A3A00) keep their hues apart under white text.
+// light and dark app themes. They follow the light UAC banners, which keep
+// their colours in dark mode: blue (#76B9ED) with dark text (#00334D) sampled
+// from a Windows 10 UAC dialog, gray for a verified publisher's ordinary
+// request, and yellow (#E3AA00) and orange (#FF9A42) chosen at the sampled
+// blue's luminance with the same dark text.
 var permissionHeaders = map[PromptLevel][2][2]uint32{
 	//                  light {band, text}        dark {band, text}
-	PromptLevelBlue:   {{0x00b85f00, 0x00ffffff}, {0x00923e00, 0x00ffffff}},
+	PromptLevelBlue:   {{0x00edb976, 0x004d3300}, {0x00edb976, 0x004d3300}},
 	PromptLevelGray:   {{0x00e8e8e8, 0x00222222}, {0x00383838, 0x00ffffff}},
-	PromptLevelYellow: {{0x0000b9ff, 0x00222222}, {0x00005c7a, 0x00ffffff}},
-	PromptLevelOrange: {{0x000c63f7, 0x00222222}, {0x00003a9a, 0x00ffffff}},
+	PromptLevelYellow: {{0x0000aae3, 0x004d3300}, {0x0000aae3, 0x004d3300}},
+	PromptLevelOrange: {{0x00429aff, 0x004d3300}, {0x00429aff, 0x004d3300}},
 }
 
 // permissionDarkMode reads the app theme the person chose; a capture fixture
@@ -62,9 +62,10 @@ func permissionConsentPair(choices []QuestionChoice) bool {
 func permissionChoiceLabel(choice QuestionChoice, pair bool) string {
 	if pair {
 		if choice.Value == "refuse" {
-			return "Don't allow"
+			return "Not now"
 		}
-		if choice.Value == "allow" {
+		// An Allow keeps a lifetime it names ("Allow for one hour").
+		if choice.Value == "allow" && !strings.HasPrefix(choice.Label, "Allow ") {
 			return "Allow"
 		}
 	}

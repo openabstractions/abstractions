@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/openabstractions/abstraction-facade/go/supervision"
 	"os"
 	"os/exec"
+
+	"github.com/openabstractions/abstraction-facade/go-core/childproc"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -16,17 +19,17 @@ import (
 	fwire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	"github.com/openabstractions/abstraction-facade/go/client"
 	identity "github.com/openabstractions/abstraction-identity"
-	"github.com/openabstractions/abstraction-inference/go/providerhost/enginelaunch"
 	thenoise "github.com/openabstractions/abstraction-provider-thenoise/go"
+	"github.com/openabstractions/abstractions/mcp-gateway/product"
 )
 
-const theNoiseProviderID = "thenoise-image"
+const theNoiseProviderID = product.TheNoise
 
 func theNoiseEnginePath(path string) error {
 	if err := identity.LocalPath(path); err != nil {
 		return err
 	}
-	if enginelaunch.UTF16Len(filepath.Clean(path)) > thenoise.MaxEngineDirLength {
+	if supervision.UTF16Len(filepath.Clean(path)) > thenoise.MaxEngineDirLength {
 		return fmt.Errorf("TheNoise needs an engine folder of at most %d characters; this account's Setup path is too long", thenoise.MaxEngineDirLength)
 	}
 	if strings.ContainsAny(path, `"%!&|<>^`) {
@@ -50,7 +53,7 @@ func theNoiseFolders() (root, state, models string, err error) {
 // The installed adapter is the sole CLI target. Browser requests never supply
 // a program or arguments. This seam lets ordinary fixtures prove ordering.
 var theNoiseCLI = func(ctx context.Context, args ...string) error {
-	if err := lemonadeHomeAllowed(); err != nil {
+	if err := providerHomeAllowed(); err != nil {
 		return err
 	}
 	status, err := EngineFeatureStatus(TheNoise)
@@ -61,11 +64,11 @@ var theNoiseCLI = func(ctx context.Context, args ...string) error {
 	if err != nil {
 		return err
 	}
-	command := exec.CommandContext(ctx, filepath.Join(filepath.Dir(panel), "thenoise-provider.exe"), args...)
+	command := childproc.Hidden(exec.CommandContext(ctx, filepath.Join(filepath.Dir(panel), "thenoise-provider.exe"), args...))
 	var failure cappedReply
 	command.Stderr, command.Stdout = &failure, &failure
 	if err := command.Run(); err != nil {
-		return lemonadeFailure(failure.String(), err)
+		return providerFailure("TheNoise", failure.String(), err)
 	}
 	return nil
 }
@@ -115,6 +118,7 @@ type engineRegistry interface {
 	Declarations(context.Context) (fwire.DeclarationListV2, error)
 	Declare(context.Context, string, fwire.DeclarationWithExtensions) (fwire.DeclarationChange, error)
 	Withdraw(context.Context, string, string) (fwire.DeclarationChange, error)
+	ReplacePinned(context.Context, string, fwire.PinnedDeclaration) (fwire.DeclarationChange, error)
 }
 
 var setupEngineRegistry = func(ctx context.Context) (engineRegistry, error) {
@@ -125,7 +129,7 @@ func theNoiseDeclaration(root, state, models, program, runtimeProgram string) fw
 	plan := TheNoiseModelPlan()
 	paths := map[string]string{}
 	for _, asset := range plan.Assets {
-		paths[asset.ID] = filepath.Join(models, asset.Download.SHA256+filepath.Ext(asset.Path))
+		paths[asset.ID] = asset.digestStagePath(models)
 	}
 	declaration := fwire.Declaration{Name: theNoiseProviderID, Program: program,
 		Arguments: []string{"-endpoint", "{endpoint}", "-runtime", runtimeProgram,
@@ -168,6 +172,16 @@ func (j Journal) saveEngineDeclaration(ctx context.Context, planID string, engin
 	})
 }
 
+// registryProgramMissing is the reason the runtime gives a declaration whose
+// program is gone; the Panel shows it as "Program not found".
+const registryProgramMissing = "program:missing"
+
+// errRegistryProgramMissing marks a disabled row that is a leftover of a
+// deleted program. The runtime disabled it, so it is no person's choice.
+var errRegistryProgramMissing = errors.New("the provider's program is missing")
+
+var errForeignDeclaration = errors.New("a different provider declaration owns this name; it was preserved")
+
 func registryDeclaration(ctx context.Context, registry engineRegistry, expected fwire.DeclarationWithExtensions) (fwire.DeclarationListV2, bool, error) {
 	page, err := registry.Declarations(ctx)
 	if err != nil {
@@ -181,18 +195,33 @@ func registryDeclaration(ctx context.Context, registry engineRegistry, expected 
 			continue
 		}
 		if row.State.Readiness == fwire.DeclarationReadinessDisabled {
+			if row.State.Why == registryProgramMissing {
+				// The installation's and a product's declarations are theirs. The
+				// runtime lists them disabled with why operator, never program:missing
+				// (facade FAC-R7; serve providerFile.disabledReason), so this check
+				// is a second guard.
+				if row.State.DeclaredBy == "installation" || row.State.DeclaredBy == "product" {
+					return page, false, errForeignDeclaration
+				}
+				return page, false, errRegistryProgramMissing
+			}
 			return page, false, errors.New("the provider was disabled; Setup preserves that choice")
 		}
 		actual := fwire.DeclarationWithExtensions{Declaration: row.State.Declaration, SupportedExtensions: row.SupportedExtensions}
 		if !sameEngineDeclaration(actual, expected) {
-			return page, false, errors.New("a different provider declaration owns this name; it was preserved")
+			return page, false, errForeignDeclaration
 		}
 		return page, true, nil
 	}
 	return page, false, nil
 }
 
+// sameEngineDeclaration is whether a registered declaration is the one
+// Setup expects, up to private path spelling and to the wire's empty lists:
+// the registry codec omits an empty extension, guarantee, resource or model
+// list, so a listed row reads it back as nil where Setup's journal holds [].
 func sameEngineDeclaration(actual, expected fwire.DeclarationWithExtensions) bool {
+	actual, expected = wireEmptyLists(actual), wireEmptyLists(expected)
 	if !samePrivatePath(actual.Declaration.Program, expected.Declaration.Program) {
 		return false
 	}
@@ -213,6 +242,26 @@ func sameEngineDeclaration(actual, expected fwire.DeclarationWithExtensions) boo
 	return reflect.DeepEqual(actual, expected)
 }
 
+// wireEmptyLists spells every empty list of d as nil, as a registry row
+// decoded from the wire spells it.
+func wireEmptyLists(d fwire.DeclarationWithExtensions) fwire.DeclarationWithExtensions {
+	empty := func(list []string) []string {
+		if len(list) == 0 {
+			return nil
+		}
+		return list
+	}
+	d.Declaration.Arguments = empty(d.Declaration.Arguments)
+	d.Declaration.Contracts = empty(d.Declaration.Contracts)
+	d.Declaration.Guarantees = empty(d.Declaration.Guarantees)
+	d.Declaration.Resources = empty(d.Declaration.Resources)
+	d.Declaration.Models = empty(d.Declaration.Models)
+	if len(d.SupportedExtensions) == 0 {
+		d.SupportedExtensions = nil
+	}
+	return d
+}
+
 func expectedTheNoiseDeclaration(root string) (fwire.DeclarationWithExtensions, error) {
 	_, state, models, err := theNoiseFolders()
 	if err != nil {
@@ -225,7 +274,7 @@ func expectedTheNoiseDeclaration(root string) (fwire.DeclarationWithExtensions, 
 	return theNoiseDeclaration(root, state, models, filepath.Join(filepath.Dir(panel), "thenoise-provider.exe"), filepath.Join(filepath.Dir(panel), "openabstractions.exe")), nil
 }
 
-func configureTheNoise(ctx context.Context, journal Journal, files map[string]string, progress func(int64, int64) error) error {
+func configureTheNoise(ctx context.Context, journal Journal, assets []ModelAsset, files map[string]string) error {
 	owned, root, err := ownedTheNoise(ctx, journal)
 	if err != nil {
 		return err
@@ -234,9 +283,9 @@ func configureTheNoise(ctx context.Context, journal Journal, files map[string]st
 	if err != nil {
 		return err
 	}
-	for _, asset := range TheNoiseModelPlan().Assets {
+	for _, asset := range assets {
 		path := files[assetRoles[asset.ID]]
-		expected := filepath.Join(models, asset.Download.SHA256+filepath.Ext(asset.Path))
+		expected := asset.digestStagePath(models)
 		if !samePrivatePath(path, expected) {
 			return errors.New("TheNoise model input differs from its fixed verified stage")
 		}
@@ -262,7 +311,27 @@ func registerSetupEngine(ctx context.Context, journal Journal, owned State, engi
 	if err != nil {
 		return err
 	}
+	if prior, ok := owned.EngineDeclarations[engine]; ok && !sameEngineDeclaration(prior, declaration) {
+		// Setup's own registration serves other models than it now should:
+		// it is withdrawn and declared afresh.
+		if err := withdrawSetupEngine(ctx, journal, registry, owned.Plan.ID, engine, prior); err != nil {
+			return err
+		}
+	}
 	page, found, err := registryDeclaration(ctx, registry, declaration)
+	if errors.Is(err, errRegistryProgramMissing) {
+		// Setup reinstalls the program, so the leftover declaration of the
+		// deleted one is withdrawn and declared afresh.
+		change, werr := registry.Withdraw(ctx, page.Revision, declaration.Declaration.Name)
+		if werr != nil {
+			return werr
+		}
+		// applied with reason disabled kept the declaration: it was never Setup's.
+		if change.Outcome != fwire.DeclarationEditOutcomeApplied || change.Reason == "disabled" {
+			return errors.New("the registry did not withdraw the provider whose program is missing")
+		}
+		page, found, err = registryDeclaration(ctx, registry, declaration)
+	}
 	if err != nil {
 		return err
 	}
@@ -301,6 +370,40 @@ func registerSetupEngine(ctx context.Context, journal Journal, owned State, engi
 	return nil
 }
 
+// withdrawSetupEngine withdraws Setup's own recorded declaration prior of
+// engine and drops it from the journal, so a changed declaration can be
+// declared in its place. A declaration the registry lists differently is
+// another owner's and stays.
+func withdrawSetupEngine(ctx context.Context, journal Journal, registry engineRegistry, planID string, engine AppID, prior fwire.DeclarationWithExtensions) error {
+	page, found, err := registryDeclaration(ctx, registry, prior)
+	if errors.Is(err, errRegistryProgramMissing) {
+		found, err = true, nil
+	}
+	if err != nil {
+		return err
+	}
+	if found {
+		change, err := registry.Withdraw(ctx, page.Revision, prior.Declaration.Name)
+		if err != nil {
+			return err
+		}
+		if change.Outcome != fwire.DeclarationEditOutcomeApplied || change.Reason == "disabled" {
+			return errors.New("the registry did not withdraw Setup's earlier engine declaration; it was preserved")
+		}
+	}
+	return cas.ChangeLimitContext(ctx, journal.Path, maxJournalBytes, func(raw []byte) ([]byte, error) {
+		state, err := decodeState(raw)
+		if err != nil {
+			return nil, err
+		}
+		if state.Plan.ID != planID || !reflect.DeepEqual(state.EngineDeclarations[engine], prior) {
+			return nil, errors.New("declaration intent changed while its registration was replaced")
+		}
+		delete(state.EngineDeclarations, engine)
+		return json.Marshal(state)
+	})
+}
+
 // RemoveTheNoise removes only the current Setup-owned engine. The registry's
 // Applied withdrawal returns after its supervisor has halted the owned tree.
 // Personal engines, model files, content, results and audit stay in place.
@@ -309,10 +412,10 @@ func (r Runner) RemoveTheNoise(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return controller.withProviderOperation(ctx, func() error { return r.removeTheNoiseLocked(ctx) })
+	return controller.withProviderOperation(ctx, func() error { return r.removeTheNoiseLocked(ctx, controller) })
 }
 
-func (r Runner) removeTheNoiseLocked(ctx context.Context) error {
+func (r Runner) removeTheNoiseLocked(ctx context.Context, controller ModelController) error {
 	state, err := r.Journal.Load(ctx)
 	if err != nil {
 		return err
@@ -343,6 +446,9 @@ func (r Runner) removeTheNoiseLocked(ctx context.Context) error {
 		return err
 	}
 	page, found, err := registryDeclaration(ctx, registry, expected)
+	if errors.Is(err, errRegistryProgramMissing) {
+		found, err = true, nil
+	}
 	if err != nil {
 		return err
 	}
@@ -377,10 +483,6 @@ func (r Runner) removeTheNoiseLocked(ctx context.Context) error {
 	// Manifest/verification caches may have been reused by a personal CLI
 	// installation. Their independent identity is unproven, so preserve them.
 	state, err = r.Journal.Load(ctx)
-	if err != nil {
-		return err
-	}
-	controller, err := DefaultTheNoiseController(r.Journal)
 	if err != nil {
 		return err
 	}
@@ -422,17 +524,25 @@ func (j Journal) recordTheNoiseRemoval(ctx context.Context, expected State, fini
 	})
 }
 
+func cpuPictureRuntime() starterPictureRecipe {
+	return starterPictureRecipe{
+		engine: TheNoise, plan: TheNoiseModelPlan, fixedController: cachedPictureController,
+		fixedFactory: DefaultTheNoiseController, removePackage: Runner.RemoveTheNoise,
+	}
+}
+
 func DefaultTheNoiseController(journal Journal) (ModelController, error) {
 	_, state, models, err := theNoiseFolders()
 	if err != nil {
 		return ModelController{}, err
 	}
 	plan := TheNoiseModelPlan()
-	return ModelController{Plan: &plan, JournalPath: filepath.Join(filepath.Dir(journal.Path), "model-thenoise.json"),
+	assets := slices.Clone(plan.Assets)
+	return ModelController{Plan: &plan, JournalPath: StarterModelJournal(journal, TheNoise),
 		StageDir: models, ProviderRoot: state, Transfer: PublicTransfer{},
 		Guard: func(ctx context.Context) error { _, _, err := ownedTheNoise(ctx, journal); return err },
-		StageModel: func(ctx context.Context, _ string, _ string, files map[string]string, progress func(int64, int64) error) error {
-			return configureTheNoise(ctx, journal, files, progress)
+		StageModel: func(ctx context.Context, _ string, _ string, files map[string]string, _ func(int64, int64) error) error {
+			return configureTheNoise(ctx, journal, assets, files)
 		},
 		Probe: func(ctx context.Context, _ string) (bool, error) {
 			owned, root, err := ownedTheNoise(ctx, journal)
@@ -448,7 +558,7 @@ func DefaultTheNoiseController(journal Journal) (ModelController, error) {
 				return false, errors.New("the journal's engine binding differs from its reviewed paths")
 			}
 			for _, asset := range plan.Assets {
-				if err := checkModelStage(ctx, filepath.Join(models, asset.Download.SHA256+filepath.Ext(asset.Path)), asset.Download); err != nil {
+				if err := checkModelStage(ctx, asset.digestStagePath(models), asset.Download); err != nil {
 					return false, err
 				}
 			}
@@ -457,6 +567,9 @@ func DefaultTheNoiseController(journal Journal) (ModelController, error) {
 				return false, err
 			}
 			_, found, err := registryDeclaration(ctx, registry, declaration)
+			if errors.Is(err, errRegistryProgramMissing) {
+				return false, nil
+			}
 			return found, err
 		}, Selected: func(ctx context.Context) (bool, error) { return theNoiseReady(ctx, journal) }}, nil
 }

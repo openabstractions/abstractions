@@ -55,17 +55,44 @@ func checkWords(e emitted) error {
 	for _, r := range e.def.Refusals {
 		declared[r.Word] = true
 	}
+	// Intrinsic endpoint records retain the canonical base definition's own
+	// refusal vocabulary. Target-schema reachability remains independent.
+	intrinsic := map[string]bool{}
+	if (e.lang == "go" || e.lang == "cpp") && !e.def.NoIPC && hasReplies(e.def) {
+		for _, word := range endpointTypes().Words() {
+			intrinsic[word] = true
+		}
+	}
 	said := map[string]bool{}
 	for _, m := range emittedWord.FindAllStringSubmatch(e.body, -1) {
 		said[m[1]] = true
 	}
+	whole := e.def.VerificationWhole
+	if whole == nil {
+		whole = e.def
+	}
+	reachabilityBody := e.whole
+	if (e.lang == "go" || e.lang == "cpp") && !whole.NoIPC && hasReplies(whole) {
+		schema := *whole
+		schema.SuppressIntrinsicEndpoint = true
+		for _, backend := range backends {
+			if backend.lang == e.lang {
+				var err error
+				reachabilityBody, err = emitIncluded(backend, &schema)
+				if err != nil {
+					return err
+				}
+				break
+			}
+		}
+	}
 	reachable := map[string]bool{}
-	for _, m := range emittedWord.FindAllStringSubmatch(e.whole, -1) {
+	for _, m := range emittedWord.FindAllStringSubmatch(reachabilityBody, -1) {
 		reachable[m[1]] = true
 	}
 	var undeclared, unreachable []string
 	for w := range said {
-		if !declared[w] {
+		if !declared[w] && !intrinsic[w] {
 			undeclared = append(undeclared, w)
 		}
 	}
@@ -278,6 +305,11 @@ func goProtocol(b *strings.Builder, s *Definition) {
 	if envelopeUses(s, "map<string,string>") {
 		b.WriteString(goStrmapFlat)
 	}
+	b.WriteString("\nconst (\n")
+	for _, operation := range s.Proto.Operations {
+		fmt.Fprintf(b, "\tOp%s = %q\n", exported(operation.Name), operation.Name)
+	}
+	b.WriteString(")\n")
 	goStrings(b, "Operations", opNames(s))
 	b.WriteString("\nfunc IsOperation(name string) bool {\n\tfor _, o := range Operations {\n\t\tif o == name {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn false\n}\n")
 	fmt.Fprintf(b, "\nconst UnknownOperation = %q\n", s.Proto.Unknown)
@@ -989,6 +1021,9 @@ func rsProtocol(b *strings.Builder, s *Definition) {
 }
 
 func rsValueFlat(s *Definition, f Field, e string) string {
+	if scalarAbsent(f) {
+		e = e + ".unwrap()"
+	}
 	switch f.Type {
 	case "string":
 		return "esc(out, &" + e + ");"

@@ -141,7 +141,7 @@ func (p *servicePanel) questionDelegation(w http.ResponseWriter, r *http.Request
 			if record.Option != "" {
 				continue
 			}
-			details, err := askclient.ReadDetailsContext(ctx, reader, account, record.ID)
+			details, err := readQuestionDetails(ctx, reader, account, record.ID)
 			if err != nil || details.Permission == nil {
 				continue
 			}
@@ -165,7 +165,7 @@ func (p *servicePanel) questionDelegation(w http.ResponseWriter, r *http.Request
 		if record.ID != edit.QuestionID || record.Option != "" {
 			continue
 		}
-		details, err := askclient.ReadDetailsContext(ctx, reader, account, record.ID)
+		details, err := readQuestionDetails(ctx, reader, account, record.ID)
 		if err != nil || details.Permission == nil || details.Question.Question.Record == nil || details.Question.Question.Record.Option != "" {
 			break
 		}

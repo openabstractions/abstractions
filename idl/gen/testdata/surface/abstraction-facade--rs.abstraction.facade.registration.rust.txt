@@ -1,0 +1,461 @@
+pub type Raw
+pub enum Source
+  Installation
+  Operator
+  SelfRegistration
+  ProductRecord
+  BuiltIn
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum State
+  PendingApproval
+  Enabled
+  Disabled
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum Verification
+  Verified
+  Missing
+  Changed
+  Unverified
+  pub const ALL: [Self; 4]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum Placement
+  Local
+  Hosted
+  Any
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum Activation
+  OnDemand
+  Attach
+  pub const ALL: [Self; 2]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum IdentityEvidence
+  None
+  Program
+  Remote
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum FacetKind
+  Provider
+  Host
+  Remote
+  Application
+  pub const ALL: [Self; 4]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum ProducerCheckState
+  Current
+  Repaired
+  Stale
+  Refused
+  Unverified
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum DescriptionOutcome
+  Described
+  Forbidden
+  Unavailable
+  Invalid
+  Unsupported
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum CleanupState
+  Done
+  Pending
+  Failed
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum Outcome
+  Applied
+  Page
+  NotFound
+  Conflict
+  Invalid
+  Forbidden
+  Unavailable
+  Unsupported
+  Gap
+  pub const ALL: [Self; 9]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub mod service_error_code
+  pub const HANDLER_ERROR: &str
+  pub const INVALID_RESULT: &str
+  pub const UNKNOWN_VERSION: &str
+  pub const UNKNOWN_SERVICE: &str
+  pub const UNKNOWN_METHOD: &str
+  pub const WRONG_MODE: &str
+  pub const ALL: [&str; 6]
+pub struct ProducerCheck
+  kind: ::std::string::String
+  copy: ::std::string::String
+  state: ProducerCheckState
+  reason: ::std::string::String
+  checked: ::std::string::String
+pub struct ServiceState
+  service: ::std::string::String
+  readiness: OaImported0
+  reason: ::std::string::String
+  guarantees: ::std::vec::Vec<::std::string::String>
+  capabilities: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>
+  definition_hash: ::std::string::String
+pub struct Description
+  outcome: DescriptionOutcome
+  program: ::std::string::String
+  version: ::std::string::String
+  services: ::std::vec::Vec<ServiceState>
+  refusal: ::std::option::Option<OAImported1>
+  reason: ::std::string::String
+  checks: ::std::vec::Vec<ProducerCheck>
+pub struct EngineFact
+  id: ::std::string::String
+  name: ::std::string::String
+  version: ::std::string::String
+pub struct RecipeObject
+  role: ::std::string::String
+  digest: ::std::string::String
+  store: ::std::string::String
+  object: ::std::string::String
+pub struct ModelRecipe
+  model: ::std::string::String
+  engine: ::std::string::String
+  modalities: ::std::vec::Vec<::std::string::String>
+  objects: ::std::vec::Vec<RecipeObject>
+pub struct ScopedModel
+  modality: ::std::string::String
+  model: ::std::string::String
+pub struct RequiredExtension
+  modality: ::std::string::String
+  key: ::std::string::String
+pub struct ProviderFacet
+  name: ::std::string::String
+  arguments: ::std::vec::Vec<::std::string::String>
+  endpoint: ::std::string::String
+  services: ::std::vec::Vec<::std::string::String>
+  guarantees: ::std::vec::Vec<::std::string::String>
+  activation: Activation
+  resources: ::std::vec::Vec<::std::string::String>
+  models: ::std::vec::Vec<ScopedModel>
+  required_extensions: ::std::vec::Vec<RequiredExtension>
+  engines: ::std::vec::Vec<EngineFact>
+  recipes: ::std::vec::Vec<ModelRecipe>
+  config_keys: ::std::vec::Vec<::std::string::String>
+pub struct ServerFacet
+  name: ::std::string::String
+  base: ::std::string::String
+  kind: ::std::string::String
+  hosted: bool
+  modalities: ::std::vec::Vec<::std::string::String>
+  credential: ::std::string::String
+  ceiling: ::std::option::Option<OAImported2>
+pub struct RemoteFacet
+  name: ::std::string::String
+  endpoint: ::std::string::String
+  server_name: ::std::string::String
+  server_key_sha256: ::std::string::String
+  credential: ::std::string::String
+  modalities: ::std::vec::Vec<::std::string::String>
+pub struct HostRecipe
+  arguments: ::std::vec::Vec<::std::string::String>
+  readiness_deadline_ms: i32
+pub struct ActivationVerb
+  name: ::std::string::String
+  class: OaImported3
+  input_schema: Raw
+pub struct RequestedPermission
+  action: ::std::string::String
+  resource: Raw
+  purpose: ::std::string::String
+pub struct NetworkRequirement
+  hosts: ::std::vec::Vec<::std::string::String>
+pub struct ModelNeed
+  modality: ::std::string::String
+  required_features: ::std::vec::Vec<::std::string::String>
+  minimum_context: i64
+  placement: Placement
+  reserve: i64
+pub struct Needs
+  files: ::std::vec::Vec<OAImported4>
+  models: ::std::vec::Vec<ModelNeed>
+pub struct Chooser
+  name: ::std::string::String
+  modality: ::std::string::String
+pub struct Choosers
+  entries: ::std::vec::Vec<Chooser>
+pub struct Manifest
+  version: ::std::string::String
+  name: ::std::string::String
+  title: ::std::string::String
+  description: ::std::string::String
+  offers: OAImported5
+  host: HostRecipe
+  script_host: bool
+  requests: ::std::vec::Vec<RequestedPermission>
+  network: NetworkRequirement
+  needs: Needs
+  purpose: ::std::string::String
+  verbs: ::std::vec::Vec<ActivationVerb>
+  choosers: ::std::option::Option<Choosers>
+pub struct ApplicationFacet
+  name: ::std::string::String
+  manifest: Manifest
+pub struct RegistrationSpec
+  program: ::std::string::String
+  providers: ::std::vec::Vec<ProviderFacet>
+  servers: ::std::vec::Vec<ServerFacet>
+  remotes: ::std::vec::Vec<RemoteFacet>
+  applications: ::std::vec::Vec<ApplicationFacet>
+pub struct Publisher
+  key: ::std::string::String
+  subject: ::std::string::String
+  issuer: ::std::string::String
+  checked: ::std::string::String
+pub struct ApplicationReading
+  name: ::std::string::String
+  manifest_digest: ::std::string::String
+  instances: ::std::vec::Vec<OAImported6>
+  owned_instances: ::std::vec::Vec<::std::string::String>
+pub struct FacetReference
+  kind: FacetKind
+  name: ::std::string::String
+pub struct Registration
+  key: ::std::string::String
+  spec: RegistrationSpec
+  revision: ::std::string::String
+  epoch: ::std::string::String
+  source: Source
+  product_name: ::std::string::String
+  state: State
+  identity_evidence: IdentityEvidence
+  reason: ::std::string::String
+  publisher: ::std::option::Option<Publisher>
+  shadowed_by: ::std::option::Option<FacetReference>
+  applications: ::std::vec::Vec<ApplicationReading>
+  described: ::std::vec::Vec<ServiceState>
+  accepted: ::std::string::String
+  verification: Verification
+  verification_reason: ::std::string::String
+  verified: ::std::string::String
+  checks: ::std::vec::Vec<ProducerCheck>
+pub struct Cleanup
+  owner: ::std::string::String
+  state: CleanupState
+  reason: ::std::string::String
+pub struct RemovalReceipt
+  id: ::std::string::String
+  facet: FacetReference
+  revision: ::std::string::String
+  cleanup: ::std::vec::Vec<Cleanup>
+  accepted: ::std::string::String
+pub struct Change
+  outcome: Outcome
+  revision: ::std::string::String
+  reason: ::std::string::String
+  removal: ::std::option::Option<RemovalReceipt>
+  refusal: ::std::option::Option<OAImported1>
+pub struct Page
+  outcome: Outcome
+  revision: ::std::string::String
+  cursor: ::std::string::String
+  registrations: ::std::vec::Vec<Registration>
+  removals: ::std::vec::Vec<RemovalReceipt>
+  reason: ::std::string::String
+  refusal: ::std::option::Option<OAImported1>
+pub fn encode(v: &Manifest) -> ::std::vec::Vec<u8>
+pub struct Refusal
+  word: &'static str
+  offset: usize
+pub fn decode(data: &[u8]) -> ::std::result::Result<Manifest, Refusal>
+pub trait JsonRecord: ::std::marker::Sized
+  fn to_json(&self) -> ::std::vec::Vec<u8>
+  fn from_json(data: &[u8]) -> ::std::result::Result<Self, Refusal>
+pub use abstraction_frame::FrameTransport
+pub struct ServiceError
+  code: ::std::string::String
+  message: ::std::string::String
+pub enum CallError<E>
+  Transport(E)
+  Refusal(Refusal)
+  Dispatch(&'static str)
+  Service(ServiceError)
+pub trait EndpointV2
+  type Error
+  fn describe(&self) -> ::std::result::Result<Description, Self::Error>
+pub struct EndpointV2Client<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait RegistryV3
+  type Error
+  fn registrations(&self, cursor: ::std::string::String, limit: i64) -> ::std::result::Result<Page, Self::Error>
+  fn register(&self, registration: RegistrationSpec) -> ::std::result::Result<Change, Self::Error>
+  fn replace(&self, expected_revision: ::std::string::String, registration: RegistrationSpec) -> ::std::result::Result<Change, Self::Error>
+  fn remove(&self, expected_revision: ::std::string::String, facet: FacetReference) -> ::std::result::Result<Change, Self::Error>
+  fn set_enabled(&self, expected_revision: ::std::string::String, facet: FacetReference, enabled: bool) -> ::std::result::Result<Change, Self::Error>
+  fn observe(&self, cursor: ::std::string::String, wait_ms: i64) -> ::std::result::Result<Page, Self::Error>
+pub struct RegistryV3Client<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub fn encode_producer_check_document(v: &ProducerCheck) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_producer_check_document(data: &[u8]) -> ::std::result::Result<ProducerCheck, Refusal>
+pub fn encode_service_state_document(v: &ServiceState) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_service_state_document(data: &[u8]) -> ::std::result::Result<ServiceState, Refusal>
+pub fn encode_description_document(v: &Description) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_description_document(data: &[u8]) -> ::std::result::Result<Description, Refusal>
+pub fn encode_engine_fact_document(v: &EngineFact) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_engine_fact_document(data: &[u8]) -> ::std::result::Result<EngineFact, Refusal>
+pub fn encode_recipe_object_document(v: &RecipeObject) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_recipe_object_document(data: &[u8]) -> ::std::result::Result<RecipeObject, Refusal>
+pub fn encode_model_recipe_document(v: &ModelRecipe) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_model_recipe_document(data: &[u8]) -> ::std::result::Result<ModelRecipe, Refusal>
+pub fn encode_scoped_model_document(v: &ScopedModel) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_scoped_model_document(data: &[u8]) -> ::std::result::Result<ScopedModel, Refusal>
+pub fn encode_required_extension_document(v: &RequiredExtension) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_required_extension_document(data: &[u8]) -> ::std::result::Result<RequiredExtension, Refusal>
+pub fn encode_provider_facet_document(v: &ProviderFacet) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_provider_facet_document(data: &[u8]) -> ::std::result::Result<ProviderFacet, Refusal>
+pub fn encode_server_facet_document(v: &ServerFacet) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_server_facet_document(data: &[u8]) -> ::std::result::Result<ServerFacet, Refusal>
+pub fn encode_remote_facet_document(v: &RemoteFacet) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_remote_facet_document(data: &[u8]) -> ::std::result::Result<RemoteFacet, Refusal>
+pub fn encode_host_recipe_document(v: &HostRecipe) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_host_recipe_document(data: &[u8]) -> ::std::result::Result<HostRecipe, Refusal>
+pub fn encode_activation_verb_document(v: &ActivationVerb) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_activation_verb_document(data: &[u8]) -> ::std::result::Result<ActivationVerb, Refusal>
+pub fn encode_requested_permission_document(v: &RequestedPermission) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_requested_permission_document(data: &[u8]) -> ::std::result::Result<RequestedPermission, Refusal>
+pub fn encode_network_requirement_document(v: &NetworkRequirement) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_network_requirement_document(data: &[u8]) -> ::std::result::Result<NetworkRequirement, Refusal>
+pub fn encode_model_need_document(v: &ModelNeed) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_model_need_document(data: &[u8]) -> ::std::result::Result<ModelNeed, Refusal>
+pub fn encode_needs_document(v: &Needs) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_needs_document(data: &[u8]) -> ::std::result::Result<Needs, Refusal>
+pub fn encode_chooser_document(v: &Chooser) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chooser_document(data: &[u8]) -> ::std::result::Result<Chooser, Refusal>
+pub fn encode_choosers_document(v: &Choosers) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_choosers_document(data: &[u8]) -> ::std::result::Result<Choosers, Refusal>
+pub fn encode_manifest_document(v: &Manifest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_manifest_document(data: &[u8]) -> ::std::result::Result<Manifest, Refusal>
+pub fn encode_application_facet_document(v: &ApplicationFacet) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_application_facet_document(data: &[u8]) -> ::std::result::Result<ApplicationFacet, Refusal>
+pub fn encode_registration_spec_document(v: &RegistrationSpec) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_registration_spec_document(data: &[u8]) -> ::std::result::Result<RegistrationSpec, Refusal>
+pub fn encode_publisher_document(v: &Publisher) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_publisher_document(data: &[u8]) -> ::std::result::Result<Publisher, Refusal>
+pub fn encode_application_reading_document(v: &ApplicationReading) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_application_reading_document(data: &[u8]) -> ::std::result::Result<ApplicationReading, Refusal>
+pub fn encode_facet_reference_document(v: &FacetReference) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_facet_reference_document(data: &[u8]) -> ::std::result::Result<FacetReference, Refusal>
+pub fn encode_registration_document(v: &Registration) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_registration_document(data: &[u8]) -> ::std::result::Result<Registration, Refusal>
+pub fn encode_cleanup_document(v: &Cleanup) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_cleanup_document(data: &[u8]) -> ::std::result::Result<Cleanup, Refusal>
+pub fn encode_removal_receipt_document(v: &RemovalReceipt) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_removal_receipt_document(data: &[u8]) -> ::std::result::Result<RemovalReceipt, Refusal>
+pub fn encode_change_document(v: &Change) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_change_document(data: &[u8]) -> ::std::result::Result<Change, Refusal>
+pub fn encode_page_document(v: &Page) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_page_document(data: &[u8]) -> ::std::result::Result<Page, Refusal>
+pub mod internal
+  pub fn micros_timestamp(text: &str) -> bool
+  pub fn wide_timestamp(text: &str) -> bool
+  pub fn decode_producer_check_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ProducerCheck, usize), super::Refusal>
+  pub fn check_producer_check(v: &super::ProducerCheck, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_producer_check_at(v: &super::ProducerCheck, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_service_state_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ServiceState, usize), super::Refusal>
+  pub fn check_service_state(v: &super::ServiceState, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_service_state_at(v: &super::ServiceState, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_description_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Description, usize), super::Refusal>
+  pub fn check_description(v: &super::Description, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_description_at(v: &super::Description, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_engine_fact_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::EngineFact, usize), super::Refusal>
+  pub fn check_engine_fact(v: &super::EngineFact, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_engine_fact_at(v: &super::EngineFact, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_recipe_object_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::RecipeObject, usize), super::Refusal>
+  pub fn check_recipe_object(v: &super::RecipeObject, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_recipe_object_at(v: &super::RecipeObject, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_model_recipe_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ModelRecipe, usize), super::Refusal>
+  pub fn check_model_recipe(v: &super::ModelRecipe, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_model_recipe_at(v: &super::ModelRecipe, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_scoped_model_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ScopedModel, usize), super::Refusal>
+  pub fn check_scoped_model(v: &super::ScopedModel, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_scoped_model_at(v: &super::ScopedModel, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_required_extension_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::RequiredExtension, usize), super::Refusal>
+  pub fn check_required_extension(v: &super::RequiredExtension, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_required_extension_at(v: &super::RequiredExtension, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_provider_facet_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ProviderFacet, usize), super::Refusal>
+  pub fn check_provider_facet(v: &super::ProviderFacet, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_provider_facet_at(v: &super::ProviderFacet, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_server_facet_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ServerFacet, usize), super::Refusal>
+  pub fn check_server_facet(v: &super::ServerFacet, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_server_facet_at(v: &super::ServerFacet, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_remote_facet_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::RemoteFacet, usize), super::Refusal>
+  pub fn check_remote_facet(v: &super::RemoteFacet, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_remote_facet_at(v: &super::RemoteFacet, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_host_recipe_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::HostRecipe, usize), super::Refusal>
+  pub fn check_host_recipe(v: &super::HostRecipe, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_host_recipe_at(v: &super::HostRecipe, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_activation_verb_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ActivationVerb, usize), super::Refusal>
+  pub fn check_activation_verb(v: &super::ActivationVerb, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_activation_verb_at(v: &super::ActivationVerb, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_requested_permission_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::RequestedPermission, usize), super::Refusal>
+  pub fn check_requested_permission(v: &super::RequestedPermission, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_requested_permission_at(v: &super::RequestedPermission, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_network_requirement_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::NetworkRequirement, usize), super::Refusal>
+  pub fn check_network_requirement(v: &super::NetworkRequirement, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_network_requirement_at(v: &super::NetworkRequirement, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_model_need_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ModelNeed, usize), super::Refusal>
+  pub fn check_model_need(v: &super::ModelNeed, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_model_need_at(v: &super::ModelNeed, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_needs_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Needs, usize), super::Refusal>
+  pub fn check_needs(v: &super::Needs, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_needs_at(v: &super::Needs, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chooser_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Chooser, usize), super::Refusal>
+  pub fn check_chooser(v: &super::Chooser, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chooser_at(v: &super::Chooser, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_choosers_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Choosers, usize), super::Refusal>
+  pub fn check_choosers(v: &super::Choosers, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_choosers_at(v: &super::Choosers, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_manifest_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Manifest, usize), super::Refusal>
+  pub fn check_manifest(v: &super::Manifest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_manifest_at(v: &super::Manifest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_application_facet_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ApplicationFacet, usize), super::Refusal>
+  pub fn check_application_facet(v: &super::ApplicationFacet, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_application_facet_at(v: &super::ApplicationFacet, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_registration_spec_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::RegistrationSpec, usize), super::Refusal>
+  pub fn check_registration_spec(v: &super::RegistrationSpec, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_registration_spec_at(v: &super::RegistrationSpec, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_publisher_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Publisher, usize), super::Refusal>
+  pub fn check_publisher(v: &super::Publisher, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_publisher_at(v: &super::Publisher, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_application_reading_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ApplicationReading, usize), super::Refusal>
+  pub fn check_application_reading(v: &super::ApplicationReading, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_application_reading_at(v: &super::ApplicationReading, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_facet_reference_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::FacetReference, usize), super::Refusal>
+  pub fn check_facet_reference(v: &super::FacetReference, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_facet_reference_at(v: &super::FacetReference, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_registration_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Registration, usize), super::Refusal>
+  pub fn check_registration(v: &super::Registration, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_registration_at(v: &super::Registration, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_cleanup_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Cleanup, usize), super::Refusal>
+  pub fn check_cleanup(v: &super::Cleanup, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_cleanup_at(v: &super::Cleanup, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_removal_receipt_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::RemovalReceipt, usize), super::Refusal>
+  pub fn check_removal_receipt(v: &super::RemovalReceipt, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_removal_receipt_at(v: &super::RemovalReceipt, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_change_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Change, usize), super::Refusal>
+  pub fn check_change(v: &super::Change, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_change_at(v: &super::Change, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Page, usize), super::Refusal>
+  pub fn check_page(v: &super::Page, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_page_at(v: &super::Page, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>

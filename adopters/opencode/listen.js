@@ -1,3 +1,4 @@
+import {runtimeConnector} from './runtime-connector.js';
 import {createHash, randomUUID} from 'node:crypto';
 import {CaptureError, bitsPerSample, channels, sampleRate, startCapture} from './winmm-capture.js';
 
@@ -306,11 +307,11 @@ export function createListener({capture = startCapture, resolveWriter, resolveTr
 }
 
 async function resolveService(options, contract, signal, load) {
-  const [{Machine}, {BunNativeConnector}, Client] = await Promise.all([
-    import('@openabstractions/facade'), import('@openabstractions/ipc/bun'), load(),
+  const [{Machine}, Client] = await Promise.all([
+    import('@openabstractions/facade'), load(),
   ]);
   const machine = new Machine(options?.runtimeEndpoint ?? null, {
-    connector: new BunNativeConnector(), timeout: 30000, cancellation: signal ?? null,
+    connector: await runtimeConnector(), timeout: 30000, cancellation: signal ?? null,
     server: options?.server ?? null,
   });
   return new Client(await machine.resolveService(contract, {scope: 'local'}));

@@ -11,6 +11,64 @@ are retained for maintainers tracing the migration.
 
 ## Entries
 
+### 16. 2026-10-30, the direct C++ Storage provider (native package 0.2.0)
+
+- **Was:** `ContentStore`, `storage.h`, `abstraction::storage`, the
+  `abstraction_storage` CMake package and their separate filesystem state engine.
+- **Went because:** the existing Go content service owns content state and
+  policy for application languages (L489/TD57). The explicit legacy provider
+  remained independently buildable after service adoption became the default.
+- **Replaced by:** `abstraction_storage_content` 0.2.0 and
+  `abstraction::storage_client`, using the existing generated content profiles
+  and shared transport. Real service adopters retain their API and authority.
+- **Compatibility:** this is an intentional native C++ source/package minor
+  break from 0.1.0, with SameMinorVersion receiving. Legacy ON configuration
+  fails with a migration diagnostic; OFF remains harmless. Go's planned
+  `go/v0.8.0`, IDL profiles/fields/wire versions and transport ABI are unchanged.
+  Immutable older releases and source remain intact. The retired provider's
+  only tracked direct C++ caller was its own test, retired with the implementation.
+
+### 17. 2026-10-30, aggregate C++ CAS and unpublished native migration surface
+
+- **Was:** CAS in the root C++ SDK's build/export/header/schema installation;
+  the aggregate mixed-writer expectation; the private Python
+  `project_backend_controls` producer; and the unpublished CAS ABI1,
+  cancellation/bounds/lock/staged-replacement control API.
+- **Went because:** TD3 targets one Go CAS writer inside services/providers.
+  No C++ product writer was found. Every tracked projector caller was a test;
+  its historical private producer callers select retained older worktrees.
+- **Replaced by:** existing generated domain-service clients. Go CAS behavior,
+  CGO-disabled builds and Go 1.25 remain unchanged. No new CAS service, native
+  runtime prerequisite or public wire change is introduced.
+- **Compatibility:** the standalone `abstraction_cas` CMake/package route and
+  existing C++ shapes remain. Immutable Python/C++ v0.1.0 tags and prior frozen
+  producer sources/artifacts/receipts remain intact. Historical mixed-writer
+  reproduction requires an explicit standalone `CAS_CPP`, outside the root SDK.
+  Aggregate omission applies to the new 0.8 SDK; it does not rewrite old tags.
+  The ABI1/control additions never reached a public tag and have no replacement.
+- **Still held:** Python CAS bytes remain in existing ComfyUI source/archive
+  projections. Their producer, manifest and both interpreter closures must be
+  retired together later; this entry does not claim that payload is removed.
+  Useful FileID held-handle, identity and containment changes remain in their
+  owner, with their read-policy controls received there.
+
+### 15. 2026-10-27, the handwritten Python Config provider
+
+- **Was:** `abstraction-config/python`, its `abstraction-config` distribution,
+  local file reads, store locator and platform directory watchers.
+- **Went because:** the Go Config service owns settings for every application
+  language. The former vendored ComfyUI provider had already moved to IPC.
+- **Replaced by:** `abstraction-config-protocol` from `config/py`, resolved with
+  `Machine.resolve_config()` and `Machine.resolve_config_observer()`. The Go
+  provider, service, common corpus and stored settings remain.
+- **Consumers retired:** `scripts/live-delegation.sh` used the removed `jobd`
+  supervisor and read its old JSON records; the Python watcher probe and
+  two-provider comparison runner under `research/conf180` were retired with it.
+  Their dated findings and the old source remain in Git. Entries 4 and 10 below
+  retain their historical consumer descriptions; they are not current promises.
+- **Boundary:** current source/build/publication selections omit the old Python
+  provider. Immutable older tags and archives retain their original contents.
+
 ### 1. 2026-09-15, Go facade `legacy` package
 
 - **Was:** `abstraction-facade/go/legacy`, exporting `Discover`, `Machine` and
@@ -254,3 +312,13 @@ are retained for maintainers tracing the migration.
 - **Replaced by:** `openabstractions serve rights`, with the same flags
   (`--endpoint`, `--state`, `--asks`) and usage text.
 - **In history:** the commit that adds this entry.
+
+### 14. 2026-10-19, the NAS shared-folder store on a share
+
+- **Was:** `abstraction-download/go/nas` with `ABSTRACTION_NAS_STORE` naming a
+  store on an SMB share, used by the PC and a NAS `jobd` at once.
+- **Went because:** the channel lost 147 to 149 of 2150 updates across the
+  share. CAS now refuses a store on a network share (CAS-L2), and `nas.New`
+  refuses it at configuration with `identity.ErrNotLocalPath`.
+- **Replaced by:** the remote-runtime path (plan D31).
+- **In history:** 0.8.0 W0-06(a).

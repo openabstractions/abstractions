@@ -18,7 +18,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
@@ -27,7 +26,6 @@ import (
 	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	"github.com/openabstractions/abstraction-facade/go/client"
 	identity "github.com/openabstractions/abstraction-identity"
-	"github.com/openabstractions/abstraction-identity/listen"
 	api "github.com/openabstractions/abstraction-job/go/abstraction/job/acceptance"
 )
 
@@ -161,6 +159,10 @@ func run(args []string, input io.Reader, out io.Writer) error {
 }
 
 func loadConnection(path string) (connection, error) {
+	return loadConnectionWithEndpoint(path, playgroundEndpoint)
+}
+
+func loadConnectionWithEndpoint(path string, endpointFor func(string, string) (string, error)) (connection, error) {
 	var c connection
 	file, err := os.Open(path)
 	if err != nil {
@@ -178,7 +180,7 @@ func loadConnection(path string) (connection, error) {
 	if c.Version != 1 || !validIsolatedName(c.Isolated) || c.Endpoint == "" || !filepath.IsAbs(c.RuntimeProgram) || !filepath.IsAbs(c.StateDir) || !filepath.IsAbs(c.AppA) || !filepath.IsAbs(c.AppB) {
 		return c, errors.New("connection must name an isolated runtime and absolute local paths")
 	}
-	expectedEndpoint, err := playgroundEndpoint(c.Isolated, runtime.GOOS)
+	expectedEndpoint, err := endpointFor(c.Isolated, runtime.GOOS)
 	if err != nil || c.Endpoint != expectedEndpoint {
 		return c, errors.New("connection endpoint must match its isolated runtime name")
 	}
@@ -231,11 +233,14 @@ func loopbackOrigin(raw string) (*url.URL, error) {
 }
 
 func selectedMachine(c connection) (*facade.Machine, error) {
-	who, err := identity.Self()
+	if c.Endpoint == "" {
+		return nil, bootstrap.ErrNoDevelopmentRuntime
+	}
+	selected, err := bootstrap.SelectDevelopment(c.Endpoint, c.RuntimeProgram)
 	if err != nil {
 		return nil, err
 	}
-	return client.NewVerified(c.Endpoint, listen.ServerExpectation{Principal: who, Program: identity.CanonicalProgramPath(c.RuntimeProgram)}), nil
+	return client.NewVerified(selected.Endpoint, selected.Server), nil
 }
 
 func showIdentity(out io.Writer) error {
@@ -247,9 +252,9 @@ func showIdentity(out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	account := who.SID
-	if who.Kind == "posix" {
-		account = strconv.Itoa(who.UID)
+	account, err := who.Account()
+	if err != nil {
+		return err
 	}
 	return json.NewEncoder(out).Encode(map[string]any{"account": account, "program": identity.CanonicalProgramPath(exe), "pid": os.Getpid(), "source": "this process; service derives peer independently"})
 }

@@ -32,7 +32,21 @@ def launcher_symbols(scratch, *defines):
     command = ["swiftc", "-Onone", "-module-name", "OALauncher"]
     for define in defines:
         command += ["-D", define]
-    subprocess.run(command + [str(HERE / "PanelLauncher.swift"), "-o", str(executable)], check=True, timeout=180)
+    if defines:
+        subprocess.run(command + [str(HERE / "PanelLauncher.swift"), "-o", str(executable)], check=True, timeout=180)
+    else:
+        # This symbol-only check never executes transport. Link an unavailable
+        # external owner while compiling the real production Swift configuration.
+        stub = scratch / "presence-unavailable.c"
+        stub.write_text('#include "NativePresence.h"\n'
+                        'oa_panel_presence *oa_panel_presence_create(void) { return 0; }\n'
+                        'int oa_panel_presence_announce(oa_panel_presence *p, char *s, size_t n) { return 1; }\n'
+                        'void oa_panel_presence_close(oa_panel_presence *p) {}\n')
+        obj = scratch / "presence-unavailable.o"
+        subprocess.run(["clang", "-I", str(HERE), "-c", str(stub), "-o", str(obj)], check=True, timeout=30)
+        subprocess.run(command + ["-import-objc-header", str(HERE / "NativePresence.h"),
+                                 str(HERE / "PanelLauncher.swift"), str(obj), "-o", str(executable)],
+                       check=True, timeout=180)
     return subprocess.run(["nm", "-a", str(executable)], check=True, capture_output=True, text=True).stdout
 
 

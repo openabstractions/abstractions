@@ -3,7 +3,10 @@ package setup
 import (
 	"context"
 	"errors"
-	"slices"
+	"os"
+	"path/filepath"
+
+	identity "github.com/openabstractions/abstraction-identity"
 )
 
 // FeatureStatus is the installed core MSI's native provider feature state.
@@ -27,55 +30,66 @@ func EngineFeatureStatus(engine AppID) (FeatureStatus, error) {
 	return status, err
 }
 
+// AddEngineFeature makes the engine's provider feature present. Every x64
+// core installs the Lemonade and PyTorch adapters (Level 1 in
+// abstraction.wxs); a core since 2026-11-11 carries no TheNoise adapter.
+// Setup only reads the adapter program and never changes
+// Windows Installer state; a missing adapter answers with the sentence that
+// tells the person how to restore it.
 func (r Runner) AddEngineFeature(ctx context.Context, engine AppID) (FeatureStatus, error) {
-	if engine == Lemonade {
-		return r.AddLemonadeFeature(ctx)
-	}
-	if engine != TheNoise && engine != PyTorch {
+	if engine != Lemonade && engine != TheNoise && engine != PyTorch {
 		return FeatureStatus{}, errors.New("unknown installed engine feature")
 	}
-	if err := lemonadeHomeAllowed(); err != nil {
-		return FeatureStatus{}, err
-	}
-	state, err := r.Journal.Load(ctx)
-	if err != nil {
-		return FeatureStatus{}, err
-	}
-	if state.Plan.ID == "" || state.ApprovedPlanID != state.Plan.ID || !slices.Contains(state.Plan.Selected, engine) {
-		return FeatureStatus{}, errors.New("approve the current engine package plan first")
-	}
-	if err := r.Journal.Authorize(state.Plan); err != nil {
-		return FeatureStatus{}, err
-	}
-	return addEngineFeature(ctx, engine)
-}
-
-// AddLemonadeFeature requests only the fixed OA-owned provider feature through
-// normal Windows Installer maintenance. The approved setup plan must include
-// local image use. A failed/interrupted request is reconciled by querying MSI.
-func (r Runner) AddLemonadeFeature(ctx context.Context) (FeatureStatus, error) {
 	if err := ctx.Err(); err != nil {
 		return FeatureStatus{}, err
 	}
-	// The core MSI is the person's own installation, whichever runtime the
-	// Panel serves.
-	if err := lemonadeHomeAllowed(); err != nil {
-		return FeatureStatus{}, err
+	check := r.featureCheck
+	if check == nil {
+		check = func() (FeatureStatus, error) { return EngineFeatureStatus(engine) }
 	}
-	state, err := r.Journal.Load(ctx)
-	if err != nil {
-		return FeatureStatus{}, err
+	status, err := check()
+	if err != nil || status.Installed {
+		return status, err
 	}
-	if state.ApprovedPlanID == "" || state.ApprovedPlanID != state.Plan.ID {
-		return FeatureStatus{}, errors.New("setup plan has not been approved")
+	if status.Reason == "" {
+		status.Reason = adapterRestoreSentence(engineFeatureTitle(engine))
 	}
-	if err := r.Journal.Authorize(state.Plan); err != nil {
-		return FeatureStatus{}, err
+	return status, errors.New(status.Reason)
+}
+
+// engineFeatureTitle names an engine's provider feature to the person.
+func engineFeatureTitle(engine AppID) string {
+	switch engine {
+	case TheNoise:
+		return "TheNoise Image"
+	case PyTorch:
+		return "Diffusers Image"
+	default:
+		return "Lemonade Image"
 	}
-	if !slices.Contains(state.Plan.Selected, Lemonade) && !slices.Contains(state.Plan.Selected, ComfyUI) {
-		return FeatureStatus{}, errors.New("approved setup plan has no local image provider")
+}
+
+// adapterRestoreSentence tells the person how to bring back an adapter every
+// core installs. The current Setup plans each always-installed core feature
+// local on every run (installer/apps/bundle-actions/actions.h), and the core
+// offers no Repair in Apps (ARPNOREPAIR).
+func adapterRestoreSentence(title string) string {
+	return "Run the latest OpenAbstractions Setup to add " + title + "."
+}
+
+// adapterPresence reads an always-installed adapter beside the Panel program:
+// installed when its provider program is a regular file in the Panel's tools
+// folder. It reads no Windows Installer state.
+func adapterPresence(panel, providerBinary, title string) FeatureStatus {
+	if !identity.SamePathName(filepath.Base(panel), "Abstraction Panel.exe") ||
+		!identity.SamePathName(filepath.Base(filepath.Dir(panel)), "tools") {
+		return FeatureStatus{Reason: "Open the installed OpenAbstractions Panel to use " + title}
 	}
-	return addLemonadeFeature(ctx)
+	info, err := os.Lstat(filepath.Join(filepath.Dir(panel), providerBinary))
+	if err == nil && info.Mode().IsRegular() {
+		return FeatureStatus{Available: true, Installed: true}
+	}
+	return FeatureStatus{Reason: adapterRestoreSentence(title)}
 }
 
 // ModelHostFeatureStatus inspects the core MSI's ModelHost feature. It never
@@ -94,7 +108,7 @@ func (r Runner) AddModelHostFeature(ctx context.Context) (FeatureStatus, error) 
 	}
 	homeAllowed := r.modelHostHomeAllowed
 	if homeAllowed == nil {
-		homeAllowed = lemonadeHomeAllowed
+		homeAllowed = providerHomeAllowed
 	}
 	if err := homeAllowed(); err != nil {
 		return FeatureStatus{}, err

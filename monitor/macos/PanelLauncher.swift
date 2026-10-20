@@ -13,6 +13,19 @@
 
 import Cocoa
 import Darwin
+
+protocol NativePanelModel: AnyObject {
+    func receive(_ body: Data) -> Bool
+    func complete(_ id: String, result: Data, acknowledge: (Bool) -> Void)
+    func fault(_ id: String, acknowledge: (Bool) -> Void)
+    func retire()
+    func close()
+}
+
+#if (PANEL_WINDOW_FIXTURE || PANEL_ASKS_FIXTURE || PANEL_NOTIFICATION_FIXTURE || PANEL_SIGNAL_FIXTURE) && !PANEL_CORE_FIXTURE
+func makeNativePanelModel(instance: String, manifest: Data, output: @escaping (Data) -> Bool,
+                          activation: @escaping (UInt64, UInt64, Data) -> Bool) -> NativePanelModel? { nil }
+#endif
 import IOKit
 import os
 import UserNotifications
@@ -70,7 +83,7 @@ private var nativeSessionEvidenceUnavailableReported = false
 
 private func missingNativeSessionEvidence() -> Bool {
     if !nativeSessionEvidenceUnavailableReported {
-        NSLog("Abstraction Panel: native questions deferred; required macOS session evidence is unavailable")
+        NSLog("OpenAbstractions Panel: native questions deferred; required macOS session evidence is unavailable")
         nativeSessionEvidenceUnavailableReported = true
     }
     return false
@@ -113,6 +126,7 @@ struct NativeQuestionPrompt: Decodable {
     let warning: String?
     let permissionContent: String?
     let permissionPrompt: Bool?
+    let pairingPrompt: Bool?
     let iconProgram: String?
     // Go's one level choice (promptLevelFor): blue, gray, yellow or orange.
     let level: String?
@@ -123,6 +137,7 @@ struct NativeQuestionPrompt: Decodable {
         case warning = "Warning"
         case permissionContent = "PermissionContent"
         case permissionPrompt = "PermissionPrompt"
+        case pairingPrompt = "PairingPrompt"
         case iconProgram = "IconProgram"
         case level = "Level"
     }
@@ -391,6 +406,7 @@ func nativePermissionReviewRun(_ arguments: [String]) -> Bool {
 }
 
 func nativePanelArguments(_ arguments: [String]) -> [String] {
+    if nativeOwnedHostRun(arguments) { return ["-native-asks", "-native-owned-child"] }
     let flags = ["runtime-endpoint", "runtime-program", "runtime-state-dir"] + nativeApplicationRequestFlags +
         (nativePermissionReviewRun(arguments) ? ["page"] + nativePermissionReviewFlags : [])
     var result = ["-native-asks"]
@@ -410,6 +426,14 @@ func nativePanelArguments(_ arguments: [String]) -> [String] {
         index += 1
     }
     return result
+}
+
+func nativeOwnedHostRun(_ arguments: [String]) -> Bool {
+    return arguments.dropFirst().contains("-owned-host")
+}
+
+func validNativeOwnedHostArguments(_ arguments: [String]) -> Bool {
+    return Array(arguments.dropFirst()) == ["-owned-host", "-native", "-quiet", "-page", "credentials"]
 }
 
 /// True when this run carries an installer's request: the launcher then
@@ -565,12 +589,212 @@ final class PanelSchemeHandler: NSObject, WKURLSchemeHandler {
     func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) { owner?.stopPanelTask(task) }
 }
 
+#if PANEL_WINDOW_FIXTURE || PANEL_ASKS_FIXTURE || PANEL_NOTIFICATION_FIXTURE || PANEL_SIGNAL_FIXTURE
+// Existing presentation fixtures have no installed runtime. Native transport
+// tests link the real private shim independently.
+func oa_panel_presence_create() -> OpaquePointer? { nil }
+func oa_panel_presence_announce(_ owner: OpaquePointer, _ instance: UnsafeMutablePointer<CChar>, _ capacity: Int) -> Int32 { 1 }
+func oa_panel_presence_close(_ owner: OpaquePointer) {}
+#endif
+
+import Foundation
+import Darwin
+
+// Carries opaque chunks between the runtime's owned pipes and the launcher's
+// existing private child channel. The child reuses OA's bounded frame codec.
+// This owner never interprets MCP JSON or accepts an endpoint/application name.
+final class NativeOwnedChannel {
+    static let chunkLimit = 32 * 1024
+    private let queue = DispatchQueue(label: "oa.panel.owned-presence")
+    private let lock = NSLock()
+    private var presence: OpaquePointer?
+    private var timer: DispatchSourceTimer?
+    private var retired = false
+    private var started = false
+    private var instance = ""
+    private var model: NativePanelModel?
+    private let input: FileHandle
+    private let output: FileHandle
+    private let send: ([String: Any]) -> Bool
+    private let outputLock = NSLock()
+    private let inputLock = NSLock()
+    private let createPresence: () -> OpaquePointer?
+    private let announcePresence: (OpaquePointer, UnsafeMutablePointer<CChar>, Int) -> Int32
+    private let closePresence: (OpaquePointer) -> Void
+
+    init(input: FileHandle, output: FileHandle, send: @escaping ([String: Any]) -> Bool,
+         createPresence: @escaping () -> OpaquePointer? = oa_panel_presence_create,
+         announcePresence: @escaping (OpaquePointer, UnsafeMutablePointer<CChar>, Int) -> Int32 = oa_panel_presence_announce,
+         closePresence: @escaping (OpaquePointer) -> Void = oa_panel_presence_close) {
+        self.input = input
+        self.output = output
+        self.send = send
+        self.createPresence = createPresence
+        self.announcePresence = announcePresence
+        self.closePresence = closePresence
+        let flags = fcntl(output.fileDescriptor, F_GETFL)
+        let inputFlags = fcntl(input.fileDescriptor, F_GETFL)
+        if flags < 0 || fcntl(output.fileDescriptor, F_SETFL, flags | O_NONBLOCK) < 0 ||
+            fcntl(output.fileDescriptor, F_SETNOSIGPIPE, 1) < 0 || inputFlags < 0 ||
+            fcntl(input.fileDescriptor, F_SETFL, inputFlags | O_NONBLOCK) < 0 {
+            queue.async { [self] in retire() }
+        }
+    }
+
+    func start() {
+        lock.lock()
+        guard !started, !retired else { lock.unlock(); return }
+        started = true
+        lock.unlock()
+        queue.async { [self] in
+            guard live(), let owner = createPresence() else { retire(); return }
+            presence = owner
+            var instance = [CChar](repeating: 0, count: 129)
+            guard announcePresence(owner, &instance, instance.count) == 0 else { retire(); return }
+            lock.lock(); self.instance = String(cString: instance); lock.unlock()
+            guard live(), send(["kind": "owned-bootstrap", "id": String(cString: instance)]) else {
+                retire(); return
+            }
+            let heartbeat = DispatchSource.makeTimerSource(queue: queue)
+            heartbeat.schedule(deadline: .now() + 10, repeating: 10)
+            heartbeat.setEventHandler { [weak self] in
+                guard let self, self.live(), let owner = self.presence else { return }
+                var renewed = [CChar](repeating: 0, count: 129)
+                if self.announcePresence(owner, &renewed, renewed.count) != 0 { self.retire() }
+            }
+            timer = heartbeat
+            heartbeat.resume()
+            DispatchQueue.global(qos: .userInitiated).async { [self] in
+                var buffer = [UInt8](repeating: 0, count: Self.chunkLimit)
+                while live() {
+                    inputLock.lock()
+                    guard live() else { inputLock.unlock(); break }
+                    let count = buffer.withUnsafeMutableBytes { Darwin.read(input.fileDescriptor, $0.baseAddress!, $0.count) }
+                    let cause = errno
+                    var waitFailed = false
+                    if count < 0 && (cause == EAGAIN || cause == EWOULDBLOCK) {
+                        var descriptor = pollfd(fd: input.fileDescriptor, events: Int16(POLLIN), revents: 0)
+                        let result = poll(&descriptor, 1, 100)
+                        waitFailed = (result < 0 && errno != EINTR) || descriptor.revents & Int16(POLLNVAL) != 0
+                    }
+                    inputLock.unlock()
+                    if waitFailed { break }
+                    if count < 0 && (cause == EINTR || cause == EAGAIN || cause == EWOULDBLOCK) { continue }
+                    guard count > 0 else { break }
+                    let data = Data(buffer.prefix(count))
+                    guard live(), send(["kind": "owned-input", "body": data.base64EncodedString()]) else { break }
+                }
+                retire()
+            }
+        }
+    }
+
+    func receive(_ body: String) -> Bool {
+        guard body.utf8.count <= ((Self.chunkLimit + 2) / 3) * 4,
+              let data = Data(base64Encoded: body), !data.isEmpty, data.count <= Self.chunkLimit else {
+            retire(); return false
+        }
+        outputLock.lock()
+        let deadline = DispatchTime.now().uptimeNanoseconds + 5_000_000_000
+        let written = data.withUnsafeBytes { bytes -> Bool in
+            var offset = 0
+            while offset < bytes.count && live() {
+                let count = Darwin.write(output.fileDescriptor, bytes.baseAddress!.advanced(by: offset), bytes.count - offset)
+                if count > 0 { offset += count; continue }
+                if count < 0 && errno == EINTR { continue }
+                guard count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK),
+                      DispatchTime.now().uptimeNanoseconds < deadline else { return false }
+                var descriptor = pollfd(fd: output.fileDescriptor, events: Int16(POLLOUT), revents: 0)
+                let result = poll(&descriptor, 1, 100)
+                if result < 0 && errno != EINTR { return false }
+                if descriptor.revents & Int16(POLLERR | POLLHUP | POLLNVAL) != 0 { return false }
+            }
+            return offset == bytes.count
+        }
+        outputLock.unlock()
+        if !written { retire() }
+        return written
+    }
+
+    func live() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return !retired
+    }
+
+    func configureModel(instance: String, manifest: Data) -> Bool {
+        lock.lock()
+        guard !retired, self.instance == instance, model == nil else { lock.unlock(); return false }
+        lock.unlock()
+        let created = makeNativePanelModel(instance: instance, manifest: manifest,
+            output: { [weak self] body in self?.send(["kind":"owned-core-output","body":body.base64EncodedString()]) == true },
+            activation: { [weak self] call, callback, body in self?.send(["kind":"owned-core-activation","id":String(call,radix:16),"args":String(callback),"body":body.base64EncodedString()]) == true })
+        lock.lock(); defer { lock.unlock() }
+        guard !retired, model == nil, let created else { created?.close(); return false }
+        model = created; return true
+    }
+
+    func receiveModel(_ body: Data) -> Bool {
+        lock.lock(); let current = retired ? nil : model; lock.unlock()
+        return current?.receive(body) == true
+    }
+
+    func completeModel(_ id: String, body: Data) {
+        finishModel(id, body: body)
+    }
+
+    func faultModel(_ id: String) {
+        finishModel(id, body: nil)
+    }
+
+    private func finishModel(_ id: String, body: Data?) {
+        lock.lock(); let current = model; lock.unlock()
+        guard let current else { _ = send(["kind":"owned-core-completed","id":id,"error":"unavailable"]); return }
+        let acknowledge: (Bool) -> Void = { [weak self] accepted in
+            _ = self?.send(accepted ? ["kind":"owned-core-completed","id":id] : ["kind":"owned-core-completed","id":id,"error":"refused"])
+        }
+        if let body { current.complete(id, result: body, acknowledge: acknowledge) }
+        else { current.fault(id, acknowledge: acknowledge) }
+    }
+
+    func close() {
+        retire()
+        lock.lock(); let current = model; lock.unlock()
+        current?.close()
+    }
+
+    func retire() {
+        lock.lock()
+        guard !retired else { lock.unlock(); return }
+        retired = true
+        let currentModel = model
+        // Closing only the mediation handles leaves the application's window,
+        // child document work and previously accepted jobs with their owners.
+        lock.unlock()
+        currentModel?.retire()
+        inputLock.lock()
+        try? input.close()
+        inputLock.unlock()
+        outputLock.lock()
+        try? output.close()
+        outputLock.unlock()
+        _ = send(["kind": "owned-end"])
+        queue.async { [self] in
+            timer?.cancel()
+            timer = nil
+            if let owner = presence { closePresence(owner) }
+            presence = nil
+        }
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDelegate, UNUserNotificationCenterDelegate {
     private var window: NSWindow?
     private var webView: WKWebView?
     private var panel: Process?
     private var panelURL: URL?
     private var nativeInput: FileHandle?
+    private var ownedChannel: NativeOwnedChannel?
+    private let ownedHostRun = nativeOwnedHostRun(ProcessInfo.processInfo.arguments)
     private var sessionTimer: Timer?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var screenObserver: NSObjectProtocol?
@@ -619,6 +843,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     var panelTransport: ((PanelRequest) -> Void)?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if ownedHostRun && !validNativeOwnedHostArguments(ProcessInfo.processInfo.arguments) {
+            NSLog("OpenAbstractions Panel: invalid owned-host recipe")
+            exit(2)
+        }
         UNUserNotificationCenter.current().delegate = self
         let center = NSWorkspace.shared.notificationCenter
         workspaceObservers.append(center.addObserver(forName: NSWorkspace.sessionDidResignActiveNotification,
@@ -706,6 +934,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     /// stdout. It is a child, not an exec replacement: this process stays
     /// alive to own notifications and the on-demand window.
     private func launchPanel() {
+        // One owned process occurrence has one mediation session. Reopen never
+        // creates a replacement session after EOF or uncertain delivery.
+        if ownedHostRun && panel != nil { return }
         failPanelRequests()
         dialogFrames.removeAll()
         dismissNativeDialog()
@@ -734,7 +965,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
                 guard let url = localize(printed) else { return }
                 performPanelEvent { self.ready(url, from: process) }
             }, onNative: { frame in
-                performPanelEvent { self.receiveNative(frame, from: process) }
+                if self.ownedHostRun && frame.kind == "owned-output" {
+                    DispatchQueue.main.sync { self.receiveNative(frame, from: process) }
+                } else {
+                    performPanelEvent { self.receiveNative(frame, from: process) }
+                }
             })
         }
 
@@ -746,6 +981,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
             try process.run()
             panel = process
             nativeInput = stdin.fileHandleForWriting
+            if ownedHostRun {
+                let descriptor = stdin.fileHandleForWriting.fileDescriptor
+                let flags = fcntl(descriptor, F_GETFL)
+                guard flags >= 0, fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) >= 0,
+                      fcntl(descriptor, F_SETNOSIGPIPE, 1) >= 0 else {
+                    try? stdin.fileHandleForWriting.close()
+                    return
+                }
+                let channel = NativeOwnedChannel(input: .standardInput, output: .standardOutput) { [weak self, weak process] fields in
+                    var sent = false
+                    let deliver = {
+                        guard let self, let process, self.panel === process else { return }
+                        sent = self.sendNative(fields)
+                    }
+                    if Thread.isMainThread { deliver() } else { DispatchQueue.main.sync(execute: deliver) }
+                    return sent
+                }
+                ownedChannel = channel
+                channel.start()
+                return
+            }
             sessionUnlocked = currentSessionUnlocked()
             sendNative(["kind": "session", "unlocked": sessionUnlocked])
             let queued = pendingNativeReplies
@@ -758,9 +1014,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     }
 
     private func stopPanel() {
+        ownedChannel?.close()
         try? nativeInput?.close()
         nativeInput = nil
-        stopOwnedPanel(panel)
+        if !ownedHostRun { stopOwnedPanel(panel) }
     }
 
     private func ready(_ url: URL, from process: Process) {
@@ -791,6 +1048,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
 
     private func panelExited(_ status: Int32, from process: Process) {
         guard panel === process else { return }
+        ownedChannel?.retire()
         if applicationRequestRun {
             // The installer reads the outcome from this run's exit status.
             questionLog("application request run ended (status \(status))")
@@ -801,11 +1059,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         dialogFrames.removeAll()
         dismissNativeDialog()
         panelURL = nil
-        reportPanelFailure("The Panel stopped (status \(status)). Open Abstraction Panel again to restart it.")
+        if !ownedHostRun { reportPanelFailure("The Panel stopped (status \(status)). Open OpenAbstractions Panel again to restart it.") }
     }
 
     private func reportPanelFailure(_ message: String) {
-        NSLog("Abstraction Panel: %@", message)
+        NSLog("OpenAbstractions Panel: %@", message)
         guard !terminating, openWhenReady || window?.isVisible == true else { return }
         openWhenReady = false
         #if PANEL_ASKS_FIXTURE
@@ -815,26 +1073,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         if fixtureHidesWindow { return }
         #endif
         let alert = NSAlert()
-        alert.messageText = "Abstraction Panel unavailable"
+        alert.messageText = "OpenAbstractions Panel unavailable"
         alert.informativeText = message
         alert.runModal()
     }
 
     // MARK: - Native Asks presentation (no policy or operator calls here)
 
-    private func sendNative(_ fields: [String: Any]) {
+    @discardableResult private func sendNative(_ fields: [String: Any]) -> Bool {
         guard let nativeInput, panel?.isRunning == true,
               var data = try? JSONSerialization.data(withJSONObject: fields),
-              data.count < maxNativeAsksLine else { return }
+              data.count < maxNativeAsksLine else { return false }
         data.append(0x0A)
         do { try nativeInput.write(contentsOf: data) }
         catch {
-            NSLog("Abstraction Panel: native reply channel failed: %@", error.localizedDescription)
+            NSLog("OpenAbstractions Panel: native reply channel failed: %@", error.localizedDescription)
             sessionUnlocked = false
             dismissNativeDialog()
             try? nativeInput.close()
             self.nativeInput = nil
+            ownedChannel?.retire()
+            return false
         }
+        return true
     }
 
     private func refreshSession() {
@@ -870,6 +1131,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     private func receiveNative(_ frame: NativeAsksFrame, from process: Process) {
         guard panel === process else { return }
         switch frame.kind {
+        case "owned-core-start":
+            guard ownedHostRun, let id=frame.id, let encoded=frame.body,
+                  let body=Data(base64Encoded:encoded), body.count<=1<<20,
+                  ownedChannel?.configureModel(instance:id,manifest:body)==true else { ownedChannel?.retire();return }
+        case "owned-core-input":
+            guard ownedHostRun, let encoded=frame.body,let body=Data(base64Encoded:encoded),body.count<=1<<20,
+                  ownedChannel?.receiveModel(body)==true else {ownedChannel?.retire();return}
+        case "owned-core-complete":
+            guard ownedHostRun,let id=frame.id,id.count<=16 else {ownedChannel?.retire();return}
+            guard let body=Data(base64Encoded:frame.body ?? ""),body.count<=1<<20 else {ownedChannel?.faultModel(id);return}
+            ownedChannel?.completeModel(id,body:body)
+        case "owned-core-fault":
+            guard ownedHostRun,let id=frame.id,id.count<=16,frame.body==nil else {ownedChannel?.retire();return}
+            ownedChannel?.faultModel(id)
+        case "owned-core-retire":
+            ownedChannel?.retire()
+        case "owned-output":
+            guard ownedHostRun, process.isRunning, let body = frame.body else {
+                ownedChannel?.retire()
+                return
+            }
+            // The private child emits opaque framed bytes; this main owns the
+            // runtime's output pipe and never parses an MCP message.
+            if ownedChannel?.receive(body) != true { ownedChannel?.retire() }
+        case "owned-end":
+            ownedChannel?.retire()
         case "dismiss":
             dialogFrames.removeAll { $0.id == frame.id }
             if activeDialogID == frame.id { dismissNativeDialog() }
@@ -898,7 +1185,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
             refreshNav()
             showNextNativeDialog(from: process)
         default:
-            NSLog("Abstraction Panel: unknown native presentation")
+            NSLog("OpenAbstractions Panel: unknown native presentation")
         }
     }
 
@@ -1010,7 +1297,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         for choice in prompt.choices {
             question.addButton(withTitle: choice.label)
         }
-        let cancel = question.addButton(withTitle: "Cancel")
+        let cancel = question.addButton(withTitle: prompt.pairingPrompt == true ? "Close" : "Cancel")
         cancel.keyEquivalent = "\u{1b}"
         question.window.defaultButtonCell = nil
         let details = NativeQuestionDetails(text: prompt.details, alert: question)
@@ -1214,7 +1501,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         win.contentViewController = split
         win.setContentSize(panelDefaultContentSize)
         win.contentMinSize = panelMinimumContentSize
-        win.title = "Abstraction Panel"
+        win.title = "OpenAbstractions Panel"
         let toolbar = NSToolbar(identifier: "org.openabstractions.panel.toolbar")
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
@@ -1251,6 +1538,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
 
     /// Loads one Panel path (a nav item's `path`) with the key and shell=native.
     private func loadPage(_ path: String) {
+        if ownedHostRun && (path != "/native-host/shell" || webView?.url != nil) { return }
         guard let panelURL, let url = panelPageURL(panelURL, path: path) else { return }
         ensureWindow().load(URLRequest(url: url))
     }
@@ -1289,6 +1577,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
             return
         }
         #endif
+        if window?.isMiniaturized == true { window?.deminiaturize(nil) }
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -1310,7 +1599,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
 
     private func showTitle(_ title: String?) {
         let text = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        window?.title = text.isEmpty ? "Abstraction Panel" : text
+        window?.title = text.isEmpty ? "OpenAbstractions Panel" : text
     }
 
     // MARK: - Accent colour
@@ -1350,6 +1639,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         let request = task.request
         guard let url = request.url, isPanelOrigin(url) else {
             task.didFailWithError(URLError(.unsupportedURL))
+            return
+        }
+        if ownedHostRun && url.path == "/native-host/visible" {
+            let expected = panelURL.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?
+                .queryItems?.first(where: { $0.name == "k" })?.value
+            let visible = request.httpMethod == "GET" && expected != nil &&
+                request.value(forHTTPHeaderField: "X-Panel-Key") == expected &&
+                ownedChannel?.live() == true && panel?.isRunning == true &&
+                window?.isVisible == true && window?.isMiniaturized == false &&
+                (window?.alphaValue ?? 0) > 0 && webView?.url?.path == "/native-host/shell"
+            if let response = HTTPURLResponse(url: url, statusCode: visible ? 204 : 503,
+                                               httpVersion: "HTTP/1.1", headerFields: ["Cache-Control": "no-store"]) {
+                task.didReceive(response)
+                task.didFinish()
+            } else { task.didFailWithError(URLError(.badServerResponse)) }
             return
         }
         var body = request.httpBody ?? Data()
@@ -1458,7 +1762,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
 
     private func makePanelMenu() -> NSMenu {
         let main = NSMenu()
-        let name = "Abstraction Panel"
+        let name = "OpenAbstractions Panel"
         func submenu(_ title: String, _ items: [NSMenuItem]) -> NSMenu {
             let menu = NSMenu(title: title)
             for item in items { menu.addItem(item) }
@@ -2563,9 +2867,179 @@ func panelWindowURL(_ http: URL) -> URL {
 }
 #endif
 
-#if !PANEL_SIGNAL_FIXTURE && !PANEL_NOTIFICATION_FIXTURE && !PANEL_WINDOW_FIXTURE && !PANEL_ASKS_FIXTURE
+#if !PANEL_SIGNAL_FIXTURE && !PANEL_NOTIFICATION_FIXTURE && !PANEL_WINDOW_FIXTURE && !PANEL_ASKS_FIXTURE && !PANEL_CORE_FIXTURE
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
 app.run()
+#endif
+
+#if (!PANEL_WINDOW_FIXTURE && !PANEL_ASKS_FIXTURE && !PANEL_NOTIFICATION_FIXTURE && !PANEL_SIGNAL_FIXTURE) || PANEL_CORE_FIXTURE
+import Foundation
+
+// Caller-buffer/opaque-handle projection only. MCP parsing, activation schema
+// validation, call ownership and canonical replies stay in the facade core.
+final class NativeAppModel: NativePanelModel {
+    private let lock = NSLock()
+    private var model: OpaquePointer?
+    private var session: OpaquePointer?
+    private var retired = false
+    private var calls = Set<UInt64>()
+    private let output: (Data) -> Bool
+    private let activation: (UInt64, UInt64, Data) -> Bool
+    private static let limit = 1 << 20
+    private struct Emissions {
+        var output: [Data] = []
+        var activations: [(UInt64, UInt64, Data)] = []
+    }
+    private enum Refusal: Error { case native }
+
+    private static func span<T>(_ data: Data, _ call: (oa_appmodel_bytes) -> T) -> T {
+        data.withUnsafeBytes { bytes in
+            call(oa_appmodel_bytes(data: bytes.baseAddress?.assumingMemoryBound(to: CChar.self), size: bytes.count))
+        }
+    }
+
+    private static func copied(_ call: (UnsafeMutablePointer<oa_appmodel_buffer>) -> oa_appmodel_status) throws -> (oa_appmodel_status, Data) {
+        var buffer = oa_appmodel_buffer(data: nil, capacity: 0, size: 0)
+        let status = call(&buffer)
+        if status == OA_APPMODEL_EMPTY { return (status, Data()) }
+        guard status == OA_APPMODEL_OK || status == OA_APPMODEL_BUFFER,
+              buffer.size <= limit else { throw Refusal.native }
+        if status == OA_APPMODEL_OK { guard buffer.size == 0 else { throw Refusal.native }; return (status, Data()) }
+        var data = Data(count: buffer.size)
+        let copied = data.withUnsafeMutableBytes { bytes -> oa_appmodel_status in
+            buffer.data = bytes.baseAddress?.assumingMemoryBound(to: CChar.self)
+            buffer.capacity = bytes.count
+            return call(&buffer)
+        }
+        guard copied == OA_APPMODEL_OK, buffer.size <= data.count else { throw Refusal.native }
+        data.count = buffer.size
+        return (copied, data)
+    }
+
+    init?(instance: String, manifest: Data, output: @escaping (Data) -> Bool,
+          activation: @escaping (UInt64, UInt64, Data) -> Bool) {
+        self.output = output; self.activation = activation
+        guard oa_appmodel_abi_version() == 2 else { return nil }
+        do {
+            let (_, bounds) = try Self.copied { oa_appmodel_default_bounds($0) }
+            var error = oa_appmodel_error(word: nil, offset: 0)
+            let status = Self.span(Data(instance.utf8)) { named in
+                Self.span(bounds) { bound in
+                    Self.span(Data("[]".utf8)) { extensions in
+                        oa_appmodel_create(named, bound, extensions, &model, &error)
+                    }
+                }
+            }
+            guard status == OA_APPMODEL_OK, let model else { return nil }
+            let created = Self.span(Data("openabstractions-panel".utf8)) { name in
+                Self.span(Data("0.8.0".utf8)) { version in oa_appmodel_session_create(model, name, version, &session) }
+            }
+            guard created == OA_APPMODEL_OK else { close(); return nil }
+            let configured = manifest.withUnsafeBytes { bytes in
+                oa_panel_appmodel_configure(session, bytes.baseAddress?.assumingMemoryBound(to: CChar.self), bytes.count)
+            }
+            guard configured == OA_APPMODEL_OK else { close(); return nil }
+        } catch { close(); return nil }
+    }
+
+    private func pump() throws -> Emissions {
+        guard let model, let session else { throw Refusal.native }
+        var emissions = Emissions()
+        var ended = false
+        for _ in 0..<2048 {
+            var event = oa_appmodel_event()
+            var error = oa_appmodel_error(word: nil, offset: 0)
+            let (status, canonical) = try Self.copied { oa_appmodel_next(model, &event, $0, &error) }
+            if status == OA_APPMODEL_EMPTY { ended = true; break }
+            var consumed: Int32 = 0
+            var ticket: UInt64 = 0
+            guard Self.span(canonical, { oa_appmodel_session_accept(session, &event, $0, &consumed, &ticket) }) == OA_APPMODEL_OK else { throw Refusal.native }
+            if event.kind == OA_APPMODEL_ACTIVATE {
+                guard event.call != 0, !calls.contains(event.call) else { throw Refusal.native }
+                calls.insert(event.call)
+                emissions.activations.append((event.call, event.callback, canonical))
+            }
+        }
+        guard ended else { throw Refusal.native }
+        ended = false
+        for _ in 0..<2048 {
+            var ticket: UInt64 = 0
+            let (status, body) = try Self.copied { oa_appmodel_session_next(session, &ticket, $0) }
+            if status == OA_APPMODEL_EMPTY { ended = true; break }
+            // A size-zero terminal host ticket is an internal completion.
+            if !body.isEmpty { emissions.output.append(body) }
+        }
+        guard ended else { throw Refusal.native }
+        return emissions
+    }
+
+    private func emit(_ emissions: Emissions) -> Bool {
+        for body in emissions.output { if !output(body) { return false } }
+        for (call, callback, body) in emissions.activations { if !activation(call, callback, body) { return false } }
+        return true
+    }
+
+    func receive(_ body: Data) -> Bool {
+        lock.lock()
+        guard !retired, let session, let model else { lock.unlock(); return false }
+        var responding: Int32 = 0
+        do {
+            let ticket=oa_appmodel_request_id(model)
+            guard ticket != 0, Self.span(body, { oa_appmodel_session_receive(session, ticket, $0, &responding) }) == OA_APPMODEL_OK else { throw Refusal.native }
+            let emissions = try pump(); lock.unlock(); return emit(emissions)
+        } catch { lock.unlock(); return false }
+    }
+
+    func complete(_ id: String, result: Data, acknowledge: (Bool) -> Void) {
+        finishCallback(id, result: result, acknowledge: acknowledge)
+    }
+
+    func fault(_ id: String, acknowledge: (Bool) -> Void) {
+        finishCallback(id, result: nil, acknowledge: acknowledge)
+    }
+
+    private func finishCallback(_ id: String, result: Data?, acknowledge: (Bool) -> Void) {
+        lock.lock()
+        guard let call = UInt64(id, radix: 16), calls.contains(call), let model else { lock.unlock(); acknowledge(false); return }
+        var error = oa_appmodel_error(word: nil, offset: 0)
+        do {
+            var status = OA_APPMODEL_INVALID
+            if let result { status = Self.span(result) { oa_appmodel_complete_activation(model, call, $0, &error) } }
+            if status != OA_APPMODEL_OK { status = oa_appmodel_callback_fault(model, call, &error) }
+            guard status == OA_APPMODEL_OK else { throw Refusal.native }
+            calls.remove(call)
+            let emissions = try pump(); lock.unlock()
+            // The existing child may be waiting on this acknowledgement. Send
+            // it before new callbacks, after the actual native completion.
+            acknowledge(true); _ = emit(emissions)
+        } catch { lock.unlock(); acknowledge(false) }
+    }
+
+    func retire() {
+        lock.lock(); defer { lock.unlock() }
+        if retired { return }; retired = true
+        if let session { _ = oa_appmodel_session_retire(session) }
+        if let model { var error = oa_appmodel_error(word:nil,offset:0); _ = oa_appmodel_close(model,&error) }
+    }
+
+    func close() {
+        retire(); lock.lock(); defer { lock.unlock() }
+        guard let model else { return }
+        for call in Array(calls) { if oa_panel_appmodel_window_closed(model, call) == OA_APPMODEL_OK { calls.remove(call) } }
+        _ = try? pump()
+        guard oa_appmodel_pending(model) == 0 else { return }
+        if let session, oa_appmodel_session_destroy(session) == OA_APPMODEL_OK { self.session = nil }
+        // BUSY retains native storage. Never free a callback's owner merely
+        // because mediation or a UI wait ended.
+        if self.session == nil && oa_appmodel_destroy(model) == OA_APPMODEL_OK { self.model = nil }
+    }
+}
+
+func makeNativePanelModel(instance: String, manifest: Data, output: @escaping (Data) -> Bool,
+                          activation: @escaping (UInt64, UInt64, Data) -> Bool) -> NativePanelModel? {
+    NativeAppModel(instance:instance,manifest:manifest,output:output,activation:activation)
+}
+
 #endif

@@ -59,6 +59,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"image"
 	"image/png"
 	"io"
@@ -67,6 +70,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -333,6 +339,106 @@ func profileLabel(profile string) string {
 	return profile
 }
 
+// This unconditional check also runs where native peer proof is unavailable.
+// Read the governing list and actual dispatch cases, including optional routes.
+func TestGatewayRouteSetEqualsContract(t *testing.T) {
+	fixture := filepath.Join("testdata", "gateway-contract")
+	contractPath := filepath.Join(fixture, "CONTRACT.md")
+	windowPath := filepath.Join(fixture, "window.go.txt")
+	if _, err := os.Stat(fixture); os.IsNotExist(err) {
+		root := filepath.Join("..", "openabstractions-flat", "abstraction-inference")
+		contractPath = filepath.Join(root, "CONTRACT.md")
+		windowPath = filepath.Join(root, "adapters", "go", "gateway", "window.go")
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(contractPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, section, ok := strings.Cut(string(raw), "## The gateway\n")
+	if !ok {
+		t.Fatal("gateway contract section missing")
+	}
+	section, _, ok = strings.Cut(section, "**[INF-W1]")
+	if !ok {
+		t.Fatal("gateway contract route list boundary missing")
+	}
+	want := []string{}
+	for _, span := range regexp.MustCompile("`([^`]+)`").FindAllStringSubmatch(section, -1) {
+		words := strings.Fields(span[1])
+		if len(words) == 2 && (words[0] == "GET" || words[0] == "POST") && strings.HasPrefix(words[1], "/v1/") {
+			want = append(want, strings.Join(words, " "))
+		}
+	}
+	file, err := parser.ParseFile(token.NewFileSet(), windowPath, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := []string{}
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Name.Name != "serveHTTP" {
+			continue
+		}
+		ast.Inspect(fn.Body, func(node ast.Node) bool {
+			clause, ok := node.(*ast.CaseClause)
+			if !ok {
+				return true
+			}
+			routes := false
+			for _, stmt := range clause.Body {
+				if assign, ok := stmt.(*ast.AssignStmt); ok && len(assign.Lhs) == 1 {
+					name, ok := assign.Lhs[0].(*ast.Ident)
+					routes = routes || ok && name.Name == "route"
+				}
+			}
+			if !routes {
+				return true
+			}
+			method, path := "", ""
+			methods, paths := 0, 0
+			ast.Inspect(clause, func(node ast.Node) bool {
+				eq, ok := node.(*ast.BinaryExpr)
+				if !ok || eq.Op != token.EQL {
+					return true
+				}
+				field, ok := eq.X.(*ast.SelectorExpr)
+				if !ok {
+					return true
+				}
+				switch field.Sel.Name {
+				case "Method":
+					methods++
+					if value, ok := eq.Y.(*ast.SelectorExpr); ok {
+						method = strings.TrimPrefix(value.Sel.Name, "Method")
+					}
+				case "Path":
+					paths++
+					if value, ok := eq.Y.(*ast.BasicLit); ok && value.Kind == token.STRING {
+						path, err = strconv.Unquote(value.Value)
+						if err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+				return true
+			})
+			method = strings.ToUpper(method)
+			if methods != 1 || paths != 1 || (method != "GET" && method != "POST") || !strings.HasPrefix(path, "/v1/") || len(clause.List) != 1 {
+				t.Fatalf("unrecognized gateway route case at %v", clause.Pos())
+			}
+			got = append(got, method+" "+path)
+			return false
+		})
+	}
+	slices.Sort(want)
+	slices.Sort(got)
+	if len(want) == 0 || !slices.Equal(got, want) {
+		t.Fatalf("gateway dispatch %v differs from contract %v", got, want)
+	}
+}
+
 func TestGatewayRoutes(t *testing.T) {
 	if !statusTransportProvesProgram(t) {
 		t.Skip("Program proof unavailable on current shared transport")
@@ -344,8 +450,7 @@ func TestGatewayRoutes(t *testing.T) {
 	chatFixture := newGwChatFixture(t)
 	liveFixture := newGwLiveFixture(t, "gw-live-model")
 
-	options, _ := isolatedRuntime(t)
-	options.gateway = freeLoopbackPort(t)
+	options, _ := isolatedRuntime(t, isolatedRuntimeOptions{Gateway: true})
 	hosts := fmt.Sprintf(`{"local":[],"hosted":[`+
 		`{"name":"gwhost","base":%q,"wire":%q,"credential":"gw-cred","profiles":["chat","embed","transcription","speech","image"]},`+
 		`{"name":"gwlive","base":%q,"wire":%q,"credential":"gw-cred","profiles":["live"]}`+
@@ -363,11 +468,13 @@ func TestGatewayRoutes(t *testing.T) {
 	t.Cleanup(func() { removeStoreItems(t, namespace) })
 
 	ctx, cancel := context.WithCancel(context.Background())
-	ready := make(chan struct{})
+	ready := make(chan string, 1)
 	done := make(chan error, 1)
-	go func() { done <- runRuntimeReady(ctx, options, func() error { close(ready); return nil }) }()
+	go func() {
+		done <- runRuntimeReadyAddress(ctx, options, func(address string) error { ready <- address; return nil })
+	}()
 	select {
-	case <-ready:
+	case options.gateway = <-ready:
 	case err := <-done:
 		cancel()
 		t.Fatalf("startup: %v", err)

@@ -1,0 +1,246 @@
+type Admission wire.Admission
+type AudioChunk wire.AudioChunk
+type AuditEntry wire.AuditEntry
+type AuditOutcome wire.AuditOutcome
+const AuditOutcomePage
+const AuditOutcomeGap
+const AuditOutcomeInvalid
+const AuditOutcomeForbidden
+const AuditOutcomeUnavailable
+func AuditOutcomeValues() []AuditOutcome
+func ParseAuditOutcome(word string) (AuditOutcome, bool)
+type AuditPage wire.AuditPage
+type AuditRoute wire.AuditRoute
+const AuditRouteNative
+const AuditRouteWindow
+const AuditRouteRemote
+func AuditRouteValues() []AuditRoute
+func ParseAuditRoute(word string) (AuditRoute, bool)
+type CancelOutcome wire.CancelOutcome
+const CancelOutcomeCancelled
+const CancelOutcomeEnded
+const CancelOutcomeUnknown
+const CancelOutcomeInvalid
+const CancelOutcomeForbidden
+const CancelOutcomeUnavailable
+func CancelOutcomeValues() []CancelOutcome
+func ParseCancelOutcome(word string) (CancelOutcome, bool)
+type Cancellation wire.Cancellation
+type CeilingLimit wire.CeilingLimit
+type ChatReasoning wire.ChatReasoning
+type ChatReasoningApplied wire.ChatReasoningApplied
+type ChatReasoningEffort wire.ChatReasoningEffort
+const ChatReasoningEffortNone
+const ChatReasoningEffortLow
+const ChatReasoningEffortMedium
+const ChatReasoningEffortHigh
+func ChatReasoningEffortValues() []ChatReasoningEffort
+func ParseChatReasoningEffort(word string) (ChatReasoningEffort, bool)
+type ChatReasoningSupport wire.ChatReasoningSupport
+const ChatReasoningSupportApplied
+const ChatReasoningSupportApproximated
+const ChatReasoningSupportNotSupported
+const ChatReasoningSupportOverridden
+func ChatReasoningSupportValues() []ChatReasoningSupport
+type ChatUse wire.ChatUse
+const ChatUseTitle
+func ChatUseValues() []ChatUse
+func ParseChatUse(word string) (ChatUse, bool)
+type Cost wire.Cost
+type Delivery wire.Delivery
+type Delta wire.Delta
+type DeltaKind wire.DeltaKind
+const DeltaKindPart
+const DeltaKindUsage
+const DeltaKindEnd
+const DeltaKindSegment
+const DeltaKindAudio
+const DeltaKindTranscript
+const DeltaKindImageProgress
+const DeltaKindImageResult
+func DeltaKindValues() []DeltaKind
+func ParseDeltaKind(word string) (DeltaKind, bool)
+type DeltaPage wire.DeltaPage
+type EditOutcome wire.EditOutcome
+const EditOutcomeApplied
+const EditOutcomeConflict
+const EditOutcomeUnknown
+const EditOutcomeInvalid
+const EditOutcomeNoSecureStore
+const EditOutcomeForbidden
+const EditOutcomeUnavailable
+func EditOutcomeValues() []EditOutcome
+func ParseEditOutcome(word string) (EditOutcome, bool)
+type EmbedOutcome wire.EmbedOutcome
+const EmbedOutcomeCompleted
+const EmbedOutcomeRefused
+const EmbedOutcomeNotPermitted
+const EmbedOutcomeBudgetExceeded
+const EmbedOutcomeUnsupportedFeature
+const EmbedOutcomeNoHost
+const EmbedOutcomeUnavailable
+const EmbedOutcomeInvalid
+const EmbedOutcomeForbidden
+func EmbedOutcomeValues() []EmbedOutcome
+func ParseEmbedOutcome(word string) (EmbedOutcome, bool)
+type GatewayChange wire.GatewayChange
+type GatewayState wire.GatewayState
+type HostChange wire.HostChange
+type HostEntry wire.HostEntry
+type HostList wire.HostList
+type HostState wire.HostState
+type ImageMode wire.ImageMode
+const ImageModeGenerate
+const ImageModeEdit
+func ImageModeValues() []ImageMode
+func ParseImageMode(word string) (ImageMode, bool)
+type ImageProgress wire.ImageProgress
+type ImageReply wire.ImageReply
+type ImageRequest wire.ImageRequest
+type ImageResult wire.ImageResult
+type KeyIssued wire.KeyIssued
+type KeyList wire.KeyList
+type KeyRevoked wire.KeyRevoked
+type KeyState wire.KeyState
+const KeyStateActive
+const KeyStateRevoked
+const KeyStateLost
+func KeyStateValues() []KeyState
+func ParseKeyState(word string) (KeyState, bool)
+type ListOutcome wire.ListOutcome
+const ListOutcomePage
+const ListOutcomeInvalid
+const ListOutcomeForbidden
+const ListOutcomeUnavailable
+func ListOutcomeValues() []ListOutcome
+func ParseListOutcome(word string) (ListOutcome, bool)
+type LiveFormat wire.LiveFormat
+const LiveFormatPcm1624000
+func LiveFormatValues() []LiveFormat
+func ParseLiveFormat(word string) (LiveFormat, bool)
+type LiveInputOutcome wire.LiveInputOutcome
+const LiveInputOutcomeAccepted
+const LiveInputOutcomeDuplicate
+const LiveInputOutcomeOutOfOrder
+const LiveInputOutcomeClosed
+const LiveInputOutcomeInvalid
+const LiveInputOutcomeUnknown
+const LiveInputOutcomeForbidden
+const LiveInputOutcomeUnavailable
+const LiveInputOutcomeExhausted
+func LiveInputOutcomeValues() []LiveInputOutcome
+func ParseLiveInputOutcome(word string) (LiveInputOutcome, bool)
+type LiveInputResult wire.LiveInputResult
+type LiveReply wire.LiveReply
+type LiveRequest wire.LiveRequest
+type LiveTranscript wire.LiveTranscript
+type LocalKey wire.LocalKey
+type Message wire.Message
+type Options wire.Options
+type PageOutcome wire.PageOutcome
+const PageOutcomePage
+const PageOutcomeGap
+const PageOutcomeUnknown
+const PageOutcomeInvalid
+const PageOutcomeForbidden
+const PageOutcomeUnavailable
+func PageOutcomeValues() []PageOutcome
+func ParsePageOutcome(word string) (PageOutcome, bool)
+type Part wire.Part
+type PartKind wire.PartKind
+const PartKindText
+const PartKindImage
+const PartKindToolCall
+const PartKindToolResult
+func PartKindValues() []PartKind
+func ParsePartKind(word string) (PartKind, bool)
+type Reply wire.Reply
+type ReplyOutcome wire.ReplyOutcome
+const ReplyOutcomeCompleted
+const ReplyOutcomeRefused
+const ReplyOutcomeNotPermitted
+const ReplyOutcomeBudgetExceeded
+const ReplyOutcomeUnsupportedFeature
+const ReplyOutcomeNoHost
+const ReplyOutcomeCancelled
+const ReplyOutcomeUnavailable
+const ReplyOutcomeInvalid
+const ReplyOutcomeForbidden
+const ReplyOutcomeExhausted
+func ReplyOutcomeValues() []ReplyOutcome
+func ParseReplyOutcome(word string) (ReplyOutcome, bool)
+type Request wire.Request
+type RequestEntry wire.RequestEntry
+type RequestGuarantee wire.RequestGuarantee
+const RequestGuaranteeLocalOnly
+const RequestGuaranteeHostedAllowed
+func RequestGuaranteeValues() []RequestGuarantee
+type RequestPage wire.RequestPage
+type Role wire.Role
+const RoleSystem
+const RoleUser
+const RoleAssistant
+const RoleTool
+func RoleValues() []Role
+func ParseRole(word string) (Role, bool)
+type ServiceError wire.ServiceError
+type ServiceErrorCode wire.ServiceErrorCode
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+func ServiceErrorCodeValues() []ServiceErrorCode
+type SpeechFormat wire.SpeechFormat
+const SpeechFormatMp3
+const SpeechFormatOpus
+const SpeechFormatAac
+const SpeechFormatFlac
+const SpeechFormatWav
+const SpeechFormatPcm
+func SpeechFormatValues() []SpeechFormat
+func ParseSpeechFormat(word string) (SpeechFormat, bool)
+type SpeechReply wire.SpeechReply
+type SpeechRequest wire.SpeechRequest
+type Spend wire.Spend
+type StartOutcome wire.StartOutcome
+const StartOutcomeAccepted
+const StartOutcomeNotPermitted
+const StartOutcomeBudgetExceeded
+const StartOutcomeUnsupportedFeature
+const StartOutcomeNoHost
+const StartOutcomeUnavailable
+const StartOutcomeInvalid
+const StartOutcomeForbidden
+const StartOutcomeExhausted
+func StartOutcomeValues() []StartOutcome
+func ParseStartOutcome(word string) (StartOutcome, bool)
+type StopReason wire.StopReason
+const StopReasonNoStop
+const StopReasonEnd
+const StopReasonMaxOutput
+const StopReasonStopSequence
+const StopReasonToolCalls
+const StopReasonContentFilter
+const StopReasonOther
+func StopReasonValues() []StopReason
+func ParseStopReason(word string) (StopReason, bool)
+type Temperature wire.Temperature
+type TimestampMode wire.TimestampMode
+const TimestampModeNone
+const TimestampModeSegment
+const TimestampModeWord
+const TimestampModeSegmentAndWord
+func TimestampModeValues() []TimestampMode
+func ParseTimestampMode(word string) (TimestampMode, bool)
+type Tool wire.Tool
+type TranscriptSegment wire.TranscriptSegment
+type TranscriptUnitKind wire.TranscriptUnitKind
+const TranscriptUnitKindSegment
+const TranscriptUnitKindWord
+func TranscriptUnitKindValues() []TranscriptUnitKind
+func ParseTranscriptUnitKind(word string) (TranscriptUnitKind, bool)
+type TranscriptionReply wire.TranscriptionReply
+type TranscriptionRequest wire.TranscriptionRequest
+type Usage wire.Usage

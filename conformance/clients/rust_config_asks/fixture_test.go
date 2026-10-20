@@ -14,6 +14,8 @@ import (
 
 	asks "github.com/openabstractions/abstraction-asks/go"
 	asksservice "github.com/openabstractions/abstraction-asks/go/application"
+	casapi "github.com/openabstractions/abstraction-cas/go/api"
+	config "github.com/openabstractions/abstraction-config/go"
 	configservice "github.com/openabstractions/abstraction-config/go/service"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	identity "github.com/openabstractions/abstraction-identity"
@@ -63,6 +65,7 @@ func TestInstalledRustConfigAndAsks(t *testing.T) {
 	}()
 	prefix := fmt.Sprintf("rca-%d", time.Now().UnixNano()%1_000_000_000)
 	o := host.Options{Endpoint: listen.Endpoint(prefix), LogEndpoint: listen.Endpoint(prefix + "l"), ConfigEndpoint: listen.Endpoint(prefix + "c"),
+		ConfigStore: casapi.BoundedFileStore{MaxBytes: config.MaxUserFileBytes}, ConfigUserKey: filepath.Join(dir, "config", "user.json"), ConfigWithoutMachine: true,
 		QuestionBook: book, QuestionEndpoint: listen.Endpoint(prefix + "q"),
 		ConfigObservationSource: func(context.Context) (<-chan struct{}, func(), error) { return changes, func() {}, nil },
 		ConfigEditPolicy: func(ctx context.Context, p *identity.Peer) error {

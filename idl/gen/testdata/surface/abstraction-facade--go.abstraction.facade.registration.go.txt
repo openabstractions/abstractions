@@ -1,0 +1,664 @@
+type Raw string
+type Source uint32
+const SourceInstallation
+const SourceOperator
+const SourceSelfRegistration
+const SourceProductRecord
+const SourceBuiltIn
+func (Source) String() string
+func (Source) WireName() (string, bool)
+func ParseSource(word string) (Source, bool)
+func (Source) MarshalText() ([]byte, error)
+func (Source) UnmarshalText(text []byte) error
+func (Source) MarshalJSON() ([]byte, error)
+func (Source) UnmarshalJSON(data []byte) error
+func SourceValues() []Source
+func (Source) IsKnown() bool
+func (Source) Known() bool
+type State uint32
+const StatePendingApproval
+const StateEnabled
+const StateDisabled
+func (State) String() string
+func (State) WireName() (string, bool)
+func ParseState(word string) (State, bool)
+func (State) MarshalText() ([]byte, error)
+func (State) UnmarshalText(text []byte) error
+func (State) MarshalJSON() ([]byte, error)
+func (State) UnmarshalJSON(data []byte) error
+func StateValues() []State
+func (State) IsKnown() bool
+func (State) Known() bool
+type Verification uint32
+const VerificationVerified
+const VerificationMissing
+const VerificationChanged
+const VerificationUnverified
+func (Verification) String() string
+func (Verification) WireName() (string, bool)
+func ParseVerification(word string) (Verification, bool)
+func (Verification) MarshalText() ([]byte, error)
+func (Verification) UnmarshalText(text []byte) error
+func (Verification) MarshalJSON() ([]byte, error)
+func (Verification) UnmarshalJSON(data []byte) error
+func VerificationValues() []Verification
+func (Verification) IsKnown() bool
+func (Verification) Known() bool
+type Placement uint32
+const PlacementLocal
+const PlacementHosted
+const PlacementAny
+func (Placement) String() string
+func (Placement) WireName() (string, bool)
+func ParsePlacement(word string) (Placement, bool)
+func (Placement) MarshalText() ([]byte, error)
+func (Placement) UnmarshalText(text []byte) error
+func (Placement) MarshalJSON() ([]byte, error)
+func (Placement) UnmarshalJSON(data []byte) error
+func PlacementValues() []Placement
+func (Placement) IsKnown() bool
+func (Placement) Known() bool
+type Activation uint32
+const ActivationOnDemand
+const ActivationAttach
+func (Activation) String() string
+func (Activation) WireName() (string, bool)
+func ParseActivation(word string) (Activation, bool)
+func (Activation) MarshalText() ([]byte, error)
+func (Activation) UnmarshalText(text []byte) error
+func (Activation) MarshalJSON() ([]byte, error)
+func (Activation) UnmarshalJSON(data []byte) error
+func ActivationValues() []Activation
+func (Activation) IsKnown() bool
+func (Activation) Known() bool
+type IdentityEvidence uint32
+const IdentityEvidenceNone
+const IdentityEvidenceProgram
+const IdentityEvidenceRemote
+func (IdentityEvidence) String() string
+func (IdentityEvidence) WireName() (string, bool)
+func ParseIdentityEvidence(word string) (IdentityEvidence, bool)
+func (IdentityEvidence) MarshalText() ([]byte, error)
+func (IdentityEvidence) UnmarshalText(text []byte) error
+func (IdentityEvidence) MarshalJSON() ([]byte, error)
+func (IdentityEvidence) UnmarshalJSON(data []byte) error
+func IdentityEvidenceValues() []IdentityEvidence
+func (IdentityEvidence) IsKnown() bool
+func (IdentityEvidence) Known() bool
+type FacetKind uint32
+const FacetKindProvider
+const FacetKindHost
+const FacetKindRemote
+const FacetKindApplication
+func (FacetKind) String() string
+func (FacetKind) WireName() (string, bool)
+func ParseFacetKind(word string) (FacetKind, bool)
+func (FacetKind) MarshalText() ([]byte, error)
+func (FacetKind) UnmarshalText(text []byte) error
+func (FacetKind) MarshalJSON() ([]byte, error)
+func (FacetKind) UnmarshalJSON(data []byte) error
+func FacetKindValues() []FacetKind
+func (FacetKind) IsKnown() bool
+func (FacetKind) Known() bool
+type ProducerCheckState uint32
+const ProducerCheckStateCurrent
+const ProducerCheckStateRepaired
+const ProducerCheckStateStale
+const ProducerCheckStateRefused
+const ProducerCheckStateUnverified
+func (ProducerCheckState) String() string
+func (ProducerCheckState) WireName() (string, bool)
+func ParseProducerCheckState(word string) (ProducerCheckState, bool)
+func (ProducerCheckState) MarshalText() ([]byte, error)
+func (ProducerCheckState) UnmarshalText(text []byte) error
+func (ProducerCheckState) MarshalJSON() ([]byte, error)
+func (ProducerCheckState) UnmarshalJSON(data []byte) error
+func ProducerCheckStateValues() []ProducerCheckState
+func (ProducerCheckState) IsKnown() bool
+func (ProducerCheckState) Known() bool
+type DescriptionOutcome uint32
+const DescriptionOutcomeDescribed
+const DescriptionOutcomeForbidden
+const DescriptionOutcomeUnavailable
+const DescriptionOutcomeInvalid
+const DescriptionOutcomeUnsupported
+func (DescriptionOutcome) String() string
+func (DescriptionOutcome) WireName() (string, bool)
+func ParseDescriptionOutcome(word string) (DescriptionOutcome, bool)
+func (DescriptionOutcome) MarshalText() ([]byte, error)
+func (DescriptionOutcome) UnmarshalText(text []byte) error
+func (DescriptionOutcome) MarshalJSON() ([]byte, error)
+func (DescriptionOutcome) UnmarshalJSON(data []byte) error
+func DescriptionOutcomeValues() []DescriptionOutcome
+func (DescriptionOutcome) IsKnown() bool
+func (DescriptionOutcome) Known() bool
+type CleanupState uint32
+const CleanupStateDone
+const CleanupStatePending
+const CleanupStateFailed
+func (CleanupState) String() string
+func (CleanupState) WireName() (string, bool)
+func ParseCleanupState(word string) (CleanupState, bool)
+func (CleanupState) MarshalText() ([]byte, error)
+func (CleanupState) UnmarshalText(text []byte) error
+func (CleanupState) MarshalJSON() ([]byte, error)
+func (CleanupState) UnmarshalJSON(data []byte) error
+func CleanupStateValues() []CleanupState
+func (CleanupState) IsKnown() bool
+func (CleanupState) Known() bool
+type Outcome uint32
+const OutcomeApplied
+const OutcomePage
+const OutcomeNotFound
+const OutcomeConflict
+const OutcomeInvalid
+const OutcomeForbidden
+const OutcomeUnavailable
+const OutcomeUnsupported
+const OutcomeGap
+func (Outcome) String() string
+func (Outcome) WireName() (string, bool)
+func ParseOutcome(word string) (Outcome, bool)
+func (Outcome) MarshalText() ([]byte, error)
+func (Outcome) UnmarshalText(text []byte) error
+func (Outcome) MarshalJSON() ([]byte, error)
+func (Outcome) UnmarshalJSON(data []byte) error
+func OutcomeValues() []Outcome
+func (Outcome) IsKnown() bool
+func (Outcome) Known() bool
+type ServiceErrorCode string
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) IsKnown() bool
+func (ServiceErrorCode) Known() bool
+type EndpointServiceReadiness uint32
+const EndpointServiceReadinessReady
+const EndpointServiceReadinessNotReady
+const EndpointServiceReadinessUnknown
+func (EndpointServiceReadiness) String() string
+func (EndpointServiceReadiness) WireName() (string, bool)
+func ParseEndpointServiceReadiness(word string) (EndpointServiceReadiness, bool)
+func (EndpointServiceReadiness) MarshalText() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalText(text []byte) error
+func (EndpointServiceReadiness) MarshalJSON() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalJSON(data []byte) error
+func EndpointServiceReadinessValues() []EndpointServiceReadiness
+func (EndpointServiceReadiness) IsKnown() bool
+func (EndpointServiceReadiness) Known() bool
+type EndpointRefusalSource string
+const EndpointRefusalSourceRights
+const EndpointRefusalSourceCredentials
+const EndpointRefusalSourceLicense
+const EndpointRefusalSourceTerms
+const EndpointRefusalSourceIdentity
+const EndpointRefusalSourceOS
+func EndpointRefusalSourceValues() []EndpointRefusalSource
+func (EndpointRefusalSource) IsKnown() bool
+func (EndpointRefusalSource) Known() bool
+type EndpointRefusalDecision uint32
+const EndpointRefusalDecisionDenied
+const EndpointRefusalDecisionNotGranted
+const EndpointRefusalDecisionPersonOnly
+func (EndpointRefusalDecision) String() string
+func (EndpointRefusalDecision) WireName() (string, bool)
+func ParseEndpointRefusalDecision(word string) (EndpointRefusalDecision, bool)
+func (EndpointRefusalDecision) MarshalText() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalText(text []byte) error
+func (EndpointRefusalDecision) MarshalJSON() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalJSON(data []byte) error
+func EndpointRefusalDecisionValues() []EndpointRefusalDecision
+func (EndpointRefusalDecision) IsKnown() bool
+func (EndpointRefusalDecision) Known() bool
+type EndpointRefusalAsk uint32
+const EndpointRefusalAskAvailable
+const EndpointRefusalAskNone
+func (EndpointRefusalAsk) String() string
+func (EndpointRefusalAsk) WireName() (string, bool)
+func ParseEndpointRefusalAsk(word string) (EndpointRefusalAsk, bool)
+func (EndpointRefusalAsk) MarshalText() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalText(text []byte) error
+func (EndpointRefusalAsk) MarshalJSON() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalJSON(data []byte) error
+func EndpointRefusalAskValues() []EndpointRefusalAsk
+func (EndpointRefusalAsk) IsKnown() bool
+func (EndpointRefusalAsk) Known() bool
+type EndpointProducerCheckState uint32
+const EndpointProducerCheckStateCurrent
+const EndpointProducerCheckStateRepaired
+const EndpointProducerCheckStateStale
+const EndpointProducerCheckStateRefused
+const EndpointProducerCheckStateUnverified
+func (EndpointProducerCheckState) String() string
+func (EndpointProducerCheckState) WireName() (string, bool)
+func ParseEndpointProducerCheckState(word string) (EndpointProducerCheckState, bool)
+func (EndpointProducerCheckState) MarshalText() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalText(text []byte) error
+func (EndpointProducerCheckState) MarshalJSON() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalJSON(data []byte) error
+func EndpointProducerCheckStateValues() []EndpointProducerCheckState
+func (EndpointProducerCheckState) IsKnown() bool
+func (EndpointProducerCheckState) Known() bool
+type EndpointDescriptionOutcome uint32
+const EndpointDescriptionOutcomeDescribed
+const EndpointDescriptionOutcomeForbidden
+const EndpointDescriptionOutcomeUnavailable
+const EndpointDescriptionOutcomeInvalid
+const EndpointDescriptionOutcomeUnsupported
+func (EndpointDescriptionOutcome) String() string
+func (EndpointDescriptionOutcome) WireName() (string, bool)
+func ParseEndpointDescriptionOutcome(word string) (EndpointDescriptionOutcome, bool)
+func (EndpointDescriptionOutcome) MarshalText() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalText(text []byte) error
+func (EndpointDescriptionOutcome) MarshalJSON() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalJSON(data []byte) error
+func EndpointDescriptionOutcomeValues() []EndpointDescriptionOutcome
+func (EndpointDescriptionOutcome) IsKnown() bool
+func (EndpointDescriptionOutcome) Known() bool
+type ProducerCheck struct
+  Kind string
+  Copy string
+  State ProducerCheckState
+  Reason string
+  Checked string
+type ServiceState struct
+  Service string
+  Readiness oaImported0
+  Reason string
+  Guarantees []string
+  Capabilities map[string]string
+  DefinitionHash string
+type Description struct
+  Outcome DescriptionOutcome
+  Program string
+  Version string
+  Services []ServiceState
+  Refusal *oaImported1
+  Reason string
+  Checks []ProducerCheck
+type EngineFact struct
+  ID string
+  Name string
+  Version string
+type RecipeObject struct
+  Role string
+  Digest string
+  Store string
+  Object string
+type ModelRecipe struct
+  Model string
+  Engine string
+  Modalities []string
+  Objects []RecipeObject
+type ScopedModel struct
+  Modality string
+  Model string
+type RequiredExtension struct
+  Modality string
+  Key string
+type ProviderFacet struct
+  Name string
+  Arguments []string
+  Endpoint string
+  Services []string
+  Guarantees []string
+  Activation Activation
+  Resources []string
+  Models []ScopedModel
+  RequiredExtensions []RequiredExtension
+  Engines []EngineFact
+  Recipes []ModelRecipe
+  ConfigKeys []string
+type ServerFacet struct
+  Name string
+  Base string
+  Kind string
+  Hosted bool
+  Modalities []string
+  Credential string
+  Ceiling *oaImported2
+type RemoteFacet struct
+  Name string
+  Endpoint string
+  ServerName string
+  ServerKeySHA256 string
+  Credential string
+  Modalities []string
+type HostRecipe struct
+  Arguments []string
+  ReadinessDeadlineMs int32
+type ActivationVerb struct
+  Name string
+  Class oaImported3
+  InputSchema Raw
+type RequestedPermission struct
+  Action string
+  Resource Raw
+  Purpose string
+type NetworkRequirement struct
+  Hosts []string
+type ModelNeed struct
+  Modality string
+  RequiredFeatures []string
+  MinimumContext int64
+  Placement Placement
+  Reserve int64
+type Needs struct
+  Files []oaImported4
+  Models []ModelNeed
+type Chooser struct
+  Name string
+  Modality string
+type Choosers struct
+  Entries []Chooser
+type Manifest struct
+  Version string
+  Name string
+  Title string
+  Description string
+  Offers oaImported5
+  Host HostRecipe
+  ScriptHost bool
+  Requests []RequestedPermission
+  Network NetworkRequirement
+  Needs Needs
+  Purpose string
+  Verbs []ActivationVerb
+  Choosers *Choosers
+type ApplicationFacet struct
+  Name string
+  Manifest Manifest
+type RegistrationSpec struct
+  Program string
+  Providers []ProviderFacet
+  Servers []ServerFacet
+  Remotes []RemoteFacet
+  Applications []ApplicationFacet
+type Publisher struct
+  Key string
+  Subject string
+  Issuer string
+  Checked string
+type ApplicationReading struct
+  Name string
+  ManifestDigest string
+  Instances []oaImported6
+  OwnedInstances []string
+type FacetReference struct
+  Kind FacetKind
+  Name string
+type Registration struct
+  Key string
+  Spec RegistrationSpec
+  Revision string
+  Epoch string
+  Source Source
+  ProductName string
+  State State
+  IdentityEvidence IdentityEvidence
+  Reason string
+  Publisher *Publisher
+  ShadowedBy *FacetReference
+  Applications []ApplicationReading
+  Described []ServiceState
+  Accepted string
+  Verification Verification
+  VerificationReason string
+  Verified string
+  Checks []ProducerCheck
+type Cleanup struct
+  Owner string
+  State CleanupState
+  Reason string
+type RemovalReceipt struct
+  ID string
+  Facet FacetReference
+  Revision string
+  Cleanup []Cleanup
+  Accepted string
+type Change struct
+  Outcome Outcome
+  Revision string
+  Reason string
+  Removal *RemovalReceipt
+  Refusal *oaImported1
+type Page struct
+  Outcome Outcome
+  Revision string
+  Cursor string
+  Registrations []Registration
+  Removals []RemovalReceipt
+  Reason string
+  Refusal *oaImported1
+type EndpointRefusalDetail struct
+  Source EndpointRefusalSource
+  Decision EndpointRefusalDecision
+  Ask EndpointRefusalAsk
+  Action string
+  Question string
+  Credential string
+  RetryAfterMs int64
+type EndpointProducerCheck struct
+  Kind string
+  Copy string
+  State EndpointProducerCheckState
+  Reason string
+  Checked string
+type EndpointServiceState struct
+  Service string
+  Readiness EndpointServiceReadiness
+  Reason string
+  Guarantees []string
+  Capabilities map[string]string
+  DefinitionHash string
+type EndpointDescription struct
+  Outcome EndpointDescriptionOutcome
+  Program string
+  Version string
+  Services []EndpointServiceState
+  Refusal *EndpointRefusalDetail
+  Reason string
+  Checks []EndpointProducerCheck
+type EndpointDescriptionResult struct
+  Value EndpointDescription
+func Encode(v *Manifest) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+const TimestampLayout
+func FormatTimestamp(at time.Time) string
+func Decode(in []byte) (*Manifest, error)
+func ToJSON(v any) (out []byte, err error)
+func FromJSON(data []byte, v any) error
+type FrameWriter interface
+  WriteFrame(frame []byte) error
+type DispatchError string
+func (DispatchError) Error() string
+func ServiceName(frame []byte) (string, error)
+func ServiceMethod(frame []byte) (service string, method string, err error)
+type FrameExchanger interface
+  ExchangeFrame(frame []byte) ([]byte, error)
+type ServiceError struct
+  Code ServiceErrorCode
+  Message string
+func (ServiceError) Error() string
+const EndpointContract
+const EndpointV2Contract
+type DescribedService interface
+  DescribeService() (contract string, ready bool, why string)
+func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+func DescribeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...DescribedService) ([]byte, error)
+type ServedService interface
+  DescribedService
+  ServiceContract() string
+func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+func ServeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...ServedService) ([]byte, error)
+func ServeEndpointRemote(frame []byte, program, version string, admit func(contract, method, profile string) error, services ...ServedService) ([]byte, error)
+func RemoteMethodProfile(service interface{}, contract, method string) string
+type EndpointV2 interface
+  Describe() (Description, error)
+type EndpointV2Transport interface
+  FrameExchanger
+type EndpointV2Client struct
+func NewEndpointV2Client(t EndpointV2Transport) *EndpointV2Client
+type EndpointV2Dispatcher struct
+  Handler EndpointV2
+func (EndpointV2Dispatcher) RemoteMethodProfile(contract, method string) (string, bool)
+func (EndpointV2Client) Describe() (result Description, err error)
+func (EndpointV2Dispatcher) DescribeService() (contract string, ready bool, why string)
+func (EndpointV2Dispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (EndpointV2Dispatcher) ServiceContract() string
+func (EndpointV2Dispatcher) DescribeServiceDefinitionHash() string
+func (EndpointV2Dispatcher) WriteFrame(frame []byte) error
+func (EndpointV2Dispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type RegistryV3 interface
+  Registrations(cursor string, limit int64) (Page, error)
+  Register(registration RegistrationSpec) (Change, error)
+  Replace(expectedRevision string, registration RegistrationSpec) (Change, error)
+  Remove(expectedRevision string, facet FacetReference) (Change, error)
+  SetEnabled(expectedRevision string, facet FacetReference, enabled bool) (Change, error)
+  Observe(cursor string, waitMs int64) (Page, error)
+type RegistryV3Transport interface
+  FrameExchanger
+type RegistryV3Client struct
+func NewRegistryV3Client(t RegistryV3Transport) *RegistryV3Client
+type RegistryV3Dispatcher struct
+  Handler RegistryV3
+func (RegistryV3Dispatcher) RemoteMethodProfile(contract, method string) (string, bool)
+func (RegistryV3Client) Registrations(cursor string, limit int64) (result Page, err error)
+func (RegistryV3Client) Register(registration RegistrationSpec) (result Change, err error)
+func (RegistryV3Client) Replace(expectedRevision string, registration RegistrationSpec) (result Change, err error)
+func (RegistryV3Client) Remove(expectedRevision string, facet FacetReference) (result Change, err error)
+func (RegistryV3Client) SetEnabled(expectedRevision string, facet FacetReference, enabled bool) (result Change, err error)
+func (RegistryV3Client) Observe(cursor string, waitMs int64) (result Page, err error)
+func (RegistryV3Dispatcher) DescribeService() (contract string, ready bool, why string)
+func (RegistryV3Dispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (RegistryV3Dispatcher) ServiceContract() string
+func (RegistryV3Dispatcher) DescribeServiceDefinitionHash() string
+func (RegistryV3Dispatcher) WriteFrame(frame []byte) error
+func (RegistryV3Dispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+func DecodeProducerCheckAt(in []byte, depth, limit int) (*ProducerCheck, int, error)
+func EncodeProducerCheckAt(v *ProducerCheck, depth int) []byte
+func EncodeProducerCheck(v *ProducerCheck) []byte
+func DecodeProducerCheck(in []byte) (*ProducerCheck, error)
+func DecodeServiceStateAt(in []byte, depth, limit int) (*ServiceState, int, error)
+func EncodeServiceStateAt(v *ServiceState, depth int) []byte
+func EncodeServiceState(v *ServiceState) []byte
+func DecodeServiceState(in []byte) (*ServiceState, error)
+func DecodeDescriptionAt(in []byte, depth, limit int) (*Description, int, error)
+func EncodeDescriptionAt(v *Description, depth int) []byte
+func EncodeDescription(v *Description) []byte
+func DecodeDescription(in []byte) (*Description, error)
+func DecodeEngineFactAt(in []byte, depth, limit int) (*EngineFact, int, error)
+func EncodeEngineFactAt(v *EngineFact, depth int) []byte
+func EncodeEngineFact(v *EngineFact) []byte
+func DecodeEngineFact(in []byte) (*EngineFact, error)
+func DecodeRecipeObjectAt(in []byte, depth, limit int) (*RecipeObject, int, error)
+func EncodeRecipeObjectAt(v *RecipeObject, depth int) []byte
+func EncodeRecipeObject(v *RecipeObject) []byte
+func DecodeRecipeObject(in []byte) (*RecipeObject, error)
+func DecodeModelRecipeAt(in []byte, depth, limit int) (*ModelRecipe, int, error)
+func EncodeModelRecipeAt(v *ModelRecipe, depth int) []byte
+func EncodeModelRecipe(v *ModelRecipe) []byte
+func DecodeModelRecipe(in []byte) (*ModelRecipe, error)
+func DecodeScopedModelAt(in []byte, depth, limit int) (*ScopedModel, int, error)
+func EncodeScopedModelAt(v *ScopedModel, depth int) []byte
+func EncodeScopedModel(v *ScopedModel) []byte
+func DecodeScopedModel(in []byte) (*ScopedModel, error)
+func DecodeRequiredExtensionAt(in []byte, depth, limit int) (*RequiredExtension, int, error)
+func EncodeRequiredExtensionAt(v *RequiredExtension, depth int) []byte
+func EncodeRequiredExtension(v *RequiredExtension) []byte
+func DecodeRequiredExtension(in []byte) (*RequiredExtension, error)
+func DecodeProviderFacetAt(in []byte, depth, limit int) (*ProviderFacet, int, error)
+func EncodeProviderFacetAt(v *ProviderFacet, depth int) []byte
+func EncodeProviderFacet(v *ProviderFacet) []byte
+func DecodeProviderFacet(in []byte) (*ProviderFacet, error)
+func DecodeServerFacetAt(in []byte, depth, limit int) (*ServerFacet, int, error)
+func EncodeServerFacetAt(v *ServerFacet, depth int) []byte
+func EncodeServerFacet(v *ServerFacet) []byte
+func DecodeServerFacet(in []byte) (*ServerFacet, error)
+func DecodeRemoteFacetAt(in []byte, depth, limit int) (*RemoteFacet, int, error)
+func EncodeRemoteFacetAt(v *RemoteFacet, depth int) []byte
+func EncodeRemoteFacet(v *RemoteFacet) []byte
+func DecodeRemoteFacet(in []byte) (*RemoteFacet, error)
+func DecodeHostRecipeAt(in []byte, depth, limit int) (*HostRecipe, int, error)
+func EncodeHostRecipeAt(v *HostRecipe, depth int) []byte
+func EncodeHostRecipe(v *HostRecipe) []byte
+func DecodeHostRecipe(in []byte) (*HostRecipe, error)
+func DecodeActivationVerbAt(in []byte, depth, limit int) (*ActivationVerb, int, error)
+func EncodeActivationVerbAt(v *ActivationVerb, depth int) []byte
+func EncodeActivationVerb(v *ActivationVerb) []byte
+func DecodeActivationVerb(in []byte) (*ActivationVerb, error)
+func DecodeRequestedPermissionAt(in []byte, depth, limit int) (*RequestedPermission, int, error)
+func EncodeRequestedPermissionAt(v *RequestedPermission, depth int) []byte
+func EncodeRequestedPermission(v *RequestedPermission) []byte
+func DecodeRequestedPermission(in []byte) (*RequestedPermission, error)
+func DecodeNetworkRequirementAt(in []byte, depth, limit int) (*NetworkRequirement, int, error)
+func EncodeNetworkRequirementAt(v *NetworkRequirement, depth int) []byte
+func EncodeNetworkRequirement(v *NetworkRequirement) []byte
+func DecodeNetworkRequirement(in []byte) (*NetworkRequirement, error)
+func DecodeModelNeedAt(in []byte, depth, limit int) (*ModelNeed, int, error)
+func EncodeModelNeedAt(v *ModelNeed, depth int) []byte
+func EncodeModelNeed(v *ModelNeed) []byte
+func DecodeModelNeed(in []byte) (*ModelNeed, error)
+func DecodeNeedsAt(in []byte, depth, limit int) (*Needs, int, error)
+func EncodeNeedsAt(v *Needs, depth int) []byte
+func EncodeNeeds(v *Needs) []byte
+func DecodeNeeds(in []byte) (*Needs, error)
+func DecodeChooserAt(in []byte, depth, limit int) (*Chooser, int, error)
+func EncodeChooserAt(v *Chooser, depth int) []byte
+func EncodeChooser(v *Chooser) []byte
+func DecodeChooser(in []byte) (*Chooser, error)
+func DecodeChoosersAt(in []byte, depth, limit int) (*Choosers, int, error)
+func EncodeChoosersAt(v *Choosers, depth int) []byte
+func EncodeChoosers(v *Choosers) []byte
+func DecodeChoosers(in []byte) (*Choosers, error)
+func DecodeManifestAt(in []byte, depth, limit int) (*Manifest, int, error)
+func EncodeManifestAt(v *Manifest, depth int) []byte
+func EncodeManifest(v *Manifest) []byte
+func DecodeManifest(in []byte) (*Manifest, error)
+func DecodeApplicationFacetAt(in []byte, depth, limit int) (*ApplicationFacet, int, error)
+func EncodeApplicationFacetAt(v *ApplicationFacet, depth int) []byte
+func EncodeApplicationFacet(v *ApplicationFacet) []byte
+func DecodeApplicationFacet(in []byte) (*ApplicationFacet, error)
+func DecodeRegistrationSpecAt(in []byte, depth, limit int) (*RegistrationSpec, int, error)
+func EncodeRegistrationSpecAt(v *RegistrationSpec, depth int) []byte
+func EncodeRegistrationSpec(v *RegistrationSpec) []byte
+func DecodeRegistrationSpec(in []byte) (*RegistrationSpec, error)
+func DecodePublisherAt(in []byte, depth, limit int) (*Publisher, int, error)
+func EncodePublisherAt(v *Publisher, depth int) []byte
+func EncodePublisher(v *Publisher) []byte
+func DecodePublisher(in []byte) (*Publisher, error)
+func DecodeApplicationReadingAt(in []byte, depth, limit int) (*ApplicationReading, int, error)
+func EncodeApplicationReadingAt(v *ApplicationReading, depth int) []byte
+func EncodeApplicationReading(v *ApplicationReading) []byte
+func DecodeApplicationReading(in []byte) (*ApplicationReading, error)
+func DecodeFacetReferenceAt(in []byte, depth, limit int) (*FacetReference, int, error)
+func EncodeFacetReferenceAt(v *FacetReference, depth int) []byte
+func EncodeFacetReference(v *FacetReference) []byte
+func DecodeFacetReference(in []byte) (*FacetReference, error)
+func DecodeRegistrationAt(in []byte, depth, limit int) (*Registration, int, error)
+func EncodeRegistrationAt(v *Registration, depth int) []byte
+func EncodeRegistration(v *Registration) []byte
+func DecodeRegistration(in []byte) (*Registration, error)
+func DecodeCleanupAt(in []byte, depth, limit int) (*Cleanup, int, error)
+func EncodeCleanupAt(v *Cleanup, depth int) []byte
+func EncodeCleanup(v *Cleanup) []byte
+func DecodeCleanup(in []byte) (*Cleanup, error)
+func DecodeRemovalReceiptAt(in []byte, depth, limit int) (*RemovalReceipt, int, error)
+func EncodeRemovalReceiptAt(v *RemovalReceipt, depth int) []byte
+func EncodeRemovalReceipt(v *RemovalReceipt) []byte
+func DecodeRemovalReceipt(in []byte) (*RemovalReceipt, error)
+func DecodeChangeAt(in []byte, depth, limit int) (*Change, int, error)
+func EncodeChangeAt(v *Change, depth int) []byte
+func EncodeChange(v *Change) []byte
+func DecodeChange(in []byte) (*Change, error)
+func DecodePageAt(in []byte, depth, limit int) (*Page, int, error)
+func EncodePageAt(v *Page, depth int) []byte
+func EncodePage(v *Page) []byte
+func DecodePage(in []byte) (*Page, error)

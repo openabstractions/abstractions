@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"regexp"
 	"time"
 	"unicode/utf8"
 
@@ -29,9 +28,7 @@ type credentialEdit struct {
 	ExpectedRevision string   `json:"expected_revision"`
 }
 
-var credentialNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
-
-func validCredentialName(s string) bool { return credentialNamePattern.MatchString(s) }
+func validCredentialName(s string) bool { return credentials.ValidName(s) }
 
 func validCredentialKind(kind, header string) bool {
 	switch kind {
@@ -86,13 +83,7 @@ func credentialExpiry(value string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	return at.UTC().Format("2006-01-02T15:04:05.000000Z"), true
-}
-
-func zeroCredentialSecret(b []byte) {
-	for i := range b {
-		b[i] = 0
-	}
+	return cwire.FormatTimestamp(at), true
 }
 
 // credentials lists, adds, rotates and revokes named secrets through the
@@ -119,7 +110,7 @@ func (p *servicePanel) credentials(w http.ResponseWriter, r *http.Request) {
 		}
 		secret, edit.Secret = []byte(edit.Secret), ""
 		if !edit.valid(len(secret)) {
-			zeroCredentialSecret(secret)
+			clear(secret)
 			http.Error(w, "invalid credential edit", 400)
 			return
 		}
@@ -131,12 +122,12 @@ func (p *servicePanel) credentials(w http.ResponseWriter, r *http.Request) {
 	if edit.Action == "add" || edit.Action == "rotate" {
 		var ok bool
 		if expires, ok = credentialExpiry(edit.Expires); !ok {
-			zeroCredentialSecret(secret)
+			clear(secret)
 			http.Error(w, "invalid credential expiry", 400)
 			return
 		}
 	}
-	defer zeroCredentialSecret(secret)
+	defer clear(secret)
 	ctx, cancel := panelCall(r)
 	defer cancel()
 	holder, err := panelMachine().ResolveCredentials(ctx, facade.Requirements{Scope: facade.ScopeLocal})

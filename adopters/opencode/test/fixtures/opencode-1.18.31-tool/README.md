@@ -8,4 +8,4 @@ run it. They are OpenCode's work under the MIT License in
 that `opencode-1.18.31-tool-safety.json` lists every safety clause the
 compact tool text must keep. On an OpenCode pin move, copy the new
 version's files here and re-derive the safety fixture
-(`patches/README.md`, "Moving the OpenCode pin").
+(`../../../README.md`, "Moving the OpenCode pin").

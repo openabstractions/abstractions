@@ -2,75 +2,93 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
-	"log"
+	"io"
 	"os"
-	"os/user"
 	"path/filepath"
-	"runtime"
-	"strconv"
 	"time"
 
 	facade "github.com/openabstractions/abstraction-facade/go"
+	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	"github.com/openabstractions/abstraction-facade/go/client"
 	identity "github.com/openabstractions/abstraction-identity"
-	"github.com/openabstractions/abstraction-identity/listen"
 	logwire "github.com/openabstractions/abstraction-logging/go/abstraction/logging"
 )
 
+const usage = "Usage: logging-quickstart [--runtime-program PATH] [RUNTIME_ENDPOINT]\n       logging-quickstart --program"
+
 func main() {
-	exe, err := os.Executable()
-	if err != nil {
-		log.Fatal(err)
-	}
-	exe, err = filepath.Abs(exe)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if len(os.Args) == 2 && os.Args[1] == "--program" {
-		fmt.Println(filepath.Clean(exe))
+	if ownedHost() {
 		return
 	}
-	flags := flag.NewFlagSet("logging-quickstart", flag.ExitOnError)
-	runtimeProgram := flags.String("runtime-program", "", "verify the selected runtime as this account's named executable")
-	flags.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: logging-quickstart [--runtime-program PATH] [RUNTIME_ENDPOINT]\n       logging-quickstart --program")
-	}
-	flags.Parse(os.Args[1:])
-	endpoint := os.Getenv("ABSTRACTION_RUNTIME_ENDPOINT")
-	if flags.NArg() == 1 {
-		endpoint = flags.Arg(0)
-	} else if flags.NArg() != 0 || endpoint == "" {
-		flags.Usage()
-		os.Exit(2)
-	}
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
 
+// run writes one event through the development runtime the facade selects
+// [FAC-B5] and reads it back. It returns the exit status: 0 when the event
+// was read back, 2 for a usage error and 1 for any other failure.
+func run(args []string, stdout, stderr io.Writer) int {
+	exe, err := os.Executable()
+	if err == nil {
+		exe, err = filepath.Abs(exe)
+	}
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if len(args) == 1 && args[0] == "--program" {
+		// The path the runtime observes, 8.3 short names expanded, so a rights
+		// rule written from this output names the same program.
+		fmt.Fprintln(stdout, identity.CanonicalProgramPath(exe))
+		return 0
+	}
+	flags := flag.NewFlagSet("logging-quickstart", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	runtimeProgram := flags.String("runtime-program", "", "verify the selected runtime as this account's named executable")
+	flags.Usage = func() { fmt.Fprintln(stderr, usage) }
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
+	}
+	if flags.NArg() > 1 {
+		flags.Usage()
+		return 2
+	}
+	endpoint, _ := bootstrap.DevelopmentEndpoint(flags.Arg(0))
+	if endpoint == "" {
+		fmt.Fprintln(stderr, bootstrap.ErrNoDevelopmentRuntime)
+		flags.Usage()
+		return 2
+	}
+	machine := client.NewUnverified(endpoint)
+	if *runtimeProgram != "" {
+		selected, err := bootstrap.SelectDevelopment(endpoint, *runtimeProgram)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		machine = client.NewVerified(selected.Endpoint, selected.Server)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	machine := facade.New(endpoint)
-	if *runtimeProgram != "" {
-		if !filepath.IsAbs(*runtimeProgram) {
-			log.Fatal("--runtime-program requires an absolute executable path")
-		}
-		account, err := user.Current()
-		if err != nil {
-			log.Fatal(err)
-		}
-		who := identity.User{Kind: "windows", SID: account.Uid, UID: -1, GID: -1}
-		if runtime.GOOS != "windows" {
-			uid, err := strconv.Atoi(account.Uid)
-			if err != nil {
-				log.Fatal(err)
-			}
-			who = identity.User{Kind: "posix", UID: uid, GID: -1}
-		}
-		machine = client.NewVerified(endpoint, listen.ServerExpectation{Principal: who, Program: identity.CanonicalProgramPath(filepath.Clean(*runtimeProgram))})
+	if err := writeAndReadBack(ctx, machine, stdout); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
 	}
+	return 0
+}
+
+// writeAndReadBack writes one event with a unique event_id and pages the
+// retained history until that event appears or ctx ends.
+func writeAndReadBack(ctx context.Context, machine *facade.Machine, stdout io.Writer) error {
 	need := facade.Requirements{Scope: facade.ScopeLocal}
 	sink, err := machine.ResolveLog(ctx, need)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	eventID := fmt.Sprintf("quickstart-%d-%d", time.Now().UTC().UnixNano(), os.Getpid())
 	message := "worker started"
@@ -78,27 +96,27 @@ func main() {
 		"component": "quickstart",
 		"event_id":  eventID,
 	}); err != nil {
-		log.Fatal(err)
+		return err
 	}
-	fmt.Printf("wrote: %s (%s)\n", message, eventID)
+	fmt.Fprintf(stdout, "wrote: %s (%s)\n", message, eventID)
 
 	history, err := machine.ResolveLogReader(ctx, need)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	cursor := ""
 	for {
 		page, err := history.ReadContext(ctx, cursor, 256, 65536)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		if page.Outcome != logwire.PageOutcomePage {
-			log.Fatalf("history returned %s", page.Outcome)
+			return fmt.Errorf("history returned %s", page.Outcome)
 		}
 		for _, record := range page.Records {
 			if record.Attrs["event_id"] == eventID {
-				fmt.Printf("read back: %s (component=%s)\n", record.Msg, record.Attrs["component"])
-				return
+				fmt.Fprintf(stdout, "read back: %s (component=%s)\n", record.Msg, record.Attrs["component"])
+				return nil
 			}
 		}
 		cursor = page.Next
@@ -107,7 +125,7 @@ func main() {
 		}
 		select {
 		case <-ctx.Done():
-			log.Fatal("record was not retained before the deadline")
+			return errors.New("record was not retained before the deadline")
 		case <-time.After(50 * time.Millisecond):
 		}
 	}

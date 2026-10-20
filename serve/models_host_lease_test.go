@@ -60,6 +60,7 @@ func TestRuntimeLeaseEndpointIsTheOneTheRuntimeServes(t *testing.T) {
 // next run. An inventory source lists the object; a stand-in model host
 // passes the engine check.
 func TestModelsHostCommandDeclaresNoLeaseEndpoint(t *testing.T) {
+	requireNativeModelHostRegistration(t)
 	if !statusTransportProvesProgram(t) {
 		t.Skip("Program proof unavailable on current shared transport")
 	}
@@ -145,6 +146,14 @@ func TestAnOnDemandProviderExitKeepsItsOutput(t *testing.T) {
 	if !strings.Contains(data, "fixture provider: progress line\n") || !strings.Contains(data, "the lease endpoint does not answer") {
 		t.Fatalf("the provider log holds %q", data)
 	}
+	// Each line starts with the UTC time the runtime read it, so a line
+	// reads against the registration and rights changes around it.
+	for _, line := range strings.Split(strings.TrimSuffix(data, "\n"), "\n") {
+		stamp, _, ok := strings.Cut(line, " ")
+		if at, err := time.Parse(providerLineStamp, stamp); !ok || err != nil || time.Since(at) > time.Hour || time.Since(at) < -time.Minute {
+			t.Fatalf("provider log line %q starts with no current UTC time", line)
+		}
+	}
 	// The runtime's log records the exit status and the log, never the line.
 	if len(reports) != 1 || reports[0] != "provider loud exited:exit status 43; log "+logPath {
 		t.Fatalf("the runtime reported %q", reports)
@@ -211,7 +220,7 @@ func runExitingProvider(t *testing.T, name, kind string) (string, []string, stri
 	f := providerFile{Declaration: providerDeclaration{Name: name, Program: program, Endpoint: name, Transport: transportNative,
 		Arguments:  []string{providerFixtureArg, kind, providerEndpointToken, t.TempDir()},
 		Activation: wire.ActivationOnDemand.String()}}
-	s := newProviderSupervisor(p, f)
+	s := newFixtureProviderSupervisor(t, p, f)
 	s.start()
 	s.activate()
 	defer s.halt()

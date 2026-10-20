@@ -21,8 +21,7 @@ import (
 	"golang.org/x/sys/windows/svc"
 )
 
-// `openabstractions serve supervisor` (old name `serve host`, accepted for one
-// release) owns the Windows runtime
+// `openabstractions serve supervisor` owns the Windows runtime
 // lifetime in both
 // install scopes. Per-user, a Startup shortcut and `openabstractions start` run
 // it; it holds a hidden session window for Restart Manager shutdown and
@@ -34,12 +33,17 @@ import (
 
 const (
 	hostServiceName    = "OpenAbstractionsSupervisor"
-	hostServiceDisplay = "Abstraction supervisor"
+	hostServiceDisplay = "OpenAbstractions supervisor"
 	windowlessName     = "openabstractionsw.exe"
 
 	// The SCM kills a service that has not answered a stop within its wait
 	// hint. The child's graceful and forced budgets fit inside it.
 	hostStopWait = 10 * time.Second
+	// runtimeShutdownWait is how long the supervisor waits for its child to
+	// stop on its own before forcing it. The child's job drain fits inside
+	// it (RUN-U3).
+	runtimeShutdownWait = 5 * time.Second
+	runtimeForceWait    = 2 * time.Second
 
 	restartNoCrash  = 0x1
 	restartNoHang   = 0x2
@@ -51,10 +55,9 @@ const (
 )
 
 var (
-	kernel32                       = windows.NewLazySystemDLL("kernel32.dll")
-	registerApplicationRestart     = kernel32.NewProc("RegisterApplicationRestart")
-	getApplicationRestartSettings  = kernel32.NewProc("GetApplicationRestartSettings")
-	unregisterApplicationRestartFn = kernel32.NewProc("UnregisterApplicationRestart")
+	kernel32                      = windows.NewLazySystemDLL("kernel32.dll")
+	registerApplicationRestart    = kernel32.NewProc("RegisterApplicationRestart")
+	getApplicationRestartSettings = kernel32.NewProc("GetApplicationRestartSettings")
 )
 
 const serveHostUsage = `Usage: openabstractions serve supervisor [--service]
@@ -67,8 +70,6 @@ replaces the installation. Diagnostics go to
 
   --service   run under the service control manager; the registered per-user
               service template passes this
-
-serve host is this command's old name, accepted until the next release.
 
 Exit codes: 0 a clean stop, 1 the restart budget was used up, 3 an upgrade of
 this installation is in progress, 4 this process sees a packaged app's
@@ -95,6 +96,11 @@ func serveHost(args []string) error {
 	if flags.NArg() != 0 {
 		return flagMistake(os.Stderr, "serve supervisor", serveHostUsage, "takes no arguments")
 	}
+	releaseSettings, err := runtimeSettingsGuard(context.Background(), runtimeFlags{})
+	if err != nil {
+		return err
+	}
+	defer releaseSettings()
 	if !*service {
 		// Refused before the host log is opened, so a contained host writes nothing.
 		if err := refuseVirtualizedProfile("serve supervisor", bootstrap.CurrentProfileView); err != nil {
@@ -113,7 +119,9 @@ func serveHost(args []string) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return runUserHost(ctx, installedHostPlan(diagnostics), registerForRestart, diagnostics)
+	plan := installedHostPlan(diagnostics)
+	plan.presenter = installedPresenterSupervision(diagnostics.logf).run
+	return runUserHost(ctx, plan, registerForRestart, diagnostics)
 }
 
 // runUserHost refuses during an upgrade, registers for restart before the
@@ -143,15 +151,39 @@ func runUserHost(ctx context.Context, plan hostPlan, register func(string, uint3
 
 func installedHostPlan(diagnostics *hostLog) hostPlan {
 	return hostPlan{
-		start:  startInstalledRuntime,
+		start: func(ctx context.Context) (runtimeChild, error) {
+			return startInstalledRuntime(ctx, diagnostics)
+		},
 		served: runtimeServed,
 		guard:  hostUpgradeGuard,
+		claim:  claimInstalledSupervisor,
 		logf:   diagnostics.logf,
 	}
 }
 
-func startInstalledRuntime(ctx context.Context) (runtimeChild, error) {
-	return runtimehost.Start(ctx, runtimehost.Options{StartupTimeout: 20 * time.Second, ShutdownTimeout: 5 * time.Second, ForceTimeout: 2 * time.Second})
+// claimInstalledSupervisor takes the account's one supervisor claim, beside
+// the host log. Every launcher (start, the service instance, Restart Manager,
+// a Run value) starts `serve supervisor`; the claim makes those starts one.
+func claimInstalledSupervisor(ctx context.Context) (func(), error) {
+	path, err := hostLogPath()
+	if err != nil {
+		return nil, err
+	}
+	return claimExclusive(ctx, filepath.Join(filepath.Dir(path), "supervisor"), hostClaimWait)
+}
+
+func startInstalledRuntime(ctx context.Context, diagnostics *hostLog) (runtimeChild, error) {
+	return runtimehost.Start(ctx, installedRuntimeOptions(diagnostics))
+}
+
+func installedRuntimeOptions(diagnostics *hostLog) runtimehost.Options {
+	o := runtimehost.Options{StartupTimeout: 20 * time.Second, ShutdownTimeout: runtimeShutdownWait, ForceTimeout: runtimeForceWait}
+	if diagnostics != nil {
+		// serveHost retains this sink until its user/service plan has joined
+		// the runtime. Stdout remains the dedicated readiness pipe.
+		o.Stderr, _ = diagnostics.file.(*os.File)
+	}
+	return o
 }
 
 // runtimeServed asks the default resolver endpoint whether anything answers.
@@ -184,15 +216,6 @@ func registerForRestart(command string, flags uint32) error {
 	hr, _, _ := registerApplicationRestart.Call(uintptr(unsafe.Pointer(line)), uintptr(flags))
 	if hr != 0 {
 		return fmt.Errorf("RegisterApplicationRestart: HRESULT %#x", uint32(hr))
-	}
-	return nil
-}
-
-func unregisterForRestart() error {
-	//unchecked: the HRESULT primary return is checked below; Call's raw GetLastError third field carries no separate information for a COM-style HRESULT call
-	hr, _, _ := unregisterApplicationRestartFn.Call()
-	if hr != 0 {
-		return fmt.Errorf("UnregisterApplicationRestart: HRESULT %#x", uint32(hr))
 	}
 	return nil
 }
@@ -383,8 +406,7 @@ func (l *hostLog) logf(format string, args ...any) {
 	if l == nil || l.file == nil {
 		return
 	}
-	//unchecked: l.file is the log sink itself; a failed write here has nowhere else to be reported
-	_, _ = fmt.Fprintf(l.file, "%s [%d] %s\n", time.Now().UTC().Format(time.RFC3339Nano), os.Getpid(), fmt.Sprintf(format, args...))
+	writeHostLogLine(l.file, fmt.Sprintf(format, args...))
 }
 
 func (l *hostLog) Close() error {

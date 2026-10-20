@@ -80,7 +80,7 @@ const server = http.createServer(async (req, res) => {
       return
     }
     // Title and unrelated model requests do not consume the queued tool call.
-    if (nextToolCall && !pendingToolCall && toolNames.includes("openabstractions_watch_logs")) {
+    if (nextToolCall && !pendingToolCall && toolNames.includes("oa_logs_watch")) {
       const call = nextToolCall
       nextToolCall = undefined
       const id = `call-${chatStarted}`
@@ -90,7 +90,7 @@ const server = http.createServer(async (req, res) => {
       observed.toolCallId = id
       res.writeHead(200, {"content-type": "text/event-stream", "cache-control": "no-cache"})
       res.write(`data: ${JSON.stringify({id: "watch-fixture", object: "chat.completion.chunk", created: 1, model: request.model, choices: [{index: 0, delta: {role: "assistant"}, finish_reason: null}]})}\n\n`)
-      res.write(`data: ${JSON.stringify({id: "watch-fixture", object: "chat.completion.chunk", created: 1, model: request.model, choices: [{index: 0, delta: {tool_calls: [{index: 0, id, type: "function", function: {name: "openabstractions_watch_logs", arguments: ""}}]}, finish_reason: null}]})}\n\n`)
+      res.write(`data: ${JSON.stringify({id: "watch-fixture", object: "chat.completion.chunk", created: 1, model: request.model, choices: [{index: 0, delta: {tool_calls: [{index: 0, id, type: "function", function: {name: "oa_logs_watch", arguments: ""}}]}, finish_reason: null}]})}\n\n`)
       res.write(`data: ${JSON.stringify({id: "watch-fixture", object: "chat.completion.chunk", created: 1, model: request.model, choices: [{index: 0, delta: {tool_calls: [{index: 0, function: {arguments: JSON.stringify(call)}}]}, finish_reason: null}]})}\n\n`)
       res.write(`data: ${JSON.stringify({id: "watch-fixture", object: "chat.completion.chunk", created: 1, model: request.model, choices: [{index: 0, delta: {}, finish_reason: "tool_calls"}]})}\n\n`)
       res.end("data: [DONE]\n\n")

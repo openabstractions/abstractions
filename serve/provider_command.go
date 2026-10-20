@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -11,14 +14,14 @@ import (
 	"time"
 
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
+	registration "github.com/openabstractions/abstraction-facade/go/abstraction/facade/registration"
 	"github.com/openabstractions/abstraction-facade/go/client"
 	identity "github.com/openabstractions/abstraction-identity"
 )
 
 const providerUsage = `Usage: openabstractions provider <command>
 
-Reads and writes the runtime's registry, abstraction.facade/registry@1: the
-one directory of the programs it knows, in three roles.
+Reads and writes the runtime's directory of the programs it knows, in three roles.
 
   provider  serves OA contracts on an OA endpoint. The runtime launches an
             on-demand one when a resolution first needs it, restarts it with
@@ -50,6 +53,9 @@ name again enables it.
 Commands:
   provider list          every declaration, its role, readiness, described
                          contracts and accepted resources
+  provider add -         read one typed RegistrationSpec from standard input
+                         (at most 262144 bytes); create or conditionally replace
+                         the same native program's registration
   provider add <name> --program PATH --provider-endpoint NAME --contract CONTRACT
                          [--arg ARG]... [--activate on-demand|attach]
                          [--guarantee NAME]... [--model NAME]... [--profiles LIST]
@@ -57,7 +63,7 @@ Commands:
                          [--card N]...
                          declare a provider at the listed revision
   provider add <name> --remote HOST:PORT --server-name NAME --trust FILE
-                         --client FILE --client-key FILE [--credential NAME]
+                         --client FILE --client-key FILE --server-key-sha256 HEX [--credential NAME]
                          [--profiles LIST] [--supported-extension PROFILE:OWNER/NAME]...
                          declare another runtime at the listed revision
   provider remove <name> withdraw a declaration; an on-demand child ends. A
@@ -108,6 +114,7 @@ provider add:
                        programs receive abstraction.inference/complete on
                        host:NAME
   --server-name NAME   the name the remote runtime's certificate carries
+  --server-key-sha256 HEX  SHA-256 of the remote leaf SPKI, 64 lowercase hex digits
   --trust FILE         PEM roots trusted for the remote runtime
   --client FILE        this runtime's PEM client certificate
   --client-key FILE    this runtime's PEM client private key
@@ -125,6 +132,10 @@ Exit codes: 0 done, 1 runtime not resolved or transport failure, 2 usage,
 `
 
 func providerCommand(args []string, output, diagnostics io.Writer) error {
+	return providerCommandInput(args, os.Stdin, output, diagnostics)
+}
+
+func providerCommandInput(args []string, input io.Reader, output, diagnostics io.Writer) error {
 	if len(args) > 0 && isHelp(args[0]) {
 		_, err := io.WriteString(output, providerUsage)
 		return err
@@ -157,6 +168,7 @@ func providerCommand(args []string, output, diagnostics io.Writer) error {
 	trustRoots := flags.String("trust", "", "PEM roots trusted for the remote runtime")
 	clientCert := flags.String("client", "", "PEM client certificate")
 	clientKey := flags.String("client-key", "", "PEM client private key")
+	serverKeySHA256 := flags.String("server-key-sha256", "", "64 lowercase hex digits of the remote server leaf SPKI SHA-256")
 	credential := flags.String("credential", "", "credential the remote runtime applies")
 	var contracts, arguments, guarantees, models, stores, extensions, cards repeated
 	flags.Var(&contracts, "contract", "contract served")
@@ -178,7 +190,21 @@ func providerCommand(args []string, output, diagnostics io.Writer) error {
 		return flagMistake(diagnostics, command, providerUsage, "takes no arguments")
 	}
 	activation := wire.ActivationOnDemand
-	if command == "provider add" {
+	var spec *registration.RegistrationSpec
+	if command == "provider add" && positional[0] == "-" {
+		if *program != "" || *endpoint != "" || *remoteAt != "" || *profiles != "" || *serverName != "" || *trustRoots != "" || *clientCert != "" || *clientKey != "" || *serverKeySHA256 != "" || *credential != "" || *activate != "on-demand" ||
+			len(contracts)+len(arguments)+len(guarantees)+len(models)+len(stores)+len(extensions)+len(cards) != 0 {
+			return flagMistake(diagnostics, command, providerUsage, "typed standard input takes no declaration flags")
+		}
+		spec, err = readProviderRegistration(input)
+		if err != nil {
+			return flagMistake(diagnostics, command, providerUsage, err.Error())
+		}
+	}
+	if command == "provider add" && spec == nil {
+		if *remoteAt == "" && *serverKeySHA256 != "" {
+			return flagMistake(diagnostics, command, providerUsage, "--server-key-sha256 requires --remote")
+		}
 		switch {
 		case *remoteAt != "":
 			if *program != "" || *endpoint != "" || len(contracts) > 0 || len(arguments) > 0 || len(models) > 0 || len(stores) > 0 || len(cards) > 0 {
@@ -204,8 +230,26 @@ func providerCommand(args []string, output, diagnostics io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if spec != nil {
+		call, done := w.call()
+		registry, resolveErr := machine.ResolveRegistryV3(call, client.Requirements{})
+		done()
+		if resolveErr != nil {
+			return notResolved(command, source, resolveErr)
+		}
+		call, done = w.call()
+		change, registerErr := writeProviderRegistration(call, registry, *spec)
+		done()
+		if registerErr != nil {
+			return &exitError{exitNotResolved, fmt.Errorf("%s: %w", command, registerErr)}
+		}
+		if change.Outcome != registration.OutcomeApplied {
+			return refusal(command, change.Outcome.String(), change.Reason)
+		}
+		return credentialReport(output, options.asJSON, change, fmt.Sprintf("registered; revision %s", change.Revision))
+	}
 	call, done := w.call()
-	useV2 := command == "provider add" && len(extensions) > 0
+	useV2 := command == "provider add" && (len(extensions) > 0 || *remoteAt != "")
 	var registry *client.Registry
 	var registryV2 *client.RegistryV2
 	if useV2 {
@@ -221,7 +265,7 @@ func providerCommand(args []string, output, diagnostics io.Writer) error {
 	call, done = w.call()
 	var list wire.DeclarationList
 	if useV2 {
-		page, pageErr := registryV2.Declarations(call)
+		page, pageErr := registryV2.DeclarationsPinned(call)
 		list.Outcome, list.Revision, err = page.Outcome, page.Revision, pageErr
 	} else {
 		list, err = registry.Declarations(call)
@@ -274,7 +318,7 @@ func providerCommand(args []string, output, diagnostics io.Writer) error {
 			declaration.Remote = &wire.RemoteTrust{ServerName: *serverName, Roots: absolute(*trustRoots), Certificate: absolute(*clientCert), Key: absolute(*clientKey), Credential: *credential}
 		}
 		if useV2 {
-			change, err = registryV2.Declare(call, list.Revision, wire.DeclarationWithExtensions{Declaration: declaration, SupportedExtensions: supported})
+			change, err = registryV2.DeclarePinned(call, list.Revision, wire.PinnedDeclaration{Declaration: declaration, SupportedExtensions: supported, RemoteServerKeySHA256: *serverKeySHA256})
 		} else {
 			change, err = registry.Declare(call, list.Revision, declaration)
 		}
@@ -289,6 +333,86 @@ func providerCommand(args []string, output, diagnostics io.Writer) error {
 		return refusal(command, change.Outcome.String(), change.Reason)
 	}
 	return credentialReport(output, options.asJSON, change, fmt.Sprintf("%s %s; revision %s", strings.TrimPrefix(command, "provider "), name, change.Revision))
+}
+
+func readProviderRegistration(input io.Reader) (*registration.RegistrationSpec, error) {
+	const limit = 262144
+	raw, err := io.ReadAll(io.LimitReader(input, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) > limit {
+		return nil, fmt.Errorf("registration input exceeds %d bytes", limit)
+	}
+	return registration.DecodeRegistrationSpec(raw)
+}
+
+type providerRegistrationEditor interface {
+	Registrations(context.Context, string, int64) (registration.Page, error)
+	Register(context.Context, registration.RegistrationSpec) (registration.Change, error)
+	Replace(context.Context, string, registration.RegistrationSpec) (registration.Change, error)
+}
+
+// writeProviderRegistration refreshes a native program at the revision just
+// read. The receiving registry revalidates identity, source and the whole spec.
+func writeProviderRegistration(ctx context.Context, registry providerRegistrationEditor, spec registration.RegistrationSpec) (registration.Change, error) {
+	if len(spec.Providers)+len(spec.Servers)+len(spec.Remotes)+len(spec.Applications) == 0 {
+		return registration.Change{Outcome: registration.OutcomeInvalid, Reason: "registration:invalid:facets"}, nil
+	}
+	if spec.Program != "" {
+		cursor := ""
+		var matched *registration.Registration
+		for {
+			page, err := registry.Registrations(ctx, cursor, 64)
+			if err != nil {
+				return registration.Change{}, err
+			}
+			if page.Outcome != registration.OutcomePage {
+				return registration.Change{Outcome: page.Outcome, Reason: page.Reason, Refusal: page.Refusal}, nil
+			}
+			for _, current := range page.Registrations {
+				if current.Spec.Program != "" && samePrograms(current.Spec.Program, spec.Program) {
+					if matched != nil {
+						return registration.Change{Outcome: registration.OutcomeInvalid, Reason: "registration:ambiguous:program"}, nil
+					}
+					copy := current
+					matched = &copy
+				}
+			}
+			if page.Cursor == "" {
+				break
+			}
+			if page.Cursor == cursor {
+				return registration.Change{}, errors.New("registry continuation did not advance")
+			}
+			cursor = page.Cursor
+		}
+		if matched != nil {
+			spec.Providers = mergeProviderFacets(matched.Spec.Providers, spec.Providers, func(v registration.ProviderFacet) string { return v.Name })
+			spec.Servers = mergeProviderFacets(matched.Spec.Servers, spec.Servers, func(v registration.ServerFacet) string { return v.Name })
+			spec.Remotes = mergeProviderFacets(matched.Spec.Remotes, spec.Remotes, func(v registration.RemoteFacet) string { return v.Name })
+			spec.Applications = mergeProviderFacets(matched.Spec.Applications, spec.Applications, func(v registration.ApplicationFacet) string { return v.Name })
+			return registry.Replace(ctx, matched.Revision, spec)
+		}
+	}
+	return registry.Register(ctx, spec)
+}
+
+// Upsert names within their typed kind. Omission preserves the existing facet;
+// explicit Remove owns deletion. Duplicate submitted names reach the registry's
+// whole-spec validator together.
+func mergeProviderFacets[T any](current, submitted []T, name func(T) string) []T {
+	names := make(map[string]bool, len(submitted))
+	for _, facet := range submitted {
+		names[name(facet)] = true
+	}
+	merged := make([]T, 0, len(current)+len(submitted))
+	for _, facet := range current {
+		if !names[name(facet)] {
+			merged = append(merged, facet)
+		}
+	}
+	return append(merged, submitted...)
 }
 
 // printDeclarations writes the registry listing as a table.

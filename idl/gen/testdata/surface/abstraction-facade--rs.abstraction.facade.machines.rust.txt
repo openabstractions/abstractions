@@ -1,0 +1,169 @@
+pub type Raw
+pub enum MachineScopeKind
+  None
+  OneHostInference
+  pub const ALL: [Self; 2]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum MachinePhase
+  Offering
+  Connecting
+  Checking
+  AwaitingPerson
+  ConsentSent
+  Reconciling
+  Paired
+  Refused
+  Cancelled
+  Expired
+  Uncertain
+  pub const ALL: [Self; 11]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum MachineStartOutcome
+  Started
+  Existing
+  Forbidden
+  Unavailable
+  Invalid
+  Conflict
+  Exhausted
+  Expired
+  pub const ALL: [Self; 8]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum MachineObserveOutcome
+  Changed
+  Unchanged
+  Gap
+  Unknown
+  Forbidden
+  Unavailable
+  Invalid
+  Exhausted
+  Failed
+  pub const ALL: [Self; 9]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum MachineCancelOutcome
+  Updated
+  Unknown
+  Forbidden
+  Unavailable
+  Invalid
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum MachineListOutcome
+  Page
+  Gap
+  Forbidden
+  Unavailable
+  Invalid
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum MachineRemoveOutcome
+  Removed
+  CleanupPending
+  Conflict
+  NotFound
+  Forbidden
+  Unavailable
+  Invalid
+  pub const ALL: [Self; 7]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub mod service_error_code
+  pub const HANDLER_ERROR: &str
+  pub const INVALID_RESULT: &str
+  pub const UNKNOWN_VERSION: &str
+  pub const UNKNOWN_SERVICE: &str
+  pub const UNKNOWN_METHOD: &str
+  pub const WRONG_MODE: &str
+  pub const ALL: [&str; 6]
+pub struct MachinePreparation
+  request: MachineScopeKind
+  offer: MachineScopeKind
+  offer_host: ::std::string::String
+  normal_service_address: ::std::string::String
+  binding_name: ::std::string::String
+pub struct MachineRequestIdentity
+  epoch: ::std::string::String
+  expires_ms: i64
+  nonce: ::std::string::String
+pub struct MachineDirection
+  kind: MachineScopeKind
+  host: ::std::string::String
+  service_address: ::std::string::String
+pub struct MachineAgreement
+  peer_key: ::std::string::String
+  check: ::std::string::String
+  transcript: ::std::string::String
+  semantics: ::std::string::String
+  given: MachineDirection
+  received: MachineDirection
+pub struct MachineOperation
+  id: ::std::string::String
+  phase: MachinePhase
+  expires_ms: i64
+  reason: ::std::string::String
+  agreement: ::std::option::Option<MachineAgreement>
+  question_id: ::std::string::String
+  revision: ::std::string::String
+pub struct MachineStart
+  outcome: MachineStartOutcome
+  operation: ::std::option::Option<MachineOperation>
+  code: ::std::string::String
+pub struct MachineObservation
+  outcome: MachineObserveOutcome
+  cursor: ::std::string::String
+  operation: ::std::option::Option<MachineOperation>
+pub struct MachineCancellation
+  outcome: MachineCancelOutcome
+  operation: ::std::option::Option<MachineOperation>
+pub struct MachineRecord
+  peer_key: ::std::string::String
+  state: ::std::string::String
+  service_address: ::std::string::String
+  last_call_unix_ms: i64
+  binding_name: ::std::string::String
+pub struct MachinePage
+  outcome: MachineListOutcome
+  epoch: ::std::string::String
+  request_expires_ms: i64
+  revision: ::std::string::String
+  next_cursor: ::std::string::String
+  machines: ::std::vec::Vec<MachineRecord>
+  local_service_address: ::std::string::String
+pub struct MachineRemoval
+  outcome: MachineRemoveOutcome
+  revision: ::std::string::String
+pub fn encode(v: &MachineStart) -> ::std::vec::Vec<u8>
+pub struct Refusal
+  word: &'static str
+  offset: usize
+pub fn decode(data: &[u8]) -> ::std::result::Result<MachineStart, Refusal>
+pub trait JsonRecord: ::std::marker::Sized
+  fn to_json(&self) -> ::std::vec::Vec<u8>
+  fn from_json(data: &[u8]) -> ::std::result::Result<Self, Refusal>
+pub use abstraction_frame::FrameTransport
+pub struct ServiceError
+  code: ::std::string::String
+  message: ::std::string::String
+pub enum CallError<E>
+  Transport(E)
+  Refusal(Refusal)
+  Dispatch(&'static str)
+  Service(ServiceError)
+pub trait MachineControl
+  type Error
+  fn start_offer(&self, request: MachineRequestIdentity, invitation_address: ::std::string::String, preparation: MachinePreparation) -> ::std::result::Result<MachineStart, Self::Error>
+  fn enter(&self, request: MachineRequestIdentity, code: ::std::string::String, preparation: MachinePreparation) -> ::std::result::Result<MachineStart, Self::Error>
+  fn observe(&self, operation_id: ::std::string::String, after: ::std::string::String, wait_ms: i64) -> ::std::result::Result<MachineObservation, Self::Error>
+  fn cancel(&self, operation_id: ::std::string::String) -> ::std::result::Result<MachineCancellation, Self::Error>
+  fn list(&self, cursor: ::std::string::String, limit: i64) -> ::std::result::Result<MachinePage, Self::Error>
+  fn remove(&self, expected_revision: ::std::string::String, peer_key: ::std::string::String) -> ::std::result::Result<MachineRemoval, Self::Error>
+pub struct MachineControlClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T

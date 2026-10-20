@@ -5,8 +5,9 @@ import {join} from 'node:path';
 
 const modules = join(process.cwd(), 'node_modules');
 const root = join(modules, '@openabstractions');
-const importSpecifier = /^\s*import\s+[^'"\n]*\bfrom\s+['"]([^'"]+)['"]/gm;
+const importSpecifier = /^\s*(?:import|export)\s+[^'";]*?\bfrom\s+['"]([^'"]+)['"]|^\s*import\s*['"]([^'"]+)['"]/gm;
 const walk = (dir) => readdirSync(dir).flatMap((name) => {
+  if (name === 'node_modules') return [];
   const path = join(dir, name);
   return statSync(path).isDirectory() ? walk(path) : [path];
 });
@@ -31,12 +32,13 @@ for (const name of names) {
   const main = typeof pkg.exports === 'string' ? null : pkg.exports?.['.'];
   assert.ok(main && typeof main === 'object' && main.types === pkg.types && existsSync(join(dir, main.default)), `${name} exports "." with types ${pkg.types} and a default`);
   const imported = new Set();
-  for (const file of walk(dir).filter((path) => /\.(mjs|js)$/.test(path))) {
+  for (const file of walk(dir).filter((path) => /\.(mjs|js|d\.ts|d\.mts)$/.test(path))) {
     for (const match of readFileSync(file, 'utf8').matchAll(importSpecifier)) {
       // A subpath such as @openabstractions/download-request/internal belongs to its package.
       // Bun exposes ffi as a runtime builtin imported only by the Bun-specific subpath.
-      if (match[1] === 'bun:ffi') continue;
-      if (!match[1].startsWith('.') && !match[1].startsWith('node:')) imported.add(match[1].split('/').slice(0, 2).join('/'));
+      const specifier = match[1] ?? match[2];
+      if (specifier === 'bun:ffi') continue;
+      if (!specifier.startsWith('.') && !specifier.startsWith('node:')) imported.add(specifier.startsWith('@') ? specifier.split('/').slice(0, 2).join('/') : specifier.split('/')[0]);
     }
   }
   const declared = pkg.dependencies ?? {};

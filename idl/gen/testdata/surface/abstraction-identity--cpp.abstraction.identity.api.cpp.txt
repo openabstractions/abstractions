@@ -12,6 +12,20 @@ inline constexpr bool operator!=(std::string_view name, Proof value)
 inline const std::vector<std::string> kProofNames
 inline const std::vector<std::string> kNativeOperations
 inline const std::vector<std::string> kNativeBindingTypes
+inline constexpr std::int32_t kIpcOk
+inline constexpr std::int32_t kIpcTimeout
+inline constexpr std::int32_t kIpcDisconnected
+inline constexpr std::int32_t kIpcIoError
+inline constexpr std::int32_t kIpcInvalidArgument
+inline constexpr std::int32_t kIpcNoMemory
+inline constexpr std::int32_t kIpcInternalError
+inline constexpr std::int32_t kIpcCancelled
+inline constexpr std::int32_t kIpcUntrusted
+inline constexpr std::int32_t kIpcProofUnavailable
+inline constexpr std::int32_t kIpcDefaultMaxFrame
+inline constexpr std::int32_t kIpcClientMaxFrame
+inline constexpr std::int32_t kIpcWireMaxFrame
+inline constexpr std::int32_t kIpcDefaultCallBudgetMs
 struct ProofRequirement
   Proof user
   Proof process
@@ -25,3 +39,8 @@ struct ProofFailure
   std::string why
 inline std::string encode(const ProofRequirement& v)
 inline ProofRequirement decode(std::string_view data)
+T from_json(std::string_view data)
+inline std::string to_json(const ProofRequirement& v)
+inline ProofRequirement from_json<ProofRequirement>(std::string_view data)
+inline std::string to_json(const ProofFailure& v)
+inline ProofFailure from_json<ProofFailure>(std::string_view data)

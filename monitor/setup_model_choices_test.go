@@ -17,7 +17,9 @@ import (
 func choicePanel(t *testing.T, starterConfigured bool) (*servicePanel, map[string]*setupModelControllerFake, setup.Plan) {
 	t.Helper()
 	journal := setup.Journal{Path: filepath.Join(t.TempDir(), "setup", "plan.json")}
-	mainPlan, err := setup.NewCatalog().Plan([]setup.AppID{setup.ComfyUI})
+	// This controller fixture records an explicit engine choice; its fake
+	// feature status does not qualify a production package as installed.
+	mainPlan, err := setup.NewCatalog().Plan([]setup.AppID{setup.ComfyUI, setup.Lemonade})
 	if err != nil {
 		t.Fatal(err)
 	}

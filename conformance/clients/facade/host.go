@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/user"
-	"strconv"
 
 	config "github.com/openabstractions/abstraction-config/go/service"
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
@@ -16,6 +15,7 @@ import (
 	"github.com/openabstractions/abstraction-identity/listen"
 	logging "github.com/openabstractions/abstraction-logging/go"
 	logservice "github.com/openabstractions/abstraction-logging/go/service"
+	"github.com/openabstractions/abstraction-rights/go/authorization/gate"
 	router "github.com/openabstractions/abstraction-router/go"
 	routerservice "github.com/openabstractions/abstraction-router/go/service"
 )
@@ -47,7 +47,17 @@ func main() {
 	case "router":
 		// No Survey/Poll: this deliberately empty provider performs no network,
 		// GPU utility invocation or discovery of the owner's actual model hosts.
-		host, err = routerservice.Listen(os.Args[2], router.New())
+		routerHost, listenErr := routerservice.Listen(os.Args[2], router.New())
+		if listenErr != nil {
+			panic(listenErr)
+		}
+		// No rights service runs here: the explicit local gate serve
+		// router-v1 installs answers this account's callers.
+		local, gateErr := gate.Local("abstraction.router")
+		if gateErr != nil {
+			panic(gateErr)
+		}
+		host, err = routerHost, routerHost.EnablePolicy(local)
 	case "resolver":
 		if len(os.Args) != 6 {
 			panic("resolver requires three provider endpoints")
@@ -77,14 +87,8 @@ func main() {
 			panic(catalogErr)
 		}
 		host, err = resolution.Listen(os.Args[2], catalog, func(peer *identity.Peer, _ wire.ServiceReference) bool {
-			observed, err := peer.User.AtLeast(listen.Program.User)
-			if err != nil {
-				return false
-			}
-			if observed.Kind == "windows" {
-				return observed.SID == owner.Uid
-			}
-			return observed.Kind == "posix" && strconv.Itoa(observed.UID) == owner.Uid
+			subject, err := identity.SubjectOf(peer, identity.Need{User: listen.Program.User})
+			return err == nil && subject.Account == owner.Uid
 		})
 	default:
 		panic("unknown service")

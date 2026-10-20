@@ -247,6 +247,7 @@ dataclass ListingPage
   continuation: str
   complete: bool
   cursor: str
+const MAX_APPEND_BYTES
 dataclass Manifest
   id: str
   addressing: Addressing | None
@@ -510,4 +511,6 @@ def encode_store(v)
 def encode_store_error(v)
 def encode_stored(v)
 def encode_upload(v)
+def from_json(kind, data)
 def service_name(frame)
+def to_json(value)

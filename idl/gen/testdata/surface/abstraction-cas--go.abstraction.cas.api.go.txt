@@ -7,6 +7,8 @@ type Refusal struct
   Offset int
 func (Refusal) Error() string
 func Decode(in []byte) (*Value, error)
+func ToJSON(v any) (out []byte, err error)
+func FromJSON(data []byte, v any) error
 type Store interface
   Read(path string) (Value, error)
   Write(path string, base Value, data []byte) error

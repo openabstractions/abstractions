@@ -75,19 +75,20 @@ func runtimeAppEndpoints(options runtimeFlags) ([]string, error) {
 	}{
 		{options.endpoint, "runtime-v1", true}, {options.logEndpoint, "logging-v1", true},
 		{options.configEndpoint, "config-v1", true}, {options.jobEndpoint, "job-acceptance-v1", !options.withoutJobs || options.jobRoot != ""},
-		{options.modelEndpoint, "model-v1", !options.withoutModels},
 	} {
 		if !item.enabled {
 			continue
-		}
-		if item.value == "" && item.service == "model-v1" && options.endpoint != "" {
-			item.value = options.endpoint + "-model"
 		}
 		if item.value != "" {
 			if err := add(item.value, nil); err != nil {
 				return nil, err
 			}
 		} else if err := add(options.defaultEndpoint(item.service)); err != nil {
+			return nil, err
+		}
+	}
+	if !options.withoutModels {
+		if err := add(runtimeModelEndpoint(options)); err != nil {
 			return nil, err
 		}
 	}
@@ -100,24 +101,11 @@ func runtimeAppEndpoints(options runtimeFlags) ([]string, error) {
 			return nil, err
 		}
 	}
-	for _, derive := range []func(runtimeFlags) (string, error){inferenceEndpoint, inferenceRemoteEndpoint, asksEndpoint, runtimeRouterEndpoint, resourceTableEndpoint, registryEndpoint, lendingEndpoint} {
+	for _, derive := range []func(runtimeFlags) (string, error){inferenceEndpoint, inferenceRemoteEndpoint, asksEndpoint, runtimeRouterEndpoint, resourceTableEndpoint,
+		registryEndpoint, lendingEndpoint, runtimeApplicationsEndpoint, runtimeContentEndpoint} {
 		if err := add(derive(options)); err != nil {
 			return nil, err
 		}
-	}
-	app := options.endpoint + "-applications"
-	if options.endpoint == "" {
-		app, err = options.defaultEndpoint("applications-v1")
-	}
-	if err := add(app, err); err != nil {
-		return nil, err
-	}
-	content := options.endpoint + "-content"
-	if options.endpoint == "" {
-		content, err = options.defaultEndpoint("storage-content-v1")
-	}
-	if err := add(content, err); err != nil {
-		return nil, err
 	}
 	return endpoints, nil
 }

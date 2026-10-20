@@ -111,7 +111,7 @@ func TestGatewaySettingOpensAndClosesTheWindowAcrossRestarts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, bad := range []string{"0.0.0.0:8793", "192.168.0.2:8793", "localhost:8793", "[::1]:8793"} {
+	for _, bad := range []string{"0.0.0.0:8793", "192.168.0.2:8793", "localhost:8793", "[::1]:8793", "127.0.0.1:0"} {
 		change, err := operator.SetGateway(call, state.Revision, true, bad)
 		if err != nil || change.Outcome.String() != "invalid" || change.Reason != "address" {
 			t.Fatalf("SetGateway %s: %+v %v", bad, change, err)

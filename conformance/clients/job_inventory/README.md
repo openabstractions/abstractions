@@ -18,7 +18,7 @@ bounds, duplicate receipts, invalid progress, and stalled cursors. Advisory prog
 
 The fixture owns temporary endpoints/store and drains its runtime. It contacts no
 installed runtime. `--race` enables Go's race detector; the C++ client is a native
-installed-package consumer. Darwin is explicitly skipped while its Program proof
+installed-package consumer. Darwin is explicitly skipped while its [Program](https://openabstractions.github.io/reference.html#concept-identity.listener-program-need) proof
 remains unavailable. This test does not establish cross-account authority or a
 stable inventory snapshot during concurrent mutation.
 

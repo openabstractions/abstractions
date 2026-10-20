@@ -1,0 +1,15 @@
+# requires: fileid
+#
+# The walk follows a link it has read to a local target, and refuses every
+# link when the policy says so (ID-F4).
+file real/f.txt
+link via real
+resolve via/f.txt
+resolve via/f.txt links=refuse
+resolve real/f.txt links=refuse
+relate via/f.txt real/f.txt
+
+# expect 3: ok kind=file links=1 [ID-F4]
+# expect 4: refused link [ID-F4]
+# expect 5: ok kind=file links=1 [ID-F4]
+# expect 6: ok same [ID-F4]

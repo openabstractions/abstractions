@@ -71,42 +71,22 @@ func (p *runtimeProviders) lendingProvider(ctx context.Context) (client *lend.Le
 	if p == nil {
 		return nil, noneDeclared
 	}
-	deadline := time.Now().Add(lendingLaunchBudget)
-	for {
+	s, why := p.awaitReady(ctx, lendingLaunchBudget, func() (*providerSupervisor, string) {
 		s := p.lendingSupervisor()
 		if s == nil {
 			return nil, noneDeclared
 		}
-		if why := s.unavailableReason(); why != "" {
-			return nil, why
-		}
-		s.activate()
-		if s.ready() {
-			transport, err := s.transport(ctx, lendingCallBudget)
-			if err != nil {
-				p.report(err)
-				return nil, "the lending provider did not answer"
-			}
-			return lend.NewLendingClient(transport), ""
-		}
-		if ctx.Err() != nil || !time.Now().Before(deadline) {
-			return nil, s.activatingReason()
-		}
-		p.mu.Lock()
-		changes := p.changes
-		p.mu.Unlock()
-		wait := 200 * time.Millisecond
-		if remaining := time.Until(deadline); remaining < wait {
-			wait = remaining
-		}
-		timer := time.NewTimer(wait)
-		select {
-		case <-changes:
-		case <-timer.C:
-		case <-ctx.Done():
-		}
-		timer.Stop()
+		return s, s.unavailableReason()
+	})
+	if why != "" {
+		return nil, why
 	}
+	transport, err := s.transport(ctx, lendingCallBudget)
+	if err != nil {
+		p.report(err)
+		return nil, "the lending provider did not answer"
+	}
+	return lend.NewLendingClient(transport), ""
 }
 
 // runtimeLending serves abstraction.storage/lend@1 to applications over the
@@ -260,7 +240,7 @@ type lendingHost struct {
 	cancel   context.CancelFunc
 	once     sync.Once
 	workers  sync.WaitGroup
-	slots    chan struct{}
+	slots    listen.CallAdmission
 }
 
 func listenLending(endpoint string, lending *runtimeLending, owner string, report func(error)) (*lendingHost, error) {
@@ -269,7 +249,7 @@ func listenLending(endpoint string, lending *runtimeLending, owner string, repor
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &lendingHost{listener: listen.Sessions(l, listen.SessionOptions{MaxSessions: 16}), lending: lending, owner: owner, report: report, ctx: ctx, cancel: cancel, slots: make(chan struct{}, 16)}, nil
+	return &lendingHost{listener: listen.Sessions(l, listen.SessionOptions{MaxSessions: 16}), lending: lending, owner: owner, report: report, ctx: ctx, cancel: cancel, slots: listen.NewCallAdmission(16)}, nil
 }
 
 func (h *lendingHost) Close() error {
@@ -292,17 +272,14 @@ func (h *lendingHost) Serve(ctx context.Context) error {
 			}
 			return err
 		}
-		select {
-		case h.slots <- struct{}{}:
-		default:
-			//unchecked: dropping a connection because the worker slots are full; nothing here can act on a failed close of the connection it is already refusing
-			conn.Close()
+		release, admitted := h.slots.Take(conn)
+		if !admitted {
 			continue
 		}
 		h.workers.Add(1)
 		go func() {
 			defer h.workers.Done()
-			defer func() { <-h.slots }()
+			defer release()
 			defer conn.Close()
 			callCtx, cancel := context.WithTimeout(h.ctx, lendingCallBudget)
 			defer cancel()

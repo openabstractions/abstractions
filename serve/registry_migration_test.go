@@ -19,6 +19,7 @@ import (
 	inference "github.com/openabstractions/abstraction-inference/go"
 	"github.com/openabstractions/abstraction-inference/go/service"
 	router "github.com/openabstractions/abstraction-router/go"
+	routerservice "github.com/openabstractions/abstraction-router/go/service"
 )
 
 // startRemoteRuntime serves chat@1 and router@1 over the mutual-TLS remote
@@ -39,12 +40,13 @@ func startRemoteRuntime(t *testing.T) (string, inferenceRemoteTrust) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { remoteProvider.Close() })
-	authorize := func(_ context.Context, peer remote.Peer) (inference.Subject, string, error) {
+	remoteConfig := service.RemoteConfig{Account: "fixture-receiver", Admit: func(peer remote.Peer) error {
 		if peer.Key != clientDigest {
-			return inference.Subject{}, "", errors.New("unmapped")
+			return remote.ErrTrust
 		}
-		return inference.Subject{Account: "peer", Program: "/remote/openabstractions"}, "peer", nil
-	}
+		return nil
+	}, Domain: func(context.Context, remote.Peer) (string, error) { return "peer", nil },
+		RouterPolicy: func(context.Context, routerservice.RemoteCaller, string, string) error { return nil }}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -52,7 +54,12 @@ func startRemoteRuntime(t *testing.T) (string, inferenceRemoteTrust) {
 	ctx, cancel := context.WithCancel(context.Background())
 	served := make(chan error, 1)
 	go func() {
-		served <- (remote.Server{TLS: serverTLS, Handler: service.RemoteHandler(remoteProvider, remoteRouter, authorize), Timeout: 30 * time.Second}).Serve(ctx, listener)
+		served <- (remote.Server{TLS: serverTLS, Admit: func(peer remote.Peer) error {
+			if peer.Key != clientDigest {
+				return remote.ErrTrust
+			}
+			return nil
+		}, Handler: service.RemoteHandler(remoteProvider, remoteRouter, remoteConfig), Timeout: 30 * time.Second}).Serve(ctx, listener)
 	}()
 	t.Cleanup(func() { cancel(); <-served })
 	return listener.Addr().String(), trust
@@ -105,6 +112,16 @@ func (l registryListing) readiness() map[string]string {
 // starts on the registry runtime: the files are rewritten once, and the
 // registry lists the same two providers and the remote, each ready.
 func TestAStateDirectoryFromTheRegistrationBuildMigratesOnce(t *testing.T) {
+	for _, pinned := range []bool{true, false} {
+		name := "pinned"
+		if !pinned {
+			name = "unpinned"
+		}
+		t.Run(name, func(t *testing.T) { testRegistrationBuildMigration(t, pinned) })
+	}
+}
+
+func testRegistrationBuildMigration(t *testing.T, pinned bool) {
 	if !statusTransportProvesProgram(t) {
 		t.Skip("Program proof unavailable on current shared transport")
 	}
@@ -113,12 +130,12 @@ func TestAStateDirectoryFromTheRegistrationBuildMigratesOnce(t *testing.T) {
 	// An attached chat provider, running before the runtime starts.
 	chatProgram := copyTestBinary(t, "oa-migrated-chat")
 	chatEndpoint := fmt.Sprintf("migrated-chat-%d", suffix)
-	chat := exec.Command(chatProgram, providerFixtureArg, "chat", chatEndpoint, t.TempDir())
+	chat := exec.Command(chatProgram, providerFixtureArg, "chat", mustProviderEndpoint(t, chatEndpoint), t.TempDir())
 	if err := chat.Start(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { chat.Process.Kill(); chat.Wait() })
-	eventually(t, 10*time.Second, "the chat provider listening", func() bool { return answers(chatEndpoint) })
+	eventually(t, 10*time.Second, "the chat provider listening", func() bool { return answers(t, chatEndpoint) })
 
 	// An attached inventory source.
 	inventoryd := buildInventoryd(t)
@@ -127,6 +144,10 @@ func TestAStateDirectoryFromTheRegistrationBuildMigratesOnce(t *testing.T) {
 
 	// A remote runtime over mutual TLS.
 	address, trust := startRemoteRuntime(t)
+	pinMember := ""
+	if pinned {
+		pinMember = ",\n        \"server_key_sha256\": " + fmt.Sprintf("%q", trust.ServerKeySHA256)
+	}
 
 	options, _ := isolatedRuntime(t)
 	write := func(path, body string) {
@@ -194,7 +215,7 @@ func TestAStateDirectoryFromTheRegistrationBuildMigratesOnce(t *testing.T) {
         "server_name": `+quote(trust.ServerName)+`,
         "roots": `+quote(trust.Roots)+`,
         "certificate": `+quote(trust.Certificate)+`,
-        "key": `+quote(trust.Key)+`
+        "key": `+quote(trust.Key)+pinMember+`
       }
     }
   ]
@@ -202,7 +223,10 @@ func TestAStateDirectoryFromTheRegistrationBuildMigratesOnce(t *testing.T) {
 `)
 
 	endpoint := []string{"--endpoint", options.endpoint, "--timeout", "30s"}
-	want := map[string]string{"local-chat": "ready", "local-stores": "ready", "lab": "ready"}
+	want := map[string]string{"local-chat": "ready", "local-stores": "ready"}
+	if pinned {
+		want["lab"] = "ready"
+	}
 	roles := map[string]string{"local-chat": "provider", "local-stores": "provider", "lab": "remote", "ollama": "host", "comfyui": "host"}
 	check := func(round string) registryListing {
 		t.Helper()
@@ -211,7 +235,15 @@ func TestAStateDirectoryFromTheRegistrationBuildMigratesOnce(t *testing.T) {
 		deadline := time.Now().Add(30 * time.Second)
 		for {
 			listing, raw = readRegistryListing(t, endpoint)
-			if listing.Outcome == "page" && holdsAll(listing.readiness(), want) {
+			remoteRetained := pinned
+			if !pinned {
+				for _, entry := range listing.Declarations {
+					if entry.Declaration.Name == "lab" && entry.Readiness != "ready" && strings.Contains(entry.Why, "server_key_sha256") {
+						remoteRetained = true
+					}
+				}
+			}
+			if listing.Outcome == "page" && holdsAll(listing.readiness(), want) && remoteRetained {
 				break
 			}
 			if time.Now().After(deadline) {
@@ -259,7 +291,10 @@ func TestAStateDirectoryFromTheRegistrationBuildMigratesOnce(t *testing.T) {
 			}
 		}
 
-		// The router still lists the remote's host in its domain.
+		if !pinned {
+			return listing
+		} // Missing trust stays visible and unavailable.
+		// The pinned remote's host remains in its domain.
 		call, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		routes, err := client.New(options.endpoint).ResolveRouter(call, client.Requirements{})
@@ -294,6 +329,24 @@ func TestAStateDirectoryFromTheRegistrationBuildMigratesOnce(t *testing.T) {
 			t.Fatalf("declaration %s after the rewrite: %v", name, err)
 		}
 		text := string(raw)
+		if name == "lab" {
+			var migrated providerFile
+			if err := json.Unmarshal(raw, &migrated); err != nil || migrated.Declaration.Remote == nil {
+				t.Fatalf("remote migration: %+v %v", migrated, err)
+			}
+			wantPin := ""
+			if pinned {
+				wantPin = trust.ServerKeySHA256
+			}
+			if migrated.Declaration.Remote.ServerKeySHA256 != wantPin {
+				t.Fatal("migration inferred or lost server pin")
+			}
+			if !pinned {
+				if _, err := migrated.Declaration.Remote.config(); !errors.Is(err, remote.ErrTrust) {
+					t.Fatalf("unpinned trust admitted: %v", err)
+				}
+			}
+		}
 		resourced := name != "lab" && name != "ollama"
 		if strings.Contains(text, `"stores"`) || strings.Contains(text, `"profiles"`) || !strings.Contains(text, `"resources"`) && resourced {
 			t.Fatalf("declaration %s was not rewritten:\n%s", name, raw)

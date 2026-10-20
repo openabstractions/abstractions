@@ -25,7 +25,7 @@ name, no build tag or flag needed. They hold the compiled form of
 `rc.exe` and `cvtres.exe`, not part of a plain build:
 
 ```bash
-go run ./monitor/icon/gen -syso
+go -C monitor run ./icon/gen -resources -syso -version X.Y.Z
 ```
 
 writes `monitor/rsrc_windows_amd64.syso` and `rsrc_windows_arm64.syso`. Both
@@ -47,7 +47,7 @@ stock `IDI_APPLICATION` icon.
 
 Visual Studio 18's `cvtres.exe` stamps every object it writes with an
 absolute `@comp.id` symbol recording its own tool version, which breaks the
-Go linker; `go run ./monitor/icon/gen -syso` strips that symbol from the
+Go linker; `go -C monitor run ./icon/gen -resources -syso -version X.Y.Z` strips that symbol from the
 `.syso` files it writes before they are committed. The generator also clears
 the path-bearing CodeView debug section and normalizes the COFF timestamp,
 so the committed resources do not expose the builder's source directory and
@@ -55,6 +55,26 @@ repeat runs produce identical bytes. The resource sections retain the icon,
 manifest and version block. Reuse this generator
 rather than hand-running `rc.exe`/`cvtres.exe` for any new `.syso` file.
 
-Run `go generate ./monitor/icon/...` after the brand mark changes; that
-rewrites the PNGs, `panel.ico`, `panel.icns` and `monitor/panel.rc`. The `.syso`
-files still need the separate `-syso` run above.
+Choose `X.Y.Z` from the selected OA train version. Every resource-generation
+command requires that explicit input. The generator refuses a missing or
+malformed version before writing files; it does not discover a release Plan.
+The version-only `-resources` mode preserves all icon artwork. Adding `-syso`
+compiles both architectures through the existing Windows tools. A plain
+`-syso -version X.Y.Z` checks that `panel.rc` already matches the selected
+version before compiling it.
+
+After a brand-mark change, run the existing directive with a process-local
+caller-supplied version. For example, in Bash:
+
+```bash
+OA_RELEASE_VERSION=X.Y.Z go -C monitor generate ./icon/...
+```
+
+The directive forwards `OA_RELEASE_VERSION` to `-version`. This rewrites the
+PNGs, `panel.ico`, `panel.icns` and `monitor/panel.rc`; the `.syso` files still
+need the Windows compilation command above. The equivalent direct command is
+`go -C monitor run ./icon/gen -version X.Y.Z`.
+
+Before packaging, the existing train check compares the selected version with
+`panel.rc` and both tracked `.syso` version resources. Regenerate and commit
+them when the selected train changes.

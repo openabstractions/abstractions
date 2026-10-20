@@ -28,6 +28,9 @@ type notifierView struct {
 	Week    int64  `json:"week"`
 	LastMs  int64  `json:"last_ms"`
 	Off     bool   `json:"off"`
+	// Own marks one of OpenAbstractions' own programs; Activity shows them
+	// as one row (architect ruling 2026-11-09, second block).
+	Own bool `json:"own,omitempty"`
 }
 
 type notificationView struct {
@@ -146,7 +149,7 @@ func (n panelNotifications) read(ctx context.Context) (notificationsView, error)
 	}
 	rules, account, rulesErr := n.rules(ctx)
 	for _, row := range page.Notifiers {
-		v := notifierView{Program: row.Program, Name: programDisplayName(trayPublisher{Names: names}, row.Program), LastMs: row.LastPostedMs}
+		v := notifierView{Program: row.Program, Name: programDisplayName(trayPublisher{Names: names}, row.Program), LastMs: row.LastPostedMs, Own: names.isOwn(row.Program)}
 		for _, d := range row.Days {
 			v.Week += d.Posts
 		}
@@ -247,9 +250,10 @@ func (n panelNotifications) act(ctx context.Context, id, action, token string) (
 			rules, account, err := n.rules(ctx)
 			return rules, account, err
 		},
-		activity: func(op string) error { operation = op; return nil },
-		surface:  panelNoSurface{},
-		budget:   10 * time.Second,
+		activity:    func(op string) error { operation = op; return nil },
+		application: activateAgentUpdateNotification,
+		surface:     panelNoSurface{},
+		budget:      10 * time.Second,
 	}
 	handleErr := clicks.handle(ctx, notificationClickArgs(id, action, token, false))
 	operator, err := n.operator(ctx)

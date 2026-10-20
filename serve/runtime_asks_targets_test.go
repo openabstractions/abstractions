@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	asks "github.com/openabstractions/abstraction-asks/go"
 	"github.com/openabstractions/abstraction-facade/go/grants"
@@ -23,7 +24,7 @@ func TestFirstUseAdmitsRightsValidLongTargetAndRejectsForeignAccount(t *testing.
 	resource := strings.Repeat("r", 1024)
 	a.admitFirstUse(target, nil, host.ModelLookupAction, resource)
 	records, _, err := book.ApplicationHistory()
-	if err != nil || len(records) != 1 || records[0].Permission == nil || records[0].Permission.Targets[0].Program != target.Program || records[0].Permission.Targets[0].Resource != resource {
+	if err != nil || len(records) != 1 || records[0].Permission == nil || records[0].Permission.Targets[0].Program != expectedSubjectProgram(target.Program) || records[0].Permission.Targets[0].Resource != resource {
 		t.Fatalf("long target missing: %+v %v", records, err)
 	}
 	// Account rejection is observable and cannot admit authority to this book.
@@ -48,9 +49,11 @@ func TestCanonicalDelegationGrantRevokeRestartForBothRepresentations(t *testing.
 			}
 			a.rights.policy = policy
 			responder := rwire.Subject{Account: a.rights.owner, Program: filepath.Join(t.TempDir(), "responder.exe")}
-			target := filepath.Join(t.TempDir(), "target.exe")
+			target := absoluteFixtureProgram()
 			if long {
 				target = filepath.Join(t.TempDir(), strings.Repeat("p", 240), "target.exe")
+			} else {
+				assertLegacyDelegationFixture(t, target)
 			}
 			name, err := asks.FirstUseAnswerResource(target, host.ModelLookupAction, "hf", "allow")
 			if err != nil {
@@ -108,7 +111,8 @@ func TestShortTupleDigestIsAnUnusedOpaqueRule(t *testing.T) {
 	}
 	a.rights.policy = policy
 	responder := rwire.Subject{Account: a.rights.owner, Program: filepath.Join(t.TempDir(), "responder.exe")}
-	target := filepath.Join(t.TempDir(), "target.exe")
+	target := absoluteFixtureProgram()
+	assertLegacyDelegationFixture(t, target)
 	encoded, _ := json.Marshal([4]string{target, host.ModelLookupAction, "hf", "allow"})
 	digest := sha256.Sum256(encoded)
 	opaque := "first-use@2:" + hex.EncodeToString(digest[:])
@@ -131,22 +135,36 @@ func TestShortTupleDigestIsAnUnusedOpaqueRule(t *testing.T) {
 	}
 }
 
+func assertLegacyDelegationFixture(t *testing.T, program string) {
+	t.Helper()
+	encoded, err := json.Marshal([4]string{program, host.ModelLookupAction, "hf", "allow"})
+	if err != nil || len(program) > 800 || utf8.RuneCountInString(program) > 200 || len("first-use@1:")+len(encoded) > 1024 {
+		t.Fatalf("symbolic short tuple exceeds legacy boundary: %q %v", program, err)
+	}
+	name, err := asks.FirstUseAnswerResource(program, host.ModelLookupAction, "hf", "allow")
+	if err != nil || name != "first-use@1:"+string(encoded) {
+		t.Fatalf("legacy fixture representation: %q %v", name, err)
+	}
+}
+
 func TestResponderAuthorityComesFromPinnedPermissionRatherThanWording(t *testing.T) {
-	a, _ := firstUseBook(t)
-	a.rights.operators = []string{filepath.Join(t.TempDir(), "runtime.exe")}
+	f := newAnswererFixture(t)
+	a := f.a
 	policy, err := rights.LoadDecisionPolicy(filepath.Join(t.TempDir(), "rights.json"), []string{asks.AnswerAction, host.ModelLookupAction})
 	if err != nil {
 		t.Fatal(err)
 	}
 	a.rights.policy = policy
+	policy.RefreshMetaHolder = a.rights.refreshApplicationRoles
+	policy.MetaHolder = a.rights.refuseAnswerer
 	a.tierFacts = grants.TierFacts{ListedRegistry: func(name string) bool { return name == "hf" }}
-	responder := rwire.Subject{Account: a.rights.owner, Program: filepath.Join(t.TempDir(), "responder.exe")}
-	target := filepath.Join(t.TempDir(), "target.exe")
+	responder := f.answerer
+	target := f.comfy.Program
 	permission, err := asks.NewPermissionRequest(asks.PermissionTarget{Account: a.rights.owner, Program: target, Action: host.ModelLookupAction, Resource: "hf"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	name, err := asks.FirstUseAnswerResource(target, host.ModelLookupAction, "hf", "allow")
+	name, err := asks.FirstUseAnswerResource(permission.Targets[0].Program, host.ModelLookupAction, "hf", "allow")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +173,7 @@ func TestResponderAuthorityComesFromPinnedPermissionRatherThanWording(t *testing
 		t.Fatal(err)
 	}
 	permit := true
-	edit, err := policy.ChangeRule(snapshot.Revision, responder, asks.AnswerAction, name, rights.RuleEdit{Permit: &permit, By: rwire.Subject{Account: a.rights.owner, Program: filepath.Join(t.TempDir(), "panel.exe")}, TTL: 5 * time.Minute, Exact: true}, func() error { return nil })
+	edit, err := policy.ChangeRule(snapshot.Revision, responder, asks.AnswerAction, name, rights.RuleEdit{Permit: &permit, By: f.panel, TTL: 5 * time.Minute, Exact: true}, func() error { return nil })
 	if err != nil || edit.Outcome != rwire.PolicyEditOutcomeApplied {
 		t.Fatal(edit, err)
 	}

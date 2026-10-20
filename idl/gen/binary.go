@@ -25,7 +25,7 @@ func hasBinary(s *Definition) bool {
 	return false
 }
 func validateBinaryBackend(s *Definition, lang string) error {
-	if hasBinary(s) && lang != "go" && lang != "cpp" && lang != "python" && lang != "rust" && lang != "javascript" && lang != "docs" {
+	if hasBinary(s) && lang != "go" && lang != "cpp" && lang != "python" && lang != "rust" && lang != "javascript" && lang != "docs" && lang != "jsonschema" {
 		return fmt.Errorf("%s binary generation is not implemented", lang)
 	}
 	return nil

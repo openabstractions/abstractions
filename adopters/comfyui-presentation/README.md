@@ -57,7 +57,7 @@ go test ./...
 py -3 -m unittest bridge_test.py
 ```
 
-OA mode currently builds in this source workspace because Applications is an
+OA mode currently builds in this source workspace because [Applications](https://openabstractions.github.io/reference.html#concept-facade.applications-rpc) is an
 unreleased facade source contract. Release packaging remains deferred.
 
 For the isolated live fixture, pass `--bridge` to the runner. It generates an
@@ -168,7 +168,7 @@ returns `stale`, including when the new graph reuses the same numeric node ID.
 ## OA integration adapter mode
 
 `--mode oa` is the designated integration adapter. It resolves the generated
-local Applications, Rights and Logging clients through the installed OA runtime.
+local [Applications](https://openabstractions.github.io/reference.html#concept-facade.applications-client), Rights and Logging clients through the installed OA runtime.
 The adapter runs under an operator-approved integration principal. It does not
 announce ComfyUI. The ComfyUI Python process announces application `comfyui`,
 interface `presentation` / `oa-local` / `comfy.presentation@1` after its server

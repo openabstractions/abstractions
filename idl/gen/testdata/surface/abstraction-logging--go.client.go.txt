@@ -1,0 +1,47 @@
+type ApplicationLogPage wire.ApplicationLogPage
+type ApplicationLogSelection wire.ApplicationLogSelection
+const ApplicationLogSelectionOneApp
+const ApplicationLogSelectionAllApps
+func ApplicationLogSelectionValues() []ApplicationLogSelection
+func ParseApplicationLogSelection(word string) (ApplicationLogSelection, bool)
+type ApplicationLogTarget wire.ApplicationLogTarget
+type Attestation wire.Attestation
+type HistoryPageOutcome wire.HistoryPageOutcome
+const HistoryPageOutcomePage
+const HistoryPageOutcomeGap
+const HistoryPageOutcomeUnavailable
+const HistoryPageOutcomeInvalid
+const HistoryPageOutcomeRecordTooLarge
+const HistoryPageOutcomeCorrupt
+const HistoryPageOutcomeUnsupported
+const HistoryPageOutcomeForbidden
+const HistoryPageOutcomeNotPermitted
+const HistoryPageOutcomeOSAuthorizationRequired
+const HistoryPageOutcomeOSAuthorizationPending
+func HistoryPageOutcomeValues() []HistoryPageOutcome
+func ParseHistoryPageOutcome(word string) (HistoryPageOutcome, bool)
+type Page wire.Page
+type PageOutcome wire.PageOutcome
+const PageOutcomePage
+const PageOutcomeGap
+const PageOutcomeUnavailable
+const PageOutcomeInvalidRequest
+const PageOutcomeRecordTooLarge
+const PageOutcomeCorrupt
+const PageOutcomeUnsupported
+func PageOutcomeValues() []PageOutcome
+func ParsePageOutcome(word string) (PageOutcome, bool)
+type ServiceError wire.ServiceError
+type ServiceErrorCode wire.ServiceErrorCode
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+const ServiceErrorCodeCallerUnavailable
+const ServiceErrorCodeIdentityRequired
+const ServiceErrorCodeWrongUser
+const ServiceErrorCodePolicyUnavailable
+const ServiceErrorCodeForbidden
+func ServiceErrorCodeValues() []ServiceErrorCode

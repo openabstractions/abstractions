@@ -15,10 +15,11 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+
+	"github.com/openabstractions/abstraction-facade/go-core/childproc"
 	"path/filepath"
 	"runtime"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -26,10 +27,100 @@ import (
 	"github.com/openabstractions/abstraction-facade/go/client"
 	identity "github.com/openabstractions/abstraction-identity"
 	content "github.com/openabstractions/abstraction-storage/go/abstraction/storage/content"
+	contentdigest "github.com/openabstractions/abstraction-storage/go/digest"
+	"github.com/openabstractions/abstraction-storage/go/layout"
 	"github.com/openabstractions/abstractions/monitor/internal/setup"
 )
 
 const modelHostInventoryContract = "abstraction.storage/inventory-source@1"
+
+// codingModelController reuses the public download journal. Its result folder
+// is also the model folder: publishing a local job result adds a hard link.
+func (p *servicePanel) codingModelController() (setup.ModelController, error) {
+	if p.codingController != nil {
+		return *p.codingController, nil
+	}
+	home, err := setup.CurrentHome()
+	if err != nil {
+		return setup.ModelController{}, err
+	}
+	if home.Isolated {
+		return setup.ModelController{}, errors.New("coding-model Setup requires the installed runtime's user state")
+	}
+	plan := setup.CodingModelPlan()
+	root := filepath.Join(home.Data, "models", "coding")
+	return setup.ModelController{Plan: &plan, JournalPath: filepath.Join(home.Config, "coding-model.json"),
+		StageDir: root, ProviderRoot: root, LocalResults: true, Transfer: setup.PublicTransfer{LocalOnly: true}}, nil
+}
+
+func (p *servicePanel) setupCodingModel(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		http.Error(w, "GET or POST required", http.StatusMethodNotAllowed)
+		return
+	}
+	if r.Method == http.MethodPost {
+		if !p.setupTryStart(w) {
+			return
+		}
+		defer p.setupActionMu.Unlock()
+	}
+	c, err := p.codingModelController()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancel()
+	status := setup.ModelStatus{}
+	accepted := false
+	if r.Method == http.MethodPost {
+		var request struct {
+			Action      string              `json:"action"`
+			SetupPlanID string              `json:"setup_plan_id,omitempty"`
+			Confirm     bool                `json:"confirm"`
+			Approval    setup.ModelApproval `json:"approval"`
+		}
+		if !decodeModelHostJSON(w, r, &request, 4096) {
+			return
+		}
+		// Every mutation binds the displayed source, bytes and license identity.
+		plan := setup.CodingModelPlan()
+		if !request.Confirm || request.Approval.PlanID != plan.ID || request.Approval.DownloadBytes != plan.DownloadBytes || request.Approval.PeakBytes != plan.PeakBytes || !slices.Equal(request.Approval.Licenses, plan.Licenses) {
+			http.Error(w, "approve the exact coding-model download first", http.StatusBadRequest)
+			return
+		}
+		if request.SetupPlanID != "" {
+			_, record, admissionErr := p.approvedInstall(ctx, request.SetupPlanID)
+			if admissionErr != nil || record.CodingModelPlanID != plan.ID {
+				http.Error(w, "the installation has no matching coding-model approval", http.StatusConflict)
+				return
+			}
+		}
+		switch request.Action {
+		case "start":
+			status, err = c.StartAccepted(ctx, request.Approval)
+			accepted = err == nil
+		case "check":
+			status, err = c.Advance(ctx, "coding")
+		case "retry":
+			status, err = c.Retry(ctx, "coding")
+		default:
+			http.Error(w, "unknown coding-model action", http.StatusBadRequest)
+			return
+		}
+	} else {
+		status, err = c.Status(ctx)
+	}
+	if err != nil {
+		http.Error(w, "Download not confirmed: "+err.Error()+". Reopen or check again to reconcile the same saved work.", http.StatusConflict)
+		return
+	}
+	panelJSON(w, struct {
+		Status   setup.ModelStatus `json:"status"`
+		Accepted bool              `json:"accepted"`
+		Folder   string            `json:"folder"`
+	}{status, accepted, c.StageDir})
+}
 
 type modelHostPrograms struct {
 	ModelHost string
@@ -41,14 +132,19 @@ type modelHostInventoryReader interface {
 }
 
 type modelHostPin struct {
-	Release   string             `json:"release"`
-	Archive   string             `json:"archive"`
-	Size      int64              `json:"size"`
-	SHA256    string             `json:"sha256"`
-	URL       string             `json:"url"`
-	EngineDir string             `json:"engine_dir"`
-	Bundle    modelHostBundlePin `json:"-"`
-	Program   string             `json:"-"`
+	Release   string `json:"release"`
+	Archive   string `json:"archive"`
+	Size      int64  `json:"size"`
+	SHA256    string `json:"sha256"`
+	URL       string `json:"url"`
+	EngineDir string `json:"engine_dir"`
+	// ArchiveRefused is a pin whose engine folder holds app-local Visual
+	// C++ runtime files: only the reduced bundle carries them, so the
+	// publisher archive cannot stage this engine (MODELHOST-L3) and the
+	// Panel offers the included engine or a Repair instead.
+	ArchiveRefused bool               `json:"archive_refused"`
+	Bundle         modelHostBundlePin `json:"-"`
+	Program        string             `json:"-"`
 }
 
 type modelHostBundlePin struct {
@@ -78,6 +174,14 @@ type modelHostEnginePinDocument struct {
 		SizeBytes int64  `json:"size_bytes"`
 		SHA256    string `json:"sha256"`
 	} `json:"files"`
+	// Runtime names the app-local Visual C++ runtime files among Files that
+	// the reduced bundle adds; the engine folder holds them like the rest.
+	Runtime struct {
+		Name    string   `json:"name"`
+		Version string   `json:"version"`
+		Folder  string   `json:"folder"`
+		Files   []string `json:"files"`
+	} `json:"runtime"`
 }
 
 type modelHostEngineState struct {
@@ -100,15 +204,15 @@ type modelHostBundledArchive struct {
 }
 
 type modelHostChatModel struct {
-	ID             string `json:"id"`
-	Store          string `json:"store"`
-	Name           string `json:"name"`
-	Family         string `json:"family,omitempty"`
-	Quant          string `json:"quant,omitempty"`
-	Size           int64  `json:"size"`
-	Hosted         bool   `json:"hosted"`
-	Approval       string `json:"approval"`
-	ApprovalDigest string `json:"approval_digest"`
+	ID     string `json:"id"`
+	Store  string `json:"store"`
+	Name   string `json:"name"`
+	Family string `json:"family,omitempty"`
+	Quant  string `json:"quant,omitempty"`
+	Size   int64  `json:"size"`
+	// Digest is the weights entry digest when the inventory names one.
+	Digest string `json:"digest,omitempty"`
+	Hosted bool   `json:"hosted"`
 }
 
 type modelHostRootState struct {
@@ -121,13 +225,17 @@ type modelHostRootState struct {
 }
 
 type modelHostChatView struct {
-	Available bool                 `json:"available"`
-	Reason    string               `json:"reason,omitempty"`
-	PlanID    string               `json:"plan_id,omitempty"`
-	Feature   setup.FeatureStatus  `json:"feature"`
-	Pin       *modelHostPin        `json:"pin,omitempty"`
-	Engine    modelHostEngineState `json:"engine"`
-	Root      *modelHostRootState  `json:"root,omitempty"`
+	Available bool   `json:"available"`
+	Reason    string `json:"reason,omitempty"`
+	// Unavailable names why local models are off: "platform" for a computer
+	// that has no local model host, "isolated" for an isolated home. Empty
+	// with Available false is a read failure.
+	Unavailable string               `json:"unavailable,omitempty"`
+	PlanID      string               `json:"plan_id,omitempty"`
+	Feature     setup.FeatureStatus  `json:"feature"`
+	Pin         *modelHostPin        `json:"pin,omitempty"`
+	Engine      modelHostEngineState `json:"engine"`
+	Root        *modelHostRootState  `json:"root,omitempty"`
 }
 
 type modelHostPlanRequest struct {
@@ -144,14 +252,6 @@ type modelHostBundledEngineRequest struct {
 type modelHostRootRequest struct {
 	PlanID         string `json:"plan_id"`
 	Path           string `json:"path"`
-	ApprovalDigest string `json:"approval_digest"`
-	Confirm        bool   `json:"confirm"`
-}
-
-type modelHostHostRequest struct {
-	PlanID         string `json:"plan_id"`
-	Store          string `json:"store"`
-	ID             string `json:"id"`
 	ApprovalDigest string `json:"approval_digest"`
 	Confirm        bool   `json:"confirm"`
 }
@@ -200,7 +300,7 @@ func (p *servicePanel) modelHostPrograms() (modelHostPrograms, error) {
 	}
 	tools := filepath.Dir(executable)
 	if !identity.SamePathName(filepath.Base(tools), "tools") || !identity.SamePathName(filepath.Base(executable), "Abstraction Panel.exe") {
-		return modelHostPrograms{}, errors.New("open the installed Abstraction Panel to use ModelHost Setup")
+		return modelHostPrograms{}, errors.New("open the installed OpenAbstractions Panel to use ModelHost Setup")
 	}
 	programs := modelHostPrograms{ModelHost: filepath.Join(tools, "modelhostd.exe"), Inventory: filepath.Join(tools, "inventoryd.exe")}
 	for _, path := range []string{programs.ModelHost, programs.Inventory} {
@@ -219,7 +319,7 @@ func (p *servicePanel) modelHostCommand(ctx context.Context, program string, arg
 	if p.modelHostCLI != nil {
 		return p.modelHostCLI(ctx, program, args...)
 	}
-	command := exec.CommandContext(ctx, program, args...)
+	command := childproc.Hidden(exec.CommandContext(ctx, program, args...))
 	var output, failure bytes.Buffer
 	command.Stdout, command.Stderr = &output, &failure
 	if err := command.Run(); err != nil {
@@ -235,11 +335,26 @@ func (p *servicePanel) modelHostCommand(ctx context.Context, program string, arg
 	return output.Bytes(), nil
 }
 
+// modelHostOpenAbstractions runs one openabstractions command against the
+// runtime this Panel serves. Every ModelHost and provider command the Panel
+// runs goes through here.
 func (p *servicePanel) modelHostOpenAbstractions(ctx context.Context, args ...string) ([]byte, error) {
+	args = servedRuntimeArgs(args)
 	if p.modelHostOA != nil {
 		return p.modelHostOA(ctx, args...)
 	}
 	return openAbstractionsCommand(ctx, args...)
+}
+
+// servedRuntimeArgs names the Panel's explicit runtime on a command line:
+// the command otherwise dials ABSTRACTION_RUNTIME_ENDPOINT or the installed
+// runtime. --runtime-program verifies that runtime's program and account as
+// the Panel's own binding does. The installed runtime needs nothing added.
+func servedRuntimeArgs(args []string) []string {
+	if panelExplicit == nil {
+		return args
+	}
+	return append(slices.Clone(args), "--endpoint", panelExplicit.Endpoint, "--runtime-program", panelExplicit.Program)
 }
 
 // openAbstractionsCommand runs the openabstractions command installed beside
@@ -253,7 +368,7 @@ func openAbstractionsCommand(ctx context.Context, args ...string) ([]byte, error
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
-	command := exec.CommandContext(ctx, filepath.Join(filepath.Dir(panel), name), args...)
+	command := childproc.Hidden(exec.CommandContext(ctx, filepath.Join(filepath.Dir(panel), name), args...))
 	var output, failure bytes.Buffer
 	command.Stdout, command.Stderr = &output, &failure
 	if err := command.Run(); err != nil {
@@ -267,49 +382,6 @@ func openAbstractionsCommand(ctx context.Context, args ...string) ([]byte, error
 		return nil, errors.New(reason)
 	}
 	return output.Bytes(), nil
-}
-
-func parseModelHostPinHelp(help []byte, cache string) (modelHostPin, error) {
-	if !filepath.IsAbs(cache) {
-		return modelHostPin{}, errors.New("Setup has no absolute engine cache folder")
-	}
-	lines := strings.Split(string(help), "\n")
-	var pin modelHostPin
-	found := false
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if rest, ok := strings.CutPrefix(line, "The pinned release on Windows x64 is llama.cpp "); ok {
-			pin.Release = strings.TrimSpace(strings.SplitN(rest, ",", 2)[0])
-			found = pin.Release != ""
-			continue
-		}
-		if !found {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) >= 3 && fields[0] == "archive" {
-			pin.Archive = strings.TrimSuffix(fields[1], ",")
-			pin.Size, _ = strconv.ParseInt(strings.TrimSuffix(fields[2], ","), 10, 64)
-		}
-		if len(fields) == 2 && fields[0] == "SHA-256" {
-			if digest, err := hex.DecodeString(fields[1]); err == nil {
-				pin.SHA256 = hex.EncodeToString(digest)
-			}
-		}
-		if len(fields) >= 2 && fields[0] == "from" {
-			pin.URL = strings.TrimSuffix(fields[1], "/")
-			break
-		}
-	}
-	if !found || pin.Size <= 0 || strings.ContainsAny(pin.Archive, `/\:`) || !strings.HasSuffix(pin.Archive, ".zip") ||
-		len(pin.SHA256) != 64 || pin.URL == "" || !strings.HasPrefix(pin.URL, "https://github.com/ggml-org/llama.cpp/releases/download/") {
-		return modelHostPin{}, errors.New("the installed ModelHost does not publish a usable Windows x64 engine pin")
-	}
-	if _, err := hex.DecodeString(pin.SHA256); err != nil {
-		return modelHostPin{}, errors.New("the installed ModelHost engine pin has an invalid SHA-256")
-	}
-	pin.EngineDir = filepath.Join(cache, "OpenAbstractions", "engines", "llama.cpp-"+pin.Release)
-	return pin, nil
 }
 
 func parseModelHostPin(raw []byte, cache string) (modelHostPin, error) {
@@ -352,9 +424,23 @@ func parseModelHostPin(raw []byte, cache string) (modelHostPin, error) {
 	return modelHostPin{
 		Release: document.Release, Program: document.Program, Archive: document.Archive.Name,
 		Size: document.Archive.SizeBytes, SHA256: document.Archive.SHA256, URL: document.Archive.URL,
-		Bundle:    modelHostBundlePin{Name: document.Bundle.Name, Size: document.Bundle.SizeBytes, SHA256: document.Bundle.SHA256},
-		EngineDir: filepath.Join(cache, "OpenAbstractions", "engines", "llama.cpp-"+document.Release),
+		Bundle:         modelHostBundlePin{Name: document.Bundle.Name, Size: document.Bundle.SizeBytes, SHA256: document.Bundle.SHA256},
+		EngineDir:      layout.EngineCacheDir(cache, "llama.cpp", document.Release),
+		ArchiveRefused: len(document.Runtime.Files) > 0,
 	}, nil
+}
+
+// modelHostArchiveRefused is the refusal of the publisher-archive upload for a pin
+// that carries the app-local runtime, in one sentence that names the route
+// that works.
+const modelHostArchiveRefused = "The publisher's engine ZIP lacks the Visual C++ runtime this engine needs; stage the engine included with OpenAbstractions, or repair OpenAbstractions in Windows Settings if it is missing."
+
+// modelHostRestage names how to stage the engine again under this pin.
+func modelHostRestage(pin modelHostPin) string {
+	if pin.ArchiveRefused {
+		return "stage the included engine again"
+	}
+	return "choose the pinned archive again"
 }
 
 func modelHostArchiveBasename(name string) bool {
@@ -464,9 +550,8 @@ func (p *servicePanel) modelHostBundledArchive(ctx context.Context, programs mod
 }
 
 func modelHostSameDigest(a, b string) bool {
-	left, leftErr := hex.DecodeString(a)
-	right, rightErr := hex.DecodeString(b)
-	return leftErr == nil && rightErr == nil && subtle.ConstantTimeCompare(left, right) == 1
+	left := contentdigest.Normalize(a)
+	return left != "" && subtle.ConstantTimeCompare([]byte(left), []byte(contentdigest.Normalize(b))) == 1
 }
 
 func readModelHostRecord(path string, target any) error {
@@ -562,7 +647,7 @@ func (p *servicePanel) modelHostEngineState(ctx context.Context, home setup.Home
 	var receipt modelHostEngineReceipt
 	if err := readModelHostRecord(modelHostEngineReceiptPath(home), &receipt); err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
-			state.Reason = "The saved engine receipt cannot be read; choose the pinned archive again to reconcile it."
+			state.Reason = "The saved engine receipt cannot be read; " + modelHostRestage(pin) + " to reconcile it."
 		}
 		return state
 	}
@@ -610,13 +695,13 @@ func (p *servicePanel) setupModelHostChat(w http.ResponseWriter, r *http.Request
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
 	defer cancel()
 	reply := modelHostChatView{}
-	journal, state, err := p.modelHostPlan(ctx, "")
-	if err != nil {
-		reply.Reason = err.Error()
-		panelJSON(w, reply)
-		return
+	// The facts are read without a plan: an earlier release's plan or none
+	// still shows what is installed. Changes need the approved current plan
+	// (modelHostMutationPlan), and the reply names it only when there is one.
+	if _, state, planErr := p.modelHostPlan(ctx, ""); planErr == nil {
+		reply.PlanID = state.Plan.ID
 	}
-	reply.PlanID = state.Plan.ID
+	var err error
 	reply.Feature, err = p.modelHostFeatureStatus()
 	if err != nil {
 		reply.Reason = err.Error()
@@ -624,6 +709,7 @@ func (p *servicePanel) setupModelHostChat(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if !reply.Feature.Available {
+		reply.Unavailable = "platform"
 		reply.Reason = reply.Feature.Reason
 		panelJSON(w, reply)
 		return
@@ -643,6 +729,7 @@ func (p *servicePanel) setupModelHostChat(w http.ResponseWriter, r *http.Request
 	home, err := setup.CurrentHome()
 	if err != nil || home.Isolated {
 		if err == nil {
+			reply.Unavailable = "isolated"
 			err = errors.New("ModelHost Setup requires the installed runtime's user state")
 		}
 		reply.Reason = err.Error()
@@ -677,7 +764,6 @@ func (p *servicePanel) setupModelHostChat(w http.ResponseWriter, r *http.Request
 			reply.Root = root
 		}
 	}
-	_ = journal
 	panelJSON(w, reply)
 }
 
@@ -709,7 +795,9 @@ func (p *servicePanel) setupModelHostFeatureAdd(w http.ResponseWriter, r *http.R
 		http.Error(w, "explicit permission to add ModelHost is required", http.StatusBadRequest)
 		return
 	}
-	p.setupActionMu.Lock()
+	if !p.setupTryStart(w) {
+		return
+	}
 	defer p.setupActionMu.Unlock()
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()
@@ -854,7 +942,7 @@ func (p *servicePanel) stageModelHostEngineSource(ctx context.Context, home setu
 	text := string(output)
 	start := strings.LastIndex(text, marker)
 	if start < 0 {
-		return modelHostEngineReceipt{}, errors.New("ModelHost staged the engine but did not return its program path; choose the pinned archive again to reconcile")
+		return modelHostEngineReceipt{}, errors.New("ModelHost staged the engine but did not return its program path; " + modelHostRestage(pin) + " to reconcile")
 	}
 	enginePath := strings.TrimSpace(strings.SplitN(text[start+len(marker):], "\n", 2)[0])
 	if !filepath.IsAbs(enginePath) {
@@ -885,7 +973,9 @@ func (p *servicePanel) setupModelHostEngine(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "POST required", http.StatusMethodNotAllowed)
 		return
 	}
-	p.setupActionMu.Lock()
+	if !p.setupTryStart(w) {
+		return
+	}
 	defer p.setupActionMu.Unlock()
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Minute)
 	defer cancel()
@@ -931,6 +1021,10 @@ func (p *servicePanel) setupModelHostEngine(w http.ResponseWriter, r *http.Reque
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
+	if pin.ArchiveRefused {
+		http.Error(w, modelHostArchiveRefused, http.StatusConflict)
+		return
+	}
 	if filename != pin.Archive || !modelHostSameDigest(values["pin_digest"], pin.SHA256) ||
 		subtle.ConstantTimeCompare([]byte(values["approval_digest"]), []byte(modelHostEngineApprovalDigest(pin))) != 1 {
 		http.Error(w, "the selected archive or pin changed; review the installed pin again", http.StatusConflict)
@@ -966,7 +1060,9 @@ func (p *servicePanel) setupModelHostBundledEngine(w http.ResponseWriter, r *htt
 		http.Error(w, "explicit approval of the exact bundled engine operation is required", http.StatusBadRequest)
 		return
 	}
-	p.setupActionMu.Lock()
+	if !p.setupTryStart(w) {
+		return
+	}
 	defer p.setupActionMu.Unlock()
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Minute)
 	defer cancel()
@@ -974,45 +1070,9 @@ func (p *servicePanel) setupModelHostBundledEngine(w http.ResponseWriter, r *htt
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
-	feature, err := p.modelHostFeatureStatus()
-	if err != nil || !feature.Installed {
-		if err == nil {
-			err = errors.New("add the OpenAbstractions ModelHost feature first")
-		}
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
-	}
-	programs, err := p.modelHostPrograms()
+	receipt, pin, err := p.modelHostStageBundled(ctx, modelHostApprovedBy(request.ApprovalDigest))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
-	}
-	home, err := setup.CurrentHome()
-	if err != nil || home.Isolated {
-		if err == nil {
-			err = errors.New("ModelHost Setup requires the installed runtime's user state")
-		}
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
-	}
-	pin, err := p.modelHostPin(ctx, programs, home)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
-	}
-	bundled := p.modelHostBundledArchive(ctx, programs, pin)
-	if !bundled.Available {
-		http.Error(w, bundled.Reason, http.StatusConflict)
-		return
-	}
-	if subtle.ConstantTimeCompare([]byte(request.ApprovalDigest), []byte(bundled.ApprovalDigest)) != 1 {
-		http.Error(w, "the bundled archive, destination or installed pin changed; review the operation again", http.StatusConflict)
-		return
-	}
-	archivePath := modelHostBundledArchivePath(programs, pin)
-	receipt, err := p.stageModelHostBundledEngine(ctx, home, programs, pin, archivePath)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
+		writeModelHostError(w, err)
 		return
 	}
 	panelJSON(w, struct {
@@ -1020,6 +1080,88 @@ func (p *servicePanel) setupModelHostBundledEngine(w http.ResponseWriter, r *htt
 		Path    string `json:"path"`
 		Release string `json:"release"`
 	}{Staged: true, Path: receipt.Engine, Release: pin.Release})
+}
+
+// modelHostStatusError carries the HTTP status a ModelHost Setup operation's
+// refusal has on the Panel's routes.
+type modelHostStatusError struct {
+	status int
+	err    error
+}
+
+func (e *modelHostStatusError) Error() string { return e.err.Error() }
+func (e *modelHostStatusError) Unwrap() error { return e.err }
+
+func modelHostFail(status int, err error) error {
+	return &modelHostStatusError{status: status, err: err}
+}
+
+func writeModelHostError(w http.ResponseWriter, err error) {
+	var status *modelHostStatusError
+	if errors.As(err, &status) {
+		http.Error(w, status.err.Error(), status.status)
+		return
+	}
+	http.Error(w, err.Error(), http.StatusConflict)
+}
+
+// modelHostApprovedBy admits the operation whose approval digest the person
+// reviewed on the Setup page.
+func modelHostApprovedBy(reviewed string) func(string) bool {
+	return func(digest string) bool { return subtle.ConstantTimeCompare([]byte(reviewed), []byte(digest)) == 1 }
+}
+
+// modelHostInstalled is the installed runtime's user state, the ModelHost
+// feature and its programs, which every ModelHost Setup operation needs.
+func (p *servicePanel) modelHostInstalled(ctx context.Context, needFeature bool) (setup.Home, modelHostPrograms, modelHostPin, error) {
+	home, err := setup.CurrentHome()
+	if err != nil || home.Isolated {
+		if err == nil {
+			err = errors.New("ModelHost Setup requires the installed runtime's user state")
+		}
+		return setup.Home{}, modelHostPrograms{}, modelHostPin{}, modelHostFail(http.StatusConflict, err)
+	}
+	if needFeature {
+		feature, err := p.modelHostFeatureStatus()
+		if err != nil || !feature.Installed {
+			if err == nil {
+				err = errors.New("add the OpenAbstractions ModelHost feature first")
+			}
+			return setup.Home{}, modelHostPrograms{}, modelHostPin{}, modelHostFail(http.StatusConflict, err)
+		}
+	}
+	programs, err := p.modelHostPrograms()
+	if err != nil {
+		return setup.Home{}, modelHostPrograms{}, modelHostPin{}, modelHostFail(http.StatusConflict, err)
+	}
+	pin, err := p.modelHostPin(ctx, programs, home)
+	if err != nil {
+		return setup.Home{}, modelHostPrograms{}, modelHostPin{}, modelHostFail(http.StatusConflict, err)
+	}
+	return home, programs, pin, nil
+}
+
+// modelHostStageBundled stages the engine archive the installation bundles.
+// approve admits the operation's approval digest: the Setup page's reviewed
+// one, or the setup step's one answer.
+func (p *servicePanel) modelHostStageBundled(ctx context.Context, approve func(string) bool) (modelHostEngineReceipt, modelHostPin, error) {
+	home, programs, pin, err := p.modelHostInstalled(ctx, true)
+	if err != nil {
+		return modelHostEngineReceipt{}, modelHostPin{}, err
+	}
+	bundled := p.modelHostBundledArchive(ctx, programs, pin)
+	if !bundled.Available {
+		return modelHostEngineReceipt{}, modelHostPin{}, modelHostFail(http.StatusConflict, errors.New(bundled.Reason))
+	}
+	if !approve(bundled.ApprovalDigest) {
+		return modelHostEngineReceipt{}, modelHostPin{}, modelHostFail(http.StatusConflict, errors.New("the bundled archive, destination or installed pin changed; review the operation again"))
+	}
+	archivePath := modelHostBundledArchivePath(programs, pin)
+	receipt, err := p.stageModelHostBundledEngine(ctx, home, programs, pin, archivePath)
+	if err != nil {
+		return modelHostEngineReceipt{}, modelHostPin{}, modelHostFail(http.StatusConflict, err)
+	}
+	return receipt, pin, nil
 }
 
 func (p *servicePanel) modelHostRoot(path string, home setup.Home) (setup.ModelHostChatRoot, string, string, error) {
@@ -1173,9 +1315,11 @@ func (p *servicePanel) modelHostModels(ctx context.Context, root setup.ModelHost
 	for _, item := range manifests {
 		m := item.Manifest
 		var size int64
+		var digests []string
 		for _, entry := range m.Entries {
 			if entry.Role == "weights" && entry.Size > 0 && entry.Locator != "" {
 				size += entry.Size
+				digests = append(digests, entry.Digest)
 			}
 		}
 		if size == 0 {
@@ -1189,13 +1333,14 @@ func (p *servicePanel) modelHostModels(ctx context.Context, root setup.ModelHost
 			}
 		}
 		model := modelHostChatModel{ID: m.ID, Store: m.Store, Name: name, Family: m.Descriptor["family"], Quant: m.Descriptor["quant"], Size: size}
+		if len(digests) == 1 {
+			model.Digest = digests[0]
+		}
 		for _, saved := range hosted {
 			if saved.Store == model.Store && saved.Object == model.ID {
 				model.Hosted = true
 			}
 		}
-		model.Approval = modelHostModelApproval(root, model)
-		model.ApprovalDigest = setup.ModelHostChatApprovalDigest(model.Approval)
 		models = append(models, model)
 	}
 	slices.SortFunc(models, func(a, b modelHostChatModel) int { return strings.Compare(a.Name, b.Name) })
@@ -1374,124 +1519,96 @@ func (p *servicePanel) setupModelHostRootRegister(w http.ResponseWriter, r *http
 		http.Error(w, "explicit permission to register this model folder is required", http.StatusBadRequest)
 		return
 	}
-	p.setupActionMu.Lock()
+	if !p.setupTryStart(w) {
+		return
+	}
 	defer p.setupActionMu.Unlock()
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()
-	journal, _, err := p.modelHostMutationPlan(ctx, request.PlanID)
+	if _, _, err := p.modelHostMutationPlan(ctx, request.PlanID); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	rootState, err := p.modelHostRegisterRoot(ctx, request.Path, modelHostApprovedBy(request.ApprovalDigest))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
+		writeModelHostError(w, err)
 		return
 	}
-	_ = journal
-	home, err := setup.CurrentHome()
-	if err != nil || home.Isolated {
-		if err == nil {
-			err = errors.New("ModelHost Setup requires the installed runtime's user state")
-		}
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
-	}
-	feature, err := p.modelHostFeatureStatus()
-	if err != nil || !feature.Installed {
-		if err == nil {
-			err = errors.New("add the OpenAbstractions ModelHost feature first")
-		}
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
-	}
-	programs, err := p.modelHostPrograms()
+	panelJSON(w, rootState)
+}
+
+// modelHostRegisterRoot registers one model folder as a Setup-owned
+// inventory store. approve admits the folder approval's digest.
+func (p *servicePanel) modelHostRegisterRoot(ctx context.Context, path string, approve func(string) bool) (modelHostRootState, error) {
+	home, programs, pin, err := p.modelHostInstalled(ctx, true)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
-	}
-	pin, err := p.modelHostPin(ctx, programs, home)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
+		return modelHostRootState{}, err
 	}
 	engine := p.modelHostEngineState(ctx, home, programs.ModelHost, pin)
 	if !engine.Staged {
-		http.Error(w, "stage and verify the pinned local engine archive first", http.StatusConflict)
-		return
+		return modelHostRootState{}, modelHostFail(http.StatusConflict, errors.New("stage and verify the pinned local engine archive first"))
 	}
-	root, approval, digest, err := p.modelHostRoot(request.Path, home)
+	root, approval, digest, err := p.modelHostRoot(path, home)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return modelHostRootState{}, modelHostFail(http.StatusBadRequest, err)
 	}
-	if subtle.ConstantTimeCompare([]byte(digest), []byte(request.ApprovalDigest)) != 1 {
-		http.Error(w, "the folder or its approval text changed; review it again", http.StatusConflict)
-		return
+	if !approve(digest) {
+		return modelHostRootState{}, modelHostFail(http.StatusConflict, errors.New("the folder or its approval text changed; review it again"))
 	}
 	if err := modelHostRootRegistrationSlot(home, root); err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
+		return modelHostRootState{}, modelHostFail(http.StatusConflict, err)
 	}
 	config, err := setup.ModelHostChatInventoryConfig(root)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return modelHostRootState{}, modelHostFail(http.StatusBadRequest, err)
 	}
 	root.ConfigSHA256 = modelHostConfigDigest(config)
 	if err := os.MkdirAll(filepath.Dir(root.ConfigPath), 0o700); err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
+		return modelHostRootState{}, modelHostFail(http.StatusConflict, err)
 	}
 	if existing, err := os.ReadFile(root.ConfigPath); err == nil {
 		if !bytes.Equal(existing, config) {
-			http.Error(w, "a different config already occupies this Setup-owned path", http.StatusConflict)
-			return
+			return modelHostRootState{}, modelHostFail(http.StatusConflict, errors.New("a different config already occupies this Setup-owned path"))
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
+		return modelHostRootState{}, modelHostFail(http.StatusConflict, err)
 	}
 	if _, err := p.modelHostOpenAbstractions(ctx, "provider", "list", "--json", "--timeout", "30s"); err != nil {
-		http.Error(w, "could not check the runtime provider registry: "+err.Error(), http.StatusServiceUnavailable)
-		return
+		return modelHostRootState{}, modelHostFail(http.StatusServiceUnavailable, errors.New("could not check the runtime provider registry: "+err.Error()))
 	}
 	exact, err := p.listModelHostProvider(ctx, root, programs.Inventory)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		return
+		return modelHostRootState{}, modelHostFail(http.StatusServiceUnavailable, err)
 	}
 	if !exact {
 		// The registry may contain our name with another program or contract.
 		// provider add refuses that name instead of replacing it.
 		raw, listErr := p.modelHostOpenAbstractions(ctx, "provider", "list", "--json", "--timeout", "30s")
 		if listErr != nil {
-			http.Error(w, listErr.Error(), http.StatusServiceUnavailable)
-			return
+			return modelHostRootState{}, modelHostFail(http.StatusServiceUnavailable, listErr)
 		}
 		var declarationList fwire.DeclarationList
 		if json.Unmarshal(raw, &declarationList) != nil {
-			http.Error(w, "invalid provider registry response", http.StatusServiceUnavailable)
-			return
+			return modelHostRootState{}, modelHostFail(http.StatusServiceUnavailable, errors.New("invalid provider registry response"))
 		}
 		for _, declaration := range declarationList.Declarations {
 			if declaration.Declaration.Name == root.Provider {
-				http.Error(w, "the Setup provider name is already used by a different declaration", http.StatusConflict)
-				return
+				return modelHostRootState{}, modelHostFail(http.StatusConflict, errors.New("the Setup provider name is already used by a different declaration"))
 			}
 		}
 	}
 	if existing, err := os.ReadFile(root.ConfigPath); errors.Is(err, os.ErrNotExist) {
 		if err := writeModelHostRecord(root.ConfigPath, config); err != nil {
-			http.Error(w, "could not write the approved inventory config: "+err.Error(), http.StatusConflict)
-			return
+			return modelHostRootState{}, modelHostFail(http.StatusConflict, errors.New("could not write the approved inventory config: "+err.Error()))
 		}
 	} else if err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
+		return modelHostRootState{}, modelHostFail(http.StatusConflict, err)
 	} else if !bytes.Equal(existing, config) {
-		http.Error(w, "the approved inventory config changed before registration", http.StatusConflict)
-		return
+		return modelHostRootState{}, modelHostFail(http.StatusConflict, errors.New("the approved inventory config changed before registration"))
 	}
 	if !exact {
 		if err := p.addModelHostInventoryProvider(ctx, root, programs.Inventory); err != nil {
-			http.Error(w, "the approved config is saved; provider registration is unresolved and can be retried: "+err.Error(), http.StatusServiceUnavailable)
-			return
+			return modelHostRootState{}, modelHostFail(http.StatusServiceUnavailable, errors.New("the approved config is saved; provider registration is unresolved and can be retried: "+err.Error()))
 		}
 	}
 	receipt := modelHostInventoryReceipt{Format: 1, Root: root, ConfigSHA256: root.ConfigSHA256, Program: programs.Inventory,
@@ -1499,15 +1616,13 @@ func (p *servicePanel) setupModelHostRootRegister(w http.ResponseWriter, r *http
 		Permission: "inventory.provide store:" + root.Store}
 	receiptData, err := modelHostInventoryReceiptBytes(receipt)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return modelHostRootState{}, modelHostFail(http.StatusInternalServerError, err)
 	}
 	if err := writeModelHostRecord(root.ReceiptPath, receiptData); err != nil {
 		var existing modelHostInventoryReceipt
 		if readModelHostRecord(root.ReceiptPath, &existing) != nil || existing.Format != receipt.Format || existing.Root.ID != receipt.Root.ID || existing.Root.Path != receipt.Root.Path ||
 			existing.ConfigSHA256 != receipt.ConfigSHA256 || existing.Program != receipt.Program || !slices.Equal(existing.Arguments, receipt.Arguments) {
-			http.Error(w, "provider registration succeeded but Setup could not save its exact receipt: "+err.Error(), http.StatusConflict)
-			return
+			return modelHostRootState{}, modelHostFail(http.StatusConflict, errors.New("provider registration succeeded but Setup could not save its exact receipt: "+err.Error()))
 		}
 	}
 	registered, err := p.listModelHostProvider(ctx, root, programs.Inventory)
@@ -1515,107 +1630,144 @@ func (p *servicePanel) setupModelHostRootRegister(w http.ResponseWriter, r *http
 		if err == nil {
 			err = errors.New("runtime did not retain the exact Setup declaration")
 		}
-		http.Error(w, "provider registration needs reconciliation: "+err.Error(), http.StatusServiceUnavailable)
-		return
+		return modelHostRootState{}, modelHostFail(http.StatusServiceUnavailable, errors.New("provider registration needs reconciliation: "+err.Error()))
 	}
 	models, modelErr := p.modelHostModels(ctx, root, engine.Path)
 	rootState := modelHostRootState{ModelHostChatRoot: root, Registered: true, Models: models, Approval: approval, ApprovalDigest: digest}
 	if modelErr != nil {
 		rootState.Reason = "The inventory provider is registered; its first inventory read is still pending: " + modelErr.Error()
 	}
-	panelJSON(w, rootState)
+	return rootState, nil
 }
 
-func (p *servicePanel) setupModelHostHost(w http.ResponseWriter, r *http.Request) {
+// modelHostUnhostRequest names one hosted inventory object.
+type modelHostUnhostRequest struct {
+	Store   string `json:"store"`
+	ID      string `json:"id"`
+	Confirm bool   `json:"confirm"`
+}
+
+// setupModelHostUnhost is the Models page's Remove from OA: the model host
+// stops hosting one model (openabstractions models unhost). The file stays
+// where it is; the last model withdraws the model host and stops its
+// engine. The answer is verified against the hosted list.
+func (p *servicePanel) setupModelHostUnhost(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST required", http.StatusMethodNotAllowed)
 		return
 	}
-	var request modelHostHostRequest
+	var request modelHostUnhostRequest
 	if !decodeModelHostJSON(w, r, &request, 4096) {
 		return
 	}
 	if !request.Confirm {
-		http.Error(w, "explicit permission to host this exact model is required", http.StatusBadRequest)
+		http.Error(w, "explicit permission to stop hosting this exact model is required", http.StatusBadRequest)
 		return
 	}
-	p.setupActionMu.Lock()
+	if !modelHostInventoryName(request.Store) || !modelHostInventoryName(request.ID) {
+		http.Error(w, "invalid model", http.StatusBadRequest)
+		return
+	}
+	if !p.setupTryStart(w) {
+		return
+	}
 	defer p.setupActionMu.Unlock()
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
 	defer cancel()
-	if _, _, err := p.modelHostMutationPlan(ctx, request.PlanID); err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
+	p.logAction(ctx, "modelhost.unhost", map[string]string{"model.store": request.Store, "model.object": request.ID})
+	// Setup's step keeps the person's removal of its model before the model
+	// host forgets it (recordStepRemoval).
+	if err := p.recordStepRemoval(ctx, request.Store, request.ID); err != nil {
+		writeModelHostError(w, modelHostFail(http.StatusServiceUnavailable, errors.New("OpenAbstractions could not record the removal for Setup, so the model is still hosted: "+err.Error())))
 		return
 	}
-	home, err := setup.CurrentHome()
-	if err != nil || home.Isolated {
-		if err == nil {
-			err = errors.New("ModelHost Setup requires the installed runtime's user state")
+	if _, err := p.modelHostOpenAbstractions(ctx, "models", "unhost", request.Store+"/"+request.ID, "--json", "--timeout", "30s"); err != nil {
+		writeModelHostError(w, modelHostFail(http.StatusConflict, errors.New("the model host kept the model: "+err.Error())))
+		return
+	}
+	hosted, err := p.modelHostHosted(ctx)
+	if err != nil {
+		writeModelHostError(w, modelHostFail(http.StatusServiceUnavailable, errors.New("the unhost command returned, but the Panel could not verify it: "+err.Error())))
+		return
+	}
+	for _, item := range hosted {
+		if item.Store == request.Store && item.Object == request.ID {
+			writeModelHostError(w, modelHostFail(http.StatusServiceUnavailable, errors.New("the runtime still hosts the model")))
+			return
 		}
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
 	}
-	programs, err := p.modelHostPrograms()
+	panelJSON(w, struct {
+		Unhosted bool `json:"unhosted"`
+	}{Unhosted: true})
+}
+
+// modelHostInventoryName admits a store name or inventory object id: no
+// separator the command line's <store>/<id> form would split on.
+func modelHostInventoryName(value string) bool {
+	return value != "" && len(value) <= 256 && !strings.ContainsAny(value, "/\\\x00") && strings.TrimSpace(value) == value && !strings.HasPrefix(value, "-")
+}
+
+// modelHostHostModel declares one inventory object of the Setup-approved
+// store as a hosted model. approve admits the model approval's digest.
+func (p *servicePanel) modelHostHostModel(ctx context.Context, store, id string, approve func(string) bool, engineArgs []string, name string, content ...string) error {
+	home, programs, pin, err := p.modelHostInstalled(ctx, false)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
-	}
-	pin, err := p.modelHostPin(ctx, programs, home)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
+		return err
 	}
 	engine := p.modelHostEngineState(ctx, home, programs.ModelHost, pin)
 	if !engine.Staged {
-		http.Error(w, "stage and verify the pinned local engine archive first", http.StatusConflict)
-		return
+		return modelHostFail(http.StatusConflict, errors.New("stage and verify the pinned local engine archive first"))
 	}
 	root, err := p.modelHostSavedRoot(ctx, home, programs, pin, engine.Path)
 	if err != nil || root == nil || !root.Registered {
 		if err == nil {
 			err = errors.New("register an approved model folder first")
 		}
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
+		return modelHostFail(http.StatusConflict, err)
 	}
-	if request.Store != root.Store {
-		http.Error(w, "the selected model is outside the Setup-approved store", http.StatusConflict)
-		return
+	if store != root.Store {
+		return modelHostFail(http.StatusConflict, errors.New("the selected model is outside the Setup-approved store"))
 	}
-	model, err := p.findModelHostModel(ctx, *root, engine.Path, request.ID)
+	model, err := p.findModelHostModel(ctx, *root, engine.Path, id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
+		return modelHostFail(http.StatusConflict, err)
 	}
-	if subtle.ConstantTimeCompare([]byte(model.ApprovalDigest), []byte(request.ApprovalDigest)) != 1 {
-		http.Error(w, "the selected model changed; review its approval again", http.StatusConflict)
-		return
+	if !approve(setup.ModelHostChatApprovalDigest(modelHostModelApproval(root.ModelHostChatRoot, model))) {
+		return modelHostFail(http.StatusConflict, errors.New("the selected model changed; review its approval again"))
 	}
-	_, err = p.modelHostOpenAbstractions(ctx, "models", "host", request.Store+"/"+request.ID, "--engine", engine.Path,
-		"--program", programs.ModelHost, "--json", "--timeout", "30s")
+	_, err = p.modelHostOpenAbstractions(ctx, modelHostHostArgs(store, id, engine.Path, programs.ModelHost, engineArgs, name, content...)...)
 	if err != nil {
-		http.Error(w, "the model host declaration was not written: "+err.Error(), http.StatusConflict)
-		return
+		return modelHostFail(http.StatusConflict, errors.New("the model host declaration was not written: "+err.Error()))
 	}
 	hosted, err := p.modelHostHosted(ctx)
 	if err != nil {
-		http.Error(w, "the host command returned, but Setup could not verify the declaration: "+err.Error(), http.StatusServiceUnavailable)
-		return
+		return modelHostFail(http.StatusServiceUnavailable, errors.New("the host command returned, but Setup could not verify the declaration: "+err.Error()))
 	}
-	found := false
 	for _, item := range hosted {
-		if item.Store == request.Store && item.Object == request.ID {
-			found = true
+		if item.Store == store && item.Object == id {
+			return nil
 		}
 	}
-	if !found {
-		http.Error(w, "the runtime did not retain the hosted model declaration", http.StatusServiceUnavailable)
-		return
+	return modelHostFail(http.StatusServiceUnavailable, errors.New("the runtime did not retain the hosted model declaration"))
+}
+
+// modelHostHostArgs is the openabstractions models host command for one
+// inventory object, with each engine argument as its own --engine-arg; the
+// command's engine check refuses any outside ModelHost's reviewed list
+// (MODELHOST-L5). A name is the one callers ask for (--as); empty keeps
+// the store's own name for the object.
+func modelHostHostArgs(store, id, enginePath, program string, engineArgs []string, name string, content ...string) []string {
+	args := []string{"models", "host", store + "/" + id, "--engine", enginePath, "--program", program}
+	if name != "" {
+		args = append(args, "--as", name)
 	}
-	panelJSON(w, struct {
-		Hosted  bool   `json:"hosted"`
-		Message string `json:"message"`
-	}{Hosted: true, Message: "The selected model is hosted. Applications can now choose it through the runtime router."})
+	if len(content) == 1 && content[0] != "" {
+		args = append(args, "--content", content[0])
+	}
+	for _, arg := range engineArgs {
+		args = append(args, "--engine-arg="+arg)
+	}
+	return append(args, "--json", "--timeout", "30s")
 }
 
 func (p *servicePanel) findModelHostModel(ctx context.Context, root modelHostRootState, enginePath, id string) (modelHostChatModel, error) {

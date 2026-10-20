@@ -8,6 +8,7 @@ dataclass Alias
   held_in: list[str]
   context_length: int
   effective_context_length: int
+  capabilities: ModelCapabilities | None
 dataclass Ask
   at: str
   caller: str
@@ -52,12 +53,25 @@ dataclass Decision
   why: str
 class DispatchError(ValueError)
   __init__(code)
+dataclass Engine
+  id: str
+  name: str
+  version: str
+  source: str
+enum EngineCause
+  BOUND = 'bound'
+  SOURCE_ONLY = 'source_only'
+  INCOMPATIBLE = 'incompatible'
+  UNKNOWN = 'unknown'
+  OTHER = 'other'
 dataclass Family
   family: str
   names: list[Alias]
   held_in: list[str]
   family_source: str
   components: list[Component]
+  title: str
+  objects: list[ModelObject]
 dataclass HostAllowance
   hosts: list[str]
 dataclass HostState
@@ -75,11 +89,50 @@ dataclass HostState
   profiles: list[str]
   domain: str
   availability_cause: AvailabilityCause | None
+  engines: list[Engine]
 dataclass HostsSnapshot
   observation: Observation
   hosts: list[HostState]
   doubled: list[str]
   asked: list[Ask]
+enum ModalityOutcome
+  PAGE = 'page'
+  GAP = 'gap'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+  NOT_PERMITTED = 'not_permitted'
+dataclass ModalityPage
+  outcome: ModalityOutcome | None
+  modalities: list[str]
+  next: str
+  complete: bool
+dataclass ModelCapabilities
+  input: list[str]
+  output: list[str]
+  tools: bool | None
+  structured_output: bool | None
+  reasoning: ReasoningSupport | None
+  extensions: list[str]
+dataclass ModelEngine
+  host: str
+  model: str
+  engine: str
+  profiles: list[str]
+  source: str
+  role: str
+dataclass ModelObject
+  domain: str
+  store: str
+  name: str
+  object: str
+  digest: str
+  format: str
+  architecture: str
+  role: str
+  engines: list[ModelEngine]
+  cause: EngineCause | str
+  why: str
 dataclass ModelsSnapshot
   observation: Observation
   models: list[Family]
@@ -95,6 +148,12 @@ dataclass Offer
   context_source: ContextSource | str
   input: int
   unknown: list[str]
+  title: str
+dataclass OfferObservation
+  observation: Observation
+  offers: list[Offer]
+  outcome: OfferOutcome | None
+  cursor: str
 enum OfferOutcome
   OFFERED = 'offered'
   INVALID = 'invalid'
@@ -124,19 +183,32 @@ enum Placement
   HOSTED = 'hosted'
   ANY = 'any'
 const ROUTER_ERROR_CODES
+enum ReasoningEffort
+  NONE = 'none'
+  LOW = 'low'
+  MEDIUM = 'medium'
+  HIGH = 'high'
+dataclass ReasoningSupport
+  efforts: list[ReasoningEffort | str]
+  budget: bool
+  default_effort: ReasoningEffort | None
 class Refusal(ValueError)
   __init__(word, offset)
 class Router
+  modalities(cursor: str, limit: int) -> ModalityPage
   models(fresh: bool) -> ModelsSnapshot
   hosts(fresh: bool) -> HostsSnapshot
   pick(request: PickRequest) -> PickResult
   offer(request: OfferRequest) -> OfferSnapshot
+  observe_offer(request: OfferRequest, cursor: str, wait_ms: int) -> OfferObservation
 class RouterClient(Router)
   __init__(transport)
+  modalities(cursor: str, limit: int) -> ModalityPage
   models(fresh: bool) -> ModelsSnapshot
   hosts(fresh: bool) -> HostsSnapshot
   pick(request: PickRequest) -> PickResult
   offer(request: OfferRequest) -> OfferSnapshot
+  observe_offer(request: OfferRequest, cursor: str, wait_ms: int) -> OfferObservation
 class ServiceError(Exception)
   __init__(code, message)
 enum ServiceErrorCode
@@ -156,3 +228,5 @@ const VERDICTS
 const WIRE_KINDS
 def decode(data)
 def encode(v)
+def from_json(kind, data)
+def to_json(value)

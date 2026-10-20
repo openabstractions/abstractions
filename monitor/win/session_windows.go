@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 var (
-	wtsapi32                         = syscall.NewLazyDLL("wtsapi32.dll")
+	wtsapi32                         = windows.NewLazySystemDLL("wtsapi32.dll")
 	wtsRegisterSessionNotification   = wtsapi32.NewProc("WTSRegisterSessionNotification")
 	wtsUnregisterSessionNotification = wtsapi32.NewProc("WTSUnRegisterSessionNotification")
 	openInputDesktop                 = user32.NewProc("OpenInputDesktop")

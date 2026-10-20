@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/openabstractions/abstraction-storage/go/layout"
 	"os"
 	"os/exec"
 	"os/user"
@@ -21,6 +22,7 @@ import (
 	download "github.com/openabstractions/abstraction-download/go"
 	"github.com/openabstractions/abstraction-facade/go/client"
 	identity "github.com/openabstractions/abstraction-identity"
+	"github.com/openabstractions/abstraction-identity/fileid"
 	job "github.com/openabstractions/abstraction-job/go"
 	api "github.com/openabstractions/abstraction-job/go/abstraction/job/acceptance"
 	"github.com/openabstractions/abstraction-job/go/acceptanceprovider"
@@ -124,7 +126,12 @@ func runCLI(t *testing.T, bin string, args ...string) (string, string, int) {
 func TestJobsMigrateLegacyCommandEndToEnd(t *testing.T) {
 	base := ""
 	if runtime.GOOS == "darwin" {
-		base = "/tmp"
+		// Keep the fixture path short while passing its physical path to the CLI.
+		folder, err := fileid.Resolve(context.Background(), fileid.Self, "/tmp", fileid.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		base = folder.Path()
 	}
 	dir, err := os.MkdirTemp(base, "oa-legacy-")
 	if err != nil {
@@ -139,6 +146,9 @@ func TestJobsMigrateLegacyCommandEndToEnd(t *testing.T) {
 		t.Fatalf("build CLI: %v\n%s", err, out)
 	}
 	state := filepath.Join(dir, "state")
+	if err := layout.Ensure(state, state); err != nil {
+		t.Fatal(err)
+	}
 	f := &legacyFixture{root: filepath.Join(state, "jobs"), ids: map[job.State]string{}, sinks: map[string]string{}}
 	if f.store, err = job.NewFileStore(f.root); err != nil {
 		t.Fatal(err)
@@ -276,7 +286,8 @@ func TestJobsMigrateLegacyCommandEndToEnd(t *testing.T) {
 		}
 		return filepath.Join(dir, s)
 	}
-	o := runtimeFlags{endpoint: endpoint("r"), logEndpoint: endpoint("l"), configEndpoint: endpoint("c"), jobEndpoint: endpoint("j"), out: filepath.Join(dir, "records.jsonl"), stateDir: state, withoutModels: true}
+	o := runtimeFlags{endpoint: endpoint("r"), logEndpoint: endpoint("l"), configEndpoint: endpoint("c"), jobEndpoint: endpoint("j"), out: filepath.Join(state, "records.jsonl"), stateDir: state, withoutModels: true}
+	bindFixtureRuntime(t, &o)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ready, done := make(chan struct{}), make(chan error, 1)

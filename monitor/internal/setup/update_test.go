@@ -60,14 +60,16 @@ type updateFixture struct {
 	transfer  *fakeTransfer
 }
 
-func choiceFor(componentID string) AppID {
+// choicesFor makes the update fixture's engine selection explicit. The catalog
+// continues to refuse a Comfy-only production plan as incomplete.
+func choicesFor(componentID string) []AppID {
 	switch componentID {
 	case "comfyui-app":
-		return ComfyUI
+		return []AppID{ComfyUI, Lemonade}
 	case fixtureComponent:
-		return fixtureApp
+		return []AppID{fixtureApp}
 	}
-	return Lemonade
+	return []AppID{Lemonade}
 }
 
 // newUpdateFixture installs version 1.0.0 of a package under one release and
@@ -88,7 +90,7 @@ func newUpdateFixture(t *testing.T, componentID string, v2 []archiveEntry) *upda
 	first.Version, first.SHA256, first.Bytes, first.PeakBytes = "1.0.0", built1.SHA256, built1.Bytes, built1.PeakBytes
 	catalog.Components[index].Artifact = &first
 	journal := Journal{Path: filepath.Join(t.TempDir(), "setup", "plan.json"), catalogOverride: &catalog}
-	plan := mustPlan(t, catalog, choiceFor(componentID))
+	plan := mustPlanOf(t, catalog, choicesFor(componentID)...)
 	state, err := journal.SavePlan(ctx, plan)
 	if err != nil {
 		t.Fatal(err)
@@ -112,7 +114,7 @@ func newUpdateFixture(t *testing.T, componentID string, v2 []archiveEntry) *upda
 	release.Components[index].Artifact = &second
 	release.PreviousInstallPins = []KnownInstallPin{{ComponentID: componentID, Artifact: first}}
 	journal.catalogOverride = &release
-	state, err = journal.SavePlan(ctx, mustPlan(t, release, choiceFor(componentID)))
+	state, err = journal.SavePlan(ctx, mustPlanOf(t, release, choicesFor(componentID)...))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,7 +339,7 @@ func TestComfyUpdateRefusesUpstreamUpdatersAndPairsSourceAndRecords(t *testing.T
 				t.Fatalf("unhealthy ComfyUI version not removed: %+v", effect)
 			}
 			paths, err := OpenInstalledComfy(f.ctx, f.journal)
-			if err != nil || !strings.HasPrefix(paths.CallerProgram(), f.root1) {
+			if err != nil || !identity.Inside(paths.Program(), f.root1) {
 				t.Fatalf("earlier ComfyUI is not the one that launches: %+v, %v", paths, err)
 			}
 		})
@@ -351,13 +353,13 @@ func TestComfyUpdateKeepsTheEarlierVersionUntilItsRegistrationMoves(t *testing.T
 	f.advance(r, Verified)
 	f.advance(r, Staged)
 	paths, err := OpenInstalledComfy(f.ctx, f.journal)
-	if err != nil || !strings.HasPrefix(paths.CallerProgram(), f.root1) {
+	if err != nil || !identity.Inside(paths.Program(), f.root1) {
 		t.Fatalf("the earlier version must stay the launched one during an update: %+v, %v", paths, err)
 	}
 	f.advance(r, Checked)
 	f.advance(r, Installed)
 	paths, err = OpenInstalledComfy(f.ctx, f.journal)
-	if err != nil || !strings.HasPrefix(paths.CallerProgram(), f.root2) || paths.records != f.v2.RecordsSHA256 {
+	if err != nil || !identity.Inside(paths.Program(), f.root2) || paths.records != f.v2.RecordsSHA256 {
 		t.Fatalf("activation did not switch the launched version: %+v, %v", paths, err)
 	}
 	earlier, err := EarlierComfyDescriptors(f.ctx, f.journal)
@@ -542,7 +544,7 @@ func TestRetirePassesOverAGuardedVersionToRemoveAFailedCopy(t *testing.T) {
 	}
 	release.PreviousInstallPins = []KnownInstallPin{{ComponentID: f.component, Artifact: f.v1}, {ComponentID: f.component, Artifact: f.v2}}
 	f.journal.catalogOverride = &release
-	if _, err := f.journal.SavePlan(f.ctx, mustPlan(t, release, ComfyUI)); err != nil {
+	if _, err := f.journal.SavePlan(f.ctx, mustPlanOf(t, release, ComfyUI, Lemonade)); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(zip3)
@@ -573,6 +575,31 @@ func TestRetirePassesOverAGuardedVersionToRemoveAFailedCopy(t *testing.T) {
 	}
 }
 
+func TestPackageUpdateProviderFollowsCompiledComponentOwnership(t *testing.T) {
+	// These component keys are durable. Their controllers still own old
+	// effects when the release has no downloadable artifact for them.
+	for _, row := range []struct {
+		component string
+		provider  string
+		checked   bool
+	}{
+		{"lemonade-engine", lemonadeProviderID, true},
+		{"thenoise-engine", theNoiseProviderID, true},
+		{"pytorch-engine", pyTorchProviderID, true},
+		{retainedArchiveComponent, "", true},
+		{OpenCodeOfficialComponent, "", false},
+		{fixtureComponent, "", true},
+		{"foreign-engine", "", false},
+	} {
+		if got := packageUpdateProvider[row.component]; got != row.provider {
+			t.Errorf("%s update provider = %q, want %q", row.component, got, row.provider)
+		}
+		if got := firstInstallChecked(row.component); got != row.checked {
+			t.Errorf("%s first-install check = %t, want %t", row.component, got, row.checked)
+		}
+	}
+}
+
 func TestFirstInstallRunsThePackageHealthCheck(t *testing.T) {
 	for _, componentID := range []string{"comfyui-app", fixtureComponent} {
 		t.Run(componentID, func(t *testing.T) {
@@ -595,10 +622,10 @@ func TestFirstInstallRunsThePackageHealthCheck(t *testing.T) {
 				journal := Journal{Path: filepath.Join(t.TempDir(), "setup", "plan.json"), catalogOverride: &catalog}
 				transfer := &fakeTransfer{state: "complete", bytes: data}
 				r := NewRunner(journal, transfer)
-				if _, err := r.Start(ctx, []AppID{choiceFor(componentID)}); err != nil {
+				if _, err := r.Start(ctx, choicesFor(componentID)); err != nil {
 					t.Fatal(err)
 				}
-				pin, _ := planComponent(mustPlan(t, catalog, choiceFor(componentID)), componentID)
+				pin, _ := planComponent(mustPlanOf(t, catalog, choicesFor(componentID)...), componentID)
 				root, err := installPath(*pin.Artifact)
 				if err != nil {
 					t.Fatal(err)

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/openabstractions/abstraction-identity/go/privatedir/privatetest"
+	"github.com/openabstractions/abstraction-storage/go/layout"
 	"io"
 	"os"
 	"os/exec"
@@ -14,9 +16,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openabstractions/abstraction-facade/go-core/bootstrap"
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
-	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	"github.com/openabstractions/abstraction-facade/go/resolution"
+	"github.com/openabstractions/abstraction-provider-kit/go/modelplace"
 )
 
 func TestRuntimeArguments(t *testing.T) {
@@ -83,7 +86,79 @@ func fullEndpoint(t *testing.T, name string) string {
 	if runtime.GOOS == "windows" {
 		return `\\.\pipe\oa-test-` + name
 	}
-	return filepath.Join(t.TempDir(), name+".sock")
+	return filepath.Join(shortSocketDir(t), name+".sock")
+}
+
+// The caller supplies the explicit resolver anchor across parent and child.
+// Each derived address remains in that fixture's namespace.
+func parseFixtureRuntime(args []string) (runtimeFlags, error) {
+	var anchor, providerAnchor string
+	var cli []string
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--fixture-provider-anchor" && i+1 < len(args) {
+			providerAnchor = args[i+1]
+			i++
+			continue
+		}
+		cli = append(cli, args[i])
+	}
+	args = cli
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == "--endpoint" {
+			anchor = args[i+1]
+		}
+	}
+	if anchor == "" {
+		return runtimeFlags{}, errors.New("runtime fixture requires an explicit endpoint")
+	}
+	return parseRuntimeWithEndpoints(args, io.Discard,
+		func(service string) (string, error) {
+			if service == "provider-v1" && providerAnchor != "" {
+				return providerAnchor, nil
+			}
+			return anchor + "-" + service, nil
+		},
+		func(service string) (string, error) { return anchor + "-installed-" + service, nil })
+}
+
+func parseTestRuntime(t *testing.T, args []string, _ io.Writer) (runtimeFlags, error) {
+	t.Helper()
+	args = append([]string(nil), args...)
+	found := false
+	for _, arg := range args {
+		found = found || arg == "--endpoint"
+	}
+	if !found {
+		args = append(args, "--endpoint", fullEndpoint(t, fixtureNameForRuntime()))
+	}
+	args = append(args, "--fixture-provider-anchor", mustProviderEndpoint(t, "provider-v1"))
+	return parseFixtureRuntime(args)
+}
+
+func fixtureNameForRuntime() string {
+	return fmt.Sprintf("runtime-%d-%d", os.Getpid(), endpointSeq.Add(1))
+}
+
+func bindFixtureRuntime(t *testing.T, options *runtimeFlags) {
+	t.Helper()
+	anchor := options.endpoint
+	providerAnchor := mustProviderEndpoint(t, "provider-v1")
+	options.endpointFor = func(service string) (string, error) {
+		if service == "provider-v1" {
+			return providerAnchor, nil
+		}
+		return anchor + "-" + service, nil
+	}
+	options.installedEndpointFor = func(service string) (string, error) { return anchor + "-installed-" + service, nil }
+}
+
+func openFixtureRuntimeProviders(t *testing.T, options runtimeFlags, state string, config inferenceHosts, report func(error)) (*runtimeProviders, error) {
+	t.Helper()
+	if options.endpoint == "" {
+		options.endpoint = fullEndpoint(t, fixtureNameForRuntime())
+	}
+	bindFixtureRuntime(t, &options)
+	return openRuntimeProviders(options, state, config, report)
 }
 
 func TestRuntimeEndpointRefusesBareName(t *testing.T) {
@@ -116,7 +191,7 @@ func TestRuntimeEndpointRefusesBareName(t *testing.T) {
 
 func TestRuntimePartialSelectionRefused(t *testing.T) {
 	resolver, logs, config, jobs := fullEndpoint(t, "r"), fullEndpoint(t, "l"), fullEndpoint(t, "c"), fullEndpoint(t, "j")
-	state := t.TempDir()
+	state := privatetest.Dir(t)
 	_, err := parseRuntime([]string{"--endpoint", resolver}, io.Discard)
 	if err == nil {
 		t.Fatal("accepted --endpoint alone")
@@ -146,39 +221,35 @@ func TestRuntimePartialSelectionRefused(t *testing.T) {
 }
 
 func TestRuntimeIsolatedDerivesEverySelection(t *testing.T) {
-	state := t.TempDir()
-	options, err := parseRuntime([]string{"--isolated", "l6", "--state-dir", state}, io.Discard)
-	if err != nil {
+	state := privatetest.Dir(t)
+	if _, err := parseRuntime([]string{"--isolated", "l6", "--state-dir", state}, io.Discard); !errors.Is(err, bootstrap.ErrNoTrustedInstallation) {
+		t.Fatalf("default wrapper refusal: %v", err)
+	}
+	options := runtimeFlags{isolated: "l6", stateDir: state}
+	derive := func(service string) (string, error) { return "fixture-" + service, nil }
+	if err := isolateRuntime(&options, derive); err != nil {
 		t.Fatal(err)
 	}
 	want := map[string]string{}
 	for _, service := range []string{"runtime", "logging", "config", "jobs", "model"} {
-		if want[service], err = bootstrap.Endpoint("l6-" + service); err != nil {
-			t.Fatal(err)
-		}
+		want[service] = "fixture-l6-" + service
 	}
 	got := map[string]string{"runtime": options.endpoint, "logging": options.logEndpoint, "config": options.configEndpoint, "jobs": options.jobEndpoint, "model": options.modelEndpoint}
-	installed := map[string]bool{}
-	for _, service := range []string{"runtime-v1", "logging-v1", "config-v1", "job-acceptance-v1", "model-v1"} {
-		endpoint, err := bootstrap.Endpoint(service)
-		if err != nil {
-			t.Fatal(err)
-		}
-		installed[endpoint] = true
-	}
 	for service, endpoint := range got {
-		if endpoint != want[service] || installed[endpoint] {
-			t.Fatalf("%s endpoint %q, want %q apart from the installed runtime", service, endpoint, want[service])
+		if endpoint != want[service] {
+			t.Fatalf("%s: %q != %q", service, endpoint, want[service])
 		}
 	}
+
 	if options.out != filepath.Join(state, "logging", "records.jsonl") {
 		t.Fatalf("isolated log file %q", options.out)
 	}
 	explicitLog := fullEndpoint(t, "kept")
-	kept, err := parseRuntime([]string{"--isolated", "l6", "--state-dir", state, "--log-endpoint", explicitLog, "--out", "file", "--without-models"}, io.Discard)
-	if err != nil || kept.logEndpoint != explicitLog || kept.out != "file" || kept.modelEndpoint != "" || kept.jobEndpoint != want["jobs"] {
-		t.Fatalf("explicit values beside --isolated: %+v %v", kept, err)
+	kept := runtimeFlags{isolated: "l6", stateDir: state, logEndpoint: explicitLog, out: "file", withoutModels: true}
+	if err := isolateRuntime(&kept, derive); err != nil || kept.logEndpoint != explicitLog || kept.out != "file" || kept.modelEndpoint != "" || kept.jobEndpoint != want["jobs"] {
+		t.Fatalf("explicit values: %+v %v", kept, err)
 	}
+
 	for _, args := range [][]string{
 		{"--isolated", "l6"},
 		{"--isolated", "L6", "--state-dir", state},
@@ -198,6 +269,26 @@ func TestRuntimeIsolatedDerivesEverySelection(t *testing.T) {
 	}
 }
 
+func TestRuntimeIsolatedFixtureKeepsBootstrapRefusalAndInstalledCollision(t *testing.T) {
+	args := []string{"--isolated", "fixture", "--state-dir", privatetest.Dir(t), "--without-jobs", "--without-models", "--endpoint", fullEndpoint(t, "runtime-fixture")}
+	options, err := parseFixtureRuntime(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateRuntimeStateSelection(options); err != nil {
+		t.Fatal(err)
+	}
+	defaults := options
+	defaults.endpointFor, defaults.installedEndpointFor = nil, nil
+	if err := validateRuntimeStateSelection(defaults); !errors.Is(err, bootstrap.ErrNoTrustedInstallation) {
+		t.Fatalf("production bootstrap refusal: %v", err)
+	}
+	options.installedEndpointFor = func(string) (string, error) { return options.endpoint, nil }
+	if err := validateRuntimeStateSelection(options); err == nil || !strings.Contains(err.Error(), "private state cannot use an installed listener") {
+		t.Fatalf("installed listener collision: %v", err)
+	}
+}
+
 // An isolated runtime answers on its derived resolver and hands out its derived
 // provider endpoints.
 func TestRuntimeIsolatedServesDerivedEndpoints(t *testing.T) {
@@ -205,12 +296,11 @@ func TestRuntimeIsolatedServesDerivedEndpoints(t *testing.T) {
 		t.Skip("Program proof unavailable on current platform")
 	}
 	name := fmt.Sprintf("test-%d-%d", os.Getpid(), endpointSeq.Add(1))
-	state, err := os.MkdirTemp("", "oa-isolated-")
-	if err != nil {
+	state := filepath.Join(privatetest.Dir(t), "private")
+	if err := layout.Ensure(state, state); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.RemoveAll(state) })
-	options, err := parseRuntime([]string{"--isolated", name, "--state-dir", state, "--without-models"}, io.Discard)
+	options, err := parseFixtureRuntime([]string{"--isolated", name, "--state-dir", state, "--without-models", "--endpoint", fullEndpoint(t, name+"-runtime"), "--log-endpoint", fullEndpoint(t, name+"-logging"), "--config-endpoint", fullEndpoint(t, name+"-config"), "--jobs-endpoint", fullEndpoint(t, name+"-jobs")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +332,7 @@ func TestRuntimeIsolatedServesDerivedEndpoints(t *testing.T) {
 }
 
 func TestCanceledRuntimeCreatesNothing(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "absent", "records.jsonl")
+	path := filepath.Join(privatetest.Dir(t), "absent", "records.jsonl")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := runRuntime(ctx, runtimeFlags{out: path}); !errors.Is(err, context.Canceled) {
@@ -253,8 +343,53 @@ func TestCanceledRuntimeCreatesNothing(t *testing.T) {
 	}
 }
 
+func TestManagedJobRootSharesTheProviderDefaultAndKeepsOverrides(t *testing.T) {
+	root := privatetest.Dir(t)
+	for _, name := range []string{"LOCALAPPDATA", "XDG_DATA_HOME", "HOME", "USERPROFILE"} {
+		t.Setenv(name, root)
+	}
+	got, err := managedJobRoot("")
+	if want := modelplace.DefaultJobStore(os.Getenv); err != nil || got != want || want == "" {
+		t.Fatalf("managed default %q, %v; provider default %q", got, err, want)
+	}
+	explicit := filepath.Join(root, "explicit")
+	if got, err := managedJobRoot(explicit); err != nil || got != filepath.Join(explicit, "jobs") {
+		t.Fatalf("explicit state %q, %v", got, err)
+	}
+	if _, err := managedJobRoot("relative"); err == nil {
+		t.Fatal("relative explicit state was accepted")
+	}
+	for _, name := range []string{"LOCALAPPDATA", "XDG_DATA_HOME", "HOME", "USERPROFILE"} {
+		t.Setenv(name, "")
+	}
+	_, wantErr := runtimeStateDir(runtime.GOOS, os.Getenv, os.UserHomeDir)
+	if _, err := managedJobRoot(""); wantErr == nil || err == nil || err.Error() != wantErr.Error() {
+		t.Fatalf("invalid default error %v; prior state error %v", err, wantErr)
+	}
+}
+
+func TestManagedJobRootValidatesPlatformBeforeSelectingProviderDefault(t *testing.T) {
+	root := privatetest.Dir(t)
+	getenv := func(string) string { return root }
+	home := func() (string, error) { return root, nil }
+	for _, platform := range []string{"freebsd", "unknown"} {
+		t.Run(platform, func(t *testing.T) {
+			calls := 0
+			got, err := managedJobRootFrom("", func() (string, error) {
+				return runtimeStateDir(platform, getenv, home)
+			}, func() string {
+				calls++
+				return filepath.Join(root, "nonempty-provider-store")
+			})
+			if err == nil || got != "" || calls != 0 {
+				t.Fatalf("%s: store %q, error %v, provider calls %d", platform, got, err, calls)
+			}
+		})
+	}
+}
+
 func TestRuntimeStateLocation(t *testing.T) {
-	base := t.TempDir()
+	base := privatetest.Dir(t)
 	for _, platform := range []string{"windows", "linux", "darwin"} {
 		got, err := runtimeStateDir(platform, func(string) string { return base }, func() (string, error) { return base, nil })
 		want := filepath.Join(base, "openabstractions", "runtime-v1")

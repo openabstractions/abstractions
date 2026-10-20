@@ -29,6 +29,34 @@ type sourceCounts struct {
 
 func sourceHandler(data []byte, counts *sourceCounts) http.Handler {
 	mux := http.NewServeMux()
+	// The ordinary review pack's deterministic model needs no model files or
+	// accelerator. Its metadata is read through the existing router host API.
+	mux.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "GET required", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		//unchecked: a failed response write means the review client disconnected
+		_ = json.NewEncoder(w).Encode(map[string]any{"object": "list", "data": []any{map[string]any{"id": "pretend-review-model", "object": "model", "owned_by": "review-fixture"}}})
+	})
+	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST required", http.StatusMethodNotAllowed)
+			return
+		}
+		var request struct {
+			Model  string `json:"model"`
+			Stream bool   `json:"stream"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&request); err != nil || request.Model != "pretend-review-model" || request.Stream {
+			http.Error(w, "the review model accepts non-streaming pretend-review-model requests", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		//unchecked: a failed response write means the review client disconnected
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": "review", "object": "chat.completion", "model": request.Model, "choices": []any{map[string]any{"index": 0, "message": map[string]string{"role": "assistant", "content": "This is a deterministic review example."}, "finish_reason": "stop"}}, "usage": map[string]int{"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}})
+	})
 	mux.HandleFunc("/stats", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(map[string]int64{"requests": counts.requests.Load(), "bytes": counts.bytes.Load()}); err != nil {

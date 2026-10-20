@@ -1,0 +1,19 @@
+# requires: fileid
+#
+# The functions identity exported before fileid keep their answers (ID-F9):
+# SameFile by file identity across a link and between two files; Within
+# through a link; a missing side answers its error.
+file a/f.txt
+file a/g.txt
+link b a
+samefile a/f.txt b/f.txt
+samefile a/f.txt a/g.txt
+samefile a/f.txt a/absent.txt
+within b/f.txt a
+within a/f.txt b/f.txt
+
+# expect 4: ok same [ID-F9]
+# expect 5: ok different [ID-F9]
+# expect 6: missing [ID-F9]
+# expect 7: ok within [ID-F9]
+# expect 8: ok outside [ID-F9]

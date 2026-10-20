@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -11,11 +13,66 @@ import (
 
 	credentials "github.com/openabstractions/abstraction-credentials/go"
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
+	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	iwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
+	inferenceservice "github.com/openabstractions/abstraction-inference/go/service"
+	logging "github.com/openabstractions/abstraction-logging/go"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	router "github.com/openabstractions/abstraction-router/go"
 )
+
+type hostRuleCommandService struct{ *inferenceservice.Host }
+
+func (s hostRuleCommandService) OperatorAvailable() bool { return s.Operator != nil }
+
+// The hosted command boundary has one declaration writer. The full runtime's
+// application/Asks directory is independent of these operator-owned assertions.
+func hostRuleCommandEndpoint(t *testing.T, operator *inferenceOperator) []string {
+	t.Helper()
+	options, _ := isolatedRuntime(t)
+	endpoint, err := inferenceEndpoint(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := inference.New(inference.Config{Router: operator.router, Decide: operator.credentials.decideInference,
+		Apply: func(context.Context, inference.Subject, string, string, string) (map[string]string, string) {
+			return nil, "unavailable"
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { provider.Close() })
+	service, err := inferenceservice.ListenForPlacement(endpoint, provider, inference.ExecutionLocal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.Operator = operator
+	config := host.Options{Endpoint: options.endpoint, LogEndpoint: options.logEndpoint, ConfigEndpoint: options.configEndpoint,
+		ConfigWithoutMachine: true, Inference: hostRuleCommandService{service}, InferenceEndpoint: endpoint,
+		Sink: remoteTestSink(func(logging.Record) error { return nil })}
+	config.ConfigStore, config.ConfigUserKey = isolatedConfigStore(t.TempDir())
+	runtime, err := host.Listen(config)
+	if err != nil {
+		service.Close()
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- runtime.Serve(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		runtime.Close()
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	})
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return []string{"--endpoint", options.endpoint, "--runtime-program", self, "--timeout", "10s"}
+}
 
 func TestAddHostFinalSurveySeesNewHostedCredentialRule(t *testing.T) {
 	for _, partial := range []bool{false, true} {
@@ -63,15 +120,30 @@ func TestAddHostFinalSurveySeesNewHostedCredentialRule(t *testing.T) {
 			})
 			var ruleErrors []error
 			o := &inferenceOperator{credentials: &runtimeCredentials{runtimeRights: r}, providers: p, router: modelRouter, ceilings: ceilings, report: func(err error) { ruleErrors = append(ruleErrors, err) }}
-			p.Watch(o.refreshHosts)
+			p.Watch(func() {
+				if err := o.refreshHosts(); err != nil {
+					t.Error(err)
+				}
+			})
 			p.remotesChanged = o.refreshHosts
 			_, revision, err := p.read()
 			if err != nil {
 				t.Fatal(err)
 			}
 			caller := inference.Subject{Account: r.owner, Program: r.operators[0]}
-			entry := iwire.HostEntry{Name: "deepseek", Hosted: true, Kind: router.WireOpenAICompatible, Base: fixture.URL, Credential: "deepseek", Profiles: []string{"chat"}}
-			change := o.AddHost(context.Background(), caller, revision, entry)
+			entry := iwire.HostEntry{Name: "deepseek", Hosted: true, Kind: router.WireOpenAICompatible, Base: fixture.URL, Credential: "deepseek", Profiles: []string{"chat"}, Ceiling: &iwire.CeilingLimit{TokensPerDay: 1000}}
+			var change iwire.HostChange
+			var commandEndpoint []string
+			if !partial && statusTransportProvesProgram(t) {
+				commandEndpoint = hostRuleCommandEndpoint(t, o)
+				out, err := runInference(t, append([]string{"server", "add", entry.Name, "--base", entry.Base, "--api", entry.Kind,
+					"--credential", entry.Credential, "--tokens-per-day", "1000", "--modalities", "chat", "--json"}, commandEndpoint...)...)
+				if err != nil || json.Unmarshal([]byte(out), &change) != nil {
+					t.Fatalf("hosted server add: %v\n%s", err, out)
+				}
+			} else {
+				change = o.AddHost(context.Background(), caller, revision, entry)
+			}
 			if change.Outcome != iwire.EditOutcomeApplied || (partial != strings.HasPrefix(change.Reason, "rules:")) {
 				t.Fatalf("add outcome %+v", change)
 			}
@@ -83,8 +155,28 @@ func TestAddHostFinalSurveySeesNewHostedCredentialRule(t *testing.T) {
 				t.Fatalf("final model route %+v", decision)
 			}
 			hosts := o.Hosts(context.Background(), caller)
+			if commandEndpoint != nil {
+				out, err := runInference(t, append([]string{"server", "list", "--json"}, commandEndpoint...)...)
+				if err != nil || json.Unmarshal([]byte(out), &hosts) != nil {
+					t.Fatalf("hosted server list: %v\n%s", err, out)
+				}
+			}
 			if hosts.Outcome != iwire.ListOutcomePage || len(hosts.Hosts) != 1 || !hosts.Hosts[0].Up {
 				t.Fatalf("durable host state %+v", hosts)
+			}
+			state := hosts.Hosts[0]
+			if state.Entry.Name != entry.Name || !state.Entry.Hosted || state.Entry.Kind != entry.Kind || state.Entry.Base != entry.Base ||
+				state.Entry.Credential != entry.Credential || len(state.Entry.Profiles) != 1 || state.Entry.Profiles[0] != "chat" || state.Entry.DeclaredBy != declaredByOperator ||
+				state.Entry.Ceiling == nil || state.Entry.Ceiling.TokensPerDay != 1000 || state.Spend == nil || state.Spend.Day == "" {
+				t.Fatalf("hosted command projection: %+v", state)
+			}
+			if !partial {
+				for _, rule := range [][2]string{{inference.ActionComplete, inference.ResourceHost(entry.Name)}, {credentials.ActionApply, credentials.ResourceFor(entry.Credential)}} {
+					read := r.policy.ReadRule(rwire.Subject{Account: r.owner, Program: r.operators[0]}, rule[0], rule[1])
+					if read.Outcome != rwire.RuleReadOutcomeFound || !read.Record.Rule.Permit || read.Record.Why != hostAddWhy {
+						t.Fatalf("hosted command rule %v: %+v", rule, read)
+					}
+				}
 			}
 			if partial && len(ruleErrors) == 0 {
 				t.Fatal("partial rule write was not reported")
@@ -150,7 +242,11 @@ func TestHostRemovalDropsDeclarationBudget(t *testing.T) {
 			}
 			o := &inferenceOperator{dir: t.TempDir(), credentials: &runtimeCredentials{runtimeRights: r}, providers: p,
 				router: router.New(), ceilings: ceilings, report: func(err error) { t.Errorf("operator: %v", err) }}
-			p.Watch(o.refreshHosts)
+			p.Watch(func() {
+				if err := o.refreshHosts(); err != nil {
+					t.Error(err)
+				}
+			})
 			registry := &runtimeRegistry{providers: p, operator: o}
 			_, revision, err := p.read()
 			if err != nil {

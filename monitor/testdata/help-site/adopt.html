@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenAbstractions — adopt a capability</title>
+  <link rel="icon" href="brand/favicon.ico" sizes="any">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="homepage.css">
+  <link rel="stylesheet" href="current.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="index.html"><img src="brand/mark-64.png" alt="" width="34" height="34"><span>OpenAbstractions</span></a>
+    <nav aria-label="Primary navigation"><a href="adopt.html" aria-current="page">Adopt</a><a href="cases.html">Cases</a><span class="nav-devs-label">for developers</span><a href="reference.html">Reference</a><a href="coverage.html">Language support</a><a href="catalogue.html">Catalogue</a><a href="https://github.com/openabstractions">GitHub</a></nav>
+  </header>
+  <main class="current-page">
+    <section class="intro">
+      <p class="eyebrow">Adopt</p>
+      <h1>Add one capability across operating systems, libraries, and services</h1>
+      <p>Applications already use abstractions for files, windows, networks, and libraries. OA extends that idea to running capabilities such as downloads, model calls, logging, storage, configuration, and application tools. Choose the capability, add its client, run the OA service, and connect an available implementation.</p>
+    </section>
+    <p class="status-note"><a href="https://github.com/openabstractions/redist/releases/latest">Release notes</a> list available packages, included features and installation verification. For source integrations, <a href="coverage.html">Language support</a> shows which modules each language can call and the platform each call was checked on.</p>
+    <nav class="reference-nav" aria-label="On this page"><a href="#install">Install OA</a><a href="#quickstart-title">Try a capability</a><a href="#comfyui-node">ComfyUI node</a><a href="#opencode-node">OpenCode</a><a href="#mcp">Connect an assistant</a><a href="reference.html#providers">Connect a provider</a></nav>
+
+    <h2 id="for-people">For people who use applications</h2>
+    <h3 id="install">Install the shared runtime</h3>
+    <p><a href="https://github.com/openabstractions/redist/releases/latest">Install the latest shared runtime</a>. The release notes list each asset's contents and package verification, including Panel availability.</p>
+    <p>Historical 0.2.0 platform evidence remains in the <a href="evidence.html#release-0-2-0">previous release record</a>.</p>
+    <div class="page-grid">
+      <article class="page-card" id="install-windows"><h3>Windows</h3><p>Download the x64 or ARM64 MSI from the <a href="https://github.com/openabstractions/redist/releases/latest">latest runtime release</a>. The installer defaults to <em>Just me</em>. <em>Everyone</em> requires administrator access. Adding commands to PATH is optional. Open the installed Panel to inspect runtime readiness and permissions.</p></article>
+      <article class="page-card" id="install-linux"><h3>Linux</h3><p>Download the amd64 or ARM64 archive from the <a href="https://github.com/openabstractions/redist/releases/latest">latest runtime release</a>, extract it and follow its <code>install.sh</code> instructions for the current user. See the release notes for installation verification and platform limits.</p></article>
+      <article class="page-card" id="install-macos"><h3>macOS</h3><p>Download the universal package from the <a href="https://github.com/openabstractions/redist/releases/latest">latest runtime release</a>. Its notes identify the signing state, tested systems and installation checks. The <a href="evidence.html#release-0-4-0">0.4.0 evidence</a> records automated installed XPC acceptance on arm64; earlier receipts retain their lifecycle scope. Older-system qualification remains open.</p></article>
+    </div>
+    <p>Both Windows MSIs and OpenAbstractions-Setup-0.4.0.exe are signed with SHA-256 Authenticode and an RFC 3161 SHA-256 timestamp. Linux tarballs are unsigned. The macOS package is Developer ID signed, notarised and stapled. Retained installed evidence covers Windows x64, Linux amd64 and macOS arm64; earlier lifecycle receipts keep their original release scope. Windows and Linux ARM64 packages are cross-built; ARM64 installation on those platforms and Intel Mac execution remain untested. Check the release <code>SHA256SUMS</code> before installing. See the <a href="evidence.html#release-0-4-0">0.4.0 acceptance scope</a>.</p>
+    <p class="status-note">Windows Panel: one approved native start on WebView2 runtime 153.0.4234.48 rendered the Panel and coincided with one Windows Event 4625 naming <code>msedgewebview2.exe</code> with bad-password status. The event’s initiating code path is unknown. No supported mitigation or repeated-start safety is established. Avoid repeated native starts on affected systems; runtime commands remain available.</p>
+    <p>After installation, check the runtime from a terminal. If you left PATH unchanged, use the installed executable’s full path.</p>
+    <pre><code>openabstractions status --json
+openabstractions probe --json</code></pre>
+    <p><code>status</code> reports readiness; <code>probe</code> checks bounded service reads. <code>status --json</code> prints each capability's readiness as one JSON document. <code>probe --json</code> prints one JSON document per probe result. An application still needs permission for its requested actions and a compatible provider. The <a href="https://github.com/openabstractions/redist#installing">installation guide</a> describes setup; the <a href="https://github.com/openabstractions/abstractions/blob/main/docs/results/release-0.2.0.md">0.2.0 upgrade report</a> records migration from 0.1.7.</p>
+    <h4 id="install-features">Installed runtime features</h4>
+    <p>The Windows installer offers feature choices. Check the release notes to see which optional tools are included in each asset before configuring an assistant.</p>
+    <table class="example-table">
+      <thead><tr><th>Feature</th><th>Installs</th><th>Default</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td>Runtime</td><td>The service, Panel and command line</td><td>On</td><td>&#8212;</td></tr>
+        <tr><td>Local model stores</td><td><code>inventoryd.exe</code> and the declaration file that registers it as an <code>abstraction.storage/inventory-source@1</code> provider</td><td>On</td><td>Finds the model files your other apps already downloaded.</td></tr>
+        <tr><td>MCP gateway</td><td><code>openabstractions-mcp</code>, with no runtime declaration (unlike the other features, it installs no declaration file in <code>tools\declarations\</code>, so the runtime does not know it exists or start it; an assistant launches it directly by its path, and it holds no rights until granted)</td><td>Off</td><td>Lets an AI assistant use OA's tools.</td></tr>
+        <tr><td>Model host</td><td><code>modelhostd.exe</code> only; <code>openabstractions models host</code> writes its provider declaration later</td><td>Off</td><td>Serves chat and embeddings from a model file on this machine with the pinned llama.cpp build, which <code>modelhostd engine install</code> stages from the publisher's archive you download.</td></tr>
+        <tr><td>NAS downloads</td><td>Nothing; the delegator runs inside the download service already</td><td>Held, hidden, never installed</td><td>&#8212;</td></tr>
+      </tbody>
+    </table>
+    <p>Local model stores are on in this development feature set because they only read directory listings and write nothing. The MCP gateway and model host default to off. Selecting either installs its program but grants it no rights; the gateway has no runtime declaration, and a model-host declaration is written when an operator configures a model.</p>
+
+    <h3 id="after-installing">What changes after installing</h3>
+    <p>The runtime starts as a background service. On Windows, a Panel icon sits in the notification area at sign-in, and the Panel also opens from the Start menu. The first time an application asks for a new permission, the Panel shows the question. Install the runtime once from the links above. <a href="adopters.html">See what works with it today</a>. No application bundles the runtime yet.</p>
+    <div class="adopt-panel-figures">
+      <figure>
+        <a href="images/panel/status-windows-light.png" target="_blank" rel="noopener">
+          <picture class="panel-shot">
+            <source srcset="images/panel/status-windows-dark.png" media="(prefers-color-scheme: dark)">
+            <img class="adopt-panel-screenshot" src="images/panel/status-windows-light.png" alt="The Panel's status page on Windows, listing runtime health, accepted work, permission questions, rights, logs and identity." loading="lazy">
+          </picture>
+        </a>
+        <figcaption>The Panel on Windows: what is running, what each app may do, and the questions apps ask you. Open full size.</figcaption>
+      </figure>
+      <figure>
+        <a href="images/panel/status-macos-light.png" target="_blank" rel="noopener">
+          <picture class="panel-shot">
+            <source srcset="images/panel/status-macos-dark.png" media="(prefers-color-scheme: dark)">
+            <img class="adopt-panel-screenshot" src="images/panel/status-macos-light.png" alt="The Panel's status page on macOS, listing runtime health, accepted work, permission questions, rights, logs and identity." loading="lazy">
+          </picture>
+        </a>
+        <figcaption>The same Panel on macOS. Open full size.</figcaption>
+      </figure>
+    </div>
+
+    <h3 id="panel-credentials">Manage credentials from the Panel</h3>
+    <p>The Panel's Credentials page stores secrets your applications use, without ever showing, logging or sending a value back to you. Its own "Learn more" and "?" links open the anchors below; the same steps are available from the command line.</p>
+    <div class="page-grid">
+      <article class="page-card"><h3 id="panel-credentials-saved">Saved credentials</h3><p>Lists every credential registered on this account by name, kind, state, target and consumer; the secret itself is never shown, logged or sent back.</p><p><code>openabstractions credentials list</code></p></article>
+      <article class="page-card"><span id="panel-credentials-new"></span><h3 id="panel-credentials-add">Add credential</h3><p>Registers a new secret under a name that is not already in use, scoped to the hosts it may be sent to and the services allowed to apply it. The credential manager binds the caller the same way for every write (<code>CRED-H1</code>).</p><p><code>openabstractions credentials add &lt;name&gt; --target HOST --for CONSUMER</code></p></article>
+      <article class="page-card"><h3 id="panel-credentials-rotate">Rotate</h3><p>Replaces the secret and expiry of a credential you have already listed, at the revision the list showed.</p><p><code>openabstractions credentials rotate &lt;name&gt;</code></p></article>
+      <article class="page-card"><h3 id="panel-credentials-revoke">Revoke</h3><p>Deletes a credential's secret immediately and keeps a tombstone recording that it existed, at the revision you already listed.</p><p><code>openabstractions credentials revoke &lt;name&gt;</code></p></article>
+      <article class="page-card"><h3 id="panel-credentials-access">App access</h3><p>Sets whether one application on one account may apply a named credential, using the same rights rule editor as the Panel's Questions and permissions page. <code>Check</code> and <code>Apply</code> evaluate the rights rule before the request is ever sent (<code>CRED-A2</code>).</p><p><code>openabstractions credentials allow &lt;name&gt; --program PATH</code>, or add <code>--deny</code></p></article>
+    </div>
+
+    <h2 id="for-developers">For developers</h2>
+    <section aria-labelledby="quickstart-title">
+      <h3 id="quickstart-title">Write a log. Read it back from OA.</h3>
+      <p>Start with one small application. It sends a structured event to OA, then retrieves that event from the service’s retained history. You grant history access to that application’s executable. OA keeps the record independently of the application.</p>
+      <p>The Go example includes Windows PowerShell and Linux commands for building the app, starting an isolated development runtime, and granting access. It uses a unique event ID to check that each run retrieves its own event.</p>
+      <pre><code>wrote: worker started (quickstart-…)
+read back: worker started (component=quickstart)</code></pre>
+      <p><a href="https://github.com/openabstractions/abstractions/tree/main/examples/logging-quickstart">Open the logging quickstart and source</a></p>
+      <p class="status-note">Use the example and runtime from the same release revision. The isolated write/read path has been exercised on Windows. Installed applications use discovery to verify the runtime; this example uses an explicit development endpoint.</p>
+    </section>
+    <h3>Choose your starting point</h3>
+    <div class="page-grid">
+      <article class="page-card"><h3>Add a capability to an application</h3><p>Pick downloads, inference, logging, storage, or another capability below. Add the facade client for your language and call the matching <code>Resolve*</code> method.</p><p><a href="https://github.com/openabstractions/abstraction-facade">Facade source and language setup</a></p></article>
+      <article class="page-card"><h3>Use an existing engine</h3><p>Connect an existing downloader, model server, or content store through a provider or adapter. Register what it can do with OA; applications continue using the capability API.</p><p><a href="reference.html#providers">Provider boundary</a></p></article>
+      <article class="page-card"><h3>Run and configure OA</h3><p>Start the runtime, choose which programs may do what, register providers and applications, save provider credentials, and inspect readiness.</p><p><a href="cases.html#operator">See the example</a></p></article>
+      <article class="page-card"><h3>Connect an assistant through MCP</h3><p>Give an assistant access to model discovery, setup requests, inference, durable inference jobs and visible application listings through OA’s development gateway.</p><p><a href="#mcp">Gateway setup and permissions</a></p></article>
+    </div>
+    <h3>Choose a capability</h3>
+    <div class="page-grid">
+      <article class="page-card"><h3>Work and data</h3><p><strong>Jobs</strong> retain accepted work. <strong>Downloads</strong> dedupe by digest in one job table and delegate the transfer. <strong>Storage</strong> finds content-addressed bytes.</p><p>Example: a program recovers the same download after it restarts.</p></article>
+      <article class="page-card"><h3>Application services</h3><p><strong>Logging</strong> carries structured events. <strong>Configuration</strong> exposes effective OA settings and the source of each value. <strong>Credentials</strong> keep secrets inside approved services.</p><p>Example: the OA Panel follows logs and configuration changes while an application runs.</p></article>
+      <article class="page-card"><h3>Models and inference</h3><p><strong>Model</strong> describes model lookup. <strong>Router</strong> selects eligible hosts. <strong>Inference</strong> carries chat, embeddings, speech, transcription, live sessions, and image generation.</p><p>A chat completion needs inference alone.</p><p>Example: a coding assistant keeps its chat API while OA changes the selected provider.</p></article>
+      <article class="page-card"><h3>People, programs, and apps</h3><p><strong>Identity</strong> identifies the connected program and account. <strong>Rights</strong> chooses what that program may do. <strong>Asks</strong> carries specific human decisions. The facade can list visible apps and open a registered app with permission.</p><p>Example: the first time a program uses a saved credential, OA asks the person in the Panel, and the program's retry succeeds once they allow it.</p></article>
+      <article class="page-card"><h3>For provider authors</h3><p><strong>Compare-and-set (CAS)</strong> replaces shared bytes only when they still match the version a provider read. <strong>Watch</strong> turns polled or pushed values into current snapshots, reports quiet after a chosen budget, and can collapse a burst into one settled callback.</p><p>Providers use these development utilities directly through their language packages. CAS has no behavioral contract page or capability claim.</p></article>
+      <article class="page-card"><h3>Explore the full catalogue</h3><p>The generated catalogue connects each responsibility to its contracts, language clients, source route, and recorded platform declaration.</p><p><a href="catalogue.html">Open the capability catalogue</a></p></article>
+    </div>
+    <h3>Resolve a service</h3>
+    <pre><code>ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+defer cancel()
+
+sink, err := facade.Discover().ResolveLog(
+    ctx,
+    facade.Requirements{Scope: facade.ScopeLocal},
+)</code></pre>
+    <ol class="compact-list">
+      <li>Choose an explicit deadline and execution scope.</li>
+      <li>Request only the guarantees your feature requires.</li>
+      <li>Handle resolution errors and capability outcomes as normal product states.</li>
+      <li>Save the returned work reference and use the same request identity when a submission reply is lost.</li>
+      <li>Exercise forbidden, unavailable, interruption, restart, and stale-context behavior for your integration.</li>
+    </ol>
+    <h3>Choose a language client</h3>
+    <p>All five languages can use the shared native connection. Go, Python and C++ include it in the default facade entry point. Rust and JavaScript use separate native connector packages; their installed-runtime paths select and verify runtime identity. The <a href="https://github.com/openabstractions/abstraction-facade">facade repository</a> gives revision-specific setup. The <a href="coverage.html">Language support</a> page records checks per module and language. Runtime packaging and release qualification remain separate from these source paths.</p>
+    <p class="status-note">JavaScript and Python packages for the resource, model bridge, model host and local-stores capabilities are not published to npm or PyPI in 0.3.0. The capability source remains available in its repository; registry artifacts have separate publication from the runtime.</p>
+    <h3 id="comfyui-node">ComfyUI: install the node</h3>
+    <p>The node ships as an ordinary ComfyUI custom node, described by its own <code>pyproject.toml</code>: a <code>[tool.comfy]</code> table names the Comfy Registry publisher and display name, and <code>requires-comfyui</code> names the ComfyUI version this node was run against.</p>
+    <pre><code>[tool.comfy]
+PublisherId = "openabstractions"
+DisplayName = "OpenAbstractions Downloads"
+requires-comfyui = ">=0.35.0"</code></pre>
+    <p>If OA is not running, Manager keeps working as before and the node explains what is missing rather than failing silently.</p>
+    <h3 id="opencode-node">OpenCode: one command</h3>
+    <p>The adapter ships its own <code>configure.js</code>. One command writes OpenCode's provider block from what this machine can actually serve.</p>
+    <pre><code>node adopters/opencode/configure.js configure</code></pre>
+    <p>It reads the router's servable chat families through the runtime and writes or updates the <code>provider.&lt;id&gt;</code> block. If no default model is set, it also selects one of those families. Other configuration keys stay untouched, and running it again with nothing changed leaves the file unchanged.</p>
+    <h3 id="mcp">Connect an assistant through the MCP gateway</h3>
+    <p><a href="applications.html">How application MCP works</a>: the developing application profile, shared state and action semantics, and current availability.</p>
+    <p>The MCP gateway is a separate optional stdio program. When the selected asset includes it, an assistant launches it directly. The gateway source and guide describe its tools and permission model.</p>
+    <p>The <a href="https://github.com/openabstractions/abstractions/tree/main/mcp-gateway">gateway guide</a> includes source-build commands, permission setup and an OpenCode configuration example. Check the release notes to confirm whether the selected asset contains the optional program.</p>
+    <p>Application editing requires an application-specific adapter. For example, the ComfyUI experiment supplies preview, apply and readback tools tied to a document revision. The gateway’s application-listing tool exposes discovery metadata. <a href="cases.html#interaction">See how application interaction fits together</a>.</p>
+  </main>
+  <footer><span>OpenAbstractions</span><a href="index.html">Home</a><a href="catalogue.html">Catalogue</a><a href="coverage.html">Language support</a></footer>
+</body>
+</html>

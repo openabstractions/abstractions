@@ -1,0 +1,29 @@
+<!-- Compiled with the app-owned package_source override. The manifest File
+     lives in the integration root and names the official Desktop program
+     outside {app}, which the Panel accepts through OA's compiled catalog and
+     the signature it verifies itself. Generic record/Panel File references
+     remain. -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Fragment>
+    <Binary Id="OpenCodeInstallerHost" SourceFile="$(var.InstallerHost)" />
+    <CustomAction Id="CheckOpenCodeClosed" BinaryRef="OpenCodeInstallerHost" DllEntry="CheckDesktopClosed" Execute="immediate" Return="check" />
+    <!-- Deferred/rollback actions impersonate the original installing user;
+         SYSTEM's profile is never a config target. The cached Binary remains
+         available after RemoveFiles for commit cleanup. -->
+    <CustomAction Id="InstallOpenCodeIntegration" BinaryRef="OpenCodeInstallerHost" DllEntry="Install" Execute="deferred" Impersonate="yes" Return="check" />
+    <CustomAction Id="RemoveOpenCodeIntegration" BinaryRef="OpenCodeInstallerHost" DllEntry="Remove" Execute="deferred" Impersonate="yes" Return="check" />
+    <CustomAction Id="RollbackOpenCodeInstall" BinaryRef="OpenCodeInstallerHost" DllEntry="Rollback" Execute="rollback" Impersonate="yes" Return="check" />
+    <CustomAction Id="RollbackOpenCodeRemove" BinaryRef="OpenCodeInstallerHost" DllEntry="Rollback" Execute="rollback" Impersonate="yes" Return="check" />
+    <CustomAction Id="CommitOpenCodeInstall" BinaryRef="OpenCodeInstallerHost" DllEntry="CommitInstall" Execute="commit" Impersonate="yes" Return="check" />
+    <CustomAction Id="CommitOpenCodeRemove" BinaryRef="OpenCodeInstallerHost" DllEntry="CommitRemove" Execute="commit" Impersonate="yes" Return="check" />
+    <InstallExecuteSequence>
+      <Custom Action="CheckOpenCodeClosed" Before="InstallInitialize" Condition="NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="RollbackOpenCodeInstall" After="InstallFiles" Condition="NOT REMOVE AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="InstallOpenCodeIntegration" After="RollbackOpenCodeInstall" Condition="NOT REMOVE AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="CommitOpenCodeInstall" After="InstallOpenCodeIntegration" Condition="NOT REMOVE AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="RollbackOpenCodeRemove" Before="RemoveOpenCodeIntegration" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="RemoveOpenCodeIntegration" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="CommitOpenCodeRemove" After="RemoveOpenCodeIntegration" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
+  </Fragment>
+</Wix>

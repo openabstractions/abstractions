@@ -24,25 +24,35 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 from workspace import (environment, layer, cmake_for, certify_compiler, source_revision, CERTIFIES,
                        DRY_RUN_HELP, dry_run_stop,
-                       ATTESTATION_BY, attested_principal, fixture_endpoints, host_program, consumer_executable)
+                       ATTESTATION_BY, attested_principal, fixture_endpoints, host_program, consumer_executable, ReadinessOutput)
 ROOT = HERE.parents[2]
 from sdk import installed_sdk
 
 BUILD = ROOT / '.build' / 'facade'
 
 
+def finish_owned(captures):
+    """Attempt each already-owned peer even when another cleanup fails."""
+    primary = sys.exc_info()[1]
+    failure = None
+    for capture in captures:
+        try:
+            capture.finish()
+        except Exception as error:
+            if failure is None:
+                failure = error
+            else:
+                ReadinessOutput.annotate(failure, 'later peer cleanup: ' + str(error))
+    if failure is not None:
+        if primary is not None:
+            ReadinessOutput.annotate(primary, 'peer cleanup failed: ' + str(failure))
+        else:
+            raise failure
+
+
 def require(condition, message):
     if not condition:
         raise RuntimeError(message)
-
-
-def line(process, timeout=20):
-    result = queue.Queue()
-    threading.Thread(target=lambda: result.put(process.stdout.readline()), daemon=True).start()
-    value = result.get(timeout=timeout)
-    if not value:
-        raise RuntimeError('process exited before readiness: ' + process.stderr.read())
-    return value
 
 
 def home_environment(env, path):
@@ -120,6 +130,7 @@ def main():
             # resolver's registration identifies the working provider endpoints.
             client_env[variable] = endpoints[name] + '-unregistered'
         processes = []
+        captures = {}
         client = None
         try:
             for name, endpoint in endpoints.items():
@@ -129,16 +140,19 @@ def main():
                 process = subprocess.Popen(command, env=host_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                            text=True, encoding='utf-8')
                 processes.append(process)
-                require(line(process).strip() == 'READY ' + name, 'wrong service readiness')
+                captures[process] = ReadinessOutput(process)
+                captures[process].expect('READY ' + name, timeout=20)
             resolver = subprocess.Popen([str(host), 'resolver', runtime_endpoint,
                                          *endpoints.values()], env=host_env, stdout=subprocess.PIPE,
                                         stderr=subprocess.PIPE, text=True, encoding='utf-8')
             processes.append(resolver)
-            require(line(resolver).strip() == 'READY resolver', 'wrong resolver readiness')
+            captures[resolver] = ReadinessOutput(resolver)
+            captures[resolver].expect('READY resolver', timeout=20)
             client = subprocess.Popen([str(executable), 'all'], cwd=client_home, env=client_env,
                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                       text=True, encoding='utf-8')
-            require(line(client).startswith('CLIENT VERIFIED:'), 'facade provider assertions failed')
+            captures[client] = ReadinessOutput(client)
+            captures[client].expect('CLIENT VERIFIED:', prefix=True, timeout=20)
             until = time.monotonic() + 10
             records = []
             while time.monotonic() < until:
@@ -158,7 +172,9 @@ def main():
             require(peer['verified'] and peer['by'] == ATTESTATION_BY and attested_principal(peer) and
                     Path(peer['exe']).name.lower() == executable.name.lower(),
                     'logging caller identity incorrect: ' + json.dumps(peer))
-            _, error = client.communicate('\n', timeout=15)
+            client.stdin.write('\n')
+            client.stdin.flush()
+            _, error = captures[client].finish(stop=False, timeout=15)
             require(client.returncode == 0, 'facade consumer failed: ' + error)
             require(all(p.poll() is None for p in processes), 'service died with its client')
             before = output.read_bytes()
@@ -168,8 +184,7 @@ def main():
             require(not list(client_home.rglob('*')), 'facade client created local state')
             require(output.read_bytes() == before, 'configuration read changed service log')
             print('PASS: installed facade resolves logging/config/router; conventional endpoint overrides cannot bypass selection')
-            resolver.kill()
-            resolver.communicate(timeout=10)
+            captures[resolver].finish()
             require(all(p.poll() is None for p in processes[:-1]), 'provider stopped before resolver-absence proof')
             # Point legacy endpoint overrides at live providers. An absent resolver
             # must still fail, rather than silently choosing these alternatives.
@@ -179,13 +194,8 @@ def main():
             require(output.read_bytes() == before, 'resolver absence sent a write to a conventional provider')
             print('PASS: absent resolver refuses all operations while conventional providers remain live')
         finally:
-            if client is not None and client.poll() is None:
-                client.kill()
-                client.communicate(timeout=10)
-            for process in processes:
-                if process.poll() is None:
-                    process.kill()
-                process.communicate(timeout=10)
+            finish_owned(([captures[client]] if client is not None else []) +
+                         [captures[process] for process in processes])
         run([executable, 'absent'], cwd=client_home, child_env=client_env, timeout=15)
         require(not list(client_home.rglob('*')), 'absent-service facade fallback created state')
         require(output.read_bytes() == before, 'absent facade changed service-owned storage')
@@ -203,6 +213,14 @@ def main():
         run([ctest, '--test-dir', binding, '-C', 'Release', '-R', '^facade_activation$', '--no-tests=error',
              '--output-on-failure', '-V'], timeout=180)
         print('PASS: default discovery activates a stopped installation once; explicit endpoints, untrusted servers and observation never do')
+
+        # The logging README's make_async_handler example, compiled in place so
+        # the test finds abstraction-logging/cpp/README.md beside this tree and
+        # fails when the README block and the compiled body differ.
+        run([cmake, '--build', binding, '--config', 'Release', '--target', 'facade_readme_async_handler'])
+        run([ctest, '--test-dir', binding, '-C', 'Release', '-R', '^facade_readme_async_handler$', '--no-tests=error',
+             '--output-on-failure'], timeout=60)
+        print('PASS: the logging README make_async_handler example compiles and matches its block')
 
 
 if __name__ == '__main__':

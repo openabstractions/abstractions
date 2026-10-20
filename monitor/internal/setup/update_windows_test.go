@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/openabstractions/abstraction-inference/go/providerhost/enginefiles"
+	"github.com/openabstractions/abstraction-facade/go/programfiles"
 )
 
 // The Lemonade provider gives its package folder the engine-files read-only
@@ -15,17 +15,17 @@ import (
 func TestRemovingAnEarlierVersionUnlocksItsEngineFolder(t *testing.T) {
 	f := newUpdateFixture(t, "lemonade-engine", packageEntries("lemonade-engine", "2.0.0"))
 	engine := filepath.Join(f.root1, "lemonade")
-	sid, err := enginefiles.AccountSID()
+	sid, err := programfiles.AccountSID()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := enginefiles.SetFolderACL(engine, sid, enginefiles.ReadOnly); err != nil {
+	if err := programfiles.SetFolderACL(engine, sid, programfiles.ReadOnly); err != nil {
 		t.Fatal(err)
 	}
 	aside := filepath.Join(filepath.Dir(f.root1), "."+filepath.Base(f.root1)+".removing")
 	t.Cleanup(func() {
 		for _, root := range []string{f.root1, aside} {
-			if err := enginefiles.UnlockWithin(root); err != nil {
+			if err := programfiles.UnlockWithin(root); err != nil {
 				t.Errorf("unlock %s: %v", root, err)
 			}
 		}

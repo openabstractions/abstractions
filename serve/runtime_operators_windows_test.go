@@ -100,7 +100,7 @@ func TestOperatorProgramOpensNothingOffALocalDrive(t *testing.T) {
 		{"share program", state, `\\host\share\x.exe`},
 	} {
 		opened = nil
-		_, err := parseRuntime([]string{"--isolated", isolatedName(), "--state-dir", tc.state, "--operator-program", tc.program}, io.Discard)
+		_, err := parseTestRuntime(t, []string{"--isolated", isolatedName(), "--state-dir", tc.state, "--operator-program", tc.program}, io.Discard)
 		if !errors.Is(err, identity.ErrNotLocalPath) {
 			t.Errorf("%s: %v; want identity's refusal", tc.name, err)
 		}
@@ -154,7 +154,7 @@ func TestOperatorProgramRefusesAStateFolderResolvingToAShare(t *testing.T) {
 	}
 	state := filepath.Join(mapped, below)
 	panel := operatorProgramFixture(t)
-	if _, err := parseRuntime([]string{"--isolated", isolatedName(), "--state-dir", state, "--operator-program", panel}, io.Discard); !errors.Is(err, identity.ErrNotLocalPath) {
+	if _, err := parseTestRuntime(t, []string{"--isolated", isolatedName(), "--state-dir", state, "--operator-program", panel}, io.Discard); !errors.Is(err, identity.ErrNotLocalPath) {
 		t.Fatalf("a state directory resolving to a share: %v; want identity's refusal", err)
 	}
 	for _, path := range []string{installed, state} {

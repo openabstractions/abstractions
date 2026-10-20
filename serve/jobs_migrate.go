@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -143,6 +144,10 @@ func migrateLegacyCommand(args []string, output, diagnostics io.Writer) error {
 	if err != nil {
 		return flagMistake(diagnostics, command, migrateUsage, err.Error())
 	}
+	guardState := ""
+	if supplied {
+		guardState = *state
+	}
 	// apply and abandon write the store; the default state is the account's.
 	refuse := func() error {
 		if supplied {
@@ -157,11 +162,21 @@ func migrateLegacyCommand(args []string, output, diagnostics io.Writer) error {
 		if *mapping == "" {
 			return flagMistake(diagnostics, command, migrateUsage, "--mapping is required")
 		}
+		release, err := selectedStateGuard(context.Background(), guardState)
+		if err != nil {
+			return err
+		}
+		defer release()
 		if err := refuse(); err != nil {
 			return err
 		}
 		return applyLegacy(root, *mapping, output, diagnostics)
 	default:
+		release, err := selectedStateGuard(context.Background(), guardState)
+		if err != nil {
+			return err
+		}
+		defer release()
 		if err := refuse(); err != nil {
 			return err
 		}

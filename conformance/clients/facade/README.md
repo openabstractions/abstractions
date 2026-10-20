@@ -53,6 +53,11 @@ implementations and entry into the explicit legacy package. Run
 `python conformance/clients/facade/test_dependencies.py` for local Go-module
 counterexamples, including an indirect provider import. The normal gate runs both.
 
+The exact pure Catalogue and Typed Permission presentation packages, plus
+Storage's existing digest owner, remain allowed. Their complete dependencies
+are traversed. Domain roots, arbitrary sibling packages and provider code
+behind a pure package remain refused.
+
 ## Explicit adoption wrapper
 
 `go test -race -count=1 -v conformance/clients/facade/adoption_test.go` runs the
@@ -69,4 +74,4 @@ owner and guarantee validation behind the generated interfaces. Both results rep
 exactly one HTTP request per accepted operation and an unchanged original receipt.
 The test uses temporary data and endpoints. This exercises provider availability,
 not package installation. Current macOS service identity cannot supply the
-required Program proof, so that platform is explicitly excluded from this fixture.
+required [Program](https://openabstractions.github.io/reference.html#concept-identity.listener-program-need) proof, so that platform is explicitly excluded from this fixture.

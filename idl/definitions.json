@@ -419,7 +419,9 @@
           "languages": [
             "go",
             "cpp",
-            "python"
+            "python",
+            "rust",
+            "javascript"
           ]
         }
       ],
@@ -448,14 +450,18 @@
           "limitation": "Vocabulary only; Generated proof vocabulary; Peer, Attr<T>, OS handles and connect-time extraction are native and cannot be serialized as authority."
         },
         "rust": {
-          "generated": [],
-          "binding": "Native provider/client integration requires separate evidence.",
-          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+          "generated": [
+            "openabstractions-flat/abstraction-identity/identity.thrift"
+          ],
+          "binding": "The abstraction-ipc crate reads the transport constants from abstraction.ipc.constants.",
+          "limitation": "Transport constants only (status codes, frame bounds, call budget); the proof vocabulary is not committed for this language."
         },
         "javascript": {
-          "generated": [],
-          "binding": "Native provider/client integration requires separate evidence.",
-          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+          "generated": [
+            "openabstractions-flat/abstraction-identity/identity.thrift"
+          ],
+          "binding": "The @openabstractions/ipc package reads the transport constants from abstraction.ipc.constants.",
+          "limitation": "Transport constants only (status codes, frame bounds, call budget); the proof vocabulary is not committed for this language."
         }
       },
       "interface_generation": {
@@ -559,6 +565,18 @@
             "cpp",
             "python"
           ]
+        },
+        {
+          "path": "openabstractions-flat/abstraction-asks/presenter.thrift",
+          "mode": "service",
+          "private": true,
+          "languages": ["go"]
+        },
+        {
+          "path": "openabstractions-flat/abstraction-asks/responder_wait.thrift",
+          "mode": "service",
+          "private": true,
+          "languages": ["go"]
         }
       ],
       "descriptor_status": "defined",
@@ -566,7 +584,9 @@
       "language_obligations": {
         "go": {
           "generated": [
-            "openabstractions-flat/abstraction-asks/asks.thrift"
+            "openabstractions-flat/abstraction-asks/asks.thrift",
+            "openabstractions-flat/abstraction-asks/presenter.thrift",
+            "openabstractions-flat/abstraction-asks/responder_wait.thrift"
           ],
           "binding": "Go caller-bound shared IPC host/client tested.",
           "limitation": "Application and operator profiles generated; native Forget/retirement and Via/For evidence remain provider integration."
@@ -838,7 +858,8 @@
       ],
       "providers": [
         "openabstractions-flat/abstraction-model/go/ollama.go",
-        "openabstractions-flat/abstraction-model/go/service/service.go"
+        "openabstractions-flat/abstraction-model/go/service/service.go",
+        "openabstractions-flat/abstraction-model/go/service/catalog.go"
       ],
       "definitions": [
         {
@@ -852,7 +873,7 @@
         }
       ],
       "descriptor_status": "defined",
-      "reason": "Generated ModelResolver returns the portable typed download Request; nonportable native mappings refuse explicitly.",
+      "reason": "Generated ModelResolver returns the portable typed download Request; nonportable native mappings refuse explicitly. Generated ModelCatalog Fit ranks the compiled-in catalogue against the resource table and router offers on the same endpoint.",
       "language_obligations": {
         "go": {
           "generated": [
@@ -888,7 +909,7 @@
       },
       "interface_generation": {
         "status": "described",
-        "reason": "Generated ModelResolver returns the portable typed download Request; nonportable native mappings refuse explicitly."
+        "reason": "Generated ModelResolver returns the portable typed download Request; nonportable native mappings refuse explicitly. Generated ModelCatalog Fit ranks the compiled-in catalogue against the resource table and router offers on the same endpoint."
       }
     },
     {
@@ -966,46 +987,125 @@
             "cpp",
             "python"
           ]
+        },
+        {
+          "path": "openabstractions-flat/abstraction-facade/appmodel.thrift",
+          "mode": "records",
+          "languages": [
+            "go",
+            "cpp",
+            "python",
+            "rust",
+            "javascript"
+          ],
+          "no_ipc": true
+        },
+        {
+          "path": "openabstractions-flat/abstraction-facade/machines.thrift",
+          "mode": "service",
+          "languages": [
+            "go",
+            "javascript",
+            "rust"
+          ]
+        },
+        {
+          "path": "openabstractions-flat/abstraction-facade/applications.thrift",
+          "mode": "service",
+          "languages": [
+            "go",
+            "cpp",
+            "python",
+            "rust",
+            "javascript"
+          ]
+        },
+        {
+          "path": "openabstractions-flat/abstraction-facade/messages.thrift",
+          "mode": "service",
+          "languages": [
+            "go",
+            "cpp",
+            "python",
+            "rust",
+            "javascript"
+          ]
+        },
+        {
+          "path": "openabstractions-flat/abstraction-facade/registration.thrift",
+          "mode": "service",
+          "languages": [
+            "go",
+            "cpp",
+            "python",
+            "rust",
+            "javascript"
+          ]
         }
       ],
       "descriptor_status": "defined",
-      "reason": "Resolver service plus client-composed readiness; no new status endpoint.",
+      "reason": "Resolver service plus client-composed readiness; no new status endpoint. The application model is a records-only definition with no service (CONTRACT.md FAC-M1). Messages is the private development profile accepted in backlog/AB-2.md and done/A-XM3.md; it has no published Messages baseline.",
       "language_obligations": {
         "go": {
           "generated": [
-            "openabstractions-flat/abstraction-facade/facade.thrift"
+            "openabstractions-flat/abstraction-facade/facade.thrift",
+            "openabstractions-flat/abstraction-facade/appmodel.thrift",
+            "openabstractions-flat/abstraction-facade/machines.thrift",
+            "openabstractions-flat/abstraction-facade/applications.thrift",
+            "openabstractions-flat/abstraction-facade/messages.thrift",
+            "openabstractions-flat/abstraction-facade/registration.thrift"
           ],
           "binding": "Native provider/client integration requires separate evidence.",
-          "limitation": "Generation target exists; native provider execution is separate."
+          "limitation": "Generation targets exist. Messages remains private development with no published API freeze; native binding, installed and cross-machine qualification retain their separate evidence."
         },
         "cpp": {
           "generated": [
-            "openabstractions-flat/abstraction-facade/facade.thrift"
+            "openabstractions-flat/abstraction-facade/facade.thrift",
+            "openabstractions-flat/abstraction-facade/appmodel.thrift",
+            "openabstractions-flat/abstraction-facade/applications.thrift",
+            "openabstractions-flat/abstraction-facade/messages.thrift",
+            "openabstractions-flat/abstraction-facade/registration.thrift"
           ],
           "binding": "Native provider/client integration requires separate evidence.",
-          "limitation": "Generation target exists; native provider execution is separate."
+          "limitation": "Generation targets exist. Messages remains private development with no published API freeze; native binding, installed and cross-machine qualification retain their separate evidence."
         },
         "python": {
           "generated": [
-            "openabstractions-flat/abstraction-facade/facade.thrift"
+            "openabstractions-flat/abstraction-facade/facade.thrift",
+            "openabstractions-flat/abstraction-facade/appmodel.thrift",
+            "openabstractions-flat/abstraction-facade/applications.thrift",
+            "openabstractions-flat/abstraction-facade/messages.thrift",
+            "openabstractions-flat/abstraction-facade/registration.thrift"
           ],
           "binding": "Native provider/client integration requires separate evidence.",
-          "limitation": "Generation target exists; native provider execution is separate."
+          "limitation": "Generation targets exist. Messages remains private development with no published API freeze; native binding, installed and cross-machine qualification retain their separate evidence."
         },
         "rust": {
-          "generated": [],
+          "generated": [
+            "openabstractions-flat/abstraction-facade/appmodel.thrift",
+            "openabstractions-flat/abstraction-facade/machines.thrift",
+            "openabstractions-flat/abstraction-facade/applications.thrift",
+            "openabstractions-flat/abstraction-facade/messages.thrift",
+            "openabstractions-flat/abstraction-facade/registration.thrift"
+          ],
           "binding": "Native provider/client integration requires separate evidence.",
-          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+          "limitation": "Generation targets exist. Messages remains private development with no published API freeze; native binding, installed and cross-machine qualification retain their separate evidence."
         },
         "javascript": {
-          "generated": [],
+          "generated": [
+            "openabstractions-flat/abstraction-facade/appmodel.thrift",
+            "openabstractions-flat/abstraction-facade/machines.thrift",
+            "openabstractions-flat/abstraction-facade/applications.thrift",
+            "openabstractions-flat/abstraction-facade/messages.thrift",
+            "openabstractions-flat/abstraction-facade/registration.thrift"
+          ],
           "binding": "Native provider/client integration requires separate evidence.",
-          "limitation": "Service/interface code generation unsupported; record backend available but not committed for this layer."
+          "limitation": "Generation targets exist. Messages remains private development with no published API freeze; native binding, installed and cross-machine qualification retain their separate evidence."
         }
       },
       "interface_generation": {
         "status": "described",
-        "reason": "Resolver service plus client-composed readiness; no new status endpoint."
+        "reason": "Resolver service plus client-composed readiness; no new status endpoint. The application model has no service interface."
       }
     },
     {
@@ -1023,34 +1123,50 @@
         {
           "path": "openabstractions-flat/abstraction-resource/resource.thrift",
           "mode": "service",
-          "languages": ["go", "cpp", "python", "rust", "javascript"]
+          "languages": [
+            "go",
+            "cpp",
+            "python",
+            "rust",
+            "javascript"
+          ]
         }
       ],
       "descriptor_status": "defined",
       "reason": "Machine resource table and lease protocol; generated clients and server records exist, while native service integration needs separate evidence.",
       "language_obligations": {
         "go": {
-          "generated": ["openabstractions-flat/abstraction-resource/resource.thrift"],
+          "generated": [
+            "openabstractions-flat/abstraction-resource/resource.thrift"
+          ],
           "binding": "Generated client and server records; native integration requires separate evidence.",
           "limitation": "Table and lease behavior is implemented in the Go service; generation alone does not prove runtime deployment."
         },
         "cpp": {
-          "generated": ["openabstractions-flat/abstraction-resource/resource.thrift"],
+          "generated": [
+            "openabstractions-flat/abstraction-resource/resource.thrift"
+          ],
           "binding": "Generated client records and protocol support require separate integration evidence.",
           "limitation": "No native resource service implementation is claimed."
         },
         "python": {
-          "generated": ["openabstractions-flat/abstraction-resource/resource.thrift"],
+          "generated": [
+            "openabstractions-flat/abstraction-resource/resource.thrift"
+          ],
           "binding": "Generated client records and protocol support require separate integration evidence.",
           "limitation": "No native resource service implementation is claimed."
         },
         "rust": {
-          "generated": ["openabstractions-flat/abstraction-resource/resource.thrift"],
+          "generated": [
+            "openabstractions-flat/abstraction-resource/resource.thrift"
+          ],
           "binding": "Generated records require separate client and service integration evidence.",
           "limitation": "Generated records do not claim a native resource service."
         },
         "javascript": {
-          "generated": ["openabstractions-flat/abstraction-resource/resource.thrift"],
+          "generated": [
+            "openabstractions-flat/abstraction-resource/resource.thrift"
+          ],
           "binding": "Generated records require separate client and service integration evidence.",
           "limitation": "Generated records do not claim a native resource service."
         }

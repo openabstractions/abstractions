@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -19,17 +20,30 @@ import (
 // mistake that names modelhostd engine install; no runtime is contacted.
 func TestModelsHostRefusesAnUnpinnedEngineBeforeDeclaring(t *testing.T) {
 	program := buildModelhostd(t)
-	engine := filepath.Join(t.TempDir(), "llama-server.exe")
+	name := "llama-server"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	engine := filepath.Join(t.TempDir(), name)
 	if err := os.WriteFile(engine, []byte("not the pinned release"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	var output, diagnostics bytes.Buffer
-	err := modelsHostCommand("models host", []string{"store/object", "--engine", engine, "--program", program,
+	err := modelsHostCommandOn("windows", "models host", []string{"store/object", "--engine", engine, "--program", program,
 		"--endpoint", "modelhost-engine-check-no-runtime", "--timeout", "2s"}, &output, &diagnostics)
 	if err == nil {
 		t.Fatal("an unpinned engine was accepted")
 	}
 	text := err.Error() + diagnostics.String()
+	// The model host pins llama.cpp for windows/amd64 alone (host.PinnedEngine).
+	// Elsewhere engine install refuses too, so the refusal names the missing
+	// pin and no install remedy.
+	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
+		if !strings.Contains(text, "no reviewed llama.cpp release is pinned for "+runtime.GOOS+"/"+runtime.GOARCH) {
+			t.Fatalf("the refusal does not name the missing pin: %s", text)
+		}
+		return
+	}
 	if !strings.Contains(text, "modelhostd engine install") || !strings.Contains(text, "pinned") {
 		t.Fatalf("the refusal does not name the pin and modelhostd engine install: %s", text)
 	}
@@ -78,7 +92,7 @@ func main() {
 // recordingModelHost builds a program that answers `engine check` the way
 // modelhostd does for its arguments alone: it appends its argument list, one
 // per line, to the file $STANDIN_ARGS names, refuses an --engine-arg of --rpc
-// with exit 2 and modelhostd's own words, and passes everything else.
+// with exit 2 and modelhostd's own words, and can refuse STANDIN_REFUSE_SET.
 func recordingModelHost(t *testing.T, dir string) string {
 	t.Helper()
 	src := t.TempDir()
@@ -98,6 +112,11 @@ func main() {
 			fmt.Fprintln(f, "--end--")
 			f.Close()
 		}
+	}
+	if len(os.Args) > 4 && os.Args[1] == "engine" && os.Args[2] == "check" &&
+		os.Args[3] == "--set" && os.Args[4] == os.Getenv("STANDIN_REFUSE_SET") {
+		fmt.Fprintln(os.Stderr, "pytorchd engine check: fixture refused "+os.Args[4])
+		os.Exit(1)
 	}
 	for i, a := range os.Args {
 		if a == "--engine-arg" && i+1 < len(os.Args) && os.Args[i+1] == "--rpc" {
@@ -160,7 +179,7 @@ func TestModelsHostCarriesStateAndEngineArgumentsToEngineCheck(t *testing.T) {
 	engine := unpinnedEngine(t)
 	var output, diagnostics bytes.Buffer
 	//unchecked: no runtime answers this endpoint; the check below reads what engine check was given
-	modelsHostCommand("models host", []string{"store/object", "--engine", engine, "--program", program,
+	modelsHostCommandOn("windows", "models host", []string{"store/object", "--engine", engine, "--program", program,
 		"--state", state, "--engine-arg", "--pooling", "--engine-arg", "mean",
 		"--endpoint", "modelhost-state-no-runtime", "--timeout", "2s"}, &output, &diagnostics)
 	runs := recordedChecks(t, record)
@@ -170,7 +189,7 @@ func TestModelsHostCarriesStateAndEngineArgumentsToEngineCheck(t *testing.T) {
 	}
 
 	var refusedOut, refusedDiag bytes.Buffer
-	err := modelsHostCommand("models host", []string{"store/object", "--engine", engine, "--program", program,
+	err := modelsHostCommandOn("windows", "models host", []string{"store/object", "--engine", engine, "--program", program,
 		"--engine-arg", "--rpc", "--engine-arg", "10.0.0.2:50052",
 		"--endpoint", "modelhost-refused-arg-no-runtime", "--timeout", "2s"}, &refusedOut, &refusedDiag)
 	var exit *exitError
@@ -199,6 +218,69 @@ func TestModelsHostDeclarationCarriesState(t *testing.T) {
 	read, _ := readHostDeclaration(list)
 	if read.state != state || strings.Join(read.extra, " ") != "--pooling mean" {
 		t.Fatalf("read back state %q extra %q", read.state, read.extra)
+	}
+}
+
+// Owner's preview, 2026-11-01: native:object:unknown:oa-chat-…. A hosted
+// model in a store only an inventory source's own --config names (Setup's
+// model folder) brings that configuration onto modelhostd's serve line, so
+// the provider's own store reading resolves the object. A hand-written
+// configuration stays; a source's configuration leaves with its last
+// hosted model; a line read back keeps the configurations it carried.
+func TestModelsHostDeclarationCarriesTheStoreSourcesConfig(t *testing.T) {
+	setupConfig := filepath.Join(t.TempDir(), "setup", "inventoryd.json")
+	handConfig := filepath.Join(t.TempDir(), "hand.json")
+	list := wire.DeclarationList{Declarations: []wire.DeclarationState{
+		{Declaration: wire.Declaration{Name: "oa-modelhost-chat-1", Contracts: []string{inventorySourceContract}, Resources: []string{"store:oa-chat-1"},
+			Arguments: []string{"serve", "--endpoint", "{endpoint}", "--config", setupConfig, "--config-roots-only"}}},
+		{Declaration: wire.Declaration{Name: "ambient", Contracts: []string{inventorySourceContract}, Resources: []string{"store:huggingface"},
+			Arguments: []string{"serve", "--endpoint", "{endpoint}"}}},
+	}}
+	setupModel := hostedModel{Name: "qwen3.6-35b-a3b", Store: "oa-chat-1", Object: "sha256:945bbf"}
+	hubModel := hostedModel{Name: "smol", Store: "huggingface", Object: "smol"}
+	if got := hostStoreConfigs(list, []string{handConfig}, []hostedModel{setupModel, hubModel}); !slices.Equal(got, []string{handConfig, setupConfig}) {
+		t.Fatalf("configs %q", got)
+	}
+	if got := hostStoreConfigs(list, []string{handConfig, setupConfig}, []hostedModel{hubModel}); !slices.Equal(got, []string{handConfig}) {
+		t.Fatalf("configs after the Setup model left %q", got)
+	}
+	settings := hostSettings{program: "modelhostd", endpoint: "modelhost", engine: "llama-server", configs: hostStoreConfigs(list, nil, []hostedModel{setupModel})}
+	arguments := hostArguments(settings, []hostedModel{setupModel}, []string{"runtime"})
+	if i := slices.Index(arguments, argConfig); i < 0 || i+1 >= len(arguments) || arguments[i+1] != setupConfig {
+		t.Fatalf("the serve line %q carries no --config %s", arguments, setupConfig)
+	}
+	read, models := readServeArguments(arguments)
+	if !slices.Equal(read.configs, []string{setupConfig}) || len(read.passthrough) != 0 || len(models) != 1 || models[0] != setupModel {
+		t.Fatalf("read back configs %q passthrough %q models %+v", read.configs, read.passthrough, models)
+	}
+}
+
+// The model-label digest guard at the owner of hosted names (owner,
+// 2026-11-01: OpenCode listed a model by its SHA-256). A store name that is a
+// file digest gives way to the family the store's descriptor states, else its
+// architecture with size label; a digest that remains, or one --as names, is
+// refused, so no hosted name a client lists is a digest.
+func TestModelsHostDigestLabelGuard(t *testing.T) {
+	digest := strings.Repeat("ab", 32)
+	for _, c := range []struct {
+		name       string
+		descriptor map[string]string
+		want       string
+	}{
+		{"qwen3:8b", nil, "qwen3:8b"},
+		{digest + ".gguf", map[string]string{"family": "qwen3.6-35b-a3b"}, "qwen3.6-35b-a3b"},
+		{digest + ".gguf", map[string]string{"family": digest, "architecture": "qwen35moe", "size_label": "35B-A3B"}, "qwen35moe-35B-A3B"},
+		{digest + ".gguf", map[string]string{"family": digest}, digest + ".gguf"},
+	} {
+		if got := plainHostedName(c.name, c.descriptor); got != c.want {
+			t.Errorf("plainHostedName(%q, %v) = %q, want %q", c.name, c.descriptor, got, c.want)
+		}
+	}
+	var out, diag bytes.Buffer
+	err := modelsHostCommand("models host", []string{"store/object", "--as", digest, "--endpoint", "modelhost-digest-label-no-runtime", "--timeout", "2s"}, &out, &diag)
+	var exit *exitError
+	if !errors.As(err, &exit) || exit.code != exitUsage || !strings.Contains(diag.String(), "never by a file digest") {
+		t.Fatalf("--as a digest: %v, diagnostics %q", err, diag.String())
 	}
 }
 
@@ -236,7 +318,7 @@ func TestModelsHostRefusesARelativeProgramWithoutRunningIt(t *testing.T) {
 func TestModelsHostNamesAModelHostWithoutEngineCheck(t *testing.T) {
 	program := standInModelHost(t, t.TempDir())
 	var output, diagnostics bytes.Buffer
-	err := modelsHostCommand("models host", []string{"store/object", "--engine", unpinnedEngine(t), "--program", program,
+	err := modelsHostCommandOn("windows", "models host", []string{"store/object", "--engine", unpinnedEngine(t), "--program", program,
 		"--endpoint", "modelhost-old-program-no-runtime", "--timeout", "2s"}, &output, &diagnostics)
 	if err == nil {
 		t.Fatal("a model host without engine check was accepted")

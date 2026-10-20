@@ -5,7 +5,7 @@
 // /notifications/act, writes one sentence, and an Open Activity action points
 // at its job's row. The answered row leaves on the reread and its sentence
 // moves to the group.
-const fs = require('fs'), vm = require('vm'), assert = require('assert');
+const fs = require('fs'), vm = require('./panel_record_test_helper.js').vm, assert = require('assert');
 const { assertPanelRules } = require('./static/panel_rules.js');
 
 function goConst(file, name) {
@@ -42,13 +42,16 @@ function element(id) {
 const now = Date.now();
 let record = { id: 'a1', title: 'Download finished', body: 'slow.bin is ready.', name: 'Pretend Lemonade', state: 'posted', at: now - 60e3, token: 't1',
  actions: [{ id: 'copy', title: 'Copy now' }, { id: 'open', title: 'Show in Activity', activity: true }] };
-const acts = [];
+const acts = [], notifierPosts = [];
+let notifierList = [{ program: 'C:/pl.exe', name: 'Pretend Lemonade', week: 1, last_ms: now, off: false }];
 const job = { Label: 'download slow.bin', State: 'complete', Receipt: { OperationID: 'op-1', LogicalOwner: 'owner', Identity: { Key: 'k', HistoryEpoch: 'e' } } };
 const context = {
+ AbortController,
  URLSearchParams, console, Date, Math, Number, JSON, String, Promise, Set, Map, Error, setImmediate,
  document: { getElementById: element, createElement: t => new FakeNode(t), visibilityState: 'visible', addEventListener() {}, documentElement: { dataset: {} } },
  location: { search: '?k=test', href: '' },
  setInterval() { return 1; }, clearInterval() {},
+ addEventListener() {},
  fetch: async (path, opts) => {
   const reply = v => ({ ok: true, json: async () => v });
   if (path === '/notifications/act') {
@@ -57,9 +60,10 @@ const context = {
    record = { ...record, state: 'acted', action: action.title, token: undefined, actions: undefined };
    return reply({ outcome: 'acted', message: 'Chose ' + action.title + '.', operation: action.activity ? 'op-1' : '' });
   }
-  if (path === '/notifications') return reply({ outcome: 'page', notifiers: [{ program: 'C:/pl.exe', name: 'Pretend Lemonade', week: 1, last_ms: now, off: false }], notifications: [record] });
+  if (path === '/notifications') { if (opts && opts.method === 'POST') notifierPosts.push(JSON.parse(opts.body)); return reply({ outcome: 'page', notifiers: notifierList, notifications: [record] }); }
+  if (path.startsWith('/activity/messages?')) return reply({outcome:'page',events:[],atEnd:true});
   if (path.startsWith('/apps/registrations')) return reply({ outcome: 'page', entries: [] });
-  if (path.startsWith('/inference/audit')) return reply({ Outcome: 'page', Entries: [], Next: 0, AtEnd: true });
+  if (path.startsWith('/inference/requests')) return reply({ Outcome: 'page', Entries: [], Next: 0, AtEnd: true });
   if (path.startsWith('/rights/answered')) return reply({ outcome: 'page', answers: [] });
   if (path.startsWith('/account-work')) return reply({ Outcome: 'page', Snapshots: [job], Next: '', Complete: true });
   if (path.startsWith('/inventory')) return reply({ Outcome: 'page', Snapshots: [], Next: '', Complete: true });
@@ -70,7 +74,7 @@ const context = {
 };
 context.window = context;
 vm.runInNewContext(plain, context);
-vm.runInNewContext(goConst('service_page.go', 'serviceCommonScript') + goConst('work_page.go', 'workScript') + goConst('logging_page.go', 'loggingScript'), context);
+vm.runInNewContext(goConst('service_page.go', 'serviceCommonScript') + goConst('activity_messages_page.go', 'messageActivityScript') + goConst('activity_agent_exits.go', 'agentExitActivityScript') + goConst('work_page.go', 'workScript') + goConst('logging_page.go', 'loggingScript'), context);
 
 (async () => {
  await context.workReady;
@@ -79,7 +83,7 @@ vm.runInNewContext(goConst('service_page.go', 'serviceCommonScript') + goConst('
  assert.strictEqual(open[0].label.textContent, 'Download finished');
  assert.strictEqual(open[0].caption.textContent, 'Pretend Lemonade · slow.bin is ready.');
  assert.deepStrictEqual(open[0].control.children.map(b => b.textContent), ['Copy now', 'Show in Activity']);
- assertPanelRules({ tagName: 'MAIN', children: [{ tagName: 'SECTION', children: [element('notifications-status'), element('notifications-open')] }] }, 'Activity, notifications');
+ assertPanelRules({ tagName: 'MAIN', children: [{ tagName: 'SECTION', children: [element('notifications-status'), element('notifications-open')] }] }, 'Activity, notifications', { naming: true });
 
  // Show in Activity: the action with its token, one sentence, and the job's row.
  await open[0].control.children[1].onclick();
@@ -94,5 +98,16 @@ vm.runInNewContext(goConst('service_page.go', 'serviceCommonScript') + goConst('
  // The reread keeps the action's sentence.
  await context.notifications();
  assert.strictEqual(element('notifications-status').textContent, 'Chose Show in Activity.');
+ // OpenAbstractions' own programs share one row (architect ruling
+ // 2026-11-09, second block): their counts summed, and its switch changes each.
+ notifierList = [{ program: 'C:/PF/oa/openabstractions.exe', name: 'OpenAbstractions', week: 10, last_ms: now, off: false, own: true },
+  { program: 'C:/pl.exe', name: 'Pretend Lemonade', week: 1, last_ms: now - 1, off: false },
+  { program: 'C:/User/oa/openabstractions.exe', name: 'OpenAbstractions', week: 0, last_ms: now - 2, off: false, own: true }];
+ await context.notifications();
+ const notifiers = element('notifiers').children;
+ assert.deepStrictEqual(notifiers.map(r => r.label.textContent), ['OpenAbstractions', 'Pretend Lemonade'], 'one OpenAbstractions row');
+ assert.strictEqual(notifiers[0].caption.textContent, '10 notifications this week');
+ await notifiers[0].button.onclick();
+ assert.deepStrictEqual(notifierPosts, [{ program: 'C:/PF/oa/openabstractions.exe', on: false }, { program: 'C:/User/oa/openabstractions.exe', on: false }], 'Turn off writes each own program');
  console.log('PASS: Activity lists a shown notification with its actions; a click sends the action with its token, writes one sentence and points at the job.');
 })().catch(e => { console.error(e); process.exitCode = 1; });

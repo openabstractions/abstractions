@@ -41,6 +41,52 @@ const doc = `struct Doc {
 } (document = "true", unknown_fields = "refuse")
 `
 
+func TestSchemaMembersDeclaration(t *testing.T) {
+	for _, value := range []string{"1..1", "0..2", "..1", "1.."} {
+		src := strings.Replace(head+doc, `document = "true"`, `document = "true", schema_members = "`+value+`"`, 1)
+		if _, err := parse(src); err != nil {
+			t.Errorf("valid %q: %v", value, err)
+		}
+	}
+	for _, value := range []string{"", "..", "1", "01..2", "+1..2", "-1..2", "2..1", "1..2..3", "0..9223372036854775808"} {
+		src := strings.Replace(head+doc, `document = "true"`, `document = "true", schema_members = "`+value+`"`, 1)
+		if _, err := parse(src); err == nil || !strings.Contains(err.Error(), "schema_members") {
+			t.Errorf("invalid %q: %v", value, err)
+		}
+	}
+	for _, src := range []string{
+		strings.Replace(head+doc, `required string id`, `required string id(schema_members="1..1")`, 1),
+		head + doc + `enum Choice {1: yes}(unknown="grant",reader="display",schema_members="1..1")`,
+		head + doc + `service Example { void call()(schema_members="1..1") }`,
+		head + doc + `service Example { void call() }(schema_members="1..1")`,
+		strings.Replace(head+doc, `document = "true"`, `document="true",schema_members="1..1",schema_members="1..2"`, 1),
+	} {
+		if _, err := parse(src); err == nil || !strings.Contains(err.Error(), "schema_members") {
+			t.Errorf("unsupported declaration: %v", err)
+		}
+	}
+}
+
+func TestEnumDocumentationKeepsUnknownAndReaderValidation(t *testing.T) {
+	src := head + doc + `enum Mode {1: ready}(unknown="refuse",reader="act",doc="Mode description.")`
+	def, err := parse(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := def.Enums[0].Ann["doc"]; got != "Mode description." {
+		t.Fatalf("enum documentation lost: %q", got)
+	}
+	for _, bad := range []string{
+		strings.Replace(src, `unknown="refuse"`, `unknown="other"`, 1),
+		strings.Replace(src, `reader="act"`, `reader="other"`, 1),
+		strings.Replace(src, `reader="act"`, `reader="act",permission="allow"`, 1),
+	} {
+		if _, err := parse(bad); err == nil {
+			t.Errorf("descriptive documentation admitted invalid enum policy: %s", bad)
+		}
+	}
+}
+
 const vocabDoc = `struct Doc {
   1: required list<string> content
   2: optional list<string> critical (omit = "zero")
@@ -97,7 +143,7 @@ func TestPredicatesResolve(t *testing.T) {
 		if !b.emitsCode {
 			continue
 		}
-		out := b.emit(def)
+		out := mustEmit(t, b, def)
 		for _, want := range []string{"complete", "cancelled", "verified", "recall"} {
 			if !strings.Contains(out, want) {
 				t.Errorf("%s emits no test naming %q", b.lang, want)
@@ -275,7 +321,7 @@ vocabulary W {
 }
 
 func TestExampleGeneratesForEveryBackend(t *testing.T) {
-	src, err := os.ReadFile(example)
+	src, err := os.ReadFile(examplePath(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +330,7 @@ func TestExampleGeneratesForEveryBackend(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, b := range backends {
-		if out := b.emit(def); len(out) == 0 {
+		if out := mustEmit(t, b, def); len(out) == 0 {
 			t.Fatalf("%s emitted nothing", b.lang)
 		}
 	}
@@ -314,17 +360,17 @@ func TestSeparatorFlagAppearsOnlyWhenItCanVary(t *testing.T) {
 		if !b.emitsCode {
 			continue
 		}
-		if branches(b.emit(requiredFirst)) {
+		if branches(mustEmit(t, b, requiredFirst)) {
 			t.Errorf("%s tracks a separator flag that cannot vary", b.lang)
 		}
-		if !branches(b.emit(optionalFirst)) {
+		if !branches(mustEmit(t, b, optionalFirst)) {
 			t.Errorf("%s drops the separator flag where every field may be omitted", b.lang)
 		}
 	}
 }
 
 func TestEncodingDeclarationReachesEveryBackend(t *testing.T) {
-	src, err := os.ReadFile(example)
+	src, err := os.ReadFile(examplePath(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,14 +383,18 @@ func TestEncodingDeclarationReachesEveryBackend(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, b := range backends {
-		if b.emit(minimal) == b.emit(ascii) {
+		if b.lang == "jsonschema" {
+			// Record schemas state shape only; the readers own these policies.
+			continue
+		}
+		if mustEmit(t, b, minimal) == mustEmit(t, b, ascii) {
 			t.Fatalf("%s ignores the declared escape policy", b.lang)
 		}
 	}
 }
 
 func TestReaderObligationsReachEveryBackend(t *testing.T) {
-	src, err := os.ReadFile(example)
+	src, err := os.ReadFile(examplePath(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +414,11 @@ func TestReaderObligationsReachEveryBackend(t *testing.T) {
 			t.Fatalf("%s: %v", what, err)
 		}
 		for _, b := range backends {
-			if b.emit(base) == b.emit(altered) {
+			if b.lang == "jsonschema" {
+				// Record schemas state shape only; the readers own these policies.
+				continue
+			}
+			if mustEmit(t, b, base) == mustEmit(t, b, altered) {
 				t.Errorf("%s ignores %s", b.lang, what)
 			}
 		}

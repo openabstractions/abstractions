@@ -14,6 +14,7 @@ import (
 	"time"
 
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
+	registration "github.com/openabstractions/abstraction-facade/go/abstraction/facade/registration"
 	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-identity/listen"
 	"github.com/openabstractions/abstraction-identity/remote"
@@ -35,30 +36,42 @@ type providerTiming struct {
 	// inventoryBudget bounds one inventory-source call. A source reads whole
 	// stores by stat, which takes longer than a readiness probe.
 	inventoryBudget time.Duration
+	// startFailures is how many launches in a row may end before the child
+	// first reads ready; the supervisor then stops relaunching it
+	// (providerStartFailure). Zero takes defaultStartFailures.
+	startFailures int
+	// startRetry is how long a stopped provider refuses requests at once;
+	// the first request after it launches the program once more. Zero takes
+	// defaultStartRetry.
+	startRetry time.Duration
 }
 
 var defaultProviderTiming = providerTiming{probeWaiting: 200 * time.Millisecond, probeReady: 2 * time.Second,
 	backoffFirst: 250 * time.Millisecond, backoffMax: 30 * time.Second, stable: time.Minute, probeBudget: 2 * time.Second,
-	inventoryBudget: 60 * time.Second}
+	inventoryBudget: 60 * time.Second, startFailures: defaultStartFailures, startRetry: defaultStartRetry}
 
 // providerSupervisor runs one declaration: it attaches to the provider, or
 // launches it as a child on first activation and restarts it with backoff
-// after it exits, and probes its readiness with abstraction.facade/endpoint@1
+// after it exits, and probes its readiness with abstraction.facade/endpoint@2
 // Describe through a connection bound to the declared program, or over mutual
 // TLS for a remote runtime.
 type providerSupervisor struct {
-	p        *runtimeProviders
-	file     providerFile
-	endpoint string
+	p           *runtimeProviders
+	file        providerFile
+	endpoint    string
+	endpointErr error
 
-	mu        sync.Mutex
-	readiness wire.DeclarationReadiness
-	why       string
-	restarts  int64
-	child     providerChild
-	described []wire.ServiceState
-	accepted  []string
-	started   bool
+	mu                  sync.Mutex
+	readiness           wire.DeclarationReadiness
+	why                 string
+	restarts            int64
+	child               providerChild
+	configImage         activationImageHold
+	configSource        applicationV3Source
+	described           []wire.ServiceState
+	endpointDescription []byte
+	accepted            []string
+	started             bool
 
 	wanted     chan struct{}
 	wantedOnce sync.Once
@@ -69,6 +82,16 @@ type providerSupervisor struct {
 	// limit is why this platform cannot run the declared program
 	// (nativeProviderLimit), read when the supervisor is made; "" where it can.
 	limit string
+	// missing records that the declared program image was gone at its last
+	// reading (recheckProgram); guarded by mu.
+	missing bool
+	// failedStarts counts launches in a row that ended before the child read
+	// ready; stopped is the time the supervisor stopped relaunching after
+	// too many, zero while it relaunches; retry wakes a stopped supervisor
+	// for one more launch. failedStarts and stopped are guarded by mu.
+	failedStarts int
+	stopped      time.Time
+	retry        chan struct{}
 }
 
 // Wait reports a process exit code separately from a failed containment
@@ -80,9 +103,9 @@ type providerChild interface {
 }
 
 func newProviderSupervisor(p *runtimeProviders, f providerFile) *providerSupervisor {
-	s := &providerSupervisor{p: p, file: f, wanted: make(chan struct{}), stop: make(chan struct{}), done: make(chan struct{})}
+	s := &providerSupervisor{p: p, file: f, wanted: make(chan struct{}), stop: make(chan struct{}), done: make(chan struct{}), retry: make(chan struct{}, 1)}
 	if !f.Declaration.remote() {
-		s.endpoint = p.supervisedEndpoint(f.Declaration)
+		s.endpoint, s.endpointErr = p.supervisedEndpoint(f.Declaration)
 	}
 	s.readiness = wire.DeclarationReadinessIdle
 	if f.Declaration.Activation != wire.ActivationOnDemand.String() {
@@ -95,12 +118,19 @@ func newProviderSupervisor(p *runtimeProviders, f providerFile) *providerSupervi
 		s.limit = nativeProviderLimit
 		s.readiness, s.why = wire.DeclarationReadinessNotReady, s.unavailableReason()
 	}
+	if s.endpointErr != nil {
+		s.readiness, s.why = wire.DeclarationReadinessNotReady, s.unavailableReason()
+	}
+	s.recheckProgram()
 	return s
 }
 
 // unavailableReason is the reason every reading and mediated call of a
 // declaration this platform cannot run carries, or "".
 func (s *providerSupervisor) unavailableReason() string {
+	if s.endpointErr != nil {
+		return "endpoint: " + s.endpointErr.Error()
+	}
 	if s.limit == "" {
 		return ""
 	}
@@ -110,9 +140,14 @@ func (s *providerSupervisor) unavailableReason() string {
 // supervisedEndpoint gives tokenized runtime-launched providers one stable
 // address within their account and state directory. Attach-only and legacy
 // no-token declarations retain the address their program already chooses.
-func (p *runtimeProviders) supervisedEndpoint(d providerDeclaration) string {
+func (p *runtimeProviders) supervisedEndpoint(d providerDeclaration) (string, error) {
+	endpointFor := providerEndpointPath
+	if p != nil && p.endpointFor != nil {
+		endpointFor = p.endpointFor
+	}
+
 	if d.Activation != wire.ActivationOnDemand.String() || !slices.Contains(d.Arguments, providerEndpointToken) || p.dir == "" {
-		return providerEndpointPath(d.Endpoint)
+		return endpointFor(d.Endpoint)
 	}
 	// The state folder is keyed by its file identity, so every spelling that
 	// reaches it names one endpoint; a folder that cannot be read keys by its
@@ -123,7 +158,7 @@ func (p *runtimeProviders) supervisedEndpoint(d providerDeclaration) string {
 	}
 	key := strings.Join([]string{"provider-child-endpoint-v1", dir, p.principal.Kind, sid, strconv.Itoa(p.principal.UID), d.Name, d.Endpoint}, "\x00")
 	sum := sha256.Sum256([]byte(key))
-	return providerEndpointPath("provider-" + hex.EncodeToString(sum[:16]))
+	return endpointFor("provider-" + hex.EncodeToString(sum[:16]))
 }
 
 // state is the declaration and the supervisor's reading of it.
@@ -134,8 +169,12 @@ func (s *providerSupervisor) state() wire.DeclarationState {
 	if described == nil {
 		described = []wire.ServiceState{}
 	}
+	readiness, why := s.readiness, s.why
+	if s.missing {
+		readiness, why = wire.DeclarationReadinessNotReady, programMissingReason
+	}
 	return wire.DeclarationState{Declaration: s.file.Declaration.wire(), DeclaredBy: s.file.DeclaredBy, DeclaredUnixMs: s.file.DeclaredAt,
-		Role: s.file.Declaration.role(), Readiness: s.readiness, Why: s.why, Restarts: s.restarts, Described: described, Accepted: slices.Clone(s.accepted)}
+		Role: s.file.Declaration.role(), Readiness: readiness, Why: why, Restarts: s.restarts, Described: described, Accepted: slices.Clone(s.accepted)}
 }
 
 // set records a reading and tells the watchers when it changed.
@@ -149,16 +188,19 @@ func (s *providerSupervisor) set(readiness wire.DeclarationReadiness, why string
 	}
 }
 
-// activate asks for an on-demand provider; it never blocks.
+// activate asks for an on-demand provider; it never blocks. A provider
+// stopped after failed starts launches once more when its retry time has
+// passed (providerStartFailure).
 func (s *providerSupervisor) activate() {
 	s.wantedOnce.Do(func() { close(s.wanted) })
+	s.retryStopped()
 }
 
 // ready reports whether the supervisor currently reads the provider ready.
 func (s *providerSupervisor) ready() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.readiness == wire.DeclarationReadinessReady
+	return s.readiness == wire.DeclarationReadinessReady && !s.missing
 }
 
 // activatingReason is the unavailable reason a mediated call reads when it
@@ -177,11 +219,16 @@ func (s *providerSupervisor) start() {
 	if s.started {
 		return
 	}
+	select {
+	case <-s.stop:
+		return
+	default:
+	}
 	s.started = true
 	// The runtime is the only reader of an inventory source, and it wants one
 	// as soon as it serves.
 	if slices.Contains(s.file.Declaration.Contracts, storageInventorySource) {
-		s.activate()
+		s.wantedOnce.Do(func() { close(s.wanted) })
 	}
 	go s.run()
 }
@@ -239,11 +286,24 @@ func (s *providerSupervisor) run() {
 	backoff := s.p.timing.backoffFirst
 	for launches := 0; ; launches++ {
 		up := time.Now()
-		if !s.launch(launches) {
+		more, ready := s.launch(launches)
+		if !more {
 			return
 		}
 		if time.Since(up) >= s.p.timing.stable {
 			backoff = s.p.timing.backoffFirst
+		}
+		if s.countStart(ready) {
+			// Stopped after failed starts: nothing relaunches the program
+			// until a request after the retry time, a new declaration or a
+			// runtime restart.
+			select {
+			case <-s.retry:
+				backoff = s.p.timing.backoffFirst
+				continue
+			case <-s.stop:
+				return
+			}
 		}
 		if !s.wait(backoff) {
 			return
@@ -265,9 +325,33 @@ func (s *providerSupervisor) arguments() []string {
 	return out
 }
 
-// launch runs one child until it exits (true) or supervision stops (false).
-func (s *providerSupervisor) launch(launches int) bool {
+// launch runs one child until it exits (more) or supervision stops (not
+// more). everReady reports whether the child read ready while it ran.
+func (s *providerSupervisor) launch(launches int) (more, everReady bool) {
+	if s.unavailableReason() != "" {
+		return false, false
+	}
 	d := s.file.Declaration
+	var configImage activationImageHold
+	var configSource applicationV3Source
+	if s.p.registrationDirectory != nil {
+		if directory := s.p.registrationDirectory(); directory != nil {
+			var err error
+			configImage, configSource, err = directory.providerConfigLaunchImage(context.Background(), s.file)
+			if err != nil {
+				s.set(wire.DeclarationReadinessNotReady, "config-image:"+err.Error())
+				return false, false
+			}
+		}
+	}
+	// Transfer the hold to the child only after launch. Failed launches close
+	// it here; an unconfirmed child exit retains it with process custody.
+	transferred := false
+	defer func() {
+		if !transferred && configImage != nil {
+			_ = configImage.Close()
+		}
+	}()
 	if launches > 0 {
 		s.mu.Lock()
 		s.restarts++
@@ -277,17 +361,25 @@ func (s *providerSupervisor) launch(launches int) bool {
 	output, err := openProviderOutput(logPath, s.p.report)
 	if err != nil {
 		s.set(wire.DeclarationReadinessRestarting, "launch:"+err.Error())
-		return true
+		return true, false
 	}
 	child, err := startProviderChild(d.Program, s.arguments(), s.p.providerChildEnvironment(), output.write)
 	output.started()
 	if err != nil {
+		// A program removed since the last reading is skipped by the router
+		// from now on; the launch keeps its backoff and finds it if restored.
+		if s.recheckProgram() {
+			s.p.notify()
+		}
 		s.set(wire.DeclarationReadinessRestarting, "launch:"+err.Error())
-		return true
+		return true, false
 	}
 	s.mu.Lock()
 	s.child = child
+	s.configImage, s.configSource = configImage, configSource
+	transferred = true
 	s.mu.Unlock()
+	s.recheckProgram()
 	s.set(wire.DeclarationReadinessStarting, "launched")
 	type childExit struct {
 		code int
@@ -296,13 +388,7 @@ func (s *providerSupervisor) launch(launches int) bool {
 	exited := make(chan childExit, 1)
 	go func() { code, err := child.Wait(); exited <- childExit{code, err} }()
 	confirmed := false
-	defer func() {
-		if confirmed {
-			s.mu.Lock()
-			s.child = nil
-			s.mu.Unlock()
-		}
-	}()
+	defer func() { s.finishConfigChild(confirmed) }()
 	ready := false
 	for {
 		interval := s.p.timing.probeWaiting
@@ -323,12 +409,12 @@ func (s *providerSupervisor) launch(launches int) bool {
 				confirmed = true
 				s.set(wire.DeclarationReadinessIdle, "stopped")
 			}
-			return false
+			return false, everReady
 		case outcome := <-exited:
 			t.Stop()
 			if outcome.err != nil {
 				s.set(wire.DeclarationReadinessUnreachable, "exit-unconfirmed:"+outcome.err.Error())
-				return false
+				return false, everReady
 			}
 			confirmed = true
 			why := "exited"
@@ -352,13 +438,13 @@ func (s *providerSupervisor) launch(launches int) bool {
 				}
 			}
 			s.set(wire.DeclarationReadinessRestarting, why)
-			return true
+			return true, everReady
 		case <-t.C:
 		}
 		readiness, why := s.probe()
 		switch readiness {
 		case wire.DeclarationReadinessReady:
-			ready = true
+			ready, everReady = true, true
 		case wire.DeclarationReadinessRefused, wire.DeclarationReadinessNotReady:
 			ready = false
 		default:
@@ -366,6 +452,24 @@ func (s *providerSupervisor) launch(launches int) bool {
 			readiness, ready = wire.DeclarationReadinessStarting, false
 		}
 		s.set(readiness, why)
+	}
+}
+
+// Failed containment observation retains both the owned child and its image.
+// A confirmed Wait releases image custody after removing the live designation.
+func (s *providerSupervisor) finishConfigChild(confirmed bool) {
+	if !confirmed {
+		return
+	}
+	s.mu.Lock()
+	s.child = nil
+	held := s.configImage
+	s.configImage, s.configSource = nil, applicationV3Source{}
+	s.mu.Unlock()
+	if held != nil {
+		if err := held.Close(); err != nil && s.p != nil && s.p.report != nil {
+			s.p.report(err)
+		}
 	}
 }
 
@@ -400,17 +504,21 @@ func (s *providerSupervisor) transport(ctx context.Context, budget time.Duration
 	if err != nil {
 		return nil, err
 	}
-	client, err := remote.Client(address, config, budget, 8<<20)
+	client, err := remote.Client(address, config, budget, 8<<20, s.p.remoteAdmit(s.file))
 	if err != nil {
 		return nil, err
 	}
 	return client.WithContext(ctx), nil
 }
 
-// probe calls endpoint@1 Describe and reads every declared contract from it.
+// probe calls endpoint@2 Describe, with bounded endpoint@1 compatibility, and
+// reads every declared contract from it.
 // An inventory source is then described through its own contract, whose
 // stores the runtime accepts.
 func (s *providerSupervisor) probe() (wire.DeclarationReadiness, string) {
+	if why := s.unavailableReason(); why != "" {
+		return wire.DeclarationReadinessNotReady, why
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), s.p.timing.probeBudget)
 	defer cancel()
 	d := s.file.Declaration
@@ -419,30 +527,37 @@ func (s *providerSupervisor) probe() (wire.DeclarationReadiness, string) {
 		s.record(ctx, nil, nil)
 		return wire.DeclarationReadinessUnreachable, "remote:" + err.Error()
 	}
-	description, err := wire.NewEndpointClient(transport).Describe()
+	description, observation, err := providerDescribeEndpoint(transport)
 	var refusal *wire.ServiceError
+	var endpointRefusal *registration.ServiceError
 	switch {
 	case errors.Is(err, listen.ErrServerUntrusted):
-		s.record(ctx, nil, nil)
+		s.recordEndpoint(ctx, nil, nil, observation)
 		return wire.DeclarationReadinessRefused, "program:" + err.Error()
 	case errors.As(err, &refusal):
-		s.record(ctx, nil, nil)
+		s.recordEndpoint(ctx, nil, nil, observation)
 		return wire.DeclarationReadinessUnreachable, "describe:" + string(refusal.Code)
+	case errors.As(err, &endpointRefusal):
+		s.recordEndpoint(ctx, nil, nil, observation)
+		return wire.DeclarationReadinessUnreachable, "describe:" + string(endpointRefusal.Code)
 	case err != nil:
-		s.record(ctx, nil, nil)
+		s.recordEndpoint(ctx, nil, nil, observation)
 		return wire.DeclarationReadinessUnreachable, "describe:" + err.Error()
+	case observation != nil && observation.Outcome != registration.DescriptionOutcomeDescribed && !providerEndpointCompatibilityAbsent(observation):
+		s.recordEndpoint(ctx, nil, nil, observation)
+		return wire.DeclarationReadinessUnreachable, "describe:" + observation.Outcome.String()
 	case description.Outcome != wire.DescriptionOutcomeDescribed:
-		s.record(ctx, nil, nil)
+		s.recordEndpoint(ctx, nil, nil, observation)
 		return wire.DeclarationReadinessUnreachable, "describe:" + description.Outcome.String()
 	}
 	for _, contract := range d.Contracts {
 		i := slices.IndexFunc(description.Services, func(state wire.ServiceState) bool { return state.Contract == contract })
 		if i < 0 {
-			s.record(ctx, description.Services, nil)
+			s.recordEndpoint(ctx, description.Services, nil, observation)
 			return wire.DeclarationReadinessNotReady, "contract:" + contract + ":absent"
 		}
 		if state := description.Services[i]; state.Readiness != wire.ServiceReadinessReady {
-			s.record(ctx, description.Services, nil)
+			s.recordEndpoint(ctx, description.Services, nil, observation)
 			return wire.DeclarationReadinessNotReady, "contract:" + contract + ":" + state.Why
 		}
 	}
@@ -453,25 +568,18 @@ func (s *providerSupervisor) probe() (wire.DeclarationReadiness, string) {
 			err = errors.New("described " + source.Outcome.String())
 		}
 		if err != nil {
-			s.record(ctx, description.Services, nil)
+			s.recordEndpoint(ctx, description.Services, nil, observation)
 			return wire.DeclarationReadinessNotReady, "contract:" + storageInventorySource + ":" + err.Error()
 		}
 		for _, store := range source.Stores {
 			stores = append(stores, store.Name)
 		}
 	}
-	s.record(ctx, description.Services, stores)
+	s.recordEndpoint(ctx, description.Services, stores, observation)
 	return wire.DeclarationReadinessReady, ""
 }
 
 // record keeps the described services and accepts the described stores.
 func (s *providerSupervisor) record(ctx context.Context, services []wire.ServiceState, stores []string) {
-	accepted := s.acceptStores(ctx, stores)
-	s.mu.Lock()
-	changed := !slices.Equal(s.accepted, accepted)
-	s.described, s.accepted = slices.Clone(services), accepted
-	s.mu.Unlock()
-	if changed {
-		s.p.notify()
-	}
+	s.recordEndpoint(ctx, services, stores, nil)
 }

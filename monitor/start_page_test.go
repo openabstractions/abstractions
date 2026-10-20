@@ -25,9 +25,6 @@ func TestPanelStartPagesAreClosedAndKeyed(t *testing.T) {
 		{"connect-deepseek", "/credentials-page", "/credentials-page"},
 		{"setup", "/setup", "/setup"},
 	}
-	saved := panelRegisteredApps
-	panelRegisteredApps = func(context.Context) (int, bool) { return 1, true }
-	t.Cleanup(func() { panelRegisteredApps = saved })
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			p, server, listener, rawURL, err := bindPanelPage("127.0.0.1:0", test.name)
@@ -67,7 +64,7 @@ func TestPanelStartPagesAreClosedAndKeyed(t *testing.T) {
 			}
 			if test.name == "setup" {
 				wantNav := `<a class="oa-nav-item active" href="/setup?k=` + url.QueryEscape(key) + `"`
-				if !strings.Contains(rec.Body.String(), wantNav) || p.windowTitle != "OpenAbstractions Setup" {
+				if !strings.Contains(rec.Body.String(), wantNav) || p.windowTitle != "OpenAbstractions Panel" {
 					t.Fatalf("setup launch shell/title missing: title=%q", p.windowTitle)
 				}
 			} else {
@@ -89,11 +86,8 @@ func TestPanelStartPagesAreClosedAndKeyed(t *testing.T) {
 
 // landingCase serves /start against one setup journal and one registry
 // answer and returns the response.
-func landingCase(t *testing.T, journal setup.Journal, apps int, known bool, query string, header string) *httptest.ResponseRecorder {
+func landingCase(t *testing.T, journal setup.Journal, query string, header string) *httptest.ResponseRecorder {
 	t.Helper()
-	saved := panelRegisteredApps
-	panelRegisteredApps = func(context.Context) (int, bool) { return apps, known }
-	t.Cleanup(func() { panelRegisteredApps = saved })
 	req := httptest.NewRequest(http.MethodGet, "/start"+query, nil)
 	req.Host = "127.0.0.1"
 	if header != "" {
@@ -112,35 +106,21 @@ func emptyJournal(t *testing.T) setup.Journal {
 // X-Panel-Key header, and no other key.
 func TestLandingNeedsThePanelKey(t *testing.T) {
 	for _, c := range []struct{ query, header string }{{"", ""}, {"?k=wrong", ""}, {"", "wrong"}} {
-		if got := landingCase(t, emptyJournal(t), 1, true, c.query, c.header); got.Code != http.StatusForbidden {
+		if got := landingCase(t, emptyJournal(t), c.query, c.header); got.Code != http.StatusForbidden {
 			t.Errorf("landing with query %q header %q: %d", c.query, c.header, got.Code)
 		}
 	}
-	if got := landingCase(t, emptyJournal(t), 1, true, "", "landing-test-key"); got.Code != http.StatusFound || got.Header().Get("Location") != "/" {
+	if got := landingCase(t, emptyJournal(t), "", "landing-test-key"); got.Code != http.StatusFound || got.Header().Get("Location") != "/" {
 		t.Errorf("landing with the header key: %d to %q", got.Code, got.Header().Get("Location"))
 	}
 }
 
-// A fresh install, with no setup chosen and no application registered,
-// opens on Get started (zero-knowledge first run); the query, and with it
-// the key and the native shell, is kept.
-func TestLandingOnAFreshInstallIsGetStarted(t *testing.T) {
-	got := landingCase(t, emptyJournal(t), 0, true, "?k=landing-test-key&shell=native", "")
-	if got.Code != http.StatusFound || got.Header().Get("Location") != "/setup?k=landing-test-key&shell=native" {
-		t.Fatalf("fresh install: %d to %q, want Get started", got.Code, got.Header().Get("Location"))
-	}
-}
-
-// With no setup chosen, Apps once any application is registered, and Apps
-// when the runtime cannot say (its health banner names the failure).
-func TestLandingWithARegisteredAppIsApps(t *testing.T) {
-	for _, c := range []struct {
-		apps  int
-		known bool
-	}{{1, true}, {0, false}} {
-		if got := landingCase(t, emptyJournal(t), c.apps, c.known, "?k=landing-test-key", ""); got.Code != http.StatusFound || got.Header().Get("Location") != "/?k=landing-test-key" {
-			t.Errorf("%d apps known %v: %d to %q, want Apps", c.apps, c.known, got.Code, got.Header().Get("Location"))
-		}
+// With no setup chosen the Panel opens on Apps, also on a fresh install
+// (P-J1a); the query, and with it the key and the native shell, is kept.
+func TestLandingWithNoSetupChosenIsApps(t *testing.T) {
+	got := landingCase(t, emptyJournal(t), "?k=landing-test-key&shell=native", "")
+	if got.Code != http.StatusFound || got.Header().Get("Location") != "/?k=landing-test-key&shell=native" {
+		t.Fatalf("no setup chosen: %d to %q, want Apps", got.Code, got.Header().Get("Location"))
 	}
 }
 
@@ -155,7 +135,7 @@ func TestLandingWithUnfinishedSetupIsGetStarted(t *testing.T) {
 	if _, err := journal.SavePlan(context.Background(), plan); err != nil {
 		t.Fatal(err)
 	}
-	if got := landingCase(t, journal, 1, true, "?k=landing-test-key", ""); got.Code != http.StatusFound || got.Header().Get("Location") != "/setup?k=landing-test-key" {
+	if got := landingCase(t, journal, "?k=landing-test-key", ""); got.Code != http.StatusFound || got.Header().Get("Location") != "/setup?k=landing-test-key" {
 		t.Fatalf("chosen and unfinished: %d to %q, want Get started", got.Code, got.Header().Get("Location"))
 	}
 }
@@ -179,7 +159,7 @@ func TestLandingWithFinishedSetupIsApps(t *testing.T) {
 	if err := os.WriteFile(journal.Path, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := landingCase(t, journal, 0, true, "?k=landing-test-key", ""); got.Code != http.StatusFound || got.Header().Get("Location") != "/?k=landing-test-key" {
+	if got := landingCase(t, journal, "?k=landing-test-key", ""); got.Code != http.StatusFound || got.Header().Get("Location") != "/?k=landing-test-key" {
 		t.Fatalf("finished setup: %d to %q, want Apps", got.Code, got.Header().Get("Location"))
 	}
 }

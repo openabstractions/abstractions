@@ -185,32 +185,32 @@ fn timestamp_days(y: i32, m: i32) -> i32 {
     if m==2 {return if y%4==0 && (y%100!=0 || y%400==0) {29} else {28};}
     if m==4 || m==6 || m==9 || m==11 {30} else {31}
 }
-fn normalized_timestamp(text: &str) -> String {
-    if !lexical_timestamp(text) {return String::new();}
+fn normalized_timestamp(text: &str) -> ::std::string::String {
+    if !lexical_timestamp(text) {return ::std::string::String::new();}
     let s=text.as_bytes();
     let (mut y,mut m,mut d)=(timestamp_number(s,0,4),timestamp_number(s,5,2),timestamp_number(s,8,2));
     let (h,minute,sec)=(timestamp_number(s,11,2),timestamp_number(s,14,2),timestamp_number(s,17,2));
-    if !(1..=12).contains(&m) || !(1..=timestamp_days(y,m)).contains(&d) || h>23 || minute>59 || sec>59 {return String::new();}
+    if !(1..=12).contains(&m) || !(1..=timestamp_days(y,m)).contains(&d) || h>23 || minute>59 || sec>59 {return ::std::string::String::new();}
     let mut i=19; let mut fraction=&s[0..0];
     if s[i]==b'.' {i+=1; let start=i; while s[i].is_ascii_digit() {i+=1;} fraction=&s[start..i];}
     let mut total=h*60+minute;
     if s[i]==b'+' || s[i]==b'-' {
         let (oh,om)=(timestamp_number(s,i+1,2),timestamp_number(s,i+4,2));
-        if oh>23 || om>59 {return String::new();}
+        if oh>23 || om>59 {return ::std::string::String::new();}
         total += (if s[i]==b'+' {-1} else {1})*(oh*60+om);
     }
     if total<0 {total+=1440; d-=1;} else if total>=1440 {total-=1440; d+=1;}
     if d==0 {m-=1; if m==0 {y-=1; m=12;} d=timestamp_days(y,m);}
     if d>timestamp_days(y,m) {d=1; m+=1; if m==13 {y+=1; m=1;}}
-    if !(0..=9999).contains(&y) {return String::new();}
+    if !(0..=9999).contains(&y) {return ::std::string::String::new();}
     let mut out=*b"0000-00-00T00:00:00.000000Z";
     let mut put=|at: usize,width: usize,mut value: i32| {for k in (0..width).rev() {out[at+k]=b'0'+(value%10) as u8; value/=10;}};
     put(0,4,y); put(5,2,m); put(8,2,d); put(11,2,total/60); put(14,2,total%60); put(17,2,sec);
     let kept=fraction.len().min(6); out[20..20+kept].copy_from_slice(&fraction[..kept]);
-    String::from_utf8(out.to_vec()).unwrap()
+    ::std::string::String::from_utf8(out.to_vec()).unwrap()
 }
 fn wide_timestamp(text: &str) -> bool {!normalized_timestamp(text).is_empty()}
-fn write_timestamp(text: &str) -> String {
+fn write_timestamp(text: &str) -> ::std::string::String {
     let result=normalized_timestamp(text);
     assert!(!result.is_empty(), "bad_timestamp");
     result

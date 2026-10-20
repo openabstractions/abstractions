@@ -21,7 +21,7 @@ import (
 )
 
 // An application resolves abstraction.inference/embed@1 from the runtime and
-// embeds through a hosted host: refused without a complete rule and before
+// embeds through a hosted host: refused by a complete Block and before
 // any request, then served with the credential applied once for consumer
 // embed@1, the vectors equal to the upstream's.
 func TestRuntimeEmbedsThroughAHostedHost(t *testing.T) {
@@ -103,9 +103,10 @@ func TestRuntimeEmbedsThroughAHostedHost(t *testing.T) {
 	embeddings := inferenceclient.NewEmbeddingsWithTransport(bound)
 	request := iwire.EmbedRequest{Model: "text-embedding-3-small", Inputs: []string{"first", "second"}, Guarantees: []iwire.RequestGuarantee{iwire.RequestGuaranteeHostedAllowed}, Credential: "openrouter"}
 
+	setCompleteRule(t, options.endpoint, exe, "openrouter", false)
 	refused, err := embeddings.Embed(call, request)
-	if err != nil || refused.Outcome != iwire.EmbedOutcomeNotPermitted || refused.Reason != "rights:not_granted" {
-		t.Fatalf("embed without a complete rule: %+v %v", refused, err)
+	if err != nil || refused.Outcome != iwire.EmbedOutcomeNotPermitted || refused.Reason != "rights:denied" {
+		t.Fatalf("embed with a complete Block: %+v %v", refused, err)
 	}
 	mu.Lock()
 	sent := len(embedAuth)

@@ -57,6 +57,13 @@ that apply to every ComfyUI environment on PyTorch 2.9.1.
    venv) the interpreter processes pyvenv.cfg and site-packages .pth files at
    start-up, before this file, as it always has; the check then refuses an
    unlisted .pth only after it ran.
+   One file in site-packages needs no RECORD: oa-pytorch.pth, where Setup
+   names the shared PyTorch engine component's site-packages. It may hold
+   comment lines and one absolute path of an existing folder outside this
+   environment; any other line, such as an import line, refuses the launch.
+   A launch refuses when the file names no folder. The component's own
+   files are its installer's read-only folder and are neither hashed nor
+   held here.
 6. The checked files stay in place while ComfyUI runs (VISION 2026-10-01
    engine-files item 4). On Windows, before reading any metadata, the launch
    opens every entry the RECORD files bind (each RECORD itself, code, headers,
@@ -118,6 +125,41 @@ class Refusal(Exception):
     """The environment differs from its wheels; the message names the file."""
 
 
+INTERPRETER_NAME = "oa_interpreter.py"
+INTERPRETER_SHA256 = "db04cf69a7932bc6f62ed66b76e03dfcbabff87666c2d1de7d5aff6b60fa8746"
+
+
+def _interpreter_owner():
+    """Load only the measured stdlib helper shipped beside this launcher."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), INTERPRETER_NAME)
+    try:
+        info = os.lstat(_io_path(path))
+        if (not stat.S_ISREG(info.st_mode) or _is_link(info) or info.st_nlink != 1):
+            raise Refusal("Interpreter identity helper is not a plain private file")
+        with open(_io_path(path), "rb") as stream:
+            data = stream.read()
+        if hashlib.sha256(data).hexdigest() != INTERPRETER_SHA256:
+            raise Refusal("Interpreter identity helper differs from the source-owned bytes")
+        spec = importlib.util.spec_from_file_location("oa_launch_interpreter", path)
+        owner = importlib.util.module_from_spec(spec)
+        exec(compile(data, path, "exec"), owner.__dict__)
+        return owner
+    except OSError as error:
+        raise Refusal("Interpreter identity helper is unavailable") from error
+
+
+def _check_sealed_helper(entry: str) -> None:
+    """Receive the fixed modern pack through its existing authenticated owner."""
+    owner = _interpreter_owner()
+    folder = os.path.join(os.path.dirname(os.path.abspath(entry)), "custom_nodes", owner.SEALED_PACK)
+    if not os.path.lexists(_io_path(folder)):
+        return
+    try:
+        owner._sealed_profile(folder)
+    except owner.InterpreterError as error:
+        raise Refusal(str(error)) from error
+
+
 class WeightRefused(RuntimeError):
     """A pickle-based weights file was refused before it was read."""
 
@@ -149,19 +191,19 @@ def _read_records(site: str) -> tuple[list[tuple[str, str, str, str]], str]:
     """Return (distribution, path, hash, size) rows and a digest of every RECORD."""
     digest = hashlib.sha256()
     rows: list[tuple[str, str, str, str]] = []
-    for entry in sorted(os.scandir(site), key=lambda item: item.name):
+    for entry in sorted(os.scandir(_io_path(site)), key=lambda item: item.name):
         if not entry.name.endswith(".dist-info"):
             continue
         if not entry.is_dir(follow_symlinks=False):
             raise Refusal("%s is not a directory" % entry.name)
-        record = os.path.join(entry.path, "RECORD")
+        record = os.path.join(site, entry.name, "RECORD")
         try:
-            info = os.lstat(record)
+            info = os.lstat(_io_path(record))
         except FileNotFoundError:
             raise Refusal("%s has no RECORD" % entry.name) from None
         if not stat.S_ISREG(info.st_mode) or _is_link(info):
             raise Refusal("%s/RECORD is not a regular file" % entry.name)
-        with open(record, "rb") as stream:
+        with open(_io_path(record), "rb") as stream:
             data = stream.read()
         digest.update(entry.name.encode("utf-8") + b"\0" + data + b"\0")
         try:
@@ -187,42 +229,43 @@ def _hashless_allowed(relative: str) -> bool:
     return len(parts) >= 2 and parts[-2] == "__pycache__" and parts[-1].endswith(".pyc")
 
 
-def _walk(site: str, root: str) -> list[str]:
-    """Return every file under site-packages with a code suffix; refuse links."""
-    found: list[str] = []
-    pending = [site]
+def _walk(site: str, root: str) -> list[tuple[str, bool]]:
+    """Return code paths and whether each is directly in site-packages."""
+    found: list[tuple[str, bool]] = []
+    pending = [(site, True)]
     while pending:
-        current = pending.pop()
-        with os.scandir(current) as entries:
+        current, top_level = pending.pop()
+        with os.scandir(_io_path(current)) as entries:
             for entry in entries:
+                logical = os.path.join(current, entry.name)
                 info = entry.stat(follow_symlinks=False)
                 if _is_link(info):
-                    raise Refusal("%s is a link or junction" % _display(root, entry.path))
+                    raise Refusal("%s is a link or junction" % _display(root, logical))
                 if stat.S_ISDIR(info.st_mode):
-                    pending.append(entry.path)
+                    pending.append((logical, False))
                 elif os.path.splitext(entry.name)[1].lower() in CODE_SUFFIXES:
-                    found.append(entry.path)
+                    found.append((logical, top_level))
     return found
 
 
 def installer_presence(site: str, root: str) -> list[str]:
     """Name every pip or ensurepip in this environment's own files."""
     present = []
-    for entry in os.scandir(site):
+    for entry in os.scandir(_io_path(site)):
         lowered = entry.name.lower()
         if lowered in INSTALLERS or (lowered.startswith("pip-") and lowered.endswith(".dist-info")):
-            present.append(_display(root, entry.path))
+            present.append(_display(root, os.path.join(site, entry.name)))
     for lib in ("Lib", "lib"):
         candidate = os.path.join(root, lib, "ensurepip")
-        if os.path.isdir(candidate):
+        if os.path.isdir(_io_path(candidate)):
             present.append(_display(root, candidate))
             break
-    for entry in os.scandir(root):
+    for entry in os.scandir(_io_path(root)):
         lowered = entry.name.lower()
         if lowered.startswith("python3") and lowered.endswith(".zip") and entry.is_file():
-            with zipfile.ZipFile(entry.path) as archive:
+            with zipfile.ZipFile(_io_path(os.path.join(root, entry.name))) as archive:
                 if any(name.split("/", 1)[0] in INSTALLERS for name in archive.namelist()):
-                    present.append(_display(root, entry.path) + "/ensurepip")
+                    present.append(_display(root, os.path.join(root, entry.name)) + "/ensurepip")
     return sorted(set(present))
 
 
@@ -231,10 +274,49 @@ def records_digest(site: str) -> str:
     return _read_records(os.path.abspath(site))[1]
 
 
+SHARED_TORCH_PTH = "oa-pytorch.pth"
+SHARED_TORCH_PTH_LIMIT = 64 << 10
+
+
+def shared_torch_site(pth: str, root: str) -> str:
+    """The shared PyTorch component site-packages oa-pytorch.pth names, or "".
+
+    Comment lines are Setup's inert template. One other line may name an
+    absolute folder outside root; site.addsitedir appends it to sys.path.
+    Every other .pth form (import lines, relative or several paths) refuses.
+    """
+    with open(_io_path(pth), "rb") as stream:
+        raw = stream.read(SHARED_TORCH_PTH_LIMIT + 1)
+    if len(raw) > SHARED_TORCH_PTH_LIMIT:
+        raise Refusal("%s exceeds %d bytes" % (SHARED_TORCH_PTH, SHARED_TORCH_PTH_LIMIT))
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise Refusal("%s is not UTF-8" % SHARED_TORCH_PTH) from None
+    folders = []
+    for line in text.split("\n"):
+        if not line or line.startswith("#"):
+            continue
+        if (line != line.strip() or any(ord(char) < 32 or char in "\x7f\x85\u2028\u2029" for char in line)
+                or not os.path.isabs(line) or os.name == "nt" and not os.path.splitdrive(line)[0]):
+            raise Refusal("%s holds a line that is not one absolute folder: %r" % (SHARED_TORCH_PTH, line[:200]))
+        folders.append(line)
+    if len(folders) > 1:
+        raise Refusal("%s names more than one folder" % SHARED_TORCH_PTH)
+    if not folders:
+        return ""
+    folder = os.path.normpath(folders[0])
+    if _within(root, folder) or not os.path.isdir(_io_path(folder)):
+        raise Refusal("%s names %s, which is no PyTorch component folder outside this environment"
+                      % (SHARED_TORCH_PTH, folder))
+    return folder
+
+
 class _Inventory:
     def __init__(self, site: str, root: str, records=None) -> None:
         self.site = site
         self.root = root
+        self.shared_torch: str | None = None  # oa-pytorch.pth's folder; "" names none
         rows, self.records_digest = records if records is not None else _read_records(site)
         self.hashed: dict[str, tuple[str, int, str]] = {}  # key -> (urlsafe digest, size, display)
         self.paths: dict[str, tuple[str, str]] = {}  # key -> (path, display) of every entry the record binds
@@ -251,7 +333,7 @@ class _Inventory:
             if not digest:
                 if not _hashless_allowed(relative):
                     raise Refusal("%s/RECORD lists %s without a hash" % (distribution, display))
-                if os.path.lexists(target):
+                if os.path.lexists(_io_path(target)):
                     self.paths[key] = (target, display)
                     if target.endswith(".pyc"):
                         self.unchecked.add(key)
@@ -268,12 +350,14 @@ class _Inventory:
                 raise Refusal("two RECORD files disagree about %s" % display)
             self.hashed[key] = (value, expected_size, display)
             self.paths[key] = (target, display)
-        for path in _walk(site, root):
+        for path, top_level in _walk(site, root):
             target = os.path.normpath(path)
             key = os.path.normcase(target)
             display = target[len(prefix):].replace(os.sep, "/")
             if key not in listed:
-                raise Refusal("%s is not listed by any RECORD" % display)
+                if not top_level or os.path.basename(target) != SHARED_TORCH_PTH:
+                    raise Refusal("%s is not listed by any RECORD" % display)
+                self.shared_torch = shared_torch_site(target, root)
             self.paths[key] = (target, display)
 
     @property
@@ -312,14 +396,14 @@ class _Inventory:
         for key, (expected, size, display) in sorted(self.hashed.items()):
             path = self.paths[key][0]
             try:
-                info = os.lstat(path)
+                info = os.lstat(_io_path(path))
             except FileNotFoundError:
                 raise Refusal("%s is listed in RECORD but missing" % display) from None
             if not stat.S_ISREG(info.st_mode) or _is_link(info):
                 raise Refusal("%s is not a regular file" % display)
             digest = hashlib.sha256()
             total = 0
-            with open(path, "rb") as stream:
+            with open(_io_path(path), "rb") as stream:
                 for block in iter(lambda: stream.read(1 << 20), b""):
                     total += len(block)
                     digest.update(block)
@@ -368,10 +452,15 @@ if os.name == "nt":
     _OPEN_FLAGS = 0x02000000 | 0x00200000
     _ERROR_SHARING_VIOLATION = 32
 
+    def _io_path(path):
+        """Spelling for this process's filesystem I/O; logical names stay ordinary."""
+        path = os.path.abspath(path)
+        if not path.startswith("\\\\"):
+            path = "\\\\?\\" + path
+        return path
+
     def _open(path: str, access: int, share: int):
-        absolute = os.path.abspath(path)
-        if not absolute.startswith("\\\\"):
-            absolute = "\\\\?\\" + absolute
+        absolute = _io_path(path)
         handle = _CreateFileW(absolute, access, share, None, _OPEN_EXISTING, _OPEN_FLAGS, None)
         if handle == _INVALID_HANDLE or handle is None:
             error = ctypes.get_last_error()
@@ -422,8 +511,11 @@ if os.name == "nt":
         for handle in handles:
             _CloseHandle(handle)
 else:
+    def _io_path(path):
+        return os.fspath(path)
+
     def _metadata(path: str) -> list[int]:
-        info = os.lstat(path)
+        info = os.lstat(_io_path(path))
         return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns, info.st_mode]
 
     def _handle_metadata(handle, path: str) -> list[int]:
@@ -439,7 +531,7 @@ else:
 
 def _load_record(state: str) -> dict | None:
     try:
-        with open(os.path.join(state, RECORD_NAME), encoding="utf-8") as stream:
+        with open(_io_path(os.path.join(state, RECORD_NAME)), encoding="utf-8") as stream:
             record = json.load(stream)
     except (OSError, ValueError):
         return None
@@ -447,12 +539,21 @@ def _load_record(state: str) -> dict | None:
 
 
 def _write_record(state: str, record: dict) -> None:
-    os.makedirs(state, exist_ok=True)
-    handle, temporary = tempfile.mkstemp(prefix=".record-", suffix=".tmp", dir=state)
+    os.makedirs(_io_path(state), exist_ok=True)
+    handle, temporary = tempfile.mkstemp(prefix=".record-", suffix=".tmp", dir=_io_path(state))
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as stream:
             json.dump(record, stream, separators=(",", ":"), sort_keys=True)
-        os.replace(temporary, os.path.join(state, RECORD_NAME))
+        target = _io_path(os.path.join(state, RECORD_NAME))
+        waits = (.025, .075, .15, .25)
+        for attempt in range(len(waits) + 1):
+            try:
+                os.replace(temporary, target)
+                return
+            except OSError as error:
+                if os.name != "nt" or getattr(error, "winerror", None) not in (5, 32) or attempt == len(waits):
+                    raise
+                time.sleep(waits[attempt])
     except BaseException:
         try:
             os.unlink(temporary)
@@ -502,7 +603,8 @@ def check_environment(site: str, root: str, state: str | None = None, *,
                    "site": os.path.normcase(os.path.realpath(site)), "records": inventory.records_digest,
                    "python": sys.version}
         report = {"files": len(observed), "hashed": len(inventory.hashed),
-                  "unchecked_bytecode": inventory.unchecked_bytecode, "held": len(held)}
+                  "unchecked_bytecode": inventory.unchecked_bytecode, "held": len(held),
+                  "shared_torch": inventory.shared_torch}
         previous = _load_record(state) if state is not None else None
         if previous is not None and all(previous.get(key) == value for key, value in binding.items()) \
                 and previous.get("files") == observed:
@@ -646,10 +748,73 @@ def install_weight_guard() -> None:
 
 
 def _environment_paths() -> tuple[str, str]:
+    # Python 3.13 -S leaves sys.prefix at the PBS base. The genuine Desktop
+    # venv is selected by its actual executable and checked pyvenv.cfg instead.
+    executable = os.path.abspath(sys.executable)
+    candidate = os.path.dirname(os.path.dirname(executable))
+    if os.name == 'nt' and (os.path.basename(os.path.dirname(executable)).casefold() == 'scripts'
+                            or os.path.lexists(_io_path(os.path.join(candidate, 'pyvenv.cfg')))):
+        return _desktop_venv_paths(executable, sys._base_executable, sys.base_prefix)
     paths = sysconfig.get_paths()
-    if os.path.normcase(paths["purelib"]) != os.path.normcase(paths["platlib"]):
+    if not _interpreter_owner()._same_file(_io_path(paths["purelib"]), _io_path(paths["platlib"])):
         raise Refusal("this launcher supports one site-packages directory")
     return paths["purelib"], sys.prefix
+
+
+def _desktop_venv_paths(executable: str, base_executable: str, base_prefix: str) -> tuple[str, str]:
+    """Resolve only the supported genuine Windows Desktop .venv layout."""
+    def plain(path, directory):
+        path = os.path.abspath(path)
+        cursor = path
+        while True:
+            info = os.lstat(_io_path(cursor))
+            if _is_link(info):
+                raise Refusal('Desktop Python paths cannot traverse links')
+            if cursor == path and (os.path.isdir(_io_path(cursor)) != directory or (not directory and info.st_nlink != 1)):
+                raise Refusal('Desktop Python input is not a plain owned file/directory')
+            parent = os.path.dirname(cursor)
+            if parent == cursor: break
+            cursor = parent
+        return path
+    try:
+        executable = plain(executable, False)
+        scripts = os.path.dirname(executable)
+        root = os.path.dirname(scripts)
+        if (os.path.basename(scripts).casefold() != 'scripts' or os.path.basename(root) != '.venv'
+                or os.path.basename(os.path.dirname(root)) != 'ComfyUI'
+                or os.path.basename(executable).casefold() not in ('python.exe', 'pythonw.exe')):
+            raise Refusal('unsupported Desktop private interpreter layout')
+        cfg = plain(os.path.join(root, 'pyvenv.cfg'), False)
+        if os.stat(_io_path(cfg)).st_size > 8192:
+            raise Refusal('Desktop pyvenv.cfg exceeds its bound')
+        fields = {}
+        with open(_io_path(cfg), encoding='utf-8') as stream:
+            lines = stream.read().splitlines()
+        for line in lines:
+            if not line.strip(): continue
+            key, separator, value = line.partition('=')
+            key, value = key.strip().casefold(), value.strip()
+            if not separator or not key or key in fields:
+                raise Refusal('malformed Desktop pyvenv.cfg')
+            fields[key] = value
+        if fields.get('include-system-site-packages', '').casefold() != 'false':
+            raise Refusal('Desktop Python cannot include system site-packages')
+        home = fields.get('home', '')
+        if not os.path.isabs(home):
+            raise Refusal('Desktop pyvenv.cfg lacks an absolute PBS home')
+        home = plain(home, True)
+        base = plain(base_executable, False)
+        identity = _interpreter_owner()
+        if (not identity._same_file(_io_path(home), _io_path(os.path.dirname(base)))
+                or os.path.basename(base).casefold() not in ('python.exe','pythonw.exe')
+                or not identity._same_file(_io_path(home), _io_path(plain(base_prefix, True)))
+                or os.path.basename(home) != 'standalone-env'
+                or not identity._same_file(_io_path(os.path.dirname(home)), _io_path(os.path.dirname(os.path.dirname(root))))):
+            raise Refusal('Desktop venv does not belong to its bundled PBS interpreter')
+        site_packages = plain(os.path.join(root, 'Lib', 'site-packages'), True)
+        return site_packages, root
+    except (OSError, UnicodeError) as error:
+        raise Refusal('Desktop private interpreter metadata is unavailable: '+str(error)) from error
 
 
 def _parse(argv: list[str]) -> tuple[str | None, str | None, bool, str, list[str]]:
@@ -695,7 +860,7 @@ def command(python, main, arguments=(), *, state=None, records: str | None = Non
         options += ["--records", records]
     if allow_installer:
         options.append("--allow-installer")
-    return [os.fspath(python), "-B", "-s", os.path.abspath(__file__), *options, "--", os.fspath(main),
+    return [os.fspath(python), "-B", "-s", "-S", os.path.abspath(__file__), *options, "--", os.fspath(main),
             *(os.fspath(item) if isinstance(item, os.PathLike) else str(item) for item in arguments)]
 
 
@@ -733,7 +898,7 @@ def main(argv: list[str] | None = None) -> int:
             _check_records_pin(records_digest(site_packages), records)
         if not allow_installer and not sys.flags.no_site:
             raise Refusal("this Python imported site at start-up, so site-packages .pth files ran before "
-                          "the check; the OA package's python312._pth has no 'import site' line")
+                          "the check; use the OA launch route with -S before the checked site is added")
         if not allow_installer:
             for name in INSTALLERS:
                 spec = importlib.util.find_spec(name)
@@ -742,11 +907,17 @@ def main(argv: list[str] | None = None) -> int:
                                   % (name, spec.origin))
         report = check_environment(site_packages, root, state, allow_installer=allow_installer, records=records,
                                    hold=True)
+        # Keep the checked environment held during the stdlib-only sealed-pack
+        # receiving, before site-packages and ComfyUI's target code can run.
+        _HELD.extend(report.pop("handles", []))
+        if report["shared_torch"] == "":
+            raise Refusal("%s names no PyTorch engine component; install ComfyUI through OpenAbstractions "
+                          "Setup, which installs the component first" % SHARED_TORCH_PTH)
+        _check_sealed_helper(entry)
     except Refusal as refusal:
         print("OpenAbstractions refused to start ComfyUI: %s" % refusal, file=sys.stderr, flush=True)
         return EXIT_REFUSED
     # Open until this process, and ComfyUI running in it, exits.
-    _HELD.extend(report.pop("handles", []))
     if report["unchecked_bytecode"]:
         # RECORD carries no hash for this bytecode: compile from the checked
         # sources and never read it.
@@ -755,6 +926,9 @@ def main(argv: list[str] | None = None) -> int:
     install_weight_guard()
     if sys.flags.no_site:
         # The checked site-packages joins sys.path now; its .pth files run here.
+        # Restore the validated venv prefixes that Python 3.13 -S leaves unset.
+        sys.prefix = root
+        sys.exec_prefix = root
         import site
         site.addsitedir(site_packages)
         site.setquit()

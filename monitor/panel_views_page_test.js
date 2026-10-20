@@ -5,7 +5,7 @@
 // serviceCommonScript back into a page's own script tag, where its source
 // only carries the Go "` + serviceCommonScript + `" glue, the same way
 // service_page_test.js does.
-const fs = require('fs'), vm = require('vm'), assert = require('assert');
+const fs = require('fs'), vm = require('./panel_record_test_helper.js').vm, assert = require('assert');
 
 function commonScript() {
  const src = fs.readFileSync(__dirname + '/service_page.go', 'utf8');
@@ -59,6 +59,44 @@ const all = (n, out = []) => { out.push(n); n.children.forEach(c => all(c, out))
 const exe = 'C:\\panel\\monitor.exe';
 
 (async () => {
+ // Delayed transport completions retain the lifetime of the request that
+ // issued them. These replies deliberately complete even after abort.
+ {
+  const element=makeElement(), pending=[];
+  const context={URLSearchParams,AbortController,document:{getElementById:element,createElement:node},location:{search:'?k=test'},console,
+   fetch:(path,opts)=>new Promise((resolve,reject)=>pending.push({path,signal:opts.signal,reply:value=>resolve({ok:true,json:async()=>value}),reject}))};
+  vm.runInNewContext(plainScript(),context);
+  vm.runInNewContext(loadSectionScript('logging_page.go','loggingScript'),context);
+  const page=(next,message)=>({outcome:'page',mode:'read',next,atEnd:true,records:message?[{time:'2026-11-06T10:00:00Z',level:0,message,program:'writer',hops:[]}]:[]});
+  const tick=()=>new Promise(resolve=>setImmediate(resolve));
+  const newer=element('log-quick').children[1].onclick();
+  assert(pending[0].signal.aborted,'changing range aborts the older read');
+  pending[1].reply(page('new','Current range'));await newer;
+  pending[0].reply(page('old','Stale range'));await tick();
+  assert(text(element('log-records')).includes('Current range'));
+  assert(!text(element('log-records')).includes('Stale range'),'late old filter reply cannot replace the current view');
+  const oldFollow=element('log-follow').onclick();
+  assert.equal(new URLSearchParams(pending[2].path.split('?')[1]).get('cursor'),'new','stale read did not change the cursor');
+  await element('log-follow').onclick();
+  assert(pending[2].signal.aborted,'Stop aborts the outstanding follow wait');
+  const newFollow=element('log-follow').onclick();
+  pending[2].reply(page('stale-follow','Stopped follow'));await oldFollow;
+  assert.equal(pending.length,4,'stopped loop cannot issue another wait after a new Follow starts');
+  assert(!text(element('log-records')).includes('Stopped follow'));
+  assert.equal(element('log-follow').textContent,'Stop following','old completion cannot stop the new loop');
+  pending[3].reply({outcome:'gap',records:[]});await newFollow;
+  assert.equal(pending.length,4,'gap performs no automatic read or restart');
+  assert(text(element('log-status')).includes('Read from the start'));
+  const restarted=element('log-quick').children[1].onclick();
+  assert.equal(new URLSearchParams(pending[4].path.split('?')[1]).get('cursor'),'','explicit gap restart reads from the start');
+  pending[4].reply(page('restarted','Restarted history'));await restarted;
+  assert(!text(element('log-records')).includes('History gap'),'explicit fresh read replaces the old gap');
+  const superseded=element('log-quick').children[0].onclick();
+  const latest=element('log-quick').children[1].onclick();
+  pending[6].reply(page('latest','Latest history'));await latest;
+  pending[5].reject(Error('old transport failed'));await superseded;
+  assert(!text(element('log-status')).includes('old transport failed'),'late failure cannot replace current status');
+ }
  // --- Settings, Logging section (logging_page.go). ---
  {
   const element = makeElement();
@@ -79,7 +117,7 @@ const exe = 'C:\\panel\\monitor.exe';
   };
   let loggingAbsent = false;
   const requests = [];
-  const context = {URLSearchParams, localStorage:{length:0, key(){}, getItem(){return null}, setItem(){}}, document:{getElementById:element, createElement:node, createTextNode:text=>({textContent:text})}, location:{search:'?k=test'}, console,
+  const context = {URLSearchParams, AbortController, localStorage:{length:0, key(){}, getItem(){return null}, setItem(){}}, document:{getElementById:element, createElement:node, createTextNode:text=>({textContent:text})}, location:{search:'?k=test'}, console,
    fetch:async(path, opts)=>{
     requests.push({path, key:opts.headers['X-Panel-Key']});
     if(loggingAbsent) return {ok:false, text:async()=>'The runtime is absent: service resolution: runtime_unavailable'};
@@ -118,6 +156,8 @@ const exe = 'C:\\panel\\monitor.exe';
   assert.equal(element('log-quick').children[0].className, 'active', 'Last hour starts active');
   assert.equal(element('log-level-seg').children.map(b=>b.textContent).join(', '), 'Everything, Warnings and errors, Errors');
   assert.equal(element('log-level-seg').children[0].className, 'active', 'Everything starts active');
+  const emptyDetails=context.logEntry({kind:'record',time:'2026-09-17T10:00:00Z',level:1,message:'Plain record',hops:[],attrs:{}});
+  assert.equal(emptyDetails.children.length,1,'a record with no hops or attributes has no empty Technical details');
   const boxes = element('log-records').children;
   assert.equal(boxes.length, 5, 'four records plus one date heading, since they all fall on the same local day');
   assert.equal(boxes[0].tagName, 'H4', 'a date heading leads the first group');
@@ -165,7 +205,7 @@ const exe = 'C:\\panel\\monitor.exe';
   assert(sinkGap.children[0].textContent.includes('12 records') && sinkGap.children[0].textContent.includes('dropped'), 'gap names the dropped count');
   assert(element('log-status').textContent.includes('More history remains') && element('log-status').textContent.includes('1 records on this page hidden'));
   assert.equal(element('log-next').disabled, false);
-  assert(element('log-sink').textContent.includes('delivering. 3 accepted, 3 written'), 'panel sink state shown');
+  assert(element('log-sink').textContent.includes('own log records are all sent'), 'panel sink state shown');
   // task 2026-09-23, eleventh first-time visitor, requirement 2: the
   // program filter is a dropdown built from the programs seen in the
   // records that have already come back, "All programs" first and
@@ -202,7 +242,9 @@ const exe = 'C:\\panel\\monitor.exe';
   // already needs oaClockText for the row times), so the absent-runtime
   // reply reads the one plain sentence oaPlain gives any "service
   // resolution" failure, not the raw "The runtime is absent: ..." text.
-  assert.equal(element('log-status').textContent, "That service isn't running on this account right now. Start the runtime, or check the service on the Apps page.", 'absent runtime reported in the logging page, in the one plain sentence oaPlain gives it');
+  // No runtime answered: the page's runtime banner (runtimeScript) says so
+  // once, and the log's own status line stays empty.
+  assert.equal(element('log-status').textContent, '', 'absent runtime left to the page banner, not repeated in the log section');
   loggingAbsent = false;
 
   // task 2026-09-23, eleventh first-time visitor, requirement 2: a quick
@@ -286,17 +328,17 @@ const exe = 'C:\\panel\\monitor.exe';
   // It now runs the check once, unclicked, as soon as the page's own
   // script loads.
   await context.identityCheckReady;
-  assert.equal(element('identity-status').textContent,'Verified by the operating system.','the check already ran on arrival, with no click at all');
+  assert.equal(element('identity-status').textContent,'Verified by the operating system','the check already ran on arrival, with no click at all');
   await element('identity-check').onclick();
   const view = element('identity-view');
   const shown = text(view);
   // The row: one caption (when it was checked), a short verdict as its
   // status line, and the full explanation inside Technical details.
-  assert.equal(element('identity-status').textContent, 'Verified by the operating system.');
+  assert.equal(element('identity-status').textContent, 'Verified by the operating system');
   assert.equal(view.children.length, 1, 'only the one Technical details sits in the row beside its caption and status');
   const verdict = view.children[0].children[1].children[0];
   assert.equal(verdict.dataset.evidence, 'verified');
-  assert.equal(verdict.textContent, "This Panel is talking to the runtime it was started for. The connection is proven by the operating system; the runtime's program is not code-signed on this machine.", 'the verdict sentence leads, naming both the expectation and the proof strength');
+  assert.equal(verdict.textContent, "This Panel is talking to the OpenAbstractions it was started for. The connection is proven by the operating system; OpenAbstractions' program is not code-signed on this machine.", 'the verdict sentence leads, naming both the expectation and the proof strength');
   assert(!verdict.textContent.toLowerCase().includes('pipe'), 'the verdict names no pipe endpoint');
   const technical = view.children[0];
   assert.equal(technical.children[0].textContent, 'Technical details');
@@ -316,7 +358,7 @@ const exe = 'C:\\panel\\monitor.exe';
   assert(shown.includes('Which program: proven by its path.'), 'the path attribute reads as a plain sentence, not a raw proof/ceiling dump');
   assert(shown.includes('Who is connected: proven by the operating system, the strongest proof this connection allows.'), 'a kernel-proven attribute names the strongest proof this connection allows');
   assert(shown.includes('Which process: proven by the operating system, the strongest proof this connection allows.'));
-  assert(shown.includes('Signed package: none; this connection could prove one. Expected for a development build; an installed runtime carries one.'));
+  assert(shown.includes('Signed package: none; this connection could prove one. Expected for a development build; an installed OpenAbstractions carries one.'));
   assert(shown.includes('Signed code: not signed; expected for a development build.'));
   assert(shown.includes('Nothing here needs your attention.'), 'every row here reaches what the transport allows or is expected for a development build');
   // task 2026-09-23, seventh first-time visitor, finding 2: an id is never
@@ -349,7 +391,7 @@ const exe = 'C:\\panel\\monitor.exe';
   // task 2026-09-23, tenth first-time visitor, finding 2: "Checked at
   // 2026-09-23T18:14:50+03:00" read a raw ISO timestamp aloud; it now reads
   // a local readable time, the raw value kept on the line's own title.
-  assert.equal(element('identity-checked').textContent, 'Checked '+context.oaWhen('2026-09-17T10:02:00Z')+'.');
+  assert.equal(element('identity-checked').textContent, 'Checked '+context.oaWhen('2026-09-17T10:02:00Z'));
   assert(!element('identity-checked').textContent.includes('2026-09-17T10:02:00Z'), 'the raw timestamp is not in the visible line');
   assert.equal(element('identity-checked').title, '2026-09-17T10:02:00Z');
 
@@ -369,11 +411,13 @@ const exe = 'C:\\panel\\monitor.exe';
   await element('identity-check').onclick();
   const absentView = element('identity-view');
   const absent = text(absentView);
-  assert.equal(element('identity-status').textContent, 'No runtime is reachable.');
-  assert.equal(absentView.children[0].children[1].children[0].textContent, 'This Panel cannot reach a runtime right now: select installed runtime: bootstrap: no trusted runtime installation.', 'the verdict names the reason a selection failure gives');
+  assert.equal(element('identity-status').textContent, 'OpenAbstractions is not reachable.');
+  assert.equal(absentView.children[0].children[1].children[0].textContent, 'This Panel cannot reach OpenAbstractions right now.', 'the verdict is one sentence; its raw reason stays in the reply below it');
   assert(absent.includes('Installed runtime selection: UNTRUSTED. select installed runtime'));
-  assert(absent.includes('The runtime is absent: service resolution: runtime_unavailable: abstraction.facade/caller@1'), 'identity page reports the absent runtime');
-  assert(absent.includes('The runtime is absent: service resolution: runtime_unavailable: abstraction.logging/reader@1'), 'logging view reports the absent runtime');
+  assert(absent.includes('bootstrap: no trusted runtime installation'), 'the selection failure stays in Technical details');
+  assert(absent.includes('OpenAbstractions is not reachable.'), 'identity page reports the absent runtime');
+  assert(absent.includes('service resolution: runtime_unavailable: abstraction.facade/caller@1'), 'the raw caller reason stays in Technical details');
+  assert(absent.includes('service resolution: runtime_unavailable: abstraction.logging/reader@1'), 'the raw logging reason stays in Technical details');
   assert(absent.includes('Platform declaration for macOS (universal package): unsupported.'));
   assert(absent.includes('On macOS, protected calls are refused'), 'macOS limit stated plainly');
   assert(absent.includes('No binding pins the caller'));
@@ -448,7 +492,7 @@ const exe = 'C:\\panel\\monitor.exe';
   // read's own argument field named itself "DIGEST" with no explanation
   // and no example shape.
   assert.equal(storageReadBox.argument.placeholder, 'Content digest', 'the placeholder is plain words, not the raw word DIGEST or a hash shape');
-  const storageCaption = storageReadBox.children.find(c=>c.textContent==='Copy a digest from the Device or Work page.');
+  const storageCaption = storageReadBox.children.find(c=>c.textContent==='Enter the sha256 digest of a stored file.');
   assert(storageCaption, 'a caption says where to find one');
   await storageReadBox.children.find(c=>c.textContent==='Call').onclick();
   assert.equal(storageReadBox.argumentNote.textContent, 'Fill in Content digest above to call storage read.', 'the missing-argument message sits beside the row\'s own field, in the same friendly words as its placeholder');

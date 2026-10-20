@@ -18,16 +18,23 @@
  * Written against the declarations of @opencode/plugin 2.0.24.
  */
 import OpenAbstractionsPlugin from './plugin.js';
+import {runtimeUnavailable} from './availability.js';
+import {inventoryMarkerOption, nativeProviderPackage, selectionPolicyMarkerOption} from './inventory.js';
 
 export const pluginID = 'openabstractions';
-// The least time between two model refreshes after replies.
-const refreshEveryMs = 60000;
 
 function node(json, optional = false) {
   return {
     json, isOptional: optional,
     optional() { return node(json, true); },
     describe(text) { return node({...json, description: text}, optional); },
+    min(value) { return node({...json, [json.type === 'string' ? 'minLength' : json.type === 'array' ? 'minItems' : 'minimum']: value}, optional); },
+    max(value) { return node({...json, [json.type === 'string' ? 'maxLength' : json.type === 'array' ? 'maxItems' : 'maximum']: value}, optional); },
+    int() { return node({...json, type: 'integer'}, optional); },
+    regex(value) { return node({...json, pattern: value.source}, optional); },
+    strict() { return node({...json, additionalProperties: false}, optional); },
+    passthrough() { return node({...json, additionalProperties: true}, optional); },
+    catchall(value) { return node({...json, additionalProperties: value.json}, optional); },
   };
 }
 
@@ -48,9 +55,14 @@ export const jsonTool = Object.assign((definition) => definition, {
     string: () => node({type: 'string'}),
     number: () => node({type: 'number'}),
     boolean: () => node({type: 'boolean'}),
+    unknown: () => node({}),
     enum: (values) => node({type: 'string', enum: [...values]}),
+    literal: (value) => node({const:value}),
     array: (item) => node({type: 'array', items: item?.json ?? {}}),
     object: (shape) => node(objectSchema(shape)),
+    null: () => node({type: 'null'}),
+    union: (items) => node({anyOf: items.map(item => item.json)}),
+    toJSONSchema: (value) => value.json,
   },
 });
 
@@ -85,33 +97,105 @@ function shimClient() {
   }}};
 }
 
+function nativeModel(providerID, id, model) {
+  return v2Model(providerID, id, {...model, capabilities: model.capabilities ?? {
+    toolcall: model.tool_call ?? true, input: {text: true}, output: {text: true}}});
+}
+
+// The native editor exposes immutable V2 source records. Convert them and the
+// config owner's managed baselines together before its ordinary refresh.
+function configuredModel(model) {
+  const cost = model.cost?.[0] ?? {};
+  return {name: model.name, family: model.family ?? '', status: model.status ?? 'active',
+    limit: {...model.limit}, options: model.settings ?? {},
+    capabilities: {toolcall: model.capabilities?.tools ?? true,
+      input: Object.fromEntries((model.capabilities?.input ?? []).map((kind) => [kind, true])),
+      output: Object.fromEntries((model.capabilities?.output ?? []).map((kind) => [kind, true]))},
+    cost: {input: cost.input ?? 0, output: cost.output ?? 0,
+      cache: {read: cost.cache?.read ?? 0, write: cost.cache?.write ?? 0}}};
+}
+
 /** V2's setup. `dependencies` replaces the V1 plugin and the language model in tests. */
 export async function setupV2(ctx, dependencies = {}) {
   const options = {...(ctx.options ?? {})};
   const providerID = typeof options.providerId === 'string' && options.providerId ? options.providerId : pluginID;
   const providerOptions = {...(options.provider ?? {})};
+  const client = dependencies.client ?? shimClient();
+  const inventoryStates = new Map();
+  // The plugin's inventory watch calls this when OA's models change; it runs
+  // only after setup has published the sources it refreshes.
+  let ready = false;
   const plugin = await (dependencies.plugin ?? OpenAbstractionsPlugin)(
-    {client: dependencies.client ?? shimClient(), directory: ctx.location?.directory},
+    {client, directory: ctx.location?.directory},
     {...options, providerId: providerID},
-    {tool: jsonTool, ...(dependencies.pluginDependencies ?? {})});
-  const config = {provider: {[providerID]: {npm: '@openabstractions/opencode', options: providerOptions, models: {}}}};
+    {tool: jsonTool, ...(dependencies.pluginDependencies ?? {}),
+      onInventoryRefresh: (id, error) => inventoryStates.set(id, error),
+      onInventoryChange: async () => { if (ready) await refreshLogged(); }});
+  const sources = new Map();
+  let registered;
+  // Capture existing configured headings through the native provider editor.
+  // Subsequent replays publish only the captured, verified OA source values.
+  const snapshot = await ctx.provider.transform((editor) => {
+    registered ??= editor.list?.() ?? [];
+  });
+  const config = {provider: {}};
+  if (!registered.some((record) => record.provider?.id === providerID)) {
+    config.provider[providerID] = {npm: '@openabstractions/opencode', options: providerOptions, models: {}};
+  }
+  const information = new Map();
+  const connections = new Map();
+  const originals = new Map();
+  for (const record of registered) {
+    const info = record.provider;
+    if (!info?.id || !await nativeProviderPackage({npm: info.package})) continue;
+    information.set(info.id, info);
+    connections.set(info.id, record.sourceConnection);
+    const settings = {...(info.settings ?? {})};
+    for (const marker of [inventoryMarkerOption, selectionPolicyMarkerOption]) {
+      if (settings[marker] && typeof settings[marker] === 'object') {
+        settings[marker] = Object.fromEntries(Object.entries(settings[marker])
+          .map(([id, model]) => [id, configuredModel(nativeModel(info.id, id, model))]));
+      }
+    }
+    const models = new Map([...record.models].map(([id, model]) => [id, {model, configured: configuredModel(model)}]));
+    originals.set(info.id, models);
+    config.provider[info.id] = {npm: info.package, options: settings,
+      models: Object.fromEntries([...models].map(([id, value]) => [id, value.configured]))};
+  }
   await plugin.config(config);
-  const entry = config.provider[providerID];
-  let models = Object.entries(entry.models ?? {}).map(([id, model]) => v2Model(providerID, id, {...model, capabilities: {
-    toolcall: model.tool_call ?? true, input: {text: true}, output: {text: true}}}));
-  let settings = entry.options ?? providerOptions;
   const name = typeof options.providerName === 'string' && options.providerName ? options.providerName : 'OpenAbstractions';
-
+  for (const [id, entry] of Object.entries(config.provider)) {
+    const info = information.get(id) ?? {id, name, activation: 'enabled', package: entry.npm};
+    const preserved = new Map([...(originals.get(id) ?? [])]
+      .filter(([modelID, value]) => entry.models?.[modelID] === value.configured)
+      .map(([modelID, value]) => [modelID, value.model]));
+    const listed = await plugin.provider.models({id, ...entry});
+    const error = inventoryStates.has(id) ? inventoryStates.get(id) : new Error('Provider inventory was not surveyed');
+    const unavailable = Boolean(error && runtimeUnavailable(error));
+    sources.set(id, {entry: {...entry, models: listed}, info: error ? {...info,
+      name: `${info.name} · ${unavailable ? 'unavailable' : 'refresh failed'} (last known models)`} : info,
+      unavailable, failed: Boolean(error && !unavailable), originalInfo: info, preserved,
+      sourceConnection: connections.get(id),
+      models: Object.entries(listed).map(([modelID, model]) => preserved.get(modelID) ?? nativeModel(id, modelID, model))});
+  }
+  await snapshot?.dispose?.();
   await ctx.provider.transform((editor) => {
-    if (editor.get(providerID)) editor.remove(providerID);
-    editor.add({info: {id: providerID, name, activation: 'enabled', package: '@openabstractions/opencode'}, models});
+    for (const [id, source] of sources) {
+      if (editor.get(id)) editor.remove(id);
+      editor.add({info: source.info,
+        ...(source.sourceConnection === undefined ? {} : {sourceConnection: source.sourceConnection}),
+        models: source.unavailable || source.failed
+        ? source.models.map((model) => ({...model, enabled: false})) : source.models});
+    }
   });
   // The provider module loads OA's clients, so it is imported only on V2.
   const create = dependencies.languageModel ? null : (await import('./index.js')).createOpenAbstractions;
-  const languageModel = dependencies.languageModel ?? ((modelID) => create(settings).languageModel(modelID));
-  await ctx.aisdk?.hook?.('language', (event) => {
-    event.language = languageModel(event.model?.modelID ?? event.model?.id);
-  }, {providerID});
+  const languageModel = dependencies.languageModel ?? ((modelID, settings) => create(settings).languageModel(modelID));
+  for (const [id, source] of sources) {
+    await ctx.aisdk?.hook?.('language', (event) => {
+      event.language = languageModel(event.model?.modelID ?? event.model?.id, source.entry.options);
+    }, {providerID: id});
+  }
 
   const tools = Object.entries(plugin.tool ?? {});
   if (tools.length && ctx.tool?.transform) {
@@ -132,37 +216,59 @@ export async function setupV2(ctx, dependencies = {}) {
     });
   }
 
+  // Local validation covers every selected provider. Provider-scoping this
+  // hook would let an external Local selection bypass the native-route guard.
   await ctx.session?.hook?.('context', async (event) => {
     const params = {options: {}};
-    await plugin['chat.params']?.({agent: event.agent}, params);
+    await plugin['chat.params']?.({sessionID: event.sessionID, agent: event.agent, model: event.model,
+      provider: {info: sources.get(event.model?.providerID)?.info}}, params);
     Object.assign(event.options, params.options);
     const system = [];
     await plugin['experimental.chat.system.transform']?.({model: {providerID: event.model?.providerID}}, {system});
     for (const text of system) event.system.push({type: 'text', text});
-  }, {providerID});
+  });
+  // SessionTitle is a separate documented request hook, with the same host ID.
+  // Its one-off request must not inherit the session conversation marker.
+  await ctx.session?.hook?.('title', async (event) => {
+    delete event.options.oaSessionID;
+  });
 
-  // After a reply, at most once a minute, OA's models are read again.
-  let refreshed = (dependencies.now ?? Date.now)();
+  // When OA's models change, the plugin's inventory watch reads them again and
+  // V2 reloads its providers (inventory-watch.js).
   async function refresh() {
-    const listed = await plugin.provider.models({id: providerID, models: Object.fromEntries(
-      models.map((model) => [model.modelID, {name: model.name, limit: model.limit}]))});
-    models = Object.entries(listed).map(([id, model]) => v2Model(providerID, id, model));
-    settings = entry.options ?? settings;
-    await ctx.provider.reload?.();
-  }
-  const abort = new AbortController();
-  void (async () => {
-    try {
-      for await (const event of ctx.event?.subscribe?.({signal: abort.signal}) ?? []) {
-        if (event?.type !== 'session.idle') continue;
-        const now = (dependencies.now ?? Date.now)();
-        if (now - refreshed < refreshEveryMs) continue;
-        refreshed = now;
-        await refresh().catch(() => {});
+    const failures = [];
+    for (const [id, source] of sources) {
+      try {
+        const provider = {id, ...source.entry};
+        const listed = await plugin.provider.models(provider);
+        source.entry = {...provider, models: listed};
+        source.models = Object.entries(listed).map(([modelID, model]) => source.preserved.get(modelID) ?? nativeModel(id, modelID, model));
+        source.info = source.originalInfo;
+        source.unavailable = false;
+        source.failed = false;
+      } catch (error) {
+        if (!runtimeUnavailable(error)) {
+          source.failed = true;
+          source.info = {...source.originalInfo, name: `${source.originalInfo.name} · refresh failed (last known models)`};
+          failures.push(error);
+          continue;
+        }
+        source.unavailable = true;
+        source.info = {...source.originalInfo, name: `${source.originalInfo.name} · unavailable (last known models)`};
       }
-    } catch {
-      // The subscription ends with the plugin.
     }
-  })();
-  return () => abort.abort();
+    await ctx.provider.reload?.();
+    if (failures.length) throw failures[0];
+  }
+  async function refreshLogged() {
+    await refresh().catch(async (error) => {
+      try {
+        await client.app?.log?.({body: {service: 'openabstractions', level: 'error',
+          message: 'OpenAbstractions model refresh failed; last known models were retained without enabling them',
+          extra: {name: error?.name, status: error?.status}}});
+      } catch { /* A diagnostic sink must not stop later provider retries. */ }
+    });
+  }
+  ready = true;
+  return () => plugin.dispose?.();
 }

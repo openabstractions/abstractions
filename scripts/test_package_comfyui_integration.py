@@ -9,19 +9,186 @@ import json
 import zipfile
 from pathlib import Path
 from unittest import mock
+import importlib.util
+import sys
+import types
+import shutil
+import os
 
 from package_comfyui_integration import (copy_sdk_source, matches_revision,
+                                         compose_wrapper, extension_payload_owner, stage_wrapper,
                                          copy_tracked_checkout, load_public_wheel_receipt, read_pypi_pins,
-                                         require_native_only_wheelhouse, untracked_source_files)
+                                         require_native_only_wheelhouse, untracked_source_files,
+                                         GRAPH_FILES)
+
+
+class NativeGraphRosterTests(unittest.TestCase):
+    def test_current_wrapper_excludes_retired_shared_folder_provider(self):
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as owned:
+            destination = Path(owned) / "wrapper"
+            pins = stage_wrapper(root, root / "openabstractions-flat/adopter-comfyui", destination)
+            self.assertIn("oa_nodes/__init__.py", pins)
+            self.assertIn("oa_nodes/service.py", pins)
+            self.assertFalse(any("_vendor" in Path(name).parts for name in pins))
+            for name in ("oa_nodes/__init__.py", "oa_nodes/service.py"):
+                raw = (destination / name).read_bytes()
+                self.assertNotIn(b"ABSTRACTION_COMFYUI_PROVIDER", raw)
+                self.assertEqual(pins[name], {"bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()})
+            # This receives the real selected source payload, without wheels,
+            # native ABI execution or a claim of a qualified product ZIP.
+
+    def test_selected_wrapper_loads_the_graph_bridge_with_no_frontend_pin(self):
+        root = Path(__file__).resolve().parents[1]
+        node = root / "adopters/comfyui/node"
+        owner = extension_payload_owner(root / "installer/apps/build_extension.py")
+        files = {path.as_posix() for path in owner.payload_files(node)}
+        self.assertTrue(GRAPH_FILES <= files)
+        self.assertNotIn("web/oa_appmodel_frontend.json", files)
+        self.assertFalse(any(name.endswith(".test.mjs") for name in files))
+        self.assertIn("oa_appmodel_bridge.install()", (node / "__init__.py").read_text(encoding="utf-8"))
+
+
+class AppModelCompanionTests(unittest.TestCase):
+    """Real wheel/source admission over inert bytes; native PE owner is a stand-in."""
+    def fixture(self, root, mode='valid'):
+        import package_comfyui_integration as owner
+        package=root/'abstraction_facade_native';package.mkdir()
+        (package/'__init__.py').write_bytes(b'# selected companion source\n')
+        license_file=root/'LICENSE';license_file.write_bytes(b'selected source licence')
+        library=b'MZ inert source-admission DATA; never loaded'
+        dist='abstraction_facade_native-0.8.0.dist-info/'
+        members={'abstraction_facade_native/__init__.py':(package/'__init__.py').read_bytes(),
+            owner.FACADE_NATIVE_MEMBER:library,dist+'LICENSE':license_file.read_bytes(),
+            dist+'METADATA':b'Name: abstraction-facade-native\nVersion: 0.8.0\n',
+            dist+'WHEEL':b'Wheel-Version: 1.0\nTag: py3-none-win_amd64\n'}
+        if mode=='source':members['abstraction_facade_native/__init__.py']=b'# another source\n'
+        if mode=='license':members[dist+'LICENSE']=b'other licence'
+        if mode=='library':members[owner.FACADE_NATIVE_MEMBER]=b'another library'
+        if mode=='extra':members['../escape.py']=b'not selected'
+        record=io.StringIO(newline='');writer=csv.writer(record,lineterminator='\n')
+        for name,raw in members.items():writer.writerow((name,'sha256='+base64.urlsafe_b64encode(hashlib.sha256(raw).digest()).decode().rstrip('='),str(len(raw))))
+        writer.writerow((dist+'RECORD','',''));members[dist+'RECORD']=record.getvalue().encode()
+        wheel=root/'abstraction_facade_native-0.8.0-py3-none-win_amd64.whl'
+        with zipfile.ZipFile(wheel,'w') as archive:
+            for name,raw in members.items():
+                entry=zipfile.ZipInfo(name);entry.external_attr=(0o120777 if mode=='link' and name==owner.FACADE_NATIVE_MEMBER else 0o100644)<<16
+                archive.writestr(entry,raw)
+            if mode=='duplicate':archive.writestr('abstraction_facade_native/__init__.py',members['abstraction_facade_native/__init__.py'])
+        return owner,wheel,package,license_file,hashlib.sha256(library).hexdigest()
+
+    def test_selected_companion_binds_actual_python_library_license_and_platform(self):
+        with tempfile.TemporaryDirectory() as owned:
+            owner,wheel,package,license_file,pin=self.fixture(Path(owned))
+            with mock.patch('py_wheels.check',return_value=('0.8.0','win_amd64',[])) as native:
+                self.assertEqual(owner.verify_appmodel_wheel(wheel,package,license_file,'0.8.0',pin),wheel)
+                native.assert_called_once_with(wheel)
+
+    def test_changed_source_hash_license_and_unsafe_members_refuse_before_native_owner(self):
+        for mode in ('source','library','license','extra','link','duplicate'):
+            with self.subTest(mode=mode),tempfile.TemporaryDirectory() as owned:
+                owner,wheel,package,license_file,pin=self.fixture(Path(owned),mode)
+                with mock.patch('py_wheels.check') as native, self.assertRaises(ValueError):
+                    owner.verify_appmodel_wheel(wheel,package,license_file,'0.8.0',pin)
+                native.assert_not_called()
+
+    def test_companion_selection_adds_only_the_appmodel_extra(self):
+        import package_comfyui_integration as owner
+        entry=dict(filename='abstraction_facade_client-0.0.0-py3-none-any.whl',sha256='a'*64)
+        self.assertIn('abstraction-facade-client[appmodel]==',owner.wheel_requirement(entry,appmodel=True))
+        self.assertNotIn('[appmodel]',owner.wheel_requirement(entry))
+        base=owner.public_distributions('0.8.0')
+        self.assertEqual(set(owner.public_distributions('0.8.0',appmodel=True))-set(base),{'abstraction-facade-native'})
+
+    def test_public_companion_pin_must_share_exact_facade_source(self):
+        import package_comfyui_integration as owner
+        for mode in ('valid','commit','repository','directory'):
+            with self.subTest(mode=mode),tempfile.TemporaryDirectory() as owned:
+                rows=['package\trepository\tcommit\tdirectory']
+                for name in owner.public_distributions('0.8.0'):
+                    repo='abstraction-facade' if name=='abstraction-facade-client' else name
+                    rows.append(f'{name}\topenabstractions/{repo}\t'+ 'a'*40+'\tpy')
+                repo='another' if mode=='repository' else 'abstraction-facade'
+                commit=('b' if mode=='commit' else 'a')*40
+                directory='py' if mode=='directory' else 'py-native'
+                rows.append(f'abstraction-facade-native\topenabstractions/{repo}\t{commit}\t{directory}')
+                pins=Path(owned)/'pypi.tsv';pins.write_text('\n'.join(rows)+'\n',encoding='utf-8')
+                if mode=='valid':self.assertIn('abstraction-facade-native',owner.read_pypi_pins(pins))
+                else:
+                    with self.assertRaisesRegex(ValueError,'same|share'):owner.read_pypi_pins(pins)
+
+
+
+
+
+
+class WheelTemporaryPathTests(unittest.TestCase):
+    def run_private_build(self, fail_during_build):
+        import package_comfyui_integration as packager
+
+        with tempfile.TemporaryDirectory(prefix="oa-wheel-path-test-") as owned:
+            owned = Path(owned).resolve()
+            checkout = owned / ("long-checkout-" + "x" * 100)
+            wheelhouse = owned / "native"
+            wheelhouse.mkdir()
+            (wheelhouse / "abstraction_ipc-0.4.0-py3-none-win_amd64.whl").write_bytes(b"inert native fixture")
+            copied_paths = []
+            wheel_calls = []
+
+            def copy_source(source, destination):
+                copied_paths.append(destination)
+                self.assertNotIn(checkout, destination.parents)
+                self.assertEqual(destination.parents[1].parent, Path(tempfile.gettempdir()))
+                self.assertLess(len(str(destination)), len(str(checkout)))
+                destination.mkdir(parents=True)
+
+            def run(command, **kwargs):
+                if command[0] == "git":
+                    return subprocess.CompletedProcess(command, 0, stdout="1\n")
+                self.assertEqual(command[1:4], ["-m", "pip", "wheel"])
+                wheel_calls.append(command)
+                if fail_during_build:
+                    raise subprocess.CalledProcessError(1, command)
+                output = Path(command[command.index("--wheel-dir") + 1])
+                for name in packager.PURE_WHEELS:
+                    (output / name).write_bytes(b"inert wheel fixture")
+                return subprocess.CompletedProcess(command, 0)
+
+            argv = ["package_comfyui_integration.py", "--wheelhouse", str(wheelhouse),
+                    "--output", str(owned / "result.zip"), "--source-commit", "a" * 40,
+                    "--native-source-commit", "b" * 40, "--native-library-sha256", "c" * 64]
+            with mock.patch.object(packager, "__file__", str(checkout / "scripts" / "package_comfyui_integration.py")), \
+                    mock.patch.object(packager.sys, "argv", argv), \
+                    mock.patch.object(packager.sys, "path", list(packager.sys.path)), \
+                    mock.patch.object(packager, "untracked_source_files", return_value=[]), \
+                    mock.patch.object(packager, "matches_revision", return_value=True), \
+                    mock.patch.object(packager, "copy_sdk_source", side_effect=copy_source), \
+                    mock.patch.object(packager.subprocess, "run", side_effect=run):
+                with self.assertRaises(subprocess.CalledProcessError if fail_during_build else zipfile.BadZipFile):
+                    packager.main()
+            self.assertEqual(len(wheel_calls), 1 if fail_during_build else len(packager.PURE_SOURCES))
+            self.assertTrue(copied_paths)
+            for copied in copied_paths:
+                self.assertFalse(copied.parents[1].exists(), "owned build root must be cleaned on failure")
+            self.assertFalse((checkout / ".build").exists())
+
+    def test_long_checkout_uses_short_owned_build_path_and_cleans_failed_build(self):
+        self.run_private_build(fail_during_build=True)
+
+    def test_short_build_path_survives_until_native_verification_then_cleans(self):
+        self.run_private_build(fail_during_build=False)
 
 
 class PackageSourceTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="oa-package-source-")
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         (self.root / "node").mkdir()
         (self.root / "node" / "committed.py").write_text("value = 1\n", encoding="utf-8")
         self.git("init", "-q")
+        # The fixture's committed bytes must also match intentionally inherited
+        # Git calls in the foreign-environment negative below.
+        self.git("config", "core.autocrlf", "false")
         self.git("config", "user.email", "test@example.invalid")
         self.git("config", "user.name", "Package Test")
         self.git("add", "node/committed.py")
@@ -31,16 +198,60 @@ class PackageSourceTests(unittest.TestCase):
         self.temporary.cleanup()
 
     def git(self, *arguments):
+        from git_env import source_git_environment
         subprocess.run(["git", "-C", str(self.root), *arguments], check=True,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       env=source_git_environment())
 
     def git_output(self, *arguments):
+        from git_env import source_git_environment
         return subprocess.run(["git", "-C", str(self.root), *arguments], check=True,
-                              capture_output=True, text=True).stdout.strip()
+                              capture_output=True, text=True,
+                              env=source_git_environment()).stdout.strip()
 
     def test_untracked_source_is_rejected(self):
         (self.root / "node" / "untracked.py").write_text("unsafe = True\n", encoding="utf-8")
         self.assertEqual(untracked_source_files(self.root, ["node"]), ["node/untracked.py"])
+
+    def test_foreign_git_environment_cannot_spoof_private_or_public_source(self):
+        import package_comfyui_integration as owner
+        revision=self.git_output('rev-parse','HEAD')
+        foreign=self.root/'foreign';foreign.mkdir()
+        shutil.copytree(self.root/'.git',foreign/'.git')
+        (foreign/'node').mkdir();(foreign/'node/committed.py').write_text('value = 1\n',encoding='utf-8')
+        redirected={'GIT_DIR':str(foreign/'.git'),'GIT_WORK_TREE':str(foreign),
+                    'GIT_INDEX_FILE':str(foreign/'.git/index'),
+                    'GIT_CONFIG_COUNT':'1','GIT_CONFIG_KEY_0':'core.fsmonitor','GIT_CONFIG_VALUE_0':'false'}
+        (self.root/'node/committed.py').write_text('value = 2\n',encoding='utf-8')
+        (self.root/'node/untracked.py').write_text('untracked = True\n',encoding='utf-8')
+        with mock.patch.dict(os.environ,redirected):
+            # Original inherited-env commands see the clean foreign tree.
+            old=subprocess.run(['git','-C',str(self.root),'diff','--quiet',revision,'--','node'],check=False,timeout=30)
+            self.assertEqual(old.returncode,0)
+            old_status=subprocess.run(['git','-C',str(self.root),'status','--porcelain=v1','--untracked-files=all','--','node'],check=True,capture_output=True,text=True,timeout=30)
+            self.assertEqual(old_status.stdout,'')
+            self.assertFalse(owner.matches_revision(self.root,revision,['node']))
+            self.assertEqual(owner.untracked_source_files(self.root,['node']),['node/untracked.py'])
+            with self.assertRaisesRegex(ValueError,'dirty'):
+                owner.verify_public_checkout(self.root,revision,'node')
+        (self.root/'node/untracked.py').unlink()
+        (self.root/'node/committed.py').write_text('value = 1\n',encoding='utf-8')
+        with mock.patch.dict(os.environ,redirected):
+            self.assertTrue(owner.matches_revision(self.root,revision,['node']))
+            self.assertEqual(owner.untracked_source_files(self.root,['node']),[])
+            owner.verify_public_checkout(self.root,revision,'node')
+            self.assertEqual(owner.source_epoch(self.root,revision),int(self.git_output_clean('show','-s','--format=%ct',revision)))
+        (self.root/'node/extra.py').write_text('extra = True\n',encoding='utf-8')
+        self.git('add','node/extra.py');self.git('commit','-qm','extra source')
+        with mock.patch.dict(os.environ,redirected):
+            destination=self.root/'tracked-copy'
+            owner.copy_tracked_checkout(self.root,destination)
+            self.assertEqual((destination/'node/extra.py').read_text(), 'extra = True\n')
+
+    def git_output_clean(self,*arguments):
+        from git_env import source_git_environment
+        return subprocess.run(['git','-C',str(self.root),*arguments],check=True,capture_output=True,text=True,
+                              env=source_git_environment(),timeout=30).stdout.strip()
 
     def test_node_and_native_sources_can_have_distinct_pins(self):
         (self.root / "native").mkdir()
@@ -104,7 +315,8 @@ class PackageSourceTests(unittest.TestCase):
         self.assertFalse((destination / "node" / "ignored-source.py").exists())
 
     def test_public_receipt_is_bound_to_every_pin_and_exact_wheel_bytes(self):
-        from package_comfyui_integration import PUBLIC_DISTRIBUTIONS
+        from git_env import source_git_environment
+        from package_comfyui_integration import LEGACY_PUBLIC_DISTRIBUTIONS as PUBLIC_DISTRIBUTIONS
 
         source_root = self.root / "public"
         wheel_root = self.root / "wheels"
@@ -119,13 +331,14 @@ class PackageSourceTests(unittest.TestCase):
             source_dir = checkout / "py"
             source_dir.mkdir(parents=True)
             (source_dir / "source.py").write_text("# pinned source\n", encoding="utf-8")
-            subprocess.run(["git", "-C", str(checkout), "init", "-q"], check=True)
-            subprocess.run(["git", "-C", str(checkout), "config", "user.email", "test@example.invalid"], check=True)
-            subprocess.run(["git", "-C", str(checkout), "config", "user.name", "Package Test"], check=True)
-            subprocess.run(["git", "-C", str(checkout), "add", "py/source.py"], check=True)
-            subprocess.run(["git", "-C", str(checkout), "commit", "-qm", "pinned source"], check=True)
+            subprocess.run(["git", "-C", str(checkout), "init", "-q"], check=True, env=source_git_environment())
+            subprocess.run(["git", "-C", str(checkout), "config", "core.autocrlf", "false"], check=True, env=source_git_environment())
+            subprocess.run(["git", "-C", str(checkout), "config", "user.email", "test@example.invalid"], check=True, env=source_git_environment())
+            subprocess.run(["git", "-C", str(checkout), "config", "user.name", "Package Test"], check=True, env=source_git_environment())
+            subprocess.run(["git", "-C", str(checkout), "add", "py/source.py"], check=True, env=source_git_environment())
+            subprocess.run(["git", "-C", str(checkout), "commit", "-qm", "pinned source"], check=True, env=source_git_environment())
             commit = subprocess.run(["git", "-C", str(checkout), "rev-parse", "HEAD"], check=True,
-                                    capture_output=True, text=True).stdout.strip()
+                                    capture_output=True, text=True, env=source_git_environment()).stdout.strip()
             pins[distribution] = {"package": distribution, "repository": repo, "commit": commit, "directory": "py"}
             pin_lines.append(f"{distribution}\t{repo}\t{commit}\tpy")
             platform_tag = "win_amd64" if distribution == "abstraction-ipc" else "any"
@@ -161,7 +374,7 @@ class PackageSourceTests(unittest.TestCase):
                                             "candidate_version": "0.4.0",
                                             "run_id": 123, "run_attempt": 2,
                                             "platform": "win32-x64", "wheels": entries}), encoding="utf-8")
-        loaded_pins = read_pypi_pins(pin_path)
+        loaded_pins = read_pypi_pins(pin_path,candidate_version='0.4.0')
         native = next(entry for entry in entries if entry["distribution"] == "abstraction-ipc")
         with mock.patch("py_wheels.verify_native_receipt_wheel",
                         return_value=(wheel_root / native["filename"], b"verified DLL", native)) as verify:
@@ -192,39 +405,6 @@ class PackageSourceTests(unittest.TestCase):
                                           "c" * 40, source_root, "0.4.0", 123, 2)
 
 
-class NodeImportInventoryTests(unittest.TestCase):
-    """Every OA Python package the ComfyUI node imports is packed beside it.
-
-    The node imports these lazily, so a missing wheel shows only when a person
-    runs the feature: OAVideoGenerate's model list read abstraction.router, which
-    the integration did not pack.
-    """
-
-    # Imported only behind its own switch and not packed yet: oa_card
-    # (ABSTRACTION_COMFYUI_CARD, resource leases).
-    UNPACKED_OPT_IN = {"resource"}
-
-    def test_every_imported_oa_package_has_a_wheel(self):
-        import re
-        import package_comfyui_integration as integration
-
-        root = Path(integration.__file__).resolve().parents[1]
-        node = root / "openabstractions-flat" / "adopter-comfyui"
-        imported = set()
-        for path in node.glob("*.py"):
-            if path.name.startswith("test_"):
-                continue
-            imported |= set(re.findall(r"^\s*(?:from|import) abstraction\.([a-z_]+)",
-                                       path.read_text(encoding="utf-8"), re.M))
-        packed = {Path(relative).parent.name.removeprefix("abstraction-")
-                  for relative in integration.PURE_SOURCES.values()}
-        packed |= {"ipc"}  # the native wheel, built from abstraction-identity/py
-        self.assertIn("router", imported)
-        self.assertIn("logging", packed)
-        self.assertEqual(sorted(imported - packed - self.UNPACKED_OPT_IN), [])
-        self.assertEqual(len(integration.PURE_WHEELS), len(integration.PURE_SOURCES))
-        self.assertEqual(set(integration.PUBLIC_DISTRIBUTIONS.values()) - {"abstraction_ipc"},
-                         set(integration.PURE_SOURCES))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,17 @@
+# requires: fileid
+#
+# A stored key is read back only through Revalidate, which tells the same
+# file from one renamed over its path and from a path nothing has (ID-F8).
+file store.json
+keep k store.json
+revalidate k
+replace store.json
+revalidate k
+keep k2 store.json
+remove store.json
+revalidate k2
+
+# expect 2: ok [ID-F8]
+# expect 3: ok same [ID-F8]
+# expect 5: ok replaced [ID-F8]
+# expect 8: ok gone [ID-F8]

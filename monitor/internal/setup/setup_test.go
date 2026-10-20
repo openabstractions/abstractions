@@ -3,10 +3,12 @@ package setup
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/openabstractions/abstraction-facade/go/client"
+	thenoise "github.com/openabstractions/abstraction-provider-thenoise/go"
 )
 
 // fixtureApp is the neutral choice, and fixtureComponent its package kind, of
@@ -30,8 +32,29 @@ func init() {
 	}
 }
 
+// withoutSharedTorch drops ComfyUI's dependency on the shared PyTorch
+// component and its gfx1151 gate, which the OA build carried until the
+// release stopped building ComfyUI (2026-11-11). Archive, update and journal
+// mechanics fixtures predate that component.
+func withoutSharedTorch(c Catalog) Catalog {
+	c.Choices = slices.Clone(c.Choices)
+	for i := range c.Choices {
+		if c.Choices[i].ID == ComfyUI {
+			c.Choices[i].Graphics = ""
+		}
+	}
+	c.Components = slices.Clone(c.Components)
+	for i := range c.Components {
+		if c.Components[i].ID == "comfyui-app" {
+			c.Components[i].Dependencies = nil
+			c.Components[i].DependencyVersions = nil
+		}
+	}
+	return c
+}
+
 func fixtureCatalog() Catalog {
-	c := NewCatalog()
+	c := withoutSharedTorch(NewCatalog())
 	c.Choices = append(c.Choices, Choice{ID: fixtureApp, Title: "Fixture", Components: []string{fixtureComponent}})
 	c.Components = append(c.Components, Component{ID: fixtureComponent, Title: "Fixture package"})
 	for i := range c.Components {
@@ -122,6 +145,13 @@ func TestInstallPinRecordCarriesEveryEarlierPin(t *testing.T) {
 			t.Fatalf("current %s pin is not in install_pins.json; append it so the next change keeps it recognizable", component.ID)
 		}
 	}
+	cpuArchive := theNoiseArtifact()
+	if cpuArchive.SHA256 != thenoise.EngineZIPSHA256 || cpuArchive.Bytes != thenoise.EngineZIPBytes {
+		t.Fatalf("legacy CPU archive no longer matches the provider pin: %+v", cpuArchive)
+	}
+	if !slices.Contains(pins, KnownInstallPin{ComponentID: "thenoise-engine", Artifact: cpuArchive}) {
+		t.Fatal("the legacy CPU archive no longer matches the retained installation pin")
+	}
 	for _, pin := range pins {
 		if pin.Artifact.Platform == "windows/amd64" && !c.knownInstallArtifact(pin.ComponentID, pin.Artifact) {
 			t.Fatalf("recorded %s pin %s is not recognized by the release catalog", pin.ComponentID, pin.Artifact.Version)
@@ -149,7 +179,7 @@ func TestPlanHasClosedChoicesDeduplicatedDependenciesAndConfiguration(t *testing
 		len(plan.Blockers) != 1 || !strings.HasPrefix(plan.Blockers[0], "comfyui-app:") {
 		t.Fatalf("ComfyUI app bundle must be one physical download with the image engine: %+v", plan)
 	}
-	if len(plan.Configuration) != 2 || plan.Configuration[0].ID != "comfyui-image-policy" || plan.Configuration[1].ID != "lemonade-model" {
+	if len(plan.Configuration) != 1 || plan.Configuration[0].ID != "lemonade-model" {
 		t.Fatalf("image configuration omitted: %+v", plan.Configuration)
 	}
 	if _, err := c.Plan([]AppID{"browser-url"}); err == nil {
@@ -168,8 +198,8 @@ func TestReviewedLemonadeIsOnePhysicalPackageAndModelStillPending(t *testing.T) 
 		len(lemonade.Configuration) != 1 || lemonade.Configuration[0].ID != "lemonade-model" {
 		t.Fatalf("Lemonade package or model review state: %+v", lemonade)
 	}
-	if c.Choices[2].Title != "Run a local image engine" ||
-		lemonade.Components[0].Title != "Lemonade local image engine" ||
+	if c.Choices[2].Title != "Lemonade (OA build)" || c.Choices[2].Name() != "Lemonade" ||
+		lemonade.Components[0].Title != "Lemonade (OA build)" ||
 		!strings.Contains(lemonade.Configuration[0].Title, "image model") {
 		t.Fatalf("Lemonade choice must name local image setup: %+v", lemonade)
 	}
@@ -307,10 +337,39 @@ func TestJournalRetainsActiveDownloadAndRejectsForgedPlan(t *testing.T) {
 	}
 }
 
+func TestJournalUpdateCannotSetComponentRootOwnership(t *testing.T) {
+	ctx := context.Background()
+	c := fixtureCatalog()
+	plan := mustPlan(t, c, Lemonade)
+	j := Journal{Path: filepath.Join(t.TempDir(), "plan.json"), catalogOverride: &c}
+	state, err := j.SavePlan(ctx, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	componentID := plan.Components[0].ID
+	current := state.Effects[componentID]
+	next := Effect{Phase: Requested, ComponentRootKey: "forged-root", Work: &WorkIdentity{
+		Key:               "setup-123",
+		HistoryEpoch:      "epoch",
+		Binding:           client.JobsBinding{Endpoint: "pipe", LogicalOwner: "owner"},
+		OperationsBinding: client.JobsBinding{Endpoint: "pipe", LogicalOwner: "owner"},
+	}}
+	if _, err := j.Update(ctx, plan.ID, componentID, current, next); err == nil {
+		t.Fatal("a normal effect transition assigned root ownership")
+	}
+	reopened, err := j.Load(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reopened.Effects[componentID]; got.ComponentRootKey != "" || got.Revision != current.Revision || got.Phase != current.Phase {
+		t.Fatalf("rejected transition changed persisted effect: %+v", got)
+	}
+}
+
 func TestInstalledAndConfiguredAreSeparate(t *testing.T) {
 	ctx := context.Background()
 	c := fixtureCatalog()
-	plan := mustPlan(t, c, ComfyUI)
+	plan := mustPlanOf(t, c, ComfyUI, Lemonade)
 	if len(plan.Configuration) == 0 {
 		t.Fatal("the picture plan lists no configuration step")
 	}
@@ -347,7 +406,7 @@ func TestInstalledAndConfiguredAreSeparate(t *testing.T) {
 			newCatalog.Components[i].Artifact.SHA256 = strings.Repeat("c", 64)
 		}
 	}
-	newPlan := mustPlan(t, newCatalog, ComfyUI)
+	newPlan := mustPlanOf(t, newCatalog, ComfyUI, Lemonade)
 	j.catalogOverride = &newCatalog
 	changed, err := j.SavePlan(ctx, newPlan)
 	if err != nil {
@@ -365,4 +424,66 @@ func mustPlan(t *testing.T, catalog Catalog, choice AppID) Plan {
 		t.Fatal(err)
 	}
 	return plan
+}
+
+// A picture app's engine is its required companion (architect ruling
+// 2026-11-08): a ComfyUI tick plans the engine that fits this computer,
+// PyTorch on gfx1151 and Lemonade elsewhere, with no engine choice asked
+// for and no engine blocker. A chosen engine stays the person's.
+func TestComfyIncludesTheEngineThatFitsThisComputer(t *testing.T) {
+	c := catalogForTarget("windows", "amd64")
+	old := machineGraphics
+	t.Cleanup(func() { machineGraphics = old })
+	for _, test := range []struct {
+		hardware []string
+		engine   AppID
+	}{
+		{[]string{`PCI\VEN_1002&DEV_1586&SUBSYS_38291043&REV_C1`}, PyTorch},
+		{[]string{`PCI\VEN_10DE&DEV_2684&SUBSYS_0`}, Lemonade},
+	} {
+		machineGraphics = func() ([]string, error) { return test.hardware, nil }
+		comfy := mustPlan(t, c, ComfyUI)
+		if !slices.Equal(comfy.Selected, []AppID{ComfyUI, test.engine}) || c.PictureEngine(ComfyUI) != test.engine {
+			t.Fatalf("%v: ComfyUI plans %v, engine %q", test.hardware, comfy.Selected, c.PictureEngine(ComfyUI))
+		}
+		blockers := strings.Join(comfy.Blockers, " ")
+		if strings.Contains(blockers, "picture engine") {
+			t.Fatalf("%v: ComfyUI still asks for an engine: %v", test.hardware, comfy.Blockers)
+		}
+		if strings.Contains(blockers, "graphics") {
+			t.Fatalf("%v: graphics blocker %v", test.hardware, comfy.Blockers)
+		}
+		auto, err := c.Plan([]AppID{ComfyUI, test.engine})
+		if err != nil || auto.ID != comfy.ID {
+			t.Fatalf("%v: the included engine is not the same plan as choosing it: %v", test.hardware, err)
+		}
+		chosen, err := c.Plan([]AppID{ComfyUI, TheNoise})
+		if err != nil || !slices.Equal(chosen.Selected, []AppID{ComfyUI, TheNoise}) {
+			t.Fatalf("%v: a chosen engine is replaced: %v %v", test.hardware, chosen.Selected, err)
+		}
+	}
+}
+
+// AddedSizes is the plan's own pins without what is installed: equal to the
+// plan's sizes on a fresh computer, nothing for a package installed at its
+// pin, and the whole package for another installed version.
+func TestAddedSizesAreThePlanPinsNotInstalled(t *testing.T) {
+	c := withTheNoisePin(catalogForTarget("windows", "amd64"))
+	plan := mustPlan(t, c, TheNoise)
+	if plan.DownloadBytes == 0 || plan.PeakBytes == 0 {
+		t.Fatalf("TheNoise plan has no sizes: %+v", plan)
+	}
+	download, peak, err := c.AddedSizes(plan, nil)
+	if err != nil || download != plan.DownloadBytes || peak != plan.PeakBytes {
+		t.Fatalf("fresh sizes %d/%d, plan %d/%d: %v", download, peak, plan.DownloadBytes, plan.PeakBytes, err)
+	}
+	pin := *plan.Components[0].Artifact
+	if download, peak, err = c.AddedSizes(plan, map[string]Artifact{"thenoise-engine": pin}); err != nil || download != 0 || peak != 0 {
+		t.Fatalf("an installed pin still counts: %d/%d %v", download, peak, err)
+	}
+	older := pin
+	older.Version = "0.0.1"
+	if download, _, err = c.AddedSizes(plan, map[string]Artifact{"thenoise-engine": older}); err != nil || download != plan.DownloadBytes {
+		t.Fatalf("another installed version does not count the new pin: %d %v", download, err)
+	}
 }

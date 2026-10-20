@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	digestfmt "github.com/openabstractions/abstraction-storage/go/digest"
 	"io"
 	"net/url"
 	"os"
@@ -51,7 +51,7 @@ func prepareIntent(ctx context.Context, jobs jobClient, origin string, f fixture
 		return useIntent{}, err
 	}
 	digest := sha256.Sum256(f.artifact)
-	spec := request.Encode(&request.Request{Artifact: request.Artifact{Size: int64(len(f.artifact)), Digest: "sha256:" + hex.EncodeToString(digest[:])}, Sources: []request.Source{{Scheme: "http", Locator: origin + "/" + f.label + "?intent=" + key, Credential: f.name}}})
+	spec := request.Encode(&request.Request{Artifact: request.Artifact{Size: int64(len(f.artifact)), Digest: digestfmt.Hex(digest[:])}, Sources: []request.Source{{Scheme: "http", Locator: origin + "/" + f.label + "?intent=" + key, Credential: f.name}}})
 	intent := useIntent{Version: 1, Submission: api.Submission{Identity: api.RequestIdentity{Key: key, HistoryEpoch: window.HistoryEpoch}, Kind: "download", Spec: spec, RequiredGuarantees: guarantees, Label: "Playground Use " + f.label}}
 	data, err := json.Marshal(intent)
 	if err != nil {
@@ -86,7 +86,7 @@ func validIntent(intent useIntent, f fixture, guarantees []string) bool {
 		return false
 	}
 	digest := sha256.Sum256(f.artifact)
-	if spec.Artifact.Digest != "sha256:"+hex.EncodeToString(digest[:]) {
+	if spec.Artifact.Digest != digestfmt.Hex(digest[:]) {
 		return false
 	}
 	u, err := url.Parse(spec.Sources[0].Locator)

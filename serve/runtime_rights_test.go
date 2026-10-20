@@ -14,6 +14,7 @@ import (
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	resourceservice "github.com/openabstractions/abstraction-resource/go/service"
+	rights "github.com/openabstractions/abstraction-rights/go"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	router "github.com/openabstractions/abstraction-router/go"
 	routerservice "github.com/openabstractions/abstraction-router/go/service"
@@ -55,6 +56,28 @@ func readMarker(t *testing.T, r *runtimeRights) defaultsMarker {
 	return marker
 }
 
+func TestFailedInstallationKeepsPolicyFileRequired(t *testing.T) {
+	r := testRights(t, t.TempDir())
+	r.configure(&host.Options{OnError: func(err error) { t.Error(err) }}, nil)
+	valid := installationRule{host.ConfigEditAction, host.ConfigEditResource}
+	if err := r.install(nil, []installationRule{valid, {"invalid action", "account"}}); err == nil {
+		t.Fatal("invalid later installation rule succeeded")
+	}
+	subject := rwire.Subject{Account: r.owner, Program: r.operators[0]}
+	if decision := r.policy.Decide(subject, valid.Action, valid.Resource); decision.Outcome != rwire.DecisionOutcomePermitted {
+		t.Fatalf("partial installation lost its completed rule: %+v", decision)
+	}
+	if err := os.Rename(r.path, r.path+".moved"); err != nil {
+		t.Fatal(err)
+	}
+	if decision := r.policy.Decide(subject, valid.Action, valid.Resource); decision.Outcome != rwire.DecisionOutcomeUnavailable {
+		t.Fatalf("missing policy after failed installation: %+v", decision)
+	}
+	if err := r.policy.Set(subject, valid.Action, valid.Resource, true); !errors.Is(err, rights.ErrDecisionStateMissing) {
+		t.Fatalf("partial installation recreated a removed policy: %v", err)
+	}
+}
+
 // A fresh state gets one installation rule per operator program and rule, each
 // recorded with its provenance and in the marker. A revoked rule stays revoked
 // across a restart; an action seeded later adds only its own rules and leaves a
@@ -63,6 +86,7 @@ func TestInstallationRulesAndTheDefaultsMarker(t *testing.T) {
 	state := t.TempDir()
 	r := testRights(t, state)
 	exe, panel := r.operators[0], r.operators[1]
+	r.configure(&host.Options{OnError: func(err error) { t.Error(err) }}, nil)
 	rules := []installationRule{{host.ConfigEditAction, host.ConfigEditResource}, {host.LogHistoryAction, host.LogHistoryResource}}
 	if err := r.install(nil, rules); err != nil {
 		t.Fatal(err)
@@ -91,6 +115,7 @@ func TestInstallationRulesAndTheDefaultsMarker(t *testing.T) {
 		t.Fatal(err)
 	}
 	restarted := testRights(t, state)
+	restarted.configure(&host.Options{OnError: func(err error) { t.Error(err) }}, nil)
 	if err := restarted.install(nil, rules); err != nil {
 		t.Fatal(err)
 	}
@@ -108,6 +133,7 @@ func TestInstallationRulesAndTheDefaultsMarker(t *testing.T) {
 		t.Fatal(err)
 	}
 	upgraded := testRights(t, state)
+	upgraded.configure(&host.Options{OnError: func(err error) { t.Error(err) }}, nil)
 	if err := upgraded.install(nil, seeded); err != nil {
 		t.Fatal(err)
 	}
@@ -233,6 +259,7 @@ func TestInstallationRulesAfterAPolicyWithoutAMarker(t *testing.T) {
 		t.Fatal(err)
 	}
 	rules := []installationRule{{credentials.ActionManage, credentials.ResourceAccount}, {credentials.ActionRead, credentials.ResourceAccount}, {host.ConfigEditAction, host.ConfigEditResource}}
+	r.configure(&host.Options{OnError: func(err error) { t.Error(err) }}, nil)
 	if err := r.install(nil, rules); err != nil {
 		t.Fatal(err)
 	}
@@ -256,6 +283,11 @@ func TestInstallationWithoutAMarkerCreatesNoPolicy(t *testing.T) {
 	if err := os.MkdirAll(r.marker, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	var reported error
+	r.configure(&host.Options{OnError: func(err error) { reported = err }}, nil)
+	if reported == nil {
+		t.Fatal("configuration did not report the unavailable marker")
+	}
 	actions := []string{credentials.ActionManage, credentials.ActionRead}
 	rules := []installationRule{{credentials.ActionManage, credentials.ResourceAccount}, {credentials.ActionRead, credentials.ResourceAccount}}
 	if err := r.install(actions, rules); err == nil {
@@ -277,6 +309,80 @@ func TestInstallationWithoutAMarkerCreatesNoPolicy(t *testing.T) {
 				t.Fatalf("credentials rule %s for %s after the marker could be made: %+v", rule.Action, program, read)
 			}
 		}
+	}
+}
+
+func TestFreshConfigurationPreservesInstallationGrants(t *testing.T) {
+	r := testRights(t, t.TempDir())
+	r.configure(&host.Options{OnError: func(err error) { t.Error(err) }}, nil)
+	marker := readMarker(t, r)
+	if len(marker.Applied) != 0 {
+		t.Fatal("fresh configuration credited rules that were never installed")
+	}
+	actions := []string{credentials.ActionManage, credentials.ActionRead}
+	rules := []installationRule{{credentials.ActionManage, credentials.ResourceAccount}, {credentials.ActionRead, credentials.ResourceAccount}}
+	if err := r.install(actions, rules); err != nil {
+		t.Fatal(err)
+	}
+	for _, program := range r.operators {
+		for _, rule := range rules {
+			subject := rwire.Subject{Account: r.owner, Program: program}
+			read := r.policy.ReadRule(subject, rule.Action, rule.Resource)
+			if read.Outcome != rwire.RuleReadOutcomeFound || !read.Record.Rule.Permit || read.Record.Why != installationWhy {
+				t.Fatalf("configured installation did not write operator rule: %+v", read)
+			}
+		}
+	}
+}
+
+func TestConfigurationPreservesInvalidInstallationMarker(t *testing.T) {
+	r := testRights(t, t.TempDir())
+	const invalid = "invalid-marker"
+	if err := os.WriteFile(r.marker, []byte(invalid), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r.configure(&host.Options{OnError: func(err error) { t.Error(err) }}, nil)
+	if err := r.install([]string{credentials.ActionManage}, []installationRule{{credentials.ActionManage, credentials.ResourceAccount}}); err == nil {
+		t.Fatal("invalid installation marker was accepted")
+	}
+	data, err := os.ReadFile(r.marker)
+	if err != nil || string(data) != invalid {
+		t.Fatal("invalid installation marker was replaced")
+	}
+	if read := r.policy.ReadRule(r.self(), credentials.ActionManage, credentials.ResourceAccount); read.Outcome != rwire.RuleReadOutcomeUnknown {
+		t.Fatalf("invalid marker granted authority: %+v", read)
+	}
+}
+
+func TestConcurrentConfigurationsPreserveInstallationGrants(t *testing.T) {
+	state := t.TempDir()
+	initializers := []*runtimeRights{testRights(t, state), testRights(t, state), testRights(t, state)}
+	actions := []string{credentials.ActionManage, credentials.ActionRead}
+	rules := []installationRule{{credentials.ActionManage, credentials.ResourceAccount}, {credentials.ActionRead, credentials.ResourceAccount}}
+	var workers sync.WaitGroup
+	errs := make(chan error, len(initializers))
+	for _, r := range initializers {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			var configurationError error
+			r.configure(&host.Options{OnError: func(err error) { configurationError = err }}, nil)
+			if configurationError != nil {
+				errs <- configurationError
+				return
+			}
+			errs <- r.install(actions, rules)
+		}()
+	}
+	workers.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := installedRules(t, initializers[0]); len(got) != len(initializers[0].operators)*len(rules) {
+		t.Fatalf("concurrent configuration lost installation grants: %+v", got)
 	}
 }
 

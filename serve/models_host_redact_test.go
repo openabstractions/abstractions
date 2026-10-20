@@ -17,7 +17,7 @@ import (
 func TestModelsHostRedactsTheEngineCheckRefusal(t *testing.T) {
 	program := refusingModelHost(t)
 	var output, diagnostics bytes.Buffer
-	err := modelsHostCommand("models host", []string{"store/object", "--engine", unpinnedEngine(t), "--program", program,
+	err := modelsHostCommandOn("windows", "models host", []string{"store/object", "--engine", unpinnedEngine(t), "--program", program,
 		"--endpoint", "modelhost-redacted-refusal-no-runtime", "--timeout", "2s"}, &output, &diagnostics)
 	if err == nil {
 		t.Fatal("a refused engine was accepted")

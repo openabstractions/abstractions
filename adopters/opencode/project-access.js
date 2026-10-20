@@ -1,8 +1,10 @@
+import {runtimeConnector} from './runtime-connector.js';
 import {randomUUID} from 'node:crypto';
 import {isAbsolute, win32} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
+import {toolNameFor} from './tool-config.js';
 
-const toolName = 'openabstractions_project_access';
+const toolName = toolNameFor('project_access');
 const outcomes = new Set(['pending', 'denied', 'expired', 'conflict', 'approved_pending_close', 'receipt_recorded', 'unavailable']);
 const text = (value, limit = 4096) => typeof value === 'string' && value.trim().length > 0 && value.length <= limit && !/[\x00-\x1f]/.test(value);
 const absolute = (value) => text(value) && (/^[A-Za-z]:[\\/]/.test(value) || (process.platform !== 'win32' && isAbsolute(value)));
@@ -28,9 +30,8 @@ export async function resolveProjectClient(session, signal, dependencies = {}) {
       || !text(session.server.principal, 256) || !absolute(session.server.program)) {
     throw new TypeError('The native OpenCode session host identity is unavailable.');
   }
-  const {BunNativeConnector} = dependencies.ipc ?? await import('@openabstractions/ipc/bun');
   const {SessionProjectClient} = dependencies.protocol ?? await import('./session-api/js/opencode/session/index.mjs');
-  const connector = new BunNativeConnector();
+  const connector = dependencies.ipc ? new dependencies.ipc.BunNativeConnector() : await runtimeConnector();
   return new SessionProjectClient(connector.connect(session.endpoint, {
     timeout: 5000, cancellation: signal ?? null, server: session.server,
   }));

@@ -254,6 +254,22 @@ class EndpointClient(Endpoint)
 dataclass HostReading
   up: bool
   why: str
+dataclass PinnedDeclaration
+  declaration: Declaration
+  supported_extensions: list[DeclarationExtension]
+  remote_server_key_sha256: str
+dataclass PinnedDeclarationList
+  outcome: DeclarationListOutcome | None
+  revision: str
+  declarations: list[PinnedDeclarationState]
+dataclass PinnedDeclarationObservation
+  outcome: DeclarationListOutcome | None
+  cursor: str
+  declarations: list[PinnedDeclarationState]
+dataclass PinnedDeclarationState
+  state: DeclarationState
+  supported_extensions: list[DeclarationExtension]
+  remote_server_key_sha256: str
 const REGISTRY_ACTIONS
 class Refusal(ValueError)
   __init__(word, offset)
@@ -273,12 +289,20 @@ class RegistryV2
   declare(expected_revision: str, declaration: DeclarationWithExtensions) -> DeclarationChange
   withdraw(expected_revision: str, name: str) -> DeclarationChange
   observe(cursor: str, wait_ms: int) -> DeclarationObservationV2
+  declarations_pinned() -> PinnedDeclarationList
+  declare_pinned(expected_revision: str, declaration: PinnedDeclaration) -> DeclarationChange
+  replace_pinned(expected_revision: str, declaration: PinnedDeclaration) -> DeclarationChange
+  observe_pinned(cursor: str, wait_ms: int) -> PinnedDeclarationObservation
 class RegistryV2Client(RegistryV2)
   __init__(transport)
   declarations() -> DeclarationListV2
   declare(expected_revision: str, declaration: DeclarationWithExtensions) -> DeclarationChange
   withdraw(expected_revision: str, name: str) -> DeclarationChange
   observe(cursor: str, wait_ms: int) -> DeclarationObservationV2
+  declarations_pinned() -> PinnedDeclarationList
+  declare_pinned(expected_revision: str, declaration: PinnedDeclaration) -> DeclarationChange
+  replace_pinned(expected_revision: str, declaration: PinnedDeclaration) -> DeclarationChange
+  observe_pinned(cursor: str, wait_ms: int) -> PinnedDeclarationObservation
 dataclass RemoteTrust
   server_name: str
   roots: str
@@ -303,9 +327,11 @@ dataclass ResolveResult
   reference: ServiceReference | None
 class Resolver
   resolve(request: ResolveRequest) -> ResolveResult
+  resolve_on_machine(request: ResolveRequest, binding_name: str) -> ResolveResult
 class ResolverClient(Resolver)
   __init__(transport)
   resolve(request: ResolveRequest) -> ResolveResult
+  resolve_on_machine(request: ResolveRequest, binding_name: str) -> ResolveResult
 dataclass RuntimeObservation
   bootstrap: BootstrapObservation
   capabilities: list[CapabilityObservation]
@@ -341,5 +367,87 @@ dataclass ServiceState
   guarantees: list[str]
   capabilities: dict[str, str]
 def decode(data)
+def decode_application_activation_recipe(data)
+def decode_application_activation_result(data)
+def decode_application_change(data)
+def decode_application_context(data)
+def decode_application_descriptor(data)
+def decode_application_entry(data)
+def decode_application_instance(data)
+def decode_application_interface(data)
+def decode_application_page(data)
+def decode_application_presence(data)
+def decode_application_start(data)
+def decode_application_start_page(data)
+def decode_bootstrap_observation(data)
+def decode_caller_attribute(data)
+def decode_caller_observation(data)
+def decode_capability_observation(data)
+def decode_declaration(data)
+def decode_declaration_ceiling(data)
+def decode_declaration_change(data)
+def decode_declaration_extension(data)
+def decode_declaration_host(data)
+def decode_declaration_list(data)
+def decode_declaration_list_v2(data)
+def decode_declaration_observation(data)
+def decode_declaration_observation_v2(data)
+def decode_declaration_state(data)
+def decode_declaration_state_v2(data)
+def decode_declaration_with_extensions(data)
+def decode_description(data)
+def decode_host_reading(data)
+def decode_pinned_declaration(data)
+def decode_pinned_declaration_list(data)
+def decode_pinned_declaration_observation(data)
+def decode_pinned_declaration_state(data)
+def decode_remote_trust(data)
+def decode_resolve_request(data)
+def decode_resolve_result(data)
+def decode_runtime_observation(data)
+def decode_service_reference(data)
+def decode_service_state(data)
 def encode(v)
+def encode_application_activation_recipe(v)
+def encode_application_activation_result(v)
+def encode_application_change(v)
+def encode_application_context(v)
+def encode_application_descriptor(v)
+def encode_application_entry(v)
+def encode_application_instance(v)
+def encode_application_interface(v)
+def encode_application_page(v)
+def encode_application_presence(v)
+def encode_application_start(v)
+def encode_application_start_page(v)
+def encode_bootstrap_observation(v)
+def encode_caller_attribute(v)
+def encode_caller_observation(v)
+def encode_capability_observation(v)
+def encode_declaration(v)
+def encode_declaration_ceiling(v)
+def encode_declaration_change(v)
+def encode_declaration_extension(v)
+def encode_declaration_host(v)
+def encode_declaration_list(v)
+def encode_declaration_list_v2(v)
+def encode_declaration_observation(v)
+def encode_declaration_observation_v2(v)
+def encode_declaration_state(v)
+def encode_declaration_state_v2(v)
+def encode_declaration_with_extensions(v)
+def encode_description(v)
+def encode_host_reading(v)
+def encode_pinned_declaration(v)
+def encode_pinned_declaration_list(v)
+def encode_pinned_declaration_observation(v)
+def encode_pinned_declaration_state(v)
+def encode_remote_trust(v)
+def encode_resolve_request(v)
+def encode_resolve_result(v)
+def encode_runtime_observation(v)
+def encode_service_reference(v)
+def encode_service_state(v)
+def from_json(kind, data)
 def service_name(frame)
+def to_json(value)

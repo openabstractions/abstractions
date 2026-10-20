@@ -10,12 +10,11 @@ import (
 
 // DefaultBF16Controller binds the reviewed model plan to the application's
 // private intent/staging paths, the public OA transfer, and the fixed installed
-// Lemonade configuration bridge. selected must re-read the exact public
-// program-scoped image policy; it is never taken from a browser request.
+// Lemonade configuration bridge. A nil selected reports engine preparation.
+// An optional observer re-reads the exact public program-scoped image policy;
+// it is never taken from a browser request. Routing and live health have their
+// own readers.
 func DefaultBF16Controller(selected func(context.Context) (bool, error)) (ModelController, error) {
-	if selected == nil {
-		return ModelController{}, errors.New("model selection reader is required")
-	}
 	journal, err := DefaultJournal()
 	if err != nil {
 		return ModelController{}, err
@@ -38,6 +37,32 @@ func DefaultBF16Controller(selected func(context.Context) (bool, error)) (ModelC
 		Probe:    ProbeLemonade,
 		Selected: selected,
 	}, nil
+}
+
+// DefaultStepBF16Controller gives Setup's starter step the provider's
+// staged-model observation. The deep check still belongs to Configure.
+func DefaultStepBF16Controller() (ModelController, error) {
+	return DefaultBF16Controller(func(ctx context.Context) (bool, error) {
+		return stagedPictureModel(ctx, BF16ModelID)
+	})
+}
+
+func stagedPictureModel(ctx context.Context, model string) (bool, error) {
+	staged, err := LemonadeStagedModels(ctx)
+	return slices.Contains(staged, model), err
+}
+
+// OpenPictureChoiceController binds the resolved offer to its existing
+// controller. Only the shared engine needs the Setup plan journal.
+func OpenPictureChoiceController(engine AppID, plan ModelPlan, journal func() (Journal, error)) (ModelController, error) {
+	if engine == PyTorch {
+		j, err := journal()
+		if err != nil {
+			return ModelController{}, err
+		}
+		return DefaultPyTorchChoiceController(j, plan)
+	}
+	return DefaultChoiceController(plan)
 }
 
 // DefaultChoiceController binds one offered picture model plan
@@ -67,8 +92,7 @@ func DefaultChoiceController(plan ModelPlan) (ModelController, error) {
 			if err != nil || !verified {
 				return false, err
 			}
-			staged, err := LemonadeStagedModels(ctx)
-			return slices.Contains(staged, model), err
+			return stagedPictureModel(ctx, model)
 		},
 	}, nil
 }

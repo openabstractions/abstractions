@@ -51,6 +51,44 @@ type startedCall struct {
 	args  []string
 }
 
+func TestRemovalRollbackUsesOwnFolderWithoutRegistration(t *testing.T) {
+	request, err := serviceArguments([]string{"start", "--user", testFolder + `\.`, "0.8.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := func(string, string) (string, error) {
+		t.Fatal("removal rollback queried unavailable MSI registration")
+		return "", errorUnknownProduct
+	}
+	image := filepath.Join(testFolder, "tools", windowlessName)
+	var calls []startedCall
+	run := func(path string, args []string) error {
+		calls = append(calls, startedCall{path, args})
+		return nil
+	}
+	exists := func(path string) bool { return path == image }
+	started, notes, err := restartUserRequest(request, info, exists, run)
+	if err != nil || started != 1 || len(notes) != 0 || !reflect.DeepEqual(calls, []startedCall{{image, []string{"start"}}}) {
+		t.Fatalf("started=%d notes=%v calls=%v err=%v", started, notes, calls, err)
+	}
+	for _, bad := range []serviceRequest{
+		{folder: "relative", version: "0.8.0"},
+		{folder: testFolder, version: "invalid"},
+	} {
+		if _, _, err := restartUserRequest(bad, info, exists, run); err == nil {
+			t.Fatalf("accepted invalid removal rollback %+v", bad)
+		}
+	}
+	if len(calls) != 1 {
+		t.Fatal("invalid rollback started activation")
+	}
+	if _, _, err := restartUserRequest(serviceRequest{related: codeA}, func(string, string) (string, error) {
+		return "", errorUnknownProduct
+	}, exists, run); err == nil || len(calls) != 1 {
+		t.Fatal("upgrade rollback accepted unavailable related registration")
+	}
+}
+
 func TestRestartUserPredecessorsRunsEachProductsActivation(t *testing.T) {
 	codeC := "{00000000-0000-0000-0000-00000000000C}"
 	codeD := "{00000000-0000-0000-0000-00000000000D}"

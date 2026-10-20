@@ -49,8 +49,8 @@ func (w *standInWake) counts() (int, int) {
 
 // The runtime's lease book keeps one platform wake request while any
 // acquired wake lease lives, and releases it with the last (resource
-// CONTRACT.md RES-A1, RES-G5). Hold is left to the fixture, which permits:
-// the rights decision is RES-L1's, tested on its own.
+// CONTRACT.md RES-A1, RES-G5). Hold is an explicit gate that permits: the
+// rights decision is RES-L1's, tested on its own.
 func TestTheRuntimeLeaseBookHoldsOnePlatformWakeRequest(t *testing.T) {
 	state := t.TempDir()
 	composed := composeResources(state, router.New(), nil, func(error) {})
@@ -64,7 +64,7 @@ func TestTheRuntimeLeaseBookHoldsOnePlatformWakeRequest(t *testing.T) {
 	if options.KeepAwake == nil {
 		t.Fatal("the runtime's lease book takes no platform wake request")
 	}
-	options.Hold = nil
+	options.Hold = permitFixtureHold
 	book, err := resourceservice.OpenBook(options)
 	if err != nil {
 		t.Fatal(err)

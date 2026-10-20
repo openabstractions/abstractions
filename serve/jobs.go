@@ -34,7 +34,15 @@ const (
 
 // callBudget bounds one service call. The waiting budget is the caller's
 // --timeout and is independent of it.
-const callBudget = 30 * time.Second
+var callBudget = 30 * time.Second
+
+// resultSink is the writer a copied result goes through, and linkResults
+// whether a result is hard-linked before it is copied; tests slow the one
+// and turn off the other to copy through ReadResult.
+var (
+	resultSink  = func(f *os.File) io.Writer { return f }
+	linkResults = true
+)
 
 // pollInterval is how often a wait observes an operation.
 const pollInterval = 500 * time.Millisecond
@@ -228,6 +236,14 @@ func (w *waiting) call() (context.Context, func()) {
 		budget = time.Millisecond
 	}
 	return context.WithTimeout(w.ctx, budget)
+}
+
+// long bounds a call that lasts as long as its work, such as copying a
+// many-gigabyte result: only the command's own budget, which is none unless
+// --timeout names one. A per-call bound shorter than the work stopped
+// `models host --get` copying LTX-2.5's 22 GiB transformer (R31, 2026-11-12).
+func (w *waiting) long() (context.Context, func()) {
+	return context.WithCancel(w.ctx)
 }
 
 // expired names why a wait ended without the work ending.
@@ -528,19 +544,6 @@ func resolveOperations(w *waiting, command string, source endpointSource, machin
 	return jobs, nil
 }
 
-// resolveAcceptance binds the submission contract. The command exits while the
-// work continues, so it requires every admission guarantee; a receipt that
-// weakens one is refused by the binding rather than accepted quietly.
-func resolveAcceptance(w *waiting, command string, source endpointSource, machine *client.Machine) (*client.JobsClient, error) {
-	call, done := w.call()
-	defer done()
-	jobs, err := machine.ResolveJobs(call, admission())
-	if err != nil {
-		return nil, notResolved(command, source, err)
-	}
-	return jobs, nil
-}
-
 // listScope traverses this caller's inventory completely. A gap restarts the
 // traversal once; a second gap is a failure, never a partial list presented as
 // the whole.
@@ -706,20 +709,28 @@ func follow(w *waiting, command string, jobs *client.JobsClient, id api.RequestI
 	}
 }
 
-// copyResult writes a complete result to the chosen sink through ReadResult.
-// The runtime owns the transfer; no sink path is ever sent to it.
-// verify, when supplied, inspects the partial file before it replaces the sink.
+// copyResult writes a complete result to the chosen sink. It first asks the
+// runtime to hard-link the result at <sink>.part (job JOB-A17), which costs
+// no copy when the sink is on the job store's volume; any other outcome
+// copies through ReadResult. verify, when supplied, inspects the partial
+// file before it replaces the sink.
 func copyResult(w *waiting, command string, jobs *client.JobsClient, id api.RequestIdentity, sink string, verify func(string) error) (int64, error) {
 	if err := os.MkdirAll(filepath.Dir(sink), 0o700); err != nil {
 		return 0, &exitError{exitNotResolved, fmt.Errorf("%s: %w", command, err)}
 	}
 	partial := sink + ".part"
+	if !linkResults {
+		//unchecked: a missing partial is the state the copy wants
+		os.Remove(partial)
+	} else if written, linked := linkResult(w, jobs, id, partial); linked {
+		return written, finishResult(command, partial, sink, verify)
+	}
 	file, err := os.Create(partial)
 	if err != nil {
 		return 0, &exitError{exitNotResolved, fmt.Errorf("%s: %w", command, err)}
 	}
-	call, done := w.call()
-	written, copyErr := jobs.CopyResult(call, id, file)
+	call, done := w.long()
+	written, copyErr := jobs.CopyResult(call, id, resultSink(file))
 	done()
 	closeErr := file.Close()
 	if copyErr != nil {
@@ -736,19 +747,42 @@ func copyResult(w *waiting, command string, jobs *client.JobsClient, id api.Requ
 		os.Remove(partial)
 		return written, &exitError{exitNotResolved, fmt.Errorf("%s: %w", command, closeErr)}
 	}
+	return written, finishResult(command, partial, sink, verify)
+}
+
+// linkResult asks the runtime for a hard link of the result at partial. A
+// leftover partial from an earlier run is removed first, since the link
+// needs a free name. Every outcome but linked, a call error included, leaves
+// the copy to the caller.
+func linkResult(w *waiting, jobs *client.JobsClient, id api.RequestIdentity, partial string) (int64, bool) {
+	if err := os.Remove(partial); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return 0, false
+	}
+	call, done := w.call()
+	result, err := jobs.LinkResult(call, id, filepath.Clean(partial))
+	done()
+	if err != nil || result.Outcome != api.LinkOutcomeLinked {
+		return 0, false
+	}
+	return result.Size, true
+}
+
+// finishResult verifies partial, when verify is supplied, and renames it
+// over sink. A refused or failed partial is removed.
+func finishResult(command, partial, sink string, verify func(string) error) error {
 	if verify != nil {
 		if err := verify(partial); err != nil {
 			//unchecked: best-effort temp-file cleanup on an error path that already returns a definite error
 			os.Remove(partial)
-			return written, err
+			return err
 		}
 	}
 	if err := os.Rename(partial, sink); err != nil {
 		//unchecked: best-effort temp-file cleanup on an error path that already returns a definite error
 		os.Remove(partial)
-		return written, &exitError{exitNotResolved, fmt.Errorf("%s: %w", command, err)}
+		return &exitError{exitNotResolved, fmt.Errorf("%s: %w", command, err)}
 	}
-	return written, nil
+	return nil
 }
 
 // resultRefusal words a result read's outcome. `unavailable` after a completed

@@ -205,3 +205,28 @@ func TestOperatorAllowDerivesFullPairAndRejectsOtherAnswers(t *testing.T) {
 		})
 	}
 }
+
+// J-PIC on R24 (2026-11-11): with an installer build beside the runtime, the
+// save of the person's first Allow missed the 500 ms decision read budget and
+// was released, and the app asked the same question again. A save whose
+// operator recheck and write take longer than a decision read still saves
+// the person's Allow.
+func TestOperatorAllowSavesWhenTheSaveOutlastsADecisionRead(t *testing.T) {
+	actions := []string{"abstraction.model/lookup", contentWriteAction, contentReadAction}
+	f := newOperatorAllowFixture(t, actions)
+	q := f.question(t, "abstraction.model/lookup", "hf")
+	if _, _, err := f.a.book.AnswerApplication(q.ID, "allow"); err != nil {
+		t.Fatal(err)
+	}
+	slow := func() error {
+		time.Sleep(decisionBudget + 200*time.Millisecond)
+		return nil
+	}
+	edit, err := f.a.applyOperatorAllow(context.Background(), f.panel, f.revision(t), q.ID, slow)
+	if err != nil || edit.Outcome != rwire.PolicyEditOutcomeApplied {
+		t.Fatalf("a slow save of the person's Allow was not saved: %+v %v", edit, err)
+	}
+	if again := f.question(t, "abstraction.model/lookup", "hf"); again.ID != q.ID || again.Option != "allow" {
+		t.Fatalf("the saved Allow was released and asked again: %+v", again)
+	}
+}

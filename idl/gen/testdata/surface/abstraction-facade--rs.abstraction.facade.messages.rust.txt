@@ -1,0 +1,398 @@
+pub type Raw
+pub enum Kind
+  Note
+  Question
+  Reply
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum TaskState
+  Submitted
+  Completed
+  Canceled
+  Failed
+  AuthRequired
+  Rejected
+  pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum Delivery
+  Queued
+  Delivered
+  Undelivered
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub mod undelivered_reason
+  pub const EXPIRED: &str
+  pub const REFUSED: &str
+  pub const CONTEXT_CLOSED: &str
+  pub const RECEIVER_REMOVED: &str
+  pub const PEER_REMOVED: &str
+  pub const LOST: &str
+  pub const UNCONFIRMED: &str
+  pub const ALL: [&str; 7]
+pub enum DeliveryObservationOutcome
+  Observed
+  Unknown
+  Invalid
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum Outcome
+  Sent
+  Opened
+  Held
+  Page
+  Gap
+  Conflict
+  Forbidden
+  Invalid
+  Exhausted
+  Unavailable
+  Unknown
+  Ended
+  pub const ALL: [Self; 12]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum View
+  Body
+  Headers
+  pub const ALL: [Self; 2]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum InboxReach
+  Open
+  Queued
+  StartsOnQuestion
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub mod chat_origin
+  pub const DESKTOP: &str
+  pub const CLI: &str
+  pub const ALL: [&str; 2]
+pub mod chat_mode
+  pub const PLAN: &str
+  pub const READ_ONLY: &str
+  pub const DEFAULT: &str
+  pub const ACCEPT_EDITS: &str
+  pub const ALL: [&str; 4]
+pub mod service_error_code
+  pub const HANDLER_ERROR: &str
+  pub const INVALID_RESULT: &str
+  pub const UNKNOWN_VERSION: &str
+  pub const UNKNOWN_SERVICE: &str
+  pub const UNKNOWN_METHOD: &str
+  pub const WRONG_MODE: &str
+  pub const ALL: [&str; 6]
+pub struct ObserveDeliveryResult
+  outcome: DeliveryObservationOutcome
+  delivery: ::std::option::Option<Delivery>
+  undelivered: ::std::option::Option<::std::string::String>
+pub struct OriginClaim
+  namespace: ::std::string::String
+  application: ::std::string::String
+  program_label: ::std::string::String
+  return_context: ::std::string::String
+pub struct RemoteOrigin
+  peer_key: ::std::string::String
+  claim: OriginClaim
+pub struct MessageRef
+  owner_peer_key: ::std::string::String
+  message_id: ::std::string::String
+pub struct InboxQuery
+  cursor: ::std::string::String
+  peer_key: ::std::string::String
+  pairing_epoch: ::std::string::String
+  receiver: ::std::string::String
+pub struct SendRequest
+  to: ::std::string::String
+  context: ::std::string::String
+  kind: Kind
+  subject: ::std::string::String
+  body: ::std::string::String
+  idempotency_key: ::std::string::String
+  expires_unix_ms: i64
+  reply_to: ::std::string::String
+  withdraw: ::std::string::String
+  answer_by_unix_ms: i64
+  peer_key: ::std::string::String
+  origin: ::std::option::Option<OriginClaim>
+  reply_reference: ::std::option::Option<MessageRef>
+  withdraw_reference: ::std::option::Option<MessageRef>
+  pairing_epoch: ::std::string::String
+  notify_delivered: ::std::option::Option<bool>
+pub struct ChatSendRequest
+  request: SendRequest
+  return_context: ::std::string::String
+pub struct SendResult
+  outcome: Outcome
+  message_id: ::std::string::String
+  context_id: ::std::string::String
+  receiver_watching: bool
+  awaiting_permission: bool
+  retry_after_ms: i64
+  reference: ::std::option::Option<MessageRef>
+  reason: ::std::string::String
+  refused: bool
+  refusal: ::std::option::Option<OAImported0>
+  context: ::std::string::String
+  chat_title: ::std::string::String
+pub struct PrepareRequest
+  receiver: ::std::string::String
+  body: ::std::string::String
+  context: ::std::string::String
+  kind: ::std::option::Option<Kind>
+  subject: ::std::string::String
+  ttl_ms: i64
+  answer_within_ms: i64
+  context_title: ::std::string::String
+pub struct PrepareResult
+  outcome: Outcome
+  send_request: ::std::option::Option<SendRequest>
+  reason: ::std::string::String
+  choices: ::std::vec::Vec<Inbox>
+  chat_title: ::std::string::String
+pub struct StopResult
+  outcome: Outcome
+  reason: ::std::string::String
+pub struct TurnWakeResult
+  outcome: Outcome
+  reason: ::std::string::String
+pub struct ChatLaunch
+  session: ::std::string::String
+  origin: ::std::string::String
+  cwd: ::std::string::String
+  mode: ::std::string::String
+pub struct ChatBinding
+  chat_id: ::std::string::String
+  chat_title: ::std::string::String
+  source_instance: ::std::string::String
+  launch: ::std::option::Option<ChatLaunch>
+pub struct InboxChange
+  outcome: Outcome
+  revision: ::std::string::String
+  holder: ::std::string::String
+  opened_unix_ms: i64
+pub struct ChatInboxChange
+  outcome: Outcome
+  context: ::std::string::String
+  revision: ::std::string::String
+  holder: ::std::string::String
+  opened_unix_ms: i64
+pub struct Inbox
+  program: ::std::string::String
+  context: ::std::string::String
+  status: ::std::string::String
+  revision: ::std::string::String
+  watching: bool
+  last_seen_unix_ms: i64
+  reach: ::std::option::Option<InboxReach>
+  chat_title: ::std::string::String
+  mine: ::std::option::Option<bool>
+pub struct AgentApplication
+  program: ::std::string::String
+  title: ::std::string::String
+pub struct ProgramChats
+  program: ::std::string::String
+  chats: i32
+pub struct InboxPage
+  outcome: Outcome
+  cursor: ::std::string::String
+  inboxes: ::std::vec::Vec<Inbox>
+  reason: ::std::string::String
+  needs_permission: ::std::vec::Vec<AgentApplication>
+  other_chats: ::std::vec::Vec<ProgramChats>
+pub struct Header
+  message_id: ::std::string::String
+  from: ::std::string::String
+  from_context: ::std::string::String
+  to: ::std::string::String
+  context: ::std::string::String
+  kind: Kind
+  subject: ::std::string::String
+  context_id: ::std::string::String
+  expires_unix_ms: i64
+  reply_to: ::std::string::String
+  answer_by_unix_ms: i64
+  task_state: ::std::option::Option<TaskState>
+  refused: bool
+  reference: ::std::option::Option<MessageRef>
+  remote_origin: ::std::option::Option<RemoteOrigin>
+  reply_reference: ::std::option::Option<MessageRef>
+  delivery: ::std::option::Option<Delivery>
+  undelivered: ::std::option::Option<::std::string::String>
+  count: ::std::option::Option<i64>
+pub struct Message
+  header: Header
+  idempotency_key: ::std::string::String
+  body: ::std::string::String
+pub struct Page
+  outcome: Outcome
+  cursor: ::std::string::String
+  revision: ::std::string::String
+  messages: ::std::vec::Vec<Message>
+  headers: ::std::vec::Vec<Header>
+  pending_until_unix_ms: i64
+  reply_until_unix_ms: i64
+  wake: ::std::string::String
+  unread: ::std::option::Option<i64>
+  pending_questions: ::std::option::Option<i64>
+  oldest_unread_unix_ms: ::std::option::Option<i64>
+  newest_unread_unix_ms: ::std::option::Option<i64>
+  awaited_replies: ::std::option::Option<i64>
+  oldest_wake: ::std::string::String
+pub fn encode(v: &Page) -> ::std::vec::Vec<u8>
+pub struct Refusal
+  word: &'static str
+  offset: usize
+pub fn decode(data: &[u8]) -> ::std::result::Result<Page, Refusal>
+pub trait JsonRecord: ::std::marker::Sized
+  fn to_json(&self) -> ::std::vec::Vec<u8>
+  fn from_json(data: &[u8]) -> ::std::result::Result<Self, Refusal>
+pub use abstraction_frame::FrameTransport
+pub struct ServiceError
+  code: ::std::string::String
+  message: ::std::string::String
+pub enum CallError<E>
+  Transport(E)
+  Refusal(Refusal)
+  Dispatch(&'static str)
+  Service(ServiceError)
+pub trait Messages
+  type Error
+  fn observe_delivery(&self, reference: MessageRef, pairing_epoch: ::std::string::String) -> ::std::result::Result<ObserveDeliveryResult, Self::Error>
+  fn inboxes_for_person(&self, cursor: ::std::string::String) -> ::std::result::Result<InboxPage, Self::Error>
+  fn inbox_open_chat(&self, instance: ::std::string::String, source_context: ::std::string::String, status: ::std::string::String, binding: ChatBinding) -> ::std::result::Result<ChatInboxChange, Self::Error>
+  fn send_chat(&self, instance: ::std::string::String, source_context: ::std::string::String, request: ChatSendRequest) -> ::std::result::Result<SendResult, Self::Error>
+  fn prepare(&self, instance: ::std::string::String, source_context: ::std::string::String, request: PrepareRequest) -> ::std::result::Result<PrepareResult, Self::Error>
+  fn reply(&self, instance: ::std::string::String, source_context: ::std::string::String, message_id: ::std::string::String, body: ::std::string::String) -> ::std::result::Result<SendResult, Self::Error>
+  fn inbox_open(&self, instance: ::std::string::String, context: ::std::string::String, status: ::std::string::String) -> ::std::result::Result<InboxChange, Self::Error>
+  fn inboxes_list(&self, query: InboxQuery) -> ::std::result::Result<InboxPage, Self::Error>
+  fn send(&self, instance: ::std::string::String, source_context: ::std::string::String, request: SendRequest) -> ::std::result::Result<SendResult, Self::Error>
+  fn wait(&self, instance: ::std::string::String, context: ::std::string::String, view: View, after: ::std::string::String, revision: ::std::string::String, wait_ms: i64) -> ::std::result::Result<Page, Self::Error>
+  fn read_for_person(&self, message_id: ::std::string::String) -> ::std::result::Result<Page, Self::Error>
+  fn stop_for_person(&self, message_id: ::std::string::String) -> ::std::result::Result<StopResult, Self::Error>
+  fn turn_wake(&self, instance: ::std::string::String, source_context: ::std::string::String, wake: ::std::string::String) -> ::std::result::Result<TurnWakeResult, Self::Error>
+pub struct MessagesClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub fn encode_observe_delivery_result_document(v: &ObserveDeliveryResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_observe_delivery_result_document(data: &[u8]) -> ::std::result::Result<ObserveDeliveryResult, Refusal>
+pub fn encode_origin_claim_document(v: &OriginClaim) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_origin_claim_document(data: &[u8]) -> ::std::result::Result<OriginClaim, Refusal>
+pub fn encode_remote_origin_document(v: &RemoteOrigin) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_remote_origin_document(data: &[u8]) -> ::std::result::Result<RemoteOrigin, Refusal>
+pub fn encode_message_ref_document(v: &MessageRef) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_message_ref_document(data: &[u8]) -> ::std::result::Result<MessageRef, Refusal>
+pub fn encode_inbox_query_document(v: &InboxQuery) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_inbox_query_document(data: &[u8]) -> ::std::result::Result<InboxQuery, Refusal>
+pub fn encode_send_request_document(v: &SendRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_send_request_document(data: &[u8]) -> ::std::result::Result<SendRequest, Refusal>
+pub fn encode_chat_send_request_document(v: &ChatSendRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_send_request_document(data: &[u8]) -> ::std::result::Result<ChatSendRequest, Refusal>
+pub fn encode_send_result_document(v: &SendResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_send_result_document(data: &[u8]) -> ::std::result::Result<SendResult, Refusal>
+pub fn encode_prepare_request_document(v: &PrepareRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_prepare_request_document(data: &[u8]) -> ::std::result::Result<PrepareRequest, Refusal>
+pub fn encode_prepare_result_document(v: &PrepareResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_prepare_result_document(data: &[u8]) -> ::std::result::Result<PrepareResult, Refusal>
+pub fn encode_stop_result_document(v: &StopResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_stop_result_document(data: &[u8]) -> ::std::result::Result<StopResult, Refusal>
+pub fn encode_turn_wake_result_document(v: &TurnWakeResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_turn_wake_result_document(data: &[u8]) -> ::std::result::Result<TurnWakeResult, Refusal>
+pub fn encode_chat_launch_document(v: &ChatLaunch) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_launch_document(data: &[u8]) -> ::std::result::Result<ChatLaunch, Refusal>
+pub fn encode_chat_binding_document(v: &ChatBinding) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_binding_document(data: &[u8]) -> ::std::result::Result<ChatBinding, Refusal>
+pub fn encode_inbox_change_document(v: &InboxChange) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_inbox_change_document(data: &[u8]) -> ::std::result::Result<InboxChange, Refusal>
+pub fn encode_chat_inbox_change_document(v: &ChatInboxChange) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_inbox_change_document(data: &[u8]) -> ::std::result::Result<ChatInboxChange, Refusal>
+pub fn encode_inbox_document(v: &Inbox) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_inbox_document(data: &[u8]) -> ::std::result::Result<Inbox, Refusal>
+pub fn encode_agent_application_document(v: &AgentApplication) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_agent_application_document(data: &[u8]) -> ::std::result::Result<AgentApplication, Refusal>
+pub fn encode_program_chats_document(v: &ProgramChats) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_program_chats_document(data: &[u8]) -> ::std::result::Result<ProgramChats, Refusal>
+pub fn encode_inbox_page_document(v: &InboxPage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_inbox_page_document(data: &[u8]) -> ::std::result::Result<InboxPage, Refusal>
+pub fn encode_header_document(v: &Header) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_header_document(data: &[u8]) -> ::std::result::Result<Header, Refusal>
+pub fn encode_message_document(v: &Message) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_message_document(data: &[u8]) -> ::std::result::Result<Message, Refusal>
+pub fn encode_page_document(v: &Page) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_page_document(data: &[u8]) -> ::std::result::Result<Page, Refusal>
+pub mod internal
+  pub fn decode_observe_delivery_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ObserveDeliveryResult, usize), super::Refusal>
+  pub fn check_observe_delivery_result(v: &super::ObserveDeliveryResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_observe_delivery_result_at(v: &super::ObserveDeliveryResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_origin_claim_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::OriginClaim, usize), super::Refusal>
+  pub fn check_origin_claim(v: &super::OriginClaim, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_origin_claim_at(v: &super::OriginClaim, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_remote_origin_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::RemoteOrigin, usize), super::Refusal>
+  pub fn check_remote_origin(v: &super::RemoteOrigin, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_remote_origin_at(v: &super::RemoteOrigin, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_message_ref_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::MessageRef, usize), super::Refusal>
+  pub fn check_message_ref(v: &super::MessageRef, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_message_ref_at(v: &super::MessageRef, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_inbox_query_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::InboxQuery, usize), super::Refusal>
+  pub fn check_inbox_query(v: &super::InboxQuery, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_inbox_query_at(v: &super::InboxQuery, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_send_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::SendRequest, usize), super::Refusal>
+  pub fn check_send_request(v: &super::SendRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_send_request_at(v: &super::SendRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_send_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatSendRequest, usize), super::Refusal>
+  pub fn check_chat_send_request(v: &super::ChatSendRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_send_request_at(v: &super::ChatSendRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_send_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::SendResult, usize), super::Refusal>
+  pub fn check_send_result(v: &super::SendResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_send_result_at(v: &super::SendResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_prepare_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::PrepareRequest, usize), super::Refusal>
+  pub fn check_prepare_request(v: &super::PrepareRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_prepare_request_at(v: &super::PrepareRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_prepare_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::PrepareResult, usize), super::Refusal>
+  pub fn check_prepare_result(v: &super::PrepareResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_prepare_result_at(v: &super::PrepareResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_stop_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::StopResult, usize), super::Refusal>
+  pub fn check_stop_result(v: &super::StopResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_stop_result_at(v: &super::StopResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_turn_wake_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::TurnWakeResult, usize), super::Refusal>
+  pub fn check_turn_wake_result(v: &super::TurnWakeResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_turn_wake_result_at(v: &super::TurnWakeResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_launch_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatLaunch, usize), super::Refusal>
+  pub fn check_chat_launch(v: &super::ChatLaunch, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_launch_at(v: &super::ChatLaunch, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_binding_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatBinding, usize), super::Refusal>
+  pub fn check_chat_binding(v: &super::ChatBinding, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_binding_at(v: &super::ChatBinding, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_inbox_change_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::InboxChange, usize), super::Refusal>
+  pub fn check_inbox_change(v: &super::InboxChange, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_inbox_change_at(v: &super::InboxChange, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_inbox_change_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatInboxChange, usize), super::Refusal>
+  pub fn check_chat_inbox_change(v: &super::ChatInboxChange, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_inbox_change_at(v: &super::ChatInboxChange, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_inbox_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Inbox, usize), super::Refusal>
+  pub fn check_inbox(v: &super::Inbox, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_inbox_at(v: &super::Inbox, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_agent_application_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AgentApplication, usize), super::Refusal>
+  pub fn check_agent_application(v: &super::AgentApplication, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_agent_application_at(v: &super::AgentApplication, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_program_chats_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ProgramChats, usize), super::Refusal>
+  pub fn check_program_chats(v: &super::ProgramChats, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_program_chats_at(v: &super::ProgramChats, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_inbox_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::InboxPage, usize), super::Refusal>
+  pub fn check_inbox_page(v: &super::InboxPage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_inbox_page_at(v: &super::InboxPage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_header_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Header, usize), super::Refusal>
+  pub fn check_header(v: &super::Header, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_header_at(v: &super::Header, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_message_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Message, usize), super::Refusal>
+  pub fn check_message(v: &super::Message, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_message_at(v: &super::Message, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Page, usize), super::Refusal>
+  pub fn check_page(v: &super::Page, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_page_at(v: &super::Page, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>

@@ -79,6 +79,7 @@ func validateRustVocabularies(s *Definition) error {
 }
 
 func rsServices(b *strings.Builder, s *Definition) {
+	emitDecodedCleanupPrimitive(b, s, "rust")
 	if len(s.Services) == 0 {
 		return
 	}
@@ -102,7 +103,7 @@ func rsServices(b *strings.Builder, s *Definition) {
 			if body.Len() == 0 {
 				param = "_v"
 			}
-			fmt.Fprintf(b, "\nfn service_check_%s(%s: &%s) -> Result<(), Refusal> {\n", rsFn(st.Name), param, st.Name)
+			fmt.Fprintf(b, "\nfn service_check_%s(%s: &%s) -> ::std::result::Result<(), Refusal> {\n", rsFn(st.Name), param, st.Name)
 			if strings.Contains(body.String(), "r.refuse(") {
 				b.WriteString("    let r = Reader { buf: &[], pos: 0, depth: 0 };\n")
 			}
@@ -116,15 +117,15 @@ func rsServices(b *strings.Builder, s *Definition) {
 /// The adapter owns waiting budgets and cancellation. Calls are never retried.
 pub trait FrameTransport {
     type Error;
-    fn write_frame(&self, frame: &[u8]) -> Result<(), Self::Error>;
-    fn exchange_frame(&self, frame: &[u8]) -> Result<Vec<u8>, Self::Error>;
+    fn write_frame(&self, frame: &[u8]) -> ::std::result::Result<(), Self::Error>;
+    fn exchange_frame(&self, frame: &[u8]) -> ::std::result::Result<::std::vec::Vec<u8>, Self::Error>;
 }`)
 		}
-		b.WriteString(`
+		b.WriteString(strings.Replace(`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ServiceError {
-    pub code: String,
-    pub message: String,
+    pub code: ::std::string::String,
+    pub message: ::std::string::String,
 }
 
 #[derive(Debug)]
@@ -136,7 +137,7 @@ pub enum CallError<E> {
     Service(ServiceError),
 }
 
-fn service_decode<T>(data: &[u8], decode: fn(&mut Reader) -> Result<T, Refusal>) -> Result<T, Refusal> {
+fn service_decode<T>(data: &[u8], decode: fn(&mut Reader) -> ::std::result::Result<T, Refusal>) -> ::std::result::Result<T, Refusal> {
     let mut r = Reader { buf: data, pos: 0, depth: 0 };
     r.skip_ws();
     let value = decode(&mut r)?;
@@ -147,14 +148,14 @@ fn service_decode<T>(data: &[u8], decode: fn(&mut Reader) -> Result<T, Refusal>)
     Ok(value)
 }
 
-fn service_encode<T>(value: &T, check: fn(&T) -> Result<(), Refusal>, encode: fn(&mut Vec<u8>, &T, i32), decode: fn(&mut Reader) -> Result<T, Refusal>) -> Result<Vec<u8>, Refusal> {
+fn service_encode<T>(value: &T, check: fn(&T) -> ::std::result::Result<(), Refusal>, encode: fn(&mut ::std::vec::Vec<u8>, &T, i32), decode: fn(&mut Reader) -> ::std::result::Result<T, Refusal>) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal> {
     check(value)?;
-    let mut data = Vec::new();
-    encode(&mut data, value, 0);
+    let mut data = ::std::vec::Vec::new();
+    encode(&mut data, value, @SERVICE_ENCODE_DEPTH@);
     service_decode(&data, decode)?;
     Ok(data)
 }
-`)
+`, "@SERVICE_ENCODE_DEPTH@", "0", 1))
 	}
 	for _, svc := range s.Services {
 		if svc.Doc != "" {
@@ -165,7 +166,7 @@ fn service_encode<T>(value: &T, check: fn(&T) -> Result<(), Refusal>, encode: fn
 		fmt.Fprintf(b, "pub trait %s {\n    type Error;\n", svc.Name)
 		for _, m := range svc.Methods {
 			b.WriteString(rsDocComment(m.Doc, "    "))
-			fmt.Fprintf(b, "    fn %s(&self%s) -> Result<%s, Self::Error>;\n", rustIdent(m.Name), rsServiceArgs(s, m), rsServiceResult(s, m))
+			fmt.Fprintf(b, "    fn %s(&self%s) -> ::std::result::Result<%s, Self::Error>;\n", rustIdent(m.Name), rsServiceArgs(s, m), rsServiceResult(s, m))
 		}
 		b.WriteString("}\n")
 		if s.NoIPC {
@@ -177,7 +178,7 @@ fn service_encode<T>(value: &T, check: fn(&T) -> Result<(), Refusal>, encode: fn
 			if i > 0 {
 				b.WriteString("\n")
 			}
-			fmt.Fprintf(b, "    fn %s(&self%s) -> Result<%s, Self::Error> {\n", rustIdent(m.Name), rsServiceArgs(s, m), rsServiceResult(s, m))
+			fmt.Fprintf(b, "    fn %s(&self%s) -> ::std::result::Result<%s, Self::Error> {\n", rustIdent(m.Name), rsServiceArgs(s, m), rsServiceResult(s, m))
 			var names []string
 			for _, f := range m.Args {
 				names = append(names, f.Ident("rust"))
@@ -200,11 +201,18 @@ fn service_encode<T>(value: &T, check: fn(&T) -> Result<(), Refusal>, encode: fn
 			if m.Result.Type == "void" {
 				fmt.Fprintf(b, "        service_decode(&reply.payload, decode_%s).map_err(CallError::Refusal)?;\n        Ok(())\n", rsFn(resultName(svc, m)))
 			} else {
-				fmt.Fprintf(b, "        let result = service_decode(&reply.payload, decode_%s).map_err(CallError::Refusal)?;\n        Ok(result.value)\n", rsFn(resultName(svc, m)))
+				mutable := ""
+				if m.ResultPostcondition != nil && m.ResultPostcondition.Cleanup != nil {
+					mutable = "mut "
+				}
+				fmt.Fprintf(b, "        let %sresult = service_decode(&reply.payload, decode_%s).map_err(CallError::Refusal)?;\n", mutable, rsFn(resultName(svc, m)))
+				emitClientResultPostcondition(b, m, "rust", "result.value")
+				b.WriteString("        Ok(result.value)\n")
 			}
 			b.WriteString("    }\n")
 		}
 		b.WriteString("}\n")
+		rsObserve(b, s, svc)
 	}
 }
 

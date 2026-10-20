@@ -1,0 +1,7 @@
+class Refusal
+number defaultAsyncCapacity
+number defaultInitialBackoffMs
+number defaultMaxBackoffMs
+number defaultWriteTimeoutMs
+number writerBackoffJitterPercent
+string writerGapMessage

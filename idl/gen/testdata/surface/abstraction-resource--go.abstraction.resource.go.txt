@@ -10,6 +10,7 @@ func (Evidence) UnmarshalText(text []byte) error
 func (Evidence) MarshalJSON() ([]byte, error)
 func (Evidence) UnmarshalJSON(data []byte) error
 func EvidenceValues() []Evidence
+func (Evidence) IsKnown() bool
 func (Evidence) Known() bool
 type ResourceCallOutcome uint32
 const ResourceCallOutcomeOk
@@ -25,6 +26,7 @@ func (ResourceCallOutcome) UnmarshalText(text []byte) error
 func (ResourceCallOutcome) MarshalJSON() ([]byte, error)
 func (ResourceCallOutcome) UnmarshalJSON(data []byte) error
 func ResourceCallOutcomeValues() []ResourceCallOutcome
+func (ResourceCallOutcome) IsKnown() bool
 func (ResourceCallOutcome) Known() bool
 type AcquireOutcome uint32
 const AcquireOutcomeAcquired
@@ -42,6 +44,7 @@ func (AcquireOutcome) UnmarshalText(text []byte) error
 func (AcquireOutcome) MarshalJSON() ([]byte, error)
 func (AcquireOutcome) UnmarshalJSON(data []byte) error
 func AcquireOutcomeValues() []AcquireOutcome
+func (AcquireOutcome) IsKnown() bool
 func (AcquireOutcome) Known() bool
 type AcquireFreeOutcome uint32
 const AcquireFreeOutcomeAcquired
@@ -59,6 +62,7 @@ func (AcquireFreeOutcome) UnmarshalText(text []byte) error
 func (AcquireFreeOutcome) MarshalJSON() ([]byte, error)
 func (AcquireFreeOutcome) UnmarshalJSON(data []byte) error
 func AcquireFreeOutcomeValues() []AcquireFreeOutcome
+func (AcquireFreeOutcome) IsKnown() bool
 func (AcquireFreeOutcome) Known() bool
 type YieldAnswer uint32
 const YieldAnswerYielded
@@ -71,6 +75,7 @@ func (YieldAnswer) UnmarshalText(text []byte) error
 func (YieldAnswer) MarshalJSON() ([]byte, error)
 func (YieldAnswer) UnmarshalJSON(data []byte) error
 func YieldAnswerValues() []YieldAnswer
+func (YieldAnswer) IsKnown() bool
 func (YieldAnswer) Known() bool
 type ProcessBindOutcome uint32
 const ProcessBindOutcomeBound
@@ -87,6 +92,7 @@ func (ProcessBindOutcome) UnmarshalText(text []byte) error
 func (ProcessBindOutcome) MarshalJSON() ([]byte, error)
 func (ProcessBindOutcome) UnmarshalJSON(data []byte) error
 func ProcessBindOutcomeValues() []ProcessBindOutcome
+func (ProcessBindOutcome) IsKnown() bool
 func (ProcessBindOutcome) Known() bool
 type ServiceErrorCode string
 const ServiceErrorCodeHandlerError
@@ -102,7 +108,91 @@ const ServiceErrorCodeUnknownResource
 const ServiceErrorCodePolicyUnavailable
 const ServiceErrorCodeForbidden
 func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) IsKnown() bool
 func (ServiceErrorCode) Known() bool
+type EndpointServiceReadiness uint32
+const EndpointServiceReadinessReady
+const EndpointServiceReadinessNotReady
+const EndpointServiceReadinessUnknown
+func (EndpointServiceReadiness) String() string
+func (EndpointServiceReadiness) WireName() (string, bool)
+func ParseEndpointServiceReadiness(word string) (EndpointServiceReadiness, bool)
+func (EndpointServiceReadiness) MarshalText() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalText(text []byte) error
+func (EndpointServiceReadiness) MarshalJSON() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalJSON(data []byte) error
+func EndpointServiceReadinessValues() []EndpointServiceReadiness
+func (EndpointServiceReadiness) IsKnown() bool
+func (EndpointServiceReadiness) Known() bool
+type EndpointRefusalSource string
+const EndpointRefusalSourceRights
+const EndpointRefusalSourceCredentials
+const EndpointRefusalSourceLicense
+const EndpointRefusalSourceTerms
+const EndpointRefusalSourceIdentity
+const EndpointRefusalSourceOS
+func EndpointRefusalSourceValues() []EndpointRefusalSource
+func (EndpointRefusalSource) IsKnown() bool
+func (EndpointRefusalSource) Known() bool
+type EndpointRefusalDecision uint32
+const EndpointRefusalDecisionDenied
+const EndpointRefusalDecisionNotGranted
+const EndpointRefusalDecisionPersonOnly
+func (EndpointRefusalDecision) String() string
+func (EndpointRefusalDecision) WireName() (string, bool)
+func ParseEndpointRefusalDecision(word string) (EndpointRefusalDecision, bool)
+func (EndpointRefusalDecision) MarshalText() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalText(text []byte) error
+func (EndpointRefusalDecision) MarshalJSON() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalJSON(data []byte) error
+func EndpointRefusalDecisionValues() []EndpointRefusalDecision
+func (EndpointRefusalDecision) IsKnown() bool
+func (EndpointRefusalDecision) Known() bool
+type EndpointRefusalAsk uint32
+const EndpointRefusalAskAvailable
+const EndpointRefusalAskNone
+func (EndpointRefusalAsk) String() string
+func (EndpointRefusalAsk) WireName() (string, bool)
+func ParseEndpointRefusalAsk(word string) (EndpointRefusalAsk, bool)
+func (EndpointRefusalAsk) MarshalText() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalText(text []byte) error
+func (EndpointRefusalAsk) MarshalJSON() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalJSON(data []byte) error
+func EndpointRefusalAskValues() []EndpointRefusalAsk
+func (EndpointRefusalAsk) IsKnown() bool
+func (EndpointRefusalAsk) Known() bool
+type EndpointProducerCheckState uint32
+const EndpointProducerCheckStateCurrent
+const EndpointProducerCheckStateRepaired
+const EndpointProducerCheckStateStale
+const EndpointProducerCheckStateRefused
+const EndpointProducerCheckStateUnverified
+func (EndpointProducerCheckState) String() string
+func (EndpointProducerCheckState) WireName() (string, bool)
+func ParseEndpointProducerCheckState(word string) (EndpointProducerCheckState, bool)
+func (EndpointProducerCheckState) MarshalText() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalText(text []byte) error
+func (EndpointProducerCheckState) MarshalJSON() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalJSON(data []byte) error
+func EndpointProducerCheckStateValues() []EndpointProducerCheckState
+func (EndpointProducerCheckState) IsKnown() bool
+func (EndpointProducerCheckState) Known() bool
+type EndpointDescriptionOutcome uint32
+const EndpointDescriptionOutcomeDescribed
+const EndpointDescriptionOutcomeForbidden
+const EndpointDescriptionOutcomeUnavailable
+const EndpointDescriptionOutcomeInvalid
+const EndpointDescriptionOutcomeUnsupported
+func (EndpointDescriptionOutcome) String() string
+func (EndpointDescriptionOutcome) WireName() (string, bool)
+func ParseEndpointDescriptionOutcome(word string) (EndpointDescriptionOutcome, bool)
+func (EndpointDescriptionOutcome) MarshalText() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalText(text []byte) error
+func (EndpointDescriptionOutcome) MarshalJSON() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalJSON(data []byte) error
+func EndpointDescriptionOutcomeValues() []EndpointDescriptionOutcome
+func (EndpointDescriptionOutcome) IsKnown() bool
+func (EndpointDescriptionOutcome) Known() bool
 var KnownResources
 var ResourceErrorCodes
 type Holder struct
@@ -175,17 +265,53 @@ type LeaseChangeResult struct
   Change *LeaseChange
 type ProcessBindResult struct
   Outcome ProcessBindOutcome
+type EndpointRefusalDetail struct
+  Source EndpointRefusalSource
+  Decision EndpointRefusalDecision
+  Ask EndpointRefusalAsk
+  Action string
+  Question string
+  Credential string
+  RetryAfterMs int64
+type EndpointProducerCheck struct
+  Kind string
+  Copy string
+  State EndpointProducerCheckState
+  Reason string
+  Checked string
+type EndpointServiceState struct
+  Service string
+  Readiness EndpointServiceReadiness
+  Reason string
+  Guarantees []string
+  Capabilities map[string]string
+  DefinitionHash string
+type EndpointDescription struct
+  Outcome EndpointDescriptionOutcome
+  Program string
+  Version string
+  Services []EndpointServiceState
+  Refusal *EndpointRefusalDetail
+  Reason string
+  Checks []EndpointProducerCheck
+type EndpointDescriptionResult struct
+  Value EndpointDescription
 func Encode(v *ResourceState) []byte
 type Refusal struct
   Word string
   Offset int
 func (Refusal) Error() string
+const TimestampLayout
+func FormatTimestamp(at time.Time) string
 func Decode(in []byte) (*ResourceState, error)
+func ToJSON(v any) (out []byte, err error)
+func FromJSON(data []byte, v any) error
 type FrameWriter interface
   WriteFrame(frame []byte) error
 type DispatchError string
 func (DispatchError) Error() string
 func ServiceName(frame []byte) (string, error)
+func ServiceMethod(frame []byte) (service string, method string, err error)
 type FrameExchanger interface
   ExchangeFrame(frame []byte) ([]byte, error)
 type ServiceError struct
@@ -193,13 +319,18 @@ type ServiceError struct
   Message string
 func (ServiceError) Error() string
 const EndpointContract
+const EndpointV2Contract
 type DescribedService interface
   DescribeService() (contract string, ready bool, why string)
 func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+func DescribeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...DescribedService) ([]byte, error)
 type ServedService interface
   DescribedService
   ServiceContract() string
 func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+func ServeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...ServedService) ([]byte, error)
+func ServeEndpointRemote(frame []byte, program, version string, admit func(contract, method, profile string) error, services ...ServedService) ([]byte, error)
+func RemoteMethodProfile(service interface{}, contract, method string) string
 type Table interface
   Resources() (ResourcesResult, error)
   Holders(resource string, fresh bool) (HoldersResult, error)
@@ -209,14 +340,17 @@ type TableClient struct
 func NewTableClient(t TableTransport) *TableClient
 type TableDispatcher struct
   Handler Table
+func (TableDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (TableClient) Resources() (result ResourcesResult, err error)
 func (TableClient) Holders(resource string, fresh bool) (result HoldersResult, err error)
 func (TableDispatcher) DescribeService() (contract string, ready bool, why string)
 func (TableDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (TableDispatcher) ServiceContract() string
+func (TableDispatcher) DescribeServiceDefinitionHash() string
 func (TableDispatcher) WriteFrame(frame []byte) error
 func (TableDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type Leases interface
+  AcquireFor(subject oaImported0, resource string, amount, waitMs int64) (AcquireResult, error)
   Acquire(resource string, amount, waitMs int64) (AcquireResult, error)
   AcquireFree(resource string, amount int64) (AcquireFreeResult, error)
   Renew(lease string) (LeaseChangeResult, error)
@@ -224,12 +358,15 @@ type Leases interface
   Observe(cursor string, waitMs int64) (ObserveResult, error)
   Answer(request string, answer YieldAnswer, reason string) (AnswerCallResult, error)
   BindProcess(lease string, pid int64) (ProcessBindResult, error)
+  Label(lease, text string) (LeaseChangeResult, error)
 type LeasesTransport interface
   FrameExchanger
 type LeasesClient struct
 func NewLeasesClient(t LeasesTransport) *LeasesClient
 type LeasesDispatcher struct
   Handler Leases
+func (LeasesDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
+func (LeasesClient) AcquireFor(subject oaImported0, resource string, amount, waitMs int64) (result AcquireResult, err error)
 func (LeasesClient) Acquire(resource string, amount, waitMs int64) (result AcquireResult, err error)
 func (LeasesClient) AcquireFree(resource string, amount int64) (result AcquireFreeResult, err error)
 func (LeasesClient) Renew(lease string) (result LeaseChangeResult, err error)
@@ -237,8 +374,78 @@ func (LeasesClient) Release(lease string) (result LeaseChangeResult, err error)
 func (LeasesClient) Observe(cursor string, waitMs int64) (result ObserveResult, err error)
 func (LeasesClient) Answer(request string, answer YieldAnswer, reason string) (result AnswerCallResult, err error)
 func (LeasesClient) BindProcess(lease string, pid int64) (result ProcessBindResult, err error)
+func (LeasesClient) Label(lease, text string) (result LeaseChangeResult, err error)
 func (LeasesDispatcher) DescribeService() (contract string, ready bool, why string)
 func (LeasesDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (LeasesDispatcher) ServiceContract() string
+func (LeasesDispatcher) DescribeServiceDefinitionHash() string
 func (LeasesDispatcher) WriteFrame(frame []byte) error
 func (LeasesDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+func DecodeHolderAt(in []byte, depth, limit int) (*Holder, int, error)
+func EncodeHolderAt(v *Holder, depth int) []byte
+func EncodeHolder(v *Holder) []byte
+func DecodeHolder(in []byte) (*Holder, error)
+func DecodeResourceStateAt(in []byte, depth, limit int) (*ResourceState, int, error)
+func EncodeResourceStateAt(v *ResourceState, depth int) []byte
+func EncodeResourceState(v *ResourceState) []byte
+func DecodeResourceState(in []byte) (*ResourceState, error)
+func DecodeHoldersResultAt(in []byte, depth, limit int) (*HoldersResult, int, error)
+func EncodeHoldersResultAt(v *HoldersResult, depth int) []byte
+func EncodeHoldersResult(v *HoldersResult) []byte
+func DecodeHoldersResult(in []byte) (*HoldersResult, error)
+func DecodeResourceListAt(in []byte, depth, limit int) (*ResourceList, int, error)
+func EncodeResourceListAt(v *ResourceList, depth int) []byte
+func EncodeResourceList(v *ResourceList) []byte
+func DecodeResourceList(in []byte) (*ResourceList, error)
+func DecodeResourcesResultAt(in []byte, depth, limit int) (*ResourcesResult, int, error)
+func EncodeResourcesResultAt(v *ResourcesResult, depth int) []byte
+func EncodeResourcesResult(v *ResourcesResult) []byte
+func DecodeResourcesResult(in []byte) (*ResourcesResult, error)
+func DecodeLeaseAt(in []byte, depth, limit int) (*Lease, int, error)
+func EncodeLeaseAt(v *Lease, depth int) []byte
+func EncodeLease(v *Lease) []byte
+func DecodeLease(in []byte) (*Lease, error)
+func DecodeYieldRecordAt(in []byte, depth, limit int) (*YieldRecord, int, error)
+func EncodeYieldRecordAt(v *YieldRecord, depth int) []byte
+func EncodeYieldRecord(v *YieldRecord) []byte
+func DecodeYieldRecord(in []byte) (*YieldRecord, error)
+func DecodeAcquireResultAt(in []byte, depth, limit int) (*AcquireResult, int, error)
+func EncodeAcquireResultAt(v *AcquireResult, depth int) []byte
+func EncodeAcquireResult(v *AcquireResult) []byte
+func DecodeAcquireResult(in []byte) (*AcquireResult, error)
+func DecodeAcquireFreeResultAt(in []byte, depth, limit int) (*AcquireFreeResult, int, error)
+func EncodeAcquireFreeResultAt(v *AcquireFreeResult, depth int) []byte
+func EncodeAcquireFreeResult(v *AcquireFreeResult) []byte
+func DecodeAcquireFreeResult(in []byte) (*AcquireFreeResult, error)
+func DecodeYieldRequestAt(in []byte, depth, limit int) (*YieldRequest, int, error)
+func EncodeYieldRequestAt(v *YieldRequest, depth int) []byte
+func EncodeYieldRequest(v *YieldRequest) []byte
+func DecodeYieldRequest(in []byte) (*YieldRequest, error)
+func DecodeYieldPageAt(in []byte, depth, limit int) (*YieldPage, int, error)
+func EncodeYieldPageAt(v *YieldPage, depth int) []byte
+func EncodeYieldPage(v *YieldPage) []byte
+func DecodeYieldPage(in []byte) (*YieldPage, error)
+func DecodeObserveResultAt(in []byte, depth, limit int) (*ObserveResult, int, error)
+func EncodeObserveResultAt(v *ObserveResult, depth int) []byte
+func EncodeObserveResult(v *ObserveResult) []byte
+func DecodeObserveResult(in []byte) (*ObserveResult, error)
+func DecodeAnswerResultAt(in []byte, depth, limit int) (*AnswerResult, int, error)
+func EncodeAnswerResultAt(v *AnswerResult, depth int) []byte
+func EncodeAnswerResult(v *AnswerResult) []byte
+func DecodeAnswerResult(in []byte) (*AnswerResult, error)
+func DecodeAnswerCallResultAt(in []byte, depth, limit int) (*AnswerCallResult, int, error)
+func EncodeAnswerCallResultAt(v *AnswerCallResult, depth int) []byte
+func EncodeAnswerCallResult(v *AnswerCallResult) []byte
+func DecodeAnswerCallResult(in []byte) (*AnswerCallResult, error)
+func DecodeLeaseChangeAt(in []byte, depth, limit int) (*LeaseChange, int, error)
+func EncodeLeaseChangeAt(v *LeaseChange, depth int) []byte
+func EncodeLeaseChange(v *LeaseChange) []byte
+func DecodeLeaseChange(in []byte) (*LeaseChange, error)
+func DecodeLeaseChangeResultAt(in []byte, depth, limit int) (*LeaseChangeResult, int, error)
+func EncodeLeaseChangeResultAt(v *LeaseChangeResult, depth int) []byte
+func EncodeLeaseChangeResult(v *LeaseChangeResult) []byte
+func DecodeLeaseChangeResult(in []byte) (*LeaseChangeResult, error)
+func DecodeProcessBindResultAt(in []byte, depth, limit int) (*ProcessBindResult, int, error)
+func EncodeProcessBindResultAt(v *ProcessBindResult, depth int) []byte
+func EncodeProcessBindResult(v *ProcessBindResult) []byte
+func DecodeProcessBindResult(in []byte) (*ProcessBindResult, error)

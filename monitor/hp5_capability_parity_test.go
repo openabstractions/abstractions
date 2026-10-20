@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -186,6 +187,61 @@ func (r *hp5RegistryState) Observe(_ string, _ int64) (fwire.DeclarationObservat
 }
 
 type hp5RegistryV2 struct{ state *hp5RegistryState }
+
+var _ fwire.RegistryV2 = hp5RegistryV2{}
+
+// This parity fixture serves the legacy inventory and edits. Pinned operations
+// are unsupported and must not fall back to a pinless mutation.
+func (hp5RegistryV2) DeclarationsPinned() (fwire.PinnedDeclarationList, error) {
+	return fwire.PinnedDeclarationList{}, fwire.DispatchError("unknown_method")
+}
+
+func (hp5RegistryV2) DeclarePinned(string, fwire.PinnedDeclaration) (fwire.DeclarationChange, error) {
+	return fwire.DeclarationChange{}, fwire.DispatchError("unknown_method")
+}
+
+func (hp5RegistryV2) ReplacePinned(string, fwire.PinnedDeclaration) (fwire.DeclarationChange, error) {
+	return fwire.DeclarationChange{}, fwire.DispatchError("unknown_method")
+}
+
+func (hp5RegistryV2) ObservePinned(string, int64) (fwire.PinnedDeclarationObservation, error) {
+	return fwire.PinnedDeclarationObservation{}, fwire.DispatchError("unknown_method")
+}
+
+func TestHP5RegistryPinnedMethodsRefuseWithoutLegacyMutation(t *testing.T) {
+	entry := fwire.Declaration{Name: "legacy", Program: filepath.Join(t.TempDir(), "provider.exe"), Endpoint: "fixture",
+		Transport: fwire.DeclarationTransportNative, Activation: fwire.ActivationAttach,
+		Role: fwire.DeclarationRoleProvider, Contracts: []string{"abstraction.inference/chat@1"}}
+	state := &hp5RegistryState{revision: 7, entry: &entry}
+	fixture := hp5RegistryV2{state}
+	client := fwire.NewRegistryV2Client(&fwire.RegistryV2Dispatcher{Handler: fixture})
+	before, err := fixture.Declarations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, call := range []func() error{
+		func() error { _, err := client.DeclarationsPinned(); return err },
+		func() error {
+			_, err := client.DeclarePinned(before.Revision, fwire.PinnedDeclaration{Declaration: entry})
+			return err
+		},
+		func() error {
+			_, err := client.ReplacePinned(before.Revision, fwire.PinnedDeclaration{Declaration: entry})
+			return err
+		},
+		func() error { _, err := client.ObservePinned(before.Revision, 0); return err },
+	} {
+		var service *fwire.ServiceError
+		if err := call(); !errors.As(err, &service) || service.Code != fwire.ServiceErrorCodeUnknownMethod {
+			t.Fatalf("unsupported pinned method: %v", err)
+		}
+		after, err := fixture.Declarations()
+		if err != nil || after.Revision != before.Revision || len(after.Declarations) != 1 ||
+			after.Declarations[0].State.Declaration.Name != entry.Name {
+			t.Fatalf("pinned refusal changed legacy state: %+v %v", after, err)
+		}
+	}
+}
 
 func (v hp5RegistryV2) Declarations() (fwire.DeclarationListV2, error) {
 	page, err := v.state.Declarations()

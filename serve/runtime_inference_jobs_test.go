@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	asks "github.com/openabstractions/abstraction-asks/go"
+	askclient "github.com/openabstractions/abstraction-asks/go/client"
 	credentialsapi "github.com/openabstractions/abstraction-credentials/go"
+	"github.com/openabstractions/abstraction-facade/go/grants"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-identity/listen"
@@ -43,6 +46,47 @@ func TestServeInferenceWorkersCancelsAndJoinsSibling(t *testing.T) {
 	case <-stopped:
 	case <-time.After(time.Second):
 		t.Fatal("Serve returned before sibling observed cancellation")
+	}
+}
+
+// Exercise the real job admission owner with the native submitter peer. Its
+// independent ten-second planning context carries no active framed collector.
+func assertJobFirstUseDoesNotOwnNativeWait(t *testing.T, r *runtimeRights, subject inference.Subject, peer *identity.Peer, base string) {
+	t.Helper()
+	routes := router.New(router.NewHosted("native1447-job", base, router.WireReplicatePredictions, "fixture"))
+	routes.UseCredentials(func(context.Context, string, string, string) (map[string]string, error) { return nil, nil })
+	routes.Survey() // Replicate's existing catalogue is local static DATA.
+	called := false
+	provider, err := inference.New(inference.Config{Router: routes, SurveyAge: time.Hour,
+		Decide: func(ctx context.Context, s inference.Subject, action, resource string) (string, error) {
+			called = true
+			if inference.PeerFromContext(ctx) != peer {
+				t.Error("job lost bound submitter")
+			}
+			if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > 10*time.Second {
+				t.Error("job did not use its own planning budget")
+			}
+			if r.nativeAdmissionQuestions(ctx, rwire.Subject{Account: s.Account, Program: s.Program}) != nil {
+				t.Error("job acquired framed native wait")
+			}
+			return r.decideInference(ctx, s, action, resource)
+		}, Apply: func(context.Context, inference.Subject, string, string, string) (map[string]string, string) {
+			t.Error("ungranted job reached credential application")
+			return nil, "not_permitted"
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer provider.Close()
+	executor := inference.NewJobExecution(provider, func(context.Context, string, string) (inference.Subject, inference.ContentOutcome) {
+		t.Error("bound job unexpectedly resolved caller again")
+		return inference.Subject{}, inference.ContentForbidden
+	}, nil)
+	spec := jobwire.Encode(&jobwire.Document{Request: &jobwire.Request{Profile: jobwire.ProfileImageBatch, Image: jobwire.ImageRequest{Model: "black-forest-labs/flux-schnell", Mode: jobwire.ModeGenerate, Prompt: "inert", Size: "1024x1024", Count: 1, Guarantees: []jobwire.RequestGuarantee{jobwire.RequestGuaranteeHostedAllowed}, Credential: "fixture", Extensions: map[string]string{}}}})
+	outcome, reason := executor.CheckAdmissionForSubject("native1447-job", inference.InferenceJobKind, spec, []string{inference.RecoverableUpstreamGuarantee}, subject, peer)
+	if !called || outcome.String() != "forbidden" || reason != "rights:not_granted" {
+		t.Fatalf("job first-use admission: called=%t %s %s", called, outcome, reason)
 	}
 }
 
@@ -265,5 +309,99 @@ func TestImageJobFirstUseRecordsTheSubmittersPublisher(t *testing.T) {
 		if !asked {
 			t.Fatalf("no complete question about %s: %+v", c.program, records)
 		}
+	}
+}
+
+// TestImageJobFirstUseRefusalNamesPendingQuestions: an agent's first image
+// job is refused for want of complete on the image host and of its output
+// profile, and the refusal names both first-use questions it raised, so the
+// MCP gateway waits for the person's Allow and submits again (INF-W11). The
+// owner's OpenCode MCP launcher read a bare "rights:not_granted
+// output:forbidden" on 2026-11-10 while both popups waited.
+func TestImageJobFirstUseRefusalNamesPendingQuestions(t *testing.T) {
+	policy, err := rights.LoadDecisionPolicy(filepath.Join(t.TempDir(), "rights.json"), append(append([]string{}, firstUseActions...), contentReadAction, contentWriteAction))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, book := firstUseBook(t)
+	r := &runtimeRights{policy: policy, owner: a.rights.owner, firstUse: a.admitFirstUse, pairedInput: a.admitPairedInput, pendingQuestions: a.pendingQuestions}
+	content := &runtimeContent{rights: r}
+	allowed := false
+	routes := router.New(router.NewHosted("replicate", "https://api.replicate.com", router.WireReplicatePredictions, "replicate"))
+	routes.UseCredentials(func(context.Context, string, string, string) (map[string]string, error) {
+		return map[string]string{"Authorization": "Bearer fixture"}, nil
+	})
+	routes.Survey()
+	provider, err := inference.New(inference.Config{Router: routes, Decide: r.decideInference, PrepareContentWrite: content.prepareWrite,
+		Apply: func(context.Context, inference.Subject, string, string, string) (map[string]string, string) {
+			if !allowed {
+				t.Error("an ungranted job reached credential application")
+				return nil, "not_permitted"
+			}
+			return map[string]string{"Authorization": "Bearer fixture"}, "applied"
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { provider.Close() })
+	execution := inference.NewJobExecution(provider, func(context.Context, string, string) (inference.Subject, inference.ContentOutcome) {
+		return inference.Subject{}, inference.ContentForbidden
+	}, func(err error) { t.Error(err) })
+	execution.SetPendingQuestions(r.pendingJobQuestions)
+	executor := &runtimeInferenceJobExecutor{inference: execution}
+	spec := jobwire.Encode(&jobwire.Document{Request: &jobwire.Request{Profile: jobwire.ProfileImageBatch, Image: jobwire.ImageRequest{
+		Model: "black-forest-labs/flux-schnell", Mode: jobwire.ModeGenerate, Prompt: "frogs", Size: "1024x1024", Count: 1,
+		Guarantees: []jobwire.RequestGuarantee{jobwire.RequestGuaranteeHostedAllowed}, Credential: "replicate", Extensions: map[string]string{},
+	}}})
+	program := filepath.Join(t.TempDir(), "oa-opencode-integration.exe")
+	binding := acceptanceprovider.Binding{Scope: "agent-scope", Origin: "local",
+		Subject: &acceptanceprovider.AuthenticatedSubject{AccountKind: "windows", Account: r.owner, Program: program}}
+	submit := func() (string, string) {
+		outcome, reason := executor.CheckSubjectAdmission(binding, inference.InferenceJobKind, spec, []string{inference.RecoverableUpstreamGuarantee})
+		return outcome.String(), reason
+	}
+	outcome, reason := submit()
+	records, _, err := book.ApplicationHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want []string
+	for _, q := range records {
+		if q.Pending() && samePrograms(q.About, program) {
+			want = append(want, q.ID)
+		}
+	}
+	if len(want) != 2 {
+		t.Fatalf("want the complete and output:image questions about %s pending, got %+v", program, records)
+	}
+	if outcome != "forbidden" || !strings.HasPrefix(reason, "rights:not_granted output:forbidden ") || !slices.Equal(asks.QuestionsPending(reason), want) {
+		t.Fatalf("first image job refusal %s %q must name pending questions %v", outcome, reason, want)
+	}
+	// A second submission joins the same two questions and names them again.
+	if again, reason2 := submit(); again != "forbidden" || reason2 != reason {
+		t.Fatalf("repeated refusal %s %q, want %q", again, reason2, reason)
+	}
+	// Without the lookup the refusal is the bare grant words, as before.
+	execution.SetPendingQuestions(nil)
+	if _, bare := submit(); bare != "rights:not_granted output:forbidden" {
+		t.Fatalf("refusal without a pending lookup %q", bare)
+	}
+	// The person allows both questions, and the same submission is admitted.
+	execution.SetPendingQuestions(r.pendingJobQuestions)
+	a.rights = r
+	operator := policyRules{policy: r.policy, by: rwire.Subject{Account: r.owner, Program: appProgram("Abstraction Panel")}, asks: a}
+	for _, id := range want {
+		record, found, err := book.ApplicationRecord(id)
+		if err != nil || !found {
+			t.Fatalf("question %s: %v", id, err)
+		}
+		metadata := askclient.RecordMetadata{Key: record.Key, About: record.About, Text: record.Text}
+		if _, err := grants.AnswerQuestion(context.Background(), pendingQuestion{record: metadata, book: book}, operator, r.owner, id, "allow"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	allowed = true
+	if outcome, reason := submit(); outcome != "accepted" {
+		t.Fatalf("submission after Allow %s %q", outcome, reason)
 	}
 }

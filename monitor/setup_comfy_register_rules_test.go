@@ -58,7 +58,7 @@ func TestComfySetupWritesThePanelRulesBeforeRegister(t *testing.T) {
 	var log []string
 	reads := &orderedReads{log: &log}
 	apps := &hiddenEntryApps{readable: func() bool { return reads.written }, log: &log}
-	created, err := registerSetupEntry(context.Background(), apps, reads, descriptor, nil)
+	created, err := createdOf(officialPicture.registerWorkspaceEntry(context.Background(), apps, reads, descriptor, nil, nil))
 	if err != nil || !created || len(log) != 2 || log[0] != "rules" || log[1] != "register" {
 		t.Fatalf("fresh registration: created=%t %v order %v", created, err, log)
 	}
@@ -67,7 +67,7 @@ func TestComfySetupWritesThePanelRulesBeforeRegister(t *testing.T) {
 	log = nil
 	reads = &orderedReads{log: &log}
 	apps = &hiddenEntryApps{entry: &descriptor, readable: func() bool { return reads.written }, log: &log}
-	created, err = registerSetupEntry(context.Background(), apps, reads, descriptor, nil)
+	created, err = createdOf(officialPicture.registerWorkspaceEntry(context.Background(), apps, reads, descriptor, nil, nil))
 	if err != nil || created {
 		t.Fatalf("hidden matching entry: created=%t %v order %v", created, err, log)
 	}

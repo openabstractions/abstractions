@@ -91,11 +91,14 @@ dataclass ObservationResult
   snapshot: OperationSnapshot | None
 class OperationControl
   observe_work(identity: RequestIdentity) -> ObservationResult
+  follow_work(identity: RequestIdentity, after: str, wait_ms: int) -> WorkObservation
   read_result(identity: RequestIdentity, offset: int, max_bytes: int) -> ResultRead
   link_result(identity: RequestIdentity, destination: str) -> ResultLink
 class OperationControlClient(OperationControl)
   __init__(transport)
   observe_work(identity: RequestIdentity) -> ObservationResult
+  follow_work(identity: RequestIdentity, after: str, wait_ms: int) -> WorkObservation
+  follow_work_pages(identity: RequestIdentity, after: str, wait_ms: int)
   read_result(identity: RequestIdentity, offset: int, max_bytes: int) -> ResultRead
   link_result(identity: RequestIdentity, destination: str) -> ResultLink
 dataclass OperationSnapshot
@@ -181,6 +184,23 @@ dataclass WorkFailure
   classification: FailureClass | None
   message: str
   cause: FailureCause | str
+dataclass WorkObservation
+  outcome: WorkObservationOutcome | None
+  next: str
+  snapshot: OperationSnapshot | None
+  mechanism: WorkObservationMechanism | None
+enum WorkObservationMechanism
+  NATIVE = 'native'
+  POLLED = 'polled'
+enum WorkObservationOutcome
+  CHANGED = 'changed'
+  UNCHANGED = 'unchanged'
+  GAP = 'gap'
+  UNKNOWN = 'unknown'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  UNAVAILABLE = 'unavailable'
+  UNSUPPORTED = 'unsupported'
 dataclass WorkProgress
   done: int
   total: int
@@ -192,5 +212,39 @@ enum WorkState
   FAILED = 'failed'
   CANCELLED = 'cancelled'
 def decode(data)
+def decode_acceptance_result(data)
+def decode_cancellation_result(data)
+def decode_history_window(data)
+def decode_inventory_page(data)
+def decode_observation_result(data)
+def decode_operation_snapshot(data)
+def decode_operator_cancellation(data)
+def decode_receipt(data)
+def decode_request_identity(data)
+def decode_result_chunk(data)
+def decode_result_link(data)
+def decode_result_read(data)
+def decode_submission(data)
+def decode_work_failure(data)
+def decode_work_observation(data)
+def decode_work_progress(data)
 def encode(v)
+def encode_acceptance_result(v)
+def encode_cancellation_result(v)
+def encode_history_window(v)
+def encode_inventory_page(v)
+def encode_observation_result(v)
+def encode_operation_snapshot(v)
+def encode_operator_cancellation(v)
+def encode_receipt(v)
+def encode_request_identity(v)
+def encode_result_chunk(v)
+def encode_result_link(v)
+def encode_result_read(v)
+def encode_submission(v)
+def encode_work_failure(v)
+def encode_work_observation(v)
+def encode_work_progress(v)
+def from_json(kind, data)
 def service_name(frame)
+def to_json(value)

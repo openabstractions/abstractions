@@ -78,6 +78,7 @@ steps and judges no rule. Fetch them into `contracts/`:
     curl -L -o contracts/identity.md https://raw.githubusercontent.com/openabstractions/abstraction-identity/main/CONTRACT.md
     curl -L -o contracts/job.md      https://raw.githubusercontent.com/openabstractions/abstraction-job/main/CONTRACT.md
     curl -L -o contracts/logging.md  https://raw.githubusercontent.com/openabstractions/abstraction-logging/main/CONTRACT.md
+    curl -L -o contracts/resource.md https://raw.githubusercontent.com/openabstractions/abstraction-resource/main/CONTRACT.md
     curl -L -o contracts/watch.md    https://raw.githubusercontent.com/openabstractions/abstraction-watch/main/README.md
 
 `contracts.list` holds the same lines in a form the runner reads, so you

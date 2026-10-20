@@ -1,3 +1,10 @@
+enum ApplyMode
+  LIVE = 'live'
+  RESTART = 'restart'
+const CONFIG_CATALOGUE_JSON
+dataclass Change
+  key: str
+  set: Value | None
 class ConfigEditor
   read_user() -> UserSnapshot
   replace_user(expected_revision: str, values: UserSettings) -> UserReplaceResult
@@ -5,6 +12,13 @@ class ConfigEditorClient(ConfigEditor)
   __init__(transport)
   read_user() -> UserSnapshot
   replace_user(expected_revision: str, values: UserSettings) -> UserReplaceResult
+class ConfigEditorV2
+  read_user() -> UserReadResultV2
+  replace_user(expected_revision: str, changes: list[Change]) -> UserReplaceResultV2
+class ConfigEditorV2Client(ConfigEditorV2)
+  __init__(transport)
+  read_user() -> UserReadResultV2
+  replace_user(expected_revision: str, changes: list[Change]) -> UserReplaceResultV2
 dataclass ConfigObservation
   outcome: ConfigObservationOutcome | None
   cursor: str
@@ -16,19 +30,114 @@ enum ConfigObservationOutcome
   UNAVAILABLE = 'unavailable'
   UNSUPPORTED = 'unsupported'
   INVALID = 'invalid'
+dataclass ConfigObservationV2
+  outcome: ObservationOutcomeV2 | None
+  cursor: str
+  snapshot: ReadResult | None
+  problem: KeyProblem | None
+  corrupt_offset: int
+  corrupt_source: ConfigSource | None
+  refusal: _dependency_rights.RefusalDetail | None
+  age_ms: int | None
+  cause: str
 class ConfigObserver
   observe(overrides: RunOverrides, cursor: str, wait_ms: int) -> ConfigObservation
 class ConfigObserverClient(ConfigObserver)
   __init__(transport)
   observe(overrides: RunOverrides, cursor: str, wait_ms: int) -> ConfigObservation
+  observe_pages(overrides: RunOverrides, cursor: str, wait_ms: int)
+class ConfigObserverV2
+  observe(cursor: str, wait_ms: int) -> ConfigObservationV2
+class ConfigObserverV2Client(ConfigObserverV2)
+  __init__(transport)
+  observe(cursor: str, wait_ms: int) -> ConfigObservationV2
+  observe_pages(cursor: str, wait_ms: int)
 class ConfigReader
   read(overrides: RunOverrides) -> Snapshot
 class ConfigReaderClient(ConfigReader)
   __init__(transport)
   read(overrides: RunOverrides) -> Snapshot
+class ConfigReaderV2
+  read(names: list[str]) -> ReadResult
+  describe() -> DescribeResult
+class ConfigReaderV2Client(ConfigReaderV2)
+  __init__(transport)
+  read(names: list[str]) -> ReadResult
+  describe() -> DescribeResult
+dataclass ConfigSource
+  location: Location | None
+  path: str
+dataclass DescribeResult
+  outcome: ReadOutcome | None
+  descriptors: list[KeyDescriptor]
+  refusal: _dependency_rights.RefusalDetail | None
 class DispatchError(ValueError)
   __init__(code)
 const EDITOR_ERROR_CODES
+dataclass Entry
+  key: str
+  value: Value | None
+  origin: KeyOrigin
+dataclass IgnoredField
+  offset: int
+  name_excerpt: str
+  reason: IgnoredFieldReason | str
+  source: ConfigSource
+enum IgnoredFieldReason
+  UNKNOWN_KEY = 'unknown_key'
+  INVALID_NAME = 'invalid_name'
+dataclass KeyDescriptor
+  key: str
+  kind: ValueKind | None
+  default: Value | None
+  range: ValueRange | None
+  choices: list[str]
+  presets: list[Value]
+  description: str
+  group: str
+  apply: ApplyMode | None
+  lockable: bool
+  lowest_location: Location | None
+  deprecated: str
+  default_description: str
+  allows_unlimited: bool
+dataclass KeyOrigin
+  location: Location | None
+  path: str
+  state: KeyState | str
+  reason: str
+  shadowed: list[ConfigSource]
+dataclass KeyProblem
+  key: str
+  reason: str
+dataclass KeyRefusal
+  key: str
+  reason: KeyRefusalReason | None
+  refusal: _dependency_rights.RefusalDetail | None
+enum KeyRefusalReason
+  NOT_GRANTED = 'not_granted'
+  UNKNOWN_KEY = 'unknown_key'
+enum KeyState
+  SET = 'set'
+  DEFAULT = 'default'
+  LOCKED = 'locked'
+  IGNORED = 'ignored'
+  PENDING = 'pending'
+enum Location
+  MACHINE = 'machine'
+  USER = 'user'
+  PROCESS = 'process'
+enum ObservationOutcomeV2
+  CHANGED = 'changed'
+  UNCHANGED = 'unchanged'
+  GAP = 'gap'
+  UNAVAILABLE = 'unavailable'
+  UNSUPPORTED = 'unsupported'
+  INVALID = 'invalid'
+  NOT_PERMITTED = 'not_permitted'
+  CORRUPT = 'corrupt'
+  FORBIDDEN = 'forbidden'
+  FAILED = 'failed'
 dataclass Origin
   rung: str
   path: str
@@ -39,8 +148,35 @@ dataclass Origins
   log_service: Origin
   off: Origin
 const READER_ERROR_CODES
+const RESOURCE_ACTIONS
+enum ReadOutcome
+  READ = 'read'
+  CORRUPT = 'corrupt'
+  NOT_PERMITTED = 'not_permitted'
+  UNAVAILABLE = 'unavailable'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+dataclass ReadResult
+  outcome: ReadOutcome | None
+  entries: list[Entry]
+  revision: str
+  refused: list[KeyRefusal]
+  problem: KeyProblem | None
+  corrupt_offset: int
+  ignored_fields: list[IgnoredField]
+  ignored_omitted: int
+  corrupt_source: ConfigSource | None
+  refusal: _dependency_rights.RefusalDetail | None
 class Refusal(ValueError)
   __init__(word, offset)
+enum ReplaceOutcome
+  APPLIED = 'applied'
+  CONFLICT = 'conflict'
+  NOT_PERMITTED = 'not_permitted'
+  INVALID = 'invalid'
+  UNAVAILABLE = 'unavailable'
+  CORRUPT = 'corrupt'
+  FORBIDDEN = 'forbidden'
 dataclass RunOverrides
   nas_store: str
   store: str
@@ -68,6 +204,12 @@ dataclass Snapshot
   off: dict[str, str]
   origins: Origins
   stamp: str
+dataclass UserReadResultV2
+  outcome: ReadOutcome | None
+  snapshot: UserSnapshotV2 | None
+  problem: KeyProblem | None
+  corrupt_offset: int
+  refusal: _dependency_rights.RefusalDetail | None
 enum UserReplaceOutcome
   APPLIED = 'applied'
   CONFLICT = 'conflict'
@@ -76,6 +218,12 @@ enum UserReplaceOutcome
 dataclass UserReplaceResult
   outcome: UserReplaceOutcome | None
   snapshot: UserSnapshot
+dataclass UserReplaceResultV2
+  outcome: ReplaceOutcome | None
+  snapshot: UserSnapshotV2 | None
+  refused: list[KeyProblem]
+  corrupt_offset: int
+  refusal: _dependency_rights.RefusalDetail | None
 dataclass UserSettings
   nas_store: str
   store: str
@@ -85,6 +233,85 @@ dataclass UserSettings
 dataclass UserSnapshot
   values: UserSettings
   revision: str
+dataclass UserSnapshotV2
+  entries: list[Entry]
+  revision: str
+dataclass Value
+  kind: ValueKind | None
+  boolean: bool
+  integer: int
+  bytes: int
+  duration_ms: int
+  text: str
+  choice: str
+  text_list: list[str]
+  text_map: dict[str, str]
+enum ValueKind
+  BOOLEAN = 'boolean'
+  INTEGER = 'integer'
+  BYTES = 'bytes'
+  DURATION = 'duration'
+  TEXT = 'text'
+  CHOICE = 'choice'
+  TEXT_LIST = 'text_list'
+  TEXT_MAP = 'text_map'
+  UNLIMITED = 'unlimited'
+dataclass ValueRange
+  min: int
+  max: int
+def config_key_descriptors()
 def decode(data)
+def decode_change(data)
+def decode_config_observation(data)
+def decode_config_observation_v2(data)
+def decode_config_source(data)
+def decode_describe_result(data)
+def decode_entry(data)
+def decode_ignored_field(data)
+def decode_key_descriptor(data)
+def decode_key_origin(data)
+def decode_key_problem(data)
+def decode_key_refusal(data)
+def decode_origin(data)
+def decode_origins(data)
+def decode_read_result(data)
+def decode_run_overrides(data)
+def decode_snapshot(data)
+def decode_user_read_result_v2(data)
+def decode_user_replace_result(data)
+def decode_user_replace_result_v2(data)
+def decode_user_settings(data)
+def decode_user_snapshot(data)
+def decode_user_snapshot_v2(data)
+def decode_value(data)
+def decode_value_range(data)
 def encode(v)
+def encode_change(v)
+def encode_config_observation(v)
+def encode_config_observation_v2(v)
+def encode_config_source(v)
+def encode_describe_result(v)
+def encode_entry(v)
+def encode_ignored_field(v)
+def encode_key_descriptor(v)
+def encode_key_origin(v)
+def encode_key_problem(v)
+def encode_key_refusal(v)
+def encode_origin(v)
+def encode_origins(v)
+def encode_read_result(v)
+def encode_run_overrides(v)
+def encode_snapshot(v)
+def encode_user_read_result_v2(v)
+def encode_user_replace_result(v)
+def encode_user_replace_result_v2(v)
+def encode_user_settings(v)
+def encode_user_snapshot(v)
+def encode_user_snapshot_v2(v)
+def encode_value(v)
+def encode_value_range(v)
+def from_json(kind, data)
+def overlay_config_process(entries, changes)
 def service_name(frame)
+def to_json(value)
+def validate_config_value(v)

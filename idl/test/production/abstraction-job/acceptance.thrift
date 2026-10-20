@@ -33,7 +33,8 @@ refusal {
   9: missing_field (stage = "structure")
  10: bad_binary (stage = "structure")
  11: bad_enum (stage = "structure")
- 12: trailing_bytes (stage = "document")
+ 12: bad_value (stage = "structure")
+ 13: trailing_bytes (stage = "document")
 }
 struct RequestIdentity {
   1: required string key
@@ -53,7 +54,7 @@ struct Receipt {
   3: required string operation_id
   4: required list<string> accepted_guarantees
   5: required i64 history_retention_ms
-} (unknown_fields = "refuse", doc="Recoverable acceptance evidence. Retention is a minimum duration from original acceptance, never renewed by replay. Expiry does not end work, transfer ownership or authorize duplicate execution. IDs confer no authority.")
+} (unknown_fields = "refuse", doc="[Receipt](https://openabstractions.github.io/reference.html#concept-job.acceptance-receipt): recoverable acceptance evidence. Retention is a minimum duration from original acceptance, never renewed by replay. Expiry does not end work, transfer ownership or authorize duplicate execution. IDs confer no authority.")
 enum AcceptanceOutcome {
   1: accepted
   2: definitely_not_accepted
@@ -91,11 +92,11 @@ struct CancellationResult {
 const list<string> acceptance_error_codes = ["forbidden"]
 
 service RecoverableAcceptance {
-  HistoryWindow GetHistoryWindow() (doc="Obtain the logical owner and history epoch before first submission; creates no work.")
-  AcceptanceResult Submit(1: Submission submission) (doc="Atomically associate authenticated request identity, arguments, operation and guarantees before acknowledging. Duplicate equal arguments recover the original receipt. No weaker provider fallback on unknown.")
+  HistoryWindow GetHistoryWindow() (readonly="true",doc="Obtain the logical owner and history epoch before first submission; creates no work.")
+  AcceptanceResult Submit(1: Submission submission) (idempotency_key="submission.identity.key",doc="Atomically associate authenticated request identity, arguments, operation and guarantees before acknowledging. Duplicate equal arguments recover the original receipt. No weaker provider fallback on unknown.")
   AcceptanceResult Reconcile(1: RequestIdentity identity) (doc="Authorized lookup at the original logical owner after lost request, lost reply or caller restart. A definite negative seals the identity against delayed submissions. Unavailable evidence gives unknown.")
-  CancellationResult CancelWork(1: RequestIdentity identity) (doc="Authorized explicit work cancellation. Cancelling a transport wait is never this operation and never relinquishes accepted work ownership.")
-} (wire_name = "abstraction.job/acceptance@1", error_codes = "acceptance_error_codes", doc="Version 1 recoverable acceptance vocabulary, local or remote. Providers must implement atomic recovery and downstream deduplication before advertising those guarantees. Legacy Store is not implicitly upgraded.")
+  CancellationResult CancelWork(1: RequestIdentity identity) (idempotent="true",doc="Authorized explicit work cancellation. Cancelling a transport wait is never this operation and never relinquishes accepted work ownership.")
+} (wire_name = "abstraction.job/acceptance@1", error_codes = "acceptance_error_codes", doc="Version 1 recoverable acceptance vocabulary, local or remote. Providers must implement atomic recovery and downstream deduplication before advertising those guarantees. Legacy [Store](https://openabstractions.github.io/reference.html#concept-job.store) is not implicitly upgraded.")
 
 // Observation and result access retain the original authenticated acceptance scope.
 enum WorkState {
@@ -109,7 +110,7 @@ enum WorkState {
 struct WorkProgress {
   1: required i64 done
   2: required i64 total
-} (unknown_fields = "refuse", doc="Advisory nonnegative progress. Zero total means unknown. Progress does not authorize delivery or imply completion.")
+} (unknown_fields = "refuse", doc="Advisory nonnegative progress. Zero total means unknown. [WorkProgress](https://openabstractions.github.io/reference.html#concept-job.progress) does not authorize delivery or imply completion.")
 enum FailureClass {
   1: retryable
   2: permanent
@@ -193,9 +194,30 @@ struct ResultLink {
   2: optional Receipt receipt (omit = "absent")
   3: required i64 size
 } (unknown_fields = "refuse", doc="Exactly linked carries the original receipt and the result's size in bytes; other outcomes forbid a receipt and carry size zero. Linked means the destination is a second name for the provider's own verified result bytes; the provider keeps its name and retention. Other_volume and no_hard_links name why no hard link could be made; remote refuses a caller without receiver-verified local peer evidence, which keeps reading with ReadResult; exists names a destination already present, which stays as it was (JOB-A17).")
+enum WorkObservationOutcome {
+  1: changed
+  2: unchanged
+  3: gap
+  4: unknown
+  5: forbidden
+  6: invalid
+  7: unavailable
+  8: unsupported
+} (unknown="refuse",reader="act")
+enum WorkObservationMechanism {
+  1: native
+  2: polled
+} (unknown="refuse",reader="act")
+struct WorkObservation {
+  1: required WorkObservationOutcome outcome
+  2: required string next (length="0..256",pattern="no_control")
+  3: optional OperationSnapshot snapshot (omit="absent")
+  4: required WorkObservationMechanism mechanism
+} (unknown_fields="refuse",doc="Exactly changed carries the current snapshot. Changed and unchanged carry the next cursor; gap retains the supplied cursor and requires a fresh empty-cursor snapshot. Other outcomes carry neither snapshot nor cursor. The cursor binds provider instance, authenticated acceptance scope, request identity and JOB-N1 visible state. Observation never seals absence or cancels work.")
 service OperationControl {
   ObservationResult ObserveWork(1: RequestIdentity identity) (doc="Observe in the original authenticated acceptance scope. Absent identities remain unsealed; may recover an already accepted journal.")
-  ResultRead ReadResult(1: RequestIdentity identity, 2: i64 offset, 3: i64 max_bytes) (doc="Read complete immutable bytes without exposing paths. Offset must be nonnegative; max_bytes must be in 1..65536. Data obeys ResultChunk bounds. Absence, failure, incomplete work and transport errors are never EOF. This read never seals an absent identity.")
+  WorkObservation FollowWork(1: RequestIdentity identity, 2: string after(length="0..256",pattern="no_control"), 3: i64 wait_ms(range="0..30000")) (readonly="true",observe="after",doc="Wait at most 30000ms for JOB-N1 visible change through job.Watch and watch.Gate. Recheck receiving authority after every read and wake. Provider restart gives gap; a foreign scope or identity cursor is forbidden. Cancellation ends only this read. An older operations@1 provider's unknown_method reads unsupported.")
+  ResultRead ReadResult(1: RequestIdentity identity, 2: i64 offset, 3: i64 max_bytes) (readonly="true",doc="Read complete immutable bytes without exposing paths. Offset must be nonnegative; max_bytes must be in 1..65536. Data obeys ResultChunk bounds. Absence, failure, incomplete work and transport errors are never EOF. This read never seals an absent identity.")
   ResultLink LinkResult(1: RequestIdentity identity, 2: string destination) (doc="Hard-link a complete result to destination for a local caller on this machine, under the caller's own authority to create that path, and never copy it. Destination is an absolute clean path of 1..4096 bytes whose parent directory exists, outside the provider's own root, and that does not exist yet. This call never seals an absent identity (JOB-A17).")
 } (wire_name = "abstraction.job/operations@1", doc="Observation and result access use the same authenticated caller scope and request identity as RecoverableAcceptance despite their separate service wire identity. Existing acceptance methods and wire contract remain unchanged.")
 
@@ -214,7 +236,7 @@ struct InventoryPage {
   4: required bool complete
 } (unknown_fields = "refuse", doc="Caller-scoped accepted-operation observations without paths. Only page carries snapshots. A noncomplete page always has a next cursor, even when no own operations were scanned. Complete pages have empty next. Refusals carry no snapshots, empty next and complete=false. Directory traversal is a weak live view: concurrent insertions/removals can be omitted or repeated, not a stable transaction snapshot. An unchanged tree is fully traversable. Large failure diagnostics may be replaced by a bounded generic message.")
 service JobInventory {
-  InventoryPage ListWork(1: string cursor, 2: i64 limit) (doc="List only the authenticated acceptance scope. Empty cursor starts a bounded enumeration; limit is 1..64 snapshots. Opaque cursors are bound to this provider instance and caller. Sessions expire after 30 seconds idle and restart yields gap; at most 32 sessions exist. Each call scans at most 256 directory entries and 16MiB provider bytes, with a 512KiB compact-JSON snapshot accounting budget (frame encoding overhead is additional). Empty scan pages still advance. Repeating the latest input cursor with the same limit replays its page; older cursors return gap. A lost initial empty-cursor reply can be restarted explicitly; no global scan or cross-caller authority is implied. Partial reads may return unavailable rather than falsely complete. No subscription or retention protocol is supplied.")
+  InventoryPage ListWork(1: string cursor, 2: i64 limit) (readonly="true",doc="List only the authenticated acceptance scope. Empty cursor starts a bounded enumeration; limit is 1..64 snapshots. Opaque cursors are bound to this provider instance and caller. Sessions expire after 30 seconds idle and restart yields gap; at most 32 sessions exist. Each call scans at most 256 directory entries and 16MiB provider bytes, with a 512KiB compact-JSON snapshot accounting budget (frame encoding overhead is additional). Empty scan pages still advance. Repeating the latest input cursor with the same limit replays its page; older cursors return gap. A lost initial empty-cursor reply can be restarted explicitly; no global scan or cross-caller authority is implied. Partial reads may return unavailable rather than falsely complete. No subscription or retention protocol is supplied.")
 } (wire_name = "abstraction.job/inventory@1", doc="Bounded own-scope inventory on the acceptance provider endpoint. Authorization is independent of cursor text and uses the existing native caller scope. Listing does not authorize cross-scope Observe/Cancel or expose private provider paths.")
 
 // The rights actions a job service enforces (JOB-A14). Submission spends on the
@@ -234,6 +256,6 @@ struct OperatorCancellation {
   1: required OperatorCancellationOutcome outcome
 } (unknown_fields = "refuse", doc="Requested acknowledges cancellation intent recorded on the named operation, whichever scope accepted it; it is not stopped effects. Already_terminal names an operation that ended. Unknown names no operation of this provider. Invalid is a malformed operation id. Forbidden is an evaluated refusal of the caller's rule. Unavailable records no intent because the decision or the store could not be reached (JOB-A13).")
 service JobOperator {
-  InventoryPage ListAccountWork(1: string cursor, 2: i64 limit) (doc="List accepted operations of every caller scope of this provider, under the same bounds, cursor, session, replay and gap rules as JobInventory.ListWork. A cursor is bound to the caller and to this account-wide listing. Each call is decided by the rule abstraction.job/inventory.read on abstraction.job/acceptance@1 (JOB-A13); forbidden and unavailable pages carry no snapshots. Snapshots expose no provider paths and no caller scope.")
-  OperatorCancellation CancelOperation(1: string operation_id) (doc="Record cancellation intent on the operation with this receipt operation id, whichever scope accepted it. The id is 1..128 bytes of lowercase ASCII letters, digits and '-'. Each call is decided by the rule abstraction.job/acceptance.cancel on abstraction.job/acceptance@1 (JOB-A13). The intent records the caller's scope. Observe the operation through its submitter or ListAccountWork for its terminal state.")
+  InventoryPage ListAccountWork(1: string cursor, 2: i64 limit) (readonly="true",doc="List accepted operations of every caller scope of this provider, under the same bounds, cursor, session, replay and gap rules as JobInventory.ListWork. A cursor is bound to the caller and to this account-wide listing. Each call is decided by the rule abstraction.job/inventory.read on abstraction.job/acceptance@1 (JOB-A13); forbidden and unavailable pages carry no snapshots. Snapshots expose no provider paths and no caller scope.")
+  OperatorCancellation CancelOperation(1: string operation_id) (idempotent="true",doc="Record cancellation intent on the operation with this receipt operation id, whichever scope accepted it. The id is 1..128 bytes of lowercase ASCII letters, digits and '-'. Each call is decided by the rule abstraction.job/acceptance.cancel on abstraction.job/acceptance@1 (JOB-A13). The intent records the caller's scope. Observe the operation through its submitter or ListAccountWork for its terminal state.")
 } (wire_name = "abstraction.job/operator@1", doc="Account-wide inventory and cross-scope cancellation on the acceptance provider endpoint, for the person acting through an operator program. A provider serves it only with a configured rights decision per call; without one every call is forbidden. A caller's own work stays on RecoverableAcceptance, OperationControl and JobInventory under ownership (JOB-A13).")

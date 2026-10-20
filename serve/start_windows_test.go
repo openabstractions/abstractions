@@ -4,9 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
-
-	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	"os/exec"
 	"path/filepath"
 	"reflect"
@@ -14,46 +13,76 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/openabstractions/abstraction-facade/go/bootstrap"
+	"golang.org/x/sys/windows"
 )
+
+type presenterErrorWriter struct{ err error }
+
+func (w presenterErrorWriter) Write([]byte) (int, error) { return 0, w.err }
 
 func TestInstalledPresenterUsesSelectedSiblingAndGuardedShell(t *testing.T) {
 	root := t.TempDir()
 	server := filepath.Join(root, "openabstractions.exe")
-	panel := filepath.Join(root, "Abstraction Panel.exe")
+	panel := filepath.Join(root, presenterImage)
 	if err := os.WriteFile(panel, nil, 0600); err != nil {
 		t.Fatal(err)
 	}
-	for _, mode := range []string{"ready", "absent", "foreign", "noshell", "stat-error"} {
+	for _, mode := range []string{"ready", "absent", "foreign", "noshell", "stat-error",
+		"invalid-output", "absent-invalid-output", "output-error", "launch-invalid-handle"} {
 		t.Run(mode, func(t *testing.T) {
 			selected := server
 			if mode == "foreign" {
 				selected = filepath.Join(root, "other", "openabstractions.exe")
 			}
 			stat := os.Lstat
-			if mode == "absent" {
+			if mode == "absent" || mode == "absent-invalid-output" {
 				stat = func(string) (os.FileInfo, error) { return nil, os.ErrNotExist }
 			}
 			if mode == "stat-error" {
 				stat = func(string) (os.FileInfo, error) { return nil, os.ErrPermission }
 			}
 			var calls [][]string
-			var output bytes.Buffer
+			var status bytes.Buffer
+			var output io.Writer = &status
+			switch mode {
+			case "invalid-output", "absent-invalid-output", "launch-invalid-handle":
+				output = presenterErrorWriter{&os.PathError{Op: "write", Path: "/dev/stdout", Err: windows.ERROR_INVALID_HANDLE}}
+			case "output-error":
+				output = presenterErrorWriter{io.ErrClosedPipe}
+			}
 			err := activateWindowsPresenter(selected, func() (string, error) { return filepath.Join(root, "openabstractionsw.exe"), nil }, stat,
 				func(image, dir string, args ...string) error {
 					calls = append(calls, append([]string{image, dir}, args...))
 					if mode == "noshell" {
 						return errNoShell
 					}
+					if mode == "launch-invalid-handle" {
+						return windows.ERROR_INVALID_HANDLE
+					}
 					return nil
-				}, &output)
+				}, output)
 			switch mode {
-			case "ready":
+			case "ready", "invalid-output":
 				if err != nil || !reflect.DeepEqual(calls, [][]string{{panel, root, "--background"}}) {
 					t.Fatal(err, calls)
 				}
 			case "absent":
-				if err != nil || len(calls) != 0 || !strings.Contains(output.String(), "absent") {
-					t.Fatal(err, calls, output.String())
+				if err != nil || len(calls) != 0 || !strings.Contains(status.String(), "absent") {
+					t.Fatal(err, calls, status.String())
+				}
+			case "absent-invalid-output":
+				if err != nil || len(calls) != 0 {
+					t.Fatal(err, calls)
+				}
+			case "output-error":
+				if !errors.Is(err, io.ErrClosedPipe) || !reflect.DeepEqual(calls, [][]string{{panel, root, "--background"}}) {
+					t.Fatal(err, calls)
+				}
+			case "launch-invalid-handle":
+				if !errors.Is(err, windows.ERROR_INVALID_HANDLE) || !strings.Contains(err.Error(), "deferred") {
+					t.Fatal(err)
 				}
 			case "noshell":
 				if !errors.Is(err, errNoShell) || !strings.Contains(err.Error(), "deferred") {

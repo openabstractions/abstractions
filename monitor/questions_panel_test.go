@@ -71,12 +71,15 @@ func panelQuestionRuntime(t *testing.T, allow *atomic.Bool) {
 // operators admit only this test process, for first-use answers that write
 // rules. It returns the Book, the policy and this test program's path.
 func panelFirstUseRuntime(t *testing.T, actions ...string) (*asks.Book, *rights.DecisionPolicy, string) {
+	return panelFirstUseRuntimeIn(t, t.TempDir(), actions...)
+}
+
+func panelFirstUseRuntimeIn(t *testing.T, dir string, actions ...string) (*asks.Book, *rights.DecisionPolicy, string) {
 	t.Helper()
 	own(t)
 	if runtime.GOOS == "darwin" {
 		t.Skip("Program proof unavailable")
 	}
-	dir := t.TempDir()
 	book, err := asks.LoadApplicationBook(filepath.Join(dir, "questions.json"))
 	if err != nil {
 		t.Fatal(err)

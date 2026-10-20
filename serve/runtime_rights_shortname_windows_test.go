@@ -60,7 +60,7 @@ func TestInstallationWritesNoPermitOverAShortSpelledDeny(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	quotedLong, _ := json.Marshal(panel)
+	quotedLong, _ := json.Marshal(expectedSubjectProgram(panel))
 	quotedShort, _ := json.Marshal(short)
 	if strings.Count(string(data), string(quotedLong)) != 1 {
 		t.Fatalf("state names %q other than once: %s", panel, data)

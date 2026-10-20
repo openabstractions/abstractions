@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -6,6 +7,8 @@ import tempfile
 import unittest
 
 from oa_bootstrap import load_config, MAX_CONFIG
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from personfolders import setUpModule, tearDownModule  # noqa: E402,F401 (per-user folders in a stand-in)
 
 
 class BootstrapTest(unittest.TestCase):

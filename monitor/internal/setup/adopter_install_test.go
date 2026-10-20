@@ -14,6 +14,8 @@ import (
 	"testing"
 
 	identity "github.com/openabstractions/abstraction-identity"
+	"github.com/openabstractions/abstraction-identity/go/privatedir"
+	"github.com/openabstractions/abstractions/monitor/internal/personfolders"
 )
 
 // standInAdopter is one stand-in OA build: the app ZIP's bytes and the pin
@@ -31,64 +33,96 @@ type standInAdopter struct {
 // digest and its RECORD-set pin, as OA's build does.
 func standInAdopterPins(t *testing.T, version string) ([]byte, []standInAdopter) {
 	t.Helper()
-	commit := strings.Repeat("a", 40)
-	records := sha256.Sum256([]byte("stand-in private Python RECORD set " + version))
-	var adopters []standInAdopter
-	var apps []adopterAssetPin
-	for _, app := range []struct {
-		id        AppID
-		component string
-		identity  string
-		license   string
-	}{
-		{ComfyUI, "comfyui-app", "comfyui-oa", "GPL-3.0-only"},
-	} {
-		_, source := archiveFixture(t, archiveEntry{name: string(app.id) + "-source/README.md", data: "corresponding source " + version})
-		entries := packageEntries(app.component, version)
-		mark, _ := json.Marshal(map[string]string{
-			"corresponding_comfyui_source_zip_sha256": source.SHA256,
-			"private_python_records_sha256":           hex.EncodeToString(records[:]),
-		})
-		entries[0].data = string(mark)
-		appPath, built := archiveFixture(t, entries...)
-		data, err := os.ReadFile(appPath)
-		if err != nil {
-			t.Fatal(err)
-		}
-		pin := adopterAssetPin{
-			ID: string(app.id), BinaryZIP: string(app.id) + "-oa-" + version + "-windows-x64.zip",
-			BinarySHA256: built.SHA256, BinaryBytes: built.Bytes,
-			SourceZIP: string(app.id) + "-oa-" + version + "-source.zip", SourceSHA256: source.SHA256, SourceBytes: source.Bytes,
-			SourceCommit: commit, SourceURL: "https://github.com/openabstractions/abstractions/commit/" + commit,
-			Signer: "unsigned", Version: version, Platform: "windows/amd64", PeakBytes: 4 << 20,
-			License: app.license, Publisher: "openabstractions", InstallIdentity: app.identity,
-			Action: "archive_per_user", RecordsSHA256: hex.EncodeToString(records[:]),
-		}
-		apps = append(apps, pin)
-		adopters = append(adopters, standInAdopter{componentID: app.component, choice: app.id, pin: pin, app: data})
-	}
-	encoded, err := json.Marshal(adopterAssetPins{Schema: 1, ReleaseTag: "v0.4.0", Apps: apps})
+	source, artifact, _, plan := nativeArchiveFixture(t, version)
+	data, err := os.ReadFile(source)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := parseAdopterAssets(encoded); err != nil {
-		t.Fatalf("the stand-in pins document is not in the release schema: %v", err)
+	pin := nativeAppPin(artifact)
+	// The actual native effect owners remain inert. The source-owned roster,
+	// receipt, resource transfer, lifecycle and identity checks still execute.
+	oldCommand, oldExtract, oldInstalled := nativeArchiveCommand, nativeArchiveExtract, nativeArchiveInstalledCommand
+	t.Cleanup(func() {
+		nativeArchiveCommand, nativeArchiveExtract, nativeArchiveInstalledCommand = oldCommand, oldExtract, oldInstalled
+	})
+	user := t.TempDir()
+	if err := privatedir.Tighten(user); err != nil {
+		t.Fatal(err)
 	}
-	return encoded, adopters
+	nativeArchiveCommand = func(_ context.Context, _ sevenZipPin, operation nativeArchiveOperation) ([]byte, error) {
+		switch operation {
+		case nativeArchivePlan:
+			return json.Marshal(plan)
+		case nativeArchiveCheck:
+			return json.Marshal(map[string]string{"user_directory": user})
+		case nativeArchiveSeal, nativeArchiveRegister:
+			return nil, nil
+		default:
+			return nil, errors.New("unexpected native fixture operation")
+		}
+	}
+	nativeArchiveInstalledCommand = func(_ context.Context, _ sevenZipPin, root string) ([]byte, error) {
+		installed := plan
+		installed.InstalledRoot = root
+		return json.Marshal(installed)
+	}
+	nativeArchiveExtract = func(_ context.Context, in sevenZipArchive) error {
+		if in.ArchiveSHA256 != artifact.NativeResources.Backend.Archive.SHA256 || len(in.Parts) != 1 {
+			return errors.New("wrong native fixture resource")
+		}
+		if err := verifyFile(in.Parts[0].Path, Artifact{Bytes: artifact.NativeResources.Backend.Archive.Bytes, SHA256: in.ArchiveSHA256}); err != nil {
+			return err
+		}
+		for name, body := range map[string]string{"manifest.json": "{\"fixture\":true}", "helper/python.exe": "python"} {
+			path := filepath.Join(in.Destination, filepath.FromSlash(name))
+			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+				return err
+			}
+			if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return assetFixtureJSON(t, pin), []standInAdopter{{componentID: "comfyui-app", choice: ComfyUI, pin: pin, app: data}}
 }
 
 // standInCatalog is the windows/amd64 release catalog with the stand-in pins
 // projected over whatever the embedded document lists.
 func standInCatalog(t *testing.T, pins []byte) Catalog {
 	t.Helper()
-	c := catalogForTarget("windows", "amd64")
+	// The portable adopter fixture explicitly pairs with the existing historical
+	// engine fixture. Production's unqualified native engine stays pending.
+	c := unpinnedAppsCatalog()
 	if err := projectAdopterAssets(&c, "windows", "amd64", pins); err != nil {
 		t.Fatal(err)
 	}
+	pinOABuildComfy(t, &c, pins)
 	if err := c.Validate(); err != nil {
 		t.Fatalf("the projected stand-in pins fail catalog validation: %v", err)
 	}
 	return c
+}
+
+// pinOABuildComfy pins the stand-in OA build of ComfyUI as an earlier
+// release's catalogue did: the release installs none (owner, 2026-11-11),
+// and these tests install one to update or remove it.
+func pinOABuildComfy(t *testing.T, c *Catalog, pins []byte) {
+	t.Helper()
+	document, err := parseAdopterAssets(pins)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, app := range document.Apps {
+		if app.ID != string(ComfyUI) {
+			continue
+		}
+		for i := range c.Components {
+			if c.Components[i].ID == "comfyui-app" {
+				c.Components[i].Pending, c.Components[i].Artifact = "", app.artifact(document.ReleaseTag)
+			}
+		}
+	}
 }
 
 // unpinnedAppsCatalog is the windows/amd64 release catalog with the app
@@ -103,24 +137,21 @@ func unpinnedAppsCatalog() Catalog {
 			c.Components[i] = unpinned.Components[i]
 		}
 	}
-	return c
+	return withoutSharedTorch(c)
 }
 
 // standInHome points Setup's per-user folders at a temporary folder, so no
 // test installs on this account, and returns the data folder Setup now
-// resolves (CurrentHome's Data). Each platform reads its own variable:
-// LOCALAPPDATA on Windows, XDG_CACHE_HOME on Linux and HOME on macOS, where
-// the folder is $HOME/Library/Caches. Every test that installs into the
-// person's folders calls this; setting only one platform's variable wrote
-// into the account's real cache elsewhere.
+// resolves (CurrentHome's Data). Every test that installs into the person's
+// folders calls this, so it starts from an empty folder of its own;
+// personfolders.Under sets each platform's variables and makes the folders
+// a real home has.
 func standInHome(t *testing.T) string {
 	t.Helper()
 	person := t.TempDir()
-	t.Setenv("HOME", person)
-	t.Setenv("APPDATA", filepath.Join(person, "Roaming"))
-	t.Setenv("LOCALAPPDATA", filepath.Join(person, "LocalAppData"))
-	t.Setenv("XDG_CACHE_HOME", filepath.Join(person, "LocalAppData"))
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(person, "Roaming"))
+	if err := personfolders.Under(person, t.Setenv); err != nil {
+		t.Fatal(err)
+	}
 	home, err := CurrentHome()
 	if err != nil {
 		t.Fatal(err)
@@ -142,16 +173,34 @@ func installThroughRunner(t *testing.T, ctx context.Context, journal Journal, co
 	transfer := &fakeTransfer{state: "complete", bytes: data}
 	r := NewRunner(journal, transfer)
 	r.RetireGuard = func(context.Context, string, string) error { return nil }
+	r.nativeArchiveFreeBytes = func(string) (uint64, error) { return 1 << 62, nil }
 	for _, want := range phases {
-		if _, err := r.Advance(ctx, componentID); err != nil {
-			t.Fatalf("%s to %s: %v", componentID, want, err)
-		}
-		state, err := journal.Load(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := state.Effects[componentID]; got.Phase != want {
-			t.Fatalf("%s reached %s, want %s: %+v", componentID, got.Phase, want, got)
+		for attempt := 0; ; attempt++ {
+			if attempt > 8 {
+				t.Fatalf("%s did not reach %s", componentID, want)
+			}
+			state, err := journal.Load(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			transfer.bytes = data
+			if state.Effects[componentID].ResourceIndex > 0 {
+				transfer.bytes = []byte("inert encoded backend fixture")
+			}
+			if _, err := r.Advance(ctx, componentID); err != nil {
+				t.Fatalf("%s to %s: %v", componentID, want, err)
+			}
+			state, err = journal.Load(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := state.Effects[componentID]
+			if got.Phase == want {
+				break
+			}
+			if got.Phase != Requested || want != Verified {
+				t.Fatalf("%s reached %s, want %s: %+v", componentID, got.Phase, want, got)
+			}
 		}
 	}
 	return transfer
@@ -168,12 +217,12 @@ func TestStandInPinsOfferTheAppWithNoPendingBlocker(t *testing.T) {
 	for _, adopter := range adopters {
 		for _, component := range c.Components {
 			if component.ID == adopter.componentID && (component.Pending != "" || component.Artifact == nil ||
-				component.Artifact.SHA256 != adopter.pin.BinarySHA256 || component.Artifact.SourceArchiveSHA256 != adopter.pin.SourceSHA256) {
+				component.Artifact.SHA256 != adopter.pin.BinarySHA256 || component.Artifact.NativeResources == nil || component.Artifact.NativeResources.Source.Archive.SHA256 != adopter.pin.CorrespondingSource.Archive.SHA256) {
 				t.Fatalf("%s is not offered from its pin: %+v", adopter.componentID, component)
 			}
 		}
 	}
-	for _, selected := range [][]AppID{{ComfyUI}} {
+	for _, selected := range [][]AppID{{ComfyUI, Lemonade}} {
 		plan, err := c.Plan(selected)
 		if err != nil {
 			t.Fatal(err)
@@ -191,7 +240,7 @@ func TestStandInPinsOfferTheAppWithNoPendingBlocker(t *testing.T) {
 	for _, choice := range c.Choices {
 		titles[choice.ID] = choice.Title
 	}
-	if titles[ComfyUI] != "Create pictures" || titles[OpenCode] != "Use an assistant" {
+	if titles[ComfyUI] != "ComfyUI" || titles[OpenCode] != "OpenCode" {
 		t.Fatalf("the goals are not the chooser's: %v", titles)
 	}
 }
@@ -207,7 +256,7 @@ func TestStandInPackagesInstallWithTheOAMarkAndAreReplacedInPlace(t *testing.T) 
 	pins, adopters := standInAdopterPins(t, "v0.4.0")
 	c := standInCatalog(t, pins)
 	journal := Journal{Path: filepath.Join(t.TempDir(), "setup", "plan.json"), catalogOverride: &c}
-	if _, err := NewRunner(journal, nil).Start(ctx, []AppID{ComfyUI}); err != nil {
+	if _, err := NewRunner(journal, nil).Start(ctx, []AppID{ComfyUI, Lemonade}); err != nil {
 		t.Fatal(err)
 	}
 	roots := map[string]string{}
@@ -226,7 +275,7 @@ func TestStandInPackagesInstallWithTheOAMarkAndAreReplacedInPlace(t *testing.T) 
 		roots[adopter.componentID] = root
 	}
 	comfyRoot := roots["comfyui-app"]
-	if !oaMarkedComfy(filepath.Join(comfyRoot, comfyPortableDirectory)) || !oaMarkedComfy(comfyRoot) {
+	if !oaMarkedComfy(comfyRoot) {
 		t.Fatal("the installed ComfyUI does not carry the OA mark the other-copies reader reads")
 	}
 
@@ -244,7 +293,7 @@ func TestStandInPackagesInstallWithTheOAMarkAndAreReplacedInPlace(t *testing.T) 
 	// A later Setup with a fresh journal recognizes the marked build at its
 	// pinned identity and downloads nothing.
 	again := Journal{Path: filepath.Join(t.TempDir(), "setup", "plan.json"), catalogOverride: &c}
-	if _, err := NewRunner(again, nil).Start(ctx, []AppID{ComfyUI}); err != nil {
+	if _, err := NewRunner(again, nil).Start(ctx, []AppID{ComfyUI, Lemonade}); err != nil {
 		t.Fatal(err)
 	}
 	for _, adopter := range adopters {
@@ -262,7 +311,7 @@ func TestStandInPackagesInstallWithTheOAMarkAndAreReplacedInPlace(t *testing.T) 
 		next.PreviousInstallPins = append(next.PreviousInstallPins, KnownInstallPin{ComponentID: adopter.componentID, Artifact: *adopter.pin.artifact("v0.4.0")})
 	}
 	journal.catalogOverride = &next
-	state, err := journal.SavePlan(ctx, mustPlanOf(t, next, ComfyUI))
+	state, err := journal.SavePlan(ctx, mustPlanOf(t, journal.Catalog(), ComfyUI, Lemonade))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,8 +351,7 @@ func TestStandInPackagesInstallWithTheOAMarkAndAreReplacedInPlace(t *testing.T) 
 		t.Fatal(err)
 	}
 	found, _ := finder.Find()
-	if len(found) != 2 || found[0].App != ComfyUI || found[1].App != ComfyUI ||
-		found[0].Location != filepath.Join(roots["comfyui-app"], comfyPortableDirectory) {
+	if len(found) != 1 || found[0].App != ComfyUI || found[0].Location != roots["comfyui-app"] {
 		t.Fatalf("an unreceipted ComfyUI folder was not reported: %+v", found)
 	}
 }
@@ -401,7 +449,7 @@ func TestOtherCopiesAreReportedRefusedAndLeftUnchangedByABesideInstall(t *testin
 	pins, adopters := standInAdopterPins(t, "v0.4.0")
 	c := standInCatalog(t, pins)
 	journal := Journal{Path: filepath.Join(t.TempDir(), "setup", "plan.json"), catalogOverride: &c}
-	if _, err := NewRunner(journal, nil).Start(ctx, []AppID{ComfyUI}); err != nil {
+	if _, err := NewRunner(journal, nil).Start(ctx, []AppID{ComfyUI, Lemonade}); err != nil {
 		t.Fatal(err)
 	}
 	for _, adopter := range adopters {

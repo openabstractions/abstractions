@@ -7,6 +7,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -24,7 +25,7 @@ import (
 // this test process is authorized against, the way first_use_panel_test.go
 // trusts a fixture runtime. It returns the loaded book, so the test can admit
 // questions directly, and the operator client the tray polls through.
-func trayTestBook(t *testing.T) (*asks.Book, *askclient.Operator) {
+func trayTestBook(t *testing.T, session ...func(*identity.Peer) (string, bool)) (*asks.Book, *askclient.Operator) {
 	t.Helper()
 	own(t)
 	dir := t.TempDir()
@@ -38,6 +39,9 @@ func trayTestBook(t *testing.T) (*asks.Book, *askclient.Operator) {
 	}
 	panelConfigRuntimeWith(t, func(o *host.Options) {
 		o.QuestionBook = book
+		if len(session) > 0 {
+			o.QuestionPresenter = session[0]
+		}
 		o.QuestionEndpoint = listen.Endpoint(fmt.Sprintf("tray-asks-%d", os.Getpid()))
 		o.QuestionOperator = func(ctx context.Context, peer *identity.Peer) error {
 			if !self(ctx, peer) {
@@ -115,9 +119,26 @@ func TestTrayAnnouncerAnnouncesEachNewPendingQuestionOnce(t *testing.T) {
 	}
 }
 
+func TestTrayPollOnlyServiceAdmittedConsent(t *testing.T) {
+	book, _ := trayTestBook(t)
+	ordinary, outcome, err := book.AskApplication("app-scope", "ordinary-app", "ordinary", "download.reach", map[string]string{"host": "example.com"}, listen.Seen{})
+	if err != nil || outcome != "pending" {
+		t.Fatalf("ordinary admission: %s %v", outcome, err)
+	}
+	serviceID := ask(t, book, "service", "one.exe", "abstraction.model/lookup", "hf")
+	fresh, _, unavailable := pollTray(context.Background(), panelMachine(), newTrayAnnouncer())
+	if unavailable || len(fresh) != 1 || fresh[0].ID != serviceID {
+		t.Fatalf("automatic poll included application request: %+v unavailable=%v", fresh, unavailable)
+	}
+	manual := trayQuestionViewForAsker(askclient.RecordMetadata{ID: ordinary.ID, Key: ordinary.Key, Text: ordinary.Text, Options: ordinary.Options}, trayPublisher{}, nil, "")
+	if selection, err := selectNativeQuestionPresentation(manual); err != nil || selection.consent {
+		t.Fatalf("manual legacy review acquired security presentation: %+v %v", selection, err)
+	}
+}
+
 func TestTrayAnnouncerCanRequeuePromptDismissedBySessionLock(t *testing.T) {
 	announcer := newTrayAnnouncer()
-	record := askclient.RecordMetadata{ID: "lock-question"}
+	record := askclient.RecordMetadata{ID: "lock-question", Key: asks.AgentEnrollmentKey}
 	if got := announcer.update([]askclient.RecordMetadata{record}); len(got) != 1 {
 		t.Fatalf("first poll should announce the question, got %+v", got)
 	}
@@ -162,5 +183,43 @@ func TestTrayPollUnavailableRuntimeReportsNoQuestions(t *testing.T) {
 	}
 	if len(fresh) != 0 {
 		t.Fatalf("an unavailable runtime must report no questions, got %+v", fresh)
+	}
+}
+
+func TestTrayMixedQuestionOrderSurvivesDeferral(t *testing.T) {
+	record := func(id, key, at string) askclient.RecordMetadata {
+		return askclient.RecordMetadata{ID: id, Key: key, Asked: at}
+	}
+	legacy := []askclient.RecordMetadata{
+		record("legacy-tie", asks.FirstUseKey, "2026-11-13T09:00:01Z"),
+		record("legacy-later", asks.FirstUseKey, "2026-11-13T09:00:02Z"),
+	}
+	typed := []askclient.RecordMetadata{
+		record("typed-first", asksTypedPermissionKey, "2026-11-13T09:00:00.5Z"),
+		record("typed-tie", asksTypedPermissionKey, "2026-11-13T10:00:01+01:00"),
+	}
+	pending := orderTrayQuestions(legacy, typed)
+	announcer := newTrayAnnouncer()
+	fresh := announcer.update(pending)
+	var presented []string
+	present := func(_ context.Context, row askclient.RecordMetadata) presentResult {
+		presented = append(presented, row.ID)
+		if row.ID == "legacy-tie" && len(presented) == 2 {
+			return presentResult{Outcome: presentDeferred}
+		}
+		return presentResult{Outcome: presentClosed}
+	}
+	for attempt := range 2 {
+		batch := fresh
+		if attempt != 0 {
+			batch = announcer.update(orderTrayQuestions(legacy, typed))
+		}
+		if !presentFresh(t.Context(), batch, present, announcer, func() { t.Fatal("opened Questions") }) {
+			t.Fatal("presentation ended")
+		}
+	}
+	want := []string{"typed-first", "legacy-tie", "legacy-tie", "typed-tie", "legacy-later"}
+	if !slices.Equal(presented, want) {
+		t.Fatalf("presented %v, want %v", presented, want)
 	}
 }

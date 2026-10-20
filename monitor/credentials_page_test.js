@@ -47,19 +47,21 @@ const rotateReply = {Outcome:'rotated', Revision:'rev-3', Current:activeRecord};
 const revokeReply = {Outcome:'revoked', Revision:'rev-1'};
 
 const rightsCalls = [];
+let rightsPages=null;
 const rightsPage = {Outcome:'page', Revision:'policy-rev-1', Catalog:['abstraction.credentials/apply'], Rules:[], Next:'', Complete:true};
 const rightsEditReply = {Outcome:'applied', Revision:'policy-rev-2', Current:{Subject:{Account:'alice',Program:'/usr/bin/app'},Action:'abstraction.credentials/apply',Resource:'credential:hf',Permit:true}};
 
 const context = {URLSearchParams, document:{getElementById:element, createElement:t=>Object.assign(node(),{tagName:String(t).toUpperCase()})}, location:{search:'?k=test'}, console,
  fetch: async (path, opts) => {
   if (path.startsWith('/inference/keys')) return {ok:true, json:async()=>inferenceKeysPage};
+  if (path === '/connect') return {ok:true, json:async()=>JSON.parse(fs.readFileSync(__dirname+'/../openabstractions-flat/abstraction-router/go/hostedcatalogue/presets.json','utf8'))};
   // task 2026-09-23, fourteenth first-time visitor, finding 8: App access'
   // own Program path and Account fields now build the same choosers
   // Rights' own Program and Account fields already use. The program
   // chooser lists registered applications, never the graphics card's
   // running holders.
   if (path === '/card/table') return {ok:true, json:async()=>({resources:[{resource:'card:0', holders:[{program:'C:\\Windows\\System32\\csrss.exe'},{program:'C:\\Windows\\System32\\dwm.exe'}]}]})};
-  if (path === '/apps/registrations?source=applications&wait_ms=0') return {ok:true, json:async()=>({outcome:'page', entries:[{program:'C:\\lms\\llama-server.exe', name:'', role:'application'}]})};
+  if (path === '/apps/registrations?source=applications&wait_ms=0') return {ok:true, json:async()=>({outcome:'page', entries:[{program:'C:\\lms\\llama-server.exe', name:'local-models', title:'Local models', role:'application'}]})};
   if (path === '/explore') return {ok:true, json:async()=>({self:{account:'root', program:'/usr/bin/openabstractions'}, selfAccountName:'reinis', probes:[]})};
   if (path.startsWith('/credentials')) {
    if (!opts || !opts.body) return {ok:true, json:async()=>listPage};
@@ -72,7 +74,7 @@ const context = {URLSearchParams, document:{getElementById:element, createElemen
    throw Error('unexpected credential action ' + body.action);
   }
   if (path.startsWith('/rights')) {
-   if (!opts || !opts.body) return {ok:true, json:async()=>rightsPage};
+   if (!opts || !opts.body) return {ok:true, json:async()=>rightsPages?rightsPages[new URLSearchParams(path.split('?')[1]).get('cursor')||'']:rightsPage};
    const body = JSON.parse(opts.body);
    rightsCalls.push(body);
    return {ok:true, json:async()=>rightsEditReply};
@@ -99,26 +101,33 @@ function pressOnly(value){for(const b of element('add-consumers-select').childre
   const markup = go.slice(go.indexOf('var credentialsPage = '), go.indexOf('<script>'));
   assert(markup.includes('"Keys your apps use for hosted services."'), 'the page caption');
   assert(!markup.includes('id="back"') && !markup.includes('Refresh'), 'no back link and no Refresh button');
-  for (const m of markup.matchAll(/<input[^>]*>/g)) assert(/\bhidden\b|data-oa-secret/.test(m[0]), 'a visible input that is not a secret: ' + m[0]);
+  assert(markup.includes('<dialog id="credential-dialog"')&&markup.includes('for="add-name"'), 'creation is a labelled ordinary dialog');
  }
  await context.addForReady;
  // Nothing is typed until the person asks: the form opens from a row action.
  assert.equal(element('add-form').hidden, true, 'the add form is closed on arrival');
  element('add-open').onclick();
  assert.equal(element('add-form').hidden, false);
- assert.equal(element('add-open-status').textContent, 'Fill in the form below, then Add.');
+ assert.equal(element('add-open-status').textContent, ''); element('add-open').onclick(); assert.equal(element('add-form').hidden,false,'repeated open does not collapse the editor');
  assert.equal(element('allow-form').hidden, true, 'the app access form is closed on arrival');
  element('allow-open').onclick();
  assert.equal(element('allow-open-status').textContent, 'Choose a credential and an app, then Save.');
  assert.deepEqual([...element('add-consumers-select').children].filter(b=>b.pressed).map(b=>b.value), ['abstraction.inference/chat@1'], 'chat is on by default');
- assert.deepEqual(element('add-for').children.map(o=>o.value), ['__other__'], 'with no hosted server, For offers only Other…');
- assert.equal(element('add-name').hidden, false, 'Other… shows the typed name');
+ assert.equal(element('add-for').children.length,3,'hosted provider presets remain available before services are connected');assert.equal(element('add-for').children.at(-1).textContent,'Custom connection');assert(!element('add-for').children.some(o=>o.textContent.includes('GitHub')),'download credentials retain their dedicated correct-scope flow');
+ assert.equal(element('add-name').hidden, false, 'the credential name remains editable');
+ element('add-secret').type='password';element('add-reveal').onclick();assert.equal(element('add-secret').type,'text');element('add-cancel').onclick();assert.equal(element('add-secret').type,'password');assert.equal(element('add-secret').value,'');element('add-open').onclick();
+ element('add-expires').value='date';element('add-expires').onchange();assert.equal(element('add-expiry-date').hidden,false);element('add-expiry-date').value='2000-01-01T12:00';assert.throws(()=>context.credentialExpiryChoice(),/future expiry/);element('add-expiry-date').value='2099-01-02T12:30';assert.equal(context.credentialExpiryChoice(),new Date('2099-01-02T12:30').toISOString());element('add-expires').value='';element('add-expires').onchange();assert.equal(context.credentialExpiryChoice(),'');
 
  // task 2026-09-23, fourteenth first-time visitor, findings 2 and 3: Saved
  // credentials used to open empty until Show credentials was clicked; it
  // now reads on arrival, "Show credentials" renamed Refresh.
  await context.listReady;
  assert.equal(element('records').children.length, 3, 'every record rendered, tombstone and gateway key included, with no click');
+ const providerPreset=JSON.parse(fs.readFileSync(__dirname+'/../openabstractions-flat/abstraction-router/go/hostedcatalogue/presets.json','utf8')).presets.find(p=>p.id===p.credential&&p.kind!=='download');
+ const providerRecord={...activeRecord,Name:providerPreset.credential,Scope:{...activeRecord.Scope,Targets:[new URL(providerPreset.base).hostname]}};
+ const providerRow=context.credentialRow(providerRecord);context.updateCredentialRow(providerRow,providerRecord);
+ assert.equal(providerRow.setupQuestions.hidden,false);assert.equal(providerRow.setupQuestions.href,'/rights?k=test#questions');assert.equal(providerRow.setupQuestions.textContent,'Catalog questions…');
+ const ordinaryRow=context.credentialRow(activeRecord);context.updateCredentialRow(ordinaryRow,activeRecord);assert.equal(ordinaryRow.setupQuestions.hidden,true,'ordinary credentials acquire no setup-state UI');
 
  // task 2026-09-23, fourteenth first-time visitor, finding 8: Program path
  // and Account were bare text boxes on App access while Rights already
@@ -131,24 +140,37 @@ function pressOnly(value){for(const b of element('add-consumers-select').childre
  assert.deepEqual(element('allow-account-select').children.map(o=>[o.value,o.textContent]), [['root','this account, reinis'],['__other__','Other…']], 'the account chooser defaults to this account by name, Other\u2026 last');
  assert.equal(element('allow-account').hidden, true, 'the typed account field stays hidden while the known default is selected');
  assert.equal(element('allow-account').value, 'root');
- // Each saved credential is one oa-row: name, a caption (state, who
- // registered it, what uses it) with the raw values on its title and
- // behind Technical details, and the row actions Replace key… and Remove.
+ // Each saved credential is one oa-row: its name, one caption (when it was
+ // saved and which apps use it), one collapsed Technical details holding
+ // the raw values, and the row actions App access…, Replace key… and Remove.
  const activeBox = element('records').children[0];
  assert.equal(activeBox.className, 'oa-row');
  assert.equal(activeBox.label.textContent, 'hf');
- assert.equal(activeBox.caption.textContent, 'active · registered by app '+context.oaWhen('2024-01-01T00:00:00.000000Z')+' · used by downloads');
- assert.equal(activeBox.caption.title, 'id: hf; /usr/bin/app; registered 2024-01-01T00:00:00.000000Z');
- for (const raw of ['bearer', 'rev-1', 'huggingface.co', 'abstraction.download/http-execution@1', '/usr/bin/app'])
+ assert.equal(activeBox.caption.textContent, 'Saved '+context.oaWhen('2024-01-01T00:00:00.000000Z')+' · Not used by any app yet');
+ assert.equal(activeBox.details.open, undefined, 'Technical details starts collapsed');
+ assert.equal(activeBox.caption.title, '', 'raw identifiers stay in Technical details');
+ const writesBeforeAccess=rightsCalls.length;
+ activeBox.access.onclick();
+ assert.equal(element('allow-name').value,'hf');
+ assert.equal(element('allow-form').hidden,false);
+ assert.equal(rightsCalls.length,writesBeforeAccess,'opening row access grants nothing');
+ for (const raw of ['Name: hf', 'bearer', 'rev-1', 'huggingface.co', 'abstraction.download/http-execution@1', '/usr/bin/app', 'Registered by: app'])
   assert(activeBox.pre.textContent.includes(raw), raw + ' missing from Technical details');
  assert.equal(activeBox.replace.textContent, 'Replace key…');
  assert.equal(activeBox.remove.textContent, 'Remove');
  const revokedBox = element('records').children[1];
- assert.equal(revokedBox.caption.textContent, 'revoked · registered by app '+context.oaWhen('2024-01-01T00:00:00.000000Z')+' · used by model resolve');
+ assert.equal(revokedBox.caption.textContent, 'Removed · Saved '+context.oaWhen('2024-01-01T00:00:00.000000Z'));
  assert.equal(revokedBox.replace.hidden && revokedBox.remove.hidden, true, 'a revoked record offers no row actions');
  const gatewayBox = element('records').children[2];
  assert.equal(gatewayBox.label.textContent, 'Gateway key for python3');
- assert.equal(gatewayBox.caption.title, 'id: local-key.7d0c0be6.a1b2; /usr/bin/app; registered 2024-01-01T00:00:00.000000Z');
+ assert.equal(gatewayBox.caption.title, '');
+ assert(gatewayBox.access.hidden,'gateway keys cannot be applied by the credential applier');
+ assert.equal(context.metaBoxName({...activeRecord,Name:'deepseek',Scope:{Targets:['api.deepseek.com'],Consumers:[]}}),'DeepSeek');
+ assert.equal(context.metaBoxName({...activeRecord,Name:'deepseek'}),'deepseek','a same-name unrelated scope is not labelled as the preset');
+ assert.equal(context.metaBoxName({...gatewayKeyRecord,Name:'local-key.unknown'}),'Gateway key','missing gateway attribution never exposes its opaque name');
+ assert.equal(context.appName('C:\\lms\\llama-server.exe'),'Local models');
+ assert.equal(context.appName('/unknown/unregistered.exe'),'unregistered','unregistered apps use an honest executable fallback');
+ assert.equal(context.appName('remote:'+'a'.repeat(64)),'Paired computer','a remote subject key stays in Technical details');
  // The limits line reads as a sentence, not a "store: ...; kinds: ...; max
  // secret bytes: ...; max credentials: ..." field dump (task 2026-09-23
  // finding 5).
@@ -170,11 +192,11 @@ function pressOnly(value){for(const b of element('add-consumers-select').childre
  // finding 3: it also used to add "List again to see it." while the list
  // under it kept its stale rows; the list reads itself again instead, so
  // that instruction goes too.
- assert.equal(element('add-status').textContent, 'Stored newcred.');
- assert.equal(element('add-status').title, 'Revision rev-2');
- assert.equal(element('add-status').children[0].children[0].textContent, 'Technical details');
- assert(element('add-status').children[0].children[1].textContent.includes('rev-2'));
- assert(!element('add-status').textContent.includes(secretOne), 'the reply never echoes the secret');
+ assert.equal(element('add-open-status').textContent, 'Stored newcred.');
+ assert.equal(element('add-open-status').title, 'Revision rev-2');
+ assert.equal(element('add-open-status').children[0].children[0].textContent, 'Technical details');
+ assert(element('add-open-status').children[0].children[1].textContent.includes('rev-2'));
+ assert(!element('add-open-status').textContent.includes(secretOne), 'the reply never echoes the secret');
  assert.equal(element('records').children.length, 3, 'the list read itself again after a successful add, with no click');
 
  // Replace key… opens the row's editor; Save sends the secret at the
@@ -207,8 +229,7 @@ function pressOnly(value){for(const b of element('add-consumers-select').childre
  // now reads it on arrival, so an empty policy already reads "No app has
  // access yet." with no click.
  await context.allowPolicyReady;
- assert.equal(element('allow-status').textContent, 'No app has access yet.');
- assert.equal(element('allow-status').title, 'Policy revision policy-rev-1');
+ assert.equal(element('allow-status').textContent, 'No saved app access rules.');
 
  element('allow-name-select').value = 'hf'; element('allow-name-select').onchange();
  assert.equal(element('allow-name').value, 'hf');
@@ -227,8 +248,19 @@ function pressOnly(value){for(const b of element('add-consumers-select').childre
  // exist.
  assert.equal(element('allow-status').textContent, '');
  assert.equal(element('allow-rules').children.length, 1, 'the granted rule is its own row');
- assert.equal(element('allow-rules').children[0].textContent, 'Allowed app to apply hf for another account on this device.');
- assert.equal(element('allow-rules').children[0].title, '/usr/bin/app; alice; credential:hf', 'the raw path, account and resource stay reachable as the row\'s own title');
+ assert.equal(element('allow-rules').children[0].sentence.textContent, 'app can use your hf account on another account on this device');
+ assert(element('allow-rules').children[0].children[0].children[1].children[1].textContent.includes('/usr/bin/app'));
+ assert.equal(activeBox.caption.textContent, 'Saved '+context.oaWhen('2024-01-01T00:00:00.000000Z')+' · Used by app', 'the row names the apps that may use the key');
+ assert(!JSON.stringify(activeBox.children.map(c=>c.textContent)).includes('Allowed'), 'no rule sentence inside the credential row');
+ // Row access includes later policy pages; a gap clears all stale authority
+ // display rather than presenting an incomplete list as empty access.
+ rightsPages={'':{...rightsPage,Rules:[],Complete:false,Next:'second'},second:{...rightsPage,Complete:true}};
+ await context.allowPolicyList();
+ assert(activeBox.caption.textContent.endsWith(' · Used by app'));
+ rightsPages.second={Outcome:'gap'};await context.allowPolicyList();
+ assert(activeBox.caption.textContent.endsWith(' · App access could not be read'));
+ assert.equal(element('allow-rules').children.length,0);
+ rightsPages=null;await context.allowPolicyList();
  rightsPage.Rules = [];
  element('allow-account').value = 'alice'; element('allow-program').value = '/usr/bin/app'; element('allow-permit').value = 'permit';
  await element('allow-form').onsubmit({preventDefault(){}});
@@ -244,7 +276,7 @@ function pressOnly(value){for(const b of element('add-consumers-select').childre
  // to add "List rights policy again before another edit." while the
  // policy list under it kept its stale state; the policy list reads
  // itself again instead.
- assert.equal(element('allow-save-status').textContent, 'Allowed app to apply hf for another account on this device.', 'Save\'s own confirmation now reads through the same accessSentence the list rows do, account included');
+ assert.equal(element('allow-save-status').textContent, 'app can use your hf account on another account on this device.', 'Save\'s own confirmation uses the row formatter');
  assert.equal(element('allow-save-status').title, 'Program: /usr/bin/app; Account: alice; id: hf; revision policy-rev-1', 'the raw program path and account sit in Technical details, not the visible sentence');
  assert.equal(element('allow-save-status').children[0].children[0].textContent, 'Technical details');
 
@@ -256,7 +288,7 @@ function pressOnly(value){for(const b of element('add-consumers-select').childre
  element('add-targets').value = 'a.com'; pressOnly('abstraction.download/http-execution@1');
  element('add-secret').value = secretOne;
  await element('add-form').onsubmit({preventDefault(){}});
- assert.equal(element('add-status').textContent, 'The runtime did not permit this Panel to do this; nothing was changed. It needs the “credentials holder manage” permission.');
+ assert.equal(element('add-status').textContent, 'OpenAbstractions did not permit this Panel to do this; nothing was changed. It needs the “credentials holder manage” permission.');
  const addDetails = element('add-status').children[0];
  assert.equal(addDetails.className, 'oa-error-details');
  assert.match(addDetails.children[1].textContent, /not permitted for this Panel/);
@@ -313,5 +345,23 @@ function pressOnly(value){for(const b of element('add-consumers-select').childre
  });
  const box = element('records').children[1];
  assert(box.caption.textContent.includes(context.oaLocalTime('2025-01-01T00:00:00.000000Z')), 'the row updated in place');
+ let connectRefreshes=0;context.connectChanged=async()=>{connectRefreshes++};
+ await context.credentialsTick();assert.equal(connectRefreshes,1,'the existing page refresh also rereads service connections, without another timer');
+ const beforeInvalidScope=credentialCalls.length;
+ for(const option of element('add-consumers-select').children)if(option.pressed)option.onclick();
+ element('add-name').value='dated-key';element('add-targets').value='api.example.com';element('add-secret').value=secretOne;
+ await element('add-form').onsubmit({preventDefault(){}});assert.equal(credentialCalls.length,beforeInvalidScope,'an empty allowed-use scope never reaches the service');
+ assert(element('add-status').textContent.includes('at least one'));
+ pressOnly('abstraction.inference/chat@1');element('add-consumers').value='abstraction.download/http-execution@1';
+ // Native form.reset restores values but leaves dependent hidden/required state.
+ element('add-form').reset=()=>{element('add-kind').value='bearer';element('add-expires').value='';element('add-expiry-date').value=''};
+ element('add-kind').value='header';element('add-header').value='X-Api-Key';element('add-kind').onchange();assert.equal(element('add-header').required,true);
+ element('add-expires').value='date';element('add-expires').onchange();element('add-expiry-date').value='2099-01-02T12:30';element('add-secret').value=secretOne;
+ await element('add-form').onsubmit({preventDefault(){}});
+ assert.equal(credentialCalls.at(-1).expires,new Date('2099-01-02T12:30').toISOString());
+ assert.deepEqual(credentialCalls.at(-1).consumers,['abstraction.inference/chat@1'],'unchecked custom-use text never expands the scope');
+ element('add-open').onclick();assert.equal(element('add-expires').value,'');assert.equal(element('add-expiry-date').required,false);assert.equal(element('add-expiry-date').hidden,true);assert.equal(element('add-header').required,false);assert.equal(element('add-header').hidden,true);assert.equal(element('add-secret').type,'password');
+ element('add-name').value='never-key';element('add-targets').value='api.example.com';element('add-secret').value=secretOne;
+ await element('add-form').onsubmit({preventDefault(){}});assert.equal(credentialCalls.at(-1).expires,'');assert.equal(credentialCalls.at(-1).kind,'bearer');
  console.log('PASS: credentials page lists metadata and limits, adds/rotates/revokes at the listed revision, allows through /rights at the listed policy revision, never echoes a secret, and names a blank required field on each form, App access Save included');
 })().catch(e => { console.error(e); process.exitCode = 1; });

@@ -1,17 +1,93 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-resource/go/instrument"
 	resourceservice "github.com/openabstractions/abstraction-resource/go/service"
+	rightswire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
+	rightsclient "github.com/openabstractions/abstraction-rights/go/client"
 	router "github.com/openabstractions/abstraction-router/go"
 )
+
+type standingFixtureInstrument struct{ fakeInstrument }
+
+func (standingFixtureInstrument) Read(resource string) (instrument.Reading, error) {
+	return instrument.Reading{Resource: resource, Capacity: 1024, At: time.Now()}, nil
+}
+
+func TestResourceStandingEvaluatedOutcomesRetainOrRevoke(t *testing.T) {
+	for _, tc := range []struct {
+		outcome             rightswire.DecisionOutcome
+		retained, uncertain bool
+	}{
+		{rightswire.DecisionOutcomePermitted, true, false},
+		{rightswire.DecisionOutcomeDenied, false, false},
+		{rightswire.DecisionOutcomeNotGranted, false, false},
+		{rightswire.DecisionOutcomeUnknownAction, false, false},
+		{rightswire.DecisionOutcomeInvalid, true, true},
+		{rightswire.DecisionOutcomeForbidden, true, true},
+		{rightswire.DecisionOutcomeUnavailable, true, true},
+	} {
+		t.Run(tc.outcome.String(), func(t *testing.T) {
+			current := rightswire.DecisionOutcomePermitted
+			who := resourceservice.Subject{Account: "fixture", Program: `C:\fixture\holder.exe`}
+			book, err := resourceservice.OpenBook(resourceservice.BookOptions{
+				Table: resourceservice.NewTable(standingFixtureInstrument{}, nil, time.Nanosecond),
+				Hold:  func(context.Context, *identity.Peer, string, string) error { return nil },
+				Standing: func(_ context.Context, subject resourceservice.Subject, _, resource string) error {
+					return resourceStandingRefusal(current, subject, resource)
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := book.Acquire(t.Context(), who, &identity.Peer{}, instrument.Card0, 64, 0); got.Lease == nil {
+				t.Fatal("fixture lease not acquired", got)
+			}
+			current = tc.outcome
+			err = book.RecheckChecked(t.Context())
+			if errors.Is(err, resourceservice.ErrPolicyUnavailable) != tc.uncertain || (len(book.Leases()) == 1) != tc.retained {
+				t.Fatalf("outcome %s: retained=%v error=%v", tc.outcome, book.Leases(), err)
+			}
+		})
+	}
+}
+
+func TestHoldRefusalEvaluatedDecisionOutcomes(t *testing.T) {
+	for _, outcome := range rightswire.DecisionOutcomeValues() {
+		t.Run(outcome.String(), func(t *testing.T) {
+			evaluated := outcome == rightswire.DecisionOutcomePermitted || outcome == rightswire.DecisionOutcomeDenied || outcome == rightswire.DecisionOutcomeNotGranted || outcome == rightswire.DecisionOutcomeUnknownAction
+			// Only an evaluated deny keeps an app's memory; any other evaluated
+			// outcome asks the holder (RES-L3's switch is on by default), and
+			// an outcome never evaluated reads unavailable.
+			yielded := yieldRefusal(outcome, `C:\fixture\holder.exe`)
+			denied := outcome == rightswire.DecisionOutcomeDenied
+			if (yielded == nil) != (evaluated && !denied) || errors.Is(yielded, resourceservice.ErrPolicyUnavailable) == evaluated {
+				t.Fatal("yield outcome classification", outcome, yielded)
+			}
+			if outcome == rightswire.DecisionOutcomePermitted {
+				return // A permitted Require returns nil, never a DecisionError.
+			}
+			refusal := &rightsclient.DecisionError{Outcome: outcome.String()}
+			if evaluated {
+				refusal.PolicyRevision = "revision"
+			}
+			got := holdRefusal(refusal)
+			if errors.Is(got, resourceservice.ErrPolicyUnavailable) == evaluated {
+				t.Fatalf("outcome %s: evaluated=%v, error=%v", outcome, evaluated, got)
+			}
+		})
+	}
+}
 
 // fakeInstrument reports the samples a test writes.
 type fakeInstrument struct {
@@ -57,6 +133,17 @@ func TestADownHostClaimsNothing(t *testing.T) {
 	})()
 	if len(claims) != 0 {
 		t.Fatalf("a down host claimed %+v", claims)
+	}
+}
+
+// A native provider's residents are rows of its own leases; the router's
+// resident list for it adds no second claim (MODELHOST-H1, MODELHOST-H10).
+func TestANativeHostClaimsNothingBesideItsLease(t *testing.T) {
+	claims := hostClaims(func() []router.HostState {
+		return []router.HostState{{Host: "modelhost", Up: true, Wire: router.WireNative, Resident: []string{"qwen3.6-35b-a3b"}}}
+	})()
+	if len(claims) != 0 {
+		t.Fatalf("a native host claimed %+v", claims)
 	}
 }
 
@@ -128,10 +215,10 @@ func (f *fakeLMStudio) start(t *testing.T) *httptest.Server {
 // A claimed host: row comes from the router's last survey (CONTRACT.md
 // RES-T3). A caller that does not ask for fresh keeps the row that survey
 // found even after the fake host stops reporting the model resident, the
-// same way an attached engine's yield would leave the claim standing until
-// something surveys again. fresh asks the table's refresh hook for a new
+// same way a model the person unloads in the engine leaves the claim standing
+// until something surveys again. fresh asks the table's refresh hook for a new
 // survey first, so the row is gone the moment that survey sees it gone.
-func TestTableFreshResurveysAHostSoAYieldedClaimIsGone(t *testing.T) {
+func TestTableFreshResurveysAHostSoAnUnloadedClaimIsGone(t *testing.T) {
 	host := &fakeLMStudio{loaded: 1}
 	srv := host.start(t)
 
@@ -152,8 +239,8 @@ func TestTableFreshResurveysAHostSoAYieldedClaimIsGone(t *testing.T) {
 		t.Fatalf("expected the loaded model claimed, got %+v", state.Holders)
 	}
 
-	// The model host now says the model let go, the way it would answer
-	// after an attached holder yielded it. The router has not surveyed again.
+	// The engine now says the model let go. The router has not surveyed
+	// again.
 	atomic.StoreInt32(&host.loaded, 0)
 
 	state, err = table.Holders(instrument.Card0, false)

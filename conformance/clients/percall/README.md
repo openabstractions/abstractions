@@ -14,7 +14,7 @@ Clients: Go (`listen.FrameClient`), C++, Python and Rust (the shared
 `abstraction_ipc` library), JavaScript through the Node-API addon, and
 JavaScript through the test-only `node:net` connector. Each runs with a
 connection per call and, except the pipe connector, on a session
-(`listen/FRAMING.md` "Sessions").
+(`listen/FRAMING.md` [Sessions](https://openabstractions.github.io/reference.html#concept-identity.frame-sessions)).
 
 `--breakdown` times each server and client step of a Go call on a fresh
 connection, on one bound connection, and on a session (`breakdown/main.go`).

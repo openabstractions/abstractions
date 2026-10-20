@@ -38,7 +38,7 @@ func TestLockedLemonadeProgramKeepsTheUpdateStaged(t *testing.T) {
 				if errors.Is(err, lemonade.ErrPackageRefused) {
 					code = 2
 				}
-				return nil, &lemonadeExit{Code: code, Reason: err.Error()}
+				return nil, &providerExit{Engine: "Lemonade", Code: code, Reason: err.Error()}
 			}
 			return json.Marshal(map[string]any{"version": 1, "ok": true, "backend_archive_sha256": p.BackendArchiveSHA256, "model_revision": p.ModelRevision})
 		}

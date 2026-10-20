@@ -12,6 +12,12 @@ import subprocess
 PREFIX = "github.com/openabstractions/"
 FACADE = PREFIX + "abstraction-facade/go"
 TARGETS = (FACADE, FACADE + "/client")
+# Existing pure owners: STO-D1 (ARCHITECTURE.md), the ASK-O14 catalogue and
+# authority presentation. Dependencies remain traversed; these exact package
+# classifications cannot conceal a provider import or admit other subpackages.
+PURE_OWNERS = {PREFIX + "abstraction-storage/go/digest",
+               PREFIX + "abstraction-asks/go/catalogue",
+               PREFIX + "abstraction-asks/go/typedpermission"}
 # Capability modules combine protocol/client packages with concrete providers.
 # Their root and implementation subpackages are provider code. Generated
 # protocol namespaces and explicit client subtrees remain valid dependencies.
@@ -21,6 +27,8 @@ PROVIDERS = tuple(PREFIX + "abstraction-" + name + "/go" for name in
 
 
 def forbidden(path):
+    if path in PURE_OWNERS:
+        return False
     if path.startswith(FACADE + "/"):
         return path.split("/")[4] in {"legacy", "runtime", "service", "serve"}
     for root in PROVIDERS:

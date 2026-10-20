@@ -21,7 +21,7 @@ import (
 // runtime it is connected to, and the identity verdict, each a row.
 var identitySection = `<section id="identity" class="oa-group"><h2>About</h2>` +
 	oaRow("Version", "", `<span id="about-version">`+html.EscapeString(panelVersionText())+`</span>`, "") +
-	oaRow("Runtime", "", "", "about-runtime") +
+	runtimeEcho(oaRow("Connection", "", "", "about-runtime")) +
 	// This Panel: one caption (when it was checked), a short verdict as the
 	// row's status line, and the full explanation in its Technical details.
 	strings.TrimSuffix(strings.Replace(oaRow("This Panel", "Checking…", `<button id="identity-check" type="button">Check again</button>`, "identity-status"),
@@ -50,7 +50,7 @@ const identityMechanismText={'identity/windows':'the Windows identity check','id
 function identityMechanismPhrase(m){return identityMechanismText[m]||m}
 const identityTransportText={npipe:'a named pipe',unix:'a Unix domain socket'};
 function identityTransportPhrase(t){return identityTransportText[t]||t}
-const identityCodeText={signed:'the runtime\'s program is code-signed on this machine',bound:'the runtime\'s program is verified by content match but not code-signed on this machine',unsigned:'the runtime\'s program is not code-signed on this machine',none:'the runtime\'s program\'s code identity is not verified on this machine'};
+const identityCodeText={signed:'OpenAbstractions\' program is code-signed on this machine',bound:'OpenAbstractions\' program is verified by content match but not code-signed on this machine',unsigned:'OpenAbstractions\' program is not code-signed on this machine',none:'OpenAbstractions\' program\'s code identity is not verified on this machine'};
 const identityProofPhrase={kernel:'proven by the operating system',signed:'proven by a validated code signature',bound:'proven by a bound handle to the process',pid:'proven by process id, a weaker check',claimed:'only the peer\'s own claim',none:'not proven',invalid:'a signature the operating system rejected',unmet:'signed, but not by what this call required'};
 // identityAttributeOK marks a row that needs no attention: it reached what
 // this transport can prove, or its shortfall is the one every development
@@ -60,15 +60,15 @@ function identityAttributeLine(a){const reachedMax=a.proof===a.ceiling;switch(a.
  case 'user':return 'Who is connected: '+(identityProofPhrase[a.proof]||a.proof)+(reachedMax?', the strongest proof this connection allows.':'; this connection could prove more.');
  case 'process':return 'Which process: '+(identityProofPhrase[a.proof]||a.proof)+(reachedMax?', the strongest proof this connection allows.':'; this connection could prove more.');
  case 'path':return a.proof==='none'||a.proof==='claimed'?'Which program: not proven.':'Which program: proven by its path.';
- case 'package':if(a.proof==='none')return 'Signed package: none; this connection could prove one. Expected for a development build; an installed runtime carries one.';return 'Signed package: '+(reachedMax?'signed.':(identityProofPhrase[a.proof]||a.proof)+'.');
+ case 'package':if(a.proof==='none')return 'Signed package: none; this connection could prove one. Expected for a development build; an installed OpenAbstractions carries one.';return 'Signed package: '+(reachedMax?'signed.':(identityProofPhrase[a.proof]||a.proof)+'.');
  case 'code':if(a.proof==='unsigned')return 'Signed code: not signed; expected for a development build.';return 'Signed code: '+(reachedMax?'signed.':(identityProofPhrase[a.proof]||a.proof)+'.');
  default:return a.attribute+': '+(identityProofPhrase[a.proof]||a.proof)+'.';
 }}
 function identityProofClause(v){const bind=v.ceiling.bindable?'The connection is proven by the operating system':'The connection is not proven by the operating system';const code=(v.runtime.attributes||[]).find(a=>a.attribute==='code');const codeClause=code&&identityCodeText[code.proof];return codeClause?bind+'; '+codeClause+'.':bind+'.'}
 // identityShortVerdict is the row's status line: one short sentence and its
 // state; identityVerdict, the full explanation, sits in Technical details.
-function identityShortVerdict(v){const r=v.runtime;if(r.outcome==='observed')return v.ceiling.bindable?['Verified by the operating system.','ok']:['Connected; the operating system does not prove this connection.','ok'];if(r.absent)return ['No runtime is reachable.','error'];return ['Not confirmed.','error']}
-function identityVerdict(v){const r=v.runtime;if(r.outcome==='observed')return(v.explicit?'This Panel is talking to the runtime it was started for.':'This Panel is talking to the runtime installed on this machine.')+' '+identityProofClause(v);if(r.absent)return 'This Panel cannot reach a runtime right now: '+(v.selection.detail||r.error||'no runtime is reachable')+'.';return 'This Panel could not confirm which runtime it is talking to.'}
+function identityShortVerdict(v){const r=v.runtime;if(r.outcome==='observed')return v.ceiling.bindable?['Verified by the operating system','ok']:['Connected; the operating system does not prove this connection','ok'];if(r.absent)return ['OpenAbstractions is not reachable.','error'];return ['Not confirmed.','error']}
+function identityVerdict(v){const r=v.runtime;if(r.outcome==='observed')return(v.explicit?'This Panel is talking to the OpenAbstractions it was started for.':'This Panel is talking to the OpenAbstractions installed on this machine.')+' '+identityProofClause(v);if(r.absent)return 'This Panel cannot reach OpenAbstractions right now.';return 'This Panel could not confirm which OpenAbstractions it is talking to.'}
 // renderIdentity used to lay out every paragraph this check produces
 // directly on the page: the selection warning, each platform declaration,
 // every proof attribute, every capability line, the logging service's own
@@ -94,7 +94,7 @@ if(r.outcome==='observed'){
 // in plain words, with the raw SID, full path and pid kept on the
 // sentence's own title (task 2026-09-23, eighth first-time visitor,
 // finding 7).
-identityPara(body,'Your account, '+(r.accountName||r.account)+', running '+shortName(r.program)+', established by '+identityMechanismPhrase(r.mechanism)+' over '+identityTransportPhrase(r.transport)+'.','verified','account '+r.account+'; program '+r.program+'; pid '+r.pid);let allOK=true;for(const a of r.attributes){const ok=identityAttributeOK(a);if(!ok)allOK=false;identityPara(body,identityAttributeLine(a),ok?'verified':'error')}identityPara(body,allOK?'Nothing here needs your attention.':'Some of what is proven here falls short of what this connection allows; check the rows above.')}else{if(r.outcome)identityPara(body,'The runtime answered '+r.outcome+' and showed no identity.','error');else identityPara(body,(r.absent?'The runtime is absent: ':'The runtime refused this Panel: ')+r.error,'error');const c=v.ceiling;identityPara(body,'This transport can prove at most: user '+c.best.user+', process '+c.best.process+', path '+c.best.path+', package '+c.best.package+', code '+c.best.code+'. '+(c.bindable?'A binding pins the caller\'s process.':'No binding pins the caller\'s process.'))}
+identityPara(body,'Your account, '+(r.accountName||r.account)+', running '+shortName(r.program)+', established by '+identityMechanismPhrase(r.mechanism)+' over '+identityTransportPhrase(r.transport)+'.','verified','account '+r.account+'; program '+r.program+'; pid '+r.pid);let allOK=true;for(const a of r.attributes){const ok=identityAttributeOK(a);if(!ok)allOK=false;identityPara(body,identityAttributeLine(a),ok?'verified':'error')}identityPara(body,allOK?'Nothing here needs your attention.':'Some of what is proven here falls short of what this connection allows; check the rows above.')}else{if(r.outcome)identityPara(body,'OpenAbstractions showed no identity for this Panel.','error');else identityPara(body,r.absent?'OpenAbstractions is not reachable.':oaPlain(r.error).line,'error');const c=v.ceiling;identityPara(body,'This transport can prove at most: user '+c.best.user+', process '+c.best.process+', path '+c.best.path+', package '+c.best.package+', code '+c.best.code+'. '+(c.bindable?'A binding pins the caller\'s process.':'No binding pins the caller\'s process.'))}
 // Each capability line used to name its own contract id inline, "Logging
 // (abstraction.logging/sink@1): Ready for this Panel." (task 2026-09-23,
 // seventh first-time visitor, finding 2: an id is never visible page text).
@@ -111,8 +111,8 @@ heading(body,'How the logging service bound this Panel');const L=v.logging;
 // sentence; the raw path, account and pid sit on this sentence's own title
 // (task 2026-09-23, ninth first-time visitor, finding 1).
 function loggingStandingPhrase(stamp){return stamp.standing==='established'?'verified by '+identityMechanismPhrase(stamp.by):(identityStandingText[stamp.standing]||stamp.standing)}
-if(L.outcome==='found'){if(L.claim)identityPara(body,'The Panel wrote a record claiming to be '+L.claim.program+'.','claim');if(L.stamp)identityPara(body,'The logging service saw the same: your account, '+(L.stamp.accountName||L.stamp.user||L.stamp.uid)+', running '+shortName(L.stamp.exe)+', '+loggingStandingPhrase(L.stamp)+'.',L.stamp.standing==='established'?'verified':'asserted','executable '+L.stamp.exe+'; account '+(L.stamp.user||L.stamp.uid)+'; pid '+L.stamp.pid);if(L.agreesWithRuntime===true)identityPara(body,'The logging service and the runtime bound the same program, account and process.');if(L.agreesWithRuntime===false)identityPara(body,'The logging service and the runtime disagree about this Panel.','error')}
-else identityPara(body,L.absent?'The runtime is absent: '+L.error:'The logging service did not show its view: '+(L.error||L.outcome),'error');
+if(L.outcome==='found'){if(L.claim)identityPara(body,'The Panel wrote a record claiming to be '+L.claim.program+'.','claim');if(L.stamp)identityPara(body,'The logging service saw the same: your account, '+(L.stamp.accountName||L.stamp.user||L.stamp.uid)+', running '+shortName(L.stamp.exe)+', '+loggingStandingPhrase(L.stamp)+'.',L.stamp.standing==='established'?'verified':'asserted','executable '+L.stamp.exe+'; account '+(L.stamp.user||L.stamp.uid)+'; pid '+L.stamp.pid);if(L.agreesWithRuntime===true)identityPara(body,'The logging service and OpenAbstractions bound the same program, account and process.');if(L.agreesWithRuntime===false)identityPara(body,'The logging service and OpenAbstractions disagree about this Panel.','error')}
+else identityPara(body,L.absent?'OpenAbstractions is not reachable.':'The logging service did not show its view.','error');
 heading(body,'Limits on this platform');
 const limits=document.createElement('ul');for(const l of v.limits){const li=document.createElement('li');li.textContent=l;limits.append(li)}body.append(limits);
 const pre=document.createElement('pre');pre.textContent=JSON.stringify(v,null,2);body.append(pre)}
@@ -121,7 +121,7 @@ const pre=document.createElement('pre');pre.textContent=JSON.stringify(v,null,2)
 // 2026-09-23, twelfth first-time visitor, finding 1: the other pages
 // already read themselves on arrival). It now also runs once, unclicked, as
 // soon as the page's own script loads; Check identity still re-runs it.
-async function identityCheck(){show('identity-status','Checking identity...');try{const v=await call('/identity');renderIdentity(v);const[verdict,state]=identityShortVerdict(v);oaSetStatus('identity-status',state,verdict);el('identity-checked').textContent='Checked '+oaWhen(v.checkedAt)+'.';el('identity-checked').title=v.checkedAt}catch(e){el('identity-view').replaceChildren();fail('identity-status',e)}}
+async function identityCheck(){show('identity-status','Checking identity...');try{const v=await call('/identity');renderIdentity(v);const[verdict,state]=identityShortVerdict(v);if(v.runtime.absent)oaRuntimeEcho('identity-status',()=>oaSetStatus('identity-status',state,verdict));else oaSetStatus('identity-status',state,verdict);el('identity-checked').textContent='Checked '+oaWhen(v.checkedAt);el('identity-checked').title=v.checkedAt}catch(e){el('identity-view').replaceChildren();fail('identity-status',e)}}
 el('identity-check').onclick=identityCheck;
 var identityCheckReady=identityCheck();
 `

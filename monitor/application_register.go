@@ -7,40 +7,26 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 
 	fwire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	"github.com/openabstractions/abstraction-facade/go/client"
+	"github.com/openabstractions/abstractions/monitor/internal/setup"
 )
 
 // An application's own installer starts the Panel with the application's
 // Facade application manifest (`--register-application <file>`) or its name
-// (`--remove-application <name>`); the person confirms on this generic page
-// and the Panel registers or removes the entry with its own
-// application.manage (VISION 2026-10-06). Nothing changes without the click,
-// and every text the page shows comes from the manifest file or the
-// registered entry, escaped as untrusted text.
-
-// applicationRequest is the one change an installer asked this Panel run for.
-type applicationRequest struct {
-	mu sync.Mutex
-	// register is the manifest to register; remove is the name to remove.
-	// Exactly one is set until the person confirms or cancels.
-	register *fwire.ApplicationDescriptor
-	remove   string
-	// done is the sentence the confirm or cancel wrote; a request is settled
-	// once.
-	done string
-}
+// (`--remove-application <name>`). The run asks nothing and opens no window
+// (application_native.go): the Panel registers or removes the entry with its
+// own application.manage (VISION 2026-10-06, amended 2026-11-10). A
+// registration the service refuses waits in Apps as Not connected, where
+// Connect replaces an entry only on the person's click
+// (application_pending.go). Every text shown comes from the manifest file or
+// the registered entry, as untrusted text.
 
 // readApplicationManifest reads and checks the installer's manifest file
 // before anything is shown.
@@ -58,17 +44,48 @@ func readApplicationManifest(path string) (fwire.ApplicationDescriptor, error) {
 	if err != nil {
 		return fwire.ApplicationDescriptor{}, err
 	}
-	localAppData, pictures, err := accountFolders()
+	localAppData, pictures, err := manifestAccountFolders()
 	if err != nil {
 		return fwire.ApplicationDescriptor{}, fmt.Errorf("this account's folders could not be read: %w", err)
 	}
 	folders := manifestFolders{"app": filepath.Dir(absolute), "local_app_data": localAppData, "pictures": pictures}
-	return client.ParseApplicationDescriptorResolving(data, folders.resolve)
+	official := manifestOfficialProgram(data, localAppData)
+	return client.ParseApplicationDescriptorResolving(data, func(value string, program bool) (string, error) {
+		if program {
+			return folders.resolveProgram(value, official)
+		}
+		return folders.resolve(value, false)
+	})
 }
+
+// manifestOfficialProgram is the official program OA's compiled catalog names
+// for the app this manifest registers, placed in this account's local
+// application data folder; none for any other app.
+func manifestOfficialProgram(data []byte, localAppData string) officialProgram {
+	var named struct {
+		Name string `json:"name"`
+	}
+	if json.Unmarshal(data, &named) != nil || !validApplicationName(named.Name) || localAppData == "" {
+		return officialProgram{}
+	}
+	official, ok := catalogOfficialProgram(setup.AppID(named.Name))
+	if !ok || official.LocalAppData == "" || official.Signer == "" {
+		return officialProgram{}
+	}
+	return officialProgram{Program: filepath.Join(localAppData, filepath.FromSlash(official.LocalAppData)), Signer: official.Signer}
+}
+
+// catalogOfficialProgram is setup.OfficialProgramOf; tests stand in a
+// fixture app.
+var catalogOfficialProgram = setup.OfficialProgramOf
+
+// manifestAccountFolders is accountFolders; a test names its own folders.
+var manifestAccountFolders = accountFolders
 
 // reservedTitleRefusal is the one sentence the Panel gives an installer's
 // manifest whose title is a product name (reservedTitle): an app may not
-// read as OpenAbstractions in the Panel or the native prompt.
+// read as OpenAbstractions in the Panel. The refusal is logged and listed in
+// Activity.
 const reservedTitleRefusal = "This app's title is a name OpenAbstractions uses for itself, so the Panel does not register it."
 
 // applicationDigest identifies one manifest the person saw; "" is none.
@@ -97,213 +114,8 @@ func registeredApplication(ctx context.Context, apps setupApplications, name str
 	return nil, true
 }
 
-// applicationDetails renders one manifest as escaped rows.
-func applicationDetails(heading string, d *fwire.ApplicationDescriptor) string {
-	e := html.EscapeString
-	var b strings.Builder
-	b.WriteString(`<div class="oa-app-manifest"><h2>` + e(heading) + `</h2><dl>`)
-	row := func(label, value string) {
-		b.WriteString(`<dt>` + e(label) + `</dt><dd>` + value + `</dd>`)
-	}
-	row("Title", e(d.Title))
-	row("Name", `<code>`+e(d.Name)+`</code>`)
-	row("Program", `<code>`+e(d.Program)+`</code>`)
-	if d.StartGuidance != "" {
-		row("Start guidance", e(d.StartGuidance))
-	}
-	if d.Activation == nil {
-		row("Start", "OpenAbstractions cannot start it.")
-	} else {
-		var args strings.Builder
-		for _, argument := range d.Activation.Arguments {
-			args.WriteString(`<code>` + e(argument) + `</code> `)
-		}
-		if len(d.Activation.Arguments) == 0 {
-			args.WriteString("none")
-		}
-		row("Start arguments", args.String())
-		r := d.Activation.Readiness
-		row("Ready when it announces", `<code>`+e(r.Name)+`</code> (`+e(r.Protocol)+`, `+e(r.Contract)+`) within `+
-			strconv.FormatInt(d.Activation.ReadinessTimeoutMs, 10)+` ms`)
-	}
-	b.WriteString(`</dl></div>`)
-	return b.String()
-}
-
-// applicationButtons are the confirm and cancel buttons of one request. The
-// confirm button carries the digest of the registered entry the page showed;
-// the Panel refuses the click when the entry changed since.
-func applicationButtons(base, verb, shown string) string {
-	return `<p><button class="app-action" data-path="` + base + `/confirm" data-confirm="true" data-shown="` +
-		html.EscapeString(shown) + `">` + verb + `</button> <button class="app-action" data-path="` + base +
-		`/cancel" data-confirm="false" data-shown="">Cancel</button></p>`
-}
-
-const applicationPageScript = `<script>
-const key=new URLSearchParams(location.search).get('k');
-const buttons=document.querySelectorAll('.app-action');
-async function settle(button){const status=document.getElementById('app-status');
-for(const b of buttons)b.disabled=true;
-try{const r=await fetch(button.dataset.path,{method:'POST',headers:{'X-Panel-Key':key,'Content-Type':'application/json'},
-body:JSON.stringify({confirm:button.dataset.confirm==='true',shown:button.dataset.shown})});
-const text=await r.text();if(!r.ok)throw Error(text);status.textContent=JSON.parse(text).message}
-catch(e){oaShowError('app-status',e);for(const b of buttons)b.disabled=false}}
-for(const b of buttons)b.addEventListener('click',()=>settle(b));
-</script>`
-
-// applicationRegisterPage is the confirmation for the installer's manifest.
-func (p *servicePanel) applicationRegisterPage(key string) http.HandlerFunc {
-	return guard(key, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "GET required", http.StatusMethodNotAllowed)
-			return
-		}
-		request := &p.appRequest
-		request.mu.Lock()
-		pending, done := request.register, request.done
-		request.mu.Unlock()
-		var b strings.Builder
-		b.WriteString(`<h1>Register an application</h1>`)
-		switch {
-		case done != "":
-			b.WriteString(`<p>` + html.EscapeString(done) + `</p>`)
-		case pending == nil:
-			b.WriteString(`<p>No installer asked this window to register an application.</p>`)
-		case reservedTitle(pending.Title):
-			b.WriteString(`<p>` + html.EscapeString(reservedTitleRefusal) + `</p>`)
-			b.WriteString(applicationDetails("Application", pending))
-			b.WriteString(`<p><button class="app-action" data-path="/application/register/cancel" data-confirm="false" data-shown="">Close</button></p>`)
-		default:
-			ctx, cancel := panelCall(r)
-			defer cancel()
-			var existing *fwire.ApplicationDescriptor
-			readable := false
-			if apps, err := p.setupApplicationsForPanel(ctx); err == nil {
-				existing, readable = registeredApplication(ctx, apps, pending.Name)
-			}
-			b.WriteString(`<p>An installer asks to add this application to OpenAbstractions. Registering grants it no permissions; it asks for those when it needs them.</p>`)
-			if existing != nil && applicationDigest(existing) != applicationDigest(pending) {
-				b.WriteString(`<p>An application with this name is already registered. Registering replaces it.</p>`)
-				b.WriteString(applicationDetails("Registered now", existing))
-				b.WriteString(applicationDetails("Replacement", pending))
-			} else {
-				b.WriteString(applicationDetails("Application", pending))
-			}
-			if !readable {
-				b.WriteString(`<p>The Panel cannot list the registered applications, so it cannot show an entry this would replace.</p>`)
-			}
-			b.WriteString(applicationButtons("/application/register", "Register", applicationDigest(existing)))
-		}
-		b.WriteString(`<p id="app-status" role="status"></p>` + applicationPageScript)
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = io.WriteString(w, panelPage(r, key, "application", "OpenAbstractions application", b.String()))
-	})
-}
-
-// applicationRemovePage is the confirmation for the installer's removal.
-func (p *servicePanel) applicationRemovePage(key string) http.HandlerFunc {
-	return guard(key, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "GET required", http.StatusMethodNotAllowed)
-			return
-		}
-		request := &p.appRequest
-		request.mu.Lock()
-		name, done := request.remove, request.done
-		request.mu.Unlock()
-		var b strings.Builder
-		b.WriteString(`<h1>Remove an application</h1>`)
-		switch {
-		case done != "":
-			b.WriteString(`<p>` + html.EscapeString(done) + `</p>`)
-		case name == "":
-			b.WriteString(`<p>No installer asked this window to remove an application.</p>`)
-		default:
-			ctx, cancel := panelCall(r)
-			defer cancel()
-			var existing *fwire.ApplicationDescriptor
-			readable := false
-			if apps, err := p.setupApplicationsForPanel(ctx); err == nil {
-				existing, readable = registeredApplication(ctx, apps, name)
-			}
-			b.WriteString(`<p>An uninstaller asks to remove this application's entry from OpenAbstractions. Removing the entry changes no file; the application's own files are its uninstaller's to remove.</p>`)
-			if existing != nil {
-				b.WriteString(applicationDetails("Registered now", existing))
-			} else {
-				b.WriteString(`<p>Name: <code>` + html.EscapeString(name) + `</code></p>`)
-				if readable {
-					b.WriteString(`<p>No application is registered under this name.</p>`)
-				}
-			}
-			b.WriteString(applicationButtons("/application/remove", "Remove", applicationDigest(existing)))
-		}
-		b.WriteString(`<p id="app-status" role="status"></p>` + applicationPageScript)
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = io.WriteString(w, panelPage(r, key, "application", "OpenAbstractions application", b.String()))
-	})
-}
-
-type applicationSettle struct {
-	Confirm bool   `json:"confirm"`
-	Shown   string `json:"shown"`
-}
-
 type applicationSettled struct {
 	Message string `json:"message"`
-}
-
-func decodeApplicationSettle(w http.ResponseWriter, r *http.Request) (applicationSettle, bool) {
-	var body applicationSettle
-	if r.Method != http.MethodPost {
-		http.Error(w, "POST required", http.StatusMethodNotAllowed)
-		return body, false
-	}
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&body); err != nil {
-		http.Error(w, "one confirmation is required", http.StatusBadRequest)
-		return body, false
-	}
-	var extra any
-	if decoder.Decode(&extra) != io.EOF {
-		http.Error(w, "one confirmation is required", http.StatusBadRequest)
-		return body, false
-	}
-	return body, true
-}
-
-// settle records the request's one outcome and clears what was pending.
-func (a *applicationRequest) settle(message string) applicationSettled {
-	a.register, a.remove, a.done = nil, "", message
-	return applicationSettled{Message: message}
-}
-
-func (p *servicePanel) applicationRegisterCancel(w http.ResponseWriter, r *http.Request) {
-	if _, ok := decodeApplicationSettle(w, r); !ok {
-		return
-	}
-	request := &p.appRequest
-	request.mu.Lock()
-	defer request.mu.Unlock()
-	if request.register == nil {
-		http.Error(w, "no registration is waiting", http.StatusConflict)
-		return
-	}
-	panelJSON(w, request.settle("Nothing was registered."))
-}
-
-func (p *servicePanel) applicationRemoveCancel(w http.ResponseWriter, r *http.Request) {
-	if _, ok := decodeApplicationSettle(w, r); !ok {
-		return
-	}
-	request := &p.appRequest
-	request.mu.Lock()
-	defer request.mu.Unlock()
-	if request.remove == "" {
-		http.Error(w, "no removal is waiting", http.StatusConflict)
-		return
-	}
-	panelJSON(w, request.settle("Nothing was removed."))
 }
 
 // applicationConflict is a confirmation the Panel refused, in one sentence:
@@ -311,6 +123,10 @@ func (p *servicePanel) applicationRemoveCancel(w http.ResponseWriter, r *http.Re
 type applicationConflict string
 
 func (c applicationConflict) Error() string { return string(c) }
+
+type applicationUnknown string
+
+func (u applicationUnknown) Error() string { return string(u) }
 
 // applicationReviewAgain is the conflict that keeps the registration waiting
 // for a fresh review of an entry the Panel could not list before.
@@ -333,66 +149,76 @@ func writeApplicationOutcome(w http.ResponseWriter, settled applicationSettled, 
 	}
 }
 
-// applicationRegisterConfirm registers the manifest after the person's click.
-func (p *servicePanel) applicationRegisterConfirm(w http.ResponseWriter, r *http.Request) {
-	body, ok := decodeApplicationSettle(w, r)
-	if !ok {
-		return
-	}
-	if !body.Confirm {
-		http.Error(w, "the Register click is the confirmation; it was not sent", http.StatusBadRequest)
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 35*time.Second)
-	defer cancel()
-	settled, err := p.confirmApplicationRegister(ctx, body.Shown)
-	writeApplicationOutcome(w, settled, err)
-}
-
-// confirmApplicationRegister registers the waiting manifest after the
-// person's confirmation, in the Panel page or the native question panel. The
-// entry the person saw (shown, its digest) must still be the one registered;
-// a replacement removes it and registers the manifest.
-func (p *servicePanel) confirmApplicationRegister(ctx context.Context, shown string) (applicationSettled, error) {
-	request := &p.appRequest
-	request.mu.Lock()
-	defer request.mu.Unlock()
-	if request.register == nil {
-		return applicationSettled{}, applicationConflict("no registration is waiting")
-	}
-	pending := *request.register
+// registerApplication is the registration a Not connected row's Connect
+// makes: the Panel's application.manage Register of the manifest the person
+// saw, through the existing replace. shown is the digest of the entry
+// registered under its name when the person saw it ("" for none); a
+// replacement removes that entry first. A registration clears the Panel's
+// record of the request (application_pending.go).
+// Legacy applications@2 has no conditional replace. A replacement removes the
+// entry the person saw, then registers the new one. A definite refusal registers
+// the earlier entry again. A lost reply is reconciled by one read of the name,
+// and the result names the entry registered now. When that read fails, the
+// outcome is unknown and nothing further changes.
+func (p *servicePanel) registerApplication(ctx context.Context, pending fwire.ApplicationDescriptor, shown string) (string, error) {
 	if reservedTitle(pending.Title) {
-		return applicationSettled{}, applicationConflict(reservedTitleRefusal)
+		return "", applicationConflict(reservedTitleRefusal)
 	}
 	apps, err := p.setupApplicationsForPanel(ctx)
 	if err != nil {
-		return applicationSettled{}, err
+		return "", err
 	}
 	existing, _ := registeredApplication(ctx, apps, pending.Name)
 	if applicationDigest(existing) != shown {
-		return applicationSettled{}, applicationChanged
+		return "", applicationChanged
 	}
 	if existing != nil && applicationDigest(existing) == applicationDigest(&pending) {
-		return request.settle(pending.Title + " is already registered."), nil
+		p.removeApplicationRequest(pending.Name)
+		return pending.Title + " is already connected to OpenAbstractions.", nil
+	}
+	connected := func() (string, error) {
+		p.removeApplicationRequest(pending.Name)
+		message := pending.Title + " is connected to OpenAbstractions."
+		if err := p.applicationReads().allowPanelRead(ctx, pending.Name); err != nil {
+			message += " The Panel could not record that it may list it, so Apps does not show it: " + err.Error()
+		}
+		return message, nil
 	}
 	if existing != nil {
 		change, err := apps.Remove(ctx, pending.Name)
 		if err != nil {
-			return applicationSettled{}, err
-		}
-		if change.Outcome != fwire.ApplicationOutcomeApplied {
-			return applicationSettled{}, applicationConflict("the registered entry was not replaced (" + change.Outcome.String() + "); it was kept")
+			now, readable := registeredApplication(ctx, apps, pending.Name)
+			if !readable {
+				return "", applicationUnknown("the replacement outcome is unknown; check Apps: " + err.Error())
+			}
+			if applicationDigest(now) == shown {
+				return "", applicationConflict("the earlier entry was kept")
+			}
+			if now != nil {
+				return "", applicationUnknown("the replacement outcome is unknown; check Apps: " + err.Error())
+			}
+			// The lost Remove reply is reconciled: the name is empty now.
+		} else if change.Outcome != fwire.ApplicationOutcomeApplied {
+			return "", applicationConflict("the registered entry was not replaced (" + change.Outcome.String() + "); it was kept")
 		}
 	}
 	change, err := apps.Register(ctx, pending)
 	if err == nil && change.Outcome == fwire.ApplicationOutcomeApplied {
-		// The person's click also lets the Panel list what they registered
-		// (application_read.go); the registration grants nothing itself.
-		message := "Registered " + pending.Title + "."
-		if err := p.applicationReads().allowPanelRead(ctx, pending.Name); err != nil {
-			message += " The Panel could not record that it may list it, so Apps does not show it: " + err.Error()
+		return connected()
+	}
+	if err != nil {
+		now, readable := registeredApplication(ctx, apps, pending.Name)
+		if !readable {
+			return "", applicationUnknown("the replacement outcome is unknown; check Apps: " + err.Error())
 		}
-		return request.settle(message), nil
+		switch {
+		case applicationDigest(now) == applicationDigest(&pending):
+			return connected()
+		case now != nil && applicationDigest(now) == shown:
+			return "", applicationConflict("the earlier entry was kept")
+		case now != nil:
+			return "", applicationConflict("the entry changed by another program; review Apps")
+		}
 	}
 	reason := "the application was not registered"
 	if err != nil {
@@ -408,97 +234,39 @@ func (p *servicePanel) confirmApplicationRegister(ctx context.Context, shown str
 			// the Panel lets itself list it and keeps the request waiting for
 			// a review of both entries.
 			if p.applicationReads().allowPanelRead(ctx, pending.Name) == nil {
-				return applicationSettled{}, applicationReviewAgain
+				return "", applicationReviewAgain
 			}
 			reason = "another application is registered under this name and the Panel cannot read it; nothing was changed"
 		}
-		return applicationSettled{}, applicationConflict(reason)
+		return "", applicationConflict(reason)
 	}
 	// The earlier entry was removed for the replacement; put it back.
 	restored, restoreErr := apps.Register(ctx, *existing)
 	if restoreErr == nil && restored.Outcome == fwire.ApplicationOutcomeApplied {
-		return applicationSettled{}, applicationConflict(reason + "; the earlier entry " + existing.Title + " is registered again")
+		return "", applicationConflict(reason + "; the earlier entry " + existing.Title + " is registered again")
 	}
-	return applicationSettled{}, applicationConflict(reason + "; the earlier entry " + existing.Title + " was removed and could not be registered again")
-}
-
-// applicationRemoveConfirm removes the named entry after the person's click.
-func (p *servicePanel) applicationRemoveConfirm(w http.ResponseWriter, r *http.Request) {
-	body, ok := decodeApplicationSettle(w, r)
-	if !ok {
-		return
-	}
-	if !body.Confirm {
-		http.Error(w, "the Remove click is the confirmation; it was not sent", http.StatusBadRequest)
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 35*time.Second)
-	defer cancel()
-	settled, err := p.confirmApplicationRemove(ctx, body.Shown)
-	writeApplicationOutcome(w, settled, err)
-}
-
-// confirmApplicationRemove removes the named entry after the person's
-// confirmation, through the same Applications client registration uses.
-func (p *servicePanel) confirmApplicationRemove(ctx context.Context, shown string) (applicationSettled, error) {
-	request := &p.appRequest
-	request.mu.Lock()
-	defer request.mu.Unlock()
-	if request.remove == "" {
-		return applicationSettled{}, applicationConflict("no removal is waiting")
-	}
-	name := request.remove
-	apps, err := p.setupApplicationsForPanel(ctx)
-	if err != nil {
-		return applicationSettled{}, err
-	}
-	existing, _ := registeredApplication(ctx, apps, name)
-	if applicationDigest(existing) != shown {
-		return applicationSettled{}, applicationChanged
-	}
-	change, err := apps.Remove(ctx, name)
-	if err != nil {
-		return applicationSettled{}, err
-	}
-	var message string
-	switch change.Outcome {
-	case fwire.ApplicationOutcomeApplied:
-		label := name
-		if existing != nil {
-			label = existing.Title
-		}
-		message = "Removed " + label + "."
-	case fwire.ApplicationOutcomeUnknown:
-		message = "No application was registered under this name."
-	default:
-		return applicationSettled{}, applicationConflict("the application was not removed (" + change.Outcome.String() + ")")
-	}
-	// The confirmed removal also clears the Panel's read rule on the name.
-	if err := p.applicationReads().clearPanelRead(ctx, name); err != nil {
-		message += " The Panel's permission to list it could not be removed: " + err.Error()
-	}
-	return request.settle(message), nil
+	return "", applicationConflict(reason + "; the earlier entry " + existing.Title + " was removed and could not be registered again")
 }
 
 func (p *servicePanel) applicationRoutes(mux *http.ServeMux, key string) {
-	mux.HandleFunc("/application/register", p.applicationRegisterPage(key))
-	mux.HandleFunc("/application/register/confirm", guard(key, p.applicationRegisterConfirm))
-	mux.HandleFunc("/application/register/cancel", guard(key, p.applicationRegisterCancel))
-	mux.HandleFunc("/application/remove", p.applicationRemovePage(key))
-	mux.HandleFunc("/application/remove/confirm", guard(key, p.applicationRemoveConfirm))
-	mux.HandleFunc("/application/remove/cancel", guard(key, p.applicationRemoveCancel))
+	mux.HandleFunc("/apps/pending", guard(key, p.appsPending))
+	mux.HandleFunc("/apps/pending/connect", guard(key, p.appsPendingConnect))
 }
 
 // applicationStart is what the command line asked of this run: a manifest to
-// register or a name to remove, already checked.
+// register (and the file it came from) or a name to remove, already checked.
+// recorded is the program the installer's own record gave the name to remove
+// when the run started (removalRecordedProgram).
 type applicationStart struct {
 	register *fwire.ApplicationDescriptor
+	manifest string
 	remove   string
+	recorded string
 }
 
 // parseApplicationStart checks --register-application and
-// --remove-application before any window opens, and names the start page
-// they select. A malformed manifest is refused here and never shown.
+// --remove-application before anything is applied, and names the request
+// they select. A malformed manifest is refused here and never applied.
 func parseApplicationStart(manifest, remove, page string) (applicationStart, string, error) {
 	switch {
 	case manifest == "" && remove == "":
@@ -513,13 +281,35 @@ func parseApplicationStart(manifest, remove, page string) (applicationStart, str
 		if err != nil {
 			return applicationStart{}, "", err
 		}
-		return applicationStart{register: &descriptor}, "register-application", nil
+		absolute, err := filepath.Abs(manifest)
+		if err != nil {
+			return applicationStart{}, "", err
+		}
+		return applicationStart{register: &descriptor, manifest: absolute}, "register-application", nil
 	default:
 		if !validApplicationName(remove) {
 			return applicationStart{}, "", errors.New("the application name to remove is not a registered-name shape")
 		}
-		return applicationStart{remove: remove}, "remove-application", nil
+		return applicationStart{remove: remove, recorded: removalRecordedProgram(remove)}, "remove-application", nil
 	}
+}
+
+// removalRecordedProgram reads, at request intake, the program the
+// installer's Applications record gives name: the record names its manifest,
+// and the manifest its program. An uninstaller starts this run without
+// waiting and goes on to delete that record and the manifest, so the
+// identity is read first and the removal matches against it
+// (uninstallerProgram). "" is no record, or one that does not read.
+func removalRecordedProgram(name string) string {
+	manifest := installedRecords()[name]
+	if manifest == "" || !filepath.IsAbs(manifest) {
+		return ""
+	}
+	descriptor, err := readApplicationManifest(manifest)
+	if err != nil || descriptor.Name != name {
+		return ""
+	}
+	return descriptor.Program
 }
 
 // applicationProbeProgram is a clean absolute path on this platform, used only

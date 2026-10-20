@@ -58,6 +58,7 @@ dataclass LeaseChangeResult
   outcome: ResourceCallOutcome | None
   change: LeaseChange | None
 class Leases
+  acquire_for(subject: _dependency_rights.Subject, resource: str, amount: int, wait_ms: int) -> AcquireResult
   acquire(resource: str, amount: int, wait_ms: int) -> AcquireResult
   acquire_free(resource: str, amount: int) -> AcquireFreeResult
   renew(lease: str) -> LeaseChangeResult
@@ -65,8 +66,10 @@ class Leases
   observe(cursor: str, wait_ms: int) -> ObserveResult
   answer(request: str, answer: YieldAnswer | None, reason: str) -> AnswerCallResult
   bind_process(lease: str, pid: int) -> ProcessBindResult
+  label(lease: str, text: str) -> LeaseChangeResult
 class LeasesClient(Leases)
   __init__(transport)
+  acquire_for(subject: _dependency_rights.Subject, resource: str, amount: int, wait_ms: int) -> AcquireResult
   acquire(resource: str, amount: int, wait_ms: int) -> AcquireResult
   acquire_free(resource: str, amount: int) -> AcquireFreeResult
   renew(lease: str) -> LeaseChangeResult
@@ -74,6 +77,7 @@ class LeasesClient(Leases)
   observe(cursor: str, wait_ms: int) -> ObserveResult
   answer(request: str, answer: YieldAnswer | None, reason: str) -> AnswerCallResult
   bind_process(lease: str, pid: int) -> ProcessBindResult
+  label(lease: str, text: str) -> LeaseChangeResult
 dataclass ObserveResult
   outcome: ResourceCallOutcome | None
   page: YieldPage | None
@@ -149,5 +153,41 @@ dataclass YieldRequest
   at: str
   lease: str
 def decode(data)
+def decode_acquire_free_result(data)
+def decode_acquire_result(data)
+def decode_answer_call_result(data)
+def decode_answer_result(data)
+def decode_holder(data)
+def decode_holders_result(data)
+def decode_lease(data)
+def decode_lease_change(data)
+def decode_lease_change_result(data)
+def decode_observe_result(data)
+def decode_process_bind_result(data)
+def decode_resource_list(data)
+def decode_resource_state(data)
+def decode_resources_result(data)
+def decode_yield_page(data)
+def decode_yield_record(data)
+def decode_yield_request(data)
 def encode(v)
+def encode_acquire_free_result(v)
+def encode_acquire_result(v)
+def encode_answer_call_result(v)
+def encode_answer_result(v)
+def encode_holder(v)
+def encode_holders_result(v)
+def encode_lease(v)
+def encode_lease_change(v)
+def encode_lease_change_result(v)
+def encode_observe_result(v)
+def encode_process_bind_result(v)
+def encode_resource_list(v)
+def encode_resource_state(v)
+def encode_resources_result(v)
+def encode_yield_page(v)
+def encode_yield_record(v)
+def encode_yield_request(v)
+def from_json(kind, data)
 def service_name(frame)
+def to_json(value)

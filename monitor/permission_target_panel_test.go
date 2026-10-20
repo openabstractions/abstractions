@@ -34,7 +34,7 @@ func TestPanelUsesCompletePermissionForLongDelegationAndAllow(t *testing.T) {
 	}
 	response = panelRequest(t, panel, "/rights/delegation", nil)
 	setup := decodePanel[delegationPage](t, response.Code, response.Body.Bytes())
-	if len(setup.Questions) != 1 || setup.Questions[0].Program != target || setup.Questions[0].Resource != resource {
+	if len(setup.Questions) != 1 || !samePanelProgram(setup.Questions[0].Program, target) || setup.Questions[0].Resource != resource {
 		t.Fatalf("incomplete delegation: %+v", setup)
 	}
 	responder := filepath.Join(t.TempDir(), "responder.exe")

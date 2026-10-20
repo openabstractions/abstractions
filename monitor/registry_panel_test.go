@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -22,6 +23,7 @@ import (
 	inferenceservice "github.com/openabstractions/abstraction-inference/go/service"
 	router "github.com/openabstractions/abstraction-router/go"
 	routerservice "github.com/openabstractions/abstraction-router/go/service"
+	content "github.com/openabstractions/abstraction-storage/go/abstraction/storage/content"
 )
 
 // registryOperator answers hosts from three sources and one provider.
@@ -52,6 +54,30 @@ type fixedSelectionOperatorV2 struct {
 	deleteTarget   string
 	deleteName     string
 	deleteCaller   inference.Subject
+	accountCalls   []string
+}
+
+func (s *fixedSelectionOperatorV2) ReadEffective(ctx context.Context, caller inference.Subject, name string) iwire.SelectionReadV2 {
+	return s.ReadSelectionV2(ctx, caller, "", name)
+}
+
+func (s *fixedSelectionOperatorV2) ReadAccountDefault(ctx context.Context, caller inference.Subject, name string) iwire.SelectionReadV2 {
+	s.mu.Lock()
+	s.accountCalls = append(s.accountCalls, "read")
+	s.mu.Unlock()
+	return s.ReadSelectionV2(ctx, caller, "", name)
+}
+func (s *fixedSelectionOperatorV2) PutAccountDefault(ctx context.Context, caller inference.Subject, expected string, policy iwire.SelectionPolicyV2) iwire.SelectionChange {
+	s.mu.Lock()
+	s.accountCalls = append(s.accountCalls, "put")
+	s.mu.Unlock()
+	return s.PutSelectionV2(ctx, caller, "", expected, policy)
+}
+func (s *fixedSelectionOperatorV2) DeleteAccountDefault(ctx context.Context, caller inference.Subject, expected, name string) iwire.SelectionChange {
+	s.mu.Lock()
+	s.accountCalls = append(s.accountCalls, "delete")
+	s.mu.Unlock()
+	return s.DeleteSelectionV2(ctx, caller, "", expected, name)
 }
 
 func (s panelInference) SelectionOperatorV2Available() bool { return s.Host.SelectionOperatorV2 != nil }
@@ -144,6 +170,32 @@ func (r *fixedRegistry) Declarations() (fwire.DeclarationList, error) {
 		},
 	}}, nil
 }
+func TestFixedRegistryRolesRoundTripCanonicalCodec(t *testing.T) {
+	list, err := (&fixedRegistry{}).Declarations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Declarations) != 3 {
+		t.Fatalf("fixture roles: %d", len(list.Declarations))
+	}
+	for _, state := range list.Declarations {
+		t.Run(state.Role.String(), func(t *testing.T) {
+			encoded, err := fwire.ToJSON(state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var received fwire.DeclarationState
+			if err := fwire.FromJSON(encoded, &received); err != nil {
+				t.Fatal(err)
+			}
+			// Canonical encoding normalizes optional empty sequences.
+			again, err := fwire.ToJSON(received)
+			if err != nil || string(again) != string(encoded) {
+				t.Fatalf("role changed across canonical wire: %s: %v", state.Role, err)
+			}
+		})
+	}
+}
 func (r *fixedRegistry) Declare(revision string, declaration fwire.Declaration) (fwire.DeclarationChange, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -163,9 +215,10 @@ func (r *fixedRegistry) Observe(string, int64) (fwire.DeclarationObservation, er
 
 // registryService serves a fixedRegistry on its endpoint.
 type registryService struct {
-	listener listen.Listener
-	handler  fwire.Registry
-	v2       fwire.RegistryV2
+	listener    listen.Listener
+	handler     fwire.Registry
+	v2          fwire.RegistryV2
+	mutateReply func([]byte) []byte // malformed-wire receiving controls only
 }
 
 func TestRegistrySelectionPolicyNameMatchesRuntimeGrammar(t *testing.T) {
@@ -214,6 +267,9 @@ func (s registryService) Serve(ctx context.Context) error {
 				reply, err = (&fwire.RegistryDispatcher{Handler: s.handler}).ExchangeFrame(call.Frame)
 			}
 			if err == nil {
+				if s.mutateReply != nil {
+					reply = s.mutateReply(reply)
+				}
 				call.Reply(reply)
 			}
 		}()
@@ -359,7 +415,7 @@ func TestPanelRegistryReadsHostsProvidersAndRemotes(t *testing.T) {
 		Name          string `json:"name"`
 	}{"read", targetProgram, "work"}
 	selectionReadResponse := panelRequest(t, h, "/registry/selection", selectionRead)
-	selectionResult := decodePanel[registrySelectionResult](t, selectionReadResponse.Code, selectionReadResponse.Body.Bytes())
+	selectionResult := decodeRegistrySelection(t, selectionReadResponse.Code, selectionReadResponse.Body.Bytes())
 	if selectionResult.Read == nil || selectionResult.Read.Outcome != iwire.SelectionReadOutcomeFound || selectionResult.Read.Revision != "selection-v1:7" || selectionResult.Read.Policy == nil || selectionResult.Read.Policy.Name != "work" || selectionResult.Read.Policy.Candidates[0].Provider != "native-runtime" {
 		t.Fatalf("V2 Read result %+v", selectionResult)
 	}
@@ -373,13 +429,7 @@ func TestPanelRegistryReadsHostsProvidersAndRemotes(t *testing.T) {
 	if readName != "work" || readTarget != targetProgram || readCaller.Account == "" || readCaller.Program == "" || readCaller.Program == targetProgram {
 		t.Fatalf("SelectionOperatorV2 did not keep proved caller separate from target scope: name=%q target=%q caller=%+v", readName, readTarget, readCaller)
 	}
-	selectionPut := struct {
-		Edit          string                       `json:"edit"`
-		TargetProgram string                       `json:"target_program"`
-		Name          string                       `json:"name"`
-		Revision      string                       `json:"revision"`
-		Candidates    []registrySelectionCandidate `json:"candidates"`
-	}{"put", targetProgram, "work", "selection-v1:7", []registrySelectionCandidate{{Model: "qwen/tiny", Placement: "local", Provider: "native-runtime"}, {Model: "cloud/model", Placement: "hosted", Credential: "cloudcred"}}}
+	selectionPut := registrySelectionEdit{Edit: "put", TargetProgram: targetProgram, Name: "work", Revision: "selection-v1:7", Candidates: []registrySelectionCandidate{{Model: "qwen/tiny", Placement: iwire.CandidatePlacementLocal, Provider: "native-runtime"}, {Model: "cloud/model", Placement: iwire.CandidatePlacementHosted, Credential: "cloudcred"}}}
 	if got := panelRequest(t, h, "/registry/selection", selectionPut); got.Code != 200 {
 		t.Fatalf("SelectionOperatorV2 Put: %d %s", got.Code, got.Body.String())
 	}
@@ -401,7 +451,7 @@ func TestPanelRegistryReadsHostsProvidersAndRemotes(t *testing.T) {
 		Name          string `json:"name"`
 		Revision      string `json:"revision"`
 	}{"delete", targetProgram, "work", "selection-v1:7"}
-	deleted := decodePanel[registrySelectionResult](t, 200, panelRequest(t, h, "/registry/selection", selectionDelete).Body.Bytes())
+	deleted := decodeRegistrySelection(t, 200, panelRequest(t, h, "/registry/selection", selectionDelete).Body.Bytes())
 	if deleted.Change == nil || deleted.Change.Outcome != iwire.EditOutcomeApplied {
 		t.Fatalf("V2 Delete result %+v", deleted)
 	}
@@ -419,7 +469,7 @@ func TestPanelRegistryReadsHostsProvidersAndRemotes(t *testing.T) {
 	selection.readOutcome = iwire.SelectionReadOutcomeForbidden
 	selection.mu.Unlock()
 	deniedReadResponse := panelRequest(t, h, "/registry/selection", selectionRead)
-	deniedSelection := decodePanel[registrySelectionResult](t, deniedReadResponse.Code, deniedReadResponse.Body.Bytes())
+	deniedSelection := decodeRegistrySelection(t, deniedReadResponse.Code, deniedReadResponse.Body.Bytes())
 	if deniedSelection.Read == nil || deniedSelection.Read.Outcome != iwire.SelectionReadOutcomeForbidden {
 		t.Fatalf("SelectionOperatorV2 refusal was obscured: %+v", deniedSelection)
 	}
@@ -432,13 +482,13 @@ func TestPanelRegistryReadsHostsProvidersAndRemotes(t *testing.T) {
 	selection.putOutcome, selection.deleteOutcome = iwire.EditOutcomeConflict, iwire.EditOutcomeConflict
 	selection.mu.Unlock()
 	stalePutResponse := panelRequest(t, h, "/registry/selection", selectionPut)
-	stalePanelPut := decodePanel[registrySelectionResult](t, stalePutResponse.Code, stalePutResponse.Body.Bytes())
+	stalePanelPut := decodeRegistrySelection(t, stalePutResponse.Code, stalePutResponse.Body.Bytes())
 	staleDirectPut, err := directSelection.Put(context.Background(), targetProgram, selectionPut.Revision, iwire.SelectionPolicyV2{Name: "work", Candidates: []iwire.SelectionCandidateV2{{Model: "qwen/tiny", Placement: iwire.CandidatePlacementLocal, Provider: "native-runtime"}}})
 	if err != nil || stalePanelPut.Change == nil || stalePanelPut.Change.Outcome != iwire.EditOutcomeConflict || stalePanelPut.Change.Revision != staleDirectPut.Revision || staleDirectPut.Outcome != stalePanelPut.Change.Outcome {
 		t.Fatalf("stale V2 Put diverged: Panel=%+v direct=%+v err=%v", stalePanelPut, staleDirectPut, err)
 	}
 	staleDeleteResponse := panelRequest(t, h, "/registry/selection", selectionDelete)
-	stalePanelDelete := decodePanel[registrySelectionResult](t, staleDeleteResponse.Code, staleDeleteResponse.Body.Bytes())
+	stalePanelDelete := decodeRegistrySelection(t, staleDeleteResponse.Code, staleDeleteResponse.Body.Bytes())
 	staleDirectDelete, err := directSelection.DeletePolicy(context.Background(), targetProgram, selectionDelete.Revision, selectionDelete.Name)
 	if err != nil || stalePanelDelete.Change == nil || !reflect.DeepEqual(*stalePanelDelete.Change, staleDirectDelete) {
 		t.Fatalf("stale V2 Delete diverged: Panel=%+v direct=%+v err=%v", stalePanelDelete, staleDirectDelete, err)
@@ -448,19 +498,19 @@ func TestPanelRegistryReadsHostsProvidersAndRemotes(t *testing.T) {
 	selection.denyOther = true
 	selection.mu.Unlock()
 	otherReadResponse := panelRequest(t, h, "/registry/selection", selectionRead)
-	otherDeniedPanel := decodePanel[registrySelectionResult](t, otherReadResponse.Code, otherReadResponse.Body.Bytes())
+	otherDeniedPanel := decodeRegistrySelection(t, otherReadResponse.Code, otherReadResponse.Body.Bytes())
 	otherDeniedDirect, err := directSelection.Read(context.Background(), targetProgram, "work")
 	if err != nil || otherDeniedPanel.Read == nil || otherDeniedPanel.Read.Outcome != iwire.SelectionReadOutcomeForbidden || otherDeniedDirect.Outcome != otherDeniedPanel.Read.Outcome {
 		t.Fatalf("other-program V2 Read refusal diverged: Panel=%+v direct=%+v err=%v", otherDeniedPanel, otherDeniedDirect, err)
 	}
 	otherPutResponse := panelRequest(t, h, "/registry/selection", selectionPut)
-	otherPutPanel := decodePanel[registrySelectionResult](t, otherPutResponse.Code, otherPutResponse.Body.Bytes())
+	otherPutPanel := decodeRegistrySelection(t, otherPutResponse.Code, otherPutResponse.Body.Bytes())
 	otherPutDirect, err := directSelection.Put(context.Background(), targetProgram, selectionPut.Revision, iwire.SelectionPolicyV2{Name: "work", Candidates: []iwire.SelectionCandidateV2{{Model: "qwen/tiny", Placement: iwire.CandidatePlacementLocal, Provider: "native-runtime"}}})
 	if err != nil || otherPutPanel.Change == nil || otherPutPanel.Change.Outcome != iwire.EditOutcomeForbidden || otherPutDirect.Outcome != otherPutPanel.Change.Outcome {
 		t.Fatalf("other-program V2 Put refusal diverged: Panel=%+v direct=%+v err=%v", otherPutPanel, otherPutDirect, err)
 	}
 	otherDeleteResponse := panelRequest(t, h, "/registry/selection", selectionDelete)
-	otherDeletePanel := decodePanel[registrySelectionResult](t, otherDeleteResponse.Code, otherDeleteResponse.Body.Bytes())
+	otherDeletePanel := decodeRegistrySelection(t, otherDeleteResponse.Code, otherDeleteResponse.Body.Bytes())
 	otherDeleteDirect, err := directSelection.DeletePolicy(context.Background(), targetProgram, selectionDelete.Revision, selectionDelete.Name)
 	if err != nil || otherDeletePanel.Change == nil || otherDeletePanel.Change.Outcome != iwire.EditOutcomeForbidden || otherDeleteDirect.Outcome != otherDeletePanel.Change.Outcome {
 		t.Fatalf("other-program V2 Delete refusal diverged: Panel=%+v direct=%+v err=%v", otherDeletePanel, otherDeleteDirect, err)
@@ -468,7 +518,7 @@ func TestPanelRegistryReadsHostsProvidersAndRemotes(t *testing.T) {
 	selfRead := selectionRead
 	selfRead.TargetProgram = ""
 	selfReadResponse := panelRequest(t, h, "/registry/selection", selfRead)
-	selfPanel := decodePanel[registrySelectionResult](t, selfReadResponse.Code, selfReadResponse.Body.Bytes())
+	selfPanel := decodeRegistrySelection(t, selfReadResponse.Code, selfReadResponse.Body.Bytes())
 	selfDirect, err := directSelection.Read(context.Background(), "", "work")
 	if err != nil || selfPanel.Read == nil || selfPanel.Read.Outcome != iwire.SelectionReadOutcomeFound || !reflect.DeepEqual(*selfPanel.Read, selfDirect) {
 		t.Fatalf("self V2 Read affected by other-program refusal: Panel=%+v direct=%+v err=%v", selfPanel, selfDirect, err)
@@ -476,13 +526,42 @@ func TestPanelRegistryReadsHostsProvidersAndRemotes(t *testing.T) {
 	if got := panelRequest(t, h, "/registry/providers", nil); got.Code != 405 {
 		t.Fatalf("GET edit endpoint: %d", got.Code)
 	}
+	selection.denyOther = false
+	for _, edit := range []registrySelectionEdit{
+		{AccountDefault: true, Edit: "read", Name: "work"},
+		{AccountDefault: true, Edit: "put", Name: "work", Revision: "selection-v1:7", Candidates: []registrySelectionCandidate{{Model: "qwen/tiny", Placement: iwire.CandidatePlacementLocal}}},
+		{AccountDefault: true, Edit: "delete", Name: "work", Revision: "selection-v1:8"},
+	} {
+		got := panelRequest(t, h, "/registry/selection", edit)
+		if got.Code != http.StatusOK {
+			t.Fatalf("account adapter: %d %s", got.Code, got.Body.String())
+		}
+	}
+	if !reflect.DeepEqual(selection.accountCalls, []string{"read", "put", "delete"}) {
+		t.Fatal("account methods were not used", selection.accountCalls)
+	}
+	if got := panelRequest(t, h, "/registry/selection", registrySelectionEdit{AccountDefault: true, TargetProgram: targetProgram, Edit: "read", Name: "work"}); got.Code != 400 {
+		t.Fatal("mixed account/program scope admitted", got.Code)
+	}
+	// The Models page reads what an app without its own policy follows
+	// through the owner's effective resolution, in the Panel's own scope.
+	effectiveResponse := panelRequest(t, h, "/registry/selection", registrySelectionEdit{Edit: "effective", Name: "oa-chat-default"})
+	effective := decodeRegistrySelection(t, effectiveResponse.Code, effectiveResponse.Body.Bytes())
+	if effective.Read == nil || effective.Read.Outcome != iwire.SelectionReadOutcomeFound || effective.Read.Policy.Name != "oa-chat-default" || selection.readTarget != "" || len(selection.accountCalls) != 3 {
+		t.Fatalf("effective read: %+v target %q account calls %v", effective, selection.readTarget, selection.accountCalls)
+	}
+	for _, bad := range []registrySelectionEdit{{Edit: "effective", Name: "oa-chat-default", AccountDefault: true}, {Edit: "effective", Name: "oa-chat-default", TargetProgram: targetProgram}, {Edit: "effective", Name: "oa-chat-default", Revision: "r"}} {
+		if got := panelRequest(t, h, "/registry/selection", bad); got.Code != 400 {
+			t.Fatalf("effective read with %+v admitted: %d", bad, got.Code)
+		}
+	}
 	registry.mu.Lock()
 	if registry.calls != 1 {
 		t.Fatalf("registry@1 Declarations calls: %d", registry.calls)
 	}
 	registry.mu.Unlock()
-	if view.ModelsError == "" || view.RemoteError == "" || len(view.Remote) != 0 {
-		t.Fatalf("a runtime without router@1 reads models and remotes as errors beside the rest: %+v", view)
+	if view.RemoteError == "" || len(view.Remote) != 0 {
+		t.Fatalf("a runtime without router@1 reads remotes as an error beside the rest: %+v", view)
 	}
 	operator.mu.Lock()
 	defer operator.mu.Unlock()
@@ -545,11 +624,18 @@ func TestPanelRegistryReadsModelsOverRouterIPC(t *testing.T) {
 		}
 		o.Registry, o.RegistryEndpoint = registryService{listener: listener, handler: &fixedRegistry{}}, registryAt
 	})
+	// The Models page's rows read the router over its IPC; the storage
+	// inventory here lists no file, so the rows are the router's alone.
+	resolve := stepResolveInventory
+	stepResolveInventory = func(context.Context) (stepInventory, error) {
+		return &libraryInventory{page: content.InventoryPage{Outcome: content.InventoryOutcomePage, Complete: true}}, nil
+	}
+	t.Cleanup(func() { stepResolveInventory = resolve })
 	h := newTestPanel(t).handler("test-key")
-	viewResponse := panelRequest(t, h, "/registry/view", nil)
-	view := decodePanel[registryView](t, viewResponse.Code, viewResponse.Body.Bytes())
-	if view.ModelsError != "" || len(view.Models.Models) < 2 {
-		t.Fatalf("model inventory %+v (%s)", view.Models, view.ModelsError)
+	libraryResponse := panelRequest(t, h, "/inference/library", nil)
+	library := decodePanel[libraryView](t, libraryResponse.Code, libraryResponse.Body.Bytes())
+	if !library.CatalogKnown || library.CatalogError != "" || len(library.Models) < 2 {
+		t.Fatalf("models page rows %+v", library)
 	}
 	ctx := context.Background()
 	direct, err := panelMachine().ResolveRouter(ctx, facade.Requirements{Scope: facade.ScopeLocal})
@@ -557,26 +643,26 @@ func TestPanelRegistryReadsModelsOverRouterIPC(t *testing.T) {
 		t.Fatal(err)
 	}
 	directModels, err := direct.ModelsContext(ctx, true)
-	if err != nil || !reflect.DeepEqual(view.Models.Models, directModels.Models) {
-		t.Fatalf("Panel and direct fresh model inventory diverged: Panel=%+v direct=%+v err=%v", view.Models.Models, directModels.Models, err)
+	if err != nil || len(directModels.Models) != len(library.Models) {
+		t.Fatalf("Panel rows and the direct fresh model inventory diverged: Panel=%+v direct=%+v err=%v", library.Models, directModels.Models, err)
 	}
+	viewResponse := panelRequest(t, h, "/registry/view", nil)
+	view := decodePanel[registryView](t, viewResponse.Code, viewResponse.Body.Bytes())
 	directHosts, err := direct.HostsContext(ctx, false)
-	if err != nil || len(directHosts.Hosts) == 0 || len(view.Remote) != 0 {
+	if err != nil || len(directHosts.Hosts) == 0 || len(view.Remote) != 0 || view.RemoteError != "" {
 		t.Fatalf("direct hosts and Panel's local-only remote projection: direct=%+v Panel=%+v err=%v", directHosts, view.Remote, err)
 	}
 	var served, storedOnly bool
-	for _, family := range view.Models.Models {
-		for _, alias := range family.Names {
-			if alias.Name == "qwen/tiny" && alias.Host != "" && alias.Servable && !alias.Resident && len(alias.HeldIn) != 0 {
-				served = true
-			}
-			if alias.Name == "diffusion_models/wan.safetensors" && alias.Host == "" && !alias.Servable && !alias.Resident && len(alias.HeldIn) != 0 {
-				storedOnly = true
-			}
+	for _, m := range library.Models {
+		if slices.Contains(m.Names, "qwen/tiny") && m.Ready && !m.Running && len(m.Engines) == 1 && len(m.Places) != 0 {
+			served = true
+		}
+		if slices.Contains(m.Names, "diffusion_models/wan.safetensors") && !m.Ready && !m.Running && len(m.Engines) == 0 && len(m.Places) != 0 {
+			storedOnly = true
 		}
 	}
 	if !served || !storedOnly {
-		t.Fatalf("served model present=%t, stored-only model present=%t; snapshot %+v", served, storedOnly, view.Models.Models)
+		t.Fatalf("served model present=%t, stored-only model present=%t; rows %+v", served, storedOnly, library.Models)
 	}
 	inventoryAllowed.Store(false)
 	deniedResponse := panelRequest(t, h, "/registry/view", nil)
@@ -587,7 +673,12 @@ func TestPanelRegistryReadsModelsOverRouterIPC(t *testing.T) {
 	if _, err := direct.HostsContext(ctx, false); err == nil {
 		t.Fatal("direct public router client read hosts after the same caller was denied")
 	}
-	if denied.ModelsError == "" || denied.RemoteError == "" || denied.HostsError != "" || denied.ProviderError != "" || len(denied.Models.Models) != 0 {
-		t.Fatalf("router inventory denial did not preserve independent Panel sections: %+v", denied)
+	if denied.RemoteError == "" || denied.HostsError != "" || denied.ProviderError != "" {
+		t.Fatalf("router denial did not preserve independent Panel sections: %+v", denied)
+	}
+	deniedLibraryResponse := panelRequest(t, h, "/inference/library", nil)
+	deniedLibrary := decodePanel[libraryView](t, deniedLibraryResponse.Code, deniedLibraryResponse.Body.Bytes())
+	if deniedLibrary.CatalogKnown || deniedLibrary.CatalogError == "" || !deniedLibrary.FilesKnown || len(deniedLibrary.Running) != 0 {
+		t.Fatalf("router denial on the Models page rows: %+v", deniedLibrary)
 	}
 }

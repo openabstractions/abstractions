@@ -11,7 +11,7 @@ explicit installed module prefix and an empty application directory. The native
 library is built and installed separately with `BUILD_SHARED_LIBS=ON`.
 
 An isolated production Go runtime resolves logging and accepts an exact Unicode
-record with expected attributes through the generated Sink interface. The sink
+record with expected attributes through the generated [Sink](https://openabstractions.github.io/reference.html#concept-log.sink) interface. The sink
 is memory-backed test output. Unsupported guarantees refuse resolution; absent
 runtime, expired deadline, cancellation and oversized reply controls preserve
 explicit errors. Fake resolver references exercise wrong contract, guarantees,

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/openabstractions/abstraction-identity/go/budget"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -20,9 +21,12 @@ import (
 	downloadserve "github.com/openabstractions/abstraction-download/go/serve"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	identity "github.com/openabstractions/abstraction-identity"
+	"github.com/openabstractions/abstraction-identity/fileid"
+	"github.com/openabstractions/abstraction-identity/remote"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	"github.com/openabstractions/abstraction-job/go/acceptanceprovider"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
+	rightsclient "github.com/openabstractions/abstraction-rights/go/client"
 )
 
 // ModelCredentialConsumer is the consumer contract model lookup names.
@@ -38,18 +42,12 @@ type runtimeCredentials struct {
 	holder   *credentials.Holder
 	host     *credservice.Host
 	endpoint string
-}
-
-// credentialsBackendFile names the store an operator chose for this runtime's
-// state directory. Only Linux reads it: file-0600 selects the opt-in file store.
-const credentialsBackendFile = "backend"
-
-// serviceAccounts are the Windows well-known service principals. A runtime
-// running as one of them, or as root elsewhere, is machine scope.
-var serviceAccounts = []string{"S-1-5-18", "S-1-5-19", "S-1-5-20"}
-
-func machineScope(account string) bool {
-	return slices.Contains(serviceAccounts, account) || account == "0"
+	// release lets go of the platform store once the holder stops serving
+	// (credentials OpenPlatformStore); nil holds nothing.
+	release func()
+	// hostedCredential names the credential a hosted model server declares
+	// (composeInference reads the router's hosts); nil names none.
+	hostedCredential func(host string) string
 }
 
 // credentialsState is the runtime's private credentials and rights state, or ""
@@ -87,37 +85,6 @@ func credentialsEndpoints(options runtimeFlags) (credentialsEndpoint, rightsEndp
 	return credentialsEndpoint, rightsEndpoint, credentials.DefaultNamespace, err
 }
 
-// platformBackend selects the account's platform store where no store marker
-// binds the state (Windows and macOS: newPlatformCredentialsBackend). Linux
-// uses Secret Service unless the operator chose the file store for this state
-// directory; an unreachable Secret Service stays configured and reads
-// unavailable. A macOS runtime without a keychain access group entitlement
-// keeps the keychain configured and reads unavailable the same way.
-func platformBackend(dir string) (credentials.Backend, error) {
-	switch runtime.GOOS {
-	case "darwin":
-		backend, err := credentials.NewKeychain()
-		if errors.Is(err, credentials.ErrUnavailable) {
-			return credentials.Unreachable(credentials.StoreMacOSKeychain, credentials.MaxSecretBytes, err), nil
-		}
-		return backend, err
-	case "linux":
-		chosen, err := os.ReadFile(filepath.Join(dir, credentialsBackendFile))
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return nil, err
-		}
-		if strings.TrimSpace(string(chosen)) == credentials.StoreFile {
-			return credentials.NewFileBackend(filepath.Join(dir, "items"))
-		}
-		backend, err := credentials.NewSecretService("")
-		if err != nil {
-			return credentials.Unreachable(credentials.StoreSecretService, credentials.MaxSecretBytes, err), nil
-		}
-		return backend, nil
-	}
-	return nil, credentials.ErrUnsupportedPlatform
-}
-
 // operatorPrograms are the runtime's own executable and its installed operator
 // siblings: the command line, its windowless link and the Abstraction Panel,
 // the programs holding holder.manage, holder.read and rights operator authority
@@ -128,20 +95,17 @@ func platformBackend(dir string) (credentials.Backend, error) {
 // launched through a short DOS 8.3 alias still recognizes the same operator
 // programs a caller's peer identity, also canonicalized, is compared against
 // in authorizeOperator.
-func operatorPrograms(options runtimeFlags) ([]string, error) {
+func operatorPrograms(options runtimeFlags) ([]string, panelRoster, error) {
 	exe, err := os.Executable()
 	if err != nil {
-		return nil, err
+		return nil, panelRoster{}, err
 	}
-	programs := operatorSiblings(identity.CanonicalProgramPath(filepath.Clean(exe)))
 	extra, err := isolatedOperatorProgram(options)
 	if err != nil {
-		return nil, err
+		return nil, panelRoster{}, err
 	}
-	if extra != "" && !slices.Contains(programs, extra) {
-		programs = append(programs, extra)
-	}
-	return programs, nil
+	operators, panels := operatorSiblings(identity.CanonicalProgramPath(filepath.Clean(exe)), extra)
+	return operators, panels, nil
 }
 
 // isolatedOperatorProgram is the canonical path of --operator-program, or ""
@@ -155,6 +119,10 @@ func operatorPrograms(options runtimeFlags) ([]string, error) {
 // policy and credentials namespace are then that runtime's own, so the
 // program administers nothing the installed runtime holds.
 func isolatedOperatorProgram(options runtimeFlags) (string, error) {
+	return isolatedOperatorProgramWithState(options, true)
+}
+
+func isolatedOperatorProgramWithState(options runtimeFlags, create bool) (string, error) {
 	path := options.operatorProgram
 	if path == "" {
 		return "", nil
@@ -175,6 +143,9 @@ func isolatedOperatorProgram(options runtimeFlags) (string, error) {
 	}
 	if err := localPath(options.stateDir); err != nil {
 		return "", fmt.Errorf("runtime: --operator-program needs a state directory on a local drive, not the share, device or network drive %q: %w", options.stateDir, err)
+	}
+	if err := resetSafePath(context.Background(), options.stateDir); err != nil {
+		return "", fmt.Errorf("runtime: --operator-program cannot admit state directory: %w", err)
 	}
 	info, err := statPath(path)
 	if err != nil || !info.Mode().IsRegular() {
@@ -202,6 +173,9 @@ func isolatedOperatorProgram(options runtimeFlags) (string, error) {
 	// process out of scope.
 	if err := distinctState(options.stateDir, installed); err != nil {
 		return "", err
+	}
+	if !create {
+		return identity.CanonicalProgramPath(filepath.Clean(path)), nil
 	}
 	if err := os.MkdirAll(options.stateDir, 0o700); err != nil {
 		return "", fmt.Errorf("runtime: --operator-program needs a state directory of its own: %w", err)
@@ -293,22 +267,59 @@ func resolvePath(path string) (string, error) {
 	}
 }
 
-// operatorSiblings names exe and each operator program installed beside it.
-func operatorSiblings(exe string) []string {
-	programs := []string{exe}
-	for _, name := range []string{"openabstractions", "openabstractionsw", "Abstraction Panel"} {
-		if runtime.GOOS == "windows" {
-			name += ".exe"
-		}
+// operatorSiblings records each installed operator and the Panel role.
+// isolatedPanel comes exclusively from isolatedOperatorProgram.
+func operatorSiblings(exe, isolatedPanel string) ([]string, panelRoster) {
+	operators := []string{exe}
+	panels := panelRoster{reserved: []string{exe}}
+	panelName := oaProgramFiles([]string{oaPanelProgramStem})[0]
+	var installedPanel string
+	for _, name := range oaProgramFiles(oaProgramStems) {
 		sibling := filepath.Join(filepath.Dir(exe), name)
+		if name != panelName {
+			panels.reserved = append(panels.reserved, sibling)
+		}
 		if _, err := os.Stat(sibling); err == nil {
 			sibling = identity.CanonicalProgramPath(sibling)
-			if !slices.Contains(programs, sibling) {
-				programs = append(programs, sibling)
+			if !slices.Contains(operators, sibling) {
+				operators = append(operators, sibling)
+			}
+			if name == panelName {
+				installedPanel = sibling
 			}
 		}
 	}
-	return programs
+	if isolatedPanel != "" && !slices.Contains(operators, isolatedPanel) {
+		operators = append(operators, isolatedPanel)
+	}
+	if isolatedPanel != "" && reservedIsolatedPanelName(isolatedPanel) {
+		isolatedPanel = ""
+	}
+	ctx := context.Background()
+	for _, program := range []string{installedPanel, isolatedPanel} {
+		held, err := openPanelImage(ctx, fileid.Self, program, fileid.FollowLocalLinks)
+		if err != nil {
+			continue
+		}
+		if image := held.FileID(); panels.contains(image) || panels.excludes(ctx, image) {
+			held.Close()
+			continue
+		}
+		panels.images = append(panels.images, held)
+	}
+	return operators, panels
+}
+
+// The isolated executable nomination reserves the old runtime and Presenter
+// filename spellings. This input rule can only withhold the Panel role.
+func reservedIsolatedPanelName(program string) bool {
+	stem := programFileStem(identity.NormalizeSubjectProgram(program))
+	for _, reserved := range oaProgramStems {
+		if reserved != oaPanelProgramStem && strings.EqualFold(stem, reserved) {
+			return true
+		}
+	}
+	return false
 }
 
 // composeCredentials needs the runtime's rights: the holder decides through its
@@ -328,21 +339,26 @@ func composeCredentials(options runtimeFlags, r *runtimeRights, report func(erro
 	}
 	c := &runtimeCredentials{runtimeRights: r, endpoint: endpoint}
 	dir := filepath.Join(state, "credentials")
-	config := credentials.Config{Namespace: namespace, StatePath: filepath.Join(dir, "holder.json"), MachineScope: machineScope(c.owner), OnError: report}
-	if !config.MachineScope {
-		if config.Backend, err = newPlatformCredentialsBackend(dir); err != nil {
-			report(fmt.Errorf("credentials: no platform store: %w", err))
-			config.Backend = nil
+	config := credentials.Config{Namespace: namespace, StatePath: filepath.Join(dir, "holder.json"), MachineScope: credentials.MachineScopeAccount(c.owner), OnError: report}
+	if config.Backend, c.release, err = credentials.OpenPlatformStore(dir, namespace, c.owner, report); err != nil {
+		report(fmt.Errorf("credentials: no platform store: %w", err))
+		config.Backend = nil
+	}
+	// A composition that fails here serves no holder and holds no store.
+	fail := func(err error) (*runtimeCredentials, error) {
+		if c.release != nil {
+			c.release()
 		}
+		return nil, err
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, err
+		return fail(err)
 	}
 	if c.holder, err = credentials.Open(config); err != nil {
-		return nil, err
+		return fail(err)
 	}
 	if c.host, err = credservice.Listen(endpoint, c.holder, c.decide, nil); err != nil {
-		return nil, err
+		return fail(err)
 	}
 	c.host.OnError = report
 	// Grammar is loaded before credentials composition. Actual served flags
@@ -371,10 +387,10 @@ func credentialBatchAuthorization(v rwire.BatchDecision) credentials.Authorizati
 		return result
 	}
 	result.RightsOutcome = v.Outcomes[0].String()
-	switch v.Outcomes[0] {
-	case rwire.DecisionOutcomePermitted:
+	switch {
+	case v.Outcomes[0] == rwire.DecisionOutcomePermitted:
 		result.Outcome = credentials.Authorized
-	case rwire.DecisionOutcomeDenied, rwire.DecisionOutcomeNotGranted, rwire.DecisionOutcomeUnknownAction:
+	case rightsclient.Evaluated(v.Outcomes[0]):
 		result.Outcome = credentials.AuthorizationDenied
 	}
 	return result
@@ -413,10 +429,10 @@ func (c *runtimeCredentials) checkLegacy(ctx context.Context, subject cwire.Subj
 	if v.PolicyRevision == "" {
 		return result
 	}
-	switch v.Outcome {
-	case rwire.DecisionOutcomePermitted:
+	switch {
+	case v.Outcome == rwire.DecisionOutcomePermitted:
 		result.Outcome = credentials.Authorized
-	case rwire.DecisionOutcomeDenied, rwire.DecisionOutcomeNotGranted, rwire.DecisionOutcomeUnknownAction:
+	case rightsclient.Evaluated(v.Outcome):
 		result.Outcome = credentials.AuthorizationDenied
 	}
 	return result
@@ -427,12 +443,20 @@ func credentialUseOperation(name string) (credservice.Operation, bool) {
 	return credservice.Operation{Action: credentials.ActionApply, Profile: credentials.ScopedUseResourceProfile, Target: target}, err == nil
 }
 
-func (c *runtimeCredentials) legacyUseAuthorization(ctx context.Context, subject cwire.Subject, name string) (credentials.Decider, credentials.AuthorizationGuard, *credentials.Authorization) {
+// legacyUseAuthorization is the original route's use decision and its quiet
+// policy fence. quiet decides the use asking nobody (decideQuietly), as
+// download execution does (INF-A6); otherwise a not_granted use admits its
+// first-use question (decide).
+func (c *runtimeCredentials) legacyUseAuthorization(ctx context.Context, subject cwire.Subject, name string, quiet bool) (credentials.Decider, credentials.AuthorizationGuard, *credentials.Authorization) {
 	op, valid := credentialUseOperation(name)
 	decided := false
 	evidence := &credentials.Authorization{}
+	base := c.decide
+	if quiet {
+		base = c.decideQuietly
+	}
 	decide := func(ctx context.Context, subject cwire.Subject, action, resource string) (string, error) {
-		word, err := c.decide(ctx, subject, action, resource)
+		word, err := base(ctx, subject, action, resource)
 		decided = true
 		return word, err
 	}
@@ -456,13 +480,20 @@ func (c *runtimeCredentials) legacyUseAuthorization(ctx context.Context, subject
 	return decide, guard, evidence
 }
 
-func (c *runtimeCredentials) scopedUse(ctx context.Context, subject cwire.Subject, name string) credentials.ScopedAuthorization {
+// scopedUse is the scoped route's use authorization. quiet admits the use
+// with the quiet check, asking nobody, as download execution does (INF-A6);
+// otherwise a not_granted use admits its first-use question (admitScoped).
+func (c *runtimeCredentials) scopedUse(ctx context.Context, subject cwire.Subject, name string, quiet bool) credentials.ScopedAuthorization {
 	op, valid := credentialUseOperation(name)
 	if !valid {
 		return credentials.ScopedAuthorization{}
 	}
+	admit := func() credentials.Authorization { return c.admitScoped(ctx, subject, op, "") }
+	if quiet {
+		admit = func() credentials.Authorization { return c.checkScoped(ctx, subject, op, "") }
+	}
 	return credentials.ScopedAuthorization{
-		Admit: func() credentials.Authorization { return c.admitScoped(ctx, subject, op, "") },
+		Admit: admit,
 		Check: func(expected string) credentials.Authorization { return c.checkScoped(ctx, subject, op, expected) },
 	}
 }
@@ -489,13 +520,39 @@ func (c *runtimeCredentials) ScopedCredentialsAvailable() bool {
 	return true
 }
 
+// decideQuietly is decide for OpenAbstractions' own reads of a key, such as
+// the router's model listing and download execution's credential applier
+// (DL-K4): the same decision, and no first-use question.
+func (c *runtimeCredentials) decideQuietly(ctx context.Context, subject cwire.Subject, action, resource string) (string, error) {
+	bound := rwire.Subject{Account: subject.Account, Program: subject.Program}
+	if _, incoming := ctx.Value(incomingRemoteKey{}).(incomingRemoteCall); incoming || remote.ValidSubjectProgram(bound.Program) {
+		return c.decide(ctx, subject, action, resource)
+	}
+	if action == credentials.ActionApply {
+		return c.useDecision(ctx, bound, resource).String(), nil
+	}
+	return c.runtimeRights.decide(ctx, bound, action, resource).Outcome.String(), nil
+}
+
 // decide asks the in-process decision policy about one subject.
 func (c *runtimeCredentials) decide(ctx context.Context, subject cwire.Subject, action, resource string) (string, error) {
 	bound := rwire.Subject{Account: subject.Account, Program: subject.Program}
+	call, incoming := ctx.Value(incomingRemoteKey{}).(incomingRemoteCall)
+	if incoming || remote.ValidSubjectProgram(bound.Program) {
+		if !incoming || c == nil || c.runtimeRights == nil || !call.matchesSubject(c.owner, bound.Account, bound.Program) {
+			return rwire.DecisionOutcomeUnavailable.String(), nil
+		}
+		if action == credentials.ActionApply {
+			return c.useDecision(ctx, bound, resource).String(), nil
+		}
+		return c.runtimeRights.decideRemote(ctx, call.peer, call.admit, action, resource, call.minimum).Outcome.String(), nil
+	}
 	if action == credentials.ActionApply {
 		outcome := c.useDecision(ctx, bound, resource)
 		if outcome == rwire.DecisionOutcomeNotGranted && c.firstUse != nil {
-			c.firstUse(bound, requesterPublisher(boundPeer(ctx, bound)), action, resource)
+			// The gateway window holds the refused call open on this question
+			// (INF-W10).
+			inference.AskedFrom(ctx).Add(c.firstUse(bound, requesterPublisher(boundPeer(ctx, bound)), action, resource))
 		}
 		return outcome.String(), nil
 	}
@@ -514,6 +571,26 @@ func (c *runtimeCredentials) useDecision(ctx context.Context, bound rwire.Subjec
 			request.ConcreteOperation = &concrete
 		}
 	}
+	call, incoming := ctx.Value(incomingRemoteKey{}).(incomingRemoteCall)
+	if incoming || remote.ValidSubjectProgram(bound.Program) {
+		if !incoming || c == nil || c.runtimeRights == nil || !call.matchesSubject(c.owner, bound.Account, bound.Program) || ctx.Err() != nil {
+			return rwire.DecisionOutcomeUnavailable
+		}
+		mapped, err := remote.SubjectOf(call.peer, call.admit)
+		if err != nil || mapped.Program() != bound.Program {
+			return rwire.DecisionOutcomeForbidden
+		}
+		if request.ConcreteOperation == nil {
+			// Unknown typed targets cannot take the legacy-only path.
+			return rwire.DecisionOutcomeUnavailable
+		}
+		if c.policy == nil {
+			return rwire.DecisionOutcomeUnavailable
+		}
+		ctx, cancel := budget.Within(ctx, decisionBudget, decisionBudget)
+		defer cancel()
+		return c.policy.CheckLegacyOperationAtLeastRevisionContext(ctx, bound, request, call.minimum).Decision.Outcome
+	}
 	return c.runtimeRights.CheckLegacyOperationContext(ctx, bound, request).Outcome
 }
 
@@ -530,11 +607,15 @@ func (c *runtimeCredentials) configure(o *host.Options) {
 	}
 }
 
-// close releases a composed host the runtime never took over.
+// close releases a composed host the runtime never took over, and the
+// platform store once the runtime stops serving.
 func (c *runtimeCredentials) close() {
 	if c != nil {
 		//unchecked: close has no return value to report a close failure through
 		c.host.Close()
+		if c.release != nil {
+			c.release()
+		}
 	}
 }
 
@@ -554,8 +635,12 @@ func (c *runtimeCredentials) executor(e acceptanceprovider.Executor) acceptancep
 	return e
 }
 
-func (c *runtimeCredentials) apply(ctx context.Context, subject cwire.Subject, consumer, name, host string) (map[string]string, error) {
-	decide, guard, evidence := c.legacyUseAuthorization(ctx, subject, name)
+// apply applies a credential for one request of subject. quiet decides the
+// use asking nobody: download execution runs after admission asked, and a
+// rule removed since then fails the job with no question (INF-A6, RIGHTS-FLOW
+// G3).
+func (c *runtimeCredentials) apply(ctx context.Context, subject cwire.Subject, consumer, name, host string, quiet bool) (map[string]string, error) {
+	decide, guard, evidence := c.legacyUseAuthorization(ctx, subject, name, quiet)
 	result := c.holder.ApplyAuthorized(ctx, cwire.Use{Subject: subject, Consumer: consumer, Name: name, Target: host}, decide, guard, evidence)
 	if result.Outcome != cwire.ApplyOutcomeApplied {
 		return nil, download.CredentialRefusal(name, result.Outcome.String())
@@ -564,7 +649,7 @@ func (c *runtimeCredentials) apply(ctx context.Context, subject cwire.Subject, c
 }
 
 func (c *runtimeCredentials) applyForModel(ctx context.Context, account, program, name, host string) (map[string]string, error) {
-	return c.apply(ctx, cwire.Subject{Account: account, Program: program}, modelCredentialConsumer, name, host)
+	return c.apply(ctx, cwire.Subject{Account: account, Program: program}, modelCredentialConsumer, name, host, false)
 }
 
 // ApplyCredential serves download execution. The job service records an opaque
@@ -576,27 +661,43 @@ func (c *runtimeCredentials) ApplyCredential(ctx context.Context, scope, name, t
 	if err != nil {
 		return nil, err
 	}
-	return c.apply(ctx, subject, downloadserve.CredentialConsumer, name, target)
+	return c.apply(ctx, subject, downloadserve.CredentialConsumer, name, target, true)
 }
 
 func (c *runtimeCredentials) ApplySubjectCredential(ctx context.Context, subject acceptanceprovider.AuthenticatedSubject, name, target string) (map[string]string, error) {
 	if subject.Account != c.owner || subject.Program == "" {
 		return nil, download.CredentialRefusal(name, "not_permitted")
 	}
-	return c.apply(ctx, cwire.Subject{Account: subject.Account, Program: subject.Program}, downloadserve.CredentialConsumer, name, target)
+	return c.apply(ctx, cwire.Subject{Account: subject.Account, Program: subject.Program}, downloadserve.CredentialConsumer, name, target, true)
 }
 
+// CheckSubjectCredential serves bound download admission [JOB-A16]. The
+// decision admits the credential's first-use question on not_granted; a
+// not_permitted refusal carries each question it raised or joined that is
+// still pending, which admission names (INF-W11, RIGHTS-FLOW ruling 2).
 func (c *runtimeCredentials) CheckSubjectCredential(ctx context.Context, subject acceptanceprovider.AuthenticatedSubject, name, target string) error {
 	if subject.Account != c.owner || subject.Program == "" {
 		return download.CredentialRefusal(name, "not_permitted")
 	}
 	bound := cwire.Subject{Account: subject.Account, Program: subject.Program}
-	decide, guard, evidence := c.legacyUseAuthorization(ctx, bound, name)
+	asked := &inference.Asked{}
+	ctx = inference.WithAsked(ctx, asked)
+	decide, guard, evidence := c.legacyUseAuthorization(ctx, bound, name, false)
 	result := c.holder.CheckAuthorized(ctx, cwire.Use{Subject: bound, Consumer: downloadserve.CredentialConsumer, Name: name, Target: target}, decide, guard, evidence)
-	if result.Outcome != cwire.ApplyOutcomeApplied {
-		return download.CredentialRefusal(name, result.Outcome.String())
+	return c.checkRefusal(bound, name, result.Outcome, asked)
+}
+
+// checkRefusal is the error of a download admission check: nil once applied,
+// and a not_permitted refusal naming its pending questions.
+func (c *runtimeCredentials) checkRefusal(bound cwire.Subject, name string, outcome cwire.ApplyOutcome, asked *inference.Asked) error {
+	if outcome == cwire.ApplyOutcomeApplied {
+		return nil
 	}
-	return nil
+	refusal := download.CredentialRefusal(name, outcome.String())
+	if outcome != cwire.ApplyOutcomeNotPermitted {
+		return refusal
+	}
+	return c.runtimeRights.refusalNamingQuestions(refusal, rwire.Subject{Account: bound.Account, Program: bound.Program}, asked)
 }
 
 // CheckCredential serves download admission: the holder's Check for the
@@ -606,7 +707,7 @@ func (c *runtimeCredentials) CheckCredential(ctx context.Context, scope, name, t
 	if err != nil {
 		return err
 	}
-	decide, guard, evidence := c.legacyUseAuthorization(ctx, subject, name)
+	decide, guard, evidence := c.legacyUseAuthorization(ctx, subject, name, false)
 	result := c.holder.CheckAuthorized(ctx, cwire.Use{Subject: subject, Consumer: downloadserve.CredentialConsumer, Name: name, Target: target}, decide, guard, evidence)
 	if result.Outcome != cwire.ApplyOutcomeApplied {
 		return download.CredentialRefusal(name, result.Outcome.String())
@@ -622,7 +723,8 @@ func (c *runtimeCredentials) ApplyScopedSubjectCredential(ctx context.Context, s
 		return nil, download.CredentialRefusal(name, "not_permitted")
 	}
 	bound := cwire.Subject{Account: subject.Account, Program: subject.Program}
-	result := c.holder.ApplyScoped(ctx, cwire.Use{Subject: bound, Consumer: downloadserve.CredentialConsumer, Name: name, Target: target}, c.scopedUse(ctx, bound, name))
+	// Execution asks nobody (INF-A6); admission asked.
+	result := c.holder.ApplyScoped(ctx, cwire.Use{Subject: bound, Consumer: downloadserve.CredentialConsumer, Name: name, Target: target}, c.scopedUse(ctx, bound, name, true))
 	if result.Outcome != cwire.ApplyOutcomeApplied {
 		return nil, download.CredentialRefusal(name, result.Outcome.String())
 	}
@@ -637,11 +739,12 @@ func (c *runtimeCredentials) CheckScopedSubjectCredential(ctx context.Context, s
 		return download.CredentialRefusal(name, "not_permitted")
 	}
 	bound := cwire.Subject{Account: subject.Account, Program: subject.Program}
-	result := c.holder.CheckScoped(ctx, cwire.Use{Subject: bound, Consumer: downloadserve.CredentialConsumer, Name: name, Target: target}, c.scopedUse(ctx, bound, name))
-	if result.Outcome != cwire.ApplyOutcomeApplied {
-		return download.CredentialRefusal(name, result.Outcome.String())
-	}
-	return nil
+	// The typed decision admits the use's first-use question on not_granted
+	// (decideTypedAsking); the refusal names it as CheckSubjectCredential's.
+	asked := &inference.Asked{}
+	ctx = inference.WithAsked(ctx, asked)
+	result := c.holder.CheckScoped(ctx, cwire.Use{Subject: bound, Consumer: downloadserve.CredentialConsumer, Name: name, Target: target}, c.scopedUse(ctx, bound, name, false))
+	return c.checkRefusal(bound, name, result.Outcome, asked)
 }
 
 // scopeSubject inverts a job caller scope through the exact apply rules on the

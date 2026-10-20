@@ -1,0 +1,34 @@
+{
+  "about": "Codex's observed behaviour toward the OA helper, structure and timing only, no values. Sources: the owner's Codex Desktop log (logs_2.sqlite, rmcp and stdio_server_launcher records) and helper-lifecycle.json of 2026-11-01; two codex exec 0.166.0-alpha.5.1 runs against the chaos helper fixture (trace.jsonl). Replayed by TestReplayObservedCodexSession.",
+  "client": {
+    "initialize": {
+      "params": ["capabilities", "clientInfo", "protocolVersion"],
+      "capabilities": ["elicitation", "experimental", "roots"],
+      "client_info": ["name", "title", "version"]
+    },
+    "after_initialize": ["notifications/initialized", "tools/list"],
+    "tools_list_meta": ["progressToken"],
+    "tools_call_params": ["_meta", "arguments", "name"],
+    "tools_call_meta": ["callId", "itemId", "progressToken", "sessionId", "threadId", "windowId", "x-codex-turn-metadata"],
+    "thread_on_every_tool_call": true,
+    "thread_on_tools_list": false,
+    "first_tool_call_after_ms": 6100,
+    "tool_call_gap_ms": [2069, 6869, 2570, 3704, 1842, 3481, 1446],
+    "retry_burst": {"calls": 44, "within_ms": 60, "note": "with errors returned, the model in code mode retried 44 times within 60 ms"},
+    "on_exit": "kills the helper; stdin is not closed and no end is recorded"
+  },
+  "spawns": {
+    "note": "Helpers born for subagent threads (thread_spawn, session_init.mcp_manager_init). They initialize and list tools, never call a tool, and are killed when their thread ends. at_ms is relative to the first; the 128 s gap is compressed to gap_compressed_ms in the replay.",
+    "at_ms": [0, 87, 249, 4672, 4695, 4734, 5426, 5518, 5548, 128312, 128331, 128337, 129522, 129574, 129599],
+    "gap_after_index": 8,
+    "gap_compressed_ms": 3000,
+    "role": "probe",
+    "end": "killed"
+  },
+  "session": {
+    "note": "The working helper of the main thread, started by thread/resume. It made tool calls with the thread for three hours. Modern Standby (Idle Timeout) began at 16:27:11Z; its lease lapsed 56 s and 67 s later in two helpers; the next tool call came 22 minutes later, after wake, and got Transport closed from the old build.",
+    "standby_to_lapse_ms": [56000, 67000],
+    "next_call_after_wake_ms": 41000,
+    "end": "killed"
+  }
+}

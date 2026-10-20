@@ -1,0 +1,519 @@
+type Artifact contract0.Artifact
+type Constraints contract0.Constraints
+type Network contract0.Network
+const NetworkAny
+const NetworkUnmetered
+func NetworkValues() []Network
+func ParseNetwork(word string) (Network, bool)
+type Request contract0.Request
+type Source contract0.Source
+type Activation contract1.Activation
+const ActivationOnDemand
+const ActivationAttach
+const ActivationRemote
+func ActivationValues() []Activation
+func ParseActivation(word string) (Activation, bool)
+type ApplicationActivationOutcome contract1.ApplicationActivationOutcome
+const ApplicationActivationOutcomeReady
+const ApplicationActivationOutcomeUnknown
+const ApplicationActivationOutcomeDisabled
+const ApplicationActivationOutcomeForbidden
+const ApplicationActivationOutcomeInvalid
+const ApplicationActivationOutcomeLaunchRefused
+const ApplicationActivationOutcomeIdentityRefused
+const ApplicationActivationOutcomeNotReady
+const ApplicationActivationOutcomeUnavailable
+func ApplicationActivationOutcomeValues() []ApplicationActivationOutcome
+func ParseApplicationActivationOutcome(word string) (ApplicationActivationOutcome, bool)
+type ApplicationActivationRecipe contract1.ApplicationActivationRecipe
+type ApplicationActivationResult contract1.ApplicationActivationResult
+type ApplicationChange contract1.ApplicationChange
+type ApplicationContext contract1.ApplicationContext
+type ApplicationDescriptor contract1.ApplicationDescriptor
+type ApplicationEntry contract1.ApplicationEntry
+type ApplicationInstance contract1.ApplicationInstance
+type ApplicationInterface contract1.ApplicationInterface
+type ApplicationOutcome contract1.ApplicationOutcome
+const ApplicationOutcomeApplied
+const ApplicationOutcomePage
+const ApplicationOutcomeUnknown
+const ApplicationOutcomeStale
+const ApplicationOutcomeConflict
+const ApplicationOutcomeInvalid
+const ApplicationOutcomeForbidden
+const ApplicationOutcomeUnavailable
+func ApplicationOutcomeValues() []ApplicationOutcome
+func ParseApplicationOutcome(word string) (ApplicationOutcome, bool)
+type ApplicationPage contract1.ApplicationPage
+type ApplicationPresence contract1.ApplicationPresence
+type ApplicationStart contract1.ApplicationStart
+type ApplicationStartPage contract1.ApplicationStartPage
+type BootstrapObservation contract1.BootstrapObservation
+type BootstrapState contract1.BootstrapState
+const BootstrapStateUnknown
+const BootstrapStateInstalled
+const BootstrapStateStarting
+const BootstrapStateRunning
+const BootstrapStateUnavailable
+func BootstrapStateValues() []BootstrapState
+func ParseBootstrapState(word string) (BootstrapState, bool)
+type CallerOutcome contract1.CallerOutcome
+const CallerOutcomeObserved
+const CallerOutcomeForbidden
+const CallerOutcomeUnavailable
+const CallerOutcomeInvalid
+func CallerOutcomeValues() []CallerOutcome
+func ParseCallerOutcome(word string) (CallerOutcome, bool)
+type CapabilityObservation contract1.CapabilityObservation
+type Declaration contract1.Declaration
+type DeclarationCeiling contract1.DeclarationCeiling
+type DeclarationChange contract1.DeclarationChange
+type DeclarationEditOutcome contract1.DeclarationEditOutcome
+const DeclarationEditOutcomeApplied
+const DeclarationEditOutcomeConflict
+const DeclarationEditOutcomeUnknown
+const DeclarationEditOutcomeInvalid
+const DeclarationEditOutcomeForbidden
+const DeclarationEditOutcomeUnavailable
+func DeclarationEditOutcomeValues() []DeclarationEditOutcome
+func ParseDeclarationEditOutcome(word string) (DeclarationEditOutcome, bool)
+type DeclarationExtension contract1.DeclarationExtension
+type DeclarationHost contract1.DeclarationHost
+type DeclarationList contract1.DeclarationList
+type DeclarationListOutcome contract1.DeclarationListOutcome
+const DeclarationListOutcomePage
+const DeclarationListOutcomeInvalid
+const DeclarationListOutcomeForbidden
+const DeclarationListOutcomeUnavailable
+func DeclarationListOutcomeValues() []DeclarationListOutcome
+func ParseDeclarationListOutcome(word string) (DeclarationListOutcome, bool)
+type DeclarationListV2 contract1.DeclarationListV2
+type DeclarationObservation contract1.DeclarationObservation
+type DeclarationObservationV2 contract1.DeclarationObservationV2
+type DeclarationReadiness contract1.DeclarationReadiness
+const DeclarationReadinessReady
+const DeclarationReadinessIdle
+const DeclarationReadinessStarting
+const DeclarationReadinessRestarting
+const DeclarationReadinessRefused
+const DeclarationReadinessUnreachable
+const DeclarationReadinessNotReady
+const DeclarationReadinessDisabled
+func DeclarationReadinessValues() []DeclarationReadiness
+func ParseDeclarationReadiness(word string) (DeclarationReadiness, bool)
+type DeclarationRole contract1.DeclarationRole
+const DeclarationRoleProvider
+const DeclarationRoleHost
+const DeclarationRoleRemote
+func DeclarationRoleValues() []DeclarationRole
+func ParseDeclarationRole(word string) (DeclarationRole, bool)
+type DeclarationState contract1.DeclarationState
+type DeclarationStateV2 contract1.DeclarationStateV2
+type DeclarationTransport contract1.DeclarationTransport
+const DeclarationTransportNative
+const DeclarationTransportRemote
+const DeclarationTransportHTTP
+func DeclarationTransportValues() []DeclarationTransport
+func ParseDeclarationTransport(word string) (DeclarationTransport, bool)
+type DeclarationWithExtensions contract1.DeclarationWithExtensions
+type Description contract1.Description
+type DescriptionOutcome contract1.DescriptionOutcome
+const DescriptionOutcomeDescribed
+const DescriptionOutcomeForbidden
+const DescriptionOutcomeUnavailable
+const DescriptionOutcomeInvalid
+func DescriptionOutcomeValues() []DescriptionOutcome
+func ParseDescriptionOutcome(word string) (DescriptionOutcome, bool)
+type HostReading contract1.HostReading
+type PinnedDeclaration contract1.PinnedDeclaration
+type PinnedDeclarationList contract1.PinnedDeclarationList
+type PinnedDeclarationObservation contract1.PinnedDeclarationObservation
+type PinnedDeclarationState contract1.PinnedDeclarationState
+type RemoteTrust contract1.RemoteTrust
+type ResolutionStatus contract1.ResolutionStatus
+const ResolutionStatusResolved
+const ResolutionStatusUnavailable
+const ResolutionStatusForbidden
+const ResolutionStatusIncompatible
+const ResolutionStatusUnmetRequirements
+const ResolutionStatusNotReady
+const ResolutionStatusInvalidRequest
+func ResolutionStatusValues() []ResolutionStatus
+func ParseResolutionStatus(word string) (ResolutionStatus, bool)
+type ResolveRequest contract1.ResolveRequest
+type ResolveResult contract1.ResolveResult
+type RuntimeObservation contract1.RuntimeObservation
+type ServiceReadiness contract1.ServiceReadiness
+const ServiceReadinessReady
+const ServiceReadinessNotReady
+const ServiceReadinessUnknown
+func ServiceReadinessValues() []ServiceReadiness
+func ParseServiceReadiness(word string) (ServiceReadiness, bool)
+type ServiceReference contract1.ServiceReference
+type ServiceState contract1.ServiceState
+type ActivateRequest wire.ActivateRequest
+type HostActivationOutcome wire.HostActivationOutcome
+const HostActivationOutcomeApplied
+const HostActivationOutcomeRefused
+const HostActivationOutcomeUnavailable
+func HostActivationOutcomeValues() []HostActivationOutcome
+func ParseHostActivationOutcome(word string) (HostActivationOutcome, bool)
+type HostActivationResult wire.HostActivationResult
+type Raw wire.Raw
+type CommandClass contract3.CommandClass
+const CommandClassRead
+const CommandClassReveal
+const CommandClassPropose
+const CommandClassEdit
+const CommandClassCommit
+const CommandClassDestroy
+const CommandClassSpend
+const CommandClassSend
+func CommandClassValues() []CommandClass
+func ParseCommandClass(word string) (CommandClass, bool)
+type CommandDeclaration contract3.CommandDeclaration
+type DeclaredCommand contract3.DeclaredCommand
+type MachineAgreement contract4.MachineAgreement
+type MachineCancelOutcome contract4.MachineCancelOutcome
+const MachineCancelOutcomeUpdated
+const MachineCancelOutcomeUnknown
+const MachineCancelOutcomeForbidden
+const MachineCancelOutcomeUnavailable
+const MachineCancelOutcomeInvalid
+func MachineCancelOutcomeValues() []MachineCancelOutcome
+func ParseMachineCancelOutcome(word string) (MachineCancelOutcome, bool)
+type MachineCancellation contract4.MachineCancellation
+type MachineDirection contract4.MachineDirection
+type MachineListOutcome contract4.MachineListOutcome
+const MachineListOutcomePage
+const MachineListOutcomeGap
+const MachineListOutcomeForbidden
+const MachineListOutcomeUnavailable
+const MachineListOutcomeInvalid
+func MachineListOutcomeValues() []MachineListOutcome
+func ParseMachineListOutcome(word string) (MachineListOutcome, bool)
+type MachineObservation contract4.MachineObservation
+type MachineObserveOutcome contract4.MachineObserveOutcome
+const MachineObserveOutcomeChanged
+const MachineObserveOutcomeUnchanged
+const MachineObserveOutcomeGap
+const MachineObserveOutcomeUnknown
+const MachineObserveOutcomeForbidden
+const MachineObserveOutcomeUnavailable
+const MachineObserveOutcomeInvalid
+const MachineObserveOutcomeExhausted
+const MachineObserveOutcomeFailed
+func MachineObserveOutcomeValues() []MachineObserveOutcome
+func ParseMachineObserveOutcome(word string) (MachineObserveOutcome, bool)
+type MachineOperation contract4.MachineOperation
+type MachinePage contract4.MachinePage
+type MachinePhase contract4.MachinePhase
+const MachinePhaseOffering
+const MachinePhaseConnecting
+const MachinePhaseChecking
+const MachinePhaseAwaitingPerson
+const MachinePhaseConsentSent
+const MachinePhaseReconciling
+const MachinePhasePaired
+const MachinePhaseRefused
+const MachinePhaseCancelled
+const MachinePhaseExpired
+const MachinePhaseUncertain
+func MachinePhaseValues() []MachinePhase
+func ParseMachinePhase(word string) (MachinePhase, bool)
+type MachinePreparation contract4.MachinePreparation
+type MachineRecord contract4.MachineRecord
+type MachineRemoval contract4.MachineRemoval
+type MachineRemoveOutcome contract4.MachineRemoveOutcome
+const MachineRemoveOutcomeRemoved
+const MachineRemoveOutcomeCleanupPending
+const MachineRemoveOutcomeConflict
+const MachineRemoveOutcomeNotFound
+const MachineRemoveOutcomeForbidden
+const MachineRemoveOutcomeUnavailable
+const MachineRemoveOutcomeInvalid
+func MachineRemoveOutcomeValues() []MachineRemoveOutcome
+func ParseMachineRemoveOutcome(word string) (MachineRemoveOutcome, bool)
+type MachineRequestIdentity contract4.MachineRequestIdentity
+type MachineScopeKind contract4.MachineScopeKind
+const MachineScopeKindNone
+const MachineScopeKindOneHostInference
+func MachineScopeKindValues() []MachineScopeKind
+func ParseMachineScopeKind(word string) (MachineScopeKind, bool)
+type MachineStart contract4.MachineStart
+type MachineStartOutcome contract4.MachineStartOutcome
+const MachineStartOutcomeStarted
+const MachineStartOutcomeExisting
+const MachineStartOutcomeForbidden
+const MachineStartOutcomeUnavailable
+const MachineStartOutcomeInvalid
+const MachineStartOutcomeConflict
+const MachineStartOutcomeExhausted
+const MachineStartOutcomeExpired
+func MachineStartOutcomeValues() []MachineStartOutcome
+func ParseMachineStartOutcome(word string) (MachineStartOutcome, bool)
+type RegistrationActivation registration.Activation
+const RegistrationActivationOnDemand
+const RegistrationActivationAttach
+func RegistrationActivationValues() []RegistrationActivation
+func ParseRegistrationActivation(word string) (RegistrationActivation, bool)
+type ActivationVerb registration.ActivationVerb
+type ApplicationFacet registration.ApplicationFacet
+type ApplicationReading registration.ApplicationReading
+type Change registration.Change
+type Chooser registration.Chooser
+type Choosers registration.Choosers
+type Cleanup registration.Cleanup
+type CleanupState registration.CleanupState
+const CleanupStateDone
+const CleanupStatePending
+const CleanupStateFailed
+func CleanupStateValues() []CleanupState
+func ParseCleanupState(word string) (CleanupState, bool)
+type EngineFact registration.EngineFact
+type FacetKind registration.FacetKind
+const FacetKindProvider
+const FacetKindHost
+const FacetKindRemote
+const FacetKindApplication
+func FacetKindValues() []FacetKind
+func ParseFacetKind(word string) (FacetKind, bool)
+type FacetReference registration.FacetReference
+type HostRecipe registration.HostRecipe
+type IdentityEvidence registration.IdentityEvidence
+const IdentityEvidenceNone
+const IdentityEvidenceProgram
+const IdentityEvidenceRemote
+func IdentityEvidenceValues() []IdentityEvidence
+func ParseIdentityEvidence(word string) (IdentityEvidence, bool)
+type Manifest registration.Manifest
+type ModelNeed registration.ModelNeed
+type ModelRecipe registration.ModelRecipe
+type Needs registration.Needs
+type NetworkRequirement registration.NetworkRequirement
+type Outcome registration.Outcome
+const OutcomeApplied
+const OutcomePage
+const OutcomeNotFound
+const OutcomeConflict
+const OutcomeInvalid
+const OutcomeForbidden
+const OutcomeUnavailable
+const OutcomeUnsupported
+const OutcomeGap
+func OutcomeValues() []Outcome
+func ParseOutcome(word string) (Outcome, bool)
+type Page registration.Page
+type RegistrationPlacement registration.Placement
+const RegistrationPlacementLocal
+const RegistrationPlacementHosted
+const RegistrationPlacementAny
+func RegistrationPlacementValues() []RegistrationPlacement
+func ParseRegistrationPlacement(word string) (RegistrationPlacement, bool)
+type ProducerCheck registration.ProducerCheck
+type ProducerCheckState registration.ProducerCheckState
+const ProducerCheckStateCurrent
+const ProducerCheckStateRepaired
+const ProducerCheckStateStale
+const ProducerCheckStateRefused
+const ProducerCheckStateUnverified
+func ProducerCheckStateValues() []ProducerCheckState
+func ParseProducerCheckState(word string) (ProducerCheckState, bool)
+type ProviderFacet registration.ProviderFacet
+type Publisher registration.Publisher
+type RecipeObject registration.RecipeObject
+type Registration registration.Registration
+type RegistrationSpec registration.RegistrationSpec
+type RemoteFacet registration.RemoteFacet
+type RemovalReceipt registration.RemovalReceipt
+type RequestedPermission registration.RequestedPermission
+type RequiredExtension registration.RequiredExtension
+type ScopedModel registration.ScopedModel
+type ServerFacet registration.ServerFacet
+type RegistrationServiceState registration.ServiceState
+type RegistrationSource registration.Source
+const RegistrationSourceInstallation
+const RegistrationSourceOperator
+const RegistrationSourceSelfRegistration
+const RegistrationSourceProductRecord
+const RegistrationSourceBuiltIn
+func RegistrationSourceValues() []RegistrationSource
+func ParseRegistrationSource(word string) (RegistrationSource, bool)
+type State registration.State
+const StatePendingApproval
+const StateEnabled
+const StateDisabled
+func StateValues() []State
+func ParseState(word string) (State, bool)
+type Verification registration.Verification
+const VerificationVerified
+const VerificationMissing
+const VerificationChanged
+const VerificationUnverified
+func VerificationValues() []Verification
+func ParseVerification(word string) (Verification, bool)
+type AcceptanceOutcome api.AcceptanceOutcome
+const AcceptanceOutcomeAccepted
+const AcceptanceOutcomeDefinitelyNotAccepted
+const AcceptanceOutcomeUnknown
+const AcceptanceOutcomeKeyConflict
+const AcceptanceOutcomeForbidden
+const AcceptanceOutcomeInvalid
+const AcceptanceOutcomeUnavailable
+func AcceptanceOutcomeValues() []AcceptanceOutcome
+func ParseAcceptanceOutcome(word string) (AcceptanceOutcome, bool)
+type AcceptanceResult api.AcceptanceResult
+type CancellationOutcome api.CancellationOutcome
+const CancellationOutcomeRequested
+const CancellationOutcomeAlreadyTerminal
+const CancellationOutcomeUnknown
+const CancellationOutcomeForbidden
+const CancellationOutcomeUnsupported
+const CancellationOutcomeUnavailable
+func CancellationOutcomeValues() []CancellationOutcome
+func ParseCancellationOutcome(word string) (CancellationOutcome, bool)
+type CancellationResult api.CancellationResult
+type FailureCause api.FailureCause
+const FailureCauseOther
+const FailureCauseDigestMismatch
+const FailureCauseOversize
+const FailureCauseShortTransfer
+const FailureCauseUnauthorized
+const FailureCauseNotFound
+const FailureCauseRefused
+const FailureCauseServerError
+const FailureCauseTransport
+const FailureCauseResultLost
+const FailureCauseCredential
+func FailureCauseValues() []FailureCause
+type FailureClass api.FailureClass
+const FailureClassRetryable
+const FailureClassPermanent
+const FailureClassUnknown
+func FailureClassValues() []FailureClass
+func ParseFailureClass(word string) (FailureClass, bool)
+type HistoryWindow api.HistoryWindow
+type InventoryOutcome api.InventoryOutcome
+const InventoryOutcomePage
+const InventoryOutcomeGap
+const InventoryOutcomeForbidden
+const InventoryOutcomeInvalid
+const InventoryOutcomeUnavailable
+func InventoryOutcomeValues() []InventoryOutcome
+func ParseInventoryOutcome(word string) (InventoryOutcome, bool)
+type InventoryPage api.InventoryPage
+type LinkOutcome api.LinkOutcome
+const LinkOutcomeLinked
+const LinkOutcomeNotReady
+const LinkOutcomeUnavailable
+const LinkOutcomeUnsupported
+const LinkOutcomeUnknown
+const LinkOutcomeForbidden
+const LinkOutcomeInvalid
+const LinkOutcomeExists
+const LinkOutcomeOtherVolume
+const LinkOutcomeNoHardLinks
+const LinkOutcomeRemote
+func LinkOutcomeValues() []LinkOutcome
+func ParseLinkOutcome(word string) (LinkOutcome, bool)
+type ObservationOutcome api.ObservationOutcome
+const ObservationOutcomeObserved
+const ObservationOutcomeUnknown
+const ObservationOutcomeForbidden
+const ObservationOutcomeInvalid
+const ObservationOutcomeDefinitelyNotAccepted
+const ObservationOutcomeUnavailable
+func ObservationOutcomeValues() []ObservationOutcome
+func ParseObservationOutcome(word string) (ObservationOutcome, bool)
+type ObservationResult api.ObservationResult
+type OperationSnapshot api.OperationSnapshot
+type OperatorCancellation api.OperatorCancellation
+type OperatorCancellationOutcome api.OperatorCancellationOutcome
+const OperatorCancellationOutcomeRequested
+const OperatorCancellationOutcomeAlreadyTerminal
+const OperatorCancellationOutcomeUnknown
+const OperatorCancellationOutcomeForbidden
+const OperatorCancellationOutcomeInvalid
+const OperatorCancellationOutcomeUnavailable
+func OperatorCancellationOutcomeValues() []OperatorCancellationOutcome
+func ParseOperatorCancellationOutcome(word string) (OperatorCancellationOutcome, bool)
+type Receipt api.Receipt
+type RequestIdentity api.RequestIdentity
+type ResultChunk api.ResultChunk
+type ResultLink api.ResultLink
+type ResultOutcome api.ResultOutcome
+const ResultOutcomeData
+const ResultOutcomeNotReady
+const ResultOutcomeUnavailable
+const ResultOutcomeUnsupported
+const ResultOutcomeUnknown
+const ResultOutcomeForbidden
+const ResultOutcomeInvalid
+func ResultOutcomeValues() []ResultOutcome
+func ParseResultOutcome(word string) (ResultOutcome, bool)
+type ResultRead api.ResultRead
+type ServiceError api.ServiceError
+type ServiceErrorCode api.ServiceErrorCode
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+const ServiceErrorCodeForbidden
+func ServiceErrorCodeValues() []ServiceErrorCode
+type Submission api.Submission
+type WorkFailure api.WorkFailure
+type WorkObservation api.WorkObservation
+type WorkObservationMechanism api.WorkObservationMechanism
+const WorkObservationMechanismNative
+const WorkObservationMechanismPolled
+func WorkObservationMechanismValues() []WorkObservationMechanism
+func ParseWorkObservationMechanism(word string) (WorkObservationMechanism, bool)
+type WorkObservationOutcome api.WorkObservationOutcome
+const WorkObservationOutcomeChanged
+const WorkObservationOutcomeUnchanged
+const WorkObservationOutcomeGap
+const WorkObservationOutcomeUnknown
+const WorkObservationOutcomeForbidden
+const WorkObservationOutcomeInvalid
+const WorkObservationOutcomeUnavailable
+const WorkObservationOutcomeUnsupported
+func WorkObservationOutcomeValues() []WorkObservationOutcome
+func ParseWorkObservationOutcome(word string) (WorkObservationOutcome, bool)
+type WorkProgress api.WorkProgress
+type WorkState api.WorkState
+const WorkStatePending
+const WorkStateRunning
+const WorkStateTransferred
+const WorkStateComplete
+const WorkStateFailed
+const WorkStateCancelled
+func WorkStateValues() []WorkState
+func ParseWorkState(word string) (WorkState, bool)
+type RefusalAsk contract7.RefusalAsk
+const RefusalAskAvailable
+const RefusalAskNone
+func RefusalAskValues() []RefusalAsk
+func ParseRefusalAsk(word string) (RefusalAsk, bool)
+type RefusalDecision contract7.RefusalDecision
+const RefusalDecisionDenied
+const RefusalDecisionNotGranted
+const RefusalDecisionPersonOnly
+func RefusalDecisionValues() []RefusalDecision
+func ParseRefusalDecision(word string) (RefusalDecision, bool)
+type RefusalDetail contract7.RefusalDetail
+type RefusalSource contract7.RefusalSource
+const RefusalSourceRights
+const RefusalSourceCredentials
+const RefusalSourceLicense
+const RefusalSourceTerms
+const RefusalSourceIdentity
+const RefusalSourceOS
+func RefusalSourceValues() []RefusalSource
+type Placement contract8.Placement
+const PlacementLocal
+const PlacementHosted
+const PlacementAny
+func PlacementValues() []Placement
+func ParsePlacement(word string) (Placement, bool)

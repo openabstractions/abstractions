@@ -41,8 +41,7 @@ func syncOutputApp(t *testing.T, complete bool) (runtimeFlags, string, func(path
 		t.Skip("this platform cannot bind a loopback peer")
 	}
 	fixture := newGwChatFixture(t)
-	options, _ := isolatedRuntime(t)
-	options.gateway = freeLoopbackPort(t)
+	options, _ := isolatedRuntime(t, isolatedRuntimeOptions{Gateway: true})
 	hosts := fmt.Sprintf(`{"local":[],"hosted":[{"name":"gwhost","base":%q,"wire":%q,"credential":"gw-cred","profiles":["speech","image"]}]}`,
 		fixture.server.URL, router.WireOpenAICompatible)
 	for _, file := range []struct{ path, body string }{
@@ -57,10 +56,12 @@ func syncOutputApp(t *testing.T, complete bool) (runtimeFlags, string, func(path
 	}
 	t.Cleanup(func() { removeStoreItems(t, namespace) })
 	ctx, cancel := context.WithCancel(context.Background())
-	ready, done := make(chan struct{}), make(chan error, 1)
-	go func() { done <- runRuntimeReady(ctx, options, func() error { close(ready); return nil }) }()
+	ready, done := make(chan string, 1), make(chan error, 1)
+	go func() {
+		done <- runRuntimeReadyAddress(ctx, options, func(address string) error { ready <- address; return nil })
+	}()
 	select {
-	case <-ready:
+	case options.gateway = <-ready:
 	case err := <-done:
 		cancel()
 		t.Fatalf("startup: %v", err)
@@ -158,38 +159,12 @@ func TestASynchronousOutputRefusalAdmitsThePairedQuestion(t *testing.T) {
 	}
 }
 
-// INF-V4, as for jobs: a synchronous image@1 or speech@1 call missing both
-// complete on its host and its output profile is refused once, naming both
-// grants in that order, and admits both first-use questions in the same pass.
-// One Allow on each lets the retry complete; no second refusal is needed to
-// learn of the output.
-func TestASynchronousCallAsksForEveryMissingGrantAtOnce(t *testing.T) {
-	host := inference.ResourceHost("gwhost")
-	for _, c := range syncOutputCalls {
-		t.Run(c.name, func(t *testing.T) {
-			options, self, post := syncOutputApp(t, false)
-			code, body := post(c.path, c.body)
-			if code == http.StatusOK {
-				t.Fatalf("a call without complete or %s completed: %s", c.resource, body)
-			}
-			complete := pendingQuestionOn(t, options, self, inference.ActionComplete, host)
-			output := pendingQuestionOn(t, options, self, contentWriteAction, c.resource)
-			if complete == "" || output == "" {
-				// The reply says whether rights refused the call at all: a
-				// 401 key refusal never reaches a grant decision.
-				t.Fatalf("one refused call (%d %s) did not admit the questions on complete and %s: %+v", code, body, c.resource, pendingFirstUse(t, options))
-			}
-			if reason := refusalReason(t, options, self, c.name); reason != "rights:not_granted output:forbidden" {
-				t.Fatalf("the refusal names %q", reason)
-			}
-			answerFirstUse(t, options, complete, "allow")
-			answerFirstUse(t, options, output, "allow")
-			if code, body := post(c.path, c.body); code != http.StatusOK {
-				t.Fatalf("retry after both answers: %d %s", code, body)
-			}
-		})
-	}
-}
+// INF-V4 for a hosted server (INF-A3): the call asks one question about
+// the account in place of complete on the host. In this in-process fixture
+// the test executable is both the app and the runtime, which holds apply on
+// the account for its own host checks, so the account question cannot be
+// reached here. runtime_hosted_use_test.go covers it
+// (TestHostedServerFirstUseAsksOnceAboutItsAccount).
 
 // refusalReason is the reason of the last refused window call of profile
 // the audit records for program.

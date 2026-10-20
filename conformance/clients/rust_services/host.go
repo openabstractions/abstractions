@@ -6,6 +6,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	casapi "github.com/openabstractions/abstraction-cas/go/api"
+	config "github.com/openabstractions/abstraction-config/go"
+	configservice "github.com/openabstractions/abstraction-config/go/service"
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	"github.com/openabstractions/abstraction-facade/go/resolution"
 	runtimehost "github.com/openabstractions/abstraction-facade/go/runtime"
@@ -21,6 +24,14 @@ import (
 
 type sink struct{ *logging.FileSink }
 
+func privateRuntimeOptions(endpoint, dir string, log logging.Sink) runtimehost.Options {
+	key := filepath.Join(dir, "config", "user.json")
+	return runtimehost.Options{Endpoint: endpoint, LogEndpoint: endpoint + "-log", ConfigEndpoint: endpoint + "-config", Sink: log,
+		ConfigStore: casapi.BoundedFileStore{MaxBytes: config.MaxUserFileBytes}, ConfigUserKey: key,
+		ConfigWithoutMachine: true, ConfigObservationSource: configservice.FileObservation(key),
+		OnError: func(err error) { fmt.Fprintln(os.Stderr, err) }}
+}
+
 func (s sink) Write(record logging.Record) error {
 	if err := s.FileSink.Write(record); err != nil {
 		return err
@@ -33,6 +44,10 @@ func (s sink) Write(record logging.Record) error {
 }
 
 type forged struct{}
+
+func (r forged) ResolveOnMachine(request wire.ResolveRequest, _ string) (wire.ResolveResult, error) {
+	return r.Resolve(request)
+}
 
 func (forged) Resolve(request wire.ResolveRequest) (wire.ResolveResult, error) {
 	return wire.ResolveResult{Status: wire.ResolutionStatusResolved, Reference: &wire.ServiceReference{Provider: "fixture", Capability: "wrong-capability", Contract: request.Contracts[0], Scope: wire.ScopeLocal, Transport: "oa-framed-local@1", Endpoint: "must-not-connect"}}, nil
@@ -102,7 +117,7 @@ func main() {
 		panic(err)
 	}
 	defer file.Close()
-	options := runtimehost.Options{Endpoint: endpoint, LogEndpoint: endpoint + "-log", ConfigEndpoint: endpoint + "-config", Sink: sink{file}, OnError: func(err error) { fmt.Fprintln(os.Stderr, err) }}
+	options := privateRuntimeOptions(endpoint, dir, sink{file})
 	// The consumer writes history-forbidden or history-unavailable into this file to exercise refusal codes.
 	if modeFile := os.Getenv("OA_RUST_HISTORY_POLICY"); modeFile != "" {
 		options.LogHistoryPolicy = func(ctx context.Context, p *identity.Peer) error {

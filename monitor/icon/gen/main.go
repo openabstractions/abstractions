@@ -4,7 +4,7 @@
 //
 // Default run (any OS, standard library only):
 //
-//	go run ./monitor/icon/gen
+//	go run ./monitor/icon/gen -version X.Y.Z
 //
 // reads openabstractions-flat/openabstractions.github.io/brand/mark-512.png,
 // places the existing mark on a pale rounded plate for contrast on either
@@ -17,12 +17,16 @@
 // Syso run (Windows only, needs the Visual Studio or Windows SDK build
 // tools — see monitor/README.md):
 //
-//	go run ./monitor/icon/gen -syso
+//	go run ./monitor/icon/gen -resources -syso -version X.Y.Z
 //
-// compiles monitor/panel.rc with rc.exe and converts the result with
-// cvtres.exe into monitor/rsrc_windows_amd64.syso and
-// monitor/rsrc_windows_arm64.syso, which `go build` links into the Panel
-// automatically because of their names — no further wiring needed.
+// compiles monitor/panel.rc and monitor/presenter.rc with rc.exe and converts
+// each result with cvtres.exe into rsrc_windows_amd64.syso and
+// rsrc_windows_arm64.syso in its own package: monitor/internal/panelres for
+// the Panel and monitor/internal/presenterres for the Asks presenter. One
+// package directory links every .syso in it into every build, so each
+// program's version resource lives in a package only that program's build
+// imports (monitor/resources_panel_windows.go and
+// monitor/presenter_main_windows.go).
 package main
 
 import (
@@ -40,39 +44,111 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
+	"strings"
 )
-
-// panelVersion is the Panel's reported version. Nothing in monitor exposes
-// one today (checked in monitor/main.go and its flags), so this generator
-// carries the fallback the task that added it settled on; update both here
-// and wherever monitor grows a real version source.
-const panelVersion = "0.3.0"
 
 // nativeSizes include the Windows ICO sizes and macOS's largest source size.
 // ICO entries stop at 256; the 512 image belongs to the ICNS and PNG outputs.
 var nativeSizes = []int{16, 24, 32, 48, 64, 128, 256, 512}
 
 func main() {
-	syso := flag.Bool("syso", false, "compile monitor/rsrc_windows_amd64.syso and monitor/rsrc_windows_arm64.syso from monitor/panel.rc via rc.exe and cvtres.exe (Windows only; run the default generation first)")
+	version := flag.String("version", "", "selected OA release version X.Y.Z (required; supplied by the train plan)")
+	resources := flag.Bool("resources", false, "refresh the resource script, native application manifest and shared SDK assets, preserving icon artwork")
+	panelDir := flag.String("panel-dir", "", "absolute existing Panel source directory; required when source paths are trimmed")
+	syso := flag.Bool("syso", false, "compile monitor/rsrc_windows_amd64.syso and monitor/rsrc_windows_arm64.syso from monitor/panel.rc via rc.exe and cvtres.exe (Windows only; supply -version and use -resources to refresh the script)")
 	vcvars := flag.String("vcvars", "", "absolute path to vcvars64.bat; auto-detected under Program Files when omitted")
+	sanitize := flag.String("sanitize-coff", "", "sanitize one absolute owned .syso output from cvtres for Go linking; no resource generation")
+	agentJSON := flag.String("agent-release-json", "", "compile the producer's private agent release document into a named neutral RCDATA resource")
+	agentObject := flag.String("agent-release-object", "", "absolute fresh rsrc_windows_ARCH.syso output for the agent release resource")
+	agentArch := flag.String("agent-release-arch", "", "agent release object architecture: amd64 or arm64")
+	historyJSON := flag.String("installer-history-json", "", "compile verified prior installer gateway pins into this Panel's own resource")
+	historyPanel := flag.String("installer-history-panel-dir", "", "existing Panel resource directory; compose icon, manifest, version and predecessor data into one object")
 	flag.Parse()
+	if *historyJSON != "" {
+		if *agentJSON != "" || *version != "" || *resources || *syso || *sanitize != "" || *panelDir != "" || flag.NArg() != 0 {
+			fail(fmt.Errorf("installer history compilation is a separate operation"))
+		}
+		if err := buildNativeDataObject(*historyJSON, *agentObject, *agentArch, *vcvars, "OA_INSTALLER_GATEWAY_HISTORY", *historyPanel); err != nil {
+			fail(err)
+		}
+		return
+	}
+	if *historyPanel != "" {
+		fail(fmt.Errorf("installer history Panel directory requires history data"))
+	}
+	if *agentJSON != "" || *agentObject != "" || *agentArch != "" {
+		if *version != "" || *resources || *syso || *sanitize != "" || *panelDir != "" || flag.NArg() != 0 {
+			fail(fmt.Errorf("agent release resource compilation is a separate operation"))
+		}
+		if err := buildAgentReleaseObject(*agentJSON, *agentObject, *agentArch, *vcvars); err != nil {
+			fail(err)
+		}
+		return
+	}
+	if *sanitize != "" {
+		if *version != "" || *resources || *syso || *vcvars != "" || *panelDir != "" || flag.NArg() != 0 {
+			fail(fmt.Errorf("sanitize-coff is a separate closed operation"))
+		}
+		if err := sanitizeCOFF(*sanitize); err != nil {
+			fail(err)
+		}
+		return
+	}
+	if _, err := resourceScript(*version); err != nil {
+		fail(err)
+	}
 
-	iconDir, monitorDir, err := layout()
+	iconDir, monitorDir, err := layout(*panelDir)
 	if err != nil {
 		fail(err)
 	}
 
+	if *resources {
+		if err := writeNativeResources(monitorDir); err != nil {
+			fail(err)
+		}
+		if err := writeRC(filepath.Join(monitorDir, "panel.rc"), *version); err != nil {
+			fail(err)
+		}
+		if err := writePresenterRC(filepath.Join(monitorDir, "presenter.rc"), *version); err != nil {
+			fail(err)
+		}
+	}
 	if *syso {
+		for name, script := range map[string]func(string) ([]byte, error){"panel.rc": resourceScript, "presenter.rc": presenterResourceScript} {
+			expected, _ := script(*version)
+			actual, err := os.ReadFile(filepath.Join(monitorDir, name))
+			if err != nil || !bytes.Equal(actual, expected) {
+				fail(fmt.Errorf("%s differs from selected release %s; run -resources -version %s first", name, *version, *version))
+			}
+		}
 		if err := buildSyso(monitorDir, *vcvars); err != nil {
 			fail(err)
 		}
 		return
 	}
 
-	brandDir := filepath.Join(filepath.Dir(monitorDir), "openabstractions-flat", "openabstractions.github.io", "brand")
-	if err := generateAssets(brandDir, iconDir, monitorDir); err != nil {
+	if *resources {
+		return
+	}
+	if err := writeNativeResources(monitorDir); err != nil {
 		fail(err)
 	}
+	brandDir := filepath.Join(filepath.Dir(monitorDir), "openabstractions-flat", "openabstractions.github.io", "brand")
+	if err := generateAssets(brandDir, iconDir, monitorDir, *version); err != nil {
+		fail(err)
+	}
+}
+
+func sanitizeCOFF(path string) error {
+	if !filepath.IsAbs(path) || filepath.Ext(path) != ".syso" {
+		return fmt.Errorf("sanitize-coff requires one absolute .syso output")
+	}
+	if _, err := stripAbsoluteSymbol(path, "@comp.id"); err != nil {
+		return err
+	}
+	return stripCvtresDebugSection(path)
 }
 
 func fail(err error) {
@@ -84,12 +160,30 @@ func fail(err error) {
 // monitor (its parent) from this source file's own path, so the tool works
 // the same way whether it is launched by `go generate` (cwd is monitor/icon,
 // the directive's own file's directory) or run directly from anywhere else.
-func layout() (iconDir, monitorDir string, err error) {
+func layout(panelDir string) (iconDir, monitorDir string, err error) {
 	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
+	if !ok && panelDir == "" {
 		return "", "", fmt.Errorf("could not locate gen/main.go's own path")
 	}
-	genDir := filepath.Dir(thisFile)
+	return resourceLayout(panelDir, thisFile)
+}
+
+func resourceLayout(panelDir, callerFile string) (iconDir, monitorDir string, err error) {
+	if panelDir != "" {
+		if !filepath.IsAbs(panelDir) {
+			return "", "", fmt.Errorf("-panel-dir requires an absolute existing Panel source directory")
+		}
+		panelDir = filepath.Clean(panelDir)
+		info, err := os.Stat(panelDir)
+		if err != nil || !info.IsDir() {
+			return "", "", fmt.Errorf("-panel-dir requires an existing Panel source directory: %s", panelDir)
+		}
+		return filepath.Join(panelDir, "icon"), panelDir, nil
+	}
+	if !filepath.IsAbs(callerFile) {
+		return "", "", fmt.Errorf("generator source path is not absolute; pass -panel-dir with an absolute Panel source directory")
+	}
+	genDir := filepath.Dir(callerFile)
 	iconDir = filepath.Dir(genDir)
 	monitorDir = filepath.Dir(iconDir)
 	if filepath.Base(iconDir) != "icon" || filepath.Base(monitorDir) != "monitor" {
@@ -100,7 +194,7 @@ func layout() (iconDir, monitorDir string, err error) {
 
 // generateAssets plates and resamples the brand mark into iconDir, packs
 // panel.ico and panel.icns there, and writes monitorDir/panel.rc.
-func generateAssets(brandDir, iconDir, monitorDir string) error {
+func generateAssets(brandDir, iconDir, monitorDir, version string) error {
 	sourcePath := filepath.Join(brandDir, "mark-512.png")
 	source, err := loadPNG(sourcePath)
 	if err != nil {
@@ -151,10 +245,15 @@ func generateAssets(brandDir, iconDir, monitorDir string) error {
 	fmt.Println("wrote", icnsPath) //unchecked: a build tool's progress line on stdout; a failed write there changes nothing it produced
 
 	rcPath := filepath.Join(monitorDir, "panel.rc")
-	if err := writeRC(rcPath); err != nil {
+	if err := writeRC(rcPath, version); err != nil {
 		return fmt.Errorf("write panel.rc: %w", err)
 	}
 	fmt.Println("wrote", rcPath) //unchecked: a build tool's progress line on stdout; a failed write there changes nothing it produced
+	presenterPath := filepath.Join(monitorDir, "presenter.rc")
+	if err := writePresenterRC(presenterPath, version); err != nil {
+		return fmt.Errorf("write presenter.rc: %w", err)
+	}
+	fmt.Println("wrote", presenterPath) //unchecked: a build tool's progress line on stdout; a failed write there changes nothing it produced
 	return nil
 }
 
@@ -316,16 +415,65 @@ func writeICO(path string, entries []builtIcon) error {
 // VERSIONINFO block. rc.exe understands ICON, RT_MANIFEST's numeric type and
 // every VERSIONINFO keyword used here natively, so the file needs no
 // #include and no Windows SDK headers to compile.
-func writeRC(path string) error {
-	const rc = `// Generated by ` + "`go generate ./monitor/icon/...`" + ` (monitor/icon/gen/main.go).
+func writeRC(path, version string) error {
+	rc, err := resourceScript(version)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, rc, 0o644)
+}
+
+// resourceIdentity is one program's VERSIONINFO strings. Task Manager names a
+// process by its FileDescription.
+type resourceIdentity struct {
+	description, internal, original, product string
+	// application embeds the Panel's application manifest.
+	application bool
+}
+
+var (
+	panelIdentity     = resourceIdentity{"OpenAbstractions Panel", "panel", "Abstraction Panel.exe", "OpenAbstractions Panel", true}
+	presenterIdentity = resourceIdentity{"OpenAbstractions", "presenter", "OpenAbstractions Presenter.exe", "OpenAbstractions", false}
+)
+
+func resourceScript(version string) ([]byte, error) { return identityScript(version, panelIdentity) }
+
+// presenterResourceScript is the Asks presenter's resource script: the same
+// icon and native manifest as the Panel, its own VERSIONINFO and no
+// application manifest.
+func presenterResourceScript(version string) ([]byte, error) {
+	return identityScript(version, presenterIdentity)
+}
+
+func writePresenterRC(path, version string) error {
+	rc, err := presenterResourceScript(version)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, rc, 0o644)
+}
+
+func identityScript(version string, id resourceIdentity) ([]byte, error) {
+	parts := strings.Split(version, ".")
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("selected OA version must be X.Y.Z")
+	}
+	for _, part := range parts {
+		value, err := strconv.ParseUint(part, 10, 16)
+		if err != nil || strconv.FormatUint(value, 10) != part {
+			return nil, fmt.Errorf("selected OA version must have canonical 16-bit components: %q", version)
+		}
+	}
+	numeric := strings.Join(parts, ",") + ",0"
+	rc := `// Generated by ` + "`go generate ./monitor/icon/...`" + ` (monitor/icon/gen/main.go).
 // Edit the brand mark or this generator, not this file, by hand.
 
 1 ICON "icon/panel.ico"
 1 24 "panel.manifest"
-
+` + applicationManifest(id) + `
 1 VERSIONINFO
-FILEVERSION     0,3,0,0
-PRODUCTVERSION  0,3,0,0
+FILEVERSION     ` + numeric + `
+PRODUCTVERSION  ` + numeric + `
 FILEFLAGSMASK   0x3fL
 FILEFLAGS       0x0L
 FILEOS          0x40004L
@@ -337,13 +485,13 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "CompanyName",      "OpenAbstractions"
-            VALUE "FileDescription",  "Open Abstractions control panel"
-            VALUE "FileVersion",      "` + panelVersion + `.0"
-            VALUE "InternalName",     "panel"
+            VALUE "FileDescription",  "` + id.description + `"
+            VALUE "FileVersion",      "` + version + `.0"
+            VALUE "InternalName",     "` + id.internal + `"
             VALUE "LegalCopyright",   "OpenAbstractions"
-            VALUE "OriginalFilename", "Abstraction Panel.exe"
-            VALUE "ProductName",      "Abstraction Panel"
-            VALUE "ProductVersion",   "` + panelVersion + `.0"
+            VALUE "OriginalFilename", "` + id.original + `"
+            VALUE "ProductName",      "` + id.product + `"
+            VALUE "ProductVersion",   "` + version + `.0"
         END
     END
     BLOCK "VarFileInfo"
@@ -352,11 +500,30 @@ BEGIN
     END
 END
 `
-	return os.WriteFile(path, []byte(rc), 0o644)
+	return []byte(rc), nil
 }
 
-// buildSyso compiles monitor/panel.rc into monitor/rsrc_windows_amd64.syso
-// and monitor/rsrc_windows_arm64.syso. It writes one .bat and runs it by
+// applicationManifest is the Panel's embedded application manifest block.
+func applicationManifest(id resourceIdentity) string {
+	if !id.application {
+		return ""
+	}
+	return `
+LANGUAGE 0, 0
+OA_APPLICATION_MANIFEST RCDATA "panel-application.json"
+LANGUAGE 9, 1
+`
+}
+
+// resourcePackages maps each resource script to the package directory its
+// objects are linked from.
+var resourcePackages = []struct{ script, dir string }{
+	{"panel.rc", filepath.Join("internal", "panelres")},
+	{"presenter.rc", filepath.Join("internal", "presenterres")},
+}
+
+// buildSyso compiles each resource script of resourcePackages into its
+// package's rsrc_windows_amd64.syso and rsrc_windows_arm64.syso. It writes one .bat and runs it by
 // absolute path (the Windows C++ recipe this repository already follows for
 // vcvars64: `cd` in the calling process does not carry into a child cmd.exe,
 // and the .bat must be invoked by its full path or cmd reports it as not
@@ -385,38 +552,42 @@ func buildSyso(monitorDir, vcvarsOverride string) error {
 		return fmt.Errorf("vcvars64.bat: %w", err)
 	}
 
-	rcPath := filepath.Join(monitorDir, "panel.rc")
-	if _, err := os.Stat(rcPath); err != nil {
-		return fmt.Errorf("%s: run the default `go run ./monitor/icon/gen` first: %w", rcPath, err)
-	}
-	resPath := filepath.Join(monitorDir, "panel.res")
-	amd64Out := filepath.Join(monitorDir, "rsrc_windows_amd64.syso")
-	arm64Out := filepath.Join(monitorDir, "rsrc_windows_arm64.syso")
-
-	bat := fmt.Sprintf(`@echo off
+	var outputs []string
+	for _, pkg := range resourcePackages {
+		rcPath := filepath.Join(monitorDir, pkg.script)
+		if _, err := os.Stat(rcPath); err != nil {
+			return fmt.Errorf("%s: run the default `go run ./monitor/icon/gen` first: %w", rcPath, err)
+		}
+		outDir := filepath.Join(monitorDir, pkg.dir)
+		if err := os.MkdirAll(outDir, 0o755); err != nil {
+			return err
+		}
+		resPath := filepath.Join(monitorDir, strings.TrimSuffix(pkg.script, ".rc")+".res")
+		amd64Out := filepath.Join(outDir, "rsrc_windows_amd64.syso")
+		arm64Out := filepath.Join(outDir, "rsrc_windows_arm64.syso")
+		bat := fmt.Sprintf(`@echo off
 setlocal
 call "%s" >nul || exit /b 1
 cd /d "%s" || exit /b 1
-rc.exe /nologo /fo panel.res panel.rc || exit /b 1
-cvtres.exe /NOLOGO /MACHINE:X64 /OUT:rsrc_windows_amd64.syso panel.res || exit /b 1
-cvtres.exe /NOLOGO /MACHINE:ARM64 /OUT:rsrc_windows_arm64.syso panel.res || exit /b 1
-`, vcvars, monitorDir)
-
-	batPath := filepath.Join(os.TempDir(), "oa-panel-syso.bat")
-	if err := os.WriteFile(batPath, []byte(bat), 0o644); err != nil {
-		return err
+rc.exe /nologo /fo %[3]s %[4]s || exit /b 1
+cvtres.exe /NOLOGO /MACHINE:X64 /OUT:%[5]s %[3]s || exit /b 1
+cvtres.exe /NOLOGO /MACHINE:ARM64 /OUT:%[6]s %[3]s || exit /b 1
+`, vcvars, monitorDir, filepath.Base(resPath), pkg.script, filepath.Join(pkg.dir, "rsrc_windows_amd64.syso"), filepath.Join(pkg.dir, "rsrc_windows_arm64.syso"))
+		batPath := filepath.Join(os.TempDir(), "oa-panel-syso.bat")
+		if err := os.WriteFile(batPath, []byte(bat), 0o644); err != nil {
+			return err
+		}
+		out, err := exec.Command("cmd.exe", "/c", batPath).CombinedOutput()
+		os.Remove(batPath)
+		os.Remove(resPath)
+		if err != nil {
+			return fmt.Errorf("rc.exe/cvtres.exe: %w\n%s", err, out)
+		}
+		fmt.Print(string(out)) //unchecked: a build tool's progress line on stdout; a failed write there changes nothing it produced
+		outputs = append(outputs, amd64Out, arm64Out)
 	}
-	defer os.Remove(batPath)
-	defer os.Remove(resPath)
 
-	cmd := exec.Command("cmd.exe", "/c", batPath)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("rc.exe/cvtres.exe: %w\n%s", err, out)
-	}
-	fmt.Print(string(out)) //unchecked: a build tool's progress line on stdout; a failed write there changes nothing it produced
-
-	for _, syso := range []string{amd64Out, arm64Out} {
+	for _, syso := range outputs {
 		removed, err := stripAbsoluteSymbol(syso, "@comp.id")
 		if err != nil {
 			return fmt.Errorf("%s: %w", syso, err)

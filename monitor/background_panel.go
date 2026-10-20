@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"os/exec"
 )
 
@@ -34,7 +33,7 @@ func activityPanelCommand(program, operationID string, binding *explicitRuntime)
 }
 
 func launchActivityPanel(operationID string) error {
-	program, err := os.Executable()
+	program, err := panelExecutable()
 	if err != nil {
 		return err
 	}
@@ -47,7 +46,7 @@ func launchActivityPanel(operationID string) error {
 }
 
 func launchQuestionPanel() error {
-	program, err := os.Executable()
+	program, err := panelExecutable()
 	if err != nil {
 		return err
 	}
@@ -57,4 +56,29 @@ func launchQuestionPanel() error {
 	}
 	go command.Wait()
 	return nil
+}
+
+// Repair opens the existing Setup maintenance owner. Installer identity review
+// and its explicit confirmation remain in that page; this launches no repair.
+func launchProgramRepairPanel() error {
+	program, err := panelExecutable()
+	if err != nil {
+		return err
+	}
+	command := programRepairPanelCommand(program, panelExplicit)
+	if err := command.Start(); err != nil {
+		return err
+	}
+	go command.Wait()
+	return nil
+}
+
+func programRepairPanelCommand(program string, binding *explicitRuntime) *exec.Cmd {
+	command := questionPanelCommand(program, binding)
+	for i, arg := range command.Args {
+		if i > 0 && command.Args[i-1] == "-page" && arg == "questions" {
+			command.Args[i] = "setup"
+		}
+	}
+	return command
 }

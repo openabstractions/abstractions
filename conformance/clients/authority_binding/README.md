@@ -5,9 +5,9 @@ with `--cmake` pointing to CMake where needed. `--race` requires a configured Go
 race C compiler. The runner builds actual packages in a temporary static prefix
 and an outside installed C++ consumer. It verifies logging, jobs, config, model and router packages are absent and missing required packages fail.
 
-The Go fixture hosts the real runtime with a temporary application Book and
+The Go fixture hosts the real runtime with a temporary application [Book](https://openabstractions.github.io/reference.html#concept-asks.book) and
 DecisionPolicy. The application admits a stable question, checks pending and
-conflict, waits with a bound and cancellation, then exits. A separately authorized generated QuestionOperator client
+conflict, waits with a bound and cancellation, then exits. A separately authorized generated [QuestionOperator](https://openabstractions.github.io/reference.html#concept-asks.question-operator) client
 answers once. Denied list/answer calls return no data; authorized history pages,
 stable answer replay and a cursor gap after mutation are checked. A denied
 operator cannot retire. The authorized operator retires the pending pagination
@@ -17,7 +17,7 @@ question with its record, replays retirement without a record, and observes
 answer and original admission repeatedly; forgetting yields gone. Unknown keys
 stay unknown. No application API supplies operator authority.
 
-The fixture also resolves generated AuthorizationOperator and ContentReader
+The fixture also resolves generated AuthorizationOperator and [ContentReader](https://openabstractions.github.io/reference.html#concept-storage.content-reader-service)
 clients. Explicit operator authorization permits a conditional grant; the
 consumer reads 150,000 bytes in three bounded chunks. A stale retry conflicts,
 operator revocation refuses the next resource read, and explicit release works.

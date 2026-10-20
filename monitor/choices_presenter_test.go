@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -58,6 +57,14 @@ func (o *fakeChoiceOperator) ListChoicesContext(context.Context, string, int64) 
 		return askclient.ChoicePage{}, o.err
 	}
 	return askclient.ChoicePage{Outcome: askclient.OperatorPageOutcomePage, Records: []askclient.ChoiceRecord{cloneChoiceRecord(o.record)}, Complete: true}, nil
+}
+
+func (o *fakeChoiceOperator) ListAllChoicesContext(ctx context.Context) ([]askclient.ChoiceRecord, error) {
+	page, err := o.ListChoicesContext(ctx, "", 64)
+	if err != nil {
+		return nil, err
+	}
+	return page.Records, nil
 }
 
 func (o *fakeChoiceOperator) AnswerChoiceContext(_ context.Context, id, option string) (askclient.ChoiceDecision, error) {
@@ -117,7 +124,7 @@ func TestChoicePresenterKeepsAppOptionsSeparateFromCloseAndPermissionChrome(t *t
 					t.Fatalf("decision %+v", result)
 				}
 				prompt := surface.shown[0]
-				if !prompt.AppChoice || prompt.Default != "" || !strings.Contains(prompt.Title, "App choice") || prompt.Instruction != record.Request.Title || len(prompt.Choices) != count || prompt.Choices[0].Option != "cancel" || prompt.Choices[0].Label != "Cancel this delivery" {
+				if !prompt.AppChoice || prompt.Default != "" || prompt.Title != "OpenAbstractions" || prompt.Footer != "" || prompt.Instruction != record.Request.Title || len(prompt.Choices) != count || prompt.Choices[0].Option != "cancel" || prompt.Choices[0].Label != "Cancel this delivery" {
 					t.Fatalf("ordinary projection %+v", prompt)
 				}
 			})

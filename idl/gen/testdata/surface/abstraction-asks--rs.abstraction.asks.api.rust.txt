@@ -10,7 +10,7 @@ pub enum ObservationOutcome
   Unavailable
   pub const ALL: [Self; 8]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum OperatorPageOutcome
   Page
   Gap
@@ -19,7 +19,7 @@ pub enum OperatorPageOutcome
   Unavailable
   pub const ALL: [Self; 5]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum OperatorDecisionOutcome
   Answered
   Conflict
@@ -29,7 +29,7 @@ pub enum OperatorDecisionOutcome
   Unavailable
   pub const ALL: [Self; 6]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum OperatorRetirementOutcome
   Retired
   Unknown
@@ -38,7 +38,7 @@ pub enum OperatorRetirementOutcome
   Unavailable
   pub const ALL: [Self; 5]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum OperatorQuestionOutcome
   Found
   Unknown
@@ -47,13 +47,13 @@ pub enum OperatorQuestionOutcome
   Unavailable
   pub const ALL: [Self; 5]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum Answerer
   Operator
   Responder
   pub const ALL: [Self; 2]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum ChoiceState
   Pending
   Answered
@@ -61,7 +61,7 @@ pub enum ChoiceState
   Expired
   pub const ALL: [Self; 4]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum ChoiceOutcome
   Pending
   Answered
@@ -76,7 +76,7 @@ pub enum ChoiceOutcome
   Unavailable
   pub const ALL: [Self; 11]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum ChoiceAckOutcome
   Acknowledged
   Conflict
@@ -87,7 +87,7 @@ pub enum ChoiceAckOutcome
   Unavailable
   pub const ALL: [Self; 7]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum ChoiceDecisionOutcome
   Answered
   Dismissed
@@ -100,20 +100,20 @@ pub enum ChoiceDecisionOutcome
   Unavailable
   pub const ALL: [Self; 9]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum ChoiceRoute
   Requester
   Operator
   Responder
   pub const ALL: [Self; 3]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum AnswerKind
   Question
   Choice
   pub const ALL: [Self; 2]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum ResponderEffectOutcome
   None
   Applied
@@ -122,7 +122,7 @@ pub enum ResponderEffectOutcome
   Unavailable
   pub const ALL: [Self; 5]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum PermissionOutcome
   Pending
   Answered
@@ -136,19 +136,19 @@ pub enum PermissionOutcome
   Denied
   pub const ALL: [Self; 10]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum NotificationActivation
   App
   OpenActivity
   pub const ALL: [Self; 2]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum NotificationDelivery
   Now
   OperationEnd
   pub const ALL: [Self; 2]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum NotificationState
   Scheduled
   Posted
@@ -158,7 +158,7 @@ pub enum NotificationState
   Expired
   pub const ALL: [Self; 6]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum NotificationOutcome
   Scheduled
   Posted
@@ -176,7 +176,7 @@ pub enum NotificationOutcome
   Unavailable
   pub const ALL: [Self; 14]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum NotificationDecisionOutcome
   Acted
   Dismissed
@@ -191,7 +191,7 @@ pub enum NotificationDecisionOutcome
   Unavailable
   pub const ALL: [Self; 11]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub mod service_error_code
   pub const HANDLER_ERROR: &str
   pub const INVALID_RESULT: &str
@@ -204,268 +204,289 @@ pub const OPERATIONS: [&str; 5]
 pub const REFUSAL_CODES: [&str; 11]
 pub const RESOURCE_ACTIONS: [&str; 3]
 pub struct Question
-  asker: String
-  key: String
-  slots: BTreeMap<String, String>
+  asker: ::std::string::String
+  key: ::std::string::String
+  slots: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>
 pub struct Request
-  op: String
-  ask: Option<Question>
+  op: ::std::string::String
+  ask: ::std::option::Option<Question>
   wait: bool
-  id: String
-  option: String
-  admin: String
+  id: ::std::string::String
+  option: ::std::string::String
+  admin: ::std::string::String
 pub struct Answer
-  id: String
+  id: ::std::string::String
   pending: bool
-  option: String
+  option: ::std::string::String
   yes: bool
   kept: bool
 pub struct RecordMetadata
-  id: String
-  asker: String
-  key: String
-  about: String
-  text: String
-  options: Vec<String>
-  asked: String
-  option: String
-  answered: String
+  id: ::std::string::String
+  asker: ::std::string::String
+  key: ::std::string::String
+  about: ::std::string::String
+  text: ::std::string::String
+  options: ::std::vec::Vec<::std::string::String>
+  asked: ::std::string::String
+  option: ::std::string::String
+  answered: ::std::string::String
   kept: bool
   yes: bool
 pub struct ResponseMetadata
-  code: String
-  error: String
-  answer: Option<Answer>
-  records: Vec<RecordMetadata>
+  code: ::std::string::String
+  error: ::std::string::String
+  answer: ::std::option::Option<Answer>
+  records: ::std::vec::Vec<RecordMetadata>
 pub struct ApplicationQuestion
-  request_key: String
-  key: String
-  slots: BTreeMap<String, String>
+  request_key: ::std::string::String
+  key: ::std::string::String
+  slots: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>
 pub struct QuestionObservation
   outcome: ObservationOutcome
-  answer: Option<Answer>
+  answer: ::std::option::Option<Answer>
 pub struct OperatorPage
   outcome: OperatorPageOutcome
-  records: Vec<RecordMetadata>
-  next: String
+  records: ::std::vec::Vec<RecordMetadata>
+  next: ::std::string::String
   complete: bool
 pub struct OperatorDecision
   outcome: OperatorDecisionOutcome
-  record: Option<RecordMetadata>
+  record: ::std::option::Option<RecordMetadata>
 pub struct OperatorRetirement
   outcome: OperatorRetirementOutcome
-  record: Option<RecordMetadata>
+  record: ::std::option::Option<RecordMetadata>
 pub struct OperatorQuestion
   outcome: OperatorQuestionOutcome
-  record: Option<RecordMetadata>
-  publisher: String
+  record: ::std::option::Option<RecordMetadata>
+  publisher: ::std::string::String
   publisher_trusted: bool
-  answered_by: Option<Answerer>
-  program_description: String
-  program_original_name: String
+  answered_by: ::std::option::Option<Answerer>
+  program_description: ::std::string::String
+  program_original_name: ::std::string::String
 pub struct AttributedQuestion
   question: OperatorQuestion
-  answerer: String
+  answerer: ::std::string::String
 pub struct PermissionTarget
-  account: String
-  program: String
-  action: String
-  resource: String
+  account: ::std::string::String
+  program: ::std::string::String
+  action: ::std::string::String
+  resource: ::std::string::String
 pub struct PermissionRequest
-  targets: Vec<PermissionTarget>
+  targets: ::std::vec::Vec<PermissionTarget>
 pub struct QuestionDetails
   question: AttributedQuestion
-  permission: Option<PermissionRequest>
+  permission: ::std::option::Option<PermissionRequest>
 pub struct QuestionAsker
   details: QuestionDetails
-  program: String
+  program: ::std::string::String
+pub struct CatalogueContent
+  slots: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>
+  permission: ::std::option::Option<PermissionRequest>
+pub struct QuestionContent
+  question: QuestionAsker
+  content: ::std::option::Option<CatalogueContent>
 pub struct RequestRef
-  key: String
+  key: ::std::string::String
   replay_until_ms: i64
 pub struct ChoiceOption
-  id: String
-  label: String
+  id: ::std::string::String
+  label: ::std::string::String
 pub struct ChoiceRequest
   request_ref: RequestRef
-  title: String
-  options: Vec<ChoiceOption>
+  title: ::std::string::String
+  options: ::std::vec::Vec<ChoiceOption>
   pending_until_ms: i64
 pub struct ChoiceAnswer
-  id: String
-  option: String
+  id: ::std::string::String
+  option: ::std::string::String
   answered_ms: i64
-  answered_by: String
+  answered_by: ::std::string::String
 pub struct ChoiceObservation
   outcome: ChoiceOutcome
-  id: String
-  answer: Option<ChoiceAnswer>
+  id: ::std::string::String
+  answer: ::std::option::Option<ChoiceAnswer>
 pub struct ChoiceAcknowledgement
   outcome: ChoiceAckOutcome
 pub struct ChoiceRecord
-  id: String
-  asker: String
+  id: ::std::string::String
+  asker: ::std::string::String
   request: ChoiceRequest
   state: ChoiceState
   asked_ms: i64
-  answer: Option<ChoiceAnswer>
-  publisher: String
+  answer: ::std::option::Option<ChoiceAnswer>
+  publisher: ::std::string::String
   publisher_trusted: bool
-  program_description: String
-  program_original_name: String
+  program_description: ::std::string::String
+  program_original_name: ::std::string::String
 pub struct ChoicePage
   outcome: OperatorPageOutcome
-  records: Vec<ChoiceRecord>
-  next: String
+  records: ::std::vec::Vec<ChoiceRecord>
+  next: ::std::string::String
   complete: bool
 pub struct ChoiceRead
   outcome: OperatorQuestionOutcome
-  record: Option<ChoiceRecord>
+  record: ::std::option::Option<ChoiceRecord>
 pub struct ChoiceDecision
   outcome: ChoiceDecisionOutcome
-  record: Option<ChoiceRecord>
+  record: ::std::option::Option<ChoiceRecord>
 pub struct ChoiceDetails
   choice: ChoiceRead
-  asker_program: String
-  assistant_options: Vec<String>
-  answered_via: Option<ChoiceRoute>
+  asker_program: ::std::string::String
+  assistant_options: ::std::vec::Vec<::std::string::String>
+  answered_via: ::std::option::Option<ChoiceRoute>
 pub struct AnswerEntry
-  id: String
+  id: ::std::string::String
   kind: AnswerKind
-  key: String
-  asker: String
-  asker_program: String
-  publisher: String
+  key: ::std::string::String
+  asker: ::std::string::String
+  asker_program: ::std::string::String
+  publisher: ::std::string::String
   publisher_trusted: bool
-  about: String
-  title: String
-  option: String
-  label: String
+  about: ::std::string::String
+  title: ::std::string::String
+  option: ::std::string::String
+  label: ::std::string::String
   answered_by: Answerer
-  answerer: String
+  answerer: ::std::string::String
   answered_ms: i64
 pub struct AnswerEntryPage
   outcome: OperatorPageOutcome
-  answers: Vec<AnswerEntry>
-  next: String
+  answers: ::std::vec::Vec<AnswerEntry>
+  next: ::std::string::String
+  complete: bool
+  complete_since_ms: i64
+pub struct AnswerContent
+  answer: AnswerEntry
+  content: ::std::option::Option<CatalogueContent>
+pub struct AnswerContentPage
+  outcome: OperatorPageOutcome
+  answers: ::std::vec::Vec<AnswerContent>
+  next: ::std::string::String
   complete: bool
   complete_since_ms: i64
 pub struct AnswerableChoice
-  id: String
-  asker: String
-  title: String
-  options: Vec<ChoiceOption>
+  id: ::std::string::String
+  asker: ::std::string::String
+  title: ::std::string::String
+  options: ::std::vec::Vec<ChoiceOption>
   pending_until_ms: i64
-  publisher: String
+  publisher: ::std::string::String
   publisher_trusted: bool
 pub struct AnswerableChoicePage
   outcome: OperatorPageOutcome
-  choices: Vec<AnswerableChoice>
-  next: String
+  choices: ::std::vec::Vec<AnswerableChoice>
+  next: ::std::string::String
   complete: bool
 pub struct ResponderDecision
   outcome: OperatorDecisionOutcome
-  record: Option<RecordMetadata>
+  record: ::std::option::Option<RecordMetadata>
   effect: ResponderEffectOutcome
-  target_outcome: String
+  target_outcome: ::std::string::String
 pub struct PermissionIntent
-  request_key: String
-  selection: Option<OAImported0>
-  bundle_ref: String
-  bundle_selector: Option<OAImported1>
-  purpose: String
+  request_key: ::std::string::String
+  selection: ::std::option::Option<OAImported0>
+  bundle_ref: ::std::string::String
+  bundle_selector: ::std::option::Option<OAImported1>
+  purpose: ::std::string::String
 pub struct PermissionObservation
   outcome: PermissionOutcome
-  answer: Option<Answer>
-  policy_revision: String
+  answer: ::std::option::Option<Answer>
+  policy_revision: ::std::string::String
 pub struct TypedPermissionDetails
   question: AttributedQuestion
-  effect: Option<OAImported2>
-  effect_digest: String
-  origin: String
-  purpose: String
-  display: Option<PermissionDisplay>
+  effect: ::std::option::Option<OAImported2>
+  effect_digest: ::std::string::String
+  origin: ::std::string::String
+  purpose: ::std::string::String
+  display: ::std::option::Option<PermissionDisplay>
+pub struct PendingQuestion
+  observation: PermissionObservation
+  pending_until_ms: i64
 pub struct PermissionDisplaySelection
-  operation: String
-  target: String
-  collection: String
-  all_effect: String
-  disclosure: String
+  operation: ::std::string::String
+  target: ::std::string::String
+  collection: ::std::string::String
+  all_effect: ::std::string::String
+  disclosure: ::std::string::String
 pub struct PermissionDisplay
-  selections: Vec<PermissionDisplaySelection>
-  bundle_label: String
-  bundle_disclosure: String
+  selections: ::std::vec::Vec<PermissionDisplaySelection>
+  bundle_label: ::std::string::String
+  bundle_disclosure: ::std::string::String
   requires_os_authorization: bool
 pub struct NotificationAction
-  id: String
-  title: String
+  id: ::std::string::String
+  title: ::std::string::String
   activation: NotificationActivation
 pub struct NotificationRequest
   request_ref: RequestRef
-  title: String
-  body: String
-  actions: Vec<NotificationAction>
+  title: ::std::string::String
+  body: ::std::string::String
+  actions: ::std::vec::Vec<NotificationAction>
   expires_ms: i64
-  operation_id: String
-  tag: String
+  operation_id: ::std::string::String
+  tag: ::std::string::String
   delivery: NotificationDelivery
 pub struct NotificationResult
-  id: String
+  id: ::std::string::String
   state: NotificationState
-  action: String
+  action: ::std::string::String
   decided_ms: i64
-  decided_by: String
+  decided_by: ::std::string::String
 pub struct NotificationObservation
   outcome: NotificationOutcome
-  id: String
-  result: Option<NotificationResult>
+  id: ::std::string::String
+  result: ::std::option::Option<NotificationResult>
 pub struct NotificationRecord
-  id: String
-  asker: String
-  program: String
+  id: ::std::string::String
+  asker: ::std::string::String
+  program: ::std::string::String
   request: NotificationRequest
   state: NotificationState
   admitted_ms: i64
   posted_ms: i64
-  result: Option<NotificationResult>
-  publisher: String
+  result: ::std::option::Option<NotificationResult>
+  publisher: ::std::string::String
   publisher_trusted: bool
-  program_description: String
-  program_original_name: String
-  presentation: String
+  program_description: ::std::string::String
+  program_original_name: ::std::string::String
+  presentation: ::std::string::String
 pub struct NotificationPage
   outcome: OperatorPageOutcome
-  records: Vec<NotificationRecord>
-  next: String
+  records: ::std::vec::Vec<NotificationRecord>
+  next: ::std::string::String
   complete: bool
 pub struct NotificationRead
   outcome: OperatorQuestionOutcome
-  record: Option<NotificationRecord>
+  record: ::std::option::Option<NotificationRecord>
 pub struct NotificationDecision
   outcome: NotificationDecisionOutcome
-  record: Option<NotificationRecord>
+  record: ::std::option::Option<NotificationRecord>
   count: i64
 pub struct NotifierDay
   day_ms: i64
   posts: i64
 pub struct NotifierCount
-  program: String
-  asker: String
-  days: Vec<NotifierDay>
+  program: ::std::string::String
+  asker: ::std::string::String
+  days: ::std::vec::Vec<NotifierDay>
   last_posted_ms: i64
 pub struct NotifierPage
   outcome: OperatorPageOutcome
-  notifiers: Vec<NotifierCount>
-  next: String
+  notifiers: ::std::vec::Vec<NotifierCount>
+  next: ::std::string::String
   complete: bool
-pub fn encode(v: &Request) -> Vec<u8>
+pub fn encode(v: &Request) -> ::std::vec::Vec<u8>
 pub struct Refusal
   word: &'static str
   offset: usize
-pub fn decode(data: &[u8]) -> Result<Request, Refusal>
+pub fn decode(data: &[u8]) -> ::std::result::Result<Request, Refusal>
+pub trait JsonRecord: ::std::marker::Sized
+  fn to_json(&self) -> ::std::vec::Vec<u8>
+  fn from_json(data: &[u8]) -> ::std::result::Result<Self, Refusal>
 pub use abstraction_frame::FrameTransport
 pub struct ServiceError
-  code: String
-  message: String
+  code: ::std::string::String
+  message: ::std::string::String
 pub enum CallError<E>
   Transport(E)
   Refusal(Refusal)
@@ -473,322 +494,350 @@ pub enum CallError<E>
   Service(ServiceError)
 pub trait QuestionApplication
   type Error
-  fn ask(&self, question: ApplicationQuestion) -> Result<QuestionObservation, Self::Error>
-  fn observe(&self, request_key: String, wait_ms: i64) -> Result<QuestionObservation, Self::Error>
+  fn ask(&self, question: ApplicationQuestion) -> ::std::result::Result<QuestionObservation, Self::Error>
+  fn observe(&self, request_key: ::std::string::String, wait_ms: i64) -> ::std::result::Result<QuestionObservation, Self::Error>
 pub struct QuestionApplicationClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait QuestionOperator
   type Error
-  fn list_choices(&self, cursor: String, limit: i64) -> Result<ChoicePage, Self::Error>
-  fn read_choice(&self, id: String) -> Result<ChoiceRead, Self::Error>
-  fn answer_choice(&self, id: String, option: String, if_pending: bool) -> Result<ChoiceDecision, Self::Error>
-  fn dismiss_choice(&self, id: String) -> Result<ChoiceDecision, Self::Error>
-  fn list_questions(&self, cursor: String, limit: i64) -> Result<OperatorPage, Self::Error>
-  fn answer_question(&self, id: String, option: String) -> Result<OperatorDecision, Self::Error>
-  fn retire_question(&self, id: String) -> Result<OperatorRetirement, Self::Error>
-  fn read_attributed_question(&self, id: String) -> Result<AttributedQuestion, Self::Error>
-  fn read_choice_details(&self, id: String) -> Result<ChoiceDetails, Self::Error>
-  fn read_question_asker(&self, id: String) -> Result<QuestionAsker, Self::Error>
-  fn answer_question_if_pending(&self, id: String, option: String) -> Result<OperatorDecision, Self::Error>
-  fn list_answers(&self, cursor: String, limit: i64) -> Result<AnswerEntryPage, Self::Error>
+  fn read_question_content(&self, id: ::std::string::String) -> ::std::result::Result<QuestionContent, Self::Error>
+  fn list_answer_contents(&self, cursor: ::std::string::String, limit: i64) -> ::std::result::Result<AnswerContentPage, Self::Error>
+  fn list_choices(&self, cursor: ::std::string::String, limit: i64) -> ::std::result::Result<ChoicePage, Self::Error>
+  fn read_choice(&self, id: ::std::string::String) -> ::std::result::Result<ChoiceRead, Self::Error>
+  fn answer_choice(&self, id: ::std::string::String, option: ::std::string::String, if_pending: bool) -> ::std::result::Result<ChoiceDecision, Self::Error>
+  fn dismiss_choice(&self, id: ::std::string::String) -> ::std::result::Result<ChoiceDecision, Self::Error>
+  fn list_questions(&self, cursor: ::std::string::String, limit: i64) -> ::std::result::Result<OperatorPage, Self::Error>
+  fn answer_question(&self, id: ::std::string::String, option: ::std::string::String) -> ::std::result::Result<OperatorDecision, Self::Error>
+  fn retire_question(&self, id: ::std::string::String) -> ::std::result::Result<OperatorRetirement, Self::Error>
+  fn read_attributed_question(&self, id: ::std::string::String) -> ::std::result::Result<AttributedQuestion, Self::Error>
+  fn read_choice_details(&self, id: ::std::string::String) -> ::std::result::Result<ChoiceDetails, Self::Error>
+  fn read_question_asker(&self, id: ::std::string::String) -> ::std::result::Result<QuestionAsker, Self::Error>
+  fn answer_question_if_pending(&self, id: ::std::string::String, option: ::std::string::String) -> ::std::result::Result<OperatorDecision, Self::Error>
+  fn list_answers(&self, cursor: ::std::string::String, limit: i64) -> ::std::result::Result<AnswerEntryPage, Self::Error>
 pub struct QuestionOperatorClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait ChoiceApplication
   type Error
-  fn ask(&self, request: ChoiceRequest) -> Result<ChoiceObservation, Self::Error>
-  fn observe(&self, request_ref: RequestRef, wait_ms: i64) -> Result<ChoiceObservation, Self::Error>
-  fn answer(&self, request_ref: RequestRef, option: String, if_pending: bool) -> Result<ChoiceDecision, Self::Error>
-  fn dismiss(&self, request_ref: RequestRef) -> Result<ChoiceDecision, Self::Error>
-  fn share_choice(&self, request: ChoiceRequest, assistant_options: Vec<String>) -> Result<ChoiceObservation, Self::Error>
-  fn acknowledge(&self, request_ref: RequestRef, answer: ChoiceAnswer) -> Result<ChoiceAcknowledgement, Self::Error>
+  fn ask(&self, request: ChoiceRequest) -> ::std::result::Result<ChoiceObservation, Self::Error>
+  fn observe(&self, request_ref: RequestRef, wait_ms: i64) -> ::std::result::Result<ChoiceObservation, Self::Error>
+  fn answer(&self, request_ref: RequestRef, option: ::std::string::String, if_pending: bool) -> ::std::result::Result<ChoiceDecision, Self::Error>
+  fn dismiss(&self, request_ref: RequestRef) -> ::std::result::Result<ChoiceDecision, Self::Error>
+  fn share_choice(&self, request: ChoiceRequest, assistant_options: ::std::vec::Vec<::std::string::String>) -> ::std::result::Result<ChoiceObservation, Self::Error>
+  fn acknowledge(&self, request_ref: RequestRef, answer: ChoiceAnswer) -> ::std::result::Result<ChoiceAcknowledgement, Self::Error>
 pub struct ChoiceApplicationClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait QuestionResponder
   type Error
-  fn list_answerable(&self, cursor: String, limit: i64) -> Result<OperatorPage, Self::Error>
-  fn answer(&self, id: String, option: String) -> Result<ResponderDecision, Self::Error>
-  fn list_choices(&self, cursor: String, limit: i64) -> Result<AnswerableChoicePage, Self::Error>
-  fn request_answering(&self) -> Result<OAImported3, Self::Error>
-  fn answer_choice(&self, id: String, option: String) -> Result<ChoiceDecision, Self::Error>
+  fn list_answerable(&self, cursor: ::std::string::String, limit: i64) -> ::std::result::Result<OperatorPage, Self::Error>
+  fn answer(&self, id: ::std::string::String, option: ::std::string::String) -> ::std::result::Result<ResponderDecision, Self::Error>
+  fn list_choices(&self, cursor: ::std::string::String, limit: i64) -> ::std::result::Result<AnswerableChoicePage, Self::Error>
+  fn request_answering(&self) -> ::std::result::Result<OAImported3, Self::Error>
+  fn answer_choice(&self, id: ::std::string::String, option: ::std::string::String) -> ::std::result::Result<ChoiceDecision, Self::Error>
 pub struct QuestionResponderClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait PermissionApplication
   type Error
-  fn request(&self, request: PermissionIntent) -> Result<PermissionObservation, Self::Error>
-  fn observe(&self, request_key: String, wait_ms: i64) -> Result<PermissionObservation, Self::Error>
+  fn request(&self, request: PermissionIntent) -> ::std::result::Result<PermissionObservation, Self::Error>
+  fn observe(&self, request_key: ::std::string::String, wait_ms: i64) -> ::std::result::Result<PermissionObservation, Self::Error>
+  fn observe_question(&self, id: ::std::string::String, wait_ms: i64) -> ::std::result::Result<PendingQuestion, Self::Error>
 pub struct PermissionApplicationClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait PermissionOperator
   type Error
-  fn list_permissions(&self, cursor: String, limit: i64) -> Result<OperatorPage, Self::Error>
-  fn read_permission_details(&self, id: String) -> Result<TypedPermissionDetails, Self::Error>
-  fn answer_permission_if_pending(&self, id: String, option: String) -> Result<OperatorDecision, Self::Error>
+  fn list_permissions(&self, cursor: ::std::string::String, limit: i64) -> ::std::result::Result<OperatorPage, Self::Error>
+  fn read_permission_details(&self, id: ::std::string::String) -> ::std::result::Result<TypedPermissionDetails, Self::Error>
+  fn answer_permission_if_pending(&self, id: ::std::string::String, option: ::std::string::String) -> ::std::result::Result<OperatorDecision, Self::Error>
 pub struct PermissionOperatorClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait NotificationApplication
   type Error
-  fn post(&self, request: NotificationRequest) -> Result<NotificationObservation, Self::Error>
-  fn observe(&self, request_ref: RequestRef, wait_ms: i64) -> Result<NotificationObservation, Self::Error>
-  fn withdraw(&self, request_ref: RequestRef) -> Result<NotificationObservation, Self::Error>
-  fn acknowledge(&self, request_ref: RequestRef, result: NotificationResult) -> Result<ChoiceAcknowledgement, Self::Error>
+  fn post(&self, request: NotificationRequest) -> ::std::result::Result<NotificationObservation, Self::Error>
+  fn observe(&self, request_ref: RequestRef, wait_ms: i64) -> ::std::result::Result<NotificationObservation, Self::Error>
+  fn withdraw(&self, request_ref: RequestRef) -> ::std::result::Result<NotificationObservation, Self::Error>
+  fn acknowledge(&self, request_ref: RequestRef, result: NotificationResult) -> ::std::result::Result<ChoiceAcknowledgement, Self::Error>
 pub struct NotificationApplicationClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait NotificationOperator
   type Error
-  fn list_notifications(&self, cursor: String, limit: i64) -> Result<NotificationPage, Self::Error>
-  fn read_notification(&self, id: String) -> Result<NotificationRead, Self::Error>
-  fn act(&self, id: String, action: String, presentation: String) -> Result<NotificationDecision, Self::Error>
-  fn dismiss(&self, id: String) -> Result<NotificationDecision, Self::Error>
-  fn withdraw_program(&self, program: String) -> Result<NotificationDecision, Self::Error>
-  fn list_notifiers(&self, cursor: String, limit: i64) -> Result<NotifierPage, Self::Error>
+  fn list_notifications(&self, cursor: ::std::string::String, limit: i64) -> ::std::result::Result<NotificationPage, Self::Error>
+  fn read_notification(&self, id: ::std::string::String) -> ::std::result::Result<NotificationRead, Self::Error>
+  fn act(&self, id: ::std::string::String, action: ::std::string::String, presentation: ::std::string::String) -> ::std::result::Result<NotificationDecision, Self::Error>
+  fn dismiss(&self, id: ::std::string::String) -> ::std::result::Result<NotificationDecision, Self::Error>
+  fn withdraw_program(&self, program: ::std::string::String) -> ::std::result::Result<NotificationDecision, Self::Error>
+  fn list_notifiers(&self, cursor: ::std::string::String, limit: i64) -> ::std::result::Result<NotifierPage, Self::Error>
 pub struct NotificationOperatorClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
-pub fn encode_question_document(v: &Question) -> Result<Vec<u8>, Refusal>
-pub fn decode_question_document(data: &[u8]) -> Result<Question, Refusal>
-pub fn encode_request_document(v: &Request) -> Result<Vec<u8>, Refusal>
-pub fn decode_request_document(data: &[u8]) -> Result<Request, Refusal>
-pub fn encode_answer_document(v: &Answer) -> Result<Vec<u8>, Refusal>
-pub fn decode_answer_document(data: &[u8]) -> Result<Answer, Refusal>
-pub fn encode_record_metadata_document(v: &RecordMetadata) -> Result<Vec<u8>, Refusal>
-pub fn decode_record_metadata_document(data: &[u8]) -> Result<RecordMetadata, Refusal>
-pub fn encode_response_metadata_document(v: &ResponseMetadata) -> Result<Vec<u8>, Refusal>
-pub fn decode_response_metadata_document(data: &[u8]) -> Result<ResponseMetadata, Refusal>
-pub fn encode_application_question_document(v: &ApplicationQuestion) -> Result<Vec<u8>, Refusal>
-pub fn decode_application_question_document(data: &[u8]) -> Result<ApplicationQuestion, Refusal>
-pub fn encode_question_observation_document(v: &QuestionObservation) -> Result<Vec<u8>, Refusal>
-pub fn decode_question_observation_document(data: &[u8]) -> Result<QuestionObservation, Refusal>
-pub fn encode_operator_page_document(v: &OperatorPage) -> Result<Vec<u8>, Refusal>
-pub fn decode_operator_page_document(data: &[u8]) -> Result<OperatorPage, Refusal>
-pub fn encode_operator_decision_document(v: &OperatorDecision) -> Result<Vec<u8>, Refusal>
-pub fn decode_operator_decision_document(data: &[u8]) -> Result<OperatorDecision, Refusal>
-pub fn encode_operator_retirement_document(v: &OperatorRetirement) -> Result<Vec<u8>, Refusal>
-pub fn decode_operator_retirement_document(data: &[u8]) -> Result<OperatorRetirement, Refusal>
-pub fn encode_operator_question_document(v: &OperatorQuestion) -> Result<Vec<u8>, Refusal>
-pub fn decode_operator_question_document(data: &[u8]) -> Result<OperatorQuestion, Refusal>
-pub fn encode_attributed_question_document(v: &AttributedQuestion) -> Result<Vec<u8>, Refusal>
-pub fn decode_attributed_question_document(data: &[u8]) -> Result<AttributedQuestion, Refusal>
-pub fn encode_permission_target_document(v: &PermissionTarget) -> Result<Vec<u8>, Refusal>
-pub fn decode_permission_target_document(data: &[u8]) -> Result<PermissionTarget, Refusal>
-pub fn encode_permission_request_document(v: &PermissionRequest) -> Result<Vec<u8>, Refusal>
-pub fn decode_permission_request_document(data: &[u8]) -> Result<PermissionRequest, Refusal>
-pub fn encode_question_details_document(v: &QuestionDetails) -> Result<Vec<u8>, Refusal>
-pub fn decode_question_details_document(data: &[u8]) -> Result<QuestionDetails, Refusal>
-pub fn encode_question_asker_document(v: &QuestionAsker) -> Result<Vec<u8>, Refusal>
-pub fn decode_question_asker_document(data: &[u8]) -> Result<QuestionAsker, Refusal>
-pub fn encode_request_ref_document(v: &RequestRef) -> Result<Vec<u8>, Refusal>
-pub fn decode_request_ref_document(data: &[u8]) -> Result<RequestRef, Refusal>
-pub fn encode_choice_option_document(v: &ChoiceOption) -> Result<Vec<u8>, Refusal>
-pub fn decode_choice_option_document(data: &[u8]) -> Result<ChoiceOption, Refusal>
-pub fn encode_choice_request_document(v: &ChoiceRequest) -> Result<Vec<u8>, Refusal>
-pub fn decode_choice_request_document(data: &[u8]) -> Result<ChoiceRequest, Refusal>
-pub fn encode_choice_answer_document(v: &ChoiceAnswer) -> Result<Vec<u8>, Refusal>
-pub fn decode_choice_answer_document(data: &[u8]) -> Result<ChoiceAnswer, Refusal>
-pub fn encode_choice_observation_document(v: &ChoiceObservation) -> Result<Vec<u8>, Refusal>
-pub fn decode_choice_observation_document(data: &[u8]) -> Result<ChoiceObservation, Refusal>
-pub fn encode_choice_acknowledgement_document(v: &ChoiceAcknowledgement) -> Result<Vec<u8>, Refusal>
-pub fn decode_choice_acknowledgement_document(data: &[u8]) -> Result<ChoiceAcknowledgement, Refusal>
-pub fn encode_choice_record_document(v: &ChoiceRecord) -> Result<Vec<u8>, Refusal>
-pub fn decode_choice_record_document(data: &[u8]) -> Result<ChoiceRecord, Refusal>
-pub fn encode_choice_page_document(v: &ChoicePage) -> Result<Vec<u8>, Refusal>
-pub fn decode_choice_page_document(data: &[u8]) -> Result<ChoicePage, Refusal>
-pub fn encode_choice_read_document(v: &ChoiceRead) -> Result<Vec<u8>, Refusal>
-pub fn decode_choice_read_document(data: &[u8]) -> Result<ChoiceRead, Refusal>
-pub fn encode_choice_decision_document(v: &ChoiceDecision) -> Result<Vec<u8>, Refusal>
-pub fn decode_choice_decision_document(data: &[u8]) -> Result<ChoiceDecision, Refusal>
-pub fn encode_choice_details_document(v: &ChoiceDetails) -> Result<Vec<u8>, Refusal>
-pub fn decode_choice_details_document(data: &[u8]) -> Result<ChoiceDetails, Refusal>
-pub fn encode_answer_entry_document(v: &AnswerEntry) -> Result<Vec<u8>, Refusal>
-pub fn decode_answer_entry_document(data: &[u8]) -> Result<AnswerEntry, Refusal>
-pub fn encode_answer_entry_page_document(v: &AnswerEntryPage) -> Result<Vec<u8>, Refusal>
-pub fn decode_answer_entry_page_document(data: &[u8]) -> Result<AnswerEntryPage, Refusal>
-pub fn encode_answerable_choice_document(v: &AnswerableChoice) -> Result<Vec<u8>, Refusal>
-pub fn decode_answerable_choice_document(data: &[u8]) -> Result<AnswerableChoice, Refusal>
-pub fn encode_answerable_choice_page_document(v: &AnswerableChoicePage) -> Result<Vec<u8>, Refusal>
-pub fn decode_answerable_choice_page_document(data: &[u8]) -> Result<AnswerableChoicePage, Refusal>
-pub fn encode_responder_decision_document(v: &ResponderDecision) -> Result<Vec<u8>, Refusal>
-pub fn decode_responder_decision_document(data: &[u8]) -> Result<ResponderDecision, Refusal>
-pub fn encode_permission_intent_document(v: &PermissionIntent) -> Result<Vec<u8>, Refusal>
-pub fn decode_permission_intent_document(data: &[u8]) -> Result<PermissionIntent, Refusal>
-pub fn encode_permission_observation_document(v: &PermissionObservation) -> Result<Vec<u8>, Refusal>
-pub fn decode_permission_observation_document(data: &[u8]) -> Result<PermissionObservation, Refusal>
-pub fn encode_typed_permission_details_document(v: &TypedPermissionDetails) -> Result<Vec<u8>, Refusal>
-pub fn decode_typed_permission_details_document(data: &[u8]) -> Result<TypedPermissionDetails, Refusal>
-pub fn encode_permission_display_selection_document(v: &PermissionDisplaySelection) -> Result<Vec<u8>, Refusal>
-pub fn decode_permission_display_selection_document(data: &[u8]) -> Result<PermissionDisplaySelection, Refusal>
-pub fn encode_permission_display_document(v: &PermissionDisplay) -> Result<Vec<u8>, Refusal>
-pub fn decode_permission_display_document(data: &[u8]) -> Result<PermissionDisplay, Refusal>
-pub fn encode_notification_action_document(v: &NotificationAction) -> Result<Vec<u8>, Refusal>
-pub fn decode_notification_action_document(data: &[u8]) -> Result<NotificationAction, Refusal>
-pub fn encode_notification_request_document(v: &NotificationRequest) -> Result<Vec<u8>, Refusal>
-pub fn decode_notification_request_document(data: &[u8]) -> Result<NotificationRequest, Refusal>
-pub fn encode_notification_result_document(v: &NotificationResult) -> Result<Vec<u8>, Refusal>
-pub fn decode_notification_result_document(data: &[u8]) -> Result<NotificationResult, Refusal>
-pub fn encode_notification_observation_document(v: &NotificationObservation) -> Result<Vec<u8>, Refusal>
-pub fn decode_notification_observation_document(data: &[u8]) -> Result<NotificationObservation, Refusal>
-pub fn encode_notification_record_document(v: &NotificationRecord) -> Result<Vec<u8>, Refusal>
-pub fn decode_notification_record_document(data: &[u8]) -> Result<NotificationRecord, Refusal>
-pub fn encode_notification_page_document(v: &NotificationPage) -> Result<Vec<u8>, Refusal>
-pub fn decode_notification_page_document(data: &[u8]) -> Result<NotificationPage, Refusal>
-pub fn encode_notification_read_document(v: &NotificationRead) -> Result<Vec<u8>, Refusal>
-pub fn decode_notification_read_document(data: &[u8]) -> Result<NotificationRead, Refusal>
-pub fn encode_notification_decision_document(v: &NotificationDecision) -> Result<Vec<u8>, Refusal>
-pub fn decode_notification_decision_document(data: &[u8]) -> Result<NotificationDecision, Refusal>
-pub fn encode_notifier_day_document(v: &NotifierDay) -> Result<Vec<u8>, Refusal>
-pub fn decode_notifier_day_document(data: &[u8]) -> Result<NotifierDay, Refusal>
-pub fn encode_notifier_count_document(v: &NotifierCount) -> Result<Vec<u8>, Refusal>
-pub fn decode_notifier_count_document(data: &[u8]) -> Result<NotifierCount, Refusal>
-pub fn encode_notifier_page_document(v: &NotifierPage) -> Result<Vec<u8>, Refusal>
-pub fn decode_notifier_page_document(data: &[u8]) -> Result<NotifierPage, Refusal>
+pub fn encode_question_document(v: &Question) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_question_document(data: &[u8]) -> ::std::result::Result<Question, Refusal>
+pub fn encode_request_document(v: &Request) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_request_document(data: &[u8]) -> ::std::result::Result<Request, Refusal>
+pub fn encode_answer_document(v: &Answer) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_answer_document(data: &[u8]) -> ::std::result::Result<Answer, Refusal>
+pub fn encode_record_metadata_document(v: &RecordMetadata) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_record_metadata_document(data: &[u8]) -> ::std::result::Result<RecordMetadata, Refusal>
+pub fn encode_response_metadata_document(v: &ResponseMetadata) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_response_metadata_document(data: &[u8]) -> ::std::result::Result<ResponseMetadata, Refusal>
+pub fn encode_application_question_document(v: &ApplicationQuestion) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_application_question_document(data: &[u8]) -> ::std::result::Result<ApplicationQuestion, Refusal>
+pub fn encode_question_observation_document(v: &QuestionObservation) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_question_observation_document(data: &[u8]) -> ::std::result::Result<QuestionObservation, Refusal>
+pub fn encode_operator_page_document(v: &OperatorPage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_operator_page_document(data: &[u8]) -> ::std::result::Result<OperatorPage, Refusal>
+pub fn encode_operator_decision_document(v: &OperatorDecision) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_operator_decision_document(data: &[u8]) -> ::std::result::Result<OperatorDecision, Refusal>
+pub fn encode_operator_retirement_document(v: &OperatorRetirement) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_operator_retirement_document(data: &[u8]) -> ::std::result::Result<OperatorRetirement, Refusal>
+pub fn encode_operator_question_document(v: &OperatorQuestion) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_operator_question_document(data: &[u8]) -> ::std::result::Result<OperatorQuestion, Refusal>
+pub fn encode_attributed_question_document(v: &AttributedQuestion) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_attributed_question_document(data: &[u8]) -> ::std::result::Result<AttributedQuestion, Refusal>
+pub fn encode_permission_target_document(v: &PermissionTarget) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_permission_target_document(data: &[u8]) -> ::std::result::Result<PermissionTarget, Refusal>
+pub fn encode_permission_request_document(v: &PermissionRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_permission_request_document(data: &[u8]) -> ::std::result::Result<PermissionRequest, Refusal>
+pub fn encode_question_details_document(v: &QuestionDetails) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_question_details_document(data: &[u8]) -> ::std::result::Result<QuestionDetails, Refusal>
+pub fn encode_question_asker_document(v: &QuestionAsker) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_question_asker_document(data: &[u8]) -> ::std::result::Result<QuestionAsker, Refusal>
+pub fn encode_catalogue_content_document(v: &CatalogueContent) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_catalogue_content_document(data: &[u8]) -> ::std::result::Result<CatalogueContent, Refusal>
+pub fn encode_question_content_document(v: &QuestionContent) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_question_content_document(data: &[u8]) -> ::std::result::Result<QuestionContent, Refusal>
+pub fn encode_request_ref_document(v: &RequestRef) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_request_ref_document(data: &[u8]) -> ::std::result::Result<RequestRef, Refusal>
+pub fn encode_choice_option_document(v: &ChoiceOption) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_choice_option_document(data: &[u8]) -> ::std::result::Result<ChoiceOption, Refusal>
+pub fn encode_choice_request_document(v: &ChoiceRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_choice_request_document(data: &[u8]) -> ::std::result::Result<ChoiceRequest, Refusal>
+pub fn encode_choice_answer_document(v: &ChoiceAnswer) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_choice_answer_document(data: &[u8]) -> ::std::result::Result<ChoiceAnswer, Refusal>
+pub fn encode_choice_observation_document(v: &ChoiceObservation) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_choice_observation_document(data: &[u8]) -> ::std::result::Result<ChoiceObservation, Refusal>
+pub fn encode_choice_acknowledgement_document(v: &ChoiceAcknowledgement) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_choice_acknowledgement_document(data: &[u8]) -> ::std::result::Result<ChoiceAcknowledgement, Refusal>
+pub fn encode_choice_record_document(v: &ChoiceRecord) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_choice_record_document(data: &[u8]) -> ::std::result::Result<ChoiceRecord, Refusal>
+pub fn encode_choice_page_document(v: &ChoicePage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_choice_page_document(data: &[u8]) -> ::std::result::Result<ChoicePage, Refusal>
+pub fn encode_choice_read_document(v: &ChoiceRead) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_choice_read_document(data: &[u8]) -> ::std::result::Result<ChoiceRead, Refusal>
+pub fn encode_choice_decision_document(v: &ChoiceDecision) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_choice_decision_document(data: &[u8]) -> ::std::result::Result<ChoiceDecision, Refusal>
+pub fn encode_choice_details_document(v: &ChoiceDetails) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_choice_details_document(data: &[u8]) -> ::std::result::Result<ChoiceDetails, Refusal>
+pub fn encode_answer_entry_document(v: &AnswerEntry) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_answer_entry_document(data: &[u8]) -> ::std::result::Result<AnswerEntry, Refusal>
+pub fn encode_answer_entry_page_document(v: &AnswerEntryPage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_answer_entry_page_document(data: &[u8]) -> ::std::result::Result<AnswerEntryPage, Refusal>
+pub fn encode_answer_content_document(v: &AnswerContent) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_answer_content_document(data: &[u8]) -> ::std::result::Result<AnswerContent, Refusal>
+pub fn encode_answer_content_page_document(v: &AnswerContentPage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_answer_content_page_document(data: &[u8]) -> ::std::result::Result<AnswerContentPage, Refusal>
+pub fn encode_answerable_choice_document(v: &AnswerableChoice) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_answerable_choice_document(data: &[u8]) -> ::std::result::Result<AnswerableChoice, Refusal>
+pub fn encode_answerable_choice_page_document(v: &AnswerableChoicePage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_answerable_choice_page_document(data: &[u8]) -> ::std::result::Result<AnswerableChoicePage, Refusal>
+pub fn encode_responder_decision_document(v: &ResponderDecision) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_responder_decision_document(data: &[u8]) -> ::std::result::Result<ResponderDecision, Refusal>
+pub fn encode_permission_intent_document(v: &PermissionIntent) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_permission_intent_document(data: &[u8]) -> ::std::result::Result<PermissionIntent, Refusal>
+pub fn encode_permission_observation_document(v: &PermissionObservation) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_permission_observation_document(data: &[u8]) -> ::std::result::Result<PermissionObservation, Refusal>
+pub fn encode_typed_permission_details_document(v: &TypedPermissionDetails) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_typed_permission_details_document(data: &[u8]) -> ::std::result::Result<TypedPermissionDetails, Refusal>
+pub fn encode_pending_question_document(v: &PendingQuestion) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_pending_question_document(data: &[u8]) -> ::std::result::Result<PendingQuestion, Refusal>
+pub fn encode_permission_display_selection_document(v: &PermissionDisplaySelection) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_permission_display_selection_document(data: &[u8]) -> ::std::result::Result<PermissionDisplaySelection, Refusal>
+pub fn encode_permission_display_document(v: &PermissionDisplay) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_permission_display_document(data: &[u8]) -> ::std::result::Result<PermissionDisplay, Refusal>
+pub fn encode_notification_action_document(v: &NotificationAction) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_notification_action_document(data: &[u8]) -> ::std::result::Result<NotificationAction, Refusal>
+pub fn encode_notification_request_document(v: &NotificationRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_notification_request_document(data: &[u8]) -> ::std::result::Result<NotificationRequest, Refusal>
+pub fn encode_notification_result_document(v: &NotificationResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_notification_result_document(data: &[u8]) -> ::std::result::Result<NotificationResult, Refusal>
+pub fn encode_notification_observation_document(v: &NotificationObservation) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_notification_observation_document(data: &[u8]) -> ::std::result::Result<NotificationObservation, Refusal>
+pub fn encode_notification_record_document(v: &NotificationRecord) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_notification_record_document(data: &[u8]) -> ::std::result::Result<NotificationRecord, Refusal>
+pub fn encode_notification_page_document(v: &NotificationPage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_notification_page_document(data: &[u8]) -> ::std::result::Result<NotificationPage, Refusal>
+pub fn encode_notification_read_document(v: &NotificationRead) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_notification_read_document(data: &[u8]) -> ::std::result::Result<NotificationRead, Refusal>
+pub fn encode_notification_decision_document(v: &NotificationDecision) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_notification_decision_document(data: &[u8]) -> ::std::result::Result<NotificationDecision, Refusal>
+pub fn encode_notifier_day_document(v: &NotifierDay) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_notifier_day_document(data: &[u8]) -> ::std::result::Result<NotifierDay, Refusal>
+pub fn encode_notifier_count_document(v: &NotifierCount) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_notifier_count_document(data: &[u8]) -> ::std::result::Result<NotifierCount, Refusal>
+pub fn encode_notifier_page_document(v: &NotifierPage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_notifier_page_document(data: &[u8]) -> ::std::result::Result<NotifierPage, Refusal>
 pub mod internal
-  pub fn decode_question_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Question, usize), super::Refusal>
-  pub fn check_question(v: &super::Question, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_question_at(v: &super::Question, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_request_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Request, usize), super::Refusal>
-  pub fn check_request(v: &super::Request, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_request_at(v: &super::Request, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_answer_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::Answer, usize), super::Refusal>
-  pub fn check_answer(v: &super::Answer, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_answer_at(v: &super::Answer, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_record_metadata_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::RecordMetadata, usize), super::Refusal>
-  pub fn check_record_metadata(v: &super::RecordMetadata, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_record_metadata_at(v: &super::RecordMetadata, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_response_metadata_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ResponseMetadata, usize), super::Refusal>
-  pub fn check_response_metadata(v: &super::ResponseMetadata, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_response_metadata_at(v: &super::ResponseMetadata, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_application_question_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ApplicationQuestion, usize), super::Refusal>
-  pub fn check_application_question(v: &super::ApplicationQuestion, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_application_question_at(v: &super::ApplicationQuestion, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_question_observation_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::QuestionObservation, usize), super::Refusal>
-  pub fn check_question_observation(v: &super::QuestionObservation, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_question_observation_at(v: &super::QuestionObservation, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_operator_page_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::OperatorPage, usize), super::Refusal>
-  pub fn check_operator_page(v: &super::OperatorPage, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_operator_page_at(v: &super::OperatorPage, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_operator_decision_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::OperatorDecision, usize), super::Refusal>
-  pub fn check_operator_decision(v: &super::OperatorDecision, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_operator_decision_at(v: &super::OperatorDecision, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_operator_retirement_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::OperatorRetirement, usize), super::Refusal>
-  pub fn check_operator_retirement(v: &super::OperatorRetirement, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_operator_retirement_at(v: &super::OperatorRetirement, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_operator_question_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::OperatorQuestion, usize), super::Refusal>
-  pub fn check_operator_question(v: &super::OperatorQuestion, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_operator_question_at(v: &super::OperatorQuestion, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_attributed_question_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::AttributedQuestion, usize), super::Refusal>
-  pub fn check_attributed_question(v: &super::AttributedQuestion, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_attributed_question_at(v: &super::AttributedQuestion, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_permission_target_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::PermissionTarget, usize), super::Refusal>
-  pub fn check_permission_target(v: &super::PermissionTarget, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_permission_target_at(v: &super::PermissionTarget, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_permission_request_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::PermissionRequest, usize), super::Refusal>
-  pub fn check_permission_request(v: &super::PermissionRequest, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_permission_request_at(v: &super::PermissionRequest, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_question_details_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::QuestionDetails, usize), super::Refusal>
-  pub fn check_question_details(v: &super::QuestionDetails, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_question_details_at(v: &super::QuestionDetails, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_question_asker_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::QuestionAsker, usize), super::Refusal>
-  pub fn check_question_asker(v: &super::QuestionAsker, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_question_asker_at(v: &super::QuestionAsker, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_request_ref_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::RequestRef, usize), super::Refusal>
-  pub fn check_request_ref(v: &super::RequestRef, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_request_ref_at(v: &super::RequestRef, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_choice_option_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ChoiceOption, usize), super::Refusal>
-  pub fn check_choice_option(v: &super::ChoiceOption, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_choice_option_at(v: &super::ChoiceOption, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_choice_request_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ChoiceRequest, usize), super::Refusal>
-  pub fn check_choice_request(v: &super::ChoiceRequest, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_choice_request_at(v: &super::ChoiceRequest, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_choice_answer_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ChoiceAnswer, usize), super::Refusal>
-  pub fn check_choice_answer(v: &super::ChoiceAnswer, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_choice_answer_at(v: &super::ChoiceAnswer, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_choice_observation_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ChoiceObservation, usize), super::Refusal>
-  pub fn check_choice_observation(v: &super::ChoiceObservation, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_choice_observation_at(v: &super::ChoiceObservation, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_choice_acknowledgement_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ChoiceAcknowledgement, usize), super::Refusal>
-  pub fn check_choice_acknowledgement(v: &super::ChoiceAcknowledgement, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_choice_acknowledgement_at(v: &super::ChoiceAcknowledgement, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_choice_record_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ChoiceRecord, usize), super::Refusal>
-  pub fn check_choice_record(v: &super::ChoiceRecord, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_choice_record_at(v: &super::ChoiceRecord, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_choice_page_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ChoicePage, usize), super::Refusal>
-  pub fn check_choice_page(v: &super::ChoicePage, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_choice_page_at(v: &super::ChoicePage, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_choice_read_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ChoiceRead, usize), super::Refusal>
-  pub fn check_choice_read(v: &super::ChoiceRead, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_choice_read_at(v: &super::ChoiceRead, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_choice_decision_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ChoiceDecision, usize), super::Refusal>
-  pub fn check_choice_decision(v: &super::ChoiceDecision, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_choice_decision_at(v: &super::ChoiceDecision, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_choice_details_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ChoiceDetails, usize), super::Refusal>
-  pub fn check_choice_details(v: &super::ChoiceDetails, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_choice_details_at(v: &super::ChoiceDetails, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_answer_entry_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::AnswerEntry, usize), super::Refusal>
-  pub fn check_answer_entry(v: &super::AnswerEntry, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_answer_entry_at(v: &super::AnswerEntry, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_answer_entry_page_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::AnswerEntryPage, usize), super::Refusal>
-  pub fn check_answer_entry_page(v: &super::AnswerEntryPage, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_answer_entry_page_at(v: &super::AnswerEntryPage, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_answerable_choice_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::AnswerableChoice, usize), super::Refusal>
-  pub fn check_answerable_choice(v: &super::AnswerableChoice, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_answerable_choice_at(v: &super::AnswerableChoice, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_answerable_choice_page_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::AnswerableChoicePage, usize), super::Refusal>
-  pub fn check_answerable_choice_page(v: &super::AnswerableChoicePage, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_answerable_choice_page_at(v: &super::AnswerableChoicePage, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_responder_decision_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::ResponderDecision, usize), super::Refusal>
-  pub fn check_responder_decision(v: &super::ResponderDecision, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_responder_decision_at(v: &super::ResponderDecision, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_permission_intent_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::PermissionIntent, usize), super::Refusal>
-  pub fn check_permission_intent(v: &super::PermissionIntent, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_permission_intent_at(v: &super::PermissionIntent, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_permission_observation_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::PermissionObservation, usize), super::Refusal>
-  pub fn check_permission_observation(v: &super::PermissionObservation, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_permission_observation_at(v: &super::PermissionObservation, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_typed_permission_details_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::TypedPermissionDetails, usize), super::Refusal>
-  pub fn check_typed_permission_details(v: &super::TypedPermissionDetails, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_typed_permission_details_at(v: &super::TypedPermissionDetails, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_permission_display_selection_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::PermissionDisplaySelection, usize), super::Refusal>
-  pub fn check_permission_display_selection(v: &super::PermissionDisplaySelection, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_permission_display_selection_at(v: &super::PermissionDisplaySelection, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_permission_display_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::PermissionDisplay, usize), super::Refusal>
-  pub fn check_permission_display(v: &super::PermissionDisplay, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_permission_display_at(v: &super::PermissionDisplay, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_notification_action_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::NotificationAction, usize), super::Refusal>
-  pub fn check_notification_action(v: &super::NotificationAction, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_notification_action_at(v: &super::NotificationAction, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_notification_request_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::NotificationRequest, usize), super::Refusal>
-  pub fn check_notification_request(v: &super::NotificationRequest, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_notification_request_at(v: &super::NotificationRequest, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_notification_result_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::NotificationResult, usize), super::Refusal>
-  pub fn check_notification_result(v: &super::NotificationResult, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_notification_result_at(v: &super::NotificationResult, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_notification_observation_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::NotificationObservation, usize), super::Refusal>
-  pub fn check_notification_observation(v: &super::NotificationObservation, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_notification_observation_at(v: &super::NotificationObservation, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_notification_record_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::NotificationRecord, usize), super::Refusal>
-  pub fn check_notification_record(v: &super::NotificationRecord, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_notification_record_at(v: &super::NotificationRecord, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_notification_page_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::NotificationPage, usize), super::Refusal>
-  pub fn check_notification_page(v: &super::NotificationPage, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_notification_page_at(v: &super::NotificationPage, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_notification_read_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::NotificationRead, usize), super::Refusal>
-  pub fn check_notification_read(v: &super::NotificationRead, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_notification_read_at(v: &super::NotificationRead, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_notification_decision_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::NotificationDecision, usize), super::Refusal>
-  pub fn check_notification_decision(v: &super::NotificationDecision, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_notification_decision_at(v: &super::NotificationDecision, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_notifier_day_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::NotifierDay, usize), super::Refusal>
-  pub fn check_notifier_day(v: &super::NotifierDay, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_notifier_day_at(v: &super::NotifierDay, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_notifier_count_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::NotifierCount, usize), super::Refusal>
-  pub fn check_notifier_count(v: &super::NotifierCount, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_notifier_count_at(v: &super::NotifierCount, depth: i32) -> Result<Vec<u8>, super::Refusal>
-  pub fn decode_notifier_page_at(data: &[u8], depth: i32, limit: i32) -> Result<(super::NotifierPage, usize), super::Refusal>
-  pub fn check_notifier_page(v: &super::NotifierPage, depth: i32, limit: i32) -> Result<(), super::Refusal>
-  pub fn encode_notifier_page_at(v: &super::NotifierPage, depth: i32) -> Result<Vec<u8>, super::Refusal>
+  pub fn decode_question_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Question, usize), super::Refusal>
+  pub fn check_question(v: &super::Question, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_question_at(v: &super::Question, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Request, usize), super::Refusal>
+  pub fn check_request(v: &super::Request, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_request_at(v: &super::Request, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_answer_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Answer, usize), super::Refusal>
+  pub fn check_answer(v: &super::Answer, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_answer_at(v: &super::Answer, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_record_metadata_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::RecordMetadata, usize), super::Refusal>
+  pub fn check_record_metadata(v: &super::RecordMetadata, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_record_metadata_at(v: &super::RecordMetadata, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_response_metadata_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ResponseMetadata, usize), super::Refusal>
+  pub fn check_response_metadata(v: &super::ResponseMetadata, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_response_metadata_at(v: &super::ResponseMetadata, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_application_question_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ApplicationQuestion, usize), super::Refusal>
+  pub fn check_application_question(v: &super::ApplicationQuestion, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_application_question_at(v: &super::ApplicationQuestion, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_question_observation_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::QuestionObservation, usize), super::Refusal>
+  pub fn check_question_observation(v: &super::QuestionObservation, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_question_observation_at(v: &super::QuestionObservation, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_operator_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::OperatorPage, usize), super::Refusal>
+  pub fn check_operator_page(v: &super::OperatorPage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_operator_page_at(v: &super::OperatorPage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_operator_decision_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::OperatorDecision, usize), super::Refusal>
+  pub fn check_operator_decision(v: &super::OperatorDecision, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_operator_decision_at(v: &super::OperatorDecision, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_operator_retirement_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::OperatorRetirement, usize), super::Refusal>
+  pub fn check_operator_retirement(v: &super::OperatorRetirement, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_operator_retirement_at(v: &super::OperatorRetirement, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_operator_question_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::OperatorQuestion, usize), super::Refusal>
+  pub fn check_operator_question(v: &super::OperatorQuestion, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_operator_question_at(v: &super::OperatorQuestion, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_attributed_question_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AttributedQuestion, usize), super::Refusal>
+  pub fn check_attributed_question(v: &super::AttributedQuestion, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_attributed_question_at(v: &super::AttributedQuestion, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_permission_target_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::PermissionTarget, usize), super::Refusal>
+  pub fn check_permission_target(v: &super::PermissionTarget, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_permission_target_at(v: &super::PermissionTarget, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_permission_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::PermissionRequest, usize), super::Refusal>
+  pub fn check_permission_request(v: &super::PermissionRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_permission_request_at(v: &super::PermissionRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_question_details_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::QuestionDetails, usize), super::Refusal>
+  pub fn check_question_details(v: &super::QuestionDetails, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_question_details_at(v: &super::QuestionDetails, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_question_asker_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::QuestionAsker, usize), super::Refusal>
+  pub fn check_question_asker(v: &super::QuestionAsker, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_question_asker_at(v: &super::QuestionAsker, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_catalogue_content_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::CatalogueContent, usize), super::Refusal>
+  pub fn check_catalogue_content(v: &super::CatalogueContent, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_catalogue_content_at(v: &super::CatalogueContent, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_question_content_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::QuestionContent, usize), super::Refusal>
+  pub fn check_question_content(v: &super::QuestionContent, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_question_content_at(v: &super::QuestionContent, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_request_ref_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::RequestRef, usize), super::Refusal>
+  pub fn check_request_ref(v: &super::RequestRef, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_request_ref_at(v: &super::RequestRef, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_choice_option_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChoiceOption, usize), super::Refusal>
+  pub fn check_choice_option(v: &super::ChoiceOption, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_choice_option_at(v: &super::ChoiceOption, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_choice_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChoiceRequest, usize), super::Refusal>
+  pub fn check_choice_request(v: &super::ChoiceRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_choice_request_at(v: &super::ChoiceRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_choice_answer_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChoiceAnswer, usize), super::Refusal>
+  pub fn check_choice_answer(v: &super::ChoiceAnswer, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_choice_answer_at(v: &super::ChoiceAnswer, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_choice_observation_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChoiceObservation, usize), super::Refusal>
+  pub fn check_choice_observation(v: &super::ChoiceObservation, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_choice_observation_at(v: &super::ChoiceObservation, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_choice_acknowledgement_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChoiceAcknowledgement, usize), super::Refusal>
+  pub fn check_choice_acknowledgement(v: &super::ChoiceAcknowledgement, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_choice_acknowledgement_at(v: &super::ChoiceAcknowledgement, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_choice_record_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChoiceRecord, usize), super::Refusal>
+  pub fn check_choice_record(v: &super::ChoiceRecord, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_choice_record_at(v: &super::ChoiceRecord, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_choice_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChoicePage, usize), super::Refusal>
+  pub fn check_choice_page(v: &super::ChoicePage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_choice_page_at(v: &super::ChoicePage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_choice_read_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChoiceRead, usize), super::Refusal>
+  pub fn check_choice_read(v: &super::ChoiceRead, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_choice_read_at(v: &super::ChoiceRead, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_choice_decision_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChoiceDecision, usize), super::Refusal>
+  pub fn check_choice_decision(v: &super::ChoiceDecision, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_choice_decision_at(v: &super::ChoiceDecision, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_choice_details_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChoiceDetails, usize), super::Refusal>
+  pub fn check_choice_details(v: &super::ChoiceDetails, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_choice_details_at(v: &super::ChoiceDetails, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_answer_entry_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AnswerEntry, usize), super::Refusal>
+  pub fn check_answer_entry(v: &super::AnswerEntry, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_answer_entry_at(v: &super::AnswerEntry, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_answer_entry_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AnswerEntryPage, usize), super::Refusal>
+  pub fn check_answer_entry_page(v: &super::AnswerEntryPage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_answer_entry_page_at(v: &super::AnswerEntryPage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_answer_content_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AnswerContent, usize), super::Refusal>
+  pub fn check_answer_content(v: &super::AnswerContent, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_answer_content_at(v: &super::AnswerContent, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_answer_content_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AnswerContentPage, usize), super::Refusal>
+  pub fn check_answer_content_page(v: &super::AnswerContentPage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_answer_content_page_at(v: &super::AnswerContentPage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_answerable_choice_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AnswerableChoice, usize), super::Refusal>
+  pub fn check_answerable_choice(v: &super::AnswerableChoice, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_answerable_choice_at(v: &super::AnswerableChoice, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_answerable_choice_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AnswerableChoicePage, usize), super::Refusal>
+  pub fn check_answerable_choice_page(v: &super::AnswerableChoicePage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_answerable_choice_page_at(v: &super::AnswerableChoicePage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_responder_decision_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ResponderDecision, usize), super::Refusal>
+  pub fn check_responder_decision(v: &super::ResponderDecision, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_responder_decision_at(v: &super::ResponderDecision, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_permission_intent_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::PermissionIntent, usize), super::Refusal>
+  pub fn check_permission_intent(v: &super::PermissionIntent, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_permission_intent_at(v: &super::PermissionIntent, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_permission_observation_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::PermissionObservation, usize), super::Refusal>
+  pub fn check_permission_observation(v: &super::PermissionObservation, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_permission_observation_at(v: &super::PermissionObservation, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_typed_permission_details_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::TypedPermissionDetails, usize), super::Refusal>
+  pub fn check_typed_permission_details(v: &super::TypedPermissionDetails, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_typed_permission_details_at(v: &super::TypedPermissionDetails, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_pending_question_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::PendingQuestion, usize), super::Refusal>
+  pub fn check_pending_question(v: &super::PendingQuestion, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_pending_question_at(v: &super::PendingQuestion, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_permission_display_selection_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::PermissionDisplaySelection, usize), super::Refusal>
+  pub fn check_permission_display_selection(v: &super::PermissionDisplaySelection, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_permission_display_selection_at(v: &super::PermissionDisplaySelection, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_permission_display_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::PermissionDisplay, usize), super::Refusal>
+  pub fn check_permission_display(v: &super::PermissionDisplay, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_permission_display_at(v: &super::PermissionDisplay, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_notification_action_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::NotificationAction, usize), super::Refusal>
+  pub fn check_notification_action(v: &super::NotificationAction, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_notification_action_at(v: &super::NotificationAction, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_notification_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::NotificationRequest, usize), super::Refusal>
+  pub fn check_notification_request(v: &super::NotificationRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_notification_request_at(v: &super::NotificationRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_notification_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::NotificationResult, usize), super::Refusal>
+  pub fn check_notification_result(v: &super::NotificationResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_notification_result_at(v: &super::NotificationResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_notification_observation_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::NotificationObservation, usize), super::Refusal>
+  pub fn check_notification_observation(v: &super::NotificationObservation, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_notification_observation_at(v: &super::NotificationObservation, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_notification_record_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::NotificationRecord, usize), super::Refusal>
+  pub fn check_notification_record(v: &super::NotificationRecord, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_notification_record_at(v: &super::NotificationRecord, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_notification_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::NotificationPage, usize), super::Refusal>
+  pub fn check_notification_page(v: &super::NotificationPage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_notification_page_at(v: &super::NotificationPage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_notification_read_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::NotificationRead, usize), super::Refusal>
+  pub fn check_notification_read(v: &super::NotificationRead, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_notification_read_at(v: &super::NotificationRead, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_notification_decision_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::NotificationDecision, usize), super::Refusal>
+  pub fn check_notification_decision(v: &super::NotificationDecision, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_notification_decision_at(v: &super::NotificationDecision, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_notifier_day_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::NotifierDay, usize), super::Refusal>
+  pub fn check_notifier_day(v: &super::NotifierDay, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_notifier_day_at(v: &super::NotifierDay, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_notifier_count_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::NotifierCount, usize), super::Refusal>
+  pub fn check_notifier_count(v: &super::NotifierCount, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_notifier_count_at(v: &super::NotifierCount, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_notifier_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::NotifierPage, usize), super::Refusal>
+  pub fn check_notifier_page(v: &super::NotifierPage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_notifier_page_at(v: &super::NotifierPage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>

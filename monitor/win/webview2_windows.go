@@ -343,17 +343,14 @@ type addScriptCompletedHandler struct{ vtbl *handlerVtbl }
 type processFailedHandler struct{ vtbl *handlerVtbl }
 
 var (
-	ole32          = syscall.NewLazyDLL("ole32.dll")
+	ole32          = windows.NewLazySystemDLL("ole32.dll")
 	coInitializeEx = ole32.NewProc("CoInitializeEx")
 	coTaskMemFree  = ole32.NewProc("CoTaskMemFree")
 
-	dwmapi                       = windows.NewLazySystemDLL("dwmapi.dll")
 	dwmGetWindowAttribute        = dwmapi.NewProc("DwmGetWindowAttribute")
 	dwmExtendFrameIntoClientArea = dwmapi.NewProc("DwmExtendFrameIntoClientArea")
-	webViewFillRect              = user32.NewProc("FillRect")
 	webViewCallWindowProc        = user32.NewProc("CallWindowProcW")
 	webViewGetStockObject        = gdi32.NewProc("GetStockObject")
-	webViewInvalidateRect        = user32.NewProc("InvalidateRect")
 )
 
 const (
@@ -530,12 +527,59 @@ func OpenWebView2(title string, width, height, minWidth, minHeight int, pageURL 
 	if resources != nil && resources.Origin != pageOrigin {
 		return false
 	}
+	if resources != nil && resources.DocumentURL != "" && resources.DocumentURL != pageURL {
+		return false
+	}
+	var instance *settingsInstance
+	if resources != nil && resources.SettingsInstance != "" {
+		var forwarded bool
+		var err error
+		instance, forwarded, err = claimSettingsInstance(resources.SettingsInstance)
+		if err != nil {
+			return false
+		}
+		if forwarded {
+			return true
+		}
+		defer instance.close()
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	w := &webView2Window{external: external, origin: pageOrigin, accent: accentScript, resources: resources, ctx: ctx}
 	runErr := RunWithMinimum(title, width, height, minWidth, minHeight, func(win *Window) {
 		w.win = win
+		if instance != nil && !instance.mark(win.Handle()) {
+			w.failed = fmt.Errorf("mark settings window")
+			win.Close()
+			return
+		}
+		if resources != nil && resources.BindDirectoryPicker != nil {
+			resources.BindDirectoryPicker(w.ctx, windowDirectoryPicker(w.ctx, win.Do, func(ctx context.Context) (string, error) {
+				return chooseDirectory(ctx, win)
+			}))
+		}
+		if resources != nil && resources.BindVisible != nil {
+			resources.BindVisible(func(ctx context.Context) bool {
+				if ctx.Err() != nil || w.ctx.Err() != nil {
+					return false
+				}
+				result := make(chan bool, 1)
+				win.Do(func() {
+					visible, _, _ := isWindowVisible.Call(win.Handle())
+					minimized, _, _ := isIconic.Call(win.Handle())
+					result <- w.ready && w.failed == nil && visible != 0 && minimized == 0
+				})
+				select {
+				case <-ctx.Done():
+					return false
+				case <-w.ctx.Done():
+					return false
+				case visible := <-result:
+					return visible
+				}
+			})
+		}
 		win.useModernFrame()
 		w.useBackdrop()
 		w.attach(pageURL)
@@ -557,11 +601,7 @@ func OpenWebView2(title string, width, height, minWidth, minHeight int, pageURL 
 func (w *webView2Window) useBackdrop() {
 	w.mica = extendFrame(w.win.h, micaActive(w.win.h))
 	w.wndProc = syscall.NewCallback(w.windowProc)
-	setLong := user32.NewProc("SetWindowLongPtrW")
-	if unsafe.Sizeof(uintptr(0)) == 4 {
-		setLong = user32.NewProc("SetWindowLongW")
-	}
-	w.prevProc, _, _ = setLong.Call(uintptr(w.win.h), gwlpWndProc, w.wndProc) //unchecked: a zero previous procedure is checked in windowProc, which then leaves every message to DefWindowProc
+	w.prevProc, _, _ = setWindowLong.Call(uintptr(w.win.h), gwlpWndProc, w.wndProc) //unchecked: a zero previous procedure is checked in windowProc, which then leaves every message to DefWindowProc
 }
 
 // extendFrame makes the whole client area part of the frame when mica is
@@ -600,9 +640,9 @@ func (w *webView2Window) windowProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 	case wmEraseBkgnd:
 		if w.mica {
 			var client rect
-			getClientRect.Call(hwnd, uintptr(unsafe.Pointer(&client)))            //unchecked: our own live window; an empty rectangle fills nothing
-			brush, _, _ := webViewGetStockObject.Call(blackBrush)                 //unchecked: a stock object always exists
-			webViewFillRect.Call(wparam, uintptr(unsafe.Pointer(&client)), brush) //unchecked: a failed fill leaves the previous frame, never an error to report
+			getClientRect.Call(hwnd, uintptr(unsafe.Pointer(&client)))     //unchecked: our own live window; an empty rectangle fills nothing
+			brush, _, _ := webViewGetStockObject.Call(blackBrush)          //unchecked: a stock object always exists
+			fillRect.Call(wparam, uintptr(unsafe.Pointer(&client)), brush) //unchecked: a failed fill leaves the previous frame, never an error to report
 			return 1
 		}
 	case wmDwmColorizationColorChange:
@@ -658,7 +698,7 @@ func (w *webView2Window) refreshBackdrop() {
 	}
 	w.replaceHostScript()
 	w.executeScript(hostScript(w.mica))
-	webViewInvalidateRect.Call(uintptr(w.win.h), 0, 1) //unchecked: a failed invalidation leaves the next natural repaint to erase
+	invalidateRect.Call(uintptr(w.win.h), 0, 1) //unchecked: a failed invalidation leaves the next natural repaint to erase
 }
 
 func (w *webView2Window) executeScript(script string) {
@@ -967,9 +1007,10 @@ func isExternal(pageOrigin, target string) bool {
 func (w *webView2Window) newNavigationStartingHandler() *navigationStartingHandler {
 	invoke := func(this, sender uintptr, args *coreWebView2NavigationStartingEventArgs) uintptr {
 		uri := readURI(args.vtbl.GetUri, unsafe.Pointer(args))
-		if isExternal(w.origin, uri) {
+		external := isExternal(w.origin, uri)
+		if external || !resourceDocumentAllows(w.resources, uri) {
 			args.vtbl.PutCancel.call(uintptr(unsafe.Pointer(args)), 1)
-			if w.external != nil {
+			if external && w.external != nil {
 				w.external(uri)
 			}
 		}
@@ -980,6 +1021,10 @@ func (w *webView2Window) newNavigationStartingHandler() *navigationStartingHandl
 		Invoke:       comProc(syscall.NewCallback(invoke)),
 	}}
 	return w.navHandler
+}
+
+func resourceDocumentAllows(resources *Resources, uri string) bool {
+	return resources == nil || resources.DocumentURL == "" || resources.DocumentURL == uri
 }
 
 // newNewWindowRequestedHandler cancels every window.open()/target="_blank"

@@ -8,20 +8,28 @@ import (
 	"github.com/openabstractions/abstractions/monitor/internal/setup"
 )
 
+func engineChoices(engine setup.AppID, fixed string) []setup.ModelPlan {
+	return setup.PictureChoicesForEngine(engine, fixed)
+}
+
+// isEngineChoice reports an offered plan of engine with id.
+func isEngineChoice(engine setup.AppID, id string) bool {
+	return slices.ContainsFunc(engineChoices(engine, ""), func(plan setup.ModelPlan) bool { return id != "" && plan.ID == id })
+}
+
 // choiceControllerFor is the controller of one offered picture model plan
-// (setup.PictureModelChoices). An ID no offered plan has is refused.
+// (engineChoices). An ID no offered plan has is refused.
 func (p *servicePanel) choiceControllerFor(planID string) (setup.ModelPlan, setupModelController, error) {
-	i := slices.IndexFunc(setup.PictureModelChoices(), func(plan setup.ModelPlan) bool { return plan.ID == planID })
-	if i < 0 {
+	plan, engine, ok := setup.FindPictureChoice(planID)
+	if !ok {
 		return setup.ModelPlan{}, nil, errors.New("unknown picture model plan")
 	}
-	plan := setup.PictureModelChoices()[i]
 	p.modelControllerMu.Lock()
 	defer p.modelControllerMu.Unlock()
 	if controller, ok := p.choiceControllers[plan.ID]; ok {
 		return plan, controller, nil
 	}
-	controller, err := setup.DefaultChoiceController(plan)
+	controller, err := setup.OpenPictureChoiceController(engine, plan, p.setupJournalForPanel)
 	if err != nil {
 		return setup.ModelPlan{}, nil, err
 	}
@@ -32,11 +40,11 @@ func (p *servicePanel) choiceControllerFor(planID string) (setup.ModelPlan, setu
 	return plan, controller, nil
 }
 
-// choiceStatuses reads each offered plan's journal; a plan whose controller
-// cannot be built is left out.
-func (p *servicePanel) choiceStatuses(ctx context.Context) map[string]setup.ModelStatus {
+// choiceStatuses reads each of engine's offered plans' journals; a plan
+// whose controller cannot be built is left out.
+func (p *servicePanel) choiceStatuses(ctx context.Context, engine setup.AppID, fixed string) map[string]setup.ModelStatus {
 	statuses := map[string]setup.ModelStatus{}
-	for _, plan := range setup.PictureModelChoices() {
+	for _, plan := range engineChoices(engine, fixed) {
 		_, controller, err := p.choiceControllerFor(plan.ID)
 		if err != nil {
 			continue

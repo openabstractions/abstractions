@@ -20,19 +20,38 @@ import (
 // now …"). A default the runtime adds later shows its name until it has words
 // here.
 var defaultLabels = map[string]string{
-	"register": "Add itself to Apps",
-	"ask":      "Ask you questions",
-	"announce": "Say when it is running",
-	"notify":   "Send you notifications",
-	"download": "Download in the background",
+	"register":         "Add itself to Apps",
+	"ask":              "Ask you questions",
+	"announce":         "Say when it is running",
+	"notify":           "Send you notifications",
+	"download":         "Download in the background",
+	"elevated-callers": "Act without asking when run as administrator",
+	// agent-messages has its own group on the Permissions page.
+	agentMessagesDefault: "Message each other without asking",
 }
 
+// agentMessagesDefault is the runtime's switch for messages between the
+// person's kept agents (rights DefaultAgentMessages). The Permissions page
+// shows it as its own group, "Messages between agents", after the defaults
+// for all apps, which leave it out (AB-1w Panel ruling, 2026-11-09). Its one
+// switch reads "Ask me first" and is on while the default is off.
+const agentMessagesDefault = "agent-messages"
+
+const (
+	agentMessagesCaption    = "Your agents can send each other messages and questions."
+	agentMessagesAskLabel   = "Ask me first"
+	agentMessagesAskCaption = "What you answered for one agent still applies."
+	agentMessagesAskName    = "Ask before an agent messages another"
+)
+
 var defaultPhrases = map[string]string{
-	"register": "add itself to Apps",
-	"ask":      "ask you questions",
-	"announce": "say when it is running",
-	"notify":   "send you notifications",
-	"download": "download in the background",
+	"register":           "add itself to Apps",
+	"ask":                "ask you questions",
+	"announce":           "say when it is running",
+	"notify":             "send you notifications",
+	"download":           "download in the background",
+	"elevated-callers":   "act without asking when run as administrator",
+	agentMessagesDefault: "message each other without asking",
 }
 
 // defaultView is one default as the page draws it.
@@ -53,7 +72,9 @@ type defaultsView struct {
 	Outcome  string
 	Revision string
 	Defaults []defaultView
-	Current  *defaultView `json:"Current,omitempty"`
+	// Agents is the agent-messages switch, listed apart from Defaults.
+	Agents  *defaultView `json:"Agents,omitempty"`
+	Current *defaultView `json:"Current,omitempty"`
 }
 
 func presentDefault(d rwire.AccountDefault) defaultView {
@@ -107,7 +128,12 @@ func (p *servicePanel) rightsDefaults(w http.ResponseWriter, r *http.Request) {
 		}
 		view := defaultsView{Outcome: page.Outcome.String(), Revision: page.Revision, Defaults: []defaultView{}}
 		for _, d := range page.Defaults {
-			view.Defaults = append(view.Defaults, presentDefault(d))
+			shown := presentDefault(d)
+			if d.Name == agentMessagesDefault {
+				view.Agents = &shown
+				continue
+			}
+			view.Defaults = append(view.Defaults, shown)
 		}
 		panelJSON(w, view)
 		return

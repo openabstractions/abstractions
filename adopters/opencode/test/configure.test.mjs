@@ -5,14 +5,15 @@
 // profile and Zen choice, its TUI registration and its whole-file writes.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, lstatSync} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, lstatSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {
   adapter, adapterOffersTUI, apply, choices, ConfigureError, fileURL, headings, localBuildPrompt, localSwitch, main,
-  mergeConfig, outputBudget, packageSpecifier, placementFor, profileFor, project, providerPackage, replaceConfig,
-  routerRefusal, selectionAlias,
+  mergeConfig, mergeProvider, outputBudget, packageSpecifier, placementFor, profileFor, project, providerPackage, replaceConfig,
+  routerRefusal, selectionAlias, mcpConfiguration,
 } from '../configure.js';
+import {hostedHeading} from '../inventory.js';
 
 const table = JSON.parse(readFileSync(new URL('./fixtures/inventory-context.json', import.meta.url), 'utf8'));
 
@@ -36,6 +37,104 @@ function app(path, fields = {}) {
   return {command: 'configure', path, providerID: 'openabstractions', scope: 'local', guarantee: 'abstraction.inference/local-only@1',
     models: testModels(), ...fields};
 }
+
+test('found title preference configures a guaranteed small_model; unknown keeps title disabled', async t => {
+  for (const outcome of ['found', 'unknown']) {
+    const path = join(temp(t), 'opencode.json');
+    const {io: streams} = io();
+    const code = await main(['configure', '--config', path, '--model', 'qwen3:8b'], streams, {
+      resolveRouter: fakeRouter({local: [qwen], hosted: []}),
+      resolveSelectionOperator: async () => ({readEffective: async name => {
+        assert.equal(name, 'title'); return {outcome, policy: outcome === 'found' ? {name: 'title'} : null};
+      }}),
+      resolveTitleChat: async () => ({}),
+    });
+    assert.equal(code, 0);
+    const doc = read(path);
+    assert.equal(doc.agent.title.disable, outcome !== 'found');
+    if (outcome === 'found') {
+      assert.equal(doc.small_model, 'openabstractions-preferences/oa-preference-title');
+      assert.deepEqual(doc.provider['openabstractions-preferences'].options.oaChatGuarantees['oa-preference-title'],
+        ['abstraction.inference/local-only@1', 'abstraction.inference/free-capacity@1']);
+    } else assert.equal(doc.small_model, undefined);
+  }
+});
+
+test('reconfigure preserves title and unrelated alias guarantees and refuses conflicting or malformed requirements', () => {
+  const title = ['abstraction.inference/local-only@1', 'abstraction.inference/free-capacity@1'];
+  const prior = {npm: providerPackage, options: {oaChatGuarantees: {'oa-preference-title': title, custom: ['example/strict@1']}}};
+  const fresh = {npm: providerPackage, models: {}, options: {scope: 'local', guarantees: [], chatGuarantees: {}}};
+  assert.deepEqual(mergeProvider(prior, fresh).options.oaChatGuarantees, prior.options.oaChatGuarantees);
+  assert.throws(() => mergeProvider(prior, {...fresh, options: {...fresh.options,
+    chatGuarantees: {'oa-preference-title': ['abstraction.inference/free-capacity@1']}}}), /different chat guarantees/);
+  assert.throws(() => mergeProvider({npm: providerPackage, options: {oaChatGuarantees: {custom: 'required'}}}, fresh), /string lists/);
+});
+
+test('a found title preference stays disabled without chat@3 at the selected endpoint', async t => {
+  const failures = [null, Object.assign(new Error('not served'), {status: 'incompatible'}),
+    Object.assign(new Error('refused'), {code: 'forbidden'}),
+    Object.assign(new Error('cancelled'), {name: 'AbortError'})];
+  for (const failure of failures) {
+    const path = join(temp(t), 'opencode.json'), {io: streams} = io();
+    const endpoint = 'fixture-runtime-endpoint';
+    let checks = 0;
+    const deps = {
+      resolveRouter: fakeRouter({local: [qwen], hosted: []}),
+      resolveSelectionOperator: async () => ({readEffective: async () => ({outcome: 'found', policy: {name: 'title'}})}),
+      ...(failure ? {resolveTitleChat: async options => {
+        checks++;
+        assert.equal(options.endpoint, endpoint);
+        assert.equal(options.timeout, 125);
+        throw failure;
+      }} : {}),
+    };
+    assert.equal(await main(['configure', '--config', path, '--model', 'qwen3:8b',
+      '--endpoint', endpoint, '--timeout', '125ms'], streams, deps), 0);
+    const doc = read(path);
+    assert.equal(doc.agent.title.disable, true);
+    assert.equal(doc.small_model, undefined);
+    assert.equal(doc.provider['openabstractions-preferences'], undefined);
+    assert.equal(checks, failure ? 1 : 0);
+  }
+});
+
+test('served chat@3 retains person title configuration', async t => {
+  const path = join(temp(t), 'opencode.json'), {io: streams} = io();
+  writeFileSync(path, JSON.stringify({agent: {title: {disable: true, model: 'personal/title'}}, small_model: 'personal/small'}));
+  let checks = 0;
+  assert.equal(await main(['configure', '--config', path, '--model', 'qwen3:8b', '--profile', 'local',
+    '--endpoint', 'selected-runtime'], streams, {
+    resolveRouter: fakeRouter({local: [qwen], hosted: []}),
+    resolveSelectionOperator: async () => ({readEffective: async () => ({outcome: 'found', policy: {name: 'title'}})}),
+    resolveTitleChat: async options => {checks++; assert.equal(options.endpoint, 'selected-runtime'); return {};},
+  }), 0);
+  const doc = read(path);
+  assert.equal(checks, 1);
+  assert.deepEqual(doc.agent.title, {disable: true, model: 'personal/title'});
+  assert.equal(doc.small_model, 'personal/small');
+});
+
+test('unknown title on reconfigure keeps requirements on retained aliases and custom small_model', async t => {
+  const path = join(temp(t), 'opencode.json');
+  const {io: streams} = io();
+  let outcome = 'found';
+  const deps = {resolveRouter: fakeRouter({local: [qwen], hosted: []}),
+    resolveTitleChat: async () => ({}),
+    resolveSelectionOperator: async () => ({readEffective: async () => ({outcome, policy: outcome === 'found' ? {name: 'title'} : null})})};
+  assert.equal(await main(['configure', '--config', path, '--model', 'qwen3:8b'], streams, deps), 0);
+  const doc = read(path), prefs = doc.provider['openabstractions-preferences'];
+  const requirements = prefs.options.oaChatGuarantees['oa-preference-title'];
+  prefs.options.oaChatGuarantees.custom = ['example/strict@1'];
+  doc.small_model = 'openabstractions-preferences/custom';
+  writeFileSync(path, JSON.stringify(doc));
+  outcome = 'unknown';
+  assert.equal(await main(['configure', '--config', path, '--profile', 'local', '--selection-policy', 'custom'], streams, deps), 0);
+  const after = read(path);
+  assert.equal(after.small_model, doc.small_model);
+  assert.equal(after.agent.title.disable, true);
+  assert.deepEqual(after.provider['openabstractions-preferences'].options.oaChatGuarantees,
+    {'oa-preference-title': requirements, custom: ['example/strict@1']});
+});
 
 function run(application, deps) {
   const {sink, io: streams} = io();
@@ -97,8 +196,8 @@ test('the chooser lists exactly the families configure writes, with their server
   ]);
   const listed = choices(rows);
   assert.deepEqual(listed, {warnings: [], models: [
-    {family: 'llama3.1:8b', name: 'llama3.1:8b · 8k · this computer: ollama', context: 8192, servers: ['ollama']},
-    {family: 'qwen3:8b', name: 'qwen3:8b · 32k · this computer: ollama, lemonade', context: 32768, servers: ['ollama', 'lemonade']},
+    {family: 'llama3.1:8b', name: 'llama3.1:8b', context: 8192, servers: ['ollama']},
+    {family: 'qwen3:8b', name: 'qwen3:8b', context: 32768, servers: ['ollama', 'lemonade']},
   ]});
 });
 
@@ -107,7 +206,8 @@ test('the placement follows the scope, and router refusals name the Panel or the
   assert.equal(placementFor('remote'), 'any');
   const forbidden = routerRefusal({code: 'forbidden'});
   assert.equal(forbidden.exitCode, 3);
-  assert.match(forbidden.message, /abstraction\.router\/inventory\.read.*Panel/);
+  assert.match(forbidden.message, /Panel/);
+  assert.ok(!forbidden.message.includes('abstraction.router/'));
   const older = routerRefusal({code: 'unknown_method'});
   assert.equal(older.exitCode, 3);
   assert.ok(older.message.includes(table.olderRuntime));
@@ -294,6 +394,8 @@ test('--dry-run prints the block and writes nothing; no servable model writes no
   assert.ok(!existsSync(path) && !existsSync(join(dir, 'tui.json')));
   const none = run(app(path, {models: {}}));
   assert.match(none.out, /no servable chat model/);
+  assert.match(none.out, /abstraction\.router\/inventory\.read on abstraction\.router\/inventory /);
+  assert.ok(!none.out.includes('abstraction.router/route'));
   assert.ok(!existsSync(path));
 });
 
@@ -317,18 +419,19 @@ test('Zen is hidden unless shown, and showing removes only the entry configure a
 });
 
 test('hosted models get their own heading, named hosted', (t) => {
-  const hosted = project(offers([{family: 'deepseek-chat', names: ['deepseek-chat'], servers: ['deepseek'], context: 65536,
-    contextSource: 'maximum', input: 61440}]), () => false).models;
+  const hostedOffers = offers([{family: 'deepseek-chat', names: ['deepseek-chat'], servers: ['deepseek'], context: 65536,
+    contextSource: 'maximum', input: 61440}]);
+  const hosted = project(hostedOffers, () => false).models;
   const path = join(temp(t), 'opencode.json');
-  run(app(path, {hostedModels: hosted}));
+  run(app(path, {hostedModels: hosted, hostedHeading: hostedHeading(hostedOffers)}));
   const doc = read(path);
   const main = doc.provider.openabstractions;
   const block = doc.provider['openabstractions-hosted'];
   assert.equal(main.name, headings.local);
-  assert.ok(block.name === headings.hosted && block.npm === main.npm);
+  assert.ok(block.name === 'DeepSeek · OpenAbstractions' && block.npm === main.npm);
   assert.ok(block.options.scope === 'remote' && block.options.oaPlacement === 'hosted');
   assert.deepEqual(block.options.guarantees, ['abstraction.inference/hosted-allowed@1']);
-  assert.equal(block.models['deepseek-chat'].name, 'deepseek-chat · 64k · hosted: deepseek');
+  assert.equal(block.models['deepseek-chat'].name, 'deepseek-chat');
   const none = join(temp(t), 'opencode.json');
   run(app(none));
   assert.equal(read(none).provider['openabstractions-hosted'], undefined);
@@ -358,8 +461,11 @@ test('a preference alias that collides or remaps is refused', () => {
     'openabstractions', provider(policies), 'openabstractions/new'), /already names a different policy/);
 });
 
-test('the headings sort this computer first', () => {
-  assert.deepEqual([headings.preferences, headings.hosted, headings.local].sort(), [headings.local, headings.hosted, headings.preferences]);
+test('the headings: OpenAbstractions on this computer, and hosted ones named by their service', () => {
+  assert.equal(headings.local, 'OpenAbstractions');
+  assert.equal(hostedHeading([{servers: ['deepseek']}, {servers: ['deepseek', 'openai']}]), 'DeepSeek, OpenAI · OpenAbstractions');
+  assert.equal(hostedHeading([{servers: ['newcloud']}]), 'Newcloud · OpenAbstractions');
+  assert.equal(hostedHeading([]), headings.hosted);
 });
 
 // ---- The local profile ----
@@ -372,6 +478,76 @@ function profileApp(t, existing, profile) {
 }
 
 const pluginOptionsOf = (doc) => doc.plugin.find((entry) => Array.isArray(entry) && entry[1]?.providerId === 'openabstractions')?.[1];
+
+test('ordinary local OA configure disables only its missing title default', (t) => {
+  const path = join(temp(t), 'opencode.json');
+  const application = app(path);
+  run(application);
+  const doc = read(path);
+  assert.equal(doc.agent.title.disable, true);
+  assert.equal(doc.agent.local, undefined);
+  assert.equal(doc.default_agent, undefined);
+  assert.equal(pluginOptionsOf(doc).compactTools, undefined);
+  assert.deepEqual(doc.provider.openabstractions.options.oaProfile.wrote, {'agent.title.disable': true});
+  assert.match(run(application).out, /unchanged/);
+  run({...application, profile: 'default'});
+  assert.equal(read(path).agent, undefined);
+});
+
+test('ordinary local OA configure keeps explicit title, agent and hosted choices', (t) => {
+  for (const existing of [
+    {agent: {title: {disable: false}}}, {agent: {title: {disable: true}}},
+    {agent: {title: 'custom'}}, {agent: 'custom'}, {model: 'anthropic/claude'},
+  ]) {
+    const path = join(temp(t), 'opencode.json');
+    writeFileSync(path, JSON.stringify(existing));
+    run(app(path));
+    const doc = read(path);
+    assert.deepEqual(doc.agent, existing.agent);
+    assert.equal(doc.provider.openabstractions.options.oaProfile, undefined);
+  }
+  for (const fields of [{scope: 'remote', guarantee: 'abstraction.inference/hosted-allowed@1'}, {profile: 'default'}]) {
+    const path = join(temp(t), 'opencode.json');
+    run(app(path, fields));
+    assert.equal(read(path).agent, undefined);
+  }
+});
+
+test('the local title default follows both supported nonempty model selection forms', (t) => {
+  for (const [model, disabled] of [
+    [{providerID: 'openabstractions', model: 'llama3.1:8b'}, true],
+    [{providerID: 'anthropic', model: 'claude'}, false],
+    [{providerID: 'openabstractions', model: ''}, false],
+    ['openabstractions/', false],
+  ]) {
+    const path = join(temp(t), 'opencode.json');
+    writeFileSync(path, JSON.stringify({model}));
+    run(app(path));
+    const doc = read(path);
+    assert.deepEqual(doc.model, model);
+    assert.equal(doc.agent?.title?.disable, disabled ? true : undefined);
+  }
+  const path = join(temp(t), 'opencode.json');
+  const model = {providerID: 'openabstractions', model: 'llama3.1:8b'};
+  writeFileSync(path, JSON.stringify({model, agent: {title: {disable: false}}}));
+  run(app(path));
+  assert.deepEqual(read(path).model, model);
+  assert.equal(read(path).agent.title.disable, false);
+});
+
+test('the implicit title default retains earlier managed local settings', (t) => {
+  const application = profileApp(t, '', 'local');
+  run(application);
+  const doc = read(application.path);
+  delete doc.agent.title;
+  writeFileSync(application.path, JSON.stringify(doc));
+  run({...application, profile: ''});
+  const after = read(application.path);
+  assert.equal(after.agent.title.disable, true);
+  assert.equal(after.provider.openabstractions.options.oaProfile.wrote['default_agent'], 'local');
+  run({...application, profile: 'default'});
+  assert.equal(read(application.path).default_agent, undefined);
+});
 
 test('the local profile adds the Local assistant as the default and keeps build, plan and other keys', (t) => {
   const application = profileApp(t, '{"mcp":{"keep":true},"agent":{"build":{"prompt":"mine","permission":{"bash":"ask"}},"plan":{"model":"x/y"}}}', 'local');
@@ -419,11 +595,12 @@ test('the default profile removes only what local wrote', (t) => {
   assert.ok(sink.out.includes('default profile') && sink.err.includes('keeps your own agent.local.color'));
 });
 
-test('no profile leaves agent settings alone; --model picks the profile from the scope', (t) => {
+test('no profile keeps agent choices beside the title default; --model picks the profile from the scope', (t) => {
   const application = profileApp(t, '{"agent":{"build":{"prompt":"x"}}}', '');
   run(application);
   const doc = read(application.path);
   assert.ok(doc.agent.build.prompt === 'x' && doc.agent.local === undefined && doc.default_agent === undefined);
+  assert.equal(doc.agent.title.disable, true);
   for (const [profile, model, scope, want] of [['', 'qwen3', 'local', 'local'], ['', 'qwen3', 'remote', 'default'], ['', '', 'local', ''],
     ['default', 'qwen3', 'local', 'default'], ['local', '', 'local', 'local']]) {
     assert.equal(profileFor(profile, model, scope), want);
@@ -433,7 +610,7 @@ test('no profile leaves agent settings alone; --model picks the profile from the
 test('the local prompt keeps OpenCode\'s essential rules', () => {
   for (const rule of ['concise', 'fewer than 4 lines', 'read a file before you edit it', 'conventions',
     'Never commit unless the user explicitly asks', 'secrets', 'tests, lint and typecheck', 'file_path:line_number',
-    'independent tools together', 'openabstractions_tools', 'OpenAbstractions Panel']) {
+    'independent tools together', 'oa_tools_list', 'OpenAbstractions Panel']) {
     assert.ok(localBuildPrompt.includes(rule), rule);
   }
   const words = localBuildPrompt.split(/\s+/).filter(Boolean).length;
@@ -687,6 +864,109 @@ async function cli(args, byPlacement = {}) {
 }
 
 const qwen = {family: 'qwen3:8b', names: ['qwen3'], servers: ['lemonade'], context: 32768, contextSource: 'effective', input: 28672};
+test('configure refuses duplicate interpreted plugin and provider keys without writes', async t => {
+  const root=temp(t),config=join(root,'opencode.json');
+  const texts=['{"plugin":["foreign"],"plugin":[]}', '{"plugin":[],"plugin":["foreign"]}',
+    '{"provider":{"personal":{"npm":"foreign"}},"provider":{}}', '{"provider":{},"provider":{"personal":{"npm":"foreign"}}}',
+    '{"provider":{"openabstractions":{"options":{"scope":"remote","scope":"local"}}}}',
+    '{"plugin":[["foreign",{"option":1,"option":2}]]}'];
+  for(const text of texts){
+    writeFileSync(config,text);const names=readdirSync(root);
+    const result=await cli(['configure','--config',config],{local:[qwen]});
+    assert.equal(result.code,2,result.err);assert.match(result.err,/Duplicate (plugin|provider)/);
+    assert.equal(readFileSync(config,'utf8'),text);assert.deepEqual(readdirSync(root),names);
+  }
+});
+test('configure CLI refuses ambiguous MCP properties without file or backup writes', async t => {
+  const root=temp(t),launcher=join(root,'openabstractions-mcp.exe');writeFileSync(launcher,'inert');
+  const config=join(root,'opencode.json'),own=JSON.stringify(mcpConfiguration(launcher));
+  const foreign='{"type":"remote","url":"https://example.invalid"}';
+  const texts=[[foreign,own],[own,foreign]].flatMap(([a,b])=>[
+    `{"mcp":{"OpenAbstractions":${a}},"mcp":{"OpenAbstractions":${b}}}`,
+    `{"mcp":{"OpenAbstractions":${a},"OpenAbstractions":${b}}}`]);
+  texts.push(`{"mcp":{"OpenAbstractions":{"timeout":1,${own.slice(1)}}}`);
+  for(const text of texts){
+    writeFileSync(config,text);const names=readdirSync(root);
+    const result=await cli(['configure','--config',config,'--mcp-launcher',launcher]);
+    assert.equal(result.code,2,result.err);assert.match(result.err,/Duplicate MCP/);
+    assert.equal(readFileSync(config,'utf8'),text);assert.deepEqual(readdirSync(root),names);
+  }
+});
+
+test('optional standard MCP configure preserves foreign entries, exact command and timeout, and repeats unchanged', async t => {
+  const root = temp(t), folder = join(root, 'selected OA tools'); mkdirSync(folder);
+  const launcher = join(folder, 'openabstractions-mcp.exe'); writeFileSync(launcher, 'inert role fixture');
+  const config = join(root, 'opencode.json');
+  const foreign = {type: 'remote', url: 'https://example.invalid/mcp', enabled: false};
+  writeFileSync(config, JSON.stringify({mcp: {foreign}, provider: {personal: {npm: 'personal'}}, model: 'personal/model'}));
+  const args = ['configure', '--config', config, '--mcp-launcher', launcher];
+  const first = await cli(args); assert.equal(first.code, 0, first.err);
+  assert.deepEqual(read(config).mcp, {foreign, OpenAbstractions: {type: 'local', command: [launcher], timeout: 1800000}});
+  const before = readFileSync(config, 'utf8');
+  const again = await cli(args); assert.equal(again.code, 0, again.err);
+  assert.equal(readFileSync(config, 'utf8'), before);
+  for (const value of [null, [], {type: 'local', command: ['foreign'], timeout: 60000},
+    {...mcpConfiguration(launcher), timeout: 5000}, {...mcpConfiguration(launcher), enabled: false}]) {
+    const text = JSON.stringify({mcp: {foreign, OpenAbstractions: value}}); writeFileSync(config, text);
+    const refused = await cli(args); assert.equal(refused.code, 2, refused.err);
+    assert.equal(readFileSync(config, 'utf8'), text);
+  }
+  writeFileSync(config, JSON.stringify({mcp: {foreign, OpenAbstractions: {...mcpConfiguration(launcher), timeout: 60000}}}));
+  const upgraded = await cli(args); assert.equal(upgraded.code, 0, upgraded.err);
+  assert.equal(read(config).mcp.OpenAbstractions.timeout, 1800000);
+  const text = JSON.stringify({mcp: {foreign}, model: 'personal/model'}); writeFileSync(config, text);
+  const dry = await cli([...args, '--dry-run']); assert.equal(dry.code, 0, dry.err);
+  assert.deepEqual(JSON.parse(dry.out).mcp.OpenAbstractions, mcpConfiguration(launcher));
+  assert.equal(readFileSync(config, 'utf8'), text);
+  const empty = await cli(args); assert.equal(empty.code, 0, empty.err);
+  assert.equal(read(config).model, 'personal/model'); assert.equal(read(config).provider, undefined);
+  writeFileSync(config,text);
+  const missingModel=await cli([...args,'--model','missing']);assert.equal(missingModel.code,4,missingModel.err);
+  assert.equal(readFileSync(config,'utf8'),text,'an unresolved explicit model does not partially configure MCP');
+  for (const bad of ['openabstractions-mcp.exe', join(root, 'missing', 'openabstractions-mcp.exe'),
+    join(root, 'oa-claude-integration.exe'), folder]) {
+    const before = readFileSync(config, 'utf8');
+    const refused = await cli(['configure', '--config', config, '--mcp-launcher', bad]);
+    assert.equal(refused.code, 2); assert.equal(readFileSync(config, 'utf8'), before);
+  }
+  const alias=join(root,'linked tools');symlinkSync(folder,alias,process.platform==='win32'?'junction':'dir');
+  assert.throws(()=>mcpConfiguration(join(alias,'openabstractions-mcp.exe')),/linked/);
+});
+
+test('MCP configuration retains the exact dedicated image returned by native Setup', t => {
+  const root=temp(t),image=join(root,'oa-opencode-integration.exe');writeFileSync(image,'inert owned image');
+  const receipt=join(root,'prepared.txt');writeFileSync(receipt,image);
+  assert.deepEqual(mcpConfiguration(readFileSync(receipt,'utf8')), {type:'local',command:[image],timeout:1800000});
+  assert.throws(()=>mcpConfiguration(join(root,'oa-claude-integration.exe')),/OA gateway/);
+});
+
+test('the selected V1 SDK sends the standard MCP shape through its Config update API', async t => {
+  const [{createOpencodeClient}, {createServer}] = await Promise.all([import('@opencode-ai/sdk/client'), import('node:http')]);
+  const root=temp(t),launcher=join(root,'openabstractions-mcp.exe');writeFileSync(launcher,'inert role');
+  const expected={mcp:{OpenAbstractions:mcpConfiguration(launcher)}};let received;
+  const server=createServer(async(request,response)=>{
+    const chunks=[];for await(const chunk of request)chunks.push(chunk);
+    received={method:request.method,url:request.url,body:JSON.parse(Buffer.concat(chunks))};
+    response.writeHead(200,{'content-type':'application/json'}).end('{}');
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));});
+  const sdk=createOpencodeClient({baseUrl:`http://127.0.0.1:${server.address().port}`});
+  await sdk.config.update({body:expected,throwOnError:true});
+  assert.deepEqual(received,{method:'PATCH',url:'/config',body:expected});
+});
+
+test('configure CLI without model or profile defaults only the local title request off', async (t) => {
+  const config = join(temp(t), 'opencode.json');
+  const {pluginEntry} = localAdapter(t);
+  const got = await cli(['configure', '--config', config, '--adapter', pluginEntry], {local: [qwen]});
+  assert.equal(got.code, 0, got.err);
+  const doc = read(config);
+  assert.equal(doc.model, 'openabstractions/qwen3:8b');
+  assert.deepEqual(doc.agent, {title: {disable: true}});
+  assert.equal(doc.default_agent, undefined);
+  assert.equal(pluginOptionsOf(doc).compactTools, undefined);
+});
 
 test('no arguments and --help print the usage; mistakes exit 2', async (t) => {
   for (const args of [[], ['--help'], ['configure', '--help'], ['models', '--help']]) {
@@ -725,19 +1005,57 @@ test('configure from the router writes both headings, the local profile and hidd
   assert.equal(got.code, 0, got.err);
   const doc = read(config);
   assert.equal(doc.model, 'openabstractions/qwen3:8b');
-  assert.equal(doc.provider.openabstractions.models['qwen3:8b'].name, 'qwen3:8b · 32k · this computer: lemonade');
-  assert.equal(doc.provider['openabstractions-hosted'].models['deepseek-chat'].name, 'deepseek-chat · 64k · hosted: deepseek');
+  assert.equal(doc.provider.openabstractions.models['qwen3:8b'].name, 'qwen3:8b');
+  assert.equal(doc.provider['openabstractions-hosted'].models['deepseek-chat'].name, 'deepseek-chat');
+  assert.equal(doc.provider['openabstractions-hosted'].name, 'DeepSeek · OpenAbstractions', 'the router\'s hosted offers name the heading');
+  assert.equal(doc.provider.openabstractions.name, 'OpenAbstractions');
   assert.ok(doc.disabled_providers.includes('opencode') && doc.default_agent === 'local');
   assert.deepEqual(read(join(dir, 'tui.json')).plugin, [pluginEntry]);
 });
 
 test('models lists the servable families as JSON and as lines', async () => {
   const json = await cli(['models', '--json'], {local: [qwen]});
-  assert.deepEqual(JSON.parse(json.out), {models: [{family: 'qwen3:8b', name: 'qwen3:8b · 32k · this computer: lemonade', context: 32768,
+  assert.deepEqual(JSON.parse(json.out), {models: [{family: 'qwen3:8b', name: 'qwen3:8b', context: 32768,
     servers: ['lemonade']}], warnings: []});
   const lines = await cli(['models'], {local: [qwen]});
-  assert.equal(lines.out, 'qwen3:8b\tqwen3:8b · 32k · this computer: lemonade\tcontext 32768\ton lemonade\n');
+  assert.equal(lines.out, 'qwen3:8b\tqwen3:8b\tcontext 32768\ton lemonade\n');
   assert.match((await cli(['models'], {})).out, /no servable chat model/);
+});
+
+test('a refused Offer names the inventory read right, which Offer decides (ROUTE-A2)', async (t) => {
+  const dir = temp(t);
+  const config = join(dir, 'opencode.json');
+  const original = '{"theme":"kept"}';
+  writeFileSync(config, original);
+  const calls = [];
+  const router = {
+    offer: async () => {
+      calls.push('Offer');
+      return {outcome: 'not_permitted', offers: offers([qwen])};
+    },
+  };
+  const {sink, io: streams} = io();
+  const code = await main(['configure', '--config', config], streams, {resolveRouter: async () => router});
+  assert.equal(code, 3);
+  assert.deepEqual(calls, ['Offer']);
+  assert.match(sink.err, /abstraction\.router\/inventory\.read on abstraction\.router\/inventory.*Panel/);
+  assert.ok(!sink.err.includes('abstraction.router/route'));
+  assert.equal(readFileSync(config, 'utf8'), original);
+  assert.deepEqual(readdirSync(dir), ['opencode.json']);
+});
+
+test('router resolution refusals do not guess a router operation permission', async (t) => {
+  for (const error of [Object.assign(new Error('resolver refused'), {code: 'forbidden'}),
+    Object.assign(new Error('resolver refused'), {outcome: 'not_permitted'})]) {
+    const dir = temp(t);
+    const config = join(dir, 'opencode.json');
+    const {sink, io: streams} = io();
+    const code = await main(['configure', '--config', config], streams, {resolveRouter: async () => { throw error; }});
+    assert.equal(code, 3);
+    assert.ok(sink.err.includes('Panel'));
+    assert.ok(!sink.err.includes('abstraction.router/inventory') && !sink.err.includes('abstraction.router/route'));
+    assert.deepEqual(readdirSync(dir), []);
+  }
 });
 
 test('a refusing router exits 3 and writes nothing', async (t) => {
@@ -746,8 +1064,32 @@ test('a refusing router exits 3 and writes nothing', async (t) => {
   const code = await main(['configure', '--config', config], streams, {resolveRouter: async () => ({offer: async () => {
     throw Object.assign(new Error('denied'), {code: 'forbidden'});
   }})});
-  assert.ok(code === 3 && sink.err.includes('abstraction.router/inventory.read') && sink.err.includes('Panel'));
+  assert.ok(code === 3 && sink.err.includes('abstraction.router/inventory.read on abstraction.router/inventory') && sink.err.includes('Panel'));
   assert.ok(!existsSync(config));
+});
+
+test('resolution and Offer failures preserve unavailable, upgrade and transport exits', async (t) => {
+  for (const phase of ['resolve', 'offer']) {
+    for (const [error, exit, wording] of [
+      [Object.assign(new Error('temporarily unavailable'), {outcome: 'unavailable'}), 4, 'unavailable'],
+      [Object.assign(new Error('old runtime'), {code: 'unknown_method'}), 3, table.olderRuntime],
+      [new Error('pipe closed'), 1, 'pipe closed'],
+    ]) {
+      const dir = temp(t);
+      const config = join(dir, 'opencode.json');
+      const original = '{"theme":"kept"}';
+      writeFileSync(config, original);
+      const {sink, io: streams} = io();
+      const resolveRouter = phase === 'resolve' ? async () => { throw error; }
+        : async () => ({offer: async () => { throw error; }});
+      const code = await main(['configure', '--config', config], streams, {resolveRouter});
+      assert.equal(code, exit, `${phase}: ${sink.err}`);
+      assert.ok(sink.err.includes(wording), sink.err);
+      assert.ok(!sink.err.includes('grant it') && !sink.err.includes('this program lacks'));
+      assert.equal(readFileSync(config, 'utf8'), original);
+      assert.deepEqual(readdirSync(dir), ['opencode.json']);
+    }
+  }
 });
 
 test('typed router refusals keep their exit category and never write supplied offers', async (t) => {
@@ -759,9 +1101,9 @@ test('typed router refusals keep their exit category and never write supplied of
     })});
     assert.equal(code, outcome === 'unavailable' ? 4 : 3, sink.err);
     assert.ok(sink.err.includes(outcome ?? 'invalid_result'));
-    if (outcome === 'not_permitted') assert.ok(sink.err.includes('abstraction.router/inventory.read') && sink.err.includes('Panel'));
+    if (outcome === 'not_permitted') assert.ok(sink.err.includes('abstraction.router/inventory.read on abstraction.router/inventory') && sink.err.includes('Panel'));
     if (outcome === 'forbidden') {
-      assert.ok(!sink.err.includes('this program lacks') && !sink.err.includes('abstraction.router/inventory.read'));
+      assert.ok(!sink.err.includes('this program lacks') && !sink.err.includes('abstraction.router/'));
       assert.ok(!sink.err.includes('Panel') && !sink.err.includes('grant it'));
     }
     assert.ok(!existsSync(config));

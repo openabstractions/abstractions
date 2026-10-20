@@ -4,16 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/user"
-	"path/filepath"
-	"runtime"
-	"strconv"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/openabstractions/abstraction-facade/go-core/bootstrap"
 	facade "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	facadeclient "github.com/openabstractions/abstraction-facade/go/client"
-	identity "github.com/openabstractions/abstraction-identity"
-	"github.com/openabstractions/abstraction-identity/listen"
 	logging "github.com/openabstractions/abstraction-logging/go/client"
 	rightswire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	rights "github.com/openabstractions/abstraction-rights/go/client"
@@ -287,6 +282,9 @@ func newOAServer(adapter *oaAdapter) *mcp.Server {
 	return server
 }
 
+var selectOADevelopment = bootstrap.SelectDevelopment
+var newOAVerifiedMachine = facadeclient.NewVerified
+
 func oaMachine(endpoint, program string) (*facadeclient.Machine, error) {
 	if endpoint == "" && program == "" {
 		return facadeclient.Discover(), nil
@@ -294,22 +292,11 @@ func oaMachine(endpoint, program string) (*facadeclient.Machine, error) {
 	if endpoint == "" || program == "" {
 		return nil, errors.New("--oa-endpoint and --oa-runtime-program must be given together")
 	}
-	if !filepath.IsAbs(program) {
-		return nil, errors.New("--oa-runtime-program must be an absolute path")
-	}
-	account, err := user.Current()
+	selected, err := selectOADevelopment(endpoint, program)
 	if err != nil {
 		return nil, err
 	}
-	principal := identity.User{Kind: "windows", SID: account.Uid, UID: -1, GID: -1}
-	if runtime.GOOS != "windows" {
-		uid, err := strconv.Atoi(account.Uid)
-		if err != nil {
-			return nil, errors.New("current POSIX account has no numeric uid")
-		}
-		principal = identity.User{Kind: "posix", UID: uid, GID: -1}
-	}
-	return facadeclient.NewVerified(endpoint, listen.ServerExpectation{Principal: principal, Program: filepath.Clean(program)}), nil
+	return newOAVerifiedMachine(selected.Endpoint, selected.Server), nil
 }
 
 func resolveOAServices(ctx context.Context, endpoint, program string) (applicationsAPI, rightsAPI, logAPI, error) {

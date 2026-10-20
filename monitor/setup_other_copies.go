@@ -1,9 +1,7 @@
 package main
 
 import (
-	"errors"
 	"net/http"
-	"slices"
 
 	"github.com/openabstractions/abstractions/monitor/internal/setup"
 )
@@ -42,19 +40,9 @@ func (p *servicePanel) setupOtherCopies(w http.ResponseWriter, r *http.Request) 
 // build of an application installed without the OA mark, and the person did
 // not choose to install it beside that copy.
 func refuseOtherCopies(w http.ResponseWriter, request setupChoiceRequest, result setupOtherCopiesReply) bool {
-	err := setup.CheckBeside(request.Selected, request.Beside, result.Copies)
-	var other *setup.OtherCopyError
-	if errors.As(err, &other) {
+	if err := setup.CheckOtherCopies(request.Selected, request.Beside, result.Copies, result.Incomplete); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return true
-	}
-	if result.Incomplete {
-		for _, app := range request.Selected {
-			if app == setup.ComfyUI && !slices.Contains(request.Beside, app) {
-				http.Error(w, "Setup could not finish checking for another copy. Choose to install the OpenAbstractions build beside an existing copy, then review again.", http.StatusConflict)
-				return true
-			}
-		}
 	}
 	return false
 }

@@ -1,5 +1,12 @@
 # Logging write/read quickstart
 
+The Windows review producer embeds the application's applications@3 manifest
+and builds its private ABI2 `--owned-host` adapter through Facade's shared
+`appmodelhost` binding. It declares no commands or model-selection profiles.
+This mode announces only an existing native registration, renews its
+service-issued instance and withdraws on shutdown. It performs no registration.
+Signed/installed receiving remains pending. The ordinary logging CLI is unchanged.
+
 This example writes one structured event through the facade, pages through the
 service-owned history, and prints the same event after it is retained. Each run
 uses a unique `event_id`, so an existing history cannot satisfy the readback.
@@ -12,7 +19,7 @@ program and account identity to the runtime. Installed applications should use
 ## Windows PowerShell
 
 Requirements: Go 1.26 or newer. This example's `go.mod` pins
-`abstraction-facade/go` v0.6.0 and `abstraction-logging/go` v0.5.0.
+`abstraction-facade/go` v0.7.0 and `abstraction-logging/go` v0.6.0.
 The checkout's Go workspace selects its current source modules.
 Run these commands at the checkout root. Build each executable once because the
 history permission names the application's exact executable path.

@@ -190,13 +190,15 @@ func TestRustProductionServiceExchange(t *testing.T) {
 }
 
 const rustProductionHost = `package main
-import("os";"io";l "production.test/logging";f "production.test/facade")
+import("os";"io";"errors";l "production.test/logging";f "production.test/facade")
 type sink struct{}
 func(sink)Write(v l.Record)error{if v.Msg!="rust-log"||v.Schema!=1{panic("invalid record")};return nil}
 type history struct{}
+func(history)Usage()(l.HistoryUsageResult,error){return l.HistoryUsageResult{Outcome:l.HistoryUsageOutcomeAvailable,Usage:&l.HistoryUsage{}},nil}
 func(history)Read(cursor string,n,b int64)(l.Page,error){if cursor!="cursor"||n!=1||b!=1000{panic("invalid history args")};return l.Page{Outcome:l.PageOutcomePage,Records:[]l.Record{{Schema:1,Time:"2026-09-13T00:00:00.000000Z",Msg:"retained"}},Next:"next",AtEnd:true},nil}
 type resolver struct{}
 func(resolver)Resolve(v f.ResolveRequest)(f.ResolveResult,error){if v.Capability!="abstraction.logging"||v.Scope!=f.ScopeLocal||len(v.Contracts)!=1||v.Contracts[0]!="abstraction.logging/sink@1"{panic("invalid request")};return f.ResolveResult{Status:f.ResolutionStatusUnavailable},nil}
+func(r resolver)ResolveOnMachine(v f.ResolveRequest,name string)(f.ResolveResult,error){if name!=""{return f.ResolveResult{},errors.New("fixture resolver has no paired machines")};return r.Resolve(v)}
 func main(){b,e:=io.ReadAll(os.Stdin);if e!=nil{panic(e)};var out []byte;switch os.Args[1]{case "sink":d:=l.SinkDispatcher{Handler:sink{}};e=d.WriteFrame(b);case "history":d:=l.HistoryReaderDispatcher{Handler:history{}};out,e=d.ExchangeFrame(b);case "resolver":d:=f.ResolverDispatcher{Handler:resolver{}};out,e=d.ExchangeFrame(b)};if e!=nil{panic(e)};os.Stdout.Write(out)}
 `
 const rustProductionProbe = `mod logging;mod facade;
@@ -210,9 +212,11 @@ fn transport(mode:&'static str)->Transport{Transport{host:std::env::args().nth(1
 fn main(){
  let sink=logging::SinkClient::new(transport("sink"));let mut r=logging::Record::default();r.schema=1;r.time="2026-09-13T00:00:00.000000Z".into();r.msg="rust-log".into();sink.write(r).unwrap();
  let page=logging::HistoryReaderClient::new(transport("history")).read("cursor".into(),1,1000).unwrap();assert_eq!(page.outcome,"page");assert_eq!(page.records[0].msg,"retained");assert!(page.at_end);
- let resolver=facade::ResolverClient::new(transport("resolver"));let r=facade::ResolveRequest{capability:"abstraction.logging".into(),contracts:vec!["abstraction.logging/sink@1".into()],guarantees:vec![],scope:facade::Scope::Local};assert_eq!(resolver.resolve(r).unwrap().status,"unavailable");
+ let resolver=facade::ResolverClient::new(transport("resolver"));let request=||facade::ResolveRequest{capability:"abstraction.logging".into(),contracts:vec!["abstraction.logging/sink@1".into()],guarantees:vec![],scope:facade::Scope::Local};assert_eq!(resolver.resolve(request()).unwrap().status,"unavailable");
+ assert_eq!(resolver.resolve_on_machine(request(),"".into()).unwrap().status,"unavailable");
+ assert!(resolver.resolve_on_machine(request(),"machine-a".into()).is_err());
  // A scope no member names cannot be constructed, so there is no invalid request left to refuse before the transport.
- assert_eq!(resolver.transport().calls.get(),1);
+ assert_eq!(resolver.transport().calls.get(),3);
 }
 `
 

@@ -8,16 +8,20 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
+	asks "github.com/openabstractions/abstraction-asks/go"
 	cwire "github.com/openabstractions/abstraction-credentials/go/abstraction/credentials/api"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
+	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-inference/adapters/go/gateway"
 	"github.com/openabstractions/abstraction-inference/adapters/go/realtime"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	iwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	inferenceservice "github.com/openabstractions/abstraction-inference/go/service"
 	logging "github.com/openabstractions/abstraction-logging/go"
+	modelservice "github.com/openabstractions/abstraction-model/go/service"
 	resourceservice "github.com/openabstractions/abstraction-resource/go/service"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	router "github.com/openabstractions/abstraction-router/go"
@@ -59,9 +63,11 @@ type inferenceHosts struct {
 	Declared *bool                        `json:"declared,omitempty"`
 	Hosted   []inferenceHostedHost        `json:"hosted"`
 	Ceilings map[string]inference.Ceiling `json:"ceilings,omitempty"`
-	// IdleMS and RetentionMS override the provider's bounds when positive.
-	IdleMS      int64 `json:"idle_ms,omitempty"`
-	RetentionMS int64 `json:"retention_ms,omitempty"`
+	// IdleMS, ResumeIdleMS and RetentionMS override the provider's bounds
+	// when positive (inference.Config Idle, ResumeIdle and Retention).
+	IdleMS       int64 `json:"idle_ms,omitempty"`
+	ResumeIdleMS int64 `json:"resume_idle_ms,omitempty"`
+	RetentionMS  int64 `json:"retention_ms,omitempty"`
 }
 
 // runtimeInference composes abstraction.inference/chat@1 into the user
@@ -70,11 +76,14 @@ type inferenceHosts struct {
 // inference service as a designated consumer, ceilings kept in the state
 // directory, and one log record per operation into the runtime's sink.
 type runtimeInference struct {
-	content  *runtimeContent
-	provider *inference.Provider
+	programReview *shippedProgramReview
+	content       *runtimeContent
+	provider      *inference.Provider
 	// router is the router the provider reaches hosts through; the runtime also
 	// publishes it as abstraction.router/router@1.
-	router *router.Router
+	router        *router.Router
+	hostListing   func(context.Context, *identity.Peer, []router.HostState) ([]router.HostState, error)
+	providerSetup bool
 	// resources is who holds this machine's scarce resources, published as
 	// abstraction.resource/table@1 and read by the router for its residency
 	// answer (runtime_resources.go).
@@ -95,6 +104,14 @@ type runtimeInference struct {
 	// provenance tells the router what the accepted inventory sources say this
 	// machine holds (runtime_inventory.go); nil without providers.
 	provenance *inventoryProvenance
+	// stopSurvey ends the router's survey clock (routerSurveyEvery), and
+	// surveyDone closes once the clock and the survey it joined have ended.
+	stopSurvey chan struct{}
+	surveyDone chan struct{}
+	// closing makes Close run once; a second or concurrent Close returns
+	// the first one's result.
+	closing  sync.Once
+	closeErr error
 	// mediation owns the declaration-generation-pinned OA endpoints returned
 	// by resolution for supported native providers.
 	mediation *providerMediation
@@ -112,14 +129,24 @@ type runtimeInference struct {
 	unhookStanding func()
 }
 
+// BindChatV3LogicalOwner lets trusted facade composition bind before it
+// advertises the local application chat@3 candidate.
+func (r *runtimeInference) BindChatV3LogicalOwner(owner string) error {
+	if r == nil || r.provider == nil {
+		return errors.New("runtime inference: provider unavailable")
+	}
+	return r.provider.BindChatV3LogicalOwner(owner)
+}
+
 // Serve serves chat@1 and operator@1. The gateway window, when open, closes
 // when the IPC host stops.
 func (r *runtimeInference) Serve(ctx context.Context) error {
+	defer r.stopStanding()
 	if r.mediation != nil {
 		if err := r.mediation.Start(ctx); err != nil {
 			return err
 		}
-		defer r.mediation.Close()
+		defer func() { r.stopStanding(); r.mediation.Close() }()
 	}
 	serveCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -161,6 +188,19 @@ func (r *runtimeInference) ChatV2Available() bool { return true }
 func (r *runtimeInference) SelectionOperatorV2Available() bool { return r.operator != nil }
 
 func (r *runtimeInference) Close() error {
+	r.closing.Do(func() { r.closeErr = r.shutdown() })
+	return r.closeErr
+}
+
+func (r *runtimeInference) shutdown() error {
+	if r.stopSurvey != nil {
+		close(r.stopSurvey)
+		r.stopSurvey = nil
+		// No clock survey reads a host or applies a credential after the
+		// holder and the providers close below.
+		<-r.surveyDone
+	}
+	r.stopStanding()
 	r.gateway.stop()
 	var mediationErr, providersErr, registryErr, lendingErr error
 	if r.mediation != nil {
@@ -175,11 +215,15 @@ func (r *runtimeInference) Close() error {
 	if r.lending != nil {
 		lendingErr = r.lending.Close()
 	}
+	r.resources.close()
+	return errors.Join(mediationErr, providersErr, registryErr, lendingErr, r.host.Close(), r.remoteHost.Close(), r.provider.Close())
+}
+
+func (r *runtimeInference) stopStanding() {
 	if r.unhookStanding != nil {
 		r.unhookStanding()
 	}
-	r.resources.close()
-	return errors.Join(mediationErr, providersErr, registryErr, lendingErr, r.host.Close(), r.remoteHost.Close(), r.provider.Close())
+	r.resources.stopStanding()
 }
 
 func inferenceEndpoint(options runtimeFlags) (string, error) {
@@ -216,39 +260,47 @@ func (c inferenceHosts) usesDeclarations() bool {
 // routerHosts is every host the router reaches: the registry's declarations
 // of role host, the mediated native inference providers, and the remote
 // runtimes. Nothing else names a host.
-func routerHosts(providers *runtimeProviders) []*router.Host {
+// A paired-discovery error accompanies only the independently validated hosts;
+// constructors refuse it, while live refresh withdraws peers and reports it.
+// A paired name conflict is an ambiguous known name and returns no hosts.
+func routerHosts(providers *runtimeProviders) ([]*router.Host, error) {
 	if providers == nil {
-		return nil
+		return nil, nil
 	}
 	hosts := providers.hostRouterHosts()
 	hosts = append(hosts, providers.nativeInferenceHosts()...)
-	return append(hosts, providers.remoteHosts()...)
+	hosts = append(hosts, providers.remoteHosts()...)
+	var pairedErr error
+	{
+		extra, err := providers.readPairedHosts()
+		if err != nil && err.Outcome == pairedReadClash {
+			// A local declaration holds an active peer's binding name. That
+			// name is known and ambiguous, so no host is offered.
+			return nil, fmt.Errorf("inference: ambiguous paired host name: %w", err)
+		}
+		if err != nil {
+			// A failed paired read supplies no peer hosts. Independently read
+			// registrations remain useful; the caller must retain this error.
+			pairedErr = fmt.Errorf("inference: paired discovery: %w", err)
+		} else {
+			hosts = append(hosts, extra...)
+		}
+	}
+	names := map[string]bool{}
+	for _, host := range hosts {
+		if names[host.Name] {
+			return nil, fmt.Errorf("inference: ambiguous host name %q", host.Name)
+		}
+		names[host.Name] = true
+	}
+	return hosts, pairedErr
 }
 
 // localRouterHost is the router host of one local entry.
 func localRouterHost(l inferenceLocalHost) (*router.Host, error) {
-	var h *router.Host
-	switch l.Kind {
-	case "lemonade":
-		h = router.Lemonade(l.Base)
-	case "lmstudio":
-		h = router.LMStudio(l.Base)
-	case "ollama":
-		h = router.Ollama(l.Base)
-	case "docker-model-runner":
-		h = router.DockerModelRunner(l.Base)
-	case "foundry-local":
-		h = router.FoundryLocal(l.Base)
-	case "whispercpp":
-		h = router.WhisperCPP(l.Base)
-	case "piper":
-		h = router.Piper(l.Base)
-	case "comfyui":
-		h = router.ComfyUI(l.Base)
-	case "swarmui":
-		h = router.SwarmUI(l.Base)
-	default:
-		return nil, fmt.Errorf("inference: unknown local host kind %q", l.Kind)
+	h, err := router.NewLocal(l.Kind, l.Base, nil)
+	if err != nil {
+		return nil, err
 	}
 	h.DeclaredBy, h.Profiles = l.DeclaredBy, l.Profiles
 	return h, nil
@@ -260,6 +312,9 @@ func localRouterHost(l inferenceLocalHost) (*router.Host, error) {
 // of an inference call is named by this one reading; the live walkthrough of
 // 2026-10-02 (D12) found image calls logged as chat@1.
 func inferenceRecordContract(rec inference.Record) string {
+	if rec.ChatVersion == 3 {
+		return inference.ChatV3Contract
+	}
 	switch rec.Profile {
 	case "preload":
 		return inference.PreloadContract
@@ -280,18 +335,116 @@ func inferenceRecordContract(rec inference.Record) string {
 }
 
 // inferenceLogRecord is the runtime log's record of one inference call or
-// refusal (inference INF-C3): names and counts, never content.
+// refusal (inference INF-C3): names and counts, never content. A call a named
+// selection policy routed also names the preferred model and host and the
+// selection reason, so a fallback is never read as the preferred route.
 func inferenceLogRecord(rec inference.Record, at time.Time) logging.Record {
-	attrs := map[string]string{"profile": rec.Profile, "route": rec.Route, "rung": rec.Rung, "operation": rec.Operation, "account": rec.Account, "program": rec.Program, "host": rec.Host,
+	attrs := map[string]string{"profile": rec.Profile, "route": rec.Route, "rung": rec.Rung, "operation": rec.Operation, "account": rec.Account, "program": rec.Program, "host": rec.Host, "domain": remoteAuditLabel(rec.Domain), "claim": remoteAuditLabel(rec.Claim),
 		"model": rec.Model, "family": rec.Family, "credential": rec.Credential, "outcome": rec.Outcome, "reason": rec.Reason,
 		"ceiling": rec.Ceiling, "tokens_in": strconv.FormatInt(rec.TokensIn, 10), "tokens_out": strconv.FormatInt(rec.TokensOut, 10),
-		"audio_seconds": strconv.FormatInt(rec.AudioSeconds, 10), "characters": strconv.FormatInt(rec.Characters, 10), "wall_ms": strconv.FormatInt(rec.WallMS, 10)}
+		"audio_seconds": strconv.FormatInt(rec.AudioSeconds, 10), "characters": strconv.FormatInt(rec.Characters, 10), "wall_ms": strconv.FormatInt(rec.WallMS, 10),
+		"preferred_model": rec.Preferred, "preferred_host": rec.PreferredHost, "selection": rec.Selection}
+	if rec.ChatVersion == 3 {
+		attrs["gen_ai.operation.name"] = "chat"
+		attrs["gen_ai.provider.name"] = "openabstractions"
+		attrs["gen_ai.request.model"] = rec.Model
+		delete(attrs, "tokens_in")
+		delete(attrs, "tokens_out")
+		if rec.ChatUsage != nil {
+			for key, value := range map[string]*int64{"tokens_in": rec.ChatUsage.Input, "tokens_out": rec.ChatUsage.Output, "cache_read_tokens": rec.ChatUsage.CacheRead, "cache_write_tokens": rec.ChatUsage.CacheWrite, "reasoning_tokens": rec.ChatUsage.Reasoning} {
+				if value != nil {
+					attrs[key] = strconv.FormatInt(*value, 10)
+				}
+			}
+		}
+		attrs["finish_reason"] = rec.FinishReason
+		for source, target := range map[string]string{"tokens_in": "gen_ai.usage.input_tokens", "tokens_out": "gen_ai.usage.output_tokens", "cache_read_tokens": "gen_ai.usage.cache_read.input_tokens", "cache_write_tokens": "gen_ai.usage.cache_creation.input_tokens", "reasoning_tokens": "gen_ai.usage.reasoning.output_tokens"} {
+			if value, present := attrs[source]; present {
+				attrs[target] = value
+			}
+		}
+		if rec.FinishReason != "" {
+			// The logging owner's attributes are strings. Preserve the semantic
+			// convention's array shape as JSON for an exporter's typed conversion.
+			finish, _ := json.Marshal([]string{rec.FinishReason}) // string arrays encode
+			attrs["gen_ai.response.finish_reasons"] = string(finish)
+		}
+	}
+	if timing := rec.Timing; timing != nil {
+		attrs["oa.inference.end_to_end_ms"] = strconv.FormatInt(rec.WallMS, 10)
+		for key, value := range map[string]*int64{
+			"oa.inference.queue_ms": timing.QueueMS, "oa.inference.load_ms": timing.LoadMS,
+			"oa.inference.restore_ms": timing.RestoreMS, "oa.inference.prefill_ms": timing.PrefillMS,
+			"oa.inference.decode_ms": timing.DecodeMS, "oa.inference.load_bytes": timing.LoadBytes,
+			"oa.inference.prefill_tokens":  timing.PrefillTokens,
+			"oa.inference.relay_ms":        timing.RelayMS,
+			"oa.inference.cache_evictions": timing.CacheEvictions,
+		} {
+			if value != nil {
+				attrs[key] = strconv.FormatInt(*value, 10)
+			}
+		}
+		if timing.ReusedTokens != nil && attrs["gen_ai.usage.cache_read.input_tokens"] == "" {
+			attrs["gen_ai.usage.cache_read.input_tokens"] = strconv.FormatInt(*timing.ReusedTokens, 10)
+		}
+		if timing.PrefillMS != nil {
+			attrs["gen_ai.server.time_to_first_token"] = strconv.FormatFloat(float64(*timing.PrefillMS)/1000, 'f', -1, 64)
+		}
+		for key, value := range map[string]string{"oa.inference.load": timing.Load, "oa.inference.load_source": timing.LoadSource, "oa.inference.restore": timing.Restore, "oa.inference.restore_cause": timing.RestoreCause} {
+			if value != "" {
+				attrs[key] = value
+			}
+		}
+		for key, value := range map[string]*float64{"oa.engine.prompt_ms": timing.Engine.PromptMS, "oa.engine.decode_ms": timing.Engine.DecodeMS} {
+			if value != nil {
+				attrs[key] = strconv.FormatFloat(*value, 'f', -1, 64)
+			}
+		}
+	}
+	if delegated := rec.DelegatedTiming; delegated != nil {
+		attrs["oa.remote.timing"] = "delegated"
+		timing := delegated.Timing
+		for key, value := range map[string]*int64{
+			"queue_ms": timing.QueueMs, "load_ms": timing.LoadMs, "restore_ms": timing.RestoreMs,
+			"prefill_ms": timing.PrefillMs, "decode_ms": timing.DecodeMs,
+			"prefill_tokens": timing.PrefillTokens, "reused_tokens": timing.ReusedTokens,
+		} {
+			if value != nil {
+				attrs["oa.remote."+key] = strconv.FormatInt(*value, 10)
+			}
+		}
+		if timing.Load != nil {
+			attrs["oa.remote.load"] = string(*timing.Load)
+		}
+		if timing.LoadSource != nil {
+			attrs["oa.remote.load_source"] = string(*timing.LoadSource)
+		}
+		if served := delegated.ServedBy; served != nil {
+			attrs["oa.remote.place"] = string(served.Place)
+			attrs["oa.remote.server"] = remoteAuditLabel(served.Server)
+			attrs["oa.remote.machine"] = remoteAuditLabel(served.Machine)
+		}
+	}
 	for k, v := range attrs {
 		if v == "" {
 			delete(attrs, k)
 		}
 	}
 	return logging.Record{Time: logging.At(at), Level: logging.LevelInfo, Msg: inferenceRecordContract(rec), Attrs: attrs}
+}
+
+// writeInferenceLog writes the record with its local proven caller as the
+// private subject (LOG-P9), so ReadAboutCaller returns it to that caller. A
+// claim relayed by a paired runtime is not a proven local caller and leaves
+// the record unstamped.
+func writeInferenceLog(sink logging.Sink, rec inference.Record, at time.Time) error {
+	out := sink
+	if rec.Claim == "" && identity.ValidSubjectProgram(rec.Program) {
+		if about, err := logging.AboutCaller(sink, rec.Program); err == nil {
+			out = about
+		}
+	}
+	return out.Write(inferenceLogRecord(rec, at))
 }
 
 // composeInference needs the composed credentials: its policy decides and its
@@ -327,26 +480,70 @@ func composeInference(options runtimeFlags, c *runtimeCredentials, sink logging.
 	// Declarations are optional: a runtime whose providers directory cannot
 	// be read serves inference without them and reports why. It then reaches
 	// no host either, because the registry is the one directory of hosts.
-	providers, err := openProviders(state, config.usesDeclarations(), report)
+	providers, err := openRuntimeProviders(options, state, config, report)
 	if err != nil {
 		report(fmt.Errorf("runtime providers: %w", err))
 		providers = nil
 	}
-	r := router.New()
+	r := router.NewWithHTTPClient(runtimeEngineHTTPClient(providers, 2*time.Second))
+	r.SetFamilyTitleLookup(modelservice.FamilyTitleLookup())
 	// Who holds the card is measured once, by the table, and read from there.
 	resources := composeResources(state, r, c.runtimeRights, report)
 	r.SetResidency(tableResidency{table: resources.table})
+	var programReview *shippedProgramReview
 	if providers != nil {
+		providers.registrationDirectory = providers.readyRegistrationDirectory.Load
+		providers.shippedImageUpdated = func() {
+			if sink != nil {
+				if err := sink.Write(logging.Record{Time: logging.At(time.Now()), Level: logging.LevelInfo, Msg: "OA updated its model service"}); err != nil {
+					report(err)
+				}
+			}
+		}
+		// The initial adoption can precede Asks composition. Retain its complete
+		// snapshot until the existing native question keeper is attached.
+		programReview = &shippedProgramReview{report: report}
+		providers.shippedImagesUnresolved = programReview.snapshot
+		providers.programReviewQuestion = programReview.openQuestion
+		providers.programReviewUnavailable = programReview.unavailable
+		providers.programReviewProviderQuestion = programReview.providerQuestion
+		providers.programReviewNeed = programReview.need
+		providers.routerHostSnapshot = func() ([]router.HostState, time.Time) {
+			states, _, _, _, at := r.Residency(false)
+			return states, at
+		}
 		providers.routerHostStates = func() []router.HostState {
 			states, _, _, _, _ := r.Residency(false)
 			return states
 		}
-		r.SetHosts(routerHosts(providers)...)
+		// The inventory reports the context one conversation gets on the
+		// model host, from this machine's pool and the person's choice.
+		providers.conversationContext = planConversationContext(tablePool(resources.table), modelContextChoice(func() (typedContextReader, error) {
+			return runtimeConfigClient(options)
+		}))
+		hosts, err := routerHosts(providers)
+		if err != nil {
+			return nil, err
+		}
+		r.SetHosts(hosts...)
 	}
 	runtimeProgram := c.operators[0]
-	// The router reads hosted listings as the runtime's own program.
+	c.hostedCredential = func(name string) string {
+		for _, h := range r.Hosts() {
+			if h.Name == name && h.Hosted && h.Wire != router.WireRemote {
+				return h.Credential
+			}
+		}
+		return ""
+	}
+	// Among hosted servers that could serve one call, the router takes one
+	// the caller may already use (hostedStanding).
+	r.UseHostedStanding(c.hostedStanding)
+	// The router reads hosted listings as the runtime's own program. Its
+	// survey asks nobody: OpenAbstractions reading the models of a key the
+	// person just entered is no question for them (architect ruling C).
 	r.UseCredentials(func(ctx context.Context, consumer, name, target string) (map[string]string, error) {
-		result := c.holder.Apply(ctx, cwire.Use{Subject: cwire.Subject{Account: c.owner, Program: runtimeProgram}, Consumer: consumer, Name: name, Target: target}, c.decide)
+		result := c.holder.Apply(ctx, cwire.Use{Subject: cwire.Subject{Account: c.owner, Program: runtimeProgram}, Consumer: consumer, Name: name, Target: target}, c.decideQuietly)
 		if result.Outcome != cwire.ApplyOutcomeApplied {
 			return nil, &router.CredentialRefusal{Outcome: result.Outcome.String(), Name: name}
 		}
@@ -369,12 +566,16 @@ func composeInference(options runtimeFlags, c *runtimeCredentials, sink logging.
 		return nil, err
 	}
 	cfg := inference.Config{Router: r, Ceilings: ceilings, OnError: report, ResolveContent: content.read, PrepareContentWrite: content.prepareWrite,
+		ValidateHostBinding: providers.currentHostBinding,
+		// A model only a declaration waiting for the person's Keep names
+		// answers approval:pending, never not-here.
+		Waiting:            providers.waitingReason,
 		ResolveSelectionV2: operator.ResolveSelectionV2,
 		LiveDialer:         realtime.Dial,
 		// Admit waits for an on-demand declared native provider's readiness
 		// (FAC-R8) once the router has picked it; nil providers admits every
 		// host unconditionally.
-		Admit:  providers.nativeAdmit,
+		Admit:  providers.registrationAdmit,
 		Decide: c.decideInference,
 		// A running operation or job is decided again, asking nobody, on
 		// each live input, each job poll, each committed rights change and
@@ -402,12 +603,15 @@ func composeInference(options runtimeFlags, c *runtimeCredentials, sink logging.
 			if sink == nil {
 				return
 			}
-			if err := sink.Write(inferenceLogRecord(rec, time.Now())); err != nil {
+			if err := writeInferenceLog(sink, rec, time.Now()); err != nil {
 				report(err)
 			}
 		}}
 	if config.IdleMS > 0 {
 		cfg.Idle = time.Duration(config.IdleMS) * time.Millisecond
+	}
+	if config.ResumeIdleMS > 0 {
+		cfg.ResumeIdle = time.Duration(config.ResumeIdleMS) * time.Millisecond
 	}
 	if config.RetentionMS > 0 {
 		cfg.Retention = time.Duration(config.RetentionMS) * time.Millisecond
@@ -416,8 +620,26 @@ func composeInference(options runtimeFlags, c *runtimeCredentials, sink logging.
 	if err != nil {
 		return nil, err
 	}
+	if providers != nil {
+		bindHostDiscovery(providers, provider)
+		hosts, err := routerHosts(providers)
+		if err != nil {
+			return nil, err
+		}
+		r.SetHosts(hosts...)
+	}
 	// A live request holds the request input it names (INF-V4, STO-T7).
 	content.sink, content.report = sink, report
+	// Generated output is tmp (INF-V5): held for its operation's result
+	// retention, then for the person's tmp_max_retention, read on every pass.
+	content.outputRetention = cfg.Retention
+	content.readTmp = func(ctx context.Context) (time.Duration, string, error) {
+		reader, err := runtimeConfigClient(options)
+		if err != nil {
+			return 0, "", err
+		}
+		return readTmpMaxRetention(ctx, reader.ReadTypedContext)
+	}
 	content.addInputHolder(func() (map[string]bool, error) { return provider.NamedInputs(), nil })
 	endpoint, err := inferenceEndpoint(options)
 	if err != nil {
@@ -431,7 +653,12 @@ func composeInference(options runtimeFlags, c *runtimeCredentials, sink logging.
 		provider.Close()
 		return nil, err
 	}
+	// Local chat applications resolve chat@3 for visible loading,
+	// thinking and per-session conversation labels (owner 2026-11-02).
+	h.ApplicationChatV3 = true
 	h.OnError = report
+	h.AwaitQuestions = c.runtimeRights.awaitNativeQuestions
+	h.PendingQuestions = c.runtimeRights.pendingNativeQuestions
 	h.Operator = operator
 	h.SelectionOperatorV2 = operator
 	remoteEndpoint, err := inferenceRemoteEndpoint(options)
@@ -451,8 +678,31 @@ func composeInference(options runtimeFlags, c *runtimeCredentials, sink logging.
 		return nil, err
 	}
 	remoteHost.OnError = report
+	remoteHost.AwaitQuestions = c.runtimeRights.awaitNativeQuestions
+	remoteHost.PendingQuestions = c.runtimeRights.pendingNativeQuestions
 	// The original endpoint remains the concrete local-execution binding.
 	composed := &runtimeInference{provider: provider, router: r, resources: resources, host: h, remoteHost: remoteHost, endpoint: endpoint, remoteEndpoint: remoteEndpoint, operator: operator, content: content}
+	composed.programReview = programReview
+	c.runtimeRights.providerSetupGuard = func(ctx context.Context, p asks.PermissionRequest) (func() error, error) {
+		return c.providerSetupGuard(ctx, p, r.Hosts, func() []providerFile {
+			if providers == nil {
+				return nil
+			}
+			return providers.hostFiles()
+		}, ceilings)
+	}
+	composed.providerSetup = true
+	composed.hostListing = func(ctx context.Context, peer *identity.Peer, hosts []router.HostState) ([]router.HostState, error) {
+		view, err := c.callerHostListing(ctx, peer, hosts)
+		if err != nil {
+			return nil, err
+		}
+		var files []providerFile
+		if providers != nil {
+			files = providers.hostFiles()
+		}
+		return projectCallerHostBindings(view, files), nil
+	}
 	composed.unhookStanding = recheckInferenceOnChange(c.runtimeRights, provider)
 	composed.gateway = &gatewayControl{path: filepath.Join(dir, inferenceGatewayFile), report: report,
 		open: func(address string) (*gateway.Window, error) {
@@ -467,13 +717,20 @@ func composeInference(options runtimeFlags, c *runtimeCredentials, sink logging.
 		composed.providers, operator.providers = providers, providers
 		c.host.OnStored = operator.credentialStored
 		composed.provenance = newInventoryProvenance(providers, r, report)
-		composed.mediation, err = newProviderMediation(endpoint, provider, providers, report)
+		if composed.provenance != nil && resources != nil && resources.table != nil {
+			composed.provenance.busy = resources.holds
+		}
+		composed.mediation, err = newProviderMediation(endpoint, provider, providers, report, c.runtimeRights.awaitNativeQuestions, c.runtimeRights.pendingNativeQuestions)
 		if err != nil {
 			//unchecked: tearing down what was already built before returning err, which this call already reports
 			composed.Close()
 			return nil, err
 		}
-		providers.Watch(operator.refreshHosts)
+		providers.Watch(func() {
+			if err := operator.refreshHosts(); err != nil {
+				report(err)
+			}
+		})
 		registryAt, err := registryEndpoint(options)
 		if err == nil {
 			composed.registry, err = listenRegistry(registryAt, &runtimeRegistry{providers: providers, operator: operator}, c.owner, report)
@@ -503,7 +760,26 @@ func composeInference(options runtimeFlags, c *runtimeCredentials, sink logging.
 		composed.Close()
 		return nil, fmt.Errorf("--gateway %s: %w", options.gateway, err)
 	}
+	// A server announces no model it gains or loses, so the router surveys on
+	// its own clock (router.Poll) besides each declaration change
+	// (refreshHosts), and readers stop forcing surveys. Each survey is at most
+	// one interval old; a host the clock's cadence did not read keeps its last
+	// reading, which can be older (router CONTRACT.md ROUTE-D12).
+	composed.stopSurvey, composed.surveyDone = make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(composed.surveyDone)
+		r.Poll(routerSurveyEvery, composed.stopSurvey)
+	}()
 	return composed, nil
+}
+
+// routerSurveyEvery is the composed runtime's router survey clock.
+var routerSurveyEvery = time.Minute
+
+// bindHostDiscovery publishes adapter-owned eligible-name discovery before
+// watchers start. The declaration directory supplies current binding identity.
+func bindHostDiscovery(providers *runtimeProviders, provider *inference.Provider) {
+	providers.hostAliases = provider.ReadyHostAliases
 }
 
 // configure publishes chat@1, its router as router@1 and the resource table as
@@ -518,8 +794,13 @@ func (r *runtimeInference) configure(o *host.Options, routerEndpoint, resourceEn
 	o.Inference, o.InferenceEndpoint, o.InferenceRemoteEndpoint = r, r.endpoint, r.remoteEndpoint
 	r.content.configure(o)
 	o.Router, o.RouterEndpoint = r.router, routerEndpoint
+	o.RouterHostListing = r.hostListing
+	if r.providerSetup && r.hostListing != nil {
+		o.RouterGuarantees = []string{router.GuaranteeProviderSetup}
+	}
 	o.ResourceTable, o.ResourceTableEndpoint = r.resources.table, resourceEndpoint
 	o.ResourceLeases = r.resources.book
+	o.ResourceEnforcer = runtimeDownloadWakeEnforcer
 	o.RightsActions = append(o.RightsActions, iwire.ResourceActions...)
 	o.RightsActions = append(o.RightsActions, host.ResourceTableReadAction,
 		resourceservice.ActionHold, resourceservice.ActionYield)
@@ -541,9 +822,6 @@ func (r *runtimeInference) configure(o *host.Options, routerEndpoint, resourceEn
 func runtimeRouterEndpoint(options runtimeFlags) (string, error) {
 	return options.companionEndpoint("router-v1", "router", "router")
 }
-
-// mustHosts is the hosts of a configuration inferenceRouter already accepted.
-func mustHosts(hosts []*router.Host, _ error) []*router.Host { return hosts }
 
 // close releases a composed service the runtime never took over.
 func (r *runtimeInference) close() {

@@ -8,6 +8,8 @@ import (
 	asks "github.com/openabstractions/abstraction-asks/go"
 	askclient "github.com/openabstractions/abstraction-asks/go/client"
 	fwire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
+	"github.com/openabstractions/abstraction-facade/go/probe"
+	"github.com/openabstractions/abstraction-identity/listen"
 )
 
 // An entry its own program registered reads "<title> (added itself)" in Apps,
@@ -38,8 +40,8 @@ func TestSelfRegisteredEntriesSayTheyAddedThemselves(t *testing.T) {
 	}
 	// A card holder row too.
 	resources := []cardResourceState{{Holders: []cardHolder{{Program: program}}}}
-	titleHolders(resources, []fwire.ApplicationEntry{self})
-	if got := resources[0].Holders[0].Title; got != "Editor (added itself)" {
+	titles := titleHolders(resources, newProgramTitler([]fwire.ApplicationEntry{self}))
+	if got := titles[program]; got != "Editor (added itself)" {
 		t.Fatalf("card holder %q", got)
 	}
 }
@@ -60,43 +62,53 @@ func selfRegisteredRecord(t *testing.T, program, title string) askclient.RecordM
 		Text: text, Options: question.OptionNames(), Asked: "2026-10-07T10:00:00Z"}
 }
 
-// The runtime's question about an app that added itself shows Keep and Remove,
-// names no default (closing answers nothing), and says what each does. It
-// names the app by its title and the program by its stem; the program's path
-// and the publisher bound from the registration are in the details (review
-// round 2, B).
+// The runtime's question about an app that added itself, asked only after
+// the person acts on it in Apps, shows Keep and Remove, names no default
+// (closing answers nothing) and names the app by its title. The program's
+// path and the publisher bound from the registration are in the details
+// (architect ruling 2026-11-10, rows 9 and 10).
 func TestTheSelfRegisteredQuestionPrompt(t *testing.T) {
 	program := filepath.Join(t.TempDir(), "editor.exe")
 	record := selfRegisteredRecord(t, program, "Editor")
+	record.Text = "Updated catalogue wording without an embedded registration tuple."
+	content := &askclient.CatalogueContent{Slots: map[string]string{"program": program, "title": "Editor"}}
 	signed := trayPublisher{Subject: "Example Software", Trusted: true, Description: "Example Editor", OriginalName: "editor.exe"}
-	view := trayQuestionViewForAsker(record, signed.forPrompt(nil), nil, "")
+	view := trayQuestionViewForContent(record, signed.forPrompt(nil), nil, "", content)
 	var labels []string
 	for _, choice := range view.Choices {
 		labels = append(labels, choice.Label)
 	}
-	if strings.Join(labels, "|") != "Keep|Remove" || view.Default != "" {
+	if strings.Join(labels, "|") != "Allow|Don't allow" || view.Default != "" {
 		t.Fatalf("choices %v default %q", labels, view.Default)
 	}
-	if view.Instruction != "An app added itself" || view.Content != "Editor (editor) added itself to OpenAbstractions. Keep it?" ||
-		!strings.Contains(view.Footer, "Closing this window leaves it unconfirmed") {
+	if view.Title != "OpenAbstractions" || view.Instruction != "Let Editor work with OpenAbstractions?" || view.Content != "" || view.Dismiss != trayNotNow {
 		t.Fatalf("prompt %+v", view)
 	}
-	for _, line := range []string{"Program: " + program, "Publisher: Example Software (signature verified when the app added itself).",
-		"Description: Example Editor", "Original file name: editor.exe", "Question: q1"} {
+	for _, line := range []string{"Program: " + program, "Publisher: Example Software (signature verified at registration).",
+		"Description: Example Editor", "Original file name: editor.exe"} {
 		if !strings.Contains(view.Details, line) {
 			t.Errorf("details lack %q:\n%s", line, view.Details)
 		}
 	}
+	if view.Permission == nil || view.Permission.Publisher != "Publisher: Example Software (signature verified at registration)." {
+		t.Fatalf("consent publisher invents verification timing: %+v", view.Permission)
+	}
 	if strings.Contains(view.Content, program) {
 		t.Fatal("the question shows the program's path outside the details")
 	}
-	unsigned := trayQuestionViewForAsker(record, trayPublisher{}, nil, "")
-	if !strings.Contains(unsigned.Details, "Publisher: not verified.") || !strings.Contains(unsigned.Details, "Program: "+program) {
-		t.Fatalf("unsigned details:\n%s", unsigned.Details)
+	// An unsigned program is asked the same plain question: its path, the
+	// unsigned note and why the signature matters are the details.
+	unsigned := trayQuestionViewForContent(record, trayPublisher{}, nil, "", content)
+	if unsigned.Instruction != "Let Editor work with OpenAbstractions?" || unsigned.Content != "" ||
+		unsigned.Details != "Program: "+program+"\n"+unsignedKeepWhy || strings.Contains(unsigned.Details, "signature verified") {
+		t.Fatalf("unsigned prompt: %+v", unsigned)
 	}
-	// OpenAbstractions asks this in its own words: blue, signed or not.
-	if view.Level != promptLevelBlue || unsigned.Level != promptLevelBlue {
-		t.Fatalf("levels %q and %q, want blue", view.Level, unsigned.Level)
+	if unsigned.Permission == nil || unsigned.Permission.Publisher != "" {
+		t.Fatalf("unsigned consent publisher: %+v", unsigned.Permission)
+	}
+	// The header follows the publisher: blue when verified, amber when not.
+	if view.Level != promptLevelBlue || unsigned.Level != promptLevelYellow {
+		t.Fatalf("levels %q and %q, want blue and yellow", view.Level, unsigned.Level)
 	}
 	// The app's own questions keep the level its evidence gives; its title
 	// selects none.
@@ -104,7 +116,7 @@ func TestTheSelfRegisteredQuestionPrompt(t *testing.T) {
 	if got := trayQuestionViewForAsker(own, trayPublisher{}, nil, program).Level; got != promptLevelYellow {
 		t.Fatalf("an unsigned app's own question reads %q", got)
 	}
-	if got := trayQuestionViewForAsker(own, signed, nil, program).Level; got != promptLevelGray {
+	if got := trayQuestionViewForAsker(own, signed, nil, program).Level; got != promptLevelBlue {
 		t.Fatalf("a signed app's own question reads %q", got)
 	}
 }
@@ -113,10 +125,63 @@ func TestTheSelfRegisteredQuestionPrompt(t *testing.T) {
 // application's own question, and keeps the generic wording even with the
 // self-registration key.
 func TestTheSelfRegisteredWordingNeedsTheRuntimeAsAsker(t *testing.T) {
-	program := filepath.Join(t.TempDir(), "editor.exe")
+	// This rendering fixture opens no file; keep its catalogue slot below
+	// the declared bound regardless of the test runner's TEMP prefix.
+	program := `C:\Apps\editor.exe`
 	record := selfRegisteredRecord(t, program, "OpenAbstractions Helper")
-	view := trayQuestionViewForAsker(record, trayPublisher{}, nil, program)
-	if view.Instruction == "An app added itself" || view.Content != record.Text || strings.Contains(view.Footer, "Keep confirms it") {
+	view := trayQuestionViewForContent(record, trayPublisher{}, nil, program, &askclient.CatalogueContent{Slots: map[string]string{"program": program, "title": "OpenAbstractions Helper"}})
+	if view.Instruction != record.Text || view.Content != "" || strings.Contains(view.Footer, "Keep confirms this registration") {
 		t.Fatalf("an application's question took the runtime's wording: %+v", view)
 	}
+}
+
+func TestTheSelfRegisteredLegacyTextDoesNotSupplyStructuredContent(t *testing.T) {
+	program := `C:\Apps\editor.exe`
+	record := selfRegisteredRecord(t, program, "Editor")
+	record.Text = program + " added itself to OpenAbstractions as Editor. Keep it?"
+	for _, content := range []*askclient.CatalogueContent{nil, {Slots: map[string]string{"program": `C:\Other\editor.exe`, "title": "Editor"}}} {
+		view := trayQuestionViewForContent(record, trayPublisher{}, nil, "", content)
+		if view.Instruction != record.Text || view.Content != "" || strings.Contains(view.Footer, "Keep confirms this registration") {
+			t.Fatalf("missing or mismatched content inferred a registration: %+v", view)
+		}
+	}
+}
+
+func TestTheSelfRegisteredPopupAndQuestionsShareRecordedSlots(t *testing.T) {
+	book, _, _ := panelFirstUseRuntime(t, "abstraction.model/lookup")
+	program := `C:\Apps\editor.exe`
+	question, _, err := book.AskApplicationFrom("runtime-scope", "OpenAbstractions", "registration-content", asks.SelfRegisteredKey,
+		map[string]string{"program": program, "title": "Recorded Editor"}, listen.Seen{}, asks.Publisher{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(question.Text, "added itself") {
+		t.Fatal("the actual retained PROGRAM question invents its registrar", question.Text)
+	}
+	response := panelRequest(t, (&servicePanel{}).handler("test-key"), "/questions?cursor=", nil)
+	page := decodePanel[questionPage](t, response.Code, response.Body.Bytes())
+	want := "Recorded Editor (editor) was added to OpenAbstractions. Keep it?"
+	if page.Sentences[question.ID] != want {
+		t.Fatalf("question sentence %q, want %q", page.Sentences[question.ID], want)
+	}
+	for _, record := range page.Records {
+		if record.ID != question.ID {
+			continue
+		}
+		surface := &fakeSurface{}
+		presenter := questionPresenter{session: unlockedSession(), surface: surface, operator: defaultPresenterOperator, account: probe.Self().Account}
+		result := presenter.present(t.Context(), record)
+		// The recorded registration names no trusted publisher: the popup
+		// asks in the unsigned Keep words from the same recorded slots.
+		if result.Outcome != presentClosed || len(surface.shown) != 1 ||
+			surface.shown[0].Content != "" {
+			t.Fatalf("popup %+v, shown %+v", result, surface.shown)
+		}
+		shown := surface.shown[0]
+		if shown.Instruction != "Let Recorded Editor work with OpenAbstractions?" || shown.Details != "Program: "+program+"\n"+unsignedKeepWhy || strings.Contains(shown.Details, "app added itself") {
+			t.Fatalf("shared native PROGRAM rendering invents provenance/effects: %+v", shown)
+		}
+		return
+	}
+	t.Fatal("registration missing from questions page")
 }

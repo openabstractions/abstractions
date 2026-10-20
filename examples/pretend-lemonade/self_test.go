@@ -10,7 +10,6 @@ import (
 	"time"
 
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
-	api "github.com/openabstractions/abstraction-job/go/abstraction/job/acceptance"
 )
 
 // --register and --read-secret take no download arguments and exclude each other.
@@ -35,30 +34,6 @@ func TestRegisterSentence(t *testing.T) {
 	} {
 		if got := registerSentence(tc.change); got != tc.want {
 			t.Errorf("%+v: %q", tc.change, got)
-		}
-	}
-}
-
-// Only a rights refusal, which the person can lift, makes a new run try the
-// request again as the next attempt (JOB-A7).
-func TestOnlyRightsRefusalsRunAgain(t *testing.T) {
-	failed := func(message string) *api.OperationSnapshot {
-		return &api.OperationSnapshot{State: api.WorkStateFailed, Failure: &api.WorkFailure{Message: message}}
-	}
-	for _, tc := range []struct {
-		snapshot *api.OperationSnapshot
-		want     bool
-	}{
-		{failed("rights:denied"), true},
-		{failed("rights:unavailable"), true},
-		{failed("digest_mismatch"), false},
-		{&api.OperationSnapshot{State: api.WorkStateFailed}, false},
-		{&api.OperationSnapshot{State: api.WorkStateCancelled}, false},
-		{&api.OperationSnapshot{State: api.WorkStateComplete}, false},
-		{nil, false},
-	} {
-		if got := rightsRefused(tc.snapshot); got != tc.want {
-			t.Errorf("%+v: %v", tc.snapshot, got)
 		}
 	}
 }

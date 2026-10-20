@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/openabstractions/abstraction-storage/go/layout"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	credentials "github.com/openabstractions/abstraction-credentials/go"
 	"github.com/openabstractions/abstraction-identity/listen"
 )
 
@@ -103,7 +105,7 @@ func writeStateFile(t *testing.T, path, body string) {
 	if runtime.GOOS == "windows" && filepath.Base(path) == credentialsBackendFile && filepath.Base(filepath.Dir(path)) == "credentials" {
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	if err := layout.Ensure(filepath.Dir(path), filepath.Dir(path)); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
@@ -125,18 +127,10 @@ func heldItemFiles(t *testing.T, options runtimeFlags) int {
 	return len(entries)
 }
 
-// Service accounts run machine-scope runtimes, which hold no secrets in this
-// version; a secret is never accepted as an argument, and usage refusals send
-// nothing.
+// A secret is never accepted as an argument, and usage refusals send nothing.
+// Which accounts are machine scope is the credentials provider's rule
+// (credentials TestMachineScopeAccountsOpenNoStore).
 func TestCredentialsCommandRefusalsSendNothing(t *testing.T) {
-	for _, account := range []string{"S-1-5-18", "S-1-5-19", "S-1-5-20", "0"} {
-		if !machineScope(account) {
-			t.Fatalf("%s is not machine scope", account)
-		}
-	}
-	if machineScope("S-1-5-21-1-2-3-1001") || machineScope("1000") {
-		t.Fatal("a user account read as machine scope")
-	}
 	unreachable := `\\.\pipe\oa-credentials-nobody`
 	if os.PathSeparator != '\\' {
 		unreachable = filepath.Join(t.TempDir(), "nobody.sock")
@@ -163,7 +157,7 @@ func TestCredentialsCommandRefusalsSendNothing(t *testing.T) {
 // no_secure_store, and the test ends there because nothing was stored.
 func requireUserScopeAdd(t *testing.T, err error, transcript string) {
 	t.Helper()
-	if runtime.GOOS != "windows" && machineScope(strconv.Itoa(os.Getuid())) {
+	if runtime.GOOS != "windows" && credentials.MachineScopeAccount(strconv.Itoa(os.Getuid())) {
 		if err == nil || !strings.Contains(err.Error(), "no_secure_store") {
 			t.Fatalf("credentials add on a machine-scope runtime: %v\n%s", err, transcript)
 		}

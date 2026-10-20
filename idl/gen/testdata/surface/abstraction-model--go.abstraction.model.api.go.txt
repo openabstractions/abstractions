@@ -13,6 +13,7 @@ func (LookupOutcome) UnmarshalText(text []byte) error
 func (LookupOutcome) MarshalJSON() ([]byte, error)
 func (LookupOutcome) UnmarshalJSON(data []byte) error
 func LookupOutcomeValues() []LookupOutcome
+func (LookupOutcome) IsKnown() bool
 func (LookupOutcome) Known() bool
 type ManifestOutcome uint32
 const ManifestOutcomeResolved
@@ -29,7 +30,60 @@ func (ManifestOutcome) UnmarshalText(text []byte) error
 func (ManifestOutcome) MarshalJSON() ([]byte, error)
 func (ManifestOutcome) UnmarshalJSON(data []byte) error
 func ManifestOutcomeValues() []ManifestOutcome
+func (ManifestOutcome) IsKnown() bool
 func (ManifestOutcome) Known() bool
+type CatalogUse uint32
+const CatalogUseChat
+const CatalogUseCode
+const CatalogUseVision
+const CatalogUseEmbed
+const CatalogUseImage
+const CatalogUseVideo
+func (CatalogUse) String() string
+func (CatalogUse) WireName() (string, bool)
+func ParseCatalogUse(word string) (CatalogUse, bool)
+func (CatalogUse) MarshalText() ([]byte, error)
+func (CatalogUse) UnmarshalText(text []byte) error
+func (CatalogUse) MarshalJSON() ([]byte, error)
+func (CatalogUse) UnmarshalJSON(data []byte) error
+func CatalogUseValues() []CatalogUse
+func (CatalogUse) IsKnown() bool
+func (CatalogUse) Known() bool
+type Fit string
+const FitFits
+const FitSlow
+const FitNo
+func FitValues() []Fit
+func (Fit) IsKnown() bool
+func (Fit) Known() bool
+type Availability uint32
+const AvailabilityDownload
+const AvailabilityServed
+func (Availability) String() string
+func (Availability) WireName() (string, bool)
+func ParseAvailability(word string) (Availability, bool)
+func (Availability) MarshalText() ([]byte, error)
+func (Availability) UnmarshalText(text []byte) error
+func (Availability) MarshalJSON() ([]byte, error)
+func (Availability) UnmarshalJSON(data []byte) error
+func AvailabilityValues() []Availability
+func (Availability) IsKnown() bool
+func (Availability) Known() bool
+type FitOutcome uint32
+const FitOutcomeFitted
+const FitOutcomeInvalid
+const FitOutcomeUnavailable
+const FitOutcomeForbidden
+func (FitOutcome) String() string
+func (FitOutcome) WireName() (string, bool)
+func ParseFitOutcome(word string) (FitOutcome, bool)
+func (FitOutcome) MarshalText() ([]byte, error)
+func (FitOutcome) UnmarshalText(text []byte) error
+func (FitOutcome) MarshalJSON() ([]byte, error)
+func (FitOutcome) UnmarshalJSON(data []byte) error
+func FitOutcomeValues() []FitOutcome
+func (FitOutcome) IsKnown() bool
+func (FitOutcome) Known() bool
 type ServiceErrorCode string
 const ServiceErrorCodeHandlerError
 const ServiceErrorCodeInvalidResult
@@ -38,7 +92,91 @@ const ServiceErrorCodeUnknownService
 const ServiceErrorCodeUnknownMethod
 const ServiceErrorCodeWrongMode
 func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) IsKnown() bool
 func (ServiceErrorCode) Known() bool
+type EndpointServiceReadiness uint32
+const EndpointServiceReadinessReady
+const EndpointServiceReadinessNotReady
+const EndpointServiceReadinessUnknown
+func (EndpointServiceReadiness) String() string
+func (EndpointServiceReadiness) WireName() (string, bool)
+func ParseEndpointServiceReadiness(word string) (EndpointServiceReadiness, bool)
+func (EndpointServiceReadiness) MarshalText() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalText(text []byte) error
+func (EndpointServiceReadiness) MarshalJSON() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalJSON(data []byte) error
+func EndpointServiceReadinessValues() []EndpointServiceReadiness
+func (EndpointServiceReadiness) IsKnown() bool
+func (EndpointServiceReadiness) Known() bool
+type EndpointRefusalSource string
+const EndpointRefusalSourceRights
+const EndpointRefusalSourceCredentials
+const EndpointRefusalSourceLicense
+const EndpointRefusalSourceTerms
+const EndpointRefusalSourceIdentity
+const EndpointRefusalSourceOS
+func EndpointRefusalSourceValues() []EndpointRefusalSource
+func (EndpointRefusalSource) IsKnown() bool
+func (EndpointRefusalSource) Known() bool
+type EndpointRefusalDecision uint32
+const EndpointRefusalDecisionDenied
+const EndpointRefusalDecisionNotGranted
+const EndpointRefusalDecisionPersonOnly
+func (EndpointRefusalDecision) String() string
+func (EndpointRefusalDecision) WireName() (string, bool)
+func ParseEndpointRefusalDecision(word string) (EndpointRefusalDecision, bool)
+func (EndpointRefusalDecision) MarshalText() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalText(text []byte) error
+func (EndpointRefusalDecision) MarshalJSON() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalJSON(data []byte) error
+func EndpointRefusalDecisionValues() []EndpointRefusalDecision
+func (EndpointRefusalDecision) IsKnown() bool
+func (EndpointRefusalDecision) Known() bool
+type EndpointRefusalAsk uint32
+const EndpointRefusalAskAvailable
+const EndpointRefusalAskNone
+func (EndpointRefusalAsk) String() string
+func (EndpointRefusalAsk) WireName() (string, bool)
+func ParseEndpointRefusalAsk(word string) (EndpointRefusalAsk, bool)
+func (EndpointRefusalAsk) MarshalText() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalText(text []byte) error
+func (EndpointRefusalAsk) MarshalJSON() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalJSON(data []byte) error
+func EndpointRefusalAskValues() []EndpointRefusalAsk
+func (EndpointRefusalAsk) IsKnown() bool
+func (EndpointRefusalAsk) Known() bool
+type EndpointProducerCheckState uint32
+const EndpointProducerCheckStateCurrent
+const EndpointProducerCheckStateRepaired
+const EndpointProducerCheckStateStale
+const EndpointProducerCheckStateRefused
+const EndpointProducerCheckStateUnverified
+func (EndpointProducerCheckState) String() string
+func (EndpointProducerCheckState) WireName() (string, bool)
+func ParseEndpointProducerCheckState(word string) (EndpointProducerCheckState, bool)
+func (EndpointProducerCheckState) MarshalText() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalText(text []byte) error
+func (EndpointProducerCheckState) MarshalJSON() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalJSON(data []byte) error
+func EndpointProducerCheckStateValues() []EndpointProducerCheckState
+func (EndpointProducerCheckState) IsKnown() bool
+func (EndpointProducerCheckState) Known() bool
+type EndpointDescriptionOutcome uint32
+const EndpointDescriptionOutcomeDescribed
+const EndpointDescriptionOutcomeForbidden
+const EndpointDescriptionOutcomeUnavailable
+const EndpointDescriptionOutcomeInvalid
+const EndpointDescriptionOutcomeUnsupported
+func (EndpointDescriptionOutcome) String() string
+func (EndpointDescriptionOutcome) WireName() (string, bool)
+func ParseEndpointDescriptionOutcome(word string) (EndpointDescriptionOutcome, bool)
+func (EndpointDescriptionOutcome) MarshalText() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalText(text []byte) error
+func (EndpointDescriptionOutcome) MarshalJSON() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalJSON(data []byte) error
+func EndpointDescriptionOutcomeValues() []EndpointDescriptionOutcome
+func (EndpointDescriptionOutcome) IsKnown() bool
+func (EndpointDescriptionOutcome) Known() bool
 var ResolverOperations
 var RegistryOperations
 type Ref struct
@@ -55,17 +193,70 @@ type ManifestResult struct
   Outcome ManifestOutcome
   Manifest *oaImported1
   ResolvedRevision string
+type FitEntry struct
+  Title string
+  Family string
+  Fit Fit
+  Availability Availability
+  Machine string
+  DownloadBytes int64
+  NeedBytes int64
+  Context int64
+  License string
+  Source Ref
+  Digest string
+type FitResult struct
+  Outcome FitOutcome
+  CatalogVersion string
+  PoolBytes int64
+  Entries []FitEntry
+type EndpointRefusalDetail struct
+  Source EndpointRefusalSource
+  Decision EndpointRefusalDecision
+  Ask EndpointRefusalAsk
+  Action string
+  Question string
+  Credential string
+  RetryAfterMs int64
+type EndpointProducerCheck struct
+  Kind string
+  Copy string
+  State EndpointProducerCheckState
+  Reason string
+  Checked string
+type EndpointServiceState struct
+  Service string
+  Readiness EndpointServiceReadiness
+  Reason string
+  Guarantees []string
+  Capabilities map[string]string
+  DefinitionHash string
+type EndpointDescription struct
+  Outcome EndpointDescriptionOutcome
+  Program string
+  Version string
+  Services []EndpointServiceState
+  Refusal *EndpointRefusalDetail
+  Reason string
+  Checks []EndpointProducerCheck
+type EndpointDescriptionResult struct
+  Value EndpointDescription
 func Encode(v *Ref) []byte
 type Refusal struct
   Word string
   Offset int
 func (Refusal) Error() string
+const TimestampLayout
+func FormatTimestamp(at time.Time) string
 func Decode(in []byte) (*Ref, error)
+func ToJSON(v any) (out []byte, err error)
+func FromJSON(data []byte, v any) error
 type FrameWriter interface
   WriteFrame(frame []byte) error
 type DispatchError string
 func (DispatchError) Error() string
 func ServiceName(frame []byte) (string, error)
+func ServiceMethod(frame []byte) (service string, method string, err error)
 type FrameExchanger interface
   ExchangeFrame(frame []byte) ([]byte, error)
 type ServiceError struct
@@ -73,13 +264,18 @@ type ServiceError struct
   Message string
 func (ServiceError) Error() string
 const EndpointContract
+const EndpointV2Contract
 type DescribedService interface
   DescribeService() (contract string, ready bool, why string)
 func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+func DescribeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...DescribedService) ([]byte, error)
 type ServedService interface
   DescribedService
   ServiceContract() string
 func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+func ServeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...ServedService) ([]byte, error)
+func ServeEndpointRemote(frame []byte, program, version string, admit func(contract, method, profile string) error, services ...ServedService) ([]byte, error)
+func RemoteMethodProfile(service interface{}, contract, method string) string
 type ModelResolver interface
   Resolve(ref Ref) (LookupResult, error)
 type ModelResolverTransport interface
@@ -88,10 +284,12 @@ type ModelResolverClient struct
 func NewModelResolverClient(t ModelResolverTransport) *ModelResolverClient
 type ModelResolverDispatcher struct
   Handler ModelResolver
+func (ModelResolverDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (ModelResolverClient) Resolve(ref Ref) (result LookupResult, err error)
 func (ModelResolverDispatcher) DescribeService() (contract string, ready bool, why string)
 func (ModelResolverDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ModelResolverDispatcher) ServiceContract() string
+func (ModelResolverDispatcher) DescribeServiceDefinitionHash() string
 func (ModelResolverDispatcher) WriteFrame(frame []byte) error
 func (ModelResolverDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type ModelManifest interface
@@ -102,12 +300,30 @@ type ModelManifestClient struct
 func NewModelManifestClient(t ModelManifestTransport) *ModelManifestClient
 type ModelManifestDispatcher struct
   Handler ModelManifest
+func (ModelManifestDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (ModelManifestClient) Resolve(ref Ref) (result ManifestResult, err error)
 func (ModelManifestDispatcher) DescribeService() (contract string, ready bool, why string)
 func (ModelManifestDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (ModelManifestDispatcher) ServiceContract() string
+func (ModelManifestDispatcher) DescribeServiceDefinitionHash() string
 func (ModelManifestDispatcher) WriteFrame(frame []byte) error
 func (ModelManifestDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type ModelCatalog interface
+  Fit(use CatalogUse) (FitResult, error)
+type ModelCatalogTransport interface
+  FrameExchanger
+type ModelCatalogClient struct
+func NewModelCatalogClient(t ModelCatalogTransport) *ModelCatalogClient
+type ModelCatalogDispatcher struct
+  Handler ModelCatalog
+func (ModelCatalogDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
+func (ModelCatalogClient) Fit(use CatalogUse) (result FitResult, err error)
+func (ModelCatalogDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ModelCatalogDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (ModelCatalogDispatcher) ServiceContract() string
+func (ModelCatalogDispatcher) DescribeServiceDefinitionHash() string
+func (ModelCatalogDispatcher) WriteFrame(frame []byte) error
+func (ModelCatalogDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 func DecodeRefAt(in []byte, depth, limit int) (*Ref, int, error)
 func EncodeRefAt(v *Ref, depth int) []byte
 func EncodeRef(v *Ref) []byte
@@ -120,3 +336,11 @@ func DecodeManifestResultAt(in []byte, depth, limit int) (*ManifestResult, int, 
 func EncodeManifestResultAt(v *ManifestResult, depth int) []byte
 func EncodeManifestResult(v *ManifestResult) []byte
 func DecodeManifestResult(in []byte) (*ManifestResult, error)
+func DecodeFitEntryAt(in []byte, depth, limit int) (*FitEntry, int, error)
+func EncodeFitEntryAt(v *FitEntry, depth int) []byte
+func EncodeFitEntry(v *FitEntry) []byte
+func DecodeFitEntry(in []byte) (*FitEntry, error)
+func DecodeFitResultAt(in []byte, depth, limit int) (*FitResult, int, error)
+func EncodeFitResultAt(v *FitResult, depth int) []byte
+func EncodeFitResult(v *FitResult) []byte
+func DecodeFitResult(in []byte) (*FitResult, error)

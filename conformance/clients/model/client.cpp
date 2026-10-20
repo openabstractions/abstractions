@@ -5,8 +5,24 @@
 #include <thread>
 #endif
 #include <iostream>
-void require(bool value) {if(!value) throw std::runtime_error("model assertion failed");}
-template<class F> void refuses(F f) {bool caught=false;try{f();}catch(...){caught=true;}require(caught);}
+void require_at(bool value,int line) {if(!value) throw std::runtime_error("model assertion failed at line "+std::to_string(line));}
+#define require(value) require_at((value),__LINE__)
+template<class F> void refuses_at(F f,int line) {bool caught=false;try{f();}catch(...){caught=true;}require_at(caught,line);}
+#define refuses(f) refuses_at((f),__LINE__)
+struct ModelReplyTransport {
+ std::string reply;
+ std::string exchange_frame(std::string_view) {return reply;}
+};
+// Outcome/payload presence belongs to the generated service client. The raw
+// record codec permits these records so a malformed peer can be exercised.
+void refuses_invalid_reply(const abstraction::model::api::LookupResult& result) {
+ namespace api=abstraction::model::api;
+ ModelReplyTransport transport{"{\"version\":1,\"service\":\"abstraction.model/resolver@1\",\"method\":\"Resolve\",\"ok\":true,\"payload\":{\"value\":"+api::to_json(result)+"}}"};
+ api::ModelResolverClient<ModelReplyTransport> client(transport);
+ try {client.resolve(api::Ref{});}
+ catch(const api::ServiceError& error) {require(error.code=="invalid_result");return;}
+ throw std::runtime_error("generated model client exposed an invalid reply");
+}
 int main(int argc,char** argv) {
  try {
   if(argc!=2 || std::string(argv[1])=="--help") {std::cout<<"model_consumer ENDPOINT\n";return 0;}
@@ -26,8 +42,8 @@ int main(int argc,char** argv) {
   abstraction::ipc::CancellationSource source;source.cancel();
   refuses([&]{client.with_cancellation(source.token()).resolve(ref);});
   refuses([&]{client.with_deadline(abstraction::ipc::Clock::now()).resolve(ref);});
-  auto bad=result;bad.outcome=abstraction::model::api::LookupOutcome::Forbidden;refuses([&]{abstraction::model::detail::validate(bad);});
-  bad=result;bad.request.reset();refuses([&]{abstraction::model::detail::validate(bad);});
+  auto bad=result;bad.outcome=abstraction::model::api::LookupOutcome::Forbidden;refuses_invalid_reply(bad);
+  bad=result;bad.request.reset();refuses_invalid_reply(bad);
   bad=result;bad.request->artifact.digest="sha256:no";refuses([&]{abstraction::model::detail::validate(bad);});
   bad=result;bad.request->sources[0].locator="http://user:secret@host/file";refuses([&]{abstraction::model::detail::validate(bad);});
   bad=result;bad.request->sources.clear();refuses([&]{abstraction::model::detail::validate(bad);});

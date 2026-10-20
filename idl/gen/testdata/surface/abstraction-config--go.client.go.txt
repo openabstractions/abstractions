@@ -1,0 +1,117 @@
+type ConfigObservationOutcome wire.ConfigObservationOutcome
+const ConfigObservationOutcomeSnapshot
+const ConfigObservationOutcomeUnchanged
+const ConfigObservationOutcomeGap
+const ConfigObservationOutcomeUnavailable
+const ConfigObservationOutcomeUnsupported
+const ConfigObservationOutcomeInvalid
+func ConfigObservationOutcomeValues() []ConfigObservationOutcome
+func ParseConfigObservationOutcome(word string) (ConfigObservationOutcome, bool)
+type ConfigObservationV2 wire.ConfigObservationV2
+type ConfigSource wire.ConfigSource
+type Entry wire.Entry
+type IgnoredField wire.IgnoredField
+type IgnoredFieldReason wire.IgnoredFieldReason
+const IgnoredFieldReasonUnknownKey
+const IgnoredFieldReasonInvalidName
+func IgnoredFieldReasonValues() []IgnoredFieldReason
+type KeyOrigin wire.KeyOrigin
+type KeyProblem wire.KeyProblem
+type KeyRefusal wire.KeyRefusal
+type KeyRefusalReason wire.KeyRefusalReason
+const KeyRefusalReasonNotGranted
+const KeyRefusalReasonUnknownKey
+func KeyRefusalReasonValues() []KeyRefusalReason
+func ParseKeyRefusalReason(word string) (KeyRefusalReason, bool)
+type KeyState wire.KeyState
+const KeyStateSet
+const KeyStateDefault
+const KeyStateLocked
+const KeyStateIgnored
+const KeyStatePending
+func KeyStateValues() []KeyState
+type Location wire.Location
+const LocationMachine
+const LocationUser
+const LocationProcess
+func LocationValues() []Location
+func ParseLocation(word string) (Location, bool)
+type ObservationOutcomeV2 wire.ObservationOutcomeV2
+const ObservationOutcomeV2Changed
+const ObservationOutcomeV2Unchanged
+const ObservationOutcomeV2Gap
+const ObservationOutcomeV2Unavailable
+const ObservationOutcomeV2Unsupported
+const ObservationOutcomeV2Invalid
+const ObservationOutcomeV2NotPermitted
+const ObservationOutcomeV2Corrupt
+const ObservationOutcomeV2Forbidden
+const ObservationOutcomeV2Failed
+func ObservationOutcomeV2Values() []ObservationOutcomeV2
+func ParseObservationOutcomeV2(word string) (ObservationOutcomeV2, bool)
+type Origin wire.Origin
+type Origins wire.Origins
+type ReadOutcome wire.ReadOutcome
+const ReadOutcomeRead
+const ReadOutcomeCorrupt
+const ReadOutcomeNotPermitted
+const ReadOutcomeUnavailable
+const ReadOutcomeInvalid
+const ReadOutcomeForbidden
+func ReadOutcomeValues() []ReadOutcome
+func ParseReadOutcome(word string) (ReadOutcome, bool)
+type ReadResult wire.ReadResult
+type ServiceError wire.ServiceError
+type ServiceErrorCode wire.ServiceErrorCode
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+const ServiceErrorCodeStorageUnavailable
+const ServiceErrorCodeCallerUnavailable
+const ServiceErrorCodeIdentityRequired
+const ServiceErrorCodeWrongUser
+const ServiceErrorCodeInvalidRevision
+func ServiceErrorCodeValues() []ServiceErrorCode
+type UserReplaceOutcome wire.UserReplaceOutcome
+const UserReplaceOutcomeApplied
+const UserReplaceOutcomeConflict
+const UserReplaceOutcomeForbidden
+const UserReplaceOutcomeUnavailable
+func UserReplaceOutcomeValues() []UserReplaceOutcome
+func ParseUserReplaceOutcome(word string) (UserReplaceOutcome, bool)
+type Value wire.Value
+type ValueKind wire.ValueKind
+const ValueKindBoolean
+const ValueKindInteger
+const ValueKindBytes
+const ValueKindDuration
+const ValueKindText
+const ValueKindChoice
+const ValueKindTextList
+const ValueKindTextMap
+const ValueKindUnlimited
+func ValueKindValues() []ValueKind
+func ParseValueKind(word string) (ValueKind, bool)
+type RefusalAsk contract1.RefusalAsk
+const RefusalAskAvailable
+const RefusalAskNone
+func RefusalAskValues() []RefusalAsk
+func ParseRefusalAsk(word string) (RefusalAsk, bool)
+type RefusalDecision contract1.RefusalDecision
+const RefusalDecisionDenied
+const RefusalDecisionNotGranted
+const RefusalDecisionPersonOnly
+func RefusalDecisionValues() []RefusalDecision
+func ParseRefusalDecision(word string) (RefusalDecision, bool)
+type RefusalDetail contract1.RefusalDetail
+type RefusalSource contract1.RefusalSource
+const RefusalSourceRights
+const RefusalSourceCredentials
+const RefusalSourceLicense
+const RefusalSourceTerms
+const RefusalSourceIdentity
+const RefusalSourceOS
+func RefusalSourceValues() []RefusalSource

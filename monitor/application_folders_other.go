@@ -2,20 +2,18 @@
 
 package main
 
-import (
-	"os"
-	"path/filepath"
-)
+import "github.com/openabstractions/abstraction-storage/go/layout"
 
-// accountFolders are this account's local application data and Pictures
-// folders: the user cache folder and ~/Pictures.
+// accountFolders are this account's local application data folder, where an
+// application manifest's {local_app_data} names the application's own
+// files (layout.LocalAppData), and the person's Pictures folder
+// (storage layout, STO-L5).
 func accountFolders() (localAppData, pictures string, err error) {
-	if localAppData, err = os.UserCacheDir(); err != nil {
+	if localAppData, err = layout.LocalAppData(); err != nil {
 		return "", "", err
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
+	if pictures, err = layout.ResolvePerson(layout.Current(), layout.Pictures); err != nil {
 		return "", "", err
 	}
-	return localAppData, filepath.Join(home, "Pictures"), nil
+	return localAppData, pictures, nil
 }

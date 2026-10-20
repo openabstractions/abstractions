@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -126,6 +127,54 @@ func TestHostCommandArguments(t *testing.T) {
 		if err := hostCommand(args, &out, &diagnostics); !errors.As(err, &exit) || exit.code != 2 {
 			t.Fatalf("%v accepted: %v", args, err)
 		}
+	}
+}
+
+type inertHostRegistration struct {
+	called string
+	err    error
+}
+
+func (r *inertHostRegistration) register() error   { r.called = "register"; return r.err }
+func (r *inertHostRegistration) unregister() error { r.called = "unregister"; return r.err }
+
+// The command owner needs only the machine registrar: account folder discovery,
+// lifecycle locks and installed images are absent from this invocation.
+func TestMachineHostCommandUsesRegistrarAndRecordsFailures(t *testing.T) {
+	previousRegistrar, previousRecord := machineHostRegistrar, recordHostRegistrationFailure
+	t.Cleanup(func() { machineHostRegistrar, recordHostRegistrationFailure = previousRegistrar, previousRecord })
+	for _, command := range []string{"register", "unregister"} {
+		for _, failure := range []error{nil, windows.ERROR_ACCESS_DENIED} {
+			t.Run(fmt.Sprintf("%s/%v", command, failure), func(t *testing.T) {
+				registrar := &inertHostRegistration{err: failure}
+				var recorded []error
+				var output, diagnostics bytes.Buffer
+				machineHostRegistrar = func(io.Writer) hostRegistration { return registrar }
+				recordHostRegistrationFailure = func(gotCommand string, err error) {
+					if gotCommand != command {
+						t.Fatalf("recorded command %q; want %q", gotCommand, command)
+					}
+					recorded = append(recorded, err)
+				}
+				err := hostCommand([]string{command}, &output, &diagnostics)
+				if !errors.Is(err, failure) || registrar.called != command {
+					t.Fatalf("called=%q err=%v; want %s, %v", registrar.called, err, command, failure)
+				}
+				if failure == nil && len(recorded) != 0 || failure != nil && (len(recorded) != 1 || !errors.Is(recorded[0], failure)) {
+					t.Fatalf("recorded=%v; operation failure=%v", recorded, failure)
+				}
+			})
+		}
+	}
+}
+
+func TestHostRegistrationDocumentsDemandStart(t *testing.T) {
+	var output, diagnostics bytes.Buffer
+	if err := hostCommand([]string{"--help"}, &output, &diagnostics); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "demand start") || strings.Contains(output.String(), "automatic start at each sign-in") {
+		t.Fatal(output.String())
 	}
 }
 

@@ -31,7 +31,7 @@ const hostUsage = `Usage: openabstractions host register|unregister
 
   register    write the per-user service template OpenAbstractionsSupervisor:
               image openabstractionsw.exe beside this program, "serve supervisor
-              --service", automatic start at each sign-in, restart after 3s,
+              --service", demand start, restart after 3s,
               10s, then every 30s. Rewrites an existing registration.
   unregister  stop and delete every per-session instance and the template,
               confirming each process exit within one 60-second budget.
@@ -45,6 +45,18 @@ register, unregister and sandbox-roots grant|revoke need an administrator token.
 Installer discards the output of the custom actions that run them.
 `
 
+type hostRegistration interface {
+	register() error
+	unregister() error
+}
+
+var machineHostRegistrar = func(output io.Writer) hostRegistration { return systemHostRegistrar(output) }
+var recordHostRegistrationFailure = func(command string, err error) {
+	recordInstallerFailure(installerActionsPath, "machine", "host "+command, err, time.Now())
+}
+
+// Machine template registration uses the SCM's administrator checks. It has no
+// account settings state to protect with the account lifecycle lock.
 func hostCommand(args []string, output, diagnostics io.Writer) error {
 	if len(args) > 0 && args[0] == "sandbox-roots" {
 		return sandboxRootsCommand(args[1:], output, diagnostics, systemSandboxRootOps())
@@ -61,7 +73,7 @@ func hostCommand(args []string, output, diagnostics io.Writer) error {
 	case args[0] != "register" && args[0] != "unregister":
 		return commandMistake(diagnostics, fmt.Sprintf("host: no command called %q", args[0]), "openabstractions host --help")
 	}
-	registrar := systemHostRegistrar(output)
+	registrar := machineHostRegistrar(output)
 	var err error
 	if args[0] == "register" {
 		err = registrar.register()
@@ -69,7 +81,7 @@ func hostCommand(args []string, output, diagnostics io.Writer) error {
 		err = registrar.unregister()
 	}
 	if err != nil {
-		recordInstallerFailure(installerActionsPath, "machine", "host "+args[0], err, time.Now())
+		recordHostRegistrationFailure(args[0], err)
 	}
 	return err
 }
@@ -126,7 +138,7 @@ func (r hostRegistrar) register() error {
 	h, existed, err := registrationHandle(
 		func(access uint32) (windows.Handle, error) {
 			return windows.CreateService(m, name, display, access,
-				serviceUserOwnProcess, windows.SERVICE_AUTO_START, windows.SERVICE_ERROR_NORMAL,
+				serviceUserOwnProcess, windows.SERVICE_DEMAND_START, windows.SERVICE_ERROR_NORMAL,
 				binary, nil, nil, nil, nil, nil)
 		},
 		func(access uint32) (windows.Handle, error) { return windows.OpenService(m, name, access) },
@@ -138,7 +150,7 @@ func (r hostRegistrar) register() error {
 	// A repair or upgrade rewrites a registration an older package made, which
 	// named jobdw.exe.
 	if existed {
-		if err := windows.ChangeServiceConfig(h, serviceUserOwnProcess, windows.SERVICE_AUTO_START,
+		if err := windows.ChangeServiceConfig(h, serviceUserOwnProcess, windows.SERVICE_DEMAND_START,
 			windows.SERVICE_ERROR_NORMAL, binary, nil, nil, nil, nil, nil, display); err != nil {
 			return fmt.Errorf("rewriting %s, which was already registered: %w", r.name, err)
 		}

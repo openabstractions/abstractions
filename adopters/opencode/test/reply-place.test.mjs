@@ -1,3 +1,4 @@
+import {FixtureMachine, nativeChatFixture} from './native-chat-fixture.mjs';
 import assert from 'node:assert/strict';
 import * as oaAvailability from '../availability.js';
 import {readFile} from 'node:fs/promises';
@@ -6,21 +7,24 @@ import {APICallError} from '@ai-sdk/provider';
 import {Fold} from '@openabstractions/inference';
 import {installWhere, partPlace, placeText, placeToast} from '../where.js';
 import OpenAbstractionsPlugin from '../plugin.js';
+import {messageToolNames} from '../messages.js';
 import {localServers, modelName, servableChatModels} from '../inventory.js';
+import {tool as openCodeTool} from '@opencode-ai/plugin/tool';
 
 // The production provider with its package imports replaced, as in
 // tool-call-output.test.mjs; the router's host table is a fake.
 async function modelWith(chat, hosts = {ollama: false, deepseek: true}) {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-  const body = source.replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export /gm, '');
+  const permissionSource = await readFile(new URL('../permission-wait.js', import.meta.url), 'utf8');
+  const body = permissionSource.replace(/^export /gm, '') + '\n' + source.replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export /gm, '');
   const make = new Function('availability', 'runtimeUnavailable', 'runtimeUntrusted', 'unavailableMessage', 'untrustedMessage', 'Machine', 'APICallError', 'resolveInference', 'resolveInferenceV2', 'NativeConnector', 'DeltaKind', 'Fold', 'PartKind',
     'ReplyOutcome', 'RequestGuarantee', 'Role', 'StopReason', `${body}\nreturn {createOpenAbstractions};`);
-  const {createOpenAbstractions} = make(oaAvailability.availability, oaAvailability.runtimeUnavailable, oaAvailability.runtimeUntrusted, oaAvailability.unavailableMessage, oaAvailability.untrustedMessage, class {}, APICallError, async () => { throw new Error('unexpected'); },
+  const {createOpenAbstractions} = make(oaAvailability.availability, oaAvailability.runtimeUnavailable, oaAvailability.runtimeUntrusted, oaAvailability.unavailableMessage, oaAvailability.untrustedMessage, FixtureMachine, APICallError, async () => { throw new Error('unexpected'); },
     async () => { throw new Error('unexpected chat@2 resolution'); }, class {}, {Part: 'part', End: 'end', Usage: 'usage'}, Fold,
     {Text: 'text', ToolCall: 'tool_call'}, {Completed: 'completed'}, {LocalOnly: 'local-only', HostedAllowed: 'hosted-allowed'}, {},
     {ToolCalls: 'tool_calls'});
   const model = createOpenAbstractions({connector: {}, scope: 'remote'}).languageModel('qwen3');
-  model.chat = async () => chat;
+  model.chat = async () => nativeChatFixture(chat);
   model.hostTable = new Map(Object.entries(hosts));
   model.hostTableAt = Date.now();
   return model;
@@ -67,13 +71,52 @@ test('a Local assistant request carries the local-only guarantee and its refusal
 });
 
 test('the plugin marks only the Local assistant\'s requests local-only', async () => {
-  const plugin = await OpenAbstractionsPlugin({client: {}}, {}, {tool: Object.assign((d) => d, {schema: {}})});
+  const plugin = await OpenAbstractionsPlugin({client: {}}, {}, {tool: Object.assign((d) => d, {schema: {}}),
+    readInventory: async () => ({offers: []}), readCapability: async () => false,
+    readSelectionPolicy: async () => ({outcome: 'unknown'})});
+  await plugin.config({provider: {openabstractions: {npm: '@openabstractions/opencode', models: {}}}});
   const local = {options: {keep: 1}};
-  await plugin['chat.params']({agent: 'local'}, local);
+  await plugin['chat.params']({agent: 'local', model: {providerID: 'openabstractions', api: {npm: '@openabstractions/opencode'}}}, local);
   assert.deepEqual(local.options, {keep: 1, oaLocalOnly: true});
   const build = {options: {}};
   await plugin['chat.params']({agent: 'build'}, build);
   assert.equal(build.options.oaLocalOnly, undefined);
+});
+
+test('Local refuses unestablished and overridden routes before external dispatch', async () => {
+  const native = '@openabstractions/opencode';
+  const generic = '@ai-sdk/openai-compatible';
+  const plugin = await OpenAbstractionsPlugin({client: {}}, {}, {
+    tool: Object.assign((d) => d, {schema: {}}), readInventory: async () => ({offers: []}),
+    readCapability: async () => false, readSelectionPolicy: async () => ({outcome: 'unknown'}),
+  });
+  await plugin.config({provider: {
+    'my-native-route': {npm: native, models: {}},
+    openabstractions: {npm: generic, options: {baseURL: 'http://127.0.0.1:1234/v1'}, models: {}},
+    'openabstractions-hosted': {npm: generic, options: {baseURL: 'https://example.invalid/v1'}, models: {}},
+  }});
+  let dispatched = 0;
+  const request = async (model, agent = 'local') => {
+    const output = {options: {keep: true}};
+    await plugin['chat.params']({agent, model}, output);
+    dispatched++;
+    return output;
+  };
+  for (const model of [undefined, {}, {providerID: 'unknown'},
+    {providerID: 'openabstractions', api: {npm: generic}},
+    {providerID: 'openabstractions-hosted', api: {npm: generic}},
+    {providerID: 'my-native-route', api: {npm: generic}},
+    {providerID: 'my-native-route'},
+  ]) {
+    await assert.rejects(request(model), /Local assistant.*OpenAbstractions.*Build agent/);
+    assert.equal(dispatched, 0, 'no unknown or external provider was dispatched');
+  }
+  const chosen = {providerID: 'my-native-route', id: 'explicit-choice', api: {npm: native}};
+  assert.deepEqual((await request(chosen)).options, {keep: true, oaLocalOnly: true});
+  assert.equal(chosen.id, 'explicit-choice', 'the guard never selects another model');
+  assert.deepEqual((await request({providerID: 'external', api: {npm: generic}}, 'build')).options, {keep: true});
+  await plugin.config({provider: {'my-native-route': {npm: generic, models: {}}}});
+  await assert.rejects(request(chosen), /Local assistant/,'a prior native registration does not survive a changed owner');
 });
 
 test('a hosted reply shows a toast once and the prompt line says where replies run', async () => {
@@ -96,26 +139,49 @@ test('a hosted reply shows a toast once and the prompt line says where replies r
   assert.equal(placeToast({placement: 'local'}), null);
 });
 
-test('picker names say where a model runs, from the router\'s placements', () => {
+test('picker names are the model name alone; the heading says where it runs', () => {
   const offer = {family: 'qwen3.6-35b-a3b', names: ['qwen'], servers: ['lemonade'], context: 32768, contextSource: 'effective', input: 28672};
-  assert.equal(modelName(offer, 32768), 'qwen3.6-35b-a3b · 32k · this computer: lemonade');
-  assert.equal(modelName({...offer, family: 'deepseek-chat', servers: ['deepseek']}, 65536, () => false), 'deepseek-chat · 64k · hosted: deepseek');
+  assert.equal(modelName(offer, 32768), 'qwen3.6-35b-a3b');
+  assert.equal(modelName({...offer, family: 'deepseek-chat', servers: ['deepseek']}, 65536, () => false), 'deepseek-chat');
   const mixed = {...offer, servers: ['ollama', 'east/lemonade']};
   const isLocal = localServers([{servers: ['ollama']}]);
   assert.equal(servableChatModels([mixed], [], null, isLocal)['qwen3.6-35b-a3b'].name,
-    'qwen3.6-35b-a3b · 32k · this computer: ollama; hosted: east/lemonade');
+    'qwen3.6-35b-a3b');
   // A server named like a local engine is still hosted when the router says so.
-  assert.equal(modelName({...offer, servers: ['ollama-cloud']}, 32768, () => false), 'qwen3.6-35b-a3b · 32k · hosted: ollama-cloud');
+  assert.equal(modelName({...offer, servers: ['ollama-cloud']}, 32768, () => false), 'qwen3.6-35b-a3b');
+});
+
+// Owner, 2026-11-01: the picker showed "55983c…f9f1 · 32k · this com…" for a
+// model Setup hosted under its file's SHA-256. No label is a digest, and a
+// model on this computer carries no engine name.
+test('a picker label never shows a digest or an engine name', () => {
+  const digest = '55983c5a75a1ab969824077b3bb3de4146e82a9234072b48ad4e8f92ad3fe9f1';
+  const hex = /[0-9a-f]{64}/i;
+  const offers = [
+    {family: digest, names: [digest], servers: ['modelhost'], context: 32768, contextSource: 'default', input: 28672},
+    {family: `${digest}.gguf`, names: [`sha256:${digest}`, 'qwen3.6-35b-a3b'], servers: ['modelhost'], context: 32768, contextSource: 'default', input: 28672},
+    {family: 'qwen3.6-35b-a3b', names: ['qwen3.6-35b-a3b'], servers: ['modelhost'], context: 32768, contextSource: 'default', input: 28672},
+  ];
+  const labels = Object.values(servableChatModels(offers)).map((m) => m.name);
+  assert.deepEqual(labels, ['Unnamed model', 'qwen3.6-35b-a3b', 'qwen3.6-35b-a3b']);
+  for (const label of labels) {
+    assert.doesNotMatch(label, hex);
+    assert.doesNotMatch(label, /modelhost|this computer/);
+  }
 });
 
 test('the hosted heading reads hosted offers; the preferences heading lists no router model', async () => {
   const reads = [];
+  const diagnostics = [];
   const offers = {
     hosted: [{family: 'deepseek-chat', names: ['deepseek-chat'], servers: ['deepseek'], context: 65536, contextSource: 'maximum', input: 61440}],
     local: [{family: 'qwen', names: ['qwen'], servers: ['ollama'], context: 32768, contextSource: 'effective', input: 28672}],
   };
-  const plugin = await OpenAbstractionsPlugin({client: {}}, {}, {
-    tool: Object.assign((d) => d, {schema: {}}), readCapability: async () => false,
+  const plugin = await OpenAbstractionsPlugin({client: {app: {log: async ({body}) => diagnostics.push(body)}}}, {tools:Object.fromEntries(messageToolNames.map(name=>[name,false]))}, {
+    tool: openCodeTool, env: {}, readCapability: async () => false,
+    probeRuntime: async () => ({}),
+    requestOpenCodeConnection: async () => ({outcome:'connected',hostRegistered:true,helperEnrolled:true}),
+    readSelectionPolicy: async () => ({outcome:'unknown'}),
     readInventory: async (_options, placement) => { reads.push(placement); return {offers: offers[placement] ?? []}; },
   });
   const config = {provider: {
@@ -124,8 +190,8 @@ test('the hosted heading reads hosted offers; the preferences heading lists no r
     'openabstractions-preferences': {npm: '@openabstractions/opencode', options: {scope: 'local', oaInventory: false}, models: {}},
   }};
   await plugin.config(config);
-  assert.deepEqual(Object.values(config.provider.openabstractions.models).map((m) => m.name), ['qwen · 32k · this computer: ollama']);
-  assert.deepEqual(Object.values(config.provider['openabstractions-hosted'].models).map((m) => m.name), ['deepseek-chat · 64k · hosted: deepseek']);
+  assert.deepEqual(Object.values(config.provider.openabstractions.models).map((m) => m.name), ['qwen'], JSON.stringify({reads, diagnostics}));
+  assert.deepEqual(Object.values(config.provider['openabstractions-hosted'].models).map((m) => m.name), ['deepseek-chat']);
   assert.deepEqual(config.provider['openabstractions-preferences'].models, {});
   assert.ok(reads.includes('hosted'));
 });

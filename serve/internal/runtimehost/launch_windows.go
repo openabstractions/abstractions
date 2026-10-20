@@ -51,6 +51,10 @@ func launch(ctx context.Context, o Options) (_ process, _ *os.File, _ *os.File, 
 		Args:       append([]string{"serve", "runtime", "--supervised"}, o.Args...),
 		Stdin:      inR, Stdout: outW, Stderr: o.Stderr,
 		ForceTimeout: o.ForceTimeout,
+		// The service's owned application launch leaves this job, so an
+		// app the person opened outlives a service restart (FAC-P5). Only
+		// the service gets it; its providers keep their own default jobs.
+		AllowBreakaway: true,
 	})
 	if err != nil {
 		return nil, nil, nil, err

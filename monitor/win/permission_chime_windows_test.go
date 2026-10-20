@@ -59,7 +59,7 @@ func TestPermissionChimeKinds(t *testing.T) {
 			t.Errorf("%s: rang=%t want %t", c.name, rang, c.rings)
 		}
 	}
-	// ShowQuestionResult builds its prompt without a chime; ringing none is silent.
+	// A prompt without a chime is silent.
 	before := *count
 	var none *questionChime
 	none.ring()

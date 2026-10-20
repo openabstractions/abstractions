@@ -55,14 +55,11 @@ const views = [
    {Declaration:{Name:'ollama-engine',Role:'host',Activation:'attach',Contracts:[],Endpoint:'',Program:'',Resources:['profile:chat'],Host:{Base:'http://127.0.0.1:11500',Kind:'ollama'}},
     DeclaredBy:'installation',Role:'host',Readiness:'ready',Why:'',Restarts:0,Described:[],Accepted:null}]},
  remote:[{Host:'lab/openrouter',Domain:'lab',Hosted:true,Wire:'openai-compatible',DeclaredBy:'operator',Profiles:['chat'],Up:true,Why:''}]},
- {hosts:{Outcome:'forbidden', Hosts:[]}, providers:{Outcome:'page', Declarations:[]}, models:{Models:[]}, models_error:'router inventory not permitted', remote:[], remote_error:'router not resolved: forbidden'},
+ {hosts:{Outcome:'forbidden', Hosts:[]}, providers:{Outcome:'page', Declarations:[]}, remote:[], remote_error:'router not resolved: forbidden', paired:true},
 ];
-views[0].models={Models:[
- {Family:'qwen/tiny',HeldIn:['lmstudio'],Names:[{Name:'qwen/tiny',Host:'ollama',Servable:true,Resident:false,Hosted:false,HeldIn:['lmstudio'],Profiles:['chat']}]},
- {Family:'diffusion_models/wan.safetensors',HeldIn:['comfyui'],Names:[{Name:'diffusion_models/wan.safetensors',Host:'',Servable:false,Resident:false,HeldIn:['comfyui']}],Components:[{Role:'projector',Name:'<img src=x>',Store:'comfyui'}]},
- {Family:'engine-cache/model.gguf',HeldIn:['engine-cache'],Names:[{Name:'engine-cache/model.gguf',Host:'special-engine',Servable:false,Resident:true,HeldIn:['engine-cache']}]},
-]};
-views[0].models_error='';
+// The model inventory is the Models page's On this computer
+// (models_library.go); Providers keeps servers, providers and remotes.
+assert(!go.includes('Model inventory') && !go.includes('id="models"'), 'one place for models: the Models page');
 // read() now also runs once, unclicked, as soon as the page's own script
 // loads (task 2026-09-23, fifteenth first-time visitor, finding 2), so the
 // queue needs a view for that arrival read ahead of the two this test's own
@@ -71,9 +68,12 @@ views[0].models_error='';
 views.unshift(JSON.parse(JSON.stringify(views[0])));
 views.splice(2,0,JSON.parse(JSON.stringify(views[0])));
 let registrationPayload, lastView;
+// providerReply is what /registry/providers answers: a JSON change, or
+// {status, body} for a failed HTTP reply.
+let providerReply = {Outcome:'applied',Revision:'providers-v2:next'};
 const context = {URLSearchParams, document:{getElementById:element,createElement:t=>Object.assign(node(),{tagName:String(t).toUpperCase()})}, location:{search:'?k=test'}, console,confirm:()=>true,
  fetch:async(path,opts)=>{
-  if(path==='/registry/providers') {assert.strictEqual(opts.method,'POST');registrationPayload=JSON.parse(opts.body);return {ok:true,json:async()=>({Outcome:'applied',Revision:'providers-v2:next'})}}
+  if(path==='/registry/providers') {assert.strictEqual(opts.method,'POST');registrationPayload=JSON.parse(opts.body);const reply=providerReply;if(reply.status)return {ok:false,status:reply.status,text:async()=>reply.body};return {ok:true,status:200,text:async()=>JSON.stringify(reply),json:async()=>reply}}
   if(path==='/registry/selection') {const payload=JSON.parse(opts.body);selectionCalls.push(payload);if(payload.edit==='read')return {ok:true,json:async()=>({read:selectionExists?{Outcome:'found',Revision:selectionRevision,Policy:{Name:payload.name,Candidates:[{Model:'qwen/tiny',Placement:'local',Credential:'',Provider:'native-runtime'}]}}:{Outcome:'unknown',Revision:'',Policy:null}})};if(payload.edit==='put'){selectionExists=true;selectionRevision='selection-v1:8';return {ok:true,json:async()=>({change:{Outcome:'applied',Revision:selectionRevision,Reason:''}})}}selectionExists=false;return {ok:true,json:async()=>({change:{Outcome:'applied',Revision:'selection-v1:9',Reason:''}})}}
   assert.strictEqual(path, '/registry/view');
   assert.strictEqual(opts.headers['X-Panel-Key'], 'test');
@@ -84,6 +84,96 @@ vm.runInNewContext(plainScript, context);
 vm.runInNewContext(script, context);
 assert(!go.includes('data-grant-rules'), 'the Providers page asks for no rule for this Panel');
 const cells = row => row.children.map(td => td.textContent);
+// Drive both actual page scripts: each successful inventory replaces only
+// its own chooser source, including when the two reads finish separately.
+async function chooserSnapshots() {
+ const fields=new Map();
+ const get=id=>{if(!fields.has(id))fields.set(id,{value:'',textContent:'',children:[],hidden:false,checked:false,listeners:{},replaceChildren(...v){this.children=[...v]},append(...v){this.children.push(...v)},focus(){},addEventListener(t,f){this.listeners[t]=f}});return fields.get(id)};
+ const make=tag=>Object.assign(get(Symbol()),{tagName:tag});
+ assert(go.includes('<input id="host-name" aria-label="Server name" data-oa-other hidden>'));
+ get('host-name').hidden=true;get('host-base').hidden=true;
+ let added;
+ let hostReply={Outcome:'page',Revision:'h1',Hosts:[{Entry:{Name:'kept',Kind:'vllm',Base:'http://127.0.0.1:11501',Profiles:['chat']},Up:false,Why:'paired_name_conflict'}]};
+ const provider=()=>({Declaration:{Name:'transient',Host:{Kind:'sglang',Base:'http://127.0.0.1:11502'}},Role:'host',Readiness:'unreachable',Described:[]});
+ let view={providers:{Outcome:'page',Revision:'p1',Declarations:[provider()]},models:{Models:[]},remote:[]};
+ // Hosted choices come from GET /connect (monitor/hosted_presets.json).
+ const connectReply={presets:[{id:'deepseek',api:'openai-compatible',base:'https://api.deepseek.com/v1'},{id:'openrouter',api:'openai-compatible',base:'https://openrouter.ai/api/v1'},{id:'github-download',kind:'download',api:'',base:'https://api.github.com'},{id:'openai-compatible',api:'openai-compatible',base:''}]};
+ const c={URLSearchParams,console,location:{search:'?k=chooser'},document:{getElementById:get,createElement:make},oaReady(){},oaSetStatus(id,state,text){get(id).textContent=text;get(id).state=state},fetch:async(path,opts)=>{
+  assert.strictEqual(opts.headers['X-Panel-Key'],'chooser');
+  if(path==='/inference/hosts'&&opts.method==='POST'){added=JSON.parse(opts.body);return {ok:true,json:async()=>({Outcome:'invalid'})}}
+  const reply=path==='/registry/view'?view:path==='/inference/hosts'?hostReply:path.startsWith('/credentials')?{Outcome:'page',Records:[]}:path.startsWith('/apps/registrations')?{outcome:'page',entries:[]}:path==='/inference/keys'?{Outcome:'page',Keys:[]}:path==='/connect'?connectReply:{Outcome:'page'};
+  if(reply instanceof Error)return {ok:false,text:async()=>reply.message};
+  return {ok:true,json:async()=>reply};
+ }};c.window=c;
+ vm.runInNewContext(plainScript,c);vm.runInNewContext(script,c);
+ const marker='const serversScript = `',start=go.indexOf(marker)+marker.length;
+ vm.runInNewContext(go.slice(start,go.indexOf('`',start)),c);
+ // With no local kind known yet the form opens on a hosted preset, never
+ // on an empty Other… field (Panel rules: choosers and defaults).
+ assert.strictEqual(get('host-wire').value,'openai-compatible','no local kind known: a hosted API');
+ const settle=()=>new Promise(r=>setTimeout(r,0));
+ await settle();await settle();
+ assert(get('hosts').children[0].parts.c2.textContent.includes('Name clash with a paired computer'),'the arriving host reading exposes the clash without a click');
+ hostReply={...hostReply,Hosts:hostReply.Hosts.map(h=>({...h,Why:'unreachable'}))};await c.serversRefresh.hosts();
+ assert(!get('hosts').children[0].parts.c2.textContent.includes('Name clash'),'a new reading clears the resolved clash');
+ const names=()=>get('host-name-select').children.map(n=>n.value);
+ const bases=()=>get('host-base-select').children.map(n=>n.value);
+ assert(names().includes('sglang')&&names().includes('vllm'),'both current sources supply choices, including an explicitly kept unreachable host');
+ // Once the runtime reports local kinds, an untouched form moves to the
+ // first of them at its own address.
+ assert.strictEqual(get('host-wire').value,'');
+ assert.strictEqual(get('host-base').value,{sglang:'http://127.0.0.1:11502',vllm:'http://127.0.0.1:11501'}[get('host-name-select').value],'a reported local kind at its own address');
+ // An empty or invalid submit names what is missing next to the button and
+ // sends nothing.
+ get('host-name-select').value='__other__';get('host-name-select').onchange();
+ added=undefined;get('host-add').onsubmit({preventDefault(){}});await settle();
+ assert.strictEqual(added,undefined,'an empty name reaches no runtime');
+ assert.strictEqual(get('host-add-status').textContent,'Choose a server or type its name.');
+ get('host-name').value='manual';get('host-base-select').value='__other__';get('host-base-select').onchange();get('host-base').value='http://10.0.0.5:11434';
+ get('host-add').onsubmit({preventDefault(){}});await settle();
+ assert.strictEqual(added,undefined,'plain http to another computer is refused before sending');
+ assert(get('host-add-status').textContent.includes('https://'));
+ get('host-base-select').value='http://127.0.0.1:11434';get('host-base-select').onchange();
+ get('host-add').onsubmit({preventDefault(){}});await settle();
+ assert.strictEqual(added.host.Name,'manual');assert.strictEqual(added.host.Kind,'manual');
+ assert.strictEqual(added.host.Base,'http://127.0.0.1:11434','actual submit uses the displayed address');
+ assert.strictEqual(added.revision,'h1','actual submit keeps its authoritative revision');
+ assert(get('host-add-status').textContent,'a refused add writes its sentence next to the button');
+ get('host-name-select').value='vllm';get('host-name-select').onchange();
+ assert.strictEqual(get('host-name').value,'vllm');assert.strictEqual(get('host-name').hidden,true);
+ get('host-add').onsubmit({preventDefault(){}});await settle();
+ assert.strictEqual(added.host.Name,'vllm');assert.strictEqual(added.host.Base,'http://127.0.0.1:11501','selected kind and submitted fields stay coherent');
+ // A hosted API offers its common service instead of an empty name.
+ get('host-wire').value='openai-compatible';get('host-wire').onchange();
+ assert.strictEqual(get('host-name-select').value,'deepseek','the first /connect preset');assert.strictEqual(get('host-base').value,'https://api.deepseek.com/v1');assert.strictEqual(get('host-name').hidden,true,'no empty Other… field');
+ assert.deepStrictEqual(names(),['deepseek','openrouter','__other__'],'downloads and presets without an address are no server');
+ get('host-wire').value='anthropic-messages';get('host-wire').onchange();
+ assert(!names().includes('anthropic'),'no preset the JSON does not hold');
+ get('host-wire').value='';get('host-wire').onchange();
+ // Other text is explicit input and must survive every inventory refresh.
+ get('host-name-select').value='__other__';get('host-name-select').onchange();get('host-name').value='my server';
+ get('host-base-select').value='__other__';get('host-base-select').onchange();get('host-base').value='http://127.0.0.1:11503';
+ view={...view,providers:{Outcome:'forbidden',Declarations:[]}};await c.read();
+ assert(names().includes('sglang'),'a failed declaration read keeps its last successful source');
+ assert(get('registry-status').textContent.includes('could not be read'),'a failed read retains the existing error presentation');
+ hostReply=new Error('host read unavailable');await c.serversRefresh.hosts();
+ assert(names().includes('vllm'),'a failed host read keeps its last successful source');
+ assert(get('hosts-status').textContent,'host failure remains visible');
+ view={...view,providers:{Outcome:'page',Revision:'p2',Declarations:[]}};await c.read();
+ assert(!names().includes('sglang')&&!bases().includes('http://127.0.0.1:11502'),'successful provider removal drops its kind and address');
+ assert(names().includes('vllm'),'provider removal keeps the separate host source');
+ assert.strictEqual(get('host-name').value,'my server');assert.strictEqual(get('host-base').value,'http://127.0.0.1:11503');
+ assert.strictEqual(get('host-name-select').value,'__other__');assert.strictEqual(get('host-base-select').value,'__other__');
+ hostReply={Outcome:'page',Revision:'h2',Hosts:[]};await c.serversRefresh.hosts();
+ assert(!names().includes('vllm')&&!bases().includes('http://127.0.0.1:11501'),'successful host removal drops its kind and address');
+ assert.strictEqual(get('host-name').value,'my server');assert.strictEqual(get('host-base').value,'http://127.0.0.1:11503');
+ // A departed automatic option must not silently choose a different server.
+ view={...view,providers:{Outcome:'page',Revision:'p3',Declarations:[provider()]}};await c.read();
+ get('host-name-select').value='sglang';get('host-name-select').onchange();
+ view={...view,providers:{Outcome:'page',Revision:'p4',Declarations:[]}};await c.read();
+ assert.strictEqual(get('host-name-select').value,'__other__');assert.strictEqual(get('host-name').value,'');
+ assert.strictEqual(get('host-base-select').value,'__other__');assert.strictEqual(get('host-base').value,'');
+}
 (async () => {
  const settle = () => new Promise(r => setTimeout(r, 0));
  // read() runs once, unclicked, on arrival (finding 2 above); settle it
@@ -91,65 +181,89 @@ const cells = row => row.children.map(td => td.textContent);
  // settles its own three eager loads.
  await settle(); await settle(); await settle();
  context.read(); await settle(); await settle();
- const modelRows=element('models').children;
- assert.strictEqual(modelRows.length,3,'served, stored-only and unservable loaded families are shown');
- assert.deepStrictEqual(cells(modelRows[0]), ['qwen/tiny','qwen/tiny — ollama (local, available)','Available from provider','lmstudio','none']);
- assert.deepStrictEqual(cells(modelRows[1]), ['diffusion_models/wan.safetensors','diffusion_models/wan.safetensors — no model server (stored, not served)','Stored only; no server can answer','comfyui','projector (<img src=x>) in comfyui']);
- assert.deepStrictEqual(cells(modelRows[2]), ['engine-cache/model.gguf','engine-cache/model.gguf — special-engine (local, not served, provider reports loaded)','Stored; a provider reports loaded but cannot serve','engine-cache','none']);
- assert.strictEqual(modelRows[1].children[4].children.length,0,'untrusted model/component names render as text, not markup');
- // Accepted is null on all three declarations, so its column is dropped
- // (task 2026-09-23 finding 4, the same approach card_page.go already takes
- // for the Graphics card's holder columns); Activation and Resources carry a
- // value on every row and stay as plain values, while Contracts, Endpoint,
- // Program and Described each carry a value on only some rows and stay, with
- // a stated absence ("none", "not yet") in the rows that have none.
- // task 2026-09-23, eighth first-time visitor, finding 6: the table itself
- // now sits inside a div.oa-table wrapper, the element that scrolls
- // sideways if the table cannot fit, never the page.
- const providersWrap = element('providers').children[0];
- assert.strictEqual(providersWrap.className, 'oa-table');
- const providersTable = providersWrap.children[0];
- const providersHead = providersTable.children[0].innerHTML;
- assert(!providersHead.includes('>Accepted<'), 'the all-empty Accepted column is not rendered: ' + providersHead);
- for (const label of ['Name', 'Role', 'Activation', 'Services', 'Endpoint', 'Program', 'Engine', 'Resources', 'Readiness', 'Described', 'Restarts', 'Registered by']) {
-  assert(providersHead.includes('>' + label + '<'), label + ' column missing: ' + providersHead);
- }
- const providerRows = providersTable.children[1].children;
- assert.deepStrictEqual(cells(providerRows[0]), ['local-stores','managed process','on_demand','storage inventory source','inventoryd-v1','inventoryd','','store:ollama, store:huggingface','refused','not yet','2','openabstractions','']);
- assert.strictEqual(providerRows[0].children[8].title, 'program:server program mismatch', 'the readiness reason sits on the cell title');
- assert.strictEqual(providerRows[0].children[3].title, 'abstraction.storage/inventory-source@1', 'the contract id sits on the cell title, never the visible text');
- assert.strictEqual(providerRows[0].children[12].children[0].textContent,'Withdraw','provider registration exposes a withdrawal action');
- assert.deepStrictEqual(cells(providerRows[1]), ['lab','remote runtime','remote','inference chat, router','tls://lab.example:8443 (lab.example)','none','','profile:chat','ready','inference chat ready, router ready','0','openabstractions','']);
- assert.equal(providerRows[0].children[1].title, 'provider', 'the wire role sits on the Role cell\'s own title');
- assert.deepStrictEqual(cells(providerRows[2]), ['ollama-engine','model server','attach','none','none','none','ollama http://127.0.0.1:11500','profile:chat','ready','not yet','0','installation','']);
- assert.deepStrictEqual(cells(element('remote').children[0]), ['lab/openrouter','lab','openai-compatible','operator','chat','Up']);
- assert.strictEqual(providerRows[0].children[5].title,'/opt/inventoryd','the program path sits on the cell title');
- assert.strictEqual(providerRows[0].children[11].title,'/opt/oa/openabstractions','the registering program path sits on the cell title');
- providerRows[0].children[12].children[0].onclick(); await settle(); await settle();
+ // Registered providers are plain rows like Windows Settings lists: the
+ // name, what it provides and its state; wire words (role, activation,
+ // resources, registering program) stay off the page and raw values sit on
+ // the label's title.
+ const rowText = r => { const t = r.children[0]; return [t.children[0].textContent, t.children[1].textContent] };
+ const providerRows = element('providers').children[0].children;
+ assert.deepStrictEqual(rowText(providerRows[0]), ['local-stores', 'storage inventory source · Not started']);
+ assert(providerRows[0].children[0].children[0].title.includes('abstraction.storage/inventory-source@1'), 'the contract id sits on the title, never the visible text');
+ assert(providerRows[0].children[0].children[0].title.includes('program:server program mismatch'), 'the readiness reason sits on the title');
+ assert.strictEqual(providerRows[0].children[1].children[0].textContent,'Withdraw','provider registration exposes a withdrawal action');
+ assert.deepStrictEqual(rowText(providerRows[1]), ['lab', 'Remote runtime: inference chat, router · Ready']);
+ assert.deepStrictEqual(rowText(providerRows[2]), ['ollama-engine', 'Model server (ollama) · Ready']);
+ assert.strictEqual(providerRows[2].children.length, 1, 'a row with no action has no empty action cell');
+ for (const r of providerRows) for (const word of ['attach', 'profile:', 'operator', 'managed process']) assert(!rowText(r).join(' ').includes(word), word + ' is not page text');
+ assert.deepStrictEqual(rowText(element('remote').children[0]), ['lab/openrouter', 'lab · hosted: openai-compatible · chat · Up']);
+ providerRows[0].children[1].children[0].onclick(); await settle(); await settle();
  assert.deepStrictEqual(registrationPayload,{edit:'withdraw',revision:'providers-v2:r',name:'local-stores'});
- assert.strictEqual(element('provider-edit-status').textContent,'Provider registration updated.');
- // Models (a router inventory refusal) and Remote runtimes (a raw backend
- // string that happens to share the word "forbidden") refuse the same one
- // click; Providers succeeds (an empty page). This lands as one line naming
- // the two refused tables, not three differently worded denials scattered
- // across three lines, with the raw remote text kept behind a disclosure
- // rather than shown outright.
+ assert.strictEqual(element('provider-edit-status').textContent,'Provider removed.');
+ // A refused withdrawal shows a plain sentence and its reason behind
+ // Technical details (owner report R20c, 2026-11-10: "This didn't work."
+ // over "unknown: name").
+ {
+  const details = () => { const d = element('provider-edit-status').children[0]; return d && d.className === 'oa-error-details' ? d.children[1].textContent : '' };
+  providerReply = {Outcome:'unknown',Revision:'providers-v2:r',Reason:'name'};
+  views.unshift(JSON.parse(JSON.stringify(views[0])));
+  providerRows[0].children[1].children[0].onclick(); await settle(); await settle();
+  assert.strictEqual(element('provider-edit-status').textContent.split('Technical details')[0], 'The provider was not changed. This provider is no longer registered.');
+  assert(!element('provider-edit-status').textContent.includes("didn't work"), 'a known refusal reads as its own sentence');
+  assert(details().includes('outcome: unknown') && details().includes('reason: name') && details().includes('provider: local-stores'), 'the refusal keeps its outcome, reason and provider: ' + details());
+  // A failed HTTP reply with no body still names its status and provider.
+  providerReply = {status:503, body:''};
+  views.unshift(JSON.parse(JSON.stringify(views[0])));
+  providerRows[0].children[1].children[0].onclick(); await settle(); await settle();
+  assert(element('provider-edit-status').textContent.startsWith('The provider was not changed.'), element('provider-edit-status').textContent);
+  assert(details().includes('HTTP 503') && details().includes('withdraw local-stores'), 'empty reply details: ' + details());
+  // A failed reply with a body keeps that body.
+  providerReply = {status:503, body:'registry not resolved: unavailable\n'};
+  views.unshift(JSON.parse(JSON.stringify(views[0])));
+  providerRows[0].children[1].children[0].onclick(); await settle(); await settle();
+  assert(details().includes('registry not resolved: unavailable'), details());
+  providerReply = {Outcome:'applied',Revision:'providers-v2:next'};
+ }
+ // Remote runtimes (a raw backend string that happens to share the word
+ // "forbidden") refuses; Providers succeeds (an empty page). The refusal
+ // lands as one line naming the refused table, with the raw remote text
+ // kept behind a disclosure rather than shown outright.
  context.read(); await settle(); await settle();
- assert.strictEqual(element('models-status').textContent, '', 'the refused model table defers to the one summary line');
  assert.strictEqual(element('providers-status').textContent, 'No providers registered.', 'a table that succeeded is unaffected by the others\' refusal');
  assert.strictEqual(element('remote-status').textContent, '');
- assert.strictEqual(element('registry-status').textContent, 'Models, Remote runtimes could not be read. The runtime did not permit this Panel to do this; nothing was changed.');
+ assert.strictEqual(element('registry-status').textContent, "Other PCs' providers could not be read. OpenAbstractions did not permit this Panel to do this; nothing was changed.");
  const denialDetails = element('registry-status').children[0];
  assert.strictEqual(denialDetails.className, 'oa-error-details');
- assert.strictEqual(denialDetails.children[1].textContent, 'Models: router inventory not permitted\nRemote runtimes: router not resolved: forbidden', 'the raw per-table reasons stay available behind the disclosure');
+ assert.strictEqual(denialDetails.children[1].textContent, "Other PCs' providers: router not resolved: forbidden",'the raw per-table reasons stay available behind the disclosure');
  // The rendered tables show no path, SID or hash as text (static/panel_rules.js).
  const { assertPanelRules } = require('./static/panel_rules.js');
- assertPanelRules([element('providers'), element('models'), element('remote')], 'Providers', { rules: ['raw-value', 'class'], allowClasses: require('./panel_fake_dom_test_helper.js').allowlistedClasses('registry') });
+ assertPanelRules([element('providers'), element('remote')], 'Providers', { rules: ['raw-value', 'class'], allowClasses: require('./panel_fake_dom_test_helper.js').allowlistedClasses('registry') });
+ assert.strictEqual(element('remote-section').hidden, false, 'a paired runtime whose read fails keeps its section and error');
+ // The owner's registrations (R20c): rows read by the titles the server
+ // derives (providerDisplay), the raw name stays on the row's details, and
+ // without pairing Other PCs' providers hides with no error.
+ {
+  const decl=(Name,Contracts)=>({Declaration:{Name,Role:'provider',Activation:'on_demand',Contracts,Endpoint:'e',Program:'/opt/p',Resources:[]},DeclaredBy:'installation',Role:'provider',Readiness:'ready',Why:'',Restarts:0,Described:[],Accepted:null});
+  views.push({hosts:{Outcome:'page',Hosts:[]},providers:{Outcome:'page',Revision:'providers-v2:o',Declarations:[decl('oa-setup-chat-467d9c6e43391a07c5853578',['abstraction.inference/chat@1']),decl('comfy-image-1828',['abstraction.inference/image@1']),decl('local-stores',['abstraction.storage/inventory-source@1'])]},
+   titles:{'oa-setup-chat-467d9c6e43391a07c5853578':'Chat model','comfy-image-1828':'ComfyUI','local-stores':'Model stores'},paired:false,remote:[],remote_error:'router not resolved: not_found'});
+  await context.read(); await settle();
+  const rows=element('providers').children[0].children;
+  assert.deepStrictEqual(rows.map(r=>rowText(r)[0]),['Chat model','ComfyUI','Model stores'],'titles, never internal names');
+  assert(rows[0].children[0].children[0].title.includes('oa-setup-chat-467d9c6e43391a07c5853578'),'the raw name stays on the details');
+  assert.strictEqual(element('remote-section').hidden,true,'no rows and no pairing: the section hides');
+  assert.strictEqual(element('remote').children.length,0);
+  assert.strictEqual(element('registry-status').textContent,'','no pairing: no error');
+  assert.strictEqual(element('remote-status').textContent,'');
+  assertPanelRules([element('providers'), element('remote')], 'Providers', { rules: ['raw-value', 'class'], allowClasses: require('./panel_fake_dom_test_helper.js').allowlistedClasses('registry') });
+  views.push({...lastView,paired:true,remote_error:'',remote:[]});
+  await context.read(); await settle();
+  assert.strictEqual(element('remote-section').hidden,true,'paired with nothing shared: no empty heading');
+ }
  // A sentence a click wrote survives the page's next reading of the same
  // state: rows, status lines and focus stay in place.
  element('provider-edit-status').textContent = 'Provider registration updated.';
  views.push(JSON.parse(JSON.stringify(lastView)));
  await context.read(); await settle();
  assert.strictEqual(element('provider-edit-status').textContent, 'Provider registration updated.', 'the sentence survives a reread');
+ await chooserSnapshots();
  console.log('PASS registry page');
 })().catch(e => { console.error(e); process.exit(1); });

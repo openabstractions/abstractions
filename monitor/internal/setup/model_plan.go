@@ -4,15 +4,16 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 
+	imageprovider "github.com/openabstractions/abstraction-provider-lemonade/go/server"
 	torch "github.com/openabstractions/abstraction-provider-pytorch/go/torch"
 )
 
 const (
 	BF16ModelID                = "user.LocalApprovedKlein"
 	bf16Revision               = "5f526678002e43af5551dadb73ce2e8c91b43afe"
-	bf16Repository             = "Comfy-Org/vae-text-encorder-for-flux-klein-4b"
 	bf16License                = "Apache-2.0"
 	bf16LicenseURL             = "https://www.apache.org/licenses/LICENSE-2.0"
 	backendLicense             = "MIT"
@@ -33,19 +34,80 @@ type ModelAsset struct {
 	Download   PinnedDownload `json:"download"`
 }
 
-// PyTorchModelPlan projects the provider-owned fixed set, including the
-// tokenizer files. Runtime inputs are approved in the separate package plan.
+func (a ModelAsset) reviewedStagePath(root string) string {
+	return filepath.Join(root, filepath.FromSlash(a.Path))
+}
+
+// DigestStageName is the pinned asset's filename in the digest-based stage.
+func (a ModelAsset) DigestStageName() string {
+	return a.Download.SHA256 + filepath.Ext(a.Path)
+}
+
+func (a ModelAsset) digestStagePath(root string) string {
+	return filepath.Join(root, a.DigestStageName())
+}
+
+// stagePath keeps the declared layout for plans whose loaders use that
+// layout. Other plans have always staged by pinned digest and extension.
+func (p ModelPlan) stagePath(root string, asset ModelAsset) string {
+	recipe, _ := pictureRecipeFor(p.Engine)
+	if recipe.reviewedLayout || p.StagesPictureFilesOnly() {
+		return asset.reviewedStagePath(root)
+	}
+	return asset.digestStagePath(root)
+}
+
+// PyTorchModelPlan is the PyTorch engine's starter picture model: FLUX.2
+// Klein 4B from its compact files (8.26 GB), which the engine turns to BF16
+// at load and ComfyUI's own loaders read through Setup's model-paths file.
 func PyTorchModelPlan() ModelPlan {
-	set := torch.Flux2Klein4BTorch
-	plan := ModelPlan{Engine: PyTorch, Model: set.Name, Name: "FLUX.2 Klein on PyTorch (Windows x64, Strix Halo)",
-		Source: "https://huggingface.co/black-forest-labs/FLUX.2-klein-4B", Repository: bf16Repository, Revision: bf16Revision,
-		Licenses: []string{bf16License}, LicenseText: "Black Forest Labs and Qwen publish these model and tokenizer files under Apache-2.0. The runtime package and these model files require separate approval."}
+	// The name is identity (the plan ID hashes it), never shown; Title is.
+	plan := pyTorchModelPlanFor(torch.Flux2Klein4BCompactTorch, "FLUX.2 Klein 4B compact on PyTorch",
+		"https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8",
+		"Black Forest Labs publishes the FP8 model and Comfy-Org the FP8/NVFP4 Qwen3 4B text encoder, VAE and tokenizer under Apache-2.0. The runtime package and these model files require separate approval.")
+	plan.Title = "FLUX.2 Klein 4B compact"
+	return plan
+}
+
+// PyTorchFullModelPlan is FLUX.2 Klein 4B at full precision (16.13 GB), the
+// PyTorch starter model up to 2026-11-09. Its identity and journal are kept,
+// so a prepared copy stays prepared.
+func PyTorchFullModelPlan() ModelPlan {
+	// The name is identity (the plan ID hashes it), never shown; Title is.
+	plan := pyTorchModelPlanFor(torch.Flux2Klein4BTorch, "FLUX.2 Klein on PyTorch (Windows x64, Strix Halo)",
+		"https://huggingface.co/black-forest-labs/FLUX.2-klein-4B",
+		"Black Forest Labs and Qwen publish these model and tokenizer files under Apache-2.0. The runtime package and these model files require separate approval.")
+	plan.Title = "FLUX.2 Klein 4B full precision"
+	return plan
+}
+
+// torchRepoPaths are the source-repository paths of PyTorch set files that
+// Setup stages under another path, keyed by the staged path: the FP8
+// transformer lies at its repository's root and is staged with ComfyUI's
+// other diffusion models.
+var torchRepoPaths = map[string]string{
+	"split_files/diffusion_models/flux-2-klein-4b-fp8.safetensors": "flux-2-klein-4b-fp8.safetensors",
+}
+
+// pyTorchModelPlanFor projects one provider-owned fixed set, including the
+// tokenizer files. Runtime inputs are approved in the separate package plan.
+// Each file is staged at its final locator, below split_files/<category>
+// for ComfyUI's loaders; Title is set after the identity, so it names the
+// plan without changing a recorded approval.
+func pyTorchModelPlanFor(set torch.TorchModelSet, name, source, licenseText string) ModelPlan {
+	plan := ModelPlan{Engine: PyTorch, Model: set.Name, Name: name, Source: source, Licenses: []string{bf16License}, LicenseText: licenseText}
 	for _, file := range set.Files {
-		// The provider's final locator is the pinned source-repository path.
 		path := file.Locators[len(file.Locators)-1]
+		repoPath := path
+		if p, ok := torchRepoPaths[path]; ok {
+			repoPath = p
+		}
+		if file.Role == "flux-transformer" {
+			plan.Repository, plan.Revision = strings.TrimPrefix(file.Source, "https://huggingface.co/"), file.Revision
+		}
 		plan.Assets = append(plan.Assets, ModelAsset{ID: file.Role, Role: file.Role, Path: path,
 			License: file.License, LicenseURL: bf16LicenseURL,
-			Download: PinnedDownload{URL: strings.TrimSuffix(file.Source, "/") + "/resolve/" + file.Revision + "/" + path,
+			Download: PinnedDownload{URL: strings.TrimSuffix(file.Source, "/") + "/resolve/" + file.Revision + "/" + repoPath,
 				SHA256: file.SHA256, Bytes: file.Size, Label: file.Name}})
 		plan.DownloadBytes += file.Size
 	}
@@ -56,16 +118,48 @@ func PyTorchModelPlan() ModelPlan {
 	return plan
 }
 
+// The native archive offer stages Z-Image-Turbo in the shared model layout.
+var retainedArchiveModelOffer = pictureOfferRecipe{plan: ZImageComfyModelPlan, caption: "Photorealistic", stagedOnly: true}
+
+// The model-paths record exposes
+// those files to the native archive loaders. The PyTorch set uses the prepared
+// Klein tokenizer. The retained archive registration supplies the engine key
+// for the recorded approval and journal. Beside the full-precision Klein it
+// adds 12.65 GB, since both read the same Qwen3 4B text encoder.
+func ZImageComfyModelPlan() ModelPlan {
+	m, ok := reviewedPictureModel(zImageOffer)
+	if !ok {
+		return ModelPlan{}
+	}
+	plan := ModelPlan{Engine: AppID(retainedArchivePackage.Registration), Model: "z-image-turbo", Name: "Z-Image-Turbo for " + nativeArchiveAppTitle, Source: m.source, LicenseText: m.licenseText,
+		Repository: m.files[0].repository, Revision: m.files[0].revision, Licenses: []string{bf16License}}
+	for _, f := range m.files {
+		plan.Assets = append(plan.Assets, ModelAsset{ID: f.id, Role: f.id, Path: f.path, License: bf16License, LicenseURL: bf16LicenseURL,
+			Download: PinnedDownload{URL: "https://huggingface.co/" + f.repository + "/resolve/" + f.revision + "/" + f.path, SHA256: f.sha256, Bytes: f.bytes, Label: f.label}})
+		plan.DownloadBytes += f.bytes
+	}
+	plan.PeakBytes = plan.DownloadBytes + bf16DiskHeadroom
+	encoded, _ := json.Marshal(plan)
+	id := sha256.Sum256(encoded)
+	plan.ID = hex.EncodeToString(id[:])
+	plan.Title = "Z-Image-Turbo"
+	return plan
+}
+
 type ModelPlan struct {
 	ID    string `json:"id"`
 	Model string `json:"model"`
 	// Engine binds this review and journal identity to one fixed provider.
-	// Empty keeps the existing Lemonade starter and offered model identities.
+	// Empty keeps the existing starter and offered model identities; their
+	// engine is PictureEngine's.
 	Engine AppID `json:"engine,omitempty"`
 	// Name, Source and LicenseText describe an offered model for review: its
 	// title, its model card and one sentence on its licence terms. The
 	// starter plan leaves them empty, which keeps its ID.
-	Name          string   `json:"name,omitempty"`
+	Name string `json:"name,omitempty"`
+	// Title is the short name a toggle shows. It is set after the plan's
+	// identity is computed, so it changes no recorded approval.
+	Title         string   `json:"title,omitempty"`
 	Source        string   `json:"source,omitempty"`
 	LicenseText   string   `json:"license_text,omitempty"`
 	Repository    string   `json:"repository"`
@@ -78,15 +172,31 @@ type ModelPlan struct {
 	// archive is freed.
 	PeakBytes int64        `json:"peak_bytes"`
 	Assets    []ModelAsset `json:"assets"`
+	// EngineArgs are the llama-server arguments the plan's model is hosted
+	// with, from ModelHost's reviewed list (MODELHOST-L5). They change no
+	// download, so they stay out of the plan's identity and journals.
+	EngineArgs []string `json:"-"`
+}
+
+// PictureEngine is the engine choice the plan's model is prepared in: its
+// Engine, or the starter's for a plan that names none.
+func (p ModelPlan) PictureEngine() AppID {
+	if p.Engine != "" {
+		return p.Engine
+	}
+	return Lemonade
 }
 
 // TheNoiseModelPlan reuses the reviewed Klein files. The engine archive is
 // approved through the package plan, separately from these model files.
 func TheNoiseModelPlan() ModelPlan {
 	plan := ApprovedBF16Plan()
+	if plan.ID == "" {
+		return plan
+	}
 	plan.ID = ""
 	plan.Engine, plan.Model = TheNoise, "flux_klein"
-	plan.Name = "FLUX.2 Klein on TheNoise (CPU; GPU qualification pending)"
+	plan.Name = "FLUX.2 Klein on TheNoise (processor)"
 	plan.Assets = plan.Assets[1:]
 	plan.Licenses = []string{bf16License}
 	plan.DownloadBytes = 0
@@ -100,15 +210,26 @@ func TheNoiseModelPlan() ModelPlan {
 	return plan
 }
 
+const pictureBackendAssetID = "backend"
+
 func ApprovedBF16Plan() ModelPlan {
-	const prefix = "https://huggingface.co/" + bf16Repository + "/resolve/" + bf16Revision + "/split_files/"
-	assets := []ModelAsset{
-		{ID: "backend", Path: "sd-master-462d675-bin-win-vulkan-x64.zip", License: backendLicense, LicenseURL: backendLicenseURL, Download: PinnedDownload{URL: "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-843-462d675/sd-master-462d675-bin-win-vulkan-x64.zip", SHA256: "b9248856707de2e125538ede8a7dc71a9d800bba67e469e60881dae2a5a1c0a2", Bytes: 38865230, Label: "Reviewed stable-diffusion.cpp Vulkan backend"}},
-		{ID: "main", Path: "diffusion_models/flux-2-klein-4b.safetensors", License: bf16License, LicenseURL: bf16LicenseURL, Download: PinnedDownload{URL: prefix + "diffusion_models/flux-2-klein-4b.safetensors", SHA256: "ec3d4e733a771f61c052fb4856c48b336c55eaf2c65487c2a1faeb9bbda7a343", Bytes: 7751105712, Label: "FLUX.2 Klein BF16 main weights"}},
-		{ID: "encoder", Path: "text_encoders/qwen_3_4b.safetensors", License: bf16License, LicenseURL: bf16LicenseURL, Download: PinnedDownload{URL: prefix + "text_encoders/qwen_3_4b.safetensors", SHA256: "6c671498573ac2f7a5501502ccce8d2b08ea6ca2f661c458e708f36b36edfc5a", Bytes: 8044982048, Label: "FLUX.2 Klein text encoder"}},
-		{ID: "vae", Path: "vae/flux2-vae.safetensors", License: bf16License, LicenseURL: bf16LicenseURL, Download: PinnedDownload{URL: prefix + "vae/flux2-vae.safetensors", SHA256: "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3", Bytes: 336211292, Label: "FLUX.2 Klein VAE"}},
+	m, ok := reviewedPictureModel(pictureOfferSpec{BF16ModelID, [3]string{"FLUX.2 Klein BF16 main weights", "FLUX.2 Klein text encoder", "FLUX.2 Klein VAE"}})
+	if !ok || m.files[0].revision != bf16Revision {
+		return ModelPlan{}
 	}
-	plan := ModelPlan{Model: BF16ModelID, Repository: bf16Repository, Revision: bf16Revision,
+	assets := []ModelAsset{
+		{ID: pictureBackendAssetID, Path: "sd-master-462d675-bin-win-vulkan-x64.zip", License: backendLicense, LicenseURL: backendLicenseURL, Download: PinnedDownload{URL: "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-843-462d675/sd-master-462d675-bin-win-vulkan-x64.zip", SHA256: "b9248856707de2e125538ede8a7dc71a9d800bba67e469e60881dae2a5a1c0a2", Bytes: 38865230, Label: "Reviewed stable-diffusion.cpp Vulkan backend"}},
+	}
+	for _, file := range m.files {
+		stage, ok := strings.CutPrefix(file.path, "split_files/")
+		if !ok || file.repository != m.files[0].repository || file.revision != bf16Revision {
+			return ModelPlan{}
+		}
+		assets = append(assets, ModelAsset{ID: file.id, Path: stage, License: bf16License, LicenseURL: bf16LicenseURL,
+			Download: PinnedDownload{URL: "https://huggingface.co/" + file.repository + "/resolve/" + file.revision + "/" + file.path,
+				SHA256: file.sha256, Bytes: file.bytes, Label: file.label}})
+	}
+	plan := ModelPlan{Model: BF16ModelID, Repository: m.files[0].repository, Revision: bf16Revision,
 		Licenses: []string{bf16License, backendLicense}, Assets: assets}
 	for _, asset := range assets {
 		plan.DownloadBytes += asset.Download.Bytes
@@ -131,29 +252,44 @@ type pictureModelFile struct {
 	bytes                                         int64
 }
 
-// pictureModel is one picture model the Lemonade provider declares beyond the
-// starter model: the same pins, licence and card as its packaging manifest
-// (declared_models) and server.ImageModels.
+// A Setup offer keeps its reviewed model ID, file roles and display labels.
+// The installed provider owns the source pins and the exact licence copy.
 type pictureModel struct {
 	id, name, source, licenseText string
 	files                         []pictureModelFile
 }
 
-var pictureModels = []pictureModel{
-	{id: "user.Z-Image-Turbo", name: "Z-Image-Turbo", source: "https://huggingface.co/Tongyi-MAI/Z-Image-Turbo",
-		licenseText: "Tongyi-MAI publishes Z-Image-Turbo, Black Forest Labs the FLUX.1 autoencoder and Qwen the Qwen3-4B text encoder, each under the Apache License 2.0; Comfy-Org repackages the three files. The licence permits commercial use, changes and redistribution with the licence and notices kept.",
-		files: []pictureModelFile{
-			{id: "main", label: "Z-Image-Turbo BF16 main weights", repository: "Comfy-Org/z_image_turbo", revision: "6fc90a3b1b653e935a0d175e260736de25b84df5", path: "split_files/diffusion_models/z_image_turbo_bf16.safetensors", bytes: 12309866400, sha256: "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6"},
-			{id: "encoder", label: "Z-Image-Turbo text encoder", repository: "Comfy-Org/z_image_turbo", revision: "6fc90a3b1b653e935a0d175e260736de25b84df5", path: "split_files/text_encoders/qwen_3_4b.safetensors", bytes: 8044982048, sha256: "6c671498573ac2f7a5501502ccce8d2b08ea6ca2f661c458e708f36b36edfc5a"},
-			{id: "vae", label: "Z-Image-Turbo VAE", repository: "Comfy-Org/z_image_turbo", revision: "6fc90a3b1b653e935a0d175e260736de25b84df5", path: "split_files/vae/ae.safetensors", bytes: 335304388, sha256: "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38"},
-		}},
-	{id: "user.Qwen-Image-2512", name: "Qwen-Image-2512", source: "https://huggingface.co/Qwen/Qwen-Image-2512",
-		licenseText: "Qwen publishes Qwen-Image-2512, its autoencoder and the Qwen2.5-VL-7B-Instruct text encoder under the Apache License 2.0; Unsloth quantises the model and the encoder to GGUF, and Comfy-Org repackages the autoencoder. The licence permits commercial use, changes and redistribution with the licence and notices kept.",
-		files: []pictureModelFile{
-			{id: "main", label: "Qwen-Image-2512 Q5_0 main weights", repository: "unsloth/Qwen-Image-2512-GGUF", revision: "1626d7531f84b4d2ea1cd6d2e69f41ec027dd354", path: "qwen-image-2512-Q5_0.gguf", bytes: 14400813600, sha256: "c077d5a3f867b6441235d071d76912ce6575db9832651e8b1769e8329d33d798"},
-			{id: "encoder", label: "Qwen2.5-VL-7B-Instruct text encoder", repository: "unsloth/Qwen2.5-VL-7B-Instruct-GGUF", revision: "68bb8bc4b7df5289c143aaec0ab477a7d4051aab", path: "Qwen2.5-VL-7B-Instruct-UD-Q4_K_XL.gguf", bytes: 4785159040, sha256: "8edd10e3ae170ab8b8d114e70763ff63a220f16deec9a56acf9330034efc0bb5"},
-			{id: "vae", label: "Qwen-Image VAE", repository: "Comfy-Org/Qwen-Image_ComfyUI", revision: "1f12b17be14c89b026c51a91d67c32f84bb047bc", path: "split_files/vae/qwen_image_vae.safetensors", bytes: 253806246, sha256: "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f"},
-		}},
+func reviewedPictureModel(offer pictureOfferSpec) (pictureModel, bool) {
+	model, ok := imageprovider.FindImageModel(offer.id)
+	if !ok || len(model.Files) != len(offer.labels) {
+		return pictureModel{}, false
+	}
+	roles := [3]string{"main", "text_encoder", "vae"}
+	assetIDs := [3]string{"main", "encoder", "vae"}
+	m := pictureModel{id: model.ID, name: model.Title, source: model.Source, licenseText: model.License.Text}
+	for i, file := range model.Files {
+		if file.Role != roles[i] {
+			return pictureModel{}, false
+		}
+		m.files = append(m.files, pictureModelFile{id: assetIDs[i], label: offer.labels[i], repository: file.Repository,
+			revision: file.Revision, path: file.Path, sha256: file.SHA256, bytes: file.Bytes})
+	}
+	return m, true
+}
+
+type pictureOfferSpec struct {
+	id     string
+	labels [3]string
+}
+
+var zImageOffer = pictureOfferSpec{
+	id:     "user.Z-Image-Turbo",
+	labels: [3]string{"Z-Image-Turbo BF16 main weights", "Z-Image-Turbo text encoder", "Z-Image-Turbo VAE"},
+}
+
+var pictureOffers = []pictureOfferSpec{
+	zImageOffer,
+	{"user.Qwen-Image-2512", [3]string{"Qwen-Image-2512 Q5_0 main weights", "Qwen2.5-VL-7B-Instruct text encoder", "Qwen-Image VAE"}},
 }
 
 // PictureModelChoices are the reviewed plans of the picture models offered
@@ -162,8 +298,12 @@ var pictureModels = []pictureModel{
 // them once the starter model is prepared and stages each through the
 // provider's model add verb.
 func PictureModelChoices() []ModelPlan {
-	plans := make([]ModelPlan, 0, len(pictureModels))
-	for _, m := range pictureModels {
+	plans := make([]ModelPlan, 0, len(pictureOffers))
+	for _, offer := range pictureOffers {
+		m, ok := reviewedPictureModel(offer)
+		if !ok {
+			continue
+		}
 		plan := ModelPlan{Model: m.id, Name: m.name, Source: m.source, LicenseText: m.licenseText,
 			Repository: m.files[0].repository, Revision: m.files[0].revision, Licenses: []string{bf16License}}
 		for _, f := range m.files {
@@ -178,4 +318,26 @@ func PictureModelChoices() []ModelPlan {
 		plans = append(plans, plan)
 	}
 	return plans
+}
+
+// CodingModelPlan is the base coding model retained in first-run/ENGINES.md
+// and the 2026-10-03 rank-one benchmark. License classification is source
+// attributed; no license-body digest or installed speed verdict is asserted.
+func CodingModelPlan() ModelPlan {
+	const repo = "unsloth/Qwen3.6-35B-A3B-MTP-GGUF"
+	const revision = "5bc3e238d916f48a861bac2f8a1990a0e9b7e98d"
+	const file = "Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf"
+	const size int64 = 22853663008
+	p := ModelPlan{Model: "Qwen3.6-35B-A3B", Name: "Recommended coding model", Repository: repo, Revision: revision,
+		Source: "https://huggingface.co/" + repo, LicenseText: "Retained first-run source records classify this model as Apache-2.0. Download approval does not approve running it or establish installed performance.",
+		Licenses: []string{"Apache-2.0"}, DownloadBytes: size, PeakBytes: size + bf16DiskHeadroom,
+		Assets: []ModelAsset{{ID: "coding", Role: "coding", Path: file, License: "Apache-2.0", LicenseURL: bf16LicenseURL,
+			Download: PinnedDownload{URL: "https://huggingface.co/" + repo + "/resolve/" + revision + "/" + file,
+				SHA256: "55983c5a75a1ab969824077b3bb3de4146e82a9234072b48ad4e8f92ad3fe9f1", Bytes: size, Label: "Recommended coding model"}}}}
+	encoded, _ := json.Marshal(p)
+	sum := sha256.Sum256(encoded)
+	p.ID = hex.EncodeToString(sum[:])
+	// Set after the identity, as the picture plans' titles are.
+	p.Title = "Qwen3.6 35B"
+	return p
 }

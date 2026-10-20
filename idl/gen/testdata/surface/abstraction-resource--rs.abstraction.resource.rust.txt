@@ -4,7 +4,7 @@ pub enum Evidence
   Claimed
   pub const ALL: [Self; 2]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum ResourceCallOutcome
   Ok
   Forbidden
@@ -13,7 +13,7 @@ pub enum ResourceCallOutcome
   Unknown
   pub const ALL: [Self; 5]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum AcquireOutcome
   Acquired
   Insufficient
@@ -24,7 +24,7 @@ pub enum AcquireOutcome
   Forbidden
   pub const ALL: [Self; 7]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum AcquireFreeOutcome
   Acquired
   Insufficient
@@ -35,13 +35,13 @@ pub enum AcquireFreeOutcome
   Held
   pub const ALL: [Self; 7]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum YieldAnswer
   Yielded
   Refused
   pub const ALL: [Self; 2]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum ProcessBindOutcome
   Bound
   Unverifiable
@@ -51,7 +51,7 @@ pub enum ProcessBindOutcome
   Unavailable
   pub const ALL: [Self; 6]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub mod service_error_code
   pub const HANDLER_ERROR: &str
   pub const INVALID_RESULT: &str
@@ -69,84 +69,87 @@ pub mod service_error_code
 pub const KNOWN_RESOURCES: [&str; 3]
 pub const RESOURCE_ERROR_CODES: [&str; 6]
 pub struct Holder
-  program: String
-  account: String
+  program: ::std::string::String
+  account: ::std::string::String
   amount: i64
   evidence: Evidence
-  lease: String
-  grant: String
-  since: String
-  detail: String
+  lease: ::std::string::String
+  grant: ::std::string::String
+  since: ::std::string::String
+  detail: ::std::string::String
 pub struct ResourceState
-  resource: String
+  resource: ::std::string::String
   capacity: i64
   held: i64
-  holders: Vec<Holder>
-  observed: String
-  instrument: String
+  holders: ::std::vec::Vec<Holder>
+  observed: ::std::string::String
+  instrument: ::std::string::String
 pub struct HoldersResult
   outcome: ResourceCallOutcome
-  state: Option<ResourceState>
+  state: ::std::option::Option<ResourceState>
 pub struct ResourceList
-  resources: Vec<String>
-  observed: String
+  resources: ::std::vec::Vec<::std::string::String>
+  observed: ::std::string::String
 pub struct ResourcesResult
   outcome: ResourceCallOutcome
-  list: Option<ResourceList>
+  list: ::std::option::Option<ResourceList>
 pub struct Lease
-  id: String
-  resource: String
+  id: ::std::string::String
+  resource: ::std::string::String
   amount: i64
-  since: String
-  renew_by: String
+  since: ::std::string::String
+  renew_by: ::std::string::String
 pub struct YieldRecord
-  holder: String
+  holder: ::std::string::String
   amount: i64
-  answer: String
+  answer: ::std::string::String
   took_ms: i64
 pub struct AcquireResult
   outcome: AcquireOutcome
-  lease: Option<Lease>
-  asked: Vec<YieldRecord>
+  lease: ::std::option::Option<Lease>
+  asked: ::std::vec::Vec<YieldRecord>
 pub struct AcquireFreeResult
   outcome: AcquireFreeOutcome
-  lease: Option<Lease>
-  asked: Vec<YieldRecord>
+  lease: ::std::option::Option<Lease>
+  asked: ::std::vec::Vec<YieldRecord>
 pub struct YieldRequest
-  id: String
-  resource: String
+  id: ::std::string::String
+  resource: ::std::string::String
   amount: i64
-  reason: String
-  at: String
-  lease: String
+  reason: ::std::string::String
+  at: ::std::string::String
+  lease: ::std::string::String
 pub struct YieldPage
-  requests: Vec<YieldRequest>
-  next: String
+  requests: ::std::vec::Vec<YieldRequest>
+  next: ::std::string::String
 pub struct ObserveResult
   outcome: ResourceCallOutcome
-  page: Option<YieldPage>
+  page: ::std::option::Option<YieldPage>
 pub struct AnswerResult
   recorded: bool
 pub struct AnswerCallResult
   outcome: ResourceCallOutcome
-  answer: Option<AnswerResult>
+  answer: ::std::option::Option<AnswerResult>
 pub struct LeaseChange
   applied: bool
-  lease: Option<Lease>
+  lease: ::std::option::Option<Lease>
 pub struct LeaseChangeResult
   outcome: ResourceCallOutcome
-  change: Option<LeaseChange>
+  change: ::std::option::Option<LeaseChange>
 pub struct ProcessBindResult
   outcome: ProcessBindOutcome
-pub fn encode(v: &ResourceState) -> Vec<u8>
+pub fn encode(v: &ResourceState) -> ::std::vec::Vec<u8>
 pub struct Refusal
   word: &'static str
   offset: usize
-pub fn decode(data: &[u8]) -> Result<ResourceState, Refusal>
+pub fn decode(data: &[u8]) -> ::std::result::Result<ResourceState, Refusal>
+pub trait JsonRecord: ::std::marker::Sized
+  fn to_json(&self) -> ::std::vec::Vec<u8>
+  fn from_json(data: &[u8]) -> ::std::result::Result<Self, Refusal>
 pub use abstraction_frame::FrameTransport
 pub struct ServiceError
-  code: String
-  message: String
+  code: ::std::string::String
+  message: ::std::string::String
 pub enum CallError<E>
   Transport(E)
   Refusal(Refusal)
@@ -154,23 +157,110 @@ pub enum CallError<E>
   Service(ServiceError)
 pub trait Table
   type Error
-  fn resources(&self) -> Result<ResourcesResult, Self::Error>
-  fn holders(&self, resource: String, fresh: bool) -> Result<HoldersResult, Self::Error>
+  fn resources(&self) -> ::std::result::Result<ResourcesResult, Self::Error>
+  fn holders(&self, resource: ::std::string::String, fresh: bool) -> ::std::result::Result<HoldersResult, Self::Error>
 pub struct TableClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait Leases
   type Error
-  fn acquire(&self, resource: String, amount: i64, wait_ms: i64) -> Result<AcquireResult, Self::Error>
-  fn acquire_free(&self, resource: String, amount: i64) -> Result<AcquireFreeResult, Self::Error>
-  fn renew(&self, lease: String) -> Result<LeaseChangeResult, Self::Error>
-  fn release(&self, lease: String) -> Result<LeaseChangeResult, Self::Error>
-  fn observe(&self, cursor: String, wait_ms: i64) -> Result<ObserveResult, Self::Error>
-  fn answer(&self, request: String, answer: YieldAnswer, reason: String) -> Result<AnswerCallResult, Self::Error>
-  fn bind_process(&self, lease: String, pid: i64) -> Result<ProcessBindResult, Self::Error>
+  fn acquire_for(&self, subject: OAImported0, resource: ::std::string::String, amount: i64, wait_ms: i64) -> ::std::result::Result<AcquireResult, Self::Error>
+  fn acquire(&self, resource: ::std::string::String, amount: i64, wait_ms: i64) -> ::std::result::Result<AcquireResult, Self::Error>
+  fn acquire_free(&self, resource: ::std::string::String, amount: i64) -> ::std::result::Result<AcquireFreeResult, Self::Error>
+  fn renew(&self, lease: ::std::string::String) -> ::std::result::Result<LeaseChangeResult, Self::Error>
+  fn release(&self, lease: ::std::string::String) -> ::std::result::Result<LeaseChangeResult, Self::Error>
+  fn observe(&self, cursor: ::std::string::String, wait_ms: i64) -> ::std::result::Result<ObserveResult, Self::Error>
+  fn answer(&self, request: ::std::string::String, answer: YieldAnswer, reason: ::std::string::String) -> ::std::result::Result<AnswerCallResult, Self::Error>
+  fn bind_process(&self, lease: ::std::string::String, pid: i64) -> ::std::result::Result<ProcessBindResult, Self::Error>
+  fn label(&self, lease: ::std::string::String, text: ::std::string::String) -> ::std::result::Result<LeaseChangeResult, Self::Error>
 pub struct LeasesClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
+pub fn encode_holder_document(v: &Holder) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_holder_document(data: &[u8]) -> ::std::result::Result<Holder, Refusal>
+pub fn encode_resource_state_document(v: &ResourceState) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_resource_state_document(data: &[u8]) -> ::std::result::Result<ResourceState, Refusal>
+pub fn encode_holders_result_document(v: &HoldersResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_holders_result_document(data: &[u8]) -> ::std::result::Result<HoldersResult, Refusal>
+pub fn encode_resource_list_document(v: &ResourceList) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_resource_list_document(data: &[u8]) -> ::std::result::Result<ResourceList, Refusal>
+pub fn encode_resources_result_document(v: &ResourcesResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_resources_result_document(data: &[u8]) -> ::std::result::Result<ResourcesResult, Refusal>
+pub fn encode_lease_document(v: &Lease) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_lease_document(data: &[u8]) -> ::std::result::Result<Lease, Refusal>
+pub fn encode_yield_record_document(v: &YieldRecord) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_yield_record_document(data: &[u8]) -> ::std::result::Result<YieldRecord, Refusal>
+pub fn encode_acquire_result_document(v: &AcquireResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_acquire_result_document(data: &[u8]) -> ::std::result::Result<AcquireResult, Refusal>
+pub fn encode_acquire_free_result_document(v: &AcquireFreeResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_acquire_free_result_document(data: &[u8]) -> ::std::result::Result<AcquireFreeResult, Refusal>
+pub fn encode_yield_request_document(v: &YieldRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_yield_request_document(data: &[u8]) -> ::std::result::Result<YieldRequest, Refusal>
+pub fn encode_yield_page_document(v: &YieldPage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_yield_page_document(data: &[u8]) -> ::std::result::Result<YieldPage, Refusal>
+pub fn encode_observe_result_document(v: &ObserveResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_observe_result_document(data: &[u8]) -> ::std::result::Result<ObserveResult, Refusal>
+pub fn encode_answer_result_document(v: &AnswerResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_answer_result_document(data: &[u8]) -> ::std::result::Result<AnswerResult, Refusal>
+pub fn encode_answer_call_result_document(v: &AnswerCallResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_answer_call_result_document(data: &[u8]) -> ::std::result::Result<AnswerCallResult, Refusal>
+pub fn encode_lease_change_document(v: &LeaseChange) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_lease_change_document(data: &[u8]) -> ::std::result::Result<LeaseChange, Refusal>
+pub fn encode_lease_change_result_document(v: &LeaseChangeResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_lease_change_result_document(data: &[u8]) -> ::std::result::Result<LeaseChangeResult, Refusal>
+pub fn encode_process_bind_result_document(v: &ProcessBindResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_process_bind_result_document(data: &[u8]) -> ::std::result::Result<ProcessBindResult, Refusal>
 pub mod internal
   pub fn micros_timestamp(text: &str) -> bool
   pub fn wide_timestamp(text: &str) -> bool
+  pub fn decode_holder_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Holder, usize), super::Refusal>
+  pub fn check_holder(v: &super::Holder, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_holder_at(v: &super::Holder, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_resource_state_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ResourceState, usize), super::Refusal>
+  pub fn check_resource_state(v: &super::ResourceState, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_resource_state_at(v: &super::ResourceState, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_holders_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::HoldersResult, usize), super::Refusal>
+  pub fn check_holders_result(v: &super::HoldersResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_holders_result_at(v: &super::HoldersResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_resource_list_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ResourceList, usize), super::Refusal>
+  pub fn check_resource_list(v: &super::ResourceList, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_resource_list_at(v: &super::ResourceList, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_resources_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ResourcesResult, usize), super::Refusal>
+  pub fn check_resources_result(v: &super::ResourcesResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_resources_result_at(v: &super::ResourcesResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_lease_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Lease, usize), super::Refusal>
+  pub fn check_lease(v: &super::Lease, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_lease_at(v: &super::Lease, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_yield_record_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::YieldRecord, usize), super::Refusal>
+  pub fn check_yield_record(v: &super::YieldRecord, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_yield_record_at(v: &super::YieldRecord, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_acquire_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AcquireResult, usize), super::Refusal>
+  pub fn check_acquire_result(v: &super::AcquireResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_acquire_result_at(v: &super::AcquireResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_acquire_free_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AcquireFreeResult, usize), super::Refusal>
+  pub fn check_acquire_free_result(v: &super::AcquireFreeResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_acquire_free_result_at(v: &super::AcquireFreeResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_yield_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::YieldRequest, usize), super::Refusal>
+  pub fn check_yield_request(v: &super::YieldRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_yield_request_at(v: &super::YieldRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_yield_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::YieldPage, usize), super::Refusal>
+  pub fn check_yield_page(v: &super::YieldPage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_yield_page_at(v: &super::YieldPage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_observe_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ObserveResult, usize), super::Refusal>
+  pub fn check_observe_result(v: &super::ObserveResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_observe_result_at(v: &super::ObserveResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_answer_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AnswerResult, usize), super::Refusal>
+  pub fn check_answer_result(v: &super::AnswerResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_answer_result_at(v: &super::AnswerResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_answer_call_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AnswerCallResult, usize), super::Refusal>
+  pub fn check_answer_call_result(v: &super::AnswerCallResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_answer_call_result_at(v: &super::AnswerCallResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_lease_change_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::LeaseChange, usize), super::Refusal>
+  pub fn check_lease_change(v: &super::LeaseChange, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_lease_change_at(v: &super::LeaseChange, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_lease_change_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::LeaseChangeResult, usize), super::Refusal>
+  pub fn check_lease_change_result(v: &super::LeaseChangeResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_lease_change_result_at(v: &super::LeaseChangeResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_process_bind_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ProcessBindResult, usize), super::Refusal>
+  pub fn check_process_bind_result(v: &super::ProcessBindResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_process_bind_result_at(v: &super::ProcessBindResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>

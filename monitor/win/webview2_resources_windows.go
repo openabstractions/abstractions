@@ -32,6 +32,8 @@ import (
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 // ResourceRequest is one request the page made under Resources.Origin.
@@ -59,6 +61,9 @@ type ResourceResponse struct {
 
 // Resources answers the window's requests under Origin in process.
 type Resources struct {
+	// SettingsInstance selects one ordinary settings window in this user/session.
+	// Empty leaves independently owned documents and native dialogs unchanged.
+	SettingsInstance string
 	// Origin is scheme://host. The window's start page must be under it.
 	Origin string
 	// Headers names the request headers Serve reads; others are not copied.
@@ -66,6 +71,16 @@ type Resources struct {
 	// Serve answers one request. It runs on its own goroutine and may block,
 	// a long poll included; ctx ends when the window closes.
 	Serve func(ctx context.Context, r ResourceRequest) ResourceResponse
+	// BodyLimit may shrink the ordinary request cap for a native-only route.
+	BodyLimit func(method, rawURL string) int
+	// BindVisible supplies a UI-thread checked window predicate to its owner.
+	BindVisible func(func(context.Context) bool)
+	// BindDirectoryPicker supplies this window's ordinary native folder picker.
+	// Its selections are UI input only and carry no filesystem authority.
+	BindDirectoryPicker func(context.Context, func(context.Context) (string, error))
+	// DocumentURL retains the native host's main document. Frame navigation
+	// remains owned by that document's same-origin content policy.
+	DocumentURL string
 }
 
 // maxResourceRequestBody bounds the request body copied out of WebView2.
@@ -156,7 +171,7 @@ type webResourceRequestedHandler struct{ vtbl *handlerVtbl }
 var iidWebResourceRequested = syscall.GUID{0xab00b74c, 0x15f1, 0x4646, [8]byte{0x80, 0xe8, 0xe7, 0x63, 0x41, 0xd2, 0x5d, 0x71}}
 
 var (
-	shlwapi           = syscall.NewLazyDLL("shlwapi.dll")
+	shlwapi           = windows.NewLazySystemDLL("shlwapi.dll")
 	shCreateMemStream = shlwapi.NewProc("SHCreateMemStream")
 )
 
@@ -200,7 +215,7 @@ func readStream(s *iStream, limit int) ([]byte, error) {
 }
 
 // copyRequest reads method, URI, the named headers and the body.
-func copyRequest(args *coreWebView2WebResourceRequestedEventArgs, names []string) (ResourceRequest, error) {
+func copyRequest(args *coreWebView2WebResourceRequestedEventArgs, names []string, limits ...func(string, string) int) (ResourceRequest, error) {
 	var req *coreWebView2WebResourceRequest
 	if hr := args.vtbl.GetRequest.call(uintptr(unsafe.Pointer(args)), uintptr(unsafe.Pointer(&req))); int32(hr) < 0 || req == nil {
 		return ResourceRequest{}, fmt.Errorf("get_Request: %#x", uint32(hr))
@@ -234,7 +249,13 @@ func copyRequest(args *coreWebView2WebResourceRequestedEventArgs, names []string
 	}
 	var content *iStream
 	if hr := req.vtbl.GetContent.call(uintptr(unsafe.Pointer(req)), uintptr(unsafe.Pointer(&content))); int32(hr) >= 0 && content != nil {
-		body, err := readStream(content, maxResourceRequestBody)
+		limit := maxResourceRequestBody
+		if len(limits) > 0 && limits[0] != nil {
+			if n := limits[0](out.Method, out.URL); n >= 0 && n < limit {
+				limit = n
+			}
+		}
+		body, err := readStream(content, limit)
 		release(unsafe.Pointer(content))
 		if err != nil {
 			return ResourceRequest{}, err
@@ -263,7 +284,7 @@ func (w *webView2Window) newWebResourceRequestedHandler() *webResourceRequestedH
 		if args == nil {
 			return 0
 		}
-		req, err := copyRequest(args, w.resources.Headers)
+		req, err := copyRequest(args, w.resources.Headers, w.resources.BodyLimit)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "WebView2 resource request:", err) //unchecked: stderr is the diagnostic
 			w.respond(args, nil, ResourceResponse{Status: http.StatusBadRequest})

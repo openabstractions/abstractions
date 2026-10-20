@@ -3,205 +3,204 @@ package main
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	fwire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 )
 
-// applicationSurfaceFake is the launcher's question panel: it records each
-// question and report and answers with the scripted options in order.
-type applicationSurfaceFake struct {
-	unlocked  bool
-	answers   []string
-	asked     []trayQuestionPresentation
-	reports   []presenterReport
-	onAsk     func(int)
-	notShowns int
-	// unanswered keeps each question open until Dismiss.
-	unanswered bool
-	dismissed  chan struct{}
-}
-
-func (s *applicationSurfaceFake) Unlocked() bool { return s.unlocked }
-
-func (s *applicationSurfaceFake) Ask(prompt trayQuestionPresentation) (string, error) {
-	s.asked = append(s.asked, prompt)
-	if s.onAsk != nil {
-		s.onAsk(len(s.asked))
-	}
-	if s.notShowns > 0 {
-		s.notShowns--
-		return "", errPromptNotShown
-	}
-	if s.unanswered {
-		<-s.dismissed
-		return "", nil
-	}
-	answer := s.answers[0]
-	s.answers = s.answers[1:]
-	return answer, nil
-}
-
-func (s *applicationSurfaceFake) Dismiss() {
-	if s.dismissed != nil {
-		select {
-		case s.dismissed <- struct{}{}:
-		default:
-		}
-	}
-}
-
-func (s *applicationSurfaceFake) showReport(report presenterReport) bool {
-	s.reports = append(s.reports, report)
-	return true
-}
-
-func nativeApplicationPanel(t *testing.T, apps *applicationDirectoryFake, title string) *servicePanel {
+// intakePanel is a Panel run an installer started with manifest: its
+// directory, its own request records and Activity record, and the parsed
+// request.
+func intakePanel(t *testing.T, apps setupApplications, manifest string) (*servicePanel, applicationStart) {
 	t.Helper()
-	p, _ := applicationPanel(t, apps, manifestText(applicationTestProgram(t), title))
-	return p
-}
-
-func TestNativeRegistrationAsksOnceAndRegistersOnTheConfirmation(t *testing.T) {
-	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{}}
-	p := nativeApplicationPanel(t, apps, "Example")
-	surface := &applicationSurfaceFake{unlocked: true, answers: []string{"register"}, notShowns: 1}
-	if err := p.askApplicationRequest(context.Background(), surface); err != nil {
+	request, _, err := parseApplicationStart(writeApplicationManifest(t, manifest), "", "overview")
+	if err != nil {
 		t.Fatal(err)
 	}
-	// A question the locked session did not show is asked again; nothing
-	// was written before the confirmation.
-	if len(surface.asked) != 2 || apps.registers != 1 || apps.entries["example"].Title != "Example" {
-		t.Fatalf("asked %d registers %d entries %+v", len(surface.asked), apps.registers, apps.entries)
-	}
-	q := surface.asked[1]
-	if q.Title != "Register an application" || q.Instruction != "Register Example?" || q.Level != promptLevelBlue ||
-		q.Default != "" || len(q.Choices) != 1 || q.Choices[0].Option != "register" || q.Permission != nil || q.AppChoice {
-		t.Fatalf("question %+v", q)
-	}
-	if !strings.Contains(q.Content, "grants it no permissions") || !strings.Contains(q.Content, "Program: "+applicationTestProgram(t)) ||
-		!strings.Contains(q.Details, "Start arguments: --serve <b>") || !strings.Contains(q.Details, "example/ready@1") {
-		t.Fatalf("review text:\n%s\n--\n%s", q.Content, q.Details)
-	}
-	if len(surface.reports) != 0 {
-		t.Fatalf("a confirmed registration wrote a second dialog: %+v", surface.reports)
-	}
+	p := &servicePanel{comfyApps: apps, appReadRules: &applicationReadFake{},
+		appRequests: applicationRequestsFor(t, nil), appActivity: applicationActivityLog{path: filepath.Join(t.TempDir(), "activity.json")}}
+	return p, request
 }
 
-func TestNativeRegistrationCancelRegistersNothing(t *testing.T) {
+// A fresh install's request registers the app with no question: the run has
+// no question surface at all, the entry is connected, and nothing waits in
+// Apps or Activity.
+func TestAnInstallersRequestConnectsTheAppWithoutAQuestion(t *testing.T) {
 	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{}}
-	p := nativeApplicationPanel(t, apps, "Example")
-	surface := &applicationSurfaceFake{unlocked: true, answers: []string{""}}
-	err := p.askApplicationRequest(context.Background(), surface)
-	if !errors.Is(err, errApplicationNotChanged) || !strings.Contains(err.Error(), "Nothing was registered.") {
-		t.Fatalf("cancel: %v", err)
-	}
-	if apps.registers != 0 || len(apps.entries) != 0 || len(surface.reports) != 0 {
-		t.Fatalf("a cancel registered or reported: %d %+v", apps.registers, surface.reports)
-	}
-	// The cancel settled the request: a later confirmation finds none.
-	if _, err := p.confirmApplicationRegister(context.Background(), ""); err == nil {
-		t.Fatal("a cancelled request stayed confirmable")
-	}
-}
-
-func TestNativeRegistrationRefusesAReservedTitleWithoutAQuestion(t *testing.T) {
-	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{}}
-	p := nativeApplicationPanel(t, apps, "OpenAbstractions")
-	surface := &applicationSurfaceFake{unlocked: true}
-	err := p.askApplicationRequest(context.Background(), surface)
-	if !errors.Is(err, errApplicationNotChanged) || len(surface.asked) != 0 || apps.registers != 0 {
-		t.Fatalf("reserved title: %v asked %d", err, len(surface.asked))
-	}
-	if len(surface.reports) != 1 || surface.reports[0].Instruction != reservedTitleRefusal {
-		t.Fatalf("reports %+v", surface.reports)
-	}
-}
-
-// An entry that appears between the question and the click is reviewed
-// again: the replacement needs its own confirmation of both entries.
-func TestNativeRegistrationReviewsAnEntryThatChangedUnderThePerson(t *testing.T) {
-	program := applicationTestProgram(t)
-	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{}}
-	p := nativeApplicationPanel(t, apps, "Example 2")
-	surface := &applicationSurfaceFake{unlocked: true, answers: []string{"register", "register"}}
-	surface.onAsk = func(n int) {
-		if n == 1 {
-			apps.entries["example"] = fwire.ApplicationDescriptor{Name: "example", Program: program, Title: "Example 1"}
-		}
-	}
-	if err := p.askApplicationRequest(context.Background(), surface); err != nil {
+	p, request := intakePanel(t, apps, manifestText(applicationTestProgram(t), "OpenCode with OA"))
+	if err := p.applyApplicationRequest(context.Background(), request); err != nil {
 		t.Fatal(err)
 	}
-	if len(surface.asked) != 2 || apps.entries["example"].Title != "Example 2" || apps.removes != 1 {
-		t.Fatalf("asked %d entries %+v removes %d", len(surface.asked), apps.entries, apps.removes)
+	if apps.registers != 1 || apps.entries["example"].Title != "OpenCode with OA" {
+		t.Fatalf("not connected: %+v", apps.entries)
 	}
-	second := surface.asked[1]
-	if !strings.Contains(second.Content, "Registering replaces it.") || !strings.Contains(second.Details, "Registered now") ||
-		!strings.Contains(second.Details, "Example 1") || !strings.Contains(second.Details, "Replacement") {
-		t.Fatalf("the second review does not show both entries:\n%s\n--\n%s", second.Content, second.Details)
+	if reads := p.appReadRules.(*applicationReadFake); len(reads.allowed) != 1 || reads.allowed[0] != "example" {
+		t.Fatalf("the Panel may not list it: %+v", reads.allowed)
+	}
+	if len(p.appRequests.recorded()) != 0 || len(p.appActivity.lines()) != 0 {
+		t.Fatal("a connected app waits or reports")
 	}
 }
 
-func TestNativeRemovalAsksAndRemoves(t *testing.T) {
-	program := applicationTestProgram(t)
-	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{"example": {Name: "example", Program: program, Title: "Example"}}}
-	p := &servicePanel{comfyApps: apps, appReadRules: &applicationReadFake{}}
-	p.appRequest.remove = "example"
-	surface := &applicationSurfaceFake{unlocked: true, answers: []string{"remove"}}
-	if err := p.askApplicationRequest(context.Background(), surface); err != nil {
+// The same program asking again with a changed manifest is updated in place
+// by the service; nothing waits in Apps.
+func TestTheSameProgramAskingAgainUpdatesSilently(t *testing.T) {
+	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{}}
+	p, request := intakePanel(t, apps, manifestText(applicationTestProgram(t), "Example"))
+	if err := p.applyApplicationRequest(context.Background(), request); err != nil {
 		t.Fatal(err)
 	}
-	q := surface.asked[0]
-	if q.Instruction != "Remove Example?" || q.Choices[0].Option != "remove" || !strings.Contains(q.Content, "Program: "+program) || len(apps.entries) != 0 {
-		t.Fatalf("removal %+v entries %+v", q, apps.entries)
+	_, again := intakePanel(t, apps, manifestText(applicationTestProgram(t), "Example 2"))
+	if err := p.applyApplicationRequest(context.Background(), again); err != nil {
+		t.Fatal(err)
+	}
+	if apps.entries["example"].Title != "Example 2" || apps.removes != 0 || len(p.appRequests.recorded()) != 0 {
+		t.Fatalf("same program: %+v removes=%d", apps.entries, apps.removes)
 	}
 }
 
-// The run is bounded (applicationRequestWait): a session that stays locked,
-// or a question nobody answers, ends it with nothing changed.
-func TestNativeRequestEndsUnchangedAfterTheWait(t *testing.T) {
-	saved := applicationRequestWait
-	applicationRequestWait = 300 * time.Millisecond
-	defer func() { applicationRequestWait = saved }()
-
-	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{}}
-	p := nativeApplicationPanel(t, apps, "Example")
-	locked := &applicationSurfaceFake{}
-	err := p.askApplicationRequest(context.Background(), locked)
-	if !errors.Is(err, errApplicationNotChanged) || !strings.Contains(err.Error(), "Nothing was registered.") || len(locked.asked) != 0 {
-		t.Fatalf("locked past the wait: %v asked %d", err, len(locked.asked))
+// Another program under a connected name meets conflict: the connected
+// entry is untouched, and the newcomer waits in Apps as Not connected with
+// the title it would replace. Connect replaces only on the click, through
+// the existing replace, and only the entry the row named.
+func TestAnotherProgramUnderAConnectedNameWaitsAndConnectReplacesOnTheClick(t *testing.T) {
+	connected := fwire.ApplicationDescriptor{Name: "example", Program: filepath.Join(t.TempDir(), "first.exe"), Title: "First"}
+	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{"example": connected}}
+	p, request := intakePanel(t, apps, manifestText(applicationTestProgram(t), "Newcomer"))
+	if err := p.applyApplicationRequest(context.Background(), request); !errors.Is(err, errApplicationNotChanged) {
+		t.Fatal("conflict reported as", err)
 	}
-	if _, err := p.confirmApplicationRegister(context.Background(), ""); err == nil || apps.registers != 0 {
-		t.Fatal("a request that timed out stayed confirmable")
+	if apps.entries["example"] != connected || apps.removes != 0 {
+		t.Fatal("the conflict changed the connected entry")
 	}
+	h := p.handler(applicationTestKey)
+	rows := pendingRows(t, h)
+	if len(rows) != 1 || rows[0].Title != "Newcomer" || rows[0].Replaces != "First" || rows[0].Shown != applicationDigest(&connected) {
+		t.Fatalf("Not connected row: %+v", rows)
+	}
+	// Listing and reading the row change nothing.
+	if apps.entries["example"] != connected || apps.removes != 0 {
+		t.Fatal("listing replaced the entry")
+	}
+	stale := connectRow(t, h, pendingApplication{Name: rows[0].Name, Digest: rows[0].Digest})
+	if stale.Code != 409 || apps.entries["example"] != connected {
+		t.Fatalf("a Connect that did not see the replaced entry replaced it: %d %s", stale.Code, stale.Body.String())
+	}
+	if rec := connectRow(t, h, rows[0]); rec.Code != 200 || !strings.Contains(rec.Body.String(), "Newcomer is connected") {
+		t.Fatalf("Connect: %d %s", rec.Code, rec.Body.String())
+	}
+	if apps.entries["example"].Title != "Newcomer" || len(pendingRows(t, h)) != 0 {
+		t.Fatalf("not replaced: %+v", apps.entries)
+	}
+}
 
+// The same path holding another image meets conflict "identity": the entry
+// stays as it is, and the refused request waits in Apps as Not connected
+// with the title it would replace, so Connect can replace the entry.
+func TestTheSamePathWithAnotherImageWaitsAsNotConnected(t *testing.T) {
 	program := applicationTestProgram(t)
-	apps = &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{"example": {Name: "example", Program: program, Title: "Example"}}}
-	p = &servicePanel{comfyApps: apps, appReadRules: &applicationReadFake{}}
-	p.appRequest.remove = "example"
-	open := &applicationSurfaceFake{unlocked: true, unanswered: true, dismissed: make(chan struct{})}
-	start := time.Now()
-	err = p.askApplicationRequest(context.Background(), open)
-	if !errors.Is(err, errApplicationNotChanged) || !strings.Contains(err.Error(), "Nothing was removed.") || len(open.asked) != 1 {
-		t.Fatalf("unanswered past the wait: %v asked %d", err, len(open.asked))
+	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{}}
+	p, request := intakePanel(t, apps, manifestText(program, "Example"))
+	if err := p.applyApplicationRequest(context.Background(), request); err != nil {
+		t.Fatal(err)
 	}
-	if elapsed := time.Since(start); elapsed > 5*time.Second || len(apps.entries) != 1 || apps.removes != 0 {
-		t.Fatalf("after %v the entry was changed: %+v", elapsed, apps.entries)
+	connected := apps.entries["example"]
+	apps.identity = map[string]bool{"example": true}
+	_, again := intakePanel(t, apps, manifestText(program, "Example 2"))
+	if err := p.applyApplicationRequest(context.Background(), again); !errors.Is(err, errApplicationNotChanged) {
+		t.Fatal("identity conflict reported as", err)
+	}
+	if apps.entries["example"] != connected {
+		t.Fatal("the conflict changed the entry")
+	}
+	rows := pendingRows(t, p.handler(applicationTestKey))
+	if len(rows) != 1 || rows[0].Title != "Example 2" || rows[0].Replaces != "Example" {
+		t.Fatalf("the refused same-path request does not wait in Apps: %+v", rows)
 	}
 }
 
-// A locked session asks nothing until it unlocks; a run that ends before
-// returns the context's error and writes nothing.
-func TestNativeRegistrationWaitsForTheUnlockedSession(t *testing.T) {
+// A title that reads as OpenAbstractions is refused with no question: it is
+// not registered, waits in no row, and Activity names the refusal.
+func TestAReservedTitleIsRefusedAndListedInActivity(t *testing.T) {
 	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{}}
-	p := nativeApplicationPanel(t, apps, "Example")
-	surface := &applicationSurfaceFake{}
-	ctx, cancel := context.WithTimeout(context.Background(), 600*time.Millisecond)
-	defer cancel()
-	if err := p.askApplicationRequest(ctx, surface); !errors.Is(err, context.DeadlineExceeded) || len(surface.asked) != 0 || apps.registers != 0 {
-		t.Fatalf("locked: %v asked %d", err, len(surface.asked))
+	p, request := intakePanel(t, apps, manifestText(applicationTestProgram(t), "Open Abstractions"))
+	if err := p.applyApplicationRequest(context.Background(), request); !errors.Is(err, errApplicationNotChanged) {
+		t.Fatal(err)
 	}
+	if apps.registers != 0 || len(p.appRequests.recorded()) != 0 {
+		t.Fatal("a reserved title was registered or waits")
+	}
+	lines := p.appActivity.lines()
+	if len(lines) != 1 || lines[0].Outcome != "Not connected: the title is a name OpenAbstractions uses for itself" || lines[0].At == 0 {
+		t.Fatalf("Activity: %+v", lines)
+	}
+	rec := applicationCall(t, p.handler(applicationTestKey), "GET", "/activity/app-requests", "")
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "Its installer asked to connect it") {
+		t.Fatalf("Activity route: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// With the runtime unreachable, the request waits in Apps as Not connected.
+func TestAnUnreachableRuntimeLeavesTheAppNotConnected(t *testing.T) {
+	apps := unreachableDirectory{&applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{}}}
+	p, request := intakePanel(t, apps, manifestText(applicationTestProgram(t), "Example"))
+	if err := p.applyApplicationRequest(context.Background(), request); !errors.Is(err, errApplicationNotChanged) {
+		t.Fatal(err)
+	}
+	if recorded := p.appRequests.recorded(); recorded["example"] != request.manifest {
+		t.Fatalf("not recorded: %+v", recorded)
+	}
+}
+
+// An uninstaller removes its own program's entry with no question and
+// Activity lists it; an entry another program holds stays, silently.
+func TestAnUninstallerRemovesOnlyItsOwnProgramsEntry(t *testing.T) {
+	program := applicationTestProgram(t)
+	manifest := writeApplicationManifest(t, manifestText(program, "Example"))
+	foreign := fwire.ApplicationDescriptor{Name: "example", Program: filepath.Join(t.TempDir(), "foreign.exe"), Title: "Foreign"}
+	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{"example": foreign}}
+	p := &servicePanel{comfyApps: apps, appReadRules: &applicationReadFake{},
+		appRequests: applicationRequestsFor(t, map[string]string{"example": manifest}), appActivity: applicationActivityLog{path: filepath.Join(t.TempDir(), "activity.json")}}
+	// The uninstaller's record named its manifest's program at intake.
+	removal := applicationStart{remove: "example", recorded: program}
+	if err := p.applyApplicationRequest(context.Background(), removal); !errors.Is(err, errApplicationNotChanged) {
+		t.Fatal(err)
+	}
+	if apps.removes != 0 || apps.entries["example"] != foreign || len(p.appActivity.lines()) != 0 {
+		t.Fatal("another program's entry was removed or reported")
+	}
+	apps.entries["example"] = fwire.ApplicationDescriptor{Name: "example", Program: program, Title: "Example"}
+	if err := p.applyApplicationRequest(context.Background(), removal); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := apps.entries["example"]; ok {
+		t.Fatal("its own entry was kept")
+	}
+	if reads := p.appReadRules.(*applicationReadFake); len(reads.cleared) != 1 {
+		t.Fatalf("read rule kept: %+v", reads.cleared)
+	}
+	if lines := p.appActivity.lines(); len(lines) != 1 || lines[0].App != "Example" || lines[0].Outcome != "Removed" {
+		t.Fatalf("Activity: %+v", lines)
+	}
+	// An entry already gone is no error.
+	if err := p.applyApplicationRequest(context.Background(), applicationStart{remove: "example"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// unreachableDirectory is the directory a client sees when the runtime it
+// pins is not the program serving the endpoint: every call fails with the
+// resolution error (owner's PC, 2026-11-01).
+type unreachableDirectory struct{ *applicationDirectoryFake }
+
+var errUnreachableRuntime = errors.New(`service resolution: runtime_unavailable: abstraction.facade/applications@2 (capability abstraction.facade) at the installed runtime at \\.\pipe\openabstractions-user-S-1-5-21-1-runtime-v1: listen: connected server is not trusted: server program mismatch`)
+
+func (unreachableDirectory) Observe(context.Context, string, int64) (fwire.ApplicationPage, error) {
+	return fwire.ApplicationPage{}, errUnreachableRuntime
+}
+
+func (unreachableDirectory) Register(context.Context, fwire.ApplicationDescriptor) (fwire.ApplicationChange, error) {
+	return fwire.ApplicationChange{}, errUnreachableRuntime
 }

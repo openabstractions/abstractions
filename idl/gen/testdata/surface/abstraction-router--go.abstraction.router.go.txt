@@ -1,4 +1,21 @@
 type Raw string
+type ReasoningEffort string
+const ReasoningEffortNone
+const ReasoningEffortLow
+const ReasoningEffortMedium
+const ReasoningEffortHigh
+func ReasoningEffortValues() []ReasoningEffort
+func (ReasoningEffort) IsKnown() bool
+func (ReasoningEffort) Known() bool
+type EngineCause string
+const EngineCauseBound
+const EngineCauseSourceOnly
+const EngineCauseIncompatible
+const EngineCauseUnknown
+const EngineCauseOther
+func EngineCauseValues() []EngineCause
+func (EngineCause) IsKnown() bool
+func (EngineCause) Known() bool
 type AvailabilityCause string
 const AvailabilityCauseTransportUnavailable
 const AvailabilityCauseCredential
@@ -8,6 +25,7 @@ const AvailabilityCauseMalformed
 const AvailabilityCauseUnknown
 const AvailabilityCauseOther
 func AvailabilityCauseValues() []AvailabilityCause
+func (AvailabilityCause) IsKnown() bool
 func (AvailabilityCause) Known() bool
 type Placement uint32
 const PlacementLocal
@@ -21,6 +39,7 @@ func (Placement) UnmarshalText(text []byte) error
 func (Placement) MarshalJSON() ([]byte, error)
 func (Placement) UnmarshalJSON(data []byte) error
 func PlacementValues() []Placement
+func (Placement) IsKnown() bool
 func (Placement) Known() bool
 type ContextSource string
 const ContextSourceEffective
@@ -29,6 +48,7 @@ const ContextSourceDefault
 const ContextSourceUnknown
 const ContextSourceNone
 func ContextSourceValues() []ContextSource
+func (ContextSource) IsKnown() bool
 func (ContextSource) Known() bool
 type OfferOutcome uint32
 const OfferOutcomeOffered
@@ -44,7 +64,25 @@ func (OfferOutcome) UnmarshalText(text []byte) error
 func (OfferOutcome) MarshalJSON() ([]byte, error)
 func (OfferOutcome) UnmarshalJSON(data []byte) error
 func OfferOutcomeValues() []OfferOutcome
+func (OfferOutcome) IsKnown() bool
 func (OfferOutcome) Known() bool
+type ModalityOutcome uint32
+const ModalityOutcomePage
+const ModalityOutcomeGap
+const ModalityOutcomeInvalid
+const ModalityOutcomeForbidden
+const ModalityOutcomeUnavailable
+const ModalityOutcomeNotPermitted
+func (ModalityOutcome) String() string
+func (ModalityOutcome) WireName() (string, bool)
+func ParseModalityOutcome(word string) (ModalityOutcome, bool)
+func (ModalityOutcome) MarshalText() ([]byte, error)
+func (ModalityOutcome) UnmarshalText(text []byte) error
+func (ModalityOutcome) MarshalJSON() ([]byte, error)
+func (ModalityOutcome) UnmarshalJSON(data []byte) error
+func ModalityOutcomeValues() []ModalityOutcome
+func (ModalityOutcome) IsKnown() bool
+func (ModalityOutcome) Known() bool
 type ServiceErrorCode string
 const ServiceErrorCodeHandlerError
 const ServiceErrorCodeInvalidResult
@@ -59,7 +97,91 @@ const ServiceErrorCodeUnknownOperation
 const ServiceErrorCodeUnavailable
 const ServiceErrorCodeForbidden
 func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) IsKnown() bool
 func (ServiceErrorCode) Known() bool
+type EndpointServiceReadiness uint32
+const EndpointServiceReadinessReady
+const EndpointServiceReadinessNotReady
+const EndpointServiceReadinessUnknown
+func (EndpointServiceReadiness) String() string
+func (EndpointServiceReadiness) WireName() (string, bool)
+func ParseEndpointServiceReadiness(word string) (EndpointServiceReadiness, bool)
+func (EndpointServiceReadiness) MarshalText() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalText(text []byte) error
+func (EndpointServiceReadiness) MarshalJSON() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalJSON(data []byte) error
+func EndpointServiceReadinessValues() []EndpointServiceReadiness
+func (EndpointServiceReadiness) IsKnown() bool
+func (EndpointServiceReadiness) Known() bool
+type EndpointRefusalSource string
+const EndpointRefusalSourceRights
+const EndpointRefusalSourceCredentials
+const EndpointRefusalSourceLicense
+const EndpointRefusalSourceTerms
+const EndpointRefusalSourceIdentity
+const EndpointRefusalSourceOS
+func EndpointRefusalSourceValues() []EndpointRefusalSource
+func (EndpointRefusalSource) IsKnown() bool
+func (EndpointRefusalSource) Known() bool
+type EndpointRefusalDecision uint32
+const EndpointRefusalDecisionDenied
+const EndpointRefusalDecisionNotGranted
+const EndpointRefusalDecisionPersonOnly
+func (EndpointRefusalDecision) String() string
+func (EndpointRefusalDecision) WireName() (string, bool)
+func ParseEndpointRefusalDecision(word string) (EndpointRefusalDecision, bool)
+func (EndpointRefusalDecision) MarshalText() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalText(text []byte) error
+func (EndpointRefusalDecision) MarshalJSON() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalJSON(data []byte) error
+func EndpointRefusalDecisionValues() []EndpointRefusalDecision
+func (EndpointRefusalDecision) IsKnown() bool
+func (EndpointRefusalDecision) Known() bool
+type EndpointRefusalAsk uint32
+const EndpointRefusalAskAvailable
+const EndpointRefusalAskNone
+func (EndpointRefusalAsk) String() string
+func (EndpointRefusalAsk) WireName() (string, bool)
+func ParseEndpointRefusalAsk(word string) (EndpointRefusalAsk, bool)
+func (EndpointRefusalAsk) MarshalText() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalText(text []byte) error
+func (EndpointRefusalAsk) MarshalJSON() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalJSON(data []byte) error
+func EndpointRefusalAskValues() []EndpointRefusalAsk
+func (EndpointRefusalAsk) IsKnown() bool
+func (EndpointRefusalAsk) Known() bool
+type EndpointProducerCheckState uint32
+const EndpointProducerCheckStateCurrent
+const EndpointProducerCheckStateRepaired
+const EndpointProducerCheckStateStale
+const EndpointProducerCheckStateRefused
+const EndpointProducerCheckStateUnverified
+func (EndpointProducerCheckState) String() string
+func (EndpointProducerCheckState) WireName() (string, bool)
+func ParseEndpointProducerCheckState(word string) (EndpointProducerCheckState, bool)
+func (EndpointProducerCheckState) MarshalText() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalText(text []byte) error
+func (EndpointProducerCheckState) MarshalJSON() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalJSON(data []byte) error
+func EndpointProducerCheckStateValues() []EndpointProducerCheckState
+func (EndpointProducerCheckState) IsKnown() bool
+func (EndpointProducerCheckState) Known() bool
+type EndpointDescriptionOutcome uint32
+const EndpointDescriptionOutcomeDescribed
+const EndpointDescriptionOutcomeForbidden
+const EndpointDescriptionOutcomeUnavailable
+const EndpointDescriptionOutcomeInvalid
+const EndpointDescriptionOutcomeUnsupported
+func (EndpointDescriptionOutcome) String() string
+func (EndpointDescriptionOutcome) WireName() (string, bool)
+func ParseEndpointDescriptionOutcome(word string) (EndpointDescriptionOutcome, bool)
+func (EndpointDescriptionOutcome) MarshalText() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalText(text []byte) error
+func (EndpointDescriptionOutcome) MarshalJSON() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalJSON(data []byte) error
+func EndpointDescriptionOutcomeValues() []EndpointDescriptionOutcome
+func (EndpointDescriptionOutcome) IsKnown() bool
+func (EndpointDescriptionOutcome) Known() bool
 var Profiles
 var Verdicts
 var WireKinds
@@ -79,6 +201,17 @@ type Observation struct
   Caller Caller
   TookMs int64
   CacheAgeMs int64
+type ReasoningSupport struct
+  Efforts []ReasoningEffort
+  Budget bool
+  DefaultEffort *ReasoningEffort
+type ModelCapabilities struct
+  Input []string
+  Output []string
+  Tools *bool
+  StructuredOutput *bool
+  Reasoning *ReasoningSupport
+  Extensions []string
 type Alias struct
   Host string
   Name string
@@ -89,16 +222,43 @@ type Alias struct
   HeldIn []string
   ContextLength int64
   EffectiveContextLength int64
+  Capabilities *ModelCapabilities
 type Component struct
   Store string
   Role string
   Name string
+type Engine struct
+  ID string
+  Name string
+  Version string
+  Source string
+type ModelEngine struct
+  Host string
+  Model string
+  Engine string
+  Profiles []string
+  Source string
+  Role string
+type ModelObject struct
+  Domain string
+  Store string
+  Name string
+  Object string
+  Digest string
+  Format string
+  Architecture string
+  Role string
+  Engines []ModelEngine
+  Cause EngineCause
+  Why string
 type Family struct
   Family string
   Names []Alias
   HeldIn []string
   FamilySource string
   Components []Component
+  Title string
+  Objects []ModelObject
 type ModelsSnapshot struct
   Observation Observation
   Models []Family
@@ -117,6 +277,7 @@ type HostState struct
   Profiles []string
   Domain string
   AvailabilityCause *AvailabilityCause
+  Engines []Engine
 type Ask struct
   At string
   Caller string
@@ -158,16 +319,62 @@ type Offer struct
   ContextSource ContextSource
   Input int64
   Unknown []string
+  Title string
 type OfferSnapshot struct
   Observation Observation
   Offers []Offer
   Outcome OfferOutcome
+type OfferObservation struct
+  Observation Observation
+  Offers []Offer
+  Outcome OfferOutcome
+  Cursor string
+type ModalityPage struct
+  Outcome ModalityOutcome
+  Modalities []string
+  Next string
+  Complete bool
+type EndpointRefusalDetail struct
+  Source EndpointRefusalSource
+  Decision EndpointRefusalDecision
+  Ask EndpointRefusalAsk
+  Action string
+  Question string
+  Credential string
+  RetryAfterMs int64
+type EndpointProducerCheck struct
+  Kind string
+  Copy string
+  State EndpointProducerCheckState
+  Reason string
+  Checked string
+type EndpointServiceState struct
+  Service string
+  Readiness EndpointServiceReadiness
+  Reason string
+  Guarantees []string
+  Capabilities map[string]string
+  DefinitionHash string
+type EndpointDescription struct
+  Outcome EndpointDescriptionOutcome
+  Program string
+  Version string
+  Services []EndpointServiceState
+  Refusal *EndpointRefusalDetail
+  Reason string
+  Checks []EndpointProducerCheck
+type EndpointDescriptionResult struct
+  Value EndpointDescription
 func Encode(v *PickRequest) []byte
 type Refusal struct
   Word string
   Offset int
 func (Refusal) Error() string
+const TimestampLayout
+func FormatTimestamp(at time.Time) string
 func Decode(in []byte) (*PickRequest, error)
+func ToJSON(v any) (out []byte, err error)
+func FromJSON(data []byte, v any) error
 type FrameWriter interface
   WriteFrame(frame []byte) error
 type DispatchError string
@@ -179,30 +386,41 @@ type ServiceError struct
   Message string
 func (ServiceError) Error() string
 const EndpointContract
+const EndpointV2Contract
 type DescribedService interface
   DescribeService() (contract string, ready bool, why string)
 func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+func DescribeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...DescribedService) ([]byte, error)
 type ServedService interface
   DescribedService
   ServiceContract() string
 func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+func ServeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...ServedService) ([]byte, error)
+func ServeEndpointRemote(frame []byte, program, version string, admit func(contract, method, profile string) error, services ...ServedService) ([]byte, error)
+func RemoteMethodProfile(service interface{}, contract, method string) string
 type Router interface
+  Modalities(cursor string, limit int64) (ModalityPage, error)
   Models(fresh bool) (ModelsSnapshot, error)
   Hosts(fresh bool) (HostsSnapshot, error)
   Pick(request PickRequest) (PickResult, error)
   Offer(request OfferRequest) (OfferSnapshot, error)
+  ObserveOffer(request OfferRequest, cursor string, waitMs int64) (OfferObservation, error)
 type RouterTransport interface
   FrameExchanger
 type RouterClient struct
 func NewRouterClient(t RouterTransport) *RouterClient
 type RouterDispatcher struct
   Handler Router
+func (RouterDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
+func (RouterClient) Modalities(cursor string, limit int64) (result ModalityPage, err error)
 func (RouterClient) Models(fresh bool) (result ModelsSnapshot, err error)
 func (RouterClient) Hosts(fresh bool) (result HostsSnapshot, err error)
 func (RouterClient) Pick(request PickRequest) (result PickResult, err error)
 func (RouterClient) Offer(request OfferRequest) (result OfferSnapshot, err error)
+func (RouterClient) ObserveOffer(request OfferRequest, cursor string, waitMs int64) (result OfferObservation, err error)
 func (RouterDispatcher) DescribeService() (contract string, ready bool, why string)
 func (RouterDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (RouterDispatcher) ServiceContract() string
+func (RouterDispatcher) DescribeServiceDefinitionHash() string
 func (RouterDispatcher) WriteFrame(frame []byte) error
 func (RouterDispatcher) ExchangeFrame(frame []byte) ([]byte, error)

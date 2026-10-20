@@ -125,52 +125,13 @@ inline void strs(std::string& out, const std::vector<std::string>& v, int depth)
 
 inline bool ws(unsigned char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; }
 
-inline void raw(std::string& out, const std::string& s, int depth) {
-    const std::size_t n = s.size();
-    for (std::size_t i = 0; i < n;) {
-        const unsigned char c = static_cast<unsigned char>(s[i]);
-        if (ws(c)) {
-            ++i;
-        } else if (c == '"') {
-            std::size_t j = i + 1;
-            while (j < n) {
-                if (s[j] == '\\') { j += 2; continue; }
-                if (s[j] == '"') { ++j; break; }
-                ++j;
-            }
-            out.append(s, i, j - i);
-            i = j;
-        } else if (c == '{' || c == '[') {
-            out += static_cast<char>(c);
-            ++i;
-            std::size_t j = i;
-            while (j < n && ws(static_cast<unsigned char>(s[j]))) ++j;
-            if (j < n && (s[j] == '}' || s[j] == ']')) {
-                out += s[j];
-                i = j + 1;
-            } else {
-                ++depth;
-                out += '\n';
-                pad(out, depth);
-            }
-        } else if (c == '}' || c == ']') {
-            --depth;
-            out += '\n';
-            pad(out, depth);
-            out += static_cast<char>(c);
-            ++i;
-        } else if (c == ',') {
-            out += ",\n";
-            pad(out, depth);
-            ++i;
-        } else if (c == ':') {
-            out += ": ";
-            ++i;
-        } else {
-            out += static_cast<char>(c);
-            ++i;
-        }
-    }
+// raw writes an opaque value's bytes as they are ([DEF-A3]).
+inline void raw(std::string& out, const std::string& s, int /*depth*/) {
+    // Whitespace around the value is not part of it.
+    std::size_t i = 0, j = s.size();
+    while (i < j && ws(static_cast<unsigned char>(s[i]))) ++i;
+    while (j > i && ws(static_cast<unsigned char>(s[j - 1]))) --j;
+    out.append(s, i, j - i);
 }
 
 // std::char_traits<char>::compare is specified to order by unsigned char, so a
@@ -302,6 +263,9 @@ struct Reader {
     std::string_view buf;
     std::size_t pos = 0;
     int depth = 0;
+    int limit = 0;
+    int ceiling = 0;
+    int depth_limit() const {int own=ceiling>0?ceiling:kDepthLimit;return limit>0&&limit<own?limit:own;}
 
     [[noreturn]] void refuse(const char* word) const { throw Refusal(word, pos); }
 
@@ -316,7 +280,7 @@ struct Reader {
     }
 
     void enter() {
-        if (++depth > kDepthLimit) refuse("depth_exceeded");
+        if (++depth > depth_limit()) refuse("depth_exceeded");
     }
 
     std::string str() {
@@ -659,6 +623,7 @@ inline std::string read_timestamp(Reader& r) {
 `
 
 func cppDecoder(b *strings.Builder, s *Definition) {
+	emitMaxEncodedReader(b, s, "cpp")
 	if len(s.Services) > 0 && s.Vocab != nil {
 		fmt.Fprintf(b, "inline void derive(const Reader&, %s&);\n", s.Document)
 	}
@@ -674,8 +639,16 @@ func cppDecoder(b *strings.Builder, s *Definition) {
 
 func cppStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 	fmt.Fprintf(b, "\ninline %s decode_%s(Reader& r) {\n", st.Name, cppFn(st.Name))
-	b.WriteString("    if (r.at() != '{') r.refuse(\"wrong_type\");\n    r.enter();\n    ++r.pos;\n")
+	if st.CodecDepthLimit > 0 {
+		fmt.Fprintf(b, "const int previous_ceiling=r.ceiling;struct LimitRestore{Reader&r;int previous;~LimitRestore(){r.ceiling=previous;}} restore{r,previous_ceiling};r.ceiling=%d;\n", st.CodecDepthLimit)
+	}
+	b.WriteString("    if (r.at() != '{') r.refuse(\"wrong_type\");\n")
+	emitMaxEncodedDecode(b, st, "cpp")
+	b.WriteString("    r.enter();\n    ++r.pos;\n")
 	fmt.Fprintf(b, "    %s v;\n", st.Name)
+	if tracksSkippedKeys(s, st) {
+		b.WriteString("    std::map<std::string, bool> unknown_keys;\n")
+	}
 	for _, f := range st.Fields {
 		if cppClosedEnum(f) {
 			fmt.Fprintf(b, "    std::optional<std::string> %s;\n", cppWireLocal(f))
@@ -718,6 +691,9 @@ func cppStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 		}
 		b.WriteString("                v.extras[key] = r.raw_value();\n")
 	} else {
+		if tracksSkippedKeys(s, st) {
+			b.WriteString("                if (!unknown_keys.emplace(key, true).second) r.refuse(\"duplicate_key\");\n")
+		}
 		b.WriteString("                r.skip_value();\n")
 	}
 	b.WriteString("            }\n            r.skip_ws();\n            if (r.at() != ',') break;\n            ++r.pos;\n        }\n    }\n")
@@ -740,6 +716,7 @@ func cppStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 	if len(s.Services) > 0 && st.Name == s.Document && s.Vocab != nil {
 		b.WriteString("    derive(r, v);\n")
 	}
+	configValueDecodeCheck(b, s, st, "cpp")
 	b.WriteString("    return v;\n}\n")
 }
 
@@ -880,13 +857,17 @@ inline bool member(const Raw& raw, const std::string& name) {
 `
 
 func genCpp(s *Definition) string {
+	copy := *s
+	copy.EndpointHashes = endpointDefinitionHashes(s)
+	s = &copy
 	s = enumCarriers(s)
 	if s.NoIPC {
 		return genInterfaceOnly(s, "cpp")
 	}
-	s = serviceTypes(s)
+	s = serviceTypes(s, !s.SuppressIntrinsicEndpoint)
 	var b strings.Builder
 	b.WriteString(cppHeader)
+	b.WriteString(enumImportPrelude(s, "cpp"))
 	cppVocabulary(&b, s)
 	carriers := rsCarriers(s)
 	for _, st := range cppStructOrder(s, carriers, false) {
@@ -914,11 +895,12 @@ func genCpp(s *Definition) string {
 	if s.HasRepeated() {
 		prelude += cppEncList
 	}
-	b.WriteString(strings.NewReplacer("@INDENT@", strconv.Itoa(s.Encoding.Indent)).Replace(prelude))
+	b.WriteString(strings.NewReplacer("@INDENT@", strconv.Itoa(s.Encoding.Indent)).Replace(opaqueLayout(s, "cpp", prelude)))
 	if hasBinary(s) {
 		b.WriteString("\ninline std::string encode_binary(const std::vector<std::uint8_t>&);\ninline std::vector<std::uint8_t> decode_binary(const std::string&);\n")
 	}
-	b.WriteString(importPrelude(s, "cpp"))
+	b.WriteString(recordImportPrelude(s, "cpp"))
+	emitMaxEncodedWriter(&b, s, "cpp")
 	for _, st := range cppStructOrder(s, carriers, true) {
 		cppStruct(&b, s, st)
 	}
@@ -974,8 +956,10 @@ func genCpp(s *Definition) string {
 			s.Document, cppFn(s.Document), tail)
 	}
 	cppDocumentDecoder(&b, s)
+	cppJSONAPI(&b, s)
 	cppProtocol(&b, s)
 	cppService(&b, s)
+	configCatalogueCpp(&b, s)
 	b.WriteString("\n}  // namespace rec\n")
 	return b.String()
 }
@@ -1026,6 +1010,18 @@ func cppVocabulary(b *strings.Builder, s *Definition) {
 		}
 	}
 	for _, c := range s.Consts {
+		if c.StringScalar() {
+			fmt.Fprintf(b, "\ninline constexpr std::string_view %s{%s, %d};\n", cppConstant(c.Name), constantString(c.Strings[0], "cpp"), len(c.Strings[0]))
+			continue
+		}
+		if c.Scalar() {
+			value := strconv.FormatInt(c.Ints[0], 10)
+			if c.Type == "i64" {
+				value = cppInt64(value)
+			}
+			fmt.Fprintf(b, "\ninline constexpr std::int%s_t %s = %s;\n", c.Type[1:], cppConstant(c.Name), value)
+			continue
+		}
 		if c.Type == "list<i32>" {
 			fmt.Fprintf(b, "\ninline const std::vector<std::int32_t> %s = {", cppConstant(c.Name))
 			for i, n := range c.Ints {
@@ -1054,12 +1050,16 @@ func cppEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 	} else {
 		fmt.Fprintf(b, "\ninline void enc_%s(std::string& out, const %s& v, int depth) {\n", cppFn(st.Name), st.Name)
 	}
+	if st.CodecDepthLimit > 0 && !flat {
+		fmt.Fprintf(b, "if(depth<0||depth>=%d)throw Refusal(\"depth_exceeded\",0);\n", st.CodecDepthLimit)
+	}
 	if len(st.Fields) == 0 {
 		b.WriteString("    (void)v;\n")
 		if !flat {
 			b.WriteString("    (void)depth;\n")
 		}
 	}
+	emitMaxEncodedStart(b, st, "cpp")
 	emitEqualities(b, st, "cpp", true)
 	for _, f := range st.Fields {
 		if cppClosedEnumList(f) {
@@ -1110,6 +1110,7 @@ func cppEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 		if f.Omit != "never" {
 			b.WriteString("    }\n")
 		}
+		emitMaxEncodedEnd(b, st, "cpp")
 	}
 	if st.PreservesUnknown() {
 		fmt.Fprintf(b, "    first = extra_fields(out, v.extras, {%s}, depth, first);\n", quotedFieldNames(st))
@@ -1122,10 +1123,16 @@ func cppEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 			b.WriteString("    if (!first) { out += '\\n'; pad(out, depth); }\n")
 		}
 	}
-	b.WriteString("    out += '}';\n}\n")
+	b.WriteString("    out += '}';\n")
+	emitMaxEncodedEnd(b, st, "cpp")
+	b.WriteString("}\n")
 }
 
 func cppType(s *Definition, f Field) string {
+	if scalarAbsent(f) {
+		f.Omit = "never"
+		return "std::optional<" + cppType(s, f) + ">"
+	}
 	if cppClosedEnumList(f) {
 		return "std::vector<" + cppEnumName(f.EnumType) + ">"
 	}
@@ -1173,6 +1180,9 @@ func cppType(s *Definition, f Field) string {
 }
 
 func cppInit(f Field) string {
+	if scalarAbsent(f) {
+		return ""
+	}
 	if cppClosedEnum(f) && f.Omit != "absent" {
 		return "{}"
 	}
@@ -1192,7 +1202,7 @@ func cppPresent(s *Definition, f Field, e string) string {
 		}
 		return e + " != " + cppEnumName(f.EnumType) + "{}"
 	}
-	if f.Omit == "absent" && (s.IsStruct(f.Type) || f.Type == "binary" || enumAbsent(f)) {
+	if f.Omit == "absent" && (s.IsStruct(f.Type) || f.Type == "binary" || enumAbsent(f) || scalarAbsent(f)) {
 		return e + ".has_value()"
 	}
 	switch f.Type {
@@ -1205,6 +1215,9 @@ func cppPresent(s *Definition, f Field, e string) string {
 }
 
 func cppValue(s *Definition, f Field, e string) string {
+	if scalarAbsent(f) {
+		e = "*" + e
+	}
 	if cppClosedEnumList(f) {
 		return "enum_strs(out, " + e + ", depth + 1);"
 	}

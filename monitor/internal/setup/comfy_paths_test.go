@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	identity "github.com/openabstractions/abstraction-identity"
 )
 
 func TestComfyPathsUseStableUserDataAndPictures(t *testing.T) {
@@ -18,7 +20,7 @@ func TestComfyPathsUseStableUserDataAndPictures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if paths.CallerProgram() != python || paths.UserDirectory() != filepath.Join(localData, "OpenAbstractions", "ComfyUI", "user") ||
+	if paths.Program() != python || paths.UserDirectory() != filepath.Join(localData, "OpenAbstractions", "ComfyUI", "user") ||
 		paths.InputDirectory() != filepath.Join(localData, "OpenAbstractions", "ComfyUI", "input") ||
 		paths.TempDirectory() != filepath.Join(localData, "OpenAbstractions", "ComfyUI", "temp") ||
 		paths.OutputDirectory() != filepath.Join(pictures, "OpenAbstractions", "ComfyUI") ||
@@ -38,13 +40,36 @@ func TestComfyPathsUseStableUserDataAndPictures(t *testing.T) {
 	}
 }
 
+func TestRetainedArchiveRegistrationUsesHistoricalRoots(t *testing.T) {
+	data := standInHome(t)
+	native := filepath.Join(data, "OA", "a", "cu")
+	portable := filepath.Join(data, "OpenAbstractions", "apps")
+	nativeProgram := filepath.Join(native, "v1", "launch-helper.exe")
+	portableProgram := filepath.Join(portable, "old", "v1", "python.exe")
+	outside := filepath.Join(data, "OA", "a", "cu-other", "launch-helper.exe")
+	for _, program := range []string{nativeProgram, portableProgram, outside} {
+		writeComfyFixture(t, program, "fixture")
+	}
+	if !ComfyInstallFolderHolds(nativeProgram) || !ComfyNativeRootHolds(nativeProgram) {
+		t.Fatal("the historical native program was not recognized")
+	}
+	if !ComfyInstallFolderHolds(portableProgram) || ComfyNativeRootHolds(portableProgram) {
+		t.Fatal("the historical portable program was eligible for a native-only re-pin")
+	}
+	for _, program := range []string{native, portable, outside, "relative.exe"} {
+		if ComfyInstallFolderHolds(program) || ComfyNativeRootHolds(program) {
+			t.Fatalf("unowned or root-level program admitted: %q", program)
+		}
+	}
+}
+
 func TestComfyPathsRequireReceiptBoundEmbeddedPython(t *testing.T) {
 	journal, destination, python := installComfyFixture(t)
 	paths, err := OpenInstalledComfy(context.Background(), journal)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if paths.CallerProgram() != python || !strings.HasPrefix(paths.CallerProgram(), destination) {
+	if !identity.SameSubjectProgram(paths.Program(), python) || !identity.Inside(paths.Program(), destination) {
 		t.Fatalf("caller path did not come from the installed archive: %+v", paths)
 	}
 	if err := os.WriteFile(python, []byte("changed executable"), 0o600); err != nil {
@@ -77,8 +102,8 @@ func TestComfyPathsCarryTheArtifactsRecordsPin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if args := descriptor.Activation.Arguments; len(args) < 5 || args[3] != "--records" || args[4] != pin {
-		t.Fatalf("activation does not pass the artifact's RECORD-set pin: %#v", args)
+	if descriptor.Activation != nil || paths.records != pin {
+		t.Fatalf("historical receipt became an activation authority: %+v", descriptor)
 	}
 }
 
@@ -114,7 +139,7 @@ func TestPriorCatalogRecognizesOnlyReceiptBoundInstalledComfy(t *testing.T) {
 		t.Fatalf("old installed identity or pending component lost: %+v", status.Components)
 	}
 	paths, err := OpenInstalledComfy(ctx, journal)
-	if err != nil || paths.CallerProgram() != python || !strings.HasPrefix(paths.CallerProgram(), destination) {
+	if err != nil || !identity.SameSubjectProgram(paths.Program(), python) || !identity.Inside(paths.Program(), destination) {
 		t.Fatalf("old receipt-bound executable was not preserved: %+v, %v", paths, err)
 	}
 	if _, err := NewRunner(journal, nil).Advance(ctx, "lemonade-engine"); err == nil {
@@ -157,9 +182,10 @@ func TestPriorCatalogRejectsJournalSuppliedUnknownAppPin(t *testing.T) {
 		}
 	}
 	journal.catalogOverride = &newCatalog
-	if _, err := NewRunner(journal, nil).Status(ctx); err == nil {
-		t.Fatal("old app pin without a release-owned historical entry was recognized")
-	}
+	// R16: a preview's local ComfyUI pin is unknown to the next build. Its
+	// Status stays readable and review-only, so the Panel still shows every
+	// choice; the pin gains no launch authority.
+	assertEarlierBuildRow(t, journal, Installed)
 	if _, err := OpenInstalledComfy(ctx, journal); err == nil {
 		t.Fatal("old app pin without a release-owned historical entry was launched")
 	}
@@ -186,20 +212,56 @@ func TestPriorCatalogRejectsJournalSuppliedUnknownAppPin(t *testing.T) {
 	if err := os.WriteFile(journal.Path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewRunner(journal, nil).Status(ctx); err == nil {
-		t.Fatal("journal-supplied URL gained historical status authority")
-	}
+	// A forged URL fails the package check: the row is never shown installed.
+	assertEarlierBuildRow(t, journal, Uncertain)
 	if _, err := OpenInstalledComfy(ctx, journal); err == nil {
 		t.Fatal("journal-supplied URL gained launch authority")
 	}
+}
+
+// assertEarlierBuildRow checks the review-only Status of a plan whose
+// installed ComfyUI pin this release does not carry: readable, not
+// preparable, the ComfyUI row in phase and an installed one named as an
+// earlier build's.
+func assertEarlierBuildRow(t *testing.T, journal Journal, phase Phase) {
+	t.Helper()
+	// The state read runs nothing from the package and rehashes no file:
+	// neither the full archive check nor a native archive command.
+	savedInstalled, savedCommand := archiveInstalled, nativeArchiveCommand
+	t.Cleanup(func() { archiveInstalled, nativeArchiveCommand = savedInstalled, savedCommand })
+	archiveInstalled = func(Artifact, string) (bool, error) {
+		t.Fatal("Setup's state read rehashed an installed package")
+		return false, nil
+	}
+	nativeArchiveCommand = func(context.Context, sevenZipPin, nativeArchiveOperation) ([]byte, error) {
+		t.Fatal("Setup's state read ran a package's own program")
+		return nil, nil
+	}
+	status, err := NewRunner(journal, nil).Status(context.Background())
+	archiveInstalled, nativeArchiveCommand = savedInstalled, savedCommand
+	if err != nil {
+		t.Fatalf("an unknown earlier pin made Setup's state unreadable: %v", err)
+	}
+	if status.CurrentCatalog || status.Ready || status.Plan.Preparable {
+		t.Fatalf("an unknown earlier pin must leave the plan review-only: %+v", status)
+	}
+	for _, row := range status.Components {
+		if row.ID == "comfyui-app" {
+			if row.Effect.Phase != phase || phase == Installed && !strings.Contains(row.Effect.Reason, "earlier build") {
+				t.Fatalf("unknown earlier pin row: %+v", row.Effect)
+			}
+			return
+		}
+	}
+	t.Fatalf("the ComfyUI row is missing: %+v", status.Components)
 }
 
 func TestOpenInstalledComfyRequiresApprovedInstalledPlan(t *testing.T) {
 	ctx := context.Background()
 	catalog := fixtureCatalog()
 	journal := Journal{Path: filepath.Join(t.TempDir(), "plan.json"), catalogOverride: &catalog}
-	if _, err := OpenInstalledComfy(ctx, journal); err == nil {
-		t.Fatal("missing plan produced a trusted caller")
+	if _, err := OpenInstalledComfy(ctx, journal); err == nil || err.Error() != "ComfyUI setup plan is not approved" {
+		t.Fatalf("missing plan returned %v", err)
 	}
 	plan := mustPlan(t, catalog, ComfyUI)
 	state, err := journal.SavePlan(ctx, plan)
@@ -300,17 +362,20 @@ func installComfyFixture(t *testing.T) (Journal, string, string) {
 		t.Fatal("fixture catalog lacks ComfyUI package")
 	}
 	pythonBytes := []byte("fixture embedded Python executable")
-	archive, artifact := archiveFixture(t, archiveEntry{
-		name: comfyPythonRelativePath,
-		data: string(pythonBytes),
-	})
+	entries := packageEntries("comfyui-app", catalog.Components[index].Artifact.Version)
+	for i := range entries {
+		if entries[i].name == comfyPythonRelativePath {
+			entries[i].data = string(pythonBytes)
+		}
+	}
+	archive, artifact := archiveFixture(t, entries...)
 	pin := *catalog.Components[index].Artifact
 	pin.SHA256 = artifact.SHA256
 	pin.Bytes = artifact.Bytes
 	pin.PeakBytes = artifact.PeakBytes
 	catalog.Components[index].Artifact = &pin
 	journal := Journal{Path: filepath.Join(t.TempDir(), "plan.json"), catalogOverride: &catalog}
-	plan := mustPlan(t, catalog, ComfyUI)
+	plan := mustPlanOf(t, catalog, ComfyUI, Lemonade)
 	state, err := journal.SavePlan(context.Background(), plan)
 	if err != nil {
 		t.Fatal(err)

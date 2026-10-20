@@ -52,7 +52,7 @@ func TestANativeProviderOnALimitedPlatformIsUnavailableOnceAndRemovable(t *testi
 		reports = append(reports, err.Error())
 		mu.Unlock()
 	}
-	p, err := openProviders(state, false, report)
+	p, err := openFixtureProviders(t, state, false, report)
 	if err != nil {
 		t.Fatal(err)
 	}

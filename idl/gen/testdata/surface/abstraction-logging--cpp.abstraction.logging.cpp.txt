@@ -10,6 +10,14 @@ inline constexpr bool operator!=(PageOutcome value, std::string_view name)
 inline constexpr bool operator==(std::string_view name, PageOutcome value)
 inline constexpr bool operator!=(std::string_view name, PageOutcome value)
 inline const std::vector<std::string> kPageOutcomeNames
+enum class HistoryUsageOutcome {Available, Unavailable, Corrupt, Forbidden, Invalid}
+inline constexpr std::string_view wire_name(HistoryUsageOutcome value)
+inline std::optional<HistoryUsageOutcome> parse_history_usage_outcome(std::string_view name)
+inline constexpr bool operator==(HistoryUsageOutcome value, std::string_view name)
+inline constexpr bool operator!=(HistoryUsageOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, HistoryUsageOutcome value)
+inline constexpr bool operator!=(std::string_view name, HistoryUsageOutcome value)
+inline const std::vector<std::string> kHistoryUsageOutcomeNames
 enum class HistoryPageOutcome {Page, Gap, Unavailable, Invalid, RecordTooLarge, Corrupt, Unsupported, Forbidden, NotPermitted, OsAuthorizationRequired, OsAuthorizationPending}
 inline constexpr std::string_view wire_name(HistoryPageOutcome value)
 inline std::optional<HistoryPageOutcome> parse_history_page_outcome(std::string_view name)
@@ -60,6 +68,59 @@ inline constexpr std::string_view kServiceErrorCodeIdentityRequired
 inline constexpr std::string_view kServiceErrorCodeWrongUser
 inline constexpr std::string_view kServiceErrorCodePolicyUnavailable
 inline constexpr std::string_view kServiceErrorCodeForbidden
+enum class EndpointServiceReadiness {Ready, NotReady, Unknown}
+inline constexpr std::string_view wire_name(EndpointServiceReadiness value)
+inline std::optional<EndpointServiceReadiness> parse_endpoint_service_readiness(std::string_view name)
+inline constexpr bool operator==(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator!=(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointServiceReadiness value)
+inline constexpr bool operator!=(std::string_view name, EndpointServiceReadiness value)
+inline const std::vector<std::string> kEndpointServiceReadinessNames
+inline const std::vector<std::string> kEndpointRefusalSourceNames
+inline constexpr std::string_view kEndpointRefusalSourceRights
+inline constexpr std::string_view kEndpointRefusalSourceCredentials
+inline constexpr std::string_view kEndpointRefusalSourceLicense
+inline constexpr std::string_view kEndpointRefusalSourceTerms
+inline constexpr std::string_view kEndpointRefusalSourceIdentity
+inline constexpr std::string_view kEndpointRefusalSourceOs
+enum class EndpointRefusalDecision {Denied, NotGranted, PersonOnly}
+inline constexpr std::string_view wire_name(EndpointRefusalDecision value)
+inline std::optional<EndpointRefusalDecision> parse_endpoint_refusal_decision(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalDecision value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalDecision value)
+inline const std::vector<std::string> kEndpointRefusalDecisionNames
+enum class EndpointRefusalAsk {Available, None}
+inline constexpr std::string_view wire_name(EndpointRefusalAsk value)
+inline std::optional<EndpointRefusalAsk> parse_endpoint_refusal_ask(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalAsk value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalAsk value)
+inline const std::vector<std::string> kEndpointRefusalAskNames
+enum class EndpointProducerCheckState {Current, Repaired, Stale, Refused, Unverified}
+inline constexpr std::string_view wire_name(EndpointProducerCheckState value)
+inline std::optional<EndpointProducerCheckState> parse_endpoint_producer_check_state(std::string_view name)
+inline constexpr bool operator==(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator!=(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointProducerCheckState value)
+inline constexpr bool operator!=(std::string_view name, EndpointProducerCheckState value)
+inline const std::vector<std::string> kEndpointProducerCheckStateNames
+enum class EndpointDescriptionOutcome {Described, Forbidden, Unavailable, Invalid, Unsupported}
+inline constexpr std::string_view wire_name(EndpointDescriptionOutcome value)
+inline std::optional<EndpointDescriptionOutcome> parse_endpoint_description_outcome(std::string_view name)
+inline constexpr bool operator==(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator!=(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointDescriptionOutcome value)
+inline constexpr bool operator!=(std::string_view name, EndpointDescriptionOutcome value)
+inline const std::vector<std::string> kEndpointDescriptionOutcomeNames
+inline constexpr std::int32_t kDefaultAsyncCapacity
+inline constexpr std::int32_t kDefaultInitialBackoffMs
+inline constexpr std::int32_t kDefaultMaxBackoffMs
+inline constexpr std::int32_t kDefaultWriteTimeoutMs
+inline constexpr std::int32_t kWriterBackoffJitterPercent
+inline constexpr std::string_view kWriterGapMessage
 inline const std::vector<std::string> kHistoryErrorCodes
 inline const std::vector<std::string> kHistoryCursorWords
 inline const std::vector<std::string> kHistoryIdentityErrorCodes
@@ -89,6 +150,14 @@ struct Page
   std::vector<Record> records
   std::string next
   bool at_end
+struct HistoryUsage
+  std::int64_t retained_bytes
+  std::string oldest
+  std::optional<std::int64_t> max_use
+  std::optional<std::int64_t> max_retention_ms
+struct HistoryUsageResult
+  HistoryUsageOutcome outcome
+  std::optional<HistoryUsage> usage
 struct ApplicationLogTarget
   ApplicationLogSelection selection
   std::string program
@@ -124,8 +193,76 @@ struct SourcePage
   std::vector<SourceRecord> records
   std::string next
   bool at_end
+struct EndpointRefusalDetail
+  std::string source
+  EndpointRefusalDecision decision
+  EndpointRefusalAsk ask
+  std::string action
+  std::string question
+  std::string credential
+  std::int64_t retry_after_ms
+struct EndpointProducerCheck
+  std::string kind
+  std::string copy
+  EndpointProducerCheckState state
+  std::string reason
+  std::string checked
+struct EndpointServiceState
+  std::string service
+  EndpointServiceReadiness readiness
+  std::string reason
+  std::vector<std::string> guarantees
+  std::map<std::string, std::string> capabilities
+  std::string definition_hash
+struct EndpointDescription
+  EndpointDescriptionOutcome outcome
+  std::string program
+  std::string version
+  std::vector<EndpointServiceState> services
+  std::optional<EndpointRefusalDetail> refusal
+  std::string reason
+  std::vector<EndpointProducerCheck> checks
+struct EndpointDescriptionResult
+  EndpointDescription value
 inline std::string encode(const Record& v)
 inline Record decode(std::string_view data)
+T from_json(std::string_view data)
+inline std::string to_json(const Attestation& v)
+inline Attestation from_json<Attestation>(std::string_view data)
+inline std::string to_json(const Record& v)
+inline Record from_json<Record>(std::string_view data)
+inline std::string to_json(const Page& v)
+inline Page from_json<Page>(std::string_view data)
+inline std::string to_json(const HistoryUsage& v)
+inline HistoryUsage from_json<HistoryUsage>(std::string_view data)
+inline std::string to_json(const HistoryUsageResult& v)
+inline HistoryUsageResult from_json<HistoryUsageResult>(std::string_view data)
+inline std::string to_json(const ApplicationLogTarget& v)
+inline ApplicationLogTarget from_json<ApplicationLogTarget>(std::string_view data)
+inline std::string to_json(const ApplicationLogResource& v)
+inline ApplicationLogResource from_json<ApplicationLogResource>(std::string_view data)
+inline std::string to_json(const ApplicationLogPage& v)
+inline ApplicationLogPage from_json<ApplicationLogPage>(std::string_view data)
+inline std::string to_json(const SourceDescriptor& v)
+inline SourceDescriptor from_json<SourceDescriptor>(std::string_view data)
+inline std::string to_json(const SourceCatalog& v)
+inline SourceCatalog from_json<SourceCatalog>(std::string_view data)
+inline std::string to_json(const ProducerClaim& v)
+inline ProducerClaim from_json<ProducerClaim>(std::string_view data)
+inline std::string to_json(const SourceRecord& v)
+inline SourceRecord from_json<SourceRecord>(std::string_view data)
+inline std::string to_json(const SourcePage& v)
+inline SourcePage from_json<SourcePage>(std::string_view data)
+inline std::string to_json(const EndpointRefusalDetail& v)
+inline EndpointRefusalDetail from_json<EndpointRefusalDetail>(std::string_view data)
+inline std::string to_json(const EndpointProducerCheck& v)
+inline EndpointProducerCheck from_json<EndpointProducerCheck>(std::string_view data)
+inline std::string to_json(const EndpointServiceState& v)
+inline EndpointServiceState from_json<EndpointServiceState>(std::string_view data)
+inline std::string to_json(const EndpointDescription& v)
+inline EndpointDescription from_json<EndpointDescription>(std::string_view data)
+inline std::string to_json(const EndpointDescriptionResult& v)
+inline EndpointDescriptionResult from_json<EndpointDescriptionResult>(std::string_view data)
 struct FrameWriter
   virtual void write_frame(std::string_view frame)
 struct DispatchError : std::runtime_error
@@ -135,10 +272,12 @@ struct FrameExchanger
 struct ServiceError : std::runtime_error
   std::string code, message
 inline constexpr std::string_view kEndpointContract
+inline constexpr std::string_view kEndpointV2Contract
 struct DescribedService
   std::string contract
   bool ready
   std::string why
+std::string describe_endpoint_with_checks(std::string_view frame, const std::string& program, const std::string& version, const std::vector<EndpointProducerCheck>& checks, const Services& . . . services)
 std::string describe_endpoint(std::string_view frame, const std::string& program, const std::string& version, const Services& . . . services)
 struct Sink
   virtual void write(const Record& record)
@@ -151,11 +290,15 @@ struct SinkService
 struct SinkDispatcher : FrameWriter
   Sink& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
 struct HistoryReader
+  virtual HistoryUsageResult usage()
   virtual Page read(const std::string& cursor, const std::int64_t& max_records, const std::int64_t& max_bytes)
 template<class Transport>struct HistoryReaderClient : HistoryReader
   Transport& transport_
+  HistoryUsageResult usage() override
   Page read(const std::string& cursor, const std::int64_t& max_records, const std::int64_t& max_bytes) override
 struct HistoryReaderService
   inline static constexpr std::string_view kWireName
@@ -163,6 +306,8 @@ struct HistoryReaderService
 struct HistoryReaderDispatcher : FrameWriter, FrameExchanger
   HistoryReader& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct HistoryObserver
@@ -176,19 +321,25 @@ struct HistoryObserverService
 struct HistoryObserverDispatcher : FrameWriter, FrameExchanger
   HistoryObserver& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct ApplicationHistoryReader
   virtual ApplicationLogPage read(const ApplicationLogTarget& target, const std::string& cursor, const std::int64_t& max_records, const std::int64_t& max_bytes)
+  virtual ApplicationLogPage read_about_caller(const std::string& since, const std::string& cursor, const std::int64_t& max_records, const std::int64_t& max_bytes)
 template<class Transport>struct ApplicationHistoryReaderClient : ApplicationHistoryReader
   Transport& transport_
   ApplicationLogPage read(const ApplicationLogTarget& target, const std::string& cursor, const std::int64_t& max_records, const std::int64_t& max_bytes) override
+  ApplicationLogPage read_about_caller(const std::string& since, const std::string& cursor, const std::int64_t& max_records, const std::int64_t& max_bytes) override
 struct ApplicationHistoryReaderService
   inline static constexpr std::string_view kWireName
   inline static constexpr std::string_view kCapability
 struct ApplicationHistoryReaderDispatcher : FrameWriter, FrameExchanger
   ApplicationHistoryReader& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct ApplicationHistoryObserver
@@ -202,6 +353,8 @@ struct ApplicationHistoryObserverService
 struct ApplicationHistoryObserverDispatcher : FrameWriter, FrameExchanger
   ApplicationHistoryObserver& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct SourceReader
@@ -219,6 +372,8 @@ struct SourceReaderService
 struct SourceReaderDispatcher : FrameWriter, FrameExchanger
   SourceReader& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 inline std::string encode_attestation(const Attestation& v)
@@ -227,6 +382,10 @@ inline std::string encode_record(const Record& v)
 inline Record decode_record(std::string_view in)
 inline std::string encode_page(const Page& v)
 inline Page decode_page(std::string_view in)
+inline std::string encode_history_usage(const HistoryUsage& v)
+inline HistoryUsage decode_history_usage(std::string_view in)
+inline std::string encode_history_usage_result(const HistoryUsageResult& v)
+inline HistoryUsageResult decode_history_usage_result(std::string_view in)
 inline std::string encode_application_log_target(const ApplicationLogTarget& v)
 inline ApplicationLogTarget decode_application_log_target(std::string_view in)
 inline std::string encode_application_log_resource(const ApplicationLogResource& v)

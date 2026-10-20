@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -269,9 +270,16 @@ func runProviderFixture(kind, endpoint, dir, brokerProgram string) int {
 	if len(entries) > 0 {
 		time.Sleep(time.Second)
 	}
-	l, err := listen.Listen(listen.Endpoint(endpoint))
+	address := endpoint
+	if providerEndpoint.MatchString(endpoint) {
+		return fixtureExit(4, "provider fixture requires an explicit address: %s", endpoint)
+	}
+	l, err := listen.Listen(address)
 	if err != nil {
 		return fixtureExit(4, "provider fixture listen %s: %v", endpoint, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "endpoint"), []byte(address), 0600); err != nil {
+		return fixtureExit(4, "provider fixture endpoint record: %v", err)
 	}
 	time.AfterFunc(2*time.Minute, func() { os.Exit(fixtureExit(5, "provider fixture: served its two minutes")) })
 	for {
@@ -313,6 +321,8 @@ func runProviderFixture(kind, endpoint, dir, brokerProgram string) int {
 				reply, err = (&content.InventorySourceDispatcher{Handler: fixtureInventory{}}).ExchangeFrame(call.Frame)
 			case "inventory-object":
 				reply, err = (&content.InventorySourceDispatcher{Handler: fixtureInventory{object: true}}).ExchangeFrame(call.Frame)
+			case "inventory-gguf":
+				reply, err = (&content.InventorySourceDispatcher{Handler: fixtureGGUFInventory{}}).ExchangeFrame(call.Frame)
 			default:
 				return
 			}
@@ -584,13 +594,9 @@ func pids(t *testing.T, dir string) []int {
 	return out
 }
 
-func answers(endpoint string) bool {
-	c, err := listen.Dial(listen.Endpoint(endpoint))
-	if err != nil {
-		return false
-	}
-	c.Close()
-	return true
+func answers(t *testing.T, endpoint string) bool {
+	t.Helper()
+	return answersAt(mustProviderEndpoint(t, endpoint))
 }
 
 func answersAt(endpoint string) bool {
@@ -600,6 +606,62 @@ func answersAt(endpoint string) bool {
 	}
 	c.Close()
 	return true
+}
+
+// Pin the owned fixture while it is alive, before the runtime withdraws it.
+// Windows Wait uses an independent process handle; Unix observes exit without
+// racing the supervisor's wait/reap of its own child.
+func fixtureExitProof(t *testing.T, pid int) func() {
+	t.Helper()
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		t.Fatalf("pin fixture process %d: %v", pid, err)
+	}
+	t.Cleanup(func() { _ = process.Release() })
+	return func() {
+		t.Helper()
+		if runtime.GOOS != "windows" {
+			eventually(t, 10*time.Second, "owned fixture PID exiting", func() bool {
+				err := process.Signal(syscall.Signal(0))
+				return errors.Is(err, syscall.ESRCH) || errors.Is(err, os.ErrProcessDone)
+			})
+			return
+		}
+		done := make(chan error, 1)
+		go func() {
+			state, err := process.Wait()
+			if err == nil && (state == nil || !state.Exited()) {
+				err = errors.New("fixture process has no exit state")
+			}
+			done <- err
+		}()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("fixture PID %d exit: %v", pid, err)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatalf("fixture PID %d did not exit within 10s of Withdraw", pid)
+		}
+	}
+}
+
+func newFixturePID(t *testing.T, dir string, previous []int) int {
+	t.Helper()
+	var added []int
+	for _, pid := range pids(t, dir) {
+		known := false
+		for _, old := range previous {
+			known = known || pid == old
+		}
+		if !known {
+			added = append(added, pid)
+		}
+	}
+	if len(added) != 1 {
+		t.Fatalf("new fixture PIDs %v after %v", added, previous)
+	}
+	return added[0]
 }
 
 // This uses the existing isolated runtime and copied provider/app test binary
@@ -614,6 +676,7 @@ func TestOnDemandImageDeniedCancelledAndLostStart(t *testing.T) {
 		{"idle-before-cancel", "image-blocked"},
 		{"lost-start", "image-crash-start"},
 		{"before-ready", "image-exit-before-ready"},
+		{"withdraw-active", "image-blocked"},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			program := copyTestBinary(t, "oa-fixture-image-provider")
@@ -622,8 +685,11 @@ func TestOnDemandImageDeniedCancelledAndLostStart(t *testing.T) {
 			pidDir := t.TempDir()
 			name := fmt.Sprintf("image-%d", time.Now().UnixNano()%1_000_000_000)
 			if scenario.kind == "image-exit-before-ready" {
+				// The launch budget stays under the Start call's own budget
+				// (listen.DefaultFrameTimeout, 5 s) less the 1.5 s admission
+				// leaves for its reply, so the budget is what Start waits out.
 				previous := nativeInferenceLaunchBudget
-				nativeInferenceLaunchBudget = 5 * time.Second
+				nativeInferenceLaunchBudget = 2 * time.Second
 				t.Cleanup(func() { nativeInferenceLaunchBudget = previous })
 			}
 			options, _ := isolatedRuntime(t)
@@ -635,11 +701,21 @@ func TestOnDemandImageDeniedCancelledAndLostStart(t *testing.T) {
 			// independent production idle timer is exercised separately below.
 			idle := 2 * fixtureClientTimeout
 			fixtureKind, startMode := scenario.kind, "start"
-			if scenario.name == "idle-before-cancel" {
-				idle = 100 * time.Millisecond
+			if scenario.name == "idle-before-cancel" || scenario.name == "withdraw-active" {
 				fixtureKind, startMode = "image-idle", "start-observed"
 			}
-			config := fmt.Sprintf(`{"retention_ms":10000,"idle_ms":%d}`, idle.Milliseconds())
+			// The app's readiness Observe returns its page before the end,
+			// so the operation waits the resume idle (INF-Q3); this scenario
+			// shortens both; zero leaves the provider's default.
+			resumeIdle := time.Duration(0)
+			if scenario.name == "idle-before-cancel" {
+				idle, resumeIdle = 100*time.Millisecond, 100*time.Millisecond
+			}
+			retention := 10 * time.Second
+			if scenario.name == "withdraw-active" {
+				retention = 2 * fixtureClientTimeout
+			}
+			config := fmt.Sprintf(`{"retention_ms":%d,"idle_ms":%d,"resume_idle_ms":%d}`, retention.Milliseconds(), idle.Milliseconds(), resumeIdle.Milliseconds())
 			if err := os.WriteFile(filepath.Join(options.stateDir, "inference", inferenceHostsFile), []byte(config), 0600); err != nil {
 				t.Fatal(err)
 			}
@@ -692,6 +768,7 @@ func TestOnDemandImageDeniedCancelledAndLostStart(t *testing.T) {
 				}
 				return result
 			}
+			setCompleteRule(t, options.endpoint, app, name, false)
 			denied := runApp(app, "start", "")
 			if denied.Start != iwire.StartOutcomeNotPermitted.String() || denied.Operation != "" || len(pids(t, pidDir)) != 0 {
 				t.Fatalf("denied valid image request launched provider: %+v pids=%v", denied, pids(t, pidDir))
@@ -701,24 +778,77 @@ func TestOnDemandImageDeniedCancelledAndLostStart(t *testing.T) {
 			gwGrant(t, options, app, contentReadAction, "output:image")
 			if scenario.kind == "image-exit-before-ready" {
 				// The provider exits with status 42 before it listens, every
-				// time it is launched, so it is never ready. Start therefore
-				// waits out the whole launch budget and reads unavailable with
-				// activating:<name>. The Start's own duration, measured inside
-				// the app, proves the wait. No assertion here depends on how
-				// long a process launch takes; that an exit during the wait
-				// leaves the wait running is pinned without processes by
-				// TestNativeAdmitWaitsThroughAnExitBeforeReadiness.
+				// time it is launched, so it is never ready. After three
+				// launches in a row end that way the supervisor stops
+				// relaunching it (providerStartFailure; R34 live test D1:
+				// Lemonade without Setup crash-looped while a picture waited
+				// without end). The first Start reads unavailable: with
+				// start_failed:<name> once the third exit lands inside the
+				// launch budget, or activating:<name> on a machine whose
+				// launches are slower than that.
 				failed := runApp(app, "start", "")
-				if failed.Start != iwire.StartOutcomeUnavailable.String() || failed.Reason != "activating:"+name || failed.Operation != "" {
+				if failed.Start != iwire.StartOutcomeUnavailable.String() || failed.Operation != "" ||
+					failed.Reason != "start_failed:"+name && failed.Reason != "activating:"+name {
 					t.Fatalf("provider exit before readiness: %+v", failed)
 				}
-				if budget := nativeInferenceLaunchBudget.Milliseconds(); failed.ElapsedMs < budget {
-					t.Fatalf("image Start answered after %d ms, before the %d ms launch budget passed", failed.ElapsedMs, budget)
+				eventually(t, time.Minute, "the supervisor stopping after failed starts", func() bool {
+					state := providerStates(t, cliEndpoint)[name]
+					return state.Readiness == fwire.DeclarationReadinessNotReady && strings.HasPrefix(state.Why, "start_failed:exited:exit status 42")
+				})
+				launched := len(pids(t, pidDir))
+				if launched != 3 {
+					t.Fatalf("the supervisor launched %d times before stopping, want 3", launched)
 				}
-				// The second PID proves the first child exited before any
-				// readiness: supervision launches a replacement only after its
-				// Wait returns. The relaunch may come after Start answered.
-				eventually(t, time.Minute, "the provider's exit and relaunch", func() bool { return len(pids(t, pidDir)) >= 2 })
+				// Stopped means stopped: no relaunch while nothing asks for it.
+				time.Sleep(2 * time.Second)
+				if again := len(pids(t, pidDir)); again != launched {
+					t.Fatalf("a stopped provider was relaunched: %d launches after %d", again, launched)
+				}
+				// The next Start is refused at once with the stopped
+				// provider's word, routed by the router itself.
+				next := runApp(app, "start", "")
+				if next.Start != iwire.StartOutcomeNoHost.String() || next.Reason != "start_failed:"+name || next.Operation != "" {
+					t.Fatalf("Start onto a stopped provider: %+v", next)
+				}
+				if again := len(pids(t, pidDir)); again != launched {
+					t.Fatalf("a refused Start relaunched the stopped provider: %d launches", again)
+				}
+				// The router lists the provider's model as not servable.
+				call, cancel := context.WithTimeout(context.Background(), time.Minute)
+				defer cancel()
+				routes, err := client.New(options.endpoint).ResolveRouter(call, client.Requirements{Scope: client.ScopeLocal})
+				if err != nil {
+					t.Fatal(err)
+				}
+				snapshot, err := routes.ModelsContext(call, true)
+				if err != nil {
+					t.Fatal(err)
+				}
+				listed := 0
+				for _, family := range snapshot.Models {
+					for _, alias := range family.Names {
+						if alias.Host == name {
+							listed++
+							if alias.Servable {
+								t.Fatalf("a stopped provider's model is listed servable: %+v", alias)
+							}
+						}
+					}
+				}
+				if listed != 1 {
+					t.Fatalf("the stopped provider's model is listed %d times: %+v", listed, snapshot.Models)
+				}
+				hosts, err := routes.HostsContext(call, true)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, host := range hosts.Hosts {
+					// The caller's projection may name its own standing
+					// instead of the host's reason; servable stays false.
+					if host.Host == name && host.Servable {
+						t.Fatalf("stopped provider host %+v", host)
+					}
+				}
 				if calls, _ := os.ReadFile(filepath.Join(pidDir, "calls")); len(calls) != 0 {
 					t.Fatalf("failed startup dispatched image Start: %q", calls)
 				}
@@ -729,6 +859,32 @@ func TestOnDemandImageDeniedCancelledAndLostStart(t *testing.T) {
 				t.Fatalf("authorized image not admitted: %+v pids=%v", admitted, pids(t, pidDir))
 			}
 			callsPath := filepath.Join(pidDir, "calls")
+			if scenario.name == "withdraw-active" {
+				exited := fixtureExitProof(t, newFixturePID(t, pidDir, nil))
+				if out, err := runProvider(t, append([]string{"remove", name}, cliEndpoint...)...); err != nil {
+					t.Fatalf("withdraw active fixture: %v\n%s", err, out)
+				}
+				exited()
+				if _, listed := providerStates(t, cliEndpoint)[name]; listed {
+					t.Fatal("withdrawn active fixture remains listed")
+				}
+				if !answersAt(resolved.Reference.Endpoint) {
+					t.Fatal("withdrawal closed the active operation's mediation route")
+				}
+				if end := runApp(app, "terminal", admitted.Operation); end.End == "" || end.End == iwire.ReplyOutcomeCompleted.String() {
+					t.Fatalf("withdrawn active operation lacked terminal non-success: %+v", end)
+				}
+				if owner := runApp(app, "cancel", admitted.Operation); owner.Cancel != iwire.CancelOutcomeEnded.String() {
+					t.Fatalf("owner cancellation after withdrawal: %+v", owner)
+				}
+				if outsider := runApp(stranger, "cancel", admitted.Operation); outsider.Cancel != iwire.CancelOutcomeUnknown.String() {
+					t.Fatalf("stranger cancellation after withdrawal: %+v", outsider)
+				}
+				if next := runApp(app, "start", ""); next.Start != iwire.StartOutcomeNoHost.String() || next.Operation != "" {
+					t.Fatalf("new Start after withdrawal: %+v", next)
+				}
+				return
+			}
 			if scenario.kind == "image-blocked" {
 				if scenario.name == "idle-before-cancel" {
 					// Wait without Observe until the watchdog has cancelled the
@@ -838,7 +994,7 @@ func TestOnDemandProviderStartsRestartsAndStops(t *testing.T) {
 	if resolved.Status != fwire.ResolutionStatusResolved {
 		t.Fatalf("mediator resolution %+v", resolved)
 	}
-	if ref := resolved.Reference; ref.Provider != name || ref.Endpoint == options.endpoint+"-inference" || ref.Endpoint == listen.Endpoint(name) || ref.Contract != inference.Contract {
+	if ref := resolved.Reference; ref.Provider != name || ref.Endpoint == options.endpoint+"-inference" || ref.Endpoint == mustProviderEndpoint(t, name) || ref.Contract != inference.Contract {
 		t.Fatalf("resolved %+v", ref)
 	}
 	mediatedEndpoint := resolved.Reference.Endpoint
@@ -854,7 +1010,7 @@ func TestOnDemandProviderStartsRestartsAndStops(t *testing.T) {
 	}
 	runApp := func(label, endpoint string) mediatedResult {
 		resultPath := filepath.Join(t.TempDir(), label+".json")
-		if output, err := exec.Command(appProgram, mediatedAppFixtureArg, endpoint, listen.Endpoint(name), resultPath, self).CombinedOutput(); err != nil {
+		if output, err := exec.Command(appProgram, mediatedAppFixtureArg, endpoint, mustProviderEndpoint(t, name), resultPath, self).CombinedOutput(); err != nil {
 			t.Fatalf("%s application: %v: %s", label, err, output)
 		}
 		var result mediatedResult
@@ -881,6 +1037,7 @@ func TestOnDemandProviderStartsRestartsAndStops(t *testing.T) {
 		}
 		return result
 	}
+	setCompleteRule(t, options.endpoint, appProgram, name, false)
 	denied := runApp("denied", mediatedEndpoint)
 	if !denied.DirectRefused || denied.StartOutcome != iwire.StartOutcomeNotPermitted {
 		t.Fatalf("denied result %+v", denied)
@@ -930,14 +1087,20 @@ func TestOnDemandProviderStartsRestartsAndStops(t *testing.T) {
 		t.Fatalf("ordinary restart changed mediated endpoint from %q to %q", mediatedEndpoint, resolved.Reference.Endpoint)
 	}
 
+	childEndpoint, err := os.ReadFile(filepath.Join(pidDir, "endpoint"))
+	if err != nil || !answersAt(string(childEndpoint)) {
+		t.Fatalf("restarted provider endpoint was not live: %q %v", childEndpoint, err)
+	}
+	exited := fixtureExitProof(t, newFixturePID(t, pidDir, launched))
 	out, err = runProvider(t, append([]string{"remove", name}, endpoint...)...)
 	if err != nil {
 		t.Fatalf("provider remove: %v\n%s", err, out)
 	}
-	eventually(t, 10*time.Second, "the removed provider's child ending", func() bool { return !answers(name) })
 	if _, listed := providerStates(t, endpoint)[name]; listed {
 		t.Fatal("a removed provider is still listed")
 	}
+	exited()
+	eventually(t, 10*time.Second, "the removed provider's child ending", func() bool { return !answersAt(string(childEndpoint)) })
 	if !answersAt(mediatedEndpoint) {
 		t.Fatal("withdrawal stranded the accepted OA operation")
 	}
@@ -949,6 +1112,9 @@ func TestOnDemandProviderStartsRestartsAndStops(t *testing.T) {
 	strangerResult := runOperation(strangerProgram, "stranger", mediated.Operation)
 	if strangerResult.Error || strangerResult.Observe != iwire.PageOutcomeUnknown || strangerResult.Cancel != iwire.CancelOutcomeUnknown {
 		t.Fatalf("stranger operation access %+v", strangerResult)
+	}
+	if next := runApp("withdrawn", mediatedEndpoint); next.StartOutcome != iwire.StartOutcomeNoHost || next.Operation != "" {
+		t.Fatalf("new Start after withdrawal: %+v", next)
 	}
 
 	// A redeclaration has a fresh binding generation and endpoint. Work sent to
@@ -974,6 +1140,7 @@ func TestOnDemandProviderStartsRestartsAndStops(t *testing.T) {
 	if len(pids(t, pidDir)) != 2 {
 		t.Fatalf("replacement resolution launched downstream provider: %v", pids(t, pidDir))
 	}
+	previousPIDs := pids(t, pidDir)
 	replaced := runApp("replacement", resolved.Reference.Endpoint)
 	if replaced.StartOutcome != iwire.StartOutcomeAccepted || replaced.Outcome == nil || *replaced.Outcome != iwire.ReplyOutcomeCompleted {
 		t.Fatalf("replacement result %+v", replaced)
@@ -981,10 +1148,12 @@ func TestOnDemandProviderStartsRestartsAndStops(t *testing.T) {
 	if calls, _ := os.ReadFile(filepath.Join(pidDir, "calls")); strings.Count(string(calls), "start\n") != 2 {
 		t.Fatalf("replacement calls %q", calls)
 	}
+	replacementExited := fixtureExitProof(t, newFixturePID(t, pidDir, previousPIDs))
 	out, err = runProvider(t, append([]string{"remove", name}, endpoint...)...)
 	if err != nil {
 		t.Fatalf("replacement remove: %v\n%s", err, out)
 	}
+	replacementExited()
 	if result := resolve(); result.Status != fwire.ResolutionStatusUnmetRequirements {
 		t.Fatalf("resolution after replacement removal %+v", result)
 	}
@@ -1003,12 +1172,12 @@ func TestAProviderRunningAnotherProgramIsRefused(t *testing.T) {
 	declared := copyTestBinary(t, "oa-declared-provider")
 	pidDir := t.TempDir()
 	name := fmt.Sprintf("impostor-%d", time.Now().UnixNano()%1_000_000_000)
-	impostor := exec.Command(self, providerFixtureArg, "chat", name, pidDir, self)
+	impostor := exec.Command(self, providerFixtureArg, "chat", mustProviderEndpoint(t, name), pidDir, self)
 	if err := impostor.Start(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { impostor.Process.Kill(); impostor.Wait() })
-	eventually(t, 10*time.Second, "the impostor listening", func() bool { return answers(name) })
+	eventually(t, 10*time.Second, "the impostor listening", func() bool { return answers(t, name) })
 
 	options, _ := isolatedRuntime(t)
 	startInferenceRuntime(t, options)
@@ -1111,12 +1280,12 @@ func TestAnOldProviderWithoutDescribeReadsUnreachable(t *testing.T) {
 	}
 	self = identity.CanonicalProgramPath(filepath.Clean(self))
 	name := fmt.Sprintf("old-%d", time.Now().UnixNano()%1_000_000_000)
-	old := exec.Command(program, providerFixtureArg, "old", name, t.TempDir(), self)
+	old := exec.Command(program, providerFixtureArg, "old", mustProviderEndpoint(t, name), t.TempDir(), self)
 	if err := old.Start(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { old.Process.Kill(); old.Wait() })
-	eventually(t, 10*time.Second, "the old provider listening", func() bool { return answers(name) })
+	eventually(t, 10*time.Second, "the old provider listening", func() bool { return answers(t, name) })
 
 	options, _ := isolatedRuntime(t)
 	startInferenceRuntime(t, options)

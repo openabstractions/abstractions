@@ -1,0 +1,475 @@
+type Raw string
+type CommandClass uint32
+const CommandClassRead
+const CommandClassReveal
+const CommandClassPropose
+const CommandClassEdit
+const CommandClassCommit
+const CommandClassDestroy
+const CommandClassSpend
+const CommandClassSend
+func (CommandClass) String() string
+func (CommandClass) WireName() (string, bool)
+func ParseCommandClass(word string) (CommandClass, bool)
+func (CommandClass) MarshalText() ([]byte, error)
+func (CommandClass) UnmarshalText(text []byte) error
+func (CommandClass) MarshalJSON() ([]byte, error)
+func (CommandClass) UnmarshalJSON(data []byte) error
+func CommandClassValues() []CommandClass
+func (CommandClass) IsKnown() bool
+func (CommandClass) Known() bool
+type CommandOutcome uint32
+const CommandOutcomeApplied
+const CommandOutcomeProposed
+const CommandOutcomeAccepted
+const CommandOutcomeConflict
+const CommandOutcomeStale
+const CommandOutcomeInvalid
+const CommandOutcomeUnsupported
+const CommandOutcomeForbidden
+const CommandOutcomeNotPermitted
+const CommandOutcomeRefused
+const CommandOutcomeExhausted
+const CommandOutcomeNotFound
+const CommandOutcomeUnknown
+const CommandOutcomeUnavailable
+const CommandOutcomeFailed
+func (CommandOutcome) String() string
+func (CommandOutcome) WireName() (string, bool)
+func ParseCommandOutcome(word string) (CommandOutcome, bool)
+func (CommandOutcome) MarshalText() ([]byte, error)
+func (CommandOutcome) UnmarshalText(text []byte) error
+func (CommandOutcome) MarshalJSON() ([]byte, error)
+func (CommandOutcome) UnmarshalJSON(data []byte) error
+func CommandOutcomeValues() []CommandOutcome
+func (CommandOutcome) IsKnown() bool
+func (CommandOutcome) Known() bool
+type ReadingOutcome uint32
+const ReadingOutcomePage
+const ReadingOutcomeGap
+const ReadingOutcomeConflict
+const ReadingOutcomeStale
+const ReadingOutcomeInvalid
+const ReadingOutcomeUnsupported
+const ReadingOutcomeNotPermitted
+const ReadingOutcomeRefused
+const ReadingOutcomeExhausted
+const ReadingOutcomeNotFound
+const ReadingOutcomeUnavailable
+func (ReadingOutcome) String() string
+func (ReadingOutcome) WireName() (string, bool)
+func ParseReadingOutcome(word string) (ReadingOutcome, bool)
+func (ReadingOutcome) MarshalText() ([]byte, error)
+func (ReadingOutcome) UnmarshalText(text []byte) error
+func (ReadingOutcome) MarshalJSON() ([]byte, error)
+func (ReadingOutcome) UnmarshalJSON(data []byte) error
+func ReadingOutcomeValues() []ReadingOutcome
+func (ReadingOutcome) IsKnown() bool
+func (ReadingOutcome) Known() bool
+type FieldRole uint32
+const FieldRoleOrdinary
+const FieldRoleDerived
+const FieldRoleEphemeral
+const FieldRoleSecret
+func (FieldRole) String() string
+func (FieldRole) WireName() (string, bool)
+func ParseFieldRole(word string) (FieldRole, bool)
+func (FieldRole) MarshalText() ([]byte, error)
+func (FieldRole) UnmarshalText(text []byte) error
+func (FieldRole) MarshalJSON() ([]byte, error)
+func (FieldRole) UnmarshalJSON(data []byte) error
+func FieldRoleValues() []FieldRole
+func (FieldRole) IsKnown() bool
+func (FieldRole) Known() bool
+type CollectionOp uint32
+const CollectionOpAdd
+const CollectionOpRemove
+const CollectionOpMove
+const CollectionOpReplace
+const CollectionOpReset
+func (CollectionOp) String() string
+func (CollectionOp) WireName() (string, bool)
+func ParseCollectionOp(word string) (CollectionOp, bool)
+func (CollectionOp) MarshalText() ([]byte, error)
+func (CollectionOp) UnmarshalText(text []byte) error
+func (CollectionOp) MarshalJSON() ([]byte, error)
+func (CollectionOp) UnmarshalJSON(data []byte) error
+func CollectionOpValues() []CollectionOp
+func (CollectionOp) IsKnown() bool
+func (CollectionOp) Known() bool
+type InvokeMode uint32
+const InvokeModePropose
+const InvokeModeApply
+func (InvokeMode) String() string
+func (InvokeMode) WireName() (string, bool)
+func ParseInvokeMode(word string) (InvokeMode, bool)
+func (InvokeMode) MarshalText() ([]byte, error)
+func (InvokeMode) UnmarshalText(text []byte) error
+func (InvokeMode) MarshalJSON() ([]byte, error)
+func (InvokeMode) UnmarshalJSON(data []byte) error
+func InvokeModeValues() []InvokeMode
+func (InvokeMode) IsKnown() bool
+func (InvokeMode) Known() bool
+type RevealStyle string
+const RevealStyleHighlight
+const RevealStyleScrollTo
+const RevealStyleFrame
+func RevealStyleValues() []RevealStyle
+func (RevealStyle) IsKnown() bool
+func (RevealStyle) Known() bool
+var Versions
+var Extensions
+var BindingTools
+var GatewayTools
+var MetaKeys
+var CommandActions
+type ContextRef struct
+  Instance string
+  Context string
+  Epoch string
+type ContextEntry struct
+  Context ContextRef
+  Title string
+  Revision string
+type ContextPage struct
+  Outcome ReadingOutcome
+  Contexts []ContextEntry
+  Reason string
+type KindField struct
+  Name string
+  Role FieldRole
+type Kind struct
+  Name string
+  Title string
+  Schema Raw
+  Fields []KindField
+type Entity struct
+  ID string
+  Kind string
+  Label string
+  Parent string
+  Properties Raw
+type Collection struct
+  Parent string
+  Kind string
+  IDs []string
+type Selection struct
+  View string
+  Entities []string
+  Focus string
+type ContextSnapshot struct
+  Outcome ReadingOutcome
+  Context ContextRef
+  Revision string
+  Entities []Entity
+  Collections []Collection
+  Selections []Selection
+  Cursor string
+  Reason string
+type ReadRequest struct
+  Context ContextRef
+  Entities []string
+  Cursor string
+  Limit int64
+type Change struct
+  BaseRevision string
+  Revision string
+  Patch Raw
+type ChangesRequest struct
+  Context ContextRef
+  AfterRevision string
+  WaitMs int64
+type ChangeBatch struct
+  Outcome ReadingOutcome
+  Context ContextRef
+  Changes []Change
+  Revision string
+  Reason string
+type CommandSpec struct
+  Name string
+  Title string
+  Description string
+  Class CommandClass
+  InputSchema Raw
+  OutputSchema Raw
+  Targets []string
+  Proposable bool
+  Undoable bool
+  Idempotent bool
+  LongRunning bool
+type ContextBounds struct
+  SnapshotBytes int64
+  ChangeBytes int64
+  RetainedRevisions int64
+  PendingProposals int64
+  CallsInFlight int64
+type Description struct
+  Version string
+  Kinds []Kind
+  Commands []CommandSpec
+  Extensions []string
+  Bounds ContextBounds
+type DescriptionResult struct
+  Outcome ReadingOutcome
+  Description *Description
+  Reason string
+type Invocation struct
+  Context ContextRef
+  Arguments Raw
+  Mode InvokeMode
+  ExpectedRevision string
+  IdempotencyKey string
+  Proposal string
+type CommandResult struct
+  Outcome CommandOutcome
+  Reason string
+  Revision string
+  Proposal string
+  Summary string
+  Job string
+  Effects Raw
+  UndoGroup string
+  IdempotencyKey string
+type Reveal struct
+  Context ContextRef
+  Entities []string
+  Style RevealStyle
+type UndoRequest struct
+  Context ContextRef
+  UndoGroup string
+  ExpectedRevision string
+  IdempotencyKey string
+type JobRequest struct
+  Instance string
+  Job string
+type DeclaredCommand struct
+  Name string
+  Class CommandClass
+type CommandDeclaration struct
+  Version string
+  Commands []DeclaredCommand
+type ApplicationsQuery struct
+  Application string
+type ListedInstance struct
+  Instance string
+  Interface string
+  Contexts []ContextEntry
+  Reason string
+type ListedApplication struct
+  Application string
+  Title string
+  Instances []ListedInstance
+type ListedOpenVerb struct
+  Name string
+  Description string
+  InputSchema Raw
+type ApplicationOpenVerbs struct
+  Application string
+  Verbs []ListedOpenVerb
+type ApplicationListing struct
+  Outcome ReadingOutcome
+  Applications []ListedApplication
+  Reason string
+  OpenVerbs []ApplicationOpenVerbs
+type CommandsQuery struct
+  Application string
+  Instance string
+type CommandListing struct
+  Outcome ReadingOutcome
+  Application string
+  Instance string
+  Commands []CommandSpec
+  Reason string
+type GatewayCall struct
+  Application string
+  Instance string
+  Tool string
+  Arguments Raw
+  Mode *InvokeMode
+  ExpectedRevision string
+  IdempotencyKey string
+  Context string
+  Proposal string
+  RequireReadPermit *bool
+type CallRecord struct
+  Subject string
+  ClientLabel string
+  Application string
+  Instance string
+  Context *ContextRef
+  Command string
+  Class *CommandClass
+  RevisionBefore string
+  RevisionAfter string
+  Outcome string
+  Reason string
+  IdempotencyKey string
+  ArgumentsDigest string
+  ResultDigest string
+type Envelope struct
+  Description *DescriptionResult
+  Contexts *ContextPage
+  Read *ReadRequest
+  Snapshot *ContextSnapshot
+  ChangesRequest *ChangesRequest
+  Changes *ChangeBatch
+  Invocation *Invocation
+  Result *CommandResult
+  Reveal *Reveal
+  Undo *UndoRequest
+  Job *JobRequest
+  Declaration *CommandDeclaration
+  Record *CallRecord
+  ApplicationsQuery *ApplicationsQuery
+  Applications *ApplicationListing
+  CommandsQuery *CommandsQuery
+  Commands *CommandListing
+  Call *GatewayCall
+func Encode(v *Envelope) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+func Decode(in []byte) (*Envelope, error)
+func ToJSON(v any) (out []byte, err error)
+func FromJSON(data []byte, v any) error
+func DecodeContextRefAt(in []byte, depth, limit int) (*ContextRef, int, error)
+func EncodeContextRefAt(v *ContextRef, depth int) []byte
+func EncodeContextRef(v *ContextRef) []byte
+func DecodeContextRef(in []byte) (*ContextRef, error)
+func DecodeContextEntryAt(in []byte, depth, limit int) (*ContextEntry, int, error)
+func EncodeContextEntryAt(v *ContextEntry, depth int) []byte
+func EncodeContextEntry(v *ContextEntry) []byte
+func DecodeContextEntry(in []byte) (*ContextEntry, error)
+func DecodeContextPageAt(in []byte, depth, limit int) (*ContextPage, int, error)
+func EncodeContextPageAt(v *ContextPage, depth int) []byte
+func EncodeContextPage(v *ContextPage) []byte
+func DecodeContextPage(in []byte) (*ContextPage, error)
+func DecodeKindFieldAt(in []byte, depth, limit int) (*KindField, int, error)
+func EncodeKindFieldAt(v *KindField, depth int) []byte
+func EncodeKindField(v *KindField) []byte
+func DecodeKindField(in []byte) (*KindField, error)
+func DecodeKindAt(in []byte, depth, limit int) (*Kind, int, error)
+func EncodeKindAt(v *Kind, depth int) []byte
+func EncodeKind(v *Kind) []byte
+func DecodeKind(in []byte) (*Kind, error)
+func DecodeEntityAt(in []byte, depth, limit int) (*Entity, int, error)
+func EncodeEntityAt(v *Entity, depth int) []byte
+func EncodeEntity(v *Entity) []byte
+func DecodeEntity(in []byte) (*Entity, error)
+func DecodeCollectionAt(in []byte, depth, limit int) (*Collection, int, error)
+func EncodeCollectionAt(v *Collection, depth int) []byte
+func EncodeCollection(v *Collection) []byte
+func DecodeCollection(in []byte) (*Collection, error)
+func DecodeSelectionAt(in []byte, depth, limit int) (*Selection, int, error)
+func EncodeSelectionAt(v *Selection, depth int) []byte
+func EncodeSelection(v *Selection) []byte
+func DecodeSelection(in []byte) (*Selection, error)
+func DecodeContextSnapshotAt(in []byte, depth, limit int) (*ContextSnapshot, int, error)
+func EncodeContextSnapshotAt(v *ContextSnapshot, depth int) []byte
+func EncodeContextSnapshot(v *ContextSnapshot) []byte
+func DecodeContextSnapshot(in []byte) (*ContextSnapshot, error)
+func DecodeReadRequestAt(in []byte, depth, limit int) (*ReadRequest, int, error)
+func EncodeReadRequestAt(v *ReadRequest, depth int) []byte
+func EncodeReadRequest(v *ReadRequest) []byte
+func DecodeReadRequest(in []byte) (*ReadRequest, error)
+func DecodeChangeAt(in []byte, depth, limit int) (*Change, int, error)
+func EncodeChangeAt(v *Change, depth int) []byte
+func EncodeChange(v *Change) []byte
+func DecodeChange(in []byte) (*Change, error)
+func DecodeChangesRequestAt(in []byte, depth, limit int) (*ChangesRequest, int, error)
+func EncodeChangesRequestAt(v *ChangesRequest, depth int) []byte
+func EncodeChangesRequest(v *ChangesRequest) []byte
+func DecodeChangesRequest(in []byte) (*ChangesRequest, error)
+func DecodeChangeBatchAt(in []byte, depth, limit int) (*ChangeBatch, int, error)
+func EncodeChangeBatchAt(v *ChangeBatch, depth int) []byte
+func EncodeChangeBatch(v *ChangeBatch) []byte
+func DecodeChangeBatch(in []byte) (*ChangeBatch, error)
+func DecodeCommandSpecAt(in []byte, depth, limit int) (*CommandSpec, int, error)
+func EncodeCommandSpecAt(v *CommandSpec, depth int) []byte
+func EncodeCommandSpec(v *CommandSpec) []byte
+func DecodeCommandSpec(in []byte) (*CommandSpec, error)
+func DecodeContextBoundsAt(in []byte, depth, limit int) (*ContextBounds, int, error)
+func EncodeContextBoundsAt(v *ContextBounds, depth int) []byte
+func EncodeContextBounds(v *ContextBounds) []byte
+func DecodeContextBounds(in []byte) (*ContextBounds, error)
+func DecodeDescriptionAt(in []byte, depth, limit int) (*Description, int, error)
+func EncodeDescriptionAt(v *Description, depth int) []byte
+func EncodeDescription(v *Description) []byte
+func DecodeDescription(in []byte) (*Description, error)
+func DecodeDescriptionResultAt(in []byte, depth, limit int) (*DescriptionResult, int, error)
+func EncodeDescriptionResultAt(v *DescriptionResult, depth int) []byte
+func EncodeDescriptionResult(v *DescriptionResult) []byte
+func DecodeDescriptionResult(in []byte) (*DescriptionResult, error)
+func DecodeInvocationAt(in []byte, depth, limit int) (*Invocation, int, error)
+func EncodeInvocationAt(v *Invocation, depth int) []byte
+func EncodeInvocation(v *Invocation) []byte
+func DecodeInvocation(in []byte) (*Invocation, error)
+func DecodeCommandResultAt(in []byte, depth, limit int) (*CommandResult, int, error)
+func EncodeCommandResultAt(v *CommandResult, depth int) []byte
+func EncodeCommandResult(v *CommandResult) []byte
+func DecodeCommandResult(in []byte) (*CommandResult, error)
+func DecodeRevealAt(in []byte, depth, limit int) (*Reveal, int, error)
+func EncodeRevealAt(v *Reveal, depth int) []byte
+func EncodeReveal(v *Reveal) []byte
+func DecodeReveal(in []byte) (*Reveal, error)
+func DecodeUndoRequestAt(in []byte, depth, limit int) (*UndoRequest, int, error)
+func EncodeUndoRequestAt(v *UndoRequest, depth int) []byte
+func EncodeUndoRequest(v *UndoRequest) []byte
+func DecodeUndoRequest(in []byte) (*UndoRequest, error)
+func DecodeJobRequestAt(in []byte, depth, limit int) (*JobRequest, int, error)
+func EncodeJobRequestAt(v *JobRequest, depth int) []byte
+func EncodeJobRequest(v *JobRequest) []byte
+func DecodeJobRequest(in []byte) (*JobRequest, error)
+func DecodeDeclaredCommandAt(in []byte, depth, limit int) (*DeclaredCommand, int, error)
+func EncodeDeclaredCommandAt(v *DeclaredCommand, depth int) []byte
+func EncodeDeclaredCommand(v *DeclaredCommand) []byte
+func DecodeDeclaredCommand(in []byte) (*DeclaredCommand, error)
+func DecodeCommandDeclarationAt(in []byte, depth, limit int) (*CommandDeclaration, int, error)
+func EncodeCommandDeclarationAt(v *CommandDeclaration, depth int) []byte
+func EncodeCommandDeclaration(v *CommandDeclaration) []byte
+func DecodeCommandDeclaration(in []byte) (*CommandDeclaration, error)
+func DecodeApplicationsQueryAt(in []byte, depth, limit int) (*ApplicationsQuery, int, error)
+func EncodeApplicationsQueryAt(v *ApplicationsQuery, depth int) []byte
+func EncodeApplicationsQuery(v *ApplicationsQuery) []byte
+func DecodeApplicationsQuery(in []byte) (*ApplicationsQuery, error)
+func DecodeListedInstanceAt(in []byte, depth, limit int) (*ListedInstance, int, error)
+func EncodeListedInstanceAt(v *ListedInstance, depth int) []byte
+func EncodeListedInstance(v *ListedInstance) []byte
+func DecodeListedInstance(in []byte) (*ListedInstance, error)
+func DecodeListedApplicationAt(in []byte, depth, limit int) (*ListedApplication, int, error)
+func EncodeListedApplicationAt(v *ListedApplication, depth int) []byte
+func EncodeListedApplication(v *ListedApplication) []byte
+func DecodeListedApplication(in []byte) (*ListedApplication, error)
+func DecodeListedOpenVerbAt(in []byte, depth, limit int) (*ListedOpenVerb, int, error)
+func EncodeListedOpenVerbAt(v *ListedOpenVerb, depth int) []byte
+func EncodeListedOpenVerb(v *ListedOpenVerb) []byte
+func DecodeListedOpenVerb(in []byte) (*ListedOpenVerb, error)
+func DecodeApplicationOpenVerbsAt(in []byte, depth, limit int) (*ApplicationOpenVerbs, int, error)
+func EncodeApplicationOpenVerbsAt(v *ApplicationOpenVerbs, depth int) []byte
+func EncodeApplicationOpenVerbs(v *ApplicationOpenVerbs) []byte
+func DecodeApplicationOpenVerbs(in []byte) (*ApplicationOpenVerbs, error)
+func DecodeApplicationListingAt(in []byte, depth, limit int) (*ApplicationListing, int, error)
+func EncodeApplicationListingAt(v *ApplicationListing, depth int) []byte
+func EncodeApplicationListing(v *ApplicationListing) []byte
+func DecodeApplicationListing(in []byte) (*ApplicationListing, error)
+func DecodeCommandsQueryAt(in []byte, depth, limit int) (*CommandsQuery, int, error)
+func EncodeCommandsQueryAt(v *CommandsQuery, depth int) []byte
+func EncodeCommandsQuery(v *CommandsQuery) []byte
+func DecodeCommandsQuery(in []byte) (*CommandsQuery, error)
+func DecodeCommandListingAt(in []byte, depth, limit int) (*CommandListing, int, error)
+func EncodeCommandListingAt(v *CommandListing, depth int) []byte
+func EncodeCommandListing(v *CommandListing) []byte
+func DecodeCommandListing(in []byte) (*CommandListing, error)
+func DecodeGatewayCallAt(in []byte, depth, limit int) (*GatewayCall, int, error)
+func EncodeGatewayCallAt(v *GatewayCall, depth int) []byte
+func EncodeGatewayCall(v *GatewayCall) []byte
+func DecodeGatewayCall(in []byte) (*GatewayCall, error)
+func DecodeCallRecordAt(in []byte, depth, limit int) (*CallRecord, int, error)
+func EncodeCallRecordAt(v *CallRecord, depth int) []byte
+func EncodeCallRecord(v *CallRecord) []byte
+func DecodeCallRecord(in []byte) (*CallRecord, error)
+func DecodeEnvelopeAt(in []byte, depth, limit int) (*Envelope, int, error)
+func EncodeEnvelopeAt(v *Envelope, depth int) []byte
+func EncodeEnvelope(v *Envelope) []byte
+func DecodeEnvelope(in []byte) (*Envelope, error)

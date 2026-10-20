@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	watch "github.com/openabstractions/abstraction-watch/go"
 	"os"
 	"path/filepath"
 	"slices"
@@ -15,6 +16,8 @@ import (
 	"time"
 
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
+	mwire "github.com/openabstractions/abstraction-facade/go/abstraction/facade/machines"
+	registration "github.com/openabstractions/abstraction-facade/go/abstraction/facade/registration"
 	"github.com/openabstractions/abstraction-identity/listen"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	iwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
@@ -95,45 +98,82 @@ func (r *runtimeRegistry) DeclarationsV2(ctx context.Context, caller inference.S
 	return wire.DeclarationListV2{Outcome: wire.DeclarationListOutcomePage, Revision: revision, Declarations: list}
 }
 
+func (r *runtimeRegistry) DeclarationsPinned(ctx context.Context, caller inference.Subject) wire.PinnedDeclarationList {
+	if word := r.operator.gate(ctx, caller, ActionProviderManage); word != "" {
+		return wire.PinnedDeclarationList{Outcome: declarationListRefusal(word), Declarations: []wire.PinnedDeclarationState{}}
+	}
+	list, revision, err := r.providers.listPinned()
+	if err != nil {
+		r.providers.report(err)
+		return wire.PinnedDeclarationList{Outcome: wire.DeclarationListOutcomeUnavailable, Declarations: []wire.PinnedDeclarationState{}}
+	}
+	return wire.PinnedDeclarationList{Outcome: wire.DeclarationListOutcomePage, Revision: revision, Declarations: list}
+}
+
 // Declare adds one declaration. A program never declares itself: an adopter
 // cannot register its own program.
 func (r *runtimeRegistry) Declare(ctx context.Context, caller inference.Subject, expected string, declaration wire.Declaration) wire.DeclarationChange {
-	return r.declare(ctx, caller, expected, declaration, nil)
+	return r.declare(ctx, caller, expected, declaration, nil, "", false, false)
 }
 
 func (r *runtimeRegistry) DeclareV2(ctx context.Context, caller inference.Subject, expected string, declaration wire.DeclarationWithExtensions) wire.DeclarationChange {
-	return r.declare(ctx, caller, expected, declaration.Declaration, declaration.SupportedExtensions)
+	return r.declare(ctx, caller, expected, declaration.Declaration, declaration.SupportedExtensions, "", false, false)
 }
 
-func (r *runtimeRegistry) declare(ctx context.Context, caller inference.Subject, expected string, declaration wire.Declaration, extensions []wire.DeclarationExtension) wire.DeclarationChange {
+func (r *runtimeRegistry) DeclarePinned(ctx context.Context, caller inference.Subject, expected string, declaration wire.PinnedDeclaration) wire.DeclarationChange {
+	return r.declare(ctx, caller, expected, declaration.Declaration, declaration.SupportedExtensions, declaration.RemoteServerKeySHA256, true, false)
+}
+
+func (r *runtimeRegistry) ReplacePinned(ctx context.Context, caller inference.Subject, expected string, declaration wire.PinnedDeclaration) wire.DeclarationChange {
+	return r.declare(ctx, caller, expected, declaration.Declaration, declaration.SupportedExtensions, declaration.RemoteServerKeySHA256, true, true)
+}
+
+func (r *runtimeRegistry) declare(ctx context.Context, caller inference.Subject, expected string, declaration wire.Declaration, extensions []wire.DeclarationExtension, remotePin string, pinned, replace bool) wire.DeclarationChange {
 	if word := r.operator.gate(ctx, caller, ActionProviderManage); word != "" {
 		return wire.DeclarationChange{Outcome: declarationEditRefusal(word)}
 	}
 	d := declarationOf(declaration)
 	d.SupportedExtensions = extensionsOf(extensions)
+	if d.remote() && !pinned {
+		return wire.DeclarationChange{Outcome: wire.DeclarationEditOutcomeInvalid, Reason: "remote:registry@2"}
+	}
+	if !d.remote() && remotePin != "" {
+		return wire.DeclarationChange{Outcome: wire.DeclarationEditOutcomeInvalid, Reason: "remote_server_key_sha256"}
+	}
+	if d.Remote != nil {
+		d.Remote.ServerKeySHA256 = remotePin
+	}
 	if field := validProviderDeclaration(d); field != "" {
 		return wire.DeclarationChange{Outcome: wire.DeclarationEditOutcomeInvalid, Reason: field}
 	}
 	if d.remote() {
+		if _, err := d.Remote.serverKey(); err != nil {
+			return wire.DeclarationChange{Outcome: wire.DeclarationEditOutcomeInvalid, Reason: "remote_server_key_sha256"}
+		}
 		if _, err := d.Remote.config(); err != nil {
 			return wire.DeclarationChange{Outcome: wire.DeclarationEditOutcomeInvalid, Reason: "remote"}
 		}
 	} else if samePrograms(d.Program, caller.Program) {
 		return wire.DeclarationChange{Outcome: wire.DeclarationEditOutcomeInvalid, Reason: "program:self"}
 	}
-	change := r.providers.add(expected, providerFile{Version: providerFileVersion, Declaration: d, DeclaredBy: caller.Program, DeclaredAt: time.Now().UnixMilli()})
+	file := providerFile{Version: providerFileVersion, Declaration: d, DeclaredBy: caller.Program, DeclaredAt: time.Now().UnixMilli()}
+	before := r.hostedBefore(d.Name)
+	var change wire.DeclarationChange
+	if replace {
+		change = r.providers.replaceAdmitted(ctx, expected, file, r.operator.providerEditAdmission(ctx, caller, ActionProviderManage))
+	} else {
+		change = r.providers.addAdmitted(ctx, expected, file, r.operator.providerEditAdmission(ctx, caller, ActionProviderManage))
+	}
 	if change.Outcome != wire.DeclarationEditOutcomeApplied {
 		return change
 	}
+	r.recordHosted(ctx, d.Name, before, hostedIn(d))
 	// Each capability reads its own acceptance rule: the person accepts each
 	// named store from this program, the resource table's card is held by the
 	// program that declared it, and a remote runtime's hosts serve the
 	// operator programs. An existing rule, a deny included, stays as it is.
 	by := rwire.Subject{Account: caller.Account, Program: caller.Program}
-	var errs []error
-	for _, store := range d.resources("store") {
-		errs = append(errs, r.operator.permitRuleWhy(by, d.Program, ActionInventoryProvide, ResourceStore(store), providerAddWhy))
-	}
+	errs := r.operator.permitStoreRules(by, d.Program, d.resources("store"))
 	errs = append(errs, r.operator.permitCardRules(by, d.Program, d.resources("card"))...)
 	if d.host() {
 		errs = append(errs, r.operator.writeHostRules(caller, (providerFile{Declaration: d}).hostEntry()))
@@ -155,12 +195,53 @@ func (r *runtimeRegistry) Withdraw(ctx context.Context, caller inference.Subject
 	if !providerName.MatchString(name) {
 		return wire.DeclarationChange{Outcome: wire.DeclarationEditOutcomeInvalid, Reason: "name"}
 	}
-	return r.providers.remove(expected, name)
+	// Unhosting the last model withdraws the model host (models host's
+	// declareHost): every entry it held is a removal the person made, and
+	// it holds when a later model host is declared (DM-1).
+	before := r.hostedBefore(name)
+	change := r.providers.removeAdmitted(ctx, expected, name, r.operator.providerEditAdmission(ctx, caller, ActionProviderManage))
+	if change.Outcome == wire.DeclarationEditOutcomeApplied {
+		r.recordHosted(ctx, name, before, nil)
+	}
+	return change
+}
+
+// hostedBefore is the model host's allowlist before an edit of name; nil for
+// any other declaration.
+func (r *runtimeRegistry) hostedBefore(name string) []hostedModel {
+	if name != modelHostName {
+		return nil
+	}
+	r.providers.mu.Lock()
+	files, _, err := r.providers.read()
+	r.providers.mu.Unlock()
+	if err != nil {
+		return nil
+	}
+	for _, f := range files {
+		if f.Declaration.Name == name && !f.Disabled {
+			return hostedIn(f.Declaration)
+		}
+	}
+	return nil
+}
+
+// recordHosted keeps the person's removals from the model host, so the
+// reconciler leaves a removed model out until it is hosted again
+// (models_discovered.go). A record that cannot be written is reported; the
+// edit itself stands.
+func (r *runtimeRegistry) recordHosted(ctx context.Context, name string, before, after []hostedModel) {
+	if name != modelHostName {
+		return
+	}
+	if err := r.providers.recordModelHostEdit(ctx, before, after); err != nil {
+		r.providers.report(fmt.Errorf("model host removals: %w", err))
+	}
 }
 
 // Observe waits for the declarations or their readings to differ from cursor.
 func (r *runtimeRegistry) Observe(ctx context.Context, caller inference.Subject, cursor string, waitMS int64) wire.DeclarationObservation {
-	outcome, now, list := r.observe(ctx, caller, cursor, waitMS, false)
+	outcome, now, list := r.observe(ctx, caller, cursor, waitMS, 0)
 	states := make([]wire.DeclarationState, len(list))
 	for i, entry := range list {
 		states[i] = entry.State
@@ -169,78 +250,100 @@ func (r *runtimeRegistry) Observe(ctx context.Context, caller inference.Subject,
 }
 
 func (r *runtimeRegistry) ObserveV2(ctx context.Context, caller inference.Subject, cursor string, waitMS int64) wire.DeclarationObservationV2 {
-	outcome, now, list := r.observe(ctx, caller, cursor, waitMS, true)
-	return wire.DeclarationObservationV2{Outcome: outcome, Cursor: now, Declarations: list}
+	outcome, now, list := r.observe(ctx, caller, cursor, waitMS, 1)
+	return wire.DeclarationObservationV2{Outcome: outcome, Cursor: now, Declarations: declarationStatesV2(list)}
 }
 
-func (r *runtimeRegistry) observe(ctx context.Context, caller inference.Subject, cursor string, waitMS int64, v2 bool) (wire.DeclarationListOutcome, string, []wire.DeclarationStateV2) {
+func (r *runtimeRegistry) ObservePinned(ctx context.Context, caller inference.Subject, cursor string, waitMS int64) wire.PinnedDeclarationObservation {
+	outcome, now, list := r.observe(ctx, caller, cursor, waitMS, 2)
+	return wire.PinnedDeclarationObservation{Outcome: outcome, Cursor: now, Declarations: list}
+}
+
+func (r *runtimeRegistry) observe(ctx context.Context, caller inference.Subject, cursor string, waitMS int64, profile int) (wire.DeclarationListOutcome, string, []wire.PinnedDeclarationState) {
 	if word := r.operator.gate(ctx, caller, ActionProviderManage); word != "" {
-		return declarationListRefusal(word), "", []wire.DeclarationStateV2{}
+		return declarationListRefusal(word), "", []wire.PinnedDeclarationState{}
 	}
 	if waitMS < 0 || waitMS > maxObserveWait {
-		return wire.DeclarationListOutcomeInvalid, "", []wire.DeclarationStateV2{}
+		return wire.DeclarationListOutcomeInvalid, "", []wire.PinnedDeclarationState{}
 	}
-	deadline := time.NewTimer(time.Duration(waitMS) * time.Millisecond)
-	defer deadline.Stop()
-	expired := false
-	for {
-		if word := r.operator.gate(ctx, caller, ActionProviderManage); word != "" {
-			return declarationListRefusal(word), "", []wire.DeclarationStateV2{}
-		}
-		r.providers.mu.Lock()
-		changes := r.providers.changes
-		r.providers.mu.Unlock()
-		list, _, err := r.providers.listV2()
-		if err != nil {
-			r.providers.report(err)
-			return wire.DeclarationListOutcomeUnavailable, "", []wire.DeclarationStateV2{}
-		}
-		var raw []byte
-		if v2 {
-			raw, err = json.Marshal(list)
-		} else {
-			states := make([]wire.DeclarationState, len(list))
-			for i, entry := range list {
-				states[i] = entry.State
+	var now string
+	var list []wire.PinnedDeclarationState
+	outcome, err := r.providers.observers().Wait(ctx, time.Duration(waitMS)*time.Millisecond, watch.Probe{
+		Read: func() (bool, error) {
+			var err error
+			list, _, err = r.providers.listPinned()
+			if err != nil {
+				r.providers.report(err)
+				return false, err
 			}
-			raw, err = json.Marshal(states)
-		}
-		if err != nil {
-			return wire.DeclarationListOutcomeUnavailable, "", []wire.DeclarationStateV2{}
-		}
-		sum := sha256.Sum256(raw)
-		prefix := "registry-v1:"
-		if v2 {
-			prefix = "registry-v2:"
-		}
-		now := prefix + hex.EncodeToString(sum[:12])
-		if cursor == "" || now != cursor || expired {
+			var raw []byte
+			if profile == 2 {
+				raw, err = json.Marshal(list)
+			} else if profile == 1 {
+				raw, err = json.Marshal(declarationStatesV2(list))
+			} else {
+				states := make([]wire.DeclarationState, len(list))
+				for i, entry := range list {
+					states[i] = entry.State
+				}
+				raw, err = json.Marshal(states)
+			}
+			if err != nil {
+				return false, err
+			}
+			sum := sha256.Sum256(raw)
+			prefix := "registry-v1:"
+			if profile == 2 {
+				prefix = "registry-pinned:"
+			} else if profile == 1 {
+				prefix = "registry-v2:"
+			}
+			now = prefix + hex.EncodeToString(sum[:12])
+			return cursor == "" || now != cursor, nil
+		},
+		Recheck: func() error {
 			if word := r.operator.gate(ctx, caller, ActionProviderManage); word != "" {
-				return declarationListRefusal(word), "", []wire.DeclarationStateV2{}
+				return registryRefusal(word)
 			}
-			return wire.DeclarationListOutcomePage, now, list
-		}
-		select {
-		case <-changes:
-		case <-deadline.C:
-			expired = true
-		case <-ctx.Done():
-			return wire.DeclarationListOutcomeUnavailable, "", []wire.DeclarationStateV2{}
-		}
+			return nil
+		},
+	})
+	var refused registryRefusal
+	switch {
+	case errors.As(err, &refused):
+		return declarationListRefusal(string(refused)), "", []wire.PinnedDeclarationState{}
+	case err != nil, outcome == watch.Busy, outcome == watch.Failed:
+		return wire.DeclarationListOutcomeUnavailable, "", []wire.PinnedDeclarationState{}
 	}
+	return wire.DeclarationListOutcomePage, now, list
 }
+
+// registryRefusal carries the operator gate's word through the shared waiter.
+type registryRefusal string
+
+func (r registryRefusal) Error() string { return "registry: " + string(r) }
 
 // registryHost serves registry@1, and endpoint@1 beside it, on its endpoint.
 type registryHost struct {
 	listener listen.Listener
 	registry *runtimeRegistry
+	pairing  *runtimePairing
 	owner    string
 	report   func(error)
 	ctx      context.Context
 	cancel   context.CancelFunc
 	once     sync.Once
 	workers  sync.WaitGroup
-	slots    chan struct{}
+	slots    listen.CallAdmission
+}
+
+// RegistryContracts reports only services composed into this local receiver.
+func (h *registryHost) RegistryContracts() []string {
+	contracts := []string{RegistryContract, RegistryV2Contract, RegistryV3Contract}
+	if h.pairing != nil {
+		contracts = append(contracts, machineControlContract)
+	}
+	return contracts
 }
 
 func listenRegistry(endpoint string, registry *runtimeRegistry, owner string, report func(error)) (*registryHost, error) {
@@ -249,7 +352,7 @@ func listenRegistry(endpoint string, registry *runtimeRegistry, owner string, re
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &registryHost{listener: listen.Sessions(l, listen.SessionOptions{MaxSessions: 64}), registry: registry, owner: owner, report: report, ctx: ctx, cancel: cancel, slots: make(chan struct{}, 64)}, nil
+	return &registryHost{listener: listen.Sessions(l, listen.SessionOptions{MaxSessions: 64}), registry: registry, owner: owner, report: report, ctx: ctx, cancel: cancel, slots: listen.NewCallAdmission(64)}, nil
 }
 
 func (h *registryHost) Close() error {
@@ -272,17 +375,14 @@ func (h *registryHost) Serve(ctx context.Context) error {
 			}
 			return err
 		}
-		select {
-		case h.slots <- struct{}{}:
-		default:
-			//unchecked: dropping a connection because the worker slots are full; nothing here can act on a failed close of the connection it is already refusing
-			conn.Close()
+		release, admitted := h.slots.Take(conn)
+		if !admitted {
 			continue
 		}
 		h.workers.Add(1)
 		go func() {
 			defer h.workers.Done()
-			defer func() { <-h.slots }()
+			defer release()
 			defer conn.Close()
 			callCtx, cancel := context.WithTimeout(h.ctx, (maxObserveWait+5000)*time.Millisecond)
 			defer cancel()
@@ -295,15 +395,32 @@ func (h *registryHost) Serve(ctx context.Context) error {
 				receiver := &registryReceiver{host: h, call: call, ctx: callCtx}
 				v1 := &wire.RegistryDispatcher{Handler: receiver}
 				v2 := &wire.RegistryV2Dispatcher{Handler: &registryV2Receiver{receiver}}
+				v3 := &registration.RegistryV3Dispatcher{Handler: &registryV3Receiver{receiver}}
+				var machines *mwire.MachineControlDispatcher
+				if h.pairing != nil {
+					machines = &mwire.MachineControlDispatcher{Handler: &machineControlReceiver{receiver}}
+				}
 				var envelope struct {
 					Service string `json:"service"`
 				}
 				if err = json.Unmarshal(call.Frame, &envelope); err == nil {
 					switch envelope.Service {
+					case machineControlContract:
+						if machines != nil {
+							reply, err = machines.ExchangeFrame(call.Frame)
+						} else {
+							reply, err = v1.ExchangeFrame(call.Frame)
+						}
 					case RegistryV2Contract:
 						reply, err = v2.ExchangeFrame(call.Frame)
-					case wire.EndpointContract:
-						reply, err = wire.DescribeEndpoint(call.Frame, "", "", v1, v2)
+					case RegistryV3Contract:
+						reply, err = v3.ExchangeFrame(call.Frame)
+					case wire.EndpointContract, "abstraction.facade/endpoint@2":
+						if machines != nil {
+							reply, err = wire.DescribeEndpoint(call.Frame, "", "", v1, v2, v3, machines)
+						} else {
+							reply, err = wire.DescribeEndpoint(call.Frame, "", "", v1, v2, v3)
+						}
 					default:
 						reply, err = v1.ExchangeFrame(call.Frame)
 					}
@@ -356,6 +473,39 @@ func (r *registryReceiver) Observe(cursor string, waitMs int64) (wire.Declaratio
 
 type registryV2Receiver struct{ *registryReceiver }
 
+// machineControlReceiver retains native Program evidence and rechecks it at
+// each admission and again at each state or Rights effect.
+type machineControlReceiver struct{ *registryReceiver }
+
+func (r *machineControlReceiver) authorize() error {
+	if err := r.call.Recheck(); err != nil {
+		return err
+	}
+	peer, err := r.call.Peer()
+	if err != nil {
+		return err
+	}
+	return r.host.pairing.rights.authorizeOperator(r.ctx, peer)
+}
+func (r *machineControlReceiver) StartOffer(request mwire.MachineRequestIdentity, address string, preparation mwire.MachinePreparation) (mwire.MachineStart, error) {
+	return r.host.pairing.StartOffer(r.ctx, request, address, preparation, r.authorize), nil
+}
+func (r *machineControlReceiver) Enter(request mwire.MachineRequestIdentity, code string, preparation mwire.MachinePreparation) (mwire.MachineStart, error) {
+	return r.host.pairing.Enter(r.ctx, request, code, preparation, r.authorize), nil
+}
+func (r *machineControlReceiver) Observe(operation, cursor string, wait int64) (mwire.MachineObservation, error) {
+	return r.host.pairing.Observe(r.ctx, operation, cursor, wait, r.authorize), nil
+}
+func (r *machineControlReceiver) Cancel(operation string) (mwire.MachineCancellation, error) {
+	return r.host.pairing.Cancel(r.ctx, operation, r.authorize), nil
+}
+func (r *machineControlReceiver) List(cursor string, limit int64) (mwire.MachinePage, error) {
+	return r.host.pairing.List(r.ctx, cursor, limit, r.authorize), nil
+}
+func (r *machineControlReceiver) Remove(revision, key string) (mwire.MachineRemoval, error) {
+	return r.host.pairing.Remove(r.ctx, revision, key, r.authorize), nil
+}
+
 func (r *registryV2Receiver) Declarations() (wire.DeclarationListV2, error) {
 	return r.host.registry.DeclarationsV2(r.ctx, r.caller()), nil
 }
@@ -366,6 +516,19 @@ func (r *registryV2Receiver) Declare(expectedRevision string, declaration wire.D
 
 func (r *registryV2Receiver) Observe(cursor string, waitMs int64) (wire.DeclarationObservationV2, error) {
 	return r.host.registry.ObserveV2(r.ctx, r.caller(), cursor, waitMs), nil
+}
+
+func (r *registryV2Receiver) DeclarationsPinned() (wire.PinnedDeclarationList, error) {
+	return r.host.registry.DeclarationsPinned(r.ctx, r.caller()), nil
+}
+func (r *registryV2Receiver) DeclarePinned(expected string, declaration wire.PinnedDeclaration) (wire.DeclarationChange, error) {
+	return r.host.registry.DeclarePinned(r.ctx, r.caller(), expected, declaration), nil
+}
+func (r *registryV2Receiver) ReplacePinned(expected string, declaration wire.PinnedDeclaration) (wire.DeclarationChange, error) {
+	return r.host.registry.ReplacePinned(r.ctx, r.caller(), expected, declaration), nil
+}
+func (r *registryV2Receiver) ObservePinned(cursor string, waitMs int64) (wire.PinnedDeclarationObservation, error) {
+	return r.host.registry.ObservePinned(r.ctx, r.caller(), cursor, waitMs), nil
 }
 
 // legacyProviderFile is a version 1 declaration, which the registration build

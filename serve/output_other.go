@@ -3,4 +3,5 @@
 package main
 
 // Only the Windows windowless link lacks standard handles.
-func speakSomewhere() {}
+func speakSomewhere()           {}
+func speakRuntime(runtimeFlags) {}

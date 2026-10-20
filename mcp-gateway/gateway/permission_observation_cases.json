@@ -1,0 +1,22 @@
+{
+  "observations": [
+    {"name":"pending is never consent","outcome":"pending","option":"allow","answer_pending":true,"want":"waiting"},
+    {"name":"answered pending flag","outcome":"answered","option":"allow","answer_pending":true,"want":"waiting"},
+    {"name":"recorded allow awaits committed authority","outcome":"answered","option":"allow","want":"waiting"},
+    {"name":"refuse","outcome":"answered","option":"refuse","want":"refused"},
+    {"name":"block","outcome":"answered","option":"never","want":"blocked"},
+    {"name":"current permit supersedes old block","outcome":"permitted","revision":"current","option":"never","want":"allowed"},
+    {"name":"current block supersedes old allow","outcome":"denied","revision":"current","option":"allow","want":"blocked"},
+    {"name":"permit without revision","outcome":"permitted","option":"allow","want":"waiting"},
+    {"name":"unknown old allow","outcome":"unknown","option":"allow","want":"waiting"},
+    {"name":"unknown old block","outcome":"unknown","option":"never","want":"waiting"},
+    {"name":"unavailable","outcome":"unavailable","option":"allow","want":"waiting"},
+    {"name":"gone","outcome":"gone","option":"allow","want":"waiting"}
+  ],
+  "projections": [
+    {"verdict":"waiting","outcome":"awaiting_permission","message":"OpenAbstractions is waiting for your permission. Open Questions in the OpenAbstractions Panel to answer the request, then continue this operation."},
+    {"verdict":"refused","outcome":"permission_refused","message":"The person chose not to allow this for now; OpenAbstractions can ask again in 10 minutes."},
+    {"verdict":"blocked","outcome":"permission_blocked","message":"The person blocked this; they can change it on the Permissions page of the OpenAbstractions Panel."},
+    {"verdict":"blocked","questions":[],"outcome":"permission_blocked","message":"The person blocked this; they can change it on the Permissions page of the OpenAbstractions Panel."}
+  ]
+}

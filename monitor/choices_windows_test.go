@@ -16,7 +16,12 @@ import (
 	facade "github.com/openabstractions/abstraction-facade/go"
 	"github.com/openabstractions/abstraction-facade/go/probe"
 	"github.com/openabstractions/abstractions/monitor/win"
+
+	"golang.org/x/sys/windows"
 )
+
+// testUser32 is the one user32 binding the package's Windows tests share.
+var testUser32 = windows.NewLazySystemDLL("user32.dll")
 
 func TestSessionPresenterKeepsOrdinaryPendingAndDeliversPermission(t *testing.T) {
 	book, operator := trayTestBook(t)
@@ -90,7 +95,7 @@ func TestLiveChoiceTaskDialogPublicAnswerCloseAndStale(t *testing.T) {
 	})
 	session := &trayWindowsSession{prompting: true}
 	p := &questionPresenter{session: session, surface: &trayWindowsSurface{w: w, session: session}, choices: func(context.Context) (presenterChoiceOperator, error) { return operator, nil }, watchEvery: 20 * time.Millisecond}
-	ui := syscall.NewLazyDLL("user32.dll")
+	ui := testUser32
 	enumerate := ui.NewProc("EnumWindows")
 	pidFor := ui.NewProc("GetWindowThreadProcessId")
 	textFor := ui.NewProc("GetWindowTextW")

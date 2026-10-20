@@ -70,6 +70,22 @@ inline constexpr bool operator!=(LinkOutcome value, std::string_view name)
 inline constexpr bool operator==(std::string_view name, LinkOutcome value)
 inline constexpr bool operator!=(std::string_view name, LinkOutcome value)
 inline const std::vector<std::string> kLinkOutcomeNames
+enum class WorkObservationOutcome {Changed, Unchanged, Gap, Unknown, Forbidden, Invalid, Unavailable, Unsupported}
+inline constexpr std::string_view wire_name(WorkObservationOutcome value)
+inline std::optional<WorkObservationOutcome> parse_work_observation_outcome(std::string_view name)
+inline constexpr bool operator==(WorkObservationOutcome value, std::string_view name)
+inline constexpr bool operator!=(WorkObservationOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, WorkObservationOutcome value)
+inline constexpr bool operator!=(std::string_view name, WorkObservationOutcome value)
+inline const std::vector<std::string> kWorkObservationOutcomeNames
+enum class WorkObservationMechanism {Native, Polled}
+inline constexpr std::string_view wire_name(WorkObservationMechanism value)
+inline std::optional<WorkObservationMechanism> parse_work_observation_mechanism(std::string_view name)
+inline constexpr bool operator==(WorkObservationMechanism value, std::string_view name)
+inline constexpr bool operator!=(WorkObservationMechanism value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, WorkObservationMechanism value)
+inline constexpr bool operator!=(std::string_view name, WorkObservationMechanism value)
+inline const std::vector<std::string> kWorkObservationMechanismNames
 enum class InventoryOutcome {Page, Gap, Forbidden, Invalid, Unavailable}
 inline constexpr std::string_view wire_name(InventoryOutcome value)
 inline std::optional<InventoryOutcome> parse_inventory_outcome(std::string_view name)
@@ -94,6 +110,53 @@ inline constexpr std::string_view kServiceErrorCodeUnknownService
 inline constexpr std::string_view kServiceErrorCodeUnknownMethod
 inline constexpr std::string_view kServiceErrorCodeWrongMode
 inline constexpr std::string_view kServiceErrorCodeForbidden
+enum class EndpointServiceReadiness {Ready, NotReady, Unknown}
+inline constexpr std::string_view wire_name(EndpointServiceReadiness value)
+inline std::optional<EndpointServiceReadiness> parse_endpoint_service_readiness(std::string_view name)
+inline constexpr bool operator==(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator!=(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointServiceReadiness value)
+inline constexpr bool operator!=(std::string_view name, EndpointServiceReadiness value)
+inline const std::vector<std::string> kEndpointServiceReadinessNames
+inline const std::vector<std::string> kEndpointRefusalSourceNames
+inline constexpr std::string_view kEndpointRefusalSourceRights
+inline constexpr std::string_view kEndpointRefusalSourceCredentials
+inline constexpr std::string_view kEndpointRefusalSourceLicense
+inline constexpr std::string_view kEndpointRefusalSourceTerms
+inline constexpr std::string_view kEndpointRefusalSourceIdentity
+inline constexpr std::string_view kEndpointRefusalSourceOs
+enum class EndpointRefusalDecision {Denied, NotGranted, PersonOnly}
+inline constexpr std::string_view wire_name(EndpointRefusalDecision value)
+inline std::optional<EndpointRefusalDecision> parse_endpoint_refusal_decision(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalDecision value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalDecision value)
+inline const std::vector<std::string> kEndpointRefusalDecisionNames
+enum class EndpointRefusalAsk {Available, None}
+inline constexpr std::string_view wire_name(EndpointRefusalAsk value)
+inline std::optional<EndpointRefusalAsk> parse_endpoint_refusal_ask(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalAsk value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalAsk value)
+inline const std::vector<std::string> kEndpointRefusalAskNames
+enum class EndpointProducerCheckState {Current, Repaired, Stale, Refused, Unverified}
+inline constexpr std::string_view wire_name(EndpointProducerCheckState value)
+inline std::optional<EndpointProducerCheckState> parse_endpoint_producer_check_state(std::string_view name)
+inline constexpr bool operator==(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator!=(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointProducerCheckState value)
+inline constexpr bool operator!=(std::string_view name, EndpointProducerCheckState value)
+inline const std::vector<std::string> kEndpointProducerCheckStateNames
+enum class EndpointDescriptionOutcome {Described, Forbidden, Unavailable, Invalid, Unsupported}
+inline constexpr std::string_view wire_name(EndpointDescriptionOutcome value)
+inline std::optional<EndpointDescriptionOutcome> parse_endpoint_description_outcome(std::string_view name)
+inline constexpr bool operator==(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator!=(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointDescriptionOutcome value)
+inline constexpr bool operator!=(std::string_view name, EndpointDescriptionOutcome value)
+inline const std::vector<std::string> kEndpointDescriptionOutcomeNames
 inline const std::vector<std::string> kAdmissionGuarantees
 inline const std::vector<std::string> kAcceptanceErrorCodes
 inline const std::vector<std::string> kResourceActions
@@ -156,6 +219,11 @@ struct ResultLink
   LinkOutcome outcome
   std::optional<Receipt> receipt
   std::int64_t size
+struct WorkObservation
+  WorkObservationOutcome outcome
+  std::string next
+  std::optional<OperationSnapshot> snapshot
+  WorkObservationMechanism mechanism
 struct InventoryPage
   InventoryOutcome outcome
   std::vector<OperationSnapshot> snapshots
@@ -163,8 +231,82 @@ struct InventoryPage
   bool complete
 struct OperatorCancellation
   OperatorCancellationOutcome outcome
+struct EndpointRefusalDetail
+  std::string source
+  EndpointRefusalDecision decision
+  EndpointRefusalAsk ask
+  std::string action
+  std::string question
+  std::string credential
+  std::int64_t retry_after_ms
+struct EndpointProducerCheck
+  std::string kind
+  std::string copy
+  EndpointProducerCheckState state
+  std::string reason
+  std::string checked
+struct EndpointServiceState
+  std::string service
+  EndpointServiceReadiness readiness
+  std::string reason
+  std::vector<std::string> guarantees
+  std::map<std::string, std::string> capabilities
+  std::string definition_hash
+struct EndpointDescription
+  EndpointDescriptionOutcome outcome
+  std::string program
+  std::string version
+  std::vector<EndpointServiceState> services
+  std::optional<EndpointRefusalDetail> refusal
+  std::string reason
+  std::vector<EndpointProducerCheck> checks
+struct EndpointDescriptionResult
+  EndpointDescription value
 inline std::string encode(const AcceptanceResult& v)
 inline AcceptanceResult decode(std::string_view data)
+T from_json(std::string_view data)
+inline std::string to_json(const RequestIdentity& v)
+inline RequestIdentity from_json<RequestIdentity>(std::string_view data)
+inline std::string to_json(const Submission& v)
+inline Submission from_json<Submission>(std::string_view data)
+inline std::string to_json(const Receipt& v)
+inline Receipt from_json<Receipt>(std::string_view data)
+inline std::string to_json(const AcceptanceResult& v)
+inline AcceptanceResult from_json<AcceptanceResult>(std::string_view data)
+inline std::string to_json(const HistoryWindow& v)
+inline HistoryWindow from_json<HistoryWindow>(std::string_view data)
+inline std::string to_json(const CancellationResult& v)
+inline CancellationResult from_json<CancellationResult>(std::string_view data)
+inline std::string to_json(const WorkProgress& v)
+inline WorkProgress from_json<WorkProgress>(std::string_view data)
+inline std::string to_json(const WorkFailure& v)
+inline WorkFailure from_json<WorkFailure>(std::string_view data)
+inline std::string to_json(const OperationSnapshot& v)
+inline OperationSnapshot from_json<OperationSnapshot>(std::string_view data)
+inline std::string to_json(const ObservationResult& v)
+inline ObservationResult from_json<ObservationResult>(std::string_view data)
+inline std::string to_json(const ResultChunk& v)
+inline ResultChunk from_json<ResultChunk>(std::string_view data)
+inline std::string to_json(const ResultRead& v)
+inline ResultRead from_json<ResultRead>(std::string_view data)
+inline std::string to_json(const ResultLink& v)
+inline ResultLink from_json<ResultLink>(std::string_view data)
+inline std::string to_json(const WorkObservation& v)
+inline WorkObservation from_json<WorkObservation>(std::string_view data)
+inline std::string to_json(const InventoryPage& v)
+inline InventoryPage from_json<InventoryPage>(std::string_view data)
+inline std::string to_json(const OperatorCancellation& v)
+inline OperatorCancellation from_json<OperatorCancellation>(std::string_view data)
+inline std::string to_json(const EndpointRefusalDetail& v)
+inline EndpointRefusalDetail from_json<EndpointRefusalDetail>(std::string_view data)
+inline std::string to_json(const EndpointProducerCheck& v)
+inline EndpointProducerCheck from_json<EndpointProducerCheck>(std::string_view data)
+inline std::string to_json(const EndpointServiceState& v)
+inline EndpointServiceState from_json<EndpointServiceState>(std::string_view data)
+inline std::string to_json(const EndpointDescription& v)
+inline EndpointDescription from_json<EndpointDescription>(std::string_view data)
+inline std::string to_json(const EndpointDescriptionResult& v)
+inline EndpointDescriptionResult from_json<EndpointDescriptionResult>(std::string_view data)
 struct FrameWriter
   virtual void write_frame(std::string_view frame)
 struct DispatchError : std::runtime_error
@@ -174,10 +316,12 @@ struct FrameExchanger
 struct ServiceError : std::runtime_error
   std::string code, message
 inline constexpr std::string_view kEndpointContract
+inline constexpr std::string_view kEndpointV2Contract
 struct DescribedService
   std::string contract
   bool ready
   std::string why
+std::string describe_endpoint_with_checks(std::string_view frame, const std::string& program, const std::string& version, const std::vector<EndpointProducerCheck>& checks, const Services& . . . services)
 std::string describe_endpoint(std::string_view frame, const std::string& program, const std::string& version, const Services& . . . services)
 struct RecoverableAcceptance
   virtual HistoryWindow get_history_window()
@@ -196,23 +340,30 @@ struct RecoverableAcceptanceService
 struct RecoverableAcceptanceDispatcher : FrameWriter, FrameExchanger
   RecoverableAcceptance& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct OperationControl
   virtual ObservationResult observe_work(const RequestIdentity& identity)
+  virtual WorkObservation follow_work(const RequestIdentity& identity, const std::string& after, const std::int64_t& wait_ms)
   virtual ResultRead read_result(const RequestIdentity& identity, const std::int64_t& offset, const std::int64_t& max_bytes)
   virtual ResultLink link_result(const RequestIdentity& identity, const std::string& destination)
 template<class Transport>struct OperationControlClient : OperationControl
   Transport& transport_
   ObservationResult observe_work(const RequestIdentity& identity) override
+  WorkObservation follow_work(const RequestIdentity& identity, const std::string& after, const std::int64_t& wait_ms) override
   ResultRead read_result(const RequestIdentity& identity, const std::int64_t& offset, const std::int64_t& max_bytes) override
   ResultLink link_result(const RequestIdentity& identity, const std::string& destination) override
+  auto follow_work_pages(const RequestIdentity& identity, const std::string& after, const std::int64_t& wait_ms)
 struct OperationControlService
   inline static constexpr std::string_view kWireName
   inline static constexpr std::string_view kCapability
 struct OperationControlDispatcher : FrameWriter, FrameExchanger
   OperationControl& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct JobInventory
@@ -226,6 +377,8 @@ struct JobInventoryService
 struct JobInventoryDispatcher : FrameWriter, FrameExchanger
   JobInventory& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct JobOperator
@@ -241,5 +394,39 @@ struct JobOperatorService
 struct JobOperatorDispatcher : FrameWriter, FrameExchanger
   JobOperator& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
+inline std::string encode_request_identity(const RequestIdentity& v)
+inline RequestIdentity decode_request_identity(std::string_view in)
+inline std::string encode_submission(const Submission& v)
+inline Submission decode_submission(std::string_view in)
+inline std::string encode_receipt(const Receipt& v)
+inline Receipt decode_receipt(std::string_view in)
+inline std::string encode_acceptance_result(const AcceptanceResult& v)
+inline AcceptanceResult decode_acceptance_result(std::string_view in)
+inline std::string encode_history_window(const HistoryWindow& v)
+inline HistoryWindow decode_history_window(std::string_view in)
+inline std::string encode_cancellation_result(const CancellationResult& v)
+inline CancellationResult decode_cancellation_result(std::string_view in)
+inline std::string encode_work_progress(const WorkProgress& v)
+inline WorkProgress decode_work_progress(std::string_view in)
+inline std::string encode_work_failure(const WorkFailure& v)
+inline WorkFailure decode_work_failure(std::string_view in)
+inline std::string encode_operation_snapshot(const OperationSnapshot& v)
+inline OperationSnapshot decode_operation_snapshot(std::string_view in)
+inline std::string encode_observation_result(const ObservationResult& v)
+inline ObservationResult decode_observation_result(std::string_view in)
+inline std::string encode_result_chunk(const ResultChunk& v)
+inline ResultChunk decode_result_chunk(std::string_view in)
+inline std::string encode_result_read(const ResultRead& v)
+inline ResultRead decode_result_read(std::string_view in)
+inline std::string encode_result_link(const ResultLink& v)
+inline ResultLink decode_result_link(std::string_view in)
+inline std::string encode_work_observation(const WorkObservation& v)
+inline WorkObservation decode_work_observation(std::string_view in)
+inline std::string encode_inventory_page(const InventoryPage& v)
+inline InventoryPage decode_inventory_page(std::string_view in)
+inline std::string encode_operator_cancellation(const OperatorCancellation& v)
+inline OperatorCancellation decode_operator_cancellation(std::string_view in)

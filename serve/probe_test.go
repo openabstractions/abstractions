@@ -11,7 +11,19 @@ import (
 	oaprobe "github.com/openabstractions/abstraction-facade/go/probe"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	identity "github.com/openabstractions/abstraction-identity"
+	rightswire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
+	rightsclient "github.com/openabstractions/abstraction-rights/go/client"
 )
+
+func TestProbeRightsExitUsesEvaluatedOwner(t *testing.T) {
+	for _, outcome := range []string{"permitted", "denied", "not_granted", "unknown_action", "invalid", "forbidden", "unavailable", "future", ""} {
+		decision, _ := rightswire.ParseDecisionOutcome(outcome)
+		err := probeExit(endpointInstalled, probeResult{Capability: "rights", Operation: "decide", Outcome: outcome})
+		if (err == nil) != rightsclient.Evaluated(decision) {
+			t.Fatalf("outcome %q: evaluated=%v err=%v", outcome, rightsclient.Evaluated(decision), err)
+		}
+	}
+}
 
 type probeResult = oaprobe.Result
 
@@ -81,9 +93,18 @@ func TestProbeWithNoRuntimeIsRuntimeUnavailable(t *testing.T) {
 			t.Fatalf("%v names no subject: %+v", args, results[0])
 		}
 	}
+	// probe all on a dead runtime exits not-resolved with the plain
+	// no-runtime message, after printing every result (backlog O-2).
 	results, err := runProbeCommand(t, "all", "--endpoint", endpoint, "--timeout", "2s")
-	if err != nil || len(results) < 8 {
-		t.Fatalf("probe all with no runtime: %v %+v", err, results)
+	exit := assertExit(t, err, exitNotResolved, "probe all")
+	if msg := exit.Error(); !strings.Contains(msg, "probe all: no runtime listens at "+endpoint) {
+		t.Fatalf("probe all with no runtime says %q", msg)
+	}
+	if !strings.Contains(probeUsage(), "probe all exits 1 when a call\nreached no runtime") {
+		t.Fatal("probe help no longer states the probe all exit rule")
+	}
+	if len(results) < 8 {
+		t.Fatalf("probe all with no runtime: %+v", results)
 	}
 	for _, r := range results {
 		if r.Outcome != "runtime_unavailable" {

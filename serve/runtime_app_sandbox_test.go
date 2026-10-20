@@ -3,13 +3,14 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"testing"
 
-	"github.com/openabstractions/abstraction-facade/go/bootstrap"
+	"github.com/openabstractions/abstraction-facade/go-core/bootstrap"
 	"github.com/openabstractions/abstraction-identity/listen"
 	"github.com/openabstractions/abstraction-provider-kit/go/sandbox"
 	"golang.org/x/sys/windows"
@@ -46,7 +47,7 @@ func TestRuntimeAppAdmissionUsesConfiguredListenerNames(t *testing.T) {
 func TestRuntimeAppAdmissionBeforeSetupReservesOnlyItsSupportedProfile(t *testing.T) {
 	state := t.TempDir()
 	endpoint := `\\.\pipe\oa-before-setup-` + filepath.Base(state)
-	release, err := configureRuntimeAppSandbox(runtimeFlags{endpoint: endpoint, stateDir: state})
+	release, err := configureRuntimeAppSandbox(runtimeFlags{endpoint: endpoint, logEndpoint: endpoint + "-logging", configEndpoint: endpoint + "-config", jobEndpoint: endpoint + "-jobs", stateDir: state})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,19 +105,10 @@ func TestRuntimeAppAdmissionBeforeSetupReservesOnlyItsSupportedProfile(t *testin
 func TestRuntimeAppAdmissionPreservesEndpointAndUnconfiguredStateDefaults(t *testing.T) {
 	state := t.TempDir()
 	options := runtimeFlags{withoutJobs: true, withoutModels: true}
-	endpoints, err := runtimeAppEndpoints(options)
-	if err != nil {
-		t.Fatal(err)
+	if endpoints, err := runtimeAppEndpoints(options); len(endpoints) != 0 || !errors.Is(err, bootstrap.ErrNoTrustedInstallation) {
+		t.Fatalf("default wrapper refusal: %v %v", endpoints, err)
 	}
-	for _, service := range []string{"runtime-v1", "logging-v1", "config-v1", "asks-application-v1", "inference-v1", "storage-content-v1"} {
-		endpoint, err := bootstrap.Endpoint(service)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !slices.Contains(endpoints, endpoint) {
-			t.Fatalf("default %s changed: %v", service, endpoints)
-		}
-	}
+
 	if _, err := os.Stat(filepath.Join(state, "apps")); !os.IsNotExist(err) {
 		t.Fatalf("unconfigured state touched: %v", err)
 	}

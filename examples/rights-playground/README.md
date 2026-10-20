@@ -217,3 +217,44 @@ in its existing IDL, with common structured definitions and a single Rights
 matcher. The finite bundle and explicit breadth warning preserve the authority
 the person actually saw. These sources inform OA's model; the source checkpoint
 uses OA's own contracts and native transport.
+
+
+## Labelled private release downloader (P-K1)
+
+`cmd/private-release-download` is a separate executable in this module. It calls
+only the public facade and download/Job clients, names a credential, and verifies
+the expected artifact before saving a new file. The source/operator/Read code in
+the original A/B playground is outside this command's package. The original
+playground remains useful for its explicit Read/Use comparison.
+
+Build this command with the existing workspace, then use an explicitly selected
+isolated runtime. An authorized operator can reuse `source`, `setup`, and the
+dummy `oa-playground-alpha` registration from this README. Permit the new executable's
+named typed Use and Job submission through the existing permission controls; the
+A/B grants from `setup` do not grant the new executable. The new app receives only
+the source origin/name and artifact identity. Dummy fixture values remain in the
+operator/source side; never supply a real account token to these examples.
+
+```console
+private-release-download --endpoint ENDPOINT --runtime-program ABSOLUTE_RUNTIME --history
+private-release-download --endpoint ENDPOINT --runtime-program ABSOLUTE_RUNTIME \
+  --credential oa-playground-alpha --url http://127.0.0.1:PORT/alpha \
+  --bytes EXPECTED_BYTES --sha256 EXPECTED_SHA256 --out ABSOLUTE_NEW_FILE \
+  --epoch EPOCH --key private-release-1
+```
+
+Use the fixed dummy artifact's size and SHA256 from `source.go`, or an independently
+pinned ordinary release artifact. The command accepts at most 16 MiB. It rejects
+userinfo, query strings, secret/header flags, and external plain HTTP. It reads no
+environment or stdin credential. Select `credentials@2`; no legacy fallback is
+attempted. After an uncertain result, preserve every argument and repeat with
+`--reconcile`; that call reads the same epoch/key and never submits again. Choose
+a new key for a new operation after a terminal result. An existing output is
+preserved, and result bytes appear only in the verified new file.
+
+For GitHub the Connect row and operator registration use `github-download`,
+`api.github.com`, and `abstraction.download/http-execution@1`. A redirect to another
+host receives no token. The app does not acquire a token when the operator rotates
+the name, and revocation stops the next application. Fake receivers and in-memory
+credential backends exercise this source slice. Hosted, macOS, installed, native
+caller identity, and real-key acceptance remain separate pending evidence.

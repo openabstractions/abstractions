@@ -112,8 +112,8 @@ func TestEnvironmentEndpointYieldsToExplicitEndpoint(t *testing.T) {
 // resolver path (notResolved), now print status describe's own sentence,
 // naming the endpoint and which of resolveEndpoint's three rules chose it.
 // probe is checked separately below: its result carries the same sentence in
-// its own text rather than in a returned error, and `probe all` exits 0 once
-// every call answered or failed with its own result (documented, unchanged).
+// its own text rather than in a returned error, and `probe all` exits 1 after
+// printing every result when a call reached no runtime (backlog O-2).
 func TestDeadEndpointGetsFriendlyMessage(t *testing.T) {
 	endpoint := unreachableEndpoint(t)
 	commands := []struct {
@@ -162,9 +162,9 @@ func TestDeadEndpointGetsFriendlyMessage(t *testing.T) {
 	t.Run("probe all", func(t *testing.T) {
 		var out, diag bytes.Buffer
 		err := probeCommand([]string{"all", "--endpoint", endpoint, "--timeout", "2s"}, &out, &diag)
-		if err != nil {
-			t.Fatalf("probe all: %v", err)
-		}
+		// A dead runtime fails the command (backlog O-2) after printing
+		// every result.
+		assertExit(t, err, exitNotResolved, "probe all")
 		text := out.String()
 		if !strings.Contains(text, endpoint) || !strings.Contains(text, "no runtime listens at") {
 			t.Fatalf("probe all: %q does not carry the friendly sentence", text)

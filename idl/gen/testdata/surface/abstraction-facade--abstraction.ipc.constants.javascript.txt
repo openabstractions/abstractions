@@ -1,0 +1,4 @@
+class Refusal
+number ipcClientMaxFrame
+number ipcDefaultCallBudgetMs
+number ipcDefaultMaxFrame

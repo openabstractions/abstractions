@@ -50,7 +50,7 @@ func TestPermissionPromptScreenshot(t *testing.T) {
 	go func() {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
-		_, err := ShowQuestion(prompt)
+		_, err := ShowQuestion(Occurrence{ID: "fixture-screenshot", Prompt: prompt})
 		done <- err
 	}()
 	var hwnd uintptr
@@ -133,7 +133,7 @@ func TestPermissionLevelCaptures(t *testing.T) {
 					Scope: f.scope, Effects: "Allow saves ongoing access for this app. Refuse changes no permissions.",
 					RequesterProgram: f.program, Warning: &empty},
 			}
-			show, active, closeWindow := ShowQuestion, &activePermissionDialog, func(hwnd uintptr) { sendMessage.Call(hwnd, permissionWMClose, 0, 0) }
+			show, active, closeWindow := func(prompt QuestionPrompt) (string, error) { return ShowQuestion(Occurrence{ID: "fixture-level", Prompt: prompt}) }, &activePermissionDialog, func(hwnd uintptr) { sendMessage.Call(hwnd, permissionWMClose, 0, 0) }
 			if pass == "taskdialog" {
 				prompt.Instruction = f.question
 				prompt.Content = f.requester + "\n" + f.publisher + "\n\n" + f.scope
@@ -177,6 +177,13 @@ func TestPermissionLevelCaptures(t *testing.T) {
 	}
 }
 
+var (
+	createActCtx     = kernel32.NewProc("CreateActCtxW")
+	activateActCtx   = kernel32.NewProc("ActivateActCtx")
+	deactivateActCtx = kernel32.NewProc("DeactivateActCtx")
+	releaseActCtx    = kernel32.NewProc("ReleaseActCtx")
+)
+
 // withPanelManifest activates the Panel's own manifest (monitor/panel.manifest)
 // on the calling, locked thread, so the fixture's controls are the Common
 // Controls 6 controls the shipped Panel draws; a test binary carries no
@@ -196,21 +203,20 @@ func withPanelManifest(t *testing.T) func() {
 		Module                   uintptr
 	}{Source: source}
 	context.Size = uint32(unsafe.Sizeof(context))
-	kernel := syscall.NewLazyDLL("kernel32.dll")
-	handle, _, callErr := kernel.NewProc("CreateActCtxW").Call(uintptr(unsafe.Pointer(&context)))
+	handle, _, callErr := createActCtx.Call(uintptr(unsafe.Pointer(&context)))
 	if handle == ^uintptr(0) {
 		t.Errorf("CreateActCtxW %s: %v", manifest, callErr)
 		return func() {}
 	}
 	var cookie uintptr
-	if ok, _, callErr := kernel.NewProc("ActivateActCtx").Call(handle, uintptr(unsafe.Pointer(&cookie))); ok == 0 {
+	if ok, _, callErr := activateActCtx.Call(handle, uintptr(unsafe.Pointer(&cookie))); ok == 0 {
 		t.Errorf("ActivateActCtx: %v", callErr)
-		kernel.NewProc("ReleaseActCtx").Call(handle)
+		releaseActCtx.Call(handle)
 		return func() {}
 	}
 	return func() {
-		kernel.NewProc("DeactivateActCtx").Call(0, cookie)
-		kernel.NewProc("ReleaseActCtx").Call(handle)
+		deactivateActCtx.Call(0, cookie)
+		releaseActCtx.Call(handle)
 	}
 }
 

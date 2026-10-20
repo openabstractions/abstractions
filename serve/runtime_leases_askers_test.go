@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	identity "github.com/openabstractions/abstraction-identity"
 	rwire "github.com/openabstractions/abstraction-resource/go/abstraction/resource"
 	"github.com/openabstractions/abstraction-resource/go/instrument"
 	resourceservice "github.com/openabstractions/abstraction-resource/go/service"
@@ -35,11 +36,14 @@ type askerFixture struct {
 	mu       sync.Mutex
 	capacity int64
 	samples  map[string]int64
+	// accounts is the account each occupying program runs as; a lease
+	// holder's row carries its lease's account so it credits that lease.
+	accounts map[string]string
 	at       time.Time
 }
 
 func newAskerFixture(capacity int64) *askerFixture {
-	return &askerFixture{capacity: capacity, samples: map[string]int64{}, at: time.Now()}
+	return &askerFixture{capacity: capacity, samples: map[string]int64{}, accounts: map[string]string{}, at: time.Now()}
 }
 
 func (f *askerFixture) Name() string        { return instrument.NameNone }
@@ -58,8 +62,12 @@ func (f *askerFixture) Read(resource string) (instrument.Reading, error) {
 			continue
 		}
 		i++
+		account := f.accounts[program]
+		if account == "" {
+			account = "S-1-5-fixture"
+		}
 		reading.Samples = append(reading.Samples, instrument.Sample{
-			PID: i, Program: program, Account: "S-1-5-fixture", Amount: amount})
+			PID: i, Program: program, Account: account, Amount: amount})
 	}
 	return reading, nil
 }
@@ -74,22 +82,39 @@ func (f *askerFixture) occupy(program string, amount int64) {
 	f.at = time.Now()
 }
 
+// occupyAs is occupy for a lease holder: its row runs as the holder's own
+// account, so the instrument's row and the lease credit one subject (RES-L2).
+func (f *askerFixture) occupyAs(who resourceservice.Subject, amount int64) {
+	f.mu.Lock()
+	f.accounts[who.Program] = who.Account
+	f.mu.Unlock()
+	f.occupy(who.Program, amount)
+}
+
 // askerBook composes a Book the way composeResources does, over the fixture
-// instrument instead of instrument.Detect(). Hold and Yield are left nil:
-// BookOptions documents that as every bound caller may hold, which is what a
-// fixture with no rights policy of its own needs (matching cardBook in
-// leases_test.go and TestTheLeaseBookLivesInTheRuntimeState's unpolicied
-// book).
-func askerBook(t *testing.T, in *askerFixture, attached ...resourceservice.Attached) *resourceservice.Book {
+// instrument instead of instrument.Detect(). Hold and Yield are explicit
+// gates that permit, which is what a fixture with no rights policy of its own
+// needs (matching cardBook in leases_test.go); a book without them refuses.
+func askerBook(t *testing.T, in *askerFixture) *resourceservice.Book {
 	t.Helper()
 	table := resourceservice.NewTable(in, nil, time.Nanosecond)
 	book, err := resourceservice.OpenBook(resourceservice.BookOptions{
-		Table: table, Attached: attached, Settle: 3 * time.Second})
+		Table: table, Settle: 3 * time.Second,
+		Hold: permitFixtureHold, Yield: func(context.Context, string) error { return nil }})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return book
 }
+
+// permitFixtureHold is the explicit Hold gate of a fixture book: a book with
+// no gate refuses every acquire, so a fixture that is not testing the rights
+// decision installs one that permits.
+func permitFixtureHold(context.Context, *identity.Peer, string, string) error { return nil }
+
+// fixturePeer stands for a caller the leases host bound; a nil peer is an
+// unbound caller and reads unavailable.
+func fixturePeer() *identity.Peer { return &identity.Peer{} }
 
 func askerSubject(name string) resourceservice.Subject {
 	return resourceservice.Subject{Program: `C:\fixture\` + name + `.exe`, Account: "S-1-5-fixture-" + name}
@@ -132,16 +157,16 @@ func TestTwoAskersOneYieldsAfterADelay(t *testing.T) {
 	book := askerBook(t, in)
 	a, b := askerSubject("a"), askerSubject("b")
 
-	granted := book.Acquire(context.Background(), a, nil, instrument.Card0, 100*askersGiB, 0)
+	granted := book.Acquire(context.Background(), a, fixturePeer(), instrument.Card0, 100*askersGiB, 0)
 	if granted.Outcome != rwire.AcquireOutcomeAcquired {
 		t.Fatalf("A's own acquire read %s", granted.Outcome)
 	}
-	in.occupy(a.Program, 100*askersGiB)
+	in.occupyAs(a, 100*askersGiB)
 
 	seen := yieldOnObserve(t, book, in, a, 200*time.Millisecond, "")
 
 	began := time.Now()
-	result := book.Acquire(context.Background(), b, nil, instrument.Card0, 60*askersGiB, 5000)
+	result := book.Acquire(context.Background(), b, fixturePeer(), instrument.Card0, 60*askersGiB, 5000)
 	took := time.Since(began)
 	<-seen
 
@@ -166,22 +191,21 @@ func TestTwoAskersOneYieldsAfterADelay(t *testing.T) {
 
 // The same setup, except A's own leases@1 answers refused: B reads
 // holders_refused, and the record of the ask names A (CONTRACT.md RES-L2's
-// holders_refused, RES-L3's "the refusal reaches asked naming that host" —
-// the same naming for a lease holder as for an attached one).
+// holders_refused, RES-L3's refusal reaching asked naming that holder).
 func TestTwoAskersOneRefuses(t *testing.T) {
 	in := newAskerFixture(120 * askersGiB)
 	book := askerBook(t, in)
 	a, b := askerSubject("a"), askerSubject("b")
 
-	granted := book.Acquire(context.Background(), a, nil, instrument.Card0, 100*askersGiB, 0)
+	granted := book.Acquire(context.Background(), a, fixturePeer(), instrument.Card0, 100*askersGiB, 0)
 	if granted.Outcome != rwire.AcquireOutcomeAcquired {
 		t.Fatalf("A's own acquire read %s", granted.Outcome)
 	}
-	in.occupy(a.Program, 100*askersGiB)
+	in.occupyAs(a, 100*askersGiB)
 
 	seen := yieldOnObserve(t, book, in, a, 0, "the render is still using this")
 
-	result := book.Acquire(context.Background(), b, nil, instrument.Card0, 60*askersGiB, 5000)
+	result := book.Acquire(context.Background(), b, fixturePeer(), instrument.Card0, 60*askersGiB, 5000)
 	<-seen
 
 	if result.Outcome != rwire.AcquireOutcomeHoldersRefused {
@@ -223,11 +247,11 @@ func TestTwoAskersAtTheSameMomentOnlyOneWins(t *testing.T) {
 	book := askerBook(t, in)
 	holder, x, y := askerSubject("holder"), askerSubject("x"), askerSubject("y")
 
-	granted := book.Acquire(context.Background(), holder, nil, instrument.Card0, 70*askersGiB, 0)
+	granted := book.Acquire(context.Background(), holder, fixturePeer(), instrument.Card0, 70*askersGiB, 0)
 	if granted.Outcome != rwire.AcquireOutcomeAcquired {
 		t.Fatalf("holder's own acquire read %s", granted.Outcome)
 	}
-	in.occupy(holder.Program, 70*askersGiB)
+	in.occupyAs(holder, 70*askersGiB)
 	// Free is 30 GiB; each asker wants 60, and even after the holder's whole
 	// 70 GiB is freed the pool is 100, so 60+60 does not both fit: at most one
 	// of x and y can be acquired.
@@ -266,12 +290,12 @@ func TestTwoAskersAtTheSameMomentOnlyOneWins(t *testing.T) {
 	go func() {
 		defer run.Done()
 		<-start
-		results[0] = book.Acquire(context.Background(), x, nil, instrument.Card0, 60*askersGiB, 4000)
+		results[0] = book.Acquire(context.Background(), x, fixturePeer(), instrument.Card0, 60*askersGiB, 4000)
 	}()
 	go func() {
 		defer run.Done()
 		<-start
-		results[1] = book.Acquire(context.Background(), y, nil, instrument.Card0, 60*askersGiB, 4000)
+		results[1] = book.Acquire(context.Background(), y, fixturePeer(), instrument.Card0, 60*askersGiB, 4000)
 	}()
 	close(start)
 	run.Wait()
@@ -299,63 +323,4 @@ func TestTwoAskersAtTheSameMomentOnlyOneWins(t *testing.T) {
 	if len(live) != 1 || live[0].ID != winner.Lease.ID || live[0].Amount != 60*askersGiB {
 		t.Fatalf("the book holds %+v after the race, want exactly the winner's own %d-byte grant", live, 60*askersGiB)
 	}
-}
-
-// A rights-less book leaves every subject free to hold, so an attached holder
-// and a leased holder are asked in the order RES-L2 fixes: attached idle
-// longest first, then leases. This is composeResources's own attachedHosts
-// wired through a fixture instead of a real router host, proving the order
-// still governs a resource with both kinds of holder at once.
-func TestAttachedThenLeaseIsTheOrderEvenWithBothPresent(t *testing.T) {
-	in := newAskerFixture(120 * askersGiB)
-	engine := &askerAttached{name: "fixture-engine", holding: []string{"modelH"}, in: in, frees: 20 * askersGiB}
-	book := askerBook(t, in, engine)
-	holder, asker := askerSubject("holder"), askerSubject("asker")
-
-	granted := book.Acquire(context.Background(), holder, nil, instrument.Card0, 80*askersGiB, 0)
-	if granted.Outcome != rwire.AcquireOutcomeAcquired {
-		t.Fatalf("holder's own acquire read %s", granted.Outcome)
-	}
-	in.occupy(holder.Program, 80*askersGiB)
-	in.occupy(engine.Holder(), 20*askersGiB)
-	// held = 100, pool = 120, free = 20; asker wants 90, which needs both.
-
-	seen := yieldOnObserve(t, book, in, holder, 0, "")
-	result := book.Acquire(context.Background(), asker, nil, instrument.Card0, 90*askersGiB, 5000)
-	<-seen
-
-	if result.Outcome != rwire.AcquireOutcomeAcquired {
-		t.Fatalf("outcome %s after %+v", result.Outcome, result.Asked)
-	}
-	if len(result.Asked) != 2 {
-		t.Fatalf("asked %+v, want the attached engine then the lease", result.Asked)
-	}
-	if result.Asked[0].Holder != engine.Holder() {
-		t.Fatalf("asked %+v first, want the attached holder first (RES-L2)", result.Asked[0])
-	}
-	if result.Asked[1].Holder != holder.Program {
-		t.Fatalf("asked %+v second, want the lease second (RES-L2)", result.Asked[1])
-	}
-}
-
-// askerAttached is a fixture attached holder for
-// TestAttachedThenLeaseIsTheOrderEvenWithBothPresent: a host predating OA,
-// yielded synchronously through its own mechanism (CONTRACT.md RES-L3), with
-// no rights policy gating it, matching this file's other fixture books.
-type askerAttached struct {
-	name    string
-	holding []string
-	frees   int64
-	in      *askerFixture
-}
-
-func (a *askerAttached) Holder() string   { return "host:" + a.name }
-func (a *askerAttached) Resource() string { return instrument.Card0 }
-func (a *askerAttached) Holding(context.Context) ([]string, error) {
-	return a.holding, nil
-}
-func (a *askerAttached) Yield(context.Context) error {
-	a.in.occupy(a.Holder(), 0)
-	a.holding = nil
-	return nil
 }

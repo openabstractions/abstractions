@@ -41,7 +41,7 @@ func (e inferenceHostEdit) valid() bool {
 	case "add":
 		h := e.Host
 		return inferenceName.MatchString(h.Name) && rightsText(h.Kind, 128) && rightsText(h.Base, 2048) &&
-			(h.Credential == "" || inferenceName.MatchString(h.Credential)) && (h.Ceiling == nil || h.Ceiling.TokensPerDay >= 0 && h.Ceiling.MicrosPerDay >= 0)
+			(h.Credential == "" || validCredentialName(h.Credential)) && (h.Ceiling == nil || h.Ceiling.TokensPerDay >= 0 && h.Ceiling.MicrosPerDay >= 0)
 	case "remove":
 		return inferenceName.MatchString(e.Name)
 	}
@@ -52,7 +52,7 @@ func (e inferenceKeyEdit) valid() bool {
 	program := rightsText(e.Program, 4096) && identity.ValidSubjectProgram(e.Program)
 	switch e.Edit {
 	case "issue":
-		return program && (e.Credential == "" || inferenceName.MatchString(e.Credential))
+		return program && (e.Credential == "" || validCredentialName(e.Credential))
 	case "revoke":
 		return program && e.Credential == ""
 	}
@@ -74,9 +74,83 @@ func (p *servicePanel) inferenceRoutes(mux *http.ServeMux, key string) {
 	})
 	mux.HandleFunc("/inference/hosts", guard(key, p.inferenceHosts))
 	mux.HandleFunc("/inference/models", guard(key, p.inferenceModels))
+	mux.HandleFunc("/inference/library", guard(key, p.inferenceLibrary))
+	mux.HandleFunc("/inference/modalities", guard(key, p.inferenceModalities))
+	mux.HandleFunc("/inference/folder", guard(key, p.inferenceFolder))
 	mux.HandleFunc("/inference/keys", guard(key, p.inferenceKeys))
 	mux.HandleFunc("/inference/audit", guard(key, p.inferenceAudit))
+	mux.HandleFunc("/inference/requests", guard(key, p.inferenceRequests))
 	mux.HandleFunc("/inference/gateway", guard(key, p.inferenceGateway))
+}
+
+// inferenceModalities drains the service's stable pages within the existing call
+// deadline. A refusal or changed catalogue discards every collected page.
+func (p *servicePanel) inferenceModalities(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "GET required", 405)
+		return
+	}
+	ctx, cancel := panelCall(r)
+	defer cancel()
+	router, err := panelMachine().ResolveRouter(ctx, facade.Requirements{Scope: facade.ScopeLocal})
+	if err != nil {
+		panelError(w, err)
+		return
+	}
+	modalities := []string{}
+	cursor := ""
+	seen := map[string]bool{}
+	for {
+		page, err := router.ModalitiesContext(ctx, cursor, 64)
+		if err != nil {
+			panelError(w, err)
+			return
+		}
+		if page.Outcome != routerwire.ModalityOutcomePage {
+			status := http.StatusServiceUnavailable
+			if page.Outcome == routerwire.ModalityOutcomeForbidden || page.Outcome == routerwire.ModalityOutcomeNotPermitted {
+				status = http.StatusForbidden
+			}
+			http.Error(w, "router uses: "+page.Outcome.String(), status)
+			return
+		}
+		modalities = append(modalities, page.Modalities...)
+		if page.Complete {
+			panelJSON(w, map[string]any{"modalities": modalities})
+			return
+		}
+		if len(page.Modalities) == 0 || page.Next == "" || seen[page.Next] {
+			http.Error(w, "router uses unavailable", 503)
+			return
+		}
+		seen[page.Next] = true
+		cursor = page.Next
+	}
+}
+
+// inferenceFolder selects a path only. Preview and explicit confirmation keep
+// the existing model-folder registration and approval boundary.
+func (p *servicePanel) inferenceFolder(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST required", http.StatusMethodNotAllowed)
+		return
+	}
+	p.mu.Lock()
+	pick := p.directoryPicker
+	p.mu.Unlock()
+	if pick == nil {
+		panelJSON(w, map[string]any{"available": false})
+		return
+	}
+	path, err := pick(r.Context())
+	if err != nil {
+		panelError(w, err)
+		return
+	}
+	if r.Context().Err() != nil {
+		return
+	}
+	panelJSON(w, map[string]any{"available": true, "path": path})
 }
 
 // inferenceModels projects the router's current offer for one modality.
@@ -114,6 +188,22 @@ func (p *servicePanel) inferenceModels(w http.ResponseWriter, r *http.Request) {
 			status = http.StatusBadRequest
 		}
 		http.Error(w, "router offer: "+snapshot.Outcome.String(), status)
+		return
+	}
+	if profile == "image" {
+		picks := map[string]string{}
+		for _, offer := range snapshot.Offers {
+			pick, err := router.PickContext(ctx, routerclient.PickRequest{Model: offer.Family, Profile: profile})
+			if err != nil {
+				panelError(w, err)
+				return
+			}
+			picks[offer.Family] = pick.Decision.Verdict
+		}
+		panelJSON(w, struct {
+			routerwire.OfferSnapshot
+			Picks map[string]string
+		}{snapshot, picks})
 		return
 	}
 	panelJSON(w, snapshot)
@@ -267,6 +357,37 @@ func (p *servicePanel) inferenceAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page, err := operator.Audit(ctx, cursor, 64)
+	if err != nil {
+		panelError(w, err)
+		return
+	}
+	panelJSON(w, page)
+}
+
+func (p *servicePanel) inferenceRequests(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "GET required", 405)
+		return
+	}
+	raw := r.URL.Query().Get("cursor")
+	cursor, err := strconv.ParseInt(raw, 10, 64)
+	if raw == "" {
+		cursor, err = 0, nil
+	} else if len(raw) > 20 || !utf8.ValidString(raw) || strings.HasPrefix(raw, "-") {
+		err = strconv.ErrSyntax
+	}
+	if err != nil {
+		http.Error(w, "invalid request cursor", 400)
+		return
+	}
+	ctx, cancel := panelCall(r)
+	defer cancel()
+	operator, err := panelMachine().ResolveInferenceOperator(ctx, facade.Requirements{Scope: facade.ScopeLocal})
+	if err != nil {
+		panelError(w, err)
+		return
+	}
+	page, err := operator.Requests(ctx, cursor, 64)
 	if err != nil {
 		panelError(w, err)
 		return

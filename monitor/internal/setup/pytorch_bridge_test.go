@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -14,6 +15,7 @@ import (
 
 	fwire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	identity "github.com/openabstractions/abstraction-identity"
+	"github.com/openabstractions/abstraction-identity/placetest"
 	"github.com/openabstractions/abstraction-provider-kit/go/sandbox"
 	torch "github.com/openabstractions/abstraction-provider-pytorch/go/torch"
 )
@@ -24,6 +26,8 @@ func pyTorchFixture(t *testing.T) (Journal, State, Artifact, string, string) {
 	zip, a := archiveFixture(t, archiveEntry{name: "python/python.exe", data: "fixture input"}, archiveEntry{name: "source/infer/fixture.py", data: "fixture source"}, archiveEntry{name: "wheels/fixture.whl", data: "fixture wheel"})
 	a.InstallIdentity = "pt"
 	fixturePackagePins("pytorch-engine", &a)
+	// Setup installs PyTorch from an OpenAbstractions release asset.
+	a.URL = "https://github.com/openabstractions/redist/releases/download/v0.8.0/pytorch-inputs.zip"
 	a.SourceArchiveURL = a.URL[:strings.LastIndex(a.URL, "/")+1] + "pytorch-source.zip"
 	c := fixtureCatalog()
 	for i := range c.Components {
@@ -315,11 +319,11 @@ func TestPyTorchRemovingIntentRefusesCheckedActivation(t *testing.T) {
 
 func TestPyTorchPackageModelApprovalAndOwnerRoster(t *testing.T) {
 	plan := PyTorchModelPlan()
-	if plan.Engine != PyTorch || plan.ID == TheNoiseModelPlan().ID || len(plan.Assets) != len(torch.Flux2Klein4BTorch.Files) {
+	if plan.Engine != PyTorch || plan.ID == TheNoiseModelPlan().ID || len(plan.Assets) != len(torch.Flux2Klein4BCompactTorch.Files) {
 		t.Fatal("model binding/tokenizer roster")
 	}
 	for i, asset := range plan.Assets {
-		pin := torch.Flux2Klein4BTorch.Files[i]
+		pin := torch.Flux2Klein4BCompactTorch.Files[i]
 		if asset.Role != pin.Role || asset.Download.SHA256 != pin.SHA256 || asset.Download.Bytes != pin.Size || !strings.Contains(asset.Download.URL, "/resolve/"+pin.Revision+"/") {
 			t.Fatal("model pin drift", asset)
 		}
@@ -352,7 +356,7 @@ func TestPyTorchPackageModelApprovalAndOwnerRoster(t *testing.T) {
 }
 
 func TestPyTorchReadinessAndOwnedRemovalPreservePersonalState(t *testing.T) {
-	for _, kind := range []string{"applied", "refused", "foreign", "disabled", "unowned", "staged", "checked", "resume", "lost-remove-reply"} {
+	for _, kind := range []string{"applied", "refused", "foreign", "disabled", "unowned", "staged", "checked", "resume", "lost-remove-reply", "missing", "missing-unowned", "retained-dependent", "retained-dependent-alias", "retained-other-engine"} {
 		t.Run(kind, func(t *testing.T) {
 			j, state, a, inputs, root := pyTorchFixture(t)
 			state, _, err := j.allocatePyTorchRoot(context.Background(), state, root)
@@ -373,13 +377,55 @@ func TestPyTorchReadinessAndOwnedRemovalPreservePersonalState(t *testing.T) {
 			}
 			e.Removing = kind == "resume"
 			state.Effects["pytorch-engine"] = e
-			d, err := expectedPyTorchDeclaration(a)
+			d, err := expectedPyTorchDeclaration(a, []string{torch.Flux2Klein4BCompactTorch.Name})
 			if err != nil {
 				t.Fatal(err)
 			}
 			state.EngineDeclarations = map[AppID]fwire.DeclarationWithExtensions{PyTorch: d}
-			if kind == "unowned" || kind == "staged" || kind == "checked" {
+			if kind == "unowned" || kind == "missing-unowned" || kind == "staged" || kind == "checked" {
 				delete(state.EngineDeclarations, PyTorch)
+			}
+			if strings.HasPrefix(kind, "retained-") {
+				source, archive, _, _ := nativeArchiveFixture(t)
+				archiveRoot, err := installPath(archive)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := InstallArchive(context.Background(), archive, source, archiveRoot); err != nil {
+					t.Fatal(err)
+				}
+				path := filepath.Join(archiveRoot, nativeResourceDirectory(archive), "standalone-env", "Lib", "site-packages", "oa-pytorch.pth")
+				if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+					t.Fatal(err)
+				}
+				site := pyTorchSitePackages(root)
+				if kind == "retained-other-engine" {
+					site = pyTorchSitePackages(filepath.Join(filepath.Dir(root), "other"))
+				}
+				if kind == "retained-dependent-alias" {
+					if err := os.MkdirAll(site, 0700); err != nil {
+						t.Fatal(err)
+					}
+					alias := filepath.Join(t.TempDir(), "alias")
+					if runtime.GOOS == "windows" {
+						err = placetest.Junction(alias, site)
+					} else {
+						err = os.Symlink(site, alias)
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Cleanup(func() {
+						if err := os.Remove(alias); err != nil {
+							t.Error(err)
+						}
+					})
+					site = alias
+				}
+				if err := os.WriteFile(path, []byte("# Setup places the engine site here\n"+site+"\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				state.RetainedArchive = &KeptPackage{Artifact: archive, Effect: Effect{Phase: Installed, Revision: 1}}
 			}
 			writePyTorchState(t, j, state)
 			if kind == "staged" || kind == "checked" {
@@ -414,6 +460,10 @@ func TestPyTorchReadinessAndOwnedRemovalPreservePersonalState(t *testing.T) {
 			if kind == "disabled" {
 				registry.readiness = fwire.DeclarationReadinessDisabled
 			}
+			// The serve listing reads a deleted program as disabled/program:missing.
+			if kind == "missing" || kind == "missing-unowned" {
+				registry.readiness, registry.why = fwire.DeclarationReadinessDisabled, "program:missing"
+			}
 			oldRegistry, oldCLI := setupEngineRegistry, pyTorchCLI
 			removeCalls := 0
 			setupEngineRegistry = func(context.Context) (engineRegistry, error) { return registry, nil }
@@ -443,7 +493,7 @@ func TestPyTorchReadinessAndOwnedRemovalPreservePersonalState(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if ready != (kind == "applied" || kind == "refused" || kind == "lost-remove-reply") {
+			if ready != (kind == "applied" || kind == "refused" || kind == "lost-remove-reply" || strings.HasPrefix(kind, "retained-")) {
 				t.Fatal("readiness adopted changed/foreign state", kind, ready)
 			}
 			if len(events) != 0 {
@@ -460,9 +510,12 @@ func TestPyTorchReadinessAndOwnedRemovalPreservePersonalState(t *testing.T) {
 				}
 				err = NewRunner(j, nil).RemovePyTorch(context.Background())
 			}
-			success := kind == "applied" || kind == "staged" || kind == "checked" || kind == "resume" || kind == "lost-remove-reply"
+			success := kind == "applied" || kind == "staged" || kind == "checked" || kind == "resume" || kind == "lost-remove-reply" || kind == "missing" || kind == "retained-other-engine"
 			if (err == nil) != success {
 				t.Fatalf("%s remove: %v", kind, err)
+			}
+			if strings.HasPrefix(kind, "retained-dependent") && (!strings.Contains(err.Error(), "remove the earlier") || len(events) != 0 || removeCalls != 0) {
+				t.Fatalf("dependent engine was not refused before mutation: %v, %v, %d", err, events, removeCalls)
 			}
 			for _, p := range personal {
 				raw, err := os.ReadFile(p)
@@ -538,7 +591,7 @@ func TestPyTorchConfiguredModelRefusesWithdrawnRegistrationWithoutEffects(t *tes
 	e := state.Effects["pytorch-engine"]
 	e.Phase = Installed
 	state.Effects["pytorch-engine"] = e
-	d, err := expectedPyTorchDeclaration(a)
+	d, err := expectedPyTorchDeclaration(a, []string{torch.Flux2Klein4BCompactTorch.Name})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -576,9 +629,11 @@ func TestPyTorchConfiguredModelRefusesWithdrawnRegistrationWithoutEffects(t *tes
 	}
 }
 
-func TestPyTorchBundledInputStagingRequiresPackageApprovalAndNeverReservesDownload(t *testing.T) {
+// The runtime input package is its own release component: once the plan
+// that selects the engine is approved, the runner reserves its exact pinned
+// download through the public job service, and never before.
+func TestPyTorchInputPackageIsDownloadedOnlyAfterApproval(t *testing.T) {
 	j, state, a, inputs, _ := pyTorchFixture(t)
-	zip := state.Effects["pytorch-engine"].StagedPath
 	if err := os.RemoveAll(inputs); err != nil {
 		t.Fatal(err)
 	} // owned tiny fixture only
@@ -588,30 +643,22 @@ func TestPyTorchBundledInputStagingRequiresPackageApprovalAndNeverReservesDownlo
 	transfer := &choiceTransferFake{}
 	r := NewRunner(j, transfer)
 	r.featureCheck = func() (FeatureStatus, error) { return FeatureStatus{Installed: true}, nil }
-	old := installedPyTorchBundle
-	calls := 0
-	installedPyTorchBundle = func() (string, error) { calls++; return zip, nil }
-	t.Cleanup(func() { installedPyTorchBundle = old })
-	if _, err := r.Advance(context.Background(), "pytorch-engine"); err == nil || calls != 0 {
-		t.Fatal("unapproved package accessed inputs")
+	if _, err := r.Advance(context.Background(), "pytorch-engine"); err == nil || len(transfer.reserved) != 0 {
+		t.Fatal("an unapproved package reserved a download", transfer.reserved)
 	}
 	state.ApprovedPlanID = state.Plan.ID
 	writePyTorchState(t, j, state)
-	status, err := r.Advance(context.Background(), "pytorch-engine")
-	if err != nil {
+	if _, err := r.Advance(context.Background(), "pytorch-engine"); err != nil {
 		t.Fatal(err)
 	}
-	if calls != 1 || len(transfer.reserved) != 0 {
-		t.Fatal("installed inputs used a remote transfer", calls, transfer.reserved)
+	if len(transfer.reserved) != 1 || transfer.reserved[0].URL != a.URL || transfer.reserved[0].SHA256 != a.SHA256 || transfer.reserved[0].Bytes != a.Bytes {
+		t.Fatalf("reserved %+v, want the pinned input package %s", transfer.reserved, a.URL)
 	}
 	current, err := j.Load(context.Background())
-	if err != nil || current.Effects["pytorch-engine"].Phase != Verified || len(status.Components) != 1 {
-		t.Fatal("local stage did not bind verified package", err)
-	}
-	if err := verifyFile(current.Effects["pytorch-engine"].StagedPath, a); err != nil {
-		t.Fatal(err)
+	if err != nil || current.Effects["pytorch-engine"].Phase != Requested || current.Effects["pytorch-engine"].Work == nil {
+		t.Fatal("the download was not journaled as requested work", err)
 	}
 	if _, err := os.Stat(inputs); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("input staging installed before explicit transition", err)
+		t.Fatal("input staging installed before the download finished", err)
 	}
 }

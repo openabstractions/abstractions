@@ -63,8 +63,22 @@ struct S {
 func TestEveryCurrentDefinitionParses(t *testing.T) {
 	root := filepath.Join("..", "..")
 	targets, err := os.ReadFile(filepath.Join(root, "scripts", "generate.targets"))
+	if os.IsNotExist(err) {
+		// The public split has no private generation plan. Parse every
+		// maintained schema projected into its production fixture tree.
+		fixtures, err := filepath.Glob(filepath.Join("..", "test", "production", "*", "*.thrift"))
+		if err != nil || len(fixtures) == 0 {
+			t.Fatalf("missing public production definitions: %v", err)
+		}
+		for _, path := range fixtures {
+			if _, err := loadDefinition(path); err != nil {
+				t.Errorf("%s: %v", path, err)
+			}
+		}
+		return
+	}
 	if err != nil {
-		t.Skip("scripts/generate.targets is not beside this generator:", err)
+		t.Fatal(err)
 	}
 	seen := map[string]bool{}
 	for _, line := range strings.Split(string(targets), "\n") {
@@ -74,19 +88,7 @@ func TestEveryCurrentDefinitionParses(t *testing.T) {
 		}
 		seen[words[0]] = true
 		path := filepath.Join(root, filepath.FromSlash(words[0]))
-		src, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		dir := filepath.Dir(path)
-		load := func(name string) (*Definition, error) {
-			included, err := os.ReadFile(filepath.Join(dir, name))
-			if err != nil {
-				return nil, err
-			}
-			return parse(string(included))
-		}
-		if _, err := parseWithIncludes(string(src), load); err != nil {
+		if _, err := loadDefinition(path); err != nil {
 			t.Errorf("%s: %v", words[0], err)
 		}
 	}

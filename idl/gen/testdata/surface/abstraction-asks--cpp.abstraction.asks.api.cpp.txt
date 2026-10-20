@@ -161,6 +161,53 @@ inline constexpr std::string_view kServiceErrorCodeUnknownVersion
 inline constexpr std::string_view kServiceErrorCodeUnknownService
 inline constexpr std::string_view kServiceErrorCodeUnknownMethod
 inline constexpr std::string_view kServiceErrorCodeWrongMode
+enum class EndpointServiceReadiness {Ready, NotReady, Unknown}
+inline constexpr std::string_view wire_name(EndpointServiceReadiness value)
+inline std::optional<EndpointServiceReadiness> parse_endpoint_service_readiness(std::string_view name)
+inline constexpr bool operator==(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator!=(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointServiceReadiness value)
+inline constexpr bool operator!=(std::string_view name, EndpointServiceReadiness value)
+inline const std::vector<std::string> kEndpointServiceReadinessNames
+inline const std::vector<std::string> kEndpointRefusalSourceNames
+inline constexpr std::string_view kEndpointRefusalSourceRights
+inline constexpr std::string_view kEndpointRefusalSourceCredentials
+inline constexpr std::string_view kEndpointRefusalSourceLicense
+inline constexpr std::string_view kEndpointRefusalSourceTerms
+inline constexpr std::string_view kEndpointRefusalSourceIdentity
+inline constexpr std::string_view kEndpointRefusalSourceOs
+enum class EndpointRefusalDecision {Denied, NotGranted, PersonOnly}
+inline constexpr std::string_view wire_name(EndpointRefusalDecision value)
+inline std::optional<EndpointRefusalDecision> parse_endpoint_refusal_decision(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalDecision value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalDecision value)
+inline const std::vector<std::string> kEndpointRefusalDecisionNames
+enum class EndpointRefusalAsk {Available, None}
+inline constexpr std::string_view wire_name(EndpointRefusalAsk value)
+inline std::optional<EndpointRefusalAsk> parse_endpoint_refusal_ask(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalAsk value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalAsk value)
+inline const std::vector<std::string> kEndpointRefusalAskNames
+enum class EndpointProducerCheckState {Current, Repaired, Stale, Refused, Unverified}
+inline constexpr std::string_view wire_name(EndpointProducerCheckState value)
+inline std::optional<EndpointProducerCheckState> parse_endpoint_producer_check_state(std::string_view name)
+inline constexpr bool operator==(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator!=(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointProducerCheckState value)
+inline constexpr bool operator!=(std::string_view name, EndpointProducerCheckState value)
+inline const std::vector<std::string> kEndpointProducerCheckStateNames
+enum class EndpointDescriptionOutcome {Described, Forbidden, Unavailable, Invalid, Unsupported}
+inline constexpr std::string_view wire_name(EndpointDescriptionOutcome value)
+inline std::optional<EndpointDescriptionOutcome> parse_endpoint_description_outcome(std::string_view name)
+inline constexpr bool operator==(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator!=(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointDescriptionOutcome value)
+inline constexpr bool operator!=(std::string_view name, EndpointDescriptionOutcome value)
+inline const std::vector<std::string> kEndpointDescriptionOutcomeNames
 inline const std::vector<std::string> kOperations
 inline const std::vector<std::string> kRefusalCodes
 inline const std::vector<std::string> kResourceActions
@@ -240,6 +287,12 @@ struct QuestionDetails
 struct QuestionAsker
   QuestionDetails details
   std::string program
+struct CatalogueContent
+  std::map<std::string, std::string> slots
+  std::optional<PermissionRequest> permission
+struct QuestionContent
+  QuestionAsker question
+  std::optional<CatalogueContent> content
 struct RequestRef
   std::string key
   std::int64_t replay_until_ms
@@ -310,6 +363,15 @@ struct AnswerEntryPage
   std::string next
   bool complete
   std::int64_t complete_since_ms
+struct AnswerContent
+  AnswerEntry answer
+  std::optional<CatalogueContent> content
+struct AnswerContentPage
+  OperatorPageOutcome outcome
+  std::vector<AnswerContent> answers
+  std::string next
+  bool complete
+  std::int64_t complete_since_ms
 struct AnswerableChoice
   std::string id
   std::string asker
@@ -356,6 +418,9 @@ struct TypedPermissionDetails
   std::string origin
   std::string purpose
   std::optional<PermissionDisplay> display
+struct PendingQuestion
+  PermissionObservation observation
+  std::int64_t pending_until_ms
 struct NotificationAction
   std::string id
   std::string title
@@ -418,7 +483,155 @@ struct NotifierPage
   std::vector<NotifierCount> notifiers
   std::string next
   bool complete
+struct EndpointRefusalDetail
+  std::string source
+  EndpointRefusalDecision decision
+  EndpointRefusalAsk ask
+  std::string action
+  std::string question
+  std::string credential
+  std::int64_t retry_after_ms
+struct EndpointProducerCheck
+  std::string kind
+  std::string copy
+  EndpointProducerCheckState state
+  std::string reason
+  std::string checked
+struct EndpointServiceState
+  std::string service
+  EndpointServiceReadiness readiness
+  std::string reason
+  std::vector<std::string> guarantees
+  std::map<std::string, std::string> capabilities
+  std::string definition_hash
+struct EndpointDescription
+  EndpointDescriptionOutcome outcome
+  std::string program
+  std::string version
+  std::vector<EndpointServiceState> services
+  std::optional<EndpointRefusalDetail> refusal
+  std::string reason
+  std::vector<EndpointProducerCheck> checks
+struct EndpointDescriptionResult
+  EndpointDescription value
 inline Request decode(std::string_view data)
+T from_json(std::string_view data)
+inline std::string to_json(const Question& v)
+inline Question from_json<Question>(std::string_view data)
+inline std::string to_json(const Request& v)
+inline Request from_json<Request>(std::string_view data)
+inline std::string to_json(const Answer& v)
+inline Answer from_json<Answer>(std::string_view data)
+inline std::string to_json(const RecordMetadata& v)
+inline RecordMetadata from_json<RecordMetadata>(std::string_view data)
+inline std::string to_json(const ResponseMetadata& v)
+inline ResponseMetadata from_json<ResponseMetadata>(std::string_view data)
+inline std::string to_json(const ApplicationQuestion& v)
+inline ApplicationQuestion from_json<ApplicationQuestion>(std::string_view data)
+inline std::string to_json(const QuestionObservation& v)
+inline QuestionObservation from_json<QuestionObservation>(std::string_view data)
+inline std::string to_json(const OperatorPage& v)
+inline OperatorPage from_json<OperatorPage>(std::string_view data)
+inline std::string to_json(const OperatorDecision& v)
+inline OperatorDecision from_json<OperatorDecision>(std::string_view data)
+inline std::string to_json(const OperatorRetirement& v)
+inline OperatorRetirement from_json<OperatorRetirement>(std::string_view data)
+inline std::string to_json(const OperatorQuestion& v)
+inline OperatorQuestion from_json<OperatorQuestion>(std::string_view data)
+inline std::string to_json(const AttributedQuestion& v)
+inline AttributedQuestion from_json<AttributedQuestion>(std::string_view data)
+inline std::string to_json(const PermissionTarget& v)
+inline PermissionTarget from_json<PermissionTarget>(std::string_view data)
+inline std::string to_json(const PermissionRequest& v)
+inline PermissionRequest from_json<PermissionRequest>(std::string_view data)
+inline std::string to_json(const QuestionDetails& v)
+inline QuestionDetails from_json<QuestionDetails>(std::string_view data)
+inline std::string to_json(const QuestionAsker& v)
+inline QuestionAsker from_json<QuestionAsker>(std::string_view data)
+inline std::string to_json(const CatalogueContent& v)
+inline CatalogueContent from_json<CatalogueContent>(std::string_view data)
+inline std::string to_json(const QuestionContent& v)
+inline QuestionContent from_json<QuestionContent>(std::string_view data)
+inline std::string to_json(const RequestRef& v)
+inline RequestRef from_json<RequestRef>(std::string_view data)
+inline std::string to_json(const ChoiceOption& v)
+inline ChoiceOption from_json<ChoiceOption>(std::string_view data)
+inline std::string to_json(const ChoiceRequest& v)
+inline ChoiceRequest from_json<ChoiceRequest>(std::string_view data)
+inline std::string to_json(const ChoiceAnswer& v)
+inline ChoiceAnswer from_json<ChoiceAnswer>(std::string_view data)
+inline std::string to_json(const ChoiceObservation& v)
+inline ChoiceObservation from_json<ChoiceObservation>(std::string_view data)
+inline std::string to_json(const ChoiceAcknowledgement& v)
+inline ChoiceAcknowledgement from_json<ChoiceAcknowledgement>(std::string_view data)
+inline std::string to_json(const ChoiceRecord& v)
+inline ChoiceRecord from_json<ChoiceRecord>(std::string_view data)
+inline std::string to_json(const ChoicePage& v)
+inline ChoicePage from_json<ChoicePage>(std::string_view data)
+inline std::string to_json(const ChoiceRead& v)
+inline ChoiceRead from_json<ChoiceRead>(std::string_view data)
+inline std::string to_json(const ChoiceDecision& v)
+inline ChoiceDecision from_json<ChoiceDecision>(std::string_view data)
+inline std::string to_json(const ChoiceDetails& v)
+inline ChoiceDetails from_json<ChoiceDetails>(std::string_view data)
+inline std::string to_json(const AnswerEntry& v)
+inline AnswerEntry from_json<AnswerEntry>(std::string_view data)
+inline std::string to_json(const AnswerEntryPage& v)
+inline AnswerEntryPage from_json<AnswerEntryPage>(std::string_view data)
+inline std::string to_json(const AnswerContent& v)
+inline AnswerContent from_json<AnswerContent>(std::string_view data)
+inline std::string to_json(const AnswerContentPage& v)
+inline AnswerContentPage from_json<AnswerContentPage>(std::string_view data)
+inline std::string to_json(const AnswerableChoice& v)
+inline AnswerableChoice from_json<AnswerableChoice>(std::string_view data)
+inline std::string to_json(const AnswerableChoicePage& v)
+inline AnswerableChoicePage from_json<AnswerableChoicePage>(std::string_view data)
+inline std::string to_json(const ResponderDecision& v)
+inline ResponderDecision from_json<ResponderDecision>(std::string_view data)
+inline std::string to_json(const PermissionIntent& v)
+inline PermissionIntent from_json<PermissionIntent>(std::string_view data)
+inline std::string to_json(const PermissionObservation& v)
+inline PermissionObservation from_json<PermissionObservation>(std::string_view data)
+inline std::string to_json(const TypedPermissionDetails& v)
+inline TypedPermissionDetails from_json<TypedPermissionDetails>(std::string_view data)
+inline std::string to_json(const PendingQuestion& v)
+inline PendingQuestion from_json<PendingQuestion>(std::string_view data)
+inline std::string to_json(const PermissionDisplaySelection& v)
+inline PermissionDisplaySelection from_json<PermissionDisplaySelection>(std::string_view data)
+inline std::string to_json(const PermissionDisplay& v)
+inline PermissionDisplay from_json<PermissionDisplay>(std::string_view data)
+inline std::string to_json(const NotificationAction& v)
+inline NotificationAction from_json<NotificationAction>(std::string_view data)
+inline std::string to_json(const NotificationRequest& v)
+inline NotificationRequest from_json<NotificationRequest>(std::string_view data)
+inline std::string to_json(const NotificationResult& v)
+inline NotificationResult from_json<NotificationResult>(std::string_view data)
+inline std::string to_json(const NotificationObservation& v)
+inline NotificationObservation from_json<NotificationObservation>(std::string_view data)
+inline std::string to_json(const NotificationRecord& v)
+inline NotificationRecord from_json<NotificationRecord>(std::string_view data)
+inline std::string to_json(const NotificationPage& v)
+inline NotificationPage from_json<NotificationPage>(std::string_view data)
+inline std::string to_json(const NotificationRead& v)
+inline NotificationRead from_json<NotificationRead>(std::string_view data)
+inline std::string to_json(const NotificationDecision& v)
+inline NotificationDecision from_json<NotificationDecision>(std::string_view data)
+inline std::string to_json(const NotifierDay& v)
+inline NotifierDay from_json<NotifierDay>(std::string_view data)
+inline std::string to_json(const NotifierCount& v)
+inline NotifierCount from_json<NotifierCount>(std::string_view data)
+inline std::string to_json(const NotifierPage& v)
+inline NotifierPage from_json<NotifierPage>(std::string_view data)
+inline std::string to_json(const EndpointRefusalDetail& v)
+inline EndpointRefusalDetail from_json<EndpointRefusalDetail>(std::string_view data)
+inline std::string to_json(const EndpointProducerCheck& v)
+inline EndpointProducerCheck from_json<EndpointProducerCheck>(std::string_view data)
+inline std::string to_json(const EndpointServiceState& v)
+inline EndpointServiceState from_json<EndpointServiceState>(std::string_view data)
+inline std::string to_json(const EndpointDescription& v)
+inline EndpointDescription from_json<EndpointDescription>(std::string_view data)
+inline std::string to_json(const EndpointDescriptionResult& v)
+inline EndpointDescriptionResult from_json<EndpointDescriptionResult>(std::string_view data)
 struct FrameWriter
   virtual void write_frame(std::string_view frame)
 struct DispatchError : std::runtime_error
@@ -428,10 +641,12 @@ struct FrameExchanger
 struct ServiceError : std::runtime_error
   std::string code, message
 inline constexpr std::string_view kEndpointContract
+inline constexpr std::string_view kEndpointV2Contract
 struct DescribedService
   std::string contract
   bool ready
   std::string why
+std::string describe_endpoint_with_checks(std::string_view frame, const std::string& program, const std::string& version, const std::vector<EndpointProducerCheck>& checks, const Services& . . . services)
 std::string describe_endpoint(std::string_view frame, const std::string& program, const std::string& version, const Services& . . . services)
 struct QuestionApplication
   virtual QuestionObservation ask(const ApplicationQuestion& question)
@@ -446,9 +661,13 @@ struct QuestionApplicationService
 struct QuestionApplicationDispatcher : FrameWriter, FrameExchanger
   QuestionApplication& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct QuestionOperator
+  virtual QuestionContent read_question_content(const std::string& id)
+  virtual AnswerContentPage list_answer_contents(const std::string& cursor, const std::int64_t& limit)
   virtual ChoicePage list_choices(const std::string& cursor, const std::int64_t& limit)
   virtual ChoiceRead read_choice(const std::string& id)
   virtual ChoiceDecision answer_choice(const std::string& id, const std::string& option, const bool& if_pending)
@@ -463,6 +682,8 @@ struct QuestionOperator
   virtual AnswerEntryPage list_answers(const std::string& cursor, const std::int64_t& limit)
 template<class Transport>struct QuestionOperatorClient : QuestionOperator
   Transport& transport_
+  QuestionContent read_question_content(const std::string& id) override
+  AnswerContentPage list_answer_contents(const std::string& cursor, const std::int64_t& limit) override
   ChoicePage list_choices(const std::string& cursor, const std::int64_t& limit) override
   ChoiceRead read_choice(const std::string& id) override
   ChoiceDecision answer_choice(const std::string& id, const std::string& option, const bool& if_pending) override
@@ -481,6 +702,8 @@ struct QuestionOperatorService
 struct QuestionOperatorDispatcher : FrameWriter, FrameExchanger
   QuestionOperator& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct ChoiceApplication
@@ -504,6 +727,8 @@ struct ChoiceApplicationService
 struct ChoiceApplicationDispatcher : FrameWriter, FrameExchanger
   ChoiceApplication& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct QuestionResponder
@@ -525,21 +750,27 @@ struct QuestionResponderService
 struct QuestionResponderDispatcher : FrameWriter, FrameExchanger
   QuestionResponder& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct PermissionApplication
   virtual PermissionObservation request(const PermissionIntent& request)
   virtual PermissionObservation observe(const std::string& request_key, const std::int64_t& wait_ms)
+  virtual PendingQuestion observe_question(const std::string& id, const std::int64_t& wait_ms)
 template<class Transport>struct PermissionApplicationClient : PermissionApplication
   Transport& transport_
   PermissionObservation request(const PermissionIntent& request) override
   PermissionObservation observe(const std::string& request_key, const std::int64_t& wait_ms) override
+  PendingQuestion observe_question(const std::string& id, const std::int64_t& wait_ms) override
 struct PermissionApplicationService
   inline static constexpr std::string_view kWireName
   inline static constexpr std::string_view kCapability
 struct PermissionApplicationDispatcher : FrameWriter, FrameExchanger
   PermissionApplication& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct PermissionOperator
@@ -557,6 +788,8 @@ struct PermissionOperatorService
 struct PermissionOperatorDispatcher : FrameWriter, FrameExchanger
   PermissionOperator& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct NotificationApplication
@@ -576,6 +809,8 @@ struct NotificationApplicationService
 struct NotificationApplicationDispatcher : FrameWriter, FrameExchanger
   NotificationApplication& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct NotificationOperator
@@ -599,6 +834,8 @@ struct NotificationOperatorService
 struct NotificationOperatorDispatcher : FrameWriter, FrameExchanger
   NotificationOperator& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 inline std::string encode_question(const Question& v)
@@ -633,6 +870,10 @@ inline std::string encode_question_details(const QuestionDetails& v)
 inline QuestionDetails decode_question_details(std::string_view in)
 inline std::string encode_question_asker(const QuestionAsker& v)
 inline QuestionAsker decode_question_asker(std::string_view in)
+inline std::string encode_catalogue_content(const CatalogueContent& v)
+inline CatalogueContent decode_catalogue_content(std::string_view in)
+inline std::string encode_question_content(const QuestionContent& v)
+inline QuestionContent decode_question_content(std::string_view in)
 inline std::string encode_request_ref(const RequestRef& v)
 inline RequestRef decode_request_ref(std::string_view in)
 inline std::string encode_choice_option(const ChoiceOption& v)
@@ -659,6 +900,10 @@ inline std::string encode_answer_entry(const AnswerEntry& v)
 inline AnswerEntry decode_answer_entry(std::string_view in)
 inline std::string encode_answer_entry_page(const AnswerEntryPage& v)
 inline AnswerEntryPage decode_answer_entry_page(std::string_view in)
+inline std::string encode_answer_content(const AnswerContent& v)
+inline AnswerContent decode_answer_content(std::string_view in)
+inline std::string encode_answer_content_page(const AnswerContentPage& v)
+inline AnswerContentPage decode_answer_content_page(std::string_view in)
 inline std::string encode_answerable_choice(const AnswerableChoice& v)
 inline AnswerableChoice decode_answerable_choice(std::string_view in)
 inline std::string encode_answerable_choice_page(const AnswerableChoicePage& v)
@@ -671,6 +916,8 @@ inline std::string encode_permission_observation(const PermissionObservation& v)
 inline PermissionObservation decode_permission_observation(std::string_view in)
 inline std::string encode_typed_permission_details(const TypedPermissionDetails& v)
 inline TypedPermissionDetails decode_typed_permission_details(std::string_view in)
+inline std::string encode_pending_question(const PendingQuestion& v)
+inline PendingQuestion decode_pending_question(std::string_view in)
 inline std::string encode_permission_display_selection(const PermissionDisplaySelection& v)
 inline PermissionDisplaySelection decode_permission_display_selection(std::string_view in)
 inline std::string encode_permission_display(const PermissionDisplay& v)

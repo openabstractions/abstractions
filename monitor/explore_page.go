@@ -39,7 +39,7 @@ const exploreAccountChooser=oaAccountChooser('explore-account-select','explore-a
 // argument this map does not carry keeps its own raw word unchanged.
 // Placeholders use plain words, never an id shape (Panel rules).
 const argumentPlaceholderText={DIGEST:'Content digest','REGISTRY:REPO[@REVISION]':'Model reference',MODEL:'Model name',OPERATION:'Operation','URL':'Address','ACTION RESOURCE':'Action and resource'};
-const argumentCaptionText={DIGEST:'Copy a digest from the Device or Work page.'};
+const argumentCaptionText={DIGEST:'Enter the sha256 digest of a stored file.'};
 // explorePlain names one deciding rule in plain words, the same table
 // Questions and rights uses (rights_panel.go's rightsActionPlain, sent here
 // as v.actionPlain); an action that map does not carry falls back to

@@ -301,6 +301,10 @@ type rawValueShape struct {
 func (s rawValueShape) matches(text string) []string {
 	var out []string
 	for _, loc := range s.pattern.FindAllStringIndex(text, -1) {
+		// A date-stamped development version ("0.8.0-dev.20261109").
+		if s.name == "number" && strings.HasSuffix(text[:loc[0]], "dev.") {
+			continue
+		}
 		if s.name == "program" {
 			rest := text[loc[1]:]
 			if strings.HasPrefix(rest, "/") || (len(rest) > 1 && rest[0] == ':' && rest[1] >= '0' && rest[1] <= '9') ||
@@ -395,7 +399,9 @@ func lintPanelPage(doc string, rawValueShapes []rawValueShape) []panelLintViolat
 	}
 	lintWalk(root, func(n *lintNode) {
 		if n.tag != "" && n.has("data-oa-technical") {
-			if said := lintTechnicalSummary(n); said != "Technical details" {
+			if n.tag != "details" {
+				add("technical-summary", "data-oa-technical on <%s>: only a \"Technical details\" expander may carry it", n.tag)
+			} else if said := lintTechnicalSummary(n); said != "Technical details" {
 				add("technical-summary", "data-oa-technical on an expander whose summary reads %q: only a \"Technical details\" expander may carry it", said)
 			}
 		}
@@ -501,6 +507,22 @@ func lintedPages() map[string]string {
 		docs[name] = panelPage(httptest.NewRequest("GET", "/x?k=lint&platform=windows", nil), "lint", name, "", fragment)
 	}
 	return docs
+}
+
+func TestPanelRenderedElementIDsUnique(t *testing.T) {
+	for name, doc := range lintedPages() {
+		t.Run(name, func(t *testing.T) {
+			seen := map[string]bool{}
+			lintWalk(parseLintHTML(doc), func(n *lintNode) {
+				if id := n.attrs["id"]; id != "" {
+					if seen[id] {
+						t.Errorf("duplicate rendered element ID %q", id)
+					}
+					seen[id] = true
+				}
+			})
+		})
+	}
 }
 
 // lintedFragments are the pages' own fragments: markup and script, without
@@ -960,6 +982,11 @@ func TestTechnicalSummaryRule(t *testing.T) {
 	if got := rules(`<details data-oa-technical><summary>Details</summary><pre>x</pre></details>`); strings.Join(got, ",") != "technical-summary" {
 		t.Errorf("a marked Details expander: %v", got)
 	}
+	for _, tag := range []string{"div", "section", "summary"} {
+		if got := rules(`<` + tag + ` data-oa-technical><summary>Technical details</summary><pre>x</pre></` + tag + `>`); strings.Join(got, ",") != "technical-summary" {
+			t.Errorf("a marker requires a details element, got %s: %v", tag, got)
+		}
+	}
 	if got := rules(oaTechnicalDetails("<pre>x</pre>")); len(got) != 0 {
 		t.Errorf("oaTechnicalDetails: %v", got)
 	}
@@ -1165,6 +1192,7 @@ func TestRawValueShapesMatchInGoAndJS(t *testing.T) {
 		`Abstraction Panel.exe is running`, `Open Notes.app.`, `kernel32.DLL loaded`, `llama-server.exe, ollama.exe`,
 		`the app. Next`, `an .exe file`, `Apps and the Apps page`, `huggingface.co · model.safetensors`, `setup.exeX`,
 		`see example.web.app`, `https://example.web.app`, `example.web.app/path`, `example.web.app:8443`, `Abstraction Panel.exe: Rules`,
+		`864000000 ms`, `4294967296 bytes`, `Version 0.8.0-dev.20261109`, `build 20261109`, `1234567`, `123456`,
 	}
 	node, err := exec.LookPath("node")
 	if err != nil {

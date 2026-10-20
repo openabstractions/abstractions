@@ -15,7 +15,45 @@ func (DecisionOutcome) UnmarshalText(text []byte) error
 func (DecisionOutcome) MarshalJSON() ([]byte, error)
 func (DecisionOutcome) UnmarshalJSON(data []byte) error
 func DecisionOutcomeValues() []DecisionOutcome
+func (DecisionOutcome) IsKnown() bool
 func (DecisionOutcome) Known() bool
+type RefusalSource string
+const RefusalSourceRights
+const RefusalSourceCredentials
+const RefusalSourceLicense
+const RefusalSourceTerms
+const RefusalSourceIdentity
+const RefusalSourceOS
+func RefusalSourceValues() []RefusalSource
+func (RefusalSource) IsKnown() bool
+func (RefusalSource) Known() bool
+type RefusalDecision uint32
+const RefusalDecisionDenied
+const RefusalDecisionNotGranted
+const RefusalDecisionPersonOnly
+func (RefusalDecision) String() string
+func (RefusalDecision) WireName() (string, bool)
+func ParseRefusalDecision(word string) (RefusalDecision, bool)
+func (RefusalDecision) MarshalText() ([]byte, error)
+func (RefusalDecision) UnmarshalText(text []byte) error
+func (RefusalDecision) MarshalJSON() ([]byte, error)
+func (RefusalDecision) UnmarshalJSON(data []byte) error
+func RefusalDecisionValues() []RefusalDecision
+func (RefusalDecision) IsKnown() bool
+func (RefusalDecision) Known() bool
+type RefusalAsk uint32
+const RefusalAskAvailable
+const RefusalAskNone
+func (RefusalAsk) String() string
+func (RefusalAsk) WireName() (string, bool)
+func ParseRefusalAsk(word string) (RefusalAsk, bool)
+func (RefusalAsk) MarshalText() ([]byte, error)
+func (RefusalAsk) UnmarshalText(text []byte) error
+func (RefusalAsk) MarshalJSON() ([]byte, error)
+func (RefusalAsk) UnmarshalJSON(data []byte) error
+func RefusalAskValues() []RefusalAsk
+func (RefusalAsk) IsKnown() bool
+func (RefusalAsk) Known() bool
 type PolicyPageOutcome uint32
 const PolicyPageOutcomePage
 const PolicyPageOutcomeGap
@@ -30,7 +68,37 @@ func (PolicyPageOutcome) UnmarshalText(text []byte) error
 func (PolicyPageOutcome) MarshalJSON() ([]byte, error)
 func (PolicyPageOutcome) UnmarshalJSON(data []byte) error
 func PolicyPageOutcomeValues() []PolicyPageOutcome
+func (PolicyPageOutcome) IsKnown() bool
 func (PolicyPageOutcome) Known() bool
+type PolicyObservationOutcome uint32
+const PolicyObservationOutcomeChanged
+const PolicyObservationOutcomeUnchanged
+const PolicyObservationOutcomeGap
+const PolicyObservationOutcomeInvalid
+const PolicyObservationOutcomeForbidden
+const PolicyObservationOutcomeUnavailable
+func (PolicyObservationOutcome) String() string
+func (PolicyObservationOutcome) WireName() (string, bool)
+func ParsePolicyObservationOutcome(word string) (PolicyObservationOutcome, bool)
+func (PolicyObservationOutcome) MarshalText() ([]byte, error)
+func (PolicyObservationOutcome) UnmarshalText(text []byte) error
+func (PolicyObservationOutcome) MarshalJSON() ([]byte, error)
+func (PolicyObservationOutcome) UnmarshalJSON(data []byte) error
+func PolicyObservationOutcomeValues() []PolicyObservationOutcome
+func (PolicyObservationOutcome) IsKnown() bool
+func (PolicyObservationOutcome) Known() bool
+type PolicyObservationMechanism uint32
+const PolicyObservationMechanismNative
+func (PolicyObservationMechanism) String() string
+func (PolicyObservationMechanism) WireName() (string, bool)
+func ParsePolicyObservationMechanism(word string) (PolicyObservationMechanism, bool)
+func (PolicyObservationMechanism) MarshalText() ([]byte, error)
+func (PolicyObservationMechanism) UnmarshalText(text []byte) error
+func (PolicyObservationMechanism) MarshalJSON() ([]byte, error)
+func (PolicyObservationMechanism) UnmarshalJSON(data []byte) error
+func PolicyObservationMechanismValues() []PolicyObservationMechanism
+func (PolicyObservationMechanism) IsKnown() bool
+func (PolicyObservationMechanism) Known() bool
 type PolicyEditOutcome uint32
 const PolicyEditOutcomeApplied
 const PolicyEditOutcomeConflict
@@ -45,6 +113,7 @@ func (PolicyEditOutcome) UnmarshalText(text []byte) error
 func (PolicyEditOutcome) MarshalJSON() ([]byte, error)
 func (PolicyEditOutcome) UnmarshalJSON(data []byte) error
 func PolicyEditOutcomeValues() []PolicyEditOutcome
+func (PolicyEditOutcome) IsKnown() bool
 func (PolicyEditOutcome) Known() bool
 type RuleReadOutcome uint32
 const RuleReadOutcomeFound
@@ -61,6 +130,7 @@ func (RuleReadOutcome) UnmarshalText(text []byte) error
 func (RuleReadOutcome) MarshalJSON() ([]byte, error)
 func (RuleReadOutcome) UnmarshalJSON(data []byte) error
 func RuleReadOutcomeValues() []RuleReadOutcome
+func (RuleReadOutcome) IsKnown() bool
 func (RuleReadOutcome) Known() bool
 type PermissionFirstUse uint32
 const PermissionFirstUseNone
@@ -74,6 +144,7 @@ func (PermissionFirstUse) UnmarshalText(text []byte) error
 func (PermissionFirstUse) MarshalJSON() ([]byte, error)
 func (PermissionFirstUse) UnmarshalJSON(data []byte) error
 func PermissionFirstUseValues() []PermissionFirstUse
+func (PermissionFirstUse) IsKnown() bool
 func (PermissionFirstUse) Known() bool
 type ActionEditOutcome uint32
 const ActionEditOutcomeApplied
@@ -91,6 +162,7 @@ func (ActionEditOutcome) UnmarshalText(text []byte) error
 func (ActionEditOutcome) MarshalJSON() ([]byte, error)
 func (ActionEditOutcome) UnmarshalJSON(data []byte) error
 func ActionEditOutcomeValues() []ActionEditOutcome
+func (ActionEditOutcome) IsKnown() bool
 func (ActionEditOutcome) Known() bool
 type DecisionSource uint32
 const DecisionSourceNone
@@ -106,6 +178,7 @@ func (DecisionSource) UnmarshalText(text []byte) error
 func (DecisionSource) MarshalJSON() ([]byte, error)
 func (DecisionSource) UnmarshalJSON(data []byte) error
 func DecisionSourceValues() []DecisionSource
+func (DecisionSource) IsKnown() bool
 func (DecisionSource) Known() bool
 type ResourceSelectorKind uint32
 const ResourceSelectorKindOne
@@ -118,6 +191,7 @@ func (ResourceSelectorKind) UnmarshalText(text []byte) error
 func (ResourceSelectorKind) MarshalJSON() ([]byte, error)
 func (ResourceSelectorKind) UnmarshalJSON(data []byte) error
 func ResourceSelectorKindValues() []ResourceSelectorKind
+func (ResourceSelectorKind) IsKnown() bool
 func (ResourceSelectorKind) Known() bool
 type BatchCheckOutcome uint32
 const BatchCheckOutcomeChecked
@@ -133,6 +207,7 @@ func (BatchCheckOutcome) UnmarshalText(text []byte) error
 func (BatchCheckOutcome) MarshalJSON() ([]byte, error)
 func (BatchCheckOutcome) UnmarshalJSON(data []byte) error
 func BatchCheckOutcomeValues() []BatchCheckOutcome
+func (BatchCheckOutcome) IsKnown() bool
 func (BatchCheckOutcome) Known() bool
 type ServiceErrorCode string
 const ServiceErrorCodeHandlerError
@@ -142,7 +217,91 @@ const ServiceErrorCodeUnknownService
 const ServiceErrorCodeUnknownMethod
 const ServiceErrorCodeWrongMode
 func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) IsKnown() bool
 func (ServiceErrorCode) Known() bool
+type EndpointServiceReadiness uint32
+const EndpointServiceReadinessReady
+const EndpointServiceReadinessNotReady
+const EndpointServiceReadinessUnknown
+func (EndpointServiceReadiness) String() string
+func (EndpointServiceReadiness) WireName() (string, bool)
+func ParseEndpointServiceReadiness(word string) (EndpointServiceReadiness, bool)
+func (EndpointServiceReadiness) MarshalText() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalText(text []byte) error
+func (EndpointServiceReadiness) MarshalJSON() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalJSON(data []byte) error
+func EndpointServiceReadinessValues() []EndpointServiceReadiness
+func (EndpointServiceReadiness) IsKnown() bool
+func (EndpointServiceReadiness) Known() bool
+type EndpointRefusalSource string
+const EndpointRefusalSourceRights
+const EndpointRefusalSourceCredentials
+const EndpointRefusalSourceLicense
+const EndpointRefusalSourceTerms
+const EndpointRefusalSourceIdentity
+const EndpointRefusalSourceOS
+func EndpointRefusalSourceValues() []EndpointRefusalSource
+func (EndpointRefusalSource) IsKnown() bool
+func (EndpointRefusalSource) Known() bool
+type EndpointRefusalDecision uint32
+const EndpointRefusalDecisionDenied
+const EndpointRefusalDecisionNotGranted
+const EndpointRefusalDecisionPersonOnly
+func (EndpointRefusalDecision) String() string
+func (EndpointRefusalDecision) WireName() (string, bool)
+func ParseEndpointRefusalDecision(word string) (EndpointRefusalDecision, bool)
+func (EndpointRefusalDecision) MarshalText() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalText(text []byte) error
+func (EndpointRefusalDecision) MarshalJSON() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalJSON(data []byte) error
+func EndpointRefusalDecisionValues() []EndpointRefusalDecision
+func (EndpointRefusalDecision) IsKnown() bool
+func (EndpointRefusalDecision) Known() bool
+type EndpointRefusalAsk uint32
+const EndpointRefusalAskAvailable
+const EndpointRefusalAskNone
+func (EndpointRefusalAsk) String() string
+func (EndpointRefusalAsk) WireName() (string, bool)
+func ParseEndpointRefusalAsk(word string) (EndpointRefusalAsk, bool)
+func (EndpointRefusalAsk) MarshalText() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalText(text []byte) error
+func (EndpointRefusalAsk) MarshalJSON() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalJSON(data []byte) error
+func EndpointRefusalAskValues() []EndpointRefusalAsk
+func (EndpointRefusalAsk) IsKnown() bool
+func (EndpointRefusalAsk) Known() bool
+type EndpointProducerCheckState uint32
+const EndpointProducerCheckStateCurrent
+const EndpointProducerCheckStateRepaired
+const EndpointProducerCheckStateStale
+const EndpointProducerCheckStateRefused
+const EndpointProducerCheckStateUnverified
+func (EndpointProducerCheckState) String() string
+func (EndpointProducerCheckState) WireName() (string, bool)
+func ParseEndpointProducerCheckState(word string) (EndpointProducerCheckState, bool)
+func (EndpointProducerCheckState) MarshalText() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalText(text []byte) error
+func (EndpointProducerCheckState) MarshalJSON() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalJSON(data []byte) error
+func EndpointProducerCheckStateValues() []EndpointProducerCheckState
+func (EndpointProducerCheckState) IsKnown() bool
+func (EndpointProducerCheckState) Known() bool
+type EndpointDescriptionOutcome uint32
+const EndpointDescriptionOutcomeDescribed
+const EndpointDescriptionOutcomeForbidden
+const EndpointDescriptionOutcomeUnavailable
+const EndpointDescriptionOutcomeInvalid
+const EndpointDescriptionOutcomeUnsupported
+func (EndpointDescriptionOutcome) String() string
+func (EndpointDescriptionOutcome) WireName() (string, bool)
+func ParseEndpointDescriptionOutcome(word string) (EndpointDescriptionOutcome, bool)
+func (EndpointDescriptionOutcome) MarshalText() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalText(text []byte) error
+func (EndpointDescriptionOutcome) MarshalJSON() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalJSON(data []byte) error
+func EndpointDescriptionOutcomeValues() []EndpointDescriptionOutcome
+func (EndpointDescriptionOutcome) IsKnown() bool
+func (EndpointDescriptionOutcome) Known() bool
 var Operations
 var KnownRights
 var RefusalCodes
@@ -184,6 +343,17 @@ type Subject struct
 type Decision struct
   Outcome DecisionOutcome
   PolicyRevision string
+type RevisionDecision struct
+  Decision Decision
+  ObservedRevision string
+type RefusalDetail struct
+  Source RefusalSource
+  Decision RefusalDecision
+  Ask RefusalAsk
+  Action string
+  Question string
+  Credential string
+  RetryAfterMs int64
 type PolicyRule struct
   Subject Subject
   Action string
@@ -196,6 +366,11 @@ type PolicyPage struct
   Rules []PolicyRule
   Next string
   Complete bool
+type PolicyObservation struct
+  Outcome PolicyObservationOutcome
+  Next string
+  Revision string
+  Mechanism PolicyObservationMechanism
 type PolicyEdit struct
   Outcome PolicyEditOutcome
   Revision string
@@ -364,17 +539,53 @@ type LegacyOperationRequest struct
   LegacyAction string
   LegacyResource string
   ConcreteOperation *ConcreteResource
+type EndpointRefusalDetail struct
+  Source EndpointRefusalSource
+  Decision EndpointRefusalDecision
+  Ask EndpointRefusalAsk
+  Action string
+  Question string
+  Credential string
+  RetryAfterMs int64
+type EndpointProducerCheck struct
+  Kind string
+  Copy string
+  State EndpointProducerCheckState
+  Reason string
+  Checked string
+type EndpointServiceState struct
+  Service string
+  Readiness EndpointServiceReadiness
+  Reason string
+  Guarantees []string
+  Capabilities map[string]string
+  DefinitionHash string
+type EndpointDescription struct
+  Outcome EndpointDescriptionOutcome
+  Program string
+  Version string
+  Services []EndpointServiceState
+  Refusal *EndpointRefusalDetail
+  Reason string
+  Checks []EndpointProducerCheck
+type EndpointDescriptionResult struct
+  Value EndpointDescription
 func Encode(v *Request) []byte
 type Refusal struct
   Word string
   Offset int
 func (Refusal) Error() string
+const TimestampLayout
+func FormatTimestamp(at time.Time) string
 func Decode(in []byte) (*Request, error)
+func ToJSON(v any) (out []byte, err error)
+func FromJSON(data []byte, v any) error
 type FrameWriter interface
   WriteFrame(frame []byte) error
 type DispatchError string
 func (DispatchError) Error() string
 func ServiceName(frame []byte) (string, error)
+func ServiceMethod(frame []byte) (service string, method string, err error)
 type FrameExchanger interface
   ExchangeFrame(frame []byte) ([]byte, error)
 type ServiceError struct
@@ -382,14 +593,20 @@ type ServiceError struct
   Message string
 func (ServiceError) Error() string
 const EndpointContract
+const EndpointV2Contract
 type DescribedService interface
   DescribeService() (contract string, ready bool, why string)
 func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+func DescribeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...DescribedService) ([]byte, error)
 type ServedService interface
   DescribedService
   ServiceContract() string
 func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+func ServeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...ServedService) ([]byte, error)
+func ServeEndpointRemote(frame []byte, program, version string, admit func(contract, method, profile string) error, services ...ServedService) ([]byte, error)
+func RemoteMethodProfile(service interface{}, contract, method string) string
 type Authorization interface
+  DecideForAtLeastRevision(subject Subject, action, resource, atLeastRevision string) (RevisionDecision, error)
   ListActionDescriptions(cursor string, limit int64) (DescriptionPage, error)
   Decide(action, resource string) (Decision, error)
   DecideFor(subject Subject, action, resource string) (Decision, error)
@@ -399,15 +616,19 @@ type AuthorizationClient struct
 func NewAuthorizationClient(t AuthorizationTransport) *AuthorizationClient
 type AuthorizationDispatcher struct
   Handler Authorization
+func (AuthorizationDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
+func (AuthorizationClient) DecideForAtLeastRevision(subject Subject, action, resource, atLeastRevision string) (result RevisionDecision, err error)
 func (AuthorizationClient) ListActionDescriptions(cursor string, limit int64) (result DescriptionPage, err error)
 func (AuthorizationClient) Decide(action, resource string) (result Decision, err error)
 func (AuthorizationClient) DecideFor(subject Subject, action, resource string) (result Decision, err error)
 func (AuthorizationDispatcher) DescribeService() (contract string, ready bool, why string)
 func (AuthorizationDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (AuthorizationDispatcher) ServiceContract() string
+func (AuthorizationDispatcher) DescribeServiceDefinitionHash() string
 func (AuthorizationDispatcher) WriteFrame(frame []byte) error
 func (AuthorizationDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type AuthorizationOperator interface
+  ObservePolicy(after string, waitMs int64) (PolicyObservation, error)
   RegisterDescribedAction(expectedRevision string, description ActionDescription) (DescriptionEdit, error)
   ApplyFirstUseAllow(expectedRevision, questionID string) (PolicyEdit, error)
   ListPolicy(cursor string, limit int64) (PolicyPage, error)
@@ -429,6 +650,9 @@ type AuthorizationOperatorClient struct
 func NewAuthorizationOperatorClient(t AuthorizationOperatorTransport) *AuthorizationOperatorClient
 type AuthorizationOperatorDispatcher struct
   Handler AuthorizationOperator
+func (AuthorizationOperatorDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
+func (AuthorizationOperatorClient) ObservePolicy(after string, waitMs int64) (result PolicyObservation, err error)
+func (AuthorizationOperatorClient) ObservePolicyPages(after string, waitMs int64) func(func(PolicyObservation, error) bool)
 func (AuthorizationOperatorClient) RegisterDescribedAction(expectedRevision string, description ActionDescription) (result DescriptionEdit, err error)
 func (AuthorizationOperatorClient) ApplyFirstUseAllow(expectedRevision, questionID string) (result PolicyEdit, err error)
 func (AuthorizationOperatorClient) ListPolicy(cursor string, limit int64) (result PolicyPage, err error)
@@ -447,6 +671,7 @@ func (AuthorizationOperatorClient) SetDefault(expectedRevision, name string, on 
 func (AuthorizationOperatorDispatcher) DescribeService() (contract string, ready bool, why string)
 func (AuthorizationOperatorDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (AuthorizationOperatorDispatcher) ServiceContract() string
+func (AuthorizationOperatorDispatcher) DescribeServiceDefinitionHash() string
 func (AuthorizationOperatorDispatcher) WriteFrame(frame []byte) error
 func (AuthorizationOperatorDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type SelectorAuthorization interface
@@ -461,6 +686,7 @@ type SelectorAuthorizationClient struct
 func NewSelectorAuthorizationClient(t SelectorAuthorizationTransport) *SelectorAuthorizationClient
 type SelectorAuthorizationDispatcher struct
   Handler SelectorAuthorization
+func (SelectorAuthorizationDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (SelectorAuthorizationClient) ListPermissionDefinitions(cursor string, limit int64) (result PermissionDefinitionPage, err error)
 func (SelectorAuthorizationClient) ListPermissionBundles(cursor string, limit int64) (result PermissionBundlePage, err error)
 func (SelectorAuthorizationClient) CheckBatch(request CheckBatchRequest) (result BatchDecision, err error)
@@ -469,6 +695,7 @@ func (SelectorAuthorizationClient) CheckLegacyOperationFor(subject Subject, requ
 func (SelectorAuthorizationDispatcher) DescribeService() (contract string, ready bool, why string)
 func (SelectorAuthorizationDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (SelectorAuthorizationDispatcher) ServiceContract() string
+func (SelectorAuthorizationDispatcher) DescribeServiceDefinitionHash() string
 func (SelectorAuthorizationDispatcher) WriteFrame(frame []byte) error
 func (SelectorAuthorizationDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 type SelectorAuthorizationOperator interface
@@ -486,6 +713,7 @@ type SelectorAuthorizationOperatorClient struct
 func NewSelectorAuthorizationOperatorClient(t SelectorAuthorizationOperatorTransport) *SelectorAuthorizationOperatorClient
 type SelectorAuthorizationOperatorDispatcher struct
   Handler SelectorAuthorizationOperator
+func (SelectorAuthorizationOperatorDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
 func (SelectorAuthorizationOperatorClient) ListSelectorRules(cursor string, limit int64) (result SelectorRulePage, err error)
 func (SelectorAuthorizationOperatorClient) ReadSelectorRule(subject Subject, selection PermissionSelection) (result SelectorRuleRead, err error)
 func (SelectorAuthorizationOperatorClient) SetSelectorRule(expectedRevision string, rule SelectorRule, ttlMs int64, why string) (result SelectorEdit, err error)
@@ -497,6 +725,7 @@ func (SelectorAuthorizationOperatorClient) UndoPermissionEffect(expectedRevision
 func (SelectorAuthorizationOperatorDispatcher) DescribeService() (contract string, ready bool, why string)
 func (SelectorAuthorizationOperatorDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (SelectorAuthorizationOperatorDispatcher) ServiceContract() string
+func (SelectorAuthorizationOperatorDispatcher) DescribeServiceDefinitionHash() string
 func (SelectorAuthorizationOperatorDispatcher) WriteFrame(frame []byte) error
 func (SelectorAuthorizationOperatorDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
 func DecodeRequestAt(in []byte, depth, limit int) (*Request, int, error)
@@ -523,6 +752,14 @@ func DecodeDecisionAt(in []byte, depth, limit int) (*Decision, int, error)
 func EncodeDecisionAt(v *Decision, depth int) []byte
 func EncodeDecision(v *Decision) []byte
 func DecodeDecision(in []byte) (*Decision, error)
+func DecodeRevisionDecisionAt(in []byte, depth, limit int) (*RevisionDecision, int, error)
+func EncodeRevisionDecisionAt(v *RevisionDecision, depth int) []byte
+func EncodeRevisionDecision(v *RevisionDecision) []byte
+func DecodeRevisionDecision(in []byte) (*RevisionDecision, error)
+func DecodeRefusalDetailAt(in []byte, depth, limit int) (*RefusalDetail, int, error)
+func EncodeRefusalDetailAt(v *RefusalDetail, depth int) []byte
+func EncodeRefusalDetail(v *RefusalDetail) []byte
+func DecodeRefusalDetail(in []byte) (*RefusalDetail, error)
 func DecodePolicyRuleAt(in []byte, depth, limit int) (*PolicyRule, int, error)
 func EncodePolicyRuleAt(v *PolicyRule, depth int) []byte
 func EncodePolicyRule(v *PolicyRule) []byte
@@ -531,6 +768,10 @@ func DecodePolicyPageAt(in []byte, depth, limit int) (*PolicyPage, int, error)
 func EncodePolicyPageAt(v *PolicyPage, depth int) []byte
 func EncodePolicyPage(v *PolicyPage) []byte
 func DecodePolicyPage(in []byte) (*PolicyPage, error)
+func DecodePolicyObservationAt(in []byte, depth, limit int) (*PolicyObservation, int, error)
+func EncodePolicyObservationAt(v *PolicyObservation, depth int) []byte
+func EncodePolicyObservation(v *PolicyObservation) []byte
+func DecodePolicyObservation(in []byte) (*PolicyObservation, error)
 func DecodePolicyEditAt(in []byte, depth, limit int) (*PolicyEdit, int, error)
 func EncodePolicyEditAt(v *PolicyEdit, depth int) []byte
 func EncodePolicyEdit(v *PolicyEdit) []byte

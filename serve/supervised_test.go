@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/openabstractions/abstraction-storage/go/layout"
 	"io"
 	"os"
 	"os/exec"
@@ -20,6 +21,7 @@ import (
 	downloadserve "github.com/openabstractions/abstraction-download/go/serve"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	identity "github.com/openabstractions/abstraction-identity"
+	"github.com/openabstractions/abstraction-identity/fileid"
 	"github.com/openabstractions/abstraction-identity/listen"
 	logging "github.com/openabstractions/abstraction-logging/go"
 )
@@ -100,6 +102,18 @@ func TestSupervisedProcessHelper(t *testing.T) {
 		fmt.Println("EXIT")
 		os.Exit(0)
 	}
+	if role == "fixture-runtime" {
+		options, err := parseFixtureRuntime(args)
+		if err == nil {
+			err = superviseRuntime(context.Background(), options, os.Stdin, os.Stdout)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println("EXIT")
+		os.Exit(0)
+	}
 	r, w, err := os.Pipe()
 	if err != nil {
 		panic(err)
@@ -123,6 +137,15 @@ func TestSupervisedProcessHelper(t *testing.T) {
 	os.Exit(0)
 }
 func helperEnv(role string, args []string) []string {
+	for _, arg := range args {
+		if role == "runtime" && arg == "--fixture-provider-anchor" {
+			role = "fixture-runtime"
+			if len(args) >= 2 && args[0] == "serve" && args[1] == "runtime" {
+				args = args[2:]
+			}
+			break
+		}
+	}
 	b, _ := json.Marshal(args)
 	env := []string{}
 	for _, v := range os.Environ() {
@@ -135,6 +158,9 @@ func helperEnv(role string, args []string) []string {
 
 // isolatedRuntimeOptions configures the composition isolatedRuntime builds.
 type isolatedRuntimeOptions struct {
+	// Gateway selects an OS-assigned loopback port for in-process fixtures.
+	// It supplies no --gateway argument to a production CLI child.
+	Gateway bool
 	// ProductHosts composes the runtime with defaultDeclarationEnv's real
 	// probe of this machine's installed products, the way a person's
 	// `openabstractions serve runtime --isolated` does, instead of this test
@@ -145,6 +171,23 @@ type isolatedRuntimeOptions struct {
 }
 
 // isolatedRuntime defaults to no product hosts at all: see isolatedRuntimeOptions.
+// privateTestState creates a selected state through the normal layout owner.
+// A Windows testing.TempDir can inherit broader write access from TEMP.
+func privateTestState(t *testing.T) string {
+	t.Helper()
+	state := filepath.Join(t.TempDir(), "private")
+	if err := layout.Ensure(state, state); err != nil {
+		t.Fatal(err)
+	}
+	// Prepare stable state-use metadata before a test snapshots store contents.
+	release, err := selectedStateGuard(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	return state
+}
+
 func isolatedRuntime(t *testing.T, opts ...isolatedRuntimeOptions) (runtimeFlags, []string) {
 	t.Helper()
 	var options isolatedRuntimeOptions
@@ -165,14 +208,28 @@ func isolatedRuntime(t *testing.T, opts ...isolatedRuntimeOptions) (runtimeFlags
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
+	owned, err := fileid.Resolve(context.Background(), fileid.Self, dir, fileid.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir = owned.Path()
 	endpoint := func(s string) string {
 		if runtime.GOOS == "windows" {
 			return testPipe("oa-supervised", s)
 		}
 		return filepath.Join(dir, s)
 	}
-	o := runtimeFlags{endpoint: endpoint("r"), logEndpoint: endpoint("l"), configEndpoint: endpoint("c"), out: filepath.Join(dir, "records"), jobEndpoint: endpoint("j"), stateDir: filepath.Join(dir, "private")}
+	state := filepath.Join(dir, "private")
+	if err := layout.Ensure(state, state); err != nil {
+		t.Fatal(err)
+	}
+	o := runtimeFlags{endpoint: endpoint("r"), logEndpoint: endpoint("l"), configEndpoint: endpoint("c"), out: filepath.Join(state, "records"), jobEndpoint: endpoint("j"), stateDir: state}
+	bindFixtureRuntime(t, &o)
+	if options.Gateway {
+		o.gateway, o.gatewayEphemeral = "127.0.0.1:0", true
+	}
 	args := []string{"serve", "runtime", "--supervised", "--endpoint", o.endpoint, "--log-endpoint", o.logEndpoint, "--config-endpoint", o.configEndpoint, "--out", o.out, "--jobs-endpoint", o.jobEndpoint, "--state-dir", o.stateDir}
+	args = append(args, "--fixture-provider-anchor", mustProviderEndpoint(t, "provider-v1"))
 	return o, args
 }
 
@@ -450,13 +507,14 @@ func TestSupervisedStartupFailureEndsTheReadinessWait(t *testing.T) {
 	defer readyW.Close()
 	done := make(chan error, 1)
 	go func() { done <- superviseRuntime(context.Background(), o, r, readyW) }()
-	began := time.Now()
 	line, err := awaitReadiness(readyR, done, runtimeWait)
-	if err == nil || !strings.Contains(err.Error(), "returned before readiness") {
-		t.Fatalf("held endpoint: line %q, err %v", line, err)
+	want := listen.ErrTaken
+	if errors.Is(listen.CanEver(o.endpoint, listen.Program), identity.ErrNotProven) {
+		// A transport that cannot prove Program refuses before trying to bind.
+		want = identity.ErrNotProven
 	}
-	if elapsed := time.Since(began); elapsed > 10*time.Second {
-		t.Fatalf("startup failure took %v to end the readiness wait", elapsed)
+	if line != "" || !errors.Is(err, want) {
+		t.Fatalf("held endpoint: line %q, err %v, want %v", line, err, want)
 	}
 }
 

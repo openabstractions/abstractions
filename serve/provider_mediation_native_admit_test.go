@@ -9,6 +9,7 @@ import (
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	"github.com/openabstractions/abstraction-identity/listen"
 	inference "github.com/openabstractions/abstraction-inference/go"
+	iwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/api"
 	router "github.com/openabstractions/abstraction-router/go"
 )
 
@@ -23,7 +24,7 @@ func newNativeAdmitTestProvider(t *testing.T, name string) (*runtimeProviders, *
 	p := &runtimeProviders{supervisors: map[string]*providerSupervisor{}, changes: make(chan struct{}), report: func(error) {}}
 	f := providerFile{Declaration: providerDeclaration{Name: name, Program: "unused", Endpoint: "oa-test-native-" + name,
 		Transport: transportNative, Contracts: []string{inference.Contract}, Models: []string{"owner/fixture-model"}, Activation: wire.ActivationOnDemand.String()}}
-	s := newProviderSupervisor(p, f)
+	s := newFixtureProviderSupervisor(t, p, f)
 	p.supervisors[name] = s
 	host, err := router.NewNative(name, f.Declaration.Endpoint, listen.ServerExpectation{}, f.Declaration.Models, nil)
 	if err != nil {
@@ -174,8 +175,8 @@ func TestNativeInferenceHostsIncludesOnDemandBeforeFirstReady(t *testing.T) {
 	attach := providerFile{Version: providerFileVersion, DeclaredBy: program,
 		Declaration: providerDeclaration{Name: "attach", Program: program, Endpoint: "private-attach", Transport: transportNative,
 			Contracts: []string{inference.Contract}, Models: []string{"owner/fixture-model"}, Activation: wire.ActivationAttach.String()}}
-	p.supervisors["ondemand"] = newProviderSupervisor(p, onDemand)
-	p.supervisors["attach"] = newProviderSupervisor(p, attach)
+	p.supervisors["ondemand"] = newFixtureProviderSupervisor(t, p, onDemand)
+	p.supervisors["attach"] = newFixtureProviderSupervisor(t, p, attach)
 	// Neither has probed yet: the on-demand declaration reads idle and the
 	// attach declaration reads unreachable (newProviderSupervisor's defaults).
 
@@ -188,5 +189,40 @@ func TestNativeInferenceHostsIncludesOnDemandBeforeFirstReady(t *testing.T) {
 	}
 	if names["attach"] {
 		t.Fatalf("an attach declaration that has not answered is not yet a router candidate")
+	}
+}
+
+// A chat Start onto an on-demand provider that is still launching answers
+// unavailable activating:<name> while its caller still listens. The
+// launch wait used to run to the caller's own five-second deadline, so the
+// refusal was written after the client had hung up and OpenCode showed the
+// accepted-work "may still have run" sentence for a request no host took.
+func TestNativeChatStartAnswersActivatingBeforeTheCallerDeadline(t *testing.T) {
+	p, s, host := newNativeAdmitTestProvider(t, "launching")
+	provider, err := inference.New(inference.Config{Router: router.New(host), Admit: p.nativeAdmit,
+		Decide: func(context.Context, inference.Subject, string, string) (string, error) { return "permitted", nil },
+		Apply: func(context.Context, inference.Subject, string, string, string) (map[string]string, string) {
+			return nil, "applied"
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { provider.Close() })
+	const budget = 3 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
+	defer cancel()
+	deadline, _ := ctx.Deadline()
+	request := iwire.Request{Model: "owner/fixture-model", Messages: []iwire.Message{{Role: iwire.RoleUser,
+		Parts: []iwire.Part{{Kind: iwire.PartKindText, Text: "hi"}}}}}
+	got := provider.Start(ctx, nativeEmbedCaller, request)
+	left := time.Until(deadline)
+	if got.Outcome != iwire.StartOutcomeUnavailable || got.Reason != "activating:launching" {
+		t.Fatalf("Start onto a launching provider: %s %q", got.Outcome, got.Reason)
+	}
+	if left < time.Second {
+		t.Fatalf("refusal left %v of the caller's deadline; the caller needs time to read it", left)
+	}
+	if !activated(s) {
+		t.Fatal("the launch was not activated")
 	}
 }

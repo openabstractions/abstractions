@@ -20,12 +20,12 @@ const (
 // ResourceStore is the rights resource of inventory.provide for one store.
 func ResourceStore(name string) string { return "store:" + name }
 
-// validProviderStores returns "resources" when a declaration's store
-// resources belong to no inventory source, or a source names none.
+// validProviderStores returns "resources" when an inventory source names no
+// store. A store a declaration names without the inventory-source contract is
+// file-backed: its provider publishes installed.json for the runtime to read
+// (provider_installed.go).
 func validProviderStores(d providerDeclaration) string {
-	source := slices.Contains(d.Contracts, storageInventorySource)
-	stores := d.resources("store")
-	if !source && len(stores) > 0 || source && len(stores) == 0 {
+	if slices.Contains(d.Contracts, storageInventorySource) && len(d.resources("store")) == 0 {
 		return "resources"
 	}
 	return ""

@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +25,84 @@ type modelTransferFake struct {
 	payload   []byte
 	malformed bool
 	observed  string
+}
+
+type codingAcceptanceFake struct {
+	controller        *ModelController
+	reserves, submits int
+	uncertain         bool
+	identities        []WorkIdentity
+}
+
+func (f *codingAcceptanceFake) Reserve(_ context.Context, _ PinnedDownload, key string) (WorkIdentity, error) {
+	f.reserves++
+	b := client.JobsBinding{Endpoint: "owned-fixture", LogicalOwner: "fixture"}
+	return WorkIdentity{Key: key, HistoryEpoch: "fixture-epoch", Binding: b, OperationsBinding: b}, nil
+}
+func (f *codingAcceptanceFake) Submit(ctx context.Context, _ PinnedDownload, work WorkIdentity) error {
+	state, err := f.controller.load(ctx)
+	if err != nil {
+		return err
+	}
+	if state.Effects["coding"].Work == nil || !reflect.DeepEqual(*state.Effects["coding"].Work, work) {
+		return errors.New("identity was not saved before submit")
+	}
+	f.submits++
+	f.identities = append(f.identities, work)
+	if f.uncertain {
+		return errors.New("lost acceptance reply")
+	}
+	return nil
+}
+func (*codingAcceptanceFake) Observe(context.Context, WorkIdentity) (TransferObservation, error) {
+	return TransferObservation{State: "running"}, nil
+}
+func (*codingAcceptanceFake) Copy(context.Context, WorkIdentity, io.Writer) (int64, error) {
+	panic("coding download must not copy")
+}
+
+func TestCodingStartAcceptedReopensExactWorkAfterUncertainReply(t *testing.T) {
+	plan := CodingModelPlan()
+	root := t.TempDir()
+	c := ModelController{Plan: &plan, JournalPath: filepath.Join(root, "intent.json"), StageDir: root, ProviderRoot: root, FreeBytes: func(string) (uint64, error) { return 1 << 50, nil }, LocalResults: true}
+	f := &codingAcceptanceFake{controller: &c, uncertain: true}
+	c.Transfer = f
+	a := ModelApproval{PlanID: plan.ID, DownloadBytes: plan.DownloadBytes, PeakBytes: plan.PeakBytes, Licenses: plan.Licenses}
+	if _, err := c.StartAccepted(context.Background(), a); err == nil {
+		t.Fatal("uncertain acceptance reported success")
+	}
+	state, err := c.load(context.Background())
+	if err != nil || state.Effects["coding"].Phase != Requested {
+		t.Fatalf("lost saved intent: %+v %v", state, err)
+	}
+	first := *state.Effects["coding"].Work
+	// A fresh controller represents reopening Setup. The service kept its work.
+	reopened := c
+	reopened.FreeBytes = func(string) (uint64, error) { return 1, nil }
+	f.controller = &reopened
+	f.uncertain = false
+	if _, err := reopened.StartAccepted(context.Background(), a); err != nil {
+		t.Fatal(err)
+	}
+	if f.reserves != 1 || f.submits != 2 || !reflect.DeepEqual(f.identities[1], first) {
+		t.Fatalf("work was replaced: %+v", f)
+	}
+	if _, err := reopened.Status(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if f.submits != 2 {
+		t.Fatal("read-only status resubmitted work")
+	}
+	for _, mutate := range []func(*ModelApproval){func(a *ModelApproval) { a.PlanID = "foreign" }, func(a *ModelApproval) { a.DownloadBytes++ }, func(a *ModelApproval) { a.PeakBytes++ }, func(a *ModelApproval) { a.Licenses = []string{"unreviewed"} }} {
+		bad := a
+		mutate(&bad)
+		if _, err := reopened.StartAccepted(context.Background(), bad); err == nil {
+			t.Fatal("changed approval accepted")
+		}
+	}
+	if f.submits != 2 {
+		t.Fatal("changed approval submitted work")
+	}
 }
 
 func (f *modelTransferFake) Reserve(_ context.Context, p PinnedDownload, key string) (WorkIdentity, error) {
@@ -252,15 +331,16 @@ func TestModelStageRejectsWrongBytes(t *testing.T) {
 	}
 }
 
-func TestModelReadyRequiresProviderAndPublicSelection(t *testing.T) {
+func TestModelReadyWithOptionalPublicSelection(t *testing.T) {
 	root := t.TempDir()
 	plan := ApprovedBF16Plan()
 	selected := false
+	var selectionErr error
 	stageCalls := 0
 	c := ModelController{
 		JournalPath: filepath.Join(root, "model.json"), StageDir: filepath.Join(root, "stage"), ProviderRoot: filepath.Join(root, "provider"),
 		FreeBytes: func(string) (uint64, error) { return uint64(plan.PeakBytes), nil },
-		Selected:  func(context.Context) (bool, error) { return selected, nil },
+		Selected:  func(context.Context) (bool, error) { return selected, selectionErr },
 		Stage: func(_ context.Context, _ string, files BF16StageFiles, _ func(int64, int64) error, replace bool) error {
 			stageCalls++
 			if files.Main == "" || files.Encoder == "" || files.VAE == "" || files.BackendArchive == "" || replace {
@@ -289,6 +369,11 @@ func TestModelReadyRequiresProviderAndPublicSelection(t *testing.T) {
 	if before.Ready {
 		t.Fatal("ready before provider configuration")
 	}
+	generic := c
+	generic.Selected = nil
+	if status, err := generic.Status(ctx); err != nil || status.Ready {
+		t.Fatalf("unconfigured generic engine: %+v %v", status, err)
+	}
 	after, err := c.Configure(ctx, false, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -296,6 +381,14 @@ func TestModelReadyRequiresProviderAndPublicSelection(t *testing.T) {
 	if stageCalls != 1 || !after.ProviderConfigured || after.Ready {
 		t.Fatal("provider-only configuration reported ready")
 	}
+	if status, err := generic.Status(ctx); err != nil || !status.ProviderConfigured || !status.Ready {
+		t.Fatalf("prepared generic engine required an app policy: %+v %v", status, err)
+	}
+	selectionErr = errors.New("explicit selection observer unavailable")
+	if status, err := c.Status(ctx); !errors.Is(err, selectionErr) || status.Ready || !status.ProviderConfigured {
+		t.Fatalf("observer error lost its readiness refusal: %+v %v", status, err)
+	}
+	selectionErr = nil
 	selected = true
 	after, err = c.Status(ctx)
 	if err != nil {
@@ -352,7 +445,7 @@ func TestModelConfigureAmbiguousOutcomeNeedsExactProbe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !status.ProviderConfigured || status.Ready {
+	if !status.ProviderConfigured || !status.Ready {
 		t.Fatal("probe failed to reconcile provider independently of selection")
 	}
 }

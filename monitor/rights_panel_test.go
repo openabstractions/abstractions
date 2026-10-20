@@ -27,11 +27,15 @@ func panelRightsRuntime(t *testing.T, allow, outage *atomic.Bool) *rights.Decisi
 }
 
 func panelRightsRuntimeWithDefinitions(t *testing.T, allow, outage *atomic.Bool, definitions *rights.DefinitionCatalog) *rights.DecisionPolicy {
+	return panelRightsRuntimeWithActions(t, allow, outage, definitions, []string{panelRightsAction})
+}
+
+func panelRightsRuntimeWithActions(t *testing.T, allow, outage *atomic.Bool, definitions *rights.DefinitionCatalog, actions []string) *rights.DecisionPolicy {
 	t.Helper()
 	if runtime.GOOS == "darwin" {
 		t.Skip("Program proof unavailable")
 	}
-	policy, err := rights.LoadDecisionPolicyWithDefinitions(filepath.Join(t.TempDir(), "policy.json"), []string{panelRightsAction}, definitions)
+	policy, err := rights.LoadDecisionPolicyWithDefinitions(filepath.Join(t.TempDir(), "policy.json"), actions, definitions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,6 +80,70 @@ func panelRightsRuntimeWithDefinitions(t *testing.T, allow, outage *atomic.Bool,
 	t.Setenv("ABSTRACTION_RUNTIME_ENDPOINT", o.Endpoint)
 	trustPanelRuntime(t, o.Endpoint)
 	return policy
+}
+
+// Device uses the observed row's exact subject through the ordinary Rights
+// handler. This fixture changes only its disposable policy, with no wake holder.
+func TestDeviceWakeOffUsesRightsRowSubjectAndOperatorAuthority(t *testing.T) {
+	own(t)
+	var allow, outage atomic.Bool
+	allow.Store(true)
+	const action = "abstraction.resource/hold"
+	policy := panelRightsRuntimeWithActions(t, &allow, &outage, nil, []string{action})
+	h := (&servicePanel{}).handler("test-key")
+	program, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := cardAwakeHold{Program: filepath.Clean(program), Account: "wake-row-account", Lease: "observed-lease"}
+	target := wire.Subject{Account: row.Account, Program: row.Program}
+	other := wire.Subject{Account: "different-account", Program: row.Program}
+	list := func() wire.PolicyPage {
+		r := panelRequest(t, h, "/rights?cursor=", nil)
+		return decodePanel[wire.PolicyPage](t, r.Code, r.Body.Bytes())
+	}
+	edit := func(e rightsEdit) wire.PolicyEdit {
+		r := panelRequest(t, h, "/rights", e)
+		return decodePanel[wire.PolicyEdit](t, r.Code, r.Body.Bytes())
+	}
+	for _, subject := range []wire.Subject{target, other} {
+		r := edit(rightsEdit{Edit: "set", Revision: list().Revision, Account: subject.Account, Program: subject.Program, Action: action, Resource: "awake", Permit: true})
+		if r.Outcome != wire.PolicyEditOutcomeApplied {
+			t.Fatalf("fixture grant %+v", r)
+		}
+	}
+	revision := list().Revision
+	revoke := rightsEdit{Edit: "revoke", Revision: revision, Account: row.Account, Program: row.Program, Action: action, Resource: "awake"}
+	allow.Store(false)
+	if r := list(); r.Outcome != wire.PolicyPageOutcomeForbidden || r.Revision != "" {
+		t.Fatalf("read-only caller's operator read %+v", r)
+	}
+	if r := edit(revoke); r.Outcome != wire.PolicyEditOutcomeForbidden {
+		t.Fatalf("read-only caller's revoke %+v", r)
+	}
+	allow.Store(true)
+	outage.Store(true)
+	if r := edit(revoke); r.Outcome != wire.PolicyEditOutcomeUnavailable {
+		t.Fatalf("unavailable operator revoke %+v", r)
+	}
+	outage.Store(false)
+	if got := policy.Decide(target, action, "awake").Outcome.String(); got != "permitted" {
+		t.Fatalf("failed edits changed row permission: %s", got)
+	}
+	stale := revoke
+	stale.Revision = "stale-revision"
+	if r := edit(stale); r.Outcome != wire.PolicyEditOutcomeConflict {
+		t.Fatalf("stale row revoke %+v", r)
+	}
+	if r := edit(revoke); r.Outcome != wire.PolicyEditOutcomeApplied || r.Revision == revision {
+		t.Fatalf("row revoke %+v", r)
+	}
+	if got := policy.Decide(target, action, "awake").Outcome.String(); got != "not_granted" {
+		t.Fatalf("row permission remains: %s", got)
+	}
+	if got := policy.Decide(other, action, "awake").Outcome.String(); got != "permitted" {
+		t.Fatalf("another account's permission changed: %s", got)
+	}
 }
 
 func TestServicePanelRightsOperator(t *testing.T) {

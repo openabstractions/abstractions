@@ -9,16 +9,62 @@ import (
 	"testing"
 )
 
+// Legal record names cannot capture implementation references to the Rust
+// prelude. Keep the public record spelling while compiling the normal codec.
+func TestRustStandardLibraryNameHygiene(t *testing.T) {
+	rust := rustServiceCompiler(t)
+	source, err := os.ReadFile(privateInput(t, "..", "test", "repeated", "repeated.thrift"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Result", "Option", "String", "Vec", "BTreeMap", "Default", "Some", "None", "Ok", "Err", "Iterator", "Sized", "Fn", "PartialEq", "Clone", "Debug", "Eq", "Ord", "Copy", "Ordinary"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			definition := filepath.Join(dir, "record.thrift")
+			fixture := strings.ReplaceAll(string(source), "Source", name)
+			if name == "Option" || name == "Fn" || name == "PartialEq" {
+				fixture = strings.ReplaceAll(enumHead()+enumFixture, "Child", name)
+			}
+			if name == "Iterator" {
+				fixture = strings.Replace(fixture, "  10: trailing_bytes   (stage = \"document\")", "  10: bad_value(stage=\"structure\")\n  11: trailing_bytes(stage=\"document\")", 1)
+				fixture = strings.Replace(fixture, "struct Plan {", "struct Plan {\n  5: required string next", 1) + `
+service Watch { Plan Observe(1:string cursor,2:i64 wait_ms(range="0..30000"))(observe="cursor") }(wire_name="test/watch@1")`
+			}
+			if name == "Result" {
+				fixture += `
+service Readout { Result Read() }(wire_name="test/readout@1")`
+			}
+			if err := os.WriteFile(definition, []byte(fixture), 0600); err != nil {
+				t.Fatal(err)
+			}
+			var report bytes.Buffer
+			if err := run([]string{definition, dir, "rust"}, &report); err != nil {
+				t.Fatal(err)
+			}
+			generated := filepath.Join(dir, "rs", "rec.rs")
+			body, err := os.ReadFile(generated)
+			if err != nil || !strings.Contains(string(body), "pub struct "+name+" {") {
+				t.Fatalf("public record name was not preserved: %v", err)
+			}
+			cmd := exec.Command(rust, "--edition=2021", "--crate-type=rlib", "--crate-name=record", "-D", "warnings", "-F", "nonstandard_style", generated, "-o", filepath.Join(dir, "librecord.rlib"))
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("%v\n%s", err, out)
+			}
+		})
+	}
+}
+
 // Record-only definitions with flat protocol encoders compile as library
 // crates with warnings denied: no flag assigned and never read, no suppression.
 func TestRustRecordDefinitionsCompileWithoutWarnings(t *testing.T) {
 	rust := rustServiceCompiler(t)
-	for _, def := range []string{"../test/repeated/repeated.thrift", "../test/preserve/preserve.thrift", "../../openabstractions-flat/abstraction-job/job.thrift"} {
-		if _, err := os.Stat(def); err != nil {
-			t.Logf("skip %s: %v", def, err)
-			continue
-		}
+	for _, def := range []string{"../test/repeated/repeated.thrift", "../test/preserve/preserve.thrift", "job.thrift"} {
 		t.Run(filepath.Base(def), func(t *testing.T) {
+			if def == "job.thrift" {
+				def = examplePath(t)
+			} else if _, err := os.Stat(def); err != nil {
+				t.Skipf("%s: %v", def, err)
+			}
 			dir := t.TempDir()
 			var report bytes.Buffer
 			if err := run([]string{def, dir, "rust"}, &report); err != nil {
@@ -106,7 +152,7 @@ func TestClosedVocabulariesAreNativeEnumerations(t *testing.T) {
 		t.Fatal(e)
 	}
 	rust, cpp, goSrc := genRust(s), genCpp(s), strings.Join(strings.Fields(genGo(s)), " ")
-	for _, want := range []string{"pub enum Scope {", "pub scope: Scope,", "pub open: String,", "pub mod open {"} {
+	for _, want := range []string{"pub enum Scope {", "pub scope: Scope,", "pub open: ::std::string::String,", "pub mod open {"} {
 		if !strings.Contains(rust, want) {
 			t.Fatalf("Rust lacks %q", want)
 		}

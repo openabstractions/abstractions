@@ -15,7 +15,7 @@ import (
 func TestFieldlessRefusingDecoderHasNoUnreachableTail(t *testing.T) {
 	root := t.TempDir()
 	var out bytes.Buffer
-	if err := run([]string{productionFile(t, "abstraction-config/config.thrift"), root, "go"}, &out); err != nil {
+	if err := run([]string{productionFile(t, "abstraction-config/config.thrift"), root, "go", "--go-import=rights=github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"}, &out); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(filepath.Join(root, "go", "abstraction", "config", "rec.go"))
@@ -45,10 +45,17 @@ func TestGeneratedGoPassesVet(t *testing.T) {
 		t.Skip("go toolchain unavailable")
 	}
 	root := t.TempDir()
-	for _, relative := range []string{"abstraction-config/config.thrift", "abstraction-job/acceptance.thrift"} {
+	for _, relative := range []string{"abstraction-rights/rights.thrift", "abstraction-config/config.thrift", "abstraction-job/acceptance.thrift"} {
 		var out bytes.Buffer
 		name := strings.TrimSuffix(filepath.Base(relative), ".thrift")
-		if err := run([]string{productionFile(t, relative), filepath.Join(root, name), "go"}, &out); err != nil {
+		args := []string{productionFile(t, relative), filepath.Join(root, name), "go"}
+		if relative == "abstraction-rights/rights.thrift" {
+			args = append(args, "--named-codecs")
+		}
+		if relative == "abstraction-config/config.thrift" {
+			args = append(args, "--go-import=rights=example.test/vet/rights/go/abstraction/rights/api")
+		}
+		if err := run(args, &out); err != nil {
 			t.Fatal(relative, err)
 		}
 	}

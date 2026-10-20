@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,11 +10,11 @@ import (
 )
 
 func TestCppCompleteInferenceHeaderCompiles(t *testing.T) {
-	raw, err := os.ReadFile(productionFile(t, "abstraction-inference/inference.thrift"))
+	definition, err := filepath.Abs(productionFile(t, "abstraction-inference/inference.thrift"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := parse(string(raw))
+	s, err := loadDefinition(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,17 +26,47 @@ func TestCppCompleteInferenceHeaderCompiles(t *testing.T) {
 		t.Skip("C++ requires CXX or g++")
 	}
 	dir := t.TempDir()
-	writeNamespaceFile(t, dir, "rec.h", genCpp(s))
-	writeNamespaceFile(t, dir, "probe.cpp", `#include "rec.h"`+"\n")
+	includeDirs := generateProductionCpp(t, s, definition, dir)
+	writeNamespaceFile(t, dir, "probe.cpp", "#include <abstraction/inference/api/rec.h>\n")
 	args := []string{"-std=c++17", "-fsyntax-only", "probe.cpp"}
+	for _, include := range includeDirs {
+		args = append(args, "-I"+include)
+	}
 	if n := strings.ToLower(filepath.Base(cxx)); n == "cl" || n == "cl.exe" {
 		args = []string{"/nologo", "/std:c++17", "/Zs", "probe.cpp"}
+		for _, include := range includeDirs {
+			args = append(args, "/I"+include)
+		}
 	}
 	c := exec.Command(cxx, args...)
 	c.Dir = dir
 	if out, err := c.CombinedOutput(); err != nil {
 		t.Fatalf("generated inference header: %v\n%s", err, out)
 	}
+}
+
+func generateProductionCpp(t *testing.T, s *Definition, definition, dir string) []string {
+	t.Helper()
+	// The public production fixtures carry the IDL definitions. Generate their
+	// dependency headers alongside the header under test in both layouts.
+	generated := map[string]bool{}
+	var generate func(*Definition, string)
+	generate = func(current *Definition, path string) {
+		if generated[path] {
+			return
+		}
+		generated[path] = true
+		for _, imp := range current.Imports {
+			child := filepath.Clean(filepath.Join(filepath.Dir(path), imp.Path))
+			generate(imp.Def, child)
+		}
+		var report bytes.Buffer
+		if err := run([]string{path, dir, "--named-codecs", "cpp"}, &report); err != nil {
+			t.Fatalf("generate C++ fixture %s: %v\n%s", path, err, report.String())
+		}
+	}
+	generate(s, definition)
+	return []string{filepath.Join(dir, "cpp")}
 }
 
 func TestCppEmptyServiceArgumentsCompileWithWarningsAsErrors(t *testing.T) {

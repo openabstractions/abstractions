@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/openabstractions/abstraction-identity/go/privatedir/privatetest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -40,7 +41,7 @@ func turnDefault(t *testing.T, endpoint, name string, on bool) rightsDefaultsRep
 // of its own submits a download under the default; `rights defaults --off
 // download` refuses it with not_granted; a Block refuses it while the default
 // is on again, and removing the Block returns it to the default. Listing shows
-// the five defaults.
+// the seven defaults.
 func TestShippedRuntimeDownloadDefault(t *testing.T) {
 	options := gatedRuntime(t)
 	bin := probeBinary(t)
@@ -53,7 +54,7 @@ func TestShippedRuntimeDownloadDefault(t *testing.T) {
 		t.Fatal(err, out.String())
 	}
 	var listed rightsDefaultsReply
-	if err := json.Unmarshal(out.Bytes(), &listed); err != nil || listed.Outcome != "page" || len(listed.Defaults) != 5 {
+	if err := json.Unmarshal(out.Bytes(), &listed); err != nil || listed.Outcome != "page" || len(listed.Defaults) != 7 {
 		t.Fatalf("defaults listing %v %s", err, out.String())
 	}
 	if accepted, _ := probeAs(t, bin, options, submit...); accepted.Outcome != "accepted" {
@@ -90,14 +91,14 @@ var defaultActions = []string{rights.ActionApplicationRegisterSelf, rights.Actio
 // account get none, a Block for one program refuses that program alone, and a
 // switch turned off refuses everyone at the next decision.
 func TestRuntimeAccountDefaults(t *testing.T) {
-	r := testRights(t, t.TempDir())
+	r := testRights(t, privatetest.Dir(t))
 	if err := r.install(defaultActions, nil); err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	app := rwire.Subject{Account: r.owner, Program: filepath.Join(t.TempDir(), "app.exe")}
-	other := rwire.Subject{Account: r.owner, Program: filepath.Join(t.TempDir(), "other.exe")}
-	script := rwire.Subject{Account: r.owner, Program: filepath.Join(t.TempDir(), "python.exe")}
+	app := rwire.Subject{Account: r.owner, Program: filepath.Join(privatetest.Dir(t), "app.exe")}
+	other := rwire.Subject{Account: r.owner, Program: filepath.Join(privatetest.Dir(t), "other.exe")}
+	script := rwire.Subject{Account: r.owner, Program: filepath.Join(privatetest.Dir(t), "python.exe")}
 	remote := rwire.Subject{Account: "remote-namespace", Program: app.Program}
 	// PowerShell from the Microsoft Store is decided as its package family,
 	// and a renamed copy of a signed host is named by its signature.
@@ -162,7 +163,7 @@ func TestRuntimeAccountDefaults(t *testing.T) {
 // start the entry, with why "registered by the app", and never overwrites a
 // rule already there, a Block included.
 func TestSelfRegistrationPermitsOperatorsWithoutOverwriting(t *testing.T) {
-	r := testRights(t, t.TempDir())
+	r := testRights(t, privatetest.Dir(t))
 	if err := r.install([]string{ActionApplicationRead, ActionApplicationActivate}, nil); err != nil {
 		t.Fatal(err)
 	}

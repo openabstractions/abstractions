@@ -28,27 +28,31 @@ type Typedef struct {
 	Alias   string
 	Base    string
 	Grammar Grammar
+	Ann     map[string]string
 }
 
 type Field struct {
-	EnumType *Enum // backend carrier metadata; never changes the schema
-	EnumList bool  // the backend carrier is a list of EnumType, encoded as strings
-	ID       int
-	Type     string
-	Alias    string
-	Name     string
-	Omit     string
-	Grammar  Grammar
-	Ann      map[string]string
-	Line     int
+	EnumType    *Enum // backend carrier metadata; never changes the schema
+	EnumList    bool  // the backend carrier is a list of EnumType, encoded as strings
+	ID          int
+	Type        string
+	Alias       string
+	Name        string
+	Omit        string
+	Grammar     Grammar
+	Ann         map[string]string
+	Line        int
+	Checks      []check           // the declared constraints, lowered once by the parser
+	TypeAliases map[string]string // scalar or fixed collection position -> local typedef owner
 }
 
 type Struct struct {
-	Name          string
-	Fields        []Field
-	Ann           map[string]string
-	Document      bool
-	UnknownFields string
+	CodecDepthLimit int // compiler-only copied-record owner limit; zero uses definition
+	Name            string
+	Fields          []Field
+	Ann             map[string]string
+	Document        bool
+	UnknownFields   string
 }
 
 func (s Struct) RefuseUnknown() bool    { return s.UnknownFields == "refuse" }
@@ -127,6 +131,12 @@ type Const struct {
 	Ann     map[string]string
 }
 
+// Scalar reports whether c is one i32 or i64 rather than a list; its value is
+// Ints[0].
+func (c Const) Scalar() bool { return c.Type == "i32" || c.Type == "i64" }
+
+func (c Const) StringScalar() bool { return c.Type == "string" }
+
 type Refusal struct {
 	ID    int
 	Word  string
@@ -150,17 +160,28 @@ type Protocol struct {
 }
 
 type Method struct {
-	Oneway bool
-	Result Field
-	Doc    string
-	Name   string
-	Args   []Field
+	ResultPresent, ResultWhen, ResultIs string               // non-wire service result relation
+	ResultPostcondition                 *resultPostcondition // lowered typed relation
+	Observe                             string               // compiler-only input cursor argument
+	ObserveNext                         string               // compiler-only output continuation field
+	Remote                              string               // effective compiler-only remote profile; no wire field
+	Oneway                              bool
+	Result                              Field
+	Doc                                 string
+	Name                                string
+	Args                                []Field
+	// Trait is how a repeat of the call recovers ([DEF-S3], abstraction-ipc
+	// IPC-I1): "idempotent", "readonly", "keyed", or "" without a replay guarantee.
+	Trait          string
+	NonIdempotent  bool   // compiler-only explicit idempotent=false; no replay guarantee
+	IdempotencyKey string // keyed: the argument or required record path that makes a repeat safe
 }
 type Service struct {
-	Doc      string
-	WireName string
-	Name     string
-	Methods  []Method
+	RemoteDefault string // compiler-only default; absent means local
+	Doc           string
+	WireName      string
+	Name          string
+	Methods       []Method
 	// ErrorCodesConst names the const list<string> that declares the codes
 	// this service's handlers send on the reply error channel; ErrorCodes
 	// holds its words once the definition is validated.
@@ -169,25 +190,30 @@ type Service struct {
 }
 
 type Definition struct {
-	Imports             []IncludedDefinition
-	Foreign             map[string]ImportedRecord
-	NamedCodecs         bool
-	GoImports           map[string]string
-	JSImports           map[string]string
-	RustImports         map[string]string
-	NoIPC               bool // output mode only; never schema semantics
-	SharedRustTransport bool // generated Rust IPC uses abstraction-frame; standalone remains default
-	Namespaces          map[string]string
-	Services            []Service
-	Encoding            Encoding
-	Typedefs            []Typedef
-	Structs             []Struct
-	Enums               []Enum
-	Consts              []Const
-	Vocab               *Vocabulary
-	Refusals            []Refusal
-	Proto               *Protocol
-	Document            string
+	ConfigCatalogue           string            // compiler-only validated definition-owned config catalogue
+	EndpointHashes            map[string]string // compiler-only original service wire hashes
+	SuppressIntrinsicEndpoint bool              // verifier-only schema refusal reachability
+	VerificationWhole         *Definition       // verifier-only original definition before selection
+	Imports                   []IncludedDefinition
+	Foreign                   map[string]ImportedRecord
+	ForeignEnums              map[string]ImportedRecord // private backend aliases, separate from record codecs
+	NamedCodecs               bool
+	GoImports                 map[string]string
+	JSImports                 map[string]string
+	RustImports               map[string]string
+	NoIPC                     bool // output mode only; never schema semantics
+	SharedRustTransport       bool // generated Rust IPC uses abstraction-frame; standalone remains default
+	Namespaces                map[string]string
+	Services                  []Service
+	Encoding                  Encoding
+	Typedefs                  []Typedef
+	Structs                   []Struct
+	Enums                     []Enum
+	Consts                    []Const
+	Vocab                     *Vocabulary
+	Refusals                  []Refusal
+	Proto                     *Protocol
+	Document                  string
 
 	byName map[string]*Struct
 }
@@ -200,6 +226,20 @@ func (s *Definition) Enum(name string) *Enum {
 	for i := range s.Enums {
 		if s.Enums[i].Name == name {
 			return &s.Enums[i]
+		}
+	}
+	if imp, ok := s.ForeignEnums[name]; ok {
+		if en := imp.Def.Enum(imp.Name); en != nil {
+			copy := *en
+			copy.Name = name
+			return &copy
+		}
+	}
+	if alias, local, ok := strings.Cut(name, "."); ok && !strings.Contains(local, ".") {
+		for _, imp := range s.Imports {
+			if imp.Alias == alias {
+				return imp.Def.Enum(local)
+			}
 		}
 	}
 	return nil

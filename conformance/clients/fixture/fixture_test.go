@@ -10,9 +10,12 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/openabstractions/abstractions/conformance/clients/fixture/internal/personfolders"
 )
 
-// A re-executed test binary serves as the child process.
+// A re-executed test binary serves as the child process. The tests run with
+// the person's per-user folders inside a temporary folder.
 func TestMain(m *testing.M) {
 	switch os.Getenv("OA_FIXTURE_CHILD") {
 	case "sleep":
@@ -22,7 +25,7 @@ func TestMain(m *testing.M) {
 		os.Stdout.WriteString("child failed on its own\n")
 		os.Exit(3)
 	}
-	os.Exit(m.Run())
+	os.Exit(personfolders.Main(m))
 }
 
 func child(ctx context.Context, t *testing.T, mode string) *exec.Cmd {

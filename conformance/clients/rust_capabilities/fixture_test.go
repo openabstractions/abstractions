@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	casapi "github.com/openabstractions/abstraction-cas/go/api"
+	config "github.com/openabstractions/abstraction-config/go"
+	configservice "github.com/openabstractions/abstraction-config/go/service"
 	"os"
 	"os/exec"
 	"os/user"
@@ -94,7 +97,9 @@ func TestInstalledRustStorageChangesAndRouter(t *testing.T) {
 	liveRouter.Survey()
 	prefix := fmt.Sprintf("rcp-%d", time.Now().UnixNano()%1_000_000_000)
 	o := host.Options{Endpoint: listen.Endpoint(prefix), LogEndpoint: listen.Endpoint(prefix + "l"), ConfigEndpoint: listen.Endpoint(prefix + "c"),
-		Sink: sink,
+		ConfigStore: casapi.BoundedFileStore{MaxBytes: config.MaxUserFileBytes}, ConfigUserKey: filepath.Join(dir, "config", "user.json"), ConfigWithoutMachine: true,
+		ConfigObservationSource: configservice.FileObservation(filepath.Join(dir, "config", "user.json")),
+		Sink:                    sink,
 		LogHistoryPolicy: func(ctx context.Context, p *identity.Peer) error {
 			switch mode() {
 			case "history-forbidden":

@@ -1,0 +1,6 @@
+{
+  "name": "opencode",
+  "title": "OpenCode with OA",
+  "program": "{local_app_data}/Programs/@opencode-aidesktop/OpenCode.exe",
+  "start_guidance": "Open OpenCode from its normal shortcut after this installer completes. Installing grants no permission; review each OA request at first use."
+}

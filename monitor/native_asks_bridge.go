@@ -14,8 +14,8 @@ import (
 )
 
 // This is a private presentation channel between the launcher and its own Go
-// child, not an operator endpoint or identity proof. Only Go resolves the
-// runtime and sends answers through its public operator contract.
+// child, not an operator endpoint or identity proof. Ordinary Asks answers use
+// Go's public operator client. Native application presence belongs to Swift.
 const nativeAsksPrefix = "oa-native-asks: "
 const maxNativeAsksLine = 1 << 20
 
@@ -103,6 +103,8 @@ type nativeAsksBridge struct {
 	closed     error
 	// panel answers the window's requests once the launcher opened it.
 	panel *nativePanelServer
+	// owned is configured only by the Swift main's private native child run.
+	owned *nativePanelOwnedChild
 	// onNotification receives a notification click's prepared arguments and
 	// onNotificationClosed a closed notification's record ID (ASK-N7).
 	onNotification       func(args string)
@@ -142,7 +144,11 @@ func (b *nativeAsksBridge) write(frame nativeAsksFrame) error {
 	}
 	b.outMu.Lock()
 	defer b.outMu.Unlock()
-	_, err = fmt.Fprintf(b.out, "%s%s\n", nativeAsksPrefix, data)
+	line := append(append([]byte(nativeAsksPrefix), data...), '\n')
+	n, err := b.out.Write(line)
+	if err == nil && n != len(line) {
+		err = io.ErrShortWrite
+	}
 	return err
 }
 
@@ -185,7 +191,12 @@ func (b *nativeAsksBridge) display(frame nativeAsksFrame) (string, error) {
 	}
 }
 
-func (b *nativeAsksBridge) Ask(prompt trayQuestionPresentation) (string, error) {
+func (b *nativeAsksBridge) Ask(occurrence bookOccurrence) (string, error) {
+	prompt := occurrence.Presentation()
+	selection, err := selectNativeQuestionPresentation(prompt)
+	if err != nil {
+		return "", err
+	}
 	prompt.Title = trayDialogText(prompt.Title)
 	prompt.Instruction = trayDialogText(prompt.Instruction)
 	prompt.Content = trayDialogText(prompt.Content)
@@ -198,17 +209,12 @@ func (b *nativeAsksBridge) Ask(prompt trayQuestionPresentation) (string, error) 
 		choices[index] = trayQuestionChoice{Label: trayDialogText(choice.Label), Option: choice.Option}
 	}
 	prompt.Choices = choices
-	prompt.PermissionPrompt, prompt.IconProgram = false, ""
-	if prompt.Permission != nil && !prompt.AppChoice {
-		prompt.PermissionPrompt, prompt.IconProgram = true, prompt.Permission.RequesterProgram
+	prompt.AppChoice = selection.choice
+	prompt.PermissionPrompt, prompt.PairingPrompt, prompt.IconProgram = selection.consent, selection.pairing, ""
+	if selection.card != nil {
+		prompt.IconProgram = selection.card.RequesterProgram
 	}
 	return b.display(nativeAsksFrame{Kind: "question", Prompt: &prompt})
-}
-
-func (b *nativeAsksBridge) showReport(report presenterReport) bool {
-	_, err := b.display(nativeAsksFrame{Kind: "report", Title: trayDialogText(report.Title), Instruction: trayDialogText(report.Instruction), Content: trayDialogText(report.Content),
-		Level: reportPromptLevel()})
-	return b.ctx.Err() == nil && (err == nil || errors.Is(err, errPromptNotShown))
 }
 
 func (b *nativeAsksBridge) Dismiss() {
@@ -279,6 +285,11 @@ func (b *nativeAsksBridge) read(in io.Reader, openPanel func(string) error) erro
 
 func (b *nativeAsksBridge) accept(reply nativeAsksReply, openPanel func(string) error) error {
 	switch reply.Kind {
+	case "owned-bootstrap", "owned-input", "owned-end", "owned-core-activation", "owned-core-output", "owned-core-completed":
+		if b.owned == nil {
+			return errors.New("native owned channel is not configured")
+		}
+		return b.owned.accept(reply)
 	case "panel-request":
 		if err := validNativePanelRequest(reply); err != nil {
 			return err

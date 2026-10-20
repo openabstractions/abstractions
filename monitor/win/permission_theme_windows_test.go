@@ -16,6 +16,8 @@ import (
 	identity "github.com/openabstractions/abstraction-identity"
 )
 
+var getIconInfo = user32.NewProc("GetIconInfo")
+
 func permissionContrast(a, b uint32) float64 {
 	luminance := func(c uint32) float64 {
 		linear := func(v uint32) float64 {
@@ -69,12 +71,12 @@ func TestPermissionLevelHeaderColorsLightAndDark(t *testing.T) {
 		light, dark       uint32
 		lightInk, darkInk uint32
 	}{
-		{PromptLevelBlue, 0x00b85f00, 0x00923e00, 0x00ffffff, 0x00ffffff},
+		{PromptLevelBlue, 0x00edb976, 0x00edb976, 0x004d3300, 0x004d3300},
 		{PromptLevelGray, 0x00e8e8e8, 0x00383838, 0x00222222, 0x00ffffff},
-		{PromptLevelYellow, 0x0000b9ff, 0x00005c7a, 0x00222222, 0x00ffffff},
-		{PromptLevelOrange, 0x000c63f7, 0x00003a9a, 0x00222222, 0x00ffffff},
-		{"", 0x0000b9ff, 0x00005c7a, 0x00222222, 0x00ffffff},
-		{"red", 0x0000b9ff, 0x00005c7a, 0x00222222, 0x00ffffff},
+		{PromptLevelYellow, 0x0000aae3, 0x0000aae3, 0x004d3300, 0x004d3300},
+		{PromptLevelOrange, 0x00429aff, 0x00429aff, 0x004d3300, 0x004d3300},
+		{"", 0x0000aae3, 0x0000aae3, 0x004d3300, 0x004d3300},
+		{"red", 0x0000aae3, 0x0000aae3, 0x004d3300, 0x004d3300},
 	} {
 		light, dark := permissionThemeColors(false, tc.level), permissionThemeColors(true, tc.level)
 		if light.header != tc.light || dark.header != tc.dark || light.headerText != tc.lightInk || dark.headerText != tc.darkInk {
@@ -116,8 +118,8 @@ func TestPermissionConsentPairSafeLabelsAndDefault(t *testing.T) {
 		}
 		for i, c := range choices {
 			if c.Value == "refuse" {
-				if permissionChoiceLabel(c, true) != "Don't allow" || permissionDefaultButton(QuestionPrompt{Choices: choices, Default: "allow"}, false) != int32(firstQuestionButton+i) {
-					t.Fatal("visible Don't allow lost exact Refuse semantics or safe Enter default")
+				if permissionChoiceLabel(c, true) != "Not now" || permissionDefaultButton(QuestionPrompt{Choices: choices, Default: "allow"}, false) != int32(firstQuestionButton+i) {
+					t.Fatal("visible Not now lost exact Refuse semantics or safe Enter default")
 				}
 			}
 		}
@@ -152,7 +154,7 @@ func TestPermissionCompactHiddenNativeGeometryAndDefault(t *testing.T) {
 					t.Fatalf("hidden dialog: %v", err)
 				}
 				func() {
-					defer user32.NewProc("DestroyWindow").Call(hwnd)
+					defer destroyWindowProc.Call(hwnd)
 					d := &permissionDialog{hwnd: hwnd, dpi: dpi, consentPair: true, expanded: expanded,
 						prompt: QuestionPrompt{Choices: []QuestionChoice{{"Allow", "allow"}, {"Refuse", "refuse"}}, Default: "refuse", Details: "Exact account, program, action/profile, resource and lifetime."}}
 					d.replaceFonts()
@@ -291,7 +293,7 @@ func TestPermissionRequesterIconFromVerifiedProgramAtLayoutSize(t *testing.T) {
 			HotX, HotY  uint32
 			Mask, Color uintptr
 		}
-		ok, _, _ := user32.NewProc("GetIconInfo").Call(icon, uintptr(unsafe.Pointer(&info)))
+		ok, _, _ := getIconInfo.Call(icon, uintptr(unsafe.Pointer(&info)))
 		if ok != 0 {
 			permissionDeleteObject.Call(info.Mask)
 			permissionDeleteObject.Call(info.Color)
@@ -392,7 +394,7 @@ func permissionIconWidth(t *testing.T, icon uintptr) int {
 		HotX, HotY  uint32
 		Mask, Color uintptr
 	}
-	if ok, _, err := user32.NewProc("GetIconInfo").Call(icon, uintptr(unsafe.Pointer(&info))); ok == 0 {
+	if ok, _, err := getIconInfo.Call(icon, uintptr(unsafe.Pointer(&info))); ok == 0 {
 		t.Fatalf("GetIconInfo: %v", err)
 	}
 	defer permissionDeleteObject.Call(info.Mask)

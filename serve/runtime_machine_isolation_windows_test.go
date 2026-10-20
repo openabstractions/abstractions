@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"github.com/openabstractions/abstraction-storage/go/layout"
 	"io"
 	"os"
 	"os/exec"
@@ -14,7 +15,6 @@ import (
 
 	config "github.com/openabstractions/abstraction-config/go"
 	configclient "github.com/openabstractions/abstraction-config/go/client"
-	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 )
 
 // An isolated runtime reads no machine-wide configuration. %ProgramData% points
@@ -37,11 +37,10 @@ func TestIsolatedRuntimeReadsNoMachineConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 	profile := t.TempDir()
-	state, err := os.MkdirTemp("", "oa-machine-")
-	if err != nil {
+	state := filepath.Join(t.TempDir(), "private")
+	if err := layout.Ensure(state, state); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.RemoveAll(state) })
 	for dir, file := range map[string][2]string{
 		"credentials": {credentialsBackendFile, "file-0600\n"},
 		"inference":   {inferenceHostsFile, `{"local": []}`},
@@ -49,7 +48,8 @@ func TestIsolatedRuntimeReadsNoMachineConfiguration(t *testing.T) {
 		writeStateFile(t, filepath.Join(state, dir, file[0]), file[1])
 	}
 	name := fmt.Sprintf("machine-%d", os.Getpid())
-	options, err := parseRuntime([]string{"--isolated", name, "--state-dir", state, "--without-jobs"}, io.Discard)
+	args := []string{"--isolated", name, "--state-dir", state, "--without-jobs", "--endpoint", fullEndpoint(t, name+"-runtime"), "--log-endpoint", fullEndpoint(t, name+"-logging"), "--config-endpoint", fullEndpoint(t, name+"-config"), "--model-endpoint", fullEndpoint(t, name+"-model")}
+	options, err := parseFixtureRuntime(args)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestIsolatedRuntimeReadsNoMachineConfiguration(t *testing.T) {
 	t.Cleanup(func() { removeStoreItems(t, namespace) })
 
 	child := exec.Command(os.Args[0], "-test.run=^TestSupervisedProcessHelper$")
-	child.Env = append(helperEnv("runtime", []string{"serve", "runtime", "--supervised", "--isolated", name, "--state-dir", state, "--without-jobs"}),
+	child.Env = append(helperEnv("fixture-runtime", append([]string{"--supervised"}, args...)),
 		"ProgramData="+sentinel, "APPDATA="+profile, "LOCALAPPDATA="+profile)
 	stdin, err := child.StdinPipe()
 	if err != nil {
@@ -113,10 +113,7 @@ func TestIsolatedRuntimeReadsNoMachineConfiguration(t *testing.T) {
 	case <-time.After(runtimeWait):
 		t.Fatalf("isolated runtime not ready within %v:\n%s", runtimeWait, stderr.String())
 	}
-	endpoint, err := bootstrap.Endpoint(name + "-config")
-	if err != nil {
-		t.Fatal(err)
-	}
+	endpoint := options.configEndpoint
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	snapshot, err := configclient.New(endpoint).ReadContext(ctx)

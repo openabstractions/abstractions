@@ -12,7 +12,7 @@ import tempfile
 ROOT=Path(__file__).resolve().parents[3]
 HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE.parent))
-from workspace import cmake_for, certify_compiler, build_root, CERTIFIES, source_revision, dry_run_stop, DRY_RUN_HELP, host_program
+from workspace import cmake_for, certify_compiler, build_root, copy_native_rust_identity, CERTIFIES, source_revision, dry_run_stop, DRY_RUN_HELP, host_program
 
 def main():
  p=argparse.ArgumentParser(description=__doc__+' '+CERTIFIES)
@@ -43,7 +43,8 @@ def main():
   run([cmake,'-S',ROOT/'openabstractions-flat/abstraction-identity/cpp','-B',base/'native','-DBUILD_SHARED_LIBS=OFF','-DABSTRACTION_IPC_BUILD_TESTS=OFF','-DCMAKE_BUILD_TYPE=Release',f'-DCMAKE_INSTALL_PREFIX={prefix}'],ROOT,cmake_env)
   certify_compiler(base/'native')
   run([cmake,'--build',base/'native','--config','Release'],ROOT,cmake_env);run([cmake,'--install',base/'native','--config','Release'],ROOT,cmake_env)
-  for component,parts in [('identity',['rust','rust-frame']),('facade',['rust','rust-native','rust-jobs','rs']),('job',['rust','rs'])]:
+  copy_native_rust_identity(ROOT/'openabstractions-flat/abstraction-identity',tree/'openabstractions-flat/abstraction-identity/rust')
+  for component,parts in [('identity',['rust-frame']),('facade',['rust','rust-native','rust-jobs','rs']),('job',['rust','rs'])]:
    for part in parts:
     rel=Path('openabstractions-flat')/('abstraction-'+component)/part
     shutil.copytree(ROOT/rel,tree/rel)

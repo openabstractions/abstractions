@@ -1,10 +1,68 @@
+import {permissionVerdict, permissionQuestions, permissionWaitMs, waitForPermission, resolveNativePermission} from './permission-wait.js';
 import {Machine} from '@openabstractions/facade';
 import {APICallError} from '@ai-sdk/provider';
 import {
-  DeltaKind, Fold, PartKind, ReplyOutcome, RequestGuarantee, Role, StopReason, resolveInference, resolveInferenceV2,
+  DeltaKind, Fold, PartKind, ReplyOutcome, RequestGuarantee, Role, StopReason, resolveInference, resolveInferenceV2, resolveInferenceV3,
 } from '@openabstractions/inference';
-import {NativeConnector} from '@openabstractions/ipc';
+import {generateChat3, streamChat3} from './chat3.js';
+import {runtimeConnector} from './runtime-connector.js';
 import {availability, runtimeUnavailable, runtimeUntrusted, unavailableMessage, untrustedMessage} from './availability.js';
+
+async function resolveObservedChat(machine, resolve, contract, need) {
+  const binding = await machine.resolveService(contract, need);
+  const client = await resolve({resolveService: async () => binding}, need);
+  // Cancel uses the same proven endpoint and caller with its own bounded
+  // wait, after the user's observation AbortSignal has already ended.
+  const cancelClient = await resolve({resolveService: async () => binding.withWaiting({deadline: null, cancellation: null})}, need);
+  const cancel = cancelClient.cancel.bind(cancelClient);
+  return new Proxy(client, {get(target, key) {
+    if (key === 'cancel') return cancel;
+    const value = Reflect.get(target, key);
+    return typeof value === 'function' ? value.bind(target) : value;
+  }});
+}
+
+function questionVerdict(observed) { return permissionVerdict(observed); }
+
+// The provider owns observation separately from explicit user cancellation.
+// A failed wait retains the accepted handle on OAInferenceError; it never
+// submits another request or invokes Cancel as an observation side effect.
+async function openObserved(chat, request, guarantees, signal) {
+  const admission = guarantees === undefined ? await chat.start(request) : await chat.startWithGuarantees(request, guarantees);
+  const accepted = admission.outcome === 'accepted';
+  let ended = !accepted;
+  let cancelPromise;
+  const cancel = () => {
+    signal?.removeEventListener('abort', onAbort);
+    if (!accepted || ended) return Promise.resolve();
+    return cancelPromise ??= chat.cancel(admission.operation);
+  };
+  const onAbort = () => { void cancel().catch(() => undefined); };
+  if (accepted) {
+    signal?.addEventListener('abort', onAbort, {once: true});
+    if (signal?.aborted) onAbort();
+  }
+  const stream = (async function* () {
+    try {
+      if (!accepted) {
+        yield {kind: DeltaKind.End, end: {...admission, stopReason: 'no_stop', usage: {}, message: {role: 'assistant', parts: []}}};
+        return;
+      }
+      let cursor = 0n;
+      for (;;) {
+        const page = await chat.observe(admission.operation, cursor, 256n, 65536n, 25000n);
+        if (page.outcome !== 'page') throw Object.assign(new Error(`OpenAbstractions observe ${page.outcome}`), {operation: admission.operation, cursor});
+        for (const delta of page.deltas) {
+          if (delta.kind === DeltaKind.End) ended = true;
+          yield delta;
+        }
+        cursor = page.next;
+        if (page.atEnd) { ended = true; return; }
+      }
+    } finally { signal?.removeEventListener('abort', onAbort); }
+  })();
+  return {admission, stream, cancel};
+}
 
 /** A typed OA terminal outcome surfaced through the AI SDK provider boundary.
  * A not_permitted outcome whose reason is a pending rights question reads as
@@ -22,7 +80,9 @@ export class OAInferenceError extends APICallError {
     // A lost runtime says OA is away, in the words of the toast; a runtime
     // whose identity did not verify says so.
     const away = !reply && runtimeUnavailable(source);
-    const message = !reply && runtimeUntrusted(source) ? untrustedMessage
+    const message = !reply && localOnly && source?.code === 'unknown_method'
+      ? 'OpenAbstractions: this runtime needs an update to keep a saved preference on this computer. The Local assistant request was refused.'
+      : !reply && runtimeUntrusted(source) ? untrustedMessage
       : away ? `${unavailableMessage} This model call could not reach it.`
         : overflow ? overflowMessage(reply, overflow) : refusalMessage(reply, localOnly);
     super({message, url: '',
@@ -41,7 +101,10 @@ export class OAInferenceError extends APICallError {
 /** The window and counted input of a refused context overflow, each 0 when
  * the runtime did not know it, and the answer reserve this request asked for. */
 function contextOverflow(reply, reserve) {
-  if (reply?.outcome !== 'refused' || typeof reply.reason !== 'string') return null;
+  // chat@2 refuses an overflow; a chat@3 request the server accepted ends
+  // failed with the same reason (the owner's R27 overflow read "ended without
+  // an answer" because only refused was taken).
+  if (!['refused', 'failed'].includes(reply?.outcome) || typeof reply.reason !== 'string') return null;
   const match = /^upstream:context_length_exceeded:(\d{1,15}):(\d{1,15})$/.exec(reply.reason);
   if (!match) return null;
   return {window: Number(match[1]), input: Number(match[2]), reserve: Number.isSafeInteger(reserve) && reserve > 0 ? reserve : 0};
@@ -52,25 +115,51 @@ function tokens(value) {
 }
 
 // The first sentence keeps OpenCode's own overflow wording ("exceeds the
-// available context size"), which it compacts on and never retries.
-function overflowMessage(reply, {window, input, reserve}) {
-  const model = typeof reply.model === 'string' && reply.model ? reply.model : 'the model';
-  const sentences = [`OpenAbstractions: this conversation exceeds the available context size of ${model}` +
-    (window ? ` (${tokens(window)} tokens).` : '.')];
-  if (input) sentences.push(`The request had ${tokens(input)} input tokens.`);
-  if (window && reserve && reserve < window) {
-    sentences.push(`${tokens(reserve)} tokens of that context are reserved for the answer, leaving ${tokens(window - reserve)} for input.`);
-  } else if (window && reserve) {
-    sentences.push(`The ${tokens(reserve)}-token answer reserve fills the whole ${tokens(window)}-token context; lower this model's output limit.`);
+// available context size"): OpenCode reads it as a context overflow, compacts
+// the conversation and continues, and never retries it unchanged. The counted
+// input and the answer reserve stay on the error's `context`.
+function overflowMessage(reply, {window, reserve}) {
+  const named = typeof reply.model === 'string' && reply.model && !/[0-9a-f]{16,}/i.test(reply.model);
+  const model = named ? reply.model : 'the model';
+  const sentences = [`OpenAbstractions: this conversation is longer than ${model} can hold.`,
+    `It exceeds the available context size${window ? ` of ${tokens(window)} tokens` : ''}.`];
+  if (window && reserve && reserve >= window) {
+    sentences.push(`The ${tokens(reserve)}-token answer reserve fills the whole context; lower this model's output limit.`);
   }
-  sentences.push('Compact or start a new session, remove instructions or tools, or choose a model with a larger context.');
+  sentences.push('Start a new session or compact it.');
   return sentences.join(' ');
 }
 
-function ambiguousError(error, op, operation = '') {
+/** A refusal a thrown error carries in place of a terminal reply: a service
+ * error whose code is a refusal outcome and whose message is its reason
+ * (ServiceError), or an error with outcome and reason fields. Only a reason
+ * made of rights words is taken, so a pending question or a blocked rule
+ * reads as refusalMessage words it; null for any other error. */
+function thrownRefusal(error) {
+  const outcome = typeof error?.outcome === 'string' ? error.outcome : typeof error?.code === 'string' ? error.code : '';
+  if (outcome !== 'not_permitted' && outcome !== 'forbidden') return null;
+  const reason = typeof error.reason === 'string' && error.reason ? error.reason : typeof error.message === 'string' ? error.message : '';
+  if (!/^rights:(not_granted|denied)(?:\s|$)/.test(reason) && !pendingQuestions(reason).length) return null;
+  return {outcome: 'not_permitted', reason, host: '', model: ''};
+}
+
+/** A transport failure as OpenCode's log prints it: the native stage with
+ * its IPC status, "open: ipc status 1", in the words unavailableReason uses,
+ * where the stage alone ("Error: open") said nothing (2026-11-01). The status
+ * and transferred count stay on it for the classifiers. Any other error is
+ * returned as it is. */
+function transportCause(error) {
+  if (!(error instanceof Error) || typeof error.status !== 'number' || !('transferred' in error)) return error;
+  return Object.assign(new Error(`${error.message}: ipc status ${error.status}`, {cause: error}),
+    {name: error.name, status: error.status, transferred: error.transferred});
+}
+
+function ambiguousError(error, op, operation = '', localOnly = false) {
   if (error instanceof OAInferenceError) return error;
+  const refusal = thrownRefusal(error);
+  if (refusal) return new OAInferenceError(refusal, op, error, operation, 0, localOnly);
   if (runtimeUnavailable(error)) availability.markDown(error);
-  return new OAInferenceError(null, op, error, operation);
+  return new OAInferenceError(null, op, transportCause(error), operation, 0, localOnly);
 }
 
 /** The sentence for a request the Local assistant sent: OA serves it only on
@@ -78,50 +167,57 @@ function ambiguousError(error, op, operation = '') {
 const localOnlyRefusal = 'OpenAbstractions: the Local assistant keeps this conversation on this computer, and no model here '
   + 'serves this choice. Choose a model marked "this computer", or press Tab for the Build agent to use a hosted model.';
 
+/** The first-use questions a refusal names as pending, in order
+ * (inference INF-W11): one rights:question_pending:<id> word each. */
+export function pendingQuestions(reason) { return permissionQuestions(reason); }
+
+// The sentences for OA's first-use question (asks ASK-A14). The native
+// popup asks the person; these say what the chat is waiting for.
+export const askingMessage = 'OpenAbstractions is asking whether OpenCode may use this model; answer the question to continue.';
+export const waitingMessage = 'OpenAbstractions is still waiting for your answer about OpenCode using this model. Open Questions in the OpenAbstractions Panel to answer the request, then send again.';
+export const refusedMessage = 'You chose not to let OpenCode use this model for now; it can ask again in 10 minutes.';
+export const blockedMessage = 'OpenAbstractions: this program is blocked from doing that. '
+  + 'To change that, allow it on the Permissions page of the OpenAbstractions Panel.';
+const notGrantedMessage = 'OpenAbstractions: OpenCode may not use this yet and no question is waiting. '
+  + 'Allow it on the Permissions page of the OpenAbstractions Panel.';
+
+// A hosted model's account OpenCode may not use yet: the router withheld the
+// hosted server from this request (router:unauthorised), or the server's
+// account was not applied for OpenCode (credential:not_permitted). R10
+// showed the generic sentence for both (2026-11-08).
+export const hostedMessage = 'OpenAbstractions: allow OpenCode to use this hosted service in the OpenAbstractions popup, then send again.';
+function hostedRefusal(reply) {
+  const reason = typeof reply?.reason === 'string' ? reply.reason : '';
+  return reply?.outcome === 'no_host' && /^router:unauthorised(?:\s|$)/.test(reason)
+    || reply?.outcome === 'not_permitted' && /^credential:(not_permitted|not_granted)(?::\S*)?(?:\s|$)/.test(reason);
+}
+
 function refusalMessage(reply, localOnly = false) {
+  if (reply?.outcome === 'unavailable' && ['engine:loading', 'native:engine:loading'].includes(reply.reason)) {
+    return 'OpenAbstractions is loading this model; try again shortly.';
+  }
+  if (reply?.outcome === 'unavailable' && /^activating:/.test(reply.reason ?? '')) {
+    return 'OpenAbstractions is starting the program that runs this model; try again shortly.';
+  }
   if (localOnly && reply?.outcome === 'no_host') return localOnlyRefusal;
-  const reason = reply?.outcome === 'not_permitted' && typeof reply.reason === 'string' ? reply.reason : '';
-  // Only not_granted leaves a question pending (asks ASK-R2); a denial is the
-  // person's own rule, changed on the Panel's Permissions page.
-  if (/^rights:not_granted(?:\s|$)/.test(reason)) {
-    return 'OpenAbstractions: this program is not yet permitted to do that. '
-      + 'A question is waiting in the OpenAbstractions Panel; allow it there and retry.';
-  }
-  if (/^rights:denied(?:\s|$)/.test(reason)) {
-    return 'OpenAbstractions: this program is blocked from doing that. '
-      + 'To change that, allow it on the Permissions page of the OpenAbstractions Panel.';
-  }
+  if (reply?.verdict === 'refused') return refusedMessage;
+  if (reply?.verdict === 'blocked') return blockedMessage;
+  const permission = reply?.outcome === 'not_permitted' || reply?.outcome === 'forbidden';
+  const reason = permission && typeof reply.reason === 'string' ? reply.reason : '';
+  if (pendingQuestions(reason).length) return waitingMessage;
+  // A denial is the person's own rule, changed on the Panel's Permissions page.
+  if (/^rights:denied(?:\s|$)/.test(reason)) return blockedMessage;
+  if (reply?.outcome === 'not_permitted' && /^rights:not_granted(?:\s|$)/.test(reason)) return notGrantedMessage;
+  if (hostedRefusal(reply)) return hostedMessage;
   return 'OpenAbstractions could not complete this model call. Check the OpenAbstractions Panel for the request outcome.';
 }
 
-/** How long the first call refused for a pending first-use question waits
- * for the person's answer, and how often it reads its own decision. */
-const firstUseWaitMs = 60000;
-const firstUsePollMs = 1000;
-
-/** Whether a refusal leaves a first-use question pending: only a
- * not_granted refusal does (asks ASK-R2); a denied or unknown one has
- * nothing to wait for. */
-function awaitsQuestion(reply) {
-  return reply?.outcome === 'not_permitted' && typeof reply.reason === 'string'
-    && /^rights:not_granted(?:\s|$)/.test(reply.reason);
-}
-
-const completeAction = 'abstraction.inference/complete';
 // How long the router's host table answers where a reply ran before it is read again.
 const hostTableTTL = 30000;
 
-function pause(ms, signal) {
-  return new Promise((resolve) => {
-    const done = () => {
-      clearTimeout(timer);
-      signal?.removeEventListener?.('abort', done);
-      resolve();
-    };
-    const timer = setTimeout(done, ms);
-    signal?.addEventListener?.('abort', done, {once: true});
-  });
-}
+// How long a chat waits in all for the person to answer OA's first-use
+// question, and the longest single ObserveQuestion wait (asks ASK-A14).
+const questionWaitMs = permissionWaitMs;
 
 function textOutput(output) {
   if (!output) return '';
@@ -174,7 +270,11 @@ function requestFor(modelId, options, config) {
       parts.push({kind: PartKind.Text, text: message.content, digest: '', mediaType: '', callId: '', name: '', arguments: ''});
     } else {
       for (const part of message.content ?? []) {
-        if (part.type === 'text' || part.type === 'reasoning') {
+        if (part.type === 'reasoning') {
+          // chat@1 has no reasoning part; the trace never becomes answer
+          // text (inference INF-Q8).
+          continue;
+        } else if (part.type === 'text') {
           parts.push({kind: PartKind.Text, text: part.text, digest: '', mediaType: '', callId: '', name: '', arguments: ''});
         } else if (part.type === 'tool-call') {
           parts.push({kind: PartKind.ToolCall, text: '', digest: '', mediaType: '', callId: part.toolCallId,
@@ -219,11 +319,33 @@ function requestFor(modelId, options, config) {
   };
 }
 
+// The Default row's API id ("Default (Qwen3.6 35B)", inventory.js
+// defaultEntryName) and the model ID of the app's own chat policy.
+const defaultRouteName = /^Default \(.+\)$/;
+const defaultChatModel = 'oa-chat';
+
+/** The model ID a request names: a route entry's API id ("Default (Qwen3.6
+ * 35B)") maps to its entry ("oa-chat") through oaRouteModels (inventory.js).
+ * The Default row keeps its API id from the instance's model list while these
+ * options were fixed earlier, so a Default name the options do not hold yet
+ * (the Panel's default changed since) is still the app's own chat policy.
+ * Every other id names itself. */
+function routedModelId(modelId, config) {
+  const routes = config?.oaRouteModels;
+  const known = routes && typeof routes === 'object' && !Array.isArray(routes) && Object.hasOwn(routes, modelId);
+  if (known && typeof routes[modelId] === 'string' && routes[modelId]) return routes[modelId];
+  const selections = config?.oaSelectionPolicies;
+  if (!known && typeof modelId === 'string' && defaultRouteName.test(modelId) && selections
+      && typeof selections === 'object' && Object.hasOwn(selections, defaultChatModel)) return defaultChatModel;
+  return modelId;
+}
+
 function selectionPolicyFor(modelId, config) {
   const selections = config.oaSelectionPolicies;
+  const id = routedModelId(modelId, config);
   if (!selections || typeof selections !== 'object' || Array.isArray(selections) ||
-      !Object.hasOwn(selections, modelId)) return '';
-  const name = selections[modelId];
+      !Object.hasOwn(selections, id)) return '';
+  const name = selections[id];
   return typeof name === 'string' && name.length > 0 ? name : '';
 }
 
@@ -237,7 +359,7 @@ function requestV2For(policyName, options, config) {
       options: request.options,
       extensions: request.extensions,
       requiredExtensions: request.requiredExtensions,
-      guarantees: localOnlyRequested(options) ? [RequestGuarantee.LocalOnly] : [],
+      guarantees: [],
       credential: '',
     },
   };
@@ -291,56 +413,74 @@ class OALanguageModel {
   }
 
   async chat(options) {
-    let connector = this.config.connector;
-    if (!connector) {
-      if (typeof globalThis.Bun !== 'undefined') {
-        const {BunNativeConnector} = await import('@openabstractions/ipc/bun');
-        connector = new BunNativeConnector();
-      } else {
-        connector = new NativeConnector();
-      }
-    }
+    const connector = await runtimeConnector(this.config.connector || undefined);
     const machine = new Machine(this.config.runtimeEndpoint ?? null, {
       connector,
       timeout: this.config.timeout ?? 30000,
       cancellation: options.abortSignal ?? null,
       server: this.config.server ?? null,
     });
-    return resolveInference(machine, {
+    return resolveObservedChat(machine, resolveInference, 'abstraction.inference/chat@1', {
       scope: this.config.scope ?? 'local',
       guarantees: this.config.guarantees ?? [this.config.scope === 'remote' ? RequestGuarantee.HostedAllowed : RequestGuarantee.LocalOnly],
     });
   }
 
   async chatV2(options) {
-    let connector = this.config.connector;
-    if (!connector) {
-      if (typeof globalThis.Bun !== 'undefined') {
-        const {BunNativeConnector} = await import('@openabstractions/ipc/bun');
-        connector = new BunNativeConnector();
-      } else {
-        connector = new NativeConnector();
-      }
-    }
+    const connector = await runtimeConnector(this.config.connector || undefined);
     const machine = new Machine(this.config.runtimeEndpoint ?? null, {
       connector,
       timeout: this.config.timeout ?? 30000,
       cancellation: options.abortSignal ?? null,
       server: this.config.server ?? null,
     });
-    return resolveInferenceV2(machine, {scope: this.config.scope ?? 'local'});
+    return resolveObservedChat(machine, resolveInferenceV2, 'abstraction.inference/chat@2', {scope: this.config.scope ?? 'local'});
+  }
+
+  async finalChat(options) {
+    // Negotiate the exact version before any inference request is sent.
+    const map = this.config.oaChatGuarantees;
+    if (map !== undefined && (!map || typeof map !== 'object' || Array.isArray(map))) {
+      throw new TypeError('oaChatGuarantees must map aliases to string lists');
+    }
+    const required = map?.[routedModelId(this.modelId, this.config)];
+    if (required !== undefined && (!Array.isArray(required) || required.some(word => typeof word !== 'string'))) {
+      throw new TypeError('oaChatGuarantees must contain string lists');
+    }
+    const requiresFinal = Array.isArray(required) && required.length > 0;
+    if (typeof resolveInferenceV3 !== 'function') {
+      if (requiresFinal) throw new Error('OpenAbstractions: this saved preference requires chat@3 guarantees.');
+      return null;
+    }
+    const connector = await runtimeConnector(this.config.connector || undefined);
+    const machine = new Machine(this.config.runtimeEndpoint ?? null, {
+      connector, timeout: this.config.timeout ?? 30000,
+      cancellation: options.abortSignal ?? null, server: this.config.server ?? null,
+    });
+    try {
+      return await resolveObservedChat(machine, resolveInferenceV3, 'abstraction.inference/chat@3', {
+        scope: this.config.scope ?? 'local',
+      });
+    } catch (error) {
+      if (!requiresFinal && error?.name === 'ResolutionError' && ['incompatible', 'unavailable'].includes(error.status)) return null;
+      throw error;
+    }
+  }
+
+  chat3Hooks(options) {
+    return {
+      requestFor, selectionPolicyFor, routedModelId,
+      markUp: () => availability.markUp(),
+      progress: ({phase, model}) => availability.say('info', phase === 'loading'
+        ? `Loading ${model} on this computer` : `Getting ${model} ready`),
+      error: (reply, source, request = '') => new OAInferenceError(reply, 'chat', source, request,
+        answerReserve(options), localOnlyRequested(options)),
+      metadata: (reply, admission, policy, placement) => answeringMetadata(reply, admission, policy, placement),
+    };
   }
 
   async machine(options) {
-    let connector = this.config.connector;
-    if (!connector) {
-      if (typeof globalThis.Bun !== 'undefined') {
-        const {BunNativeConnector} = await import('@openabstractions/ipc/bun');
-        connector = new BunNativeConnector();
-      } else {
-        connector = new NativeConnector();
-      }
-    }
+    const connector = await runtimeConnector(this.config.connector || undefined);
     return new Machine(this.config.runtimeEndpoint ?? null, {
       connector, timeout: 5000, cancellation: options.abortSignal ?? null, server: this.config.server ?? null,
     });
@@ -371,6 +511,30 @@ class OALanguageModel {
     }
   }
 
+  /** What waiting for the person decided about a refusal that names its
+   * pending first-use questions (inference INF-W11, asks ASK-A14): 'allowed'
+   * for the one enforcing retry, 'waiting', 'refused' or 'blocked' for the sentence, and '' for a
+   * reply that names no question. One toast tells the person what the chat
+   * waits for; the native popup asks. */
+  async answerFor(reply, options) {
+    const permission = reply?.outcome === 'not_permitted' || reply?.outcome === 'forbidden';
+    const ids = permission ? pendingQuestions(reply.reason) : [];
+    if (!ids.length) return '';
+    availability.say('info', askingMessage);
+    try {
+      return await this.awaitQuestions(ids, options);
+    } catch {
+      return 'waiting';
+    }
+  }
+
+  /** Wait up to questionWaitMs in all for the person's answer to each
+   * question, through asks permission@1 ObserveQuestion. */
+  async awaitQuestions(ids, options) {
+    return waitForPermission(ids, {resolvePermission: ({signal}) => resolveNativePermission(this.config, signal),
+      signal: options.abortSignal, deadline: Date.now() + (this.config.questionWaitMs ?? questionWaitMs)});
+  }
+
   /** The router's host table: each server's name and whether it is hosted. */
   async readHostTable(options) {
     const {RouterClient} = await import('@openabstractions/router');
@@ -380,80 +544,9 @@ class OALanguageModel {
     return new Map((snapshot?.hosts ?? []).map((state) => [state.host, state.hosted === true]));
   }
 
-  /** This program's own rights decision point (rights RIGHTS-A1): it decides
-   * for the calling program only and answers nothing. */
-  async decider(options) {
-    const {AuthorizationClient} = await import('@openabstractions/rights');
-    const machine = await this.machine(options);
-    const client = new AuthorizationClient(await machine.resolveService('abstraction.rights/authorization@1', {scope: 'local'}));
-    return (action, resource) => client.decide(action, resource);
-  }
-
-  /** The model servers the router offers this model on. A refusal names no
-   * host (inference: every refusal's host is empty), so these are the hosts
-   * whose complete rule the refused call may be waiting for. */
-  async servers(options) {
-    const {RouterClient} = await import('@openabstractions/router');
-    const machine = await this.machine(options);
-    const router = new RouterClient(await machine.resolveService('abstraction.router/router@1', {scope: 'local'}));
-    const placement = (this.config.scope ?? 'local') === 'remote' ? 'any' : 'local';
-    const snapshot = await router.offer({profile: '', placement, reserve: BigInt(answerReserve(options)), fresh: false});
-    if (snapshot?.outcome !== 'offered') {
-      const outcome = typeof snapshot?.outcome === 'string' ? snapshot.outcome : 'invalid_result';
-      throw Object.assign(new Error(`OpenAbstractions router offer: ${outcome}`), {code: outcome, outcome});
-    }
-    const name = this.config.oaInventoryManagedModels?.[this.modelId]?.name;
-    const servers = new Set();
-    for (const offer of snapshot?.offers ?? []) {
-      if (offer.family === this.modelId || (offer.names ?? []).includes(this.modelId) || (name && (offer.names ?? []).includes(name))) {
-        for (const server of offer.servers ?? []) servers.add(server);
-      }
-    }
-    return [...servers];
-  }
-
-  /** After a refusal for a pending first-use question, waits up to
-   * firstUseWaitMs for the person to allow it in the Panel, reading only
-   * this program's own decisions for complete on each server the router
-   * offers the model on; true once one permits. The plugin never sees or
-   * answers the question: the runtime admits it as itself (asks ASK-R2),
-   * Observe reaches only the caller's own questions (ASK-R1), and answering
-   * it here would be self-approval (ASK-R3). */
-  async awaitFirstUse(reply, options, cancelled = null) {
-    if (!awaitsQuestion(reply)) return false;
-    const signals = [options.abortSignal, cancelled].filter(Boolean);
-    const signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
-    const deadline = Date.now() + (this.config.firstUseWaitMs ?? firstUseWaitMs);
-    const interval = this.config.firstUsePollMs ?? firstUsePollMs;
-    let decide;
-    let hosts;
-    try {
-      hosts = reply.host ? [reply.host] : await this.servers(options);
-      if (hosts.length === 0) return false;
-      decide = await this.decider(options);
-    } catch {
-      return false;
-    }
-    while (Date.now() < deadline && !signal?.aborted) {
-      await pause(Math.min(interval, Math.max(0, deadline - Date.now())), signal);
-      if (signal?.aborted) return false;
-      let waiting = false;
-      for (const host of hosts) {
-        let decision;
-        try {
-          decision = await decide(completeAction, `host:${host}`);
-        } catch {
-          return false;
-        }
-        if (decision?.outcome === 'permitted') return true;
-        if (decision?.outcome === 'not_granted') waiting = true;
-      }
-      if (!waiting) return false;
-    }
-    return false;
-  }
-
   async doGenerate(options) {
+    const final = await this.finalChat(options);
+    if (final) return generateChat3(this, final, options, this.chat3Hooks(options));
     const policyName = selectionPolicyFor(this.modelId, this.config);
     const request = policyName ? requestV2For(policyName, options, this.config)
       : requestFor(this.modelId, options, this.config);
@@ -463,7 +556,7 @@ class OALanguageModel {
       try {
         if (policyName) {
           const chat = await this.chatV2(options);
-          const opened = await chat.startStream(request);
+          const opened = await openObserved(chat, request, policyName && localOnlyRequested(options) ? [RequestGuarantee.LocalOnly] : undefined, options.abortSignal);
           admission = opened.admission;
           const fold = new Fold();
           for await (const delta of opened.stream) fold.add(delta);
@@ -472,16 +565,22 @@ class OALanguageModel {
           return {reply, admission};
         }
         const chat = await this.chat(options);
-        return {reply: await chat.complete(request), admission};
+        const opened = await openObserved(chat, request, undefined, options.abortSignal);
+        admission = opened.admission;
+        const fold = new Fold();
+        for await (const delta of opened.stream) fold.add(delta);
+        const reply = fold.reply();
+        if (!reply) throw new Error('OpenAbstractions stream ended without a terminal reply');
+        return {reply, admission};
       } catch (error) {
-        throw ambiguousError(error, 'generate', admission?.operation ?? '');
+        throw ambiguousError(error, 'generate', admission?.operation ?? '', localOnlyRequested(options));
       }
     };
     let {reply, admission} = await attempt();
     availability.markUp();
-    if (reply.outcome !== ReplyOutcome.Completed && await this.awaitFirstUse(reply, options)) {
-      ({reply, admission} = await attempt());
-    }
+    const verdict = await this.answerFor(reply, options);
+    if (verdict === 'allowed' && admission?.outcome !== 'accepted' && !admission?.operation) ({reply, admission} = await attempt());
+    else if (verdict) reply = {...reply, verdict};
     if (reply.outcome !== ReplyOutcome.Completed) {
       throw new OAInferenceError(reply, 'generate', undefined, admission?.operation ?? '', answerReserve(options),
         localOnlyRequested(options));
@@ -500,31 +599,39 @@ class OALanguageModel {
   }
 
   async doStream(options) {
+    const final = await this.finalChat(options);
+    if (final) return streamChat3(this, final, options, this.chat3Hooks(options));
     const policyName = selectionPolicyFor(this.modelId, this.config);
     const request = policyName ? requestV2For(policyName, options, this.config)
       : requestFor(this.modelId, options, this.config);
     if (!policyName) rememberPrefix(this, options, request);
+    // Native admission holds at most briefly for the person (INF-W11). Reader close cancels that
+    // same call, including the interval before an operation is accepted.
+    const lifetime = new AbortController();
+    const callOptions = {...options, abortSignal: options.abortSignal
+      ? AbortSignal.any([options.abortSignal, lifetime.signal]) : lifetime.signal};
     const open = async () => {
       try {
         if (policyName) {
-          const chat = await this.chatV2(options);
-          const opened = await chat.startStream(request);
+          const chat = await this.chatV2(callOptions);
+          const opened = await openObserved(chat, request, policyName && localOnlyRequested(options) ? [RequestGuarantee.LocalOnly] : undefined, callOptions.abortSignal);
           return {iterator: opened.stream[Symbol.asyncIterator](), admission: opened.admission, cancelAccepted: opened.cancel};
         }
-        const chat = await this.chat(options);
-        return {iterator: chat.stream(request)[Symbol.asyncIterator](), admission: null, cancelAccepted: null};
+        const chat = await this.chat(callOptions);
+        const opened = await openObserved(chat, request, undefined, callOptions.abortSignal);
+        return {iterator: opened.stream[Symbol.asyncIterator](), admission: opened.admission, cancelAccepted: opened.cancel};
       } catch (error) {
-        throw ambiguousError(error, 'stream');
+        throw ambiguousError(error, 'stream', '', localOnlyRequested(options));
       }
     };
     let {iterator, admission, cancelAccepted} = await open();
+    // One wait for the person's answer to a refusal's first-use questions and
+    // one retry after an Allow (asks ASK-A14).
+    let asked = false;
     availability.markUp();
-    // A refusal for a pending first-use question ends a stream before any
-    // part; the stream then waits for the person's answer and opens once
-    // more. Cancelling the stream ends the wait.
-    const waiting = new AbortController();
-    let waited = false;
     const model = this;
+    // OpenCode keeps its Working… state after stream-start. Loading and
+    // reasoning wait for actual native parts; no timer manufactures text.
     const pending = [{type: 'stream-start', warnings: []}];
     const text = new Set();
     const calls = new Map();
@@ -538,16 +645,18 @@ class OALanguageModel {
           try {
             next = await iterator.next();
           } catch (error) {
+            if (terminal) return;
             pending.push({type: 'error', error: ambiguousError(error, 'stream', admission?.operation ?? '')});
             terminal = true;
             break;
           }
+          if (terminal) return;
           if (next.done) {
             pending.push({type: 'error', error: ambiguousError(new Error('OpenAbstractions stream ended without a terminal reply'), 'stream', admission?.operation ?? '')});
             terminal = true;
             break;
           }
-          const delta = next.value;
+          let delta = next.value;
           if (delta.kind === DeltaKind.Usage && delta.usage) latestUsage = delta.usage;
           if (delta.kind === DeltaKind.Part && delta.part) {
             const id = String(delta.index);
@@ -568,11 +677,12 @@ class OALanguageModel {
               if (delta.part.arguments) pending.push({type: 'tool-input-delta', id: call.id, delta: delta.part.arguments});
             }
           }
-          if (delta.kind === DeltaKind.End && delta.end && !waited && text.size === 0 && calls.size === 0
-              && delta.end.outcome !== ReplyOutcome.Completed && awaitsQuestion(delta.end)) {
-            waited = true;
-            if (await model.awaitFirstUse(delta.end, options, waiting.signal)) {
-              await iterator.return?.();
+          if (delta.kind === DeltaKind.End && delta.end && delta.end.outcome !== ReplyOutcome.Completed
+              && !asked && text.size === 0 && calls.size === 0) {
+            asked = true;
+            const verdict = await model.answerFor(delta.end, callOptions);
+            if (terminal) return;
+            if (verdict === 'allowed' && admission?.outcome !== 'accepted' && !admission?.operation) {
               try {
                 ({iterator, admission, cancelAccepted} = await open());
               } catch (error) {
@@ -582,7 +692,7 @@ class OALanguageModel {
               }
               continue;
             }
-            if (waiting.signal.aborted) return;
+            if (verdict) delta = {...delta, end: {...delta.end, verdict}};
           }
           if (delta.kind === DeltaKind.End && delta.end) {
             // Where the reply ran rides on its text part, which OpenCode
@@ -612,7 +722,7 @@ class OALanguageModel {
       },
       async cancel() {
         terminal = true;
-        waiting.abort();
+        lifetime.abort();
         const canceling = cancelAccepted?.();
         await iterator.return?.();
         await canceling;

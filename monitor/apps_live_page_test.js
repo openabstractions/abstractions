@@ -2,7 +2,7 @@
 // Check again finds the fake runtime recovered and writes its sentence; the
 // page's own timer checks again, and the sentence, the banner and the app
 // rows are the same elements as before (the S5 review rule).
-const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const fs=require('fs'),vm=require('./panel_record_test_helper.js').vm,assert=require('assert');
 const {assertPanelRules}=require('./static/panel_rules.js');
 const {assertLiveUpdateKeepsRow,allowlistedClasses}=require('./panel_fake_dom_test_helper.js');
 function constant(file,name){const s=fs.readFileSync(__dirname+'/'+file,'utf8'),m='const '+name+' = `',i=s.indexOf(m)+m.length;assert(i>=m.length,name);return s.slice(i,s.indexOf('`',i))}
@@ -16,7 +16,7 @@ const context={console,URLSearchParams,AbortController,location:{search:'?k=key'
  document:{getElementById:el,createElement:node,documentElement:{dataset:{}},visibilityState:'visible',addEventListener(){}},
  fetch:async(path,opts={})=>{
   if(path==='/runtime'){checks++;return {ok:true,json:async()=>failing?{capabilities:[{name:'Work submission',contract:'abstraction.job/acceptance@1',status:'unavailable'}]}:{capabilities:[]}}}
-  if(path.startsWith('/apps/registrations?')){const q=new URLSearchParams(path.split('?')[1]);if(q.get('wait_ms')!=='0')return new Promise(()=>{});return {ok:true,json:async()=>registry}}
+  if(path.startsWith('/apps/registrations?')){const q=new URLSearchParams(path.split('?')[1]);if(q.get('wait_ms')!=='0')return new Promise(()=>{});return {ok:true,json:async()=>q.get('source')==='providers'?{outcome:'page',cursor:'p1',entries:[]}:registry}}
   throw Error('unexpected '+path);
  }};
 context.window=context;vm.createContext(context);
@@ -34,10 +34,10 @@ vm.runInContext(constant('service_page.go','serviceCommonScript')+constant('serv
   change:()=>{registry.entries[0].application.Instances=[{}]},data:()=>registry,
   tick:timer,row:()=>el('apps-health'),status:()=>el('apps-health-status'),label:'Apps, health banner'});
  assert(/everything works\.$/.test(sentence),'Check again writes one sentence');assert.equal(checks,before+2,'the click and the timer checked the runtime');
- assert.equal(el('apps-health-label').textContent,'OpenAbstractions works again.');
+ assert.equal(el('apps-health-label').textContent,'OpenAbstractions works again');
  assert.equal(el('apps-health').hidden,false,'the banner stays with its sentence after the reread');
  assert.strictEqual(el('apps').children[0],row,'the app row is the same element');
- assertPanelRules({tagName:'MAIN',children:[{tagName:'SECTION',children:[el('apps-health'),el('apps')]}]},'Apps',{allowClasses:allowlistedClasses('status')});
+ assertPanelRules({tagName:'MAIN',children:[{tagName:'SECTION',children:[el('apps-health'),el('apps')]}]},'Apps',{naming:true,allowClasses:allowlistedClasses('status')});
  context.appsRun.abort();
  console.log('PASS: Apps: Check again writes its sentence, the timer rereads, the sentence and the rows survive');
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -1,0 +1,545 @@
+using Raw = std::string
+class Refusal : public std::runtime_error
+  const char* word
+  std::size_t offset
+using OaImported0 =::abstraction::facade::ServiceReadiness
+inline auto parse_oa_imported0(std::string_view word)
+using OaImported3 =::abstraction::facade::appmodel::CommandClass
+inline auto parse_oa_imported3(std::string_view word)
+enum class Source {Installation, Operator, SelfRegistration, ProductRecord, BuiltIn}
+inline constexpr std::string_view wire_name(Source value)
+inline std::optional<Source> parse_source(std::string_view name)
+inline constexpr bool operator==(Source value, std::string_view name)
+inline constexpr bool operator!=(Source value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Source value)
+inline constexpr bool operator!=(std::string_view name, Source value)
+inline const std::vector<std::string> kSourceNames
+enum class State {PendingApproval, Enabled, Disabled}
+inline constexpr std::string_view wire_name(State value)
+inline std::optional<State> parse_state(std::string_view name)
+inline constexpr bool operator==(State value, std::string_view name)
+inline constexpr bool operator!=(State value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, State value)
+inline constexpr bool operator!=(std::string_view name, State value)
+inline const std::vector<std::string> kStateNames
+enum class Verification {Verified, Missing, Changed, Unverified}
+inline constexpr std::string_view wire_name(Verification value)
+inline std::optional<Verification> parse_verification(std::string_view name)
+inline constexpr bool operator==(Verification value, std::string_view name)
+inline constexpr bool operator!=(Verification value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Verification value)
+inline constexpr bool operator!=(std::string_view name, Verification value)
+inline const std::vector<std::string> kVerificationNames
+enum class Placement {Local, Hosted, Any}
+inline constexpr std::string_view wire_name(Placement value)
+inline std::optional<Placement> parse_placement(std::string_view name)
+inline constexpr bool operator==(Placement value, std::string_view name)
+inline constexpr bool operator!=(Placement value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Placement value)
+inline constexpr bool operator!=(std::string_view name, Placement value)
+inline const std::vector<std::string> kPlacementNames
+enum class Activation {OnDemand, Attach}
+inline constexpr std::string_view wire_name(Activation value)
+inline std::optional<Activation> parse_activation(std::string_view name)
+inline constexpr bool operator==(Activation value, std::string_view name)
+inline constexpr bool operator!=(Activation value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Activation value)
+inline constexpr bool operator!=(std::string_view name, Activation value)
+inline const std::vector<std::string> kActivationNames
+enum class IdentityEvidence {None, Program, Remote}
+inline constexpr std::string_view wire_name(IdentityEvidence value)
+inline std::optional<IdentityEvidence> parse_identity_evidence(std::string_view name)
+inline constexpr bool operator==(IdentityEvidence value, std::string_view name)
+inline constexpr bool operator!=(IdentityEvidence value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, IdentityEvidence value)
+inline constexpr bool operator!=(std::string_view name, IdentityEvidence value)
+inline const std::vector<std::string> kIdentityEvidenceNames
+enum class FacetKind {Provider, Host, Remote, Application}
+inline constexpr std::string_view wire_name(FacetKind value)
+inline std::optional<FacetKind> parse_facet_kind(std::string_view name)
+inline constexpr bool operator==(FacetKind value, std::string_view name)
+inline constexpr bool operator!=(FacetKind value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, FacetKind value)
+inline constexpr bool operator!=(std::string_view name, FacetKind value)
+inline const std::vector<std::string> kFacetKindNames
+enum class ProducerCheckState {Current, Repaired, Stale, Refused, Unverified}
+inline constexpr std::string_view wire_name(ProducerCheckState value)
+inline std::optional<ProducerCheckState> parse_producer_check_state(std::string_view name)
+inline constexpr bool operator==(ProducerCheckState value, std::string_view name)
+inline constexpr bool operator!=(ProducerCheckState value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ProducerCheckState value)
+inline constexpr bool operator!=(std::string_view name, ProducerCheckState value)
+inline const std::vector<std::string> kProducerCheckStateNames
+enum class DescriptionOutcome {Described, Forbidden, Unavailable, Invalid, Unsupported}
+inline constexpr std::string_view wire_name(DescriptionOutcome value)
+inline std::optional<DescriptionOutcome> parse_description_outcome(std::string_view name)
+inline constexpr bool operator==(DescriptionOutcome value, std::string_view name)
+inline constexpr bool operator!=(DescriptionOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, DescriptionOutcome value)
+inline constexpr bool operator!=(std::string_view name, DescriptionOutcome value)
+inline const std::vector<std::string> kDescriptionOutcomeNames
+enum class CleanupState {Done, Pending, Failed}
+inline constexpr std::string_view wire_name(CleanupState value)
+inline std::optional<CleanupState> parse_cleanup_state(std::string_view name)
+inline constexpr bool operator==(CleanupState value, std::string_view name)
+inline constexpr bool operator!=(CleanupState value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, CleanupState value)
+inline constexpr bool operator!=(std::string_view name, CleanupState value)
+inline const std::vector<std::string> kCleanupStateNames
+enum class Outcome {Applied, Page, NotFound, Conflict, Invalid, Forbidden, Unavailable, Unsupported, Gap}
+inline constexpr std::string_view wire_name(Outcome value)
+inline std::optional<Outcome> parse_outcome(std::string_view name)
+inline constexpr bool operator==(Outcome value, std::string_view name)
+inline constexpr bool operator!=(Outcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Outcome value)
+inline constexpr bool operator!=(std::string_view name, Outcome value)
+inline const std::vector<std::string> kOutcomeNames
+inline const std::vector<std::string> kServiceErrorCodeNames
+inline constexpr std::string_view kServiceErrorCodeHandlerError
+inline constexpr std::string_view kServiceErrorCodeInvalidResult
+inline constexpr std::string_view kServiceErrorCodeUnknownVersion
+inline constexpr std::string_view kServiceErrorCodeUnknownService
+inline constexpr std::string_view kServiceErrorCodeUnknownMethod
+inline constexpr std::string_view kServiceErrorCodeWrongMode
+enum class EndpointServiceReadiness {Ready, NotReady, Unknown}
+inline constexpr std::string_view wire_name(EndpointServiceReadiness value)
+inline std::optional<EndpointServiceReadiness> parse_endpoint_service_readiness(std::string_view name)
+inline constexpr bool operator==(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator!=(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointServiceReadiness value)
+inline constexpr bool operator!=(std::string_view name, EndpointServiceReadiness value)
+inline const std::vector<std::string> kEndpointServiceReadinessNames
+inline const std::vector<std::string> kEndpointRefusalSourceNames
+inline constexpr std::string_view kEndpointRefusalSourceRights
+inline constexpr std::string_view kEndpointRefusalSourceCredentials
+inline constexpr std::string_view kEndpointRefusalSourceLicense
+inline constexpr std::string_view kEndpointRefusalSourceTerms
+inline constexpr std::string_view kEndpointRefusalSourceIdentity
+inline constexpr std::string_view kEndpointRefusalSourceOs
+enum class EndpointRefusalDecision {Denied, NotGranted, PersonOnly}
+inline constexpr std::string_view wire_name(EndpointRefusalDecision value)
+inline std::optional<EndpointRefusalDecision> parse_endpoint_refusal_decision(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalDecision value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalDecision value)
+inline const std::vector<std::string> kEndpointRefusalDecisionNames
+enum class EndpointRefusalAsk {Available, None}
+inline constexpr std::string_view wire_name(EndpointRefusalAsk value)
+inline std::optional<EndpointRefusalAsk> parse_endpoint_refusal_ask(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalAsk value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalAsk value)
+inline const std::vector<std::string> kEndpointRefusalAskNames
+enum class EndpointProducerCheckState {Current, Repaired, Stale, Refused, Unverified}
+inline constexpr std::string_view wire_name(EndpointProducerCheckState value)
+inline std::optional<EndpointProducerCheckState> parse_endpoint_producer_check_state(std::string_view name)
+inline constexpr bool operator==(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator!=(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointProducerCheckState value)
+inline constexpr bool operator!=(std::string_view name, EndpointProducerCheckState value)
+inline const std::vector<std::string> kEndpointProducerCheckStateNames
+enum class EndpointDescriptionOutcome {Described, Forbidden, Unavailable, Invalid, Unsupported}
+inline constexpr std::string_view wire_name(EndpointDescriptionOutcome value)
+inline std::optional<EndpointDescriptionOutcome> parse_endpoint_description_outcome(std::string_view name)
+inline constexpr bool operator==(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator!=(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointDescriptionOutcome value)
+inline constexpr bool operator!=(std::string_view name, EndpointDescriptionOutcome value)
+inline const std::vector<std::string> kEndpointDescriptionOutcomeNames
+struct ProducerCheck
+  std::string kind
+  std::string copy
+  ProducerCheckState state
+  std::string reason
+  std::string checked
+struct ServiceState
+  std::string service
+  OaImported0 readiness
+  std::string reason
+  std::vector<std::string> guarantees
+  std::map<std::string, std::string> capabilities
+  std::string definition_hash
+struct Description
+  DescriptionOutcome outcome
+  std::string program
+  std::string version
+  std::vector<ServiceState> services
+  std::optional<::abstraction::rights::api::RefusalDetail> refusal
+  std::string reason
+  std::vector<ProducerCheck> checks
+struct EngineFact
+  std::string id
+  std::string name
+  std::string version
+struct RecipeObject
+  std::string role
+  std::string digest
+  std::string store
+  std::string object
+struct ModelRecipe
+  std::string model
+  std::string engine
+  std::vector<std::string> modalities
+  std::vector<RecipeObject> objects
+struct ScopedModel
+  std::string modality
+  std::string model
+struct RequiredExtension
+  std::string modality
+  std::string key
+struct ProviderFacet
+  std::string name
+  std::vector<std::string> arguments
+  std::string endpoint
+  std::vector<std::string> services
+  std::vector<std::string> guarantees
+  Activation activation
+  std::vector<std::string> resources
+  std::vector<ScopedModel> models
+  std::vector<RequiredExtension> required_extensions
+  std::vector<EngineFact> engines
+  std::vector<ModelRecipe> recipes
+  std::vector<std::string> config_keys
+struct ServerFacet
+  std::string name
+  std::string base
+  std::string kind
+  bool hosted
+  std::vector<std::string> modalities
+  std::string credential
+  std::optional<::abstraction::facade::DeclarationCeiling> ceiling
+struct RemoteFacet
+  std::string name
+  std::string endpoint
+  std::string server_name
+  std::string server_key_sha256
+  std::string credential
+  std::vector<std::string> modalities
+struct HostRecipe
+  std::vector<std::string> arguments
+  std::int32_t readiness_deadline_ms
+struct ActivationVerb
+  std::string name
+  OaImported3 class_
+  Raw input_schema
+struct RequestedPermission
+  std::string action
+  Raw resource
+  std::string purpose
+struct NetworkRequirement
+  std::vector<std::string> hosts
+struct ModelNeed
+  std::string modality
+  std::vector<std::string> required_features
+  std::int64_t minimum_context
+  Placement placement
+  std::int64_t reserve
+struct Needs
+  std::vector<::abstraction::download::request::Request> files
+  std::vector<ModelNeed> models
+struct Chooser
+  std::string name
+  std::string modality
+struct Choosers
+  std::vector<Chooser> entries
+struct Manifest
+  std::string version
+  std::string name
+  std::string title
+  std::string description
+  ::abstraction::facade::appmodel::CommandDeclaration offers
+  HostRecipe host
+  bool script_host
+  std::vector<RequestedPermission> requests
+  NetworkRequirement network
+  Needs needs
+  std::string purpose
+  std::vector<ActivationVerb> verbs
+  std::optional<Choosers> choosers
+struct ApplicationFacet
+  std::string name
+  Manifest manifest
+struct RegistrationSpec
+  std::string program
+  std::vector<ProviderFacet> providers
+  std::vector<ServerFacet> servers
+  std::vector<RemoteFacet> remotes
+  std::vector<ApplicationFacet> applications
+struct Publisher
+  std::string key
+  std::string subject
+  std::string issuer
+  std::string checked
+struct ApplicationReading
+  std::string name
+  std::string manifest_digest
+  std::vector<::abstraction::facade::ApplicationInstance> instances
+  std::vector<std::string> owned_instances
+struct FacetReference
+  FacetKind kind
+  std::string name
+struct Registration
+  std::string key
+  RegistrationSpec spec
+  std::string revision
+  std::string epoch
+  Source source
+  std::string product_name
+  State state
+  IdentityEvidence identity_evidence
+  std::string reason
+  std::optional<Publisher> publisher
+  std::optional<FacetReference> shadowed_by
+  std::vector<ApplicationReading> applications
+  std::vector<ServiceState> described
+  std::string accepted
+  Verification verification
+  std::string verification_reason
+  std::string verified
+  std::vector<ProducerCheck> checks
+struct Cleanup
+  std::string owner
+  CleanupState state
+  std::string reason
+struct RemovalReceipt
+  std::string id
+  FacetReference facet
+  std::string revision
+  std::vector<Cleanup> cleanup
+  std::string accepted
+struct Change
+  Outcome outcome
+  std::string revision
+  std::string reason
+  std::optional<RemovalReceipt> removal
+  std::optional<::abstraction::rights::api::RefusalDetail> refusal
+struct Page
+  Outcome outcome
+  std::string revision
+  std::string cursor
+  std::vector<Registration> registrations
+  std::vector<RemovalReceipt> removals
+  std::string reason
+  std::optional<::abstraction::rights::api::RefusalDetail> refusal
+struct EndpointRefusalDetail
+  std::string source
+  EndpointRefusalDecision decision
+  EndpointRefusalAsk ask
+  std::string action
+  std::string question
+  std::string credential
+  std::int64_t retry_after_ms
+struct EndpointProducerCheck
+  std::string kind
+  std::string copy
+  EndpointProducerCheckState state
+  std::string reason
+  std::string checked
+struct EndpointServiceState
+  std::string service
+  EndpointServiceReadiness readiness
+  std::string reason
+  std::vector<std::string> guarantees
+  std::map<std::string, std::string> capabilities
+  std::string definition_hash
+struct EndpointDescription
+  EndpointDescriptionOutcome outcome
+  std::string program
+  std::string version
+  std::vector<EndpointServiceState> services
+  std::optional<EndpointRefusalDetail> refusal
+  std::string reason
+  std::vector<EndpointProducerCheck> checks
+struct EndpointDescriptionResult
+  EndpointDescription value
+inline Manifest decode(std::string_view data)
+T from_json(std::string_view data)
+inline std::string to_json(const ProducerCheck& v)
+inline ProducerCheck from_json<ProducerCheck>(std::string_view data)
+inline std::string to_json(const ServiceState& v)
+inline ServiceState from_json<ServiceState>(std::string_view data)
+inline std::string to_json(const Description& v)
+inline Description from_json<Description>(std::string_view data)
+inline std::string to_json(const EngineFact& v)
+inline EngineFact from_json<EngineFact>(std::string_view data)
+inline std::string to_json(const RecipeObject& v)
+inline RecipeObject from_json<RecipeObject>(std::string_view data)
+inline std::string to_json(const ModelRecipe& v)
+inline ModelRecipe from_json<ModelRecipe>(std::string_view data)
+inline std::string to_json(const ScopedModel& v)
+inline ScopedModel from_json<ScopedModel>(std::string_view data)
+inline std::string to_json(const RequiredExtension& v)
+inline RequiredExtension from_json<RequiredExtension>(std::string_view data)
+inline std::string to_json(const ProviderFacet& v)
+inline ProviderFacet from_json<ProviderFacet>(std::string_view data)
+inline std::string to_json(const ServerFacet& v)
+inline ServerFacet from_json<ServerFacet>(std::string_view data)
+inline std::string to_json(const RemoteFacet& v)
+inline RemoteFacet from_json<RemoteFacet>(std::string_view data)
+inline std::string to_json(const HostRecipe& v)
+inline HostRecipe from_json<HostRecipe>(std::string_view data)
+inline std::string to_json(const ActivationVerb& v)
+inline ActivationVerb from_json<ActivationVerb>(std::string_view data)
+inline std::string to_json(const RequestedPermission& v)
+inline RequestedPermission from_json<RequestedPermission>(std::string_view data)
+inline std::string to_json(const NetworkRequirement& v)
+inline NetworkRequirement from_json<NetworkRequirement>(std::string_view data)
+inline std::string to_json(const ModelNeed& v)
+inline ModelNeed from_json<ModelNeed>(std::string_view data)
+inline std::string to_json(const Needs& v)
+inline Needs from_json<Needs>(std::string_view data)
+inline std::string to_json(const Chooser& v)
+inline Chooser from_json<Chooser>(std::string_view data)
+inline std::string to_json(const Choosers& v)
+inline Choosers from_json<Choosers>(std::string_view data)
+inline std::string to_json(const Manifest& v)
+inline Manifest from_json<Manifest>(std::string_view data)
+inline std::string to_json(const ApplicationFacet& v)
+inline ApplicationFacet from_json<ApplicationFacet>(std::string_view data)
+inline std::string to_json(const RegistrationSpec& v)
+inline RegistrationSpec from_json<RegistrationSpec>(std::string_view data)
+inline std::string to_json(const Publisher& v)
+inline Publisher from_json<Publisher>(std::string_view data)
+inline std::string to_json(const ApplicationReading& v)
+inline ApplicationReading from_json<ApplicationReading>(std::string_view data)
+inline std::string to_json(const FacetReference& v)
+inline FacetReference from_json<FacetReference>(std::string_view data)
+inline std::string to_json(const Registration& v)
+inline Registration from_json<Registration>(std::string_view data)
+inline std::string to_json(const Cleanup& v)
+inline Cleanup from_json<Cleanup>(std::string_view data)
+inline std::string to_json(const RemovalReceipt& v)
+inline RemovalReceipt from_json<RemovalReceipt>(std::string_view data)
+inline std::string to_json(const Change& v)
+inline Change from_json<Change>(std::string_view data)
+inline std::string to_json(const Page& v)
+inline Page from_json<Page>(std::string_view data)
+inline std::string to_json(const EndpointRefusalDetail& v)
+inline EndpointRefusalDetail from_json<EndpointRefusalDetail>(std::string_view data)
+inline std::string to_json(const EndpointProducerCheck& v)
+inline EndpointProducerCheck from_json<EndpointProducerCheck>(std::string_view data)
+inline std::string to_json(const EndpointServiceState& v)
+inline EndpointServiceState from_json<EndpointServiceState>(std::string_view data)
+inline std::string to_json(const EndpointDescription& v)
+inline EndpointDescription from_json<EndpointDescription>(std::string_view data)
+inline std::string to_json(const EndpointDescriptionResult& v)
+inline EndpointDescriptionResult from_json<EndpointDescriptionResult>(std::string_view data)
+struct FrameWriter
+  virtual void write_frame(std::string_view frame)
+struct DispatchError : std::runtime_error
+inline std::string service_name(std::string_view frame)
+struct FrameExchanger
+  virtual std::string exchange_frame(std::string_view frame)
+struct ServiceError : std::runtime_error
+  std::string code, message
+inline constexpr std::string_view kEndpointContract
+inline constexpr std::string_view kEndpointV2Contract
+struct DescribedService
+  std::string contract
+  bool ready
+  std::string why
+std::string describe_endpoint_with_checks(std::string_view frame, const std::string& program, const std::string& version, const std::vector<EndpointProducerCheck>& checks, const Services& . . . services)
+std::string describe_endpoint(std::string_view frame, const std::string& program, const std::string& version, const Services& . . . services)
+struct EndpointV2
+  virtual Description describe()
+template<class Transport>struct EndpointV2Client : EndpointV2
+  Transport& transport_
+  Description describe() override
+struct EndpointV2Service
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct EndpointV2Dispatcher : FrameWriter, FrameExchanger
+  EndpointV2& handler
+  DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct RegistryV3
+  virtual Page registrations(const std::string& cursor, const std::int64_t& limit)
+  virtual Change register_(const RegistrationSpec& registration)
+  virtual Change replace(const std::string& expected_revision, const RegistrationSpec& registration)
+  virtual Change remove(const std::string& expected_revision, const FacetReference& facet)
+  virtual Change set_enabled(const std::string& expected_revision, const FacetReference& facet, const bool& enabled)
+  virtual Page observe(const std::string& cursor, const std::int64_t& wait_ms)
+template<class Transport>struct RegistryV3Client : RegistryV3
+  Transport& transport_
+  Page registrations(const std::string& cursor, const std::int64_t& limit) override
+  Change register_(const RegistrationSpec& registration) override
+  Change replace(const std::string& expected_revision, const RegistrationSpec& registration) override
+  Change remove(const std::string& expected_revision, const FacetReference& facet) override
+  Change set_enabled(const std::string& expected_revision, const FacetReference& facet, const bool& enabled) override
+  Page observe(const std::string& cursor, const std::int64_t& wait_ms) override
+struct RegistryV3Service
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct RegistryV3Dispatcher : FrameWriter, FrameExchanger
+  RegistryV3& handler
+  DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+inline std::string encode_producer_check(const ProducerCheck& v)
+inline ProducerCheck decode_producer_check(std::string_view in)
+inline std::string encode_service_state(const ServiceState& v)
+inline ServiceState decode_service_state(std::string_view in)
+inline std::string encode_description(const Description& v)
+inline Description decode_description(std::string_view in)
+inline std::string encode_engine_fact(const EngineFact& v)
+inline EngineFact decode_engine_fact(std::string_view in)
+inline std::string encode_recipe_object(const RecipeObject& v)
+inline RecipeObject decode_recipe_object(std::string_view in)
+inline std::string encode_model_recipe(const ModelRecipe& v)
+inline ModelRecipe decode_model_recipe(std::string_view in)
+inline std::string encode_scoped_model(const ScopedModel& v)
+inline ScopedModel decode_scoped_model(std::string_view in)
+inline std::string encode_required_extension(const RequiredExtension& v)
+inline RequiredExtension decode_required_extension(std::string_view in)
+inline std::string encode_provider_facet(const ProviderFacet& v)
+inline ProviderFacet decode_provider_facet(std::string_view in)
+inline std::string encode_server_facet(const ServerFacet& v)
+inline ServerFacet decode_server_facet(std::string_view in)
+inline std::string encode_remote_facet(const RemoteFacet& v)
+inline RemoteFacet decode_remote_facet(std::string_view in)
+inline std::string encode_host_recipe(const HostRecipe& v)
+inline HostRecipe decode_host_recipe(std::string_view in)
+inline std::string encode_activation_verb(const ActivationVerb& v)
+inline ActivationVerb decode_activation_verb(std::string_view in)
+inline std::string encode_requested_permission(const RequestedPermission& v)
+inline RequestedPermission decode_requested_permission(std::string_view in)
+inline std::string encode_network_requirement(const NetworkRequirement& v)
+inline NetworkRequirement decode_network_requirement(std::string_view in)
+inline std::string encode_model_need(const ModelNeed& v)
+inline ModelNeed decode_model_need(std::string_view in)
+inline std::string encode_needs(const Needs& v)
+inline Needs decode_needs(std::string_view in)
+inline std::string encode_chooser(const Chooser& v)
+inline Chooser decode_chooser(std::string_view in)
+inline std::string encode_choosers(const Choosers& v)
+inline Choosers decode_choosers(std::string_view in)
+inline std::string encode_manifest(const Manifest& v)
+inline Manifest decode_manifest(std::string_view in)
+inline std::string encode_application_facet(const ApplicationFacet& v)
+inline ApplicationFacet decode_application_facet(std::string_view in)
+inline std::string encode_registration_spec(const RegistrationSpec& v)
+inline RegistrationSpec decode_registration_spec(std::string_view in)
+inline std::string encode_publisher(const Publisher& v)
+inline Publisher decode_publisher(std::string_view in)
+inline std::string encode_application_reading(const ApplicationReading& v)
+inline ApplicationReading decode_application_reading(std::string_view in)
+inline std::string encode_facet_reference(const FacetReference& v)
+inline FacetReference decode_facet_reference(std::string_view in)
+inline std::string encode_registration(const Registration& v)
+inline Registration decode_registration(std::string_view in)
+inline std::string encode_cleanup(const Cleanup& v)
+inline Cleanup decode_cleanup(std::string_view in)
+inline std::string encode_removal_receipt(const RemovalReceipt& v)
+inline RemovalReceipt decode_removal_receipt(std::string_view in)
+inline std::string encode_change(const Change& v)
+inline Change decode_change(std::string_view in)
+inline std::string encode_page(const Page& v)
+inline Page decode_page(std::string_view in)
+inline std::string encode(const Manifest& v)

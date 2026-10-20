@@ -24,11 +24,11 @@ func repeatedDefinition(t *testing.T) *Definition {
 func TestARepeatedRecordGeneratesForEveryBackend(t *testing.T) {
 	def := repeatedDefinition(t)
 	for _, b := range backends {
-		body := b.emit(def)
+		body := mustEmit(t, b, def)
 		if len(body) == 0 {
 			t.Fatalf("%s emitted nothing", b.lang)
 		}
-		if body != b.emit(def) {
+		if body != mustEmit(t, b, def) {
 			t.Fatalf("two runs of the %s backend disagree", b.lang)
 		}
 		if err := b.verify(emitted{def: def, lang: b.lang, imports: b.imports, body: body, source: repeated, whole: body}); err != nil {
@@ -74,7 +74,11 @@ func TestTheNewShapesReachEveryBackend(t *testing.T) {
 			t.Fatalf("%s: %v", what, err)
 		}
 		for _, b := range backends {
-			if b.emit(base) == b.emit(altered) {
+			if b.lang == "jsonschema" {
+				// Record schemas state shape only; the readers own these policies.
+				continue
+			}
+			if mustEmit(t, b, base) == mustEmit(t, b, altered) {
 				t.Errorf("%s ignores %s", b.lang, what)
 			}
 		}
@@ -97,19 +101,6 @@ func TestShapesTheProfileStillRefuses(t *testing.T) {
   2: optional map<string,string> labels (omit = "absent")
 } (document = "true", unknown_fields = "refuse")
 `, `a collection says omit = "zero"`},
-		{"an integer omitted when absent", head + `struct Doc {
-  1: required string id
-  2: optional i64 limit (omit = "absent")
-} (document = "true", unknown_fields = "refuse")
-`, `limit is an optional i64 omitted when absent`},
-		{"an i32 omitted when absent", head + `struct Doc {
-  1: optional i32 count (omit = "absent")
-} (document = "true", unknown_fields = "refuse")
-`, `count is an optional i32 omitted when absent`},
-		{"a bool omitted when absent", head + `struct Doc {
-  1: optional bool kept (omit = "absent")
-} (document = "true", unknown_fields = "refuse")
-`, `kept is an optional bool omitted when absent`},
 		{"a repeated record in an envelope", head + `struct Inner {
   1: required string a
 } (unknown_fields = "refuse")

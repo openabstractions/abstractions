@@ -33,7 +33,7 @@ const loggingSection = `<section id="logging"><h2>Logging</h2><p class="oa-note"
 <div class="oa-toolbar"><button id="log-next" disabled hidden>Show more</button><button id="log-follow">Follow live</button></div><pre id="log-status" role="status" aria-live="polite"></pre><p id="log-sink"></p><div id="log-records"></div></section>`
 
 const loggingScript = `
-let logCursor=null,logFollowing=false,logLastDate='';const logKept=1000;
+let logCursor=null,logFollowing=false,logLastDate='',logEpoch=0,logRequest=null;const logKept=1000;
 // logTimeParts used to build its own 24-hour clock by hand ("20:32:56")
 // while every other page's time reads through oaLocalTime's 12-hour one
 // ("8:42 PM") — two formats for the same thing (task 2026-09-23, twelfth
@@ -52,13 +52,16 @@ function hopText(h){const who=[h.program&&'program '+h.program,h.exe&&'executabl
 // asserted (a stamp nothing trusted vouches for) or claimed.
 function hopEvidence(h){return h.standing==='established'||h.standing==='vouched'?'verified':h.standing==='asserted'?'asserted':'claimed'}
 function logRecordVerified(r){return !!r.author}
-function logEntry(r){const box=document.createElement('div');if(r.kind==='sink_gap'){box.className='oa-row';box.setAttribute('data-state','gap');const t=document.createElement('p');t.textContent='Sink loss: '+r.dropped+' records from '+(r.program||'a writer with no program claim')+' were dropped between '+r.since+' and '+r.until+' while its logging service was unreachable.';box.append(t);return box}
+function logEntry(r){const box=document.createElement('div');if(r.kind==='sink_gap'){box.className='oa-row';box.setAttribute('data-state','gap');const t=document.createElement('p');t.textContent='Sink loss: '+r.dropped+' records from '+(r.program?shortName(r.program):'an unnamed program')+' were dropped between '+r.since+' and '+r.until+' while its logging service was unreachable.';box.append(t);return box}
 box.className='oa-row';const line=document.createElement('p');const verified=logRecordVerified(r);const label=document.createElement('span');label.setAttribute('data-evidence',verified?'verified':'claimed');label.textContent=verified?'verified':'unverified';
-line.textContent=logTimeParts(r.time).time+' '+logLevelText(r)+(r.program?shortName(r.program):'(no program claim)')+': '+r.message+(r.job?' [job '+r.job+']':'')+' ';line.append(label);box.append(line);
-const details=oaTechnical(document.createElement('details'));const summary=document.createElement('summary');summary.textContent='Technical details';const hops=document.createElement('ul');for(const h of r.hops){const li=document.createElement('li');li.setAttribute('data-evidence',hopEvidence(h));li.textContent=hopText(h);hops.append(li)}details.append(summary,hops);if(r.attrs){const a=document.createElement('p');a.textContent=JSON.stringify(r.attrs);details.append(a)}box.append(details);
+line.textContent=logTimeParts(r.time).time+' '+logLevelText(r)+(r.program?shortName(r.program):'Unnamed program')+': '+r.message+(r.job?' [job '+r.job+']':'')+' ';line.append(label);box.append(line);
+if((r.hops||[]).length||r.attrs&&Object.keys(r.attrs).length){const details=oaTechnical(document.createElement('details'));const summary=document.createElement('summary');summary.textContent='Technical details';const hops=document.createElement('ul');for(const h of r.hops||[]){const li=document.createElement('li');li.setAttribute('data-evidence',hopEvidence(h));li.textContent=hopText(h);hops.append(li)}details.append(summary,hops);if(r.attrs){const a=document.createElement('p');a.textContent=JSON.stringify(r.attrs);details.append(a)}box.append(details);}
 if(r.disputed){const d=document.createElement('p');d.className='oa-status';d.setAttribute('data-state','error');d.textContent='Disputed: the writer\'s claim contradicts the stamp about the writer.';box.append(d)}return box}
-function sinkText(s){if(!s)return '';if(!s.adopted)return 'This Panel\'s own logging: '+(s.bindError?'not bound. '+s.bindError:'not bound yet; it binds when the Panel first logs an action or checks identity.');return 'This Panel\'s own logging: '+s.state+'. '+s.accepted+' accepted, '+s.written+' written, '+s.queued+' queued, '+s.dropped+' dropped, '+s.failed+' failed, '+s.abandoned+' abandoned'+(s.lastError?'. Last error: '+s.lastError:'')+(s.transition?'. Last transition: '+s.transition:'')}
-function logStop(){logFollowing=false;el('log-follow').textContent='Follow live'}
+// sinkText is one plain sentence about this Panel's own log records.
+function sinkText(s){if(!s)return '';if(!s.adopted)return s.bindError?'This Panel cannot send its own log records: '+s.bindError:'This Panel starts sending its own log records with its first action.';const lost=(s.dropped||0)+(s.failed||0)+(s.abandoned||0);if(lost)return 'This Panel lost '+lost+(lost===1?' log record':' log records')+(s.lastError?': '+s.lastError:'')+'.';if(s.queued)return 'This Panel is sending '+s.queued+(s.queued===1?' log record.':' log records.');return 'This Panel\'s own log records are all sent.'}
+// Each read or follow run owns its replies, including after an aborted request
+// has already completed in the transport.
+function logStop(){logEpoch++;if(logRequest)logRequest.abort();logRequest=null;logFollowing=false;el('log-follow').textContent='Follow live'}
 // logQuickChoices names each quick range, its own button label, and how to
 // compute "since" from it: a millisecond span back from now, the string
 // "today" (midnight local), or null for no lower bound at all (task
@@ -94,18 +97,18 @@ function logQuery(extra){const custom=!!el('log-custom-active').value;const sinc
 function logEmptyOffer(){const i=logQuickChoices.findIndex(c=>c[0]===logRangeKey);const next=logQuickChoices[i+1];if(!next)return null;const b=document.createElement('button');b.type='button';b.textContent=next[1];b.onclick=()=>{logRangeKey=next[0];el('log-custom-active').value='';el('log-custom').hidden=true;logRenderQuick();return logRestart()};return b}
 function logPage(v,replace){show('log-sink',sinkText(v.sink));const list=el('log-records');if(replace){list.replaceChildren();logLastDate=''}if(v.outcome!=='page'){logStop();el('log-next').disabled=true;el('log-next').hidden=true;if(v.outcome==='gap'){logCursor=null;const g=document.createElement('div');g.className='oa-row';g.setAttribute('data-state','gap');g.textContent=logOutcomes.gap;list.append(g)}show('log-status',logOutcomes[v.outcome]||'Logging service outcome: '+v.outcome);return false}logCursor=v.next;
 for(const r of v.records){logDateHeading(list,r.time);list.append(logEntry(r));if(r.program)logPrograms.add(r.program)}
-if(replace&&!v.records.length){const status=el('log-status');status.replaceChildren();const rangeLabel=(logQuickChoices.find(c=>c[0]===logRangeKey)||['','a custom range'])[1].toLowerCase();status.textContent='No records in '+(logRangeKey==='all'?'this runtime\'s retained history':rangeLabel)+'.';const offer=logEmptyOffer();if(offer)status.append(offer)}
+if(replace&&!v.records.length){const status=el('log-status');status.replaceChildren();const rangeLabel=(logQuickChoices.find(c=>c[0]===logRangeKey)||['','a custom range'])[1].toLowerCase();status.textContent='No records in '+(logRangeKey==='all'?'this runtime\'s retained history':rangeLabel)+'.';const offer=logEmptyOffer();if(offer)status.append(' ',offer)}
 else show('log-status',(v.mode==='follow'?'Following live. ':'')+(v.atEnd?'At the current end of history.':'More history remains.')+(v.hidden?' '+v.hidden+' records on this page hidden by the filter.':''));
 logRebuildProgramSelect();
 if(list.children.length>logKept)list.replaceChildren(...[...list.children].slice(-logKept));el('log-next').disabled=v.atEnd||v.mode==='follow';el('log-next').hidden=el('log-next').disabled;return true}
-async function logRead(){try{logPage(await call(logQuery({})),true)}catch(e){logStop();fail('log-status',e)}}
+async function logRead(){logStop();const epoch=logEpoch;const request=logRequest=new AbortController();try{const v=await call(logQuery({}),null,request.signal);if(epoch===logEpoch)logPage(v,true)}catch(e){if(epoch===logEpoch){logStop();fail('log-status',e)}}finally{if(logRequest===request)logRequest=null}}
 function logRestart(){logStop();logCursor=null;return logRead()}
 el('log-next').onclick=()=>{logStop();return logRead()};
 el('log-program-select').onchange=()=>{const v=el('log-program-select').value;if(v==='__other__'){el('log-program').hidden=false;logProgramFilter=el('log-program').value;return}el('log-program').hidden=true;logProgramFilter=v;return logRestart()};
 el('log-program').addEventListener('input',()=>{logProgramFilter=el('log-program').value});
 el('log-program').addEventListener('change',logRestart);
 el('log-custom-apply').onclick=()=>{el('log-custom-active').value='1';logRenderQuick();return logRestart()};
-el('log-follow').onclick=async()=>{if(logFollowing){logStop();return}logFollowing=true;el('log-follow').textContent='Stop following';while(logFollowing){try{const v=await call(logQuery({cursor:logCursor||'end',follow:'1',wait:'10000'}));if(!logFollowing||!logPage(v,false))break}catch(e){logStop();fail('log-status',e);break}}};
+el('log-follow').onclick=async()=>{if(logFollowing){logStop();return}logStop();const epoch=logEpoch;logFollowing=true;el('log-follow').textContent='Stop following';while(logFollowing&&epoch===logEpoch){const request=logRequest=new AbortController();try{const v=await call(logQuery({cursor:logCursor||'end',follow:'1',wait:'10000'}),null,request.signal);if(epoch!==logEpoch||!logPage(v,false))break}catch(e){if(epoch===logEpoch){logStop();fail('log-status',e)}break}finally{if(logRequest===request)logRequest=null}}};
 el('log-count').onchange=logRestart;
 el('log-custom-active').value='';
 el('log-program').hidden=true;

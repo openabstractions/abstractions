@@ -1,0 +1,26 @@
+{
+  "comfyui": {
+    "cloud": {
+      "equals": "cloud",
+      "pointer": "/sourceId"
+    },
+    "entries": "",
+    "install_path": "/installPath",
+    "record": "Comfy Desktop/installations.json",
+    "remote_address": "/remoteUrl",
+    "root": "RoamingAppData",
+    "singleton": {
+      "install_paths": [
+        "/basePath",
+        "/base_path",
+        "/installPath"
+      ],
+      "record": "ComfyUI/config.json",
+      "root": "RoamingAppData"
+    },
+    "status": {
+      "installed": "installed",
+      "pointer": "/status"
+    }
+  }
+}

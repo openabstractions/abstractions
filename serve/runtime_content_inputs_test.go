@@ -401,9 +401,7 @@ func TestSweepKeepsBytesAnExactDigestWriteStored(t *testing.T) {
 		if _, ok := content.store.Find(digest); !ok {
 			t.Fatalf("the sweep removed %s, which an exact-digest write stored", digest)
 		}
-		if _, err := os.Stat(content.inputPath(digest)); !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("input record of %s left behind: %v", digest, err)
-		}
+		requireOnlyMark(t, content, digest)
 	}
 }
 
@@ -454,8 +452,23 @@ func TestRequestInputIsRemovedAfterItsRequestEnds(t *testing.T) {
 	if _, ok := content.store.Find(keptDigest); !ok {
 		t.Fatal("content an exact-digest write named was removed")
 	}
-	if _, err := os.Stat(content.inputPath(keptDigest)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("kept input record left behind: %v", err)
+	requireOnlyMark(t, content, keptDigest)
+}
+
+// requireOnlyMark checks that the input records of digest are gone, leaving
+// at most an exact-digest write's mark.
+func requireOnlyMark(t *testing.T, content *runtimeContent, digest string) {
+	t.Helper()
+	raw, err := os.ReadFile(content.inputPath(digest))
+	if errors.Is(err, os.ErrNotExist) {
+		return
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, err := decodeRequestInputs(raw)
+	if err != nil || !index.Kept || len(index.Inputs) != 0 || index.Touched != "" {
+		t.Fatalf("input record of %s left behind: %s %v", digest, raw, err)
 	}
 }
 

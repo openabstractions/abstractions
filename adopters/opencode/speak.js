@@ -1,4 +1,6 @@
+import {runtimeConnector} from './runtime-connector.js';
 import {readDelivery, resolveContentReader} from './content-delivery.js';
+import {invokeWithPermission, resolveNativePermission} from './permission-wait.js';
 
 /** The speech OpenCode asks OA for: Lemonade's kokoro-v1, an American
  * English voice, WAV the provider writes itself. */
@@ -54,13 +56,14 @@ export function spokenText(reply, limit = maxSpokenCharacters) {
  * reply, or {cancelled} when signal aborts; an abandoned operation is
  * cancelled.
  */
-export async function synthesizeSpeech({speech, reader, text, voice = speechVoice, signal}) {
+export async function synthesizeSpeech({speech, reader, text, voice = speechVoice, signal, resolvePermission}) {
   // Imported here, as listen.js imports its clients, so a TUI whose runtime
   // packages fail to load still installs every other feature.
   const {newSpeechRequest} = await import('@openabstractions/inference/protocol');
   const request = newSpeechRequest();
   Object.assign(request, {model: speechModel, voice, text, format: 'wav', guarantees: []});
-  const admission = await speech.start(request);
+  const admission = await invokeWithPermission(() => speech.start(request), {resolvePermission, signal});
+  if (['awaiting_permission', 'permission_refused', 'permission_blocked'].includes(admission?.outcome)) return {refused: JSON.stringify(admission)};
   if (admission?.outcome !== 'accepted' || !admission.operation) {
     return {refused: `Speech refused: ${admission?.outcome ?? 'unavailable'} (${admission?.reason ?? ''}).`};
   }
@@ -94,13 +97,12 @@ export async function synthesizeSpeech({speech, reader, text, voice = speechVoic
 
 /** The caller's speech@1 client on this machine. */
 export async function resolveSpeechClient(options, signal) {
-  const [{Machine}, {SpeechClient}, {BunNativeConnector}] = await Promise.all([
+  const [{Machine}, {SpeechClient}] = await Promise.all([
     import('@openabstractions/facade'),
     import('@openabstractions/inference/protocol'),
-    import('@openabstractions/ipc/bun'),
   ]);
   const machine = new Machine(options?.runtimeEndpoint ?? null, {
-    connector: new BunNativeConnector(), timeout: 30000, cancellation: signal,
+    connector: await runtimeConnector(), timeout: 30000, cancellation: signal,
     server: options?.server ?? null,
   });
   return new SpeechClient(await machine.resolveService(speechContract, {scope: 'local'}));
@@ -115,11 +117,11 @@ function validSpeakRequest(args) {
 }
 
 /**
- * openabstractions_speak: the model reads a chosen text aloud through OA,
+ * oa_speech_speak: the model reads a chosen text aloud through OA,
  * after the person approves this one call. The tool verifies the delivery;
  * OpenCode's TUI module plays it (installSpeak).
  */
-export function createSpeakTool({tool, resolveSpeech, resolveReader}) {
+export function createSpeakTool({tool, resolveSpeech, resolveReader, resolvePermission}) {
   if (typeof tool !== 'function' || typeof resolveSpeech !== 'function' || typeof resolveReader !== 'function') {
     throw new TypeError('Speak tool requires speech and content-reader resolvers.');
   }
@@ -139,7 +141,7 @@ export function createSpeakTool({tool, resolveSpeech, resolveReader}) {
       if (signal?.aborted) return 'Speech cancelled.';
       const speech = await resolveSpeech({signal});
       if (signal?.aborted) return 'Speech cancelled.';
-      const result = await synthesizeSpeech({speech, reader: await resolveReader({signal}), text: args.text, voice, signal});
+      const result = await synthesizeSpeech({speech, reader: await resolveReader({signal}), text: args.text, voice, signal, resolvePermission});
       if (result.cancelled) return 'Speech cancelled.';
       if (result.refused) return result.refused;
       return {title: 'OpenAbstractions speech',
@@ -173,13 +175,14 @@ async function openTuiAudio() {
  * store. With it on, each `session.idle` speaks the last answer: code,
  * paths and links left out, the first 600 characters, speech@1 with
  * kokoro-v1 and af_sky as WAV, the delivery read back and verified, played
- * through OpenTUI audio. A completed `openabstractions_speak` tool call is
+ * through OpenTUI audio. A completed `oa_speech_speak` tool call is
  * played the same way from its verified delivery. A newer utterance stops
  * the one playing and cancels one still being made.
  */
 export async function installSpeak(api, options = {}, deps = {}) {
   const runtime = {runtimeEndpoint: options?.runtimeEndpoint ?? null, server: options?.server ?? null};
   const resolveSpeech = deps.resolveSpeech ?? (({signal}) => resolveSpeechClient(runtime, signal));
+  const resolvePermission = deps.resolvePermission ?? (({signal}) => resolveNativePermission(runtime, signal));
   const resolveReader = deps.resolveReader ?? (({signal}) => resolveContentReader(runtime, signal));
   const makeAudio = deps.audio ?? openTuiAudio;
   let audio = null;
@@ -215,7 +218,7 @@ export async function installSpeak(api, options = {}, deps = {}) {
     if (!text) return;
     deps.onSpoken?.(text);
     await utter(async (signal) => {
-      const result = await synthesizeSpeech({speech: await resolveSpeech({signal}), reader: await resolveReader({signal}), text, signal});
+      const result = await synthesizeSpeech({speech: await resolveSpeech({signal}), reader: await resolveReader({signal}), text, signal, resolvePermission});
       if (result.refused) throw new Error(result.refused);
       return result.bytes ?? null;
     });
@@ -223,7 +226,7 @@ export async function installSpeak(api, options = {}, deps = {}) {
 
   async function playToolResult(part) {
     const metadata = part?.state?.metadata;
-    if (part?.type !== 'tool' || part.tool !== 'openabstractions_speak' || part.state?.status !== 'completed'
+    if (part?.type !== 'tool' || !['oa_speech_speak', 'openabstractions_speak'].includes(part.tool) || part.state?.status !== 'completed'
         || !digestPattern.test(metadata?.digest ?? '') || played.has(part.id)) return;
     played.add(part.id);
     await utter(async (signal) => readDelivery(await resolveReader({signal}),

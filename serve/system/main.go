@@ -20,11 +20,11 @@ import (
 	"os"
 	"runtime"
 
+	"github.com/openabstractions/abstraction-facade/go-core/bootstrap"
+	"github.com/openabstractions/abstraction-facade/go-core/protected"
 	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-identity/go/trustedpath"
 	"github.com/openabstractions/abstraction-identity/listen"
-	"github.com/openabstractions/abstraction-facade/go-core/bootstrap"
-	"github.com/openabstractions/abstraction-facade/go-core/protected"
 	logservice "github.com/openabstractions/abstraction-logging/go/service"
 )
 

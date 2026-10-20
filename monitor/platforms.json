@@ -1,6 +1,6 @@
 {
   "schema": "openabstractions.platforms/1",
-  "about": "Runtime platform status from the latest retained installed-package evidence for each platform. Release 0.3.0 supersedes the 0.2.0 macOS limitation; entries without newer installed evidence retain their earlier evidence and limits. A cross-build or newer source test is not release qualification. scripts/catalogue.py reads this file, checks every evidence path exists, and publishes it in the layer catalogue. This catalogue does not qualify 0.4.0.",
+  "about": "Published runtime 0.4.0 signing and installed acceptance, with earlier lifecycle receipts retained at their stated scope. Cross-builds do not establish hardware installation. scripts/catalogue.py generates both catalogues from this declaration.",
   "statuses": {
     "supported": "The released runtime installs and uninstalls, its background service starts and becomes ready, and an application's default resolution reaches it. Listed limits bound the platforms and behaviors with recorded qualification.",
     "supported without background services": "The programs install, run in the foreground and uninstall. No background service is registered, and default resolution finds no runtime.",
@@ -13,10 +13,15 @@
       "status": "supported",
       "runtime": "Per-user MSI; the supervisor starts the runtime in the signed-in session.",
       "limits": [
-        "Windows MSI packages are unsigned.",
-        "The 0.3.0 installed job used Windows x64. ARM64 is cross-built; installation on ARM64 hardware is untested."
+        "Both 0.4.0 Windows MSIs and Setup are signed with SHA-256 Authenticode and an RFC 3161 SHA-256 timestamp.",
+        "0.4.0 signed-MSI automated acceptance used Windows x64; signed Setup verification also passed. Manual Setup remains deferred. ARM64 is cross-built; installation on ARM64 hardware is untested."
       ],
       "evidence": [
+        {
+          "path": "research/release-0.4.0/PLAN.md",
+          "url": "https://github.com/openabstractions/redist/releases/tag/v0.4.0",
+          "shows": "0.4.0 signed Setup verification and Windows x64 signed-MSI automated acceptance passed; manual Setup remains deferred."
+        },
         {
           "path": "research/release-0.3.0/qualification-selected.json",
           "url": "https://github.com/openabstractions/redist/actions/runs/36500317823/job/109190527492",
@@ -31,10 +36,15 @@
       "runtime": "Machine MSI; a service template starts a per-session runtime for each signed-in user.",
       "limits": [
         "Everyone installation requires elevation. Runtime instances run in each signed-in user session.",
-        "Windows MSI packages are unsigned.",
-        "The 0.3.0 installed job used Windows x64. ARM64 is cross-built; installation on ARM64 hardware is untested."
+        "Both 0.4.0 Windows MSIs and Setup are signed with SHA-256 Authenticode and an RFC 3161 SHA-256 timestamp.",
+        "0.4.0 signed-MSI automated acceptance used Windows x64; signed Setup verification also passed. Manual Setup remains deferred. ARM64 is cross-built; installation on ARM64 hardware is untested."
       ],
       "evidence": [
+        {
+          "path": "research/release-0.4.0/PLAN.md",
+          "url": "https://github.com/openabstractions/redist/releases/tag/v0.4.0",
+          "shows": "0.4.0 signed Setup verification and Windows x64 signed-MSI automated acceptance passed; manual Setup remains deferred."
+        },
         {
           "path": "research/release-0.3.0/qualification-selected.json",
           "url": "https://github.com/openabstractions/redist/actions/runs/36500317823/job/109190527492",
@@ -52,6 +62,11 @@
         "0.3.0 package qualification passed 26 installed Linux cases, with lifecycle evidence from WSL2 and a hosted Ubuntu amd64 runner. ARM64 installation, other distributions and graphical sessions are untested."
       ],
       "evidence": [
+        {
+          "path": "research/release-0.4.0/PLAN.md",
+          "url": "https://github.com/openabstractions/redist/releases/tag/v0.4.0",
+          "shows": "0.4.0 Linux tarballs are unsigned. Retained Linux lifecycle evidence below keeps its original release and architecture scope."
+        },
         {
           "path": "research/release-0.3.0/qualification-selected.json",
           "url": "https://github.com/openabstractions/redist/actions/runs/36500317823/job/109189899572",
@@ -75,6 +90,11 @@
       ],
       "evidence": [
         {
+          "path": "research/release-0.4.0/PLAN.md",
+          "url": "https://github.com/openabstractions/redist/releases/tag/v0.4.0",
+          "shows": "0.4.0 Linux tarballs are unsigned. Retained Linux lifecycle evidence below keeps its original release and architecture scope."
+        },
+        {
           "path": "research/release-0.3.0/qualification-selected.json",
           "url": "https://github.com/openabstractions/redist/actions/runs/36500317823/job/109189899572",
           "shows": "Successful 0.3.0 linux-verify job includes install, package inspection and uninstall; the run's Linux package qualification includes the no-user-manager installation check."
@@ -91,14 +111,19 @@
       "name": "macOS (universal package; installed qualification on arm64)",
       "status": "supported",
       "facade_platform": "macos",
-      "runtime": "The signed and notarized 0.3.0 universal package installs for the current user. Installed XPC discovery, capability readiness and protected-call behavior passed on the available arm64 Mac; reinstall and removal passed.",
+      "runtime": "The Developer ID signed, notarised and stapled 0.4.0 universal package installs for the current user. Automated installed XPC acceptance passed on arm64; earlier lifecycle receipts retain their stated scope.",
       "limits": [
         "The universal package includes Intel binaries, but installed execution was tested only on arm64 hardware.",
         "The retained installed receipt covers install, XPC discovery/calls, reinstall and removal; it does not record a separate crash-injection recovery test.",
-        "Path names compare byte for byte on macOS although its volumes ignore case by default, so two names OA keeps apart can name one file (abstraction-identity CONTRACT.md, SamePathName).",
+        "Path names compare byte for byte on macOS. OA does not model APFS or HFS+ case and normalization algorithms, so names it keeps apart can collide at a future placement; existing-file identity and exclusive creation checks retain their separate safeguards (abstraction-identity CONTRACT.md, SamePathName).",
         "Native providers are not available on macOS in 0.4.0: their caller check needs an XPC endpoint. The macOS package leaves out Local model stores (inventoryd) and the model host (modelhostd)."
       ],
       "evidence": [
+        {
+          "path": "research/release-0.4.0/PLAN.md",
+          "url": "https://github.com/openabstractions/redist/releases/tag/v0.4.0",
+          "shows": "0.4.0 Developer ID signed, notarised and stapled universal package; automated installed XPC acceptance passed on arm64. Intel execution remains untested."
+        },
         {
           "path": "research/release-0.3.0/PLAN.md",
           "url": "https://github.com/openabstractions/redist/releases/tag/v0.3.0",

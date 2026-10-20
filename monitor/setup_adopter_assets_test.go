@@ -56,38 +56,35 @@ func standInZIP(t *testing.T, files map[string]string) ([]byte, string) {
 // returns the pins and the app's bytes.
 func standInApps(t *testing.T) ([]byte, map[setup.AppID][]byte) {
 	t.Helper()
-	commit := strings.Repeat("a", 40)
-	records := strings.Repeat("e", 64)
-	apps := map[setup.AppID][]byte{}
-	var rows []map[string]any
-	for _, app := range []setup.AppID{setup.ComfyUI} {
-		source, sourceSHA := standInZIP(t, map[string]string{string(app) + "-source/README.md": "corresponding source"})
-		row := map[string]any{}
-		provenance, _ := json.Marshal(map[string]string{
-			"corresponding_comfyui_source_zip_sha256": sourceSHA,
-			"private_python_records_sha256":           records,
-		})
-		files := map[string]string{
-			"OA-PROVENANCE.json": string(provenance),
-			"ComfyUI_windows_portable/python_embeded/python.exe": "python",
-			"ComfyUI_windows_portable/oa_comfyui_launch.py":      "launcher",
-			"ComfyUI_windows_portable/ComfyUI/main.py":           "main",
-		}
-		row["license"], row["install_identity"], row["records_sha256"] = "GPL-3.0-only", "comfyui-oa", records
-		data, sha := standInZIP(t, files)
-		apps[app] = data
-		row["id"], row["binary_zip"], row["binary_sha256"], row["binary_bytes"] = string(app), string(app)+"-oa-windows-x64.zip", sha, len(data)
-		row["source_zip"], row["source_sha256"], row["source_bytes"] = string(app)+"-oa-source.zip", sourceSHA, len(source)
-		row["source_commit"], row["source_url"] = commit, "https://github.com/openabstractions/abstractions/commit/"+commit
-		row["signer"], row["version"], row["platform"], row["peak_bytes"] = "unsigned", "v0.4.0", "windows/amd64", 4<<20
-		row["publisher"], row["action"] = "openabstractions", "archive_per_user"
-		rows = append(rows, row)
-	}
-	pins, err := json.Marshal(map[string]any{"schema": 1, "release_tag": "v0.4.0", "apps": rows})
+	// The existing canonical producer exports this inert native-row fixture.
+	raw, err := os.ReadFile("internal/setup/testdata/native_producer_catalog.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return pins, apps
+	var exported struct {
+		Row map[string]any `json:"row"`
+	}
+	if err := json.Unmarshal(raw, &exported); err != nil {
+		t.Fatal(err)
+	}
+	row := exported.Row
+	delete(row, "release_tag")
+	data, sha := standInZIP(t, map[string]string{"launch-helper.exe": "inert native image", "archive-tool/7zr.exe": "inert decoder", "oa-control/control.py": "inert control", "OA-PROVENANCE.json": "{}"})
+	row["binary_sha256"], row["binary_bytes"] = sha, len(data)
+	row["peak_bytes"] = 4 << 20
+	// ComfyUI runs its torch from the PyTorch component, whose row the
+	// native document carries beside it.
+	inputs, inputsSHA := standInZIP(t, map[string]string{"python/python.exe": "inert interpreter"})
+	pytorch := map[string]any{"id": "pytorch", "binary_zip": "pytorch-inputs.zip", "binary_sha256": inputsSHA, "binary_bytes": len(inputs),
+		"source_zip": "pytorch-source.zip", "source_sha256": strings.Repeat("d", 64), "source_bytes": 10,
+		"source_commit": strings.Repeat("e", 40), "source_url": "https://github.com/openabstractions/abstractions/commit/" + strings.Repeat("e", 40),
+		"signer": "unsigned", "version": "2.11.0", "platform": "windows/amd64", "peak_bytes": 4 << 20, "license": "BSD-3-Clause",
+		"publisher": "openabstractions", "install_identity": "pt", "action": "archive_per_user"}
+	pins, err := json.Marshal(map[string]any{"schema": 2, "release_tag": "v0.8.0", "apps": []any{row, pytorch}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pins, map[setup.AppID][]byte{setup.ComfyUI: data}
 }
 
 // standInJournal is a Setup journal in a temporary folder whose catalog
@@ -108,60 +105,28 @@ func requirePinnedPlatform(t *testing.T) {
 	}
 }
 
-// Once the app is pinned, the Get started page offers its goal and the
-// review it renders it from has no blocker; the Install click records the
-// plan the person reviewed.
-func TestSetupChooserOffersTheAppOnceItIsPinned(t *testing.T) {
+// Setup installs no ComfyUI (owner, 2026-11-11): a pins document's ComfyUI
+// row offers no package, a plan naming ComfyUI is blocked, and the picture
+// engine stays offered without it.
+func TestSetupOffersNoComfyBuild(t *testing.T) {
 	requirePinnedPlatform(t)
 	withOtherCopies(t, nil)
-	pins, apps := standInApps(t)
+	pins, _ := standInApps(t)
 	journal := standInJournal(t, pins)
 	call := installHandler(t, &journal)
-	page := call("GET", "/setup?k=setup-test-key", "")
-	for _, text := range []string{`value="comfyui"`, "Create pictures"} {
-		if page.Code != 200 || !strings.Contains(page.Body.String(), text) {
-			t.Fatalf("the Get started page does not offer %q: %d", text, page.Code)
-		}
+	stubOverviewMachine(t)
+	overview := call("GET", "/setup/overview", "")
+	var offered setupOverview
+	if overview.Code != 200 || json.Unmarshal(overview.Body.Bytes(), &offered) != nil || slices.Contains(offered.Offered, setup.ComfyUI) {
+		t.Fatalf("the Setup page is offered the OA build of ComfyUI: %d %s", overview.Code, overview.Body.String())
 	}
-	for _, selected := range []string{`["comfyui"]`} {
-		got := call("POST", "/setup/plan", `{"selected":`+selected+`}`)
-		var review setupPlanReview
-		if got.Code != 200 || json.Unmarshal(got.Body.Bytes(), &review) != nil {
-			t.Fatalf("review of %s: %d %s", selected, got.Code, got.Body.String())
-		}
-		if !review.Preparable || len(review.Blockers) != 0 {
-			t.Fatalf("the review of %s is blocked: %v", selected, review.Blockers)
-		}
-		for _, component := range review.Components {
-			if !component.Ready || component.Pending != "" || component.Artifact == nil {
-				t.Fatalf("the review of %s carries an unpinned package: %+v", selected, component)
-			}
-		}
+	if engine := journal.Catalog().PictureEngine(setup.ComfyUI); slices.Contains(offered.Offered, engine) && offered.PictureEngine != engine {
+		t.Fatalf("picture engine %q, want %q", offered.PictureEngine, engine)
 	}
 	got := call("POST", "/setup/plan", `{"selected":["comfyui"]}`)
 	var review setupPlanReview
-	if json.Unmarshal(got.Body.Bytes(), &review) != nil || len(review.Permissions) != 1 {
-		t.Fatalf("review: %s", got.Body.String())
-	}
-	shown := map[string]string{}
-	for _, component := range review.Components {
-		shown[component.ID] = component.Artifact.SHA256
-	}
-	for app, data := range apps {
-		sum := sha256.Sum256(data)
-		if shown[string(app)+"-app"] != hex.EncodeToString(sum[:]) {
-			t.Fatalf("the review names another %s package: %v", app, shown)
-		}
-	}
-	body, _ := json.Marshal(setupChoiceRequest{Selected: review.Selected, PlanID: review.ID,
-		ModelPlanID: setup.ApprovedBF16Plan().ID, PermissionsID: review.Permissions[0].ID, Confirm: true})
-	installed := call("POST", "/setup/install", string(body))
-	var reply setupInstallReply
-	if installed.Code != 200 || json.Unmarshal(installed.Body.Bytes(), &reply) != nil {
-		t.Fatalf("Install: %d %s", installed.Code, installed.Body.String())
-	}
-	if !reply.Approved || reply.Plan.ID != review.ID || !reply.Plan.Preparable || reply.Install.PlanID != review.ID {
-		t.Fatalf("Install recorded another plan than the reviewed one: %+v", reply)
+	if got.Code != 200 || json.Unmarshal(got.Body.Bytes(), &review) != nil || review.Preparable || len(review.Blockers) == 0 {
+		t.Fatalf("a plan naming ComfyUI is not blocked: %d %s", got.Code, got.Body.String())
 	}
 }
 
@@ -246,14 +211,10 @@ func TestSetupReportsFixtureOtherCopiesAndProceedsOnlyBeside(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		choice := setupChoiceRequest{Selected: []setup.AppID{app}, PlanID: plan.ID, Confirm: true}
-		if app == setup.ComfyUI {
-			rules, err := picturePermissionRules()
-			if err != nil {
-				t.Fatal(err)
-			}
-			choice.ModelPlanID, choice.PermissionsID = setup.ApprovedBF16Plan().ID, setup.RulesDigest(rules)
-		}
+		rules, _ := setupPictureRules(plan)
+		choice := setupChoiceRequest{Selected: []setup.AppID{app}, PlanID: plan.ID, ModelPlanID: setup.PyTorchModelPlan().ID, PermissionsID: setup.RulesDigest(rules), Confirm: true}
+		// ComfyUI alone adds the starter model of the PyTorch engine it
+		// installs and its picture rules on that engine.
 		if beside {
 			choice.Beside = []setup.AppID{app}
 		}
@@ -275,6 +236,15 @@ func TestSetupReportsFixtureOtherCopiesAndProceedsOnlyBeside(t *testing.T) {
 		var review setupPlanReview
 		if chosen.Code != 200 || json.Unmarshal(chosen.Body.Bytes(), &review) != nil || len(review.OtherCopies) != 2 {
 			t.Fatalf("review of %s with the choice: %d %s", app, chosen.Code, chosen.Body.String())
+		}
+		if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
+			if review.Preparable || len(review.Blockers) == 0 || review.DownloadBytes != 0 {
+				t.Fatalf("the Windows build should be blocked: preparable=%v blockers=%v download_bytes=%d", review.Preparable, review.Blockers, review.DownloadBytes)
+			}
+			continue
+		}
+		if review.PictureModel == nil || review.PictureModel.ID != setup.PyTorchModelPlan().ID || len(review.Permissions) != 1 {
+			t.Fatalf("ComfyUI alone lacks its engine's starter model: %+v", review)
 		}
 		if got := call("POST", "/setup/install", request(app, true)); got.Code != 200 {
 			t.Fatalf("Install of %s with the choice: %d %s", app, got.Code, got.Body.String())

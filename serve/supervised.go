@@ -8,6 +8,10 @@ import (
 	"os"
 )
 
+// runtimeImageWatcher is the supervised runtime's own image check
+// (runtime_image.go); a test replaces it.
+var runtimeImageWatcher = ownRuntimeImageWatch
+
 // superviseRuntime owns no global control endpoint. The installed parent keeps
 // the sole write end of stdin open and closes it to request cooperative shutdown.
 // Child output is READY 1\n after every configured listener has initialized.
@@ -47,6 +51,14 @@ func superviseRuntime(parent context.Context, options runtimeFlags, input *os.Fi
 		if err != nil {
 			cancel(err)
 			return fmt.Errorf("runtime readiness: %w", err)
+		}
+		// A runtime whose program file was moved aside or replaced is one no
+		// client trusts; it ends, and the supervisor starts the installed file.
+		if watch, ok := runtimeImageWatcher(); ok {
+			go watch.run(ctx, runtimeImageCheckEvery, func(err error) {
+				fmt.Fprintln(os.Stderr, err)
+				cancel(err)
+			})
 		}
 		return nil
 	})

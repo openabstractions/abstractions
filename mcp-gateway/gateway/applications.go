@@ -36,6 +36,7 @@ func applicationsOutput(page wire.ApplicationPage) (ApplicationsOutput, error) {
 		application := Application{
 			Name: entry.Descriptor.Name, Title: entry.Descriptor.Title,
 			Scope: entry.Scope.String(), Instances: make([]ApplicationInstance, 0, len(entry.Instances)),
+			Program: entry.Descriptor.Program, SelfRegistered: entry.SelfRegistered,
 		}
 		for _, source := range entry.Instances {
 			instance := ApplicationInstance{

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openabstractions/abstractions/serve/internal/personfolders"
 	"golang.org/x/sys/windows"
 	"io"
 	"os"
@@ -66,7 +67,7 @@ func TestMain(m *testing.M) {
 		h.Wait()
 		os.Exit(0)
 	}
-	os.Exit(m.Run())
+	os.Exit(personfolders.Main(m))
 }
 func options(mode string) Options {
 	return Options{Executable: os.Args[0], Args: []string{mode}, StartupTimeout: 10 * time.Second, ShutdownTimeout: 10 * time.Second, ForceTimeout: 3 * time.Second}

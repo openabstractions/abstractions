@@ -17,7 +17,7 @@ import uuid
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
-from workspace import environment, layer, msvc_toolchain, certify_msvc, source_revision, dry_run_stop, DRY_RUN_HELP, CMAKE_BUILD_TYPE_RELEASE
+from workspace import environment, layer, msvc_toolchain, certify_msvc, msvc_ninja_arguments, source_revision, dry_run_stop, DRY_RUN_HELP, CMAKE_BUILD_TYPE_RELEASE, ReadinessOutput
 ROOT = HERE.parents[2]
 BUILD = ROOT / '.build' / 'logging-service-proof'
 
@@ -31,7 +31,10 @@ if len(sys.argv) == 1:
     raise SystemExit(0)
 args = parser.parse_args()
 if args.toolchain:
-    subprocess.run([msvc_toolchain(dict(os.environ)), '--version'], check=True)
+    cmake = msvc_toolchain(dict(os.environ))
+    generator = msvc_ninja_arguments(cmake)
+    subprocess.run([cmake, '--version'], check=True)
+    subprocess.run([generator[-1].split('=', 1)[1], '--version'], check=True)
     raise SystemExit(0)
 source_revision()
 if args.dry_run: dry_run_stop('logging', args)
@@ -51,7 +54,9 @@ def run(command, cwd=ROOT, environment=env, timeout=120, echo=True):
     return result.stdout
 
 run(['go', 'version'])
-run(['go', 'build', '-o', BUILD / 'host.exe', './serve'])
+host = BUILD / ('host-' + uuid.uuid4().hex[:12]) / 'host.exe'
+host.parent.mkdir()  # selected artifact has an empty, fixture-owned sibling roster
+run(['go', 'build', '-o', host, './serve'])
 languages = ['go', 'cpp'] if args.language == 'all' else [args.language]
 clients = {}
 if 'go' in languages:
@@ -71,12 +76,13 @@ if 'cpp' in languages:
     native = BUILD / ('n-' + identity)
     stage = BUILD / ('s-' + identity)
     consumer = BUILD / ('c-' + identity)
+    generator = msvc_ninja_arguments(cmake)
     run([cmake, '-S', layer('abstraction-logging') / 'cpp',
-         '-B', native, '-DBUILD_SHARED_LIBS=OFF',
+         '-B', native, *generator, '-DBUILD_SHARED_LIBS=OFF',
          '-DCMAKE_DISABLE_FIND_PACKAGE_abstraction_ipc=TRUE',
          '-DABSTRACTION_LOGGING_BUILD_TESTS=ON', CMAKE_BUILD_TYPE_RELEASE])
     certify_msvc(native)
-    run([cmake, '--build', native, '--config', 'Release'])
+    run([cmake, '--build', native, '--config', 'Release', '--parallel', '2'])
     # The package's own reader tests, built by the certified MSVC toolchain.
     ctest = Path(cmake).with_name('ctest.exe')
     tests = run([ctest, '--test-dir', native, '-C', 'Release', '--output-on-failure', '--no-tests=error'])
@@ -84,10 +90,23 @@ if 'cpp' in languages:
         raise RuntimeError('C++ logging reader tests did not all run and pass')
     print('PASS: C++ logging package tests under the certified MSVC toolchain')
     run([cmake, '--install', native, '--config', 'Release', '--prefix', stage])
-    run([cmake, '-S', HERE, '-B', consumer, '-DCMAKE_PREFIX_PATH=' + str(stage), CMAKE_BUILD_TYPE_RELEASE])
+    run([cmake, '-S', HERE, '-B', consumer, *generator, '-DCMAKE_PREFIX_PATH=' + str(stage), CMAKE_BUILD_TYPE_RELEASE])
     certify_msvc(consumer)
-    run([cmake, '--build', consumer, '--config', 'Release'])
-    clients['cpp'] = consumer / 'Release' / 'logging_consumer.exe'
+    run([cmake, '--build', consumer, '--config', 'Release', '--parallel', '2'])
+    clients['cpp'] = consumer / 'logging_consumer.exe'
+
+def fixture_records(output):
+    records = [json.loads(line) for line in output.read_text(encoding='utf-8').splitlines()]
+    # Generated-output retention writes directly to the runtime's own sink.
+    # IPC writes carry the receiver's identity hop even if a client reuses
+    # the lifecycle event name. Keep every other row in the proof.
+    return [record for record in records if not (
+        record.get('msg') == 'abstraction.storage/retention.pass'
+        and 'identity' not in record
+        and record.get('attrs', {}).get('class') == 'tmp'
+        and record.get('attrs', {}).get('kind') == 'generated-output'
+    )]
+
 
 for language, executable in clients.items():
     case = BUILD / uuid.uuid4().hex
@@ -99,20 +118,21 @@ for language, executable in clients.items():
     for variable in ['HOME', 'USERPROFILE', 'LOCALAPPDATA', 'APPDATA', 'XDG_CONFIG_HOME',
                      'XDG_DATA_HOME', 'XDG_STATE_HOME', 'XDG_CACHE_HOME']:
         client_env[variable] = str(client_home)
-    server = subprocess.Popen([str(BUILD / 'host.exe'), 'serve', 'logging',
-                               '--endpoint', endpoint, '--out', str(output)],
-                              env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    server = subprocess.Popen([str(host), 'serve', 'runtime',
+                               '--isolated', 'logging-' + uuid.uuid4().hex[:12],
+                               '--state-dir', str((case / 'service').resolve()),
+                               '--log-endpoint', endpoint, '--out', str(output.resolve()),
+                               '--without-jobs', '--without-models', '--supervised'],
+                              env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                               text=True, encoding='utf-8')
-    ready = queue.Queue()
-    threading.Thread(target=lambda: ready.put(server.stdout.readline()), daemon=True).start()
+    ready = ReadinessOutput(server)
     try:
-        if not ready.get(timeout=15).startswith('logging: listening '):
-            raise RuntimeError('host did not reach listener readiness')
+        ready.expect('READY 1')
         run([executable, 'write'], cwd=client_home, environment=client_env, timeout=15)
         # The client process is gone; the service and its record remain.
         if server.poll() is not None:
             raise RuntimeError('service died with its client')
-        records = [json.loads(line) for line in output.read_text(encoding='utf-8').splitlines()]
+        records = fixture_records(output)
         if len(records) != 1:
             raise RuntimeError('wrong record count')
         record = records[0]
@@ -123,17 +143,15 @@ for language, executable in clients.items():
         assert len(record['identity']) == 2 and peer['hop'] == 1
         assert record['identity'][0]['by'] == 'self' and not record['identity'][0]['verified']
         assert peer['verified'] and peer['by'] == 'identity/windows'
-        assert peer['user'] and Path(peer['exe']).name.lower() == executable.name.lower()
-        before = output.read_bytes()
+        assert peer['user'] and Path(peer['exe']).resolve() == executable.resolve()
+        before = records
         run([executable, 'bad-schema'], cwd=client_home, environment=client_env, timeout=15)
-        assert output.read_bytes() == before, 'invalid record reached provider'
+        assert fixture_records(output) == before, 'invalid record reached provider'
         assert not list(client_home.rglob('*')), 'client created local state'
     finally:
-        if server.poll() is None:
-            server.kill()
-        server.communicate(timeout=10)
+        ready.finish()
     run([executable, 'absent'], cwd=client_home, environment=client_env, timeout=15)
     assert not list(client_home.rglob('*')), 'absent-service fallback created state'
-    assert output.read_bytes() == before, 'absent client changed service storage'
+    assert fixture_records(output) == before, 'absent client changed service storage'
     print('PASS:', language, 'independent client -> generated protocol -> shared IPC -> identity-bound Go service -> provider')
     print('PASS: client exited; record survived; schema refused; absent service errored; no client store')

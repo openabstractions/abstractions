@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"os/user"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -55,28 +56,14 @@ type ceilingView struct {
 	Stronger  string            `json:"stronger,omitempty"`
 }
 
-type callerAttributeView struct {
-	Attribute string `json:"attribute"`
-	Proof     string `json:"proof"`
-	Ceiling   string `json:"ceiling"`
-}
-
 // callerView is the runtime's abstraction.facade/caller@1 answer, or why there
 // is none.
 type callerView struct {
-	Absent      bool                  `json:"absent"`
-	Error       string                `json:"error,omitempty"`
-	Outcome     string                `json:"outcome,omitempty"`
-	Mechanism   string                `json:"mechanism,omitempty"`
-	Account     string                `json:"account,omitempty"`
-	AccountName string                `json:"accountName,omitempty"`
-	Program     string                `json:"program,omitempty"`
-	PID         int64                 `json:"pid"`
-	Attributes  []callerAttributeView `json:"attributes"`
-	Platform    string                `json:"platform,omitempty"`
-	Transport   string                `json:"transport,omitempty"`
-	Bindable    bool                  `json:"bindable"`
-	Stronger    string                `json:"stronger,omitempty"`
+	observation fwire.CallerObservation
+	Absent      bool   `json:"absent"`
+	Error       string `json:"error,omitempty"`
+	AccountName string `json:"accountName,omitempty"`
+	Record      string `json:"record,omitempty"`
 }
 
 // accountDisplayName resolves an account id (a Windows SID; already a plain
@@ -99,12 +86,7 @@ func accountDisplayName(account string) string {
 }
 
 func presentCaller(o fwire.CallerObservation) callerView {
-	view := callerView{Outcome: o.Outcome.String(), Mechanism: o.Mechanism, Account: o.Account, AccountName: accountDisplayName(o.Account), Program: o.Program, PID: o.PID,
-		Attributes: []callerAttributeView{}, Platform: o.Platform, Transport: o.Transport, Bindable: o.Bindable, Stronger: o.Stronger}
-	for _, a := range o.Attributes {
-		view.Attributes = append(view.Attributes, callerAttributeView{Attribute: a.Attribute, Proof: a.Proof, Ceiling: a.Ceiling})
-	}
-	return view
+	return callerView{observation: o, AccountName: accountDisplayName(o.Account), Record: string(fwire.EncodeCallerObservation(&o))}
 }
 
 type capabilityView struct {
@@ -176,7 +158,7 @@ func declarationsFor(goos string) ([]declarationView, error) {
 	views := []declarationView{}
 	for _, p := range document.Platforms {
 		if prefix != "" && strings.HasPrefix(p.ID, prefix) {
-			views = append(views, declarationView{ID: p.ID, Name: p.Name, Status: p.Status, Limits: p.Limits})
+			views = append(views, declarationView{ID: p.ID, Name: p.Name, Status: p.Status, Limits: currentLimits(p.Limits, panelVersionText())})
 		}
 	}
 	return views, nil
@@ -234,7 +216,7 @@ func (p *servicePanel) identity(w http.ResponseWriter, r *http.Request) {
 	observed, err := panelMachine().ObserveCaller(step)
 	stop()
 	if err != nil {
-		view.Runtime = callerView{Absent: isAbsent(err), Error: err.Error(), PID: -1, Attributes: []callerAttributeView{}}
+		view.Runtime = callerView{Absent: isAbsent(err), Error: err.Error()}
 	} else {
 		view.Runtime = presentCaller(observed)
 	}
@@ -296,6 +278,7 @@ func identityLimits(goos string, declarations []declarationView, limits identity
 // service bound the Panel. It starts at the current history end (the reader@1
 // end cursor), so retained history costs the check nothing.
 func (p *servicePanel) loggingIdentity(ctx context.Context, runtimeView callerView) loggingIdentityView {
+	observed := runtimeView.observation
 	failed := func(err error) loggingIdentityView {
 		return loggingIdentityView{Absent: isAbsent(err), Error: failureText(err), Outcome: "error"}
 	}
@@ -349,9 +332,9 @@ func (p *servicePanel) loggingIdentity(ctx context.Context, runtimeView callerVi
 					result.Stamp = &hop
 				}
 			}
-			if result.Stamp != nil && runtimeView.Outcome == fwire.CallerOutcomeObserved.String() {
-				agrees := sameExecutable(result.Stamp.Exe, runtimeView.Program) && int64(result.Stamp.PID) == runtimeView.PID &&
-					(result.Stamp.User == runtimeView.Account || itoa(result.Stamp.UID) == runtimeView.Account)
+			if result.Stamp != nil && observed.Outcome == fwire.CallerOutcomeObserved {
+				agrees := sameExecutable(result.Stamp.Exe, observed.Program) && int64(result.Stamp.PID) == observed.PID &&
+					(result.Stamp.User == observed.Account || itoa(result.Stamp.UID) == observed.Account)
 				result.Agrees = &agrees
 			}
 			return result
@@ -366,4 +349,30 @@ func (p *servicePanel) loggingIdentity(ctx context.Context, runtimeView callerVi
 func sameExecutable(a, b string) bool {
 	same, err := identity.SameFile(a, b)
 	return err == nil && same
+}
+
+// releaseName finds a release version such as 0.4.0 in a limit sentence.
+var releaseName = regexp.MustCompile(`\b\d+\.\d+\.\d+\b`)
+
+// currentLimits keeps the declaration's limit items that name no release
+// or name only this Panel's own version; an item naming another release
+// goes whole, since its other sentences speak about that release too. The
+// declaration is a release record that keeps every release's statements;
+// the Panel shows only those about itself.
+// A development build names no release, so it shows only the unversioned ones.
+func currentLimits(limits []string, version string) []string {
+	own := strings.TrimPrefix(version, "v")
+	kept := []string{}
+	for _, limit := range limits {
+		current := true
+		for _, name := range releaseName.FindAllString(limit, -1) {
+			if name != own {
+				current = false
+			}
+		}
+		if current {
+			kept = append(kept, limit)
+		}
+	}
+	return kept
 }

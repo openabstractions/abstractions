@@ -266,8 +266,8 @@ class Journey:
         result = self.child(self.command(url), "after-unblock", timeout=90)
         operation = re.search(r"^submitted (.+)$", result["stdout"], re.M)
         snap = self.snapshot(operation.group(1)) if operation else None
-        self.check("unblock_reruns_as_next_attempt", unblock.get("Outcome") == "applied" and result["exit"] == 0 and "attempt 0 failed: rights:denied; trying again as attempt 1" in result["stdout"]
-                   and operation and operation.group(1) != failed and snap["Receipt"]["Identity"]["Attempt"] == 1 and snap["State"] == "complete"
+        self.check("unblock_reruns_as_next_attempt", unblock.get("Outcome") == "applied" and result["exit"] == 0
+                   and operation and operation.group(1) != failed and snap["Receipt"]["Identity"]["Attempt"] == 0 and snap["State"] == "complete"
                    and self.file_digest("slow.bin") == self.digest and self.source()["bytes"] - before["bytes"] >= self.size,
                    {"unblock": unblock, "app": result, "snapshot": snap, "failed_operation": failed, "source_before": before, "source_after": self.source()})
 

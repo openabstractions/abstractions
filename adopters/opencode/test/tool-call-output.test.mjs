@@ -1,26 +1,29 @@
+import {FixtureMachine, nativeChatFixture} from './native-chat-fixture.mjs';
 import assert from 'node:assert/strict';
+import {runtimeConnector} from '../runtime-connector.js';
 import * as oaAvailability from '../availability.js';
 import {readFile} from 'node:fs/promises';
 import test from 'node:test';
 import {APICallError} from '@ai-sdk/provider';
 import {Fold} from '@openabstractions/inference';
 
-// Load the production provider with only its package imports replaced. This
-// exercises both v3 result paths without a running OpenAbstractions service.
+// Bind the production provider's imports explicitly. The real connector
+// factory receives an inert fixture connector; no runtime channel is opened.
 async function modelWith(chat, APICallError = class extends Error {}) {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-  const body = source.replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export /gm, '');
-  const make = new Function('availability', 'runtimeUnavailable', 'runtimeUntrusted', 'unavailableMessage', 'untrustedMessage', 'Machine', 'APICallError', 'resolveInference', 'resolveInferenceV2', 'NativeConnector', 'DeltaKind', 'Fold', 'PartKind',
+  const permissionSource = await readFile(new URL('../permission-wait.js', import.meta.url), 'utf8');
+  const body = permissionSource.replace(/^export /gm, '') + '\n' + source.replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export /gm, '');
+  const make = new Function('availability', 'runtimeUnavailable', 'runtimeUntrusted', 'unavailableMessage', 'untrustedMessage', 'Machine', 'APICallError', 'resolveInference', 'resolveInferenceV2', 'runtimeConnector', 'DeltaKind', 'Fold', 'PartKind',
     'ReplyOutcome', 'RequestGuarantee', 'Role', 'StopReason', `${body}\nreturn {createOpenAbstractions, OAInferenceError};`);
   const PartKind = {Text: 'text', ToolCall: 'tool_call'};
   const DeltaKind = {Part: 'part', End: 'end', Usage: 'usage'};
   const ReplyOutcome = {Completed: 'completed'};
   const StopReason = {ToolCalls: 'tool_calls'};
-  const {createOpenAbstractions: create, OAInferenceError} = make(oaAvailability.availability, oaAvailability.runtimeUnavailable, oaAvailability.runtimeUntrusted, oaAvailability.unavailableMessage, oaAvailability.untrustedMessage, class {}, APICallError, async () => chat,
-    async () => { throw new Error('unexpected chat@2 resolution'); }, class {}, DeltaKind, Fold, PartKind, ReplyOutcome,
+  const {createOpenAbstractions: create, OAInferenceError} = make(oaAvailability.availability, oaAvailability.runtimeUnavailable, oaAvailability.runtimeUntrusted, oaAvailability.unavailableMessage, oaAvailability.untrustedMessage, FixtureMachine, APICallError, async () => nativeChatFixture(chat),
+    async () => { throw new Error('unexpected chat@2 resolution'); }, runtimeConnector, DeltaKind, Fold, PartKind, ReplyOutcome,
     {LocalOnly: 'local-only'}, {}, StopReason);
   const model = create({connector: {}}).languageModel('local-model');
-  model.chat = async () => chat;
+  model.chat = async () => nativeChatFixture(chat);
   return {model, OAInferenceError, PartKind, DeltaKind, ReplyOutcome, StopReason};
 }
 
@@ -182,8 +185,9 @@ function policyEnd(outcome = 'completed', reason = '') {
 
 test('named policy selection uses chat@2 once, preserves request content and attributes the actual answer', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-  const body = source.replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export /gm, '');
-  const make = new Function('availability', 'runtimeUnavailable', 'runtimeUntrusted', 'unavailableMessage', 'untrustedMessage', 'Machine', 'APICallError', 'resolveInference', 'resolveInferenceV2', 'NativeConnector', 'DeltaKind', 'Fold', 'PartKind',
+  const permissionSource = await readFile(new URL('../permission-wait.js', import.meta.url), 'utf8');
+  const body = permissionSource.replace(/^export /gm, '') + '\n' + source.replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export /gm, '');
+  const make = new Function('availability', 'runtimeUnavailable', 'runtimeUntrusted', 'unavailableMessage', 'untrustedMessage', 'Machine', 'APICallError', 'resolveInference', 'resolveInferenceV2', 'runtimeConnector', 'DeltaKind', 'Fold', 'PartKind',
     'ReplyOutcome', 'RequestGuarantee', 'Role', 'StopReason', `${body}\nreturn {createOpenAbstractions};`);
   const PartKind = {Text: 'text', ToolCall: 'tool_call'};
   const DeltaKind = {Part: 'part', End: 'end', Usage: 'usage'};
@@ -198,10 +202,10 @@ test('named policy selection uses chat@2 once, preserves request content and att
       preferredModel: 'qwen-local:latest', selectionReason: 'preferred'},
     stream: (async function* () { yield policyEnd(); })()};
   }};
-  const {createOpenAbstractions: create} = make(oaAvailability.availability, oaAvailability.runtimeUnavailable, oaAvailability.runtimeUntrusted, oaAvailability.unavailableMessage, oaAvailability.untrustedMessage, class {}, APICallError, async () => { throw new Error('chat@1 must not resolve'); },
-    async (_machine, options) => { assert.equal(options.scope, 'local'); return chat; }, class {}, DeltaKind, Fold, PartKind,
+  const {createOpenAbstractions: create} = make(oaAvailability.availability, oaAvailability.runtimeUnavailable, oaAvailability.runtimeUntrusted, oaAvailability.unavailableMessage, oaAvailability.untrustedMessage, FixtureMachine, APICallError, async () => { throw new Error('chat@1 must not resolve'); },
+    async (_machine, options) => { assert.equal(options.scope, 'local'); return nativeChatFixture(chat); }, runtimeConnector, DeltaKind, Fold, PartKind,
     ReplyOutcome, {HostedAllowed: 'hosted-allowed'}, {}, StopReason);
-  const provider = create({scope: 'local', credential: 'must-not-cross', requestGuarantees: ['local-only'],
+  const provider = create({connector: {}, scope: 'local', credential: 'must-not-cross', requestGuarantees: ['local-only'],
     oaSelectionPolicies: {'oa-preference-cloud-local': 'preferredcloud-allowedlocal'}});
   const model = provider.languageModel('oa-preference-cloud-local');
   const result = await model.doGenerate({prompt: [{role: 'user', content: [{type: 'text', text: 'hello'}]}], maxOutputTokens: 1200,
@@ -222,8 +226,9 @@ test('named policy selection uses chat@2 once, preserves request content and att
 
 test('named policy stream carries accepted operation and actual host/model in provider metadata', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-  const body = source.replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export /gm, '');
-  const make = new Function('availability', 'runtimeUnavailable', 'runtimeUntrusted', 'unavailableMessage', 'untrustedMessage', 'Machine', 'APICallError', 'resolveInference', 'resolveInferenceV2', 'NativeConnector', 'DeltaKind', 'Fold', 'PartKind',
+  const permissionSource = await readFile(new URL('../permission-wait.js', import.meta.url), 'utf8');
+  const body = permissionSource.replace(/^export /gm, '') + '\n' + source.replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export /gm, '');
+  const make = new Function('availability', 'runtimeUnavailable', 'runtimeUntrusted', 'unavailableMessage', 'untrustedMessage', 'Machine', 'APICallError', 'resolveInference', 'resolveInferenceV2', 'runtimeConnector', 'DeltaKind', 'Fold', 'PartKind',
     'ReplyOutcome', 'RequestGuarantee', 'Role', 'StopReason', `${body}\nreturn {createOpenAbstractions};`);
   const PartKind = {Text: 'text', ToolCall: 'tool_call'};
   const DeltaKind = {Part: 'part', End: 'end', Usage: 'usage'};
@@ -238,9 +243,9 @@ test('named policy stream carries accepted operation and actual host/model in pr
       preferredModel: 'qwen-local:latest', selectionReason: 'preferred'},
     stream: (async function* () { yield policyEnd(); })()};
   }};
-  const {createOpenAbstractions: create} = make(oaAvailability.availability, oaAvailability.runtimeUnavailable, oaAvailability.runtimeUntrusted, oaAvailability.unavailableMessage, oaAvailability.untrustedMessage, class {}, APICallError, async () => { throw new Error('chat@1 must not resolve'); },
-    async () => chat, class {}, DeltaKind, Fold, PartKind, ReplyOutcome, {}, {}, StopReason);
-  const model = create({oaSelectionPolicies: {'oa-preference-local': 'local-first'}}).languageModel('oa-preference-local');
+  const {createOpenAbstractions: create} = make(oaAvailability.availability, oaAvailability.runtimeUnavailable, oaAvailability.runtimeUntrusted, oaAvailability.unavailableMessage, oaAvailability.untrustedMessage, FixtureMachine, APICallError, async () => { throw new Error('chat@1 must not resolve'); },
+    async () => nativeChatFixture(chat), runtimeConnector, DeltaKind, Fold, PartKind, ReplyOutcome, {}, {}, StopReason);
+  const model = create({connector: {}, oaSelectionPolicies: {'oa-preference-local': 'local-first'}}).languageModel('oa-preference-local');
   const {stream} = await model.doStream({prompt: []});
   const events = [];
   for await (const event of stream) events.push(event);
@@ -257,16 +262,54 @@ test('named policy stream carries accepted operation and actual host/model in pr
 
 async function policyStreamWith(chat) {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-  const body = source.replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export /gm, '');
-  const make = new Function('availability', 'runtimeUnavailable', 'runtimeUntrusted', 'unavailableMessage', 'untrustedMessage', 'Machine', 'APICallError', 'resolveInference', 'resolveInferenceV2', 'NativeConnector', 'DeltaKind', 'Fold', 'PartKind',
+  const permissionSource = await readFile(new URL('../permission-wait.js', import.meta.url), 'utf8');
+  const body = permissionSource.replace(/^export /gm, '') + '\n' + source.replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export /gm, '');
+  const make = new Function('availability', 'runtimeUnavailable', 'runtimeUntrusted', 'unavailableMessage', 'untrustedMessage', 'Machine', 'APICallError', 'resolveInference', 'resolveInferenceV2', 'runtimeConnector', 'DeltaKind', 'Fold', 'PartKind',
     'ReplyOutcome', 'RequestGuarantee', 'Role', 'StopReason', `${body}\nreturn {createOpenAbstractions};`);
-  const create = make(oaAvailability.availability, oaAvailability.runtimeUnavailable, oaAvailability.runtimeUntrusted, oaAvailability.unavailableMessage, oaAvailability.untrustedMessage, class {}, APICallError, async () => { throw new Error('chat@1 must not resolve'); },
-    async () => chat, class {}, {Part: 'part', End: 'end', Usage: 'usage'}, Fold,
-    {Text: 'text', ToolCall: 'tool_call'}, {Completed: 'completed'}, {}, {},
+  const create = make(oaAvailability.availability, oaAvailability.runtimeUnavailable, oaAvailability.runtimeUntrusted, oaAvailability.unavailableMessage, oaAvailability.untrustedMessage, FixtureMachine, APICallError, async () => { throw new Error('chat@1 must not resolve'); },
+    async () => nativeChatFixture(chat), runtimeConnector, {Part: 'part', End: 'end', Usage: 'usage'}, Fold,
+    {Text: 'text', ToolCall: 'tool_call'}, {Completed: 'completed'}, {LocalOnly: 'local-only'}, {},
     {End: 'end', NoStop: 'no_stop', ToolCalls: 'tool_calls'}).createOpenAbstractions;
-  return create({oaSelectionPolicies: {'oa-preference-cloud-local': 'cloud-first-local-fallback'}})
+  return create({connector: {}, oaSelectionPolicies: {'oa-preference-cloud-local': 'cloud-first-local-fallback'}})
     .languageModel('oa-preference-cloud-local');
 }
+
+test('using a saved preference preserves one authoritative stale-pin refusal without client fallback', async () => {
+  const requests=[];
+  const model=await policyStreamWith({async startStream(request) {
+    requests.push(request);
+    return {admission:{outcome:'no_host',reason:'selection:provider_stale',operation:''},
+      stream:(async function*(){yield {kind:'end',index:0n,end:{outcome:'no_host',reason:'selection:provider_stale',
+        host:'',model:'',message:{role:'assistant',parts:[]},stopReason:'no_stop',usage:{input:0n,output:0n,cached:0n}}};})()};
+  }});
+  const {stream}=await model.doStream({prompt:[],tools:[{type:'function',name:'bash',inputSchema:{type:'object'}}]});
+  const events=[];for await(const event of stream)events.push(event);
+  assert.equal(requests.length,1);
+  assert.deepEqual(requests[0].target,{model:'',selectionPolicy:'cloud-first-local-fallback'});
+  assert.equal(events.some(event=>event.type==='tool-call'||event.type==='text-delta'),false);
+  const error=events.find(event=>event.type==='error')?.error;
+  assert.ok(APICallError.isInstance(error));
+  assert.equal(error.outcome,'no_host');assert.equal(error.reason,'selection:provider_stale');
+  assert.equal(error.operation,'');assert.equal(error.isRetryable,false);
+  assert.equal(pinnedOpenCodeWouldRetry(error),false);
+});
+
+test('Local assistant policy carries a separate caller restriction with empty published policy content', async () => {
+  let starts = 0;
+  const model = await policyStreamWith({async startStream(request, guarantees) {
+    starts++;
+    assert.deepEqual(request.content.guarantees, []);
+    assert.equal(request.content.credential, '');
+    assert.deepEqual(guarantees, ['local-only']);
+    throw Object.assign(new Error('unknown_method: StartWithGuarantees'), {code: 'unknown_method'});
+  }});
+  await assert.rejects(model.doStream({prompt: [], providerOptions: {openabstractions: {oaLocalOnly: true}}}), (error) => {
+    assert.equal(error.isRetryable, false);
+    assert.match(error.message, /runtime needs an update/);
+    return true;
+  });
+  assert.equal(starts, 1);
+});
 
 test('policy fallback streams a tool call with actual local route attribution', async () => {
   let starts = 0;
@@ -329,8 +372,9 @@ test('policy stream failure after partial tool output never releases a call or r
 
 test('accepted policy failures retain the actual operation and never start a second candidate', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-  const body = source.replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export /gm, '');
-  const make = new Function('availability', 'runtimeUnavailable', 'runtimeUntrusted', 'unavailableMessage', 'untrustedMessage', 'Machine', 'APICallError', 'resolveInference', 'resolveInferenceV2', 'NativeConnector', 'DeltaKind', 'Fold', 'PartKind',
+  const permissionSource = await readFile(new URL('../permission-wait.js', import.meta.url), 'utf8');
+  const body = permissionSource.replace(/^export /gm, '') + '\n' + source.replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export /gm, '');
+  const make = new Function('availability', 'runtimeUnavailable', 'runtimeUntrusted', 'unavailableMessage', 'untrustedMessage', 'Machine', 'APICallError', 'resolveInference', 'resolveInferenceV2', 'runtimeConnector', 'DeltaKind', 'Fold', 'PartKind',
     'ReplyOutcome', 'RequestGuarantee', 'Role', 'StopReason', `${body}\nreturn {createOpenAbstractions};`);
   const PartKind = {Text: 'text', ToolCall: 'tool_call'};
   const DeltaKind = {Part: 'part', End: 'end', Usage: 'usage'};
@@ -343,9 +387,9 @@ test('accepted policy failures retain the actual operation and never start a sec
       preferredModel: 'deepseek-chat-v4', selectionReason: 'preferred'},
     stream: (async function* () { yield policyEnd('unavailable', 'upstream:error'); })()};
   }};
-  const {createOpenAbstractions: create} = make(oaAvailability.availability, oaAvailability.runtimeUnavailable, oaAvailability.runtimeUntrusted, oaAvailability.unavailableMessage, oaAvailability.untrustedMessage, class {}, APICallError, async () => { throw new Error('must not retry chat@1'); },
-    async () => chat, class {}, DeltaKind, Fold, PartKind, ReplyOutcome, {}, {}, StopReason);
-  const model = create({oaSelectionPolicies: {'oa-preference-cloud-local': 'cloud-first-local-fallback'}})
+  const {createOpenAbstractions: create} = make(oaAvailability.availability, oaAvailability.runtimeUnavailable, oaAvailability.runtimeUntrusted, oaAvailability.unavailableMessage, oaAvailability.untrustedMessage, FixtureMachine, APICallError, async () => { throw new Error('must not retry chat@1'); },
+    async () => nativeChatFixture(chat), runtimeConnector, DeltaKind, Fold, PartKind, ReplyOutcome, {}, {}, StopReason);
+  const model = create({connector: {}, oaSelectionPolicies: {'oa-preference-cloud-local': 'cloud-first-local-fallback'}})
     .languageModel('oa-preference-cloud-local');
   await assert.rejects(model.doGenerate({prompt: []}), (error) => {
     assert.equal(error.operation, 'accepted-failed-operation');
@@ -358,8 +402,9 @@ test('accepted policy failures retain the actual operation and never start a sec
 
 test('canceling an accepted policy stream before its first pull cancels without observing', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-  const body = source.replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export /gm, '');
-  const make = new Function('availability', 'runtimeUnavailable', 'runtimeUntrusted', 'unavailableMessage', 'untrustedMessage', 'Machine', 'APICallError', 'resolveInference', 'resolveInferenceV2', 'NativeConnector', 'DeltaKind', 'Fold', 'PartKind',
+  const permissionSource = await readFile(new URL('../permission-wait.js', import.meta.url), 'utf8');
+  const body = permissionSource.replace(/^export /gm, '') + '\n' + source.replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export /gm, '');
+  const make = new Function('availability', 'runtimeUnavailable', 'runtimeUntrusted', 'unavailableMessage', 'untrustedMessage', 'Machine', 'APICallError', 'resolveInference', 'resolveInferenceV2', 'runtimeConnector', 'DeltaKind', 'Fold', 'PartKind',
     'ReplyOutcome', 'RequestGuarantee', 'Role', 'StopReason', `${body}\nreturn {createOpenAbstractions};`);
   const PartKind = {Text: 'text', ToolCall: 'tool_call'};
   const DeltaKind = {Part: 'part', End: 'end', Usage: 'usage'};
@@ -374,9 +419,9 @@ test('canceling an accepted policy stream before its first pull cancels without 
       async cancel() { cancelCount++; },
       stream: (async function* () { observeCount++; yield policyEnd(); })()};
   }};
-  const {createOpenAbstractions: create} = make(oaAvailability.availability, oaAvailability.runtimeUnavailable, oaAvailability.runtimeUntrusted, oaAvailability.unavailableMessage, oaAvailability.untrustedMessage, class {}, APICallError, async () => { throw new Error('must not resolve chat@1'); },
-    async () => chat, class {}, DeltaKind, Fold, PartKind, ReplyOutcome, {}, {}, StopReason);
-  const model = create({oaSelectionPolicies: {'oa-preference-local': 'local-first'}}).languageModel('oa-preference-local');
+  const {createOpenAbstractions: create} = make(oaAvailability.availability, oaAvailability.runtimeUnavailable, oaAvailability.runtimeUntrusted, oaAvailability.unavailableMessage, oaAvailability.untrustedMessage, FixtureMachine, APICallError, async () => { throw new Error('must not resolve chat@1'); },
+    async () => nativeChatFixture(chat), runtimeConnector, DeltaKind, Fold, PartKind, ReplyOutcome, {}, {}, StopReason);
+  const model = create({connector: {}, oaSelectionPolicies: {'oa-preference-local': 'local-first'}}).languageModel('oa-preference-local');
   const {stream} = await model.doStream({prompt: []});
   const reader = stream.getReader();
   await reader.cancel();
@@ -387,8 +432,9 @@ test('canceling an accepted policy stream before its first pull cancels without 
 
 test('canceling an accepted policy stream sends Cancel before waiting for a blocked Observe', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-  const body = source.replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export /gm, '');
-  const make = new Function('availability', 'runtimeUnavailable', 'runtimeUntrusted', 'unavailableMessage', 'untrustedMessage', 'Machine', 'APICallError', 'resolveInference', 'resolveInferenceV2', 'NativeConnector', 'DeltaKind', 'Fold', 'PartKind',
+  const permissionSource = await readFile(new URL('../permission-wait.js', import.meta.url), 'utf8');
+  const body = permissionSource.replace(/^export /gm, '') + '\n' + source.replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export /gm, '');
+  const make = new Function('availability', 'runtimeUnavailable', 'runtimeUntrusted', 'unavailableMessage', 'untrustedMessage', 'Machine', 'APICallError', 'resolveInference', 'resolveInferenceV2', 'runtimeConnector', 'DeltaKind', 'Fold', 'PartKind',
     'ReplyOutcome', 'RequestGuarantee', 'Role', 'StopReason', `${body}\nreturn {createOpenAbstractions};`);
   const PartKind = {Text: 'text', ToolCall: 'tool_call'};
   const DeltaKind = {Part: 'part', End: 'end', Usage: 'usage'};
@@ -406,9 +452,9 @@ test('canceling an accepted policy stream sends Cancel before waiting for a bloc
       async cancel() { order.push('cancel'); cancelSent(); resolveObserve(); },
       stream: (async function* () { order.push('observe'); observeStarted(); await observeGate; yield policyEnd(); })()};
   }};
-  const {createOpenAbstractions: create} = make(oaAvailability.availability, oaAvailability.runtimeUnavailable, oaAvailability.runtimeUntrusted, oaAvailability.unavailableMessage, oaAvailability.untrustedMessage, class {}, APICallError, async () => { throw new Error('must not resolve chat@1'); },
-    async () => chat, class {}, DeltaKind, Fold, PartKind, ReplyOutcome, {}, {}, StopReason);
-  const model = create({oaSelectionPolicies: {'oa-preference-local': 'local-first'}}).languageModel('oa-preference-local');
+  const {createOpenAbstractions: create} = make(oaAvailability.availability, oaAvailability.runtimeUnavailable, oaAvailability.runtimeUntrusted, oaAvailability.unavailableMessage, oaAvailability.untrustedMessage, FixtureMachine, APICallError, async () => { throw new Error('must not resolve chat@1'); },
+    async () => nativeChatFixture(chat), runtimeConnector, DeltaKind, Fold, PartKind, ReplyOutcome, {}, {}, StopReason);
+  const model = create({connector: {}, oaSelectionPolicies: {'oa-preference-local': 'local-first'}}).languageModel('oa-preference-local');
   const {stream} = await model.doStream({prompt: []});
   const reader = stream.getReader();
   await reader.read(); // stream-start
@@ -429,15 +475,32 @@ test('unmapped or inherited model names stay explicit chat@1 model targets', asy
       return {outcome: 'completed', stopReason: 'end', usage: {}, message: {parts: []}};
     }};
     const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-    const body = source.replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export /gm, '');
-    const make = new Function('availability', 'runtimeUnavailable', 'runtimeUntrusted', 'unavailableMessage', 'untrustedMessage', 'Machine', 'APICallError', 'resolveInference', 'resolveInferenceV2', 'NativeConnector', 'DeltaKind', 'Fold', 'PartKind',
+    const permissionSource = await readFile(new URL('../permission-wait.js', import.meta.url), 'utf8');
+  const body = permissionSource.replace(/^export /gm, '') + '\n' + source.replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export /gm, '');
+    const make = new Function('availability', 'runtimeUnavailable', 'runtimeUntrusted', 'unavailableMessage', 'untrustedMessage', 'Machine', 'APICallError', 'resolveInference', 'resolveInferenceV2', 'runtimeConnector', 'DeltaKind', 'Fold', 'PartKind',
       'ReplyOutcome', 'RequestGuarantee', 'Role', 'StopReason', `${body}\nreturn {createOpenAbstractions};`);
-    const {createOpenAbstractions: create} = make(oaAvailability.availability, oaAvailability.runtimeUnavailable, oaAvailability.runtimeUntrusted, oaAvailability.unavailableMessage, oaAvailability.untrustedMessage, class {}, APICallError, async () => chat,
-      async () => { throw new Error('unmapped target must not resolve chat@2'); }, class {}, {Part: 'part', End: 'end', Usage: 'usage'}, Fold,
+    const {createOpenAbstractions: create} = make(oaAvailability.availability, oaAvailability.runtimeUnavailable, oaAvailability.runtimeUntrusted, oaAvailability.unavailableMessage, oaAvailability.untrustedMessage, FixtureMachine, APICallError, async () => nativeChatFixture(chat),
+      async () => { throw new Error('unmapped target must not resolve chat@2'); }, runtimeConnector, {Part: 'part', End: 'end', Usage: 'usage'}, Fold,
       {Text: 'text', ToolCall: 'tool_call'}, {Completed: 'completed'}, {LocalOnly: 'local-only'}, {}, {End: 'end'});
-    const model = create({oaSelectionPolicies: {'oa-preference-local': 'local-first'}}).languageModel(modelId);
+    const model = create({connector: {}, oaSelectionPolicies: {'oa-preference-local': 'local-first'}}).languageModel(modelId);
     await model.doGenerate({prompt: []});
     assert.equal(request.model, modelId);
     assert.equal(Object.hasOwn(request, 'target'), false);
   }
+});
+
+// AD-11's plugin half (inference INF-Q8): a prior assistant reasoning part is
+// dropped, never folded into the text the next request sends upstream.
+test('a prior reasoning part never becomes request text', async () => {
+  let request;
+  const reply = {outcome: 'completed', stopReason: 'end', usage: {}, message: {parts: [{kind: 'text', text: 'ok'}]}};
+  const {model} = await modelWith({complete: async (value) => { request = value; return reply; }});
+  await model.doGenerate({prompt: [
+    {role: 'user', content: [{type: 'text', text: 'hello'}]},
+    {role: 'assistant', content: [{type: 'reasoning', text: 'PRIVATE-TRACE'}, {type: 'text', text: 'Hi.'}]},
+    {role: 'user', content: [{type: 'text', text: 'again'}]},
+  ]});
+  const sent = JSON.stringify(request, (_k, v) => typeof v === 'bigint' ? String(v) : v);
+  assert.equal(sent.includes('PRIVATE-TRACE'), false, sent);
+  assert.deepEqual(request.messages[1].parts.map((part) => part.text), ['Hi.']);
 });

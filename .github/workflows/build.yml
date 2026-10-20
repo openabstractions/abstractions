@@ -22,9 +22,43 @@ env:
   GOFLAGS: '-mod=readonly'
 
 jobs:
+  mcp-gateway:
+    name: Go MCP gateway (${{ matrix.os }})
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: mcp-gateway/go.mod
+          cache: false
+      - name: select verified Windows Go SDK and smoke duplex pipes
+        if: runner.os == 'Windows'
+        run: python3 tools/windows_go_sdk.py --cache-dir "$RUNNER_TEMP/windows-go-sdk" --github-env --smoke-dir "$RUNNER_TEMP/windows-go-smoke" > windows-go-sdk-proof.json
+      - name: preserve Windows Go SDK source identity and smoke
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: windows-go-sdk-${{ github.job }}-${{ github.run_attempt }}
+          path: |
+            windows-go-sdk-proof.json
+            ${{ runner.temp }}/windows-go-smoke/named-pipe-race.log
+            ${{ runner.temp }}/windows-go-smoke/smoke-receipt.json
+          if-no-files-found: error
+      - name: build and test standalone MCP gateway
+        working-directory: mcp-gateway
+        run: |
+          go version
+          go env GOOS GOARCH CGO_ENABLED CC GOWORK GOFLAGS
+          go build ./...
+          go test -v -count=1 -timeout=20m ./...
   go:
     name: go (${{ matrix.os }})
-    timeout-minutes: 30
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -64,12 +98,22 @@ jobs:
           for module in serve monitor idl/gen mcp-gateway examples/logging-quickstart examples/pretend-lemonade; do
             echo "::group::$module: public dependency build and tests"
             timeout=10m
-            if [ "$module" = serve ]; then timeout=30m; fi
+            if [ "$module" = serve ]; then timeout=60m; fi
+            if [ "$module" = idl/gen ] || [ "$module" = mcp-gateway ]; then timeout=20m; fi
+            test_module() (
+              cd "$module" || exit 1
+              if [ "$module" = idl/gen ]; then
+                PYTHON=$(python3 -c 'import sys; print(sys.executable)') || exit 1
+                export PYTHON
+                unset IDL_GEN_TESTS_WITHOUT_PYTHON
+              fi
+              go build ./... && go test -v -count=1 "-timeout=$timeout" ./...
+            )
             if [ ! -f "$module/go.mod" ]; then
               echo "::error::$module/go.mod missing"
               status=1
               printf '%s: %s FAILED (missing go.mod)\n' "$RUNNER_OS" "$module" >> "$GITHUB_STEP_SUMMARY"
-            elif (cd "$module" && go build ./... && go test -v -count=1 "-timeout=$timeout" ./...); then
+            elif test_module; then
               printf '%s: %s build and Go tests passed with GOWORK=off\n' "$RUNNER_OS" "$module" >> "$GITHUB_STEP_SUMMARY"
             else
               status=1

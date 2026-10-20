@@ -24,10 +24,11 @@ func (p *parser) serviceDef() error {
 		}
 		alias := p.peek().text
 		typ := "void"
+		var typeAliases map[string]string
 		if p.at("void") {
 			p.i++
 		} else {
-			typ, e = p.typeRef()
+			typ, typeAliases, e = p.typeUse()
 			if e != nil {
 				return e
 			}
@@ -39,7 +40,7 @@ func (p *parser) serviceDef() error {
 		if e != nil {
 			return e
 		}
-		m := Method{Name: mn, Oneway: oneway, Result: Field{ID: 1, Name: "value", Type: typ, Omit: "never", Alias: alias, Grammar: p.grammars[alias]}}
+		m := Method{Name: mn, Oneway: oneway, Result: Field{ID: 1, Name: "value", Type: typ, Omit: "never", Alias: alias, Grammar: p.typeGrammar(alias), TypeAliases: typeAliases}}
 		if e = p.want("("); e != nil {
 			return e
 		}
@@ -69,29 +70,70 @@ func (p *parser) serviceDef() error {
 		if p.at("throws") {
 			return fmt.Errorf("throws is not supported; handlers return ServiceError with explicit code and message")
 		}
-		ann, e := p.annotations()
+		ann, e := p.annotations(false)
 		if e != nil {
 			return e
 		}
 		for k := range ann {
-			if k != "doc" {
+			if k != "doc" && k != "idempotent" && k != "readonly" && k != "idempotency_key" && k != "remote" && k != "observe" && k != "observe_next" && k != "result_present" && k != "result_when" && k != "result_is" {
 				return fmt.Errorf("unknown method annotation %s", k)
 			}
 		}
+		if m.Remote, e = remoteAnnotation(ann); e != nil {
+			return e
+		}
 		m.Doc = ann["doc"]
+		m.ResultPresent, m.ResultWhen, m.ResultIs = ann["result_present"], ann["result_when"], ann["result_is"]
+		for _, k := range []string{"result_present", "result_when", "result_is"} {
+			if v, ok := ann[k]; ok && v == "" {
+				return fmt.Errorf("%s requires a nonempty name", k)
+			}
+		}
+		m.Observe, m.ObserveNext = ann["observe"], ann["observe_next"]
+		if _, ok := ann["observe"]; ok && m.Observe == "" {
+			return fmt.Errorf("observe names an input cursor argument")
+		}
+		if _, ok := ann["observe_next"]; ok && (m.Observe == "" || m.ObserveNext == "") {
+			return fmt.Errorf("observe_next needs observe and a result field")
+		}
+		if m.Observe != "" && m.ObserveNext == "" {
+			m.ObserveNext = "next"
+		}
+		if m.Trait, m.IdempotencyKey, e = methodTrait(mn, ann); e != nil {
+			return e
+		}
+		m.NonIdempotent = ann["idempotent"] == "false"
 		if p.at(",") || p.at(";") {
 			p.i++
 		}
 		s.Methods = append(s.Methods, m)
 	}
 	p.i++
-	ann, e := p.annotations()
+	ann, e := p.annotations(false)
 	if e != nil {
 		return e
 	}
 	for k := range ann {
-		if k != "wire_name" && k != "doc" && k != "error_codes" {
+		if k != "wire_name" && k != "doc" && k != "error_codes" && k != "remote" {
 			return fmt.Errorf("unknown service annotation %s", k)
+		}
+	}
+	if s.RemoteDefault, e = remoteAnnotation(ann); e != nil {
+		return e
+	}
+	if s.RemoteDefault == "" {
+		s.RemoteDefault = "local"
+	}
+	for i := range s.Methods {
+		method := &s.Methods[i]
+		if method.Remote == "" {
+			method.Remote = s.RemoteDefault
+		}
+		if method.Remote == "see" && method.Trait != "readonly" {
+			return fmt.Errorf("method %s: remote see requires readonly", method.Name)
+		}
+		if method.Remote == "delegate" && method.Trait != "keyed" {
+			return fmt.Errorf("method %s: remote delegate requires idempotency_key", method.Name)
 		}
 	}
 	s.Doc = ann["doc"]
@@ -100,10 +142,26 @@ func (p *parser) serviceDef() error {
 	p.def.Services = append(p.def.Services, s)
 	return nil
 }
+
+// remoteAnnotation validates explicit metadata independently of recovery traits.
+func remoteAnnotation(ann map[string]string) (string, error) {
+	value, present := ann["remote"]
+	if !present {
+		return "", nil
+	}
+	switch value {
+	case "local", "see", "call", "delegate", "person":
+		return value, nil
+	}
+	return "", fmt.Errorf("unknown remote profile %q", value)
+}
 func argsName(s Service, m Method) string { return "OA" + s.Name + m.Name + "Arguments" }
 func (p *parser) validateServices() error {
 	if len(p.def.Services) == 0 {
 		return nil
+	}
+	if reindentsOpaque(p.def) {
+		return fmt.Errorf("opaque = \"reindent\" lays opaque values out again and a service frame carries them verbatim ([DEF-E6]); a service belongs in a definition that declares opaque = \"verbatim\"")
 	}
 	used := map[string]bool{}
 	normalized := map[string]bool{}
@@ -122,7 +180,12 @@ func (p *parser) validateServices() error {
 		normalized[lower(n)] = true
 		return nil
 	}
-	for _, n := range []string{"Reader", "Raw", "Refusal", "OAServiceFrame", "FrameWriter", "DispatchError", "Transport", "FrameExchanger", "ServiceError", "OAServiceReply", "OAServiceError", "ServiceErrorCode", "EndpointContract", "DescribedService", "DescribeEndpoint", "ServedService", "ServeEndpoint"} {
+	for _, n := range []string{"Reader", "Raw", "Refusal", "OAServiceFrame", "FrameWriter", "DispatchError", "Transport", "FrameExchanger", "ServiceError", "OAServiceReply", "OAServiceError", "ServiceErrorCode", "EndpointContract", "DescribedService", "DescribeEndpoint", "ServedService", "ServeEndpoint", "ServeEndpointRemote", "RemoteMethodProfile"} {
+		if e := reserve(n); e != nil {
+			return e
+		}
+	}
+	for _, n := range append(surfaces(endpointTypes()), "EndpointV2Contract", "DescribeEndpointWithChecks", "ServeEndpointWithChecks") {
 		if e := reserve(n); e != nil {
 			return e
 		}
@@ -134,7 +197,7 @@ func (p *parser) validateServices() error {
 	}
 	wireNames := map[string]bool{}
 	if len(p.def.Services) > 1 {
-		for _, name := range []string{"ServiceName", "service_name"} {
+		for _, name := range []string{"ServiceName", "service_name", "ServiceMethod"} {
 			if err := reserve(name); err != nil {
 				return err
 			}
@@ -151,17 +214,36 @@ func (p *parser) validateServices() error {
 		if len(s.Methods) == 0 {
 			return fmt.Errorf("service %s has no methods", s.Name)
 		}
+		if err := validateObserveNames(s); err != nil {
+			return err
+		}
 		for _, n := range []string{s.Name + "Client", s.Name + "Dispatcher", s.Name + "Transport", s.Name + "Service"} {
 			if e := reserve(n); e != nil {
 				return e
 			}
 		}
 		methods := map[string]bool{}
-		for _, m := range s.Methods {
-			if !serviceIdentifier(m.Name) || methods[exported(m.Name)] || exported(m.Name) == "DescribeMetadata" || exported(m.Name) == "DescribeServiceMetadata" || m.Name == "transport_" || m.Name == s.Name+"Client" || m.Name == s.Name {
+		for mi := range s.Methods {
+			m := s.Methods[mi]
+			post, err := lowerResultPostcondition(p.def, m)
+			if err != nil {
+				return err
+			}
+			s.Methods[mi].ResultPostcondition = post
+			if !serviceIdentifier(m.Name) || methods[exported(m.Name)] || goName(m.Name) == "RemoteMethodProfile" || exported(m.Name) == "DescribeMetadata" || exported(m.Name) == "DescribeServiceMetadata" || m.Name == "transport_" || m.Name == s.Name+"Client" || m.Name == s.Name {
 				return fmt.Errorf("invalid or colliding method %s", m.Name)
 			}
 			methods[exported(m.Name)] = true
+			if m.Observe != "" {
+				if err := validateObserve(p.def, m); err != nil {
+					return fmt.Errorf("%s.%s: %w", s.Name, m.Name, err)
+				}
+				name := exported(m.Name) + "Pages"
+				if methods[name] {
+					return fmt.Errorf("generated observe helper collides with %s", name)
+				}
+				methods[name] = true
+			}
 			if e := reserve(argsName(s, m)); e != nil {
 				return e
 			}
@@ -173,8 +255,8 @@ func (p *parser) validateServices() error {
 				if f.Type != "void" && !scalarTypes[f.Type] && p.def.Enum(f.Type) == nil && p.def.Enum(listElement(f.Type)) == nil && !encodableCollections[f.Type] && !p.def.IsStruct(f.Type) && p.def.Repeated(f.Type) == "" {
 					return fmt.Errorf("unsupported service return type %s", f.Type)
 				}
-				if f.Type != "json" && serviceNestedOpaque(p.def, f.Type, map[string]bool{}) {
-					return fmt.Errorf("service return contains nested opaque JSON")
+				if reindentedOpaque(p.def, f.Type, map[string]bool{}) {
+					return fmt.Errorf("service return carries opaque JSON inside a record a definition declaring opaque = \"reindent\" owns; a service frame carries opaque bytes verbatim ([DEF-E6])")
 				}
 			}
 			if len(m.Args) > 32 {
@@ -196,11 +278,11 @@ func (p *parser) validateServices() error {
 				ids[f.ID] = true
 				names[exported(f.Ident("go"))] = true
 				cppNames[f.Ident("cpp")] = true
-				if f.Type != "json" && serviceNestedOpaque(p.def, f.Type, map[string]bool{}) {
-					return fmt.Errorf("service argument %s contains nested opaque JSON; service-safe nested encoding is not implemented", f.Name)
-				}
 				if f.Omit != "never" {
 					return fmt.Errorf("arguments must be required")
+				}
+				if reindentedOpaque(p.def, f.Type, map[string]bool{}) {
+					return fmt.Errorf("service argument %s carries opaque JSON inside a record a definition declaring opaque = \"reindent\" owns; a service frame carries opaque bytes verbatim ([DEF-E6])", f.Name)
 				}
 				if !scalarTypes[f.Type] && p.def.Enum(f.Type) == nil && p.def.Enum(listElement(f.Type)) == nil && !encodableCollections[f.Type] && !p.def.IsStruct(f.Type) && p.def.Repeated(f.Type) == "" {
 					return fmt.Errorf("unsupported argument type %s", f.Type)
@@ -211,6 +293,10 @@ func (p *parser) validateServices() error {
 	return nil
 }
 func validateServiceBackend(s *Definition, lang string) error {
+	if lang == "jsonschema" {
+		// Record schemas only; a service is the bindings' business.
+		return validateJSONSchemaBackend(s)
+	}
 	if lang == "javascript" {
 		return validateJSServices(s)
 	}
@@ -285,7 +371,7 @@ func serviceErrorCodes(s *Definition) Enum {
 	return en
 }
 
-func serviceTypes(s *Definition) *Definition {
+func serviceTypes(s *Definition, endpoint ...bool) *Definition {
 	if len(s.Services) == 0 {
 		return s
 	}
@@ -294,6 +380,11 @@ func serviceTypes(s *Definition) *Definition {
 		o.Enums = append(append([]Enum(nil), s.Enums...), serviceErrorCodes(s))
 	}
 	o.Structs = append([]Struct(nil), s.Structs...)
+	if len(endpoint) > 0 && endpoint[0] && hasReplies(s) {
+		base := endpointTypes()
+		o.Structs = append(o.Structs, base.Structs...)
+		o.Enums = append(o.Enums, base.Enums...)
+	}
 	o.byName = map[string]*Struct{}
 	for _, svc := range s.Services {
 		for _, m := range svc.Methods {
@@ -478,6 +569,7 @@ func goService(b *strings.Builder, s *Definition) {
 	if len(s.Services) == 0 {
 		return
 	}
+	emitDecodedCleanupPrimitive(b, s, "go")
 	b.WriteString(`
 // A transport consumes or copies frames before returning. WriteFrame is one-way.
 type FrameWriter interface{WriteFrame(frame []byte)error}
@@ -490,6 +582,10 @@ func servicePayload(frame []byte)(*OAServiceFrame,error){r:=&reader{buf:frame};r
 // ServiceName validates the request envelope and version for routing. The chosen
 // generated dispatcher validates service, method and typed arguments before use.
 func ServiceName(frame []byte)(string,error){v,err:=servicePayload(frame);if err!=nil{return "",err};return v.Service,nil}
+// ServiceMethod validates the complete request envelope and version and returns
+// its untrusted routing pair. Dispatchers retain method and typed argument checks.
+// It exposes no arguments and supplies no caller authority or handler outcome.
+func ServiceMethod(frame []byte)(service string,method string,err error){v,err:=servicePayload(frame);if err!=nil{return "","",err};return v.Service,v.Method,nil}
 `)
 	}
 	if hasReplies(s) {
@@ -519,7 +615,9 @@ func serviceReply(v *OAServiceFrame,payload Raw,err error)(frame []byte,outErr e
 	}
 	if hasReplies(s) {
 		b.WriteString(goEndpoint)
+		goEndpointRemote(b, s)
 	}
+	b.WriteString(goRemoteProfile)
 	for _, svc := range s.Services {
 		fmt.Fprintf(b, "type %s interface{\n", svc.Name)
 		for _, m := range svc.Methods {
@@ -535,6 +633,22 @@ func serviceReply(v *OAServiceFrame,payload Raw,err error)(frame []byte,outErr e
 		}
 		b.WriteString("}\n")
 		fmt.Fprintf(b, "type %sClient struct{transport %sTransport}\nfunc New%sClient(t %sTransport)*%sClient{return &%sClient{transport:t}}\ntype %sDispatcher struct{Handler %s}\n", svc.Name, svc.Name, svc.Name, svc.Name, svc.Name, svc.Name, svc.Name, svc.Name)
+		fmt.Fprintf(b, "func(d *%sDispatcher)RemoteMethodProfile(contract,method string)(string,bool){\n", svc.Name)
+		if svcReplies(svc) && svc.WireName != endpointWireName {
+			fmt.Fprintf(b, "if contract==%q&&method==\"Describe\"{return \"see\",true}\n", endpointWireName)
+		}
+		if svcReplies(svc) && svc.WireName != "abstraction.facade/endpoint@2" {
+			fmt.Fprintf(b, "if contract==%q&&method==\"Describe\"{return \"see\",true}\n", "abstraction.facade/endpoint@2")
+		}
+		if hasReplies(s) {
+			b.WriteString("if contract!=d.ServiceContract(){return \"local\",false};switch method{\n")
+		} else {
+			fmt.Fprintf(b, "if contract!=%q{return \"local\",false};switch method{\n", svc.WireName)
+		}
+		for _, m := range svc.Methods {
+			fmt.Fprintf(b, "case %q:return %q,true\n", m.Name, m.Remote)
+		}
+		b.WriteString("};return \"local\",false}\n")
 		for _, m := range svc.Methods {
 			fmt.Fprintf(b, "func(c *%sClient)%s(%s)%s{\n", svc.Name, goName(m.Name), goArgs(s, m, true), goReturn(s, m, true))
 			b.WriteString("defer func(){if p:=recover();p!=nil{if e,ok:=p.(*Refusal);ok{err=e}else{panic(p)}}}()\n")
@@ -543,7 +657,7 @@ func serviceReply(v *OAServiceFrame,payload Raw,err error)(frame []byte,outErr e
 				fmt.Fprintf(b, "%s:%s,", exported(f.Ident("go")), goParam(f, goReservedLocals))
 			}
 			b.WriteString("}\n")
-			fmt.Fprintf(b, "v:=OAServiceFrame{Version:1,Service:%q,Method:%q,Arguments:Raw(enc%s(nil,&args,1))};frame:=encOAServiceFrame(nil,&v,0);if _,err=servicePayload(frame);err!=nil{return}\n", svc.WireName, m.Name, argsName(svc, m))
+			fmt.Fprintf(b, "v:=OAServiceFrame{Version:1,Service:%q,Method:%q,Arguments:Raw(enc%s(nil,&args,%s))};frame:=encOAServiceFrame(nil,&v,0);if _,err=servicePayload(frame);err!=nil{return}\n", svc.WireName, m.Name, argsName(svc, m), "1")
 			if m.Oneway {
 				b.WriteString("err=c.transport.WriteFrame(frame);return\n}\n")
 				continue
@@ -551,12 +665,17 @@ func serviceReply(v *OAServiceFrame,payload Raw,err error)(frame []byte,outErr e
 			b.WriteString("var response []byte;response,err=c.transport.ExchangeFrame(frame);if err!=nil{return};var payload Raw;payload,err=serviceResponse(response,v.Service,v.Method);if err!=nil{return};r:=&reader{buf:[]byte(payload),depth:1};r.ws();\n")
 			fmt.Fprintf(b, "var decoded *%s;decoded,err=r.decode%s();if err!=nil{return};_ = decoded;r.ws();if r.pos!=len(r.buf){err=r.refuse(\"trailing_bytes\");return}\n", resultName(svc, m), resultName(svc, m))
 			if m.Result.Type != "void" {
+				emitClientResultPostcondition(b, m, "go", "decoded.Value")
 				b.WriteString("result=decoded.Value\n")
 			}
 			b.WriteString("return\n}\n")
+			goObserve(b, s, svc, m)
 		}
 		if hasReplies(s) {
 			fmt.Fprintf(b, "// DescribeService is this dispatcher's service as %s Describe lists it:\n// ready unless its handler implements Ready() (bool, string) and reports otherwise.\nfunc(d *%sDispatcher)DescribeService()(contract string,ready bool,why string){if h,ok:=d.Handler.(interface{Ready()(bool,string)});ok{if ready,why=h.Ready();ready{why=\"\"};return %q,ready,why};return %q,true,\"\"}\n// DescribeServiceMetadata returns optional handler display facts for Describe.\n// They grant no authority and do not change service admission.\nfunc(d *%sDispatcher)DescribeServiceMetadata()(guarantees []string,capabilities map[string]string){if h,ok:=d.Handler.(interface{DescribeMetadata()([]string,map[string]string)});ok{return h.DescribeMetadata()};return nil,nil}\n// ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.\nfunc(d *%sDispatcher)ServiceContract()string{return %q}\n", endpointWireName, svc.Name, svc.WireName, svc.WireName, svc.Name, svc.Name, svc.WireName)
+		}
+		if hasReplies(s) {
+			fmt.Fprintf(b, "// DescribeServiceDefinitionHash is gen --hash over the canonical service definition.\nfunc(d *%sDispatcher)DescribeServiceDefinitionHash()string{return %q}\n", svc.Name, s.EndpointHashes[svc.WireName])
 		}
 		fmt.Fprintf(b, "func(d *%sDispatcher)WriteFrame(frame []byte)error{v,err:=servicePayload(frame);if err!=nil{return err};if v.Service!=%q{return DispatchError(\"unknown_service\")};switch v.Method{\n", svc.Name, svc.WireName)
 		for _, m := range svc.Methods {
@@ -574,6 +693,9 @@ func serviceReply(v *OAServiceFrame,payload Raw,err error)(frame []byte,outErr e
 		describe := ""
 		if svc.WireName != endpointWireName {
 			describe = "if v.Service==EndpointContract{return DescribeEndpoint(frame,\"\",\"\",d)};"
+		}
+		if svc.WireName != "abstraction.facade/endpoint@2" {
+			describe += "if v.Service==EndpointV2Contract{return DescribeEndpoint(frame,\"\",\"\",d)};"
 		}
 		fmt.Fprintf(b, "func(d *%sDispatcher)ExchangeFrame(frame []byte)([]byte,error){v,err:=servicePayload(frame);if err!=nil{return nil,err};%sif v.Service!=%q{return serviceReply(v,\"\",DispatchError(\"unknown_service\"))};switch v.Method{\n", svc.Name, describe, svc.WireName)
 		for _, m := range svc.Methods {
@@ -597,15 +719,29 @@ func serviceReply(v *OAServiceFrame,payload Raw,err error)(frame []byte,outErr e
 				fmt.Fprintf(b, "err=d.Handler.%s(%s);", goName(m.Name), callArgs(m, "go"))
 			}
 			b.WriteString("if err!=nil{return}\n")
+			emitResultPostcondition(b, m, "go", "result")
 			fmt.Fprintf(b, "value:=%s{", resultName(svc, m))
 			if m.Result.Type != "void" {
 				b.WriteString("Value:result,")
 			}
 			b.WriteString("}\n")
-			fmt.Fprintf(b, "payload=Raw(enc%s(nil,&value,1));r:=&reader{buf:[]byte(payload),depth:1};r.ws();if _,e:=r.decode%s();e!=nil{payload=\"\";err=&ServiceError{Code:ServiceErrorCodeInvalidResult};return};r.ws();if r.pos!=len(r.buf){payload=\"\";err=&ServiceError{Code:ServiceErrorCodeInvalidResult}};return\n}\n", resultName(svc, m), resultName(svc, m))
+			fmt.Fprintf(b, "payload=Raw(enc%s(nil,&value,%s));r:=&reader{buf:[]byte(payload),depth:1};r.ws();if _,e:=r.decode%s();e!=nil{payload=\"\";err=&ServiceError{Code:ServiceErrorCodeInvalidResult};return};r.ws();if r.pos!=len(r.buf){payload=\"\";err=&ServiceError{Code:ServiceErrorCodeInvalidResult}};return\n}\n", resultName(svc, m), "1", resultName(svc, m))
 		}
 	}
 }
+
+// Optional metadata lookup leaves ServedService and wire carriers unchanged.
+const goRemoteProfile = `
+// RemoteMethodProfile reads generated dispatch metadata. Missing or unknown metadata is local.
+// The profile grants no authority and promises no retry safety.
+func RemoteMethodProfile(service interface{},contract,method string)string{
+ if provider,ok:=service.(interface{RemoteMethodProfile(string,string)(string,bool)});ok{
+  profile,known:=provider.RemoteMethodProfile(contract,method)
+  if known{switch profile{case "local","see","call","delegate","person":return profile}}
+ }
+ return "local"
+}
+`
 
 // endpointWireName is the base-protocol service every generated dispatcher
 // answers beside its own (idl/LANGUAGE.md DEF-S2).
@@ -618,6 +754,7 @@ const goEndpoint = `
 // EndpointContract is abstraction.facade/endpoint@1, which every dispatcher
 // answers beside its own service.
 const EndpointContract = "abstraction.facade/endpoint@1"
+const EndpointV2Contract = "abstraction.facade/endpoint@2"
 
 // DescribedService is a dispatcher of any generated package, as
 // abstraction.facade/endpoint@1 Describe lists it.
@@ -628,11 +765,18 @@ type DescribedService interface{DescribeService()(contract string,ready bool,why
 // provider's own display name and version, never authority. A frame for another
 // service reads unknown_service.
 func DescribeEndpoint(frame []byte,program,version string,services ...DescribedService)([]byte,error){
+ return DescribeEndpointWithChecks(frame,program,version,nil,services...)
+}
+
+// DescribeEndpointWithChecks projects already captured producer observations.
+// It performs no verification, reconciliation or readiness inference.
+func DescribeEndpointWithChecks(frame []byte,program,version string,checks []EndpointProducerCheck,services ...DescribedService)([]byte,error){
  v,err:=servicePayload(frame);if err!=nil{return nil,err}
- if v.Service!=EndpointContract{return serviceReply(v,"",DispatchError("unknown_service"))}
+ if v.Service!=EndpointContract&&v.Service!=EndpointV2Contract{return serviceReply(v,"",DispatchError("unknown_service"))}
  if v.Method!="Describe"{return serviceReply(v,"",DispatchError("unknown_method"))}
  r:=&reader{buf:[]byte(v.Arguments)};r.ws();empty:=false;if r.pos<len(r.buf)&&r.buf[r.pos]=='{'{r.pos++;r.ws();if r.pos<len(r.buf)&&r.buf[r.pos]=='}'{r.pos++;r.ws();empty=r.pos==len(r.buf)}}
  if !empty{return serviceReply(v,"",&Refusal{Word:"unknown_field"})}
+ if v.Service==EndpointV2Contract{return describeEndpointV2(v,program,version,checks,services...)}
  out:=append([]byte(nil),"{\"value\":{\"outcome\":\"described\",\"program\":"...);out=esc(out,program);out=append(out,",\"version\":"...);out=esc(out,version);out=append(out,",\"services\":["...)
  for i,service:=range services{
   contract,ready,why:=service.DescribeService();readiness:="ready";if ready{why=""}else{readiness="not_ready"}
@@ -654,8 +798,13 @@ type ServedService interface{DescribedService;ServiceContract()string}
 // frame goes to the service it names. A service that takes only one-way frames
 // reads wrong_mode, and a frame naming none of them reads unknown_service.
 func ServeEndpoint(frame []byte,program,version string,services ...ServedService)([]byte,error){
+ return ServeEndpointWithChecks(frame,program,version,nil,services...)
+}
+
+// ServeEndpointWithChecks supplies one program-level observation list.
+func ServeEndpointWithChecks(frame []byte,program,version string,checks []EndpointProducerCheck,services ...ServedService)([]byte,error){
  v,err:=servicePayload(frame);if err!=nil{return nil,err}
- if v.Service==EndpointContract{described:=make([]DescribedService,len(services));for i,service:=range services{described[i]=service};return DescribeEndpoint(frame,program,version,described...)}
+ if v.Service==EndpointContract||v.Service==EndpointV2Contract{described:=make([]DescribedService,len(services));for i,service:=range services{described[i]=service};return DescribeEndpointWithChecks(frame,program,version,checks,described...)}
  for _,service:=range services{
   if service.ServiceContract()!=v.Service{continue}
   if exchanger,ok:=service.(interface{ExchangeFrame([]byte)([]byte,error)});ok{return exchanger.ExchangeFrame(frame)}
@@ -663,12 +812,71 @@ func ServeEndpoint(frame []byte,program,version string,services ...ServedService
  }
  return serviceReply(v,"",DispatchError("unknown_service"))
 }
+
+func describeEndpointV2(v *OAServiceFrame,program,version string,checks []EndpointProducerCheck,services ...DescribedService)(out []byte,err error){
+ bounded:=func()([]byte,error){description:=EndpointDescription{Outcome:EndpointDescriptionOutcomeUnavailable,Reason:"bound:reply_bytes"};payload:=encEndpointDescriptionResult(nil,&EndpointDescriptionResult{Value:description},1);return serviceReply(v,Raw(payload),nil)}
+ defer func(){if p:=recover();p!=nil{if _,ok:=p.(*Refusal);ok{out,err=bounded();return};panic(p)}}()
+ description:=EndpointDescription{Outcome:EndpointDescriptionOutcomeDescribed,Program:program,Version:version,Checks:checks}
+ for _,service:=range services{
+  contract,ready,why:=service.DescribeService();readiness:=EndpointServiceReadinessNotReady;if ready{readiness=EndpointServiceReadinessReady;why=""}
+  state:=EndpointServiceState{Service:contract,Readiness:readiness,Reason:why}
+  if metadata,ok:=service.(interface{DescribeServiceMetadata()([]string,map[string]string)});ok{state.Guarantees,state.Capabilities=metadata.DescribeServiceMetadata()}
+  if hashed,ok:=service.(interface{DescribeServiceDefinitionHash()string});ok{state.DefinitionHash=hashed.DescribeServiceDefinitionHash()}else{description=EndpointDescription{Outcome:EndpointDescriptionOutcomeUnsupported,Reason:"unsupported:not_implemented"};break}
+  description.Services=append(description.Services,state)
+ }
+ payload:=encEndpointDescriptionResult(nil,&EndpointDescriptionResult{Value:description},1)
+ r:=&reader{buf:payload,depth:1};if _,err:=r.decodeEndpointDescriptionResult();err!=nil{return bounded()}
+ out,err=serviceReply(v,Raw(payload),nil);if err==nil&&len(out)>1048576{return bounded()};return out,err
+}
 `
+
+// The opt-in remote boundary uses the same frame/reply owners as local serving.
+// Only a definition that owns endpoint@1 can supply implicit Describe metadata.
+func goEndpointRemote(b *strings.Builder, s *Definition) {
+	b.WriteString(`
+// ServeEndpointRemote admits a validated request before its selected handler.
+// The receiving runtime supplies trusted services and the live authority check.
+// Missing metadata is local. This helper grants no authority and retries nothing.
+func ServeEndpointRemote(frame []byte,program,version string,admit func(contract,method,profile string)error,services ...ServedService)([]byte,error){
+ v,err:=servicePayload(frame);if err!=nil{return nil,err}
+ authorize:=func(profile string)(err error){
+  switch profile{case "see","call","delegate":case "person":return &ServiceError{Code:"forbidden",Message:"remote:person_only"};default:return &ServiceError{Code:"unsupported",Message:"remote:local_only"}}
+  if admit==nil{return &ServiceError{Code:"forbidden",Message:"remote admission required"}}
+  defer func(){if recover()!=nil{err=&ServiceError{Code:ServiceErrorCodeHandlerError,Message:"handler failed"}}}()
+  return admit(v.Service,v.Method,profile)
+ }
+ if v.Service==EndpointContract||v.Service==EndpointV2Contract{
+  if v.Method!="Describe"{return serviceReply(v,"",DispatchError("unknown_method"))}
+  profile:="local";selected:=false
+  for _,service:=range services{if service.ServiceContract()==v.Service{profile=RemoteMethodProfile(service,v.Service,v.Method);selected=true;break}}
+`)
+	for _, service := range s.Services {
+		if service.WireName == endpointWireName || service.WireName == "abstraction.facade/endpoint@2" {
+			fmt.Fprintf(b, "if !selected&&v.Service==%q{profile=RemoteMethodProfile(&%sDispatcher{},v.Service,v.Method)}\n", service.WireName, service.Name)
+		}
+	}
+	b.WriteString(`
+  _=selected
+  if err:=authorize(profile);err!=nil{return serviceReply(v,"",err)}
+  described:=make([]DescribedService,len(services));for i,service:=range services{described[i]=service}
+  return DescribeEndpoint(frame,program,version,described...)
+ }
+ for _,service:=range services{
+  if service.ServiceContract()!=v.Service{continue}
+  exchanger,ok:=service.(interface{ExchangeFrame([]byte)([]byte,error)});if !ok{return serviceReply(v,"",DispatchError("wrong_mode"))}
+  if err:=authorize(RemoteMethodProfile(service,v.Service,v.Method));err!=nil{return serviceReply(v,"",err)}
+  return exchanger.ExchangeFrame(frame)
+ }
+ return serviceReply(v,"",DispatchError("unknown_service"))
+}
+`)
+}
 
 func cppService(b *strings.Builder, s *Definition) {
 	if len(s.Services) == 0 {
 		return
 	}
+	emitDecodedCleanupPrimitive(b, s, "cpp")
 	b.WriteString(`
 struct FrameWriter{virtual ~FrameWriter()=default;virtual void write_frame(std::string_view frame)=0;};
 struct DispatchError:std::runtime_error{using std::runtime_error::runtime_error;};
@@ -711,17 +919,19 @@ inline std::string service_reply(const OAServiceFrame& request,const Raw& payloa
 			for _, f := range m.Args {
 				fmt.Fprintf(b, "args.%s=%s;\n", f.Ident("cpp"), cppParam(f))
 			}
-			fmt.Fprintf(b, "detail::OAServiceFrame v;v.version=1;v.service=%s;v.method=%s;detail::enc_%s(v.arguments,args,1);std::string frame;detail::enc_oa_service_frame(frame,v,0);detail::service_payload(frame);\n", strconv.Quote(svc.WireName), strconv.Quote(m.Name), cppFn(argsName(svc, m)))
+			fmt.Fprintf(b, "detail::OAServiceFrame v;v.version=1;v.service=%s;v.method=%s;detail::enc_%s(v.arguments,args,%s);std::string frame;detail::enc_oa_service_frame(frame,v,0);detail::service_payload(frame);\n", strconv.Quote(svc.WireName), strconv.Quote(m.Name), cppFn(argsName(svc, m)), "1")
 			if m.Oneway {
 				b.WriteString("transport_.write_frame(frame);}\n")
 				continue
 			}
 			fmt.Fprintf(b, "auto response=transport_.exchange_frame(frame);auto payload=detail::service_response(response,v.service,v.method);detail::Reader r{payload};r.depth=1;r.skip_ws();auto result=detail::decode_%s(r);r.skip_ws();if(r.pos!=r.buf.size())r.refuse(\"trailing_bytes\");\n", cppFn(resultName(svc, m)))
 			if m.Result.Type != "void" {
+				emitClientResultPostcondition(b, m, "cpp", "result.value")
 				b.WriteString("return result.value;\n")
 			}
 			b.WriteString("}\n")
 		}
+		cppObserve(b, s, svc)
 		b.WriteString("};\n")
 		capability := ""
 		if prefix, profile, ok := strings.Cut(svc.WireName, "/"); ok && prefix != "" && profile != "" && !strings.ContainsAny(prefix, " \t\r\n\x00") {
@@ -734,8 +944,12 @@ inline std::string service_reply(const OAServiceFrame& request,const Raw& payloa
 		}
 		fmt.Fprintf(b, "struct %sDispatcher:%s{%s&handler;explicit %sDispatcher(%s&h):handler(h){}\n", svc.Name, base, svc.Name, svc.Name, svc.Name)
 		if hasReplies(s) {
-			fmt.Fprintf(b, "// A handler whose own type has ready(), returning a pair of bool and std::string, reports its readiness through describe_service.\ntemplate<class H,class=decltype(static_cast<%s&>(*static_cast<H*>(nullptr)))>explicit %sDispatcher(H&h):handler(h),ready_self_(&h),ready_hook_(detail::ready_hook<H>(0)){}\n", svc.Name, svc.Name)
+			fmt.Fprintf(b, "// A handler whose own type has ready(), returning a pair of bool and std::string, reports its readiness through describe_service.\ntemplate<class H,class=decltype(static_cast<%s&>(*static_cast<H*>(nullptr)))>explicit %sDispatcher(H&h):handler(h),ready_self_(&h),ready_hook_(detail::ready_hook<H>(0)),metadata_hook_(detail::metadata_hook<H>(0)){}\n", svc.Name, svc.Name)
 			fmt.Fprintf(b, "// This dispatcher's service as abstraction.facade/endpoint@1 Describe lists it.\nDescribedService describe_service()const{DescribedService s{%s,true,std::string()};if(ready_hook_){s.ready=ready_hook_(ready_self_,s.why);if(s.ready)s.why.clear();}return s;}\n", strconv.Quote(svc.WireName))
+		}
+		if hasReplies(s) {
+			fmt.Fprintf(b, "std::string describe_service_definition_hash()const{return %q;}\n", s.EndpointHashes[svc.WireName])
+			b.WriteString("std::pair<std::vector<std::string>,std::map<std::string,std::string>> describe_service_metadata()const{if(metadata_hook_)return metadata_hook_(ready_self_);return {};}\n")
 		}
 		fmt.Fprintf(b, "void write_frame(std::string_view frame)override{auto v=detail::service_payload(frame);if(v.service!=%q)throw DispatchError(\"unknown_service\");\n", svc.WireName)
 		for _, m := range svc.Methods {
@@ -755,6 +969,9 @@ inline std::string service_reply(const OAServiceFrame& request,const Raw& payloa
 			describe := ""
 			if svc.WireName != endpointWireName {
 				describe = "if(v.service==kEndpointContract)return describe_endpoint(frame,std::string(),std::string(),*this);"
+			}
+			if svc.WireName != "abstraction.facade/endpoint@2" {
+				describe += "if(v.service==kEndpointV2Contract)return describe_endpoint(frame,std::string(),std::string(),*this);"
 			}
 			fmt.Fprintf(b, "std::string exchange_frame(std::string_view frame)override{auto v=detail::service_payload(frame);%sif(v.service!=%q){ServiceError e(\"unknown_service\",\"\");return detail::service_reply(v,\"\",&e);}\ntry{\n", describe, svc.WireName)
 			for _, m := range svc.Methods {
@@ -784,16 +1001,17 @@ inline std::string service_reply(const OAServiceFrame& request,const Raw& payloa
 				}
 				fmt.Fprintf(b, "handler.%s(%s);\n", cppMethod(m), callArgs(m, "cpp"))
 				b.WriteString("}catch(const ServiceError&){throw;}catch(...){throw ServiceError(\"handler_error\",\"handler failed\");}\ntry{\n")
+				emitResultPostcondition(b, m, "cpp", "result")
 				fmt.Fprintf(b, "detail::%s value;\n", resultName(svc, m))
 				if m.Result.Type != "void" {
 					b.WriteString("value.value=result;\n")
 				}
-				fmt.Fprintf(b, "Raw payload;detail::enc_%s(payload,value,1);detail::Reader r{payload};r.depth=1;r.skip_ws();detail::decode_%s(r);r.skip_ws();if(r.pos!=r.buf.size())r.refuse(\"trailing_bytes\");return payload;\n", cppFn(resultName(svc, m)), cppFn(resultName(svc, m)))
+				fmt.Fprintf(b, "Raw payload;detail::enc_%s(payload,value,%s);detail::Reader r{payload};r.depth=1;r.skip_ws();detail::decode_%s(r);r.skip_ws();if(r.pos!=r.buf.size())r.refuse(\"trailing_bytes\");return payload;\n", cppFn(resultName(svc, m)), "1", cppFn(resultName(svc, m)))
 				b.WriteString("}catch(...){throw ServiceError(\"invalid_result\",\"\");}\n}\n")
 			}
 		}
 		if hasReplies(s) {
-			b.WriteString("private:\nvoid* ready_self_=nullptr;\nbool(*ready_hook_)(void*,std::string&)=nullptr;\n")
+			b.WriteString("private:\nvoid* ready_self_=nullptr;\nbool(*ready_hook_)(void*,std::string&)=nullptr;\nstd::pair<std::vector<std::string>,std::map<std::string,std::string>>(*metadata_hook_)(void*)=nullptr;\n")
 		}
 		b.WriteString("};\n")
 	}
@@ -804,24 +1022,43 @@ inline std::string service_reply(const OAServiceFrame& request,const Raw& payloa
 const cppEndpoint = `
 // The base-protocol service every dispatcher answers beside its own.
 inline constexpr std::string_view kEndpointContract="abstraction.facade/endpoint@1";
+inline constexpr std::string_view kEndpointV2Contract="abstraction.facade/endpoint@2";
 // One service an endpoint hosts, as a dispatcher of any generated namespace
 // reports it to describe_endpoint.
 struct DescribedService{std::string contract;bool ready;std::string why;};
 namespace detail {
 template<class H>auto ready_hook(int)->decltype((void)static_cast<H*>(nullptr)->ready(),static_cast<bool(*)(void*,std::string&)>(nullptr)){return [](void* h,std::string& why)->bool{auto r=static_cast<H*>(h)->ready();why=r.second;return r.first;};}
 template<class H>bool(*ready_hook(long))(void*,std::string&){return nullptr;}
+using EndpointMetadata=std::pair<std::vector<std::string>,std::map<std::string,std::string>>;
+template<class H>auto metadata_hook(int)->decltype((void)static_cast<H*>(nullptr)->describe_metadata(),static_cast<EndpointMetadata(*)(void*)>(nullptr)){return [](void*h)->EndpointMetadata{return static_cast<H*>(h)->describe_metadata();};}
+template<class H>EndpointMetadata(*metadata_hook(long))(void*){return nullptr;}
+template<class S>auto described_hash(const S&s,int)->decltype(s.describe_service_definition_hash()){return s.describe_service_definition_hash();}
+template<class S>std::string described_hash(const S&,long){return std::string();}
+template<class S>auto described_metadata(const S&s,int)->decltype(s.describe_service_metadata()){return s.describe_service_metadata();}
+template<class S>std::pair<std::vector<std::string>,std::map<std::string,std::string>> described_metadata(const S&,long){return {};}
 }  // namespace detail
 // Answers an abstraction.facade/endpoint@1 Describe frame for an endpoint
 // hosting services, in that order: each is a dispatcher of any generated
 // namespace. program and version are the provider's own display name and
 // version, never authority. A frame for another service reads unknown_service.
-template<class... Services>std::string describe_endpoint(std::string_view frame,const std::string& program,const std::string& version,const Services&... services){
+template<class... Services>std::string describe_endpoint_with_checks(std::string_view frame,const std::string& program,const std::string& version,const std::vector<EndpointProducerCheck>& checks,const Services&... services){
  auto v=detail::service_payload(frame);
- if(v.service!=kEndpointContract){ServiceError e("unknown_service","");return detail::service_reply(v,"",&e);}
+ if(v.service!=kEndpointContract&&v.service!=kEndpointV2Contract){ServiceError e("unknown_service","");return detail::service_reply(v,"",&e);}
  if(v.method!="Describe"){ServiceError e("unknown_method","");return detail::service_reply(v,"",&e);}
  detail::Reader r{v.arguments};r.skip_ws();bool empty=false;
  if(r.pos<r.buf.size()&&r.buf[r.pos]=='{'){r.pos++;r.skip_ws();if(r.pos<r.buf.size()&&r.buf[r.pos]=='}'){r.pos++;r.skip_ws();empty=r.pos==r.buf.size();}}
  if(!empty){ServiceError e("unknown_field","");return detail::service_reply(v,"",&e);}
+ if(v.service==kEndpointV2Contract){
+  auto bounded=[&](){EndpointDescriptionResult result;result.value.outcome=EndpointDescriptionOutcome::Unavailable;result.value.reason="bound:reply_bytes";Raw payload;detail::enc_endpoint_description_result(payload,result,1);return detail::service_reply(v,payload);};
+  try{
+   EndpointDescriptionResult result;auto& description=result.value;description.outcome=EndpointDescriptionOutcome::Described;description.program=program;description.version=version;description.checks=checks;
+   bool supported=true;auto add=[&](const auto& service){auto s=service.describe_service();EndpointServiceState state;state.service=s.contract;state.readiness=s.ready?EndpointServiceReadiness::Ready:EndpointServiceReadiness::NotReady;state.reason=s.ready?std::string():s.why;state.definition_hash=detail::described_hash(service,0);if(state.definition_hash.empty())supported=false;auto metadata=detail::described_metadata(service,0);state.guarantees=metadata.first;state.capabilities=metadata.second;description.services.push_back(state);};
+   (void)add;(add(services),...);
+   if(!supported){description={};description.outcome=EndpointDescriptionOutcome::Unsupported;description.reason="unsupported:not_implemented";}
+   Raw payload;detail::enc_endpoint_description_result(payload,result,1);detail::Reader reader{payload};reader.depth=1;detail::decode_endpoint_description_result(reader);
+   auto reply=detail::service_reply(v,payload);if(reply.size()>1048576)return bounded();return reply;
+  }catch(const Refusal&){return bounded();}
+ }
  try{
   Raw out="{\"value\":{\"outcome\":\"described\",\"program\":";detail::esc(out,program);out+=",\"version\":";detail::esc(out,version);out+=",\"services\":[";
   bool first=true;
@@ -832,6 +1069,7 @@ template<class... Services>std::string describe_endpoint(std::string_view frame,
   return detail::service_reply(v,out);
  }catch(const Refusal&e){ServiceError error(e.word,"");return detail::service_reply(v,"",&error);}
 }
+template<class... Services>std::string describe_endpoint(std::string_view frame,const std::string& program,const std::string& version,const Services&... services){return describe_endpoint_with_checks(frame,program,version,std::vector<EndpointProducerCheck>{},services...);}
 `
 
 // cppMethod is a service method's C++ name.

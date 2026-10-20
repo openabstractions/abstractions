@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openabstractions/abstractions/monitor/internal/personfolders"
 	"github.com/openabstractions/abstractions/monitor/internal/setup"
 )
 
@@ -16,11 +17,9 @@ import (
 func personFolders(t *testing.T) string {
 	t.Helper()
 	person := t.TempDir()
-	t.Setenv("APPDATA", filepath.Join(person, "Roaming"))
-	t.Setenv("LOCALAPPDATA", filepath.Join(person, "Local"))
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(person, "config"))
-	t.Setenv("XDG_CACHE_HOME", filepath.Join(person, "cache"))
-	t.Setenv("HOME", person)
+	if err := personfolders.Under(person, t.Setenv); err != nil {
+		t.Fatal(err)
+	}
 	return person
 }
 

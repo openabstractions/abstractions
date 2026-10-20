@@ -20,7 +20,7 @@ var citedTag = regexp.MustCompile(`\[([A-Z]+-[A-Z]*[0-9]+)\]`)
 
 // ruleDocuments lists the pages checked for a declared tag at one ancestor
 // directory of declaredTags' walk to the root: the two fixed language pages,
-// and every CONTRACT.md or SPEC.md the tree currently holds under an
+// the conventions page beside each (idl/CONVENTIONS.md), and every CONTRACT.md or SPEC.md the tree currently holds under an
 // abstraction-* directory, read from dir itself (the public, flat form) and
 // from dir/openabstractions-flat (the private form), because the walk passes
 // through both trees on its way to the root. Derived from the tree rather
@@ -29,7 +29,7 @@ var citedTag = regexp.MustCompile(`\[([A-Z]+-[A-Z]*[0-9]+)\]`)
 // and ASK ids were invisible to every rule that read it (gate rules the
 // reviews asked for, 2026-09-23).
 func ruleDocuments(dir string) []string {
-	out := []string{"LANGUAGE.md", "idl/LANGUAGE.md"}
+	out := []string{"LANGUAGE.md", "idl/LANGUAGE.md", "CONVENTIONS.md", "idl/CONVENTIONS.md"}
 	for _, prefix := range []string{"", "openabstractions-flat"} {
 		entries, err := os.ReadDir(filepath.Join(dir, filepath.FromSlash(prefix)))
 		if err != nil {

@@ -1,0 +1,407 @@
+using Raw = std::string
+class Refusal : public std::runtime_error
+  const char* word
+  std::size_t offset
+enum class CommandClass {Read, Reveal, Propose, Edit, Commit, Destroy, Spend, Send}
+inline constexpr std::string_view wire_name(CommandClass value)
+inline std::optional<CommandClass> parse_command_class(std::string_view name)
+inline constexpr bool operator==(CommandClass value, std::string_view name)
+inline constexpr bool operator!=(CommandClass value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, CommandClass value)
+inline constexpr bool operator!=(std::string_view name, CommandClass value)
+inline const std::vector<std::string> kCommandClassNames
+enum class CommandOutcome {Applied, Proposed, Accepted, Conflict, Stale, Invalid, Unsupported, Forbidden, NotPermitted, Refused, Exhausted, NotFound, Unknown, Unavailable, Failed}
+inline constexpr std::string_view wire_name(CommandOutcome value)
+inline std::optional<CommandOutcome> parse_command_outcome(std::string_view name)
+inline constexpr bool operator==(CommandOutcome value, std::string_view name)
+inline constexpr bool operator!=(CommandOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, CommandOutcome value)
+inline constexpr bool operator!=(std::string_view name, CommandOutcome value)
+inline const std::vector<std::string> kCommandOutcomeNames
+enum class ReadingOutcome {Page, Gap, Conflict, Stale, Invalid, Unsupported, NotPermitted, Refused, Exhausted, NotFound, Unavailable}
+inline constexpr std::string_view wire_name(ReadingOutcome value)
+inline std::optional<ReadingOutcome> parse_reading_outcome(std::string_view name)
+inline constexpr bool operator==(ReadingOutcome value, std::string_view name)
+inline constexpr bool operator!=(ReadingOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ReadingOutcome value)
+inline constexpr bool operator!=(std::string_view name, ReadingOutcome value)
+inline const std::vector<std::string> kReadingOutcomeNames
+enum class FieldRole {Ordinary, Derived, Ephemeral, Secret}
+inline constexpr std::string_view wire_name(FieldRole value)
+inline std::optional<FieldRole> parse_field_role(std::string_view name)
+inline constexpr bool operator==(FieldRole value, std::string_view name)
+inline constexpr bool operator!=(FieldRole value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, FieldRole value)
+inline constexpr bool operator!=(std::string_view name, FieldRole value)
+inline const std::vector<std::string> kFieldRoleNames
+enum class CollectionOp {Add, Remove, Move, Replace, Reset}
+inline constexpr std::string_view wire_name(CollectionOp value)
+inline std::optional<CollectionOp> parse_collection_op(std::string_view name)
+inline constexpr bool operator==(CollectionOp value, std::string_view name)
+inline constexpr bool operator!=(CollectionOp value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, CollectionOp value)
+inline constexpr bool operator!=(std::string_view name, CollectionOp value)
+inline const std::vector<std::string> kCollectionOpNames
+enum class InvokeMode {Propose, Apply}
+inline constexpr std::string_view wire_name(InvokeMode value)
+inline std::optional<InvokeMode> parse_invoke_mode(std::string_view name)
+inline constexpr bool operator==(InvokeMode value, std::string_view name)
+inline constexpr bool operator!=(InvokeMode value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, InvokeMode value)
+inline constexpr bool operator!=(std::string_view name, InvokeMode value)
+inline const std::vector<std::string> kInvokeModeNames
+inline const std::vector<std::string> kRevealStyleNames
+inline constexpr std::string_view kRevealStyleHighlight
+inline constexpr std::string_view kRevealStyleScrollTo
+inline constexpr std::string_view kRevealStyleFrame
+inline const std::vector<std::string> kVersions
+inline const std::vector<std::string> kExtensions
+inline const std::vector<std::string> kBindingTools
+inline const std::vector<std::string> kGatewayTools
+inline const std::vector<std::string> kMetaKeys
+inline const std::vector<std::string> kCommandActions
+struct ContextRef
+  std::string instance
+  std::string context
+  std::string epoch
+struct ContextEntry
+  ContextRef context
+  std::string title
+  std::string revision
+struct ContextPage
+  ReadingOutcome outcome
+  std::vector<ContextEntry> contexts
+  std::string reason
+struct KindField
+  std::string name
+  FieldRole role
+struct Kind
+  std::string name
+  std::string title
+  Raw schema
+  std::vector<KindField> fields
+struct Entity
+  std::string id
+  std::string kind
+  std::string label
+  std::string parent
+  Raw properties
+struct Collection
+  std::string parent
+  std::string kind
+  std::vector<std::string> ids
+struct Selection
+  std::string view
+  std::vector<std::string> entities
+  std::string focus
+struct ContextSnapshot
+  ReadingOutcome outcome
+  ContextRef context
+  std::string revision
+  std::vector<Entity> entities
+  std::vector<Collection> collections
+  std::vector<Selection> selections
+  std::string cursor
+  std::string reason
+struct ReadRequest
+  ContextRef context
+  std::vector<std::string> entities
+  std::string cursor
+  std::int64_t limit
+struct Change
+  std::string base_revision
+  std::string revision
+  Raw patch
+struct ChangesRequest
+  ContextRef context
+  std::string after_revision
+  std::int64_t wait_ms
+struct ChangeBatch
+  ReadingOutcome outcome
+  ContextRef context
+  std::vector<Change> changes
+  std::string revision
+  std::string reason
+struct CommandSpec
+  std::string name
+  std::string title
+  std::string description
+  CommandClass class_
+  Raw input_schema
+  Raw output_schema
+  std::vector<std::string> targets
+  bool proposable
+  bool undoable
+  bool idempotent
+  bool long_running
+struct ContextBounds
+  std::int64_t snapshot_bytes
+  std::int64_t change_bytes
+  std::int64_t retained_revisions
+  std::int64_t pending_proposals
+  std::int64_t calls_in_flight
+struct Description
+  std::string version
+  std::vector<Kind> kinds
+  std::vector<CommandSpec> commands
+  std::vector<std::string> extensions
+  ContextBounds bounds
+struct DescriptionResult
+  ReadingOutcome outcome
+  std::optional<Description> description
+  std::string reason
+struct Invocation
+  ContextRef context
+  Raw arguments
+  InvokeMode mode
+  std::string expected_revision
+  std::string idempotency_key
+  std::string proposal
+struct CommandResult
+  CommandOutcome outcome
+  std::string reason
+  std::string revision
+  std::string proposal
+  std::string summary
+  std::string job
+  Raw effects
+  std::string undo_group
+  std::string idempotency_key
+struct Reveal
+  ContextRef context
+  std::vector<std::string> entities
+  std::string style
+struct UndoRequest
+  ContextRef context
+  std::string undo_group
+  std::string expected_revision
+  std::string idempotency_key
+struct JobRequest
+  std::string instance
+  std::string job
+struct DeclaredCommand
+  std::string name
+  CommandClass class_
+struct CommandDeclaration
+  std::string version
+  std::vector<DeclaredCommand> commands
+struct ApplicationsQuery
+  std::string application
+struct ListedInstance
+  std::string instance
+  std::string interface
+  std::vector<ContextEntry> contexts
+  std::string reason
+struct ListedApplication
+  std::string application
+  std::string title
+  std::vector<ListedInstance> instances
+struct ListedOpenVerb
+  std::string name
+  std::string description
+  Raw input_schema
+struct ApplicationOpenVerbs
+  std::string application
+  std::vector<ListedOpenVerb> verbs
+struct ApplicationListing
+  ReadingOutcome outcome
+  std::vector<ListedApplication> applications
+  std::string reason
+  std::vector<ApplicationOpenVerbs> open_verbs
+struct CommandsQuery
+  std::string application
+  std::string instance
+struct CommandListing
+  ReadingOutcome outcome
+  std::string application
+  std::string instance
+  std::vector<CommandSpec> commands
+  std::string reason
+struct GatewayCall
+  std::string application
+  std::string instance
+  std::string tool
+  Raw arguments
+  std::optional<InvokeMode> mode
+  std::string expected_revision
+  std::string idempotency_key
+  std::string context
+  std::string proposal
+  std::optional<bool> require_read_permit
+struct CallRecord
+  std::string subject
+  std::string client_label
+  std::string application
+  std::string instance
+  std::optional<ContextRef> context
+  std::string command
+  std::optional<CommandClass> class_
+  std::string revision_before
+  std::string revision_after
+  std::string outcome
+  std::string reason
+  std::string idempotency_key
+  std::string arguments_digest
+  std::string result_digest
+struct Envelope
+  std::optional<DescriptionResult> description
+  std::optional<ContextPage> contexts
+  std::optional<ReadRequest> read
+  std::optional<ContextSnapshot> snapshot
+  std::optional<ChangesRequest> changes_request
+  std::optional<ChangeBatch> changes
+  std::optional<Invocation> invocation
+  std::optional<CommandResult> result
+  std::optional<Reveal> reveal
+  std::optional<UndoRequest> undo
+  std::optional<JobRequest> job
+  std::optional<CommandDeclaration> declaration
+  std::optional<CallRecord> record
+  std::optional<ApplicationsQuery> applications_query
+  std::optional<ApplicationListing> applications
+  std::optional<CommandsQuery> commands_query
+  std::optional<CommandListing> commands
+  std::optional<GatewayCall> call
+inline std::string encode(const Envelope& v)
+inline Envelope decode(std::string_view data)
+T from_json(std::string_view data)
+inline std::string to_json(const ContextRef& v)
+inline ContextRef from_json<ContextRef>(std::string_view data)
+inline std::string to_json(const ContextEntry& v)
+inline ContextEntry from_json<ContextEntry>(std::string_view data)
+inline std::string to_json(const ContextPage& v)
+inline ContextPage from_json<ContextPage>(std::string_view data)
+inline std::string to_json(const KindField& v)
+inline KindField from_json<KindField>(std::string_view data)
+inline std::string to_json(const Kind& v)
+inline Kind from_json<Kind>(std::string_view data)
+inline std::string to_json(const Entity& v)
+inline Entity from_json<Entity>(std::string_view data)
+inline std::string to_json(const Collection& v)
+inline Collection from_json<Collection>(std::string_view data)
+inline std::string to_json(const Selection& v)
+inline Selection from_json<Selection>(std::string_view data)
+inline std::string to_json(const ContextSnapshot& v)
+inline ContextSnapshot from_json<ContextSnapshot>(std::string_view data)
+inline std::string to_json(const ReadRequest& v)
+inline ReadRequest from_json<ReadRequest>(std::string_view data)
+inline std::string to_json(const Change& v)
+inline Change from_json<Change>(std::string_view data)
+inline std::string to_json(const ChangesRequest& v)
+inline ChangesRequest from_json<ChangesRequest>(std::string_view data)
+inline std::string to_json(const ChangeBatch& v)
+inline ChangeBatch from_json<ChangeBatch>(std::string_view data)
+inline std::string to_json(const CommandSpec& v)
+inline CommandSpec from_json<CommandSpec>(std::string_view data)
+inline std::string to_json(const ContextBounds& v)
+inline ContextBounds from_json<ContextBounds>(std::string_view data)
+inline std::string to_json(const Description& v)
+inline Description from_json<Description>(std::string_view data)
+inline std::string to_json(const DescriptionResult& v)
+inline DescriptionResult from_json<DescriptionResult>(std::string_view data)
+inline std::string to_json(const Invocation& v)
+inline Invocation from_json<Invocation>(std::string_view data)
+inline std::string to_json(const CommandResult& v)
+inline CommandResult from_json<CommandResult>(std::string_view data)
+inline std::string to_json(const Reveal& v)
+inline Reveal from_json<Reveal>(std::string_view data)
+inline std::string to_json(const UndoRequest& v)
+inline UndoRequest from_json<UndoRequest>(std::string_view data)
+inline std::string to_json(const JobRequest& v)
+inline JobRequest from_json<JobRequest>(std::string_view data)
+inline std::string to_json(const DeclaredCommand& v)
+inline DeclaredCommand from_json<DeclaredCommand>(std::string_view data)
+inline std::string to_json(const CommandDeclaration& v)
+inline CommandDeclaration from_json<CommandDeclaration>(std::string_view data)
+inline std::string to_json(const ApplicationsQuery& v)
+inline ApplicationsQuery from_json<ApplicationsQuery>(std::string_view data)
+inline std::string to_json(const ListedInstance& v)
+inline ListedInstance from_json<ListedInstance>(std::string_view data)
+inline std::string to_json(const ListedApplication& v)
+inline ListedApplication from_json<ListedApplication>(std::string_view data)
+inline std::string to_json(const ListedOpenVerb& v)
+inline ListedOpenVerb from_json<ListedOpenVerb>(std::string_view data)
+inline std::string to_json(const ApplicationOpenVerbs& v)
+inline ApplicationOpenVerbs from_json<ApplicationOpenVerbs>(std::string_view data)
+inline std::string to_json(const ApplicationListing& v)
+inline ApplicationListing from_json<ApplicationListing>(std::string_view data)
+inline std::string to_json(const CommandsQuery& v)
+inline CommandsQuery from_json<CommandsQuery>(std::string_view data)
+inline std::string to_json(const CommandListing& v)
+inline CommandListing from_json<CommandListing>(std::string_view data)
+inline std::string to_json(const GatewayCall& v)
+inline GatewayCall from_json<GatewayCall>(std::string_view data)
+inline std::string to_json(const CallRecord& v)
+inline CallRecord from_json<CallRecord>(std::string_view data)
+inline std::string to_json(const Envelope& v)
+inline Envelope from_json<Envelope>(std::string_view data)
+inline std::string encode_context_ref(const ContextRef& v)
+inline ContextRef decode_context_ref(std::string_view in)
+inline std::string encode_context_entry(const ContextEntry& v)
+inline ContextEntry decode_context_entry(std::string_view in)
+inline std::string encode_context_page(const ContextPage& v)
+inline ContextPage decode_context_page(std::string_view in)
+inline std::string encode_kind_field(const KindField& v)
+inline KindField decode_kind_field(std::string_view in)
+inline std::string encode_kind(const Kind& v)
+inline Kind decode_kind(std::string_view in)
+inline std::string encode_entity(const Entity& v)
+inline Entity decode_entity(std::string_view in)
+inline std::string encode_collection(const Collection& v)
+inline Collection decode_collection(std::string_view in)
+inline std::string encode_selection(const Selection& v)
+inline Selection decode_selection(std::string_view in)
+inline std::string encode_context_snapshot(const ContextSnapshot& v)
+inline ContextSnapshot decode_context_snapshot(std::string_view in)
+inline std::string encode_read_request(const ReadRequest& v)
+inline ReadRequest decode_read_request(std::string_view in)
+inline std::string encode_change(const Change& v)
+inline Change decode_change(std::string_view in)
+inline std::string encode_changes_request(const ChangesRequest& v)
+inline ChangesRequest decode_changes_request(std::string_view in)
+inline std::string encode_change_batch(const ChangeBatch& v)
+inline ChangeBatch decode_change_batch(std::string_view in)
+inline std::string encode_command_spec(const CommandSpec& v)
+inline CommandSpec decode_command_spec(std::string_view in)
+inline std::string encode_context_bounds(const ContextBounds& v)
+inline ContextBounds decode_context_bounds(std::string_view in)
+inline std::string encode_description(const Description& v)
+inline Description decode_description(std::string_view in)
+inline std::string encode_description_result(const DescriptionResult& v)
+inline DescriptionResult decode_description_result(std::string_view in)
+inline std::string encode_invocation(const Invocation& v)
+inline Invocation decode_invocation(std::string_view in)
+inline std::string encode_command_result(const CommandResult& v)
+inline CommandResult decode_command_result(std::string_view in)
+inline std::string encode_reveal(const Reveal& v)
+inline Reveal decode_reveal(std::string_view in)
+inline std::string encode_undo_request(const UndoRequest& v)
+inline UndoRequest decode_undo_request(std::string_view in)
+inline std::string encode_job_request(const JobRequest& v)
+inline JobRequest decode_job_request(std::string_view in)
+inline std::string encode_declared_command(const DeclaredCommand& v)
+inline DeclaredCommand decode_declared_command(std::string_view in)
+inline std::string encode_command_declaration(const CommandDeclaration& v)
+inline CommandDeclaration decode_command_declaration(std::string_view in)
+inline std::string encode_applications_query(const ApplicationsQuery& v)
+inline ApplicationsQuery decode_applications_query(std::string_view in)
+inline std::string encode_listed_instance(const ListedInstance& v)
+inline ListedInstance decode_listed_instance(std::string_view in)
+inline std::string encode_listed_application(const ListedApplication& v)
+inline ListedApplication decode_listed_application(std::string_view in)
+inline std::string encode_listed_open_verb(const ListedOpenVerb& v)
+inline ListedOpenVerb decode_listed_open_verb(std::string_view in)
+inline std::string encode_application_open_verbs(const ApplicationOpenVerbs& v)
+inline ApplicationOpenVerbs decode_application_open_verbs(std::string_view in)
+inline std::string encode_application_listing(const ApplicationListing& v)
+inline ApplicationListing decode_application_listing(std::string_view in)
+inline std::string encode_commands_query(const CommandsQuery& v)
+inline CommandsQuery decode_commands_query(std::string_view in)
+inline std::string encode_command_listing(const CommandListing& v)
+inline CommandListing decode_command_listing(std::string_view in)
+inline std::string encode_gateway_call(const GatewayCall& v)
+inline GatewayCall decode_gateway_call(std::string_view in)
+inline std::string encode_call_record(const CallRecord& v)
+inline CallRecord decode_call_record(std::string_view in)
+inline std::string encode_envelope(const Envelope& v)
+inline Envelope decode_envelope(std::string_view in)

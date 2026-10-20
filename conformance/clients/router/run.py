@@ -17,7 +17,7 @@ import uuid
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 from workspace import (ROOT, layer, environment, cmake_for, certify_compiler, source_revision, CERTIFIES,
-                       DRY_RUN_HELP, dry_run_stop, fixture_endpoints, host_program, consumer_executable)
+                       DRY_RUN_HELP, dry_run_stop, fixture_endpoints, host_program, consumer_executable, ReadinessOutput)
 
 parser = argparse.ArgumentParser(description=__doc__ + '\n' + CERTIFIES)
 parser.add_argument('--run', action='store_true', help='build and run the isolated C++ service proof')
@@ -81,11 +81,9 @@ for mode in ['normal', 'empty']:
         command = [str(host), '--endpoint', endpoints['router'], '--resolver', endpoints['resolver'], '--trace', str(trace)]
         if mode == 'empty': command.append('--empty')
         server = subprocess.Popen(command, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8')
-        ready = queue.Queue()
-        threading.Thread(target=lambda: ready.put(server.stdout.readline()), daemon=True).start()
+        ready = ReadinessOutput(server)
         try:
-            if not ready.get(timeout=20).startswith('router-v1: listening'):
-                raise RuntimeError('host failed before readiness')
+            ready.expect('router-v1: listening', prefix=True, timeout=20)
             run([executable, mode], cwd=home, environment=client_env)
             assert server.poll() is None, 'host exited with client'
             assert not list(home.rglob('*')), 'client created local state'
@@ -93,10 +91,9 @@ for mode in ['normal', 'empty']:
             assert all(method == 'GET' for method in methods), 'router mutated a model host'
             if mode == 'normal': assert methods, 'provider hosts were never read'
         finally:
-            if server.poll() is None: server.kill()
-            stdout, stderr = server.communicate(timeout=10)
+            stdout, stderr = ready.finish()
             if stderr: print(stderr, end='')
         run([executable, 'absent'], cwd=home, environment=client_env)
         assert not list(home.rglob('*')), 'absent-service fallback created state'
 print('PASS: installed C++ client -> generated RPC -> shared IPC -> identity-bound Go router provider')
-print('Scope: Models/Hosts/Pick/Offer subset on ' + ('Windows' if windows else 'Linux') + '; no GPU-cost, HTTP-window or OS-installation claim.')
+print('Scope: Models/Hosts/Pick/Offer/ObserveOffer subset on ' + ('Windows' if windows else 'Linux') + '; no GPU-cost, HTTP-window or OS-installation claim.')

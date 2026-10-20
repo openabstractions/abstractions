@@ -38,7 +38,7 @@ func TestLiveNativePermissionPrompt(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	id := ask(t, book, "hp8-live", *hp8Program, *hp8Action, *hp8Resource)
-	records, err := listQuestions(ctx, operator)
+	records, err := listPresenterQuestions(ctx, operator)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,14 +85,7 @@ func TestLiveNativePermissionPrompt(t *testing.T) {
 					t.Log("the session locked while the prompt was open; nothing was sent, presenting again after unlock")
 					continue
 				}
-				if report.Show {
-					done := make(chan struct{})
-					w.Do(func() {
-						defer close(done)
-						_ = win.ShowQuestionResult(trayDialogText(report.Title), trayDialogText(report.Instruction), trayDialogText(report.Content), "HP8 demonstration: no rights rule was written.", win.PromptLevel(reportPromptLevel()))
-					})
-					<-done
-				}
+				t.Logf("report: %+v", report)
 				return
 			}
 		}()
@@ -100,7 +93,7 @@ func TestLiveNativePermissionPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	after, err := listQuestions(context.Background(), operator)
+	after, err := listPresenterQuestions(context.Background(), operator)
 	if err != nil {
 		t.Fatal(err)
 	}

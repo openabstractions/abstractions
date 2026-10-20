@@ -6,7 +6,8 @@
 // <panel URL>, then prints what the page shows as one JSON object. The Go
 // test makes the assertions, so the page is checked against the handler's
 // real replies instead of a hand-written fixture.
-const fs = require('fs'), vm = require('vm'), path = require('path');
+const fs = require('fs'), path = require('path');
+const {vm} = require('../panel_record_test_helper');
 
 const monitor = path.join(__dirname, '..');
 function constant(file, name) {
@@ -54,7 +55,8 @@ if (!base || !key) throw Error('usage: node testdata/rights_page_handler.js <pan
  context.window = context;
  vm.runInNewContext(plainScript(), context);
  vm.runInNewContext(rightsScript(), context);
- for (const ready of ['choicesReady', 'questionsReady', 'rightsDeviceHoldersReady', 'rightsSelfReady', 'rightsListReady', 'delegationReady', 'assistantReadyPromise', 'answeredReady']) {
+ if (mode === 'fixture-error') throw Error('fixture failure while page arrivals are pending');
+ for (const ready of ['choicesReady', 'questionsReady', 'rightsDeviceHoldersReady', 'rightsSelfReady', 'rightsListReady', 'permissionsReady', 'assistantReadyPromise', 'answeredReady']) {
   await context[ready];
  }
  // A listed item is a wrapper whose first child is its oa-row: the text
@@ -66,8 +68,6 @@ if (!base || !key) throw Error('usage: node testdata/rights_page_handler.js <pan
   choicesStatus: element('choices-status').textContent,
   choices: element('choices-list').children.filter(box => box.children.length).map(item),
   choiceHistory: element('choices-history-list').children.filter(box => box.children.length).map(item),
-  delegationStatus: element('delegation-status').textContent,
-  delegationRequests: element('delegation-question').children.map(o => ({value: o.value, text: o.textContent})),
   questionsStatus: element('questions-status').textContent,
   questions: element('questions-list').children.filter(box => box.children.length).map(item),
   assistantStatus: element('assistant-status').textContent,
@@ -86,6 +86,31 @@ if (!base || !key) throw Error('usage: node testdata/rights_page_handler.js <pan
   if(!download)throw Error('no download switch: '+JSON.stringify(report.defaults));
   const toggle=itemControls(download)[0];toggle.checked=false;await toggle.onchange();
   report.defaultsAfter=rows();report.defaultsAfterStatus=element('defaults-status').textContent;
+ }
+ if(mode==='defaults-twice') {
+  // Off, then on again while the first write is still saving: the switch
+  // stays usable and the second choice is saved after the first.
+  const rows=()=>element('defaults-list').children.filter(box=>box.children.length).map(box=>{const toggle=itemControls(box)[0];return {lines:box.children[0].children[0].children.map(c=>c.textContent),on:!!toggle.checked,disabled:!!toggle.disabled}});
+  await context.defaultsList();
+  const download=()=>element('defaults-list').children.find(box=>box.children.length&&box.children[0].children[0].children[0].textContent==='Download in the background');
+  if(!download())throw Error('no download switch: '+JSON.stringify(rows()));
+  const toggle=itemControls(download())[0];
+  toggle.checked=false;const first=toggle.onchange();
+  report.defaults=rows();
+  if(!toggle.disabled){toggle.checked=true;await Promise.all([first,toggle.onchange()])}else await first;
+  report.defaultsAfter=rows();report.defaultsAfterStatus=element('defaults-status').textContent;
+ }
+ if(mode==='agents') {
+  // Messages between agents: the switch on arrival, then Ask me first
+  // turned off and on again.
+  const ask=element('agent-messages-ask'),state=()=>({on:!!ask.checked,disabled:!!ask.disabled,hidden:!!ask.hidden,status:element('agent-messages-status').textContent});
+  await context.defaultsList();
+  report.agents=[state()];
+  if(!ask.disabled){
+   ask.checked=false;await ask.onchange();report.agents.push(state());
+   report.agentsSaved=(await (await context.fetch('/rights/defaults',{headers:{'X-Panel-Key':key}})).json()).Agents;
+   ask.checked=true;await ask.onchange();report.agents.push(state());
+  }
  }
  if(mode==='typed') {
   const self=(await (await context.fetch('/explore',{headers:{'X-Panel-Key':key}})).json()).self;
@@ -127,4 +152,4 @@ if (!base || !key) throw Error('usage: node testdata/rights_page_handler.js <pan
   element('rights-broad-confirm').checked=true;await submit('origin-remove');
  }
  process.stdout.write(JSON.stringify(report));
-})().catch(e => { console.error(e && e.stack || String(e)); process.exit(1) });
+})().catch(e => { console.error(e && e.stack || String(e)); process.exitCode = 1 });

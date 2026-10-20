@@ -3,9 +3,17 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,14 +21,245 @@ import (
 	askclient "github.com/openabstractions/abstraction-asks/go/client"
 	credentials "github.com/openabstractions/abstraction-credentials/go"
 	cwire "github.com/openabstractions/abstraction-credentials/go/abstraction/credentials/api"
+	credservice "github.com/openabstractions/abstraction-credentials/go/service"
 	download "github.com/openabstractions/abstraction-download/go"
 	request "github.com/openabstractions/abstraction-download/go/abstraction/download/request"
 	downloadserve "github.com/openabstractions/abstraction-download/go/serve"
 	"github.com/openabstractions/abstraction-facade/go/client"
 	"github.com/openabstractions/abstraction-facade/go/grants"
+	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	api "github.com/openabstractions/abstraction-job/go/abstraction/job/acceptance"
+	"github.com/openabstractions/abstraction-job/go/acceptanceprovider"
+	rights "github.com/openabstractions/abstraction-rights/go"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 )
+
+// P-K1's fixture backend never opens a platform credential store. All values
+// belong to the synthetic operator/receiver; the adopter sends names only.
+type privateReleaseMemory struct {
+	mu     sync.Mutex
+	values map[string][]byte
+}
+
+func (*privateReleaseMemory) Name() string        { return "private-release-fixture" }
+func (*privateReleaseMemory) MaxSecretBytes() int { return credentials.MaxSecretBytes }
+func (m *privateReleaseMemory) Put(key string, value []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.values[key] = slices.Clone(value)
+	return nil
+}
+func (m *privateReleaseMemory) Get(key string) ([]byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	v, ok := m.values[key]
+	if !ok {
+		return nil, credentials.ErrNotFound
+	}
+	return slices.Clone(v), nil
+}
+func (m *privateReleaseMemory) Delete(key string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	clear(m.values[key])
+	delete(m.values, key)
+	return nil
+}
+
+func TestPrivateReleaseFixtureHostRedirectRotationAndRevoke(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	r := testRights(t, t.TempDir())
+	holder, err := credentials.Open(credentials.Config{Backend: &privateReleaseMemory{values: map[string][]byte{}}, Namespace: "private-release-fixture"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &runtimeCredentials{runtimeRights: r, holder: holder, host: &credservice.Host{}}
+	c.host.Authorization = credservice.AuthorizationConfig{Admit: c.admitScoped, Quiet: c.checkScoped, Legacy: c.checkLegacy}
+	r.configure(&host.Options{Credentials: c.host, OnError: func(err error) { t.Error(err) }}, nil)
+	if err := r.install(cwire.ResourceActions, nil); err != nil {
+		t.Fatal(err)
+	}
+	// Source-shaped typed policy, deliberately no native transport claim here.
+	program := r.operators[0]
+	subject := rwire.Subject{Account: r.owner, Program: program}
+	target, err := credentials.PrepareCredentialTarget("private-release")
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection := rwire.PermissionSelection{Permission: rwire.PermissionKey{Action: credentials.ActionApply, ResourceProfile: credentials.ScopedUseResourceProfile}, Selector: rwire.ResourceSelector{Kind: rwire.ResourceSelectorKindOne, Target: target}}
+	selection, err = r.policy.Definitions.PrepareSelection(selection)
+	if err != nil {
+		t.Fatal("typed fixture selection unavailable")
+	}
+	revision, _, err := r.policy.SelectorSnapshotContext(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	permit, err := r.policy.SetSelectorRuleContext(ctx, revision, rwire.SelectorRule{Subject: subject, Selection: selection, Permit: true}, rights.RuleEdit{By: subject, Why: "private release fixture"}, func() error { return nil })
+	if err != nil || permit.Outcome != rwire.PolicyEditOutcomeApplied {
+		t.Fatalf("typed fixture permission: %s %v", permit.Outcome, err)
+	}
+	operator := cwire.Subject{Account: r.owner, Program: program}
+	first, second := []byte("P_K1_FAKE_FIRST_VALUE"), []byte("P_K1_FAKE_REPLACEMENT_VALUE")
+	stored := holder.Store(operator, "", cwire.Registration{Name: "private-release", Kind: "bearer", Scope: cwire.Scope{Targets: []string{"127.0.0.1"}, Consumers: []string{downloadserve.CredentialConsumer}}, Secret: slices.Clone(first)})
+	if stored.Outcome != cwire.StoreOutcomeStored {
+		t.Fatal("operator registration failed")
+	}
+	body := []byte("private release fixture asset\n")
+	var mu sync.Mutex
+	expected := string(first)
+	protected, unbound := 0, 0
+	var targetURL string
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		if strings.HasPrefix(req.Host, "localhost:") {
+			unbound++
+			if req.Header.Get("Authorization") != "" {
+				t.Error("unbound redirect received Authorization")
+			}
+			http.ServeContent(w, req, "asset", time.Time{}, bytes.NewReader(body))
+			return
+		}
+		protected++
+		if req.Header.Get("Authorization") != "Bearer "+expected {
+			http.Error(w, "fixture authentication refused", http.StatusUnauthorized)
+			return
+		}
+		if req.URL.Path == "/redirect" {
+			http.Redirect(w, req, targetURL+"/asset", http.StatusTemporaryRedirect)
+			return
+		}
+		http.ServeContent(w, req, "asset", time.Time{}, bytes.NewReader(body))
+	}))
+	defer origin.Close()
+	targetURL = strings.Replace(origin.URL, "127.0.0.1", "localhost", 1)
+	root := t.TempDir()
+	p, err := acceptanceprovider.OpenWithExecutor(root, "private-release-fixture", downloadserve.HTTPExecution{Credentials: c})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bound := acceptanceprovider.AuthenticatedSubject{AccountKind: "windows", Account: r.owner, Executable: program, Program: program}
+	// LocalSubjectScope owns scope encoding; this fixture supplies synthetic
+	// receiving evidence instead of asserting a real OS peer measurement.
+	if runtime.GOOS != "windows" {
+		bound.AccountKind = "posix"
+	}
+	scope, err := acceptanceprovider.LocalSubjectScope(bound.AccountKind, bound.Account, program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := acceptanceprovider.Binding{Scope: scope, Subject: &bound, Origin: "local"}
+	window, err := p.BindBinding(binding).GetHistoryWindow()
+	if err != nil {
+		t.Fatal(err)
+	}
+	executionDone := make(chan error, 1)
+	go func() { executionDone <- p.Execute(ctx) }()
+	defer func() { cancel(); <-executionDone }()
+	var retained []any
+	perform := func(key, path string, want api.AcceptanceOutcome) {
+		t.Helper()
+		spec := request.Encode(&request.Request{Artifact: request.Artifact{Size: int64(len(body)), Digest: fmt.Sprintf("sha256:%x", sha256.Sum256(body))}, Sources: []request.Source{{Scheme: "http", Locator: origin.URL + path, Credential: "private-release"}}})
+		submission := api.Submission{Identity: api.RequestIdentity{Key: key, HistoryEpoch: window.HistoryEpoch}, Kind: download.Kind, Spec: spec, RequiredGuarantees: append(slices.Clone(api.AdmissionGuarantees), request.ScopedCredentialGuarantees...)}
+		result, e := p.BindBinding(binding).Submit(submission)
+		retained = append(retained, submission, result)
+		if e != nil || result.Outcome != want {
+			t.Fatalf("submission outcome %v %v", result.Outcome, e)
+		}
+		if want != api.AcceptanceOutcomeAccepted {
+			if key == "revoked" && !strings.Contains(result.Reason, "credential:revoked:private-release") {
+				t.Fatal("revoked credential lost its named typed refusal")
+			}
+			return
+		}
+		for {
+			observed, e := p.BindOperationsBinding(binding).ObserveWork(submission.Identity)
+			if e != nil || observed.Snapshot == nil {
+				t.Fatal("missing observation")
+			}
+			retained = append(retained, observed)
+			if observed.Snapshot.State == api.WorkStateComplete {
+				return
+			}
+			if observed.Snapshot.Failure != nil || ctx.Err() != nil {
+				message := "deadline"
+				if observed.Snapshot.Failure != nil {
+					message = string(observed.Snapshot.Failure.Cause) + ":" + observed.Snapshot.Failure.Message
+				}
+				for _, value := range [][]byte{first, second} {
+					message = strings.ReplaceAll(message, string(value), "[fixture value redacted]")
+				}
+				t.Fatalf("fixture job %s did not complete: %s", key, message)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	perform("first", "/asset", api.AcceptanceOutcomeAccepted)
+	rotated := holder.Rotate(operator, stored.Revision, cwire.Rotation{Name: "private-release", Secret: slices.Clone(second)})
+	if rotated.Outcome != cwire.RotateOutcomeRotated {
+		t.Fatal("operator replacement failed")
+	}
+	mu.Lock()
+	expected = string(second)
+	mu.Unlock()
+	perform("replacement", "/asset", api.AcceptanceOutcomeAccepted)
+	perform("redirect", "/redirect", api.AcceptanceOutcomeAccepted)
+	mu.Lock()
+	beforeRequests := protected
+	redirected := unbound
+	mu.Unlock()
+	if redirected == 0 {
+		t.Fatal("unbound redirect control did not execute")
+	}
+	wrong := bound
+	wrong.Account = "unrelated-account"
+	if e := c.CheckScopedSubjectCredential(ctx, wrong, "private-release", "127.0.0.1"); e == nil {
+		t.Fatal("wrong subject permitted")
+	}
+	revoked := holder.Revoke(operator, rotated.Revision, "private-release")
+	if revoked.Outcome != cwire.RevokeOutcomeRevoked {
+		t.Fatal("operator revoke failed")
+	}
+	perform("revoked", "/asset", api.AcceptanceOutcomeInvalid)
+	mu.Lock()
+	afterRequests := protected
+	mu.Unlock()
+	if afterRequests != beforeRequests {
+		t.Fatal("revoked application reached protected source")
+	}
+	retained = append(retained, holder.Audit(r.owner, "", 64), stored, rotated, revoked)
+	raw, err := json.Marshal(retained)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range [][]byte{first, second} {
+		if bytes.Contains(raw, value) {
+			t.Fatal("credential entered job/reply/audit")
+		}
+	}
+	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		data, e := os.ReadFile(path)
+		if e != nil {
+			return e
+		}
+		for _, value := range [][]byte{first, second} {
+			if bytes.Contains(data, value) {
+				t.Error("credential entered retained job files")
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestNativeRawReadMissingPermissionAnswerRetryRevoke(t *testing.T) {
 	if !statusTransportProvesProgram(t) {

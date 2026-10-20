@@ -1,3 +1,4 @@
+import {runtimeConnector} from './runtime-connector.js';
 import {createHash} from 'node:crypto';
 
 const digestPattern = /^sha256:[0-9a-f]{64}$/;
@@ -59,13 +60,12 @@ export async function readDelivery(reader, delivery, {mediaTypes, maxBytes, what
 
 /** The caller's OA content reader on this machine. */
 export async function resolveContentReader(options, signal) {
-  const [{Machine}, {ContentReaderClient}, {BunNativeConnector}] = await Promise.all([
+  const [{Machine}, {ContentReaderClient}] = await Promise.all([
     import('@openabstractions/facade'),
     import('@openabstractions/storage-content'),
-    import('@openabstractions/ipc/bun'),
   ]);
   const machine = new Machine(options?.runtimeEndpoint ?? null, {
-    connector: new BunNativeConnector(), timeout: 30000, cancellation: signal,
+    connector: await runtimeConnector(), timeout: 30000, cancellation: signal,
     server: options?.server ?? null,
   });
   return new ContentReaderClient(await machine.resolveService(contentReaderContract, {scope: 'local'}));

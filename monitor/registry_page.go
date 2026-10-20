@@ -4,18 +4,20 @@ package main
 // reaches with their spend, the inference gateway and its gateway keys (all
 // three moved here from Models by the Panel pages audit,
 // research/adopter-boundary/AUDIT-2026-10-06.md, with their script in
-// serversScript), the model inventory, the
+// serversScript), the
 // providers registered in abstraction.facade/registry@1 with their readiness
 // and described services, and the model servers remote runtimes report. Its
 // words follow research/vocabulary/DECISION.md: Providers and Registered
 // providers (D41, D42), model server (D11), modality (D82) and the three
 // role phrases of D10; the wire role values provider, host and remote stay.
+// The model inventory it once showed is the Models page's On this computer
+// (backlog/P-J1a.md, Models page, 2026-11-01): one place for models.
 // It renders every value as text and calls the panel's loopback endpoints for
 // readings and public IPC edits.
 //
 // Its shape follows the Panel redesign (research/panel-redesign/SPEC.md §4,
-// slice S8): one caption, "Where models run."; the server list is the one
-// table; every form is a set of choosers. A model server is picked from the
+// slice S8): one caption, "Where models run."; server lists use shared
+// settings rows; every form is a set of choosers. A server is picked from the
 // kinds and addresses the runtime already knows (the servers registered so
 // far and the model servers providers declared), a hosted API from the two
 // wire formats, and a typed name or address appears only behind "Other…".
@@ -31,8 +33,8 @@ func oaEmptyHidden(id, sentence string) string {
 }
 
 var registryPage = oaPageHead("registry", "Providers", "Where models run.") + `<div data-ready-owner="page" hidden></div>` +
-	`<section id="hosts-section" class="oa-group"><h2>Model servers</h2>` + oaStatus("hosts-status") +
-	`<div class="oa-table"><table><thead><tr><th>Name</th><th>Kind</th><th>Credential</th><th>State</th><th>Spend today</th><th>Budget</th><th></th></tr></thead><tbody id="hosts"></tbody></table></div>` + oaEmptyHidden("hosts-empty", "No model servers registered.") +
+	`<section id="hosts-section" data-runtime-echo class="oa-group"><h2>Model servers</h2>` + oaStatus("hosts-status") +
+	`<div id="hosts"></div>` + oaEmptyHidden("hosts-empty", "No model servers registered.") +
 	oaExpander("Add a model server", `<form id="host-add">`+
 		oaRow("API", "", `<select id="host-wire" aria-label="API"><option value="">Local server</option><option value="openai-compatible">Hosted, OpenAI-compatible</option><option value="anthropic-messages">Hosted, Anthropic Messages</option></select>`, "")+
 		oaRow("Server", "", `<select id="host-name-select" aria-label="Server"></select><input id="host-name" aria-label="Server name" data-oa-other hidden>`, "")+
@@ -41,107 +43,75 @@ var registryPage = oaPageHead("registry", "Providers", "Where models run.") + `<
 		oaRow("Key", "", `<select id="host-credential" aria-label="Key"><option value="">None</option></select>`, "")+
 		oaRow("Tokens per day", "", `<select id="host-tokens" aria-label="Tokens per day"><option value="0">No limit</option><option value="100000">100,000</option><option value="1000000">1,000,000</option><option value="10000000">10,000,000</option></select>`, "")+
 		oaRow("Spend per day", "", `<select id="host-micros" aria-label="Spend per day"><option value="0">No limit</option><option value="1">1.00</option><option value="5">5.00</option><option value="20">20.00</option></select>`, "")+
-		oaRow("Add this server", "", `<button id="host-add-button" type="submit" class="oa-primary" data-status="hosts-status">Add model server</button>`, "")+
+		oaRow("Add this server", "", `<button id="host-add-button" type="submit" class="oa-primary" data-status="host-add-status">Add model server</button>`, "host-add-status")+
 		`</form>`) + `</section>
-<section id="gateway" class="oa-group"><h2>Inference gateway</h2><p class="oa-caption">A local address for apps that speak the OpenAI or Anthropic API.</p><form id="gateway-set">` +
+<section id="gateway" data-runtime-echo class="oa-group"><h2>Inference gateway</h2><p class="oa-caption">A local address for apps that speak the OpenAI or Anthropic API.</p><form id="gateway-set">` +
 	oaRow("Address", "", `<select id="gateway-address" aria-label="Address"></select><input id="gateway-address-other" aria-label="Other address" data-oa-other hidden>`, "") +
 	oaRow("Gateway", "", `<input type="checkbox" class="switch" id="gateway-switch" aria-label="Gateway">`, "gateway-status") +
 	`</form></section>
-<section id="keys-section" class="oa-group"><h2>Gateway keys</h2><p class="oa-caption">Keys that let one app use the gateway, each shown once.</p>` + oaStatus("keys-status") +
+<section id="keys-section" data-runtime-echo class="oa-group"><h2>App keys</h2><p class="oa-caption">Give an app a key to use your models.</p>` + oaStatus("keys-status") +
 	`<div class="oa-table"><table><thead><tr><th>Program</th><th>State</th><th>Credential</th><th>Issued</th><th>Issued by</th><th></th></tr></thead><tbody id="keys"></tbody></table></div>` + oaEmptyHidden("keys-empty", "No keys issued.") +
 	oaExpander("Issue a key", `<form id="key-issue">`+
 		oaRow("Program", "", `<select id="key-program-select" aria-label="Program"></select><input id="key-program" aria-label="Program" data-oa-other hidden>`, "")+
 		oaRow("Key", "", `<select id="key-credential" aria-label="Key"><option value="">None</option></select>`, "")+
 		oaRow("Issue", "", `<button id="key-issue-button" type="submit" data-status="keys-status">Issue key</button>`, "")+
 		`</form>`) + `<div id="key-shown-row" hidden>` + oaRow("New key, shown once", "Give it to that app as its API key, with the gateway as its base URL.", `<code id="key-shown" data-oa-secret></code><button id="key-copy" type="button">Copy</button>`, "key-copy-status") + `</div></section>
-<section id="providers-section" class="oa-group"><h2>Registered providers</h2><p class="oa-caption">Programs and runtimes that provide services on this device.</p>` + oaStatus("registry-status") + oaStatusLine("providers-status", false) + oaStatusLine("provider-edit-status", false) + `<div id="providers"></div>` +
-	oaExpander("Model inventory", oaStatusLine("models-status", false)+`<div class="oa-table"><table><thead><tr><th>Model family</th><th>Names and providers</th><th>Availability</th><th>Stored in</th><th>Components</th></tr></thead><tbody id="models"></tbody></table></div>`) + `</section>
-<section id="remote-section" class="oa-group"><h2>Remote runtimes</h2><p class="oa-caption">Model servers another trusted runtime reports.</p>` + oaStatusLine("remote-status", false) +
-	`<div class="oa-table"><table><thead><tr><th>Model server</th><th>Domain</th><th>Kind</th><th>Registered by</th><th>Modalities</th><th>Readiness</th></tr></thead><tbody id="remote"></tbody></table></div></section>
+<section id="providers-section" data-runtime-echo class="oa-group"><h2>Providers</h2><p class="oa-caption">Programs that provide services on this computer.</p>` + oaStatus("registry-status") + oaStatusLine("providers-status", false) + oaStatusLine("provider-edit-status", false) + `<div id="providers"></div></section>
+<section id="remote-section" data-runtime-echo class="oa-group"><h2>Other PCs' providers</h2><p class="oa-caption">Model servers other trusted PCs share.</p>` + oaStatusLine("remote-status", false) +
+	`<div id="remote"></div></section>
 <script>
 const key=new URLSearchParams(location.search).get('k');
 const el=id=>document.getElementById(id);function show(id,x){oaSetStatus(id,"ok",x)}
-// row's own titles array names, per cell, the raw value behind a plain
-// reading (task 2026-09-23, eleventh first-time visitor, finding 5: the
-// State column read a raw connection error as visible text).
-function row(tbody,cells,titles){const tr=document.createElement('tr');cells.forEach((c,i)=>{const td=document.createElement('td');td.textContent=c==null?'':String(c);if(titles&&titles[i])td.title=titles[i];tr.append(td)});el(tbody).append(tr)}
+// listRow is one Settings-style row: a label, one caption line and an
+// optional control. A raw value behind the plain words sits on the label's
+// title, never as page text.
+function listRow(label,title,caption,control){const r=document.createElement('div');r.className='oa-row';const t=document.createElement('div');t.className='oa-row-text';const l=document.createElement('span');l.className='oa-row-label';l.textContent=label;if(title)l.title=title;const c=document.createElement('span');c.className='oa-row-caption';c.textContent=caption;t.append(l,c);r.append(t);if(control){const box=document.createElement('div');box.className='oa-row-control';box.append(control);r.append(box)}return r}
 function list(x){return (x||[]).join(', ')}
-function modelAlias(a){const state=a.Servable?'available':'not served';const source=a.Hosted?'hosted':(a.Host?'local':((a.HeldIn||[]).length?'stored':'unserved'));return a.Name+' — '+(a.Host||'no model server')+' ('+source+', '+state+(a.Resident?', provider reports loaded':'')+')'}
-function modelAvailability(f){const aliases=f.Names||[];const servable=aliases.some(a=>a.Servable),resident=aliases.some(a=>a.Resident),stored=(f.HeldIn||[]).length||aliases.some(a=>(a.HeldIn||[]).length);if(servable)return aliases.some(a=>a.Servable&&a.Resident)?'Available; a provider reports a name loaded':'Available from provider';if(resident)return stored?'Stored; a provider reports loaded but cannot serve':'Provider reports loaded but cannot serve';if(stored)return 'Stored only; no server can answer';if(aliases.some(a=>a.Host))return 'Provider reports a name that is not servable';return 'No server or stored file reported'}
-function modelComponents(f){return (f.Components||[]).map(c=>c.Role+(c.Name?' ('+c.Name+')':'')+' in '+c.Store).join('; ')}
-function modelsTable(models){for(const f of models||[])row('models',[f.Family,(f.Names||[]).map(modelAlias).join('; ')||'No model names reported',modelAvailability(f),list(f.HeldIn)||'not reported',modelComponents(f)||'none'])}
-// rolePlain reads a registration's wire role (facade FAC-R6's closed enum) as
-// the Panel's phrase for it (DECISION.md D10); the wire value stays on the
-// cell's own title.
-const rolePlain={provider:'managed process',host:'model server',remote:'remote runtime'};
 // servicePlain reads a service contract ("abstraction.inference/chat@1") as
 // its layer and name ("inference chat"); the contract itself stays on the
-// cell's title, since an id is never visible page text (owner, 2026-10-06).
+// row's title, since an id is never visible page text (owner, 2026-10-06).
 function servicePlain(c){const m=/^abstraction\.([a-z0-9_-]+)\/([a-z0-9_.-]+)@\d+$/.exec(c);if(!m)return c;const name=m[2].replace(/[._-]+/g,' ');return m[1]===m[2]?m[1]:m[1]+' '+name}
-// providersTable builds the Providers table itself rather than filling a
-// fixed set of columns: Activation, Contracts, Endpoint, Program, Resources,
-// Described and Accepted each apply to some provider roles and not others (a
-// host declares none of Contracts, Endpoint or Program; a provider not yet
-// described has nothing in Described), so a column every declaration leaves
-// empty is dropped instead of printing a blank cell in every row (task
-// 2026-09-23 finding 4, the same approach card_page.go already takes for the
-// Device page's holder columns). A column that stays, because at least one
-// row carries a value, still states the meaning of an empty cell in the rows
-// that have none, rather than leave it blank.
-function providersTable(decls,revision){
- const cols={
-  activation:decls.some(p=>p.Declaration.Activation),
-  contracts:decls.some(p=>(p.Declaration.Contracts||[]).length),
-  endpoint:decls.some(p=>p.Declaration.Endpoint),
-  program:decls.some(p=>p.Declaration.Program),
-  resources:decls.some(p=>(p.Declaration.Resources||[]).length),
-  described:decls.some(p=>(p.Described||[]).length),
-  accepted:decls.some(p=>(p.Accepted||[]).length),
- };
- const headers=['Name','Role'];
- if(cols.activation)headers.push('Activation');
- if(cols.contracts)headers.push('Services');
- if(cols.endpoint)headers.push('Endpoint');
- if(cols.program)headers.push('Program');
- headers.push('Engine');
- if(cols.resources)headers.push('Resources');
- headers.push('Readiness');
- if(cols.described)headers.push('Described');
- headers.push('Restarts');
- if(cols.accepted)headers.push('Accepted');
- headers.push('Registered by');
- headers.push('Action');
- const table=document.createElement('table');
- const thead=document.createElement('thead');thead.innerHTML='<tr>'+headers.map(x=>'<th>'+x+'</th>').join('')+'</tr>';
- const tbody=document.createElement('tbody');
+// readinessPlain reads a registration's readiness as one word a person reads.
+// A provider whose program is gone reads as such; the router skips it.
+const readinessWords={ready:'Ready',refused:'Not started',unreachable:'Not reachable',disabled:'Off',starting:'Starting',stopped:'Stopped',pending:'Starting',not_ready:'Not ready'};
+function readinessPlain(r,why){if(why==='program:missing')return 'Program not found';return readinessWords[r]||(r?'State: '+String(r).replace(/_/g,' '):'Unknown')}
+// provides names what a registration offers: the plain names of its
+// contracts, or for a model server its engine kind.
+function provides(p){const d=p.Declaration;if(d.Host&&d.Host.Kind)return 'Model server ('+d.Host.Kind+')';const c=d.Contracts||[];if(p.Role==='remote')return 'Remote runtime'+(c.length?': '+c.map(servicePlain).join(', '):'');return c.length?c.map(servicePlain).join(', '):'Nothing declared'}
+// providersTable lists each registration as one row: its name, what it
+// provides and its state (Panel rules: plain rows like Windows Settings,
+// no column of wire words).
+function providersTable(decls,revision,titles){
+ const wrap=document.createElement('div');
  for(const p of decls){
-  const d=p.Declaration;
-  const cells=[d.Name,rolePlain[p.Role]||p.Role||''];
-  if(cols.activation)cells.push(d.Activation||'not set');
-  const servicesAt=cells.length;if(cols.contracts)cells.push((d.Contracts||[]).length?d.Contracts.map(servicePlain).join(', '):'none');
-  if(cols.endpoint)cells.push(d.Endpoint?d.Endpoint+(d.Remote?' ('+d.Remote.ServerName+')':''):'none');
-  // Program and Registered by name a program by its file name; the full
-  // path stays on the cell's title (Panel rule: no path as page text).
-  const programAt=cells.length;if(cols.program)cells.push(d.Program?oaShortName(d.Program):'none');
-  cells.push(d.Host?(d.Host.Kind+' '+d.Host.Base):'');
-  if(cols.resources)cells.push((d.Resources||[]).length?list(d.Resources):'none');
-  const readinessAt=cells.length;cells.push(p.Readiness);
-  const describedAt=cells.length;if(cols.described)cells.push((p.Described||[]).length?p.Described.map(s=>servicePlain(s.Contract)+' '+s.Readiness).join(', '):'not yet');
-  cells.push(p.Restarts);
-  if(cols.accepted)cells.push((p.Accepted||[]).length?list(p.Accepted):'none');
-  const declaredAt=cells.length;cells.push(oaShortName(p.DeclaredBy));
-  const tr=document.createElement('tr');cells.forEach((c,i)=>{const td=document.createElement('td');td.textContent=c==null?'':String(c);if(i===1&&p.Role)td.title=p.Role;if(cols.program&&i===programAt&&d.Program)td.title=d.Program;if(i===declaredAt&&p.DeclaredBy)td.title=p.DeclaredBy;if(i===readinessAt&&p.Why)td.title=p.Why;if(cols.contracts&&i===servicesAt&&(d.Contracts||[]).length)td.title=list(d.Contracts);if(cols.described&&i===describedAt&&(p.Described||[]).length)td.title=p.Described.map(s=>s.Contract).join(', ');tr.append(td)});
-  const action=document.createElement('td');if(p.Role==='provider'){const b=document.createElement('button');b.type='button';b.textContent=p.DeclaredBy==='installation'||p.DeclaredBy==='product'?'Disable':'Withdraw';b.onclick=()=>withdrawProvider(d.Name,revision);action.append(b)}else action.textContent='';tr.append(action);
-  tbody.append(tr);
+  const d=p.Declaration;let b=null;
+  if(p.Role==='provider'){b=document.createElement('button');b.type='button';b.textContent=p.DeclaredBy==='installation'||p.DeclaredBy==='product'?'Disable':'Withdraw';b.onclick=()=>withdrawProvider(d.Name,revision)}
+  const title=[d.Name,list(d.Contracts),d.Program,p.Why].filter(Boolean).join(' · ');
+  wrap.append(listRow((titles&&titles[d.Name])||d.Name,title,provides(p)+' · '+readinessPlain(p.Readiness,p.Why),b));
  }
- table.append(thead,tbody);
- // .oa-table is the wrapper that scrolls sideways when this table's own
- // headers cannot fit, never the page (task 2026-09-23, eighth first-time
- // visitor, finding 6).
- const wrap=document.createElement('div');wrap.className='oa-table';wrap.append(table);
  return wrap;
 }
-async function editProvider(payload){show('provider-edit-status','Saving registration…');try{const r=await fetch('/registry/providers',{method:'POST',headers:{'X-Panel-Key':key,'Content-Type':'application/json'},body:JSON.stringify(payload)});if(!r.ok)throw Error(await r.text());const result=await r.json();show('provider-edit-status',result.Outcome==='applied'?'Provider registration updated.':('Registry did not apply the change: '+(result.Outcome||'unknown')+(result.Reason?': '+result.Reason:'')));await read()}catch(e){show('provider-edit-status','Provider registration failed: '+e.message)}}
+// providerRefusal is the plain sentence for a provider change the Registry
+// refused, by its outcome and reason (owner report R20c, 2026-11-10: "This
+// didn't work." with "unknown: name" behind it).
+function providerRefusal(outcome,reason){
+ if(outcome==='unknown')return 'This provider is no longer registered.';
+ if(outcome==='conflict')return reason==='retiring'?'This provider is still stopping. Try again in a moment.':'The provider list changed before this was saved. Try again.';
+ if(outcome==='forbidden')return 'OpenAbstractions did not permit this Panel to change providers.';
+ if(outcome==='invalid')return 'OpenAbstractions rejected this change.';
+ if(outcome==='unavailable')return 'OpenAbstractions could not change this provider right now. Try again.';
+ return 'OpenAbstractions did not confirm the change.';
+}
+// editProvider writes one plain sentence for every result, and a failure
+// always keeps what the Panel received behind Technical details: the
+// outcome and reason, or the HTTP status and body, with the provider name.
+async function editProvider(payload){show('provider-edit-status','Saving registration…');const what=payload.edit+' '+payload.name;let result;
+ try{const r=await fetch('/registry/providers',{method:'POST',headers:{'X-Panel-Key':key,'Content-Type':'application/json'},body:JSON.stringify(payload)});const body=await r.text();if(!r.ok)throw Error('HTTP '+r.status+(body.trim()?': '+body.trim():' with no message')+' ('+what+')');result=JSON.parse(body)}
+ catch(e){const text=String(e&&e.message||e||'no response');const p=oaPlain(text);if(oaRuntimeDownText(text))oaShowError('provider-edit-status',text);else showDenial('provider-edit-status','The provider was not changed. '+p.line,text.includes(what)?text:text+' ('+what+')');await read();return}
+ const outcome=String(result&&result.Outcome||'');
+ if(outcome==='applied')show('provider-edit-status',result.Reason==='disabled'?'Provider turned off.':'Provider removed.');
+ else showDenial('provider-edit-status','The provider was not changed. '+providerRefusal(outcome,result&&result.Reason),'outcome: '+(outcome||'none')+(result&&result.Reason?'\nreason: '+result.Reason:'')+'\nprovider: '+payload.name+(result&&result.Revision?'\nrevision: '+result.Revision:''));
+ await read()}
 function withdrawProvider(name,revision){if(!confirm('Withdraw or disable provider '+name+'? A running provider process will be stopped by the Registry.'))return;editProvider({edit:'withdraw',revision,name})}
 // showDenial writes one plain sentence naming which tables a single "Show"
 // click could not read, with each table's raw reason kept behind the same
@@ -165,15 +135,13 @@ let registryLastView='';
 async function read(){
 
  let v;try{const r=await fetch('/registry/view',{headers:{'X-Panel-Key':key}});if(!r.ok)throw Error(await r.text());v=await r.json()}catch(e){oaShowError('registry-status',e.message);return}
- const sig=JSON.stringify(v);if(sig===registryLastView)return;registryLastView=sig;window.registryCurrentProviders=v.providers;
- for(const t of ['models','providers','remote'])el(t).replaceChildren();
+ const sig=JSON.stringify(v);if(sig===registryLastView)return;registryLastView=sig;if(!v.providers_error&&v.providers.Outcome==='page'){window.registryCurrentProviders=v.providers;if(window.registryHostChoicesChanged)window.registryHostChoicesChanged()}
+ for(const t of ['providers','remote'])el(t).replaceChildren();
  const sections=[
-  {label:'Models',statusId:'models-status',failed:!!v.models_error,text:v.models_error,
-   render:()=>{show('models-status',v.models.Models.length?'':'No models or stored model files reported.');modelsTable(v.models.Models)}},
-  {label:'Registered providers',statusId:'providers-status',failed:!!(v.providers_error||v.providers.Outcome!=='page'),text:v.providers_error||v.providers.Outcome,
-   render:()=>{show('providers-status',v.providers.Declarations.length?'':'No providers registered.');if(v.providers.Declarations.length)el('providers').append(providersTable(v.providers.Declarations,v.providers.Revision))}},
-  {label:'Remote runtimes',statusId:'remote-status',failed:!!v.remote_error,text:v.remote_error,
-   render:()=>{show('remote-status',v.remote.length?'':'No remote runtime reports model servers.');for(const h of v.remote)row('remote',[h.Host,h.Domain,h.Hosted?h.Wire:'local',h.DeclaredBy||'',list(h.Profiles),oaHostState(h.Up)],[null,null,null,null,null,h.Why||null])}},
+  {label:'Providers',statusId:'providers-status',failed:!!(v.providers_error||v.providers.Outcome!=='page'),text:v.providers_error||v.providers.Outcome,
+   render:()=>{show('providers-status',v.providers.Declarations.length?'':'No providers registered.');if(v.providers.Declarations.length)el('providers').append(providersTable(v.providers.Declarations,v.providers.Revision,v.titles))}},
+  {label:"Other PCs' providers",statusId:'remote-status',failed:!!(v.paired&&v.remote_error),text:v.remote_error,
+   render:()=>{show('remote-status','');for(const h of v.remote)el('remote').append(listRow(h.Host,h.Why||'',[h.Domain,h.Hosted?'hosted: '+h.Wire:'local',list(h.Profiles),oaHostState(h.Up)].filter(Boolean).join(' · ')))}},
  ];
  const failed=sections.filter(s=>s.failed);
  if(!failed.length){show('registry-status','')}
@@ -184,6 +152,9 @@ async function read(){
   showDenial('registry-status',names+' could not be read.'+(sameReason?' '+reasons[0]:''),failed.map(s=>s.label+': '+s.text).join('\n'));
  }
  for(const s of sections){if(s.failed)show(s.statusId,'');else s.render()}
+ // Other PCs' providers shows only with rows, or with a failed read while a
+ // paired runtime is declared; without pairing it stays hidden.
+ el('remote-section').hidden=!(v.remote.length||(v.paired&&v.remote_error));
 }
 // The page updates itself while it is visible (Panel rules, 2026-10-07);
 // there is no Refresh button.
@@ -193,7 +164,7 @@ var registryReadReady=read();
 function oaQuietOnce(fn){let busy=false;return async()=>{if(busy)return;busy=true;try{await fn()}finally{busy=false}}}
 const readQuiet=oaQuietOnce(read);
 if(typeof setInterval==='function')setInterval(()=>{if(document.visibilityState!=='hidden')readQuiet()},15000);
-</script><script>` + serversScript + `</script>`
+</script><script>` + serversScript + `</script>` + programReviewPanel
 
 // serversScript is the moved sections' own script, kept inside one function
 // so its helpers never collide with the Providers page's own key, el, show
@@ -203,7 +174,7 @@ const key=new URLSearchParams(location.search).get('k');let hostsRevision='',gat
 const el=id=>document.getElementById(id);function show(id,x){oaSetStatus(id,'ok',typeof x==='string'?x:JSON.stringify(x,null,2))}
 async function call(path,body){const r=await fetch(path,{method:body?'POST':'GET',headers:{'X-Panel-Key':key,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});if(!r.ok)throw Error(await r.text());return r.json()}
 function shortName(path){return oaShortName(path)}
-const outcomeText={forbidden:'The runtime did not permit this Panel; nothing was changed.',unavailable:'The runtime could not answer; nothing is assumed. Try again.',conflict:'The configuration changed or the program already holds a key; list again.',invalid:'The runtime refused the request as invalid.',unknown:'Nothing by that name.',no_secure_store:'The runtime has no platform store to hold a key.'};
+const outcomeText={forbidden:'OpenAbstractions did not permit this Panel; nothing was changed.',unavailable:'OpenAbstractions could not answer; nothing is assumed. Try again.',conflict:'The configuration changed or the program already holds a key; list again.',invalid:'OpenAbstractions refused the request as invalid.',unknown:'Nothing by that name.',no_secure_store:'OpenAbstractions has no platform store to hold a key.'};
 function outcome(o,reason){return (outcomeText[o]||oaPlain(o).line)+(reason?' ('+reason+')':'')}
 // row's own titles array names, per cell, the raw value behind a shortened
 // or reformatted display (task 2026-09-23, tenth first-time visitor,
@@ -236,11 +207,15 @@ function hostsStatus(l){el('hosts-status').title='Configuration revision '+l.Rev
 // hostModalities names what a server serves: "all six" when it serves the
 // full set, else the list.
 const hostAllProfiles=['chat','embed','transcription','speech','image','live'];
-function hostModalities(e){const p=e.Profiles||[];return hostAllProfiles.every(x=>p.includes(x))?'all modalities':(p.join(', ')||'no modalities')}
+function hostModalities(e){const p=e.Profiles||[],names={chat:'chat',embed:'embeddings',transcription:'transcription',speech:'speech',image:'pictures',live:'live voice',video:'video'};return hostAllProfiles.every(x=>p.includes(x))?'all supported uses':(p.map(x=>names[x]||'other model use').join(', ')||'uses not reported')}
 function hostDetails(e){return e.Base+' · '+(e.Profiles||[]).join(', ')+' · registered by '+(e.DeclaredBy||'')}
-// hostNameLine puts the address and modalities as the Name cell's second line.
-function hostNameLine(td,e){td.append(document.createElement('br'));const small=document.createElement('span');small.className='oa-row-caption';small.textContent=e.Base+' · '+hostModalities(e);td.append(small)}
-function hostKind(e){return(e.Hosted?'hosted: ':'local: ')+e.Kind}
+function hostKind(e){return e.Hosted?'Hosted model server':'Local model server'}
+// hostRowCreate and hostRowFill draw one model server as a Settings-style
+// row that fits a narrow window: name, kind and uses, state, key selection,
+// spend, budget and Remove. Full addresses and internal key names stay on
+// the label's title.
+function hostRowCreate(){const r=document.createElement('div');r.className='oa-row';const t=document.createElement('div');t.className='oa-row-text';const l=document.createElement('span');l.className='oa-row-label';const c1=document.createElement('span');c1.className='oa-row-caption';const c2=document.createElement('span');c2.className='oa-row-caption';t.append(l,c1,c2);const box=document.createElement('div');box.className='oa-row-control';const b=action('Remove',()=>{});b.type='button';box.append(b);r.append(t,box);r.parts={l,c1,c2,b};return r}
+function hostRowFill(r,h){const e=h.Entry,p=r.parts;p.l.textContent=e.Name;p.l.title=hostDetails(e)+' · API: '+e.Kind+' · Key: '+(e.Credential||'none');p.c1.textContent=hostKind(e)+' · '+hostModalities(e);p.c2.textContent=(h.Why==='paired_name_conflict'?'Name clash with a paired computer. Rename or remove this server to use the paired connection.':h.Up?'Available':'Not reachable')+' · '+(e.Credential?'Key selected':'No key selected')+' · Today: '+(h.Spend?h.Spend.Tokens+' tokens, '+currency(h.Spend.Micros):'nothing spent')+' · '+(e.Ceiling?'Daily limit: '+e.Ceiling.TokensPerDay+' tokens, '+currency(e.Ceiling.MicrosPerDay):'No daily limit');p.c2.title=h.Why||'';p.b.onclick=()=>hostEdit({edit:'remove',name:e.Name},'hosts-status','Removed '+e.Name+'.')}
 // currency turns a spend figure carried on the wire in micros (millionths of
 // the account's currency) into the two-decimal amount a person reads (task
 // 2026-09-23, fourth first-time visitor: "Spend per day (in millionths of
@@ -253,7 +228,7 @@ function currency(micros){return (micros/1e6).toFixed(2)}
 // cell's own title (task 2026-09-23, eleventh first-time visitor, finding
 // 5).
 let hostsLast='',gatewayLast='',keysLast='';
-async function hosts(){try{const l=await call('/inference/hosts');{const sig=JSON.stringify(l);if(sig===hostsLast)return;hostsLast=sig}if(l.Outcome!=='page'){el('hosts').replaceChildren();hostsRevision='';el('hosts-status').title='';show('hosts-status',outcome(l.Outcome));return}hostsRevision=l.Revision;hostsStatus(l);oaKeyedRows(el('hosts'),l.Hosts,h=>h.Entry.Name,()=>tableRow(6),(tr,h)=>{const e=h.Entry;fillRow(tr,[e.Name,hostKind(e),e.Credential||'none',oaHostState(h.Up),h.Spend?h.Spend.Tokens+' tokens, '+currency(h.Spend.Micros)+' ('+h.Spend.Day+')':'0',e.Ceiling?e.Ceiling.TokensPerDay+' tokens, '+currency(e.Ceiling.MicrosPerDay):'no budget'],[hostDetails(e),null,null,h.Why||null],'Remove',()=>hostEdit({edit:'remove',name:e.Name}));hostNameLine(tr.children[0],e)});for(const h of l.Hosts){const e=h.Entry;if(e.Base)hostBasesSeen.add(e.Base);if(!e.Hosted&&e.Kind)hostKindsSeen.set(e.Kind,e.Base||'')}rebuildHostBaseSelect();rebuildHostNameSelect()}catch(e){hostsRevision='';el('hosts-status').title='';oaShowError('hosts-status',e.message)}}
+async function hosts(){try{const l=await call('/inference/hosts');{const sig=JSON.stringify(l);if(sig===hostsLast)return;hostsLast=sig}if(l.Outcome!=='page'){el('hosts').replaceChildren();hostsRevision='';el('hosts-status').title='';show('hosts-status',outcome(l.Outcome));return}hostsRevision=l.Revision;hostsStatus(l);oaKeyedRows(el('hosts'),l.Hosts,h=>h.Entry.Name,hostRowCreate,hostRowFill);hostEntries=l.Hosts.map(h=>h.Entry);refreshHostChoices()}catch(e){hostsRevision='';el('hosts-status').title='';oaShowError('hosts-status',e.message)}}
 // hostEdit's applied line used to read "Applied; configuration revision
 // providers-v2:42a6…", the new revision printed as visible text; it now
 // reads "Applied.", the revision kept on the line's own title and in
@@ -268,14 +243,19 @@ async function hosts(){try{const l=await call('/inference/hosts');{const sig=JSO
 // which both refreshes the table and gives hostEdit its own revision for
 // the very next edit, so the precondition and the "list again" instruction
 // both go.
-async function hostEdit(body){try{const c=await call('/inference/hosts',{...body,revision:hostsRevision});if(c.Outcome==='applied'){await hosts();oaShowResult('hosts-status','Applied.'+(c.Reason?' Not every rule was written: '+c.Reason+'.':''),c,'Configuration revision '+c.Revision)}else{el('hosts-status').title='';show('hosts-status',outcome(c.Outcome,c.Reason))}}catch(e){oaShowError('hosts-status',e.message)}}
+// hostEdit writes its sentence where the click happened: Remove on the
+// list's status line, Add next to the Add button.
+async function hostEdit(body,statusId='hosts-status',done='Applied.'){try{const c=await call('/inference/hosts',{...body,revision:hostsRevision});if(c.Outcome==='applied'){await hosts();oaShowResult(statusId,done+(c.Reason?' Not every rule was written: '+c.Reason+'.':''),c,'Configuration revision '+c.Revision)}else{el(statusId).title='';show(statusId,outcome(c.Outcome,c.Reason))}}catch(e){oaShowError(statusId,e.message)}}
 var hostsReady=hosts();
 // Add host's two required fields now name themselves when left blank (task
 // 2026-09-23, seventh first-time visitor, finding 4, the Issue key
 // pattern): the browser blocks the submit event for a failed required
 // field without running this form's own onsubmit, but always fires
 // "invalid" on the field, submit or not.
-for(const id of ['host-name','host-base']){const label={'host-name':'Name','host-base':'Base URL'}[id];el(id).addEventListener('invalid',()=>show('hosts-status',label+' is required to add a model server.'))}
+for(const id of ['host-name','host-base']){const label={'host-name':'Name','host-base':'Base URL'}[id];el(id).addEventListener('invalid',()=>show('host-add-status',label+' is required to add a model server.'))}
+// hostAddMissing names what the Add form still lacks, in one sentence next
+// to the Add button, before anything reaches the runtime.
+function hostAddMissing(wire,name,base){if(!name)return wire?'Type a name for this hosted server.':'Choose a server or type its name.';if(!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(name))return 'Use lowercase letters, digits, - or _ in the server name.';if(!base)return 'Choose or type the server address.';if(!/^https?:\/\/[^\s/]+/.test(base))return 'Type the address as http:// or https:// followed by the host.';if(/^http:\/\//.test(base)&&!/^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|\/|$)/.test(base))return 'Plain http works only on this computer; use https:// for a remote server.';return ''}
 // Base URL opened as one empty field with no hint what to type; it now
 // offers the documented default local server address (serve's own --base help text)
 // and every base this page has already seen among the current hosts,
@@ -285,12 +265,12 @@ let hostBasesSeen=new Set(['http://127.0.0.1:11434']);
 function rebuildHostBaseSelect(){const select=el('host-base-select');const current=select.value;select.replaceChildren();for(const base of[...hostBasesSeen].sort()){const o=document.createElement('option');o.value=base;o.textContent=base;select.append(o)}const other=document.createElement('option');other.value='__other__';other.textContent='Other…';select.append(other);select.value=current&&(hostBasesSeen.has(current)||current==='__other__')?current:[...hostBasesSeen][0]}
 el('host-base-select').onchange=()=>{const v=el('host-base-select').value;if(v==='__other__'){el('host-base').hidden=false;el('host-base').value='';el('host-base').focus()}else{el('host-base').hidden=true;el('host-base').value=v}};
 el('host-base').hidden=true;rebuildHostBaseSelect();el('host-base').value=el('host-base-select').value;
-el('host-add').onsubmit=ev=>{ev.preventDefault();const wire=el('host-wire').value.trim(),name=el('host-name').value.trim(),tokens=Number(el('host-tokens').value||0),micros=Math.round(Number(el('host-micros').value||0)*1e6);const profiles=hostProfilesChosen();const host={Name:name,Hosted:!!wire,Kind:wire||name,Base:el('host-base').value.trim(),Credential:el('host-credential').value.trim()};if(profiles.length)host.Profiles=profiles;if(tokens||micros)host.Ceiling={TokensPerDay:tokens,MicrosPerDay:micros};hostEdit({edit:'add',host})};
+el('host-add').onsubmit=ev=>{ev.preventDefault();const wire=el('host-wire').value.trim(),name=el('host-name').value.trim(),tokens=Number(el('host-tokens').value||0),micros=Math.round(Number(el('host-micros').value||0)*1e6);const profiles=hostProfilesChosen();const host={Name:name,Hosted:!!wire,Kind:wire||name,Base:el('host-base').value.trim(),Credential:el('host-credential').value.trim()};if(profiles.length)host.Profiles=profiles;if(tokens||micros)host.Ceiling={TokensPerDay:tokens,MicrosPerDay:micros};const missing=hostAddMissing(wire,name,host.Base);if(missing){oaSetStatus('host-add-status','error',missing);return}hostEdit({edit:'add',host},'host-add-status','Added '+name+'.')};
 // gatewayText leaves the setting revision out of the sentence, the same
 // treatment hostsStatus gives the hosts revision (task 2026-09-23 finding 3,
 // "Setting revision gateway-v1:e3b0c44298fc1c149afbf4c8." sitting mid-text);
 // gateway() below puts it on the element's title instead.
-function gatewayText(s){if(s.Listening)return 'On. OpenAI apps use http://'+s.ListeningAddress+'/v1 and Anthropic apps use http://'+s.ListeningAddress+'.';if(s.Open)return 'On at '+s.Address+', but not listening'+(s.Why?': '+s.Why:'')+'.';return 'Off.'}
+function gatewayText(s){if(s.Listening)return 'On. OpenAI apps use http://'+s.ListeningAddress+'/v1 and Anthropic apps use http://'+s.ListeningAddress+'.';if(s.Open)return 'On at '+s.Address+', but not listening'+(s.Why?': '+s.Why:'')+'.';return ''}
 async function gateway(){try{const s=await call('/inference/gateway');{const sig=JSON.stringify(s);if(sig===gatewayLast)return;gatewayLast=sig}if(s.Outcome!=='page'){gatewayRevision='';el('gateway-status').title='';show('gateway-status',outcome(s.Outcome));return}gatewayRevision=s.Revision;el('gateway-status').title='Setting revision '+s.Revision;show('gateway-status',gatewayText(s));el('gateway-switch').checked=!!s.Open;if(s.Address&&s.Address!==gatewayShown){gatewayShown=s.Address;gatewayAddressChoose(s.Address)}}catch(e){gatewayRevision='';el('gateway-status').title='';oaShowError('gateway-status',e.message)}}
 // gatewaySet used to refuse before the setting had ever been read; gateway()
 // below now reads it on arrival, so that precondition goes the same way
@@ -340,18 +320,47 @@ el('key-issue').onsubmit=ev=>{ev.preventDefault();keyEdit({edit:'issue',program:
 // declared (window.registryCurrentProviders, the Providers script's own
 // reading). Choosing a kind also chooses its address. A hosted API, or a
 // kind nobody declared, takes a typed name behind "Other…".
-let hostKindsSeen=new Map();
-function hostKindsFromProviders(){const decls=(window.registryCurrentProviders&&window.registryCurrentProviders.Declarations)||[];for(const p of decls){const h=p.Declaration&&p.Declaration.Host;if(h&&h.Kind&&!hostKindsSeen.has(h.Kind)){hostKindsSeen.set(h.Kind,h.Base||'');if(h.Base)hostBasesSeen.add(h.Base)}}}
-function rebuildHostNameSelect(){hostKindsFromProviders();const select=el('host-name-select');const current=select.value;select.replaceChildren();if(!el('host-wire').value)for(const kind of hostKindsSeen.keys()){const o=document.createElement('option');o.value=kind;o.textContent=kind;select.append(o)}const other=document.createElement('option');other.value='__other__';other.textContent='Other…';select.append(other);const kinds=el('host-wire').value?[]:[...hostKindsSeen.keys()];select.value=current&&(kinds.includes(current)||current==='__other__')?current:(kinds[0]||'__other__');hostNameSync()}
-function hostNameSync(){const v=el('host-name-select').value;if(v==='__other__'){el('host-name').hidden=false;if(hostKindsSeen.has(el('host-name').value))el('host-name').value=''}else{el('host-name').hidden=true;el('host-name').value=v;const base=hostKindsSeen.get(v);if(base){hostBasesSeen.add(base);rebuildHostBaseSelect();el('host-base-select').value=base;el('host-base').hidden=true;el('host-base').value=base}}}
+let hostKindsSeen=new Map(),hostEntries=[],hostWireChosen=false;
+// hostedPresets maps each hosted API to its presets by id and address, read
+// from GET /connect (router's hostedcatalogue, the one owner of preset
+// data); a download preset or one without an address or API is no server.
+// The Add form opens on a local kind the runtime already knows, else on a
+// hosted preset, never on an empty "Other…" field (Panel rules: choosers
+// and defaults). Engine names come from the runtime, never from this page
+// (scripts/app_names.py).
+let hostedPresets={};
+async function loadHostedPresets(){try{const v=await call('/connect');const out={};for(const p of (v&&v.presets)||[]){if(p.kind==='download'||!p.base||!p.api)continue;(out[p.api]=out[p.api]||new Map()).set(p.id,p.base)}hostedPresets=out;if(!hostWireChosen&&el('host-name-select').value==='__other__'&&!el('host-name').value)el('host-name-select').value='';refreshHostChoices()}catch(e){}}
+// hostNameChoices is the name chooser's source for the chosen API: the
+// kinds already known and the presets for a local server, the hosted
+// presets for a hosted API.
+function hostNameChoices(){const wire=el('host-wire').value;return wire?(hostedPresets[wire]||new Map()):hostKindsSeen}
+// Successful snapshots replace their own source; failed reads keep the last
+// successful choices and their existing error presentation.
+function refreshHostChoices(){
+ let name=el('host-name-select').value;const base=el('host-base-select').value;
+ hostKindsSeen=new Map();hostBasesSeen=new Set(['http://127.0.0.1:11434']);
+ for(const e of hostEntries){if(e.Base)hostBasesSeen.add(e.Base);if(!e.Hosted&&e.Kind)hostKindsSeen.set(e.Kind,e.Base||'')}
+ const decls=(window.registryCurrentProviders&&window.registryCurrentProviders.Declarations)||[];
+ for(const p of decls){const h=p.Declaration&&p.Declaration.Host;if(h&&h.Kind){if(!hostKindsSeen.has(h.Kind))hostKindsSeen.set(h.Kind,h.Base||'');if(h.Base)hostBasesSeen.add(h.Base)}}
+ for(const b of hostKindsSeen.values())if(b)hostBasesSeen.add(b);
+ for(const m of Object.values(hostedPresets))for(const b of m.values())hostBasesSeen.add(b);
+ if(!hostWireChosen){const wire=hostKindsSeen.size?'':'openai-compatible';if(el('host-wire').value!==wire){el('host-wire').value=wire;rebuildHostProfiles();name=''}}
+ rebuildHostBaseSelect();
+ if(base==='__other__'){el('host-base-select').value=base}
+ else if(base&&!hostBasesSeen.has(base)){el('host-base-select').value='__other__';el('host-base').value='';el('host-base').hidden=false}
+ rebuildHostNameSelect(!name);
+ if(name&&name!=='__other__'&&!hostNameChoices().has(name)){el('host-name-select').value='__other__';el('host-name').value='';el('host-name').hidden=false}
+}
+function rebuildHostNameSelect(sync=true){const select=el('host-name-select');const current=select.value;select.replaceChildren();const kinds=[...hostNameChoices().keys()];for(const kind of kinds){const o=document.createElement('option');o.value=kind;o.textContent=kind;select.append(o)}const other=document.createElement('option');other.value='__other__';other.textContent='Other…';select.append(other);select.value=current&&(kinds.includes(current)||current==='__other__')?current:(kinds[0]||'__other__');if(sync)hostNameSync()}
+function hostNameSync(){const v=el('host-name-select').value,choices=hostNameChoices();if(v==='__other__'){el('host-name').hidden=false;if(choices.has(el('host-name').value))el('host-name').value=''}else{el('host-name').hidden=true;el('host-name').value=v;const base=choices.get(v);if(base){hostBasesSeen.add(base);rebuildHostBaseSelect();el('host-base-select').value=base;el('host-base').hidden=true;el('host-base').value=base}}}
 // Modalities are toggle buttons for what the chosen API serves (serve's
 // server add help); all on means the API's default, so none are sent.
 const hostApiProfiles={'':['chat','embed','transcription','speech','image','live'],'openai-compatible':['chat','embed','transcription','speech','image','live'],'anthropic-messages':['chat']};
 const hostProfileWords={chat:'Chat',embed:'Embeddings',transcription:'Transcription',speech:'Speech',image:'Images',live:'Live voice'};
 function rebuildHostProfiles(){const out=el('host-profiles');out.replaceChildren();for(const p of hostApiProfiles[el('host-wire').value]||['chat']){const b=document.createElement('button');b.type='button';b.textContent=hostProfileWords[p]||p;b.dataset=b.dataset||{};b.dataset.profile=p;const press=v=>{b.pressed=v;if(b.setAttribute)b.setAttribute('aria-pressed',String(v))};press(true);b.onclick=()=>{press(!b.pressed);oaSetStatus('host-profiles-status','ok',b.textContent+(b.pressed?' on.':' off.'))};out.append(b)}}
 function hostProfilesChosen(){const all=[...el('host-profiles').children];const on=all.filter(b=>b.pressed).map(b=>b.dataset.profile);return on.length===all.length?[]:on}
-el('host-name-select').onchange=hostNameSync;el('host-wire').onchange=()=>{rebuildHostNameSelect();rebuildHostProfiles()};rebuildHostProfiles();
-rebuildHostNameSelect();if(window.registryReadReady&&window.registryReadReady.then)window.registryReadReady.then(rebuildHostNameSelect);
+el('host-name-select').onchange=hostNameSync;el('host-wire').onchange=()=>{hostWireChosen=true;rebuildHostNameSelect();rebuildHostProfiles()};rebuildHostProfiles();
+window.registryHostChoicesChanged=refreshHostChoices;refreshHostChoices();
 // Address offers the gateway's recorded address and its documented default
 // (serve's gateway on help), with "Other…" for a typed one.
 function gatewayAddressChoose(address){const select=el('gateway-address');const known=[...new Set([address,'127.0.0.1:8793'].filter(Boolean))];select.replaceChildren();for(const a of known){const o=document.createElement('option');o.value=a;o.textContent=a;select.append(o)}const other=document.createElement('option');other.value='__other__';other.textContent='Other…';select.append(other);select.value=known[0];el('gateway-address-other').hidden=true}
@@ -369,10 +378,12 @@ window.serversRefresh={hosts,gateway,keys};
 // The page tells the screenshot tool it is ready once its first readings
 // have finished (S1's oaReady; data-ready until it exists).
 function oaPageReady(){if(typeof oaReady==='function')oaReady();else if(typeof document!=='undefined'&&document.documentElement)document.documentElement.dataset.ready='1'}
-Promise.all([window.registryReadReady,hostsReady,gatewayReady,keysReady]).then(oaPageReady,oaPageReady);
+var hostedPresetsReady=loadHostedPresets();
+Promise.all([window.registryReadReady,hostsReady,gatewayReady,keysReady,hostedPresetsReady]).then(oaPageReady,oaPageReady);
 function oaQuietOnce(fn){let busy=false;return async()=>{if(busy)return;busy=true;try{await fn()}finally{busy=false}}}
 const serversQuiet=oaQuietOnce(()=>{if(keyShownAt&&Date.now()-keyShownAt>60000)keyClear();return Promise.all([hosts(),gateway(),keys()])});
 window.serversTick=serversQuiet;
+if(typeof oaOnRuntimeBack==='function')oaOnRuntimeBack(()=>Promise.all([read(),serversQuiet()]));
 if(typeof setInterval==='function')setInterval(()=>{if(document.visibilityState!=='hidden')serversQuiet()},15000);
 })();
 `

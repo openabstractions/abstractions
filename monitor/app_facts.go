@@ -12,6 +12,8 @@ import (
 	"github.com/openabstractions/abstraction-facade/go/probe"
 	identity "github.com/openabstractions/abstraction-identity"
 	iclient "github.com/openabstractions/abstraction-inference/go/client"
+	resclient "github.com/openabstractions/abstraction-resource/go/client"
+	"github.com/openabstractions/abstraction-resource/go/instrument"
 	rights "github.com/openabstractions/abstraction-rights/go"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	rightsclient "github.com/openabstractions/abstraction-rights/go/client"
@@ -53,7 +55,20 @@ type appFacts struct {
 	Defaults        []appDefault          `json:"defaults"`
 	ScriptHost      bool                  `json:"scriptHost"`
 	Subject         *rightsclient.Subject `json:"subject,omitempty"`
+	// SharesCard: the app is a kept OA integration, which holds the graphics
+	// card through OpenAbstractions (its hold on card:0 written by the Keep).
+	SharesCard bool `json:"sharesCard"`
+	// Running is whether the app has a live instance now, so the page's
+	// Open/Running button follows an app that stops or that an agent opens.
+	Running bool `json:"running"`
+	// Started is a server OpenAbstractions started for an app and that still
+	// runs (app_started.go): the page shows its line with Stop.
+	Started *appStarted `json:"started,omitempty"`
 }
+
+// integrationHoldWhy is the provenance the runtime writes on a kept OA
+// integration's card hold (serve registry_v3_keep_hold.go keptHoldWhy).
+const integrationHoldWhy = "integration keep"
 
 // appDefault is one default that applies to the app: its words and the
 // exact action and resource a Block for this app denies.
@@ -138,6 +153,15 @@ func (p *servicePanel) appFacts(w http.ResponseWriter, r *http.Request, name str
 		panelJSON(w, facts)
 		return
 	}
+	facts.Running = len(entry.Instances) > 0
+	if record, _, ok := readAppStarted(name); ok {
+		opener := ""
+		if program := appStartedOpener(ctx, name, record); program != "" {
+			opener = newProgramTitler(registry.Applications).name(program)
+		}
+		facts.Started = &appStarted{Line: appStartedLine(appEntryTitle(*entry), record, opener),
+			Occurrence: record.Occurrence()}
+	}
 	mine := &sameProgram{program: entry.Descriptor.Program, seen: map[string]bool{}}
 	names := newProgramTitler(registry.Applications)
 	p.appRuleFacts(ctx, mine, names, &facts)
@@ -184,6 +208,10 @@ func appDefaultFacts(ctx context.Context, entry fwire.ApplicationEntry, facts *a
 	}
 	var listed []appDefault
 	for _, dflt := range page.Defaults {
+		if dflt.Name == agentMessagesDefault {
+			// Messages between kept agents are no default for all apps.
+			continue
+		}
 		target := dflt.Resource
 		if dflt.EveryResource {
 			target = applicationResource(d.Name)
@@ -242,6 +270,9 @@ func (p *servicePanel) appRuleFacts(ctx context.Context, mine *sameProgram, name
 			row.SetBy, row.SetAt, row.Why, row.Expires = &setBy, read.Record.SetAt, read.Record.Why, read.Record.Expires
 			row.Expired = read.Outcome.String() == "expired"
 		}
+		if rule.Permit && !row.Expired && rule.Action == resclient.ActionHold && rule.Resource == instrument.Card0 && row.Why == integrationHoldWhy {
+			facts.SharesCard = true
+		}
 		if rule.Action == asks.AnswerAction && rule.Resource == rights.MetaScopeApps {
 			if rule.Permit && !row.Expired {
 				facts.Assistant = &assistantEntry{Program: rule.Subject.Program, Name: names.name(rule.Subject.Program), Expires: row.Expires}
@@ -261,7 +292,7 @@ func (p *servicePanel) appCallFacts(ctx context.Context, mine *sameProgram, regi
 		facts.CallsOutcome = "unavailable"
 		return
 	}
-	servers := appServerTitles(ctx, operator, registry)
+	servers := appServerTitles(ctx, operator, registry, readProviderDeclarations(ctx))
 	var cursor int64
 	for range appAuditPages {
 		page, err := operator.Audit(ctx, cursor, 64)
@@ -281,7 +312,7 @@ func (p *servicePanel) appCallFacts(ctx context.Context, mine *sameProgram, regi
 			if mine.is(e.Program) {
 				server := servers[e.Host]
 				if server == "" {
-					server = "Model server"
+					server = engineServerTitle(e.Host, false)
 				}
 				facts.Calls = append(facts.Calls, appCall{Model: e.Model, Server: server, UnixMs: e.UnixMs, Outcome: e.Outcome})
 			}
@@ -304,24 +335,42 @@ func (p *servicePanel) appCallFacts(ctx context.Context, mine *sameProgram, regi
 }
 
 // appServerTitles names each configured model server by the registered
-// title of the app whose program declared it. A server no registered app
-// declared has no title here, and the page calls it "Model server".
-func appServerTitles(ctx context.Context, operator appInferenceRead, registry fwire.ApplicationPage) map[string]string {
+// title of the app whose program declared it, and any other server by
+// engineServerTitle with its product standing (shippedServer). A server the
+// host list does not name has no title here, and the page calls it "Model
+// server".
+func appServerTitles(ctx context.Context, operator appInferenceRead, registry fwire.ApplicationPage, providers []fwire.DeclarationState) map[string]string {
 	titles := map[string]string{}
 	hosts, err := operator.Hosts(ctx)
 	if err != nil || hosts.Outcome != iclient.ListOutcomePage {
 		return titles
 	}
 	for _, host := range hosts.Hosts {
-		if host.Entry.DeclaredBy == "" {
-			continue
-		}
-		for _, listed := range registry.Applications {
-			if listed.Scope == fwire.ScopeLocal && identity.SameSubjectProgram(listed.Descriptor.Program, host.Entry.DeclaredBy) {
-				titles[host.Entry.Name] = appEntryTitle(listed)
-				break
+		if host.Entry.DeclaredBy != "" {
+			for _, listed := range registry.Applications {
+				if listed.Scope == fwire.ScopeLocal && identity.SameSubjectProgram(listed.Descriptor.Program, host.Entry.DeclaredBy) {
+					titles[host.Entry.Name] = appEntryTitle(listed)
+					break
+				}
 			}
+		}
+		if titles[host.Entry.Name] == "" {
+			titles[host.Entry.Name] = engineServerTitle(host.Entry.Name, shippedServer(host.Entry, providers))
 		}
 	}
 	return titles
+}
+
+// shippedServer reports a configured model server's product standing: its
+// provider declaration is shipped (shippedProvider), or, when no declaration
+// names it, the program that declared it has product standing, as the
+// runtime and Setup do. A third-party program that declares an engine name
+// without the shipped provenance has no shipped provider.
+func shippedServer(host iclient.HostEntry, providers []fwire.DeclarationState) bool {
+	for _, state := range providers {
+		if state.Declaration.Name == host.Name {
+			return shippedProvider(state)
+		}
+	}
+	return shippedProvider(fwire.DeclarationState{DeclaredBy: host.DeclaredBy, Declaration: fwire.Declaration{Name: host.Name, Program: host.DeclaredBy}})
 }

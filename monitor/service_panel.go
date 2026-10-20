@@ -28,14 +28,21 @@ import (
 // A panel process retains its selected binding. Failed calls never select a
 // different owner; starting a new process requires matching saved recovery data.
 type servicePanel struct {
-	windowTitle string
-	mu          sync.Mutex
-	jobs        *client.JobsClient
-	inventory   *client.InventoryClient
-	history     api.HistoryWindow
-	// appRequest is the registration or removal an application's installer
-	// started this Panel run for (application_register.go).
-	appRequest applicationRequest
+	claudeConnections *claudePanelConnections
+	codexConnections  *codexPanelConnections
+	directoryPicker   func(context.Context) (string, error)
+	windowTitle       string
+	mu                sync.Mutex
+	programRegistry   panelProgramRegistry
+	jobs              *client.JobsClient
+	inventory         *client.InventoryClient
+	history           api.HistoryWindow
+	// appRequests are the registrations Apps lists as not connected
+	// (application_pending.go); the zero value reads this account's records.
+	appRequests applicationRequestRecords
+	// appActivity is the Activity record of what installers' requests did
+	// (activity_app_requests.go); the zero value is this account's record.
+	appActivity applicationActivityLog
 	// appReadRules writes the Panel's read rule on what the person registered
 	// (application_read.go); nil uses the runtime's rights operator.
 	appReadRules applicationReadRules
@@ -49,10 +56,24 @@ type servicePanel struct {
 	permissionReviewDecisions map[permissionReviewContext]permissionReviewDecision
 	// notifications reaches the notification and Rights services for the
 	// Activity page's Notifications group; the zero value uses the runtime's.
-	notifications     panelNotifications
-	setupJournal      *setup.Journal
-	setupActionMu     sync.Mutex
+	notifications panelNotifications
+	setupJournal  *setup.Journal
+	setupTransfer *setup.PublicTransfer
+	setupActionMu sync.Mutex
+	// setupNotices are the Setup page's reason and failure sentences
+	// already logged (setup_notice.go).
+	setupNoticeMu sync.Mutex
+	setupNotices  map[string]bool
+	// setupActions are the package steps running now (setup_actions.go).
+	setupActionsMu    sync.Mutex
+	setupActions      map[string]setupAction
+	setupCancels      map[string]context.CancelFunc
+	setupOutcomes     map[string]setupOutcome
+	setupStepSeq      int
+	maintenanceReview func(context.Context) setup.MaintenanceReview
+	maintenanceOpen   func(context.Context, string) error
 	modelController   setupModelController
+	codingController  *setup.ModelController
 	engineControllers map[setup.AppID]setupModelController
 	// choiceControllers are the offered picture model plans' controllers,
 	// keyed by plan ID; built on first use, set by tests.
@@ -70,6 +91,8 @@ type servicePanel struct {
 	comfyApps                 setupApplications
 	comfyRegisteredDescriptor *fwire.ApplicationDescriptor
 	comfyActivationStarted    bool
+	// packageRestarts tracks the host processes that were running when each integration changed.
+	packageRestarts map[string][]uint32
 	// ModelHost setup seams keep the guided local-model flow on the same
 	// public commands and inventory client used by the installed Panel.
 	modelHostCLI              func(context.Context, string, ...string) ([]byte, error)
@@ -78,6 +101,9 @@ type servicePanel struct {
 	modelHostInventory        modelHostInventoryReader
 	modelHostInventoryResolve func(context.Context, client.Requirements) (modelHostInventoryReader, error)
 	modelHostFeatureCheck     func() (setup.FeatureStatus, error)
+	// stepModelFolder lists Setup's model folder store and its models for
+	// the setup step; a test seam, nil reads ModelHost's saved root.
+	stepModelFolder func(context.Context) (string, []modelHostChatModel, error)
 	// log is the Panel's own logging.
 	log panelLog
 }
@@ -334,6 +360,7 @@ func (p *servicePanel) routes(key string) *http.ServeMux {
 		panelHTMLPage(key, "status", "OpenAbstractions apps", servicePage)(w, r)
 	})
 	mux.HandleFunc("/static/", servePanelStatic)
+	mux.HandleFunc("/record-codecs/", servePanelRecordCodecs)
 	mux.HandleFunc("/binding", guard(key, p.serveBinding))
 	mux.HandleFunc("/inventory", guard(key, p.serveInventory))
 	mux.HandleFunc("/action", guard(key, p.act))
@@ -343,10 +370,15 @@ func (p *servicePanel) routes(key string) *http.ServeMux {
 	mux.HandleFunc("/result", guard(key, p.result))
 	mux.HandleFunc("/work", panelHTMLPage(key, "work", "OpenAbstractions activity", workPage))
 	mux.HandleFunc("/setup", panelHTMLPage(key, "setup", "OpenAbstractions Setup", setupPage))
+	p.claudeConnectionRoutes(mux, key)
+	p.codexConnectionRoutes(mux, key)
+	p.agentHelperUpdateRoutes(mux, key)
 	for alias, target := range navAliases {
 		mux.HandleFunc(alias, redirectAlias(target))
 	}
 	mux.HandleFunc("/setup/plan", guard(key, p.setupPlan))
+	mux.HandleFunc("/setup/maintenance", guard(key, p.setupMaintenance))
+	mux.HandleFunc("/setup/desktop-integration", guard(key, p.setupApplyDesktopIntegration))
 	mux.HandleFunc("/setup/other-copies", guard(key, p.setupOtherCopies))
 	mux.HandleFunc("/setup/install", guard(key, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
@@ -355,13 +387,22 @@ func (p *servicePanel) routes(key string) *http.ServeMux {
 		}
 		p.setupInstall(w, r)
 	}))
+	mux.HandleFunc("/setup/install/cancel", guard(key, p.setupInstallCancel))
+	mux.HandleFunc("/setup/install/continue", guard(key, p.setupInstallContinue))
+	mux.HandleFunc("/setup/install/failed", guard(key, p.setupInstallFailed))
+	mux.HandleFunc("/setup/notice", guard(key, p.setupNotice))
 	mux.HandleFunc("/setup/install/grants", guard(key, p.setupInstallGrants))
 	mux.HandleFunc("/setup/install/open", guard(key, p.setupInstallOpen))
 	mux.HandleFunc("/setup/intent", guard(key, p.setupIntent))
+	mux.HandleFunc("/setup/catalog", guard(key, p.setupCatalog))
+	mux.HandleFunc("/setup/overview", guard(key, p.setupOverview))
 	mux.HandleFunc("/setup/state", guard(key, p.setupState))
 	mux.HandleFunc("/setup/advance", guard(key, p.setupAdvance))
+	mux.HandleFunc("/setup/advance-next", guard(key, p.setupAdvanceNext))
 	mux.HandleFunc("/setup/retry", guard(key, p.setupRetry))
 	mux.HandleFunc("/setup/recover", guard(key, p.setupRecover))
+	mux.HandleFunc("/setup/settle-removal", guard(key, p.setupSettleRemoval))
+	mux.HandleFunc("/setup/cancel-step", guard(key, p.setupCancelStep))
 	mux.HandleFunc("/setup/feature", guard(key, p.setupFeatureStatus))
 	mux.HandleFunc("/setup/feature/add", guard(key, p.setupAddFeature))
 	mux.HandleFunc("/setup/model", guard(key, p.setupModelStatus))
@@ -371,19 +412,24 @@ func (p *servicePanel) routes(key string) *http.ServeMux {
 	mux.HandleFunc("/setup/model/configure", guard(key, func(w http.ResponseWriter, r *http.Request) { p.setupModelAction(w, r, "configure") }))
 	mux.HandleFunc("/setup/model/reconcile", guard(key, func(w http.ResponseWriter, r *http.Request) { p.setupModelAction(w, r, "reconcile") }))
 	mux.HandleFunc("/setup/engine/remove", guard(key, p.setupRemoveEngine))
-	mux.HandleFunc("/setup/comfy/status", guard(key, p.setupComfyStatus))
-	mux.HandleFunc("/setup/comfy/register", guard(key, p.setupComfyRegister))
-	mux.HandleFunc("/setup/comfy/activate", guard(key, p.setupComfyActivate))
-	mux.HandleFunc("/setup/comfy/remove", guard(key, p.setupComfyRemove))
+	mux.HandleFunc("/setup/uninstall", guard(key, p.setupUninstall))
+	mux.HandleFunc("/setup/reinstall", guard(key, p.setupReinstall))
+	mux.HandleFunc("/setup/repair", guard(key, p.setupRepair))
+	p.registerSetupExtensionRoutes(mux, key)
 	mux.HandleFunc("/setup/modelhost/chat", guard(key, p.setupModelHostChat))
+	mux.HandleFunc("/setup/modelhost/coding", guard(key, p.setupCodingModel))
+	mux.HandleFunc("/setup/step", guard(key, p.setupStepState))
 	mux.HandleFunc("/setup/modelhost/feature/add", guard(key, p.setupModelHostFeatureAdd))
 	mux.HandleFunc("/setup/modelhost/engine", guard(key, p.setupModelHostEngine))
 	mux.HandleFunc("/setup/modelhost/engine/bundled", guard(key, p.setupModelHostBundledEngine))
 	mux.HandleFunc("/setup/modelhost/root/preview", guard(key, p.setupModelHostRootPreview))
 	mux.HandleFunc("/setup/modelhost/root", guard(key, p.setupModelHostRootRegister))
-	mux.HandleFunc("/setup/modelhost/host", guard(key, p.setupModelHostHost))
+	mux.HandleFunc("/setup/modelhost/unhost", guard(key, p.setupModelHostUnhost))
 	mux.HandleFunc("/settings", pageOrAPI(key, "settings", "OpenAbstractions settings", settingsPage, p.settings))
 	mux.HandleFunc("/settings/observe", guard(key, p.observeSettings))
+	mux.HandleFunc("/settings/typed", guard(key, p.typedSettings))
+	mux.HandleFunc("/settings/archive", guard(key, p.settingsArchive))
+	mux.HandleFunc("/settings/archive/folder", guard(key, p.inferenceFolder))
 	mux.HandleFunc("/questions", apiOrPage(key, p.questions, "/rights"))
 	mux.HandleFunc("/choices", guard(key, p.choices))
 	mux.HandleFunc("/rights/requests", guard(key, p.permissions))
@@ -397,6 +443,7 @@ func (p *servicePanel) routes(key string) *http.ServeMux {
 	p.activityRoutes(mux, key)
 	mux.HandleFunc("/credentials-page", p.credentialsPageHandler(key))
 	mux.HandleFunc("/credentials", guard(key, p.credentials))
+	mux.HandleFunc("/connect", guard(key, p.connectService))
 	mux.HandleFunc("/runtime", guard(key, serveReadiness))
 	p.applicationRoutes(mux, key)
 	mux.HandleFunc("/logging", apiOrPage(key, p.logging, "/settings"))
@@ -404,6 +451,7 @@ func (p *servicePanel) routes(key string) *http.ServeMux {
 	mux.HandleFunc("/explore", apiOrPage(key, p.explore, "/settings"))
 	p.inferenceRoutes(mux, key)
 	p.registryRoutes(mux, key)
+	p.machinesRoutes(mux, key)
 	mux.HandleFunc("/apps/registrations", guard(key, p.appsRegistrations))
 	p.appPageRoutes(mux, key)
 	p.cardRoutes(mux, key)
@@ -438,6 +486,14 @@ func panelAccount(ctx context.Context) string {
 // parsePanelStartPage deliberately accepts a small set of semantic page names.
 // Callers cannot choose an arbitrary path or URL for this keyed local server.
 func parsePanelStartPage(name string) (panelStartPage, error) {
+	if application, ok := strings.CutPrefix(name, "agent:"); ok {
+		if !validApplicationName(application) {
+			return panelStartPage{}, errors.New("assistant identity page requires a registered application name")
+		}
+		// The name selects the existing operator page. Its native service
+		// supplies current image/enrollment evidence and the person's Keep.
+		return panelStartPage{path: "/app/" + neturl.PathEscape(application) + "/agent", windowTitle: "OpenAbstractions Panel"}, nil
+	}
 	switch name {
 	case "overview":
 		// /start opens Get started while setup is unfinished, then Apps
@@ -451,18 +507,19 @@ func parsePanelStartPage(name string) (panelStartPage, error) {
 		return panelStartPage{path: "/credentials-page", windowTitle: "OpenAbstractions Panel"}, nil
 	case "connect-deepseek":
 		// A launcher asking for the retired hosted-key page gets Credentials,
-		// where keys are added.
+		// whose first row, Connect a service, is the DeepSeek preset (P-M9);
+		// W1-12 removes this name.
 		return panelStartPage{path: "/credentials-page", windowTitle: "OpenAbstractions Panel"}, nil
 	case "setup":
-		return panelStartPage{path: "/setup", windowTitle: "OpenAbstractions Setup"}, nil
+		return panelStartPage{path: "/setup", windowTitle: "OpenAbstractions Panel"}, nil
 	case "activity":
 		return panelStartPage{path: "/work", windowTitle: "OpenAbstractions Panel"}, nil
-	case "register-application":
-		return panelStartPage{path: "/application/register", windowTitle: "OpenAbstractions Panel"}, nil
-	case "remove-application":
-		return panelStartPage{path: "/application/remove", windowTitle: "OpenAbstractions Panel"}, nil
+	case "register-application", "remove-application":
+		// An installer's request run applies its request and opens no
+		// window (application_native.go); a page named for it opens Apps.
+		return panelStartPage{path: "/", windowTitle: "OpenAbstractions Panel"}, nil
 	default:
-		return panelStartPage{}, fmt.Errorf("unknown Panel page %q; choose overview, questions, credentials, setup or activity", name)
+		return panelStartPage{}, fmt.Errorf("unknown Panel page %q; choose overview, questions, credentials, setup, activity or agent:<application>", name)
 	}
 }
 
@@ -497,6 +554,7 @@ type panelRun struct {
 	panel *servicePanel
 	key   string
 	start panelStartPage
+	owned *panelOwnedWindow
 }
 
 func newPanelRun(pageName string) (*panelRun, error) {
@@ -518,7 +576,12 @@ func (run *panelRun) resources(origin string) (*panelResources, string) {
 	query := neturl.Values{}
 	query.Set("k", run.key)
 	u.RawQuery = query.Encode()
-	return newPanelResources(origin, run.panel.routes(run.key)), withStartOperation(u.String(), run.start)
+	var routes http.Handler = run.panel.routes(run.key)
+	if run.owned != nil {
+		routes = run.owned.routes(run.key, routes)
+		u.Path = "/native-host/shell"
+	}
+	return newPanelResources(origin, routes), withStartOperation(u.String(), run.start)
 }
 
 // panelListen is net.Listen. Tests replace it to prove that a native window's
@@ -526,10 +589,15 @@ func (run *panelRun) resources(origin string) (*panelResources, string) {
 var panelListen = net.Listen
 
 func bindPanelPage(address, pageName string) (p *servicePanel, server *http.Server, listener net.Listener, url string, err error) {
+	return bindPanelPageWithSetupTransfer(address, pageName, nil)
+}
+
+func bindPanelPageWithSetupTransfer(address, pageName string, transfer *setup.PublicTransfer) (p *servicePanel, server *http.Server, listener net.Listener, url string, err error) {
 	run, err := newPanelRun(pageName)
 	if err != nil {
 		return nil, nil, nil, "", err
 	}
+	run.panel.setupTransfer = transfer
 	hostname, _, err := net.SplitHostPort(address)
 	if err != nil || !loopback(hostname) {
 		return nil, nil, nil, "", errors.New("service panel requires a loopback address")
@@ -560,6 +628,17 @@ func withStartOperation(url string, start panelStartPage) string {
 const panelWindowAnnouncement = "window"
 
 func runServicePanel(address string, open, native bool, pageName string, quiet bool, request applicationStart) error {
+	return runServicePanelWithSetupTransfer(address, open, native, pageName, quiet, request, nil)
+}
+
+func runServicePanelWithSetupTransfer(address string, open, native bool, pageName string, quiet bool, request applicationStart, transfer *setup.PublicTransfer) error {
+	if transfer != nil && (native || open || request != (applicationStart{})) {
+		return errors.New("qualification transport requires developer HTTP mode without automatic opening or application actions")
+	}
+	if transfer == nil {
+		// The download service copies archive files into its own work now.
+		setup.RemoveArchiveSpool()
+	}
 	if native {
 		// The native window is served as resources and binds nothing
 		// (panel_resource.go). The loopback HTTP below is the developer and
@@ -568,14 +647,12 @@ func runServicePanel(address string, open, native bool, pageName string, quiet b
 		if err != nil {
 			return err
 		}
-		run.panel.appRequest.register, run.panel.appRequest.remove = request.register, request.remove
 		return runResourceWindow(run, quiet)
 	}
-	p, server, listener, panelURL, err := bindPanelPage(address, pageName)
+	_, server, listener, panelURL, err := bindPanelPageWithSetupTransfer(address, pageName, transfer)
 	if err != nil {
 		return err
 	}
-	p.appRequest.register, p.appRequest.remove = request.register, request.remove
 	if err := announcePanelURL(os.Stdout, panelURL, quiet, request); err != nil {
 		server.Close()
 		return err

@@ -1,0 +1,594 @@
+type Raw string
+type Outcome uint32
+const OutcomeApplied
+const OutcomePage
+const OutcomeUnknown
+const OutcomeStale
+const OutcomeConflict
+const OutcomeInvalid
+const OutcomeForbidden
+const OutcomeUnavailable
+func (Outcome) String() string
+func (Outcome) WireName() (string, bool)
+func ParseOutcome(word string) (Outcome, bool)
+func (Outcome) MarshalText() ([]byte, error)
+func (Outcome) UnmarshalText(text []byte) error
+func (Outcome) MarshalJSON() ([]byte, error)
+func (Outcome) UnmarshalJSON(data []byte) error
+func OutcomeValues() []Outcome
+func (Outcome) IsKnown() bool
+func (Outcome) Known() bool
+type ActivationOutcome uint32
+const ActivationOutcomeReady
+const ActivationOutcomeUnknown
+const ActivationOutcomeDisabled
+const ActivationOutcomeForbidden
+const ActivationOutcomeInvalid
+const ActivationOutcomeLaunchRefused
+const ActivationOutcomeIdentityRefused
+const ActivationOutcomeNotReady
+const ActivationOutcomeUnavailable
+func (ActivationOutcome) String() string
+func (ActivationOutcome) WireName() (string, bool)
+func ParseActivationOutcome(word string) (ActivationOutcome, bool)
+func (ActivationOutcome) MarshalText() ([]byte, error)
+func (ActivationOutcome) UnmarshalText(text []byte) error
+func (ActivationOutcome) MarshalJSON() ([]byte, error)
+func (ActivationOutcome) UnmarshalJSON(data []byte) error
+func ActivationOutcomeValues() []ActivationOutcome
+func (ActivationOutcome) IsKnown() bool
+func (ActivationOutcome) Known() bool
+type HostActivationOutcome uint32
+const HostActivationOutcomeApplied
+const HostActivationOutcomeRefused
+const HostActivationOutcomeUnavailable
+func (HostActivationOutcome) String() string
+func (HostActivationOutcome) WireName() (string, bool)
+func ParseHostActivationOutcome(word string) (HostActivationOutcome, bool)
+func (HostActivationOutcome) MarshalText() ([]byte, error)
+func (HostActivationOutcome) UnmarshalText(text []byte) error
+func (HostActivationOutcome) MarshalJSON() ([]byte, error)
+func (HostActivationOutcome) UnmarshalJSON(data []byte) error
+func HostActivationOutcomeValues() []HostActivationOutcome
+func (HostActivationOutcome) IsKnown() bool
+func (HostActivationOutcome) Known() bool
+type AgentEnrollmentState uint32
+const AgentEnrollmentStateNone
+const AgentEnrollmentStatePending
+const AgentEnrollmentStateEnrolled
+func (AgentEnrollmentState) String() string
+func (AgentEnrollmentState) WireName() (string, bool)
+func ParseAgentEnrollmentState(word string) (AgentEnrollmentState, bool)
+func (AgentEnrollmentState) MarshalText() ([]byte, error)
+func (AgentEnrollmentState) UnmarshalText(text []byte) error
+func (AgentEnrollmentState) MarshalJSON() ([]byte, error)
+func (AgentEnrollmentState) UnmarshalJSON(data []byte) error
+func AgentEnrollmentStateValues() []AgentEnrollmentState
+func (AgentEnrollmentState) IsKnown() bool
+func (AgentEnrollmentState) Known() bool
+type AgentUpdatePhase uint32
+const AgentUpdatePhaseStaged
+const AgentUpdatePhaseCommitted
+const AgentUpdatePhaseReady
+func (AgentUpdatePhase) String() string
+func (AgentUpdatePhase) WireName() (string, bool)
+func ParseAgentUpdatePhase(word string) (AgentUpdatePhase, bool)
+func (AgentUpdatePhase) MarshalText() ([]byte, error)
+func (AgentUpdatePhase) UnmarshalText(text []byte) error
+func (AgentUpdatePhase) MarshalJSON() ([]byte, error)
+func (AgentUpdatePhase) UnmarshalJSON(data []byte) error
+func AgentUpdatePhaseValues() []AgentUpdatePhase
+func (AgentUpdatePhase) IsKnown() bool
+func (AgentUpdatePhase) Known() bool
+type SetupOutcome uint32
+const SetupOutcomeAsked
+const SetupOutcomeAlreadySetUp
+const SetupOutcomeCannotRun
+const SetupOutcomeInvalid
+const SetupOutcomeForbidden
+const SetupOutcomeUnavailable
+func (SetupOutcome) String() string
+func (SetupOutcome) WireName() (string, bool)
+func ParseSetupOutcome(word string) (SetupOutcome, bool)
+func (SetupOutcome) MarshalText() ([]byte, error)
+func (SetupOutcome) UnmarshalText(text []byte) error
+func (SetupOutcome) MarshalJSON() ([]byte, error)
+func (SetupOutcome) UnmarshalJSON(data []byte) error
+func SetupOutcomeValues() []SetupOutcome
+func (SetupOutcome) IsKnown() bool
+func (SetupOutcome) Known() bool
+type SetupReceiptOutcome uint32
+const SetupReceiptOutcomeStarted
+const SetupReceiptOutcomeCompleted
+func (SetupReceiptOutcome) String() string
+func (SetupReceiptOutcome) WireName() (string, bool)
+func ParseSetupReceiptOutcome(word string) (SetupReceiptOutcome, bool)
+func (SetupReceiptOutcome) MarshalText() ([]byte, error)
+func (SetupReceiptOutcome) UnmarshalText(text []byte) error
+func (SetupReceiptOutcome) MarshalJSON() ([]byte, error)
+func (SetupReceiptOutcome) UnmarshalJSON(data []byte) error
+func SetupReceiptOutcomeValues() []SetupReceiptOutcome
+func (SetupReceiptOutcome) IsKnown() bool
+func (SetupReceiptOutcome) Known() bool
+type ServiceErrorCode string
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+func ServiceErrorCodeValues() []ServiceErrorCode
+func (ServiceErrorCode) IsKnown() bool
+func (ServiceErrorCode) Known() bool
+type EndpointServiceReadiness uint32
+const EndpointServiceReadinessReady
+const EndpointServiceReadinessNotReady
+const EndpointServiceReadinessUnknown
+func (EndpointServiceReadiness) String() string
+func (EndpointServiceReadiness) WireName() (string, bool)
+func ParseEndpointServiceReadiness(word string) (EndpointServiceReadiness, bool)
+func (EndpointServiceReadiness) MarshalText() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalText(text []byte) error
+func (EndpointServiceReadiness) MarshalJSON() ([]byte, error)
+func (EndpointServiceReadiness) UnmarshalJSON(data []byte) error
+func EndpointServiceReadinessValues() []EndpointServiceReadiness
+func (EndpointServiceReadiness) IsKnown() bool
+func (EndpointServiceReadiness) Known() bool
+type EndpointRefusalSource string
+const EndpointRefusalSourceRights
+const EndpointRefusalSourceCredentials
+const EndpointRefusalSourceLicense
+const EndpointRefusalSourceTerms
+const EndpointRefusalSourceIdentity
+const EndpointRefusalSourceOS
+func EndpointRefusalSourceValues() []EndpointRefusalSource
+func (EndpointRefusalSource) IsKnown() bool
+func (EndpointRefusalSource) Known() bool
+type EndpointRefusalDecision uint32
+const EndpointRefusalDecisionDenied
+const EndpointRefusalDecisionNotGranted
+const EndpointRefusalDecisionPersonOnly
+func (EndpointRefusalDecision) String() string
+func (EndpointRefusalDecision) WireName() (string, bool)
+func ParseEndpointRefusalDecision(word string) (EndpointRefusalDecision, bool)
+func (EndpointRefusalDecision) MarshalText() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalText(text []byte) error
+func (EndpointRefusalDecision) MarshalJSON() ([]byte, error)
+func (EndpointRefusalDecision) UnmarshalJSON(data []byte) error
+func EndpointRefusalDecisionValues() []EndpointRefusalDecision
+func (EndpointRefusalDecision) IsKnown() bool
+func (EndpointRefusalDecision) Known() bool
+type EndpointRefusalAsk uint32
+const EndpointRefusalAskAvailable
+const EndpointRefusalAskNone
+func (EndpointRefusalAsk) String() string
+func (EndpointRefusalAsk) WireName() (string, bool)
+func ParseEndpointRefusalAsk(word string) (EndpointRefusalAsk, bool)
+func (EndpointRefusalAsk) MarshalText() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalText(text []byte) error
+func (EndpointRefusalAsk) MarshalJSON() ([]byte, error)
+func (EndpointRefusalAsk) UnmarshalJSON(data []byte) error
+func EndpointRefusalAskValues() []EndpointRefusalAsk
+func (EndpointRefusalAsk) IsKnown() bool
+func (EndpointRefusalAsk) Known() bool
+type EndpointProducerCheckState uint32
+const EndpointProducerCheckStateCurrent
+const EndpointProducerCheckStateRepaired
+const EndpointProducerCheckStateStale
+const EndpointProducerCheckStateRefused
+const EndpointProducerCheckStateUnverified
+func (EndpointProducerCheckState) String() string
+func (EndpointProducerCheckState) WireName() (string, bool)
+func ParseEndpointProducerCheckState(word string) (EndpointProducerCheckState, bool)
+func (EndpointProducerCheckState) MarshalText() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalText(text []byte) error
+func (EndpointProducerCheckState) MarshalJSON() ([]byte, error)
+func (EndpointProducerCheckState) UnmarshalJSON(data []byte) error
+func EndpointProducerCheckStateValues() []EndpointProducerCheckState
+func (EndpointProducerCheckState) IsKnown() bool
+func (EndpointProducerCheckState) Known() bool
+type EndpointDescriptionOutcome uint32
+const EndpointDescriptionOutcomeDescribed
+const EndpointDescriptionOutcomeForbidden
+const EndpointDescriptionOutcomeUnavailable
+const EndpointDescriptionOutcomeInvalid
+const EndpointDescriptionOutcomeUnsupported
+func (EndpointDescriptionOutcome) String() string
+func (EndpointDescriptionOutcome) WireName() (string, bool)
+func ParseEndpointDescriptionOutcome(word string) (EndpointDescriptionOutcome, bool)
+func (EndpointDescriptionOutcome) MarshalText() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalText(text []byte) error
+func (EndpointDescriptionOutcome) MarshalJSON() ([]byte, error)
+func (EndpointDescriptionOutcome) UnmarshalJSON(data []byte) error
+func EndpointDescriptionOutcomeValues() []EndpointDescriptionOutcome
+func (EndpointDescriptionOutcome) IsKnown() bool
+func (EndpointDescriptionOutcome) Known() bool
+type NamedApplicationTarget struct
+  Name string
+type CapturedAgentApplication struct
+  Name string
+  Program string
+  FileKey string
+  EnrollmentRevision string
+type AgentMessageResource struct
+  Sender CapturedAgentApplication
+  Receiver CapturedAgentApplication
+type HostActivationResult struct
+  Outcome HostActivationOutcome
+  Reason string
+type RegisterRequest struct
+  Program string
+  ExpectedRevision string
+type ConnectExpectation struct
+  Application string
+  Program string
+  SHA256 string
+type ChangeRequest struct
+  Application string
+  ExpectedRevision string
+type AgentEnrollmentRequest struct
+  Application string
+  ExpectedRevision string
+  Enabled bool
+  BindCatalogueHost *bool
+type AgentEnrollment struct
+  Application string
+  Program string
+  Revision string
+  State AgentEnrollmentState
+type AgentEnrollmentResult struct
+  Outcome Outcome
+  Enrollment *AgentEnrollment
+  Reason string
+type AgentUpdateMember struct
+  Application string
+  ExpectedRevision string
+  StagedProgram string
+type AgentUpdateRequest struct
+  Members []AgentUpdateMember
+  SourceProgram string
+  UndoOf string
+  ReviewOf string
+type AgentUpdateImage struct
+  Application string
+  Program string
+  FileKey string
+type AgentUpdateResult struct
+  Outcome Outcome
+  Intent string
+  Question string
+  Enrollments []AgentEnrollment
+  Reason string
+  StagedImages []AgentUpdateImage
+  Phase *AgentUpdatePhase
+  ReadyUnixMs *int64
+type SignInStart struct
+  Wanted bool
+  Runtime bool
+  Presenter bool
+type SignInStartResult struct
+  Outcome Outcome
+  State *SignInStart
+  Reason string
+type SetupResult struct
+  Outcome SetupOutcome
+  Reason string
+type SetupRequest struct
+  ID string
+  Use string
+  Application string
+type SetupRequestRead struct
+  Outcome Outcome
+  Request *SetupRequest
+  Reason string
+type SetupPresenterReceipt struct
+  Outcome SetupReceiptOutcome
+  Occurrence string
+  Request string
+  Facts map[string]string
+  Key string
+type SetupStepReport struct
+  Outcome Outcome
+  Reason string
+  Question string
+type ActivateRequest struct
+  Application string
+  Verb string
+  Payload Raw
+  Context string
+  DefaultVerb *bool
+type Query struct
+  Application string
+  Cursor string
+  Limit int32
+  WaitMs int32
+type Change struct
+  Outcome Outcome
+  Revision string
+  Reason string
+type Page struct
+  Outcome Outcome
+  Cursor string
+  Registrations []oaImported0
+  Reason string
+type ActivationResult struct
+  Outcome ActivationOutcome
+  Instance string
+  Started bool
+  Reason string
+  Title string
+type DescribeResult struct
+  Outcome Outcome
+  Answer *oaImported1
+  Reason string
+type CommandsResult struct
+  Outcome Outcome
+  Answer *oaImported2
+  Reason string
+type CallResult struct
+  Outcome Outcome
+  Answer *oaImported3
+  Reason string
+type ActivationConfiguration struct
+  Expected oaImported4
+  Activation *oaImported5
+type EndpointRefusalDetail struct
+  Source EndpointRefusalSource
+  Decision EndpointRefusalDecision
+  Ask EndpointRefusalAsk
+  Action string
+  Question string
+  Credential string
+  RetryAfterMs int64
+type EndpointProducerCheck struct
+  Kind string
+  Copy string
+  State EndpointProducerCheckState
+  Reason string
+  Checked string
+type EndpointServiceState struct
+  Service string
+  Readiness EndpointServiceReadiness
+  Reason string
+  Guarantees []string
+  Capabilities map[string]string
+  DefinitionHash string
+type EndpointDescription struct
+  Outcome EndpointDescriptionOutcome
+  Program string
+  Version string
+  Services []EndpointServiceState
+  Refusal *EndpointRefusalDetail
+  Reason string
+  Checks []EndpointProducerCheck
+type EndpointDescriptionResult struct
+  Value EndpointDescription
+func Encode(v *HostActivationResult) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+const TimestampLayout
+func FormatTimestamp(at time.Time) string
+func Decode(in []byte) (*HostActivationResult, error)
+func ToJSON(v any) (out []byte, err error)
+func FromJSON(data []byte, v any) error
+type FrameWriter interface
+  WriteFrame(frame []byte) error
+type DispatchError string
+func (DispatchError) Error() string
+func ServiceName(frame []byte) (string, error)
+func ServiceMethod(frame []byte) (service string, method string, err error)
+type FrameExchanger interface
+  ExchangeFrame(frame []byte) ([]byte, error)
+type ServiceError struct
+  Code ServiceErrorCode
+  Message string
+func (ServiceError) Error() string
+const EndpointContract
+const EndpointV2Contract
+type DescribedService interface
+  DescribeService() (contract string, ready bool, why string)
+func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error)
+func DescribeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...DescribedService) ([]byte, error)
+type ServedService interface
+  DescribedService
+  ServiceContract() string
+func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error)
+func ServeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...ServedService) ([]byte, error)
+func ServeEndpointRemote(frame []byte, program, version string, admit func(contract, method, profile string) error, services ...ServedService) ([]byte, error)
+func RemoteMethodProfile(service interface{}, contract, method string) string
+type Applications interface
+  FindAgentUpdate(request AgentUpdateRequest) (AgentUpdateResult, error)
+  PrepareAgentUpdate(request AgentUpdateRequest) (AgentUpdateResult, error)
+  CommitAgentUpdate(intent string) (AgentUpdateResult, error)
+  SetActivation(request ActivationConfiguration) (oaImported6, error)
+  ReconcileActivation(expected oaImported4) (oaImported6, error)
+  ConfirmReceiverStart(recipeDigest string) (oaImported6, error)
+  ReadAgentEnrollment(application string) (AgentEnrollmentResult, error)
+  SetAgentEnrollment(request AgentEnrollmentRequest) (AgentEnrollmentResult, error)
+  Register(request RegisterRequest) (Change, error)
+  AskConfirmation(application string) (oaImported6, error)
+  Remove(request ChangeRequest) (Change, error)
+  Announce(key string, presence oaImported7) (oaImported6, error)
+  Withdraw(application, instance string) (oaImported6, error)
+  Observe(query Query) (Page, error)
+  Activate(key string, request ActivateRequest) (ActivationResult, error)
+  Describe(query oaImported8) (DescribeResult, error)
+  Commands(query oaImported9) (CommandsResult, error)
+  Call(key string, call oaImported10) (CallResult, error)
+  ReadSignInStart() (SignInStartResult, error)
+  RequestSetup(use string) (SetupResult, error)
+  ReceiveSetupRequest(after string) (SetupRequestRead, error)
+  ReportSetupStep(receipt SetupPresenterReceipt) (SetupStepReport, error)
+type ApplicationsTransport interface
+  FrameExchanger
+type ApplicationsClient struct
+func NewApplicationsClient(t ApplicationsTransport) *ApplicationsClient
+type ApplicationsDispatcher struct
+  Handler Applications
+func (ApplicationsDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
+func (ApplicationsClient) FindAgentUpdate(request AgentUpdateRequest) (result AgentUpdateResult, err error)
+func (ApplicationsClient) PrepareAgentUpdate(request AgentUpdateRequest) (result AgentUpdateResult, err error)
+func (ApplicationsClient) CommitAgentUpdate(intent string) (result AgentUpdateResult, err error)
+func (ApplicationsClient) SetActivation(request ActivationConfiguration) (result oaImported6, err error)
+func (ApplicationsClient) ReconcileActivation(expected oaImported4) (result oaImported6, err error)
+func (ApplicationsClient) ConfirmReceiverStart(recipeDigest string) (result oaImported6, err error)
+func (ApplicationsClient) ReadAgentEnrollment(application string) (result AgentEnrollmentResult, err error)
+func (ApplicationsClient) SetAgentEnrollment(request AgentEnrollmentRequest) (result AgentEnrollmentResult, err error)
+func (ApplicationsClient) Register(request RegisterRequest) (result Change, err error)
+func (ApplicationsClient) AskConfirmation(application string) (result oaImported6, err error)
+func (ApplicationsClient) Remove(request ChangeRequest) (result Change, err error)
+func (ApplicationsClient) Announce(key string, presence oaImported7) (result oaImported6, err error)
+func (ApplicationsClient) Withdraw(application, instance string) (result oaImported6, err error)
+func (ApplicationsClient) Observe(query Query) (result Page, err error)
+func (ApplicationsClient) Activate(key string, request ActivateRequest) (result ActivationResult, err error)
+func (ApplicationsClient) Describe(query oaImported8) (result DescribeResult, err error)
+func (ApplicationsClient) Commands(query oaImported9) (result CommandsResult, err error)
+func (ApplicationsClient) Call(key string, call oaImported10) (result CallResult, err error)
+func (ApplicationsClient) ReadSignInStart() (result SignInStartResult, err error)
+func (ApplicationsClient) RequestSetup(use string) (result SetupResult, err error)
+func (ApplicationsClient) ReceiveSetupRequest(after string) (result SetupRequestRead, err error)
+func (ApplicationsClient) ReportSetupStep(receipt SetupPresenterReceipt) (result SetupStepReport, err error)
+func (ApplicationsDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ApplicationsDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (ApplicationsDispatcher) ServiceContract() string
+func (ApplicationsDispatcher) DescribeServiceDefinitionHash() string
+func (ApplicationsDispatcher) WriteFrame(frame []byte) error
+func (ApplicationsDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+type ApplicationsOperator interface
+  ExpectConnect(expectation ConnectExpectation) (oaImported6, error)
+type ApplicationsOperatorTransport interface
+  FrameExchanger
+type ApplicationsOperatorClient struct
+func NewApplicationsOperatorClient(t ApplicationsOperatorTransport) *ApplicationsOperatorClient
+type ApplicationsOperatorDispatcher struct
+  Handler ApplicationsOperator
+func (ApplicationsOperatorDispatcher) RemoteMethodProfile(contract, method string) (string, bool)
+func (ApplicationsOperatorClient) ExpectConnect(expectation ConnectExpectation) (result oaImported6, err error)
+func (ApplicationsOperatorDispatcher) DescribeService() (contract string, ready bool, why string)
+func (ApplicationsOperatorDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
+func (ApplicationsOperatorDispatcher) ServiceContract() string
+func (ApplicationsOperatorDispatcher) DescribeServiceDefinitionHash() string
+func (ApplicationsOperatorDispatcher) WriteFrame(frame []byte) error
+func (ApplicationsOperatorDispatcher) ExchangeFrame(frame []byte) ([]byte, error)
+func DecodeNamedApplicationTargetAt(in []byte, depth, limit int) (*NamedApplicationTarget, int, error)
+func EncodeNamedApplicationTargetAt(v *NamedApplicationTarget, depth int) []byte
+func EncodeNamedApplicationTarget(v *NamedApplicationTarget) []byte
+func DecodeNamedApplicationTarget(in []byte) (*NamedApplicationTarget, error)
+func DecodeCapturedAgentApplicationAt(in []byte, depth, limit int) (*CapturedAgentApplication, int, error)
+func EncodeCapturedAgentApplicationAt(v *CapturedAgentApplication, depth int) []byte
+func EncodeCapturedAgentApplication(v *CapturedAgentApplication) []byte
+func DecodeCapturedAgentApplication(in []byte) (*CapturedAgentApplication, error)
+func DecodeAgentMessageResourceAt(in []byte, depth, limit int) (*AgentMessageResource, int, error)
+func EncodeAgentMessageResourceAt(v *AgentMessageResource, depth int) []byte
+func EncodeAgentMessageResource(v *AgentMessageResource) []byte
+func DecodeAgentMessageResource(in []byte) (*AgentMessageResource, error)
+func DecodeHostActivationResultAt(in []byte, depth, limit int) (*HostActivationResult, int, error)
+func EncodeHostActivationResultAt(v *HostActivationResult, depth int) []byte
+func EncodeHostActivationResult(v *HostActivationResult) []byte
+func DecodeHostActivationResult(in []byte) (*HostActivationResult, error)
+func DecodeRegisterRequestAt(in []byte, depth, limit int) (*RegisterRequest, int, error)
+func EncodeRegisterRequestAt(v *RegisterRequest, depth int) []byte
+func EncodeRegisterRequest(v *RegisterRequest) []byte
+func DecodeRegisterRequest(in []byte) (*RegisterRequest, error)
+func DecodeConnectExpectationAt(in []byte, depth, limit int) (*ConnectExpectation, int, error)
+func EncodeConnectExpectationAt(v *ConnectExpectation, depth int) []byte
+func EncodeConnectExpectation(v *ConnectExpectation) []byte
+func DecodeConnectExpectation(in []byte) (*ConnectExpectation, error)
+func DecodeChangeRequestAt(in []byte, depth, limit int) (*ChangeRequest, int, error)
+func EncodeChangeRequestAt(v *ChangeRequest, depth int) []byte
+func EncodeChangeRequest(v *ChangeRequest) []byte
+func DecodeChangeRequest(in []byte) (*ChangeRequest, error)
+func DecodeAgentEnrollmentRequestAt(in []byte, depth, limit int) (*AgentEnrollmentRequest, int, error)
+func EncodeAgentEnrollmentRequestAt(v *AgentEnrollmentRequest, depth int) []byte
+func EncodeAgentEnrollmentRequest(v *AgentEnrollmentRequest) []byte
+func DecodeAgentEnrollmentRequest(in []byte) (*AgentEnrollmentRequest, error)
+func DecodeAgentEnrollmentAt(in []byte, depth, limit int) (*AgentEnrollment, int, error)
+func EncodeAgentEnrollmentAt(v *AgentEnrollment, depth int) []byte
+func EncodeAgentEnrollment(v *AgentEnrollment) []byte
+func DecodeAgentEnrollment(in []byte) (*AgentEnrollment, error)
+func DecodeAgentEnrollmentResultAt(in []byte, depth, limit int) (*AgentEnrollmentResult, int, error)
+func EncodeAgentEnrollmentResultAt(v *AgentEnrollmentResult, depth int) []byte
+func EncodeAgentEnrollmentResult(v *AgentEnrollmentResult) []byte
+func DecodeAgentEnrollmentResult(in []byte) (*AgentEnrollmentResult, error)
+func DecodeAgentUpdateMemberAt(in []byte, depth, limit int) (*AgentUpdateMember, int, error)
+func EncodeAgentUpdateMemberAt(v *AgentUpdateMember, depth int) []byte
+func EncodeAgentUpdateMember(v *AgentUpdateMember) []byte
+func DecodeAgentUpdateMember(in []byte) (*AgentUpdateMember, error)
+func DecodeAgentUpdateRequestAt(in []byte, depth, limit int) (*AgentUpdateRequest, int, error)
+func EncodeAgentUpdateRequestAt(v *AgentUpdateRequest, depth int) []byte
+func EncodeAgentUpdateRequest(v *AgentUpdateRequest) []byte
+func DecodeAgentUpdateRequest(in []byte) (*AgentUpdateRequest, error)
+func DecodeAgentUpdateImageAt(in []byte, depth, limit int) (*AgentUpdateImage, int, error)
+func EncodeAgentUpdateImageAt(v *AgentUpdateImage, depth int) []byte
+func EncodeAgentUpdateImage(v *AgentUpdateImage) []byte
+func DecodeAgentUpdateImage(in []byte) (*AgentUpdateImage, error)
+func DecodeAgentUpdateResultAt(in []byte, depth, limit int) (*AgentUpdateResult, int, error)
+func EncodeAgentUpdateResultAt(v *AgentUpdateResult, depth int) []byte
+func EncodeAgentUpdateResult(v *AgentUpdateResult) []byte
+func DecodeAgentUpdateResult(in []byte) (*AgentUpdateResult, error)
+func DecodeSignInStartAt(in []byte, depth, limit int) (*SignInStart, int, error)
+func EncodeSignInStartAt(v *SignInStart, depth int) []byte
+func EncodeSignInStart(v *SignInStart) []byte
+func DecodeSignInStart(in []byte) (*SignInStart, error)
+func DecodeSignInStartResultAt(in []byte, depth, limit int) (*SignInStartResult, int, error)
+func EncodeSignInStartResultAt(v *SignInStartResult, depth int) []byte
+func EncodeSignInStartResult(v *SignInStartResult) []byte
+func DecodeSignInStartResult(in []byte) (*SignInStartResult, error)
+func DecodeSetupResultAt(in []byte, depth, limit int) (*SetupResult, int, error)
+func EncodeSetupResultAt(v *SetupResult, depth int) []byte
+func EncodeSetupResult(v *SetupResult) []byte
+func DecodeSetupResult(in []byte) (*SetupResult, error)
+func DecodeSetupRequestAt(in []byte, depth, limit int) (*SetupRequest, int, error)
+func EncodeSetupRequestAt(v *SetupRequest, depth int) []byte
+func EncodeSetupRequest(v *SetupRequest) []byte
+func DecodeSetupRequest(in []byte) (*SetupRequest, error)
+func DecodeSetupRequestReadAt(in []byte, depth, limit int) (*SetupRequestRead, int, error)
+func EncodeSetupRequestReadAt(v *SetupRequestRead, depth int) []byte
+func EncodeSetupRequestRead(v *SetupRequestRead) []byte
+func DecodeSetupRequestRead(in []byte) (*SetupRequestRead, error)
+func DecodeSetupPresenterReceiptAt(in []byte, depth, limit int) (*SetupPresenterReceipt, int, error)
+func EncodeSetupPresenterReceiptAt(v *SetupPresenterReceipt, depth int) []byte
+func EncodeSetupPresenterReceipt(v *SetupPresenterReceipt) []byte
+func DecodeSetupPresenterReceipt(in []byte) (*SetupPresenterReceipt, error)
+func DecodeSetupStepReportAt(in []byte, depth, limit int) (*SetupStepReport, int, error)
+func EncodeSetupStepReportAt(v *SetupStepReport, depth int) []byte
+func EncodeSetupStepReport(v *SetupStepReport) []byte
+func DecodeSetupStepReport(in []byte) (*SetupStepReport, error)
+func DecodeActivateRequestAt(in []byte, depth, limit int) (*ActivateRequest, int, error)
+func EncodeActivateRequestAt(v *ActivateRequest, depth int) []byte
+func EncodeActivateRequest(v *ActivateRequest) []byte
+func DecodeActivateRequest(in []byte) (*ActivateRequest, error)
+func DecodeQueryAt(in []byte, depth, limit int) (*Query, int, error)
+func EncodeQueryAt(v *Query, depth int) []byte
+func EncodeQuery(v *Query) []byte
+func DecodeQuery(in []byte) (*Query, error)
+func DecodeChangeAt(in []byte, depth, limit int) (*Change, int, error)
+func EncodeChangeAt(v *Change, depth int) []byte
+func EncodeChange(v *Change) []byte
+func DecodeChange(in []byte) (*Change, error)
+func DecodePageAt(in []byte, depth, limit int) (*Page, int, error)
+func EncodePageAt(v *Page, depth int) []byte
+func EncodePage(v *Page) []byte
+func DecodePage(in []byte) (*Page, error)
+func DecodeActivationResultAt(in []byte, depth, limit int) (*ActivationResult, int, error)
+func EncodeActivationResultAt(v *ActivationResult, depth int) []byte
+func EncodeActivationResult(v *ActivationResult) []byte
+func DecodeActivationResult(in []byte) (*ActivationResult, error)
+func DecodeDescribeResultAt(in []byte, depth, limit int) (*DescribeResult, int, error)
+func EncodeDescribeResultAt(v *DescribeResult, depth int) []byte
+func EncodeDescribeResult(v *DescribeResult) []byte
+func DecodeDescribeResult(in []byte) (*DescribeResult, error)
+func DecodeCommandsResultAt(in []byte, depth, limit int) (*CommandsResult, int, error)
+func EncodeCommandsResultAt(v *CommandsResult, depth int) []byte
+func EncodeCommandsResult(v *CommandsResult) []byte
+func DecodeCommandsResult(in []byte) (*CommandsResult, error)
+func DecodeCallResultAt(in []byte, depth, limit int) (*CallResult, int, error)
+func EncodeCallResultAt(v *CallResult, depth int) []byte
+func EncodeCallResult(v *CallResult) []byte
+func DecodeCallResult(in []byte) (*CallResult, error)
+func DecodeActivationConfigurationAt(in []byte, depth, limit int) (*ActivationConfiguration, int, error)
+func EncodeActivationConfigurationAt(v *ActivationConfiguration, depth int) []byte
+func EncodeActivationConfiguration(v *ActivationConfiguration) []byte
+func DecodeActivationConfiguration(in []byte) (*ActivationConfiguration, error)

@@ -87,53 +87,9 @@ def _strs(out, v, depth):
 
 
 def _raw(out, s, depth):
-    b = s.encode("utf-8") if isinstance(s, str) else s
-    i, n = 0, len(b)
-    while i < n:
-        c = b[i]
-        if c in _WS:
-            i += 1
-        elif c == 0x22:
-            j = i + 1
-            while j < n:
-                if b[j] == 0x5C:
-                    j += 2
-                    continue
-                if b[j] == 0x22:
-                    j += 1
-                    break
-                j += 1
-            out += b[i:j]
-            i = j
-        elif c in (0x7B, 0x5B):
-            out.append(c)
-            i += 1
-            j = i
-            while j < n and b[j] in _WS:
-                j += 1
-            if j < n and b[j] in (0x7D, 0x5D):
-                out.append(b[j])
-                i = j + 1
-            else:
-                depth += 1
-                out += b"\n"
-                _pad(out, depth)
-        elif c in (0x7D, 0x5D):
-            depth -= 1
-            out += b"\n"
-            _pad(out, depth)
-            out.append(c)
-            i += 1
-        elif c == 0x2C:
-            out += b",\n"
-            _pad(out, depth)
-            i += 1
-        elif c == 0x3A:
-            out += b": "
-            i += 1
-        else:
-            out.append(c)
-            i += 1
+    # An opaque value's bytes as they are ([DEF-A3]).
+    # Whitespace around the value is not part of it.
+    out += (s.encode("utf-8") if isinstance(s, str) else bytes(s)).strip(bytes(_WS))
 
 
 def _rawmap(out, m, depth):
@@ -659,6 +615,9 @@ func pyInternalRecord(s *Definition, name string) bool {
 
 // pyClass is the Python class a contract struct becomes.
 func pyClass(s *Definition, name string) string {
+	if _, ok := s.ForeignEnums[name]; ok {
+		return "_ImportedEnum" + strings.TrimPrefix(name, "OAImported")
+	}
 	if pyInternalRecord(s, name) {
 		return "_" + strings.TrimPrefix(name, "OA")
 	}
@@ -689,15 +648,15 @@ func pyHint(s *Definition, f Field) string {
 	if en := f.EnumType; en != nil {
 		if f.EnumList {
 			if pyEnumClosed(en) {
-				return "list[" + pascalCase(en.Name) + "]"
+				return "list[" + pyClass(s, en.Name) + "]"
 			}
-			return "list[" + pascalCase(en.Name) + " | str]"
+			return "list[" + pyClass(s, en.Name) + " | str]"
 		}
 		switch {
 		case f.Omit == "absent" || pyEnumClosed(en):
-			return pascalCase(en.Name) + " | None"
+			return pyClass(s, en.Name) + " | None"
 		default:
-			return pascalCase(en.Name) + " | str"
+			return pyClass(s, en.Name) + " | str"
 		}
 	}
 	optional := func(t string) string {
@@ -714,9 +673,9 @@ func pyHint(s *Definition, f Field) string {
 	case "string":
 		return "str"
 	case "i32", "i64":
-		return "int"
+		return optional("int")
 	case "bool":
-		return "bool"
+		return optional("bool")
 	case "json":
 		return "bytes | str"
 	case "list<string>":
@@ -766,6 +725,7 @@ func pyDocstring(doc, indent string) string {
 }
 
 func pyDecoder(b *strings.Builder, s *Definition) {
+	emitMaxEncodedReader(b, s, "python")
 	for _, st := range s.Structs {
 		pyStructDecoder(b, s, st)
 	}
@@ -784,7 +744,11 @@ func pyDecoder(b *strings.Builder, s *Definition) {
 func pyStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 	fmt.Fprintf(b, "\n\ndef %s(r):\n", pyReader(st.Name))
 	b.WriteString("    if r.at() != _LBRACE:\n        raise r.refuse(\"wrong_type\")\n")
+	emitMaxEncodedDecode(b, st, "python")
 	fmt.Fprintf(b, "    r.enter()\n    r.pos += 1\n    v = %s()\n    seen = 0\n    r.ws()\n", pyClass(s, st.Name))
+	if tracksSkippedKeys(s, st) {
+		b.WriteString("    unknown_keys = set()\n")
+	}
 	b.WriteString("    if r.at() != _RBRACE:\n        while True:\n            r.ws()\n")
 	b.WriteString("            if r.at() != _QUOTE:\n                raise r.refuse(\"malformed\")\n")
 	b.WriteString("            key = r.string()\n            r.ws()\n")
@@ -812,6 +776,9 @@ func pyStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 		}
 		b.WriteString("                v.extras[key] = r.raw_value()\n")
 	} else {
+		if tracksSkippedKeys(s, st) {
+			b.WriteString("                if key in unknown_keys:\n                    raise r.refuse(\"duplicate_key\")\n                unknown_keys.add(key)\n")
+		}
 		b.WriteString("                r.skip_value()\n")
 	}
 	b.WriteString("            r.ws()\n            if r.at() != _COMMA:\n                break\n            r.pos += 1\n")
@@ -820,7 +787,8 @@ func pyStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 		fmt.Fprintf(b, "    if seen & %d != %d:\n        raise r.refuse(\"missing_field\")\n", req, req)
 	}
 	emitEqualities(b, st, "python", false)
-	pyEnumChecks(b, st, false)
+	pyEnumChecks(b, s, st, false)
+	configValueDecodeCheck(b, s, st, "python")
 	if len(s.Services) > 0 && st.Name == s.Document && s.Vocab != nil {
 		b.WriteString("    _derive(r, v)\n")
 	}
@@ -830,14 +798,14 @@ func pyStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 // pyEnumChecks judges vocabulary fields. The encoder refuses a word a closed
 // vocabulary does not name, and anything that is not a string; the decoder turns
 // the wire word into its member, or keeps the word where the vocabulary is open.
-func pyEnumChecks(b *strings.Builder, st Struct, encode bool) {
+func pyEnumChecks(b *strings.Builder, s *Definition, st Struct, encode bool) {
 	for i, f := range st.Fields {
 		en := f.EnumType
 		if en == nil {
 			continue
 		}
 		e := "v." + f.Ident("python")
-		cls := pascalCase(en.Name)
+		cls := pyClass(s, en.Name)
 		if f.EnumList {
 			if encode {
 				fmt.Fprintf(b, "    for item in %s:\n", e)
@@ -1118,7 +1086,7 @@ func genPy(s *Definition) string {
 	if s.HasRepeated() {
 		prelude += pyEncList
 	}
-	b.WriteString(strings.NewReplacer("@INDENT@", strconv.Itoa(s.Encoding.Indent)).Replace(prelude))
+	b.WriteString(strings.NewReplacer("@INDENT@", strconv.Itoa(s.Encoding.Indent)).Replace(opaqueLayout(s, "python", prelude)))
 	b.WriteString(importPrelude(s, "python"))
 	pyVocabularyEnums(&b, s)
 	pyVocabulary(&b, s)
@@ -1153,6 +1121,7 @@ func genPy(s *Definition) string {
 	if s.HasRepeated() {
 		decode += pyDecodeList
 	}
+	decode = pyDeepSkip(s, decode, skipDup)
 	b.WriteString(strings.NewReplacer(
 		"@DEPTH@", strconv.Itoa(s.Encoding.DepthLimit),
 		"@DUPKEY@", dup,
@@ -1166,16 +1135,26 @@ func genPy(s *Definition) string {
 		b.WriteString(pyPreserve)
 	}
 	pyDecoder(&b, s)
+	pyJSONAPI(&b, s)
 	pyProtocol(&b, s)
 	if hasBinary(s) {
 		b.WriteString(pyBinary)
 	}
 	pyService(&b, s)
+	configCataloguePython(&b, s)
 	return b.String()
 }
 
 func pyVocabulary(b *strings.Builder, s *Definition) {
 	for _, c := range s.Consts {
+		if c.StringScalar() {
+			fmt.Fprintf(b, "\n\n%s = %s\n", upperSnake(c.Name), constantString(c.Strings[0], "python"))
+			continue
+		}
+		if c.Scalar() {
+			fmt.Fprintf(b, "\n\n%s = %d\n", upperSnake(c.Name), c.Ints[0])
+			continue
+		}
 		fmt.Fprintf(b, "\n\n%s = [", upperSnake(c.Name))
 		if c.Type == "list<i32>" {
 			for i, n := range c.Ints {
@@ -1203,8 +1182,10 @@ func pyEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 	} else {
 		fmt.Fprintf(b, "\n\ndef %s(out, v, depth):\n", pyWriter(st.Name))
 	}
+	emitMaxEncodedStart(b, st, "python")
+	emitScalarPresenceTypes(b, st, "python")
 	emitEqualities(b, st, "python", true)
-	pyEnumChecks(b, st, true)
+	pyEnumChecks(b, s, st, true)
 	b.WriteString("    out += b\"{\"\n")
 	if p.flag {
 		b.WriteString("    first = True\n")
@@ -1228,11 +1209,13 @@ func pyEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 		if flat {
 			fmt.Fprintf(b, "%s_esc(out, %q)\n%sout += b\":\"\n", ind, f.Name, ind)
 			fmt.Fprintf(b, "%s%s\n", ind, pyValueFlat(s, f, e))
+			emitMaxEncodedEnd(b, st, "python")
 			continue
 		}
 		fmt.Fprintf(b, "%sout += b\"\\n\"\n%s_pad(out, depth + 1)\n", ind, ind)
 		fmt.Fprintf(b, "%s_esc(out, %q)\n%sout += b\": \"\n", ind, f.Name, ind)
 		fmt.Fprintf(b, "%s%s\n", ind, pyValue(s, f, e))
+		emitMaxEncodedEnd(b, st, "python")
 	}
 	if st.PreservesUnknown() {
 		fmt.Fprintf(b, "    first = _extra_fields(out, v.extras, [%s], depth, first)\n", quotedFieldNames(st))
@@ -1246,6 +1229,7 @@ func pyEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 		}
 	}
 	b.WriteString("    out += b\"}\"\n")
+	emitMaxEncodedEnd(b, st, "python")
 }
 
 func pyDefault(s *Definition, f Field) string {
@@ -1258,7 +1242,7 @@ func pyDefault(s *Definition, f Field) string {
 		}
 		return `""`
 	}
-	if f.Omit == "absent" && (s.IsStruct(f.Type) || f.Type == "binary") {
+	if f.Omit == "absent" && (s.IsStruct(f.Type) || f.Type == "binary" || scalarAbsent(f)) {
 		return "None"
 	}
 	switch f.Type {
@@ -1282,7 +1266,7 @@ func pyDefault(s *Definition, f Field) string {
 }
 
 func pyPresent(s *Definition, f Field, e string) string {
-	if f.Omit == "absent" && (s.IsStruct(f.Type) || f.Type == "binary" || enumAbsent(f)) {
+	if f.Omit == "absent" && (s.IsStruct(f.Type) || f.Type == "binary" || enumAbsent(f) || scalarAbsent(f)) {
 		return e + " is not None"
 	}
 	switch f.Type {

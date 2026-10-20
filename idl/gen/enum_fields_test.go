@@ -50,7 +50,7 @@ func TestEnumSchema(t *testing.T) {
 	}
 	for _, b := range backends {
 		if b.emitsCode {
-			body := b.emit(s)
+			body := mustEmit(t, b, s)
 			if e := b.verify(emitted{def: s, lang: b.lang, imports: b.imports, body: body, whole: body}); e != nil {
 				t.Fatal(e)
 			}
@@ -75,7 +75,7 @@ func TestEnumCollectionNativeSurfaces(t *testing.T) {
 		{genGo(s), `return "oa/local@1", true`},
 		{genCpp(s), "std::vector<Scope> scopes"},
 		{genCpp(s), `case Scope::Local: return "oa/local@1"`},
-		{genRust(s), "pub scopes: Vec<Scope>"},
+		{genRust(s), "pub scopes: ::std::vec::Vec<Scope>"},
 		{genRust(s), `Self::Local => "oa/local@1"`},
 		{genPy(s), "scopes: list[Scope]"},
 		{genPy(s), `LOCAL = "oa/local@1"`},
@@ -115,6 +115,9 @@ var _ []r.Scope = []r.Open{r.OpenKnown}
 	writeNamespaceFile(t, dir, "rec/json_test.go", `package rec
 import("encoding/json";"testing")
 func TestStandardJSONEnumWire(t *testing.T){
+ for _,v:=range ScopeValues(){if !v.IsKnown()||v.IsKnown()!=v.Known(){t.Fatal("declared member unknown")}}
+ if Scope(99).IsKnown()||Open("future").IsKnown(){t.Fatal("unknown member admitted")}
+ members:=ScopeValues();members[0]=Scope(99);if !ScopeValues()[0].IsKnown(){t.Fatal("Values shares mutable storage")}
  b,e:=json.Marshal(ScopeLocal);if e!=nil||string(b)!="\"oa/local@1\""{t.Fatalf("marshal %s %v",b,e)}
  var v Scope;if e=json.Unmarshal(b,&v);e!=nil||v!=ScopeLocal{t.Fatalf("unmarshal %v %v",v,e)}
  for _,bad:=range []string{"1","null","\"local\"","\"future\""}{if json.Unmarshal([]byte(bad),&v)==nil{t.Fatalf("accepted %s",bad)}}

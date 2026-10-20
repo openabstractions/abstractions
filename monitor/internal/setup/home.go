@@ -2,9 +2,10 @@ package setup
 
 import (
 	"errors"
-	"os"
 	"path/filepath"
 	"sync/atomic"
+
+	"github.com/openabstractions/abstraction-storage/go/layout"
 )
 
 // Home is where Setup keeps what it saves for the runtime the Panel serves.
@@ -56,6 +57,13 @@ func UseNoState(reason error) {
 	chosenHome.Store(&homeChoice{err: reason})
 }
 
+// NoState reports that this process chose UseNoState: Setup keeps no state
+// for the runtime the Panel serves.
+func NoState() bool {
+	choice := chosenHome.Load()
+	return choice != nil && choice.err != nil
+}
+
 // UseUserState returns Setup to the person's own folders. Tests use it to
 // undo UseRuntimeState or UseNoState.
 func UseUserState() { chosenHome.Store(nil) }
@@ -67,17 +75,29 @@ func CurrentHome() (Home, error) {
 	if choice := chosenHome.Load(); choice != nil {
 		return choice.home, choice.err
 	}
-	config, err := os.UserConfigDir()
+	config, err := layout.SetupConfig()
 	if err != nil {
 		return Home{}, err
 	}
-	data, err := os.UserCacheDir()
+	data, err := layout.AccountData()
 	if err != nil {
 		return Home{}, err
 	}
-	return Home{Config: filepath.Join(config, "OpenAbstractions", "setup"), Data: data}, nil
+	return Home{Config: config, Data: data}, nil
 }
 
-// errIsolatedProvider refuses a Lemonade provider verb while the Panel serves
+// providerHomeAllowed leaves installed provider state with the account owner.
+func providerHomeAllowed() error {
+	home, err := CurrentHome()
+	if err != nil {
+		return err
+	}
+	if home.Isolated {
+		return errIsolatedProvider
+	}
+	return nil
+}
+
+// errIsolatedProvider refuses a provider verb while the Panel serves
 // a runtime with its own state folder.
 var errIsolatedProvider = errors.New("the picture-model provider keeps its state in this account's own folders; Setup leaves it alone while the Panel serves a runtime with its own state folder")

@@ -11,7 +11,7 @@ import (
 
 func TestNamespaceFromSchemaControlsArtifactsAndSelection(t *testing.T) {
 	dir := t.TempDir()
-	base, err := os.ReadFile(example)
+	base, err := os.ReadFile(examplePath(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestOutputPathsUseEveryNamespaceWithoutWriting(t *testing.T) {
 	if err := run([]string{filepath.Join(dir, "logging.thrift"), "--paths", "go", "cpp", "docs"}, &out); err != nil {
 		t.Fatal(err)
 	}
-	want := "go/oa/logging/rec.go\ncpp/oa/logging/rec.h\noa.logging.schema.html\n"
+	want := "go/oa/logging/rec.go\ngo/client/contract.go\ncpp/oa/logging/rec.h\noa.logging.schema.html\n"
 	if out.String() != want {
 		t.Fatalf("paths %q, want %q", out.String(), want)
 	}
@@ -89,7 +89,7 @@ func TestOutputPathsUseEveryNamespaceWithoutWriting(t *testing.T) {
 func TestNamespacePreservesLegacyOutputsAndSeparatesPaths(t *testing.T) {
 	def := exampleDefinition(t)
 	for _, b := range backends {
-		body := b.emit(def)
+		body := mustEmit(t, b, def)
 		path, got := namespacedOutput(b, nil, body)
 		if path != b.path || got != body {
 			t.Fatalf("legacy %s changed", b.lang)

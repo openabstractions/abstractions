@@ -215,6 +215,7 @@ def service_name(frame):
 		b.WriteString("    def __init__(self, transport):\n        self._transport = transport\n")
 		for _, m := range svc.Methods {
 			pyClientMethod(b, s, svc, m)
+			pyObserve(b, s, svc, m)
 		}
 	}
 }
@@ -241,7 +242,7 @@ func pyClientMethod(b *strings.Builder, s *Definition, svc Service, m Method) {
 	for _, f := range m.Args {
 		fmt.Fprintf(b, "        %s.%s = %s\n", args, f.Ident("python"), f.Ident("python"))
 	}
-	fmt.Fprintf(b, "        %s = _service_encode(%s, %s, 1)\n        _service_decode(%s, %s, 1)\n", arguments, pyWriter(argsName(svc, m)), args, pyReader(argsName(svc, m)), arguments)
+	fmt.Fprintf(b, "        %s = _service_encode(%s, %s, %s)\n        _service_decode(%s, %s, 1)\n", arguments, pyWriter(argsName(svc, m)), args, "1", pyReader(argsName(svc, m)), arguments)
 	fmt.Fprintf(b, "        %s = _service_request(%q, %q, %s)\n", request, svc.WireName, m.Name, arguments)
 	if m.Oneway {
 		fmt.Fprintf(b, "        self._transport.write_frame(%s)\n        return None\n", request)
@@ -251,6 +252,7 @@ func pyClientMethod(b *strings.Builder, s *Definition, svc Service, m Method) {
 	if m.Result.Type == "void" {
 		b.WriteString("        return None\n")
 	} else {
+		emitClientResultPostcondition(b, m, "python", result+".value")
 		fmt.Fprintf(b, "        return %s.value\n", result)
 	}
 }

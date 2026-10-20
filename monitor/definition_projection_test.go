@@ -21,7 +21,7 @@ func TestCredentialDefinitionProjectsSameNamedSlotDisclosureToNativeAndWeb(t *te
 		t.Fatal("native named Use target missing")
 	}
 	disclosure := grants.FirstUseDisclosure(credentials.ActionApply, resource)
-	for _, text := range []string{prompt.Content, prompt.Permission.Content, prompt.Permission.Scope, firstUseSentence(trayPublisher{}, record.About, credentials.ActionApply, resource)} {
+	for _, text := range []string{prompt.Details, prompt.Permission.Details, firstUseSentence(trayPublisher{}, record.About, credentials.ActionApply, resource)} {
 		if !strings.Contains(text, disclosure) {
 			t.Fatal("native/web definition disclosure diverged")
 		}
@@ -39,8 +39,13 @@ func TestCredentialDefinitionProjectsSameNamedSlotDisclosureToNativeAndWeb(t *te
 	if strings.Contains(prompt.Permission.Scope, "Applies to this app") {
 		t.Fatal("named exact target retains generic scope boilerplate")
 	}
-	if !strings.Contains(prompt.Permission.Effects, "ongoing access") || !strings.Contains(prompt.Permission.Effects, "ongoing block") {
-		t.Fatal("recorded rule effects missing")
+	if prompt.Permission.Effects != "" {
+		t.Fatal("native permission duplicates the detailed answer effects")
+	}
+	for _, effect := range []string{"Allow adds an ongoing permission", "Never allow adds an ongoing block", "Not now saves no permission."} {
+		if !strings.Contains(prompt.Permission.Details, effect) {
+			t.Fatal("detailed answer effect missing", effect)
+		}
 	}
 	for _, target := range []string{"Account: test-account", "Action: " + credentials.ActionApply, "Resource: " + resource} {
 		if !strings.Contains(prompt.Permission.Details, target) {

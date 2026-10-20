@@ -7,7 +7,6 @@ import (
 
 	askclient "github.com/openabstractions/abstraction-asks/go/client"
 	facade "github.com/openabstractions/abstraction-facade/go"
-	fwire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 )
 
 // navJSONGlyph is one item's icon for a native host: a Segoe Fluent Icons
@@ -84,7 +83,7 @@ func navTable(badge int, selected string) navJSON {
 	view := navJSON{Items: make([]navJSONItem, 0, len(panelNavItems)), Selected: selected}
 	for _, item := range panelNavItems {
 		row := navJSONItem{ID: item.ID, Label: item.Label, Path: item.Path, Group: item.Group, Glyph: navJSONGlyph{Segoe: item.Segoe, SF: item.SF}}
-		if item.ID == navBadgeID && badge > 0 {
+		if item.ID == navBadgeID && badge >= 0 {
 			n := badge
 			row.Badge = &n
 		}
@@ -121,35 +120,11 @@ func (p *servicePanel) navJSONHandler(w http.ResponseWriter, r *http.Request) {
 	panelJSON(w, navTable(badge, selected))
 }
 
-// panelRegisteredApps reports how many applications are registered with the
-// local runtime; ok is false when the runtime could not tell. Tests replace
-// it.
-var panelRegisteredApps = func(ctx context.Context) (int, bool) {
-	applications, err := panelMachine().ResolveApplications(ctx, facade.Requirements{Scope: facade.ScopeLocal})
-	if err != nil {
-		return 0, false
-	}
-	snapshot, err := applications.Observe(ctx, "", 0)
-	if err != nil || (snapshot.Outcome != fwire.ApplicationOutcomePage && snapshot.Outcome != fwire.ApplicationOutcomeStale) {
-		return 0, false
-	}
-	registered := 0
-	for _, entry := range snapshot.Applications {
-		if entry.Scope == fwire.ScopeLocal {
-			registered++
-		}
-	}
-	return registered, true
-}
-
-// landingPath is where the Panel opens (SPEC §4, zero-knowledge first run):
-//   - Get started while a setup component the person chose is unfinished;
-//   - Apps once the chosen setup is finished;
-//   - with no setup chosen, Get started on a fresh install, where no
-//     application is registered, and Apps once any is.
-//
-// A runtime that cannot say whether an app is registered opens Apps, whose
-// health banner names the failure.
+// landingPath is where the Panel opens (P-J1a): Get started while a setup
+// component the person chose is unfinished, and Apps otherwise, also on a
+// fresh install. Get started leads with this device's pages before the AI
+// choices; Apps names the failure in its health banner when the runtime
+// cannot list apps.
 func (p *servicePanel) landingPath(ctx context.Context) string {
 	if journal, err := p.setupJournalForPanel(); err == nil {
 		if state, err := journal.Load(ctx); err == nil && state.Plan.ID != "" {
@@ -158,9 +133,6 @@ func (p *servicePanel) landingPath(ctx context.Context) string {
 			}
 			return "/setup"
 		}
-	}
-	if registered, ok := panelRegisteredApps(ctx); ok && registered == 0 {
-		return "/setup"
 	}
 	return "/"
 }

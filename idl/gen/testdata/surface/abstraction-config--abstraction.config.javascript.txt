@@ -1,7 +1,15 @@
+enum ApplyMode
+  Live
+  Restart
+string CONFIG_CATALOGUE_JSON
 class ConfigEditorClient
   readUser()
   replaceUser(expectedRevision, values)
 object ConfigEditorService {wireName, Client}
+class ConfigEditorV2Client
+  readUser()
+  replaceUser(expectedRevision, changes)
+object ConfigEditorV2Service {wireName, Client}
 enum ConfigObservationOutcome
   Snapshot
   Unchanged
@@ -11,12 +19,63 @@ enum ConfigObservationOutcome
   Invalid
 class ConfigObserverClient
   observe(overrides, cursor, waitMs)
+  observePages(overrides, cursor, waitMs)
 object ConfigObserverService {wireName, Client}
+class ConfigObserverV2Client
+  observe(cursor, waitMs)
+  observePages(cursor, waitMs)
+object ConfigObserverV2Service {wireName, Client}
 class ConfigReaderClient
   read(overrides)
 object ConfigReaderService {wireName, Client}
+class ConfigReaderV2Client
+  read(names)
+  describe()
+object ConfigReaderV2Service {wireName, Client}
 class DispatchError
+enum IgnoredFieldReason
+  UnknownKey
+  InvalidName
+enum KeyRefusalReason
+  NotGranted
+  UnknownKey
+enum KeyState
+  Set
+  Default
+  Locked
+  Ignored
+  Pending
+enum Location
+  Machine
+  User
+  Process
+enum ObservationOutcomeV2
+  Changed
+  Unchanged
+  Gap
+  Unavailable
+  Unsupported
+  Invalid
+  NotPermitted
+  Corrupt
+  Forbidden
+  Failed
+enum ReadOutcome
+  Read
+  Corrupt
+  NotPermitted
+  Unavailable
+  Invalid
+  Forbidden
 class Refusal
+enum ReplaceOutcome
+  Applied
+  Conflict
+  NotPermitted
+  Invalid
+  Unavailable
+  Corrupt
+  Forbidden
 class ServiceError
 enum ServiceErrorCode
   HandlerError
@@ -35,13 +94,130 @@ enum UserReplaceOutcome
   Conflict
   Forbidden
   Unavailable
+enum ValueKind
+  Boolean
+  Integer
+  Bytes
+  Duration
+  Text
+  Choice
+  TextList
+  TextMap
+  Unlimited
+function configKeyDescriptors()
 function decode(data)
+function decodeChange(data)
+function decodeConfigObservation(data)
+function decodeConfigObservationV2(data)
+function decodeConfigSource(data)
+function decodeDescribeResult(data)
+function decodeEntry(data)
+function decodeIgnoredField(data)
+function decodeKeyDescriptor(data)
+function decodeKeyOrigin(data)
+function decodeKeyProblem(data)
+function decodeKeyRefusal(data)
+function decodeOrigin(data)
+function decodeOrigins(data)
+function decodeReadResult(data)
+function decodeRunOverrides(data)
+function decodeSnapshot(data)
+function decodeUserReadResultV2(data)
+function decodeUserReplaceResult(data)
+function decodeUserReplaceResultV2(data)
+function decodeUserSettings(data)
+function decodeUserSnapshot(data)
+function decodeUserSnapshotV2(data)
+function decodeValue(data)
+function decodeValueRange(data)
 const editorErrorCodes
 function encode(v)
+function encodeChange(v)
+function encodeConfigObservation(v)
+function encodeConfigObservationV2(v)
+function encodeConfigSource(v)
+function encodeDescribeResult(v)
+function encodeEntry(v)
+function encodeIgnoredField(v)
+function encodeKeyDescriptor(v)
+function encodeKeyOrigin(v)
+function encodeKeyProblem(v)
+function encodeKeyRefusal(v)
+function encodeOrigin(v)
+function encodeOrigins(v)
+function encodeReadResult(v)
+function encodeRunOverrides(v)
+function encodeSnapshot(v)
+function encodeUserReadResultV2(v)
+function encodeUserReplaceResult(v)
+function encodeUserReplaceResultV2(v)
+function encodeUserSettings(v)
+function encodeUserSnapshot(v)
+function encodeUserSnapshotV2(v)
+function encodeValue(v)
+function encodeValueRange(v)
+function fromJson(kind, data)
+function newChange()
+  key
+  set
 function newConfigObservation()
   outcome
   cursor
   snapshot
+function newConfigObservationV2()
+  outcome
+  cursor
+  snapshot
+  problem
+  corruptOffset
+  corruptSource
+  refusal
+  ageMs
+  cause
+function newConfigSource()
+  location
+  path
+function newDescribeResult()
+  outcome
+  descriptors
+  refusal
+function newEntry()
+  key
+  value
+  origin
+function newIgnoredField()
+  offset
+  nameExcerpt
+  reason
+  source
+function newKeyDescriptor()
+  key
+  kind
+  default
+  range
+  choices
+  presets
+  description
+  group
+  apply
+  lockable
+  lowestLocation
+  deprecated
+  defaultDescription
+  allowsUnlimited
+function newKeyOrigin()
+  location
+  path
+  state
+  reason
+  shadowed
+function newKeyProblem()
+  key
+  reason
+function newKeyRefusal()
+  key
+  reason
+  refusal
 function newOrigin()
   rung
   path
@@ -51,6 +227,17 @@ function newOrigins()
   logSink
   logService
   off
+function newReadResult()
+  outcome
+  entries
+  revision
+  refused
+  problem
+  corruptOffset
+  ignoredFields
+  ignoredOmitted
+  corruptSource
+  refusal
 function newRunOverrides()
   nasStore
   store
@@ -64,9 +251,21 @@ function newSnapshot()
   off
   origins
   stamp
+function newUserReadResultV2()
+  outcome
+  snapshot
+  problem
+  corruptOffset
+  refusal
 function newUserReplaceResult()
   outcome
   snapshot
+function newUserReplaceResultV2()
+  outcome
+  snapshot
+  refused
+  corruptOffset
+  refusal
 function newUserSettings()
   nasStore
   store
@@ -76,4 +275,24 @@ function newUserSettings()
 function newUserSnapshot()
   values
   revision
+function newUserSnapshotV2()
+  entries
+  revision
+function newValue()
+  kind
+  boolean
+  integer
+  bytes
+  durationMs
+  text
+  choice
+  textList
+  textMap
+function newValueRange()
+  min
+  max
+function overlayConfigProcess(entries, changes)
 const readerErrorCodes
+const resourceActions
+function toJson(kind, value)
+function validateConfigValue(v)

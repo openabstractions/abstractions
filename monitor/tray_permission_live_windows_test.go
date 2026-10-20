@@ -98,7 +98,7 @@ func TestLivePermissionDialogLifetimeAndGuards(t *testing.T) {
 	rules := &permissionFixtureRules{operator: operator}
 	p := &questionPresenter{session: session, surface: &trayWindowsSurface{w: w, session: session},
 		operator: defaultPresenterOperator, rules: func() grants.RuleOperator { return rules }, account: probe.Self().Account, watchEvery: 20 * time.Millisecond}
-	ui := syscall.NewLazyDLL("user32.dll")
+	ui := testUser32
 	enumerate, pidFor := ui.NewProc("EnumWindows"), ui.NewProc("GetWindowThreadProcessId")
 	textFor, visible := ui.NewProc("GetWindowTextW"), ui.NewProc("IsWindowVisible")
 	send, item := ui.NewProc("SendMessageW"), ui.NewProc("GetDlgItem")
@@ -137,7 +137,7 @@ func TestLivePermissionDialogLifetimeAndGuards(t *testing.T) {
 				}
 			}
 			id := ask(t, book, "win11-"+mode, os.Args[0], "abstraction.credentials/apply", "credential:windows11-test-secret")
-			records, err := listQuestions(context.Background(), operator)
+			records, err := listPresenterQuestions(context.Background(), operator)
 			if err != nil {
 				t.Fatal(err)
 			}

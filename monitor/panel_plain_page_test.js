@@ -4,7 +4,7 @@
 // one control every page calls in place of writing a raw backend error (or a
 // raw outcome string) straight into an element (task 2026-09-23,
 // first-time-user walkthrough of the Panel).
-const fs = require('fs'), vm = require('vm'), assert = require('assert');
+const fs = require('fs'), vm = require('./panel_record_test_helper.js').vm, assert = require('assert');
 const go = fs.readFileSync(__dirname + '/panel_shell.go', 'utf8');
 const marker = 'const plainScript = `';
 const start = go.indexOf(marker) + marker.length;
@@ -35,20 +35,60 @@ vm.runInNewContext(script, context);
 assert.strictEqual(typeof context.oaPlain, 'function', 'plainScript must define oaPlain');
 assert.strictEqual(typeof context.oaShowError, 'function', 'plainScript must define oaShowError');
 assert.strictEqual(typeof context.oaActionFallback, 'function', 'plainScript must define oaActionFallback');
-const { oaPlain, oaShowError, oaActionFallback } = context;
+const { oaPlain, oaShowError, oaShowResult, oaActionFallback } = context;
 
 // oaModelName: a model's friendly name, never a path or a hash.
 assert.strictEqual(typeof context.oaModelName, 'function', 'plainScript must define oaModelName');
 for (const [raw, want] of [
- ['qwen3.6-demo', 'qwen3.6-demo'],
+ // A bare id reads in words (architect ruling 2026-11-09, second block).
+ ['qwen3.6-demo', 'Qwen3.6 demo'],
+ ['qwen2.5-0.5b', 'Qwen2.5 0.5B'],
+ ['smollm2-135m', 'SmolLM2 135M'],
+ ['qwen3.6-35b-a3b-npu2', 'Qwen3.6 35B A3B NPU2'],
+ ['flux2-klein-4b', 'FLUX.2 klein 4B'],
+ ['whisper.cpp-large-v3-turbo', 'Whisper large v3 turbo'],
+ ['sentence-transformer-mini', 'Sentence transformer mini'],
+ ['qwen3:8b', 'Qwen3 8B'],
+ ['qwen2.5-0.5b-instruct-q4_k_m', 'Qwen2.5 0.5B instruct Q4_K_M'],
+ ['sdxl-checkpoint', 'SDXL checkpoint'],
+ ['z-image-turbo', 'Z-Image turbo'],
+ ['z-image', 'Z-Image'],
  ['unsloth/Qwen3-8B-GGUF', 'Qwen3-8B-GGUF'],
  ['C:\\Models\\gguf\\Qwen3-8B-Q4_K_M.gguf', 'Qwen3-8B-Q4_K_M'],
- ['/home/me/models/flux.safetensors', 'flux'],
+ ['/home/me/models/flux.safetensors', 'FLUX'],
  ['sha256-0123456789abcdef0123456789abcdef', 'Unnamed model'],
  ['0123456789abcdef0123', 'Unnamed model'],
+ // The model-label digest guard (owner, 2026-11-01): Setup's download, a
+ // digest anywhere in a path, and a Hugging Face cache path with its commit.
+ ['55983c5a75a1ab969824077b3bb3de4146e82a9234072b48ad4e8f92ad3fe9f1.gguf', 'Unnamed model'],
+ ['models/' + 'a'.repeat(64) + '/model.gguf', 'Model'],
+ ['models--Qwen--x/snapshots/5bc3e238d916f48a861bac2f8a1990a0e9b7e98d/qwen.gguf', 'Qwen'],
  ['', 'Unnamed model'],
  [null, 'Unnamed model'],
 ]) assert.strictEqual(context.oaModelName(raw), want, 'oaModelName(' + JSON.stringify(raw) + ')');
+// oaEngineName: an engine or model server by its upstream name, never an
+// internal program name.
+for (const [raw, want] of [
+ ['modelhost', 'llama.cpp'], ['llama.cpp', 'llama.cpp'], ['pytorch-image', 'Diffusers'], ['pytorchd', 'Diffusers'],
+ ['sdcpp', 'stable-diffusion.cpp'], ['whispercpp', 'whisper.cpp'], ['lemonade-image', 'Lemonade'], ['thenoise-image', 'TheNoise'],
+ ['comfy-image-1828', 'ComfyUI'], ['deepseek', 'DeepSeek'], ['local-http', 'Local http'], ['My Server', 'My Server'], ['', 'Unnamed engine'],
+]) assert.strictEqual(context.oaEngineName(raw), want, 'oaEngineName(' + JSON.stringify(raw) + ')');
+// Library treats only this roster as known when old model rows have no
+// explicit runs_on list. Resource aliases must not enter that roster.
+assert.deepStrictEqual(Object.keys(context.oaEngineTitles).sort(), [
+ 'comfy-image', 'comfyui', 'deepseek', 'diffusers', 'fastflowlm', 'flm',
+ 'kokoros', 'lemonade', 'lemonade-image', 'llama.cpp', 'llamacpp',
+ 'lm-studio', 'lmstudio', 'localai', 'modelhost', 'modelhostd', 'ollama',
+ 'openai', 'pytorch', 'pytorch-image', 'pytorchd', 'sd-server', 'sd.cpp',
+ 'sdcpp', 'stable-diffusion.cpp', 'thenoise', 'thenoise-image',
+ 'vllm', 'whisper.cpp', 'whispercpp',
+]);
+assert.strictEqual(context.oaEngineName('  PYTORCHD-abcd '), 'Diffusers');
+assert.strictEqual(context.oaEngineName('hf'), 'Hf');
+
+for (const [raw, want] of [
+ ['WorkloadsSessionHost', 'Workloads session host'], ['llama-server', 'Llama server'], ['OpenAIServer', 'OpenAIServer'], ['LM Studio', 'LM Studio'],
+]) assert.strictEqual(context.oaNameWords(raw), want, 'oaNameWords(' + JSON.stringify(raw) + ')');
 
 // oaLocalTime and oaWhen: "Checked today at 1:10 PM", "yesterday at", a date
 // for an older day; never "Checked at today 1:10 PM".
@@ -66,11 +106,22 @@ for (const [raw, want] of [
  assert.strictEqual(context.oaWhen('not a time'), 'not a time');
 }
 
-const PERMIT = 'The runtime did not permit this Panel to do this; nothing was changed.';
-const INCOMPATIBLE = "This Panel and the runtime don't speak the same version of this service; update one of them.";
-const UNAVAIL = "That service isn't running on this account right now. Start the runtime, or check the service on the Apps page.";
+// oaBytes: every size as Windows Explorer counts it, 1024 to a KB, three
+// significant digits (architect ruling 2026-11-09).
+const KiB = 1024, MiB = KiB * KiB, GiB = MiB * KiB;
+for (const [value, want] of [
+ [0, '0 bytes'], [1, '1 byte'], [512, '512 bytes'], [999, '999 bytes'], [1000, '0.98 KB'], [1536, '1.5 KB'],
+ [1e9, '954 MB'], [8.27 * GiB, '8.27 GB'], [22.9e9, '21.3 GB'], [412 * GiB, '412 GB'], [4 * GiB, '4 GB'],
+ [1023.9 * MiB, '1 GB'], [2 * GiB * 1024, '2 TB'], [-5, '0 bytes'], ['x', '0 bytes'],
+]) assert.strictEqual(context.oaBytes(value), want, 'oaBytes(' + value + ')');
+assert.strictEqual(context.oaBytesOf(6.2e9, 16.1e9), '5.77 of 15 GB', 'progress reads in the unit of its total');
+assert.strictEqual(context.oaBytesOf(20e9, 16.1e9), '15 of 15 GB', 'progress never passes its total');
+assert.strictEqual(context.oaBytesOf(300, 900), '300 of 900 bytes');
+const PERMIT = 'OpenAbstractions did not permit this Panel to do this; nothing was changed.';
+const INCOMPATIBLE = "This Panel and OpenAbstractions don't speak the same version of this service; update OpenAbstractions.";
+const UNAVAIL = "That service isn't running on this account right now. Check it on the Apps page.";
 const GAP = 'The list changed while reading; start again.';
-const INVALID = 'The runtime rejected this request.';
+const INVALID = 'OpenAbstractions rejected this request.';
 const DEFAULT = "This didn't work.";
 
 // 1. Each of the six buckets, by its trigger substring.
@@ -82,7 +133,35 @@ assert.strictEqual(oaPlain('forbidden: history reading not permitted').line, PER
 // folded into "unavailable" (task 2026-09-23 finding 1), and with no
 // contract named it keeps the plain fallback sentence.
 assert.strictEqual(oaPlain('incompatible').line, INCOMPATIBLE);
+const updateSharing = 'integration update stopped. Recovery files preserved (previous image: , staged image: dummy.tmp): current image admission: A file cannot be opened because the share access flags are incompatible.';
+assert.strictEqual(oaPlain(updateSharing).line, 'The connection helper is still in use. Fully quit the agent and close other connection setup windows, then check again. Recovery files were preserved.');
+assert.strictEqual(oaPlain(updateSharing).details, updateSharing);
+assert.strictEqual(oaPlain(updateSharing.replace('current image admission','staged image admission')).line, oaPlain(updateSharing).line);
+assert.strictEqual(oaPlain('A file cannot be opened because the share access flags are incompatible.').line, DEFAULT, 'an operating-system error is not a service version verdict');
 assert.strictEqual(oaPlain('unavailable').line, UNAVAIL);
+
+// 1a. No runtime answered (resolution status runtime_unavailable): the
+// Apps banner's sentence, naming the service the read needed, and the raw
+// text kept as the details (panel audit 2026-11-01: Activity read "The
+// runtime is running but doesn't provide inference" with the runtime
+// stopped).
+{
+ const pipe = 'service resolution: runtime_unavailable: abstraction.inference/operator@1 (capability abstraction.inference) at the explicit endpoint \\\\.\\pipe\\openabstractions-user-S-1-5-21-1-2-3-1001-review-runtime: open \\\\.\\pipe\\openabstractions-user-S-1-5-21-1-2-3-1001-review-runtime: The system cannot find the file specified.';
+ const stopped = oaPlain(pipe);
+ assert.strictEqual(stopped.line, 'OpenAbstractions is not running, so inference cannot be read. Open OpenAbstractions from the Start menu, then check again.');
+ assert.strictEqual(stopped.details, pipe, 'the Technical details hold the resolution text');
+ assert.strictEqual(oaPlain(pipe.replace('abstraction.inference/operator@1', 'abstraction.facade/messages@1')).line, 'OpenAbstractions is not running, so messages cannot be read. Open OpenAbstractions from the Start menu, then check again.');
+ assert.strictEqual(oaPlain(pipe.replace('abstraction.inference/operator@1', 'abstraction.job/operator@1')).line, 'OpenAbstractions is not running, so background work cannot be read. Open OpenAbstractions from the Start menu, then check again.');
+ assert.strictEqual(oaPlain(pipe.replace('abstraction.inference/operator@1', 'abstraction.asks/notification-operator@1')).line, 'OpenAbstractions is not running, so notifications cannot be read. Open OpenAbstractions from the Start menu, then check again.');
+ assert.strictEqual(oaPlain('service resolution: runtime_unavailable').line, 'OpenAbstractions is not running. Open OpenAbstractions from the Start menu, then check again.');
+ assert.strictEqual(oaPlain('service resolution: runtime_unavailable: abstraction.example/none@1 (capability abstraction.example) at the installed runtime: dial').line, 'OpenAbstractions is not running. Open OpenAbstractions from the Start menu, then check again.', 'an unnamed service is left out of the sentence');
+ // The page's runtime banner (runtimeScript) says it once; the section
+ // that failed with it stays empty.
+ oaShowError('status-stopped', new Error(pipe));
+ const shown = element('status-stopped');
+ assert.strictEqual(shown.textContent, '');
+ assert.strictEqual(shown.children.length, 0, 'no sentence and no disclosure in the section');
+}
 
 // 1b. When the text names a contract ("abstraction.<layer>/<name>@<n>")
 // after "unavailable" or "incompatible", the runtime answered: it either
@@ -92,16 +171,16 @@ assert.strictEqual(oaPlain('unavailable').line, UNAVAIL);
 // read as "isn't running" when Status shows every capability Ready).
 assert.strictEqual(
  oaPlain('service resolution: unavailable: abstraction.resource/leases@1').line,
- "The runtime is running but doesn't provide the awake-lease service on this account.",
+ "OpenAbstractions is running but doesn't provide the awake-lease service on this account.",
  'unavailable + a resource/leases contract names the awake-lease service, not "isn\'t running"',
 );
 assert.strictEqual(
  oaPlain('service resolution: unavailable: abstraction.resource/table@1').line,
- "The runtime is running but doesn't provide the graphics-card table on this account.",
+ "OpenAbstractions is running but doesn't provide the graphics-card table on this account.",
 );
 assert.strictEqual(
  oaPlain('service resolution: incompatible: abstraction.config/observer@1').line,
- "The runtime provides settings watching at a version this Panel doesn't understand; update the runtime or the Panel.",
+ "OpenAbstractions provides settings watching at a version this Panel doesn't understand; update OpenAbstractions.",
  'a version mismatch is not read as "not running"',
 );
 // Every other listed prefix, by contract: job/logging/storage/inference/
@@ -122,7 +201,7 @@ const servicePrefixCases = [
 for (const [contract, name] of servicePrefixCases) {
  assert.strictEqual(
   oaPlain('service resolution: unavailable: ' + contract).line,
-  "The runtime is running but doesn't provide " + name + ' on this account.',
+  "OpenAbstractions is running but doesn't provide " + name + ' on this account.',
   `contract ${contract} must be named as ${JSON.stringify(name)}`,
  );
 }
@@ -265,14 +344,31 @@ for (const t of walkthroughTexts) {
 }
 
 // 11a. oaResourceLabel reads a content digest as "Stored content", never
-//      the hash itself; other resources keep their own words.
+//      the hash itself; a store, wake and a bare name read in words
+//      (architect ruling 2026-11-09); other resources keep their own words.
 {
  const { oaResourceLabel } = context;
+ assert.deepStrictEqual(Object.keys(context.oaResourceTitles).sort(), [
+  'civitai', 'comfyui', 'deepseek', 'fastflowlm', 'hf', 'huggingface', 'jan',
+  'lemonade', 'lmstudio', 'modelhost', 'oa-chat', 'ollama',
+ ]);
+ assert.strictEqual(oaResourceLabel('store:lm-studio'), 'Lm studio models');
+
  assert.strictEqual(oaResourceLabel('sha256:0123456789abcdef0123456789abcdef'), 'Stored content');
  assert.strictEqual(oaResourceLabel('card:0'), 'Graphics card');
  assert.strictEqual(oaResourceLabel('card:1'), 'Graphics card 2');
  assert.strictEqual(oaResourceLabel('abstraction.job/acceptance@1'), 'this service');
- assert.strictEqual(oaResourceLabel('huggingface'), 'huggingface');
+ assert.strictEqual(oaResourceLabel('huggingface'), 'Hugging Face', 'a bare name reads as its app');
+ assert.strictEqual(oaResourceLabel('hf'), 'Hugging Face');
+ assert.strictEqual(oaResourceLabel('store:modelhost-abcd'), 'llama.cpp models');
+ assert.strictEqual(oaResourceLabel('lemonade'), 'Lemonade');
+ assert.strictEqual(oaResourceLabel('thenoise-image'), 'Thenoise image');
+ assert.strictEqual(oaResourceLabel('my-registry'), 'My registry', 'an unknown bare name reads in words');
+ assert.strictEqual(oaResourceLabel('store:lmstudio'), 'LM Studio models');
+ assert.strictEqual(oaResourceLabel('store:new-app'), 'New app models');
+ assert.strictEqual(oaResourceLabel('store:oa-chat-467d9c6e43391a07c5853578'), 'Setup chat models', 'a digest suffix names no product');
+ assert.strictEqual(oaResourceLabel('awake'), 'Keeping this device awake');
+ assert.strictEqual(oaResourceLabel('Already Named'), 'Already Named');
 }
 
 // 11b. oaSetAccent: a host pushes the accent and its two shades onto the
@@ -317,9 +413,9 @@ for (const t of walkthroughTexts) {
  assert.strictEqual(a.children[1].textContent, 'Cancellation requested.', 'and keeps its sentence');
  render([{ id: 'c', name: 'C', state: 'new' }, { id: 'a', name: 'A', state: 'cancelling' }]);
  assert.strictEqual(created, 3, 'a new key gets one created row');
- assert.deepStrictEqual(list.children.map((r) => r.dataset.key), ['c', 'a'], 'the order follows the items and the gone key left');
+ assert.deepStrictEqual(Array.from(list.children).map((r) => r.dataset.key), ['c', 'a'], 'the order follows the items and the gone key left');
  assert.strictEqual(list.children[1], a);
- assert(!list.children.includes(b));
+ assert(!Array.from(list.children).includes(b));
  render([]);
  assert.strictEqual(list.children.length, 0);
 }
@@ -341,11 +437,11 @@ for (const t of walkthroughTexts) {
  button.focus();
  assert.strictEqual(doc.activeElement, button);
  render(['new', 'a', 'b']);
- assert.deepStrictEqual(list.children.map((r) => r.dataset.key), ['new', 'a', 'b']);
+ assert.deepStrictEqual(Array.from(list.children).map((r) => r.dataset.key), ['new', 'a', 'b']);
  assert.strictEqual(doc.activeElement, button, 'a row inserted ahead keeps the focused button focused');
  assert.strictEqual(button.focusCount, 1, 'without detaching it, so nothing had to focus it again');
  render(['b', 'new', 'a']);
- assert.deepStrictEqual(list.children.map((r) => r.dataset.key), ['b', 'new', 'a']);
+ assert.deepStrictEqual(Array.from(list.children).map((r) => r.dataset.key), ['b', 'new', 'a']);
  assert.strictEqual(doc.activeElement, button, 'a reorder that moves the focused row gives focus back');
  assert.strictEqual(button.focusOptions.preventScroll, true, 'without scrolling');
  assert.strictEqual(button.focusCount, 2);
@@ -358,10 +454,10 @@ for (const t of walkthroughTexts) {
  focusContext.oaPlaceRows(box, [one, two]);
  two.children[0].focus();
  focusContext.oaPlaceRows(box, [three, one, two]);
- assert.deepStrictEqual(box.children.map((r) => r.children[0].textContent), ['three', 'one', 'two']);
+ assert.deepStrictEqual(Array.from(box.children).map((r) => r.children[0].textContent), ['three', 'one', 'two']);
  assert.strictEqual(doc.activeElement, two.children[0]);
  focusContext.oaPlaceRows(box, [two]);
- assert.deepStrictEqual(box.children.map((r) => r.children[0].textContent), ['two']);
+ assert.deepStrictEqual(Array.from(box.children).map((r) => r.children[0].textContent), ['two']);
  assert.strictEqual(doc.activeElement, two.children[0]);
 }
 
@@ -428,6 +524,9 @@ for (const t of walkthroughTexts) {
  vm.runInNewContext(script, failing);
  const fallback = failing.oaProgramChooser('pick2', 'pick2-other');
  await fallback.ready;
- assert.deepStrictEqual(get('pick2').children.map((o) => o.value), ['__other__']);
+ assert.deepStrictEqual(Array.from(get('pick2').children).map((o) => o.value), ['__other__']);
  console.log('PASS panel plain-language error control');
 })().catch((e) => { console.error(e); process.exit(1) });
+
+for(const empty of ['', '  \n ', {}, []]){oaShowResult('status-empty','Saved.',empty);assert.strictEqual(element('status-empty').children.length,0,'empty result has no Technical details');}
+oaShowError('status-empty','  ');assert.strictEqual(element('status-empty').children.length,0,'blank error has no Technical details');

@@ -181,9 +181,10 @@ func TestServicePanelBrowserBoundary(t *testing.T) {
 func TestSetupMutatingRoutesRefuseAnUnkeyedOrForeignCaller(t *testing.T) {
 	const key = "test-key"
 	routes := []string{
-		"/setup/plan", "/setup/intent", "/setup/advance", "/setup/retry", "/setup/recover",
+		"/setup/modelhost/coding",
+		"/setup/plan", "/setup/intent", "/setup/advance", "/setup/advance-next", "/setup/retry", "/setup/recover",
 		"/setup/feature/add",
-		"/setup/modelhost/feature/add", "/setup/modelhost/engine", "/setup/modelhost/root/preview", "/setup/modelhost/root", "/setup/modelhost/host",
+		"/setup/modelhost/feature/add", "/setup/modelhost/engine", "/setup/modelhost/root/preview", "/setup/modelhost/root",
 		"/setup/model/start", "/setup/model/advance", "/setup/model/retry", "/setup/model/configure", "/setup/model/reconcile",
 		"/setup/comfy/register", "/setup/comfy/activate", "/setup/comfy/remove",
 	}

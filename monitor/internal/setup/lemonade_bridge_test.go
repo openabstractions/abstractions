@@ -11,6 +11,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	providerSetup "github.com/openabstractions/abstraction-provider-lemonade/go/setup"
+	"github.com/openabstractions/abstraction-storage/go/layout"
 )
 
 // withLemonadeJournal points the provider bridge at journal for one test.
@@ -23,18 +26,18 @@ func withLemonadeJournal(t *testing.T, journal Journal) {
 
 // lemonadeInfoFor is a setup-info reply version 2 whose selection binds a
 // at its install folder, with a's pin and pairing as the provider's entry.
-func lemonadeInfoFor(t *testing.T, a Artifact, root string, selected bool) lemonadeInfo {
+func lemonadeInfoFor(t *testing.T, a Artifact, root string, selected bool) providerSetup.SetupInfoReply {
 	t.Helper()
 	destination, err := installPath(a)
 	if err != nil {
 		t.Fatal(err)
 	}
-	info := lemonadeInfo{Version: 2, ProviderRoot: root, ProviderID: lemonadeProviderID, SelectionPresent: selected,
+	info := providerSetup.SetupInfoReply{Version: 2, ProviderRoot: root, ProviderID: lemonadeProviderID, SelectionPresent: selected,
 		DownloadDir: filepath.Join(root, "engine-downloads"),
-		KnownPackages: []lemonadeKnownPackage{{Version: a.Version, ArchiveSHA256: a.SHA256, ProgramSHA256: a.SHA256,
+		KnownPackages: []providerSetup.KnownPackageInfo{{Version: a.Version, ArchiveSHA256: a.SHA256, ProgramSHA256: a.SHA256,
 			BackendArchiveSHA256: a.TestedBackendSHA256, ModelRevision: a.TestedModelRevision}}}
 	if selected {
-		info.ActivePackage = &lemonadeActivePackage{Version: a.Version, Program: filepath.Join(destination, "lemonade-embeddable-2026.39.1-windows-x64", "lemond.exe")}
+		info.ActivePackage = &providerSetup.ActivePackageInfo{Version: a.Version, Program: filepath.Join(destination, "lemonade-embeddable-2026.39.1-windows-x64", "lemond.exe")}
 	}
 	return info
 }
@@ -44,18 +47,13 @@ func TestLemonadeSetupInfoBindsTheInstalledVersion(t *testing.T) {
 		t.Skip("reviewed provider package is Windows amd64 only")
 	}
 	t.Setenv("LOCALAPPDATA", t.TempDir())
-	cache, err := os.UserCacheDir()
+	cache, err := layout.AccountData()
 	if err != nil {
 		t.Fatal(err)
 	}
-	var artifact Artifact
-	for _, component := range NewCatalog().Components {
-		if component.ID == "lemonade-engine" {
-			artifact = *component.Artifact
-		}
-	}
+	artifact := lemonadeArtifact(t)
 	root := filepath.Join(cache, "OpenAbstractions", "providers", "lemonade")
-	parse := func(info lemonadeInfo, active *Artifact) error {
+	parse := func(info providerSetup.SetupInfoReply, active *Artifact) error {
 		raw, _ := json.Marshal(info)
 		_, err := parseLemonadeInfo(raw, active)
 		return err
@@ -71,7 +69,7 @@ func TestLemonadeSetupInfoBindsTheInstalledVersion(t *testing.T) {
 		t.Fatal("a provider selection was accepted while Setup has no installed version")
 	}
 	changed := info
-	changed.ActivePackage = &lemonadeActivePackage{Version: artifact.Version, Program: filepath.Join(cache, "another-app", "lemond.exe")}
+	changed.ActivePackage = &providerSetup.ActivePackageInfo{Version: artifact.Version, Program: filepath.Join(cache, "another-app", "lemond.exe")}
 	if err := parse(changed, &artifact); err == nil {
 		t.Fatal("provider reported a package outside the installed version's folder")
 	}
@@ -81,7 +79,7 @@ func TestLemonadeSetupInfoBindsTheInstalledVersion(t *testing.T) {
 		t.Fatal("provider reported private state outside this user's cache")
 	}
 	changed = info
-	changed.KnownPackages = []lemonadeKnownPackage{info.KnownPackages[0]}
+	changed.KnownPackages = []providerSetup.KnownPackageInfo{info.KnownPackages[0]}
 	changed.KnownPackages[0].ModelRevision = "1111111111111111111111111111111111111111"
 	if err := parse(changed, &artifact); err == nil {
 		t.Fatal("a provider entry with another pairing was accepted")
@@ -119,7 +117,7 @@ func mustJSON(t *testing.T, v any) []byte {
 func TestExistingLemonadeSetupInstallsOnlyTheEngineFiles(t *testing.T) {
 	f := newUpdateFixture(t, "lemonade-engine", packageEntries("lemonade-engine", "2.0.0"))
 	withLemonadeJournal(t, f.journal)
-	cache, err := os.UserCacheDir()
+	cache, err := layout.AccountData()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +141,7 @@ func TestExistingLemonadeSetupInstallsOnlyTheEngineFiles(t *testing.T) {
 		case "setup-info":
 			return json.Marshal(info)
 		case "verify-setup":
-			return json.Marshal(lemonadeProof{Version: 1, Verified: installed})
+			return json.Marshal(providerSetup.VerificationReply{Version: 1, Verified: installed})
 		case "configure":
 			configured = append(configured, args)
 			installed = true
@@ -178,7 +176,7 @@ func TestLemonadeSetupReplyRejectsUnexpectedFieldsAndTrailingData(t *testing.T) 
 		[]byte(`{"version":1,"verified":true,"extra":1}`),
 		[]byte(`{"version":1,"verified":true}{"version":1,"verified":true}`),
 	} {
-		var proof lemonadeProof
+		var proof providerSetup.VerificationReply
 		if err := decodeProviderReply(raw, &proof); err == nil {
 			t.Fatalf("accepted extra provider output: %s", raw)
 		}
@@ -190,7 +188,7 @@ func TestLemonadeSetupReplyRejectsUnexpectedFieldsAndTrailingData(t *testing.T) 
 func TestLemonadeModelAddNamesEachDownloadAndReadsTheStagedModels(t *testing.T) {
 	f := newUpdateFixture(t, "lemonade-engine", packageEntries("lemonade-engine", "2.0.0"))
 	withLemonadeJournal(t, f.journal)
-	cache, err := os.UserCacheDir()
+	cache, err := layout.AccountData()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +210,7 @@ func TestLemonadeModelAddNamesEachDownloadAndReadsTheStagedModels(t *testing.T) 
 		case "setup-info":
 			return json.Marshal(info)
 		case "verify-setup":
-			return json.Marshal(lemonadeProof{Version: 1, Verified: true})
+			return json.Marshal(providerSetup.VerificationReply{Version: 1, Verified: true})
 		case "model":
 			added = append(added, args)
 			info.StagedModels = append(info.StagedModels, args[3])
@@ -223,9 +221,16 @@ func TestLemonadeModelAddNamesEachDownloadAndReadsTheStagedModels(t *testing.T) 
 	if staged, err := LemonadeStagedModels(context.Background()); err != nil || !slices.Equal(staged, []string{BF16ModelID}) {
 		t.Fatalf("staged %v %v", staged, err)
 	}
-	if err := StageLemonadeModel(context.Background(), root, "user.Z-Image-Turbo", files, nil); err != nil {
+	acceptedMain := files["main"]
+	if err := StageLemonadeModel(context.Background(), root, "user.Z-Image-Turbo", files, func(done, total int64) error {
+		if done == 0 && total == 0 {
+			files["main"] = "unverified-after-admission"
+		}
+		return nil
+	}); err != nil {
 		t.Fatal(err)
 	}
+	files["main"] = acceptedMain
 	want := []string{"model", "add", "--id", "user.Z-Image-Turbo", "--file", "main=" + files["main"], "--file", "vae=" + files["vae"]}
 	if len(added) != 1 || !slices.Equal(added[0], want) {
 		t.Fatalf("model add ran as %q, want %q", added, want)

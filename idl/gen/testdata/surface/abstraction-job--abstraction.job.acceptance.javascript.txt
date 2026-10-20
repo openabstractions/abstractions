@@ -64,6 +64,8 @@ enum ObservationOutcome
   Unavailable
 class OperationControlClient
   observeWork(identity)
+  followWork(identity, after, waitMs)
+  followWorkPages(identity, after, waitMs)
   readResult(identity, offset, maxBytes)
   linkResult(identity, destination)
 object OperationControlService {wireName, Client}
@@ -98,6 +100,18 @@ enum ServiceErrorCode
   UnknownMethod
   WrongMode
   Forbidden
+enum WorkObservationMechanism
+  Native
+  Polled
+enum WorkObservationOutcome
+  Changed
+  Unchanged
+  Gap
+  Unknown
+  Forbidden
+  Invalid
+  Unavailable
+  Unsupported
 enum WorkState
   Pending
   Running
@@ -108,7 +122,40 @@ enum WorkState
 const acceptanceErrorCodes
 const admissionGuarantees
 function decode(data)
+function decodeAcceptanceResult(data)
+function decodeCancellationResult(data)
+function decodeHistoryWindow(data)
+function decodeInventoryPage(data)
+function decodeObservationResult(data)
+function decodeOperationSnapshot(data)
+function decodeOperatorCancellation(data)
+function decodeReceipt(data)
+function decodeRequestIdentity(data)
+function decodeResultChunk(data)
+function decodeResultLink(data)
+function decodeResultRead(data)
+function decodeSubmission(data)
+function decodeWorkFailure(data)
+function decodeWorkObservation(data)
+function decodeWorkProgress(data)
 function encode(v)
+function encodeAcceptanceResult(v)
+function encodeCancellationResult(v)
+function encodeHistoryWindow(v)
+function encodeInventoryPage(v)
+function encodeObservationResult(v)
+function encodeOperationSnapshot(v)
+function encodeOperatorCancellation(v)
+function encodeReceipt(v)
+function encodeRequestIdentity(v)
+function encodeResultChunk(v)
+function encodeResultLink(v)
+function encodeResultRead(v)
+function encodeSubmission(v)
+function encodeWorkFailure(v)
+function encodeWorkObservation(v)
+function encodeWorkProgress(v)
+function fromJson(kind, data)
 function newAcceptanceResult()
   outcome
   receipt
@@ -172,7 +219,13 @@ function newWorkFailure()
   classification
   message
   cause
+function newWorkObservation()
+  outcome
+  next
+  snapshot
+  mechanism
 function newWorkProgress()
   done
   total
 const resourceActions
+function toJson(kind, value)

@@ -48,7 +48,7 @@ function toolCallId(sse) {
     const chunk = JSON.parse(line.slice(6));
     const call = chunk.choices?.[0]?.delta?.tool_calls?.[0];
     if (call?.id) {
-      assert.equal(call.function.name, 'openabstractions_watch_logs');
+      assert.equal(call.function.name, 'oa_logs_watch');
       return call.id;
     }
   }
@@ -68,7 +68,7 @@ test('title and unrelated requests preserve the queued call and its exact follow
   assert.equal((await title).status, 200);
 
   const watch = await f.post('/v1/chat/completions', {model: 'fixture', messages: [{role: 'user', content: 'watch'}],
-    tools: [{type: 'function', function: {name: 'openabstractions_watch_logs'}}]});
+    tools: [{type: 'function', function: {name: 'oa_logs_watch'}}]});
   assert.equal(watch.status, 200);
   const id = toolCallId(await watch.text());
   state = await f.state();
@@ -88,7 +88,7 @@ test('title and unrelated requests preserve the queued call and its exact follow
   assert.equal((await f.state()).pendingToolCallId, id);
 
   const reply = await f.post('/v1/chat/completions', {model: 'fixture', messages: [
-    {role: 'assistant', tool_calls: [{id, type: 'function', function: {name: 'openabstractions_watch_logs', arguments: '{}'}}]},
+    {role: 'assistant', tool_calls: [{id, type: 'function', function: {name: 'oa_logs_watch', arguments: '{}'}}]},
     {role: 'tool', tool_call_id: id, content: JSON.stringify({kind: 'source_watch', status: 'complete', records: 1})},
   ]});
   assert.equal(reply.status, 200);

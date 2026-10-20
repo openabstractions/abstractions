@@ -12,13 +12,19 @@ import (
 )
 
 var (
-	user32   = syscall.NewLazyDLL("user32.dll")
-	gdi32    = syscall.NewLazyDLL("gdi32.dll")
-	kernel32 = syscall.NewLazyDLL("kernel32.dll")
+	user32   = windows.NewLazySystemDLL("user32.dll")
+	gdi32    = windows.NewLazySystemDLL("gdi32.dll")
+	kernel32 = windows.NewLazySystemDLL("kernel32.dll")
+	shell32  = windows.NewLazySystemDLL("shell32.dll")
 
-	registerClass       = user32.NewProc("RegisterClassExW")
-	createWindow        = user32.NewProc("CreateWindowExW")
-	destroyWindowProc   = user32.NewProc("DestroyWindow")
+	registerClass     = user32.NewProc("RegisterClassExW")
+	createWindow      = user32.NewProc("CreateWindowExW")
+	destroyWindowProc = user32.NewProc("DestroyWindow")
+	fillRect          = user32.NewProc("FillRect")
+	invalidateRect    = user32.NewProc("InvalidateRect")
+	// setWindowLong is SetWindowLongPtrW; 32-bit Windows exports the
+	// pointer-sized form only as SetWindowLongW.
+	setWindowLong       = user32.NewProc(setWindowLongName())
 	defWindowProc       = user32.NewProc("DefWindowProcW")
 	getMessage          = user32.NewProc("GetMessageW")
 	translateMessage    = user32.NewProc("TranslateMessage")
@@ -28,6 +34,8 @@ var (
 	postMessage         = user32.NewProc("PostMessageW")
 	sendMessage         = user32.NewProc("SendMessageW")
 	showWindow          = user32.NewProc("ShowWindow")
+	isWindowVisible     = user32.NewProc("IsWindowVisible")
+	isIconic            = user32.NewProc("IsIconic")
 	moveWindow          = user32.NewProc("MoveWindow")
 	getClientRect       = user32.NewProc("GetClientRect")
 	getWindowRect       = user32.NewProc("GetWindowRect")
@@ -38,13 +46,13 @@ var (
 	getWindowText       = user32.NewProc("GetWindowTextW")
 	getWindowTextLength = user32.NewProc("GetWindowTextLengthW")
 	setFocus            = user32.NewProc("SetFocus")
-	messageBox          = user32.NewProc("MessageBoxW")
 	dpiAware            = user32.NewProc("SetProcessDPIAware")
 	dpiAwareness        = user32.NewProc("SetProcessDpiAwarenessContext")
 	dpiForWindow        = user32.NewProc("GetDpiForWindow")
 	systemParameters    = user32.NewProc("SystemParametersInfoW")
 
-	dwmSetWindowAttribute = windows.NewLazySystemDLL("dwmapi.dll").NewProc("DwmSetWindowAttribute")
+	dwmapi                = windows.NewLazySystemDLL("dwmapi.dll")
+	dwmSetWindowAttribute = dwmapi.NewProc("DwmSetWindowAttribute")
 
 	createSolidBrush = gdi32.NewProc("CreateSolidBrush")
 	createFont       = gdi32.NewProc("CreateFontW")
@@ -54,6 +62,13 @@ var (
 	getModuleHandle  = kernel32.NewProc("GetModuleHandleW")
 	getConsoleWindow = kernel32.NewProc("GetConsoleWindow")
 )
+
+func setWindowLongName() string {
+	if unsafe.Sizeof(uintptr(0)) == 4 {
+		return "SetWindowLongW"
+	}
+	return "SetWindowLongPtrW"
+}
 
 const (
 	wsOverlappedWindow = 0x00CF0000
@@ -80,9 +95,8 @@ const (
 	swShowNormal = 1
 	redraw       = 1
 
-	idcArrow          = 32512
-	idiApplication    = 32512
-	mbIconInformation = 0x40
+	idcArrow       = 32512
+	idiApplication = 32512
 
 	// appIconResource is the resource id monitor/panel.rc packs panel.ico
 	// under (CREATEPROCESS_MANIFEST_RESOURCE_ID's icon counterpart — by
@@ -115,6 +129,10 @@ const (
 	dwmWindowCornerPreference = 33
 	dwmSystemBackdropType     = 38
 	dwmCornerRound            = 2
+	dwmCornerDoNotRound       = 1
+	dwmBorderColor            = 34
+	dwmCaptionColor           = 35
+	dwmTextColor              = 36
 	dwmBackdropNone           = 1
 	dwmBackdropMainWindow     = 2
 
@@ -148,6 +166,7 @@ type message struct {
 }
 
 type rect struct{ Left, Top, Right, Bottom int32 }
+type point struct{ X, Y int32 }
 type minMaxInfo struct {
 	Reserved, MaxSize, MaxPosition, MinTrack, MaxTrack point
 }
@@ -200,7 +219,7 @@ func register() (panel, error) {
 // executable at resource id 1 by monitor/panel.rc (monitor/icon/gen/main.go
 // writes both the .rc and the panel.ico it points at). inst is the module
 // handle LoadImageW resolves that resource against; passing 0 for it, as a
-// plain `go build` without the generated monitor/rsrc_windows_*.syso files
+// plain `go build` without the generated monitor/internal/panelres/rsrc_windows_*.syso files
 // does implicitly by finding no resource at all, falls back to the stock
 // IDI_APPLICATION icon so the window and tray still draw something.
 func loadAppIcon(inst uintptr, size int32) syscall.Handle {
@@ -220,13 +239,6 @@ func makeDPIAware() {
 	dpiAware.Call()
 }
 
-// EnableDPIAwareness opts this process out of the DPI virtualization Windows
-// applies to a process that never asks. Call it once, before any window is
-// created. Package win's own windows reach it through register(), below;
-// a window this package does not draw itself, such as the WebView2 host
-// window in desktop_windows.go, calls it directly.
-func EnableDPIAwareness() { makeDPIAware() }
-
 // Window is one top-level window and everything drawn in it.
 type Window struct {
 	h           syscall.Handle
@@ -242,10 +254,6 @@ type Window struct {
 	click map[int32]func()
 	tint  map[syscall.Handle]uint32
 	size  func(w, h int)
-
-	// trayMsg, when set, handles the Shell_NotifyIcon callback message a tray
-	// icon registered on this window (see tray_windows.go, beside this file).
-	trayMsg func(wparam, lparam uintptr)
 
 	// sessionChange receives lock and unlock broadcasts registered through
 	// WatchSessionChanges. The presenter uses it to close an open permission dialog
@@ -552,13 +560,6 @@ func (w *Window) Field(text string) *Control {
 	return w.child("EDIT", wsTabStop|wsBorder|esAutoHScroll, 0, text)
 }
 
-// Say shows a message box. Used for what a window cannot recover from.
-func Say(title, body string) {
-	//unchecked: Call's error is the raw GetLastError, not meaningful without a failed primary return; the message box has no fallback if MessageBoxW fails
-	messageBox.Call(0, uintptr(unsafe.Pointer(utf16(body))),
-		uintptr(unsafe.Pointer(utf16(title))), mbIconInformation)
-}
-
 // Windowed reports that this process has no console, which is what a build for
 // the desktop looks like: a GUI-subsystem binary is double-clicked and cannot be
 // handed a flag, so the front end it wants has to be read off the build itself.
@@ -566,6 +567,11 @@ func Windowed() bool {
 	h, _, _ := getConsoleWindow.Call()
 	return h == 0
 }
+
+// dismissOnEndSession closes an open question before its window ends with the
+// session. Only the presenter build links the question dialogs, and
+// taskdialog_windows.go sets it there.
+var dismissOnEndSession = func() {}
 
 func dispatch(hwnd, msg, wparam, lparam uintptr) uintptr {
 	live.Lock()
@@ -580,7 +586,7 @@ func dispatch(hwnd, msg, wparam, lparam uintptr) uintptr {
 		return 1
 	case 0x0016: // WM_ENDSESSION: FALSE is a cancelled shutdown.
 		if wparam != 0 {
-			DismissActiveQuestion()
+			dismissOnEndSession()
 			w.Close()
 		}
 		return 0
@@ -605,11 +611,6 @@ func dispatch(hwnd, msg, wparam, lparam uintptr) uintptr {
 	case wmCommand:
 		if do := w.click[controlID(wparam)]; do != nil {
 			do()
-		}
-		return 0
-	case wmTrayCallback:
-		if w.trayMsg != nil {
-			w.trayMsg(wparam, lparam)
 		}
 		return 0
 	case wmWtsSessionChange:

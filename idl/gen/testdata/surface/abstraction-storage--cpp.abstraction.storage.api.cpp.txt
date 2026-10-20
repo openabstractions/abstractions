@@ -12,6 +12,11 @@ struct FindResult
   std::optional<Ref> reference
 inline std::string encode(const Ref& v)
 inline Ref decode(std::string_view data)
+T from_json(std::string_view data)
+inline std::string to_json(const Ref& v)
+inline Ref from_json<Ref>(std::string_view data)
+inline std::string to_json(const FindResult& v)
+inline FindResult from_json<FindResult>(std::string_view data)
 struct Store
   virtual std::string name()
   virtual FindResult find(const std::string& digest)

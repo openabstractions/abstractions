@@ -37,7 +37,7 @@ await plugin.config({provider: {openabstractions: {
   options: {scope: 'local'},
   models: {},
 }}});
-const result = await plugin.tool.openabstractions_generate_image.execute(args, {
+const result = await plugin.tool.oa_image_generate.execute(args, {
   ask: async () => {}, abort: new AbortController().signal,
 });
 assert.equal(typeof result, 'object', String(result));

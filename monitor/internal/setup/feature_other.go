@@ -12,24 +12,11 @@ func queryLemonadeFeature() (FeatureStatus, string, error) {
 	return FeatureStatus{Reason: "The OpenAbstractions Lemonade Image feature requires Windows x64"}, "", nil
 }
 
-func addLemonadeFeature(context.Context) (FeatureStatus, error) {
-	status, _, _ := queryLemonadeFeature()
-	return status, errors.New(status.Reason)
-}
-
 func queryEngineFeature(engine AppID) (FeatureStatus, string, error) {
 	if engine != Lemonade && engine != TheNoise && engine != PyTorch {
 		return FeatureStatus{}, "", errors.New("unknown installed engine feature")
 	}
 	return FeatureStatus{Reason: "The selected local image engine requires Windows x64"}, "", nil
-}
-
-func addEngineFeature(_ context.Context, engine AppID) (FeatureStatus, error) {
-	status, _, err := queryEngineFeature(engine)
-	if err != nil {
-		return status, err
-	}
-	return status, errors.New(status.Reason)
 }
 
 func queryModelHostFeature() (FeatureStatus, string, error) {

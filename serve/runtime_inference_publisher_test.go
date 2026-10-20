@@ -210,6 +210,7 @@ func (p *publisherRuntime) decided(t *testing.T) (*identity.Peer, inference.Subj
 // expectQuestion requires one question about program carrying want.
 func (p *publisherRuntime) expectQuestion(t *testing.T, program string, want asks.Publisher) {
 	t.Helper()
+	program = expectedSubjectProgram(program)
 	records, _, err := p.book.ApplicationHistory()
 	if err != nil {
 		t.Fatal(err)

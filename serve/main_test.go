@@ -82,6 +82,9 @@ func TestMainMistakesNameThemselvesAndPointAtHelp(t *testing.T) {
 		{[]string{"statuz"}, `no command called "statuz"`, "openabstractions --help"},
 		{[]string{"serve"}, "serve needs a capability", "openabstractions serve --help"},
 		{[]string{"serve", "donwload"}, `no capability called "donwload"`, "openabstractions serve --help"},
+		{[]string{"serve", "host"}, `no capability called "host"`, "openabstractions serve --help"},
+		{[]string{"serve", "host", "--service"}, `no capability called "host"`, "openabstractions serve --help"},
+		{[]string{"serve", "host", "--help"}, `no capability called "host"`, "openabstractions serve --help"},
 	}
 	for _, c := range cases {
 		t.Run(strings.Join(c.args, "_"), func(t *testing.T) {
@@ -130,8 +133,8 @@ func TestServeHelpIsItsOwnScopedPage(t *testing.T) {
 			t.Fatalf("serve --help omits capability %q: %s", capability, serve)
 		}
 	}
-	if !strings.Contains(serve, "host is its old name") {
-		t.Fatalf("serve --help does not name host as supervisor's old name: %s", serve)
+	if strings.Contains(serve, "host is its old name") {
+		t.Fatalf("serve --help retains the retired alias: %s", serve)
 	}
 	if !strings.Contains(serve, "legacy standalone question service") || !strings.Contains(serve, "legacy standalone rights service") {
 		t.Fatalf("serve --help does not distinguish standalone services from the runtime: %s", serve)
@@ -141,19 +144,15 @@ func TestServeHelpIsItsOwnScopedPage(t *testing.T) {
 	}
 }
 
-// TestServeSupervisorAcceptsHost is RENAME-PLAN §3, Panel and command line
-// step 10: `serve supervisor` is the command and `serve host`, its old name,
-// still reaches it for one release. Off Windows both give the same refusal.
-func TestServeSupervisorAcceptsHost(t *testing.T) {
-	for _, name := range []string{"supervisor", "host"} {
-		if capabilities[name] == nil {
-			t.Fatalf("serve %s is not a capability", name)
-		}
+// The one-release alias grace elapsed in 0.8; canonical startup stays present.
+func TestServeSupervisorRetiresHost(t *testing.T) {
+	if capabilities["supervisor"] == nil || capabilities["host"] != nil {
+		t.Fatal("supervisor must remain the sole supervisor capability")
 	}
 	if runtime.GOOS == "windows" {
 		return
 	}
-	for _, name := range []string{"supervisor", "host"} {
+	for _, name := range []string{"supervisor"} {
 		err := capabilities[name](nil)
 		var exit *exitError
 		if !errors.As(err, &exit) || exit.code != exitUsage || !strings.Contains(err.Error(), "serve supervisor is the Windows runtime supervisor") {
@@ -164,8 +163,7 @@ func TestServeSupervisorAcceptsHost(t *testing.T) {
 
 // TestNoLaunchPathNamesServeHost is RENAME-PLAN step 4, Windows remainder:
 // every path that launches the supervisor passes `serve supervisor`. `serve
-// host` stays accepted for one release (TestServeSupervisorAcceptsHost) and is
-// named only in prose. The scan covers the launch code (`start`, the service
+// host` has completed its one-release grace. The scan covers launch code (`start`, the service
 // template, the restart registration) and the installer's Startup shortcut.
 func TestNoLaunchPathNamesServeHost(t *testing.T) {
 	old := regexp.MustCompile(`serve host --service|"serve host"|"serve", "host"|Arguments="serve host`)
@@ -551,13 +549,13 @@ func TestMalformedValuesAreSentencesNotRawErrors(t *testing.T) {
 			return downloadCommand([]string{"not-a-url", "--timeout", "2s"}, o, d)
 		}, exitUsage, []string{`"not-a-url"`, "URL"}},
 		{"jobs migrate-legacy apply --mapping (path)", func(o, d *bytes.Buffer) error {
-			return jobsCommand([]string{"migrate-legacy", "apply", "--state-dir", t.TempDir(), "--mapping", "/oa-sweep-test/absent-mapping.json"}, o, d)
+			return jobsCommand([]string{"migrate-legacy", "apply", "--state-dir", privateTestState(t), "--mapping", "/oa-sweep-test/absent-mapping.json"}, o, d)
 		}, exitNotResolved, []string{"--mapping", "/oa-sweep-test/absent-mapping.json", "does not exist"}},
 		{"status describe, malformed (endpoint)", func(o, d *bytes.Buffer) error {
 			return statusDescribe([]string{"abstraction.config/reader@1", "--timeout", "2s"}, o, d)
 		}, exitUsage, []string{"takes an endpoint", "for example"}},
 		{"status describe, well-formed but absent (endpoint)", func(o, d *bytes.Buffer) error {
-			return statusDescribe([]string{"nonsense-endpoint-word", "--timeout", "2s"}, o, d)
+			return statusDescribe([]string{fullEndpoint(t, fixtureNameForRuntime()), "--timeout", "2s"}, o, d)
 		}, exitNotResolved, []string{"no runtime listens at", `run "openabstractions status"`}},
 	}
 	for _, c := range cases {

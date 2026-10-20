@@ -1,0 +1,339 @@
+dataclass ApplicationListing
+  outcome: ReadingOutcome | None
+  applications: list[ListedApplication]
+  reason: str
+  open_verbs: list[ApplicationOpenVerbs]
+dataclass ApplicationOpenVerbs
+  application: str
+  verbs: list[ListedOpenVerb]
+dataclass ApplicationsQuery
+  application: str
+const BINDING_TOOLS
+const COMMAND_ACTIONS
+dataclass CallRecord
+  subject: str
+  client_label: str
+  application: str
+  instance: str
+  context: ContextRef | None
+  command: str
+  class_: CommandClass | None
+  revision_before: str
+  revision_after: str
+  outcome: str
+  reason: str
+  idempotency_key: str
+  arguments_digest: str
+  result_digest: str
+dataclass Change
+  base_revision: str
+  revision: str
+  patch: bytes | str
+dataclass ChangeBatch
+  outcome: ReadingOutcome | None
+  context: ContextRef
+  changes: list[Change]
+  revision: str
+  reason: str
+dataclass ChangesRequest
+  context: ContextRef
+  after_revision: str
+  wait_ms: int
+dataclass Collection
+  parent: str
+  kind: str
+  ids: list[str]
+enum CollectionOp
+  ADD = 'add'
+  REMOVE = 'remove'
+  MOVE = 'move'
+  REPLACE = 'replace'
+  RESET = 'reset'
+enum CommandClass
+  READ = 'read'
+  REVEAL = 'reveal'
+  PROPOSE = 'propose'
+  EDIT = 'edit'
+  COMMIT = 'commit'
+  DESTROY = 'destroy'
+  SPEND = 'spend'
+  SEND = 'send'
+dataclass CommandDeclaration
+  version: str
+  commands: list[DeclaredCommand]
+dataclass CommandListing
+  outcome: ReadingOutcome | None
+  application: str
+  instance: str
+  commands: list[CommandSpec]
+  reason: str
+enum CommandOutcome
+  APPLIED = 'applied'
+  PROPOSED = 'proposed'
+  ACCEPTED = 'accepted'
+  CONFLICT = 'conflict'
+  STALE = 'stale'
+  INVALID = 'invalid'
+  UNSUPPORTED = 'unsupported'
+  FORBIDDEN = 'forbidden'
+  NOT_PERMITTED = 'not_permitted'
+  REFUSED = 'refused'
+  EXHAUSTED = 'exhausted'
+  NOT_FOUND = 'not_found'
+  UNKNOWN = 'unknown'
+  UNAVAILABLE = 'unavailable'
+  FAILED = 'failed'
+dataclass CommandResult
+  outcome: CommandOutcome | None
+  reason: str
+  revision: str
+  proposal: str
+  summary: str
+  job: str
+  effects: bytes | str
+  undo_group: str
+  idempotency_key: str
+dataclass CommandSpec
+  name: str
+  title: str
+  description: str
+  class_: CommandClass | None
+  input_schema: bytes | str
+  output_schema: bytes | str
+  targets: list[str]
+  proposable: bool
+  undoable: bool
+  idempotent: bool
+  long_running: bool
+dataclass CommandsQuery
+  application: str
+  instance: str
+dataclass ContextBounds
+  snapshot_bytes: int
+  change_bytes: int
+  retained_revisions: int
+  pending_proposals: int
+  calls_in_flight: int
+dataclass ContextEntry
+  context: ContextRef
+  title: str
+  revision: str
+dataclass ContextPage
+  outcome: ReadingOutcome | None
+  contexts: list[ContextEntry]
+  reason: str
+dataclass ContextRef
+  instance: str
+  context: str
+  epoch: str
+dataclass ContextSnapshot
+  outcome: ReadingOutcome | None
+  context: ContextRef
+  revision: str
+  entities: list[Entity]
+  collections: list[Collection]
+  selections: list[Selection]
+  cursor: str
+  reason: str
+dataclass DeclaredCommand
+  name: str
+  class_: CommandClass | None
+dataclass Description
+  version: str
+  kinds: list[Kind]
+  commands: list[CommandSpec]
+  extensions: list[str]
+  bounds: ContextBounds
+dataclass DescriptionResult
+  outcome: ReadingOutcome | None
+  description: Description | None
+  reason: str
+const EXTENSIONS
+dataclass Entity
+  id: str
+  kind: str
+  label: str
+  parent: str
+  properties: bytes | str
+dataclass Envelope
+  description: DescriptionResult | None
+  contexts: ContextPage | None
+  read: ReadRequest | None
+  snapshot: ContextSnapshot | None
+  changes_request: ChangesRequest | None
+  changes: ChangeBatch | None
+  invocation: Invocation | None
+  result: CommandResult | None
+  reveal: Reveal | None
+  undo: UndoRequest | None
+  job: JobRequest | None
+  declaration: CommandDeclaration | None
+  record: CallRecord | None
+  applications_query: ApplicationsQuery | None
+  applications: ApplicationListing | None
+  commands_query: CommandsQuery | None
+  commands: CommandListing | None
+  call: GatewayCall | None
+enum FieldRole
+  ORDINARY = 'ordinary'
+  DERIVED = 'derived'
+  EPHEMERAL = 'ephemeral'
+  SECRET = 'secret'
+const GATEWAY_TOOLS
+dataclass GatewayCall
+  application: str
+  instance: str
+  tool: str
+  arguments: bytes | str
+  mode: InvokeMode | None
+  expected_revision: str
+  idempotency_key: str
+  context: str
+  proposal: str
+  require_read_permit: bool | None
+dataclass Invocation
+  context: ContextRef
+  arguments: bytes | str
+  mode: InvokeMode | None
+  expected_revision: str
+  idempotency_key: str
+  proposal: str
+enum InvokeMode
+  PROPOSE = 'propose'
+  APPLY = 'apply'
+dataclass JobRequest
+  instance: str
+  job: str
+dataclass Kind
+  name: str
+  title: str
+  schema: bytes | str
+  fields: list[KindField]
+dataclass KindField
+  name: str
+  role: FieldRole | None
+dataclass ListedApplication
+  application: str
+  title: str
+  instances: list[ListedInstance]
+dataclass ListedInstance
+  instance: str
+  interface: str
+  contexts: list[ContextEntry]
+  reason: str
+dataclass ListedOpenVerb
+  name: str
+  description: str
+  input_schema: bytes | str
+const META_KEYS
+dataclass ReadRequest
+  context: ContextRef
+  entities: list[str]
+  cursor: str
+  limit: int
+enum ReadingOutcome
+  PAGE = 'page'
+  GAP = 'gap'
+  CONFLICT = 'conflict'
+  STALE = 'stale'
+  INVALID = 'invalid'
+  UNSUPPORTED = 'unsupported'
+  NOT_PERMITTED = 'not_permitted'
+  REFUSED = 'refused'
+  EXHAUSTED = 'exhausted'
+  NOT_FOUND = 'not_found'
+  UNAVAILABLE = 'unavailable'
+class Refusal(ValueError)
+  __init__(word, offset)
+dataclass Reveal
+  context: ContextRef
+  entities: list[str]
+  style: RevealStyle | str
+enum RevealStyle
+  HIGHLIGHT = 'highlight'
+  SCROLL_TO = 'scroll_to'
+  FRAME = 'frame'
+dataclass Selection
+  view: str
+  entities: list[str]
+  focus: str
+dataclass UndoRequest
+  context: ContextRef
+  undo_group: str
+  expected_revision: str
+  idempotency_key: str
+const VERSIONS
+def decode(data)
+def decode_application_listing(data)
+def decode_application_open_verbs(data)
+def decode_applications_query(data)
+def decode_call_record(data)
+def decode_change(data)
+def decode_change_batch(data)
+def decode_changes_request(data)
+def decode_collection(data)
+def decode_command_declaration(data)
+def decode_command_listing(data)
+def decode_command_result(data)
+def decode_command_spec(data)
+def decode_commands_query(data)
+def decode_context_bounds(data)
+def decode_context_entry(data)
+def decode_context_page(data)
+def decode_context_ref(data)
+def decode_context_snapshot(data)
+def decode_declared_command(data)
+def decode_description(data)
+def decode_description_result(data)
+def decode_entity(data)
+def decode_envelope(data)
+def decode_gateway_call(data)
+def decode_invocation(data)
+def decode_job_request(data)
+def decode_kind(data)
+def decode_kind_field(data)
+def decode_listed_application(data)
+def decode_listed_instance(data)
+def decode_listed_open_verb(data)
+def decode_read_request(data)
+def decode_reveal(data)
+def decode_selection(data)
+def decode_undo_request(data)
+def encode(v)
+def encode_application_listing(v)
+def encode_application_open_verbs(v)
+def encode_applications_query(v)
+def encode_call_record(v)
+def encode_change(v)
+def encode_change_batch(v)
+def encode_changes_request(v)
+def encode_collection(v)
+def encode_command_declaration(v)
+def encode_command_listing(v)
+def encode_command_result(v)
+def encode_command_spec(v)
+def encode_commands_query(v)
+def encode_context_bounds(v)
+def encode_context_entry(v)
+def encode_context_page(v)
+def encode_context_ref(v)
+def encode_context_snapshot(v)
+def encode_declared_command(v)
+def encode_description(v)
+def encode_description_result(v)
+def encode_entity(v)
+def encode_envelope(v)
+def encode_gateway_call(v)
+def encode_invocation(v)
+def encode_job_request(v)
+def encode_kind(v)
+def encode_kind_field(v)
+def encode_listed_application(v)
+def encode_listed_instance(v)
+def encode_listed_open_verb(v)
+def encode_read_request(v)
+def encode_reveal(v)
+def encode_selection(v)
+def encode_undo_request(v)
+def from_json(kind, data)
+def to_json(value)

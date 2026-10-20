@@ -1,4 +1,4 @@
-# Sink-outage fault
+# [Sink](https://openabstractions.github.io/reference.html#concept-log.sink)-outage fault
 
 One fixture, `sink-outage.json`, run by every language's logging handler test
 against an in-process fake sink. It states `LOG-S12` and `LOG-S13` of

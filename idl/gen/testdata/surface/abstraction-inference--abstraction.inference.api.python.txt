@@ -84,20 +84,230 @@ class Chat
   start(request: Request) -> Admission
   observe(operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage
   cancel(operation: str) -> Cancellation
+dataclass ChatAdmission
+  outcome: ChatStartOutcome | None
+  reason: str
+  request: str
+  server: str
+  model: str
+  retention_ms: int
+  idle_ms: int
+  retained_deltas: int
+  preferred_model: str
+  selection_reason: SelectionReason | None
+  refusal: _dependency_rights.RefusalDetail | None
+  retry_after_ms: int | None
+dataclass ChatBlockEnd
+  block: int
+  seal_omitted: SealOmission | None
+dataclass ChatCancellation
+  outcome: CancelOutcome | None
+  result_outcome: ChatResultOutcome | None
+  refusal: _dependency_rights.RefusalDetail | None
 class ChatClient(Chat)
   __init__(transport)
   start(request: Request) -> Admission
   observe(operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage
   cancel(operation: str) -> Cancellation
+dataclass ChatContent
+  messages: list[ChatMessage]
+  tools: list[ChatTool]
+  options: ChatOptions | None
+  extensions: dict[str, str]
+  required_extensions: list[str]
+  guarantees: list[ChatGuarantee | str]
+  credential: str
+dataclass ChatEvent
+  sequence: int
+  kind: ChatEventKind | None
+  progress: ChatProgress | None
+  part: ChatPart | None
+  block_end: ChatBlockEnd | None
+  usage: ChatUsage | None
+  end: ChatResult | None
+enum ChatEventKind
+  PROGRESS = 'progress'
+  PART = 'part'
+  BLOCK_END = 'block_end'
+  USAGE = 'usage'
+  END = 'end'
+enum ChatGuarantee
+  LOCAL_ONLY = 'abstraction.inference/local-only@1'
+  HOSTED_ALLOWED = 'abstraction.inference/hosted-allowed@1'
+  NO_RETENTION = 'abstraction.inference/no-retention@1'
+  FREE_CAPACITY = 'abstraction.inference/free-capacity@1'
+enum ChatHistoryOutcome
+  AVAILABLE = 'available'
+  FORBIDDEN = 'forbidden'
+  INVALID = 'invalid'
+  UNAVAILABLE = 'unavailable'
+dataclass ChatHistoryRead
+  outcome: ChatHistoryOutcome | None
+  window: _dependency_acceptance.HistoryWindow | None
+  refusal: _dependency_rights.RefusalDetail | None
+dataclass ChatInputPart
+  kind: PartKind | None
+  text: str
+  digest: str
+  media_type: str
+  call_id: str
+  name: str
+  arguments: str
+enum ChatLoad
+  COLD = 'cold'
+  WARM = 'warm'
+  LOADED = 'loaded'
+enum ChatLoadSource
+  DISK = 'disk'
+  ADOPTED = 'adopted'
+  LENT = 'lent'
+dataclass ChatMessage
+  role: Role | None
+  parts: list[ChatInputPart]
+  reasoning: list[ChatReplay]
+dataclass ChatOptions
+  max_output: int
+  temperature: Temperature | None
+  stop: list[str]
+  json_schema: str
+  tool_choice: ChatToolChoice | None
+  parallel_tools: bool | None
+  reasoning: ChatReasoning | None
+dataclass ChatPage
+  outcome: PageOutcome | None
+  events: list[ChatEvent]
+  next: int
+  at_end: bool
+  refusal: _dependency_rights.RefusalDetail | None
+dataclass ChatPart
+  block: int
+  kind: ChatPartKind | None
+  text: str
+  call_id: str
+  name: str
+  arguments: str
+  seal: ReasoningSeal | None
+enum ChatPartKind
+  TEXT = 'text'
+  REASONING = 'reasoning'
+  REASONING_SUMMARY = 'reasoning_summary'
+  TOOL_CALL = 'tool_call'
+  MODEL_REFUSAL = 'model_refusal'
+dataclass ChatProgress
+  phase: ChatProgressPhase | str
+  done: int | None
+  total: int | None
+  unit: str
+enum ChatProgressPhase
+  QUEUED = 'queued'
+  LOADING = 'loading'
+  WARMING = 'warming'
+dataclass ChatReasoning
+  effort: ChatReasoningEffort | None
+  budget: int | None
+dataclass ChatReasoningApplied
+  effort: ChatReasoningEffort | None
+  budget: int | None
+  support: ChatReasoningSupport | str
+  budget_support: ChatReasoningSupport | None
+enum ChatReasoningEffort
+  NONE = 'none'
+  LOW = 'low'
+  MEDIUM = 'medium'
+  HIGH = 'high'
+enum ChatReasoningSupport
+  APPLIED = 'applied'
+  APPROXIMATED = 'approximated'
+  NOT_SUPPORTED = 'not_supported'
+  OVERRIDDEN = 'overridden'
+dataclass ChatReplay
+  block: int
+  seal: ReasoningSeal
+dataclass ChatResult
+  outcome: ChatResultOutcome | None
+  cause: str
+  finish_reason: FinishReason | None
+  stop_sequence: str
+  usage: ChatUsage
+  served_by: ServedBy | None
+  cost: Cost | None
+  refusal: _dependency_rights.RefusalDetail | None
+  retry_after_ms: int | None
+  timing: ChatTiming | None
+  reasoning_applied: ChatReasoningApplied | None
+  dropped_extensions: list[str]
+enum ChatResultOutcome
+  COMPLETED = 'completed'
+  FAILED = 'failed'
+  CANCELLED = 'cancelled'
+enum ChatStartOutcome
+  ACCEPTED = 'accepted'
+  NOT_PERMITTED = 'not_permitted'
+  BUDGET_EXCEEDED = 'budget_exceeded'
+  UNSUPPORTED = 'unsupported'
+  NO_HOST = 'no_host'
+  UNAVAILABLE = 'unavailable'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  EXHAUSTED = 'exhausted'
+  CONFLICT = 'conflict'
+  UNKNOWN = 'unknown'
+dataclass ChatTarget
+  model: str
+  selection_policy: str
+dataclass ChatTiming
+  queue_ms: int | None
+  load_ms: int | None
+  restore_ms: int | None
+  prefill_ms: int | None
+  decode_ms: int | None
+  prefill_tokens: int | None
+  reused_tokens: int | None
+  load: ChatLoad | None
+  load_source: ChatLoadSource | None
+dataclass ChatTool
+  name: str
+  description: str
+  parameters: str
+  strict: bool | None
+dataclass ChatToolChoice
+  kind: ChatToolChoiceKind | None
+  name: str
+enum ChatToolChoiceKind
+  AUTO = 'auto'
+  NONE = 'none'
+  REQUIRED = 'required'
+  NAMED = 'named'
+dataclass ChatUsage
+  input: int | None
+  output: int | None
+  cache_read: int | None
+  cache_write: int | None
+  reasoning: int | None
+enum ChatUse
+  TITLE = 'title'
 class ChatV2
+  start_with_guarantees(request: RequestV2, guarantees: list[RequestGuarantee | str]) -> AdmissionV2
   start(request: RequestV2) -> AdmissionV2
   observe(operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage
   cancel(operation: str) -> Cancellation
 class ChatV2Client(ChatV2)
   __init__(transport)
+  start_with_guarantees(request: RequestV2, guarantees: list[RequestGuarantee | str]) -> AdmissionV2
   start(request: RequestV2) -> AdmissionV2
   observe(operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage
   cancel(operation: str) -> Cancellation
+class ChatV3
+  get_history_window() -> ChatHistoryRead
+  start(request: RequestV3) -> ChatAdmission
+  observe(request: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> ChatPage
+  cancel(request: str) -> ChatCancellation
+class ChatV3Client(ChatV3)
+  __init__(transport)
+  get_history_window() -> ChatHistoryRead
+  start(request: RequestV3) -> ChatAdmission
+  observe(request: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> ChatPage
+  cancel(request: str) -> ChatCancellation
 dataclass Cost
   micros: int
   currency: str
@@ -178,6 +388,16 @@ dataclass Embeddings
   model: str
   cost: Cost | None
 const FEATURES
+enum FinishReason
+  STOP = 'stop'
+  LENGTH = 'length'
+  TOOL_CALLS = 'tool_calls'
+  CONTENT_FILTER = 'content_filter'
+  MODEL_REFUSAL = 'model_refusal'
+  CONTEXT_WINDOW = 'context_window'
+  MALFORMED_TOOL_CALL = 'malformed_tool_call'
+  PAUSED = 'paused'
+  OTHER = 'other'
 dataclass GatewayChange
   outcome: EditOutcome | None
   revision: str
@@ -272,11 +492,13 @@ dataclass ImageResult
   index: int
   delivery: Delivery
 class ImageV2
+  start_with_guarantees(request: ImageRequestV2, guarantees: list[RequestGuarantee | str]) -> AdmissionV2
   start(request: ImageRequestV2) -> AdmissionV2
   observe(operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage
   cancel(operation: str) -> Cancellation
 class ImageV2Client(ImageV2)
   __init__(transport)
+  start_with_guarantees(request: ImageRequestV2, guarantees: list[RequestGuarantee | str]) -> AdmissionV2
   start(request: ImageRequestV2) -> AdmissionV2
   observe(operation: str, cursor: int, max_deltas: int, max_bytes: int, wait_ms: int) -> DeltaPage
   cancel(operation: str) -> Cancellation
@@ -366,8 +588,11 @@ class Operator
   issue_key(program: str, credential: str) -> KeyIssued
   revoke_key(program: str) -> KeyRevoked
   audit(cursor: int, max_entries: int) -> AuditPage
+  requests(cursor: int, max_entries: int) -> RequestPage
   gateway() -> GatewayState
   set_gateway(expected_revision: str, open: bool, address: str) -> GatewayChange
+  program_budgets(credential: str) -> ProgramBudgetPage
+  set_program_budget(request: ProgramBudgetChange) -> ProgramBudgetResult
 class OperatorClient(Operator)
   __init__(transport)
   hosts() -> HostList
@@ -377,8 +602,11 @@ class OperatorClient(Operator)
   issue_key(program: str, credential: str) -> KeyIssued
   revoke_key(program: str) -> KeyRevoked
   audit(cursor: int, max_entries: int) -> AuditPage
+  requests(cursor: int, max_entries: int) -> RequestPage
   gateway() -> GatewayState
   set_gateway(expected_revision: str, open: bool, address: str) -> GatewayChange
+  program_budgets(credential: str) -> ProgramBudgetPage
+  set_program_budget(request: ProgramBudgetChange) -> ProgramBudgetResult
 dataclass Options
   max_output: int
   temperature: Temperature | None
@@ -426,7 +654,49 @@ class Preloader
 class PreloaderClient(Preloader)
   __init__(transport)
   preload(request: Request) -> PreloadReply
+dataclass ProgramBudget
+  tokens_per_day: int
+  micros_per_day: int
+  requests_per_day: int
+  images_per_day: int
+  audio_seconds_per_day: int
+  characters_per_day: int
+dataclass ProgramBudgetChange
+  expected_revision: str
+  credential: str
+  program: str
+  budget: ProgramBudget | None
+enum ProgramBudgetEditOutcome
+  APPLIED = 'applied'
+  CONFLICT = 'conflict'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+  UNSUPPORTED = 'unsupported'
+dataclass ProgramBudgetEntry
+  program: str
+  budget: ProgramBudget | None
+  spend: Spend
+  cost_unreported: bool
+dataclass ProgramBudgetPage
+  outcome: ProgramBudgetReadOutcome | None
+  revision: str
+  entries: list[ProgramBudgetEntry]
+  profiles: list[str]
+enum ProgramBudgetReadOutcome
+  PAGE = 'page'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+  UNSUPPORTED = 'unsupported'
+dataclass ProgramBudgetResult
+  outcome: ProgramBudgetEditOutcome | None
+  revision: str
+  reason: str
 const RESOURCE_ACTIONS
+dataclass ReasoningSeal
+  origin: str
+  bytes: bytes
 class Refusal(ValueError)
   __init__(word, offset)
 dataclass Reply
@@ -467,17 +737,38 @@ dataclass RequestContent
   required_extensions: list[str]
   guarantees: list[RequestGuarantee | str]
   credential: str
+dataclass RequestEntry
+  entry: AuditEntry
+  preferred_model: str
+  unavailable_hosts: list[str]
+  selection: str
+  placement: ServedPlace | None
 enum RequestGuarantee
   LOCAL_ONLY = 'abstraction.inference/local-only@1'
   HOSTED_ALLOWED = 'abstraction.inference/hosted-allowed@1'
+dataclass RequestPage
+  outcome: AuditOutcome | None
+  entries: list[RequestEntry]
+  next: int
+  at_end: bool
 dataclass RequestV2
   target: Target
   content: RequestContent
+dataclass RequestV3
+  identity: _dependency_acceptance.RequestIdentity
+  target: ChatTarget
+  content: ChatContent
+  model_ref: str
+  conversation: str
+  use: ChatUse | None
 enum Role
   SYSTEM = 'system'
   USER = 'user'
   ASSISTANT = 'assistant'
   TOOL = 'tool'
+enum SealOmission
+  ENCODED_SIZE = 'encoded_size'
+  INCOMPATIBLE_ORIGIN = 'incompatible_origin'
 dataclass SelectionCandidateV2
   model: str
   placement: CandidatePlacement | None
@@ -488,14 +779,22 @@ dataclass SelectionChange
   revision: str
   reason: str
 class SelectionOperatorV2
+  read_effective(name: str) -> SelectionReadV2
   read(target_program: str, name: str) -> SelectionReadV2
   put(target_program: str, expected_revision: str, policy: SelectionPolicyV2) -> SelectionChange
   delete_policy(target_program: str, expected_revision: str, name: str) -> SelectionChange
+  read_account_default(name: str) -> SelectionReadV2
+  put_account_default(expected_revision: str, policy: SelectionPolicyV2) -> SelectionChange
+  delete_account_default(expected_revision: str, name: str) -> SelectionChange
 class SelectionOperatorV2Client(SelectionOperatorV2)
   __init__(transport)
+  read_effective(name: str) -> SelectionReadV2
   read(target_program: str, name: str) -> SelectionReadV2
   put(target_program: str, expected_revision: str, policy: SelectionPolicyV2) -> SelectionChange
   delete_policy(target_program: str, expected_revision: str, name: str) -> SelectionChange
+  read_account_default(name: str) -> SelectionReadV2
+  put_account_default(expected_revision: str, policy: SelectionPolicyV2) -> SelectionChange
+  delete_account_default(expected_revision: str, name: str) -> SelectionChange
 dataclass SelectionPolicyV2
   name: str
   candidates: list[SelectionCandidateV2]
@@ -513,6 +812,14 @@ enum SelectionReason
   EXPLICIT_MODEL = 'explicit_model'
   PREFERRED = 'preferred'
   PREFERRED_ROUTE_UNAVAILABLE = 'preferred_route_unavailable'
+dataclass ServedBy
+  place: ServedPlace | str
+  server: str
+  machine: str
+enum ServedPlace
+  LOCAL = 'local'
+  HOSTED = 'hosted'
+  REMOTE = 'remote'
 class ServiceError(Exception)
   __init__(code, message)
 enum ServiceErrorCode
@@ -679,5 +986,185 @@ enum VideoState
   FORBIDDEN = 'forbidden'
   UNAVAILABLE = 'unavailable'
 def decode(data)
+def decode_admission(data)
+def decode_admission_v2(data)
+def decode_audio_chunk(data)
+def decode_audit_entry(data)
+def decode_audit_page(data)
+def decode_cancellation(data)
+def decode_ceiling_limit(data)
+def decode_chat_admission(data)
+def decode_chat_block_end(data)
+def decode_chat_cancellation(data)
+def decode_chat_content(data)
+def decode_chat_event(data)
+def decode_chat_history_read(data)
+def decode_chat_input_part(data)
+def decode_chat_message(data)
+def decode_chat_options(data)
+def decode_chat_page(data)
+def decode_chat_part(data)
+def decode_chat_progress(data)
+def decode_chat_reasoning(data)
+def decode_chat_reasoning_applied(data)
+def decode_chat_replay(data)
+def decode_chat_result(data)
+def decode_chat_target(data)
+def decode_chat_timing(data)
+def decode_chat_tool(data)
+def decode_chat_tool_choice(data)
+def decode_chat_usage(data)
+def decode_cost(data)
+def decode_delivery(data)
+def decode_delta(data)
+def decode_delta_page(data)
+def decode_embed_request(data)
+def decode_embeddings(data)
+def decode_gateway_change(data)
+def decode_gateway_state(data)
+def decode_host_change(data)
+def decode_host_entry(data)
+def decode_host_list(data)
+def decode_host_state(data)
+def decode_image_progress(data)
+def decode_image_reply(data)
+def decode_image_request(data)
+def decode_image_request_content(data)
+def decode_image_request_v2(data)
+def decode_image_result(data)
+def decode_key_issued(data)
+def decode_key_list(data)
+def decode_key_revoked(data)
+def decode_live_input_result(data)
+def decode_live_reply(data)
+def decode_live_request(data)
+def decode_live_transcript(data)
+def decode_local_key(data)
+def decode_message(data)
+def decode_options(data)
+def decode_part(data)
+def decode_preload_reply(data)
+def decode_program_budget(data)
+def decode_program_budget_change(data)
+def decode_program_budget_entry(data)
+def decode_program_budget_page(data)
+def decode_program_budget_result(data)
+def decode_reasoning_seal(data)
+def decode_reply(data)
+def decode_request(data)
+def decode_request_content(data)
+def decode_request_entry(data)
+def decode_request_page(data)
+def decode_request_v2(data)
+def decode_request_v3(data)
+def decode_selection_candidate_v2(data)
+def decode_selection_change(data)
+def decode_selection_policy_v2(data)
+def decode_selection_read_v2(data)
+def decode_served_by(data)
+def decode_speech_reply(data)
+def decode_speech_request(data)
+def decode_spend(data)
+def decode_target(data)
+def decode_temperature(data)
+def decode_tool(data)
+def decode_transcript_segment(data)
+def decode_transcription_reply(data)
+def decode_transcription_request(data)
+def decode_usage(data)
+def decode_video_admission(data)
+def decode_video_observation(data)
+def decode_video_request(data)
 def encode(v)
+def encode_admission(v)
+def encode_admission_v2(v)
+def encode_audio_chunk(v)
+def encode_audit_entry(v)
+def encode_audit_page(v)
+def encode_cancellation(v)
+def encode_ceiling_limit(v)
+def encode_chat_admission(v)
+def encode_chat_block_end(v)
+def encode_chat_cancellation(v)
+def encode_chat_content(v)
+def encode_chat_event(v)
+def encode_chat_history_read(v)
+def encode_chat_input_part(v)
+def encode_chat_message(v)
+def encode_chat_options(v)
+def encode_chat_page(v)
+def encode_chat_part(v)
+def encode_chat_progress(v)
+def encode_chat_reasoning(v)
+def encode_chat_reasoning_applied(v)
+def encode_chat_replay(v)
+def encode_chat_result(v)
+def encode_chat_target(v)
+def encode_chat_timing(v)
+def encode_chat_tool(v)
+def encode_chat_tool_choice(v)
+def encode_chat_usage(v)
+def encode_cost(v)
+def encode_delivery(v)
+def encode_delta(v)
+def encode_delta_page(v)
+def encode_embed_request(v)
+def encode_embeddings(v)
+def encode_gateway_change(v)
+def encode_gateway_state(v)
+def encode_host_change(v)
+def encode_host_entry(v)
+def encode_host_list(v)
+def encode_host_state(v)
+def encode_image_progress(v)
+def encode_image_reply(v)
+def encode_image_request(v)
+def encode_image_request_content(v)
+def encode_image_request_v2(v)
+def encode_image_result(v)
+def encode_key_issued(v)
+def encode_key_list(v)
+def encode_key_revoked(v)
+def encode_live_input_result(v)
+def encode_live_reply(v)
+def encode_live_request(v)
+def encode_live_transcript(v)
+def encode_local_key(v)
+def encode_message(v)
+def encode_options(v)
+def encode_part(v)
+def encode_preload_reply(v)
+def encode_program_budget(v)
+def encode_program_budget_change(v)
+def encode_program_budget_entry(v)
+def encode_program_budget_page(v)
+def encode_program_budget_result(v)
+def encode_reasoning_seal(v)
+def encode_reply(v)
+def encode_request(v)
+def encode_request_content(v)
+def encode_request_entry(v)
+def encode_request_page(v)
+def encode_request_v2(v)
+def encode_request_v3(v)
+def encode_selection_candidate_v2(v)
+def encode_selection_change(v)
+def encode_selection_policy_v2(v)
+def encode_selection_read_v2(v)
+def encode_served_by(v)
+def encode_speech_reply(v)
+def encode_speech_request(v)
+def encode_spend(v)
+def encode_target(v)
+def encode_temperature(v)
+def encode_tool(v)
+def encode_transcript_segment(v)
+def encode_transcription_reply(v)
+def encode_transcription_request(v)
+def encode_usage(v)
+def encode_video_admission(v)
+def encode_video_observation(v)
+def encode_video_request(v)
+def from_json(kind, data)
 def service_name(frame)
+def to_json(value)

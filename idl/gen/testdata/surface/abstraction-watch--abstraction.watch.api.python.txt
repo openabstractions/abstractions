@@ -12,3 +12,5 @@ dataclass WatchOptions
   budget_ns: int
 def decode(data)
 def encode(v)
+def from_json(kind, data)
+def to_json(value)

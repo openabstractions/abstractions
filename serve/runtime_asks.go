@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/openabstractions/abstraction-identity/go/budget"
 	"os"
 	"path/filepath"
 	"slices"
@@ -25,9 +26,11 @@ import (
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-identity/listen"
+	"github.com/openabstractions/abstraction-identity/remote"
 	"github.com/openabstractions/abstraction-inference/adapters/go/gateway"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	inferenceservice "github.com/openabstractions/abstraction-inference/go/service"
+	logging "github.com/openabstractions/abstraction-logging/go"
 	rights "github.com/openabstractions/abstraction-rights/go"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	rightsclient "github.com/openabstractions/abstraction-rights/go/client"
@@ -52,6 +55,9 @@ var firstUseRefuseInterval = grants.FirstUseRefuseInterval
 // programs admit under the question.ask rule, the operator profile the
 // operator programs answer through, and the runtime's own first-use questions.
 type runtimeAsks struct {
+	// openAsk orders an open question's pending read and its admission
+	// (applicationV3OneCall); it is never held while waiting for an answer.
+	openAsk  sync.Mutex
 	book     *asks.Book
 	endpoint string
 	rights   *runtimeRights
@@ -66,9 +72,15 @@ type runtimeAsks struct {
 	// which registries it lists. The zero value knows nothing, so nothing on
 	// a server or a registry is routine.
 	tierFacts grants.TierFacts
+	// servers lists the router's model servers, local and hosted, for a
+	// permission request that joins a first-use question (ASK-A14). Nil
+	// lists none.
+	servers func() []*router.Host
 	// settler withdraws pending typed requests a rights change settled
 	// (ASK-A13, RIGHTS-R23).
 	settler permissionSettler
+	// logs receives the runtime's own diagnostic records; nil writes none.
+	logs logging.Sink
 }
 
 // maxAppliedEffects bounds the applied-effect record, the same bound as the
@@ -246,13 +258,16 @@ func composeAsks(options runtimeFlags, r *runtimeRights, report func(error)) (*r
 	// The runtime asks as itself, in the scope the application service would
 	// derive for its executable.
 	self := r.self()
-	//unchecked: a []string of plain values, which json.Marshal cannot fail on
-	data, _ := json.Marshal([]string{"asks-owner-program@1", r.kind, self.Account, self.Program})
-	sum := sha256.Sum256(data)
+	executable, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("asks: observe runtime executable: %w", err)
+	}
 	a := &runtimeAsks{book: book, endpoint: endpoint, rights: r, report: report,
-		scope: "asks-owner-program@1:" + hex.EncodeToString(sum[:]), display: asks.AskerDisplay(self.Program),
+		scope: asks.ApplicationOwnerProgramScope(r.kind, self.Account, executable), display: asks.AskerDisplay(executable),
 		applied: &appliedEffects{path: filepath.Join(dir, "first-use-effects.json"), report: report}}
 	r.firstUse = a.admitFirstUse
+	r.awaitQuestions = a.awaitQuestions
+	r.pendingQuestions = a.pendingQuestions
 	r.pairedInput = a.admitPairedInput
 	r.typedFirstUse = a.admitTypedService
 	return a, nil
@@ -290,12 +305,15 @@ func (a *runtimeAsks) configure(o *host.Options) {
 		return
 	}
 	o.QuestionBook, o.QuestionEndpoint, o.QuestionOperator = a.book, a.endpoint, a.authorizeOperator
+	o.QuestionPresenter = applicationSession
 	o.QuestionAskPolicy = a.askPolicy(a.rights.decider())
 	o.QuestionNotificationPolicy, o.QuestionNotificationBlocked = a.notificationPolicy, a.notificationBlocked
 	o.QuestionResponder = a.authorizeResponder
+	o.QuestionResponderWait = a.responderEnrolled
 	o.QuestionChoiceResponder = a.authorizeChoiceResponder
 	o.QuestionAnsweringRequest = a.requestAnswering
 	o.QuestionPermissionPrepare = a.preparePermission
+	o.QuestionPermissionObserve = a.observePermission
 	o.RightsFirstUseAllow = a.applyOperatorAllow
 	o.RightsPermissionAllow, o.RightsPermissionUndo = a.applyPermissionAllow, a.undoPermissionEffect
 	o.RightsActions = append(o.RightsActions, askswire.ResourceActions...)
@@ -303,17 +321,84 @@ func (a *runtimeAsks) configure(o *host.Options) {
 
 // applyOperatorAllow connects the Book's actual admitted occurrence to its
 // complete policy effect. The Book stays pinned until the rights replacement;
-// both lock waits share the receiving call's context and decision budget.
+// both lock waits share the receiving call's context and allowSaveBudget.
+//
+// An Allow that is not saved is released, so the app's next first use asks
+// afresh. A provider connection keeps its recorded Allow for its own retry.
 func (a *runtimeAsks) applyOperatorAllow(ctx context.Context, by rwire.Subject, expected, id string, authorize func() error) (rwire.PolicyEdit, error) {
-	ctx, cancel := context.WithTimeout(ctx, decisionBudget)
+	key := a.unsavedReaskKey(id)
+	result, provider, attempted, err := a.saveOperatorAllow(ctx, by, expected, id, authorize)
+	if err == nil && result.Outcome == rwire.PolicyEditOutcomeApplied {
+		unsavedReasks.saved(key)
+	}
+	if !provider && attempted && allowNotSaved(result.Outcome, err) {
+		a.releaseUnsavedAllow(id, by, result.Outcome.String(), err, authorize)
+	}
+	return result, err
+}
+
+func (a *runtimeAsks) saveOperatorAllow(ctx context.Context, by rwire.Subject, expected, id string, authorize func() error) (_ rwire.PolicyEdit, provider, attempted bool, _ error) {
+	ctx, cancel := context.WithTimeout(ctx, allowSaveBudget)
 	defer cancel()
 	result := rwire.PolicyEdit{Outcome: rwire.PolicyEditOutcomeInvalid}
-	_, err := a.book.WithApplicationRecordContext(ctx, id, func(record asks.Record, scope string, retained []string) error {
+	// Meta-rule and native message permits need eligibility preparation. Identify that from
+	// the retained occurrence, release Book, then prepare before the pinned edit.
+	meta := false
+	var providerPair *asks.PermissionRequest
+	_, err := a.book.WithApplicationRecordContext(ctx, id, func(record asks.Record, scope string, _ []string) error {
+		if permission, ok := asks.PermissionForRecord(a.rights.owner, record); ok {
+			for _, target := range permission.Targets {
+				meta = meta || rights.IsMetaRule(target.Action, target.Resource) || target.Action == ActionApplicationMessage
+			}
+			_, pair := asks.ProviderPermissionName(permission)
+			provider = provider || pair
+			if pair && !record.Pending() && record.Option == "allow" && scope == a.scope && by.Account == a.rights.owner {
+				copy := permission
+				copy.Targets = slices.Clone(permission.Targets)
+				providerPair = &copy
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return result, provider, attempted, err
+	}
+	var providerGuard func() error
+	if providerPair != nil {
+		if authorize == nil {
+			return rwire.PolicyEdit{Outcome: rwire.PolicyEditOutcomeUnavailable}, provider, attempted, nil
+		}
+		if err := authorize(); err != nil {
+			return result, provider, attempted, err
+		}
+		if applied, err := a.rights.policy.AppliedFirstUseAllow(id); err != nil {
+			return rwire.PolicyEdit{Outcome: rwire.PolicyEditOutcomeUnavailable}, provider, attempted, nil
+		} else if !applied {
+			if a.rights.providerSetupGuard == nil {
+				return rwire.PolicyEdit{Outcome: rwire.PolicyEditOutcomeUnavailable}, provider, attempted, nil
+			}
+			providerGuard, err = a.rights.providerSetupGuard(ctx, *providerPair)
+			if err != nil {
+				return rwire.PolicyEdit{Outcome: rwire.PolicyEditOutcomeUnavailable}, provider, attempted, nil
+			}
+		}
+	}
+	if meta {
+		ctx, err = a.rights.policy.PrepareMetaHolderContext(ctx)
+		if err != nil {
+			return rwire.PolicyEdit{Outcome: rwire.PolicyEditOutcomeUnavailable}, provider, attempted, err
+		}
+	}
+	var providerGuardFailure error
+	_, err = a.book.WithApplicationRecordContext(ctx, id, func(record asks.Record, scope string, retained []string) error {
 		if scope != a.scope || record.Pending() || record.Option != "allow" || record.AnsweredBy == asks.AnsweredByResponder || by.Account != a.rights.owner {
 			return nil
 		}
 		permission, ok := asks.PermissionForRecord(a.rights.owner, record)
 		if !ok || grants.FirstUseMode(permission.Targets[0].Action, permission.Targets[0].Resource) == rwire.PermissionFirstUseNone {
+			return nil
+		}
+		if _, pair := asks.ProviderPermissionName(permission); pair && (providerPair == nil || !slices.Equal(permission.Targets, providerPair.Targets)) {
 			return nil
 		}
 		rules := grants.FirstUsePermissionRules(a.rights.owner, askclient.RecordMetadata{ID: record.ID, Key: record.Key, Option: record.Option}, permission)
@@ -329,35 +414,48 @@ func (a *runtimeAsks) applyOperatorAllow(ctx context.Context, by rwire.Subject, 
 			edit.TTL, edit.Why = rights.MetaRuleLapse, grants.EnrollmentWhy(strings.TrimSuffix(filepath.Base(program), filepath.Ext(program)))
 		}
 		var err error
+		attempted = true
 		result, err = a.rights.policy.ApplyFirstUseAllow(ctx, expected, rules, edit, record.ID, retained, func() error {
 			if err := ctx.Err(); err != nil {
 				return err
+			}
+			if providerGuard != nil {
+				if err := providerGuard(); err != nil {
+					providerGuardFailure = err
+					return err
+				}
 			}
 			return authorize()
 		})
 		return err
 	})
-	return result, err
+	if providerGuardFailure != nil {
+		return rwire.PolicyEdit{Outcome: rwire.PolicyEditOutcomeUnavailable}, provider, attempted, nil
+	}
+	return result, provider, attempted, err
 }
 
 // answererWhy is the reason a permit an enrolled answerer gave records; the
 // Panel shows it attributed and nothing decides by it (RIGHTS-O8).
 const answererWhy = "answered for you"
 
-// useTierFacts tells the answerer check which inference servers run on this
-// machine and which registries the runtime lists (grants.TierFacts). A
-// server the router does not list, a hosted one and a remote runtime are not
-// local.
-func (a *runtimeAsks) useTierFacts(hosts func() []*router.Host, registries []string) {
+// useTierFacts tells the answerer check which inference servers
+// OpenAbstractions runs on this machine and which registries the runtime
+// lists (grants.TierFacts). A server is routine only as a native provider
+// reached over authenticated local IPC whose declaration has product
+// standing (managed); a loopback HTTP endpoint can forward to a paid hosted
+// service (ASK-R6).
+func (a *runtimeAsks) useTierFacts(hosts func() []*router.Host, managed func(*router.Host) bool, registries []string) {
 	if a == nil {
 		return
 	}
+	a.servers = hosts
 	listed := slices.Clone(registries)
 	a.tierFacts = grants.TierFacts{ListedRegistry: func(name string) bool { return slices.Contains(listed, name) }}
-	if hosts != nil {
+	if hosts != nil && managed != nil {
 		a.tierFacts.LocalServer = func(name string) bool {
 			return slices.ContainsFunc(hosts(), func(h *router.Host) bool {
-				return h != nil && h.Name == name && h.OnThisMachine()
+				return h != nil && h.Name == name && h.OnThisMachine() && h.Wire == router.WireNative && managed(h)
 			})
 		}
 	}
@@ -372,6 +470,15 @@ func (r *runtimeInference) hosts() func() []*router.Host {
 	return r.router.Hosts
 }
 
+// managedHost is how the answerer check reads product standing for a
+// router host; nil without inference.
+func (r *runtimeInference) managedHost() func(*router.Host) bool {
+	if r == nil || r.providers == nil {
+		return nil
+	}
+	return r.providers.managedHost
+}
+
 // answerer is who answers: the subject the call bound and its code's
 // publisher (ASK-R7).
 type answerer struct {
@@ -380,6 +487,15 @@ type answerer struct {
 }
 
 // authorizeResponder binds the answering peer and checks it as an answerer.
+func (a *runtimeAsks) responderEnrolled(ctx context.Context, peer *identity.Peer) (bool, error) {
+	subject, err := rightsclient.SubjectFromPeer(peer)
+	if err != nil || subject.Account != a.rights.owner {
+		return false, asksservice.ErrResponderForbidden
+	}
+	enrolled, _, err := a.answererGate(ctx, answerer{subject: subject, publisher: peerPublisher(peer)})
+	return enrolled, err
+}
+
 func (a *runtimeAsks) authorizeResponder(ctx context.Context, peer *identity.Peer, record asks.Record, scope, option string) (asksservice.ResponderEffect, error) {
 	responder, err := rightsclient.SubjectFromPeer(peer)
 	if err != nil || responder.Account != a.rights.owner {
@@ -399,8 +515,14 @@ func (a *runtimeAsks) authorizeAnswerer(ctx context.Context, who answerer, recor
 	if scope != a.scope {
 		return nil, asksservice.ErrResponderForbidden
 	}
+	if record.TypedPermission != nil {
+		return a.authorizeApplicationAnswerer(ctx, who, record, option)
+	}
 	permission, ok := asks.PermissionForRecord(a.rights.owner, record)
 	if !ok {
+		return nil, asksservice.ErrResponderForbidden
+	}
+	if _, providerPair := asks.ProviderPermissionName(permission); providerPair {
 		return nil, asksservice.ErrResponderForbidden
 	}
 	targetRequest := permission.Targets[0]
@@ -408,10 +530,21 @@ func (a *runtimeAsks) authorizeAnswerer(ctx context.Context, who answerer, recor
 	if !ok || grants.FirstUseMode(action, resource) == rwire.PermissionFirstUseNone || (option != "allow" && option != "refuse") || !slices.Contains(record.Options, option) {
 		return nil, asksservice.ErrResponderForbidden
 	}
+	// Application command permissions are answered only as the typed
+	// FAC-M19 effect above, with all three operations and its party rules;
+	// an untyped first-use record never carries one to an answerer.
+	if strings.HasPrefix(action, "abstraction.facade/command.") {
+		return nil, asksservice.ErrResponderForbidden
+	}
 	if !grants.FirstUseTier(action, resource, a.tierFacts).Answerable() {
 		return nil, asksservice.ErrResponderForbidden
 	}
-	enrolled, m, err := a.answererGate(ctx, who)
+	// An assistant cannot tell who an unsigned program is: only the person
+	// answers its first-use questions.
+	if a.rights.applications.unsignedProgram(ctx, program) {
+		return nil, asksservice.ErrResponderForbidden
+	}
+	enrolled, _, err := a.answererGate(ctx, who)
 	if err != nil {
 		return nil, err
 	}
@@ -422,46 +555,42 @@ func (a *runtimeAsks) authorizeAnswerer(ctx context.Context, who answerer, recor
 			return nil, err
 		}
 	}
-	if partyTo(m, who.subject.Program, who.publisher, firstUseParties(record, program), a.rights.self().Program) {
-		return nil, asksservice.ErrResponderForbidden
+	if err := a.checkAnswerParties(ctx, who, asks.FirstUseParties(record, program)); err != nil {
+		return nil, err
 	}
 	target := rwire.Subject{Account: a.rights.owner, Program: program}
 	if exact == nil {
-		return a.enrolledEffect(who.subject, target, record, action, resource, option), nil
+		return a.enrolledEffect(who, target, record, action, resource, option), nil
 	}
 	if option == "refuse" {
 		return nil, ctx.Err()
 	}
-	return a.exactEffect(who.subject, target, record, action, resource, exact), nil
+	return a.exactEffect(who, target, record, action, resource, exact), nil
 }
 
-// answererGate is the part of the answerer check every question kind shares
-// (asks ASK-R3, ASK-R5, ASK-R7, ASK-R9): the answerer is of the receiving
-// account, no script host and no operator program, and its enrollment can
-// be read. It reports whether that enrollment is current; a question kind
-// without exact delegations refuses when it is not. The matcher it returns
-// has read the answerer's program and serves the party rule that follows.
-func (a *runtimeAsks) answererGate(ctx context.Context, who answerer) (bool, *programMatcher, error) {
-	if who.subject.Account != a.rights.owner || answererIsScriptHost(who) {
-		return false, nil, asksservice.ErrResponderForbidden
-	}
+// answererRule is the asks answerer rule composed with this runtime's facts:
+// its account, its own program and the operator programs (asks
+// AnswererRule).
+func (a *runtimeAsks) answererRule() asks.AnswererRule {
+	return a.rights.answererRule()
+}
+
+// answererGate is the part of the answerer check every question kind shares:
+// the asks rule's answerer part (ASK-R3, ASK-R5, ASK-R7, ASK-R9: the
+// receiving account, no foreign code, no operator program), then the
+// enrollment, which only rights can read. It reports whether that
+// enrollment is current; a question kind without exact delegations refuses
+// when it is not. The check it returns serves the party rule that follows.
+func (a *runtimeAsks) answererGate(ctx context.Context, who answerer) (bool, *asks.AnswerCheck, error) {
 	enrolled := a.rights.decide(ctx, who.subject, asks.AnswerAction, rights.MetaScopeApps)
 	if enrolled.Outcome == rwire.DecisionOutcomeUnavailable {
-		return false, nil, errors.New("asks: answerer rights unavailable")
+		return false, nil, rights.ErrMetaHolderUnavailable
 	}
-	// File identities are read only now, once each (programMatcher).
-	m := newProgramMatcher()
-	if slices.ContainsFunc(a.rights.operators, func(operator string) bool { return m.same(operator, who.subject.Program) }) {
-		return false, nil, asksservice.ErrResponderForbidden
+	check, err := a.rights.answererCheck(who.subject.Account, who.subject.Program, who.publisher)
+	if err != nil {
+		return false, nil, err
 	}
-	return enrolled.Outcome == rwire.DecisionOutcomePermitted, m, nil
-}
-
-// answererIsScriptHost is the answerer gate's one call to the script-host
-// owner (asks ScriptHostSubject): a change to that owner's signature adapts
-// this line alone.
-func answererIsScriptHost(who answerer) bool {
-	return asks.ScriptHostSubject(who.subject, who.publisher)
+	return enrolled.Outcome == rwire.DecisionOutcomePermitted, check, nil
 }
 
 // requestAnswering is responder@1's RequestAnswering (asks ASK-R10): it binds
@@ -482,22 +611,26 @@ func (a *runtimeAsks) requestAnswering(ctx context.Context, peer *identity.Peer)
 // on apps. That question is administrative, so the person answers it and an
 // answerer never can (ASK-R6).
 func (a *runtimeAsks) askForAnswering(ctx context.Context, who answerer) rwire.Decision {
-	enrolled, m, err := a.answererGate(ctx, who)
+	decision := a.answeringEligibility(ctx, who)
+	if decision.Outcome == rwire.DecisionOutcomeNotGranted && a.rights.firstUse != nil {
+		a.rights.firstUse(who.subject, func() asks.Publisher { return who.publisher }, asks.AnswerAction, rights.MetaScopeApps)
+	}
+	return decision
+}
+
+// answeringEligibility is shared by responder enrollment and the exact public
+// permission request. Both retain ASK-R7's native caller exclusions.
+func (a *runtimeAsks) answeringEligibility(ctx context.Context, who answerer) rwire.Decision {
+	_, check, err := a.answererGate(ctx, who)
 	switch {
 	case errors.Is(err, asksservice.ErrResponderForbidden):
 		return rwire.Decision{Outcome: rwire.DecisionOutcomeForbidden}
 	case err != nil:
 		return rwire.Decision{Outcome: rwire.DecisionOutcomeUnavailable}
-	case m.same(who.subject.Program, a.rights.self().Program):
+	case check.Runtime():
 		return rwire.Decision{Outcome: rwire.DecisionOutcomeForbidden}
-	case enrolled:
-		return rwire.Decision{Outcome: rwire.DecisionOutcomePermitted}
 	}
-	decision := a.rights.decide(ctx, who.subject, asks.AnswerAction, rights.MetaScopeApps)
-	if decision.Outcome == rwire.DecisionOutcomeNotGranted && a.rights.firstUse != nil {
-		a.rights.firstUse(who.subject, func() asks.Publisher { return who.publisher }, asks.AnswerAction, rights.MetaScopeApps)
-	}
-	return decision
+	return a.rights.decide(ctx, who.subject, asks.AnswerAction, rights.MetaScopeApps)
 }
 
 // authorizeChoiceResponder is the answerer check for a shared ordinary
@@ -519,17 +652,20 @@ func (a *runtimeAsks) authorizeChoiceAnswerer(ctx context.Context, who answerer,
 	if c.AskerProgram == "" {
 		return nil, asksservice.ErrResponderForbidden
 	}
-	enrolled, m, err := a.answererGate(ctx, who)
+	enrolled, _, err := a.answererGate(ctx, who)
 	if err != nil {
 		return nil, err
 	}
-	if !enrolled || partyTo(m, who.subject.Program, who.publisher, choiceParties(c), a.rights.self().Program) {
+	if !enrolled {
 		return nil, asksservice.ErrResponderForbidden
+	}
+	if err := a.checkAnswerParties(ctx, who, asks.ChoiceParties(c)); err != nil {
+		return nil, err
 	}
 	holder := who.subject
 	return func(effectCtx context.Context) {
 		guard := func() error { return effectCtx.Err() }
-		if _, err := a.rights.policy.ChangeRuleUnder(holder, rwire.Subject{}, "", "", false, answererWhy, guard); err != nil {
+		if _, err := a.rights.policy.ChangeRulesUnderAnswerContext(effectCtx, holder, rwire.Subject{}, nil, "", answererWhy, "", guard); err != nil {
 			a.report(fmt.Errorf("asks: renewing the answerer's enrollment: %w", err))
 		}
 	}, nil
@@ -569,7 +705,8 @@ func (a *runtimeAsks) exactDelegation(responder rwire.Subject, program, action, 
 // through rights' ChangeRuleUnder, which reads the enrollment inside the
 // edit, renews it, and writes each permit set by the answerer and expiring
 // with the enrollment. A refuse writes no target rule and renews.
-func (a *runtimeAsks) enrolledEffect(holder, target rwire.Subject, record asks.Record, action, resource, option string) asksservice.ResponderEffect {
+func (a *runtimeAsks) enrolledEffect(who answerer, target rwire.Subject, record asks.Record, action, resource, option string) asksservice.ResponderEffect {
+	holder := who.subject
 	return func(effectCtx context.Context, recheck func() error, firstAnswer bool) (askswire.ResponderEffectOutcome, string) {
 		current := func() string { return a.rights.decide(effectCtx, target, action, resource).Outcome.String() }
 		if !firstAnswer {
@@ -579,11 +716,18 @@ func (a *runtimeAsks) enrolledEffect(holder, target rwire.Subject, record asks.R
 			if err := effectCtx.Err(); err != nil {
 				return err
 			}
-			return recheck()
+			if err := recheck(); err != nil {
+				return err
+			}
+			return a.checkAnswerParties(effectCtx, who, asks.FirstUseParties(record, target.Program))
 		}
 		if option == "refuse" {
-			if _, err := a.rights.policy.ChangeRuleUnder(holder, rwire.Subject{}, "", "", false, answererWhy, guard); err != nil {
+			if _, err := a.rights.policy.ChangeRulesUnderAnswerContext(effectCtx, holder, rwire.Subject{}, nil, "", answererWhy, "", guard); err != nil {
 				a.report(fmt.Errorf("asks: renewing the answerer's enrollment: %w", err))
+				if errors.Is(err, asks.ErrAnswererForbidden) {
+					return askswire.ResponderEffectOutcomeForbidden, current()
+				}
+				return askswire.ResponderEffectOutcomeUnavailable, current()
 			}
 			return askswire.ResponderEffectOutcomeNone, current()
 		}
@@ -593,9 +737,9 @@ func (a *runtimeAsks) enrolledEffect(holder, target rwire.Subject, record asks.R
 			// read for the same program and resource (INF-V4).
 			actions = append(actions, contentReadAction)
 		}
-		edit, err := a.rights.policy.ChangeRulesUnderAnswer(holder, target, actions, resource, answererWhy, record.ID, guard)
+		edit, err := a.rights.policy.ChangeRulesUnderAnswerContext(effectCtx, holder, target, actions, resource, answererWhy, record.ID, guard)
 		switch {
-		case errors.Is(err, rights.ErrNoMetaRule) || errors.Is(err, rights.ErrMetaTarget) || (err == nil && edit.Outcome == rwire.PolicyEditOutcomeForbidden):
+		case errors.Is(err, rights.ErrNoMetaRule) || errors.Is(err, rights.ErrMetaTarget) || errors.Is(err, rights.ErrMetaHolder) || errors.Is(err, asks.ErrAnswererForbidden) || (err == nil && edit.Outcome == rwire.PolicyEditOutcomeForbidden):
 			return askswire.ResponderEffectOutcomeForbidden, current()
 		case err != nil:
 			return askswire.ResponderEffectOutcomeUnavailable, current()
@@ -616,7 +760,8 @@ func (a *runtimeAsks) enrolledEffect(holder, target rwire.Subject, record asks.R
 // exactEffect writes an exactly delegated allow (ASK-R3, ASK-R4): a target
 // permit expiring within five minutes and before the delegation, through
 // the revision the delegation was read at.
-func (a *runtimeAsks) exactEffect(responder, target rwire.Subject, record asks.Record, action, resource string, grant *exactDelegation) asksservice.ResponderEffect {
+func (a *runtimeAsks) exactEffect(who answerer, target rwire.Subject, record asks.Record, action, resource string, grant *exactDelegation) asksservice.ResponderEffect {
+	responder := who.subject
 	expires := grant.expires
 	return func(effectCtx context.Context, recheck func() error, firstAnswer bool) (askswire.ResponderEffectOutcome, string) {
 		current := func() string { return a.rights.decide(effectCtx, target, action, resource).Outcome.String() }
@@ -639,7 +784,7 @@ func (a *runtimeAsks) exactEffect(responder, target rwire.Subject, record asks.R
 		if grants.Paired(action, resource) {
 			rules = append(rules, rwire.PolicyRule{Subject: target, Action: contentReadAction, Resource: resource, Permit: true})
 		}
-		edit, changeErr := a.rights.policy.ChangeRules(grant.revision, rules,
+		edit, changeErr := a.rights.policy.ChangeRulesContext(effectCtx, grant.revision, rules,
 			rights.RuleEdit{Permit: &permit, By: responder, TTL: remaining, Why: "delegated first-use answer", Exact: true, PreserveOtherSetter: true, Deadline: expires, QuestionID: record.ID},
 			func() error {
 				if err := effectCtx.Err(); err != nil {
@@ -648,13 +793,19 @@ func (a *runtimeAsks) exactEffect(responder, target rwire.Subject, record asks.R
 				if err := recheck(); err != nil {
 					return err
 				}
+				if err := a.rights.refuseAnswerer(responder); err != nil {
+					return err
+				}
+				if err := a.checkAnswerParties(effectCtx, who, asks.FirstUseParties(record, target.Program)); err != nil {
+					return err
+				}
 				if !time.Now().Before(expires) {
 					return asksservice.ErrResponderForbidden
 				}
 				return nil
 			})
 		if changeErr != nil {
-			if errors.Is(changeErr, asksservice.ErrResponderForbidden) || errors.Is(changeErr, rights.ErrRuleDeadline) {
+			if errors.Is(changeErr, asksservice.ErrResponderForbidden) || errors.Is(changeErr, rights.ErrRuleDeadline) || errors.Is(changeErr, rights.ErrMetaHolder) {
 				return askswire.ResponderEffectOutcomeForbidden, current()
 			}
 			return askswire.ResponderEffectOutcomeUnavailable, current()
@@ -676,115 +827,6 @@ func (a *runtimeAsks) exactEffect(responder, target rwire.Subject, record asks.R
 	}
 }
 
-// selfAnswer reports whether a responder is a party to the question it would
-// answer (ASK-R3): the target program or an asker, compared by the shared
-// identity rules; a program whose trusted publisher is the one recorded for
-// the target; or the target's own executable file under another path. The
-// askers are the runtime and, when the admission bound one, the verified
-// peer the record keeps in Via.
-func selfAnswer(responder string, responderPublisher asks.Publisher, record asks.Record, target, runtimeProgram string) bool {
-	return partyTo(newProgramMatcher(), responder, responderPublisher, firstUseParties(record, target), runtimeProgram)
-}
-
-// parties is who a question or choice concerns, as its admission recorded
-// them: the target program (the program a first-use permission is for, or
-// the program that asked an ordinary choice), the publisher recorded for it
-// and the peer the admission bound. It is the one party rule every answerer
-// check uses (asks ASK-R3, ASK-R9).
-type parties struct {
-	target           string
-	publisher        string
-	publisherTrusted bool
-	via              listen.Seen
-}
-
-// firstUseParties are the parties to the runtime's first-use question.
-func firstUseParties(record asks.Record, target string) parties {
-	return parties{target: target, publisher: record.Publisher, publisherTrusted: record.PublisherTrusted, via: record.Via}
-}
-
-// choiceParties are the parties to a shared ordinary choice: the requester
-// is its target.
-func choiceParties(c asks.ChoiceCandidate) parties {
-	return parties{target: c.AskerProgram, publisher: c.Record.Publisher, publisherTrusted: c.Record.PublisherTrusted, via: c.Via}
-}
-
-// partyTo is selfAnswer through one programMatcher: the responder is the
-// target or an asker (the runtime, or the bound peer), compared by the
-// shared identity rules; a program whose trusted publisher is the one
-// recorded for the target; or the target's own executable file under
-// another path.
-func partyTo(m *programMatcher, responder string, responderPublisher asks.Publisher, p parties, runtimeProgram string) bool {
-	if p.publisherTrusted && p.publisher != "" && responderPublisher.Trusted && responderPublisher.Subject == p.publisher {
-		return true
-	}
-	if m.same(responder, p.target) || m.same(responder, runtimeProgram) {
-		return true
-	}
-	if p.via.Bound && p.via.Path != "" && m.same(responder, p.via.Path) {
-		return true
-	}
-	return m.sameFile(responder, p.target)
-}
-
-// programMatcher compares subject programs by the shared identity rules
-// (identity.SameNormalizedSubjectProgramKeyed) and files by file identity
-// (identity.ProgramKey), reading each program's spelling and file identity
-// once, for one answerer check.
-type programMatcher struct {
-	normal map[string]string
-	keys   map[string]string
-}
-
-// matcherProgramKey is the matcher's one read of a program's file identity;
-// a test counts reads through it on every platform.
-var matcherProgramKey = identity.ProgramKey
-
-func newProgramMatcher() *programMatcher {
-	return &programMatcher{normal: map[string]string{}, keys: map[string]string{}}
-}
-
-func (m *programMatcher) normalized(program string) string {
-	n, ok := m.normal[program]
-	if !ok {
-		n = identity.NormalizeSubjectProgram(program)
-		m.normal[program] = n
-	}
-	return n
-}
-
-func (m *programMatcher) key(normalized string) string {
-	k, ok := m.keys[normalized]
-	if !ok {
-		k = matcherProgramKey(normalized)
-		m.keys[normalized] = k
-	}
-	return k
-}
-
-// same is identity.SameSubjectProgram: relative or invalid input never
-// matches.
-func (m *programMatcher) same(a, b string) bool {
-	if !filepath.IsAbs(a) && !strings.HasPrefix(a, identity.PackagedProgramPrefix) || !filepath.IsAbs(b) && !strings.HasPrefix(b, identity.PackagedProgramPrefix) {
-		return false
-	}
-	na, nb := m.normalized(a), m.normalized(b)
-	return identity.SameNormalizedSubjectProgramKeyed(na, nb, func() string { return m.key(na) }, func() string { return m.key(nb) })
-}
-
-// sameFile reports whether two program paths name one existing local file
-// by file identity: the same volume and file ID on Windows, the same device
-// and inode elsewhere, so a hard link or another spelling of the target's
-// executable is the target. A path that is not a readable local file is no
-// match.
-func (m *programMatcher) sameFile(a, b string) bool {
-	if !filepath.IsAbs(a) || !filepath.IsAbs(b) {
-		return false
-	}
-	ka, kb := m.key(m.normalized(a)), m.key(m.normalized(b))
-	return ka != "" && ka == kb
-}
-
 // peerPublisher is the publisher the platform verified for peer's code, as
 // the Book would record it; a peer without code proof has none.
 func peerPublisher(peer *identity.Peer) asks.Publisher {
@@ -797,14 +839,26 @@ func peerPublisher(peer *identity.Peer) asks.Publisher {
 // complete rights-valid targets are retained independently of display limits.
 // publisher is called once,
 // only when a new question is admitted, and its evidence is recorded with it
-// (ASK-A6).
-func (a *runtimeAsks) admitFirstUse(subject rwire.Subject, publisher func() asks.Publisher, action, resource string) {
+// (ASK-A6). It returns the id of the question pending for the target, or ""
+// when none is: the gateway window holds a call open on it (INF-W10).
+func (a *runtimeAsks) admitFirstUse(subject rwire.Subject, publisher func() asks.Publisher, action, resource string) string {
+	if movedConnectorCaller(subject.Program) {
+		return ""
+	}
+	if strings.HasPrefix(action, "abstraction.facade/command.") {
+		return "" // the native owner admits its complete typed occurrence
+	}
 	// A bare input-profile question is refused here: only a consuming request
 	// admits one, through admitPairedInput (INF-V4).
 	if grants.FirstUseMode(action, resource) != rwire.PermissionFirstUseExact {
-		return
+		return ""
 	}
-	a.admit(subject, publisher, action, resource)
+	if action == inference.ActionComplete {
+		if permission, ok := a.providerCompletionPermission(subject, resource); ok {
+			return a.admitPermissionPrepared(subject, publisher, permission)
+		}
+	}
+	return a.admit(subject, publisher, action, resource)
 }
 
 // admitPairedInput admits the first-use question on content.write for an
@@ -812,11 +866,14 @@ func (a *runtimeAsks) admitFirstUse(subject rwire.Subject, publisher func() asks
 // program raised, or for an output profile resource, which a call or job of
 // that program was refused for want of (INF-V4, INF-S7). Its allow writes content.write and
 // content.read on that resource (grants.FirstUseRules, authorizeResponder).
-func (a *runtimeAsks) admitPairedInput(subject rwire.Subject, publisher func() asks.Publisher, resource string) {
-	if !grants.Paired(contentWriteAction, resource) {
-		return
+func (a *runtimeAsks) admitPairedInput(subject rwire.Subject, publisher func() asks.Publisher, resource string) string {
+	if movedConnectorCaller(subject.Program) {
+		return ""
 	}
-	a.admit(subject, publisher, contentWriteAction, resource)
+	if !grants.Paired(contentWriteAction, resource) {
+		return ""
+	}
+	return a.admit(subject, publisher, contentWriteAction, resource)
 }
 
 // asksAgain decides, for an answered first-use question met by a fresh
@@ -847,17 +904,14 @@ func (a *runtimeAsks) asksAgain(record asks.Record) (bool, error) {
 // again when either reads not_granted and the other permitted or
 // not_granted. Any other outcome, a denial or an unavailable read included,
 // keeps the answered question.
-func (a *runtimeAsks) stillNotGranted(subject rwire.Subject, action, resource string) bool {
+func (a *runtimeAsks) permissionStillNotGranted(permission asks.PermissionRequest) bool {
 	if a.rights == nil || a.rights.policy == nil {
 		return false
 	}
-	actions := []string{action}
-	if grants.Paired(action, resource) {
-		actions = []string{contentWriteAction, contentReadAction}
-	}
 	lapsed := false
-	for _, act := range actions {
-		switch a.rights.decide(context.Background(), subject, act, resource).Outcome {
+	for _, target := range permission.Targets {
+		subject := rwire.Subject{Account: target.Account, Program: target.Program}
+		switch a.rights.decide(context.Background(), subject, target.Action, target.Resource).Outcome {
 		case rwire.DecisionOutcomeNotGranted:
 			lapsed = true
 		case rwire.DecisionOutcomePermitted:
@@ -868,53 +922,264 @@ func (a *runtimeAsks) stillNotGranted(subject rwire.Subject, action, resource st
 	return lapsed
 }
 
-func (a *runtimeAsks) admit(subject rwire.Subject, publisher func() asks.Publisher, action, resource string) {
+func (a *runtimeAsks) admit(subject rwire.Subject, publisher func() asks.Publisher, action, resource string) string {
+	if action == ActionApplicationMessage {
+		if a.rights == nil || a.rights.policy == nil || a.rights.applications == nil {
+			return ""
+		}
+		ctx, err := a.rights.policy.PrepareMetaHolderContext(context.Background())
+		if err != nil {
+			return ""
+		}
+		d := a.rights.applications
+		if !d.lock(ctx) {
+			return ""
+		}
+		defer d.unlock()
+		name, ok := messageApplicationResource(resource)
+		roles := d.roles.Load()
+		if !ok || roles == nil || roles.messaging == nil || roles.messaging.current(ctx) != nil {
+			return ""
+		}
+		found := false
+		for _, agent := range roles.messaging.agents {
+			if agent.name == name {
+				found = true
+			}
+		}
+		if !found {
+			return ""
+		}
+	}
+	return a.admitPrepared(subject, publisher, action, resource)
+}
+
+// firstUseKey is the admission key of the runtime's first-use question for
+// one program, action and resource (ASK-R2).
+func firstUseKey(program, action, resource string) string {
+	sum := sha256.Sum256([]byte(program + "\x00" + action + "\x00" + resource))
+	return "first-use:" + hex.EncodeToString(sum[:20])
+}
+
+// firstUseGenerationKey is key for a question asked again after its earlier
+// generations were retired.
+func firstUseGenerationKey(key string, generation int) string {
+	if generation > 0 {
+		return key + "." + strconv.Itoa(generation)
+	}
+	return key
+}
+
+func (a *runtimeAsks) admitPrepared(subject rwire.Subject, publisher func() asks.Publisher, action, resource string) string {
 	permission, err := asks.NewPermissionRequest(asks.PermissionTarget{Account: subject.Account, Program: subject.Program, Action: action, Resource: resource})
 	if err != nil || a.rights == nil || subject.Account != a.rights.owner {
 		a.report(fmt.Errorf("asks: first-use target refused: %v", err))
-		return
+		return ""
+	}
+	return a.admitPermissionPrepared(subject, publisher, permission)
+}
+
+func (a *runtimeAsks) admitPermissionPrepared(subject rwire.Subject, publisher func() asks.Publisher, permission asks.PermissionRequest) string {
+	if !asks.ValidPermissionRequest(permission) || a.rights == nil || subject.Account != a.rights.owner || movedConnectorCaller(subject.Program) {
+		return ""
+	}
+	for _, target := range permission.Targets {
+		if target.Account != subject.Account || !identity.SameSubjectProgram(target.Program, subject.Program) {
+			return ""
+		}
 	}
 	subject.Program = permission.Targets[0].Program
-	sum := sha256.Sum256([]byte(subject.Program + "\x00" + action + "\x00" + resource))
-	key := "first-use:" + hex.EncodeToString(sum[:20])
+	key := firstUsePermissionKey(permission)
 	via := listen.Seen{Why: "admitted by the runtime after a not_granted decision"}
 	for generation := 0; generation < maxFirstUseGenerations; generation++ {
-		requestKey := key
-		if generation > 0 {
-			requestKey += "." + strconv.Itoa(generation)
-		}
+		requestKey := firstUseGenerationKey(key, generation)
 		record, outcome, err := a.book.ObserveApplication(a.scope, requestKey)
 		if err == nil && outcome == "answered" {
 			var ask bool
 			// The refusal that called admit was decided before this
 			// observation; an allow may have landed in between. The decision
 			// is read again, and only a current not_granted releases.
-			if ask, err = a.asksAgain(record); err == nil && ask && a.stillNotGranted(subject, action, resource) {
+			if ask, err = a.asksAgain(record); err == nil && ask && a.permissionStillNotGranted(permission) {
 				if _, err = a.book.ReleaseAnsweredApplicationID(a.scope, requestKey, record.ID, record.Option); err == nil {
 					if err = a.applied.remove(record.ID); err == nil {
-						_, outcome, err = a.book.ObserveApplication(a.scope, requestKey)
+						record, outcome, err = a.book.ObserveApplication(a.scope, requestKey)
 					}
 				}
 			}
+		}
+		if err == nil && outcome == "unknown" && unsavedReasks.held(unsavedTargetKey(permission)) {
+			return ""
 		}
 		if err == nil && outcome == "unknown" {
 			evidence := asks.Publisher{}
 			if publisher != nil {
 				evidence = publisher()
 			}
-			_, outcome, err = a.book.AskPermissionFrom(a.scope, a.display, requestKey, permission, via, evidence)
+			record, outcome, err = a.book.AskPermissionFrom(a.scope, a.display, requestKey, permission, via, evidence)
 		}
 		if err != nil {
 			a.report(err)
-			return
+			return ""
 		}
 		if outcome != "gone" {
 			if outcome == "invalid" || outcome == "conflict" {
 				a.report(fmt.Errorf("asks: first-use admission %s", outcome))
+				return ""
 			}
-			return
+			if !record.Pending() {
+				return ""
+			}
+			return record.ID
 		}
 	}
+	return ""
+}
+
+// awaitQuestions holds a gateway window call whose refusal admitted the
+// first-use questions ids (INF-W10). It returns true once every target of a
+// pending or allowed question reads permitted, and false on a Block, once
+// each question is answered otherwise or gone, or ctx ends. An answer and each committed
+// rights change read the questions again; nothing polls. A question about
+// another program than subject is not waited on.
+func (a *runtimeAsks) awaitQuestions(ctx context.Context, subject rwire.Subject, ids []string) bool {
+	return a.awaitQuestionsChecking(ctx, subject, ids, nil)
+}
+
+func (a *runtimeAsks) awaitQuestionsChecking(ctx context.Context, subject rwire.Subject, ids []string, typed func(asks.TypedPermission) (bool, bool)) bool {
+	if a == nil || a.rights == nil || a.rights.policy == nil || subject.Account != a.rights.owner || len(ids) == 0 {
+		return false
+	}
+	wake := make(chan struct{}, 1)
+	signal := func() {
+		select {
+		case wake <- struct{}{}:
+		default:
+		}
+	}
+	stop := a.rights.policy.OnChange(signal)
+	defer stop()
+	for {
+		if ctx.Err() != nil {
+			return false
+		}
+		open := false
+		var pending []string
+		for _, id := range ids {
+			record, found, err := a.book.ApplicationRecord(id)
+			if err != nil {
+				a.report(err)
+				return false
+			}
+			if !found {
+				continue
+			}
+			permission, ok := asks.PermissionForRecord(a.rights.owner, record)
+			isTyped := record.TypedPermission != nil && typed != nil && record.TypedPermission.Effect.Subject == subject
+			if !isTyped && (!ok || !samePrograms(permission.Targets[0].Program, subject.Program)) {
+				continue
+			}
+			if record.Pending() || record.Option == "allow" {
+				var permitted, denied bool
+				if isTyped {
+					permitted, denied = typed(*record.TypedPermission)
+				} else {
+					permitted, denied = a.permissionWaitDecision(ctx, permission)
+				}
+				if ctx.Err() != nil {
+					return false
+				}
+				if permitted {
+					return true
+				}
+				if denied {
+					return false
+				}
+				// An unanswered question may be settled by a saved rule/default;
+				// an Allow's effect may still be waiting for its rights commit.
+				open = true
+				if record.Pending() {
+					pending = append(pending, id)
+				}
+			}
+		}
+		if !open {
+			return false
+		}
+		done := make(chan struct{})
+		stops := make([]func(), 0, len(pending))
+		for _, id := range pending {
+			ch, stopWaiting := a.book.ObserveQuestionWait(id)
+			stops = append(stops, stopWaiting)
+			go func() {
+				select {
+				case <-ch:
+					signal()
+				case <-done:
+				}
+			}()
+		}
+		select {
+		case <-wake:
+		case <-ctx.Done():
+		}
+		close(done)
+		for _, stop := range stops {
+			stop()
+		}
+	}
+}
+
+// pendingQuestions returns, in order, the ids among ids whose first-use
+// question is still pending and asks about subject's own program on this
+// runtime's account (INF-W11). A question about another program, an
+// answered or expired one, and an unknown id are left out.
+func (a *runtimeAsks) pendingQuestions(subject rwire.Subject, ids []string) ([]string, error) {
+	if a == nil || a.rights == nil || subject.Account != a.rights.owner {
+		return nil, nil
+	}
+	var pending []string
+	for _, id := range ids {
+		if slices.Contains(pending, id) {
+			continue
+		}
+		record, found, err := a.book.ApplicationRecord(id)
+		if err != nil {
+			return nil, err
+		}
+		if !found || !record.Pending() {
+			continue
+		}
+		// A typed service question (decideTypedAsking) asks about its
+		// effect's subject.
+		if typed := record.TypedPermission; typed != nil {
+			if typed.Effect.Subject.Account == a.rights.owner && samePrograms(typed.Effect.Subject.Program, subject.Program) {
+				pending = append(pending, id)
+			}
+			continue
+		}
+		permission, ok := asks.PermissionForRecord(a.rights.owner, record)
+		if !ok || !samePrograms(permission.Targets[0].Program, subject.Program) {
+			continue
+		}
+		pending = append(pending, id)
+	}
+	return pending, nil
+}
+
+// permissionWaitDecision reads the complete current decision without asking.
+// A saved allow/default releases the wait; an explicit Block ends it at once.
+func (a *runtimeAsks) permissionWaitDecision(ctx context.Context, permission asks.PermissionRequest) (permitted, denied bool) {
+	permitted = true
+	for _, t := range permission.Targets {
+		switch a.rights.decide(ctx, rwire.Subject{Account: t.Account, Program: t.Program}, t.Action, t.Resource).Outcome {
+		case rwire.DecisionOutcomePermitted:
+		case rwire.DecisionOutcomeDenied:
+			return false, true
+		default:
+			permitted = false
+		}
+	}
+	return permitted, false
 }
 
 // requesterPublisher is the evidence of who signed the requesting program: the
@@ -935,19 +1200,36 @@ func requesterPublisher(peer *identity.Peer) func() asks.Publisher {
 	}
 }
 
-// decisionBudget bounds one in-process decision. A policy read normally takes
-// milliseconds, and a file whose read is denied ends the read at this budget.
+// decisionBudget is the least time one in-process decision has, and its
+// bound when the caller set no deadline. A caller deadline with more time
+// remaining bounds the decision instead (budget.Within), so a person's call
+// is decided under load. A policy read normally takes milliseconds.
 // The config and logging Go clients wait their DefaultTimeout, two seconds,
 // by default, and the budget
 // leaves the service time to answer unavailable inside that wait.
 const decisionBudget = rights.DecisionReadBudget
 
-// decide reads one decision within the caller's context and decisionBudget. A
+// allowSaveBudget bounds the save of a person's answer: its Book and policy
+// lock waits, the operator recheck and the policy write. The person already
+// answered, and an Allow that misses its budget is released and asked again
+// (runtime_permission_unsaved.go). A busy disk, such as an installer build
+// running beside the runtime, takes longer than decisionBudget; the save
+// waits for it. It stays inside the Panel's and the popup's five-second call
+// (monitor panelCall, trayAnswerBudget).
+const allowSaveBudget = 3 * time.Second
+
+// decide reads one decision within the caller's deadline, at least decisionBudget. A
 // decision that does not read in time is unavailable. Nothing is cached.
 func (r *runtimeRights) decide(ctx context.Context, subject rwire.Subject, action, resource string) rwire.Decision {
-	ctx, cancel := context.WithTimeout(ctx, decisionBudget)
+	if movedConnectorCaller(subject.Program) {
+		return rwire.Decision{Outcome: rwire.DecisionOutcomeDenied}
+	}
+	ctx, cancel := budget.Within(ctx, decisionBudget, decisionBudget)
 	defer cancel()
-	return r.policy.DecideContext(ctx, subject, action, resource)
+	ctx, note := r.bindCaller(ctx, subject)
+	decision := r.policy.DecideContext(ctx, subject, action, resource)
+	r.admitted(note, decision.Outcome == rwire.DecisionOutcomePermitted, subject, action, resource)
+	return decision
 }
 
 // Require decides through the in-process policy, within decisionBudget. A
@@ -957,13 +1239,15 @@ func (r *runtimeRights) Require(ctx context.Context, peer *identity.Peer, action
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	ctx = rights.WithBoundPeer(ctx, peer)
 	subject, err := rightsclient.SubjectFromPeer(peer)
 	if err != nil {
 		return err
 	}
-	decision := r.decideAskingFor(ctx, subject, peer, action, resource)
+	decision, question := r.decideAskingForQuestion(ctx, subject, peer, action, resource)
+	inference.AskedFrom(ctx).Add(question)
 	if decision.Outcome != rwire.DecisionOutcomePermitted {
-		return &rightsclient.DecisionError{Outcome: decision.Outcome.String(), PolicyRevision: decision.PolicyRevision}
+		return pendingFirstUseRefusal(&rightsclient.DecisionError{Outcome: decision.Outcome.String(), PolicyRevision: decision.PolicyRevision}, action, question)
 	}
 	return nil
 }
@@ -976,6 +1260,7 @@ func (r *runtimeRights) RequireQuietly(ctx context.Context, peer *identity.Peer,
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	ctx = rights.WithBoundPeer(ctx, peer)
 	subject, err := rightsclient.SubjectFromPeer(peer)
 	if err != nil {
 		return err
@@ -1018,11 +1303,17 @@ func boundPeer(ctx context.Context, subject rwire.Subject) *identity.Peer {
 // decideAskingFor is decideAsking with the peer the subject was bound from,
 // whose code is the question's publisher.
 func (r *runtimeRights) decideAskingFor(ctx context.Context, subject rwire.Subject, peer *identity.Peer, action, resource string) rwire.Decision {
+	decision, question := r.decideAskingForQuestion(ctx, subject, peer, action, resource)
+	inference.AskedFrom(ctx).Add(question)
+	return decision
+}
+
+func (r *runtimeRights) decideAskingForQuestion(ctx context.Context, subject rwire.Subject, peer *identity.Peer, action, resource string) (rwire.Decision, string) {
 	decision := r.decide(ctx, subject, action, resource)
 	if r.firstUse != nil && decision.Outcome == rwire.DecisionOutcomeNotGranted {
-		r.firstUse(subject, requesterPublisher(peer), action, resource)
+		return decision, r.firstUse(subject, requesterPublisher(peer), action, resource)
 	}
-	return decision
+	return decision, ""
 }
 
 // askInput is inference.Config.AskInput: a consuming request of s (image edit,
@@ -1050,8 +1341,12 @@ func (r *runtimeRights) askOutput(ctx context.Context, s inference.Subject, prof
 // s already holds both rights on it or a denial of either; an unavailable
 // decision asks nothing.
 func (r *runtimeRights) askPaired(ctx context.Context, s inference.Subject, resource string) {
+	inference.AskedFrom(ctx).Add(r.askPairedQuestion(ctx, s, resource))
+}
+
+func (r *runtimeRights) askPairedQuestion(ctx context.Context, s inference.Subject, resource string) string {
 	if r == nil || r.pairedInput == nil || !grants.Paired(contentWriteAction, resource) {
-		return
+		return ""
 	}
 	subject := rwire.Subject{Account: s.Account, Program: s.Program}
 	granted := 0
@@ -1061,17 +1356,98 @@ func (r *runtimeRights) askPaired(ctx context.Context, s inference.Subject, reso
 			granted++
 		case rwire.DecisionOutcomeNotGranted:
 		default:
-			return
+			return ""
 		}
 	}
 	if granted == 2 {
-		return
+		return ""
 	}
-	r.pairedInput(subject, requesterPublisher(boundPeer(ctx, subject)), resource)
+	return r.pairedInput(subject, requesterPublisher(boundPeer(ctx, subject)), resource)
+}
+
+// nativeAdmissionQuestions recognizes the private collector/frame association
+// made by the native service. Job preparation and gateway collectors own other
+// waits; a deadline, copied peer or collector alone cannot transfer ownership.
+func (r *runtimeRights) nativeAdmissionQuestions(ctx context.Context, subject rwire.Subject) *inference.Asked {
+	if r == nil || r.awaitQuestions == nil || ctx.Err() != nil || ctx.Done() == nil {
+		return nil
+	}
+	asked := inference.AskedFrom(ctx)
+	if asked == nil {
+		return nil
+	}
+	frame, ok := ctx.Value(asked).(*listen.FramedCall)
+	if !ok || frame == nil || ctx.Done() != frame.WaitContext().Done() {
+		return nil
+	}
+	peer := boundPeer(ctx, subject)
+	if peer == nil || peer.Transport == identity.TransportLoopback {
+		return nil
+	}
+	bound, err := frame.Peer()
+	if err != nil {
+		return nil
+	}
+	actual, err := inferenceservice.SubjectFromPeer(bound)
+	if err != nil || actual.Account != subject.Account || actual.Program != subject.Program {
+		return nil
+	}
+	return asked
 }
 
 // decideInference is inference.Config.Decide. A native or window caller's ctx
 // carries the peer its route bound. The remote route carries none.
 func (r *runtimeRights) decideInference(ctx context.Context, s inference.Subject, action, resource string) (string, error) {
-	return r.decideAsking(ctx, rwire.Subject{Account: s.Account, Program: s.Program}, action, resource).Outcome.String(), nil
+	if call, ok := ctx.Value(incomingRemoteKey{}).(incomingRemoteCall); ok {
+		if r == nil || !call.matchesSubject(r.owner, s.Account, s.Program) {
+			return rwire.DecisionOutcomeForbidden.String(), nil
+		}
+		return r.decideRemote(ctx, call.peer, call.admit, action, resource, call.minimum).Outcome.String(), nil
+	}
+	if remote.ValidSubjectProgram(s.Program) {
+		return rwire.DecisionOutcomeUnavailable.String(), nil
+	}
+	subject := rwire.Subject{Account: s.Account, Program: s.Program}
+	if inference.PreloadAdmission(ctx) {
+		return r.decide(ctx, subject, action, resource).Outcome.String(), nil
+	}
+	return r.decideAsking(ctx, subject, action, resource).Outcome.String(), nil
+}
+
+// awaitNativeQuestions is composed only on the native service host. The
+// collector and exact framed lifetime remain the authority to own this wait.
+func (r *runtimeRights) awaitNativeQuestions(ctx context.Context, s inference.Subject, ids []string) (bool, error) {
+	subject := rwire.Subject{Account: s.Account, Program: s.Program}
+	// The binding is the admitting frame's; ctx is the service's bounded
+	// hold within it (INF-W11).
+	admitting := inferenceservice.AdmissionContext(ctx)
+	if r.nativeAdmissionQuestions(admitting, subject) == nil {
+		return false, errors.New("native admission binding unavailable")
+	}
+	retry := r.awaitQuestions(ctx, subject, ids)
+	if err := admitting.Err(); err != nil {
+		return false, err
+	}
+	if ctx.Err() != nil {
+		return false, nil
+	}
+	if r.nativeAdmissionQuestions(admitting, subject) == nil {
+		return false, errors.New("native admission binding unavailable")
+	}
+	return retry, nil
+}
+
+// pendingNativeQuestions is composed only on the native service hosts. It
+// names the refused admission's questions still pending about the caller
+// once the bounded hold released no retry; the caller waits for the person
+// through asks permission@1 ObserveQuestion (INF-W11).
+func (r *runtimeRights) pendingNativeQuestions(ctx context.Context, s inference.Subject, ids []string) ([]string, error) {
+	subject := rwire.Subject{Account: s.Account, Program: s.Program}
+	if r.nativeAdmissionQuestions(ctx, subject) == nil {
+		return nil, errors.New("native admission binding unavailable")
+	}
+	if r.pendingQuestions == nil {
+		return nil, nil
+	}
+	return r.pendingQuestions(subject, ids)
 }

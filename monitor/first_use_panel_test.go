@@ -68,7 +68,7 @@ func TestFirstPartyPanelFirstUseAnswerWhoseRuleConflictedOffersARetry(t *testing
 	// currently pending first-use question; a direct POST cannot skip consent.
 	setupReply := panelRequest(t, panel, "/rights/delegation", nil)
 	setup := decodePanel[delegationPage](t, setupReply.Code, setupReply.Body.Bytes())
-	if setup.Outcome != "page" || len(setup.Questions) != 1 || setup.Questions[0].ID != id || setup.Questions[0].Program != program || setup.Account == "" {
+	if setup.Outcome != "page" || len(setup.Questions) != 1 || setup.Questions[0].ID != id || !samePanelProgram(setup.Questions[0].Program, program) || setup.Account == "" {
 		t.Fatalf("delegation page should expose only the exact pending first-use scope: %+v", setup)
 	}
 	responder := filepath.Join(filepath.Dir(program), "oa-delegated-responder.exe")
@@ -77,7 +77,9 @@ func TestFirstPartyPanelFirstUseAnswerWhoseRuleConflictedOffersARetry(t *testing
 	if badSetup.Code != 400 {
 		t.Fatalf("delegation without explicit consent = %d %s", badSetup.Code, badSetup.Body.String())
 	}
-	scope, err := asks.FirstUseAnswerResource(program, action, resource, "allow")
+	// The scope names the program in the spelling the question stored; the
+	// check above binds that spelling to program by file identity.
+	scope, err := asks.FirstUseAnswerResource(setup.Questions[0].Program, action, resource, "allow")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +112,7 @@ func TestFirstPartyPanelFirstUseAnswerWhoseRuleConflictedOffersARetry(t *testing
 	delegation.ConfirmExactUse = true
 	grantReply := panelRequest(t, panel, "/rights/delegation", delegation)
 	grant := decodePanel[rightsclient.PolicyEdit](t, grantReply.Code, grantReply.Body.Bytes())
-	if grant.Outcome != rightsclient.PolicyEditOutcomeApplied || grant.Current == nil || grant.Current.Resource != scope || grant.Current.Subject.Program != responder || grant.Current.Action != asks.AnswerAction {
+	if grant.Outcome != rightsclient.PolicyEditOutcomeApplied || grant.Current == nil || grant.Current.Resource != scope || !samePanelProgram(grant.Current.Subject.Program, responder) || grant.Current.Action != asks.AnswerAction {
 		t.Fatalf("delegation should grant only the helper-generated selected scope: %+v", grant)
 	}
 	if d := policy.Decide(rightsclient.Subject{Account: setup.Account, Program: responder}, asks.AnswerAction, scope); d.Outcome != rightsclient.DecisionOutcomePermitted {

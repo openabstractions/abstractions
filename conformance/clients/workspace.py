@@ -17,6 +17,136 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
+
+def copy_native_rust_identity(source_identity, crate):
+    """Stage the native crate with its canonical generated sibling constants."""
+    source_identity, crate = Path(source_identity), Path(crate)
+    constants = source_identity / 'rs/abstraction/ipc/constants/rec.rs'
+    if not constants.is_file():
+        raise FileNotFoundError(constants)
+    shutil.copytree(source_identity / 'rust', crate)
+    shutil.copytree(source_identity / 'rs', crate.parent / 'rs')
+class ReadinessOutput:
+    """Bounded pipe capture for the existing owned conformance processes.
+
+    This owner starts no process. Both pipes are drained while the caller waits
+    for exactly the first stdout line; unexpected prelude lines remain failures.
+    """
+    LIMIT = 65536
+
+    def __init__(self, process):
+        import queue
+        import threading
+        self.process = process
+        self.first = queue.Queue(maxsize=1)
+        self.stdout = ''
+        self.stderr = ''
+        self.threads = []
+        def drain(stream, name):
+            try:
+                if name == 'stdout':
+                    value = stream.readline(self.LIMIT + 1)
+                    self.first.put(value)
+                    self.stdout = value[-self.LIMIT:]
+                while True:
+                    value = stream.read(4096)
+                    if not value:
+                        break
+                    setattr(self, name, (getattr(self, name) + value)[-self.LIMIT:])
+            except (OSError, ValueError) as error:
+                setattr(self, name, (getattr(self, name) + '\npipe error: ' + type(error).__name__)[-self.LIMIT:])
+                if name == 'stdout' and self.first.empty():
+                    self.first.put('')
+        for name in ('stdout', 'stderr'):
+            thread = threading.Thread(target=drain, args=(getattr(process, name), name), daemon=True)
+            thread.start()
+            self.threads.append(thread)
+
+    def line(self, timeout=15):
+        import queue
+        try:
+            value = self.first.get(timeout=timeout)
+        except queue.Empty as error:
+            raise RuntimeError('readiness timeout; ' + self.diagnostic()) from error
+        if not value or len(value) > self.LIMIT:
+            raise RuntimeError('readiness EOF/oversize first line; ' + self.diagnostic())
+        return value
+
+    def expect(self, expected, *, prefix=False, timeout=15):
+        value = self.line(timeout)
+        if not (value.startswith(expected) if prefix else value.strip() == expected):
+            raise RuntimeError('unexpected readiness first line ' + repr(value) + '; ' + self.diagnostic())
+        return value
+
+    def diagnostic(self):
+        try:
+            code = self.process.poll()
+        except OSError as error:
+            code = type(error).__name__
+        return 'exit=' + repr(code) + ' stdout_tail=' + repr(self.stdout) + ' stderr_tail=' + repr(self.stderr)
+
+    @staticmethod
+    def annotate(error, message):
+        """Retain diagnostics on Python 3.9 and newer."""
+        add_note = getattr(error, 'add_note', None)
+        if callable(add_note):
+            add_note(message)
+        else:
+            error.__notes__ = list(getattr(error, '__notes__', ())) + [message]
+            print(message, file=sys.stderr)
+
+    def finish(self, *, stop=True, timeout=10):
+        """Attempt every bounded cleanup step, preserving the active failure."""
+        primary = sys.exc_info()[1]
+        errors = []
+        def attempt(action):
+            try:
+                return True, action()
+            except Exception as error:
+                errors.append(type(error).__name__ + ': ' + str(error))
+                return False, None
+        ok, before = attempt(self.process.poll)
+        if stop and (not ok or before is None):
+            attempt(self.process.terminate)
+        try:
+            self.process.wait(timeout=timeout)
+            reaped = True
+        except subprocess.TimeoutExpired:
+            reaped = False
+        except Exception as error:
+            errors.append(type(error).__name__ + ': ' + str(error))
+            reaped = False
+        if not reaped:
+            attempt(self.process.kill)
+            reaped, _ = attempt(lambda: self.process.wait(timeout=5))
+        for thread in self.threads:
+            attempt(lambda thread=thread: thread.join(timeout=2))
+        for name in ('stdin', 'stdout', 'stderr'):
+            stream = getattr(self.process, name, None)
+            if stream is None:
+                continue
+            if name == 'stdin' and not reaped:
+                errors.append('owned input left open: process remains unreaped')
+                continue
+            if name in ('stdout', 'stderr') and self.threads[('stdout', 'stderr').index(name)].is_alive():
+                # TextIOWrapper.close can wait for a blocked reader's IO lock.
+                errors.append('owned ' + name + ' left open: pipe reader remains active')
+                continue
+            attempt(stream.close)
+        if not reaped:
+            errors.append('owned process remains unreaped')
+        if any(thread.is_alive() for thread in self.threads):
+            errors.append('owned process pipe drain did not finish')
+        diagnostic = 'pre_cleanup_exit=' + repr(before) + '; ' + self.diagnostic()
+        if errors:
+            message = 'owned cleanup failed: ' + '; '.join(errors) + '; ' + diagnostic
+            if primary is None:
+                raise RuntimeError(message)
+            self.annotate(primary, message)
+        elif primary is not None:
+            self.annotate(primary, diagnostic)
+        return self.stdout, self.stderr
+
 def source_revision():
     """Print and return the source revision this run measures.
 
@@ -155,6 +285,17 @@ def certify_msvc(build):
     if found.get('ID') != 'MSVC':
         raise SystemExit('Configured C++ compiler is ' + found.get('ID', 'unknown') +
                          ' in ' + str(build) + '; this proof certifies MSVC. ' + MSVC_RECIPE)
+
+def msvc_ninja_arguments(cmake):
+    """Use the certified Visual Studio CMake's bundled, finite native builder.
+
+    Fresh package and consumer trees still configure and certify separately.
+    Ninja avoids regenerating MSBuild projects for each independent proof.
+    """
+    ninja = Path(cmake).parents[2] / 'Ninja' / 'ninja.exe'
+    if not ninja.is_file():
+        raise SystemExit('Visual Studio bundled Ninja is unavailable: ' + str(ninja))
+    return ['-G', 'Ninja', '-DCMAKE_MAKE_PROGRAM=' + str(ninja)]
 
 CERTIFIES = ('On Windows this proof certifies MSVC: run it from a vcvars64 developer environment. '
              'Other toolchains are refused before building.')

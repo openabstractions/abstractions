@@ -1,0 +1,53 @@
+type Artifact contract0.Artifact
+type Constraints contract0.Constraints
+type Network contract0.Network
+const NetworkAny
+const NetworkUnmetered
+func NetworkValues() []Network
+func ParseNetwork(word string) (Network, bool)
+type Request contract0.Request
+type Source contract0.Source
+type Availability wire.Availability
+const AvailabilityDownload
+const AvailabilityServed
+func AvailabilityValues() []Availability
+func ParseAvailability(word string) (Availability, bool)
+type CatalogUse wire.CatalogUse
+const CatalogUseChat
+const CatalogUseCode
+const CatalogUseVision
+const CatalogUseEmbed
+const CatalogUseImage
+const CatalogUseVideo
+func CatalogUseValues() []CatalogUse
+func ParseCatalogUse(word string) (CatalogUse, bool)
+type Fit wire.Fit
+const FitFits
+const FitSlow
+const FitNo
+func FitValues() []Fit
+type FitEntry wire.FitEntry
+type FitOutcome wire.FitOutcome
+const FitOutcomeFitted
+const FitOutcomeInvalid
+const FitOutcomeUnavailable
+const FitOutcomeForbidden
+func FitOutcomeValues() []FitOutcome
+func ParseFitOutcome(word string) (FitOutcome, bool)
+type LookupOutcome wire.LookupOutcome
+const LookupOutcomeResolved
+const LookupOutcomeInvalid
+const LookupOutcomeUnavailable
+const LookupOutcomeUnsupportedMapping
+const LookupOutcomeForbidden
+func LookupOutcomeValues() []LookupOutcome
+func ParseLookupOutcome(word string) (LookupOutcome, bool)
+type ServiceError wire.ServiceError
+type ServiceErrorCode wire.ServiceErrorCode
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+func ServiceErrorCodeValues() []ServiceErrorCode

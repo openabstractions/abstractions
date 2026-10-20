@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openabstractions/abstractions/serve/internal/personfolders"
 	"github.com/openabstractions/abstractions/serve/internal/runtimehost"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
@@ -32,6 +33,15 @@ const (
 func TestMain(m *testing.M) {
 	if len(os.Args) == 6 && os.Args[1] == "serve" && os.Args[2] == "runtime" && os.Args[3] == "--supervised" {
 		switch os.Args[4] {
+		case "diagnostic-child", "diagnostic-failure":
+			fmt.Fprintln(os.Stderr, "owned runtime startup diagnostic")
+			if os.Args[4] == "diagnostic-failure" {
+				os.Exit(17)
+			}
+			fmt.Print("READY 1\n")
+			io.Copy(io.Discard, os.Stdin)
+			fmt.Fprintln(os.Stderr, "owned runtime joined diagnostic")
+			os.Exit(0)
 		case "rm-test-child":
 			fmt.Print("READY 1\n")
 			if _, err := io.Copy(io.Discard, os.Stdin); err != nil {
@@ -41,6 +51,25 @@ func TestMain(m *testing.M) {
 				os.Exit(4)
 			}
 			os.Exit(0)
+		case "image-watch-child":
+			// runtime_image_windows_test.go moves this image aside and puts
+			// another file at its path; the watch reports it.
+			watch, ok := ownRuntimeImageWatch()
+			if !ok || watch.replaced() {
+				os.Exit(5)
+			}
+			fmt.Print("READY 1\n")
+			for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+				if watch.replaced() {
+					os.Exit(9)
+				}
+			}
+			os.Exit(0)
+		case "owned-launch-child":
+			// application_owned_launch_supervised_windows_test.go
+			ownedLaunchSupervisedChild(os.Args[5])
+		case "owned-app":
+			ownedAppTestChild(os.Args[5])
 		case "restart-child":
 			if err := os.WriteFile(filepath.Join(os.Args[5], fmt.Sprintf("child-%d", os.Getpid())), nil, 0o600); err != nil {
 				os.Exit(4)
@@ -48,9 +77,86 @@ func TestMain(m *testing.M) {
 			fmt.Print("READY 1\n")
 			io.Copy(io.Discard, os.Stdin)
 			os.Exit(0)
+		case "moved-read-child":
+			// application_agent_moved_read_windows_test.go moves this image
+			// aside, then asks for one enrollment read over os.Args[5].
+			os.Exit(movedEnrollmentReadChild(os.Args[5]))
 		}
 	}
-	os.Exit(m.Run())
+	os.Exit(withInstalledStoresPinned(func() int { return personfolders.Main(m) }))
+}
+
+func TestInstalledRuntimeDiagnosticsPreserveReadinessAndStartupFailure(t *testing.T) {
+	for _, mode := range []string{"diagnostic-child", "diagnostic-failure"} {
+		t.Run(mode, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "host.log")
+			log := openHostLogAt(path)
+			defer log.Close()
+			o := installedRuntimeOptions(log)
+			if o.Stderr != log.file || o.Stderr == nil {
+				t.Fatal("installed runtime did not retain the host diagnostics file")
+			}
+			o.Executable, o.Args = os.Args[0], []string{mode, "unused"}
+			h, err := runtimehost.Start(context.Background(), o)
+			if mode == "diagnostic-child" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = h.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if err = h.Wait(); err != nil {
+					t.Fatal(err)
+				}
+			} else if err == nil || h != nil {
+				if h != nil {
+					h.Close()
+				}
+				t.Fatal("startup failure was accepted", err)
+			}
+			body, err := os.ReadFile(path)
+			if err != nil || !strings.Contains(string(body), "owned runtime startup diagnostic") {
+				t.Fatalf("startup diagnostic lost: %q, %v", body, err)
+			}
+			if mode == "diagnostic-child" && !strings.Contains(string(body), "owned runtime joined diagnostic") {
+				t.Fatalf("diagnostics file did not survive child join: %q", body)
+			}
+		})
+	}
+}
+
+func TestInstalledRuntimeWithoutDiagnosticsKeepsReadiness(t *testing.T) {
+	blocked := filepath.Join(t.TempDir(), "parent-file")
+	if err := os.WriteFile(blocked, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unavailable := openHostLogAt(filepath.Join(blocked, "host.log"))
+	if unavailable.file != nil {
+		t.Fatal("log unexpectedly opened below a regular file")
+	}
+	for _, log := range []*hostLog{nil, {}, unavailable} {
+		if log != nil {
+			defer log.Close()
+		}
+		o := installedRuntimeOptions(log)
+		// This case also covers the ordinary unavailable-log representation.
+		if log == nil || log.file == nil {
+			if o.Stderr != nil {
+				t.Fatal("invented diagnostics sink")
+			}
+		}
+		o.Executable, o.Args = os.Args[0], []string{"diagnostic-child", "unused"}
+		h, err := runtimehost.Start(context.Background(), o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = h.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err = h.Wait(); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func helperChildPlan(t *testing.T, mode, argument string, onReady func(runtimeChild)) hostPlan {

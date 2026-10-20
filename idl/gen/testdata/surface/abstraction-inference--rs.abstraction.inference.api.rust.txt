@@ -10,7 +10,7 @@ pub enum Role
   Tool
   pub const ALL: [Self; 4]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum PartKind
   Text
   Image
@@ -18,7 +18,7 @@ pub enum PartKind
   ToolResult
   pub const ALL: [Self; 4]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum ReplyOutcome
   Completed
   Refused
@@ -33,7 +33,7 @@ pub enum ReplyOutcome
   Exhausted
   pub const ALL: [Self; 11]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum StopReason
   NoStop
   End
@@ -44,7 +44,7 @@ pub enum StopReason
   Other
   pub const ALL: [Self; 7]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum DeltaKind
   Part
   Usage
@@ -56,7 +56,7 @@ pub enum DeltaKind
   ImageResult
   pub const ALL: [Self; 8]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum StartOutcome
   Accepted
   NotPermitted
@@ -69,14 +69,14 @@ pub enum StartOutcome
   Exhausted
   pub const ALL: [Self; 9]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum SelectionReason
   ExplicitModel
   Preferred
   PreferredRouteUnavailable
   pub const ALL: [Self; 3]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum PageOutcome
   Page
   Gap
@@ -86,7 +86,7 @@ pub enum PageOutcome
   Unavailable
   pub const ALL: [Self; 6]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum CancelOutcome
   Cancelled
   Ended
@@ -96,7 +96,123 @@ pub enum CancelOutcome
   Unavailable
   pub const ALL: [Self; 6]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub mod chat_progress_phase
+  pub const QUEUED: &str
+  pub const LOADING: &str
+  pub const WARMING: &str
+  pub const ALL: [&str; 3]
+pub enum ChatPartKind
+  Text
+  Reasoning
+  ReasoningSummary
+  ToolCall
+  ModelRefusal
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub mod finish_reason
+  pub const STOP: &str
+  pub const LENGTH: &str
+  pub const TOOL_CALLS: &str
+  pub const CONTENT_FILTER: &str
+  pub const MODEL_REFUSAL: &str
+  pub const CONTEXT_WINDOW: &str
+  pub const MALFORMED_TOOL_CALL: &str
+  pub const PAUSED: &str
+  pub const OTHER: &str
+  pub const ALL: [&str; 9]
+pub enum ChatToolChoiceKind
+  Auto
+  None
+  Required
+  Named
+  pub const ALL: [Self; 4]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum ChatReasoningEffort
+  None
+  Low
+  Medium
+  High
+  pub const ALL: [Self; 4]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub mod seal_omission
+  pub const ENCODED_SIZE: &str
+  pub const INCOMPATIBLE_ORIGIN: &str
+  pub const ALL: [&str; 2]
+pub mod served_place
+  pub const LOCAL: &str
+  pub const HOSTED: &str
+  pub const REMOTE: &str
+  pub const ALL: [&str; 3]
+pub enum ChatEventKind
+  Progress
+  Part
+  BlockEnd
+  Usage
+  End
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub mod chat_guarantee
+  pub const LOCAL_ONLY: &str
+  pub const HOSTED_ALLOWED: &str
+  pub const NO_RETENTION: &str
+  pub const FREE_CAPACITY: &str
+  pub const ALL: [&str; 4]
+pub enum ChatUse
+  Title
+  pub const ALL: [Self; 1]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum ChatResultOutcome
+  Completed
+  Failed
+  Cancelled
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub mod chat_load
+  pub const COLD: &str
+  pub const WARM: &str
+  pub const LOADED: &str
+  pub const ALL: [&str; 3]
+pub mod chat_load_source
+  pub const DISK: &str
+  pub const ADOPTED: &str
+  pub const LENT: &str
+  pub const ALL: [&str; 3]
+pub mod chat_reasoning_support
+  pub const APPLIED: &str
+  pub const APPROXIMATED: &str
+  pub const NOT_SUPPORTED: &str
+  pub const OVERRIDDEN: &str
+  pub const ALL: [&str; 4]
+pub enum ChatStartOutcome
+  Accepted
+  NotPermitted
+  BudgetExceeded
+  Unsupported
+  NoHost
+  Unavailable
+  Invalid
+  Forbidden
+  Exhausted
+  Conflict
+  Unknown
+  pub const ALL: [Self; 11]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum ChatHistoryOutcome
+  Available
+  Forbidden
+  Invalid
+  Unavailable
+  pub const ALL: [Self; 4]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum PreloadOutcome
   Evaluated
   Loaded
@@ -110,7 +226,7 @@ pub enum PreloadOutcome
   Forbidden
   pub const ALL: [Self; 10]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum EmbedOutcome
   Completed
   Refused
@@ -123,13 +239,13 @@ pub enum EmbedOutcome
   Forbidden
   pub const ALL: [Self; 9]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum TranscriptUnitKind
   Segment
   Word
   pub const ALL: [Self; 2]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum TimestampMode
   None
   Segment
@@ -137,7 +253,7 @@ pub enum TimestampMode
   SegmentAndWord
   pub const ALL: [Self; 4]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum SpeechFormat
   Mp3
   Opus
@@ -147,12 +263,12 @@ pub enum SpeechFormat
   Pcm
   pub const ALL: [Self; 6]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum LiveFormat
   Pcm1624000
   pub const ALL: [Self; 1]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum LiveInputOutcome
   Accepted
   Duplicate
@@ -165,13 +281,13 @@ pub enum LiveInputOutcome
   Exhausted
   pub const ALL: [Self; 9]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum ImageMode
   Generate
   Edit
   pub const ALL: [Self; 2]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum VideoState
   Queued
   Generating
@@ -184,7 +300,7 @@ pub enum VideoState
   Unavailable
   pub const ALL: [Self; 9]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum ListOutcome
   Page
   Invalid
@@ -192,7 +308,7 @@ pub enum ListOutcome
   Unavailable
   pub const ALL: [Self; 4]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum EditOutcome
   Applied
   Conflict
@@ -203,21 +319,21 @@ pub enum EditOutcome
   Unavailable
   pub const ALL: [Self; 7]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum KeyState
   Active
   Revoked
   Lost
   pub const ALL: [Self; 3]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum AuditRoute
   Native
   Window
   Remote
   pub const ALL: [Self; 3]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum AuditOutcome
   Page
   Gap
@@ -226,13 +342,32 @@ pub enum AuditOutcome
   Unavailable
   pub const ALL: [Self; 5]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum ProgramBudgetReadOutcome
+  Page
+  Invalid
+  Forbidden
+  Unavailable
+  Unsupported
+  pub const ALL: [Self; 5]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum ProgramBudgetEditOutcome
+  Applied
+  Conflict
+  Invalid
+  Forbidden
+  Unavailable
+  Unsupported
+  pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum CandidatePlacement
   Local
   Hosted
   pub const ALL: [Self; 2]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum SelectionReadOutcome
   Found
   Unknown
@@ -241,7 +376,7 @@ pub enum SelectionReadOutcome
   Unavailable
   pub const ALL: [Self; 5]
   pub fn as_str(self) -> &'static str
-  pub fn from_wire(name: &str) -> Option<Self>
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub mod service_error_code
   pub const HANDLER_ERROR: &str
   pub const INVALID_RESULT: &str
@@ -254,52 +389,52 @@ pub const FEATURES: [&str; 3]
 pub const RESOURCE_ACTIONS: [&str; 6]
 pub const LOCAL_KEY_KINDS: [&str; 1]
 pub const LOCAL_HOST_KINDS: [&str; 9]
-pub const HOST_PROFILES: [&str; 6]
+pub const HOST_PROFILES: [&str; 7]
 pub const HOST_DECLARERS: [&str; 7]
-pub const CREDENTIAL_CONSUMERS: [&str; 5]
+pub const CREDENTIAL_CONSUMERS: [&str; 6]
 pub const CLAIM_EXTENSIONS: [&str; 1]
 pub struct Part
   kind: PartKind
-  text: String
-  digest: String
-  media_type: String
-  call_id: String
-  name: String
-  arguments: String
+  text: ::std::string::String
+  digest: ::std::string::String
+  media_type: ::std::string::String
+  call_id: ::std::string::String
+  name: ::std::string::String
+  arguments: ::std::string::String
 pub struct Message
   role: Role
-  parts: Vec<Part>
+  parts: ::std::vec::Vec<Part>
 pub struct Tool
-  name: String
-  description: String
-  parameters: String
+  name: ::std::string::String
+  description: ::std::string::String
+  parameters: ::std::string::String
 pub struct Temperature
   milli: i64
 pub struct Options
   max_output: i64
-  temperature: Option<Temperature>
-  stop: Vec<String>
-  json_schema: String
+  temperature: ::std::option::Option<Temperature>
+  stop: ::std::vec::Vec<::std::string::String>
+  json_schema: ::std::string::String
 pub struct Request
-  model: String
-  messages: Vec<Message>
-  tools: Vec<Tool>
-  options: Option<Options>
-  extensions: BTreeMap<String, String>
-  required_extensions: Vec<String>
-  guarantees: Vec<String>
-  credential: String
+  model: ::std::string::String
+  messages: ::std::vec::Vec<Message>
+  tools: ::std::vec::Vec<Tool>
+  options: ::std::option::Option<Options>
+  extensions: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>
+  required_extensions: ::std::vec::Vec<::std::string::String>
+  guarantees: ::std::vec::Vec<::std::string::String>
+  credential: ::std::string::String
 pub struct Target
-  model: String
-  selection_policy: String
+  model: ::std::string::String
+  selection_policy: ::std::string::String
 pub struct RequestContent
-  messages: Vec<Message>
-  tools: Vec<Tool>
-  options: Option<Options>
-  extensions: BTreeMap<String, String>
-  required_extensions: Vec<String>
-  guarantees: Vec<String>
-  credential: String
+  messages: ::std::vec::Vec<Message>
+  tools: ::std::vec::Vec<Tool>
+  options: ::std::option::Option<Options>
+  extensions: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>
+  required_extensions: ::std::vec::Vec<::std::string::String>
+  guarantees: ::std::vec::Vec<::std::string::String>
+  credential: ::std::string::String
 pub struct RequestV2
   target: Target
   content: RequestContent
@@ -309,222 +444,366 @@ pub struct Usage
   cached: i64
 pub struct Cost
   micros: i64
-  currency: String
+  currency: ::std::string::String
 pub struct Reply
   outcome: ReplyOutcome
-  reason: String
+  reason: ::std::string::String
   message: Message
   stop_reason: StopReason
   usage: Usage
-  host: String
-  model: String
-  cost: Option<Cost>
+  host: ::std::string::String
+  model: ::std::string::String
+  cost: ::std::option::Option<Cost>
 pub struct Delta
   sequence: i64
   kind: DeltaKind
   index: i64
-  part: Option<Part>
-  usage: Option<Usage>
-  end: Option<Reply>
-  segment: Option<TranscriptSegment>
-  transcription_end: Option<TranscriptionReply>
-  audio: Option<AudioChunk>
-  speech_end: Option<SpeechReply>
-  transcript: Option<LiveTranscript>
-  live_end: Option<LiveReply>
-  image_progress: Option<ImageProgress>
-  image_result: Option<ImageResult>
-  image_end: Option<ImageReply>
+  part: ::std::option::Option<Part>
+  usage: ::std::option::Option<Usage>
+  end: ::std::option::Option<Reply>
+  segment: ::std::option::Option<TranscriptSegment>
+  transcription_end: ::std::option::Option<TranscriptionReply>
+  audio: ::std::option::Option<AudioChunk>
+  speech_end: ::std::option::Option<SpeechReply>
+  transcript: ::std::option::Option<LiveTranscript>
+  live_end: ::std::option::Option<LiveReply>
+  image_progress: ::std::option::Option<ImageProgress>
+  image_result: ::std::option::Option<ImageResult>
+  image_end: ::std::option::Option<ImageReply>
 pub struct Admission
   outcome: StartOutcome
-  reason: String
-  operation: String
-  host: String
-  model: String
+  reason: ::std::string::String
+  operation: ::std::string::String
+  host: ::std::string::String
+  model: ::std::string::String
   retention_ms: i64
   idle_ms: i64
   retained_deltas: i64
 pub struct AdmissionV2
   outcome: StartOutcome
-  reason: String
-  operation: String
-  host: String
-  model: String
+  reason: ::std::string::String
+  operation: ::std::string::String
+  host: ::std::string::String
+  model: ::std::string::String
   retention_ms: i64
   idle_ms: i64
   retained_deltas: i64
-  preferred_model: String
-  selection_reason: Option<SelectionReason>
+  preferred_model: ::std::string::String
+  selection_reason: ::std::option::Option<SelectionReason>
 pub struct DeltaPage
   outcome: PageOutcome
-  deltas: Vec<Delta>
+  deltas: ::std::vec::Vec<Delta>
   next: i64
   at_end: bool
 pub struct Cancellation
   outcome: CancelOutcome
-  reply_outcome: Option<ReplyOutcome>
+  reply_outcome: ::std::option::Option<ReplyOutcome>
+pub struct ChatProgress
+  phase: ::std::string::String
+  done: ::std::option::Option<i64>
+  total: ::std::option::Option<i64>
+  unit: ::std::string::String
+pub struct ChatUsage
+  input: ::std::option::Option<i64>
+  output: ::std::option::Option<i64>
+  cache_read: ::std::option::Option<i64>
+  cache_write: ::std::option::Option<i64>
+  reasoning: ::std::option::Option<i64>
+pub struct ChatToolChoice
+  kind: ChatToolChoiceKind
+  name: ::std::string::String
+pub struct ChatTool
+  name: ::std::string::String
+  description: ::std::string::String
+  parameters: ::std::string::String
+  strict: ::std::option::Option<bool>
+pub struct ChatReasoning
+  effort: ChatReasoningEffort
+  budget: ::std::option::Option<i64>
+pub struct ChatOptions
+  max_output: i64
+  temperature: ::std::option::Option<Temperature>
+  stop: ::std::vec::Vec<::std::string::String>
+  json_schema: ::std::string::String
+  tool_choice: ::std::option::Option<ChatToolChoice>
+  parallel_tools: ::std::option::Option<bool>
+  reasoning: ::std::option::Option<ChatReasoning>
+pub struct ChatPart
+  block: i64
+  kind: ChatPartKind
+  text: ::std::string::String
+  call_id: ::std::string::String
+  name: ::std::string::String
+  arguments: ::std::string::String
+  seal: ::std::option::Option<ReasoningSeal>
+pub struct ChatBlockEnd
+  block: i64
+  seal_omitted: ::std::option::Option<::std::string::String>
+pub struct ReasoningSeal
+  origin: ::std::string::String
+  bytes: ::std::vec::Vec<u8>
+pub struct ServedBy
+  place: ::std::string::String
+  server: ::std::string::String
+  machine: ::std::string::String
+pub struct ChatInputPart
+  kind: PartKind
+  text: ::std::string::String
+  digest: ::std::string::String
+  media_type: ::std::string::String
+  call_id: ::std::string::String
+  name: ::std::string::String
+  arguments: ::std::string::String
+pub struct ChatReplay
+  block: i64
+  seal: ReasoningSeal
+pub struct ChatMessage
+  role: Role
+  parts: ::std::vec::Vec<ChatInputPart>
+  reasoning: ::std::vec::Vec<ChatReplay>
+pub struct ChatTarget
+  model: ::std::string::String
+  selection_policy: ::std::string::String
+pub struct ChatContent
+  messages: ::std::vec::Vec<ChatMessage>
+  tools: ::std::vec::Vec<ChatTool>
+  options: ::std::option::Option<ChatOptions>
+  extensions: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>
+  required_extensions: ::std::vec::Vec<::std::string::String>
+  guarantees: ::std::vec::Vec<::std::string::String>
+  credential: ::std::string::String
+pub struct RequestV3
+  identity: OAImported0
+  target: ChatTarget
+  content: ChatContent
+  model_ref: ::std::string::String
+  conversation: ::std::string::String
+  chat_use: ::std::option::Option<ChatUse>
+pub struct ChatTiming
+  queue_ms: ::std::option::Option<i64>
+  load_ms: ::std::option::Option<i64>
+  restore_ms: ::std::option::Option<i64>
+  prefill_ms: ::std::option::Option<i64>
+  decode_ms: ::std::option::Option<i64>
+  prefill_tokens: ::std::option::Option<i64>
+  reused_tokens: ::std::option::Option<i64>
+  load: ::std::option::Option<::std::string::String>
+  load_source: ::std::option::Option<::std::string::String>
+pub struct ChatReasoningApplied
+  effort: ::std::option::Option<ChatReasoningEffort>
+  budget: ::std::option::Option<i64>
+  support: ::std::string::String
+  budget_support: ::std::option::Option<::std::string::String>
+pub struct ChatResult
+  outcome: ChatResultOutcome
+  cause: ::std::string::String
+  finish_reason: ::std::option::Option<::std::string::String>
+  stop_sequence: ::std::string::String
+  usage: ChatUsage
+  served_by: ::std::option::Option<ServedBy>
+  cost: ::std::option::Option<Cost>
+  refusal: ::std::option::Option<OAImported1>
+  retry_after_ms: ::std::option::Option<i64>
+  timing: ::std::option::Option<ChatTiming>
+  reasoning_applied: ::std::option::Option<ChatReasoningApplied>
+  dropped_extensions: ::std::vec::Vec<::std::string::String>
+pub struct ChatEvent
+  sequence: i64
+  kind: ChatEventKind
+  progress: ::std::option::Option<ChatProgress>
+  part: ::std::option::Option<ChatPart>
+  block_end: ::std::option::Option<ChatBlockEnd>
+  usage: ::std::option::Option<ChatUsage>
+  end: ::std::option::Option<ChatResult>
+pub struct ChatAdmission
+  outcome: ChatStartOutcome
+  reason: ::std::string::String
+  request: ::std::string::String
+  server: ::std::string::String
+  model: ::std::string::String
+  retention_ms: i64
+  idle_ms: i64
+  retained_deltas: i64
+  preferred_model: ::std::string::String
+  selection_reason: ::std::option::Option<SelectionReason>
+  refusal: ::std::option::Option<OAImported1>
+  retry_after_ms: ::std::option::Option<i64>
+pub struct ChatPage
+  outcome: PageOutcome
+  events: ::std::vec::Vec<ChatEvent>
+  next: i64
+  at_end: bool
+  refusal: ::std::option::Option<OAImported1>
+pub struct ChatCancellation
+  outcome: CancelOutcome
+  result_outcome: ::std::option::Option<ChatResultOutcome>
+  refusal: ::std::option::Option<OAImported1>
+pub struct ChatHistoryRead
+  outcome: ChatHistoryOutcome
+  window: ::std::option::Option<OAImported2>
+  refusal: ::std::option::Option<OAImported1>
 pub struct PreloadReply
   outcome: PreloadOutcome
-  reason: String
-  host: String
-  model: String
+  reason: ::std::string::String
+  host: ::std::string::String
+  model: ::std::string::String
   tokens: i64
 pub struct EmbedRequest
-  model: String
-  inputs: Vec<String>
+  model: ::std::string::String
+  inputs: ::std::vec::Vec<::std::string::String>
   dimensions: i64
-  guarantees: Vec<String>
-  credential: String
-  extensions: BTreeMap<String, String>
+  guarantees: ::std::vec::Vec<::std::string::String>
+  credential: ::std::string::String
+  extensions: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>
 pub struct Embeddings
   outcome: EmbedOutcome
-  reason: String
-  vectors: Vec<String>
+  reason: ::std::string::String
+  vectors: ::std::vec::Vec<::std::string::String>
   dimensions: i64
   usage: Usage
-  host: String
-  model: String
-  cost: Option<Cost>
+  host: ::std::string::String
+  model: ::std::string::String
+  cost: ::std::option::Option<Cost>
 pub struct TranscriptionRequest
-  model: String
-  audio_digest: String
-  media_type: String
-  language: String
+  model: ::std::string::String
+  audio_digest: ::std::string::String
+  media_type: ::std::string::String
+  language: ::std::string::String
   timestamps: TimestampMode
-  guarantees: Vec<String>
-  credential: String
-  extensions: BTreeMap<String, String>
+  guarantees: ::std::vec::Vec<::std::string::String>
+  credential: ::std::string::String
+  extensions: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>
 pub struct TranscriptSegment
   index: i64
   kind: TranscriptUnitKind
   start_ms: i64
   end_ms: i64
-  text: String
+  text: ::std::string::String
 pub struct TranscriptionReply
   outcome: ReplyOutcome
-  reason: String
-  language: String
+  reason: ::std::string::String
+  language: ::std::string::String
   duration_ms: i64
   usage: Usage
-  host: String
-  model: String
-  cost: Option<Cost>
+  host: ::std::string::String
+  model: ::std::string::String
+  cost: ::std::option::Option<Cost>
 pub struct SpeechRequest
-  model: String
-  voice: String
-  text: String
+  model: ::std::string::String
+  voice: ::std::string::String
+  text: ::std::string::String
   format: SpeechFormat
-  guarantees: Vec<String>
-  credential: String
-  extensions: BTreeMap<String, String>
+  guarantees: ::std::vec::Vec<::std::string::String>
+  credential: ::std::string::String
+  extensions: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>
 pub struct AudioChunk
   index: i64
-  data: Vec<u8>
+  data: ::std::vec::Vec<u8>
 pub struct Delivery
-  digest: String
-  media_type: String
+  digest: ::std::string::String
+  media_type: ::std::string::String
   size: i64
-  location: String
+  location: ::std::string::String
 pub struct SpeechReply
   outcome: ReplyOutcome
-  reason: String
+  reason: ::std::string::String
   delivery: Delivery
   characters: i64
   usage: Usage
-  host: String
-  model: String
-  cost: Option<Cost>
+  host: ::std::string::String
+  model: ::std::string::String
+  cost: ::std::option::Option<Cost>
 pub struct LiveRequest
-  model: String
-  voice: String
+  model: ::std::string::String
+  voice: ::std::string::String
   format: LiveFormat
-  guarantees: Vec<String>
-  credential: String
-  extensions: BTreeMap<String, String>
+  guarantees: ::std::vec::Vec<::std::string::String>
+  credential: ::std::string::String
+  extensions: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>
 pub struct LiveInputResult
   outcome: LiveInputOutcome
   next_sequence: i64
 pub struct LiveTranscript
-  text: String
+  text: ::std::string::String
   is_final: bool
 pub struct LiveReply
   outcome: ReplyOutcome
-  reason: String
+  reason: ::std::string::String
   delivery: Delivery
   usage: Usage
   input_audio_bytes: i64
   output_audio_bytes: i64
-  host: String
-  model: String
+  host: ::std::string::String
+  model: ::std::string::String
 pub struct ImageRequest
-  model: String
+  model: ::std::string::String
   mode: ImageMode
-  prompt: String
-  size: String
+  prompt: ::std::string::String
+  size: ::std::string::String
   count: i64
-  image_digest: String
-  image_media_type: String
-  mask_digest: String
-  mask_media_type: String
-  guarantees: Vec<String>
-  credential: String
-  required_extensions: Vec<String>
-  extensions: BTreeMap<String, String>
+  image_digest: ::std::string::String
+  image_media_type: ::std::string::String
+  mask_digest: ::std::string::String
+  mask_media_type: ::std::string::String
+  guarantees: ::std::vec::Vec<::std::string::String>
+  credential: ::std::string::String
+  required_extensions: ::std::vec::Vec<::std::string::String>
+  extensions: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>
 pub struct ImageRequestContent
   mode: ImageMode
-  prompt: String
-  size: String
+  prompt: ::std::string::String
+  size: ::std::string::String
   count: i64
-  image_digest: String
-  image_media_type: String
-  mask_digest: String
-  mask_media_type: String
-  guarantees: Vec<String>
-  credential: String
-  required_extensions: Vec<String>
-  extensions: BTreeMap<String, String>
+  image_digest: ::std::string::String
+  image_media_type: ::std::string::String
+  mask_digest: ::std::string::String
+  mask_media_type: ::std::string::String
+  guarantees: ::std::vec::Vec<::std::string::String>
+  credential: ::std::string::String
+  required_extensions: ::std::vec::Vec<::std::string::String>
+  extensions: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>
 pub struct ImageRequestV2
   target: Target
   content: ImageRequestContent
 pub struct ImageProgress
   percent: i64
-  message: String
+  message: ::std::string::String
 pub struct ImageResult
   index: i64
   delivery: Delivery
 pub struct ImageReply
   outcome: ReplyOutcome
-  reason: String
-  deliveries: Vec<Delivery>
+  reason: ::std::string::String
+  deliveries: ::std::vec::Vec<Delivery>
   images: i64
   usage: Usage
-  host: String
-  model: String
-  cost: Option<Cost>
+  host: ::std::string::String
+  model: ::std::string::String
+  cost: ::std::option::Option<Cost>
 pub struct VideoRequest
-  model: String
-  prompt: String
-  size: String
+  model: ::std::string::String
+  prompt: ::std::string::String
+  size: ::std::string::String
   duration_ms: i64
   fps: i64
   seed: i64
-  image_digest: String
-  image_media_type: String
-  required_extensions: Vec<String>
-  extensions: BTreeMap<String, String>
-  request_id: String
+  image_digest: ::std::string::String
+  image_media_type: ::std::string::String
+  required_extensions: ::std::vec::Vec<::std::string::String>
+  extensions: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>
+  request_id: ::std::string::String
 pub struct VideoAdmission
   outcome: StartOutcome
-  reason: String
-  operation: String
+  reason: ::std::string::String
+  operation: ::std::string::String
   retention_ms: i64
 pub struct VideoObservation
   status: VideoState
   step: i64
   steps: i64
   queue_position: i64
-  reason: String
-  delivery: Option<Delivery>
+  reason: ::std::string::String
+  delivery: ::std::option::Option<Delivery>
 pub struct CeilingLimit
   tokens_per_day: i64
   micros_per_day: i64
@@ -533,16 +812,16 @@ pub struct CeilingLimit
   audio_seconds_per_day: i64
   characters_per_day: i64
 pub struct HostEntry
-  name: String
+  name: ::std::string::String
   hosted: bool
-  kind: String
-  base: String
-  credential: String
-  ceiling: Option<CeilingLimit>
-  profiles: Vec<String>
-  declared_by: String
+  kind: ::std::string::String
+  base: ::std::string::String
+  credential: ::std::string::String
+  ceiling: ::std::option::Option<CeilingLimit>
+  profiles: ::std::vec::Vec<::std::string::String>
+  declared_by: ::std::string::String
 pub struct Spend
-  day: String
+  day: ::std::string::String
   tokens: i64
   micros: i64
   requests: i64
@@ -552,97 +831,137 @@ pub struct Spend
 pub struct HostState
   entry: HostEntry
   up: bool
-  why: String
-  spend: Option<Spend>
+  why: ::std::string::String
+  spend: ::std::option::Option<Spend>
 pub struct HostList
   outcome: ListOutcome
-  revision: String
-  hosts: Vec<HostState>
+  revision: ::std::string::String
+  hosts: ::std::vec::Vec<HostState>
 pub struct HostChange
   outcome: EditOutcome
-  revision: String
-  reason: String
+  revision: ::std::string::String
+  reason: ::std::string::String
 pub struct LocalKey
-  program: String
-  name: String
-  credential: String
+  program: ::std::string::String
+  name: ::std::string::String
+  credential: ::std::string::String
   issued_unix_ms: i64
-  issued_by: String
+  issued_by: ::std::string::String
   state: KeyState
 pub struct KeyList
   outcome: ListOutcome
-  keys: Vec<LocalKey>
+  keys: ::std::vec::Vec<LocalKey>
 pub struct KeyIssued
   outcome: EditOutcome
-  reason: String
-  key: String
-  record: Option<LocalKey>
+  reason: ::std::string::String
+  key: ::std::string::String
+  record: ::std::option::Option<LocalKey>
 pub struct KeyRevoked
   outcome: EditOutcome
 pub struct AuditEntry
   sequence: i64
   unix_ms: i64
   route: AuditRoute
-  rung: String
-  program: String
-  operation: String
-  host: String
-  model: String
-  credential: String
-  outcome: String
-  reason: String
+  rung: ::std::string::String
+  program: ::std::string::String
+  operation: ::std::string::String
+  host: ::std::string::String
+  model: ::std::string::String
+  credential: ::std::string::String
+  outcome: ::std::string::String
+  reason: ::std::string::String
   tokens_in: i64
   tokens_out: i64
   wall_ms: i64
-  ceiling: String
-  domain: String
-  claim: String
-  profile: String
+  ceiling: ::std::string::String
+  domain: ::std::string::String
+  claim: ::std::string::String
+  profile: ::std::string::String
   audio_seconds: i64
   characters: i64
   images: i64
 pub struct AuditPage
   outcome: AuditOutcome
-  entries: Vec<AuditEntry>
+  entries: ::std::vec::Vec<AuditEntry>
+  next: i64
+  at_end: bool
+pub struct RequestEntry
+  entry: AuditEntry
+  preferred_model: ::std::string::String
+  unavailable_hosts: ::std::vec::Vec<::std::string::String>
+  selection: ::std::string::String
+  placement: ::std::option::Option<::std::string::String>
+pub struct RequestPage
+  outcome: AuditOutcome
+  entries: ::std::vec::Vec<RequestEntry>
   next: i64
   at_end: bool
 pub struct GatewayState
   outcome: ListOutcome
-  revision: String
+  revision: ::std::string::String
   open: bool
-  address: String
+  address: ::std::string::String
   listening: bool
-  listening_address: String
-  why: String
+  listening_address: ::std::string::String
+  why: ::std::string::String
 pub struct GatewayChange
   outcome: EditOutcome
-  revision: String
-  reason: String
+  revision: ::std::string::String
+  reason: ::std::string::String
+pub struct ProgramBudget
+  tokens_per_day: i64
+  micros_per_day: i64
+  requests_per_day: i64
+  images_per_day: i64
+  audio_seconds_per_day: i64
+  characters_per_day: i64
+pub struct ProgramBudgetEntry
+  program: ::std::string::String
+  budget: ::std::option::Option<ProgramBudget>
+  spend: Spend
+  cost_unreported: bool
+pub struct ProgramBudgetPage
+  outcome: ProgramBudgetReadOutcome
+  revision: ::std::string::String
+  entries: ::std::vec::Vec<ProgramBudgetEntry>
+  profiles: ::std::vec::Vec<::std::string::String>
+pub struct ProgramBudgetResult
+  outcome: ProgramBudgetEditOutcome
+  revision: ::std::string::String
+  reason: ::std::string::String
+pub struct ProgramBudgetChange
+  expected_revision: ::std::string::String
+  credential: ::std::string::String
+  program: ::std::string::String
+  budget: ::std::option::Option<ProgramBudget>
 pub struct SelectionChange
   outcome: EditOutcome
-  revision: String
-  reason: String
+  revision: ::std::string::String
+  reason: ::std::string::String
 pub struct SelectionCandidateV2
-  model: String
+  model: ::std::string::String
   placement: CandidatePlacement
-  credential: String
-  provider: String
+  credential: ::std::string::String
+  provider: ::std::string::String
 pub struct SelectionPolicyV2
-  name: String
-  candidates: Vec<SelectionCandidateV2>
+  name: ::std::string::String
+  candidates: ::std::vec::Vec<SelectionCandidateV2>
 pub struct SelectionReadV2
   outcome: SelectionReadOutcome
-  revision: String
-  policy: Option<SelectionPolicyV2>
-pub fn encode(v: &Request) -> Vec<u8>
+  revision: ::std::string::String
+  policy: ::std::option::Option<SelectionPolicyV2>
+pub fn encode(v: &Request) -> ::std::vec::Vec<u8>
 pub struct Refusal
   word: &'static str
   offset: usize
-pub fn decode(data: &[u8]) -> Result<Request, Refusal>
+pub fn decode(data: &[u8]) -> ::std::result::Result<Request, Refusal>
+pub trait JsonRecord: ::std::marker::Sized
+  fn to_json(&self) -> ::std::vec::Vec<u8>
+  fn from_json(data: &[u8]) -> ::std::result::Result<Self, Refusal>
 pub use abstraction_frame::FrameTransport
 pub struct ServiceError
-  code: String
-  message: String
+  code: ::std::string::String
+  message: ::std::string::String
 pub enum CallError<E>
   Transport(E)
   Refusal(Refusal)
@@ -650,101 +969,565 @@ pub enum CallError<E>
   Service(ServiceError)
 pub trait Chat
   type Error
-  fn start(&self, request: Request) -> Result<Admission, Self::Error>
-  fn observe(&self, operation: String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> Result<DeltaPage, Self::Error>
-  fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error>
+  fn start(&self, request: Request) -> ::std::result::Result<Admission, Self::Error>
+  fn observe(&self, operation: ::std::string::String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> ::std::result::Result<DeltaPage, Self::Error>
+  fn cancel(&self, operation: ::std::string::String) -> ::std::result::Result<Cancellation, Self::Error>
 pub struct ChatClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait ChatV2
   type Error
-  fn start(&self, request: RequestV2) -> Result<AdmissionV2, Self::Error>
-  fn observe(&self, operation: String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> Result<DeltaPage, Self::Error>
-  fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error>
+  fn start_with_guarantees(&self, request: RequestV2, guarantees: ::std::vec::Vec<::std::string::String>) -> ::std::result::Result<AdmissionV2, Self::Error>
+  fn start(&self, request: RequestV2) -> ::std::result::Result<AdmissionV2, Self::Error>
+  fn observe(&self, operation: ::std::string::String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> ::std::result::Result<DeltaPage, Self::Error>
+  fn cancel(&self, operation: ::std::string::String) -> ::std::result::Result<Cancellation, Self::Error>
 pub struct ChatV2Client<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait ChatV3
+  type Error
+  fn get_history_window(&self) -> ::std::result::Result<ChatHistoryRead, Self::Error>
+  fn start(&self, request: RequestV3) -> ::std::result::Result<ChatAdmission, Self::Error>
+  fn observe(&self, request: ::std::string::String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> ::std::result::Result<ChatPage, Self::Error>
+  fn cancel(&self, request: ::std::string::String) -> ::std::result::Result<ChatCancellation, Self::Error>
+pub struct ChatV3Client<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait Preloader
   type Error
-  fn preload(&self, request: Request) -> Result<PreloadReply, Self::Error>
+  fn preload(&self, request: Request) -> ::std::result::Result<PreloadReply, Self::Error>
 pub struct PreloaderClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait Embedder
   type Error
-  fn embed(&self, request: EmbedRequest) -> Result<Embeddings, Self::Error>
+  fn embed(&self, request: EmbedRequest) -> ::std::result::Result<Embeddings, Self::Error>
 pub struct EmbedderClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait Transcription
   type Error
-  fn start(&self, request: TranscriptionRequest) -> Result<Admission, Self::Error>
-  fn observe(&self, operation: String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> Result<DeltaPage, Self::Error>
-  fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error>
+  fn start(&self, request: TranscriptionRequest) -> ::std::result::Result<Admission, Self::Error>
+  fn observe(&self, operation: ::std::string::String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> ::std::result::Result<DeltaPage, Self::Error>
+  fn cancel(&self, operation: ::std::string::String) -> ::std::result::Result<Cancellation, Self::Error>
 pub struct TranscriptionClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait Speech
   type Error
-  fn start(&self, request: SpeechRequest) -> Result<Admission, Self::Error>
-  fn observe(&self, operation: String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> Result<DeltaPage, Self::Error>
-  fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error>
+  fn start(&self, request: SpeechRequest) -> ::std::result::Result<Admission, Self::Error>
+  fn observe(&self, operation: ::std::string::String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> ::std::result::Result<DeltaPage, Self::Error>
+  fn cancel(&self, operation: ::std::string::String) -> ::std::result::Result<Cancellation, Self::Error>
 pub struct SpeechClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait Live
   type Error
-  fn start(&self, request: LiveRequest) -> Result<Admission, Self::Error>
-  fn append(&self, operation: String, sequence: i64, audio: Vec<u8>) -> Result<LiveInputResult, Self::Error>
-  fn observe(&self, operation: String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> Result<DeltaPage, Self::Error>
-  fn commit(&self, operation: String) -> Result<LiveInputResult, Self::Error>
-  fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error>
+  fn start(&self, request: LiveRequest) -> ::std::result::Result<Admission, Self::Error>
+  fn append(&self, operation: ::std::string::String, sequence: i64, audio: ::std::vec::Vec<u8>) -> ::std::result::Result<LiveInputResult, Self::Error>
+  fn observe(&self, operation: ::std::string::String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> ::std::result::Result<DeltaPage, Self::Error>
+  fn commit(&self, operation: ::std::string::String) -> ::std::result::Result<LiveInputResult, Self::Error>
+  fn cancel(&self, operation: ::std::string::String) -> ::std::result::Result<Cancellation, Self::Error>
 pub struct LiveClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait Image
   type Error
-  fn start(&self, request: ImageRequest) -> Result<Admission, Self::Error>
-  fn observe(&self, operation: String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> Result<DeltaPage, Self::Error>
-  fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error>
+  fn start(&self, request: ImageRequest) -> ::std::result::Result<Admission, Self::Error>
+  fn observe(&self, operation: ::std::string::String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> ::std::result::Result<DeltaPage, Self::Error>
+  fn cancel(&self, operation: ::std::string::String) -> ::std::result::Result<Cancellation, Self::Error>
 pub struct ImageClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait ImageV2
   type Error
-  fn start(&self, request: ImageRequestV2) -> Result<AdmissionV2, Self::Error>
-  fn observe(&self, operation: String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> Result<DeltaPage, Self::Error>
-  fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error>
+  fn start_with_guarantees(&self, request: ImageRequestV2, guarantees: ::std::vec::Vec<::std::string::String>) -> ::std::result::Result<AdmissionV2, Self::Error>
+  fn start(&self, request: ImageRequestV2) -> ::std::result::Result<AdmissionV2, Self::Error>
+  fn observe(&self, operation: ::std::string::String, cursor: i64, max_deltas: i64, max_bytes: i64, wait_ms: i64) -> ::std::result::Result<DeltaPage, Self::Error>
+  fn cancel(&self, operation: ::std::string::String) -> ::std::result::Result<Cancellation, Self::Error>
 pub struct ImageV2Client<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait Video
   type Error
-  fn start(&self, request: VideoRequest) -> Result<VideoAdmission, Self::Error>
-  fn observe(&self, operation: String) -> Result<VideoObservation, Self::Error>
-  fn cancel(&self, operation: String) -> Result<Cancellation, Self::Error>
+  fn start(&self, request: VideoRequest) -> ::std::result::Result<VideoAdmission, Self::Error>
+  fn observe(&self, operation: ::std::string::String) -> ::std::result::Result<VideoObservation, Self::Error>
+  fn cancel(&self, operation: ::std::string::String) -> ::std::result::Result<Cancellation, Self::Error>
 pub struct VideoClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait Operator
   type Error
-  fn hosts(&self) -> Result<HostList, Self::Error>
-  fn add_host(&self, expected_revision: String, host: HostEntry) -> Result<HostChange, Self::Error>
-  fn remove_host(&self, expected_revision: String, name: String) -> Result<HostChange, Self::Error>
-  fn keys(&self) -> Result<KeyList, Self::Error>
-  fn issue_key(&self, program: String, credential: String) -> Result<KeyIssued, Self::Error>
-  fn revoke_key(&self, program: String) -> Result<KeyRevoked, Self::Error>
-  fn audit(&self, cursor: i64, max_entries: i64) -> Result<AuditPage, Self::Error>
-  fn gateway(&self) -> Result<GatewayState, Self::Error>
-  fn set_gateway(&self, expected_revision: String, open: bool, address: String) -> Result<GatewayChange, Self::Error>
+  fn hosts(&self) -> ::std::result::Result<HostList, Self::Error>
+  fn add_host(&self, expected_revision: ::std::string::String, host: HostEntry) -> ::std::result::Result<HostChange, Self::Error>
+  fn remove_host(&self, expected_revision: ::std::string::String, name: ::std::string::String) -> ::std::result::Result<HostChange, Self::Error>
+  fn keys(&self) -> ::std::result::Result<KeyList, Self::Error>
+  fn issue_key(&self, program: ::std::string::String, credential: ::std::string::String) -> ::std::result::Result<KeyIssued, Self::Error>
+  fn revoke_key(&self, program: ::std::string::String) -> ::std::result::Result<KeyRevoked, Self::Error>
+  fn audit(&self, cursor: i64, max_entries: i64) -> ::std::result::Result<AuditPage, Self::Error>
+  fn requests(&self, cursor: i64, max_entries: i64) -> ::std::result::Result<RequestPage, Self::Error>
+  fn gateway(&self) -> ::std::result::Result<GatewayState, Self::Error>
+  fn set_gateway(&self, expected_revision: ::std::string::String, open: bool, address: ::std::string::String) -> ::std::result::Result<GatewayChange, Self::Error>
+  fn program_budgets(&self, credential: ::std::string::String) -> ::std::result::Result<ProgramBudgetPage, Self::Error>
+  fn set_program_budget(&self, request: ProgramBudgetChange) -> ::std::result::Result<ProgramBudgetResult, Self::Error>
 pub struct OperatorClient<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
 pub trait SelectionOperatorV2
   type Error
-  fn read(&self, target_program: String, name: String) -> Result<SelectionReadV2, Self::Error>
-  fn put(&self, target_program: String, expected_revision: String, policy: SelectionPolicyV2) -> Result<SelectionChange, Self::Error>
-  fn delete_policy(&self, target_program: String, expected_revision: String, name: String) -> Result<SelectionChange, Self::Error>
+  fn read_effective(&self, name: ::std::string::String) -> ::std::result::Result<SelectionReadV2, Self::Error>
+  fn read(&self, target_program: ::std::string::String, name: ::std::string::String) -> ::std::result::Result<SelectionReadV2, Self::Error>
+  fn put(&self, target_program: ::std::string::String, expected_revision: ::std::string::String, policy: SelectionPolicyV2) -> ::std::result::Result<SelectionChange, Self::Error>
+  fn delete_policy(&self, target_program: ::std::string::String, expected_revision: ::std::string::String, name: ::std::string::String) -> ::std::result::Result<SelectionChange, Self::Error>
+  fn read_account_default(&self, name: ::std::string::String) -> ::std::result::Result<SelectionReadV2, Self::Error>
+  fn put_account_default(&self, expected_revision: ::std::string::String, policy: SelectionPolicyV2) -> ::std::result::Result<SelectionChange, Self::Error>
+  fn delete_account_default(&self, expected_revision: ::std::string::String, name: ::std::string::String) -> ::std::result::Result<SelectionChange, Self::Error>
 pub struct SelectionOperatorV2Client<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
+pub fn encode_part_document(v: &Part) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_part_document(data: &[u8]) -> ::std::result::Result<Part, Refusal>
+pub fn encode_message_document(v: &Message) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_message_document(data: &[u8]) -> ::std::result::Result<Message, Refusal>
+pub fn encode_tool_document(v: &Tool) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_tool_document(data: &[u8]) -> ::std::result::Result<Tool, Refusal>
+pub fn encode_temperature_document(v: &Temperature) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_temperature_document(data: &[u8]) -> ::std::result::Result<Temperature, Refusal>
+pub fn encode_options_document(v: &Options) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_options_document(data: &[u8]) -> ::std::result::Result<Options, Refusal>
+pub fn encode_request_document(v: &Request) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_request_document(data: &[u8]) -> ::std::result::Result<Request, Refusal>
+pub fn encode_target_document(v: &Target) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_target_document(data: &[u8]) -> ::std::result::Result<Target, Refusal>
+pub fn encode_request_content_document(v: &RequestContent) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_request_content_document(data: &[u8]) -> ::std::result::Result<RequestContent, Refusal>
+pub fn encode_request_v2_document(v: &RequestV2) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_request_v2_document(data: &[u8]) -> ::std::result::Result<RequestV2, Refusal>
+pub fn encode_usage_document(v: &Usage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_usage_document(data: &[u8]) -> ::std::result::Result<Usage, Refusal>
+pub fn encode_cost_document(v: &Cost) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_cost_document(data: &[u8]) -> ::std::result::Result<Cost, Refusal>
+pub fn encode_reply_document(v: &Reply) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_reply_document(data: &[u8]) -> ::std::result::Result<Reply, Refusal>
+pub fn encode_delta_document(v: &Delta) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_delta_document(data: &[u8]) -> ::std::result::Result<Delta, Refusal>
+pub fn encode_admission_document(v: &Admission) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_admission_document(data: &[u8]) -> ::std::result::Result<Admission, Refusal>
+pub fn encode_admission_v2_document(v: &AdmissionV2) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_admission_v2_document(data: &[u8]) -> ::std::result::Result<AdmissionV2, Refusal>
+pub fn encode_delta_page_document(v: &DeltaPage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_delta_page_document(data: &[u8]) -> ::std::result::Result<DeltaPage, Refusal>
+pub fn encode_cancellation_document(v: &Cancellation) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_cancellation_document(data: &[u8]) -> ::std::result::Result<Cancellation, Refusal>
+pub fn encode_chat_progress_document(v: &ChatProgress) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_progress_document(data: &[u8]) -> ::std::result::Result<ChatProgress, Refusal>
+pub fn encode_chat_usage_document(v: &ChatUsage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_usage_document(data: &[u8]) -> ::std::result::Result<ChatUsage, Refusal>
+pub fn encode_chat_tool_choice_document(v: &ChatToolChoice) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_tool_choice_document(data: &[u8]) -> ::std::result::Result<ChatToolChoice, Refusal>
+pub fn encode_chat_tool_document(v: &ChatTool) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_tool_document(data: &[u8]) -> ::std::result::Result<ChatTool, Refusal>
+pub fn encode_chat_reasoning_document(v: &ChatReasoning) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_reasoning_document(data: &[u8]) -> ::std::result::Result<ChatReasoning, Refusal>
+pub fn encode_chat_options_document(v: &ChatOptions) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_options_document(data: &[u8]) -> ::std::result::Result<ChatOptions, Refusal>
+pub fn encode_chat_part_document(v: &ChatPart) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_part_document(data: &[u8]) -> ::std::result::Result<ChatPart, Refusal>
+pub fn encode_chat_block_end_document(v: &ChatBlockEnd) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_block_end_document(data: &[u8]) -> ::std::result::Result<ChatBlockEnd, Refusal>
+pub fn encode_reasoning_seal_document(v: &ReasoningSeal) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_reasoning_seal_document(data: &[u8]) -> ::std::result::Result<ReasoningSeal, Refusal>
+pub fn encode_served_by_document(v: &ServedBy) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_served_by_document(data: &[u8]) -> ::std::result::Result<ServedBy, Refusal>
+pub fn encode_chat_input_part_document(v: &ChatInputPart) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_input_part_document(data: &[u8]) -> ::std::result::Result<ChatInputPart, Refusal>
+pub fn encode_chat_replay_document(v: &ChatReplay) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_replay_document(data: &[u8]) -> ::std::result::Result<ChatReplay, Refusal>
+pub fn encode_chat_message_document(v: &ChatMessage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_message_document(data: &[u8]) -> ::std::result::Result<ChatMessage, Refusal>
+pub fn encode_chat_target_document(v: &ChatTarget) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_target_document(data: &[u8]) -> ::std::result::Result<ChatTarget, Refusal>
+pub fn encode_chat_content_document(v: &ChatContent) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_content_document(data: &[u8]) -> ::std::result::Result<ChatContent, Refusal>
+pub fn encode_request_v3_document(v: &RequestV3) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_request_v3_document(data: &[u8]) -> ::std::result::Result<RequestV3, Refusal>
+pub fn encode_chat_timing_document(v: &ChatTiming) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_timing_document(data: &[u8]) -> ::std::result::Result<ChatTiming, Refusal>
+pub fn encode_chat_reasoning_applied_document(v: &ChatReasoningApplied) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_reasoning_applied_document(data: &[u8]) -> ::std::result::Result<ChatReasoningApplied, Refusal>
+pub fn encode_chat_result_document(v: &ChatResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_result_document(data: &[u8]) -> ::std::result::Result<ChatResult, Refusal>
+pub fn encode_chat_event_document(v: &ChatEvent) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_event_document(data: &[u8]) -> ::std::result::Result<ChatEvent, Refusal>
+pub fn encode_chat_admission_document(v: &ChatAdmission) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_admission_document(data: &[u8]) -> ::std::result::Result<ChatAdmission, Refusal>
+pub fn encode_chat_page_document(v: &ChatPage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_page_document(data: &[u8]) -> ::std::result::Result<ChatPage, Refusal>
+pub fn encode_chat_cancellation_document(v: &ChatCancellation) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_cancellation_document(data: &[u8]) -> ::std::result::Result<ChatCancellation, Refusal>
+pub fn encode_chat_history_read_document(v: &ChatHistoryRead) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_chat_history_read_document(data: &[u8]) -> ::std::result::Result<ChatHistoryRead, Refusal>
+pub fn encode_preload_reply_document(v: &PreloadReply) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_preload_reply_document(data: &[u8]) -> ::std::result::Result<PreloadReply, Refusal>
+pub fn encode_embed_request_document(v: &EmbedRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_embed_request_document(data: &[u8]) -> ::std::result::Result<EmbedRequest, Refusal>
+pub fn encode_embeddings_document(v: &Embeddings) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_embeddings_document(data: &[u8]) -> ::std::result::Result<Embeddings, Refusal>
+pub fn encode_transcription_request_document(v: &TranscriptionRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_transcription_request_document(data: &[u8]) -> ::std::result::Result<TranscriptionRequest, Refusal>
+pub fn encode_transcript_segment_document(v: &TranscriptSegment) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_transcript_segment_document(data: &[u8]) -> ::std::result::Result<TranscriptSegment, Refusal>
+pub fn encode_transcription_reply_document(v: &TranscriptionReply) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_transcription_reply_document(data: &[u8]) -> ::std::result::Result<TranscriptionReply, Refusal>
+pub fn encode_speech_request_document(v: &SpeechRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_speech_request_document(data: &[u8]) -> ::std::result::Result<SpeechRequest, Refusal>
+pub fn encode_audio_chunk_document(v: &AudioChunk) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_audio_chunk_document(data: &[u8]) -> ::std::result::Result<AudioChunk, Refusal>
+pub fn encode_delivery_document(v: &Delivery) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_delivery_document(data: &[u8]) -> ::std::result::Result<Delivery, Refusal>
+pub fn encode_speech_reply_document(v: &SpeechReply) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_speech_reply_document(data: &[u8]) -> ::std::result::Result<SpeechReply, Refusal>
+pub fn encode_live_request_document(v: &LiveRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_live_request_document(data: &[u8]) -> ::std::result::Result<LiveRequest, Refusal>
+pub fn encode_live_input_result_document(v: &LiveInputResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_live_input_result_document(data: &[u8]) -> ::std::result::Result<LiveInputResult, Refusal>
+pub fn encode_live_transcript_document(v: &LiveTranscript) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_live_transcript_document(data: &[u8]) -> ::std::result::Result<LiveTranscript, Refusal>
+pub fn encode_live_reply_document(v: &LiveReply) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_live_reply_document(data: &[u8]) -> ::std::result::Result<LiveReply, Refusal>
+pub fn encode_image_request_document(v: &ImageRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_image_request_document(data: &[u8]) -> ::std::result::Result<ImageRequest, Refusal>
+pub fn encode_image_request_content_document(v: &ImageRequestContent) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_image_request_content_document(data: &[u8]) -> ::std::result::Result<ImageRequestContent, Refusal>
+pub fn encode_image_request_v2_document(v: &ImageRequestV2) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_image_request_v2_document(data: &[u8]) -> ::std::result::Result<ImageRequestV2, Refusal>
+pub fn encode_image_progress_document(v: &ImageProgress) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_image_progress_document(data: &[u8]) -> ::std::result::Result<ImageProgress, Refusal>
+pub fn encode_image_result_document(v: &ImageResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_image_result_document(data: &[u8]) -> ::std::result::Result<ImageResult, Refusal>
+pub fn encode_image_reply_document(v: &ImageReply) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_image_reply_document(data: &[u8]) -> ::std::result::Result<ImageReply, Refusal>
+pub fn encode_video_request_document(v: &VideoRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_video_request_document(data: &[u8]) -> ::std::result::Result<VideoRequest, Refusal>
+pub fn encode_video_admission_document(v: &VideoAdmission) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_video_admission_document(data: &[u8]) -> ::std::result::Result<VideoAdmission, Refusal>
+pub fn encode_video_observation_document(v: &VideoObservation) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_video_observation_document(data: &[u8]) -> ::std::result::Result<VideoObservation, Refusal>
+pub fn encode_ceiling_limit_document(v: &CeilingLimit) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_ceiling_limit_document(data: &[u8]) -> ::std::result::Result<CeilingLimit, Refusal>
+pub fn encode_host_entry_document(v: &HostEntry) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_host_entry_document(data: &[u8]) -> ::std::result::Result<HostEntry, Refusal>
+pub fn encode_spend_document(v: &Spend) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_spend_document(data: &[u8]) -> ::std::result::Result<Spend, Refusal>
+pub fn encode_host_state_document(v: &HostState) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_host_state_document(data: &[u8]) -> ::std::result::Result<HostState, Refusal>
+pub fn encode_host_list_document(v: &HostList) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_host_list_document(data: &[u8]) -> ::std::result::Result<HostList, Refusal>
+pub fn encode_host_change_document(v: &HostChange) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_host_change_document(data: &[u8]) -> ::std::result::Result<HostChange, Refusal>
+pub fn encode_local_key_document(v: &LocalKey) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_local_key_document(data: &[u8]) -> ::std::result::Result<LocalKey, Refusal>
+pub fn encode_key_list_document(v: &KeyList) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_key_list_document(data: &[u8]) -> ::std::result::Result<KeyList, Refusal>
+pub fn encode_key_issued_document(v: &KeyIssued) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_key_issued_document(data: &[u8]) -> ::std::result::Result<KeyIssued, Refusal>
+pub fn encode_key_revoked_document(v: &KeyRevoked) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_key_revoked_document(data: &[u8]) -> ::std::result::Result<KeyRevoked, Refusal>
+pub fn encode_audit_entry_document(v: &AuditEntry) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_audit_entry_document(data: &[u8]) -> ::std::result::Result<AuditEntry, Refusal>
+pub fn encode_audit_page_document(v: &AuditPage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_audit_page_document(data: &[u8]) -> ::std::result::Result<AuditPage, Refusal>
+pub fn encode_request_entry_document(v: &RequestEntry) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_request_entry_document(data: &[u8]) -> ::std::result::Result<RequestEntry, Refusal>
+pub fn encode_request_page_document(v: &RequestPage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_request_page_document(data: &[u8]) -> ::std::result::Result<RequestPage, Refusal>
+pub fn encode_gateway_state_document(v: &GatewayState) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_gateway_state_document(data: &[u8]) -> ::std::result::Result<GatewayState, Refusal>
+pub fn encode_gateway_change_document(v: &GatewayChange) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_gateway_change_document(data: &[u8]) -> ::std::result::Result<GatewayChange, Refusal>
+pub fn encode_program_budget_document(v: &ProgramBudget) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_program_budget_document(data: &[u8]) -> ::std::result::Result<ProgramBudget, Refusal>
+pub fn encode_program_budget_entry_document(v: &ProgramBudgetEntry) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_program_budget_entry_document(data: &[u8]) -> ::std::result::Result<ProgramBudgetEntry, Refusal>
+pub fn encode_program_budget_page_document(v: &ProgramBudgetPage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_program_budget_page_document(data: &[u8]) -> ::std::result::Result<ProgramBudgetPage, Refusal>
+pub fn encode_program_budget_result_document(v: &ProgramBudgetResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_program_budget_result_document(data: &[u8]) -> ::std::result::Result<ProgramBudgetResult, Refusal>
+pub fn encode_program_budget_change_document(v: &ProgramBudgetChange) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_program_budget_change_document(data: &[u8]) -> ::std::result::Result<ProgramBudgetChange, Refusal>
+pub fn encode_selection_change_document(v: &SelectionChange) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_selection_change_document(data: &[u8]) -> ::std::result::Result<SelectionChange, Refusal>
+pub fn encode_selection_candidate_v2_document(v: &SelectionCandidateV2) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_selection_candidate_v2_document(data: &[u8]) -> ::std::result::Result<SelectionCandidateV2, Refusal>
+pub fn encode_selection_policy_v2_document(v: &SelectionPolicyV2) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_selection_policy_v2_document(data: &[u8]) -> ::std::result::Result<SelectionPolicyV2, Refusal>
+pub fn encode_selection_read_v2_document(v: &SelectionReadV2) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_selection_read_v2_document(data: &[u8]) -> ::std::result::Result<SelectionReadV2, Refusal>
+pub mod internal
+  pub fn decode_part_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Part, usize), super::Refusal>
+  pub fn check_part(v: &super::Part, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_part_at(v: &super::Part, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_message_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Message, usize), super::Refusal>
+  pub fn check_message(v: &super::Message, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_message_at(v: &super::Message, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_tool_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Tool, usize), super::Refusal>
+  pub fn check_tool(v: &super::Tool, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_tool_at(v: &super::Tool, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_temperature_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Temperature, usize), super::Refusal>
+  pub fn check_temperature(v: &super::Temperature, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_temperature_at(v: &super::Temperature, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_options_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Options, usize), super::Refusal>
+  pub fn check_options(v: &super::Options, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_options_at(v: &super::Options, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Request, usize), super::Refusal>
+  pub fn check_request(v: &super::Request, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_request_at(v: &super::Request, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_target_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Target, usize), super::Refusal>
+  pub fn check_target(v: &super::Target, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_target_at(v: &super::Target, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_request_content_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::RequestContent, usize), super::Refusal>
+  pub fn check_request_content(v: &super::RequestContent, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_request_content_at(v: &super::RequestContent, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_request_v2_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::RequestV2, usize), super::Refusal>
+  pub fn check_request_v2(v: &super::RequestV2, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_request_v2_at(v: &super::RequestV2, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_usage_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Usage, usize), super::Refusal>
+  pub fn check_usage(v: &super::Usage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_usage_at(v: &super::Usage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_cost_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Cost, usize), super::Refusal>
+  pub fn check_cost(v: &super::Cost, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_cost_at(v: &super::Cost, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_reply_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Reply, usize), super::Refusal>
+  pub fn check_reply(v: &super::Reply, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_reply_at(v: &super::Reply, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_delta_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Delta, usize), super::Refusal>
+  pub fn check_delta(v: &super::Delta, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_delta_at(v: &super::Delta, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_admission_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Admission, usize), super::Refusal>
+  pub fn check_admission(v: &super::Admission, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_admission_at(v: &super::Admission, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_admission_v2_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AdmissionV2, usize), super::Refusal>
+  pub fn check_admission_v2(v: &super::AdmissionV2, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_admission_v2_at(v: &super::AdmissionV2, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_delta_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::DeltaPage, usize), super::Refusal>
+  pub fn check_delta_page(v: &super::DeltaPage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_delta_page_at(v: &super::DeltaPage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_cancellation_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Cancellation, usize), super::Refusal>
+  pub fn check_cancellation(v: &super::Cancellation, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_cancellation_at(v: &super::Cancellation, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_progress_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatProgress, usize), super::Refusal>
+  pub fn check_chat_progress(v: &super::ChatProgress, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_progress_at(v: &super::ChatProgress, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_usage_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatUsage, usize), super::Refusal>
+  pub fn check_chat_usage(v: &super::ChatUsage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_usage_at(v: &super::ChatUsage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_tool_choice_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatToolChoice, usize), super::Refusal>
+  pub fn check_chat_tool_choice(v: &super::ChatToolChoice, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_tool_choice_at(v: &super::ChatToolChoice, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_tool_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatTool, usize), super::Refusal>
+  pub fn check_chat_tool(v: &super::ChatTool, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_tool_at(v: &super::ChatTool, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_reasoning_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatReasoning, usize), super::Refusal>
+  pub fn check_chat_reasoning(v: &super::ChatReasoning, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_reasoning_at(v: &super::ChatReasoning, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_options_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatOptions, usize), super::Refusal>
+  pub fn check_chat_options(v: &super::ChatOptions, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_options_at(v: &super::ChatOptions, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_part_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatPart, usize), super::Refusal>
+  pub fn check_chat_part(v: &super::ChatPart, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_part_at(v: &super::ChatPart, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_block_end_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatBlockEnd, usize), super::Refusal>
+  pub fn check_chat_block_end(v: &super::ChatBlockEnd, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_block_end_at(v: &super::ChatBlockEnd, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_reasoning_seal_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ReasoningSeal, usize), super::Refusal>
+  pub fn check_reasoning_seal(v: &super::ReasoningSeal, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_reasoning_seal_at(v: &super::ReasoningSeal, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_served_by_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ServedBy, usize), super::Refusal>
+  pub fn check_served_by(v: &super::ServedBy, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_served_by_at(v: &super::ServedBy, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_input_part_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatInputPart, usize), super::Refusal>
+  pub fn check_chat_input_part(v: &super::ChatInputPart, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_input_part_at(v: &super::ChatInputPart, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_replay_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatReplay, usize), super::Refusal>
+  pub fn check_chat_replay(v: &super::ChatReplay, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_replay_at(v: &super::ChatReplay, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_message_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatMessage, usize), super::Refusal>
+  pub fn check_chat_message(v: &super::ChatMessage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_message_at(v: &super::ChatMessage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_target_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatTarget, usize), super::Refusal>
+  pub fn check_chat_target(v: &super::ChatTarget, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_target_at(v: &super::ChatTarget, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_content_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatContent, usize), super::Refusal>
+  pub fn check_chat_content(v: &super::ChatContent, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_content_at(v: &super::ChatContent, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_request_v3_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::RequestV3, usize), super::Refusal>
+  pub fn check_request_v3(v: &super::RequestV3, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_request_v3_at(v: &super::RequestV3, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_timing_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatTiming, usize), super::Refusal>
+  pub fn check_chat_timing(v: &super::ChatTiming, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_timing_at(v: &super::ChatTiming, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_reasoning_applied_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatReasoningApplied, usize), super::Refusal>
+  pub fn check_chat_reasoning_applied(v: &super::ChatReasoningApplied, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_reasoning_applied_at(v: &super::ChatReasoningApplied, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatResult, usize), super::Refusal>
+  pub fn check_chat_result(v: &super::ChatResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_result_at(v: &super::ChatResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_event_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatEvent, usize), super::Refusal>
+  pub fn check_chat_event(v: &super::ChatEvent, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_event_at(v: &super::ChatEvent, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_admission_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatAdmission, usize), super::Refusal>
+  pub fn check_chat_admission(v: &super::ChatAdmission, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_admission_at(v: &super::ChatAdmission, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatPage, usize), super::Refusal>
+  pub fn check_chat_page(v: &super::ChatPage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_page_at(v: &super::ChatPage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_cancellation_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatCancellation, usize), super::Refusal>
+  pub fn check_chat_cancellation(v: &super::ChatCancellation, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_cancellation_at(v: &super::ChatCancellation, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_chat_history_read_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChatHistoryRead, usize), super::Refusal>
+  pub fn check_chat_history_read(v: &super::ChatHistoryRead, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_chat_history_read_at(v: &super::ChatHistoryRead, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_preload_reply_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::PreloadReply, usize), super::Refusal>
+  pub fn check_preload_reply(v: &super::PreloadReply, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_preload_reply_at(v: &super::PreloadReply, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_embed_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::EmbedRequest, usize), super::Refusal>
+  pub fn check_embed_request(v: &super::EmbedRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_embed_request_at(v: &super::EmbedRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_embeddings_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Embeddings, usize), super::Refusal>
+  pub fn check_embeddings(v: &super::Embeddings, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_embeddings_at(v: &super::Embeddings, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_transcription_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::TranscriptionRequest, usize), super::Refusal>
+  pub fn check_transcription_request(v: &super::TranscriptionRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_transcription_request_at(v: &super::TranscriptionRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_transcript_segment_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::TranscriptSegment, usize), super::Refusal>
+  pub fn check_transcript_segment(v: &super::TranscriptSegment, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_transcript_segment_at(v: &super::TranscriptSegment, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_transcription_reply_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::TranscriptionReply, usize), super::Refusal>
+  pub fn check_transcription_reply(v: &super::TranscriptionReply, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_transcription_reply_at(v: &super::TranscriptionReply, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_speech_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::SpeechRequest, usize), super::Refusal>
+  pub fn check_speech_request(v: &super::SpeechRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_speech_request_at(v: &super::SpeechRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_audio_chunk_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AudioChunk, usize), super::Refusal>
+  pub fn check_audio_chunk(v: &super::AudioChunk, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_audio_chunk_at(v: &super::AudioChunk, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_delivery_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Delivery, usize), super::Refusal>
+  pub fn check_delivery(v: &super::Delivery, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_delivery_at(v: &super::Delivery, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_speech_reply_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::SpeechReply, usize), super::Refusal>
+  pub fn check_speech_reply(v: &super::SpeechReply, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_speech_reply_at(v: &super::SpeechReply, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_live_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::LiveRequest, usize), super::Refusal>
+  pub fn check_live_request(v: &super::LiveRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_live_request_at(v: &super::LiveRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_live_input_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::LiveInputResult, usize), super::Refusal>
+  pub fn check_live_input_result(v: &super::LiveInputResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_live_input_result_at(v: &super::LiveInputResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_live_transcript_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::LiveTranscript, usize), super::Refusal>
+  pub fn check_live_transcript(v: &super::LiveTranscript, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_live_transcript_at(v: &super::LiveTranscript, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_live_reply_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::LiveReply, usize), super::Refusal>
+  pub fn check_live_reply(v: &super::LiveReply, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_live_reply_at(v: &super::LiveReply, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_image_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ImageRequest, usize), super::Refusal>
+  pub fn check_image_request(v: &super::ImageRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_image_request_at(v: &super::ImageRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_image_request_content_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ImageRequestContent, usize), super::Refusal>
+  pub fn check_image_request_content(v: &super::ImageRequestContent, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_image_request_content_at(v: &super::ImageRequestContent, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_image_request_v2_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ImageRequestV2, usize), super::Refusal>
+  pub fn check_image_request_v2(v: &super::ImageRequestV2, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_image_request_v2_at(v: &super::ImageRequestV2, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_image_progress_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ImageProgress, usize), super::Refusal>
+  pub fn check_image_progress(v: &super::ImageProgress, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_image_progress_at(v: &super::ImageProgress, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_image_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ImageResult, usize), super::Refusal>
+  pub fn check_image_result(v: &super::ImageResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_image_result_at(v: &super::ImageResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_image_reply_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ImageReply, usize), super::Refusal>
+  pub fn check_image_reply(v: &super::ImageReply, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_image_reply_at(v: &super::ImageReply, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_video_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::VideoRequest, usize), super::Refusal>
+  pub fn check_video_request(v: &super::VideoRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_video_request_at(v: &super::VideoRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_video_admission_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::VideoAdmission, usize), super::Refusal>
+  pub fn check_video_admission(v: &super::VideoAdmission, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_video_admission_at(v: &super::VideoAdmission, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_video_observation_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::VideoObservation, usize), super::Refusal>
+  pub fn check_video_observation(v: &super::VideoObservation, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_video_observation_at(v: &super::VideoObservation, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_ceiling_limit_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::CeilingLimit, usize), super::Refusal>
+  pub fn check_ceiling_limit(v: &super::CeilingLimit, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_ceiling_limit_at(v: &super::CeilingLimit, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_host_entry_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::HostEntry, usize), super::Refusal>
+  pub fn check_host_entry(v: &super::HostEntry, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_host_entry_at(v: &super::HostEntry, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_spend_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Spend, usize), super::Refusal>
+  pub fn check_spend(v: &super::Spend, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_spend_at(v: &super::Spend, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_host_state_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::HostState, usize), super::Refusal>
+  pub fn check_host_state(v: &super::HostState, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_host_state_at(v: &super::HostState, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_host_list_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::HostList, usize), super::Refusal>
+  pub fn check_host_list(v: &super::HostList, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_host_list_at(v: &super::HostList, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_host_change_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::HostChange, usize), super::Refusal>
+  pub fn check_host_change(v: &super::HostChange, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_host_change_at(v: &super::HostChange, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_local_key_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::LocalKey, usize), super::Refusal>
+  pub fn check_local_key(v: &super::LocalKey, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_local_key_at(v: &super::LocalKey, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_key_list_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::KeyList, usize), super::Refusal>
+  pub fn check_key_list(v: &super::KeyList, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_key_list_at(v: &super::KeyList, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_key_issued_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::KeyIssued, usize), super::Refusal>
+  pub fn check_key_issued(v: &super::KeyIssued, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_key_issued_at(v: &super::KeyIssued, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_key_revoked_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::KeyRevoked, usize), super::Refusal>
+  pub fn check_key_revoked(v: &super::KeyRevoked, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_key_revoked_at(v: &super::KeyRevoked, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_audit_entry_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AuditEntry, usize), super::Refusal>
+  pub fn check_audit_entry(v: &super::AuditEntry, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_audit_entry_at(v: &super::AuditEntry, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_audit_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AuditPage, usize), super::Refusal>
+  pub fn check_audit_page(v: &super::AuditPage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_audit_page_at(v: &super::AuditPage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_request_entry_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::RequestEntry, usize), super::Refusal>
+  pub fn check_request_entry(v: &super::RequestEntry, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_request_entry_at(v: &super::RequestEntry, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_request_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::RequestPage, usize), super::Refusal>
+  pub fn check_request_page(v: &super::RequestPage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_request_page_at(v: &super::RequestPage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_gateway_state_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::GatewayState, usize), super::Refusal>
+  pub fn check_gateway_state(v: &super::GatewayState, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_gateway_state_at(v: &super::GatewayState, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_gateway_change_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::GatewayChange, usize), super::Refusal>
+  pub fn check_gateway_change(v: &super::GatewayChange, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_gateway_change_at(v: &super::GatewayChange, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_program_budget_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ProgramBudget, usize), super::Refusal>
+  pub fn check_program_budget(v: &super::ProgramBudget, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_program_budget_at(v: &super::ProgramBudget, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_program_budget_entry_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ProgramBudgetEntry, usize), super::Refusal>
+  pub fn check_program_budget_entry(v: &super::ProgramBudgetEntry, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_program_budget_entry_at(v: &super::ProgramBudgetEntry, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_program_budget_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ProgramBudgetPage, usize), super::Refusal>
+  pub fn check_program_budget_page(v: &super::ProgramBudgetPage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_program_budget_page_at(v: &super::ProgramBudgetPage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_program_budget_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ProgramBudgetResult, usize), super::Refusal>
+  pub fn check_program_budget_result(v: &super::ProgramBudgetResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_program_budget_result_at(v: &super::ProgramBudgetResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_program_budget_change_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ProgramBudgetChange, usize), super::Refusal>
+  pub fn check_program_budget_change(v: &super::ProgramBudgetChange, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_program_budget_change_at(v: &super::ProgramBudgetChange, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_selection_change_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::SelectionChange, usize), super::Refusal>
+  pub fn check_selection_change(v: &super::SelectionChange, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_selection_change_at(v: &super::SelectionChange, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_selection_candidate_v2_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::SelectionCandidateV2, usize), super::Refusal>
+  pub fn check_selection_candidate_v2(v: &super::SelectionCandidateV2, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_selection_candidate_v2_at(v: &super::SelectionCandidateV2, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_selection_policy_v2_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::SelectionPolicyV2, usize), super::Refusal>
+  pub fn check_selection_policy_v2(v: &super::SelectionPolicyV2, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_selection_policy_v2_at(v: &super::SelectionPolicyV2, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_selection_read_v2_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::SelectionReadV2, usize), super::Refusal>
+  pub fn check_selection_read_v2(v: &super::SelectionReadV2, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_selection_read_v2_at(v: &super::SelectionReadV2, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>

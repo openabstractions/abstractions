@@ -1,0 +1,1556 @@
+[
+  {
+    "name": "all-zero-payloads",
+    "entries": [
+      {
+        "key": "boolean",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "integer",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "integer"
+        }
+      },
+      {
+        "key": "bytes",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "bytes"
+        }
+      },
+      {
+        "key": "duration",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "duration"
+        }
+      },
+      {
+        "key": "text",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "text"
+        }
+      },
+      {
+        "key": "choice",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "choice",
+          "choice": "second"
+        }
+      },
+      {
+        "key": "text_list",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "text_list"
+        }
+      },
+      {
+        "key": "text_map",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "text_map"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "boolean",
+        "set": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "integer",
+        "set": {
+          "kind": "integer"
+        }
+      },
+      {
+        "key": "bytes",
+        "set": {
+          "kind": "bytes"
+        }
+      },
+      {
+        "key": "duration",
+        "set": {
+          "kind": "duration"
+        }
+      },
+      {
+        "key": "text",
+        "set": {
+          "kind": "text"
+        }
+      },
+      {
+        "key": "choice",
+        "set": {
+          "kind": "choice",
+          "choice": "first"
+        }
+      },
+      {
+        "key": "text_list",
+        "set": {
+          "kind": "text_list"
+        }
+      },
+      {
+        "key": "text_map",
+        "set": {
+          "kind": "text_map"
+        }
+      }
+    ],
+    "expected": [
+      {
+        "key": "boolean",
+        "value": {
+          "kind": "boolean"
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            }
+          ]
+        }
+      },
+      {
+        "key": "integer",
+        "value": {
+          "kind": "integer"
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            }
+          ]
+        }
+      },
+      {
+        "key": "bytes",
+        "value": {
+          "kind": "bytes"
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            }
+          ]
+        }
+      },
+      {
+        "key": "duration",
+        "value": {
+          "kind": "duration"
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            }
+          ]
+        }
+      },
+      {
+        "key": "text",
+        "value": {
+          "kind": "text"
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            }
+          ]
+        }
+      },
+      {
+        "key": "choice",
+        "value": {
+          "kind": "choice",
+          "choice": "first"
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            }
+          ]
+        }
+      },
+      {
+        "key": "text_list",
+        "value": {
+          "kind": "text_list"
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            }
+          ]
+        }
+      },
+      {
+        "key": "text_map",
+        "value": {
+          "kind": "text_map"
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "all-nonzero-payloads",
+    "entries": [
+      {
+        "key": "boolean",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "integer",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "integer"
+        }
+      },
+      {
+        "key": "bytes",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "bytes"
+        }
+      },
+      {
+        "key": "duration",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "duration"
+        }
+      },
+      {
+        "key": "text",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "text"
+        }
+      },
+      {
+        "key": "choice",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "choice",
+          "choice": "second"
+        }
+      },
+      {
+        "key": "text_list",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "text_list"
+        }
+      },
+      {
+        "key": "text_map",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "text_map"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "boolean",
+        "set": {
+          "kind": "boolean",
+          "boolean": true
+        }
+      },
+      {
+        "key": "integer",
+        "set": {
+          "kind": "integer",
+          "integer": 42
+        }
+      },
+      {
+        "key": "bytes",
+        "set": {
+          "kind": "bytes",
+          "bytes": 42
+        }
+      },
+      {
+        "key": "duration",
+        "set": {
+          "kind": "duration",
+          "duration_ms": 42
+        }
+      },
+      {
+        "key": "text",
+        "set": {
+          "kind": "text",
+          "text": "hello"
+        }
+      },
+      {
+        "key": "choice",
+        "set": {
+          "kind": "choice",
+          "choice": "second"
+        }
+      },
+      {
+        "key": "text_list",
+        "set": {
+          "kind": "text_list",
+          "text_list": [
+            "app"
+          ]
+        }
+      },
+      {
+        "key": "text_map",
+        "set": {
+          "kind": "text_map",
+          "text_map": {
+            "app": "reason"
+          }
+        }
+      }
+    ],
+    "expected": [
+      {
+        "key": "boolean",
+        "value": {
+          "kind": "boolean",
+          "boolean": true
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            }
+          ]
+        }
+      },
+      {
+        "key": "integer",
+        "value": {
+          "kind": "integer",
+          "integer": 42
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            }
+          ]
+        }
+      },
+      {
+        "key": "bytes",
+        "value": {
+          "kind": "bytes",
+          "bytes": 42
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            }
+          ]
+        }
+      },
+      {
+        "key": "duration",
+        "value": {
+          "kind": "duration",
+          "duration_ms": 42
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            }
+          ]
+        }
+      },
+      {
+        "key": "text",
+        "value": {
+          "kind": "text",
+          "text": "hello"
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            }
+          ]
+        }
+      },
+      {
+        "key": "choice",
+        "value": {
+          "kind": "choice",
+          "choice": "second"
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            }
+          ]
+        }
+      },
+      {
+        "key": "text_list",
+        "value": {
+          "kind": "text_list",
+          "text_list": [
+            "app"
+          ]
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            }
+          ]
+        }
+      },
+      {
+        "key": "text_map",
+        "value": {
+          "kind": "text_map",
+          "text_map": {
+            "app": "reason"
+          }
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "unset-falls-through",
+    "entries": [
+      {
+        "key": "integer",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "integer",
+          "integer": 7
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "integer"
+      }
+    ],
+    "expected": [
+      {
+        "key": "integer",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "integer",
+          "integer": 7
+        }
+      }
+    ]
+  },
+  {
+    "name": "missing-entry-never-injected",
+    "entries": [],
+    "changes": [
+      {
+        "key": "integer",
+        "set": {
+          "kind": "integer",
+          "integer": 3
+        }
+      }
+    ],
+    "expected": []
+  },
+  {
+    "name": "locked-entry-kept",
+    "entries": [
+      {
+        "key": "integer",
+        "value": {
+          "kind": "integer",
+          "integer": 7
+        },
+        "origin": {
+          "location": "machine",
+          "path": "machine.json",
+          "state": "locked"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "integer",
+        "set": {
+          "kind": "integer",
+          "integer": 3
+        }
+      }
+    ],
+    "expected": [
+      {
+        "key": "integer",
+        "value": {
+          "kind": "integer",
+          "integer": 7
+        },
+        "origin": {
+          "location": "machine",
+          "path": "machine.json",
+          "state": "locked"
+        }
+      }
+    ]
+  },
+  {
+    "name": "unknown-key",
+    "entries": [
+      {
+        "key": "integer",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "integer",
+          "integer": 7
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "integer",
+        "set": {
+          "kind": "integer",
+          "integer": 2
+        }
+      },
+      {
+        "key": "unknown",
+        "set": {
+          "kind": "integer",
+          "integer": 1
+        }
+      }
+    ],
+    "error": true
+  },
+  {
+    "name": "duplicate-key",
+    "entries": [
+      {
+        "key": "integer",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "integer",
+          "integer": 7
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "integer"
+      },
+      {
+        "key": "integer"
+      }
+    ],
+    "error": true
+  },
+  {
+    "name": "wrong-kind",
+    "entries": [
+      {
+        "key": "integer",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "integer",
+          "integer": 7
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "integer",
+        "set": {
+          "kind": "text",
+          "text": "wrong"
+        }
+      }
+    ],
+    "error": true
+  },
+  {
+    "name": "out-of-range",
+    "entries": [
+      {
+        "key": "integer",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "integer",
+          "integer": 7
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "integer",
+        "set": {
+          "kind": "integer",
+          "integer": 101
+        }
+      }
+    ],
+    "error": true
+  },
+  {
+    "name": "bad-choice",
+    "entries": [
+      {
+        "key": "choice",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "choice",
+          "choice": "first"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "choice",
+        "set": {
+          "kind": "choice",
+          "choice": "third"
+        }
+      }
+    ],
+    "error": true
+  },
+  {
+    "name": "non-tagged-payload",
+    "entries": [
+      {
+        "key": "integer",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "integer",
+          "integer": 7
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "integer",
+        "set": {
+          "kind": "integer",
+          "integer": 2,
+          "text": "wrong"
+        }
+      }
+    ],
+    "error": true
+  },
+  {
+    "name": "non-tagged-zero-accepted",
+    "entries": [
+      {
+        "key": "integer",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "integer",
+          "integer": 7
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "integer",
+        "set": {
+          "kind": "integer",
+          "integer": 0,
+          "text": ""
+        }
+      }
+    ],
+    "expected": [
+      {
+        "key": "integer",
+        "value": {
+          "kind": "integer"
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "bad-tag-in-service-value",
+    "entries": [
+      {
+        "key": "integer",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        },
+        "value": {
+          "kind": "integer",
+          "text": "wrong"
+        }
+      }
+    ],
+    "changes": [],
+    "error": true
+  },
+  {
+    "name": "shadow-chain",
+    "entries": [
+      {
+        "key": "integer",
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "machine",
+              "path": "machine.json"
+            }
+          ]
+        },
+        "value": {
+          "kind": "integer",
+          "integer": 7
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "integer",
+        "set": {
+          "kind": "integer",
+          "integer": 2
+        }
+      }
+    ],
+    "expected": [
+      {
+        "key": "integer",
+        "value": {
+          "kind": "integer",
+          "integer": 2
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            },
+            {
+              "location": "machine",
+              "path": "machine.json"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "idempotent-overlay",
+    "entries": [
+      {
+        "key": "integer",
+        "value": {
+          "kind": "integer",
+          "integer": 2
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            },
+            {
+              "location": "machine",
+              "path": "machine.json"
+            }
+          ]
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "integer",
+        "set": {
+          "kind": "integer",
+          "integer": 2
+        }
+      }
+    ],
+    "expected": [
+      {
+        "key": "integer",
+        "value": {
+          "kind": "integer",
+          "integer": 2
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            },
+            {
+              "location": "machine",
+              "path": "machine.json"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "bytes-out-of-range",
+    "entries": [
+      {
+        "key": "bytes",
+        "value": {
+          "kind": "bytes"
+        },
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "bytes",
+        "set": {
+          "kind": "bytes",
+          "bytes": 101
+        }
+      }
+    ],
+    "error": true
+  },
+  {
+    "name": "duration-out-of-range",
+    "entries": [
+      {
+        "key": "duration",
+        "value": {
+          "kind": "duration"
+        },
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "duration",
+        "set": {
+          "kind": "duration",
+          "duration_ms": 101
+        }
+      }
+    ],
+    "error": true
+  },
+  {
+    "name": "bytes-unlimited",
+    "entries": [
+      {
+        "key": "bytes",
+        "value": {
+          "kind": "bytes"
+        },
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "bytes",
+        "set": {
+          "kind": "unlimited"
+        }
+      }
+    ],
+    "expected": [
+      {
+        "key": "bytes",
+        "value": {
+          "kind": "unlimited"
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "duration-unlimited",
+    "entries": [
+      {
+        "key": "duration",
+        "value": {
+          "kind": "duration"
+        },
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "duration",
+        "set": {
+          "kind": "unlimited"
+        }
+      }
+    ],
+    "expected": [
+      {
+        "key": "duration",
+        "value": {
+          "kind": "unlimited"
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "boolean-unlimited-refused",
+    "entries": [
+      {
+        "key": "boolean",
+        "value": {
+          "kind": "boolean"
+        },
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "boolean",
+        "set": {
+          "kind": "unlimited"
+        }
+      }
+    ],
+    "error": true
+  },
+  {
+    "name": "integer-unlimited-refused",
+    "entries": [
+      {
+        "key": "integer",
+        "value": {
+          "kind": "integer"
+        },
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "integer",
+        "set": {
+          "kind": "unlimited"
+        }
+      }
+    ],
+    "error": true
+  },
+  {
+    "name": "unlimited-nonzero-boolean",
+    "entries": [
+      {
+        "key": "bytes",
+        "value": {
+          "kind": "bytes"
+        },
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "bytes",
+        "set": {
+          "kind": "unlimited",
+          "boolean": true
+        }
+      }
+    ],
+    "error": true
+  },
+  {
+    "name": "unlimited-nonzero-integer",
+    "entries": [
+      {
+        "key": "bytes",
+        "value": {
+          "kind": "bytes"
+        },
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "bytes",
+        "set": {
+          "kind": "unlimited",
+          "integer": 1
+        }
+      }
+    ],
+    "error": true
+  },
+  {
+    "name": "unlimited-nonzero-bytes",
+    "entries": [
+      {
+        "key": "bytes",
+        "value": {
+          "kind": "bytes"
+        },
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "bytes",
+        "set": {
+          "kind": "unlimited",
+          "bytes": 1
+        }
+      }
+    ],
+    "error": true
+  },
+  {
+    "name": "unlimited-nonzero-duration_ms",
+    "entries": [
+      {
+        "key": "bytes",
+        "value": {
+          "kind": "bytes"
+        },
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "bytes",
+        "set": {
+          "kind": "unlimited",
+          "duration_ms": 1
+        }
+      }
+    ],
+    "error": true
+  },
+  {
+    "name": "unlimited-nonzero-text",
+    "entries": [
+      {
+        "key": "bytes",
+        "value": {
+          "kind": "bytes"
+        },
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "bytes",
+        "set": {
+          "kind": "unlimited",
+          "text": "x"
+        }
+      }
+    ],
+    "error": true
+  },
+  {
+    "name": "unlimited-nonzero-choice",
+    "entries": [
+      {
+        "key": "bytes",
+        "value": {
+          "kind": "bytes"
+        },
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "bytes",
+        "set": {
+          "kind": "unlimited",
+          "choice": "first"
+        }
+      }
+    ],
+    "error": true
+  },
+  {
+    "name": "unlimited-nonzero-text_list",
+    "entries": [
+      {
+        "key": "bytes",
+        "value": {
+          "kind": "bytes"
+        },
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "bytes",
+        "set": {
+          "kind": "unlimited",
+          "text_list": [
+            "app"
+          ]
+        }
+      }
+    ],
+    "error": true
+  },
+  {
+    "name": "unlimited-nonzero-text_map",
+    "entries": [
+      {
+        "key": "bytes",
+        "value": {
+          "kind": "bytes"
+        },
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "bytes",
+        "set": {
+          "kind": "unlimited",
+          "text_map": {
+            "app": "reason"
+          }
+        }
+      }
+    ],
+    "error": true
+  },
+  {
+    "name": "unlimited-with-explicit-zeros",
+    "entries": [
+      {
+        "key": "bytes",
+        "value": {
+          "kind": "bytes"
+        },
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "bytes",
+        "set": {
+          "kind": "unlimited",
+          "boolean": false,
+          "integer": 0,
+          "bytes": 0,
+          "duration_ms": 0,
+          "text": "",
+          "choice": "",
+          "text_list": [],
+          "text_map": {}
+        }
+      }
+    ],
+    "expected": [
+      {
+        "key": "bytes",
+        "value": {
+          "kind": "unlimited"
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": [
+            {
+              "location": "user",
+              "path": "user.json"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "unset-keeps-numeric-zero",
+    "entries": [
+      {
+        "key": "bytes",
+        "value": {
+          "kind": "bytes"
+        },
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "bytes"
+      }
+    ],
+    "expected": [
+      {
+        "key": "bytes",
+        "value": {
+          "kind": "bytes"
+        },
+        "origin": {
+          "location": "user",
+          "path": "user.json",
+          "state": "set"
+        }
+      }
+    ]
+  },
+  {
+    "name": "default-with-no-location",
+    "entries": [
+      {
+        "key": "boolean",
+        "value": {
+          "kind": "boolean"
+        },
+        "origin": {
+          "path": "",
+          "state": "default"
+        }
+      }
+    ],
+    "changes": [
+      {
+        "key": "boolean",
+        "set": {
+          "kind": "boolean",
+          "boolean": true
+        }
+      }
+    ],
+    "expected": [
+      {
+        "key": "boolean",
+        "value": {
+          "kind": "boolean",
+          "boolean": true
+        },
+        "origin": {
+          "location": "process",
+          "path": "",
+          "state": "set",
+          "shadowed": []
+        }
+      }
+    ]
+  }
+]

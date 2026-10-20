@@ -1,0 +1,19 @@
+type Raw string
+type DescriptorInput struct
+  Name string
+  Program string
+  Title string
+  StartGuidance string
+  Activation *oaImported0
+func Encode(v *DescriptorInput) []byte
+type Refusal struct
+  Word string
+  Offset int
+func (Refusal) Error() string
+func Decode(in []byte) (*DescriptorInput, error)
+func ToJSON(v any) (out []byte, err error)
+func FromJSON(data []byte, v any) error
+func DecodeDescriptorInputAt(in []byte, depth, limit int) (*DescriptorInput, int, error)
+func EncodeDescriptorInputAt(v *DescriptorInput, depth int) []byte
+func EncodeDescriptorInput(v *DescriptorInput) []byte
+func DecodeDescriptorInput(in []byte) (*DescriptorInput, error)

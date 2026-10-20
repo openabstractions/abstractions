@@ -1,0 +1,68 @@
+type AcquireFreeOutcome wire.AcquireFreeOutcome
+const AcquireFreeOutcomeAcquired
+const AcquireFreeOutcomeInsufficient
+const AcquireFreeOutcomeNotPermitted
+const AcquireFreeOutcomeUnavailable
+const AcquireFreeOutcomeInvalid
+const AcquireFreeOutcomeForbidden
+const AcquireFreeOutcomeHeld
+func AcquireFreeOutcomeValues() []AcquireFreeOutcome
+func ParseAcquireFreeOutcome(word string) (AcquireFreeOutcome, bool)
+type AcquireFreeResult wire.AcquireFreeResult
+type AcquireOutcome wire.AcquireOutcome
+const AcquireOutcomeAcquired
+const AcquireOutcomeInsufficient
+const AcquireOutcomeHoldersRefused
+const AcquireOutcomeNotPermitted
+const AcquireOutcomeUnavailable
+const AcquireOutcomeInvalid
+const AcquireOutcomeForbidden
+func AcquireOutcomeValues() []AcquireOutcome
+func ParseAcquireOutcome(word string) (AcquireOutcome, bool)
+type AcquireResult wire.AcquireResult
+type AnswerResult wire.AnswerResult
+type Evidence wire.Evidence
+const EvidenceVerified
+const EvidenceClaimed
+func EvidenceValues() []Evidence
+func ParseEvidence(word string) (Evidence, bool)
+type Holder wire.Holder
+var KnownResources
+type Lease wire.Lease
+type LeaseChange wire.LeaseChange
+type ProcessBindOutcome wire.ProcessBindOutcome
+const ProcessBindOutcomeBound
+const ProcessBindOutcomeUnverifiable
+const ProcessBindOutcomeRefused
+const ProcessBindOutcomeInvalid
+const ProcessBindOutcomeForbidden
+const ProcessBindOutcomeUnavailable
+func ProcessBindOutcomeValues() []ProcessBindOutcome
+func ParseProcessBindOutcome(word string) (ProcessBindOutcome, bool)
+type ProcessBindResult wire.ProcessBindResult
+type ResourceList wire.ResourceList
+type ResourceState wire.ResourceState
+type ServiceError wire.ServiceError
+type ServiceErrorCode wire.ServiceErrorCode
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+const ServiceErrorCodeInternal
+const ServiceErrorCodeInvalidRequest
+const ServiceErrorCodeCallerRefused
+const ServiceErrorCodeUnknownResource
+const ServiceErrorCodePolicyUnavailable
+const ServiceErrorCodeForbidden
+func ServiceErrorCodeValues() []ServiceErrorCode
+type YieldAnswer wire.YieldAnswer
+const YieldAnswerYielded
+const YieldAnswerRefused
+func YieldAnswerValues() []YieldAnswer
+func ParseYieldAnswer(word string) (YieldAnswer, bool)
+type YieldPage wire.YieldPage
+type YieldRecord wire.YieldRecord
+type YieldRequest wire.YieldRequest
+type Subject rights.Subject

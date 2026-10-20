@@ -7,9 +7,11 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	asks "github.com/openabstractions/abstraction-asks/go"
 	credentials "github.com/openabstractions/abstraction-credentials/go"
+	fwire "github.com/openabstractions/abstraction-facade/go-core/go/abstraction/facade"
 	"github.com/openabstractions/abstraction-facade/go/grants"
 	identity "github.com/openabstractions/abstraction-identity"
 	inference "github.com/openabstractions/abstraction-inference/go"
@@ -28,6 +30,51 @@ func standingProgram(t *testing.T, dir string) string {
 		t.Fatal(err)
 	}
 	return program
+}
+
+func TestRuntimeDecisionAdaptersShareEvaluatedSet(t *testing.T) {
+	for _, outcome := range rwire.DecisionOutcomeValues() {
+		t.Run(outcome.String(), func(t *testing.T) {
+			evaluated := outcome == rwire.DecisionOutcomePermitted || outcome == rwire.DecisionOutcomeDenied || outcome == rwire.DecisionOutcomeNotGranted || outcome == rwire.DecisionOutcomeUnknownAction
+			authorized := credentialBatchAuthorization(rwire.BatchDecision{Outcome: rwire.BatchCheckOutcomeChecked, Revision: "revision", Outcomes: []rwire.DecisionOutcome{outcome}})
+			want := credentials.AuthorizationUnavailable
+			if outcome == rwire.DecisionOutcomePermitted {
+				want = credentials.Authorized
+			} else if evaluated {
+				want = credentials.AuthorizationDenied
+			}
+			if authorized.Outcome != want || authorized.RightsOutcome != outcome.String() {
+				t.Fatal("credential mapping", authorized)
+			}
+			word, err := standingWord("rights:", outcome)
+			if (err == nil) != evaluated || (word == "") != (outcome == rwire.DecisionOutcomePermitted || !evaluated) {
+				t.Fatal("standing mapping", word, err)
+			}
+			permit, err := messagePartyPermit(outcome)
+			if permit != (outcome == rwire.DecisionOutcomePermitted) || (err == nil) != (evaluated && outcome != rwire.DecisionOutcomeUnknownAction) {
+				t.Fatal("message party mapping", permit, err)
+			}
+			decision := rwire.Decision{Outcome: outcome}
+			if evaluated {
+				decision.PolicyRevision = "revision"
+			}
+			err = remoteDecisionError(decision)
+			if outcome == rwire.DecisionOutcomePermitted {
+				if err != nil {
+					t.Fatal("remote permit refused", err)
+				}
+			} else {
+				var refusal *fwire.ServiceError
+				want := fwire.ServiceErrorCode("unavailable")
+				if evaluated {
+					want = fwire.ServiceErrorCode("forbidden")
+				}
+				if !errors.As(err, &refusal) || refusal.Code != want {
+					t.Fatal("remote refusal mapping", err)
+				}
+			}
+		})
+	}
 }
 
 // RES-L7, RIGHTS-R23: blocking a program's hold on a card ends its card lease
@@ -115,7 +162,119 @@ func TestBlockingCardHoldEndsTheProgramsCardLease(t *testing.T) {
 // countingRechecker records each Recheck the rights change hook makes.
 type countingRechecker struct{ calls atomic.Int64 }
 
-func (c *countingRechecker) Recheck(context.Context) { c.calls.Add(1) }
+func (c *countingRechecker) RecheckChecked(context.Context) error { c.calls.Add(1); return nil }
+
+type checkedRecheckFunc func(context.Context) error
+
+func (f checkedRecheckFunc) RecheckChecked(ctx context.Context) error { return f(ctx) }
+
+func TestCheckedStandingCapturedCallbackCannotActAfterClose(t *testing.T) {
+	r := testRights(t, t.TempDir())
+	if err := r.install([]string{inference.ActionComplete}, nil); err != nil {
+		t.Fatal(err)
+	}
+	entered, release := make(chan struct{}), make(chan struct{})
+	r.policy.OnChange(func() { close(entered); <-release })
+	provider := &countingRechecker{}
+	stop := recheckInferenceOnChange(r, provider)
+	edit := make(chan error, 1)
+	go func() { edit <- r.policy.Set(r.self(), inference.ActionComplete, "host:test", false) }()
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("edit did not capture callbacks")
+	}
+	stop()
+	close(release)
+	select {
+	case err := <-edit:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("captured callback result: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("edit did not finish")
+	}
+	if provider.calls.Load() != 0 {
+		t.Fatal("captured callback acted after owner close")
+	}
+}
+
+func TestCheckedStandingCloseJoinsBlockedDecisionAndCapturedCallback(t *testing.T) {
+	for _, owner := range []string{"inference", "resource"} {
+		t.Run(owner, func(t *testing.T) {
+			r := testRights(t, t.TempDir())
+			if err := r.install([]string{inference.ActionComplete}, nil); err != nil {
+				t.Fatal(err)
+			}
+			entered, cancelled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			pass := func(ctx context.Context) error {
+				close(entered)
+				<-ctx.Done()
+				close(cancelled)
+				<-release
+				return ctx.Err()
+			}
+			var stop func()
+			if owner == "inference" {
+				stop = recheckInferenceOnChange(r, checkedRecheckFunc(pass))
+			} else {
+				composed := composeResources("", router.New(), nil, func(error) {})
+				defer composed.close()
+				composed.path = t.TempDir()
+				options := leaseBookOptions(composed, router.New(), r, &standInWake{})
+				options.Hold = func(context.Context, *identity.Peer, string, string) error { return nil }
+				options.Standing = func(ctx context.Context, _ resourceservice.Subject, _, _ string) error { return pass(ctx) }
+				book, err := resourceservice.OpenBook(options)
+				if err != nil {
+					t.Fatal(err)
+				}
+				who := resourceservice.Subject{Account: r.owner, Program: standingProgram(t, t.TempDir())}
+				if got := book.Acquire(t.Context(), who, &identity.Peer{}, instrument.Card0, 1<<20, 0); got.Lease == nil {
+					t.Fatal(got)
+				}
+				stop = recheckLeasesOnChange(r, book)
+			}
+			edit := make(chan error, 1)
+			go func() { edit <- r.policy.Set(r.self(), inference.ActionComplete, "host:test", false) }()
+			select {
+			case <-entered:
+			case <-time.After(2 * time.Second):
+				t.Fatal("pass did not enter")
+			}
+			closed := make(chan struct{})
+			go func() { stop(); close(closed) }()
+			select {
+			case <-cancelled:
+			case <-time.After(2 * time.Second):
+				t.Fatal("close did not cancel")
+			}
+			select {
+			case <-closed:
+				t.Fatal("close escaped active decision")
+			default:
+			}
+			select {
+			case <-edit:
+				t.Fatal("edit escaped active decision")
+			default:
+			}
+			close(release)
+			select {
+			case <-closed:
+			case <-time.After(2 * time.Second):
+				t.Fatal("close did not join")
+			}
+			select {
+			case err := <-edit:
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("edit: %v", err)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("edit did not join")
+			}
+		})
+	}
+}
 
 // INF-A6, RIGHTS-R23: the runtime's inference standing decides complete on
 // the server and use of the credential the runtime applied, asking nobody, so
@@ -135,7 +294,7 @@ func TestInferenceStandingDecidesCompleteAndCredentialAgain(t *testing.T) {
 	}
 	r.policy.Definitions = catalog
 	asked := 0
-	r.firstUse = func(rwire.Subject, func() asks.Publisher, string, string) { asked++ }
+	r.firstUse = func(rwire.Subject, func() asks.Publisher, string, string) string { asked++; return "" }
 	c := &runtimeCredentials{runtimeRights: r}
 	program := standingProgram(t, dir)
 	subject := rwire.Subject{Account: r.owner, Program: program}

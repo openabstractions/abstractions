@@ -9,9 +9,12 @@ import (
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	"github.com/openabstractions/abstraction-facade/go/resolution"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/openabstractions/abstraction-facade/go-core/childproc"
 )
 
 const startUsage = `Usage: openabstractions start [options]
@@ -23,8 +26,9 @@ start ignores it and waits on this installation's own registered endpoint.
 Options:
   --timeout D   deadline for activation and readiness (default 20s)
 
-Exit codes: 0 ready, 3 an installer holds the upgrade exclusion, 4 this caller
-sees a packaged app's private copy of AppData, 1 otherwise.
+Exit codes: 0 ready, 2 a flag mistake, 3 an installer holds the upgrade
+exclusion, 4 this caller sees a packaged app's private copy of AppData,
+1 otherwise.
 `
 
 type startHooks struct {
@@ -59,6 +63,19 @@ func runtimeStart(args []string, output, diagnostics io.Writer) error {
 			value = typed
 		}
 		return flagMistake(diagnostics, "start", startUsage, fmt.Sprintf("--timeout %q is not a positive duration (examples: 5s, 1m30s, 500ms)", value))
+	}
+	releaseSettings, err := runtimeSettingsGuard(context.Background(), runtimeFlags{})
+	if err != nil {
+		return err
+	}
+	defer releaseSettings()
+	priorOut, priorErr := os.Stdout, os.Stderr
+	speakSomewhere()
+	if output == priorOut {
+		output = os.Stdout
+	}
+	if diagnostics == priorErr {
+		diagnostics = os.Stderr
 	}
 	// This installation's own registered endpoint, never
 	// ABSTRACTION_RUNTIME_ENDPOINT: that variable is a client concern, and
@@ -163,8 +180,7 @@ func startReady(ctx context.Context, endpoint string) (bool, error) {
 	return true, nil
 }
 func startCommand(ctx context.Context, path string, args ...string) error {
-	cmd := exec.CommandContext(ctx, path, args...)
-	hideStartCommand(cmd)
+	cmd := childproc.Hidden(exec.CommandContext(ctx, path, args...))
 	// No inherited pipe output can keep Wait alive after the command is killed.
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() != nil {

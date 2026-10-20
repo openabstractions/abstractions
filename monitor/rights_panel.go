@@ -14,8 +14,10 @@ import (
 	credentials "github.com/openabstractions/abstraction-credentials/go"
 	cwire "github.com/openabstractions/abstraction-credentials/go/abstraction/credentials/api"
 	facade "github.com/openabstractions/abstraction-facade/go"
+	"github.com/openabstractions/abstraction-facade/go/grants"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	identity "github.com/openabstractions/abstraction-identity"
+	"github.com/openabstractions/abstraction-identity/remote"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	resourceservice "github.com/openabstractions/abstraction-resource/go/service"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
@@ -28,9 +30,9 @@ import (
 // (task 2026-09-23, third first-time-visitor walkthrough: the list otherwise
 // prints raw action names like "abstraction.credentials/holder.manage"). It
 // covers every action installationRules (serve/runtime_rights.go) writes,
-// worded as capability then action in the decided words (RENAME-PLAN §3,
-// Panel step 7: S11 and D11, so "inference server manage" and "router
-// servers" where the wire still says host), and every action serve/runtime_*.go registers into
+// worded as a lowercase verb phrase that reads in "Allow <app> to <phrase>?"
+// and, capitalized, as a row label (architect ruling 2026-11-09; the nouns
+// follow the decided words, D11's "model server" where the wire says host), and every action serve/runtime_*.go registers into
 // o.RightsActions beyond those (rights_catalogue_test.go enumerates that
 // full catalogue and fails when this map falls behind it, and fails when a
 // page's <span title="action">phrase</span> says anything else). An action
@@ -39,32 +41,33 @@ import (
 // always carried as a title attribute, so nothing this runtime knows is
 // ever shown as only an id.
 var rightsActionPlain = map[string]string{
-	host.ConfigEditAction:                        "config rewrite",
-	host.LogHistoryAction:                        "logging history",
-	host.JobSubmitAction:                         "jobs submit",
-	host.JobCancelAction:                         "jobs cancel",
-	host.JobInventoryAction:                      "jobs all",
-	host.ModelLookupAction:                       "model resolve",
-	routerservice.ActionInventory:                "router servers",
-	routerservice.ActionRoute:                    "router pick",
-	host.ResourceTableReadAction:                 "resource table read",
-	resourceservice.ActionHold:                   "resource hold",
-	resourceservice.ActionYield:                  "resource yield",
-	credentials.ActionManage:                     "credentials manage",
-	credentials.ActionRead:                       "credentials list",
+	host.ConfigEditAction:                        "change settings",
+	host.ConfigKeyReadAction:                     "read a setting",
+	host.LogHistoryAction:                        "read the log",
+	host.JobSubmitAction:                         "start background work",
+	host.JobCancelAction:                         "cancel background work",
+	host.JobInventoryAction:                      "see all background work",
+	host.ModelLookupAction:                       "look up models",
+	routerservice.ActionInventory:                "see models and model servers",
+	routerservice.ActionRoute:                    "choose a model server",
+	host.ResourceTableReadAction:                 "see device resources",
+	resourceservice.ActionHold:                   "hold a device resource",
+	resourceservice.ActionYield:                  "yield a device resource",
+	credentials.ActionManage:                     "manage saved credentials",
+	credentials.ActionRead:                       "list saved credentials",
 	credentials.ActionSecretRead:                 "read saved secret value",
 	credentials.ActionSecretCreate:               "create saved secret",
 	credentials.ActionSecretRotate:               "rotate saved secret value",
 	credentials.ActionSecretRevoke:               "revoke saved secret",
-	credentials.ActionSecretMetadataRead:         "read named secret metadata",
-	inference.ActionHostManage:                   "inference server manage",
-	inference.ActionKeyIssue:                     "inference key issue",
-	inference.ActionAuditRead:                    "inference audit read",
-	inference.ActionComplete:                     "inference complete",
-	"abstraction.inference/selection.manage":     "inference selection manage",
-	"abstraction.inference/selection.manage_for": "inference selection manage for other apps",
-	"abstraction.facade/application.manage":      "application manage",
-	"abstraction.facade/provider.manage":         "provider manage",
+	credentials.ActionSecretMetadataRead:         "read saved secret details",
+	inference.ActionHostManage:                   "manage model servers",
+	inference.ActionKeyIssue:                     "issue model keys",
+	inference.ActionAuditRead:                    "read model use history",
+	inference.ActionComplete:                     "use models",
+	"abstraction.inference/selection.manage":     "choose models for its own requests",
+	"abstraction.inference/selection.manage_for": "choose models for other apps and the account default",
+	"abstraction.facade/application.manage":      "manage apps",
+	"abstraction.facade/provider.manage":         "manage providers",
 	// abstraction.credentials/apply, abstraction.storage/inventory.provide,
 	// the three actions below (task 2026-09-23, sixth first-time visitor,
 	// finding 2) and every abstraction.facade/application.* and
@@ -76,29 +79,29 @@ var rightsActionPlain = map[string]string{
 	// runtime_inventory.go's ActionInventoryRead, runtime_lending.go's
 	// ActionLend). rights_catalogue_test.go's servePackageActions repeats
 	// this same list, in sync by hand for the same reason.
-	"abstraction.credentials/apply":           "credentials apply",
-	"abstraction.storage/inventory.provide":   "storage inventory provide",
-	"abstraction.storage/inventory.read":      "storage inventory read",
-	"abstraction.storage/lend":                "storage lend",
-	"abstraction.facade/application.read":     "application read",
-	"abstraction.facade/application.announce": "application announce",
-	"abstraction.facade/application.activate": "application activate",
+	"abstraction.credentials/apply":           "use saved credentials",
+	"abstraction.storage/inventory.provide":   "provide a model list",
+	"abstraction.storage/inventory.read":      "read the model list",
+	"abstraction.storage/lend":                "lend stored models",
+	"abstraction.facade/application.read":     "see the app list",
+	"abstraction.facade/application.announce": "say when it is running",
+	"abstraction.facade/application.activate": "start apps",
 	// Named by the register account-wide default (abstraction-rights
 	// account_defaults.go, RIGHTS-R22).
-	"abstraction.facade/application.register_self": "application add itself",
+	"abstraction.facade/application.register_self": "add itself to Apps",
 	// The four actions below are abstraction-rights/go's own generic
 	// catalogue (rwire.ResourceActions, rights_catalogue_test.go), imported
 	// there rather than named by a per-capability constant: no capability
 	// package here exports these four as named constants of its own.
-	"abstraction.storage/content.read":    "storage content read",
-	"abstraction.storage/content.write":   "storage content write",
-	"abstraction.storage/content.observe": "storage content observe",
-	"abstraction.storage/content.remove":  "storage content remove",
+	"abstraction.storage/content.read":    "read stored content",
+	"abstraction.storage/content.write":   "save stored content",
+	"abstraction.storage/content.observe": "watch stored content",
+	"abstraction.storage/content.remove":  "remove stored content",
 	// abstraction.asks/question.ask (abstraction-asks/go's own
 	// ResourceActions) has no named Go constant of its own either.
-	"abstraction.asks/question.ask":      "show app requests",
-	"abstraction.asks/question.answer":   "questions answer",
-	"abstraction.asks/notification.post": "show notifications",
+	"abstraction.asks/question.ask":      "ask you questions",
+	"abstraction.asks/question.answer":   "answer questions",
+	"abstraction.asks/notification.post": "send you notifications",
 }
 
 // rightsEdit is one conditional policy change the person made in the panel.
@@ -142,6 +145,25 @@ type policyRuleView struct {
 	Expires  string                `json:"Expires,omitempty"`
 	Expired  bool                  `json:"Expired"`
 	Selector *selectorRuleView     `json:"Selector,omitempty"`
+	// Sentence names the sender and receiver in a saved agent message rule.
+	// Removed is the confirmation shown when that rule is removed.
+	Sentence string `json:"Sentence,omitempty"`
+	Removed  string `json:"Removed,omitempty"`
+}
+
+// messageRuleWords are a saved message pair's row and Remove sentences, in
+// the program titler's names; "" for any other rule.
+func messageRuleWords(names *programTitler, rule policyRuleView) (string, string) {
+	receiver, ok := strings.CutPrefix(rule.Resource, "app:")
+	if rule.Action != grants.ApplicationMessageAction || !rule.Permit || rule.Selector != nil || !ok || receiver == "" || strings.ContainsAny(receiver, "/:") {
+		return "", ""
+	}
+	sender := programReasonName(names, rule.Subject.Program)
+	title, found := names.applicationTitle(receiver)
+	if !found {
+		title = receiver
+	}
+	return grants.MessagePermissionRow(sender, title), grants.MessagePermissionRemoved(sender, title)
 }
 
 // Target bytes stay in the native adapter. Known owning codecs expose only
@@ -252,13 +274,16 @@ func (e rightsEdit) valid() bool {
 		return e.validSelectorEdit()
 	}
 	target := rightsText(e.Revision, 128) && rightsText(e.Account, 128) && rightsText(e.Program, 4096) &&
-		identity.ValidSubjectProgram(e.Program) && rightsText(e.Action, 128) && rightsText(e.Resource, 1024)
+		rightsText(e.Action, 128) && rightsText(e.Resource, 1024)
 	switch e.Edit {
 	case "set":
-		return target && e.TTLMS >= 0 && e.TTLMS <= 31536000000 &&
+		return target && identity.ValidSubjectProgram(e.Program) && e.TTLMS >= 0 && e.TTLMS <= 31536000000 &&
 			(e.Why == "" || rightsText(e.Why, 256))
 	case "revoke":
-		return target && !e.Permit && e.TTLMS == 0 && e.Why == ""
+		// A paired computer's permit is revoked by its pinned subject from the
+		// Activity row it woke a conversation in (VISION 2026-10-31); only the
+		// person's question grants it, so the Panel sets none.
+		return target && (identity.ValidSubjectProgram(e.Program) || remote.ValidSubjectProgram(e.Program)) && !e.Permit && e.TTLMS == 0 && e.Why == ""
 	}
 	return false
 }
@@ -446,6 +471,9 @@ func (p *servicePanel) rights(w http.ResponseWriter, r *http.Request) {
 				programs = append(programs, entry.Descriptor.Program)
 			}
 			view.Names = names.names(programs)
+			for i := range view.Rules {
+				view.Rules[i].Sentence, view.Rules[i].Removed = messageRuleWords(names, view.Rules[i])
+			}
 		}
 		panelJSON(w, view)
 		return

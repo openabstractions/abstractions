@@ -15,4 +15,6 @@ transfer  run runshared stage
 wire      credential refuse allow src=http:
 wanted    drop sweep
 identity  ladder bench value ceiling caneve serve speak identify proof trusted check same traces claimed
-logging   record attr group msg job level read keys encode decode machine auto default separation cap write held forge send attest chain uid author relay disputed
+fileid    file folder link sharelink hardlink replace remove resolve relate beneath create safename leaf pending keep revalidate samefile within opens remotes
+lease     measure sample engine permit outage restore acquire nowait table
+logging   record attr group msg text job level read keys encode decode machine auto default separation cap write held forge send attest chain uid author relay disputed

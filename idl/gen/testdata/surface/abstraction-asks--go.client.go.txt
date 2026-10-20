@@ -1,0 +1,81 @@
+type Answer wire.Answer
+type Answerer wire.Answerer
+const AnswererOperator
+const AnswererResponder
+func AnswererValues() []Answerer
+func ParseAnswerer(word string) (Answerer, bool)
+type AttributedQuestion wire.AttributedQuestion
+type ObservationOutcome wire.ObservationOutcome
+const ObservationOutcomePending
+const ObservationOutcomeAnswered
+const ObservationOutcomeUnknown
+const ObservationOutcomeGone
+const ObservationOutcomeInvalid
+const ObservationOutcomeConflict
+const ObservationOutcomeForbidden
+const ObservationOutcomeUnavailable
+func ObservationOutcomeValues() []ObservationOutcome
+func ParseObservationOutcome(word string) (ObservationOutcome, bool)
+type OperatorDecision wire.OperatorDecision
+type OperatorDecisionOutcome wire.OperatorDecisionOutcome
+const OperatorDecisionOutcomeAnswered
+const OperatorDecisionOutcomeConflict
+const OperatorDecisionOutcomeUnknown
+const OperatorDecisionOutcomeInvalid
+const OperatorDecisionOutcomeForbidden
+const OperatorDecisionOutcomeUnavailable
+func OperatorDecisionOutcomeValues() []OperatorDecisionOutcome
+func ParseOperatorDecisionOutcome(word string) (OperatorDecisionOutcome, bool)
+type OperatorPage wire.OperatorPage
+type OperatorPageOutcome wire.OperatorPageOutcome
+const OperatorPageOutcomePage
+const OperatorPageOutcomeGap
+const OperatorPageOutcomeInvalid
+const OperatorPageOutcomeForbidden
+const OperatorPageOutcomeUnavailable
+func OperatorPageOutcomeValues() []OperatorPageOutcome
+func ParseOperatorPageOutcome(word string) (OperatorPageOutcome, bool)
+type OperatorQuestion wire.OperatorQuestion
+type OperatorQuestionOutcome wire.OperatorQuestionOutcome
+const OperatorQuestionOutcomeFound
+const OperatorQuestionOutcomeUnknown
+const OperatorQuestionOutcomeInvalid
+const OperatorQuestionOutcomeForbidden
+const OperatorQuestionOutcomeUnavailable
+func OperatorQuestionOutcomeValues() []OperatorQuestionOutcome
+func ParseOperatorQuestionOutcome(word string) (OperatorQuestionOutcome, bool)
+type OperatorRetirement wire.OperatorRetirement
+type OperatorRetirementOutcome wire.OperatorRetirementOutcome
+const OperatorRetirementOutcomeRetired
+const OperatorRetirementOutcomeUnknown
+const OperatorRetirementOutcomeInvalid
+const OperatorRetirementOutcomeForbidden
+const OperatorRetirementOutcomeUnavailable
+func OperatorRetirementOutcomeValues() []OperatorRetirementOutcome
+func ParseOperatorRetirementOutcome(word string) (OperatorRetirementOutcome, bool)
+type PermissionRequest wire.PermissionRequest
+type PermissionTarget wire.PermissionTarget
+type QuestionAsker wire.QuestionAsker
+type QuestionDetails wire.QuestionDetails
+type RecordMetadata wire.RecordMetadata
+type ResponderDecision wire.ResponderDecision
+type ResponderEffectOutcome wire.ResponderEffectOutcome
+const ResponderEffectOutcomeNone
+const ResponderEffectOutcomeApplied
+const ResponderEffectOutcomeConflict
+const ResponderEffectOutcomeForbidden
+const ResponderEffectOutcomeUnavailable
+func ResponderEffectOutcomeValues() []ResponderEffectOutcome
+func ParseResponderEffectOutcome(word string) (ResponderEffectOutcome, bool)
+type ServiceError wire.ServiceError
+type ServiceErrorCode wire.ServiceErrorCode
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+func ServiceErrorCodeValues() []ServiceErrorCode
+type FrameExchanger contract1.FrameExchanger
+type PresenterClient contract1.PresenterClient
+type PresenterTransport contract1.PresenterTransport

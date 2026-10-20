@@ -17,6 +17,34 @@ type ImportedRecord struct {
 	Def         *Definition
 }
 
+// scalarAlias preserves the declaration owner while lowering a direct included
+// alias to the same primitive and annotations as a local scalar alias.
+func (s *Definition) scalarAlias(name string) (Typedef, bool) {
+	owner, local := s, name
+	if alias, member, qualified := strings.Cut(name, "."); qualified {
+		if strings.Contains(member, ".") {
+			return Typedef{}, false
+		}
+		owner = nil
+		for _, imp := range s.Imports {
+			if imp.Alias == alias {
+				owner, local = imp.Def, member
+				break
+			}
+		}
+		if owner == nil {
+			return Typedef{}, false
+		}
+	}
+	for _, td := range owner.Typedefs {
+		if td.Alias == local {
+			td.Alias = name
+			return td, true
+		}
+	}
+	return Typedef{}, false
+}
+
 func loadDefinition(path string) (*Definition, error) {
 	active := map[string]bool{}
 	loaded := map[string]*Definition{}
@@ -107,11 +135,25 @@ func (s *Definition) importedRecord(name string) (ImportedRecord, bool) {
 func importCarriers(s *Definition) *Definition {
 	o := *s
 	o.Foreign = map[string]ImportedRecord{}
+	o.ForeignEnums = map[string]ImportedRecord{}
 	names := map[string]string{}
 	var lower func(string) string
 	lower = func(t string) string {
 		if e := listElement(t); e != "" {
 			return "list<" + lower(e) + ">"
+		}
+		if alias, local, ok := strings.Cut(t, "."); ok && s.Enum(t) != nil {
+			if name := names[t]; name != "" {
+				return name
+			}
+			for _, imp := range s.Imports {
+				if imp.Alias == alias {
+					name := fmt.Sprintf("OAImported%d", len(names))
+					names[t] = name
+					o.ForeignEnums[name] = ImportedRecord{alias, local, imp.Def}
+					return name
+				}
+			}
 		}
 		if imp, ok := s.importedRecord(t); ok {
 			if name := names[t]; name != "" {
@@ -156,11 +198,31 @@ func foreignNames(s *Definition) []string {
 	return names
 }
 
+func foreignEnumNames(s *Definition) []string {
+	var names []string
+	for name := range s.ForeignEnums {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func usedIncludes(s *Definition) map[string]bool {
+	used := map[string]bool{}
+	for _, imp := range s.Foreign {
+		used[imp.Alias] = true
+	}
+	for _, imp := range s.ForeignEnums {
+		used[imp.Alias] = true
+	}
+	return used
+}
+
 func validateIncludes(s *Definition, lang string) error {
 	if len(s.Imports) == 0 && !s.NamedCodecs {
 		return nil
 	}
-	if lang != "go" && lang != "cpp" && lang != "python" && lang != "javascript" && lang != "rust" && lang != "docs" {
+	if lang != "go" && lang != "cpp" && lang != "python" && lang != "javascript" && lang != "rust" && lang != "docs" && lang != "jsonschema" {
 		return fmt.Errorf("%s backend does not support typed includes or named record codecs", lang)
 	}
 	if err := validateImportedGraph(s); err != nil {
@@ -176,6 +238,7 @@ func validateIncludes(s *Definition, lang string) error {
 	}
 	seenNamespaces := map[string]bool{}
 	seenGoPaths := map[string]bool{}
+	used := usedIncludes(importCarriers(s))
 	for _, imp := range s.Imports {
 		if err := validateImportedGraph(imp.Def); err != nil {
 			return err
@@ -193,10 +256,10 @@ func validateIncludes(s *Definition, lang string) error {
 				return fmt.Errorf("include alias %s collides with declaration", name)
 			}
 		}
-		if !s.NoIPC && len(s.Services) > 0 && s.Encoding.RefuseDuplicateKeys() && includeAllowsDuplicateKeys(imp.Def) {
+		if used[imp.Alias] && !s.NoIPC && len(s.Services) > 0 && s.Encoding.RefuseDuplicateKeys() && includeAllowsDuplicateKeys(imp.Def) {
 			return fmt.Errorf("include %s permits last-wins duplicate keys but the IPC envelope refuses them; use --no-ipc or compatible encoding policies", imp.Alias)
 		}
-		if namespaceFor(imp.Def.Namespaces, lang) == "" && lang != "docs" {
+		if namespaceFor(imp.Def.Namespaces, lang) == "" && lang != "docs" && lang != "jsonschema" && !(lang == "go" && s.GoImports[imp.Alias] != "") {
 			return fmt.Errorf("include %s requires a %s namespace", imp.Alias, lang)
 		}
 		if lang == "go" && s.GoImports[imp.Alias] != "" {
@@ -209,7 +272,7 @@ func validateIncludes(s *Definition, lang string) error {
 		if lang == "go" && s.GoImports[imp.Alias] == "" {
 			return fmt.Errorf("include %s requires --go-import=%s=<package-path>", imp.Alias, imp.Alias)
 		}
-		if lang != "docs" && namespaceFor(imp.Def.Namespaces, lang) == namespaceFor(s.Namespaces, lang) {
+		if lang != "docs" && namespaceFor(imp.Def.Namespaces, lang) == namespaceFor(s.Namespaces, lang) && !(lang == "go" && namespaceFor(imp.Def.Namespaces, lang) == "") {
 			return fmt.Errorf("include %s collides with importing %s namespace", imp.Alias, lang)
 		}
 	}
@@ -282,8 +345,9 @@ func includeAllowsDuplicateKeys(s *Definition) bool {
 	if !s.Encoding.RefuseDuplicateKeys() {
 		return true
 	}
+	used := usedIncludes(importCarriers(s))
 	for _, imp := range s.Imports {
-		if includeAllowsDuplicateKeys(imp.Def) {
+		if used[imp.Alias] && includeAllowsDuplicateKeys(imp.Def) {
 			return true
 		}
 	}

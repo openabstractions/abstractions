@@ -9,6 +9,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	providerSetup "github.com/openabstractions/abstraction-provider-lemonade/go/setup"
+	"github.com/openabstractions/abstraction-storage/go/layout"
 )
 
 // fakeLemonade stands for the installed provider's package verbs. selected
@@ -63,7 +66,7 @@ func (l *fakeLemonade) run(_ context.Context, args ...string) ([]byte, error) {
 	switch args[1] {
 	case "check":
 		if l.checkCode != 0 {
-			return nil, &lemonadeExit{Code: l.checkCode, Reason: "package differs from the reviewed manifest"}
+			return nil, &providerExit{Engine: "Lemonade", Code: l.checkCode, Reason: "package differs from the reviewed manifest"}
 		}
 		return json.Marshal(map[string]any{"version": 1, "ok": true, "backend_archive_sha256": l.backend, "model_revision": l.model})
 	case "activate":
@@ -80,10 +83,10 @@ func (l *fakeLemonade) run(_ context.Context, args ...string) ([]byte, error) {
 		return json.Marshal(map[string]any{"version": 1, "ok": true, "active_version": version})
 	case "retire":
 		if l.retireCode != 0 {
-			return nil, &lemonadeExit{Code: l.retireCode, Reason: "lemonade setup: held"}
+			return nil, &providerExit{Engine: "Lemonade", Code: l.retireCode, Reason: "lemonade setup: held"}
 		}
 		if version == l.selected {
-			return nil, &lemonadeExit{Code: 2, Reason: "the selected version"}
+			return nil, &providerExit{Engine: "Lemonade", Code: 2, Reason: "the selected version"}
 		}
 		return []byte(`{"version":1,"ok":true}` + "\n"), nil
 	}
@@ -126,9 +129,16 @@ func TestLemonadeUpdateMovesTheProviderBindingThroughItsVerbs(t *testing.T) {
 		t.Fatalf("activation without the provider's success object recorded installed: %v %+v", err, f.effect())
 	}
 	l.activateReply = nil
-	l.activateErr = &lemonadeExit{Code: 1, Reason: "engine files"}
+	l.activateErr = &providerExit{Engine: "Lemonade", Code: 1, Reason: "engine files"}
 	if _, err := r.Advance(f.ctx, f.component); err == nil || f.effect().Phase != Checked || f.active() != f.v1 {
 		t.Fatalf("a failed activation recorded installed: %v %+v", err, f.effect())
+	}
+	// Only the bridge's definitive activation reply retires the candidate.
+	// A lower-level error may carry a health failure as its cause.
+	l.activateErr = unhealthy("provider call did not reach activation")
+	if _, err := r.Advance(f.ctx, f.component); !errors.Is(err, l.activateErr) ||
+		f.effect().Phase != Checked || f.active() != f.v1 || len(l.verb("retire")) != 0 {
+		t.Fatalf("a lower-level activation error retired the candidate: %v %+v", err, f.effect())
 	}
 	l.activateErr = nil
 	effect := f.advance(r, Installed)
@@ -220,15 +230,15 @@ func TestFailedLemonadeCheckRetiresTheStagedVersion(t *testing.T) {
 // the retained version during the update.
 func TestLemonadeBridgeFollowsTheJournalsActiveVersion(t *testing.T) {
 	f, l := newLemonadeUpdate(t)
-	cache, err := os.UserCacheDir()
+	cache, err := layout.AccountData()
 	if err != nil {
 		t.Fatal(err)
 	}
 	root := filepath.Join(cache, "OpenAbstractions", "providers", "lemonade")
-	bound := map[string]lemonadeInfo{}
+	bound := map[string]providerSetup.SetupInfoReply{}
 	for _, a := range []Artifact{f.v1, f.v2} {
 		info := lemonadeInfoFor(t, a, root, true)
-		info.KnownPackages = []lemonadeKnownPackage{lemonadeInfoFor(t, f.v1, root, false).KnownPackages[0], lemonadeInfoFor(t, f.v2, root, false).KnownPackages[0]}
+		info.KnownPackages = []providerSetup.KnownPackageInfo{lemonadeInfoFor(t, f.v1, root, false).KnownPackages[0], lemonadeInfoFor(t, f.v2, root, false).KnownPackages[0]}
 		bound[a.Version] = info
 	}
 	reply := bound[f.v1.Version]
@@ -239,7 +249,7 @@ func TestLemonadeBridgeFollowsTheJournalsActiveVersion(t *testing.T) {
 		case "setup-info":
 			return json.Marshal(reply)
 		case "verify-setup":
-			return json.Marshal(lemonadeProof{Version: 1, Verified: verified})
+			return json.Marshal(providerSetup.VerificationReply{Version: 1, Verified: verified})
 		}
 		return provider(ctx, args...)
 	}
@@ -281,6 +291,19 @@ func TestLemonadeBridgeFollowsTheJournalsActiveVersion(t *testing.T) {
 	}
 }
 
+func TestLemonadeBridgeRefusesAnUnrecognisedRetainedPin(t *testing.T) {
+	f, l := newLemonadeUpdate(t)
+	active, err := activeLemonade(f.ctx)
+	if err != nil || active == nil || *active != f.v1 {
+		t.Fatalf("the reviewed retained pin was refused: %+v (%v)", active, err)
+	}
+	f.journal.catalogOverride.PreviousInstallPins = nil
+	active, err = activeLemonade(f.ctx)
+	if active != nil || err == nil || err.Error() != "the installed Lemonade pin is not known to this release" || len(l.calls) != 0 {
+		t.Fatalf("the unrecognised pin reached the provider: %+v (%v), calls %v", active, err, l.calls)
+	}
+}
+
 // A definitive activation refusal (exit 2, such as a private model of another
 // revision) fails the update as a refused health check does: the staged
 // version is retired and removed, and the retained one stays active and
@@ -291,7 +314,7 @@ func TestRefusedLemonadeActivationRetiresTheStagedVersion(t *testing.T) {
 	for _, phase := range []Phase{Requested, Verified, Staged, Checked} {
 		f.advance(r, phase)
 	}
-	l.activateErr, l.activateRefuses = &lemonadeExit{Code: 2, Reason: "model revision differs; --replace-private-model"}, f.v2.Version
+	l.activateErr, l.activateRefuses = &providerExit{Engine: "Lemonade", Code: 2, Reason: "model revision differs; --replace-private-model"}, f.v2.Version
 	if _, err := r.Advance(f.ctx, f.component); err == nil {
 		t.Fatal("a refused activation passed")
 	}
@@ -353,7 +376,7 @@ func TestUnselectableRetainedLemonadeVersionStopsRemoval(t *testing.T) {
 	l.selected = f.v2.Version
 	third := nextRelease(*f.journal.catalogOverride, f.component, "3.0.0", f.v1, f.v2)
 	f.journal.catalogOverride = &third
-	l.activateErr = &lemonadeExit{Code: 2, Reason: "model revision differs"}
+	l.activateErr = &providerExit{Engine: "Lemonade", Code: 2, Reason: "model revision differs"}
 	_, err := NewRunner(f.journal, nil).ReconcilePrior(f.ctx, f.component)
 	if err == nil || !strings.Contains(err.Error(), "cannot select "+f.v1.Version) || len(l.verb("retire")) != 0 {
 		t.Fatalf("removal went on or names no remedy: %v %q", err, l.calls)

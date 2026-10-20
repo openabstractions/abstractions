@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"path/filepath"
 )
 
 // speakSomewhere gives openabstractionsw.exe, the -H=windowsgui link, somewhere
@@ -12,11 +13,34 @@ import (
 // both streams go to the host log. A console image with working handles is
 // unchanged. The file stays open for the life of the process.
 func speakSomewhere() {
-	path, err := hostLogPath()
+	if file := outputForState(os.Stdout, hostLogPath); file != nil {
+		os.Stdout, os.Stderr = file, file
+		log.SetOutput(file)
+	}
+}
+
+func outputForState(stdout *os.File, path func() (string, error)) *os.File {
+	if _, err := stdout.Stat(); err == nil {
+		return nil
+	}
+	name, err := path()
 	if err != nil {
+		return nil
+	}
+	return outputWithoutConsole(stdout, name)
+}
+
+// A parsed private runtime supplies its own log destination. Resolve it only
+// when stdout is unusable; console commands never consult the host log owner.
+func speakRuntime(options runtimeFlags) {
+	if _, err := os.Stdout.Stat(); err == nil {
 		return
 	}
-	if file := outputWithoutConsole(os.Stdout, path); file != nil {
+	if options.stateDir == "" {
+		speakSomewhere()
+		return
+	}
+	if file := outputWithoutConsole(os.Stdout, filepath.Join(options.stateDir, "host.log")); file != nil {
 		os.Stdout, os.Stderr = file, file
 		log.SetOutput(file)
 	}

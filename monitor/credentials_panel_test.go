@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"runtime"
@@ -26,6 +28,54 @@ import (
 	wire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	rightsservice "github.com/openabstractions/abstraction-rights/go/authorization"
 )
+
+// The page's own scripts consume real controller GET replies and submit the
+// existing conditional edits. The native holder and Rights fixture own all state.
+func TestCredentialsPageEntryAndRowAccess(t *testing.T) {
+	own(t)
+	panelCredentialsRuntime(t)
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is required for the credential page receiver")
+	}
+	server := httptest.NewServer(credentialPageFixtureHandler())
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, node, "testdata/credentials_page_handler.js", server.URL)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("credential page receiver: %v\n%s", err, out)
+	}
+	if strings.TrimSpace(string(out)) != "PASS: credential entry, row access, conditional refusal and no secret readback" {
+		t.Fatalf("unexpected page receiver report: %s", out)
+	}
+	if directory := os.Getenv("OA_CREDENTIAL_EDITOR_SHOTS"); directory != "" {
+		for _, editor := range []string{"credential", "deepseek"} {
+			args := []string{"-3.12", privateInput(t, "..", "scripts", "panel_screenshots.py"), "--run", "--panel-url", server.URL + "/?k=test-key", "--pages", "credentials", "--platforms", "windows", "--scheme", "light", "--output-dir", filepath.Join(directory, editor), "--page-script", filepath.Join(directory, editor+".js")}
+			if output, err := exec.Command("py", args...).CombinedOutput(); err != nil {
+				t.Fatalf("%s screenshot: %v\n%s", editor, err, output)
+			}
+		}
+	}
+}
+
+// Credentials and Rights below are real isolated services. This fixture has no
+// inference service; supply its explicit empty read instead of a false failure.
+func credentialPageFixtureHandler() http.Handler {
+	base := (&servicePanel{}).handler("test-key")
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" && r.URL.Path == "/inference/hosts" {
+			panelJSON(w, map[string]any{"Outcome": "page", "Hosts": []any{}})
+			return
+		}
+		if r.Method == "GET" && r.URL.Path == "/inference/gateway" {
+			panelJSON(w, map[string]any{"Outcome": "page", "Listening": false})
+			return
+		}
+		base.ServeHTTP(w, r)
+	})
+}
 
 // memCredentialBackend is a Backend kept in memory, for tests only: it never
 // touches a platform store, so the round trip runs the same on every OS.

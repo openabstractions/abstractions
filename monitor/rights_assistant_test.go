@@ -13,15 +13,103 @@ import (
 	fwire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	"github.com/openabstractions/abstraction-facade/go/grants"
 	"github.com/openabstractions/abstraction-facade/go/probe"
+	"github.com/openabstractions/abstraction-identity/hostfixture"
 	"github.com/openabstractions/abstraction-identity/listen"
 	rights "github.com/openabstractions/abstraction-rights/go"
+	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	rightsclient "github.com/openabstractions/abstraction-rights/go/client"
 )
+
+func assistantQuietFixture(t *testing.T, decide func(string) rwire.DecisionOutcome) {
+	t.Helper()
+	real := assistantHolderDecision
+	t.Cleanup(func() { assistantHolderDecision = real })
+	assistantHolderDecision = func(_ context.Context, program string) (rwire.DecisionExplanation, error) {
+		return rwire.DecisionExplanation{Outcome: decide(program)}, nil
+	}
+}
+
+func TestAssistantQuietEligibilityCoversHiddenRuleHistoryAndOutages(t *testing.T) {
+	own(t)
+	program := filepath.Join(t.TempDir(), "ordinary.exe")
+	if err := os.WriteFile(program, []byte("ordinary"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	// No visible registration: a rule-history program still asks the runtime.
+	p := &servicePanel{comfyApps: &setupApplicationsFake{page: fwire.ApplicationPage{Outcome: fwire.ApplicationOutcomeForbidden}}}
+	rules := []rightsclient.PolicyRule{{Subject: rightsclient.Subject{Account: probe.Self().Account, Program: program}}}
+	for _, outcome := range []rwire.DecisionOutcome{rwire.DecisionOutcomeForbidden, rwire.DecisionOutcomeUnavailable, rwire.DecisionOutcomeDenied, rwire.DecisionOutcomeNotGranted, rwire.DecisionOutcomePermitted} {
+		assistantQuietFixture(t, func(string) rwire.DecisionOutcome { return outcome })
+		want := outcome == rwire.DecisionOutcomeNotGranted || outcome == rwire.DecisionOutcomePermitted
+		if got := p.assistantCandidates(context.Background(), rules); (len(got) == 1) != want {
+			t.Errorf("%s candidates %q", outcome, got)
+		}
+		if err := p.refuseAssistant(context.Background(), program); (err == nil) != want {
+			t.Errorf("%s enrollment %v", outcome, err)
+		}
+	}
+}
+
+// ASK-R7/R10: registrations and rule history cannot offer a program the
+// enrollment check always refuses. Alias spellings retain the same decision.
+func TestAssistantChooserAndEnrollmentShareEligibility(t *testing.T) {
+	own(t)
+	assistantQuietFixture(t, func(string) rwire.DecisionOutcome { return rwire.DecisionOutcomeNotGranted })
+	dir := t.TempDir()
+	runtimeProgram := filepath.Join(dir, "runtime.exe")
+	app := filepath.Join(dir, "editor.exe")
+	for _, program := range []string{runtimeProgram, app} {
+		if err := os.WriteFile(program, []byte("ordinary app"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	alias := func(program string) string {
+		return filepath.Dir(program) + string(filepath.Separator) + "." + string(filepath.Separator) + filepath.Base(program)
+	}
+	realRuntime := panelRuntimeProgram
+	t.Cleanup(func() { panelRuntimeProgram = realRuntime })
+	panelRuntimeProgram = func(context.Context) string { return runtimeProgram }
+	bun := hostfixture.Bun(t, dir, "standalone.exe", true)
+	programs := []string{runtimeProgram, alias(runtimeProgram), probe.Self().Program, alias(probe.Self().Program), bun, app, alias(app)}
+	var entries []fwire.ApplicationEntry
+	var rules []rightsclient.PolicyRule
+	for i, program := range programs {
+		entries = append(entries, fwire.ApplicationEntry{Descriptor: fwire.ApplicationDescriptor{Name: "candidate", Program: program}, Scope: fwire.ScopeLocal})
+		rules = append(rules, rightsclient.PolicyRule{Subject: rightsclient.Subject{Account: probe.Self().Account, Program: program}})
+		if err := (&servicePanel{}).refuseAssistant(context.Background(), program); (err == nil) != (i >= 5) {
+			t.Errorf("enrollment %q: %v", program, err)
+		}
+	}
+	for _, registered := range []bool{false, true} {
+		apps := []fwire.ApplicationEntry{}
+		candidateRules := rules
+		if registered {
+			apps = entries
+			candidateRules = nil
+		}
+		p := &servicePanel{comfyApps: &setupApplicationsFake{page: fwire.ApplicationPage{Outcome: fwire.ApplicationOutcomePage, Applications: apps}}}
+		if got := p.assistantCandidates(context.Background(), candidateRules); len(got) != 1 || got[0] != app {
+			t.Errorf("registered=%t: candidates %q, want only %q", registered, got, app)
+		}
+	}
+}
+
+func TestAssistantEligibilityRequiresReceivingAccount(t *testing.T) {
+	app := filepath.Join(t.TempDir(), "editor.exe")
+	if assistantEligible(asks.AnswererRule{}, app) {
+		t.Fatal("missing receiving account allowed enrollment")
+	}
+	if !assistantEligible(asks.AnswererRule{Account: "account"}, app) {
+		t.Fatal("ordinary app of the receiving account was refused")
+	}
+}
 
 // The answerer chooser offers each registered local application's own
 // program first, then every program a rule names; no app is named in the
 // Panel's source, and a script host is never offered.
 func TestAssistantCandidatesComeFromRegisteredApplications(t *testing.T) {
+	own(t)
+	assistantQuietFixture(t, func(string) rwire.DecisionOutcome { return rwire.DecisionOutcomeNotGranted })
 	dir := t.TempDir()
 	registered := filepath.Join(dir, "answerer", "answerer.exe")
 	remote := filepath.Join(dir, "remote", "remote.exe")
@@ -95,7 +183,7 @@ func TestTheAssistantYesIsWordedFromTheTierTableAndRefusesScriptHosts(t *testing
 			t.Fatalf("the yes does not name %q: %s", want, answers)
 		}
 	}
-	for _, want := range []string{"lend your model files to another app", "use a model on a hosted server, which can cost money", "passwords and keys"} {
+	for _, want := range []string{"lend your model files to another app", "use a model on a server OpenAbstractions does not run, which can cost money", "passwords and keys"} {
 		if !strings.Contains(stays, want) {
 			t.Fatalf("the yes does not keep %q with the person: %s", want, stays)
 		}
@@ -147,6 +235,14 @@ func TestTheAssistantYesIsWordedFromTheTierTableAndRefusesScriptHosts(t *testing
 	}
 	// Stop and don't ask again: the deny stands with no expiry.
 	state = assistantState(t, panel)
+	if r := panelRequest(t, panel, "/rights/assistant", assistantEdit{Action: "enroll", Program: assistant, Revision: state.Revision, Confirm: true}); r.Code != 400 {
+		t.Fatalf("current Block must remain until explicitly removed: %d %s", r.Code, r.Body.String())
+	}
+	// Permissions owns removing a current Block before another enrollment.
+	if err := policy.Revoke(rightsclient.Subject{Account: account, Program: assistant}, asks.AnswerAction, rights.MetaScopeApps); err != nil {
+		t.Fatal(err)
+	}
+	state = assistantState(t, panel)
 	if r := panelRequest(t, panel, "/rights/assistant", assistantEdit{Action: "enroll", Program: assistant, Revision: state.Revision, Confirm: true}); r.Code != 200 {
 		t.Fatalf("enroll again %d %s", r.Code, r.Body.String())
 	}
@@ -192,7 +288,7 @@ func TestAnsweredForYouUndoesOnlyTheAssistantsOwnPermit(t *testing.T) {
 		t.Fatalf("answered for you %+v", page)
 	}
 	for _, a := range page.Answers {
-		if a.State != "in_force" || a.AnswererName != "opencode (not registered)" || a.Option != "allow" || a.Program != program || !strings.Contains(a.Sentence, "wants to") {
+		if a.State != "in_force" || a.AnswererName != "opencode (not registered)" || a.Option != "allow" || !samePanelProgram(a.Program, program) || !strings.Contains(a.Sentence, "wants to") {
 			t.Fatalf("an answer %+v", a)
 		}
 	}
@@ -237,6 +333,147 @@ func TestAnsweredForYouUndoesOnlyTheAssistantsOwnPermit(t *testing.T) {
 		if a.ID == third && a.State != "ended" {
 			t.Fatalf("an answer after Stop %+v", a)
 		}
+	}
+}
+
+func TestAnsweredForYouIncludesTypedRoutineAndUsesRetainedUndo(t *testing.T) {
+	book, policy, program, assistant := assistantRuntime(t, "abstraction.facade/command.read")
+	var definitions []rightsclient.PermissionDefinition
+	for _, d := range grants.PermissionDefinitions() {
+		if d.ResourceProfile == rights.LegacyExactResourceProfile {
+			definitions = append(definitions, d)
+		}
+	}
+	var err error
+	policy.Definitions, err = rights.NewDefinitionCatalog(definitions, map[string]func(string) bool{rights.LegacyExactResourceProfile: func(s string) bool { return rights.ValidDecisionQuery("example/use", s) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, class := range []string{"read", "reveal", "propose"} {
+		action, _ := grants.ApplicationCommandAction(class, "app:comfyui")
+		if err := policy.RegisterAction(action); err != nil {
+			t.Fatal(err)
+		}
+	}
+	panel := (&servicePanel{}).handler("test-key")
+	state := assistantState(t, panel)
+	if r := panelRequest(t, panel, "/rights/assistant", assistantEdit{Action: "enroll", Program: assistant, Revision: state.Revision, Confirm: true}); r.Code != 200 {
+		t.Fatal(r.Code, r.Body.String())
+	}
+	account := probe.Self().Account
+	p, err := grants.ApplicationPermission(rightsclient.Subject{Account: account, Program: program}, "app:comfyui", "ComfyUI", "read")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, _, err := book.AskTypedPermissionOccurrenceAuthorizedFrom("runtime-scope", "runtime", "typed-routine", p, listen.Seen{}, asks.Publisher{}, func() error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := book.AnswerTypedPermissionAsResponderAuthorized(r.ID, "allow", assistant, func(asks.Record, string) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	edit, err := policy.ChangeLegacyPermissionEffectUnderAnswer(t.Context(), rightsclient.Subject{Account: account, Program: assistant}, p.Effect, "answered for you", r.ID, true, func() error { return nil })
+	if err != nil || edit.Outcome != rightsclient.PolicyEditOutcomeApplied {
+		t.Fatal(edit, err)
+	}
+	response := panelRequest(t, panel, "/rights/answered", nil)
+	page := decodePanel[answeredPage](t, response.Code, response.Body.Bytes())
+	if len(page.Answers) != 1 || page.Answers[0].ID != r.ID || page.Answers[0].State != "in_force" {
+		t.Fatal(page)
+	}
+	for _, words := range p.Display.Selections {
+		if !strings.Contains(page.Answers[0].Sentence, words.Operation) || !strings.Contains(page.Answers[0].Sentence, words.Target) {
+			t.Fatal(page)
+		}
+	}
+	old := permissionsRules
+	t.Cleanup(func() { permissionsRules = old })
+	rules := &fakePermissionRules{}
+	permissionsRules = func() grants.PermissionRuleOperator { return rules }
+	response = panelRequest(t, panel, "/rights/answered", map[string]string{"id": r.ID})
+	result := decodePanel[assistantResult](t, response.Code, response.Body.Bytes())
+	if result.Outcome != "applied" || len(rules.undone) != 1 || rules.undone[0] != "permission-revision:"+r.ID {
+		t.Fatal(result, rules.undone)
+	}
+}
+
+// ASK-A7 expires pending questions only. An assistant's recorded answer and
+// exact rule survive that lifetime and a fresh Book/policy/runtime instance.
+func TestAnsweredForYouUndoSurvivesPendingLifetimeAndRuntimeRestart(t *testing.T) {
+	const action = "abstraction.model/lookup"
+	stateDir := t.TempDir()
+	book, policy, program := panelFirstUseRuntimeIn(t, stateDir, action)
+	assistant := filepath.Join(t.TempDir(), "assistant.exe")
+	if err := os.WriteFile(assistant, []byte("assistant"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	panel := (&servicePanel{}).handler("test-key")
+	state := assistantState(t, panel)
+	if response := panelRequest(t, panel, "/rights/assistant", assistantEdit{Action: "enroll", Program: assistant, Revision: state.Revision, Confirm: true}); response.Code != 200 {
+		t.Fatal(response.Code, response.Body.String())
+	}
+	r, _, err := book.AskApplication("runtime-scope", "runtime", "retained-undo", asks.FirstUseKey,
+		map[string]string{"program": program, "action": action, "resource": "hf"}, listen.Seen{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	answerAs(t, book, policy, assistant, r.ID, program, action, "hf")
+	if err := book.SetPendingLifetime(time.Nanosecond); err != nil {
+		t.Fatal(err)
+	}
+	// The next read is past the pending lifetime, without changing grant expiry.
+	response := panelRequest(t, panel, "/rights/answered", nil)
+	if page := decodePanel[answeredPage](t, response.Code, response.Body.Bytes()); len(page.Answers) != 1 || page.Answers[0].ID != r.ID || page.Answers[0].State != "in_force" {
+		t.Fatal(page)
+	}
+	reopened, persisted, _ := panelFirstUseRuntimeIn(t, stateDir, action)
+	if reopened == book || persisted == policy {
+		t.Fatal("fixture did not reopen its persisted owners")
+	}
+	if err := reopened.SetPendingLifetime(time.Nanosecond); err != nil {
+		t.Fatal(err)
+	}
+	restarted := (&servicePanel{}).handler("test-key")
+	response = panelRequest(t, restarted, "/rights/answered", nil)
+	if page := decodePanel[answeredPage](t, response.Code, response.Body.Bytes()); len(page.Answers) != 1 || page.Answers[0].ID != r.ID || page.Answers[0].State != "in_force" {
+		t.Fatal(page)
+	}
+	response = panelRequest(t, restarted, "/rights/answered", map[string]string{"id": r.ID})
+	if result := decodePanel[assistantResult](t, response.Code, response.Body.Bytes()); result.Outcome != "applied" {
+		t.Fatal(result)
+	}
+	if got := persisted.Decide(rightsclient.Subject{Account: probe.Self().Account, Program: program}, action, "hf"); got.Outcome != rightsclient.DecisionOutcomeNotGranted {
+		t.Fatal("Undo after restart left the permit", got)
+	}
+}
+
+func TestUndoAfterAnswerRetirementRefusesWithoutChangingSavedPermit(t *testing.T) {
+	const action = "abstraction.model/lookup"
+	book, policy, program, assistant := assistantRuntime(t, action)
+	panel := (&servicePanel{}).handler("test-key")
+	state := assistantState(t, panel)
+	panelRequest(t, panel, "/rights/assistant", assistantEdit{Action: "enroll", Program: assistant, Revision: state.Revision, Confirm: true})
+	r, _, err := book.AskApplication("runtime-scope", "runtime", "retired-answer", asks.FirstUseKey,
+		map[string]string{"program": program, "action": action, "resource": "hf"}, listen.Seen{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	answerAs(t, book, policy, assistant, r.ID, program, action, "hf")
+	if removed, err := book.ReleaseAnsweredApplication("runtime-scope", "retired-answer", "allow"); err != nil || !removed {
+		t.Fatal(removed, err)
+	}
+	before := revisionOf(t, policy)
+	response := panelRequest(t, panel, "/rights/answered", map[string]string{"id": r.ID})
+	result := decodePanel[assistantResult](t, response.Code, response.Body.Bytes())
+	if result.Outcome != "unknown" || !strings.Contains(result.Message, "saved permission on Permissions") || revisionOf(t, policy) != before {
+		t.Fatal(result)
+	}
+	if got := policy.Decide(rightsclient.Subject{Account: probe.Self().Account, Program: program}, action, "hf"); got.Outcome != rightsclient.DecisionOutcomePermitted {
+		t.Fatal("missing answer details changed a live permission", got)
+	}
+	response = panelRequest(t, panel, "/activity/answers", nil)
+	if audit := decodePanel[activityPage](t, response.Code, response.Body.Bytes()); len(audit.Events) != 1 || audit.Events[0].Result == "" {
+		t.Fatal("retirement removed the independent answer audit", audit)
 	}
 }
 
@@ -335,7 +572,7 @@ func TestUndoCannotRemoveSameMillisecondReplacementAfterQuestionRelease(t *testi
 		t.Fatal("replacement question not admitted")
 	}
 	target := rightsclient.Subject{Account: probe.Self().Account, Program: program}
-	if read := policy.ReadRule(target, action, resource); read.Record == nil || !read.Record.Rule.Permit || read.Record.SetBy.Program != assistant {
+	if read := policy.ReadRule(target, action, resource); read.Record == nil || !read.Record.Rule.Permit || !samePanelProgram(read.Record.SetBy.Program, assistant) {
 		t.Fatalf("replacement was removed %+v", read)
 	}
 }
@@ -416,8 +653,8 @@ func TestTheQuestionsPageShowsAssistantsAndAnsweredForYou(t *testing.T) {
 	}
 	answerAs(t, book, policy, assistant, record.ID, program, action, hostile)
 	report := runRightsPage(t)
-	if len(report.Assistants) != 1 || len(report.Assistants[0]) != 4 || !strings.HasPrefix(report.Assistants[0][0], "opencode (not registered) answers routine questions for you") ||
-		report.Assistants[0][2] != "Revoke answering access" || report.Assistants[0][3] != "Stop and don't ask again" {
+	if len(report.Assistants) != 1 || len(report.Assistants[0]) != 3 || !strings.HasPrefix(report.Assistants[0][0], "opencode (not registered)\nAnswers routine questions for you") ||
+		report.Assistants[0][1] != "Revoke answering access" || report.Assistants[0][2] != "Stop and don't ask again" {
 		t.Fatalf("assistants %+v (%s)", report.Assistants, report.AssistantStatus)
 	}
 	warning := strings.Join(report.AssistantWarning, "\n")

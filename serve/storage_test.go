@@ -142,7 +142,7 @@ func TestStorageIncompatibleDoesNotMutate(t *testing.T) {
 	}
 }
 func TestStorageGuardedWriterAndRelease(t *testing.T) {
-	state := t.TempDir()
+	state := privateTestState(t)
 	root := filepath.Join(state, "jobs")
 	if _, err := acceptanceprovider.OpenManaged(root, downloadserve.HTTPExecution{}); err != nil {
 		t.Fatal(err)
@@ -179,7 +179,7 @@ func TestStorageGuardedWriterAndRelease(t *testing.T) {
 }
 
 func TestStorageEmptyExistingRootOnlyAddsGuard(t *testing.T) {
-	state := t.TempDir()
+	state := privateTestState(t)
 	root := filepath.Join(state, "jobs")
 	if err := os.Mkdir(root, 0700); err != nil {
 		t.Fatal(err)

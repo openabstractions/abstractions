@@ -6,17 +6,27 @@ What the OA plugin gives a person using OpenCode:
   hosted server, from the router's own placement. A hosted reply also raises a
   toast once.
 - **One place for local and hosted models.** `/oa` lists OA's models under
-  "this computer", "via hosted servers" and saved preferences; choosing one
-  makes it OpenCode's default. Hosted keys stay in OA's credential holder,
+  "OpenAbstractions", "<service> · OpenAbstractions" and saved preferences;
+  choosing one saves OA's chat choice for OpenCode. Hosted keys stay in OA's credential holder,
   never in OpenCode's config.
 - **OpenCode keeps working when OA is down.** OA's tools answer that OA is
   unavailable, one toast says so and another when OA returns, and OpenCode's
-  other providers are untouched. A missing or hung OA costs OpenCode's start
-  one probe of under a second.
+  other providers are untouched.
+- **OpenCode starts without waiting on OA.** The plugin lists the models and
+  chat model of its last start at once and asks OA in the background, once
+  for all the projects an OpenCode process opens. A start with no answer for
+  its config lists the answer kept last, an earlier version's included, under
+  today's names. A start with no answer at all lists one entry, "Default",
+  which OA resolves when a request arrives, selected unless the config names a
+  model. When OA's answer differs, OpenCode reloads the project's model list
+  as soon as its sessions are idle; OpenCode Desktop's global list reads it at
+  the next start.
+  The model list never waits on the helper's Connect: the runtime answers
+  OpenCode's own reads for the registered host, and Connect guards the tools.
 
-The plugin answers OA's asks, the questions the person let OpenCode answer
-(`openabstractions_authorization_questions`). It never answers OpenCode's own
-permission prompts, and an OpenCode permission answer grants no OA access.
+OpenCode answers OA's routine asks through its enrolled native OA MCP helper
+(`oa_asks_answer` / `oa_asks_answer_choice`). The person approves enrollment in
+OA's native question. OpenCode's own permission answers grant no OA access.
 
 OA's sandboxed start, `openabstractions opencode open`, confines OpenCode on
 Windows only, to the folders the person approves (an AppContainer with
@@ -35,19 +45,27 @@ This development provider keeps OpenCode's normal provider and model API. OA
 handles model routing, program rights, named credentials, streaming,
 cancellation and provider substitution through `abstraction.inference/chat@1`.
 
-OpenCode's Bun process loads the shared OA C ABI through `bun:ffi`. The runtime
-therefore observes the OpenCode executable as the caller and applies the rights
-granted to that exact program.
+The Bun CLI uses `bun:ffi`; Desktop's Node sidecar uses the native addon. Each
+loads the integration's own packaged OA client. The runtime observes that
+process's executable as the caller and applies its exact program rights.
 
-The [OpenAbstractions MCP gateway](../../mcp-gateway/README.md) is a second,
-separate integration path: OpenCode reaches OA capabilities as MCP tools over
-a local server process instead of through this native provider.
+The installed [OpenAbstractions MCP gateway](../../mcp-gateway/README.md)
+serves its public agent tools through one kept `oa-opencode-integration` child per
+actual OpenCode chat. The plugin declares canonical `oa_*` wrappers from the
+generated native agent catalogue, including Messages, Asks, application commands,
+API reads, model discovery and inference jobs. Host-only session metadata binds each child to its
+native canonical inbox; model arguments cannot choose their own chat. Each open
+child keeps a headers watch; when a message waits for an idle chat, the plugin
+starts one turn there with the helper's fixed ticketed pointer. The installer atomically replaces its owned optional global
+MCP roster; a person-owned entry requires resolving the connection conflict.
+Provider calls retain the native OpenCode process identity.
+`oa_models_connect` retains the existing OpenCode model caller's setup owner.
 
 The native sandbox session owner supplies `OA_OPENCODE_SESSION_ENDPOINT`,
 `OA_OPENCODE_SESSION_PROGRAM`, `OA_OPENCODE_SESSION_ACCOUNT`,
 `OA_OPENCODE_SESSION_ID`, `OA_OPENCODE_RUNTIME_PROGRAM` and
 `OA_OPENCODE_RUNTIME_ACCOUNT` together. Only that complete context enables
-`openabstractions_project_access`. Its `folder` argument is one exact absolute
+`oa_project_request_access`. Its `folder` argument is one exact absolute
 local folder. The person answers the OA `opencode.project.edit` question; it
 requests read, run, create, edit and delete access throughout that folder and
 its subfolders for the sandbox session. The plugin verifies the session host
@@ -66,16 +84,93 @@ unconfirmed and triggers no automatic acknowledgment retry.
 
 ## Install
 
-OpenCode comes from its own installer; OA changes none of its shortcuts, its
-`opencode` command, `PATH`, updates or file associations. Add this plugin with
-OpenCode's plugin command, for every project:
+The Windows user delivery is **OpenCode with OA**: the official OpenCode
+Desktop installer and an app-owned per-user integration MSI, offered by
+OpenAbstractions Setup. Its source is in `installer/`. The installer slice is
+under qualification; no published or installed Desktop result is claimed here.
+The completed user flow requires no Python, Node setup, or manual plugin command.
+It keeps OpenCode's normal profile, shortcut, updates and file associations.
+Installing grants no OA permission. Close OpenCode fully before changing the
+integration and reopen it from its normal shortcut afterwards.
+
+This installer qualification targets official Desktop **1.18.34** at its
+standard per-user location. A fixed native check refuses unsupported versions,
+registrations and custom or redirected locations before the host installer
+runs. The MSI rechecks the registration and exact host file before changing
+integration settings. Removing the OA integration preserves the official
+Desktop program, its ordinary uninstaller and unrelated OpenCode settings.
+
+The integration MSI records its registration manifest and starts the Panel
+with it once, at install. The manifest names the official Desktop
+`OpenCode.exe`, the program that runs and holds OA rights. The installer's
+guard checks it before installing, and the Panel accepts that program
+outside the integration folder only because OA's own compiled Setup catalog
+names it, with its publisher's signature, which the Panel verifies itself. OpenCode then waits in Panel → Apps until the
+person chooses Allow. If that request is lost, for example when Setup is run
+again over an integration it leaves in place, the plugin asks again: the
+first time OA refuses OpenCode's presence in a run, it starts the installed
+Panel with `--register-application` and the manifest in the integration root.
+The Panel posts its question once per manifest, so later starts only keep
+the waiting row.
+
+The integration carries its own expanded plugin, native client and the pinned
+official CLI helper. Desktop 1.18.34 has no CLI sidecar. The installer uses that
+private CLI's official plugin command on staged copies of the existing server
+and TUI documents, then applies only its owned changes through the adopter's
+config file owner. Upgrade, rollback and removal preserve unrelated entries and
+comments. A changed owned entry or conflicting provider ID refuses the change.
+
+### Repair: the watcher fix after an OpenCode update
+
+OpenCode's own updater restores its stock `@parcel/watcher` module, which
+brings back the crash the integration's watcher fix removes
+(`backlog/OPENCODE-WATCHER-PIN.md`, ruling 1). Setup reads
+`resources/app.asar.unpacked/node_modules/@parcel/watcher-win32-x64/watcher.node`
+in OpenCode's folder. The integration must carry the fixed file as
+`desktop-fix/watcher.node` in its own folder. When OpenCode's file has the
+stock SHA-256 (`a8199cf7…d440f315`) and `OpenCode.exe` is a listed release,
+Setup's OpenCode row reads "Needs its OpenAbstractions fix again" with
+Repair. A stock file in an unlisted release reads "Not a version this release
+supports", with no Repair. The file, hashes, versions and program digests are
+projected by `setup_fixup_declaration()` in the installer producer and
+checked against the declaration embedded in the product catalogue.
+
+Repair is the integration MSI's own Windows Installer repair, with no
+installer window. It is the same as running:
+
+```
+msiexec /fomus {ProductCode} /qn
+```
+
+Setup calls `MsiReinstallProductW(product, omus)` at UI level none. The product
+is the one installed product of upgrade code
+`{8E0B8005-0E00-5720-9556-E5B984F15A96}` (`build_app.upgrade_code("opencode")`).
+Setup runs it only while no program in OpenCode's folder is running.
+
+The installer meets this contract:
+
+- The watcher step runs in a deferred custom action whose condition is true
+  on install and on repair (`NOT REMOVE AND NOT UPGRADINGPRODUCTCODE`, like
+  `InstallOpenCodeIntegration`), after `CheckOpenCodeClosed`.
+- Over a listed stock hash it replaces `watcher.node` with the patched file the
+  MSI carries in its own installed folder. Repair then needs no source media.
+- Over the patched hash it changes nothing and succeeds.
+- Over any other hash, or with no file, it changes nothing and succeeds.
+  In a listed release Setup then shows "The OpenAbstractions fix can't be
+  checked" and asks for a reinstall.
+- While OpenCode runs, `CheckOpenCodeClosed` fails the repair (exit 1603),
+  and nothing changes.
+- Rollback restores the stock file it replaced.
+
+For development, a published plugin can also be added with the official CLI:
 
 ```sh
 opencode plugin @openabstractions/opencode --global
 ```
 
 or, for the current project only, `opencode plugin @openabstractions/opencode`.
-OpenCode installs the package and its dependencies under its own cache
+This registry route requires the matching published package. OpenCode installs
+the package and its dependencies under its own cache
 (`~/.cache/opencode/packages/`) and adds it to `opencode.json`. On Windows x64
 npm brings `@openabstractions/ipc-win32-x64`, the native client
 `@openabstractions/ipc` loads; the plugin needs no Node or Bun of its own.
@@ -85,8 +180,8 @@ default-exports `{id, server, setup}`: OpenCode 1.18 calls `server`
 (`plugin.js`), and OpenCode V2 (`@opencode/cli` 2.x) calls `setup`
 (`v2.js`). On V2 the plugin adds OA's provider with
 `ctx.provider.transform`, supplies its language model through
-`ctx.aisdk.hook('language')`, reads OA's models again after a reply at most
-once a minute and calls `ctx.provider.reload()`, adds the OA tools with
+`ctx.aisdk.hook('language')`, reads OA's models again when they change (see
+"When OA's models change") and calls `ctx.provider.reload()`, adds the OA tools with
 `ctx.tool.transform`, and sets the Local assistant's local-only option in
 `ctx.session.hook('context')`. V2 configures it under `plugins`, with the
 provider options under `options.provider`. V2 gives a tool no approval
@@ -97,15 +192,15 @@ features. The V2 path is tested against a context built from
 
 The plugin works in two modes:
 
-- **Outside OA's sandbox**, started as `opencode`: every OA feature except
+- **Outside OA's sandbox**, including normal Desktop: every OA feature except
   folder requests. At its first event OpenCode shows one toast: "OpenCode is
-  running outside the OA sandbox. To start it protected, run: node <plugin
-  folder>/official-install.js --project <folder> --run"
+  running outside the OA sandbox. Folder permission requests are available
+  only in a protected OA session."
 - **Inside OA's sandbox**, started by OA's own entry point
   `openabstractions opencode open --project <folder> --program <opencode.exe>
   --plugin <plugin folder> --config <opencode.json>`: the same features plus
-  `openabstractions_project_access` for further folders. The entry point
-  requires all three paths. `official-install.js` finds the official CLI, this
+  `oa_project_request_access` for further folders. The entry point
+  requires all three paths. The development diagnostic `official-install.js` finds the official CLI, this
   plugin and OpenCode's config and prints the full command:
   `node <plugin folder>/official-install.js --project <folder>` (`--run`
   starts it).
@@ -127,18 +222,17 @@ The plugin works in two modes:
     it retries the name forever. Bun 1.4.0 and later carry libuv's fix, so an
     OpenCode release on Bun 1.4 should lift this.
 
-Three TUI features exist only in a build carrying the upstream drafts in
-`patches/` (`patches/README.md`). The plugin checks for each and leaves it out
-quietly on the official OpenCode: `/oa`'s refresh entry needs the provider
-refresh route in OpenCode's OpenAPI document, and a log-sharing approval needs
-the consent-display TUI that shows its bounds (the official TUI answers a
-sharing request as `sharing_unavailable`; counts-only watches still run).
-Per-agent model picks kept in `model.json` exist only with the agent model
-pick draft; the plugin does not use them.
+A log-sharing approval needs a TUI that shows its bounds; the official TUI
+answers a sharing request as `sharing_unavailable`, and counts-only watches
+still run. The upstream draft texts are in
+`feedback/2026-10-02-opencode-upstream-drafts.md`.
 
 Publishing to npm needs the owner's npm organization and consent. Until then
 `scripts/npm_packages.py` packs the tarballs, and
-`opencode plugin <path to the .tgz>` installs one.
+For the pinned 1.18.34 CLI, materialize the verified archive into an immutable
+versioned package directory, then use `opencode plugin <expanded package directory>
+--global`. The CLI treats a local `.tgz` as a file target and cannot read its
+package manifest; npm tarball installation alone does not qualify this handoff.
 
 ## Requirements
 
@@ -161,8 +255,8 @@ This package is `@openabstractions/opencode`. It is not on npm: publication
 needs the owner's npm organization and consent. Until then it is installed from
 a tarball the release packaging job produces, or run from source by file URL.
 OA builds, packages and installs no OpenCode executable. Its patched
-**OpenCode OA Preview** build was retired on 2026-10-07; the source patches it
-carried are upstream drafts in `patches/`, outside the npm package.
+**OpenCode OA Preview** build was retired on 2026-10-07; the drafts of its
+source patches are in `feedback/2026-10-02-opencode-upstream-drafts.md`.
 
 OA runs its OpenCode scripts (`configure.js`, `official-install.js`) with
 Node and never through OpenCode's own program (coordinator decision,
@@ -175,7 +269,7 @@ ASK-R7). The plugin and the installer flow run inside OpenCode and need no
 
 `configure.js`, shipped with the plugin, writes the provider block from the
 models the router already lists, so nobody types a model name into OpenCode's
-config by hand. It runs under Node and reads the router's public Offer
+config by hand. It runs under Node and reads the router's public [Offer](https://openabstractions.github.io/reference.html#concept-router.offer)
 under the caller's own identity, which needs `abstraction.router/inventory.read`:
 
 ```console
@@ -229,25 +323,34 @@ that marker keep their existing model entries until configure is run once to
 record ownership. Inventory is visibility only: the router's per-program
 inference and credential rights still decide each request.
 
-The plugin reads its own chat policy, `oa-chat-default`
+The plugin reads its effective chat policy, `oa-chat-default`
 (`defaultSelectionPolicies` in `inventory.js`), through OA's selection
-service at each start, with no configure step. The person chooses OpenCode's
-chat model on the Panel's Models page, in the "Chat model for OpenCode" row
-of Chosen models; that generic per-app chooser stores `oa-chat-default` for
-OpenCode's program. Once that policy exists, the main heading lists it as
-`Preference: oa-chat-default` (model ID `oa-chat`), and at start the plugin
-makes it OpenCode's model when the config names a model under the OA provider
-or none. Each request on it names the policy, and the runtime applies its
-candidates in order. A config model under another provider stays. With no
-policy stored, OpenCode keeps the model its config names; a config that names
-none, or names `oa-chat`, gets OA's default, the first servable family by name
-(the model configure writes). A program reads its own policies with no grant
+service's self-only `ReadEffective` at each start, with no configure step.
+OpenCode's own program policy wins; the same named account default applies
+when that program policy is absent. This read needs no management grant and
+creates no permission. It describes a stored choice; the runtime checks the
+current route, provider pin and execution rights for each request.
+Change the model OpenAbstractions picks for OpenCode in the Panel →
+Applications → OpenCode; that per-app choice, the path for every client,
+stores `oa-chat-default` for OpenCode's program. The picker's first row,
+"Default (Qwen3.6 35B)", is that policy: it names the model the policy
+currently chooses, carries that model's context, and follows a change of the
+Panel's default at the next list read. The real models follow by name. The
+row's model ID is `oa-chat`; its API id is the row's name, which OpenCode's
+system prompt names, and `oaRouteModels` maps it back to the policy. At
+start the plugin preselects the model that policy chooses, its first offered
+candidate, as that real model ("Qwen3.6 35B"), when the config names no model
+or names `oa-chat`. A model the config names is the person's pick and stays.
+A session OpenCode kept on `oa-chat` uses the Default row: a request on it
+names the policy, and the runtime applies its candidates in order. With no
+policy stored, a config that names no model gets OA's default, the first
+servable family by name (the model configure writes). A program reads its own policies with no grant
 (inference CONTRACT.md INF-R1). A policy the runtime cannot read keeps the
 configured model, with one info line in OpenCode's log. An `oaSelectionPolicies` entry that names another
 policy under `oa-chat` takes its place.
 
 Create a caller-scoped ordered preference with the
-`openabstractions_selection_policy` tool (enabled through the plugin's `tools` option, see "Tools and the local profile"), granting the OpenCode executable
+`oa_selection_manage` tool (enabled through the plugin's `tools` option, see "Tools and the local profile"), granting the OpenCode executable
 `abstraction.inference/selection.manage` for that account. Then register its
 model choice explicitly:
 
@@ -255,16 +358,17 @@ model choice explicitly:
 node adopters/opencode/configure.js configure --selection-policy cloud-local
 ```
 
-OpenCode shows that choice as `Preference: cloud-local` (model ID
+OpenCode shows that choice as `Saved preference: cloud-local` (model ID
 `oa-preference-cloud-local`). Configure keeps the existing default model. The
 plugin asks the runtime for the named policy under OpenCode's own caller
 identity and lists the preference only when the router's offers for its
 candidates' placements leave input budget at the smallest offered context.
 Each request admits one policy
 candidate through the runtime; the visible inventory does not promise future
-availability or backend tool support.
+availability or backend tool support. Access and availability are checked when
+the saved preference is used.
 
-When enabled, the plugin offers an explicit `openabstractions_watch_logs` tool. Each
+When enabled, the plugin offers an explicit `oa_logs_watch` tool. Each
 watch asks before reading one local source for a bounded interval and record
 budget. It returns counts and status by default. Sharing event contents with
 the current assistant model requires a second approval because that model route
@@ -281,6 +385,23 @@ limit completion can return events after a fresh bounded check. Each decision
 samples current policy; revocation after returned bytes cannot recall them.
 The share permit leaves logging's separate `source.read` permission unchanged.
 Count-only watches retain their default and require no share permit.
+
+When an OA image request fails or is refused, the tool's answer names a
+failure ID, and `oa_logs_read_failure` registers with
+`generate_image` (turn it off with `"failure_logs": false` in `tools`). It
+reads only what OpenAbstractions recorded about OpenCode's own requests in a
+window of up to 10 minutes before that failure (logging `ReadAboutCaller`,
+LOG-P9). OpenAbstractions asks the person in its own prompt before the first
+read: "Let OpenCode read what OpenAbstractions recorded about its requests in
+the 10 minutes before its failed image request at 14:02?". The result holds
+counts and status. Sending the records
+to the model is a second question in OpenCode, "Send these 12 OpenAbstractions
+records to the assistant's model? The model may run online.", plus the exact
+permit `opencode/log-source.share` on resource `oa/application-history`.
+Neither grants any repair. A failure on a paired machine names that machine by
+its binding name and counts the records naming it; its detailed records stay
+on that machine. No record value leaves before the share approval. A runtime without the method answers
+`runtime_too_old`.
 
 The package ships `rights-action-description.template.json`. Copy it and replace
 both `feature_app` placeholders with the actual account ID and final installed
@@ -314,11 +435,48 @@ are still required for each watch, including after an OA permit is granted.
 
 OpenCode 1.18.31 calls the plugin `config` hook before it constructs its
 provider snapshot, so this refresh applies when a new OpenCode instance starts.
-The provider service caches that snapshot. The companion source patch in
-`patches/` adds a TUI model chooser refresh action (`Ctrl+Alt+R`) for a running
-instance; it refreshes the selected provider and leaves the current selection
-and default untouched. The patch targets exactly OpenCode v1.18.31 and does not
-add a refresh action to the desktop web picker.
+The provider service caches that snapshot.
+
+### When OA's models change
+
+A running OpenCode follows OA's model list without a restart.
+`inventory-watch.js` is the one owner: for each OA heading it holds one
+router@1 `ObserveOffer` long poll per placement (router CONTRACT.md
+ROUTE-D11) under OpenCode's `abstraction.router/inventory.read` right, the
+right `Offer` decides. The router answers once its offers differ from the
+last answer, or after 30 seconds. The runtime surveys its engines every
+minute, hosted listings every 15 minutes, paired computers every minute
+while they answer and less often after a failure, and every server as soon
+as a server or a paired computer is added or removed (router CONTRACT.md
+ROUTE-D12). It asks a paired computer once per survey however many
+OpenCodes wait. Models that appear count at once: pairing a computer or
+adding a server shows within its survey, and a model pulled on an existing
+server within the next minute. A paired computer that sleeps drops out of one survey, so models
+that disappear count once a later survey still shows them gone. A model, its
+servers and whether it is listed count as a change; its context number alone
+does not. A runtime without `ObserveOffer` logs that the list reloads at the
+next start.
+
+On OpenCode 1.18 the plugin then asks OpenCode to re-create its instance
+(`instance.dispose`) once every session is idle. It reads the session status a second time and disposes right
+after it; a reply that starts within that one request is still ended, since
+1.18 has no "dispose when idle". OpenCode keeps running; the new instance runs
+the `config` hook with the current inventory, and the TUI and Desktop reload
+their model lists on its `server.instance.disposed` event. After that a toast
+says "OpenAbstractions models changed; OpenCode's model list is up to date."
+Re-creating the instance also restarts that instance's MCP servers and
+language servers. Each Messages child closes with its plugin instance; a new
+child for the same actual host chat reopens its canonical native inbox.
+The plugin carries no Messages body cursor
+or idle-wake state across the reload. Host application-presence metadata may be
+handed to the new plugin instance of the same project (`reload-handover.js`).
+A failed reload is logged and the watch starts over, so it is tried again
+at its first answer. On V2 the plugin refreshes its
+providers and calls `ctx.provider.reload()`. The person's default `model` and the models they
+added or edited stay; a config with no `model` keeps the default this OpenCode
+process started with while it is offered. A runtime that goes away keeps the
+listed models; once it answers again, a changed list reloads. An OpenCode
+without the instance route logs that the list reloads at its next start.
 
 Each model's `limit.context` is the context the router's `Offer` answers for
 that family (router CONTRACT.md ROUTE-D8). The router counts the family's
@@ -437,9 +595,21 @@ model request, so the plugin registers a tool only when it is wanted:
 
 | Tool | Registers |
 |---|---|
-| `openabstractions_generate_image` | when the runtime serves an image model at OpenCode's startup, on the provider's placement (local, or any for `scope: remote`) |
-| `openabstractions_speak` | when the runtime serves a speech model at startup |
-| `openabstractions_selection_policy`, `openabstractions_watch_logs`, `openabstractions_open_credentials_panel`, `openabstractions_authorization_questions` | only when enabled |
+| `oa_image_generate` | when the runtime serves an image model at OpenCode's startup, on the provider's placement (local, or any for `scope: remote`) |
+| `oa_speech_speak` | when the runtime serves a speech model at startup |
+| `oa_video_generate` | when the runtime serves a video model at startup; the helper's tool, which saves the clip in `Videos/OpenAbstractions` |
+| `oa_selection_manage`, `oa_logs_watch`, `oa_credentials_open` | only when enabled |
+| Messages, Asks, `oa_models_list`, `oa_models_connect`, `oa_inference_complete`, `oa_applications_describe`, `oa_applications_open`, `oa_applications_commands_list` and `oa_applications_command_call` | by default, when the OA provider is configured |
+| `oa_api_describe`, `oa_api_read`, `oa_applications_list`, `oa_applications_enrollment_read`, `oa_asks_watch`, `oa_messages_watch`, `oa_inference_job_*`, `oa_jobs_follow` | only when enabled, by full name such as `"oa_jobs_follow": true` |
+
+Messages and Asks tools are served by the installed `oa-opencode-integration` MCP helper.
+Installer preparation asks the person to Keep that native OA program through
+the existing Panel enrollment flow. `oa_asks_request_answering` requests its
+routine answering rights.
+Stock OpenCode runs plugin code and the Asks service refuses it as an answerer
+(ASK-R7). The plugin's canonical wrappers call the kept helper; its owned global
+MCP roster is retired atomically to avoid duplicate tools. Asks posts an answered
+notification through OA's notification service for all assistant hosts.
 
 The plugin entry's `tools` option overrides either way, by tool name
 without the prefix: `true` registers the tool, `false` never registers it,
@@ -474,7 +644,7 @@ the **local profile**, all in opencode.json:
   hook the core tools get short descriptions that keep their usage rules
   (the shell's from the shell OpenCode chose, Windows PowerShell 5.1
   included), every schema loses `$schema` and the ±2^53 integer bounds, each
-  OA tool gets one line, and `openabstractions_tools` lists the OA tools and
+  OA tool gets one line, and `oa_tools_list` lists the OA tools and
   returns a tool's full description and parameters on request. OpenCode's
   hook names only the tool, never the session's agent, so the compact text
   applies to every agent while the option is set.
@@ -508,25 +678,31 @@ on the Local assistant, with no title request.
 OpenCode's model picker groups models by provider name, so configure writes
 one heading per place:
 
-- **OpenAbstractions · this computer**: the router's models at placement
-  local, each named `<family> · <context> · this computer: <servers>`, the
-  family being the model's key (`qwen3.6-35b-a3b · 32k · this computer:
-  lemonade`);
-- **OpenAbstractions · via hosted servers**, written when a credential
-  makes a hosted model servable: the models at placement hosted (hosted
-  servers and remote runtimes), named `· hosted: <servers>`, with OA's
-  hosted-allowed guarantee;
+- **OpenAbstractions**: the router's models at placement local, each named
+  by the model's name alone ("Qwen3.6 35B"); OpenCode shows the context from
+  `limit.context` in its own meter, the heading names the place, and an
+  engine's name is never shown. A family that is a file digest is replaced
+  by the first plain name the router lists, else `Unnamed model`;
+- **<service> · OpenAbstractions** ("DeepSeek · OpenAbstractions"), written
+  when a credential makes a hosted model servable: the models at placement
+  hosted (hosted servers and remote runtimes), with OA's hosted-allowed
+  guarantee. The service in its name keeps it apart from OpenCode's own
+  group for that service;
 - **OpenAbstractions · your saved preferences**, for `--selection-policy`:
   the preferences alone (`oaInventory: false`), out of the model lists.
 
-`/oa` (the OA TUI module, command `openabstractions.models`) lists only
-OA's models, under the same headings with the default marked, and makes the
-chosen one OpenCode's default `model` through OpenCode's config API. An agent
-with a model picked in the current session keeps it until the person picks
-again, since a TUI plugin cannot select a session's model. Choosing a hosted
-model says that the Local assistant will refuse it. The list's first entry
-refreshes the models on this computer through the provider refresh patch's
-route; the hosted heading's list is read when OpenCode starts.
+Change the model OpenAbstractions picks for OpenCode in the Panel →
+Applications → OpenCode. `/oa` (the OA TUI module, command
+`openabstractions.models`) is a terminal convenience for that same choice: it
+lists only OA's models, under the same headings with OpenCode's selected model
+ticked. Choosing one saves OA's per-app chat choice for OpenCode
+(`oa-chat-default`); a hosted model is saved under the credential its hosted
+host declares in OA. It never writes OpenCode's `model`. The plugin selects OA's choice from OpenCode's next start.
+When OpenCode's own setting names a model, that is the person's pick and
+stays, and `/oa` says after saving: "OpenCode's own setting picks <X>. Choose
+<Y> in the model menu to use it." Choosing a hosted model says that the
+Local assistant will refuse it. Every heading's list
+follows OA's models while OpenCode runs ("When OA's models change").
 
 The picker lists Zen first when it is shown, then every provider by name, so
 the three headings appear in this order, after providers whose names sort
@@ -578,15 +754,14 @@ anyway and answers the same way until OA returns.
 ## Use a hosted credential
 
 To add a hosted provider's key from OpenCode, request the
-`openabstractions_open_credentials_panel` tool. After OpenCode's per-call
+`oa_credentials_open` tool. After OpenCode's per-call
 launch approval, the tool resolves the installed runtime through the shared
 native selector and opens that installation's Panel at **Credentials**. The
 tool accepts only the provider choice `credentials`; it has no key, URL, or
 executable-path input. Enter the API key in the Panel, then separately allow
 that exact OpenCode executable to use the named credential; that is a separate
 permission choice. Register the provider's model server on the Panel's Models
-page, then refresh the model chooser with `Ctrl+Alt+R` in a TUI built with the
-provider refresh draft, or restart OpenCode.
+page; OpenCode's model chooser lists its models within one inventory read.
 
 The launcher currently opens the Windows Panel from beside the runtime selected
 by the shared native selector. That installation must include both
@@ -631,8 +806,8 @@ The OpenCode options retain the name alone:
 }
 ```
 
-The runtime checks the OpenCode program's complete right. Its Applier then
-checks that program's credential right, consumer contract and target before
+The runtime checks the OpenCode program's complete right. Its enforcer calls the [credential applier service](https://openabstractions.github.io/reference.html#concept-credentials.applier-service) to
+check that program's credential right, consumer contract and target before
 adding the provider header. `openabstractions credentials revoke openrouter`
 destroys the stored value and stops later OpenCode calls before hosted I/O.
 
@@ -662,18 +837,35 @@ without it the installed runtime serves the call. Capture runs on Windows only.
 
 ## What is verified
 
-`openabstractions_generate_image` is an explicit image tool. It asks before
-starting one `image@1` explicit-model or `image@2` saved-policy generation,
-then returns a verified local PNG, JPEG or WebP result as an OpenCode image
-attachment. Its inputs are exactly one model or `selectionPolicy`, a prompt and
-size (`auto` or `WIDTHxHEIGHT`). An `inputImage` digest of an OA image the
+`oa_image_generate` is an explicit image tool. It asks before it starts.
+Only `prompt` is required. A call without `save_to` goes to the gateway's
+`oa_image_generate` through this chat's kept
+`oa-opencode-integration` helper (backlog/PICTURES-STORAGE.md, Amendments (coordinator, 2026-11-10)): one
+implementation for every agent. The gateway resolves the person's Pictures
+folder through storage `layout`, runs the picture as a durable job with the
+account's picture policy `oa-image-default` (or the named `model` or
+`selectionPolicy`), an edit included, waits up
+to 50 seconds and saves it as `Pictures/OpenAbstractions/image-<local time>.png`;
+a taken name gets `-2` … `-20`, and no file is replaced. The answer is
+`Saved to <absolute path>. To edit it, pass inputImage sha256:...`, and the
+plugin attaches the saved picture. A picture still being made answers with a
+handle; calling again with only `handle` waits for it. With no Pictures
+folder nothing is asked or started. A missing policy reads "Pictures are not
+set up yet". `size` is `auto` unless given as `WIDTHxHEIGHT`; any other
+shape is refused before anything is asked, naming the allowed values.
+
+A call naming `save_to` stays in this plugin, which starts one `image@1`
+explicit-model or `image@2` saved-policy generation and returns a verified
+local PNG, JPEG or WebP result as an OpenCode image attachment. An engine's size
+refusal is answered with the sizes it lists (PyTorch `size:512x512`). An
+`inputImage` digest of an OA image the
 caller may read, such as an earlier result's SHA-256, makes the call an
 `edit`, with an optional `mask` digest: a PNG of the input's pixel size whose
 fully transparent pixels mark the area to change (inference CONTRACT.md
 INF-I1). The tool reads each input's first
 bytes for its media type and the runtime verifies the bytes before the
 engine sees them. The edit path has boundary tests with fake OA clients only.
-`save_to`, a path relative to the session's project directory, also writes
+`save_to`, a path relative to the session's project directory, writes
 the image there; the approval names the file. Before anything is generated
 the tool refuses an absolute path, any colon (a drive or an NTFS alternate
 data stream), a path that leaves the project (after links and junctions), an
@@ -701,30 +893,26 @@ out, the first 600 characters are sent to OA `speech@1` with `kokoro-v1`,
 voice `af_sky`, format `wav`, and the delivery is read back through the
 content reader and checked by size, SHA-256 and WAV header before OpenTUI's
 `Audio` plays it. A newer utterance stops the one playing. The server tool
-`openabstractions_speak` reads a chosen text aloud (1..4096 characters, an
+`oa_speech_speak` reads a chosen text aloud (1..4096 characters, an
 optional English Kokoro voice); like the image tool it asks before each call,
 verifies the delivery and returns its digest, and the TUI module plays it.
 OpenCode loads the TUI module when `tui.json` lists `@openabstractions/opencode`.
 The speech path has boundary tests with fake OA clients and a fake audio
 device; playback in a live OpenCode TUI remains to be qualified.
 
-`openabstractions_authorization_questions` lists only questions the OA runtime
-currently lets the observed OpenCode executable answer. The person enrolls
-OpenCode once in the Panel's Assistants section, after reading what routine
-questions it may answer. Enrollment ends after 30 days without an answer or
-when the person presses Stop. A script host cannot be enrolled. Before a local
-OA model request, the plugin adds a short list of pending questions to its
-system text as data; text another app wrote is never an instruction. The
-model can use the tool to answer a freshly listed ID with one listed option.
-The person sees each answer in OpenCode and in the Panel's Answered for you
-list, with Undo. The runtime checks enrollment, the routine tier, the
-question's parties and the program's identity again inside the answer edit.
-There is no approval prompt for each answer after enrollment. The tool
-reports the recorded answer and rights effect separately;
-an answered question with a conflicting or unavailable rights edit is not a
-grant. It cannot name another target, grant itself rights, or call the broader
-question/rights operator. The public responder service and a fresh installed
-OpenCode authorization session remain to be qualified.
+`oa_asks_list_answerable` and `oa_asks_list_choices` list questions the OA runtime
+lets the dedicated `oa-opencode-integration` MCP helper answer. The person
+Keeps that native helper through the Panel enrollment flow after reading what
+routine questions it may answer. Enrollment ends after 30 days without an
+answer or when the person presses Stop. The model can use `oa_asks_answer` or
+`oa_asks_answer_choice` with an ID and option. The Asks service posts the
+person's Answered for you notification through OA notifications. The runtime
+checks enrollment, the routine tier, the question's parties and the program's
+identity again inside the answer edit. The tool reports the recorded answer
+and rights effect separately. A conflicting or unavailable rights edit grants
+no permission. The helper cannot name another target, grant itself rights, or
+call the broader question/rights operator. The isolated native CLI receiving
+case is qualified; the installed first-use journey remains to be qualified.
 
 Controlled integration tests use the official portable OpenCode 1.18.31 binary
 with isolated config, data, cache and state directories. They cover:
@@ -788,24 +976,25 @@ paid-provider interoperability result.
   run has produced these packages yet.
 - Native program attribution distinguishes executable identities. Multiple
   OpenCode sessions using the same executable share that program principal.
-- A `not_permitted` refusal whose reason is a pending rights question
-  (`rights:not_granted`) reads to OpenCode as one sentence: the program is not
-  yet permitted, a question is waiting in the Abstraction Panel, allow it there
-  and retry. A `rights:denied` refusal says the program is blocked and that the
-  Panel's Permissions page changes that; any other refusal points at the
-  Panel's request outcome. `OAInferenceError`'s typed `outcome` and `reason` still carry
-  the original values for code that wants them. Before that sentence, a
-  `rights:not_granted` refusal waits up to 60 seconds: once a second the
-  call reads this program's own decision for
-  `abstraction.inference/complete` on each server the router offers the
-  model on (rights `Decide`; a refusal names no host), and when the person
-  allows the question it sends the call once more, so the person never
-  retries by hand. A denial on every server, a cancelled call or the end of
-  the wait refuses with the sentence. The plugin never reads or answers the question
-  itself: the runtime asks it as itself (asks ASK-R2), and an application's
-  `Observe` reaches only its own questions (ASK-R1). The image tool's
-  refusal for a `rights:not_granted` start names the waiting question in
-  the same words and does not wait.
+- A refusal that names a pending first-use question
+  (`rights:question_pending:<id>` after its grant words, inference INF-W11)
+  shows one toast, "OpenAbstractions is asking whether OpenCode may use this
+  model; answer the question to continue.", while the plugin waits up to 90
+  seconds through asks `permission@1` `ObserveQuestion` (ASK-A14). The native
+  popup asks the person. After an Allow the plugin sends the call once more;
+  a runtime without `ObserveQuestion` gets that one retry too. Otherwise one
+  sentence ends the call: still waiting ("answer it, then send again"),
+  refused ("it can ask again in 10 minutes") or blocked (the Panel's
+  Permissions page). A `rights:not_granted` refusal naming no question says
+  no question is waiting and names the Permissions page; any other refusal
+  points at the Panel's request outcome. `OAInferenceError`'s typed `outcome`
+  and `reason` still carry the original values for code that wants them. The
+  native host holds an admission for the person at most
+  `ipc_default_call_budget_ms` less 1.5 seconds, inside every generated
+  client's default call budget. The plugin never reads or answers the
+  question itself: the runtime asks it as itself (asks ASK-R2), and
+  `ObserveQuestion` reaches only questions about OpenCode's own program. The
+  image tool says a question is waiting the same way.
 - A context-window refusal (`refused`, reason
   `upstream:context_length_exceeded:<window>:<input>`) reads as one message
   naming the model's context, the counted input and the request's answer reserve,
@@ -838,9 +1027,7 @@ with a 404. `test/run_node_tests.py --run` installs them as links together with
 the locked closure when `node_modules` lacks them, without rewriting
 `package.json` or the lock, and then runs `npm test`; its `--help` names the
 `npm install` command it runs. Neither step needs Bun. The one Bun-only test,
-`test/winmm-binding.test.mjs`, then runs under the pinned Bun when
-`.forks/bun-1.3.14/` holds it (see below) and is skipped with the reason
-otherwise:
+`test/winmm-binding.test.mjs`, skips under `node --test` with the reason:
 
 ```console
 py -3.12 adopters/opencode/test/run_node_tests.py --run
@@ -855,18 +1042,30 @@ On Windows the links are directory junctions into the checkout. Remove them
 with `rmdir` before deleting a copied tree; a recursive delete in Windows
 PowerShell 5.1 can follow a junction into the source.
 
-The Bun-only plugin test and the upstream drafts' tests run under the pinned
-Bun 1.3.14, the version v1.18.31 builds with. `get-pinned-bun.ps1` downloads
-`bun-v1.3.14/bun-windows-x64.zip` from oven-sh/bun's GitHub releases into the
-checkout's ignored `.forks/bun-1.3.14/` (`-Forks` names another `.forks`),
-checks it against the SHA-256 the script pins and extracts `bun.exe` there; it
-prints the `bun.exe` path. This is the Bun for the tests:
+The Bun-only plugin test `test/winmm-binding.test.mjs` runs by hand with
+`bun test`.
 
-```powershell
-powershell -NoProfile -File adopters/opencode/get-pinned-bun.ps1
-```
+## Moving the OpenCode pin
 
-Install the pinned source's dependencies first with
-`bun install --frozen-lockfile --ignore-scripts`, and point `XDG_CACHE_HOME`,
-`XDG_DATA_HOME`, `XDG_CONFIG_HOME` and `XDG_STATE_HOME` at scratch directories;
-`patches/README.md` lists the commands.
+The plugin is tested against OpenCode 1.18.31. Before moving to a new
+version:
+
+1. Re-check the hand-written compact schemas in `compact-tools.js`
+   (`SCHEMAS`) against the new built-in tool parameters: every property,
+   type, enum and required list must match, since the model sees these
+   schemas while OpenCode validates with its own.
+2. Copy the new version's tool text into
+   `test/fixtures/opencode-<version>-tool/` (every `*.txt` of
+   `packages/opencode/src/tool/` and its `shell/prompt.ts`, saved as
+   `shell/prompt.ts.txt`, with OpenCode's MIT `LICENSE`), re-derive
+   `test/fixtures/opencode-1.18.31-tool-safety.json` from it (rename both for
+   the version) and keep every clause in the compact text;
+   `test/compact-tools.test.mjs` fails on a clause the fixture misses or the
+   compact text drops.
+3. Re-check what `compactShell` reads from the shell description (`Shell:`
+   and the temporary-work line) and the shell notes it condenses.
+4. Re-check the plugin contract the adapter relies on: a server plugin
+   module may export only plugin functions, `tool.definition` and
+   `chat.params` hooks, and the TUI slot names it renders into.
+5. Re-check that `/oa` in `oa-models.js` reads the instance config, the
+   global config and providers through the generated SDK methods.

@@ -1,4 +1,6 @@
 namespace * abstraction.inference.api
+include "../abstraction-rights/rights.thrift"
+include "../abstraction-job/acceptance.thrift"
 
 // Model calls the runtime performs for an application: messages, parts, tools,
 // usage and typed refusals, independent of any vendor wire. The service picks
@@ -26,7 +28,9 @@ refusal {
  9: unknown_field(stage="structure")
  10: missing_field(stage="structure")
  11: bad_enum(stage="structure")
- 12: trailing_bytes(stage="document")
+ 12: bad_value(stage="structure")
+ 13: encoded_size(stage="structure")
+ 14: trailing_bytes(stage="document")
 }
 
 // Guarantees a request states. Without hosted-allowed@1 only hosts on the
@@ -62,7 +66,7 @@ const list<string> local_host_kinds = ["ollama", "lmstudio", "lemonade", "whispe
 // Profiles a host serves, the seed of an open catalogue: a later profile is a
 // member here or <owner>/<name>@<n>. HostEntry.profiles records them, and
 // chat@1 picks only a host serving chat (router@1 Pick profile).
-const list<string> host_profiles = ["chat", "embed", "transcription", "speech", "image", "live"]
+const list<string> host_profiles = ["chat", "embed", "transcription", "speech", "image", "live", "video"]
 // The declared_by words of a host: operator for one added through operator@1,
 // the product's name for a host that product's own record declared (its
 // environment variable, server configuration file, settings store or status
@@ -72,7 +76,7 @@ const list<string> host_profiles = ["chat", "embed", "transcription", "speech", 
 const list<string> host_declarers = ["operator", "ollama", "lmstudio", "docker-model-runner", "foundry-local", "installation", "default"]
 // The consumer contract name the service gives abstraction.credentials
 // applier@1 for every outgoing request to a hosted host.
-const list<string> credential_consumers = ["abstraction.inference/chat@1", "abstraction.inference/embed@1", "abstraction.inference/transcription@1", "abstraction.inference/speech@1", "abstraction.inference/live@1"]
+const list<string> credential_consumers = ["abstraction.inference/chat@1", "abstraction.inference/embed@1", "abstraction.inference/transcription@1", "abstraction.inference/speech@1", "abstraction.inference/live@1", "abstraction.inference/image@1"]
 
 enum Role {
  1: system
@@ -150,7 +154,7 @@ struct Usage {
 struct Cost {
  1: required i64 micros
  2: required string currency
-}(unknown_fields="refuse",doc="Spend the host reported for this reply, in millionths of currency, an ISO 4217 code or the host's own credit unit. Absent when the host reports no cost.")
+}(unknown_fields="refuse",doc="Spend the host reported for this reply, counted in millionths of currency, rounded up per reported cost, an ISO 4217 code or the host's own credit unit. Absent when the host reports no cost.")
 enum ReplyOutcome {
  1: completed
  2: refused
@@ -209,7 +213,7 @@ struct Delta {
  13: optional ImageProgress image_progress(omit="absent")
  14: optional ImageResult image_result(omit="absent")
  15: optional ImageReply image_end(omit="absent")
-}(unknown_fields="refuse",doc="sequence numbers an operation's deltas from 0 without gaps. chat operations use part, usage and end; transcription uses segment and transcription_end; speech uses audio chunks and speech_end; live uses transcript, audio and live_end; image uses image_progress, image_result and image_end. Text and audio bytes are bounded so every delta fits one service frame.")
+}(unknown_fields="refuse",doc="[Delta](https://openabstractions.github.io/reference.html#concept-inference.operation-delta): sequence numbers an operation's deltas from 0 without gaps. chat operations use part, usage and end; transcription uses segment and transcription_end; speech uses audio chunks and speech_end; live uses transcript, audio and live_end; image uses image_progress, image_result and image_end. Text and audio bytes are bounded so every delta fits one service frame.")
 enum StartOutcome {
  1: accepted
  2: not_permitted
@@ -230,7 +234,7 @@ struct Admission {
  6: required i64 retention_ms
  7: required i64 idle_ms
  8: required i64 retained_deltas
-}(unknown_fields="refuse",doc="accepted carries an operation id of 1..128 bytes, the chosen host and model, and the provider's bounds: an ended operation stays observable for retention_ms; an operation with no Observe in flight or received for idle_ms is cancelled with reason idle, and its upstream request closed; the newest retained_deltas deltas stay readable. Every refusal carries the same reason words as Reply, an empty operation, host and model, and zero bounds. exhausted means the caller's concurrent operations are at the provider's bound.")
+}(unknown_fields="refuse",doc="[Admission](https://openabstractions.github.io/reference.html#concept-inference.operation-admission): accepted carries an operation id of 1..128 bytes, the chosen host and model, and the provider's bounds: an ended operation stays observable for retention_ms; an operation with no Observe in flight or received for idle_ms is cancelled with reason idle, and its upstream request closed; the newest retained_deltas deltas stay readable. Every refusal carries the same reason words as Reply, an empty operation, host and model, and zero bounds. exhausted means the caller's concurrent operations are at the provider's bound.")
 enum SelectionReason {
  1: explicit_model
  2: preferred
@@ -261,7 +265,7 @@ struct DeltaPage {
  2: required list<Delta> deltas
  3: required i64 next
  4: required bool at_end
-}(unknown_fields="refuse",doc="page carries 0..max_deltas deltas from sequence cursor in order, within max_bytes of their compact JSON encoding except that a first delta larger than max_bytes is returned alone. next is the sequence after the last delta returned. at_end is true when the page holds the end delta or cursor is already past it. gap means cursor is older than the retained deltas: it carries no deltas and next set to the oldest retained sequence, from which a caller that accepts the loss continues. unknown means no operation of that id is visible to the caller: never started by it, retired after retention, or from an earlier provider epoch. Other refusals carry no deltas, next equal to cursor and at_end false.")
+}(unknown_fields="refuse",doc="[DeltaPage](https://openabstractions.github.io/reference.html#concept-inference.operation-delta-page): page carries 0..max_deltas deltas from sequence cursor in order, within max_bytes of their compact JSON encoding except that a first delta larger than max_bytes is returned alone. next is the sequence after the last delta returned. at_end is true when the page holds the end delta or cursor is already past it. gap means cursor is older than the retained deltas: it carries no deltas and next set to the oldest retained sequence, from which a caller that accepts the loss continues. unknown means no operation of that id is visible to the caller: never started by it, retired after retention, or from an earlier provider epoch. Other refusals carry no deltas, next equal to cursor and at_end false.")
 enum CancelOutcome {
  1: cancelled
  2: ended
@@ -275,15 +279,296 @@ struct Cancellation {
  2: optional ReplyOutcome reply_outcome(omit="absent")
 }(unknown_fields="refuse",doc="cancelled means this call stopped the operation and closed its upstream request; the end delta reads cancelled with reason cancel. ended means the operation had already ended, and reply_outcome says how. Both carry reply_outcome; other outcomes carry none.")
 service Chat {
- Admission Start(1:Request request)(doc="Admit one model call for the bound caller and begin it. In order: argument shape (invalid), guarantees and host selection through the router (no_host), host features and required extensions (unsupported_feature), the rights decision for abstraction.inference/complete on host:<name> (not_permitted, or unavailable when the decision point cannot answer), the credential's ceiling (budget_exceeded), the caller's concurrent operations (exhausted), then for a hosted host the credentials applier (not_permitted or unavailable). Nothing leaves the service before every check passes. Deltas are observed with Observe.")
- DeltaPage Observe(1:string operation,2:i64 cursor,3:i64 max_deltas,4:i64 max_bytes,5:i64 wait_ms)(doc="Read a bounded page of an operation's deltas from cursor. max_deltas is 1..256, max_bytes 1..65536 and wait_ms 0..30000. When no delta at cursor exists yet and the operation has not ended, wait up to wait_ms for one, then return what is there. An Observe in flight keeps the operation from idling; a caller that disconnects mid-wait stops the wait. Reconnecting with the last next resumes without loss inside retained_deltas.")
- Cancellation Cancel(1:string operation)(doc="Stop an operation the bound caller started and close its upstream request. Reports whether this call cancelled it or it had already ended.")
-}(wire_name="abstraction.inference/chat@1",doc="Model calls performed by the receiving runtime for the bound caller. Operations are visible only to the account and program that started them. Every request to a hosted host carries headers from abstraction.credentials applier@1 applied for the bound caller, sent once and kept out of every reply, delta, record and log. Caller exit cancels: an operation nobody observes for idle_ms is closed, because a stream nobody reads is spend. A decision point that cannot answer reads unavailable, never permission.")
+ Admission Start(1:Request request)(remote="call", doc="Admit one model call for the bound caller and begin it. In order: argument shape (invalid), guarantees and host selection through the router (no_host), host features and required extensions (unsupported_feature), the rights decision for abstraction.inference/complete on host:<name> (not_permitted, or unavailable when the decision point cannot answer), the credential's ceiling (budget_exceeded), the caller's concurrent operations (exhausted), then for a hosted host the credentials applier (not_permitted or unavailable). Nothing leaves the service before every check passes. Deltas are observed with Observe.")
+ DeltaPage Observe(1:string operation,2:i64 cursor,3:i64 max_deltas,4:i64 max_bytes,5:i64 wait_ms)(idempotent="true",remote="call", doc="Read a bounded page of an operation's deltas from cursor. max_deltas is 1..256, max_bytes 1..65536 and wait_ms 0..30000. When no delta at cursor exists yet and the operation has not ended, wait up to wait_ms for one, then return what is there. An Observe in flight keeps the operation from idling; a caller that disconnects mid-wait stops the wait. Reconnecting with the last next resumes without loss inside retained_deltas.")
+ Cancellation Cancel(1:string operation)(idempotent="true",remote="call", doc="Stop an operation the bound caller started and close its upstream request. Reports whether this call cancelled it or it had already ended.")
+}(wire_name="abstraction.inference/chat@1",doc="[Chat](https://openabstractions.github.io/reference.html#concept-inference.chat-service). Model calls performed by the receiving runtime for the bound caller. Operations are visible only to the account and program that started them. Every request to a hosted host carries headers from abstraction.credentials applier@1 applied for the bound caller, sent once and kept out of every reply, delta, record and log. Caller exit cancels: an operation nobody observes for idle_ms is closed, because a stream nobody reads is spend. A decision point that cannot answer reads unavailable, never permission.")
 service ChatV2 {
+ AdmissionV2 StartWithGuarantees(1:RequestV2 request,2:list<RequestGuarantee> guarantees(length="0..1"))(idempotent="false",doc="Start with an additional caller restriction. guarantees is empty or exactly local-only. It intersects existing request and endpoint restrictions; contradictory intent refuses before effects. Policy content guarantees and credential remain empty. A hosted candidate refused by local-only does not authorize fallback. Unsupported methods refuse explicitly; callers never retry unrestricted Start.")
  AdmissionV2 Start(1:RequestV2 request)(doc="Resolve the explicit target or named policy for the bound caller and admit one selected model. Each candidate must pass all chat@1 guarantees, features, rights, credential, budget and capacity checks. A later candidate is considered only after a fresh definitive preferred-route absence before admission or dispatch. A possible send, accepted operation, partial output or tool effect never retries another candidate.")
- DeltaPage Observe(1:string operation,2:i64 cursor,3:i64 max_deltas,4:i64 max_bytes,5:i64 wait_ms)(doc="Observe the same caller-bound operation registry and DeltaPage as chat@1, without reselecting the model.")
- Cancellation Cancel(1:string operation)(doc="Cancel the same caller-bound operation as chat@1, without reselecting the model.")
+ DeltaPage Observe(1:string operation,2:i64 cursor,3:i64 max_deltas,4:i64 max_bytes,5:i64 wait_ms)(idempotent="true",doc="Observe the same caller-bound operation registry and DeltaPage as chat@1, without reselecting the model.")
+ Cancellation Cancel(1:string operation)(idempotent="true",doc="Cancel the same caller-bound operation as chat@1, without reselecting the model.")
 }(wire_name="abstraction.inference/chat@2",doc="Typed explicit model or named service-owned model selection for a bound caller. A runtime without chat@2 refuses this service version explicitly.")
+
+// chat@3's output catalogues are separate from the published chat@1/@2
+// PartKind, StopReason and DeltaKind. Architect Codex 250, 2026-11-02.
+enum ChatProgressPhase {
+ 1: queued
+ 2: loading
+ 3: warming
+}(unknown="grant",reader="display",doc="Ordered provider-reported lifecycle phases. Unknown phases are display information and confer no authority. Repeating a phase or emitting a timer heartbeat establishes no progress.")
+enum ChatPartKind {
+ 1: text
+ 2: reasoning
+ 3: reasoning_summary
+ 4: tool_call
+ 5: model_refusal
+}(unknown="refuse",reader="act",doc="The kind of a chat@3 output block. Reasoning and summaries are provider-public output kept separate from answer text; model_refusal is the model's own refusal, distinct from the Rights-owned RefusalDetail.")
+enum FinishReason {
+ 1: stop
+ 2: length
+ 3: tool_calls
+ 4: content_filter
+ 5: model_refusal
+ 6: context_window
+ 7: malformed_tool_call
+ 8: paused
+ 9: other
+}(unknown="grant",reader="display",doc="Why chat@3 generation finished. An unknown member is treated as other: the response is complete and authorizes no action. Readers act only on known members. A matched stop sequence is separate terminal detail.")
+struct ChatProgress {
+ 1: required ChatProgressPhase phase
+ 2: optional i64 done(omit="absent",range="0..9223372036854775807")
+ 3: optional i64 total(omit="absent",range="0..9223372036854775807")
+ 4: optional string unit(omit="absent",length="1..1048576",pattern="no_control")
+}(unknown_fields="grant",max_encoded="1048576",doc="Provider-reported progress for one accepted chat request. done and total are absent when unreported; reported zero stays zero. unit is the provider's display label and is present with numeric progress. Its byte ceiling derives from IPC-F1's one control frame; the whole encoded record must fit that frame. Numbers and heartbeats are never synthesized.")
+struct ChatUsage {
+ 1: optional i64 input(omit="absent",range="0..9223372036854775807")
+ 2: optional i64 output(omit="absent",range="0..9223372036854775807")
+ 3: optional i64 cache_read(omit="absent",range="0..9223372036854775807")
+ 4: optional i64 cache_write(omit="absent",range="0..9223372036854775807")
+ 5: optional i64 reasoning(omit="absent",range="0..9223372036854775807")
+}(unknown_fields="grant",doc="Token counts reported by the provider. Absent means unreported and zero means reported zero. input includes cached input. output is total generated output including reasoning where the provider counts it; reasoning is its reported breakdown, never added again to output.")
+enum ChatToolChoiceKind {
+ 1: auto
+ 2: none
+ 3: required
+ 4: named
+}(unknown="refuse",reader="act")
+struct ChatToolChoice {
+ 1: required ChatToolChoiceKind kind
+ 2: optional string name(omit="zero",length="1..64",pattern="ascii_name")
+}(unknown_fields="refuse",doc="name is present only for named and must identify one declared tool. The service checks required tool-choice support before any upstream byte; an unsupported requirement is never approximated.")
+struct ChatTool {
+ 1: required string name(length="1..64",pattern="ascii_name")
+ 2: required string description(length="0..1048576")
+ 3: required string parameters(length="1..1048576")
+ 4: optional bool strict(omit="absent")
+}(unknown_fields="refuse",max_encoded="1048576",doc="A function the model may request. name uses A-Z a-z 0-9 _ - under the existing tool grammar. parameters is a JSON Schema object as JSON text. Description/schema byte ceilings derive from the one-frame request governor; the encoded record also fits IPC-F1. A true strict requirement is admitted only when the chosen server declares the supported schema subset. OA executes no tool.")
+typedef string ChatStopSequence(length="0..1048576")
+enum ChatReasoningEffort {
+ 1: none
+ 2: low
+ 3: medium
+ 4: high
+}(unknown="refuse",reader="act",doc="How much a model reasons before it answers, in OpenAI's reasoning_effort words. none turns thinking off. The words are closed; a model's own finer controls travel as ChatContent extensions.")
+struct ChatReasoning {
+ 1: required ChatReasoningEffort effort
+ 2: optional i64 budget(omit="absent",range="1..1048576")
+}(unknown_fields="refuse",doc="The caller's reasoning choice. budget is a token cap on reasoning: where the model takes a budget it wins over effort, and elsewhere it is ignored and reported in ChatResult reasoning_applied. An unsupported choice never refuses the call; the answer proceeds and reasoning_applied says what happened.")
+struct ChatOptions {
+ 1: optional i64 max_output(omit="zero",range="0..9223372036854775807")
+ 2: optional Temperature temperature(omit="absent")
+ 3: optional list<ChatStopSequence> stop(omit="zero",length="0..8")
+ 4: optional string json_schema(omit="zero",length="1..1048576")
+ 5: optional ChatToolChoice tool_choice(omit="absent")
+ 6: optional bool parallel_tools(omit="absent")
+ 7: optional ChatReasoning reasoning(omit="absent")
+}(unknown_fields="refuse",max_encoded="1048576",doc="chat@3 controls. max_output is the total generated-output token cap, including reasoning where the provider counts it; zero keeps the provider default. reasoning is the caller's reasoning effort and optional reasoning budget; absent keeps the model's catalogue default, which is always bounded on a model served on this machine, and a hosted provider's own default with no parameter sent. stop retains the existing eight-sequence bound. JSON Schema and stop payload ceilings derive from IPC-F1; the whole request must fit one frame. Required tool/schema semantics are checked against router-owned capabilities before upstream bytes. No option promises an answer or increases a declared cost/resource/operation bound.")
+struct ChatPart {
+ 1: required i64 block(range="0..4294967295")
+ 2: required ChatPartKind kind
+ 3: optional string text(omit="zero",length="0..1048576")
+ 4: optional string call_id(omit="zero",length="1..1048576")
+ 5: optional string name(omit="zero",length="1..64",pattern="ascii_name")
+ 6: optional string arguments(omit="zero",length="0..1048576")
+ 7: optional ReasoningSeal seal(omit="absent")
+}(unknown_fields="grant",max_encoded="1048576",doc="One append to a uint32-indexed output block. text belongs to text, reasoning, reasoning_summary or model_refusal; arguments belongs to tool_call. call_id/name are set on that tool block's first event. The event owner splits text/arguments into valid UTF-8 appends that each fit IPC-F1, never truncates them. The block_end event closes a block. Reasoning is never appended to answer text. Scalar byte ceilings derive from the physical frame, with the whole encoded record checked independently.")
+struct ChatBlockEnd {
+ 1: required i64 block(range="0..4294967295")
+ 2: optional SealOmission seal_omitted(omit="absent")
+}(unknown_fields="grant")
+struct ReasoningSeal {
+ 1: required string origin(length="1..256",pattern="no_control")
+ 2: required binary bytes(length="0..524288")
+}(unknown_fields="refuse",max_encoded="1048576",doc="Byte-preserved replay material for its originating wire family, never display text. The 512 KiB raw byte bound is the largest power of two whose base64 leaves at least one quarter of IPC-F1's 1 MiB frame for envelope/block fields (Architect Codex 260). Whole events also enforce their encoded ceiling. Oversized or incompatible material is omitted whole, audited and named by SealOmission; the answer still completes. OA never truncates or reconstructs a seal.")
+enum SealOmission {
+ 1: encoded_size
+ 2: incompatible_origin
+}(unknown="grant",reader="display")
+enum ServedPlace {
+ 1: local
+ 2: hosted
+ 3: remote
+}(unknown="grant",reader="display")
+struct ServedBy {
+ 1: required ServedPlace place
+ 2: required string server(length="1..1048576",pattern="no_control")
+ 3: optional string machine(omit="zero",length="1..1048576",pattern="no_control")
+}(unknown_fields="grant",max_encoded="1048576",doc="Actual serving observation derived once from the admission's Router Decision and decided HostState. Nonempty domain is remote and becomes machine; otherwise hosted true is hosted, otherwise local. server is the decided model server name. Scalar ceilings derive from IPC-F1 and the whole observation must fit one frame. This display observation is distinct from Placement's local/hosted/any request filter and from content trust-domain location. A relayed remote terminal passes through unchanged.")
+enum ChatEventKind {
+ 1: progress
+ 2: part
+ 3: block_end
+ 4: usage
+ 5: end
+}(unknown="refuse",reader="act")
+struct ChatInputPart {
+ 1: required PartKind kind
+ 2: optional string text(omit="zero",length="0..1048576")
+ 3: optional string digest(omit="zero",length="71..135")
+ 4: optional string media_type(omit="zero",length="1..10")
+ 5: optional string call_id(omit="zero",length="1..1048576")
+ 6: optional string name(omit="zero",length="1..64",pattern="ascii_name")
+ 7: optional string arguments(omit="zero",length="0..1048576")
+}(unknown_fields="refuse",max_encoded="1048576",doc="Input content under the existing text/image/tool_call/tool_result grammar, distinct from output reasoning blocks. Images carry a CONV-T3 sha256:lowercase-hex or sha512:lowercase-hex reference, never image bytes, and one of image/png, image/jpeg, image/gif or image/webp. Tool name retains its 64-byte grammar; text, call id and argument ceilings derive from IPC-F1. The service checks kind-specific fields before any lookup or spend. Old Part is unchanged.")
+struct ChatReplay {
+ 1: required i64 block(range="0..4294967295")
+ 2: required ReasoningSeal seal
+}(unknown_fields="refuse",max_encoded="1048576",doc="Opaque reasoning-block replay for a previous assistant turn. Origin is checked against the selected wire; incompatible material is omitted whole and audited, never rendered or reconstructed. Public displayed reasoning is not a request-history part.")
+struct ChatMessage {
+ 1: required Role role
+ 2: required list<ChatInputPart> parts(length="1..64")
+ 3: optional list<ChatReplay> reasoning(omit="zero",length="0..64")
+}(unknown_fields="refuse",max_encoded="1048576",doc="One conversation message. The existing 64-part governor includes any replay blocks; reasoning replay is allowed only on an assistant turn and is separate from visible content. Provider-public display reasoning never becomes answer or ordinary request history.")
+enum ChatGuarantee {
+ 1: local_only(wire="abstraction.inference/local-only@1")
+ 2: hosted_allowed(wire="abstraction.inference/hosted-allowed@1")
+ 3: no_retention(wire="abstraction.inference/no-retention@1")
+ 4: free_capacity(wire="abstraction.inference/free-capacity@1")
+}(unknown="grant",reader="validate",doc="Required request guarantees, validated before upstream bytes. Free-capacity admits only a provider that acquires from currently free resource capacity without asking holders to yield. No-retention admits only a server declaring that guarantee; unknown or unsupported required meaning refuses. Local-only and hosted-allowed remain contradictory. These new members never change published RequestGuarantee.")
+typedef string ChatExtensionName(length="1..128")
+typedef string ChatExtensionValue(length="0..1048576")
+struct ChatTarget {
+ 1: optional string model(omit="zero",length="1..256")
+ 2: optional string selection_policy(omit="zero",length="1..64",pattern="no_control")
+}(unknown_fields="refuse",doc="Exactly one explicit model or caller-scoped service-owned policy. Reuses the current no-fallback-after-admission rule and carries no binding, host choice, credential authority or permission.")
+struct ChatContent {
+ 1: required list<ChatMessage> messages(length="1..512")
+ 2: optional list<ChatTool> tools(omit="zero",length="0..128")
+ 3: optional ChatOptions options(omit="absent")
+ 4: optional map<ChatExtensionName,ChatExtensionValue> extensions(omit="zero",length="0..1048576")
+ 5: optional list<ChatExtensionName> required_extensions(omit="zero",length="0..1048576")
+ 6: required list<ChatGuarantee> guarantees(length="0..4")
+ 7: optional string credential(omit="zero",length="1..64",pattern="ascii_name")
+}(unknown_fields="refuse",max_encoded="1048576",doc="Chat content with existing message/tool/name governors and new supported controls. Extensions retain <owner>/<name> keys up to 128 bytes; their value and entry-count ceilings derive from the one-frame input governor, independently enforced over the whole request. Guarantees are distinct and required extensions must name present keys. For selection_policy, credential stays empty and guarantees contains only distinct local_only and free_capacity caller restrictions; duplicate, hosted_allowed or any other inline policy guarantee is invalid. Free_capacity is retained through native and remote relays and a model server without enforcement refuses before effects. This restriction intersects the stored candidate and the endpoint placement through the existing caller-guarantee owner. A hosted candidate refuses before survey, credential or admission and never falls back to another candidate. Facade service scope alone never protects model placement. Stored candidates retain authority, subject to live rights and budget checks.")
+enum ChatUse {
+ 1: title
+}(unknown="refuse",reader="act",doc="One request's purpose. Providers apply their own family/use settings data. Absence is an ordinary turn. Use grants no authority and changes no selection, rights, budget, credentials or cache scope.")
+struct RequestV3 {
+ 1: required acceptance.RequestIdentity identity
+ 2: required ChatTarget target
+ 3: required ChatContent content
+ 4: optional string model_ref(omit="absent",length="71..135")
+ 5: optional string conversation(omit="zero",length="1..128",pattern="no_control")
+ 6: optional ChatUse use(omit="absent",rust.name="chat_use")
+}(unknown_fields="refuse",max_encoded="1048576",doc="One chat@3 request. Persist the Job-owned identity and canonical body before first send; key is scoped to the attested caller and this contract. Identity carries the owner-issued history epoch and explicit attempt under JOB-A2..A5. Body equality is this record's canonical compact encoding excluding identity. model_ref is an optional CONV-T3 digest; until descriptor resolution exists, setting it refuses unsupported before upstream bytes. conversation is a caller-local label granting no authority. The service derives cache scope as a CONV-T3 digest of the attested account, attested program and label; an absent label retains the account/program partition without chat affinity. Selection is service-owned and never retried after acceptance or a possible send. Every request fits IPC-F1.")
+enum ChatResultOutcome {
+ 1: completed
+ 2: failed
+ 3: cancelled
+}(unknown="refuse",reader="act")
+enum ChatLoad {
+ 1: cold
+ 2: warm
+ 3: loaded
+}(unknown="grant",reader="display")
+enum ChatLoadSource {
+ 1: disk
+ 2: adopted
+ 3: lent
+}(unknown="grant",reader="display")
+struct ChatTiming {
+ 1: optional i64 queue_ms(omit="absent",range="0..9223372036854775807")
+ 2: optional i64 load_ms(omit="absent",range="0..9223372036854775807")
+ 3: optional i64 restore_ms(omit="absent",range="0..9223372036854775807")
+ 4: optional i64 prefill_ms(omit="absent",range="0..9223372036854775807")
+ 5: optional i64 decode_ms(omit="absent",range="0..9223372036854775807")
+ 6: optional i64 prefill_tokens(omit="absent",range="0..9223372036854775807")
+ 7: optional i64 reused_tokens(omit="absent",range="0..9223372036854775807")
+ 8: optional ChatLoad load(omit="absent")
+ 9: optional ChatLoadSource load_source(omit="absent")
+}(unknown_fields="grant",doc="Timing is measured by the runtime named in served_by and copied from its inference operation record. At a relaying runtime these values are delegated claims, passed through unchanged. Milliseconds use the serving runtime's clock; engine duration claims are separate. An absent field was not observed; reported zero stays zero. Prefill/reused token counts are provider observations. Load classification and source are display data supplied only by their owner, never inferred from elapsed time.")
+enum ChatReasoningSupport {
+ 1: applied
+ 2: approximated
+ 3: not_supported
+ 4: overridden
+}(unknown="grant",reader="display",doc="What became of one reasoning control: applied as asked, approximated by the nearest control the model has, not_supported and not sent, or overridden by a native extension the caller also named.")
+struct ChatReasoningApplied {
+ 1: optional ChatReasoningEffort effort(omit="absent")
+ 2: optional i64 budget(omit="absent",range="1..1048576")
+ 3: required ChatReasoningSupport support
+ 4: optional ChatReasoningSupport budget_support(omit="absent")
+}(unknown_fields="grant",doc="The reasoning a chat@3 answer ran with. effort and budget are what the model was given, or the model's bounded default when the caller named none; support says what became of the effort, and budget_support of a budget the caller named. A display fact; it grants nothing.")
+struct ChatResult {
+ 1: required ChatResultOutcome outcome
+ 2: required string cause(length="0..1048576")
+ 3: optional FinishReason finish_reason(omit="absent")
+ 4: optional string stop_sequence(omit="absent",length="0..1048576")
+ 5: required ChatUsage usage
+ 6: optional ServedBy served_by(omit="absent")
+ 7: optional Cost cost(omit="absent")
+ 8: optional rights.RefusalDetail refusal(omit="absent")
+ 9: optional i64 retry_after_ms(omit="absent",range="1..86400000")
+ 10: optional ChatTiming timing(omit="absent")
+ 11: optional ChatReasoningApplied reasoning_applied(omit="absent")
+ 12: optional list<ChatExtensionName> dropped_extensions(omit="zero",length="0..64")
+}(unknown_fields="grant",max_encoded="1048576",doc="The one terminal result of chat@3 accepted work. reasoning_applied is the reasoning the answer ran with. dropped_extensions names request extensions the chosen model does not support and the request did not require; they were not sent. Completed carries finish_reason; a model_refusal is a completed provider response. Failed/cancelled carries one cause and no finish_reason. An unknown finish reason completes as other with no action. A stalled source is failed with cause stalled. OA authority refusals use the common RefusalDetail; cause is display data, never parsed for permission. Payloads derive their ceilings from IPC-F1; no partial terminal is returned on an aggregate bound failure.")
+struct ChatEvent {
+ 1: required i64 sequence(range="0..9223372036854775807")
+ 2: required ChatEventKind kind
+ 3: optional ChatProgress progress(omit="absent")
+ 4: optional ChatPart part(omit="absent")
+ 5: optional ChatBlockEnd block_end(omit="absent")
+ 6: optional ChatUsage usage(omit="absent")
+ 7: optional ChatResult end(omit="absent")
+}(unknown_fields="grant",max_encoded="1048576",doc="A chat@3 tagged event union: exactly the payload named by kind is present. Operation sequence starts at zero without gaps and reuses the operation cursor. Progress is separate from content blocks. Every event fits IPC-F1; text/argument appends split at valid UTF-8 boundaries and opaque material is never truncated. Old chat Delta/DeltaKind are unchanged.")
+enum ChatStartOutcome {
+ 1: accepted
+ 2: not_permitted
+ 3: budget_exceeded
+ 4: unsupported
+ 5: no_host
+ 6: unavailable
+ 7: invalid
+ 8: forbidden
+ 9: exhausted
+ 10: conflict
+ 11: unknown
+}(unknown="refuse",reader="act")
+struct ChatAdmission {
+ 1: required ChatStartOutcome outcome
+ 2: required string reason(length="0..1048576")
+ 3: required string request(length="0..128",pattern="no_control")
+ 4: required string server(length="0..1048576",pattern="no_control")
+ 5: required string model(length="0..256")
+ 6: required i64 retention_ms(range="0..9223372036854775807")
+ 7: required i64 idle_ms(range="0..9223372036854775807")
+ 8: required i64 retained_deltas(range="0..9223372036854775807")
+ 9: optional string preferred_model(omit="zero",length="0..256")
+ 10: optional SelectionReason selection_reason(omit="absent")
+ 11: optional rights.RefusalDetail refusal(omit="absent")
+ 12: optional i64 retry_after_ms(omit="absent",range="1..86400000")
+}(unknown_fields="grant",max_encoded="1048576",doc="Admission of one caller-bound chat request. Accepted carries request/server/model and observation bounds. Refusals carry no request or route, zero bounds and no selection metadata. Equal caller/epoch/key/body replays this admission; another body is conflict; expired or closed-epoch evidence is unknown. A lost Start never authorizes automatic retry. Reason/server byte ceilings are physical IPC-F1 ceilings, independently checked for the whole record. Budget causes use budget:<unit>:<credential or program>; an evaluated content-rights refusal is not_permitted, while unverifiable peer boundaries stay forbidden.")
+struct ChatPage {
+ 1: required PageOutcome outcome
+ 2: required list<ChatEvent> events(length="0..256")
+ 3: required i64 next(range="0..9223372036854775807")
+ 4: required bool at_end
+ 5: optional rights.RefusalDetail refusal(omit="absent")
+}(unknown_fields="grant",max_encoded="1048576",doc="A bounded page of chat@3 events. Reuses existing caller-bound cursor/retention/gap rules. Whole reply fits IPC-F1; a large first event may exceed max_bytes only within that physical reply governor. A failed whole-reply bound returns unavailable, never a partial page. An Observe wait ending preserves accepted work inside the existing 10-second unobserved lifetime; explicit Cancel stops it.")
+struct ChatCancellation {
+ 1: required CancelOutcome outcome
+ 2: optional ChatResultOutcome result_outcome(omit="absent")
+ 3: optional rights.RefusalDetail refusal(omit="absent")
+}(unknown_fields="grant",doc="Explicitly stop the caller's chat@3 request, or report its existing terminal outcome. IDs confer no authority. Cancellation acknowledgement timeout never proves upstream closure.")
+enum ChatHistoryOutcome {
+ 1: available
+ 2: forbidden
+ 3: invalid
+ 4: unavailable
+}(unknown="refuse",reader="act")
+struct ChatHistoryRead {
+ 1: required ChatHistoryOutcome outcome
+ 2: optional acceptance.HistoryWindow window(omit="absent")
+ 3: optional rights.RefusalDetail refusal(omit="absent")
+}(unknown_fields="grant",max_encoded="1048576",doc="Read result for the unchanged Job-owned HistoryWindow. A successful result carries the window; every refusal omits it. The common refusal names an authority refusal. No new durability or recovery promise is implied.")
+service ChatV3 {
+ ChatHistoryRead GetHistoryWindow()(readonly="true",remote="call",result_present="window",result_when="outcome",result_is="available",doc="Read the existing Job-owned epoch/retention record before first send; creates no work. Every runtime start issues a never-reused 128-bit epoch. Rotation of the bounded key table closes its old epoch before dropping evidence. An old or foreign epoch never admits unseen work. No durable Job or downstream recovery guarantee is added.")
+ ChatAdmission Start(1:RequestV3 request)(idempotency_key="request.identity.key",remote="call",doc="Admit one request after shape, required support, router selection, rights, content, credentials, budget and capacity checks. Same current epoch/key/equal canonical body replays admission; another body is conflict. Closed/restarted/foreign epochs are unknown and never resubmitted automatically. An explicit attempt is eligible only after its predecessor failed terminally. The relay derives a T3 key from local subject, caller key and caller epoch, retains the remote epoch and never resubmits on remote unknown.")
+ ChatPage Observe(1:string request(length="1..128",pattern="no_control"),2:i64 cursor(range="0..9223372036854775807"),3:i64 max_deltas(range="1..256"),4:i64 max_bytes(range="1..65536"),5:i64 wait_ms(range="0..30000"))(readonly="true",remote="call",doc="Observe the attested caller's accepted chat@3 request without selection or resubmission. A wait deadline or disconnect ends only this wait. Cursor/gap/retention and 10-second unobserved cancellation retain their existing operation owner. The remote relay passes progress, reasoning, seals, usage and terminal events through unchanged.")
+ ChatCancellation Cancel(1:string request(length="1..128",pattern="no_control"))(idempotent="true",remote="call",doc="Explicitly cancel this caller's accepted chat@3 request and propagate upstream. An acknowledgement timeout does not prove closure. Never invoked implicitly because an Observe wait expired, a cursor has a gap, or a page was refused.")
+}(wire_name="abstraction.inference/chat@3",doc="The final-form chat seat, native or paired through the same capability API. Discovery/select/fallback happens before dispatch; an accepted operation, possible send or partial stream never authorizes retry or weaker fallback. New events and types are reachable only through this version; native chat@1/@2 receiving is unchanged. The receiving native subject or certificate-mapped remote runtime owns authority; claimed-program is audit data and never a decision subject.")
 
 enum PreloadOutcome {
  1: evaluated
@@ -338,7 +623,7 @@ struct Embeddings {
  8: optional Cost cost(omit="absent")
 }(unknown_fields="refuse",doc="completed carries one vector per input, in input order, each the standard base64 of dimensions little-endian IEEE 754 float32 values, and dimensions of at least 1. The vectors of one reply hold at most 131072 values together; a larger upstream reply reads unavailable with reason upstream:too_large, and a caller embedding long vectors sends fewer inputs. usage.input is the input tokens the host counted. Every other outcome carries no vectors, zero dimensions, zero usage, and the reason words of Reply; unsupported_feature carries wire:<kind> for a host whose wire has no embeddings call. host and model name what served the call, and are empty when nothing did.")
 service Embedder {
- Embeddings Embed(1:EmbedRequest request)(doc="Embed texts for the bound caller in one bounded call. Admission follows Chat.Start's order for profile embed, without its feature and capacity steps: argument shape (invalid), guarantees and host selection (no_host), the host's wire (unsupported_feature), the rights decision for abstraction.inference/complete on host:<name> (not_permitted, or unavailable), the credential's ceiling (budget_exceeded), then for a hosted host the credentials applier with consumer abstraction.inference/embed@1. Nothing leaves the service before every check passes. The call returns when the host replies.")
+ Embeddings Embed(1:EmbedRequest request)(remote="call", doc="Embed texts for the bound caller in one bounded call. Admission follows Chat.Start's order for profile embed, without its feature and capacity steps: argument shape (invalid), guarantees and host selection (no_host), the host's wire (unsupported_feature), the rights decision for abstraction.inference/complete on host:<name> (not_permitted, or unavailable), the credential's ceiling (budget_exceeded), then for a hosted host the credentials applier with consumer abstraction.inference/embed@1. Nothing leaves the service before every check passes. The call returns when the host replies.")
 }(wire_name="abstraction.inference/embed@1",doc="Text embeddings computed by a host the receiving runtime picks, for the bound caller. Every request to a hosted host carries headers from abstraction.credentials applier@1 applied once for the bound caller and kept out of every reply, record and log. A decision point that cannot answer reads unavailable, never permission.")
 
 enum TranscriptUnitKind {
@@ -380,8 +665,8 @@ struct TranscriptionReply {
 }(unknown_fields="refuse",doc="The terminal result of one transcription operation. completed carries the detected or requested language and input duration in milliseconds. Other outcomes carry the common Reply outcome and reason words. unavailable reports malformed or inconsistent upstream results. host and model name what served the call, and are empty when nothing did.")
 service Transcription {
  Admission Start(1:TranscriptionRequest request)(doc="Admit one prerecorded transcription for the bound caller. Admission follows chat order for profile transcription: arguments, host and wire/format support, complete rights, authorized bounded content resolution and verification, ceiling, capacity, then the profile-scoped hosted credential. Nothing leaves the service before all checks pass.")
- DeltaPage Observe(1:string operation,2:i64 cursor,3:i64 max_deltas,4:i64 max_bytes,5:i64 wait_ms)(doc="Read retained segment and terminal deltas with the shared operation cursor, page, reconnect, wait and idle semantics.")
- Cancellation Cancel(1:string operation)(doc="Stop a transcription operation and close its upstream request, using the shared operation cancellation outcomes.")
+ DeltaPage Observe(1:string operation,2:i64 cursor,3:i64 max_deltas,4:i64 max_bytes,5:i64 wait_ms)(idempotent="true",doc="Read retained segment and terminal deltas with the shared operation cursor, page, reconnect, wait and idle semantics.")
+ Cancellation Cancel(1:string operation)(idempotent="true",doc="Stop a transcription operation and close its upstream request, using the shared operation cancellation outcomes.")
 }(wire_name="abstraction.inference/transcription@1",doc="Prerecorded speech-to-text over an authorized content digest. Operations use the shared retained-delta lifecycle and are visible only through this profile to the account and program that started them.")
 
 enum SpeechFormat {
@@ -423,8 +708,8 @@ struct SpeechReply {
 }(unknown_fields="refuse",doc="The terminal result of one speech operation. completed carries the exact concatenated audio as a typed delivery and the Unicode scalar count charged. Other outcomes carry an empty delivery. host and model name what served the call.")
 service Speech {
  Admission Start(1:SpeechRequest request)(doc="Admit text-to-speech for the bound caller. Admission follows chat order for profile speech: arguments, host and wire/format support, complete rights, authorized output-write preflight, ceiling, capacity, then the profile-scoped hosted credential. Nothing leaves the service before every check passes.")
- DeltaPage Observe(1:string operation,2:i64 cursor,3:i64 max_deltas,4:i64 max_bytes,5:i64 wait_ms)(doc="Read retained audio and terminal deltas with the shared operation cursor, page, reconnect, wait and idle semantics.")
- Cancellation Cancel(1:string operation)(doc="Stop a speech operation and close its upstream request, using the shared operation cancellation outcomes.")
+ DeltaPage Observe(1:string operation,2:i64 cursor,3:i64 max_deltas,4:i64 max_bytes,5:i64 wait_ms)(idempotent="true",doc="Read retained audio and terminal deltas with the shared operation cursor, page, reconnect, wait and idle semantics.")
+ Cancellation Cancel(1:string operation)(idempotent="true",doc="Stop a speech operation and close its upstream request, using the shared operation cancellation outcomes.")
 }(wire_name="abstraction.inference/speech@1",doc="Streaming text-to-speech with bounded audio deltas and a final storage reference. Operations are visible only through this profile to the account and program that started them.")
 
 enum LiveFormat {
@@ -470,9 +755,9 @@ struct LiveReply {
 service Live {
  Admission Start(1:LiveRequest request)(doc="Admit a live session after host support, complete permission, output-write preflight, budget, shared capacity and credential checks. The service owns the upstream session. Observe reports setup failures after admission.")
  LiveInputResult Append(1:string operation,2:i64 sequence,3:binary audio)(doc="Append 1..65536 even-sized PCM bytes at the expected sequence. Bounded input and idle limits apply. Concurrent appends are serialized; only confirmed sends advance next_sequence.")
- DeltaPage Observe(1:string operation,2:i64 cursor,3:i64 max_deltas,4:i64 max_bytes,5:i64 wait_ms)(doc="Read retained transcript, audio and terminal deltas using shared cursor and wait semantics.")
+ DeltaPage Observe(1:string operation,2:i64 cursor,3:i64 max_deltas,4:i64 max_bytes,5:i64 wait_ms)(idempotent="true",doc="Read retained transcript, audio and terminal deltas using shared cursor and wait semantics.")
  LiveInputResult Commit(1:string operation)(doc="Close input and request the final response. A repeated Commit is duplicate. Observe continues until terminal delivery or failure; Commit does not wait for synthesis to finish.")
- Cancellation Cancel(1:string operation)(doc="Immediately stop the live session and its upstream connection. Uses shared operation cancellation and ownership semantics.")
+ Cancellation Cancel(1:string operation)(idempotent="true",doc="Immediately stop the live session and its upstream connection. Uses shared operation cancellation and ownership semantics.")
 }(wire_name="abstraction.inference/live@1",doc="Live audio through bounded native IPC calls. One session produces one final response. A new response starts a new session. Credentials and vendor WebSockets stay in the service.")
 
 enum ImageMode {
@@ -532,13 +817,14 @@ struct ImageReply {
 }(unknown_fields="refuse",doc="The terminal result of one image operation. Completed carries exactly count ordered deliveries equal to the streamed image_result deltas and images is the charged output count. Other outcomes carry no deliveries. host and model name what served the call.")
 service Image {
  Admission Start(1:ImageRequest request)(doc="Admit image generation or edit for the bound caller. Admission checks arguments, explicit host mode/size/count support, complete rights, authorized input and mask resolution, output-write preflight, ceiling, shared capacity and the profile-scoped credential before paid work.")
- DeltaPage Observe(1:string operation,2:i64 cursor,3:i64 max_deltas,4:i64 max_bytes,5:i64 wait_ms)(doc="Read retained progress, result and terminal deltas with the shared operation cursor, page, reconnect, wait and idle semantics.")
- Cancellation Cancel(1:string operation)(doc="Stop image work, including queue polling, and cancel the upstream job where its wire supports cancellation.")
+ DeltaPage Observe(1:string operation,2:i64 cursor,3:i64 max_deltas,4:i64 max_bytes,5:i64 wait_ms)(idempotent="true",doc="Read retained progress, result and terminal deltas with the shared operation cursor, page, reconnect, wait and idle semantics.")
+ Cancellation Cancel(1:string operation)(idempotent="true",doc="Stop image work, including queue polling, and cancel the upstream job where its wire supports cancellation.")
 }(wire_name="abstraction.inference/image@1",doc="Image generation and edit with authorized digest inputs, bounded progress and typed result deliveries. Operations are visible only through this profile to the account and program that started them.")
 service ImageV2 {
+ AdmissionV2 StartWithGuarantees(1:ImageRequestV2 request,2:list<RequestGuarantee> guarantees(length="0..1"))(idempotent="false",doc="Start with an additional caller restriction. guarantees is empty or exactly local-only. It intersects existing request and endpoint restrictions; contradictory intent refuses before effects. Policy content guarantees and credential remain empty. A hosted candidate refused by local-only does not authorize fallback. Unsupported methods refuse explicitly; callers never retry unrestricted Start.")
  AdmissionV2 Start(1:ImageRequestV2 request)(doc="Select an explicit model or a bounded named policy before image admission. A selected route runs one image@1 admission; fallback is limited to a proven unavailable route before admission.")
- DeltaPage Observe(1:string operation,2:i64 cursor,3:i64 max_deltas,4:i64 max_bytes,5:i64 wait_ms)(doc="Observe an image@2 operation through the shared image lifecycle.")
- Cancellation Cancel(1:string operation)(doc="Cancel an image@2 operation through the shared image lifecycle.")
+ DeltaPage Observe(1:string operation,2:i64 cursor,3:i64 max_deltas,4:i64 max_bytes,5:i64 wait_ms)(idempotent="true",doc="Observe an image@2 operation through the shared image lifecycle.")
+ Cancellation Cancel(1:string operation)(idempotent="true",doc="Cancel an image@2 operation through the shared image lifecycle.")
 }(wire_name="abstraction.inference/image@2",doc="Image generation and edit using the account and program scoped selection policy. Image@1 remains available for explicit model calls.")
 // video@1 is the provider-facing half of video generation (INF-G5). An
 // application submits video as job kind inference with profile video
@@ -584,8 +870,8 @@ struct VideoObservation {
 }(unknown_fields="refuse",doc="The provider's current view of one operation. queued may carry queue_position, 1 for the next to run, or zero when the engine reports none. generating may carry step of steps, 1 <= step <= steps; a provider that knows only a fraction reports it in its own steps, such as percent of 100. completed carries exactly one local delivery: a canonical sha256 digest in the provider's content store, media_type video/mp4, video/webm or video/avi (video/x-msvideo is read as video/avi), and its size; the container carries any audio track. failed carries reason, at most 4096 UTF-8 bytes with no submitted content or credential material. unknown means no operation of that id is visible to the caller: never started by it, retired after retention, or lost when the provider or its engine restarted. invalid, forbidden and unavailable are refusals of this call. Only completed carries a delivery; only queued and generating carry progress.")
 service Video {
  VideoAdmission Start(1:VideoRequest request)(doc="Admit one video for the bound designated runtime after argument, model, extension, rights and input checks, before engine work. A Start whose request_id the provider already holds from the same caller starts nothing, ignores the request's frame and returns that operation's admission again, and a runtime whose reply was lost sends the same Start again. Any other Start naming an image_digest the provider's content store does not hold is refused as invalid with reason content:unknown, and nothing is generated from the prompt alone. A provider holds each request_id until at least 24 hours after its operation ends; a provider that restarted holds none and admits the Start as new work (INF-G5, INF-G7).")
- VideoObservation Observe(1:string operation)(doc="Return the operation's current state without waiting.")
- Cancellation Cancel(1:string operation)(doc="Stop the operation and its engine job. cancelled means this call stopped it; ended carries how it had already ended; unknown means no such operation is visible.")
+ VideoObservation Observe(1:string operation)(readonly="true",doc="Return the operation's current state without waiting.")
+ Cancellation Cancel(1:string operation)(idempotent="true",doc="Stop the operation and its engine job. cancelled means this call stopped it; ended carries how it had already ended; unknown means no such operation is visible.")
 }(wire_name="abstraction.inference/video@1",doc="Video generation by a native provider for its designated runtime. Operations are visible only to the program that started them and live in the provider's memory: a provider or engine restart forgets them, and Observe then answers unknown.")
 
 struct CeilingLimit {
@@ -595,7 +881,7 @@ struct CeilingLimit {
  4: optional i64 images_per_day(omit="zero")
  5: optional i64 audio_seconds_per_day(omit="zero")
  6: optional i64 characters_per_day(omit="zero")
-}(unknown_fields="refuse",doc="A credential's daily limits per UTC day: tokens (input plus output), spend in currency millionths, requests, images, audio seconds and characters. Zero or absent means no limit in that unit. The provider enforces every configured unit at admission and records the applicable units when each profile ends.")
+}(unknown_fields="refuse",doc="A credential's daily limits per UTC day: tokens (input plus output), spend counted in currency millionths, rounded up per reported cost, requests, images, audio seconds and characters. Zero or absent means no limit in that unit. The provider enforces every configured unit at admission and records the applicable units when each profile ends.")
 // The request extension a runtime delegating to a remote runtime sets to the
 // program that asked it. The remote records it as a claim attributed to the
 // caller its certificate maps to, and never decides on it.
@@ -618,7 +904,7 @@ struct Spend {
  5: optional i64 audio_seconds(omit="zero")
  6: optional i64 characters(omit="zero")
  7: optional i64 images(omit="zero")
-}(unknown_fields="refuse",doc="What a credential has spent on UTC day (YYYY-MM-DD), counted from provider replies: tokens, currency millionths, requests, generated images, whole audio seconds and characters.")
+}(unknown_fields="refuse",doc="What a credential has spent on UTC day (YYYY-MM-DD), counted from provider replies: tokens, currency millionths rounded up per reported cost, requests, generated images, whole audio seconds and characters.")
 struct HostState {
  1: required HostEntry entry
  2: required bool up
@@ -717,6 +1003,20 @@ struct AuditPage {
  3: required i64 next
  4: required bool at_end
 }(unknown_fields="refuse",doc="page carries at most max_entries entries from sequence cursor in order. The runtime retains its newest entries across restarts; a cursor older than the oldest retained entry reads gap with next at the oldest retained sequence and no entries. at_end is true when no entry after the page exists yet. Other refusals carry no entries, next equal to cursor and at_end false.")
+typedef string RequestHostName(length="1..4096")
+struct RequestEntry {
+ 1: required AuditEntry entry
+ 2: optional string preferred_model(omit="zero",length="0..256")
+ 3: optional list<RequestHostName> unavailable_hosts(omit="zero",length="0..64")
+ 4: optional string selection(omit="zero",length="0..64",pattern="no_control")
+ 5: optional ServedPlace placement(omit="absent")
+}(unknown_fields="grant",doc="One retained inference decision with its recorded selection and execution placement. entry is the unchanged audit decision. unavailable_hosts names the preferred hosts unavailable when fallback was selected. Absent placement means it was not recorded; it is never inferred from the caller or host name.")
+struct RequestPage {
+ 1: required AuditOutcome outcome
+ 2: required list<RequestEntry> entries(length="0..256")
+ 3: required i64 next
+ 4: required bool at_end
+}(unknown_fields="refuse",max_encoded="1048576",doc="The same journal, sequence, retention and cursor outcomes as AuditPage, with recorded request selection and placement. A page that cannot fit the encoded page bound reads unavailable with no entries, next equal to cursor and at_end false; it never returns a partial page.")
 struct GatewayState {
  1: required ListOutcome outcome
  2: required string revision
@@ -731,16 +1031,66 @@ struct GatewayChange {
  2: required string revision
  3: required string reason
 }(unknown_fields="refuse",doc="applied carries the new setting revision; the runtime has opened or closed the window before replying. conflict means expected_revision is not current and carries the current revision. invalid carries the field in reason: address when it is not 127.0.0.1:<port>. unavailable carries listen:<detail> in reason when the setting was written and the window could not listen. Other outcomes carry an empty revision.")
+struct ProgramBudget {
+ 1: optional i64 tokens_per_day(omit="zero",range="0..9223372036854775807")
+ 2: optional i64 micros_per_day(omit="zero",range="0..9223372036854775807")
+ 3: optional i64 requests_per_day(omit="zero",range="0..9223372036854775807")
+ 4: optional i64 images_per_day(omit="zero",range="0..9223372036854775807")
+ 5: optional i64 audio_seconds_per_day(omit="zero",range="0..9223372036854775807")
+ 6: optional i64 characters_per_day(omit="zero",range="0..9223372036854775807")
+}(unknown_fields="refuse",doc="One program's budget for a credential per UTC day: observed input plus output tokens, currency millionths rounded up per reported cost, requests, generated images, whole audio seconds and characters. Every value is nonnegative; zero means no limit in that unit. A present all-zero budget records an explicit No limit choice. This budget grants no credential use or inference authority.")
+enum ProgramBudgetReadOutcome {
+ 1: page
+ 2: invalid
+ 3: forbidden
+ 4: unavailable
+ 5: unsupported
+}(unknown="refuse",reader="act")
+enum ProgramBudgetEditOutcome {
+ 1: applied
+ 2: conflict
+ 3: invalid
+ 4: forbidden
+ 5: unavailable
+ 6: unsupported
+}(unknown="refuse",reader="act")
+struct ProgramBudgetEntry {
+ 1: required string program(length="1..4096")
+ 2: optional ProgramBudget budget(omit="absent")
+ 3: required Spend spend
+ 4: optional bool cost_unreported(omit="zero")
+}(unknown_fields="refuse",doc="One native program's configured budget and observed spend for the requested credential. An absent budget means no configured choice, with usage preserved; a present all-zero budget is an explicit No limit choice. Program is the normalized native identity, never an upstream model or forwarded claim. cost_unreported is true when a missing cost observation in the current UTC day blocks this program and credential's configured money budget. Usage and this flag can change without changing the configuration revision; refresh ProgramBudgets to read them.")
+typedef string ProfileIdentifier(length="1..256")
+struct ProgramBudgetPage {
+ 1: required ProgramBudgetReadOutcome outcome
+ 2: required string revision(length="0..128",pattern="no_control")
+ 3: required list<ProgramBudgetEntry> entries(length="0..256")
+ 4: required list<ProfileIdentifier> profiles(length="0..16")
+}(unknown_fields="refuse",max_encoded="1048576",doc="page carries the credential's program budget configuration revision, at most 256 entries in program order, and the implemented charged host profiles covered by this owner's admission and accounting. Usage changes do not change the configuration revision. Refusals carry an empty revision and no entries or profiles. unsupported is the native client projection of an older operator's unknown_method; it confirms no budget.")
+struct ProgramBudgetResult {
+ 1: required ProgramBudgetEditOutcome outcome
+ 2: required string revision(length="0..128",pattern="no_control")
+ 3: required string reason(length="0..256",pattern="no_control")
+}(unknown_fields="refuse",doc="applied confirms durable budget configuration, preserving observed usage. conflict carries the current configuration revision; invalid names the invalid field in reason. Other refusals carry an empty revision. unsupported is the native client projection of an older operator's unknown_method and confirms no write.")
+struct ProgramBudgetChange {
+ 1: required string expected_revision(length="0..128")
+ 2: required string credential(length="0..64")
+ 3: required string program(length="0..4096")
+ 4: optional ProgramBudget budget(omit="absent")
+}(unknown_fields="refuse",doc="One conditional budget choice for a receiving-account native program. Absent budget removes the configured choice without erasing usage; a present all-zero budget records explicit No limit. The native presenter supplies the program from the stored question's proven target.")
 service Operator {
- HostList Hosts()(doc="Read the configured hosts, their router state and each hosted credential's spend today, from the registry's declarations of role host. Gated by abstraction.inference/host.manage on resource account.")
- HostChange AddHost(1:string expected_revision,2:HostEntry host)(doc="Conditionally add one host, kept as a registry declaration of role host. Gated by host.manage. For the bound operator program and the runtime's other operator programs it also writes the permit rule abstraction.inference/complete on host:<name>, and for a hosted host with a credential it writes the runtime's own permit rule abstraction.credentials/apply on credential:<name>, which the router's listing reads need. Existing rules are left as they are.")
- HostChange RemoveHost(1:string expected_revision,2:string name)(doc="Conditionally remove one host; operations already admitted run to their end. Gated by host.manage. A host the installation or a product declared is disabled by name instead of removed. Rules are left as they are.")
- KeyList Keys()(doc="Read the local keys of the receiving account. Gated by abstraction.inference/key.issue on resource account.")
+ HostList Hosts()(readonly="true",doc="Read the configured hosts, their router state and each hosted credential's spend today, from the registry's declarations of role host. Gated by abstraction.inference/host.manage on resource account.")
+ HostChange AddHost(1:string expected_revision,2:HostEntry host)(idempotent="true",doc="Conditionally add one host, kept as a registry declaration of role host. Gated by host.manage. For the bound operator program and the runtime's other operator programs it also writes the permit rule abstraction.inference/complete on host:<name>, and for a hosted host with a credential it writes the runtime's own permit rule abstraction.credentials/apply on credential:<name>, which the router's listing reads need. Existing rules are left as they are.")
+ HostChange RemoveHost(1:string expected_revision,2:string name)(idempotent="true",doc="Conditionally remove one host; operations already admitted run to their end. Gated by host.manage. A host the installation or a product declared is disabled by name instead of removed. Rules are left as they are.")
+ KeyList Keys()(readonly="true",doc="Read the local keys of the receiving account. Gated by abstraction.inference/key.issue on resource account.")
  KeyIssued IssueKey(1:string program,2:string credential)(doc="Mint a local key for program, an absolute executable path, and hold it in the platform store. credential, when not empty, names the hosted credential the window's requests for that program may spend under. Gated by key.issue. The key grants nothing: the window still binds the peer, requires that program, and decides abstraction.inference/complete and credentials apply for it.")
  KeyRevoked RevokeKey(1:string program)(doc="Destroy the active local key of program. Gated by key.issue.")
- AuditPage Audit(1:i64 cursor,2:i64 max_entries)(doc="Read retained inference decisions from both routes. Gated by abstraction.inference/audit.read on resource account. cursor 0 starts at the oldest retained entry; max_entries is 1..256.")
- GatewayState Gateway()(doc="Read the gateway window setting and whether the window listens now. Gated by abstraction.inference/host.manage on resource account.")
- GatewayChange SetGateway(1:string expected_revision,2:bool open,3:string address)(doc="Conditionally write the gateway window setting to the runtime state and apply it to the running runtime: open listens on address, and closed stops the listener and every window connection. address is 127.0.0.1:<port>; empty keeps the recorded address when opening, and 127.0.0.1:8793 when none is recorded. The setting survives a restart. Gated by host.manage.")
+ AuditPage Audit(1:i64 cursor,2:i64 max_entries)(readonly="true",doc="Read retained inference decisions from both routes. Gated by abstraction.inference/audit.read on resource account. cursor 0 starts at the oldest retained entry; max_entries is 1..256.")
+ RequestPage Requests(1:i64 cursor,2:i64 max_entries)(readonly="true",doc="Read retained inference requests from both routes with recorded selection and placement. Uses the Audit journal, cursor and retention. Gated by abstraction.inference/audit.read on resource account. cursor 0 starts at the oldest retained entry; max_entries is 1..256.")
+ GatewayState Gateway()(readonly="true",doc="Read the gateway window setting and whether the window listens now. Gated by abstraction.inference/host.manage on resource account.")
+ GatewayChange SetGateway(1:string expected_revision,2:bool open,3:string address)(idempotent="true",doc="Conditionally write the gateway window setting to the runtime state and apply it to the running runtime: open listens on address, and closed stops the listener and every window connection. address is 127.0.0.1:<port>; empty keeps the recorded address when opening, and 127.0.0.1:8793 when none is recorded. The setting survives a restart. Gated by host.manage.")
+ ProgramBudgetPage ProgramBudgets(1:string credential(length="0..64"))(readonly="true",doc="Read one credential's durable per-program budgets and observed usage in the existing ceiling owner. Gated by abstraction.inference/host.manage on resource account for the native bound operator.")
+ ProgramBudgetResult SetProgramBudget(1:ProgramBudgetChange request)(idempotent="true",doc="Conditionally set one receiving-account native program's budget for credential in the existing ceiling state. Absent budget removes its configured limit while retaining usage; a present all-zero budget records explicit No limit. Gated by host.manage. The native presenter supplies the question's bound program; this operation grants no credential use or inference authority.")
 }(wire_name="abstraction.inference/operator@1",doc="Administer the runtime's inference hosts, the gateway window and its local keys, and read the inference audit. Each call is a rights decision for the bound operator subject; same-account identity alone grants nothing. A decision point that cannot answer reads unavailable.")
 
 enum CandidatePlacement {
@@ -775,7 +1125,11 @@ struct SelectionReadV2 {
  3: optional SelectionPolicyV2 policy(omit="absent")
 }(unknown_fields="refuse",doc="found carries the policy and its revision. Other outcomes carry no policy or revision.")
 service SelectionOperatorV2 {
- SelectionReadV2 Read(1:string target_program,2:string name)(doc="Read a policy for target_program in the bound account. Empty or the caller's own normalized executable reads self scope with no grant; another absolute canonical executable needs selection.manage_for on account. target_program names the managed scope, never the caller identity.")
- SelectionChange Put(1:string target_program,2:string expected_revision,3:SelectionPolicyV2 policy)(doc="Conditionally create or replace a policy for target_program in the shared store. Empty or self target needs selection.manage; another program needs selection.manage_for on account.")
- SelectionChange DeletePolicy(1:string target_program,2:string expected_revision,3:string name)(doc="Conditionally delete a policy for target_program in the shared store. Empty or self target needs selection.manage; another program needs selection.manage_for on account.")
-}(wire_name="abstraction.inference/selection-operator@2",doc="Manage policies for this program or an explicit executable in the bound account, with optional logical provider pins. Cross-program management requires selection.manage_for; the target program is a policy namespace, never requesting identity. Reads of the bound program need no grant; edits retain selection.manage.")
+ SelectionReadV2 ReadEffective(1:string name(length="1..64"))(readonly="true",doc="Read the bound native caller's effective named policy with no management grant. The caller's program policy wins; the same named account default applies only after proven absence. Store failure or corruption refuses without fallback. This pure snapshot performs no activation, reservation, inference or permission change and does not promise that a future request is executable.")
+ SelectionReadV2 Read(1:string target_program,2:string name)(readonly="true",doc="Read a policy for target_program in the bound account. Empty or the caller's own normalized executable reads self scope with no grant; another absolute canonical executable needs selection.manage_for on account. target_program names the managed scope, never the caller identity.")
+ SelectionChange Put(1:string target_program,2:string expected_revision,3:SelectionPolicyV2 policy)(idempotent="true",doc="Conditionally create or replace a policy for target_program in the shared store. Empty or self target needs selection.manage; another program needs selection.manage_for on account.")
+ SelectionChange DeletePolicy(1:string target_program,2:string expected_revision,3:string name)(idempotent="true",doc="Conditionally delete a policy for target_program in the shared store. Empty or self target needs selection.manage; another program needs selection.manage_for on account.")
+ SelectionReadV2 ReadAccountDefault(1:string name(length="1..64"))(readonly="true",doc="Read the account default for this named policy in the bound native account. Requires selection.manage_for. Raw program policies remain separately readable through Read.")
+ SelectionChange PutAccountDefault(1:string expected_revision(length="0..256"),2:SelectionPolicyV2 policy)(idempotent="true",doc="Conditionally create or replace the account default for this named policy. Requires selection.manage_for on the bound native account. It applies only when the requesting program has no policy of the same name and grants no execution, host or credential authority.")
+ SelectionChange DeleteAccountDefault(1:string expected_revision(length="0..256"),2:string name(length="1..64"))(idempotent="true",doc="Conditionally delete the account default for this named policy. Requires selection.manage_for on the bound native account.")
+}(wire_name="abstraction.inference/selection-operator@2",doc="Manage program policies and account defaults in the bound native account, with optional logical provider pins. Cross-program management and every account-default method require selection.manage_for; the target program is a policy namespace, never requesting identity. Raw reads of the bound program need no grant; program edits retain selection.manage. Inference applies the same named account default only after proven absence of a program policy.")

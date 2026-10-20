@@ -1,0 +1,9 @@
+{
+  "name": "oa-opencode-installer-tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "jsonc-parser": "3.3.1"
+  }
+}

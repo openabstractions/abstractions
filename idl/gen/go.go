@@ -137,64 +137,18 @@ func strs(out []byte, v []string, depth int) []byte {
 
 @ENUM_LIST_HELPER@
 
+// raw writes an opaque value's bytes as they are ([DEF-A3]); whitespace
+// around the value is not part of it.
 func raw(out []byte, s string, depth int) []byte {
 	ws := func(c byte) bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' }
-	for i := 0; i < len(s); {
-		c := s[i]
-		if ws(c) {
-			i++
-			continue
-		}
-		switch c {
-		case '"':
-			j := i + 1
-			for j < len(s) {
-				if s[j] == '\\' {
-					j += 2
-					continue
-				}
-				if s[j] == '"' {
-					j++
-					break
-				}
-				j++
-			}
-			out = append(out, s[i:j]...)
-			i = j
-		case '{', '[':
-			out = append(out, c)
-			i++
-			j := i
-			for j < len(s) && ws(s[j]) {
-				j++
-			}
-			if j < len(s) && (s[j] == '}' || s[j] == ']') {
-				out = append(out, s[j])
-				i = j + 1
-			} else {
-				depth++
-				out = append(out, '\n')
-				out = pad(out, depth)
-			}
-		case '}', ']':
-			depth--
-			out = append(out, '\n')
-			out = pad(out, depth)
-			out = append(out, c)
-			i++
-		case ',':
-			out = append(out, ',', '\n')
-			out = pad(out, depth)
-			i++
-		case ':':
-			out = append(out, ':', ' ')
-			i++
-		default:
-			out = append(out, c)
-			i++
-		}
+	i, j := 0, len(s)
+	for i < j && ws(s[i]) {
+		i++
 	}
-	return out
+	for j > i && ws(s[j-1]) {
+		j--
+	}
+	return append(out, s[i:j]...)
 }
 
 func byteLess(a, b string) bool {
@@ -317,7 +271,11 @@ type reader struct {
 	buf   []byte
 	pos   int
 	depth int
+	limit int
+	ceiling int
 }
+
+func(r *reader)depthLimit()int{ceiling:=depthLimit;if r.ceiling>0{ceiling=r.ceiling};if r.limit>0 && r.limit<ceiling{return r.limit};return ceiling}
 
 func (r *reader) refuse(word string) error { return &Refusal{Word: word, Offset: r.pos} }
 
@@ -341,7 +299,7 @@ func (r *reader) ws() {
 
 func (r *reader) enter() error {
 	r.depth++
-	if r.depth > depthLimit {
+	if r.depth > r.depthLimit() {
 		return r.refuse("depth_exceeded")
 	}
 	return nil
@@ -935,6 +893,7 @@ func (r *reader) timestamp() (string, error) {
 `
 
 func goDecoder(b *strings.Builder, s *Definition) {
+	emitMaxEncodedReader(b, s, "go")
 	for _, st := range s.Structs {
 		goStructDecoder(b, s, st)
 	}
@@ -953,9 +912,16 @@ func goDecoder(b *strings.Builder, s *Definition) {
 
 func goStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 	fmt.Fprintf(b, "\nfunc (r *reader) decode%s() (*%s, error) {\n", st.Name, st.Name)
+	if st.CodecDepthLimit > 0 {
+		fmt.Fprintf(b, "previousCeiling:=r.ceiling;defer func(){r.ceiling=previousCeiling}();r.ceiling=%d\n", st.CodecDepthLimit)
+	}
 	b.WriteString("\tif r.at() != '{' {\n\t\treturn nil, r.refuse(\"wrong_type\")\n\t}\n")
+	emitMaxEncodedDecode(b, st, "go")
 	b.WriteString("\tif err := r.enter(); err != nil {\n\t\treturn nil, err\n\t}\n\tr.pos++\n")
 	fmt.Fprintf(b, "\tv := &%s{}\n", st.Name)
+	if tracksSkippedKeys(s, st) {
+		b.WriteString("\tvar unknownKeys map[string]bool\n")
+	}
 	if len(st.Fields) > 0 {
 		b.WriteString("\tvar seen uint32\n")
 	}
@@ -988,6 +954,9 @@ func goStructDecoder(b *strings.Builder, s *Definition, st Struct) {
 		}
 		b.WriteString("\t\t\t\tx, err := r.rawValue(); if err != nil { return nil, err }; v.Extras[key] = x\n")
 	} else {
+		if tracksSkippedKeys(s, st) {
+			b.WriteString("\t\t\t\tif unknownKeys[key] { return nil, r.refuse(\"duplicate_key\") }\n\t\t\t\tif unknownKeys == nil { unknownKeys = map[string]bool{} }\n\t\t\t\tunknownKeys[key] = true\n")
+		}
 		b.WriteString("\t\t\t\tif err := r.skipValue(); err != nil {\n\t\t\t\t\treturn nil, err\n\t\t\t\t}\n")
 	}
 	b.WriteString("\t\t\t}\n\t\t\tr.ws()\n\t\t\tif r.at() != ',' {\n\t\t\t\tbreak\n\t\t\t}\n\t\t\tr.pos++\n\t\t}\n\t}\n")
@@ -1001,6 +970,7 @@ func goStructDecoderEnd(b *strings.Builder, s *Definition, st Struct) {
 	}
 	emitEqualities(b, st, "go", false)
 	emitEnumChecks(b, st, "go", false)
+	configValueDecodeCheck(b, s, st, "go")
 	if len(s.Services) > 0 && st.Name == s.Document && s.Vocab != nil {
 		b.WriteString("if err:=r.derive(v);err!=nil{return nil,err}\n")
 	}
@@ -1018,6 +988,15 @@ func requiredMask(st Struct) uint32 {
 }
 
 func goRead(s *Definition, f Field) string {
+	if scalarAbsent(f) {
+		f.Omit = "never"
+		body := goRead(s, f)
+		e := "v." + exported(f.Ident("go"))
+		if f.Type == "i32" {
+			return strings.Replace(body, e+" = int32(x)", "value := int32(x)\n"+e+" = &value", 1)
+		}
+		return strings.Replace(body, e+" = x", e+" = &x", 1)
+	}
 	e := "v." + exported(f.Ident("go"))
 	get := func(call, assign string) string {
 		return "x, err := " + call + "\n\t\t\t\tif err != nil {\n\t\t\t\t\treturn nil, err\n\t\t\t\t}\n\t\t\t\t" + assign
@@ -1177,11 +1156,14 @@ func member(v Raw, name string) bool {
 `
 
 func genGo(s *Definition) string {
+	copy := *s
+	copy.EndpointHashes = endpointDefinitionHashes(s)
+	s = &copy
 	s = enumCarriers(s)
 	if s.NoIPC {
 		return genInterfaceOnly(s, "go")
 	}
-	s = serviceTypes(s)
+	s = serviceTypes(s, !s.SuppressIntrinsicEndpoint)
 	var b strings.Builder
 	esc := goEscMinimal
 	if s.Encoding.EscapeNonASCII() {
@@ -1192,13 +1174,16 @@ func genGo(s *Definition) string {
 		enumListHelper = goEnumListHelper
 	}
 	prelude := strings.Replace(goCommon, "@ENUM_LIST_HELPER@", enumListHelper, 1) + esc
+	if goMicrosTimestamps(s) {
+		prelude = strings.Replace(prelude, "package rec\n", "package rec\n\nimport \"time\"\n", 1)
+	}
 	if s.StringMapDocument() {
 		prelude += goStrMap
 	}
 	if s.HasRepeated() {
 		prelude += goEncList
 	}
-	b.WriteString(strings.NewReplacer("@INDENT@", strconv.Itoa(s.Encoding.Indent)).Replace(prelude))
+	b.WriteString(strings.NewReplacer("@INDENT@", strconv.Itoa(s.Encoding.Indent)).Replace(opaqueLayout(s, "go", prelude)))
 	b.WriteString(importPrelude(s, "go"))
 	goVocabulary(&b, s)
 	for _, st := range s.Structs {
@@ -1249,20 +1234,36 @@ func genGo(s *Definition) string {
 		b.WriteString(goTimestamp)
 		b.WriteString(goTimestampNormalize)
 	}
+	if goMicrosTimestamps(s) {
+		b.WriteString("\n// TimestampLayout is the contract's UTC timestamp write layout.\nconst TimestampLayout = \"2006-01-02T15:04:05.000000Z\"\n\n// FormatTimestamp returns the contract's UTC timestamp with six fractional digits.\nfunc FormatTimestamp(at time.Time) string { return at.UTC().Format(TimestampLayout) }\n")
+	}
 	if s.PreservesUnknown() {
 		b.WriteString(goPreserve)
 	}
 	goDecoder(&b, s)
+	goJSONAPI(&b, s)
 	goProtocol(&b, s)
 	if hasBinary(s) {
 		b.WriteString(goBinary)
 	}
 	goService(&b, s)
+	configCatalogueGo(&b, s)
 	pretty, err := format.Source([]byte(goUnexportCarriers(b.String(), s)))
 	if err != nil {
 		fail(fmt.Errorf("the Go backend emitted something gofmt refuses: %w", err))
 	}
 	return string(pretty)
+}
+
+func goMicrosTimestamps(s *Definition) bool {
+	for _, st := range s.Structs {
+		for _, field := range st.Fields {
+			if field.Grammar.Write == "rfc3339-micros" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func goVocabulary(b *strings.Builder, s *Definition) {
@@ -1349,6 +1350,7 @@ func (v *%[1]s) UnmarshalJSON(data []byte) error {
 `, name)
 		}
 		fmt.Fprintf(b, "\n// %[1]sValues returns every member of %[1]s in declaration order, in a new slice.\nfunc %[1]sValues() []%[1]s {\n\treturn []%[1]s{%[2]s}\n}\n", name, strings.Join(members, ", "))
+		fmt.Fprintf(b, "\n// IsKnown reports whether v is a declared member of %[1]s.\nfunc (v %[1]s) IsKnown() bool { return v.Known() }\n", name)
 		if closed {
 			fmt.Fprintf(b, "\n// Known reports whether v is a member of %[1]s.\nfunc (v %[1]s) Known() bool {\n\t_, ok := v.WireName()\n\treturn ok\n}\n", name)
 		} else {
@@ -1365,6 +1367,14 @@ func (v *%[1]s) UnmarshalJSON(data []byte) error {
 		}
 	}
 	for _, c := range s.Consts {
+		if c.StringScalar() {
+			fmt.Fprintf(b, "\nconst %s = %s\n", goName(c.Name), constantString(c.Strings[0], "go"))
+			continue
+		}
+		if c.Scalar() {
+			fmt.Fprintf(b, "\nconst %s int%s = %d\n", goName(c.Name), c.Type[1:], c.Ints[0])
+			continue
+		}
 		if c.Type == "list<i32>" {
 			fmt.Fprintf(b, "\nvar %s = []int32{", goName(c.Name))
 			for i, n := range c.Ints {
@@ -1393,6 +1403,10 @@ func goEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 	} else {
 		fmt.Fprintf(b, "\nfunc enc%s(out []byte, v *%s, depth int) []byte {\n", st.Name, st.Name)
 	}
+	if st.CodecDepthLimit > 0 && !flat {
+		fmt.Fprintf(b, "if depth<0||depth>=%d{panic(&Refusal{Word:\"depth_exceeded\"})}\n", st.CodecDepthLimit)
+	}
+	emitMaxEncodedStart(b, st, "go")
 	emitEqualities(b, st, "go", true)
 	emitEnumChecks(b, st, "go", true)
 	b.WriteString("\tout = append(out, '{')\n")
@@ -1426,6 +1440,7 @@ func goEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 		if f.Omit != "never" {
 			b.WriteString("\t}\n")
 		}
+		emitMaxEncodedEnd(b, st, "go")
 	}
 	if st.PreservesUnknown() {
 		fmt.Fprintf(b, "\tout, first = extraFields(out, v.Extras, []string{%s}, depth, first)\n", quotedFieldNames(st))
@@ -1438,10 +1453,20 @@ func goEncoder(b *strings.Builder, s *Definition, st Struct, flat bool) {
 			b.WriteString("\tif !first {\n\t\tout = append(out, '\\n')\n\t\tout = pad(out, depth)\n\t}\n")
 		}
 	}
-	b.WriteString("\treturn append(out, '}')\n}\n")
+	if st.maxEncoded() > 0 {
+		b.WriteString("\tout = append(out, '}')\n")
+		emitMaxEncodedEnd(b, st, "go")
+		b.WriteString("\treturn out\n}\n")
+	} else {
+		b.WriteString("\treturn append(out, '}')\n}\n")
+	}
 }
 
 func goType(s *Definition, f Field) string {
+	if scalarAbsent(f) {
+		f.Omit = "never"
+		return "*" + goType(s, f)
+	}
 	if f.EnumList {
 		return "[]" + goName(f.EnumType.Name)
 	}
@@ -1487,7 +1512,7 @@ func goType(s *Definition, f Field) string {
 
 func goPresent(s *Definition, f Field, e string) string {
 	if f.Omit == "absent" {
-		if s.IsStruct(f.Type) || f.Type == "binary" || enumAbsent(f) {
+		if s.IsStruct(f.Type) || f.Type == "binary" || enumAbsent(f) || scalarAbsent(f) {
 			return e + " != nil"
 		}
 		return e + ` != ""`
@@ -1507,6 +1532,9 @@ func goPresent(s *Definition, f Field, e string) string {
 }
 
 func goValue(s *Definition, f Field, e string) string {
+	if scalarAbsent(f) {
+		e = "*" + e
+	}
 	if f.EnumList {
 		if goClosedEnum(f) {
 			return "out = enumStrs(out, " + e + ", depth+1, func(v " + goName(f.EnumType.Name) + ") string { return v.String() })"
@@ -1571,13 +1599,16 @@ func exported(n string) string {
 }
 
 func goUnexportCarriers(body string, s *Definition) string {
+	for _, name := range foreignEnumNames(s) {
+		body = strings.ReplaceAll(body, "Parse"+goName(name), "parse"+goName(name))
+	}
 	names := []string{"OAServiceFrame", "OAServiceReply", "OAServiceError"}
 	for _, svc := range s.Services {
 		for _, m := range svc.Methods {
 			names = append(names, argsName(svc, m), resultName(svc, m))
 		}
 	}
-	pattern := `(^|[^A-Za-z0-9_])OA(` + strings.Join(trimOA(names), "|") + `|Imported[0-9]+)\b`
+	pattern := `(^|[^A-Za-z0-9_])OA(` + strings.Join(trimOA(names), "|") + `|Imported[0-9]+(?:Values)?)\b`
 	return regexp.MustCompile(pattern).ReplaceAllString(body, "${1}oa${2}")
 }
 

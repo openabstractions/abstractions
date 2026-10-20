@@ -3,8 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/openabstractions/abstraction-identity/go/privatedir/privatetest"
+	"github.com/openabstractions/abstraction-storage/go/layout"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -40,7 +44,7 @@ func TestOpenCodeFolderLeafUsesNativeOperatorAdmissionOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	folder := t.TempDir()
+	folder := privatetest.Dir(t)
 	question := askclient.ApplicationQuestion{RequestKey: "opencode-folder-occurrence", Key: "opencode.project.edit",
 		Slots: map[string]string{"folder": folder, "code": "fixture-session-file-identity", "until": "this fixture exits"}}
 	if observation, err := app.AskContext(ctx, question); err != nil || observation.Outcome.String() != "pending" {
@@ -68,11 +72,10 @@ func gatedRuntime(t *testing.T) runtimeFlags {
 	if !statusTransportProvesProgram(t) {
 		t.Skip("Program proof unavailable on this transport")
 	}
-	state, err := os.MkdirTemp("", "oa-gates-")
-	if err != nil {
+	state := filepath.Join(privatetest.Dir(t), "private")
+	if err := layout.Ensure(state, state); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.RemoveAll(state) })
 	for dir, file := range map[string][2]string{
 		"credentials": {credentialsBackendFile, "file-0600\n"},
 		"inference":   {inferenceHostsFile, `{"local": []}`},
@@ -80,7 +83,7 @@ func gatedRuntime(t *testing.T) runtimeFlags {
 		writeStateFile(t, filepath.Join(state, dir, file[0]), file[1])
 	}
 	name := fmt.Sprintf("gates-%d-%d", os.Getpid(), gatedRuntimeSeq.Add(1))
-	options, err := parseRuntime([]string{"--isolated", name, "--state-dir", state}, io.Discard)
+	options, err := parseTestRuntime(t, []string{"--isolated", name, "--state-dir", state}, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,16 +113,36 @@ func gatedRuntime(t *testing.T) runtimeFlags {
 	return options
 }
 
-// probeBinary builds the serve image as openabstractions-probe: a second
-// program, and a second rights subject, beside the test executable.
+// Keep one build per test process, but give each fixture its own file and
+// path so its rights subject and any rename stay local to that fixture.
+var probeImage struct {
+	once sync.Once
+	body []byte
+	err  error
+}
+
 func probeBinary(t *testing.T) string {
 	t.Helper()
-	bin := filepath.Join(t.TempDir(), probeClientName)
+	bin := filepath.Join(privatetest.Dir(t), probeClientName)
 	if runtime.GOOS == "windows" {
 		bin += ".exe"
 	}
-	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
-		t.Fatalf("build %s: %v\n%s", probeClientName, err, out)
+	built := false
+	probeImage.once.Do(func() {
+		built = true
+		if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+			probeImage.err = fmt.Errorf("build %s: %w\n%s", probeClientName, err, out)
+			return
+		}
+		probeImage.body, probeImage.err = os.ReadFile(bin)
+	})
+	if probeImage.err != nil {
+		t.Fatal(probeImage.err)
+	}
+	if !built {
+		if err := os.WriteFile(bin, probeImage.body, 0o700); err != nil {
+			t.Fatal(err)
+		}
 	}
 	resolved, err := filepath.EvalSymlinks(bin)
 	if err != nil {
@@ -628,5 +651,117 @@ func TestProbeAllMakesNoWriteCall(t *testing.T) {
 	}
 	if _, err := os.Stat(settings); err != nil {
 		t.Fatalf("named rewrite left no settings file: %v", err)
+	}
+}
+
+// Exercise the existing isolated CLI composition with no installed products or
+// credential-store cleanup: this fixture selects the owned file backend.
+func TestIsolatedRuntimeExecutesOnlyGrantedDownload(t *testing.T) {
+	if !statusTransportProvesProgram(t) {
+		t.Skip("Program proof unavailable on this transport")
+	}
+	state := privateTestState(t)
+	name := fmt.Sprintf("download-%d-%d", os.Getpid(), gatedRuntimeSeq.Add(1))
+	options, err := parseTestRuntime(t, []string{"--isolated", name, "--state-dir", state, "--without-models", "--jobs-run-downloads"}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeStateFile(t, filepath.Join(state, "credentials", credentialsBackendFile), "file-0600\n")
+	writeStateFile(t, filepath.Join(state, "inference", inferenceHostsFile), `{"local": []}`)
+	ctx, cancel := context.WithCancel(context.Background())
+	ready, done := make(chan struct{}), make(chan error, 1)
+	go func() { done <- runRuntimeReady(ctx, options, func() error { close(ready); return nil }) }()
+	select {
+	case <-ready:
+	case err := <-done:
+		cancel()
+		t.Fatalf("isolated startup: %v", err)
+	case <-time.After(runtimeWait):
+		cancel()
+		t.Fatal("isolated startup timed out")
+	}
+	t.Cleanup(func() {
+		cancel()
+		if err := awaitStopped(t, done, "isolated download runtime"); err != nil {
+			t.Error(err)
+		}
+		listener, err := listen.Listen(options.endpoint)
+		if err != nil {
+			t.Errorf("isolated endpoint not released: %v", err)
+		} else {
+			listener.Close()
+		}
+	})
+	turnDefault(t, options.endpoint, rights.DefaultDownload, false)
+	// A non-probe basename selects the existing normal download CLI.
+	built := probeBinary(t)
+	program := filepath.Join(filepath.Dir(built), "download-fixture.exe")
+	if err := os.Rename(built, program); err != nil {
+		t.Fatal(err)
+	}
+	runtimeProgram, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte("DATA")
+	digest := fmt.Sprintf("%x", sha256.Sum256(payload))
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests.Add(1); w.Write(payload) }))
+	t.Cleanup(server.Close)
+	lastDiagnostic := ""
+	invoke := func(path string) (decoded, error) {
+		t.Helper()
+		callCtx, stop := context.WithTimeout(context.Background(), 30*time.Second)
+		defer stop()
+		command := exec.CommandContext(callCtx, program, "download", server.URL+path, "--endpoint", options.endpoint, "--runtime-program", runtimeProgram, "--out", privatetest.Dir(t), "--sha256", digest, "--json", "--timeout", "20s")
+		var output, diagnostics bytes.Buffer
+		command.Stdout = &output
+		command.Stderr = &diagnostics
+		err := command.Run()
+		lastDiagnostic = diagnostics.String()
+		if command.ProcessState == nil {
+			t.Fatalf("download child not reaped: %v", err)
+		}
+		t.Logf("owned download child pid=%d exit=%d reaped", command.Process.Pid, command.ProcessState.ExitCode())
+		var result decoded
+		if output.Len() == 0 && err != nil {
+			return result, err
+		}
+		if decodeErr := json.Unmarshal(output.Bytes(), &result); decodeErr != nil {
+			t.Fatalf("download output: %v %s %s", decodeErr, output.String(), diagnostics.String())
+		}
+		return result, err
+	}
+	if refused, err := invoke("/ungranted.bin"); err == nil || !strings.Contains(lastDiagnostic, "forbidden") || requests.Load() != 0 {
+		t.Fatalf("ungranted transfer: %+v %v requests=%d", refused, err, requests.Load())
+	}
+	rule := []string{"--endpoint", options.endpoint, "--program", program, "--action", host.JobSubmitAction, "--resource", host.JobKindResource("download")}
+	if reply, err := runRightsCommand(t, append([]string{"grant"}, rule...)...); err != nil || reply.Outcome != "applied" {
+		t.Fatalf("grant: %+v %v", reply, err)
+	}
+	received, err := invoke("/payload.bin")
+	if err != nil || received.Snapshot == nil || received.Snapshot.State != "complete" || received.Receipt.OperationID == "" || received.Bytes != int64(len(payload)) {
+		t.Fatalf("granted transfer: %+v %v", received, err)
+	}
+	data, err := os.ReadFile(received.Out)
+	if err != nil || !bytes.Equal(data, payload) || requests.Load() != 1 {
+		t.Fatalf("DATA result: %q %v requests=%d", data, err, requests.Load())
+	}
+	if reply, err := runRightsCommand(t, append([]string{"revoke"}, rule...)...); err != nil || reply.Outcome != "applied" {
+		t.Fatalf("revoke: %+v %v", reply, err)
+	}
+	if refused, err := invoke("/revoked.bin"); err == nil || !strings.Contains(lastDiagnostic, "forbidden") || requests.Load() != 1 {
+		t.Fatalf("revoked transfer: %+v %v requests=%d", refused, err, requests.Load())
+	}
+	if entries, err := os.ReadDir(filepath.Join(state, "jobs")); err != nil || len(entries) == 0 {
+		t.Fatalf("owned isolated job state missing: %v", err)
+	}
+}
+
+func TestRuntimeHelpExplainsIsolatedDownloadGrant(t *testing.T) {
+	for _, text := range []string{"--isolated NAME", "--state-dir DIR", "--jobs-run-downloads", "rights defaults --off download", "rights grant --program", host.JobSubmitAction, host.JobKindResource("download")} {
+		if !strings.Contains(runtimeUsage, text) {
+			t.Fatalf("runtime help omits %q", text)
+		}
 	}
 }

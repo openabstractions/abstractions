@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -23,7 +24,18 @@ type fakePermissionOperator struct {
 	err          error
 	answers      []string
 	beforeAnswer func()
-	pages        func(string) (askclient.OperatorPage, error)
+	list         func() ([]askclient.RecordMetadata, error)
+}
+
+func (o *fakePermissionOperator) ListAllPermissionsContext(ctx context.Context) ([]askclient.RecordMetadata, error) {
+	if o.list != nil {
+		return o.list()
+	}
+	page, err := o.ListPermissionsContext(ctx, "", 64)
+	if err != nil {
+		return nil, err
+	}
+	return page.Records, nil
 }
 
 func (o *fakePermissionOperator) ReadPermissionDetailsContext(context.Context, string) (askclient.TypedPermissionDetails, error) {
@@ -33,9 +45,6 @@ func (o *fakePermissionOperator) ReadPermissionDetailsContext(context.Context, s
 }
 
 func (o *fakePermissionOperator) ListPermissionsContext(_ context.Context, cursor string, _ int64) (askclient.OperatorPage, error) {
-	if o.pages != nil {
-		return o.pages(cursor)
-	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	return askclient.OperatorPage{Outcome: askclient.OperatorPageOutcomePage, Records: []askclient.RecordMetadata{*o.details.Question.Question.Record}, Complete: true}, nil
@@ -64,7 +73,25 @@ func (o *fakePermissionOperator) AnswerPermissionIfPendingContext(_ context.Cont
 
 type fakePermissionRules struct {
 	applied []string
+	undone  []string
 	outcome rightsclient.PolicyEditOutcome
+	err     error
+	// onApply runs as the owner's save attempt, as when serve releases an
+	// Allow it could not save.
+	onApply func()
+}
+
+// release is serve's handling of an Allow it could not save: the question
+// is gone, and the app's next request asks afresh.
+func (o *fakePermissionOperator) release() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.details = askclient.TypedPermissionDetails{Question: askclient.AttributedQuestion{Question: askclient.OperatorQuestion{Outcome: askclient.OperatorQuestionOutcomeUnknown}}}
+}
+
+func (r *fakePermissionRules) UndoPermissionEffectContext(_ context.Context, expected, id string) (rightsclient.SelectorEdit, error) {
+	r.undone = append(r.undone, expected+":"+id)
+	return rightsclient.SelectorEdit{Outcome: rightsclient.PolicyEditOutcomeApplied, Revision: "undo-revision"}, nil
 }
 
 func (*fakePermissionRules) ListSelectorRulesContext(context.Context, string, int64) (rightsclient.SelectorRulePage, error) {
@@ -73,6 +100,12 @@ func (*fakePermissionRules) ListSelectorRulesContext(context.Context, string, in
 
 func (r *fakePermissionRules) ApplyPermissionAllowContext(_ context.Context, expected, id string) (rightsclient.SelectorEdit, error) {
 	r.applied = append(r.applied, expected+":"+id)
+	if r.onApply != nil {
+		r.onApply()
+	}
+	if r.err != nil {
+		return rightsclient.SelectorEdit{}, r.err
+	}
 	outcome := r.outcome
 	if outcome == 0 {
 		outcome = rightsclient.PolicyEditOutcomeApplied
@@ -135,25 +168,31 @@ func TestTypedNativePermissionKeepsOneAllAndFiniteOperationsVisible(t *testing.T
 	for _, all := range []bool{false, true} {
 		record, details := typedNativeFixture(t, all, true)
 		prompt := trayTypedPermissionView(record, details, nil)
+		if selected, err := selectNativeQuestionPresentation(prompt); err != nil || !selected.consent {
+			t.Fatalf("typed producer missed Asks consent policy: %v", err)
+		}
 		view := prompt.Permission
 		if view == nil || prompt.Default != "refuse" || len(prompt.Choices) != 2 || !strings.Contains(view.Requester, "Recorded App") {
 			t.Fatalf("typed presentation=%+v", prompt)
 		}
 		visible := visibleText(prompt) + "\n" + view.Scope + "\n" + view.Effects
 		for _, word := range []string{"Full control", "Use", "Read secret value", "Read metadata", "Create", "Rotate", "Revoke", "Exports the raw secret value to this app", "copy it and use it elsewhere", "six operations"} {
-			if !strings.Contains(visible, word) {
-				t.Fatalf("missing visible %q: %s", word, visible)
+			if !strings.Contains(prompt.Details, word) {
+				t.Fatalf("missing %q in details: %s", word, prompt.Details)
 			}
 		}
 		if strings.Contains(visible, record.Text) || strings.Contains(visible, "administrator") || strings.Contains(visible, details.Purpose) {
 			t.Fatalf("caller prose became trusted permission text: %s", visible)
 		}
 		if all {
-			if prompt.Warning == "" || view.Warning == nil || !strings.Contains(*view.Warning, "current and future") || !strings.Contains(*view.Warning, "Runtime-managed keys are excluded") || !strings.Contains(view.Scope, "All: saved app secrets") {
-				t.Fatalf("all scope warning lost: %+v", prompt)
+			if prompt.Instruction != "Allow Recorded App to have full control of all saved app secrets?" || !strings.Contains(prompt.Details, "current and future") || !strings.Contains(prompt.Details, "Runtime-managed keys are excluded") || !strings.Contains(prompt.Details, "All: saved app secrets") {
+				t.Fatalf("all scope lost: %+v", prompt)
 			}
-		} else if prompt.Warning != "" || !strings.Contains(view.Scope, "One: Saved app secret “alpha”") || strings.Contains(prompt.Details, "All effect:") {
+		} else if prompt.Instruction != "Allow Recorded App to have full control of saved app secret “alpha”?" || !strings.Contains(prompt.Details, "One: Saved app secret “alpha”") || strings.Contains(prompt.Details, "All effect:") {
 			t.Fatalf("one acquired broad scope: %+v", prompt)
+		}
+		if prompt.Content != "" || view.Scope != "" || view.Publisher != "" {
+			t.Fatalf("inline lines: %+v", prompt)
 		}
 		for _, exact := range []string{record.About, details.Effect.Subject.Account, "Resource profile:", "Selector:", "Bundle version: " + details.Effect.Bundle.BundleRef, "Purpose supplied by the requester:", "Lifetime: Ongoing, until removed."} {
 			if !strings.Contains(prompt.Details, exact) {
@@ -182,11 +221,77 @@ func TestTypedNativeSpecificSecretRawReadIsDistinctFromUse(t *testing.T) {
 	read := trayTypedPermissionView(record, details, nil)
 	useRecord, useDetails := typedNativeFixture(t, false, false)
 	use := trayTypedPermissionView(useRecord, useDetails, nil)
-	if !strings.Contains(read.Permission.Scope, "One: Saved app secret “alpha”") || !strings.Contains(read.Content, "Read secret value") || !strings.Contains(read.Content, "copy it and use it elsewhere") || strings.Contains(read.Content, "Uses the secret through") {
+	if !strings.Contains(read.Details, "One: Saved app secret “alpha”") || !strings.Contains(read.Details, "Read secret value") || !strings.Contains(read.Details, "copy it and use it elsewhere") || strings.Contains(read.Details, "Uses the secret through") {
 		t.Fatalf("specific raw Read lost its distinct disclosure: %+v", read)
 	}
-	if !strings.Contains(use.Content, "Uses the secret through") || strings.Contains(use.Content, "Exports the raw secret") {
+	if !strings.Contains(use.Details, "Uses the secret through") || strings.Contains(use.Details, "Exports the raw secret") || use.Instruction != "Allow Recorded App to use saved app secret “alpha”?" {
 		t.Fatalf("Use acquired raw Read meaning: %+v", use)
+	}
+}
+
+func TestTypedNativeApplicationShowsEveryGrantedOperation(t *testing.T) {
+	for _, class := range []string{"read", "edit"} {
+		record, details := typedNativeFixture(t, false, false)
+		p, err := grants.ApplicationPermission(details.Effect.Subject, "app:comfyui", "ComfyUI", class)
+		if err != nil {
+			t.Fatal(err)
+		}
+		details.Effect, details.Display, details.EffectDigest, details.Origin, details.Purpose = &p.Effect, &p.Display, p.Digest, p.Origin, p.Purpose
+		view := trayTypedPermissionView(record, details, nil)
+		if view.Instruction != "Allow Recorded App to use ComfyUI?" {
+			t.Fatal(view.Instruction)
+		}
+		for _, words := range p.Display.Selections {
+			if !strings.Contains(view.Details, words.Operation) || !strings.Contains(view.Details, words.Disclosure) {
+				t.Fatal("hidden granted operation", words, view)
+			}
+		}
+		if class == "edit" && (!strings.Contains(view.Details, "Spend money within the application's limit") || !strings.Contains(view.Details, "Only the person")) {
+			t.Fatal(view)
+		}
+		operator := &fakePermissionOperator{details: details}
+		rules := &fakePermissionRules{}
+		result := nativeTypedPresenter(unlockedSession(), &fakeSurface{option: "allow"}, operator, rules).present(context.Background(), record)
+		if result.Outcome != presentAnswered || result.Err != nil || len(rules.applied) != 1 {
+			t.Fatal(result, rules.applied)
+		}
+	}
+}
+
+func TestTypedApplicationAnswerHistoryAndByIDUndo(t *testing.T) {
+	record, details := typedNativeFixture(t, false, false)
+	p, err := grants.ApplicationPermission(details.Effect.Subject, "app:comfyui", "ComfyUI", "read")
+	if err != nil {
+		t.Fatal(err)
+	}
+	details.Effect, details.Display, details.EffectDigest, details.Origin, details.Purpose = &p.Effect, &p.Display, p.Digest, p.Origin, p.Purpose
+	record.Option, record.Yes, record.Answered = "allow", true, time.Now().UTC().Format(time.RFC3339Nano)
+	details.Question.Question.Record = &record
+	actor := askclient.AnswererResponder
+	details.Question.Question.AnsweredBy = &actor
+	details.Question.Answerer = p.Effect.Subject.Program + ".assistant.exe"
+	entry, targets, ok := answeredApplicationRecord(details, nil)
+	if !ok || len(targets) != 3 || entry.Answerer != details.Question.Answerer {
+		t.Fatal(entry, targets, ok)
+	}
+	for _, word := range p.Display.Selections {
+		if !strings.Contains(entry.Sentence, word.Operation) || !strings.Contains(entry.Sentence, word.Target) {
+			t.Fatal(entry)
+		}
+	}
+	rules := &fakePermissionRules{}
+	questions := &fakePermissionOperator{details: details}
+	edit, err := grants.UndoPermissionQuestion(t.Context(), questions, rules, p.Effect.Subject.Account, record.ID)
+	if err != nil || edit.Outcome != rightsclient.PolicyEditOutcomeApplied || len(rules.undone) != 1 || rules.undone[0] != "permission-revision:"+record.ID {
+		t.Fatal(edit, err, rules.undone)
+	}
+	standing, err := grants.ApplicationPermission(p.Effect.Subject, "app:comfyui", "ComfyUI", "edit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	details.Effect, details.Display, details.EffectDigest = &standing.Effect, &standing.Display, standing.Digest
+	if _, _, ok := answeredApplicationRecord(details, nil); ok {
+		t.Fatal("standing assistant answer accepted")
 	}
 }
 
@@ -207,7 +312,7 @@ func TestTypedNativeAnswerUsesOnlyTypedRouteAndOccurrenceID(t *testing.T) {
 		if option == "allow" && (len(rules.applied) != 1 || rules.applied[0] != "permission-revision:"+record.ID) || option == "refuse" && len(rules.applied) != 0 {
 			t.Fatalf("effect calls=%v", rules.applied)
 		}
-		if report := presenterResultReport(result); report.Show || report.OpenQuestions {
+		if report := presenterResultReport(result); report.OpenQuestions {
 			t.Fatalf("successful typed answer produced second popup: %+v", report)
 		}
 	}
@@ -222,8 +327,146 @@ func TestTypedNativeReportsIncompleteEffectAfterAllow(t *testing.T) {
 		t.Fatalf("incomplete recorded Allow=%+v", result)
 	}
 	report := presenterResultReport(result)
-	if !report.Show || !report.OpenQuestions || !strings.Contains(report.Content, "permission rule was not written") {
+	if report.OpenQuestions || report.Notice == nil || report.Notice.Title != "Couldn't save that permission" {
 		t.Fatalf("incomplete effect claimed success: %+v", report)
+	}
+}
+
+func TestTypedNativeLogsOnlyIncompleteAllowEffects(t *testing.T) {
+	own(t)
+	panelLoggingRuntime(t, nil)
+	p := newTestPanel(t)
+	pending := make(chan map[string]string, 8)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		p.log.writePermissionCompletions(t.Context(), pending)
+	}()
+	var expected []map[string]string
+	for i, c := range []struct {
+		option, outcome, notice string
+		edit                    rightsclient.PolicyEditOutcome
+		err                     error
+	}{
+		{option: "allow", outcome: "conflict", notice: "permission rule was not written", edit: rightsclient.PolicyEditOutcomeConflict},
+		{option: "allow", outcome: "unavailable", notice: "permission change could not be confirmed", edit: rightsclient.PolicyEditOutcomeUnavailable},
+		{option: "allow", outcome: "unconfirmed", notice: "permission change could not be confirmed", err: errors.New("private fixture transport detail")},
+		{option: "allow"},
+		{option: "refuse"},
+		{option: ""},
+	} {
+		record, details := typedNativeFixture(t, false, false)
+		record.ID = strings.Repeat(string(rune('a'+i)), 32)
+		details.Question.Question.Record = &record
+		operator := &fakePermissionOperator{details: details}
+		rules := &fakePermissionRules{outcome: c.edit, err: c.err}
+		presenter := nativeTypedPresenter(unlockedSession(), &fakeSurface{option: c.option}, operator, rules)
+		presenter.permissionFailures = pending
+		result := presenter.present(t.Context(), record)
+		report := presenterResultReport(result)
+		if c.outcome == "" {
+			if report.OpenQuestions {
+				t.Fatal("ordinary completion opened a second surface", report)
+			}
+			continue
+		}
+		if report.OpenQuestions || (c.outcome == "conflict") != (report.Notice != nil) {
+			t.Fatal("incomplete Allow report", c.notice, report)
+		}
+		attrs := map[string]string{"permission.stage": "effect", "permission.outcome": c.outcome, "question.id": record.ID}
+		if c.err != nil {
+			// The class only: the fixture's private text never reaches Logging.
+			attrs["permission.error"] = "other"
+		}
+		expected = append(expected, attrs)
+	}
+	close(pending)
+	<-done
+	r := panelRequest(t, p.handler("test-key"), "/logging?cursor=", nil)
+	page := decodePanel[logView](t, r.Code, r.Body.Bytes())
+	if page.Outcome != "page" || len(page.Records) != len(expected) {
+		t.Fatal("unexpected permission records", page)
+	}
+	for i, record := range page.Records {
+		if record.Message != "native permission completion" || !maps.Equal(record.Attrs, expected[i]) {
+			t.Fatal("permission completion logged unexpected attributes", record)
+		}
+	}
+}
+
+func TestTypedNativeReportsBeforeBlockedLogging(t *testing.T) {
+	own(t)
+	panelLoggingRuntime(t, nil)
+	var sink panelLog
+	sink.mu.Lock() // Hold the actual lazy bind before it can resolve Logging.
+	ctx, cancel := context.WithCancel(t.Context())
+	pending := make(chan map[string]string, 1)
+	pending <- map[string]string{"permission.stage": "effect", "permission.outcome": "unavailable"}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		sink.writePermissionCompletions(ctx, pending)
+	}()
+	defer func() {
+		cancel()
+		sink.mu.Unlock()
+		<-done
+	}()
+	deadline := time.NewTimer(time.Second)
+	defer deadline.Stop()
+	ticks := time.NewTicker(time.Millisecond)
+	defer ticks.Stop()
+	for len(pending) != 0 {
+		select {
+		case <-ticks.C:
+		case <-deadline.C:
+			t.Fatal("Logging worker did not reach the blocked bind")
+		}
+	}
+	pending <- map[string]string{"permission.stage": "effect", "permission.outcome": "unconfirmed"}
+
+	record, details := typedNativeFixture(t, false, false)
+	presenter := nativeTypedPresenter(unlockedSession(), &fakeSurface{option: "allow"},
+		&fakePermissionOperator{details: details}, &fakePermissionRules{outcome: rightsclient.PolicyEditOutcomeConflict})
+	presenter.permissionFailures = pending
+	notices := make(chan presenterNotice, 1)
+	saved := postPresenterNotice
+	postPresenterNotice = func(_ context.Context, n presenterNotice) error { notices <- n; return nil }
+	t.Cleanup(func() { postPresenterNotice = saved })
+	go presentFresh(ctx, []askclient.RecordMetadata{record}, presenter.present, newTrayAnnouncer(),
+		func() {})
+	select {
+	case notice := <-notices:
+		if notice.Title != "Couldn't save that permission" {
+			t.Fatal("blocked Logging changed the notice", notice)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("full diagnostic queue blocked the existing failure notice")
+	}
+}
+
+func TestTypedNativeUnavailableCompletionDoesNotClaimNoWrite(t *testing.T) {
+	record, details := typedNativeFixture(t, false, false)
+	operator := &fakePermissionOperator{details: details}
+	rules := &fakePermissionRules{outcome: rightsclient.PolicyEditOutcomeUnavailable}
+	result := nativeTypedPresenter(unlockedSession(), &fakeSurface{option: "allow"}, operator, rules).present(t.Context(), record)
+	if result.TypedAnswered == nil || len(rules.applied) != 1 {
+		t.Fatal(result, rules.applied)
+	}
+	for _, lostReply := range []bool{false, true} {
+		if lostReply {
+			result.Err = context.DeadlineExceeded
+			result.TypedAnswered.Edit = nil
+		}
+		// An unconfirmed change claims nothing: no "not saved" notice.
+		report := presenterResultReport(result)
+		if report.OpenQuestions || report.Notice != nil {
+			t.Fatal("uncertain completion claimed no durable write", report)
+		}
+	}
+	legacy := presenterResultReport(presentResult{Outcome: presentAnswered, Answered: grants.Answered{Decision: result.TypedAnswered.Decision, Rule: &rightsclient.PolicyRule{}, Edit: &rightsclient.PolicyEdit{Outcome: rightsclient.PolicyEditOutcomeUnavailable}}})
+	if legacy.Notice != nil {
+		t.Fatal("shared report claimed an unavailable completion was not written", legacy)
 	}
 }
 
@@ -231,12 +474,12 @@ func TestTypedNativePrivilegeWarningUsesOnlyTrustedDisplay(t *testing.T) {
 	record, details := typedNativeFixture(t, false, false)
 	details.Question.Question.PublisherTrusted = false
 	details.Question.Question.Publisher = ""
-	if prompt := trayTypedPermissionView(record, details, nil); prompt.Warning != "" {
+	if prompt := trayTypedPermissionView(record, details, nil); strings.Contains(prompt.Content, "Windows asks next.") {
 		t.Fatalf("unknown publisher implied privilege: %+v", prompt)
 	}
 	details.Display.RequiresOSAuthorization = true
 	prompt := trayTypedPermissionView(record, details, nil)
-	if !strings.Contains(prompt.Warning, "operating system authorization") || strings.Contains(prompt.Warning, "current and future") {
+	if prompt.Content != "Publisher not verified.\nWindows asks next." || strings.Contains(prompt.Content, "current and future") {
 		t.Fatalf("trusted OS authorization mixed with breadth: %+v", prompt)
 	}
 }
@@ -334,25 +577,30 @@ func TestTypedNativeRechecksSessionAfterAnswerResolution(t *testing.T) {
 	}
 }
 
-func TestTypedPermissionListingRestartsGapAndRejectsPartialPages(t *testing.T) {
+// The client's ListAll owns the ASK-O2 paging cases (paging_test.go); the
+// presenter turns its refusal into its own and refuses a foreign record.
+func TestTypedPermissionListingRefusesStallAndForeignRecords(t *testing.T) {
 	record, _ := typedNativeFixture(t, true, false)
-	calls := 0
-	operator := &fakePermissionOperator{pages: func(string) (askclient.OperatorPage, error) {
-		calls++
-		if calls == 1 {
-			return askclient.OperatorPage{Outcome: askclient.OperatorPageOutcomeGap}, nil
-		}
-		return askclient.OperatorPage{Outcome: askclient.OperatorPageOutcomePage, Records: []askclient.RecordMetadata{record}, Complete: true}, nil
+	operator := &fakePermissionOperator{list: func() ([]askclient.RecordMetadata, error) {
+		return []askclient.RecordMetadata{record}, nil
 	}}
-	listed, err := listPermissionQuestions(context.Background(), operator)
-	if err != nil || len(listed) != 1 || calls != 2 {
-		t.Fatalf("gap listing=%v %v calls=%d", listed, err, calls)
+	if listed, err := listPermissionQuestions(context.Background(), operator); err != nil || len(listed) != 1 {
+		t.Fatalf("listing=%v %v", listed, err)
 	}
-	operator.pages = func(string) (askclient.OperatorPage, error) {
-		return askclient.OperatorPage{Outcome: askclient.OperatorPageOutcomePage, Records: []askclient.RecordMetadata{record}}, nil
+	operator.list = func() ([]askclient.RecordMetadata, error) {
+		return nil, &askclient.PageRefusal{Outcome: "stalled"}
 	}
-	if listed, err = listPermissionQuestions(context.Background(), operator); err == nil || listed != nil {
-		t.Fatalf("partial page announced=%v %v", listed, err)
+	var refusal *presenterRefusal
+	if listed, err := listPermissionQuestions(context.Background(), operator); listed != nil || !errors.As(err, &refusal) || refusal.outcome != "stalled" {
+		t.Fatalf("repeated cursor announced=%v %v", listed, err)
+	}
+	foreign := record
+	foreign.Key = "another-key"
+	operator.list = func() ([]askclient.RecordMetadata, error) {
+		return []askclient.RecordMetadata{foreign}, nil
+	}
+	if listed, err := listPermissionQuestions(context.Background(), operator); listed != nil || !errors.As(err, &refusal) || refusal.outcome != "foreign permission record" {
+		t.Fatalf("foreign record announced=%v %v", listed, err)
 	}
 }
 
@@ -385,7 +633,7 @@ func TestTypedNativePollAnswersActualBookWhilePanelClosed(t *testing.T) {
 	done := make(chan presentResult, 1)
 	go func() { done <- presenter.present(context.Background(), fresh[0]) }()
 	frame := nextNativeFrame(t, frames, "question")
-	if frame.Prompt == nil || frame.Prompt.Warning == "" || !strings.Contains(frame.Prompt.Content, "Exports the raw secret value to this app") || !strings.Contains(frame.Prompt.Content, "Full control") {
+	if frame.Prompt == nil || !strings.Contains(frame.Prompt.Details, "Exports the raw secret value to this app") || !strings.Contains(frame.Prompt.Instruction, "full control") {
 		t.Fatalf("typed native frame=%+v", frame)
 	}
 	if err := bridge.accept(nativeAsksReply{Kind: "answer", ID: frame.ID, Option: "refuse"}, nil); err != nil {
@@ -395,8 +643,8 @@ func TestTypedNativePollAnswersActualBookWhilePanelClosed(t *testing.T) {
 	if result.Outcome != presentAnswered || result.TypedAnswered == nil || result.TypedAnswered.Decision.Outcome != askclient.OperatorDecisionOutcomeAnswered {
 		t.Fatalf("public typed answer=%+v", result)
 	}
-	if report := presenterResultReport(result); report.Show {
-		t.Fatalf("typed success displayed second popup: %+v", report)
+	if report := presenterResultReport(result); report.OpenQuestions || report.Notice != nil {
+		t.Fatalf("typed success displayed a second report: %+v", report)
 	}
 	read, err := defaultPresenterPermissions(context.Background())
 	if err != nil {

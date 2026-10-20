@@ -1,4 +1,4 @@
-//go:build windows
+//go:build windows && !panel
 
 package win
 
@@ -30,9 +30,7 @@ var (
 	permissionGetDC        = user32.NewProc("GetDC")
 	permissionReleaseDC    = user32.NewProc("ReleaseDC")
 	permissionDrawText     = user32.NewProc("DrawTextW")
-	permissionFillRect     = user32.NewProc("FillRect")
 	permissionDrawFocus    = user32.NewProc("DrawFocusRect")
-	permissionInvalidate   = user32.NewProc("InvalidateRect")
 	permissionBeginPaint   = user32.NewProc("BeginPaint")
 	permissionEndPaint     = user32.NewProc("EndPaint")
 	permissionMonitor      = user32.NewProc("MonitorFromWindow")
@@ -41,7 +39,6 @@ var (
 	permissionGetSysColor  = user32.NewProc("GetSysColor")
 	permissionThreadDPI    = user32.NewProc("SetThreadDpiAwarenessContext")
 	permissionDPIBehavior  = user32.NewProc("SetDialogDpiChangeBehavior")
-	permissionSetLong      = user32.NewProc("SetWindowLongPtrW")
 	permissionSelectObject = gdi32.NewProc("SelectObject")
 	permissionDeleteObject = gdi32.NewProc("DeleteObject")
 	permissionCreatePen    = gdi32.NewProc("CreatePen")
@@ -81,10 +78,19 @@ const (
 
 func windowsVersion() *windows.OsVersionInfoEx { return windows.RtlGetVersion() }
 
+// modernPermissionFor selects this dialog, the one owner of OpenAbstractions'
+// popup style on Windows 11: the header band in the level's colour, the
+// title bar and border in that colour with square corners, and one font set.
+// It draws only Asks Book occurrences: permission questions and
+// OpenAbstractions' own questions through the Book (keeping an app that added
+// itself, Setup's question). Reports and failures go elsewhere.
+// An application's own choice (AppChoice) keeps the TaskDialog's command
+// links, which tell its plain app text apart from OpenAbstractions' asks.
 // RtlGetVersion ignores ProductName and manifest version aliases. Server and
-// missing/unknown version evidence retain the existing TaskDialog renderer.
+// missing/unknown version evidence retain the existing TaskDialog renderer,
+// whose frame popupFrameTheme paints the same way.
 func modernPermissionFor(prompt QuestionPrompt, version *windows.OsVersionInfoEx) bool {
-	return prompt.Permission && !prompt.AppChoice && version != nil && version.ProductType == 1 &&
+	return !prompt.AppChoice && version != nil && version.ProductType == 1 &&
 		version.MajorVersion == 10 && version.MinorVersion == 0 && version.BuildNumber >= 22000
 }
 
@@ -128,6 +134,7 @@ type permissionBlock struct {
 }
 
 type permissionDialog struct {
+	credential                      *credentialControls
 	prompt                          QuestionPrompt
 	result                          bool
 	footer                          string
@@ -196,6 +203,7 @@ func showPermissionDialog(prompt QuestionPrompt, result bool) (string, error) {
 	template := permissionTemplate()
 	instance, _, _ := getModuleHandle.Call(0)
 	selected, _, callErr := permissionDialogBox.Call(instance, uintptr(unsafe.Pointer(&template[0])), prompt.parent, permissionDialogProc, key)
+	d.joinCredential()
 	runtime.KeepAlive(template)
 	runtime.KeepAlive(d)
 	if d.err != nil {
@@ -210,6 +218,9 @@ func showPermissionDialog(prompt QuestionPrompt, result bool) (string, error) {
 	index := int(selected) - firstQuestionButton
 	if index >= 0 && index < len(prompt.Choices) {
 		return prompt.Choices[index].Value, nil
+	}
+	if !result && selected == idcCancel {
+		return prompt.Dismiss, nil
 	}
 	return "", nil
 }
@@ -250,11 +261,15 @@ func permissionDialogDispatch(hwnd, msg, wparam, lparam uintptr) uintptr {
 		return 0 // Focus was explicitly set while answers are unarmed.
 	case wmCommand:
 		id := int32(wparam & 0xffff)
+		if d.credentialCommand(id, wparam>>16) {
+			return 1
+		}
 		if (wparam >> 16) != 0 {
 			return 0
 		}
 		switch id {
 		case idcCancel:
+			d.cancelCredential()
 			permissionEndDialog.Call(hwnd, idcCancel)
 		case permissionDetailsID:
 			d.expanded = !d.expanded
@@ -267,18 +282,39 @@ func permissionDialogDispatch(hwnd, msg, wparam, lparam uintptr) uintptr {
 		default:
 			index := int(id) - firstQuestionButton
 			if permissionAnswerAllowed(d.result, time.Since(d.start), index, len(d.prompt.Choices)) {
+				if !d.result && !realInputAnswer(d.prompt, realInputTargetOn(hwnd, d.buttons[index],
+					permissionDefaultButton(d.prompt, d.result) == id, permissionChoiceLabel(d.prompt.Choices[index], d.consentPair))) {
+					return 1
+				}
+				if d.prompt.CredentialForm != nil && d.prompt.Choices[index].Value == "allow" {
+					if err := d.startCredential(uintptr(id)); err != nil {
+						setWindowText.Call(d.credential.status, uintptr(unsafe.Pointer(utf16(err.Error()))))
+						d.updateCredentialAllow()
+						return 1
+					}
+					return 1
+				}
+				d.cancelCredential()
 				permissionEndDialog.Call(hwnd, uintptr(id))
 			}
 		}
 		return 1
 	case permissionWMClose:
+		d.cancelCredential()
 		permissionEndDialog.Call(hwnd, idcCancel)
+		return 1
+	case credentialWMComplete:
+		if done, err := d.finishCredential(); done && err == nil {
+			permissionEndDialog.Call(hwnd, d.credential.choice)
+		}
 		return 1
 	case permissionWMTimer:
 		if wparam == permissionTimerID && time.Since(d.start) >= questionArmDelay*time.Millisecond {
+			armRealInput()
 			for _, button := range d.buttons {
 				permissionEnableWindow.Call(button, 1)
 			}
+			d.updateCredentialAllow()
 			permissionKillTimer.Call(hwnd, permissionTimerID)
 			def := permissionDefaultButton(d.prompt, d.result)
 			sendMessage.Call(hwnd, permissionDMSetDefID, uintptr(def), 0)
@@ -328,13 +364,14 @@ func permissionDialogDispatch(hwnd, msg, wparam, lparam uintptr) uintptr {
 				d.paintButton(draw)
 				// Dialog procedures return TRUE and place notification results
 				// in DWLP_MSGRESULT, rather than returning CDRF_SKIPDEFAULT.
-				if permissionSetLong.Find() == nil {
-					permissionSetLong.Call(hwnd, 0, permissionCDSkipDefault)
+				if setWindowLong.Find() == nil {
+					setWindowLong.Call(hwnd, 0, permissionCDSkipDefault)
 				}
 				return 1
 			}
 		}
 	case permissionWMNCDestroy:
+		d.cancelCredential()
 		permissionKillTimer.Call(hwnd, permissionTimerID)
 		d.freeResources()
 		activePermissionDialog.CompareAndSwap(hwnd, 0)
@@ -346,9 +383,6 @@ func permissionDialogDispatch(hwnd, msg, wparam, lparam uintptr) uintptr {
 }
 
 func (d *permissionDialog) initialize() error {
-	if unsafe.Sizeof(uintptr(0)) == 4 {
-		permissionSetLong = user32.NewProc("SetWindowLongW")
-	}
 	setWindowText.Call(d.hwnd, uintptr(unsafe.Pointer(utf16(d.prompt.Title))))
 	if dpiForWindow.Find() == nil {
 		if dpi, _, _ := dpiForWindow.Call(d.hwnd); dpi >= 96 {
@@ -362,7 +396,7 @@ func (d *permissionDialog) initialize() error {
 	}
 	d.palette()
 	d.replaceFonts()
-	d.consentPair = !d.result && permissionConsentPair(d.prompt.Choices)
+	d.consentPair = !d.result && d.prompt.CredentialForm == nil && permissionConsentPair(d.prompt.Choices)
 	instance, _, _ := getModuleHandle.Call(0)
 	sendMessage.Call(d.hwnd, 0x0080, 0, loadSharedTaskDialogIcon(instance)) // WM_SETICON / ICON_SMALL
 	d.frameTheme()
@@ -377,11 +411,8 @@ func (d *permissionDialog) initialize() error {
 		d.blocks = append(d.blocks, permissionBlock{hwnd: h, text: text, font: d.fonts[font], fontKind: font, card: card})
 		return nil
 	}
-	if d.result {
-		if err := add("OpenAbstractions", 0, false); err != nil {
-			return err
-		}
-	}
+	// A result opens on its header band, as a question does; the title bar
+	// names the program.
 	heading := d.prompt.Instruction
 	if v := d.prompt.PermissionView; v != nil && v.Question != "" {
 		heading = v.Question
@@ -436,7 +467,10 @@ func (d *permissionDialog) initialize() error {
 			permissionEnableWindow.Call(h, 0)
 		}
 	}
-	if !d.consentPair {
+	if err := d.createCredentialForm(); err != nil {
+		return err
+	}
+	if permissionNeedsDismissButton(d.prompt, d.consentPair, d.result) {
 		if _, err = d.control("BUTTON", "Cancel", wsTabStop|0x2000, idcCancel); err != nil {
 			return err
 		}
@@ -460,6 +494,9 @@ func (d *permissionDialog) initialize() error {
 	// A disabled safe default ignores Enter before the monotonic arm delay.
 	sendMessage.Call(d.hwnd, permissionDMSetDefID, uintptr(permissionDefaultButton(d.prompt, d.result)), 0)
 	if !d.result {
+		if d.prompt.OnShown != nil {
+			d.prompt.OnShown()
+		}
 		d.prompt.chime.ring() // the question is now shown; a result dialog stays silent
 	}
 	return nil
@@ -497,9 +534,15 @@ func permissionAnswerAllowed(result bool, elapsed time.Duration, index, count in
 	return index >= 0 && index < count && (result || elapsed >= questionArmDelay*time.Millisecond)
 }
 
+// editText is text for a multiline EDIT control, which breaks lines only at
+// CR LF: a bare line feed would run the details together on one line.
+func editText(text string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\n", "\r\n")
+}
+
 func (d *permissionDialog) control(class, text string, style uint32, id int) (uintptr, error) {
 	if class == "EDIT" {
-		text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\n", "\r\n")
+		text = editText(text)
 	}
 	instance, _, _ := getModuleHandle.Call(0)
 	h, _, err := createWindow.Call(0, uintptr(unsafe.Pointer(utf16(class))), uintptr(unsafe.Pointer(utf16(text))),
@@ -560,6 +603,22 @@ func (d *permissionDialog) measureBounds(text string, font uintptr, width int) r
 	return r
 }
 
+// measureEditText is the height a multiline Edit of width needs for text: it
+// breaks long words as the Edit does and leaves room for its scroll bar.
+func (d *permissionDialog) measureEditText(text string, width int) int {
+	if text == "" {
+		return 0
+	}
+	dc, _, _ := permissionGetDC.Call(d.hwnd)
+	defer permissionReleaseDC.Call(d.hwnd, dc)
+	previous, _, _ := permissionSelectObject.Call(dc, d.fonts[0])
+	defer permissionSelectObject.Call(dc, previous)
+	r := rect{Right: int32(max(1, width-d.px(28)))}
+	u, _ := syscall.UTF16FromString(text)
+	permissionDrawText.Call(dc, uintptr(unsafe.Pointer(&u[0])), uintptr(len(u)-1), uintptr(unsafe.Pointer(&r)), permissionDrawWrap|permissionDrawCalc|0x2000) // DT_EDITCONTROL
+	return int(r.Bottom - r.Top)
+}
+
 func (d *permissionDialog) workArea(suggested *rect) rect {
 	monitor, _, _ := permissionMonitor.Call(d.hwnd, 2)
 	if suggested != nil {
@@ -576,6 +635,11 @@ func (d *permissionDialog) layout(suggested *rect) {
 	work := d.workArea(suggested)
 	maxWidth := int(work.Right-work.Left) - d.px(32)
 	width := min(d.px(560), maxWidth)
+	if d.credential != nil && width < d.px(340) {
+		d.err = errPermissionViewport
+		permissionEndDialog.Call(d.hwnd, ^uintptr(0))
+		return
+	}
 	pad, gap := d.px(20), d.px(12)
 	contentWidth := max(1, width-2*pad)
 	var outer, client rect
@@ -601,7 +665,7 @@ func (d *permissionDialog) layout(suggested *rect) {
 		}
 		buttonWidths = append(buttonWidths, w)
 	}
-	if !d.consentPair {
+	if permissionNeedsDismissButton(d.prompt, d.consentPair, d.result) {
 		buttonWidths = append(buttonWidths, d.px(100))
 	}
 	positions, actionHeight := permissionButtonLayout(buttonWidths, contentWidth, d.px(8), d.px(40))
@@ -612,6 +676,7 @@ func (d *permissionDialog) layout(suggested *rect) {
 	}
 	footerHeight := d.measure(d.footer, d.fonts[0], contentWidth)
 	reserved := permissionReservedHeight(actionHeight, footerHeight, toggleHeight, gap)
+	reserved += d.credentialHeight(width)
 	detailsHeight := 0
 	if d.expanded {
 		detailsHeight = min(d.px(180), max(0, maxHeight/3))
@@ -682,7 +747,9 @@ func (d *permissionDialog) layout(suggested *rect) {
 			}
 		}
 		bodyTop := max(pad, int(d.card.Bottom)+gap)
-		y = pad + bodyLimit
+		// The scrolling Edit takes the height its text needs, up to the
+		// budget; a long unbroken path no longer opens an empty maximum.
+		y = min(pad+bodyLimit, bodyTop+d.measureEditText(strings.Join(all, "\r\n\r\n"), contentWidth)+d.px(12))
 		if y-bodyTop < d.px(40) {
 			d.err = errPermissionViewport
 			permissionEndDialog.Call(d.hwnd, ^uintptr(0))
@@ -701,6 +768,7 @@ func (d *permissionDialog) layout(suggested *rect) {
 			showWindow.Call(b.hwnd, 1)
 		}
 	}
+	y = d.layoutCredentialForm(y, width)
 	if d.detailToggle != 0 {
 		width := max(d.measureWidth("Show details"), d.measureWidth("Hide details")) + d.px(16)
 		moveWindow.Call(d.detailToggle, uintptr(pad), uintptr(y), uintptr(width), uintptr(d.px(28)), 1)
@@ -721,7 +789,7 @@ func (d *permissionDialog) layout(suggested *rect) {
 	}
 	d.action = rect{Top: int32(y), Right: int32(width), Bottom: int32(y + actionHeight)}
 	buttons := append([]uintptr{}, d.buttons...)
-	if !d.consentPair {
+	if permissionNeedsDismissButton(d.prompt, d.consentPair, d.result) {
 		buttons = append(buttons, d.cancelButton())
 	}
 	for i, h := range buttons {
@@ -738,7 +806,7 @@ func (d *permissionDialog) layout(suggested *rect) {
 	x = max(int(work.Left), min(x, int(work.Right)-width-frameW))
 	top = max(int(work.Top), min(top, int(work.Bottom)-height-frameH))
 	setWindowPos.Call(d.hwnd, 0, uintptr(x), uintptr(top), uintptr(width+frameW), uintptr(height+frameH), 0x0004|0x0010)
-	permissionInvalidate.Call(d.hwnd, 0, 1)
+	invalidateRect.Call(d.hwnd, 0, 1)
 }
 
 func permissionVisibleFooter(prompt QuestionPrompt, result bool) string {
@@ -746,6 +814,14 @@ func permissionVisibleFooter(prompt QuestionPrompt, result bool) string {
 		return *prompt.PermissionView.Warning
 	}
 	return prompt.Footer
+}
+
+// permissionNeedsDismissButton: a separate Cancel only where no button
+// already declines. A result has its one acknowledgement, a prompt with a
+// Dismiss choice answers it on Escape and the close box, and a consent pair
+// or a pairing prompt carries its own decline.
+func permissionNeedsDismissButton(prompt QuestionPrompt, consentPair, result bool) bool {
+	return !result && prompt.Dismiss == "" && !consentPair && !(prompt.PairingPrompt && prompt.Permission && !prompt.AppChoice)
 }
 
 func permissionReservedHeight(actions, footer, toggle, gap int) int {
@@ -813,7 +889,7 @@ func (d *permissionDialog) ensureOverflow(text string) uintptr {
 			return 0
 		}
 	}
-	setWindowText.Call(h, uintptr(unsafe.Pointer(utf16(text))))
+	setWindowText.Call(h, uintptr(unsafe.Pointer(utf16(editText(text)))))
 	return h
 }
 func (d *permissionDialog) footerControl() uintptr {
@@ -835,9 +911,7 @@ func (d *permissionDialog) palette() {
 			permissionDeleteObject.Call(h)
 		}
 	}
-	contrast := highContrast{Size: uint32(unsafe.Sizeof(highContrast{}))}
-	ok, _, _ := systemParameters.Call(spiGetHighContrast, uintptr(contrast.Size), uintptr(unsafe.Pointer(&contrast)), 0)
-	d.contrast = ok == 0 || contrast.Flags&hcfHighContrastOn != 0
+	d.contrast = permissionHighContrast()
 	d.dark = permissionDarkMode()
 	d.colors = permissionThemeColors(d.dark, d.prompt.Level)
 	if d.contrast {
@@ -850,24 +924,64 @@ func (d *permissionDialog) palette() {
 	d.cardBrush, _, _ = createSolidBrush.Call(uintptr(d.cardColor))
 }
 
-func (d *permissionDialog) frameTheme() {
+// permissionFrameAttribute sets one DWM window attribute; a test replaces it
+// to record the values. Windows before 11 build 22000 rejects the caption,
+// text, border and corner attributes with E_INVALIDARG, which leaves the
+// standard frame and is ignored.
+var permissionFrameAttribute = func(hwnd uintptr, attribute, value uint32) {
 	if dwmSetWindowAttribute.Find() == nil {
-		dark := uint32(0)
-		if d.dark && !d.contrast {
-			dark = 1
-		}
-		for attribute, value := range map[uint32]uint32{dwmUseImmersiveDarkMode: dark, dwmWindowCornerPreference: dwmCornerRound} {
-			dwmSetWindowAttribute.Call(d.hwnd, uintptr(attribute), uintptr(unsafe.Pointer(&value)), unsafe.Sizeof(value))
-		}
+		dwmSetWindowAttribute.Call(hwnd, uintptr(attribute), uintptr(unsafe.Pointer(&value)), unsafe.Sizeof(value)) //unchecked: unsupported attributes keep the standard frame
 	}
+}
+
+// permissionFrameAttributes paints the title bar and border in the header
+// band's colour, with the header text colour on the caption, and keeps square
+// corners. High contrast keeps the system caption colours.
+func permissionFrameAttributes(colors permissionColors, dark, contrast bool) [][2]uint32 {
+	mode := uint32(0)
+	if dark && !contrast {
+		mode = 1
+	}
+	attributes := [][2]uint32{{dwmUseImmersiveDarkMode, mode}, {dwmWindowCornerPreference, dwmCornerDoNotRound}}
+	if !contrast {
+		attributes = append(attributes, [2]uint32{dwmCaptionColor, colors.header},
+			[2]uint32{dwmTextColor, colors.headerText}, [2]uint32{dwmBorderColor, colors.header})
+	}
+	return attributes
+}
+
+func (d *permissionDialog) frameTheme() {
+	applyFrameAttributes(d.hwnd, d.colors, d.dark, d.contrast)
+}
+
+func applyFrameAttributes(hwnd uintptr, colors permissionColors, dark, contrast bool) {
+	for _, a := range permissionFrameAttributes(colors, dark, contrast) {
+		permissionFrameAttribute(hwnd, a[0], a[1])
+	}
+}
+
+// popupFrameTheme gives another popup window, such as a TaskDialog, the
+// permission dialog's frame for the level: the same colour source and the
+// same high-contrast rule.
+func popupFrameTheme(hwnd uintptr, level PromptLevel) {
+	dark := permissionDarkMode()
+	applyFrameAttributes(hwnd, permissionThemeColors(dark, level), dark, permissionHighContrast())
+}
+
+// permissionHighContrast reports the system high-contrast setting; a test
+// replaces it. A failed query counts as high contrast.
+var permissionHighContrast = func() bool {
+	contrast := highContrast{Size: uint32(unsafe.Sizeof(highContrast{}))}
+	ok, _, _ := systemParameters.Call(spiGetHighContrast, uintptr(contrast.Size), uintptr(unsafe.Pointer(&contrast)), 0)
+	return ok == 0 || contrast.Flags&hcfHighContrastOn != 0
 }
 
 func (d *permissionDialog) paint(dc uintptr) {
 	var r rect
 	getClientRect.Call(d.hwnd, uintptr(unsafe.Pointer(&r)))
-	permissionFillRect.Call(dc, uintptr(unsafe.Pointer(&r)), d.background)
+	fillRect.Call(dc, uintptr(unsafe.Pointer(&r)), d.background)
 	if d.card.Bottom > d.card.Top {
-		permissionFillRect.Call(dc, uintptr(unsafe.Pointer(&d.card)), d.cardBrush)
+		fillRect.Call(dc, uintptr(unsafe.Pointer(&d.card)), d.cardBrush)
 	}
 	if !d.overflow && d.requesterIcon != 0 && d.iconBounds.Bottom > d.iconBounds.Top {
 		r := d.iconBounds
@@ -920,7 +1034,7 @@ func (d *permissionDialog) paintButton(draw *permissionCustomDraw) {
 		thickness = 2
 	}
 	if link {
-		permissionFillRect.Call(draw.DC, uintptr(unsafe.Pointer(&draw.Bounds)), d.background)
+		fillRect.Call(draw.DC, uintptr(unsafe.Pointer(&draw.Bounds)), d.background)
 		ink = d.colors.link
 	} else {
 		d.rectangle(draw.DC, draw.Bounds, fill, border, thickness)

@@ -1,4 +1,23 @@
+enum Availability
+  Download
+  Served
+enum CatalogUse
+  Chat
+  Code
+  Vision
+  Embed
+  Image
+  Video
 class DispatchError
+enum Fit
+  Fits
+  Slow
+  No
+enum FitOutcome
+  Fitted
+  Invalid
+  Unavailable
+  Forbidden
 enum LookupOutcome
   Resolved
   Invalid
@@ -12,6 +31,9 @@ enum ManifestOutcome
   Unavailable
   UnsupportedMapping
   Forbidden
+class ModelCatalogClient
+  fit(use)
+object ModelCatalogService {wireName, Client}
 class ModelManifestClient
   resolve(ref)
 object ModelManifestService {wireName, Client}
@@ -28,13 +50,35 @@ enum ServiceErrorCode
   UnknownMethod
   WrongMode
 function decode(data)
+function decodeFitEntry(data)
+function decodeFitResult(data)
 function decodeLookupResult(data)
 function decodeManifestResult(data)
 function decodeRef(data)
 function encode(v)
+function encodeFitEntry(v)
+function encodeFitResult(v)
 function encodeLookupResult(v)
 function encodeManifestResult(v)
 function encodeRef(v)
+function fromJson(kind, data)
+function newFitEntry()
+  title
+  family
+  fit
+  availability
+  machine
+  downloadBytes
+  needBytes
+  context
+  license
+  source
+  digest
+function newFitResult()
+  outcome
+  catalogVersion
+  poolBytes
+  entries
 function newLookupResult()
   outcome
   request
@@ -51,3 +95,4 @@ function newRef()
   credential
 const registryOperations
 const resolverOperations
+function toJson(kind, value)

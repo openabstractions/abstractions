@@ -3,7 +3,8 @@
 // page, and a page script can update rows in place:
 //   nodeType, tagName (upper case), id, className, hidden, value, type,
 //   getAttribute / setAttribute / hasAttribute / removeAttribute, dataset
-//   (kept in step with data-* attributes), children, childNodes,
+//   (kept in step with data-* attributes), children (an HTMLCollection
+//   stand-in), childNodes and querySelectorAll's answer (NodeList stand-ins),
 //   focus / blur with document.activeElement (removing a subtree that holds
 //   it moves it to body),
 //   firstElementChild, parentNode, appendChild, append, insertBefore, removeChild,
@@ -24,6 +25,24 @@
 function dataKey(name) { return name.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase()); }
 function dataName(key) { return 'data-' + key.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase()); }
 
+// FakeHTMLCollection is an HTMLCollection's shape: a snapshot with length,
+// index access, item() and iteration, and no Array method. FakeNodeList adds
+// the NodeList's forEach, entries, keys and values.
+class FakeHTMLCollection {
+ constructor(items) {
+  items.forEach((item, i) => { Object.defineProperty(this, i, { value: item, enumerable: true }); });
+  Object.defineProperty(this, 'length', { value: items.length });
+ }
+ item(i) { return i >= 0 && i < this.length ? this[i] : null; }
+ *[Symbol.iterator]() { for (let i = 0; i < this.length; i++) yield this[i]; }
+}
+class FakeNodeList extends FakeHTMLCollection {
+ forEach(fn, self) { for (let i = 0; i < this.length; i++) fn.call(self, this[i], i, this); }
+ *entries() { for (let i = 0; i < this.length; i++) yield [i, this[i]]; }
+ *keys() { for (let i = 0; i < this.length; i++) yield i; }
+ values() { return this[Symbol.iterator](); }
+}
+
 class FakeText {
  constructor(data) { this.nodeType = 3; this.data = String(data); this.parentNode = null; }
  get textContent() { return this.data; }
@@ -34,7 +53,7 @@ class FakeElement {
   this.nodeType = 1;
   this.tagName = String(tag).toUpperCase();
   this.ownerDocument = ownerDocument;
-  this.childNodes = [];
+  this.nodes = [];
   this.parentNode = null;
   this.attributes = new Map();
   this.value = '';
@@ -74,9 +93,13 @@ class FakeElement {
  set type(v) { this.setAttribute('type', v); }
  get title() { return this.getAttribute('title') || ''; }
  set title(v) { this.setAttribute('title', v); }
- get children() { return this.childNodes.filter((n) => n.nodeType === 1); }
+ // A browser's children is an HTMLCollection and childNodes a NodeList:
+ // neither has map, filter, some or find, so a page script that calls one
+ // on them fails here as it fails in a browser (Array.from first).
+ get children() { return new FakeHTMLCollection(this.nodes.filter((n) => n.nodeType === 1)); }
+ get childNodes() { return new FakeNodeList(this.nodes); }
  get firstElementChild() { return this.children[0] || null; }
- get textContent() { return this.childNodes.map((n) => n.textContent).join(''); }
+ get textContent() { return this.nodes.map((n) => n.textContent).join(''); }
  set textContent(text) { this.replaceChildren(); if (text !== '' && text !== null && text !== undefined) this.appendChild(new FakeText(text)); }
  adopt(node) {
   const child = typeof node === 'string' ? new FakeText(node) : node;
@@ -84,13 +107,13 @@ class FakeElement {
   child.parentNode = this;
   return child;
  }
- appendChild(node) { const child = this.adopt(node); this.childNodes.push(child); return child; }
+ appendChild(node) { const child = this.adopt(node); this.nodes.push(child); return child; }
  append(...nodes) { for (const n of nodes) this.appendChild(n); }
  removeChild(node) {
-  const i = this.childNodes.indexOf(node);
+  const i = this.nodes.indexOf(node);
   if (i === -1) throw new Error('removeChild: not a child');
   blurInside(node);
-  this.childNodes.splice(i, 1); node.parentNode = null; return node;
+  this.nodes.splice(i, 1); node.parentNode = null; return node;
  }
  // focus makes this the document's activeElement, as a browser does for a
  // connected element, and records the options it was given.
@@ -103,20 +126,20 @@ class FakeElement {
  }
  blur() { const doc = this.ownerDocument; if (doc && doc.activeElement === this) doc.activeElement = doc.body; }
  replaceChild(next, old) {
-  const i = this.childNodes.indexOf(old);
+  const i = this.nodes.indexOf(old);
   if (i === -1) throw new Error('replaceChild: not a child');
   const child = this.adopt(next);
-  this.childNodes.splice(this.childNodes.indexOf(old), 1, child); old.parentNode = null; return old;
+  this.nodes.splice(this.nodes.indexOf(old), 1, child); old.parentNode = null; return old;
  }
  insertBefore(node, ref) {
   if (ref === null || ref === undefined) return this.appendChild(node);
   const child = this.adopt(node);
-  const i = this.childNodes.indexOf(ref);
+  const i = this.nodes.indexOf(ref);
   if (i === -1) throw new Error('insertBefore: the reference is not a child');
-  this.childNodes.splice(i, 0, child);
+  this.nodes.splice(i, 0, child);
   return child;
  }
- replaceChildren(...nodes) { for (const n of this.childNodes) { blurInside(n); n.parentNode = null; } this.childNodes = []; this.append(...nodes); }
+ replaceChildren(...nodes) { for (const n of this.nodes) { blurInside(n); n.parentNode = null; } this.nodes = []; this.append(...nodes); }
  remove() { if (this.parentNode) this.parentNode.removeChild(this); }
  addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); }
  dispatch(type, event = {}) { for (const fn of this.listeners[type] || []) fn(event); if (typeof this['on' + type] === 'function') this['on' + type](event); }
@@ -125,7 +148,7 @@ class FakeElement {
  matches(selector) { return matchChain(this, parseSelector(selector)); }
  querySelectorAll(selector) {
   const groups = selector.split(',').map((s) => parseSelector(s.trim()));
-  return this.descendants().filter((n) => groups.some((g) => matchChain(n, g)));
+  return new FakeNodeList(this.descendants().filter((n) => groups.some((g) => matchChain(n, g))));
  }
  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
 }
@@ -288,4 +311,4 @@ function knownSummaries(page) {
  return out;
 }
 
-module.exports = { fakeDocument, FakeElement, FakeText, parseSelector, assertLiveUpdateKeepsRow, allowlistedClasses, knownValues, knownSummaries };
+module.exports = { fakeDocument, FakeElement, FakeText, FakeHTMLCollection, FakeNodeList, parseSelector, assertLiveUpdateKeepsRow, allowlistedClasses, knownValues, knownSummaries };

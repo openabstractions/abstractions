@@ -10,11 +10,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/openabstractions/abstraction-facade/go-core/childproc"
 )
 
 // A failed upgrade rolls the files and registration of the previous version
@@ -98,17 +99,46 @@ func restartUserPredecessors(list string, info productInfoFunc, exists func(stri
 // serviceStartUser releases the user upgrade exclusion, then runs each related
 // product's activation. A note that cannot be written is joined into the
 // result and the activation still runs.
-func serviceStartUser(related string, output io.Writer) error {
+func serviceStartUser(request serviceRequest, output io.Writer) error {
 	var result error
-	for _, note := range systemExclusionEnv().release("user") {
+	asideNotes, releaseNotes, settleErr := settleInstallerUpgrade("user", true)
+	result = errors.Join(result, settleErr)
+	reportUpgradeAside(output, "user", "service start --user", asideNotes)
+	for _, note := range releaseNotes {
 		result = errors.Join(result, printLine(output, note))
 	}
-	started, notes, err := restartUserPredecessors(related, msiProductInfo, regularFile, runActivation)
+	started, notes, err := restartUserRequest(request, msiProductInfo, regularFile, runActivation)
 	for _, note := range notes {
 		result = errors.Join(result, printLine(output, note))
 	}
 	result = errors.Join(result, printLine(output, fmt.Sprintf("started the runtime of %d related per-user product(s)", started)))
 	return errors.Join(err, result)
+}
+
+// Removal rollback uses the folder and version authored by its own MSI. An
+// upgrade rollback continues to require the related products' registrations.
+func restartUserRequest(request serviceRequest, info productInfoFunc, exists func(string) bool, run activationRunner) (int, []string, error) {
+	if request.folder == "" {
+		return restartUserPredecessors(request.related, info, exists, run)
+	}
+	root, err := userInstallFolder(request.folder)
+	if err != nil {
+		return 0, nil, err
+	}
+	if _, _, err := userActivation(root, request.version, func(string) bool { return false }); err != nil {
+		return 0, nil, err
+	}
+	image, args, err := userActivation(root, request.version, exists)
+	if err != nil {
+		return 0, nil, err
+	}
+	if !exists(image) {
+		return 0, nil, fmt.Errorf("removing product has no activation %s", image)
+	}
+	if err := run(image, args); err != nil {
+		return 0, nil, fmt.Errorf("start removing product with %s: %w", image, err)
+	}
+	return 1, nil, nil
 }
 
 // instanceControl is what the machine rollback asks of the SCM.
@@ -160,7 +190,10 @@ func startStoppedInstances(control instanceControl) (int, []string, error) {
 // stopped per-session instances of the restored registration.
 func serviceStartMachine(output io.Writer) error {
 	var result error
-	for _, note := range systemExclusionEnv().release("machine") {
+	asideNotes, releaseNotes, settleErr := settleInstallerUpgrade("machine", true)
+	result = errors.Join(result, settleErr)
+	reportUpgradeAside(output, "machine", "service start --machine", asideNotes)
+	for _, note := range releaseNotes {
 		result = errors.Join(result, printLine(output, note))
 	}
 	m, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT|windows.SC_MANAGER_ENUMERATE_SERVICE)
@@ -227,8 +260,7 @@ func regularFile(path string) bool {
 func runActivation(image string, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), userRestartBudget)
 	defer cancel()
-	command := exec.CommandContext(ctx, image, args...)
+	command := childproc.Hidden(exec.CommandContext(ctx, image, args...))
 	command.Dir = filepath.Dir(image)
-	command.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: windows.CREATE_NO_WINDOW}
 	return command.Run()
 }

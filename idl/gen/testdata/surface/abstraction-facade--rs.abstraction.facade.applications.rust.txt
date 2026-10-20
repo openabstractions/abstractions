@@ -1,0 +1,401 @@
+pub type Raw
+pub enum Outcome
+  Applied
+  Page
+  Unknown
+  Stale
+  Conflict
+  Invalid
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 8]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum ActivationOutcome
+  Ready
+  Unknown
+  Disabled
+  Forbidden
+  Invalid
+  LaunchRefused
+  IdentityRefused
+  NotReady
+  Unavailable
+  pub const ALL: [Self; 9]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum HostActivationOutcome
+  Applied
+  Refused
+  Unavailable
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum AgentEnrollmentState
+  None
+  Pending
+  Enrolled
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum AgentUpdatePhase
+  Staged
+  Committed
+  Ready
+  pub const ALL: [Self; 3]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum SetupOutcome
+  Asked
+  AlreadySetUp
+  CannotRun
+  Invalid
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum SetupReceiptOutcome
+  Started
+  Completed
+  pub const ALL: [Self; 2]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub mod service_error_code
+  pub const HANDLER_ERROR: &str
+  pub const INVALID_RESULT: &str
+  pub const UNKNOWN_VERSION: &str
+  pub const UNKNOWN_SERVICE: &str
+  pub const UNKNOWN_METHOD: &str
+  pub const WRONG_MODE: &str
+  pub const ALL: [&str; 6]
+pub struct NamedApplicationTarget
+  name: ::std::string::String
+pub struct CapturedAgentApplication
+  name: ::std::string::String
+  program: ::std::string::String
+  file_key: ::std::string::String
+  enrollment_revision: ::std::string::String
+pub struct AgentMessageResource
+  sender: CapturedAgentApplication
+  receiver: CapturedAgentApplication
+pub struct HostActivationResult
+  outcome: HostActivationOutcome
+  reason: ::std::string::String
+pub struct RegisterRequest
+  program: ::std::string::String
+  expected_revision: ::std::string::String
+pub struct ConnectExpectation
+  application: ::std::string::String
+  program: ::std::string::String
+  sha256: ::std::string::String
+pub struct ChangeRequest
+  application: ::std::string::String
+  expected_revision: ::std::string::String
+pub struct AgentEnrollmentRequest
+  application: ::std::string::String
+  expected_revision: ::std::string::String
+  enabled: bool
+  bind_catalogue_host: ::std::option::Option<bool>
+pub struct AgentEnrollment
+  application: ::std::string::String
+  program: ::std::string::String
+  revision: ::std::string::String
+  state: AgentEnrollmentState
+pub struct AgentEnrollmentResult
+  outcome: Outcome
+  enrollment: ::std::option::Option<AgentEnrollment>
+  reason: ::std::string::String
+pub struct AgentUpdateMember
+  application: ::std::string::String
+  expected_revision: ::std::string::String
+  staged_program: ::std::string::String
+pub struct AgentUpdateRequest
+  members: ::std::vec::Vec<AgentUpdateMember>
+  source_program: ::std::string::String
+  undo_of: ::std::string::String
+  review_of: ::std::string::String
+pub struct AgentUpdateImage
+  application: ::std::string::String
+  program: ::std::string::String
+  file_key: ::std::string::String
+pub struct AgentUpdateResult
+  outcome: Outcome
+  intent: ::std::string::String
+  question: ::std::string::String
+  enrollments: ::std::vec::Vec<AgentEnrollment>
+  reason: ::std::string::String
+  staged_images: ::std::vec::Vec<AgentUpdateImage>
+  phase: ::std::option::Option<AgentUpdatePhase>
+  ready_unix_ms: ::std::option::Option<i64>
+pub struct SignInStart
+  wanted: bool
+  runtime: bool
+  presenter: bool
+pub struct SignInStartResult
+  outcome: Outcome
+  state: ::std::option::Option<SignInStart>
+  reason: ::std::string::String
+pub struct SetupResult
+  outcome: SetupOutcome
+  reason: ::std::string::String
+pub struct SetupRequest
+  id: ::std::string::String
+  setup_use: ::std::string::String
+  application: ::std::string::String
+pub struct SetupRequestRead
+  outcome: Outcome
+  request: ::std::option::Option<SetupRequest>
+  reason: ::std::string::String
+pub struct SetupPresenterReceipt
+  outcome: SetupReceiptOutcome
+  occurrence: ::std::string::String
+  request: ::std::string::String
+  facts: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>
+  key: ::std::string::String
+pub struct SetupStepReport
+  outcome: Outcome
+  reason: ::std::string::String
+  question: ::std::string::String
+pub struct ActivateRequest
+  application: ::std::string::String
+  verb: ::std::string::String
+  payload: Raw
+  context: ::std::string::String
+  default_verb: ::std::option::Option<bool>
+pub struct Query
+  application: ::std::string::String
+  cursor: ::std::string::String
+  limit: i32
+  wait_ms: i32
+pub struct Change
+  outcome: Outcome
+  revision: ::std::string::String
+  reason: ::std::string::String
+pub struct Page
+  outcome: Outcome
+  cursor: ::std::string::String
+  registrations: ::std::vec::Vec<OAImported0>
+  reason: ::std::string::String
+pub struct ActivationResult
+  outcome: ActivationOutcome
+  instance: ::std::string::String
+  started: bool
+  reason: ::std::string::String
+  title: ::std::string::String
+pub struct DescribeResult
+  outcome: Outcome
+  answer: ::std::option::Option<OAImported1>
+  reason: ::std::string::String
+pub struct CommandsResult
+  outcome: Outcome
+  answer: ::std::option::Option<OAImported2>
+  reason: ::std::string::String
+pub struct CallResult
+  outcome: Outcome
+  answer: ::std::option::Option<OAImported3>
+  reason: ::std::string::String
+pub struct ActivationConfiguration
+  expected: OAImported4
+  activation: ::std::option::Option<OAImported5>
+pub fn encode(v: &HostActivationResult) -> ::std::vec::Vec<u8>
+pub struct Refusal
+  word: &'static str
+  offset: usize
+pub fn decode(data: &[u8]) -> ::std::result::Result<HostActivationResult, Refusal>
+pub trait JsonRecord: ::std::marker::Sized
+  fn to_json(&self) -> ::std::vec::Vec<u8>
+  fn from_json(data: &[u8]) -> ::std::result::Result<Self, Refusal>
+pub use abstraction_frame::FrameTransport
+pub struct ServiceError
+  code: ::std::string::String
+  message: ::std::string::String
+pub enum CallError<E>
+  Transport(E)
+  Refusal(Refusal)
+  Dispatch(&'static str)
+  Service(ServiceError)
+pub trait Applications
+  type Error
+  fn find_agent_update(&self, request: AgentUpdateRequest) -> ::std::result::Result<AgentUpdateResult, Self::Error>
+  fn prepare_agent_update(&self, request: AgentUpdateRequest) -> ::std::result::Result<AgentUpdateResult, Self::Error>
+  fn commit_agent_update(&self, intent: ::std::string::String) -> ::std::result::Result<AgentUpdateResult, Self::Error>
+  fn set_activation(&self, request: ActivationConfiguration) -> ::std::result::Result<OAImported6, Self::Error>
+  fn reconcile_activation(&self, expected: OAImported4) -> ::std::result::Result<OAImported6, Self::Error>
+  fn confirm_receiver_start(&self, recipe_digest: ::std::string::String) -> ::std::result::Result<OAImported6, Self::Error>
+  fn read_agent_enrollment(&self, application: ::std::string::String) -> ::std::result::Result<AgentEnrollmentResult, Self::Error>
+  fn set_agent_enrollment(&self, request: AgentEnrollmentRequest) -> ::std::result::Result<AgentEnrollmentResult, Self::Error>
+  fn register(&self, request: RegisterRequest) -> ::std::result::Result<Change, Self::Error>
+  fn ask_confirmation(&self, application: ::std::string::String) -> ::std::result::Result<OAImported6, Self::Error>
+  fn remove(&self, request: ChangeRequest) -> ::std::result::Result<Change, Self::Error>
+  fn announce(&self, key: ::std::string::String, presence: OAImported7) -> ::std::result::Result<OAImported6, Self::Error>
+  fn withdraw(&self, application: ::std::string::String, instance: ::std::string::String) -> ::std::result::Result<OAImported6, Self::Error>
+  fn observe(&self, query: Query) -> ::std::result::Result<Page, Self::Error>
+  fn activate(&self, key: ::std::string::String, request: ActivateRequest) -> ::std::result::Result<ActivationResult, Self::Error>
+  fn describe(&self, query: OAImported8) -> ::std::result::Result<DescribeResult, Self::Error>
+  fn commands(&self, query: OAImported9) -> ::std::result::Result<CommandsResult, Self::Error>
+  fn call(&self, key: ::std::string::String, call: OAImported10) -> ::std::result::Result<CallResult, Self::Error>
+  fn read_sign_in_start(&self) -> ::std::result::Result<SignInStartResult, Self::Error>
+  fn request_setup(&self, setup_use: ::std::string::String) -> ::std::result::Result<SetupResult, Self::Error>
+  fn receive_setup_request(&self, after: ::std::string::String) -> ::std::result::Result<SetupRequestRead, Self::Error>
+  fn report_setup_step(&self, receipt: SetupPresenterReceipt) -> ::std::result::Result<SetupStepReport, Self::Error>
+pub struct ApplicationsClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub trait ApplicationsOperator
+  type Error
+  fn expect_connect(&self, expectation: ConnectExpectation) -> ::std::result::Result<OAImported6, Self::Error>
+pub struct ApplicationsOperatorClient<T>
+  pub fn new(transport: T) -> Self
+  pub fn transport(&self) -> &T
+pub fn encode_named_application_target_document(v: &NamedApplicationTarget) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_named_application_target_document(data: &[u8]) -> ::std::result::Result<NamedApplicationTarget, Refusal>
+pub fn encode_captured_agent_application_document(v: &CapturedAgentApplication) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_captured_agent_application_document(data: &[u8]) -> ::std::result::Result<CapturedAgentApplication, Refusal>
+pub fn encode_agent_message_resource_document(v: &AgentMessageResource) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_agent_message_resource_document(data: &[u8]) -> ::std::result::Result<AgentMessageResource, Refusal>
+pub fn encode_host_activation_result_document(v: &HostActivationResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_host_activation_result_document(data: &[u8]) -> ::std::result::Result<HostActivationResult, Refusal>
+pub fn encode_register_request_document(v: &RegisterRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_register_request_document(data: &[u8]) -> ::std::result::Result<RegisterRequest, Refusal>
+pub fn encode_connect_expectation_document(v: &ConnectExpectation) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_connect_expectation_document(data: &[u8]) -> ::std::result::Result<ConnectExpectation, Refusal>
+pub fn encode_change_request_document(v: &ChangeRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_change_request_document(data: &[u8]) -> ::std::result::Result<ChangeRequest, Refusal>
+pub fn encode_agent_enrollment_request_document(v: &AgentEnrollmentRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_agent_enrollment_request_document(data: &[u8]) -> ::std::result::Result<AgentEnrollmentRequest, Refusal>
+pub fn encode_agent_enrollment_document(v: &AgentEnrollment) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_agent_enrollment_document(data: &[u8]) -> ::std::result::Result<AgentEnrollment, Refusal>
+pub fn encode_agent_enrollment_result_document(v: &AgentEnrollmentResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_agent_enrollment_result_document(data: &[u8]) -> ::std::result::Result<AgentEnrollmentResult, Refusal>
+pub fn encode_agent_update_member_document(v: &AgentUpdateMember) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_agent_update_member_document(data: &[u8]) -> ::std::result::Result<AgentUpdateMember, Refusal>
+pub fn encode_agent_update_request_document(v: &AgentUpdateRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_agent_update_request_document(data: &[u8]) -> ::std::result::Result<AgentUpdateRequest, Refusal>
+pub fn encode_agent_update_image_document(v: &AgentUpdateImage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_agent_update_image_document(data: &[u8]) -> ::std::result::Result<AgentUpdateImage, Refusal>
+pub fn encode_agent_update_result_document(v: &AgentUpdateResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_agent_update_result_document(data: &[u8]) -> ::std::result::Result<AgentUpdateResult, Refusal>
+pub fn encode_sign_in_start_document(v: &SignInStart) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_sign_in_start_document(data: &[u8]) -> ::std::result::Result<SignInStart, Refusal>
+pub fn encode_sign_in_start_result_document(v: &SignInStartResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_sign_in_start_result_document(data: &[u8]) -> ::std::result::Result<SignInStartResult, Refusal>
+pub fn encode_setup_result_document(v: &SetupResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_setup_result_document(data: &[u8]) -> ::std::result::Result<SetupResult, Refusal>
+pub fn encode_setup_request_document(v: &SetupRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_setup_request_document(data: &[u8]) -> ::std::result::Result<SetupRequest, Refusal>
+pub fn encode_setup_request_read_document(v: &SetupRequestRead) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_setup_request_read_document(data: &[u8]) -> ::std::result::Result<SetupRequestRead, Refusal>
+pub fn encode_setup_presenter_receipt_document(v: &SetupPresenterReceipt) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_setup_presenter_receipt_document(data: &[u8]) -> ::std::result::Result<SetupPresenterReceipt, Refusal>
+pub fn encode_setup_step_report_document(v: &SetupStepReport) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_setup_step_report_document(data: &[u8]) -> ::std::result::Result<SetupStepReport, Refusal>
+pub fn encode_activate_request_document(v: &ActivateRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_activate_request_document(data: &[u8]) -> ::std::result::Result<ActivateRequest, Refusal>
+pub fn encode_query_document(v: &Query) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_query_document(data: &[u8]) -> ::std::result::Result<Query, Refusal>
+pub fn encode_change_document(v: &Change) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_change_document(data: &[u8]) -> ::std::result::Result<Change, Refusal>
+pub fn encode_page_document(v: &Page) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_page_document(data: &[u8]) -> ::std::result::Result<Page, Refusal>
+pub fn encode_activation_result_document(v: &ActivationResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_activation_result_document(data: &[u8]) -> ::std::result::Result<ActivationResult, Refusal>
+pub fn encode_describe_result_document(v: &DescribeResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_describe_result_document(data: &[u8]) -> ::std::result::Result<DescribeResult, Refusal>
+pub fn encode_commands_result_document(v: &CommandsResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_commands_result_document(data: &[u8]) -> ::std::result::Result<CommandsResult, Refusal>
+pub fn encode_call_result_document(v: &CallResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_call_result_document(data: &[u8]) -> ::std::result::Result<CallResult, Refusal>
+pub fn encode_activation_configuration_document(v: &ActivationConfiguration) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_activation_configuration_document(data: &[u8]) -> ::std::result::Result<ActivationConfiguration, Refusal>
+pub mod internal
+  pub fn decode_named_application_target_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::NamedApplicationTarget, usize), super::Refusal>
+  pub fn check_named_application_target(v: &super::NamedApplicationTarget, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_named_application_target_at(v: &super::NamedApplicationTarget, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_captured_agent_application_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::CapturedAgentApplication, usize), super::Refusal>
+  pub fn check_captured_agent_application(v: &super::CapturedAgentApplication, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_captured_agent_application_at(v: &super::CapturedAgentApplication, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_agent_message_resource_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AgentMessageResource, usize), super::Refusal>
+  pub fn check_agent_message_resource(v: &super::AgentMessageResource, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_agent_message_resource_at(v: &super::AgentMessageResource, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_host_activation_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::HostActivationResult, usize), super::Refusal>
+  pub fn check_host_activation_result(v: &super::HostActivationResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_host_activation_result_at(v: &super::HostActivationResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_register_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::RegisterRequest, usize), super::Refusal>
+  pub fn check_register_request(v: &super::RegisterRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_register_request_at(v: &super::RegisterRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_connect_expectation_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ConnectExpectation, usize), super::Refusal>
+  pub fn check_connect_expectation(v: &super::ConnectExpectation, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_connect_expectation_at(v: &super::ConnectExpectation, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_change_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChangeRequest, usize), super::Refusal>
+  pub fn check_change_request(v: &super::ChangeRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_change_request_at(v: &super::ChangeRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_agent_enrollment_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AgentEnrollmentRequest, usize), super::Refusal>
+  pub fn check_agent_enrollment_request(v: &super::AgentEnrollmentRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_agent_enrollment_request_at(v: &super::AgentEnrollmentRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_agent_enrollment_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AgentEnrollment, usize), super::Refusal>
+  pub fn check_agent_enrollment(v: &super::AgentEnrollment, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_agent_enrollment_at(v: &super::AgentEnrollment, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_agent_enrollment_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AgentEnrollmentResult, usize), super::Refusal>
+  pub fn check_agent_enrollment_result(v: &super::AgentEnrollmentResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_agent_enrollment_result_at(v: &super::AgentEnrollmentResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_agent_update_member_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AgentUpdateMember, usize), super::Refusal>
+  pub fn check_agent_update_member(v: &super::AgentUpdateMember, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_agent_update_member_at(v: &super::AgentUpdateMember, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_agent_update_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AgentUpdateRequest, usize), super::Refusal>
+  pub fn check_agent_update_request(v: &super::AgentUpdateRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_agent_update_request_at(v: &super::AgentUpdateRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_agent_update_image_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AgentUpdateImage, usize), super::Refusal>
+  pub fn check_agent_update_image(v: &super::AgentUpdateImage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_agent_update_image_at(v: &super::AgentUpdateImage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_agent_update_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::AgentUpdateResult, usize), super::Refusal>
+  pub fn check_agent_update_result(v: &super::AgentUpdateResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_agent_update_result_at(v: &super::AgentUpdateResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_sign_in_start_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::SignInStart, usize), super::Refusal>
+  pub fn check_sign_in_start(v: &super::SignInStart, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_sign_in_start_at(v: &super::SignInStart, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_sign_in_start_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::SignInStartResult, usize), super::Refusal>
+  pub fn check_sign_in_start_result(v: &super::SignInStartResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_sign_in_start_result_at(v: &super::SignInStartResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_setup_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::SetupResult, usize), super::Refusal>
+  pub fn check_setup_result(v: &super::SetupResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_setup_result_at(v: &super::SetupResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_setup_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::SetupRequest, usize), super::Refusal>
+  pub fn check_setup_request(v: &super::SetupRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_setup_request_at(v: &super::SetupRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_setup_request_read_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::SetupRequestRead, usize), super::Refusal>
+  pub fn check_setup_request_read(v: &super::SetupRequestRead, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_setup_request_read_at(v: &super::SetupRequestRead, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_setup_presenter_receipt_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::SetupPresenterReceipt, usize), super::Refusal>
+  pub fn check_setup_presenter_receipt(v: &super::SetupPresenterReceipt, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_setup_presenter_receipt_at(v: &super::SetupPresenterReceipt, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_setup_step_report_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::SetupStepReport, usize), super::Refusal>
+  pub fn check_setup_step_report(v: &super::SetupStepReport, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_setup_step_report_at(v: &super::SetupStepReport, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_activate_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ActivateRequest, usize), super::Refusal>
+  pub fn check_activate_request(v: &super::ActivateRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_activate_request_at(v: &super::ActivateRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_query_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Query, usize), super::Refusal>
+  pub fn check_query(v: &super::Query, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_query_at(v: &super::Query, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_change_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Change, usize), super::Refusal>
+  pub fn check_change(v: &super::Change, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_change_at(v: &super::Change, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::Page, usize), super::Refusal>
+  pub fn check_page(v: &super::Page, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_page_at(v: &super::Page, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_activation_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ActivationResult, usize), super::Refusal>
+  pub fn check_activation_result(v: &super::ActivationResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_activation_result_at(v: &super::ActivationResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_describe_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::DescribeResult, usize), super::Refusal>
+  pub fn check_describe_result(v: &super::DescribeResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_describe_result_at(v: &super::DescribeResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_commands_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::CommandsResult, usize), super::Refusal>
+  pub fn check_commands_result(v: &super::CommandsResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_commands_result_at(v: &super::CommandsResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_call_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::CallResult, usize), super::Refusal>
+  pub fn check_call_result(v: &super::CallResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_call_result_at(v: &super::CallResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_activation_configuration_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ActivationConfiguration, usize), super::Refusal>
+  pub fn check_activation_configuration(v: &super::ActivationConfiguration, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_activation_configuration_at(v: &super::ActivationConfiguration, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>

@@ -39,6 +39,10 @@ func (f *answererFixture) enrolmentQuestions(t *testing.T, who rwire.Subject) []
 func TestAnAssistantAsksForItsEnrollmentLikeAnyRight(t *testing.T) {
 	f := newAnswererFixture(t)
 	ctx := context.Background()
+	routine := f.ask(t, f.comfy, host.ModelLookupAction, "hf")
+	if outcome, _ := f.answer(f.me(), routine.ID, "allow"); outcome != "forbidden" {
+		t.Fatal("unenrolled answer was not refused", outcome)
+	}
 	if d := f.a.askForAnswering(ctx, f.me()); d.Outcome != rwire.DecisionOutcomeNotGranted {
 		t.Fatalf("the first request %v", d.Outcome)
 	}
@@ -81,9 +85,14 @@ func TestAnAssistantAsksForItsEnrollmentLikeAnyRight(t *testing.T) {
 	if d := f.a.askForAnswering(ctx, f.me()); d.Outcome != rwire.DecisionOutcomePermitted {
 		t.Fatalf("after the Allow %v", d.Outcome)
 	}
-	routine := f.ask(t, f.comfy, host.ModelLookupAction, "hf")
 	if !f.answerable(f.me(), routine, "allow") {
 		t.Fatal("the enrolled assistant cannot answer a routine question")
+	}
+	if outcome, _ := f.answer(f.me(), routine.ID, "allow"); outcome != "answered" {
+		t.Fatal("explicit new answer after enrollment", outcome)
+	}
+	if outcome, _ := f.answer(f.me(), q.ID, "allow"); outcome != "forbidden" {
+		t.Fatal("enrollment question became answerable", outcome)
 	}
 }
 

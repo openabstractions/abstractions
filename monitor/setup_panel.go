@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	fwire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
+	jobwire "github.com/openabstractions/abstraction-job/go/abstraction/job/acceptance"
 	"io"
+	"log"
 	"net/http"
 	"slices"
 	"time"
@@ -19,7 +22,12 @@ type setupChoiceRequest struct {
 	Beside []setup.AppID `json:"beside,omitempty"`
 	// ModelPlanID is the picture-model plan an Install click approves with
 	// the app plan (setup_install.go).
-	ModelPlanID string `json:"model_plan_id,omitempty"`
+	ModelPlanID       string `json:"model_plan_id,omitempty"`
+	CodingModelPlanID string `json:"coding_model_plan_id,omitempty"`
+	// PictureModelPlanIDs are the picture model toggles the person ticked
+	// (setupPictureSelection); absent keeps the default, the recommended
+	// model for an engine with none prepared, and [] ticks none.
+	PictureModelPlanIDs []string `json:"picture_model_plan_ids,omitempty"`
 	// PermissionsID is the digest of the permission rules the screen
 	// stated (setupPermission.ID).
 	PermissionsID string      `json:"permissions_id,omitempty"`
@@ -30,13 +38,28 @@ type setupChoiceRequest struct {
 }
 
 type setupPanelStatus struct {
+	Catalog setup.Catalog `json:"catalog"`
 	setup.Status
 	Approved bool `json:"approved"`
+	// Actions are the Setup steps running now, by component: a package
+	// step runs for minutes without progress events, so the page's stall
+	// clock waits for it (setup_actions.go).
+	Actions map[string]setupAction `json:"actions,omitempty"`
+	// Outcomes are how each component's last step ended (setup_actions.go);
+	// StepID names the step a reply started.
+	Outcomes map[string]setupOutcome `json:"outcomes,omitempty"`
+	StepID   string                  `json:"step_id,omitempty"`
 }
 
 type setupPlanReview struct {
 	setup.Plan
 	PictureModel *setup.ModelPlan `json:"picture_model,omitempty"`
+	// PictureModels are the picture models offered as separate toggles,
+	// the recommended one first, each with its size, licence and whether
+	// this review selects it. PictureModel is the selected recommended one;
+	// the other selected ones are approved by their IDs.
+	PictureModels []setupPictureOffer `json:"picture_models,omitempty"`
+	CodingModel   *setup.ModelPlan    `json:"coding_model,omitempty"`
 	// Replaces names each installed version this plan would update, so the
 	// consent text can say so before approval.
 	Replaces []setupReplacement `json:"replaces,omitempty"`
@@ -46,6 +69,108 @@ type setupPlanReview struct {
 	// Permissions are the permissions the plan's apps get at Install, as
 	// sentences (setup_install.go).
 	Permissions []setupPermission `json:"permissions,omitempty"`
+	// Included are the companions the plan added to the person's ticks,
+	// such as a picture app's engine; the page shows each dimmed under its
+	// app.
+	Included []setup.AppID `json:"included,omitempty"`
+	// PictureEngine is the engine line under a picture app.
+	PictureEngine *setupPictureEngine `json:"picture_engine,omitempty"`
+	// Added are the packages the plan still installs, each with its sizes
+	// (setup.Catalog.AddedComponents); AddDownloadBytes and AddDiskBytes are
+	// their sums. The page's rows and its total read these, so they agree.
+	Added            []setup.AddedComponent `json:"added"`
+	AddDownloadBytes int64                  `json:"add_download_bytes"`
+	AddDiskBytes     int64                  `json:"add_disk_bytes"`
+	// Disk is the drive the packages go on and its free space, when Setup
+	// could read it.
+	Disk *setupDisk `json:"disk,omitempty"`
+	// ArchiveLooked is whether this review listed the download archive for
+	// a model it had no listed candidate for; the page then rereads which
+	// models copy from the archive.
+	ArchiveLooked bool `json:"archive_looked,omitempty"`
+}
+
+// setupArchiveWait bounds how long a plan review waits for a listing of
+// the download archive: the walk's own time bound and a little more.
+var setupArchiveWait = 35 * time.Second
+
+// lookInArchive lists the download archive when one of the review's models
+// has no listed candidate and the last listing is older than ten minutes
+// (setup.ArchiveLookFor), and waits for it; the page shows "Checking what
+// to install…" meanwhile.
+func (review *setupPlanReview) lookInArchive(r *http.Request) {
+	var wanted []setup.PinnedDownload
+	if review.CodingModel != nil {
+		wanted = append(wanted, review.CodingModel.Downloads()...)
+	}
+	for _, offer := range review.PictureModels {
+		if offer.Selected {
+			wanted = append(wanted, offer.Downloads()...)
+		}
+	}
+	done := setup.ArchiveLookFor(wanted)
+	if done == nil {
+		return
+	}
+	timer := time.NewTimer(setupArchiveWait)
+	defer timer.Stop()
+	select {
+	case <-done:
+		review.ArchiveLooked = true
+	case <-r.Context().Done():
+	case <-timer.C:
+	}
+}
+
+type setupDisk struct {
+	Volume    string `json:"volume"`
+	FreeBytes uint64 `json:"free_bytes"`
+}
+
+// setupInstallDisk is setup.InstallDisk; tests replace it.
+var setupInstallDisk = setup.InstallDisk
+
+// setupPictureEngine is a picture app's engine in a plan: the one the plan
+// uses, the one that fits this computer best, and the choices Change offers.
+type setupPictureEngine struct {
+	App     setup.AppID   `json:"app"`
+	Engine  setup.AppID   `json:"engine"`
+	Best    setup.AppID   `json:"best"`
+	Options []setup.AppID `json:"options"`
+}
+
+// setupPlanCompanions fills the review's companions and engine line from
+// the catalog's picture apps.
+func setupPlanCompanions(catalog setup.Catalog, requested []setup.AppID, review *setupPlanReview) {
+	for _, id := range review.Selected {
+		if !slices.Contains(requested, id) {
+			review.Included = append(review.Included, id)
+		}
+	}
+	for _, choice := range catalog.Choices {
+		if len(choice.Engines) == 0 || !slices.Contains(review.Selected, choice.ID) {
+			continue
+		}
+		line := &setupPictureEngine{App: choice.ID, Best: catalog.PictureEngine(choice.ID), Options: slices.Clone(choice.Engines)}
+		for _, engine := range choice.Engines {
+			if slices.Contains(review.Selected, engine) {
+				line.Engine = engine
+				break
+			}
+		}
+		review.PictureEngine = line
+		return
+	}
+}
+
+// A model-only review has a stable approval identity and no app installation.
+// It reuses the compiled coding plan and the existing Install record.
+func codingOnlyReview(id string) (setupPlanReview, error) {
+	model := setup.CodingModelPlan()
+	if id == "" || id != model.ID {
+		return setupPlanReview{}, errors.New("the selected coding model changed; review it again")
+	}
+	return setupPlanReview{Plan: setup.Plan{ID: "coding-model-" + model.ID, Preparable: true}, CodingModel: &model}, nil
 }
 
 type setupReplacement struct {
@@ -78,10 +203,7 @@ type setupModelController interface {
 	ReconcileProvider(context.Context) (setup.ModelStatus, error)
 }
 
-type modelProgress struct {
-	Done  int64 `json:"done"`
-	Total int64 `json:"total"`
-}
+type modelProgress = jobwire.WorkProgress
 
 type setupModelReply struct {
 	EngineInstalled bool            `json:"engine_installed,omitempty"`
@@ -99,7 +221,11 @@ type setupModelReply struct {
 	Disk         setup.ModelDiskStatus        `json:"disk"`
 	Feature      setup.FeatureStatus          `json:"feature"`
 	Status       setup.ModelStatus            `json:"status"`
-	Progress     map[string]modelProgress     `json:"progress,omitempty"`
+	Progress     map[string]string            `json:"progress,omitempty"`
+	// DefaultPending is a ready starter model Setup has not yet made the
+	// account's picture default (setup.StarterDefaultPending); the page's
+	// model step then asks once more.
+	DefaultPending bool `json:"default_pending,omitempty"`
 }
 
 type setupModelRequest struct {
@@ -123,6 +249,9 @@ func (p *servicePanel) setupRunnerForPanel() (setup.Runner, setup.Journal, error
 		return setup.Runner{}, setup.Journal{}, err
 	}
 	runner := setup.NewRunner(journal, nil)
+	if p.setupTransfer != nil {
+		runner = setup.NewRunner(journal, *p.setupTransfer)
+	}
 	runner.RetireGuard = p.comfyRetireGuard
 	return runner, journal, nil
 }
@@ -133,7 +262,7 @@ func (p *servicePanel) setupModelForPanel() (setupModelController, error) {
 	if p.modelController != nil {
 		return p.modelController, nil
 	}
-	controller, err := setup.DefaultBF16Controller(p.selectedComfyImagePolicy)
+	controller, err := setup.DefaultBF16Controller(nil)
 	if err != nil {
 		return nil, err
 	}
@@ -142,23 +271,17 @@ func (p *servicePanel) setupModelForPanel() (setupModelController, error) {
 }
 
 func fixedSetupEngine(engine setup.AppID) (setup.AppID, error) {
-	if engine == "" {
-		engine = setup.Lemonade
-	}
-	if engine != setup.Lemonade && engine != setup.TheNoise && engine != setup.PyTorch {
-		return "", errors.New("unknown fixed picture engine")
-	}
-	return engine, nil
+	return setup.FixedPictureEngine(engine)
 }
 
 func (p *servicePanel) setupModelForEngine(engine setup.AppID) (setupModelController, setup.ModelPlan, error) {
-	if engine == setup.Lemonade {
-		controller, err := p.setupModelForPanel()
-		return controller, setup.ApprovedBF16Plan(), err
+	plan, open, live, err := setup.FixedPictureController(engine)
+	if err != nil {
+		return nil, setup.ModelPlan{}, err
 	}
-	plan := setup.TheNoiseModelPlan()
-	if engine == setup.PyTorch {
-		plan = setup.PyTorchModelPlan()
+	if open == nil {
+		controller, err := p.setupModelForPanel()
+		return controller, plan, err
 	}
 	p.modelControllerMu.Lock()
 	defer p.modelControllerMu.Unlock()
@@ -169,14 +292,12 @@ func (p *servicePanel) setupModelForEngine(engine setup.AppID) (setupModelContro
 	if err != nil {
 		return nil, setup.ModelPlan{}, err
 	}
-	var controller setup.ModelController
-	if engine == setup.PyTorch {
-		controller, err = setup.DefaultPyTorchController(journal)
-	} else {
-		controller, err = setup.DefaultTheNoiseController(journal)
-	}
+	controller, err := open(journal)
 	if err != nil {
 		return nil, setup.ModelPlan{}, err
+	}
+	if live {
+		return controller, controller.ReviewedPlan(), nil
 	}
 	if p.engineControllers == nil {
 		p.engineControllers = map[setup.AppID]setupModelController{}
@@ -185,8 +306,10 @@ func (p *servicePanel) setupModelForEngine(engine setup.AppID) (setupModelContro
 	return controller, plan, nil
 }
 
+// engineInPlan is whether plan selects engine or installs its engine
+// component, as ComfyUI installs the shared PyTorch engine.
 func engineInPlan(plan setup.Plan, engine setup.AppID) bool {
-	return slices.Contains(plan.Selected, engine) || engine == setup.Lemonade && slices.Contains(plan.Selected, setup.ComfyUI)
+	return slices.Contains(plan.Selected, engine) || slices.ContainsFunc(plan.Components, func(c setup.PlannedComponent) bool { return c.ID == string(engine)+"-engine" })
 }
 
 func installedSetupEngine(status setupPanelStatus, engine setup.AppID) bool {
@@ -202,7 +325,9 @@ func installedSetupEngine(status setupPanelStatus, engine setup.AppID) bool {
 }
 
 func (p *servicePanel) setupRemoveEngine(w http.ResponseWriter, r *http.Request) {
-	p.setupActionMu.Lock()
+	if !p.setupTryStart(w) {
+		return
+	}
 	defer p.setupActionMu.Unlock()
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST required", http.StatusMethodNotAllowed)
@@ -212,7 +337,8 @@ func (p *servicePanel) setupRemoveEngine(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	if request.Engine != setup.TheNoise && request.Engine != setup.PyTorch || !request.Confirm {
+	remove := setup.PictureEngineRemoval(request.Engine)
+	if remove == nil || !request.Confirm {
 		http.Error(w, "explicit confirmation of the fixed engine removal is required", http.StatusBadRequest)
 		return
 	}
@@ -232,14 +358,12 @@ func (p *servicePanel) setupRemoveEngine(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "the approved engine plan changed; review it again", http.StatusConflict)
 		return
 	}
-	if request.Engine == setup.PyTorch {
-		err = runner.RemovePyTorch(ctx)
-	} else {
-		err = runner.RemoveTheNoise(ctx)
-	}
-	if err != nil {
+	if err := remove(runner, ctx); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
+	}
+	if err := setup.SyncRetainedArchiveModelPaths(ctx, journal); err != nil {
+		log.Printf("setup: ComfyUI model folders: %v", err)
 	}
 	state, err = setupStatus(ctx, runner, journal)
 	if err != nil {
@@ -279,12 +403,12 @@ func (p *servicePanel) setupFeatureState() (setup.FeatureStatus, error) {
 	return setup.LemonadeFeatureStatus()
 }
 
-func (p *servicePanel) modelProgressSnapshot() map[string]modelProgress {
+func (p *servicePanel) modelProgressSnapshot() map[string]string {
 	p.modelProgressMu.Lock()
 	defer p.modelProgressMu.Unlock()
-	result := make(map[string]modelProgress, len(p.modelProgress))
+	result := make(map[string]string, len(p.modelProgress))
 	for key, value := range p.modelProgress {
-		result[key] = value
+		result[key] = string(jobwire.EncodeWorkProgress(&value))
 	}
 	return result
 }
@@ -313,7 +437,7 @@ func setupStatus(ctx context.Context, runner setup.Runner, journal setup.Journal
 	if err != nil {
 		return setupPanelStatus{}, err
 	}
-	return setupPanelStatus{Status: status, Approved: status.CurrentCatalog && state.Plan.ID != "" && state.ApprovedPlanID == state.Plan.ID}, nil
+	return setupPanelStatus{Catalog: journal.Catalog(), Status: status, Approved: status.CurrentCatalog && state.Plan.ID != "" && state.ApprovedPlanID == state.Plan.ID}, nil
 }
 
 func decodeSetupChoice(w http.ResponseWriter, r *http.Request) (setupChoiceRequest, bool) {
@@ -341,6 +465,19 @@ func (p *servicePanel) setupPlan(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if len(request.Selected) == 0 {
+		review, err := codingOnlyReview(request.CodingModelPlanID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		if volume, free, diskErr := setupInstallDisk(); diskErr == nil {
+			review.Disk = &setupDisk{Volume: volume, FreeBytes: free}
+		}
+		review.lookInArchive(r)
+		panelJSON(w, review)
+		return
+	}
 	journal, err := p.setupJournalForPanel()
 	if err != nil {
 		panelError(w, err)
@@ -356,6 +493,14 @@ func (p *servicePanel) setupPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reply := setupPlanReview{Plan: plan, OtherCopies: others.Copies}
+	if request.CodingModelPlanID != "" {
+		model := setup.CodingModelPlan()
+		if request.CodingModelPlanID != model.ID {
+			http.Error(w, "the selected coding model changed; review it again", http.StatusConflict)
+			return
+		}
+		reply.CodingModel = &model
+	}
 	ctx, cancel := panelCall(r)
 	defer cancel()
 	installed, err := journal.InstalledVersions(ctx)
@@ -364,21 +509,37 @@ func (p *servicePanel) setupPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reply.Replaces = setupReplacements(plan, installed)
-	if reply.Permissions, err = setupPermissions(plan.Selected); err != nil {
+	if reply.Added, err = journal.Catalog().AddedComponents(plan, installed); err != nil {
 		panelError(w, err)
 		return
 	}
-	if slices.Contains(plan.Selected, setup.ComfyUI) {
-		model := setup.ApprovedBF16Plan()
-		reply.PictureModel = &model
+	for _, added := range reply.Added {
+		reply.AddDownloadBytes += added.DownloadBytes
+		reply.AddDiskBytes += added.DiskBytes
 	}
+	setupPlanCompanions(journal.Catalog(), request.Selected, &reply)
+	if volume, free, diskErr := setupInstallDisk(); diskErr == nil {
+		reply.Disk = &setupDisk{Volume: volume, FreeBytes: free}
+	}
+	if reply.Permissions, err = setupPermissions(plan); err != nil {
+		panelError(w, err)
+		return
+	}
+	reply.PictureModel, _, reply.PictureModels, err = setupPictureSelection(ctx, journal, plan, request.PictureModelPlanIDs)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	reply.lookInArchive(r)
 	panelJSON(w, reply)
 }
 
 // setupIntent records approval for this exact catalog-backed plan. The Panel
 // then advances safe actions under that plan-wide approval.
 func (p *servicePanel) setupIntent(w http.ResponseWriter, r *http.Request) {
-	p.setupActionMu.Lock()
+	if !p.setupTryStart(w) {
+		return
+	}
 	defer p.setupActionMu.Unlock()
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST required", http.StatusMethodNotAllowed)
@@ -428,6 +589,24 @@ func (p *servicePanel) setupIntent(w http.ResponseWriter, r *http.Request) {
 	panelJSON(w, state)
 }
 
+// setupCatalog is the release catalogue alone. The page draws its choices
+// from it before the saved state arrives, so a slow or failed state read
+// never leaves Setup without switches.
+func (p *servicePanel) setupCatalog(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "GET required", http.StatusMethodNotAllowed)
+		return
+	}
+	journal, err := p.setupJournalForPanel()
+	if err != nil {
+		panelError(w, err)
+		return
+	}
+	panelJSON(w, journal.Catalog())
+}
+
+var setupReconcileProviderRecords = setup.ReconcileInstalledPictureProviderRecords
+
 func (p *servicePanel) setupState(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "GET required", http.StatusMethodNotAllowed)
@@ -445,11 +624,28 @@ func (p *servicePanel) setupState(w http.ResponseWriter, r *http.Request) {
 		panelError(w, err)
 		return
 	}
+	state.Actions, state.Outcomes = p.setupActionsNow(), p.setupOutcomesNow()
 	panelJSON(w, state)
+	// The provider owner can restore a missing installed record after an
+	// upgrade. The status reply never waits for that recovery.
+	reconcile := setupReconcileProviderRecords
+	go func() {
+		if err := reconcile(context.Background()); err != nil {
+			log.Printf("setup: %v", err)
+		}
+	}()
 }
 
 func (p *servicePanel) setupComponentAction(w http.ResponseWriter, r *http.Request, retry, recovery bool) {
-	p.setupActionMu.Lock()
+	// Try again waits for a running step: it never queues behind one,
+	// including one that took the lock a moment ago.
+	if (retry || recovery) && len(p.setupActionsNow()) > 0 {
+		http.Error(w, "a Setup step is still running; try again when it finishes", http.StatusConflict)
+		return
+	}
+	if !p.setupTryStart(w) {
+		return
+	}
 	defer p.setupActionMu.Unlock()
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST required", http.StatusMethodNotAllowed)
@@ -501,7 +697,7 @@ func (p *servicePanel) setupComponentAction(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	phase := effect.Phase
-	if !setupEffectAllowsAction(effect, retry, recovery) {
+	if !(retry && setupSameRootRetry(request.ComponentID, effect)) && !setupEffectAllowsAction(effect, retry, recovery) {
 		if retry {
 			http.Error(w, "retry is available only for a failed transfer or an uncertain install", http.StatusConflict)
 		} else if recovery {
@@ -513,13 +709,14 @@ func (p *servicePanel) setupComponentAction(w http.ResponseWriter, r *http.Reque
 	}
 	ctx, cancel := setupActionCall(r, phase, recovery)
 	defer cancel()
+	defer p.beginSetupAction(request.ComponentID, ctx)()
 	if retry {
 		_, err = runner.Retry(ctx, request.ComponentID)
 	} else {
 		_, err = runner.Advance(ctx, request.ComponentID)
 	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
+		setupActionFailed(w, err)
 		return
 	}
 	state, err := setupStatus(ctx, runner, journal)
@@ -540,6 +737,22 @@ func setupPhaseAllowsAction(phase setup.Phase, retry, recovery bool) bool {
 	// Staged and Checked are the health check and activation of an update.
 	return phase == setup.Pending || phase == setup.Requested || phase == setup.Verified ||
 		phase == setup.Staged || phase == setup.Checked
+}
+
+// setupActionFailed answers 503 for downloads unavailable and 409 for any other package step error.
+func setupActionFailed(w http.ResponseWriter, err error) {
+	if errors.Is(err, setup.ErrDownloadsUnavailable) {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	http.Error(w, err.Error(), http.StatusConflict)
+}
+
+// setupSameRootRetry is an interrupted PyTorch component setup: it stays
+// staged on its allocated root, and Runner.Retry owns its explicit
+// same-root retry.
+func setupSameRootRetry(componentID string, effect setup.Effect) bool {
+	return componentID == "pytorch-engine" && effect.Phase == setup.Staged && effect.ComponentRootKey != "" && !effect.Removing
 }
 
 // setupEffectAllowsAction also lets Advance remove versions an update
@@ -578,14 +791,15 @@ func (p *servicePanel) setupReconcilePrior(w http.ResponseWriter, r *http.Reques
 	panelJSON(w, reply)
 }
 
-// comfyRetireGuard keeps an earlier ComfyUI version while the registered
-// comfyui entry starts it, or while the Panel cannot read which program the
-// entry starts.
+// comfyRetireGuard checks the current registered program before retirement.
+// Native owned channels remain distinct from ordinary presence.
 func (p *servicePanel) comfyRetireGuard(ctx context.Context, componentID, root string) error {
-	if componentID != "comfyui-app" {
+	archive := officialPicture.archive
+	component, registration := archive.Component(), archive.Registration()
+	if componentID != component {
 		return nil
 	}
-	apps, err := p.setupApplicationsForPanel(ctx)
+	apps, err := p.nativeApplicationsForPanel(ctx, registration)
 	if err != nil {
 		return err
 	}
@@ -593,11 +807,17 @@ func (p *servicePanel) comfyRetireGuard(ctx context.Context, componentID, root s
 	if err != nil {
 		return err
 	}
-	registered, found, err := findComfyDescriptor(page)
+	registered, found, err := officialPicture.findWorkspaceDescriptor(page)
 	if err != nil {
 		return err
 	}
 	if !found {
+		if native, ok := apps.(*nativeApplications); ok {
+			if page.Outcome != fwire.ApplicationOutcomePage || native.owned {
+				return errors.New("native ownership could not be read; package preserved")
+			}
+			return nil
+		}
 		p.comfyAppsMu.Lock()
 		mine := p.comfyRegisteredDescriptor
 		p.comfyAppsMu.Unlock()
@@ -607,9 +827,84 @@ func (p *servicePanel) comfyRetireGuard(ctx context.Context, componentID, root s
 		registered = *mine
 	}
 	if setup.ProgramWithin(root, registered.Program) {
+		if native, ok := apps.(*nativeApplications); ok && native.owned {
+			return errors.New("a registered native owned instance still names this version; close it and register the updated application first")
+		}
 		return errors.New("the registered comfyui entry still starts the earlier version; register the updated ComfyUI first")
 	}
 	return nil
+}
+
+// setupAdvanceNextReply is the plan state after one automatic transition
+// and the component it advanced, empty when none could advance now.
+type setupAdvanceNextReply struct {
+	setupPanelStatus
+	Advanced string `json:"advanced,omitempty"`
+}
+
+// setupAdvanceNext makes the approved plan's next automatic transition. The
+// selection is setup.Status.NextAutomatic, the one package driver the setup
+// step also uses (architect review 25, A2); the page names only the plan.
+func (p *servicePanel) setupAdvanceNext(w http.ResponseWriter, r *http.Request) {
+	if !p.setupTryStart(w) {
+		return
+	}
+	defer p.setupActionMu.Unlock()
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST required", http.StatusMethodNotAllowed)
+		return
+	}
+	request, ok := decodeSetupChoice(w, r)
+	if !ok {
+		return
+	}
+	if request.PlanID == "" || request.ComponentID != "" {
+		http.Error(w, "the reviewed plan is required, and Setup chooses the component", http.StatusBadRequest)
+		return
+	}
+	runner, journal, err := p.setupRunnerForPanel()
+	if err != nil {
+		panelError(w, err)
+		return
+	}
+	statusCtx, statusCancel := panelCall(r)
+	current, err := setupStatus(statusCtx, runner, journal)
+	statusCancel()
+	if err != nil {
+		panelError(w, err)
+		return
+	}
+	if current.Plan.ID == "" || current.Plan.ID != request.PlanID || !current.Approved {
+		http.Error(w, "approved setup plan changed; review and approve it again", http.StatusConflict)
+		return
+	}
+	next := current.Status.NextAutomatic()
+	cancelCtx, cancelDone := panelCall(r)
+	cancelled := setupInstallCancelled(cancelCtx, journal, current.Plan.ID)
+	cancelDone()
+	if next == "" || cancelled {
+		panelJSON(w, setupAdvanceNextReply{setupPanelStatus: current})
+		return
+	}
+	var phase setup.Phase
+	for _, component := range current.Components {
+		if component.ID == next {
+			phase = component.Effect.Phase
+		}
+	}
+	ctx, cancel := setupActionCall(r, phase, false)
+	defer cancel()
+	defer p.beginSetupAction(next, ctx)()
+	if _, err := runner.Advance(ctx, next); err != nil {
+		setupActionFailed(w, err)
+		return
+	}
+	state, err := setupStatus(ctx, runner, journal)
+	if err != nil {
+		panelError(w, err)
+		return
+	}
+	panelJSON(w, setupAdvanceNextReply{setupPanelStatus: state, Advanced: next})
 }
 
 func (p *servicePanel) setupAdvance(w http.ResponseWriter, r *http.Request) {
@@ -659,7 +954,9 @@ func (p *servicePanel) setupFeatureStatus(w http.ResponseWriter, r *http.Request
 }
 
 func (p *servicePanel) setupAddFeature(w http.ResponseWriter, r *http.Request) {
-	p.setupActionMu.Lock()
+	if !p.setupTryStart(w) {
+		return
+	}
 	defer p.setupActionMu.Unlock()
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST required", http.StatusMethodNotAllowed)
@@ -737,10 +1034,13 @@ func (p *servicePanel) setupModelStatus(w http.ResponseWriter, r *http.Request) 
 	} else if engine == setup.PyTorch {
 		plan = setup.PyTorchModelPlan()
 	}
-	reply := setupModelReply{Engine: engine, EngineInstalled: installedSetupEngine(state, engine), Enabled: selected && state.Approved, SetupPlanID: state.Plan.ID, Plan: plan, Progress: p.modelProgressSnapshot()}
-	if engine == setup.Lemonade {
-		reply.Choices = setup.PictureModelChoices()
+	if engine == setup.PyTorch {
+		if _, fixed, fixedErr := p.setupModelForEngine(engine); fixedErr == nil {
+			plan = fixed
+		}
 	}
+	reply := setupModelReply{Engine: engine, EngineInstalled: installedSetupEngine(state, engine), Enabled: selected && state.Approved, SetupPlanID: state.Plan.ID, Plan: plan, Progress: p.modelProgressSnapshot()}
+	reply.Choices = engineChoices(engine, plan.ID)
 	if !reply.Enabled {
 		panelJSON(w, reply)
 		return
@@ -777,14 +1077,20 @@ func (p *servicePanel) setupModelStatus(w http.ResponseWriter, r *http.Request) 
 		panelJSON(w, reply)
 		return
 	}
-	if engine == setup.Lemonade {
-		reply.ChoiceStatus = p.choiceStatuses(ctx)
+	reply.DefaultPending, _ = setup.StarterDefaultPending(ctx, journal, engine)
+	if engine == setup.PyTorch {
+		reply.DefaultPending, _ = setup.PictureDefaultPending(ctx, journal, plan)
+	}
+	if len(reply.Choices) > 0 {
+		reply.ChoiceStatus = p.choiceStatuses(ctx, engine, plan.ID)
 	}
 	panelJSON(w, reply)
 }
 
 func (p *servicePanel) setupModelAction(w http.ResponseWriter, r *http.Request, action string) {
-	p.setupActionMu.Lock()
+	if !p.setupTryStart(w) {
+		return
+	}
 	defer p.setupActionMu.Unlock()
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST required", http.StatusMethodNotAllowed)
@@ -816,14 +1122,14 @@ func (p *servicePanel) setupModelAction(w http.ResponseWriter, r *http.Request, 
 		http.Error(w, "trusted picture model setup is not available", http.StatusServiceUnavailable)
 		return
 	}
-	if engine != setup.Lemonade && request.PlanID != fixedPlan.ID {
+	if engine != setup.Lemonade && request.PlanID != fixedPlan.ID && !isEngineChoice(engine, request.PlanID) {
 		http.Error(w, "the reviewed model plan is bound to a different engine", http.StatusConflict)
 		return
 	}
 	// An offered plan's request names its plan; the starter plan's may not.
 	controller, plan, offered := starter, fixedPlan, request.PlanID != "" && request.PlanID != fixedPlan.ID
 	if offered {
-		if engine != setup.Lemonade {
+		if !isEngineChoice(engine, request.PlanID) {
 			http.Error(w, "model plan is bound to a different fixed engine", http.StatusConflict)
 			return
 		}
@@ -867,7 +1173,9 @@ func (p *servicePanel) setupModelAction(w http.ResponseWriter, r *http.Request, 
 			http.Error(w, "add local picture support before preparing its model", http.StatusConflict)
 			return
 		}
-		if offered {
+		// The PyTorch engine's offers are separate toggles; a Lemonade
+		// offer is staged into the provider its starter model configured.
+		if offered && engine == setup.Lemonade {
 			current, statusErr := starter.Status(ctx)
 			if statusErr != nil || !current.ProviderConfigured {
 				http.Error(w, "Prepare the starter picture model first.", http.StatusConflict)
@@ -900,46 +1208,9 @@ func (p *servicePanel) setupModelAction(w http.ResponseWriter, r *http.Request, 
 				return
 			}
 		}
-		if offered || engine != setup.Lemonade || !slices.Contains(mainState.Plan.Selected, setup.ComfyUI) {
-			status, err = controller.Configure(ctx, false, func(done, total int64) error { p.setModelProgress("provider", done, total); return ctx.Err() })
-			p.clearModelProgress("provider")
-			break
-		}
-		_, journal, journalErr := p.setupRunnerForPanel()
-		if journalErr != nil {
-			panelError(w, journalErr)
-			return
-		}
-		paths, pathErr := p.openInstalledComfy(ctx, journal)
-		if pathErr != nil {
-			http.Error(w, pathErr.Error(), http.StatusConflict)
-			return
-		}
-		if pathErr = p.ensureComfyImagePolicy(ctx, paths); pathErr != nil {
-			http.Error(w, pathErr.Error(), http.StatusConflict)
-			return
-		}
 		status, err = controller.Configure(ctx, false, func(done, total int64) error { p.setModelProgress("provider", done, total); return ctx.Err() })
 		p.clearModelProgress("provider")
 	case "reconcile":
-		if offered || engine != setup.Lemonade || !slices.Contains(mainState.Plan.Selected, setup.ComfyUI) {
-			status, err = controller.ReconcileProvider(ctx)
-			break
-		}
-		_, journal, journalErr := p.setupRunnerForPanel()
-		if journalErr != nil {
-			panelError(w, journalErr)
-			return
-		}
-		paths, pathErr := p.openInstalledComfy(ctx, journal)
-		if pathErr != nil {
-			http.Error(w, pathErr.Error(), http.StatusConflict)
-			return
-		}
-		if pathErr = p.ensureComfyImagePolicy(ctx, paths); pathErr != nil {
-			http.Error(w, pathErr.Error(), http.StatusConflict)
-			return
-		}
 		status, err = controller.ReconcileProvider(ctx)
 	default:
 		http.Error(w, "unknown picture model action", http.StatusNotFound)
@@ -949,10 +1220,68 @@ func (p *servicePanel) setupModelAction(w http.ResponseWriter, r *http.Request, 
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
-	if status.ProviderConfigured && status.Ready && engine != setup.Lemonade {
-		if _, err := journal.ConfirmConfiguration(ctx, mainState.Plan.ID, string(engine)+"-model"); err != nil {
-			http.Error(w, err.Error(), http.StatusConflict)
-			return
+	// A ready PyTorch toggle stands on its own, as the starter does; the
+	// engine serves one Klein set (the full-precision one once prepared)
+	// and ComfyUI reads every prepared toggle.
+	pyTorchToggle := engine == setup.PyTorch
+	if status.ProviderConfigured && status.Ready && (!offered || pyTorchToggle) {
+		stagedOnly := plan.StagesPictureFilesOnly()
+		if !stagedOnly {
+			if _, err := journal.ConfirmConfiguration(ctx, mainState.Plan.ID, string(engine)+"-model"); err != nil {
+				http.Error(w, err.Error(), http.StatusConflict)
+				return
+			}
+		}
+		if pyTorchToggle {
+			// ComfyUI's own loaders find the model at their next start.
+			if err := setup.SyncRetainedArchiveModelPaths(ctx, journal); err != nil {
+				log.Printf("setup: ComfyUI model folders: %v", err)
+			}
+		}
+		// The ready model becomes the picture model of the account's apps
+		// once; a failed write stays pending for the next action, and the
+		// person's later choice stays as they set it. For the PyTorch
+		// engine it is the set its registration serves.
+		pending, err := setup.StarterDefaultPending(ctx, journal, engine)
+		model := plan.Model
+		if pyTorchToggle {
+			pending, err = setup.PictureDefaultPending(ctx, journal, plan)
+			pending = pending && !stagedOnly
+			if err == nil && pending {
+				// Without a recorded registration the plan's own set is
+				// the one Setup registers.
+				if served, servedErr := setup.PyTorchServedModel(ctx, journal); servedErr == nil && served != "" {
+					model = served
+				}
+				// The default is the account's: a second Klein toggle
+				// changes it only when its set became the served one.
+				var due bool
+				if due, err = setup.PictureDefaultDue(ctx, journal, plan, model); err == nil && !due {
+					pending = false
+					if markErr := setup.MarkPictureDefaultWritten(ctx, journal, plan); markErr != nil {
+						log.Printf("setup: %s picture default: %v", engine, markErr)
+					}
+				}
+			}
+		}
+		if err != nil {
+			log.Printf("setup: %s picture default: %v", engine, err)
+		}
+		if pending {
+			if err := setupImageDefault(ctx, model); err != nil {
+				http.Error(w, "the picture model is ready; making it the picture model for your apps failed: "+err.Error(), http.StatusConflict)
+				return
+			}
+			mark := setup.MarkStarterDefaultWritten(ctx, journal, engine)
+			if pyTorchToggle {
+				mark = setup.MarkPictureDefaultWritten(ctx, journal, plan)
+			}
+			if mark != nil {
+				log.Printf("setup: %s picture default: %v", engine, mark)
+			}
+		}
+		if err := setupFillImageDefault(ctx, journal); err != nil {
+			log.Printf("setup: %s picture default: %v", engine, err)
 		}
 	}
 	reply := setupModelReply{Engine: engine, EngineInstalled: installedSetupEngine(mainState, engine), Enabled: true, Available: true, SetupPlanID: mainState.Plan.ID, Plan: fixedPlan, Status: status, Progress: p.modelProgressSnapshot()}
@@ -961,9 +1290,8 @@ func (p *servicePanel) setupModelAction(w http.ResponseWriter, r *http.Request, 
 		// progress is in ChoiceStatus.
 		reply.Status, _ = starter.Status(ctx)
 	}
-	if engine == setup.Lemonade {
-		reply.Choices = setup.PictureModelChoices()
-		reply.ChoiceStatus = p.choiceStatuses(ctx)
+	if reply.Choices = engineChoices(engine, fixedPlan.ID); len(reply.Choices) > 0 {
+		reply.ChoiceStatus = p.choiceStatuses(ctx, engine, fixedPlan.ID)
 	}
 	reply.Feature, _ = p.setupEngineFeatureState(engine)
 	reply.Disk, err = starter.DiskPreflight()
@@ -1000,6 +1328,11 @@ func setupActionTimeout(phase setup.Phase, recovery bool) time.Duration {
 	return 2 * time.Minute
 }
 
+// setupActionCall outlives the page's request: a step that installs or
+// checks a package finishes and records its phase when the person closes
+// the Panel or leaves the page. On 2026-11-08 a closed page cancelled the
+// PyTorch component setup's journal transition after the component itself
+// was ready, and the plan stayed at staged.
 func setupActionCall(r *http.Request, phase setup.Phase, recovery bool) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(r.Context(), setupActionTimeout(phase, recovery))
+	return context.WithTimeout(context.WithoutCancel(r.Context()), setupActionTimeout(phase, recovery))
 }

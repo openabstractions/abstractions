@@ -32,7 +32,7 @@ func TestANativeHostPreloadsOnlyWhenItsDeclarationSaysSo(t *testing.T) {
 			p := &runtimeProviders{principal: principal, report: func(error) {}, supervisors: map[string]*providerSupervisor{}, changes: make(chan struct{})}
 			f := providerFile{Declaration: providerDeclaration{Name: "fixture", Program: program, Endpoint: "private-fixture", Transport: transportNative,
 				Contracts: c.contracts, Models: []string{"owner/fixture-model"}, Resources: []string{"profile:chat"}, Activation: wire.ActivationOnDemand.String()}}
-			p.supervisors[f.Declaration.Name] = newProviderSupervisor(p, f)
+			p.supervisors[f.Declaration.Name] = newFixtureProviderSupervisor(t, p, f)
 			hosts := p.nativeInferenceHosts()
 			if len(hosts) != 1 || hosts[0].Preloads != c.want {
 				t.Fatalf("hosts %d, preloads %v; want %v", len(hosts), len(hosts) == 1 && hosts[0].Preloads, c.want)

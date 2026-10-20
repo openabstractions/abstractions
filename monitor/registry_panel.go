@@ -23,14 +23,18 @@ import (
 // part carries its own outcome or error, so one refusal leaves the others
 // readable.
 type registryView struct {
-	Hosts         iclient.HostList       `json:"hosts"`
-	HostsError    string                 `json:"hosts_error,omitempty"`
-	Providers     fwire.DeclarationList  `json:"providers"`
-	ProviderError string                 `json:"providers_error,omitempty"`
-	Models        rclient.ModelsSnapshot `json:"models"`
-	ModelsError   string                 `json:"models_error,omitempty"`
-	Remote        []rclient.HostState    `json:"remote"`
-	RemoteError   string                 `json:"remote_error,omitempty"`
+	Hosts         iclient.HostList      `json:"hosts"`
+	HostsError    string                `json:"hosts_error,omitempty"`
+	Providers     fwire.DeclarationList `json:"providers"`
+	ProviderError string                `json:"providers_error,omitempty"`
+	Remote        []rclient.HostState   `json:"remote"`
+	RemoteError   string                `json:"remote_error,omitempty"`
+	// Titles reads each declaration by its provider title (providerDisplay),
+	// keyed by its name; the name itself stays on the row's details.
+	Titles map[string]string `json:"titles"`
+	// Paired reports a remote runtime declaration: only then is a failed
+	// read of other PCs' providers an error the page shows.
+	Paired bool `json:"paired"`
 }
 
 // registryRoutes serves the registry page and its reading. Hosts come from the
@@ -50,6 +54,7 @@ func (p *servicePanel) registryRoutes(mux *http.ServeMux, key string) {
 	})
 	mux.HandleFunc("/registry/view", guard(key, p.registryView))
 	mux.HandleFunc("/registry/providers", guard(key, p.registryProviders))
+	mux.HandleFunc("/registry/programs", guard(key, p.programReviews))
 	mux.HandleFunc("/registry/selection", guard(key, p.registrySelection))
 }
 
@@ -75,26 +80,21 @@ var registryProviderName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 var registryEndpoint = regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]{0,63}$`)
 var registryCapability = regexp.MustCompile(`^[a-z0-9][a-z0-9._/:@-]{0,255}$`)
 var selectionPolicyName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
-var selectionCredentialName = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
 
-type registrySelectionCandidate struct {
-	Model      string `json:"model"`
-	Placement  string `json:"placement"`
-	Credential string `json:"credential"`
-	Provider   string `json:"provider"`
-}
+type registrySelectionCandidate = iwire.SelectionCandidateV2
 
 type registrySelectionEdit struct {
-	Edit          string                       `json:"edit"`
-	TargetProgram string                       `json:"target_program"`
-	Name          string                       `json:"name"`
-	Revision      string                       `json:"revision"`
-	Candidates    []registrySelectionCandidate `json:"candidates"`
+	Edit           string                       `json:"edit"`
+	TargetProgram  string                       `json:"target_program"`
+	AccountDefault bool                         `json:"account_default"`
+	Name           string                       `json:"name"`
+	Revision       string                       `json:"revision"`
+	Candidates     []registrySelectionCandidate `json:"-"`
 }
 
 type registrySelectionResult struct {
-	Read   *iclient.SelectionReadV2 `json:"read,omitempty"`
-	Change *iclient.SelectionChange `json:"change,omitempty"`
+	Read   string `json:"read,omitempty"`
+	Change string `json:"change,omitempty"`
 }
 
 func (e registryProviderEdit) valid() bool {
@@ -128,12 +128,19 @@ func (e registryProviderEdit) valid() bool {
 }
 
 func (e registrySelectionEdit) valid() bool {
+	if e.AccountDefault && e.TargetProgram != "" {
+		return false
+	}
 	if e.TargetProgram != "" && (!identity.ValidSubjectProgram(e.TargetProgram) || !filepath.IsAbs(e.TargetProgram)) || !selectionPolicyName.MatchString(e.Name) {
 		return false
 	}
 	switch e.Edit {
 	case "read":
 		return e.Revision == "" && len(e.Candidates) == 0
+	case "effective":
+		// What an app without its own policy of this name follows: the
+		// selection owner's resolution, read in this Panel's own scope.
+		return !e.AccountDefault && e.TargetProgram == "" && e.Revision == "" && len(e.Candidates) == 0
 	case "delete":
 		return rightsText(e.Revision, 128) && len(e.Candidates) == 0
 	case "put":
@@ -145,12 +152,12 @@ func (e registrySelectionEdit) valid() bool {
 			if !rightsText(c.Model, 256) || strings.TrimSpace(c.Model) != c.Model {
 				return false
 			}
-			if c.Placement == "local" {
+			if c.Placement == iwire.CandidatePlacementLocal {
 				if c.Credential != "" {
 					return false
 				}
-			} else if c.Placement == "hosted" {
-				if !selectionCredentialName.MatchString(c.Credential) {
+			} else if c.Placement == iwire.CandidatePlacementHosted {
+				if !validCredentialName(c.Credential) {
 					return false
 				}
 			} else {
@@ -159,7 +166,7 @@ func (e registrySelectionEdit) valid() bool {
 			if c.Provider != "" && !registryProviderName.MatchString(c.Provider) {
 				return false
 			}
-			key := c.Placement + "\x00" + c.Model + "\x00" + c.Credential + "\x00" + c.Provider
+			key := c.Placement.String() + "\x00" + c.Model + "\x00" + c.Credential + "\x00" + c.Provider
 			if seen[key] {
 				return false
 			}
@@ -230,39 +237,58 @@ func (p *servicePanel) registrySelection(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	result := registrySelectionResult{}
+	scope := "program"
+	if edit.AccountDefault {
+		scope = "account default"
+	}
 	switch edit.Edit {
 	case "read":
-		p.logAction(ctx, "registry.selection.read", map[string]string{"selection.target_program": edit.TargetProgram, "selection.name": edit.Name})
-		read, err := operator.Read(ctx, edit.TargetProgram, edit.Name)
+		p.logAction(ctx, "registry.selection.read", map[string]string{"selection.scope": scope, "selection.target_program": edit.TargetProgram, "selection.name": edit.Name})
+		var read iclient.SelectionReadV2
+		if edit.AccountDefault {
+			read, err = operator.ReadAccountDefault(ctx, edit.Name)
+		} else {
+			read, err = operator.Read(ctx, edit.TargetProgram, edit.Name)
+		}
 		if err != nil {
 			panelError(w, err)
 			return
 		}
-		result.Read = &read
+		result.Read = string(iwire.EncodeSelectionReadV2(&read))
+	case "effective":
+		read, err := operator.ReadEffective(ctx, edit.Name)
+		if err != nil {
+			panelError(w, err)
+			return
+		}
+		result.Read = string(iwire.EncodeSelectionReadV2(&read))
 	case "put":
-		candidates := make([]iclient.SelectionCandidateV2, 0, len(edit.Candidates))
-		for _, c := range edit.Candidates {
-			placement := iwire.CandidatePlacementLocal
-			if c.Placement == "hosted" {
-				placement = iwire.CandidatePlacementHosted
-			}
-			candidates = append(candidates, iclient.SelectionCandidateV2{Model: c.Model, Placement: placement, Credential: c.Credential, Provider: c.Provider})
+		candidates := edit.Candidates
+		p.logAction(ctx, "registry.selection.put", map[string]string{"selection.scope": scope, "selection.target_program": edit.TargetProgram, "selection.name": edit.Name, "selection.revision": edit.Revision, "selection.candidates": strconv.Itoa(len(candidates))})
+		var change iclient.SelectionChange
+		if edit.AccountDefault {
+			change, err = operator.PutAccountDefault(ctx, edit.Revision, iclient.SelectionPolicyV2{Name: edit.Name, Candidates: candidates})
+		} else {
+			change, err = operator.Put(ctx, edit.TargetProgram, edit.Revision, iclient.SelectionPolicyV2{Name: edit.Name, Candidates: candidates})
 		}
-		p.logAction(ctx, "registry.selection.put", map[string]string{"selection.target_program": edit.TargetProgram, "selection.name": edit.Name, "selection.revision": edit.Revision, "selection.candidates": strconv.Itoa(len(candidates))})
-		change, err := operator.Put(ctx, edit.TargetProgram, edit.Revision, iclient.SelectionPolicyV2{Name: edit.Name, Candidates: candidates})
 		if err != nil {
 			panelError(w, err)
 			return
 		}
-		result.Change = &change
+		result.Change = string(iwire.EncodeSelectionChange(&change))
 	case "delete":
-		p.logAction(ctx, "registry.selection.delete", map[string]string{"selection.target_program": edit.TargetProgram, "selection.name": edit.Name, "selection.revision": edit.Revision})
-		change, err := operator.DeletePolicy(ctx, edit.TargetProgram, edit.Revision, edit.Name)
+		p.logAction(ctx, "registry.selection.delete", map[string]string{"selection.scope": scope, "selection.target_program": edit.TargetProgram, "selection.name": edit.Name, "selection.revision": edit.Revision})
+		var change iclient.SelectionChange
+		if edit.AccountDefault {
+			change, err = operator.DeleteAccountDefault(ctx, edit.Revision, edit.Name)
+		} else {
+			change, err = operator.DeletePolicy(ctx, edit.TargetProgram, edit.Revision, edit.Name)
+		}
 		if err != nil {
 			panelError(w, err)
 			return
 		}
-		result.Change = &change
+		result.Change = string(iwire.EncodeSelectionChange(&change))
 	}
 	panelJSON(w, result)
 }
@@ -275,7 +301,7 @@ func (p *servicePanel) registryView(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := panelCall(r)
 	defer cancel()
 	view := registryView{Hosts: iclient.HostList{Hosts: []iclient.HostState{}}, Providers: fwire.DeclarationList{Declarations: []fwire.DeclarationState{}},
-		Models: rclient.ModelsSnapshot{Models: []rclient.Family{}}, Remote: []rclient.HostState{}}
+		Remote: []rclient.HostState{}, Titles: map[string]string{}}
 	machine := panelMachine()
 	if operator, err := machine.ResolveInferenceOperator(ctx, facade.Requirements{Scope: facade.ScopeLocal}); err != nil {
 		view.HostsError = err.Error()
@@ -290,23 +316,25 @@ func (p *servicePanel) registryView(w http.ResponseWriter, r *http.Request) {
 		view.ProviderError = err.Error()
 	} else {
 		view.Providers = declarations
+		for _, state := range declarations.Declarations {
+			title, _ := providerDisplay(state.Declaration.Name, shippedProvider(state))
+			if reservedTitle(title) {
+				title, _ = providerDisplay(state.Declaration.Name, false)
+			}
+			view.Titles[state.Declaration.Name] = title
+			if state.Role == fwire.DeclarationRoleRemote {
+				view.Paired = true
+			}
+		}
 	}
 	if routes, err := machine.ResolveRouter(ctx, facade.Requirements{Scope: facade.ScopeLocal}); err != nil {
-		view.ModelsError = err.Error()
+		view.RemoteError = err.Error()
+	} else if snapshot, err := routes.HostsContext(ctx, false); err != nil {
 		view.RemoteError = err.Error()
 	} else {
-		if models, err := routes.ModelsContext(ctx, true); err != nil {
-			view.ModelsError = err.Error()
-		} else {
-			view.Models = models
-		}
-		if snapshot, err := routes.HostsContext(ctx, false); err != nil {
-			view.RemoteError = err.Error()
-		} else {
-			for _, h := range snapshot.Hosts {
-				if h.Domain != "" && h.Domain != h.Host {
-					view.Remote = append(view.Remote, h)
-				}
+		for _, h := range snapshot.Hosts {
+			if h.Domain != "" && h.Domain != h.Host {
+				view.Remote = append(view.Remote, h)
 			}
 		}
 	}

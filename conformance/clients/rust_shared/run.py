@@ -18,7 +18,7 @@ ROOT=Path(__file__).resolve().parents[3]
 HERE=Path(__file__).resolve().parent
 CHECK=ROOT/'openabstractions-flat/abstraction-identity/cpp/check_link_dependencies.py'
 sys.path.insert(0,str(HERE.parent))
-from workspace import cmake_for, certify_compiler, build_root, CERTIFIES, source_revision, dry_run_stop, DRY_RUN_HELP
+from workspace import cmake_for, certify_compiler, build_root, copy_native_rust_identity, CERTIFIES, source_revision, dry_run_stop, DRY_RUN_HELP
 
 def main():
  p=argparse.ArgumentParser(description=__doc__+'\n'+CERTIFIES,formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -47,7 +47,8 @@ def main():
   certify_compiler(base/'native')
   run([cmake,'--build',base/'native','--config','Release'],ROOT,cmake_env);run([cmake,'--install',base/'native','--config','Release'],ROOT,cmake_env)
   run([sys.executable,CHECK,'--self-test','--prefix',prefix])
-  crate=base/'ipc';shutil.copytree(ROOT/'openabstractions-flat/abstraction-identity/rust',crate)
+  crate=base/'ipc'
+  copy_native_rust_identity(ROOT/'openabstractions-flat/abstraction-identity',base/'ipc')
   # abstraction-ipc depends on the pure frame contract through ../rust-frame.
   shutil.copytree(ROOT/'openabstractions-flat/abstraction-identity/rust-frame',base/'rust-frame')
   env=dict(os.environ,OA_IPC_PREFIX=str(prefix),CARGO_TARGET_DIR=str(base/'target'))

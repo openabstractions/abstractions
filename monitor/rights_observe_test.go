@@ -10,34 +10,42 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 )
 
-type revisionSourceFunc func(context.Context, string, int64) (rightsclient.PolicyPage, error)
+type revisionSourceFunc func(context.Context, string, int64) (rightsclient.PolicyObservation, error)
 
-func (f revisionSourceFunc) ListPolicyContext(ctx context.Context, cursor string, limit int64) (rightsclient.PolicyPage, error) {
-	return f(ctx, cursor, limit)
+func (f revisionSourceFunc) ObservePolicyPagesContext(ctx context.Context, cursor string, wait int64) func(func(rightsclient.PolicyObservation, error) bool) {
+	return func(yield func(rightsclient.PolicyObservation, error) bool) {
+		page, err := f(ctx, cursor, wait)
+		yield(page, err)
+	}
 }
 
 func TestRightsWatchHealthAndCancellation(t *testing.T) {
 	for _, outcome := range []string{"unavailable", "forbidden"} {
 		t.Run(outcome, func(t *testing.T) {
 			var calls atomic.Int32
-			reader := revisionSourceFunc(func(ctx context.Context, _ string, _ int64) (rightsclient.PolicyPage, error) {
-				if calls.Add(1) <= 2 {
-					return rightsclient.PolicyPage{Outcome: wire.PolicyPageOutcomePage, Revision: "old"}, nil
-				}
+			reader := revisionSourceFunc(func(ctx context.Context, _ string, _ int64) (rightsclient.PolicyObservation, error) {
+				calls.Add(1)
 				if outcome == "unavailable" {
-					return rightsclient.PolicyPage{}, errors.New("outage")
+					return rightsclient.PolicyObservation{}, errors.New("outage")
 				}
-				return rightsclient.PolicyPage{Outcome: wire.PolicyPageOutcomeForbidden}, nil
+				return rightsclient.PolicyObservation{Outcome: wire.PolicyObservationOutcomeForbidden}, nil
 			})
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
-			got, err := followRightsRevision(ctx, reader, "old", time.Time{}, time.Millisecond, 100*time.Millisecond)
-			if err != nil || got.Outcome != outcome || got.Revision != "" {
+			got, err := followRightsRevision(ctx, reader, "cursor", 100*time.Millisecond)
+			if outcome == "unavailable" {
+				if err == nil || err.Error() != "outage" || calls.Load() != 1 || got.Revision != "" {
+					t.Fatal(got, err, calls.Load())
+				}
+				return
+			}
+			if err != nil || got.Outcome != outcome || got.Revision != "" || calls.Load() != 1 {
 				t.Fatalf("last good state concealed refusal: %+v %v", got, err)
 			}
 		})
@@ -45,16 +53,16 @@ func TestRightsWatchHealthAndCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	started := make(chan struct{})
 	var calls atomic.Int32
-	reader := revisionSourceFunc(func(ctx context.Context, _ string, _ int64) (rightsclient.PolicyPage, error) {
+	reader := revisionSourceFunc(func(ctx context.Context, _ string, _ int64) (rightsclient.PolicyObservation, error) {
 		if calls.Add(1) == 1 {
 			close(started)
 		}
 		<-ctx.Done()
-		return rightsclient.PolicyPage{}, ctx.Err()
+		return rightsclient.PolicyObservation{}, ctx.Err()
 	})
 	done := make(chan error, 1)
 	go func() {
-		_, err := followRightsRevision(ctx, reader, "old", time.Time{}, time.Millisecond, time.Millisecond)
+		_, err := followRightsRevision(ctx, reader, "cursor", time.Millisecond)
 		done <- err
 	}()
 	<-started
@@ -87,6 +95,10 @@ func TestPanelRightsWatchSecondOperatorExpiryAndAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	initial, err := second.ObservePolicyContext(ctx, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	program, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +106,9 @@ func TestPanelRightsWatchSecondOperatorExpiryAndAdmission(t *testing.T) {
 	rule := rightsclient.PolicyRule{Subject: rightsclient.Subject{Account: "watched target", Program: program}, Action: panelRightsAction, Resource: "exact-watch-resource", Permit: true}
 	h := (&servicePanel{}).handler("test-key")
 	done := make(chan *httptest.ResponseRecorder, 1)
-	go func() { done <- panelRequest(t, h, "/rights/observe?revision="+url.QueryEscape(page.Revision), nil) }()
+	go func() {
+		done <- panelRequest(t, h, "/rights/observe?revision="+url.QueryEscape(page.Revision)+"&after="+url.QueryEscape(initial.Next), nil)
+	}()
 	// This public operator call is independent of the Panel's edit route.
 	edit, err := second.SetRuleContext(ctx, page.Revision, rule)
 	if err != nil || edit.Outcome != wire.PolicyEditOutcomeApplied {
@@ -117,11 +131,15 @@ func TestPanelRightsWatchSecondOperatorExpiryAndAdmission(t *testing.T) {
 	if err != nil || read.Record == nil {
 		t.Fatal(read, err)
 	}
-	expiry, err := time.Parse("2006-01-02T15:04:05.000Z", read.Record.Expires)
+	_, err = time.Parse("2006-01-02T15:04:05.000Z", read.Record.Expires)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := followRightsRevision(ctx, second, expiring.Revision, expiry, 10*time.Millisecond, time.Second)
+	beforeExpiry, err := second.ObservePolicyContext(ctx, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := followRightsRevision(ctx, second, beforeExpiry.Next, time.Second)
 	if err != nil || got.Outcome != "changed" || got.Revision != expiring.Revision {
 		t.Fatal("expiry changed content revision or failed invalidation", got, err)
 	}
@@ -149,7 +167,7 @@ func TestPanelRightsWatchSecondOperatorExpiryAndAdmission(t *testing.T) {
 
 func TestPanelRightsWatchInputAndCancelledRequest(t *testing.T) {
 	h := (&servicePanel{}).handler("test-key")
-	for _, path := range []string{"/rights/observe?refresh_at=tomorrow", "/rights/observe?revision=" + url.QueryEscape(string([]byte{1}))} {
+	for _, path := range []string{"/rights/observe?after=" + strings.Repeat("x", 257), "/rights/observe?revision=" + url.QueryEscape(string([]byte{1}))} {
 		if response := panelRequest(t, h, path, nil); response.Code != 400 {
 			t.Fatal(response.Code, response.Body)
 		}

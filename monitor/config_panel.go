@@ -43,12 +43,14 @@ func (p *servicePanel) observeSettings(w http.ResponseWriter, r *http.Request) {
 		panelError(w, err)
 		return
 	}
-	value, err := observer.ObserveContext(ctx, configclient.RunOverrides{}, cursor, settingsObserveWait.Milliseconds())
-	if err != nil {
-		panelError(w, err)
-		return
-	}
-	panelJSON(w, value)
+	observer.ObservePagesContext(ctx, configclient.RunOverrides{}, cursor, settingsObserveWait.Milliseconds())(func(value configclient.ConfigObservation, err error) bool {
+		if err != nil {
+			panelError(w, err)
+		} else {
+			panelJSON(w, value)
+		}
+		return false // The browser owns the next bounded HTTP observation.
+	})
 }
 
 // panelVersionText is the About row's Version: the module version this

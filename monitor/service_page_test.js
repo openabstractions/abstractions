@@ -6,7 +6,7 @@
 // in where a page's source only carries the Go "` + serviceCommonScript + `"
 // glue, so every page still runs as the one script monitor/*_page_test.js
 // conventionally extracts.
-const fs = require('fs'), vm = require('vm'), assert = require('assert');
+const fs = require('fs'), vm = require('./panel_record_test_helper.js').vm, assert = require('assert');
 const { assertPanelRules } = require('./static/panel_rules.js');
 const { allowlistedClasses } = require('./panel_fake_dom_test_helper.js');
 
@@ -53,29 +53,28 @@ function node(tag) {
  return {tag:tag||'', tagName:(tag||'div').toUpperCase(), value:'', textContent:'', disabled:false, open:false, listeners:{}, children:[], replaceChildren(){this.children=[]}, append(...v){this.children.push(...v)}, setAttribute(k,v){(this.attrs=this.attrs||{})[k]=String(v)}, removeAttribute(k){if(this.attrs)delete this.attrs[k]}, click(){}, focus(){this.focused=true}, addEventListener(type,fn){(this.listeners[type]=this.listeners[type]||[]).push(fn)}, dispatch(type){for(const fn of this.listeners[type]||[])fn()}};
 }
 function descendants(n) { return (n.children||[]).flatMap(child=>[child,...descendants(child)]) }
-// Saved permissions read by app: a group per app (its heading carries the
-// exact program and account on its title), one oa-row per permission, and
-// the permission's Details right after its row.
+// Saved permissions read by app: a group retains its exact subject and one
+// closed Technical details holds the group's rule records.
 function permissionRows(container=element('rights')) { return descendants(container).filter(n=>n.className==='oa-row'&&n.permission) }
 function permissionGroup(row) { const group=descendants(element('rights')).find(n=>(n.children||[]).includes(row)); if(!group) throw Error('permission row is not displayed'); return group }
 function appGroup(row) { return descendants(element('rights')).find(n=>n.subject&&descendants(n).includes(row)) }
-function rowProgram(row) { return appGroup(row).children[0].title.split(' \u2014 ')[0] }
+function rowProgram(row) { return appGroup(row).subject.Program }
+// Since the ruling of 2026-11-09 the exact rules sit in the one Technical
+// details under Advanced (rights-revision), after its revision line.
+function appTechnical(row) { return element('rights-revision') }
+function ruleTechnical(row) { const pre=(element('rights-revision-body').children||[]).find(n=>n.tag==='pre'); return pre.textContent.split('\n\n').map(JSON.parse).find(r=>JSON.stringify(r.rule)===JSON.stringify(row.permission)) }
 function rowLabel(row) { return row.children[0].children[0] }
 function rowCaption(row) { return row.children[0].children[1] }
 function rowState(row) { return row.children[1].children[0] }
 function permissionDetails(row) { const group=permissionGroup(row); return group.children[group.children.indexOf(row)+1] }
 function editPermission(row) { return row.children[1].children.find(n=>n.tag==='button') }
 function removePermission(row) { return row.remove }
-// A rule's Details: plain lines, then the raw record in a nested Technical details.
-function detailLines(details) { return detailBody(details).children.filter(n=>n.tag==='p').map(n=>n.textContent) }
-function detailRaw(details) { const technical=detailBody(details).children.find(n=>n.tag==='details'); return detailBody(technical).textContent }
 // A listed question, answer or app question is a wrapper whose first child
 // is its oa-row (label, caption; controls) and whose other children are its
 // Technical details expanders.
 function itemLabel(box) { return box.children[0].children[0].children[0] }
 function itemButtons(box) { return box.children[0].children[1].children.filter(c=>c.onclick) }
 function detailBody(details) { return details.children.find(n=>n.className==='oa-expander-body') }
-function detailNamed(row,label) { return descendants(permissionDetails(row)).find(n=>n.tag==='details'&&n.children[0]?.textContent===label) }
 async function until(predicate){for(let i=0;i<200;i++){if(predicate())return;await new Promise(resolve=>setImmediate(resolve))}throw Error('the page script did not progress')}
 function element(id) {
  if (!fields.has(id)) fields.set(id, node());
@@ -93,38 +92,70 @@ function withoutRegistrationSources(context) {
   fields.clear();
   const entry=(name,title,instances)=>({program:'C:\\Apps\\'+name+'.exe',name,role:'application',state:instances+' current announcements',application:{Descriptor:{Name:name,Program:'C:\\Apps\\'+name+'.exe',Title:title},Instances:Array.from({length:instances},(_,i)=>({Instance:'i'+i})),Scope:1}});
   let registry={outcome:'page',cursor:'c1',entries:[entry('zed','Zed editor',0),entry('chat','Chat & Code',1),{program:'C:\\P\\provider.exe',name:'provider',role:'provider'}]};
+  const connectionLinks=['claude','codex','opencode'].map(id=>({
+   getAttribute(name){assert.equal(name,'href');return '/connections/'+id}
+  }));
+  element('product-connections').querySelectorAll=selector=>{
+   assert.equal(selector,'[data-agent-connection]');return connectionLinks;
+  };
   let runtime={capabilities:[{name:'Logging',contract:'abstraction.logging/sink@1',status:'resolved'}]};
-  const reads=[],waits=[];let held=null;
+  const reads=[],waits=[];let held=null,reconnectAttempts=0;
+  const reconnectFailure="Couldn't update OpenCode's settings. Close OpenCode and back up its settings files. Remove only the OpenAbstractions entry from each affected plugin list, then select Retry.";
+  // The shell's runtime banner (runtimeScript, runtime_down_page_test.js):
+  // Apps tells it what /runtime said and stays quiet while it shows.
+  const marks=[];let runtimeDown=false;
   const context={URLSearchParams,AbortController,document:{getElementById:element,createElement:node},location:{search:'?k=test key'},console,setTimeout,clearTimeout,
+   oaRuntimeMark:down=>{marks.push(down);runtimeDown=down},oaRuntimeIsDown:()=>runtimeDown,
    fetch:async(path,opts={})=>{reads.push(path);
     if(path==='/runtime')return {ok:true,json:async()=>runtime};
-    if(path.startsWith('/apps/registrations?')){const q=new URLSearchParams(path.split('?')[1]);assert.equal(q.get('source'),'applications');waits.push(q.get('wait_ms'));
+    if(path==='/setup/desktop-integration')return {ok:true,json:async()=>({
+     title:'Reconnect OpenCode to OpenAbstractions',available:reconnectAttempts<2,
+     outcome:reconnectAttempts?{step_id:'step-'+reconnectAttempts,failure:reconnectAttempts===1?reconnectFailure:''}:{}
+    })};
+    if(path==='/setup/desktop-integration?reconnect=1'){assert.equal(opts.method,'POST');assert.deepEqual(JSON.parse(opts.body),{confirm:true});reconnectAttempts++;return {ok:true,json:async()=>({step_id:'step-'+reconnectAttempts})}}
+    if(path.startsWith('/apps/registrations?')){const q=new URLSearchParams(path.split('?')[1]);if(q.get('source')==='providers')return q.get('wait_ms')==='0'?{ok:true,json:async()=>({outcome:'page',entries:[]})}:new Promise(()=>{});assert.equal(q.get('source'),'applications');waits.push(q.get('wait_ms'));
      if(q.get('wait_ms')!=='0')return new Promise((resolve,reject)=>{held={resolve:v=>resolve({ok:true,json:async()=>v}),cursor:q.get('cursor')};opts.signal.addEventListener('abort',()=>reject(Object.assign(Error('aborted'),{name:'AbortError'})),{once:true})});
      return {ok:true,json:async()=>registry}}
     throw Error('unexpected '+path)}};
   context.window=context;vm.runInNewContext(plainScript(),context);vm.runInNewContext(loadPageScript('service_page.go'),context);
+  assert.deepEqual(connectionLinks.map(link=>link.href),[
+   '/connections/claude?k=test%20key','/connections/codex?k=test%20key','/connections/opencode?k=test%20key',
+  ]);
   await context.appsHealthReady;await until(()=>held);
+  assert.equal(element('apps-desktop-reconnect').hidden,false);
+  assert.equal(element('apps-desktop-reconnect-title').textContent,'Reconnect OpenCode to OpenAbstractions');
+  assert.equal(reconnectAttempts,0,'listing apps never installs the integration');
+  await element('apps-desktop-reconnect-button').onclick();
+  assert.equal(element('apps-desktop-reconnect').hidden,false);
+  assert.equal(element('apps-desktop-reconnect-button').textContent,'Retry');
+  assert.equal(element('apps-desktop-reconnect-status').textContent,reconnectFailure);
+  await element('apps-desktop-reconnect-button').onclick();
+  assert.equal(element('apps-desktop-reconnect').hidden,true);
+  assert.equal(element('apps-desktop-reconnect-status').textContent,'Connection repaired.');
   const rows=element('apps').children;
   assert.deepEqual(rows.map(a=>a.children[0].children[0].textContent),['Chat & Code','Zed editor'],'registered applications only, by registered title');
   assert.deepEqual(rows.map(a=>a.className),['oa-row oa-row-nav','oa-row oa-row-nav'],'each app is a navigation row');
-  assert.deepEqual(rows.map(a=>a.children[0].children[1].textContent),['Running','Not running']);
+  assert.deepEqual(rows.map(a=>a.children[0].children[1].textContent),['Running','Registered']);
   assert.equal(rows[0].href,'/app/chat?k=test%20key','the row opens the app page by its registered name with the Panel key');
   assert(!rows.some(a=>JSON.stringify(a).includes('.exe')),'no program path is page text');
   assert.equal(element('apps-health').hidden,true,'no banner while the runtime and its services work');
   assert.equal(held.cursor,'c1','the list then follows the registry from its cursor');assert.deepEqual(waits,['0','30000']);
   registry={outcome:'page',cursor:'c2',entries:[]};held.resolve(registry);held=null;await until(()=>held);
-  assert.equal(element('apps').children[0].className,'oa-empty');assert.equal(element('apps').children[0].textContent,'No apps have registered yet.','an empty list shows one sentence');
+  assert.equal(element('apps').children[0].className,'oa-empty');assert.equal(element('apps').children[0].textContent,'No apps yet.','an empty list shows one sentence');
+  assert.equal(element('apps').children.length,1,'Install apps above the list already offers Setup');
+  assert.equal(element('apps-setup').href,'/setup?k=test%20key#setup-choices','Setup is permanently reachable with a direct path to app choices');
   runtime={capabilities:[{name:'Work submission',contract:'abstraction.job/acceptance@1',status:'unavailable'}]};
   await context.appsCheckRuntime();
   assert.equal(element('apps-health').hidden,false,'a failing service shows the banner');
-  assert.equal(element('apps-health-label').textContent,"The runtime is running but doesn't provide background work on this account.");
+  assert.equal(element('apps-health-label').textContent,"OpenAbstractions is running but doesn't provide background work on this account");
   await element('apps-health-retry').onclick();
   assert(/^Checked today at .*; the problem remains\.$/.test(element('apps-health-status').textContent),'Check again writes one sentence');
   runtime={capabilities:[]};await element('apps-health-retry').onclick();
-  assert.equal(element('apps-health').hidden,false);assert.equal(element('apps-health-label').textContent,'OpenAbstractions works again.');
+  assert.equal(element('apps-health').hidden,false);assert.equal(element('apps-health-label').textContent,'OpenAbstractions works again');
   assert(element('apps-health-status').textContent.endsWith('everything works.'));
   runtime={error:'dial failed'};await context.appsCheckRuntime();
-  assert.equal(element('apps-health-label').textContent,'OpenAbstractions is not running. Start it, then check again.');
+  assert.equal(marks[marks.length-1],true,'a runtime that is not running goes to the shell banner');
+  assert.equal(element('apps-health').hidden,true,'the Apps banner leaves a stopped runtime to the shell banner');
   context.appsRun.abort();
   console.log('PASS: Apps lists registered apps as rows opening their app pages, follows the registry, and shows a health banner only on failure');
  }
@@ -135,14 +166,14 @@ function withoutRegistrationSources(context) {
   const context={URLSearchParams,AbortController,document:{getElementById:element,createElement:node},location:{search:'?k=test'},console,
    setTimeout(fn){timers.push(fn);return timers.length},clearTimeout(){},
    fetch:async path=>{if(path==='/runtime')return {ok:true,json:async()=>({capabilities:[]})};
-    if(path.startsWith('/apps/registrations?'))return {ok:true,json:async()=>outcome==='page'?{outcome,cursor:'c',entries:[]}:{outcome,entries:[]}};throw Error('unexpected '+path)}};
+    if(path.startsWith('/apps/registrations?')){const q=new URLSearchParams(path.split('?')[1]);if(q.get('source')==='providers')return q.get('wait_ms')==='0'?{ok:true,json:async()=>({outcome:'page',entries:[]})}:new Promise(()=>{});return {ok:true,json:async()=>outcome==='page'?{outcome,cursor:'c',entries:[]}:{outcome,entries:[]}}};throw Error('unexpected '+path)}};
   context.window=context;vm.runInNewContext(plainScript(),context);vm.runInNewContext(loadPageScript('service_page.go'),context);
   await context.appsHealthReady;await until(()=>timers.length);
-  assert.equal(element('apps-health').hidden,false);assert.equal(element('apps-health-label').textContent,'This Panel may not read the list of apps.');
+  assert.equal(element('apps-health').hidden,false);assert.equal(element('apps-health-label').textContent,'This Panel may not read the list of apps');
   assert.equal(element('apps-status').textContent,'This Panel may not read the list of apps.');
   outcome='page';await element('apps-health-retry').onclick();
-  assert.equal(element('apps').children[0].textContent,'No apps have registered yet.');
-  assert.equal(element('apps-health-label').textContent,'OpenAbstractions works again.','a retry that clears the failure says so');
+  assert.equal(element('apps').children[0].textContent,'No apps yet.');
+  assert.equal(element('apps-health-label').textContent,'OpenAbstractions works again','a retry that clears the failure says so');
   context.appsRun.abort();timers.shift()();
   console.log('PASS: Apps shows an unreadable registry in the banner and recovers through Check again');
  }
@@ -164,7 +195,7 @@ function withoutRegistrationSources(context) {
   assert(!shown.includes('Work submission')&&!shown.includes('Logging: Ready'),'service diagnostics stay within support details');
   const details=element('runtime').children.find(c=>c.children&&c.children[0]&&c.children[0].textContent==='Technical details');
   assert(details.children.some(c=>c.textContent.includes('/opt/openabstractions/openabstractions')));
-  assert(details.children.some(c=>c.textContent.includes("The runtime is running but doesn't provide background work on this account.")));
+  assert(details.children.some(c=>c.textContent.includes("OpenAbstractions is running but doesn't provide background work on this account.")));
   assert(element('check-status').textContent.startsWith('Checked today at '));
   const settings=fs.readFileSync(__dirname+'/settings_page.go','utf8');
   assert(settings.includes('id="runtime-support"')&&settings.includes('runtimeSupportScript + '),'Settings owns the existing diagnostic control');
@@ -176,6 +207,11 @@ function withoutRegistrationSources(context) {
   fields.clear();
   const firstUseRule = {Subject:{Account:'alice',Program:'/usr/bin/python3'},Action:'abstraction.job/acceptance.submit',Resource:'abstraction.job/acceptance@1',Permit:true};
   const questionReplies = {answer:[{Outcome:'forbidden'},{Outcome:'answered',Record:{ID:'q1'}},{Outcome:'answered',Record:{ID:'q2'},rule:firstUseRule,edit:{Outcome:'applied',Revision:'rev-2'}},{Outcome:'answered',Record:{ID:'q2'},rule:{...firstUseRule,Permit:false},edit:{Outcome:'conflict',Revision:'rev-3'}},{Outcome:'answered',Record:{ID:'q2'},rule:firstUseRule,edit:{Outcome:'applied',Revision:'rev-4'}}], retire:[{Outcome:'unavailable'},{Outcome:'retired'}]};
+  questionReplies.rule = [
+   {Outcome:'answered',Record:{ID:'q4'},rule:firstUseRule,edit:{Outcome:'conflict'}},
+   {Outcome:'answered',Record:{ID:'q4'},rule:firstUseRule,edit:{Outcome:'applied'}},
+  ];
+  const questionWrites=[];
   // task 2026-09-23, thirteenth first-time visitor, finding 7: a first-use
   // question's own server-filled Text read as "<full path> wants to
   // <raw action id> on <resource>" unchanged. The listing now carries the
@@ -183,19 +219,19 @@ function withoutRegistrationSources(context) {
   // D5; rights_page_handler_test.go checks them against the real handler).
   const firstUseProgram = 'C:\\Users\\alice\\AppData\\Local\\Programs\\OpenAbstractions\\tools\\openabstractions.exe';
   const firstUseSentence = 'openabstractions (not registered) wants to look up models in the model registry \u201cnosuchregistry\u201d.';
-  let questionPage = {Outcome:'page', Records:[{ID:'q4',Text:'A recorded answer',Options:['allow','refuse'],Option:'allow'}, {ID:'q1', Text:'Allow download?', Options:['once','refuse'], Option:''}, {ID:'q3', Text:firstUseProgram+' wants to abstraction.model/lookup on nosuchregistry', About:firstUseProgram, Options:['allow','refuse'], Option:''}], Next:'', Complete:true,
-   sentences:{q3:firstUseSentence}, choices:{q1:[{label:'Allow once',option:'once'},{label:'Refuse',option:'refuse'}], q3:[{label:'Allow',option:'allow'},{label:'Refuse',option:'refuse'}]}};
+  let questionPage = {Outcome:'page', Records:[{ID:'q4',Text:'A recorded answer',Options:['allow','refuse'],Option:'allow'}, {ID:'q1', Text:'Allow download?', Options:['once','refuse','never'], Option:''}, {ID:'q3', Text:firstUseProgram+' wants to abstraction.model/lookup on nosuchregistry', About:firstUseProgram, Options:['allow','refuse'], Option:''}], Next:'', Complete:true,
+   sentences:{q3:firstUseSentence}, ruleStates:{q4:'not_written'}, choices:{q1:[{label:'Allow once',option:'once'},{label:'Not now',option:'refuse'},{label:'Never allow',option:'never'}], q3:[{label:'Allow',option:'allow'},{label:'Refuse',option:'refuse'}]}};
   const rule = {Subject:{Account:'alice',Program:'/usr/bin/app'},Action:'abstraction.storage/content.read',Resource:'sha256:x',Permit:true,SetBy:{Account:'alice',Program:'/usr/bin/openabstractions'},SetAt:'2026-09-17T10:00:00.000Z',Expires:'2026-12-01T10:00:00.000Z'};
   const dupA = {Subject:{Account:'alice',Program:'/usr/bin/app'},Action:'abstraction.model/lookup',Resource:'hf',Permit:true,SetBy:{Account:'alice',Program:'/usr/bin/openabstractions'},SetAt:'2026-09-17T10:00:00.000Z'};
   const dupB = {...dupA, Resource:'civitai'};
-  // An ordinary operator can enter the same reason used by runtime seeds.
-  // Its recorded setter remains visible and the reason conveys no origin.
-  const installedA = {Subject:{Account:'root',Program:'/usr/bin/openabstractions'},Action:'abstraction.facade/application.read',Resource:'app:comfyui',Permit:true,Why:'installation',SetBy:{Account:'root',Program:'/usr/bin/ordinary-operator'},SetAt:'2026-09-17T10:00:00.000Z'};
+  const installedA = {Subject:{Account:'root',Program:'/usr/bin/openabstractions'},Action:'abstraction.facade/application.read',Resource:'app:comfyui',Permit:true,Why:'installation',SetBy:{Account:'root',Program:'/usr/bin/openabstractionsw'},SetAt:'2026-09-17T10:00:00.000Z'};
   const installedB = {...installedA, Action:'abstraction.facade/application.activate'};
   // The runtime's other program: OpenAbstractions' own, so it shares the group.
   const installedC = {...installedA, Subject:{Account:'root',Program:'/usr/bin/openabstractionsw'}};
+  // An ordinary operator's identical reason does not establish product origin.
+  const operatorRule = {...installedA,Resource:'app:other',SetBy:{Account:'root',Program:'/usr/bin/ordinary-operator'}};
   const exploreSelfReply = {self:{account:'root',program:'/usr/bin/openabstractions'},selfAccountName:'alice',probes:[]};
-  let rightsPage = {Outcome:'page', Names:{'/usr/bin/openabstractions':'OpenAbstractions Panel','/usr/bin/openabstractionsw':'OpenAbstractions'}, Revision:'sha256:e3b0c44298fc1c149afbf4c8996fb924', Catalog:['abstraction.storage/content.read','abstraction.model/lookup','abstraction.inference/selection.manage_for'], ActionPlain:{'abstraction.model/lookup':'model resolve'}, Rules:[rule, dupA, dupB, installedA, installedB, installedC], Next:'', Complete:true};
+  let rightsPage = {Outcome:'page', Names:{'/usr/bin/openabstractions':'OpenAbstractions Panel','/usr/bin/openabstractionsw':'OpenAbstractions'}, Revision:'sha256:e3b0c44298fc1c149afbf4c8996fb924', Catalog:['abstraction.storage/content.read','abstraction.model/lookup','abstraction.inference/selection.manage_for'], ActionPlain:{'abstraction.model/lookup':'model resolve'}, Rules:[rule, dupA, dupB, installedA, installedB, installedC, operatorRule], Next:'', Complete:true};
   const rightsCalls = [];
   const allowRules = [{action:'abstraction.job/acceptance.submit',resource:'abstraction.job/acceptance@1'},{action:'abstraction.model/lookup',resource:'hf'}];
   const allowCalls = [], allowReplies = [{rules:allowRules,outcome:'conflict',revision:'rev-9',landed:[allowRules[0]],stopped:allowRules[1]},{rules:allowRules,outcome:'applied',revision:'rev-10',landed:allowRules}];
@@ -231,6 +267,7 @@ function withoutRegistrationSources(context) {
     if(path.startsWith('/questions')){
      if(!opts.body) return {ok:true,json:async()=>questionPage};
      const action=JSON.parse(opts.body);
+     questionWrites.push(action);
      return {ok:true,json:async()=>questionReplies[action.action].shift()};
     }
     throw Error('unexpected request '+path);
@@ -255,31 +292,38 @@ function withoutRegistrationSources(context) {
   assert.equal(itemLabel(element('questions-history-list').children[0]).textContent,'A recorded answer');
   const box=element('questions-list').children[0];
   const buttons=itemButtons(box);
-  assert.deepEqual(buttons.map(b=>b.textContent),['Allow once','Refuse','Dismiss'],'the pending question is already listed on arrival, with no click, its buttons labelled as the native prompt labels them');
+  assert.deepEqual(buttons.map(b=>b.textContent),['Allow once','Not now','Never allow','Dismiss'],'the pending question is already listed on arrival, with no click, its buttons labelled as the native prompt labels them');
   // task 2026-09-23, thirteenth first-time visitor, finding 7, and live
   // walkthrough 2026-10-02, D5: the first-use question reads in the
   // native prompt's sentence, which the listing carries.
   const firstUseBox = element('questions-list').children[1];
   const firstUseText = itemLabel(firstUseBox);
-  assert.equal(firstUseText.textContent.split('\n')[0], firstUseSentence, 'the line is the listing\'s sentence, not the raw path or action id');
+  assert.equal(firstUseText.textContent.split('\n')[0], firstUseSentence.replace(/[.]$/, ''), 'the line is the listing\'s sentence, not the raw path or action id');
   assert.equal(firstUseText.title, firstUseProgram, 'the full path sits on the line\'s own title instead');
   const firstUseDetails = firstUseBox.children[1];
   assert.equal(firstUseDetails.children[0].textContent, 'Technical details');
   assert.equal(detailBody(firstUseDetails).textContent, firstUseProgram+' wants to abstraction.model/lookup on nosuchregistry', 'the server\'s own raw sentence also sits behind Technical details');
-  assert.deepEqual(element('delegation-question').children.map(o=>o.value),['','q3'],'the setup offers only a pending first-use request returned by the public question API');
-  assert.equal(element('delegation-question').children[1].textContent,firstUseSentence,'the request reads in the native prompt\'s sentence the reply carries (D5)');
-  element('delegation-question').value='q3';element('delegation-question').onchange();
-  assert(element('delegation-question-details').textContent.includes('<img src=x onerror=alert(1)>'),'request details render untrusted scope as text');
-  element('delegation-option').value='allow';element('delegation-option').onchange();
-  element('delegation-program').value='C:/Tools/OpenCode.exe';element('delegation-program').oninput();
-  element('delegation-confirm').checked=true;element('delegation-confirm').onchange();
   const instructions=fs.readFileSync(__dirname+'/rights_page.go','utf8').split('<script>')[0];
-  assert(instructions.includes('<p>One app may give one answer to one waiting request, for five minutes.</p>'),'one-request answering carries one short caption');
-  assert(!instructions.includes('select bun.exe'),'the instructions do not recommend an answerer the service refuses');
-  assert(!element('delegation-effect').textContent.includes('Bun binary'),'the grant effect does not promise shared script-host answering access');
-  await element('delegation-form').onsubmit({preventDefault(){}});
-  assert.deepEqual(delegationCalls,[{questionId:'q3',responder:'C:/Tools/OpenCode.exe',option:'allow',revision:'delegate-rev-1',confirmExactUse:true}],'the explicit grant binds the selected executable, exact question and answer, current policy revision, and confirmation');
-  assert(element('delegation-status').textContent.includes('responder still must make that answer'),'grant confirmation does not imply the question was already answered');
+  assert(instructions.includes('id="assistant-form"'),'answering access uses the native-app enrollment form');
+  assert(!instructions.includes('id="delegation-form"'),'the legacy exact-question setup is retired from the Panel');
+  assert.equal(delegationCalls.length,0,'the Panel does not create exact-question delegations');
+
+  const history=element('questions-history-list');
+  const retry=itemButtons(history.children[0]).find(button=>button.textContent==='Retry saving permission');
+  assert(retry,'an answered question with an unsaved permission offers a retry');
+  assert(descendants(history.children[0]).some(node=>node.textContent.includes('Permission not saved.')));
+  await retry.onclick();
+  assert.deepEqual(questionWrites.at(-1),{action:'rule',id:'q4'});
+  assert(element('questions-status').textContent.includes('The permission was not saved (conflict)'));
+  questionPage={...questionPage,ruleStates:{q4:'written'}};
+  await retry.onclick();
+  assert(element('questions-status').textContent.includes('Permission saved:'));
+  assert(descendants(history.children[0]).some(node=>node.textContent.includes('Permission saved.')));
+  questionPage={...questionPage,ruleStates:{q4:'delegated'}};
+  await context.questions();
+  assert(descendants(history.children[0]).some(node=>node.textContent.includes('Answered through Answering access. The permission was time-limited.')));
+  assert(!itemButtons(history.children[0]).some(button=>button.textContent==='Retry saving permission'));
+  assert(context.questionRule({ruleOutcome:'delegated'}).includes('To allow this permanently, add a permission under Saved permissions.'));
 
   // task 2026-09-23, fourteenth first-time visitor, finding 3: answering a
   // question used to say "... List again to refresh." while the list
@@ -296,7 +340,7 @@ function withoutRegistrationSources(context) {
   assert.strictEqual(element('questions-list').children[0],shownBox,'an unchanged reread keeps the question rows');
   assert(element('questions-status').textContent.includes('Answer recorded'),'the sentence survives the reread');
   for(const id of ['questions-status','choices-status','rights-status'])element(id).role='status';
-  assertPanelRules({tagName:'MAIN',children:[{tagName:'SECTION',children:['questions-status','questions-list','choices-status','choices-list'].map(element)},{tagName:'SECTION',children:['rights-status','rights'].map(element)}]},'Permissions',{allowClasses:allowlistedClasses('rights'),
+  assertPanelRules({tagName:'MAIN',children:[{tagName:'SECTION',children:['questions-status','questions-list','choices-status','choices-list'].map(element)},{tagName:'SECTION',children:['rights-status','rights'].map(element)}]},'Permissions',{naming:true,allowClasses:allowlistedClasses('rights'),
    // Known values: testdata/panel_lint.allowlist's known-value rows for
    // Permissions, each naming its owning fix.
    knownValues:require('./panel_fake_dom_test_helper.js').knownValues('rights'),
@@ -360,12 +404,14 @@ function withoutRegistrationSources(context) {
   assert.equal(rows.length,3,'every rule for this program is shown');
   assert.equal(rowLabel(rows[0]).textContent,'Storage: content read');
   assert(rowCaption(rows[0]).textContent.startsWith('Stored content \u00b7 Until '),'a content digest reads as stored content');assert.equal(rowState(rows[0]).textContent,'Allowed');
-  assert(rowCaption(rows[0]).title.endsWith(rule.Expires),'expiry remains directly available on the row');
+  assert.equal(ruleTechnical(rows[0]).rule.Expires,rule.Expires,'the exact expiry stays in the app\'s Technical details');
   assert(!rowLabel(rows[0]).textContent.includes('abstraction.storage/content.read'),'capabilities retain plain labels');
-  assert(rowCaption(rows[1]).textContent.startsWith('hf \u00b7'));assert(rowCaption(rows[2]).textContent.startsWith('civitai \u00b7'),'repeated actions retain distinct exact targets');
-  const details=permissionDetails(rows[0]);
-  assert.equal(details.tag,'details');assert.equal(details.className,'oa-expander');assert.equal(details.children[0].tag,'summary','the disclosure retains native keyboard controls');
-  assert(!descendants(rows[0]).some(n=>n.tag==='details'),'details sit below their row, not inside it');
+  assert(rowCaption(rows[1]).textContent.startsWith('Hugging Face \u00b7'));assert(rowCaption(rows[2]).textContent.startsWith('Civitai \u00b7'),'repeated actions retain distinct exact targets');
+  // An exact rule has no Details row (panel audit 2026-11-01); its raw
+  // values stay in the app group's Technical details.
+  assert.notEqual((permissionDetails(rows[0])||{}).tag,'details','an exact rule has no Details row');
+  assert(!descendants(rows[0]).some(n=>n.tag==='details'),'nor a disclosure inside its row');
+  assert.equal(ruleTechnical(rows[0]).rule.Action,rule.Action,'the exact action stays in the app\'s Technical details');
   // task 2026-09-23, eighth first-time visitor, finding 2: even truncated to
   // its first 8 hex characters, a revision is an identifier; it is no
   // longer visible text at all, only the rules list heading's own title and
@@ -378,30 +424,38 @@ function withoutRegistrationSources(context) {
   assert.equal(revisionDetails.hidden,false,'the section\'s Technical details show once the list is read');
   assert(element('rights-revision-body').textContent.includes('sha256:e3b0c44298fc1c149afbf4c8996fb924'),'the full revision also sits behind a Technical details disclosure');
   const sectionMarkup=fs.readFileSync(__dirname+'/rights_page.go','utf8').split('<script>')[0];
-  assert(/oaExpander\("Filter by capability"[\s\S]*id="rights-revision"[^>]*>[\s\S]*?<\/details>` \+\n\t`<\/section>`/.test(sectionMarkup),'it is the section\'s last disclosure, after the groups and the section\'s rows');
+  assert(/id="rights-advanced"[\s\S]*oaExpander\("Filter by capability"[\s\S]*id="rights-revision"/.test(sectionMarkup),'it sits under Advanced, after the editor and the capability filter');
   assert(!status.children.some(c=>c.tag==='details'),'no Technical details above the rows');
   assert(!status.textContent.includes('More rules remain') && !status.textContent.includes('End of rules'), 'the inert remain/end sentence is dropped; the rights-next button already carries that state');
   assert.equal(element('rights-next').hidden,true,'the list is complete, so Show more is hidden');
-  const installedEntry=descendants(element('rights')).find(n=>n.installed);
+  // OpenAbstractions' own programs share one group under its product name,
+  // their set-up rules in one closed disclosure where a rule both hold shows
+  // once (ruling 2026-11-09; panel audit 2026-11-01: never the two identical
+  // rule sets twice).
+  const installedEntries=descendants(element('rights')).filter(n=>n.installed);
+  assert.deepEqual(installedEntries.map(n=>appGroup(permissionRows(n)[0]).children[0].textContent),['OpenAbstractions'],'one group for the own programs');
+  assert.equal(installedEntries.length,1);assert.match(installedEntries[0].children[0].textContent,/^Set up by OpenAbstractions \(\d+\)$/,'the disclosure counts the set-up rules, never the reason code');
+  const installedEntry=installedEntries[0];
   assert(installedEntry&&!installedEntry.open,'rules OpenAbstractions set up stay in a closed native disclosure');
-  assert.equal(installedEntry.children[0].textContent,'Set up by OpenAbstractions (3)','one disclosure counts the rules set up for every OpenAbstractions program, never the reason code');
-  assert.equal(descendants(element('rights')).filter(n=>n.installed).length,1,'OpenAbstractions\' own programs show one Set up disclosure, not one per program');
-  for(const details of [installedEntry])assert(details.children[0].children.some(c=>c.className==='oa-row-chevron'),'an expander\'s summary carries the shared chevron: '+details.children[0].textContent);
+  for(const details of installedEntries)assert(details.children[0].children.some(c=>c.className==='oa-row-chevron'),'an expander\'s summary carries the shared chevron: '+details.children[0].textContent);
   const installedGroup=appGroup(permissionRows(installedEntry)[0]);
-  assert.equal(installedGroup.children[0].textContent,'OpenAbstractions','OpenAbstractions\' own programs share one group under the product name');
+  assert.equal(installedGroup.children[0].textContent,'OpenAbstractions','the own group reads by the product name');
   assert.equal(installedGroup.className,'oa-group','an app group is an oa-group, so every skin draws it as a grouped list');
   assert(installedGroup.children.slice(1).every(n=>n.className==='oa-row'||n.className==='oa-expander'),'its rows and expanders are its direct children');
   assert(installedGroup.children.includes(installedEntry),'the disclosure sits in its app\'s group, below its rows');
   for(const id of ['rights-status'])element(id).role='status';
-  assertPanelRules({tagName:'SECTION',children:[element('rights-status'),element('rights')]},'Saved permissions',{allowClasses:allowlistedClasses('rights')});
-  assert.equal(permissionRows(installedEntry).length,3,'installation-reason rules remain manageable');
-  for(const row of permissionRows(installedEntry)) {
+  assertPanelRules({tagName:'SECTION',children:[element('rights-status'),element('rights')]},'Saved permissions',{naming:true,allowClasses:allowlistedClasses('rights')});
+  assert.equal(installedEntries.flatMap(permissionRows).length,2,'installation-reason rules remain manageable; the rule the Panel and the runtime both hold shows once');
+  assert.equal(installedEntries[0].children[0].textContent,'Set up by OpenAbstractions (2)','the count counts the rows shown');
+  const operatorRow=permissionRows().find(row=>row.permission===operatorRule);
+  assert(!installedEntries.some(entry=>descendants(entry).includes(operatorRow)),'an ordinary operator\'s installation reason does not fold under product setup');
+  assert.deepEqual(ruleTechnical(operatorRow).rule.SetBy,operatorRule.SetBy,'the ordinary setter stays exact in Technical details');
+  for(const row of installedEntries.flatMap(permissionRows)) {
    assert(!/abstraction\./.test(rowLabel(row).textContent),'the capability label stays plain');
-   assert(rowCaption(row).textContent.startsWith('app:comfyui'));
-   const details=permissionDetails(row),record=detailRaw(details);
-   assert.deepEqual(detailLines(details),['For '+(row.permission.Subject.Program==='/usr/bin/openabstractionsw'?'OpenAbstractions':'OpenAbstractions Panel')+' on this account.','Set up by OpenAbstractions.','Stays until removed.'],'Details name the rule\'s own program and account in plain words, never the reason code');
-   assert(!details['data-oa-technical']&&!(details.attrs||{})['data-oa-technical'],'the Details expander itself is no technical block');
-   assert(record.includes('Via application: /usr/bin/ordinary-operator')&&record.includes('Set at: 2026-09-17T10:00:00.000Z'),'the full receiving setter path and timestamp remain available');
+   assert(rowCaption(row).textContent.startsWith('An app · '),'an unavailable registered title reads as an app, without inventing a name from its id: '+rowCaption(row).textContent);
+   assert.equal(ruleTechnical(row).rule.Resource,'app:comfyui','the exact resource stays in the app\'s Technical details');
+   assert.notEqual((permissionDetails(row)||{}).tag,'details','a set-up rule has no Details row');
+   assert(row.children[1].children.includes(removePermission(row)),'Remove remains a visible row action');
   }
 
   // task 2026-09-23, eighth first-time visitor, finding 4: Save rule with a
@@ -421,9 +475,9 @@ function withoutRegistrationSources(context) {
   // fixture's account/program/action/resource fields are all already
   // filled from the arrival state and the earlier chooser checks.
   const rightsGetCountBeforeEdit=rightsGetCount;
-  assert(instructions.indexOf('id="rights"')<instructions.indexOf('id="rights-editor"')&&instructions.indexOf('id="rights-editor"')<instructions.indexOf('id="defaults"'),'the existing saved list and editor share the Saved permissions section');
+  assert(instructions.indexOf('id="rights"')<instructions.indexOf('id="rights-advanced"')&&instructions.indexOf('id="rights-advanced"')<instructions.indexOf('id="rights-editor"'),'the editor sits under Advanced, after the saved list');
   assert(instructions.includes('Choose Other… to enter an account, app path or exact resource'),'custom exact targets are explained beside the form');
-  assert(instructions.includes('>Advanced editor…</button>')&&instructions.includes('>Advanced permission editor<span'),'the raw exact editor is explicitly administrative, not a normal permission request');
+  assert(!instructions.includes('>Advanced editor…</button>')&&instructions.includes('>Permission editor<span'),'the raw exact editor is one expander under Advanced, with no second entry row');
   element('rights-program').value='/usr/bin/newapp';
   element('rights-resource').value='sha256:y';
   await element('rights-grant').onsubmit({preventDefault(){}});
@@ -478,12 +532,11 @@ function withoutRegistrationSources(context) {
   const declared={Action:customAction,FeatureApp:{Account:'feature account',Program:'/usr/bin/feature-app'},AppLabel:'OpenCode',Description:'Share event contents <img src=x onerror=alert(1)>',DeclaredRisk:'future-risk'};
   rightsPage={Outcome:'page',Revision:'custom-revision',Catalog:[customAction],ActionPlain:{[customAction]:declared.AppLabel+': '+declared.Description},Descriptions:{[customAction]:{Action:customAction,Description:declared,PublishedBy:{Account:'publisher account',Program:'/usr/bin/publisher'},PublishedAt:'2026-10-05T12:00:00.000Z'}},Rules:[customRule],Next:'',Complete:true};
   await context.rightsList();
-  const customRow=permissionRows()[0],descriptionDetails=detailNamed(customRow,'Action description');
-  assert.equal(descriptionDetails.children[0].textContent,'Action description');
-  const descriptionText=descriptionDetails.children[1].textContent;
+  const customRow=permissionRows()[0],descriptionText=ruleTechnical(customRow).description;
   assert(descriptionText.includes('<img src=x onerror=alert(1)>'),'declarations are rendered as text');
   assert(descriptionText.includes('Feature declared for feature-app')&&descriptionText.includes('Published by publisher'),'feature app and established publisher remain separate');
   assert(descriptionText.includes('Declared risk: unknown')&&descriptionText.includes('Options: Allow, Block, Remove rule'),'future risk stays unknown and choices name existing rule operations');
+  assert(!descendants(appTechnical(customRow)).some(n=>n.tag==='img'),'declaration text creates no markup');
   const writesBeforeRowEdit=rightsCalls.length;
   await editPermission(customRow).onclick();element('rights-permit').value='deny';element('rights-grant').dispatch('input');
   assert.equal(rightsCalls.length,writesBeforeRowEdit,'choosing Block stages a review and makes no policy write');
@@ -535,11 +588,10 @@ function withoutRegistrationSources(context) {
    throw Error('unexpected '+path);
   }};context.window=context;vm.runInNewContext(plainScript(),context);vm.runInNewContext(loadPageScript('rights_page.go'),context);await context.rightsListReady;
   const row=permissionRows()[0],opaque=permissionRows()[1];
-  const provenance=permissionDetails(row);
-  assert(detailLines(provenance).some(line=>line.startsWith('Set by operator (not registered) on this account, ')),'a setter matching the Panel still names the recorded app and account in plain words');
+  const provenance=appTechnical(row),recorded=ruleTechnical(row).rule;
   assert(!JSON.stringify(provenance).includes('set by you'),'matching the Panel process cannot assert a human act');
-  const exactProvenance=detailRaw(provenance);
-  assert(exactProvenance.includes('Recorded account: owner')&&exactProvenance.includes('Via application: /apps/operator')&&exactProvenance.includes('Set at: 2026-10-05T12:00:00Z'),'recorded identities and timestamps stay exact in Details');
+  assert.deepEqual(recorded.SetBy,{Account:'owner',Program:'/apps/operator'},'the recorded setter stays exact, including when it matches the Panel');
+  assert.equal(recorded.SetAt,'2026-10-05T12:00:00Z','the recorded timestamp stays exact in Technical details');
   assert(editPermission(opaque).disabled&&removePermission(opaque).disabled,'an unknown profile is view-only');
   element('rights-capability-filter').value=context.selectorActionValue(use);await element('rights-capability-filter').onchange();
   assert.equal(permissionRows().length,1,'capability filtering keeps the full permission key and excludes the separate legacy exact rule');assert.equal(writes.length,0);
@@ -697,11 +749,11 @@ function withoutRegistrationSources(context) {
   assert.equal(rowProgram(groups[0]),program);
   assert.equal(groups[0].children.length,3,'the selected permission is one row: its text, its controls and its status line');
   assert.equal(appGroup(groups[0]).children[0].textContent,'assistant (not registered)','an unregistered program reads as its file stem, not its file name');
-  assert.equal(appGroup(groups[0]).children[0].title.split(' \u2014 ')[0],program,'the full path stays on the title');
+  assert.equal(ruleTechnical(groups[0]).rule.Subject.Program,program,'the full path stays in the app\'s Technical details');
   assert.equal(element('rights-program').value,program);assert.equal(element('rights-account').value,'alice','the edit form targets the selected subject');
   assert(element('rights-heading').focused,'the Apps link focuses saved permissions after exact subject selection');
   assert(!element('rights-editor').open,'opening saved access leaves the editor collapsed');
-  element('rights-add').onclick();assert(element('rights-editor').open&&element('rights-program-select').focused,'Add opens and focuses the existing editor without writing');
+  element('rights-editor').open=true;element('rights-editor').ontoggle();assert.equal(element('rights-editor-heading').textContent,'Permission editor','opening the editor with no draft names it');
   assert.equal(element('rights-filter').hidden,false);assert(element('rights-show-all').href.includes('/rights?k=test#rights-section'));
   assert.equal(element('questions-empty').hidden,false,'no waiting question shows the one empty sentence');assert.equal(element('questions-list').children.length,0);
   assert.equal(element('questions-next').hidden,true,'Show more appears only past a page');

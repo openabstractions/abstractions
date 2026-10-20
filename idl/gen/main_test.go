@@ -54,7 +54,7 @@ func TestInvalidRequestDoesNotChangeOutputs(t *testing.T) {
 func TestLateBackendValidationDoesNotWriteEarlierBackend(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "example.thrift")
-	valid, err := os.ReadFile(example)
+	valid, err := os.ReadFile(examplePath(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestLateBackendValidationDoesNotWriteEarlierBackend(t *testing.T) {
 	before := backends
 	reached := false
 	backends = append(append([]backend(nil), backends...), backend{
-		lang: "broken", path: "broken.txt", emit: func(*Definition) string { reached = true; return "" }, emitsCode: true,
+		lang: "broken", path: "broken.txt", emit: checkedEmitter(func(*Definition) string { reached = true; return "" }), emitsCode: true,
 	})
 	t.Cleanup(func() { backends = before })
 	out := filepath.Join(dir, "output")
@@ -95,7 +95,7 @@ func TestServiceBackendSupportIsCheckedBeforeAnyOutput(t *testing.T) {
 	}
 	writeNamespaceFile(t, filepath.Dir(source), "LANGUAGE.md", string(profileDoc))
 	before := backends
-	backends = append(append([]backend(nil), backends...), backend{lang: "unsupported", path: "unsupported.txt", emit: func(*Definition) string { t.Fatal("unsupported emitter reached"); return "" }})
+	backends = append(append([]backend(nil), backends...), backend{lang: "unsupported", path: "unsupported.txt", emit: checkedEmitter(func(*Definition) string { t.Fatal("unsupported emitter reached"); return "" })})
 	t.Cleanup(func() { backends = before })
 	for _, langs := range [][]string{nil, {"go", "python", "unsupported"}, {"cpp", "unsupported"}, {"go", "unsupported"}} {
 		out := filepath.Join(t.TempDir(), "out")

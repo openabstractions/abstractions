@@ -9,8 +9,8 @@ history read is refused without the history permission.
 
     python companion.py --runtime-program PATH URL SIZE sha256:DIGEST
 
-ABSTRACTION_RUNTIME_ENDPOINT names the runtime and --runtime-program its
-executable, verified as this account's. The OA Python packages and the native
+The facade's select_development (FAC-B5) names the runtime, and
+--runtime-program its executable, verified as this account's. The OA Python packages and the native
 IPC library come from the environment: PYTHONPATH (or an installed set) and
 ABSTRACTION_IPC_PREFIX or ABSTRACTION_IPC_LIBRARY. Exit status 0 means every
 step reported its outcome; the outcomes themselves are printed one per line.
@@ -18,18 +18,8 @@ step reported its outcome; the outcomes themselves are printed one per line.
 import argparse
 import hashlib
 import logging
-import os
-import subprocess
 import sys
 import time
-
-
-def account_principal():
-    """The current account as the IPC library's server expectation names it."""
-    if sys.platform == "win32":
-        out = subprocess.run(["whoami", "/user", "/fo", "csv", "/nh"], capture_output=True, text=True, check=True).stdout
-        return 1, out.strip().split(",")[-1].strip('"')
-    return 2, str(os.getuid())
 
 
 def main(argv=None):
@@ -39,19 +29,17 @@ def main(argv=None):
     parser.add_argument("size", type=int)
     parser.add_argument("digest")
     args = parser.parse_args(argv)
-    endpoint = os.environ.get("ABSTRACTION_RUNTIME_ENDPOINT", "")
-    if not endpoint or not os.path.isabs(args.runtime_program):
-        parser.error("needs ABSTRACTION_RUNTIME_ENDPOINT and an absolute --runtime-program")
 
-    from abstraction.ipc import ServerExpectation
     from abstraction.facade import Scope
-    from abstraction.facade.client import Machine
+    from abstraction.facade.client import Machine, select_development
     from abstraction.logging.handler import ServiceHandler
     import abstraction.download.request as request
     from abstraction.job.acceptance import RequestIdentity, Submission
 
-    kind, principal = account_principal()
-    server = ServerExpectation(principal_kind=kind, principal=principal, program=os.path.normpath(args.runtime_program))
+    try:
+        endpoint, server = select_development(args.runtime_program)
+    except ValueError as err:
+        parser.error(str(err))
 
     def machine():
         return Machine(endpoint, server=server, timeout=10.0)

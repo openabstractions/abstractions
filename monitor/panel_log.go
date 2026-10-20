@@ -2,18 +2,22 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"sync"
 	"time"
 
+	askclient "github.com/openabstractions/abstraction-asks/go/client"
 	facade "github.com/openabstractions/abstraction-facade/go"
+	"github.com/openabstractions/abstraction-facade/go/grants"
 	logging "github.com/openabstractions/abstraction-logging/go"
 	logclient "github.com/openabstractions/abstraction-logging/go/client"
+	rightsclient "github.com/openabstractions/abstraction-rights/go/client"
 )
 
 // panelProgram is the name the Panel claims at hop 0 of its own records.
-const panelProgram = "Abstraction Panel"
+const panelProgram = "OpenAbstractions Panel"
 
 // panelLog is the Panel's own logging, adopted through the resolved sink. The
 // first record resolves abstraction.logging/sink@1; with no runtime that record
@@ -143,4 +147,56 @@ func (p *servicePanel) logAction(ctx context.Context, action string, attrs map[s
 	}
 	//unchecked: a failure to log is shown in the Panel's sink state and does not stop the action, per the comment above
 	_ = p.log.record(ctx, logging.LevelInfo, "panel action", all)
+}
+
+func permissionCompletionFailure(result presentResult) map[string]string {
+	typed := result.TypedAnswered
+	if typed == nil || typed.Decision.Outcome != askclient.OperatorDecisionOutcomeAnswered ||
+		typed.Decision.Record == nil || typed.Decision.Record.Option != "allow" {
+		return nil
+	}
+	outcome := "unconfirmed"
+	if result.Err == nil && typed.Edit != nil {
+		switch typed.Edit.Outcome {
+		case rightsclient.PolicyEditOutcomeApplied:
+			return nil
+		case rightsclient.PolicyEditOutcomeConflict, rightsclient.PolicyEditOutcomeInvalid,
+			rightsclient.PolicyEditOutcomeForbidden, rightsclient.PolicyEditOutcomeUnavailable:
+			outcome = typed.Edit.Outcome.String()
+		}
+	}
+	attrs := map[string]string{"permission.stage": "effect", "permission.outcome": outcome}
+	if class := grants.PermissionErrorClass(result.Err); class != "" {
+		attrs["permission.error"] = class
+	}
+	if typed.NotSaved {
+		attrs["question.outcome"] = "not_applied"
+	}
+	id := typed.Decision.Record.ID
+	if len(id) == 32 {
+		if _, err := hex.DecodeString(id); err == nil {
+			attrs["question.id"] = id
+		}
+	}
+	return attrs
+}
+
+func (l *panelLog) writePermissionCompletions(ctx context.Context, pending <-chan map[string]string) {
+	defer func() {
+		drain, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		l.close(drain)
+	}()
+	for ctx.Err() == nil {
+		select {
+		case <-ctx.Done():
+			return
+		case attrs, ok := <-pending:
+			if !ok {
+				return
+			}
+			//unchecked: diagnostics use the existing best-effort sink and do not change the answer or result
+			_ = l.record(ctx, logging.LevelWarn, "native permission completion", attrs)
+		}
+	}
 }

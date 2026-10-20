@@ -729,7 +729,7 @@ func rightsOperatorRefusal(command, outcome, reason string) error {
 	if outcome != "forbidden" {
 		return refusal(command, outcome, reason)
 	}
-	return refusal(command, outcome, "run this from the installed openabstractions.exe, its windowless sibling or the Abstraction Panel; those hold operator standing by installation, and no rights grant can extend it to another program. An isolated runtime also admits the one program it was started with as --operator-program")
+	return refusal(command, outcome, "run this from the installed openabstractions.exe, its windowless sibling or the OpenAbstractions Panel; those hold operator standing by installation, and no rights grant can extend it to another program. An isolated runtime also admits the one program it was started with as --operator-program")
 }
 
 // shortProgramName is a rule's --program as rights list prints it by default:
@@ -920,8 +920,7 @@ func rightsDecide(machine *client.Machine, source endpointSource, call func() (c
 		}
 	}
 	var failure error
-	switch decision.Outcome {
-	case rightswire.DecisionOutcomeForbidden, rightswire.DecisionOutcomeInvalid, rightswire.DecisionOutcomeUnavailable:
+	if !rights.Evaluated(decision.Outcome) {
 		failure = refusal(command, decision.Outcome.String(), "")
 	}
 	if asJSON {

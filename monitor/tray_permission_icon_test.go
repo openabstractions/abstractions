@@ -36,16 +36,15 @@ func TestNativeAsksBridgeCarriesPermissionIconAndSound(t *testing.T) {
 		want   bool
 		icon   string
 	}{
-		{"permission", trayQuestionPresentation{Choices: choices,
+		{"permission", trayQuestionPresentation{presentation: nativeQuestionConsent, Choices: choices,
 			Permission: &trayPermissionPresentation{RequesterProgram: "/Applications/Editor.app/Contents/MacOS/Editor"}},
 			true, "/Applications/Editor.app/Contents/MacOS/Editor"},
-		{"permission with generic icon", trayQuestionPresentation{Choices: choices, Permission: &trayPermissionPresentation{}}, true, ""},
-		{"ordinary question", trayQuestionPresentation{Choices: choices, PermissionPrompt: true, IconProgram: "/etc/passwd"}, false, ""},
-		{"app choice", trayQuestionPresentation{Choices: choices, AppChoice: true,
-			Permission: &trayPermissionPresentation{RequesterProgram: "/Applications/Editor.app/Contents/MacOS/Editor"}}, false, ""},
+		{"permission with generic icon", trayQuestionPresentation{presentation: nativeQuestionConsent, Choices: choices, Permission: &trayPermissionPresentation{}}, true, ""},
+		{"ordinary question", trayQuestionPresentation{presentation: nativeQuestionGeneric, Choices: choices, PermissionPrompt: true, IconProgram: "/etc/passwd"}, false, ""},
+		{"app choice", trayQuestionPresentation{presentation: nativeQuestionAppChoice, Choices: choices, AppChoice: true}, false, ""},
 	} {
 		done := make(chan error, 1)
-		go func() { _, err := bridge.Ask(c.prompt); done <- err }()
+		go func() { _, err := bridge.Ask(testOccurrence(c.prompt)); done <- err }()
 		frame := nextNativeFrame(t, frames, "question")
 		if frame.Prompt.PermissionPrompt != c.want || frame.Prompt.IconProgram != c.icon {
 			t.Errorf("%s: permission=%t icon=%q", c.name, frame.Prompt.PermissionPrompt, frame.Prompt.IconProgram)

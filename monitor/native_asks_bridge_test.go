@@ -112,8 +112,8 @@ func TestNativeAsksBridgeMakesHiddenControlsVisibleAndKeepsExactAnswer(t *testin
 	const option = "answer\u202eexact"
 	done := make(chan string, 1)
 	go func() {
-		answer, err := bridge.Ask(trayQuestionPresentation{Instruction: "app\u202ename", Details: "program\u202epath\x00",
-			Choices: []trayQuestionChoice{{Label: "choose\u202eanswer", Option: option}}, Default: option})
+		answer, err := bridge.Ask(testOccurrence(trayQuestionPresentation{presentation: nativeQuestionGeneric, Instruction: "app\u202ename", Details: "program\u202epath\x00",
+			Choices: []trayQuestionChoice{{Label: "choose\u202eanswer", Option: option}}, Default: option}))
 		if err != nil {
 			done <- err.Error()
 		} else {
@@ -137,8 +137,8 @@ func TestNativeAsksBridgeKeepsTrustedPermissionWarning(t *testing.T) {
 	bridge.session(true)
 	done := make(chan error, 1)
 	go func() {
-		_, err := bridge.Ask(trayQuestionPresentation{Content: "All saved app secrets.", Warning: "Future secrets\u202e are included.", PermissionContent: "Read\u202e secret value.",
-			Choices: []trayQuestionChoice{{Label: "Refuse", Option: "refuse"}}, Default: "refuse"})
+		_, err := bridge.Ask(testOccurrence(trayQuestionPresentation{presentation: nativeQuestionGeneric, Content: "All saved app secrets.", Warning: "Future secrets\u202e are included.", PermissionContent: "Read\u202e secret value.",
+			Choices: []trayQuestionChoice{{Label: "Refuse", Option: "refuse"}}, Default: "refuse"}))
 		done <- err
 	}()
 	frame := nextNativeFrame(t, frames, "question")
@@ -196,11 +196,11 @@ func TestNativeAsksBridgeDismissesChangedQuestionAndReportsErrors(t *testing.T) 
 
 func TestNativeAsksBridgeFailsClosedWithoutSessionAndOnMalformedChannel(t *testing.T) {
 	bridge := newNativeAsksBridge(context.Background(), io.Discard)
-	if _, err := bridge.Ask(trayQuestionPresentation{}); !errors.Is(err, errPromptNotShown) {
+	if _, err := bridge.Ask(testOccurrence(trayQuestionPresentation{presentation: nativeQuestionGeneric})); !errors.Is(err, errPromptNotShown) {
 		t.Fatal(err)
 	}
 	bridge.session(true)
-	if _, err := bridge.Ask(trayQuestionPresentation{Details: strings.Repeat("x", maxNativeAsksLine)}); err == nil {
+	if _, err := bridge.Ask(testOccurrence(trayQuestionPresentation{presentation: nativeQuestionGeneric, Details: strings.Repeat("x", maxNativeAsksLine)})); err == nil {
 		t.Fatal("an oversized exact presentation was silently truncated or accepted")
 	}
 	for _, input := range []string{

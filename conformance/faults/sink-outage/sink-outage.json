@@ -12,6 +12,7 @@
     "rebind_error": {"status": "runtime_unavailable", "cause": "sink-outage: rebind refused"}
   },
   "steps": [
+    {"defaults": {"capacity": 1024, "initial_backoff_ms": 100, "max_backoff_ms": 5000, "write_timeout_ms": 5000, "jitter_percent": 20, "gap_message": "records dropped while the sink was unreachable"}},
     {"log": ["before-1", "before-2"]},
     {"await": "settled"},
     {"outage": true},

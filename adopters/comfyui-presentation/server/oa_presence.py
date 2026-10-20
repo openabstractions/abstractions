@@ -183,7 +183,7 @@ def start_presence(prompt_server, bridge):
     options = runtime_options(os.environ, ServerExpectation)
 
     def applications():
-        return Machine(timeout=2, **options).resolve_applications(scope="local")
+        return Machine(timeout=2, **options).resolve_applications(scope=wire.Scope.LOCAL)
 
     applications()  # Fail this opt-in integration before scheduling any claim.
     manager = OAPresence(applications, bridge, wire)

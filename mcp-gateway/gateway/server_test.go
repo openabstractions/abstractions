@@ -10,7 +10,53 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	jobwire "github.com/openabstractions/abstraction-inference/go/abstraction/inference/job"
 )
+
+// The job tools carry video only (backlog/PICTURES-STORAGE.md ruling 4): the
+// profile names video, a picture is refused with its sentence, and another
+// word never reaches the backend.
+func TestJobSubmitSchemaAdvertisesVideoOnly(t *testing.T) {
+	b := &fixtureBackend{principal: "schema", ledger: &fixtureLedger{owner: map[string]string{}, state: map[string]string{}}}
+	_, session := connected(t, b, "arbitrary-client", "2025-11-25")
+	// The submit tool is callable and unlisted: its schema is the handler's.
+	var schema struct {
+		Properties map[string]struct {
+			Enum        []string
+			Description string
+		}
+	}
+	raw, err := json.Marshal(jobSubmitSchema())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = json.Unmarshal(raw, &schema); err != nil {
+		t.Fatal(err)
+	}
+	video, _ := jobwire.ProfileVideo.WireName()
+	if profile := schema.Properties["profile"]; profile.Description != video || len(profile.Enum) != 0 {
+		t.Fatalf("profile schema %+v", profile)
+	}
+	if _, ok := schema.Properties["count"]; ok {
+		t.Fatal("job submit still takes a picture count")
+	}
+	args := map[string]any{"request_key": "schema-check", "model": "fixture/model", "prompt": "fixture", "hosting": "local"}
+	for _, profile := range []string{"image", "image_batch"} {
+		args["profile"] = profile
+		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: ToolJobSubmit, Arguments: args})
+		if err == nil && !result.IsError {
+			t.Fatal("unadvertised profile reached backend", profile)
+		}
+	}
+	if b.providerEffects != 0 {
+		t.Fatal("invalid profile dispatched backend", b.providerEffects)
+	}
+	args["profile"], args["duration_ms"] = video, 1000
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: ToolJobSubmit, Arguments: args})
+	if err != nil || result.IsError || b.providerEffects != 1 {
+		t.Fatal("video refused", result, err, b.providerEffects)
+	}
+}
 
 type fixtureLedger struct {
 	mu    sync.Mutex
@@ -38,6 +84,19 @@ func (b *fixtureBackend) Applications(ctx context.Context, _ ApplicationsInput) 
 }
 func (b *fixtureBackend) Models(context.Context, ModelsInput) (ModelsOutput, error) {
 	return ModelsOutput{Models: []Model{{Family: "small", Aliases: []string{"small:latest"}, Profiles: []string{"chat"}}}}, nil
+}
+func (b *fixtureBackend) SetupFit(_ context.Context, in SetupFitInput) (SetupFitOutput, error) {
+	if b.principal == "no-inventory-read" {
+		return SetupFitOutput{Outcome: "forbidden", Entries: []SetupFitEntry{}}, nil
+	}
+	return SetupFitOutput{Outcome: "fitted", CatalogVersion: "fixture-1", PoolBytes: 64e9,
+		Entries: []SetupFitEntry{{Title: "Fixture " + in.Use, Family: "fixture-" + in.Use, Fit: "fits", DownloadBytes: 1e9, NeedBytes: 2e9, Context: 32768, Pick: true}}}, nil
+}
+func (b *fixtureBackend) SetupPrepare(_ context.Context, in SetupPrepareInput) (SetupPrepareOutput, error) {
+	if b.principal == "no-inventory-read" {
+		return SetupPrepareOutput{Outcome: "forbidden", Reason: "no person reachable on this runtime"}, nil
+	}
+	return SetupPrepareOutput{Outcome: "asked"}, nil
 }
 func (b *fixtureBackend) Complete(_ context.Context, in CompleteInput) (CompleteOutput, error) {
 	if in.Prompt == "deny" {
@@ -117,6 +176,10 @@ func TestProtocolMatrixAndCuratedToolList(t *testing.T) {
 		t.Run(version, func(t *testing.T) {
 			b := &fixtureBackend{principal: "a", ledger: &fixtureLedger{owner: map[string]string{}, state: map[string]string{}}}
 			_, cs := connected(t, b, "claimed-host", version)
+			info := cs.InitializeResult().ServerInfo
+			if info.Title != "OpenAbstractions" || info.Name != "openabstractions-mcp" || info.Version != Version {
+				t.Fatalf("server display and identity = %+v", info)
+			}
 			listed, err := cs.ListTools(context.Background(), nil)
 			if err != nil {
 				t.Fatal(err)
@@ -125,7 +188,7 @@ func TestProtocolMatrixAndCuratedToolList(t *testing.T) {
 			for _, tool := range listed.Tools {
 				names = append(names, tool.Name)
 			}
-			want := []string{ToolApplications, ToolComplete, ToolJobCancel, ToolJobDiagnose, ToolJobStatus, ToolJobSubmit, ToolModels}
+			want := []string{ToolApplications, ToolComplete, ToolJobCancel, ToolJobDiagnose, ToolJobStatus, ToolModels, ToolSetupFit, ToolSetupPrepare, ToolVideoGenerate}
 			slices.Sort(names)
 			slices.Sort(want)
 			if !slices.Equal(names, want) {
@@ -205,7 +268,7 @@ func TestAcceptedJobSurvivesMCPDisconnectAndCancelIsExplicit(t *testing.T) {
 	ledger := &fixtureLedger{owner: map[string]string{}, state: map[string]string{}}
 	b := &fixtureBackend{principal: "principal-a", ledger: ledger}
 	_, first := connected(t, b, "one", "2025-11-25")
-	_, submitted := call[JobSubmitOutput](t, first, ToolJobSubmit, map[string]any{"request_key": "disconnect-1", "profile": "image_batch", "model": "image", "prompt": "draw", "hosting": "hosted", "credential": "fixture", "count": 1})
+	_, submitted := call[JobSubmitOutput](t, first, ToolJobSubmit, map[string]any{"request_key": "disconnect-1", "profile": "video", "model": "video", "prompt": "draw", "hosting": "hosted", "credential": "fixture", "duration_ms": 1000})
 	if submitted.Outcome != "accepted" {
 		t.Fatalf("submit: %+v", submitted)
 	}
@@ -226,7 +289,7 @@ func TestSeparatePrincipalsRejectCrossScopeHandle(t *testing.T) {
 	a := &fixtureBackend{principal: "principal-a", ledger: ledger}
 	b := &fixtureBackend{principal: "principal-b", ledger: ledger}
 	_, ac := connected(t, a, "claims-b", "2026-07-28")
-	_, submitted := call[JobSubmitOutput](t, ac, ToolJobSubmit, map[string]any{"request_key": "scope-1", "profile": "image_batch", "model": "image", "prompt": "draw", "hosting": "hosted", "credential": "fixture", "count": 1})
+	_, submitted := call[JobSubmitOutput](t, ac, ToolJobSubmit, map[string]any{"request_key": "scope-1", "profile": "video", "model": "video", "prompt": "draw", "hosting": "hosted", "credential": "fixture", "duration_ms": 1000})
 	_, bc := connected(t, b, "claims-a", "2026-07-28")
 	result, _ := call[JobStatusOutput](t, bc, ToolJobStatus, map[string]any{"handle": submitted.Handle})
 	if !result.IsError {

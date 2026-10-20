@@ -22,7 +22,6 @@ func startGuard() error {
 	}
 	return nil
 }
-func hideStartCommand(*exec.Cmd) {}
 func activateInstalled(ctx context.Context) error {
 	selected, err := bootstrap.SelectInstalled(ctx)
 	if err != nil {

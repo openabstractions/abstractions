@@ -12,6 +12,7 @@ const VerdictUnknownOp
 const VerdictNotSupported
 const VerdictOther
 func VerdictValues() []Verdict
+func (Verdict) IsKnown() bool
 func (Verdict) Known() bool
 var VerdictTranscript
 type Step struct
@@ -88,9 +89,24 @@ type Refusal struct
   Word string
   Offset int
 func (Refusal) Error() string
+const TimestampLayout
+func FormatTimestamp(at time.Time) string
 func Decode(in []byte) (*Record, error)
 var ContentTerms
 var ContentStripCritical
+func ToJSON(v any) (out []byte, err error)
+func FromJSON(data []byte, v any) error
+const OpSubmit
+const OpLoad
+const OpList
+const OpOrphans
+const OpClaimable
+const OpClaim
+const OpRenew
+const OpRelease
+const OpSetIntent
+const OpRecall
+const OpWrite
 var Operations
 func IsOperation(name string) bool
 const UnknownOperation
@@ -100,3 +116,35 @@ func EncodeRequest(v *Request) []byte
 func DecodeRequest(in []byte) (*Request, error)
 func EncodeResponse(v *Response) []byte
 func DecodeResponse(in []byte) (*Response, error)
+func DecodeStepAt(in []byte, depth, limit int) (*Step, int, error)
+func EncodeStepAt(v *Step, depth int) []byte
+func EncodeStep(v *Step) []byte
+func DecodeStep(in []byte) (*Step, error)
+func DecodeProgressAt(in []byte, depth, limit int) (*Progress, int, error)
+func EncodeProgressAt(v *Progress, depth int) []byte
+func EncodeProgress(v *Progress) []byte
+func DecodeProgress(in []byte) (*Progress, error)
+func DecodeRecallAt(in []byte, depth, limit int) (*Recall, int, error)
+func EncodeRecallAt(v *Recall, depth int) []byte
+func EncodeRecall(v *Recall) []byte
+func DecodeRecall(in []byte) (*Recall, error)
+func DecodeLeaseAt(in []byte, depth, limit int) (*Lease, int, error)
+func EncodeLeaseAt(v *Lease, depth int) []byte
+func EncodeLease(v *Lease) []byte
+func DecodeLease(in []byte) (*Lease, error)
+func DecodeDelegationAt(in []byte, depth, limit int) (*Delegation, int, error)
+func EncodeDelegationAt(v *Delegation, depth int) []byte
+func EncodeDelegation(v *Delegation) []byte
+func DecodeDelegation(in []byte) (*Delegation, error)
+func DecodeIntentAt(in []byte, depth, limit int) (*Intent, int, error)
+func EncodeIntentAt(v *Intent, depth int) []byte
+func EncodeIntent(v *Intent) []byte
+func DecodeIntent(in []byte) (*Intent, error)
+func DecodeEnvelopeAt(in []byte, depth, limit int) (*Envelope, int, error)
+func EncodeEnvelopeAt(v *Envelope, depth int) []byte
+func EncodeEnvelope(v *Envelope) []byte
+func DecodeEnvelope(in []byte) (*Envelope, error)
+func DecodeRecordAt(in []byte, depth, limit int) (*Record, int, error)
+func EncodeRecordAt(v *Record, depth int) []byte
+func EncodeRecord(v *Record) []byte
+func DecodeRecord(in []byte) (*Record, error)

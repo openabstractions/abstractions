@@ -118,3 +118,27 @@ func TestLemonadePinGateRefusesAMismatchedTable(t *testing.T) {
 		t.Fatal("a table entry no install pin records passed the gate")
 	}
 }
+
+// The release catalog offers the Lemonade engine the core's lemonaded adapter
+// runs on Windows x64: a Lemonade plan is preparable with its model step, the
+// pin is the provider's own package, and other targets keep it pending.
+func TestReleaseCatalogOffersTheLemonadeEngine(t *testing.T) {
+	plan, err := catalogForTarget("windows", "amd64").Plan([]AppID{Lemonade})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.Preparable || len(plan.Blockers) != 0 || len(plan.Components) != 1 || plan.Components[0].Artifact == nil ||
+		len(plan.Configuration) != 1 || plan.Configuration[0].ID != ModelRequirement(Lemonade) {
+		t.Fatalf("Windows x64 Lemonade plan: %+v", plan)
+	}
+	if p, ok := server.FindPackage(plan.Components[0].Artifact.Version); !ok || !strings.EqualFold(p.ArchiveSHA256, plan.Components[0].Artifact.SHA256) {
+		t.Fatalf("the offered Lemonade package is not the provider's: %+v", plan.Components[0].Artifact)
+	}
+	other, err := catalogForTarget("linux", "amd64").Plan([]AppID{Lemonade})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other.Preparable || len(other.Blockers) != 1 || other.Blockers[0] != "lemonade-engine: Not available in this release yet" {
+		t.Fatalf("Lemonade off Windows x64: %+v", other.Blockers)
+	}
+}

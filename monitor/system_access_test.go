@@ -86,13 +86,23 @@ func TestQuestionsPageLeavesSystemAccessOnceToThePrompt(t *testing.T) {
 // service-owned key says the administrator prompt follows; question text
 // alone selects nothing.
 func TestSystemAccessPromptSaysWindowsAsksNext(t *testing.T) {
-	view := trayQuestionViewForAsker(systemAccessFixture("0123456789abcdef0123456789abcdef"), trayPublisher{}, nil, "")
-	if !strings.Contains(view.Title, "Administrator access") || view.Warning == "" || view.Default != "refuse" {
-		t.Fatalf("%+v", view)
+	// Architect popup ruling 2026-11-10, row 24: the heading names the app
+	// and the page, the body says Windows asks next, and the code and expiry
+	// sit in the details.
+	slots := &askclient.CatalogueContent{Slots: map[string]string{"code": "a1b2c3d4", "until": "2026-10-07T12:00:00Z"}}
+	view := trayQuestionViewForContent(systemAccessFixture("0123456789abcdef0123456789abcdef"), trayPublisher{}, nil, "", slots)
+	labels := []string{}
+	for _, choice := range view.Choices {
+		labels = append(labels, choice.Label+"="+choice.Option)
+	}
+	if view.Title != "OpenAbstractions" || view.Instruction != "Allow reader to read one page of the Windows Security log?" ||
+		view.Content != "Windows asks for administrator approval next." || view.Footer != "" || view.Default != "refuse" || view.Dismiss != "refuse" ||
+		strings.Join(labels, ",") != "Allow once=once,Not now=refuse,Never allow=never" || !strings.Contains(view.Details, "Request: a1b2c3d4") || !strings.Contains(view.Details, "Expires: 2026-10-07T12:00:00Z") {
+		t.Fatalf("%+v %v", view, labels)
 	}
 	forged := systemAccessFixture("0123456789abcdef0123456789abcdef")
 	forged.Key = "download.reach"
-	if view := trayQuestionViewForAsker(forged, trayPublisher{}, nil, ""); view.Warning != "" || strings.Contains(view.Title, "Administrator") {
+	if view := trayQuestionViewForContent(forged, trayPublisher{}, nil, "", slots); strings.Contains(view.Instruction, "Allow") || strings.Contains(view.Content, "Windows asks") {
 		t.Fatalf("question text selected the administrator view: %+v", view)
 	}
 }

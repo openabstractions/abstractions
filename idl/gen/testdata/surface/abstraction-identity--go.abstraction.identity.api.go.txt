@@ -17,9 +17,24 @@ func (Proof) UnmarshalText(text []byte) error
 func (Proof) MarshalJSON() ([]byte, error)
 func (Proof) UnmarshalJSON(data []byte) error
 func ProofValues() []Proof
+func (Proof) IsKnown() bool
 func (Proof) Known() bool
 var NativeOperations
 var NativeBindingTypes
+const IPCOk
+const IPCTimeout
+const IPCDisconnected
+const IPCIoError
+const IPCInvalidArgument
+const IPCNoMemory
+const IPCInternalError
+const IPCCancelled
+const IPCUntrusted
+const IPCProofUnavailable
+const IPCDefaultMaxFrame
+const IPCClientMaxFrame
+const IPCWireMaxFrame
+const IPCDefaultCallBudgetMs
 type ProofRequirement struct
   User Proof
   Process Proof
@@ -37,3 +52,5 @@ type Refusal struct
   Offset int
 func (Refusal) Error() string
 func Decode(in []byte) (*ProofRequirement, error)
+func ToJSON(v any) (out []byte, err error)
+func FromJSON(data []byte, v any) error

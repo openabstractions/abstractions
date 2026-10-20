@@ -12,15 +12,18 @@ import (
 // pageFragments mirrors panel_shell.go's routing: which page constant each
 // help.go "page" key names.
 var pageFragments = map[string]string{
-	"status":      servicePage,
-	"work":        workPage,
-	"card":        cardPage,
-	"inference":   inferencePage,
-	"registry":    registryPage,
-	"credentials": credentialsPage,
-	"rights":      rightsPage,
-	"settings":    settingsPage,
-	"explore":     explorePage,
+	"claude-connections":   claudeConnectionsPage,
+	"codex-connections":    codexConnectionsPage,
+	"opencode-connections": installedConnection().page(),
+	"status":               servicePage,
+	"work":                 workPage,
+	"card":                 cardPage,
+	"inference":            inferencePage,
+	"registry":             registryPage,
+	"credentials":          credentialsPage,
+	"rights":               rightsPage,
+	"settings":             settingsPage,
+	"explore":              explorePage,
 }
 
 var sectionIDPattern = regexp.MustCompile(`<section id="([a-zA-Z0-9_-]+)"`)
@@ -92,11 +95,26 @@ func TestHelpAnchorsCoverEverySection(t *testing.T) {
 }
 
 // siteRoot locates openabstractions-flat/openabstractions.github.io from the
-// monitor module, walking up to the repository root.
+// monitor module, or uses the two production pages projected into public testdata.
 func siteRoot(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()
 	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := filepath.Join(dir, "testdata", "help-site")
+	if info, err := os.Stat(fixture); err == nil {
+		if !info.IsDir() {
+			t.Fatalf("public help fixture %s is not a directory", fixture)
+		}
+		for _, name := range []string{"reference.html", "adopt.html"} {
+			path := filepath.Join(fixture, name)
+			if page, err := os.Stat(path); err != nil || !page.Mode().IsRegular() {
+				t.Fatalf("required public help page %s is missing or invalid: %v", path, err)
+			}
+		}
+		return fixture
+	} else if !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 8; i++ {
@@ -124,9 +142,7 @@ func siteRoot(t *testing.T) string {
 		}
 		dir = parent
 	}
-	// The published monitor module is tested on its own. The site-target
-	// integration assertion runs in the private workspace that owns both trees.
-	t.Skip("site-target integration requires the private openabstractions.github.io tree")
+	t.Fatalf("published Monitor is missing its required help pages at %s", fixture)
 	return ""
 }
 

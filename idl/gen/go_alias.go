@@ -11,6 +11,22 @@ import (
 	"strings"
 )
 
+func goSharedVariable(spec *ast.ValueSpec, index int) bool {
+	kind := spec.Type
+	if kind == nil && index < len(spec.Values) {
+		if literal, ok := spec.Values[index].(*ast.CompositeLit); ok {
+			kind = literal.Type
+		}
+	}
+	switch kind := kind.(type) {
+	case *ast.ArrayType:
+		return kind.Len == nil
+	case *ast.MapType:
+		return true
+	}
+	return false
+}
+
 // goExportAliases derives compatibility exports from the generated Go AST.
 // Methods follow aliased type identity; functions keep their real signatures.
 func goExportAliases(source, target string) (string, error) {
@@ -59,20 +75,7 @@ func goExportAliases(source, target string) (string, error) {
 				case *ast.ValueSpec:
 					for i, name := range spec.Names {
 						if name.IsExported() && decl.Tok == gotoken.VAR {
-							kind := spec.Type
-							if kind == nil && i < len(spec.Values) {
-								if literal, ok := spec.Values[i].(*ast.CompositeLit); ok {
-									kind = literal.Type
-								}
-							}
-							shared := false
-							switch kind := kind.(type) {
-							case *ast.ArrayType:
-								shared = kind.Len == nil
-							case *ast.MapType:
-								shared = true
-							}
-							if !shared {
+							if !goSharedVariable(spec, i) {
 								return "", fmt.Errorf("Go compatibility aliases: mutable variable %s is not a slice/map", name.Name)
 							}
 						}

@@ -1,0 +1,34 @@
+{
+  "repository": "https://github.com/anomalyco/opencode",
+  "commit": "aec0b9a6d8898f68f923aaf08b7306d931fd9d76",
+  "files": {
+    "retry.ts": {
+      "source": "packages/opencode/src/session/retry.ts",
+      "sha256": "7e24b96622f7b46586eabb68d3c2464d1c68f5cc58262f2d305878d5e55b9aed"
+    },
+    "provider-error.ts": {
+      "source": "packages/opencode/src/provider/error.ts",
+      "sha256": "eb04a3e8ec37aa50342a74d4d51b25d671fd30f032b170a0e9be9e0d32c0ddb4"
+    },
+    "processor.ts": {
+      "source": "packages/opencode/src/session/processor.ts",
+      "sha256": "0b31e207beda56bd9a4b9b88c9e42d89a0651dd011773748c8e2938dfc3dcb74"
+    },
+    "LICENSE": {
+      "source": "LICENSE",
+      "sha256": "625f0f619133f89bbbb2abe37369613dfa1885eba1e50d02170deb62bb42cb6b"
+    },
+    "tool-registry.ts": {
+      "source": "packages/opencode/src/tool/registry.ts",
+      "sha256": "a8b24a6d58a80c42307e251905dbaa4f25ca0724569b1e531e412da934ab00fe"
+    },
+    "tool-json-schema.ts": {
+      "source": "packages/opencode/src/tool/json-schema.ts",
+      "sha256": "123ae7e75b54161e54645d14f614700674acb6eb293d8a1249a9de57d84f4dba"
+    },
+    "session-tools.ts": {
+      "source": "packages/opencode/src/session/tools.ts",
+      "sha256": "5ad3f44682fc8e2bacb2222157943de8ab7dd663a1e0ddf5e4a213539b1f67d7"
+    }
+  }
+}

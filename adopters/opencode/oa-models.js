@@ -1,85 +1,128 @@
 /**
- * `/oa` in OpenCode's TUI: OpenAbstractions' models in one list, under the
- * headings configure writes (this computer, via hosted servers, your saved
- * preferences), each named with where it runs. Choosing one makes it
- * OpenCode's default `model` through OpenCode's own config API. On OA's
- * patched build, whose OpenAPI document lists the provider refresh route, the
- * first entry asks OA again for the models on this computer: OpenCode refreshes
- * only the provider the OA plugin registers its model hook for, so the
- * hosted heading's list is read when OpenCode starts. A plugin cannot
- * select the model of a running session (OpenCode's TUI plugin API has no
- * model setter), so an agent with a model picked in this session keeps it
- * until the person picks again.
+ * `/oa` in OpenCode's TUI, a terminal convenience beside the Panel's per-app
+ * chat choice (Panel → Applications → OpenCode), which is the path for every
+ * client: OpenAbstractions' models in one list, under the headings the plugin
+ * shows ("OpenAbstractions", "DeepSeek · OpenAbstractions"). Choosing one
+ * saves that same per-app chat choice (the `oa-chat-default` policy). It
+ * never writes OpenCode's `model`: the plugin preselects OA's choice at
+ * OpenCode's start unless OpenCode's own setting names a model, which is the
+ * person's pick and stays.
  */
+import {defaultSelectionModel, defaultSelectionPolicies, readOffers} from './inventory.js';
+import {runtimeConnector} from './runtime-connector.js';
 
-import {once, servesProviderRefresh} from './opencode-build.js';
+const selectionContract = 'abstraction.inference/selection-operator@2';
+const routerContract = 'abstraction.router/router@1';
 
-const refreshValue = Symbol('refresh');
+async function machine(endpoint) {
+  const {Machine} = await import('@openabstractions/facade');
+  return new Machine(endpoint, {connector: await runtimeConnector(), timeout: 5000});
+}
+
+/** OA's selection operator for this OpenCode program. */
+export async function resolveOperator({endpoint = null} = {}) {
+  const {SelectionOperatorV2Client} = await import('@openabstractions/inference');
+  return new SelectionOperatorV2Client(await (await machine(endpoint)).resolveService(selectionContract, {scope: 'local'}));
+}
+
+/** OA's router, which lists the hosted offers and the hosts behind them. */
+export async function resolveRouter({endpoint = null} = {}) {
+  const {RouterClient} = await import('@openabstractions/router');
+  return new RouterClient(await (await machine(endpoint)).resolveService(routerContract, {scope: 'local'}));
+}
+
+/** The credential name a hosted model's offer runs under: the credential the
+ * hosted host behind its first server declares, or ''. */
+export async function hostedCredential(router, model) {
+  const offered = (await readOffers(router, 'hosted', {fresh: false})).offers ?? [];
+  const offer = offered.find((entry) => entry.family === model || (entry.names ?? []).includes(model));
+  if (!offer) return '';
+  const hosts = (await router.hosts(false))?.hosts ?? [];
+  for (const server of offer.servers ?? []) {
+    const host = hosts.find((entry) => entry?.host === server && typeof entry.credential === 'string' && entry.credential);
+    if (host) return host.credential;
+  }
+  return '';
+}
 
 /** Whether id is one of OA's providers: the configured ID or a heading beside it. */
 export function oaProvider(id, base = 'openabstractions') {
   return id === base || (typeof id === 'string' && id.startsWith(`${base}-`));
 }
 
-/** The dialog's entries: refresh first when this OpenCode serves the
- * provider refresh route, then every OA model under its provider's heading,
- * the providers in the picker's own order (by name). */
-export function modelOptions(providers, defaultModel, base = 'openabstractions', refreshable = true) {
-  const options = refreshable ? [{title: 'Refresh the list from OpenAbstractions', value: refreshValue,
-    description: 'Asks OpenAbstractions for the models it serves now'}] : [];
-  const own = (providers ?? []).filter((provider) => oaProvider(provider.id, base))
-    .sort((a, b) => (a.name ?? a.id) < (b.name ?? b.id) ? -1 : (a.name ?? a.id) > (b.name ?? b.id) ? 1 : 0);
+/** The dialog's entries: every OA model under its provider's heading, the
+ * models on this computer first and the other headings by name. */
+export function modelOptions(providers, base = 'openabstractions') {
+  const options = [];
+  const rank = (provider) => [provider.id === base ? 0 : 1, provider.name ?? provider.id];
+  const own = (providers ?? []).filter((provider) => oaProvider(provider.id, base)).sort((a, b) => {
+    const [left, right] = [rank(a), rank(b)];
+    return left[0] - right[0] || (left[1] < right[1] ? -1 : left[1] > right[1] ? 1 : 0);
+  });
   for (const provider of own) {
     for (const [id, model] of Object.entries(provider.models ?? {})) {
-      const key = `${provider.id}/${id}`;
-      options.push({title: model.name ?? id, value: key, category: provider.name ?? provider.id,
-        description: key === defaultModel ? 'default' : undefined});
+      options.push({title: model.name ?? id, value: `${provider.id}/${id}`, category: provider.name ?? provider.id});
     }
   }
   return options;
 }
 
-/** The sentence a choice writes; a hosted model also says the Local
- * assistant, which stays on this computer, will refuse it. */
-export function chosenText(title, hosted = false) {
-  const text = `${title} is now OpenCode's default model. An agent with a model picked in this session keeps it until you pick again (Ctrl+X M).`;
+/** The model OpenCode's own setting names, when it is the person's pick:
+ * any model but none and OA's policy route. */
+export function personPick(model, base = 'openabstractions') {
+  return typeof model === 'string' && model !== '' && model !== `${base}/${defaultSelectionModel('chat')}` ? model : '';
+}
+
+/** The sentence a saved choice shows. With a person's pick in OpenCode's own
+ * setting, it says how to use the choice; a hosted model also says the Local
+ * assistant, which stays on this computer, refuses it. */
+export function chosenText(title, {hosted = false, pick = ''} = {}) {
+  const text = pick
+    ? `OpenCode's own setting picks ${pick}. Choose ${title} in the model menu to use it.`
+    : `${title} is now OpenAbstractions' choice for OpenCode. OpenCode selects it from its next start.`;
   return hosted ? `${text} The Local assistant stays on this computer and refuses it; press Tab for the Build agent.` : text;
 }
 
-/** OpenCode's providers and default model, read fresh from the server. */
+/** OpenCode's providers, the model this instance selected and the model
+ * OpenCode's own setting names, read fresh from the server. */
 export async function readProviders(api) {
-  const [providers, config] = await Promise.all([
+  const [providers, instance, global] = await Promise.all([
     api.client.config.providers({}, {throwOnError: true}),
+    api.client.config.get({}, {throwOnError: true}),
     api.client.global.config.get({throwOnError: true}),
   ]);
-  return {providers: providers.data?.providers ?? [], defaultModel: config.data?.model};
+  return {providers: providers.data?.providers ?? [], selected: instance.data?.model, ownSetting: global.data?.model};
 }
 
-/** Ask OpenCode to refresh one provider's models (the provider refresh
- * patch's route); a stock OpenCode answers 404. */
-export async function refreshProvider(api, providerID) {
-  const response = await api.client.client.post({url: `/provider/${encodeURIComponent(providerID)}/models/refresh`});
-  if (response.error || (response.response && !response.response.ok)) {
-    const status = response.response?.status;
-    const said = response.error?.data?.message;
-    if (status === 404 && !said) throw new Error('this OpenCode cannot refresh a provider\'s models; restart OpenCode to read the list again');
-    throw new Error(typeof said === 'string' && said ? said : `refresh failed (${status ?? 'no answer'})`);
+/** Saves OA's per-app chat choice for this OpenCode program: the one
+ * candidate, over the revision it read. */
+export async function writeChatChoice(candidate, operator) {
+  const name = defaultSelectionPolicies.chat;
+  const read = await operator.read('', name);
+  if (read?.outcome !== 'found' && read?.outcome !== 'unknown') {
+    throw new Error(`the chat choice could not be read (${read?.outcome ?? 'no answer'})`);
   }
+  const change = await operator.put('', read.outcome === 'found' ? read.revision : '', {name, candidates: [candidate]});
+  if (change?.outcome !== 'applied') throw new Error(`the chat choice was not saved (${change?.outcome ?? 'no answer'})`);
 }
 
 /**
  * Register `/oa` (command `openabstractions.models`). `dependencies` replaces
- * the server reads and writes in tests.
+ * the server reads and OA's write in tests.
  */
 export async function installModels(api, options = {}, dependencies = {}) {
   const base = typeof options.providerId === 'string' && options.providerId ? options.providerId : 'openabstractions';
   const read = dependencies.readProviders ?? (() => readProviders(api));
-  const refresh = dependencies.refreshProvider ?? ((id) => refreshProvider(api, id));
-  // The refresh route belongs to OA's provider refresh patch; the official
-  // OpenCode lists no refresh entry and reads the models at its start.
-  const refreshable = once(dependencies.servesRefresh ?? (() => servesProviderRefresh(api.client)));
-  const setDefault = dependencies.setDefault ??
-    ((model) => api.client.global.config.update({config: {model}}, {throwOnError: true}));
+  // A hosted candidate runs under its host's declared credential; OA's
+  // selection service refuses a hosted candidate without one.
+  const save = dependencies.writeChatChoice ?? (async (candidate) => {
+    let credential = '';
+    if (candidate.placement === 'hosted') {
+      credential = await hostedCredential(await (dependencies.resolveRouter ?? resolveRouter)(), candidate.model);
+      if (!credential) throw new Error(`${candidate.model} names no hosted credential in OpenAbstractions`);
+    }
+    await writeChatChoice({...candidate, credential}, await (dependencies.resolveOperator ?? resolveOperator)());
+  });
   const toast = (variant, message) => { try { api.ui.toast({variant, message}); } catch { /* a toast must not break /oa */ } };
 
   async function open() {
@@ -90,35 +133,30 @@ export async function installModels(api, options = {}, dependencies = {}) {
       toast('error', `OpenAbstractions could not read OpenCode's models: ${error?.message ?? error}`);
       return;
     }
-    const canRefresh = await refreshable();
-    const entries = modelOptions(listing.providers, listing.defaultModel, base, canRefresh);
-    if (entries.length === (canRefresh ? 1 : 0)) toast('warning', 'OpenCode lists no OpenAbstractions model. Run Setup\'s "Choose a chat model" first.');
+    const entries = modelOptions(listing.providers, base);
+    if (entries.length === 0) toast('warning', 'OpenCode lists no OpenAbstractions model. Run Setup\'s "Choose a chat model" first.');
     api.ui.dialog.replace(() => api.ui.DialogSelect({
       title: 'OpenAbstractions models',
       options: entries,
-      current: listing.defaultModel,
+      current: listing.selected,
       onSelect: (option) => choose(option, listing),
     }));
   }
 
   async function choose(option, listing) {
-    if (option.value === refreshValue) {
-      try {
-        await refresh(base);
-        toast('success', 'OpenAbstractions models refreshed');
-      } catch (error) {
-        toast('error', `OpenAbstractions could not refresh the models: ${error?.message ?? error}`);
-      }
-      await open();
+    api.ui.dialog.clear();
+    const value = String(option.value);
+    const hosted = value.startsWith(`${base}-hosted/`);
+    const model = value.slice(value.indexOf('/') + 1);
+    try {
+      await save({model, placement: hosted ? 'hosted' : 'local', credential: ''});
+    } catch (error) {
+      toast('error', `OpenAbstractions did not save OpenCode's chat choice: ${error?.message ?? error}`);
       return;
     }
-    api.ui.dialog.clear();
-    try {
-      await setDefault(option.value);
-      toast('success', chosenText(option.title, String(option.value).startsWith(`${base}-hosted/`)));
-    } catch (error) {
-      toast('error', `OpenCode did not save the default model: ${error?.message ?? error}`);
-    }
+    const pick = personPick(listing.ownSetting, base);
+    const picked = pick && pick !== value ? titleOf(listing.providers, pick) : '';
+    toast(picked ? 'info' : 'success', chosenText(option.title, {hosted, pick: picked}));
   }
 
   const removeLayer = api.keymap?.registerLayer?.({
@@ -129,4 +167,11 @@ export async function installModels(api, options = {}, dependencies = {}) {
   });
   api.lifecycle?.onDispose?.(() => removeLayer?.());
   return {open, choose};
+}
+
+/** The name the picker shows for a provider/model key, or the key. */
+function titleOf(providers, key) {
+  const slash = key.indexOf('/');
+  const provider = (providers ?? []).find((entry) => entry.id === key.slice(0, slash));
+  return provider?.models?.[key.slice(slash + 1)]?.name ?? key;
 }

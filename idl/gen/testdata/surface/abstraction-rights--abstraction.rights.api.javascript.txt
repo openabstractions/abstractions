@@ -7,10 +7,13 @@ enum ActionEditOutcome
   Forbidden
   Unavailable
 class AuthorizationClient
+  decideForAtLeastRevision(subject, action, resource, atLeastRevision)
   listActionDescriptions(cursor, limit)
   decide(action, resource)
   decideFor(subject, action, resource)
 class AuthorizationOperatorClient
+  observePolicy(after, waitMs)
+  observePolicyPages(after, waitMs)
   registerDescribedAction(expectedRevision, description)
   applyFirstUseAllow(expectedRevision, questionId)
   listPolicy(cursor, limit)
@@ -59,6 +62,15 @@ enum PolicyEditOutcome
   Invalid
   Forbidden
   Unavailable
+enum PolicyObservationMechanism
+  Native
+enum PolicyObservationOutcome
+  Changed
+  Unchanged
+  Gap
+  Invalid
+  Forbidden
+  Unavailable
 enum PolicyPageOutcome
   Page
   Gap
@@ -66,6 +78,20 @@ enum PolicyPageOutcome
   Forbidden
   Unavailable
 class Refusal
+enum RefusalAsk
+  Available
+  None
+enum RefusalDecision
+  Denied
+  NotGranted
+  PersonOnly
+enum RefusalSource
+  Rights
+  Credentials
+  License
+  Terms
+  Identity
+  Os
 enum ResourceSelectorKind
   One
   All
@@ -129,11 +155,14 @@ function decodePermissionEffect(data)
 function decodePermissionKey(data)
 function decodePermissionSelection(data)
 function decodePolicyEdit(data)
+function decodePolicyObservation(data)
 function decodePolicyPage(data)
 function decodePolicyRule(data)
+function decodeRefusalDetail(data)
 function decodeRequest(data)
 function decodeResourceSelector(data)
 function decodeResponseMetadata(data)
+function decodeRevisionDecision(data)
 function decodeRuleRead(data)
 function decodeRuleRecord(data)
 function decodeSelectorEdit(data)
@@ -171,11 +200,14 @@ function encodePermissionEffect(v)
 function encodePermissionKey(v)
 function encodePermissionSelection(v)
 function encodePolicyEdit(v)
+function encodePolicyObservation(v)
 function encodePolicyPage(v)
 function encodePolicyRule(v)
+function encodeRefusalDetail(v)
 function encodeRequest(v)
 function encodeResourceSelector(v)
 function encodeResponseMetadata(v)
+function encodeRevisionDecision(v)
 function encodeRuleRead(v)
 function encodeRuleRecord(v)
 function encodeSelectorEdit(v)
@@ -185,6 +217,7 @@ function encodeSelectorRulePage(v)
 function encodeSelectorRuleRead(v)
 function encodeSelectorRuleRecord(v)
 function encodeSubject(v)
+function fromJson(kind, data)
 const knownRights
 function newAccountDefault()
   name
@@ -321,6 +354,11 @@ function newPolicyEdit()
   outcome
   revision
   current
+function newPolicyObservation()
+  outcome
+  next
+  revision
+  mechanism
 function newPolicyPage()
   outcome
   revision
@@ -333,6 +371,14 @@ function newPolicyRule()
   action
   resource
   permit
+function newRefusalDetail()
+  source
+  decision
+  ask
+  action
+  question
+  credential
+  retryAfterMs
 function newRequest()
   op
   name
@@ -356,6 +402,9 @@ function newResponseMetadata()
   right
   apps
   holds
+function newRevisionDecision()
+  decision
+  observedRevision
 function newRuleRead()
   outcome
   revision
@@ -406,3 +455,4 @@ function newSubject()
 const operations
 const refusalCodes
 const resourceActions
+function toJson(kind, value)

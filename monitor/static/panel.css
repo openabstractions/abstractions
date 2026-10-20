@@ -270,14 +270,36 @@ html[data-platform="linux"] .oa-nav-item.active {
    turning it into a second, nested scroll container beside the normal one
    the page already has. .oa-content is also the narrower, correct fix on
    its own terms: it is the column actually at risk, and .oa-nav, a sibling
-   under .oa-shell rather than a descendant, is never affected by it. */
+   under .oa-shell rather than a descendant, is never affected by it.
+   It is clip, not hidden: hidden made the column a scroll container that
+   never scrolls, and a sticky .oa-footer inside it then never stuck to the
+   window's bottom edge. */
 .oa-content {
   flex: 1 1 auto;
   min-width: 0;
   padding: 2rem 2.5rem 3rem;
   max-width: 900px;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
+/* oa-footer: a page's one summary row with its one button, held at the
+   bottom of the window while the rows above it scroll (Setup). */
+.oa-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-top: 1rem;
+  background: linear-gradient(var(--oa-card-bg), var(--oa-card-bg)), var(--oa-page-bg);
+  box-shadow: 0 -1px 0 var(--oa-sep), 0 -6px 16px rgba(0, 0, 0, .06);
+}
+/* oa-check-space: keeps a row without a checkbox aligned with sibling rows
+   that lead with one. */
+.oa-check-space { display: inline-block; flex: 0 0 auto; width: 20px; height: 1px; margin-right: 8px; }
+/* A row's checkbox leads its expander's header (Setup's ticks). */
+details.oa-expander > summary > input[type="checkbox"] { flex: 0 0 auto; }
+details.oa-expander > summary > .oa-row-text { flex: 1 1 auto; }
+/* A row's one action in its header (Setup's Prepare for llama.cpp). */
+details.oa-expander > summary > button { flex: 0 0 auto; margin: 0 8px; }
+details.oa-expander > summary > .oa-row-text > progress { margin-top: 6px; }
 .oa-content h1 {
   font-size: var(--oa-title-size);
   font-weight: var(--oa-title-weight);
@@ -417,6 +439,9 @@ html[data-platform="linux"] .oa-content section > :is(button, select, input, lab
 }
 .oa-pagehead-tile svg { width: 24px; height: 24px; fill: currentColor; }
 .oa-pagehead-text { min-width: 0; }
+/* The page's one primary action sits at the head's end, as on an app's page in
+   Windows Settings. */
+.oa-pagehead-action { margin-left: auto; flex: 0 0 auto; }
 .oa-content .oa-pagehead h1, .oa-pagehead-title { margin: 0; }
 div.oa-pagehead-title { font-weight: 700; font-size: 1.15em; }
 .oa-caption { color: var(--oa-text-secondary); margin: .2rem 0 0; line-height: 1.4; }
@@ -439,7 +464,12 @@ div.oa-pagehead-title { font-weight: 700; font-size: 1.15em; }
 .oa-row-control { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .4rem; }
 .oa-row-control > :is(button, select, input) { margin: 0; }
 .oa-row > .oa-status { grid-column: 1 / -1; }
+/* A row's own Learn more (Apps' waiting registrations) spans the row. */
+.oa-row > .oa-expander { grid-column: 1 / -1; padding-bottom: 0; }
 a.oa-row-nav { text-decoration: none; }
+/* An Apps row with its own Open: the name links to the app's page. */
+.oa-row > a.oa-row-text { color: inherit; text-decoration: none; }
+.oa-row > a.oa-row-text:hover .oa-row-label { text-decoration: underline; }
 a.oa-row-nav:hover { text-decoration: none; background: var(--oa-nav-selected-bg); }
 .oa-row-chevron::after { content: "\203A"; color: var(--oa-text-secondary); font-size: 1.3em; line-height: 1; }
 
@@ -469,6 +499,11 @@ details.oa-expander[open] > summary { margin-bottom: .5rem; }
   animation: oa-spin .8s linear infinite;
 }
 .oa-status[data-state="error"] { color: #b22; }
+/* The page's runtime-down banner (runtimeScript) under the page head. */
+#oa-runtime { margin: 0 0 1.25rem; }
+/* While it shows, a section's sentence that only repeats it is hidden
+   (runtimeEcho in panel_shell.go). */
+html[data-runtime="down"] [data-runtime-echo] { display: none !important; }
 @keyframes oa-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .oa-status[data-state="loading"]::before { animation: none; } }
 

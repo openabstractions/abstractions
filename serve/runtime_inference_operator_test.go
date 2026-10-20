@@ -75,6 +75,9 @@ func TestRevokeProgramKeysRevokesLegacyShortAndLongAliases(t *testing.T) {
 // AddHost entries: profiles are seeded or owned words, declared_by belongs to
 // the runtime, and a ceiling needs a credential.
 func TestInferenceHostEntryValidation(t *testing.T) {
+	if !slices.Equal(iwire.HostProfiles, router.SeedProfiles) {
+		t.Fatalf("inference catalogue %v differs from router %v", iwire.HostProfiles, router.SeedProfiles)
+	}
 	hosted := iwire.HostEntry{Name: "openrouter", Hosted: true, Kind: "openai-compatible", Base: "https://openrouter.ai/api/v1", Credential: "openrouter"}
 	for _, c := range []struct {
 		edit  func(*iwire.HostEntry)
@@ -82,6 +85,7 @@ func TestInferenceHostEntryValidation(t *testing.T) {
 	}{
 		{func(*iwire.HostEntry) {}, ""},
 		{func(e *iwire.HostEntry) { e.Profiles = []string{"chat", "example/rerank@1"} }, ""},
+		{func(e *iwire.HostEntry) { e.Profiles = []string{"live", "video"} }, ""},
 		{func(e *iwire.HostEntry) { e.Profiles = []string{"chat", "chat"} }, "profiles"},
 		{func(e *iwire.HostEntry) { e.Profiles = []string{"vision"} }, "profiles"},
 		{func(e *iwire.HostEntry) { e.DeclaredBy = "operator" }, "declared_by"},
@@ -98,25 +102,19 @@ func TestInferenceHostEntryValidation(t *testing.T) {
 	if got := defaultProfiles(true, "anthropic-messages"); !slices.Equal(got, []string{"chat"}) {
 		t.Fatalf("anthropic default %v", got)
 	}
-	if got := defaultProfiles(false, ""); !slices.Equal(got, iwire.HostProfiles) {
+	if got := defaultProfiles(false, ""); !slices.Equal(got, []string{"chat", "embed", "transcription", "speech", "image"}) {
 		t.Fatalf("local default %v", got)
 	}
 }
 
-// defaultProfiles' hosted branch defers to router.DefaultProfiles for every
-// wire but openai-compatible (research/inference-modalities/LIVE-MEASUREMENT-2026-09-22.md
-// found it hardcoding "chat" for every one of them, wrong for
-// openai-realtime and the other specialized wires): one case per
-// router.thrift wire_kinds member a hosted host may declare, and, for every
-// one but openai-compatible, agreement with the router's own table, so the
-// two can never drift apart again. openai-compatible keeps every seeded
-// profile, the same answer the local kinds give, unchanged by this task.
+// Every default uses the router's capability table. A catalogue addition alone
+// must not advertise a specialized capability on an ordinary unprofiled host.
 func TestDefaultProfilesAgreesWithTheRouterPerWireKind(t *testing.T) {
 	for _, c := range []struct {
 		wire string
 		want []string
 	}{
-		{router.WireOpenAICompatible, iwire.HostProfiles},
+		{router.WireOpenAICompatible, []string{"chat", "embed", "transcription", "speech", "image"}},
 		{router.WireOpenAIRealtime, []string{"live"}},
 		{router.WireAnthropicMessages, []string{"chat"}},
 		{router.WireDeepgramPrerecorded, []string{"transcription"}},
@@ -128,14 +126,16 @@ func TestDefaultProfilesAgreesWithTheRouterPerWireKind(t *testing.T) {
 		if got := defaultProfiles(true, c.wire); !slices.Equal(got, c.want) {
 			t.Errorf("defaultProfiles(true, %q) = %v, want %v", c.wire, got, c.want)
 		}
-		if c.wire == router.WireOpenAICompatible {
-			continue
-		}
 		// The operator's answer is never anything but the router's own table
 		// for the same wire, called through the same *router.Host
 		// construction the router routes through.
 		if got, fromRouter := defaultProfiles(true, c.wire), router.DefaultProfiles(router.NewHosted("", "", c.wire, "")); !slices.Equal(got, fromRouter) {
 			t.Errorf("defaultProfiles(true, %q) = %v, disagrees with router.DefaultProfiles = %v", c.wire, got, fromRouter)
+		}
+	}
+	for _, kind := range iwire.LocalHostKinds {
+		if got := defaultProfiles(false, kind); slices.Contains(got, "live") || slices.Contains(got, "video") {
+			t.Errorf("unprofiled local %q advertised specialized capability: %v", kind, got)
 		}
 	}
 	if !slices.Contains(hostedWireKinds, router.WireRemote) {

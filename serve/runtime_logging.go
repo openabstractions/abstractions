@@ -5,7 +5,6 @@ import (
 	identity "github.com/openabstractions/abstraction-identity"
 	logging "github.com/openabstractions/abstraction-logging/go"
 	"os"
-	"strconv"
 )
 
 // runtimeAttributedLogWriter is only for trusted self-generated events. The
@@ -18,26 +17,29 @@ func runtimeAttributedLogWriter(out logging.Sink) (logging.Sink, error) {
 	if !ok || !provider.ApplicationHistoryAvailable() {
 		return out, nil
 	}
-	principal, err := identity.Self()
+	emitter, err := runtimeLogEmitter()
 	if err != nil {
 		return nil, err
 	}
-	account := ""
-	if principal.Kind == "windows" {
-		account = principal.SID
-	} else if principal.Kind == "posix" {
-		account = strconv.Itoa(principal.UID)
+	return logging.WithEmitter(provider, emitter)
+}
+
+func runtimeLogEmitter() (logging.Emitter, error) {
+	principal, err := identity.Self()
+	if err != nil {
+		return logging.Emitter{}, err
 	}
-	if account == "" {
-		return nil, errors.New("runtime: native self log account unavailable")
+	account, err := principal.Account()
+	if err != nil {
+		return logging.Emitter{}, errors.New("runtime: native self log account unavailable")
 	}
 	image, err := os.Executable()
 	if err != nil {
-		return nil, err
+		return logging.Emitter{}, err
 	}
 	resource, err := logging.PrepareApplicationResource(image)
 	if err != nil {
-		return nil, err
+		return logging.Emitter{}, err
 	}
-	return logging.WithEmitter(provider, logging.Emitter{Version: 1, Account: account, Program: resource.Program, Key: resource.CapturedFileKey})
+	return logging.Emitter{Version: 1, Account: account, Program: resource.Program, Key: resource.CapturedFileKey}, nil
 }

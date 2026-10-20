@@ -38,7 +38,13 @@ func TestGeneratedTimestampCompatibility(t *testing.T) {
 }
 
 const timestampGoTest = `package rec
-import("os";"strings";"testing")
+import("os";"strings";"testing";"time")
+func TestFormatTimestamp(t *testing.T) {
+ for _,value:=range []time.Time{time.Time{},time.Unix(-1,999999999),time.Date(2026,11,4,12,30,59,123456789,time.FixedZone("offset",19800))} {
+  want:=value.UTC().Format("2006-01-02T15:04:05.000000Z")
+  if got:=FormatTimestamp(value);got!=want||!microsTimestamp(got){t.Fatalf("format %s: %q want %q",value,got,want)}
+ }
+}
 func TestTimestampVectors(t *testing.T) {
  base,err:=os.ReadFile("base.json");if err!=nil{t.Fatal(err)}
  cases,err:=os.ReadFile("cases.tsv");if err!=nil{t.Fatal(err)}

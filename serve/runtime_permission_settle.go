@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	watch "github.com/openabstractions/abstraction-watch/go"
 	"sync"
 	"time"
 
@@ -27,14 +28,9 @@ const settlePassBudget = 30 * time.Second
 // waits for it, so no pass edits the Book once the asks host starts closing.
 type permissionSettler struct {
 	mu sync.Mutex
-	// running is a pass in flight; again asks it for one more. stopped
-	// refuses new passes once stop began; passes counts the goroutine stop
-	// waits for, added under mu while not stopped, so no Add follows the Wait.
-	running, again, stopped bool
-	passes                  sync.WaitGroup
-	// ctx is cancelled by stop; nil until followRights.
-	ctx    context.Context
-	cancel context.CancelFunc
+	// recheck is the one asynchronous recheck pass (watch.Recheck); nil
+	// until followRights.
+	recheck *watch.Recheck
 	// decide is the decision a pass reads; tests replace it.
 	decide func(context.Context, rwire.PermissionEffect) rwire.BatchDecision
 	// done, when set, is called after each pass; tests wait on it.
@@ -52,23 +48,27 @@ func (a *runtimeAsks) followRights(ctx context.Context) (stop func()) {
 	}
 	s := &a.settler
 	s.mu.Lock()
-	s.ctx, s.cancel = context.WithCancel(ctx)
 	if s.decide == nil {
 		s.decide = func(ctx context.Context, effect rwire.PermissionEffect) rwire.BatchDecision {
-			return a.rights.policy.CheckPermissionEffectContext(ctx, effect, "")
+			return a.permissionDecision(ctx, effect, "")
 		}
 	}
+	s.recheck = watch.NewRecheck(ctx, settlePassBudget, a.withdrawSettledPermissions)
+	s.recheck.After = func() {
+		s.mu.Lock()
+		done := s.done
+		s.mu.Unlock()
+		if done != nil {
+			done()
+		}
+	}
+	recheck := s.recheck
 	s.mu.Unlock()
-	remove := a.rights.policy.OnChange(a.settleSoon)
+	remove := a.rights.policy.OnChange(func() { a.book.Gate().Advance(); a.settleSoon() })
 	a.settleSoon()
 	return func() {
 		remove()
-		s.mu.Lock()
-		s.stopped = true
-		cancel := s.cancel
-		s.mu.Unlock()
-		cancel()
-		s.passes.Wait()
+		recheck.Stop()
 	}
 }
 
@@ -77,38 +77,11 @@ func (a *runtimeAsks) followRights(ctx context.Context) (stop func()) {
 func (a *runtimeAsks) settleSoon() {
 	s := &a.settler
 	s.mu.Lock()
-	if s.stopped || s.ctx == nil {
-		s.mu.Unlock()
-		return
-	}
-	if s.running {
-		s.again = true
-		s.mu.Unlock()
-		return
-	}
-	s.running = true
-	s.passes.Add(1)
-	ctx := s.ctx
+	recheck := s.recheck
 	s.mu.Unlock()
-	go func() {
-		defer s.passes.Done()
-		for {
-			passCtx, cancel := context.WithTimeout(ctx, settlePassBudget)
-			a.withdrawSettledPermissions(passCtx)
-			cancel()
-			s.mu.Lock()
-			done := s.done
-			more := s.again && ctx.Err() == nil
-			s.running, s.again = more, false
-			s.mu.Unlock()
-			if done != nil {
-				done()
-			}
-			if !more {
-				return
-			}
-		}
-	}()
+	if recheck != nil {
+		recheck.Request()
+	}
 }
 
 // withdrawSettledPermissions decides every pending typed occurrence again and

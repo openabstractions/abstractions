@@ -18,6 +18,34 @@ inline constexpr bool operator!=(ManifestOutcome value, std::string_view name)
 inline constexpr bool operator==(std::string_view name, ManifestOutcome value)
 inline constexpr bool operator!=(std::string_view name, ManifestOutcome value)
 inline const std::vector<std::string> kManifestOutcomeNames
+enum class CatalogUse {Chat, Code, Vision, Embed, Image, Video}
+inline constexpr std::string_view wire_name(CatalogUse value)
+inline std::optional<CatalogUse> parse_catalog_use(std::string_view name)
+inline constexpr bool operator==(CatalogUse value, std::string_view name)
+inline constexpr bool operator!=(CatalogUse value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, CatalogUse value)
+inline constexpr bool operator!=(std::string_view name, CatalogUse value)
+inline const std::vector<std::string> kCatalogUseNames
+inline const std::vector<std::string> kFitNames
+inline constexpr std::string_view kFitFits
+inline constexpr std::string_view kFitSlow
+inline constexpr std::string_view kFitNo
+enum class Availability {Download, Served}
+inline constexpr std::string_view wire_name(Availability value)
+inline std::optional<Availability> parse_availability(std::string_view name)
+inline constexpr bool operator==(Availability value, std::string_view name)
+inline constexpr bool operator!=(Availability value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, Availability value)
+inline constexpr bool operator!=(std::string_view name, Availability value)
+inline const std::vector<std::string> kAvailabilityNames
+enum class FitOutcome {Fitted, Invalid, Unavailable, Forbidden}
+inline constexpr std::string_view wire_name(FitOutcome value)
+inline std::optional<FitOutcome> parse_fit_outcome(std::string_view name)
+inline constexpr bool operator==(FitOutcome value, std::string_view name)
+inline constexpr bool operator!=(FitOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, FitOutcome value)
+inline constexpr bool operator!=(std::string_view name, FitOutcome value)
+inline const std::vector<std::string> kFitOutcomeNames
 inline const std::vector<std::string> kServiceErrorCodeNames
 inline constexpr std::string_view kServiceErrorCodeHandlerError
 inline constexpr std::string_view kServiceErrorCodeInvalidResult
@@ -25,6 +53,53 @@ inline constexpr std::string_view kServiceErrorCodeUnknownVersion
 inline constexpr std::string_view kServiceErrorCodeUnknownService
 inline constexpr std::string_view kServiceErrorCodeUnknownMethod
 inline constexpr std::string_view kServiceErrorCodeWrongMode
+enum class EndpointServiceReadiness {Ready, NotReady, Unknown}
+inline constexpr std::string_view wire_name(EndpointServiceReadiness value)
+inline std::optional<EndpointServiceReadiness> parse_endpoint_service_readiness(std::string_view name)
+inline constexpr bool operator==(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator!=(EndpointServiceReadiness value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointServiceReadiness value)
+inline constexpr bool operator!=(std::string_view name, EndpointServiceReadiness value)
+inline const std::vector<std::string> kEndpointServiceReadinessNames
+inline const std::vector<std::string> kEndpointRefusalSourceNames
+inline constexpr std::string_view kEndpointRefusalSourceRights
+inline constexpr std::string_view kEndpointRefusalSourceCredentials
+inline constexpr std::string_view kEndpointRefusalSourceLicense
+inline constexpr std::string_view kEndpointRefusalSourceTerms
+inline constexpr std::string_view kEndpointRefusalSourceIdentity
+inline constexpr std::string_view kEndpointRefusalSourceOs
+enum class EndpointRefusalDecision {Denied, NotGranted, PersonOnly}
+inline constexpr std::string_view wire_name(EndpointRefusalDecision value)
+inline std::optional<EndpointRefusalDecision> parse_endpoint_refusal_decision(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalDecision value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalDecision value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalDecision value)
+inline const std::vector<std::string> kEndpointRefusalDecisionNames
+enum class EndpointRefusalAsk {Available, None}
+inline constexpr std::string_view wire_name(EndpointRefusalAsk value)
+inline std::optional<EndpointRefusalAsk> parse_endpoint_refusal_ask(std::string_view name)
+inline constexpr bool operator==(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator!=(EndpointRefusalAsk value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointRefusalAsk value)
+inline constexpr bool operator!=(std::string_view name, EndpointRefusalAsk value)
+inline const std::vector<std::string> kEndpointRefusalAskNames
+enum class EndpointProducerCheckState {Current, Repaired, Stale, Refused, Unverified}
+inline constexpr std::string_view wire_name(EndpointProducerCheckState value)
+inline std::optional<EndpointProducerCheckState> parse_endpoint_producer_check_state(std::string_view name)
+inline constexpr bool operator==(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator!=(EndpointProducerCheckState value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointProducerCheckState value)
+inline constexpr bool operator!=(std::string_view name, EndpointProducerCheckState value)
+inline const std::vector<std::string> kEndpointProducerCheckStateNames
+enum class EndpointDescriptionOutcome {Described, Forbidden, Unavailable, Invalid, Unsupported}
+inline constexpr std::string_view wire_name(EndpointDescriptionOutcome value)
+inline std::optional<EndpointDescriptionOutcome> parse_endpoint_description_outcome(std::string_view name)
+inline constexpr bool operator==(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator!=(EndpointDescriptionOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, EndpointDescriptionOutcome value)
+inline constexpr bool operator!=(std::string_view name, EndpointDescriptionOutcome value)
+inline const std::vector<std::string> kEndpointDescriptionOutcomeNames
 inline const std::vector<std::string> kResolverOperations
 inline const std::vector<std::string> kRegistryOperations
 struct Ref
@@ -41,7 +116,76 @@ struct ManifestResult
   ManifestOutcome outcome
   std::optional<::abstraction::storage::content::Manifest> manifest
   std::string resolved_revision
+struct FitEntry
+  std::string title
+  std::string family
+  std::string fit
+  Availability availability
+  std::string machine
+  std::int64_t download_bytes
+  std::int64_t need_bytes
+  std::int64_t context
+  std::string license
+  Ref source
+  std::string digest
+struct FitResult
+  FitOutcome outcome
+  std::string catalog_version
+  std::int64_t pool_bytes
+  std::vector<FitEntry> entries
+struct EndpointRefusalDetail
+  std::string source
+  EndpointRefusalDecision decision
+  EndpointRefusalAsk ask
+  std::string action
+  std::string question
+  std::string credential
+  std::int64_t retry_after_ms
+struct EndpointProducerCheck
+  std::string kind
+  std::string copy
+  EndpointProducerCheckState state
+  std::string reason
+  std::string checked
+struct EndpointServiceState
+  std::string service
+  EndpointServiceReadiness readiness
+  std::string reason
+  std::vector<std::string> guarantees
+  std::map<std::string, std::string> capabilities
+  std::string definition_hash
+struct EndpointDescription
+  EndpointDescriptionOutcome outcome
+  std::string program
+  std::string version
+  std::vector<EndpointServiceState> services
+  std::optional<EndpointRefusalDetail> refusal
+  std::string reason
+  std::vector<EndpointProducerCheck> checks
+struct EndpointDescriptionResult
+  EndpointDescription value
 inline Ref decode(std::string_view data)
+T from_json(std::string_view data)
+inline std::string to_json(const Ref& v)
+inline Ref from_json<Ref>(std::string_view data)
+inline std::string to_json(const LookupResult& v)
+inline LookupResult from_json<LookupResult>(std::string_view data)
+inline std::string to_json(const ManifestResult& v)
+inline ManifestResult from_json<ManifestResult>(std::string_view data)
+inline std::string to_json(const FitEntry& v)
+inline FitEntry from_json<FitEntry>(std::string_view data)
+inline std::string to_json(const FitResult& v)
+inline FitResult from_json<FitResult>(std::string_view data)
+inline std::string to_json(const EndpointRefusalDetail& v)
+inline EndpointRefusalDetail from_json<EndpointRefusalDetail>(std::string_view data)
+inline std::string to_json(const EndpointProducerCheck& v)
+inline EndpointProducerCheck from_json<EndpointProducerCheck>(std::string_view data)
+inline std::string to_json(const EndpointServiceState& v)
+inline EndpointServiceState from_json<EndpointServiceState>(std::string_view data)
+inline std::string to_json(const EndpointDescription& v)
+inline EndpointDescription from_json<EndpointDescription>(std::string_view data)
+inline std::string to_json(const EndpointDescriptionResult& v)
+inline EndpointDescriptionResult from_json<EndpointDescriptionResult>(std::string_view data)
 struct FrameWriter
   virtual void write_frame(std::string_view frame)
 struct DispatchError : std::runtime_error
@@ -51,10 +195,12 @@ struct FrameExchanger
 struct ServiceError : std::runtime_error
   std::string code, message
 inline constexpr std::string_view kEndpointContract
+inline constexpr std::string_view kEndpointV2Contract
 struct DescribedService
   std::string contract
   bool ready
   std::string why
+std::string describe_endpoint_with_checks(std::string_view frame, const std::string& program, const std::string& version, const std::vector<EndpointProducerCheck>& checks, const Services& . . . services)
 std::string describe_endpoint(std::string_view frame, const std::string& program, const std::string& version, const Services& . . . services)
 struct ModelResolver
   virtual LookupResult resolve(const Ref& ref)
@@ -67,6 +213,8 @@ struct ModelResolverService
 struct ModelResolverDispatcher : FrameWriter, FrameExchanger
   ModelResolver& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 struct ModelManifest
@@ -80,6 +228,23 @@ struct ModelManifestService
 struct ModelManifestDispatcher : FrameWriter, FrameExchanger
   ModelManifest& handler
   DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
+  void write_frame(std::string_view frame) override
+  std::string exchange_frame(std::string_view frame) override
+struct ModelCatalog
+  virtual FitResult fit(const CatalogUse& use)
+template<class Transport>struct ModelCatalogClient : ModelCatalog
+  Transport& transport_
+  FitResult fit(const CatalogUse& use) override
+struct ModelCatalogService
+  inline static constexpr std::string_view kWireName
+  inline static constexpr std::string_view kCapability
+struct ModelCatalogDispatcher : FrameWriter, FrameExchanger
+  ModelCatalog& handler
+  DescribedService describe_service() const
+  std::string describe_service_definition_hash() const
+  std::pair<std::vector<std::string>, std::map<std::string, std::string>> describe_service_metadata() const
   void write_frame(std::string_view frame) override
   std::string exchange_frame(std::string_view frame) override
 inline std::string encode_ref(const Ref& v)
@@ -88,4 +253,8 @@ inline std::string encode_lookup_result(const LookupResult& v)
 inline LookupResult decode_lookup_result(std::string_view in)
 inline std::string encode_manifest_result(const ManifestResult& v)
 inline ManifestResult decode_manifest_result(std::string_view in)
+inline std::string encode_fit_entry(const FitEntry& v)
+inline FitEntry decode_fit_entry(std::string_view in)
+inline std::string encode_fit_result(const FitResult& v)
+inline FitResult decode_fit_result(std::string_view in)
 inline std::string encode(const Ref& v)

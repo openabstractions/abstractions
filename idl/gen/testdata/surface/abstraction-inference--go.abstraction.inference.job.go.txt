@@ -10,6 +10,7 @@ func (Profile) UnmarshalText(text []byte) error
 func (Profile) MarshalJSON() ([]byte, error)
 func (Profile) UnmarshalJSON(data []byte) error
 func ProfileValues() []Profile
+func (Profile) IsKnown() bool
 func (Profile) Known() bool
 type Mode uint32
 const ModeGenerate
@@ -22,11 +23,13 @@ func (Mode) UnmarshalText(text []byte) error
 func (Mode) MarshalJSON() ([]byte, error)
 func (Mode) UnmarshalJSON(data []byte) error
 func ModeValues() []Mode
+func (Mode) IsKnown() bool
 func (Mode) Known() bool
 type RequestGuarantee string
 const RequestGuaranteeLocalOnly
 const RequestGuaranteeHostedAllowed
 func RequestGuaranteeValues() []RequestGuarantee
+func (RequestGuarantee) IsKnown() bool
 func (RequestGuarantee) Known() bool
 var Kinds
 var ExecutionGuarantees
@@ -67,3 +70,5 @@ type Refusal struct
   Offset int
 func (Refusal) Error() string
 func Decode(in []byte) (*Document, error)
+func ToJSON(v any) (out []byte, err error)
+func FromJSON(data []byte, v any) error

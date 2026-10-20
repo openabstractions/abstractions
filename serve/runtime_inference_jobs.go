@@ -11,6 +11,7 @@ import (
 	job "github.com/openabstractions/abstraction-job/go"
 	api "github.com/openabstractions/abstraction-job/go/abstraction/job/acceptance"
 	"github.com/openabstractions/abstraction-job/go/acceptanceprovider"
+	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 )
 
 // runtimeInferenceJobExecutor adds kind inference to the already recorded job
@@ -38,16 +39,31 @@ func composeInferenceJobs(base acceptanceprovider.Executor, runtime *runtimeInfe
 			return inference.Subject{Account: subject.Account, Program: subject.Program}, inference.ContentResolved
 		}
 		var refusal *download.CredentialError
-		if errors.As(err, &refusal) && refusal.Outcome == "unavailable" {
+		if errors.As(err, &refusal) && refusal.Outcome == cwire.ApplyOutcomeUnavailable.String() {
 			return inference.Subject{}, inference.ContentUnavailable
 		}
 		return inference.Subject{}, inference.ContentForbidden
 	}
 	execution := inference.NewJobExecution(runtime.provider, resolve, report)
+	// A bound submission refused for want of a grant names the first-use
+	// questions its admission raised that are still pending, so the
+	// submitter's client waits for the person's answer and submits again
+	// (INF-W11). The asks composition assigns the lookup after this one.
+	execution.SetPendingQuestions(credentials.runtimeRights.pendingJobQuestions)
 	// A job that has not ended holds the edit input or first frame it names
 	// (INF-V4, STO-T7).
 	runtime.content.addInputHolder(execution.NamedInputs)
 	return &runtimeInferenceJobExecutor{base: base, inference: execution, legacyResolve: resolve}
+}
+
+// pendingJobQuestions is inference.JobPendingQuestions: which of the
+// first-use questions a refused job admission gathered are still pending
+// about the submitter's own program (INF-W11).
+func (r *runtimeRights) pendingJobQuestions(_ context.Context, s inference.Subject, ids []string) ([]string, error) {
+	if r == nil || r.pendingQuestions == nil {
+		return nil, nil
+	}
+	return r.pendingQuestions(rwire.Subject{Account: s.Account, Program: s.Program}, ids)
 }
 
 func (e *runtimeInferenceJobExecutor) Profile() string { return e.base.Profile() }
@@ -149,6 +165,23 @@ func (e *runtimeInferenceJobExecutor) CheckSubjectAdmission(binding acceptancepr
 		return checker.CheckSubjectAdmission(binding, kind, spec, required)
 	}
 	return e.CheckAdmission(binding.Scope, kind, spec, required)
+}
+
+var _ acceptanceprovider.QuestionAdmissionChecker = (*runtimeInferenceJobExecutor)(nil)
+
+// AdmissionQuestions is the kind owner's questions-only admission for a
+// submitter still waiting on its acceptance.submit question (job JOB-A16).
+func (e *runtimeInferenceJobExecutor) AdmissionQuestions(binding acceptanceprovider.Binding, kind string, spec []byte, required []string) []string {
+	if binding.Subject == nil {
+		return nil
+	}
+	if kind == inference.InferenceJobKind {
+		return e.inference.AdmissionQuestionsForSubject(binding.Scope, kind, spec, required, inference.Subject{Account: binding.Subject.Account, Program: binding.Subject.Program}, binding.Peer)
+	}
+	if checker, ok := e.base.(acceptanceprovider.QuestionAdmissionChecker); ok {
+		return checker.AdmissionQuestions(binding, kind, spec, required)
+	}
+	return nil
 }
 
 func (e *runtimeInferenceJobExecutor) Serve(ctx context.Context, store job.Store) error {

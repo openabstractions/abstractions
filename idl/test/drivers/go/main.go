@@ -29,7 +29,7 @@ func awkward() *rec.Record {
 			Actions: []string{"cancel", "nas.example/transfer@2#re-mirror"},
 		},
 		State: "pending",
-		Spec:     `{"artifact":{"bytes":9223372036854775807,"empty_obj":{},"empty_arr":[]},"note":"a<b&c>d","nested":{"deep":{"x":1.50,"neg":-0.0}}}`,
+		Spec:  `{"artifact":{"bytes":9223372036854775807,"empty_obj":{},"empty_arr":[]},"note":"a<b&c>d","nested":{"deep":{"x":1.50,"neg":-0.0}}}`,
 		Progress: rec.Progress{
 			Total:     9223372036854775807,
 			UpdatedAt: ts,

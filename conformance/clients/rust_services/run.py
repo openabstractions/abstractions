@@ -15,7 +15,7 @@ import uuid
 ROOT=Path(__file__).resolve().parents[3]
 HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE.parent))
-from workspace import (cmake_for, certify_compiler, build_root, build_tree, CERTIFIES, KEEP_HELP, source_revision, dry_run_stop,
+from workspace import (cmake_for, certify_compiler, build_root, build_tree, copy_native_rust_identity, CERTIFIES, KEEP_HELP, source_revision, dry_run_stop,
                        DRY_RUN_HELP, fixture_endpoints, host_program)
 
 def main():
@@ -42,7 +42,8 @@ def main():
   run([cmake,'-S',ROOT/'openabstractions-flat/abstraction-identity/cpp','-B',base/'native','-DBUILD_SHARED_LIBS=OFF','-DABSTRACTION_IPC_BUILD_TESTS=OFF','-DCMAKE_BUILD_TYPE=Release',f'-DCMAKE_INSTALL_PREFIX={prefix}'],ROOT,cmake_env)
   certify_compiler(base/'native')
   run([cmake,'--build',base/'native','--config','Release'],ROOT,cmake_env);run([cmake,'--install',base/'native','--config','Release'],ROOT,cmake_env)
-  for component,parts in [('identity',['rust','rust-frame']),('logging',['rust','rs']),('facade',['rust','rust-native','rust-logging','rs'])]:
+  copy_native_rust_identity(ROOT/'openabstractions-flat/abstraction-identity',tree/'openabstractions-flat/abstraction-identity/rust')
+  for component,parts in [('identity',['rust-frame']),('logging',['rust','rs']),('facade',['rust','rust-native','rust-logging','rs'])]:
    for part in parts:
     rel=Path('openabstractions-flat')/('abstraction-'+component)/part
     shutil.copytree(ROOT/rel,tree/rel)
@@ -60,6 +61,7 @@ def main():
    print('PASS installed Rust client selected the Linux runtime and read logging history',flush=True)
    return
   host=host_program(base,'host')
+  run(['go','test',HERE/'host.go',HERE/'host_test.go','-count=1','-timeout=120s','-run','TestPrivateRuntimeDoesNotObserveDefaultProfile'])
   run(['go','build','-o',host,HERE/'host.go'])
   home=base/'empty-home';home.mkdir();child_env=dict(env,HOME=str(home),USERPROFILE=str(home),OA_RUST_HISTORY_POLICY=str(base/'history-policy'))
   run([executable,'--help'],home,child_env)

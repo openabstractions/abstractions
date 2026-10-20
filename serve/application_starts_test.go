@@ -65,7 +65,7 @@ func TestApplicationStartLogPagesToTheOperatorOnly(t *testing.T) {
 	if page.Outcome != wire.ApplicationOutcomePage || len(page.Starts) != 2 || page.Complete || page.Cursor == "" || page.CompleteSinceUnixMs != 0 {
 		t.Fatalf("%+v", page)
 	}
-	if s := page.Starts[0]; s.Application != "editor" || s.Program != app.Program || s.Title != "Title editor" || s.Launched || s.StartedUnixMs != now.UnixMilli() {
+	if s := page.Starts[0]; s.Application != "editor" || s.Program != expectedSubjectProgram(app.Program) || s.Title != "Title editor" || s.Launched || s.StartedUnixMs != now.UnixMilli() {
 		t.Fatalf("newest first: %+v", s)
 	}
 	if page.Starts[1].Application != "viewer" {
@@ -114,6 +114,45 @@ func TestApplicationStartLogRecoversFromAStaleBase(t *testing.T) {
 	reopened, err := openApplications(state, "account", d.decide)
 	if err != nil || len(reopened.starts) != 1 || reopened.starts[0].Application != "editor" {
 		t.Fatalf("the start was not written over a stale base: %+v %v", reopened.starts, err)
+	}
+}
+
+// APPLICATIONS.md exposes announcements, without process-lineage evidence.
+// The same running application can reannounce after the directory restarts;
+// neither record proves an independent process launch or who opened it.
+func TestRunningApplicationReannouncementAfterRestartIsOnlyPresenceEvidence(t *testing.T) {
+	ctx := context.Background()
+	state := t.TempDir()
+	operator := rights.Subject{Account: "account", Program: filepath.Join(state, "panel.exe")}
+	app := rights.Subject{Account: "account", Program: filepath.Join(state, "editor.exe")}
+	open := func() *applicationDirectory {
+		d, err := openApplications(state, "account", func(context.Context, rights.Subject, string, string) (bool, error) { return true, nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		d.operator = func(program string) bool { return program == operator.Program }
+		return d
+	}
+	d := open()
+	if r := d.register(ctx, operator, wire.ApplicationDescriptor{Name: "editor", Program: app.Program, Title: "Editor", StartGuidance: "Open"}); r.Outcome != wire.ApplicationOutcomeApplied {
+		t.Fatal(r)
+	}
+	presence := wire.ApplicationPresence{Application: "editor", LeaseMs: 30000}
+	if r := d.announce(ctx, app, presence); r.Outcome != wire.ApplicationOutcomeApplied {
+		t.Fatal(r)
+	}
+	restarted := open()
+	if r := restarted.announce(ctx, app, presence); r.Outcome != wire.ApplicationOutcomeApplied {
+		t.Fatal(r)
+	}
+	page := restarted.listStarts(ctx, operator, "", 64)
+	if len(page.Starts) != 2 || !page.Complete {
+		t.Fatal(page)
+	}
+	for _, observation := range page.Starts {
+		if observation.Application != "editor" || observation.Launched {
+			t.Fatal("reannouncement supplied unsupported activation evidence", observation)
+		}
 	}
 }
 

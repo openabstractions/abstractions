@@ -1,0 +1,161 @@
+type AbortOutcome api.AbortOutcome
+const AbortOutcomeAborted
+const AbortOutcomeGap
+const AbortOutcomeForbidden
+func AbortOutcomeValues() []AbortOutcome
+func ParseAbortOutcome(word string) (AbortOutcome, bool)
+type AbortResult api.AbortResult
+type Addressing api.Addressing
+const AddressingContent
+const AddressingName
+func AddressingValues() []Addressing
+func ParseAddressing(word string) (Addressing, bool)
+type AppendOutcome api.AppendOutcome
+const AppendOutcomeAccepted
+const AppendOutcomeGap
+const AppendOutcomeForbidden
+const AppendOutcomeInvalid
+const AppendOutcomeOutOfOrder
+const AppendOutcomeTooLarge
+const AppendOutcomeUnavailable
+func AppendOutcomeValues() []AppendOutcome
+func ParseAppendOutcome(word string) (AppendOutcome, bool)
+type AppendResult api.AppendResult
+type Attestation api.Attestation
+const AttestationDeclared
+const AttestationObserved
+const AttestationVerified
+func AttestationValues() []Attestation
+type Basis api.Basis
+type BeginOutcome api.BeginOutcome
+const BeginOutcomeStarted
+const BeginOutcomeCommitted
+const BeginOutcomePresent
+const BeginOutcomeForbidden
+const BeginOutcomeInvalid
+const BeginOutcomeConflict
+const BeginOutcomeTooLarge
+const BeginOutcomeBusy
+const BeginOutcomeUnsupported
+const BeginOutcomeUnavailable
+const BeginOutcomeExhausted
+func BeginOutcomeValues() []BeginOutcome
+func ParseBeginOutcome(word string) (BeginOutcome, bool)
+type BeginResult api.BeginResult
+type ChangeKind api.ChangeKind
+const ChangeKindAdded
+const ChangeKindRemoved
+func ChangeKindValues() []ChangeKind
+func ParseChangeKind(word string) (ChangeKind, bool)
+type ChangePageOutcome api.ChangePageOutcome
+const ChangePageOutcomePage
+const ChangePageOutcomeGap
+const ChangePageOutcomeForbidden
+const ChangePageOutcomeInvalid
+const ChangePageOutcomeUnavailable
+func ChangePageOutcomeValues() []ChangePageOutcome
+func ParseChangePageOutcome(word string) (ChangePageOutcome, bool)
+type Chunk api.Chunk
+type CloseOutcome api.CloseOutcome
+const CloseOutcomeClosed
+const CloseOutcomeGap
+const CloseOutcomeForbidden
+func CloseOutcomeValues() []CloseOutcome
+func ParseCloseOutcome(word string) (CloseOutcome, bool)
+type CloseResult api.CloseResult
+type CommitOutcome api.CommitOutcome
+const CommitOutcomeCommitted
+const CommitOutcomeGap
+const CommitOutcomeForbidden
+const CommitOutcomeIncomplete
+const CommitOutcomeMismatch
+const CommitOutcomeUnavailable
+func CommitOutcomeValues() []CommitOutcome
+func ParseCommitOutcome(word string) (CommitOutcome, bool)
+type CommitResult api.CommitResult
+type Dangling api.Dangling
+type Entry api.Entry
+type Evidence api.Evidence
+const EvidenceHashed
+const EvidenceNamed
+const EvidenceForeign
+const EvidenceNone
+func EvidenceValues() []Evidence
+func ParseEvidence(word string) (Evidence, bool)
+type Hold api.Hold
+type Holder api.Holder
+type InventoryOutcome api.InventoryOutcome
+const InventoryOutcomePage
+const InventoryOutcomeGap
+const InventoryOutcomeForbidden
+const InventoryOutcomeInvalid
+const InventoryOutcomeUnavailable
+func InventoryOutcomeValues() []InventoryOutcome
+func ParseInventoryOutcome(word string) (InventoryOutcome, bool)
+type Lifetime api.Lifetime
+const LifetimeUntilReleased
+const LifetimeLease
+const LifetimeWhilePresent
+func LifetimeValues() []Lifetime
+func ParseLifetime(word string) (Lifetime, bool)
+type ListingOutcome api.ListingOutcome
+const ListingOutcomePage
+const ListingOutcomeGap
+const ListingOutcomeForbidden
+const ListingOutcomeInvalid
+const ListingOutcomeUnavailable
+func ListingOutcomeValues() []ListingOutcome
+func ParseListingOutcome(word string) (ListingOutcome, bool)
+type ListingPage api.ListingPage
+type Manifest api.Manifest
+type Name api.Name
+type Object api.Object
+type OpenOutcome api.OpenOutcome
+const OpenOutcomeOpened
+const OpenOutcomeNotFound
+const OpenOutcomeForbidden
+const OpenOutcomeInvalid
+const OpenOutcomeUnsupported
+const OpenOutcomeUnavailable
+const OpenOutcomeExhausted
+func OpenOutcomeValues() []OpenOutcome
+func ParseOpenOutcome(word string) (OpenOutcome, bool)
+type OpenResult api.OpenResult
+type Placement api.Placement
+const PlacementLocal
+const PlacementRemote
+func PlacementValues() []Placement
+func ParsePlacement(word string) (Placement, bool)
+type ReadOutcome api.ReadOutcome
+const ReadOutcomeData
+const ReadOutcomeGap
+const ReadOutcomeForbidden
+const ReadOutcomeInvalid
+const ReadOutcomeUnavailable
+const ReadOutcomeChanged
+func ReadOutcomeValues() []ReadOutcome
+func ParseReadOutcome(word string) (ReadOutcome, bool)
+type ReadResult api.ReadResult
+type ServiceError api.ServiceError
+type ServiceErrorCode api.ServiceErrorCode
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+const ServiceErrorCodeCallerUnavailable
+const ServiceErrorCodeIdentityRequired
+func ServiceErrorCodeValues() []ServiceErrorCode
+type StoreError api.StoreError
+type StoreErrorKind api.StoreErrorKind
+const StoreErrorKindOther
+const StoreErrorKindMalformedIndex
+const StoreErrorKindUnreadableIndex
+const StoreErrorKindUnreadableTree
+const StoreErrorKindUnreadableConfiguration
+func StoreErrorKindValues() []StoreErrorKind
+type Verification api.Verification
+const VerificationUnverified
+func VerificationValues() []Verification
+func ParseVerification(word string) (Verification, bool)

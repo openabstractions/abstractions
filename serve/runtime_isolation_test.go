@@ -6,7 +6,9 @@ import (
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	"github.com/openabstractions/abstraction-facade/go/client"
 	"github.com/openabstractions/abstraction-facade/go/resolution"
+	"github.com/openabstractions/abstraction-storage/go/layout"
 	"os"
+	"path/filepath"
 	"runtime/pprof"
 	"testing"
 	"time"
@@ -27,7 +29,10 @@ func TestRuntimeLogStorageFailurePreservesIndependentServices(t *testing.T) {
 		t.Skip("Program proof unavailable on current platform")
 	}
 	options, _ := isolatedRuntime(t)
-	options.out = t.TempDir() // A directory cannot be opened as the log file.
+	options.out = filepath.Join(options.stateDir, "bad-log") // A directory cannot be opened as the log file.
+	if err := layout.Ensure(options.stateDir, options.out); err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ready, done := make(chan struct{}), make(chan error, 1)

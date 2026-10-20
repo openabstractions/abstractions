@@ -23,9 +23,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -93,17 +95,14 @@ func TestRemoteJobRecoveryScopesAndPolicy(t *testing.T) {
 	var drop, revoked, denyMutation atomic.Bool
 	var dropped atomic.Int32
 	drop.Store(true)
-	authorize := func(ctx context.Context, p remote.Peer) (string, error) {
-		if ctx.Err() != nil {
-			return "", ctx.Err()
-		}
+	admit := func(p remote.Peer) error {
 		if p.Key == keys[0] && !revoked.Load() {
-			return "tenant-a/app", nil
+			return nil
 		}
 		if p.Key == keys[1] {
-			return "tenant-b/app", nil
+			return nil
 		}
-		return "", errors.New("unmapped or revoked key")
+		return errors.New("unmapped or revoked key")
 	}
 	policy := func(ctx context.Context, _ remote.Peer, service, method string) error {
 		if denyMutation.Load() && service == "abstraction.job/acceptance@1" && (method == "Submit" || method == "Reconcile" || method == "CancelWork") {
@@ -129,7 +128,7 @@ func TestRemoteJobRecoveryScopesAndPolicy(t *testing.T) {
 			t.Fatal(e)
 		}
 		address = listener.Addr().String()
-		handler := p.RemoteHandler(authorize, policy)
+		handler := p.RemoteHandler(provider.RemoteConfig{AccountKind: "posix", Account: "1000", Admit: admit}, policy)
 		wrapped := func(ctx context.Context, peer remote.Peer, frame []byte) ([]byte, error) {
 			response, e := handler(ctx, peer, frame)
 			// Drop only the first Submit reply, after the real dispatcher returns it.
@@ -149,7 +148,7 @@ func TestRemoteJobRecoveryScopesAndPolicy(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan error, 1)
 		go func() {
-			done <- (remote.Server{TLS: server, Handler: wrapped, Timeout: 2 * time.Second, MaxFrame: provider.MaxFrameBytes, MaxConnections: 8}).Serve(ctx, listener)
+			done <- (remote.Server{TLS: server, Admit: admit, Handler: wrapped, Timeout: 2 * time.Second, MaxFrame: provider.MaxFrameBytes, MaxConnections: 8}).Serve(ctx, listener)
 		}()
 		var once sync.Once
 		stop := func() {
@@ -177,7 +176,7 @@ func TestRemoteJobRecoveryScopesAndPolicy(t *testing.T) {
 	drop.Store(false)
 	stop := start()
 	clients := func(index int) (*api.RecoverableAcceptanceClient, *api.OperationControlClient, *api.JobInventoryClient) {
-		c, e := remote.Client(address, configs[index], time.Second, provider.MaxFrameBytes)
+		c, e := remote.Client(address, configs[index], time.Second, provider.MaxFrameBytes, remoteTestPin(t, server))
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -189,7 +188,7 @@ func TestRemoteJobRecoveryScopesAndPolicy(t *testing.T) {
 		t.Fatal(e)
 	}
 	id := api.RequestIdentity{Key: "caller-persisted-key", HistoryEpoch: h.HistoryEpoch}
-	const label = "remote fixture · go client"
+	const label = "remote fixture Ã‚Â· go client"
 	submission := api.Submission{Identity: id, Kind: "download", Spec: []byte(`{"source":"fixture"}`), RequiredGuarantees: []string{provider.GuaranteeReconciliation, provider.GuaranteeServiceRestart}, Label: label}
 	drop.Store(true)
 	if result, e := a.Submit(submission); e == nil {
@@ -202,7 +201,7 @@ func TestRemoteJobRecoveryScopesAndPolicy(t *testing.T) {
 	start()
 	a, ops, inventory = clients(0)
 	recovered, e := a.Reconcile(id)
-	if e != nil || recovered.Outcome != "accepted" || recovered.Receipt == nil {
+	if e != nil || recovered.Outcome.String() != "accepted" || recovered.Receipt == nil {
 		t.Fatalf("recovery: %+v %v", recovered, e)
 	}
 	receipt := *recovered.Receipt
@@ -222,19 +221,19 @@ func TestRemoteJobRecoveryScopesAndPolicy(t *testing.T) {
 		t.Helper()
 		page, e := inv.ListWork("", 8)
 		// The Go client reads the stored caller label from ListWork (JOB-A12).
-		if e != nil || page.Outcome != "page" || len(page.Snapshots) != 1 || !page.Complete || !reflect.DeepEqual(page.Snapshots[0].Receipt, want) || page.Snapshots[0].Label != label || page.Snapshots[0].LabelDerived {
+		if e != nil || page.Outcome.String() != "page" || len(page.Snapshots) != 1 || !page.Complete || !reflect.DeepEqual(page.Snapshots[0].Receipt, want) || page.Snapshots[0].Label != label || page.Snapshots[0].LabelDerived {
 			t.Fatalf("inventory: %+v %v", page, e)
 		}
 	}
 	assertOne(inventory, receipt)
 	observed, e := ops.ObserveWork(id)
-	if e != nil || observed.Outcome != "observed" || observed.Snapshot == nil || !reflect.DeepEqual(observed.Snapshot.Receipt, receipt) {
+	if e != nil || observed.Outcome.String() != "observed" || observed.Snapshot == nil || !reflect.DeepEqual(observed.Snapshot.Receipt, receipt) {
 		t.Fatalf("observation %+v %v", observed, e)
 	}
 	changed := submission
 	changed.Spec = []byte(`{"source":"different"}`)
 	conflict, e := a.Submit(changed)
-	if e != nil || conflict.Outcome != "key_conflict" || conflict.Receipt != nil {
+	if e != nil || conflict.Outcome.String() != "key_conflict" || conflict.Receipt != nil {
 		t.Fatalf("conflict: %+v %v", conflict, e)
 	}
 	// A different label is outside equality: the original receipt and the
@@ -242,18 +241,18 @@ func TestRemoteJobRecoveryScopesAndPolicy(t *testing.T) {
 	relabelled := submission
 	relabelled.Label = "a different label"
 	replayed, e := a.Submit(relabelled)
-	if e != nil || replayed.Outcome != "accepted" || replayed.Receipt == nil || !reflect.DeepEqual(*replayed.Receipt, receipt) {
+	if e != nil || replayed.Outcome.String() != "accepted" || replayed.Receipt == nil || !reflect.DeepEqual(*replayed.Receipt, receipt) {
 		t.Fatalf("relabelled replay: %+v %v", replayed, e)
 	}
 	assertOne(inventory, receipt)
 	// Equal certificate display names do not merge host-assigned caller namespaces.
 	b, bops, binventory := clients(1)
 	hidden, e := bops.ObserveWork(id)
-	if e != nil || hidden.Outcome != "unknown" || hidden.Snapshot != nil {
+	if e != nil || hidden.Outcome.String() != "unknown" || hidden.Snapshot != nil {
 		t.Fatalf("cross scope observation %+v %v", hidden, e)
 	}
 	other, e := b.Submit(submission)
-	if e != nil || other.Outcome != "accepted" || other.Receipt == nil || other.Receipt.OperationID == receipt.OperationID {
+	if e != nil || other.Outcome.String() != "accepted" || other.Receipt == nil || other.Receipt.OperationID == receipt.OperationID {
 		t.Fatalf("scope collision %+v %v", other, e)
 	}
 	assertOne(binventory, *other.Receipt)
@@ -261,22 +260,23 @@ func TestRemoteJobRecoveryScopesAndPolicy(t *testing.T) {
 	// A trusted CA with an unmapped key grants no provider scope.
 	unknown, _, _ := clients(2)
 	refused, e := unknown.Submit(submission)
-	if e != nil || refused.Outcome != "forbidden" || refused.Receipt != nil {
+	if e == nil || refused.Receipt != nil {
 		t.Fatalf("unmapped %+v %v", refused, e)
 	}
+	assertOne(inventory, receipt)
 	denyMutation.Store(true)
 	deniedID := api.RequestIdentity{Key: "denied-then-admitted", HistoryEpoch: h.HistoryEpoch}
 	denied := submission
 	denied.Identity = deniedID
 	for _, call := range []func() (api.AcceptanceResult, error){func() (api.AcceptanceResult, error) { return a.Submit(denied) }, func() (api.AcceptanceResult, error) { return a.Reconcile(deniedID) }} {
 		r, e := call()
-		if e != nil || r.Outcome != "forbidden" || r.Receipt != nil {
+		if e != nil || r.Outcome.String() != "forbidden" || r.Receipt != nil {
 			t.Fatalf("policy: %+v %v", r, e)
 		}
 	}
 	assertOne(inventory, receipt)
 	cancelled, e := a.CancelWork(id)
-	if e != nil || cancelled.Outcome != "forbidden" {
+	if e != nil || cancelled.Outcome.String() != "forbidden" {
 		t.Fatalf("denied cancellation %+v %v", cancelled, e)
 	}
 	still, e := ops.ObserveWork(id)
@@ -285,16 +285,16 @@ func TestRemoteJobRecoveryScopesAndPolicy(t *testing.T) {
 	}
 	denyMutation.Store(false)
 	admitted, e := a.Submit(denied)
-	if e != nil || admitted.Outcome != "accepted" {
+	if e != nil || admitted.Outcome.String() != "accepted" {
 		t.Fatalf("denial mutated/sealed identity: %+v %v", admitted, e)
 	}
 	revoked.Store(true)
 	r, e := a.Reconcile(id)
-	if e != nil || r.Outcome != "forbidden" || r.Receipt != nil {
+	if e == nil || r.Receipt != nil {
 		t.Fatalf("revoked %+v %v", r, e)
 	}
 	deniedObservation, e := ops.ObserveWork(id)
-	if e != nil || deniedObservation.Outcome != "forbidden" || deniedObservation.Snapshot != nil {
+	if e == nil || deniedObservation.Snapshot != nil {
 		t.Fatalf("revoked observation %+v %v", deniedObservation, e)
 	}
 	revoked.Store(false)
@@ -303,7 +303,7 @@ func TestRemoteJobRecoveryScopesAndPolicy(t *testing.T) {
 		t.Fatalf("revocation damaged receipt %+v %v", r, e)
 	}
 	page, e := inventory.ListWork("", 8)
-	if e != nil || page.Outcome != "page" || len(page.Snapshots) != 2 || !page.Complete {
+	if e != nil || page.Outcome.String() != "page" || len(page.Snapshots) != 2 || !page.Complete {
 		t.Fatalf("duplicate work: %+v %v", page, e)
 	}
 	t.Log("PASS lost reply and restart recovery; fixed owner, independent key scopes, policy denial before seal/admission, revocation, bounded inventory; no duplicate")
@@ -328,15 +328,15 @@ func TestRemoteWaitingWordIsRelayed(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	authorize := func(_ context.Context, peer remote.Peer) (string, error) {
+	admit := func(peer remote.Peer) error {
 		if peer.Key == keys[0] {
-			return "tenant-a/app", nil
+			return nil
 		}
-		return "", errors.New("unmapped key")
+		return errors.New("unmapped key")
 	}
 	served := make(chan error, 1)
 	go func() {
-		served <- (remote.Server{TLS: server, Handler: p.RemoteHandler(authorize, nil), Timeout: 2 * time.Second, MaxFrame: provider.MaxFrameBytes, MaxConnections: 8}).Serve(ctx, listener)
+		served <- (remote.Server{TLS: server, Admit: admit, Handler: p.RemoteHandler(provider.RemoteConfig{AccountKind: "posix", Account: "1000", Admit: admit}, func(context.Context, remote.Peer, string, string) error { return nil }), Timeout: 2 * time.Second, MaxFrame: provider.MaxFrameBytes, MaxConnections: 8}).Serve(ctx, listener)
 	}()
 	t.Cleanup(func() {
 		cancel()
@@ -344,7 +344,7 @@ func TestRemoteWaitingWordIsRelayed(t *testing.T) {
 		<-executed
 		p.CloseInventory()
 	})
-	c, e := remote.Client(listener.Addr().String(), configs[0], time.Second, provider.MaxFrameBytes)
+	c, e := remote.Client(listener.Addr().String(), configs[0], time.Second, provider.MaxFrameBytes, remoteTestPin(t, server))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -356,20 +356,24 @@ func TestRemoteWaitingWordIsRelayed(t *testing.T) {
 	spec := request.Encode(&request.Request{Sources: []request.Source{{Scheme: "http", Locator: "http://127.0.0.1:9/never-fetched"}}, Constraints: &request.Constraints{Network: request.NetworkUnmetered}})
 	id := api.RequestIdentity{Key: "remote-waiting", HistoryEpoch: h.HistoryEpoch}
 	accepted, e := a.Submit(api.Submission{Identity: id, Kind: "download", Spec: spec, RequiredGuarantees: request.NetworkCostGuarantees})
-	if e != nil || accepted.Outcome != "accepted" {
+	if e != nil || accepted.Outcome.String() != "accepted" {
 		t.Fatalf("remote submit: %+v %v", accepted, e)
 	}
 	deadline := time.Now().Add(10 * time.Second)
+	localScope, e := provider.RemoteSubjectScope("posix", "1000", remote.SubjectPrefix+hex.EncodeToString(keys[0][:]))
+	if e != nil {
+		t.Fatal(e)
+	}
 	for {
 		relayed, e := ops.ObserveWork(id)
 		if e != nil || relayed.Snapshot == nil {
 			t.Fatalf("remote observation: %+v %v", relayed, e)
 		}
-		local, e := p.BindOperations("tenant-a/app").ObserveWork(id)
+		local, e := p.BindOperations(localScope).ObserveWork(id)
 		if e != nil || local.Snapshot == nil {
 			t.Fatalf("provider observation: %+v %v", local, e)
 		}
-		if relayed.Snapshot.Waiting == "network:metered" && relayed.Snapshot.State == "pending" {
+		if relayed.Snapshot.Waiting == "network:metered" && relayed.Snapshot.State.String() == "pending" {
 			if !reflect.DeepEqual(relayed.Snapshot, local.Snapshot) {
 				t.Fatalf("relayed %+v, provider %+v", relayed.Snapshot, local.Snapshot)
 			}
@@ -419,30 +423,108 @@ func (m *memoryStore) Delete(key string) error {
 
 // scopedApplier applies the remote runtime's own credentials for the scope its
 // host mapped from the verified client certificate. The decision subject is
-// the mapped account and this runtime's program (rights-defaults DECISION §4).
+// the mapped account and this runtime's program (rights-defaults DECISION Ã‚Â§4).
 type scopedApplier struct {
 	holder  *holding.Holder
 	program string
+	account string
+	scope   string
+	admit   func() error
 	decide  holding.Decider
 }
 
 func (a scopedApplier) use(scope, name, host string) cwire.Use {
-	return cwire.Use{Subject: cwire.Subject{Account: scope, Program: a.program}, Consumer: downloadserve.CredentialConsumer, Name: name, Target: host}
+	return cwire.Use{Subject: cwire.Subject{Account: a.account, Program: a.program}, Consumer: downloadserve.CredentialConsumer, Name: name, Target: host}
 }
 
 func (a scopedApplier) ApplyCredential(ctx context.Context, scope, name, host string) (map[string]string, error) {
+	if scope != a.scope || a.admit == nil || a.admit() != nil {
+		return nil, download.CredentialRefusal(name, "forbidden")
+	}
 	result := a.holder.Apply(ctx, a.use(scope, name, host), a.decide)
 	if result.Outcome != cwire.ApplyOutcomeApplied {
-		return nil, download.CredentialRefusal(name, string(result.Outcome))
+		return nil, download.CredentialRefusal(name, result.Outcome.String())
 	}
 	return result.Headers, nil
 }
 
 func (a scopedApplier) CheckCredential(ctx context.Context, scope, name, host string) error {
+	if scope != a.scope || a.admit == nil || a.admit() != nil {
+		return download.CredentialRefusal(name, "forbidden")
+	}
 	if result := a.holder.Check(ctx, a.use(scope, name, host), a.decide); result.Outcome != cwire.ApplyOutcomeApplied {
-		return download.CredentialRefusal(name, string(result.Outcome))
+		return download.CredentialRefusal(name, result.Outcome.String())
 	}
 	return nil
+}
+
+func (a scopedApplier) ApplySubjectCredential(ctx context.Context, subject provider.AuthenticatedSubject, name, host string) (map[string]string, error) {
+	if subject.Account != a.account || subject.Program != a.program {
+		return nil, download.CredentialRefusal(name, "not_permitted")
+	}
+	return a.ApplyCredential(ctx, a.scope, name, host)
+}
+
+func (a scopedApplier) CheckSubjectCredential(ctx context.Context, subject provider.AuthenticatedSubject, name, host string) error {
+	if subject.Account != a.account || subject.Program != a.program {
+		return download.CredentialRefusal(name, "not_permitted")
+	}
+	return a.CheckCredential(ctx, a.scope, name, host)
+}
+
+func TestRemoteCredentialApplierRetainsLiveScopeAndPin(t *testing.T) {
+	nativeOwner, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	holder, err := holding.Open(holding.Config{Backend: &memoryStore{items: map[string][]byte{}}, Namespace: "remote-use-guard"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const account = "1000"
+	program := remote.SubjectPrefix + strings.Repeat("a", 64)
+	scope, err := provider.RemoteSubjectScope("posix", account, program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := holder.Store(cwire.Subject{Account: account, Program: nativeOwner}, "", cwire.Registration{Name: "hf", Kind: "bearer", Scope: cwire.Scope{Targets: []string{"huggingface.co"}, Consumers: []string{downloadserve.CredentialConsumer}}, Secret: []byte("isolated-test-secret")})
+	if stored.Outcome != cwire.StoreOutcomeStored {
+		t.Fatal(stored)
+	}
+	var active atomic.Bool
+	active.Store(true)
+	a := scopedApplier{holder: holder, account: account, program: program, scope: scope, admit: func() error {
+		if !active.Load() {
+			return remote.ErrTrust
+		}
+		return nil
+	}, decide: func(_ context.Context, s cwire.Subject, action, resource string) (string, error) {
+		if s.Account == account && s.Program == program && action == holding.ActionApply && resource == holding.ResourceFor("hf") {
+			return "permitted", nil
+		}
+		return "not_granted", nil
+	}}
+	if headers, err := a.ApplyCredential(context.Background(), scope, "hf", "huggingface.co"); err != nil || len(headers) == 0 {
+		t.Fatalf("explicit remote Use: %v", err)
+	}
+	if err := a.CheckCredential(context.Background(), scope, "hf", "huggingface.co"); err != nil {
+		t.Fatal(err)
+	}
+	active.Store(false)
+	if headers, err := a.ApplyCredential(context.Background(), scope, "hf", "huggingface.co"); err == nil || len(headers) != 0 {
+		t.Fatal("withdrawn pin released headers")
+	}
+	if err := a.CheckCredential(context.Background(), scope, "hf", "huggingface.co"); err == nil {
+		t.Fatal("withdrawn pin passed Check")
+	}
+	active.Store(true)
+	if headers, err := a.ApplyCredential(context.Background(), "different-job-scope", "hf", "huggingface.co"); err == nil || len(headers) != 0 {
+		t.Fatal("job scope substitution released headers")
+	}
+	a.admit = nil
+	if headers, err := a.ApplyCredential(context.Background(), scope, "hf", "huggingface.co"); err == nil || len(headers) != 0 {
+		t.Fatal("missing live admission released headers")
+	}
 }
 
 func writePEM(t *testing.T, path, kind string, der []byte) {
@@ -515,16 +597,37 @@ func TestRemoteCredentialRuntimeChild(t *testing.T) {
 	}))
 	defer origin.Close()
 
-	program, err := os.Executable()
+	// The receiving host supplies the local policy account. The verified leaf
+	// supplies a canonical remote program; the derived job scope stays internal.
+	const mapped = "1000"
+	admit := func(peer remote.Peer) error {
+		if peer.Key == clientID {
+			return nil
+		}
+		return errors.New("unmapped key")
+	}
+	clientCertificate, err := x509.ParseCertificate(clientDER)
 	if err != nil {
 		t.Fatal(err)
 	}
-	const mapped = "tenant-a"
+	remoteSubject, err := remote.SubjectOf(remote.Peer{Certificate: clientCertificate, Key: clientID}, admit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program := remoteSubject.Program()
+	nativeOwner, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobScope, err := provider.RemoteSubjectScope("posix", mapped, program)
+	if err != nil {
+		t.Fatal(err)
+	}
 	holder, err := holding.Open(holding.Config{Backend: &memoryStore{items: map[string][]byte{}}, Namespace: "oa-remote-fixture"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	stored := holder.Store(cwire.Subject{Account: mapped, Program: program}, "", cwire.Registration{Name: "hf", Kind: "bearer",
+	stored := holder.Store(cwire.Subject{Account: mapped, Program: nativeOwner}, "", cwire.Registration{Name: "hf", Kind: "bearer",
 		Scope: cwire.Scope{Targets: []string{"127.0.0.1"}, Consumers: []string{downloadserve.CredentialConsumer}}, Secret: []byte(secret)})
 	if stored.Outcome != cwire.StoreOutcomeStored {
 		t.Fatalf("store: %+v", stored)
@@ -536,7 +639,10 @@ func TestRemoteCredentialRuntimeChild(t *testing.T) {
 		}
 		return "not_granted", nil
 	}
-	executor := downloadserve.HTTPExecution{OnError: func(err error) { fmt.Fprintln(os.Stderr, "remote execution:", err) }, Credentials: scopedApplier{holder: holder, program: program, decide: decide}}
+	executor := downloadserve.HTTPExecution{OnError: func(err error) { fmt.Fprintln(os.Stderr, "remote execution:", err) }, Credentials: scopedApplier{holder: holder, account: mapped, program: program, scope: jobScope, admit: func() error {
+		_, err := remote.SubjectOf(remote.Peer{Certificate: clientCertificate, Key: clientID}, admit)
+		return err
+	}, decide: decide}}
 	p, err := provider.OpenWithExecutor(filepath.Join(t.TempDir(), "remote-runtime"), "remote-runtime-owner", executor)
 	if err != nil {
 		t.Fatal(err)
@@ -549,17 +655,14 @@ func TestRemoteCredentialRuntimeChild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	authorize := func(_ context.Context, peer remote.Peer) (string, error) {
-		if peer.Key == clientID {
-			return mapped, nil
-		}
-		return "", errors.New("unmapped key")
-	}
 	server := &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{serverDER}, PrivateKey: serverKey}}, ClientCAs: roots}
 	served := make(chan error, 1)
 	go func() {
-		served <- (remote.Server{TLS: server, Handler: p.RemoteHandler(authorize, nil), Timeout: 5 * time.Second, MaxFrame: provider.MaxFrameBytes, MaxConnections: 8}).Serve(ctx, listener)
+		served <- (remote.Server{TLS: server, Admit: admit, Handler: p.RemoteHandler(provider.RemoteConfig{AccountKind: "posix", Account: mapped, Admit: admit}, func(context.Context, remote.Peer, string, string) error { return nil }), Timeout: 5 * time.Second, MaxFrame: provider.MaxFrameBytes, MaxConnections: 8}).Serve(ctx, listener)
 	}()
+	if err := os.WriteFile(filepath.Join(dir, "server.pem"), pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: serverDER}), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	fmt.Printf("READY %s %s sha256:%x %d\n", listener.Addr(), origin.URL, sha256.Sum256(body), len(body))
 	// The parent closes stdin once it has searched its own process's evidence.
 	io.Copy(io.Discard, os.Stdin)
@@ -618,12 +721,16 @@ func TestRemoteDelegationAppliesTheRemoteCredential(t *testing.T) {
 	lines := bufio.NewScanner(stdout)
 	next := func(prefix string) []string {
 		t.Helper()
+		var startupDiagnostics []string
 		for lines.Scan() {
 			if fields := strings.Fields(lines.Text()); len(fields) > 0 && fields[0] == prefix {
 				return fields[1:]
 			}
+			if prefix == "READY" && len(startupDiagnostics) < 8 {
+				startupDiagnostics = append(startupDiagnostics, lines.Text())
+			}
 		}
-		t.Fatalf("child ended before %s: %v", prefix, lines.Err())
+		t.Fatalf("child ended before %s: %v; startup diagnostics: %q", prefix, lines.Err(), startupDiagnostics)
 		return nil
 	}
 	ready := next("READY")
@@ -640,7 +747,16 @@ func TestRemoteDelegationAppliesTheRemoteCredential(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := remote.Client(address, &tls.Config{Certificates: []tls.Certificate{pair}, RootCAs: roots, ServerName: "runtime.test"}, 5*time.Second, provider.MaxFrameBytes)
+	serverPEM, err := os.ReadFile(filepath.Join(dir, "server.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverBlock, _ := pem.Decode(serverPEM)
+	if serverBlock == nil {
+		t.Fatal("server certificate missing")
+	}
+	serverPinConfig := &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{serverBlock.Bytes}}}}
+	c, err := remote.Client(address, &tls.Config{Certificates: []tls.Certificate{pair}, RootCAs: roots, ServerName: "runtime.test"}, 5*time.Second, provider.MaxFrameBytes, remoteTestPin(t, serverPinConfig))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -656,7 +772,24 @@ func TestRemoteDelegationAppliesTheRemoteCredential(t *testing.T) {
 	go func() { executed <- local.Execute(ctx) }()
 	t.Cleanup(func() { cancel(); <-executed; local.CloseInventory() })
 
-	app := local.Bind("local-app")
+	localProgram, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	localAccount, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	accountKind := "posix"
+	if runtime.GOOS == "windows" {
+		accountKind = "windows"
+	}
+	localScope, err := provider.LocalSubjectScope(accountKind, localAccount.Uid, localProgram)
+	if err != nil {
+		t.Fatal(err)
+	}
+	localBinding := provider.Binding{Scope: localScope, Origin: "local", Subject: &provider.AuthenticatedSubject{AccountKind: accountKind, Account: localAccount.Uid, Executable: localProgram, Program: localProgram}}
+	app := local.BindBinding(localBinding)
 	window, err := app.GetHistoryWindow()
 	if err != nil {
 		t.Fatal(err)
@@ -667,7 +800,7 @@ func TestRemoteDelegationAppliesTheRemoteCredential(t *testing.T) {
 		id := api.RequestIdentity{Key: key, HistoryEpoch: window.HistoryEpoch}
 		result, err := app.Submit(api.Submission{Identity: id, Kind: "download", Spec: spec,
 			RequiredGuarantees: []string{string(download.CapRecoverableSubmission), downloadserve.CredentialGuarantee}})
-		if err != nil || result.Outcome != "accepted" {
+		if err != nil || result.Outcome.String() != "accepted" {
 			t.Fatalf("local submit %s: %+v %v", key, result, err)
 		}
 		return id
@@ -676,11 +809,11 @@ func TestRemoteDelegationAppliesTheRemoteCredential(t *testing.T) {
 		t.Helper()
 		deadline := time.Now().Add(60 * time.Second)
 		for {
-			observed, err := local.BindOperations("local-app").ObserveWork(id)
+			observed, err := local.BindOperationsBinding(localBinding).ObserveWork(id)
 			if err != nil || observed.Snapshot == nil {
 				t.Fatalf("observe %s: %+v %v", id.Key, observed, err)
 			}
-			if s := observed.Snapshot; s.State == "complete" || s.State == "failed" || s.State == "cancelled" {
+			if s := observed.Snapshot; s.State.String() == "complete" || s.State.String() == "failed" || s.State.String() == "cancelled" {
 				return s
 			}
 			if time.Now().After(deadline) {
@@ -691,13 +824,13 @@ func TestRemoteDelegationAppliesTheRemoteCredential(t *testing.T) {
 	}
 
 	gated := submit("gated", "hf", digest)
-	if s := ended(gated); s.State != "complete" {
+	if s := ended(gated); s.State.String() != "complete" {
 		t.Fatalf("delegated download: %+v %+v", s, s.Failure)
 	}
 	var result []byte
 	for {
-		read, err := local.BindOperations("local-app").ReadResult(gated, int64(len(result)), provider.MaxResultBytes)
-		if err != nil || read.Outcome != "data" {
+		read, err := local.BindOperationsBinding(localBinding).ReadResult(gated, int64(len(result)), provider.MaxResultBytes)
+		if err != nil || read.Outcome.String() != "data" {
 			t.Fatalf("local result: %+v %v", read, err)
 		}
 		result = append(result, read.Chunk.Data...)
@@ -712,7 +845,7 @@ func TestRemoteDelegationAppliesTheRemoteCredential(t *testing.T) {
 	// Another artifact: bytes this store already proved are never delegated again.
 	unknown := submit("unknown-name", "not-registered", fmt.Sprintf("sha256:%x", sha256.Sum256([]byte("another artifact"))))
 	s := ended(unknown)
-	if s.State != "failed" || s.Failure == nil || s.Failure.Cause != api.FailureCauseCredential || s.Failure.Classification != "permanent" || s.Failure.Message != "download attempt failed: credential:unknown:not-registered" {
+	if s.State.String() != "failed" || s.Failure == nil || s.Failure.Cause != api.FailureCauseCredential || s.Failure.Classification.String() != "permanent" || s.Failure.Message != "download attempt failed: credential:unknown:not-registered" {
 		t.Fatalf("remote admission refusal: %+v %+v", s, s.Failure)
 	}
 
@@ -764,4 +897,20 @@ func TestRemoteDelegationAppliesTheRemoteCredential(t *testing.T) {
 		t.Fatalf("remote runtime: %v", err)
 	}
 	t.Logf("PASS remote runtime applied its own credential by name (%s authorized origin requests); %d frames and the local store carry no secret; unknown name refused at remote admission", origin[0], len(recorder.frames))
+}
+
+// remoteTestPin admits exactly the isolated fixture certificate's leaf key.
+func remoteTestPin(t *testing.T, config *tls.Config) func(remote.Peer) error {
+	t.Helper()
+	cert, err := x509.ParseCertificate(config.Certificates[0].Certificate[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+	return func(peer remote.Peer) error {
+		if peer.Key != key {
+			return remote.ErrTrust
+		}
+		return nil
+	}
 }

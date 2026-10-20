@@ -1,5 +1,41 @@
+enum Availability
+  DOWNLOAD = 'download'
+  SERVED = 'served'
+enum CatalogUse
+  CHAT = 'chat'
+  CODE = 'code'
+  VISION = 'vision'
+  EMBED = 'embed'
+  IMAGE = 'image'
+  VIDEO = 'video'
 class DispatchError(ValueError)
   __init__(code)
+enum Fit
+  FITS = 'fits'
+  SLOW = 'slow'
+  NO = 'no'
+dataclass FitEntry
+  title: str
+  family: str
+  fit: Fit | str
+  availability: Availability | None
+  machine: str
+  download_bytes: int
+  need_bytes: int
+  context: int
+  license: str
+  source: Ref
+  digest: str
+enum FitOutcome
+  FITTED = 'fitted'
+  INVALID = 'invalid'
+  UNAVAILABLE = 'unavailable'
+  FORBIDDEN = 'forbidden'
+dataclass FitResult
+  outcome: FitOutcome | None
+  catalog_version: str
+  pool_bytes: int
+  entries: list[FitEntry]
 enum LookupOutcome
   RESOLVED = 'resolved'
   INVALID = 'invalid'
@@ -20,6 +56,11 @@ dataclass ManifestResult
   outcome: ManifestOutcome | None
   manifest: _dependency_content.Manifest | None
   resolved_revision: str
+class ModelCatalog
+  fit(use: CatalogUse | None) -> FitResult
+class ModelCatalogClient(ModelCatalog)
+  __init__(transport)
+  fit(use: CatalogUse | None) -> FitResult
 class ModelManifest
   resolve(ref: Ref) -> ManifestResult
 class ModelManifestClient(ModelManifest)
@@ -51,11 +92,17 @@ enum ServiceErrorCode
   UNKNOWN_METHOD = 'unknown_method'
   WRONG_MODE = 'wrong_mode'
 def decode(data)
+def decode_fit_entry(data)
+def decode_fit_result(data)
 def decode_lookup_result(data)
 def decode_manifest_result(data)
 def decode_ref(data)
 def encode(v)
+def encode_fit_entry(v)
+def encode_fit_result(v)
 def encode_lookup_result(v)
 def encode_manifest_result(v)
 def encode_ref(v)
+def from_json(kind, data)
 def service_name(frame)
+def to_json(value)

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	askwire "github.com/openabstractions/abstraction-asks/go/abstraction/asks/api"
 	"runtime"
 	"strconv"
 	"sync/atomic"
@@ -123,7 +124,7 @@ func (p *runtimeProtected) Read(ctx context.Context, peer *identity.Peer, reques
 		return nil, logservice.ErrProtectedRefused
 	}
 	subject, err := rightsclient.SubjectFromPeer(peer)
-	if err != nil || subject.Account != p.asks.rights.owner || subject.Program == "" {
+	if err != nil || subject.Account != p.asks.rights.owner || subject.Program == "" || movedConnectorCaller(subject.Program) {
 		return nil, logservice.ErrProtectedRefused
 	}
 	return p.readFor(ctx, subject.Program, requesterPublisher(peer), request)
@@ -148,7 +149,7 @@ func (p *runtimeProtected) readFor(ctx context.Context, program string, publishe
 			return nil, err
 		}
 		switch outcome {
-		case "unknown":
+		case askwire.ObservationOutcomeUnknown.String():
 			// No question waits on a ticket that cannot be registered: room is
 			// checked first, and a registration that still fails withdraws the
 			// new question (FAC-H2).
@@ -160,7 +161,7 @@ func (p *runtimeProtected) readFor(ctx context.Context, program string, publishe
 			if err != nil {
 				return nil, err
 			}
-			if outcome != "pending" {
+			if outcome != askwire.ObservationOutcomePending.String() {
 				return nil, fmt.Errorf("protected: system-access admission %s", outcome)
 			}
 			if err := p.broker.Register(record.ID, protected.OperationSecurityLogPage, program, request); err != nil {
@@ -170,7 +171,7 @@ func (p *runtimeProtected) readFor(ctx context.Context, program string, publishe
 				return nil, err
 			}
 			return nil, logservice.ErrOSAuthorizationRequired
-		case "pending":
+		case askwire.ObservationOutcomePending.String():
 			// After a restart the pending question has no ticket yet.
 			if err := p.broker.Register(record.ID, protected.OperationSecurityLogPage, program, request); err != nil {
 				if _, _, retireErr := p.asks.book.RetireApplicationAuthorized(record.ID, nil); retireErr != nil {
@@ -179,7 +180,7 @@ func (p *runtimeProtected) readFor(ctx context.Context, program string, publishe
 				return nil, err
 			}
 			return nil, logservice.ErrOSAuthorizationRequired
-		case "answered":
+		case askwire.ObservationOutcomeAnswered.String():
 			result, keep, err := p.answered(record, program, request)
 			if !keep {
 				if _, releaseErr := p.asks.book.ReleaseAnsweredApplicationID(p.asks.scope, requestKey, record.ID, record.Option); releaseErr != nil {

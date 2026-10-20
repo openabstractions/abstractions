@@ -1,0 +1,20 @@
+# requires: fileid
+#
+# One owner answers which file a path names (ID-F1), and its answer is a
+# FileID: a kind, a link count and a key two spellings share (ID-F5).
+file a/model.gguf
+link b a
+resolve a/model.gguf
+resolve b/model.gguf
+relate b/model.gguf a/model.gguf
+hardlink c/model.gguf a/model.gguf
+resolve a/model.gguf
+resolve a
+resolve absent.gguf
+
+# expect 3: ok kind=file links=1 [ID-F1] [ID-F5]
+# expect 4: ok kind=file links=1 [ID-F1]
+# expect 5: ok same [ID-F1] [ID-F5]
+# expect 7: ok kind=file links=2 [ID-F5]
+# expect 8: ok kind=folder [ID-F5]
+# expect 9: missing [ID-F1]

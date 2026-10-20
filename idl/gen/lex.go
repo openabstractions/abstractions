@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 const utf8BOM = "\xef\xbb\xbf"
@@ -42,7 +44,14 @@ func lex(src string) ([]token, error) {
 			l.line += strings.Count(l.src[l.pos:l.pos+end+4], "\n")
 			l.pos += end + 4
 		case c == '"':
-			s, err := l.quoted()
+			var s string
+			var err error
+			n := len(l.toks)
+			if n >= 4 && l.toks[n-4].text == "const" && l.toks[n-3].text == "string" && l.toks[n-2].kind == "ident" && l.toks[n-1].text == "=" {
+				s, err = l.constantQuoted()
+			} else {
+				s, err = l.quoted()
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -92,6 +101,36 @@ func (l *lexer) quoted() (string, error) {
 	s := l.src[start:l.pos]
 	l.pos++
 	return s, nil
+}
+
+// Scalar string constants use JSON quoting. Existing annotation and list
+// spellings keep the quoted() grammar they were published with.
+func (l *lexer) constantQuoted() (string, error) {
+	start := l.pos
+	l.pos++
+	for l.pos < len(l.src) {
+		c := l.src[l.pos]
+		if c == '\n' {
+			return "", fmt.Errorf("line %d: unterminated constant string", l.line)
+		}
+		if c == '\\' {
+			l.pos += 2
+			continue
+		}
+		l.pos++
+		if c == '"' {
+			literal := l.src[start:l.pos]
+			var value string
+			if !utf8.ValidString(literal) {
+				return "", fmt.Errorf("line %d: constant string is not UTF-8", l.line)
+			}
+			if err := json.Unmarshal([]byte(literal), &value); err != nil {
+				return "", fmt.Errorf("line %d: invalid constant string: %w", l.line, err)
+			}
+			return value, nil
+		}
+	}
+	return "", fmt.Errorf("line %d: unterminated constant string", l.line)
 }
 
 func isIdentStart(c byte) bool {

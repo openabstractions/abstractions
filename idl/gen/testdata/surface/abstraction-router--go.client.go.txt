@@ -1,0 +1,70 @@
+type Alias wire.Alias
+type Ask wire.Ask
+type AvailabilityCause wire.AvailabilityCause
+const AvailabilityCauseTransportUnavailable
+const AvailabilityCauseCredential
+const AvailabilityCauseRights
+const AvailabilityCauseConfiguration
+const AvailabilityCauseMalformed
+const AvailabilityCauseUnknown
+const AvailabilityCauseOther
+func AvailabilityCauseValues() []AvailabilityCause
+type Caller wire.Caller
+type Component wire.Component
+type ContextSource wire.ContextSource
+const ContextSourceEffective
+const ContextSourceMaximum
+const ContextSourceDefault
+const ContextSourceUnknown
+const ContextSourceNone
+func ContextSourceValues() []ContextSource
+type Decision wire.Decision
+type Family wire.Family
+type HostState wire.HostState
+type ModalityOutcome wire.ModalityOutcome
+const ModalityOutcomePage
+const ModalityOutcomeGap
+const ModalityOutcomeInvalid
+const ModalityOutcomeForbidden
+const ModalityOutcomeUnavailable
+const ModalityOutcomeNotPermitted
+func ModalityOutcomeValues() []ModalityOutcome
+func ParseModalityOutcome(word string) (ModalityOutcome, bool)
+type ModelCapabilities wire.ModelCapabilities
+type Observation wire.Observation
+type Offer wire.Offer
+type OfferOutcome wire.OfferOutcome
+const OfferOutcomeOffered
+const OfferOutcomeInvalid
+const OfferOutcomeUnavailable
+const OfferOutcomeForbidden
+const OfferOutcomeNotPermitted
+func OfferOutcomeValues() []OfferOutcome
+func ParseOfferOutcome(word string) (OfferOutcome, bool)
+type Placement wire.Placement
+const PlacementLocal
+const PlacementHosted
+const PlacementAny
+func PlacementValues() []Placement
+func ParsePlacement(word string) (Placement, bool)
+type ReasoningEffort wire.ReasoningEffort
+const ReasoningEffortNone
+const ReasoningEffortLow
+const ReasoningEffortMedium
+const ReasoningEffortHigh
+func ReasoningEffortValues() []ReasoningEffort
+type ReasoningSupport wire.ReasoningSupport
+type ServiceErrorCode wire.ServiceErrorCode
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+const ServiceErrorCodeInternal
+const ServiceErrorCodeInvalidRequest
+const ServiceErrorCodeCallerRefused
+const ServiceErrorCodeUnknownOperation
+const ServiceErrorCodeUnavailable
+const ServiceErrorCodeForbidden
+func ServiceErrorCodeValues() []ServiceErrorCode

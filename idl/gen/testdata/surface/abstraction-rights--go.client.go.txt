@@ -1,0 +1,72 @@
+type ActionEdit wire.ActionEdit
+type ActionEditOutcome wire.ActionEditOutcome
+const ActionEditOutcomeApplied
+const ActionEditOutcomeConflict
+const ActionEditOutcomeUnknown
+const ActionEditOutcomeInvalid
+const ActionEditOutcomeExhausted
+const ActionEditOutcomeForbidden
+const ActionEditOutcomeUnavailable
+func ActionEditOutcomeValues() []ActionEditOutcome
+func ParseActionEditOutcome(word string) (ActionEditOutcome, bool)
+type DecisionOutcome wire.DecisionOutcome
+const DecisionOutcomePermitted
+const DecisionOutcomeDenied
+const DecisionOutcomeNotGranted
+const DecisionOutcomeUnknownAction
+const DecisionOutcomeInvalid
+const DecisionOutcomeForbidden
+const DecisionOutcomeUnavailable
+func DecisionOutcomeValues() []DecisionOutcome
+func ParseDecisionOutcome(word string) (DecisionOutcome, bool)
+type PolicyEdit wire.PolicyEdit
+type PolicyEditOutcome wire.PolicyEditOutcome
+const PolicyEditOutcomeApplied
+const PolicyEditOutcomeConflict
+const PolicyEditOutcomeInvalid
+const PolicyEditOutcomeForbidden
+const PolicyEditOutcomeUnavailable
+func PolicyEditOutcomeValues() []PolicyEditOutcome
+func ParsePolicyEditOutcome(word string) (PolicyEditOutcome, bool)
+type PolicyObservation wire.PolicyObservation
+type PolicyObservationMechanism wire.PolicyObservationMechanism
+const PolicyObservationMechanismNative
+func PolicyObservationMechanismValues() []PolicyObservationMechanism
+func ParsePolicyObservationMechanism(word string) (PolicyObservationMechanism, bool)
+type PolicyObservationOutcome wire.PolicyObservationOutcome
+const PolicyObservationOutcomeChanged
+const PolicyObservationOutcomeUnchanged
+const PolicyObservationOutcomeGap
+const PolicyObservationOutcomeInvalid
+const PolicyObservationOutcomeForbidden
+const PolicyObservationOutcomeUnavailable
+func PolicyObservationOutcomeValues() []PolicyObservationOutcome
+func ParsePolicyObservationOutcome(word string) (PolicyObservationOutcome, bool)
+type PolicyPage wire.PolicyPage
+type PolicyPageOutcome wire.PolicyPageOutcome
+const PolicyPageOutcomePage
+const PolicyPageOutcomeGap
+const PolicyPageOutcomeInvalid
+const PolicyPageOutcomeForbidden
+const PolicyPageOutcomeUnavailable
+func PolicyPageOutcomeValues() []PolicyPageOutcome
+func ParsePolicyPageOutcome(word string) (PolicyPageOutcome, bool)
+type RuleRead wire.RuleRead
+type RuleReadOutcome wire.RuleReadOutcome
+const RuleReadOutcomeFound
+const RuleReadOutcomeExpired
+const RuleReadOutcomeUnknown
+const RuleReadOutcomeInvalid
+const RuleReadOutcomeForbidden
+const RuleReadOutcomeUnavailable
+func RuleReadOutcomeValues() []RuleReadOutcome
+func ParseRuleReadOutcome(word string) (RuleReadOutcome, bool)
+type ServiceError wire.ServiceError
+type ServiceErrorCode wire.ServiceErrorCode
+const ServiceErrorCodeHandlerError
+const ServiceErrorCodeInvalidResult
+const ServiceErrorCodeUnknownVersion
+const ServiceErrorCodeUnknownService
+const ServiceErrorCodeUnknownMethod
+const ServiceErrorCodeWrongMode
+func ServiceErrorCodeValues() []ServiceErrorCode

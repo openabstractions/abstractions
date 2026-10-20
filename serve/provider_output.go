@@ -17,7 +17,10 @@ import (
 // a provider that exits before it answers leaves its reason where the
 // operator can read it. The file is bounded: past providerLogLimit bytes the
 // file becomes <name>.log.1, replacing the one before, and a new file starts.
-// A line is cut at providerLineLimit bytes.
+// A line is cut at providerLineLimit bytes. Each line in the file starts
+// with the UTC time the runtime read it (providerLineStamp), so a refusal
+// logged before a registration or rights change reads as before it; the
+// exit reason's last line carries no stamp.
 const (
 	providerLogsDir   = "provider-logs"
 	providerLogLimit  = 1 << 20
@@ -26,6 +29,8 @@ const (
 	providerTailLimit = 240
 	// providerTailWait bounds how long an exit waits for the reader.
 	providerTailWait = 500 * time.Millisecond
+	// providerLineStamp is the time format a log line starts with.
+	providerLineStamp = "2006-01-02T15:04:05.000Z"
 )
 
 // providerLogPath is the log file of the declaration name in the runtime
@@ -106,7 +111,7 @@ func (o *providerOutput) drain(read *os.File, report func(error)) {
 		if len(line) > providerLineLimit {
 			line = line[:providerLineLimit]
 		}
-		if err := log.writeLine(line); err != nil && !reported && report != nil {
+		if err := log.writeLine(time.Now().UTC().Format(providerLineStamp) + " " + line); err != nil && !reported && report != nil {
 			reported = true
 			report(fmt.Errorf("provider log %s: %w", o.path, err))
 		}

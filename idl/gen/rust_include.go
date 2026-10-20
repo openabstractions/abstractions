@@ -58,6 +58,9 @@ func validateRustIncludes(s *Definition) error {
 }
 
 func emitRustIncluded(b backend, s *Definition) string {
+	if rsConstantsOnly(s) {
+		return genRustBody(s)
+	}
 	s = importCarriers(s)
 	body := genRustBody(s)
 	body = rsMustReplace(body, "struct Reader<'a> {\n    buf: &'a [u8],\n    pos: usize,\n    depth: i32,\n}", "struct Reader<'a> {\n    buf: &'a [u8],\n    pos: usize,\n    depth: i32,\n    limit: i32,\n}")
@@ -69,15 +72,22 @@ func emitRustIncluded(b backend, s *Definition) string {
 		if s.Encoding.TrailingNewline() {
 			term = "    out.push(b'\\n');\n"
 		}
-		plain := fmt.Sprintf("\npub fn encode(v: &%s) -> Vec<u8> {\n    let mut out = Vec::new();\n    enc_%s(&mut out, v, 0);\n%s    out\n}\n", s.Document, rsFn(s.Document), term)
-		body = rsMustReplace(body, plain, fmt.Sprintf("\npub fn encode(v: &%s) -> Vec<u8> {\n    match encode_%s_document(v) {\n        Ok(out) => out,\n        Err(e) => std::panic::panic_any(e),\n    }\n}\n", s.Document, rsFn(s.Document)))
+		plain := fmt.Sprintf("\npub fn encode(v: &%s) -> ::std::vec::Vec<u8> {\n    let mut out = ::std::vec::Vec::new();\n    enc_%s(&mut out, v, 0);\n%s    out\n}\n", s.Document, rsFn(s.Document), term)
+		body = rsMustReplace(body, plain, fmt.Sprintf("\npub fn encode(v: &%s) -> ::std::vec::Vec<u8> {\n    match encode_%s_document(v) {\n        Ok(out) => out,\n        Err(e) => ::std::panic::panic_any(e),\n    }\n}\n", s.Document, rsFn(s.Document)))
 	}
 	var tail strings.Builder
+	for _, n := range foreignEnumNames(s) {
+		imp := s.ForeignEnums[n]
+		if imp.Def.Enum(imp.Name).Ann["unknown"] != "refuse" {
+			continue
+		}
+		fmt.Fprintf(&tail, "\ntype %s = %s::%s;\n", upperCamelName(n), s.RustImports[imp.Alias], upperCamelName(imp.Name))
+	}
 	for _, n := range foreignNames(s) {
 		imp := s.Foreign[n]
 		fmt.Fprintf(&tail, rsImportedBridge, n, rsFn(n), s.RustImports[imp.Alias], imp.Name, rsFn(imp.Name))
 		if !s.NoIPC && len(s.Services) > 0 {
-			fmt.Fprintf(&tail, "\nfn service_check_%s(v: &%s) -> Result<(), Refusal> {\n    check_imported_%s(v)\n}\n", rsFn(n), n, rsFn(n))
+			fmt.Fprintf(&tail, "\nfn service_check_%s(v: &%s) -> ::std::result::Result<(), Refusal> {\n    check_imported_%s(v)\n}\n", rsFn(n), n, rsFn(n))
 		}
 	}
 	var named []string
@@ -111,14 +121,14 @@ const rsImportedBridge = `
 type %[1]s = %[3]s::%[4]s;
 
 // The included crate encodes and checks its own record; its refusal keeps its word.
-fn enc_%[2]s(out: &mut Vec<u8>, v: &%[1]s, depth: i32) {
+fn enc_%[2]s(out: &mut ::std::vec::Vec<u8>, v: &%[1]s, depth: i32) {
     match %[3]s::internal::encode_%[5]s_at(v, depth) {
         Ok(bytes) => out.extend_from_slice(&bytes),
-        Err(e) => std::panic::panic_any(Refusal { word: e.word, offset: e.offset }),
+        Err(e) => ::std::panic::panic_any(Refusal { word: e.word, offset: e.offset }),
     }
 }
 
-fn decode_%[2]s(r: &mut Reader) -> Result<%[1]s, Refusal> {
+fn decode_%[2]s(r: &mut Reader) -> ::std::result::Result<%[1]s, Refusal> {
     match %[3]s::internal::decode_%[5]s_at(&r.buf[r.pos..], r.depth, r.limit) {
         Ok((v, n)) => {
             r.pos += n;
@@ -128,28 +138,28 @@ fn decode_%[2]s(r: &mut Reader) -> Result<%[1]s, Refusal> {
     }
 }
 
-fn check_imported_%[2]s(v: &%[1]s) -> Result<(), Refusal> {
+fn check_imported_%[2]s(v: &%[1]s) -> ::std::result::Result<(), Refusal> {
     %[3]s::internal::check_%[5]s(v, 0, DEPTH_LIMIT).map_err(|e| Refusal { word: e.word, offset: e.offset })
 }
 `
 
 // %[1]s record, %[2]s lower record, %[3]s value binding, %[4]s derive, %[5]s output binding, %[6]s document terminator.
 const rsNamedCodec = `
-fn named_encode_%[2]s(v: &%[1]s, depth: i32) -> Result<Vec<u8>, Refusal> {
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let mut out = Vec::new();
+fn named_encode_%[2]s(v: &%[1]s, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal> {
+    match ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+        let mut out = ::std::vec::Vec::new();
         enc_%[2]s(&mut out, v, depth);
         out
     })) {
         Ok(out) => Ok(out),
         Err(p) => match p.downcast::<Refusal>() {
             Ok(e) => Err(*e),
-            Err(p) => std::panic::resume_unwind(p),
+            Err(p) => ::std::panic::resume_unwind(p),
         },
     }
 }
 
-fn decode_%[2]s_at(data: &[u8], depth: i32, limit: i32) -> Result<(%[1]s, usize), Refusal> {
+fn decode_%[2]s_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(%[1]s, usize), Refusal> {
     let mut r = Reader { buf: data, pos: 0, depth, limit: if limit < DEPTH_LIMIT { limit } else { DEPTH_LIMIT } };
     if depth < 0 || limit < 1 {
         return r.refuse("depth_exceeded");
@@ -159,7 +169,7 @@ fn decode_%[2]s_at(data: &[u8], depth: i32, limit: i32) -> Result<(%[1]s, usize)
 %[4]s    Ok((v, r.pos))
 }
 
-fn check_%[2]s(v: &%[1]s, depth: i32, limit: i32) -> Result<(), Refusal> {
+fn check_%[2]s(v: &%[1]s, depth: i32, limit: i32) -> ::std::result::Result<(), Refusal> {
     if depth < 0 || limit < 1 {
         return Err(Refusal { word: "depth_exceeded", offset: 0 });
     }
@@ -167,7 +177,7 @@ fn check_%[2]s(v: &%[1]s, depth: i32, limit: i32) -> Result<(), Refusal> {
     decode_%[2]s_at(&out, depth, limit).map(|_| ())
 }
 
-fn encode_%[2]s_at(v: &%[1]s, depth: i32) -> Result<Vec<u8>, Refusal> {
+fn encode_%[2]s_at(v: &%[1]s, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal> {
     if !(0..DEPTH_LIMIT).contains(&depth) {
         return Err(Refusal { word: "depth_exceeded", offset: 0 });
     }
@@ -176,12 +186,12 @@ fn encode_%[2]s_at(v: &%[1]s, depth: i32) -> Result<Vec<u8>, Refusal> {
     Ok(out)
 }
 
-pub fn encode_%[2]s_document(v: &%[1]s) -> Result<Vec<u8>, Refusal> {
+pub fn encode_%[2]s_document(v: &%[1]s) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal> {
     %[5]s = encode_%[2]s_at(v, 0)?;
 %[6]s    Ok(out)
 }
 
-pub fn decode_%[2]s_document(data: &[u8]) -> Result<%[1]s, Refusal> {
+pub fn decode_%[2]s_document(data: &[u8]) -> ::std::result::Result<%[1]s, Refusal> {
     let (v, n) = decode_%[2]s_at(data, 0, DEPTH_LIMIT)?;
     let mut r = Reader { buf: data, pos: n, depth: 0, limit: DEPTH_LIMIT };
     r.skip_ws();

@@ -15,13 +15,20 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func sendSessionMessage(t *testing.T, w *sessionWindow, message, wp uintptr) {
-	t.Helper()
+func sendSessionMessage(w *sessionWindow, message, wp uintptr) (uintptr, error) {
+	// These owned test windows can be descheduled before GetMessage. Keep the
+	// fixed deadline without asking Windows to abort on its hang heuristic.
+	const smtoBlock = 0x0001
 	var result uintptr
-	ok, _, err := user32.NewProc("SendMessageTimeoutW").Call(w.handle, message, wp, 1, 2, 3000, uintptr(unsafe.Pointer(&result)))
+	ok, _, err := user32.NewProc("SendMessageTimeoutW").Call(w.handle, message, wp, 1,
+		smtoBlock, 3000, uintptr(unsafe.Pointer(&result)))
 	if ok == 0 {
-		t.Errorf("session message %#x: %v", message, err)
+		if errors.Is(err, syscall.Errno(0)) {
+			return 0, fmt.Errorf("session message %#x failed without a Windows error", message)
+		}
+		return 0, fmt.Errorf("session message %#x: %w", message, err)
 	}
+	return result, nil
 }
 
 func TestSessionMessagesOnlyStopConfirmedSessionAndAwaitCompletion(t *testing.T) {
@@ -37,26 +44,36 @@ func TestSessionMessagesOnlyStopConfirmedSessionAndAwaitCompletion(t *testing.T)
 			t.Error(err)
 		}
 	}()
-	sendSessionMessage(t, w, wmQueryEndSession, 0)
-	sendSessionMessage(t, w, wmEndSession, 0)
+	if result, err := sendSessionMessage(w, wmQueryEndSession, 0); err != nil || result != 1 {
+		t.Fatalf("session query result = %d, error = %v", result, err)
+	}
+	if _, err := sendSessionMessage(w, wmEndSession, 0); err != nil {
+		t.Fatal(err)
+	}
 	if ctx.Err() != nil {
 		t.Fatal("query or canceled session stopped application")
 	}
-	sent := make(chan struct{})
-	go func() { sendSessionMessage(t, w, wmEndSession, 1); close(sent) }()
+	sent := make(chan error, 1)
+	go func() {
+		_, err := sendSessionMessage(w, wmEndSession, 1)
+		sent <- err
+	}()
 	select {
 	case <-ctx.Done():
 	case <-time.After(time.Second):
 		t.Fatal("confirmed end did not cancel")
 	}
 	select {
-	case <-sent:
-		t.Fatal("end-session returned before completion")
+	case err := <-sent:
+		t.Fatalf("end-session returned before completion: %v", err)
 	default:
 	}
 	close(completed)
 	select {
-	case <-sent:
+	case err := <-sent:
+		if err != nil {
+			t.Fatal(err)
+		}
 	case <-time.After(time.Second):
 		t.Fatal("completed shutdown not acknowledged")
 	}
@@ -69,7 +86,9 @@ func TestSessionShutdownWaitIsBounded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sendSessionMessage(t, w, wmEndSession, 1)
+	if _, err := sendSessionMessage(w, wmEndSession, 1); err != nil {
+		t.Fatal(err)
+	}
 	if ctx.Err() == nil {
 		t.Fatal("timeout path did not cancel")
 	}
@@ -85,7 +104,9 @@ func TestSessionWindowDestructionCancelsLifetime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sendSessionMessage(t, w, wmDisposeSessionWindow, 0)
+	if _, err := sendSessionMessage(w, wmDisposeSessionWindow, 0); err != nil {
+		t.Fatal(err)
+	}
 	select {
 	case <-ctx.Done():
 	case <-time.After(time.Second):

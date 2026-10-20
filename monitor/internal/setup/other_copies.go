@@ -62,7 +62,7 @@ func DefaultCopyFinder() CopyFinder {
 	return finder
 }
 
-// Find returns every unmarked copy, ComfyUI first, each location once. A
+// Find returns each unmarked installation once. A
 // copy that carries the OA mark is Setup's own build and is left out. An
 // unreadable uninstall registry leaves the folder results and reports its
 // error beside them.
@@ -202,11 +202,28 @@ var ErrOtherCopy = errors.New("another copy is installed")
 // person did not choose to install beside it.
 func CheckBeside(selected, beside []AppID, copies []OtherCopy) error {
 	for _, c := range copies {
-		if slices.Contains(selected, c.App) && !slices.Contains(beside, c.App) {
+		if needsBesideChoice(selected, beside, c.App) {
 			return &OtherCopyError{Copy: c}
 		}
 	}
 	return nil
+}
+
+// CheckOtherCopies applies the install-beside rule to the scan result. A
+// known copy takes precedence over an incomplete scan. An incomplete scan
+// requires an explicit beside choice for the app the scan covers.
+func CheckOtherCopies(selected, beside []AppID, copies []OtherCopy, incomplete bool) error {
+	if err := CheckBeside(selected, beside, copies); err != nil {
+		return err
+	}
+	if incomplete && needsBesideChoice(selected, beside, ComfyUI) {
+		return errors.New("Setup could not finish checking for another copy. Choose to install the OpenAbstractions build beside an existing copy, then review again.")
+	}
+	return nil
+}
+
+func needsBesideChoice(selected, beside []AppID, app AppID) bool {
+	return slices.Contains(selected, app) && !slices.Contains(beside, app)
 }
 
 // OtherCopyError names the copy a refused plan would install beside.

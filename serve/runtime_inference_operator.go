@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	rightsclient "github.com/openabstractions/abstraction-rights/go/client"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -30,6 +31,7 @@ import (
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	router "github.com/openabstractions/abstraction-router/go"
 	routerwire "github.com/openabstractions/abstraction-router/go/abstraction/router"
+	"github.com/openabstractions/abstraction-router/go/hostedcatalogue"
 )
 
 // Files the inference operator keeps beside hosts.json in <state>/inference.
@@ -48,16 +50,41 @@ const (
 )
 
 // defaultProfiles is what a host serves when its entry names no profiles:
-// every seeded profile on the OpenAI-compatible wire, which the local kinds
-// speak, and, for any other hosted wire, router.DefaultProfiles' table for
-// it (openai-realtime serves live, deepgram-prerecorded serves
-// transcription, and so on), read from the same *router.Host construction
-// the router itself routes through, never copied here.
+// router.DefaultProfiles owns the capability table. Local kinds use the ordinary
+// OpenAI-compatible default; catalogue membership alone advertises no capability.
 func defaultProfiles(hosted bool, wire string) []string {
-	if !hosted || wire == router.WireOpenAICompatible {
-		return slices.Clone(iwire.HostProfiles)
+	if !hosted {
+		wire = router.WireOpenAICompatible
 	}
 	return router.DefaultProfiles(router.NewHosted("", "", wire, ""))
+}
+
+// entryProfiles is what a host serves: the profiles it declares, else its
+// wire's. A hosted server at a preset's address serves only the profiles the
+// preset declares (DeepSeek serves chat), whatever an earlier registration
+// wrote.
+func entryProfiles(hosted bool, kind, base string, declared []string) []string {
+	profiles := declared
+	if len(profiles) == 0 {
+		profiles = defaultProfiles(hosted, kind)
+	}
+	if !hosted {
+		return profiles
+	}
+	preset, ok := hostedcatalogue.PresetFor(base, kind)
+	if !ok || len(preset.Profiles) == 0 {
+		return profiles
+	}
+	var kept []string
+	for _, p := range profiles {
+		if slices.Contains(preset.Profiles, p) {
+			kept = append(kept, p)
+		}
+	}
+	if len(kept) == 0 {
+		return slices.Clone(preset.Profiles)
+	}
+	return kept
 }
 
 func validProfiles(profiles []string) bool {
@@ -66,7 +93,7 @@ func validProfiles(profiles []string) bool {
 	}
 	seen := map[string]bool{}
 	for _, p := range profiles {
-		if seen[p] || !slices.Contains(iwire.HostProfiles, p) && p != router.ProfileVideo && !ownedWireKind.MatchString(p) {
+		if seen[p] || !router.ValidModality(p) {
 			return false
 		}
 		seen[p] = true
@@ -115,7 +142,6 @@ func samePrograms(a, b string) bool {
 
 var (
 	inferenceHostName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
-	credentialName    = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
 	ownedWireKind     = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}/[a-z0-9][a-z0-9_.-]{0,62}@[1-9][0-9]{0,5}$`)
 	localKeyShape     = regexp.MustCompile(`^oalk_([0-9a-f]{16})([0-9a-f]{8})_[A-Za-z0-9_-]{43}$`)
 	// hostedWireKinds is every router.thrift wire_kinds member a hosted host
@@ -209,10 +235,10 @@ func (o *inferenceOperator) gate(ctx context.Context, caller inference.Subject, 
 		return "forbidden"
 	}
 	decision := o.credentials.runtimeRights.decide(ctx, rwire.Subject{Account: caller.Account, Program: caller.Program}, action, credentials.ResourceAccount)
-	switch decision.Outcome {
-	case rwire.DecisionOutcomePermitted:
+	switch {
+	case decision.Outcome == rwire.DecisionOutcomePermitted:
 		return ""
-	case rwire.DecisionOutcomeDenied, rwire.DecisionOutcomeNotGranted, rwire.DecisionOutcomeUnknownAction:
+	case rightsclient.Evaluated(decision.Outcome):
 		return "forbidden"
 	}
 	return "unavailable"
@@ -286,7 +312,7 @@ func validEntry(e iwire.HostEntry) string {
 	if !slices.Contains(hostedWireKinds, e.Kind) && !ownedWireKind.MatchString(e.Kind) {
 		return "kind"
 	}
-	if e.Credential != "" && !credentialName.MatchString(e.Credential) {
+	if e.Credential != "" && !credentials.ValidName(e.Credential) {
 		return "credential"
 	}
 	if c := e.Ceiling; c != nil && (ceilingOf(c).Negative() || e.Credential == "") {
@@ -296,18 +322,25 @@ func validEntry(e iwire.HostEntry) string {
 }
 
 // refreshHosts gives the router the declarations again, after one changed.
-func (o *inferenceOperator) refreshHosts() {
+func (o *inferenceOperator) refreshHosts() error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if err := o.ceilings.ReplaceLimits(declarationBudgets(o.hostFiles())); err != nil {
 		o.report(err)
-		return
+		return err
 	}
-	hosts := routerHosts(o.providers)
+	hosts, err := routerHosts(o.providers)
+	// routerHosts returns only independently validated registrations on paired
+	// discovery failure. It returns no hosts for an ambiguous known name.
 	o.router.SetHosts(hosts...)
-	if len(hosts) > 0 {
-		o.router.Survey()
+	// The survey runs with no hosts too: readers of the last snapshot must stop
+	// seeing a host this change removed, and an empty host list reads nothing.
+	o.router.Survey()
+	if err != nil {
+		o.report(err)
+		return err
 	}
+	return nil
 }
 
 // hostRevision is the revision host edits take, the registry's revision.
@@ -343,6 +376,7 @@ func (o *inferenceOperator) Hosts(ctx context.Context, caller inference.Subject)
 		byName[s.Host] = s
 	}
 	list := iwire.HostList{Outcome: iwire.ListOutcomePage, Revision: revision, Hosts: []iwire.HostState{}}
+	_, pairedErr := o.providers.readPairedHosts()
 	for _, f := range o.hostFiles() {
 		if f.Disabled {
 			continue
@@ -352,6 +386,9 @@ func (o *inferenceOperator) Hosts(ctx context.Context, caller inference.Subject)
 		state := iwire.HostState{Entry: entry, Up: s.Up, Why: hostedDownReason(s.Why, entry.Credential, o.credentials.operators[0])}
 		if !surveyed {
 			state.Why = "not surveyed yet"
+		}
+		if pairedErr != nil && pairedErr.Outcome == pairedReadClash && pairedErr.Name == entry.Name {
+			state.Up, state.Why = false, pairedNameClashReason
 		}
 		if entry.Credential != "" {
 			day, tokens, micros, requests, images, audioSeconds, characters := o.ceilings.SpendUnits(entry.Credential)
@@ -372,13 +409,11 @@ func (o *inferenceOperator) AddHost(ctx context.Context, caller inference.Subjec
 	if o.providers == nil {
 		return iwire.HostChange{Outcome: iwire.EditOutcomeUnavailable}
 	}
-	if len(entry.Profiles) == 0 {
-		entry.Profiles = defaultProfiles(entry.Hosted, entry.Kind)
-	}
+	entry.Profiles = entryProfiles(entry.Hosted, entry.Kind, entry.Base, entry.Profiles)
 	// A host is a registry declaration of role host: the registry decides the
 	// revision, the name and the count, and its watchers give the router the
 	// new host. The registry's own lock is taken without o.mu.
-	applied := o.providers.add(expected, newHostFile(entry, declaredByOperator))
+	applied := o.providers.addAdmitted(ctx, expected, newHostFile(entry, declaredByOperator), o.providerEditAdmission(ctx, caller, inference.ActionHostManage))
 	if applied.Outcome != wire.DeclarationEditOutcomeApplied {
 		return iwire.HostChange{Outcome: hostEditOf(applied.Outcome), Revision: applied.Revision, Reason: applied.Reason}
 	}
@@ -390,7 +425,9 @@ func (o *inferenceOperator) AddHost(ctx context.Context, caller inference.Subjec
 	// The declaration watcher may have surveyed before this call could grant
 	// the runtime's credential access. Publish a final post-rule observation so
 	// a newly added hosted server can expose its current models immediately.
-	o.refreshHosts()
+	if err := o.refreshHosts(); err != nil {
+		change.Reason = "hosts:unavailable"
+	}
 	return change
 }
 
@@ -454,6 +491,7 @@ func (o *inferenceOperator) ensureHostedApplyRule(by rwire.Subject, entry iwire.
 // Listing remains observational, and existing deny rules remain authoritative.
 func (o *inferenceOperator) credentialStored(ctx context.Context, caller cwire.Subject, name string) error {
 	var errs []error
+	var reread []string
 	for _, f := range o.hostFiles() {
 		if err := ctx.Err(); err != nil {
 			return errors.Join(append(errs, err)...)
@@ -461,7 +499,21 @@ func (o *inferenceOperator) credentialStored(ctx context.Context, caller cwire.S
 		if f.Disabled || f.Declaration.Host.Credential != name {
 			continue
 		}
-		errs = append(errs, o.ensureHostedApplyRule(rwire.Subject{Account: caller.Account, Program: caller.Program}, f.hostEntry(), credentialStoreWhy))
+		entry := f.hostEntry()
+		err := o.ensureHostedApplyRule(rwire.Subject{Account: caller.Account, Program: caller.Program}, entry, credentialStoreWhy)
+		errs = append(errs, err)
+		if err == nil {
+			reread = append(reread, entry.Name)
+		}
+	}
+	// A stored credential is a host change: the listings it unlocks are read
+	// now, and a survey that read them before it records nothing (router
+	// CONTRACT.md ROUTE-D12). When the store's call ends first, the survey is
+	// cancelled and the clock reads the forgotten hosts at its next tick.
+	if len(reread) > 0 && o.router != nil {
+		if err := o.router.RereadHosts(ctx, reread...); err != nil && ctx.Err() == nil && o.report != nil {
+			o.report(fmt.Errorf("inference: reading hosts for stored credential %s: %w", name, err))
+		}
 	}
 	return errors.Join(errs...)
 }
@@ -487,7 +539,12 @@ func hostedDownReason(why, credentialName, runtimeProgram string) string {
 // permitRuleWhy writes one exact permit rule with why as its provenance, unless
 // a rule on that target exists.
 func (o *inferenceOperator) permitRuleWhy(by rwire.Subject, program, action, resource, why string) error {
-	r := o.credentials.runtimeRights
+	return o.credentials.runtimeRights.permitRuleWhy(by, program, action, resource, why)
+}
+
+// permitRuleWhy writes one exact permit rule for program with why as its
+// provenance, unless a rule on that target exists, a deny included.
+func (r *runtimeRights) permitRuleWhy(by rwire.Subject, program, action, resource, why string) error {
 	subject := rwire.Subject{Account: r.owner, Program: program}
 	permit := true
 	for attempt := 0; attempt < installationAttempts; attempt++ {
@@ -531,6 +588,22 @@ func (o *inferenceOperator) permitCardRules(by rwire.Subject, program string, ca
 	return errs
 }
 
+// permitStoreRules is the one writer of an inventory source's acceptance
+// rules: abstraction.storage/inventory.provide on store:<name> for each store
+// the program's declaration names (content.thrift InventorySource). A
+// provider's Declare and the runtime's sweep of declarations both write
+// through it, so an installation's declaration, which never passes through
+// Declare, has its stores accepted too (VISION 2026-09-22: the installation
+// declares the provider and its rules are written for the bundled program).
+// An existing rule, a deny included, stays as it is.
+func (o *inferenceOperator) permitStoreRules(by rwire.Subject, program string, stores []string) []error {
+	var errs []error
+	for _, store := range stores {
+		errs = append(errs, o.permitRuleWhy(by, program, ActionInventoryProvide, ResourceStore(store), providerAddWhy))
+	}
+	return errs
+}
+
 func (o *inferenceOperator) RemoveHost(ctx context.Context, caller inference.Subject, expected, name string) iwire.HostChange {
 	if word := o.gate(ctx, caller, inference.ActionHostManage); word != "" {
 		return iwire.HostChange{Outcome: inferenceEditRefusal(word)}
@@ -542,8 +615,12 @@ func (o *inferenceOperator) RemoveHost(ctx context.Context, caller inference.Sub
 		return iwire.HostChange{Outcome: iwire.EditOutcomeUnavailable}
 	}
 	// Only a host leaves through RemoveHost; a provider or a remote runtime
-	// leaves through the registry's own Withdraw.
-	if !slices.ContainsFunc(o.hostFiles(), func(f providerFile) bool { return f.Declaration.Name == name && !f.Disabled }) {
+	// leaves through the registry's own Withdraw. A disabled operator host
+	// stays removable, as on the canonical path; a disabled product or
+	// installation host is already withdrawn.
+	if !slices.ContainsFunc(o.hostFiles(), func(f providerFile) bool {
+		return f.Declaration.Name == name && (!f.Disabled || f.Source == declarationSourceOperator)
+	}) {
 		revision, err := o.hostRevision()
 		if err != nil {
 			o.report(err)
@@ -554,11 +631,13 @@ func (o *inferenceOperator) RemoveHost(ctx context.Context, caller inference.Sub
 		}
 		return iwire.HostChange{Outcome: iwire.EditOutcomeUnknown, Revision: revision}
 	}
-	withdrawn := o.providers.remove(expected, name)
+	withdrawn := o.providers.removeAdmitted(ctx, expected, name, o.providerEditAdmission(ctx, caller, inference.ActionHostManage))
 	if withdrawn.Outcome != wire.DeclarationEditOutcomeApplied {
 		return iwire.HostChange{Outcome: hostEditOf(withdrawn.Outcome), Revision: withdrawn.Revision, Reason: withdrawn.Reason}
 	}
-	o.refreshHosts()
+	if err := o.refreshHosts(); err != nil {
+		o.report(err)
+	}
 	return iwire.HostChange{Outcome: iwire.EditOutcomeApplied, Revision: withdrawn.Revision, Reason: withdrawn.Reason}
 }
 
@@ -642,7 +721,7 @@ func (o *inferenceOperator) IssueKey(ctx context.Context, caller inference.Subje
 	switch {
 	case !identity.ValidSubjectProgram(program):
 		return iwire.KeyIssued{Outcome: iwire.EditOutcomeInvalid, Reason: "program"}
-	case credential != "" && !credentialName.MatchString(credential):
+	case credential != "" && !credentials.ValidName(credential):
 		return iwire.KeyIssued{Outcome: iwire.EditOutcomeInvalid, Reason: "credential"}
 	}
 	program = identity.NormalizeSubjectProgram(program)
@@ -718,4 +797,11 @@ func (o *inferenceOperator) Audit(ctx context.Context, caller inference.Subject,
 		return iwire.AuditPage{Outcome: inferenceAuditRefusal(word), Entries: []iwire.AuditEntry{}, Next: cursor}
 	}
 	return o.journal.Page(cursor, maxEntries)
+}
+
+func (o *inferenceOperator) Requests(ctx context.Context, caller inference.Subject, cursor, maxEntries int64) iwire.RequestPage {
+	if word := o.gate(ctx, caller, inference.ActionAuditRead); word != "" {
+		return iwire.RequestPage{Outcome: inferenceAuditRefusal(word), Entries: []iwire.RequestEntry{}, Next: cursor}
+	}
+	return o.journal.Requests(cursor, maxEntries)
 }

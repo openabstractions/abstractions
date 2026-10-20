@@ -55,9 +55,15 @@ var runtimeEndpointNames = []string{
 	routerclient.EnvEndpoint, runtimeEndpointVar,
 }
 
+// hostCredentialPrefix names host credential bindings (ABSTRACTION_CRED_HF,
+// ABSTRACTION_CRED_HF_HOSTS). A provider receives a credential through the
+// credentials Apply path, never from the runtime's parent environment.
+const hostCredentialPrefix = "ABSTRACTION_CRED_"
+
 // childEnvironment is base, the whole parent environment, with each of set
-// replacing a variable of the same name and every runtimeEndpointNames
-// variable that set does not name removed. Names compare without case on
+// replacing a variable of the same name, every runtimeEndpointNames variable
+// that set does not name removed, and every ABSTRACTION_CRED_ variable of base
+// removed. Names compare without case on
 // Windows, as its environment does. Every other variable passes through,
 // also when set is empty.
 func childEnvironment(base, set []string) []string {
@@ -79,7 +85,7 @@ func childEnvironment(base, set []string) []string {
 	for _, entry := range base {
 		// Windows keeps per-drive directories as "=C:=C:\..."; they have no
 		// name to replace and stay.
-		if !strings.HasPrefix(entry, "=") && dropped[name(entry)] {
+		if !strings.HasPrefix(entry, "=") && (dropped[name(entry)] || strings.HasPrefix(name(entry), hostCredentialPrefix)) {
 			continue
 		}
 		out = append(out, entry)

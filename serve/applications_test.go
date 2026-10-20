@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	cascore "github.com/openabstractions/abstraction-cas/go"
 	"github.com/openabstractions/abstraction-facade/go/client"
 	identity "github.com/openabstractions/abstraction-identity"
+	"github.com/openabstractions/abstraction-identity/go/privatedir/privatetest"
 	"github.com/openabstractions/abstraction-identity/listen"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"runtime"
@@ -19,6 +22,266 @@ import (
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	rights "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 )
+
+func TestApplicationPresenceNativeCaseSensitiveContexts(t *testing.T) {
+	ctx := context.Background()
+	state := privatetest.Dir(t)
+	app := rights.Subject{Account: "account", Program: filepath.Join(state, "opencode.exe")}
+	d, err := openApplications(state, "account", func(context.Context, rights.Subject, string, string) (bool, error) { return true, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := d.register(ctx, app, wire.ApplicationDescriptor{Name: "opencode", Program: app.Program, Title: "OpenCode"}); got.Outcome != wire.ApplicationOutcomeApplied {
+		t.Fatal(got)
+	}
+	// Exact official OpenCode 1.18.34 host978 receipt, with a case-distinct ID.
+	id := "ses_e94dfb2daffemZukxH7YVqW6JH"
+	p := wire.ApplicationPresence{Application: "opencode", LeaseMs: 30000, Contexts: []wire.ApplicationContext{{Name: id}, {Name: strings.ToLower(id)}}}
+	first := d.announceInSession(ctx, app, "native-session", p)
+	if first.Outcome != wire.ApplicationOutcomeApplied {
+		t.Fatalf("native SDK context rejected: %+v", first)
+	}
+	page := d.observe(ctx, app, "", 0)
+	if len(page.Applications) != 1 || len(page.Applications[0].Instances) != 1 || len(page.Applications[0].Instances[0].Contexts) != 2 {
+		t.Fatalf("case-distinct contexts lost: %+v", page)
+	}
+	names := page.Applications[0].Instances[0].Contexts
+	if names[0].Name == names[1].Name || !((names[0].Name == id) || (names[1].Name == id)) {
+		t.Fatalf("native context identity changed: %+v", names)
+	}
+	p.Instance = first.Instance
+	if got := d.announceInSession(ctx, app, "native-session", p); got.Outcome != wire.ApplicationOutcomeApplied {
+		t.Fatalf("renewal: %+v", got)
+	}
+	for _, invalid := range []string{"", strings.Repeat("a", 65), "bad\nname", "bad.name", "_leading"} {
+		bad := p
+		bad.Contexts = []wire.ApplicationContext{{Name: invalid}}
+		if got := d.announceInSession(ctx, app, "native-session", bad); got.Outcome != wire.ApplicationOutcomeInvalid {
+			t.Fatalf("invalid context %q: %+v", invalid, got)
+		}
+	}
+	duplicate := p
+	duplicate.Contexts = []wire.ApplicationContext{{Name: id}, {Name: id}}
+	if got := d.announceInSession(ctx, app, "native-session", duplicate); got.Outcome != wire.ApplicationOutcomeInvalid {
+		t.Fatalf("duplicate accepted: %+v", got)
+	}
+	foreign := app
+	foreign.Program = filepath.Join(state, "foreign.exe")
+	if got := d.announceInSession(ctx, foreign, "native-session", p); got.Outcome != wire.ApplicationOutcomeForbidden {
+		t.Fatalf("foreign program: %+v", got)
+	}
+	if got := d.announceInSession(ctx, app, "other-session", p); got.Outcome != wire.ApplicationOutcomeForbidden {
+		t.Fatalf("foreign session: %+v", got)
+	}
+	restarted, err := openApplications(state, "account", func(context.Context, rights.Subject, string, string) (bool, error) { return true, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := restarted.announceInSession(ctx, app, "native-session", p); got.Outcome != wire.ApplicationOutcomeStale {
+		t.Fatalf("old epoch: %+v", got)
+	}
+}
+
+func TestApplicationNativeNodePresenceUsesBoundProgram(t *testing.T) {
+	addon := os.Getenv("OA_IPC_NODE")
+	if addon == "" {
+		t.Skip("set OA_IPC_NODE to the current source-built fixture addon")
+	}
+	if runtime.GOOS != "windows" || !applicationTransportProvesSession(t) {
+		t.Skip("Windows native program and session proof required")
+	}
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err = filepath.Abs(node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := filepath.Abs("..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(addon); err != nil {
+		t.Fatalf("current source-built addon required: %v", err)
+	}
+	account, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	d, err := openApplications(privatetest.Dir(t), account.Uid, func(context.Context, rights.Subject, string, string) (bool, error) { return true, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	operator := rights.Subject{Account: account.Uid, Program: filepath.Join(privatetest.Dir(t), "operator.exe")}
+	if got := d.register(ctx, operator, wire.ApplicationDescriptor{Name: "opencode", Program: node, Title: "Owned Node presence fixture"}); got.Outcome != wire.ApplicationOutcomeApplied {
+		t.Fatal(got)
+	}
+	endpoint := fullEndpoint(t, "node-apps-"+d.epoch[:12])
+	h, err := listenApplications(endpoint, d, account.Uid, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- h.Serve(ctx) }()
+	defer func() {
+		cancel()
+		h.Close()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Error(err)
+			}
+		case <-time.After(time.Second):
+			t.Error("native Applications host did not join")
+		}
+	}()
+	staging := privatetest.Dir(t)
+	copyTree(t, filepath.Join(root, "openabstractions-flat", "abstraction-identity", "javascript"), filepath.Join(staging, "node_modules", "@openabstractions", "ipc"))
+	connector, err := os.ReadFile(filepath.Join(root, "adopters", "opencode", "runtime-connector.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(staging, "runtime-connector.mjs"), connector, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	expected := runtimeExpectation(t)
+	config, err := json.Marshal(map[string]any{"endpoint": endpoint, "server": map[string]any{"principalKind": 1, "principal": account.Uid, "program": expected.Program},
+		"facade":   fileURL(filepath.Join(root, "openabstractions-flat", "abstraction-facade", "javascript", "index.js")),
+		"protocol": fileURL(filepath.Join(root, "openabstractions-flat", "abstraction-facade", "javascript", "js", "abstraction", "facade", "index.mjs"))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := `import child from 'node:child_process'; import net from 'node:net'; import {syncBuiltinESMExports} from 'node:module';
+const deny=()=>{throw new Error('fixture process/network effect refused');};
+for(const key of ['spawn','spawnSync','exec','execSync','execFile','execFileSync','fork'])child[key]=deny;
+net.connect=net.createConnection=deny;net.Server.prototype.listen=deny;globalThis.fetch=deny;syncBuiltinESMExports();
+const config=JSON.parse(process.argv[2]);
+const [{Binding},{ApplicationsClient},{runtimeConnector}]=await Promise.all([import(config.facade),import(config.protocol),import('./runtime-connector.mjs')]);
+const client=new ApplicationsClient(new Binding(await runtimeConnector(),config.endpoint,{server:config.server,timeout:3000}));
+const contexts=[{name:'ses_e94dfb2daffemZukxH7YVqW6JH',title:'',revision:''},{name:'ses_e94dfb2daffemzukxh7yvqw6jh',title:'',revision:''}];
+const presence={application:'opencode',instance:'',interfaces:[],contexts,leaseMs:30000n};
+const first=await client.announce(presence);if(first.outcome!=='applied')throw new Error('announce '+JSON.stringify(first));
+const renewed=await client.announce({...presence,instance:first.instance});if(renewed.outcome!=='applied'||renewed.instance!==first.instance)throw new Error('renewal refused');
+const page=await client.observe('',0n);const instance=page.applications.find(v=>v.descriptor.name==='opencode')?.instances.find(v=>v.instance===first.instance);
+if(instance?.contexts.length!==2||!contexts.every(c=>instance.contexts.some(v=>v.name===c.name)))throw new Error('native contexts lost');
+const refused=await client.announce({...presence,application:'unregistered'});if(refused.outcome!=='forbidden')throw new Error('unknown enrollment accepted');
+const withdrawn=await client.withdraw('opencode',first.instance);if(withdrawn.outcome!=='applied')throw new Error('withdrawal refused');
+const after=await client.observe('',0n);if(after.applications.find(v=>v.descriptor.name==='opencode')?.instances.length!==0)throw new Error('presence retained');
+console.log(JSON.stringify({pid:process.pid,program:process.execPath,contexts:contexts.map(v=>v.name),instance:first.instance,outcome:'native-announce-renew-withdraw'}));`
+	scriptPath := filepath.Join(staging, "presence.mjs")
+	if err := os.WriteFile(scriptPath, []byte(script), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.CommandContext(ctx, node, scriptPath, string(config))
+	cmd.Dir = staging
+	cmd.Env = append(os.Environ(), "ABSTRACTION_IPC_NODE="+addon)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("native Node presence: %v\n%s", err, output)
+	}
+	t.Log(strings.TrimSpace(string(output)))
+	// The same native endpoint binds this Go process as a different program.
+	foreign := wire.NewApplicationsClient(listen.FrameClient{Endpoint: endpoint, Server: &expected, Timeout: time.Second, MaxFrame: 1 << 20}.WithContext(ctx))
+	if got, err := foreign.Announce(wire.ApplicationPresence{Application: "opencode", LeaseMs: 1000}); err != nil || got.Outcome != wire.ApplicationOutcomeForbidden {
+		t.Fatalf("foreign native program: %+v %v", got, err)
+	}
+}
+
+func TestApplicationsLoginUsesOnlyConfirmedDescriptors(t *testing.T) {
+	ctx := context.Background()
+	dir := privatetest.Dir(t)
+	operator := rights.Subject{Account: "account", Program: filepath.Join(dir, "panel.exe")}
+	app := rights.Subject{Account: "account", Program: filepath.Join(dir, "editor.exe")}
+	d, err := openApplications(dir, "account", func(context.Context, rights.Subject, string, string) (bool, error) { return true, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func(want bool) applicationLoginState {
+		t.Helper()
+		s, err := d.loginState(ctx)
+		if err != nil || s.enabled != want || s.changed == nil {
+			t.Fatalf("login snapshot = %+v, %v; want %v", s, err, want)
+		}
+		return s
+	}
+	initial := check(false)
+	v := wire.ApplicationDescriptor{Name: "editor", Program: app.Program, Title: "Editor", StartGuidance: "Open Editor"}
+	if r := d.register(ctx, app, v); r.Outcome != wire.ApplicationOutcomeApplied {
+		t.Fatal(r)
+	}
+	pending := check(false)
+	select {
+	case <-initial.changed:
+	default:
+		t.Fatal("committed registration did not notify")
+	}
+	if r := d.announce(ctx, app, wire.ApplicationPresence{Application: "editor", LeaseMs: 1000}); r.Outcome != wire.ApplicationOutcomeApplied {
+		t.Fatal(r)
+	}
+	check(false) // Live presence does not turn a pending registration into Keep.
+	if !d.setQuestion(ctx, "editor", app.Program, "keep-question") || !d.keepOwned(ctx, "editor", app.Program, "keep-question") {
+		t.Fatal("keep did not commit")
+	}
+	check(true)
+	select {
+	case <-pending.changed:
+	default:
+		t.Fatal("Keep did not notify")
+	}
+	if r := d.remove(ctx, operator, "editor"); r.Outcome != wire.ApplicationOutcomeApplied {
+		t.Fatal(r)
+	}
+	check(false)
+	if r := d.register(ctx, operator, v); r.Outcome != wire.ApplicationOutcomeApplied {
+		t.Fatal(r)
+	}
+	check(true) // The person's operator registration is already confirmed.
+	other, err := openApplications(privatetest.Dir(t), "other-account", func(context.Context, rights.Subject, string, string) (bool, error) { return true, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherState, err := other.loginState(ctx)
+	if err != nil || otherState.enabled {
+		t.Fatal("another account inherited registration", otherState, err)
+	}
+}
+
+func TestApplicationsLoginFailedPersistenceAndCanceledSnapshot(t *testing.T) {
+	ctx := context.Background()
+	dir := privatetest.Dir(t)
+	d, err := openApplications(dir, "account", func(context.Context, rights.Subject, string, string) (bool, error) { return true, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	operator := rights.Subject{Account: "account", Program: filepath.Join(dir, "panel.exe")}
+	v := wire.ApplicationDescriptor{Name: "editor", Program: filepath.Join(dir, "editor.exe"), Title: "Editor", StartGuidance: "Open"}
+	if r := d.register(ctx, operator, v); r.Outcome != wire.ApplicationOutcomeApplied {
+		t.Fatal(r)
+	}
+	before, err := d.loginState(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A conflicting durable writer refuses removal; login facts stay committed.
+	if err := os.WriteFile(filepath.Join(d.dir, "descriptors.json"), []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if r := d.remove(ctx, operator, "editor"); r.Outcome != wire.ApplicationOutcomeUnavailable {
+		t.Fatal("conflicting persistence did not refuse", r)
+	}
+	after, err := d.loginState(ctx)
+	if err != nil || !after.enabled || before.changed != after.changed {
+		t.Fatal("failed remove altered login state", after, err)
+	}
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := d.loginState(canceled); err != context.Canceled {
+		t.Fatalf("canceled snapshot: %v", err)
+	}
+}
 
 // applicationTransportProvesSession measures the host property required by
 // Announce, Withdraw and Activate. Darwin has no Program proof for the shared
@@ -49,7 +312,7 @@ func applicationTransportProvesSession(t *testing.T) bool {
 
 func TestApplicationPresenceOwnsEpochAndPreservesInstalledDescriptor(t *testing.T) {
 	ctx := context.Background()
-	state := t.TempDir()
+	state := privatetest.Dir(t)
 	operator := rights.Subject{Account: "account", Program: filepath.Join(state, "operator.exe")}
 	app := rights.Subject{Account: "account", Program: filepath.Join(state, "app.exe")}
 	policy := func(_ context.Context, s rights.Subject, action, resource string) (bool, error) {
@@ -130,7 +393,7 @@ func TestApplicationRegistrationRejectsShortAliasOfCallingProgram(t *testing.T) 
 	if !hasAlias {
 		t.Skip("the filesystem did not provide a distinct DOS short alias")
 	}
-	state := t.TempDir()
+	state := privatetest.Dir(t)
 	// Only application.manage is held: a descriptor naming the caller through
 	// its short alias is the caller's own, decided under register_self.
 	d, err := openApplications(state, "account", func(_ context.Context, _ rights.Subject, action, _ string) (bool, error) {
@@ -153,7 +416,7 @@ func TestApplicationRegistrationRejectsShortAliasOfCallingProgram(t *testing.T) 
 // runtime so its operators can list and start it.
 func TestApplicationSelfRegistrationUnderTheRegistrationDefault(t *testing.T) {
 	ctx := context.Background()
-	state := t.TempDir()
+	state := privatetest.Dir(t)
 	app := rights.Subject{Account: "account", Program: filepath.Join(state, "app.exe")}
 	other := filepath.Join(state, "other.exe")
 	var mu sync.Mutex
@@ -190,7 +453,8 @@ func TestApplicationSelfRegistrationUnderTheRegistrationDefault(t *testing.T) {
 	if len(registered) != 1 || registered[0] != "own" {
 		t.Fatal("self-registration did not reach the runtime", registered)
 	}
-	if r := d.register(ctx, app, own); r.Outcome != wire.ApplicationOutcomeConflict || len(registered) != 1 {
+	// The same program registering its name again is a silent update.
+	if r := d.register(ctx, app, own); r.Outcome != wire.ApplicationOutcomeApplied {
 		t.Fatal("second self-registration", r, registered)
 	}
 	want := []string{ActionApplicationManage + " account", ActionApplicationRegisterSelf + " account", ActionApplicationRegisterSelf + " account", ActionApplicationRegisterSelf + " account"}
@@ -203,7 +467,7 @@ func TestApplicationRegistrationPersistsNormalizedShortProgramAlias(t *testing.T
 	if runtime.GOOS != "windows" {
 		t.Skip("DOS short aliases are Windows-specific")
 	}
-	appDir := filepath.Join(t.TempDir(), "registered program")
+	appDir := filepath.Join(privatetest.Dir(t), "registered program")
 	if err := os.MkdirAll(appDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -212,12 +476,12 @@ func TestApplicationRegistrationPersistsNormalizedShortProgramAlias(t *testing.T
 	if !hasAlias {
 		t.Skip("the filesystem did not provide a distinct DOS short alias")
 	}
-	state := t.TempDir()
+	state := privatetest.Dir(t)
 	d, err := openApplications(state, "account", func(context.Context, rights.Subject, string, string) (bool, error) { return true, nil })
 	if err != nil {
 		t.Fatal(err)
 	}
-	caller := rights.Subject{Account: "account", Program: filepath.Join(t.TempDir(), "operator.exe")}
+	caller := rights.Subject{Account: "account", Program: filepath.Join(privatetest.Dir(t), "operator.exe")}
 	registered := wire.ApplicationDescriptor{Name: "registered-alias", Program: appInput, Title: "App", StartGuidance: "Open"}
 	if got := d.register(context.Background(), caller, registered); got.Outcome != wire.ApplicationOutcomeApplied {
 		t.Fatalf("register a distinct application through short alias: %+v", got)
@@ -229,7 +493,7 @@ func TestApplicationRegistrationPersistsNormalizedShortProgramAlias(t *testing.T
 
 func TestApplicationDirectoryFiltersHiddenChangesAndRevokedAccess(t *testing.T) {
 	ctx := context.Background()
-	state := t.TempDir()
+	state := privatetest.Dir(t)
 	operator := rights.Subject{Account: "account", Program: filepath.Join(state, "operator.exe")}
 	app := rights.Subject{Account: "account", Program: filepath.Join(state, "app.exe")}
 	reader := rights.Subject{Account: "account", Program: filepath.Join(state, "reader.exe")}
@@ -284,7 +548,7 @@ func TestApplicationDirectoryFiltersHiddenChangesAndRevokedAccess(t *testing.T) 
 
 func TestApplicationPresenceBoundsAndOwnerValidation(t *testing.T) {
 	ctx := context.Background()
-	state := t.TempDir()
+	state := privatetest.Dir(t)
 	operator := rights.Subject{Account: "a", Program: filepath.Join(state, "operator")}
 	app := rights.Subject{Account: "a", Program: filepath.Join(state, "app")}
 	d, err := openApplications(state, "a", func(context.Context, rights.Subject, string, string) (bool, error) { return true, nil })
@@ -330,9 +594,9 @@ func TestApplicationNativeDirectoryUsesBoundProgram(t *testing.T) {
 		t.Fatal(err)
 	}
 	program = identity.CanonicalProgramPath(filepath.Clean(program))
-	operator := rights.Subject{Account: account.Uid, Program: filepath.Join(t.TempDir(), "operator.exe")}
+	operator := rights.Subject{Account: account.Uid, Program: filepath.Join(privatetest.Dir(t), "operator.exe")}
 	app := rights.Subject{Account: account.Uid, Program: program}
-	d, err := openApplications(t.TempDir(), account.Uid, func(_ context.Context, s rights.Subject, action, resource string) (bool, error) {
+	d, err := openApplications(privatetest.Dir(t), account.Uid, func(_ context.Context, s rights.Subject, action, resource string) (bool, error) {
 		if action == ActionApplicationManage {
 			return s.Program == operator.Program, nil
 		}
@@ -407,7 +671,7 @@ func TestApplicationNativeDirectoryUsesBoundProgram(t *testing.T) {
 }
 func TestApplicationSnapshotEpochCancellationAndEncodedBounds(t *testing.T) {
 	ctx := context.Background()
-	state := t.TempDir()
+	state := privatetest.Dir(t)
 	s := rights.Subject{Account: "account", Program: filepath.Join(state, "operator")}
 	d, err := openApplications(state, s.Account, func(context.Context, rights.Subject, string, string) (bool, error) { return true, nil })
 	if err != nil {
@@ -467,7 +731,7 @@ func TestApplicationRuntimeCompositionAndOperatorAuthority(t *testing.T) {
 }
 
 func TestApplicationPersistenceRefusesConcurrentWriterWithoutLosingState(t *testing.T) {
-	state := t.TempDir()
+	state := privatetest.Dir(t)
 	ctx := context.Background()
 	s := rights.Subject{Account: "account", Program: filepath.Join(state, "operator")}
 	policy := func(context.Context, rights.Subject, string, string) (bool, error) { return true, nil }
@@ -506,7 +770,7 @@ func TestApplicationPersistenceRefusesConcurrentWriterWithoutLosingState(t *test
 func TestApplicationCancellationDuringPolicyReturnsNoPartialSnapshot(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	state := t.TempDir()
+	state := privatetest.Dir(t)
 	s := rights.Subject{Account: "account", Program: filepath.Join(state, "operator")}
 	calls := 0
 	policy := func(_ context.Context, _ rights.Subject, action, resource string) (bool, error) {
@@ -536,7 +800,7 @@ func TestApplicationLocalDirectoryRejectsRemoteRequirement(t *testing.T) {
 	if err == nil {
 		t.Fatal("local directory accepted remote placement")
 	}
-	state := t.TempDir()
+	state := privatetest.Dir(t)
 	v := wire.ApplicationDescriptor{Name: "editor", Program: state + string(filepath.Separator) + "sub" + string(filepath.Separator) + ".." + string(filepath.Separator) + "editor", Title: "Editor"}
 	if validApplicationDescriptor(v) {
 		t.Fatal("unnormalized program accepted")
@@ -554,7 +818,7 @@ func TestApplicationLocalDirectoryRejectsRemoteRequirement(t *testing.T) {
 }
 
 func TestApplicationHeldPersistenceLockHonorsCancellation(t *testing.T) {
-	state := t.TempDir()
+	state := privatetest.Dir(t)
 	s := rights.Subject{Account: "account", Program: filepath.Join(state, "operator")}
 	d, err := openApplications(state, s.Account, func(context.Context, rights.Subject, string, string) (bool, error) { return true, nil })
 	if err != nil {

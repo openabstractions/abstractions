@@ -2,7 +2,7 @@
  * Whether the OpenAbstractions runtime answers, shared by the server plugin
  * (plugin.js) and the provider (index.js), which OpenCode loads from the same
  * package and so import one instance of this module. A lost connection (the
- * native IPC connector's Disconnected or IoError, or a resolution that found
+ * native IPC connector's Disconnected, IoError or initial-open OpenIoError, or a resolution that found
  * no runtime) marks OA unavailable: OpenCode keeps working, OA's tools answer
  * at once that they are off, and one toast says so. Each tool call after
  * `retryMs` tries the runtime again, and every call that gets an answer from
@@ -19,6 +19,7 @@ export const untrustedMessage = 'OpenAbstractions stopped this call: the runtime
 // The native IPC connector's statuses (@openabstractions/ipc Status).
 const disconnected = 2;
 const ioError = 3;
+const openIoError = 10;
 const untrusted = 8;
 
 /** The status of the first FrameError of the native connector (a numeric
@@ -31,11 +32,11 @@ function frameStatus(error) {
 }
 
 /** Whether error means the runtime is away: a lost connection (Disconnected
- * or IoError), or a runtime_unavailable resolution that no other IPC status
+ * or IoError), an affirmative initial-open OpenIoError, or a runtime_unavailable resolution that no other IPC status
  * caused. */
 export function runtimeUnavailable(error) {
   const status = frameStatus(error);
-  if (status !== null) return status === disconnected || status === ioError;
+  if (status !== null) return status === disconnected || status === ioError || status === openIoError;
   for (let current = error, depth = 0; current && depth < 8; current = current.cause, depth += 1) {
     if (current.name === 'ResolutionError' && current.status === 'runtime_unavailable') return true;
   }
@@ -88,6 +89,12 @@ export class Availability {
     this.since = this.now();
     this.tried = this.since;
     this.#tell('warning', unavailableMessage, error);
+  }
+
+  /** One toast that says something about OA itself, such as a question
+   * waiting for the person. */
+  say(variant, message) {
+    this.#tell(variant, message);
   }
 
   /** An answer from the runtime: OA is available again, said once. */

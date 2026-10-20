@@ -8,11 +8,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"syscall"
 	"unsafe"
 
 	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	"golang.org/x/sys/windows"
+
+	"github.com/openabstractions/abstraction-facade/go-core/childproc"
 )
 
 func startGuard() error {
@@ -69,21 +70,30 @@ func activateWindowsPresenter(selected string, executable func() (string, error)
 	if !samePrograms(selected, server) {
 		return errors.New("native presenter activation refused: this executable differs from the selected installation")
 	}
-	panel := filepath.Join(dir, "Abstraction Panel.exe")
+	panel := filepath.Join(dir, presenterImage)
 	info, err := stat(panel)
 	if errors.Is(err, os.ErrNotExist) {
-		return printLine(output, "native presenter absent from this installation")
+		return printPresenterStatus(output, "native presenter absent from this installation")
 	}
 	if err != nil {
 		return err
 	}
 	if !info.Mode().IsRegular() {
-		return errors.New("native presenter activation refused: installed Panel is not a regular file")
+		return errors.New("native presenter activation refused: installed presenter is not a regular file")
 	}
-	if err := launch(panel, dir, "--background"); err != nil {
+	if err := launch(panel, dir, presenterArguments); err != nil {
 		return fmt.Errorf("native presenter delivery deferred: %w", err)
 	}
-	return printLine(output, "native presenter dispatched to this account's desktop")
+	return printPresenterStatus(output, "native presenter dispatched to this account's desktop")
+}
+
+func printPresenterStatus(output io.Writer, line string) error {
+	err := printLine(output, line)
+	// A windowless installer child can have an invalid stdout handle.
+	if errors.Is(err, windows.ERROR_INVALID_HANDLE) {
+		return nil
+	}
+	return err
 }
 
 type windowsActivation struct {
@@ -148,8 +158,6 @@ func activateWindows(ctx context.Context, a windowsActivation) error {
 	return a.launch(twin, "serve", "supervisor")
 }
 
-func hideStartCommand(cmd *exec.Cmd) { cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true} }
-
 const (
 	detachedProcess        = 0x00000008
 	createNewProcessGroup  = 0x00000200
@@ -161,7 +169,7 @@ const (
 // an application's kill-on-close job must not take the shared host with it.
 // It does not wait; `start` observes readiness through the resolver.
 func launchDetached(image string, args ...string) error {
-	flags := uint32(detachedProcess | createNewProcessGroup | windows.CREATE_NO_WINDOW)
+	flags := uint32(detachedProcess | createNewProcessGroup)
 	err := startDetached(image, args, flags|createBreakawayFromJob)
 	if errors.Is(err, windows.ERROR_ACCESS_DENIED) {
 		err = startDetached(image, args, flags)
@@ -173,9 +181,10 @@ func launchDetached(image string, args ...string) error {
 }
 
 func startDetached(image string, args []string, flags uint32) error {
-	cmd := exec.Command(image, args...)
+	cmd := childproc.Hidden(exec.Command(image, args...))
 	cmd.Dir = filepath.Dir(image)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: flags}
+	cmd.SysProcAttr.HideWindow = true
+	cmd.SysProcAttr.CreationFlags |= flags
 	if err := cmd.Start(); err != nil {
 		return err
 	}

@@ -1,4 +1,4 @@
-//go:build windows
+//go:build windows && !panel
 
 package win
 
@@ -9,20 +9,31 @@ import (
 	"runtime"
 	"sync/atomic"
 	"syscall"
+	"unicode"
+	"unicode/utf8"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 var (
-	comctl32             = syscall.NewLazyDLL("comctl32.dll")
+	comctl32             = windows.NewLazySystemDLL("comctl32.dll")
 	taskDialogIndirect   = comctl32.NewProc("TaskDialogIndirect")
 	activeTaskDialogHwnd atomic.Uintptr
-	taskDialogCallbackID = syscall.NewCallback(taskDialogNotify)
-	setWindowPos         = user32.NewProc("SetWindowPos")
+	// pendingTaskDialogLevel is the header level the next TaskDialog's
+	// frame takes at TDN_CREATED.
+	pendingTaskDialogLevel atomic.Pointer[PromptLevel]
+	taskDialogCallbackID   = syscall.NewCallback(taskDialogNotify)
+	setWindowPos           = user32.NewProc("SetWindowPos")
 
 	// questionButtons and questionArmed describe the one question dialog the
 	// tray's UI thread can show at a time.
 	questionButtons atomic.Int32
 	questionArmed   atomic.Bool
+	// questionPrompt and questionDefault are that dialog's prompt and its
+	// default button, for the real-input check of an answer click.
+	questionPrompt  atomic.Pointer[QuestionPrompt]
+	questionDefault atomic.Int32
 )
 
 // hwndTopmost is HWND_TOPMOST, (HWND)-1.
@@ -202,15 +213,31 @@ type QuestionPrompt struct {
 	Choices     []QuestionChoice
 	// Default is the choice value Enter selects. Empty or unknown selects
 	// Cancel, which answers nothing.
-	Default   string
+	Default string
+	// Dismiss is the choice value Escape and the close box answer, such as
+	// "not now". With it set no separate Cancel button is drawn, since that
+	// choice already declines.
+	Dismiss   string
 	AppChoice bool
-	// Permission comes only from the Panel's typed permission projection.
+	// Permission comes from the Panel's typed or runtime-reserved consent display projection.
 	Permission     bool
 	PermissionView *PermissionView
+	CredentialForm *CredentialForm
+	// PairingPrompt leaves unanswered dismissal to X/Escape without an extra button. The Panel
+	// sets it only from the reserved runtime key's private display origin.
+	PairingPrompt bool
 	// Level is the header level the Panel's one level choice made. The
 	// renderers color by it and read nothing else for the header.
-	Level  PromptLevel
-	parent uintptr
+	Level PromptLevel
+	// RealInputOnly marks an authority-granting prompt: an answer button
+	// counts only when the person's own mouse or keyboard pressed it
+	// (real_input_windows.go). Kind is its Book key, written to the log line
+	// of an ignored answer.
+	RealInputOnly bool
+	Kind          string
+	// OnShown runs on the UI thread once the question window is displayed.
+	OnShown func()
+	parent  uintptr
 	// chime is this prompt's one alert sound, shared by both renderers so a
 	// Windows 11 layout that falls back to TaskDialog plays it once.
 	chime *questionChime
@@ -254,9 +281,39 @@ type PermissionView struct {
 	Warning *string
 }
 
-func (w *Window) ShowQuestion(prompt QuestionPrompt) (string, error) {
-	prompt.parent = uintptr(w.h)
-	return ShowQuestion(prompt)
+// Occurrence is one retained Asks Book occurrence as the presenter shows it:
+// the Book's id of the question, permission or choice, and the display the
+// presenter projected from its retained content. The native question style
+// renders only Book occurrences (abstraction-asks CONTRACT, "The native
+// question style renders only Book occurrences"); OpenAbstractions' own
+// confirmations, reports and failures go to the Panel window or to a
+// notification.
+type Occurrence struct {
+	ID     string
+	Prompt QuestionPrompt
+}
+
+// errNotOccurrence refuses a prompt that names no Book occurrence: free text
+// never reaches the native question style.
+var errNotOccurrence = errors.New("native question: only an Asks Book occurrence renders in this style")
+
+// bookOccurrenceID is the shape of a Book id: 1 to 128 bytes of UTF-8 with
+// no control character.
+func bookOccurrenceID(id string) bool {
+	if id == "" || len(id) > 128 || !utf8.ValidString(id) {
+		return false
+	}
+	for _, r := range id {
+		if unicode.IsControl(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func (w *Window) ShowQuestion(occurrence Occurrence) (string, error) {
+	occurrence.Prompt.parent = uintptr(w.h)
+	return ShowQuestion(occurrence)
 }
 
 // Ordinary application choices have command links and an explicit safe Close
@@ -268,6 +325,17 @@ func questionPresentationFlags(prompt QuestionPrompt) (flags, common uint32, def
 	}
 	if prompt.Permission {
 		flags &^= tdfUseHIconMain
+	}
+	if prompt.PairingPrompt && prompt.Permission {
+		return flags, 0, questionDefaultButton(prompt.Choices, prompt.Default)
+	}
+	if prompt.Dismiss != "" {
+		// A choice already declines; Escape and the close box answer it.
+		def := prompt.Default
+		if def == "" {
+			def = prompt.Dismiss
+		}
+		return flags, 0, questionDefaultButton(prompt.Choices, def)
 	}
 	return flags, tdcbfCancelButton, questionDefaultButton(prompt.Choices, prompt.Default)
 }
@@ -321,10 +389,30 @@ func questionArmedAfter(elapsed uintptr) bool { return elapsed >= questionArmDel
 
 // ShowQuestion selects a native permission dialog for the current OS. It is
 // owned by this process, so Windows leaves other desktop applications usable.
-// An empty option is a deliberate close or cancel, not an answer.
-func ShowQuestion(prompt QuestionPrompt) (option string, err error) {
+// An empty option is a deliberate close or cancel, not an answer. It renders
+// only a Book occurrence and refuses a prompt that names none.
+func ShowQuestion(occurrence Occurrence) (option string, err error) {
+	if !bookOccurrenceID(occurrence.ID) {
+		return "", errNotOccurrence
+	}
+	prompt := occurrence.Prompt
 	if prompt.chime == nil {
 		prompt.chime = newQuestionChime(prompt)
+	}
+	if prompt.RealInputOnly {
+		stop, err := guardRealInput(prompt.Kind)
+		if err != nil {
+			return "", fmt.Errorf("native question: answers to a %s prompt need the real-input check: %w", prompt.Kind, err)
+		}
+		defer stop()
+	}
+	// A secure credential field has no legacy TaskDialog projection. Never
+	// downgrade the form into a plain Allow question.
+	if prompt.CredentialForm != nil {
+		if !modernPermissionFor(prompt, windowsVersion()) {
+			return "", errors.New("secure connection is unavailable on this native surface")
+		}
+		return showPermissionDialog(prompt, false)
 	}
 	if modernPermissionFor(prompt, windowsVersion()) {
 		option, err := showPermissionDialog(prompt, false)
@@ -384,6 +472,9 @@ func showTaskDialogQuestion(prompt QuestionPrompt) (option string, err error) {
 	questionButtons.Store(int32(len(buttons)))
 	questionArmed.Store(false)
 	flags, common, defaultButton := questionPresentationFlags(prompt)
+	questionPrompt.Store(&prompt)
+	questionDefault.Store(defaultButton)
+	defer questionPrompt.Store(nil)
 	config := taskDialogConfig{
 		Size:                 uint32(taskDialogConfigSize),
 		Parent:               syscall.Handle(prompt.parent),
@@ -405,69 +496,20 @@ func showTaskDialogQuestion(prompt QuestionPrompt) (option string, err error) {
 		Width:                questionPresentationWidth(prompt),
 	}
 	pendingTaskDialogChime.Store(prompt.chime)
+	pendingTaskDialogLevel.Store(&prompt.Level)
 	hresult := config.call(taskDialogIndirect.Addr(), &selected)
 	pendingTaskDialogChime.Store(nil)
+	pendingTaskDialogLevel.Store(nil)
 	runtime.KeepAlive(labels)
 	runtime.KeepAlive(buttons)
 	runtime.KeepAlive(prompt)
 	if hresult != 0 {
 		return "", fmt.Errorf("show Windows permission question: HRESULT %#x", hresult)
 	}
+	if selected == idcCancel {
+		return prompt.Dismiss, nil
+	}
 	return values[selected], nil
-}
-
-// ShowQuestionResult presents the result of a submitted answer in the same
-// OA-branded native surface with the given header level. It returns after the
-// person acknowledges it.
-func ShowQuestionResult(title, instruction, content, footer string, level PromptLevel) error {
-	if modernPermissionFor(QuestionPrompt{Permission: true}, windowsVersion()) {
-		_, err := showPermissionDialog(QuestionPrompt{Title: title, Instruction: instruction, Content: content,
-			Footer: footer, Choices: []QuestionChoice{{Label: "OK", Value: "acknowledged"}}, Level: level}, true)
-		if !errors.Is(err, errPermissionViewport) {
-			return err
-		}
-	}
-	if err := taskDialogIndirect.Find(); err != nil {
-		return fmt.Errorf("load Windows TaskDialog: %w", err)
-	}
-	titleText, err := taskDialogText(title)
-	if err != nil {
-		return err
-	}
-	instructionText, err := taskDialogText(instruction)
-	if err != nil {
-		return err
-	}
-	contentText, err := taskDialogText(content)
-	if err != nil {
-		return err
-	}
-	footerText, err := taskDialogText(footer)
-	if err != nil {
-		return err
-	}
-	instance, _, _ := getModuleHandle.Call(0)
-	config := taskDialogConfig{
-		Size:            uint32(taskDialogConfigSize),
-		Flags:           tdfUseHIconMain | tdfAllowDialogCancellation,
-		CommonButtons:   tdcbfOKButton | tdcbfCancelButton,
-		WindowTitle:     titleText,
-		MainIcon:        loadSharedTaskDialogIcon(instance),
-		MainInstruction: instructionText,
-		Content:         contentText,
-		Footer:          footerText,
-		Callback:        taskDialogCallback(),
-	}
-	var selected int32
-	hresult := config.call(taskDialogIndirect.Addr(), &selected)
-	runtime.KeepAlive(title)
-	runtime.KeepAlive(instruction)
-	runtime.KeepAlive(content)
-	runtime.KeepAlive(footer)
-	if hresult != 0 {
-		return fmt.Errorf("show Windows permission result: HRESULT %#x", hresult)
-	}
-	return nil
 }
 
 func taskDialogCallback() uintptr {
@@ -483,6 +525,9 @@ func taskDialogNotify(hwnd, msg, wparam, _ uintptr, ref uintptr) uintptr {
 	switch uint32(msg) {
 	case tdnCreated:
 		activeTaskDialogHwnd.Store(hwnd)
+		if level := pendingTaskDialogLevel.Swap(nil); level != nil {
+			popupFrameTheme(hwnd, *level)
+		}
 		// The tray process rarely owns the foreground, so Windows would
 		// otherwise open the prompt behind the active application. Topmost
 		// keeps it visible above the normal desktop without taking input
@@ -490,22 +535,74 @@ func taskDialogNotify(hwnd, msg, wparam, _ uintptr, ref uintptr) uintptr {
 		setWindowPos.Call(hwnd, hwndTopmost, 0, 0, 0, 0, swpNoMove|swpNoSize|swpShowWindow)
 		if question {
 			setQuestionButtons(hwnd, false)
+			if prompt := questionPrompt.Load(); prompt != nil && prompt.OnShown != nil {
+				prompt.OnShown()
+			}
 			pendingTaskDialogChime.Swap(nil).ring()
 		}
 	case tdnTimer:
 		// wparam is the time since the dialog was created, in milliseconds.
 		if question && !questionArmed.Load() && questionArmedAfter(wparam) {
 			questionArmed.Store(true)
+			armRealInput()
 			setQuestionButtons(hwnd, true)
 		}
 	case tdnButtonClicked:
 		if question && !questionClickAllowed(questionArmed.Load(), wparam) {
 			return sFalse
 		}
+		if question && !taskDialogRealInput(hwnd, wparam) {
+			return sFalse
+		}
 	case tdnDestroyed:
 		activeTaskDialogHwnd.CompareAndSwap(hwnd, 0)
 	}
 	return 0
+}
+
+// taskDialogRealInput decides an answer click in the question TaskDialog by
+// the real-input check. Cancel and Close answer nothing and always close.
+func taskDialogRealInput(hwnd, button uintptr) bool {
+	prompt := questionPrompt.Load()
+	index := int(button) - firstQuestionButton
+	if prompt == nil || index < 0 || index >= len(prompt.Choices) {
+		return true
+	}
+	label := prompt.Choices[index].Label
+	return realInputAnswer(*prompt, realInputTargetOn(hwnd, findTaskDialogButton(hwnd, label), questionDefault.Load() == int32(button), label))
+}
+
+var (
+	taskDialogEnumChildren = user32.NewProc("EnumChildWindows")
+	taskDialogClassName    = user32.NewProc("GetClassNameW")
+	taskDialogFind         struct {
+		label string
+		found uintptr
+	}
+	taskDialogFindCallback = syscall.NewCallback(func(h, _ uintptr) uintptr {
+		class := make([]uint16, 8)
+		taskDialogClassName.Call(h, uintptr(unsafe.Pointer(&class[0])), uintptr(len(class)))
+		if syscall.UTF16ToString(class) != "Button" {
+			return 1
+		}
+		n, _, _ := getWindowTextLength.Call(h)
+		text := make([]uint16, n+1)
+		getWindowText.Call(h, uintptr(unsafe.Pointer(&text[0])), n+1)
+		if syscall.UTF16ToString(text) == taskDialogFind.label {
+			taskDialogFind.found = h
+			return 0
+		}
+		return 1
+	})
+)
+
+// findTaskDialogButton is the TaskDialog's button window labelled label. A
+// TaskDialog's buttons carry no control IDs; their labels are the prompt's
+// distinct choices. It runs on the dialog's UI thread.
+func findTaskDialogButton(dialog uintptr, label string) uintptr {
+	taskDialogFind.label, taskDialogFind.found = label, 0
+	taskDialogEnumChildren.Call(dialog, taskDialogFindCallback, 0)
+	return taskDialogFind.found
 }
 
 // setQuestionButtons enables or disables every answer button of the open
@@ -527,6 +624,8 @@ func loadSharedTaskDialogIcon(instance uintptr) uintptr {
 	}
 	return icon
 }
+
+func init() { dismissOnEndSession = DismissActiveQuestion }
 
 // DismissActiveQuestion asks an open question dialog to cancel. The Panel
 // calls it from the tray window's WTS lock notification on the same UI thread.

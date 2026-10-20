@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	jobwire "github.com/openabstractions/abstraction-job/go/abstraction/job/acceptance"
 	"reflect"
 	"slices"
 
@@ -108,7 +109,7 @@ func (r Runner) closePriorDownload(ctx context.Context, effect Effect) (string, 
 		return "", fmt.Errorf("the earlier release's download could not be observed; nothing changed: %w", err)
 	}
 	switch observation.State {
-	case "complete", "failed", "cancelled":
+	case jobwire.WorkStateComplete.String(), jobwire.WorkStateFailed.String(), jobwire.WorkStateCancelled.String():
 		return "the earlier release's download had ended (" + observation.State + "); it was not installed", nil
 	}
 	canceller, ok := r.Transfer.(transferCanceller)

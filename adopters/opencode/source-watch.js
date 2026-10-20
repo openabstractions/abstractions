@@ -70,7 +70,7 @@ function permissionStatus(error) {
   return error?.code === 'permission_denied' ? 'permission_denied' : 'unavailable';
 }
 
-function askForApproval(ask, request, signal) {
+export function askForApproval(ask, request, signal) {
   return new Promise((resolve) => {
     let settled = false;
     const finish = (value) => {
@@ -96,7 +96,7 @@ function emptySummary(sourceId, status, startedAt, endedAt, pages = 0, records =
 // Each decision has its own bounded call. The final call uses callerSignal,
 // independently of the collection timer. Only the exact permitted outcome
 // allows disclosure; a resolver/client ignoring cancellation cannot stall it.
-async function sharingDecision(resolveAuthorization, sourceId, parentSignal) {
+export async function sharingDecision(resolveAuthorization, sourceId, parentSignal) {
   if (typeof resolveAuthorization !== 'function') return 'sharing_unavailable';
   const controller = new AbortController();
   const onAbort = () => controller.abort();

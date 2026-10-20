@@ -11,6 +11,8 @@ import (
 	"unsafe"
 
 	identity "github.com/openabstractions/abstraction-identity"
+
+	"golang.org/x/sys/windows"
 )
 
 // Standard Win32 controls, system colors and a creator-thread message loop.
@@ -19,9 +21,9 @@ import (
 // https://learn.microsoft.com/windows/win32/procthread/creating-windows-in-threads
 // https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-isdialogmessagew
 var (
-	appUser32           = syscall.NewLazyDLL("user32.dll")
-	appGDI32            = syscall.NewLazyDLL("gdi32.dll")
-	appKernel32         = syscall.NewLazyDLL("kernel32.dll")
+	appUser32           = windows.NewLazySystemDLL("user32.dll")
+	appGDI32            = windows.NewLazySystemDLL("gdi32.dll")
+	appKernel32         = windows.NewLazySystemDLL("kernel32.dll")
 	appRegisterClass    = appUser32.NewProc("RegisterClassExW")
 	appCreateWindow     = appUser32.NewProc("CreateWindowExW")
 	appDestroyWindow    = appUser32.NewProc("DestroyWindow")

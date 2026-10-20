@@ -26,19 +26,21 @@ import (
 	storageservice "github.com/openabstractions/abstraction-storage/go/service"
 )
 
-// liveArchive names the publisher's archive of the one llama.cpp release the
-// model host launches (modelhost CONTRACT.md MODELHOST-L3).
-const liveArchive = "OA_LLAMA_B10825_ZIP"
+// liveBundle names OA's reduced engine ZIP of the one llama.cpp release the
+// model host launches, with its app-local Visual C++ runtime (modelhost
+// CONTRACT.md MODELHOST-L3); the publisher's archive lacks that runtime and
+// modelhostd refuses it.
+const liveBundle = "OA_LLAMA_B10825_BUNDLE"
 
 // stagedEngine stages the pinned llama.cpp engine with modelhostd's own
-// `engine install` from the archive OA_LLAMA_B10825_ZIP names, into a fresh
-// folder, and returns the llama-server path the install printed and the
+// `engine install --bundle` from the ZIP OA_LLAMA_B10825_BUNDLE names, into a
+// fresh folder, and returns the llama-server path the install printed and the
 // private state folder holding the engine record. The install checks the
-// archive's size and SHA-256 and writes the pinned files alone. The test
+// bundle's size and SHA-256 and writes the pinned files alone. The test
 // declares the same state folder, so the owner's default engine record is
 // never touched. Cleanup gives the folder back with `engine unlock` and
 // removes both.
-func stagedEngine(t *testing.T, modelhostd, archive string) (string, string) {
+func stagedEngine(t *testing.T, modelhostd, bundle string) (string, string) {
 	t.Helper()
 	parent, err := os.MkdirTemp("", "oa-live-llama-")
 	if err != nil {
@@ -54,9 +56,9 @@ func stagedEngine(t *testing.T, modelhostd, archive string) (string, string) {
 			t.Logf("sweep: %v", err)
 		}
 	})
-	out, err := exec.Command(modelhostd, "engine", "install", "--archive", archive, "--dir", dir, "--state", state).CombinedOutput()
+	out, err := exec.Command(modelhostd, "engine", "install", "--bundle", bundle, "--dir", dir, "--state", state).CombinedOutput()
 	if err != nil {
-		t.Fatalf("modelhostd engine install --archive %s: %v\n%s", archive, err, out)
+		t.Fatalf("modelhostd engine install --bundle %s: %v\n%s", bundle, err, out)
 	}
 	_, program, ok := strings.Cut(strings.TrimSpace(string(out)), "pass --engine ")
 	if !ok || !filepath.IsAbs(program) {
@@ -109,16 +111,16 @@ func buildModelhostd(t *testing.T) string {
 // asks the card for its whole capacity and asserts the host let go.
 //
 // It downloads nothing and touches no other engine: the engine is staged from
-// the archive OA_LLAMA_B10825_ZIP names into a temporary folder, and the only
+// the bundle OA_LLAMA_B10825_BUNDLE names into a temporary folder, and the only
 // process it stops is the one modelhostd started, by that process's own id.
 func TestLiveHostTheSmallestGGUFUnderALease(t *testing.T) {
 	if os.Getenv("OA_LIVE_MODELHOST") != "1" {
 		t.Skip("set OA_LIVE_MODELHOST=1 to load one of this machine's own model files with the pinned llama.cpp")
 	}
-	archive := os.Getenv(liveArchive)
-	if archive == "" {
-		t.Skipf("set %s to a downloaded llama-b10825-bin-win-vulkan-x64.zip "+
-			"(https://github.com/ggml-org/llama.cpp/releases/download/b10825/); the test stages it with modelhostd engine install", liveArchive)
+	bundle := os.Getenv(liveBundle)
+	if bundle == "" {
+		t.Skipf("set %s to llama-b10825-oa-win-vulkan-x64.zip (the OA package's tools\\engines, or installer/modelhost_engine.py derive); "+
+			"the test stages it with modelhostd engine install --bundle", liveBundle)
 	}
 	if !statusTransportProvesProgram(t) {
 		t.Skip("Program proof unavailable on current shared transport")
@@ -126,7 +128,7 @@ func TestLiveHostTheSmallestGGUFUnderALease(t *testing.T) {
 
 	inventoryd := buildLocalStoresInventoryd(t)
 	modelhostd := buildModelhostd(t)
-	engine, state := stagedEngine(t, modelhostd, archive)
+	engine, state := stagedEngine(t, modelhostd, bundle)
 	t.Logf("engine: %s, state: %s", engine, state)
 	stamp := time.Now().UnixNano() % 1_000_000_000
 
@@ -349,13 +351,6 @@ func TestLiveHostTheSmallestGGUFUnderALease(t *testing.T) {
 	}
 	t.Logf("embed@1: %s in %s, %d dimensions (reported %d), %d input tokens",
 		embedded.Outcome, embedTook, len(vectors[0]), embedded.Dimensions, embedded.Usage.Input)
-
-	// No engine this test did not start is touched: every attached holder's
-	// yield rule is denied, so the asks reach the model host's lease and the
-	// LM Studio, Ollama or ComfyUI running here keep what they hold.
-	for _, attached := range unloadableHosts {
-		rule(subject, resourceservice.ActionYield, claimedHostPrefix+attached, false)
-	}
 
 	// Ask the card for the pool the lease service itself would use: the
 	// instrument's capacity where it has one, and the machine's memory where

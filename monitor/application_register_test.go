@@ -3,7 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"html"
+	"errors"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,17 +17,25 @@ import (
 )
 
 // applicationDirectoryFake is an in-memory applications directory: Register
-// adds an entry under a free name, Remove deletes one.
+// adds an entry under a free name and updates the same program's entry, as
+// the Applications service does; another program's name is a conflict.
+// Remove deletes one.
 type applicationDirectoryFake struct {
 	entries   map[string]fwire.ApplicationDescriptor
 	registers int
 	removes   int
+	// identity names entries whose program image changed: the same path
+	// registering again meets conflict "identity" (serve's pin rule).
+	identity map[string]bool
 }
 
 func (f *applicationDirectoryFake) Register(_ context.Context, d fwire.ApplicationDescriptor) (fwire.ApplicationChange, error) {
 	f.registers++
-	if _, ok := f.entries[d.Name]; ok {
+	if existing, ok := f.entries[d.Name]; ok && existing.Program != d.Program {
 		return fwire.ApplicationChange{Outcome: fwire.ApplicationOutcomeConflict}, nil
+	}
+	if _, ok := f.entries[d.Name]; ok && f.identity[d.Name] {
+		return fwire.ApplicationChange{Outcome: fwire.ApplicationOutcomeConflict, Reason: "identity"}, nil
 	}
 	f.entries[d.Name] = d
 	return fwire.ApplicationChange{Outcome: fwire.ApplicationOutcomeApplied}, nil
@@ -54,6 +63,9 @@ func (f *applicationDirectoryFake) Activate(context.Context, string) (fwire.Appl
 }
 
 const applicationTestKey = "app-test-key"
+
+// applicationTestPublisher stands in for the program's signature check.
+const applicationTestPublisher = "Publisher: Example Corp, verified by its signature."
 
 // applicationTestDirs holds each test's application folder: the folder its
 // manifest is written to, which the manifest's program must lie in ({app}).
@@ -88,14 +100,27 @@ func manifestText(program, title string) string {
 	return string(raw)
 }
 
-func applicationPanel(t *testing.T, apps *applicationDirectoryFake, manifest string) (*servicePanel, http.Handler) {
+// applicationRequestsFor are a test's own request records: a fresh folder,
+// the installer records given (none by default), no Setup folder or Setup
+// program for any app, and a fixed publisher.
+func applicationRequestsFor(t *testing.T, installed map[string]string) applicationRequestRecords {
+	return applicationRequestRecords{dir: filepath.Join(t.TempDir(), "requests"),
+		installed:    func() map[string]string { return installed },
+		appFolder:    func(string) string { return "" },
+		setupProgram: func(string) string { return "" },
+		publisher:    func(string) string { return applicationTestPublisher }}
+}
+
+// applicationPanel is a Panel whose Apps lists manifest as a Not connected
+// request, as a refused installer's run records it.
+func applicationPanel(t *testing.T, apps setupApplications, manifest string) (*servicePanel, http.Handler) {
 	t.Helper()
 	request, page, err := parseApplicationStart(writeApplicationManifest(t, manifest), "", "overview")
 	if err != nil || page != "register-application" {
 		t.Fatalf("start: %q %v", page, err)
 	}
-	p := &servicePanel{comfyApps: apps, appReadRules: &applicationReadFake{}}
-	p.appRequest.register = request.register
+	p := &servicePanel{comfyApps: apps, appReadRules: &applicationReadFake{}, appRequests: applicationRequestsFor(t, nil)}
+	p.recordApplicationRequest(request)
 	return p, p.handler(applicationTestKey)
 }
 
@@ -108,76 +133,222 @@ func applicationCall(t *testing.T, h http.Handler, method, path, body string) *h
 	return rec
 }
 
-// shownDigest reads the digest the page's Register button sends back.
-func shownDigest(t *testing.T, page string) string {
+// pendingRows reads Apps' waiting registrations.
+func pendingRows(t *testing.T, h http.Handler) []pendingApplication {
 	t.Helper()
-	return buttonDigest(t, page, "/application/register/confirm")
-}
-
-func buttonDigest(t *testing.T, page, path string) string {
-	t.Helper()
-	marker := `data-path="` + path + `" data-confirm="true" data-shown="`
-	start := strings.Index(page, marker)
-	if start < 0 {
-		t.Fatalf("no confirm button for %s on the page: %s", path, page)
+	rec := applicationCall(t, h, "GET", "/apps/pending", "")
+	var page appsPendingPage
+	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &page) != nil || page.Outcome != "page" {
+		t.Fatalf("pending %d: %s", rec.Code, rec.Body.String())
 	}
-	rest := page[start+len(marker):]
-	return rest[:strings.Index(rest, `"`)]
+	return page.Entries
 }
 
-func TestRegisterApplicationAfterTheConfirmation(t *testing.T) {
+// connectRow is a row's Connect click with the request and the replaced
+// entry the row showed.
+func connectRow(t *testing.T, h http.Handler, row pendingApplication) *httptest.ResponseRecorder {
+	t.Helper()
+	body, _ := json.Marshal(appsPendingConnectRequest{Name: row.Name, Digest: row.Digest, Shown: row.Shown})
+	return applicationCall(t, h, "POST", "/apps/pending/connect", string(body))
+}
+
+// recordedRequest is the Not connected request Apps lists for example.
+func recordedRequest(t *testing.T, p *servicePanel) fwire.ApplicationDescriptor {
+	t.Helper()
+	d, err := readApplicationManifest(p.appRequests.recorded()["example"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
+// connectAsShown is a Connect click on the row as Apps shows it now: it
+// replaces the entry registered under the name.
+func connectAsShown(t *testing.T, p *servicePanel) (string, error) {
+	t.Helper()
+	ctx := context.Background()
+	d := recordedRequest(t, p)
+	apps, err := p.setupApplicationsForPanel(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	existing, _ := registeredApplication(ctx, apps, d.Name)
+	return p.registerApplication(ctx, d, applicationDigest(existing))
+}
+
+// A Not connected request waits as one row in Apps: its title, program and
+// publisher. Showing it registers nothing; Connect registers it once through
+// the Applications service, and the row and its record end.
+func TestANotConnectedRequestShowsInAppsAndConnectRegistersIt(t *testing.T) {
 	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{}}
 	program := applicationTestProgram(t)
-	_, h := applicationPanel(t, apps, manifestText(program, "Example"))
-	page := applicationCall(t, h, "GET", "/application/register", "")
-	if page.Code != 200 || !strings.Contains(page.Body.String(), "Example") || apps.registers != 0 {
-		t.Fatalf("page %d registers %d: %s", page.Code, apps.registers, page.Body.String())
+	p, h := applicationPanel(t, apps, manifestText(program, "Example"))
+	rows := pendingRows(t, h)
+	if len(rows) != 1 || apps.registers != 0 {
+		t.Fatalf("rows %+v registers %d", rows, apps.registers)
 	}
-	shown := shownDigest(t, page.Body.String())
-	rec := applicationCall(t, h, "POST", "/application/register/confirm", `{"confirm":true,"shown":"`+shown+`"}`)
-	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "Registered Example.") {
-		t.Fatalf("confirm %d: %s", rec.Code, rec.Body.String())
+	row := rows[0]
+	if row.Name != "example" || row.Title != "Example" || row.Replaces != "" || row.Shown != "" ||
+		row.Program != "example" || row.Publisher != applicationTestPublisher || row.Digest == "" {
+		t.Fatalf("row %+v", row)
+	}
+	rec := connectRow(t, h, row)
+	if rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != `{"message":"Example is connected to OpenAbstractions."}` {
+		t.Fatalf("allow %d: %s", rec.Code, rec.Body.String())
 	}
 	if got := apps.entries["example"]; got.Program != program || got.Activation == nil || got.Activation.Arguments[1] != "<b>" {
 		t.Fatalf("registered %+v", got)
 	}
-	again := applicationCall(t, h, "POST", "/application/register/confirm", `{"confirm":true,"shown":""}`)
-	if again.Code != http.StatusConflict || apps.registers != 1 {
+	if rows := pendingRows(t, h); len(rows) != 0 {
+		t.Fatalf("a connected app still waits: %+v", rows)
+	}
+	if recorded := p.appRequests.recorded(); len(recorded) != 0 {
+		t.Fatalf("the request record outlived Connect: %v", recorded)
+	}
+	if again := connectRow(t, h, row); again.Code != http.StatusConflict || apps.registers != 1 {
 		t.Fatalf("a second click registered again: %d", again.Code)
 	}
 }
 
-// A manifest whose title is a product name, in any case or spacing, is
-// refused: the page says so in one sentence and offers no Register, and a
-// confirm sent anyway registers nothing.
-func TestRegistrationRefusesAReservedTitle(t *testing.T) {
-	for _, title := range []string{"OpenAbstractions", "openabstractions panel"} {
-		apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{}}
-		_, h := applicationPanel(t, apps, manifestText(applicationTestProgram(t), title))
-		page := applicationCall(t, h, "GET", "/application/register", "").Body.String()
-		if !strings.Contains(page, html.EscapeString(reservedTitleRefusal)) || strings.Contains(page, `data-path="/application/register/confirm"`) {
-			t.Fatalf("%q: the page offers Register or no refusal: %s", title, page)
-		}
-		rec := applicationCall(t, h, "POST", "/application/register/confirm", `{"confirm":true,"shown":""}`)
-		if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), reservedTitleRefusal) || apps.registers != 0 {
-			t.Fatalf("%q: confirm %d registers %d: %s", title, rec.Code, apps.registers, rec.Body.String())
-		}
+// A Connect for a request that changed since Apps showed it registers nothing.
+func TestConnectRefusesARequestThatChanged(t *testing.T) {
+	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{}}
+	program := applicationTestProgram(t)
+	_, h := applicationPanel(t, apps, manifestText(program, "Example"))
+	row := pendingRows(t, h)[0]
+	writeApplicationManifest(t, manifestText(program, "Example 2"))
+	if rec := connectRow(t, h, row); rec.Code != http.StatusConflict || apps.registers != 0 {
+		t.Fatalf("a changed request was registered: %d %s", rec.Code, rec.Body.String())
+	}
+	if rows := pendingRows(t, h); len(rows) != 1 || rows[0].Title != "Example 2" {
+		t.Fatalf("rows %+v", rows)
 	}
 }
 
-func TestCancelRegistersNothing(t *testing.T) {
+// The installer's own record (Setup's HKCU record) waits in Apps without a
+// Panel record, and an app registered by another path waits for nothing.
+func TestAnInstallersRecordWaitsAndARegisteredNameDoesNot(t *testing.T) {
+	program := applicationTestProgram(t)
+	manifest := writeApplicationManifest(t, manifestText(program, "Example"))
 	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{}}
-	_, h := applicationPanel(t, apps, manifestText(applicationTestProgram(t), "Example"))
-	rec := applicationCall(t, h, "POST", "/application/register/cancel", `{"confirm":false,"shown":""}`)
-	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "Nothing was registered.") {
-		t.Fatalf("cancel %d: %s", rec.Code, rec.Body.String())
+	p := &servicePanel{comfyApps: apps, appReadRules: &applicationReadFake{}, appRequests: applicationRequestsFor(t, map[string]string{"example": manifest, "other": manifest})}
+	p.appRequests.appFolder = func(string) string { return applicationTestDir(t) }
+	h := p.handler(applicationTestKey)
+	rows := pendingRows(t, h)
+	if len(rows) != 1 || rows[0].Name != "example" {
+		t.Fatalf("an installer's record: %+v (a record whose manifest names another app is left out)", rows)
 	}
-	late := applicationCall(t, h, "POST", "/application/register/confirm", `{"confirm":true,"shown":""}`)
-	if late.Code != http.StatusConflict || apps.registers != 0 || len(apps.entries) != 0 {
-		t.Fatalf("a cancelled registration was written: %d %v", late.Code, apps.entries)
+	if err := p.appRequests.record("example", manifest); err != nil {
+		t.Fatal(err)
 	}
-	if rec := applicationCall(t, h, "POST", "/application/register/confirm", `{"confirm":false,"shown":""}`); rec.Code != http.StatusBadRequest && rec.Code != http.StatusConflict {
-		t.Fatalf("an unconfirmed click: %d", rec.Code)
+	apps.entries["example"] = fwire.ApplicationDescriptor{Name: "example", Program: program, Title: "Example"}
+	if rows := pendingRows(t, h); len(rows) != 0 {
+		t.Fatalf("a registered app waits: %+v", rows)
+	}
+	if recorded := p.appRequests.recorded(); len(recorded) != 0 {
+		t.Fatalf("the Panel's record of a registered app was kept: %v", recorded)
+	}
+}
+
+// An installer's record counts under Setup's trust rule only: its manifest
+// lies inside the app's Setup folder, or names the program Setup's install
+// record gives the app. Any other record is ignored and logged once, and the
+// Panel's own record of a --register-application run for the name stands.
+func TestAnInstallersRecordWaitsOnlyUnderSetupsTrustRule(t *testing.T) {
+	root := t.TempDir()
+	place := func(folder, title string) (manifest, program string) {
+		if err := os.MkdirAll(folder, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		program = filepath.Join(folder, "example.exe")
+		if err := os.WriteFile(program, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		manifest = filepath.Join(folder, "application-manifest.json")
+		if err := os.WriteFile(manifest, []byte(manifestText(program, title)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return manifest, program
+	}
+	appFolder := filepath.Join(root, "Programs", "OpenAbstractions", "apps", "example")
+	insideManifest, insideProgram := place(appFolder, "Inside")
+	outsideManifest, outsideProgram := place(filepath.Join(root, "elsewhere"), "Outside")
+	panelManifest, _ := place(filepath.Join(root, "requested"), "Requested")
+	var logs strings.Builder
+	log.SetOutput(&logs)
+	defer log.SetOutput(os.Stderr)
+	for _, test := range []struct {
+		name, manifest, setupProgram, panelRecord, want string
+	}{
+		{"inside", insideManifest, "", "", "Inside"},
+		{"outside, same program", outsideManifest, outsideProgram, "", "Outside"},
+		{"outside, other program", outsideManifest, insideProgram, "", ""},
+		{"outside, no Setup record", outsideManifest, "", "", ""},
+		{"outside, other program, with a Panel record", outsideManifest, insideProgram, panelManifest, "Requested"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			logs.Reset()
+			apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{}}
+			p := &servicePanel{comfyApps: apps, appReadRules: &applicationReadFake{}, appRequests: applicationRequestsFor(t, map[string]string{"example": test.manifest})}
+			p.appRequests.appFolder = func(name string) string {
+				if name != "example" {
+					t.Errorf("folder asked for %q", name)
+				}
+				return appFolder
+			}
+			p.appRequests.setupProgram = func(string) string { return test.setupProgram }
+			if test.panelRecord != "" {
+				if err := p.appRequests.record("example", test.panelRecord); err != nil {
+					t.Fatal(err)
+				}
+			}
+			h := p.handler(applicationTestKey)
+			rows := pendingRows(t, h)
+			if test.want == "" {
+				if len(rows) != 0 {
+					t.Fatalf("an untrusted record waits: %+v", rows)
+				}
+			} else if len(rows) != 1 || rows[0].Title != test.want {
+				t.Fatalf("rows %+v, want %s", rows, test.want)
+			}
+			ignored := strings.Contains(logs.String(), "the installer record for example is ignored")
+			if trusted := test.want == "Inside" || test.want == "Outside"; ignored == trusted {
+				t.Fatalf("logged %q", logs.String())
+			}
+			// A reread logs nothing more.
+			logs.Reset()
+			pendingRows(t, h)
+			if logs.Len() != 0 {
+				t.Fatalf("the reread logged again: %q", logs.String())
+			}
+			if test.want == "" {
+				return
+			}
+			if rec := connectRow(t, h, rows[0]); rec.Code != 200 || apps.entries["example"].Title != test.want {
+				t.Fatalf("allow %d: %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+// A manifest whose title is a product name, in any case or spacing, waits in
+// no row and is never registered.
+func TestRegistrationRefusesAReservedTitle(t *testing.T) {
+	for _, title := range []string{"OpenAbstractions", "openabstractions panel"} {
+		apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{}}
+		p, h := applicationPanel(t, apps, manifestText(applicationTestProgram(t), title))
+		if rows := pendingRows(t, h); len(rows) != 0 {
+			t.Fatalf("%q: a reserved title waits in Apps: %+v", title, rows)
+		}
+		d, err := readApplicationManifest(writeApplicationManifest(t, manifestText(applicationTestProgram(t), title)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = p.registerApplication(context.Background(), d, "")
+		var conflict applicationConflict
+		if !errors.As(err, &conflict) || string(conflict) != reservedTitleRefusal || apps.registers != 0 {
+			t.Fatalf("%q: confirm %v registers %d", title, err, apps.registers)
+		}
 	}
 }
 
@@ -205,65 +376,36 @@ func TestMalformedManifestIsRefusedBeforeAnyPage(t *testing.T) {
 	}
 }
 
-func TestReplacementShowsBothAndNeedsItsOwnClick(t *testing.T) {
+// A page named for an installer's request opens Apps; the registration and
+// removal pages are gone.
+func TestARequestPageOpensApps(t *testing.T) {
+	for _, name := range []string{"register-application", "remove-application"} {
+		if start, err := parsePanelStartPage(name); err != nil || start.path != "/" {
+			t.Fatalf("%s: start %+v %v", name, start, err)
+		}
+	}
+	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{}}
+	_, h := applicationPanel(t, apps, manifestText(applicationTestProgram(t), "Example"))
+	for _, path := range []string{"/application/register", "/application/register/confirm", "/application/register/cancel",
+		"/application/remove", "/application/remove/confirm", "/application/remove/cancel", "/apps/pending/allow"} {
+		if rec := applicationCall(t, h, "GET", path, ""); rec.Code != http.StatusNotFound {
+			t.Errorf("%s answers %d", path, rec.Code)
+		}
+	}
+}
+
+func TestReplacementNeedsTheEntryThePersonSaw(t *testing.T) {
 	program := applicationTestProgram(t)
 	old := fwire.ApplicationDescriptor{Name: "example", Program: program, Title: "Example 1"}
 	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{"example": old}}
-	_, h := applicationPanel(t, apps, manifestText(program, "Example 2"))
-	page := applicationCall(t, h, "GET", "/application/register", "").Body.String()
-	if !strings.Contains(page, "Registered now") || !strings.Contains(page, "Example 1") || !strings.Contains(page, "Replacement") || !strings.Contains(page, "Example 2") {
-		t.Fatalf("the replacement page does not show both entries: %s", page)
+	p, _ := applicationPanel(t, apps, manifestText(program, "Example 2"))
+	// A Connect that saw no entry does not replace one.
+	if _, err := p.registerApplication(context.Background(), recordedRequest(t, p), ""); !errors.Is(err, applicationChanged) || apps.entries["example"].Title != "Example 1" {
+		t.Fatalf("a stale Connect replaced the entry: %v", err)
 	}
-	// A click that saw no entry does not replace one.
-	if rec := applicationCall(t, h, "POST", "/application/register/confirm", `{"confirm":true,"shown":""}`); rec.Code != http.StatusConflict || apps.entries["example"].Title != "Example 1" {
-		t.Fatalf("a click on a stale page replaced the entry: %d", rec.Code)
-	}
-	shown := shownDigest(t, page)
-	rec := applicationCall(t, h, "POST", "/application/register/confirm", `{"confirm":true,"shown":"`+shown+`"}`)
-	if rec.Code != 200 || apps.entries["example"].Title != "Example 2" || apps.removes != 1 {
-		t.Fatalf("replace %d: %s %+v", rec.Code, rec.Body.String(), apps.entries)
-	}
-}
-
-func TestRemoveAfterTheConfirmation(t *testing.T) {
-	program := applicationTestProgram(t)
-	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{"example": {Name: "example", Program: program, Title: "Example"}}}
-	request, page, err := parseApplicationStart("", "example", "overview")
-	if err != nil || page != "remove-application" {
-		t.Fatal(page, err)
-	}
-	p := &servicePanel{comfyApps: apps, appReadRules: &applicationReadFake{}}
-	p.appRequest.remove = request.remove
-	h := p.handler(applicationTestKey)
-	body := applicationCall(t, h, "GET", "/application/remove", "").Body.String()
-	shown := buttonDigest(t, body, "/application/remove/confirm")
-	if shown == "" || !strings.Contains(body, "Example") || len(apps.entries) != 1 {
-		t.Fatalf("remove page: %s", body)
-	}
-	if rec := applicationCall(t, h, "POST", "/application/remove/cancel", `{"confirm":false,"shown":""}`); rec.Code != 200 || len(apps.entries) != 1 {
-		t.Fatalf("cancel removed: %d", rec.Code)
-	}
-	p.appRequest.remove, p.appRequest.done = "example", ""
-	rec := applicationCall(t, h, "POST", "/application/remove/confirm", `{"confirm":true,"shown":"`+shown+`"}`)
-	if rec.Code != 200 || len(apps.entries) != 0 || !strings.Contains(rec.Body.String(), "Removed Example.") {
-		t.Fatalf("remove %d: %s", rec.Code, rec.Body.String())
-	}
-}
-
-func TestTheConfirmationPageEscapesManifestText(t *testing.T) {
-	program := filepath.Join(applicationTestDir(t), `a&b'c`, "a.exe")
-	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{}}
-	_, h := applicationPanel(t, apps, manifestText(program, `<script>alert(1)</script>`))
-	page := applicationCall(t, h, "GET", "/application/register", "").Body.String()
-	for _, raw := range []string{"<script>alert(1)", "a&b'c", "<b>"} {
-		if strings.Contains(page, raw) {
-			t.Errorf("the page carries raw manifest text %q", raw)
-		}
-	}
-	for _, escaped := range []string{"&lt;script&gt;alert(1)&lt;/script&gt;", "a&amp;b&#39;c", "&lt;b&gt;"} {
-		if !strings.Contains(page, escaped) {
-			t.Errorf("the page lacks the escaped text %q", escaped)
-		}
+	message, err := connectAsShown(t, p)
+	if err != nil || apps.entries["example"].Title != "Example 2" || apps.removes != 1 || message != "Example 2 is connected to OpenAbstractions." {
+		t.Fatalf("replace %q %v %+v", message, err, apps.entries)
 	}
 }
 
@@ -281,7 +423,7 @@ func TestAnInstallersPanelPrintsNoKey(t *testing.T) {
 	}
 	for name, request := range map[string]applicationStart{"register": register, "remove": remove} {
 		var out strings.Builder
-		if err := announcePanelURL(&out, "http://127.0.0.1:50000/application/register?k=private-key", false, request); err != nil {
+		if err := announcePanelURL(&out, "http://127.0.0.1:50000/?k=private-key", false, request); err != nil {
 			t.Fatal(err)
 		}
 		if out.Len() != 0 {
@@ -313,35 +455,128 @@ func TestAFailedReplacementRegistersTheEarlierEntryAgain(t *testing.T) {
 	program := applicationTestProgram(t)
 	old := fwire.ApplicationDescriptor{Name: "example", Program: program, Title: "Example 1"}
 	apps := &failingRegistration{applicationDirectoryFake: &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{"example": old}}, refuse: "Example 2"}
-	request, _, err := parseApplicationStart(writeApplicationManifest(t, manifestText(program, "Example 2")), "", "overview")
-	if err != nil {
-		t.Fatal(err)
-	}
-	p := &servicePanel{comfyApps: apps, appReadRules: &applicationReadFake{}}
-	p.appRequest.register = request.register
-	h := p.handler(applicationTestKey)
-	shown := shownDigest(t, applicationCall(t, h, "GET", "/application/register", "").Body.String())
-	rec := applicationCall(t, h, "POST", "/application/register/confirm", `{"confirm":true,"shown":"`+shown+`"}`)
-	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "Example 1 is registered again") {
-		t.Fatalf("failed replacement %d: %s", rec.Code, rec.Body.String())
+	p, _ := applicationPanel(t, apps, manifestText(program, "Example 2"))
+	_, err := connectAsShown(t, p)
+	var conflict applicationConflict
+	if !errors.As(err, &conflict) || !strings.Contains(string(conflict), "Example 1 is registered again") {
+		t.Fatalf("failed replacement: %v", err)
 	}
 	if got := apps.entries["example"]; got.Title != "Example 1" || apps.removes != 1 {
 		t.Fatalf("the earlier entry was not restored: %+v removes %d", apps.entries, apps.removes)
 	}
 }
 
-func TestAConfirmationWithoutAShownEntryRemovesNothing(t *testing.T) {
+type uncertainApplicationReplacement struct {
+	*applicationDirectoryFake
+	mode      string
+	changed   bool
+	reads     int
+	old, next fwire.ApplicationDescriptor
+}
+
+func (f *uncertainApplicationReplacement) Observe(ctx context.Context, cursor string, wait int64) (fwire.ApplicationPage, error) {
+	f.reads++
+	if f.changed && strings.HasSuffix(f.mode, "read-error") {
+		return fwire.ApplicationPage{}, errors.New("read failed")
+	}
+	return f.applicationDirectoryFake.Observe(ctx, cursor, wait)
+}
+
+func (f *uncertainApplicationReplacement) Remove(ctx context.Context, name string) (fwire.ApplicationChange, error) {
+	if strings.HasPrefix(f.mode, "remove-") {
+		f.changed = true
+		f.removes++
+		switch f.mode {
+		case "remove-gone":
+			delete(f.entries, name)
+		case "remove-other":
+			f.entries[name] = fwire.ApplicationDescriptor{Name: name, Title: "Other", Program: "other"}
+		}
+		return fwire.ApplicationChange{}, errors.New("Remove reply lost")
+	}
+	return f.applicationDirectoryFake.Remove(ctx, name)
+}
+
+func (f *uncertainApplicationReplacement) Register(ctx context.Context, d fwire.ApplicationDescriptor) (fwire.ApplicationChange, error) {
+	if d.Title == f.next.Title {
+		f.changed = true
+		f.registers++
+		switch f.mode {
+		case "register-new":
+			f.entries[d.Name] = d
+		case "register-shown":
+			f.entries[d.Name] = f.old
+		case "register-other":
+			f.entries[d.Name] = fwire.ApplicationDescriptor{Name: d.Name, Title: "Other", Program: "other"}
+		default:
+			if strings.HasPrefix(f.mode, "remove-") {
+				f.entries[d.Name] = d
+				return fwire.ApplicationChange{Outcome: fwire.ApplicationOutcomeApplied}, nil
+			}
+		}
+		return fwire.ApplicationChange{}, errors.New("Register reply lost")
+	}
+	return f.applicationDirectoryFake.Register(ctx, d)
+}
+
+func TestApplicationReplacementReconcilesLostRepliesWithoutBlindRestore(t *testing.T) {
+	for _, mode := range []string{"register-new", "register-gone", "register-shown", "register-other", "register-read-error", "remove-gone", "remove-shown", "remove-other", "remove-read-error"} {
+		t.Run(mode, func(t *testing.T) {
+			program := applicationTestProgram(t)
+			old := fwire.ApplicationDescriptor{Name: "example", Program: program, Title: "Example 1"}
+			apps := &uncertainApplicationReplacement{applicationDirectoryFake: &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{"example": old}}, mode: mode, old: old}
+			p, _ := applicationPanel(t, apps, manifestText(program, "Example 2"))
+			apps.next = recordedRequest(t, p)
+			_, err := p.registerApplication(t.Context(), apps.next, applicationDigest(&old))
+			var unknown applicationUnknown
+			switch mode {
+			case "register-new", "remove-gone":
+				if err != nil || apps.entries["example"].Title != "Example 2" || apps.registers != 1 {
+					t.Fatal(err, apps.entries, apps.registers)
+				}
+			case "register-gone":
+				if err == nil || apps.entries["example"].Title != old.Title || apps.registers != 2 {
+					t.Fatal(err, apps.entries, apps.registers)
+				}
+			case "register-shown", "remove-shown":
+				if err == nil || apps.entries["example"].Title != old.Title || apps.registers != map[bool]int{true: 1, false: 0}[mode == "register-shown"] {
+					t.Fatal(err, apps.entries, apps.registers)
+				}
+			case "register-other":
+				if err == nil || !strings.Contains(err.Error(), "review Apps") || apps.entries["example"].Title != "Other" || apps.registers != 1 {
+					t.Fatal(err, apps.entries, apps.registers)
+				}
+			default:
+				if !errors.As(err, &unknown) {
+					t.Fatal("expected unknown", err)
+				}
+				want := 0
+				if strings.HasPrefix(mode, "register-") {
+					want = 1
+				}
+				if apps.registers != want {
+					t.Fatal("unknown mutated again", apps.registers)
+				}
+			}
+			if apps.reads != 2 {
+				t.Fatal("reconciliation must read once", apps.reads)
+			}
+		})
+	}
+}
+
+func TestAConnectWithoutAShownEntryRemovesNothing(t *testing.T) {
 	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{}}
 	_, h := applicationPanel(t, apps, manifestText(applicationTestProgram(t), "Example"))
-	if rec := applicationCall(t, h, "POST", "/application/register/confirm", `{"confirm":true,"shown":""}`); rec.Code != 200 || apps.removes != 0 {
+	if rec := connectRow(t, h, pendingRows(t, h)[0]); rec.Code != 200 || apps.removes != 0 {
 		t.Fatalf("a first registration called Remove: %d removes %d", rec.Code, apps.removes)
 	}
 }
 
-func TestApplicationPagesNeedTheKey(t *testing.T) {
+func TestApplicationRoutesNeedTheKey(t *testing.T) {
 	apps := &applicationDirectoryFake{entries: map[string]fwire.ApplicationDescriptor{}}
 	_, h := applicationPanel(t, apps, manifestText(applicationTestProgram(t), "Example"))
-	for _, path := range []string{"/application/register", "/application/remove"} {
+	for _, path := range []string{"/apps/pending", "/apps/pending/connect", "/activity/app-requests"} {
 		req := httptest.NewRequest("GET", path, nil)
 		req.Host = "127.0.0.1"
 		rec := httptest.NewRecorder()
@@ -349,5 +584,8 @@ func TestApplicationPagesNeedTheKey(t *testing.T) {
 		if rec.Code != http.StatusForbidden {
 			t.Errorf("%s without the key: %d", path, rec.Code)
 		}
+	}
+	if apps.registers != 0 {
+		t.Fatal("a call without the key registered")
 	}
 }

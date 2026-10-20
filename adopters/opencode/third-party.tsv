@@ -1,10 +1,15 @@
 > Third-party components OA ships for OpenCode: the @openabstractions/opencode
-> plugin's npm closure. OpenCode itself comes from its official installer
-> (VISION 2026-10-06); OA builds and packages no OpenCode executable, Bun or
-> ripgrep. scripts/adopter_pins.py reads this file and
+> plugin's npm closure, the source-selected official private verification CLI,
+> its exact first-use helper closure, ripgrep and OA's build of the Desktop's
+> file watcher with its crash fix. The desktop host comes from its official
+> installer. scripts/adopter_pins.py reads this file and
 > installer/third-party.tsv documents the columns; VISION 2026-10-01 is the rule.
 > Open rows are adopter-pin rows in scripts/check.baseline.
 
 build	component	kind	version	hash	origin	source	fetched	authority
 opencode	@openabstractions/opencode npm package third-party closure	lockfile	-	-	-	npm	build	adopters/opencode/package-lock.json
+opencode	OpenCode private verification CLI	archive	1.18.34	sha256:8ec42ed1ad8db108052394b83ab69d0331398f761fbfff5fe50f91d65bdd3548	publisher	https://github.com/anomalyco/opencode/releases/download/v1.18.34/opencode-windows-x64.zip	build	adopters/opencode/installer/build_installer.py
+opencode	OpenCode matching helper npm closure	lockfile	-	-	-	npm	build	adopters/opencode/installer/bootstrap/package-lock.json
+opencode	ripgrep	archive	15.1.0	sha256:124510b94b6baa3380d051fdf4650eaa80a302c876d611e9dba0b2e18d87493a	publisher	https://github.com/BurntSushi/ripgrep/releases/download/15.1.0/ripgrep-15.1.0-x86_64-pc-windows-msvc.zip	build	adopters/opencode/installer/build_installer.py
 opencode	OpenCode's own plugin installer (opencode plugin @openabstractions/opencode)	updater	unknown	-	-	-	-	-
+opencode	@parcel/watcher-win32-x64 watcher.node, OA build of 2.5.1 plus parcel-bundler/watcher#277 (replaces the Desktop's stock file)	source	2.5.1-pr277.052dc8d	sha256:0251ee3ba7027af84a0cb8e0c2ffa1c5989eacf21bc091f95a7c5c00cc486e12	review:research/security-reviews/parcel-watcher-2.5.1-pr277-oa-win32-x64.md	https://github.com/parcel-bundler/watcher/pull/277	build	adopters/opencode/installer/build_installer.py

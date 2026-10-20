@@ -256,7 +256,9 @@ func TestResolvedCredentials(t *testing.T) {
 			return string(out)
 		}
 		out := run("denied")
-		isProbe := func(p string) bool { return filepath.Clean(p) == filepath.Clean(probe) || strings.EqualFold(filepath.Base(p), filepath.Base(probe)) }
+		isProbe := func(p string) bool {
+			return filepath.Clean(p) == filepath.Clean(probe) || strings.EqualFold(filepath.Base(p), filepath.Base(probe))
+		}
 		probeSubject, ok := d.subjectFor(isProbe)
 		if !ok {
 			t.Fatal("probe subject not observed by the holder")

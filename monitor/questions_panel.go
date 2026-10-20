@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -18,6 +20,46 @@ import (
 	"github.com/openabstractions/abstraction-facade/go/probe"
 	rightsclient "github.com/openabstractions/abstraction-rights/go/client"
 )
+
+// questionRequestCode is the "Request <code>." sentence a catalogue question
+// ends in for matching (asks AgentUpdateKey); the Panel's line leaves it out
+// (architect ruling 2026-11-09, second block).
+var questionRequestCode = regexp.MustCompile(`\. Request [0-9a-f]{16,}\.$`)
+
+// The Permissions page reads up to 32 pages of 16 records from each waiting
+// source on each pass (architect ruling 2026-11-09, second block). An
+// answered question's retained content no later read changes, so it is read
+// once and kept, keyed by account, occurrence, option and answer time; a
+// waiting question is read every time. questionContentRead is the read; a test replaces it.
+var questionContentRead = readQuestionContent
+
+var answeredQuestionContents = struct {
+	sync.Mutex
+	m map[string]askclient.QuestionContent
+}{m: map[string]askclient.QuestionContent{}}
+
+func readListedQuestionContent(ctx context.Context, operator *askclient.Operator, account string, record askclient.RecordMetadata) (askclient.QuestionContent, error) {
+	if record.Option == "" || record.Answered == "" {
+		return questionContentRead(ctx, operator, account, record.ID)
+	}
+	key := account + "\x00" + record.ID + "\x00" + record.Option + "\x00" + record.Answered
+	answeredQuestionContents.Lock()
+	content, ok := answeredQuestionContents.m[key]
+	answeredQuestionContents.Unlock()
+	if ok {
+		return content, nil
+	}
+	content, err := questionContentRead(ctx, operator, account, record.ID)
+	if err == nil {
+		answeredQuestionContents.Lock()
+		if len(answeredQuestionContents.m) >= 4096 {
+			clear(answeredQuestionContents.m)
+		}
+		answeredQuestionContents.m[key] = content
+		answeredQuestionContents.Unlock()
+	}
+	return content, err
+}
 
 // panelRules resolves the rights operator when an answer first writes a rule.
 type panelRules struct{ operator *rightsclient.Operator }
@@ -78,7 +120,8 @@ type questionPage struct {
 	// Askers names, for each question whose bound asker program the service
 	// recorded (asks ASK-A2, ASK-O11), that program and the display name
 	// derived from it, so two programs with one file name read apart.
-	Askers map[string]questionAsker `json:"askers,omitempty"`
+	Askers        map[string]questionAsker `json:"askers,omitempty"`
+	NativePrompts map[string]bool          `json:"nativePrompts,omitempty"`
 }
 
 // questionAsker is the program that asked a question: Name is the display
@@ -106,7 +149,7 @@ type questionProgram struct {
 // file name and shows no publisher. The publisher returned is the zero value
 // unless ok.
 func recordedProgram(ctx context.Context, operator askclient.DetailsReader, record askclient.RecordMetadata) (trayPublisher, questionProgram, bool) {
-	details, err := askclient.ReadDetailsContext(ctx, operator, probe.Self().Account, record.ID)
+	details, err := readQuestionDetails(ctx, operator, probe.Self().Account, record.ID)
 	read := details.Question.Question
 	if err != nil || read.Outcome != askclient.OperatorQuestionOutcomeFound || !read.PublisherTrusted {
 		return trayPublisher{}, questionProgram{}, false
@@ -203,7 +246,7 @@ func (p *servicePanel) questions(w http.ResponseWriter, r *http.Request) {
 		}
 		switch {
 		case action.Action == "answer" && questionWord(action.ID) && questionWord(action.Option):
-		case (action.Action == "retire" || action.Action == "rule") && questionWord(action.ID) && action.Option == "":
+		case (action.Action == "retire" || action.Action == "rule" || action.Action == "finish_provider") && questionWord(action.ID) && action.Option == "":
 		default:
 			http.Error(w, "invalid question action", 400)
 			return
@@ -213,6 +256,10 @@ func (p *servicePanel) questions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx, cancel := panelCall(r)
+	if action.Action == "finish_provider" {
+		cancel()
+		ctx, cancel = context.WithTimeout(r.Context(), 10*time.Minute)
+	}
 	defer cancel()
 	operator, err := panelMachine().ResolveAsksOperator(ctx, facade.Requirements{Scope: facade.ScopeLocal})
 	if err != nil {
@@ -226,6 +273,30 @@ func (p *servicePanel) questions(w http.ResponseWriter, r *http.Request) {
 	account := probe.Self().Account
 	var result any
 	switch action.Action {
+	case "finish_provider":
+		content, readErr := readQuestionContent(ctx, operator, account, action.ID)
+		read := content.Question.Details.Question.Question
+		if readErr != nil || read.Outcome != askclient.OperatorQuestionOutcomeFound || read.Record == nil || read.Record.Option != "allow" || !providerPairPermission(content.Question.Details.Permission) || read.AnsweredBy != nil && *read.AnsweredBy == askclient.AnswererResponder {
+			http.Error(w, "This setup request cannot be reopened.", 409)
+			return
+		}
+		reopened, err := p.startProviderSetup(ctx, action.ID)
+		if err != nil {
+			panelError(w, err)
+			return
+		}
+		outcome, message := occurrenceUnavailable, "Setup was not finished."
+		switch reopened {
+		case occurrenceRemoved:
+			outcome, message = reopened, "The permission was removed. Finish setup did not restore it."
+		case occurrenceCompleted:
+			outcome, message = reopened, "Already set up."
+		case occurrenceApplied:
+			outcome, message = reopened, "Catalog finished."
+		case occurrenceClosed:
+			outcome, message = reopened, "Nothing changed."
+		}
+		result = map[string]string{"Outcome": outcome, "Message": message}
 	case "":
 		var page askclient.OperatorPage
 		page, err = operator.ListQuestionsContext(ctx, r.URL.Query().Get("cursor"), 16)
@@ -243,7 +314,27 @@ func (p *servicePanel) questions(w http.ResponseWriter, r *http.Request) {
 			// (ASK-O7, ASK-O11). A page holds at most 16 records, each read a
 			// local IPC call within this request's budget; a failed read
 			// names the program by its display name.
-			asker, readErr := askclient.ReadAskerContext(ctx, operator, account, record.ID)
+			content, readErr := readListedQuestionContent(ctx, operator, account, record)
+			asker := content.Question
+			if record.Key == asks.SetupModelsKey {
+				if listed.Choices == nil {
+					listed.Choices = map[string][]trayQuestionChoice{}
+				}
+				// An explicit empty list prevents the client falling back to raw
+				// options when the retained disclosures cannot be read.
+				listed.Choices[record.ID] = []trayQuestionChoice{}
+				if readErr == nil {
+					view := trayQuestionViewForContent(record, trayPublisher{}, nil, "", content.Content)
+					if len(view.Choices) > 0 {
+						if listed.Sentences == nil {
+							listed.Sentences = map[string]string{}
+						}
+						listed.Sentences[record.ID] = view.Instruction + "\n" + view.Content + "\n" + view.Details
+						listed.Choices[record.ID] = questionChoices(pageOptions(record))
+					}
+				}
+				continue
+			}
 			if readErr == nil && asker.Program != "" {
 				if listed.Askers == nil {
 					listed.Askers = map[string]questionAsker{}
@@ -274,9 +365,19 @@ func (p *servicePanel) questions(w http.ResponseWriter, r *http.Request) {
 				}
 				listed.Sentences[record.ID] = firstUseSentence(publisher, program, action, resource)
 			}
+			// A connection update reads without the request code its
+			// catalogue sentence ends in; the code stays in the record.
+			if record.Key == asks.AgentUpdateKey {
+				if line := questionRequestCode.ReplaceAllString(record.Text, "."); line != record.Text {
+					if listed.Sentences == nil {
+						listed.Sentences = map[string]string{}
+					}
+					listed.Sentences[record.ID] = line
+				}
+			}
 			// The runtime's question about an app that added itself reads as
 			// the native prompt words it; its path is the line's title.
-			if program, sentence, ok := selfRegisteredWords(record, asker.Program); ok && readErr == nil {
+			if program, sentence, ok := selfRegisteredWords(record, asker.Program, content.Content); ok && readErr == nil {
 				if listed.Sentences == nil {
 					listed.Sentences = map[string]string{}
 				}
@@ -290,6 +391,19 @@ func (p *servicePanel) questions(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if choices := questionChoices(pageOptions(record)); len(choices) > 0 {
+				if readErr == nil && providerPairPermission(asker.Details.Permission) {
+					if listed.NativePrompts == nil {
+						listed.NativePrompts = map[string]bool{}
+					}
+					listed.NativePrompts[record.ID] = true
+					choices = slices.DeleteFunc(choices, func(c trayQuestionChoice) bool { return c.Option != "refuse" })
+					for i := range choices {
+						choices[i].Label = "Not now"
+					}
+					for _, target := range asker.Details.Permission.Targets[1:] {
+						listed.Sentences[record.ID] += "\n" + firstUseSentence(publisherOfRead(asker.Details.Question.Question).withNames(names), target.Program, target.Action, target.Resource)
+					}
+				}
 				if listed.Choices == nil {
 					listed.Choices = map[string][]trayQuestionChoice{}
 				}
@@ -298,6 +412,17 @@ func (p *servicePanel) questions(w http.ResponseWriter, r *http.Request) {
 		}
 		result = listed
 	case "answer", "rule":
+		if action.Action == "rule" || action.Option == "allow" {
+			content, readErr := readQuestionContent(ctx, operator, account, action.ID)
+			if readErr != nil {
+				panelError(w, readErr)
+				return
+			}
+			if providerPairPermission(content.Question.Details.Permission) {
+				http.Error(w, "Finish setup in the native OpenAbstractions permission prompt. This page cannot Allow or retry that setup.", 409)
+				return
+			}
+		}
 		// A runtime's first-use question: the answer writes the rule it names.
 		// The answer is recorded only while the question is pending (ASK-O8).
 		// "rule" retries a rule that did not land from the recorded answer,

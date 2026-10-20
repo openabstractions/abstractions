@@ -5,6 +5,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	rightswire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
+	rightsclient "github.com/openabstractions/abstraction-rights/go/client"
 	"io"
 	"os/user"
 	"path/filepath"
@@ -56,8 +58,9 @@ executable to another path, or build the serve source under the name
 openabstractions-probe; that copy runs only probe, and rules name its path.
 
 Exit codes: 0 the call answered, 1 no runtime resolved or transport failure,
-2 usage, 3 typed refusal, 4 unavailable. probe all exits 0 once every call
-answered or failed with its own result.
+2 usage, 3 typed refusal, 4 unavailable. probe all exits 1 when a call
+reached no runtime, after printing every result; otherwise 0 once every call
+answered or was refused with its own result.
 
 Learn more: https://github.com/openabstractions/abstraction-facade/blob/main/CONTRACT.md
 `
@@ -158,21 +161,30 @@ var local = client.Requirements{Scope: client.ScopeLocal}
 
 func probeExit(source endpointSource, result probe.Result) error {
 	decide := result.Capability == "rights"
+	decisionOutcome, _ := rightswire.ParseDecisionOutcome(result.Outcome)
 	command := fmt.Sprintf("probe %s %s", result.Capability, result.Operation)
-	if cause, ok := runtimeMismatchCause(result.Detail); ok {
-		return &exitError{exitNotResolved, fmt.Errorf("%s", wrongRuntime(command, cause))}
+	if _, ok := runtimeMismatchCause(result.Detail); ok {
+		return probeUnresolved(command, source, result.Detail)
 	}
 	switch {
-	case result.Resolution != "":
-		return probeNotResolved(command, source, result.Detail)
-	case result.Outcome == "error":
-		return probeNotResolved(command, source, result.Detail)
-	case decide && (result.Outcome == "forbidden" || result.Outcome == "invalid" || result.Outcome == "unavailable"):
+	case result.Resolution != "", result.Outcome == "error":
+		return probeUnresolved(command, source, result.Detail)
+	case decide && !rightsclient.Evaluated(decisionOutcome):
 		return refusal("probe rights decide", result.Outcome, "")
 	case probe.Answered(result.Outcome) || decide:
 		return nil
 	}
 	return refusal("probe "+result.Capability+" "+result.Operation, result.Outcome, "")
+}
+
+// probeUnresolved turns a probe result that resolved no expected runtime
+// into the exit: a runtime that failed the server-trust check is the wrong
+// runtime, anything else reached no runtime. probeExit and probe all use it.
+func probeUnresolved(command string, source endpointSource, detail string) error {
+	if cause, ok := runtimeMismatchCause(detail); ok {
+		return &exitError{exitNotResolved, fmt.Errorf("%s", wrongRuntime(command, cause))}
+	}
+	return probeNotResolved(command, source, detail)
 }
 
 // probeNotResolved is notResolved (jobs.go) for a probe: detail is
@@ -282,15 +294,29 @@ func probeCommand(args []string, output, diagnostics io.Writer) error {
 		if operation != "" {
 			return flagMistake(diagnostics, "probe all", probeUsage(), "takes no action")
 		}
+		// Every probe still prints; the command then exits not-resolved
+		// when any of them reached no runtime (backlog O-2). A live runtime
+		// with an incompatible service keeps exit 0: its results say so.
+		var unresolved *probe.Result
 		for _, p := range probe.All() {
 			ctx, cancel := call()
-			err := printProbe(output, options.asJSON, source, probe.Run(ctx, machine, p, ""))
+			result := probe.Run(ctx, machine, p, "")
+			err := printProbe(output, options.asJSON, source, result)
 			cancel()
 			if err != nil {
 				return err
 			}
+			if unresolved == nil && result.Resolution == string(client.RuntimeUnavailable) {
+				unresolved = &result
+			}
 		}
-		return probeRights(machine, source, call, probe.Decisions(), options.asJSON, output)
+		if err := probeRights(machine, source, call, probe.Decisions(), options.asJSON, output); err != nil {
+			return err
+		}
+		if unresolved != nil {
+			return probeUnresolved("probe all", source, unresolved.Detail)
+		}
+		return nil
 	}
 	if capability == "rights" && (operation == "" || operation == "decide") && argument == "" {
 		return probeRights(machine, source, call, probe.Decisions(), options.asJSON, output)

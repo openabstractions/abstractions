@@ -23,7 +23,7 @@ import uuid
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[1]))
-from workspace import ROOT, environment, layer, build_root, cmake_for, source_revision
+from workspace import ROOT, environment, layer, build_root, cmake_for, source_revision, ReadinessOutput
 
 
 def main():
@@ -73,21 +73,16 @@ def main():
             chat_endpoint=endpoint+"-chat"
             server=subprocess.Popen([str(exe),"--mode","server","--endpoint",endpoint,"--chat-endpoint",chat_endpoint,"--fault-delay-ms",str(a.fault_delay_ms)],
                                     cwd=build,env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
-            lines=queue.Queue()
-            threading.Thread(target=lambda:lines.put(server.stdout.readline()),daemon=True).start()
+            lines=ReadinessOutput(server)
             try:
-                if lines.get(timeout=15).strip()!="READY":
-                    raise RuntimeError("voice server failed to start: "+server.stderr.read())
+                lines.expect('READY')
                 output=run(command+["--endpoint",endpoint,"--chat-endpoint",chat_endpoint,"--frames",a.frames,"--warmup",a.warmup],timeout=30+(a.frames+a.warmup)*0.25)
                 result=json.loads(output)
                 result.update(platform=sys.platform,source=revision)
                 results.append(result)
                 print(json.dumps(result),flush=True)
             finally:
-                server.terminate()
-                try: server.wait(timeout=10)
-                except subprocess.TimeoutExpired: server.kill();server.wait(timeout=5)
-                server.stdout.close();server.stderr.close()
+                lines.finish()
         if a.results:
             a.results.parent.mkdir(parents=True,exist_ok=True)
             a.results.write_text(json.dumps(results,indent=2)+"\n",encoding="utf-8")

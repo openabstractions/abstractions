@@ -11,8 +11,8 @@ import (
 // isolatedRuntime's composition gives the runtime a state-dir-scoped
 // configuration store (serve/runtime.go's isolatedConfigStore), the same
 // store every --isolated runtime and any composition given an explicit
-// --state-dir gets. Before fileConfigObservationSource (serve/runtime_config_
-// observation.go) was wired into hostOptions.ConfigObservationSource, no
+// --state-dir gets. Before a file observation source was wired into
+// hostOptions.ConfigObservationSource, no
 // observation source was ever enabled for that store: EnableObservation was
 // never called, abstraction.config/observer@1 never registered as a
 // candidate, and the Panel's "Watch settings" always failed as

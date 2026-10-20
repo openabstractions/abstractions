@@ -95,6 +95,10 @@ class RegistryV2Client
   declare(expectedRevision, declaration)
   withdraw(expectedRevision, name)
   observe(cursor, waitMs)
+  declarationsPinned()
+  declarePinned(expectedRevision, declaration)
+  replacePinned(expectedRevision, declaration)
+  observePinned(cursor, waitMs)
 object RegistryV2Service {wireName, Client}
 enum ResolutionStatus
   Resolved
@@ -106,6 +110,7 @@ enum ResolutionStatus
   InvalidRequest
 class ResolverClient
   resolve(request)
+  resolveOnMachine(request, bindingName)
 object ResolverService {wireName, Client}
 enum Scope
   Any
@@ -125,8 +130,89 @@ enum ServiceReadiness
   Unknown
 const declarationResourceKinds
 function decode(data)
+function decodeApplicationActivationRecipe(data)
+function decodeApplicationActivationResult(data)
+function decodeApplicationChange(data)
+function decodeApplicationContext(data)
+function decodeApplicationDescriptor(data)
+function decodeApplicationEntry(data)
+function decodeApplicationInstance(data)
+function decodeApplicationInterface(data)
+function decodeApplicationPage(data)
+function decodeApplicationPresence(data)
+function decodeApplicationStart(data)
+function decodeApplicationStartPage(data)
+function decodeBootstrapObservation(data)
+function decodeCallerAttribute(data)
+function decodeCallerObservation(data)
+function decodeCapabilityObservation(data)
+function decodeDeclaration(data)
+function decodeDeclarationCeiling(data)
+function decodeDeclarationChange(data)
+function decodeDeclarationExtension(data)
+function decodeDeclarationHost(data)
+function decodeDeclarationList(data)
+function decodeDeclarationListV2(data)
+function decodeDeclarationObservation(data)
+function decodeDeclarationObservationV2(data)
+function decodeDeclarationState(data)
+function decodeDeclarationStateV2(data)
+function decodeDeclarationWithExtensions(data)
+function decodeDescription(data)
+function decodeHostReading(data)
+function decodePinnedDeclaration(data)
+function decodePinnedDeclarationList(data)
+function decodePinnedDeclarationObservation(data)
+function decodePinnedDeclarationState(data)
+function decodeRemoteTrust(data)
+function decodeResolveRequest(data)
+function decodeResolveResult(data)
+function decodeRuntimeObservation(data)
+function decodeServiceReference(data)
+function decodeServiceState(data)
 const defaultRuntimeContracts
 function encode(v)
+function encodeApplicationActivationRecipe(v)
+function encodeApplicationActivationResult(v)
+function encodeApplicationChange(v)
+function encodeApplicationContext(v)
+function encodeApplicationDescriptor(v)
+function encodeApplicationEntry(v)
+function encodeApplicationInstance(v)
+function encodeApplicationInterface(v)
+function encodeApplicationPage(v)
+function encodeApplicationPresence(v)
+function encodeApplicationStart(v)
+function encodeApplicationStartPage(v)
+function encodeBootstrapObservation(v)
+function encodeCallerAttribute(v)
+function encodeCallerObservation(v)
+function encodeCapabilityObservation(v)
+function encodeDeclaration(v)
+function encodeDeclarationCeiling(v)
+function encodeDeclarationChange(v)
+function encodeDeclarationExtension(v)
+function encodeDeclarationHost(v)
+function encodeDeclarationList(v)
+function encodeDeclarationListV2(v)
+function encodeDeclarationObservation(v)
+function encodeDeclarationObservationV2(v)
+function encodeDeclarationState(v)
+function encodeDeclarationStateV2(v)
+function encodeDeclarationWithExtensions(v)
+function encodeDescription(v)
+function encodeHostReading(v)
+function encodePinnedDeclaration(v)
+function encodePinnedDeclarationList(v)
+function encodePinnedDeclarationObservation(v)
+function encodePinnedDeclarationState(v)
+function encodeRemoteTrust(v)
+function encodeResolveRequest(v)
+function encodeResolveResult(v)
+function encodeRuntimeObservation(v)
+function encodeServiceReference(v)
+function encodeServiceState(v)
+function fromJson(kind, data)
 function newApplicationActivationRecipe()
   arguments
   readiness
@@ -282,6 +368,22 @@ function newDescription()
 function newHostReading()
   up
   why
+function newPinnedDeclaration()
+  declaration
+  supportedExtensions
+  remoteServerKeySha256
+function newPinnedDeclarationList()
+  outcome
+  revision
+  declarations
+function newPinnedDeclarationObservation()
+  outcome
+  cursor
+  declarations
+function newPinnedDeclarationState()
+  state
+  supportedExtensions
+  remoteServerKeySha256
 function newRemoteTrust()
   serverName
   roots
@@ -314,3 +416,4 @@ function newServiceState()
   guarantees
   capabilities
 const registryActions
+function toJson(kind, value)

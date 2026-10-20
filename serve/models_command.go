@@ -30,21 +30,28 @@ Its residency is held under a lease of abstraction.resource/leases@1, so the
 card can be asked back: a yield request stops the engine and releases the
 lease, and so does the idle time passing with nothing asking.
 
+Once the model host is declared with an engine, the runtime hosts every chat
+GGUF the storage inventory finds in a model folder another app keeps on this
+computer, or in Setup's folders, one per family, under its family name, and
+stops hosting one whose file is gone. A model taken away with "models
+unhost" stays away until "models host" names it, or its family, again. Unhosting the last model withdraws the model host; its removal holds
+for a model host declared later as well.
+
 Commands:
   models lend <store>/<id> --to ENGINE [--copy]
                        place that object in the engine's own directory
   models unlend <entry> take one lend back: the link and the directories the
                        lend created go, the source file stays
   models lends         the ledger: every lend in force, oldest first
-  models host <store>/<id> --engine PATH [--as NAME] [--embeddings]
+  models host <store>/<id> --engine PATH [--as NAME] [--embeddings] [--content DIGEST]
                        declare that object as hosted: the model host serves it
                        as a model of its own, loaded once, under a lease
-  models host --video-model SET (--video-engine PATH |
+  models host --video-model SET (--video-engine PATH | --get [--credential NAME] |
               --video-kind torch --torch-python PATH --torch-source DIR)
               [--image-model SET]
   models host --image-model SET --torch-python PATH
                        set the video and image engine: an sd-server video on
-                       the model host, the PyTorch sets on the PyTorch
+                       the model host, the Diffusers sets on the Diffusers
                        provider (pytorchd); with an object, both in one
                        command
   models unhost <store>/<id>
@@ -52,9 +59,8 @@ Commands:
                        and stops its engine
   models hosts         every hosted model, and the engine they are loaded with
   models pack <file or folder> <out>
-                       pack model files into OpenAbstractions' pack format on
-                       this machine, and info, verify, restore and measure;
-                       files only, no service ("models pack --help")
+                       use the standalone modelpack tool for pack, info, verify,
+                       restore and measure ("modelpack --help")
 
 models host:
   --engine PATH        absolute path of the llama-server that
@@ -66,7 +72,11 @@ models host:
                        engine:none
   --as NAME            the name callers ask for; the store's own name for the
                        content by default, so the router's family and the
-                       inventory's held_in name the same model
+                       inventory's held_in name the same model. A store name
+                       that is a file digest gives way to the model's family
+                       its descriptor states; a name that is still a digest
+                       is refused
+  --content DIGEST     retain the reviewed catalogue SHA-256 and object size
   --embeddings         start the engine with embeddings and publish
                        abstraction.inference/embed@1 beside chat@1
   --idle DURATION      unload a model nothing has asked for
@@ -76,26 +86,32 @@ models host:
   --state DIR          the model host's state folder, where engine install
                        recorded the engine; passed to engine check and to the
                        declared provider. The provider's default otherwise.
-                       The PyTorch provider keeps its own in DIR\pytorch
+                       The Diffusers provider keeps its own in DIR\pytorch
   --program PATH       the model host provider; beside this command by default
   --pytorch-program PATH
-                       the PyTorch provider, pytorchd; beside this command by
+                       the Diffusers provider, pytorchd; beside this command by
                        default
   --video-model SET    a video model set the provider serves for profile video
-                       (fastwan2.2-ti2v-5b, hummingbird-xt-i2v)
+                       (fastwan2.2-ti2v-5b, hummingbird-xt-i2v, ltx-2.5)
   --video-kind KIND    sdcpp (the default) or torch, the engine the video
                        runs on; a change of kind drops what only the other
                        kind reads
   --video-engine PATH  sdcpp: the sd-server that "modelhostd engine install
                        --kind sdcpp" staged
+  --get                sdcpp: get the pinned sd-server and every file of the
+                       --video-model set through download jobs by SHA-256,
+                       stage and place them, then declare; in place of
+                       --video-engine
+  --credential NAME    with --get: a registered Hugging Face credential for
+                       a gated publisher's files
   --torch-python PATH, --torch-source DIR
                        torch: the reviewed venv's python and AMD's
                        Hummingbird-XT infer folder; an image set alone needs
                        the python only. A torch video and an image set are
-                       the PyTorch provider's own declaration, pytorch
+                       the Diffusers provider's own declaration, pytorch
   --video-model-option NAME=VALUE
                        torch: one model set option, such as decode-dtype=bf16
-  --image-model SET    an image model set the PyTorch provider serves for
+  --image-model SET    an image model set the Diffusers provider serves for
                        profile image (flux2-klein-4b), alone or beside a
                        --video-kind torch video; never beside sd-server
   --card N             the card the engines load into; 0 by default
@@ -104,8 +120,8 @@ models host:
                        Every setting is kept in one declaration per
                        provider, replaced in place; a run that would change
                        nothing writes nothing. A model host declaration that
-                       still carries the PyTorch options moves them to the
-                       PyTorch provider's on the next run
+                       still carries the Diffusers options moves them to the
+                       Diffusers provider's on the next run
   --provider-endpoint NAME, --resource-endpoint PATH
                        the provider's own OA endpoint, and where
                        abstraction.resource/leases@1 answers when it is not
@@ -153,7 +169,7 @@ func modelsCommand(args []string, output, diagnostics io.Writer) error {
 	command := "models " + args[0]
 	switch args[0] {
 	case "pack":
-		return modelsPackCommand(args[1:], output, diagnostics)
+		return commandMistake(diagnostics, "models pack is provided by the standalone modelpack tool", "modelpack --help")
 	case "host", "unhost", "hosts":
 		return modelsHostCommand(command, args[1:], output, diagnostics)
 	case "lend", "unlend", "lends":

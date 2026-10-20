@@ -1,22 +1,182 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"regexp"
+	"reflect"
+	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/openabstractions/abstractions/monitor/internal/setup"
 )
 
+type codingPageRunningTransfer struct {
+	*codingPanelTransfer
+	reserveFailure error
+}
+
+func (f *codingPageRunningTransfer) Reserve(ctx context.Context, pin setup.PinnedDownload, key string) (setup.WorkIdentity, error) {
+	if f.reserveFailure != nil {
+		return setup.WorkIdentity{}, f.reserveFailure
+	}
+	return f.codingPanelTransfer.Reserve(ctx, pin, key)
+}
+
+func (f *codingPageRunningTransfer) Observe(context.Context, setup.WorkIdentity) (setup.TransferObservation, error) {
+	return setup.TransferObservation{State: "running", Done: 32768, Total: setup.CodingModelPlan().DownloadBytes}, nil
+}
+
+func TestCodingModelUnreservedConsentDoesNotClaimBackgroundWork(t *testing.T) {
+	root := t.TempDir()
+	model := setup.CodingModelPlan()
+	transfer := &codingPageRunningTransfer{codingPanelTransfer: &codingPanelTransfer{panelTransfer: &panelTransfer{}}, reserveFailure: errors.New("fixture reservation failed")}
+	controller := setup.ModelController{Plan: &model, JournalPath: filepath.Join(root, "coding.json"), StageDir: root, ProviderRoot: root, Transfer: transfer, LocalResults: true, FreeBytes: func(string) (uint64, error) { return 1 << 50, nil }}
+	_, err := controller.StartAccepted(context.Background(), setup.ModelApproval{PlanID: model.ID, DownloadBytes: model.DownloadBytes, PeakBytes: model.PeakBytes, Licenses: model.Licenses})
+	if err == nil || !strings.Contains(err.Error(), "fixture reservation failed") {
+		t.Fatalf("reservation failure: %v", err)
+	}
+	panel := &servicePanel{codingController: &controller}
+	got := installHandlerFor(panel.handler("setup-test-key"))("GET", "/setup/modelhost/coding", "")
+	if got.Code != http.StatusOK {
+		t.Fatalf("saved consent: %d %s", got.Code, got.Body.String())
+	}
+	var reply struct {
+		Status setup.ModelStatus `json:"status"`
+	}
+	if err := json.Unmarshal(got.Body.Bytes(), &reply); err != nil {
+		t.Fatal(err)
+	}
+	if !reply.Status.Approved || len(reply.Status.Assets) != 1 || reply.Status.Assets[0].Phase != setup.Pending || reply.Status.Assets[0].Transfer != nil {
+		t.Fatalf("fixture must retain approved local intent without a public job: %s", got.Body.String())
+	}
+	if transfer.reserves != 0 || transfer.submits != 0 || transfer.work.Key != "" {
+		t.Fatal("failed reservation invented public work")
+	}
+}
+
+// Run the page's real initial reads against the real saved
+// Install/coding receivers. Only DOM presentation and unrelated engine preview
+// are stand-ins; no app journal or fresh Review is supplied.
+func TestModelOnlyPageReopensSavedInstallInEitherInitialReadOrder(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is not installed")
+	}
+	for _, order := range []string{"state-first", "copies-first"} {
+		t.Run(order, func(t *testing.T) {
+			root := t.TempDir()
+			journal := setup.Journal{Path: filepath.Join(root, "apps", "plan.json")}
+			model := setup.CodingModelPlan()
+			transfer := &codingPageRunningTransfer{codingPanelTransfer: &codingPanelTransfer{panelTransfer: &panelTransfer{}}}
+			controller := setup.ModelController{Plan: &model, JournalPath: filepath.Join(root, "coding.json"), StageDir: root, ProviderRoot: root, Transfer: transfer, LocalResults: true, FreeBytes: func(string) (uint64, error) { return 1 << 50, nil }}
+			panel := &servicePanel{setupJournal: &journal, codingController: &controller, maintenanceReview: func(context.Context) setup.MaintenanceReview { return setup.MaintenanceReview{} }}
+			stubOverviewMachine(t)
+			handler := panel.handler("setup-test-key")
+			review, _ := codingOnlyReview(model.ID)
+			raw, _ := json.Marshal(setupChoiceRequest{PlanID: review.ID, CodingModelPlanID: model.ID, Confirm: true})
+			if got := installHandlerFor(handler)("POST", "/setup/install", string(raw)); got.Code != 200 {
+				t.Fatalf("initial approval: %d %s", got.Code, got.Body.String())
+			}
+			work := transfer.work
+			before := transfer.submits
+			stateDone, copiesDone := make(chan struct{}), make(chan struct{})
+			var stateOnce, copiesOnce sync.Once
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/setup/state":
+					if order == "copies-first" {
+						select {
+						case <-copiesDone:
+						case <-r.Context().Done():
+							return
+						}
+					}
+					handler.ServeHTTP(w, r)
+					stateOnce.Do(func() { close(stateDone) })
+				case "/setup/other-copies":
+					if order == "state-first" {
+						select {
+						case <-stateDone:
+						case <-r.Context().Done():
+							return
+						}
+					}
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = w.Write([]byte(`{"copies":[]}`))
+					copiesOnce.Do(func() { close(copiesDone) })
+				case "/setup/modelhost/chat":
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = w.Write([]byte(`{}`))
+				default:
+					handler.ServeHTTP(w, r)
+				}
+			}))
+			t.Cleanup(server.Close)
+			input, _ := json.Marshal(map[string]string{"base": server.URL})
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, node, "-e", modelOnlyResumePageProbe)
+			cmd.Stdin = bytes.NewReader(input)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("actual page resume: %v\n%s", err, out)
+			}
+			var report struct {
+				Calls    []string `json:"calls"`
+				Sentence string   `json:"sentence"`
+				Button   string   `json:"button"`
+				Line     string   `json:"line"`
+			}
+			if json.Unmarshal(out, &report) != nil {
+				t.Fatalf("page result: %s", out)
+			}
+			// The page shows the saved install as stopped (owner,
+			// 2026-11-09): the coding download the job service keeps shows
+			// its bytes, and Install continues it; nothing is approved,
+			// planned or started on opening.
+			if report.Sentence != "Finish installing Qwen3.6 35B." || report.Button != "Install" || !strings.HasPrefix(report.Line, "Downloading · ") || !strings.HasSuffix(report.Line, " of 21.3 GB") {
+				t.Fatalf("reopened background state is unclear: %s", out)
+			}
+			for _, call := range report.Calls {
+				if strings.HasPrefix(call, "POST ") {
+					t.Fatalf("reopen invented a fresh setup action: %s", out)
+				}
+			}
+			if transfer.reserves != 1 || transfer.submits != before || !reflect.DeepEqual(transfer.work, work) {
+				t.Fatalf("reopen changed work: %s reserves=%d submits=%d", out, transfer.reserves, transfer.submits)
+			}
+			if _, err := os.Stat(journal.Path); !os.IsNotExist(err) {
+				t.Fatalf("page created an app plan: %v", err)
+			}
+		})
+	}
+}
+
+const modelOnlyResumePageProbe = `
+const fs=require('node:fs'),h=require('./testdata/setup_page_test_helper.js');
+const input=JSON.parse(fs.readFileSync(0,'utf8')),calls=[];
+(async()=>{const p=await h.page(async(path,body)=>{calls.push((body?'POST ':'GET ')+path);const r=await fetch(input.base+path,{method:body?'POST':'GET',headers:{'X-Panel-Key':'setup-test-key','Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});if(!r.ok)return Error(await r.text());return r.json()});
+for(let i=0;i<100&&!/^(Installing|Catalog stopped)/.test(p.summary().sentence);i++){await new Promise(r=>setTimeout(r,100));await h.settled()}
+const s=p.summary();process.stdout.write(JSON.stringify({calls,sentence:s.sentence,button:s.button,line:p.parts('coding').line}))})().catch(e=>{console.error(e);process.exitCode=1});
+`
+
 func TestGetStartedPageIsRoutedAndOffersFixedGoals(t *testing.T) {
+	for _, join := range []string{"coding_model_plan_id:coding", "picture_model_plan_ids:", "if(record.coding_model_plan_id)steps.push('coding')", "setup_plan_id:planID,confirm:true,approval", "/setup/overview", "/setup/modelhost/coding"} {
+		if !strings.Contains(setupPage, join) {
+			t.Fatalf("Install is disconnected from %s", join)
+		}
+	}
 	const key = "setup-test-key"
 	handler := (&servicePanel{}).handler(key)
 	req := httptest.NewRequest("GET", "/setup?k="+key, nil)
@@ -27,100 +187,82 @@ func TestGetStartedPageIsRoutedAndOffersFixedGoals(t *testing.T) {
 		t.Fatalf("GET /setup: %d %s", got.Code, got.Body.String())
 	}
 	for _, text := range []string{
-		"Get started", "Choose what to set up.", `value="comfyui"`, `value="opencode"`, `value="lemonade"`,
-		"Create pictures", "Coding assistant", "More picture engines", "Included with ComfyUI", "setup-install", "setup-install-progress",
-		"Nothing downloads until you press Install.", `class="oa-primary"`,
-		"Open the picture workspace", "Load picture recipe", "setupRenderOtherCopies", "/setup/other-copies",
-		"edit the prompt", "press “Run”", `web.href=safeWebURL`,
+		"Setup", "Install apps and models built for OpenAbstractions.", "<h2>Apps</h2>", "<h2>Models</h2>", "Chat and coding", "Pictures", "Engines",
+		"Create pictures", "Coding assistant", "Chosen for this computer: llama.cpp for chat.",
+		"Checking what is installed…", `class="oa-primary"`, "Tick to install. Clear a tick to remove.",
 	} {
 		if !strings.Contains(got.Body.String(), text) {
 			t.Errorf("setup page missing %q", text)
+		}
+	}
+	for _, retired := range []string{"PyTorch", "ROCm", "picture engine", "gfx", "Model host"} {
+		if strings.Contains(setupPageBody, retired) {
+			t.Errorf("Setup shows %q to a person", retired)
 		}
 	}
 	if strings.Contains(got.Body.String(), "type=\"url\"") || strings.Contains(got.Body.String(), "type=\"command\"") {
 		t.Fatal("setup page accepts a caller-supplied artifact URL or command")
 	}
 	if nav := panelNav(key, "setup"); !strings.Contains(nav, `href="/settings?k=setup-test-key"`) {
-		t.Fatalf("Get started does not reach the other pages: %s", nav)
+		t.Fatalf("Setup does not reach the other pages: %s", nav)
 	}
 }
 
-// Get started's four states use the shared components (research/panel-
-// redesign/SPEC.md §4, S7): a page head with one caption; the apps as rows
-// with switches, ComfyUI chosen on arrival; the other engines behind "More
-// picture engines"; a review with one primary action, Install; then the
-// install steps and the per-component rows that carry Retry.
+// Setup is one page of ticks built from the shared components (architect
+// ruling 2026-11-09): the page head, Apps, Models, Engines (a heading like
+// Apps and Models with the engine choice as its caption, owner 2026-11-09)
+// and the OpenAbstractions row, then one sticky summary row whose button is
+// the page's only one. The retired sections, the engine chooser and the This
+// device group are gone.
 func TestGetStartedStatesUseTheSharedComponents(t *testing.T) {
 	head := `<header class="oa-pagehead">`
 	if !strings.HasPrefix(setupPage, head) || strings.Count(setupPage, head) != 1 || strings.Contains(setupPage, "<style>") {
-		t.Fatal("Get started does not open with the one page head, or keeps page-local CSS")
+		t.Fatal("Setup does not open with the one page head, or keeps page-local CSS")
 	}
-	section := func(id string) string {
-		start := strings.Index(setupPage, `<section id="`+id+`"`)
-		if start < 0 {
-			t.Fatalf("no section %s", id)
-		}
-		return setupPage[start : start+strings.Index(setupPage[start:], "</section>")]
-	}
-	// Every disclosure has oaExpander's summary: its title and the row chevron.
-	chevron := `<span class="oa-row-chevron" aria-hidden="true"></span></summary>`
-	if !strings.Contains(oaExpander("x", ""), `<summary>x`+chevron) {
-		t.Fatalf("oaExpander's summary changed: %s", oaExpander("x", ""))
-	}
-	if n := strings.Count(setupPage, "<summary>"); n != strings.Count(setupPage, chevron) || n != 2 {
-		t.Errorf("a disclosure on Get started lacks the row chevron (%d summaries)", n)
-	}
-	choices := section("setup-choices")
-	engines := choices[strings.Index(choices, `<details class="oa-expander" id="setup-engines"><summary>More picture engines`+chevron):]
-	for _, app := range []string{"comfyui", "opencode", "lemonade", "thenoise", "pytorch"} {
-		box := `<input type="checkbox" class="switch" id="setup-app-` + app + `" name="setup-app" value="` + app + `"`
-		if !strings.Contains(choices, box) {
-			t.Errorf("%s is no switch in an app row", app)
-		}
-		if behind := strings.Contains(engines, box); behind != (app != "comfyui" && app != "opencode") {
-			t.Errorf("%s: behind More picture engines = %v", app, behind)
+	order := []string{`id="setup-choices"`, `id="setup-models"`, `id="setup-engines"`, `id="setup-oa"`, `id="setup-summary-row"`}
+	for i := 1; i < len(order); i++ {
+		if a, b := strings.Index(setupPage, order[i-1]), strings.Index(setupPage, order[i]); a < 0 || b < a {
+			t.Fatalf("%s does not follow %s", order[i], order[i-1])
 		}
 	}
-	// Other-copy rows go straight into the Apps group (the script places them
-	// before More picture engines); no wrapper or loose sentence sits between
-	// rows. The Review row has one caption; its status line shows only the
-	// copy check while it runs (S7 follow-up).
-	if strings.Contains(setupPage, "setup-other-copies") {
-		t.Error("a wrapper still holds the other-copy notes")
-	}
-	reviewRow := choices[strings.Index(choices, `<span class="oa-row-label">Review and install</span>`):]
-	if strings.Count(reviewRow, `class="oa-row-caption"`) != 1 || !strings.Contains(reviewRow, `<p id="setup-status" class="oa-status" role="status" aria-live="polite" data-state="loading">Checking for other copies of ComfyUI.</p>`) {
-		t.Error("the Review row does not carry one caption and the copy check's status line")
-	}
-	for _, p := range regexp.MustCompile(`(?s)<section id="setup-choices".*?</section>`).FindAllString(setupPage, 1) {
-		if loose := regexp.MustCompile(`(?m)^\s*<p`).FindString(p); loose != "" {
-			t.Errorf("a loose paragraph sits between the Apps group's rows: %q", loose)
+	for _, heading := range []string{`id="setup-choices" class="oa-group"><h2>Apps</h2>`, `id="setup-models" class="oa-group"><h2>Models</h2>`,
+		`<section id="setup-engines" class="oa-group"><h2>Engines</h2><p id="setup-engine-choice" class="oa-caption">`} {
+		if !strings.Contains(setupPage, heading) {
+			t.Errorf("Setup lacks the section heading %q", heading)
 		}
 	}
-	if strings.Count(choices, " checked>") != 1 || !strings.Contains(choices, `value="comfyui" checked>`) {
-		t.Error("a first run does not start with ComfyUI chosen and nothing else")
+	if strings.Contains(setupPage, `<details id="setup-engines"`) {
+		t.Error("Engines is still a folded row; it is a heading like Apps and Models")
 	}
-	review := section("setup-plan")
-	if !strings.Contains(review, `class="oa-group" hidden`) || strings.Count(setupPage, `class="oa-primary"`) < 1 || strings.Count(review, `oa-primary`) != 1 || !strings.Contains(review, `<button id="setup-install" class="oa-primary"`) {
-		t.Error("the review does not have exactly one primary action, Install")
+	summary := setupPage[strings.Index(setupPage, `<div id="setup-summary-row"`):]
+	summary = summary[:strings.Index(summary, "\n")]
+	if !strings.Contains(summary, `class="oa-row oa-footer"`) || !strings.Contains(summary, `<button id="setup-install" class="oa-primary" type="button" disabled>Install</button>`) || !strings.Contains(summary, `role="status"`) {
+		t.Error("the summary row is not the sticky footer with the status and the one button")
 	}
-	install, progress := strings.Index(setupPage, `<section id="setup-install-progress"`), strings.Index(setupPage, `<section id="setup-progress"`)
-	if install < 0 || progress < install || progress > strings.Index(setupPage, `<section id="setup-engine-choice"`) {
-		t.Error("per-component progress does not follow the install steps")
+	if strings.Count(setupPage, "<button") != 1 || strings.Count(setupPage, "oa-primary") != 1 {
+		t.Error("the page markup holds more than the one button")
 	}
-	if !strings.Contains(section("setup-install-progress"), `id="setup-install-again"`) {
-		t.Error("the stopped install step has no Try again")
-	}
-	// Models › Add a model owns local chat setup and links to the pinned ZIP
-	// recovery at #setup-modelhost; Models' per-app rows own the picture
-	// model; the app page owns Start and Remove (S7 review, decided for 0.4.0).
-	if !strings.Contains(setupPage, `<section id="setup-modelhost" class="oa-group" hidden>`) || !strings.Contains(section("setup-modelhost"), `id="setup-modelhost-engine-stage"`) {
-		t.Error("the pinned ZIP recovery is not at #setup-modelhost")
-	}
-	for _, moved := range []string{"setup-modelhost-root", "setup-modelhost-bundled", "setup-modelhost-feature", "setup-picture", "/setup/model/picture", "setup-comfy-activate", "setup-comfy-remove", "/setup/comfy/remove", "oa-note", "toLowerCase()"} {
-		if strings.Contains(setupPage, moved) {
-			t.Errorf("Get started still carries %q", moved)
+	for _, gone := range []string{"<select", "setup-engine-pick", "Picture engine", "setup-device", "This device", "setup-maintenance", "App setup", "Review app setup",
+		"OpenAbstractions installer\u003c", "setup-coding-consent", "setup-model-approve", "Show details", "Open the picture workspace", "Local picture support",
+		"earlier catalog", "from an earlier build", "Coming in a later preview", "Licences: "} {
+		if strings.Contains(setupPage, gone) {
+			t.Errorf("Setup still carries %q", gone)
 		}
+	}
+}
+
+func TestSetupDiscoveryFromApps(t *testing.T) {
+	if !strings.Contains(servicePage, `id="apps-setup"`) || !strings.Contains(servicePage, "Browse the Catalog") {
+		t.Fatal("Apps must expose the Catalog before registration")
+	}
+	if strings.Index(servicePage, `id="apps-setup"`) > strings.Index(servicePage, `id="apps"`) {
+		t.Fatal("Setup must be visible before the apps list")
+	}
+	if !strings.Contains(setupPage, `<section id="setup-choices" class="oa-group"><h2>Apps</h2>`) {
+		t.Fatal("Setup must lead with the apps Apps links to")
+	}
+	if !strings.Contains(setupPage, `<span id="setup-status" class="oa-row-label" role="status"`) {
+		t.Fatal("Setup must show installation state on arrival")
 	}
 }
 
@@ -156,7 +298,9 @@ func (f *setupModelControllerFake) ReconcileProvider(context.Context) (setup.Mod
 
 func TestSetupModelReviewAndApprovalAreBoundToFixedPlan(t *testing.T) {
 	journal := setup.Journal{Path: filepath.Join(t.TempDir(), "setup", "plan.json")}
-	mainPlan, err := setup.NewCatalog().Plan([]setup.AppID{setup.ComfyUI})
+	// Consent/controller fixture: the person explicitly selected the engine.
+	// The feature check below is a test double, not package readiness proof.
+	mainPlan, err := setup.NewCatalog().Plan([]setup.AppID{setup.ComfyUI, setup.Lemonade})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,7 +461,7 @@ func TestSetupPlanAndExplicitSavedIntentUseFixedCatalog(t *testing.T) {
 		handler.ServeHTTP(got, req)
 		return got
 	}
-	preview := post("/setup/plan", `{"selected":["comfyui","opencode"]}`)
+	preview := post("/setup/plan", `{"selected":["comfyui","lemonade","opencode"]}`)
 	if preview.Code != 200 {
 		t.Fatalf("plan preview: %d %s", preview.Code, preview.Body.String())
 	}
@@ -329,17 +473,31 @@ func TestSetupPlanAndExplicitSavedIntentUseFixedCatalog(t *testing.T) {
 	// The apps are pending until the embedded pins document lists them, and
 	// on every platform it does not pin (setup_adopter_assets_test.go covers
 	// the pinned review).
-	embedded, err := setup.NewCatalog().Plan([]setup.AppID{setup.ComfyUI, setup.OpenCode})
+	embedded, err := setup.NewCatalog().Plan([]setup.AppID{setup.ComfyUI, setup.Lemonade, setup.OpenCode})
 	if err != nil {
 		t.Fatal(err)
 	}
 	pending := !embedded.Preparable
-	if plan.Preparable != embedded.Preparable || plan.Ready || len(plan.Configuration) != 2 {
+	if plan.Preparable != embedded.Preparable || plan.Ready || !slices.Equal(plan.Configuration, embedded.Configuration) {
 		t.Fatalf("catalog reported unavailable apps as ready: %+v", plan)
 	}
 	model := setup.ApprovedBF16Plan()
-	if review.PictureModel == nil || review.PictureModel.ID != model.ID || review.PictureModel.DownloadBytes != model.DownloadBytes || review.PictureModel.PeakBytes != model.PeakBytes || !slices.Equal(review.PictureModel.Licenses, model.Licenses) {
-		t.Fatalf("picture preview did not expose the canonical separate model requirement: %+v", review.PictureModel)
+	// ComfyUI beside other apps runs on the engine the plan selects for it.
+	if review.PictureModel == nil || review.PictureModel.ID != model.ID {
+		t.Fatalf("multi-application review lacks its picture engine's starter model: %+v", review.PictureModel)
+	}
+	picturePreview := post("/setup/plan", `{"selected":["comfyui","lemonade"]}`)
+	var pictureReview setupPlanReview
+	if picturePreview.Code != 200 || json.Unmarshal(picturePreview.Body.Bytes(), &pictureReview) != nil || pictureReview.PictureModel == nil || pictureReview.PictureModel.ID != model.ID || pictureReview.PictureModel.DownloadBytes != model.DownloadBytes || pictureReview.PictureModel.PeakBytes != model.PeakBytes || !slices.Equal(pictureReview.PictureModel.Licenses, model.Licenses) {
+		t.Fatalf("explicit picture preview did not expose the canonical separate model requirement: %+v", pictureReview.PictureModel)
+	}
+	plainPreview := post("/setup/plan", `{"selected":["comfyui"]}`)
+	var plainReview setupPlanReview
+	if plainPreview.Code != 200 || json.Unmarshal(plainPreview.Body.Bytes(), &plainReview) != nil || plainReview.PictureModel == nil || len(plainReview.Permissions) != 1 {
+		t.Fatalf("ComfyUI alone lacks its included engine's starter model: %d %+v", plainPreview.Code, plainReview)
+	}
+	if engine, _ := setup.PictureEngineOf(plainReview.Plan); plainReview.PictureModel.PictureEngine() != engine {
+		t.Fatalf("ComfyUI alone offers the model of another engine: %s, runs on %s", plainReview.PictureModel.PictureEngine(), engine)
 	}
 	assistantPreview := post("/setup/plan", `{"selected":["opencode"]}`)
 	var assistantReview setupPlanReview
@@ -380,7 +538,7 @@ func TestSetupPlanAndExplicitSavedIntentUseFixedCatalog(t *testing.T) {
 	if err := json.Unmarshal(saved.Body.Bytes(), &state); err != nil {
 		t.Fatal(err)
 	}
-	if len(state.Plan.Selected) != 1 || state.Plan.Selected[0] != setup.ComfyUI || state.Ready || !state.Approved {
+	if !slices.Equal(state.Plan.Selected, comfyPlan.Selected) || !slices.Contains(state.Plan.Selected, setup.ComfyUI) || state.Ready || !state.Approved {
 		t.Fatalf("saved state = %+v; expected a pending Comfy plan", state)
 	}
 	for _, component := range state.Components {
@@ -407,6 +565,21 @@ func TestSetupPlanAndExplicitSavedIntentUseFixedCatalog(t *testing.T) {
 	if staleAdvance.Code != 409 {
 		t.Fatalf("stale advance = %d %s, want 409", staleAdvance.Code, staleAdvance.Body.String())
 	}
+	// The one driver: the page names the plan, Setup chooses the component.
+	if stale := post("/setup/advance-next", `{"plan_id":"old-plan"}`); stale.Code != 409 {
+		t.Fatalf("stale advance-next = %d %s, want 409", stale.Code, stale.Body.String())
+	}
+	if chosen := post("/setup/advance-next", `{"plan_id":"`+comfyPlan.ID+`","component_id":"comfyui-app"}`); chosen.Code != 400 {
+		t.Fatalf("a page-chosen component = %d %s, want 400", chosen.Code, chosen.Body.String())
+	}
+	if pending {
+		// A plan whose package is not available yet advances nothing.
+		idle := post("/setup/advance-next", `{"plan_id":"`+comfyPlan.ID+`"}`)
+		var reply setupAdvanceNextReply
+		if idle.Code != 200 || json.Unmarshal(idle.Body.Bytes(), &reply) != nil || reply.Advanced != "" || reply.Plan.ID != comfyPlan.ID {
+			t.Fatalf("idle advance-next = %d %s", idle.Code, idle.Body.String())
+		}
+	}
 	staleRetry := post("/setup/retry", `{"plan_id":"old-plan","component_id":"comfyui-app"}`)
 	if staleRetry.Code != 409 {
 		t.Fatalf("stale retry = %d %s, want 409", staleRetry.Code, staleRetry.Body.String())
@@ -425,5 +598,54 @@ func TestSetupPlanAndExplicitSavedIntentUseFixedCatalog(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(filepath.Dir(journal.Path), "downloads")); !os.IsNotExist(err) {
 		t.Fatalf("pending package advance created download staging path: %v", err)
+	}
+}
+
+func TestPictureAppDoesNotKeepAnUnselectedEngine(t *testing.T) {
+	if engineInPlan(setup.Plan{Selected: []setup.AppID{setup.ComfyUI}}, setup.Lemonade) {
+		t.Fatal("an off Lemonade row remains selected through ComfyUI")
+	}
+}
+
+func TestSetupStateExposesCurrentCatalogBeforeAnySelection(t *testing.T) {
+	journal := setup.Journal{Path: filepath.Join(t.TempDir(), "plan.json")}
+	handler := (&servicePanel{setupJournal: &journal}).handler("setup-test-key")
+	req := httptest.NewRequest("GET", "/setup/state", nil)
+	req.Host = "127.0.0.1"
+	req.Header.Set("X-Panel-Key", "setup-test-key")
+	got := httptest.NewRecorder()
+	handler.ServeHTTP(got, req)
+	if got.Code != http.StatusOK {
+		t.Fatalf("fresh state: %d %s", got.Code, got.Body.String())
+	}
+	var state setupPanelStatus
+	if err := json.Unmarshal(got.Body.Bytes(), &state); err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Catalog.Choices) == 0 || state.Plan.ID != "" || state.Approved {
+		t.Fatalf("fresh catalogue fabricated a selected/approved plan: %+v", state)
+	}
+	// The page reads the Lemonade engine row from the catalogue: on Windows
+	// x64 its pinned package, elsewhere the sentence of what it needs.
+	offered := runtime.GOOS == "windows" && runtime.GOARCH == "amd64"
+	for _, component := range state.Catalog.Components {
+		if component.ID == "lemonade-engine" && (offered != (component.Artifact != nil && component.Artifact.Version == "v2026.39.1") || offered == (component.Pending != "")) {
+			t.Fatalf("fresh catalogue's Lemonade engine row: %+v", component)
+		}
+	}
+}
+
+// Setup speaks to the person: no release-process wording and no raw
+// journal reason on the page.
+func TestGetStartedWordingIsForThePerson(t *testing.T) {
+	for _, release := range []string{"qualification pending", "producer receipt", "Engine staging not confirmed", "Native archive apps uninstall", "See what each app holds"} {
+		if strings.Contains(setupPage, release) {
+			t.Fatalf("Setup shows release or raw wording %q", release)
+		}
+	}
+	for _, component := range setup.NewCatalog().Components {
+		if strings.Contains(component.Pending, "reviewed") || strings.Contains(component.Pending, "receipt") {
+			t.Fatalf("catalogue pending text is release wording: %q", component.Pending)
+		}
 	}
 }

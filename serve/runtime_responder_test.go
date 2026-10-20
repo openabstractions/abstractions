@@ -65,6 +65,15 @@ func TestAsksResponderHelper(t *testing.T) {
 	switch args[2] {
 	case "list":
 		page, err := responder.ListAnswerableContext(ctx, "", 16)
+		// A directory transaction may temporarily invalidate answerer facts.
+		// Await the read through the public responder, retaining its refusal.
+		for err == nil && page.Outcome.String() == "unavailable" && ctx.Err() == nil {
+			select {
+			case <-ctx.Done():
+			case <-time.After(10 * time.Millisecond):
+			}
+			page, err = responder.ListAnswerableContext(ctx, "", 16)
+		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)

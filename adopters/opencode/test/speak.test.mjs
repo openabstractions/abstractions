@@ -41,6 +41,16 @@ function services(overrides = {}) {
   return {speech, reader, calls};
 }
 
+test('speech first use waits for committed permission and keeps the original request', async () => {
+  let first,starts=0,commit;
+  const permitted=new Promise(resolve=>{commit=resolve;});
+  const fixture=services({speech:{async start(request){starts++;if(!first)first=request;assert.equal(request,first);return starts===1?{outcome:'not_permitted',reason:'rights:not_granted rights:question_pending:q1'}:{outcome:'accepted',operation:'op'};}}});
+  const work=synthesizeSpeech({...fixture,text:'hello',resolvePermission:async()=>({async observeQuestion(){return permitted;}})});
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(starts,1);
+  commit({observation:{outcome:'permitted',policyRevision:'committed'}});
+  const result=await work;assert.equal(result.operation,'op');assert.equal(starts,2);
+});
+
 test('spoken text leaves out code blocks, inline code, paths and links, and keeps 600 characters', () => {
   const reply = [
     '## Done', 'I fixed the **failing** test in `server/speech.go` and C:\\Users\\me\\repo\\main.go.',
@@ -175,12 +185,12 @@ test('Speak replies speaks the last answer on session.idle and plays it through 
   assert.equal(log.at(-1), 'dispose');
 });
 
-test('a completed openabstractions_speak tool part plays its verified delivery once', async () => {
+test('a completed oa_speech_speak tool part plays its verified delivery once', async () => {
   const tui = fakeTui();
   const {speech, reader, calls} = services();
   const {audio, log} = fakeAudio();
   await installSpeak(tui.api, {}, {resolveSpeech: async () => speech, resolveReader: async () => reader, audio: () => audio});
-  const part = {id: 'p1', type: 'tool', tool: 'openabstractions_speak', state: {status: 'completed',
+  const part = {id: 'p1', type: 'tool', tool: 'oa_speech_speak', state: {status: 'completed',
     metadata: {digest, mediaType: 'audio/wav', bytes: wav.length}}};
   await tui.handlers['message.part.updated']({type: 'message.part.updated', properties: {sessionID: 's', part}});
   await tui.handlers['message.part.updated']({type: 'message.part.updated', properties: {sessionID: 's', part}});
@@ -233,11 +243,14 @@ test('the TUI module and the registered speak tool are wired to the configured r
   const resolved = [];
   const plugin = await OpenAbstractionsPlugin({client: {}}, {providerId: 'oa-fixture', tools: {speak: true}}, {
     tool: fakeTool, readInventory: async () => ({offers: []}),
+    readCapability: async () => false,
+    probeRuntime: async () => ({}),
+    requestOpenCodeConnection: async () => ({outcome:'connected',hostRegistered:true,helperEnrolled:true}),
     resolveSpeechClient: async (options) => { resolved.push(options.runtimeEndpoint); throw new Error('stop after resolution'); },
   });
   await plugin.config({provider: {'oa-fixture': {
     npm: '@openabstractions/opencode', options: {runtimeEndpoint: 'fixture-runtime', scope: 'local'}, models: {},
   }}});
-  await assert.rejects(plugin.tool.openabstractions_speak.execute({text: 'Hello'}, {ask: async () => {}}), /stop after resolution/);
+  await assert.rejects(plugin.tool.oa_speech_speak.execute({text: 'Hello'}, {ask: async () => {}}), /stop after resolution/);
   assert.deepEqual(resolved, ['fixture-runtime']);
 });

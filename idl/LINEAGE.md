@@ -31,6 +31,17 @@ than read, it says so and names what produced it.
 | `(key = "value")` annotations | **Thrift**'s annotation grammar | Every addition below is spelled in it, so the profile adds no punctuation a Thrift reader has to learn. |
 | `enum`, `const` | **Thrift** | Same. |
 
+The 0.8.0 development profile reuses the existing `doc` annotation for enum
+descriptions and exact-name canonical heading links, as it does for struct and
+service documentation. This is an OA documentation adaptation of the existing
+annotation syntax. The accounted published charter baseline
+[`d7471c44`](https://github.com/openabstractions/abstractions/commit/d7471c44a03cdefa6bd6d418eb518657d0d7be8e)
+accepted only `unknown` and `reader` on enum bodies. That older generator
+refuses the new annotated input. The addition preserves member wire spellings,
+unknown/reader validation and compatibility hashes; it carries no new
+application or authority behavior. Source archives receive their normal
+version qualification, and published archives stay immutable.
+
 **Why Thrift and not Protobuf.** Both were disqualified as *generators* for the
 same reason — their generated code calls a runtime library the adopter must
 link. Thrift wins on the syntax question for two reasons that are ours rather
@@ -56,7 +67,7 @@ not read ASN.1. **We took its central idea instead — see the encoding block.**
 | `union` | **Protobuf 3**'s field-presence rework, which is the same lesson from the other side: one absence mechanism, spelled once. |
 | `set<T>` | **CBOR** and **Protobuf** both refuse to promise map or set ordering. We refuse the type rather than promise an order we cannot keep. |
 | `double` | **I-JSON (RFC 7493 §2.2)** on interoperable numbers, and **RFC 8785 §3.2.2.3**, which had to specify ECMAScript number formatting exactly because "a JSON number" is not one spelling. We avoid the problem instead of specifying our way through it. |
-| `binary` | Ours, and it is a measured lesson rather than a borrowed one. See *the opaque type*. |
+| `binary` (lifted; every code backend now supports it under [DEF-F5](LANGUAGE.md)) | Ours, and it is a measured lesson rather than a borrowed one. See *the opaque type*. |
 | Cyclic or unresolved `include` references | The earlier blanket refusal is superseded by qualified record references, documented below. Each included definition remains authoritative for its records. |
 | default values | **JOSE**, **Protobuf 3** and our own `intent` rule, which all separate *a value a reader supplies* from *a value a writer recorded*. One syntax for both hides the difference. |
 
@@ -532,10 +543,98 @@ carriers. Generated traits and clients cover logging Sink/HistoryReader and
 facade Resolver. The transport trait retains its adapter's error type; waiting,
 cancellation and native IPC belong to the shared transport binding. No generated
 retry or server is added. Record-only output remains unchanged. Typed includes
-and binary fields remain explicitly unsupported by the Rust backend.
+and binary fields were unsupported by the Rust backend then; both landed later
+(`gen --backends` in LANGUAGE.md states current support).
 
 JavaScript binary codecs reuse the existing binary profile: Uint8Array carriers,
 canonical RFC 4648 padded Base64, and bad_binary refusals including nonzero padding
 bits. Helpers and service carrier checks are emitted only for binary definitions.
 Executable Node fixtures cover records, generated asynchronous clients, and a
 mutation removing canonical validation. Shared transport calls retain their errors.
+
+## `gen --compat` and `gen --hash` — Stable AIDL, Mojo `[Stable]`, Smithy Diff (2026-10-20)
+
+Each claim about a source is marked *(fetched 2026-10-20)* when the cited
+page states it, or *(inferred)* when it is our reading beyond the page.
+
+[DEF-V1] takes its rule from Stable AIDL
+(https://source.android.com/docs/core/architecture/aidl/stable-aidl): a frozen
+interface version accepts methods added at the end and parcelable elements
+added at the end with a default value, and "No other actions are permitted"
+*(fetched 2026-10-20)*. Smithy's evolution guide
+(https://smithy.io/2.0/guides/evolving-models.html) supplies the member half:
+a new optional member is compatible, and a removed, renamed or retargeted
+member, or one newly made `required`, is breaking *(fetched 2026-10-20)*.
+Smithy Diff compares two models for backward-compatibility issues
+*(fetched 2026-10-20)*; that it flags each of those member changes is
+*(inferred)*. Mojo's bindings guide
+(https://chromium.googlesource.com/chromium/src/+/main/mojo/public/tools/bindings/README.md)
+says changes to a `[Stable]` definition preserve backward compatibility
+through versioning, enforced "using a strict presubmit check", and that new
+fields of a versioned struct are appended *(fetched 2026-10-20)*. AIDL and
+Mojo both append, so neither lets a published field change its place; the
+reorder refusal follows them *(inferred)*. The divergence is the closed
+record: AIDL appends parcelable fields with defaults *(fetched 2026-10-20)*
+and Smithy readers tolerate unknown members *(inferred)*, while a struct here
+that says `unknown_fields = "refuse"` refuses a member its reader never saw.
+A closed struct gains a member only in a new service version.
+
+[DEF-V2] is AIDL's `getInterfaceHash()`: it returns the hash of the interface
+version the remote object implements, and a client compares it with its own
+`HASH` *(fetched 2026-10-20)*. The page does not say what the hash is
+computed over. Ours is taken over the canonical wire form, since comments,
+docs, the order of declarations and the order of an enum's members change no
+byte on the wire.
+
+## Declared value constraints — Smithy's constraint traits (2026-10-21)
+
+[DEF-A11] names its annotations after Smithy's constraint traits
+(https://smithy.io/2.0/spec/constraint-traits.html; fetched for the 0.8.0
+plan's research, `round3/dream-map/d14b-16.md` L3, and not re-fetched here).
+A reader who knows Smithy reads the annotation; each row names what we kept
+and where we depart.
+
+| construct | ancestor | why this one, and the departure |
+|---|---|---|
+| `length = "min..max"` | **Smithy** `@length(min, max)` on blobs, lists, maps and strings | Same word, same inclusive bounds, either side open. Smithy counts a string in Unicode scalar values; we count UTF-8 bytes, because every bound the asks, rights and credentials contracts state for a key or a name is in bytes, the frame budget is bytes, map keys order by UTF-8 bytes ([DEF-E4]), and five standard libraries agree on a byte count without a Unicode table. A `json` value counts the bytes held. |
+| `range = "min..max"` | **Smithy** `@range(min, max)` on numbers | Same word and inclusive bounds. Integers only, since the profile has no `double` ([DEF-F4]). |
+| `pattern = "<class>"` | **Smithy** `@pattern`, an ECMA-262 regular expression | Same word, a closed set of named classes in place of an expression. Go's `regexp`, Python's `re`, ECMAScript and C++'s `std::regex` are four dialects, Rust's standard library has none, and a third-party engine is outside the shipped trees; a class is one character test each language spells the same way. The JSON Schema output writes each class as its ECMA-262 expression. |
+| `chunk = "true"` | **HTTP/1.1**'s chunked transfer coding (RFC 9112 §7.1), and inference's PCM16 chunk of 1..65536 bytes sent to `Append` (abstraction-inference CONTRACT.md) | A record above one frame's default is refused ([DEF-A12]); the word names the one exception, a bounded piece of a stream a reference names, which is what a chunk is in both ancestors. Smithy has no large-field rule; its `@length` bounds a value and says nothing about the record that carries it. |
+| `bad_value` | The `bad_*` family of this profile's refusal words (`bad_enum`, `bad_binary`) | One structure-stage word for every declared bound, as `IPC-A6` asks: a client reacts to "a value outside its declared bound" and never to which bound it was. Smithy reports a violation as a validation error naming the member *(inferred)*; ours carries the word and a byte offset only, the end of the record from a reader and zero from a writer (`TestConstraintsFiveBackends`), and names no member. A developer finds the member from the bounds the reference page states; a member name in the developer's message is a TODO.md row. |
+
+**What we did not take.** Smithy's `@uniqueItems` and `@idRef` have no
+reader in OA's contracts yet; a definition needing one adds it then. Smithy
+applies constraints to a target shape and a member alike. Our local string
+typedef may reuse the existing UTF-8 `length` and named `pattern` constraints
+at scalar and supported string-collection positions; field bounds intersect
+with them. Other target-shape constraints and new container forms remain outside
+the profile. This retains the byte-count and closed-pattern departures above.
+
+## Service-result postconditions (2026-10-27)
+
+`result_present`, `result_when` and `result_is` express one typed relation:
+an optional result payload is present exactly when a required sibling enum
+holds a member of the declared finite set. Resource's published outcome/payload prose required
+this relation before generation enforced it across its RPC clients.
+
+Prior art: [JSON Schema conditional validation](https://json-schema.org/understanding-json-schema/reference/conditionals)
+separates conditional validity from a property's representation;
+[Protovalidate message rules](https://protovalidate.com/schemas/custom-rules/)
+validate cross-field relations at a message validation boundary. OA takes the
+schema-owned typed relation and applies it to service results before client
+return/dispatcher reply. OA does not take their general expression/composition
+languages or add a runtime dependency. The closed sibling-enum/presence form is
+lowered once and printed by five backends. Like observation method traits, it
+does not change standalone serialization grammar or canonical wire identity.
+
+Decoder-owned binary cleanup (2026-10-30) uses that same result boundary and the
+existing record/list type graph. A client clears its freshly decoded mutable
+binary copies before semantic refusal; handler-owned results and transport/input
+buffers retain their owners. The implementation is original generator code.
+Its primitives follow the [Go compiler's noinline contract](https://go.dev/src/cmd/compile/doc.go),
+[C++ volatile observable accesses](https://eel.is/c++draft/intro.abstract), and
+[Rust allocated volatile writes](https://doc.rust-lang.org/std/ptr/fn.write_volatile.html).
+[RustCrypto's zeroize documentation](https://docs.rs/zeroize/1.9.0/zeroize/)
+provides the volatile/fence rationale and limited memory-erasure scope; no crate
+implementation or dependency is incorporated. JavaScript uses owned Uint8Array
+storage; Python bytes and logical JSON/string carriers are outside this walk.

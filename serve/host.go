@@ -19,6 +19,11 @@ import (
 // child. A fourth failure ends the host.
 var hostRestartDelays = []time.Duration{2 * time.Second, 10 * time.Second, 30 * time.Second}
 
+// hostClaimWait covers a supervisor that is still exiting, such as one Restart
+// Manager ended while its successor starts. Concurrent activations each
+// launch a supervisor; every one but the claim holder exits within this wait.
+var hostClaimWait = 2 * time.Second
+
 // hostHealthyRun is how long a child must have run for its failure to count as
 // the first one again. A host that lives for weeks is not ended by three
 // failures spread across them.
@@ -37,12 +42,20 @@ type hostPlan struct {
 	// The host then has nothing to do: one listener serves each endpoint.
 	served func(context.Context) bool
 	// guard refuses a launch while an installer replaces this installation.
-	guard   func() error
-	delays  []time.Duration
-	healthy time.Duration
-	logf    func(format string, args ...any)
-	now     func() time.Time
-	sleep   func(context.Context, time.Duration) bool
+	guard func() error
+	// claim takes the account's supervisor claim before the first launch and
+	// holds it while the host runs. errClaimHeld means another supervisor
+	// already runs for this account; the host then has nothing to do.
+	claim func(context.Context) (func(), error)
+	// presenter keeps the session's Asks presenter running while this host
+	// holds the account's claim; nil runs none. Only the user-mode host,
+	// which runs in the person's desktop session, sets it.
+	presenter func(context.Context)
+	delays    []time.Duration
+	healthy   time.Duration
+	logf      func(format string, args ...any)
+	now       func() time.Time
+	sleep     func(context.Context, time.Duration) bool
 }
 
 var errRuntimeChildExited = errors.New("runtime child exited unexpectedly")
@@ -69,6 +82,25 @@ func (p hostPlan) run(ctx context.Context) error {
 	logf := p.logf
 	if logf == nil {
 		logf = func(string, ...any) {}
+	}
+	if p.claim != nil {
+		release, err := p.claim(ctx)
+		if errors.Is(err, errClaimHeld) {
+			logf("another supervisor runs for this account; this host has nothing to run")
+			return nil
+		}
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return fmt.Errorf("supervisor claim: %w", err)
+		}
+		defer release()
+	}
+	if p.presenter != nil {
+		presenterCtx, stopPresenter := context.WithCancel(ctx)
+		defer stopPresenter()
+		go p.presenter(presenterCtx)
 	}
 	failures := 0
 	for {

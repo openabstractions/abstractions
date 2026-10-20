@@ -1,0 +1,57 @@
+--- a/scripts/build_local.py
++++ b/scripts/build_local.py
+@@ -36,7 +36,6 @@
+ from datetime import datetime, timezone
+ from pathlib import Path
+ 
+-from build_opencv_arm64 import build as build_opencv_wheels
+ 
+ REPO_ROOT = Path(__file__).resolve().parent.parent
+ 
+@@ -193,25 +192,27 @@
+          "https://github.com/Comfy-Org/ComfyUI.git", str(work / "ComfyUI")])
+ 
+ 
+-def install_requirements(work, variant, vendor_req_name):
+-    final = work / "requirements_final.txt"
+-    vendor = (REPO_ROOT / vendor_req_name).read_text(encoding="utf-8")
+-    final.write_text(
+-        vendor.rstrip("\n")
+-        + "\n-r ComfyUI/requirements.txt\n-r ComfyUI/manager_requirements.txt\n",
+-        encoding="utf-8",
+-    )
+-    python = env_python(work / "standalone-env")
+-    if HOST_OS != "win":
+-        python.chmod(python.stat().st_mode | 0o111)
+-    subprocess.run([str(python), "-m", "ensurepip", "--upgrade"], check=False,
+-                   capture_output=True)
+-    run([str(python), "-m", "pip", "install", "--upgrade", "pip"], cwd=work)
+-    wheels = []
+-    if PYTHON_PLATFORMS[variant] == "aarch64-pc-windows-msvc":
+-        wheels.extend(str(wheel) for wheel in build_opencv_wheels(work / "opencv-build"))
+-    run([str(python), "-m", "pip", "install", "--no-cache-dir",
+-         "-r", "requirements_final.txt", "pygit2", *wheels], cwd=work)
++def install_requirements(work, variant, vendor_req_name, lock, wheelhouse, python, env):
++    """OA adaptation: admitted AMD wheel closure without torch or ROCm; no Manager or network."""
++    if variant != "win-amd":
++        raise ValueError("OA backend recipe is Windows AMD only")
++    if (work / "ComfyUI" / "manager_requirements.txt").exists():
++        raise ValueError("Manager must be removed before dependency installation")
++    verify = _oa_closure_source + "\n" + """import json, sys, platform
++from pathlib import Path
++if (sys.platform != 'win32' or platform.python_implementation() != 'CPython'
++        or sys.version_info[:3] != (3, 12, 10)):
++    raise ValueError('backend installation requires Windows CPython 3.12.10')
++_validate_backend_closure(json.loads(Path(sys.argv[2]).read_text(encoding='utf-8')),
++                          Path(sys.argv[1]).read_text(encoding='utf-8').splitlines())
++"""
++    run([str(python), "-B", "-s", "-c", verify,
++         str(work / "ComfyUI" / "requirements.txt"), str(lock.with_suffix(".json"))], cwd=work, env=env)
++    # The shared PyTorch engine component provides torch; the closure check
++    # above replaces pip's resolver, which would look for it in this wheelhouse.
++    run([str(python), "-B", "-s", "-m", "pip", "install", "--no-index",
++         "--find-links", str(wheelhouse), "--require-hashes", "--no-deps",
++         "--only-binary=:all:", "--no-compile", "-r", str(lock)], cwd=work, env=env)
+ 
+ 
+ def bundle_uv(work, variant):

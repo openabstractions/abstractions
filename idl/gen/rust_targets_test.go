@@ -7,15 +7,37 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // rustTarget is one declared Rust generation: the definition and the flags its
 // generate.targets line passes to the generator.
 type rustTarget struct {
 	def   string
+	out   string
 	flags []string
+}
+
+func rustTargetOptions(words []string) (flags []string, rust bool) {
+	var langs []string
+	mcp := slices.Contains(words, "--mcp")
+	for _, word := range words {
+		if strings.HasPrefix(word, "-") {
+			if (mcp || !strings.HasPrefix(word, "--go-")) && !strings.HasPrefix(word, "--js-") {
+				flags = append(flags, word)
+			}
+		} else {
+			langs = append(langs, word)
+		}
+	}
+	rust = len(langs) == 0
+	for _, lang := range langs {
+		rust = rust || lang == "rust"
+	}
+	return flags, rust
 }
 
 // declaredRustTargets reads every Rust line of scripts/generate.targets. A
@@ -43,18 +65,7 @@ func declaredRustTargets(t *testing.T) ([]rustTarget, bool) {
 		if len(words) < 2 {
 			continue
 		}
-		var langs, flags []string
-		for _, w := range words[2:] {
-			if strings.HasPrefix(w, "--") {
-				flags = append(flags, w)
-			} else {
-				langs = append(langs, w)
-			}
-		}
-		rust := len(langs) == 0
-		for _, l := range langs {
-			rust = rust || l == "rust"
-		}
+		flags, rust := rustTargetOptions(words[2:])
 		if !rust {
 			continue
 		}
@@ -62,14 +73,11 @@ func declaredRustTargets(t *testing.T) ([]rustTarget, bool) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var kept []string
-		for _, fl := range flags {
-			// Go and JavaScript mappings belong to other backends.
-			if !strings.HasPrefix(fl, "--go-") && !strings.HasPrefix(fl, "--js-") {
-				kept = append(kept, fl)
-			}
+		output, err := filepath.Abs(filepath.Join(root, filepath.FromSlash(words[1])))
+		if err != nil {
+			t.Fatal(err)
 		}
-		out = append(out, rustTarget{def: def, flags: kept})
+		out = append(out, rustTarget{def: def, out: output, flags: flags})
 	}
 	if err := scan.Err(); err != nil {
 		t.Fatal(err)
@@ -80,21 +88,28 @@ func declaredRustTargets(t *testing.T) ([]rustTarget, bool) {
 // rustCrates compiles generated Rust targets as separate crates, the way Cargo
 // links generated API crates, reusing each compiled crate by name.
 type rustCrates struct {
-	t       *testing.T
-	rust    string
-	dir     string
-	targets []rustTarget
-	built   map[string]string
-	frame   string
+	t              *testing.T
+	rust           string
+	dir            string
+	targets        []rustTarget
+	built          map[string]string
+	frame          string
+	generated      int
+	compiled       int
+	generationTime time.Duration
+	compilerTime   time.Duration
 }
 
 func (c *rustCrates) run(dir string, args ...string) {
 	c.t.Helper()
 	cmd := exec.Command(c.rust, args...)
 	cmd.Dir = dir
+	started := time.Now()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		c.t.Fatalf("rustc %s: %v\n%s", strings.Join(args, " "), err, out)
 	}
+	c.compilerTime += time.Since(started)
+	c.compiled++
 }
 
 func (c *rustCrates) abstractionFrame() string {
@@ -117,6 +132,9 @@ func (c *rustCrates) build(target rustTarget, name string) string {
 	if lib, ok := c.built[name]; ok {
 		return lib
 	}
+	parts := strings.Split(name, "::")
+	crateName := parts[0]
+	fileName := strings.Join(parts, "_module_")
 	def, err := loadDefinition(target.def)
 	if err != nil {
 		c.t.Fatal(target.def, err)
@@ -146,13 +164,21 @@ func (c *rustCrates) build(target rustTarget, name string) string {
 		if dependency < 0 {
 			c.t.Fatalf("%s maps include %s to %s, and no declared Rust target generates %s", target.def, alias, crate, included)
 		}
-		externs = append(externs, "--extern", crate+"="+c.build(c.targets[dependency], crate))
+		externs = append(externs, "--extern", strings.Split(crate, "::")[0]+"="+c.build(c.targets[dependency], crate))
 	}
-	out := filepath.Join(c.dir, name)
+	out := filepath.Join(c.dir, fileName)
 	var report bytes.Buffer
-	if err := run(append(append([]string{target.def, out}, target.flags...), "rust"), &report); err != nil {
+	started := time.Now()
+	args := append(append([]string{target.def, out}, target.flags...), "rust")
+	// MCP validation needs native Go codecs even though rustc only reads Rust.
+	if slices.Contains(target.flags, "--mcp") {
+		args = append(args, "go")
+	}
+	if err := run(args, &report); err != nil {
 		c.t.Fatalf("generate %s: %v", target.def, err)
 	}
+	c.generationTime += time.Since(started)
+	c.generated++
 	var source string
 	filepath.Walk(filepath.Join(out, "rs"), func(p string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() && info.Name() == "rec.rs" {
@@ -163,10 +189,42 @@ func (c *rustCrates) build(target rustTarget, name string) string {
 	if source == "" {
 		c.t.Fatalf("%s generated no Rust source", target.def)
 	}
-	lib := filepath.Join(c.dir, "lib"+name+".rlib")
+	if target.out != "" {
+		// Compile the real declared projection and prove the emitter preserves
+		// the frozen source bytes, including selected/namespace profiles.
+		relative, err := filepath.Rel(out, source)
+		if err != nil {
+			c.t.Fatal(err)
+		}
+		expected, err := os.ReadFile(filepath.Join(target.out, relative))
+		if err != nil {
+			c.t.Fatal(err)
+		}
+		actual, err := os.ReadFile(source)
+		if err != nil {
+			c.t.Fatal(err)
+		}
+		if !bytes.Equal(actual, expected) {
+			c.t.Fatalf("%s %v: emitted Rust differs from declared artifact %s", target.def, target.flags, filepath.Join(target.out, relative))
+		}
+	}
+	if len(parts) > 1 {
+		// The existing include mapping accepts a crate's canonical module,
+		// such as abstraction_facade_service::wire. Build that same module
+		// placement rather than treating :: as a path or crate identifier.
+		wrapper := fmt.Sprintf("#[path = r#%q#] pub mod %s;\n", filepath.ToSlash(source), parts[len(parts)-1])
+		for i := len(parts) - 2; i > 0; i-- {
+			wrapper = fmt.Sprintf("pub mod %s {\n%s}\n", parts[i], wrapper)
+		}
+		source = filepath.Join(out, "module_root.rs")
+		if err := os.WriteFile(source, []byte(wrapper), 0600); err != nil {
+			c.t.Fatal(err)
+		}
+	}
+	lib := filepath.Join(c.dir, "lib"+fileName+".rlib")
 	// Warnings are denied and the naming lints forbidden, so neither dead code
 	// nor an #[allow] suppression can ship in a generated crate.
-	c.run(c.dir, append([]string{"--edition=2021", "--crate-type=rlib", "--crate-name=" + name, "-D", "warnings", "-F", "nonstandard_style", source, "-o", lib, "-L", c.dir}, externs...)...)
+	c.run(c.dir, append([]string{"--edition=2021", "--crate-type=rlib", "--crate-name=" + crateName, "-D", "warnings", "-F", "nonstandard_style", source, "-o", lib, "-L", c.dir}, externs...)...)
 	c.built[name] = lib
 	return lib
 }
@@ -181,14 +239,25 @@ func TestRustEveryDeclaredTargetCompiles(t *testing.T) {
 		t.Fatal("no declared Rust targets")
 	}
 	crates := &rustCrates{t: t, rust: rust, dir: t.TempDir(), targets: targets, built: map[string]string{}}
+	compiled := 0
 	for i, target := range targets {
 		name := fmt.Sprintf("declared_target_%d", i)
 		t.Run(filepath.Base(filepath.Dir(target.def))+"/"+filepath.Base(target.def), func(t *testing.T) {
 			crates.t = t
 			crates.build(target, name)
+			compiled++
 		})
 	}
-	t.Logf("compiled %d declared Rust targets (targets file present: %v)", len(targets), private)
+	t.Logf("compiled %d of %d declared Rust targets (targets file present: %v)", compiled, len(targets), private)
+	t.Logf("generation: %d projections in %s; rustc: %d independent crates in %s", crates.generated, crates.generationTime, crates.compiled, crates.compilerTime)
+}
+
+func TestRustDeclaredTargetFlagsPreserveSelectedSurface(t *testing.T) {
+	flags, rust := rustTargetOptions([]string{"python", "cpp", "rust", "-only=Code,Limits", "--namespace=rust=abstraction.ipc.constants", "--shared-rust-transport", "--go-import=a=b", "--js-import=a=c"})
+	want := "-only=Code,Limits --namespace=rust=abstraction.ipc.constants --shared-rust-transport"
+	if !rust || strings.Join(flags, " ") != want {
+		t.Fatalf("rust=%v flags=%v", rust, flags)
+	}
 }
 
 // TestRustKeywordArgumentFailsBeforeCrate is the control for the gap class the
@@ -216,11 +285,8 @@ func TestRustKeywordArgumentFailsBeforeCrate(t *testing.T) {
 
 func readProduction(t *testing.T, rel string) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "openabstractions-flat", filepath.FromSlash(rel))
+	path := productionFile(t, rel)
 	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		t.Skip("private production definition unavailable in this checkout: " + rel)
-	}
 	if err != nil {
 		t.Fatal(err)
 	}

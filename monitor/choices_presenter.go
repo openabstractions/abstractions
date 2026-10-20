@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"slices"
 	"strings"
 	"sync"
@@ -16,10 +15,10 @@ import (
 )
 
 // This is the ordinary branch of the existing native presenter. The public
-// operator owns attribution, authority and terminal decisions (ASK-O9).
+// operator owns attribution, authority and terminal outcomes (ASK-O9).
 // Application labels have no permission effect and never enter grants.
 type presenterChoiceOperator interface {
-	ListChoicesContext(context.Context, string, int64) (askclient.ChoicePage, error)
+	ListAllChoicesContext(context.Context) ([]askclient.ChoiceRecord, error)
 	ReadChoiceContext(context.Context, string) (askclient.ChoiceRead, error)
 	AnswerChoiceContext(context.Context, string, string) (askclient.ChoiceDecision, error)
 	DismissChoiceContext(context.Context, string) (askclient.ChoiceDecision, error)
@@ -132,7 +131,13 @@ func (p *questionPresenter) presentChoice(ctx context.Context, listed askclient.
 			p.surface.Dismiss()
 		}
 	}()
-	option, err := p.surface.Ask(trayChoiceView(shown, machineProgramTitler(ctx)))
+	occurrence, err := choiceOccurrence(shown, trayChoiceView(shown, machineProgramTitler(ctx)))
+	if err != nil {
+		stop()
+		watching.Wait()
+		return choicePresentResult{Outcome: presentFailed, Err: err}
+	}
+	option, err := p.surface.Ask(occurrence)
 	stop()
 	watching.Wait()
 	if p.session.Revision() != revision || !p.session.Unlocked() || errors.Is(err, errPromptNotShown) {
@@ -208,13 +213,13 @@ func (p *questionPresenter) watchChoice(ctx context.Context, shown askclient.Cho
 func trayChoiceView(record askclient.ChoiceRecord, names *programTitler) trayQuestionPresentation {
 	publisher := trayPublisher{Trusted: record.PublisherTrusted, Subject: record.Publisher,
 		Description: record.ProgramDescription, OriginalName: record.ProgramOriginalName, Names: names, Prompt: true}
-	content := "Requested by " + programDisplayName(publisher, record.Asker)
-	if publisher.Trusted {
-		content += "\nPublisher: " + publisher.Subject + " (signature verified when the app asked)."
-	} else {
-		content += "\nPublisher: not verified."
+	// Architect popup ruling 2026-11-10, row 19: the app's own question as
+	// the heading, "From <App>." and the inline publisher line as the body.
+	content := "From " + programDisplayName(publisher, record.Asker) + "."
+	if line := promptPublisherSummary(publisher); line != "" {
+		content += "\n" + line
 	}
-	details := []string{"Request: " + record.ID, "Requester recorded by the service: " + record.Asker,
+	details := []string{promptPublisherDetail(publisher), "Closing this window dismisses the request without choosing.", "", "Request: " + record.ID, "Requester recorded by the service: " + record.Asker,
 		"Title supplied by the app: " + record.Request.Title, "Key: " + record.Request.RequestRef.Key,
 		fmt.Sprintf("Asked (Unix ms): %d", record.AskedMs),
 		fmt.Sprintf("Pending until (Unix ms): %d", record.Request.PendingUntilMs),
@@ -226,100 +231,15 @@ func trayChoiceView(record askclient.ChoiceRecord, names *programTitler) trayQue
 		choices[i] = trayQuestionChoice{Label: option.Label, Option: option.ID}
 		details = append(details, "Option "+option.ID+": "+option.Label)
 	}
-	return trayQuestionPresentation{Title: trayDisplayName + " — App choice", Instruction: record.Request.Title,
+	return trayQuestionPresentation{presentation: asks.PresentationForApplicationChoice(), Title: popupTitle, Instruction: record.Request.Title,
 		Content: content, Details: strings.Join(details, "\n"), Choices: choices, AppChoice: true,
-		Level:  promptLevelFor(promptEvidence{Program: record.Asker, Publisher: publisher}),
-		Footer: "This question was supplied by the app. OpenAbstractions records your selection for it. Close dismisses this request without selecting an option."}
-}
-
-func choiceResultReport(result choicePresentResult) presenterReport {
-	if result.Outcome == presentDeferred {
-		return presenterReport{Requeue: true}
-	}
-	if result.Outcome == presentStale && result.ClosedElsewhere {
-		return presenterReport{}
-	}
-	report := presenterReport{Title: trayDisplayName + " — App choice", Show: true}
-	switch {
-	case result.Unsupported:
-		report.Instruction = "App questions are unavailable"
-		report.Content = "This runtime does not support ordinary app choices. Permission requests remain available."
-	case result.Outcome == presentAnswered && result.Err == nil && result.Decision.Outcome == askclient.ChoiceDecisionOutcomeAnswered:
-		report.Instruction = "Selection recorded"
-		report.Content = "Your selection was recorded for the requesting app."
-	case result.Outcome == presentAnswered && result.Err == nil && result.Decision.Outcome == askclient.ChoiceDecisionOutcomeDismissed:
-		report.Instruction = "Request closed"
-		report.Content = "The request was dismissed without selecting an app option."
-	case result.Outcome == presentStale || result.Decision.Outcome == askclient.ChoiceDecisionOutcomeConflict || result.Decision.Outcome == askclient.ChoiceDecisionOutcomeExpired || result.Decision.Outcome == askclient.ChoiceDecisionOutcomeUnknown || result.Decision.Outcome == askclient.ChoiceDecisionOutcomeGone:
-		report.Instruction = "Request has changed or ended"
-		report.Content = "No new selection is assumed. Review App questions in the Panel."
-		report.OpenQuestions = true
-	default:
-		report.Instruction = "Decision could not be confirmed"
-		report.Content = "Review App questions in the Panel before trying again. No app action is assumed."
-		report.OpenQuestions = true
-	}
-	return report
-}
-
-func presentFreshChoices(ctx context.Context, fresh []askclient.ChoiceRecord, p *questionPresenter, announcer *trayAnnouncer, openQuestions func(), show func(presenterReport) bool) bool {
-	for i, record := range fresh {
-		result := p.presentChoice(ctx, record)
-		if ctx.Err() != nil {
-			return false
-		}
-		if result.Err != nil {
-			log.Printf("native app choice: %v", result.Err)
-		}
-		report := choiceResultReport(result)
-		if report.Requeue {
-			for _, rest := range fresh[i:] {
-				delete(announcer.choicesSeen, rest.ID)
-			}
-			return true
-		}
-		if report.OpenQuestions {
-			openQuestions()
-		}
-		if report.Show && !show(report) {
-			return false
-		}
-	}
-	return true
+		Level: promptLevelFor(promptEvidence{Program: record.Asker, Publisher: publisher})}
 }
 
 // Separate typed listing keeps old operators and permission record shapes
 // compatible. Only an explicit unknown_method means unsupported ordinary UI.
 func listPresenterChoices(ctx context.Context, operator presenterChoiceOperator) ([]askclient.ChoiceRecord, error) {
-	for attempt := 0; attempt < 2; attempt++ {
-		var records []askclient.ChoiceRecord
-		cursor, gap := "", false
-		for page := 0; page < 64; page++ {
-			result, err := operator.ListChoicesContext(ctx, cursor, 64)
-			if err != nil {
-				return nil, err
-			}
-			switch result.Outcome {
-			case askclient.OperatorPageOutcomePage:
-			case askclient.OperatorPageOutcomeGap:
-				gap = true
-			default:
-				return nil, &presenterRefusal{outcome: result.Outcome.String()}
-			}
-			if gap {
-				break
-			}
-			records = append(records, result.Records...)
-			if result.Complete {
-				return records, nil
-			}
-			cursor = result.Next
-		}
-		if !gap {
-			return nil, &presenterRefusal{outcome: "incomplete"}
-		}
-	}
-	return nil, &presenterRefusal{outcome: "gap"}
+	return presenterList(operator.ListAllChoicesContext(ctx))
 }
 
 func pollChoices(ctx context.Context, p *questionPresenter, announcer *trayAnnouncer) ([]askclient.ChoiceRecord, error) {

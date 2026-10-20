@@ -38,6 +38,35 @@
 //                  options.allowClasses names a page's allowlisted classes
 //                  (testdata/panel_lint.allowlist) until its slice removes
 //                  them.
+//   raw-value also takes a visible number of seven or more digits (shape
+//                  number): a size or duration reads in human units.
+//   raw-name       a row label, an h2 or h3, or one " · " part of a row
+//                  caption that is a single lowercase token, the shape of a
+//                  registered name or resource ("image-server",
+//                  "store:pictures", "awake"), also before "(not
+//                  registered)" ("inventoryd (not registered)"); an
+//                  upstream lowercase project name ("llama.cpp") passes.
+//   label-period   a row label ending in a period ("…" and "..." pass).
+//   caption-repeat a row caption equal to its label, to its label behind
+//                  "No" or a count ("No questions waiting" under
+//                  "Questions waiting"), or to a value the row's control
+//                  shows ("Default" beside a chooser reading "Default").
+//   runtime-once   "OpenAbstractions is not running" in more than one
+//                  visible element, or, with the runtime down
+//                  (data-runtime="down" on the root, or
+//                  options.runtimeDown), in none; and with the runtime
+//                  down, a visible section sentence that only repeats it
+//                  (RUNTIME_ECHO: "The list of apps is unavailable right
+//                  now.", "Not running", "No runtime is reachable." …).
+//   empty-row      a shown row (.oa-row, a navigation row excepted) with a
+//                  label and nothing else shown: no caption, value, status
+//                  sentence or control (owner, 2026-09-23: "no empty
+//                  fields"). A disabled control counts.
+//   empty-select   a shown chooser with no option that has words.
+//   empty-section  a shown section whose h2 has nothing shown under it but
+//                  its caption: no row, sentence or control.
+//   The empty-* rules judge what a person sees: an element hidden, styled
+//   display:none (a browser node) or inside either is not shown.
 //   Every allowance is a row of testdata/panel_lint.allowlist: exact, one
 //   rule, counted, shrink-only. options.knownValues takes a page's
 //   known-value rows for the program shape ({"<file name>": count}); with
@@ -57,8 +86,25 @@
     hash: /\b[0-9a-fA-F]{16,}\b|\bsha256:/g,
     action: /\babstraction\.[a-z][a-z0-9_-]*\/[a-z](?:[A-Za-z0-9_.@-]*[A-Za-z0-9_@-])?/g,
     program: /\b[A-Za-z0-9_][A-Za-z0-9_.-]*\.(?:exe|app|dll)\b/gi,
+    number: /\b\d{7,}\b/g,
   };
-  var RULES = ['raw-value', 'empty-input', 'button-status', 'caption', 'class', 'secret-scope', 'technical-summary'];
+  // The naming rules judge a page once it adopts them (options.naming, or
+  // naming in options.rules): Apps, Permissions and Settings since the
+  // ruling of 2026-11-09; Activity, Device, Models and the app page since
+  // its second block.
+  var NAMING_RULES = ['raw-name', 'label-period', 'caption-repeat'];
+  var EMPTY_RULES = ['empty-row', 'empty-select', 'empty-section'];
+  var RULES = ['raw-value', 'empty-input', 'button-status', 'caption', 'class', 'secret-scope', 'technical-summary', 'runtime-once'].concat(EMPTY_RULES, NAMING_RULES);
+  // runtime-once: the runtime-down sentence is the page's banner (owner,
+  // 2026-11-09: one runtime-down sentence per Panel page). At most one
+  // visible element outside Technical details says it; while the runtime is
+  // down (data-runtime="down" on the document root, or options.runtimeDown)
+  // exactly one does.
+  var RUNTIME_DOWN = /OpenAbstractions is not running/;
+  // RUNTIME_ECHO are the sections' own sentences for a stopped runtime
+  // (R19 render check, 2026-11-09). While the banner shows, a page hides
+  // them (runtimeEcho in panel_shell.go).
+  var RUNTIME_ECHO = /^(The list of [a-z -]+ is unavailable right now\.|The model folders could not be read right now\.|Which models are loaded is unknown right now\.|Model uses are unavailable right now\.|OpenAbstractions is not reachable\.|Settings could not be refreshed\.|Not running)$/;
 
   // The shell's class names, from the one source panel_shell.go embeds
   // (static/panel_classes.json). Under node the module reads it; a browser
@@ -160,11 +206,15 @@
     var text = words(node.textContent);
     return tag(node) + (text ? ' ' + JSON.stringify(text.slice(0, 60)) : '');
   }
-  // shapeGuard drops a program match that is part of an address: followed
+  // shapeGuard drops a number match that is a development version's date,
+  // and a program match that is part of an address: followed
   // by "/" (a URL path), by ":" and a digit (a port), or right after "://"
   // (a URL's host). panel_lint_test.go's shapeMatches applies the same
   // guard; the Go and JS cross-check holds them equal.
   function shapeGuard(name, text, start, end) {
+    // A date-stamped development version ("0.8.0-dev.20261109") is a
+    // version, not a raw number.
+    if (name === 'number') return text.slice(Math.max(0, start - 4), start) !== 'dev.';
     if (name !== 'program') return true;
     var next = text.charAt(end);
     if (next === '/' || (next === ':' && /[0-9]/.test(text.charAt(end + 1)))) return false;
@@ -230,6 +280,43 @@
     if (t === 'input' && attr(node, 'type') === 'password') return true;
     return (t === 'input' || t === 'textarea') && (auto === 'current-password' || auto === 'new-password' || auto === 'one-time-code');
   }
+  // A row's parts (architect ruling 2026-11-09): its first label, its first
+  // shown caption and the values its control shows, never a nested row's.
+  function findIn(node, pred) {
+    var list = kids(node);
+    for (var i = 0; i < list.length; i++) {
+      if (hidden(list[i]) || silent(list[i])) continue;
+      if (pred(list[i])) return list[i];
+      var hit = hasClass(list[i], 'oa-row') ? null : findIn(list[i], pred);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  function plain(text) { return words(text).toLowerCase().replace(/[.]$/, ''); }
+  function chosenText(select) {
+    var options = kids(select).filter(function (o) { return tag(o) === 'option'; });
+    var value = select.value === undefined || select.value === null ? '' : String(select.value);
+    var hit = options.filter(function (o) { return String(o.value !== undefined ? o.value : attr(o, 'value')) === value; })[0] || options[0];
+    return hit ? words(hit.textContent) : '';
+  }
+  function shownValues(node, out) {
+    kids(node).forEach(function (k) {
+      if (hidden(k) || silent(k)) return;
+      var t = tag(k);
+      if (t === 'select') out.push(plain(chosenText(k)));
+      else if (t === 'span' && kids(k).length === 0 && words(k.textContent)) out.push(plain(k.textContent));
+      else if (t !== 'button') shownValues(k, out);
+    });
+    return out;
+  }
+  // rawName: one lowercase token with a letter and no space, the shape of
+  // a registered name, a resource or a program stem ("image-server",
+  // "store:pictures", "awake").
+  // A "(not registered)" suffix leaves the stem judged ("inventoryd").
+  // A project name its upstream writes in lowercase is a name (architect
+  // ruling 2026-11-09, second block).
+  var UPSTREAM_NAMES = ['llama.cpp', 'whisper.cpp', 'stable-diffusion.cpp'];
+  function rawName(text) { text = text.replace(/ [(]not registered[)]$/, ''); return text.length > 1 && UPSTREAM_NAMES.indexOf(text) === -1 && /^[a-z0-9][a-z0-9_.:-]*$/.test(text) && /[a-z]/.test(text); }
   function isCaption(node) {
     return tag(node) === 'p' && !isStatus(node) && !hasClass(node, 'oa-empty') && !hidden(node) && words(ownText(node)) !== '';
   }
@@ -257,15 +344,58 @@
     return { counts: known, left: left, seen: {} };
   }
 
+  // A browser element styled display:none (panel.css hides a section's error
+  // line while the runtime is down) is not visible; a fake node always is.
+  function displayed(node) {
+    if (!node || node.nodeType !== 1 || typeof getComputedStyle !== 'function') return true;
+    try { return getComputedStyle(node).display !== 'none'; } catch (e) { return true; }
+  }
+  // holdsSomething: node, or a shown descendant not skipped, has words or
+  // is a control a person can see (a disabled one included).
+  var CONTROL_TAGS = ['select', 'textarea', 'button', 'a', 'img', 'svg', 'progress', 'meter'];
+  function shownNode(node) { return !hidden(node) && !silent(node) && displayed(node); }
+  function holdsSomething(node, skip) {
+    if (words(ownText(node)) !== '') return true;
+    var t = tag(node);
+    if (CONTROL_TAGS.indexOf(t) !== -1 || (t === 'input' && attr(node, 'type').toLowerCase() !== 'hidden')) return true;
+    var list = kids(node);
+    for (var i = 0; i < list.length; i++) {
+      if (!shownNode(list[i]) || (skip && skip(list[i]))) continue;
+      if (holdsSomething(list[i], skip)) return true;
+    }
+    return false;
+  }
+  function wordedOptions(select) {
+    var n = 0;
+    (function count(node) { kids(node).forEach(function (k) { if (tag(k) === 'option') { if (words(k.textContent) !== '') n++; } else count(k); }); })(select);
+    return n;
+  }
+  function runtimeSentences(root, pattern) {
+    var out = [];
+    function walk(node, inTechnical) {
+      if (!node || typeof node !== 'object' || hidden(node) || silent(node) || !displayed(node)) return;
+      if (!inTechnical && (pattern || RUNTIME_DOWN).test(words(ownText(node)))) out.push(node);
+      var body = technical(node);
+      kids(node).forEach(function (child) { walk(child, body ? tag(child) !== 'summary' : inTechnical); });
+    }
+    (Array.isArray(root) ? root : [root]).forEach(function (r) { walk(r, false); });
+    return out;
+  }
+  function runtimeDown(root, options) {
+    if (options && typeof options.runtimeDown === 'boolean') return options.runtimeDown;
+    var r = Array.isArray(root) ? root[0] : root, doc = r && r.ownerDocument, top = doc && doc.documentElement;
+    return !!(top && typeof top.getAttribute === 'function' && top.getAttribute('data-runtime') === 'down');
+  }
+
   function panelRuleViolations(root, options) {
-    var rules = (options && options.rules) || RULES, found = [];
+    var rules = (options && options.rules) || RULES.filter(function (r) { return (options && options.naming) || NAMING_RULES.indexOf(r) === -1; }), found = [];
     function on(rule) { return rules.indexOf(rule) !== -1; }
     function add(rule, detail) { found.push({ rule: rule, detail: detail }); }
     var classes = options && options.classes !== undefined ? checkClassList(options.classes, 'options.classes') : CLASSES;
     if (on('class') && !classes) add('class', 'the class list (static/panel_classes.json) is not loaded: call setClasses, or pass options.classes');
     var known = checkKnownValues(options && options.knownValues);
     var knownSummaries = checkKnownSummaries(options && options.knownSummaries);
-    function walk(node, ancestors, inTechnical) {
+    function walk(node, ancestors, inTechnical, shownAbove) {
       if (!node || typeof node !== 'object') return;
       if (on('class') && classes) {
         // Hidden or not, an element's classes are what the skins style.
@@ -276,6 +406,21 @@
       if (hidden(node) || silent(node)) return;
       var t = tag(node);
       var secret = isSecret(node);
+      // Shown: no display:none on the node or above it (the empty-* rules).
+      var shownHere = shownAbove !== false && displayed(node);
+      if (shownHere && on('empty-row') && hasClass(node, 'oa-row') && t !== 'a' && !hasClass(node, 'oa-row-nav')) {
+        var emptyLabel = findIn(node, function (n) { return hasClass(n, 'oa-row-label'); });
+        if (emptyLabel && words(emptyLabel.textContent) !== '' && !holdsSomething(node, function (n) { return n === emptyLabel; })) {
+          add('empty-row', JSON.stringify(words(emptyLabel.textContent)) + ' has no caption, value or control');
+        }
+      }
+      if (shownHere && on('empty-select') && t === 'select' && wordedOptions(node) === 0) add('empty-select', describe(node));
+      if (shownHere && on('empty-section') && t === 'section') {
+        var heading = kids(node).filter(function (k) { return tag(k) === 'h2' && shownNode(k); })[0];
+        if (heading && !holdsSomething(node, function (n) { return n === heading || (hasClass(n, 'oa-caption') && isCaption(n)); })) {
+          add('empty-section', JSON.stringify(words(ownText(heading)) || words(heading.textContent)) + ' has nothing under it');
+        }
+      }
       if (on('secret-scope') && hasAttr(node, 'data-oa-secret') && !secretScopeValid(node)) {
         add('secret-scope', 'data-oa-secret on ' + describe(node) + ': valid only on an input, textarea, code or output with no child elements');
       }
@@ -284,6 +429,27 @@
         rawValues(ownText(node)).filter(shown).forEach(function (v) { add('raw-value', v.shape + ' ' + JSON.stringify(v.match) + ' in ' + JSON.stringify(words(ownText(node)).slice(0, 80))); });
         var placeholder = attr(node, 'placeholder');
         rawValues(placeholder).filter(shown).forEach(function (v) { add('raw-value', v.shape + ' ' + JSON.stringify(v.match) + ' in the placeholder of ' + describe(node)); });
+      }
+      if (on('label-period') && hasClass(node, 'oa-row-label')) {
+        var label = words(node.textContent);
+        if (/[^.]\.$/.test(label)) add('label-period', JSON.stringify(label));
+      }
+      if (on('raw-name')) {
+        if (hasClass(node, 'oa-row-label') || t === 'h2' || t === 'h3') {
+          if (rawName(words(node.textContent))) add('raw-name', t + ' ' + JSON.stringify(words(node.textContent)));
+        }
+        if (hasClass(node, 'oa-row-caption')) {
+          words(node.textContent).split(' · ').forEach(function (part) { if (rawName(part)) add('raw-name', 'caption part ' + JSON.stringify(part) + ' in ' + JSON.stringify(words(node.textContent))); });
+        }
+      }
+      if (on('caption-repeat') && hasClass(node, 'oa-row')) {
+        var rowLabel = findIn(node, function (n) { return hasClass(n, 'oa-row-label'); });
+        var rowCaption = findIn(node, function (n) { return hasClass(n, 'oa-row-caption'); });
+        var rowControl = findIn(node, function (n) { return hasClass(n, 'oa-row-control'); });
+        var l = rowLabel ? plain(rowLabel.textContent) : '', c = rowCaption ? plain(rowCaption.textContent) : '';
+        if (c && (c === l || (l && c.replace(/^(?:no|\d+) /, '') === l) || (rowControl && shownValues(rowControl, []).indexOf(c) !== -1))) {
+          add('caption-repeat', JSON.stringify(words(rowLabel ? rowLabel.textContent : '')) + ' / ' + JSON.stringify(words(rowCaption.textContent)));
+        }
       }
       if (on('empty-input') && (t === 'input' || t === 'textarea')) {
         var type = attr(node, 'type').toLowerCase();
@@ -299,7 +465,9 @@
       }
       if (on('technical-summary') && hasAttr(node, 'data-oa-technical')) {
         var said = technicalSummary(node);
-        if (said !== TECHNICAL_SUMMARY) {
+        if (t !== 'details') {
+          add('technical-summary', 'data-oa-technical on ' + describe(node) + ': only a "Technical details" expander may carry it');
+        } else if (said !== TECHNICAL_SUMMARY) {
           var spent = false;
           if (knownSummaries && Object.prototype.hasOwnProperty.call(knownSummaries.left, said)) {
             knownSummaries.seen[said] = (knownSummaries.seen[said] || 0) + 1;
@@ -313,9 +481,15 @@
         captions.slice(1).forEach(function (c) { add('caption', 'section ' + JSON.stringify(attr(node, 'id')) + ': ' + JSON.stringify(words(ownText(c)))); });
       }
       var next = ancestors.concat([node]), body = technical(node);
-      kids(node).forEach(function (child) { walk(child, next, body ? tag(child) !== 'summary' : inTechnical); });
+      kids(node).forEach(function (child) { walk(child, next, body ? tag(child) !== 'summary' : inTechnical, shownHere); });
     }
-    (Array.isArray(root) ? root : [root]).forEach(function (r) { walk(r, [], false); });
+    (Array.isArray(root) ? root : [root]).forEach(function (r) { walk(r, [], false, true); });
+    if (on('runtime-once')) {
+      var said = runtimeSentences(root), down = runtimeDown(root, options);
+      if (said.length > 1) add('runtime-once', said.length + ' visible elements say the runtime is not running: ' + said.map(describe).join(', '));
+      else if (down && said.length !== 1) add('runtime-once', 'the runtime is down and no visible element says so');
+      if (down) runtimeSentences(root, RUNTIME_ECHO).forEach(function (n) { add('runtime-once', 'the runtime is down and a section repeats it: ' + describe(n)); });
+    }
     // With knownExact (a page test over its whole fixture), a known value
     // seen fewer times than its row counts means the row must shrink.
     if (known && on('raw-value') && options.knownExact) {
@@ -342,6 +516,8 @@
 
   exports.SHAPES = SHAPES;
   exports.RULES = RULES;
+  exports.NAMING_RULES = NAMING_RULES;
+  exports.EMPTY_RULES = EMPTY_RULES;
   exports.CLASSES = CLASSES;
   exports.setClasses = setClasses;
   exports.rawValues = rawValues;

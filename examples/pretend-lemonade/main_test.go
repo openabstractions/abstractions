@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/user"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -18,9 +17,11 @@ import (
 	"testing"
 	"time"
 
+	casapi "github.com/openabstractions/abstraction-cas/go/api"
+	config "github.com/openabstractions/abstraction-config/go"
 	downloadserve "github.com/openabstractions/abstraction-download/go/serve"
 	facade "github.com/openabstractions/abstraction-facade/go"
-	client "github.com/openabstractions/abstraction-facade/go/client"
+	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
 	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-identity/listen"
@@ -28,9 +29,12 @@ import (
 )
 
 // serviceRuntime runs a runtime inside this test executable and binds the
-// example to it with the account and image of this process as server trust.
+// example to it the way a developer does [FAC-B5]: the runtime's endpoint in
+// the variable and --runtime-program naming this test executable, so the
+// facade's development selection supplies the server expectation.
 func serviceRuntime(t *testing.T, configure ...func(*host.Options)) *logging.FileSink {
 	t.Helper()
+	t.Setenv("OA_TEST_ALLOW_INSTALLED_RUNTIME", "")
 	if runtime.GOOS == "darwin" {
 		t.Skip("verified local fixture requires Program proof unavailable on macOS")
 	}
@@ -41,6 +45,7 @@ func serviceRuntime(t *testing.T, configure ...func(*host.Options)) *logging.Fil
 	}
 	t.Cleanup(func() { sink.Close() })
 	o := host.Options{Endpoint: listen.Endpoint(prefix), LogEndpoint: listen.Endpoint(prefix + "l"), ConfigEndpoint: listen.Endpoint(prefix + "c"),
+		ConfigStore: casapi.BoundedFileStore{MaxBytes: config.MaxUserFileBytes}, ConfigUserKey: filepath.Join(t.TempDir(), "config"), ConfigWithoutMachine: true,
 		JobEndpoint: listen.Endpoint(prefix + "j"), JobRoot: filepath.Join(t.TempDir(), "provider"), JobOwner: "pretend-lemonade-owner", JobExecutor: downloadserve.HTTPExecution{}, Sink: sink}
 	for _, change := range configure {
 		change(&o)
@@ -65,19 +70,13 @@ func serviceRuntime(t *testing.T, configure ...func(*host.Options)) *logging.Fil
 	if err != nil {
 		t.Fatal(err)
 	}
-	account, err := user.Current()
+	t.Setenv(bootstrap.RuntimeEndpointVariable, o.Endpoint)
+	selected, err := selectMachine(exe)
 	if err != nil {
 		t.Fatal(err)
 	}
-	principal := identity.User{Kind: "windows", SID: account.Uid, UID: -1, GID: -1}
-	if runtime.GOOS != "windows" {
-		uid, _ := strconv.Atoi(account.Uid)
-		gid, _ := strconv.Atoi(account.Gid)
-		principal = identity.User{Kind: "posix", UID: uid, GID: gid}
-	}
-	server := listen.ServerExpectation{Principal: principal, Program: exe}
 	previous := machine
-	machine = func() *facade.Machine { return client.NewVerified(o.Endpoint, server) }
+	machine = func() *facade.Machine { return selected }
 	t.Cleanup(func() { machine = previous })
 	return sink
 }
@@ -132,11 +131,11 @@ func TestTheWholeIntegration(t *testing.T) {
 }
 
 func TestExplicitBindingRequiresNamedRuntime(t *testing.T) {
-	t.Setenv("ABSTRACTION_RUNTIME_ENDPOINT", "")
+	t.Setenv(bootstrap.RuntimeEndpointVariable, "")
 	if _, err := selectMachine(filepath.Join(t.TempDir(), "runtime.exe")); err == nil {
 		t.Fatal("explicit program accepted without an explicit endpoint")
 	}
-	t.Setenv("ABSTRACTION_RUNTIME_ENDPOINT", listen.Endpoint("example-binding"))
+	t.Setenv(bootstrap.RuntimeEndpointVariable, listen.Endpoint("example-binding"))
 	if _, err := selectMachine("runtime.exe"); err == nil {
 		t.Fatal("relative runtime program accepted")
 	}
@@ -172,12 +171,36 @@ func TestSourceBytesAndRanges(t *testing.T) {
 	}
 }
 
+func TestSourceReviewModelIsDeterministicAndHasNoDownloadEffect(t *testing.T) {
+	counts := &sourceCounts{}
+	handler := sourceHandler(sourcePayload(), counts)
+	for _, tc := range []struct {
+		method, path, body, want string
+		status                   int
+	}{
+		{"GET", "/v1/models", "", `"id":"pretend-review-model"`, 200},
+		{"POST", "/v1/chat/completions", `{"model":"pretend-review-model","messages":[{"role":"user","content":"example"}]}`, "This is a deterministic review example.", 200},
+		{"POST", "/v1/chat/completions", `{"model":"real-model"}`, "", 400},
+		{"POST", "/v1/chat/completions", `{"model":"pretend-review-model","stream":true}`, "", 400},
+		{"POST", "/v1/models", "", "", 405},
+	} {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body)))
+		if w.Code != tc.status || !strings.Contains(w.Body.String(), tc.want) {
+			t.Fatalf("%s %s: %d %s", tc.method, tc.path, w.Code, w.Body.String())
+		}
+	}
+	if counts.requests.Load() != 0 || counts.bytes.Load() != 0 {
+		t.Fatal("model metadata/completion changed download counters")
+	}
+}
+
 // Without a runtime the example reports it and creates no provider files.
 func TestAbsenceHasNoLocalFallback(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	t.Setenv("ABSTRACTION_STORE", filepath.Join(dir, "must-not-create"))
-	t.Setenv("ABSTRACTION_RUNTIME_ENDPOINT", listen.Endpoint(fmt.Sprintf("absent-lemonade-%d", time.Now().UnixNano())))
+	t.Setenv(bootstrap.RuntimeEndpointVariable, listen.Endpoint(fmt.Sprintf("absent-lemonade-%d", os.Getpid())))
 	if err := run([]string{"http://127.0.0.1:1/x", "1", "sha256:00"}, &bytes.Buffer{}); err == nil {
 		t.Fatal("absent runtime accepted work")
 	}

@@ -67,11 +67,11 @@ const routes = await bind('abstraction.router/router@1', router.RouterClient);
   const audited = hosts.asked.length, live = 'qwen/qwen3.6-35b-a3b';
   const choose = async (allowed) => (await routes.pick({...router.newPickRequest(), model: live, allowed})).decision;
   const resident = await choose(null);
-  assert.deepEqual([resident.verdict, resident.loads, Boolean(resident.endpoint), resident.authorised], ['resident', 0n, true, null]);
+  assert.deepEqual([resident.verdict, resident.loads, Boolean(resident.endpoint), resident.authorised], ['resident', 0n, false, null]);
   const refused = await choose({...router.newHostAllowance(), hosts: []});
   assert.deepEqual([refused.verdict, refused.endpoint, refused.authorised.hosts, refused.withheld.length > 0], ['unauthorised', '', [], true]);
   const cold = await choose({...router.newHostAllowance(), hosts: ['lmstudio']});
-  assert.deepEqual([cold.verdict, cold.loads, cold.host, Boolean(cold.endpoint)], ['would-load', 1n, 'lmstudio', true]);
+  assert.deepEqual([cold.verdict, cold.loads, cold.host, Boolean(cold.endpoint)], ['would-load', 1n, 'lmstudio', false]);
   const after = await routes.hosts(false);
   assert.equal(after.asked.length, audited + 3, 'audit recorded three picks');
   assert.ok(after.asked.slice(audited).every((a) => a.caller === after.observation.caller.pathDescription && a.user === after.observation.caller.userDescription), 'audit not bound to the JavaScript caller');
@@ -84,9 +84,17 @@ const routes = await bind('abstraction.router/router@1', router.RouterClient);
     ['Qwen3.6-35B-A3B-GGUF', ['lemonade', 'lmstudio'], 32768n, router.ContextSource.Effective, 28672n], 'Lemonade family offer');
   assert.deepEqual([studio.names, studio.context, studio.contextSource, studio.input],
     [['google/gemma-4-26b-it'], 131072n, router.ContextSource.Maximum, 126976n], 'LM Studio family offer');
+  // ObserveOffer: an empty cursor answers at once with Offer's offers and a cursor; that cursor with no wait answers the same.
+  const wanted = {...router.newOfferRequest(), placement: router.Placement.Any, reserve: 4096n};
+  const observed = await routes.observeOffer(wanted, '', 0n);
+  assert.equal(observed.outcome, router.OfferOutcome.Offered);
+  assert.ok(observed.cursor, 'ObserveOffer answers a cursor');
+  assert.deepEqual(observed.offers, offered, 'ObserveOffer answers the offers Offer answers');
+  assert.equal((await routes.observeOffer(wanted, observed.cursor, 0n)).cursor, observed.cursor, 'an unchanged observation keeps its cursor');
 }
 const pick = () => routes.pick({...router.newPickRequest(), model: 'js-model'});
 const offer = () => routes.offer({...router.newOfferRequest(), placement: router.Placement.Local});
+const observeOffer = () => routes.observeOffer({...router.newOfferRequest(), placement: router.Placement.Local}, '', 0n);
 assert.equal((await pick()).decision.asked, 'js-model');
 for (const [mode, code, outcome] of [
   ['router-forbidden', 'forbidden', router.OfferOutcome.NotPermitted],
@@ -97,6 +105,7 @@ for (const [mode, code, outcome] of [
     await assert.rejects(call(), (e) => e instanceof router.ServiceError && e.code === code, mode);
   }
   assert.deepEqual(await offer(), {...router.newOfferSnapshot(), outcome}, `${mode}: typed Offer refusal discloses no result`);
+  assert.deepEqual(await observeOffer(), {...router.newOfferObservation(), outcome}, `${mode}: typed ObserveOffer refusal discloses no result`);
 }
 writeFileSync(editPolicyFile, 'permit');
 assert.equal((await pick()).decision.asked, 'js-model');
@@ -105,6 +114,7 @@ done('Router.Models');
 done('Router.Hosts');
 done('Router.Pick');
 done('Router.Offer');
+done('Router.ObserveOffer');
 
 const acceptance = await bind('abstraction.job/acceptance@1', jobs.RecoverableAcceptanceClient, {maxFrame: 2097152});
 const operations = await bind('abstraction.job/operations@1', jobs.OperationControlClient, {maxFrame: 2097152});

@@ -30,6 +30,7 @@ const (
 	Installed  Phase = "installed"  // install identity was observed
 	Uncertain  Phase = "uncertain"  // inspect identity and ask before relaunch
 	Failed     Phase = "failed"     // a known no-effect refusal or failure
+	Removed    Phase = "removed"    // explicit native uninstall completed
 	// An update of an installed package passes two more steps before it is
 	// Installed. The retained earlier version stays the active one until then.
 	Staged  Phase = "staged"  // new version published beside the installed one; receipt verified
@@ -42,6 +43,11 @@ type WorkIdentity struct {
 	Attempt           int64              `json:"attempt"`
 	Binding           client.JobsBinding `json:"binding"`
 	OperationsBinding client.JobsBinding `json:"operations_binding"`
+	// Archive is the download archive entry an earlier build served these
+	// bytes from. The download service checks the archive itself now; work
+	// naming an entry is submitted under its reserved identity like any
+	// other.
+	Archive string `json:"archive,omitempty"`
 }
 
 type Effect struct {
@@ -60,11 +66,15 @@ type Effect struct {
 	// that still match the version's receipt.
 	Retired []Artifact `json:"retired,omitempty"`
 	// Removing records the explicit removal's completed withdrawal boundary.
-	// TheNoise also completed unlock; PyTorch resumes its CLI-owned removal.
+	// The component's removal owner resumes after that boundary. Native
+	// archives record intent before conditional registration removal.
 	Removing bool `json:"removing,omitempty"`
 	// ComponentRootKey is the filesystem identity of the generated PyTorch
 	// root Setup created. Input receipts and profile names prove no creator.
 	ComponentRootKey string `json:"component_root_key,omitempty"`
+	// ResourceIndex identifies the next catalog-derived archive part. Each job
+	// is recorded before submission; completed parts use fixed private names.
+	ResourceIndex int `json:"resource_index,omitempty"`
 }
 
 type State struct {
@@ -75,6 +85,15 @@ type State struct {
 	// EngineDeclarations retain the exact arguments Setup approved and
 	// supplied to the existing facade registry, including lost-reply recovery.
 	EngineDeclarations map[AppID]fwire.DeclarationWithExtensions `json:"engine_declarations,omitempty"`
+	// PictureStore is Setup's registration of OA's picture store
+	// (picture_store.go).
+	PictureStore *pictureStoreRecord `json:"picture_store,omitempty"`
+	// PyTorchProved names, per PyTorch set, the engine package (its
+	// SHA-256) the provider last proved the set's files for, so the proof
+	// runs once per engine package (pyTorchProveSets).
+	PyTorchProved map[string]string `json:"pytorch_proved,omitempty"`
+	// The retained native archive stays removable after a later plan drops it.
+	RetainedArchive *KeptPackage `json:"oa_build_comfy,omitempty"`
 }
 
 type Journal struct {
@@ -85,10 +104,16 @@ type Journal struct {
 }
 
 func (j Journal) catalog() Catalog {
+	var c Catalog
 	if j.catalogOverride != nil {
-		return *j.catalogOverride
+		c = *j.catalogOverride
+	} else {
+		c = NewCatalog()
 	}
-	return NewCatalog()
+	if j.Path != "" {
+		c.archiveCacheRoot = filepath.Join(filepath.Dir(j.Path), "downloads")
+	}
+	return c
 }
 
 // Catalog is the release catalog this journal reviews, records and installs
@@ -155,11 +180,18 @@ func (j Journal) SavePlan(ctx context.Context, plan Plan) (State, error) {
 		if err != nil {
 			return nil, err
 		}
-		if previous.Effects["pytorch-engine"].ComponentRootKey != "" {
-			old, had := planComponent(previous.Plan, "pytorch-engine")
-			next, has := planComponent(plan, "pytorch-engine")
-			if !had || !has || old.Artifact == nil || next.Artifact == nil || *old.Artifact != *next.Artifact {
-				return nil, errors.New("remove the journal-owned PyTorch component explicitly before changing or dropping its fixed package; its ownership evidence is preserved")
+		for id, effect := range previous.Effects {
+			if effect.ComponentRootKey == "" {
+				continue
+			}
+			old, had := planComponent(previous.Plan, id)
+			next, has := planComponent(plan, id)
+			if !had || !has || old.Artifact == nil || next.Artifact == nil || !reflect.DeepEqual(old.Artifact, next.Artifact) {
+				title := old.Title
+				if title == "" {
+					title = id
+				}
+				return nil, fmt.Errorf("remove the journal-owned component %s explicitly before changing or dropping its package", title)
 			}
 		}
 		if previous.Plan.ID != "" && previous.Plan.ID != plan.ID {
@@ -170,8 +202,14 @@ func (j Journal) SavePlan(ctx context.Context, plan Plan) (State, error) {
 			}
 		}
 		saved = State{Plan: plan, ApprovedPlanID: plan.ID, Effects: make(map[string]Effect, len(plan.Components)), Configuration: make(map[string]bool)}
-		for _, engine := range []AppID{TheNoise, PyTorch} {
-			if slices.Contains(plan.Selected, engine) {
+		// OA's picture store registration and the PyTorch proofs outlive a
+		// plan: a store the person removed stays removed, and a proof is
+		// keyed by its engine package.
+		saved.PictureStore, saved.PyTorchProved = previous.PictureStore, previous.PyTorchProved
+		saved.RetainedArchive = retainDisplacedNativeArchive(previous, plan)
+		for _, recipe := range starterPictureRecipes {
+			engine := recipe.engine
+			if recipe.standalone && slices.Contains(plan.Selected, engine) {
 				old, had := planComponent(previous.Plan, string(engine)+"-engine")
 				next, has := planComponent(plan, string(engine)+"-engine")
 				if had && has && sameArtifact(old.Artifact, next.Artifact) {
@@ -255,10 +293,15 @@ func (j Journal) Update(ctx context.Context, planID, componentID string, expecte
 		if !ok || !reflect.DeepEqual(current, expected) {
 			return nil, fmt.Errorf("setup component %q changed; reload before continuing", componentID)
 		}
-		if componentID == "pytorch-engine" && current.Removing {
-			return nil, errors.New("PyTorch removal is in progress; finish explicit removal before another transition")
+		if current.Removing {
+			return nil, errors.New("removal is in progress; finish explicit removal before another transition")
 		}
-		if !validTransition(expected.Phase, next.Phase) {
+		resourceAdvance := false
+		if expected.Phase == Requested && next.Phase == Requested {
+			component, _ := planComponent(state.Plan, componentID)
+			resourceAdvance = component.Artifact != nil && component.Artifact.NativeResources != nil && next.ResourceIndex == current.ResourceIndex+1 && next.ResourceIndex <= len(component.Artifact.NativeResources.Backend.Archive.Parts) && next.Work != nil && current.Work != nil && next.Work.Key == nativeResourceWorkKey(componentID, *component.Artifact, next.ResourceIndex) && next.StagedPath == nativeHostStagePath(j, *component.Artifact)
+		}
+		if !validTransition(expected.Phase, next.Phase) && !resourceAdvance {
 			return nil, fmt.Errorf("invalid setup transition %s -> %s", expected.Phase, next.Phase)
 		}
 		if next.Phase == Requested && !validWorkIdentity(next.Work) {
@@ -276,15 +319,16 @@ func (j Journal) Update(ctx context.Context, planID, componentID string, expecte
 		if next.Work == nil {
 			next.Work = current.Work
 		}
+		if !resourceAdvance {
+			next.ResourceIndex = current.ResourceIndex
+		}
 		if next.StagedPath == "" {
 			next.StagedPath = current.StagedPath
 		}
-		if componentID == "pytorch-engine" {
-			if next.ComponentRootKey != "" && next.ComponentRootKey != current.ComponentRootKey {
-				return nil, errors.New("component root ownership changes only at its allocation boundary")
-			}
-			next.ComponentRootKey = current.ComponentRootKey
+		if next.ComponentRootKey != "" && next.ComponentRootKey != current.ComponentRootKey {
+			return nil, errors.New("component root ownership changes only at its allocation boundary")
 		}
+		next.ComponentRootKey = current.ComponentRootKey
 		next.Revision = current.Revision + 1
 		state.Effects[componentID] = next
 		saved = state
@@ -351,7 +395,7 @@ func (j Journal) ForgetRetired(ctx context.Context, planID, componentID string, 
 		if !ok || !reflect.DeepEqual(current, expected) {
 			return nil, fmt.Errorf("setup component %q changed; reload before continuing", componentID)
 		}
-		index := slices.IndexFunc(current.Retired, func(a Artifact) bool { return a == retired })
+		index := slices.IndexFunc(current.Retired, func(a Artifact) bool { return reflect.DeepEqual(a, retired) })
 		if index < 0 {
 			return nil, errors.New("this version is not awaiting removal")
 		}
@@ -403,18 +447,28 @@ func (j Journal) knownInstalledArtifact(state State, componentID string) (Artifa
 	if state.Plan.ID == "" || state.ApprovedPlanID != state.Plan.ID {
 		return Artifact{}, errors.New("setup plan is not approved")
 	}
-	if err := j.recognizePriorPlan(state.Plan); err != nil {
+	if err := j.recognizePriorIdentity(state.Plan); err != nil {
 		return Artifact{}, err
 	}
+	return j.cataloguedActiveArtifact(state, componentID)
+}
+
+// cataloguedActiveArtifact checks the active or retained effect against this
+// release's exact pins. The calling operation owns any approval or file proof.
+func (j Journal) cataloguedActiveArtifact(state State, componentID string) (Artifact, error) {
 	artifact, err := activeArtifact(state, componentID)
 	if err != nil {
 		return Artifact{}, err
 	}
 	if !j.catalog().knownInstallArtifact(componentID, artifact) {
-		return Artifact{}, errors.New("installed package pin is not known to this release")
+		return Artifact{}, errUnknownInstalledPin
 	}
 	return artifact, nil
 }
+
+// errUnknownInstalledPin is an installed package whose pin this release does
+// not carry, such as a private preview's local package.
+var errUnknownInstalledPin = errors.New("installed package pin is not known to this release")
 
 // InstalledVersions returns the version of each component that is in use,
 // for display. It confers no authority to launch or install.
@@ -437,6 +491,9 @@ func (j Journal) InstalledVersions(ctx context.Context) (map[string]Artifact, er
 func activeArtifact(state State, componentID string) (Artifact, error) {
 	component, ok := planComponent(state.Plan, componentID)
 	effect := state.Effects[componentID]
+	if effect.Removing || effect.Phase == Removed {
+		return Artifact{}, errors.New("component is being removed or was removed")
+	}
 	switch {
 	case ok && component.Artifact != nil && effect.Phase == Installed:
 		return *component.Artifact, nil
@@ -449,6 +506,22 @@ func activeArtifact(state State, componentID string) (Artifact, error) {
 // recognizePriorPlan checks only fixed release-owned app identities. The
 // journal's old URL, action and work identity never authorize fresh effects.
 func (j Journal) recognizePriorPlan(plan Plan) error {
+	if err := j.recognizePriorIdentity(plan); err != nil {
+		return err
+	}
+	catalog := j.catalog()
+	for _, component := range plan.Components {
+		if component.Artifact != nil && !catalog.knownInstallArtifact(component.ID, *component.Artifact) {
+			return fmt.Errorf("prior setup package %q is not known to this release", component.ID)
+		}
+	}
+	return nil
+}
+
+// recognizePriorIdentity checks the earlier plan's identity, choices and
+// component names against this release, leaving each package pin to its
+// own check.
+func (j Journal) recognizePriorIdentity(plan Plan) error {
 	catalog := j.catalog()
 	if err := catalog.Validate(); err != nil {
 		return err
@@ -492,9 +565,6 @@ func (j Journal) recognizePriorPlan(plan Plan) error {
 			return errors.New("prior setup plan has unknown or duplicate component")
 		}
 		seen[component.ID] = true
-		if component.Artifact != nil && !catalog.knownInstallArtifact(component.ID, *component.Artifact) {
-			return fmt.Errorf("prior setup package %q is not known to this release", component.ID)
-		}
 	}
 	return nil
 }
@@ -504,7 +574,7 @@ func (s State) Ready() bool {
 		return false
 	}
 	for _, component := range s.Plan.Components {
-		if s.Effects[component.ID].Phase != Installed {
+		if s.Effects[component.ID].Phase != Installed || s.Effects[component.ID].Removing {
 			return false
 		}
 	}
@@ -559,6 +629,9 @@ func validTransition(before, after Phase) bool {
 		return slices.Contains([]Phase{Checked, Failed}, after)
 	case Checked:
 		return slices.Contains([]Phase{Installed, Failed}, after)
+	case Installed:
+		// Runner.Retry only, once the installed folder is gone.
+		return slices.Contains([]Phase{Requested, Verified}, after)
 	}
 	return false
 }
@@ -596,5 +669,5 @@ func sameArtifact(a, b *Artifact) bool {
 	if a == nil || b == nil {
 		return a == nil && b == nil
 	}
-	return a.SHA256 == b.SHA256 && a.InstallIdentity == b.InstallIdentity && a.Action == b.Action
+	return a.SHA256 == b.SHA256 && a.InstallIdentity == b.InstallIdentity && a.Action == b.Action && a.ApplicationProgram == b.ApplicationProgram && a.ServiceProgram == b.ServiceProgram && a.ArchiveToolProgram == b.ArchiveToolProgram && reflect.DeepEqual(a.NativeResources, b.NativeResources)
 }

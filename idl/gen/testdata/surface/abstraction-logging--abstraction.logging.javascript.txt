@@ -3,6 +3,7 @@ class ApplicationHistoryObserverClient
 object ApplicationHistoryObserverService {wireName, Client}
 class ApplicationHistoryReaderClient
   read(target, cursor, maxRecords, maxBytes)
+  readAboutCaller(since, cursor, maxRecords, maxBytes)
 object ApplicationHistoryReaderService {wireName, Client}
 enum ApplicationLogSelection
   OneApp
@@ -24,8 +25,15 @@ enum HistoryPageOutcome
   OsAuthorizationRequired
   OsAuthorizationPending
 class HistoryReaderClient
+  usage()
   read(cursor, maxRecords, maxBytes)
 object HistoryReaderService {wireName, Client}
+enum HistoryUsageOutcome
+  Available
+  Unavailable
+  Corrupt
+  Forbidden
+  Invalid
 enum PageOutcome
   Page
   Gap
@@ -78,6 +86,8 @@ function decodeApplicationLogPage(data)
 function decodeApplicationLogResource(data)
 function decodeApplicationLogTarget(data)
 function decodeAttestation(data)
+function decodeHistoryUsage(data)
+function decodeHistoryUsageResult(data)
 function decodePage(data)
 function decodeProducerClaim(data)
 function decodeRecord(data)
@@ -85,11 +95,17 @@ function decodeSourceCatalog(data)
 function decodeSourceDescriptor(data)
 function decodeSourcePage(data)
 function decodeSourceRecord(data)
+number defaultAsyncCapacity
+number defaultInitialBackoffMs
+number defaultMaxBackoffMs
+number defaultWriteTimeoutMs
 function encode(v)
 function encodeApplicationLogPage(v)
 function encodeApplicationLogResource(v)
 function encodeApplicationLogTarget(v)
 function encodeAttestation(v)
+function encodeHistoryUsage(v)
+function encodeHistoryUsageResult(v)
 function encodePage(v)
 function encodeProducerClaim(v)
 function encodeRecord(v)
@@ -97,6 +113,7 @@ function encodeSourceCatalog(v)
 function encodeSourceDescriptor(v)
 function encodeSourcePage(v)
 function encodeSourceRecord(v)
+function fromJson(kind, data)
 const historyCursorWords
 const historyErrorCodes
 const historyIdentityErrorCodes
@@ -124,6 +141,14 @@ function newAttestation()
   pid
   key
   mac
+function newHistoryUsage()
+  retainedBytes
+  oldest
+  maxUse
+  maxRetentionMs
+function newHistoryUsageResult()
+  outcome
+  usage
 function newPage()
   outcome
   records
@@ -161,3 +186,6 @@ function newSourceRecord()
   sourceId
   record
   producer
+function toJson(kind, value)
+number writerBackoffJitterPercent
+string writerGapMessage

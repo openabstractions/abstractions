@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"log"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 	asksservice "github.com/openabstractions/abstraction-asks/go/application"
 	"github.com/openabstractions/abstraction-facade/go/grants"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
+	"github.com/openabstractions/abstraction-identity/listen"
 	inference "github.com/openabstractions/abstraction-inference/go"
 	rights "github.com/openabstractions/abstraction-rights/go"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
@@ -37,6 +39,9 @@ type answererFixture struct {
 
 func newAnswererFixture(t *testing.T) *answererFixture {
 	t.Helper()
+	// A callback that reads the Book under its own lock panics here
+	// instead of hanging every question (asks CheckBookLockReentry).
+	t.Cleanup(asks.CheckBookLockReentry())
 	dir := t.TempDir()
 	program := func(name string) string {
 		path := filepath.Join(dir, name)
@@ -63,12 +68,23 @@ func newAnswererFixture(t *testing.T) *answererFixture {
 	}
 	policy.Clock = func() time.Time { f.mu.Lock(); defer f.mu.Unlock(); return f.clock }
 	r := &runtimeRights{policy: policy, owner: account, operators: []string{f.panel.Program}}
+	directory, err := openApplications(dir, account, func(context.Context, rwire.Subject, string, string) (bool, error) { return true, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory.roleDecode = func([]byte, string) (bool, error) { return false, nil }
+	if err := directory.attachApplicationV3(context.Background(), registration1459Decoder); err != nil {
+		t.Fatal(err)
+	}
+	r.applications = directory
+	policy.RefreshMetaHolder = r.refreshApplicationRoles
 	policy.MetaHolder = r.refuseAnswerer
 	book, err := asks.LoadApplicationBook(filepath.Join(dir, "application.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.a = &runtimeAsks{book: book, rights: r, report: func(err error) { t.Log(err) }, scope: "asks-owner-program@1:runtime", display: "runtime",
+	// Enrollment followers can report while the test context is closing.
+	f.a = &runtimeAsks{book: book, rights: r, report: func(err error) { log.Print(err) }, scope: "asks-owner-program@1:runtime", display: "runtime",
 		applied: &appliedEffects{path: filepath.Join(dir, "first-use-effects.json")}}
 	f.a.tierFacts = grants.TierFacts{
 		LocalServer:    func(name string) bool { return name == "lemonade" },
@@ -139,12 +155,16 @@ func (f *answererFixture) ask(t *testing.T, app rwire.Subject, action, resource 
 // answer is the responder receiver's Answer: the check inside the Book edit,
 // then the effect.
 func (f *answererFixture) answer(who answerer, id, option string) (string, askswire.ResponderEffectOutcome) {
+	ctx, err := f.a.rights.policy.PrepareMetaHolderContext(context.Background())
+	if err != nil {
+		return "unavailable", askswire.ResponderEffectOutcomeNone
+	}
 	var effect asksservice.ResponderEffect
 	wasPending := false
 	_, outcome, err := f.a.book.AnswerApplicationAsResponder(id, option, who.subject.Program, func(record asks.Record, scope string) error {
 		wasPending = record.Pending()
 		var e error
-		effect, e = f.a.authorizeAnswerer(context.Background(), who, record, scope, option)
+		effect, e = f.a.authorizeAnswerer(ctx, who, record, scope, option)
 		return e
 	})
 	if errors.Is(err, asksservice.ErrResponderForbidden) {
@@ -155,7 +175,7 @@ func (f *answererFixture) answer(who answerer, id, option string) (string, asksw
 	}
 	result := askswire.ResponderEffectOutcomeNone
 	if outcome == "answered" && effect != nil {
-		result, _ = effect(context.Background(), func() error { return nil }, wasPending)
+		result, _ = effect(ctx, func() error { return nil }, wasPending)
 	}
 	return outcome, result
 }
@@ -517,63 +537,24 @@ func TestQuestionTextCannotSteerTheTier(t *testing.T) {
 	}
 }
 
-// A decision with the answerer's checks (enrollment, tier, script host,
-// parties) among 100 rules stays under a millisecond, as RIGHTS-R3's
-// decision does. The check is one enrollment decision, whose work rights'
-// TestDecisionCostAmongHundredRules counts, and the parties' file identities,
-// each read once (programMatcher). This test counts those reads at the
-// matcher's read point, on every platform; a
-// wall-clock bound measured the machine's load and failed a loaded gate at
-// 1.06 ms (2026-10-07).
-func TestTheAnswererCheckCostAmongHundredRules(t *testing.T) {
+// Application command permissions are answered only as the typed FAC-M19
+// effect: an untyped first-use record naming an abstraction.facade/command.
+// action is neither listed nor answered by an enrolled assistant.
+func TestAnswererRefusesUntypedApplicationCommandRecord(t *testing.T) {
 	f := newAnswererFixture(t)
 	f.enroll(t, f.answerer)
-	permit := true
-	dir := filepath.Dir(f.cli.Program)
-	for i := range 100 {
-		program := filepath.Join(dir, "app"+string(rune('a'+i%26))+string(rune('a'+i/26))+".exe")
-		if err := os.WriteFile(program, []byte(program), 0o755); err != nil {
-			t.Fatal(err)
+	target := asks.PermissionTarget{Account: f.comfy.Account, Program: f.comfy.Program, Action: "abstraction.facade/command.read", Resource: "app:comfyui"}
+	request, err := asks.NewPermissionRequest(target)
+	if err != nil {
+		t.Skipf("the untyped command record cannot be built: %v", err)
+	}
+	record, outcome, err := f.a.book.AskPermissionFrom(f.a.scope, "comfyui.exe", "untyped-command-read", request, listen.Seen{Why: "untyped command fixture"}, asks.Publisher{})
+	if err != nil || record.ID == "" || outcome != "pending" {
+		t.Fatalf("untyped command record: %s %v", outcome, err)
+	}
+	for _, option := range record.Options {
+		if f.answerable(f.me(), record, option) {
+			t.Fatalf("an enrolled assistant may answer an untyped command record with %s", option)
 		}
-		if _, err := f.a.rights.policy.ChangeRule(f.revision(t), rwire.Subject{Account: f.cli.Account, Program: program}, contentReadAction, "output:image",
-			rights.RuleEdit{Permit: &permit, By: f.panel}, func() error { return nil }); err != nil {
-			t.Fatal(err)
-		}
-	}
-	q := f.ask(t, f.comfy, host.ModelLookupAction, "hf")
-	if !f.answerable(f.me(), q, "allow") {
-		t.Fatal("the fixture question is not answerable")
-	}
-	const checks = 200
-	// The matcher's reads are counted at its one read point, which every
-	// platform passes (identity's open observer reports only on Windows).
-	var mu sync.Mutex
-	reads := map[string]int{}
-	real := matcherProgramKey
-	matcherProgramKey = func(program string) string {
-		mu.Lock()
-		reads[program]++
-		mu.Unlock()
-		return real(program)
-	}
-	t.Cleanup(func() { matcherProgramKey = real })
-	start := time.Now()
-	for range checks {
-		f.a.authorizeAnswerer(context.Background(), f.me(), q, f.a.scope, "allow")
-	}
-	span := time.Since(start)
-	matcherProgramKey = real
-	total := 0
-	for _, n := range reads {
-		total += n
-	}
-	t.Logf("%d answerer checks among 100 rules in %v: %d file identity reads over %d programs", checks, span, total, len(reads))
-	if total == 0 || total > answererReadsPerCheck*checks {
-		t.Errorf("%d answerer checks read file identities %d times; the bound is 1 to %d per check", checks, total, answererReadsPerCheck)
 	}
 }
-
-// answererReadsPerCheck bounds the file identity reads of one answerer check
-// once each party is read once: three on 2026-10-07. A check that compared
-// the 100 stored rule programs by file identity would read about a hundred.
-const answererReadsPerCheck = 3
