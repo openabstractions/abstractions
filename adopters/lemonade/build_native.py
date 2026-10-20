@@ -549,7 +549,7 @@ def prepare(args):
 def expand(value, variables):
     for name, replacement in variables.items():
         value = value.replace('$(var.' + name + ')', str(replacement))
-    if '$(' in value or '@' in value:
+    if '$(' in value or re.search(r'@[A-Za-z_][A-Za-z0-9_]*@', value):
         raise ValueError('unresolved WiX source symbol')
     return value.replace('\\', '/')
 
