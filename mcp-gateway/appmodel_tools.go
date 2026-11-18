@@ -45,10 +45,18 @@ func (b *messagesBackend) ApplicationsCall(ctx context.Context, call appmodel.Ga
 	return native.ApplicationsCall(ctx, call)
 }
 
-func (b *messagesBackend) ApplicationsOpen(ctx context.Context, request applications.ActivateRequest) (applications.ActivationResult, error) {
+func (b *messagesBackend) ApplicationsOpen(ctx context.Context, request applications.OpenRequest) (applications.OpenResult, error) {
 	native, ok := b.Backend.(gateway.AppModelBackend)
 	if !ok {
-		return applications.ActivationResult{}, errors.New("applications: native mediation unavailable")
+		return applications.OpenResult{}, errors.New("applications: native mediation unavailable")
 	}
 	return native.ApplicationsOpen(ctx, request)
+}
+
+func (b *messagesBackend) ApplicationsDescribeOpen(ctx context.Context, query appmodel.OpenHandleQuery) (applications.DescribeResult, error) {
+	native, ok := b.Backend.(gateway.AppModelBackend)
+	if !ok {
+		return applications.DescribeResult{}, errors.New("applications: native mediation unavailable")
+	}
+	return native.ApplicationsDescribeOpen(ctx, query)
 }

@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade/messages"
@@ -104,16 +105,62 @@ func TestMessagesSendByReceiverReconcilesUncertainSend(t *testing.T) {
 	}
 }
 
-// The prepared form keeps its exact grammar; mixing the two forms sends nothing.
+// A reply, a withdrawal, a paired peer or a to naming another receiver needs
+// the prepared form or oa_messages_reply; nothing is sent.
 func TestMessagesSendByReceiverRefusesMixedForms(t *testing.T) {
-	b := &receiverSendFixture{messageCorpusFixture: messageCorpusFixture{messageFixture: messageFixture{Backend: &fixtureBackend{}}}}
-	_, session := connected(t, b, "native-caller", "2025-11-25")
-	r, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: ToolMessagesSend, Arguments: map[string]any{"receiver": "Claude", "body": "hi", "to": "app:oa-claude-integration", "idempotency_key": "k"}})
-	if err != nil || r.IsError || len(b.sends) != 0 || b.prepares != 0 {
-		t.Fatal(r, err, b.sends, b.prepares)
+	prepared := MessagesSendInput{To: "app:oa-claude-integration", Context: "chat-ab33", Kind: "note", Body: "hi", IdempotencyKey: "native-key", ExpiresUnixMs: 4102444800000}
+	for _, extra := range []map[string]any{{"reply_to": "m1"}, {"withdraw": "m1"}, {"kind": "reply"}, {"peer_key": strings.Repeat("a", 64)}, {"to": "app:oa-codex-integration"}} {
+		b := &receiverSendFixture{messageCorpusFixture: messageCorpusFixture{messageFixture: messageFixture{Backend: &fixtureBackend{}}, prepared: prepared}}
+		_, session := connected(t, b, "native-caller", "2025-11-25")
+		args := map[string]any{"receiver": "Claude", "body": "hi"}
+		for k, v := range extra {
+			args[k] = v
+		}
+		r, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: ToolMessagesSend, Arguments: args})
+		if err != nil || r.IsError || len(b.sends) != 0 {
+			t.Fatal(extra, r, err, b.sends)
+		}
+		if out, _ := sendResultText(t, r); out.Outcome != wire.OutcomeInvalid || out.Reason != "receiver_form" {
+			t.Fatal(extra, out)
+		}
 	}
-	if out, _ := sendResultText(t, r); out.Outcome != wire.OutcomeInvalid {
-		t.Fatal(out)
+}
+
+// 2026-11-19: oa_messages_send with receiver "Codex", with or without
+// context, and with receiver "app:oa-codex-integration" answered
+// receiver_form, because the model also filled the prepared-form fields the
+// schema lists. Those sends now go out; the caller's idempotency key and an
+// earlier expiry carry into the prepared request.
+func TestMessagesSendByReceiverAcceptsFilledPreparedFields(t *testing.T) {
+	prepared := MessagesSendInput{To: "app:oa-codex-integration", Context: "chat-c0de", Kind: "question", Body: "status?", IdempotencyKey: "native-key", ExpiresUnixMs: 4102444800000, AnswerByUnixMs: 4102444000000}
+	expires := time.Now().Add(time.Hour).UnixMilli()
+	for _, args := range []map[string]any{
+		{"receiver": "Codex", "body": "status?", "to": "", "idempotency_key": "", "expires_unix_ms": 0},
+		{"receiver": "Codex", "context": "chat-c0de", "body": "status?", "kind": "question", "to": "app:oa-codex-integration", "idempotency_key": "model-key-1", "expires_unix_ms": expires},
+		{"receiver": "app:oa-codex-integration", "body": "status?", "to": "Codex", "idempotency_key": "model-key-2", "answer_by_unix_ms": expires - 1000},
+	} {
+		b := &receiverSendFixture{messageCorpusFixture: messageCorpusFixture{messageFixture: messageFixture{Backend: &fixtureBackend{}}, prepared: prepared, result: wire.SendResult{Outcome: wire.OutcomeSent, MessageID: "m"}}}
+		_, session := connected(t, b, "native-caller", "2025-11-25")
+		r, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: ToolMessagesSend, Arguments: args})
+		if err != nil || r.IsError {
+			t.Fatal(args, r, err)
+		}
+		if out, _ := sendResultText(t, r); out.Outcome != wire.OutcomeSent || len(b.sends) != 1 {
+			t.Fatal(args, out, b.sends)
+		}
+		sent := b.sends[0]
+		if key, _ := args["idempotency_key"].(string); key != "" && sent.IdempotencyKey != key || key == "" && sent.IdempotencyKey != prepared.IdempotencyKey {
+			t.Fatal("idempotency key", args, sent)
+		}
+		if at, _ := args["expires_unix_ms"].(int64); at != 0 && sent.ExpiresUnixMs != at {
+			t.Fatal("expiry", args, sent)
+		}
+		if at, _ := args["answer_by_unix_ms"].(int64); at != 0 && sent.AnswerByUnixMs != at {
+			t.Fatal("answer by", args, sent)
+		}
+		if sent.To != prepared.To || sent.Context != prepared.Context || sent.Body != prepared.Body {
+			t.Fatal("prepared request changed", sent)
+		}
 	}
 }
 
@@ -159,6 +206,58 @@ func TestMessagesSendByReceiverTellsReachSentence(t *testing.T) {
 		out, next := sendResultText(t, r)
 		if out.Outcome != wire.OutcomeSent || !strings.Contains(next, c.want) || strings.Contains(next, c.refuse) {
 			t.Fatal(out, next)
+		}
+	}
+}
+
+// Each receiver_form refusal names the one next step.
+func TestMessagesSendByReceiverRefusalNamesTheNextStep(t *testing.T) {
+	prepared := MessagesSendInput{To: "app:oa-claude-integration", Context: "chat-ab33", Kind: "note", Body: "hi", IdempotencyKey: "native-key", ExpiresUnixMs: 4102444800000}
+	for _, step := range []struct {
+		extra map[string]any
+		want  string
+	}{
+		{map[string]any{"reply_to": "m1"}, receiverFormReply},
+		{map[string]any{"kind": "reply"}, receiverFormReply},
+		{map[string]any{"peer_key": strings.Repeat("a", 64)}, receiverFormPaired},
+		{map[string]any{"withdraw": "m1"}, receiverFormWithdraw},
+		{map[string]any{"withdraw": "m1", "context": "chat-ab33", "to": "app:oa-codex-integration"}, receiverFormTo},
+		{map[string]any{"to": "app:oa-codex-integration"}, receiverFormTo},
+	} {
+		b := &receiverSendFixture{messageCorpusFixture: messageCorpusFixture{messageFixture: messageFixture{Backend: &fixtureBackend{}}, prepared: prepared}}
+		_, session := connected(t, b, "native-caller", "2025-11-25")
+		args := map[string]any{"receiver": "Claude", "body": "hi"}
+		for k, v := range step.extra {
+			args[k] = v
+		}
+		r, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: ToolMessagesSend, Arguments: args})
+		if err != nil || r.IsError || len(b.sends) != 0 {
+			t.Fatal(step.extra, r, err)
+		}
+		if out, rest := sendResultText(t, r); out.Reason != "receiver_form" || rest != step.want {
+			t.Fatal(step.extra, out, rest)
+		}
+	}
+}
+
+// 2026-11-22: a withdraw send with receiver app:oa-codex-integration and
+// context answered receiver_form. It now withdraws that question; the native
+// service checks the question is this chat's to that receiver and chat.
+func TestMessagesSendByReceiverWithdrawsAQuestion(t *testing.T) {
+	for _, receiver := range []string{"app:oa-codex-integration", "Codex"} {
+		b := &receiverSendFixture{messageCorpusFixture: messageCorpusFixture{messageFixture: messageFixture{Backend: &fixtureBackend{}}, result: wire.SendResult{Outcome: wire.OutcomeSent, MessageID: "w"}}}
+		_, session := connected(t, b, "native-caller", "2025-11-25")
+		args := map[string]any{"receiver": receiver, "context": "chat-c0de", "withdraw": "m-2950", "body": "No longer needed."}
+		r, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: ToolMessagesSend, Arguments: args})
+		if err != nil || r.IsError {
+			t.Fatal(r, err)
+		}
+		if out, _ := sendResultText(t, r); out.Outcome != wire.OutcomeSent || b.prepares != 0 || len(b.sends) != 1 {
+			t.Fatal(out, b.prepares, b.sends)
+		}
+		sent := b.sends[0]
+		if sent.To != "app:oa-codex-integration" || sent.Context != "chat-c0de" || sent.Kind != "note" || sent.Withdraw != "m-2950" || sent.IdempotencyKey != "withdraw:m-2950" || sent.ExpiresUnixMs <= time.Now().UnixMilli() || sent.Receiver != "" {
+			t.Fatal("withdrawal request", sent)
 		}
 	}
 }

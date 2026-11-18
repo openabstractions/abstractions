@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -164,6 +165,8 @@ func pictureProviderFile(program, name string, models ...string) providerFile {
 // 2026-11-09): Diffusers (pytorchd, pytorch-image) for a model its pinned set
 // holds, then Lemonade, then TheNoise. Each provider still serves the models
 // only it holds, and the order holds however the providers were registered.
+// Each engine runs from its own shipped program, the product standing the
+// rank needs (A-SEC6, ruling 2026-11-22 (1)).
 func TestImageAsksDiffusersThenLemonadeThenTheNoise(t *testing.T) {
 	principal, err := currentPrincipal()
 	if err != nil {
@@ -174,6 +177,21 @@ func TestImageAsksDiffusersThenLemonadeThenTheNoise(t *testing.T) {
 		t.Fatal(err)
 	}
 	signedByRuntimeSigner(t, program)
+	machine := installedPerMachine(t)
+	shippedProgram := func(file string) string {
+		t.Helper()
+		path := filepath.Join(machine, shippedFixtureProgram(file))
+		if err := os.WriteFile(path, []byte("MZ"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	shipped := func(name, file string, models ...string) providerFile {
+		t.Helper()
+		f := pictureProviderFile(shippedProgram(file), name, models...)
+		f.Source = declarationSourceInstallation
+		return f
+	}
 	route := func(model string, files ...providerFile) *router.Decision {
 		t.Helper()
 		p := &runtimeProviders{principal: principal, report: func(error) {}, supervisors: map[string]*providerSupervisor{}, mediated: map[string]mediatedProvider{}}
@@ -194,9 +212,9 @@ func TestImageAsksDiffusersThenLemonadeThenTheNoise(t *testing.T) {
 	}
 	// An unrelated provider whose name sorts before every picture provider.
 	other := pictureProviderFile(program, "aaa-image", "flux2-klein-4b")
-	diffusers := pictureProviderFile(program, "pytorch-image", "flux2-klein-4b")
-	lemonade := pictureProviderFile(program, "lemonade-image", "flux2-klein-4b", "sd-turbo")
-	thenoise := pictureProviderFile(program, "thenoise-image", "flux2-klein-4b", "noise-only")
+	diffusers := shipped("pytorch-image", "pytorchd.exe", "flux2-klein-4b")
+	lemonade := shipped("lemonade-image", "lemonaded.exe", "flux2-klein-4b", "sd-turbo")
+	thenoise := shipped("thenoise-image", "thenoise-provider.exe", "flux2-klein-4b", "noise-only")
 	for _, c := range []struct {
 		files       []providerFile
 		model, want string

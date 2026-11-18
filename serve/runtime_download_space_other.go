@@ -4,6 +4,6 @@ package main
 
 import "errors"
 
-func localDownloadDiskSpace(string) (uint64, uint64, error) {
+func readLocalDownloadDiskSpace(string) (uint64, uint64, error) {
 	return 0, 0, errors.ErrUnsupported
 }

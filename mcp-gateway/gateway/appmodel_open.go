@@ -38,10 +38,10 @@ const (
 	openHandleLimit = 64
 	startupContext  = "startup"
 	// openPersonFloor is the least time an open waits for the person to
-	// answer OA's "Open <app>?" question. The runtime keeps the question
-	// open while this call waits and withdraws it when the call leaves; a
-	// person needs minutes to notice a popup (installed check 2026-11-21,
-	// where a 40 s wait closed every question unseen).
+	// answer OA's "Open <app>?" question. A person needs minutes to notice a
+	// popup (installed check 2026-11-21). A runtime that keeps the question
+	// up after the call (architect ruling 2026-11-22) answers sooner, with
+	// the question id and the open handle.
 	openPersonFloor = 5 * time.Minute
 )
 
@@ -137,6 +137,18 @@ var errOpenHandle = openInputError{"invalid_handle", "The open handle is unavail
 
 // openArguments takes handle and wait_ms out of an open's arguments. With a
 // handle, the other arguments are not needed and are passed over.
+// openGivenWait is the agent's own wait_ms, when it passed one: the cap on
+// the runtime's wait for the person's answer.
+func openGivenWait(raw json.RawMessage) (int64, bool) {
+	var fields struct {
+		WaitMs *int64 `json:"wait_ms"`
+	}
+	if json.Unmarshal(raw, &fields) != nil || fields.WaitMs == nil || *fields.WaitMs < 0 {
+		return 0, false
+	}
+	return min(*fields.WaitMs, openWaitMax.Milliseconds()), true
+}
+
 func openArguments(raw json.RawMessage) (json.RawMessage, string, time.Duration, error) {
 	fields := map[string]json.RawMessage{}
 	if trimmed := bytes.TrimSpace(raw); len(trimmed) != 0 && !bytes.Equal(trimmed, []byte("null")) {
@@ -311,9 +323,19 @@ func openFollow(ctx context.Context, backend AppModelBackend, bounded func(conte
 // (opened, starting or the outcome), and for a start in progress its phase
 // and handle, then the sentence the agent relays.
 func openAnswer(application string, out applications.ActivationResult, handle, phase string) (*mcp.CallToolResult, error) {
+	return openResultAnswer(application, applications.OpenResult{Result: out}, handle, phase)
+}
+
+// openResultAnswer is openAnswer for an Open answer: an open question that
+// outlived the call adds its question id and open handle to the record.
+func openResultAnswer(application string, open applications.OpenResult, handle, phase string) (*mcp.CallToolResult, error) {
+	out := open.Result
 	var record map[string]any
 	if err := json.Unmarshal(applications.EncodeActivationResult(&out), &record); err != nil {
 		return nil, err
+	}
+	if open.Question != "" && open.Handle != "" {
+		record["question"], record["handle"] = open.Question, open.Handle
 	}
 	status := out.Outcome.String()
 	if out.Outcome == applications.ActivationOutcomeReady {
@@ -340,7 +362,7 @@ func openAnswer(application string, out applications.ActivationResult, handle, p
 	// A start in progress is no failure: the agent follows it by handle. A
 	// question the person has not answered yet is none either.
 	result.IsError = result.IsError && handle == "" && !awaiting
-	sentence := appModelOpenSentence(application, out)
+	sentence := appModelOpenResultSentence(application, open)
 	if handle != "" {
 		app := application
 		if out.Title != "" {
@@ -354,6 +376,17 @@ func openAnswer(application string, out applications.ActivationResult, handle, p
 	}
 	result.Content = append(result.Content, &mcp.TextContent{Text: sentence, Annotations: &mcp.Annotations{Audience: []mcp.Role{"assistant"}}})
 	return result, nil
+}
+
+// describesOpenHandle reports an oa_applications_describe call that names
+// open_handle, which DescribeOpen answers.
+func describesOpenHandle(raw json.RawMessage) bool {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil {
+		return false
+	}
+	_, named := fields["open_handle"]
+	return named
 }
 
 // awaitingPermission is the status of an open whose question the person has

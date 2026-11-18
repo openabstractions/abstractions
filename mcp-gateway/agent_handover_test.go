@@ -76,7 +76,7 @@ func serveFixtureComposition(ctx context.Context, runtime *chatSendRuntime, appl
 	if err != nil {
 		return err
 	}
-	diagnostic := newAgentDiagnostic(dir, program)
+	diagnostic := newAgentDiagnostic(ctx, dir, program)
 	if diagnostic == nil {
 		return fmt.Errorf("lifecycle record unavailable")
 	}

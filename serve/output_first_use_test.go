@@ -66,6 +66,7 @@ func syncOutputApp(t *testing.T, complete bool) (runtimeFlags, string, func(path
 		cancel()
 		t.Fatalf("startup: %v", err)
 	case <-time.After(runtimeWait):
+		dumpGoroutines()
 		cancel()
 		t.Fatalf("runtime not ready within %v", runtimeWait)
 	}

@@ -96,7 +96,7 @@ async function chooserSnapshots() {
  let hostReply={Outcome:'page',Revision:'h1',Hosts:[{Entry:{Name:'kept',Kind:'vllm',Base:'http://127.0.0.1:11501',Profiles:['chat']},Up:false,Why:'paired_name_conflict'}]};
  const provider=()=>({Declaration:{Name:'transient',Host:{Kind:'sglang',Base:'http://127.0.0.1:11502'}},Role:'host',Readiness:'unreachable',Described:[]});
  let view={providers:{Outcome:'page',Revision:'p1',Declarations:[provider()]},models:{Models:[]},remote:[]};
- // Hosted choices come from GET /connect (monitor/hosted_presets.json).
+ // Hosted choices come from GET /connect (openabstractions-flat/abstraction-router/go/hostedcatalogue/presets.json).
  const connectReply={presets:[{id:'deepseek',api:'openai-compatible',base:'https://api.deepseek.com/v1'},{id:'openrouter',api:'openai-compatible',base:'https://openrouter.ai/api/v1'},{id:'github-download',kind:'download',api:'',base:'https://api.github.com'},{id:'openai-compatible',api:'openai-compatible',base:''}]};
  const c={URLSearchParams,console,location:{search:'?k=chooser'},document:{getElementById:get,createElement:make},oaReady(){},oaSetStatus(id,state,text){get(id).textContent=text;get(id).state=state},fetch:async(path,opts)=>{
   assert.strictEqual(opts.headers['X-Panel-Key'],'chooser');

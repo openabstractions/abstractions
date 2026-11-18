@@ -45,6 +45,8 @@ says() {
 }
 
 echo "conformance selftest"
+check 0 "literal fixture source holds; wrong origin, path and extra fields fail" \
+    sh "$HERE/selftest/fixture.sh" "$RUN"
 check 3 "a driver that declares nothing is not set up" \
     sh "$RUN" --scenarios "$CORPUS" --only already-here -- sh "$HERE/selftest/mute.sh"
 check 1 "a driver that answers ok to everything fails" \

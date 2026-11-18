@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"html"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -246,7 +248,7 @@ func appPageFragment(key, skin, name string, entry *fwire.ApplicationEntry, read
 	opened, start := "", ""
 	switch {
 	case d.Activation != nil:
-		opened = oaStatusLine("app-open-status", false)
+		opened = oaStatusLine("app-open-status", false) + `<p class="oa-status" id="app-open-next-line" hidden><a id="app-open-next" href="#">Open Catalog</a></p>`
 	case strings.TrimSpace(d.StartGuidance) != "":
 		start = oaGroup("app-start-section", "Start", "", oaRow("Start "+title, d.StartGuidance, "", ""))
 	default:
@@ -267,7 +269,13 @@ func appPageFragment(key, skin, name string, entry *fwire.ApplicationEntry, read
 		confirm = oaGroup("app-confirm-section", "Added itself", "This app added itself to OpenAbstractions.",
 			oaRow("Keep "+appPageTitle(d)+"?", "", `<button id="app-confirm">Confirm…</button>`, "app-confirm-status"))
 	}
-	return setTitle + head + opened + data + confirm + running + models + permissions + answering + appAgentEnrollmentLink(key, name) + activity +
+	// Assistant identity is for agent apps only: OpenAbstractions' agent
+	// connectors and the agents they connect (agent-ux 2026-11-22).
+	assistant := ""
+	if appIsAgent(name) {
+		assistant = appAgentEnrollmentLink(key, name)
+	}
+	return setTitle + head + opened + data + confirm + running + models + permissions + answering + assistant + activity +
 		start +
 		oaGroup("app-remove-section", "Remove", "", remove) +
 		`<script>` + serviceCommonScript + appPageScript + `</script>`
@@ -341,25 +349,27 @@ el('app-activity-more').onclick=()=>{appActivityAll=true;renderAppActivity();oaS
 // link to the default's switch. A script host receives no default; one row
 // says so.
 const appRightsText={forbidden:'OpenAbstractions did not permit this Panel to change permissions; nothing was changed.',conflict:'Permissions changed meanwhile; nothing was changed. Try again.',unavailable:'The permission service is unavailable; nothing was changed.',invalid:'This permission is changed on Permissions.'};
-function appRulePhrase(r){const phrase=appPlain[r.Action];return phrase?capitalize(phrase):oaActionFallback(r.Action)}
+function appRulePhrase(r){const phrase=appPlain[r.Action];return oaRuleWords(phrase?capitalize(phrase):oaActionFallback(r.Action),r).label}
 function appRuleKey(r){return 'rule:'+JSON.stringify([r.Subject.Account,r.Action,r.Resource])}
-function appRuleCaption(r){const target=/^sha256:/i.test(r.Resource)?'Stored content':oaResourceLabel(r.Resource);const expiry=r.Expired?'Expired':r.Expires?'Until '+oaLocalTime(r.Expires):'';return [target,expiry].filter(Boolean).join(' · ')}
+function appRuleCaption(r){return oaRuleWords('',r).caption}
 function appPermissionRow(){
- const state=document.createElement('span'),toggle=document.createElement('input'),remove=document.createElement('button');toggle.type='checkbox';toggle.className='switch';remove.textContent='Remove';
- const row=appRow([state,toggle,remove],true);row.state=state;row.toggle=toggle;row.remove=remove;
+ const toggle=document.createElement('input'),remove=document.createElement('button');toggle.type='checkbox';toggle.className='switch';remove.textContent='Remove';
+ const row=appRow([toggle,remove],true);row.toggle=toggle;row.remove=remove;
  toggle.onchange=()=>{const r=row.rule,permit=!!toggle.checked,edit={edit:'set',permit};if(r.Expires&&!r.Expired){const left=Date.parse(r.Expires)-Date.now();if(left>0)edit.ttl_ms=Math.max(1000,Math.round(left))}return appRuleEdit(r,edit,row,appRulePhrase(r)+(permit?' is allowed.':' is blocked.'))};
  remove.onclick=()=>appRuleEdit(row.rule,{edit:'revoke'},row,appRulePhrase(row.rule)+' was removed.');
  return row;
 }
-function appFillPermission(row,r){row.rule=r;appFill(row,appRulePhrase(r),appRuleCaption(r));const word=r.Permit?'Allowed':'Blocked';if(row.state.textContent!==word)row.state.textContent=word;row.toggle.checked=!!r.Permit;row.toggle.setAttribute('aria-label','Allow '+appRulePhrase(r));row.remove.setAttribute('aria-label','Remove '+appRulePhrase(r))}
+function appFillPermission(row,r){row.rule=r;appFill(row,appRulePhrase(r),appRuleCaption(r));row.toggle.checked=!!r.Permit;row.toggle.setAttribute('aria-label','Allow '+appRulePhrase(r));row.remove.setAttribute('aria-label','Remove '+appRulePhrase(r))}
+// A default row has the same one switch: turning it off saves this app's
+// own block, which then shows as the app's own permission.
 function appDefaultRow(){
- const state=document.createElement('span'),block=document.createElement('button'),all=document.createElement('a');block.textContent='Block';all.textContent='Change for all apps';all.href=appData.defaults||'';
- const row=appRow([state,block,all],true);row.state=state;row.block=block;
- block.onclick=()=>{const d=row.d;if(!appRuleSubject){appRowSay(row,'error','This app cannot be blocked here; nothing was changed.');return}
+ const toggle=document.createElement('input'),all=document.createElement('a');toggle.type='checkbox';toggle.className='switch';all.textContent='Change for all apps';all.href=appData.defaults||'';
+ const row=appRow([toggle,all],true);row.toggle=toggle;
+ toggle.onchange=()=>{const d=row.d;if(toggle.checked)return;if(!appRuleSubject){toggle.checked=true;appRowSay(row,'error','This app cannot be blocked here; nothing was changed.');return}
   return appRuleEdit({Subject:appRuleSubject,Action:d.action,Resource:d.resource},{edit:'set',permit:false},row,d.label+' is blocked for '+appSubject.title+'.')};
  return row;
 }
-function appFillDefault(row,d){row.d=d;appFill(row,d.label,'Allowed for all apps');if(row.state.textContent!=='Allowed')row.state.textContent='Allowed';row.block.setAttribute('aria-label','Block '+d.label+' for '+appSubject.title)}
+function appFillDefault(row,d){row.d=d;appFill(row,d.label,'Allowed for all apps');row.toggle.checked=true;row.toggle.setAttribute('aria-label','Allow '+d.label+' for '+appSubject.title)}
 function appPermissionItems(){const items=appSharesCard?[{kind:'note',key:'note:card'}]:[];items.push(...appRules.map(r=>({kind:'rule',key:appRuleKey(r),rule:r})));for(const d of appDefaults)items.push({kind:'default',key:'default:'+d.name,d});if(appScriptHost)items.push({kind:'note',key:'note:script-host'});return items}
 function renderAppPermissions(){appList('app-permissions-list',appRuleRows,appPermissionItems(),i=>i.key,
  i=>i.kind==='rule'?appPermissionRow():i.kind==='default'?appDefaultRow():appRow([],false),
@@ -416,11 +426,14 @@ async function appAction(action,fields={}){return call(appPath+'/'+action,{confi
 // Open starts the app through the runtime's owned launch; once it runs the
 // button reads Running.
 const appOpen=el('app-open');
+// appOpenNext shows the link to the page that holds a failed Open's next
+// step, such as the Catalog row that restores ComfyUI's connector.
+function appOpenNext(path){const line=el('app-open-next-line'),link=el('app-open-next');if(!line||!link)return;const ok=/^\/setup#setup-row-[a-z0-9-]+$/.test(path||'');line.hidden=!ok;if(ok){const [page,hash]=path.split('#');link.href=page+'?k='+encodeURIComponent(key||'')+'#'+hash}}
 let appOpening=false,appRemoved=false;
 // The head's button follows the app on every facts read: Running while it
 // runs, whoever opened it, and Open again once it stops.
 function appShowRunning(running){if(!appOpen||typeof running!=='boolean'||appOpening||appRemoved)return;appOpen.textContent=running?'Running':'Open';appOpen.disabled=running;appOpen.className=running?'':'oa-primary'}
-if(appOpen)appOpen.onclick=async()=>{appOpening=true;appOpen.disabled=true;oaSetStatus('app-open-status','loading','Opening '+appSubject.title+'…');let running=false;try{const r=await appAction('start');running=r.outcome==='ready';oaSetStatus('app-open-status',running||r.outcome==='not_ready'?'ok':'error',r.message)}catch(e){oaShowError('app-open-status',e)}appOpening=false;if(running){appOpen.textContent='Running';appOpen.className=''}else appOpen.disabled=false};
+if(appOpen)appOpen.onclick=async()=>{appOpening=true;appOpen.disabled=true;oaSetStatus('app-open-status','loading','Opening '+appSubject.title+'…');let running=false;try{const r=await appAction('start');running=r.outcome==='ready';oaSetStatus('app-open-status',running||r.outcome==='not_ready'?'ok':'error',r.message);appOpenNext(r.next)}catch(e){oaShowError('app-open-status',e)}appOpening=false;if(running){appOpen.textContent='Running';appOpen.className=''}else appOpen.disabled=false};
 // A server OpenAbstractions started shows its line and Stop while it runs.
 const appStartedGroup=el('app-started'),appStartedLine=el('app-started-line'),appStartedStop=el('app-started-stop');
 let appStopping=false,appStartedOccurrence='';
@@ -474,6 +487,9 @@ type appActionBody struct {
 type appActionReply struct {
 	Outcome string `json:"outcome"`
 	Message string `json:"message"`
+	// Next is the Panel page that holds the next step Message names,
+	// when another page holds it.
+	Next string `json:"next,omitempty"`
 }
 
 func decodeAppAction(w http.ResponseWriter, r *http.Request) (appActionBody, bool) {
@@ -536,7 +552,35 @@ func (p *servicePanel) appStart(w http.ResponseWriter, r *http.Request, name str
 		panelError(w, err)
 		return
 	}
-	panelJSON(w, appActionReply{Outcome: result.Outcome.String(), Message: appOpenSentence(title, result)})
+	reply := appActionReply{Outcome: result.Outcome.String(), Message: appOpenSentence(title, result)}
+	if result.Outcome == fwire.ApplicationActivationOutcomeIdentityRefused {
+		reply.Message, reply.Next = appStartFailure(title, name, entry.Descriptor.Program)
+	}
+	panelJSON(w, reply)
+}
+
+// appStartFailure is the sentence and next step for an Open whose program
+// the runtime could not start (identity_refused). The runtime's reason is
+// one code; the Panel names what it can see itself: whether the program is
+// still on this computer. ComfyUI's program is OpenAbstractions' connector,
+// which the Catalog's Connect restores (agent-ux 2026-11-22).
+func appStartFailure(title, name, program string) (string, string) {
+	missing := false
+	if program != "" {
+		_, err := os.Stat(program)
+		missing = errors.Is(err, os.ErrNotExist)
+	}
+	if picture, _ := picturePackageIdentity(); name == picture {
+		next := "/setup#setup-row-" + string(officialPictureCatalogID())
+		if missing {
+			return title + "'s OpenAbstractions connector is no longer on this computer. Select Connect for " + title + " in the Catalog to restore it.", next
+		}
+		return title + "'s OpenAbstractions connector did not start. Reinstall " + title + ", then select Connect for it in the Catalog.", next
+	}
+	if missing {
+		return title + "'s program is no longer on this computer. Reinstall " + title + ", then select Open again.", ""
+	}
+	return title + "'s program did not start. Reinstall " + title + ", then select Open again.", ""
 }
 
 // appKeepWait is how long Open waits for the person's answer to the Keep

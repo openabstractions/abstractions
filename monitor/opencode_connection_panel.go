@@ -26,7 +26,9 @@ func (p *servicePanel) installedAgentConnectionRoutesWith(mux *http.ServeMux, ke
 		view, err := read(r.Context())
 		if err != nil {
 			view.Outcome, view.Reason = "unavailable", err.Error()
+			view.Guidance = installedAgentSentence(err, connection.title, "read")
 		}
+		noteAgentAttention(party, view.Guidance)
 		panelJSON(w, view)
 	}))
 	mux.HandleFunc(path+"/connect", guard(key, func(w http.ResponseWriter, r *http.Request) {
@@ -49,6 +51,8 @@ func (p *servicePanel) installedAgentConnectionRoutesWith(mux *http.ServeMux, ke
 				view.Outcome = "unavailable"
 			}
 			view.Reason = err.Error()
+			view.Guidance = installedAgentSentence(err, connection.title, "connect")
+			p.connectFailed(party, connection.title, view.Guidance)
 		}
 		panelJSON(w, view)
 	}))
@@ -56,4 +60,16 @@ func (p *servicePanel) installedAgentConnectionRoutesWith(mux *http.ServeMux, ke
 
 func (c installedAgentConnection) page() string {
 	return agentConnectionPage(c.title, string(c.party), "This account's "+c.title+" connection.", true)
+}
+
+// installedAgentSentence is the page's sentence for a failed read or
+// connect of an installed agent; the error stays in Technical details.
+func installedAgentSentence(err error, title, step string) string {
+	if sentence := agentSetupBlocker(err, title); sentence != "" {
+		return sentence
+	}
+	if step == "connect" {
+		return "OpenAbstractions couldn't connect " + title + ". Select Check again."
+	}
+	return "OpenAbstractions couldn't read the " + title + " connection. Select Check again."
 }

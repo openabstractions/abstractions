@@ -83,6 +83,9 @@ func newAnswererFixture(t *testing.T) *answererFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := keepOpenQuestions(book); err != nil {
+		t.Fatal(err)
+	}
 	// Enrollment followers can report while the test context is closing.
 	f.a = &runtimeAsks{book: book, rights: r, report: func(err error) { log.Print(err) }, scope: "asks-owner-program@1:runtime", display: "runtime",
 		applied: &appliedEffects{path: filepath.Join(dir, "first-use-effects.json")}}

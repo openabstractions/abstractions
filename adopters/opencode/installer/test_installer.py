@@ -41,6 +41,7 @@ def identity_fixture(shared):
     actual=Path(build.app_builder().__file__).resolve().parent
     shutil.copyfile(actual/'build_app.py',shared/'build_app.py')
     shutil.copyfile(actual/'build_extension.py',shared/'build_extension.py')
+    shutil.copyfile(actual/'oa_records.h',shared/'oa_records.h')
     source=actual.parents[1]/'openabstractions-flat/abstraction-identity/fileid/native_windows.h'
     shutil.copyfile(source,shared/'native_windows.h')
 
@@ -58,11 +59,9 @@ def host_inputs_fixture(out):
     (out/'host_inputs.h').write_text('\n'.join(['#pragma once','typedef struct { const wchar_t *relative; const char *sha256; } OA_TRUSTED_FILE;',
         '#define OA_PAYLOAD_MAX_RELATIVE 120','#define OA_PLUGIN_RELATIVE L"plugin\\\\0.8.0"',
         '#define OA_HELPER_RELATIVE L"plugin\\\\0.8.0\\\\installer\\\\config-lifecycle.js"',
-        '#define OA_BOOTSTRAP_INVENTORY_SHA256 L"'+('0'*64)+'"',
         '#define OA_PLUGIN_INVENTORY_SHA256 L"'+('0'*64)+'"',
         'static const OA_TRUSTED_FILE OA_TRUSTED[] = {',
-        '  {L"desktop-fix\\\\watcher.node", "'+build.DESKTOP_FIX['files']['watcher.node']['sha256']+'"},',
-        '  {L"installer\\\\empty-bunfig.toml", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},','};',
+        '  {L"desktop-fix\\\\watcher.node", "'+build.DESKTOP_FIX['files']['watcher.node']['sha256']+'"},','};',
         '#define OA_TRUSTED_COUNT (sizeof(OA_TRUSTED)/sizeof(OA_TRUSTED[0]))',
         '#define OA_REGISTRATION_MANIFEST_NAME L"'+build.REGISTRATION_MANIFEST+'"','#define OA_REGISTRATION_MANIFEST_SHA256 "'+manifest+'"'])+'\n',encoding='utf-8')
     return out/'host_inputs.h'
@@ -93,28 +92,19 @@ def desktop_fix_fixture(directory=None):
              'stock':sorted({row['watcher_stock']['sha256'] for row in build.DESKTOP_RELEASES}),'earlier':list(build.DESKTOP_FIX['earlier'])})
 
 
-def bootstrap_metadata():
-    raw,_=build.bootstrap_lock()
-    return {'version':build.UPSTREAM['version'],'lock_sha256':hashlib.sha256(raw).hexdigest(),
-            'packages':[dict(row,license='MIT',license_files=[]) for row in build.bootstrap_inputs()], 'ripgrep':build.RIPGREP}
-
-
 class PayloadBoundary(unittest.TestCase):
     def journey_fixture(self, out):
         """Actual prepare owner emits originals; no compiler or package process."""
         build.app_builder()
-        cli=io.BytesIO()
-        with zipfile.ZipFile(cli,'w') as target:target.writestr('opencode.exe',b'official CLI fixture')
         files={name:('fixture '+name).encode() for name in
                ('package.json','index.js','server.js','npm-shrinkwrap.json','extra/non-pe-client.js',
                 'node_modules/@openabstractions/ipc-win32-x64/abstraction_ipc.dll',
                 'node_modules/@openabstractions/ipc-win32-x64/oa_ipc_node.node')}
-        with patch.object(build,'pinned',side_effect=lambda path,*args:cli.getvalue() if path=='cli' else b'inert input'),\
+        with patch.object(build,'pinned',return_value=b'inert input'),\
              patch.object(build,'plugin_files',return_value=({'version':'0.8.0'},files)),\
              patch.object(build,'package_files',return_value=({'name':'jsonc-parser','version':'3.3.1'},{'lib/main.js':b'parser fixture'})),\
-             patch.object(build,'bootstrap_payload',return_value=({'bootstrap/files.json':b'{}'}, bootstrap_metadata())),\
              patch.object(build,'desktop_fix_payload',side_effect=desktop_fix_fixture):
-            receipt=build.prepare('plugin','a'*64,17,'cli','parser',out)
+            receipt=build.prepare('plugin','a'*64,17,'parser',out)
         rows=[dict(value,id='ActualFile'+str(index),path=build.PAYLOAD_DIRECTORY+name)
               for index,(name,value) in enumerate(receipt['payload'].items())]
         rows.append(dict(receipt['registration_manifest'],id='application.manifest',
@@ -123,11 +113,13 @@ class PayloadBoundary(unittest.TestCase):
         return receipt,{'schema':1,'files':rows,'binaries':[{'id':'OpenCodeInstallerHost','sha256':'b'*64,'bytes':77}]}
 
     def test_journey_roles_join_actual_prepared_full_plugin_and_source_config_tools(self):
-        with tempfile.TemporaryDirectory() as directory,patch.dict(build.UPSTREAM,cli_exe_sha256=hashlib.sha256(b'official CLI fixture').hexdigest()):
+        with tempfile.TemporaryDirectory() as directory:
             receipt,payload=self.journey_fixture(Path(directory)/'prepared')
             before=json.dumps([receipt,payload],sort_keys=True)
             roles=build.journey_payload_roles(receipt,payload)
-            self.assertEqual(roles['official_cli']['path'],build.PAYLOAD_DIRECTORY+'cli/opencode.exe')
+            # The package carries no OpenCode program (owner, 2026-11-21).
+            self.assertNotIn('official_cli',roles)
+            self.assertFalse([name for name in receipt['payload'] if name.startswith(('cli/','bootstrap/')) or name.endswith('.exe')])
             self.assertEqual(set(roles['plugin_files']),{name for name in receipt['payload'] if name.startswith('plugin/0.8.0/')})
             self.assertIn('plugin/0.8.0/extra/non-pe-client.js',roles['plugin_files'])
             self.assertIn('plugin/0.8.0/installer/node_modules/jsonc-parser/lib/main.js',roles['plugin_files'])
@@ -143,12 +135,11 @@ class PayloadBoundary(unittest.TestCase):
                                           if row['path'] == build.PAYLOAD_DIRECTORY + inventory),
                                   path=build.PAYLOAD_DIRECTORY + inventory))
             self.assertEqual(json.dumps([receipt,payload],sort_keys=True),before)
-            roles['official_cli']['sha256']='0'*64
-            roles['original_members']['cli/opencode.exe']['bytes']=0
+            roles['original_members'][inventory]['bytes']=0
             self.assertEqual(json.dumps([receipt,payload],sort_keys=True),before)
 
     def test_journey_roles_reject_missing_extra_duplicate_and_changed_members(self):
-        with tempfile.TemporaryDirectory() as directory,patch.dict(build.UPSTREAM,cli_exe_sha256=hashlib.sha256(b'official CLI fixture').hexdigest()):
+        with tempfile.TemporaryDirectory() as directory:
             original,expected=self.journey_fixture(Path(directory)/'prepared')
             for variant in ('missing','duplicate-id','duplicate-path','foreign-basename','extra','js-pin','sdk-pin',
                             'manifest-pin','manifest-folder','no-manifest','override','version','upstream',
@@ -191,7 +182,7 @@ class PayloadBoundary(unittest.TestCase):
         # application_native_sign source_roles() signs Binary host + external
         # preflight. Already signed canonical SDK enters the prepared plugin;
         # package readback/source_roles require unchanged File member pins.
-        with tempfile.TemporaryDirectory() as directory,patch.dict(build.UPSTREAM,cli_exe_sha256=hashlib.sha256(b'official CLI fixture').hexdigest()):
+        with tempfile.TemporaryDirectory() as directory:
             receipt,payload=self.journey_fixture(Path(directory)/'prepared')
             original=build.journey_payload_roles(receipt,payload)
             payload.update(msi={'name':'signed.msi','sha256':'d'*64,'bytes':999},
@@ -203,7 +194,7 @@ class PayloadBoundary(unittest.TestCase):
             self.assertEqual(build.journey_payload_roles(receipt,payload)['members'][next(iter(receipt['payload']))]['id'],'RelocatedId')
 
     def test_journey_roles_accept_pre_inventory_payload_receipt(self):
-        with tempfile.TemporaryDirectory() as directory,patch.dict(build.UPSTREAM,cli_exe_sha256=hashlib.sha256(b'official CLI fixture').hexdigest()):
+        with tempfile.TemporaryDirectory() as directory:
             receipt,payload=self.journey_fixture(Path(directory)/'prepared')
             inventory = build.PLUGIN_INVENTORY_MEMBER
             receipt['payload'].pop(inventory)
@@ -239,56 +230,43 @@ class PayloadBoundary(unittest.TestCase):
         self.assertEqual(own, (('Binary','OpenCodeInstallerHost','installer_host.dll'),))
         self.assertEqual((supplier,external),((),('desktop_preflight.exe',)))
         with tempfile.TemporaryDirectory() as directory:
-            cli=Path(directory)/'cli.zip'
-            with zipfile.ZipFile(cli,'w') as target:target.writestr('opencode.exe',b'MZ supplier')
-            pin=build.file_pin(cli)
             native='plugin/0.8.0/node_modules/@openabstractions/ipc-win32-x64/'
             payload={native+'abstraction_ipc.dll':{'sha256':'a'*64,'bytes':11},
                      native+'oa_ipc_node.node':{'sha256':'b'*64,'bytes':12},
-                     'cli/opencode.exe':{'sha256':hashlib.sha256(b'MZ supplier').hexdigest(),'bytes':11}}
-            prefix='bootstrap/config/node_modules/@msgpackr-extract/msgpackr-extract-win32-x64/'
-            payload.update({prefix+'node.abi115.node':{'sha256':'300b188fb8c997214cb65bf1b00729da293176c7d57035e40c2f432ea384dd89','bytes':112640},
-                            prefix+'node.napi.node':{'sha256':'6958541c624784dfcebfc4f3c360c57f71cfeedd0530c2393845061729081a08','bytes':112640},
-                            'bootstrap/cache/bin/rg.exe':build.RIPGREP['executable'],
-                            'desktop-fix/watcher.node':build.DESKTOP_FIX['files']['watcher.node']})
+                     'desktop-fix/watcher.node':build.DESKTOP_FIX['files']['watcher.node']}
             receipt={'plugin':{'version':'0.8.0'},'payload':payload}
             rows=[dict(id='actual'+str(index),path='LocalAppDataFolder/Programs/OpenAbstractions/apps/opencode/'+name,**value)
                   for index,(name,value) in enumerate(payload.items())]
-            with patch.object(build,'check_prepared',return_value=receipt),patch.dict(build.UPSTREAM,cli=pin,cli_exe_sha256=payload['cli/opencode.exe']['sha256']):
-                own,supplier,external=build.source_roles(Path(directory),cli,{'files':rows})
+            with patch.object(build,'check_prepared',return_value=receipt):
+                own,supplier,external=build.source_roles(Path(directory),{'files':rows})
                 self.assertEqual(own[1:],tuple(('File','actual'+str(i),'payload/'+name) for i,name in enumerate(list(payload)[:2])))
-                self.assertEqual(supplier[0],('File','actual2',payload['cli/opencode.exe']))
-                self.assertEqual(len(supplier),5)
-                self.assertTrue(all(row[2]['source']['version']==build.UPSTREAM['version'] for row in supplier[1:4]))
                 # OA's unsigned watcher build is a pinned content role with its source commits.
-                self.assertEqual(supplier[4][1],'actual6')
-                self.assertEqual(supplier[4][2]['source']['build_commit'],build.DESKTOP_FIX['source']['build_commit'])
-                self.assertEqual({key:supplier[4][2][key] for key in ('sha256','bytes')},build.DESKTOP_FIX['files']['watcher.node'])
+                self.assertEqual(len(supplier),1)
+                self.assertEqual(supplier[0][1],'actual2')
+                self.assertEqual(supplier[0][2]['source']['build_commit'],build.DESKTOP_FIX['source']['build_commit'])
+                self.assertEqual({key:supplier[0][2][key] for key in ('sha256','bytes')},build.DESKTOP_FIX['files']['watcher.node'])
                 facade='plugin/0.8.0/node_modules/@openabstractions/facade-native-win32-x64/'
                 for name in build.FACADE_NATIVE_MEMBERS:
                     payload[facade+name]={'sha256':'e'*64,'bytes':13}
                 plugin='plugin/0.8.0/node_modules/@msgpackr-extract/msgpackr-extract-win32-x64/'
-                for name in ('node.abi115.node','node.napi.node'):
-                    payload[plugin+name]=dict(payload[prefix+name])
+                for name,sha in (('node.abi115.node','300b188fb8c997214cb65bf1b00729da293176c7d57035e40c2f432ea384dd89'),
+                                 ('node.napi.node','6958541c624784dfcebfc4f3c360c57f71cfeedd0530c2393845061729081a08')):
+                    payload[plugin+name]={'sha256':sha,'bytes':112640}
                 rows=[dict(id='actual'+str(index),path='LocalAppDataFolder/Programs/OpenAbstractions/apps/opencode/'+name,**value)
                       for index,(name,value) in enumerate(payload.items())]
-                own,supplier,_=build.source_roles(Path(directory),cli,{'files':rows})
-                self.assertEqual(len(payload),11)
+                own,supplier,_=build.source_roles(Path(directory),{'files':rows})
+                self.assertEqual(len(payload),7)
                 self.assertEqual(len(own),5) # Four OA native files and the installer Binary.
-                self.assertEqual(len(supplier),7) # CLI plus six exact content occurrences.
+                self.assertEqual(len(supplier),3) # Two plugin npm natives and the watcher build.
                 self.assertEqual({row[1] for row in own[1:]}|{row[1] for row in supplier}, {row['id'] for row in rows})
-                for variant in ('missing','duplicate','path','pin','prepared-cli','archive'):
+                for variant in ('missing','duplicate','path','pin'):
                     changed=[dict(row) for row in rows]
-                    original=receipt['payload']['cli/opencode.exe']
                     if variant=='missing':changed.pop(0)
                     if variant=='duplicate':changed.append(dict(changed[0]))
                     if variant=='path':changed[0]['path']='INSTALLFOLDER/foreign.dll'
                     if variant=='pin':changed[0]['sha256']='c'*64
-                    if variant=='prepared-cli':receipt['payload']['cli/opencode.exe']={'sha256':'d'*64,'bytes':11}
-                    if variant=='archive':cli.write_bytes(b'foreign archive')
                     with self.subTest(variant=variant),self.assertRaises(ValueError):
-                        build.source_roles(Path(directory),cli,{'files':changed})
-                    receipt['payload']['cli/opencode.exe']=original
+                        build.source_roles(Path(directory),{'files':changed})
 
     def test_readback_exports_actual_closed_file_and_binary_identities(self):
         import types
@@ -358,7 +336,7 @@ class PayloadBoundary(unittest.TestCase):
         with patch.object(build,'prepare',side_effect=lambda *a:events.append('prepare')), \
              patch.object(build,'build_msi',side_effect=lambda *a:events.append('msi')):
             self.assertEqual(build.main(['--plugin','fixture.tgz','--plugin-sha256','a'*64,'--plugin-bytes','1',
-                '--cli','cli.zip','--parser-tgz','parser.tgz','--bootstrap','bootstrap-inputs','--ripgrep','rg.zip','--out','unused','--version','0.4.956','--qa']),0)
+                '--parser-tgz','parser.tgz','--out','unused','--version','0.4.956','--qa']),0)
         self.assertEqual(events,['prepare','msi'])
 
     def test_native_preparation_records_original_outputs_with_source_header_closure(self):
@@ -379,19 +357,17 @@ class PayloadBoundary(unittest.TestCase):
     def test_prepare_binds_registration_manifest_before_native_signing(self):
         build.app_builder()
         with tempfile.TemporaryDirectory() as directory:
-            out=Path(directory)/'prepared';cli=io.BytesIO()
-            with zipfile.ZipFile(cli,'w') as target:target.writestr('opencode.exe',b'official CLI fixture')
-            def pinned(path,*args):return cli.getvalue() if path=='cli' else b'inert input'
-            with patch.object(build,'pinned',side_effect=pinned),patch.object(build,'plugin_files',return_value=({'version':'0.8.0'},{'package.json':b'{}'})),patch.object(build,'package_files',return_value=({'name':'jsonc-parser','version':'3.3.1'},{})),patch.object(build,'bootstrap_payload',return_value=({'bootstrap/files.json':b'{}','bootstrap/config/package.json':b'fixture leaf'}, bootstrap_metadata())),patch.object(build,'desktop_fix_payload',side_effect=desktop_fix_fixture),patch.dict(build.UPSTREAM,cli_exe_sha256=hashlib.sha256(b'official CLI fixture').hexdigest()):
-                receipt=build.prepare('plugin','0'*64,1,'cli','parser',out)
+            out=Path(directory)/'prepared'
+            with patch.object(build,'pinned',return_value=b'inert input'),patch.object(build,'plugin_files',return_value=({'version':'0.8.0'},{'package.json':b'{}'})),patch.object(build,'package_files',return_value=({'name':'jsonc-parser','version':'3.3.1'},{})),patch.object(build,'desktop_fix_payload',side_effect=desktop_fix_fixture):
+                receipt=build.prepare('plugin','0'*64,1,'parser',out)
             manifest=build.registration_manifest();header=(out/'host_inputs.h').read_text()
             self.assertEqual(receipt['registration_manifest'],{'name':build.REGISTRATION_MANIFEST,'sha256':hashlib.sha256(manifest).hexdigest(),'bytes':len(manifest)})
             self.assertIn('#define OA_REGISTRATION_MANIFEST_NAME L"'+build.REGISTRATION_MANIFEST+'"',header)
             self.assertIn(receipt['registration_manifest']['sha256'],header)
-            self.assertIn('#define OA_BOOTSTRAP_INVENTORY_SHA256 L"'+receipt['payload']['bootstrap/files.json']['sha256']+'"',header)
-            self.assertIn(r'bootstrap\\files.json',header)
-            self.assertNotIn(r'bootstrap\\config\\package.json',header)
-            self.assertIn('bootstrap/config/package.json',receipt['payload'])
+            self.assertNotIn('BOOTSTRAP',header)
+            self.assertNotIn('bunfig',header)
+            self.assertFalse([name for name in receipt['payload'] if name.startswith(('cli/','bootstrap/'))])
+            self.assertNotIn('bootstrap',receipt)
             self.assertIn('#define OA_PLUGIN_INVENTORY_SHA256 L"'+receipt['payload']['installer/plugin-files.json']['sha256']+'"',header)
             with zipfile.ZipFile(out/'integration-payload.zip') as prepared:
                 plugin_index=json.loads(prepared.read('installer/plugin-files.json'))
@@ -403,7 +379,7 @@ class PayloadBoundary(unittest.TestCase):
             self.assertIn('{L"desktop-fix\\\\LICENSE", "',header)
             self.assertEqual(receipt['desktop_fix']['source'],build.DESKTOP_FIX['source'])
             # The Desktop program OpenCode runs, which the guard verifies and
-            # records (P-J1a ruling 2026-11-01); the private CLI only helps install.
+            # records (P-J1a ruling 2026-11-01). Its Node runs the config helper.
             self.assertEqual(json.loads(manifest)['program'],'{local_app_data}/Programs/@opencode-aidesktop/OpenCode.exe')
             self.assertEqual(receipt['host_inputs_sha256'],hashlib.sha256((out/'host_inputs.h').read_bytes()).hexdigest())
 
@@ -485,11 +461,11 @@ class PayloadBoundary(unittest.TestCase):
 
     def prepared_fixture(self, out):
         out.mkdir()
-        payload={'installer/empty-bunfig.toml':b''}
+        payload={'installer/plugin-files.json':b'{}'}
         with zipfile.ZipFile(out/'integration-payload.zip','w') as target:
             for name,data in payload.items():target.writestr(name,data)
         (out/'host_inputs.h').write_bytes(b'fixture final SDK-derived header')
-        receipt={'upstream':build.UPSTREAM,'bootstrap':bootstrap_metadata(),'plugin':{'version':'0.8.0'},'app_owned_source_overrides':{},
+        receipt={'upstream':build.UPSTREAM,'plugin':{'version':'0.8.0'},'app_owned_source_overrides':{},
                  'registration_manifest':{'name':build.REGISTRATION_MANIFEST,'bytes':len(build.registration_manifest()),'sha256':hashlib.sha256(build.registration_manifest()).hexdigest()},
                  'payload':{n:{'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()} for n,data in payload.items()},
                  'zip_sha256':hashlib.sha256((out/'integration-payload.zip').read_bytes()).hexdigest(),
@@ -531,7 +507,7 @@ class PayloadBoundary(unittest.TestCase):
             self.assertEqual(received['bundle_app_sha256'],hashlib.sha256((out/'bundle-app.json').read_bytes()).hexdigest())
 
     def test_package_refuses_missing_wrong_native_and_changed_preparation_before_wix(self):
-        for variant in ['missing','wrong-hash','wrong-size','header','source','payload','version','bootstrap-version','bootstrap-source','bootstrap-missing']:
+        for variant in ['missing','wrong-hash','wrong-size','header','source','payload','version','bootstrap']:
             with self.subTest(variant=variant),tempfile.TemporaryDirectory() as directory:
                 out=Path(directory)/'out';desktop,inputs=self.prepared_fixture(out)
                 if variant=='missing':Path(inputs['host']['path']).unlink()
@@ -539,13 +515,11 @@ class PayloadBoundary(unittest.TestCase):
                 elif variant=='wrong-size':inputs['preflight']['bytes']+=1
                 elif variant=='header':(out/'host_inputs.h').write_bytes(b'changed')
                 elif variant=='payload':(out/'integration-payload.zip').write_bytes(b'changed')
-                elif variant in ['source','version','bootstrap-version','bootstrap-source','bootstrap-missing']:
+                elif variant in ['source','version','bootstrap']:
                     receipt=json.loads((out/'payload-receipt.json').read_text())
                     if variant=='source':receipt['native_source_hashes']['installer_host.c']='0'*64
                     elif variant=='version':receipt['prepared_native']['version']='0.8.1'
-                    elif variant=='bootstrap-version':receipt['bootstrap']['version']='1.18.31'
-                    elif variant=='bootstrap-source':receipt['bootstrap']['packages'][0]['sha512']='0'*128
-                    else:receipt.pop('bootstrap')
+                    else:receipt['bootstrap']={'version':'1.18.34'}
                     (out/'payload-receipt.json').write_text(json.dumps(receipt))
                 with patch.dict(build.UPSTREAM,desktop=dict(bytes=desktop.stat().st_size,sha256=hashlib.sha256(desktop.read_bytes()).hexdigest())), \
                      patch.object(build.subprocess,'run') as process,patch.object(build,'build_native') as compiler:
@@ -613,8 +587,8 @@ class PayloadBoundary(unittest.TestCase):
                  patch.object(module,'prepare_native',side_effect=lambda *args:events.append('native')):
                 with patch.object(sys,'dont_write_bytecode',False):
                     self.assertEqual(module.main(['--phase','prepare-native','--app-builder',str(shared/'build_app.py'),
-                        '--plugin','fixture.tgz','--plugin-sha256','a'*64,'--plugin-bytes','1','--cli','fixture.zip',
-                        '--parser-tgz','parser.tgz','--bootstrap','bootstrap-inputs','--ripgrep','rg.zip','--out',str(root/'out'),'--version','0.8.0']),0)
+                        '--plugin','fixture.tgz','--plugin-sha256','a'*64,'--plugin-bytes','1',
+                        '--parser-tgz','parser.tgz','--out',str(root/'out'),'--version','0.8.0']),0)
             self.assertEqual(events,['prepare','native'])
             self.assertEqual(Path(module.build_app.__file__),shared/'build_app.py')
             self.assertEqual(module.shared_native_header(),shared/'user_token.h')
@@ -647,8 +621,8 @@ class PayloadBoundary(unittest.TestCase):
                 self.assertIn(f'process guard variant={variant} clean=1 result={result} expected={result}',received.stdout)
             self.assertIn('launcher context PASS:',received.stdout)
             request=json.loads(next(line.removeprefix('launcher_request=') for line in received.stdout.splitlines() if line.startswith('launcher_request=')))
-            self.assertEqual(request,dict(operation='install',directory='directory',stage='stage',plugin='plugin',
-                cli='cli',state='state',work='work',cache='cache',mcpLauncher=str(out/'selected OA tools/oa-opencode-integration.exe')))
+            self.assertEqual(request,dict(operation='install',directory='directory',plugin='plugin',
+                state='state',work='work',cache='cache',mcpLauncher=str(out/'selected OA tools/oa-opencode-integration.exe')))
             child_command=[*command]
             child_command[child_command.index('/Fo'+str(out/'stack.obj'))]='/Fo'+str(out/'child.obj')
             child_command[child_command.index('/Fe'+str(out/'stack.exe'))]='/Fe'+str(out/'child.exe')
@@ -658,6 +632,12 @@ class PayloadBoundary(unittest.TestCase):
             child=subprocess.run([str(out/'child.exe')],cwd=out,capture_output=True,text=True,timeout=30)
             self.assertEqual(child.returncode,0,child.stdout+child.stderr)
             self.assertIn('child diagnostic PASS: success, nonzero, timeout, launch refusal',child.stdout)
+            # A failed step's error box names that step (owner PC 2026-11-22:
+            # a dead Panel path read as an unexplained configuration failure).
+            self.assertIn('failure message PASS: prepare_integration names the Panel path',child.stdout)
+            host=Path(__file__).with_name('installer_host.c').read_text(encoding='utf-8')
+            self.assertIn('if(result!=ERROR_SUCCESS)failure_message(session,stage,launcher,state);',host)
+            self.assertNotIn('inspect the per-user installer result',host)
 
     @unittest.skipUnless(sys.platform=='win32' and shutil.which('cl.exe') and shutil.which('wix'),'requires x64 MSVC and WiX')
     def test_an_upgrade_replaces_the_earlier_packages_own_manifest_only(self):
@@ -1214,58 +1194,57 @@ class PayloadBoundary(unittest.TestCase):
 
 
 
-class BootstrapPayload(unittest.TestCase):
-    def test_source_lock_matches_selected_cli_and_windows_x64(self):
-        inputs = build.bootstrap_inputs()
-        self.assertEqual(len(inputs), 27)
-        helper = next(row for row in inputs if row['name'] == 'node_modules/@opencode-ai/plugin')
-        self.assertEqual(helper['version'], build.UPSTREAM['version'])
-        self.assertTrue(all('darwin' not in row['name'] and 'linux' not in row['name'] for row in inputs))
-        self.assertEqual(len({row['file'] for row in inputs}), len(inputs))
-        self.assertTrue(all(len(row['sha512']) == 128 for row in inputs))
-        with self.assertRaisesRegex(ValueError, 'required'):
-            build.bootstrap_payload(None, None)
+class DesktopNodeHelper(unittest.TestCase):
+    """The configuration helper runs on the official Desktop's own Node, the
+    way installer_host.c starts it: OpenCode.exe with ELECTRON_RUN_AS_NODE=1,
+    the fixed script and one request file, in a private environment. Set
+    OA_OPENCODE_DESKTOP to a listed official OpenCode.exe to run it."""
 
-    def fixture(self, root):
-        package = {'name':'@opencode-ai/plugin','version':build.UPSTREAM['version'],'license':'MIT'}
-        tar = archive([('package/package.json',json.dumps(package).encode(),tarfile.REGTYPE),
-                       ('package/index.js',b'inert upstream helper',tarfile.REGTYPE),
-                       ('package/LICENSE',b'fixture MIT notice',tarfile.REGTYPE)])
-        import base64
-        integrity = 'sha512-'+base64.b64encode(hashlib.sha512(tar).digest()).decode()
-        lock = {'lockfileVersion':3,'packages':{'':{'dependencies':{'@opencode-ai/plugin':build.UPSTREAM['version']}},
-                'node_modules/@opencode-ai/plugin':{'version':build.UPSTREAM['version'],'resolved':'https://registry.npmjs.org/@opencode-ai/plugin/-/plugin.tgz','integrity':integrity}}}
-        raw_lock = json.dumps(lock).encode()
-        inputs = root/'inputs';inputs.mkdir()
-        source = inputs/(hashlib.sha256(b'node_modules/@opencode-ai/plugin').hexdigest()+'.tgz')
-        source.write_bytes(tar)
-        rg = root/'rg.zip';executable=b'inert rg fixture'
-        with zipfile.ZipFile(rg,'w') as output:
-            for name,raw in [('rg.exe',executable),('COPYING',b'copying'),('LICENSE-MIT',b'MIT'),('UNLICENSE',b'public domain')]:
-                output.writestr('fixture/'+name,raw)
-        policy=dict(build.RIPGREP,sha256=hashlib.sha256(rg.read_bytes()).hexdigest(),member='fixture/rg.exe',
-                    executable={'bytes':len(executable),'sha256':hashlib.sha256(executable).hexdigest()})
-        return inputs,source,rg,(raw_lock,lock),policy
+    def test_the_host_starts_the_helper_on_the_desktop_node(self):
+        host=Path(__file__).with_name('installer_host.c').read_text(encoding='utf-8')
+        self.assertIn('L"\\"%s\\" \\"%s\\" --request \\"%s\\"",runtime,script,request',host)
+        self.assertIn('L"ELECTRON_RUN_AS_NODE",L"1"',host)
+        self.assertIn('desktop_check(installingUser,TRUE,runtime)',host)
+        self.assertNotIn('cli\\\\opencode.exe',host)
+        self.assertNotIn('BUN_BE_BUN',host)
 
-    def test_exact_archives_compose_complete_files_and_refuse_drift(self):
-        with tempfile.TemporaryDirectory() as directory:
-            inputs,source,rg,lock,policy=self.fixture(Path(directory))
-            with patch.object(build,'bootstrap_lock',return_value=lock),patch.object(build,'RIPGREP',policy):
-                payload,receipt=build.bootstrap_payload(inputs,rg)
-                self.assertEqual(receipt['version'],build.UPSTREAM['version'])
-                self.assertEqual(payload['bootstrap/config/node_modules/@opencode-ai/plugin/index.js'],b'inert upstream helper')
-                self.assertEqual(payload['bootstrap/cache/bin/rg.exe'],b'inert rg fixture')
-                inventory=json.loads(payload['bootstrap/files.json'])
-                self.assertEqual(set(inventory),{name.removeprefix('bootstrap/') for name in payload if name.startswith(('bootstrap/config/','bootstrap/cache/'))})
-                self.assertIn('bootstrap/licenses/ripgrep/LICENSE-MIT',payload)
-                self.assertEqual(receipt['packages'][0]['license_files'],['LICENSE'])
-                original=source.read_bytes();source.write_bytes(original+b'drift')
-                with self.assertRaisesRegex(ValueError,'integrity'):build.bootstrap_payload(inputs,rg)
-                source.write_bytes(original)
-                extra=inputs/'unselected.tgz';extra.write_bytes(b'foreign')
-                with self.assertRaisesRegex(ValueError,'roster'):build.bootstrap_payload(inputs,rg)
-                extra.unlink();rg.write_bytes(rg.read_bytes()+b'drift')
-                with self.assertRaisesRegex(ValueError,'ripgrep ZIP'):build.bootstrap_payload(inputs,rg)
+    @unittest.skipUnless(os.environ.get('OA_OPENCODE_DESKTOP'),'set OA_OPENCODE_DESKTOP to an installed official OpenCode.exe')
+    def test_install_and_remove_through_the_desktop_node(self):
+        desktop=Path(os.environ['OA_OPENCODE_DESKTOP'])
+        listed={row['exe_sha256'] for row in build.DESKTOP_RELEASES}
+        self.assertIn(hashlib.sha256(desktop.read_bytes()).hexdigest(),listed,'OA_OPENCODE_DESKTOP is not a listed official release')
+        script=Path(__file__).with_name('config-lifecycle.js')
+        if not (script.parent.parent/'node_modules'/'jsonc-parser').is_dir():
+            self.skipTest('install the adopter dependencies first (adopters/opencode/test/run_node_tests.py)')
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary)
+            directory,state,cache,plugin,tools=(root/name for name in ('config','state','cache','plugin','tools'))
+            for folder in (directory,state,cache,plugin,tools):folder.mkdir()
+            launcher=tools/'oa-opencode-integration.exe';launcher.write_bytes(b'inert launcher')
+            (directory/'opencode.jsonc').write_text('// person comment\n{"plugin":["foreign"]}',encoding='utf-8')
+            def run(operation):
+                work=state/('work-'+operation);work.mkdir();home=work/'home';home.mkdir()
+                request=work/'request.json'
+                request.write_text(json.dumps({'operation':operation,'directory':str(directory),'plugin':str(plugin),
+                    'state':str(state),'work':str(work),'cache':str(cache),'mcpLauncher':str(launcher)}),encoding='utf-8')
+                environment={key:os.environ[key] for key in ('SystemRoot','WINDIR','COMSPEC','PATHEXT','PROCESSOR_ARCHITECTURE') if key in os.environ}
+                environment.update(ELECTRON_RUN_AS_NODE='1',HOME=str(home),USERPROFILE=str(home),TEMP=temporary,TMP=temporary,
+                                   **{key:str(home/key) for key in ('APPDATA','LOCALAPPDATA','XDG_CONFIG_HOME','XDG_DATA_HOME','XDG_CACHE_HOME','XDG_STATE_HOME')})
+                done=subprocess.run([str(desktop),str(script),'--request',str(request)],cwd=script.parent,env=environment,
+                                    capture_output=True,text=True,timeout=120)
+                result=json.loads((work/'result.json').read_text(encoding='utf-8'))
+                self.assertEqual((done.returncode,result.get('error')),(0,None),done.stdout+done.stderr)
+                (state/'pending.json').unlink()
+                return result
+            run('install')
+            server=(directory/'opencode.jsonc').read_text(encoding='utf-8')
+            self.assertTrue(server.startswith('// person comment'))
+            self.assertIn(json.dumps(str(plugin)),server)
+            self.assertIn(json.dumps(str(plugin)),(directory/'tui.json').read_text(encoding='utf-8'))
+            run('remove')
+            server=(directory/'opencode.jsonc').read_text(encoding='utf-8')
+            self.assertNotIn(json.dumps(str(plugin)),server)
+            self.assertIn('"foreign"',server)
 
 
 if __name__ == '__main__':

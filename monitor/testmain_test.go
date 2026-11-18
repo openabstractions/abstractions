@@ -12,6 +12,7 @@ import (
 	facade "github.com/openabstractions/abstraction-facade/go"
 	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-identity/listen"
+	"github.com/openabstractions/abstractions/monitor/internal/durabletemp"
 	"github.com/openabstractions/abstractions/monitor/internal/personfolders"
 	"github.com/openabstractions/abstractions/monitor/internal/setup"
 )
@@ -40,6 +41,10 @@ var unservedRuntimeEndpoint = listen.Endpoint(fmt.Sprintf("oa-monitor-test-unser
 // per-user folders lie in testPerson, a fresh temporary folder removed
 // afterwards (personfolders.Enter). A test that inspects them takes its own
 // (personFolders).
+//
+// The temporary folder lies on a file system that keeps file IDs
+// (durabletemp.Enter): fixtures pin agent programs and folders by stored
+// file ID.
 func TestMain(m *testing.M) {
 	if err := os.Setenv("ABSTRACTION_RUNTIME_ENDPOINT", unservedRuntimeEndpoint); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -49,6 +54,16 @@ func TestMain(m *testing.M) {
 	// The apps this account's Setup packages recorded are the person's own.
 	installedRecords = func() map[string]string { return map[string]string{} }
 	nativeApplicationNamesRead = func(context.Context) (map[string]bool, error) { return map[string]bool{}, nil }
+	// The install drive has room until a test says otherwise; no test reads
+	// this computer's free space.
+	setupInstallDisk = func() (string, uint64, error) { return "C:", 400 << 30, nil }
+	// No agent connection is enrolled until a test says so.
+	integrationEnrolledImage = func(context.Context, setup.AgentParty) (claudePanelImage, bool) { return nil, false }
+	temp, err := durabletemp.Enter()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
 	person, err := personfolders.Enter()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -63,6 +78,7 @@ func TestMain(m *testing.M) {
 	}
 	code := m.Run()
 	personfolders.Leave(person)
+	durabletemp.Leave(temp)
 	os.Exit(code)
 }
 

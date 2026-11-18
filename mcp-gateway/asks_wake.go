@@ -18,7 +18,6 @@ import (
 // program is an enrolled answerer. A new answerable Asks occurrence then
 // reaches the chat's wake path within about 15 seconds (ASK-R14).
 const asksWakeWaitMs = 15000
-const asksWakeReadTimeout = time.Second
 const maxTrackedAsksWakeIDs = 1024
 
 // asksWakeState keeps the answerable Asks occurrences one connection last
@@ -81,9 +80,7 @@ func (s *asksWakeState) keys(ids []string, complete bool, now func() time.Time) 
 func (b *messagesBackend) MessagesWatch(ctx context.Context, in gateway.MessagesWatchInput) (gateway.MessagesWatchResult, error) {
 	observeAsks := in.Turn == "" && in.Health == "" && in.ReserveWake == ""
 	if observeAsks && in.WaitMs > asksWakeWaitMs {
-		read, cancel := context.WithTimeout(ctx, asksWakeReadTimeout)
-		answerer := b.asksEnrollment(read) == rights.DecisionOutcomePermitted.String()
-		cancel()
+		answerer := b.asksEnrollment(ctx) == rights.DecisionOutcomePermitted.String()
 		if answerer {
 			in.WaitMs = asksWakeWaitMs
 		}
@@ -121,8 +118,6 @@ func (b *messagesBackend) readAsksWake(ctx context.Context, out *gateway.WatchMe
 		return
 	}
 	defer b.asksObservation.Unlock()
-	ctx, cancel := context.WithTimeout(ctx, asksWakeReadTimeout)
-	defer cancel()
 	if !b.admitAsksWakeRead(ctx, out) {
 		return
 	}

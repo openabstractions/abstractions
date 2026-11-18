@@ -2,7 +2,7 @@
 
 ## Startup refusal without the runtime — 2026-10-31
 
-[A-LEMONADE-OA](../../backlog/A-LEMONADE-OA.md) adds `admit_runtime()` to the
+A-LEMONADE-OA (`../../backlog/A-LEMONADE-OA.md`) adds `admit_runtime()` to the
 OA variant. After `--host`/`--port` validation, `CLIParser::parse` resolves
 each enabled OA service once; when the selected runtime cannot serve one,
 `lemond` and `LemonadeServer` print `OA Lemonade refused: <status>: <detail>`

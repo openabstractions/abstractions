@@ -158,7 +158,7 @@ func runCodexReceivingCompositionFixture(directory string) int {
 	if err != nil {
 		return 2
 	}
-	diagnostic := newAgentDiagnostic(directory, self)
+	diagnostic := newAgentDiagnostic(context.Background(), directory, self)
 	if diagnostic == nil {
 		return 2
 	}

@@ -63,6 +63,7 @@ func TestRuntimeStartupFailureReleasesCompanionListeners(t *testing.T) {
 	case err := <-done:
 		t.Fatalf("second start on the released names: %v", err)
 	case <-time.After(runtimeWait):
+		dumpGoroutines()
 		t.Fatalf("runtime not ready within %v", runtimeWait)
 	}
 	cancel()

@@ -225,6 +225,27 @@ export const DecisionSource = Object.freeze({
   DefaultExcluded: "default_excluded",
 });
 
+export const ChangeKind = Object.freeze({
+  SetRule: "set_rule",
+  RevokeRule: "revoke_rule",
+  SetDefault: "set_default",
+  RegisterAction: "register_action",
+  RetireAction: "retire_action",
+  Declaration: "declaration",
+});
+
+export const ChangeRequestOutcome = Object.freeze({
+  Applied: "applied",
+  Pending: "pending",
+  Refused: "refused",
+  Expired: "expired",
+  Conflict: "conflict",
+  Unknown: "unknown",
+  Invalid: "invalid",
+  Forbidden: "forbidden",
+  Unavailable: "unavailable",
+});
+
 export const ResourceSelectorKind = Object.freeze({
   One: "one",
   All: "all",
@@ -1222,6 +1243,185 @@ function writeDecisionExplanation(out, v, depth) {
     out.ascii(": ");
     esc(out, v.defaultName);
   }
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writePolicyChange(out, v, depth) {
+  { const n = ENC.encode(v.expectedRevision).length; if (n > 128) throw new Refusal("bad_value",0); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.expectedRevision)) throw new Refusal("bad_value",0);
+  if (v.ttlMs < 0n || v.ttlMs > 31536000000n) throw new Refusal("bad_value",0);
+  { const n = ENC.encode(v.why).length; if (n > 256) throw new Refusal("bad_value",0); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.why)) throw new Refusal("bad_value",0);
+  { const n = ENC.encode(v.name).length; if (n > 64) throw new Refusal("bad_value",0); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.name)) throw new Refusal("bad_value",0);
+  { const n = ENC.encode(v.action).length; if (n > 128) throw new Refusal("bad_value",0); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.action)) throw new Refusal("bad_value",0);
+  { const n = ENC.encode(v.program).length; if (n > 4096) throw new Refusal("bad_value",0); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.program)) throw new Refusal("bad_value",0);
+  { const n = v.rules.length; if (n > 64) throw new Refusal("bad_value",0); }
+  { const n = ENC.encode(v.address).length; if (n > 2048) throw new Refusal("bad_value",0); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.address)) throw new Refusal("bad_value",0);
+    if (typeof v.kind !== "string") throw new Refusal("wrong_type",0);
+    if (v.kind !== "set_rule" && v.kind !== "revoke_rule" && v.kind !== "set_default" && v.kind !== "register_action" && v.kind !== "retire_action" && v.kind !== "declaration") { throw new Refusal("bad_enum",0); }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "kind");
+  out.ascii(": ");
+  esc(out, v.kind);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "expected_revision");
+  out.ascii(": ");
+  esc(out, v.expectedRevision);
+  if (v.rule !== undefined && v.rule !== null) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "rule");
+    out.ascii(": ");
+    writePolicyRule(out, v.rule, depth + 1);
+  }
+  if (v.ttlMs !== 0n) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "ttl_ms");
+    out.ascii(": ");
+    num(out, v.ttlMs);
+  }
+  if (v.why !== "") {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "why");
+    out.ascii(": ");
+    esc(out, v.why);
+  }
+  if (v.name !== "") {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "name");
+    out.ascii(": ");
+    esc(out, v.name);
+  }
+  if (v.on) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "on");
+    out.ascii(": ");
+    out.ascii(v.on ? "true" : "false");
+  }
+  if (v.action !== "") {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "action");
+    out.ascii(": ");
+    esc(out, v.action);
+  }
+  if (v.program !== "") {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "program");
+    out.ascii(": ");
+    esc(out, v.program);
+  }
+  if (v.rules.length !== 0) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "rules");
+    out.ascii(": ");
+    writeList(out, v.rules, depth + 1, writePolicyRule);
+  }
+  if (v.address !== "") {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "address");
+    out.ascii(": ");
+    esc(out, v.address);
+  }
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeChangeRequestState(out, v, depth) {
+  { const n = ENC.encode(v.id).length; if (n > 128) throw new Refusal("bad_value",0); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.id)) throw new Refusal("bad_value",0);
+  { const n = ENC.encode(v.revision).length; if (n > 128) throw new Refusal("bad_value",0); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.revision)) throw new Refusal("bad_value",0);
+  { const n = ENC.encode(v.expires).length; if (n > 64) throw new Refusal("bad_value",0); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.expires)) throw new Refusal("bad_value",0);
+    if (typeof v.outcome !== "string") throw new Refusal("wrong_type",0);
+    if (v.outcome !== "applied" && v.outcome !== "pending" && v.outcome !== "refused" && v.outcome !== "expired" && v.outcome !== "conflict" && v.outcome !== "unknown" && v.outcome !== "invalid" && v.outcome !== "forbidden" && v.outcome !== "unavailable") { throw new Refusal("bad_enum",0); }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "outcome");
+  out.ascii(": ");
+  esc(out, v.outcome);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "id");
+  out.ascii(": ");
+  esc(out, v.id);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "revision");
+  out.ascii(": ");
+  esc(out, v.revision);
+  if (v.change !== undefined && v.change !== null) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "change");
+    out.ascii(": ");
+    writePolicyChange(out, v.change, depth + 1);
+  }
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "expires");
+  out.ascii(": ");
+  esc(out, v.expires);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "exempt");
+  out.ascii(": ");
+  out.ascii(v.exempt ? "true" : "false");
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeChangeRequestPage(out, v, depth) {
+  { const n = v.requests.length; if (n > 64) throw new Refusal("bad_value",0); }
+    if (typeof v.outcome !== "string") throw new Refusal("wrong_type",0);
+    if (v.outcome !== "page" && v.outcome !== "gap" && v.outcome !== "invalid" && v.outcome !== "forbidden" && v.outcome !== "unavailable") { throw new Refusal("bad_enum",0); }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "outcome");
+  out.ascii(": ");
+  esc(out, v.outcome);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "requests");
+  out.ascii(": ");
+  writeList(out, v.requests, depth + 1, writeChangeRequestState);
   out.byte(0x0a);
   pad(out, depth);
   out.byte(0x7d);
@@ -2268,6 +2468,51 @@ function writeOAAuthorizationOperatorListDefaultsArguments(out, v, depth) {
   out.byte(0x7d);
 }
 
+function writeOAAuthorizationOperatorRequestChangeArguments(out, v, depth) {
+  if (v.waitMs < 0n || v.waitMs > 30000n) throw new Refusal("bad_value",0);
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "change");
+  out.ascii(": ");
+  writePolicyChange(out, v.change, depth + 1);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "wait_ms");
+  out.ascii(": ");
+  num(out, v.waitMs);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAAuthorizationOperatorObserveChangeRequestArguments(out, v, depth) {
+  { const n = ENC.encode(v.id).length; if (n < 1 || n > 128) throw new Refusal("bad_value",0); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.id)) throw new Refusal("bad_value",0);
+  if (v.waitMs < 0n || v.waitMs > 30000n) throw new Refusal("bad_value",0);
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "id");
+  out.ascii(": ");
+  esc(out, v.id);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "wait_ms");
+  out.ascii(": ");
+  num(out, v.waitMs);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAAuthorizationOperatorListChangeRequestsArguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x7d);
+}
+
 function writeOAAuthorizationOperatorSetDefaultArguments(out, v, depth) {
   out.byte(0x7b);
   out.byte(0x0a);
@@ -2875,6 +3120,42 @@ function writeOAAuthorizationOperatorListDefaultsResult(out, v, depth) {
   esc(out, "value");
   out.ascii(": ");
   writeDefaultPage(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAAuthorizationOperatorRequestChangeResult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  writeChangeRequestState(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAAuthorizationOperatorObserveChangeRequestResult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  writeChangeRequestState(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAAuthorizationOperatorListChangeRequestsResult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  writeChangeRequestPage(out, v.value, depth + 1);
   out.byte(0x0a);
   pad(out, depth);
   out.byte(0x7d);
@@ -3630,6 +3911,41 @@ export function newDecisionExplanation() {
   return { outcome: "", policyRevision: "", source: null, defaultName: "" };
 }
 
+// One typed rights change an operator program requests (RIGHTS-O17). set_rule
+// carries rule, and optionally ttl_ms and why with SetRuleFor's bounds;
+// revoke_rule carries rule, whose permit is ignored; set_default carries name
+// and on; register_action and retire_action carry action. declaration is a
+// provider declaration or inference host add the registry or inference service
+// admitted for the caller: name is the declared name, program its program
+// (empty for a hosted server), address the server address it reaches (a hosted
+// server's base URL or a remote runtime's endpoint; empty for a local program)
+// and rules the exact rule set it writes on Allow; RequestChange refuses it as
+// invalid. Other fields are absent. An empty expected_revision applies at the
+// policy revision current when the change is applied; a nonempty one conflicts
+// when the policy changed. The request is never free text: the service words
+// the person's question from its own catalogue.
+export function newPolicyChange() {
+  return { kind: "", expectedRevision: "", rule: null, ttlMs: 0n, why: "", name: "", on: false, action: "", program: "", rules: [], address: "" };
+}
+
+// One change request as the service holds it (RIGHTS-O17). pending waits for
+// the person's answer in the service's popup until expires, a UTC RFC 3339
+// instant ten minutes after the request. applied means the service applied
+// exactly this change, once, and carries the policy revision after it; exempt
+// marks a change applied without a question for an elevated caller. refused is
+// the person's Not now; expired is a request nobody answered in time, which
+// changes nothing; conflict is an expected revision the policy no longer had.
+// unknown, invalid, forbidden and unavailable carry no id, change or revision.
+export function newChangeRequestState() {
+  return { outcome: "", id: "", revision: "", change: null, expires: "", exempt: false };
+}
+
+// The requests this operator program made that the service still holds, newest
+// first, at most 64. Refusals carry none.
+export function newChangeRequestPage() {
+  return { outcome: "", requests: [] };
+}
+
 export function newPermissionKey() {
   return { action: "", resourceProfile: "" };
 }
@@ -3824,6 +4140,18 @@ function newOAAuthorizationOperatorListDefaultsArguments() {
   return { };
 }
 
+function newOAAuthorizationOperatorRequestChangeArguments() {
+  return { change: newPolicyChange(), waitMs: 0n };
+}
+
+function newOAAuthorizationOperatorObserveChangeRequestArguments() {
+  return { id: "", waitMs: 0n };
+}
+
+function newOAAuthorizationOperatorListChangeRequestsArguments() {
+  return { };
+}
+
 function newOAAuthorizationOperatorSetDefaultArguments() {
   return { expectedRevision: "", name: "", on: false };
 }
@@ -3966,6 +4294,18 @@ function newOAAuthorizationOperatorExplainForResult() {
 
 function newOAAuthorizationOperatorListDefaultsResult() {
   return { value: newDefaultPage() };
+}
+
+function newOAAuthorizationOperatorRequestChangeResult() {
+  return { value: newChangeRequestState() };
+}
+
+function newOAAuthorizationOperatorObserveChangeRequestResult() {
+  return { value: newChangeRequestState() };
+}
+
+function newOAAuthorizationOperatorListChangeRequestsResult() {
+  return { value: newChangeRequestPage() };
 }
 
 function newOAAuthorizationOperatorSetDefaultResult() {
@@ -5290,6 +5630,199 @@ function readDecisionExplanation(r) {
     if (v.source !== null) {
     if (v.source !== "none" && v.source !== "own_rule" && v.source !== "typed_block" && v.source !== "account_default" && v.source !== "default_excluded") { throw r.refuse("bad_enum"); }
     }
+  return v;
+}
+
+function readPolicyChange(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newPolicyChange();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "kind") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.kind = r.string();
+      } else if (key === "expected_revision") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.expectedRevision = r.string();
+      } else if (key === "rule") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.rule = readPolicyRule(r);
+      } else if (key === "ttl_ms") {
+        if (seen & 8) throw r.refuse("duplicate_field");
+        seen |= 8;
+        v.ttlMs = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else if (key === "why") {
+        if (seen & 16) throw r.refuse("duplicate_field");
+        seen |= 16;
+        v.why = r.string();
+      } else if (key === "name") {
+        if (seen & 32) throw r.refuse("duplicate_field");
+        seen |= 32;
+        v.name = r.string();
+      } else if (key === "on") {
+        if (seen & 64) throw r.refuse("duplicate_field");
+        seen |= 64;
+        v.on = r.boolean();
+      } else if (key === "action") {
+        if (seen & 128) throw r.refuse("duplicate_field");
+        seen |= 128;
+        v.action = r.string();
+      } else if (key === "program") {
+        if (seen & 256) throw r.refuse("duplicate_field");
+        seen |= 256;
+        v.program = r.string();
+      } else if (key === "rules") {
+        if (seen & 512) throw r.refuse("duplicate_field");
+        seen |= 512;
+        v.rules = readList(r, readPolicyRule);
+      } else if (key === "address") {
+        if (seen & 1024) throw r.refuse("duplicate_field");
+        seen |= 1024;
+        v.address = r.string();
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 3) >>> 0) !== 3) throw r.refuse("missing_field");
+  { const n = ENC.encode(v.expectedRevision).length; if (n > 128) throw r.refuse("bad_value"); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.expectedRevision)) throw r.refuse("bad_value");
+  if (v.ttlMs < 0n || v.ttlMs > 31536000000n) throw r.refuse("bad_value");
+  { const n = ENC.encode(v.why).length; if (n > 256) throw r.refuse("bad_value"); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.why)) throw r.refuse("bad_value");
+  { const n = ENC.encode(v.name).length; if (n > 64) throw r.refuse("bad_value"); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.name)) throw r.refuse("bad_value");
+  { const n = ENC.encode(v.action).length; if (n > 128) throw r.refuse("bad_value"); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.action)) throw r.refuse("bad_value");
+  { const n = ENC.encode(v.program).length; if (n > 4096) throw r.refuse("bad_value"); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.program)) throw r.refuse("bad_value");
+  { const n = v.rules.length; if (n > 64) throw r.refuse("bad_value"); }
+  { const n = ENC.encode(v.address).length; if (n > 2048) throw r.refuse("bad_value"); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.address)) throw r.refuse("bad_value");
+    if (v.kind !== "set_rule" && v.kind !== "revoke_rule" && v.kind !== "set_default" && v.kind !== "register_action" && v.kind !== "retire_action" && v.kind !== "declaration") { throw r.refuse("bad_enum"); }
+  return v;
+}
+
+function readChangeRequestState(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newChangeRequestState();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "outcome") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.outcome = r.string();
+      } else if (key === "id") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.id = r.string();
+      } else if (key === "revision") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.revision = r.string();
+      } else if (key === "change") {
+        if (seen & 8) throw r.refuse("duplicate_field");
+        seen |= 8;
+        v.change = readPolicyChange(r);
+      } else if (key === "expires") {
+        if (seen & 16) throw r.refuse("duplicate_field");
+        seen |= 16;
+        v.expires = r.string();
+      } else if (key === "exempt") {
+        if (seen & 32) throw r.refuse("duplicate_field");
+        seen |= 32;
+        v.exempt = r.boolean();
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 55) >>> 0) !== 55) throw r.refuse("missing_field");
+  { const n = ENC.encode(v.id).length; if (n > 128) throw r.refuse("bad_value"); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.id)) throw r.refuse("bad_value");
+  { const n = ENC.encode(v.revision).length; if (n > 128) throw r.refuse("bad_value"); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.revision)) throw r.refuse("bad_value");
+  { const n = ENC.encode(v.expires).length; if (n > 64) throw r.refuse("bad_value"); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.expires)) throw r.refuse("bad_value");
+    if (v.outcome !== "applied" && v.outcome !== "pending" && v.outcome !== "refused" && v.outcome !== "expired" && v.outcome !== "conflict" && v.outcome !== "unknown" && v.outcome !== "invalid" && v.outcome !== "forbidden" && v.outcome !== "unavailable") { throw r.refuse("bad_enum"); }
+  return v;
+}
+
+function readChangeRequestPage(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newChangeRequestPage();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "outcome") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.outcome = r.string();
+      } else if (key === "requests") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.requests = readList(r, readChangeRequestState);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 3) >>> 0) !== 3) throw r.refuse("missing_field");
+  { const n = v.requests.length; if (n > 64) throw r.refuse("bad_value"); }
+    if (v.outcome !== "page" && v.outcome !== "gap" && v.outcome !== "invalid" && v.outcome !== "forbidden" && v.outcome !== "unavailable") { throw r.refuse("bad_enum"); }
   return v;
 }
 
@@ -7006,6 +7539,119 @@ function readOAAuthorizationOperatorListDefaultsArguments(r) {
   return v;
 }
 
+function readOAAuthorizationOperatorRequestChangeArguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAAuthorizationOperatorRequestChangeArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "change") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.change = readPolicyChange(r);
+      } else if (key === "wait_ms") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.waitMs = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 3) >>> 0) !== 3) throw r.refuse("missing_field");
+  if (v.waitMs < 0n || v.waitMs > 30000n) throw r.refuse("bad_value");
+  return v;
+}
+
+function readOAAuthorizationOperatorObserveChangeRequestArguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAAuthorizationOperatorObserveChangeRequestArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "id") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.id = r.string();
+      } else if (key === "wait_ms") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.waitMs = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 3) >>> 0) !== 3) throw r.refuse("missing_field");
+  { const n = ENC.encode(v.id).length; if (n < 1 || n > 128) throw r.refuse("bad_value"); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.id)) throw r.refuse("bad_value");
+  if (v.waitMs < 0n || v.waitMs > 30000n) throw r.refuse("bad_value");
+  return v;
+}
+
+function readOAAuthorizationOperatorListChangeRequestsArguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAAuthorizationOperatorListChangeRequestsArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (false) {
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  return v;
+}
+
 function readOAAuthorizationOperatorSetDefaultArguments(r) {
   if (r.at() !== 0x7b) throw r.refuse("wrong_type");
   r.enter();
@@ -8386,6 +9032,111 @@ function readOAAuthorizationOperatorListDefaultsResult(r) {
   return v;
 }
 
+function readOAAuthorizationOperatorRequestChangeResult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAAuthorizationOperatorRequestChangeResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = readChangeRequestState(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOAAuthorizationOperatorObserveChangeRequestResult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAAuthorizationOperatorObserveChangeRequestResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = readChangeRequestState(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOAAuthorizationOperatorListChangeRequestsResult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAAuthorizationOperatorListChangeRequestsResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = readChangeRequestPage(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
 function readOAAuthorizationOperatorSetDefaultResult(r) {
   if (r.at() !== 0x7b) throw r.refuse("wrong_type");
   r.enter();
@@ -8911,6 +9662,9 @@ const JSON_RECORDS = Object.freeze({
   DefaultPage: [writeDefaultPage, readDefaultPage],
   DefaultEdit: [writeDefaultEdit, readDefaultEdit],
   DecisionExplanation: [writeDecisionExplanation, readDecisionExplanation],
+  PolicyChange: [writePolicyChange, readPolicyChange],
+  ChangeRequestState: [writeChangeRequestState, readChangeRequestState],
+  ChangeRequestPage: [writeChangeRequestPage, readChangeRequestPage],
   PermissionKey: [writePermissionKey, readPermissionKey],
   ResourceSelector: [writeResourceSelector, readResourceSelector],
   PermissionSelection: [writePermissionSelection, readPermissionSelection],
@@ -9040,6 +9794,9 @@ _serviceRecords["AccountDefault"] = [["name","string","never"],["action","string
 _serviceRecords["DefaultPage"] = [["outcome","string","never"],["revision","string","never"],["defaults","list<AccountDefault>","never"],];
 _serviceRecords["DefaultEdit"] = [["outcome","string","never"],["revision","string","never"],["current","AccountDefault","absent"],];
 _serviceRecords["DecisionExplanation"] = [["outcome","string","never"],["policyRevision","string","absent"],["source","string","absent"],["defaultName","string","absent"],];
+_serviceRecords["PolicyChange"] = [["kind","string","never"],["expectedRevision","string","never"],["rule","PolicyRule","absent"],["ttlMs","i64","zero"],["why","string","zero"],["name","string","zero"],["on","bool","zero"],["action","string","zero"],["program","string","zero"],["rules","list<PolicyRule>","zero"],["address","string","zero"],];
+_serviceRecords["ChangeRequestState"] = [["outcome","string","never"],["id","string","never"],["revision","string","never"],["change","PolicyChange","absent"],["expires","string","never"],["exempt","bool","never"],];
+_serviceRecords["ChangeRequestPage"] = [["outcome","string","never"],["requests","list<ChangeRequestState>","never"],];
 _serviceRecords["PermissionKey"] = [["action","string","never"],["resourceProfile","string","never"],];
 _serviceRecords["ResourceSelector"] = [["kind","string","never"],["target","binary","absent"],];
 _serviceRecords["PermissionSelection"] = [["permission","PermissionKey","never"],["selector","ResourceSelector","never"],];
@@ -9078,6 +9835,9 @@ _serviceRecords["OAAuthorizationOperatorRegisterActionArguments"] = [["expectedR
 _serviceRecords["OAAuthorizationOperatorRetireActionArguments"] = [["expectedRevision","string","never"],["action","string","never"],];
 _serviceRecords["OAAuthorizationOperatorExplainForArguments"] = [["subject","Subject","never"],["action","string","never"],["resource","string","never"],];
 _serviceRecords["OAAuthorizationOperatorListDefaultsArguments"] = [];
+_serviceRecords["OAAuthorizationOperatorRequestChangeArguments"] = [["change","PolicyChange","never"],["waitMs","i64","never"],];
+_serviceRecords["OAAuthorizationOperatorObserveChangeRequestArguments"] = [["id","string","never"],["waitMs","i64","never"],];
+_serviceRecords["OAAuthorizationOperatorListChangeRequestsArguments"] = [];
 _serviceRecords["OAAuthorizationOperatorSetDefaultArguments"] = [["expectedRevision","string","never"],["name","string","never"],["on","bool","never"],];
 _serviceRecords["OASelectorAuthorizationListPermissionDefinitionsArguments"] = [["cursor","string","never"],["limit","i64","never"],];
 _serviceRecords["OASelectorAuthorizationListPermissionBundlesArguments"] = [["cursor","string","never"],["limit","i64","never"],];
@@ -9114,6 +9874,9 @@ _serviceRecords["OAAuthorizationOperatorRegisterActionResult"] = [["value","Acti
 _serviceRecords["OAAuthorizationOperatorRetireActionResult"] = [["value","ActionEdit","never"],];
 _serviceRecords["OAAuthorizationOperatorExplainForResult"] = [["value","DecisionExplanation","never"],];
 _serviceRecords["OAAuthorizationOperatorListDefaultsResult"] = [["value","DefaultPage","never"],];
+_serviceRecords["OAAuthorizationOperatorRequestChangeResult"] = [["value","ChangeRequestState","never"],];
+_serviceRecords["OAAuthorizationOperatorObserveChangeRequestResult"] = [["value","ChangeRequestState","never"],];
+_serviceRecords["OAAuthorizationOperatorListChangeRequestsResult"] = [["value","ChangeRequestPage","never"],];
 _serviceRecords["OAAuthorizationOperatorSetDefaultResult"] = [["value","DefaultEdit","never"],];
 _serviceRecords["OASelectorAuthorizationListPermissionDefinitionsResult"] = [["value","PermissionDefinitionPage","never"],];
 _serviceRecords["OASelectorAuthorizationListPermissionBundlesResult"] = [["value","PermissionBundlePage","never"],];
@@ -9425,6 +10188,43 @@ export class AuthorizationOperatorClient {
     return _result.value;
   }
 
+  async requestChange(change, waitMs) {
+    const _args = newOAAuthorizationOperatorRequestChangeArguments();
+    _args.change = change;
+    _args.waitMs = waitMs;
+    _serviceCheck("OAAuthorizationOperatorRequestChangeArguments", _args);
+    const _payload = _serviceEncode(writeOAAuthorizationOperatorRequestChangeArguments, _args, 1);
+    _serviceDecode(readOAAuthorizationOperatorRequestChangeArguments, _payload, 1);
+    const _request = _serviceRequest("abstraction.rights/operator@1", "RequestChange", _payload);
+    const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.rights/operator@1", "RequestChange");
+    const _result = _serviceDecode(readOAAuthorizationOperatorRequestChangeResult, _reply, 1);
+    return _result.value;
+  }
+
+  async observeChangeRequest(id, waitMs) {
+    const _args = newOAAuthorizationOperatorObserveChangeRequestArguments();
+    _args.id = id;
+    _args.waitMs = waitMs;
+    _serviceCheck("OAAuthorizationOperatorObserveChangeRequestArguments", _args);
+    const _payload = _serviceEncode(writeOAAuthorizationOperatorObserveChangeRequestArguments, _args, 1);
+    _serviceDecode(readOAAuthorizationOperatorObserveChangeRequestArguments, _payload, 1);
+    const _request = _serviceRequest("abstraction.rights/operator@1", "ObserveChangeRequest", _payload);
+    const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.rights/operator@1", "ObserveChangeRequest");
+    const _result = _serviceDecode(readOAAuthorizationOperatorObserveChangeRequestResult, _reply, 1);
+    return _result.value;
+  }
+
+  async listChangeRequests() {
+    const _args = newOAAuthorizationOperatorListChangeRequestsArguments();
+    _serviceCheck("OAAuthorizationOperatorListChangeRequestsArguments", _args);
+    const _payload = _serviceEncode(writeOAAuthorizationOperatorListChangeRequestsArguments, _args, 1);
+    _serviceDecode(readOAAuthorizationOperatorListChangeRequestsArguments, _payload, 1);
+    const _request = _serviceRequest("abstraction.rights/operator@1", "ListChangeRequests", _payload);
+    const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.rights/operator@1", "ListChangeRequests");
+    const _result = _serviceDecode(readOAAuthorizationOperatorListChangeRequestsResult, _reply, 1);
+    return _result.value;
+  }
+
   async setDefault(expectedRevision, name, on) {
     const _args = newOAAuthorizationOperatorSetDefaultArguments();
     _args.expectedRevision = expectedRevision;
@@ -9653,6 +10453,9 @@ _namedRecords["AccountDefault"] = [["name","string","never"],["action","string",
 _namedRecords["DefaultPage"] = [["outcome","string","never"],["revision","string","never"],["defaults","list<AccountDefault>","never"],];
 _namedRecords["DefaultEdit"] = [["outcome","string","never"],["revision","string","never"],["current","AccountDefault","absent"],];
 _namedRecords["DecisionExplanation"] = [["outcome","string","never"],["policyRevision","string","absent"],["source","string","absent"],["defaultName","string","absent"],];
+_namedRecords["PolicyChange"] = [["kind","string","never"],["expectedRevision","string","never"],["rule","PolicyRule","absent"],["ttlMs","i64","zero"],["why","string","zero"],["name","string","zero"],["on","bool","zero"],["action","string","zero"],["program","string","zero"],["rules","list<PolicyRule>","zero"],["address","string","zero"],];
+_namedRecords["ChangeRequestState"] = [["outcome","string","never"],["id","string","never"],["revision","string","never"],["change","PolicyChange","absent"],["expires","string","never"],["exempt","bool","never"],];
+_namedRecords["ChangeRequestPage"] = [["outcome","string","never"],["requests","list<ChangeRequestState>","never"],];
 _namedRecords["PermissionKey"] = [["action","string","never"],["resourceProfile","string","never"],];
 _namedRecords["ResourceSelector"] = [["kind","string","never"],["target","binary","absent"],];
 _namedRecords["PermissionSelection"] = [["permission","PermissionKey","never"],["selector","ResourceSelector","never"],];
@@ -9807,6 +10610,18 @@ export function checkDefaultEdit(v, depth = 0, limit = DEPTH_LIMIT) {
 
 export function checkDecisionExplanation(v, depth = 0, limit = DEPTH_LIMIT) {
   _namedCheck("DecisionExplanation", v, depth, Math.min(limit, DEPTH_LIMIT));
+}
+
+export function checkPolicyChange(v, depth = 0, limit = DEPTH_LIMIT) {
+  _namedCheck("PolicyChange", v, depth, Math.min(limit, DEPTH_LIMIT));
+}
+
+export function checkChangeRequestState(v, depth = 0, limit = DEPTH_LIMIT) {
+  _namedCheck("ChangeRequestState", v, depth, Math.min(limit, DEPTH_LIMIT));
+}
+
+export function checkChangeRequestPage(v, depth = 0, limit = DEPTH_LIMIT) {
+  _namedCheck("ChangeRequestPage", v, depth, Math.min(limit, DEPTH_LIMIT));
 }
 
 export function checkPermissionKey(v, depth = 0, limit = DEPTH_LIMIT) {
@@ -10803,6 +11618,117 @@ export function encodeDecisionExplanation(v) {
 
 export function decodeDecisionExplanation(data) {
   const [v, n] = decodeDecisionExplanationAt(data, 0, DEPTH_LIMIT);
+  const r = new Reader(data);
+  r.pos = n;
+  r.ws();
+  if (r.pos !== r.buf.length) throw r.refuse("trailing_bytes");
+  return v;
+}
+
+export function decodePolicyChangeAt(data, depth, limit) {
+  const r = new Reader(data);
+  if (depth < 0 || limit < 1) throw r.refuse("depth_exceeded");
+  r.depth = depth;
+  r.limit = Math.min(limit, DEPTH_LIMIT);
+  r.ws();
+  const v = readPolicyChange(r);
+  return [v, r.pos];
+}
+
+export function encodePolicyChangeAt(v, depth) {
+  if (depth < 0 || depth >= DEPTH_LIMIT) throw new Refusal("depth_exceeded", 0);
+  checkPolicyChange(v, depth, DEPTH_LIMIT);
+  const out = new Out();
+  writePolicyChange(out, v, depth);
+  const bytes = out.bytes();
+  decodePolicyChangeAt(bytes, depth, DEPTH_LIMIT);
+  return bytes;
+}
+
+export function encodePolicyChange(v) {
+  const bytes = encodePolicyChangeAt(v, 0);
+  const out = new Uint8Array(bytes.length + 1);
+  out.set(bytes);
+  out[bytes.length] = 0x0a;
+  return out;
+}
+
+export function decodePolicyChange(data) {
+  const [v, n] = decodePolicyChangeAt(data, 0, DEPTH_LIMIT);
+  const r = new Reader(data);
+  r.pos = n;
+  r.ws();
+  if (r.pos !== r.buf.length) throw r.refuse("trailing_bytes");
+  return v;
+}
+
+export function decodeChangeRequestStateAt(data, depth, limit) {
+  const r = new Reader(data);
+  if (depth < 0 || limit < 1) throw r.refuse("depth_exceeded");
+  r.depth = depth;
+  r.limit = Math.min(limit, DEPTH_LIMIT);
+  r.ws();
+  const v = readChangeRequestState(r);
+  return [v, r.pos];
+}
+
+export function encodeChangeRequestStateAt(v, depth) {
+  if (depth < 0 || depth >= DEPTH_LIMIT) throw new Refusal("depth_exceeded", 0);
+  checkChangeRequestState(v, depth, DEPTH_LIMIT);
+  const out = new Out();
+  writeChangeRequestState(out, v, depth);
+  const bytes = out.bytes();
+  decodeChangeRequestStateAt(bytes, depth, DEPTH_LIMIT);
+  return bytes;
+}
+
+export function encodeChangeRequestState(v) {
+  const bytes = encodeChangeRequestStateAt(v, 0);
+  const out = new Uint8Array(bytes.length + 1);
+  out.set(bytes);
+  out[bytes.length] = 0x0a;
+  return out;
+}
+
+export function decodeChangeRequestState(data) {
+  const [v, n] = decodeChangeRequestStateAt(data, 0, DEPTH_LIMIT);
+  const r = new Reader(data);
+  r.pos = n;
+  r.ws();
+  if (r.pos !== r.buf.length) throw r.refuse("trailing_bytes");
+  return v;
+}
+
+export function decodeChangeRequestPageAt(data, depth, limit) {
+  const r = new Reader(data);
+  if (depth < 0 || limit < 1) throw r.refuse("depth_exceeded");
+  r.depth = depth;
+  r.limit = Math.min(limit, DEPTH_LIMIT);
+  r.ws();
+  const v = readChangeRequestPage(r);
+  return [v, r.pos];
+}
+
+export function encodeChangeRequestPageAt(v, depth) {
+  if (depth < 0 || depth >= DEPTH_LIMIT) throw new Refusal("depth_exceeded", 0);
+  checkChangeRequestPage(v, depth, DEPTH_LIMIT);
+  const out = new Out();
+  writeChangeRequestPage(out, v, depth);
+  const bytes = out.bytes();
+  decodeChangeRequestPageAt(bytes, depth, DEPTH_LIMIT);
+  return bytes;
+}
+
+export function encodeChangeRequestPage(v) {
+  const bytes = encodeChangeRequestPageAt(v, 0);
+  const out = new Uint8Array(bytes.length + 1);
+  out.set(bytes);
+  out[bytes.length] = 0x0a;
+  return out;
+}
+
+export function decodeChangeRequestPage(data) {
+  const [v, n] = decodeChangeRequestPageAt(data, 0, DEPTH_LIMIT);
   const r = new Reader(data);
   r.pos = n;
   r.ws();

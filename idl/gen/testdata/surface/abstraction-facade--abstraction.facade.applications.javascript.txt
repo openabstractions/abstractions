@@ -33,6 +33,8 @@ class ApplicationsClient
   observe(query)
   activate(key, request)
   describe(query)
+  open(key, request)
+  describeOpen(query)
   commands(query)
   call(key, call)
   readSignInStart()
@@ -97,6 +99,8 @@ function decodeConnectExpectation(data)
 function decodeDescribeResult(data)
 function decodeHostActivationResult(data)
 function decodeNamedApplicationTarget(data)
+function decodeOpenRequest(data)
+function decodeOpenResult(data)
 function decodePage(data)
 function decodeQuery(data)
 function decodeRegisterRequest(data)
@@ -128,6 +132,8 @@ function encodeConnectExpectation(v)
 function encodeDescribeResult(v)
 function encodeHostActivationResult(v)
 function encodeNamedApplicationTarget(v)
+function encodeOpenRequest(v)
+function encodeOpenResult(v)
 function encodePage(v)
 function encodeQuery(v)
 function encodeRegisterRequest(v)
@@ -226,6 +232,13 @@ function newHostActivationResult()
   reason
 function newNamedApplicationTarget()
   name
+function newOpenRequest()
+  request
+  waitMs
+function newOpenResult()
+  result
+  question
+  handle
 function newPage()
   outcome
   cursor

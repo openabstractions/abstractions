@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
+	"fmt"
 
 	"github.com/openabstractions/abstraction-identity/remote"
 )
@@ -178,16 +179,16 @@ func (s *runtimePairingState) activateConsent(ctx context.Context, expected uint
 	}, current...)
 }
 
-// No TLS callback can mutate trust configuration. A busy or invalid owner
-// refuses this handshake; the remaining handshake context bounds the read.
+// No TLS callback can mutate trust configuration. The remaining handshake
+// context bounds the native state lock and read.
 func (s *runtimePairingState) clientRoots(ctx context.Context) (*x509.CertPool, error) {
-	if !s.mu.TryLock() {
-		return nil, errPairingBusy
+	if err := s.mu.lockContext(ctx); err != nil {
+		return nil, fmt.Errorf("pairing client roots lock: %w: %w", errPairingBusy, err)
 	}
 	defer s.mu.Unlock()
 	d, _, err := s.read(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("pairing client roots read: %w", err)
 	}
 	roots := x509.NewCertPool()
 	for _, p := range d.Peers {
@@ -206,13 +207,13 @@ func (s *runtimePairingState) clientRoots(ctx context.Context) (*x509.CertPool, 
 	return roots, nil
 }
 func (s *runtimePairingState) outgoingTLS(ctx context.Context, key string) (*tls.Config, string, error) {
-	if !s.mu.TryLock() {
-		return nil, "", errPairingBusy
+	if err := s.mu.lockContext(ctx); err != nil {
+		return nil, "", fmt.Errorf("pairing outgoing TLS lock: %w: %w", errPairingBusy, err)
 	}
 	defer s.mu.Unlock()
 	d, _, err := s.read(ctx)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("pairing outgoing TLS read: %w", err)
 	}
 	p, ok := d.Peers[key]
 	if !ok || p.State != "active" || p.PeerServiceAddress == "" {
@@ -231,16 +232,16 @@ func (s *runtimePairingState) outgoingTLS(ctx context.Context, key string) (*tls
 	return &tls.Config{Certificates: []tls.Certificate{cert}, RootCAs: roots, ServerName: "oa-runtime"}, p.PeerServiceAddress, nil
 }
 func (s *runtimePairingState) minimum(ctx context.Context, peer remote.Peer) (string, error) {
-	if err := s.admit(peer); err != nil {
+	if err := s.admitContext(ctx, peer); err != nil {
 		return "", err
 	}
-	if !s.mu.TryLock() {
-		return "", errPairingBusy
+	if err := s.mu.lockContext(ctx); err != nil {
+		return "", fmt.Errorf("pairing minimum lock: %w: %w", errPairingBusy, err)
 	}
 	defer s.mu.Unlock()
 	d, _, err := s.read(ctx)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("pairing minimum read: %w", err)
 	}
 	p, ok := d.Peers[hex.EncodeToString(peer.Key[:])]
 	if !ok || p.State != "active" {

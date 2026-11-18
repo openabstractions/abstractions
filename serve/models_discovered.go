@@ -454,7 +454,7 @@ func (p *runtimeProviders) reconcileModelHost(ctx context.Context, composed stor
 		// registry then carries the person's Keep (facade REG-CFG2).
 		_, part, err := legacyRegistrationSpec(file)
 		if err != nil || len(part.Providers) != 1 {
-			return "", fmt.Errorf("model host declaration: allowlist: %v", err)
+			return "", fmt.Errorf("model host declaration: allowlist: %w", err)
 		}
 		facet := allowlistFacet(*existing.ProviderFacet, part.Providers[0], settings.engine, next)
 		file = providerFacetCompatibility(d.Program, facet)

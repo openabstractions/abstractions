@@ -155,13 +155,13 @@ native-value conversion and language memory/lifetime marshalling remain binding
 work. Repetitive accessors belong to generation.
 
 New shared client behavior belongs in the definition, generator or existing
-shared native owner, following [the architecture](../ARCHITECTURE.md#definitions-languages-and-shared-state).
+shared native owner, following the architecture (`../ARCHITECTURE.md`).
 Extend that owner and receive its language bindings together for resolution,
 validation, deadlines, cancellation and other recurring semantics. Services own
 shared state and authority; native facilities retain their shared implementation.
 
 Current clients still carry handwritten wrappers and resolver accessors in
-several languages. The [27 October audit](../research/client-architecture/2026-10-27/report.md)
+several languages. The 27 October audit (`../research/client-architecture/2026-10-27/report.md`)
 records this consolidation debt. Generated records and wire clients alone do
 not establish a usable client or shared behavior. Generated and handwritten
 files also coexist under `py/`; use the declared generation owner and actual

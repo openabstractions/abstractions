@@ -65,7 +65,7 @@ func queryAdapter(providerBinary, title string) (FeatureStatus, string, error) {
 
 func queryModelHostFeature() (FeatureStatus, string, error) {
 	if runtime.GOARCH != "amd64" {
-		return FeatureStatus{Reason: "The OpenAbstractions ModelHost feature requires Windows x64"}, "", nil
+		return FeatureStatus{Reason: "The OpenAbstractions ModelHost feature requires Windows x64", Unsupported: true}, "", nil
 	}
 	program, err := os.Executable()
 	if err != nil {

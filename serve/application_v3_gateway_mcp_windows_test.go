@@ -137,13 +137,19 @@ func (b *applicationV3MCPBackend) ApplicationsCommands(_ context.Context, q appm
 func (b *applicationV3MCPBackend) ApplicationsCall(_ context.Context, q appmodel.GatewayCall) (applications.CallResult, error) {
 	return b.c.Call(b.key, q)
 }
-func (b *applicationV3MCPBackend) ApplicationsOpen(_ context.Context, q applications.ActivateRequest) (applications.ActivationResult, error) {
+func (b *applicationV3MCPBackend) ApplicationsOpen(_ context.Context, q applications.OpenRequest) (applications.OpenResult, error) {
 	key, err := applications.NewRequestKey()
 	if err != nil {
-		return applications.ActivationResult{}, err
+		return applications.OpenResult{}, err
 	}
-	return b.c.Activate(key, q)
+	return b.c.Open(key, q)
 }
+func (b *applicationV3MCPBackend) ApplicationsDescribeOpen(_ context.Context, q appmodel.OpenHandleQuery) (applications.DescribeResult, error) {
+	return b.c.DescribeOpen(q)
+}
+
+// The gateway adds AppModel tools only for a full AppModelBackend.
+var _ gateway.AppModelBackend = (*applicationV3MCPBackend)(nil)
 
 func TestApplicationV3GatewayMCPNativeComposition(t *testing.T) {
 	f := newApplicationV3GatewayFixture(t)

@@ -176,6 +176,35 @@ func (c Catalog) fixupTargets() ([]fixupTarget, error) {
 	return targets, nil
 }
 
+// UnsupportedOfficialRelease names the releases the Catalog integrates when
+// app's official program is a release its fix-up does not list (ruling
+// OPENCODE-WATCHER-PIN 2). It answers "" for a listed release, an app
+// without a fix-up, and a program it cannot read; the integration's own
+// installer guard still decides those.
+func (c Catalog) UnsupportedOfficialRelease(app AppID) string {
+	targets, err := c.fixupTargets()
+	if err != nil {
+		return ""
+	}
+	for _, t := range targets {
+		if t.choice.ID != app {
+			continue
+		}
+		digest, err := cachedDigest(filepath.Join(t.folder, filepath.Base(filepath.FromSlash(t.choice.Official.LocalAppData))))
+		if err != nil {
+			return ""
+		}
+		for _, version := range t.fixup.ProgramVersions {
+			if t.fixup.ProgramSHA256[version] == digest {
+				return ""
+			}
+		}
+		name := t.choice.Name()
+		return "This release of OpenAbstractions supports " + name + " " + joinWords(t.fixup.ProgramVersions, "and") + "."
+	}
+	return ""
+}
+
 // CheckFixups reads every installed app's fix-up. It hashes the named files
 // read-only and changes nothing. An app whose official program is absent,
 // or whose adopter package is not installed or carries no fix, has no

@@ -363,7 +363,7 @@ func inputMouseHook(code int, wparam, lparam uintptr) uintptr {
 	// primary click may arrive as the right one.
 	if code == 0 && (wparam == wmLButtonUp || wparam == wmRButtonUp) && lparam != 0 {
 		if g := activeRealInput.Load(); g != nil {
-			info := (*msllHookStruct)(unsafe.Pointer(lparam))
+			info := (*msllHookStruct)(nativePointer(lparam))
 			target := inputWindowAt(info.X, info.Y)
 			g.record(realInputEvent{at: time.Now(), mouse: true, target: target, root: inputRoot(target),
 				injected: info.Flags&(llmhfInjected|llmhfLowerILInject) != 0, lowerIL: info.Flags&llmhfLowerILInject != 0})
@@ -375,7 +375,7 @@ func inputMouseHook(code int, wparam, lparam uintptr) uintptr {
 func inputKeyHook(code int, wparam, lparam uintptr) uintptr {
 	if code == 0 && lparam != 0 && (wparam == wmKeyDown || wparam == wmKeyUp || wparam == wmSysKeyDown || wparam == wmSysKeyUp) {
 		if g := activeRealInput.Load(); g != nil {
-			info := (*kbdllHookStruct)(unsafe.Pointer(lparam))
+			info := (*kbdllHookStruct)(nativePointer(lparam))
 			if noted := info.VK == vkReturn || info.VK == vkSpace ||
 				info.Flags&llkhfAltDown != 0 && (info.VK >= '0' && info.VK <= '9' || info.VK >= 'A' && info.VK <= 'Z'); noted {
 				g.record(realInputEvent{at: time.Now(), vk: info.VK, root: inputRoot(inputForeground()),

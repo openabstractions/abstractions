@@ -101,7 +101,7 @@ func TestPairingStateWindowsRootPrivacyAfterClosure(t *testing.T) {
 	if readErr != nil || string(before) != string(after) {
 		t.Fatalf("unsafe root changed CAS value: %v", readErr)
 	}
-	if s.admit(pairingStateAdmission(cert)) == nil {
+	if s.admitContext(t.Context(), pairingStateAdmission(cert)) == nil {
 		t.Fatal("unsafe root admitted")
 	}
 }

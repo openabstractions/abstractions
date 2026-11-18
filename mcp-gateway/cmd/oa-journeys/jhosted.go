@@ -516,6 +516,7 @@ func runHostedKey(ctx context.Context, e *env, o *options, r *result) {
 			// remove it whatever happened above.
 			cctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
+			//unchecked: journey cleanup; the test key lives only in this journey's isolated runtime
 			_, _ = revokeCredential(cctx, e, hostedKeyName)
 		}
 	}()
@@ -635,6 +636,7 @@ func runCloudLoss(ctx context.Context, e *env, o *options, r *result) {
 	defer func() {
 		cctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
+		//unchecked: journey cleanup; the test key lives only in this journey's isolated runtime
 		_, _ = revokeCredential(cctx, e, cloudName)
 	}()
 	if !connectHosted(ctx, e, r, up, cloudName, 0, false) {

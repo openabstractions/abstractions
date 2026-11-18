@@ -20,12 +20,15 @@ import (
 // now …"). A default the runtime adds later shows its name until it has words
 // here.
 var defaultLabels = map[string]string{
-	"register":         "Add itself to Apps",
-	"ask":              "Ask you questions",
-	"announce":         "Say when it is running",
-	"notify":           "Send you notifications",
-	"download":         "Download in the background",
-	"elevated-callers": "Act without asking when run as administrator",
+	"register": "Add itself to Apps",
+	"ask":      "Ask you questions",
+	"announce": "Say when it is running",
+	"notify":   "Send you notifications",
+	"download": "Download in the background",
+	// A plain statement of what the switch does; it stays on after a fresh
+	// install (architect design A), so its caption says where each change
+	// shows (agent-ux 2026-11-22).
+	"elevated-callers": "Programs run as administrator can change permissions without asking",
 	// agent-messages has its own group on the Permissions page.
 	agentMessagesDefault: "Message each other without asking",
 }
@@ -44,24 +47,30 @@ const (
 	agentMessagesAskName    = "Ask before an agent messages another"
 )
 
+// defaultCaptions are the captions under a default's label.
+var defaultCaptions = map[string]string{
+	"elevated-callers": "You see each change in Activity.",
+}
+
 var defaultPhrases = map[string]string{
 	"register":           "add itself to Apps",
 	"ask":                "ask you questions",
 	"announce":           "say when it is running",
 	"notify":             "send you notifications",
 	"download":           "download in the background",
-	"elevated-callers":   "act without asking when run as administrator",
+	"elevated-callers":   "change permissions without asking when run as administrator",
 	agentMessagesDefault: "message each other without asking",
 }
 
 // defaultView is one default as the page draws it.
 type defaultView struct {
-	Name   string
-	Label  string
-	Phrase string
-	On     bool
-	SetBy  *rightsclient.Subject `json:"SetBy,omitempty"`
-	SetAt  string                `json:"SetAt,omitempty"`
+	Name    string
+	Label   string
+	Caption string `json:"Caption,omitempty"`
+	Phrase  string
+	On      bool
+	SetBy   *rightsclient.Subject `json:"SetBy,omitempty"`
+	SetAt   string                `json:"SetAt,omitempty"`
 	// Technical carries the action and resource for Technical details.
 	Action        string
 	Resource      string
@@ -82,7 +91,7 @@ func presentDefault(d rwire.AccountDefault) defaultView {
 	if label == "" || phrase == "" {
 		label, phrase = d.Name, "use the default "+d.Name
 	}
-	return defaultView{Name: d.Name, Label: label, Phrase: phrase, On: d.On, SetBy: d.SetBy, SetAt: d.SetAt, Action: d.Action, Resource: d.Resource, EveryResource: d.EveryResource}
+	return defaultView{Name: d.Name, Label: label, Caption: defaultCaptions[d.Name], Phrase: phrase, On: d.On, SetBy: d.SetBy, SetAt: d.SetAt, Action: d.Action, Resource: d.Resource, EveryResource: d.EveryResource}
 }
 
 // defaultEdit is one switch turned on the page.

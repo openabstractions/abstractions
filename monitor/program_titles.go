@@ -293,7 +293,7 @@ func reservedTitle(title string) bool { return client.ReservedApplicationTitle(t
 type programTitler struct {
 	own        []oaProgramTitle
 	registered []fwire.ApplicationEntry
-	providers  []fwire.DeclarationState
+	providers  []providerState
 	known      map[string]string
 	chatNames  map[string]string
 }
@@ -347,39 +347,65 @@ func withoutInstanceSuffix(name string) string {
 	return name[:i]
 }
 
-// providerDeclaredByInstallation is the declared_by the runtime asserts for a
-// declaration the installation placed (serve's declaredByInstallation); a
-// declaration made through Declare carries its caller's program instead.
-const providerDeclaredByInstallation = "installation"
+// shippedProvider reports a provider declaration OpenAbstractions shipped,
+// which may read by its product title: the runtime's standing for it is
+// product (A-SEC6, architect ruling 2026-11-22 (1)). The runtime computes it
+// once, from the declared program's product standing and the component
+// table's names for that program; the Panel reads only its own machine's
+// runtime and derives nothing from declared_by or its own folder. An absent
+// standing, from a runtime that does not send one, reads as third_party.
+func shippedProvider(state providerState) bool {
+	return state.Standing != nil && *state.Standing == fwire.ProductStandingProduct
+}
 
-// shippedProvider reports a provider declaration OpenAbstractions shipped or
-// Setup made, which may read by its product title: one the installation
-// placed while this Panel, installed beside that runtime, runs from a folder
-// only an administrator writes, or one whose program has product standing
-// (product.Shipped, oaOwnPrograms' rule). A per-user installation's folder
-// is the person's to write, so a declaration placed there counts only by its
-// program. A name alone claims nothing, since any holder of provider
-// management may choose it. Setup's apps folder grants no product title: the
-// apps there run third-party code, and none of them ships a provider with a
-// product title.
-func shippedProvider(state fwire.DeclarationState) bool {
-	exeDir := ""
-	if exe, err := os.Executable(); err == nil {
-		exeDir = filepath.Dir(exe)
+// providerState is a provider declaration and the runtime's standing for it,
+// which registry@2 Standings carries beside the published listing (A-SEC6).
+// A runtime that sends no standing leaves Standing nil.
+type providerState struct {
+	fwire.DeclarationState
+	Standing *fwire.ProductStanding
+}
+
+// withStandings joins declarations to the runtime's standings by name and
+// program; a declaration the standings do not carry has none.
+func withStandings(states []fwire.DeclarationState, standings []fwire.ProviderStanding) []providerState {
+	out := make([]providerState, 0, len(states))
+	for _, state := range states {
+		entry := providerState{DeclarationState: state}
+		for _, s := range standings {
+			if s.Name == state.Declaration.Name && s.Program == state.Declaration.Program {
+				standing := s.Standing
+				entry.Standing = &standing
+				break
+			}
+		}
+		out = append(out, entry)
 	}
-	protected, signed := oaStandingFolders(exeDir)
-	if state.DeclaredBy == providerDeclaredByInstallation && product.Protected(exeDir, protected) {
-		return true
+	return out
+}
+
+// readProviderStandings reads the runtime's standing of every declaration. A
+// failed read, or a runtime before Standings, gives none, and every
+// declaration reads as third_party.
+func readProviderStandings(ctx context.Context, machine *facade.Machine) []fwire.ProviderStanding {
+	registry, err := machine.ResolveRegistryV2(ctx, facade.Requirements{Scope: facade.ScopeLocal})
+	if err != nil {
+		return nil
 	}
-	return product.Shipped(state.Declaration.Program, protected, signed, oaSameSigner)
+	list, err := registry.Standings(ctx)
+	if err != nil || list.Outcome != fwire.DeclarationListOutcomePage {
+		return nil
+	}
+	return list.Standings
 }
 
 // readProviderDeclarations reads the registered provider declarations; a
 // failed read names no provider.
-func readProviderDeclarations(ctx context.Context) []fwire.DeclarationState {
+func readProviderDeclarations(ctx context.Context) []providerState {
 	readCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	registry, err := panelMachine().ResolveRegistry(readCtx, facade.Requirements{Scope: facade.ScopeLocal})
+	machine := panelMachine()
+	registry, err := machine.ResolveRegistry(readCtx, facade.Requirements{Scope: facade.ScopeLocal})
 	if err != nil {
 		return nil
 	}
@@ -393,7 +419,7 @@ func readProviderDeclarations(ctx context.Context) []fwire.DeclarationState {
 			out = append(out, state)
 		}
 	}
-	return out
+	return withStandings(out, readProviderStandings(readCtx, machine))
 }
 
 // newProgramTitler titles against the given registry entries.

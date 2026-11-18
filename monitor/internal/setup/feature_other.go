@@ -20,7 +20,7 @@ func queryEngineFeature(engine AppID) (FeatureStatus, string, error) {
 }
 
 func queryModelHostFeature() (FeatureStatus, string, error) {
-	return FeatureStatus{Reason: modelHostFeatureReason(runtime.GOOS)}, "", nil
+	return FeatureStatus{Reason: modelHostFeatureReason(runtime.GOOS), Unsupported: true}, "", nil
 }
 
 // modelHostFeatureReason says why this platform offers no ModelHost: macOS
@@ -28,7 +28,7 @@ func queryModelHostFeature() (FeatureStatus, string, error) {
 // pinned engine.
 func modelHostFeatureReason(goos string) string {
 	if goos == "darwin" {
-		return "ModelHost is not available on this Mac: native providers are not available on macOS in 0.4.0, because their caller check needs an XPC endpoint"
+		return "ModelHost is not available on this Mac: native providers are not available on macOS, because their caller check needs an XPC endpoint"
 	}
 	return "The OpenAbstractions ModelHost feature requires Windows x64"
 }

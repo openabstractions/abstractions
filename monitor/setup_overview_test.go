@@ -20,9 +20,12 @@ import (
 func stubOverviewMachine(t *testing.T) {
 	t.Helper()
 	step, program, comfy, finish, kept := setupOverviewStep, desktopProgramPresent, officialPicture.discover, officialPicture.desktopToFinish, officialPicture.entryKept
+	release := unsupportedDesktopRelease
 	t.Cleanup(func() {
 		setupOverviewStep, desktopProgramPresent, officialPicture.discover, officialPicture.desktopToFinish, officialPicture.entryKept = step, program, comfy, finish, kept
+		unsupportedDesktopRelease = release
 	})
+	unsupportedDesktopRelease = func(setup.Catalog, setup.AppID) string { return "" }
 	officialPicture.entryKept = func(*servicePanel, context.Context, string) (bool, bool) { return true, true }
 	setupOverviewStep = func(*servicePanel, context.Context) setup.StepState { return setup.StepState{} }
 	desktopProgramPresent = func(setup.AppID) bool { return false }

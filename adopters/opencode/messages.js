@@ -5,6 +5,7 @@ import {decodeChatBinding} from '@openabstractions/facade/messages';
 import {assistantToolArguments} from './assistant-tools.js';
 import {panelEnvironment} from './panel-launch.js';
 import {createStdioMCP} from './mcp-stdio.js';
+import {replyOnlyMarks} from './reply-only.js';
 
 const require=createRequire(import.meta.url);
 const agent=require('./generated/agent-tools.json');
@@ -120,6 +121,9 @@ function watchPage(value){
     waitingAsks:count('waiting_asks',64),answerableAsks:count('answerable_asks',128),waitingKey,
     ticket:validTicket(value.wake_ticket)?value.wake_ticket:'',pointer:typeof value.wake_pointer==='string'?value.wake_pointer:'',
     sender:validSender(value.wake_sender)?value.wake_sender:'',
+    // S5 (2026-11-22): present while OA marks a turn reply-only; true when the
+    // person allowed full tool use for every sender of that turn.
+    peerFullTools:value.peer_full_tools===true,
     // ASK-R14: the ordered key of what this chat's enrolled program may answer.
     asksWake:typeof value.asks_wake==='string'&&Buffer.byteLength(value.asks_wake)<=128&&!/[\p{Cc}]/u.test(value.asks_wake)?value.asks_wake:'',
     // An older helper reports only the oldest unread acceptance.
@@ -154,6 +158,9 @@ const latestKey=(observed='',hinted='')=>observed>hinted?observed:hinted;
 export function createMessages({tool,directory,client,helperProgram=()=>'',environment=process.env,
   open=openKeptChild,limit=32,ready=async()=>true,reconnect=async()=>helperProgram(),wake=false,schedule=setTimeout,unschedule=clearTimeout,clock=Date.now}){
   const children=new Map();
+  // S5 (2026-11-22): reply-only marks by host chat ID. The module map
+  // outlives an instance reload of this directory (reload-handover.js).
+  const markKey=id=>JSON.stringify([directory,id]);
   const definitions={};
   let closed=false,lifecycle=0,used=0,allocation=Promise.resolve();
   const current=row=>!closed&&!row.ended&&children.get(row.id)===row;
@@ -293,6 +300,9 @@ export function createMessages({tool,directory,client,helperProgram=()=>'',envir
         // The next busy turn is the one this pointer starts. An unknown
         // delivery keeps that mark: a person's turn then signals nothing.
         row.started=true;
+        // S5 (2026-11-22): that turn is reply-only until the person's next
+        // turn in this chat (reply-only.js).
+        replyOnlyMarks.set(markKey(row.id),{sender:page.sender,full:page.peerFullTools});
         // Retirement or disposal aborts a pointer still in flight.
         await client.session.promptAsync({path:{id:row.id},body:{...choice,parts:[{type:'text',text:page.pointer}]},throwOnError:true,
           signal:AbortSignal.any([row.abort.signal,AbortSignal.timeout(10000)])});
@@ -625,7 +635,19 @@ export function createMessages({tool,directory,client,helperProgram=()=>'',envir
   // call runs one helper tool for a host tool that delegates to it, such as
   // oa_image_generate, and returns the helper's structured answer.
   const call=async(name,args,context)=>JSON.parse(await execute(name,args,context));
-  return {definitions,call,transform,enable(){},reachDormant,reachDormantDue,
+  // S5 (2026-11-22): the reply-only mark of a chat's current turn, and the
+  // live answer through OA whether the person allowed full tool use for it.
+  // Kept apart from the chat's helper row, so a retired row keeps its mark.
+  function replyOnly(id){return replyOnlyMarks.get(markKey(id))??null;}
+  async function peerFullTools(id){
+    const row=children.get(id);if(!row||row.ended||!replyOnlyMarks.has(markKey(id)))return false;
+    try{
+      const api=await row.starting;if(!current(row))return false;
+      const page=watchPage(decoded(await api.call('oa_messages_watch',{revision:'',wait_ms:0},{signal:row.abort.signal,timeout:10000})));
+      return page?.peerFullTools===true;
+    }catch{return false;}
+  }
+  return {definitions,call,transform,enable(){},reachDormant,reachDormantDue,replyOnly,peerFullTools,
     async suspend(){lifecycle++;const results=await Promise.allSettled([...children.values()].map(retire));const errors=results.filter(value=>value.status==='rejected').map(value=>value.reason);if(errors.length)throw new AggregateError(errors,'Native helpers did not close');},
     rebind(next){if(next.tool)tool=next.tool;if(next.client)client=next.client;if(next.helperProgram)helperProgram=next.helperProgram;},
     event({event}={}){
@@ -644,6 +666,7 @@ export function createMessages({tool,directory,client,helperProgram=()=>'',envir
             if(row.retryTimer){unschedule(row.retryTimer);row.retryTimer=null;}
             if(!row.turn){
               row.turn=row.started?'woken':'person';row.started=false;
+              if(row.turn==='person')replyOnlyMarks.delete(markKey(id));
               if(row.turn==='person'&&waking())void signalTurn(row,'person');
             }
           }else{

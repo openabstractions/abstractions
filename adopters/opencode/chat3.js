@@ -152,7 +152,10 @@ export async function requestChat3(model, chat, options, hooks) {
   const routed = hooks.routedModelId ? hooks.routedModelId(model.modelId, model.config) : model.modelId;
   const required = model.config.oaChatGuarantees?.[routed] ?? [];
   if (!Array.isArray(required) || required.some(value => typeof value !== 'string')) throw new TypeError('oaChatGuarantees must contain string lists');
-  const conversation = policy === 'title' ? '' : Object.values(options.providerOptions ?? {})
+  // OpenCode's title agent marks its request (plugin.js chat.params); a
+  // title runs beside the chat's prompt cache, whichever model serves it.
+  const title = policy === 'title' || Object.values(options.providerOptions ?? {}).some(value => value?.oaTitle === true);
+  const conversation = title ? '' : Object.values(options.providerOptions ?? {})
     .find(value => typeof value?.oaSessionID === 'string')?.oaSessionID ?? '';
   const window = await chat.getHistoryWindow();
   if (window.outcome !== 'available' || !window.window) throw chatError(hooks, window, undefined, '', {preaccept: true});
@@ -177,7 +180,7 @@ export async function requestChat3(model, chat, options, hooks) {
     name: control.type === 'tool' ? control.toolName : ''} : null;
   const functions = (options.tools ?? []).filter(tool => tool.type === 'function');
   const tools = old.tools.map((tool, index) => ({...newChatTool(), ...tool, strict: functions[index]?.strict}));
-  return {policy, request: {...newRequestV3(), identity, conversation, ...(policy === 'title' ? {use: 'title'} : {}), target: {model: policy ? '' : model.modelId, selectionPolicy: policy},
+  return {policy, request: {...newRequestV3(), identity, conversation, ...(title ? {use: 'title'} : {}), target: {model: policy ? '' : model.modelId, selectionPolicy: policy},
     content: {messages, tools, options: {...newChatOptions(), ...old.options,
       toolChoice, parallelTools: options.providerOptions?.openabstractions?.parallelTools, reasoning: reasoningOf(options)},
       extensions: old.extensions, requiredExtensions: old.requiredExtensions,

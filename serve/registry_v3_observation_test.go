@@ -175,8 +175,12 @@ func TestRegistryV3ConcurrentCurrentObservationHasNoDirectoryReentry(t *testing.
 	if err := p.adoptProgramRegistrations(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	// A lock-order reentry stops every reader; a loaded machine slows them.
+	// The detector fails only when no read completes for registry3Stall, and
+	// it joins the readers before failing, so none outlives the test.
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
+	progress := make(chan struct{}, 64)
 	var wg sync.WaitGroup
 	for range 4 {
 		wg.Go(func() {
@@ -185,6 +189,7 @@ func TestRegistryV3ConcurrentCurrentObservationHasNoDirectoryReentry(t *testing.
 					t.Error(err)
 					return
 				}
+				progress <- struct{}{}
 			}
 		})
 		wg.Go(func() {
@@ -196,14 +201,29 @@ func TestRegistryV3ConcurrentCurrentObservationHasNoDirectoryReentry(t *testing.
 					t.Error(err)
 					return
 				}
+				progress <- struct{}{}
 			}
 		})
 	}
 	done := make(chan struct{})
 	go func() { wg.Wait(); close(done) }()
-	select {
-	case <-done:
-	case <-ctx.Done():
-		t.Fatal("directory/current-binding read reentered its own lock")
+	stall := time.NewTimer(registry3Stall)
+	defer stall.Stop()
+	for {
+		select {
+		case <-done:
+			return
+		case <-progress:
+			stall.Reset(registry3Stall)
+		case <-stall.C:
+			t.Errorf("no directory/current-binding read completed within %v: a read reentered its own lock", registry3Stall)
+			cancel()
+			<-done
+			return
+		}
 	}
 }
+
+// registry3Stall bounds the time without any completed read. One read takes
+// milliseconds alone and under a second on a loaded machine.
+const registry3Stall = 10 * time.Second

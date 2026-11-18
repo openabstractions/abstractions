@@ -22,7 +22,7 @@ const gatewayTools = process.env.OA_CLAUDE_REAL_GATEWAY_TOOLS ? new Set(JSON.par
 test('gating catches preserve held results and refuse unvalidated OA pointers', async () => {
   const catches = new Map();
   register((name) => ({catch(handler) { catches.set(name, handler); }}));
-  assert.deepEqual([...catches.keys()], ['classic.SessionStart', 'classic.UserPromptSubmit', 'classic.PostToolUse', 'prompt.submit']);
+  assert.deepEqual([...catches.keys()], ['classic.SessionStart', 'classic.UserPromptSubmit', 'classic.PostToolUse', 'tool.offer', 'tool.call', 'prompt.submit']);
   for (const [name, recover] of catches) {
     for (const kind of ['throw', 'timeout', 're-entry']) {
       let calls = 0;
@@ -30,6 +30,15 @@ test('gating catches preserve held results and refuse unvalidated OA pointers', 
       const next = async () => { if (!next.called) calls++; return held; };
       next.called = false; next.error = {kind}; next.signal = AbortSignal.abort();
       const own = {origin:{kind:'plugin',name:'openabstractions'},text:'unvalidated'};
+      if (name === 'tool.call') {
+        // S5: a reply-only guard that failed before forwarding refuses while
+        // no mark is known clear; a forwarded call keeps its held result.
+        assert.deepEqual(await recover({}, {tool:'Edit'}, next), {deny: 'This turn was started by a message from another agent. Ask the person to allow more for this conversation.'});
+        assert.equal(calls, 0);
+        next.called = true;
+        assert.equal(await recover({}, {tool:'Edit'}, next), held);
+        continue;
+      }
       if (name === 'prompt.submit') {
         assert.deepEqual(await recover({}, own, next), {drop:'OA wake validation unavailable'});
         assert.equal(calls, 0, 'failure forwarded an unvalidated pointer');
@@ -99,10 +108,10 @@ function fixture(registrar = register, stored = new Map()) {
   const f = {hooks, timers, calls, submitted, entered, checks, statuses, permission: {decision: 'allow'},asksChecks:[],asksCalls:[],
     page: {outcome: 'page', context: nativeContext, revision: 'r1', pending_until_unix_ms: 1000000, reply_until_unix_ms: 0, wake_sender:'Codex'},
     beforePrompt: null, defer: null, childInstance:'fixture-child-0', lifecycleEnds:[], lifecycleStarts:[], nativeAdvertised:false, gatewayTools, turns:[], turnAt:[], turnChecks:[]};
-  const $ = {store: {get: async key => stored.get(key), set: async (key,value) => {if(f.storeFailure)throw Error('durable store unavailable');stored.set(key,value);}}, session: {cwd: async () => {if(f.hostAPIUnavailable) throw Error('unsupported'); return f.hostCwd ?? 'C:/fixture';}, surfaces: async () => f.hostSurfaces ?? ['desktop'], id: async () => { if (f.idFailure) throw new Error('native ID unavailable'); const id = session; if (f.beforeID) await f.beforeID(); return id; }}, clock: {
+  const $ = {fs: {stat: async path => fixtureStat(f, path)}, store: {get: async key => { if (f.storeReadFailure) throw Error('durable store unreadable'); return stored.get(key); }, set: async (key,value) => {if(f.storeFailure)throw Error('durable store unavailable');stored.set(key,value);}}, session: {cwd: async () => {if(f.hostAPIUnavailable) throw Error('unsupported'); return f.hostCwd ?? 'C:/fixture';}, surfaces: async () => f.hostSurfaces ?? ['desktop'], id: async () => { if (f.idFailure) throw new Error('native ID unavailable'); const id = session; if (f.beforeID) await f.beforeID(); return id; }}, clock: {
     now: async () => { if (f.clockError) throw new Error('clock unavailable'); return now; },
     after(ms, fn) { assert.ok(Number.isSafeInteger(ms) && ms >= 1000 && ms <= 30000); const timer = {ms, fn, cancel() { timers.delete(timer); }}; timers.add(timer); return timer; },
-  }, ui: {status: text => statuses.push(text)}, tool: {check: async args => {
+  }, ui: {status: text => statuses.push(text), log: (text, options) => { assert.equal(options?.to, 'debug'); (f.logs ??= []).push(text); }}, tool: {check: async args => {
     if(args.tool==='mcp__OpenAbstractions__oa_asks_watch'){f.asksChecks.push(structuredClone(args));return {decision:'allow'};}
     if ('turn' in (args.input || {})) {
       // The turn signal is its own adapter input; it never reserves or observes.
@@ -205,6 +214,7 @@ function fixture(registrar = register, stored = new Map()) {
   });
   f.event = (name, input = {}) => hooks.get(name)($, input, async event => {
     if (f.beforeEventNext) await f.beforeEventNext();
+    if (f.dropNext) { f.dropNext = false; return {drop: 'another plugin'}; }
     if(name.startsWith('classic.')) return f.classicResult ?? {};
     return {text: event.text ?? '', origin: event.origin};
   });
@@ -501,10 +511,11 @@ test('a busy chat takes the Asks wake at its next idle, and a dropped pointer re
   await f.event('session.end');await g.event('session.end');
 });
 
-test('a malformed Asks wake key stops the observer without model work',async()=>{
+test('a malformed Asks wake key does no model work and the observer retries with backoff',async()=>{
   const f=fixture();f.page.pending_until_unix_ms=0;f.page.asks_wake='1'+String.fromCharCode(7);
   await f.event('session.start');await f.tick();
-  assert.equal(f.submitted.length,0);assert.equal(f.timers.size,0);
+  assert.equal(f.submitted.length,0);assert.equal(f.timers.size,1);assert.equal([...f.timers][0].ms,1000);
+  assert.match(f.statuses.at(-1),/recovering/);
   await f.event('session.end');
 });
 
@@ -743,11 +754,17 @@ test('no eligibility, malformed projection and foreign host cannot wake', async 
   assert.equal(f.submitted.length, 0); assert.equal(f.timers.size, 0);
 });
 
-test('uncertain observation with foreign or malformed metadata closes', async () => {
+// TODO 0.8.1: one bad reply stopped Background Messages for three hours.
+// A malformed reply does no model work; the observer retries and wakes the
+// chat once the helper answers well again.
+test('uncertain observation with foreign or malformed metadata recovers', async () => {
   for (const outcome of ['unknown', 'unavailable', 'invalid']) {
-    const f = fixture(); f.page = {...f.page, outcome};
+    const f = fixture(); const good = f.page; f.page = {...f.page, outcome};
     await f.event('session.start'); await f.tick();
-    assert.equal(f.submitted.length, 0); assert.equal(f.timers.size, 0);
+    assert.equal(f.submitted.length, 0); assert.equal(f.timers.size, 1);
+    if (outcome === 'invalid') assert.match(f.logs.at(-1), /OA observation invalid/);
+    f.page = good; f.advance(60000); await f.tick();
+    assert.equal(f.entered.length, 1, outcome + ' stopped the observer for good');
     await f.event('session.end');
   }
 });
@@ -791,6 +808,8 @@ test('ten incoming messages coalesce into one counts-only context for the active
 
   f.page = {...f.page, revision:'r11', wake:'0011', oldest_wake:'0001', unread:11};
   await f.tick();
+  // 2026-11-22: a message newer than the last hint is told once more.
+  assert.deepEqual(await f.event('classic.PostToolUse', boundary), {...existing, additionalContext:['existing host context', summary('11', '2')]}, 'a newer message was not told');
   assert.equal(await f.event('classic.PostToolUse', boundary), existing, 'a growing burst repeated the pointer');
   assert.equal(await f.event('classic.UserPromptSubmit'), existing, 'a person prompt repeated the in-turn pointer');
   await f.event('turn.complete', {isAborted:false});
@@ -935,6 +954,7 @@ test('busy turn falls back to one queued pointer when no tool completes', async 
   await f.event('turn.start');
   f.page = {...f.page, revision:'r11', wake:'0011', unread:11};
   await f.tick();
+  assert.match((await f.event('classic.PostToolUse', {session_id:'vendor-owned-session', tool_name:'Read'})).additionalContext[0], /new messages: 11/, 'a message newer than the queued pointer was not told');
   assert.deepEqual(await f.event('classic.PostToolUse', {session_id:'vendor-owned-session', tool_name:'Read'}), {}, 'in-turn hook repeated the queued pointer');
   await f.event('session.end');
 });
@@ -1082,7 +1102,7 @@ test('watch validates every required core field and present known optional field
   for (const field of ['context', 'outcome', 'revision', 'pending_until_unix_ms']) { const page = {...base}; delete page[field]; invalid.push(page); }
   for (const page of invalid) {
     const f = fixture(); f.page = page; await f.event('session.start'); await f.tick();
-    assert.equal(f.entered.length, 0); assert.equal(f.timers.size, 0); await f.event('session.end');
+    assert.equal(f.entered.length, 0); assert.equal(f.timers.size, 1); assert.match(f.statuses.at(-1), /recovering/); await f.event('session.end');
   }
 });
 
@@ -1158,15 +1178,16 @@ test('healthy observer reports once per child and on recovery transitions', asyn
 });
 
 test('advertised own-health reports fixed terminal codes and keeps OA status unconfirmed', async () => {
-  for (const [change, expected] of [[{pending_until_unix_ms: 'invalid'}, 'stopped_protocol'],
+  for (const [change, expected] of [[{pending_until_unix_ms: 'invalid'}, 'recovering'],
     [{outcome: 'forbidden', context: '', revision: '', pending_until_unix_ms: 0}, 'stopped_forbidden']]) {
     const f = fixture(); f.page = {...f.page, health_supported: true, pending_until_unix_ms: 0};
     await f.event('session.start'); await f.tick();
     f.page = {...f.page, ...change}; await f.tick();
     const report = f.calls.find(call => call.args.health === expected);
     assert.ok(report); assert.deepEqual(report.args, {revision: '', wait_ms: 0, health: expected});
-    assert.equal(f.entered.length, 0); assert.equal(f.timers.size, 0);
-    assert.match(f.statuses.at(-1), /stopped.*OpenAbstractions status unconfirmed/);
+    assert.equal(f.entered.length, 0);
+    if (expected === 'recovering') { assert.equal(f.timers.size, 1); assert.match(f.statuses.at(-1), /recovering/); }
+    else { assert.equal(f.timers.size, 0); assert.match(f.statuses.at(-1), /stopped.*OpenAbstractions status unconfirmed/); }
     await f.event('session.end');
   }
 });
@@ -1180,8 +1201,8 @@ test('old helper and host denial never receive an unsupported or denied health c
     f.page.pending_until_unix_ms = 'invalid';
     await f.tick();
     assert.equal(f.calls.filter(call => call.args.health).length, 0);
-    assert.equal(f.entered.length, 0); assert.equal(f.timers.size, 0);
-    assert.match(f.statuses.at(-1), /status unconfirmed/);
+    assert.equal(f.entered.length, 0); assert.equal(f.timers.size, 1);
+    assert.match(f.statuses.at(-1), /recovering/);
     await f.event('session.end');
   }
 });
@@ -1300,4 +1321,249 @@ test('a wake pointer with the earlier "OA: " prefix stays valid across the upgra
   const first = wakeTemplates.first.replaceAll('{ticket}', ticket).replaceAll('{sender}', 'Codex');
   assert.equal(validPointer('OA: ' + first.slice('OpenAbstractions: '.length), ticket), true);
   assert.equal(validPointer('OB: ' + current.slice('OpenAbstractions: '.length), ticket), false);
+});
+
+// 2026-11-22: Codex questions 2935-2950 reached the idle coordinator chat
+// only when the person typed. One woken turn left earlier messages unread,
+// and every later message then waited behind that first wake.
+test('each newer message wakes an idle chat once while earlier ones stay unread', async () => {
+  const f = fixture();
+  f.page = {...f.page, wake:'0001', oldest_wake:'0001', unread:1, pending_questions:1};
+  await f.event('session.start'); await f.tick();
+  assert.equal(f.entered.length, 1);
+  assert(f.presentTicket(f.lastTicket));
+  await f.event('turn.start'); await f.event('turn.complete', {isAborted:false});
+  f.advance(60000); await f.tick();
+  assert.equal(f.entered.length, 1, 'an unchanged inbox woke the chat again');
+  for (const [n, wake] of [[2, '0002'], [3, '0003']]) {
+    f.page = {...f.page, revision:'r'+n, wake, unread:n, pending_questions:n};
+    f.advance(60000); await f.tick();
+    assert.equal(f.entered.length, n, 'message '+wake+' did not wake the chat');
+    assert.equal(f.entered.at(-1).text, wakeTemplates.repeat.replaceAll('{ticket}', f.lastTicket));
+    assert(f.presentTicket(f.lastTicket));
+    await f.event('turn.start'); await f.event('turn.complete', {isAborted:false});
+    f.advance(60000); await f.tick();
+    assert.equal(f.entered.length, n, 'message '+wake+' woke the chat twice');
+  }
+  await f.event('session.end');
+});
+
+// CLAUDE-SESSION-TOOLS-HIDDEN: a model that called oa_claude_session_start
+// read the child_instance and could end the chat's receiving with it. Run
+// against the gateway's real tool list when the Go test supplies it: no model
+// loop is offered either session tool, a call is refused, every other OA tool
+// stays offered, and the Mod's own lifecycle still binds and ends.
+test('no model loop is offered or may call the session tools', async () => {
+  const listed = gatewayTools ? [...gatewayTools] : ['oa_claude_session_start', 'oa_claude_session_end', 'oa_messages_wait', 'oa_messages_send'];
+  assert.ok(listed.includes('oa_claude_session_start') && listed.includes('oa_claude_session_end'), 'the gateway lists no session tools');
+  const f = fixture();
+  await f.event('session.start');
+  assert.ok(f.lifecycleStarts.length > 0, "the Mod's own start did not run");
+  for (const name of listed) {
+    const tool = 'mcp__OpenAbstractions__' + name, session = name.startsWith('oa_claude_session_');
+    for (const agentId of [undefined, 'worker-1']) {
+      const offer = await f.event('tool.offer', {tool, agentId, provider: {kind: 'mcp', name: 'OpenAbstractions'}});
+      assert.equal(offer?.isOffered === false, session, (session ? 'offered ' : 'withheld ') + tool + ' to ' + (agentId ?? 'the main chat'));
+      if (!session) continue;
+      const call = await f.event('tool.call', {tool, agentId, child_instance: f.childInstance, session_id: 'vendor-owned-session'});
+      assert.match(call?.deny ?? '', /Only the OpenAbstractions plugin/, 'a model call reached '+tool);
+    }
+  }
+  assert.equal(f.lifecycleEnds.length, 0, 'a refused model call ended the binding');
+  await f.event('session.end');
+  assert.equal(f.lifecycleEnds.length, 1, "the Mod's own end did not run");
+});
+
+// 2026-11-22: a Claude subagent's oa_messages_wait marked the chat's messages
+// read, and the chat's next wait answered gap. Only the main chat reads.
+test('a subagent cannot read, watch or open the chat inbox', async () => {
+  const f = fixture(); await f.event('session.start');
+  for (const tool of ['mcp__OpenAbstractions__oa_messages_wait', 'mcp__OpenAbstractions__oa_messages_watch', 'mcp__OpenAbstractions__oa_messages_inbox_open']) {
+    const denied = await f.event('tool.call', {tool, agentId: 'worker-1', wait_ms: 0});
+    assert.match(denied.deny, /Only the main chat reads them/);
+    const own = await f.event('tool.call', {tool, wait_ms: 0});
+    assert.equal(own.deny, undefined, 'the main chat was refused '+tool);
+  }
+  const send = await f.event('tool.call', {tool: 'mcp__OpenAbstractions__oa_messages_send', agentId: 'worker-1'});
+  assert.equal(send.deny, undefined, 'a subagent send was refused');
+  await f.event('session.end');
+});
+// S5 (architect ruling 2026-11-22): the host resolves a path the way the
+// tools open it. A link inside the chat's folder may land outside it.
+async function fixtureStat(f, path) {
+  const {win32} = await import('node:path');
+  const real = win32.resolve(f.hostCwd ?? 'C:/fixture', path);
+  for (const [link, target] of Object.entries(f.links ?? {})) {
+    if (real.toLowerCase() === link.toLowerCase() || real.toLowerCase().startsWith(link.toLowerCase() + '\\')) return {kind: 'file', realPath: target + real.slice(link.length)};
+  }
+  return {kind: 'file', realPath: real};
+}
+const s5Reason = 'This turn was started by a message from Codex. Ask the person to allow more for this conversation.';
+const s5Tool = (f, input) => f.event('tool.call', input);
+const s5Settle = () => new Promise(resolve => setImmediate(resolve));
+async function s5Woken(stored = new Map()) {
+  const f = fixture(register, stored);
+  f.page = {...f.page, wake: '0001', peer_full_tools: false};
+  await f.event('session.start'); await f.tick();
+  assert.equal(f.entered.length, 1, 'the peer message did not wake the chat');
+  await f.event('turn.start', {text: f.entered[0].text, turnId: 'woken'});
+  return f;
+}
+const s5Edit = {tool: 'Edit', file_path: 'C:/fixture/main.go', old_string: 'a', new_string: 'b'};
+
+test('S5 Claude: a peer message wakes the chat; Edit and Bash are refused with the reason; read and reply succeed', async () => {
+  const f = await s5Woken();
+  for (const input of [s5Edit, {tool: 'Bash', command: 'go build ./...'},
+    {tool: 'Write', file_path: 'C:/fixture/x.txt', content: 'x'}, {tool: 'WebFetch', url: 'https://example.invalid/?q=secret', prompt: 'p'},
+    {tool: 'mcp__other__do', value: 1}, {tool: 'mcp__OpenAbstractions__oa_messages_send', receiver: 'Claude', body: 'x'}, {tool: 'Agent', prompt: 'p'},
+    {tool: 'Read', file_path: 'C:/Users/other/secret.txt'}, {tool: 'Read', file_path: '../outside.txt'}, {tool: 'Glob', pattern: '../**/*.go'},
+    {tool: 'Glob', pattern: 'C:/Users/**'}, {tool: 'Grep', pattern: 'x', path: 'D:/data'}, {tool: 'Grep', pattern: 'x', glob: '{a,/etc/*}'}]) {
+    assert.deepEqual(await s5Tool(f, input), {deny: s5Reason}, input.tool + ' was not refused');
+  }
+  f.links = {'C:\\fixture\\link': 'D:\\elsewhere'};
+  assert.deepEqual(await s5Tool(f, {tool: 'Read', file_path: 'C:/fixture/link/secret.txt'}), {deny: s5Reason}, 'a link out of the folder was followed');
+  for (const input of [{tool: 'Read', file_path: 'C:/fixture/main.go'}, {tool: 'Read', file_path: 'src/app.js'}, {tool: 'Glob', pattern: '**/*.go'},
+    {tool: 'Grep', pattern: 'func main', glob: '*.go'}, {tool: 'Grep', pattern: 'x', path: 'C:/fixture/src'}, {tool: 'ToolSearch', query: 'select:x', max_results: 1},
+    {tool: 'mcp__OpenAbstractions__oa_messages_wait', wait_ms: 0}, {tool: 'mcp__OpenAbstractions__oa_messages_reply', message_id: 'm1', body: 'answer'},
+    {tool: 'mcp__OpenAbstractions__oa_models_list'}]) {
+    assert.equal((await s5Tool(f, input))?.deny, undefined, input.tool + ' was refused');
+  }
+  // A subagent's call is held to the same rule.
+  assert.deepEqual(await s5Tool(f, {tool: 'Bash', command: 'ls', agentId: 'sub'}), {deny: s5Reason});
+  await f.event('session.end');
+});
+
+test('S5 Claude: after the pair toggle is turned on, the same message turn may edit', async () => {
+  const f = await s5Woken();
+  assert.deepEqual(await s5Tool(f, s5Edit), {deny: s5Reason});
+  // The person turns on "Allow full tool use when Codex messages Claude";
+  // OA's watch answers it live for this turn's senders.
+  f.page.peer_full_tools = true;
+  assert.equal((await s5Tool(f, s5Edit))?.deny, undefined, 'the toggle did not lift the limit');
+  assert.equal((await s5Tool(f, {tool: 'Bash', command: 'go build'}))?.deny, undefined);
+  await f.event('session.end');
+  // A message whose pair was already on wakes a turn with full tool use.
+  const on = fixture(); on.page = {...on.page, wake: '0001', peer_full_tools: true};
+  await on.event('session.start'); await on.tick();
+  assert.equal((await s5Tool(on, s5Edit))?.deny, undefined);
+  await on.event('session.end');
+});
+
+test('S5 Claude: the person typing in the chat gives a normal turn', async () => {
+  const f = await s5Woken();
+  // Typed while the woken turn runs: the woken turn stays reply-only.
+  await f.event('prompt.submit', {text: 'also fix the tests', origin: {kind: 'composer'}, turnId: 'woken', wait: false});
+  assert.deepEqual(await s5Tool(f, s5Edit), {deny: s5Reason}, 'the woken turn was released mid-turn');
+  await f.event('turn.complete', {turnId: 'woken', isAborted: false});
+  await s5Settle();
+  assert.equal((await s5Tool(f, s5Edit))?.deny, undefined, 'the person queued turn stayed reply-only');
+  await f.event('session.end');
+
+  const idle = await s5Woken();
+  await idle.event('turn.complete', {turnId: 'woken', isAborted: false});
+  await s5Settle();
+  assert.deepEqual(await s5Tool(idle, s5Edit), {deny: s5Reason}, 'the mark ended with the woken turn alone');
+  await idle.event('prompt.submit', {text: 'please edit main.go', origin: {kind: 'composer'}, wait: false});
+  assert.equal((await s5Tool(idle, s5Edit))?.deny, undefined, 'the person turn was restricted');
+  await idle.event('session.end');
+
+  // A person's prompt that entered nothing keeps the mark.
+  const dropped = await s5Woken();
+  await dropped.event('turn.complete', {turnId: 'woken', isAborted: false});
+  await s5Settle();
+  dropped.dropNext = true;
+  await dropped.event('prompt.submit', {text: 'x', origin: {kind: 'composer'}, wait: false});
+  assert.deepEqual(await s5Tool(dropped, s5Edit), {deny: s5Reason}, 'a dropped prompt ended the mark');
+  await dropped.event('session.end');
+});
+
+test('S5 Claude: the mark survives a reload of the module and an unreadable store refuses', async () => {
+  const stored = new Map();
+  const f = await s5Woken(stored);
+  await f.event('session.end');
+  const reloaded = fixture(register, stored);
+  reloaded.page = {...reloaded.page, peer_full_tools: false};
+  assert.deepEqual(await s5Tool(reloaded, {tool: 'Bash', command: 'ls'}), {deny: s5Reason}, 'a reload released the woken turn');
+  await reloaded.event('prompt.submit', {text: 'go on', origin: {kind: 'composer'}, wait: false});
+  assert.equal((await s5Tool(reloaded, {tool: 'Bash', command: 'ls'}))?.deny, undefined);
+  const blind = fixture();
+  blind.storeReadFailure = true;
+  assert.ok((await s5Tool(blind, {tool: 'Bash', command: 'ls'}))?.deny, 'an unreadable mark was treated as clear');
+});
+
+test('S5 review: full use is asked again after every read, so a new sender or a switch turned off restricts again', async () => {
+  const f = await s5Woken();
+  f.page.peer_full_tools = true;
+  assert.equal((await s5Tool(f, s5Edit))?.deny, undefined, 'the pair rule for the first sender did not apply');
+  // The turn reads its inbox again: a message from another sender, whose
+  // pair is off, is among what it reads. OA answers for the turn's senders.
+  assert.equal((await s5Tool(f, {tool: 'mcp__OpenAbstractions__oa_messages_wait', wait_ms: 0}))?.deny, undefined);
+  f.page.peer_full_tools = false;
+  assert.deepEqual(await s5Tool(f, s5Edit), {deny: s5Reason}, 'a cached full use outlived the read');
+  // The person turns the pair back on, then off: the next read takes it back.
+  f.page.peer_full_tools = true;
+  assert.equal((await s5Tool(f, s5Edit))?.deny, undefined);
+  f.page.peer_full_tools = false;
+  assert.equal((await s5Tool(f, s5Edit))?.deny, undefined, 'without a read the turn keeps what was granted');
+  await s5Tool(f, {tool: 'mcp__OpenAbstractions__oa_messages_wait', wait_ms: 0});
+  assert.deepEqual(await s5Tool(f, {tool: 'Bash', command: 'ls'}), {deny: s5Reason}, 'switching the pair off did not apply at the next read');
+  await f.event('session.end');
+});
+
+test('S5 review: a drive root or a home folder is no project, and the refusal says why', async () => {
+  for (const cwd of ['C:/', 'C:/Users/someone', 'D:\\']) {
+    const stored = new Map(), f = fixture(register, stored);
+    f.hostCwd = cwd;
+    f.page = {...f.page, wake: '0001', peer_full_tools: false};
+    await f.event('session.start'); await f.tick();
+    for (const input of [{tool: 'Read', file_path: 'notes.txt'}, {tool: 'Glob', pattern: '**/*'}, {tool: 'Grep', pattern: 'password'}]) {
+      assert.deepEqual(await s5Tool(f, input), {deny: s5Reason + ' File reads are off because this chat\'s folder is a whole drive or a home folder.'}, cwd + ' ' + input.tool);
+    }
+    assert.equal((await s5Tool(f, {tool: 'mcp__OpenAbstractions__oa_messages_reply', message_id: 'm1', body: 'x'}))?.deny, undefined);
+    await f.event('session.end');
+  }
+  const deeper = fixture(register, new Map());
+  deeper.hostCwd = 'C:/Users/someone/project';
+  deeper.page = {...deeper.page, wake: '0001', peer_full_tools: false};
+  await deeper.event('session.start'); await deeper.tick();
+  assert.equal((await s5Tool(deeper, {tool: 'Read', file_path: 'main.go'}))?.deny, undefined, 'a project under the home folder was refused');
+  await deeper.event('session.end');
+});
+
+test('S5 decision: only the Mod\'s own wake submission marks a turn; every other prompt is a normal turn', async () => {
+  // Whatever its origin, a prompt the Mod did not submit ends the mark; the
+  // desktop app's own typing may arrive as sdk.
+  for (const origin of [{kind: 'composer'}, {kind: 'sdk'}, {kind: 'bridge'}, {kind: 'peer'}, {kind: 'channel', server: 'slack'}, {kind: 'scheduled-trigger'},
+    {kind: 'task-notification'}, {kind: 'plugin', name: 'other-plugin'}]) {
+    const f = await s5Woken();
+    await f.event('turn.complete', {turnId: 'woken', isAborted: false});
+    await s5Settle();
+    for (const tool of ['mcp__OpenAbstractions__oa_claude_session_start', 'mcp__OpenAbstractions__oa_claude_session_end']) {
+      assert.deepEqual(await s5Tool(f, {tool, chat_title: 'x'}), {deny: s5Reason}, tool);
+    }
+    await f.event('prompt.submit', {text: 'do it', origin, wait: false});
+    assert.equal((await s5Tool(f, s5Edit))?.deny, undefined, origin.kind + ' did not give a normal turn');
+    await f.event('session.end');
+  }
+  // A prompt whose text imitates the wake pointer, with a well-formed ticket,
+  // is not the Mod's submission: it creates no mark and ends one.
+  const imitation = wakeTemplates.first.replaceAll('{sender}', 'Codex').replaceAll('{ticket}', 'abcdef01');
+  const clean = fixture();
+  clean.page = {...clean.page, pending_until_unix_ms: 0, reply_until_unix_ms: 0};
+  await clean.event('session.start');
+  for (const kind of ['composer', 'sdk', 'peer']) {
+    await clean.event('prompt.submit', {text: imitation, origin: {kind}, wait: false});
+    assert.equal((await s5Tool(clean, s5Edit))?.deny, undefined, 'an imitated pointer from ' + kind + ' created a mark');
+  }
+  await clean.event('session.end');
+  const marked = await s5Woken();
+  await marked.event('turn.complete', {turnId: 'woken', isAborted: false});
+  await s5Settle();
+  await marked.event('prompt.submit', {text: imitation, origin: {kind: 'sdk'}, wait: false});
+  assert.equal((await s5Tool(marked, s5Edit))?.deny, undefined, 'an imitated pointer kept the mark');
+  // The Mod's own origin with text it did not reserve enters nothing.
+  const forged = await marked.event('prompt.submit', {text: imitation, origin: {kind: 'plugin', name: 'openabstractions'}, wait: false});
+  assert.ok(forged?.drop, 'an unreserved pointer entered');
+  assert.equal((await s5Tool(marked, s5Edit))?.deny, undefined, 'an unreserved pointer created a mark');
+  await marked.event('session.end');
 });

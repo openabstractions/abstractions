@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 
@@ -138,7 +139,7 @@ func panelGatewayImage(ctx context.Context) (claudePanelImage, error) {
 		return nil, err
 	}
 	if image == nil {
-		return nil, errors.New("installed connection image unavailable")
+		return nil, fmt.Errorf("installed connection image unavailable: %w", os.ErrNotExist)
 	}
 	return image, nil
 }
@@ -183,6 +184,9 @@ func claudeCLISelectionFailure(err error) (string, string) {
 		case "command_virtualized_profile":
 			return code, "Open OpenAbstractions from the Start menu, then check again."
 		case "command_unknown_profile", "command_profile_folder", "command_sandboxed", "command_layout", "command_tmp_root", "command_temp", "command_identity", "command_environment", "command_handles", "command_start", "command_wait", "command_exit", "command_cleanup":
+			if sentence := panelConfigurationSentence(err); sentence != "" {
+				return code, sentence
+			}
 			return code, "The Code settings command is unavailable. Open OpenAbstractions from the Start menu, then check again."
 		}
 	}

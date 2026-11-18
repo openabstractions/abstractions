@@ -319,14 +319,14 @@ type newWindowRequestedHandler struct{ vtbl *handlerVtbl }
 
 // Interface IDs from Microsoft.Web.WebView2 1.0.2903.40's WebView2.h.
 var (
-	iidIUnknown             = syscall.GUID{0, 0, 0, [8]byte{0xc0, 0, 0, 0, 0, 0, 0, 0x46}}
-	iidEnvironmentCompleted = syscall.GUID{0x4e8a3389, 0xc9d8, 0x4bd2, [8]byte{0xb6, 0xb5, 0x12, 0x4f, 0xee, 0x6c, 0xc1, 0x4d}}
-	iidControllerCompleted  = syscall.GUID{0x6c4819f3, 0xc9b7, 0x4260, [8]byte{0x81, 0x27, 0xc9, 0xf5, 0xbd, 0xe7, 0xf6, 0x8c}}
-	iidNavigationStarting   = syscall.GUID{0x9adbe429, 0xf36d, 0x432b, [8]byte{0x9d, 0xdc, 0xf8, 0x88, 0x1f, 0xbd, 0x76, 0xe3}}
-	iidNewWindowRequested   = syscall.GUID{0xd4c185fe, 0xc81c, 0x4989, [8]byte{0x97, 0xaf, 0x2d, 0x3f, 0xa7, 0xab, 0x56, 0x51}}
-	iidController2          = syscall.GUID{0xc979903e, 0xd4ca, 0x4228, [8]byte{0x92, 0xeb, 0x47, 0xee, 0x3f, 0xa9, 0x6e, 0xab}}
-	iidAddScriptCompleted   = syscall.GUID{0xb99369f3, 0x9b11, 0x47b5, [8]byte{0xbc, 0x6f, 0x8e, 0x78, 0x95, 0xfc, 0xea, 0x17}}
-	iidProcessFailed        = syscall.GUID{0x79e0aea4, 0x990b, 0x42d9, [8]byte{0xaa, 0x1d, 0x0f, 0xcc, 0x2e, 0x5b, 0xc7, 0xf1}}
+	iidIUnknown             = newGUID(0, 0, 0, [8]byte{0xc0, 0, 0, 0, 0, 0, 0, 0x46})
+	iidEnvironmentCompleted = newGUID(0x4e8a3389, 0xc9d8, 0x4bd2, [8]byte{0xb6, 0xb5, 0x12, 0x4f, 0xee, 0x6c, 0xc1, 0x4d})
+	iidControllerCompleted  = newGUID(0x6c4819f3, 0xc9b7, 0x4260, [8]byte{0x81, 0x27, 0xc9, 0xf5, 0xbd, 0xe7, 0xf6, 0x8c})
+	iidNavigationStarting   = newGUID(0x9adbe429, 0xf36d, 0x432b, [8]byte{0x9d, 0xdc, 0xf8, 0x88, 0x1f, 0xbd, 0x76, 0xe3})
+	iidNewWindowRequested   = newGUID(0xd4c185fe, 0xc81c, 0x4989, [8]byte{0x97, 0xaf, 0x2d, 0x3f, 0xa7, 0xab, 0x56, 0x51})
+	iidController2          = newGUID(0xc979903e, 0xd4ca, 0x4228, [8]byte{0x92, 0xeb, 0x47, 0xee, 0x3f, 0xa9, 0x6e, 0xab})
+	iidAddScriptCompleted   = newGUID(0xb99369f3, 0x9b11, 0x47b5, [8]byte{0xbc, 0x6f, 0x8e, 0x78, 0x95, 0xfc, 0xea, 0x17})
+	iidProcessFailed        = newGUID(0x79e0aea4, 0x990b, 0x42d9, [8]byte{0xaa, 0x1d, 0x0f, 0xcc, 0x2e, 0x5b, 0xc7, 0xf1})
 )
 
 // coreWebView2ProcessFailedEventArgsVtbl is
@@ -410,6 +410,27 @@ func hostScript(mica bool) string {
 	}
 	return "(function(){var d=document;function apply(){var r=d.documentElement;if(!r)return false;" + set +
 		"return true}if(!apply()){var o=new MutationObserver(function(){if(apply())o.disconnect()});o.observe(d,{childList:true})}})();"
+}
+
+// webView2Variables are the WEBVIEW2_ variables in env, a list of
+// KEY=value entries, by name.
+func webView2Variables(env []string) []string {
+	var names []string
+	for _, entry := range env {
+		name, _, _ := strings.Cut(entry, "=")
+		if strings.HasPrefix(strings.ToUpper(name), "WEBVIEW2_") {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// clearWebView2Environment removes every WEBVIEW2_ variable from this
+// process's environment.
+func clearWebView2Environment() {
+	for _, name := range webView2Variables(os.Environ()) {
+		os.Unsetenv(name) //unchecked: removing a variable cannot fail on Windows for a name the environment lists
+	}
 }
 
 // setEnvironment sets name to value for the WebView2 browser process this
@@ -810,6 +831,11 @@ func (w *webView2Window) attach(pageURL string) {
 	// The variable only matters while the browser process starts; attach
 	// returns once the controller completed or failed, and the deferred
 	// restore keeps it out of every program the Panel starts afterwards.
+	// WEBVIEW2_* variables the Panel was started with (browser arguments, a
+	// browser executable folder, a user data folder and the rest) would let
+	// whoever started it load another browser or debug this window. None
+	// reaches the browser process.
+	clearWebView2Environment()
 	_, background := webViewBackground(w.mica, appDarkMode())
 	restore, err := setEnvironment(defaultBackgroundVariable, background)
 	defer restore()

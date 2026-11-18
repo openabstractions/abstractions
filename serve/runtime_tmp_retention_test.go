@@ -9,20 +9,26 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	wire "github.com/openabstractions/abstraction-config/go/abstraction/config"
+	inference "github.com/openabstractions/abstraction-inference/go"
+	job "github.com/openabstractions/abstraction-job/go"
 	"github.com/openabstractions/abstraction-job/go/acceptanceprovider"
 	logging "github.com/openabstractions/abstraction-logging/go"
 	rightswire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 )
 
-func TestRuntimeJobTmpCollectionRemainsUnscheduledIn08(t *testing.T) {
+// The runtime schedules partial collection from one site. Full collection,
+// which also removes completed results, stays unscheduled until 0.9.0.
+func TestRuntimeJobTmpOnlyPartialCollectionIsScheduled(t *testing.T) {
 	paths, err := filepath.Glob("*.go")
 	if err != nil {
 		t.Fatal(err)
 	}
+	scheduled := 0
 	for _, path := range paths {
 		if strings.HasSuffix(path, "_test.go") {
 			continue
@@ -31,116 +37,65 @@ func TestRuntimeJobTmpCollectionRemainsUnscheduledIn08(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for range runtimeJobTmpCollectionSites(file, path) {
-			t.Errorf("0.8 must not schedule temporary collection: %s", path)
-		}
-	}
-}
-
-func runtimeJobTmpCollectionSites(file *ast.File, path string) []token.Pos {
-	// These are the two inert owner's existing internal handoffs. A caller
-	// elsewhere, including a closure or initializer, would activate collection.
-	allowed := map[*ast.CallExpr]bool{}
-	if filepath.Base(path) == "runtime_tmp_retention.go" {
-		for _, declaration := range file.Decls {
-			owner, ok := declaration.(*ast.FuncDecl)
-			if !ok || owner.Recv != nil || owner.Body == nil {
-				continue
-			}
-			ast.Inspect(owner.Body, func(node ast.Node) bool {
-				if _, closure := node.(*ast.FuncLit); closure {
-					return false
-				}
-				call, ok := node.(*ast.CallExpr)
-				if !ok {
-					return true
-				}
-				if callee, ok := call.Fun.(*ast.Ident); ok && owner.Name.Name == "collectRuntimeJobTmp" && callee.Name == "collectRuntimeJobTmpWith" {
-					allowed[call] = true
-				}
-				if callee, ok := call.Fun.(*ast.SelectorExpr); ok && owner.Name.Name == "collectRuntimeJobTmpWith" && callee.Sel.Name == "CollectJobTmp" {
-					if receiver, ok := callee.X.(*ast.Ident); ok && receiver.Name == "collector" {
-						allowed[call] = true
-					}
-				}
+		ast.Inspect(file, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
 				return true
-			})
-		}
-	}
-	var sites []token.Pos
-	ast.Inspect(file, func(node ast.Node) bool {
-		if call, ok := node.(*ast.CallExpr); ok {
-			callee := call.Fun
-			for {
-				parenthesized, ok := callee.(*ast.ParenExpr)
-				if !ok {
-					break
-				}
-				callee = parenthesized.X
 			}
 			var name string
-			switch target := callee.(type) {
+			switch target := call.Fun.(type) {
 			case *ast.Ident:
 				name = target.Name
 			case *ast.SelectorExpr:
 				name = target.Sel.Name
 			}
-			if !allowed[call] && (name == "collectRuntimeJobTmp" || name == "collectRuntimeJobTmpWith" || name == "CollectJobTmp" || name == "CollectTmp") {
-				sites = append(sites, call.Pos())
+			switch name {
+			case "CollectJobTmp", "CollectTmp":
+				t.Errorf("%s calls full temporary collection, which removes completed results", path)
+			case "serveRuntimeJobTmp":
+				if path != "runtime.go" {
+					t.Errorf("%s schedules partial collection outside the runtime start", path)
+				}
+				scheduled++
 			}
-		}
-		return true
-	})
-	return sites
-}
-
-func TestRuntimeJobTmpGuardRejectsAllEntryCalls(t *testing.T) {
-	for _, name := range []string{"collectRuntimeJobTmp", "collectRuntimeJobTmpWith", "CollectJobTmp", "CollectTmp"} {
-		for _, callee := range []string{name, "owner." + name, "(owner." + name + ")"} {
-			t.Run(callee, func(t *testing.T) {
-				file, err := parser.ParseFile(token.NewFileSet(), "startup.go", "package main\nfunc start() { "+callee+"() }", 0)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if got := len(runtimeJobTmpCollectionSites(file, "startup.go")); got != 1 {
-					t.Fatalf("got %d calls, want 1", got)
-				}
-			})
-		}
+			return true
+		})
 	}
-	for _, fixture := range []struct {
-		path, source string
-		want         int
-	}{
-		{"runtime_tmp_retention.go", "func collectRuntimeJobTmp() { collectRuntimeJobTmpWith() }; func collectRuntimeJobTmpWith() { collector.CollectJobTmp() }", 0},
-		{"startup.go", "func collectRuntimeJobTmp() { collectRuntimeJobTmpWith() }; func collectRuntimeJobTmpWith() { collector.CollectJobTmp() }", 2},
-		{"runtime_tmp_retention.go", "func start() { collectRuntimeJobTmpWith(); collector.CollectJobTmp() }", 2},
-		{"runtime_tmp_retention.go", "func collectRuntimeJobTmpWith() { go func() { collector.CollectJobTmp() }() }", 1},
-		{"startup.go", "var CollectTmp = 1; func collectRuntimeJobTmp() {}; func other() {}", 0},
-	} {
-		file, err := parser.ParseFile(token.NewFileSet(), fixture.path, "package main\n"+fixture.source, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := len(runtimeJobTmpCollectionSites(file, fixture.path)); got != fixture.want {
-			t.Errorf("%s: got %d, want %d", fixture.source, got, fixture.want)
-		}
+	if scheduled != 1 {
+		t.Fatalf("runtime schedules partial collection %d times, want 1", scheduled)
 	}
 }
 
 type tmpPassFixture struct {
+	mu       sync.Mutex
 	calls    []time.Duration
 	removals []acceptanceprovider.TmpRemoval
 }
 
-func (f *tmpPassFixture) CollectJobTmp(_ context.Context, _ time.Time, retention time.Duration) ([]acceptanceprovider.TmpRemoval, error) {
-	f.calls = append(f.calls, retention)
+func (f *tmpPassFixture) CollectJobPartials(_ context.Context, _ time.Time, age time.Duration) ([]acceptanceprovider.TmpRemoval, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, age)
 	return f.removals, nil
 }
 
-type tmpLogFixture struct{ records []logging.Record }
+func (f *tmpPassFixture) passes() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.calls)
+}
 
-func (f *tmpLogFixture) Write(r logging.Record) error { f.records = append(f.records, r); return nil }
+type tmpLogFixture struct {
+	mu      sync.Mutex
+	records []logging.Record
+}
+
+func (f *tmpLogFixture) Write(r logging.Record) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.records = append(f.records, r)
+	return nil
+}
 
 func tmpConfigFixture() wire.ReadResult {
 	return wire.ReadResult{Outcome: wire.ReadOutcomeRead, Entries: []wire.Entry{{Key: "tmp_max_retention", Value: &wire.Value{Kind: wire.ValueKindDuration, DurationMs: 864000000}, Origin: wire.KeyOrigin{Location: wire.LocationUser}}}}
@@ -195,7 +150,7 @@ func TestRuntimeJobTmpMissingLogSinkNeverCallsCollector(t *testing.T) {
 }
 
 func TestRuntimeJobTmpReadsEveryPassAndLogsEachRemovalOnce(t *testing.T) {
-	collector := &tmpPassFixture{removals: []acceptanceprovider.TmpRemoval{{OperationID: "fixture", Name: "results/fixture"}}}
+	collector := &tmpPassFixture{removals: []acceptanceprovider.TmpRemoval{{OperationID: "fixture", Name: "work/fixture"}}}
 	sink := &tmpLogFixture{}
 	reads := 0
 	read := func(_ context.Context, keys []string) (wire.ReadResult, error) {
@@ -204,7 +159,7 @@ func TestRuntimeJobTmpReadsEveryPassAndLogsEachRemovalOnce(t *testing.T) {
 		}
 		reads++
 		answer := tmpConfigFixture()
-		answer.Entries[0].Value.DurationMs = int64(reads) * 1000
+		answer.Entries[0].Value.DurationMs = int64(reads) * int64(36*time.Hour/time.Millisecond)
 		return answer, nil
 	}
 	if err := collectRuntimeJobTmpWith(context.Background(), time.Now(), collector, sink, read); err != nil {
@@ -214,11 +169,109 @@ func TestRuntimeJobTmpReadsEveryPassAndLogsEachRemovalOnce(t *testing.T) {
 	if err := collectRuntimeJobTmpWith(context.Background(), time.Now(), collector, sink, read); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(collector.calls, []time.Duration{time.Second, 2 * time.Second}) || reads != 2 || len(sink.records) != 1 {
+	if !reflect.DeepEqual(collector.calls, []time.Duration{36 * time.Hour, 72 * time.Hour}) || reads != 2 || len(sink.records) != 1 {
 		t.Fatal(collector.calls, reads, sink.records)
 	}
 	r := sink.records[0]
-	if r.Msg != "abstraction.storage/retention.removed" || r.Attrs["class"] != "tmp" || r.Attrs["key"] != "fixture" || r.Attrs["level"] != "user" {
+	if r.Msg != "abstraction.storage/retention.removed" || r.Attrs["class"] != "tmp" || r.Attrs["key"] != "fixture" || r.Attrs["name"] != "work/fixture" || r.Attrs["level"] != "user" || r.Attrs["reason"] != "partial of failed or cancelled work" {
 		t.Fatal(r)
+	}
+}
+
+// A tmp_max_retention below a day still keeps an ended partial for a day.
+func TestRuntimeJobTmpAgeNeverBelowOneDay(t *testing.T) {
+	for _, ms := range []int64{1, 1000, int64(time.Hour / time.Millisecond), int64((24*time.Hour - time.Millisecond) / time.Millisecond)} {
+		collector := &tmpPassFixture{}
+		read := func(context.Context, []string) (wire.ReadResult, error) {
+			answer := tmpConfigFixture()
+			answer.Entries[0].Value.DurationMs = ms
+			return answer, nil
+		}
+		if err := collectRuntimeJobTmpWith(context.Background(), time.Now(), collector, &tmpLogFixture{}, read); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(collector.calls, []time.Duration{24 * time.Hour}) {
+			t.Fatalf("%d ms: %v", ms, collector.calls)
+		}
+	}
+}
+
+// The schedule runs a first pass after its delay, then one per interval,
+// reports a failed pass and keeps going, and stops with its context.
+func TestRuntimeJobTmpScheduleRunsPassesAndStops(t *testing.T) {
+	collector := &tmpPassFixture{}
+	var mu sync.Mutex
+	var reported []error
+	reads := 0
+	read := func(context.Context, []string) (wire.ReadResult, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		reads++
+		if reads == 2 {
+			return wire.ReadResult{}, errors.New("fixture policy unavailable")
+		}
+		return tmpConfigFixture(), nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	wait := scheduleRuntimeJobTmp(ctx, time.Millisecond, 5*time.Millisecond, time.Now, collector, &tmpLogFixture{}, read, func(err error) {
+		mu.Lock()
+		defer mu.Unlock()
+		reported = append(reported, err)
+	})
+	deadline := time.Now().Add(10 * time.Second)
+	for collector.passes() < 3 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+	wait()
+	after := collector.passes()
+	if after < 3 {
+		t.Fatalf("schedule ran %d passes", after)
+	}
+	mu.Lock()
+	if len(reported) != 1 {
+		t.Fatalf("reported %v", reported)
+	}
+	mu.Unlock()
+	time.Sleep(20 * time.Millisecond)
+	if collector.passes() != after {
+		t.Fatal("schedule ran after its context ended")
+	}
+}
+
+// Before its first delay the schedule removes nothing, and a context that
+// ends first runs no pass.
+func TestRuntimeJobTmpScheduleWaitsForFirstPass(t *testing.T) {
+	collector := &tmpPassFixture{}
+	ctx, cancel := context.WithCancel(context.Background())
+	wait := scheduleRuntimeJobTmp(ctx, time.Hour, time.Hour, time.Now, collector, &tmpLogFixture{}, func(context.Context, []string) (wire.ReadResult, error) {
+		return tmpConfigFixture(), nil
+	}, nil)
+	cancel()
+	wait()
+	if collector.passes() != 0 {
+		t.Fatal("pass ran before the first delay")
+	}
+}
+
+type tmpNamerBase struct{ acceptanceprovider.Executor }
+
+func (tmpNamerBase) OperationTmpNames(r *job.Record) (string, string, error) {
+	return "results/" + r.ID, "work/" + r.ID, nil
+}
+
+// The runtime's inference wrapper passes the download kind's names through
+// and names nothing for an inference job or a base without names.
+func TestRuntimeInferenceExecutorNamesOnlyBaseTmpFiles(t *testing.T) {
+	named := &runtimeInferenceJobExecutor{base: tmpNamerBase{}}
+	if result, partial, err := named.OperationTmpNames(&job.Record{ID: "op", Kind: "download"}); err != nil || result != "results/op" || partial != "work/op" {
+		t.Fatal(result, partial, err)
+	}
+	if _, _, err := named.OperationTmpNames(&job.Record{ID: "op", Kind: inference.InferenceJobKind}); !errors.Is(err, acceptanceprovider.ErrResultNotNamed) {
+		t.Fatal(err)
+	}
+	unnamed := &runtimeInferenceJobExecutor{base: nil}
+	if _, _, err := unnamed.OperationTmpNames(&job.Record{ID: "op", Kind: "download"}); !errors.Is(err, acceptanceprovider.ErrResultNotNamed) {
+		t.Fatal(err)
 	}
 }

@@ -354,6 +354,11 @@ struct ApplicationsQuery {
  1: optional string application(omit="zero")
 }(unknown_fields="refuse",doc="The arguments of oa_applications_describe (FAC-M22, FAC-M32). Empty lists every application for which the caller's subject holds a read permit, and for a kept agent each application it may open, by name and title with no instances; it raises no question. application names one application, the name of resource app:<name>: the listing then holds that application alone, an unregistered name answers not_found, and naming one with no stored rule raises its first-use question.")
 
+struct OpenHandleQuery {
+ 1: required string open_handle(length="1..64",pattern="no_control")
+ 2: optional string application(length="0..64",pattern="no_control",omit="zero")
+}(unknown_fields="refuse",doc="The arguments of DescribeOpen, and of oa_applications_describe when it names open_handle (architect ruling 2026-11-22). open_handle names an open handle an Open answered this caller with. application, when given, must name the handle's application.")
+
 struct ListedInstance {
  1: required string instance
  2: required string interface
@@ -378,12 +383,28 @@ struct ApplicationOpenVerbs {
  2: required list<ListedOpenVerb> verbs(length="1..128")
 }(max_encoded="294912",unknown_fields="refuse",doc="Open metadata for one visible application in ApplicationListing.")
 
+enum OpenHandleState {
+ 1: pending
+ 2: opened
+ 3: expired
+ 4: refused
+}(unknown="grant",reader="display")
+
+struct OpenHandle {
+ 1: required string handle(length="1..64",pattern="no_control")
+ 2: required string application(length="1..64",pattern="no_control")
+ 3: required OpenHandleState state
+ 4: optional string instance(length="1..128",pattern="no_control",omit="absent")
+ 5: optional string reason(length="1..512",pattern="no_control",omit="absent")
+}(unknown_fields="grant",doc="The state of one open whose question outlived its call (architect ruling 2026-11-22). pending: the person has not answered. opened: the person's Allow opened the application; instance names it. expired: the question expired or was withdrawn, for instance when the requester's enrollment ended, and nothing was performed. refused: the person chose Not now, or a recheck at the Allow refused the open; reason says which. A runtime restart forgets every handle. The state grants nothing.")
+
 struct ApplicationListing {
  1: required ReadingOutcome outcome
  2: required list<ListedApplication> applications
  3: required string reason
  4: optional list<ApplicationOpenVerbs> open_verbs(length="1..64",omit="zero")
-}(max_encoded="1048576",unknown_fields="grant",doc="The answer of oa_applications_describe (FAC-M22). page lists at most 64 applications in name order: those whose command.read the caller's subject is permitted and, for a kept agent, those it may open, shown with name and title and no instances (FAC-M22). A query naming one application answers not_found, not_permitted or refused for it with no applications and a reason. Other outcomes carry no applications and a reason.")
+ 5: optional OpenHandle open(omit="absent")
+}(max_encoded="1048576",unknown_fields="grant",doc="The answer of oa_applications_describe (FAC-M22). open is present exactly when the listing DescribeOpen answers has outcome page. page lists at most 64 applications in name order: those whose command.read the caller's subject is permitted and, for a kept agent, those it may open, shown with name and title and no instances (FAC-M22). A query naming one application answers not_found, not_permitted or refused for it with no applications and a reason. Other outcomes carry no applications and a reason.")
 
 struct CommandsQuery {
  1: required string application

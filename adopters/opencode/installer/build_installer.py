@@ -3,9 +3,10 @@
 
 Development tool only. The installed application requires no Python or Node.
 Usage: build_installer.py --plugin TGZ --plugin-sha256 HEX --plugin-bytes N
-         --cli ZIP --parser-tgz TGZ --bootstrap DIR --ripgrep ZIP --out DIR
-         [--desktop-fix DIR]
-The official Desktop installer is a separate pinned bootstrapper input.
+         --parser-tgz TGZ --out DIR [--desktop-fix DIR]
+The official Desktop installer is a separate pinned bootstrapper input. The
+package carries no OpenCode program: its configuration helper runs on the
+installed official Desktop's own Node (installer_host.c, ELECTRON_RUN_AS_NODE).
 --desktop-fix names the folder holding OA's patched watcher.node and its
 LICENSE (DESKTOP_FIX); it defaults to the committed desktop-fix folder beside
 this owner and both files must match their pins.
@@ -18,7 +19,6 @@ the release signing owner. --phase all retains the ordinary private QA route.
 from __future__ import annotations
 
 import argparse
-import base64
 import hashlib
 import io
 import importlib.util
@@ -61,12 +61,10 @@ def app_builder(path=None):
 
 
 NATIVE_SOURCES = ['installer_host.c', 'desktop_state.h', 'desktop_fix.h', 'desktop_preflight.c',
-                  'desktop_preflight.manifest', 'integration.wxs', 'application-manifest.json',
-                  'bootstrap/package-lock.json']
+                  'desktop_preflight.manifest', 'integration.wxs', 'application-manifest.json']
 REGISTRATION_MANIFEST = 'openabstractions-application.json'
 PAYLOAD_DIRECTORY = 'LocalAppDataFolder/Programs/OpenAbstractions/apps/opencode/'
 REGISTRATION_DIRECTORY = PAYLOAD_DIRECTORY
-CLI_MEMBER = 'cli/opencode.exe'
 PLUGIN_INVENTORY_MEMBER = PurePosixPath('installer', 'plugin-files.json').as_posix()
 DESKTOP_FIX_PREFIX = 'desktop-fix/'
 SDK_NATIVE_MEMBERS = ('abstraction_ipc.dll', 'oa_ipc_node.node')
@@ -122,15 +120,14 @@ def journey_payload_roles(prepared_receipt, expected_payload):
     for name, value in payload.items():
         if (not isinstance(name, str) or '\\' in name or ':' in name
                 or any(part in ('', '.', '..') for part in name.split('/'))
-                or not (name.startswith(prefix) or name.startswith('bootstrap/')
-                        or name in (CLI_MEMBER, 'installer/empty-bunfig.toml', PLUGIN_INVENTORY_MEMBER,
-                                    *DESKTOP_FIX['members']))):
+                or not (name.startswith(prefix)
+                        or name in (PLUGIN_INVENTORY_MEMBER, *DESKTOP_FIX['members']))):
             raise ValueError('foreign original payload member')
         if name.casefold() in folded:
             raise ValueError('aliased original payload member')
         folded.add(name.casefold())
         members[name] = pin(value)
-    required = {CLI_MEMBER, 'installer/empty-bunfig.toml', *DESKTOP_FIX['members']}
+    required = set(DESKTOP_FIX['members'])
     required.update(prefix + name for name in ('package.json', 'index.js', 'server.js', 'npm-shrinkwrap.json', *APP_SOURCE_OVERRIDES))
     native = prefix + 'node_modules/@openabstractions/ipc-win32-x64/'
     required.update(native + name for name in SDK_NATIVE_MEMBERS)
@@ -144,8 +141,6 @@ def journey_payload_roles(prepared_receipt, expected_payload):
     for name, digest in receipt['app_owned_source_overrides'].items():
         if members[prefix + name]['sha256'] != digest:
             raise ValueError('source override pin differs')
-    if members[CLI_MEMBER]['sha256'] != UPSTREAM['cli_exe_sha256']:
-        raise ValueError('official CLI differs from source pin')
     manifest = receipt['registration_manifest']
     if set(manifest) != {'name', 'sha256', 'bytes'} or manifest['name'] != REGISTRATION_MANIFEST:
         raise ValueError('registration manifest name differs')
@@ -165,8 +160,7 @@ def journey_payload_roles(prepared_receipt, expected_payload):
     if any(manifests[0][key] != manifest_pin[key] for key in ('sha256', 'bytes')):
         raise ValueError('registration manifest pin differs')
     joined = {name: dict(payload_member(expected_payload, name, value)) for name, value in sorted(members.items())}
-    return {'official_cli': joined[CLI_MEMBER],
-            'plugin_files': {name: row for name, row in joined.items() if name.startswith(prefix)},
+    return {'plugin_files': {name: row for name, row in joined.items() if name.startswith(prefix)},
             'config_tools': {'configure': joined[prefix + 'configure.js'],
                              'lifecycle': joined[prefix + 'installer/config-lifecycle.js']},
             'sdk_native': {**{name:joined[native+name] for name in SDK_NATIVE_MEMBERS},
@@ -194,6 +188,18 @@ def shared_native_header():
     return header
 
 
+def shared_records_header():
+    """The shared FindRecords action (oa_records.h) beside the app owner."""
+    owner=shared_native_header().parent
+    header=owner/'oa_records.h'
+    if header.is_symlink() or header.is_junction() or not header.is_file() or header.resolve(strict=True).parent!=owner:
+        raise ValueError('the selected shared app owner has no plain owned oa_records.h')
+    shadow=Path(__file__).resolve().parent/'oa_records.h'
+    if shadow.exists() or shadow.is_symlink() or shadow.is_junction():
+        raise ValueError('conflicting oa_records.h beside native source')
+    return header
+
+
 def native_identity_header():
     owner=Path(app_builder().__file__).resolve(strict=True).parent
     helper=owner/'build_extension.py'
@@ -213,6 +219,7 @@ def native_source_hashes():
     source = Path(__file__).resolve().parent
     return {**{name: hashlib.sha256((source/name).read_bytes()).hexdigest() for name in NATIVE_SOURCES},
             'shared/user_token.h':hashlib.sha256(shared_native_header().read_bytes()).hexdigest(),
+            'shared/oa_records.h':hashlib.sha256(shared_records_header().read_bytes()).hexdigest(),
             'shared/native_windows.h':hashlib.sha256(native_identity_header().read_bytes()).hexdigest(),
             'shared/build_extension.py':hashlib.sha256((shared_native_header().parent/'build_extension.py').read_bytes()).hexdigest(),
             'source/file_boundary.py':hashlib.sha256(file_boundary_source().read_bytes()).hexdigest()}
@@ -222,9 +229,6 @@ UPSTREAM = {
     'source': 'aec0b9a6d8898f68f923aaf08b7306d931fd9d76',
     'desktop': {'asset': 601927802, 'bytes': 126348744,
                 'sha256': '403d446d6ca9a9f2edb694d0ecf64c2be7468facade100b9d6e9e65430672bd2'},
-    'cli': {'asset': 601908697, 'bytes': 62158551,
-            'sha256': '8ec42ed1ad8db108052394b83ab69d0331398f761fbfff5fe50f91d65bdd3548'},
-    'cli_exe_sha256': '5283c2cd5b4285855daa97e6f7d17bf48146227cdf2a940e79e0f2b7869fd06e',
     'desktop_exe_sha256': 'b82ea814eb265c07c97df0e112f673c8be4718e00c311c154db85e06d3c1f9ac',
 }
 
@@ -373,7 +377,7 @@ def pinned(path, sha256, size):
     return data
 
 
-def source_roles(prepared_out=None, cli_archive=None, expected_payload=None, *, retained_inputs=None):
+def source_roles(prepared_out=None, expected_payload=None, *, retained_inputs=None):
     """Expose source-selected PE roles; the receiver admits signatures separately.
 
     The prepackage call selects only new native outputs. SDK members require
@@ -390,14 +394,6 @@ def source_roles(prepared_out=None, cli_archive=None, expected_payload=None, *, 
         return tuple(own), (), ('desktop_preflight.exe',)
     app_builder()
     receipt = check_prepared(Path(prepared_out), **({'retained_inputs':retained_inputs} if retained_inputs is not None else {}))
-    raw = pinned(cli_archive, UPSTREAM['cli']['sha256'], UPSTREAM['cli']['bytes'])
-    with zipfile.ZipFile(io.BytesIO(raw)) as archive:
-        if archive.namelist() != ['opencode.exe']:
-            raise ValueError('official CLI archive has an unexpected layout')
-        executable = archive.read('opencode.exe')
-    cli_pin = {'sha256': hashlib.sha256(executable).hexdigest(), 'bytes': len(executable)}
-    if cli_pin['sha256'] != UPSTREAM['cli_exe_sha256']:
-        raise ValueError('official CLI executable differs from the qualified pin')
     def member(relative):
         return payload_member(expected_payload, relative, receipt['payload'][relative])['id']
     native = plugin_prefix(receipt['plugin']['version'])+'node_modules/@openabstractions/ipc-win32-x64/'
@@ -409,21 +405,8 @@ def source_roles(prepared_out=None, cli_archive=None, expected_payload=None, *, 
         for name in FACADE_NATIVE_MEMBERS:
             relative=facade_native+name
             own.append(('File',member(relative),'payload/'+relative))
-    if receipt['payload'][CLI_MEMBER] != cli_pin:
-        raise ValueError('prepared CLI differs from source-selected upstream')
-    supplier = [('File', member(CLI_MEMBER), cli_pin)]
-    _,lock=bootstrap_lock()
+    supplier = []
     package='node_modules/@msgpackr-extract/msgpackr-extract-win32-x64'
-    selected=lock['packages'][package]
-    common={'application':'opencode','version':UPSTREAM['version'],
-            'lock_sha256':hashlib.sha256((Path(__file__).parent/'bootstrap/package-lock.json').read_bytes()).hexdigest()}
-    for name,sha in [('node.abi115.node','300b188fb8c997214cb65bf1b00729da293176c7d57035e40c2f432ea384dd89'),
-                     ('node.napi.node','6958541c624784dfcebfc4f3c360c57f71cfeedd0530c2393845061729081a08')]:
-        relative='bootstrap/config/'+package+'/'+name
-        pin={'sha256':sha,'bytes':112640,'source':dict(common,url=selected['resolved'],integrity=selected['integrity'],member='package/'+name)}
-        if receipt['payload'].get(relative)!={key:pin[key] for key in ('sha256','bytes')}:
-            raise ValueError('prepared helper native member differs from source-selected upstream')
-        supplier.append(('File',member(relative),pin))
     plugin_native=plugin_prefix(receipt['plugin']['version'])+'node_modules/@msgpackr-extract/msgpackr-extract-win32-x64/'
     if any(name.startswith(plugin_native) for name in receipt['payload']):
         plugin_lock_raw=(Path(__file__).parent.parent/'package-lock.json').read_bytes()
@@ -438,12 +421,6 @@ def source_roles(prepared_out=None, cli_archive=None, expected_payload=None, *, 
             if receipt['payload'].get(relative)!={key:pin[key] for key in ('sha256','bytes')}:
                 raise ValueError('prepared plugin native member differs from source-selected upstream')
             supplier.append(('File',member(relative),pin))
-    relative='bootstrap/cache/bin/rg.exe'
-    pin={**RIPGREP['executable'],
-         'source':dict(common,url=RIPGREP['url'],integrity='sha256-'+RIPGREP['sha256'],member=RIPGREP['member'])}
-    if receipt['payload'].get(relative)!=RIPGREP['executable']:
-        raise ValueError('prepared ripgrep differs from source-selected upstream')
-    supplier.append(('File',member(relative),pin))
     relative=DESKTOP_FIX_PREFIX+'watcher.node'
     pin={**DESKTOP_FIX['files']['watcher.node'],
          'source':dict(application='opencode',**DESKTOP_FIX['source'],member='build/Release/watcher.node')}
@@ -596,108 +573,6 @@ def bundle_plugin(plugin, digest, size, packages, dependency_cache, output):
             'original_plugin':{'path':str(Path(plugin).resolve()),'sha256':digest,'bytes':size},'packages':pins}
 
 
-RIPGREP = {
-    'version': '15.1.0',
-    'url': 'https://github.com/BurntSushi/ripgrep/releases/download/15.1.0/ripgrep-15.1.0-x86_64-pc-windows-msvc.zip',
-    'sha256': '124510b94b6baa3380d051fdf4650eaa80a302c876d611e9dba0b2e18d87493a',
-    'member': 'ripgrep-15.1.0-x86_64-pc-windows-msvc/rg.exe',
-    'executable': {'bytes': 4266496, 'sha256': 'decdd4992f3f1b9a5ef9898f1b40ab16886d579d6516b4efd3d5eaa19364e408'},
-}
-
-
-def bootstrap_lock():
-    raw = (Path(__file__).parent/'bootstrap/package-lock.json').read_bytes()
-    lock = json.loads(raw)
-    if (lock.get('lockfileVersion') != 3 or lock.get('packages', {}).get('', {}).get('dependencies')
-            != {'@opencode-ai/plugin': UPSTREAM['version']}):
-        raise ValueError('bootstrap lock differs from the selected official CLI')
-    return raw, lock
-
-
-def bootstrap_inputs():
-    """Source-selected Windows x64 npm inputs; acquisition stays with the train."""
-    app_builder()
-    _, lock = bootstrap_lock()
-    selected = []
-    for name, row in sorted(lock['packages'].items()):
-        if not name:
-            continue
-        if not name.startswith('node_modules/') or name!='/'.join(build_app.member_segments(name)):
-            raise ValueError('invalid bootstrap package path')
-        for field, target in (('os', 'win32'), ('cpu', 'x64')):
-            values = row.get(field, [target])
-            if not isinstance(values, list) or not values or any(not isinstance(value, str) for value in values):
-                raise ValueError('invalid bootstrap target declaration')
-            if target not in values:
-                if not row.get('optional'):
-                    raise ValueError('required bootstrap package does not support Windows x64')
-                break
-        else:
-            if (not isinstance(row.get('resolved'), str) or not row['resolved'].startswith('https://registry.npmjs.org/')
-                    or not row['resolved'].endswith('.tgz') or not isinstance(row.get('version'), str)
-                    or not isinstance(row.get('integrity'), str) or not row['integrity'].startswith('sha512-')):
-                raise ValueError('bootstrap package lacks an exact npm source pin')
-            digest = base64.b64decode(row['integrity'].removeprefix('sha512-'), validate=True)
-            if len(digest) != 64:
-                raise ValueError('invalid bootstrap package integrity')
-            selected.append(dict(name=name, version=row['version'], url=row['resolved'],
-                integrity=row['integrity'], sha512=digest.hex(),
-                file=hashlib.sha256(name.encode()).hexdigest()+'.tgz'))
-    if not any(row['name'] == 'node_modules/@opencode-ai/plugin' and row['version'] == UPSTREAM['version'] for row in selected):
-        raise ValueError('selected bootstrap helper is absent')
-    return selected
-
-
-def bootstrap_payload(directory, ripgrep):
-    """Receive exact supplier archives as data and compose ordinary MSI files.
-
-    No package manager, package hook, code import or runtime acquisition runs.
-    The native signing owner receives every resulting PE through its own roles.
-    """
-    if directory is None or ripgrep is None:
-        raise ValueError('the selected upstream bootstrap closure and ripgrep are required')
-    raw_lock, lock = bootstrap_lock()
-    selected = bootstrap_inputs()
-    root = Path(directory)
-    if {path.name for path in root.iterdir()} != {row['file'] for row in selected}:
-        raise ValueError('bootstrap archive roster differs from the selected lock')
-    payload = {
-        'config/package-lock.json': raw_lock,
-        'config/package.json': (json.dumps({'dependencies': lock['packages']['']['dependencies']}, indent=2)+'\n').encode(),
-    }
-    origins = []
-    for row in selected:
-        raw = (root/row['file']).read_bytes()
-        if len(raw) > 64 << 20 or hashlib.sha512(raw).hexdigest() != row['sha512']:
-            raise ValueError('bootstrap tarball differs from npm integrity: '+row['name'])
-        package, files = package_files(raw)
-        if (package.get('name') != row['name'].rsplit('node_modules/', 1)[-1]
-                or package.get('version') != row['version'] or not package.get('license')):
-            raise ValueError('bootstrap package version or license differs: '+row['name'])
-        licenses = [name for name in files if any(word in Path(name).name.casefold() for word in ('license', 'copying'))]
-        for name, data in files.items():
-            payload['config/'+row['name']+'/'+name] = data
-        origins.append({**row, 'license': package['license'], 'license_files': licenses})
-    archive = Path(ripgrep).read_bytes()
-    if hashlib.sha256(archive).hexdigest() != RIPGREP['sha256']:
-        raise ValueError('ripgrep ZIP differs from the selected source pin')
-    with zipfile.ZipFile(io.BytesIO(archive)) as source:
-        executable = source.read(RIPGREP['member'])
-        if {'bytes': len(executable), 'sha256': hashlib.sha256(executable).hexdigest()} != RIPGREP['executable']:
-            raise ValueError('ripgrep executable differs from its selected pin')
-        payload['cache/bin/rg.exe'] = executable
-        prefix = RIPGREP['member'].removesuffix('rg.exe')
-        for name in ('COPYING', 'LICENSE-MIT', 'UNLICENSE'):
-            payload['licenses/ripgrep/'+name] = source.read(prefix+name)
-    installed = {name: {'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}
-                 for name, data in sorted(payload.items()) if name.startswith(('config/', 'cache/'))}
-    payload['files.json'] = (json.dumps(installed, sort_keys=True, indent=2)+'\n').encode()
-    return {'bootstrap/'+name: data for name, data in payload.items()}, {
-        'version': UPSTREAM['version'], 'lock_sha256': hashlib.sha256(raw_lock).hexdigest(),
-        'packages': origins, 'ripgrep': RIPGREP,
-    }
-
-
 def file_boundary_source():
     selected=ROOT/'scripts/file_boundary.py'
     if not selected.is_file() or selected.is_symlink() or selected.is_junction() or selected.stat().st_nlink!=1 or any(parent.is_symlink() or parent.is_junction() for parent in selected.parents):
@@ -716,19 +591,11 @@ def extract_payload(data, destination):
         raise ValueError('selected scripts/file_boundary.py changed during extraction')
 
 
-def prepare(plugin, digest, size, cli, parser_tgz, out, bootstrap=None, ripgrep=None, desktop_fix=None):
+def prepare(plugin, digest, size, parser_tgz, out, desktop_fix=None):
     package, files = plugin_files(pinned(plugin, digest, size))
-    cli_bytes = pinned(cli, UPSTREAM['cli']['sha256'], UPSTREAM['cli']['bytes'])
-    with zipfile.ZipFile(io.BytesIO(cli_bytes)) as archive:
-        if archive.namelist() != ['opencode.exe']:
-            raise ValueError('official CLI archive has an unexpected layout')
-        executable = archive.read('opencode.exe')
-    if hashlib.sha256(executable).hexdigest() != UPSTREAM['cli_exe_sha256']:
-        raise ValueError('official CLI executable differs from the qualified pin')
     version = package['version']
     build_app.member_segments(version)
     payload = {plugin_prefix(version)+name: data for name, data in files.items()}
-    payload[CLI_MEMBER] = executable
     parser_manifest, parser = package_files(pinned(parser_tgz,
         '4a0315b8671e7463bae7af7c142cdf19e9aa7ba39eb36dc2df383b8648e3cbc9', 27354))
     if parser_manifest['name'] != 'jsonc-parser' or parser_manifest['version'] != '3.3.1':
@@ -743,13 +610,10 @@ def prepare(plugin, digest, size, cli, parser_tgz, out, bootstrap=None, ripgrep=
         overrides[name] = hashlib.sha256(raw).hexdigest()
     for name, raw in parser.items():
         payload[prefix + 'installer/node_modules/jsonc-parser/' + name] = raw
-    payload['installer/empty-bunfig.toml'] = b''
     plugin_inventory = {name.removeprefix(prefix): {
         'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest(),
     } for name, raw in payload.items() if name.startswith(prefix)}
     payload[PLUGIN_INVENTORY_MEMBER] = json.dumps(plugin_inventory, sort_keys=True).encode('utf-8')
-    bootstrap_files, bootstrap_receipt = bootstrap_payload(bootstrap, ripgrep)
-    payload.update(bootstrap_files)
     fix_files, fix_receipt = desktop_fix_payload(desktop_fix)
     payload.update(fix_files)
     folded = set()
@@ -764,7 +628,7 @@ def prepare(plugin, digest, size, cli, parser_tgz, out, bootstrap=None, ripgrep=
     with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as archive:
         for name, data in payload.items():
             archive.writestr(name, data)
-    receipt = {'upstream': UPSTREAM, 'bootstrap': bootstrap_receipt, 'desktop_fix': fix_receipt, 'plugin': {'version': version, 'sha256': digest,
+    receipt = {'upstream': UPSTREAM, 'desktop_fix': fix_receipt, 'plugin': {'version': version, 'sha256': digest,
                'bytes': size}, 'app_owned_source_overrides': overrides,
                'parser': {'version': '3.3.1', 'sha256': '4a0315b8671e7463bae7af7c142cdf19e9aa7ba39eb36dc2df383b8648e3cbc9'},
                'payload': {name: {'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}
@@ -772,12 +636,10 @@ def prepare(plugin, digest, size, cli, parser_tgz, out, bootstrap=None, ripgrep=
                'zip_sha256': hashlib.sha256(target.read_bytes()).hexdigest(),
                'status': 'Prepared source payload; MSI/Burn and installed lifecycle qualification pending'}
     (out / 'payload-receipt.json').write_text(json.dumps(receipt, indent=2), encoding='utf-8')
-    # The worker opens the exact pinned bootstrap index and verifies each
-    # member before use. The native host verifies only that index.
     trusted = {name: entry['sha256'] for name, entry in receipt['payload'].items()
-               if name in [CLI_MEMBER, 'installer/empty-bunfig.toml', PLUGIN_INVENTORY_MEMBER, prefix+'package.json']
+               if name in [PLUGIN_INVENTORY_MEMBER, prefix+'package.json']
                or name in [prefix+name for name in overrides]
-               or name.startswith(prefix+'installer/node_modules/jsonc-parser/') or name == 'bootstrap/files.json'
+               or name.startswith(prefix+'installer/node_modules/jsonc-parser/')
                or name.startswith(DESKTOP_FIX_PREFIX)}
     def wide(value):
         return 'L' + json.dumps(value.replace('/', '\\'))
@@ -785,7 +647,6 @@ def prepare(plugin, digest, size, cli, parser_tgz, out, bootstrap=None, ripgrep=
               '#define OA_PAYLOAD_MAX_RELATIVE ' + str(max(len(name.encode('utf-16-le')) // 2 for name in payload)),
               '#define OA_PLUGIN_RELATIVE ' + wide(f'plugin/{version}'),
               '#define OA_HELPER_RELATIVE ' + wide(f'plugin/{version}/installer/config-lifecycle.js'),
-              '#define OA_BOOTSTRAP_INVENTORY_SHA256 L"' + trusted['bootstrap/files.json'] + '"',
               '#define OA_PLUGIN_INVENTORY_SHA256 L"' + trusted[PLUGIN_INVENTORY_MEMBER] + '"',
               'static const OA_TRUSTED_FILE OA_TRUSTED[] = {']
     header += ['  {'+wide(name)+', "'+digest+'"},' for name, digest in sorted(trusted.items())]
@@ -857,6 +718,14 @@ def package_source(out):
     component.set('Directory','INSTALLFOLDER')
     component.find('{'+namespace+'}File').set('Name',REGISTRATION_MANIFEST)
     ET.SubElement(package,'{'+namespace+'}CustomActionRef',{'Id':'CheckOpenCodeClosed'})
+    # installer_host.c carries FindRecords (oa_records.h): the package keeps
+    # one native action library.
+    records=package.find(".//{"+namespace+"}CustomAction[@Id='FindRecords']")
+    library=package.find(".//{"+namespace+"}Binary[@Id='OaRecordsAction']")
+    if records is None or library is None or records.get('BinaryRef')!='OaRecordsAction':
+        raise ValueError('existing app owner has no FindRecords action')
+    records.set('BinaryRef','OpenCodeInstallerHost')
+    package.remove(library)
     ET.register_namespace('',namespace)
     target=out/'app-package.wxs';tree.write(target,encoding='utf-8',xml_declaration=True)
     return target
@@ -919,14 +788,8 @@ def check_prepared(out, *, retained_inputs=None):
                 raise ValueError('prepared payload member differs')
     if receipt['upstream'] != UPSTREAM or receipt['native_source_hashes'] != native_source_hashes():
         raise ValueError('prepared source or official host closure differs')
-    metadata=receipt.get('bootstrap')
-    raw_lock,_=bootstrap_lock()
-    if (not isinstance(metadata,dict) or set(metadata)!={'version','lock_sha256','packages','ripgrep'}
-            or metadata['version']!=UPSTREAM['version'] or metadata['lock_sha256']!=hashlib.sha256(raw_lock).hexdigest()
-            or metadata['ripgrep']!=RIPGREP or not isinstance(metadata['packages'],list)
-            or any(not isinstance(row,dict) for row in metadata['packages'])
-            or [{key:value for key,value in row.items() if key not in ('license','license_files')} for row in metadata['packages']]!=bootstrap_inputs()):
-        raise ValueError('prepared first-use bootstrap source closure differs')
+    if 'bootstrap' in receipt:
+        raise ValueError('prepared payload carries a first-use bootstrap closure this package no longer ships')
     if hashlib.sha256((out/'host_inputs.h').read_bytes()).hexdigest() != receipt['host_inputs_sha256']:
         raise ValueError('prepared native host_inputs differs')
     manifest=registration_manifest()
@@ -1047,11 +910,8 @@ def main(argv=None):
     parser.add_argument('--plugin', type=Path)
     parser.add_argument('--plugin-sha256')
     parser.add_argument('--plugin-bytes', type=int)
-    parser.add_argument('--cli', type=Path)
     parser.add_argument('--desktop', type=Path, help='Exact official Desktop installer, required for --version composition')
     parser.add_argument('--parser-tgz', type=Path)
-    parser.add_argument('--bootstrap', type=Path, help='Exact source-lock-selected upstream helper TGZ directory')
-    parser.add_argument('--ripgrep', type=Path, help='Exact selected Windows x64 ripgrep ZIP')
     parser.add_argument('--desktop-fix', type=Path, help="Folder with OA's patched watcher.node and LICENSE (default: this installer's "+DESKTOP_FIX['directory']+')')
     parser.add_argument('--package-set',type=Path,help='Normal complete npm archive set to bundle into the installer plugin')
     parser.add_argument('--dependency-cache',type=Path,help='Existing lock-bound offline cache for --package-set')
@@ -1074,14 +934,14 @@ def main(argv=None):
         parser.error(args.phase+' requires --version')
     app_builder(args.app_builder)
     if args.phase != 'package':
-        if any(value is None for value in [args.plugin,args.plugin_sha256,args.plugin_bytes,args.cli,args.parser_tgz,args.bootstrap,args.ripgrep]):
-            parser.error('preparation requires plugin/hash/bytes, CLI, parser, bootstrap and ripgrep inputs')
+        if any(value is None for value in [args.plugin,args.plugin_sha256,args.plugin_bytes,args.parser_tgz]):
+            parser.error('preparation requires plugin/hash/bytes and parser inputs')
         plugin,digest,size=args.plugin,args.plugin_sha256,args.plugin_bytes
         composition=None
         if args.package_set is not None:
             composition=bundle_plugin(plugin,digest,size,args.package_set,args.dependency_cache,args.out.with_name(args.out.name+'-bundled-plugin.tgz'))
             plugin,digest,size=Path(composition['path']),composition['sha256'],composition['bytes']
-        prepared=prepare(plugin,digest,size,args.cli,args.parser_tgz,args.out,args.bootstrap,args.ripgrep,args.desktop_fix)
+        prepared=prepare(plugin,digest,size,args.parser_tgz,args.out,args.desktop_fix)
         if composition is not None:
             prepared['bundled_plugin']=composition
             (args.out/'payload-receipt.json').write_text(json.dumps(prepared,indent=2),encoding='utf-8')

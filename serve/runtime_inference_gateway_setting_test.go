@@ -32,6 +32,7 @@ func startInferenceRuntime(t *testing.T, options runtimeFlags) func() {
 		cancel()
 		t.Fatalf("startup: %v", err)
 	case <-time.After(runtimeWait):
+		dumpGoroutines()
 		cancel()
 		t.Fatalf("runtime not ready within %v", runtimeWait)
 	}

@@ -69,9 +69,13 @@ var panelLine = regexp.MustCompile(`^service control panel: (http://[^/?\s]+)[^?
 
 // startEnv starts the isolated runtime (this driver is its operator program)
 // and the Panel beside it, which the runtime admits as an installed sibling.
-func startEnv(ctx context.Context, bin, tools, work string, logf func(string, ...any)) (*env, error) {
+// The runtime is named isolated, or jrn-<10 hex> when isolated is empty.
+func startEnv(ctx context.Context, bin, tools, work, isolated string, logf func(string, ...any)) (*env, error) {
 	e := &env{bin: bin, tools: tools, work: work, state: filepath.Join(work, "state"), runtime: filepath.Join(tools, "openabstractions.exe"), logf: logf}
-	e.isolated = "jrn-" + newID()[:10]
+	e.isolated = isolated
+	if e.isolated == "" {
+		e.isolated = "jrn-" + newID()[:10]
+	}
 	if err := e.startRuntime(ctx); err != nil {
 		e.close()
 		return nil, err

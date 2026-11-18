@@ -148,7 +148,7 @@ func notResolved(command string, source endpointSource, err error) error {
 			return &exitError{exitNotResolved, errors.New(noRuntimeListensAt(command, endpoint, source))}
 		}
 	}
-	return &exitError{exitNotResolved, fmt.Errorf("%s: %s (endpoint: %s)\n%s", command, noRuntimeFirstLine, source, err)}
+	return &exitError{exitNotResolved, fmt.Errorf("%s: %s (endpoint: %s)\n%w", command, noRuntimeFirstLine, source, err)}
 }
 
 // notResolvedEndpoint is notResolved for a call bound to a caller-named
@@ -225,6 +225,14 @@ func newWaiting(budget time.Duration) *waiting {
 }
 
 // call bounds one service call inside the waiting budget.
+// callFunc is call in the shape timeoutOf reads.
+func (w *waiting) callFunc() func() (context.Context, context.CancelFunc) {
+	return func() (context.Context, context.CancelFunc) {
+		ctx, cancel := w.call()
+		return ctx, context.CancelFunc(cancel)
+	}
+}
+
 func (w *waiting) call() (context.Context, func()) {
 	budget := callBudget
 	if deadline, ok := w.ctx.Deadline(); ok {

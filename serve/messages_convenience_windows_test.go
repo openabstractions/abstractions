@@ -292,15 +292,16 @@ func TestMessagesNativePrepareFallbackRespectsPermissionAndIgnoresRecipe(t *test
 			t.Fatal(opened, e)
 		}
 	}
+	// Two live inboxes: a program-only prepare offers both (ruling P3).
 	prepare := func() msg.PrepareResult {
 		t.Helper()
 		got, err := sender.Prepare(si, "source", msg.PrepareRequest{Receiver: "app:other-agent", Body: "x"})
-		if err != nil || got.Outcome != msg.OutcomePage || got.SendRequest == nil || len(got.Choices) != 0 {
+		if err != nil || got.Outcome != msg.OutcomeConflict || got.Reason != "ambiguous_receiver" || got.SendRequest != nil || len(got.Choices) != 2 {
 			t.Fatal("program-only prepare", got, err)
 		}
 		return got
 	}
-	selected := prepare().SendRequest.Context
+	selected := prepare().Choices[0].Context
 	profileContext, profileValid := "one", true
 	if selected == "one" {
 		profileContext = "two"
@@ -316,15 +317,15 @@ func TestMessagesNativePrepareFallbackRespectsPermissionAndIgnoresRecipe(t *test
 			return nil
 		}}, nil
 	}
-	// A registered recipe's context leaves the live fallback unchanged.
-	if got := prepare(); got.SendRequest.Context != selected {
+	// A registered recipe's context leaves the live choices unchanged.
+	if got := prepare(); got.Choices[0].Context != selected {
 		t.Fatal("approved default chose a chat", got)
 	}
 	if got, _ := sender.Prepare(si, "source", msg.PrepareRequest{Receiver: "app:other-agent", Context: "one", Body: "x"}); got.Outcome != msg.OutcomePage || got.SendRequest == nil || got.SendRequest.Context != "one" {
 		t.Fatal("explicit context overridden", got)
 	}
 	profileValid = false
-	if got := prepare(); got.SendRequest.Context != selected {
+	if got := prepare(); got.Choices[0].Context != selected {
 		t.Fatal("stale default", got)
 	}
 	profileValid = true
@@ -335,7 +336,7 @@ func TestMessagesNativePrepareFallbackRespectsPermissionAndIgnoresRecipe(t *test
 		}
 		return approved(ctx, descriptor)
 	}
-	if got := prepare(); got.SendRequest.Context != selected {
+	if got := prepare(); got.Choices[0].Context != selected {
 		t.Fatal("foreign default", got)
 	}
 	f.run.d.messageStartProfile = approved

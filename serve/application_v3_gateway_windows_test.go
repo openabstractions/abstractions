@@ -496,9 +496,11 @@ func TestApplicationV3GatewaySensitiveSharedSubjectAsksOnceWithoutPolicyWrite(t 
 				result applications.CallResult
 				err    error
 			}
+			// The durable answer and its native call share the test's caller budget.
+			caller := f.client(openTestWait(t))
 			done := make(chan received, 1)
-			go func() { result, err := f.c.Call(key, call); done <- received{result, err} }()
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			go func() { result, err := caller.Call(key, call); done <- received{result, err} }()
+			ctx, cancel := context.WithTimeout(t.Context(), openTestWait(t))
 			defer cancel()
 			var question asks.Record
 			// Book.Gate observes settled answers; admitting a new question is
@@ -559,7 +561,7 @@ func TestApplicationV3GatewaySensitiveSharedSubjectAsksOnceWithoutPolicyWrite(t 
 			if f.effects.Load() != 1 {
 				t.Fatal("one answer did not yield exactly one effect")
 			}
-			again, err := f.c.Call(key, call)
+			again, err := caller.Call(key, call)
 			if err != nil || again.Answer == nil || f.effects.Load() != 1 {
 				t.Fatalf("same occurrence replay: %+v %v", again, err)
 			}

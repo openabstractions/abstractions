@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"time"
 
@@ -17,6 +18,10 @@ import (
 
 const desktopIntegrationStep = "desktop-integration"
 const desktopIntegrationTimeout = 12 * time.Minute
+
+// unsupportedDesktopRelease names the supported releases when the official
+// program is another one; tests replace it.
+var unsupportedDesktopRelease = setup.Catalog.UnsupportedOfficialRelease
 
 func decodeSetupConfirm(w http.ResponseWriter, r *http.Request) bool {
 	if r.Method != http.MethodPost {
@@ -56,6 +61,10 @@ var verifyCatalogDesktopHost = func(app setup.AppID) error {
 }
 
 var readCatalogDesktopPackage = setup.DesktopIntegration.Action
+
+// readOfficialInstall reads Windows' records of the official installer;
+// tests replace it.
+var readOfficialInstall = setup.ReadOfficialInstall
 var applyCatalogDesktopPackage = setup.DesktopIntegration.Apply
 
 func readDesktopIntegration(catalog setup.Catalog, app setup.AppID) setupDesktopIntegrationFacts {
@@ -69,7 +78,14 @@ func readDesktopIntegration(catalog setup.Catalog, app setup.AppID) setupDesktop
 		}
 	}
 	if !facts.Installed {
-		facts.Reason = fmt.Sprintf("This build can integrate an existing %s Desktop installation.", title)
+		if official, ok := setup.OfficialProgramOf(app); ok {
+			if reason, detail, blocked := setup.OfficialInstallBlocked(title, official.LocalAppData, readOfficialInstall(app)); blocked {
+				log.Printf("setup: %s installer blocked by Windows: %s", title, detail)
+				facts.Reason, facts.Detail, facts.Blocked = reason, detail, true
+				return facts
+			}
+		}
+		facts.Reason = desktopGetSentence(app, title)
 		return facts
 	}
 	if catalog.DesktopIntegration == nil || catalog.DesktopIntegration.App != app {
@@ -78,6 +94,11 @@ func readDesktopIntegration(catalog setup.Catalog, app setup.AppID) setupDesktop
 	}
 	if err := verifyCatalogDesktopHost(app); err != nil {
 		facts.Reason = err.Error()
+		return facts
+	}
+	// A release the integration does not support leaves OpenCode as it is.
+	if sentence := unsupportedDesktopRelease(catalog, app); sentence != "" {
+		facts.Reason = sentence
 		return facts
 	}
 	action, err := readCatalogDesktopPackage(*catalog.DesktopIntegration)
@@ -171,7 +192,7 @@ func (p *servicePanel) setupApplyDesktopIntegration(w http.ResponseWriter, r *ht
 				if errors.As(failure, &installerFailure) {
 					outcome.Failure = installerFailure.Reason
 				} else {
-					outcome.Failure, outcome.Detail = removalReason(failure), failure.Error()
+					outcome.Failure, outcome.Detail = stepFailureReason(failure), failure.Error()
 				}
 			}
 			p.recordSetupOutcome(desktopIntegrationStep, outcome)
@@ -198,4 +219,18 @@ func desktopReconnectAvailable(pin setup.DesktopIntegration) bool {
 	}
 	action, err := readCatalogDesktopPackage(pin)
 	return err == nil && action == "install" && verifyCatalogDesktopHost(pin.App) == nil
+}
+
+// desktopGetSentence says what the Catalog row's two buttons do for a
+// desktop app OpenAbstractions connects and does not install: Get opens
+// the publisher's download page, and Connect links the installed app
+// (agent-ux 2026-11-22: "This build can integrate an existing OpenCode
+// Desktop installation" said neither).
+func desktopGetSentence(app setup.AppID, title string) string {
+	if download, ok := integrationDownloads[setup.AgentParty(app)]; ok {
+		if parsed, err := url.Parse(download); err == nil && parsed.Host != "" {
+			return "Get opens " + parsed.Host + ", where you download and install " + title + " yourself. Then Connect links it to OpenAbstractions."
+		}
+	}
+	return "Install " + title + " yourself. Then Connect links it to OpenAbstractions."
 }

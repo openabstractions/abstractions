@@ -113,12 +113,18 @@ Panel with `--register-application` and the manifest in the integration root.
 The Panel posts its question once per manifest, so later starts only keep
 the waiting row.
 
-The integration carries its own expanded plugin, native client and the pinned
-official CLI helper. Desktop 1.18.34 has no CLI sidecar. The installer uses that
-private CLI's official plugin command on staged copies of the existing server
-and TUI documents, then applies only its owned changes through the adopter's
-config file owner. Upgrade, rollback and removal preserve unrelated entries and
-comments. A changed owned entry or conflicting provider ID refuses the change.
+The integration carries its own expanded plugin and native client, and no
+OpenCode program. The installer runs its configuration helper
+(`installer/config-lifecycle.js`) on the official Desktop's own Node: the
+listed `OpenCode.exe` at its standard per-user location, started with
+`ELECTRON_RUN_AS_NODE=1` after its digest is checked. The helper appends the
+plugin folder's path to the `plugin` list of the server and TUI documents and
+records that entry as the installer's. Upgrade, rollback and removal preserve
+unrelated entries and comments. A changed owned entry or conflicting provider
+ID refuses the change. Removal with no supported Desktop left leaves
+OpenCode's settings as they are. Packages up to 0.8.0 also pre-seeded
+OpenCode's own first-use files (`@opencode-ai/plugin` and `rg.exe`); those
+files stay where they are as OpenCode's.
 
 ### Repair: the watcher fix after an OpenCode update
 

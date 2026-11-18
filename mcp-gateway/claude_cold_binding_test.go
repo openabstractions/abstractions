@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,12 +14,24 @@ import (
 	"github.com/openabstractions/abstractions/mcp-gateway/gateway"
 )
 
-func coldBindingFixture(t *testing.T) *claudeColdBinding {
+// localWorkingFolder makes a new temporary folder this process's working
+// folder for the test and returns it. Claude's launch facts name a startup
+// folder only on a local drive (identity.LocalPath), and the checkout the
+// tests start in may lie on a share, as a WSL checkout under /mnt/c lies on
+// 9p. Links are resolved: the launch facts refuse a link on the path.
+func localWorkingFolder(t *testing.T) string {
 	t.Helper()
-	cwd, err := os.Getwd()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Chdir(dir)
+	return dir
+}
+
+func coldBindingFixture(t *testing.T) *claudeColdBinding {
+	t.Helper()
+	cwd := localWorkingFolder(t)
 	id, err := fileid.Resolve(t.Context(), fileid.Self, cwd, fileid.Options{Links: fileid.RefuseLinks})
 	if err != nil {
 		t.Fatal(err)

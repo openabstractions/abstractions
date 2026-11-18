@@ -69,6 +69,13 @@ func TestOpenCodeFolderLeafUsesNativeOperatorAdmissionOnly(t *testing.T) {
 // inference hosts. The test executable is the runtime and its operator program.
 func gatedRuntime(t *testing.T) runtimeFlags {
 	t.Helper()
+	return gatedRuntimeWith(t, nil)
+}
+
+// gatedRuntimeWith is gatedRuntime with adjust applied to the parsed options
+// before the runtime starts.
+func gatedRuntimeWith(t *testing.T, adjust func(*runtimeFlags)) runtimeFlags {
+	t.Helper()
 	if !statusTransportProvesProgram(t) {
 		t.Skip("Program proof unavailable on this transport")
 	}
@@ -92,6 +99,9 @@ func gatedRuntime(t *testing.T) runtimeFlags {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { removeStoreItems(t, namespace) })
+	if adjust != nil {
+		adjust(&options)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	ready, done := make(chan struct{}), make(chan error, 1)
 	go func() { done <- runRuntimeReady(ctx, options, func() error { close(ready); return nil }) }()
@@ -101,6 +111,7 @@ func gatedRuntime(t *testing.T) runtimeFlags {
 		cancel()
 		t.Fatalf("startup: %v", err)
 	case <-time.After(runtimeWait):
+		dumpGoroutines()
 		cancel()
 		t.Fatalf("runtime not ready within %v", runtimeWait)
 	}

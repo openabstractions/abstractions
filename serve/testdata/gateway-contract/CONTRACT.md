@@ -56,13 +56,13 @@ chat@3 remain Not Built, together with host-owned final-request persistence.
 Required features whose capability owner has
 no declaration refuse unsupported before effects; no capability is inferred
 from a model name. Upstream Retry-After maps to the new typed hint without retry.
-The existing [reasoning ticket](../../backlog/reasoning-handling-defect-candidate.md)
+The existing reasoning ticket (`../../backlog/reasoning-handling-defect-candidate.md`)
 retains their complete accepted bundle and qualification limits.
 
 An application names a model family and the behavior it needs. The runtime
 chooses an allowed local engine such as Ollama or Lemonade, or a hosted
 server such as OpenRouter, then applies the named credential inside the
-service. [README.md](README.md) holds the walkthrough: setup, a worked chat
+service. README.md (`README.md`) holds the walkthrough: setup, a worked chat
 call, and the gateway.
 
 ## Reading this page
@@ -75,7 +75,7 @@ document are to be interpreted as described in BCP 14 [RFC2119] [RFC8174]
 when, and only when, they appear in all capitals, as shown here.
 
 The rule ids below, such as `INF-A1`, are what tests and refusals cite. A
-retired id is never reused; [HISTORY.md](HISTORY.md) keeps it with the
+retired id is never reused; HISTORY.md (`HISTORY.md`) keeps it with the
 release it left.
 
 | Letter | Meaning |
@@ -474,7 +474,13 @@ length or requested dimension reads `unavailable`.
 record with modality `embed`, the model server, model, input tokens, wall
 time, outcome and reason, and never the texts or vectors. The gateway
 serves `POST /v1/embeddings`, returning number arrays or, for
-`encoding_format` `base64`, the vectors as sent. A remote server receives
+`encoding_format` `base64`, the vectors as sent. It accepts up to 2048
+texts per request and sends them as consecutive `embed@1` calls, each within
+the input bound and with vectors totalling at most 131072 values (32 inputs
+until the first reply names the width), and joins the vectors in input order
+with usage summed. The first call that does not complete answers for the
+request. Token-array input is refused with a message naming LangChain's
+`check_embedding_ctx_length=False`. A remote server receives
 the request unchanged except for the model and the claim extension.
 
 **[INF-M4] Transcription admission.** Admission validates the request,
@@ -668,6 +674,18 @@ a terminal event remains `unavailable` with `upstream:stream`, a stream
 error of another kind remains `unavailable` with `upstream:error`, and an
 unreachable server remains `upstream:unreachable`.
 
+A server that reports the window a loaded model serves with (router
+ROUTE-D8: Ollama, LM Studio, Lemonade) may cut a longer prompt silently, dropping its start
+and with it an agent's system prompt. Before such a request is sent, the
+runtime counts a lower bound of its input: one token per six bytes of its
+message text, tool calls and tool definitions, each run of white space
+counted as one byte. When that bound exceeds 1024 tokens and the latest
+survey does not show it within the window, the runtime reads the window from
+the server (router `LoadedWindow`), loading an Ollama model as the request
+would. A bound above a known window ends the request as this refusal, with
+that window and the bound as `<input>`, and nothing reaches the server. An
+unknown window lets the request through.
+
 **[INF-Q8] Reasoning is never answer text.** A model server's reasoning
 trace (`reasoning_content` or `reasoning` on the OpenAI-compatible wire,
 `thinking` on the Anthropic wire) is never delivered as a text part and
@@ -787,6 +805,18 @@ feature (a format or voice) before output authorization and spend, and its
 complete audio must be the requested format by content and within the
 delivery bound before it is streamed and published.
 
+**[INF-S9] Speech options.** A speaking rate and voice instructions travel
+as `speech@1` extensions: `openai/speed`, a decimal multiplier in
+0.25..4, and `openai/instructions`, 1..4096 bytes of UTF-8 text. Either one
+outside its bounds is `invalid` with reason `speed` or `instructions`. An
+OpenAI-compatible speech server receives them as its `speed` and
+`instructions` fields. A remote peer and a speech engine decide at their
+own admission; the Lemonade Kokoro engine honours a speed in 0.5..2. Native,
+Piper and ElevenLabs servers honour neither. A server that cannot honour an option refuses the request before
+output authorization with `unsupported_feature` and reason
+`extension:<key>`, and the gateway answers 400 with a message naming the
+field and logs the key without the value.
+
 ## Live
 
 **[INF-L1] Live delivery.** `live@1` accepts ordered PCM input, streams
@@ -858,7 +888,7 @@ declaration of that name; the installation's lists `installation`.
 `hosts.json`'s `declared` switch turns the product probes off; removing a
 product's or the installation's model server through `RemoveHost` disables
 that name (facade CONTRACT.md FAC-R7) and leaves the other model servers as
-they are. [README.md](README.md) names each supported product's own record
+they are. README.md (`README.md`) names each supported product's own record
 and documented default address (inference-facade review finding 11: this
 rule states the promise, not the product table).
 
@@ -910,7 +940,11 @@ both. Where the runtime serves the matching contract it also answers
 /v1/audio/speech`, `POST /v1/images/generations`, `POST /v1/images/edits`
 (when content storage is configured) and `GET /v1/realtime`
 (`adapters/go/gateway/window.go`). It is the same provider, rights decision and audit as the native
-route.
+route. `POST /v1/audio/transcriptions` answers `response_format` `json`,
+`verbose_json`, `text`, `srt` and `vtt`; `srt` and `vtt` are numbered cues
+of the transcript's segments, and a request for them asks the provider for
+segment timestamps. `POST /v1/audio/speech` carries `speed` and
+`instructions` as INF-S9 states, and a speed of 1 is the default.
 
 **[INF-W1] Listening.** The gateway listens on IPv4 loopback only, and it
 is closed by default. It opens from the gateway setting in the runtime
@@ -989,8 +1023,17 @@ invalid request: status 400, `error.type` `invalid_request_error` and
 input when each is known and carries nothing else from the reason. A reply
 that ends other than `completed` in a stream is an error event, then the
 stream's end. A request field chat@1 cannot express (`n` other than 1, an
-image part, an unknown response format) is `unsupported_feature` before
-admission. A client that disconnects cancels its request.
+image part, an unknown response format, `tool_choice` `required` or naming
+a function) is `unsupported_feature` before admission, with a plain message
+naming the field. `tool_choice` `none` withholds the request's tools from
+the model. `response_format` `json_object` is the JSON schema
+`{"type":"object"}`, and `reasoning_effort` is the optional extension
+`openai/reasoning_effort`, which a host whose wire carries no reasoning effort
+serves without. Other top-level fields the gateway does not translate (such as
+`top_p`, `seed`, penalties and `logprobs`) are ignored, and the request
+is served. One log line per request names them and carries none of their
+values. A client
+that disconnects cancels its request.
 
 **[INF-W8] Realtime.** `GET /v1/realtime` is the gateway's Realtime
 WebSocket, one `live@1` session per connection. The connection URL names

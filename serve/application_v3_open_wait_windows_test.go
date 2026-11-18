@@ -5,7 +5,6 @@ import (
 	"time"
 
 	asks "github.com/openabstractions/abstraction-asks/go"
-	"github.com/openabstractions/abstraction-facade/go/abstraction/facade/appmodel"
 )
 
 // beginOpenWaiting runs one agent Activate of the stopped fixture through a
@@ -30,14 +29,15 @@ func beginOpenWaiting(t *testing.T, f *applicationV3GatewayFixture, permission *
 }
 
 // Installed check 2026-11-21: every "Open ComfyUI?" question was withdrawn
-// about 40 s after it was raised, whatever the agent waited, because the
-// runtime bounded the person's answer at a fixed 40 s. The question now
-// stays open while its caller waits: its stated expiry is the Book's own
-// pending lifetime, a person answering after the old 40 s still opens the
-// app, and only the caller's leaving withdraws it (FAC-M32).
+// about 40 s after it was raised, whatever the agent waited. The question
+// now stays up until the person answers (architect ruling 2026-11-22): it
+// states a 24-hour expiry, a person answering while the caller still waits
+// opens the app for that call, and a caller that stops waiting leaves the
+// question up for a later Allow.
 func TestApplicationV3GatewayOpenQuestionLastsWhileCallerWaits(t *testing.T) {
-	f, permission := agentOpenFixture(t, appmodel.CommandClassReveal, true)
-	launches, starts := stopFixture(f)
+	run := openLaterFixture(t)
+	applicationV3AnswerWait = 40 * time.Second
+	f, permission, launches := run.f, run.permission, run.launches
 
 	asked := time.Now()
 	done, question := beginOpenWaiting(t, f, permission, 120, 30*time.Second)
@@ -48,8 +48,8 @@ func TestApplicationV3GatewayOpenQuestionLastsWhileCallerWaits(t *testing.T) {
 	if err != nil {
 		t.Fatalf("until slot %q: %v", question.Content.Slots["until"], err)
 	}
-	if lifetime := until.Sub(asked); lifetime < asks.DefaultPendingLifetime-time.Minute {
-		t.Fatalf("the open question expires %v after it was asked, short of the Book's %v", lifetime, asks.DefaultPendingLifetime)
+	if lifetime := until.Sub(asked); lifetime < applicationV3OpenQuestionLife-time.Minute {
+		t.Fatalf("the open question expires %v after it was asked, short of %v", lifetime, applicationV3OpenQuestionLife)
 	}
 	// The person answers well after the fixture client's ordinary 3 s
 	// frame timeout; the caller still waits and the answer reaches the start.
@@ -63,31 +63,26 @@ func TestApplicationV3GatewayOpenQuestionLastsWhileCallerWaits(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("the answered open did not finish")
 	}
-	reached := launches.Load() + starts.Load()
-	if reached < 1 {
-		t.Fatalf("the person's late Allow did not reach the start: launches%d starts%d", launches.Load(), starts.Load())
+	if launches.Load() != 1 {
+		t.Fatalf("the person's late Allow did not reach the start: launches%d", launches.Load())
 	}
 
-	// A caller that stops waiting takes its question with it.
+	// A caller that stops waiting leaves its question up.
 	left, second := beginOpenWaiting(t, f, permission, 121, 1500*time.Millisecond)
 	select {
 	case <-left:
 	case <-time.After(5 * time.Second):
 		t.Fatal("the caller's own wait did not end")
 	}
-	for deadline := time.Now().Add(3 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-		record, found, err := permission.a.book.ApplicationRecord(second.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !found || !record.Pending() {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("the question outlived the caller that waited for it")
-		}
+	time.Sleep(300 * time.Millisecond)
+	if record, found, err := permission.a.book.ApplicationRecord(second.ID); err != nil || !found || !record.Pending() {
+		t.Fatalf("the question left with its caller: found %v %v", found, err)
 	}
-	if launches.Load()+starts.Load() != reached {
-		t.Fatalf("an unanswered open reached the start: launches%d starts%d", launches.Load(), starts.Load())
+	if launches.Load() != 1 {
+		t.Fatalf("an unanswered open reached the start: launches%d", launches.Load())
+	}
+	answerOpen(t, permission, second.ID, "once")
+	if o := run.note(t); o.Question != second.ID || launches.Load() != 2 {
+		t.Fatalf("the Allow after the caller left: %+v launches%d", o, launches.Load())
 	}
 }

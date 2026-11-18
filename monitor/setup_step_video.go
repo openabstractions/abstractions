@@ -38,7 +38,7 @@ func (p *servicePanel) stepVideo() *setup.StepVideo {
 	return &setup.StepVideo{Set: set, Engine: engine,
 		Served: func(ctx context.Context) (bool, error) { return stepVideoRouted(ctx, set.Name, true) },
 		Get: func(ctx context.Context) error {
-			_, err := p.modelHostOpenAbstractions(ctx, stepVideoArgs(set.Name, stepVideoCredential(ctx, listCredentials))...)
+			err := p.modelHostDeclare(ctx, stepVideoArgs(set.Name, stepVideoCredential(ctx, listCredentials))...)
 			if err == nil {
 				if fill := setupFillVideoDefault(ctx); fill != nil {
 					log.Printf("setup video: the video default: %v", fill)

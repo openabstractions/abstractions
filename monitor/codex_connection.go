@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -20,24 +22,27 @@ import (
 )
 
 type codexConnectionView struct {
-	Previous          *setup.AgentEnrollmentCapture `json:"previous,omitempty"`
-	Supported         bool                          `json:"supported"`
-	Outcome           string                        `json:"outcome"`
-	Scope             string                        `json:"scope"`
-	Registration      string                        `json:"registration"`
-	Name              string                        `json:"name"`
-	Program           string                        `json:"program"`
-	Owned             bool                          `json:"owned"`
-	Revision          string                        `json:"revision"`
-	Available         bool                          `json:"available"`
-	Enrollment        string                        `json:"enrollment,omitempty"`
-	Reason            string                        `json:"reason,omitempty"`
-	PermissionOutcome string                        `json:"permission_outcome,omitempty"`
-	PermissionReason  string                        `json:"permission_reason,omitempty"`
-	HelperState       string                        `json:"helper_state,omitempty"`
-	RestartHosts      []string                      `json:"restart_hosts,omitempty"`
-	Failure           string                        `json:"update_failure,omitempty"`
-	SessionStart      string                        `json:"session_start,omitempty"`
+	Previous     *setup.AgentEnrollmentCapture `json:"previous,omitempty"`
+	Supported    bool                          `json:"supported"`
+	Outcome      string                        `json:"outcome"`
+	Scope        string                        `json:"scope"`
+	Registration string                        `json:"registration"`
+	Name         string                        `json:"name"`
+	Program      string                        `json:"program"`
+	Owned        bool                          `json:"owned"`
+	Revision     string                        `json:"revision"`
+	Available    bool                          `json:"available"`
+	Enrollment   string                        `json:"enrollment,omitempty"`
+	Reason       string                        `json:"reason,omitempty"`
+	// Guidance says in one plain sentence what stops the connection and
+	// what to do next; Reason is its closed stage code.
+	Guidance          string   `json:"guidance,omitempty"`
+	PermissionOutcome string   `json:"permission_outcome,omitempty"`
+	PermissionReason  string   `json:"permission_reason,omitempty"`
+	HelperState       string   `json:"helper_state,omitempty"`
+	RestartHosts      []string `json:"restart_hosts,omitempty"`
+	Failure           string   `json:"update_failure,omitempty"`
+	SessionStart      string   `json:"session_start,omitempty"`
 }
 type codexPanelConnections struct {
 	platform    func() bool
@@ -286,7 +291,7 @@ func (c *codexPanelConnections) read(ctx context.Context) (view codexConnectionV
 		return view, err
 	}
 	if manager == nil {
-		return view, errors.New("installed MCP tool unavailable")
+		return view, fmt.Errorf("installed MCP tool unavailable: %w", os.ErrNotExist)
 	}
 	defer func() { err = errors.Join(err, manager.Close()) }()
 	view.Reason = "setup_state"
@@ -479,7 +484,9 @@ func (p *servicePanel) codexConnectionRoutes(mux *http.ServeMux, key string) {
 		view, err := p.codexConnectionsForPanel().read(r.Context())
 		if err != nil {
 			view.Outcome = "unavailable"
+			view.Guidance = codexUnavailableSentence(view.Reason, err)
 		}
+		noteAgentAttention("codex", view.Guidance)
 		panelJSON(w, view)
 	}))
 	for _, action := range []string{"add", "remove"} {
@@ -509,6 +516,13 @@ func (p *servicePanel) codexConnectionRoutes(mux *http.ServeMux, key string) {
 				if errors.As(err, &refused) {
 					panelJSON(w, view)
 					return
+				}
+				if action == "add" {
+					sentence := agentSetupBlocker(err, codexConnectionTitle)
+					if sentence == "" {
+						sentence = "OpenAbstractions couldn't connect Codex. Select Check again."
+					}
+					p.connectFailed("codex", codexConnectionTitle, sentence)
 				}
 				panelError(w, err)
 				return

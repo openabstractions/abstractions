@@ -54,6 +54,9 @@ type runtimeFlags struct {
 	privateState bool
 	// Private composition seams; CLI callers retain the bootstrap owners.
 	endpointFor, installedEndpointFor func(string) (string, error)
+	// composedRights is a test seam called with the composed rights before
+	// anything serves; no flag or configuration sets it.
+	composedRights func(*runtimeRights)
 }
 
 const runtimeUsage = `Usage: openabstractions serve runtime [options]
@@ -554,6 +557,11 @@ func runRuntimeReadyAddress(ctx context.Context, options runtimeFlags, ready fun
 		return err
 	}
 	questions.configure(&hostOptions)
+	// Every operator edit and answer goes through the change gate (rights
+	// RIGHTS-O17, asks ASK-O17). Its settling workers stop with ctx.
+	changesCtx, stopChanges := context.WithCancel(ctx)
+	changes := rightsState.configureChanges(changesCtx, &hostOptions, questions)
+	defer func() { stopChanges(); changes.wait() }()
 	inference.configureStorageRemoval(&hostOptions, questions)
 	questions.useLogs(selfLogs)
 	rightsState.useLogs(selfLogs)
@@ -728,6 +736,10 @@ func runRuntimeReadyAddress(ctx context.Context, options runtimeFlags, ready fun
 		defer func() { stopRetention(); joinSettings(); joinLogs() }()
 	}
 	defer waitRetention()
+	// Failed and cancelled downloads' partial files are collected daily; the
+	// host closes after this pass loop has stopped.
+	waitPartials := serveRuntimeJobTmp(retentionCtx, options, runtime, sink, report)
+	defer waitPartials()
 	defer stopRetention()
 	if options.isolated != "" {
 		describeIsolated(os.Stderr, options)

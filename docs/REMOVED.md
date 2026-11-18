@@ -117,7 +117,7 @@ are retained for maintainers tracing the migration.
 - **Replaced by:** `Machine.resolve_config()` and the resolved job service for
   applications; `legacy_load`, `legacy_job_store` and `legacy_watch` for
   providers. `jobctl`, the Python download provider and
-  `research/conf180/watchprobe.py` call the `legacy_*` names; the ComfyUI
+  `research/conf180/watchprobe.py@ead7af2ba` call the `legacy_*` names; the ComfyUI
   `_vendor` copies were refreshed.
 - **In history:** `28160c57`.
 

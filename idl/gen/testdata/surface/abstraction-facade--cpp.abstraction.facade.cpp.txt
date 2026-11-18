@@ -82,6 +82,14 @@ inline constexpr bool operator!=(DeclarationReadiness value, std::string_view na
 inline constexpr bool operator==(std::string_view name, DeclarationReadiness value)
 inline constexpr bool operator!=(std::string_view name, DeclarationReadiness value)
 inline const std::vector<std::string> kDeclarationReadinessNames
+enum class ProductStanding {Product, ThirdParty}
+inline constexpr std::string_view wire_name(ProductStanding value)
+inline std::optional<ProductStanding> parse_product_standing(std::string_view name)
+inline constexpr bool operator==(ProductStanding value, std::string_view name)
+inline constexpr bool operator!=(ProductStanding value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ProductStanding value)
+inline constexpr bool operator!=(std::string_view name, ProductStanding value)
+inline const std::vector<std::string> kProductStandingNames
 enum class DeclarationListOutcome {Page, Invalid, Forbidden, Unavailable}
 inline constexpr std::string_view wire_name(DeclarationListOutcome value)
 inline std::optional<DeclarationListOutcome> parse_declaration_list_outcome(std::string_view name)
@@ -314,6 +322,14 @@ struct PinnedDeclarationObservation
   DeclarationListOutcome outcome
   std::string cursor
   std::vector<PinnedDeclarationState> declarations
+struct ProviderStanding
+  std::string name
+  std::string program
+  ProductStanding standing
+struct ProviderStandingList
+  DeclarationListOutcome outcome
+  std::string revision
+  std::vector<ProviderStanding> standings
 struct ApplicationInterface
   std::string name
   std::string protocol
@@ -463,6 +479,10 @@ inline std::string to_json(const PinnedDeclarationList& v)
 inline PinnedDeclarationList from_json<PinnedDeclarationList>(std::string_view data)
 inline std::string to_json(const PinnedDeclarationObservation& v)
 inline PinnedDeclarationObservation from_json<PinnedDeclarationObservation>(std::string_view data)
+inline std::string to_json(const ProviderStanding& v)
+inline ProviderStanding from_json<ProviderStanding>(std::string_view data)
+inline std::string to_json(const ProviderStandingList& v)
+inline ProviderStandingList from_json<ProviderStandingList>(std::string_view data)
 inline std::string to_json(const ApplicationInterface& v)
 inline ApplicationInterface from_json<ApplicationInterface>(std::string_view data)
 inline std::string to_json(const ApplicationActivationRecipe& v)
@@ -590,6 +610,7 @@ struct RegistryV2
   virtual DeclarationChange declare_pinned(const std::string& expected_revision, const PinnedDeclaration& declaration)
   virtual DeclarationChange replace_pinned(const std::string& expected_revision, const PinnedDeclaration& declaration)
   virtual PinnedDeclarationObservation observe_pinned(const std::string& cursor, const std::int64_t& wait_ms)
+  virtual ProviderStandingList standings()
 template<class Transport>struct RegistryV2Client : RegistryV2
   Transport& transport_
   DeclarationListV2 declarations() override
@@ -600,6 +621,7 @@ template<class Transport>struct RegistryV2Client : RegistryV2
   DeclarationChange declare_pinned(const std::string& expected_revision, const PinnedDeclaration& declaration) override
   DeclarationChange replace_pinned(const std::string& expected_revision, const PinnedDeclaration& declaration) override
   PinnedDeclarationObservation observe_pinned(const std::string& cursor, const std::int64_t& wait_ms) override
+  ProviderStandingList standings() override
 struct RegistryV2Service
   inline static constexpr std::string_view kWireName
   inline static constexpr std::string_view kCapability
@@ -695,6 +717,10 @@ inline std::string encode_pinned_declaration_list(const PinnedDeclarationList& v
 inline PinnedDeclarationList decode_pinned_declaration_list(std::string_view in)
 inline std::string encode_pinned_declaration_observation(const PinnedDeclarationObservation& v)
 inline PinnedDeclarationObservation decode_pinned_declaration_observation(std::string_view in)
+inline std::string encode_provider_standing(const ProviderStanding& v)
+inline ProviderStanding decode_provider_standing(std::string_view in)
+inline std::string encode_provider_standing_list(const ProviderStandingList& v)
+inline ProviderStandingList decode_provider_standing_list(std::string_view in)
 inline std::string encode_application_interface(const ApplicationInterface& v)
 inline ApplicationInterface decode_application_interface(std::string_view in)
 inline std::string encode_application_activation_recipe(const ApplicationActivationRecipe& v)

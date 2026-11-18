@@ -219,7 +219,9 @@ const later = ms => new Date(Date.now() + ms).toISOString();
     [{state: 'connected', kind: 'desktop', open: true, update: true, update_blocked: "this OpenAbstractions build doesn't include the integration update"}, "Installed · update unavailable: this OpenAbstractions build doesn't include the integration update", 'Open'],
     [{state: 'connected', kind: 'desktop', open: true, restart: true}, 'Installed · restart ComfyUI to use the updated integration', 'Open'],
     [{state: 'connected', kind: 'desktop', open: true, changed: true}, 'Installed · Connect again to use it', 'Connect']]) {
-    const s = server({overview: {picture_application: h.comfy(facts)}});
+    // A prepared model keeps the recommended one clear, so the summary
+    // reflects the app row alone.
+    const s = server({overview: {picture_application: h.comfy(facts), picture_models: [{...h.compact(), prepared: true}, h.full(), h.zimage()]}});
     const p = await h.page(s.handle);
     const row = p.parts('comfyui');
     assert.deepStrictEqual([row.title, row.caption, row.line, row.box], ['ComfyUI', 'Create pictures', line, null], facts.state);
@@ -281,7 +283,10 @@ const later = ms => new Date(Date.now() + ms).toISOString();
     assert(p.requests.filter(r => r.path === '/setup/overview').length > reads, 'the overview is read again');
     assert.strictEqual(p.parts('comfyui').line, 'Installed · connected to OpenAbstractions');
     assert.deepStrictEqual([action(p, 'comfyui').textContent, action(p, 'comfyui').disabled], ['Open', false]);
-    assert.strictEqual(p.summary().sentence, 'Tick to install. Clear a tick to remove.');
+    // The connected ComfyUI has no model yet: Install offers the
+    // recommended one, and the person still clicks Install.
+    assert.strictEqual(p.summary().sentence, 'Adds FLUX.2 Klein 4B compact, the picture model ComfyUI lacks.');
+    assert.strictEqual(p.posts('/setup/install').length, 0, 'nothing starts before the click');
   }
 
   // Update on an integration an earlier OpenAbstractions installed runs

@@ -51,6 +51,9 @@ type activityUndo struct {
 	Resource string   `json:"resource,omitempty"`
 	At       int64    `json:"at,omitempty"`
 	Apps     []string `json:"apps,omitempty"`
+	// Line names a rights change line, with At its record time; its Undo is
+	// read again from the runtime's own log (activity_rights_changes.go).
+	Line string `json:"line,omitempty"`
 }
 
 // setupGrantsLimit bounds the rules one read lists and reads back.

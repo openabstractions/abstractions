@@ -15,6 +15,9 @@ type FeatureStatus struct {
 	Available bool   `json:"available"`
 	Installed bool   `json:"installed"`
 	Reason    string `json:"reason,omitempty"`
+	// Unsupported marks a refusal by this computer's platform. Any other
+	// unavailable feature waits for the installed OpenAbstractions.
+	Unsupported bool `json:"unsupported,omitempty"`
 }
 
 // LemonadeFeatureStatus inspects the core MSI feature for this Panel install.

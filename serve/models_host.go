@@ -245,7 +245,7 @@ var nativeProviderLimit = nativeProviderLimitOn(runtime.GOOS)
 
 func nativeProviderLimitOn(goos string) string {
 	if goos == "darwin" {
-		return "native providers are not available on macOS in 0.4.0: their caller check needs an XPC endpoint"
+		return "native providers are not available on macOS: their caller check needs an XPC endpoint"
 	}
 	return ""
 }
@@ -297,6 +297,7 @@ func modelsHostCommandOn(goos, command string, args []string, output, diagnostic
 	flags.Var(&videoOptions, "video-model-option", "one torch model set option, NAME=VALUE")
 	imageModel := flags.String("image-model", "", "the image model set the Diffusers provider serves")
 	card := flags.String("card", "", "the card the engines load into")
+	planOnly := flags.Bool("plan", false, "print the registry edits this command would make, as JSON, and write nothing")
 	positional, err := parsePositional(flags, args)
 	if err != nil {
 		return badFlag(flags, diagnostics, command, modelsUsage, args, err)
@@ -316,6 +317,9 @@ func modelsHostCommandOn(goos, command string, args []string, output, diagnostic
 		len(videoOptions) > 0 || *imageModel != ""
 	if contentGiven && (command != "models host" || len(positional) != 1) {
 		return flagMistake(diagnostics, command, modelsUsage, "--content requires one models host object")
+	}
+	if *planOnly && command == "models hosts" {
+		return flagMistake(diagnostics, command, modelsUsage, "--plan goes with models host and models unhost")
 	}
 	switch {
 	case command == "models hosts":
@@ -414,8 +418,17 @@ func modelsHostCommandOn(goos, command string, args []string, output, diagnostic
 	// declaration from them. A registry that changed in between answers
 	// conflict before anything was withdrawn; run then reads again once.
 	run := func() error {
+		var legacyEditor modelHostRegistryEditor = registry
+		var typedEditor providerRegistrationEditor = typedRegistry
+		var plan *modelHostPlan
+		if *planOnly {
+			// The Panel declares what this command plans, through its own
+			// registry client (A-SEC6 declarer ruling, FAC-R9).
+			plan = &modelHostPlan{Steps: []modelHostPlanStep{}}
+			legacyEditor, typedEditor = modelHostPlanLegacy{plan}, modelHostPlanTyped{typedRegistry, plan}
+		}
 		call, done = w.call()
-		writer, snapshotErr := newModelHostRegistryWriter(call, registry, typedRegistry)
+		writer, snapshotErr := newModelHostRegistryWriter(call, legacyEditor, typedEditor)
 		done()
 		if snapshotErr != nil {
 			return &exitError{exitNotResolved, snapshotErr}
@@ -448,6 +461,20 @@ func modelsHostCommandOn(goos, command string, args []string, output, diagnostic
 			}
 		}
 
+		if plan != nil {
+			// An earlier runtime answers no standing; every declaration then
+			// reads as third_party and must match the shipped defaults.
+			call, done = w.call()
+			standings, _ := registry.Standings(call)
+			done()
+			for _, entry := range page.Declarations {
+				name := entry.State.Declaration.Name
+				if (name == modelHostName || name == pytorchName) && plannedFromAnotherProgram(entry.State, client.ShippedDeclaration(standings.Standings, entry.State.Declaration)) {
+					return refusal(command, "forbidden", name+" was declared by another program; Setup replaces it explicitly")
+				}
+			}
+		}
+
 		if command == "models hosts" {
 			if options.asJSON {
 				return writeJSON(output, models)
@@ -476,6 +503,9 @@ func modelsHostCommandOn(goos, command string, args []string, output, diagnostic
 			}
 			// The last model with no sd-server video withdraws the model host;
 			// the PyTorch provider's declaration stays as it is.
+			if plan != nil {
+				return plan.write(declareHost(w, writer, list, settings, kept, command, io.Discard, true, ""), output)
+			}
 			return declareHost(w, writer, list, settings, kept, command, output, options.asJSON,
 				fmt.Sprintf("unhosted %s/%s", store, id))
 		}
@@ -611,6 +641,9 @@ func modelsHostCommandOn(goos, command string, args []string, output, diagnostic
 					return err
 				}
 			}
+		}
+		if plan != nil {
+			return plan.write(declareHost(w, writer, list, settings, models, command, io.Discard, true, ""), output)
 		}
 		return declareHost(w, writer, list, settings, models, command, output, options.asJSON, strings.Join(said, "; "))
 	}
@@ -1912,6 +1945,11 @@ func (step declarationStep) apply(w *waiting, registry modelHostRegistryEditor, 
 	}
 	if change.Outcome == wire.DeclarationEditOutcomeConflict && first {
 		return nil, "", &hostConflict{refusal(command, change.Outcome.String(), change.Reason)}
+	}
+	if id, pending := strings.CutPrefix(change.Reason, "pending:"); pending && change.Outcome == wire.DeclarationEditOutcomeForbidden {
+		// A declaration without product standing from the command line is a
+		// request the person confirms (architect ruling (3) of 2026-11-22).
+		return nil, "", &exitError{exitWaiting, fmt.Errorf("%s: pending: confirm it in the OpenAbstractions popup, then run this again; follow it with: openabstractions rights requests --follow %s", command, id)}
 	}
 	if change.Outcome != wire.DeclarationEditOutcomeApplied {
 		return nil, "", refusal(command, change.Outcome.String(), change.Reason)

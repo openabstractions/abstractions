@@ -83,7 +83,7 @@ func currentInstallerGatewayHistory() (installerGatewayHistory, error) {
 	if pointer == 0 {
 		return installerGatewayHistory{}, err
 	}
-	return decodeInstallerGatewayHistory(append([]byte(nil), unsafe.Slice((*byte)(unsafe.Pointer(pointer)), int(size))...))
+	return decodeInstallerGatewayHistory(append([]byte(nil), unsafe.Slice((*byte)(nativePointer(pointer)), int(size))...))
 }
 
 // This physical installer operation grants no enrollment, consent or Rights.

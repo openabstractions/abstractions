@@ -12,7 +12,7 @@
 
 store     submit claim renew progress release finish intent recall hold state failure orphans plant sleep watch next close
 transfer  run runshared stage
-wire      credential refuse allow src=http:
+wire      credential refuse allow src=http: src=https:
 wanted    drop sweep
 identity  ladder bench value ceiling caneve serve speak identify proof trusted check same traces claimed
 fileid    file folder link sharelink hardlink replace remove resolve relate beneath create safename leaf pending keep revalidate samefile within opens remotes

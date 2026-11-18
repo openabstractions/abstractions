@@ -258,6 +258,7 @@ func superviseAgentPresence(ctx context.Context, attempt func(context.Context, f
 			err = errors.New("agent presence ended without a cause")
 		}
 		admission.setReady(false)
+		admission.noteLoss(err, now())
 		observeAgentLoss(ctx, err, status != nil && status.chatReceiver)
 		wait := delay
 		var inbox *agentInboxOutcomeError

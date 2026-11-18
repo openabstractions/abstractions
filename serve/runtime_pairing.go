@@ -808,7 +808,7 @@ func (p *runtimePairing) ensureNormal(ctx context.Context, address string, autho
 	if err != nil {
 		return err
 	}
-	config := &runtimeRemoteConfig{Listen: true, Address: address, TLS: &tls.Config{Certificates: []tls.Certificate{identity}, ClientCAs: x509.NewCertPool()}, ClientRoots: p.state.clientRoots, Admit: p.state.admit, Minimum: p.state.minimum, audit: p.audit, observeCall: p.state.observeCall}
+	config := &runtimeRemoteConfig{Listen: true, Address: address, TLS: &tls.Config{Certificates: []tls.Certificate{identity}, ClientCAs: x509.NewCertPool()}, ClientRoots: p.state.clientRoots, AdmitContext: p.state.admitContext, standingAdmission: p.state.probeStanding, Minimum: p.state.minimum, audit: p.audit, observeCall: p.state.observeCall}
 	options := p.options
 	options.remoteConfiguration = func(context.Context) (*runtimeRemoteConfig, error) { return config, nil }
 	prepared, err := prepareRuntimeRemote(ctx, options, p.rights, p.services, p.sink, p.report)
@@ -1150,7 +1150,7 @@ func (p *runtimePairing) pairedHosts() ([]*router.Host, error) {
 		}
 		selected := key
 		selectedName := peer.BindingName
-		admit := func(evidence remote.Peer) error {
+		admit := func(ctx context.Context, evidence remote.Peer) error {
 			if hex.EncodeToString(evidence.Key[:]) != selected {
 				return remote.ErrTrust
 			}
@@ -1163,9 +1163,9 @@ func (p *runtimePairing) pairedHosts() ([]*router.Host, error) {
 					return &pairedNameClash{name: selectedName}
 				}
 			}
-			return p.state.admit(evidence)
+			return p.state.admitContext(ctx, evidence)
 		}
-		host, err := router.NewRemote(peer.BindingName, address, config, "", admit)
+		host, err := router.NewRemoteWithDialer(peer.BindingName, address, "", remote.Dialer{TLS: config, AdmitContext: admit})
 		if err != nil {
 			return nil, err
 		}

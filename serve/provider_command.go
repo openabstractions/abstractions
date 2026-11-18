@@ -330,6 +330,14 @@ func providerCommandInput(args []string, input io.Reader, output, diagnostics io
 		return transport(err)
 	}
 	if change.Outcome != wire.DeclarationEditOutcomeApplied {
+		// A declaration from the command line is a request the person
+		// confirms (architect ruling (3) of 2026-11-22).
+		if handled, err := followPendingEdit(machine, command, change.Reason, timeoutOf(w.callFunc())); handled {
+			if err == nil {
+				return credentialReport(output, options.asJSON, change, fmt.Sprintf("%s %s; allowed", strings.TrimPrefix(command, "provider "), name))
+			}
+			return err
+		}
 		return refusal(command, change.Outcome.String(), change.Reason)
 	}
 	return credentialReport(output, options.asJSON, change, fmt.Sprintf("%s %s; revision %s", strings.TrimPrefix(command, "provider "), name, change.Revision))

@@ -50,7 +50,7 @@ func TestModelsHostSaysNativeProvidersAreUnavailableOnMacOS(t *testing.T) {
 	var output, diagnostics bytes.Buffer
 	err := modelsCommand([]string{"host", "store/object", "--engine", "/absolute/llama-server"}, &output, &diagnostics)
 	assertExit(t, err, exitRefusedCall, "models host on macOS")
-	if !strings.Contains(err.Error(), "native providers are not available on macOS in 0.4.0: their caller check needs an XPC endpoint") || output.Len() != 0 {
+	if !strings.Contains(err.Error(), "native providers are not available on macOS: their caller check needs an XPC endpoint") || output.Len() != 0 {
 		t.Fatalf("models host on macOS: %v output=%q", err, output.String())
 	}
 	if err := modelsCommand([]string{"host", "--help"}, &output, &diagnostics); err != nil {

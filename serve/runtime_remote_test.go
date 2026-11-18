@@ -580,7 +580,11 @@ func TestRemoteAcceptedOperationsKeepTheirOwnStandingAuthority(t *testing.T) {
 			var paired atomic.Bool
 			paired.Store(true)
 			originalAdmit := config.Admit
-			config.Admit = func(p remote.Peer) error {
+			config.Admit = nil
+			config.AdmitContext = func(ctx context.Context, p remote.Peer) error {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
 				if !paired.Load() {
 					return remote.ErrTrust
 				}

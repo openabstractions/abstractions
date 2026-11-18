@@ -152,6 +152,19 @@ func (DeclarationReadiness) UnmarshalJSON(data []byte) error
 func DeclarationReadinessValues() []DeclarationReadiness
 func (DeclarationReadiness) IsKnown() bool
 func (DeclarationReadiness) Known() bool
+type ProductStanding uint32
+const ProductStandingProduct
+const ProductStandingThirdParty
+func (ProductStanding) String() string
+func (ProductStanding) WireName() (string, bool)
+func ParseProductStanding(word string) (ProductStanding, bool)
+func (ProductStanding) MarshalText() ([]byte, error)
+func (ProductStanding) UnmarshalText(text []byte) error
+func (ProductStanding) MarshalJSON() ([]byte, error)
+func (ProductStanding) UnmarshalJSON(data []byte) error
+func ProductStandingValues() []ProductStanding
+func (ProductStanding) IsKnown() bool
+func (ProductStanding) Known() bool
 type DeclarationListOutcome uint32
 const DeclarationListOutcomePage
 const DeclarationListOutcomeInvalid
@@ -462,6 +475,14 @@ type PinnedDeclarationObservation struct
   Outcome DeclarationListOutcome
   Cursor string
   Declarations []PinnedDeclarationState
+type ProviderStanding struct
+  Name string
+  Program string
+  Standing ProductStanding
+type ProviderStandingList struct
+  Outcome DeclarationListOutcome
+  Revision string
+  Standings []ProviderStanding
 type ApplicationInterface struct
   Name string
   Protocol string
@@ -668,6 +689,7 @@ type RegistryV2 interface
   DeclarePinned(expectedRevision string, declaration PinnedDeclaration) (DeclarationChange, error)
   ReplacePinned(expectedRevision string, declaration PinnedDeclaration) (DeclarationChange, error)
   ObservePinned(cursor string, waitMs int64) (PinnedDeclarationObservation, error)
+  Standings() (ProviderStandingList, error)
 type RegistryV2Transport interface
   FrameExchanger
 type RegistryV2Client struct
@@ -683,6 +705,7 @@ func (RegistryV2Client) DeclarationsPinned() (result PinnedDeclarationList, err 
 func (RegistryV2Client) DeclarePinned(expectedRevision string, declaration PinnedDeclaration) (result DeclarationChange, err error)
 func (RegistryV2Client) ReplacePinned(expectedRevision string, declaration PinnedDeclaration) (result DeclarationChange, err error)
 func (RegistryV2Client) ObservePinned(cursor string, waitMs int64) (result PinnedDeclarationObservation, err error)
+func (RegistryV2Client) Standings() (result ProviderStandingList, err error)
 func (RegistryV2Dispatcher) DescribeService() (contract string, ready bool, why string)
 func (RegistryV2Dispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
 func (RegistryV2Dispatcher) ServiceContract() string
@@ -831,6 +854,14 @@ func DecodePinnedDeclarationObservationAt(in []byte, depth, limit int) (*PinnedD
 func EncodePinnedDeclarationObservationAt(v *PinnedDeclarationObservation, depth int) []byte
 func EncodePinnedDeclarationObservation(v *PinnedDeclarationObservation) []byte
 func DecodePinnedDeclarationObservation(in []byte) (*PinnedDeclarationObservation, error)
+func DecodeProviderStandingAt(in []byte, depth, limit int) (*ProviderStanding, int, error)
+func EncodeProviderStandingAt(v *ProviderStanding, depth int) []byte
+func EncodeProviderStanding(v *ProviderStanding) []byte
+func DecodeProviderStanding(in []byte) (*ProviderStanding, error)
+func DecodeProviderStandingListAt(in []byte, depth, limit int) (*ProviderStandingList, int, error)
+func EncodeProviderStandingListAt(v *ProviderStandingList, depth int) []byte
+func EncodeProviderStandingList(v *ProviderStandingList) []byte
+func DecodeProviderStandingList(in []byte) (*ProviderStandingList, error)
 func DecodeApplicationInterfaceAt(in []byte, depth, limit int) (*ApplicationInterface, int, error)
 func EncodeApplicationInterfaceAt(v *ApplicationInterface, depth int) []byte
 func EncodeApplicationInterface(v *ApplicationInterface) []byte

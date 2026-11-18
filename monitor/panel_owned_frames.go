@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"sync"
@@ -196,7 +197,9 @@ func (p *panelOwnedFrames) retire() {
 		}
 		p.modelMu.Lock()
 		if p.model != nil {
-			_ = p.model.Retire()
+			if err := p.model.Retire(); err != nil {
+				log.Printf("panel: the App Model presence was not retired: %v", err)
+			}
 		}
 		p.modelMu.Unlock()
 		if p.onRetire != nil {

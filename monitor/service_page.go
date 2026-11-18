@@ -1,8 +1,6 @@
 package main
 
 import (
-	"slices"
-	"sort"
 	"strings"
 )
 
@@ -42,25 +40,9 @@ var servicePage = pageOwnsReady(oaPageHead("status", "Apps", "Apps that use Open
 	`<div id="apps-health" hidden><div class="oa-row"><div class="oa-row-text"><span class="oa-row-label" id="apps-health-label"></span><span class="oa-row-caption" id="apps-health-caption" hidden></span></div>` +
 	`<div class="oa-row-control"><button id="apps-health-retry">Check again</button></div>` +
 	`<p class="oa-status" id="apps-health-status" role="status" aria-live="polite" data-state="idle"></p></div></div>` +
-	oaGroup("service-check", "Your apps", "", strings.Replace(oaRowNav("Install apps", "Browse the Catalog", "/setup#setup-choices"), `<a `, `<a id="apps-setup" `, 1), runtimeEcho(oaStatus("apps-status")), `<div id="apps-desktop-reconnect" hidden><div class="oa-row"><div class="oa-row-text"><span id="apps-desktop-reconnect-title" class="oa-row-label"></span></div><div class="oa-row-control"><button id="apps-desktop-reconnect-button" type="button" data-status="apps-desktop-reconnect-status">Reconnect</button></div></div></div>`, oaStatusLine("apps-desktop-reconnect-status", false), `<div id="apps"></div>`, oaStatusLine("apps-pending-status", false)) +
+	oaGroup("service-check", "Your apps", "", strings.Replace(oaRowNav("Install apps", "Browse the Catalog", "/setup#setup-choices"), `<a `, `<a id="apps-setup" `, 1), runtimeEcho(oaStatus("apps-status")), `<div id="apps-desktop-reconnect" hidden><div class="oa-row"><div class="oa-row-text"><span id="apps-desktop-reconnect-title" class="oa-row-label"></span></div><div class="oa-row-control"><button id="apps-desktop-reconnect-button" type="button" data-status="apps-desktop-reconnect-status">Reconnect</button></div></div></div>`, oaStatusLine("apps-desktop-reconnect-status", false), `<div id="apps-integrations"></div><div id="apps"></div>`, oaStatusLine("apps-pending-status", false)) +
 	oaGroup("apps-services", "Services", "Running in the background for your apps.", runtimeEcho(oaStatus("apps-providers-status")), `<div id="apps-providers"></div>`, strings.Replace(oaRowNav("Manage services", "", "/registry#providers-section"), `<a `, `<a id="apps-manage-providers" `, 1)) +
-	oaGroup("product-connections", "Connections", "", "", appsConnectionRows()) +
 	`<script>` + serviceCommonScript + appsPageScript + `</script>`
-
-// appsConnectionRows shows the same named connections the update presenter
-// inventories. Display order is independent of its batch order.
-func appsConnectionRows() string {
-	parties := slices.Clone(agentHelperParties)
-	sort.Slice(parties, func(i, j int) bool { return parties[i].name < parties[j].name })
-	var rows strings.Builder
-	for _, party := range parties {
-		id := string(party.party)
-		row := oaRowNav(party.name, "Connect "+party.name+" to OpenAbstractions", "/connections/"+id)
-		marker := `<a id="apps-` + id + `-connection" data-agent-connection `
-		rows.WriteString(strings.Replace(row, `<a `, marker, 1))
-	}
-	return rows.String()
-}
 
 // pageOwnsReady marks a page head as the page's own readiness owner
 // (data-ready-owner="page"): its script calls oaReady once its first reads
@@ -75,9 +57,47 @@ func pageOwnsReady(head string) string {
 // visible, and on Check again.
 const appsPageScript = `
 const setupLink=el('apps-setup');if(setupLink)setupLink.href='/setup?k='+encodeURIComponent(key||'')+'#setup-choices';
-const connections=el('product-connections');
-for(const link of connections?.querySelectorAll?.('[data-agent-connection]')||[]){
- link.href=link.getAttribute('href')+'?k='+encodeURIComponent(key||'');
+// Your apps begins with the integrations on this computer and connected, in
+// the Catalog's row shape: name, caption and the state button
+// (/setup/integrations, setup_integrations.go); Catalog lists every one. An
+// integration's row stands in for the entries it registers.
+const appsIntegrations={list:null,failed:false};let appsIntegrationRows=new Map();
+function appsIntegrationHref(path){const [page,hash]=String(path||'').split('#');return page+'?k='+encodeURIComponent(key||'')+(hash?'#'+hash:'')}
+function appsIntegrationRow(){
+ const row=document.createElement('div');row.className='oa-row';
+ row.link=document.createElement('a');row.link.className='oa-row-text';
+ row.label=document.createElement('span');row.label.className='oa-row-label';row.caption=document.createElement('span');row.caption.className='oa-row-caption';
+ row.link.append(row.label,row.caption);
+ const control=document.createElement('div');control.className='oa-row-control';
+ row.button=document.createElement('button');row.button.type='button';
+ row.status=document.createElement('p');row.status.className='oa-status';row.status.setAttribute('role','status');row.status.setAttribute('aria-live','polite');row.status.setAttribute('data-state','idle');
+ row.button.onclick=()=>appsIntegrationAct(row);control.append(row.button);row.append(row.link,control,row.status);return row;
+}
+async function appsIntegrationAct(row){const g=row.integration;if(!g)return;
+ if(g.state!=='open'||!g.open){location.href=row.link.href;return}
+ row.button.disabled=true;appsSay(row,'loading','Opening '+g.title+'…');
+ try{await call(g.open,{confirm:true});appsSay(row,'idle','')}catch(e){appsSay(row,'error',oaPlain(e&&e.message||String(e)).line)}
+ row.button.disabled=false}
+// Apps shows the integrations connected here, and one whose last connection
+// attempt needs attention, so its reason is in view.
+const appsIntegrationsShown=()=>(appsIntegrations.list||[]).filter(g=>g&&g.id&&g.title&&(g.installed&&g.connected||oaIntegrationNeedsAttention(g)));
+function appsIntegrationNames(){const names=new Set();for(const g of appsIntegrationsShown())for(const name of g.registrations||[])names.add(name);return names}
+function renderAppsIntegrations(){
+ const out=el('apps-integrations');if(!out||appsIntegrations.list===null&&!appsIntegrations.failed)return;
+ const shown=appsIntegrationsShown(),next=new Map();
+ const rows=shown.map(g=>{const row=appsIntegrationRows.get(g.id)||appsIntegrationRow();row.integration=g;row.link.href=appsIntegrationHref(g.page);row.label.textContent=g.title;row.caption.textContent=[g.caption,oaIntegrationLine(g)].filter(Boolean).join(' · ');
+  row.button.textContent=g.state==='open'&&g.open?'Open':g.connected?'Manage':'Connect';row.button.disabled=false;row.button.setAttribute('aria-label',row.button.textContent+' '+g.title);next.set(g.id,row);return row});
+ appsIntegrationRows=next;
+ renderApps();
+ if(rows.length&&rows.length===out.children.length&&rows.every((row,i)=>out.children[i]===row))return;
+ out.replaceChildren();
+ if(!rows.length&&appsIntegrations.failed){const p=document.createElement('p');p.className='oa-empty';p.textContent='Connected integrations are unknown right now.';out.append(p);return}
+ for(const row of rows)out.append(row);
+}
+async function appsReadIntegrations(signal){
+ try{const v=await call('/setup/integrations',undefined,signal);if(signal&&signal.aborted)return;appsIntegrations.list=v.integrations||[];appsIntegrations.failed=false}
+ catch(e){if(signal&&signal.aborted)return;appsIntegrations.failed=appsIntegrations.list===null}
+ renderAppsIntegrations();
 }
 const providersLink=el('apps-manage-providers');if(providersLink)providersLink.href='/registry?k='+encodeURIComponent(key||'')+'#providers-section';
 const desktopReconnect=el('apps-desktop-reconnect'),desktopReconnectButton=el('apps-desktop-reconnect-button');
@@ -193,12 +213,12 @@ function renderApps(){
  const waiting=appsPending.entries.filter(e=>e&&e.name&&e.title).sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0),pendingNext=new Map();
  const pendingRows=waiting.map(e=>{const row=appsPendingRows.get(e.name)||appsPendingRow();appsPendingUpdate(row,e);pendingNext.set(e.name,row);return row});
  appsPendingRows=pendingNext;
- const entries=appsState.entries.filter(e=>e&&e.role==='application'&&e.name).sort((a,b)=>appsTitle(a).localeCompare(appsTitle(b))),next=new Map();
+ const integrated=appsIntegrationNames(),entries=appsState.entries.filter(e=>e&&e.role==='application'&&e.name&&!integrated.has(e.name)).sort((a,b)=>appsTitle(a).localeCompare(appsTitle(b))),next=new Map();
  const rows=pendingRows.concat(entries.map(e=>{const open=appsCanOpen(e),kept=appsRows.get(e.name),row=kept&&!!kept.openable===open?kept:open?appsOpenRow():appsRow();if(open){row.link.href=appsHref(e.name);row.open.hidden=appsRunning(e);row.open.setAttribute('aria-label','Open '+appsTitle(e))}else row.href=appsHref(e.name);row.label.textContent=appsTitle(e);row.caption.textContent=(e.self_registered?'Review needed · ':'')+(appsRunning(e)?'Running':'Not running');next.set(e.name,row);return row}));
  appsRows=next;
  if(rows.length&&rows.length===out.children.length&&rows.every((row,i)=>out.children[i]===row))return;
  out.replaceChildren();
- if(!rows.length){const p=document.createElement('p');p.className='oa-empty';p.textContent='No apps yet.';out.append(p);return}
+ if(!rows.length){if(appsIntegrationsShown().length)return;const p=document.createElement('p');p.className='oa-empty';p.textContent='No apps yet.';out.append(p);return}
  for(const row of rows)out.append(row);
 }
 // Each readiness state in the words of the ruling of 2026-11-09.
@@ -274,12 +294,13 @@ async function appsFollow(run,source='applications'){
 appsRun=typeof AbortController==='undefined'?null:new AbortController();
 var appsReady=appsFollow(appsRun),appsProvidersReady=appsFollow(appsRun,'providers'),appsHealthReady=appsCheckRuntime();
 // The screenshot tool waits for data-ready once the first reads finished.
-var appsArrived=Promise.all([appsFirstRead,appsHealthReady,appsReadDesktopReconnect(appsRun&&appsRun.signal)]).then(()=>{if(typeof oaReady==='function')oaReady()});
+var appsArrived=Promise.all([appsFirstRead,appsHealthReady,appsReadDesktopReconnect(appsRun&&appsRun.signal),appsReadIntegrations(appsRun&&appsRun.signal)]).then(()=>{if(typeof oaReady==='function')oaReady()});
 // appsReread checks the runtime and reads again each list that failed: Check
 // again, and the shell's call once the runtime answers again.
 async function appsReread(){
  await appsCheckRuntime();
  await appsReadDesktopReconnect(appsRun&&appsRun.signal);
+ await appsReadIntegrations(appsRun&&appsRun.signal);
  if(appsState.failure){appsState.cursor='';try{await appsRead(appsRun&&appsRun.signal,0)}catch(e){}}
  if(appsProviders.failure){appsProviders.cursor='';try{await appsRead(appsRun&&appsRun.signal,0,'providers')}catch(e){}}
 }

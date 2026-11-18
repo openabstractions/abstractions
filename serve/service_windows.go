@@ -31,6 +31,11 @@ const serviceUsage = `Usage: openabstractions service <command>
   begin-removal --user|--machine <install folder>
         hold the same exclusion and close identified OA processes for the
         removing package folder without querying its product registration
+  await-release --user|--machine <install folder> <UILevel>
+        before Windows Installer checks for files in use on a removal, wait
+        up to 20 seconds while a service or critical process outside OA holds
+        a file in <install folder>; when one still holds a file, say that a
+        restart finishes the removal (a window at UILevel 5) and succeed
   end-upgrade --user|--machine
         release it (installer commit)
   start --related <product codes>
@@ -75,6 +80,7 @@ type serviceRequest struct {
 	related   string
 	version   string
 	chain     string
+	uiLevel   string
 	installed bool
 }
 
@@ -109,6 +115,9 @@ func serviceArguments(args []string) (serviceRequest, error) {
 	if len(args) == 2 && args[0] == "start-presenter" && scopeFlag(args[1]) != "" {
 		return serviceRequest{command: "start-presenter", scope: scopeFlag(args[1])}, nil
 	}
+	if len(args) == 4 && args[0] == "await-release" && scopeFlag(args[1]) != "" && args[2] != "" {
+		return serviceRequest{command: "await-release", scope: scopeFlag(args[1]), folder: args[2], uiLevel: args[3]}, nil
+	}
 	if len(args) == 3 && args[0] == "begin-removal" && scopeFlag(args[1]) != "" && args[2] != "" {
 		return serviceRequest{command: "begin-removal", scope: scopeFlag(args[1]), folder: args[2]}, nil
 	}
@@ -131,7 +140,7 @@ func serviceArguments(args []string) (serviceRequest, error) {
 		return serviceRequest{command: "remove-sandboxes", scope: "user"}, nil
 	}
 	return serviceRequest{}, errors.New("service begin-upgrade --user|--machine <install folder> --related <product codes>, " +
-		"service begin-removal --user|--machine <install folder>, service end-upgrade --user|--machine, service start --related <product codes> | --user <install folder> <version> | --machine, service upgrade-check, " +
+		"service begin-removal --user|--machine <install folder>, service await-release --user|--machine <install folder> <UILevel>, service end-upgrade --user|--machine, service start --related <product codes> | --user <install folder> <version> | --machine, service upgrade-check, " +
 		"service remove-login --user <prior ToolsFolder>, or service remove-sandboxes")
 }
 
@@ -149,6 +158,9 @@ func serviceCommand(args []string, output, diagnostics io.Writer) error {
 	}
 	if request.command == "inspect-upgrade" {
 		return serviceInspectUpgrade(request, output)
+	}
+	if request.command == "await-release" {
+		return serviceAwaitRelease(request, output)
 	}
 	releaseSettings, err := runtimeSettingsGuard(context.Background(), runtimeFlags{})
 	if err != nil {

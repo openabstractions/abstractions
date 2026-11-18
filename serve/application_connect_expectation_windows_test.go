@@ -273,8 +273,11 @@ func TestPanelRoleSurvivesAliasAndRefusesReplacementAndNewReservedImage(t *testi
 	if err := os.WriteFile(dev, []byte("replacement image"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if r.isPanel(dev) || !r.isPanel(original) {
-		t.Fatal("a replacement file acquired the Panel role by name")
+	// Neither the replacement nor the moved original is the Panel: the Panel
+	// is the held file while it is still at its path (final security check
+	// 2026-11-22, F1).
+	if r.isPanel(dev) || r.isPanel(original) {
+		t.Fatal("a replacement file acquired the Panel role by name, or the moved original kept it")
 	}
 	if err := os.Remove(dev); err != nil {
 		t.Fatal(err)
@@ -282,8 +285,8 @@ func TestPanelRoleSurvivesAliasAndRefusesReplacementAndNewReservedImage(t *testi
 	if err := os.Link(exe, dev); err != nil {
 		t.Fatal(err)
 	}
-	if r.isPanel(dev) || r.isPanel(exe) || !r.isPanel(original) {
-		t.Fatal("Panel trust followed a replaced name instead of the original file")
+	if r.isPanel(dev) || r.isPanel(exe) || r.isPanel(original) {
+		t.Fatal("Panel trust followed a replaced name, or a moved original")
 	}
 	presenter := filepath.Join(dir, "OpenAbstractions Presenter.exe")
 	if err := os.Link(original, presenter); err != nil {
@@ -325,7 +328,7 @@ func TestExpectConnectChecksTheLivePanelImage(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			policy := &runtimeRights{owner: account, panels: panelRoster{images: []fileid.Handle{panel}}}
+			policy := &runtimeRights{owner: account, panels: panelRoster{images: []fileid.Handle{panel}, imagePaths: []string{test.panel}}}
 			defer policy.close()
 			d, err := openApplications(t.TempDir(), account, func(context.Context, rwire.Subject, string, string) (bool, error) {
 				return true, nil

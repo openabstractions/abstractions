@@ -365,6 +365,16 @@ func (p *servicePanel) questions(w http.ResponseWriter, r *http.Request) {
 				}
 				listed.Sentences[record.ID] = firstUseSentence(publisher, program, action, resource)
 			}
+			// A connection question names the app the person knows; the
+			// record keeps its retained title.
+			if record.Key == asks.AgentEnrollmentKey {
+				if line := enrollmentWords(record.Text); line != record.Text {
+					if listed.Sentences == nil {
+						listed.Sentences = map[string]string{}
+					}
+					listed.Sentences[record.ID] = line
+				}
+			}
 			// A connection update reads without the request code its
 			// catalogue sentence ends in; the code stays in the record.
 			if record.Key == asks.AgentUpdateKey {
@@ -391,6 +401,9 @@ func (p *servicePanel) questions(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if choices := questionChoices(pageOptions(record)); len(choices) > 0 {
+				if record.Key == asks.SelfRegisteredKey {
+					choices, _ = projectCataloguePopupChoices(record.Key, record.Options, choices)
+				}
 				if readErr == nil && providerPairPermission(asker.Details.Permission) {
 					if listed.NativePrompts == nil {
 						listed.NativePrompts = map[string]bool{}

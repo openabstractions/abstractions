@@ -133,6 +133,8 @@ type agentStartCustody struct {
 	admission func(context.Context) error
 	target    string
 	cold      *startprofile.ColdResume
+	// wake is the message's wake key in the selected Codex chat's inbox.
+	wake string
 	// list, when set, receives the agent's existing conversations instead
 	// of a start; nothing runs a turn.
 	list *[]receiverSession

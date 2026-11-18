@@ -92,12 +92,6 @@ function withoutRegistrationSources(context) {
   fields.clear();
   const entry=(name,title,instances)=>({program:'C:\\Apps\\'+name+'.exe',name,role:'application',state:instances+' current announcements',application:{Descriptor:{Name:name,Program:'C:\\Apps\\'+name+'.exe',Title:title},Instances:Array.from({length:instances},(_,i)=>({Instance:'i'+i})),Scope:1}});
   let registry={outcome:'page',cursor:'c1',entries:[entry('zed','Zed editor',0),entry('chat','Chat & Code',1),{program:'C:\\P\\provider.exe',name:'provider',role:'provider'}]};
-  const connectionLinks=['claude','codex','opencode'].map(id=>({
-   getAttribute(name){assert.equal(name,'href');return '/connections/'+id}
-  }));
-  element('product-connections').querySelectorAll=selector=>{
-   assert.equal(selector,'[data-agent-connection]');return connectionLinks;
-  };
   let runtime={capabilities:[{name:'Logging',contract:'abstraction.logging/sink@1',status:'resolved'}]};
   const reads=[],waits=[];let held=null,reconnectAttempts=0;
   const reconnectFailure="Couldn't update OpenCode's settings. Close OpenCode and back up its settings files. Remove only the OpenAbstractions entry from each affected plugin list, then select Retry.";
@@ -118,9 +112,6 @@ function withoutRegistrationSources(context) {
      return {ok:true,json:async()=>registry}}
     throw Error('unexpected '+path)}};
   context.window=context;vm.runInNewContext(plainScript(),context);vm.runInNewContext(loadPageScript('service_page.go'),context);
-  assert.deepEqual(connectionLinks.map(link=>link.href),[
-   '/connections/claude?k=test%20key','/connections/codex?k=test%20key','/connections/opencode?k=test%20key',
-  ]);
   await context.appsHealthReady;await until(()=>held);
   assert.equal(element('apps-desktop-reconnect').hidden,false);
   assert.equal(element('apps-desktop-reconnect-title').textContent,'Reconnect OpenCode to OpenAbstractions');
@@ -252,6 +243,8 @@ function withoutRegistrationSources(context) {
     if(path==='/apps/registrations?source=applications&wait_ms=0') return {ok:true,json:async()=>registeredApps};
     if(path==='/explore') return {ok:true,json:async()=>exploreSelfReply};
     if(path==='/rights/allow'){allowCalls.push(JSON.parse(opts.body));return {ok:true,json:async()=>allowReplies.shift()}}
+    // 534211024a: message tool pairs are their own list.
+    if(path==='/rights/message-tools') return {ok:true,json:async()=>({outcome:'page',revision:'tools-rev',pairs:[]})};
     // Defaults for all apps is its own list, read after each rules read.
     if(path==='/rights/defaults')return {ok:true,json:async()=>({Outcome:'page',Revision:'defaults-rev',Defaults:[]})};
     if(path.startsWith('/rights/requests')) return {ok:true,json:async()=>({outcome:'page',requests:[],complete:true})};
@@ -666,6 +659,8 @@ function withoutRegistrationSources(context) {
     if(path.startsWith('/questions')) return {ok:true,json:async()=>questionsEmpty};
     if(path.startsWith('/rights/requests')) return {ok:true,json:async()=>({outcome:'page',requests:[],complete:true})};
     if(path==='/rights/delegation') return {ok:true,json:async()=>({outcome:'page',revision:'delegate-rev',account:'root',questions:[]})};
+    // 534211024a: message tool pairs are their own list.
+    if(path==='/rights/message-tools') return {ok:true,json:async()=>({outcome:'page',revision:'tools-rev',pairs:[]})};
     // Defaults for all apps is its own list, read after each rules read.
     if(path==='/rights/defaults') return {ok:true,json:async()=>({Outcome:'page',Revision:'defaults-rev',Defaults:[]})};
     if(path.startsWith('/rights')){

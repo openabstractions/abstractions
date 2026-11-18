@@ -56,6 +56,9 @@ class AuthorizationOperator
   retire_action(expected_revision: str, action: str) -> ActionEdit
   explain_for(subject: Subject, action: str, resource: str) -> DecisionExplanation
   list_defaults() -> DefaultPage
+  request_change(change: PolicyChange, wait_ms: int) -> ChangeRequestState
+  observe_change_request(id: str, wait_ms: int) -> ChangeRequestState
+  list_change_requests() -> ChangeRequestPage
   set_default(expected_revision: str, name: str, on: bool) -> DefaultEdit
 class AuthorizationOperatorClient(AuthorizationOperator)
   __init__(transport)
@@ -75,6 +78,9 @@ class AuthorizationOperatorClient(AuthorizationOperator)
   retire_action(expected_revision: str, action: str) -> ActionEdit
   explain_for(subject: Subject, action: str, resource: str) -> DecisionExplanation
   list_defaults() -> DefaultPage
+  request_change(change: PolicyChange, wait_ms: int) -> ChangeRequestState
+  observe_change_request(id: str, wait_ms: int) -> ChangeRequestState
+  list_change_requests() -> ChangeRequestPage
   set_default(expected_revision: str, name: str, on: bool) -> DefaultEdit
 enum BatchCheckOutcome
   CHECKED = 'checked'
@@ -99,6 +105,33 @@ dataclass CatalogEntry
   action: str
   registered_by: Subject
   registered_at: str
+enum ChangeKind
+  SET_RULE = 'set_rule'
+  REVOKE_RULE = 'revoke_rule'
+  SET_DEFAULT = 'set_default'
+  REGISTER_ACTION = 'register_action'
+  RETIRE_ACTION = 'retire_action'
+  DECLARATION = 'declaration'
+enum ChangeRequestOutcome
+  APPLIED = 'applied'
+  PENDING = 'pending'
+  REFUSED = 'refused'
+  EXPIRED = 'expired'
+  CONFLICT = 'conflict'
+  UNKNOWN = 'unknown'
+  INVALID = 'invalid'
+  FORBIDDEN = 'forbidden'
+  UNAVAILABLE = 'unavailable'
+dataclass ChangeRequestPage
+  outcome: PolicyPageOutcome | None
+  requests: list[ChangeRequestState]
+dataclass ChangeRequestState
+  outcome: ChangeRequestOutcome | None
+  id: str
+  revision: str
+  change: PolicyChange | None
+  expires: str
+  exempt: bool
 dataclass CheckBatchRequest
   expected_revision: str
   collection_admission: PermissionKey | None
@@ -212,6 +245,18 @@ dataclass PermissionKey
 dataclass PermissionSelection
   permission: PermissionKey
   selector: ResourceSelector
+dataclass PolicyChange
+  kind: ChangeKind | None
+  expected_revision: str
+  rule: PolicyRule | None
+  ttl_ms: int
+  why: str
+  name: str
+  on: bool
+  action: str
+  program: str
+  rules: list[PolicyRule]
+  address: str
 dataclass PolicyEdit
   outcome: PolicyEditOutcome | None
   revision: str
@@ -413,6 +458,8 @@ def decode_batch_decision(data)
 def decode_bundle_expansion(data)
 def decode_bundle_origin(data)
 def decode_catalog_entry(data)
+def decode_change_request_page(data)
+def decode_change_request_state(data)
 def decode_check_batch_request(data)
 def decode_concrete_resource(data)
 def decode_decision(data)
@@ -431,6 +478,7 @@ def decode_permission_definition_page(data)
 def decode_permission_effect(data)
 def decode_permission_key(data)
 def decode_permission_selection(data)
+def decode_policy_change(data)
 def decode_policy_edit(data)
 def decode_policy_observation(data)
 def decode_policy_page(data)
@@ -458,6 +506,8 @@ def encode_batch_decision(v)
 def encode_bundle_expansion(v)
 def encode_bundle_origin(v)
 def encode_catalog_entry(v)
+def encode_change_request_page(v)
+def encode_change_request_state(v)
 def encode_check_batch_request(v)
 def encode_concrete_resource(v)
 def encode_decision(v)
@@ -476,6 +526,7 @@ def encode_permission_definition_page(v)
 def encode_permission_effect(v)
 def encode_permission_key(v)
 def encode_permission_selection(v)
+def encode_policy_change(v)
 def encode_policy_edit(v)
 def encode_policy_observation(v)
 def encode_policy_page(v)

@@ -118,8 +118,8 @@ func TestProgramSelfRegistrationKeepsProviderOnlyWithCapturedPublisher(t *testin
 			run := newSelfRegisteredRun(t)
 			candidate := pendingProgramRegistration(t, run, "provider", source)
 			q := programKeepQuestion(t, run, candidate.Key)
-			if q.Key != asks.SelfRegisteredKey || q.About != candidate.Spec.Program || q.AskerProgram != "" ||
-				q.Text != candidate.Spec.Program+" was added to OpenAbstractions as Captured provider. Keep it?" ||
+			if q.Key != asks.SelfRegisteredKey || q.About != selfRegisteredSlot(candidate.Spec.Program) || q.AskerProgram != "" ||
+				q.Text != "Let Captured provider work with OpenAbstractions?" ||
 				q.Publisher != "synthetic test provenance" || !q.PublisherTrusted || !slices.Equal(q.Options, []string{"keep", "remove"}) {
 				t.Fatalf("PROGRAM question lost captured source/person semantics: %+v", q)
 			}
@@ -418,7 +418,7 @@ func TestSelfRegistrationAsksThePersonToKeepIt(t *testing.T) {
 		t.Fatal("a self-registered entry reads confirmed")
 	}
 	q := selfRegisteredQuestion(t, f, d, "editor")
-	if q.Text != f.comfy.Program+" was added to OpenAbstractions as Editor. Keep it?" || q.About != f.comfy.Program ||
+	if q.Text != "Let Editor work with OpenAbstractions?" || q.About != selfRegisteredSlot(f.comfy.Program) ||
 		!slices.Equal(q.Options, []string{"keep", "remove"}) || q.Key != asks.SelfRegisteredKey || q.AskerProgram != "" {
 		t.Fatalf("question %+v", q)
 	}

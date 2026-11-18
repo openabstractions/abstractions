@@ -326,6 +326,8 @@ struct NativeNotificationAction: Decodable {
 /// own: its actions carry its own click arguments.
 let appNotificationCategoryPrefix = "oa.n."
 let maxAppNotifications = 32
+/// The one notification that reports the Panel could not start or stopped.
+let panelFailureNotification = "oa.panel.failure"
 
 func appNotificationCategory(_ id: String, _ n: NativeNotification) -> UNNotificationCategory {
     let actions = n.actions.prefix(4).map { action -> UNNotificationAction in
@@ -1072,10 +1074,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         #if PANEL_WINDOW_FIXTURE
         if fixtureHidesWindow { return }
         #endif
-        let alert = NSAlert()
-        alert.messageText = "OpenAbstractions Panel unavailable"
-        alert.informativeText = message
-        alert.runModal()
+        // The Panel opens no popup of its own: the failure is a notification
+        // the person can read later, and the Panel's own log line above.
+        let content = UNMutableNotificationContent()
+        content.title = "OpenAbstractions Panel unavailable"
+        content.body = message
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: panelFailureNotification, content: content, trigger: nil)) { error in
+            notificationLog("panel failure notice: \(notificationErrorText(error))")
+        }
     }
 
     // MARK: - Native Asks presentation (no policy or operator calls here)

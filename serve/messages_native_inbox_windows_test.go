@@ -55,7 +55,7 @@ func messages1608CallImage(t *testing.T, selected string) (*listen.FramedCall, f
 	t.Cleanup(func() { l.Close() })
 	// The retained call is reused by bounded native/race controls after setup.
 	// Its fixture deadline must cover that work; cleanup still joins by EOF.
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := runtimeTestContext(t, t.Context())
 	t.Cleanup(cancel)
 	accepted := make(chan *listen.FramedCall, 1)
 	failed := make(chan error, 1)

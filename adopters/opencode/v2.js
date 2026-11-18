@@ -231,6 +231,7 @@ export async function setupV2(ctx, dependencies = {}) {
   // Its one-off request must not inherit the session conversation marker.
   await ctx.session?.hook?.('title', async (event) => {
     delete event.options.oaSessionID;
+    event.options.oaTitle = true;
   });
 
   // When OA's models change, the plugin's inventory watch reads them again and

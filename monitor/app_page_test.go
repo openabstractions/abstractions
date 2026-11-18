@@ -560,3 +560,43 @@ func TestAppRemoveFailureNamesTheRefusal(t *testing.T) {
 		}
 	}
 }
+
+// Agent-ux 2026-11-22: a failed Open said only "OpenAbstractions could not
+// start ComfyUI's program." It now says what the Panel can see, whether the
+// program is still on this computer, and the next step; ComfyUI's step
+// links to its Catalog row, where Connect restores the connector.
+func TestAppOpenRefusedStartSaysReasonAndNextStep(t *testing.T) {
+	apps, p := appPagePanel(t, true)
+	apps.activate = fwire.ApplicationActivationOutcomeIdentityRefused
+	raw, _ := json.Marshal(appActionBody{Confirm: true, Shown: applicationDigest(&apps.entries[0].Descriptor)})
+	open := func() appActionReply {
+		rec := appPagePost(t, p, "/app/example/start", string(raw))
+		var reply appActionReply
+		if err := json.Unmarshal(rec.Body.Bytes(), &reply); err != nil || rec.Code != 200 {
+			t.Fatalf("open: %d %s", rec.Code, rec.Body)
+		}
+		return reply
+	}
+	if reply := open(); reply.Message != "Example <b>'s program is no longer on this computer. Reinstall Example <b>, then select Open again." || reply.Next != "" {
+		t.Fatalf("missing program: %+v", reply)
+	}
+	program := apps.entries[0].Descriptor.Program
+	if err := os.MkdirAll(filepath.Dir(program), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(program, []byte("inert"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if reply := open(); reply.Message != "Example <b>'s program did not start. Reinstall Example <b>, then select Open again." {
+		t.Fatalf("present program: %+v", reply)
+	}
+	picture, _ := picturePackageIdentity()
+	message, next := appStartFailure("ComfyUI", picture, filepath.Join(t.TempDir(), "comfyui-connector.exe"))
+	if message != "ComfyUI's OpenAbstractions connector is no longer on this computer. Select Connect for ComfyUI in the Catalog to restore it." || next != "/setup#setup-row-"+string(officialPictureCatalogID()) {
+		t.Fatalf("ComfyUI: %q %q", message, next)
+	}
+	doc := appPageGet(t, p, "/app/example?k="+appPageKey).Body.String()
+	if !strings.Contains(doc, `<a id="app-open-next" href="#">Open Catalog</a>`) || !strings.Contains(doc, `id="app-open-next-line" hidden`) {
+		t.Fatal("the page has no hidden Catalog link for the next step")
+	}
+}

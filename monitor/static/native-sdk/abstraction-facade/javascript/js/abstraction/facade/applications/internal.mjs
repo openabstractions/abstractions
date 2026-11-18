@@ -1033,6 +1033,63 @@ function writeActivationResult(out, v, depth) {
   out.byte(0x7d);
 }
 
+function writeOpenRequest(out, v, depth) {
+  if (v.waitMs !== undefined && (typeof v.waitMs !== "bigint")) throw new Refusal("wrong_type", 0);
+  if (v.waitMs !== undefined && v.waitMs !== null && (v.waitMs < -9223372036854775808n || v.waitMs > 9223372036854775807n)) throw new Refusal("number_spelling", 0);
+  if (v.waitMs !== undefined && v.waitMs !== null) {
+  if (v.waitMs < 0n || v.waitMs > 600000n) throw new Refusal("bad_value",0);
+  }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "request");
+  out.ascii(": ");
+  writeActivateRequest(out, v.request, depth + 1);
+  if (v.waitMs !== undefined) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "wait_ms");
+    out.ascii(": ");
+    num(out, v.waitMs);
+  }
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOpenResult(out, v, depth) {
+  { const n = ENC.encode(v.question).length; if (n !== 0 && (n < 1 || n > 64)) throw new Refusal("bad_value",0); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.question)) throw new Refusal("bad_value",0);
+  { const n = ENC.encode(v.handle).length; if (n !== 0 && (n < 1 || n > 64)) throw new Refusal("bad_value",0); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.handle)) throw new Refusal("bad_value",0);
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "result");
+  out.ascii(": ");
+  writeActivationResult(out, v.result, depth + 1);
+  if (v.question !== "") {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "question");
+    out.ascii(": ");
+    esc(out, v.question);
+  }
+  if (v.handle !== "") {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "handle");
+    out.ascii(": ");
+    esc(out, v.handle);
+  }
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
 function writeDescribeResult(out, v, depth) {
   { const n = ENC.encode(v.reason).length; if (n > 4096) throw new Refusal("bad_value",0); }
     if (typeof v.outcome !== "string") throw new Refusal("wrong_type",0);
@@ -1366,13 +1423,45 @@ function writeOAApplicationsDescribeArguments(out, v, depth) {
   out.byte(0x7d);
 }
 
-function writeOAApplicationsCommandsArguments(out, v, depth) {
+function writeOAApplicationsOpenArguments(out, v, depth) {
+  { const n = ENC.encode(v.key).length; if (n < 1 || n > 128) throw new Refusal("bad_value",0); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.key)) throw new Refusal("bad_value",0);
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "key");
+  out.ascii(": ");
+  esc(out, v.key);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "request");
+  out.ascii(": ");
+  writeOpenRequest(out, v.request, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAApplicationsDescribeOpenArguments(out, v, depth) {
   out.byte(0x7b);
   out.byte(0x0a);
   pad(out, depth + 1);
   esc(out, "query");
   out.ascii(": ");
   writeOAImported9(out, v.query, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAApplicationsCommandsArguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "query");
+  out.ascii(": ");
+  writeOAImported10(out, v.query, depth + 1);
   out.byte(0x0a);
   pad(out, depth);
   out.byte(0x7d);
@@ -1392,7 +1481,7 @@ function writeOAApplicationsCallArguments(out, v, depth) {
   pad(out, depth + 1);
   esc(out, "call");
   out.ascii(": ");
-  writeOAImported10(out, v.call, depth + 1);
+  writeOAImported11(out, v.call, depth + 1);
   out.byte(0x0a);
   pad(out, depth);
   out.byte(0x7d);
@@ -1720,6 +1809,30 @@ function writeOAApplicationsActivateResult(out, v, depth) {
 }
 
 function writeOAApplicationsDescribeResult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  writeDescribeResult(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAApplicationsOpenResult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  writeOpenResult(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAApplicationsDescribeOpenResult(out, v, depth) {
   out.byte(0x7b);
   out.byte(0x0a);
   pad(out, depth + 1);
@@ -2379,6 +2492,25 @@ export function newActivationResult() {
   return { outcome: "", instance: "", started: false, reason: "", title: "" };
 }
 
+// An Activate request and the caller's own wait for the person's answer to an
+// open question. wait_ms caps the runtime's 40-second default and is not part
+// of the request the receipt and the question bind.
+export function newOpenRequest() {
+  return { request: newActivateRequest(), waitMs: undefined };
+}
+
+// An Activate answer and the open question that outlived the call (architect
+// ruling 2026-11-22). question and handle are present together, only when
+// result is not_ready with reason consent: the open waits for the person's
+// Allow. question is the Asks question id, which stays until the person
+// answers, for at most 24 hours, or until the requester's enrollment ends.
+// handle names this pending open. An Allow given later performs that exact open
+// once as the requester; its result is an Activity row, and DescribeOpen reads
+// the handle's state. Neither grants anything.
+export function newOpenResult() {
+  return { result: newActivationResult(), question: "", handle: "" };
+}
+
 // answer is present exactly for page. Enforce the final native wrapper at
 // most1MiB: a listed entry the generated writer refuses is left out whole, a
 // list that overflows is cut where it overflows, and each omission is logged
@@ -2482,12 +2614,20 @@ function newOAApplicationsDescribeArguments() {
   return { query: newOAImported8() };
 }
 
-function newOAApplicationsCommandsArguments() {
+function newOAApplicationsOpenArguments() {
+  return { key: "", request: newOpenRequest() };
+}
+
+function newOAApplicationsDescribeOpenArguments() {
   return { query: newOAImported9() };
 }
 
+function newOAApplicationsCommandsArguments() {
+  return { query: newOAImported10() };
+}
+
 function newOAApplicationsCallArguments() {
-  return { key: "", call: newOAImported10() };
+  return { key: "", call: newOAImported11() };
 }
 
 function newOAApplicationsReadSignInStartArguments() {
@@ -2583,6 +2723,14 @@ function newOAApplicationsActivateResult() {
 }
 
 function newOAApplicationsDescribeResult() {
+  return { value: newDescribeResult() };
+}
+
+function newOAApplicationsOpenResult() {
+  return { value: newOpenResult() };
+}
+
+function newOAApplicationsDescribeOpenResult() {
   return { value: newDescribeResult() };
 }
 
@@ -3900,6 +4048,98 @@ function readActivationResult(r) {
   return v;
 }
 
+function readOpenRequest(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOpenRequest();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "request") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.request = readActivateRequest(r);
+      } else if (key === "wait_ms") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.waitMs = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  if (v.waitMs !== undefined && v.waitMs !== null) {
+  if (v.waitMs < 0n || v.waitMs > 600000n) throw r.refuse("bad_value");
+  }
+  return v;
+}
+
+function readOpenResult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOpenResult();
+  let seen = 0;
+  r.ws();
+  const unknownKeys = new Set();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "result") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.result = readActivationResult(r);
+      } else if (key === "question") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.question = r.string();
+      } else if (key === "handle") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.handle = r.string();
+      } else {
+        if (unknownKeys.has(key)) throw r.refuse("duplicate_key");
+        unknownKeys.add(key);
+        r.skipValue();
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  { const n = ENC.encode(v.question).length; if (n !== 0 && (n < 1 || n > 64)) throw r.refuse("bad_value"); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.question)) throw r.refuse("bad_value");
+  { const n = ENC.encode(v.handle).length; if (n !== 0 && (n < 1 || n > 64)) throw r.refuse("bad_value"); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.handle)) throw r.refuse("bad_value");
+  return v;
+}
+
 function readDescribeResult(r) {
   if (r.at() !== 0x7b) throw r.refuse("wrong_type");
   r.enter();
@@ -4662,6 +4902,82 @@ function readOAApplicationsDescribeArguments(r) {
   return v;
 }
 
+function readOAApplicationsOpenArguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAApplicationsOpenArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "key") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.key = r.string();
+      } else if (key === "request") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.request = readOpenRequest(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 3) >>> 0) !== 3) throw r.refuse("missing_field");
+  { const n = ENC.encode(v.key).length; if (n < 1 || n > 128) throw r.refuse("bad_value"); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.key)) throw r.refuse("bad_value");
+  return v;
+}
+
+function readOAApplicationsDescribeOpenArguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAApplicationsDescribeOpenArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "query") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.query = readOAImported9(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
 function readOAApplicationsCommandsArguments(r) {
   if (r.at() !== 0x7b) throw r.refuse("wrong_type");
   r.enter();
@@ -4681,7 +4997,7 @@ function readOAApplicationsCommandsArguments(r) {
       if (key === "query") {
         if (seen & 1) throw r.refuse("duplicate_field");
         seen |= 1;
-        v.query = readOAImported9(r);
+        v.query = readOAImported10(r);
       } else {
         throw r.refuse("unknown_field");
       }
@@ -4720,7 +5036,7 @@ function readOAApplicationsCallArguments(r) {
       } else if (key === "call") {
         if (seen & 2) throw r.refuse("duplicate_field");
         seen |= 2;
-        v.call = readOAImported10(r);
+        v.call = readOAImported11(r);
       } else {
         throw r.refuse("unknown_field");
       }
@@ -5610,6 +5926,76 @@ function readOAApplicationsDescribeResult(r) {
   return v;
 }
 
+function readOAApplicationsOpenResult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAApplicationsOpenResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = readOpenResult(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function readOAApplicationsDescribeOpenResult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAApplicationsDescribeOpenResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = readDescribeResult(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
 function readOAApplicationsCommandsResult(r) {
   if (r.at() !== 0x7b) throw r.refuse("wrong_type");
   r.enter();
@@ -5891,6 +6277,8 @@ const JSON_RECORDS = Object.freeze({
   Change: [writeChange, readChange],
   Page: [writePage, readPage],
   ActivationResult: [writeActivationResult, readActivationResult],
+  OpenRequest: [writeOpenRequest, readOpenRequest],
+  OpenResult: [writeOpenResult, readOpenResult],
   DescribeResult: [writeDescribeResult, readDescribeResult],
   CommandsResult: [writeCommandsResult, readCommandsResult],
   CallResult: [writeCallResult, readCallResult],
@@ -6008,6 +6396,8 @@ _serviceRecords["Query"] = [["application","string","never"],["cursor","string",
 _serviceRecords["Change"] = [["outcome","string","never"],["revision","string","never"],["reason","string","never"],];
 _serviceRecords["Page"] = [["outcome","string","never"],["cursor","string","never"],["registrations","list<OAImported0>","never"],["reason","string","never"],];
 _serviceRecords["ActivationResult"] = [["outcome","string","never"],["instance","string","never"],["started","bool","never"],["reason","string","never"],["title","string","absent"],];
+_serviceRecords["OpenRequest"] = [["request","ActivateRequest","never"],["waitMs","i64","absent"],];
+_serviceRecords["OpenResult"] = [["result","ActivationResult","never"],["question","string","absent"],["handle","string","absent"],];
 _serviceRecords["DescribeResult"] = [["outcome","string","never"],["answer","OAImported1","absent"],["reason","string","never"],];
 _serviceRecords["CommandsResult"] = [["outcome","string","never"],["answer","OAImported2","absent"],["reason","string","never"],];
 _serviceRecords["CallResult"] = [["outcome","string","never"],["answer","OAImported3","absent"],["reason","string","never"],];
@@ -6028,8 +6418,10 @@ _serviceRecords["OAApplicationsWithdrawArguments"] = [["application","string","n
 _serviceRecords["OAApplicationsObserveArguments"] = [["query","Query","never"],];
 _serviceRecords["OAApplicationsActivateArguments"] = [["key","string","never"],["request","ActivateRequest","never"],];
 _serviceRecords["OAApplicationsDescribeArguments"] = [["query","OAImported8","never"],];
-_serviceRecords["OAApplicationsCommandsArguments"] = [["query","OAImported9","never"],];
-_serviceRecords["OAApplicationsCallArguments"] = [["key","string","never"],["call","OAImported10","never"],];
+_serviceRecords["OAApplicationsOpenArguments"] = [["key","string","never"],["request","OpenRequest","never"],];
+_serviceRecords["OAApplicationsDescribeOpenArguments"] = [["query","OAImported9","never"],];
+_serviceRecords["OAApplicationsCommandsArguments"] = [["query","OAImported10","never"],];
+_serviceRecords["OAApplicationsCallArguments"] = [["key","string","never"],["call","OAImported11","never"],];
 _serviceRecords["OAApplicationsReadSignInStartArguments"] = [];
 _serviceRecords["OAApplicationsRequestSetupArguments"] = [["use","string","never"],];
 _serviceRecords["OAApplicationsReceiveSetupRequestArguments"] = [["after","string","never"],];
@@ -6054,6 +6446,8 @@ _serviceRecords["OAApplicationsWithdrawResult"] = [["value","OAImported6","never
 _serviceRecords["OAApplicationsObserveResult"] = [["value","Page","never"],];
 _serviceRecords["OAApplicationsActivateResult"] = [["value","ActivationResult","never"],];
 _serviceRecords["OAApplicationsDescribeResult"] = [["value","DescribeResult","never"],];
+_serviceRecords["OAApplicationsOpenResult"] = [["value","OpenResult","never"],];
+_serviceRecords["OAApplicationsDescribeOpenResult"] = [["value","DescribeResult","never"],];
 _serviceRecords["OAApplicationsCommandsResult"] = [["value","CommandsResult","never"],];
 _serviceRecords["OAApplicationsCallResult"] = [["value","CallResult","never"],];
 _serviceRecords["OAApplicationsReadSignInStartResult"] = [["value","SignInStartResult","never"],];
@@ -6279,6 +6673,31 @@ export class ApplicationsClient {
     return _result.value;
   }
 
+  async open(key, request) {
+    const _args = newOAApplicationsOpenArguments();
+    _args.key = key;
+    _args.request = request;
+    _serviceCheck("OAApplicationsOpenArguments", _args);
+    const _payload = _serviceEncode(writeOAApplicationsOpenArguments, _args, 1);
+    _serviceDecode(readOAApplicationsOpenArguments, _payload, 1);
+    const _request = _serviceRequest("abstraction.facade/applications@3", "Open", _payload);
+    const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.facade/applications@3", "Open");
+    const _result = _serviceDecode(readOAApplicationsOpenResult, _reply, 1);
+    return _result.value;
+  }
+
+  async describeOpen(query) {
+    const _args = newOAApplicationsDescribeOpenArguments();
+    _args.query = query;
+    _serviceCheck("OAApplicationsDescribeOpenArguments", _args);
+    const _payload = _serviceEncode(writeOAApplicationsDescribeOpenArguments, _args, 1);
+    _serviceDecode(readOAApplicationsDescribeOpenArguments, _payload, 1);
+    const _request = _serviceRequest("abstraction.facade/applications@3", "DescribeOpen", _payload);
+    const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.facade/applications@3", "DescribeOpen");
+    const _result = _serviceDecode(readOAApplicationsDescribeOpenResult, _reply, 1);
+    return _result.value;
+  }
+
   async commands(query) {
     const _args = newOAApplicationsCommandsArguments();
     _args.query = query;
@@ -6436,9 +6855,42 @@ function checkImportedOAImported1(v, depth, limit) {
   }
 }
 
-function newOAImported10() { return dependencyAppmodel.newGatewayCall(); }
+function newOAImported10() { return dependencyAppmodel.newCommandsQuery(); }
 
 function writeOAImported10(out, v, depth) {
+  let bytes;
+  try {
+    bytes = dependencyAppmodel.encodeCommandsQueryAt(v, depth);
+  } catch (e) {
+    if (e instanceof dependencyAppmodel.Refusal) throw new Refusal(e.word, e.offset);
+    throw e;
+  }
+  for (const c of bytes) out.byte(c);
+}
+
+function readOAImported10(r) {
+  try {
+    const [v, n] = dependencyAppmodel.decodeCommandsQueryAt(r.buf.subarray(r.pos), r.depth, r.limit);
+    r.pos += n;
+    return v;
+  } catch (e) {
+    if (e instanceof dependencyAppmodel.Refusal) throw new Refusal(e.word, r.pos + e.offset);
+    throw e;
+  }
+}
+
+function checkImportedOAImported10(v, depth, limit) {
+  try {
+    dependencyAppmodel.checkCommandsQuery(v, depth, limit);
+  } catch (e) {
+    if (e instanceof dependencyAppmodel.Refusal) throw new Refusal(e.word, e.offset);
+    throw e;
+  }
+}
+
+function newOAImported11() { return dependencyAppmodel.newGatewayCall(); }
+
+function writeOAImported11(out, v, depth) {
   let bytes;
   try {
     bytes = dependencyAppmodel.encodeGatewayCallAt(v, depth);
@@ -6449,7 +6901,7 @@ function writeOAImported10(out, v, depth) {
   for (const c of bytes) out.byte(c);
 }
 
-function readOAImported10(r) {
+function readOAImported11(r) {
   try {
     const [v, n] = dependencyAppmodel.decodeGatewayCallAt(r.buf.subarray(r.pos), r.depth, r.limit);
     r.pos += n;
@@ -6460,7 +6912,7 @@ function readOAImported10(r) {
   }
 }
 
-function checkImportedOAImported10(v, depth, limit) {
+function checkImportedOAImported11(v, depth, limit) {
   try {
     dependencyAppmodel.checkGatewayCall(v, depth, limit);
   } catch (e) {
@@ -6700,12 +7152,12 @@ function checkImportedOAImported8(v, depth, limit) {
   }
 }
 
-function newOAImported9() { return dependencyAppmodel.newCommandsQuery(); }
+function newOAImported9() { return dependencyAppmodel.newOpenHandleQuery(); }
 
 function writeOAImported9(out, v, depth) {
   let bytes;
   try {
-    bytes = dependencyAppmodel.encodeCommandsQueryAt(v, depth);
+    bytes = dependencyAppmodel.encodeOpenHandleQueryAt(v, depth);
   } catch (e) {
     if (e instanceof dependencyAppmodel.Refusal) throw new Refusal(e.word, e.offset);
     throw e;
@@ -6715,7 +7167,7 @@ function writeOAImported9(out, v, depth) {
 
 function readOAImported9(r) {
   try {
-    const [v, n] = dependencyAppmodel.decodeCommandsQueryAt(r.buf.subarray(r.pos), r.depth, r.limit);
+    const [v, n] = dependencyAppmodel.decodeOpenHandleQueryAt(r.buf.subarray(r.pos), r.depth, r.limit);
     r.pos += n;
     return v;
   } catch (e) {
@@ -6726,7 +7178,7 @@ function readOAImported9(r) {
 
 function checkImportedOAImported9(v, depth, limit) {
   try {
-    dependencyAppmodel.checkCommandsQuery(v, depth, limit);
+    dependencyAppmodel.checkOpenHandleQuery(v, depth, limit);
   } catch (e) {
     if (e instanceof dependencyAppmodel.Refusal) throw new Refusal(e.word, e.offset);
     throw e;
@@ -6737,6 +7189,7 @@ const _importedChecks = Object.create(null);
 _importedChecks["OAImported0"] = checkImportedOAImported0;
 _importedChecks["OAImported1"] = checkImportedOAImported1;
 _importedChecks["OAImported10"] = checkImportedOAImported10;
+_importedChecks["OAImported11"] = checkImportedOAImported11;
 _importedChecks["OAImported2"] = checkImportedOAImported2;
 _importedChecks["OAImported3"] = checkImportedOAImported3;
 _importedChecks["OAImported4"] = checkImportedOAImported4;
@@ -6773,6 +7226,8 @@ _namedRecords["Query"] = [["application","string","never"],["cursor","string","n
 _namedRecords["Change"] = [["outcome","string","never"],["revision","string","never"],["reason","string","never"],];
 _namedRecords["Page"] = [["outcome","string","never"],["cursor","string","never"],["registrations","list<OAImported0>","never"],["reason","string","never"],];
 _namedRecords["ActivationResult"] = [["outcome","string","never"],["instance","string","never"],["started","bool","never"],["reason","string","never"],["title","string","absent"],];
+_namedRecords["OpenRequest"] = [["request","ActivateRequest","never"],["waitMs","i64","absent"],];
+_namedRecords["OpenResult"] = [["result","ActivationResult","never"],["question","string","absent"],["handle","string","absent"],];
 _namedRecords["DescribeResult"] = [["outcome","string","never"],["answer","OAImported1","absent"],["reason","string","never"],];
 _namedRecords["CommandsResult"] = [["outcome","string","never"],["answer","OAImported2","absent"],["reason","string","never"],];
 _namedRecords["CallResult"] = [["outcome","string","never"],["answer","OAImported3","absent"],["reason","string","never"],];
@@ -6918,6 +7373,14 @@ export function checkPage(v, depth = 0, limit = DEPTH_LIMIT) {
 
 export function checkActivationResult(v, depth = 0, limit = DEPTH_LIMIT) {
   _namedCheck("ActivationResult", v, depth, Math.min(limit, DEPTH_LIMIT));
+}
+
+export function checkOpenRequest(v, depth = 0, limit = DEPTH_LIMIT) {
+  _namedCheck("OpenRequest", v, depth, Math.min(limit, DEPTH_LIMIT));
+}
+
+export function checkOpenResult(v, depth = 0, limit = DEPTH_LIMIT) {
+  _namedCheck("OpenResult", v, depth, Math.min(limit, DEPTH_LIMIT));
 }
 
 export function checkDescribeResult(v, depth = 0, limit = DEPTH_LIMIT) {
@@ -7891,6 +8354,80 @@ export function encodeActivationResult(v) {
 
 export function decodeActivationResult(data) {
   const [v, n] = decodeActivationResultAt(data, 0, DEPTH_LIMIT);
+  const r = new Reader(data);
+  r.pos = n;
+  r.ws();
+  if (r.pos !== r.buf.length) throw r.refuse("trailing_bytes");
+  return v;
+}
+
+export function decodeOpenRequestAt(data, depth, limit) {
+  const r = new Reader(data);
+  if (depth < 0 || limit < 1) throw r.refuse("depth_exceeded");
+  r.depth = depth;
+  r.limit = Math.min(limit, DEPTH_LIMIT);
+  r.ws();
+  const v = readOpenRequest(r);
+  return [v, r.pos];
+}
+
+export function encodeOpenRequestAt(v, depth) {
+  if (depth < 0 || depth >= DEPTH_LIMIT) throw new Refusal("depth_exceeded", 0);
+  checkOpenRequest(v, depth, DEPTH_LIMIT);
+  const out = new Out();
+  writeOpenRequest(out, v, depth);
+  const bytes = out.bytes();
+  decodeOpenRequestAt(bytes, depth, DEPTH_LIMIT);
+  return bytes;
+}
+
+export function encodeOpenRequest(v) {
+  const bytes = encodeOpenRequestAt(v, 0);
+  const out = new Uint8Array(bytes.length + 1);
+  out.set(bytes);
+  out[bytes.length] = 0x0a;
+  return out;
+}
+
+export function decodeOpenRequest(data) {
+  const [v, n] = decodeOpenRequestAt(data, 0, DEPTH_LIMIT);
+  const r = new Reader(data);
+  r.pos = n;
+  r.ws();
+  if (r.pos !== r.buf.length) throw r.refuse("trailing_bytes");
+  return v;
+}
+
+export function decodeOpenResultAt(data, depth, limit) {
+  const r = new Reader(data);
+  if (depth < 0 || limit < 1) throw r.refuse("depth_exceeded");
+  r.depth = depth;
+  r.limit = Math.min(limit, DEPTH_LIMIT);
+  r.ws();
+  const v = readOpenResult(r);
+  return [v, r.pos];
+}
+
+export function encodeOpenResultAt(v, depth) {
+  if (depth < 0 || depth >= DEPTH_LIMIT) throw new Refusal("depth_exceeded", 0);
+  checkOpenResult(v, depth, DEPTH_LIMIT);
+  const out = new Out();
+  writeOpenResult(out, v, depth);
+  const bytes = out.bytes();
+  decodeOpenResultAt(bytes, depth, DEPTH_LIMIT);
+  return bytes;
+}
+
+export function encodeOpenResult(v) {
+  const bytes = encodeOpenResultAt(v, 0);
+  const out = new Uint8Array(bytes.length + 1);
+  out.set(bytes);
+  out[bytes.length] = 0x0a;
+  return out;
+}
+
+export function decodeOpenResult(data) {
+  const [v, n] = decodeOpenResultAt(data, 0, DEPTH_LIMIT);
   const r = new Reader(data);
   r.pos = n;
   r.ws();

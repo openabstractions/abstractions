@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,7 +45,9 @@ func (e *panelConfigurationError) Error() string {
 	if e.exitCode != 0 {
 		message += fmt.Sprintf("; exit: %d", e.exitCode)
 	}
-	if e.pluginOperation != "" {
+	if e.pluginOperation == "connections" {
+		message += "; Claude connections; reason: " + e.pluginReason
+	} else if e.pluginOperation != "" {
 		message += "; Claude plugin: " + e.pluginOperation + "; reason: " + e.pluginReason
 	}
 	return message + ")"
@@ -64,30 +67,91 @@ func panelConfigurationBudget(args []string) time.Duration {
 }
 
 // Never forward raw vendor stderr, which may contain profile or credential
-// values. Accept only the companion owner's closed diagnostic vocabulary.
+// values. Accept only the gateway's closed diagnostic vocabulary:
+// "OA_CLAUDE_PLUGIN_ERROR <operation> <reason>" from a plugin command and
+// "OA_CLAUDE_CONNECTIONS_ERROR <reason>" from the connection inventory. The
+// operation of an inventory failure reads "connections".
 func panelPluginDiagnostic(raw []byte) (operation, reason string) {
 	for _, line := range strings.Split(string(raw), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) != 3 || fields[0] != "OA_CLAUDE_PLUGIN_ERROR" {
-			continue
-		}
-		switch fields[1] {
-		case "version", "marketplace_list", "plugin_list", "validate", "install", "update", "uninstall", "marketplace_add", "marketplace_update", "marketplace_remove":
-		default:
-			continue
-		}
-		switch fields[2] {
-		case "timeout", "cancelled", "exit", "unavailable":
+		var op, why string
+		switch {
+		case len(fields) == 3 && fields[0] == "OA_CLAUDE_PLUGIN_ERROR":
+			op, why = fields[1], fields[2]
+			switch op {
+			case "version", "marketplace_list", "plugin_list", "validate", "install", "update", "uninstall", "marketplace_add", "marketplace_update", "marketplace_remove":
+			default:
+				continue
+			}
+			switch why {
+			case "timeout", "cancelled", "exit", "unavailable", "folder_missing", "marketplace_missing", "plugin_missing", "name_conflict", "invalid_plugin", "access_denied":
+			default:
+				continue
+			}
+		case len(fields) == 2 && fields[0] == "OA_CLAUDE_CONNECTIONS_ERROR":
+			op, why = "connections", fields[1]
+			switch why {
+			case "state_folder", "bound", "marker", "settings_file", "changed", "timeout", "other":
+			default:
+				continue
+			}
 		default:
 			continue
 		}
 		if operation != "" { // An ambiguous diagnostic is not a current verdict.
 			return "", ""
 		}
-		operation, reason = fields[1], fields[2]
+		operation, reason = op, why
 	}
 	return operation, reason
 }
+
+// panelConfigurationSentence says in one plain sentence why a connection
+// command failed, from its closed diagnostic. It answers "" when the command
+// gave no diagnostic.
+func panelConfigurationSentence(err error) string {
+	var command *panelConfigurationError
+	if !errors.As(err, &command) {
+		return ""
+	}
+	if command.pluginOperation == "connections" {
+		return map[string]string{
+			"state_folder":  "OpenAbstractions couldn't read its Claude connection folder. Check again.",
+			"bound":         "OpenAbstractions found more saved Claude connections than it can list.",
+			"marker":        "A saved Claude connection record is damaged. Connect again to replace it.",
+			"settings_file": "OpenAbstractions couldn't read Claude Code's settings file. Check again.",
+			"changed":       "Claude connection settings changed while OpenAbstractions read them. Check again.",
+			"timeout":       "Reading the Claude connections took too long. Check again.",
+			"other":         "OpenAbstractions couldn't read the saved Claude connections. Check again.",
+		}[command.pluginReason]
+	}
+	if command.pluginOperation == "" {
+		return ""
+	}
+	return map[string]string{
+		"folder_missing":      "Claude Code couldn't find the OpenAbstractions plugin folder. Connect again to restore it.",
+		"marketplace_missing": "Claude Code doesn't list the OpenAbstractions plugin source. Connect again to add it.",
+		"plugin_missing":      "Claude Code doesn't have the OpenAbstractions plugin installed. Connect again to install it.",
+		"name_conflict":       "Another plugin source in Claude Code already uses the OpenAbstractions name.",
+		"invalid_plugin":      "Claude Code rejected the OpenAbstractions plugin files. Connect again to replace them.",
+		"access_denied":       "Claude Code couldn't change its plugin settings. Close Claude, then connect again.",
+		"timeout":             "Claude Code took too long to answer. Check again.",
+		"cancelled":           "The Claude Code change was canceled.",
+		"unavailable":         "Claude Code couldn't be started. Open Claude, then check again.",
+		"exit":                "Claude Code stopped with an error while OpenAbstractions changed its plugin settings.",
+	}[command.pluginReason]
+}
+
+// logPanelConfigurationFailure writes one category line for a failed
+// connection command: its stage, exit code and closed diagnostic only.
+func logPanelConfigurationFailure(e *panelConfigurationError) {
+	operation, reason := e.pluginOperation, e.pluginReason
+	if operation == "" {
+		operation, reason = "none", "none"
+	}
+	log.Printf("connection command failed: stage=%s exit=%d operation=%s reason=%s", e.reason(), e.exitCode, operation, reason)
+}
+
 func (e *panelConfigurationError) reason() string {
 	var refusal *layout.Refusal
 	if e.stage == "command_layout" && errors.As(e.cause, &refusal) {
@@ -130,7 +194,9 @@ func runPanelConfigurationCommand(parent context.Context, program string, args [
 	var pluginOperation, pluginReason string
 	defer func() {
 		if err != nil {
-			err = &panelConfigurationError{stage: stage, cause: err, exitCode: exitCode, pluginOperation: pluginOperation, pluginReason: pluginReason}
+			failure := &panelConfigurationError{stage: stage, cause: err, exitCode: exitCode, pluginOperation: pluginOperation, pluginReason: pluginReason}
+			logPanelConfigurationFailure(failure)
+			err = failure
 		}
 	}()
 	ctx, cancel := context.WithTimeout(parent, panelConfigurationBudget(args))
@@ -228,9 +294,7 @@ func runPanelConfigurationCommand(parent context.Context, program string, args [
 		_ = errRead.Close()
 	}
 	out, failure := <-output, <-diagnostic
-	if len(args) >= 2 && args[0] == "plugin" && args[1] == "claude" {
-		pluginOperation, pluginReason = panelPluginDiagnostic(failure.raw)
-	}
+	pluginOperation, pluginReason = panelPluginDiagnostic(failure.raw)
 	if err := errors.Join(waitErr, out.err, failure.err, ctx.Err()); err != nil {
 		return nil, err
 	}

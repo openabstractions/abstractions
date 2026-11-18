@@ -316,7 +316,7 @@ func (p *servicePanel) registryView(w http.ResponseWriter, r *http.Request) {
 		view.ProviderError = err.Error()
 	} else {
 		view.Providers = declarations
-		for _, state := range declarations.Declarations {
+		for _, state := range withStandings(declarations.Declarations, readProviderStandings(ctx, machine)) {
 			title, _ := providerDisplay(state.Declaration.Name, shippedProvider(state))
 			if reservedTitle(title) {
 				title, _ = providerDisplay(state.Declaration.Name, false)

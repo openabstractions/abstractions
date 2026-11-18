@@ -97,6 +97,22 @@ inline constexpr bool operator!=(DecisionSource value, std::string_view name)
 inline constexpr bool operator==(std::string_view name, DecisionSource value)
 inline constexpr bool operator!=(std::string_view name, DecisionSource value)
 inline const std::vector<std::string> kDecisionSourceNames
+enum class ChangeKind {SetRule, RevokeRule, SetDefault, RegisterAction, RetireAction, Declaration}
+inline constexpr std::string_view wire_name(ChangeKind value)
+inline std::optional<ChangeKind> parse_change_kind(std::string_view name)
+inline constexpr bool operator==(ChangeKind value, std::string_view name)
+inline constexpr bool operator!=(ChangeKind value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ChangeKind value)
+inline constexpr bool operator!=(std::string_view name, ChangeKind value)
+inline const std::vector<std::string> kChangeKindNames
+enum class ChangeRequestOutcome {Applied, Pending, Refused, Expired, Conflict, Unknown, Invalid, Forbidden, Unavailable}
+inline constexpr std::string_view wire_name(ChangeRequestOutcome value)
+inline std::optional<ChangeRequestOutcome> parse_change_request_outcome(std::string_view name)
+inline constexpr bool operator==(ChangeRequestOutcome value, std::string_view name)
+inline constexpr bool operator!=(ChangeRequestOutcome value, std::string_view name)
+inline constexpr bool operator==(std::string_view name, ChangeRequestOutcome value)
+inline constexpr bool operator!=(std::string_view name, ChangeRequestOutcome value)
+inline const std::vector<std::string> kChangeRequestOutcomeNames
 enum class ResourceSelectorKind {One, All}
 inline constexpr std::string_view wire_name(ResourceSelectorKind value)
 inline std::optional<ResourceSelectorKind> parse_resource_selector_kind(std::string_view name)
@@ -312,6 +328,28 @@ struct DecisionExplanation
   std::string policy_revision
   std::optional<DecisionSource> source
   std::string default_name
+struct PolicyChange
+  ChangeKind kind
+  std::string expected_revision
+  std::optional<PolicyRule> rule
+  std::int64_t ttl_ms
+  std::string why
+  std::string name
+  bool on
+  std::string action
+  std::string program
+  std::vector<PolicyRule> rules
+  std::string address
+struct ChangeRequestState
+  ChangeRequestOutcome outcome
+  std::string id
+  std::string revision
+  std::optional<PolicyChange> change
+  std::string expires
+  bool exempt
+struct ChangeRequestPage
+  PolicyPageOutcome outcome
+  std::vector<ChangeRequestState> requests
 struct PermissionKey
   std::string action
   std::string resource_profile
@@ -488,6 +526,12 @@ inline std::string to_json(const DefaultEdit& v)
 inline DefaultEdit from_json<DefaultEdit>(std::string_view data)
 inline std::string to_json(const DecisionExplanation& v)
 inline DecisionExplanation from_json<DecisionExplanation>(std::string_view data)
+inline std::string to_json(const PolicyChange& v)
+inline PolicyChange from_json<PolicyChange>(std::string_view data)
+inline std::string to_json(const ChangeRequestState& v)
+inline ChangeRequestState from_json<ChangeRequestState>(std::string_view data)
+inline std::string to_json(const ChangeRequestPage& v)
+inline ChangeRequestPage from_json<ChangeRequestPage>(std::string_view data)
 inline std::string to_json(const PermissionKey& v)
 inline PermissionKey from_json<PermissionKey>(std::string_view data)
 inline std::string to_json(const ResourceSelector& v)
@@ -589,6 +633,9 @@ struct AuthorizationOperator
   virtual ActionEdit retire_action(const std::string& expected_revision, const std::string& action)
   virtual DecisionExplanation explain_for(const Subject& subject, const std::string& action, const std::string& resource)
   virtual DefaultPage list_defaults()
+  virtual ChangeRequestState request_change(const PolicyChange& change, const std::int64_t& wait_ms)
+  virtual ChangeRequestState observe_change_request(const std::string& id, const std::int64_t& wait_ms)
+  virtual ChangeRequestPage list_change_requests()
   virtual DefaultEdit set_default(const std::string& expected_revision, const std::string& name, const bool& on)
 template<class Transport>struct AuthorizationOperatorClient : AuthorizationOperator
   Transport& transport_
@@ -607,6 +654,9 @@ template<class Transport>struct AuthorizationOperatorClient : AuthorizationOpera
   ActionEdit retire_action(const std::string& expected_revision, const std::string& action) override
   DecisionExplanation explain_for(const Subject& subject, const std::string& action, const std::string& resource) override
   DefaultPage list_defaults() override
+  ChangeRequestState request_change(const PolicyChange& change, const std::int64_t& wait_ms) override
+  ChangeRequestState observe_change_request(const std::string& id, const std::int64_t& wait_ms) override
+  ChangeRequestPage list_change_requests() override
   DefaultEdit set_default(const std::string& expected_revision, const std::string& name, const bool& on) override
   auto observe_policy_pages(const std::string& after, const std::int64_t& wait_ms)
 struct AuthorizationOperatorService
@@ -721,6 +771,12 @@ inline std::string encode_default_edit(const DefaultEdit& v)
 inline DefaultEdit decode_default_edit(std::string_view in)
 inline std::string encode_decision_explanation(const DecisionExplanation& v)
 inline DecisionExplanation decode_decision_explanation(std::string_view in)
+inline std::string encode_policy_change(const PolicyChange& v)
+inline PolicyChange decode_policy_change(std::string_view in)
+inline std::string encode_change_request_state(const ChangeRequestState& v)
+inline ChangeRequestState decode_change_request_state(std::string_view in)
+inline std::string encode_change_request_page(const ChangeRequestPage& v)
+inline ChangeRequestPage decode_change_request_page(std::string_view in)
 inline std::string encode_permission_key(const PermissionKey& v)
 inline PermissionKey decode_permission_key(std::string_view in)
 inline std::string encode_resource_selector(const ResourceSelector& v)

@@ -206,6 +206,10 @@ func stageEngine(ctx context.Context, o *options) (engine, state string, err err
 
 // hostLocalChat declares the inventory source and the hosted model in e,
 // as Setup's ModelHost steps do. The model is not loaded until asked for.
+// The command line writes the declaration itself, so the model host reads
+// third_party standing (A-SEC6 declarer ruling): its first completion asks a
+// first-use question the answerer answers. The journeys using it assert no
+// routine tier and no llama.cpp title.
 func hostLocalChat(ctx context.Context, e *env, o *options) (*localChat, error) {
 	if o.chatModel == "" {
 		return nil, errors.New("no chat model on this computer was named (journeys.py --chat-model)")

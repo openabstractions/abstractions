@@ -279,6 +279,14 @@ func inferenceCommand(args []string, output, diagnostics io.Writer) error {
 			return transport(err)
 		}
 		if change.Outcome != iclient.EditOutcomeApplied {
+			// A host add from the command line is a request the person
+			// confirms (architect ruling (3) of 2026-11-22).
+			if handled, err := followPendingEdit(machine, command, change.Reason, timeoutOf(w.callFunc())); handled {
+				if err == nil {
+					return credentialReport(output, options.asJSON, change, fmt.Sprintf("%s %s; allowed", strings.TrimPrefix(command, "inference server "), name))
+				}
+				return err
+			}
 			return refusal(command, change.Outcome.String(), change.Reason)
 		}
 		text := fmt.Sprintf("%s %s; configuration revision %s", strings.TrimPrefix(command, "inference server "), name, change.Revision)

@@ -1,10 +1,13 @@
 # Where this stands
 
-Updated 2026-09-29. OpenAbstractions 0.3.0 is available from
-[the runtime releases](https://github.com/openabstractions/redist/releases/tag/v0.3.0).
+Updated 2026-11-22. OpenAbstractions 0.8.0 is available from
+[the runtime releases](https://github.com/openabstractions/redist/releases/tag/v0.8.0).
 The [installation guide](https://openabstractions.org/adopt.html) describes the
-packages and setup. Package signing and platform evidence retain their stated
-limits in the release notes and coverage pages.
+packages and setup. Windows installers and the macOS package are signed; Linux
+archives are unsigned. Two known issues of 0.8.0 are scheduled for 0.8.1:
+install app integrations from the Panel's Catalog instead of double-clicking their
+MSIs, and agent MCP connections after an upgrade from 0.4 do not work yet.
+Platform evidence retains its stated limits in the release notes and coverage pages.
 
 ## Architecture and contracts
 
@@ -46,5 +49,5 @@ their provider-specific documentation describes remaining qualification.
 Runtime packages use redist release versions. Language modules have their own
 tags and declared dependencies; use the selected package's installation guide
 and dependency metadata. `layers.lock` retains an early eight-repository
-snapshot. It is historical evidence and is not the dependency set for 0.3.0.
-Its former `scripts/layers.sh` helper is no longer published here.
+snapshot. It is historical evidence and is not the dependency set for 0.8.0.
+Its former `abstractions/scripts/layers.sh` helper is no longer published here.

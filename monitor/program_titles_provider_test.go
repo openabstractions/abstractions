@@ -16,12 +16,12 @@ import (
 func TestProviderProgramsReadByProviderTitle(t *testing.T) {
 	panelInstalledPerMachine(t)
 	titler := newProgramTitler(nil)
-	titler.providers = []fwire.DeclarationState{
-		{DeclaredBy: providerDeclaredByInstallation, Declaration: fwire.Declaration{Name: "lemonade-image", Program: platformProgram(`C:\OA\tools\lemonaded.exe`)}},
-		{DeclaredBy: providerDeclaredByInstallation, Declaration: fwire.Declaration{Name: "local-stores", Program: platformProgram(`C:\OA\tools\inventoryd.exe`)}},
-		{DeclaredBy: providerDeclaredByInstallation, Declaration: fwire.Declaration{Name: "pytorch", Program: platformProgram(`C:\OA\tools\pytorchd.exe`)}},
-		{Declaration: fwire.Declaration{Name: "my-new_provider", Program: platformProgram(`C:\Other\provider.exe`)}},
-		{Declaration: fwire.Declaration{Name: "openabstractions-helper", Program: platformProgram(`C:\Other\helper.exe`)}},
+	titler.providers = []providerState{
+		{DeclarationState: fwire.DeclarationState{DeclaredBy: "installation", Declaration: fwire.Declaration{Name: "lemonade-image", Program: platformProgram(`C:\OA\tools\lemonaded.exe`)}}, Standing: productStanding()},
+		{DeclarationState: fwire.DeclarationState{DeclaredBy: "installation", Declaration: fwire.Declaration{Name: "local-stores", Program: platformProgram(`C:\OA\tools\inventoryd.exe`)}}, Standing: productStanding()},
+		{DeclarationState: fwire.DeclarationState{DeclaredBy: "installation", Declaration: fwire.Declaration{Name: "pytorch", Program: platformProgram(`C:\OA\tools\pytorchd.exe`)}}, Standing: productStanding()},
+		{DeclarationState: fwire.DeclarationState{Declaration: fwire.Declaration{Name: "my-new_provider", Program: platformProgram(`C:\Other\provider.exe`)}}},
+		{DeclarationState: fwire.DeclarationState{Declaration: fwire.Declaration{Name: "openabstractions-helper", Program: platformProgram(`C:\Other\helper.exe`)}}},
 	}
 	for program, want := range map[string]string{
 		platformProgram(`C:\OA\tools\lemonaded.exe`):  "Lemonade",
@@ -131,7 +131,7 @@ func TestDeviceNameUsesSignedDescription(t *testing.T) {
 	}
 	panelInstalledPerMachine(t)
 	titler := newProgramTitler(nil)
-	titler.providers = []fwire.DeclarationState{{DeclaredBy: providerDeclaredByInstallation, Declaration: fwire.Declaration{Name: "modelhost", Program: modelHost}}}
+	titler.providers = []providerState{{DeclarationState: fwire.DeclarationState{DeclaredBy: "installation", Declaration: fwire.Declaration{Name: "modelhost", Program: modelHost}}, Standing: productStanding()}}
 	for program, want := range map[string]string{
 		`C:\Program Files\Edge\msedge.exe`: "Microsoft Edge",
 		modelHost:                          "llama.cpp",
@@ -197,4 +197,10 @@ func platformProgram(windows string) string {
 	}
 	posix := strings.ReplaceAll(strings.TrimPrefix(windows, "C:"), `\`, "/")
 	return filepath.Clean(strings.TrimSuffix(posix, ".exe"))
+}
+
+// productStanding is the runtime's product standing as Standings sends it.
+func productStanding() *fwire.ProductStanding {
+	standing := fwire.ProductStandingProduct
+	return &standing
 }

@@ -67,6 +67,22 @@ def checked_core_path(row, root=None):
     return path
 
 
+def fixture_opencode_program(native_request):
+    """The official OpenCode CLI the journey drives, from the native request.
+
+    The OpenCode integration MSI installs no OpenCode program: it configures the
+    person's OpenCode Desktop. The preparer supplies the official CLI as a
+    pinned fixture file; the Sandbox upgrade keeps a copy of the predecessor's.
+    """
+    pin = native_request.get('fixture_program')
+    if (not isinstance(pin, dict) or set(pin) != {'path', 'sha256', 'bytes'}
+            or not (PureWindowsPath(str(pin['path'])).is_absolute() or Path(str(pin['path'])).is_absolute())
+            or not re.fullmatch('[0-9a-f]{64}', str(pin['sha256']))
+            or type(pin['bytes']) is not int or pin['bytes'] <= 0):
+        raise ValueError('pinned official OpenCode fixture program required')
+    return dict(pin)
+
+
 def checked(row, root=None):
     path = checked_core_path(row, root)
     if file(path) != row:
@@ -602,6 +618,19 @@ class NativeCore:
             return None
         return self.until(decision_ready)
 
+    def person_revoke(self, account, program, action, resource, revision):
+        """Remove one exact rule through the installed runtime's change request.
+
+        The installed Panel's developer page only reads (rights RIGHTS-O17).
+        The command line asks the runtime to remove the rule, the runtime shows
+        the person its rights.change popup, and the person's Allow removes it.
+        """
+        self.progress('native-rule-removal', {'program': program, 'action': action, 'resource': resource,
+            'instruction': 'Allow removing this one permission in the OpenAbstractions popup.'})
+        text, _ = self.call('rights-revoke', [self.runtime, 'rights', 'revoke', '--account', account, '--program', program,
+            '--action', action, '--resource', resource, '--revision', revision, '--wait', '110s', '--json'], seconds=120)
+        return person_revoke_reply(text)
+
     def cleanup_personal_review(self, proof):
         if proof.get('validated') is not True or not proof.get('rules') or proof.get('decision_outcome') != 'applied':
             raise ValueError('personal review incomplete; preserve its policy and evidence')
@@ -611,9 +640,7 @@ class NativeCore:
             page = self.until(self.personal_rights)
             personal_permission_cleanup(page, dict(proof, rules=remaining))
             # This exact owned cleanup is the sole legacy write this fixture makes.
-            response = NativeCore.api(self, '/rights', {'edit': 'revoke', 'revision': page['Revision'],
-                'account': proof['account'], 'program': proof['program'],
-                'action': rule['Action'], 'resource': rule['Resource']})
+            response = self.person_revoke(proof['account'], proof['program'], rule['Action'], rule['Resource'], page['Revision'])
             if response.get('Outcome') != 'applied' or not response.get('Revision') or response.get('Current') is not None:
                 raise ValueError('personal review cleanup uncertain; retain remaining rules')
             cleanup['steps'].append({'before': page, 'rule': rule, 'response': response})
@@ -1236,6 +1263,22 @@ def validate_personal_review(proof, permissions, account, program, panel, contex
         return rows
     except (KeyError, TypeError, AttributeError, IndexError) as error:
         raise ValueError('native personal review proof incomplete') from error
+
+
+def person_revoke_reply(text):
+    """The `rights revoke --json` reply in the Panel's revoke shape.
+
+    Only a removal the person allowed, of a rule that was there, reads applied.
+    """
+    start = text.find('{')
+    if start < 0:
+        raise ValueError('rule removal returned no reply')
+    reply, _ = json.JSONDecoder().raw_decode(text[start:])
+    if not isinstance(reply, dict):
+        raise ValueError('rule removal reply is not an object')
+    outcome = reply.get('outcome') if reply.get('matched') is True else 'unmatched'
+    return {'Outcome': outcome, 'Revision': reply.get('revision'), 'Current': reply.get('current'),
+            'Request': reply.get('request')}
 
 
 def validate_personal_cleanup(proof):
@@ -2301,6 +2344,14 @@ def adopter_journey_image_correlation(export, session, request, history_before, 
             'saved_image': saved, 'tool_part': part}
 
 
+def minor_scope_version(version):
+    if (not isinstance(version, str) or not re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', version)
+            or tuple(map(int, version.split('.'))) < (0, 8, 0)):
+        raise ValueError('native journey requires an exact release version from 0.8.0 onward')
+    major, minor, _ = version.split('.')
+    return major + '.' + minor + '.0'
+
+
 def adopter_journey_inputs(core):
     """Require the existing accepted scope and all selected immutable inputs."""
     prepared = core.get('adopter_journey', {})
@@ -2310,8 +2361,8 @@ def adopter_journey_inputs(core):
         raise ValueError('exact static journey identities required; dynamic observations belong beside core')
     scope = prepared.get('scope', {})
     scope_hash = hashlib.sha256(json.dumps(scope, sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode()).hexdigest()
-    if (prepared.get('source_sha') != core.get('source_sha') or prepared.get('version') != '0.8.0'
-            or scope.get('release') != prepared.get('version') or prepared.get('scope_sha256') != scope_hash
+    if (prepared.get('source_sha') != core.get('source_sha')
+            or scope.get('release') != minor_scope_version(prepared.get('version')) or prepared.get('scope_sha256') != scope_hash
             or any(not re.fullmatch('[0-9a-f]{64}', str(prepared.get(key))) for key in
                    ('inputs_sha256', 'probe_source_sha256', 'candidate_artifacts_sha256'))):
         raise ValueError('current accepted scope and immutable pre-execution input identities required')
@@ -2699,7 +2750,7 @@ def native_comfy_setup_observation(pin, binary, root):
     if path.name != 'j1-comfy-setup.json' or path.stat().st_size > 16 * 1024**2:
         raise ValueError('J1 native Setup canonical transcript differs')
     rows = json.loads(path.read_text(encoding='utf-8'))
-    if not isinstance(rows, list) or not 5 <= len(rows) <= 1024:
+    if not isinstance(rows, list) or not 4 <= len(rows) <= 1024:
         raise ValueError('J1 native Setup transcript incomplete')
     review = rows[0].get('answer', {})
     components = [row for row in review.get('components', []) if row.get('id') == 'comfyui-app']
@@ -2713,37 +2764,33 @@ def native_comfy_setup_observation(pin, binary, root):
         if at.tzinfo is None or (previous is not None and at < previous):
             raise ValueError('J1 native Setup observation order differs')
         previous = at
+    # The Panel window runs the approved steps and the registration; the
+    # transcript holds the plan and reads only (rights RIGHTS-O17).
     for row in rows[1:]:
         route, body, answer = row.get('route'), row.get('body'), row.get('answer', {})
+        if body is not None:
+            raise ValueError('J1 native Setup transcript contains a write after its plan')
         if route == '/setup/install':
-            if body is not None or answer.get('plan', {}).get('id') != plan:
+            if answer.get('plan', {}).get('id') != plan:
                 raise ValueError('J1 native Setup approval read differs')
             if answer.get('approved') is True:
                 if answer.get('install', {}).get('plan_id') != plan:
                     raise ValueError('J1 native Setup actual approval differs')
                 approved = True
-        elif route == '/setup/advance-next':
-            if (not approved or body != {'plan_id': plan} or answer.get('plan', {}).get('id') != plan or
-                    answer.get('current_catalog') is not True):
-                raise ValueError('J1 native Setup advanced without current actual approval')
-        elif route == '/setup/comfy/register':
-            if not approved or not installed or body != {'setup_plan_id': plan, 'confirm': True}:
-                raise ValueError('J1 native registration preceded approved installed payload')
-            registered = True
-        elif route == '/setup/comfy/status':
-            if body is not None or not registered:
-                raise ValueError('J1 native registration readback preceded registration')
-        else:
-            raise ValueError('J1 native Setup transcript contains a foreign operation')
-        if route in ('/setup/install', '/setup/advance-next'):
             effects = answer.get('components', [])
             if any(item.get('effect', {}).get('phase') in ('failed', 'uncertain') for item in effects):
                 raise ValueError('J1 native Setup has a failed or uncertain effect')
             if effects and all(item.get('effect', {}).get('phase') == 'installed' for item in effects):
+                if not approved:
+                    raise ValueError('J1 native Setup installed without current actual approval')
                 installed = True
-        if route in ('/setup/comfy/register', '/setup/comfy/status') and (
-                answer.get('registered') is not True or answer.get('matching') is not True or answer.get('application') != 'comfyui'):
-            raise ValueError('J1 native registration differs')
+        elif route == '/setup/comfy/status':
+            if not approved or not installed:
+                raise ValueError('J1 native registration read preceded approved installed payload')
+            registered = (answer.get('registered') is True and answer.get('matching') is True
+                          and answer.get('application') == 'comfyui')
+        else:
+            raise ValueError('J1 native Setup transcript contains a foreign operation')
     if not (approved and installed and registered) or rows[-1].get('route') != '/setup/comfy/status':
         raise ValueError('J1 native Setup has no complete approved installation/registration observation')
     return {'plan_id': plan, 'binary': binary, 'records': pin}
@@ -3076,6 +3123,8 @@ def adopter_execution_context(native_request, installed_chain, observations):
     if any(not isinstance(value, dict) for value in (native_request, installed_chain, observations)):
         raise ValueError('original request, installed journal and raw owner observations required')
     prepared = adopter_journey_inputs(native_request.get('core', {}))
+    if native_request.get('version') != prepared['version']:
+        raise ValueError('native request version differs from exact journey version')
     owner = observations.get('fixture_owner', {})
     if (owner != installed_chain.get('fixture_owner') or
             not re.fullmatch(r'S-1-[0-9-]+', str(owner.get('sid'))) or
@@ -3117,7 +3166,7 @@ def adopter_execution_context(native_request, installed_chain, observations):
     plugins = roles.get('plugin_files', {})
     if not isinstance(plugins, dict) or not plugins:
         raise ValueError('full source-owned installed plugin membership required')
-    opencode = {'program': member(roles.get('official_cli')),
+    opencode = {'program': fixture_opencode_program(native_request),
                 'plugin_files': {name: member(pin) for name, pin in plugins.items()},
                 'config_tools': {name: member(pin) for name, pin in roles.get('config_tools', {}).items()},
                 'sdk_native': {name: member(pin) for name, pin in roles.get('sdk_native', {}).items()},
@@ -4627,7 +4676,7 @@ def validate_adopter_journey_result(value, core, selected_context, scope, termin
     identity = ('source_sha', 'version', 'inputs_sha256', 'probe_source_sha256', 'candidate_artifacts_sha256', 'scope_sha256', 'account')
     if (not isinstance(selected_context, dict) or any(prepared.get(k) != selected_context.get(k) for k in identity)
             or prepared.get('scope') != scope or prepared.get('selections') != selected_context.get('selections') or not selected_context.get('selections')
-            or prepared.get('source_sha') != core.get('source_sha') or prepared.get('version') != scope.get('release')
+            or prepared.get('source_sha') != core.get('source_sha') or minor_scope_version(prepared.get('version')) != scope.get('release')
             or prepared.get('scope_sha256') != hashlib.sha256(json.dumps(scope, sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode()).hexdigest()
             or value.get('result') != 'partial' or value.get('core') != core or value.get('request') != file(value['request']['path'])
             or value.get('owned_children_exited') is not True):
@@ -4774,17 +4823,19 @@ class AdopterJourneyScene(NativeCore):
         return {'records': pin, **{key: received[key] for key in ('selected', 'stores', 'job_observations')}}
 
     def collect_native_comfy_setup(self, binary):
-        """Drive mechanical Setup steps only after its actual Install approval.
+        """Observe the person's approved Setup in the installed Panel window.
 
-        The original producer supplies binary; this method never authors a
-        consent answer or accepts a caller-provided installation root.
+        The installed Panel's developer page only reads (rights RIGHTS-O17).
+        The person approves the plan in the Panel window, whose Setup page
+        runs the approved steps and registers ComfyUI. This method reads the
+        plan and its progress; it never authors a consent answer, a Setup step
+        or a registration, and accepts no caller-provided installation root.
         """
         records = []
         def call(route, body=None):
-            if route not in ('/setup/plan', '/setup/install', '/setup/advance-next',
-                             '/setup/comfy/register', '/setup/comfy/status') or (
-                    route == '/setup/install' and body is not None):
-                raise ValueError('J1 permits only its fixed approved Setup operations')
+            if route not in ('/setup/plan', '/setup/install', '/setup/comfy/status') or (
+                    route != '/setup/plan' and body is not None):
+                raise ValueError('J1 permits only its fixed Setup plan and reads')
             request = urllib.request.Request(self.base + route,
                 None if body is None else json.dumps(body).encode(),
                 headers={'X-Panel-Key': self.key, 'Content-Type': 'application/json'})
@@ -4796,6 +4847,14 @@ class AdopterJourneyScene(NativeCore):
             records.append({'route': route, 'body': body, 'answer': answer, 'observed_at': now()})
             write(self.root / 'j1-comfy-setup.json', records)
             return answer
+        def poll(read):
+            # Setup runs for minutes; a read every two seconds keeps the
+            # transcript inside its row bound.
+            while True:
+                found = read()
+                if found:
+                    return found
+                time.sleep(min(2, self.remaining()))
         review = call('/setup/plan', {'selected': ['comfyui', 'pytorch']})
         components = [row for row in review.get('components', []) if row.get('id') == 'comfyui-app']
         if (review.get('preparable') is not True or review.get('blockers') or not review.get('id') or
@@ -4803,31 +4862,24 @@ class AdopterJourneyScene(NativeCore):
                                             for key in ('sha256', 'bytes'))):
             raise ValueError('J1 native Setup review differs from authenticated archive')
         self.progress('native-comfy-setup-review', {'plan_id': review['id'],
-            'instruction': 'Review and approve this exact picture setup in the installed Panel.'})
-        def approved():
+            'instruction': 'Review and approve this exact picture setup in the installed Panel window, '
+                           'and keep its Setup page open until ComfyUI is registered.'})
+        def installed():
             state = call('/setup/install')
             if state.get('plan', {}).get('id') != review['id']:
-                raise ValueError('J1 native Setup plan changed before approval')
-            return state if state.get('approved') is True and state.get('install', {}).get('plan_id') == review['id'] else None
-        state = self.until(approved)
-        for _ in range(512):
-            self.remaining()
+                raise ValueError('J1 native Setup plan changed before installation')
+            if state.get('approved') is not True or state.get('install', {}).get('plan_id') != review['id']:
+                return None
             rows = state.get('components', [])
-            if rows and all(row.get('effect', {}).get('phase') == 'installed' for row in rows):
-                break
             if any(row.get('effect', {}).get('phase') in ('failed', 'uncertain') for row in rows):
                 raise ValueError('J1 approved native Setup stopped; retain its original journal')
-            state = call('/setup/advance-next', {'plan_id': review['id']})
-            if state.get('plan', {}).get('id') != review['id'] or state.get('current_catalog') is not True:
-                raise ValueError('J1 approved native Setup source changed')
-            time.sleep(min(.2, self.remaining()))
-        else:
-            raise ValueError('J1 native Setup exceeded mechanical step bound')
-        registered = call('/setup/comfy/register', {'setup_plan_id': review['id'], 'confirm': True})
-        status = call('/setup/comfy/status')
-        for answer in (registered, status):
-            if answer.get('registered') is not True or answer.get('matching') is not True or answer.get('application') != 'comfyui':
-                raise ValueError('J1 native application registration differs')
+            return state if rows and all(row.get('effect', {}).get('phase') == 'installed' for row in rows) else None
+        poll(installed)
+        def registered():
+            status = call('/setup/comfy/status')
+            return status if (status.get('registered') is True and status.get('matching') is True
+                              and status.get('application') == 'comfyui') else None
+        poll(registered)
         return {'plan_id': review['id'], 'records': file(self.root / 'j1-comfy-setup.json')}
 
     def collect_comfy_preparation(self, base, *, cold_refusal=False):
@@ -5012,8 +5064,9 @@ class AdopterJourneyScene(NativeCore):
             selected_app_readback={key: value for key, value in native['selected_app_readback'].items() if key in msi_ids})
         msi_chain = dict(chain, apps=[row for row in chain['apps'] if row['id'] in msi_ids])
         members = installed_payload_members(msi_native, msi_chain)
-        role = native['selected_app_readback']['opencode']['journey_payload_roles']['official_cli']['id']
-        cli = {key: members['opencode'][role][key] for key in ('path', 'sha256', 'bytes')}
+        if 'opencode' not in members:
+            raise ValueError('installed OpenCode integration members required')
+        cli = fixture_opencode_program(native)
         sdk, missing = j1_selection_observation(native, observations, cli, self.request['runtime'], owner['sid'])
         if missing and phase != 'setup':
             raise ValueError('native Comfy lifecycle current SDK/server owner input missing: ' + ', '.join(missing))

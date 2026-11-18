@@ -317,6 +317,13 @@ type ActivationResult struct
   Started bool
   Reason string
   Title string
+type OpenRequest struct
+  Request ActivateRequest
+  WaitMs *int64
+type OpenResult struct
+  Result ActivationResult
+  Question string
+  Handle string
 type DescribeResult struct
   Outcome Outcome
   Answer *oaImported1
@@ -415,8 +422,10 @@ type Applications interface
   Observe(query Query) (Page, error)
   Activate(key string, request ActivateRequest) (ActivationResult, error)
   Describe(query oaImported8) (DescribeResult, error)
-  Commands(query oaImported9) (CommandsResult, error)
-  Call(key string, call oaImported10) (CallResult, error)
+  Open(key string, request OpenRequest) (OpenResult, error)
+  DescribeOpen(query oaImported9) (DescribeResult, error)
+  Commands(query oaImported10) (CommandsResult, error)
+  Call(key string, call oaImported11) (CallResult, error)
   ReadSignInStart() (SignInStartResult, error)
   RequestSetup(use string) (SetupResult, error)
   ReceiveSetupRequest(after string) (SetupRequestRead, error)
@@ -444,8 +453,10 @@ func (ApplicationsClient) Withdraw(application, instance string) (result oaImpor
 func (ApplicationsClient) Observe(query Query) (result Page, err error)
 func (ApplicationsClient) Activate(key string, request ActivateRequest) (result ActivationResult, err error)
 func (ApplicationsClient) Describe(query oaImported8) (result DescribeResult, err error)
-func (ApplicationsClient) Commands(query oaImported9) (result CommandsResult, err error)
-func (ApplicationsClient) Call(key string, call oaImported10) (result CallResult, err error)
+func (ApplicationsClient) Open(key string, request OpenRequest) (result OpenResult, err error)
+func (ApplicationsClient) DescribeOpen(query oaImported9) (result DescribeResult, err error)
+func (ApplicationsClient) Commands(query oaImported10) (result CommandsResult, err error)
+func (ApplicationsClient) Call(key string, call oaImported11) (result CallResult, err error)
 func (ApplicationsClient) ReadSignInStart() (result SignInStartResult, err error)
 func (ApplicationsClient) RequestSetup(use string) (result SetupResult, err error)
 func (ApplicationsClient) ReceiveSetupRequest(after string) (result SetupRequestRead, err error)
@@ -576,6 +587,14 @@ func DecodeActivationResultAt(in []byte, depth, limit int) (*ActivationResult, i
 func EncodeActivationResultAt(v *ActivationResult, depth int) []byte
 func EncodeActivationResult(v *ActivationResult) []byte
 func DecodeActivationResult(in []byte) (*ActivationResult, error)
+func DecodeOpenRequestAt(in []byte, depth, limit int) (*OpenRequest, int, error)
+func EncodeOpenRequestAt(v *OpenRequest, depth int) []byte
+func EncodeOpenRequest(v *OpenRequest) []byte
+func DecodeOpenRequest(in []byte) (*OpenRequest, error)
+func DecodeOpenResultAt(in []byte, depth, limit int) (*OpenResult, int, error)
+func EncodeOpenResultAt(v *OpenResult, depth int) []byte
+func EncodeOpenResult(v *OpenResult) []byte
+func DecodeOpenResult(in []byte) (*OpenResult, error)
 func DecodeDescribeResultAt(in []byte, depth, limit int) (*DescribeResult, int, error)
 func EncodeDescribeResultAt(v *DescribeResult, depth int) []byte
 func EncodeDescribeResult(v *DescribeResult) []byte

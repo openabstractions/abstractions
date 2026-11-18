@@ -163,6 +163,13 @@ export const RevealStyle = Object.freeze({
   Frame: "frame",
 });
 
+export const OpenHandleState = Object.freeze({
+  Pending: "pending",
+  Opened: "opened",
+  Expired: "expired",
+  Refused: "refused",
+});
+
 export const versions = ["appmodel@1"];
 
 export const extensions = ["collection_delta", "undo", "proposal", "async"];
@@ -980,6 +987,30 @@ function writeApplicationsQuery(out, v, depth) {
   out.byte(0x7d);
 }
 
+function writeOpenHandleQuery(out, v, depth) {
+  { const n = ENC.encode(v.openHandle).length; if (n < 1 || n > 64) throw new Refusal("bad_value",0); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.openHandle)) throw new Refusal("bad_value",0);
+  { const n = ENC.encode(v.application).length; if (n > 64) throw new Refusal("bad_value",0); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.application)) throw new Refusal("bad_value",0);
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "open_handle");
+  out.ascii(": ");
+  esc(out, v.openHandle);
+  if (v.application !== "") {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "application");
+    out.ascii(": ");
+    esc(out, v.application);
+  }
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
 function writeListedInstance(out, v, depth) {
   out.byte(0x7b);
   out.byte(0x0a);
@@ -1088,6 +1119,55 @@ function writeApplicationOpenVerbs(out, v, depth) {
   encodedCounter.check(out.b, 294912);
 }
 
+function writeOpenHandle(out, v, depth) {
+  { const n = ENC.encode(v.handle).length; if (n < 1 || n > 64) throw new Refusal("bad_value",0); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.handle)) throw new Refusal("bad_value",0);
+  { const n = ENC.encode(v.application).length; if (n < 1 || n > 64) throw new Refusal("bad_value",0); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.application)) throw new Refusal("bad_value",0);
+  { const n = ENC.encode(v.instance).length; if (n !== 0 && (n < 1 || n > 128)) throw new Refusal("bad_value",0); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.instance)) throw new Refusal("bad_value",0);
+  { const n = ENC.encode(v.reason).length; if (n !== 0 && (n < 1 || n > 512)) throw new Refusal("bad_value",0); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.reason)) throw new Refusal("bad_value",0);
+    if (typeof v.state !== "string") throw new Refusal("wrong_type",0);
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "handle");
+  out.ascii(": ");
+  esc(out, v.handle);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "application");
+  out.ascii(": ");
+  esc(out, v.application);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "state");
+  out.ascii(": ");
+  esc(out, v.state);
+  if (v.instance !== "") {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "instance");
+    out.ascii(": ");
+    esc(out, v.instance);
+  }
+  if (v.reason !== "") {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "reason");
+    out.ascii(": ");
+    esc(out, v.reason);
+  }
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
 function writeApplicationListing(out, v, depth) {
   const encodedCounter = new CompactEncodedCounter(out.b.length);
   { const n = v.openVerbs.length; if (n !== 0 && (n < 1 || n > 64)) throw new Refusal("bad_value",0); }
@@ -1121,6 +1201,15 @@ function writeApplicationListing(out, v, depth) {
     esc(out, "open_verbs");
     out.ascii(": ");
     writeList(out, v.openVerbs, depth + 1, writeApplicationOpenVerbs);
+  }
+  encodedCounter.check(out.b, 1048576);
+  if (v.open !== undefined && v.open !== null) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "open");
+    out.ascii(": ");
+    writeOpenHandle(out, v.open, depth + 1);
   }
   encodedCounter.check(out.b, 1048576);
   out.byte(0x0a);
@@ -2160,6 +2249,14 @@ export function newApplicationsQuery() {
   return { application: "" };
 }
 
+// The arguments of DescribeOpen, and of oa_applications_describe when it names
+// open_handle (architect ruling 2026-11-22). open_handle names an open handle
+// an Open answered this caller with. application, when given, must name the
+// handle's application.
+export function newOpenHandleQuery() {
+  return { openHandle: "", application: "" };
+}
+
 // One live instance of an application (FAC-M22): its applications@2 instance
 // handle, the contract it serves, abstraction.facade/appmodel@1, and at most 32
 // contexts with their current revisions, the most recently used first. An
@@ -2190,14 +2287,26 @@ export function newApplicationOpenVerbs() {
   return { application: "", verbs: [] };
 }
 
-// The answer of oa_applications_describe (FAC-M22). page lists at most 64
+// The state of one open whose question outlived its call (architect ruling
+// 2026-11-22). pending: the person has not answered. opened: the person's Allow
+// opened the application; instance names it. expired: the question expired or
+// was withdrawn, for instance when the requester's enrollment ended, and
+// nothing was performed. refused: the person chose Not now, or a recheck at the
+// Allow refused the open; reason says which. A runtime restart forgets every
+// handle. The state grants nothing.
+export function newOpenHandle() {
+  return { handle: "", application: "", state: "", instance: "", reason: "" };
+}
+
+// The answer of oa_applications_describe (FAC-M22). open is present exactly
+// when the listing DescribeOpen answers has outcome page. page lists at most 64
 // applications in name order: those whose command.read the caller's subject is
 // permitted and, for a kept agent, those it may open, shown with name and title
 // and no instances (FAC-M22). A query naming one application answers not_found,
 // not_permitted or refused for it with no applications and a reason. Other
 // outcomes carry no applications and a reason.
 export function newApplicationListing() {
-  return { outcome: "", applications: [], reason: "", openVerbs: [] };
+  return { outcome: "", applications: [], reason: "", openVerbs: [], open: null };
 }
 
 // The arguments of oa_applications_commands_list (FAC-M32): one application and
@@ -3472,6 +3581,49 @@ function readApplicationsQuery(r) {
   return v;
 }
 
+function readOpenHandleQuery(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOpenHandleQuery();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "open_handle") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.openHandle = r.string();
+      } else if (key === "application") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.application = r.string();
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  { const n = ENC.encode(v.openHandle).length; if (n < 1 || n > 64) throw r.refuse("bad_value"); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.openHandle)) throw r.refuse("bad_value");
+  { const n = ENC.encode(v.application).length; if (n > 64) throw r.refuse("bad_value"); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.application)) throw r.refuse("bad_value");
+  return v;
+}
+
 function readListedInstance(r) {
   if (r.at() !== 0x7b) throw r.refuse("wrong_type");
   r.enter();
@@ -3653,6 +3805,68 @@ function readApplicationOpenVerbs(r) {
   return v;
 }
 
+function readOpenHandle(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOpenHandle();
+  let seen = 0;
+  r.ws();
+  const unknownKeys = new Set();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "handle") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.handle = r.string();
+      } else if (key === "application") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.application = r.string();
+      } else if (key === "state") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.state = r.string();
+      } else if (key === "instance") {
+        if (seen & 8) throw r.refuse("duplicate_field");
+        seen |= 8;
+        v.instance = r.string();
+      } else if (key === "reason") {
+        if (seen & 16) throw r.refuse("duplicate_field");
+        seen |= 16;
+        v.reason = r.string();
+      } else {
+        if (unknownKeys.has(key)) throw r.refuse("duplicate_key");
+        unknownKeys.add(key);
+        r.skipValue();
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 7) >>> 0) !== 7) throw r.refuse("missing_field");
+  { const n = ENC.encode(v.handle).length; if (n < 1 || n > 64) throw r.refuse("bad_value"); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.handle)) throw r.refuse("bad_value");
+  { const n = ENC.encode(v.application).length; if (n < 1 || n > 64) throw r.refuse("bad_value"); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.application)) throw r.refuse("bad_value");
+  { const n = ENC.encode(v.instance).length; if (n !== 0 && (n < 1 || n > 128)) throw r.refuse("bad_value"); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.instance)) throw r.refuse("bad_value");
+  { const n = ENC.encode(v.reason).length; if (n !== 0 && (n < 1 || n > 512)) throw r.refuse("bad_value"); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.reason)) throw r.refuse("bad_value");
+  return v;
+}
+
 function readApplicationListing(r) {
   if (r.at() !== 0x7b) throw r.refuse("wrong_type");
   checkEncodedSize(r, 1048576);
@@ -3687,6 +3901,10 @@ function readApplicationListing(r) {
         if (seen & 8) throw r.refuse("duplicate_field");
         seen |= 8;
         v.openVerbs = readList(r, readApplicationOpenVerbs);
+      } else if (key === "open") {
+        if (seen & 16) throw r.refuse("duplicate_field");
+        seen |= 16;
+        v.open = readOpenHandle(r);
       } else {
         if (unknownKeys.has(key)) throw r.refuse("duplicate_key");
         unknownKeys.add(key);
@@ -4105,10 +4323,12 @@ const JSON_RECORDS = Object.freeze({
   DeclaredCommand: [writeDeclaredCommand, readDeclaredCommand],
   CommandDeclaration: [writeCommandDeclaration, readCommandDeclaration],
   ApplicationsQuery: [writeApplicationsQuery, readApplicationsQuery],
+  OpenHandleQuery: [writeOpenHandleQuery, readOpenHandleQuery],
   ListedInstance: [writeListedInstance, readListedInstance],
   ListedApplication: [writeListedApplication, readListedApplication],
   ListedOpenVerb: [writeListedOpenVerb, readListedOpenVerb],
   ApplicationOpenVerbs: [writeApplicationOpenVerbs, readApplicationOpenVerbs],
+  OpenHandle: [writeOpenHandle, readOpenHandle],
   ApplicationListing: [writeApplicationListing, readApplicationListing],
   CommandsQuery: [writeCommandsQuery, readCommandsQuery],
   CommandListing: [writeCommandListing, readCommandListing],
@@ -4172,11 +4392,13 @@ _namedRecords["JobRequest"] = [["instance","string","never"],["job","string","ne
 _namedRecords["DeclaredCommand"] = [["name","string","never"],["class","string","never"],];
 _namedRecords["CommandDeclaration"] = [["version","string","never"],["commands","list<DeclaredCommand>","never"],];
 _namedRecords["ApplicationsQuery"] = [["application","string","zero"],];
+_namedRecords["OpenHandleQuery"] = [["openHandle","string","never"],["application","string","zero"],];
 _namedRecords["ListedInstance"] = [["instance","string","never"],["interface","string","never"],["contexts","list<ContextEntry>","never"],["reason","string","never"],];
 _namedRecords["ListedApplication"] = [["application","string","never"],["title","string","never"],["instances","list<ListedInstance>","never"],];
 _namedRecords["ListedOpenVerb"] = [["name","string","never"],["description","string","never"],["inputSchema","json","never"],];
 _namedRecords["ApplicationOpenVerbs"] = [["application","string","never"],["verbs","list<ListedOpenVerb>","never"],];
-_namedRecords["ApplicationListing"] = [["outcome","string","never"],["applications","list<ListedApplication>","never"],["reason","string","never"],["openVerbs","list<ApplicationOpenVerbs>","zero"],];
+_namedRecords["OpenHandle"] = [["handle","string","never"],["application","string","never"],["state","string","never"],["instance","string","absent"],["reason","string","absent"],];
+_namedRecords["ApplicationListing"] = [["outcome","string","never"],["applications","list<ListedApplication>","never"],["reason","string","never"],["openVerbs","list<ApplicationOpenVerbs>","zero"],["open","OpenHandle","absent"],];
 _namedRecords["CommandsQuery"] = [["application","string","never"],["instance","string","never"],];
 _namedRecords["CommandListing"] = [["outcome","string","never"],["application","string","never"],["instance","string","never"],["commands","list<CommandSpec>","never"],["reason","string","never"],];
 _namedRecords["GatewayCall"] = [["application","string","never"],["instance","string","never"],["tool","string","never"],["arguments","json","never"],["mode","string","absent"],["expectedRevision","string","zero"],["idempotencyKey","string","zero"],["context","string","zero"],["proposal","string","zero"],["requireReadPermit","bool","absent"],];
@@ -4318,6 +4540,10 @@ export function checkApplicationsQuery(v, depth = 0, limit = DEPTH_LIMIT) {
   _namedCheck("ApplicationsQuery", v, depth, Math.min(limit, DEPTH_LIMIT));
 }
 
+export function checkOpenHandleQuery(v, depth = 0, limit = DEPTH_LIMIT) {
+  _namedCheck("OpenHandleQuery", v, depth, Math.min(limit, DEPTH_LIMIT));
+}
+
 export function checkListedInstance(v, depth = 0, limit = DEPTH_LIMIT) {
   _namedCheck("ListedInstance", v, depth, Math.min(limit, DEPTH_LIMIT));
 }
@@ -4332,6 +4558,10 @@ export function checkListedOpenVerb(v, depth = 0, limit = DEPTH_LIMIT) {
 
 export function checkApplicationOpenVerbs(v, depth = 0, limit = DEPTH_LIMIT) {
   _namedCheck("ApplicationOpenVerbs", v, depth, Math.min(limit, DEPTH_LIMIT));
+}
+
+export function checkOpenHandle(v, depth = 0, limit = DEPTH_LIMIT) {
+  _namedCheck("OpenHandle", v, depth, Math.min(limit, DEPTH_LIMIT));
 }
 
 export function checkApplicationListing(v, depth = 0, limit = DEPTH_LIMIT) {
@@ -5283,6 +5513,43 @@ export function decodeApplicationsQuery(data) {
   return v;
 }
 
+export function decodeOpenHandleQueryAt(data, depth, limit) {
+  const r = new Reader(data);
+  if (depth < 0 || limit < 1) throw r.refuse("depth_exceeded");
+  r.depth = depth;
+  r.limit = Math.min(limit, DEPTH_LIMIT);
+  r.ws();
+  const v = readOpenHandleQuery(r);
+  return [v, r.pos];
+}
+
+export function encodeOpenHandleQueryAt(v, depth) {
+  if (depth < 0 || depth >= DEPTH_LIMIT) throw new Refusal("depth_exceeded", 0);
+  checkOpenHandleQuery(v, depth, DEPTH_LIMIT);
+  const out = new Out();
+  writeOpenHandleQuery(out, v, depth);
+  const bytes = out.bytes();
+  decodeOpenHandleQueryAt(bytes, depth, DEPTH_LIMIT);
+  return bytes;
+}
+
+export function encodeOpenHandleQuery(v) {
+  const bytes = encodeOpenHandleQueryAt(v, 0);
+  const out = new Uint8Array(bytes.length + 1);
+  out.set(bytes);
+  out[bytes.length] = 0x0a;
+  return out;
+}
+
+export function decodeOpenHandleQuery(data) {
+  const [v, n] = decodeOpenHandleQueryAt(data, 0, DEPTH_LIMIT);
+  const r = new Reader(data);
+  r.pos = n;
+  r.ws();
+  if (r.pos !== r.buf.length) throw r.refuse("trailing_bytes");
+  return v;
+}
+
 export function decodeListedInstanceAt(data, depth, limit) {
   const r = new Reader(data);
   if (depth < 0 || limit < 1) throw r.refuse("depth_exceeded");
@@ -5424,6 +5691,43 @@ export function encodeApplicationOpenVerbs(v) {
 
 export function decodeApplicationOpenVerbs(data) {
   const [v, n] = decodeApplicationOpenVerbsAt(data, 0, DEPTH_LIMIT);
+  const r = new Reader(data);
+  r.pos = n;
+  r.ws();
+  if (r.pos !== r.buf.length) throw r.refuse("trailing_bytes");
+  return v;
+}
+
+export function decodeOpenHandleAt(data, depth, limit) {
+  const r = new Reader(data);
+  if (depth < 0 || limit < 1) throw r.refuse("depth_exceeded");
+  r.depth = depth;
+  r.limit = Math.min(limit, DEPTH_LIMIT);
+  r.ws();
+  const v = readOpenHandle(r);
+  return [v, r.pos];
+}
+
+export function encodeOpenHandleAt(v, depth) {
+  if (depth < 0 || depth >= DEPTH_LIMIT) throw new Refusal("depth_exceeded", 0);
+  checkOpenHandle(v, depth, DEPTH_LIMIT);
+  const out = new Out();
+  writeOpenHandle(out, v, depth);
+  const bytes = out.bytes();
+  decodeOpenHandleAt(bytes, depth, DEPTH_LIMIT);
+  return bytes;
+}
+
+export function encodeOpenHandle(v) {
+  const bytes = encodeOpenHandleAt(v, 0);
+  const out = new Uint8Array(bytes.length + 1);
+  out.set(bytes);
+  out[bytes.length] = 0x0a;
+  return out;
+}
+
+export function decodeOpenHandle(data) {
+  const [v, n] = decodeOpenHandleAt(data, 0, DEPTH_LIMIT);
   const r = new Reader(data);
   r.pos = n;
   r.ws();

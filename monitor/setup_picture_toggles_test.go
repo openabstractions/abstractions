@@ -160,3 +160,30 @@ func TestStepPicturesCountAPreparedFullKleinAsConfigured(t *testing.T) {
 		t.Fatalf("a prepared full Klein: configured %v plan %s", got.Configured, plan)
 	}
 }
+
+// Agent-ux 2026-11-22: the Catalog arrived with a 7.7 GB picture model
+// ticked on a drive with 2.3 GB free. A recommended model that does not fit
+// the install drive is not selected by default; a person's own tick still is.
+func TestDefaultPictureSelectionSkipsAModelThatDoesNotFit(t *testing.T) {
+	old := setupInstallDisk
+	t.Cleanup(func() { setupInstallDisk = old })
+	setupInstallDisk = func() (string, uint64, error) { return "C:", 2 << 30, nil }
+	journal := setup.Journal{Path: filepath.Join(t.TempDir(), "plan.json")}
+	plan, err := journal.Catalog().Plan([]setup.AppID{setup.ComfyUI, setup.PyTorch})
+	if err != nil {
+		t.Fatal(err)
+	}
+	starter, others, offers, err := setupPictureSelection(context.Background(), journal, plan, nil)
+	if err != nil || starter != nil || len(others) != 0 {
+		t.Fatalf("default selection on a full drive: %v %v %v", starter, others, err)
+	}
+	for _, offer := range offers {
+		if offer.Selected {
+			t.Fatalf("selected without room: %+v", offer)
+		}
+	}
+	compact := setup.PyTorchModelPlan()
+	if starter, _, _, err := setupPictureSelection(context.Background(), journal, plan, []string{compact.ID}); err != nil || starter == nil || starter.ID != compact.ID {
+		t.Fatalf("a person's tick: %v %v", starter, err)
+	}
+}

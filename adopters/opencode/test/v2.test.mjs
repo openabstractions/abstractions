@@ -75,7 +75,7 @@ test('the ./server entry carries both plugin APIs under one id', () => {
   assert.deepEqual(Object.keys(entry).sort(), ['id', 'server', 'setup']);
 });
 
-test('V2 context uses each host session ID and its title hook clears only the conversation marker', async t => {
+test('V2 context uses each host session ID and its title hook swaps the conversation marker for the title marker', async t => {
   const {ctx, dispatchContext, hooks} = fakeContext();
   const cleanup = await setupV2(ctx, {languageModel: () => ({}), pluginDependencies: {
     env: {}, connectionRequired: false, probeRuntime: async () => true,
@@ -91,7 +91,7 @@ test('V2 context uses each host session ID and its title hook clears only the co
   }
   const title = {sessionID:'main-session',options:{keep:true,oaSessionID:'main-session'}};
   for (const {fn} of hooks.title) await fn(title);
-  assert.deepEqual(title.options,{keep:true});
+  assert.deepEqual(title.options,{keep:true,oaTitle:true});
 });
 
 test('V2 gets OA\'s models, the language model, the tools and the local-only request option', async (t) => {

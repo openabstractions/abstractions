@@ -104,6 +104,23 @@ func (g *applicationV3Gateway) openVerbs(ctx context.Context, c applicationV3Cal
 	return verbs
 }
 
+// describeOpen is applications@3 DescribeOpen: an open handle's state, for
+// the caller it was given to only (architect ruling 2026-11-22). It reads no
+// application and asks nothing.
+func (g *applicationV3Gateway) describeOpen(c applicationV3Caller, query appmodel.OpenHandleQuery) applications.DescribeResult {
+	if !c.valid(g.directory.owner) {
+		return applications.DescribeResult{Outcome: applications.OutcomeForbidden, Reason: "caller"}
+	}
+	answer := &appmodel.ApplicationListing{Outcome: appmodel.ReadingOutcomePage, Applications: []appmodel.ListedApplication{}}
+	state, ok := g.later.state(query.OpenHandle, c.subject)
+	if !ok || query.Application != "" && query.Application != state.Application {
+		answer.Outcome, answer.Reason = appmodel.ReadingOutcomeNotFound, "open_handle"
+		return applications.DescribeResult{Outcome: applications.OutcomePage, Answer: answer}
+	}
+	answer.Open = &state
+	return applications.DescribeResult{Outcome: applications.OutcomePage, Answer: answer}
+}
+
 func (g *applicationV3Gateway) describe(ctx context.Context, c applicationV3Caller, query appmodel.ApplicationsQuery) applications.DescribeResult {
 	if !c.valid(g.directory.owner) {
 		return applications.DescribeResult{Outcome: applications.OutcomeForbidden, Reason: "caller"}

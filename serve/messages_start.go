@@ -178,6 +178,24 @@ func (h *applicationsHost) messageStartConsent(ctx context.Context, r *messageRe
 		}}, true
 }
 
+// messageStartDecision decides a start permit for consent. A start runs only
+// when it is permitted under the current sentence. While it is not granted,
+// earlierDenied reports a "Never allow" given under an earlier sentence, which
+// stays in force: nobody is asked again. A permit given under an earlier
+// sentence does not carry over and is asked again once.
+func (h *applicationsHost) messageStartDecision(ctx context.Context, consent messageStartConsent) (decision rights.Decision, earlierDenied bool) {
+	decision = h.messageRights.decide(ctx, consent.subject, grants.ApplicationMessageStartAction, consent.resource)
+	if decision.Outcome != rights.DecisionOutcomeNotGranted {
+		return decision, false
+	}
+	for _, earlier := range []string{consent.legacy, consent.previous} {
+		if earlier != "" && h.messageRights.decide(ctx, consent.subject, grants.ApplicationMessageStartAction, earlier).Outcome == rights.DecisionOutcomeDenied {
+			return decision, true
+		}
+	}
+	return decision, false
+}
+
 // messageStartSubject is the subject a start permit is decided for, as
 // messageStartConsent names it.
 func messageStartSubject(actor messageActor) string {
@@ -404,14 +422,10 @@ func (h *applicationsHost) progressMessageStart(ctx context.Context, key string,
 		}
 		return h.flushMessageStartAudit(ctx, key, current)
 	}
-	decision := h.messageRights.decide(ctx, subject, grants.ApplicationMessageStartAction, resource)
+	decision, earlierDenied := h.messageStartDecision(ctx, consent)
 	if decision.Outcome == rights.DecisionOutcomeNotGranted {
-		// A "Never allow" given under the earlier sentence stays in force; a
-		// permit given under it does not carry over and is asked again once.
-		for _, earlier := range []string{consent.legacy, consent.previous} {
-			if earlier != "" && h.messageRights.decide(ctx, subject, grants.ApplicationMessageStartAction, earlier).Outcome == rights.DecisionOutcomeDenied {
-				return nil
-			}
+		if earlierDenied {
+			return nil
 		}
 		if r.Actor.Remote != nil {
 			// Attach from a paired computer stays off until the person here
@@ -485,6 +499,15 @@ func (h *applicationsHost) progressMessageStart(ctx context.Context, key string,
 			// permit per direction covers every session of the agent.
 			target.Kind, target.Attempt, target.Message, target.Target = request.Kind.String(), current.Start.Attempt, key+":"+r.Token, attach
 			target.PerHour = settings.PerHour
+			if target.Cold != nil {
+				if _, err := target.Cold.Thread(); err == nil {
+					// A Codex chat's pointer carries a ticket reserved under
+					// this message's wake key (architect ruling 1, 2026-11-22).
+					if target.Wake, err = h.messageCodexWakeKey(ctx, key, current, request); err != nil {
+						return err
+					}
+				}
+			}
 			target.Origin = messageWakeChain(current)
 			target.Validate = func(checkCtx context.Context) error {
 				fresh, err := h.messages.readRecord(checkCtx, key)

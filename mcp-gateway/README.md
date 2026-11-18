@@ -298,8 +298,9 @@ unavailable. Reading this inventory creates no state or registration.
 The dedicated integration image also provides `plugin claude install|update|remove`
 with explicit `--project`, `--state-dir` and `--claude` selections supplied by the
 setup owner. This personal connection always uses the vendor's **local** scope.
-Its marketplace and enablement declarations belong in
-`.claude/settings.local.json`; shared `.claude/settings.json` stays unchanged.
+Its marketplace and enablement declarations belong in the project's
+`settings.local.json` in its `.claude` folder; the shared `settings.json`
+beside it stays unchanged.
 The existing bare MCP project-registration commands above remain available.
 This optional route includes its MCP command and native session module. Basic
 Panel **Add to Claude Code** uses user-wide MCP alone. Saved inventory labels
@@ -392,8 +393,11 @@ the tools and never asks the person for internal application or context names.
    absolute Unix-millisecond expiry and question answer deadline. Retain that
    object in the conversation before calling `oa_messages_send` with it verbatim.
    No person needs to supply internal IDs or calculate clock values. A program
-   name alone selects the newest opened live inbox. If there is no live inbox
-   for the authorized program, it returns `no_reachable_chat`. A request that
+   name alone selects the program's one live inbox. With several, it returns
+   `ambiguous_receiver` with the live chats as choices and their hints, and the
+   agent resends with the chosen choice's context and the same
+   idempotency key. If there is no live inbox for the authorized program, it
+   returns `no_reachable_chat`. A request that
    names a specific chat may return one of these outcomes instead of `prepared`:
    `receiver_withdrawn` (the receiver's last connection closed normally; the
    person can reopen that agent's chat), `receiver_lapsed` (the connection
@@ -421,6 +425,28 @@ This path preserves the existing `application.message` rule, blocks and
 registration lifecycle. Native source fixtures receive consent, authorized
 discovery, Send/receive and Undo; actual installed Claude association, person
 interaction, model delivery and idle wake retain their separate pending proof.
+
+### Reply-only turns
+
+A turn OA starts in a chat because another agent's message arrived is
+reply-only until the person allows more (architect ruling 2026-11-22,
+`CONTRACT.md` MCPG-R1). The turn may read the message and reply in that thread,
+read, list and search files inside the chat's working directory, and use OA's
+read-only tools. Everything else is refused with "This turn was started by a
+message from <sender>. Ask the person to allow more for this conversation."
+Any prompt the OA plugin did not submit itself, the person's included, gives a
+normal turn. Panel → Permissions →
+Messages between agents has one switch per agent pair, "Allow full tool use
+when <sender> messages <receiver>", off by default; every change is an
+Activity line.
+
+Claude Code and OpenCode refuse their own tools through the OA plugin's tool
+hook. **Codex limit:** OA refuses only OA's own tools in a woken Codex turn.
+Codex's built-in tools (shell, file edits, web) follow Codex's own approval
+policy, which OA does not change; the pointer OA queues tells the turn it is
+reply-only. Keep Codex's approval policy at "on request" or stricter in
+projects where other agents may message it. Per-turn approval through
+Codex's app-server is planned for 0.9.0.
 
 ## Authority and durable state
 

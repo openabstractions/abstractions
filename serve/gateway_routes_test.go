@@ -432,7 +432,10 @@ func TestGatewayRouteSetEqualsContract(t *testing.T) {
 			return false
 		})
 	}
+	// The section's prose may name a route again after the list; each route
+	// counts once.
 	slices.Sort(want)
+	want = slices.Compact(want)
 	slices.Sort(got)
 	if len(want) == 0 || !slices.Equal(got, want) {
 		t.Fatalf("gateway dispatch %v differs from contract %v", got, want)

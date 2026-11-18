@@ -122,7 +122,9 @@ func configureApplications(o *host.Options, h *applicationsHost, endpoint string
 	o.ApplicationsEndpoint = endpoint
 	o.RightsActions = append(o.RightsActions, ActionApplicationManage, ActionApplicationRead, ActionApplicationAnnounce, ActionApplicationActivate, ActionApplicationRegisterSelf)
 	if h.messages != nil {
-		o.RightsActions = append(o.RightsActions, ActionApplicationMessage, grants.ApplicationMessageStartAction)
+		// The full-tools rule is the receiving agent's own, read by its MCP
+		// connection for a turn another agent's message started (S5 ruling).
+		o.RightsActions = append(o.RightsActions, ActionApplicationMessage, grants.ApplicationMessageStartAction, grants.ApplicationMessageFullToolsAction)
 	}
 	if h.v3 != nil {
 		o.RightsActions = append(o.RightsActions, appmodel.CommandActions...)

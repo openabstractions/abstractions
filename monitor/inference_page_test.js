@@ -654,7 +654,7 @@ async function modelsPage() {
  rules(other);
  // A platform refusal, an isolated home and a read error each have their
  // own caption; the reason stays under Technical details.
- for (const [unavailable, caption] of [['platform', 'Not supported on this computer.'], ['isolated', 'Not available in this test home.'], ['', 'Cannot be read now.']]) {
+ for (const [unavailable, caption] of [['platform', 'Not supported on this computer.'], ['installation', 'Available in the installed OpenAbstractions.'], ['isolated', 'Not available in this test home.'], ['', 'Cannot be read now.']]) {
   const page = load({local: {available: false, unavailable, reason: 'reason ' + unavailable}}); await settle();
   assert.strictEqual(rowText(page.element('add-model-rows').children[0])[0], 'Local models | ' + caption, unavailable || 'read error');
   assert.strictEqual(page.element('add-model-reason').textContent, 'reason ' + unavailable);
@@ -792,8 +792,14 @@ async function modelsPage() {
   assert.strictEqual(reading.root.dataset.ready, '1', 'a page still reading folders is ready');
   // Empty: both owners answered; the sentence says what to do.
   const empty = load({library: {reading: false, files_known: true, catalog_known: true, models: [], running: []}}); await settle();
+  // It names Choose folder only while Engines shows the Model folder row
+  // (agent-ux 2026-11-22: it named a folder control Engines did not have).
   assert.deepStrictEqual(kids(empty.element('models-local-rows')).map(c => [c.className, c.textContent]),
-   [['oa-empty', 'No model files are in the folders OpenAbstractions reads. Add a folder under Engines, or choose Set up under Default models.']]);
+   [['oa-empty', 'No model files are in the folders OpenAbstractions reads. Choose folder under Engines, or choose Set up under Default models.']]);
+  assert(kids(empty.element('add-model-rows')).some(r => rowText(r)[0].startsWith('Model folder')), 'the folder control the sentence names is on the page');
+  const noFolder = load({local: {available: false, unavailable: 'installation', reason: 'Open the installed OpenAbstractions Panel to add the llama.cpp feature'}, library: {reading: false, files_known: true, catalog_known: true, models: [], running: []}}); await settle();
+  assert.deepStrictEqual(kids(noFolder.element('models-local-rows')).map(c => c.textContent),
+   ['No model files are in the folders OpenAbstractions reads. Choose Set up under Default models.'], 'no folder control, no folder instruction');
   assert.deepStrictEqual(kids(empty.element('models-running-rows')).map(r => rowText(r)[0]), ['No model loaded | Apps load one when they ask.'], 'Loaded now shows one row when nothing is loaded');
   assert.strictEqual(empty.element('models-local-status').textContent, '');
   rules(empty);

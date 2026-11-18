@@ -1134,6 +1134,7 @@ func TestRuntimeInferenceAppliesAHostedCredential(t *testing.T) {
 		cancel()
 		t.Fatalf("startup: %v", err)
 	case <-time.After(runtimeWait):
+		dumpGoroutines()
 		cancel()
 		t.Fatalf("runtime not ready within %v", runtimeWait)
 	}

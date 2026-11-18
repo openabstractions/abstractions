@@ -10,7 +10,6 @@ import (
 	"time"
 	"unicode"
 
-	asks "github.com/openabstractions/abstraction-asks/go"
 	"github.com/openabstractions/abstraction-facade/go/abstraction/facade/applications"
 	"github.com/openabstractions/abstraction-facade/go/abstraction/facade/appmodel"
 	"github.com/openabstractions/abstraction-facade/go/client"
@@ -105,6 +104,12 @@ func (g *applicationV3Gateway) retireExited(application string) []ownedApplicati
 }
 
 func (g *applicationV3Gateway) beginOwnedApplication(ctx context.Context, c applicationV3Caller, k *applicationV3Kept, starter string) (*ownedApplicationSession, bool, error) {
+	return g.beginOwnedApplicationAs(ctx, c.subject.Account, func() (string, bool) { return applicationSession(c.peer) }, k, starter)
+}
+
+// beginOwnedApplicationAs starts k for account in the desktop session desktop
+// names. A deferred open passes the session it captured when it was asked.
+func (g *applicationV3Gateway) beginOwnedApplicationAs(ctx context.Context, account string, desktopOf func() (string, bool), k *applicationV3Kept, starter string) (*ownedApplicationSession, bool, error) {
 	for {
 		g.mu.Lock()
 		for key, s := range g.owned {
@@ -155,7 +160,7 @@ func (g *applicationV3Gateway) beginOwnedApplication(ctx context.Context, c appl
 	if s, _, err := g.activationSession(ctx, k, ""); s != nil || err != nil {
 		return s, false, err
 	}
-	desktop, ok := applicationSession(c.peer)
+	desktop, ok := desktopOf()
 	if !ok {
 		return nil, false, errors.New("session")
 	}
@@ -178,7 +183,7 @@ func (g *applicationV3Gateway) beginOwnedApplication(ctx context.Context, c appl
 		return nil, false, errors.New("manifest: held image declares another manifest than the kept one")
 	}
 	image := hold.ownedImage()
-	binding := ownedApplicationBinding{application: k.manifest.Name, account: c.subject.Account, desktop: desktop, runtimeEpoch: g.epoch, manifestRevision: k.revision, imageCode: applicationV3HeldKey(hold)}
+	binding := ownedApplicationBinding{application: k.manifest.Name, account: account, desktop: desktop, runtimeEpoch: g.epoch, manifestRevision: k.revision, imageCode: applicationV3HeldKey(hold)}
 	// The process lifetime guard uses its own source hold and authoritative
 	// registration. It does not retain the activating RPC's temporary peer.
 	authority := func(ctx context.Context, b ownedApplicationBinding) error {
@@ -356,7 +361,7 @@ func (g *applicationV3Gateway) stoppedApplication(ctx context.Context, k *applic
 // writes no policy, and it shares no fingerprint with the routine
 // permission question. The current activation right and the verb class's
 // stored rule still decide alongside it.
-func (g *applicationV3Gateway) openAuthorization(ctx context.Context, c applicationV3Caller, k *applicationV3Kept, v applicationV3Invocation, call appmodel.GatewayCall, key string, body []byte) applicationV3ConsentResult {
+func (g *applicationV3Gateway) openAuthorization(ctx context.Context, c applicationV3Caller, k *applicationV3Kept, v applicationV3Invocation, call appmodel.GatewayCall, key string, body []byte, stays bool, wait time.Duration) applicationV3ConsentResult {
 	action := "abstraction.facade/command." + v.class.String()
 	// classRight runs under the Book's record lock (applicationV3OneCall's
 	// recheck), so it reads no Book-backed state; the kept-agent check of
@@ -381,7 +386,7 @@ func (g *applicationV3Gateway) openAuthorization(ctx context.Context, c applicat
 	if g.asks == nil {
 		return applicationV3ConsentResult{outcome: "unsupported", reason: "presenter"}
 	}
-	result := g.asks.applicationV3OneCall(ctx, applicationV3ConsentRequest{caller: c, application: k.manifest.Name, title: k.manifest.Title, program: k.program, revision: k.revision, instance: call.Instance, tool: call.Tool, key: key, bodyDigest: applicationV3BodyDigest(body), method: "Activate", class: v.class, context: v.context, recheck: classRight})
+	result := g.asks.applicationV3OneCall(ctx, applicationV3ConsentRequest{caller: c, application: k.manifest.Name, title: k.manifest.Title, program: k.program, revision: k.revision, instance: call.Instance, tool: call.Tool, key: key, bodyDigest: applicationV3BodyDigest(body), method: "Activate", class: v.class, context: v.context, recheck: classRight, stays: stays, wait: wait})
 	if answered := result.recheck; result.outcome == "" && answered != nil {
 		result.recheck = func(ctx context.Context) error {
 			if err := g.activationByClass(ctx, c, k); err != nil {
@@ -393,17 +398,16 @@ func (g *applicationV3Gateway) openAuthorization(ctx context.Context, c applicat
 	return result
 }
 
-// applicationV3AnswerWait is the longest an open waits for the person's
-// answer. Within it the wait lasts as long as the caller waits (CLAUDE.md:
-// timeouts derive from the caller): the question stays open while the
-// caller's call is connected, and the caller's leaving withdraws it
-// (FAC-M32). The MCP binding waits at least several minutes for a person
-// (mcp-gateway openPersonWait). The bound is the Book's own pending
-// lifetime, so the expiry the question states is one the Book keeps. The
-// fixed 40 s bound this replaces closed the popup before a person noticed
-// it (installed check 2026-11-21). A wait that runs out reads
-// not_ready/consent. Tests shorten it.
-var applicationV3AnswerWait = asks.DefaultPendingLifetime
+// applicationV3AnswerWait is the longest an open call waits for the person's
+// answer, the wait policy's one default (backlog/RIGHTS-FLOW.md, owner
+// 2026-11-10). Within it the wait lasts as long as the caller waits
+// (CLAUDE.md: timeouts derive from the caller). The question itself stays up
+// after the wait ends, until the person answers, for at most
+// applicationV3OpenQuestionLife or until the requester's enrollment ends
+// (architect ruling 2026-11-22): the call answers not_ready/consent with the
+// question id and an open handle, and an Allow given later performs that
+// exact open once. Tests shorten it.
+var applicationV3AnswerWait = 40 * time.Second
 
 // applicationV3OpenRefusal is an unauthorized open's answer. A wait that
 // ended before the person answered reads not_ready/consent; the person's
@@ -418,26 +422,60 @@ func applicationV3OpenRefusal(ctx context.Context, authorization applicationV3Co
 	return applicationV3Activation(applications.ActivationOutcomeForbidden, authorization.reason)
 }
 
+// activate is applications@3 Activate: open with the runtime's default wait.
+// Its published answer has no place for an open question that outlives the
+// call, so a parked open's question and handle reach only Open's caller.
 func (g *applicationV3Gateway) activate(ctx context.Context, c applicationV3Caller, key string, request applications.ActivateRequest) applications.ActivationResult {
-	refuse := applicationV3Activation
+	return g.open(ctx, c, key, applications.OpenRequest{Request: request}).Result
+}
+
+// applicationV3Parked is the open question a call left up past its wait and
+// the open handle that follows it (architect ruling 2026-11-22).
+type applicationV3Parked struct{ question, handle string }
+
+// open is applications@3 Open: Activate with the caller's own wait for the
+// person's answer, answering a parked open's question and handle.
+func (g *applicationV3Gateway) open(ctx context.Context, c applicationV3Caller, key string, request applications.OpenRequest) applications.OpenResult {
+	refuse := func(outcome applications.ActivationOutcome, reason string) applications.OpenResult {
+		return applications.OpenResult{Result: applicationV3Activation(outcome, reason)}
+	}
 	if !c.valid(g.directory.owner) {
 		return refuse(applications.ActivationOutcomeForbidden, "caller")
 	}
-	k, err := g.load(ctx, c.peer, request.Application)
+	k, err := g.load(ctx, c.peer, request.Request.Application)
 	if err != nil {
 		return refuse(applications.ActivationOutcomeUnavailable, "manifest")
 	}
 	defer k.close()
-	request.Application = k.manifest.Name
+	request.Request.Application = k.manifest.Name
+	// The caller's own wait_ms caps the wait for the person's answer
+	// (architect ruling 2026-11-22); it is no part of the bound request.
+	answerWait := applicationV3AnswerWait
+	if request.WaitMs != nil {
+		answerWait = min(answerWait, time.Duration(*request.WaitMs)*time.Millisecond)
+	}
+	var parked applicationV3Parked
 	// The kept application's display name rides on every answer about it,
 	// so an agent's sentence names the app as the person knows it.
-	result := g.activateKept(ctx, c, key, request, k)
+	result := g.activateKept(ctx, c, key, request.Request, k, answerWait, &parked)
 	result.Title = k.manifest.Title
-	return result
+	answer := applications.OpenResult{Result: result}
+	if parked.question != "" && parked.handle != "" {
+		answer.Question, answer.Handle = parked.question, parked.handle
+	}
+	return answer
 }
 
-func (g *applicationV3Gateway) activateKept(ctx context.Context, c applicationV3Caller, key string, request applications.ActivateRequest, k *applicationV3Kept) applications.ActivationResult {
+func (g *applicationV3Gateway) activateKept(ctx context.Context, c applicationV3Caller, key string, request applications.ActivateRequest, k *applicationV3Kept, answerWait time.Duration, parked *applicationV3Parked) (answer applications.ActivationResult) {
 	refuse := applicationV3Activation
+	// handle is a parked open whose Allow this call used; its state follows
+	// this call's answer.
+	handle := ""
+	defer func() {
+		if handle != "" {
+			g.later.finish(handle, answer)
+		}
+	}()
 	selectDefault := request.DefaultVerb != nil && *request.DefaultVerb
 	if selectDefault && request.Verb != "" {
 		return refuse(applications.ActivationOutcomeInvalid, "verb")
@@ -541,10 +579,13 @@ func (g *applicationV3Gateway) activateKept(ctx context.Context, c applicationV3
 	// agent's start: an agent never starts a stopped application under a
 	// standing or answerer-written permit (coordinator, 2026-11-09).
 	personStart := false
+	// later is this open captured for a deferred Allow; nil when it cannot
+	// outlive the call.
+	var later *applicationV3PendingOpen
 	// The wait for the person's answer lasts while the caller waits, within
 	// applicationV3AnswerWait; the start after an Allow keeps the caller's
 	// remaining budget.
-	answerCtx, endAnswer := context.WithTimeout(ctx, applicationV3AnswerWait)
+	answerCtx, endAnswer := context.WithTimeout(ctx, answerWait)
 	defer endAnswer()
 	if !sensitive || token == nil {
 		switch {
@@ -557,10 +598,27 @@ func (g *applicationV3Gateway) activateKept(ctx context.Context, c applicationV3
 				return refuse(applications.ActivationOutcomeForbidden, "rights")
 			}
 		case !operator && token != nil && g.stoppedApplication(ctx, k):
-			authorization, personStart = g.openAuthorization(answerCtx, c, k, v, call, key, canonical), true
+			later = g.prepareOpenLater(ctx, c, k, request, verb.Class)
+			if later != nil {
+				// The question is asked within the caller's call; the wait for
+				// its answer is answerWait, after which the open is parked.
+				authorization, personStart = g.openAuthorization(ctx, c, k, v, call, key, canonical, true, answerWait), true
+			} else {
+				authorization, personStart = g.openAuthorization(answerCtx, c, k, v, call, key, canonical, false, answerWait), true
+			}
 		default:
 			authorization = g.authorizationFor(answerCtx, c, k, v, call, key, canonical, token == nil, "Activate")
 		}
+	}
+	if authorization.outcome == "pending" && later != nil {
+		return g.parkOpen(later, authorization.question, parked)
+	}
+	if authorization.outcome == "" && !g.later.claim(authorization.question) {
+		// A parked open of the same question took the person's Allow.
+		return g.openTaken(authorization.question, parked)
+	}
+	if authorization.outcome == "" {
+		handle = g.later.handleOf(authorization.question)
 	}
 	if authorization.outcome != "" {
 		return applicationV3OpenRefusal(answerCtx, authorization, personStart)
@@ -608,8 +666,24 @@ func (g *applicationV3Gateway) activateKept(ctx context.Context, c applicationV3
 			// The application stopped after the earlier check: its start
 			// still waits for the person's own answer while the caller
 			// waits, within applicationV3AnswerWait like the first ask.
-			reask, endReask := context.WithTimeout(ctx, applicationV3AnswerWait)
-			authorization, personStart = g.openAuthorization(reask, c, k, v, call, key, canonical), true
+			reask, endReask := context.WithTimeout(ctx, answerWait)
+			later = g.prepareOpenLater(ctx, c, k, request, verb.Class)
+			if later != nil {
+				authorization, personStart = g.openAuthorization(ctx, c, k, v, call, key, canonical, true, answerWait), true
+			} else {
+				authorization, personStart = g.openAuthorization(reask, c, k, v, call, key, canonical, false, answerWait), true
+			}
+			if authorization.outcome == "pending" && later != nil {
+				endReask()
+				return finish(g.parkOpen(later, authorization.question, parked))
+			}
+			if authorization.outcome == "" && !g.later.claim(authorization.question) {
+				endReask()
+				return finish(g.openTaken(authorization.question, parked))
+			}
+			if authorization.outcome == "" {
+				handle = g.later.handleOf(authorization.question)
+			}
 			if authorization.outcome != "" {
 				refusal := applicationV3OpenRefusal(reask, authorization, true)
 				endReask()

@@ -94,7 +94,7 @@ async function libraryUse(row,use){const sid=row.parts.status.id,name=row.model.
 function libraryGroupBox(){const box=node('div'),heading=node('h3'),rows=node('div');box.append(heading,rows);box.parts={heading,rows};return box}
 function libraryRenderModels(){const v=libraryView,box=el('models-local-rows'),models=v.models||[];
  el('models-local-guide').textContent=models.map(m=>(m.title||oaModelName(m.name))+'\n'+(m.engine_guide||['Engine association is unknown.']).concat((m.places||[]).filter(p=>p.path).map(p=>'in '+p.path)).map(line=>'  '+line).join('\n')).join('\n\n');el('models-local-tech').hidden=!models.length;
- if(!models.length){libraryRows.clear();box.replaceChildren(...(v.files_known&&v.catalog_known?[node('p','oa-empty','No model files are in the folders OpenAbstractions reads. Add a folder under Engines, or choose Set up under Default models.')]:[]));return}
+ if(!models.length){libraryRows.clear();box.replaceChildren(...(v.files_known&&v.catalog_known?[modelsEmptyNote()]:[]));return}
  libraryClear(box);
  const groups=libraryGroupWords.map(([id,title])=>({id,title,models:models.filter(m=>libraryGroupOf(m)===id)})).filter(g=>g.models.length);
  oaKeyedRows(box,groups,g=>g.id,libraryGroupBox,(group,g)=>{group.parts.heading.textContent=g.title;oaKeyedRows(group.parts.rows,g.models,m=>m.key,m=>libraryRows.get(m.key)||libraryRow(),libraryUpdate)});

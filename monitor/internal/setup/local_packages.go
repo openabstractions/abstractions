@@ -27,6 +27,25 @@ import (
 // through to the public download service.
 var LocalPackageFolder string
 
+// ReleaseFolderVariable names the environment variable a pre-release check of
+// a signed build sets before starting the Panel. It names the folder holding
+// the release's assets, and Setup takes packages from it as from
+// LocalPackageFolder. The pin document stays the build's own.
+const ReleaseFolderVariable = "OA_RELEASE_FOLDER"
+
+// packageFolder is the linked preview folder, else the release folder the
+// environment names; "" when neither is an absolute path.
+func packageFolder() string {
+	folder := LocalPackageFolder
+	if folder == "" {
+		folder = os.Getenv(ReleaseFolderVariable)
+	}
+	if folder == "" || !filepath.IsAbs(folder) {
+		return ""
+	}
+	return filepath.Clean(folder)
+}
+
 // LocalPackageAssetsSHA256 is the SHA-256 the preview build linked for the
 // folder's adopter_assets.json. Setup ignores a document with other bytes.
 var LocalPackageAssetsSHA256 string
@@ -56,14 +75,15 @@ const localPackageOwner = "oa-local-package"
 // localPackage returns the folder file for an OpenAbstractions release asset
 // with the pin's exact size, or "" when the folder does not hold it.
 func localPackage(p PinnedDownload) string {
-	if LocalPackageFolder == "" || !filepath.IsAbs(LocalPackageFolder) {
+	folder := packageFolder()
+	if folder == "" {
 		return ""
 	}
 	name, ok := releaseAssetName(p.URL)
 	if !ok {
 		return ""
 	}
-	file := filepath.Join(LocalPackageFolder, name)
+	file := filepath.Join(folder, name)
 	info, err := os.Stat(file)
 	if err != nil || !info.Mode().IsRegular() || info.Size() != p.Bytes {
 		return ""
@@ -93,7 +113,7 @@ func isLocalPackageWork(work WorkIdentity) bool {
 
 func localPackageFile(work WorkIdentity) (*os.File, os.FileInfo, error) {
 	file := work.OperationsBinding.Endpoint
-	if LocalPackageFolder == "" || !filepath.IsAbs(file) || filepath.Dir(file) != filepath.Clean(LocalPackageFolder) {
+	if folder := packageFolder(); folder == "" || !filepath.IsAbs(file) || filepath.Dir(file) != folder {
 		return nil, nil, fmt.Errorf("local package %s is outside this build's package folder", file)
 	}
 	f, err := os.Open(file)

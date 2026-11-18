@@ -33,7 +33,7 @@ func TestCodexWakePromptPreservesStoredLegacyNotices(t *testing.T) {
 			t.Fatal(ticket, err)
 		}
 		prompt, err := state.Pointer(ctx, ticket, "private sender")
-		if want := "Check your OA inbox with oa_messages_wait (wake_ticket: " + ticket + ")."; err != nil || prompt != want {
+		if want := codexQueuedWakePrompt(ticket); err != nil || !strings.Contains(prompt, "reply-only") || prompt != want {
 			t.Fatal(prompt, err)
 		}
 		legacy, err := messagesTicketPointer(ticket, "", i > 0)
@@ -423,7 +423,11 @@ func TestCodexWakeTicketManualReadAndNativeRefusalDoNotConfirmConsumption(t *tes
 	}
 }
 
-func TestCodexIssuedWakeCoalescesUntilRead(t *testing.T) {
+// Architect ruling 1, 2026-11-22: an accepted pointer holds the thread's slot
+// for the 30-minute lease from its acceptance; after that the next new message
+// queues its own. A turn Codex runs late still confirms its pointer by ticket
+// while the slot is unreplaced.
+func TestCodexAcceptedWakeHoldsTheSlotForItsLease(t *testing.T) {
 	_, ctx, _ := diagnosticFixture(t)
 	binding := codexReceiverTestBinding(t)
 	at := time.Unix(1000000, 0)
@@ -431,30 +435,43 @@ func TestCodexIssuedWakeCoalescesUntilRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := state.Reserve(ctx, "0001")
-	if err != nil || first == "" {
-		t.Fatal(first, err)
+	issue := func(wake string) string {
+		t.Helper()
+		ticket, err := state.Reserve(ctx, wake)
+		if err != nil || ticket == "" {
+			t.Fatal("reserve", wake, ticket, err)
+		}
+		if text, err := state.Pointer(ctx, ticket, "private sender"); err != nil || text == "" || strings.Contains(text, "private sender") {
+			t.Fatal("issued pointer exposes sender or is absent", err)
+		}
+		at = at.Add(5 * time.Minute)
+		if err := state.AcceptQueued(ctx, ticket); err != nil {
+			t.Fatal(err)
+		}
+		return ticket
 	}
-	if text, err := state.Pointer(ctx, first, "private sender"); err != nil || text == "" || strings.Contains(text, "private sender") {
-		t.Fatal("issued pointer exposes sender or is absent", err)
-	}
-	if err := state.AcceptQueued(ctx, first); err != nil {
-		t.Fatal(err)
-	}
-	at = at.Add(31 * time.Minute)
+	first := issue("0001")
+	at = at.Add(codexWakeLease - time.Second)
 	for n := 2; n <= 10; n++ {
 		if value, err := state.Reserve(ctx, fmt.Sprintf("%04d", n)); value != "" || !errors.Is(err, errCodexWakeBusy) {
-			t.Fatal("busy inbox admitted another pointer", value, err)
+			t.Fatal("busy inbox admitted another pointer within the lease", value, err)
 		}
 	}
+	at = at.Add(2 * time.Second)
 	if _, ok, err := state.ConfirmWake(ctx, first); err != nil || !ok {
-		t.Fatal("issued pointer could not be consumed", ok, err)
+		t.Fatal("a late turn could not confirm its pointer", ok, err)
 	}
 	if value, err := state.Reserve(ctx, "0001"); err != nil || value != "" {
 		t.Fatal("consumption repeated stale work", value, err)
 	}
-	if value, err := state.Reserve(ctx, "0011"); err != nil || value == "" {
-		t.Fatal("fresh delivery did not wake after consumption", value, err)
+	second := issue("0011")
+	at = at.Add(codexWakeLease + time.Second)
+	third, err := state.Reserve(ctx, "0012")
+	if err != nil || third == "" {
+		t.Fatal("the next message did not queue its own pointer after the lease", third, err)
+	}
+	if _, ok, err := state.ConfirmWake(ctx, second); err != nil || ok {
+		t.Fatal("a replaced pointer was confirmed", ok, err)
 	}
 }
 
@@ -504,12 +521,19 @@ func TestCodexUnknownQueueLeaseAllowsOnlyNewerWakeAfterReopen(t *testing.T) {
 	if _, ok, err := state.ConfirmWake(ctx, tickets[0]); err != nil || ok {
 		t.Fatal("expired ticket consumed replacement", ok, err)
 	}
-	at = at.Add(time.Hour)
+	// The accepted replacement holds the slot for its lease, across a reopen;
+	// after the lease the next new message queues its own (ruling 1,
+	// 2026-11-22).
+	at = at.Add(codexWakeLease - time.Second)
 	state = reopen()
 	queue = codexReceivingQueue(ctx, b, binding.cli, binding.thread, driver, state)
 	probe.page.Wake = "0003"
 	if _, err := queue(ctx, "inert", "", nil); !errors.Is(err, errCodexWakeBusy) || len(tickets) != 2 {
-		t.Fatal("accepted replacement lost its outstanding slot", err, tickets)
+		t.Fatal("accepted replacement lost its outstanding slot within the lease", err, tickets)
+	}
+	at = at.Add(2 * time.Second)
+	if _, err := queue(ctx, "inert", "", nil); err != nil || len(tickets) != 3 {
+		t.Fatal("the next message did not queue its own pointer after the lease", err, tickets)
 	}
 }
 
@@ -634,7 +658,9 @@ func TestCodexDelayedPointersAfterBodyAckDoNotResubmit(t *testing.T) {
 				assertNewerBusy()
 			}
 			if tc.uncertain < tc.submissions {
-				at = at.Add(2 * codexWakeLease)
+				// An accepted pointer holds the slot for its lease (ruling 1,
+				// 2026-11-22).
+				at = at.Add(codexWakeLease - time.Second)
 				assertNewerBusy()
 			}
 			for n, prompt := range retained {
@@ -718,5 +744,63 @@ func TestCodexQueuedWakeRequiresMatchingTicket(t *testing.T) {
 				t.Fatalf("host accepted %d enqueue calls after 10 notes and empty reads, want %d", len(accepted), scenario.want)
 			}
 		})
+	}
+}
+
+// Security review 2026-11-22, item 2: after an accepted pointer's lease runs
+// out and a newer pointer replaces its slot, a read with the older ticket no
+// longer confirms a wake, but the ledger still names it as one it handed to
+// the host for this thread. It keeps the last four.
+func TestCodexLedgerRemembersTicketsItIssued(t *testing.T) {
+	_, ctx, _ := diagnosticFixture(t)
+	binding := codexReceiverTestBinding(t)
+	at := time.Unix(1000000, 0)
+	state, err := codexWakeReceipt(ctx, "oa-codex-integration", binding.context, binding.thread, func() time.Time { return at })
+	if err != nil {
+		t.Fatal(err)
+	}
+	issue := func(wake string) string {
+		t.Helper()
+		ticket, err := state.Reserve(ctx, wake)
+		if err != nil || ticket == "" {
+			t.Fatal("reserve", wake, ticket, err)
+		}
+		if _, err := state.Pointer(ctx, ticket, ""); err != nil {
+			t.Fatal(err)
+		}
+		if err := state.AcceptQueued(ctx, ticket); err != nil {
+			t.Fatal(err)
+		}
+		at = at.Add(codexWakeLease + time.Second)
+		return ticket
+	}
+	first := issue("0001")
+	second := issue("0002")
+	if _, ok, err := state.ConfirmWake(ctx, first); err != nil || ok {
+		t.Fatal("a replaced pointer confirmed a wake", ok, err)
+	}
+	for _, ticket := range []string{first, second} {
+		if ok, err := state.Issued(ctx, ticket); err != nil || !ok {
+			t.Fatal("the ledger forgot a ticket it issued", ticket, ok, err)
+		}
+	}
+	if ok, err := state.Issued(ctx, "0badc0de"); err != nil || ok {
+		t.Fatal("a ticket the ledger never issued was named", ok, err)
+	}
+	other, err := codexWakeReceipt(ctx, "oa-codex-integration", binding.context, "01a1fdec-0000-7000-8000-0000000000ff", func() time.Time { return at })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := other.Issued(ctx, first); err != nil || ok {
+		t.Fatal("another thread's ticket was named", ok, err)
+	}
+	for _, wake := range []string{"0003", "0004", "0005"} {
+		issue(wake)
+	}
+	if ok, err := state.Issued(ctx, first); err != nil || ok {
+		t.Fatal("more than four tickets were kept", ok, err)
+	}
+	if ok, err := state.Issued(ctx, second); err != nil || !ok {
+		t.Fatal("one of the last four tickets was forgotten", ok, err)
 	}
 }

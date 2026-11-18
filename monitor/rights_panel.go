@@ -511,7 +511,11 @@ func (p *servicePanel) editSelectorRights(ctx context.Context, w http.ResponseWr
 	if edit.Edit == "remove_bundle" {
 		result, err = operator.RemoveBundleContext(ctx, edit.Revision, subject, edit.BundleOriginID)
 	} else {
-		selector, _ := edit.selector()
+		selector, selectorErr := edit.selector()
+		if selectorErr != nil {
+			panelError(w, selectorErr)
+			return
+		}
 		if edit.BundleRef != "" {
 			result, err = operator.ApplyBundleContext(ctx, edit.Revision, subject, edit.BundleRef, selector, time.Duration(edit.TTLMS)*time.Millisecond, edit.Why)
 		} else {

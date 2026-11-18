@@ -133,7 +133,7 @@ func dispatchNativeHook[T msllHookStruct | kbdllHookStruct](t *testing.T, hook f
 			t.Error(err)
 		}
 	}()
-	*(*T)(unsafe.Pointer(data)) = info
+	*(*T)(nativePointer(data)) = info
 	hook(0, msg, data)
 }
 
@@ -204,14 +204,14 @@ func TestRealInputFlagsOnThisBuild(t *testing.T) {
 	mouseFlags.Store(-1)
 	keyFlags.Store(-1)
 	mouseHook := syscall.NewCallback(func(code int, wparam, lparam uintptr) uintptr {
-		if info := (*msllHookStruct)(unsafe.Pointer(lparam)); code == 0 && info.ExtraInfo == mark {
+		if info := (*msllHookStruct)(nativePointer(lparam)); code == 0 && info.ExtraInfo == mark {
 			mouseFlags.Store(int64(info.Flags))
 		}
 		r, _, _ := inputNextHook.Call(0, uintptr(code), wparam, lparam)
 		return r
 	})
 	keyHook := syscall.NewCallback(func(code int, wparam, lparam uintptr) uintptr {
-		if info := (*kbdllHookStruct)(unsafe.Pointer(lparam)); code == 0 && info.ExtraInfo == mark {
+		if info := (*kbdllHookStruct)(nativePointer(lparam)); code == 0 && info.ExtraInfo == mark {
 			keyFlags.Store(int64(info.Flags))
 		}
 		r, _, _ := inputNextHook.Call(0, uintptr(code), wparam, lparam)
@@ -686,8 +686,8 @@ var (
 
 // comMethod is slot n of the COM object's vtable.
 func comMethod(object uintptr, n int) comProc {
-	vtable := *(*uintptr)(unsafe.Pointer(object))
-	return *(*comProc)(unsafe.Pointer(vtable + uintptr(n)*unsafe.Sizeof(uintptr(0))))
+	vtable := *(*uintptr)(nativePointer(object))
+	return *(*comProc)(nativePointer(vtable + uintptr(n)*unsafe.Sizeof(uintptr(0))))
 }
 
 // uiaInvoke does what an automation client does to press a button:

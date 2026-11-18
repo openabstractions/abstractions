@@ -56,6 +56,33 @@ func forwardPollAcceptance(t *testing.T, f *remoteMessagesFixture, name string) 
 	return out, r, key
 }
 
+// observeForwardTerminal repeats the source's bounded delivery observation
+// until the record is terminal, as the progress pass does on its next round.
+// One observation may leave delivery unconfirmed while the pair is busy; only
+// observation repeats, and the original Send stays untouched.
+func observeForwardTerminal(t *testing.T, h *applicationsHost, key string, source *messageRecord) *messageRecord {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), runtimeWait)
+	defer cancel()
+	for {
+		if err := h.observeForwardDelivery(ctx, key, source); err != nil {
+			t.Fatal(err)
+		}
+		r, err := h.messages.readRecord(ctx, key)
+		if err != nil || r == nil {
+			t.Fatalf("retained forward record: %v", err)
+		}
+		if r.Delivery != nil {
+			return r
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("forward delivery remained unconfirmed: %v", ctx.Err())
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+}
+
 func TestMessagesForwardPollBodyAckOwnReport(t *testing.T) {
 	f := pairedMessagesFixture(t)
 	f.permit(t, 0, "app:other-agent")
@@ -76,12 +103,8 @@ func TestMessagesForwardPollBodyAckOwnReport(t *testing.T) {
 	if err = destination.acknowledge(t.Context(), messagePointer{Key: destinationKey, Token: r.Token}); err != nil {
 		t.Fatal(err)
 	}
-	if err = h.observeForwardDelivery(t.Context(), key, source); err != nil {
-		t.Fatal(err)
-	}
-	current, err = h.messages.readRecord(t.Context(), key)
-	if err != nil || current.Delivery == nil || current.Delivery.State != msg.DeliveryDelivered {
-		t.Fatal(current, err)
+	if current = observeForwardTerminal(t, h, key, source); current.Delivery.State != msg.DeliveryDelivered {
+		t.Fatal(current)
 	}
 	refs, err := h.messages.messageEventCandidates(t.Context(), source.Actor, h.messages.stateEventCheckFor(source.Actor))
 	if err != nil {
@@ -147,10 +170,9 @@ func TestMessagesForwardFreshKeyAliasHasOneCanonicalReport(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := f.nodes[0].reader.host
-	for range 2 {
-		if err = h.observeForwardDelivery(t.Context(), a.TargetKey, canonical); err != nil {
-			t.Fatal(err)
-		}
+	observeForwardTerminal(t, h, a.TargetKey, canonical)
+	if err = h.observeForwardDelivery(t.Context(), a.TargetKey, canonical); err != nil {
+		t.Fatal(err)
 	}
 	refs, err := source.messageEventCandidates(t.Context(), actor, source.stateEventCheckFor(actor))
 	if err != nil || len(refs) != 1 {
@@ -215,11 +237,8 @@ func TestMessagesForwardRemovedSenderKeepsOnlyActivityOutcome(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := node.reader.host
-	if err = h.observeForwardDelivery(t.Context(), key, source); err != nil {
-		t.Fatal(err)
-	}
-	current, err := h.messages.readRecord(t.Context(), key)
-	if err != nil || current == nil || !current.SenderRemoved || current.Delivery == nil || current.Delivery.State != msg.DeliveryDelivered || current.Delivery.Report != "" || !current.Delivery.Reported || current.Audit == nil || !current.Audit.MetadataOnly {
+	current := observeForwardTerminal(t, h, key, source)
+	if !current.SenderRemoved || current.Delivery == nil || current.Delivery.State != msg.DeliveryDelivered || current.Delivery.Report != "" || !current.Delivery.Reported || current.Audit == nil || !current.Audit.MetadataOnly {
 		t.Fatal(current, err)
 	}
 	refs, err := h.messages.messageEventCandidates(t.Context(), source.Actor, h.messages.stateEventCheckFor(source.Actor))
@@ -271,11 +290,8 @@ func TestMessagesForwardRemovedSenderSurvivesCanonicalDamage(t *testing.T) {
 			if err = destination.acknowledge(t.Context(), messagePointer{Key: destinationKey, Token: r.Token}); err != nil {
 				t.Fatal(err)
 			}
-			if err = h.observeForwardDelivery(t.Context(), key, recovered); err != nil {
-				t.Fatal(err)
-			}
-			current, err := reopened.readRecord(t.Context(), key)
-			if err != nil || current == nil || !current.SenderRemoved || current.Delivery == nil || current.Delivery.State != msg.DeliveryDelivered || current.Delivery.Report != "" || !current.Delivery.Reported || current.Audit == nil || !current.Audit.MetadataOnly {
+			current := observeForwardTerminal(t, h, key, recovered)
+			if !current.SenderRemoved || current.Delivery == nil || current.Delivery.State != msg.DeliveryDelivered || current.Delivery.Report != "" || !current.Delivery.Reported || current.Audit == nil || !current.Audit.MetadataOnly {
 				t.Fatal(current, err)
 			}
 			if err = h.flushMessageAudit(t.Context(), key, source.Token); err != nil {
@@ -320,12 +336,8 @@ func TestMessagesForwardReceiverRemovalSurvivesFullTaskEventLog(t *testing.T) {
 	if err != nil || len(refs) != 0 {
 		t.Fatal("removed receiver body remained deliverable", refs, err)
 	}
-	if err = f.nodes[0].reader.host.observeForwardDelivery(t.Context(), key, source); err != nil {
-		t.Fatal(err)
-	}
-	forward, err := f.nodes[0].store.readRecord(t.Context(), key)
-	if err != nil || forward.Delivery == nil || forward.Delivery.Reason != msg.UndeliveredReasonReceiverRemoved {
-		t.Fatal(forward, err)
+	if forward := observeForwardTerminal(t, f.nodes[0].reader.host, key, source); forward.Delivery.Reason != msg.UndeliveredReasonReceiverRemoved {
+		t.Fatal(forward)
 	}
 }
 
@@ -412,30 +424,8 @@ func TestMessagesForwardPollPersonRefusalWithoutSendReplay(t *testing.T) {
 	if _, outcome, err := book.AnswerApplication(question, "refuse"); err != nil || outcome != "answered" {
 		t.Fatal(outcome, err)
 	}
-	h := f.nodes[0].reader.host
-	ctx, cancel := context.WithTimeout(t.Context(), runtimeWait)
-	defer cancel()
-	// One bounded observation may leave delivery unconfirmed while the pair
-	// is busy. Retry observation only. The original Send remains untouched.
-	for {
-		if err := h.observeForwardDelivery(ctx, key, source); err != nil {
-			t.Fatal(err)
-		}
-		r, err := h.messages.readRecord(ctx, key)
-		if err != nil || r == nil {
-			t.Fatalf("retained forward record: %v", err)
-		}
-		if r.Delivery != nil {
-			if r.Delivery.State != msg.DeliveryUndelivered || r.Delivery.Reason != msg.UndeliveredReasonRefused {
-				t.Fatalf("unexpected terminal delivery: %+v", r.Delivery)
-			}
-			break
-		}
-		select {
-		case <-ctx.Done():
-			t.Fatalf("person refusal remained unconfirmed: %v", ctx.Err())
-		case <-time.After(20 * time.Millisecond):
-		}
+	if r := observeForwardTerminal(t, f.nodes[0].reader.host, key, source); r.Delivery.State != msg.DeliveryUndelivered || r.Delivery.Reason != msg.UndeliveredReasonRefused {
+		t.Fatalf("unexpected terminal delivery: %+v", r.Delivery)
 	}
 }
 
@@ -512,9 +502,9 @@ func TestMessagesForwardPollOldPeerUnsupported(t *testing.T) {
 	}
 	roots := x509.NewCertPool()
 	roots.AddCert(sourceCertificate)
-	server := remote.Server{TLS: &tls.Config{Certificates: []tls.Certificate{identity}, ClientCAs: roots}, Admit: f.states[1].admit,
+	server := remote.Server{TLS: &tls.Config{Certificates: []tls.Certificate{identity}, ClientCAs: roots}, AdmitContext: f.states[1].admitContext,
 		Handler: func(ctx context.Context, peer remote.Peer, frame []byte) ([]byte, error) {
-			dispatcher := f.nodes[1].reader.host.remoteMessages(ctx, peer, f.states[1].admit)
+			dispatcher := f.nodes[1].reader.host.remoteMessages(ctx, peer, func(peer remote.Peer) error { return f.states[1].admitContext(ctx, peer) })
 			dispatcher.Handler = &forwardPollOldMessages{Messages: dispatcher.Handler}
 			return fwire.ServeEndpointRemote(frame, "openabstractions", "", func(string, string, string) error { return nil }, dispatcher)
 		}}

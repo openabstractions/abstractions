@@ -193,6 +193,7 @@ pub struct Inbox
   reach: ::std::option::Option<InboxReach>
   chat_title: ::std::string::String
   mine: ::std::option::Option<bool>
+  hints: ::std::vec::Vec<::std::string::String>
 pub struct AgentApplication
   program: ::std::string::String
   title: ::std::string::String

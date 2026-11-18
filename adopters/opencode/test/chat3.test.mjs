@@ -152,10 +152,19 @@ test('host session and subagent IDs label only served chat@3 turns', async t => 
   }
   assert.equal(new Set(chat.requests.map(request => request.identity.key)).size, 3);
   for (const input of [{agent: 'title', sessionID: 'main-session'}, {agent: 'build'}]) {
-    const params = {options: {oaSessionID: 'stale'}};
+    const params = {options: {oaSessionID: 'stale', oaTitle: true}};
     await plugin['chat.params']({...input, model: chosen}, params);
     assert.equal(params.options.oaSessionID, undefined);
+    assert.equal(params.options.oaTitle, input.agent === 'title' ? true : undefined);
   }
+  // A title the person routes to a concrete model is still a title: no
+  // conversation, use title, and the engine keeps the chat's slot.
+  const titleParams = {options: {}};
+  await plugin['chat.params']({agent: 'title', sessionID: 'main-session', model: chosen}, titleParams);
+  await model.doGenerate(options({providerOptions: {openabstractions: titleParams.options}}));
+  assert.equal(chat.requests.at(-1).conversation, '');
+  assert.equal(chat.requests.at(-1).use, 'title');
+  assert.equal(chat.requests.at(-1).target.model, 'model');
   const titleChat = fixtureChat(), title = await modelFixture(titleChat, {oaSelectionPolicies: {model: 'title'}});
   await title.doGenerate(options({providerOptions: {openabstractions: {oaSessionID: 'main-session'}}}));
   assert.equal(titleChat.requests[0].conversation, '');

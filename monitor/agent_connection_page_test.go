@@ -24,18 +24,6 @@ func TestAgentConnectionUpdateAndDisplayOrder(t *testing.T) {
 			t.Fatalf("update roster at %d = %+v, want %+v", i, agentHelperParties[i], party)
 		}
 	}
-	rows := appsConnectionRows()
-	last := -1
-	for _, party := range []string{"claude", "codex", "opencode"} {
-		if next := strings.Index(rows, `id="apps-`+party+`-connection"`); next <= last {
-			t.Fatalf("connection %s is missing or out of title order", party)
-		} else {
-			last = next
-		}
-	}
-	if agentHelperParties[0] != want[0] {
-		t.Fatal("rendering the Apps list reordered updates")
-	}
 	for _, page := range []struct {
 		markup, heading, scope string
 	}{
@@ -72,30 +60,6 @@ func TestAgentConnectionRenderFixtures(t *testing.T) {
 	doc := panelPage(httptest.NewRequest("GET", "http://127.0.0.1/?platform=windows&shell=native", nil), "fixture", "status", "Apps", markup)
 	if err := os.WriteFile(filepath.Join(out, "index.html"), []byte(doc), 0600); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestAppsConnectionRowsKeepLabelsOrderAndRoutes(t *testing.T) {
-	rows := appsConnectionRows()
-	last := -1
-	for _, item := range []struct{ id, name string }{
-		{"claude", "Claude"}, {"codex", "Codex"}, {"opencode", "OpenCode"},
-	} {
-		id := `id="apps-` + item.id + `-connection" data-agent-connection`
-		href := `href="/connections/` + item.id + `"`
-		caption := "Connect " + item.name + " to OpenAbstractions"
-		start := strings.Index(rows, id)
-		if start <= last {
-			t.Fatalf("missing or out-of-order connection row %s", item.name)
-		}
-		row, _, _ := strings.Cut(rows[start:], "</a>")
-		if !strings.Contains(row, href) || !strings.Contains(row, `class="oa-row-label">`+item.name+`</span>`) || !strings.Contains(row, caption) {
-			t.Fatalf("wrong connection row for %s: %s", item.name, row)
-		}
-		last = start
-	}
-	if strings.Count(rows, "data-agent-connection") != 3 {
-		t.Fatalf("unexpected connection roster: %s", rows)
 	}
 }
 

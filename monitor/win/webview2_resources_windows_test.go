@@ -48,14 +48,14 @@ func TestReadStream(t *testing.T) {
 	if stream == 0 {
 		t.Fatal("SHCreateMemStream")
 	}
-	got, err := readStream((*iStream)(unsafe.Pointer(stream)), len(body))
-	release(unsafe.Pointer(stream))
+	got, err := readStream((*iStream)(nativePointer(stream)), len(body))
+	release(nativePointer(stream))
 	if err != nil || !bytes.Equal(got, body) {
 		t.Fatalf("read %d bytes, err %v", len(got), err)
 	}
 	stream, _, _ = shCreateMemStream.Call(uintptr(unsafe.Pointer(&body[0])), uintptr(len(body)))
-	_, err = readStream((*iStream)(unsafe.Pointer(stream)), len(body)-1)
-	release(unsafe.Pointer(stream))
+	_, err = readStream((*iStream)(nativePointer(stream)), len(body)-1)
+	release(nativePointer(stream))
 	if err == nil {
 		t.Fatal("a stream over the limit was read")
 	}

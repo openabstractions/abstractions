@@ -92,7 +92,7 @@ func (p *servicePanel) appsRegistrations(w http.ResponseWriter, r *http.Request)
 		} else {
 			view.Outcome, view.Cursor = snapshot.Outcome.String(), snapshot.Cursor
 			if snapshot.Outcome == fwire.DeclarationListOutcomePage {
-				for _, state := range snapshot.Declarations {
+				for _, state := range withStandings(snapshot.Declarations, readProviderStandings(ctx, machine)) {
 					if state.Role != fwire.DeclarationRoleProvider || state.Declaration.Program == "" {
 						continue
 					}
@@ -101,7 +101,7 @@ func (p *servicePanel) appsRegistrations(w http.ResponseWriter, r *http.Request)
 						title = unregisteredProgramName(state.Declaration.Program)
 					}
 					view.Entries = append(view.Entries, appsRegistration{Subject: appsRegistrationSubject(account, state.Declaration.Program), Program: state.Declaration.Program,
-						Name: state.Declaration.Name, Role: "provider", State: state.Readiness.String(), Provider: &state, Title: title, Does: does})
+						Name: state.Declaration.Name, Role: "provider", State: state.Readiness.String(), Provider: &state.DeclarationState, Title: title, Does: does})
 				}
 			}
 		}

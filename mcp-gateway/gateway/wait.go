@@ -31,7 +31,7 @@ var (
 const maxCallWait = 24 * time.Hour
 
 // waitDescription is the few words each waiting tool's description carries.
-const waitDescription = "Waits wait_ms (default 20000; Codex ends a call at 60 s), then answers with progress and a handle to call again with."
+const waitDescription = "Waits wait_ms (default 20000; Codex ends calls at 60 s), then returns progress and a handle to call again."
 
 // callWait is the follow time a call asked for, or def.
 func callWait(ms int64, def time.Duration) time.Duration {

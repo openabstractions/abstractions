@@ -1174,8 +1174,12 @@ func genGo(s *Definition) string {
 		enumListHelper = goEnumListHelper
 	}
 	prelude := strings.Replace(goCommon, "@ENUM_LIST_HELPER@", enumListHelper, 1) + esc
-	if goMicrosTimestamps(s) {
-		prelude = strings.Replace(prelude, "package rec\n", "package rec\n\nimport \"time\"\n", 1)
+	if imports := goImports(s); len(imports) > 0 {
+		lines := ""
+		for _, name := range imports {
+			lines += "\nimport \"" + name + "\"\n"
+		}
+		prelude = strings.Replace(prelude, "package rec\n", "package rec\n"+lines, 1)
 	}
 	if s.StringMapDocument() {
 		prelude += goStrMap
@@ -1253,6 +1257,21 @@ func genGo(s *Definition) string {
 		fail(fmt.Errorf("the Go backend emitted something gofmt refuses: %w", err))
 	}
 	return string(pretty)
+}
+
+// goImports is the standard library a generated file imports, each on its
+// own import line so checkImports reads every one: time for microsecond
+// timestamps, and runtime/debug for goHandlerPanic in a definition with
+// replying methods. includeImports admits the same list.
+func goImports(s *Definition) []string {
+	var imports []string
+	if goMicrosTimestamps(s) {
+		imports = append(imports, "time")
+	}
+	if hasReplies(s) {
+		imports = append(imports, "runtime/debug")
+	}
+	return imports
 }
 
 func goMicrosTimestamps(s *Definition) bool {

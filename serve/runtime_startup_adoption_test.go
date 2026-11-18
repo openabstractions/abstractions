@@ -55,6 +55,7 @@ func TestRuntimeReadyFollowsRegistrationAdoption(t *testing.T) {
 	case <-time.After(runtimeWait):
 		cancel()
 		awaitStopped(t, done, "runtime")
+		dumpGoroutines()
 		t.Fatalf("runtime not ready within %v", runtimeWait)
 	}
 }

@@ -52,6 +52,10 @@ func (p *servicePanel) activityElevated(w http.ResponseWriter, r *http.Request) 
 		for _, record := range page.Records {
 			if event, ok := elevatedActivityLine(record, names); ok {
 				out.Events = append(out.Events, event)
+			} else if event, ok := openLaterActivityLine(record, names); ok {
+				out.Events = append(out.Events, event)
+			} else if event, ok := rightsChangeActivityLine(record, names); ok {
+				out.Events = append(out.Events, event)
 			} else if event, key, ok := pictureGraphEditActivityLine(record); ok && !edits[key] {
 				edits[key] = true
 				out.Events = append(out.Events, event)
@@ -77,6 +81,37 @@ func elevatedActivityLine(record logwire.Record, names *programTitler) (activity
 		return activityEvent{}, false
 	}
 	return activityEvent{At: at.UnixMilli(), App: names.name(program), Program: program, What: "Ran as administrator", Result: "OpenAbstractions didn't ask"}, true
+}
+
+// openLaterActivityEvent is the runtime's record of an agent's open that the
+// person allowed after the agent's call ended (serve
+// application_v3_open_later.go, architect ruling 2026-11-22).
+const openLaterActivityEvent = "applications.open.later"
+
+// openLaterActivityLine is one deferred open, attributed to the agent that
+// asked: "Open <App> after your Allow" and what came of it.
+func openLaterActivityLine(record logwire.Record, names *programTitler) (activityEvent, bool) {
+	program, title := record.Attrs["program"], record.Attrs["title"]
+	if record.Attrs["oa_event"] != openLaterActivityEvent || program == "" || len(program) > 4096 {
+		return activityEvent{}, false
+	}
+	at, err := time.Parse(time.RFC3339Nano, record.Time)
+	if err != nil {
+		return activityEvent{}, false
+	}
+	if title == "" {
+		title = record.Attrs["application"]
+	}
+	result := "Not opened: something changed since the question"
+	switch {
+	case record.Attrs["outcome"] == "ready":
+		result = "Opened"
+	case record.Attrs["reason"] == "blocked":
+		result = "Not opened: you blocked it"
+	case record.Attrs["outcome"] != "unavailable" && record.Attrs["outcome"] != "forbidden":
+		result = "Not opened: " + title + " did not start"
+	}
+	return activityEvent{At: at.UnixMilli(), App: names.name(program), Program: program, What: "Open " + title + " after your Allow", Result: result}, true
 }
 
 // The runtime's attributed command audit records the accepted projection

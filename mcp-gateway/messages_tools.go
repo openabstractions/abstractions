@@ -351,6 +351,12 @@ type messagesBackend struct {
 	wakeConfirm                        func(context.Context, string) (string, bool, error)
 	wakeReserve                        func(context.Context, string, string) (string, error)
 	wakePointer                        func(context.Context, string, string) (string, error)
+	// wakeHeld reports a Codex pointer queued to the host and not yet read
+	// with its ticket (S5 ruling, 2026-11-22).
+	wakeHeld func(context.Context) (bool, error)
+	// wakeIssued reports a Codex ticket the wake ledger handed to the host
+	// for this chat's thread (security review 2026-11-22).
+	wakeIssued func(context.Context, string) (bool, error)
 	// adapter holds the host adapter's key; a chat receiver shares its
 	// launcher's (messages_adapter.go).
 	adapter *messagesAdapter
@@ -358,6 +364,11 @@ type messagesBackend struct {
 	asksObservation sync.Mutex
 	asksWake        asksWakeState
 	asksWaitingWake asksWakeState
+	// replyOnly marks a turn another agent's message started (S5 ruling,
+	// 2026-11-22); a chat receiver shares its launcher's (messages_reply_only.go).
+	replyOnly *replyOnlyTurn
+	// decideFullTools decides this program's own full-tools rule on a sender.
+	decideFullTools func(context.Context, string) (rightswire.Decision, error)
 }
 
 var _ gateway.AgentBackend = (*messagesBackend)(nil)
@@ -399,6 +410,13 @@ func newMessagesBackendWithStatus(base gateway.Backend, machine *client.Machine,
 		}
 		owned.permission = func(ctx context.Context) (messagePermissionClient, error) {
 			return machine.ResolveAsksPermission(ctx, client.Requirements{Scope: client.ScopeLocal})
+		}
+		owned.decideFullTools = func(ctx context.Context, resource string) (rightswire.Decision, error) {
+			rights, err := machine.ResolveRights(ctx, client.Requirements{Scope: client.ScopeLocal})
+			if err != nil {
+				return rightswire.Decision{}, err
+			}
+			return rights.DecideContext(ctx, grants.ApplicationMessageFullToolsAction, resource)
 		}
 		owned.checkAccess = func(ctx context.Context, receiver string) (askswire.PermissionObservation, error) {
 			return owned.checkMessageAccess(ctx, receiver, owned.resolveMessageReceiver, func(ctx context.Context, resource string) (rightswire.Decision, error) {
@@ -706,7 +724,7 @@ func bindMessagesBackendStatus(base gateway.Backend, application, instance, cont
 	if base == nil || application == "" || instance == "" && !supervised || contextName == "" || native == nil {
 		return nil, errors.New("messages: opened native association required")
 	}
-	return &messagesBackend{Backend: base, application: application, instance: instance, contextName: contextName, native: native, status: new(messagesInboxStatus)}, nil
+	return &messagesBackend{Backend: base, application: application, instance: instance, contextName: contextName, native: native, status: new(messagesInboxStatus), replyOnly: new(replyOnlyTurn)}, nil
 }
 func (b *messagesBackend) MessagesInboxOpen(ctx context.Context, in gateway.MessagesOpenInput) (wire.InboxChange, error) {
 	if receiver, ok := b.chatBodyBackend(ctx); !ok {
@@ -840,6 +858,8 @@ func (b *messagesBackend) MessagesWait(ctx context.Context, in gateway.MessagesW
 		b.chatMu.Lock()
 		confirm := b.wakeConfirm
 		b.chatMu.Unlock()
+		incoming := b.incomingMessages(out.Messages)
+		woken := false
 		if confirm != nil {
 			if wake, confirmed, err := confirm(ctx, in.WakeTicket); err == nil && confirmed {
 				// The turn this read belongs to was woken by that key; every
@@ -847,9 +867,38 @@ func (b *messagesBackend) MessagesWait(ctx context.Context, in gateway.MessagesW
 				// 2026-11-09). A refusal still returns the page.
 				if wake != "" {
 					b.turnWake(c, wake)
+					woken = true
 				}
 				b.publishWakeConfirmed(ctx)
 			}
+		}
+		// S5 ruling 2026-11-22: a read that a wake started marks the turn
+		// reply-only; a read inside a marked turn adds what it read. A Codex
+		// read without its ticket while the queued pointer is still held is
+		// the pointer's turn as well.
+		if !woken && in.WakeTicket == "" && b.replyOnly != nil && !b.replyOnly.active() {
+			b.chatMu.Lock()
+			held := b.wakeHeld
+			b.chatMu.Unlock()
+			if held != nil {
+				woken, _ = held(ctx)
+			}
+		}
+		// A read with a Codex ticket this ledger handed to the host started
+		// that pointer's turn, even when its slot was replaced after the lease
+		// (security review 2026-11-22, item 2).
+		if !woken && in.WakeTicket != "" {
+			b.chatMu.Lock()
+			issued := b.wakeIssued
+			b.chatMu.Unlock()
+			if issued != nil {
+				woken, _ = issued(ctx, in.WakeTicket)
+			}
+		}
+		if woken {
+			b.replyOnly.mark(nil, incoming)
+		} else {
+			b.replyOnly.read(incoming)
 		}
 	}
 	return out, nil

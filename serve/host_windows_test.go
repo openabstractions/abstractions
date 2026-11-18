@@ -31,6 +31,9 @@ const (
 
 // TestMain doubles as the supervised runtime child the host tests launch.
 func TestMain(m *testing.M) {
+	if len(os.Args) == 3 && os.Args[1] == runtimeStandInArg {
+		runtimeStandIn(os.Args[2])
+	}
 	if len(os.Args) == 6 && os.Args[1] == "serve" && os.Args[2] == "runtime" && os.Args[3] == "--supervised" {
 		switch os.Args[4] {
 		case "diagnostic-child", "diagnostic-failure":

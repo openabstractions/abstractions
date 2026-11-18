@@ -601,6 +601,14 @@ th { white-space: nowrap; overflow-wrap: normal; }
    the table's natural width wins and the wrapper scrolls sideways whole
    instead of squeezing a column away. */
 .oa-table td { white-space: nowrap; overflow-wrap: normal; }
+/* The Activity timeline has four columns and fits its column: its "What
+   happened" text wraps, so the Outcome column keeps its Undo or Restore
+   button in view instead of behind the sideways scroll (agent-ux
+   2026-11-22, Undo clipped). */
+#timeline-table { width: 100%; }
+#timeline-table td:nth-child(3) { white-space: normal; overflow-wrap: anywhere; min-width: 8rem; }
+#timeline-table td:last-child { white-space: normal; }
+#timeline-table td:last-child > button { white-space: nowrap; margin-top: .2rem; }
 
 /* A checkbox carrying class="switch" renders as a toggle switch in both
    skins, matching the platform's own control instead of the browser default. */

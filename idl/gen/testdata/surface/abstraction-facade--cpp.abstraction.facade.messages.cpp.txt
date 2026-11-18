@@ -200,6 +200,7 @@ struct Inbox
   std::optional<InboxReach> reach
   std::string chat_title
   std::optional<bool> mine
+  std::vector<std::string> hints
 struct PrepareResult
   Outcome outcome
   std::optional<SendRequest> send_request

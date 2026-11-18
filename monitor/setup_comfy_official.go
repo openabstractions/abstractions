@@ -375,7 +375,7 @@ func (pkg *officialPackagePanel) serveConnect(p *servicePanel, w http.ResponseWr
 		func(_ context.Context, failure error, outcome *setupOutcome) {
 			if failure != nil {
 				log.Printf("setup: %s %s: %v", kind, pkg.spec.Title, failure)
-				outcome.Failure, outcome.Detail = removalReason(failure), failure.Error()
+				outcome.Failure, outcome.Detail = stepFailureReason(failure), failure.Error()
 			}
 		},
 	)
@@ -449,7 +449,7 @@ func (pkg *officialPackagePanel) serveRemoveRetained(p *servicePanel, w http.Res
 				outcome.Cancelled = true
 			default:
 				log.Printf("setup: remove the OA build of %s: %v", pkg.retainedTitle, failure)
-				outcome.Failure, outcome.Detail = removalReason(failure), failure.Error()
+				outcome.Failure, outcome.Detail = stepFailureReason(failure), failure.Error()
 				recordRemovalFailure(journal, name, pkg.retainedLegacy.Display.RetainedRemovalTitle, failure)
 			}
 		},

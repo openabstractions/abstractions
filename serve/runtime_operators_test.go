@@ -15,6 +15,7 @@ import (
 	"time"
 
 	identity "github.com/openabstractions/abstraction-identity"
+	"github.com/openabstractions/abstraction-storage/go/layout"
 )
 
 // The installed Panel sets and revokes rights rules and manages credentials, so
@@ -323,5 +324,35 @@ func TestOperatorProgramAcceptsAStateFolderNotYetMade(t *testing.T) {
 	}
 	if info, err := os.Stat(state); err != nil || !info.IsDir() {
 		t.Fatalf("the accepted state folder was not created: %v", err)
+	}
+}
+
+// Whoever starts an isolated runtime sets its environment. The state folder
+// under the account's recorded home is the installed runtime's whatever
+// LOCALAPPDATA, XDG_DATA_HOME and HOME say, and --operator-program refuses
+// it. The check runs without creating the folder and only reads it.
+func TestOperatorProgramRefusesRecordedInstalledStateUnderForgedEnvironment(t *testing.T) {
+	home, err := layout.AccountHome()
+	if err != nil {
+		t.Skip("this account's home is not recorded here:", err)
+	}
+	local := ""
+	if runtime.GOOS == "windows" {
+		if local, err = layout.AccountLocalAppData(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	installed, err := runtimeStateDir(runtime.GOOS, func(string) string { return local }, func() (string, error) { return home, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	panel := operatorProgramFixture(t)
+	options := runtimeFlags{isolated: isolatedName(), stateDir: installed, operatorProgram: panel}
+	if _, err := isolatedOperatorProgramWithState(options, false); err == nil {
+		t.Fatalf("--operator-program accepted the installed runtime's state %s under a forged environment", installed)
 	}
 }

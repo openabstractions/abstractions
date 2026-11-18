@@ -57,11 +57,12 @@ enum SecureStore {
  5: none
 }(unknown="grant",reader="display")
 // Consuming service contracts this version names in Scope.consumers and
-// Use.consumer: download HTTP execution, model registry resolution and hosted
-// inference. A consuming service outside the seed uses its own wire contract
-// name <owner>/<name>@<n>; the receiving host's enforcer designation, never
-// this list, decides whether a program may apply credentials as that consumer.
-const list<string> consumers = ["abstraction.download/http-execution@1", "abstraction.model/resolver@1", "abstraction.inference/chat@1"]
+// Use.consumer: download HTTP execution, model registry resolution, the six
+// hosted inference modalities and the router's hosted model listing. A
+// consuming service outside the seed uses its own wire contract name
+// <owner>/<name>@<n>; the receiving host's enforcer designation, never this
+// list, decides whether a program may apply credentials as that consumer.
+const list<string> consumers = ["abstraction.download/http-execution@1", "abstraction.model/resolver@1", "abstraction.inference/chat@1", "abstraction.inference/embed@1", "abstraction.inference/transcription@1", "abstraction.inference/speech@1", "abstraction.inference/image@1", "abstraction.inference/live@1", "abstraction.router/router@1"]
 
 struct Subject {
  1: required string account

@@ -273,6 +273,9 @@ func (s *ownedApplicationSession) dispatchReceiverStart(ctx context.Context, aut
 			return errors.New("message start: cold target invalid")
 		}
 		meta[startprofile.ColdResumeMetaKey] = request.Cold.Metadata()
+		if request.Wake != "" {
+			meta[startprofile.WakeMetaKey] = request.Wake
+		}
 	}
 	if request.Target != "" {
 		if !validMessageStartSelectedTarget(request) {

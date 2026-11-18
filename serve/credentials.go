@@ -17,10 +17,13 @@ import (
 	credclient "github.com/openabstractions/abstraction-credentials/go/client"
 	"github.com/openabstractions/abstraction-facade/go/bootstrap"
 	"github.com/openabstractions/abstraction-facade/go/client"
+	rightswire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	rights "github.com/openabstractions/abstraction-rights/go/client"
 )
 
-const credentialsUsage = `Usage: openabstractions credentials <command>
+var credentialsUsage = strings.Replace(credentialsUsageTemplate, "{consumers}", consumerHelp(), 1)
+
+const credentialsUsageTemplate = `Usage: openabstractions credentials <command>
 
 Commands:
   add <name> --target HOST --for CONSUMER [options]
@@ -37,11 +40,10 @@ Commands:
 add options:
   --target HOST        a host the secret may be sent to, covering its
                        subdomains; repeatable, at least one
-  --for CONSUMER       a service contract that may apply it, repeatable:
-                       abstraction.download/http-execution@1,
-                       abstraction.model/resolver@1, abstraction.inference/chat@1,
-                       abstraction.inference/embed@1, abstraction.router/router@1
-  --kind bearer|header bearer sends Authorization: Bearer <secret> (default)
+  --for CONSUMER       a service contract that may apply it, repeatable;
+                       --for inference names every hosted-model consumer
+                       (marked *):
+{consumers}  --kind bearer|header bearer sends Authorization: Bearer <secret> (default)
   --header NAME        the header kind header sends
   --expires TIME       RFC 3339 expiry; rotate clears or replaces it
   --use-by PATH        also allow this program to apply it; repeatable
@@ -61,6 +63,51 @@ Exit codes: 0 done, 1 runtime not resolved or transport failure, 2 usage,
 `
 
 func validCredentialName(name string) bool { return credentials.ValidName(name) }
+
+// inferenceConsumer reports whether a seeded consumer serves hosted models:
+// the six inference modalities and the router's hosted model listing.
+func inferenceConsumer(consumer string) bool {
+	return strings.HasPrefix(consumer, "abstraction.inference/") || consumer == "abstraction.router/router@1"
+}
+
+// consumerHelp lists the generated consumers seed, one per line, so the help
+// and the wire definition name the same consumers.
+func consumerHelp() string {
+	var b strings.Builder
+	for _, consumer := range cwire.Consumers {
+		mark := " "
+		if inferenceConsumer(consumer) {
+			mark = "*"
+		}
+		fmt.Fprintf(&b, "                     %s %s\n", mark, consumer)
+	}
+	return b.String()
+}
+
+// expandConsumers replaces each --for inference with the hosted-model
+// consumers of the seed and drops repeats, keeping first-seen order.
+func expandConsumers(values []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(consumer string) {
+		if !seen[consumer] {
+			seen[consumer] = true
+			out = append(out, consumer)
+		}
+	}
+	for _, value := range values {
+		if value != "inference" {
+			add(value)
+			continue
+		}
+		for _, consumer := range cwire.Consumers {
+			if inferenceConsumer(consumer) {
+				add(consumer)
+			}
+		}
+	}
+	return out
+}
 
 // repeated collects a repeatable flag.
 type repeated []string
@@ -138,7 +185,7 @@ func credentialsCommand(args []string, stdin io.Reader, output, diagnostics io.W
 	options.bind(flags)
 	var targets, consumers, useBy repeated
 	flags.Var(&targets, "target", "host the secret may be sent to; repeatable")
-	flags.Var(&consumers, "for", "service contract that may apply it; repeatable")
+	flags.Var(&consumers, "for", "service contract that may apply it, or inference; repeatable")
 	flags.Var(&useBy, "use-by", "program allowed to apply it; repeatable")
 	kind := flags.String("kind", "bearer", "bearer or header")
 	header := flags.String("header", "", "header name for kind header")
@@ -173,7 +220,7 @@ func credentialsCommand(args []string, stdin io.Reader, output, diagnostics io.W
 	case "backend":
 		return credentialsBackend(output, diagnostics, name, *stateDir)
 	case "add":
-		reg := cwire.Registration{Name: name, Kind: *kind, Header: *header, Scope: cwire.Scope{Targets: targets, Consumers: consumers}}
+		reg := cwire.Registration{Name: name, Kind: *kind, Header: *header, Scope: cwire.Scope{Targets: targets, Consumers: expandConsumers(consumers)}}
 		if len(targets) == 0 || len(consumers) == 0 {
 			return flagMistake(diagnostics, command, credentialsUsage, "give at least one --target and one --for")
 		}
@@ -424,31 +471,16 @@ func setApplyRule(options serviceOptions, w *waiting, diagnostics io.Writer, com
 		return notResolved(command, source, err)
 	}
 	rule := rights.PolicyRule{Subject: rights.Subject{Account: account.Uid, Program: program}, Action: credentials.ActionApply, Resource: credentials.ResourceFor(name), Permit: permit}
-	for attempt := 0; attempt < 2; attempt++ {
-		call, done := w.call()
-		page, err := operator.ListPolicyContext(call, "", 1)
-		done()
-		if err != nil {
-			return &exitError{exitNotResolved, fmt.Errorf("%s: rights: %w", command, err)}
-		}
-		if page.Outcome != rights.PolicyPageOutcomePage {
-			return refusal(command, page.Outcome.String(), "rights operator")
-		}
-		call, done = w.call()
-		edit, err := operator.SetRuleContext(call, page.Revision, rule)
-		done()
-		if err != nil {
-			return &exitError{exitNotResolved, fmt.Errorf("%s: rights: %w", command, err)}
-		}
-		if edit.Outcome == rights.PolicyEditOutcomeConflict && attempt == 0 {
-			continue
-		}
-		if edit.Outcome != rights.PolicyEditOutcomeApplied {
-			return refusal(command, edit.Outcome.String(), "rights rule")
-		}
-		return nil
+	// A rights change from the command line is a request the person confirms
+	// in a popup (rights RIGHTS-O17); it waits as long as a rights grant does.
+	state, err := requestChange(operator, rightswire.PolicyChange{Kind: rightswire.ChangeKindSetRule, Rule: &rule}, defaultChangeWait, timeoutOf(func() (context.Context, context.CancelFunc) {
+		ctx, cancel := w.call()
+		return ctx, context.CancelFunc(cancel)
+	}))
+	if err != nil {
+		return changeUncertain(command, err)
 	}
-	return nil
+	return changeFailure(command, state)
 }
 
 // credentialsBackendGOOS is the platform credentialsBackend judges; tests set it.

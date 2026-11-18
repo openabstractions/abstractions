@@ -74,6 +74,14 @@ func (c *runtimeContent) restoreRemovedArchive(ctx context.Context, questions *r
 		actor.Account != subject.Account || !identity.SameSubjectProgram(actor.Program, subject.Program) {
 		return answer("forbidden")
 	}
+	// Concurrent Panel requests observe the first request's durable admission
+	// before probing the archive again. The archive admits one metadata probe
+	// at a time, and each waiting request keeps its caller's deadline.
+	unlock, err := cas.LockContext(ctx, filepath.Join(c.store.Root(), "archive-restore-admission"), false)
+	if err != nil {
+		return answer("unavailable")
+	}
+	defer unlock()
 	jobs, err := c.archiveRestoreJobs()
 	if err != nil {
 		return answer("unavailable")

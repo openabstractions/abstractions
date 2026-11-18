@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -419,12 +420,16 @@ func pendingFixture() askclient.RecordMetadata {
 	return firstUseFixture("question-1", nativePresenterProgram("opencode", "opencode.exe"), "abstraction.model/lookup", "hf")
 }
 
+// nativePresenterProgram is an absolute program path below a folder no test
+// creates, in the temporary folder. The presenter reads a requester's
+// program only on a local drive (identity.LocalPath), and a checkout may lie
+// on a share, as a WSL checkout under /mnt/c lies on 9p.
 func nativePresenterProgram(parts ...string) string {
-	path, err := filepath.Abs(filepath.Join(append([]string{"presenter-fixtures"}, parts...)...))
-	if err != nil {
-		panic(err)
+	root := os.TempDir()
+	if resolved, err := filepath.EvalSymlinks(root); err == nil {
+		root = resolved
 	}
-	return path
+	return filepath.Join(append([]string{root, "presenter-fixtures"}, parts...)...)
 }
 
 func TestPresenterDefersWhileLocked(t *testing.T) {

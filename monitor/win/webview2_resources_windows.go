@@ -168,7 +168,7 @@ type iUnknown struct {
 type webResourceRequestedHandler struct{ vtbl *handlerVtbl }
 
 // iidWebResourceRequested is ICoreWebView2WebResourceRequestedEventHandler.
-var iidWebResourceRequested = syscall.GUID{0xab00b74c, 0x15f1, 0x4646, [8]byte{0x80, 0xe8, 0xe7, 0x63, 0x41, 0xd2, 0x5d, 0x71}}
+var iidWebResourceRequested = newGUID(0xab00b74c, 0x15f1, 0x4646, [8]byte{0x80, 0xe8, 0xe7, 0x63, 0x41, 0xd2, 0x5d, 0x71})
 
 var (
 	shlwapi           = windows.NewLazySystemDLL("shlwapi.dll")
@@ -343,7 +343,7 @@ func (w *webView2Window) respond(args *coreWebView2WebResourceRequestedEventArgs
 	if stream == 0 {
 		return
 	}
-	defer release(unsafe.Pointer(stream))
+	defer release(nativePointer(stream))
 	status := resp.Status
 	if status == 0 {
 		status = http.StatusOK

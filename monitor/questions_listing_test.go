@@ -56,7 +56,7 @@ func TestSelfRegisteredPathTitleReadsByStem(t *testing.T) {
 	program := filepath.Join(t.TempDir(), "modelhostd.exe")
 	record := selfRegisteredRecord(t, program, program)
 	content := &askclient.CatalogueContent{Slots: map[string]string{"program": program, "title": program}}
-	if _, sentence, ok := selfRegisteredWords(record, "", content); !ok || sentence != "modelhostd was added to OpenAbstractions. Keep it?" {
+	if _, sentence, ok := selfRegisteredWords(record, "", content); !ok || sentence != "Let modelhostd work with OpenAbstractions?" {
 		t.Fatalf("sentence %q ok %v", sentence, ok)
 	}
 	if record.Key != asks.SelfRegisteredKey {

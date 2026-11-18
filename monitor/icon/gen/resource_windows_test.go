@@ -128,7 +128,7 @@ func TestCompiledNativeResourceNames(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if size != uintptr(len(want)) || data == 0 || !bytes.Equal(unsafe.Slice((*byte)(unsafe.Pointer(data)), int(size)), want) {
+				if size != uintptr(len(want)) || data == 0 || !bytes.Equal(unsafe.Slice((*byte)(nativePointer(data)), int(size)), want) {
 					t.Errorf("resource %s changed payload", name)
 				}
 				quoted, _ := syscall.UTF16PtrFromString("\"" + name + "\"")

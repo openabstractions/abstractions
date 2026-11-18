@@ -54,6 +54,11 @@ inline const std::vector<std::string> kRevealStyleNames
 inline constexpr std::string_view kRevealStyleHighlight
 inline constexpr std::string_view kRevealStyleScrollTo
 inline constexpr std::string_view kRevealStyleFrame
+inline const std::vector<std::string> kOpenHandleStateNames
+inline constexpr std::string_view kOpenHandleStatePending
+inline constexpr std::string_view kOpenHandleStateOpened
+inline constexpr std::string_view kOpenHandleStateExpired
+inline constexpr std::string_view kOpenHandleStateRefused
 inline const std::vector<std::string> kVersions
 inline const std::vector<std::string> kExtensions
 inline const std::vector<std::string> kBindingTools
@@ -187,6 +192,9 @@ struct CommandDeclaration
   std::vector<DeclaredCommand> commands
 struct ApplicationsQuery
   std::string application
+struct OpenHandleQuery
+  std::string open_handle
+  std::string application
 struct ListedInstance
   std::string instance
   std::string interface
@@ -203,11 +211,18 @@ struct ListedOpenVerb
 struct ApplicationOpenVerbs
   std::string application
   std::vector<ListedOpenVerb> verbs
+struct OpenHandle
+  std::string handle
+  std::string application
+  std::string state
+  std::string instance
+  std::string reason
 struct ApplicationListing
   ReadingOutcome outcome
   std::vector<ListedApplication> applications
   std::string reason
   std::vector<ApplicationOpenVerbs> open_verbs
+  std::optional<OpenHandle> open
 struct CommandsQuery
   std::string application
   std::string instance
@@ -315,6 +330,8 @@ inline std::string to_json(const CommandDeclaration& v)
 inline CommandDeclaration from_json<CommandDeclaration>(std::string_view data)
 inline std::string to_json(const ApplicationsQuery& v)
 inline ApplicationsQuery from_json<ApplicationsQuery>(std::string_view data)
+inline std::string to_json(const OpenHandleQuery& v)
+inline OpenHandleQuery from_json<OpenHandleQuery>(std::string_view data)
 inline std::string to_json(const ListedInstance& v)
 inline ListedInstance from_json<ListedInstance>(std::string_view data)
 inline std::string to_json(const ListedApplication& v)
@@ -323,6 +340,8 @@ inline std::string to_json(const ListedOpenVerb& v)
 inline ListedOpenVerb from_json<ListedOpenVerb>(std::string_view data)
 inline std::string to_json(const ApplicationOpenVerbs& v)
 inline ApplicationOpenVerbs from_json<ApplicationOpenVerbs>(std::string_view data)
+inline std::string to_json(const OpenHandle& v)
+inline OpenHandle from_json<OpenHandle>(std::string_view data)
 inline std::string to_json(const ApplicationListing& v)
 inline ApplicationListing from_json<ApplicationListing>(std::string_view data)
 inline std::string to_json(const CommandsQuery& v)
@@ -385,6 +404,8 @@ inline std::string encode_command_declaration(const CommandDeclaration& v)
 inline CommandDeclaration decode_command_declaration(std::string_view in)
 inline std::string encode_applications_query(const ApplicationsQuery& v)
 inline ApplicationsQuery decode_applications_query(std::string_view in)
+inline std::string encode_open_handle_query(const OpenHandleQuery& v)
+inline OpenHandleQuery decode_open_handle_query(std::string_view in)
 inline std::string encode_listed_instance(const ListedInstance& v)
 inline ListedInstance decode_listed_instance(std::string_view in)
 inline std::string encode_listed_application(const ListedApplication& v)
@@ -393,6 +414,8 @@ inline std::string encode_listed_open_verb(const ListedOpenVerb& v)
 inline ListedOpenVerb decode_listed_open_verb(std::string_view in)
 inline std::string encode_application_open_verbs(const ApplicationOpenVerbs& v)
 inline ApplicationOpenVerbs decode_application_open_verbs(std::string_view in)
+inline std::string encode_open_handle(const OpenHandle& v)
+inline OpenHandle decode_open_handle(std::string_view in)
 inline std::string encode_application_listing(const ApplicationListing& v)
 inline ApplicationListing decode_application_listing(std::string_view in)
 inline std::string encode_commands_query(const CommandsQuery& v)

@@ -24,7 +24,7 @@ func TestApplicationV3GatewayDescriptionOrder(t *testing.T) {
 			d.Kinds = append(d.Kinds, d.Kinds[0])
 			d.Commands[0].Targets = []string{"edge"}
 		}},
-		{"kind schema before fields", "schema:node", func(d *appmodel.Description) {
+		{"kind schema before fields", "schema:node:oneOf", func(d *appmodel.Description) {
 			d.Kinds[0].Schema = `{"oneOf":[]}`
 			d.Kinds[0].Fields = []appmodel.KindField{{Name: "", Role: appmodel.FieldRoleOrdinary}}
 		}},
@@ -57,7 +57,14 @@ func TestApplicationV3GatewayDescriptionOrder(t *testing.T) {
 		}},
 		{"longrunning before title", "long_running:node.x", func(d *appmodel.Description) { d.Commands[0].LongRunning = true; d.Commands[0].Title = "" }},
 		{"title before schemas", "title:node.x", func(d *appmodel.Description) { d.Commands[0].Title = ""; d.Commands[0].InputSchema = `{"oneOf":[]}` }},
-		{"output schema before bounds", "schema:node.x", func(d *appmodel.Description) { d.Commands[0].OutputSchema = `{"oneOf":[]}`; d.Bounds.SnapshotBytes = 1 }},
+		{"output schema before bounds", "schema:node.x:oneOf", func(d *appmodel.Description) { d.Commands[0].OutputSchema = `{"oneOf":[]}`; d.Bounds.SnapshotBytes = 1 }},
+		{"input schema names $schema", "schema:node.x:$schema", func(d *appmodel.Description) {
+			d.Commands[0].InputSchema = `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}`
+		}},
+		{"nested format names format", "schema:node:format", func(d *appmodel.Description) {
+			d.Kinds[0].Schema = `{"type":"object","properties":{"at":{"type":"string","format":"date-time"}}}`
+		}},
+		{"unnameable keyword keeps the bare word", "schema:node", func(d *appmodel.Description) { d.Kinds[0].Schema = `{"bad key":1}` }},
 		{"snapshot above max", "bounds", func(d *appmodel.Description) { d.Bounds.SnapshotBytes = 262145 }},
 		{"change above max", "bounds", func(d *appmodel.Description) { d.Bounds.ChangeBytes = 262145 }},
 	} {

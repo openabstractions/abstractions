@@ -44,7 +44,7 @@ func addModelsConnectTool(server *mcp.Server, backend ModelsConnectBackend, boun
 		}
 	}
 	mcp.AddTool(server, &mcp.Tool{Name: ToolModelsConnect,
-		Description: "Ask the person to connect a hosted model provider. OA's own popup takes the key; never ask for, pass or return a key. On unavailable, the person can finish setup from its Questions row in the Panel.",
+		Description: "Ask the person to connect a hosted model provider. OA's popup takes the key; never ask for, pass or return a key. If unavailable, the person finishes setup from its Questions row in the Panel.",
 		Meta:        map[string]any{"org.openabstractions/provider_bindings": bindings, "org.openabstractions/required_router_guarantees": []string{router.GuaranteeProviderSetup}},
 		Annotations: &mcp.ToolAnnotations{IdempotentHint: true, OpenWorldHint: boolp(true)},
 		InputSchema: map[string]any{"type": "object", "properties": map[string]any{"provider": map[string]any{"type": "string", "enum": names}}, "required": []string{"provider"}, "additionalProperties": false}},

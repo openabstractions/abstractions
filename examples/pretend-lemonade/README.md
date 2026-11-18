@@ -166,7 +166,7 @@ download and tries to read the log history.
 
 A Python app's identity is the interpreter file its process runs, so the app
 runs from its own interpreter copy inside its own folder
-([python-identity findings](../../research/python-identity/FINDINGS.md)):
+(python-identity findings (`../../research/python-identity/FINDINGS.md`)):
 on Windows, a venv whose `Scripts` holds a copy of `python.exe` with
 `python3X.dll`, `python3.dll` and the `vcruntime140` DLLs beside it. Its
 records, questions and rules then name that copy, and a grant covers that

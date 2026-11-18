@@ -22,7 +22,9 @@ import (
 
 func rightsAsksEndpoint(t *testing.T, dir, name string) string {
 	t.Helper()
-	if runtime.GOOS == "darwin" {
+	// Durable state directories include the test name and can exceed Unix's
+	// socket-path limit. The socket has its own short, caller-owned directory.
+	if runtime.GOOS != "windows" {
 		short, err := os.MkdirTemp("/tmp", "rights-asks-")
 		if err != nil {
 			t.Fatal(err)

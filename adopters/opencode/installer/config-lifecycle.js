@@ -1,9 +1,9 @@
-// Fixed app-installer helper. Runs under the pinned private CLI's documented
-// Bun host mode; it performs no OA requests and installs no permissions.
+// Fixed app-installer helper. The native installer host runs it with the
+// verified official OpenCode Desktop program as Node (ELECTRON_RUN_AS_NODE).
+// It performs no OA requests and installs no permissions.
 import {parse, parseTree, findNodeAtLocation, createScanner, SyntaxKind, modify, applyEdits} from 'jsonc-parser';
-import {readFileSync, existsSync, mkdirSync, writeFileSync, unlinkSync, rmSync} from 'node:fs';
+import {readFileSync, existsSync, mkdirSync, writeFileSync, unlinkSync} from 'node:fs';
 import {join, dirname, resolve, basename, isAbsolute} from 'node:path';
-import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {readConfigSnapshot, replaceConfig, mergeProvider, compatibleProvider, headings, guaranteeFor,
@@ -17,10 +17,9 @@ class PluginRegistrationConflict extends Error {}
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const spec = entry => typeof entry === 'string' ? entry : Array.isArray(entry) && typeof entry[0] === 'string' ? entry[0] : null;
 const digest = bytes => bytes === null ? null : createHash('sha256').update(bytes).digest('hex');
-// The official staged command owns its formatting. Applying its owned delta
-// uses the same editor without reformatting unrelated source bytes.
+// Applying the owned registration uses the same editor without reformatting
+// unrelated source bytes.
 const format = {};
-export const officialCLIHash = '5283c2cd5b4285855daa97e6f7d17bf48146227cdf2a940e79e0f2b7869fd06e';
 
 function payloadName(name) {
   return typeof name==='string'&&!name.includes('\\')&&!name.includes(':')&&!name.split('/').some(part=>['','.','..'].includes(part));
@@ -66,29 +65,6 @@ function bootstrapMemberKey(name) {
   return name.toLowerCase();
 }
 
-export function readBootstrapPayload(root=resolve(dirname(fileURLToPath(import.meta.url)),'../../..','bootstrap'), pinnedInventory) {
-  const inventory=installedPayloadIndex(join(root,'files.json'),pinnedInventory,'bootstrap');
-  const folded=new Set(),rows=[];
-  for(const [name,pin] of Object.entries(inventory).sort()) {
-    const key=bootstrapMemberKey(name);
-    if(folded.has(key)||!payloadPin(pin))throw new Error('Invalid installed bootstrap member');
-    folded.add(key);
-    const load=()=>{
-      const source=readConfigSnapshot(join(root,...name.split('/')),{ownedLeaf:true});
-      if(!source.bytes||source.bytes.length!==pin.bytes||digest(source.bytes)!==pin.sha256)throw new Error('Installed bootstrap member changed');
-      return source.bytes;
-    };
-    if(pinnedInventory===undefined)rows.push({name,bytes:load(),sha256:pin.sha256});
-    else {
-      let bytes;
-      rows.push({name,size:pin.bytes,sha256:pin.sha256,get bytes(){return bytes??=load();}});
-    }
-  }
-  for(const name of ['config/package.json','config/package-lock.json','config/node_modules/@opencode-ai/plugin/package.json','cache/bin/rg.exe'])
-    if(!rows.some(row=>row.name===name))throw new Error('Incomplete installed bootstrap closure');
-  return rows;
-}
-
 function bootstrapPath(name,directory,cache) {
   if(!bootstrapName(name)||!isAbsolute(directory)||!isAbsolute(cache))throw new Error('Invalid bootstrap leaf root');
   return join(name.startsWith('config/')?directory:cache,...name.slice(name.indexOf('/')+1).split('/'));
@@ -113,95 +89,9 @@ function ownedBootstrap(previous,cache) {
   return owned;
 }
 
-function bootstrapPlans(records,directory,cache,previous,operation) {
-  if(!records.length&&!previous)return [];
-  const names=new Set(records.map(row=>row.name)),owned=ownedBootstrap(previous,cache);
-  const priorSpellings=new Map([...owned.keys()].map(name=>[bootstrapMemberKey(name),name]));
-  for(const record of records) {
-    const prior=priorSpellings.get(bootstrapMemberKey(record.name));
-    if(prior&&prior!==record.name)throw new Error('Bootstrap member spelling changed');
-  }
-  const plans=[];
-  // The bootstrap only pre-seeds OpenCode's own first-use install on a fresh
-  // account; OA's plugin loads its @opencode-ai/plugin from its own folder.
-  // A person's existing config folder (their package.json, lock and
-  // dependencies, kept by OpenCode for their own plugins) is theirs: when
-  // any config leaf OA did not create exists, OA writes none of the config
-  // closure, so their dependency tree never mixes with OA's. A missing
-  // ripgrep is written on its own.
-  const snapshotFor=record=>leafSnapshot(bootstrapPath(record.name,directory,cache),owned.get(record.name)?.leaf);
-  const observed=new Map();
-  const observe=record=>{
-    if(!observed.has(record.name))observed.set(record.name,snapshotFor(record));
-    return observed.get(record.name);
-  };
-  const theirs=root=>records.some(record=>record.name.startsWith(root)&&!owned.has(record.name)&&observe(record).bytes!==null);
-  const kept={'config/':operation!=='remove'&&theirs('config/'),'cache/':operation!=='remove'&&theirs('cache/')};
-  for(const record of records) {
-    const prior=owned.get(record.name),current=observe(record);
-    if(prior&&(current.identity!==prior.identity||current.sha256!==prior.sha256))throw new Error('An owned bootstrap leaf was edited');
-    if(operation==='remove') {
-      if(prior)plans.push({...current,name:record.name,after:null,owned:true});
-      continue;
-    }
-    if(!prior&&(current.bytes!==null||kept[record.name.slice(0,record.name.indexOf('/')+1)])) {
-      plans.push({...current,name:record.name,after:current.bytes,owned:false,theirs:true});
-      continue;
-    }
-    const samePinnedLeaf=current.bytes!==null&&current.sha256===record.sha256&&current.bytes.length===record.size;
-    plans.push({...current,name:record.name,after:samePinnedLeaf?current.bytes:record.bytes,owned:true});
-  }
-  // A dependency upgrade can retire filenames. The committed ownership receipt
-  // retains their exact identity and bytes until this transaction removes them.
-  for(const [name,prior] of owned) {
-    if(names.has(name))continue;
-    const current=leafSnapshot(bootstrapPath(name,directory,cache),prior.leaf);
-    if(current.identity!==prior.identity||current.sha256!==prior.sha256)throw new Error('An owned bootstrap leaf was edited');
-    plans.push({...current,name,after:null,owned:true});
-  }
-  return plans;
-}
-
 function bootstrapUnchanged(item) {
   const current=leafSnapshot(item.path,item.leaf);
   if(current.identity!==item.identity||current.sha256!==item.sha256)throw new Error('Bootstrap leaf changed while installer ran');
-}
-
-const bootstrapAfter = item => item.after===item.bytes ? item.sha256 : digest(item.after);
-
-function bootstrapTransaction(plans,cache) {
-  if(!plans.length)return null;
-  return {cache,files:plans.filter(item=>item.sha256!==bootstrapAfter(item)).map(item=>({name:item.name,identity:item.identity,
-    leaf:item.leaf,before:item.bytes===null?null:item.bytes.toString('base64'),after:bootstrapAfter(item),written:null}))};
-}
-
-function applyBootstrap(plans,transaction) {
-  for(const item of plans)bootstrapUnchanged(item);
-  for(const item of plans) {
-    if(item.sha256===bootstrapAfter(item))continue;
-    replaceConfig(item.path,item.bytes,item.after,item.identity,{backup:false,leaf:item.leaf});
-    transaction.files.find(row=>row.name===item.name).written=leafSnapshot(item.path).leaf;
-  }
-}
-
-function bootstrapOwnership(plans,cache) {
-  return {cache,files:plans.filter(item=>item.owned&&item.after!==null).map(item=>{
-    const current=leafSnapshot(item.path);
-    if(current.sha256!==bootstrapAfter(item)||!current.leaf.file||current.leaf.links!==1)throw new Error('Created bootstrap leaf changed before commit');
-    return {name:item.name,identity:current.identity,leaf:current.leaf,sha256:current.sha256,created:true};
-  }),
-  // Bootstrap leaves left as the person's: present and not created by OA, or
-  // in a config folder that is theirs. OA never writes or removes them.
-  theirs:plans.filter(item=>item.theirs).map(item=>item.name)};
-}
-
-function committedBootstrap(plans, cache, previous) {
-  if(!previous)return plans.length===0;
-  if(plans.some(item=>item.sha256!==bootstrapAfter(item)))return false;
-  const files=plans.filter(item=>item.owned&&item.bytes!==null).map(item=>({
-    name:item.name,identity:item.identity,leaf:item.leaf,sha256:item.sha256,created:true,
-  }));
-  return same({cache,files,theirs:plans.filter(item=>item.theirs).map(item=>item.name)},previous);
 }
 
 function rollbackBootstrapPlans(transaction,records,directory,cache,previous) {
@@ -227,13 +117,6 @@ function rollbackBootstrapPlans(transaction,records,directory,cache,previous) {
 function restoreBootstrap(plans) {
   for(const item of plans)bootstrapUnchanged(item);
   for(const item of [...plans].reverse())replaceConfig(item.path,item.bytes,item.after,item.identity,{backup:false,leaf:item.leaf});
-}
-
-function seedBootstrapStage(records,stage) {
-  for(const item of records) {
-    const path=bootstrapPath(item.name,join(stage,'config','opencode'),join(stage,'cache','opencode'));
-    mkdirSync(dirname(path),{recursive:true});writeFileSync(path,item.bytes,{flag:'wx'});
-  }
 }
 
 export function document(text) {
@@ -286,17 +169,6 @@ export function removeOwned(text, owned, recovery = null) {
     document(result);
   }
   return result;
-}
-
-export function installedDelta(before, staged, prior, currentSpec) {
-  const original = document(before ?? '{}').plugin ?? [];
-  const next = document(staged).plugin ?? [];
-  const additions = next.filter(entry => spec(entry) === currentSpec);
-  if (additions.length !== 1) throw new Error('Official command did not produce one exact owned registration');
-  const foreignBefore = original.filter(entry => !prior.some(value => spec(value) === spec(entry)));
-  const foreignAfter = next.filter(entry => spec(entry) !== currentSpec);
-  if (!same(foreignBefore, foreignAfter)) throw new Error('Official command changed foreign registrations');
-  return appendOwned(removeOwned(before, prior), additions);
 }
 
 function appendOwned(result, additions) {
@@ -438,8 +310,11 @@ function ownMCP(plans, selected, launcher, seed) {
   return null;
 }
 
-export function stageInstall({directory, stage, plugin, cli, mcpLauncher, mcpSeed = null, owned = {server: [], tui: []}, ownedFiles = [], seed = null}, run = spawnSync, verifyCLI = path => digest(readFileSync(path)) === officialCLIHash, bootstrap = readBootstrapPayload) {
-  if (!verifyCLI(cli)) throw new Error('Private official CLI identity changed');
+// OpenCode reads a plugin registration as the plugin folder's absolute path
+// in the "plugin" list of the server and TUI documents. The installer appends
+// that one entry to each selected document and records it as owned.
+export function stageInstall({directory, plugin, mcpLauncher, mcpSeed = null, owned = {server: [], tui: []}, ownedFiles = [], seed = null}) {
+  if (typeof plugin !== 'string' || !isAbsolute(plugin)) throw new Error('The plugin registration must be an absolute folder');
   const state = selectedDocuments(directory);
   const plans=state.all.map(item=>{
     const recorded = ownedFiles.filter(record => resolve(record.path) === resolve(item.path));
@@ -454,40 +329,8 @@ export function stageInstall({directory, stage, plugin, cli, mcpLauncher, mcpSee
   }
   const nextSeed=ownProvider(plans,selected.find(item=>item.kind==='server'),plugin,seed);
   const nextMCP=ownMCP(plans,selected.find(item=>item.kind==='server'),mcpLauncher,mcpSeed);
-  mkdirSync(stage, {recursive: false});
-  const config = join(stage, 'config', 'opencode'); mkdirSync(config, {recursive: true});
-  for (const item of selected) {
-    const name = item.kind === 'server' ? (item.path.endsWith('.jsonc') ? 'opencode.jsonc' : 'opencode.json')
-      : (item.path.endsWith('.jsonc') ? 'tui.jsonc' : 'tui.json');
-    item.stagedPath = join(config, name);
-    // Upstream may normalize plugin specifiers in its output. Only the
-    // private document receives upstream writes; the original is edited below.
-    writeFileSync(item.stagedPath, '{"plugin":[]}');
-  }
-  const home = join(stage, 'home'); mkdirSync(home);
-  const temp=join(stage,'tmp');mkdirSync(temp);
-  for (const name of ['user.npmrc','global.npmrc']) writeFileSync(join(stage,name),'');
-  writeFileSync(join(stage,'empty-models.json'),'{}');
-  seedBootstrapStage(bootstrap(),stage);
-  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => /^(SystemRoot|WINDIR|COMSPEC|PATHEXT|PROCESSOR_ARCHITECTURE)$/i.test(key)));
-  Object.assign(env, {HOME:home, USERPROFILE:home, APPDATA:join(home,'AppData','Roaming'), LOCALAPPDATA:join(home,'AppData','Local'),
-    XDG_CONFIG_HOME:join(stage,'config'), XDG_CACHE_HOME:join(stage,'cache'), XDG_DATA_HOME:join(stage,'data'), XDG_STATE_HOME:join(stage,'state'),
-    OPENCODE_CONFIG_DIR:config, OPENCODE_DISABLE_PROJECT_CONFIG:'true', OPENCODE_DISABLE_MODELS_FETCH:'true', OPENCODE_PURE:'true',
-    OPENCODE_DISABLE_DEFAULT_PLUGINS:'true', OPENCODE_MODELS_PATH:join(stage,'empty-models.json'), TEMP:temp,TMP:temp,
-    npm_config_userconfig:join(stage,'user.npmrc'),npm_config_globalconfig:join(stage,'global.npmrc'),npm_config_cache:join(stage,'npm-cache'),
-    npm_config_offline:'true', npm_config_ignore_scripts:'true', npm_config_audit:'false', npm_config_fund:'false',npm_config_update_notifier:'false'});
-  // BUN_BE_BUN and all inherited runtime/preload options are absent here.
-  const result = run(cli, ['plugin', plugin, '--global'], {cwd:stage, env, encoding:'utf8', timeout:60000, windowsHide:true});
-  if (result.error || result.status !== 0) {
-    const clean=value=>String(value??'').replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g,'').trim();
-    const detail=clean(result.error?.message)||clean(result.stderr)||clean(result.stdout)||`exit ${result.status}`;
-    throw new Error(`Official plugin command failed: ${detail.slice(0,2000)}`);
-  }
-  for (const item of selected) {
-    const {owned} = installedDelta('{}', readFileSync(item.stagedPath,'utf8'), [], plugin);
-    Object.assign(item, appendOwned(item.text ?? '{}', owned));
-  }
-  return {plans, guards: state.all, seed:nextSeed, mcpSeed:nextMCP, command:{program:cli, arguments:['plugin',plugin,'--global'], status:result.status, stdout:result.stdout, stderr:result.stderr}};
+  for (const item of selected) Object.assign(item, appendOwned(item.text ?? '{}', [plugin]));
+  return {plans, guards: state.all, seed:nextSeed, mcpSeed:nextMCP};
 }
 
 export function removalPlans(directory, ownedFiles, seed = null, mcpSeed = null) {
@@ -594,7 +437,7 @@ function committedConfigPlan(request, previous, {all:documents, selected}) {
       ownProvider(plans.map(item=>({...item})),selected[0],request.plugin,previous.seed);
     }
     ownMCP(plans,null,request.mcpLauncher,null);
-    return {exact,plans,guards:documents,seed:previous.seed,mcpSeed:null,command:{skipped:'configuration_current'}};
+    return {exact,plans,guards:documents,seed:previous.seed,mcpSeed:null};
   } catch {
     return null;
   }
@@ -611,7 +454,6 @@ export function main(request, dependencies = {}) {
   if (!['install','repair','upgrade','remove','rollback'].includes(request.operation)) throw new Error('Unknown installer operation');
   const receiptPath = join(request.state,'owned.json');
   const transactionPath = join(request.state,'pending.json');
-  const records=(dependencies.bootstrap??(()=>readBootstrapPayload(undefined,process.env.OA_BOOTSTRAP_INVENTORY_SHA256)))();
   mkdirSync(request.state,{recursive:true});
   if (request.operation === 'rollback') {
     if (!existsSync(transactionPath)) return {operation:'rollback',unchanged:true};
@@ -625,7 +467,9 @@ export function main(request, dependencies = {}) {
       const allowed = new Set(selectedDocuments(request.directory).all.map(item=>resolve(item.path)));
       if (!transaction.plans.every(item=>allowed.has(resolve(item.path)))) throw new Error('Unexpected rollback target');
     }
-    const restore=rollbackBootstrapPlans(transaction.bootstrap,records,request.directory,request.cache,old?.bootstrap);
+    // Only a transaction an earlier package version left can hold bootstrap
+    // leaves; this version writes none.
+    const restore=rollbackBootstrapPlans(transaction.bootstrap,[],request.directory,request.cache,old?.bootstrap);
     if(transaction.configUnchanged!==true)rollbackTransaction(transaction);
     restoreBootstrap(restore);
     if (transaction.previousReceipt === null) {if (existsSync(receiptPath)) unlinkSync(receiptPath);}
@@ -648,29 +492,28 @@ export function main(request, dependencies = {}) {
   const documents=selectedDocuments(request.directory);
   const allowed=new Set(documents.all.map(item=>resolve(item.path)));
   if (!ownedFiles.every(item=>allowed.has(resolve(item.path)) && Array.isArray(item.owned) && item.owned.every(entry=>spec(entry)))) throw new Error('Invalid ownership receipt');
-  const leaves=bootstrapPlans(records,request.directory,request.cache,previous?.bootstrap,request.operation);
   const pluginPin=process.env.OA_PLUGIN_INVENTORY_SHA256;
   const verifyPlugin=dependencies.verifyPlugin??(pluginPin===undefined?null:plugin=>verifyInstalledPlugin(plugin,pluginPin));
   if(request.operation!=='remove'&&verifyPlugin)verifyPlugin(request.plugin);
   const committed=request.operation==='remove'||!verifyPlugin?null:committedConfigPlan(request,previous,documents);
-  if(committed?.exact&&committedBootstrap(leaves,request.cache,previous.bootstrap)) {
+  // Earlier package versions pre-seeded OpenCode's own first-use install
+  // (previous.bootstrap). Those files stay where they are as OpenCode's, and
+  // this receipt no longer lists them.
+  if(committed?.exact&&!previous.bootstrap) {
     return {operation:request.operation,directory:request.directory,unchanged:true};
   }
   const plan = request.operation === 'remove' ? removalPlans(request.directory, ownedFiles, previous?.seed, previous?.mcpSeed)
-    : committed??stageInstall({...request,ownedFiles,seed:previous?.seed,mcpSeed:previous?.mcpSeed},dependencies.run,dependencies.verifyCLI,()=>records);
+    : committed??stageInstall({...request,ownedFiles,seed:previous?.seed,mcpSeed:previous?.mcpSeed});
   const configWrites=committed?[]:plan.plans.map(item=>({kind:item.kind,path:item.path,identity:item.identity,
     before:item.bytes===null?null:item.bytes.toString('base64'),after:item.text}));
-  const transaction={directory:request.directory,previousReceipt,plans:configWrites,bootstrap:bootstrapTransaction(leaves,request.cache)};
+  const transaction={directory:request.directory,previousReceipt,plans:configWrites,bootstrap:null};
   if(committed)transaction.configUnchanged=true;
   writeFileSync(transactionPath,JSON.stringify(transaction),{flag:'wx',mode:0o600});
-  try {applyBootstrap(leaves,transaction.bootstrap);}
-  finally {writeFileSync(transactionPath,JSON.stringify(transaction),{mode:0o600});}
   if(committed)checkConfigGuards(plan.guards);
   else applyPair(plan.plans, plan.guards);
-  const result={operation:request.operation,directory:request.directory,command:plan.command,seed:plan.seed,
+  const result={operation:request.operation,directory:request.directory,seed:plan.seed,
     files:plan.plans.map(item => ({kind:item.kind,path:item.path,before:item.sha256,after:digest(item.text === null ? null : Buffer.from(item.text)),owned:item.owned ?? []}))};
   if(plan.mcpSeed)result.mcpSeed=plan.mcpSeed;
-  if(records.length||previous?.bootstrap)result.bootstrap=bootstrapOwnership(leaves,request.cache);
   writeFileSync(receiptPath,JSON.stringify(result,null,2),{mode:0o600});
   if (plan.plans.some(item => item.repaired)) {
     process.stderr.write('OpenAbstractions restored edited installer-owned settings and retained the prior settings in its backup.\n');
@@ -679,7 +522,7 @@ export function main(request, dependencies = {}) {
 }
 
 export function runConfigureRequest(request, work, dependencies) {
-  if (resolve(request.work)!==work || resolve(request.stage)!==join(work,'stage')) throw new Error('Invalid fixed helper workspace');
+  if (resolve(request.work)!==work) throw new Error('Invalid fixed helper workspace');
   try {
     const result = main(request, dependencies);
     writeFileSync(join(work, 'result.json'), JSON.stringify(result,null,2), {flag:'wx'});
@@ -687,8 +530,6 @@ export function runConfigureRequest(request, work, dependencies) {
   } catch (error) {
     writeFileSync(join(work,'result.json'),JSON.stringify({error:error.message}),{flag:'wx'});
     return error instanceof PluginRegistrationConflict ? pluginRegistrationConflictExit : 1;
-  } finally {
-    rmSync(request.stage,{recursive:true,force:true});
   }
 }
 

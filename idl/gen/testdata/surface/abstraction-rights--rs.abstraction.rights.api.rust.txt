@@ -101,6 +101,29 @@ pub enum DecisionSource
   pub const ALL: [Self; 5]
   pub fn as_str(self) -> &'static str
   pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum ChangeKind
+  SetRule
+  RevokeRule
+  SetDefault
+  RegisterAction
+  RetireAction
+  Declaration
+  pub const ALL: [Self; 6]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum ChangeRequestOutcome
+  Applied
+  Pending
+  Refused
+  Expired
+  Conflict
+  Unknown
+  Invalid
+  Forbidden
+  Unavailable
+  pub const ALL: [Self; 9]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum ResourceSelectorKind
   One
   All
@@ -269,6 +292,28 @@ pub struct DecisionExplanation
   policy_revision: ::std::string::String
   source: ::std::option::Option<DecisionSource>
   default_name: ::std::string::String
+pub struct PolicyChange
+  kind: ChangeKind
+  expected_revision: ::std::string::String
+  rule: ::std::option::Option<PolicyRule>
+  ttl_ms: i64
+  why: ::std::string::String
+  name: ::std::string::String
+  on: bool
+  action: ::std::string::String
+  program: ::std::string::String
+  rules: ::std::vec::Vec<PolicyRule>
+  address: ::std::string::String
+pub struct ChangeRequestState
+  outcome: ChangeRequestOutcome
+  id: ::std::string::String
+  revision: ::std::string::String
+  change: ::std::option::Option<PolicyChange>
+  expires: ::std::string::String
+  exempt: bool
+pub struct ChangeRequestPage
+  outcome: PolicyPageOutcome
+  requests: ::std::vec::Vec<ChangeRequestState>
 pub struct PermissionKey
   action: ::std::string::String
   resource_profile: ::std::string::String
@@ -404,6 +449,9 @@ pub trait AuthorizationOperator
   fn retire_action(&self, expected_revision: ::std::string::String, action: ::std::string::String) -> ::std::result::Result<ActionEdit, Self::Error>
   fn explain_for(&self, subject: Subject, action: ::std::string::String, resource: ::std::string::String) -> ::std::result::Result<DecisionExplanation, Self::Error>
   fn list_defaults(&self) -> ::std::result::Result<DefaultPage, Self::Error>
+  fn request_change(&self, change: PolicyChange, wait_ms: i64) -> ::std::result::Result<ChangeRequestState, Self::Error>
+  fn observe_change_request(&self, id: ::std::string::String, wait_ms: i64) -> ::std::result::Result<ChangeRequestState, Self::Error>
+  fn list_change_requests(&self) -> ::std::result::Result<ChangeRequestPage, Self::Error>
   fn set_default(&self, expected_revision: ::std::string::String, name: ::std::string::String, on: bool) -> ::std::result::Result<DefaultEdit, Self::Error>
 pub struct AuthorizationOperatorClient<T>
   pub fn new(transport: T) -> Self
@@ -482,6 +530,12 @@ pub fn encode_default_edit_document(v: &DefaultEdit) -> ::std::result::Result<::
 pub fn decode_default_edit_document(data: &[u8]) -> ::std::result::Result<DefaultEdit, Refusal>
 pub fn encode_decision_explanation_document(v: &DecisionExplanation) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
 pub fn decode_decision_explanation_document(data: &[u8]) -> ::std::result::Result<DecisionExplanation, Refusal>
+pub fn encode_policy_change_document(v: &PolicyChange) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_policy_change_document(data: &[u8]) -> ::std::result::Result<PolicyChange, Refusal>
+pub fn encode_change_request_state_document(v: &ChangeRequestState) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_change_request_state_document(data: &[u8]) -> ::std::result::Result<ChangeRequestState, Refusal>
+pub fn encode_change_request_page_document(v: &ChangeRequestPage) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_change_request_page_document(data: &[u8]) -> ::std::result::Result<ChangeRequestPage, Refusal>
 pub fn encode_permission_key_document(v: &PermissionKey) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
 pub fn decode_permission_key_document(data: &[u8]) -> ::std::result::Result<PermissionKey, Refusal>
 pub fn encode_resource_selector_document(v: &ResourceSelector) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
@@ -596,6 +650,15 @@ pub mod internal
   pub fn decode_decision_explanation_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::DecisionExplanation, usize), super::Refusal>
   pub fn check_decision_explanation(v: &super::DecisionExplanation, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
   pub fn encode_decision_explanation_at(v: &super::DecisionExplanation, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_policy_change_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::PolicyChange, usize), super::Refusal>
+  pub fn check_policy_change(v: &super::PolicyChange, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_policy_change_at(v: &super::PolicyChange, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_change_request_state_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChangeRequestState, usize), super::Refusal>
+  pub fn check_change_request_state(v: &super::ChangeRequestState, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_change_request_state_at(v: &super::ChangeRequestState, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_change_request_page_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ChangeRequestPage, usize), super::Refusal>
+  pub fn check_change_request_page(v: &super::ChangeRequestPage, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_change_request_page_at(v: &super::ChangeRequestPage, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
   pub fn decode_permission_key_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::PermissionKey, usize), super::Refusal>
   pub fn check_permission_key(v: &super::PermissionKey, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
   pub fn encode_permission_key_at(v: &super::PermissionKey, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>

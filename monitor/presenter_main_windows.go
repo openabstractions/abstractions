@@ -24,6 +24,7 @@ import (
 const presenterBuild = true
 
 func main() {
+	exitDuringUpgrade()
 	// COM adds -Embedding when Windows starts this program to deliver a
 	// notification click to its registered activator.
 	flag.Bool("Embedding", false, "set by Windows when it starts the presenter for a notification click (internal)")

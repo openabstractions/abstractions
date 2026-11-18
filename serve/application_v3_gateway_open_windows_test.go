@@ -92,10 +92,22 @@ func waitOpen(t *testing.T, done <-chan openReceived) openReceived {
 	select {
 	case got := <-done:
 		return got
-	case <-time.After(3 * time.Second):
+	case <-time.After(openTestWait(t)):
 		t.Fatal("open did not finish")
 		return openReceived{}
 	}
+}
+
+// openTestWait is how long an open test's caller, its polls and its wait for
+// an answer last: the time the test has left, at most a minute. The fixture
+// client's 3 s frame timeout and fixed 3 s polls expired on the release gate
+// under full CPU load (2026-11-23) and read as an empty outcome.
+func openTestWait(t *testing.T) time.Duration {
+	wait := time.Minute
+	if deadline, ok := t.Deadline(); ok {
+		wait = min(wait, time.Until(deadline))
+	}
+	return wait
 }
 
 // Coordinator dispositions 2026-11-09: a kept agent without application.activate
@@ -482,16 +494,18 @@ func TestApplicationV3GatewayConcurrentFirstOpensAskOnce(t *testing.T) {
 		keys := []string{receiptKey(92+2*round, time.Now()), receiptKey(93+2*round, time.Now())}
 		done := make(chan openReceived, len(keys))
 		start := make(chan struct{})
+		wait := openTestWait(t)
+		caller := f.client(wait)
 		for _, key := range keys {
 			go func() {
 				<-start
-				result, err := f.c.Activate(key, openRequest)
+				result, err := caller.Activate(key, openRequest)
 				done <- openReceived{result, err}
 			}()
 		}
 		close(start)
 		ids := map[string]bool{}
-		for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+		for deadline := time.Now().Add(wait); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
 			first, second := openAdmission(f, permission, keys[0]), openAdmission(f, permission, keys[1])
 			if first.ID != "" && second.ID != "" {
 				ids[first.ID], ids[second.ID] = true, true
@@ -505,8 +519,8 @@ func TestApplicationV3GatewayConcurrentFirstOpensAskOnce(t *testing.T) {
 			answerOpen(t, permission, id, "refuse")
 		}
 		for range keys {
-			if got := waitOpen(t, done); got.result.Outcome != applications.ActivationOutcomeForbidden {
-				t.Fatalf("round %d: %+v", round, got.result)
+			if got := waitOpen(t, done); got.err != nil || got.result.Outcome != applications.ActivationOutcomeForbidden {
+				t.Fatalf("round %d: %+v %v", round, got.result, got.err)
 			}
 		}
 	}

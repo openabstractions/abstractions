@@ -71,7 +71,8 @@ func TestMessagesManyWaitingChatsKeepListingAndPrepareFast(t *testing.T) {
 	began = time.Now()
 	prepared := r.prepare("")
 	took := time.Since(began)
-	if prepared.Outcome != msg.OutcomePage || prepared.SendRequest == nil {
+	// Many live chats: Prepare answers with the bounded choices (ruling P3).
+	if prepared.Outcome != msg.OutcomeConflict || prepared.SendRequest != nil || len(prepared.Choices) != 8 {
 		t.Fatal("prepare", prepared)
 	}
 	t.Logf("checks=%.0f/s listing=%v prepare=%v", rate, listed, took)

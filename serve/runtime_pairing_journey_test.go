@@ -667,7 +667,7 @@ func TestMachineControlNativePairAndRemove(t *testing.T) {
 					if hex.EncodeToString(p.Key[:]) != peerKey {
 						return remote.ErrTrust
 					}
-					return state.admit(p)
+					return state.admitContext(t.Context(), p)
 				})
 				if err != nil {
 					t.Fatal(err)
@@ -718,7 +718,7 @@ func TestMachineControlNativePairAndRemove(t *testing.T) {
 				if e != nil {
 					t.Fatal(e)
 				}
-				transport, e := remote.Client(preparations[1].NormalServiceAddress, tlsConfig, 5*time.Second, 1<<20, state.admit)
+				transport, e := remote.Client(preparations[1].NormalServiceAddress, tlsConfig, 5*time.Second, 1<<20, func(peer remote.Peer) error { return state.admitContext(t.Context(), peer) })
 				if e != nil {
 					t.Fatal(e)
 				}

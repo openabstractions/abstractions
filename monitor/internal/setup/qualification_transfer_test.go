@@ -7,16 +7,20 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	download "github.com/openabstractions/abstraction-download/go"
 	downloadserve "github.com/openabstractions/abstraction-download/go/serve"
 	"github.com/openabstractions/abstraction-facade/go/client"
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
@@ -31,7 +35,7 @@ func qualificationFixture(t *testing.T) (Catalog, PinnedDownload, QualificationM
 	pin := artifact.DownloadPin()
 	return Catalog{Components: []Component{{ID: "native-fixture", Artifact: &artifact}}}, pin,
 		QualificationMirror{CanonicalURL: pin.URL, SHA256: pin.SHA256, Bytes: pin.Bytes,
-			MirrorURL: "http://127.0.0.1:32123/native-qualification/" + strings.Repeat("a", 32) + "/" + strings.Repeat("b", 64)}
+			MirrorURL: "http://192.168.56.10:32123/native-qualification/" + strings.Repeat("a", 32) + "/" + strings.Repeat("b", 64)}
 }
 
 func desktopQualificationFixture(t *testing.T, body []byte) (Catalog, PinnedDownload, QualificationMirror) {
@@ -44,7 +48,7 @@ func desktopQualificationFixture(t *testing.T, body []byte) (Catalog, PinnedDown
 	}
 	pin := catalog.DesktopIntegration.downloadPin()
 	return catalog, pin, QualificationMirror{CanonicalURL: pin.URL, SHA256: pin.SHA256, Bytes: pin.Bytes,
-		MirrorURL: "http://127.0.0.1:32123/native-qualification/" + strings.Repeat("a", 32) + "/" + strings.Repeat("b", 64)}
+		MirrorURL: "http://192.168.56.10:32123/native-qualification/" + strings.Repeat("a", 32) + "/" + strings.Repeat("b", 64)}
 }
 
 func TestQualificationDesktopIntegrationPin(t *testing.T) {
@@ -121,11 +125,21 @@ func TestQualificationTransferAdmission(t *testing.T) {
 		}
 	}
 	for name, mutate := range map[string]func(*QualificationMirror){
-		"URL":      func(m *QualificationMirror) { m.CanonicalURL += "-other" },
-		"digest":   func(m *QualificationMirror) { m.SHA256 = strings.Repeat("0", 64) },
-		"size":     func(m *QualificationMirror) { m.Bytes++ },
-		"DNS":      func(m *QualificationMirror) { m.MirrorURL = strings.Replace(m.MirrorURL, "127.0.0.1", "localhost", 1) },
-		"foreign":  func(m *QualificationMirror) { m.MirrorURL = strings.Replace(m.MirrorURL, "127.0.0.1", "127.0.0.2", 1) },
+		"URL":    func(m *QualificationMirror) { m.CanonicalURL += "-other" },
+		"digest": func(m *QualificationMirror) { m.SHA256 = strings.Repeat("0", 64) },
+		"size":   func(m *QualificationMirror) { m.Bytes++ },
+		"DNS": func(m *QualificationMirror) {
+			m.MirrorURL = strings.Replace(m.MirrorURL, "192.168.56.10", "nas.local", 1)
+		},
+		"foreign": func(m *QualificationMirror) {
+			m.MirrorURL = strings.Replace(m.MirrorURL, "192.168.56.10", "203.0.113.7", 1)
+		},
+		"loopback": func(m *QualificationMirror) {
+			m.MirrorURL = strings.Replace(m.MirrorURL, "192.168.56.10", "127.0.0.1", 1)
+		},
+		"IPv6": func(m *QualificationMirror) {
+			m.MirrorURL = strings.Replace(m.MirrorURL, "192.168.56.10", "[fd00::1]", 1)
+		},
 		"query":    func(m *QualificationMirror) { m.MirrorURL += "?token=x" },
 		"fragment": func(m *QualificationMirror) { m.MirrorURL += "#x" },
 		"userinfo": func(m *QualificationMirror) { m.MirrorURL = strings.Replace(m.MirrorURL, "http://", "http://user@", 1) },
@@ -187,19 +201,17 @@ type qualificationSink struct{}
 
 func (qualificationSink) Write(logging.Record) error { return nil }
 
-type qualificationRoundTrip func(*http.Request) (*http.Response, error)
-
-func (f qualificationRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-
 func TestQualificationTransferRealPublicJob(t *testing.T) {
 	if runtime.GOOS == "darwin" {
 		t.Skip("ordinary local Program-bound transport remains unsupported")
 	}
 	body := []byte("tiny desktop integration qualification transport fixture")
 	var corrupt atomic.Bool
+	var fetches atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", fmt.Sprint(len(body)))
 		if r.Method != http.MethodHead {
+			fetches.Add(1)
 			if corrupt.Load() {
 				_, _ = w.Write(bytes.Repeat([]byte("x"), len(body)))
 			} else {
@@ -209,19 +221,40 @@ func TestQualificationTransferRealPublicJob(t *testing.T) {
 	}))
 	defer server.Close()
 	// The inert receiving never reaches a public origin, even on a failing
-	// mirror. The submitted canonical HTTPS source remains unchanged.
+	// mirror. The submitted canonical HTTPS source remains unchanged. The
+	// mirror's local-network address is dialled on the fixture's loopback
+	// listener; the download service sees 192.168.56.10, which the isolated
+	// person's allowed local hosts name, and refuses the canonical host by
+	// name before any lookup (download DL-G5, DL-G6).
+	const mirrorHost = "192.168.56.10"
+	port := server.Listener.Addr().(*net.TCPAddr).Port
 	previousClient := http.DefaultClient
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
-	http.DefaultClient = &http.Client{Transport: qualificationRoundTrip(func(r *http.Request) (*http.Response, error) {
-		if r.URL.Scheme != "http" || "http://"+r.URL.Host != server.URL {
+	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if addr != net.JoinHostPort(mirrorHost, strconv.Itoa(port)) {
 			return nil, errors.New("fixture refuses every non-owned HTTP origin")
 		}
-		return transport.RoundTrip(r)
-	})}
+		return (&net.Dialer{}).DialContext(ctx, network, server.Listener.Addr().String())
+	}
+	http.DefaultClient = &http.Client{Transport: transport}
 	defer func() { http.DefaultClient = previousClient; transport.CloseIdleConnections() }()
 	catalog, pin, mirror := desktopQualificationFixture(t, body)
-	mirror.MirrorURL = server.URL + "/native-qualification/" + strings.Repeat("a", 32) + "/" + strings.Repeat("b", 64)
+	mirror.MirrorURL = "http://" + net.JoinHostPort(mirrorHost, strconv.Itoa(port)) + "/native-qualification/" + strings.Repeat("a", 32) + "/" + strings.Repeat("b", 64)
+	if err := download.DefaultLocalHosts().Add(mirrorHost, "qualification fixture mirror"); err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := url.Parse(pin.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := download.DefaultRefusals().Refuse(canonical.Hostname(), "qualification fixture stays offline"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = download.DefaultLocalHosts().Remove(mirrorHost)
+		_ = download.DefaultRefusals().Allow(canonical.Hostname())
+	})
 	root := t.TempDir()
 	var endpointNumber atomic.Uint64
 	endpoint := func(name string) string {
@@ -256,64 +289,74 @@ func TestQualificationTransferRealPublicJob(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	work, err := transfer.Reserve(ctx, pin, "qualification-real-job")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := transfer.Submit(ctx, pin, work); err != nil {
-		t.Fatal(err)
-	}
-	// The identical saved identity reconciles acceptance rather than duplicating work.
-	if err := transfer.Submit(ctx, pin, work); err != nil {
-		t.Fatal(err)
-	}
-	for {
-		observed, err := transfer.Observe(ctx, work)
+	// run submits one request for the pin and waits for its terminal state.
+	run := func(key string, twice bool) (WorkIdentity, string) {
+		t.Helper()
+		work, err := transfer.Reserve(ctx, pin, key)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if observed.State == "complete" {
-			break
+		if err := transfer.Submit(ctx, pin, work); err != nil {
+			t.Fatal(err)
 		}
-		if observed.State == "failed" || observed.State == "cancelled" {
-			t.Fatalf("real public work: %+v", observed)
+		if twice {
+			// The identical saved identity reconciles acceptance rather than duplicating work.
+			if err := transfer.Submit(ctx, pin, work); err != nil {
+				t.Fatal(err)
+			}
 		}
-		select {
-		case <-ctx.Done():
-			t.Fatal(ctx.Err())
-		case <-time.After(10 * time.Millisecond):
+		for {
+			observed, err := transfer.Observe(ctx, work)
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch observed.State {
+			case "complete", "failed", "cancelled":
+				return work, observed.State
+			}
+			select {
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
+			case <-time.After(10 * time.Millisecond):
+			}
 		}
+	}
+	// Wrong mirror bytes run first, while the store holds no proven copy of
+	// the digest, so the mirror's bytes are what the runner verifies.
+	corrupt.Store(true)
+	bad, state := run("qualification-wrong-bytes", false)
+	if state != "failed" {
+		t.Fatalf("wrong mirror bytes ended %s, not failed", state)
+	}
+	if fetches.Load() == 0 {
+		t.Fatal("wrong-bytes work never fetched the mirror")
+	}
+	if _, err := transfer.Copy(ctx, bad, &bytes.Buffer{}); err == nil {
+		t.Fatal("failed work exposed result bytes")
+	}
+	corrupt.Store(false)
+	work, state := run("qualification-real-job", true)
+	if state != "complete" {
+		t.Fatalf("real public work ended %s", state)
 	}
 	var got bytes.Buffer
 	if _, err := transfer.Copy(ctx, work, &got); err != nil || !bytes.Equal(got.Bytes(), body) {
 		t.Fatalf("same-subject public result: %q %v", got.Bytes(), err)
 	}
+	// Once the store proved the digest, a later request copies that proven
+	// file before any source (download DL-R28, commit 61ebd69a2f). The
+	// mirror now serves wrong bytes and is never read.
 	corrupt.Store(true)
-	bad, err := transfer.Reserve(ctx, pin, "qualification-wrong-bytes")
-	if err != nil {
-		t.Fatal(err)
+	before := fetches.Load()
+	again, state := run("qualification-proven-reuse", false)
+	if state != "complete" {
+		t.Fatalf("proven reuse ended %s", state)
 	}
-	if err := transfer.Submit(ctx, pin, bad); err != nil {
-		t.Fatal(err)
+	got.Reset()
+	if _, err := transfer.Copy(ctx, again, &got); err != nil || !bytes.Equal(got.Bytes(), body) {
+		t.Fatalf("proven reuse result: %q %v", got.Bytes(), err)
 	}
-	for {
-		observed, err := transfer.Observe(ctx, bad)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if observed.State == "failed" {
-			break
-		}
-		if observed.State == "complete" {
-			t.Fatal("wrong mirror bytes became a verified result")
-		}
-		select {
-		case <-ctx.Done():
-			t.Fatal(ctx.Err())
-		case <-time.After(10 * time.Millisecond):
-		}
-	}
-	if _, err := transfer.Copy(ctx, bad, &bytes.Buffer{}); err == nil {
-		t.Fatal("failed work exposed result bytes")
+	if fetches.Load() != before {
+		t.Fatal("proven reuse fetched the mirror again")
 	}
 }

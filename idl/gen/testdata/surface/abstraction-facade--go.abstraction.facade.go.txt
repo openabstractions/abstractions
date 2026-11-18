@@ -72,6 +72,11 @@ const DeclarationReadinessNotReady
 const DeclarationReadinessDisabled
 func ParseDeclarationReadiness(word string) (DeclarationReadiness, bool)
 func DeclarationReadinessValues() []DeclarationReadiness
+type ProductStanding canonical.ProductStanding
+const ProductStandingProduct
+const ProductStandingThirdParty
+func ParseProductStanding(word string) (ProductStanding, bool)
+func ProductStandingValues() []ProductStanding
 type DeclarationListOutcome canonical.DeclarationListOutcome
 const DeclarationListOutcomePage
 const DeclarationListOutcomeInvalid
@@ -191,6 +196,8 @@ type PinnedDeclaration canonical.PinnedDeclaration
 type PinnedDeclarationState canonical.PinnedDeclarationState
 type PinnedDeclarationList canonical.PinnedDeclarationList
 type PinnedDeclarationObservation canonical.PinnedDeclarationObservation
+type ProviderStanding canonical.ProviderStanding
+type ProviderStandingList canonical.ProviderStandingList
 type ApplicationInterface canonical.ApplicationInterface
 type ApplicationActivationRecipe canonical.ApplicationActivationRecipe
 type ApplicationDescriptor canonical.ApplicationDescriptor
@@ -373,6 +380,14 @@ func DecodePinnedDeclarationObservationAt(in []byte, depth, limit int) (*PinnedD
 func EncodePinnedDeclarationObservationAt(v *PinnedDeclarationObservation, depth int) []byte
 func EncodePinnedDeclarationObservation(v *PinnedDeclarationObservation) []byte
 func DecodePinnedDeclarationObservation(in []byte) (*PinnedDeclarationObservation, error)
+func DecodeProviderStandingAt(in []byte, depth, limit int) (*ProviderStanding, int, error)
+func EncodeProviderStandingAt(v *ProviderStanding, depth int) []byte
+func EncodeProviderStanding(v *ProviderStanding) []byte
+func DecodeProviderStanding(in []byte) (*ProviderStanding, error)
+func DecodeProviderStandingListAt(in []byte, depth, limit int) (*ProviderStandingList, int, error)
+func EncodeProviderStandingListAt(v *ProviderStandingList, depth int) []byte
+func EncodeProviderStandingList(v *ProviderStandingList) []byte
+func DecodeProviderStandingList(in []byte) (*ProviderStandingList, error)
 func DecodeApplicationInterfaceAt(in []byte, depth, limit int) (*ApplicationInterface, int, error)
 func EncodeApplicationInterfaceAt(v *ApplicationInterface, depth int) []byte
 func EncodeApplicationInterface(v *ApplicationInterface) []byte

@@ -23,8 +23,15 @@ static DWORD WINAPI fixture_wait(HANDLE process,DWORD milliseconds) {
     if(timeoutOnce&&milliseconds==100){timeoutOnce=FALSE;timeoutTriggered=TRUE;return WAIT_TIMEOUT;}
     return WaitForSingleObject(process,milliseconds);
 }
+static wchar_t observedFailure[1024];
 static int WINAPI fixture_message(MSIHANDLE session,INSTALLMESSAGE kind,MSIHANDLE record) {
-    (void)session;(void)kind;DWORD size=64;
+    (void)session;DWORD size=64;
+    if(kind==INSTALLMESSAGE_ERROR){
+        wchar_t format[8];DWORD capacity=8,text=1024;
+        if(MsiRecordGetFieldCount(record)==1&&MsiRecordGetStringW(record,0,format,&capacity)==ERROR_SUCCESS&&!wcscmp(format,L"[1]"))
+            MsiRecordGetStringW(record,1,observedFailure,&text);
+        return 0;
+    }
     if(MsiRecordGetFieldCount(record)==4){
         MsiRecordGetStringW(record,1,observedStage,&size);
         observedError=(DWORD)MsiRecordGetInteger(record,2);
@@ -93,5 +100,13 @@ int wmain(int argc,wchar_t **argv) {
     CHECK(!run_user_child(0,L"configure",program,command,NULL,NULL,token,work));
     CHECK(observedError==ERROR_FILE_EXISTS&&observedWait==WAIT_FAILED&&observedExit==STILL_ACTIVE);
     CHECK(combine(path,work,L"configure.stderr"));CHECK(DeleteFileW(path));CHECK(RemoveDirectoryW(work));
-    CloseHandle(token);puts("child diagnostic PASS: success, nonzero, timeout, launch refusal; protected retained stderr; no OA/config effects");return 0;
+    /* The installer's error box names the failed step and the Panel path. */
+    failure_message(0,L"prepare_integration",L"C:\\Program Files\\OpenAbstractions [old]\\Abstraction Panel.exe",L"C:\\state");
+    CHECK(!wcscmp(observedFailure,L"OpenCode with OA could not start the OpenAbstractions Panel at C:\\Program Files\\OpenAbstractions [old]\\Abstraction Panel.exe. Repair or reinstall OpenAbstractions, then run this installer again."));
+    failure_message(0,L"configure",L"C:\\panel.exe",L"C:\\state");
+    CHECK(!wcscmp(observedFailure,L"OpenCode with OA could not update OpenCode's settings. Your own settings are preserved. Close OpenCode, then run this installer again."));
+    failure_message(0,L"workspace",L"",L"C:\\state");
+    CHECK(wcsstr(observedFailure,L"could not create its work folder in C:\\state.")!=NULL);
+    CloseHandle(token);puts("failure message PASS: prepare_integration names the Panel path");
+    puts("child diagnostic PASS: success, nonzero, timeout, launch refusal; protected retained stderr; no OA/config effects");return 0;
 }

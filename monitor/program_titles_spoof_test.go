@@ -229,49 +229,45 @@ func shippedFolders(t *testing.T, machine string) {
 	oaUserInstallFolder = func() string { return "" }
 }
 
-// A provider takes a product title and caption only when OpenAbstractions
-// shipped it: the installation placed it while this Panel runs from the
-// per-machine install folder, or its program sits in OA's install folders. An app that may manage providers and names its own
-// program lemonade-image, modelhost or pytorch-image reads by that name in
-// words, and so does a program under Setup's apps folder, where ComfyUI's
-// custom nodes run third-party code.
+// A provider takes a product title and caption only when the runtime's
+// standing for it is product (A-SEC6, architect ruling 2026-11-22 (1)). The
+// Panel derives nothing from declared_by, the program's folder or the name:
+// a shipped program declared as localai, an installation's declaration and
+// a standing a runtime did not send all read by the name in words.
 func TestProviderProductTitlesNeedAShippedDeclaration(t *testing.T) {
 	machine, elsewhere := t.TempDir(), t.TempDir()
 	shippedFolders(t, machine)
-	apps := filepath.Join(t.TempDir(), "OpenAbstractions", "apps")
-	declared := func(name, program, by string) fwire.DeclarationState {
-		return fwire.DeclarationState{DeclaredBy: by, Declaration: fwire.Declaration{Name: name, Program: program}}
+	panelInstalledPerMachine(t)
+	declared := func(name, program, by string, standing fwire.ProductStanding) providerState {
+		var sent *fwire.ProductStanding
+		if standing != 0 {
+			sent = &standing
+		}
+		return providerState{DeclarationState: fwire.DeclarationState{DeclaredBy: by, Declaration: fwire.Declaration{Name: name, Program: program}}, Standing: sent}
 	}
 	evil := filepath.Join(elsewhere, "evil.exe")
+	general := "Provides services to your apps"
 	for _, c := range []struct {
-		state       fwire.DeclarationState
+		state       providerState
 		title, does string
 	}{
-		{declared("lemonade-image", filepath.Join(machine, "lemonaded.exe"), evil), "Lemonade", "Pictures, speech and transcription"},
-		{declared("comfy-image-1828", filepath.Join(apps, "comfyui", "1.0", "provider.exe"), evil), "Comfy image", "Provides services to your apps"},
-		{declared("lemonade-image", filepath.Join(apps, "comfyui", "1.0", "python.exe"), evil), "Lemonade image", "Provides services to your apps"},
-		{declared("modelhost", filepath.Join(elsewhere, "modelhostd.exe"), providerDeclaredByInstallation), "Modelhost", "Provides services to your apps"},
-		{declared("lemonade-image", evil, evil), "Lemonade image", "Provides services to your apps"},
-		{declared("modelhost", evil, evil), "Modelhost", "Provides services to your apps"},
-		{declared("pytorch-image", evil, evil), "Pytorch image", "Provides services to your apps"},
-		{declared("pytorch-image", filepath.Join(apps+"-other", "pytorchd.exe"), evil), "Pytorch image", "Provides services to your apps"},
-		{declared("pytorch-image", filepath.Join(machine, "sub", "pytorchd.exe"), evil), "Pytorch image", "Provides services to your apps"},
-		{declared("pytorch-image", "pytorchd.exe", evil), "Pytorch image", "Provides services to your apps"},
+		{declared("lemonade-image", filepath.Join(machine, "lemonaded.exe"), evil, fwire.ProductStandingProduct), "Lemonade", "Pictures, speech and transcription"},
+		{declared("modelhost", filepath.Join(machine, "modelhostd.exe"), "installation", fwire.ProductStandingProduct), "llama.cpp", "Runs chat models on this device"},
+		{declared("localai", filepath.Join(machine, "inventoryd.exe"), evil, fwire.ProductStandingThirdParty), "Localai", general},
+		{declared("localai", filepath.Join(machine, "inventoryd.exe"), evil, 0), "Localai", general},
+		{declared("lemonade-image", filepath.Join(machine, "lemonaded.exe"), "installation", 0), "Lemonade image", general},
+		{declared("modelhost", filepath.Join(machine, "modelhostd.exe"), "installation", fwire.ProductStandingThirdParty), "Modelhost", general},
+		{declared("pytorch-image", evil, evil, fwire.ProductStandingThirdParty), "Pytorch image", general},
+		{declared("comfy-image-1828", evil, evil, fwire.ProductStandingThirdParty), "Comfy image", general},
 	} {
 		if title, does := providerDisplay(c.state.Declaration.Name, shippedProvider(c.state)); title != c.title || does != c.does {
-			t.Errorf("%s at %s reads %q, %q; want %q, %q", c.state.Declaration.Name, c.state.Declaration.Program, title, does, c.title, c.does)
+			t.Errorf("%s at %s (product %v) reads %q, %q; want %q, %q", c.state.Declaration.Name, c.state.Declaration.Program, shippedProvider(c.state), title, does, c.title, c.does)
 		}
 	}
 	titler := newProgramTitler(nil)
-	titler.providers = []fwire.DeclarationState{declared("lemonade-image", evil, evil)}
-	if got := titler.name(evil); got != "Lemonade image" {
-		t.Errorf("a self-named provider reads %q", got)
-	}
-	// An installation in a folder only an administrator writes vouches for
-	// the declarations it placed.
-	panelInstalledPerMachine(t)
-	if title, _ := providerDisplay("modelhost", shippedProvider(declared("modelhost", filepath.Join(elsewhere, "modelhostd.exe"), providerDeclaredByInstallation))); title != "llama.cpp" {
-		t.Errorf("a per-machine installation's declaration reads %q", title)
+	titler.providers = []providerState{declared("localai", evil, evil, fwire.ProductStandingThirdParty)}
+	if got := titler.name(evil); got != "Localai" {
+		t.Errorf("a third-party provider named localai reads %q", got)
 	}
 }
 

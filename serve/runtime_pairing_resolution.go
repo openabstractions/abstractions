@@ -206,15 +206,15 @@ func (m *pairedResolution) handle(ctx context.Context, conn listen.Conn, route *
 		if err != nil {
 			return err
 		}
-		transport, err := remote.Client(address, config, 30*time.Second, remoteRouterReplyBytes, func(peer remote.Peer) error {
+		transport, err := (remote.Dialer{TLS: config, Timeout: 30 * time.Second, MaxFrame: remoteRouterReplyBytes, AdmitContext: func(dialCtx context.Context, peer remote.Peer) error {
 			if hex.EncodeToString(peer.Key[:]) != route.key {
 				return remote.ErrTrust
 			}
-			if err := m.p.state.admit(peer); err != nil {
+			if err := m.p.state.admitContext(dialCtx, peer); err != nil {
 				return err
 			}
-			return messageGeneration(ctx, m.p.state, route.key, route.generation)
-		})
+			return messageGeneration(dialCtx, m.p.state, route.key, route.generation)
+		}}).Client(address)
 		if err != nil {
 			return err
 		}

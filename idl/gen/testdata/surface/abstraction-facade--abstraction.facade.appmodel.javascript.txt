@@ -37,6 +37,11 @@ enum FieldRole
 enum InvokeMode
   Propose
   Apply
+enum OpenHandleState
+  Pending
+  Opened
+  Expired
+  Refused
 enum ReadingOutcome
   Page
   Gap
@@ -88,6 +93,8 @@ function decodeKindField(data)
 function decodeListedApplication(data)
 function decodeListedInstance(data)
 function decodeListedOpenVerb(data)
+function decodeOpenHandle(data)
+function decodeOpenHandleQuery(data)
 function decodeReadRequest(data)
 function decodeReveal(data)
 function decodeSelection(data)
@@ -124,6 +131,8 @@ function encodeKindField(v)
 function encodeListedApplication(v)
 function encodeListedInstance(v)
 function encodeListedOpenVerb(v)
+function encodeOpenHandle(v)
+function encodeOpenHandleQuery(v)
 function encodeReadRequest(v)
 function encodeReveal(v)
 function encodeSelection(v)
@@ -137,6 +146,7 @@ function newApplicationListing()
   applications
   reason
   openVerbs
+  open
 function newApplicationOpenVerbs()
   application
   verbs
@@ -316,6 +326,15 @@ function newListedOpenVerb()
   name
   description
   inputSchema
+function newOpenHandle()
+  handle
+  application
+  state
+  instance
+  reason
+function newOpenHandleQuery()
+  openHandle
+  application
 function newReadRequest()
   context
   entities

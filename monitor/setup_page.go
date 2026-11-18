@@ -88,6 +88,7 @@ function setupOffered(id){if(setupOverview)return (setupOverview.offered||[]).in
 function setupMode(){const s=setupLastState;if(!s)return 'none';if(s.approved&&s.current_catalog)return 'current';if(!s.current_catalog&&s.plan&&s.plan.id)return 'earlier';return 'none'}
 function setupInstalled(id){
  if(setupIsPictureAppRow(id))return false;
+ if(setupIntegrationRow(id))return !!setupIntegration(id).installed;
  if(setupDesktopIntegrationRow(id))return !!setupDesktopIntegrationFacts().installed;
  if(id==='coding')return !!(setupCodingModel()&&setupCodingModel().installed);
  if(id.startsWith('model:'))return !!(setupOffer(id)||{}).prepared;
@@ -102,9 +103,20 @@ function setupPretick(id){
  // A stopped install arrives with its own ticks only: Install continues
  // exactly that approval.
  if(setupStopped)return false;
- if(id==='coding')return setupCodingDesktop()&&!setupInstalled('coding');
+ // A model that does not fit the install drive arrives unticked; its row
+ // says so (agent-ux 2026-11-22).
+ if(id==='coding')return !!setupCodingDesktop()&&!setupInstalled('coding')&&setupFits(setupCodingModel());
  // Clearing an app's tick selects nothing new for it.
- const offer=setupOffer(id);return !!(offer&&offer.recommended&&!setupOffers().some(o=>o.prepared)&&setupInstalled(setupPictureApp())&&setupWant.get(setupPictureApp())!==false)}
+ const offer=setupOffer(id);return !!(offer&&offer.recommended&&!setupOffers().some(o=>o.prepared)&&setupPictureAppPresent()&&setupFits(offer))}
+// setupFits is whether a model's peak space fits the install drive's free
+// space as the overview read it on arrival; an unread drive fits.
+function setupFits(m){const disk=setupOverview&&setupOverview.disk,need=Number((m||{}).peak_bytes||0);return !disk||!(need>0)||need<=Number(disk.free_bytes)}
+// setupSpaceNote is a model row's note when it does not fit: what it needs
+// and the free space.
+function setupSpaceNote(m){const disk=setupOverview&&setupOverview.disk;return setupFits(m)?'':'Not enough space · needs '+setupBytes(m.peak_bytes)+', '+setupBytes(disk.free_bytes)+' free on '+String(disk.volume||'this drive')}
+// setupPictureAppPresent is whether the official picture app is on this
+// computer. Its row has no tick, so setupInstalled never counts it.
+function setupPictureAppPresent(){const s=setupPictureAppFacts().state;return !!setupPictureApp()&&!!s&&s!=='get'}
 function setupWanted(id){return setupWant.has(id)?setupWant.get(id):setupInstalled(id)||setupPretick(id)}
 // setupNeededBy names what needs a row: the engine for a picture app
 // or model, ComfyUI for a model only ComfyUI reads.
@@ -129,13 +141,38 @@ function setupLockReason(id){const by=setupNeededBy(id);if(by.length)return 'nee
  if(id==='coding'){const used=(setupCodingModel()||{}).used_by||[];return used.length?'needed by '+setupJoin(used):'remove it in Models'}
  if(id.startsWith('model:'))return 'remove it in Models';
  return ''}
-function setupRowIDs(){const ids=[];const picture=setupPictureApp();if(picture)ids.push(picture);if(setupPictureAppFacts().oa_build&&setupRetainedPicture().id)ids.push(setupRetainedPicture().id);const desktop=setupDesktopApp();if(desktop)ids.push(desktop);ids.push('coding');for(const o of setupOffers())ids.push('model:'+o.id);return ids.concat(setupEnginePackages())}
-function setupRowTitle(id){if(id&&id===setupPictureApp())return setupPictureTitle();if(id&&id===setupRetainedPicture().id)return setupRetainedPicture().title;if(setupDesktopIntegrationRow(id)){const choice=setupChoice(id);return choice.title||id}const engine=setupEngine(id);if(engine)return engine.title;if(id==='coding')return (setupCodingModel()||{}).title||'The coding model';if(id.startsWith('model:')){const o=setupOffer(id)||{};return o.title||'The picture model'}return id==='oa'?'OpenAbstractions':id}
+function setupRowIDs(){const ids=[];const picture=setupPictureApp();if(picture)ids.push(picture);if(setupPictureAppFacts().oa_build&&setupRetainedPicture().id)ids.push(setupRetainedPicture().id);const desktop=setupDesktopApp();if(desktop)ids.push(desktop);for(const g of setupIntegrations())if(g.id&&!ids.includes(g.id))ids.push(g.id);ids.push('coding');for(const o of setupOffers())ids.push('model:'+o.id);return ids.concat(setupEnginePackages())}
+function setupRowTitle(id){if(id&&id===setupPictureApp())return setupPictureTitle();if(id&&id===setupRetainedPicture().id)return setupRetainedPicture().title;if(setupDesktopIntegrationRow(id)){const choice=setupChoice(id);return choice.title||id}if(setupIntegrationRow(id))return setupIntegration(id).title||id;const engine=setupEngine(id);if(engine)return engine.title;if(id==='coding')return (setupCodingModel()||{}).title||'The coding model';if(id.startsWith('model:')){const o=setupOffer(id)||{};return o.title||'The picture model'}return id==='oa'?'OpenAbstractions':id}
 // Desktop integration has a separate Catalog action and never enters a package plan.
-function setupPackageChanges(){const adds=[],updates=[],removals=[];for(const id of setupRowIDs()){if(setupIsPictureAppRow(id)||setupDesktopIntegrationRow(id))continue;const ticked=setupTicked(id),installed=setupInstalled(id);if(ticked&&!installed)adds.push(id);else if(ticked&&installed&&setupUpdate(id))updates.push(id);else if(!ticked&&installed&&setupClearable(id))removals.push(id)}return {adds,updates,removals}}
+function setupPackageChanges(){const adds=[],updates=[],removals=[];for(const id of setupRowIDs()){if(setupIsPictureAppRow(id)||setupDesktopIntegrationRow(id)||setupIntegrationRow(id))continue;const ticked=setupTicked(id),installed=setupInstalled(id);if(ticked&&!installed)adds.push(id);else if(ticked&&installed&&setupUpdate(id))updates.push(id);else if(!ticked&&installed&&setupClearable(id))removals.push(id)}return {adds,updates,removals}}
 const setupDesktopIntegrationFacts=()=>((setupOverview||{}).desktop_integration||{});
 function setupDesktopApp(){const id=setupDesktopIntegrationFacts().app;return id&&(setupChoice(id)||{}).application?id:''}
 const setupDesktopIntegrationRow=id=>!!id&&id===setupDesktopApp();
+// ---- Integrations: every app and agent OpenAbstractions can add or connect
+// (the overview's integrations, setup_integrations.go). Each reads in the
+// Apps rows' shape: name, caption, state line and one state button: Get
+// when it is not on this computer, Connect when it is and is not connected,
+// Open when connected and OpenAbstractions can open it, else Manage. The
+// line says the state; no button is a disabled state. The picture app's card
+// and OpenCode's integration package keep their own rows and flows; another
+// integration gets a row here whose button opens its connection page, or its
+// publisher's download page when OpenAbstractions installs nothing itself.
+const setupIntegrations=()=>((setupOverview||{}).integrations)||[];
+const setupIntegration=id=>setupIntegrations().find(g=>g.id===id)||null;
+const setupIntegrationRow=id=>!!setupIntegration(id)&&!setupIsPictureAppRow(id)&&!setupDesktopIntegrationRow(id);
+const setupIntegrationPagePath=path=>/^\/(connections|app)\/[a-z0-9-]+$/.test(path||'')?path:'';
+const setupIntegrationVerbs={connect:'Connect',manage:'Manage'};
+const setupIntegrationHref=path=>{const [page,hash]=String(path||'').split('#');return page+'?k='+encodeURIComponent(key||'')+(hash?'#'+hash:'')};
+function setupIntegrationLabel(g){if(!g)return '';if(g.state==='get')return g.download?'Get '+g.title:'';if(g.state==='open')return g.open?'Open':'';return setupIntegrationPagePath(g.page)&&setupIntegrationVerbs[g.state]||''}
+function setupIntegrationState(row,id){const g=setupIntegration(id),button=setupRowAction(row,'setup-state-',setupIntegrationAct,'stateButton'),label=setupOverviewRead?setupIntegrationLabel(g):'';setupText(button,label);button.hidden=!label;button.disabled=setupWorking;return button}
+async function setupIntegrationAct(id){const g=setupIntegration(id);if(!g)return;setupRowError.delete(id);
+ if(g.state==='get'&&g.download){if(typeof open==='function')open(g.download,'_blank');return}
+ if((g.state==='connect'||g.state==='manage')&&setupIntegrationPagePath(g.page)){location.href=setupIntegrationHref(g.page);return}
+ if(g.state==='open'&&g.open){try{await call(g.open,{confirm:true})}catch(e){setupRowError.set(id,oaPlain(e&&e.message||e).line);setupDraw()}}}
+// setupIntegrationPage is the details row that opens an agent's connection page.
+function setupIntegrationPage(g){if(!g||!/^\/connections\/[a-z]+$/.test(g.page||''))return null;const row=setupNode('div',null,'oa-row'),text=setupNode('span',null,'oa-row-text'),control=setupNode('span',null,'oa-row-control'),link=setupNode('a','Connection settings');link.href=setupIntegrationHref(g.page);text.append(setupNode('span','Connection','oa-row-label'));control.append(link);row.append(text,control);row.spec=JSON.stringify(['Connection',g.page]);return row}
+function setupDrawIntegration(id){const row=setupRow(id,false),g=setupIntegration(id),failure=setupRowError.get(id),attention=oaIntegrationNeedsAttention(g);setupText(row.title,setupRowTitle(id));setupText(row.caption,g.caption||'');
+ setupLine(row,failure||(setupOverviewRead?oaIntegrationLine(g):''),failure||attention?'error':'');setupBar(row,0,0,false);setupIntegrationState(row,id);setupDetails(row,[setupIntegrationPage(g)]);return row}
 function setupCodingDesktop(){const f=setupDesktopIntegrationFacts();return f.coding&&f.installed?setupDesktopApp():''}
 function setupAddedOf(id){if(!setupPlanNow||!setupPlanNow.added)return null;const own=setupLineCounted(id),rows=setupPlanNow.added.filter(a=>own.includes(a.component_id));if(!rows.length)return null;return {download:rows.reduce((n,a)=>n+Number(a.download_bytes||0),0),disk:rows.reduce((n,a)=>n+Number(a.disk_bytes||0),0),update:rows.some(a=>a.update)}}
 function setupUpdate(id){return setupEnginePackage(id)&&setupStale(id)}
@@ -213,18 +250,18 @@ function setupIdle(id){
   else if(setupEnginePackage(id))parts.push('not used by any app');
   const size=setupInstalledBytes(id);if(size)parts.push(setupBytes(size));return parts.join(' · ')}
  if(id===setupPictureApp()&&!ticked&&setupOtherCopy())return 'Another '+setupPictureTitle()+' is on this computer. Setup leaves it as it is.';
- if(id==='coding'||id.startsWith('model:')){const m=id==='coding'?setupCodingModel()||{}:setupOffer(id)||{},size=setupBytes(m.download_bytes);if(m.archived)return size+' · copies from your download archive';const app=id==='coding'&&ticked?setupCodingDesktop():'';const used=app?'Used by '+setupRowTitle(app)+' · ':'';return used+size+' download'}
+ if(id==='coding'||id.startsWith('model:')){const m=id==='coding'?setupCodingModel()||{}:setupOffer(id)||{},size=setupBytes(m.download_bytes);if(m.archived)return size+' · copies from your download archive';const space=setupSpaceNote(m);if(space)return size+' download · '+space;const app=id==='coding'&&ticked?setupCodingDesktop():'';const used=app?'Used by '+setupRowTitle(app)+' · ':'';return used+size+' download'}
  const added=setupAddedOf(id),download=added?added.download:setupCatalogDownload(id),size=setupBytes(download)+' download';
  if(ticked&&by.length)return setupLineCounted(id).length&&by.every(name=>name!==setupPictureTitle()||setupInstalled(setupPictureApp()))?'Needed by '+setupJoin(by)+' · '+size:'Needed by '+setupJoin(by);
  return size}
 const setupOtherCopy=(id=setupPictureApp())=>setupCopies.list.some(c=>c.app===id);
 
 // setupDrawRow writes one row: tick, caption, state line, bar and details.
-function setupDrawRow(id){if(setupIsPictureAppRow(id))return setupDrawPictureApp(id);const kind=(setupEngine(id)||{}).kind,tick=id!=='oa'&&kind!=='included'&&kind!=='provider'&&!setupDesktopIntegrationRow(id),row=setupRow(id,tick);if(row.desktopAction)row.desktopAction.hidden=true;setupText(row.title,setupRowTitle(id));
+function setupDrawRow(id){if(setupIsPictureAppRow(id))return setupDrawPictureApp(id);if(setupIntegrationRow(id))return setupDrawIntegration(id);const kind=(setupEngine(id)||{}).kind,tick=id!=='oa'&&kind!=='included'&&kind!=='provider'&&!setupDesktopIntegrationRow(id),row=setupRow(id,tick);if(row.desktopAction)row.desktopAction.hidden=true;setupText(row.title,setupRowTitle(id));
  const offer=id.startsWith('model:')?setupOffer(id):null;const engine=setupEngine(id);setupText(row.caption,id==='coding'?'Recommended for this computer':offer?offer.caption:engine?engine.caption:(setupDesktopIntegrationRow(id)&&setupDesktopIntegrationFacts().coding?'Coding assistant':id==='oa'?'Version '+((setupOverview||{}).version||''):''));
  if(row.box){const by=setupNeededBy(id);row.box.checked=setupTicked(id);row.box.disabled=setupWorking||!setupStateRead||setupStateError||by.length>0||setupLocked(id)}
  if(id==='oa')setupLine(row,'');else if(id==='modelhost')setupDrawHost(row);else if(kind==='provider')setupLine(row,setupEngine(id).ready?'Included with OpenAbstractions · Model in place':'Included with OpenAbstractions · No picture model yet');else{const live=setupLive(id);if(live){setupLine(row,live.text,live.state);setupBar(row,live.done||0,live.total||0,live.busy)}else{setupLine(row,setupStateRead&&!setupStateError?setupIdle(id):'');setupBar(row,0,0,false)}}
- setupDrawRepair(id,row);setupDrawDetails(id,row);return row}
+ setupDrawRepair(id,row);if(setupDesktopIntegrationRow(id))setupIntegrationState(row,id);setupDrawDetails(id,row);return row}
 function setupDrawDetails(id,row){const items=[];
  if(setupEnginePackage(id)){const own=setupChoiceComponents(id),a=(setupCatalogComponent(own[0]).artifact)||{},installed=((setupOverview||{}).installed||{})[own[0]];
   const was=(((((setupLastState||{}).plan||{}).components)||[]).find(c=>c.id===own[0])||{}).artifact;
@@ -248,7 +285,7 @@ function setupDrawDetails(id,row){const items=[];
   if(setupInstalled(id))items.push(setupFact('Remove','Models lists every copy and can remove it.','/inference?k='+encodeURIComponent(key),'Open Models'));
   items.push(setupTechnical([m.repository?'Repository: '+m.repository:'',m.revision?'Pinned revision: '+m.revision:'',setupRowFault(id)]))}
  const fixed=setupFix(id);if(fixed&&fixed.detail)items.push(setupFact('OpenAbstractions fix',fixed.detail));
- if(setupDesktopIntegrationRow(id)){if(setupInstalled(id))items.push(setupFact('Remove',null,setupWindowsApps,'Open Windows Settings'))}
+ if(setupDesktopIntegrationRow(id)){items.push(setupIntegrationPage(setupIntegration(id)),setupDesktopRepair(id));if(setupInstalled(id))items.push(setupFact('Remove',null,setupWindowsApps,'Open Windows Settings'))}
  else if(id==='oa')items.push(setupFact('Updates',null,setupReleasePage,'Check for updates'));
  else if((setupEngine(id)||{}).kind==='provider')items.push(setupFact('Installed by','OpenAbstractions'));
  if(!setupEnginePackage(id)&&id!=='coding'&&!id.startsWith('model:')&&setupRowFault(id))items.push(setupTechnical([setupRowFault(id)]));
@@ -277,18 +314,34 @@ function setupPictureAppProgress(id){if(setupRowError.has(id))return {text:setup
  return null}
 const setupDesktopIntegrationStep='desktop-integration';
 let setupDesktopIntegrationBusy=false;
-function setupHasDesktopAction(id){if(!setupDesktopIntegrationRow(id))return false;const f=setupDesktopIntegrationFacts();return (f.installed&&f.action)||setupComponentRunning(setupDesktopIntegrationStep)||setupStepEnded(setupDesktopIntegrationStep)}
+// The integration package's own step owns the row while it installs or
+// updates the package, runs or has just ended; an installed, current
+// package leaves the row to its connection's state button, with Repair in
+// its details.
+function setupHasDesktopAction(id){if(!setupDesktopIntegrationRow(id))return false;const f=setupDesktopIntegrationFacts();return (f.installed&&f.action&&f.action!=='repair')||f.blocked||setupComponentRunning(setupDesktopIntegrationStep)||setupStepEnded(setupDesktopIntegrationStep)}
+// setupDesktopRepair is the details row that repairs an installed, current
+// integration package.
+function setupDesktopRepair(id){const f=setupDesktopIntegrationFacts();if(!setupDesktopIntegrationRow(id)||!f.installed||f.action!=='repair')return null;const busy=setupDesktopIntegrationBusy||setupComponentRunning(setupDesktopIntegrationStep)||setupWorking||setupActionsRunning();
+ const row=setupNode('div',null,'oa-row'),text=setupNode('span',null,'oa-row-text'),control=setupNode('span',null,'oa-row-control'),button=setupNode('button','Repair');let status;button.type='button';button.id='setup-desktop-repair-'+id.replace(/[^a-z0-9-]/gi,'-');status=setupNode('span','','oa-status');status.id='setup-desktop-repair-status-'+id.replace(/[^a-z0-9-]/gi,'-');status.setAttribute('role','status');button.setAttribute('data-status',status.id);button.disabled=busy;button.onclick=e=>{if(e&&e.preventDefault)e.preventDefault();return setupApplyDesktopIntegration(id)};
+ text.append(setupNode('span','Integration files','oa-row-label'),setupNode('span','Close '+setupRowTitle(id)+' before repairing them.','oa-row-caption'),status);control.append(button);row.append(text,control);row.spec=JSON.stringify(['repair',id,busy]);return row}
 function setupDrawDesktopIntegration(id){const row=setupRow(id,false),f=setupDesktopIntegrationFacts(),busy=setupDesktopIntegrationBusy||setupComponentRunning(setupDesktopIntegrationStep),done=setupStepEnded(setupDesktopIntegrationStep);
  const title=setupRowTitle(id),update=f.action==='update';
  setupText(row.title,title);setupText(row.caption,f.coding?'Coding assistant':'');
- const failure=busy?'':setupRowError.get(id)||(done&&done.failure);
- const line=failure||(busy?'Applying the integration…':f.reason||(update?'Close '+title+' before updating its connection.':done&&!done.cancelled?(done.kind==='update'?'Update':'Repair')+' finished. Open '+title+' to use the integration.':f.action?'Close '+title+' before repairing its connection.':''));
- setupLine(row,setupOverviewRead?line:'',failure?'error':'');setupBar(row,0,0,busy);
+ const failure=busy?'':setupPlainRowError(setupRowError.get(id)||(done&&done.failure));
+ const line=failure||(busy?'Applying the integration…':f.reason||(update?'Close '+title+' before updating its connection.':done&&!done.cancelled?(done.kind==='update'?'Update finished':done.kind==='install'?'Integration installed':'Repair finished')+'. Open '+title+' to use the integration.':f.action==='install'?'Installed · close '+title+' before connecting it':f.action?'Close '+title+' before repairing its connection.':''));
+ setupLine(row,setupOverviewRead?line:'',failure||(f.blocked&&!busy)?'error':'');setupBar(row,0,0,busy);
  if(row.repair)row.repair.hidden=true;
+ // The package step's button installs (Connect) or updates the package, or
+ // retries a failed step; a current package shows the connection's state.
+ // Windows Smart App Control blocked the official installer: Retry reads
+ // the Catalog again once the person has installed it.
+ const own=!!failure||f.action==='install'||update||!!f.blocked;
  const button=setupRowAction(row,'setup-action-',setupApplyDesktopIntegration,'desktopAction');
- button.hidden=!setupOverviewRead||!f.installed||!f.action;button.disabled=busy||setupWorking||setupActionsRunning();setupText(button,failure?'Retry':(update?'Update ':'Repair ')+title+' connection');
- setupDetails(row,[setupTechnical([failure&&(setupRowFault(id)||(done&&done.detail)||'')])]);return row}
-async function setupApplyDesktopIntegration(id){if(!setupDesktopIntegrationRow(id)||!setupInstalled(id)||!setupDesktopIntegrationFacts().action||setupDesktopIntegrationBusy||setupWorking||setupActionsRunning())return;
+ button.hidden=!setupOverviewRead||!own||!(f.blocked||(f.installed&&f.action));button.disabled=busy||setupWorking||setupActionsRunning();setupText(button,failure||f.blocked?'Retry':update?'Update':'Connect');
+ if(own){if(row.stateButton)row.stateButton.hidden=true}else setupIntegrationState(row,id);
+ setupDetails(row,[setupIntegrationPage(setupIntegration(id)),setupDesktopRepair(id),setupTechnical([failure&&(setupRowFault(id)||(done&&done.detail)||''),f.blocked?f.detail||'':''])]);return row}
+async function setupApplyDesktopIntegration(id){if(setupDesktopIntegrationRow(id)&&setupDesktopIntegrationFacts().blocked&&!setupWorking&&!setupActionsRunning())return setupReload();
+ if(!setupDesktopIntegrationRow(id)||!setupInstalled(id)||!setupDesktopIntegrationFacts().action||setupDesktopIntegrationBusy||setupWorking||setupActionsRunning())return;
  const action=setupDesktopIntegrationFacts().action;
  setupRowError.delete(id);setupRowDetail.delete(id);setupDesktopIntegrationBusy=true;setupDraw();
  try{const reply=await call('/setup/desktop-integration?action='+encodeURIComponent(action),{confirm:true});setupLastState={...(setupLastState||{}),actions:reply.actions||{},outcomes:reply.outcomes||{}};
@@ -303,7 +356,7 @@ function setupDrawPictureApp(id){const row=setupRow(id,false),f=setupPictureAppF
  if(id===setupRetainedPicture().id){line=f.oa_build_removing?'Removing stopped before it finished':'Installed · removing it keeps your pictures and models';label='Remove '+setupRetainedPicture().removal_title;action='remove-oa'}
  else if(f.state==='connected'&&f.changed){line='Installed · Connect again to use it';label='Connect';action='connect'}
  else if(f.state==='connected'&&f.update&&!f.update_blocked){line='Installed · Update ready';label='Update';action='update'}
- else if(f.state==='connected'){line=f.update?'Installed · update unavailable: '+f.update_blocked:f.restart?'Installed · restart '+setupPictureTitle()+' to use the updated integration':'Installed · connected to OpenAbstractions';label=f.open?'Open':'';action='open'}
+ else if(f.state==='connected'){line=f.update?'Installed · update unavailable: '+f.update_blocked:f.restart?'Installed · restart '+setupPictureTitle()+' to use the updated integration':'Installed · connected to OpenAbstractions';label=f.open?'Open':'Manage';action=f.open?'open':'manage'}
  else if(f.state==='connect'){line=f.connectable?'Installed · not connected to OpenAbstractions':'Installed · Update OpenAbstractions to connect it';label='Connect';action='connect';ready=!!f.connectable}
  else if(f.state==='finish'){line=f.finish||'';label='Open';action='open'}
  else if(f.state==='get'){line='Not installed';label='Get '+setupPictureTitle();action='get'}
@@ -323,6 +376,7 @@ async function setupPictureAppAction(id,action){const f=setupPictureAppFacts();i
  if(action==='remove-oa'?id!==setupRetainedPicture().id||!f.oa_build:id!==setupPictureApp())return;
  setupRowError.delete(id);setupRowDetail.delete(id);
  if(action==='get'){const url=setupWorkspace.download;if(url&&typeof open==='function')open(url,'_blank');return}
+ if(action==='manage'){location.href=setupIntegrationHref(setupIntegrationPagePath((setupIntegration(id)||{}).page)||'/app/'+encodeURIComponent(id));return}
  const path=setupPicturePath(action);if(!path)return;
  const step=action==='connect'||action==='update'||action==='remove-oa';setupPictureAppBusy=action==='folder'?'':id;setupDraw();
  try{const reply=await call(path,action==='folder'?{}:{confirm:true});
@@ -528,7 +582,12 @@ function setupEndWork(){setupWorking=false;setupWork=null;if(setupInstallTimer)c
 // the row says why in one sentence, the raw error goes to the log and to
 // the row's Technical details. A refusal written as a plain sentence by
 // the service is its reason in the summary.
-function setupReason(detail){const t=String(detail||'').replace(/^(step [a-z]+|continue)(?: showed no change)?: /,'').split(/; |\n/)[0].trim().replace(/\.$/,'');if(!t||/^downloads are unavailable/i.test(t)||t.length>160||/[:{}\\\/<>=]|https?|\b[0-9]{3}\b/.test(t))return '';return t[0].toUpperCase()+t.slice(1)+'.'}
+// setupServiceSentence words a step that stopped because OpenAbstractions
+// could not be reached in one plain sentence; the resolution chain stays in
+// Technical details. The Go owner is serviceFailureSentence.
+function setupServiceSentence(detail){const t=String(detail||'');if(/multiple runtime installations require explicit selection/i.test(t))return 'OpenAbstractions is installed twice on this PC. Remove one copy in Windows Settings, then retry.';if(/service resolution: runtime_unavailable/i.test(t))return 'OpenAbstractions isn\'t running right now. Retry in a moment.';return ''}
+function setupPlainRowError(text){return setupServiceSentence(text)||text||''}
+function setupReason(detail){const plain=setupServiceSentence(detail);if(plain)return plain;const t=String(detail||'').replace(/^(step [a-z]+|continue)(?: showed no change)?: /,'').split(/; |\n/)[0].trim().replace(/\.$/,'');if(!t||/^downloads are unavailable/i.test(t)||t.length>160||/[:{}\\\/<>=]|https?|\b[0-9]{3}\b/.test(t))return '';return t[0].toUpperCase()+t.slice(1)+'.'}
 const setupRowDetail=new Map(),setupRowFault=id=>setupRowError.has(id)&&setupRowDetail.has(id)?'Error: '+setupRowDetail.get(id):'';
 function setupFailed(id,rowSentence,detail,kind){const title=setupRowTitle(id),removing=setupWork&&setupWork.removals.includes(id),reason=kind==='stalled'?'':setupReason(detail),keepPlan=setupInstallRecord&&setupInstallRecord.plan_id&&!String(setupInstallRecord.plan_id).startsWith('coding-model-')?setupInstallRecord.plan_id:'',keep=()=>{if(keepPlan)Promise.resolve().then(()=>call('/setup/install/failed',{setup_plan_id:keepPlan,component:String(id),sentence:setupResult.sentence,detail:String(detail||'')})).catch(()=>{})};setupEndWork();if(detail)setupRowDetail.set(id,String(detail));if(reason){setupResult={sentence:title+(removing?' was not removed. ':' did not install. ')+reason,state:'failed',button:{label:'Try again',action:'retry'}};setupRowError.set(id,rowSentence);keep();setupNotice(kind||'failed',setupResult.sentence,detail);setupDraw();setupHoldTryAgain();return}if(/^downloads are unavailable/i.test(String(detail||'').replace(/^step [a-z]+: /,''))){rowSentence='Downloads are unavailable.';setupResult={sentence:'Downloads are unavailable. Check the internet connection.',state:'failed',button:{label:'Try again',action:'retry'}}}else{const others=((setupWork&&setupWork.rows)||setupLastRows).filter(other=>other!==id&&!(setupWork&&setupWork.removals.includes(other))&&!setupInstalled(other)&&!(setupLive(other)||{}).text?.startsWith('Installed')).map(setupRowTitle);setupResult={sentence:title+(removing?' was not removed':' did not install')+(others.length?'; '+setupNamed(others)+(others.length>1?' were':' was')+' not installed either.':'.'),state:'failed',button:{label:'Try again',action:'retry'}}}setupRowError.set(id,rowSentence);keep();setupNotice(kind||'failed',setupResult.sentence,detail);setupDraw();setupHoldTryAgain()}
 async function setupHoldTryAgain(){try{setupLastState=await call('/setup/state')}catch(e){}const button=el('setup-install');if(setupStopped||setupResult&&setupResult.button&&setupResult.button.action==='retry'){button.disabled=setupActionsRunning();if(button.disabled)setTimeout(setupHoldTryAgain,3000)}}

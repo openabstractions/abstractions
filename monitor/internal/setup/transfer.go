@@ -75,6 +75,8 @@ type TransferObservation struct {
 	Done    int64  `json:"done"`
 	Total   int64  `json:"total"`
 	Failure string `json:"failure,omitempty"`
+	// Cause is the download service's failure cause, such as not_found.
+	Cause string `json:"cause,omitempty"`
 	// Operation is the public job operation the receipt names.
 	Operation string `json:"operation,omitempty"`
 }
@@ -207,6 +209,7 @@ func (t PublicTransfer) Observe(ctx context.Context, work WorkIdentity) (Transfe
 	observation := TransferObservation{State: snapshot.State.String(), Done: snapshot.Progress.Done, Total: snapshot.Progress.Total, Operation: snapshot.Receipt.OperationID}
 	if snapshot.Failure != nil {
 		observation.Failure = snapshot.Failure.Classification.String() + ": " + snapshot.Failure.Message
+		observation.Cause = string(snapshot.Failure.Cause)
 	}
 	return observation, nil
 }
@@ -277,6 +280,10 @@ func (t PublicTransfer) Copy(ctx context.Context, work WorkIdentity, dst io.Writ
 // "Downloads are unavailable. Check the internet connection." A refused pin
 // or a conflicting job identity is no such refusal and stays unmarked.
 var ErrDownloadsUnavailable = errors.New("downloads are unavailable")
+
+// ErrNotPublished is a pinned release download that its host answered as not
+// found: the release that pins it has not published the asset yet.
+var ErrNotPublished = errors.New("the release has not published this download yet")
 
 // unavailable marks err, a transport failure or an admission refusal of the
 // download service, ErrDownloadsUnavailable.

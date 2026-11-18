@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
-
-	fwire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 )
 
 // panelInstalledPerUser makes this test binary's folder the per-user install
@@ -40,9 +38,6 @@ func TestPerUserPanelFolderVouchesOnlyForSameSignerPrograms(t *testing.T) {
 		suffix = ".exe"
 	}
 	launcher := filepath.Join(dir, "openabstractions-mcp"+suffix)
-	provider := filepath.Join(dir, "lemonaded"+suffix)
-	operator := fwire.DeclarationState{DeclaredBy: provider, Declaration: fwire.Declaration{Name: "lemonade-image", Program: provider}}
-	installed := fwire.DeclarationState{DeclaredBy: providerDeclaredByInstallation, Declaration: fwire.Declaration{Name: "lemonade-image", Program: provider}}
 
 	signedByPanelSigner(t)
 	titler := newProgramTitler(nil)
@@ -53,30 +48,12 @@ func TestPerUserPanelFolderVouchesOnlyForSameSignerPrograms(t *testing.T) {
 	if got := records.ownApplicationPublisher(launcher); got != "Publisher: not verified." {
 		t.Errorf("the replaced launcher lost its Publisher line: %q", got)
 	}
-	for _, state := range []fwire.DeclarationState{operator, installed} {
-		if shippedProvider(state) {
-			t.Errorf("an unsigned lemonade-image declared by %s beside the per-user Panel is shipped", state.DeclaredBy)
-		}
-		titler.providers = []fwire.DeclarationState{state}
-		if got := titler.name(provider); got != "Lemonade image" {
-			t.Errorf("an unsigned provider declared by %s reads %q", state.DeclaredBy, got)
-		}
-	}
 
 	// The same files signed by this Panel's signer behave as before.
-	signedByPanelSigner(t, launcher, provider)
+	signedByPanelSigner(t, launcher)
 	titler = newProgramTitler(nil)
 	if !titler.isOwn(launcher) || titler.name(launcher) != oaProductTitle {
 		t.Errorf("a signed launcher reads %q own %v", titler.name(launcher), titler.isOwn(launcher))
-	}
-	for _, state := range []fwire.DeclarationState{operator, installed} {
-		if !shippedProvider(state) {
-			t.Errorf("a signed lemonade-image declared by %s is not shipped", state.DeclaredBy)
-		}
-		titler.providers = []fwire.DeclarationState{state}
-		if got := titler.name(provider); got != "Lemonade" {
-			t.Errorf("a signed provider declared by %s reads %q", state.DeclaredBy, got)
-		}
 	}
 }
 
@@ -101,11 +78,7 @@ func TestJunctionToInstallFolderIsNoInstallFolder(t *testing.T) {
 	if !newProgramTitler(nil).isOwn(filepath.Join(machine, "openabstractions-mcp.exe")) {
 		t.Fatal("the per-machine folder's launcher is not own")
 	}
-	if !shippedProvider(fwire.DeclarationState{DeclaredBy: "app", Declaration: fwire.Declaration{Name: "lemonade-image", Program: filepath.Join(machine, "lemonaded.exe")}}) {
-		t.Fatal("the per-machine folder's provider is not shipped")
-	}
-	state := fwire.DeclarationState{DeclaredBy: "app", Declaration: fwire.Declaration{Name: "lemonade-image", Program: filepath.Join(link, "lemonaded.exe")}}
-	if shippedProvider(state) {
-		t.Error("a provider through a junction to the per-machine folder is shipped")
+	if newProgramTitler(nil).isOwn(filepath.Join(link, "openabstractions-mcp.exe")) {
+		t.Error("a launcher through a junction to the per-machine folder is own")
 	}
 }

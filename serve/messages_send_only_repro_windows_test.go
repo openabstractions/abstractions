@@ -50,9 +50,10 @@ func TestMessagesExplicitReceivingDefaultAndMultipleChats(t *testing.T) {
 		}
 		return out
 	}
-	// Both the legacy inbox and canonical chat are eligible while live.
-	if out := prepare(""); out.Outcome != msg.OutcomePage || out.SendRequest == nil {
-		t.Fatal("program-only route unavailable", out)
+	// Both the legacy inbox and canonical chat are eligible while live, so a
+	// program-only prepare offers both (ruling P3).
+	if out := prepare(""); out.Outcome != msg.OutcomeConflict || out.SendRequest != nil || len(out.Choices) != 2 {
+		t.Fatal("program-only choices unavailable", out)
 	}
 	if out := prepare(bound); out.Outcome != msg.OutcomePage || out.SendRequest == nil || out.SendRequest.Context != bound {
 		t.Fatal("explicit bound chat lost", out)

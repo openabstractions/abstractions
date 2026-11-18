@@ -23,15 +23,46 @@ import (
 
 // InstallFolders are the folders whose programs have product standing by
 // path: the per-machine installation on Windows, which only an administrator
-// writes. Every other platform has none.
+// writes. Every other platform has none. The folder comes from the
+// ProgramFiles known folder (layout.ProgramFiles). The ProgramFiles variable
+// is the starting program's choice and moves nothing here.
 func InstallFolders() []string {
 	if runtime.GOOS != "windows" {
 		return nil
 	}
-	if dir := os.Getenv("ProgramFiles"); dir != "" {
+	if dir, err := layout.ProgramFiles(); err == nil {
 		return []string{filepath.Join(dir, "OpenAbstractions", "tools")}
 	}
 	return nil
+}
+
+// AccountInstallFolder is the per-user installation's folder on Windows under
+// the account's recorded profile (layout.AccountLocalAppData), whatever
+// USERPROFILE and LOCALAPPDATA say. It is "" elsewhere and when the profile
+// cannot be read.
+func AccountInstallFolder() string {
+	if runtime.GOOS != "windows" {
+		return ""
+	}
+	if dir, err := layout.AccountLocalAppData(); err == nil {
+		return filepath.Join(dir, "Programs", "OpenAbstractions", "tools")
+	}
+	return ""
+}
+
+// InstalledToolFolders are the Windows folders an installed OpenAbstractions
+// Panel may sit in: InstallFolders, AccountInstallFolder, UserInstallFolder
+// and the installations Windows Installer records (RegisteredToolFolders).
+// The Panel's loopback guard and the journeys' tools copy read the one list.
+// It decides only what is guarded and grants no standing. With an error it
+// still returns every folder it found.
+func InstalledToolFolders() ([]string, error) {
+	if runtime.GOOS != "windows" {
+		return nil, nil
+	}
+	folders := append(InstallFolders(), AccountInstallFolder(), UserInstallFolder())
+	registered, err := RegisteredToolFolders()
+	return append(folders, registered...), err
 }
 
 // UserInstallFolder is the per-user installation's folder on Windows, which

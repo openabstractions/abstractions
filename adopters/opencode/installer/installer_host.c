@@ -70,8 +70,8 @@ static BOOL json_string(wchar_t *out, size_t capacity, const wchar_t *value) {
     out[n++]=L'"';out[n]=0;return TRUE;
 }
 static BOOL request_json(wchar_t *json,wchar_t *const *values) {
-    return SUCCEEDED(StringCchPrintfW(json,65536,L"{%s:%s,%s:%s,%s:%s,%s:%s,%s:%s,%s:%s,%s:%s,%s:%s,%s:%s}",
-       L"\"operation\"",values[0],L"\"directory\"",values[1],L"\"stage\"",values[2],L"\"plugin\"",values[3],L"\"cli\"",values[4],L"\"state\"",values[5],L"\"work\"",values[6],L"\"cache\"",values[7],L"\"mcpLauncher\"",values[8]));
+    return SUCCEEDED(StringCchPrintfW(json,65536,L"{%s:%s,%s:%s,%s:%s,%s:%s,%s:%s,%s:%s,%s:%s}",
+       L"\"operation\"",values[0],L"\"directory\"",values[1],L"\"plugin\"",values[2],L"\"state\"",values[3],L"\"work\"",values[4],L"\"cache\"",values[5],L"\"mcpLauncher\"",values[6]));
 }
 static BOOL hold_launcher(const wchar_t *operation,const wchar_t *launcher,OA_NATIVE_FILE *held) {
     return lstrcmpW(operation,L"install")!=0||(*launcher&&oa_native_open(launcher,GENERIC_READ,FILE_SHARE_READ,FALSE,FALSE,held));
@@ -104,6 +104,8 @@ static BOOL sort_env(wchar_t *block) {
 #include "desktop_state.h"
 #ifndef OA_PREFLIGHT_ONLY
 #include "desktop_fix.h"
+/* FindRecords: app.wxs reads the Panel's program into OaPanel with it. */
+#include <oa_records.h>
 /* The installing user's Desktop watcher, its kept stock copy, the verified
    payload copy and OA's marker; paths is six 32768-character buffers. */
 typedef struct {wchar_t paths[6][32768];const char *stock[OA_DESKTOP_RELEASE_COUNT];OA_DESKTOP_FIX fix;} OA_DESKTOP_FIX_CONTEXT;
@@ -293,7 +295,7 @@ static BOOL prepare_context(MSIHANDLE session,wchar_t *localOut) {
     if(!count){if(!profile&&FAILED(SHGetKnownFolderPath(&FOLDERID_Profile,0,token,&profile)))goto done;if(!combine(config,profile,L".cache"))goto done;}
     if(PathIsRelativeW(config)||!combine(cache,config,L"opencode"))goto done;
     if(wcschr(local,L'\n')||wcschr(directory,L'\n')||wcschr(temp,L'\n')||wcschr(cache,L'\n'))goto done;
-    /* OaPanel is the existing private AppSearch result for the selected core.
+    /* OaPanel is the private FindRecords result for the selected core.
        Its existing Setup owner prepares the dedicated MCP image. */
     count=32768;
     UINT panelResult=MsiGetPropertyW(session,L"OaPanel",launcher,&count);
@@ -403,6 +405,34 @@ done:
     if(descriptor)LocalFree(descriptor);if(sid)LocalFree(sid);if(path)HeapFree(GetProcessHeap(),0,path);
     if(primary)CloseHandle(primary);if(hostToken)CloseHandle(hostToken);SetLastError(error);return ok;
 }
+/* The installer's error box for a failed Install, Remove or Rollback step,
+   naming the step that failed in plain words. The text is a record field, so
+   a bracket in a path is shown as written. panel is the Panel program the
+   prepare_integration step starts, folder the integration's state folder. */
+static void failure_message(MSIHANDLE session,const wchar_t *stage,const wchar_t *panel,const wchar_t *folder) {
+    wchar_t text[1024];HRESULT written;
+    if(!wcscmp(stage,L"prepare_integration")&&panel&&*panel)
+        written=StringCchPrintfW(text,1024,L"OpenCode with OA could not start the OpenAbstractions Panel at %s. Repair or reinstall OpenAbstractions, then run this installer again.",panel);
+    else if(!wcscmp(stage,L"prepare_integration"))
+        written=StringCchCopyW(text,1024,L"OpenCode with OA could not find the OpenAbstractions Panel. Repair or reinstall OpenAbstractions, then run this installer again.");
+    else if(!wcscmp(stage,L"prepared_image_receipt"))
+        written=StringCchCopyW(text,1024,L"OpenCode with OA could not use the program the OpenAbstractions Panel prepared for OpenCode. Repair or reinstall OpenAbstractions, then run this installer again.");
+    else if(!wcscmp(stage,L"desktop_fix")||!wcscmp(stage,L"desktop_fix_restore")||!wcscmp(stage,L"desktop_fix_paths"))
+        written=StringCchCopyW(text,1024,L"OpenCode with OA could not update its file watcher fix in OpenCode's program folder. Close OpenCode, then run this installer again.");
+    else if(!wcscmp(stage,L"trusted_payload"))
+        written=StringCchCopyW(text,1024,L"OpenCode with OA found a changed file in its own program folder. Repair OpenCode with OA, then run this installer again.");
+    else if(!wcscmp(stage,L"workspace")&&folder&&*folder)
+        written=StringCchPrintfW(text,1024,L"OpenCode with OA could not create its work folder in %s. Check that this folder can be written, then run this installer again.",folder);
+    else if(!wcscmp(stage,L"desktop_runtime"))
+        written=StringCchCopyW(text,1024,L"OpenCode with OA updates OpenCode's settings with OpenCode Desktop " OA_DESKTOP_VERSIONS_TEXT L" at its standard per-user location, which it could not find. Install that OpenCode Desktop, then run this installer again.");
+    else if(!wcscmp(stage,L"configuration_request")||!wcscmp(stage,L"configure")||!wcscmp(stage,L"configuration_result"))
+        written=StringCchCopyW(text,1024,L"OpenCode with OA could not update OpenCode's settings. Your own settings are preserved. Close OpenCode, then run this installer again.");
+    else
+        written=StringCchCopyW(text,1024,L"OpenCode with OA could not read its installer settings. Run this installer again.");
+    if(FAILED(written)&&written!=STRSAFE_E_INSUFFICIENT_BUFFER)return;
+    MSIHANDLE record=MsiCreateRecord(1);
+    if(record){MsiRecordSetStringW(record,0,L"[1]");MsiRecordSetStringW(record,1,text);MsiProcessMessage(session,INSTALLMESSAGE_ERROR,record);MsiCloseHandle(record);}
+}
 static BOOL prepared_launcher(const wchar_t *receipt,wchar_t *launcher,OA_NATIVE_FILE *image) {
     OA_NATIVE_FILE held={0};char *raw=NULL;BOOL ok=FALSE;DWORD size,got;
     if(!oa_native_open(receipt,GENERIC_READ,FILE_SHARE_READ,FALSE,FALSE,&held))goto done;
@@ -420,21 +450,21 @@ static BOOL prepared_launcher(const wchar_t *receipt,wchar_t *launcher,OA_NATIVE
 done:if(!ok)oa_native_close(image);if(raw)HeapFree(GetProcessHeap(),0,raw);oa_native_close(&held);return ok;
 }
 static UINT helper(MSIHANDLE session,const wchar_t *operation) {
-    wchar_t *root=NULL,*state=NULL,*directory=NULL,*work=NULL,*home=NULL,*cwd=NULL,*cli=NULL,*script=NULL,*config=NULL,*request=NULL;
+    wchar_t *root=NULL,*state=NULL,*directory=NULL,*work=NULL,*home=NULL,*cwd=NULL,*runtime=NULL,*script=NULL,*request=NULL;
     wchar_t *json=NULL,*command=NULL,*environment=NULL;UINT result=ERROR_INSTALL_FAILURE;size_t used=0;
     GUID guid;wchar_t unique[64],*temp=NULL,*value=NULL,*originalTemp=NULL,*cache=NULL;
     HANDLE installingUser=NULL;void *userEnvironment=NULL;
     OA_NATIVE_FILE launcherHeld={0};wchar_t *launcher=NULL;
     const wchar_t *stage=L"allocation";DWORD failureError=ERROR_INVALID_DATA;
-    wchar_t *values[9]={0};
+    wchar_t *values[7]={0};
     OA_DESKTOP_FIX_CONTEXT *fixContext=NULL;
 #define ALLOC(name,count) name=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,(count)*sizeof(wchar_t));if(!name){SetLastError(ERROR_NOT_ENOUGH_MEMORY);goto done;}
-    ALLOC(root,32768);ALLOC(state,32768);ALLOC(directory,32768);ALLOC(work,32768);ALLOC(home,32768);ALLOC(cwd,32768);ALLOC(cli,32768);ALLOC(script,32768);ALLOC(config,32768);ALLOC(request,32768);
+    ALLOC(root,32768);ALLOC(state,32768);ALLOC(directory,32768);ALLOC(work,32768);ALLOC(home,32768);ALLOC(cwd,32768);ALLOC(runtime,32768);ALLOC(script,32768);ALLOC(request,32768);
     ALLOC(json,65536);ALLOC(command,32768);ALLOC(environment,65536);
     ALLOC(temp,32768);ALLOC(value,32768);ALLOC(originalTemp,32768);ALLOC(cache,32768);
     ALLOC(launcher,32768);
     fixContext=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*fixContext));if(!fixContext){SetLastError(ERROR_NOT_ENOUGH_MEMORY);goto done;}
-    for(unsigned i=0;i<9;i++){values[i]=HeapAlloc(GetProcessHeap(),0,65536*sizeof(wchar_t));if(!values[i]){SetLastError(ERROR_NOT_ENOUGH_MEMORY);goto done;}}
+    for(unsigned i=0;i<7;i++){values[i]=HeapAlloc(GetProcessHeap(),0,65536*sizeof(wchar_t));if(!values[i]){SetLastError(ERROR_NOT_ENOUGH_MEMORY);goto done;}}
     stage=L"captured_paths";
     if(!paths(session,root,state,directory,originalTemp,cache,launcher))goto done;
     stage=L"desktop_fix_paths";
@@ -455,8 +485,8 @@ static UINT helper(MSIHANDLE session,const wchar_t *operation) {
     if(FAILED(StringCchPrintfW(temp,32768,L"work-%s",unique))||!combine(work,state,temp)||!CreateDirectoryW(work,NULL))goto done;
     MSIHANDLE workRecord=MsiCreateRecord(1);
     if(workRecord){MsiRecordSetStringW(workRecord,0,L"OA OpenCode installer work=[1]");MsiRecordSetStringW(workRecord,1,work);MsiProcessMessage(session,INSTALLMESSAGE_INFO,workRecord);MsiCloseHandle(workRecord);}
-    if(!combine(home,work,L"home")||!CreateDirectoryW(home,NULL)||!combine(cwd,root,L"installer")||!combine(cli,root,L"cli\\opencode.exe")
-       ||!combine(script,root,OA_HELPER_RELATIVE)||!combine(config,root,L"installer\\empty-bunfig.toml")||!combine(request,work,L"request.json"))goto done;
+    if(!combine(home,work,L"home")||!CreateDirectoryW(home,NULL)||!combine(cwd,root,L"installer")
+       ||!combine(script,root,OA_HELPER_RELATIVE)||!combine(request,work,L"request.json"))goto done;
     /* The Desktop check (CheckOpenCodeClosed) admitted a listed Desktop with no
        process running it. Install and Repair (Setup's msiexec /fomus, README
        "Repair: the watcher fix after an OpenCode update") replace only a stock
@@ -488,15 +518,26 @@ static UINT helper(MSIHANDLE session,const wchar_t *operation) {
         /* The child owns retained prepare.stderr in this private directory. */
         if(!DeleteFileW(temp))goto done;
     }
+    /* The configuration helper runs on the official OpenCode Desktop's own
+       Node (ELECTRON_RUN_AS_NODE): the listed release at its standard
+       per-user location, with its OpenCode.exe digest checked here. Remove
+       and Rollback without that Desktop leave OpenCode's settings as they are
+       and succeed; OpenCode is gone or unsupported then. */
+    stage=L"desktop_runtime";
+    if(!installingUser||!desktop_check(installingUser,TRUE,runtime)) {
+        DWORD error=GetLastError();
+        guard_info(session,L"desktop_runtime_unavailable",error,error?HRESULT_FROM_WIN32(error):E_FAIL,0);
+        if(lstrcmpW(operation,L"install")){result=ERROR_SUCCESS;RemoveDirectoryW(home);RemoveDirectoryW(work);}
+        goto done;
+    }
     stage=L"configuration_request";
-    if(!json_string(values[0],65536,operation)||!json_string(values[1],65536,directory)||!combine(temp,work,L"stage")||!json_string(values[2],65536,temp)
-       ||!combine(temp,root,OA_PLUGIN_RELATIVE)||!json_string(values[3],65536,temp)||!json_string(values[4],65536,cli)||!json_string(values[5],65536,state)||!json_string(values[6],65536,work)||!json_string(values[7],65536,cache))goto done;
-    if(!json_string(values[8],65536,launcher))goto done;
+    if(!json_string(values[0],65536,operation)||!json_string(values[1],65536,directory)
+       ||!combine(temp,root,OA_PLUGIN_RELATIVE)||!json_string(values[2],65536,temp)||!json_string(values[3],65536,state)||!json_string(values[4],65536,work)||!json_string(values[5],65536,cache))goto done;
+    if(!json_string(values[6],65536,launcher))goto done;
     if(!request_json(json,values)||!write_utf8(request,json))goto done;
     const wchar_t *systemKeys[]={L"SystemRoot",L"WINDIR",L"COMSPEC",L"PATHEXT",L"PROCESSOR_ARCHITECTURE"};
     for(unsigned i=0;i<5;i++){DWORD n=GetEnvironmentVariableW(systemKeys[i],value,32768);if(n>=32768)goto done;if(n&&!env_value(environment,&used,systemKeys[i],value))goto done;}
-    if(!env_value(environment,&used,L"BUN_BE_BUN",L"1")||!env_value(environment,&used,L"HOME",home)||!env_value(environment,&used,L"USERPROFILE",home)
-       ||!env_value(environment,&used,L"OA_BOOTSTRAP_INVENTORY_SHA256",OA_BOOTSTRAP_INVENTORY_SHA256)
+    if(!env_value(environment,&used,L"ELECTRON_RUN_AS_NODE",L"1")||!env_value(environment,&used,L"HOME",home)||!env_value(environment,&used,L"USERPROFILE",home)
        ||!env_value(environment,&used,L"OA_PLUGIN_INVENTORY_SHA256",OA_PLUGIN_INVENTORY_SHA256))goto done;
     const wchar_t *privateKeys[]={L"APPDATA",L"LOCALAPPDATA",L"XDG_CONFIG_HOME",L"XDG_DATA_HOME",L"XDG_CACHE_HOME",L"XDG_STATE_HOME"};
     for(unsigned i=0;i<6;i++){if(!combine(temp,home,privateKeys[i])||!env_value(environment,&used,privateKeys[i],temp))goto done;}
@@ -504,20 +545,20 @@ static UINT helper(MSIHANDLE session,const wchar_t *operation) {
        helper working/config/cache directories above are explicitly private. */
     if(!env_value(environment,&used,L"TEMP",originalTemp)||!env_value(environment,&used,L"TMP",originalTemp))goto done;
     if(!sort_env(environment))goto done;
-    if(FAILED(StringCchPrintfW(command,32768,L"\"%s\" run --no-env-file --no-install --no-addons --no-macros --config=\"%s\" \"%s\" --request \"%s\"",cli,config,script,request)))goto done;
+    if(FAILED(StringCchPrintfW(command,32768,L"\"%s\" \"%s\" --request \"%s\"",runtime,script,request)))goto done;
     stage=L"configure";
-    if(!run_user_child(session,L"configure",cli,command,environment,cwd,installingUser,work)){failureError=GetLastError();goto done;}
+    if(!run_user_child(session,L"configure",runtime,command,environment,cwd,installingUser,work)){failureError=GetLastError();goto done;}
     stage=L"configuration_result";
     if(!combine(temp,work,L"result.json")||GetFileAttributesW(temp)==INVALID_FILE_ATTRIBUTES)goto done;
     result=ERROR_SUCCESS;
     DeleteFileW(request);DeleteFileW(temp);RemoveDirectoryW(home);RemoveDirectoryW(work);
 done:
     guard_info(session,stage,result==ERROR_SUCCESS?ERROR_SUCCESS:failureError,result==ERROR_SUCCESS?S_OK:E_FAIL,0);
-    if(result!=ERROR_SUCCESS)message(session,L"OpenCode with OA could not update its owned configuration. Your changed settings are preserved. Close OpenCode and inspect the per-user installer result before retrying.");
+    if(result!=ERROR_SUCCESS)failure_message(session,stage,launcher,state);
     if(userEnvironment)DestroyEnvironmentBlock(userEnvironment);if(installingUser)CloseHandle(installingUser);
     oa_native_close(&launcherHeld);if(fixContext)HeapFree(GetProcessHeap(),0,fixContext);
-    for(unsigned i=0;i<9;i++)if(values[i])HeapFree(GetProcessHeap(),0,values[i]);
-    wchar_t *allocated[]={root,state,directory,work,home,cwd,cli,script,config,request,json,command,environment,temp,value,originalTemp,cache,launcher};
+    for(unsigned i=0;i<7;i++)if(values[i])HeapFree(GetProcessHeap(),0,values[i]);
+    wchar_t *allocated[]={root,state,directory,work,home,cwd,runtime,script,request,json,command,environment,temp,value,originalTemp,cache,launcher};
     for(unsigned i=0;i<sizeof(allocated)/sizeof(allocated[0]);i++)if(allocated[i])HeapFree(GetProcessHeap(),0,allocated[i]);return result;
 }
 static UINT commit(MSIHANDLE session,BOOL removing) {

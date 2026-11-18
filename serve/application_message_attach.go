@@ -84,6 +84,19 @@ func (d *applicationDirectory) messageContextLiveLocked(application, contextName
 	return row.application == application && d.nativeInboxLiveLocked(row, d.now())
 }
 
+// messageContextStatus is the presence status the live inbox of application
+// and contextName last published, or "" when no such inbox is live.
+func (d *applicationDirectory) messageContextStatus(ctx context.Context, application, contextName string) string {
+	if !d.lockRead(ctx) {
+		return ""
+	}
+	defer d.mu.RUnlock()
+	if !d.messageContextLiveLocked(application, contextName) {
+		return ""
+	}
+	return d.nativeInboxes.rows[application+"\x00"+contextName].status
+}
+
 func (d *applicationDirectory) messageContextOpen(ctx context.Context, application, contextName string) (bool, error) {
 	if !d.lockRead(ctx) {
 		return false, ctx.Err()

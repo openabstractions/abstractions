@@ -181,6 +181,7 @@ function newInbox()
   reach
   chatTitle
   mine
+  hints
 function newInboxChange()
   outcome
   revision

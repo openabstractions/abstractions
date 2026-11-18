@@ -444,8 +444,11 @@ type runtimeProviders struct {
 	// pictureStoreRead is set once the inventory has read OA's picture
 	// store; the PyTorch set table applies to pytorchd hosts from then on
 	// (provider_pytorch_sets.go).
-	pictureStoreRead              atomic.Bool
-	endpointFor                   func(string) (string, error)
+	pictureStoreRead atomic.Bool
+	endpointFor      func(string) (string, error)
+	// admittedPanel reports whether a program path is the Panel image the
+	// runtime admits (runtimeRights.matchesPanel); nil admits none.
+	admittedPanel                 func(string) bool
 	registrationDirectory         func() *applicationDirectory
 	readyRegistrationDirectory    atomic.Pointer[applicationDirectory]
 	shippedImageUpdated           func()
@@ -734,7 +737,7 @@ func currentPrincipal() (identity.User, error) {
 	if runtime.GOOS == "windows" {
 		u, err := user.Current()
 		if err != nil || u.Uid == "" {
-			return identity.User{}, fmt.Errorf("providers: runtime account unavailable: %v", err)
+			return identity.User{}, fmt.Errorf("providers: runtime account unavailable: %w", err)
 		}
 		return identity.User{Kind: "windows", SID: u.Uid}, nil
 	}
@@ -1084,33 +1087,93 @@ func pictureProviderRank(name string, shipped bool) int {
 	return len(pictureProviderPreference)
 }
 
-// shippedProvider reports a declaration OpenAbstractions shipped or Setup
-// made: one a product record supplied, one the installation placed in a
-// folder only an administrator writes, or one whose program has product
-// standing (product.Shipped, the rule the Panel's titles share): in the
-// per-machine install folder by path, or in the runtime's own folder, the
-// installation's tools folder or the per-user install folder with the
-// runtime's own signer. A per-user installation's folder is the person's to
-// write, so a declaration placed there counts only by its program. A
-// declaration's name alone claims no product standing, since any holder of
-// provider management may choose it.
+// shippedProvider reports a declaration's product standing, the one reading
+// serve's picture rank, the Panel's titles and the ASK-R6 tier take from
+// DeclarationState.standing (A-SEC6, architect ruling 2026-11-22 (1) and its
+// declarer amendment, FAC-R9). Its program has product standing
+// (shippedProgram: product.Shipped, and a name the component table lists for
+// that program), and one of these holds:
+//   - the installation placed it, or a product record supplied it;
+//   - it repeats an installation declaration exactly (program, arguments,
+//     endpoint, transport, resources), since arguments choose what a shipped
+//     program loads and runs;
+//   - its recorded declarer resolves by identity to an OA component the table
+//     lists as a declarer of that name (declarerComponent);
+//   - it is one of Setup's inventoryd stores (product.SetupInventoryProvider).
 func (p *runtimeProviders) shippedProvider(f providerFile) bool {
-	if f.Source == declarationSourceProduct {
+	d := f.Declaration
+	if !p.shippedProgram(f) {
+		return false
+	}
+	switch {
+	case f.Source == declarationSourceInstallation || f.Source == declarationSourceProduct:
+		return true
+	case product.SetupInventoryProvider(d.Program, d.Name):
+		return true
+	case product.ListsDeclarer(d.Program, d.Name, p.declarerComponent(f)):
 		return true
 	}
-	protected := standingInstallFolders()
+	return slices.ContainsFunc(p.installedDeclarations(nil), func(shipped providerFile) bool {
+		s := shipped.Declaration
+		return s.Name == d.Name && identity.SameSubjectProgram(s.Program, d.Program) && slices.Equal(s.Arguments, d.Arguments) &&
+			s.Endpoint == d.Endpoint && s.Transport == d.Transport && slices.Equal(s.Resources, d.Resources)
+	})
+}
+
+// declarerComponent is the component id of the program the runtime recorded
+// as an operator declaration's declarer: declared_by, the bound caller's
+// proven program, written when the runtime accepted the declaration and
+// replaced by each new declaration of the name (FAC-R1). It is resolved by
+// identity (product.DeclarerComponent) and never read from the caller. A
+// declaration with no program path as its declarer, and an installation's or
+// a product record's (whose declared_by is a word), resolves to none. A
+// supervisor started by an add holds the file before a read assigns its
+// source, so an empty source reads as an operator's.
+func (p *runtimeProviders) declarerComponent(f providerFile) string {
+	if f.Source == declarationSourceInstallation || f.Source == declarationSourceProduct || !filepath.IsAbs(f.DeclaredBy) {
+		return ""
+	}
+	protected, signed := p.standingFolders()
+	component := product.DeclarerComponent(f.DeclaredBy, protected, signed, standingSameSigner, standingOriginalName)
+	if component == "oa:panel" && (p.admittedPanel == nil || !p.admittedPanel(f.DeclaredBy)) {
+		// Only the image this runtime admits as the Panel declares as the
+		// Panel: another OA-signed copy of it in a user-writable folder,
+		// or a renamed original, does not.
+		return ""
+	}
+	return component
+}
+
+// standingFolders are product standing's folders: the per-machine install
+// folder by path; the installation's tools folder, the per-user install
+// folder and the runtime's own folder by signer.
+func (p *runtimeProviders) standingFolders() (protected, signed []string) {
 	tools := ""
 	if p.installation != "" {
 		tools = filepath.Dir(p.installation)
 	}
-	if f.Source == declarationSourceInstallation && product.Protected(tools, protected) {
-		return true
-	}
-	signed := []string{tools, standingUserInstallFolder()}
+	signed = []string{tools, standingUserInstallFolder()}
 	if exe, err := os.Executable(); err == nil {
 		signed = append(signed, filepath.Dir(exe))
 	}
-	return product.Shipped(f.Declaration.Program, protected, signed, standingSameSigner)
+	return standingInstallFolders(), signed
+}
+
+// shippedProgram reports that a declaration names a program OpenAbstractions
+// shipped under a name that program ships (product.ShippedProgram),
+// whatever its arguments. It vouches for the program file alone;
+// shippedProvider is the declaration's standing.
+func (p *runtimeProviders) shippedProgram(f providerFile) bool {
+	protected, signed := p.standingFolders()
+	return product.ShippedProgram(f.Declaration.Program, f.Declaration.Name, protected, signed, standingSameSigner)
+}
+
+// standing is shippedProvider as ProviderStanding carries it.
+func (p *runtimeProviders) standing(f providerFile) wire.ProductStanding {
+	if p.shippedProvider(f) {
+		return wire.ProductStandingProduct
+	}
+	return wire.ProductStandingThirdParty
 }
 
 // managedHost reports whether h is a provider OpenAbstractions runs: its
@@ -1134,6 +1197,7 @@ var (
 	standingInstallFolders    = product.InstallFolders
 	standingUserInstallFolder = product.UserInstallFolder
 	standingSameSigner        = product.SameSigner
+	standingOriginalName      = product.VerifiedOriginalName
 )
 
 // remoteHosts is a router host for each remote declaration whose trust files
@@ -1399,6 +1463,45 @@ func (p *runtimeProviders) listPinned() ([]wire.PinnedDeclarationState, string, 
 		out = append(out, entry)
 	}
 	return out, revision, nil
+}
+
+// standings is the runtime's product standing of every declaration, at the
+// revision listPinned reads (registry@2 Standings). A published registry@1
+// or registry@2 reading carries no standing, so its readers keep decoding it.
+func (p *runtimeProviders) standings() ([]wire.ProviderStanding, string, error) {
+	p.productDeclarations()
+	p.mu.Lock()
+	files, revision, err := p.readCached()
+	p.mu.Unlock()
+	if err != nil {
+		return nil, "", err
+	}
+	out := make([]wire.ProviderStanding, 0, len(files))
+	for _, f := range files {
+		// A program the record cannot carry leaves its declaration out, and
+		// that declaration reads as third_party; every other standing still
+		// reaches its readers.
+		if !standingCarries(f.Declaration.Name, 64) || !standingCarries(f.Declaration.Program, 4096) {
+			p.report(fmt.Errorf("registry: the standing of %q is not sent: its name or program exceeds ProviderStanding's bounds", f.Declaration.Name))
+			continue
+		}
+		out = append(out, wire.ProviderStanding{Name: f.Declaration.Name, Program: f.Declaration.Program, Standing: p.standing(f)})
+	}
+	return out, revision, nil
+}
+
+// standingCarries reports a value ProviderStanding's no_control pattern and
+// byte bound admit.
+func standingCarries(value string, limit int) bool {
+	if len(value) > limit || !utf8.ValidString(value) {
+		return false
+	}
+	for _, r := range value {
+		if r < 0x20 || r >= 0x7f && r <= 0x9f {
+			return false
+		}
+	}
+	return true
 }
 
 // add writes a declaration and supervises it through the existing owner.

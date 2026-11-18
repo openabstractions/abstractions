@@ -251,6 +251,9 @@ func composeAsks(options runtimeFlags, r *runtimeRights, report func(error)) (*r
 	if err != nil {
 		return nil, err
 	}
+	if err := keepOpenQuestions(book); err != nil {
+		return nil, err
+	}
 	endpoint, err := asksEndpoint(options)
 	if err != nil {
 		return nil, err
@@ -1402,7 +1405,7 @@ func (r *runtimeRights) decideInference(ctx context.Context, s inference.Subject
 		if r == nil || !call.matchesSubject(r.owner, s.Account, s.Program) {
 			return rwire.DecisionOutcomeForbidden.String(), nil
 		}
-		return r.decideRemote(ctx, call.peer, call.admit, action, resource, call.minimum).Outcome.String(), nil
+		return r.decideRemote(ctx, call.peer, call.admission(ctx), action, resource, call.minimum).Outcome.String(), nil
 	}
 	if remote.ValidSubjectProgram(s.Program) {
 		return rwire.DecisionOutcomeUnavailable.String(), nil

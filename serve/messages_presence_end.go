@@ -47,12 +47,14 @@ func (d *applicationDirectory) recordPresenceEndLocked(l applicationLease, kind 
 
 // receiverAbsence reports the most recent end among the receiver's contexts,
 // or only the named one. No recorded end since this runtime started reads
-// receiver_unavailable.
+// receiver_unavailable. A lease past its deadline lapses here first, so the
+// answer follows the clock rather than the last background progress pass.
 func (d *applicationDirectory) receiverAbsence(ctx context.Context, application, contextName string) string {
 	if !d.lock(ctx) {
 		return "receiver_unavailable"
 	}
 	defer d.unlock()
+	d.expireLocked()
 	var latest *applicationPresenceEnd
 	for _, end := range d.presenceEnds {
 		if end.Application != application || contextName != "" && end.Context != contextName {

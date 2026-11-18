@@ -82,6 +82,12 @@ pub enum DeclarationReadiness
   pub const ALL: [Self; 8]
   pub fn as_str(self) -> &'static str
   pub fn from_wire(name: &str) -> ::std::option::Option<Self>
+pub enum ProductStanding
+  Product
+  ThirdParty
+  pub const ALL: [Self; 2]
+  pub fn as_str(self) -> &'static str
+  pub fn from_wire(name: &str) -> ::std::option::Option<Self>
 pub enum DeclarationListOutcome
   Page
   Invalid
@@ -279,6 +285,14 @@ pub struct PinnedDeclarationObservation
   outcome: DeclarationListOutcome
   cursor: ::std::string::String
   declarations: ::std::vec::Vec<PinnedDeclarationState>
+pub struct ProviderStanding
+  name: ::std::string::String
+  program: ::std::string::String
+  standing: ProductStanding
+pub struct ProviderStandingList
+  outcome: DeclarationListOutcome
+  revision: ::std::string::String
+  standings: ::std::vec::Vec<ProviderStanding>
 pub struct ApplicationInterface
   name: ::std::string::String
   protocol: ::std::string::String
@@ -393,6 +407,7 @@ pub trait RegistryV2
   fn declare_pinned(&self, expected_revision: ::std::string::String, declaration: PinnedDeclaration) -> ::std::result::Result<DeclarationChange, Self::Error>
   fn replace_pinned(&self, expected_revision: ::std::string::String, declaration: PinnedDeclaration) -> ::std::result::Result<DeclarationChange, Self::Error>
   fn observe_pinned(&self, cursor: ::std::string::String, wait_ms: i64) -> ::std::result::Result<PinnedDeclarationObservation, Self::Error>
+  fn standings(&self) -> ::std::result::Result<ProviderStandingList, Self::Error>
 pub struct RegistryV2Client<T>
   pub fn new(transport: T) -> Self
   pub fn transport(&self) -> &T
@@ -465,6 +480,10 @@ pub fn encode_pinned_declaration_list_document(v: &PinnedDeclarationList) -> ::s
 pub fn decode_pinned_declaration_list_document(data: &[u8]) -> ::std::result::Result<PinnedDeclarationList, Refusal>
 pub fn encode_pinned_declaration_observation_document(v: &PinnedDeclarationObservation) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
 pub fn decode_pinned_declaration_observation_document(data: &[u8]) -> ::std::result::Result<PinnedDeclarationObservation, Refusal>
+pub fn encode_provider_standing_document(v: &ProviderStanding) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_provider_standing_document(data: &[u8]) -> ::std::result::Result<ProviderStanding, Refusal>
+pub fn encode_provider_standing_list_document(v: &ProviderStandingList) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_provider_standing_list_document(data: &[u8]) -> ::std::result::Result<ProviderStandingList, Refusal>
 pub fn encode_application_interface_document(v: &ApplicationInterface) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
 pub fn decode_application_interface_document(data: &[u8]) -> ::std::result::Result<ApplicationInterface, Refusal>
 pub fn encode_application_activation_recipe_document(v: &ApplicationActivationRecipe) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
@@ -574,6 +593,12 @@ pub mod internal
   pub fn decode_pinned_declaration_observation_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::PinnedDeclarationObservation, usize), super::Refusal>
   pub fn check_pinned_declaration_observation(v: &super::PinnedDeclarationObservation, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
   pub fn encode_pinned_declaration_observation_at(v: &super::PinnedDeclarationObservation, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_provider_standing_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ProviderStanding, usize), super::Refusal>
+  pub fn check_provider_standing(v: &super::ProviderStanding, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_provider_standing_at(v: &super::ProviderStanding, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_provider_standing_list_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ProviderStandingList, usize), super::Refusal>
+  pub fn check_provider_standing_list(v: &super::ProviderStandingList, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_provider_standing_list_at(v: &super::ProviderStandingList, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
   pub fn decode_application_interface_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ApplicationInterface, usize), super::Refusal>
   pub fn check_application_interface(v: &super::ApplicationInterface, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
   pub fn encode_application_interface_at(v: &super::ApplicationInterface, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>

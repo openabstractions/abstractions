@@ -1064,6 +1064,30 @@ function oaResourceLabel(resource){
 // it as that cell's own title (task 2026-09-23, eleventh first-time
 // visitor, finding 5).
 function oaHostState(up){return up?'Up':'Not reachable'}
+// oaIntegrationLine is an integration's state line (setup_integrations.go)
+// in the one set of words Catalog and Apps both show: Needs attention with
+// its reason, Connected or Not connected to OpenAbstractions, or Not
+// installed (agent-ux 2026-11-22).
+function oaIntegrationLine(g){if(!g)return '';if(g.attention&&!g.connected)return 'Needs attention · '+g.attention;if(g.connected)return 'Connected to OpenAbstractions';return g.state==='get'?'Not installed':'Not connected to OpenAbstractions'}
+function oaIntegrationNeedsAttention(g){return !!(g&&g.attention&&!g.connected)}
+// oaRuleWords is one saved permission in the words an app's page and the
+// Permissions page both show (agent-ux 2026-11-22): a label that says what
+// the app may do, and a caption with what it applies to and how long. A
+// device hold names the device it uses ("Use the graphics card") in place
+// of "Hold a device resource", and its caption then names no target.
+function oaHoldLabel(resource){
+ var card=/^card:(\d+)$/.exec(resource);
+ if(card)return Number(card[1])>0?'Use graphics card '+(Number(card[1])+1):'Use the graphics card';
+ if(resource==='awake')return 'Keep this computer awake';
+ if(resource==='memory')return 'Use memory';
+ return 'Use '+oaResourceLabel(resource);
+}
+function oaRuleWords(phrase,rule){
+ var r=rule||{},hold=r.Action==='abstraction.resource/hold',label=hold?oaHoldLabel(String(r.Resource||'')):phrase;
+ var target=hold?'':/^sha256:/i.test(String(r.Resource||''))?'Stored content':oaResourceLabel(String(r.Resource||''));
+ var when=r.Expired?'Expired':r.Expires?'Until '+(typeof oaLocalTime==='function'?oaLocalTime(r.Expires):new Date(r.Expires).toLocaleString()):'Until removed';
+ return {label:label,caption:[target,when].filter(Boolean).join(' · ')};
+}
 // oaLocalTime reads a raw ISO 8601 timestamp (or an epoch millisecond
 // number) as a local, readable time: "today at 6:14 PM" for a moment on
 // today's date, a locale date ("9/20/2026") for an older one. The raw ISO

@@ -12,7 +12,7 @@ import {runtimeConnector} from './runtime-connector.js';
 // OpenCode version, agent or project is stored again by its first session
 // start; until then a preload of the older prefix shares only what still
 // matches.
-import {createHash} from 'node:crypto';
+import {createHash, randomBytes} from 'node:crypto';
 import {mkdir, readdir, readFile, rename, rm, stat, writeFile} from 'node:fs/promises';
 import {homedir} from 'node:os';
 import {join} from 'node:path';
@@ -132,4 +132,48 @@ export async function preloadKeptPrefix({dir, project, model, resolve = resolveP
   if (!request) return null;
   const preloader = await resolve(options, signal);
   return preloader.preload(request);
+}
+
+/** Keeps each request's history byte-identical to the request before it.
+ * OpenCode appends its reminders (plan mode, the switch back to build) and
+ * OA appends its message hints (messages.js) to the last user message of a
+ * request, and the next turn sends that message without them. The engine
+ * then finds the history changed inside the previous turn. A hybrid model
+ * (Qwen3.6) rewinds only to a context checkpoint before that change, and
+ * every checkpoint of the previous turn lies after it, so the whole previous
+ * turn and its tool results are read again. The keeper remembers the
+ * synthetic text parts each user message carried while it was the last one
+ * and appends the ones a later request dropped, in their order. It runs on
+ * OpenCode's experimental.chat.messages.transform, after every other append,
+ * and copies each message it changes. It keeps at most limit messages. */
+export function createReminderKeeper(limit = 256) {
+  const kept = new Map();
+  const synthetic = message => (Array.isArray(message?.parts) ? message.parts : [])
+    .filter(part => part?.type === 'text' && part.synthetic === true && typeof part.text === 'string')
+    .map(part => part.text);
+  return function keep({messages} = {}) {
+    if (!Array.isArray(messages)) return;
+    const user = message => message?.info?.role === 'user' && typeof message.info.id === 'string' && Array.isArray(message.parts);
+    const last = messages.findLastIndex(user);
+    if (last < 0) return;
+    for (let index = 0; index < last; index++) {
+      const message = messages[index];
+      const texts = user(message) ? kept.get(message.info.id) : undefined;
+      if (!texts) continue;
+      const present = new Map();
+      for (const text of synthetic(message)) present.set(text, (present.get(text) ?? 0) + 1);
+      const missing = texts.filter(text => {
+        const count = present.get(text) ?? 0;
+        if (count) present.set(text, count - 1);
+        return !count;
+      });
+      if (!missing.length) continue;
+      messages[index] = {...message, parts: [...message.parts, ...missing.map(text => ({type: 'text', id: 'prt_' + randomBytes(12).toString('hex'),
+        messageID: message.info.id, sessionID: message.info.sessionID, synthetic: true, text}))]};
+    }
+    const current = messages[last];
+    kept.delete(current.info.id);
+    kept.set(current.info.id, synthetic(current));
+    while (kept.size > limit) kept.delete(kept.keys().next().value);
+  };
 }

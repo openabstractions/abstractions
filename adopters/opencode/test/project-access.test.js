@@ -82,9 +82,11 @@ test('outside the sandbox every tool but folder requests registers and one toast
   const client = {tui: {showToast: async ({body}) => toasts.push(body)}, app: {log: async ({body}) => logs.push(body)}};
   const plugin = await OpenAbstractionsPlugin({client}, {tools: {watch_logs: true, selection_policy: true}}, {tool: hostTool, env: {}});
   assert.deepEqual(Object.keys(plugin.tool).sort(), ['oa_selection_manage', 'oa_logs_watch'].sort());
-  for (const name of ['chat.message', 'command.execute.before', 'shell.env', 'tool.execute.before']) {
+  for (const name of ['chat.message', 'command.execute.before', 'shell.env']) {
     assert.equal(plugin[name], undefined, name);
   }
+  // S5 (2026-11-22): the reply-only guard is the plugin's one tool hook.
+  assert.equal(typeof plugin['tool.execute.before'], 'function');
   assert.equal(toasts.length, 0, 'nothing is said before OpenCode delivers its first event');
   await plugin.event({event: {type: 'server.connected', properties: {}}});
   await plugin.event(sessionUpdated);
@@ -114,9 +116,11 @@ test('inside the sandbox the project-access tool registers and the one notice sa
     'once per start, and never the outside-the-sandbox toast');
   assert.equal(searchToolMissingMessage, 'Search tools aren\'t available inside the OA sandbox yet.');
   assert.deepEqual(logs.map((entry) => [entry.level, entry.message]), [['warn', searchToolMissingMessage]]);
-  for (const name of ['chat.message', 'command.execute.before', 'shell.env', 'tool.execute.before']) {
+  for (const name of ['chat.message', 'command.execute.before', 'shell.env']) {
     assert.equal(native[name], undefined, name);
   }
+  // S5 (2026-11-22): the reply-only guard is the plugin's one tool hook.
+  assert.equal(typeof native['tool.execute.before'], 'function');
   const quiet = await OpenAbstractionsPlugin({client: {tui: {showToast: async () => { throw new Error('no TUI'); }}}}, {}, {tool: hostTool, env});
   await quiet.event({event: {type: 'server.connected'}});
 });

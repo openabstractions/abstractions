@@ -127,6 +127,9 @@ type receiverStartAnswer struct {
 
 type receiverColdSelectionKey struct{}
 
+// receiverWakeKey carries the owned channel's wake key to the start.
+type receiverWakeKey struct{}
+
 func serveReceiverStartOwned(ctx context.Context, in io.ReadCloser, out io.WriteCloser, run func(context.Context, startprofile.CustodyBinding, string) receiverStartAnswer, list ...func(context.Context, startprofile.CustodyBinding) ([]receiverSession, error)) error {
 	s := mcp.NewServer(&mcp.Implementation{Name: "openabstractions-receiver-start", Version: "0.8"}, &mcp.ServerOptions{SupportedProtocolVersions: []string{"2025-11-25"}, Capabilities: &mcp.ServerCapabilities{}})
 	var stateMu sync.Mutex
@@ -209,6 +212,16 @@ func serveReceiverStartOwned(ctx context.Context, in io.ReadCloser, out io.Write
 			}
 			ctx = context.WithValue(ctx, receiverColdSelectionKey{}, cold)
 		}
+		wake, err := startprofile.ParseWakeMetadata(request.Params.GetMeta())
+		if err != nil {
+			return nil, err
+		}
+		if wake != "" {
+			if cold == nil {
+				return nil, errors.New("receiver start: wake key without a chat selection")
+			}
+			ctx = context.WithValue(ctx, receiverWakeKey{}, wake)
+		}
 		answer := run(ctx, binding, target)
 		reply := &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(applications.EncodeHostActivationResult(&answer.Result))}}}
 		if answer.Delivery != "" {
@@ -231,7 +244,8 @@ func ownedReceiverStartCommand(args []string, in io.ReadCloser, out io.WriteClos
 	}
 	err = serveReceiverStartOwned(ctx, in, out, func(call context.Context, binding startprofile.CustodyBinding, target string) receiverStartAnswer {
 		cold, _ := call.Value(receiverColdSelectionKey{}).(*startprofile.ColdResume)
-		resolve := registeredAgentStartResolverForSelection(args, func(check context.Context) error { return confirm(check, p) }, target, cold, binding)
+		wake, _ := call.Value(receiverWakeKey{}).(string)
+		resolve := registeredAgentStartResolverCustody(args, agentStartCustody{binding: binding, admission: func(check context.Context) error { return confirm(check, p) }, target: target, cold: cold, wake: wake})
 		result := runAgentStart(call, p.Name, p.Context, resolve)
 		if result.Outcome == "refused" {
 			return receiverStartAnswer{Result: applications.HostActivationResult{Outcome: applications.HostActivationOutcomeRefused, Reason: "start_refused"}}

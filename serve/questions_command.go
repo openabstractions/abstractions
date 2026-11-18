@@ -27,7 +27,10 @@ the application decides whether that choice permits its proposed action.
 Commands:
   pending                 list current pending questions, their options and
                           the program that asked each
-  answer <id> <option>    record one option shown for that question
+  answer <id> <option>    record one option shown for that question; an
+                          answer is the person's, so only a command run as
+                          administrator answers, while the elevated-callers
+                          default is on
   permissions             list pending OA permission requests; the person
                           answers each in the OA permission dialog or Panel
 
@@ -247,6 +250,11 @@ func answerQuestion(ctx context.Context, operator questionOperator, id, option s
 		return decision, nil
 	case askswire.OperatorDecisionOutcomeUnavailable:
 		return askswire.OperatorDecision{}, &exitError{exitUncertain, fmt.Errorf("questions answer: outcome uncertain for %s; inspect Questions or repeat this same id and option", id)}
+	case askswire.OperatorDecisionOutcomeForbidden:
+		// An answer is a rights change (asks ASK-O17): the person answers in
+		// the OpenAbstractions popup or the Panel, and the command line only
+		// when it runs as administrator.
+		return askswire.OperatorDecision{}, &exitError{exitRefusedCall, fmt.Errorf("questions answer: forbidden for %s: answer it in the OpenAbstractions popup or the Panel; the command line answers only when run as administrator", id)}
 	default:
 		return askswire.OperatorDecision{}, &exitError{exitRefusedCall, fmt.Errorf("questions answer: %s for %s", decision.Outcome, id)}
 	}

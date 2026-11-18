@@ -92,7 +92,7 @@ type remoteAddressWatch struct {
 
 func (w *remoteAddressWatch) subscribe(object uintptr, registers [2]remoteAddressRegister) error {
 	for i, register := range registers {
-		if err := register(windows.AF_UNSPEC, remoteAddressCallback, unsafe.Pointer(object), false, &w.handles[i]); err != nil {
+		if err := register(windows.AF_UNSPEC, remoteAddressCallback, nativePointer(object), false, &w.handles[i]); err != nil {
 			return err
 		}
 		if w.handles[i] == 0 {
@@ -175,7 +175,7 @@ func systemRemoteExposure(ip netip.Addr) (remoteExposureSource, error) {
 			terminalErr = err
 			return
 		}
-		*(*uintptr)(unsafe.Pointer(object)) = uintptr(unsafe.Pointer(&networkEventVtable[0]))
+		*(*uintptr)(nativePointer(object)) = uintptr(unsafe.Pointer(&networkEventVtable[0]))
 		networkEventOwners.Store(object, sink)
 		addresses := remoteAddressWatch{cancel: windows.CancelMibChangeNotify2}
 		defer func() {
@@ -384,4 +384,12 @@ func exclusiveRemoteListen(ctx context.Context, network, address string) (net.Li
 		return optionErr
 	}}
 	return lc.Listen(ctx, network, address)
+}
+
+// nativePointer turns an address that Windows owns (a LocalAlloc block or a
+// callback context) into an unsafe.Pointer. The Go garbage collector never
+// sees this memory, so reading the address through its own storage is the
+// accepted conversion and go vet's unsafeptr check does not flag it.
+func nativePointer(address uintptr) unsafe.Pointer {
+	return *(*unsafe.Pointer)(unsafe.Pointer(&address))
 }

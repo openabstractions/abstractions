@@ -180,6 +180,43 @@ func (DecisionSource) UnmarshalJSON(data []byte) error
 func DecisionSourceValues() []DecisionSource
 func (DecisionSource) IsKnown() bool
 func (DecisionSource) Known() bool
+type ChangeKind uint32
+const ChangeKindSetRule
+const ChangeKindRevokeRule
+const ChangeKindSetDefault
+const ChangeKindRegisterAction
+const ChangeKindRetireAction
+const ChangeKindDeclaration
+func (ChangeKind) String() string
+func (ChangeKind) WireName() (string, bool)
+func ParseChangeKind(word string) (ChangeKind, bool)
+func (ChangeKind) MarshalText() ([]byte, error)
+func (ChangeKind) UnmarshalText(text []byte) error
+func (ChangeKind) MarshalJSON() ([]byte, error)
+func (ChangeKind) UnmarshalJSON(data []byte) error
+func ChangeKindValues() []ChangeKind
+func (ChangeKind) IsKnown() bool
+func (ChangeKind) Known() bool
+type ChangeRequestOutcome uint32
+const ChangeRequestOutcomeApplied
+const ChangeRequestOutcomePending
+const ChangeRequestOutcomeRefused
+const ChangeRequestOutcomeExpired
+const ChangeRequestOutcomeConflict
+const ChangeRequestOutcomeUnknown
+const ChangeRequestOutcomeInvalid
+const ChangeRequestOutcomeForbidden
+const ChangeRequestOutcomeUnavailable
+func (ChangeRequestOutcome) String() string
+func (ChangeRequestOutcome) WireName() (string, bool)
+func ParseChangeRequestOutcome(word string) (ChangeRequestOutcome, bool)
+func (ChangeRequestOutcome) MarshalText() ([]byte, error)
+func (ChangeRequestOutcome) UnmarshalText(text []byte) error
+func (ChangeRequestOutcome) MarshalJSON() ([]byte, error)
+func (ChangeRequestOutcome) UnmarshalJSON(data []byte) error
+func ChangeRequestOutcomeValues() []ChangeRequestOutcome
+func (ChangeRequestOutcome) IsKnown() bool
+func (ChangeRequestOutcome) Known() bool
 type ResourceSelectorKind uint32
 const ResourceSelectorKindOne
 const ResourceSelectorKindAll
@@ -447,6 +484,28 @@ type DecisionExplanation struct
   PolicyRevision string
   Source *DecisionSource
   DefaultName string
+type PolicyChange struct
+  Kind ChangeKind
+  ExpectedRevision string
+  Rule *PolicyRule
+  TTLMs int64
+  Why string
+  Name string
+  On bool
+  Action string
+  Program string
+  Rules []PolicyRule
+  Address string
+type ChangeRequestState struct
+  Outcome ChangeRequestOutcome
+  ID string
+  Revision string
+  Change *PolicyChange
+  Expires string
+  Exempt bool
+type ChangeRequestPage struct
+  Outcome PolicyPageOutcome
+  Requests []ChangeRequestState
 type PermissionKey struct
   Action string
   ResourceProfile string
@@ -643,6 +702,9 @@ type AuthorizationOperator interface
   RetireAction(expectedRevision, action string) (ActionEdit, error)
   ExplainFor(subject Subject, action, resource string) (DecisionExplanation, error)
   ListDefaults() (DefaultPage, error)
+  RequestChange(change PolicyChange, waitMs int64) (ChangeRequestState, error)
+  ObserveChangeRequest(id string, waitMs int64) (ChangeRequestState, error)
+  ListChangeRequests() (ChangeRequestPage, error)
   SetDefault(expectedRevision, name string, on bool) (DefaultEdit, error)
 type AuthorizationOperatorTransport interface
   FrameExchanger
@@ -667,6 +729,9 @@ func (AuthorizationOperatorClient) RegisterAction(expectedRevision, action strin
 func (AuthorizationOperatorClient) RetireAction(expectedRevision, action string) (result ActionEdit, err error)
 func (AuthorizationOperatorClient) ExplainFor(subject Subject, action, resource string) (result DecisionExplanation, err error)
 func (AuthorizationOperatorClient) ListDefaults() (result DefaultPage, err error)
+func (AuthorizationOperatorClient) RequestChange(change PolicyChange, waitMs int64) (result ChangeRequestState, err error)
+func (AuthorizationOperatorClient) ObserveChangeRequest(id string, waitMs int64) (result ChangeRequestState, err error)
+func (AuthorizationOperatorClient) ListChangeRequests() (result ChangeRequestPage, err error)
 func (AuthorizationOperatorClient) SetDefault(expectedRevision, name string, on bool) (result DefaultEdit, err error)
 func (AuthorizationOperatorDispatcher) DescribeService() (contract string, ready bool, why string)
 func (AuthorizationOperatorDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string)
@@ -828,6 +893,18 @@ func DecodeDecisionExplanationAt(in []byte, depth, limit int) (*DecisionExplanat
 func EncodeDecisionExplanationAt(v *DecisionExplanation, depth int) []byte
 func EncodeDecisionExplanation(v *DecisionExplanation) []byte
 func DecodeDecisionExplanation(in []byte) (*DecisionExplanation, error)
+func DecodePolicyChangeAt(in []byte, depth, limit int) (*PolicyChange, int, error)
+func EncodePolicyChangeAt(v *PolicyChange, depth int) []byte
+func EncodePolicyChange(v *PolicyChange) []byte
+func DecodePolicyChange(in []byte) (*PolicyChange, error)
+func DecodeChangeRequestStateAt(in []byte, depth, limit int) (*ChangeRequestState, int, error)
+func EncodeChangeRequestStateAt(v *ChangeRequestState, depth int) []byte
+func EncodeChangeRequestState(v *ChangeRequestState) []byte
+func DecodeChangeRequestState(in []byte) (*ChangeRequestState, error)
+func DecodeChangeRequestPageAt(in []byte, depth, limit int) (*ChangeRequestPage, int, error)
+func EncodeChangeRequestPageAt(v *ChangeRequestPage, depth int) []byte
+func EncodeChangeRequestPage(v *ChangeRequestPage) []byte
+func DecodeChangeRequestPage(in []byte) (*ChangeRequestPage, error)
 func DecodePermissionKeyAt(in []byte, depth, limit int) (*PermissionKey, int, error)
 func EncodePermissionKeyAt(v *PermissionKey, depth int) []byte
 func EncodePermissionKey(v *PermissionKey) []byte

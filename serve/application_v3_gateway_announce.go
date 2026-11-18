@@ -49,6 +49,7 @@ func (g *applicationV3Gateway) announcingSession(ctx context.Context, c applicat
 }
 
 func (g *applicationV3Gateway) announce(ctx context.Context, c applicationV3Caller, key string, presence legacy.ApplicationPresence) legacy.ApplicationChange {
+	presence = fitApplicationPresence(presence)
 	if !c.valid(g.directory.owner) || !validApplicationPresence(presence) {
 		return appChange(legacy.ApplicationOutcomeForbidden, "caller")
 	}

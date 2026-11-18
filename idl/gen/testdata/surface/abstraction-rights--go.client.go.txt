@@ -9,6 +9,29 @@ const ActionEditOutcomeForbidden
 const ActionEditOutcomeUnavailable
 func ActionEditOutcomeValues() []ActionEditOutcome
 func ParseActionEditOutcome(word string) (ActionEditOutcome, bool)
+type ChangeKind wire.ChangeKind
+const ChangeKindSetRule
+const ChangeKindRevokeRule
+const ChangeKindSetDefault
+const ChangeKindRegisterAction
+const ChangeKindRetireAction
+const ChangeKindDeclaration
+func ChangeKindValues() []ChangeKind
+func ParseChangeKind(word string) (ChangeKind, bool)
+type ChangeRequestOutcome wire.ChangeRequestOutcome
+const ChangeRequestOutcomeApplied
+const ChangeRequestOutcomePending
+const ChangeRequestOutcomeRefused
+const ChangeRequestOutcomeExpired
+const ChangeRequestOutcomeConflict
+const ChangeRequestOutcomeUnknown
+const ChangeRequestOutcomeInvalid
+const ChangeRequestOutcomeForbidden
+const ChangeRequestOutcomeUnavailable
+func ChangeRequestOutcomeValues() []ChangeRequestOutcome
+func ParseChangeRequestOutcome(word string) (ChangeRequestOutcome, bool)
+type ChangeRequestPage wire.ChangeRequestPage
+type ChangeRequestState wire.ChangeRequestState
 type DecisionOutcome wire.DecisionOutcome
 const DecisionOutcomePermitted
 const DecisionOutcomeDenied
@@ -19,6 +42,7 @@ const DecisionOutcomeForbidden
 const DecisionOutcomeUnavailable
 func DecisionOutcomeValues() []DecisionOutcome
 func ParseDecisionOutcome(word string) (DecisionOutcome, bool)
+type PolicyChange wire.PolicyChange
 type PolicyEdit wire.PolicyEdit
 type PolicyEditOutcome wire.PolicyEditOutcome
 const PolicyEditOutcomeApplied

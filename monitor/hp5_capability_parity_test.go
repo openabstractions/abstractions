@@ -204,6 +204,11 @@ func (hp5RegistryV2) ReplacePinned(string, fwire.PinnedDeclaration) (fwire.Decla
 	return fwire.DeclarationChange{}, fwire.DispatchError("unknown_method")
 }
 
+
+func (hp5RegistryV2) Standings() (fwire.ProviderStandingList, error) {
+	return fwire.ProviderStandingList{}, fwire.DispatchError("unknown_method")
+}
+
 func (hp5RegistryV2) ObservePinned(string, int64) (fwire.PinnedDeclarationObservation, error) {
 	return fwire.PinnedDeclarationObservation{}, fwire.DispatchError("unknown_method")
 }

@@ -11,8 +11,11 @@ import * as rights from '@openabstractions/rights';
 import * as router from '@openabstractions/router';
 import * as asks from '@openabstractions/asks';
 import * as storage from '@openabstractions/storage-content';
+import * as transfer from '@openabstractions/storage-content/transfer';
 import {createHash, randomBytes} from 'node:crypto';
-import {writeFileSync} from 'node:fs';
+import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 
 const readAction = 'abstraction.storage/content.read', writeAction = 'abstraction.storage/content.write';
 
@@ -339,6 +342,28 @@ for (let at = 0n; ;) {
 }
 assert.deepEqual(Buffer.concat(parts), Buffer.from(body), 'separate reader observes exact written bytes');
 assert.equal((await contentReader.close(opened.resource.handle)).outcome, 'closed');
+
+// Verified helpers: writeBytes and writeFile hash and upload; readVerified hashes while it reads.
+{
+const fromMemory = Uint8Array.from({length: 140000}, (_, i) => (i * 13 + 5) % 253);
+const fromFile = Uint8Array.from({length: 70000}, (_, i) => (i * 11 + 1) % 241);
+const folder = mkdtempSync(join(tmpdir(), 'oa-js-transfer-')), path = join(folder, 'body');
+writeFileSync(path, fromFile);
+try {
+  for (const [bytes, write] of [[fromMemory, (id) => transfer.writeBytes(writer, id, fromMemory)], [fromFile, (id) => transfer.writeFile(writer, id, path)]]) {
+    const named = sha(bytes);
+    await allow(readAction, named);
+    await allow(writeAction, named);
+    const stored = await write(transfer.newRequestId());
+    assert.deepEqual([stored.digest, stored.size, stored.evidence], [named, BigInt(bytes.length), 'hashed']);
+    assert.deepEqual(Buffer.from(await transfer.readVerified(contentReader, named)), Buffer.from(bytes), 'helper reads exact written bytes');
+  }
+} finally {
+  rmSync(folder, {recursive: true, force: true});
+}
+await assert.rejects(transfer.readVerified(contentReader, 'sha256:' + '0'.repeat(64)),
+  (e) => e instanceof transfer.OutcomeError && e.operation === 'open' && e.outcome === 'forbidden');
+}
 
 // Change observation: observe grant, per-object read filtering, gap and snapshot recovery.
 {

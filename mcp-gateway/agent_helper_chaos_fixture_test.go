@@ -126,7 +126,7 @@ func runAgentHelperChaosFixture(dir, schedule string) int {
 	agentToolAdmissionWait = 5 * time.Second
 
 	program, _ := os.Executable()
-	diagnostic := newAgentDiagnostic(state, program)
+	diagnostic := newAgentDiagnostic(context.Background(), state, program)
 	defer diagnostic.close()
 	ctx := context.WithValue(context.Background(), agentDiagnosticKey{}, diagnostic)
 	runtime, queue := newChaosRuntime(), new(chaosQueue)

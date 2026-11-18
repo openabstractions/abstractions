@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,6 +35,48 @@ func TestPrivateReleaseExampleThroughNativeRuntime(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
+	options, _ := isolatedRuntime(t)
+	if runtime.GOOS == "linux" {
+		// This fixture owns a file-0600 store; it does not require a desktop
+		// Secret Service. Machine scope still opens no backend.
+		if err := credentials.WriteLinuxStoreChoice(filepath.Join(options.stateDir, "credentials"), credentials.StoreFile); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stop := startInferenceRuntime(t, options)
+	defer stop()
+	runtimeProgram, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeProgram = filepath.Clean(runtimeProgram)
+	first, second := "PK1_NATIVE_DUMMY_FIRST_4d1b", "PK1_NATIVE_DUMMY_SECOND_9a2c"
+	var transcript bytes.Buffer
+	checkSecret := func(data []byte) {
+		t.Helper()
+		if bytes.Contains(data, []byte(first)) || bytes.Contains(data, []byte(second)) {
+			t.Fatal("dummy credential disclosed outside its owned secret store")
+		}
+	}
+	operator := func(value string, args ...string) string {
+		t.Helper()
+		out, diag, err := runCredentials(t, value, args...)
+		checkSecret([]byte(out + diag))
+		transcript.WriteString(out + diag)
+		if err != nil {
+			checkSecret([]byte(err.Error()))
+		}
+		if len(args) > 0 && args[0] == "add" {
+			requireUserScopeAdd(t, err, out+diag)
+		}
+		if err != nil {
+			t.Fatalf("fixture operator: %v", err)
+		}
+		return out
+	}
+	operator(first+"\n", "add", "private-release", "--target", "127.0.0.1", "--for", "abstraction.download/http-execution@1", "--from-stdin", "--endpoint", options.endpoint, "--timeout", "30s")
+	// Check the native store before building a peer that cannot use it on a
+	// machine-scope runtime. The user-scope journey still builds the real app.
 	module, err := filepath.Abs("../examples/rights-playground")
 	if err != nil {
 		t.Fatal(err)
@@ -59,34 +100,6 @@ func TestPrivateReleaseExampleThroughNativeRuntime(t *testing.T) {
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build actual example: %v\n%s", err, out)
 	}
-	options, _ := isolatedRuntime(t)
-	stop := startInferenceRuntime(t, options)
-	defer stop()
-	runtimeProgram, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	runtimeProgram = filepath.Clean(runtimeProgram)
-	first, second := "PK1_NATIVE_DUMMY_FIRST_4d1b", "PK1_NATIVE_DUMMY_SECOND_9a2c"
-	var transcript bytes.Buffer
-	checkSecret := func(data []byte) {
-		t.Helper()
-		if bytes.Contains(data, []byte(first)) || bytes.Contains(data, []byte(second)) {
-			t.Fatal("dummy credential disclosed outside its owned secret store")
-		}
-	}
-	operator := func(value string, args ...string) string {
-		t.Helper()
-		out, diag, err := runCredentials(t, value, args...)
-		checkSecret([]byte(out + diag))
-		transcript.WriteString(out + diag)
-		if err != nil {
-			checkSecret([]byte(err.Error()))
-			t.Fatalf("fixture operator: %v", err)
-		}
-		return out
-	}
-	operator(first+"\n", "add", "private-release", "--target", "127.0.0.1", "--for", "abstraction.download/http-execution@1", "--from-stdin", "--endpoint", options.endpoint, "--timeout", "30s")
 	// The example explicitly requests credentials@2. Grant its typed named Use
 	// through the actual native operator; the legacy --use-by grant is separate.
 	machine := client.NewVerified(options.endpoint, runtimeExpectation(t))
@@ -136,15 +149,20 @@ func TestPrivateReleaseExampleThroughNativeRuntime(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	body := []byte("private native release fixture\n")
-	sum := sha256.Sum256(body)
+	// The local reserve is not this journey's subject; the bytes are small.
+	savedSpace := localDownloadDiskSpace
+	localDownloadDiskSpace = func(string) (uint64, uint64, error) { return 1 << 40, 1 << 40, nil }
+	t.Cleanup(func() { localDownloadDiskSpace = savedSpace })
+	// Each step serves its own bytes. The service reuses bytes it already
+	// proved for a digest, and a repeated digest would never reach the source.
+	var body []byte
 	var mu sync.Mutex
 	expected, protected, foreign := first, 0, 0
 	var foreignURL string
-	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	origin := newTrustedTLSServer(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
-		if strings.HasPrefix(req.Host, "localhost:") {
+		if strings.HasPrefix(req.Host, "[::1]:") {
 			foreign++
 			if req.Header.Get("Authorization") != "" {
 				t.Error("foreign redirect received credential")
@@ -163,7 +181,7 @@ func TestPrivateReleaseExampleThroughNativeRuntime(t *testing.T) {
 		http.ServeContent(w, req, "asset", time.Time{}, bytes.NewReader(body))
 	}))
 	defer origin.Close()
-	foreignURL = strings.Replace(origin.URL, "127.0.0.1", "localhost", 1)
+	foreignURL = strings.Replace(origin.URL, "127.0.0.1", "[::1]", 1)
 	// Explicit finite child environment: no inherited credential-bearing keys.
 	env := []string{}
 	for _, key := range []string{"SystemRoot", "WINDIR", "TEMP", "TMP", "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"} {
@@ -193,15 +211,19 @@ func TestPrivateReleaseExampleThroughNativeRuntime(t *testing.T) {
 	epoch := strings.TrimSpace(string(history))
 	perform := func(key, path string, success bool) {
 		t.Helper()
+		mu.Lock()
+		body = []byte("private native release fixture: " + key + "\n")
+		want, sum := body, sha256.Sum256(body)
+		mu.Unlock()
 		output := filepath.Join(t.TempDir(), "asset.bin")
-		args := append(append([]string{}, base...), "--credential", "private-release", "--url", origin.URL+path, "--bytes", fmt.Sprint(len(body)), "--sha256", hex.EncodeToString(sum[:]), "--out", output, "--epoch", epoch, "--key", key)
+		args := append(append([]string{}, base...), "--credential", "private-release", "--url", origin.URL+path, "--bytes", fmt.Sprint(len(want)), "--sha256", hex.EncodeToString(sum[:]), "--out", output, "--epoch", epoch, "--key", key)
 		out, err := child(args...)
 		if success {
 			if err != nil {
 				t.Fatalf("native example %s: %v\n%s", key, err, out)
 			}
 			got, err := os.ReadFile(output)
-			if err != nil || !bytes.Equal(got, body) {
+			if err != nil || !bytes.Equal(got, want) {
 				t.Fatal("native example did not save verified bytes")
 			}
 		} else {

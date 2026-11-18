@@ -168,7 +168,7 @@ func TestStorageInlineRemovalUsesOneAnswerForTheHeldFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rights := &runtimeRights{owner: account.Uid, operators: []string{program}, panels: panelRoster{images: []fileid.Handle{panel}}, policy: policy,
+	rights := &runtimeRights{owner: account.Uid, operators: []string{program}, panels: panelRoster{images: []fileid.Handle{panel}, imagePaths: []string{program}}, policy: policy,
 		path: policyPath, marker: filepath.Join(folder, "defaults-applied")}
 	t.Cleanup(rights.close)
 	if err := rights.installStorageRemovalRules(facadehost.Options{StorageRemoval: &storageservice.RemovalOptions{}}); err != nil {
@@ -404,9 +404,12 @@ func TestStorageInlineRemovalUsesOneAnswerForTheHeldFile(t *testing.T) {
 		if selection == "" || selection == selected {
 			t.Fatal("replacement reused the original archive proof")
 		}
-		attempts := make(chan string, 2)
-		for range 2 {
+		const concurrentRestores = 8
+		attempts := make(chan string, concurrentRestores)
+		startRestores := make(chan struct{})
+		for range concurrentRestores {
 			go func() {
+				<-startRestores
 				reply, err := storageservice.ArchiveRestore(ctx, transport, selection)
 				if err != nil {
 					attempts <- err.Error()
@@ -415,9 +418,11 @@ func TestStorageInlineRemovalUsesOneAnswerForTheHeldFile(t *testing.T) {
 				attempts <- reply.Outcome
 			}()
 		}
-		first, second := <-attempts, <-attempts
-		if first != "queued" || second != "queued" {
-			t.Fatalf("concurrent restores: %s, %s", first, second)
+		close(startRestores)
+		for range concurrentRestores {
+			if outcome := <-attempts; outcome != "queued" {
+				t.Errorf("concurrent restore: %s", outcome)
+			}
 		}
 		acceptedSelection = selection
 		occurrence, _, _ := strings.Cut(selection, ".")

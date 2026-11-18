@@ -36,7 +36,7 @@ for a new operation. After an uncertain result, repeat the exact operation with
 the same epoch/key and --reconcile. Preserve those inputs until terminal.
 Only the runtime receives the credential value. This app has no key option,
 stdin key input, credential reader, holder, or applier. It reads no environment.
-HTTP is limited to the labelled 127.0.0.1 fixture; ordinary sources use HTTPS.
+Sources use HTTPS: the runtime sends a named credential only over HTTPS.
 `
 
 var namePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$`)
@@ -92,7 +92,7 @@ func parse(args []string, out io.Writer) (options, error) {
 	}
 	u, err := url.Parse(o.source)
 	d, decodeErr := hex.DecodeString(o.digest)
-	if err != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Hostname() == "" || (u.Scheme != "https" && !(u.Scheme == "http" && u.Hostname() == "127.0.0.1" && u.Port() != "")) || len(o.source) > 2048 || !namePattern.MatchString(o.credential) || !namePattern.MatchString(o.key) || len(o.epoch) == 0 || len(o.epoch) > 256 || o.size < 1 || o.size > 16<<20 || decodeErr != nil || len(d) != sha256.Size || !filepath.IsAbs(o.output) {
+	if err != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Hostname() == "" || u.Scheme != "https" || len(o.source) > 2048 || !namePattern.MatchString(o.credential) || !namePattern.MatchString(o.key) || len(o.epoch) == 0 || len(o.epoch) > 256 || o.size < 1 || o.size > 16<<20 || decodeErr != nil || len(d) != sha256.Size || !filepath.IsAbs(o.output) {
 		return o, errors.New("invalid download metadata; use --help")
 	}
 	return o, nil
@@ -103,7 +103,7 @@ func guarantees() []string {
 }
 
 func submission(o options) api.Submission {
-	return api.Submission{Identity: api.RequestIdentity{Key: o.key, HistoryEpoch: o.epoch}, Kind: "download", Label: "Private release fixture", RequiredGuarantees: guarantees(), Spec: request.Encode(&request.Request{Artifact: request.Artifact{Size: o.size, Digest: "sha256:" + o.digest}, Sources: []request.Source{{Scheme: "http", Locator: o.source, Credential: o.credential}}})}
+	return api.Submission{Identity: api.RequestIdentity{Key: o.key, HistoryEpoch: o.epoch}, Kind: "download", Label: "Private release fixture", RequiredGuarantees: guarantees(), Spec: request.Encode(&request.Request{Artifact: request.Artifact{Size: o.size, Digest: "sha256:" + o.digest}, Sources: []request.Source{{Scheme: "https", Locator: o.source, Credential: o.credential}}})}
 }
 
 var errUncertain = errors.New("acceptance or effect uncertain; preserve inputs and use the same epoch/key with --reconcile")

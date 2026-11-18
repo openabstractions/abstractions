@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"os"
 	"time"
 
@@ -79,7 +80,9 @@ func (p *servicePanel) reviewClaudeBackgroundScope(ctx context.Context, cli clau
 		if id != "" {
 			cleanup, close := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 			defer close()
-			_, _ = operator.RetireQuestionContext(cleanup, id)
+			if _, err := operator.RetireQuestionContext(cleanup, id); err != nil {
+				log.Printf("claude background review: question %s was not retired: %v", id, err)
+			}
 		}
 		return false, errors.New("background review did not complete")
 	}

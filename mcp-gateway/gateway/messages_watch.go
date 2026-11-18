@@ -47,6 +47,10 @@ type WatchMetadata struct {
 	AnswerableAsks  *int64 `json:"answerable_asks,omitempty"`
 	WaitingAsks     *int64 `json:"waiting_asks,omitempty"`
 	WaitingAsksWake string `json:"waiting_asks_wake,omitempty"`
+	// PeerFullTools is present while a turn another agent's message started is
+	// marked reply-only: true when the person allowed full tool use for every
+	// sender of that turn (S5 ruling, 2026-11-22). It grants nothing itself.
+	PeerFullTools   *bool  `json:"peer_full_tools,omitempty"`
 	Reason          string `json:"reason,omitempty"`
 	HealthSupported bool   `json:"health_supported,omitempty"`
 }

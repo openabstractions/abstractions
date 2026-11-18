@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import {runtimeConnector} from './runtime-connector.js';
 import {createApplicationPresence, resolveApplications} from './application-presence.js';
 import {createMessages, messageToolNames, messageInstructions, agentToolInputSchema} from './messages.js';
+import {createReplyOnlyGuard} from './reply-only.js';
 import {createModelsConnect} from './models-connect.js';
 import {addHostedProvider, currentRememberedProviders, defaultEntryName, candidatePlacement, chatChoiceModel, chatModelAtStart, hostedHeading, legacyHeadings, modelHeadings, ownHeadingName, defaultSelectionModel, inventoryMarkerOption, isDefaultSelection, withDefaultSelectionPolicies, localServers,
   nativeProviderPackage, olderRuntime, olderRuntimeMessage, observeOffers, readOffers, refreshProviderInventory, refreshSelectionPolicyModels, routeModelsOption, selectionPolicyMarkerOption} from './inventory.js';
@@ -19,7 +20,7 @@ import {createSpeakTool, resolveSpeechClient} from './speak.js';
 import {compactDefinition, condensedFrom, condensedText} from './compact-tools.js';
 import {answered, availability, guardTool, runtimeUnavailable, runtimeUntrusted, untrustedMessage} from './availability.js';
 import {capabilityTools, companionTools, createToolsTool, parametersOf, shortToolText, toolChoices, toolNames, toolNameFor} from './tool-config.js';
-import {preloadKeptPrefix} from './preload.js';
+import {createReminderKeeper, preloadKeptPrefix} from './preload.js';
 import {createProjectAccess, projectSessionEnvironment} from './project-access.js';
 import {once, outsideSandboxMessage, searchToolMissingMessage} from './opencode-build.js';
 import {createStartupMemory, forget, shared, sharedConnection, startupStateDir} from './startup-share.js';
@@ -423,6 +424,7 @@ async function OpenAbstractionsPlugin({client, directory}, _options = {}, depend
   // this instance (reload-handover.js), so an open OA inbox stays open.
   const adopted = adoptHandover(directory);
   let applicationPresence = adopted?.presence ?? createApplicationPresence({directory, ...presenceBinding});
+  const keepReminders = createReminderKeeper();
   const messages = createMessages({directory, presence: applicationPresence,
     ready:async()=>{if(helperMCPConflict)return false;await connection.refresh();return !connection.result();},
     reconnect: async()=>{if(helperMCPConflict)return '';await connection.refresh(true);return connection.helperProgram();},
@@ -760,11 +762,19 @@ async function OpenAbstractionsPlugin({client, directory}, _options = {}, depend
     }
     return result;
   }
+  // S5 (2026-11-22): a turn a peer message started is reply-only.
+  const replyOnlyGuard = createReplyOnlyGuard({messages, directory, resolveReal: dependencies.resolveReal});
   return {
     ...sessionHooks,
+    'tool.execute.before': async (input, output) => {
+      await sessionHooks['tool.execute.before']?.(input, output);
+      await replyOnlyGuard(input, output);
+    },
     'experimental.chat.messages.transform': async (input,output) => {
       await sessionHooks['experimental.chat.messages.transform']?.(input,output);
       messages.transform(output);
+      // Last: the keeper records every reminder appended above (preload.js).
+      keepReminders(output);
     },
     event: async input => {
       if (input?.event?.type === 'server.instance.disposed' && input.event.properties?.directory === directory) {
@@ -871,10 +881,14 @@ async function OpenAbstractionsPlugin({client, directory}, _options = {}, depend
         (input?.provider?.info?.id === input?.model?.providerID ? input?.provider?.info?.package : undefined);
       if (selectedPackage && routedPackage === selectedPackage) {
         // The host supplies each session's own ID, including a subagent's.
-        // Titles carry no conversation label. Never reuse an earlier marker.
+        // Titles carry no conversation label and are marked as titles, so
+        // the engine runs them beside the chat's prompt cache. Never reuse
+        // an earlier marker.
         output.options = {...(output.options ?? {})};
         delete output.options.oaSessionID;
-        if (input?.agent !== 'title' && typeof input?.sessionID === 'string' && input.sessionID) {
+        delete output.options.oaTitle;
+        if (input?.agent === 'title') output.options.oaTitle = true;
+        else if (typeof input?.sessionID === 'string' && input.sessionID) {
           output.options.oaSessionID = input.sessionID;
         }
       }

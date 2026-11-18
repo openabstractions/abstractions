@@ -40,11 +40,26 @@ func completeSchema() *jsonschema.Schema {
 	return schema
 }
 
+type otherThreadKey struct{}
+
+// WithOtherThread marks a call from a thread other than the connection's
+// bound chat, as a Codex worker thread on the chat's helper. It grants and
+// removes no rights.
+func WithOtherThread(ctx context.Context) context.Context {
+	return context.WithValue(ctx, otherThreadKey{}, true)
+}
+
+func otherThread(ctx context.Context) bool {
+	other, _ := ctx.Value(otherThreadKey{}).(bool)
+	return other
+}
+
 // withChatConversation labels a new local call that names no conversation
 // with this connection's own chat, so an agent's calls keep their engine
 // slot without asking. A reasoning call keeps its request_key body as sent.
-func withChatConversation(backend Backend, in CompleteInput) CompleteInput {
-	if in.Conversation != "" || in.OperationID != "" || in.IncludeReasoning || in.Hosting != "local" {
+// A call from another thread keeps no chat's label or engine slot.
+func withChatConversation(ctx context.Context, backend Backend, in CompleteInput) CompleteInput {
+	if otherThread(ctx) || in.Conversation != "" || in.OperationID != "" || in.IncludeReasoning || in.Hosting != "local" {
 		return in
 	}
 	if messages, ok := backend.(MessagesBackend); ok {
@@ -361,6 +376,11 @@ func newServer(backend Backend, messagesOnly bool, narrow ...bool) *mcp.Server {
 	// Outside native admission: it holds the common occupancy bound while waiting, and
 	// every actual attempt re-enters the native admission middleware above.
 	s.AddReceivingMiddleware(permissionToolMiddleware(backend, slots))
+	// Before any admission or effect: a turn another agent's message started
+	// is reply-only until the person allows more (S5 ruling, 2026-11-22).
+	if gate, ok := backend.(ReplyOnlyGate); ok {
+		s.AddReceivingMiddleware(replyOnlyMiddleware(gate))
+	}
 	// Outermost: the listed output schemas, permission results included,
 	// admit fields a later OA adds.
 	s.AddReceivingMiddleware(openOutputSchemas)
@@ -435,16 +455,16 @@ func newServer(backend Backend, messagesOnly bool, narrow ...bool) *mcp.Server {
 			err := bounded(ctx, func(ctx context.Context) (err error) { out, err = backend.Applications(ctx, in); return err })
 			return nil, out, err
 		})
-	mcp.AddTool(s, &mcp.Tool{Name: ToolModels, Description: "List model families, aliases and capabilities. Use an exact alias of a servable model in the model argument; name is its display title.", Annotations: read},
+	mcp.AddTool(s, &mcp.Tool{Name: ToolModels, Description: "List model families, aliases and capabilities; pass a servable model's exact alias as model. name is its display title.", Annotations: read},
 		func(ctx context.Context, _ *mcp.CallToolRequest, in ModelsInput) (*mcp.CallToolResult, ModelsOutput, error) {
 			var out ModelsOutput
 			err := bounded(ctx, func(ctx context.Context) (err error) { out, err = backend.Models(ctx, in); return err })
 			return nil, out, err
 		})
-	mcp.AddTool(s, &mcp.Tool{Name: ToolComplete, Description: "Run text inference with model, prompt and hosting. Copy an exact alias for the model from oa_models_list. " + waitDescription, Annotations: effect, InputSchema: completeSchema()},
+	mcp.AddTool(s, &mcp.Tool{Name: ToolComplete, Description: "Run text inference: model (an exact alias from oa_models_list), prompt and hosting. " + waitDescription, Annotations: effect, InputSchema: completeSchema()},
 		func(ctx context.Context, request *mcp.CallToolRequest, in CompleteInput) (*mcp.CallToolResult, CompleteOutput, error) {
 			ctx = withCallWait(withProgress(ctx, request), callWait(in.WaitMS, defaultCallWait))
-			in = withChatConversation(backend, in)
+			in = withChatConversation(ctx, backend, in)
 			var out CompleteOutput
 			err := bounded(ctx, func(ctx context.Context) (err error) { out, err = backend.Complete(ctx, in); return err })
 			if !in.IncludeReasoning {

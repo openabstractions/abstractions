@@ -75,9 +75,14 @@ func connectCheckCommand(ctx context.Context, cmd *exec.Cmd) (checkSession, erro
 	// resolver paths, application names, model names or service error text.
 	cmd.Stderr = io.Discard
 	cmd.WaitDelay = time.Second
-	client := mcp.NewClient(&mcp.Implementation{Name: "openabstractions-mcp-check", Version: gateway.Version}, nil)
-	return client.Connect(ctx, &mcp.CommandTransport{Command: cmd, TerminateDuration: time.Second},
-		&mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
+	return checkClient(ctx, &mcp.CommandTransport{Command: cmd, TerminateDuration: time.Second})
+}
+
+// checkClient connects the check's MCP client over transport. Its name
+// (gateway.CheckClientName) tells the gateway the reads hold for nobody.
+func checkClient(ctx context.Context, transport mcp.Transport) (*mcp.ClientSession, error) {
+	client := mcp.NewClient(&mcp.Implementation{Name: gateway.CheckClientName, Version: gateway.Version}, nil)
+	return client.Connect(ctx, transport, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
 }
 
 func checkConnection(ctx context.Context, output io.Writer, selectEndpoint func(context.Context) (string, error), connect func(context.Context, string, string) (checkSession, error), temporaryRoot func() (string, error)) (exit int) {
@@ -129,20 +134,26 @@ func checkConnection(ctx context.Context, output io.Writer, selectEndpoint func(
 		return 1
 	}
 	checkLine(output, fmt.Sprintf("MCP tools: %d declared", len(tools.Tools)))
+	// Each read states its own time, so a slow one is named.
+	started := time.Now()
 	apps, appErr := session.CallTool(ctx, &mcp.CallToolParams{Name: gateway.ToolApplications, Arguments: gateway.ApplicationsInput{}})
 	appCount, appErr := checkApplications(apps, appErr)
+	appTime := time.Since(started)
+	started = time.Now()
 	models, modelErr := session.CallTool(ctx, &mcp.CallToolParams{Name: gateway.ToolModels, Arguments: gateway.ModelsInput{Fresh: false}})
 	modelCount, modelErr := checkModels(models, modelErr)
+	modelTime := time.Since(started)
 	for _, probe := range []struct {
 		name  string
 		count int
 		err   error
-	}{{"applications", appCount, appErr}, {"models", modelCount, modelErr}} {
+		took  time.Duration
+	}{{"applications", appCount, appErr, appTime}, {"models", modelCount, modelErr, modelTime}} {
 		if probe.err != nil {
-			checkLine(output, "OA "+probe.name+": unavailable ("+checkError(probe.err)+")")
+			checkLine(output, fmt.Sprintf("OA %s: unavailable (%s) after %d ms", probe.name, checkError(probe.err), probe.took.Milliseconds()))
 			exit = 1
 		} else {
-			checkLine(output, fmt.Sprintf("OA %s: available (%d)", probe.name, probe.count))
+			checkLine(output, fmt.Sprintf("OA %s: available (%d) in %d ms", probe.name, probe.count, probe.took.Milliseconds()))
 		}
 	}
 	return exit
@@ -155,6 +166,7 @@ func checkLine(output io.Writer, text string) {
 
 var errCheckShape = errors.New("invalid structured result")
 var errCheckRefusal = errors.New("tool refused")
+var errCheckPermission = errors.New("permission question pending")
 
 func checkError(err error) string {
 	switch {
@@ -164,6 +176,8 @@ func checkError(err error) string {
 		return "invalid structured result"
 	case errors.Is(err, errCheckRefusal):
 		return "read refused"
+	case errors.Is(err, errCheckPermission):
+		return "waiting for the person's permission"
 	default:
 		return "transport or service failure"
 	}
@@ -201,6 +215,17 @@ func checkStructured(result *mcp.CallToolResult, callErr error, fields []string,
 	raw, err := json.Marshal(result.StructuredContent)
 	if err != nil || len(raw) > 1<<20 {
 		return errCheckShape
+	}
+	// A read that needs the person's Allow answers with the permission
+	// result (gateway permission_result.go); the check names it.
+	var permission struct {
+		Outcome string `json:"outcome"`
+	}
+	if json.Unmarshal(raw, &permission) == nil {
+		switch permission.Outcome {
+		case "awaiting_permission", "permission_refused", "permission_blocked":
+			return errCheckPermission
+		}
 	}
 	var members map[string]json.RawMessage
 	if json.Unmarshal(raw, &members) != nil || len(members) != len(fields) {

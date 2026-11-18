@@ -7,6 +7,16 @@ person inspect the rule, block access and remove it. This playground connects
 the permission explanation to the actual effect and makes the boundary between
 two applications visible. All secret values are harmless fixtures.
 
+The download service sends a named credential only over https, to the origin
+it was applied for, and refuses this computer's addresses unless the person's
+allowed local hosts name them (download `CONTRACT.md` DL-K5, DL-G4 and DL-G5).
+The local test receiver serves plain http on 127.0.0.1, so Use against it ends
+at admission with `credential:insecure_transport:oa-playground-alpha`; Read
+is unchanged.
+Use reaches a download through an https source, as the private release
+downloader below shows. An allowed local hosts entry opens a loopback address,
+and it leaves the https rule for credentials in place.
+
 **Development checkpoint, October 6, 2026.** The prepared Windows pack has
 native A/B windows with Read/Use buttons and in-window results. A real Read
 opened the permission dialog; after the owner's Allow, Read succeeded. Public
@@ -27,8 +37,8 @@ computer use stopped before its capture. App A's saved grant is unchanged.
 Appearance acceptance, including title-bar chrome, the full human walkthrough,
 macOS and release qualification remain open. Historical failed/partial checks
 and their focused corrections are retained; no fresh full-gate or whole-state
-secret-absence verdict is claimed. The [current status](../../PROGRESS.md#where-this-stands)
-and [evidence index](../../research/evidence-location.md) locate the results,
+secret-absence verdict is claimed. The current status (`../../PROGRESS.md`)
+and evidence index (`../../research/evidence-location.md`) locate the results,
 captures, cleanup receipts and exact compositions.
 [Released 0.3.0](https://github.com/openabstractions/redist/releases/tag/v0.3.0)
 has its own package contents and platform evidence.
@@ -228,8 +238,8 @@ the original A/B playground is outside this command's package. The original
 playground remains useful for its explicit Read/Use comparison.
 
 Build this command with the existing workspace, then use an explicitly selected
-isolated runtime. An authorized operator can reuse `source`, `setup`, and the
-dummy `oa-playground-alpha` registration from this README. Permit the new executable's
+isolated runtime. An authorized operator registers the https credential, such as
+the `github-download` registration below, with the same controls `setup` uses. Permit the new executable's
 named typed Use and Job submission through the existing permission controls; the
 A/B grants from `setup` do not grant the new executable. The new app receives only
 the source origin/name and artifact identity. Dummy fixture values remain in the
@@ -238,14 +248,14 @@ operator/source side; never supply a real account token to these examples.
 ```console
 private-release-download --endpoint ENDPOINT --runtime-program ABSOLUTE_RUNTIME --history
 private-release-download --endpoint ENDPOINT --runtime-program ABSOLUTE_RUNTIME \
-  --credential oa-playground-alpha --url http://127.0.0.1:PORT/alpha \
+  --credential github-download --url https://api.github.com/repos/OWNER/REPO/releases/assets/ASSET_ID \
   --bytes EXPECTED_BYTES --sha256 EXPECTED_SHA256 --out ABSOLUTE_NEW_FILE \
   --epoch EPOCH --key private-release-1
 ```
 
 Use the fixed dummy artifact's size and SHA256 from `source.go`, or an independently
 pinned ordinary release artifact. The command accepts at most 16 MiB. It rejects
-userinfo, query strings, secret/header flags, and external plain HTTP. It reads no
+userinfo, query strings, secret/header flags, and plain HTTP. It reads no
 environment or stdin credential. Select `credentials@2`; no legacy fallback is
 attempted. After an uncertain result, preserve every argument and repeat with
 `--reconcile`; that call reads the same epoch/key and never submits again. Choose

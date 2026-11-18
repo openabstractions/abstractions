@@ -53,14 +53,14 @@ func (s *applicationV3Registrations) listingStamp(now time.Time) (string, bool) 
 		if err != nil || now.Sub(info.ModTime()) < registrationReadSettle {
 			return "", false
 		}
-		b.WriteString(e.Name())
-		b.WriteByte(0)
-		b.WriteString(strconv.FormatInt(info.Size(), 10))
-		b.WriteByte(0)
-		b.WriteString(strconv.FormatInt(info.ModTime().UnixNano(), 10))
-		b.WriteByte(0)
-		b.WriteString(strconv.FormatUint(uint64(info.Mode()), 10))
-		b.WriteByte('\n')
+		b.WriteString(e.Name())                                         //unchecked: strings.Builder writes never return an error
+		b.WriteByte(0)                                                  //unchecked: strings.Builder writes never return an error
+		b.WriteString(strconv.FormatInt(info.Size(), 10))               //unchecked: strings.Builder writes never return an error
+		b.WriteByte(0)                                                  //unchecked: strings.Builder writes never return an error
+		b.WriteString(strconv.FormatInt(info.ModTime().UnixNano(), 10)) //unchecked: strings.Builder writes never return an error
+		b.WriteByte(0)                                                  //unchecked: strings.Builder writes never return an error
+		b.WriteString(strconv.FormatUint(uint64(info.Mode()), 10))      //unchecked: strings.Builder writes never return an error
+		b.WriteByte('\n')                                               //unchecked: strings.Builder writes never return an error
 	}
 	return b.String(), true
 }

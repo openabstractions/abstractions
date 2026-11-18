@@ -192,7 +192,7 @@ func (chatContextBackend) MessagesWait(context.Context, MessagesWaitInput) (mess
 func TestCompleteDefaultsConversationToTheConnectionChat(t *testing.T) {
 	chat := chatContextBackend{context: "chat-3f2a"}
 	local := CompleteInput{Model: "m", Prompt: "p", Hosting: "local"}
-	if got := withChatConversation(chat, local); got.Conversation != "chat-3f2a" {
+	if got := withChatConversation(t.Context(), chat, local); got.Conversation != "chat-3f2a" {
 		t.Fatalf("default label %q", got.Conversation)
 	}
 	cursor := int64(0)
@@ -202,11 +202,11 @@ func TestCompleteDefaultsConversationToTheConnectionChat(t *testing.T) {
 		{Model: "m", Prompt: "p", Hosting: "hosted", Credential: "openrouter"},
 		{Model: "m", Prompt: "p", Hosting: "local", IncludeReasoning: true, RequestKey: "k"},
 	} {
-		if got := withChatConversation(chat, in); got.Conversation != in.Conversation {
+		if got := withChatConversation(t.Context(), chat, in); got.Conversation != in.Conversation {
 			t.Fatalf("%+v became %q", in, got.Conversation)
 		}
 	}
-	if got := withChatConversation(&fixtureBackend{}, local); got.Conversation != "" {
+	if got := withChatConversation(t.Context(), &fixtureBackend{}, local); got.Conversation != "" {
 		t.Fatalf("a connection without a chat labelled %q", got.Conversation)
 	}
 	for _, label := range []string{"", strings.Repeat("a", 129), "line\nbreak", "\x85"} {

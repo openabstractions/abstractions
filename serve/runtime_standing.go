@@ -26,19 +26,20 @@ func (c *runtimeCredentials) standingInference(ctx context.Context, s inference.
 		if !incoming || c == nil || c.runtimeRights == nil || !call.matchesSubject(c.runtimeRights.owner, s.Account, s.Program) {
 			return "remote:unavailable", nil
 		}
-		if call.admit != nil {
-			if err := call.admit(call.peer); errors.Is(err, errPairingBusy) {
+		currentAdmission := call.standingAdmission(ctx)
+		if currentAdmission != nil {
+			if err := currentAdmission(call.peer); errors.Is(err, errPairingBusy) {
 				// A trusted state edit temporarily denies new input. It supplies no
 				// withdrawal decision for already accepted work (INF-A6).
 				return "", err
 			}
 		}
 		check := func(action, resource, prefix string) (string, error) {
-			admit := call.admit
+			admit := currentAdmission
 			var admissionErr error
 			if admit != nil {
 				admit = func(peer remote.Peer) error {
-					err := call.admit(peer)
+					err := currentAdmission(peer)
 					if errors.Is(err, errPairingBusy) {
 						admissionErr = err
 					}
@@ -57,8 +58,8 @@ func (c *runtimeCredentials) standingInference(ctx context.Context, s inference.
 			// An edit can acquire the state lock after the first admission
 			// above. Preserve only an actual current contention observation;
 			// the owner's post-unlock event repeats this complete decision.
-			if call.admit != nil {
-				if err := call.admit(call.peer); errors.Is(err, errPairingBusy) {
+			if currentAdmission != nil {
+				if err := currentAdmission(call.peer); errors.Is(err, errPairingBusy) {
 					return "", err
 				}
 			}
@@ -76,7 +77,23 @@ func (c *runtimeCredentials) standingInference(ctx context.Context, s inference.
 			return refusal, err
 		}
 		if credential != "" {
-			outcome := c.useDecision(ctx, rwire.Subject{Account: s.Account, Program: s.Program}, credentials.ResourceFor(credential))
+			// The typed credential owner uses the same standing observation.
+			// SubjectOf's refusal mapping must retain a busy read as uncertainty.
+			var admissionErr error
+			standingCall := call
+			standingCall.admit = nil // currentAdmission already composes both callbacks.
+			standingCall.admitContext = func(_ context.Context, peer remote.Peer) error {
+				err := currentAdmission(peer)
+				if errors.Is(err, errPairingBusy) {
+					admissionErr = err
+				}
+				return err
+			}
+			standingCtx := context.WithValue(ctx, incomingRemoteKey{}, standingCall)
+			outcome := c.useDecision(standingCtx, rwire.Subject{Account: s.Account, Program: s.Program}, credentials.ResourceFor(credential))
+			if admissionErr != nil {
+				return "", admissionErr
+			}
 			if refusal, err := standingWord("credential:", outcome); refusal != "" || err != nil {
 				return refusal, err
 			}

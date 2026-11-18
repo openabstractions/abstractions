@@ -27,6 +27,7 @@ import (
 	"github.com/openabstractions/abstraction-job/go/acceptanceprovider"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	rightsclient "github.com/openabstractions/abstraction-rights/go/client"
+	"github.com/openabstractions/abstraction-storage/go/layout"
 )
 
 // ModelCredentialConsumer is the consumer contract model lookup names.
@@ -158,7 +159,7 @@ func isolatedOperatorProgramWithState(options runtimeFlags, create bool) (string
 	} else if err := localPath(resolved); err != nil {
 		return "", fmt.Errorf("runtime: --operator-program needs a state directory on a local drive; %q resolves to %q: %w", options.stateDir, resolved, err)
 	}
-	installed, err := runtimeStateDir(runtime.GOOS, os.Getenv, os.UserHomeDir)
+	installed, err := installedRuntimeStates()
 	if err != nil {
 		return "", fmt.Errorf("runtime: --operator-program needs the installed runtime's state directory to tell it apart: %w", err)
 	}
@@ -171,7 +172,7 @@ func isolatedOperatorProgramWithState(options runtimeFlags, create bool) (string
 	// process of this account, which can already act as this account; the
 	// opening paragraph of abstraction-credentials CONTRACT.md leaves such a
 	// process out of scope.
-	if err := distinctState(options.stateDir, installed); err != nil {
+	if err := distinctStates(options.stateDir, installed); err != nil {
 		return "", err
 	}
 	if !create {
@@ -180,10 +181,65 @@ func isolatedOperatorProgramWithState(options runtimeFlags, create bool) (string
 	if err := os.MkdirAll(options.stateDir, 0o700); err != nil {
 		return "", fmt.Errorf("runtime: --operator-program needs a state directory of its own: %w", err)
 	}
-	if err := distinctState(options.stateDir, installed); err != nil {
+	if err := distinctStates(options.stateDir, installed); err != nil {
 		return "", err
 	}
 	return identity.CanonicalProgramPath(filepath.Clean(path)), nil
+}
+
+// installedRuntimeStates are the folders the installed runtime's state may be
+// in. Whoever starts this command sets its environment, so beside the folder
+// this environment names they hold the one under the account's recorded home
+// (layout.AccountHome) and, on Windows, the ones under the recorded profile's
+// AppData\Local (layout.AccountLocalAppData) and the LocalAppData known
+// folder. A state directory that is any of them is the installed runtime's.
+func installedRuntimeStates() ([]string, error) {
+	env, err := runtimeStateDir(runtime.GOOS, os.Getenv, os.UserHomeDir)
+	if err != nil {
+		return nil, err
+	}
+	home, err := layout.AccountHome()
+	if err != nil {
+		return nil, err
+	}
+	recordedHome := func() (string, error) { return home, nil }
+	if runtime.GOOS != "windows" {
+		// The recorded state lies where XDG_DATA_HOME's default puts it.
+		account, err := runtimeStateDir(runtime.GOOS, func(string) string { return "" }, recordedHome)
+		if err != nil {
+			return nil, err
+		}
+		return []string{env, account}, nil
+	}
+	states := []string{env}
+	for _, local := range []func() (string, error){layout.AccountLocalAppData, layout.LocalAppData} {
+		dir, err := local()
+		if err != nil {
+			if len(states) == 1 {
+				return nil, err
+			}
+			continue
+		}
+		// The local data folder is the one variable the Windows state
+		// folder reads.
+		state, err := runtimeStateDir(runtime.GOOS, func(string) string { return dir }, recordedHome)
+		if err != nil {
+			return nil, err
+		}
+		states = append(states, state)
+	}
+	return states, nil
+}
+
+// distinctStates is distinctState for each of the installed runtime's
+// possible state folders.
+func distinctStates(state string, installed []string) error {
+	for _, folder := range installed {
+		if err := distinctState(state, folder); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // localPath is identity.LocalPath and statPath os.Stat, the checks and the
@@ -273,7 +329,8 @@ func operatorSiblings(exe, isolatedPanel string) ([]string, panelRoster) {
 	operators := []string{exe}
 	panels := panelRoster{reserved: []string{exe}}
 	panelName := oaProgramFiles([]string{oaPanelProgramStem})[0]
-	var installedPanel string
+	presenterName := oaProgramFiles([]string{oaPresenterProgramStem})[0]
+	var installedPanel, installedPresenter string
 	for _, name := range oaProgramFiles(oaProgramStems) {
 		sibling := filepath.Join(filepath.Dir(exe), name)
 		if name != panelName {
@@ -286,6 +343,9 @@ func operatorSiblings(exe, isolatedPanel string) ([]string, panelRoster) {
 			}
 			if name == panelName {
 				installedPanel = sibling
+			}
+			if name == presenterName {
+				installedPresenter = sibling
 			}
 		}
 	}
@@ -306,6 +366,15 @@ func operatorSiblings(exe, isolatedPanel string) ([]string, panelRoster) {
 			continue
 		}
 		panels.images = append(panels.images, held)
+		panels.imagePaths = append(panels.imagePaths, program)
+	}
+	// The installed presenter answers the person-only popups it draws; an
+	// isolated runtime admits no presenter of its own.
+	if installedPresenter != "" {
+		if held, err := openPanelImage(ctx, fileid.Self, installedPresenter, fileid.FollowLocalLinks); err == nil {
+			panels.presenters = append(panels.presenters, held)
+			panels.presenterPaths = append(panels.presenterPaths, installedPresenter)
+		}
 	}
 	return operators, panels
 }
@@ -545,7 +614,7 @@ func (c *runtimeCredentials) decide(ctx context.Context, subject cwire.Subject, 
 		if action == credentials.ActionApply {
 			return c.useDecision(ctx, bound, resource).String(), nil
 		}
-		return c.runtimeRights.decideRemote(ctx, call.peer, call.admit, action, resource, call.minimum).Outcome.String(), nil
+		return c.runtimeRights.decideRemote(ctx, call.peer, call.admission(ctx), action, resource, call.minimum).Outcome.String(), nil
 	}
 	if action == credentials.ActionApply {
 		outcome := c.useDecision(ctx, bound, resource)
@@ -576,7 +645,7 @@ func (c *runtimeCredentials) useDecision(ctx context.Context, bound rwire.Subjec
 		if !incoming || c == nil || c.runtimeRights == nil || !call.matchesSubject(c.owner, bound.Account, bound.Program) || ctx.Err() != nil {
 			return rwire.DecisionOutcomeUnavailable
 		}
-		mapped, err := remote.SubjectOf(call.peer, call.admit)
+		mapped, err := remote.SubjectOf(call.peer, call.admission(ctx))
 		if err != nil || mapped.Program() != bound.Program {
 			return rwire.DecisionOutcomeForbidden
 		}

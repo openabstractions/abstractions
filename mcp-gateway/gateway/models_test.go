@@ -36,9 +36,9 @@ func TestModelsListGuidesCallerToTheCallableAlias(t *testing.T) {
 	for _, tool := range tools.Tools {
 		descriptions[tool.Name] = tool.Description
 	}
-	if !strings.Contains(descriptions[ToolModels], "exact alias of a servable model in the model argument") ||
+	if !strings.Contains(descriptions[ToolModels], "pass a servable model's exact alias as model") ||
 		!strings.Contains(descriptions[ToolModels], "name is its display title") ||
-		!strings.Contains(descriptions[ToolComplete], "Copy an exact alias for the model from oa_models_list") {
+		!strings.Contains(descriptions[ToolComplete], "model (an exact alias from oa_models_list)") {
 		t.Fatalf("model guidance: %q / %q", descriptions[ToolModels], descriptions[ToolComplete])
 	}
 	_, listing := call[ModelsOutput](t, session, ToolModels, map[string]any{})

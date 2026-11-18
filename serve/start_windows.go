@@ -202,15 +202,26 @@ const (
 	createBreakawayFromJob = 0x01000000
 )
 
-// launchDetached starts the host outside the caller's console and process
-// group, and outside the caller's job object when that job allows breakaway:
-// an application's kill-on-close job must not take the shared host with it.
-// It does not wait; `start` observes readiness through the resolver.
+// launchDetached starts the host outside the caller's console, process group
+// and job objects: an application's kill-on-close job must not take the shared
+// host with it. It breaks away from the caller's job when that job allows it.
+// When the job forbids breakaway, this account's desktop shell starts the
+// host as its own child, outside every job of the caller. With no such shell
+// the host starts in the caller's job and a log line says so. It does not
+// wait; `start` observes readiness through the resolver.
 func launchDetached(image string, args ...string) error {
+	return launchOutsideCallerJob(image, args, startDetached, launchThroughShell, os.Stderr)
+}
+
+func launchOutsideCallerJob(image string, args []string, start func(string, []string, uint32) error, shell func(string, string, ...string) error, log io.Writer) error {
 	flags := uint32(detachedProcess | createNewProcessGroup)
-	err := startDetached(image, args, flags|createBreakawayFromJob)
+	err := start(image, args, flags|createBreakawayFromJob)
 	if errors.Is(err, windows.ERROR_ACCESS_DENIED) {
-		err = startDetached(image, args, flags)
+		err = shell(image, filepath.Dir(image), args...)
+		if err != nil {
+			fmt.Fprintln(log, "start: the caller's job forbids breakaway and the desktop shell cannot start the runtime ("+err.Error()+"); the runtime shares the caller's job")
+			err = start(image, args, flags)
+		}
 	}
 	if err != nil {
 		return fmt.Errorf("activation refused: launch %s %v: %w", image, args, err)

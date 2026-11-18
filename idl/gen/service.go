@@ -614,6 +614,7 @@ func serviceReply(v *OAServiceFrame,payload Raw,err error)(frame []byte,outErr e
 `)
 	}
 	if hasReplies(s) {
+		b.WriteString(goHandlerPanic)
 		b.WriteString(goEndpoint)
 		goEndpointRemote(b, s)
 	}
@@ -712,7 +713,7 @@ func serviceReply(v *OAServiceFrame,payload Raw,err error)(frame []byte,outErr e
 				continue
 			}
 			fmt.Fprintf(b, "func(d *%sDispatcher)invoke%s(args *%s)(payload Raw,err error){\n", svc.Name, goName(m.Name), argsName(svc, m))
-			b.WriteString("defer func(){if p:=recover();p!=nil{payload=\"\";if _,ok:=p.(*Refusal);ok{err=&ServiceError{Code:ServiceErrorCodeInvalidResult}}else{err=&ServiceError{Code:ServiceErrorCodeHandlerError,Message:\"handler failed\"}}}}()\n")
+			fmt.Fprintf(b, "defer func(){if p:=recover();p!=nil{payload=\"\";if _,ok:=p.(*Refusal);ok{err=&ServiceError{Code:ServiceErrorCodeInvalidResult}}else{handlerPanic(%q,%q,p);err=&ServiceError{Code:ServiceErrorCodeHandlerError,Message:\"handler failed\"}}}}()\n", svc.WireName, m.Name)
 			if m.Result.Type != "void" {
 				fmt.Fprintf(b, "var result %s;result,err=d.Handler.%s(%s);", goType(s, m.Result), goName(m.Name), callArgs(m, "go"))
 			} else {
@@ -729,6 +730,20 @@ func serviceReply(v *OAServiceFrame,payload Raw,err error)(frame []byte,outErr e
 		}
 	}
 }
+
+// goHandlerPanic is emitted with every replying dispatcher. A recovered
+// handler panic keeps its wire reply, handler_error "handler failed", and
+// writes the service, method, panic value and stack to standard error, which
+// the runtime captures as the process log. The builtin print writes standard
+// error with no import; runtime/debug is the one import it adds (goImports).
+const goHandlerPanic = `
+// handlerPanic writes a recovered handler panic and its stack to standard error.
+func handlerPanic(service,method string,p interface{}){
+ value:="a value that is neither a string nor an error"
+ func(){defer func(){_=recover()}();switch v:=p.(type){case string:value=v;case error:value=v.Error();case interface{String()string}:value=v.String()}}()
+ print(service," ",method,": handler panic: ",value,"\n",string(debug.Stack()))
+}
+`
 
 // Optional metadata lookup leaves ServedService and wire carriers unchanged.
 const goRemoteProfile = `
@@ -842,7 +857,7 @@ func ServeEndpointRemote(frame []byte,program,version string,admit func(contract
  authorize:=func(profile string)(err error){
   switch profile{case "see","call","delegate":case "person":return &ServiceError{Code:"forbidden",Message:"remote:person_only"};default:return &ServiceError{Code:"unsupported",Message:"remote:local_only"}}
   if admit==nil{return &ServiceError{Code:"forbidden",Message:"remote admission required"}}
-  defer func(){if recover()!=nil{err=&ServiceError{Code:ServiceErrorCodeHandlerError,Message:"handler failed"}}}()
+  defer func(){if p:=recover();p!=nil{handlerPanic(v.Service,v.Method+" admission",p);err=&ServiceError{Code:ServiceErrorCodeHandlerError,Message:"handler failed"}}}()
   return admit(v.Service,v.Method,profile)
  }
  if v.Service==EndpointContract||v.Service==EndpointV2Contract{

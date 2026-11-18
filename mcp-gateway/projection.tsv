@@ -93,8 +93,10 @@ not_built	abstraction.facade/applications@3	Commands	backlog/MCP-API-EMITTER.md
 not_built	abstraction.facade/applications@3	CommitAgentUpdate	backlog/MCP-API-EMITTER.md
 not_built	abstraction.facade/applications@3	ConfirmReceiverStart	backlog/MCP-API-EMITTER.md
 not_built	abstraction.facade/applications@3	Describe	backlog/MCP-API-EMITTER.md
+projected	abstraction.facade/applications@3	DescribeOpen	oa_applications_describe
 not_built	abstraction.facade/applications@3	FindAgentUpdate	backlog/MCP-API-EMITTER.md
 not_built	abstraction.facade/applications@3	Observe	backlog/MCP-API-EMITTER.md
+projected	abstraction.facade/applications@3	Open	oa_applications_open
 not_built	abstraction.facade/applications@3	PrepareAgentUpdate	backlog/MCP-API-EMITTER.md
 projected	abstraction.facade/applications@3	ReadAgentEnrollment	oa_applications_enrollment_read
 not_built	abstraction.facade/applications@3	ReadSignInStart	backlog/MCP-API-EMITTER.md
@@ -140,6 +142,7 @@ not_built	abstraction.facade/registry@2	DeclarePinned	backlog/MCP-API-EMITTER.md
 not_built	abstraction.facade/registry@2	Observe	backlog/MCP-API-EMITTER.md
 not_built	abstraction.facade/registry@2	ObservePinned	backlog/MCP-API-EMITTER.md
 not_built	abstraction.facade/registry@2	ReplacePinned	backlog/MCP-API-EMITTER.md
+not_built	abstraction.facade/registry@2	Standings	backlog/MCP-API-EMITTER.md
 not_built	abstraction.facade/registry@2	Withdraw	backlog/MCP-API-EMITTER.md
 not_built	abstraction.facade/registry@3	Observe	backlog/MCP-API-EMITTER.md
 not_built	abstraction.facade/registry@3	Register	backlog/MCP-API-EMITTER.md
@@ -248,12 +251,15 @@ projected	abstraction.rights/authorization@2	ListPermissionBundles	oa_api_read
 projected	abstraction.rights/authorization@2	ListPermissionDefinitions	oa_api_read
 not_built	abstraction.rights/operator@1	ApplyFirstUseAllow	backlog/MCP-API-EMITTER.md
 projected	abstraction.rights/operator@1	ExplainFor	oa_api_read
+projected	abstraction.rights/operator@1	ListChangeRequests	oa_api_read
 projected	abstraction.rights/operator@1	ListDefaults	oa_api_read
 projected	abstraction.rights/operator@1	ListPolicy	oa_api_read
+projected	abstraction.rights/operator@1	ObserveChangeRequest	oa_api_read
 projected	abstraction.rights/operator@1	ObservePolicy	oa_api_read
 projected	abstraction.rights/operator@1	ReadRule	oa_api_read
 not_built	abstraction.rights/operator@1	RegisterAction	backlog/MCP-API-EMITTER.md
 not_built	abstraction.rights/operator@1	RegisterDescribedAction	backlog/MCP-API-EMITTER.md
+transport_excluded	abstraction.rights/operator@1	RequestChange	person_only: an agent asks for its own rights through request_access and Asks; an operator-level change request from an agent could name other apps' rights and turn the person's popup into a channel an injected agent controls
 not_built	abstraction.rights/operator@1	RetireAction	backlog/MCP-API-EMITTER.md
 not_built	abstraction.rights/operator@1	RevokeAnswerPermits	backlog/MCP-API-EMITTER.md
 not_built	abstraction.rights/operator@1	RevokeRule	backlog/MCP-API-EMITTER.md

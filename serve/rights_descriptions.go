@@ -142,7 +142,13 @@ func rightsPublishDescription(machine *client.Machine, source endpointSource, ca
 	}
 	reply := rightsReply{Command: command, Outcome: edit.Outcome.String(), Revision: edit.Revision, Action: d.Action, Description: descriptionJSON(edit.Current)}
 	var failure error
-	if edit.Outcome != wire.ActionEditOutcomeApplied {
+	switch edit.Outcome {
+	case wire.ActionEditOutcomeApplied:
+	case wire.ActionEditOutcomeForbidden:
+		// Publishing a description is a rights change with no request form
+		// (RIGHTS-O17): only the Panel window makes it.
+		failure = refusal(command, edit.Outcome.String(), "only the OpenAbstractions Panel publishes action descriptions")
+	default:
 		failure = refusal(command, edit.Outcome.String(), "at revision "+edit.Revision)
 	}
 	return rightsPrint(output, asJSON, reply, failure)

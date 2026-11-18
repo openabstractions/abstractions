@@ -287,8 +287,6 @@ func observeCodexReceiving(ctx context.Context, event, thread, nativeContext str
 		if next.Thread != "" {
 			next.Stage = "stopped"
 		}
-	case "unavailable_thread_changed":
-		next.Stage, next.Reason = "stopped", "thread_changed"
 	case "selecting_cli":
 		next.Stage, next.Reason = "selecting_cli", "none"
 	case "cli_unavailable":
@@ -330,7 +328,7 @@ func observeCodexReceiving(ctx context.Context, event, thread, nativeContext str
 	}
 	// Cancellation aftermath retains the initiating closed reason. QueueResult
 	// still records an in-flight dispatch whose effect became uncertain.
-	if previousStage == "stopped" && previousReason != "none" && event != "unavailable_thread_changed" && event != "resuming" {
+	if previousStage == "stopped" && previousReason != "none" && event != "resuming" {
 		next.Stage, next.Reason = previousStage, previousReason
 	}
 	if !validAgentReceivingDiagnostic(&next) {
@@ -382,10 +380,26 @@ type agentDiagnostic struct {
 	record       agentDiagnosticRecord
 	terminal     bool
 	establishing atomic.Bool
+	// deadline is the deadline of the caller that created this record, or
+	// zero. A write may use what remains of it; see agentDiagnosticBudget.
+	deadline time.Time
 }
 
-func newAgentDiagnostic(state, program string) *agentDiagnostic {
-	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+// agentDiagnosticBudget is the time one write may take: the ordinary budget,
+// or what remains of the creating caller's deadline when that is longer. A
+// helper started by its host has no such deadline and keeps the ordinary one.
+func agentDiagnosticBudget(deadline time.Time, ordinary time.Duration) time.Duration {
+	if !deadline.IsZero() {
+		if rest := time.Until(deadline); rest > ordinary {
+			return rest
+		}
+	}
+	return ordinary
+}
+
+func newAgentDiagnostic(caller context.Context, state, program string) *agentDiagnostic {
+	deadline, _ := caller.Deadline()
+	ctx, cancel := context.WithTimeout(context.Background(), agentDiagnosticBudget(deadline, agentDiagnosticAttempt))
 	defer cancel()
 	root, _, err := setupIdentity(ctx, state, true)
 	if err != nil {
@@ -407,7 +421,7 @@ func newAgentDiagnostic(state, program string) *agentDiagnostic {
 		root.Close()
 		return nil
 	}
-	d := &agentDiagnostic{root: root, record: agentDiagnosticRecord{PID: os.Getpid(), Birth: agentDiagnosticBirth(), ImageSHA256: hex.EncodeToString(hash.Sum(nil)), Phase: "started", Cause: "unproved"}}
+	d := &agentDiagnostic{root: root, record: agentDiagnosticRecord{PID: os.Getpid(), Birth: agentDiagnosticBirth(), ImageSHA256: hex.EncodeToString(hash.Sum(nil)), Phase: "started", Cause: "unproved"}, deadline: deadline}
 	d.persist()
 	return d
 }
@@ -450,7 +464,7 @@ func (d *agentDiagnostic) establish() {
 }
 
 func (d *agentDiagnostic) persist() bool {
-	ctx, cancel := context.WithTimeout(context.Background(), agentDiagnosticAttempt)
+	ctx, cancel := context.WithTimeout(context.Background(), agentDiagnosticBudget(d.deadline, agentDiagnosticAttempt))
 	defer cancel()
 	return d.persistContext(ctx) == nil
 }
@@ -458,7 +472,7 @@ func (d *agentDiagnostic) persist() bool {
 // persistWithin retries until the snapshot holds this record or the budget
 // ends. Each failed write changed nothing, so a later attempt is safe.
 func (d *agentDiagnostic) persistWithin(budget time.Duration) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), budget)
+	ctx, cancel := context.WithTimeout(context.Background(), agentDiagnosticBudget(d.deadline, budget))
 	defer cancel()
 	for {
 		if d.persistContext(ctx) == nil {

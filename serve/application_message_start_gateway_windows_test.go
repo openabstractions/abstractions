@@ -49,7 +49,7 @@ func TestMessageStartVendorChild(t *testing.T) {
 	if json.Unmarshal([]byte(raw), &cfg) != nil {
 		t.Fatal("fixture config")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+	ctx, cancel := runtimeTestContext(t, t.Context())
 	defer cancel()
 	cmd := exec.CommandContext(ctx, cfg.Gateway, "-test.run=^TestAgentStartGatewayFixture$", "-test.count=1")
 	cmd.Env = append(os.Environ(), "OA_RECEIVER_START_GATEWAY_FIXTURE="+cfg.GatewayConfig)
@@ -114,7 +114,7 @@ func TestMessageStartVendorChild(t *testing.T) {
 		return []byte(result.Content[0].Text)
 	}
 	var page *msg.Page
-	for until := time.Now().Add(10 * time.Second); ; {
+	for {
 		pageText := string(tool(2, "oa_messages_wait", map[string]any{"wait_ms": 10000}))
 		start := strings.Index(pageText, "\nOA_UNTRUSTED_")
 		if start < 0 {
@@ -130,7 +130,7 @@ func TestMessageStartVendorChild(t *testing.T) {
 			t.Fatal("unterminated assistant content")
 		}
 		page, err = msg.DecodePage([]byte(pageText[end+1 : len(pageText)-len(boundary)]))
-		if err == nil && page.Outcome == msg.OutcomeUnavailable && time.Now().Before(until) {
+		if err == nil && page.Outcome == msg.OutcomeUnavailable && ctx.Err() == nil {
 			time.Sleep(20 * time.Millisecond)
 			continue
 		}
@@ -211,14 +211,14 @@ func messageStartGatewayRun(t *testing.T, attach bool, coldMode ...bool) {
 		vendor = filepath.Join(folder, "inert-vendor.test.exe")
 		// This stand-in runs inside the profile's 256 MiB process limit.
 		// Build it separately even when the serving test binary runs under -race.
-		buildCtx, cancelBuild := context.WithTimeout(t.Context(), 2*time.Minute)
+		buildCtx, cancelBuild := runtimeTestContext(t, t.Context())
 		defer cancelBuild()
 		buildVendor := exec.CommandContext(buildCtx, "go", "test", "-c", "-race=false", "-o", vendor, ".")
 		if output, err := buildVendor.CombinedOutput(); err != nil {
 			t.Fatalf("build inert vendor source fixture: %v\n%s", err, output)
 		}
 	}
-	p := startprofile.Profile{Name: "claude-v1", Context: "fixture-inbox", Folder: folder, StateDir: folder, CLIFileID: "inert-fixture-only", Model: "fixture-model", TimeoutMS: 30000, OutputBytes: 4096, MemoryBytes: 256 << 20, BudgetCents: 100}
+	p := startprofile.Profile{Name: "claude-v1", Context: "fixture-inbox", Folder: folder, StateDir: folder, CLIFileID: "inert-fixture-only", Model: "fixture-model", TimeoutMS: uint64(runtimeTestBudgetMillis(t, time.Duration(startprofile.MaxTimeoutMS)*time.Millisecond)), OutputBytes: 4096, MemoryBytes: 256 << 20, BudgetCents: 100}
 	// The fixture's `auth status` reports folder as the configuration folder,
 	// so an attach run discovers an inert stand-in session file there.
 	inboxContext, personSession, personFile, argvMarker, personText := p.Context, "", "", "", ""
@@ -251,7 +251,7 @@ func messageStartGatewayRun(t *testing.T, attach bool, coldMode ...bool) {
 		}
 		argvMarker = filepath.Join(folder, "argv.fixture")
 	}
-	descriptor := wire.ApplicationDescriptor{Name: "oa-claude-integration", Program: identity.NormalizeSubjectProgram(helper), Title: "Fixture receiver", Activation: &wire.ApplicationActivationRecipe{Arguments: p.Arguments(), Readiness: wire.ApplicationInterface{Name: "messages", Protocol: "mcp", Contract: "abstraction.facade/messages@1"}, ReadinessTimeoutMs: 15000}}
+	descriptor := wire.ApplicationDescriptor{Name: "oa-claude-integration", Program: identity.NormalizeSubjectProgram(helper), Title: "Fixture receiver", Activation: &wire.ApplicationActivationRecipe{Arguments: p.Arguments(), Readiness: wire.ApplicationInterface{Name: "messages", Protocol: "mcp", Contract: "abstraction.facade/messages@1"}, ReadinessTimeoutMs: runtimeTestBudgetMillis(t, 30*time.Second)}}
 	initialDescriptor := descriptor
 	initialDescriptor.Activation = nil
 	if got := run.d.register(run.ctx, run.f.panel, initialDescriptor); got.Outcome != wire.ApplicationOutcomeApplied {
@@ -330,7 +330,7 @@ func messageStartGatewayRun(t *testing.T, attach bool, coldMode ...bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(run.ctx, 40*time.Second)
+	ctx, cancel := runtimeTestContext(t, run.ctx)
 	hostDone := make(chan error, 1)
 	var observedPermission atomic.Pointer[string]
 	a := run.d.agentQuestions.a
@@ -538,11 +538,13 @@ func messageStartGatewayRun(t *testing.T, attach bool, coldMode ...bool) {
 	}
 	ownedLaunch := newOwnedMessageStartLauncher(run.d, apps.ctx)
 	dispatchDone := make(chan error, 1)
+	var dispatchFailed atomic.Bool
 	run.d.launchMessageStart = func(ctx context.Context, request applicationMessageStartRequest, authority func(context.Context) error) error {
 		err := ownedLaunch(ctx, request, authority)
 		_, markerErr := os.Stat(probeMarker)
 		t.Logf("owned fixture dispatch: err=%v preflight=%t", err, markerErr == nil)
 		if err != nil {
+			dispatchFailed.Store(true)
 			if body, readErr := os.ReadFile(probeMarker + "-child-error"); readErr == nil {
 				t.Logf("inert child: %s", body)
 			}
@@ -627,7 +629,8 @@ func messageStartGatewayRun(t *testing.T, attach bool, coldMode ...bool) {
 	if err != nil || listed.Outcome != msg.OutcomePage || !registered || !existing {
 		t.Fatal("inactive receivers not listed as starting on a question", listed, err)
 	}
-	prepared, err := sender.Prepare(instance, "source", msg.PrepareRequest{Receiver: "app:" + descriptor.Name, Context: addressed, Subject: "fixture question", Body: "fixture queued task", TTLMs: 60000, AnswerWithinMs: 30000})
+	messageLifetime := runtimeTestBudgetMillis(t, 7*24*time.Hour)
+	prepared, err := sender.Prepare(instance, "source", msg.PrepareRequest{Receiver: "app:" + descriptor.Name, Context: addressed, Subject: "fixture question", Body: "fixture queued task", TTLMs: messageLifetime, AnswerWithinMs: messageLifetime})
 	if err != nil || prepared.Outcome != msg.OutcomePage || prepared.SendRequest == nil || prepared.SendRequest.Context != inboxContext || launched.Load() != 0 {
 		t.Fatal("inactive registered default preparation", prepared, err)
 	}
@@ -678,7 +681,7 @@ func messageStartGatewayRun(t *testing.T, attach bool, coldMode ...bool) {
 	// the claimed start's outcome rather than reading the claim (architect
 	// review 41).
 	current, err := apps.messages.readRecord(ctx, key)
-	for settle := time.Now().Add(30 * time.Second); err == nil && current != nil && current.Start != nil && current.Start.State == "unknown" && time.Now().Before(settle); {
+	for err == nil && current != nil && current.Start != nil && current.Start.State == "unknown" && ctx.Err() == nil && !dispatchFailed.Load() {
 		time.Sleep(50 * time.Millisecond)
 		current, err = apps.messages.readRecord(ctx, key)
 	}

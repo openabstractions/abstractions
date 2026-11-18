@@ -171,10 +171,14 @@ func setupPictureOffers(ctx context.Context, journal setup.Journal, engine setup
 			Prepared: prepared, Caption: offer.ReviewCaption(),
 		})
 	}
+	_, free, diskErr := setupInstallDisk()
 	for i := range offers {
 		row := &offers[i]
 		if requested == nil {
-			row.Selected = row.Recommended && !hasModel
+			// A model that does not fit the install drive is never ticked
+			// by default (agent-ux 2026-11-22); its row says why.
+			fits := diskErr != nil || row.PeakBytes <= 0 || uint64(row.PeakBytes) <= free
+			row.Selected = row.Recommended && !hasModel && fits
 		} else {
 			row.Selected = slices.Contains(requested, row.ID) && !row.Prepared
 		}

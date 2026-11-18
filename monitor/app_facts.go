@@ -339,7 +339,7 @@ func (p *servicePanel) appCallFacts(ctx context.Context, mine *sameProgram, regi
 // engineServerTitle with its product standing (shippedServer). A server the
 // host list does not name has no title here, and the page calls it "Model
 // server".
-func appServerTitles(ctx context.Context, operator appInferenceRead, registry fwire.ApplicationPage, providers []fwire.DeclarationState) map[string]string {
+func appServerTitles(ctx context.Context, operator appInferenceRead, registry fwire.ApplicationPage, providers []providerState) map[string]string {
 	titles := map[string]string{}
 	hosts, err := operator.Hosts(ctx)
 	if err != nil || hosts.Outcome != iclient.ListOutcomePage {
@@ -361,16 +361,14 @@ func appServerTitles(ctx context.Context, operator appInferenceRead, registry fw
 	return titles
 }
 
-// shippedServer reports a configured model server's product standing: its
-// provider declaration is shipped (shippedProvider), or, when no declaration
-// names it, the program that declared it has product standing, as the
-// runtime and Setup do. A third-party program that declares an engine name
-// without the shipped provenance has no shipped provider.
-func shippedServer(host iclient.HostEntry, providers []fwire.DeclarationState) bool {
+// shippedServer reports a configured model server's product standing: the
+// runtime's standing for the provider declaration of that name
+// (shippedProvider). A server no declaration names has none.
+func shippedServer(host iclient.HostEntry, providers []providerState) bool {
 	for _, state := range providers {
 		if state.Declaration.Name == host.Name {
 			return shippedProvider(state)
 		}
 	}
-	return shippedProvider(fwire.DeclarationState{DeclaredBy: host.DeclaredBy, Declaration: fwire.Declaration{Name: host.Name, Program: host.DeclaredBy}})
+	return false
 }

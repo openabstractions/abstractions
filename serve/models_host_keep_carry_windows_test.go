@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
-	"time"
 
 	configwire "github.com/openabstractions/abstraction-config/go/abstraction/config"
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
@@ -82,7 +81,7 @@ func newKeptModelHost(t *testing.T, adjust ...func(*hostSettings)) *keptModelHos
 	if err != nil {
 		t.Fatal(err)
 	}
-	native := modelHostOperatorNative{listen.FrameClient{Endpoint: endpoint, Timeout: 3 * time.Second, MaxFrame: 1 << 20, Server: &listen.ServerExpectation{Principal: principal, Program: self}}}
+	native := modelHostOperatorNative{listen.FrameClient{Endpoint: endpoint, Timeout: openTestWait(t), MaxFrame: 1 << 20, Server: &listen.ServerExpectation{Principal: principal, Program: self}}}
 	k := &keptModelHost{run: run, registry: r, caller: caller, native: native, program: program,
 		settings: hostSettings{program: program, endpoint: "configured-native", engine: filepath.Join(t.TempDir(), "llama-server.exe")},
 		models:   []hostedModel{{Name: "m", Store: "store", Object: "object"}}}
@@ -106,7 +105,7 @@ func (k *keptModelHost) declare(t *testing.T, settings hostSettings) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := newWaiting(10 * time.Second)
+	w := newWaiting(openTestWait(t))
 	defer w.stop()
 	var out bytes.Buffer
 	if err := declareHost(w, writer, wire.DeclarationList{}, settings, k.models, "models host", &out, false, "configured"); err != nil {

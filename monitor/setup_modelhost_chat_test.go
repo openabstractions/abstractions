@@ -626,3 +626,34 @@ func TestModelHostModelApprovalNamesTheExactInventoryObject(t *testing.T) {
 		}
 	}
 }
+
+// Agent-ux 2026-11-22: Models said local models were "Not supported on this
+// computer" while the Catalog recommended a local model; the feature was
+// only unavailable because that Panel was not the installed one. Only a
+// platform refusal reads as unsupported.
+func TestLocalModelsUnsupportedOnlyForAPlatformRefusal(t *testing.T) {
+	for _, tc := range []struct {
+		feature setup.FeatureStatus
+		want    string
+	}{
+		{setup.FeatureStatus{Reason: "Open the installed OpenAbstractions Panel to add the llama.cpp feature"}, "installation"},
+		{setup.FeatureStatus{Reason: "Install the current OpenAbstractions core package before adding ModelHost"}, "installation"},
+		{setup.FeatureStatus{Reason: "The OpenAbstractions ModelHost feature requires Windows x64", Unsupported: true}, "platform"},
+	} {
+		journal := setup.Journal{Path: filepath.Join(t.TempDir(), "setup", "plan.json")}
+		feature := tc.feature
+		p := &servicePanel{setupJournal: &journal, modelHostFeatureCheck: func() (setup.FeatureStatus, error) { return feature, nil }}
+		req := httptest.NewRequest(http.MethodGet, "/setup/modelhost/chat?k=setup-test-key", nil)
+		req.Host = "127.0.0.1"
+		req.Header.Set("X-Panel-Key", "setup-test-key")
+		got := httptest.NewRecorder()
+		p.handler("setup-test-key").ServeHTTP(got, req)
+		var view modelHostChatView
+		if err := json.Unmarshal(got.Body.Bytes(), &view); got.Code != http.StatusOK || err != nil {
+			t.Fatalf("facts read: %d %s", got.Code, got.Body.String())
+		}
+		if view.Available || view.Unavailable != tc.want || view.Reason != feature.Reason {
+			t.Fatalf("%q: %+v", feature.Reason, view)
+		}
+	}
+}

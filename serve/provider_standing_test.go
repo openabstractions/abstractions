@@ -6,10 +6,20 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/openabstractions/abstractions/mcp-gateway/product"
 )
+
+// shippedFixtureProgram spells an installed component as this platform
+// ships it. POSIX program names keep their case and carry no .exe suffix.
+func shippedFixtureProgram(name string) string {
+	if runtime.GOOS != "windows" {
+		return strings.TrimSuffix(name, ".exe")
+	}
+	return name
+}
 
 // signedByRuntimeSigner makes product standing's signer check vouch for
 // exactly the given files, as Windows does for OA's signed programs.
@@ -48,7 +58,7 @@ func TestPerUserRuntimeFolderRanksOnlySameSignerProviders(t *testing.T) {
 	standingInstallFolders = func() []string { return nil }
 	standingUserInstallFolder = func() string { return tools }
 	p := &runtimeProviders{installation: filepath.Join(tools, installationDeclarationsDir)}
-	dropped := filepath.Join(tools, "lemonaded.exe")
+	dropped := filepath.Join(tools, shippedFixtureProgram("lemonaded.exe"))
 	files := []providerFile{
 		{Source: declarationSourceOperator, Declaration: providerDeclaration{Name: product.Lemonade, Program: dropped}},
 		{Source: declarationSourceInstallation, Declaration: providerDeclaration{Name: product.Lemonade, Program: dropped}},
@@ -61,14 +71,18 @@ func TestPerUserRuntimeFolderRanksOnlySameSignerProviders(t *testing.T) {
 		}
 	}
 	signedByRuntimeSigner(t, dropped)
-	for _, f := range files {
-		if !p.shippedProvider(f) || pictureProviderRank(f.Declaration.Name, true) == last {
-			t.Errorf("a signed %s declaration of %s is not shipped", f.Source, dropped)
-		}
+	if !p.shippedProvider(files[1]) {
+		t.Errorf("the installation's signed declaration of %s is not shipped", dropped)
 	}
-	// A product record keeps its standing.
-	if !p.shippedProvider(providerFile{Source: declarationSourceProduct}) {
-		t.Error("a product record lost its standing")
+	// An operator's declaration repeats no installation declaration here
+	// (security review 2026-11-22).
+	if p.shippedProvider(files[0]) {
+		t.Errorf("an operator's declaration of %s with no installation counterpart is shipped", dropped)
+	}
+	// A product record's source grants nothing (architect ruling
+	// 2026-11-22 (1)).
+	if p.shippedProvider(providerFile{Source: declarationSourceProduct, Declaration: providerDeclaration{Name: "ollama"}}) {
+		t.Error("a product record has standing by its source")
 	}
 }
 
@@ -79,10 +93,11 @@ func TestPerMachineRuntimeFolderVouchesByPathOnly(t *testing.T) {
 	signedByRuntimeSigner(t)
 	p := &runtimeProviders{installation: filepath.Join(machine, installationDeclarationsDir)}
 	elsewhere := filepath.Join(t.TempDir(), "evil.exe")
-	if !p.shippedProvider(providerFile{Source: declarationSourceInstallation, Declaration: providerDeclaration{Name: product.Lemonade, Program: elsewhere}}) {
-		t.Error("a per-machine installation's declaration is not shipped")
+	// The installation as declarer grants nothing: the program decides.
+	if p.shippedProvider(providerFile{Source: declarationSourceInstallation, Declaration: providerDeclaration{Name: product.Lemonade, Program: elsewhere}}) {
+		t.Error("a per-machine installation's declaration of a program elsewhere is shipped")
 	}
-	if !p.shippedProvider(providerFile{Source: declarationSourceOperator, Declaration: providerDeclaration{Name: product.Lemonade, Program: filepath.Join(machine, "lemonaded.exe")}}) {
+	if !p.shippedProvider(providerFile{Source: declarationSourceInstallation, Declaration: providerDeclaration{Name: product.Lemonade, Program: filepath.Join(machine, shippedFixtureProgram("lemonaded.exe"))}}) {
 		t.Error("a per-machine program is not shipped")
 	}
 	if p.shippedProvider(providerFile{Source: declarationSourceOperator, Declaration: providerDeclaration{Name: product.Lemonade, Program: elsewhere}}) {
@@ -98,7 +113,7 @@ func TestPerMachineRuntimeFolderVouchesByPathOnly(t *testing.T) {
 	if out, err := exec.Command("cmd", "/c", "mklink", "/J", link, machine).CombinedOutput(); err != nil {
 		t.Fatalf("mklink /J: %v %s", err, out)
 	}
-	if p.shippedProvider(providerFile{Source: declarationSourceOperator, Declaration: providerDeclaration{Name: product.Lemonade, Program: filepath.Join(link, "lemonaded.exe")}}) {
+	if p.shippedProvider(providerFile{Source: declarationSourceInstallation, Declaration: providerDeclaration{Name: product.Lemonade, Program: filepath.Join(link, "lemonaded.exe")}}) {
 		t.Error("a program through a junction to the per-machine folder is shipped")
 	}
 	linked := &runtimeProviders{installation: filepath.Join(link, installationDeclarationsDir)}

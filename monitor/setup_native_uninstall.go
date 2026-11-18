@@ -106,7 +106,7 @@ func (p *servicePanel) startNativeUninstall(runner setup.Runner, journal setup.J
 				// A Cancel by the person is no failure.
 				outcome.Cancelled = true
 			default:
-				outcome.Failure = removalReason(failure)
+				outcome.Failure, outcome.Detail = stepFailureReason(failure), failure.Error()
 				recordRemovalFailure(journal, name, title, failure)
 			}
 			p.recordSetupOutcome(componentID, outcome)
@@ -159,6 +159,9 @@ func recordRemovalFailure(journal setup.Journal, name, title string, failure err
 		return
 	}
 	sentence := "Removing " + title + " stopped: " + removalReason(failure) + "."
+	if plain := serviceFailureSentence(failure); plain != "" {
+		sentence = "Removing " + title + " stopped. " + plain
+	}
 	if _, err := journal.RecordInstallFailure(ctx, record.PlanID, setup.InstallFailure{Component: name, Sentence: sentence, Detail: failure.Error()}); err != nil {
 		log.Printf("setup: remove %s: keep the failure: %v", name, err)
 	}

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, symlinkSync, readdirSync, unlinkSync, rmdirSync} from 'node:fs';
+import {mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, symlinkSync, unlinkSync, rmdirSync} from 'node:fs';
 import {join, resolve, dirname} from 'node:path';
 import {createHash} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import childProcess from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
 import {tmpdir} from 'node:os';
-import {document, removeOwned, installedDelta, snapshot, applyPair, selectedDocuments, stageInstall, removalPlans, rollbackTransaction, observeInstalled, readBootstrapPayload, verifyInstalledPlugin, main, runConfigureRequest} from './config-lifecycle.js';
+import {document, removeOwned, snapshot, applyPair, selectedDocuments, stageInstall, removalPlans, rollbackTransaction, observeInstalled, verifyInstalledPlugin, main, runConfigureRequest} from './config-lifecycle.js';
 import {replaceConfig, guaranteeFor} from '../configure.js';
 
 const owned = 'C:\\Programs\\OA\\plugin\\0.8.0';
@@ -27,9 +27,7 @@ test('ambiguous plugin and provider keys refuse before offset edits or lifecycle
     const directory=join(root,String(index));mkdirSync(directory);const path=join(directory,'opencode.jsonc');
     const text='// retain these bytes\n'+raw;writeFileSync(path,text);
     assert.throws(()=>removeOwned(text,[owned,[owned,{scope:'local'}]]),/Duplicate (plugin|provider)/);
-    const stage=join(directory,'stage');
-    assert.throws(()=>stageInstall({directory,stage,plugin:owned,cli:'fixture'},forbidden,()=>true,()=>[]),/Duplicate (plugin|provider)/);
-    assert.equal(existsSync(stage),false);
+    assert.throws(()=>stageInstall({directory,plugin:owned}),/Duplicate (plugin|provider)/);
     assert.throws(()=>removalPlans(directory,[]),/Duplicate (plugin|provider)/);
     const current=snapshot(path),tui={...snapshot(join(directory,'tui.json')),kind:'tui',text:'{}'};
     assert.throws(()=>applyPair([{...current,kind:'server',text:'{}'},tui],[],forbidden),/Duplicate (plugin|provider)/);
@@ -58,9 +56,7 @@ test('duplicate MCP properties refuse every lifecycle writer before commands or 
     const directory=join(root,String(index));mkdirSync(directory);const path=join(directory,'opencode.jsonc');
     const text='// retained comment\n'+raw;writeFileSync(path,text);const seed={path,value};
     for(const mcpSeed of [null,seed]) {
-      const stage=join(directory,'stage');
-      assert.throws(()=>stageInstall({directory,stage,plugin:owned,cli:'fixture',mcpLauncher:launcher,mcpSeed},forbidden,()=>true,()=>[]),/Duplicate MCP/);
-      assert.equal(existsSync(stage),false);
+      assert.throws(()=>stageInstall({directory,plugin:owned,mcpLauncher:launcher,mcpSeed}),/Duplicate MCP/);
     }
     assert.throws(()=>removalPlans(directory,[],null,seed),/Duplicate MCP/);
     const current=snapshot(path),tui={...snapshot(join(directory,'tui.json')),kind:'tui',text:'{}'};
@@ -122,8 +118,8 @@ test('read-only main dispatch avoids all mutating installer dependencies and abs
   }
   syncBuiltinESMExports();let result;
   try {
-    result=main({operation:'observe',directory:input.directory,plugin:input.plugin,state,stage:join(root,'absent-stage')},
-      {documents:()=>({all:input.documents}),read:()=>JSON.stringify(input.ownership),exists:()=>false,run:fail,verifyCLI:fail});
+    result=main({operation:'observe',directory:input.directory,plugin:input.plugin,state},
+      {documents:()=>({all:input.documents}),read:()=>JSON.stringify(input.ownership),exists:()=>false});
   } finally {for(const [owner,name,value] of saved)owner[name]=value;syncBuiltinESMExports();}
   assert.equal(result.schema,1);assert.equal(existsSync(state),false);assert.equal(existsSync(join(root,'absent-stage')),false);
   assert.throws(()=>main({operation:'observe',directory:input.directory,plugin:input.plugin,state},
@@ -134,81 +130,57 @@ function fixture(t) {
   t.after(() => rmSync(root,{recursive:true,force:true}));
   return root;
 }
-function officialFixture(_exe,args,options) {
-  assert.equal(options.env.BUN_BE_BUN,undefined);
-  const config=join(options.env.XDG_CONFIG_HOME,'opencode');
-  for (const name of readdirSync(config)) {
-    if(!/^(opencode|tui)\.jsonc?$/.test(name))continue;
-    const path=join(config,name);const value=document(readFileSync(path,'utf8'));
-    value.plugin=[...(value.plugin??[]),args[1]];
-    writeFileSync(path,JSON.stringify(value));
-  }
-  return {status:0,stdout:'server + tui',stderr:''};
-}
 
-test('exact committed Repair keeps config and ownership bytes without launching or reading unused bootstrap members', t => {
+test('exact committed Repair keeps config and ownership bytes and a changed one is rewritten', t => {
   const root=fixture(t),directory=join(root,'account'),cache=join(root,'cache'),state=join(root,'state');
-  const plugin=join(root,'installed-plugin'),payload=join(root,'bootstrap');
+  const plugin=join(root,'installed-plugin');
   mkdirSync(directory);mkdirSync(plugin);
-  const files=['config/package.json','config/package-lock.json','config/node_modules/@opencode-ai/plugin/package.json','cache/bin/rg.exe'];
   const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
   const pluginMember=join(plugin,'package.json'), pluginBytes='{"name":"fixture"}';
   const pluginIndex=join(root,'plugin-files.json');
   const pluginInventory=JSON.stringify({'package.json':{bytes:pluginBytes.length,sha256:hash(pluginBytes)}});
   writeFileSync(pluginMember,pluginBytes);writeFileSync(pluginIndex,pluginInventory);
   const verifyPlugin=dir=>verifyInstalledPlugin(dir,hash(pluginInventory),pluginIndex);
-  const inventory={};
-  for(const name of files) {
-    const path=join(payload,...name.split('/')),bytes=Buffer.from(name);
-    mkdirSync(dirname(path),{recursive:true});writeFileSync(path,bytes);
-    inventory[name]={bytes:bytes.length,sha256:hash(bytes)};
-  }
-  const index=join(payload,'files.json'),raw=JSON.stringify(inventory);
-  writeFileSync(index,raw);
-  const pin=hash(raw), bootstrap=()=>readBootstrapPayload(payload,pin);
-  const request=operation=>({operation,directory,cache,state,plugin,cli:'fixture',stage:join(root,operation)});
-  main(request('install'),{bootstrap,verifyPlugin,run:officialFixture,verifyCLI:()=>true});
+  const request=operation=>({operation,directory,cache,state,plugin});
+  main(request('install'),{verifyPlugin});
   const pending=join(state,'pending.json'),receipt=join(state,'owned.json');
   unlinkSync(pending);
   const before=readFileSync(receipt), config=join(directory,'opencode.json'), original=readFileSync(config);
-  unlinkSync(join(payload,'cache','bin','rg.exe'));
-  const fail=()=>assert.fail('exact Repair must not invoke the official CLI');
-  const result=main(request('repair'),{bootstrap,verifyPlugin,run:fail,verifyCLI:fail});
+  const result=main(request('repair'),{verifyPlugin});
   assert.equal(result.unchanged,true);
   assert.deepEqual(readFileSync(receipt),before);
   assert.deepEqual(readFileSync(config),original);
   assert.equal(existsSync(pending),false);
-  assert.equal(existsSync(request('repair').stage),false);
 
-  writeFileSync(index, raw+'\n');
-  assert.throws(()=>main(request('repair'),{bootstrap,verifyPlugin,run:fail,verifyCLI:fail}),/bootstrap inventory changed/);
-  writeFileSync(index,raw);
   writeFileSync(pluginMember,pluginBytes.replace('fixture','changed'));
-  assert.throws(()=>main(request('repair'),{bootstrap,verifyPlugin,run:fail,verifyCLI:fail}),/plugin member changed/);
+  assert.throws(()=>main(request('repair'),{verifyPlugin}),/plugin member changed/);
   assert.deepEqual(readFileSync(receipt),before);
   assert.deepEqual(readFileSync(config),original);
   writeFileSync(pluginMember,pluginBytes);
   writeFileSync(pluginIndex,pluginInventory+'\n');
-  assert.throws(()=>main(request('repair'),{bootstrap,verifyPlugin,run:fail,verifyCLI:fail}),/plugin inventory changed/);
+  assert.throws(()=>main(request('repair'),{verifyPlugin}),/plugin inventory changed/);
   writeFileSync(pluginIndex,pluginInventory);
 
+  // A receipt that records different options takes the full repair, which
+  // rollback undoes.
   const stale=JSON.parse(before);
   stale.files.find(item=>item.path===config).owned=[[plugin,{options:'stale receipt'}]];
   writeFileSync(receipt,JSON.stringify(stale));
-  assert.throws(()=>main(request('repair'),{bootstrap,verifyPlugin,verifyCLI:()=>true,run:fail}),/bootstrap member changed/);
-  assert.equal(existsSync(pending),false);
+  assert.notEqual(main(request('repair'),{verifyPlugin}).unchanged,true);
+  assert.ok(existsSync(pending));
+  main(request('rollback'),{});
+  assert.deepEqual(JSON.parse(readFileSync(receipt)),stale);
+  assert.deepEqual(readFileSync(config),original);
   writeFileSync(receipt,before);
-  // The failed staging directory belongs to this fixture.
-  rmSync(request('repair').stage,{recursive:true,force:true});
+
   const foreign=Buffer.from(original.toString('utf8').replace('{','{ "autoupdate": false,')+'\n// changed by person\n');
   writeFileSync(config,foreign);
   const observe=()=>observeInstalled({directory,plugin,documents:selectedDocuments(directory).all,
     ownership:JSON.parse(readFileSync(receipt))});
   assert.throws(observe,/Installed config changed/);
-  const refreshed=main(request('repair'),{bootstrap,verifyPlugin,verifyCLI:fail,run:fail});
-  assert.equal(refreshed.command.skipped,'configuration_current');
+  const refreshed=main(request('repair'),{verifyPlugin});
+  assert.notEqual(refreshed.unchanged,true);
   assert.deepEqual(readFileSync(config),foreign);
-  assert.equal(existsSync(request('repair').stage),false);
   const journal=JSON.parse(readFileSync(pending));
   assert.equal(journal.configUnchanged,true);
   assert.deepEqual(journal.plans,[]);
@@ -216,34 +188,48 @@ test('exact committed Repair keeps config and ownership bytes without launching 
   // The person's editor can be partway through its next save at rollback.
   const inProgress=Buffer.from('{"autoupdate":');
   writeFileSync(config,inProgress);
-  main(request('rollback'),{bootstrap});
+  main(request('rollback'),{});
   assert.deepEqual(JSON.parse(readFileSync(receipt)),JSON.parse(before));
   assert.deepEqual(readFileSync(config),inProgress);
   assert.equal(existsSync(pending),false);
-  writeFileSync(config,foreign);
-  assert.throws(observe,/Installed config changed/);
 
-  const reordered=document(foreign.toString('utf8'));
-  reordered.plugin.push('person-added-after-OA');
-  writeFileSync(config,JSON.stringify(reordered));
-  assert.throws(()=>main(request('repair'),{bootstrap,verifyPlugin,verifyCLI:()=>true,run:fail}),/bootstrap member changed/);
-  assert.equal(existsSync(pending),false);
-  rmSync(request('repair').stage,{recursive:true,force:true});
-
-  // Changing an owned entry still uses the ordinary CLI-backed repair.
+  // Changing an owned entry takes the ordinary full repair.
   const edited=document(foreign.toString('utf8'));
   edited.plugin[edited.plugin.length-1]=[plugin,{edited:true}];
   writeFileSync(config,JSON.stringify(edited));
-  writeFileSync(join(payload,'cache','bin','rg.exe'),files.at(-1));
-  let repairs=0;
-  const repaired=main(request('repair'),{bootstrap,verifyPlugin,verifyCLI:()=>true,run:(...args)=>{
-    repairs++;
-    return officialFixture(...args);
-  }});
-  assert.equal(repairs,1);
-  assert.equal(repaired.command.status,0);
+  const repaired=main(request('repair'),{verifyPlugin});
+  assert.notEqual(repaired.unchanged,true);
   assert.equal(document(readFileSync(config,'utf8')).autoupdate,false);
   assert.deepEqual(document(readFileSync(config,'utf8')).plugin,document(original.toString('utf8')).plugin);
+});
+
+test("an earlier version's bootstrap files stay byte for byte as OpenCode's through upgrade, rollback and removal", t => {
+  // Earlier packages pre-seeded OpenCode's own first-use install and recorded
+  // those files in the receipt. This package writes and removes none of them.
+  const root=fixture(t),directory=join(root,'account'),cache=join(root,'cache'),state=join(root,'state');
+  mkdirSync(directory);
+  const request=operation=>({operation,directory,cache,state,plugin:owned});
+  const commit=()=>unlinkSync(join(state,'pending.json'));
+  main(request('install'),{});commit();
+  const leaves={'config/package.json':join(directory,'package.json'),'cache/bin/rg.exe':join(cache,'bin','rg.exe')};
+  const files=Object.entries(leaves).map(([name,path])=>{
+    mkdirSync(dirname(path),{recursive:true});writeFileSync(path,'seeded '+name);
+    const current=snapshot(path);
+    return {name,identity:current.identity,leaf:{file:true,links:1},sha256:current.sha256,created:true};
+  });
+  const receipt=join(state,'owned.json');
+  const earlier=JSON.parse(readFileSync(receipt,'utf8'));earlier.bootstrap={cache,files,theirs:[]};
+  writeFileSync(receipt,JSON.stringify(earlier));
+  const upgraded=main(request('upgrade'),{});
+  assert.notEqual(upgraded.unchanged,true,'a receipt that lists bootstrap files is rewritten');
+  assert.equal(JSON.parse(readFileSync(receipt,'utf8')).bootstrap,undefined);
+  for(const [name,path] of Object.entries(leaves))assert.equal(readFileSync(path,'utf8'),'seeded '+name);
+  main(request('rollback'),{});
+  assert.deepEqual(JSON.parse(readFileSync(receipt,'utf8')).bootstrap.files.map(item=>item.name),Object.keys(leaves));
+  main(request('upgrade'),{});commit();
+  main(request('remove'),{});commit();
+  for(const [name,path] of Object.entries(leaves))assert.equal(readFileSync(path,'utf8'),'seeded '+name);
+  assert.ok(!(document(readFileSync(join(directory,'opencode.json'),'utf8')).plugin??[]).includes(owned));
 });
 
 test('wrapper installation atomically retires only its owned MCP entry and rollback restores the old roster', t => {
@@ -253,11 +239,10 @@ test('wrapper installation atomically retires only its owned MCP entry and rollb
   const value={type:'local',command:[launcher],timeout:60000};
   const initial='// person comment\n'+JSON.stringify({plugin:['foreign'],mcp:{OpenAbstractions:value,foreign:{type:'remote',url:'https://example.invalid'}},personal:true});
   writeFileSync(path,initial);
-  const request={directory,stage:join(root,'stage'),plugin:owned,cli:'fixture',mcpLauncher:launcher,mcpSeed:{path,value}};
-  assert.throws(()=>stageInstall({...request,stage:join(root,'failed-stage')},()=>({status:1,stdout:'',stderr:'inert wrapper refusal'}),()=>true,()=>[]),/inert wrapper refusal/);
-  assert.throws(()=>stageInstall({...request,mcpSeed:{path,value:{...value,timeout:1800000}}},officialFixture,()=>true,()=>[]),/registration was edited/);
+  const request={directory,plugin:owned,mcpLauncher:launcher,mcpSeed:{path,value}};
+  assert.throws(()=>stageInstall({...request,mcpSeed:{path,value:{...value,timeout:1800000}}}),/registration was edited/);
   assert.equal(readFileSync(path,'utf8'),initial,'failed wrapper preparation keeps the old Messages and Asks roster');
-  const install=stageInstall(request,officialFixture,()=>true,()=>[]);
+  const install=stageInstall(request);
   assert.equal(readFileSync(path,'utf8'),initial);
   assert.equal(install.mcpSeed,null);
   applyPair(install.plans,install.guards);
@@ -265,11 +250,11 @@ test('wrapper installation atomically retires only its owned MCP entry and rollb
   const current=document(configured);assert.equal(current.mcp.OpenAbstractions,undefined);assert.ok(current.plugin.some(entry=>(Array.isArray(entry)?entry[0]:entry)===owned));
   assert.deepEqual(current.mcp.foreign,{type:'remote',url:'https://example.invalid'});
   const records=install.plans.map(item=>({path:item.path,owned:item.owned}));
-  const repair=stageInstall({...request,stage:join(root,'repair'),ownedFiles:records,seed:install.seed,mcpSeed:install.mcpSeed,mcpLauncher:undefined},officialFixture,()=>true,()=>[]);
+  const repair=stageInstall({...request,ownedFiles:records,seed:install.seed,mcpSeed:install.mcpSeed,mcpLauncher:undefined});
   assert.equal(repair.mcpSeed,null,'repair never adds a second roster');
   const transaction={plans:install.plans.map(item=>({kind:item.kind,path:item.path,identity:item.identity,before:item.bytes===null?null:item.bytes.toString('base64'),after:item.text}))};
   rollbackTransaction(transaction);assert.equal(readFileSync(path,'utf8'),initial);
-  const restored=stageInstall({...request,stage:join(root,'restore')},officialFixture,()=>true,()=>[]);applyPair(restored.plans,restored.guards);
+  const restored=stageInstall({...request});applyPair(restored.plans,restored.guards);
   const removal=removalPlans(directory,restored.plans.map(item=>({path:item.path,owned:item.owned})),restored.seed,restored.mcpSeed);
   applyPair(removal.plans,removal.guards);
   assert.deepEqual(document(readFileSync(path,'utf8')).mcp,{foreign:{type:'remote',url:'https://example.invalid'}});
@@ -283,16 +268,16 @@ test('person-owned exact MCP entries and foreign conflicts refuse wrapper instal
   for(const entry of [expected,{...expected,timeout:5000},{...expected,enabled:false},null]) {
     const directory=join(root,'case-'+serial++);mkdirSync(directory);
     const path=join(directory,'config.json');const text='// retain\n'+JSON.stringify({mcp:{OpenAbstractions:entry}});writeFileSync(path,text);
-    assert.throws(()=>stageInstall({directory,stage:join(directory,'stage'),plugin:owned,cli:'fixture',mcpLauncher:launcher},()=>{throw Error('must not launch');},()=>true,()=>[]),/already owned/);
-    assert.equal(readFileSync(path,'utf8'),text);assert.equal(existsSync(join(directory,'stage')),false);
+    assert.throws(()=>stageInstall({directory,plugin:owned,mcpLauncher:launcher}),/already owned/);
+    assert.equal(readFileSync(path,'utf8'),text);
   }
   const directory=join(root,'exact');mkdirSync(directory);const path=join(directory,'opencode.json');
   writeFileSync(path,JSON.stringify({mcp:{OpenAbstractions:expected}}));
-  assert.throws(()=>stageInstall({directory,stage:join(root,'exact-stage'),plugin:owned,cli:'fixture',mcpLauncher:launcher},officialFixture,()=>true,()=>[]),/already owned/);
+  assert.throws(()=>stageInstall({directory,plugin:owned,mcpLauncher:launcher}),/already owned/);
   assert.deepEqual(document(readFileSync(path,'utf8')).mcp.OpenAbstractions,expected);
   assert.throws(()=>removalPlans(directory,[],null,{path,value:{...expected,timeout:5000}}),/Invalid installer-owned MCP/);
   writeFileSync(join(directory,'config.json'),JSON.stringify({mcp:{OpenAbstractions:{...expected,command:['foreign']}}}));
-  assert.throws(()=>stageInstall({directory,stage:join(root,'shadow'),plugin:owned,cli:'fixture',mcpLauncher:launcher},officialFixture,()=>true,()=>[]),/already owned/);
+  assert.throws(()=>stageInstall({directory,plugin:owned,mcpLauncher:launcher}),/already owned/);
   for(const value of [null,{...expected,timeout:5000},{...expected,command:['foreign']}]) {
     const text=JSON.stringify({mcp:{OpenAbstractions:value}});writeFileSync(path,text);
     assert.throws(()=>removalPlans(directory,[],null,{path,value}),/Invalid installer-owned MCP/);
@@ -305,8 +290,8 @@ test('actual wrapper installer request commits one roster through repair and rem
   const tools=join(root,'selected OA tools');mkdirSync(tools);
   const launcher=join(tools,'openabstractions-mcp.exe');writeFileSync(launcher,'inert role');
   const path=join(directory,'opencode.jsonc'),original='// kept\n{"plugin":["foreign"]}';writeFileSync(path,original);
-  const dependencies={run:officialFixture,verifyCLI:()=>true,bootstrap:()=>[]};let serial=0;
-  const request=operation=>({operation,directory,state,stage:join(root,'stage-'+serial++),plugin:owned,cli:'fixture'});
+  const dependencies={};let serial=0;
+  const request=operation=>({operation,directory,state,plugin:owned});
   main({...request('install'),mcpLauncher:launcher},dependencies);
   const receipt=JSON.parse(readFileSync(join(state,'owned.json'),'utf8'));
   assert.equal(receipt.mcpSeed,undefined);
@@ -344,19 +329,16 @@ test('edited owned options and malformed JSONC refuse', () => {
   assert.throws(() => removeOwned('{invalid}',[owned]),/Invalid/);
 });
 
-test('foreign tuple bytes and comments survive removal and insertion', () => {
+test('foreign tuple bytes and comments survive removal and insertion', t => {
+  const directory=fixture(t),path=join(directory,'opencode.json');
   const foreign='["foreign", { "note" : "x,y", "unicode" : "\\u0041" }]';
   const before='{ "plugin" : ['+foreign+', /* person comment */ '+JSON.stringify(old)+'], "other" : 1 }';
-  const staged=JSON.stringify({plugin:[['foreign',{note:'x,y',unicode:'A'}],owned],other:1});
-  const next=installedDelta(before,staged,[old],owned).text;
+  writeFileSync(path,before);
+  const output=stageInstall({directory,plugin:owned,ownedFiles:[{path,owned:[old]}]});
+  const next=output.plans.find(item=>item.path===path).text;
   assert.ok(next.includes(foreign));assert.ok(next.includes('/* person comment */'));assert.ok(next.includes('"other" : 1'));
-});
-
-test('staged official delta cannot rewrite foreign plugin registrations', () => {
-  const before = JSON.stringify({plugin:['foreign',old]});
-  const next = installedDelta(before,JSON.stringify({plugin:['foreign',owned]}),[old],owned);
-  assert.deepEqual(document(next.text).plugin,['foreign',owned]);
-  assert.throws(() => installedDelta(before,JSON.stringify({plugin:['changed',owned]}),[old],owned),/foreign/);
+  assert.deepEqual(document(next).plugin,[['foreign',{note:'x,y',unicode:'A'}],owned]);
+  assert.equal(readFileSync(path,'utf8'),before,'planning changes no account document');
 });
 
 test('pair writes refuse changed input and compensate first file on second failure', t => {
@@ -418,44 +400,25 @@ test('formerly absent target keeps its parent identity before restoring absence'
   for(const folder of [first,second])for(const name of ['opencode.json','tui.json'])assert.equal(readFileSync(join(folder,name),'utf8'),'{"plugin":["owned"]}');
 });
 
-test('official receiving keeps foreign JSONC out of its private stage and preserves its bytes', t => {
+test('installation appends one owned entry to the server and TUI documents and keeps foreign JSONC bytes', t => {
   const root=fixture(t),config=join(root,'account');mkdirSync(config);
   const path=join(config,'opencode.jsonc');
   const foreign='["./plugins/foreign", { "alias" : "local", "paths" : ["./relative"] }]';
   const initial='// keep\n{"plugin":['+foreign+' /* foreign comment */], "personal": { "alias" : "./relative" }}';
   writeFileSync(path,initial);
-  const stage=join(root,'stage');let called=0;
-  const request={directory:config,stage,plugin:owned,cli:'fixed-cli'};
-  const output=stageInstall(request,(exe,args,options)=>{
-    called++;assert.equal(exe,'fixed-cli');assert.deepEqual(args,['plugin',owned,'--global']);
-    assert.equal(options.env.BUN_BE_BUN,undefined);assert.equal(options.env.NODE_OPTIONS,undefined);assert.equal(options.env.BUN_OPTIONS,undefined);
-    assert.equal(options.env.XDG_CONFIG_HOME,join(stage,'config'));
-    for (const name of ['opencode.jsonc','tui.json']) {
-      const staged=join(stage,'config','opencode',name);const data=document(readFileSync(staged,'utf8'));
-      const normalized=data.plugin.map(entry=>Array.isArray(entry)?[new URL('file:///stage/foreign').href,entry[1]]:entry);
-      assert.deepEqual(data,{plugin:[]});
-      writeFileSync(staged,JSON.stringify({plugin:[...normalized,owned],other:'ignored'}));
-    }
-    return {status:0,stdout:'detected server + tui',stderr:''};
-  },()=>true,()=>[]);
-  assert.equal(called,1);
-  assert.equal(readFileSync(path,'utf8'),initial,'staging changes no account document');
-  assert.throws(()=>stageInstall({...request,stage:join(root,'extra')},(exe,args,options)=>{
-    const result=officialFixture(exe,args,options);
-    writeFileSync(join(options.env.OPENCODE_CONFIG_DIR,'tui.json'),JSON.stringify({plugin:[owned,'unexpected']}));
-    return result;
-  },()=>true,()=>[]),/changed foreign registrations/);
-  assert.equal(readFileSync(path,'utf8'),initial,'unexpected upstream output changes no account document');
+  const request={directory:config,plugin:owned};
+  assert.throws(()=>stageInstall({...request,plugin:'relative\\plugin'}),/absolute/);
+  const output=stageInstall(request);
+  assert.equal(readFileSync(path,'utf8'),initial,'planning changes no account document');
   applyPair(output.plans,output.guards);
   const configured=readFileSync(path,'utf8');
   assert.ok(configured.includes('// keep'));
   assert.ok(configured.includes(foreign+' /* foreign comment */'));
   assert.ok(configured.includes('"personal": { "alias" : "./relative" }'));
   assert.deepEqual(document(configured).plugin,[JSON.parse(foreign),owned]);
-  assert.equal(document(configured).other,undefined);
-  assert.throws(()=>stageInstall({...request,stage:join(root,'unowned')},()=>{
-    assert.fail('unowned OA entry must refuse before launch');
-  },()=>true,()=>[]),/already owned/);
+  assert.deepEqual(document(readFileSync(join(config,'tui.json'),'utf8')).plugin,[owned]);
+  assert.deepEqual(output.plans.filter(item=>item.owned.length).map(item=>item.owned),[[owned],[owned]]);
+  assert.throws(()=>stageInstall(request),/already owned/);
 });
 
 test('the configure worker reports the unowned restored plugin conflict distinctly', t => {
@@ -465,9 +428,9 @@ test('the configure worker reports the unowned restored plugin conflict distinct
   const config=join(directory,'opencode.jsonc');
   const original='// Restored preferences\n'+JSON.stringify({plugin:[owned,'./other.js'],personal:{keep:true}});
   writeFileSync(config,original);
-  const request=work=>({operation:'install',directory,state,work,stage:join(work,'stage'),plugin:owned,cli:'fixture'});
+  const request=work=>({operation:'install',directory,state,work,plugin:owned});
   const conflict='The OpenAbstractions plugin registration is already owned by the person or different settings';
-  const deps={bootstrap:()=>[],verifyCLI:()=>true,run:()=>assert.fail('must refuse before launching the official command')};
+  const deps={};
   assert.equal(runConfigureRequest(request(work),work,deps),80);
   assert.deepEqual(JSON.parse(readFileSync(join(work,'result.json'),'utf8')),{error:conflict});
   assert.equal(readFileSync(config,'utf8'),original);
@@ -476,7 +439,7 @@ test('the configure worker reports the unowned restored plugin conflict distinct
   assert.equal(existsSync(config+'.openabstractions.bak'),false);
 
   // The error's type, rather than arbitrary child text, controls the exit.
-  const ordinary={...deps,verifyCLI:()=>{throw Error(conflict);}};
+  const ordinary={verifyPlugin:()=>{throw Error(conflict);}};
   assert.equal(runConfigureRequest(request(other),other,ordinary),1);
   assert.deepEqual(JSON.parse(readFileSync(join(other,'result.json'),'utf8')),{error:conflict});
 });
@@ -485,10 +448,10 @@ test('repair restores exact recorded OA sources and keeps the before image and f
   const root=fixture(t), directory=join(root,'account'), state=join(root,'state');
   mkdirSync(directory);mkdirSync(state);
   const path=join(directory,'opencode.jsonc');
-  const request={operation:'repair',directory,state,stage:join(root,'stage'),plugin:owned,cli:'fixture'};
-  const bootstrap=()=>[], dependencies={bootstrap,run:officialFixture,verifyCLI:()=>true};
+  const request={operation:'repair',directory,state,plugin:owned};
+  const dependencies={};
   writeFileSync(path,'{}');
-  const initial=stageInstall({...request,stage:join(root,'initial')},officialFixture,()=>true,bootstrap);
+  const initial=stageInstall({...request});
   const seed=initial.seed;
   const receipt=JSON.stringify({directory,seed,files:[{path,owned:[owned]}]});
   writeFileSync(join(state,'owned.json'),receipt);
@@ -506,21 +469,12 @@ test('repair restores exact recorded OA sources and keeps the before image and f
   assert.deepEqual(JSON.parse(readFileSync(join(state,'owned.json'),'utf8')),JSON.parse(receipt));
   const changed=edited.replace(seed.value.npm,'file:///foreign/index.js');
   writeFileSync(path,changed);
-  assert.throws(()=>main({...request,stage:join(root,'foreign')},dependencies),/provider was edited/);
+  assert.throws(()=>main({...request},dependencies),/provider was edited/);
   assert.equal(readFileSync(path,'utf8'),changed);
   const duplicate=edited.replace(foreign,JSON.stringify(owned));
   writeFileSync(path,duplicate);
-  assert.throws(()=>main({...request,stage:join(root,'duplicate')},dependencies),/Ambiguous plugin/);
+  assert.throws(()=>main({...request},dependencies),/Ambiguous plugin/);
   assert.equal(readFileSync(path,'utf8'),duplicate);
-});
-
-test('official command stdout refusal and launch failure remain actionable', t => {
-  const root=fixture(t);let index=0;
-  for(const [result,message] of [[{status:1,stderr:'\u001b[0m\r\n',stdout:'\u001b[31mNo plugin targets found\u001b[0m'},/No plugin targets found/],
-      [{status:null,error:new Error('private CLI launch refused')},/private CLI launch refused/],
-      [{status:7,stderr:'',stdout:''},/exit 7/]]) {
-    assert.throws(()=>stageInstall({directory:root,stage:join(root,'stage-'+(++index)),plugin:owned,cli:'fixture'},()=>result,()=>true,()=>[]),message);
-  }
 });
 
 test('lower relative plugin origins and compatible inherited provider remain in their owning document', t => {
@@ -528,7 +482,7 @@ test('lower relative plugin origins and compatible inherited provider remain in 
   const lower='// lower origin\n'+JSON.stringify({plugin:['./relative.js'],provider:{openabstractions:{npm:'@openabstractions/opencode',options:{person:true}}}});
   const upper='// upper\n'+JSON.stringify({provider:{openabstractions:{options:{override:true}},foreign:{npm:'foreign'}}});
   writeFileSync(join(root,'config.json'),lower);writeFileSync(join(root,'opencode.jsonc'),upper);
-  const output=stageInstall({directory:root,stage:join(root,'stage'),plugin:owned,cli:'fixture'},officialFixture,()=>true,()=>[]);
+  const output=stageInstall({directory:root,plugin:owned});
   const legacy=output.plans.find(item=>item.path.endsWith('config.json'));
   assert.deepEqual(document(legacy.text).plugin,['./relative.js',owned]);
   assert.ok(legacy.text.includes('// lower origin'));
@@ -540,7 +494,7 @@ test('lower relative plugin origins and compatible inherited provider remain in 
 test('cold provider seed and plugin stay beside the inherited active list, preserving higher config', t => {
   const root=fixture(t);writeFileSync(join(root,'opencode.json'),'{"plugin":["./foreign.js"]}');
   const upper='// person settings\n{"other":true}';writeFileSync(join(root,'opencode.jsonc'),upper);
-  const output=stageInstall({directory:root,stage:join(root,'stage'),plugin:owned,cli:'fixture'},officialFixture,()=>true,()=>[]);
+  const output=stageInstall({directory:root,plugin:owned});
   assert.ok(output.seed.path.endsWith('opencode.json'));
   assert.equal(output.plans.find(item=>item.path.endsWith('opencode.jsonc')).text,upper);
   const server=output.plans.find(item=>item.path.endsWith('opencode.json'));
@@ -551,7 +505,7 @@ test('cold provider seed and plugin stay beside the inherited active list, prese
 test('foreign provider ID and edited seed refuse before account writes', t => {
   const root=fixture(t);const path=join(root,'opencode.jsonc');
   const foreign='{"provider":{"openabstractions":{"npm":"foreign"}}}';writeFileSync(path,foreign);
-  assert.throws(()=>stageInstall({directory:root,stage:join(root,'stage'),plugin:owned,cli:'fixture'},officialFixture,()=>true,()=>[]),/belongs/);
+  assert.throws(()=>stageInstall({directory:root,plugin:owned}),/belongs/);
   assert.equal(readFileSync(path,'utf8'),foreign);
   writeFileSync(path,'{"provider":{"openabstractions":{"npm":"edited"}}}');
   assert.throws(()=>removalPlans(root,[],{path,value:{npm:'original'}}),/seeded provider was edited/);
@@ -560,7 +514,7 @@ test('foreign provider ID and edited seed refuse before account writes', t => {
 
 test('guarding an unselected inherited file prevents any candidate writes', t => {
   const root=fixture(t);writeFileSync(join(root,'opencode.jsonc'),'{"plugin":[]}');
-  const output=stageInstall({directory:root,stage:join(root,'stage'),plugin:owned,cli:'fixture'},officialFixture,()=>true,()=>[]);
+  const output=stageInstall({directory:root,plugin:owned});
   writeFileSync(join(root,'config.json'),'{"person":true}');
   assert.throws(()=>applyPair(output.plans,output.guards),/changed/);
   assert.equal(readFileSync(join(root,'opencode.jsonc'),'utf8'),'{"plugin":[]}');
@@ -569,13 +523,13 @@ test('guarding an unselected inherited file prevents any candidate writes', t =>
 test('later inherited personal provider options refuse seed retirement and upgrade', t => {
   const root=fixture(t);const lower=join(root,'config.json');
   writeFileSync(lower,'{"plugin":["./relative.js"]}');
-  const installed=stageInstall({directory:root,stage:join(root,'stage'),plugin:owned,cli:'fixture'},officialFixture,()=>true,()=>[]);
+  const installed=stageInstall({directory:root,plugin:owned});
   applyPair(installed.plans,installed.guards);
   const upper='// preserve personal override\n{"provider":{"openabstractions":{"options":{"person":true}}}}';
   writeFileSync(join(root,'opencode.jsonc'),upper);
   const records=installed.plans.map(item=>({path:item.path,owned:item.owned}));
   assert.throws(()=>removalPlans(root,records,installed.seed),/depends on/);
-  assert.throws(()=>stageInstall({directory:root,stage:join(root,'upgrade'),plugin:owned+'-next',cli:'fixture',ownedFiles:records,seed:installed.seed},officialFixture,()=>true,()=>[]),/depends on/);
+  assert.throws(()=>stageInstall({directory:root,plugin:owned+'-next',ownedFiles:records,seed:installed.seed}),/depends on/);
   assert.equal(readFileSync(join(root,'opencode.jsonc'),'utf8'),upper);
   assert.equal(document(readFileSync(lower,'utf8')).provider.openabstractions.npm,installed.seed.value.npm);
 });
@@ -586,7 +540,7 @@ test('owned registrations retire across all candidates while foreign origins sta
     const path=join(root,name);const text='// '+name+'\n{"plugin":["./'+name+'.js",'+JSON.stringify(old)+']}';
     writeFileSync(path,text);records.push({path,owned:[old]});
   }
-  const result=stageInstall({directory:root,stage:join(root,'stage'),plugin:owned,cli:'fixture',ownedFiles:records},officialFixture,()=>true,()=>[]);
+  const result=stageInstall({directory:root,plugin:owned,ownedFiles:records});
   for (const item of result.plans) {
     assert.ok(item.text.includes('// '));assert.ok(item.text.includes('"./'));
     assert.ok(!document(item.text).plugin.includes(old));
@@ -604,184 +558,14 @@ test('symlink target identity changes refuse even when bytes are identical', t =
   assert.equal(readFileSync(first,'utf8'),'{}');assert.equal(readFileSync(second,'utf8'),'{}');
 });
 
-test('installed bootstrap source validates complete pins and refuses linked parents', t => {
-  const root=fixture(t),inventory={};
-  for(const name of ['config/package.json','config/package-lock.json','config/node_modules/@opencode-ai/plugin/package.json','cache/bin/rg.exe']) {
-    const path=join(root,...name.split('/')),data=Buffer.from('inert '+name);mkdirSync(join(path,'..'),{recursive:true});writeFileSync(path,data);
-    inventory[name]={bytes:data.length,sha256:createHash('sha256').update(data).digest('hex')};
-  }
-  const manifest=join(root,'files.json');writeFileSync(manifest,JSON.stringify(inventory));
-  assert.equal(readBootstrapPayload(root).length,4);
-  writeFileSync(join(root,'cache','bin','rg.exe'),'changed');
-  assert.throws(()=>readBootstrapPayload(root),/changed/);
-  const original=Buffer.from('inert cache/bin/rg.exe');writeFileSync(join(root,'cache','bin','rg.exe'),original);
-  const external=join(root,'other');mkdirSync(external);writeFileSync(join(external,'rg.exe'),original);
-  rmSync(join(root,'cache','bin'),{recursive:true});symlinkSync(external,join(root,'cache','bin'),'junction');
-  assert.throws(()=>readBootstrapPayload(root),/link/);
-  rmdirSync(join(root,'cache','bin'));
-  mkdirSync(join(root,'cache','bin'));writeFileSync(join(root,'cache','bin','rg.exe'),original);
-  inventory['config/../escape']={bytes:0,sha256:'a'.repeat(64)};writeFileSync(manifest,JSON.stringify(inventory));
-  assert.throws(()=>readBootstrapPayload(root),/Invalid/);
-});
-
-test('bootstrap inventory rejects serialized Unicode case collisions before reading the colliding member', t => {
-  const root=fixture(t),inventory={};
-  const members=['config/package.json','config/package-lock.json','config/node_modules/@opencode-ai/plugin/package.json','cache/bin/rg.exe','config/node_modules/helper/K.js'];
-  for(const name of members) {
-    const path=join(root,...name.split('/')),data=Buffer.from('inert '+name);mkdirSync(dirname(path),{recursive:true});writeFileSync(path,data);
-    inventory[name]={bytes:data.length,sha256:createHash('sha256').update(data).digest('hex')};
-  }
-  // This second serialized key is refused by the portable inventory policy.
-  // No file with that spelling is needed to establish a filesystem identity.
-  inventory['config/node_modules/helper/\u212a.js']=inventory['config/node_modules/helper/K.js'];
-  writeFileSync(join(root,'files.json'),JSON.stringify(inventory));
-  assert.throws(()=>readBootstrapPayload(root),/Invalid installed bootstrap member/);
-});
-
-test('bootstrap exact leaves preserve unmanaged files and own their install, upgrade, rollback and removal', t => {
-  const root=fixture(t),directory=join(root,'account'),cache=join(root,'cache'),state=join(root,'state');mkdirSync(directory);
-  writeFileSync(join(directory,'opencode.jsonc'),'// person\n{"plugin":["foreign"]}');
-  const bytes=text=>Buffer.from(text),hash=value=>createHash('sha256').update(value).digest('hex');
-  const source=[['config/package.json','{"dependencies":{"@opencode-ai/plugin":"fixture"}}'],
-    ['config/package-lock.json','{"lockfileVersion":3}'],['config/node_modules/@opencode-ai/plugin/package.json','{}'],
-    ['config/node_modules/@opencode-ai/plugin/index.js','original helper'],['cache/bin/rg.exe','inert rg']];
-  let records=source.map(([name,text])=>({name,bytes:bytes(text),sha256:hash(bytes(text))})),iteration=0;
-  const leaf=name=>join(name.startsWith('config/')?directory:cache,...name.split('/').slice(1));
-  const unmanaged=leaf(source[4][0]);mkdirSync(dirname(unmanaged),{recursive:true});writeFileSync(unmanaged,records[4].bytes);
-  const deps={bootstrap:()=>records,verifyCLI:()=>true,run:(exe,args,options)=>{
-    assert.equal(options.env.npm_config_offline,'true');
-    assert.equal(readFileSync(join(options.env.XDG_CACHE_HOME,'opencode','bin','rg.exe'),'utf8'),'inert rg');
-    assert.equal(readFileSync(join(options.env.XDG_CONFIG_HOME,'opencode','node_modules','@opencode-ai','plugin','index.js'),'utf8'),records[3].bytes.toString());
-    return officialFixture(exe,args,options);
-  }};
-  const request=operation=>({operation,directory,cache,state,stage:join(root,'stage-'+(++iteration)),plugin:owned,cli:'fixture'});
-  const commit=()=>unlinkSync(join(state,'pending.json'));
-  const installed=main(request('install'),deps);
-  assert.equal(installed.bootstrap.files.length,records.length-1);
-  assert.ok(!installed.bootstrap.files.some(row=>row.name===source[4][0]));
-  assert.deepEqual(installed.bootstrap.theirs,[source[4][0]]);
-  assert.deepEqual(document(readFileSync(join(directory,'opencode.jsonc'),'utf8')).plugin,['foreign',owned]);
-  main(request('rollback'),deps);
-  assert.ok(existsSync(unmanaged));assert.ok(!existsSync(leaf(source[3][0])));
-  main(request('install'),deps);commit();
-  records=records.map(row=>row.name===source[3][0]?{...row,bytes:bytes('new helper'),sha256:hash(bytes('new helper'))}:row);
-  main(request('upgrade'),deps);assert.equal(readFileSync(leaf(source[3][0]),'utf8'),'new helper');
-  main(request('rollback'),deps);assert.equal(readFileSync(leaf(source[3][0]),'utf8'),'original helper');
-  records=source.map(([name,text])=>({name,bytes:bytes(text),sha256:hash(bytes(text))}));
-  main(request('repair'),deps);commit();
-  writeFileSync(leaf(source[3][0]),'person edit');
-  assert.throws(()=>main(request('remove'),deps),/edited/);assert.equal(readFileSync(leaf(source[3][0]),'utf8'),'person edit');
-  writeFileSync(leaf(source[3][0]),'original helper');
-  main(request('remove'),deps);assert.ok(!existsSync(leaf(source[3][0])));assert.ok(existsSync(unmanaged));
-  main(request('rollback'),deps);assert.equal(readFileSync(leaf(source[3][0]),'utf8'),'original helper');
-  main(request('remove'),deps);commit();
-  assert.ok(existsSync(unmanaged));assert.ok(!existsSync(leaf(source[0][0])));
-  assert.ok(!existsSync(leaf(source[3][0])+'.openabstractions.bak'));
-  // A differing existing leaf is the person's: install and remove leave it.
-  writeFileSync(unmanaged,'different user rg');
-  main(request('install'),deps);commit();assert.equal(readFileSync(unmanaged,'utf8'),'different user rg');
-  main(request('remove'),deps);commit();assert.equal(readFileSync(unmanaged,'utf8'),'different user rg');
-});
-
-test("an existing user's own OpenCode config folder stays theirs byte for byte while OA installs and leaves", t => {
-  // Every existing OpenCode user has OpenCode's own bootstrap (here plugin
-  // 1.18.18, an extra dependency and their own plugin). OA's plugin loads its
-  // @opencode-ai/plugin from its own folder, so the folder stays theirs.
-  const root=fixture(t),directory=join(root,'account'),cache=join(root,'cache'),state=join(root,'state');mkdirSync(directory);
-  const row=(name,text)=>({name,bytes:Buffer.from(text),sha256:createHash('sha256').update(text).digest('hex')});
-  const records=[row('config/package.json','{"dependencies":{"@opencode-ai/plugin":"1.18.34"}}'),row('config/package-lock.json','{"lockfileVersion":3,"pinned":true}'),
-    row('config/node_modules/@opencode-ai/plugin/package.json','{"version":"1.18.34"}'),row('cache/bin/rg.exe','pinned rg')];
-  const leaf=name=>join(name.startsWith('config/')?directory:cache,...name.split('/').slice(1));
-  const theirs={'config/package.json':'{\n  "dependencies": {\n    "@opencode-ai/plugin": "1.18.18",\n    "left-pad": "1.3.0"\n  }\n}\n',
-    'config/package-lock.json':'{"lockfileVersion":3,"packages":{"node_modules/left-pad":{"version":"1.3.0"}}}',
-    'config/node_modules/@opencode-ai/plugin/package.json':'{"version":"1.18.18"}','plugins/mine.js':'export default async () => ({})'};
-  const write=()=>{for(const [name,text] of Object.entries(theirs)){const path=name.startsWith('plugins/')?join(directory,...name.split('/')):leaf(name);mkdirSync(dirname(path),{recursive:true});writeFileSync(path,text);}};
-  const unchanged=()=>{for(const [name,text] of Object.entries(theirs)){const path=name.startsWith('plugins/')?join(directory,...name.split('/')):leaf(name);assert.equal(readFileSync(path,'utf8'),text,name);}};
-  write();
-  let iteration=0;const request=operation=>({operation,directory,cache,state,stage:join(root,'stage-'+(++iteration)),plugin:owned,cli:'fixture'});
-  const deps={bootstrap:()=>records,verifyCLI:()=>true,run:officialFixture};
-  const commit=()=>unlinkSync(join(state,'pending.json'));
-  const installed=main(request('install'),deps);commit();
-  unchanged();
-  assert.deepEqual(installed.bootstrap.theirs,['config/package.json','config/package-lock.json','config/node_modules/@opencode-ai/plugin/package.json']);
-  // Only the missing ripgrep is OA's.
-  assert.deepEqual(installed.bootstrap.files.map(file=>file.name),['cache/bin/rg.exe']);
-  assert.equal(readFileSync(leaf('cache/bin/rg.exe'),'utf8'),'pinned rg');
-  // OpenCode with OA still loads: the official command registered OA's plugin.
-  assert.ok(document(readFileSync(join(directory,'opencode.json'),'utf8')).plugin.includes(owned));
-  main(request('repair'),deps);commit();unchanged();
-  main(request('remove'),deps);commit();
-  unchanged();assert.equal(existsSync(leaf('cache/bin/rg.exe')),false);
-  assert.ok(!(document(readFileSync(join(directory,'opencode.json'),'utf8')).plugin??[]).includes(owned));
-  // A person with only their package.json gets no OA dependency files beside it.
-  rmSync(leaf('config/package-lock.json'));rmSync(join(directory,'node_modules'),{recursive:true});
-  main(request('install'),deps);commit();
-  assert.equal(readFileSync(leaf('config/package.json'),'utf8'),theirs['config/package.json']);
-  assert.equal(existsSync(leaf('config/package-lock.json')),false);assert.equal(existsSync(join(directory,'node_modules')),false);
-});
-
-test('bootstrap upgrade retires dropped owned leaves and rollback restores the prior roster', t => {
-  const root=fixture(t),directory=join(root,'account'),cache=join(root,'cache'),state=join(root,'state');mkdirSync(directory);
-  const row=(name,text)=>({name,bytes:Buffer.from(text),sha256:createHash('sha256').update(text).digest('hex')});
-  const retired='config/node_modules/helper/old.js',added='config/node_modules/helper/new.js';
-  let records=[row('config/package.json','{}'),row('config/package-lock.json','{}'),row('config/node_modules/@opencode-ai/plugin/package.json','{}'),row('cache/bin/rg.exe','inert'),row(retired,'old helper')];
-  const leaf=name=>join(name.startsWith('config/')?directory:cache,...name.split('/').slice(1));
-  let iteration=0;const request=operation=>({operation,directory,cache,state,stage:join(root,'stage-'+(++iteration)),plugin:owned,cli:'fixture'});
-  const deps={bootstrap:()=>records,verifyCLI:()=>true,run:officialFixture};
-  const commit=()=>unlinkSync(join(state,'pending.json'));
-  main(request('install'),deps);commit();
-  records=[...records.filter(item=>item.name!==retired),row(added,'new helper')];
-  const before=readFileSync(join(directory,'opencode.json'),'utf8');
-  writeFileSync(leaf(retired),'person edit');
-  assert.throws(()=>main(request('upgrade'),deps),/edited/);
-  assert.equal(existsSync(join(state,'pending.json')),false);assert.equal(existsSync(leaf(added)),false);
-  assert.equal(readFileSync(join(directory,'opencode.json'),'utf8'),before);
-  writeFileSync(leaf(retired),'old helper');
-  main(request('upgrade'),deps);
-  assert.equal(existsSync(leaf(retired)),false);assert.equal(readFileSync(leaf(added),'utf8'),'new helper');
-  writeFileSync(leaf(added),'person edit');
-  assert.throws(()=>main(request('rollback'),deps),/edited/);
-  assert.equal(existsSync(leaf(retired)),false);assert.equal(readFileSync(leaf(added),'utf8'),'person edit');
-  writeFileSync(leaf(added),'new helper');
-  main(request('rollback'),deps);
-  assert.equal(readFileSync(leaf(retired),'utf8'),'old helper');assert.equal(existsSync(leaf(added)),false);
-  main(request('upgrade'),deps);commit();
-  main(request('remove'),deps);commit();
-  assert.equal(existsSync(leaf(retired)),false);assert.equal(existsSync(leaf(added)),false);
-});
-
-test('retired bootstrap ownership refuses path escapes, duplicate names and changed spelling before writes', t => {
-  const root=fixture(t),directory=join(root,'account'),cache=join(root,'cache'),state=join(root,'state');mkdirSync(directory);
-  const row=(name,text)=>({name,bytes:Buffer.from(text),sha256:createHash('sha256').update(text).digest('hex')});
-  const retired='config/node_modules/helper/old.js';
-  let records=[row('config/package.json','{}'),row('config/package-lock.json','{}'),row('config/node_modules/@opencode-ai/plugin/package.json','{}'),row('cache/bin/rg.exe','inert'),row(retired,'old helper')];
-  let iteration=0;const request=()=>({operation:'upgrade',directory,cache,state,stage:join(root,'stage-'+(++iteration)),plugin:owned,cli:'fixture'});
-  const deps={bootstrap:()=>records,verifyCLI:()=>true,run:officialFixture};
-  main({...request(),operation:'install'},deps);unlinkSync(join(state,'pending.json'));
-  const receipt=join(state,'owned.json'),original=readFileSync(receipt,'utf8'),server=readFileSync(join(directory,'opencode.json'),'utf8');
-  records=records.filter(item=>item.name!==retired);
-  for(const change of [value=>value.bootstrap.files.at(-1).name='config/node_modules/../escape',
-    value=>value.bootstrap.files.push({...value.bootstrap.files.at(-1),name:'config/node_modules/helper/OLD.js'})]) {
-    const value=JSON.parse(original);change(value);writeFileSync(receipt,JSON.stringify(value));
-    assert.throws(()=>main(request(),deps),/Invalid bootstrap ownership/);
-    assert.equal(existsSync(join(state,'pending.json')),false);
-    assert.equal(readFileSync(join(directory,'opencode.json'),'utf8'),server);
-  }
-  writeFileSync(receipt,original);
-  records.push(row('config/node_modules/helper/OLD.js','new helper'));
-  assert.throws(()=>main(request(),deps),/spelling changed/);
-  assert.equal(existsSync(join(state,'pending.json')),false);
-  assert.equal(readFileSync(join(directory,'node_modules','helper','old.js'),'utf8'),'old helper');
-});
-
 test('ordinary install, repair, upgrade, uninstall and MSI rollback retain both config owners', t => {
   const root=fixture(t);const directory=join(root,'account');mkdirSync(directory);
   const state=join(root,'state');const server=join(directory,'opencode.jsonc');const tui=join(directory,'tui.jsonc');
   const originalServer='// server person comment\n{"plugin":["foreign"],"other":1}';
   const originalTui='// tui person comment\n{"plugin":["foreign-tui"],"theme":"person"}';
   writeFileSync(server,originalServer);writeFileSync(tui,originalTui);
-  const dependencies={run:officialFixture,verifyCLI:()=>true,bootstrap:()=>[]};let iteration=0;
-  const request=operation=>({operation,directory,state,stage:join(root,'stage-'+(++iteration)),plugin:owned,cli:'fixture'});
+  const dependencies={};let iteration=0;
+  const request=operation=>({operation,directory,state,plugin:owned});
   const commit=()=>unlinkSync(join(state,'pending.json'));
   main(request('install'),dependencies);
   assert.deepEqual(document(readFileSync(server,'utf8')).plugin,['foreign',owned]);

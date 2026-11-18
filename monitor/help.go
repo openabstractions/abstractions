@@ -53,7 +53,6 @@ var helpAnchors = []helpEntry{
 	// "Your apps" lists the registered applications; it links to the
 	// Applications reference, which documents registering and observing them.
 	{"status", "service-check", helpSite + "reference.html#api-applications"},
-	{"status", "product-connections", helpSite + "reference.html#panel-connections-claude"},
 	{"status", "apps-services", helpSite + "reference.html#panel-status-apps-services"},
 	{"work", "account-work", helpSite + "reference.html#panel-work-account-work"},
 	{"work", "work", helpSite + "reference.html#panel-work-work"},

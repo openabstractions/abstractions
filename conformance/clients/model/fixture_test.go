@@ -76,3 +76,7 @@ func TestInstalledModel(t *testing.T) {
 		t.Log(string(out))
 	}
 }
+
+// The download fixtures here listen on loopback, which the download service
+// refuses outside tests (download DL-G4).
+func init() { execution.AllowLoopbackForTesting() }

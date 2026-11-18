@@ -16,6 +16,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strings"
 )
 
 type ClaudeRunner func(context.Context, string, string, []string) ([]byte, error)
@@ -75,6 +77,60 @@ func ClaudeInvocationFailure(ctx context.Context, operation string, mutating boo
 	}
 	return &ClaudeInvocationError{operation, reason, mutating, errors.Join(ctx.Err(), cause)}
 }
+
+// claudeInvocationFailureFrom classifies a failed vendor call as
+// ClaudeInvocationFailure does. An exit is refined by the vendor's own output
+// into one closed reason; the output itself stays in this process.
+func claudeInvocationFailureFrom(ctx context.Context, operation string, mutating bool, cause error, output []byte) error {
+	err := ClaudeInvocationFailure(ctx, operation, mutating, cause)
+	var invocation *ClaudeInvocationError
+	if errors.As(err, &invocation) && invocation.reason == "exit" {
+		if reason := ClaudeVendorReason(output); reason != "" {
+			invocation.reason = reason
+		}
+	}
+	return err
+}
+
+// ClaudeVendorReason maps Claude Code's output from a failed plugin command
+// to one closed reason: folder_missing, marketplace_missing, plugin_missing,
+// name_conflict, invalid_plugin or access_denied. It answers "" when the
+// output matches none.
+func ClaudeVendorReason(output []byte) string {
+	text := strings.ToLower(string(output))
+	has := func(words ...string) bool {
+		for _, word := range words {
+			if strings.Contains(text, word) {
+				return true
+			}
+		}
+		return false
+	}
+	switch {
+	case claudeVendorPluginMissing.MatchString(text):
+		return "plugin_missing"
+	case claudeVendorMarketplaceMissing.MatchString(text):
+		return "marketplace_missing"
+	case has("enoent", "no such file", "does not exist", "path not found", "directory not found", "folder not found", "cannot find the path", "cannot find the file"):
+		return "folder_missing"
+	case has("already exists", "already installed", "already added", "already registered", "conflict"):
+		return "name_conflict"
+	case has("validation failed", "invalid manifest", "invalid plugin", "failed to parse", "schema"):
+		return "invalid_plugin"
+	case has("eperm", "eacces", "ebusy", "permission denied", "access is denied", "operation not permitted"):
+		return "access_denied"
+	}
+	return ""
+}
+
+// A quoted or bare name between a noun and its verdict, as in
+// `Plugin "openabstractions@oa-local-1" not found`.
+const claudeVendorName = `\s+["'“‘]?[^\s"'”’]*["'”’]?\s+`
+
+var (
+	claudeVendorPluginMissing      = regexp.MustCompile(`plugin` + claudeVendorName + `(?:not found|is not installed|not installed)|not found in (?:any )?marketplace`)
+	claudeVendorMarketplaceMissing = regexp.MustCompile(`marketplace` + claudeVendorName + `(?:not found|does not exist|is not (?:installed|known|configured))|unknown marketplace|no marketplace named`)
+)
 
 var claudePluginModule = hooks.Register()
 
@@ -482,7 +538,7 @@ func applyClaude(ctx context.Context, o ClaudeOptions, self string, run claudeSe
 		}
 		b, err := run(ctx, cli.FileID().Path(), project.FileID().Path(), args)
 		if err != nil {
-			return nil, ClaudeInvocationFailure(ctx, operation, mutating, err)
+			return nil, claudeInvocationFailureFrom(ctx, operation, mutating, err, b)
 		}
 		if !setupIdentitiesCurrent(ctx, handles) {
 			if err := ctx.Err(); err != nil {

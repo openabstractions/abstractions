@@ -3,6 +3,7 @@ dataclass ApplicationListing
   applications: list[ListedApplication]
   reason: str
   open_verbs: list[ApplicationOpenVerbs]
+  open: OpenHandle | None
 dataclass ApplicationOpenVerbs
   application: str
   verbs: list[ListedOpenVerb]
@@ -226,6 +227,20 @@ dataclass ListedOpenVerb
   description: str
   input_schema: bytes | str
 const META_KEYS
+dataclass OpenHandle
+  handle: str
+  application: str
+  state: OpenHandleState | str
+  instance: str
+  reason: str
+dataclass OpenHandleQuery
+  open_handle: str
+  application: str
+enum OpenHandleState
+  PENDING = 'pending'
+  OPENED = 'opened'
+  EXPIRED = 'expired'
+  REFUSED = 'refused'
 dataclass ReadRequest
   context: ContextRef
   entities: list[str]
@@ -295,6 +310,8 @@ def decode_kind_field(data)
 def decode_listed_application(data)
 def decode_listed_instance(data)
 def decode_listed_open_verb(data)
+def decode_open_handle(data)
+def decode_open_handle_query(data)
 def decode_read_request(data)
 def decode_reveal(data)
 def decode_selection(data)
@@ -331,6 +348,8 @@ def encode_kind_field(v)
 def encode_listed_application(v)
 def encode_listed_instance(v)
 def encode_listed_open_verb(v)
+def encode_open_handle(v)
+def encode_open_handle_query(v)
 def encode_read_request(v)
 def encode_reveal(v)
 def encode_selection(v)

@@ -26,12 +26,12 @@ type startingApp struct {
 	listed string
 }
 
-func (b *startingApp) ApplicationsOpen(_ context.Context, request applications.ActivateRequest) (applications.ActivationResult, error) {
+func (b *startingApp) ApplicationsOpen(_ context.Context, _ applications.OpenRequest) (applications.OpenResult, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.opens++
-	return applications.ActivationResult{Outcome: applications.ActivationOutcomeNotReady, Instance: "live", Title: "ComfyUI",
-		Reason: "activation:refused: starting:launching: ComfyUI's server is launching"}, nil
+	return applications.OpenResult{Result: applications.ActivationResult{Outcome: applications.ActivationOutcomeNotReady, Instance: "live", Title: "ComfyUI",
+		Reason: "activation:refused: starting:launching: ComfyUI's server is launching"}}, nil
 }
 
 func (b *startingApp) ApplicationsDescribe(_ context.Context, query appmodel.ApplicationsQuery) (applications.DescribeResult, error) {
@@ -86,15 +86,16 @@ type openDefaultsApp struct {
 	calls []applications.ActivateRequest
 }
 
-func (b *openDefaultsApp) ApplicationsOpen(ctx context.Context, request applications.ActivateRequest) (applications.ActivationResult, error) {
+func (b *openDefaultsApp) ApplicationsOpen(ctx context.Context, open applications.OpenRequest) (applications.OpenResult, error) {
+	request := open.Request
 	b.calls = append(b.calls, request)
 	if request.DefaultVerb != nil && *request.DefaultVerb {
 		if request.Application != "fixture" {
-			return applications.ActivationResult{Outcome: applications.ActivationOutcomeInvalid, Reason: "missing_verb"}, nil
+			return applications.OpenResult{Result: applications.ActivationResult{Outcome: applications.ActivationOutcomeInvalid, Reason: "missing_verb"}}, nil
 		}
-		request.Verb = "open"
+		open.Request.Verb = "open"
 	}
-	return b.appModelFixture.ApplicationsOpen(ctx, request)
+	return b.appModelFixture.ApplicationsOpen(ctx, open)
 }
 
 func TestOpenSendsDefaultSelectionToNativeActivation(t *testing.T) {
@@ -270,13 +271,13 @@ type personWaitApp struct {
 	budgets   []time.Duration
 }
 
-func (b *personWaitApp) ApplicationsOpen(ctx context.Context, request applications.ActivateRequest) (applications.ActivationResult, error) {
+func (b *personWaitApp) ApplicationsOpen(ctx context.Context, _ applications.OpenRequest) (applications.OpenResult, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	deadline, _ := ctx.Deadline()
 	b.remaining = append(b.remaining, time.Until(deadline))
 	b.budgets = append(b.budgets, appCommandBudget(ctx))
-	return applications.ActivationResult{Outcome: applications.ActivationOutcomeNotReady, Reason: "consent", Title: "ComfyUI"}, nil
+	return applications.OpenResult{Result: applications.ActivationResult{Outcome: applications.ActivationOutcomeNotReady, Reason: "consent", Title: "ComfyUI"}}, nil
 }
 
 // Installed check 2026-11-21: the runtime withdrew every "Open ComfyUI?"
@@ -310,5 +311,82 @@ func TestOpenWaitsMinutesForThePersonAndSaysTheyHaveNotAnswered(t *testing.T) {
 		if budget != c.want || remaining < c.want-5*time.Second || remaining > c.want {
 			t.Fatalf("%s: the native open waits %v with transport budget %v, want %v", c.args, remaining, budget, c.want)
 		}
+	}
+}
+
+// pendingOpenApp answers an open whose question stays up after the call
+// (architect ruling 2026-11-22): not_ready/consent with the question id and
+// the open handle.
+type pendingOpenApp struct {
+	*appModelFixture
+	mu    sync.Mutex
+	waits []*int64
+}
+
+func (b *pendingOpenApp) ApplicationsOpen(_ context.Context, request applications.OpenRequest) (applications.OpenResult, error) {
+	b.mu.Lock()
+	b.waits = append(b.waits, request.WaitMs)
+	b.mu.Unlock()
+	return applications.OpenResult{Result: applications.ActivationResult{Outcome: applications.ActivationOutcomeNotReady, Reason: "consent", Title: "ComfyUI"}, Question: "q-1", Handle: "h-1"}, nil
+}
+
+// The agent's own wait_ms reaches the runtime as the cap on its wait for
+// the person; an open without one leaves the runtime's default.
+func TestOpenPassesTheCallersWaitToTheRuntime(t *testing.T) {
+	b := &pendingOpenApp{appModelFixture: &appModelFixture{fixtureBackend: &fixtureBackend{}}}
+	_, session := connected(t, b, "untrusted-metadata", "2026-07-28")
+	openCall(t, session, `{"application":"comfyui","verb":"open","payload":{},"wait_ms":5000}`)
+	openCall(t, session, `{"application":"comfyui","verb":"open","payload":{}}`)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(b.waits) != 2 || b.waits[0] == nil || *b.waits[0] != 5000 || b.waits[1] != nil {
+		t.Fatalf("waits passed to the runtime: %v", b.waits)
+	}
+}
+
+// The question outlives the call: the agent hears that the person's later
+// Allow opens the app, with the question and handle, and no error.
+func TestOpenWhoseQuestionStaysTellsTheAgentTheAllowOpensLater(t *testing.T) {
+	b := &pendingOpenApp{appModelFixture: &appModelFixture{fixtureBackend: &fixtureBackend{}}}
+	_, session := connected(t, b, "untrusted-metadata", "2026-07-28")
+	got, sentence := openCall(t, session, `{"application":"comfyui","verb":"open","payload":{}}`)
+	if got["status"] != "awaiting_permission" || got["is_error"] != false || got["question"] != "q-1" || got["handle"] != "h-1" {
+		t.Fatalf("pending open: %+v", got)
+	}
+	if sentence != `OpenAbstractions asked the person whether to open ComfyUI. The question stays up until they answer, and their Allow opens ComfyUI then. Ask them in this chat to look for it; there is no need to call oa_applications_open again. To see whether ComfyUI opened, call oa_applications_describe with {"open_handle":"h-1"} later.` {
+		t.Fatalf("sentence %q", sentence)
+	}
+}
+
+// published080Runtime is an applications@3 runtime before Open: its
+// dispatcher answers Open unknown_method.
+type published080Runtime struct {
+	applications.Applications
+	activated []applications.ActivateRequest
+}
+
+func (r *published080Runtime) Open(string, applications.OpenRequest) (applications.OpenResult, error) {
+	return applications.OpenResult{}, applications.DispatchError("unknown_method")
+}
+
+func (r *published080Runtime) Activate(_ string, request applications.ActivateRequest) (applications.ActivationResult, error) {
+	r.activated = append(r.activated, request)
+	return applications.ActivationResult{Outcome: applications.ActivationOutcomeNotReady, Reason: "consent", Title: "ComfyUI"}, nil
+}
+
+// 0.8.1 release blocker (architect ruling 2026-11-23): against a runtime
+// before Open, the gateway's open goes through the published Activate,
+// without the caller's wait, and reads its handle-less answer.
+func TestOpenFallsBackToActivateOnAnEarlierRuntime(t *testing.T) {
+	runtime := &published080Runtime{}
+	client := applications.NewApplicationsClient(&applications.ApplicationsDispatcher{Handler: runtime})
+	wait := int64(5000)
+	request := applications.ActivateRequest{Application: "comfyui", Verb: "open", Payload: "{}"}
+	out, err := openOrActivate(client, "key-1", applications.OpenRequest{Request: request, WaitMs: &wait})
+	if err != nil || out.Result.Outcome != applications.ActivationOutcomeNotReady || out.Question != "" || out.Handle != "" {
+		t.Fatalf("fallback open: %+v %v", out, err)
+	}
+	if len(runtime.activated) != 1 || runtime.activated[0].Application != "comfyui" || runtime.activated[0].Verb != "open" {
+		t.Fatalf("Activate received %+v", runtime.activated)
 	}
 }

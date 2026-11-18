@@ -327,6 +327,22 @@ func (b *messagesBackend) messagesWatch(ctx context.Context, in gateway.Messages
 	if in.Turn != "" {
 		// The adapter's turn signal ends this inbox's woken turn chain.
 		b.turnWake(c, "")
+		// It also ends the reply-only mark (S5 ruling, 2026-11-22).
+		b.replyOnly.end()
+	}
+	if in.Turn == "ended" {
+		// A woken turn that ended has used its pointer, read or not. Its held
+		// slot no longer holds back the chat's next wake (2026-11-22: a pointer
+		// the turn never read blocked every later wake for its 30-minute
+		// lease). The Codex host queue keeps its exact-ticket rule.
+		b.chatMu.Lock()
+		confirm := b.wakeConfirm
+		b.chatMu.Unlock()
+		if confirm != nil {
+			if _, released, err := confirm(ctx, ""); err == nil && released {
+				b.publishWakeConfirmed(ctx)
+			}
+		}
 	}
 	page, err := c.Wait("", b.contextName, wire.ViewHeaders, "", in.Revision, in.WaitMs)
 	if err == nil && page.Outcome == wire.OutcomeGap && in.Revision != "" {
@@ -373,6 +389,11 @@ func (b *messagesBackend) messagesWatch(ctx context.Context, in gateway.Messages
 			return gateway.MessagesWatchResult{Page: wire.Page{Outcome: wire.OutcomeUnavailable}, WatchMetadata: gateway.WatchMetadata{HealthSupported: true}}, nil
 		}
 		out.WakeTicket = ticket
+		if ticket != "" {
+			// The pointer this reservation hands the adapter starts a
+			// reply-only turn (S5 ruling, 2026-11-22).
+			b.replyOnly.mark(b.eligibleWakeSenders(page.Headers), nil)
+		}
 		if ticket != "" && pointer != nil {
 			out.WakePointer, err = pointer(ctx, ticket, out.WakeSender)
 			if err != nil || out.WakePointer == "" {
@@ -380,5 +401,8 @@ func (b *messagesBackend) messagesWatch(ctx context.Context, in gateway.Messages
 			}
 		}
 	}
+	// A reply-only turn's live answer: whether the person allowed full tool
+	// use for its senders (S5 ruling, 2026-11-22).
+	out.PeerFullTools = b.peerFullTools(ctx)
 	return out, nil
 }

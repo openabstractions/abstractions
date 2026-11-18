@@ -9,8 +9,10 @@ import (
 
 func includeImports(b backend, s *Definition) []string {
 	out := append([]string(nil), b.imports...)
-	if b.lang == "go" && goMicrosTimestamps(serviceTypes(s, !s.SuppressIntrinsicEndpoint)) {
-		out = append(out, strconv.Quote("time"))
+	if b.lang == "go" {
+		for _, name := range goImports(serviceTypes(s, !s.SuppressIntrinsicEndpoint)) {
+			out = append(out, strconv.Quote(name))
+		}
 	}
 	for _, imp := range s.Imports {
 		switch b.lang {

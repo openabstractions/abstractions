@@ -79,7 +79,7 @@ func TestPairingLastCallLifecycleAndRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.admit(peer); err != nil {
+	if err := s.admitContext(t.Context(), peer); err != nil {
 		t.Fatal(err)
 	}
 	_, peers := pairingStateRead(t, s)
@@ -128,7 +128,7 @@ func TestPairingLastCallLifecycleAndRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.admit(peer) == nil {
+	if s.admitContext(t.Context(), peer) == nil {
 		t.Fatal("removed peer admitted")
 	}
 	transcript[0] ^= 1
@@ -139,7 +139,7 @@ func TestPairingLastCallLifecycleAndRevision(t *testing.T) {
 	if _, err = s.activate(ctx, revision, key, func(context.Context, pairingPeerRecord) (string, error) { return "new-fixture-rights", nil }); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.admit(peer); err != nil {
+	if err = s.admitContext(t.Context(), peer); err != nil {
 		t.Fatal(err)
 	}
 	_, currentPeers := pairingStateRead(t, s)
@@ -185,7 +185,7 @@ func TestRemoteLastCallRecordsBeforeUpstreamFailure(t *testing.T) {
 	if _, err = s.activate(ctx, revision, key, func(context.Context, pairingPeerRecord) (string, error) { return "fixture-rights", nil }); err != nil {
 		t.Fatal(err)
 	}
-	config.Admit, config.observeCall = s.admit, s.observeCall
+	config.Admit, config.AdmitContext, config.observeCall = nil, s.admitContext, s.observeCall
 	subject := rights.self()
 	subject.Program = "remote:" + key
 	for _, rule := range [][2]string{{remoteServeAction, "account"}, {inference.ActionComplete, inference.ResourceHost("owned")}} {
@@ -373,7 +373,7 @@ func TestPairingRecordOutsideCeremonyNotifies(t *testing.T) {
 			} else if len(history) != 1 || history[0].Request.Title != pairingStateWarningTitle || strings.Contains(history[0].Request.Body, "untrusted label") {
 				t.Fatalf("bounded generic warning: %+v", history)
 			}
-			if s.admit(pairingStateAdmission(cert)) == nil || s.admit(pairingStateAdmission(other)) == nil {
+			if s.admitContext(t.Context(), pairingStateAdmission(cert)) == nil || s.admitContext(t.Context(), pairingStateAdmission(other)) == nil {
 				t.Fatal("notification enabled a changed pin", key)
 			}
 		})

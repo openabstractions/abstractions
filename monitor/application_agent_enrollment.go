@@ -12,6 +12,8 @@ import (
 	facade "github.com/openabstractions/abstraction-facade/go"
 	"github.com/openabstractions/abstraction-facade/go/abstraction/facade/applications"
 	"github.com/openabstractions/abstraction-identity/listen"
+	"github.com/openabstractions/abstractions/mcp-gateway/nativecli"
+	"github.com/openabstractions/abstractions/monitor/internal/setup"
 )
 
 type panelAgentEnrollment interface {
@@ -38,6 +40,23 @@ func (p *servicePanel) agentEnrollmentForPanel(ctx context.Context) (panelAgentE
 		return nil, err
 	}
 	return nativePanelAgentEnrollment{transport: binding.Transport()}, nil
+}
+
+// appIsAgent is whether a registered name is an agent app: one of
+// OpenAbstractions' agent connectors, with or without its digest part, or
+// an agent registered under its own name, as the installed OpenCode is.
+func appIsAgent(name string) bool {
+	for _, base := range nativecli.AgentApplicationBases() {
+		if name == base || strings.HasPrefix(name, base+"-") {
+			return true
+		}
+	}
+	for _, party := range []setup.AgentParty{setup.AgentClaude, setup.AgentCodex, setup.AgentOpenCode} {
+		if name == string(party) {
+			return true
+		}
+	}
+	return false
 }
 
 func appAgentEnrollmentLink(key, name string) string {

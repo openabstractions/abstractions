@@ -83,11 +83,14 @@ async function retryPause(){await until(()=>[...timers.values()].some(t=>t.ms===
  // Permissions in plain words; a content digest reads as stored content.
  let rows=el('app-permissions-list').children;
  assert.deepEqual(rows.map(r=>r.label.textContent),['Look up models','Inference: complete','Storage: content read','Download in the background','Say when it is running'],'its own rules, then the defaults that apply');
- assert.equal(rows[2].caption.textContent,'Stored content');
+ assert.equal(rows[2].caption.textContent,'Stored content · Until removed');
+ // One control per permission (agent-ux 2026-11-22): the Allow switch and
+ // Remove, with no separate state word beside them.
+ for(const r of rows.slice(0,3)){const controls=r.children[1].children;assert.deepEqual(controls.map(c=>c.tag),['input','button'],'switch and Remove only');assert.equal(controls[1].textContent,'Remove')}
  assert(rows[1].caption.textContent.startsWith('Local · Until '));
  // Live: the click changes the server's state, the page reads it again,
  // then a timer reread runs; the row element and its sentence survive both.
- const row=rows[0];assert.equal(row.state.textContent,'Allowed');
+ const row=rows[0];assert.equal(row.toggle.checked,true);
  const reads=factsReads;
  await assertLiveUpdateKeepsRow({
   click:async()=>{row.toggle.checked=false;await row.toggle.onchange()},
@@ -95,7 +98,7 @@ async function retryPause(){await until(()=>[...timers.values()].some(t=>t.ms===
   tick,row:()=>el('app-permissions-list').children[0],status:r=>r.status,label:'App page, permissions'});
  assert.deepEqual(writes[0],{edit:'set',permit:false,revision:'r1',account,program,action:'abstraction.model/lookup',resource:'hf'});
  assert.equal(rules[0].Permit,false,'the server state changed');assert.equal(factsReads,reads+2,'the click and the timer read the facts again');
- assert.equal(row.state.textContent,'Blocked');assert.equal(row.status.textContent,'Look up models is blocked.','the switch writes one sentence into its row');
+ assert.equal(row.toggle.checked,false);assert.equal(row.status.textContent,'Look up models is blocked.','the switch writes one sentence into its row');
  assert(row.caption.textContent.startsWith('Hugging Face · Until '),'the reread updated the row in place');
  const activityRow=el('app-activity-list').children[0];await tick();
  assert.strictEqual(el('app-activity-list').children[0],activityRow,'an unchanged reread leaves the activity rows alone');
@@ -110,14 +113,14 @@ async function retryPause(){await until(()=>[...timers.values()].some(t=>t.ms===
  let perms=el('app-permissions-list').children;
  const download=perms.find(r=>r.label.textContent==='Download in the background');
  assert(download,'a default that lets the app act is listed: '+perms.map(r=>r.label.textContent));
- assert.equal(download.caption.textContent,'Allowed for all apps');assert.equal(download.state.textContent,'Allowed');
+ assert.equal(download.caption.textContent,'Allowed for all apps');assert.equal(download.toggle.checked,true,'a default row has the same Allow switch');
  const link=download.children[1].children.find(c=>c.tag==='a');assert.equal(link.href,'/rights?k=key#defaults','the switch of the default is one click away');
- await download.block.onclick();
+ download.toggle.checked=false;await download.toggle.onchange();
  assert.deepEqual(writes[3],{edit:'set',permit:false,revision:'r4',account,program,action:'abstraction.job/acceptance.submit',resource:'download-jobs'});
  perms=el('app-permissions-list').children;
  assert(!perms.some(r=>r.caption.textContent==='Allowed for all apps'&&r.label.textContent==='Download in the background'),'the default no longer applies once blocked');
  const blocked=perms.find(r=>r.rule&&r.rule.Action==='abstraction.job/acceptance.submit');
- assert(blocked&&blocked.state.textContent==='Blocked','the block of this app shows with its switch and Remove');
+ assert(blocked&&blocked.toggle.checked===false,'the block of this app shows with its switch and Remove');
  assert.equal(blocked.status.textContent,'Download in the background is blocked for Example.','Block writes one sentence into the new row of this app');
  assert(perms.some(r=>r.label.textContent==='Say when it is running'&&r.caption.textContent==='Allowed for all apps'),'an every-resource default applies on the own entry of this app');
  // A script host: no default applies, and the page says so in one row.

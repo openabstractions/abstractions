@@ -288,6 +288,50 @@ struct DecisionExplanation {
  3: optional DecisionSource source(omit="absent")
  4: optional string default_name(omit="absent")
 }(unknown_fields="refuse",doc="One exact decision for a subject with the step that decided it, from the same evaluation a decision makes. own_rule is the subject's own live exact rule, matched by program identity; typed_block a live typed Block that covers the target; account_default the named account-wide default that permits; default_excluded a named default switched on for the target that the configured exclusion, such as the script-host rule, keeps from this program; none no rule and no default. outcome and policy_revision are those the decision carries. Refusals (invalid, forbidden, unavailable) carry no revision, source or name.")
+enum ChangeKind {
+ 1: set_rule
+ 2: revoke_rule
+ 3: set_default
+ 4: register_action
+ 5: retire_action
+ 6: declaration
+}(unknown="refuse",reader="act")
+struct PolicyChange {
+ 1: required ChangeKind kind
+ 2: required string expected_revision(length="..128",pattern="no_control")
+ 3: optional PolicyRule rule(omit="absent")
+ 4: optional i64 ttl_ms(omit="zero",range="0..31536000000")
+ 5: optional string why(omit="zero",length="..256",pattern="no_control")
+ 6: optional string name(omit="zero",length="..64",pattern="no_control")
+ 7: optional bool on(omit="zero")
+ 8: optional string action(omit="zero",length="..128",pattern="no_control")
+ 9: optional string program(omit="zero",length="..4096",pattern="no_control")
+ 10: optional list<PolicyRule> rules(omit="zero",length="..64")
+ 11: optional string address(omit="zero",length="..2048",pattern="no_control")
+}(unknown_fields="refuse",doc="One typed rights change an operator program requests (RIGHTS-O17). set_rule carries rule, and optionally ttl_ms and why with SetRuleFor's bounds; revoke_rule carries rule, whose permit is ignored; set_default carries name and on; register_action and retire_action carry action. declaration is a provider declaration or inference host add the registry or inference service admitted for the caller: name is the declared name, program its program (empty for a hosted server), address the server address it reaches (a hosted server's base URL or a remote runtime's endpoint; empty for a local program) and rules the exact rule set it writes on Allow; RequestChange refuses it as invalid. Other fields are absent. An empty expected_revision applies at the policy revision current when the change is applied; a nonempty one conflicts when the policy changed. The request is never free text: the service words the person's question from its own catalogue.")
+enum ChangeRequestOutcome {
+ 1: applied
+ 2: pending
+ 3: refused
+ 4: expired
+ 5: conflict
+ 6: unknown
+ 7: invalid
+ 8: forbidden
+ 9: unavailable
+}(unknown="refuse",reader="act")
+struct ChangeRequestState {
+ 1: required ChangeRequestOutcome outcome
+ 2: required string id(length="..128",pattern="no_control")
+ 3: required string revision(length="..128",pattern="no_control")
+ 4: optional PolicyChange change(omit="absent")
+ 5: required string expires(length="..64",pattern="no_control")
+ 6: required bool exempt
+}(unknown_fields="refuse",doc="One change request as the service holds it (RIGHTS-O17). pending waits for the person's answer in the service's popup until expires, a UTC RFC 3339 instant ten minutes after the request. applied means the service applied exactly this change, once, and carries the policy revision after it; exempt marks a change applied without a question for an elevated caller. refused is the person's Not now; expired is a request nobody answered in time, which changes nothing; conflict is an expected revision the policy no longer had. unknown, invalid, forbidden and unavailable carry no id, change or revision.")
+struct ChangeRequestPage {
+ 1: required PolicyPageOutcome outcome
+ 2: required list<ChangeRequestState> requests(length="..64")
+}(unknown_fields="refuse",doc="The requests this operator program made that the service still holds, newest first, at most 64. Refusals carry none.")
 service AuthorizationOperator {
  PolicyObservation ObservePolicy(1:string after(length="0..256",pattern="no_control"),2:i64 wait_ms(range="0..30000"))(readonly="true",observe="after",doc="Under existing operator authority, wait 0..30000ms for policy invalidation through watch.Gate (RIGHTS-O16). Every read, wake and response rechecks receiving Program proof and explicit operator authority. The configured policy owner's OnChange callbacks and service expiry deadlines provide native invalidation. Invalid bounds are refused before data; stale/foreign epoch or receiving scope is gap. Cancellation ends only this read. A prior operator@1 service returns unknown_method; no listing-cursor or polling fallback.")
  DescriptionEdit RegisterDescribedAction(1:string expected_revision,2:ActionDescription description)(idempotent="true",doc="Under existing explicit operator authority, atomically register an action and publish/correct its descriptive metadata at the expected durable revision. The service records the receiving publisher and service time. Recheck context and authority after lock waiting. A metadata edit changes no rule, expiry or completed-answer receipt, including first publication on an action with existing rules. A stable action identifies its existing feature; actual changed semantics require a new action/version at the app owner. Metadata is no proof of behavior. An earlier operator@1 service returns unknown_method; never fall back to name-only registration while claiming published description.")
@@ -304,6 +348,9 @@ service AuthorizationOperator {
  ActionEdit RetireAction(1:string expected_revision,2:string action)(idempotent="true",doc="Remove a registered action and every rule naming it. Retiring a seeded action is invalid. Retiring an action outside the catalogue is unknown. Decisions on a retired action read unknown_action.")
  DecisionExplanation ExplainFor(1:Subject subject,2:string action,3:string resource)(readonly="true",doc="Under operator authorization, rechecked before returning, evaluate subject on one exact action/resource exactly as a decision does and report the step that decided it (RIGHTS-O14). It asks nobody, records nothing and changes no rule or cache. An earlier operator@1 service returns unknown_method.")
  DefaultPage ListDefaults()(readonly="true",doc="Read every configured account-wide default and its switch under operator authorization, rechecked before returning. An earlier operator@1 service returns unknown_method.")
+ ChangeRequestState RequestChange(1:PolicyChange change,2:i64 wait_ms(range="0..30000"))(idempotent="true",doc="Request one typed rights change (RIGHTS-O17). The Panel window applies its changes through the direct methods. Any other operator program's change becomes a pending request the person confirms in a person-only popup the service words; the call waits up to wait_ms for the answer and then returns pending with the request id. A request expires ten minutes after it was made. Allow applies exactly that change, once. A caller whose own connection-bound token is elevated is exempt while the elevated-callers default is on: its change applies at once. Every applied change writes an Activity line with Undo. An earlier operator@1 service returns unknown_method; a caller must not fall back to a direct edit.")
+ ChangeRequestState ObserveChangeRequest(1:string id(length="1..128",pattern="no_control"),2:i64 wait_ms(range="0..30000"))(readonly="true",doc="Wait up to wait_ms for one request this operator program made to settle and report its state (RIGHTS-O17). A request of another program, or one the service no longer holds, is unknown.")
+ ChangeRequestPage ListChangeRequests()(readonly="true",doc="List the change requests this operator program made that the service still holds (RIGHTS-O17).")
  DefaultEdit SetDefault(1:string expected_revision,2:string name,3:bool on)(idempotent="true",doc="Atomically compare the expected durable revision and turn one configured account-wide default on or off, recording the operator subject and service time. An unconfigured name is invalid. Authorization and revision are rechecked after lock waiting. The next fresh decision observes the switch. No rule is written or removed. An earlier operator@1 service returns unknown_method.")
 }(wire_name="abstraction.rights/operator@1",doc="Explicitly authorized administration of the configured decision policy: catalogue registration and retirement, exact rules with expiry and provenance. Receiving same-account Program proof plus a trusted typed-peer operator callback is required; nil refuses. Policy denial is forbidden; callback/storage failure is unavailable. No caller credential, verified flag or provider path is accepted. Resource services remain the receiving enforcement points. Legacy bearer and awake lease behavior is separate.")
 
@@ -424,24 +471,24 @@ struct SelectorEdit {
 }(unknown_fields="refuse",doc="Applied/conflict carry the locked observed revision and complete bounded affected state. Stale expected revision always conflicts, including matching desired state. Other refusals carry empty revision/current. Atomic edits have no per-member success. Individual replacement removes that row's active bundle origin; remaining rows keep historical origin.")
 
 service SelectorAuthorization {
-  PermissionDefinitionPage ListPermissionDefinitions(1:string cursor,2:i64 limit)(readonly="true")
-  PermissionBundlePage ListPermissionBundles(1:string cursor,2:i64 limit)(readonly="true")
-  BatchDecision CheckBatch(1:CheckBatchRequest request)(readonly="true")
-  BatchDecision CheckBatchFor(1:Subject subject,2:CheckBatchRequest request)(readonly="true")
-  Decision CheckLegacyOperationFor(1:Subject subject,2:LegacyOperationRequest request)(readonly="true")
-}(wire_name="abstraction.rights/authorization@2")
+  PermissionDefinitionPage ListPermissionDefinitions(1:string cursor,2:i64 limit)(readonly="true",doc="List the typed permission definitions the catalogue serves: each action with its resource profile and the selectors it supports. Callers of the runtime's own account only. A page binds one policy revision; a cursor from another revision reads gap.")
+  PermissionBundlePage ListPermissionBundles(1:string cursor,2:i64 limit)(readonly="true",doc="List the named permission bundles an operator can apply as one consent, each an immutable version with its member permissions. Callers of the runtime's own account only. A page binds one policy revision.")
+  BatchDecision CheckBatch(1:CheckBatchRequest request)(readonly="true",doc="Decide the calling program's own typed permissions for 1..256 resources and an optional All collection admission, from one policy snapshot (RIGHTS-R19). Each target is the owning capability's document for the resource, which this service prepares; a caller supplies no captured evidence. The result is advisory to the caller: a resource service decides with CheckBatchFor. Asks nobody and writes nothing.")
+  BatchDecision CheckBatchFor(1:Subject subject,2:CheckBatchRequest request)(readonly="true",doc="Decide a subject's typed permissions as CheckBatch does. The receiving host must designate the calling program as the enforcer of every requested permission and of the collection admission; otherwise forbidden. Subject and caller belong to the runtime's own account, and subject is the enforcer's assertion. Asks nobody and writes nothing.")
+  Decision CheckLegacyOperationFor(1:Subject subject,2:LegacyOperationRequest request)(readonly="true",doc="Decide one exact authorization@1 action and resource for a subject with live typed blocks carried across known equivalence (RIGHTS-R20). The caller enforces the legacy action, and the concrete operation when one is supplied. It grants no typed permit.")
+}(wire_name="abstraction.rights/authorization@2",doc="Typed authorization: permissions keyed by action and resource profile, decided for One resources and All collections from one snapshot. authorization@1 decides exact action and resource strings; a program uses this service for typed selectors. The Go client type rights.Client serves both services: ResolveRights binds authorization@1 for Decide, DecideFor, DecideForAtLeastRevision, Require and ListActionDescriptions, and ResolveRightsSelector binds this service for ListPermissionDefinitions, ListPermissionBundles, CheckBatch, CheckBatchFor and CheckLegacyOperationFor. A method of the other service answers unknown_method.")
 struct LegacyOperationRequest {
   1: required string legacy_action
   2: required string legacy_resource
   3: optional ConcreteResource concrete_operation(omit="absent")
 }(unknown_fields="refuse",doc="Old exact authority plus an optional receiver-known concrete effect. Trusted compiled capability equivalence validates the supplied effect against this old operation and its fixed collection. Original legacy authority and live equivalent typed restrictions are evaluated at one snapshot. Missing concrete detail on a coarse view uses conservative collection intersection. This method imports explicit blocks only; it grants no typed permit.")
 service SelectorAuthorizationOperator {
-  SelectorRulePage ListSelectorRules(1:string cursor,2:i64 limit)(readonly="true")
-  SelectorRuleRead ReadSelectorRule(1:Subject subject,2:PermissionSelection selection)(readonly="true")
-  SelectorEdit SetSelectorRule(1:string expected_revision,2:SelectorRule rule,3:i64 ttl_ms,4:string why)(idempotent="true")
-  SelectorEdit RemoveSelectorRule(1:string expected_revision,2:Subject subject,3:PermissionSelection selection)(idempotent="true")
-  SelectorEdit ApplyBundle(1:string expected_revision,2:Subject subject,3:string bundle_ref,4:ResourceSelector selector,5:i64 ttl_ms,6:string why)(idempotent="true")
-  SelectorEdit RemoveBundle(1:string expected_revision,2:Subject subject,3:string origin_id)(idempotent="true")
-  SelectorEdit ApplyPermissionAllow(1:string expected_revision,2:string question_id)(idempotent="true")
-  SelectorEdit UndoPermissionEffect(1:string expected_revision,2:string question_id)(idempotent="true")
+  SelectorRulePage ListSelectorRules(1:string cursor,2:i64 limit)(readonly="true",doc="List every typed rule with its setter, time, reason, expiry and bundle origin. Operator programs only. A page binds one policy revision.")
+  SelectorRuleRead ReadSelectorRule(1:Subject subject,2:PermissionSelection selection)(readonly="true",doc="Read the one rule for a subject and an exact permission selection, addressed by the selection's retained bytes with no new target preparation. Operator programs only.")
+  SelectorEdit SetSelectorRule(1:string expected_revision,2:SelectorRule rule,3:i64 ttl_ms,4:string why)(idempotent="true",doc="Set one typed permit or block at expected_revision; a stale revision conflicts. ttl_ms 0 keeps the rule until removed, and at most one year bounds it. Replacing a row detaches its bundle origin (RIGHTS-O12). The Panel window's edit only (RIGHTS-O17).")
+  SelectorEdit RemoveSelectorRule(1:string expected_revision,2:Subject subject,3:PermissionSelection selection)(idempotent="true",doc="Remove the rule for a subject and an exact permission selection at expected_revision. The Panel window's edit only (RIGHTS-O17).")
+  SelectorEdit ApplyBundle(1:string expected_revision,2:Subject subject,3:string bundle_ref,4:ResourceSelector selector,5:i64 ttl_ms,6:string why)(idempotent="true",doc="Expand one immutable bundle version into explicit permits for a subject, atomically, with one setter and expiry and a retained bundle origin (RIGHTS-O12). New members of a later version need new consent. The Panel window's edit only (RIGHTS-O17).")
+  SelectorEdit RemoveBundle(1:string expected_revision,2:Subject subject,3:string origin_id)(idempotent="true",doc="Remove a subject's rules that still carry bundle origin origin_id. Rows replaced since keep their later independent edits. The Panel window's edit only (RIGHTS-O17).")
+  SelectorEdit ApplyPermissionAllow(1:string expected_revision,2:string question_id)(idempotent="true",doc="Write the typed effect pinned by the asks permission@1 question question_id after an operator Allow on it. The effect comes from the question, never from the caller. The Panel window and the Asks presenter only (RIGHTS-O17). A revoked or expired occurrence refuses replay.")
+  SelectorEdit UndoPermissionEffect(1:string expected_revision,2:string question_id)(idempotent="true",doc="Remove the still-current rules that question_id's Allow wrote, keeping later edits and blocks. The Panel window's edit only (RIGHTS-O17).")
 }(wire_name="abstraction.rights/operator@2",doc="Existing explicit operator admission, receiving provenance and in-lock authority recheck apply. First-use methods accept no caller-supplied targets: trusted composition resolves and pins the new typed Book occurrence. Existing operator@1 completion records are preserved with their original semantics.")

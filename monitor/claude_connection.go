@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -61,6 +63,11 @@ type claudePanelView struct {
 	Background            claudeBackgroundState   `json:"background"`
 	BackgroundAsks        claudeBackgroundState   `json:"background_asks"`
 	BackgroundAvailable   bool                    `json:"background_available"`
+
+	// Reason says in one plain sentence why the saved connections could not
+	// be read; ReasonCode is its closed token.
+	Reason     string `json:"reason,omitempty"`
+	ReasonCode string `json:"reason_code,omitempty"`
 
 	// ReconnectAvailable: the saved Code command could not be verified and
 	// the running Claude Code verifies; Connect adopts the running one.
@@ -275,7 +282,7 @@ func (c *claudePanelConnections) read(ctx context.Context) (view claudePanelView
 		return view, err
 	}
 	if image == nil {
-		return view, errors.New("installed connection helper unavailable")
+		return view, fmt.Errorf("installed connection helper unavailable: %w", os.ErrNotExist)
 	}
 	defer func() { err = errors.Join(err, image.Close()) }()
 	if err = image.Check(ctx); err != nil {
@@ -447,7 +454,9 @@ func (p *servicePanel) claudeConnectionRoutes(mux *http.ServeMux, key string) {
 		if err != nil {
 			view.Outcome = "unavailable"
 			view.Connections = []claudeSavedConnection{}
+			view.ReasonCode, view.Reason = claudeConnectionFailure(err)
 		}
+		noteAgentAttention("claude", view.Reason)
 		panelJSON(w, view)
 	}))
 	mux.HandleFunc("/connections/claude/project", guard(key, func(w http.ResponseWriter, r *http.Request) {
@@ -490,6 +499,18 @@ func (p *servicePanel) claudeConnectionRoutes(mux *http.ServeMux, key string) {
 		control := p.claudeConnectionsForPanel()
 		result, err := control.connect(r.Context(), edit.Selection)
 		if err != nil {
+			// The page shows the first line when it is a plain sentence; the
+			// whole error is its Technical details.
+			sentence := panelConfigurationSentence(err)
+			if sentence == "" {
+				sentence = agentSetupBlocker(err, claudeConnectionTitle)
+			}
+			if sentence != "" {
+				p.connectFailed("claude", claudeConnectionTitle, sentence)
+				http.Error(w, sentence+"\n"+err.Error(), http.StatusServiceUnavailable)
+				return
+			}
+			p.connectFailed("claude", claudeConnectionTitle, "OpenAbstractions couldn't connect Claude. Select Check again.")
 			panelError(w, err)
 			return
 		}
@@ -546,4 +567,20 @@ func (p *servicePanel) claudeConnectionRoutes(mux *http.ServeMux, key string) {
 		}
 		panelJSON(w, map[string]string{"outcome": "requested"})
 	}))
+}
+
+// claudeConnectionFailure is the closed code and plain sentence for a saved
+// connection read that failed.
+func claudeConnectionFailure(err error) (string, string) {
+	if sentence := agentSetupBlocker(err, claudeConnectionTitle); sentence != "" {
+		if agentHomeIsolated() {
+			return "installed_runtime", sentence
+		}
+		return "helper_missing", sentence
+	}
+	var command *panelConfigurationError
+	if sentence := panelConfigurationSentence(err); sentence != "" && errors.As(err, &command) {
+		return command.pluginOperation + "_" + command.pluginReason, sentence
+	}
+	return "unavailable", "Connection setup is unavailable. Check again."
 }

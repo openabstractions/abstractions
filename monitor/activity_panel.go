@@ -264,5 +264,6 @@ func (p *servicePanel) activityRoutes(mux *http.ServeMux, key string) {
 	mux.HandleFunc("/activity/setup-grants", guard(key, p.activitySetupGrants))
 	mux.HandleFunc("/activity/app-requests", guard(key, p.activityAppRequests))
 	mux.HandleFunc("/activity/elevated", guard(key, p.activityElevated))
+	mux.HandleFunc("/activity/rights-changes", guard(key, p.activityRightsChanges))
 	mux.HandleFunc("/activity/memory", guard(key, p.activityMemory))
 }

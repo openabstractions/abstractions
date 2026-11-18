@@ -183,6 +183,13 @@ pub struct ActivationResult
   started: bool
   reason: ::std::string::String
   title: ::std::string::String
+pub struct OpenRequest
+  request: ActivateRequest
+  wait_ms: ::std::option::Option<i64>
+pub struct OpenResult
+  result: ActivationResult
+  question: ::std::string::String
+  handle: ::std::string::String
 pub struct DescribeResult
   outcome: Outcome
   answer: ::std::option::Option<OAImported1>
@@ -233,8 +240,10 @@ pub trait Applications
   fn observe(&self, query: Query) -> ::std::result::Result<Page, Self::Error>
   fn activate(&self, key: ::std::string::String, request: ActivateRequest) -> ::std::result::Result<ActivationResult, Self::Error>
   fn describe(&self, query: OAImported8) -> ::std::result::Result<DescribeResult, Self::Error>
-  fn commands(&self, query: OAImported9) -> ::std::result::Result<CommandsResult, Self::Error>
-  fn call(&self, key: ::std::string::String, call: OAImported10) -> ::std::result::Result<CallResult, Self::Error>
+  fn open(&self, key: ::std::string::String, request: OpenRequest) -> ::std::result::Result<OpenResult, Self::Error>
+  fn describe_open(&self, query: OAImported9) -> ::std::result::Result<DescribeResult, Self::Error>
+  fn commands(&self, query: OAImported10) -> ::std::result::Result<CommandsResult, Self::Error>
+  fn call(&self, key: ::std::string::String, call: OAImported11) -> ::std::result::Result<CallResult, Self::Error>
   fn read_sign_in_start(&self) -> ::std::result::Result<SignInStartResult, Self::Error>
   fn request_setup(&self, setup_use: ::std::string::String) -> ::std::result::Result<SetupResult, Self::Error>
   fn receive_setup_request(&self, after: ::std::string::String) -> ::std::result::Result<SetupRequestRead, Self::Error>
@@ -300,6 +309,10 @@ pub fn encode_page_document(v: &Page) -> ::std::result::Result<::std::vec::Vec<u
 pub fn decode_page_document(data: &[u8]) -> ::std::result::Result<Page, Refusal>
 pub fn encode_activation_result_document(v: &ActivationResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
 pub fn decode_activation_result_document(data: &[u8]) -> ::std::result::Result<ActivationResult, Refusal>
+pub fn encode_open_request_document(v: &OpenRequest) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_open_request_document(data: &[u8]) -> ::std::result::Result<OpenRequest, Refusal>
+pub fn encode_open_result_document(v: &OpenResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_open_result_document(data: &[u8]) -> ::std::result::Result<OpenResult, Refusal>
 pub fn encode_describe_result_document(v: &DescribeResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
 pub fn decode_describe_result_document(data: &[u8]) -> ::std::result::Result<DescribeResult, Refusal>
 pub fn encode_commands_result_document(v: &CommandsResult) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
@@ -387,6 +400,12 @@ pub mod internal
   pub fn decode_activation_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ActivationResult, usize), super::Refusal>
   pub fn check_activation_result(v: &super::ActivationResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
   pub fn encode_activation_result_at(v: &super::ActivationResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_open_request_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::OpenRequest, usize), super::Refusal>
+  pub fn check_open_request(v: &super::OpenRequest, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_open_request_at(v: &super::OpenRequest, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_open_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::OpenResult, usize), super::Refusal>
+  pub fn check_open_result(v: &super::OpenResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_open_result_at(v: &super::OpenResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
   pub fn decode_describe_result_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::DescribeResult, usize), super::Refusal>
   pub fn check_describe_result(v: &super::DescribeResult, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
   pub fn encode_describe_result_at(v: &super::DescribeResult, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>

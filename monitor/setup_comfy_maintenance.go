@@ -226,8 +226,15 @@ func (pkg *officialPackagePanel) maintain(p *servicePanel, ctx context.Context, 
 		}
 		return nil
 	}
+	// keepDecision saves the decision on a path that ends this step; a failed
+	// save is logged and the next step plans from the record as it stands.
+	keepDecision := func() {
+		if err := saveDecision(); err != nil {
+			log.Printf("setup: %s integration update decision was not saved: %v", pkg.spec.Title, err)
+		}
+	}
 	if !done {
-		_ = saveDecision()
+		keepDecision()
 		return
 	}
 	if next.PendingUpdate == nil {
@@ -241,7 +248,7 @@ func (pkg *officialPackagePanel) maintain(p *servicePanel, ctx context.Context, 
 	}
 	found, ok = pkg.primary()
 	if !ok || !next.PendingUpdate.MatchesProgram(pkg.extension.Connector(found.Base)) {
-		_ = saveDecision()
+		keepDecision()
 		return
 	}
 	found.Base = filepath.Clean(found.Base)
@@ -251,13 +258,13 @@ func (pkg *officialPackagePanel) maintain(p *servicePanel, ctx context.Context, 
 		if err != nil {
 			log.Printf("setup: %s's programs: %v", pkg.spec.Title, err)
 		}
-		_ = saveDecision()
+		keepDecision()
 		return
 	}
 	if why := pkg.extension.PackageMissing(catalog); why != "" {
 		if err := pkg.stageMaintainedPackage(p, ctx, catalog); err != nil {
 			log.Printf("setup: %s integration update: %v", pkg.spec.Title, err)
-			_ = saveDecision()
+			keepDecision()
 			return
 		}
 	}

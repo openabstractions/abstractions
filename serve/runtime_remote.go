@@ -29,12 +29,14 @@ const remoteRouterReplyBytes = 8 << 20
 // A nil supplier or Listen=false is off. Outgoing registry trust is unrelated.
 // A supplier must return an error when its incoming pairing book is unavailable.
 type runtimeRemoteConfig struct {
-	Listen      bool
-	Address     string
-	TLS         *tls.Config
-	ClientRoots func(context.Context) (*x509.CertPool, error)
-	Admit       func(remote.Peer) error
-	Minimum     func(context.Context, remote.Peer) (string, error)
+	Listen            bool
+	Address           string
+	TLS               *tls.Config
+	ClientRoots       func(context.Context) (*x509.CertPool, error)
+	Admit             func(remote.Peer) error
+	AdmitContext      func(context.Context, remote.Peer) error
+	standingAdmission func(context.Context, remote.Peer) error
+	Minimum           func(context.Context, remote.Peer) (string, error)
 	// audit is retained by the private configuration lifecycle owner across
 	// listener replacement, preserving the single in-flight remote sink write.
 	audit *remoteAudit
@@ -47,7 +49,32 @@ type incomingRemoteKey struct{}
 type incomingRemoteCall struct {
 	peer                      remote.Peer
 	admit                     func(remote.Peer) error
+	admitContext              func(context.Context, remote.Peer) error
+	standing                  func(context.Context, remote.Peer) error
 	minimum, account, program string
+}
+
+// admission binds each check to its current operation. Accepted work retains
+// these callbacks as values and supplies its own context after ingress ends.
+func (call incomingRemoteCall) admission(ctx context.Context) func(remote.Peer) error {
+	if call.admitContext == nil {
+		return call.admit
+	}
+	return func(peer remote.Peer) error {
+		if call.admit != nil {
+			if err := call.admit(peer); err != nil {
+				return err
+			}
+		}
+		return call.admitContext(ctx, peer)
+	}
+}
+
+func (call incomingRemoteCall) standingAdmission(ctx context.Context) func(remote.Peer) error {
+	if call.standing != nil {
+		call.admitContext = call.standing
+	}
+	return call.admission(ctx)
 }
 
 // matchesSubject keeps the remote route's bound account and program together.
@@ -105,12 +132,13 @@ func prepareRuntimeRemote(ctx context.Context, options runtimeFlags, rights *run
 	}
 	// Freeze configuration fields; live Admit and Minimum remain owner callbacks.
 	selected := *config
-	server := remote.Server{TLS: selected.TLS, Admit: selected.Admit, ClientRoots: selected.ClientRoots,
+	server := remote.Server{TLS: selected.TLS, Admit: selected.Admit, AdmitContext: selected.AdmitContext, ClientRoots: selected.ClientRoots,
 		Timeout: 35 * time.Second, HandshakeTimeout: 5 * time.Second,
 		MaxConnections: 64, MaxSourceConnections: 4, MaxPeerCalls: 8,
 		PeerRequestsPerSecond: 32, PeerBurst: 64,
 		MaxRequestFrame: remoteRequestBytes, MaxFrame: remoteRouterReplyBytes}
 	server.Handler = func(ctx context.Context, peer remote.Peer, frame []byte) (reply []byte, resultErr error) {
+		admit := (incomingRemoteCall{admit: selected.Admit, admitContext: selected.AdmitContext}).admission(ctx)
 		attempt := &remoteAuditAttempt{audit: audit, ctx: ctx, observation: "peer-refused", attrs: map[string]string{"peer_key": hex.EncodeToString(peer.Key[:]), "contract": "unknown", "method": "unknown", "profile": "unknown", "claim": "unobserved", "outcome": "attempt"}}
 		defer func() {
 			if attempt.observation == "not-admitted" {
@@ -141,7 +169,7 @@ func prepareRuntimeRemote(ctx context.Context, options runtimeFlags, rights *run
 				}
 			}
 		}()
-		mapped, err := remote.SubjectOf(peer, selected.Admit)
+		mapped, err := remote.SubjectOf(peer, admit)
 		if err != nil {
 			return nil, err
 		}
@@ -158,17 +186,17 @@ func prepareRuntimeRemote(ctx context.Context, options runtimeFlags, rights *run
 				return nil, err
 			}
 		}
-		call := incomingRemoteCall{peer: peer, admit: selected.Admit, minimum: minimum, account: rights.owner, program: mapped.Program()}
+		call := incomingRemoteCall{peer: peer, admit: selected.Admit, admitContext: selected.AdmitContext, standing: selected.standingAdmission, minimum: minimum, account: rights.owner, program: mapped.Program()}
 		ctx = context.WithValue(inference.WithLeafExecution(ctx), incomingRemoteKey{}, call)
 		attempt.observation = "services-unavailable"
 		selectedServices, err := inferenceservice.RemoteServices(ctx, peer, services.provider, services.router, inferenceservice.RemoteConfig{
-			Account: rights.owner, Admit: selected.Admit,
+			Account: rights.owner, Admit: admit,
 			RouterPolicy: func(ctx context.Context, caller routerservice.RemoteCaller, action, resource string) error {
 				if caller.Peer.Program() != call.program {
 					attempt.observation = "service-subject-refused"
 					return errors.New("remote: subject changed")
 				}
-				err := remoteDecisionError(rights.decideRemote(ctx, peer, selected.Admit, action, resource, minimum))
+				err := remoteDecisionError(rights.decideRemote(ctx, peer, admit, action, resource, minimum))
 				if err != nil {
 					attempt.observation = "service-rights-refused"
 				}
@@ -191,7 +219,7 @@ func prepareRuntimeRemote(ctx context.Context, options runtimeFlags, rights *run
 		if services.registry != nil && services.registry.pairing != nil {
 			p := services.registry.pairing
 			if p.messageHost != nil {
-				offered = append(offered, p.messageHost.remoteMessages(ctx, peer, selected.Admit))
+				offered = append(offered, p.messageHost.remoteMessages(ctx, peer, admit))
 			}
 		}
 		replyLimit := remoteRequestBytes
@@ -205,7 +233,7 @@ func prepareRuntimeRemote(ctx context.Context, options runtimeFlags, rights *run
 				attempt.observation = "local-only-refused"
 				return &fwire.ServiceError{Code: fwire.ServiceErrorCode("unsupported"), Message: "remote:local_only"}
 			}
-			if err := remoteDecisionError(rights.decideRemote(ctx, peer, selected.Admit, remoteServeAction, "account", minimum)); err != nil {
+			if err := remoteDecisionError(rights.decideRemote(ctx, peer, admit, remoteServeAction, "account", minimum)); err != nil {
 				attempt.observation = "rights-refused"
 				return err
 			}

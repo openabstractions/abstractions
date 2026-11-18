@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/openabstractions/abstraction-identity/fileid"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -485,6 +486,14 @@ func composeInference(options runtimeFlags, c *runtimeCredentials, sink logging.
 		report(fmt.Errorf("runtime providers: %w", err))
 		providers = nil
 	}
+	if providers != nil && c != nil && c.runtimeRights != nil {
+		// A declaration's recorded declarer resolves to the Panel only while
+		// it is the Panel image this runtime admits (A-SEC6, FAC-R9).
+		rights := c.runtimeRights
+		providers.admittedPanel = func(program string) bool {
+			return rights.matchesPanel(context.Background(), fileid.Self, program, fileid.RefuseLinks)
+		}
+	}
 	r := router.NewWithHTTPClient(runtimeEngineHTTPClient(providers, 2*time.Second))
 	r.SetFamilyTitleLookup(modelservice.FamilyTitleLookup())
 	// Who holds the card is measured once, by the table, and read from there.
@@ -712,6 +721,9 @@ func composeInference(options runtimeFlags, c *runtimeCredentials, sink logging.
 	if providers != nil {
 		providers.decide = func(ctx context.Context, program, action, resource string) bool {
 			return c.runtimeRights.decide(ctx, rwire.Subject{Account: c.owner, Program: program}, action, resource).Outcome == rwire.DecisionOutcomePermitted
+		}
+		if move, ok := providers.installMove(); ok {
+			c.runtimeRights.repairMovedInstall(move, report)
 		}
 		providers.remotesChanged = operator.refreshHosts
 		composed.providers, operator.providers = providers, providers

@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -359,9 +358,8 @@ func TestDeniedServiceActivationRetainsOwnedLaunchGuards(t *testing.T) {
 // launchDetached returns while the launched program keeps running.
 func TestLaunchDetachedDoesNotWait(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "started")
-	t.Setenv("OA_START_HELPER", "sleep")
 	began := time.Now()
-	if err := launchDetached(os.Args[0], "-test.run=^TestDetachedHelperProcess$", marker); err != nil {
+	if err := launchDetached(os.Args[0], runtimeStandInArg, marker); err != nil {
 		t.Fatal(err)
 	}
 	if elapsed := time.Since(began); elapsed > 5*time.Second {
@@ -380,16 +378,4 @@ func TestLaunchDetachedDoesNotWait(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-}
-
-func TestDetachedHelperProcess(t *testing.T) {
-	if os.Getenv("OA_START_HELPER") != "sleep" || len(os.Args) < 3 {
-		return
-	}
-	marker := os.Args[len(os.Args)-1]
-	if !strings.HasSuffix(marker, "started") {
-		return
-	}
-	os.WriteFile(marker, []byte(strconv.Itoa(os.Getpid())), 0o600)
-	time.Sleep(time.Minute)
 }

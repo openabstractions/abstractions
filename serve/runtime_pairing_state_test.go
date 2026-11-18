@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -196,7 +198,7 @@ func TestPairingStateLifecycleRequiresTrustedReconciliation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.admit(peer) == nil {
+	if s.admitContext(t.Context(), peer) == nil {
 		t.Fatal("inactive pin admitted")
 	}
 	// A crash/reopen before the Rights/native reconciliation remains inactive.
@@ -204,7 +206,7 @@ func TestPairingStateLifecycleRequiresTrustedReconciliation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reopened.admit(peer) == nil {
+	if reopened.admitContext(t.Context(), peer) == nil {
 		t.Fatal("crash activated peer")
 	}
 	if _, err = s.activate(ctx, rev, key, nil); err == nil {
@@ -240,7 +242,7 @@ func TestPairingStateLifecycleRequiresTrustedReconciliation(t *testing.T) {
 		cancelCommit()
 		return "rights-1", nil
 	})
-	if err == nil || s.admit(peer) == nil {
+	if err == nil || s.admitContext(t.Context(), peer) == nil {
 		t.Fatal("failed pin CAS admitted")
 	}
 	rev, err = s.activate(ctx, rev, key, func(_ context.Context, p pairingPeerRecord) (string, error) {
@@ -249,7 +251,7 @@ func TestPairingStateLifecycleRequiresTrustedReconciliation(t *testing.T) {
 		}
 		return "rights-1", nil
 	})
-	if err != nil || s.admit(peer) != nil {
+	if err != nil || s.admitContext(t.Context(), peer) != nil {
 		t.Fatalf("activation: %v", err)
 	}
 	// Re-observe a lost successful response before deciding another operation.
@@ -261,7 +263,7 @@ func TestPairingStateLifecycleRequiresTrustedReconciliation(t *testing.T) {
 		t.Fatal("active replay allowed")
 	}
 	rev, err = s.remove(ctx, rev, key, func() error { return nil })
-	if err != nil || s.admit(peer) == nil {
+	if err != nil || s.admitContext(t.Context(), peer) == nil {
 		t.Fatalf("removing still admits: %v", err)
 	}
 	identityBefore, _ := os.Stat(s.path)
@@ -273,7 +275,7 @@ func TestPairingStateLifecycleRequiresTrustedReconciliation(t *testing.T) {
 	if _, err = s.stage(ctx, rev, cert, transcript, "same name", ""); err == nil {
 		t.Fatal("re-pair before cleanup")
 	}
-	if _, err = s.finishRemoval(ctx, rev, key, func(context.Context, pairingPeerRecord) error { return errors.New("cleanup unknown") }); err == nil || s.admit(peer) == nil {
+	if _, err = s.finishRemoval(ctx, rev, key, func(context.Context, pairingPeerRecord) error { return errors.New("cleanup unknown") }); err == nil || s.admitContext(t.Context(), peer) == nil {
 		t.Fatal("cleanup failure enabled peer")
 	}
 	rev, err = s.finishRemoval(ctx, rev, key, func(_ context.Context, p pairingPeerRecord) error {
@@ -286,7 +288,7 @@ func TestPairingStateLifecycleRequiresTrustedReconciliation(t *testing.T) {
 		t.Fatal(err)
 	}
 	rev, err = s.stage(ctx, rev, cert, transcript, "same name", "")
-	if err != nil || s.admit(peer) == nil {
+	if err != nil || s.admitContext(t.Context(), peer) == nil {
 		t.Fatalf("empty re-pair: %v", err)
 	}
 	_, peers = pairingStateRead(t, s)
@@ -326,8 +328,13 @@ func TestPairingStateSameNameDifferentKeysAndBound(t *testing.T) {
 }
 
 func TestPairingStateNormalMutualTLS(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := runtimeTestContext(t, t.Context())
 	defer cancel()
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		t.Fatal("mutual TLS fixture requires the invoking test's deadline")
+	}
+	budget := time.Until(deadline)
 	a, b := pairingStateFixture(t), pairingStateFixture(t)
 	ac, ar, err := a.identity(ctx)
 	if err != nil {
@@ -358,35 +365,76 @@ func TestPairingStateNormalMutualTLS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := remote.Server{TLS: &tls.Config{Certificates: []tls.Certificate{bc}, ClientCAs: serverRoots}, Admit: b.admit, Timeout: time.Second, Handler: func(_ context.Context, _ remote.Peer, frame []byte) ([]byte, error) {
+	type admission struct {
+		cancel context.CancelFunc
+		done   chan error
+	}
+	admissions := make(chan admission, 4)
+	var handled atomic.Int32
+	server := remote.Server{TLS: &tls.Config{Certificates: []tls.Certificate{bc}, ClientCAs: serverRoots}, AdmitContext: func(handshake context.Context, peer remote.Peer) error {
+		read, cancelRead := context.WithCancel(handshake)
+		defer cancelRead()
+		observed := admission{cancel: cancelRead, done: make(chan error, 1)}
+		admissions <- observed
+		err := b.admitContext(read, peer)
+		observed.done <- err
+		return err
+	}, Timeout: budget, HandshakeTimeout: budget, Handler: func(_ context.Context, _ remote.Peer, frame []byte) ([]byte, error) {
+		handled.Add(1)
 		return append([]byte("paired:"), frame...), nil
 	}}
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(ctx, listener) }()
 	defer func() { cancel(); <-done }()
-	client, err := remote.Client(listener.Addr().String(), &tls.Config{Certificates: []tls.Certificate{ac}, RootCAs: clientRoots, ServerName: "oa-runtime"}, time.Second, 1024, a.admit)
+	client, err := remote.Client(listener.Addr().String(), &tls.Config{Certificates: []tls.Certificate{ac}, RootCAs: clientRoots, ServerName: "oa-runtime"}, budget, 1024, func(peer remote.Peer) error { return a.admitContext(ctx, peer) })
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := client.ExchangeFrame([]byte("q"))
+	got, err := client.WithContext(ctx).ExchangeFrame([]byte("q"))
 	if err != nil || string(got) != "paired:q" {
 		t.Fatalf("actual constructor mutual TLS: %q %v", got, err)
 	}
-	b.mu.Lock()
-	busyAt := time.Now()
-	_, busyErr := client.ExchangeFrame([]byte("busy foreign handshake"))
-	busyElapsed := time.Since(busyAt)
-	b.mu.Unlock()
-	if busyErr == nil || busyElapsed >= 500*time.Millisecond {
-		t.Fatalf("busy foreign TLS admission: err=%v elapsed=%v", busyErr, busyElapsed)
+	if err := <-(<-admissions).done; err != nil {
+		t.Fatal("normal foreign TLS admission", err)
+	}
+	// A fresh TLS admission waits for the current pairing state. Its caller
+	// cancels this read while the lock remains held; no request reaches Handler.
+	func() {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		result := make(chan error, 1)
+		go func() {
+			_, err := client.WithContext(ctx).ExchangeFrame([]byte("busy foreign handshake"))
+			result <- err
+		}()
+		var observed admission
+		select {
+		case observed = <-admissions:
+		case <-ctx.Done():
+			t.Fatal("foreign TLS admission did not reach the actual state owner", ctx.Err())
+		}
+		observed.cancel()
+		if err := <-observed.done; !errors.Is(err, context.Canceled) || !errors.Is(err, errPairingBusy) {
+			t.Fatal("busy foreign TLS admission did not preserve its caller's cancellation", err)
+		}
+		if err := <-result; err == nil || handled.Load() != 1 {
+			t.Fatal("busy foreign TLS admission reached the request handler", err, handled.Load())
+		}
+	}()
+	if got, err := client.WithContext(ctx).ExchangeFrame([]byte("after busy")); err != nil || string(got) != "paired:after busy" {
+		t.Fatalf("unlocked foreign TLS admission: %q %v", got, err)
+	}
+	if err := <-(<-admissions).done; err != nil {
+		t.Fatal("unlocked foreign TLS state read", err)
 	}
 	rev, _ := pairingStateRead(t, b)
 	if _, err = b.remove(ctx, rev, pairingKey(ac.Leaf), func() error { return nil }); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = client.ExchangeFrame([]byte("must refuse")); err == nil {
+	if _, err = client.WithContext(ctx).ExchangeFrame([]byte("must refuse")); err == nil || handled.Load() != 2 {
 		t.Fatal("removed pin admitted normal TLS")
 	}
+	t.Log("normal TLS admitted; busy state refused on caller cancellation without dispatch; unlocked TLS admitted; removed pin refused")
 }
 
 func TestPairingStateResetInventory(t *testing.T) {
@@ -412,6 +460,47 @@ func TestPairingStateResetInventory(t *testing.T) {
 	}
 }
 
+func TestPairingAdmissionCallerDeadlineControlsNativeLock(t *testing.T) {
+	s := pairingStateFixture(t)
+	cert, transcript := pairingStatePeer(t)
+	peer := pairingStateAdmission(cert)
+	rev, _ := pairingStateRead(t, s)
+	rev, err := s.stage(t.Context(), rev, cert, transcript, "peer", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.activate(t.Context(), rev, pairingKey(cert), func(context.Context, pairingPeerRecord) (string, error) {
+		return "rights-1", nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Run("waits inside caller budget", func(t *testing.T) {
+		s.mu.Lock()
+		released := make(chan struct{})
+		go func() {
+			time.Sleep(1100 * time.Millisecond)
+			s.mu.Unlock()
+			close(released)
+		}()
+		defer func() { <-released }()
+		ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+		defer cancel()
+		if err := s.admitContext(ctx, peer); err != nil {
+			t.Fatal("admission did not wait for the owned metadata read:", err)
+		}
+	})
+	t.Run("caller budget ends", func(t *testing.T) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+		defer cancel()
+		err := s.admitContext(ctx, peer)
+		if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "lock") {
+			t.Fatalf("admission did not name its caller-bounded lock refusal: %v", err)
+		}
+	})
+}
+
 func TestPairingStateBusyAdmissionAndConditionalFailure(t *testing.T) {
 	s := pairingStateFixture(t)
 	ctx := context.Background()
@@ -433,21 +522,23 @@ func TestPairingStateBusyAdmissionAndConditionalFailure(t *testing.T) {
 		done <- err
 	}()
 	<-entered
+	admission, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
 	admitted := make(chan error, 1)
-	go func() { admitted <- s.admit(peer) }()
+	go func() { admitted <- s.admitContext(admission, peer) }()
 	select {
 	case err := <-admitted:
-		if err == nil {
-			t.Error("busy edit admitted")
+		if !errors.Is(err, context.DeadlineExceeded) || !errors.Is(err, errPairingBusy) {
+			t.Errorf("caller-bounded busy admission: %v", err)
 		}
 	case <-time.After(time.Second):
-		t.Error("admission waited behind native/Rights closure")
+		t.Error("admission exceeded caller deadline")
 	}
 	close(release)
 	if err := <-done; err == nil {
 		t.Fatal("conditional failure activated peer")
 	}
-	if s.admit(peer) == nil {
+	if s.admitContext(t.Context(), peer) == nil {
 		t.Fatal("failed edit enabled pin")
 	}
 }
@@ -460,14 +551,12 @@ func TestPairingStateBusyReadsAndInvalidStateRemainDistinct(t *testing.T) {
 	_, _, identityErr := s.identity(ctx)
 	_, _, snapshotErr := s.snapshot(ctx)
 	_, changeErr := s.change(ctx, 1, func(*pairingDocument) error { t.Error("busy edit ran"); return nil })
-	admitErr := s.admit(pairingStateAdmission(cert))
-	started := time.Now()
-	_, rootsErr := s.clientRoots(ctx)
-	_, _, outgoingErr := s.outgoingTLS(ctx, pairingKey(cert))
-	_, minimumErr := s.minimum(ctx, pairingStateAdmission(cert))
-	if time.Since(started) > 100*time.Millisecond {
-		t.Error("foreign handshake waited for busy state")
-	}
+	admission, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	admitErr := s.admitContext(admission, pairingStateAdmission(cert))
+	_, rootsErr := s.clientRoots(admission)
+	_, _, outgoingErr := s.outgoingTLS(admission, pairingKey(cert))
+	_, minimumErr := s.minimum(admission, pairingStateAdmission(cert))
 	s.mu.Unlock()
 	for _, err := range []error{identityErr, snapshotErr, changeErr, admitErr, rootsErr, outgoingErr, minimumErr} {
 		if !errors.Is(err, errPairingBusy) {
@@ -481,7 +570,7 @@ func TestPairingStateBusyReadsAndInvalidStateRemainDistinct(t *testing.T) {
 	if err == nil || errors.Is(err, errPairingBusy) {
 		t.Fatalf("invalid state became transient: %v", err)
 	}
-	if err := s.admit(pairingStateAdmission(cert)); err == nil || errors.Is(err, errPairingBusy) {
+	if err := s.admitContext(t.Context(), pairingStateAdmission(cert)); err == nil || errors.Is(err, errPairingBusy) {
 		t.Fatalf("invalid admission became transient: %v", err)
 	}
 }
@@ -520,13 +609,13 @@ func TestMachineRemoveRechecksAuthorityAtPinEffect(t *testing.T) {
 		t.Fatal("refused removal changed state bytes")
 	}
 	current, _ := pairingStateRead(t, s)
-	if current != revision || s.admit(pairingStateAdmission(cert)) != nil {
+	if current != revision || s.admitContext(t.Context(), pairingStateAdmission(cert)) != nil {
 		t.Fatal("refused removal changed revision or standing pin")
 	}
 	if _, err = s.remove(ctx, revision, pairingKey(cert), func() error { return nil }); err != nil {
 		t.Fatal(err)
 	}
-	if s.admit(pairingStateAdmission(cert)) == nil {
+	if s.admitContext(t.Context(), pairingStateAdmission(cert)) == nil {
 		t.Fatal("authorized removal retained pin")
 	}
 }
@@ -617,7 +706,7 @@ func TestPairingStateReplacementDuringTrustedClosure(t *testing.T) {
 				if err != nil || !bytes.Equal(before, after) {
 					t.Fatalf("CAS overwrote replacement: %v", err)
 				}
-				if s.admit(pairingStateAdmission(cert)) == nil {
+				if s.admitContext(t.Context(), pairingStateAdmission(cert)) == nil {
 					t.Fatal("changed object/anchor admitted")
 				}
 				if rootMoveBlocked {

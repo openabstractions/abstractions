@@ -45,7 +45,9 @@ func (p *runtimeProviders) shippedPyTorchAt(file providerFile, executable func()
 	if err != nil || !info.Mode().IsRegular() || !program.FileID().Equal(installed.FileID()) {
 		return false
 	}
-	if runtime.GOOS != "windows" || p.shippedProvider(file) {
+	// The file is the installed image; its program standing, whatever its
+	// arguments, selects the installed recipes.
+	if runtime.GOOS != "windows" || p.shippedProgram(file) {
 		return true
 	}
 	if embedded == "" {

@@ -338,3 +338,29 @@ func TestFixupPackageWithoutTheFixShowsNothing(t *testing.T) {
 		t.Fatalf("with another file: %+v, %v", statuses, err)
 	}
 }
+
+// Ruling OPENCODE-WATCHER-PIN 2: the Catalog integrates only the listed
+// OpenCode releases. Another release reads one sentence naming them, from
+// the program's own bytes, before any installer runs.
+func TestCatalogNamesTheSupportedReleasesForAnotherOpenCode(t *testing.T) {
+	f := newFixupFixture(t, "stock")
+	for _, tc := range []struct{ program, want string }{
+		{"program 1.20.0", "This release of OpenAbstractions supports OpenCode 1.18.34 and 1.19.5."},
+		{"program 1.19.5", ""},
+		{"program 1.18.34", ""},
+	} {
+		f.program(t, tc.program)
+		if got := f.catalog.UnsupportedOfficialRelease(OpenCode); got != tc.want {
+			t.Fatalf("%s: %q, want %q", tc.program, got, tc.want)
+		}
+	}
+	if got := f.catalog.UnsupportedOfficialRelease(ComfyUI); got != "" {
+		t.Fatalf("an app without a fix-up: %q", got)
+	}
+	if err := os.Remove(filepath.Join(f.folder, "OpenCode.exe")); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.catalog.UnsupportedOfficialRelease(OpenCode); got != "" {
+		t.Fatalf("an unreadable program: %q", got)
+	}
+}

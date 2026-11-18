@@ -1,0 +1,90 @@
+# Published as .github/workflows/static-checks.yml in the public repository (split.manifest). Merge gate for Go static checks (architect ruling E, decisions/RULINGS-2026-11-22-owner-designs.md).
+# staticcheck and govulncheck run here and locally only. Nothing built or shipped depends on them.
+name: Static checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  GOWORK: "off"
+  GOFLAGS: -mod=readonly
+  # Exact tool versions. `go install pkg@version` verifies each download against the Go checksum database.
+  STATICCHECK_VERSION: v0.8.2
+  GOVULNCHECK_VERSION: v1.10.0
+jobs:
+  vet:
+    name: go vet (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [serve, monitor, mcp-gateway]
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: serve/go.mod
+          cache: false
+      - run: go -C ${{ matrix.module }} vet ./...
+
+  race:
+    name: go test -race (${{ matrix.module }}, Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [serve, monitor]
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: serve/go.mod
+          cache: false
+      - run: go -C ${{ matrix.module }} test -race -count=1 -timeout 30m ./...
+
+  staticcheck:
+    name: staticcheck (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [serve, monitor, mcp-gateway]
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: serve/go.mod
+          cache: false
+      - run: GOFLAGS= go install honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION}
+      - run: cd ${{ matrix.module }} && "$(go env GOPATH)/bin/staticcheck" ./...
+
+  govulncheck:
+    name: govulncheck (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [serve, monitor, mcp-gateway]
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: serve/go.mod
+          cache: false
+      - run: GOFLAGS= go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}
+      - run: cd ${{ matrix.module }} && "$(go env GOPATH)/bin/govulncheck" ./...

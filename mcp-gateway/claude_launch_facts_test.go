@@ -43,10 +43,7 @@ func TestClaudeHostLaunchFactsUseFixedSessionAndNativeDirectory(t *testing.T) {
 func TestClaudeHostLaunchLifecycleReachesNativeClaimWithoutGrant(t *testing.T) {
 	shortenAgentTiming(t)
 	t.Setenv("CLAUDE_CODE_SESSION_ID", codexAttachThread)
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
+	cwd := localWorkingFolder(t)
 	runtime := newChaosRuntime()
 	h := startChaosHelper(t, runtime, new(chaosQueue), 95, "oa-claude-integration")
 	call := func(args map[string]any) *mcp.CallToolResult {

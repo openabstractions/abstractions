@@ -9,6 +9,7 @@ import (
 
 	"github.com/openabstractions/abstraction-facade/go/client"
 	"github.com/openabstractions/abstraction-facade/go/grants"
+	rightswire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	rights "github.com/openabstractions/abstraction-rights/go/client"
 )
 
@@ -24,6 +25,9 @@ type bundleReply struct {
 	Landed   []grants.Rule `json:"landed"`
 	Stopped  *grants.Rule  `json:"stopped,omitempty"`
 	Current  *ruleJSON     `json:"current,omitempty"`
+	// Request and Expires name the change request that stopped the bundle.
+	Request string `json:"request,omitempty"`
+	Expires string `json:"expires,omitempty"`
 }
 
 func splitList(s string) []string {
@@ -36,45 +40,44 @@ func splitList(s string) []string {
 	return out
 }
 
-// rightsBundle writes each rule of a bundle as a permit for the named program,
-// one conditional edit at a time, starting at --revision or at the revision
-// list reads now. The first rule that does not apply stops the bundle; the
-// command prints the rules that landed and the one that stopped it, and never
-// retries.
-func rightsBundle(machine *client.Machine, source endpointSource, call func() (context.Context, context.CancelFunc), command, bundle string, rule rightsRule, rules []grants.Rule, revision, why string, ttl time.Duration, asJSON bool, output io.Writer) error {
+// rightsBundle requests each rule of a bundle as a permit for the named
+// program, one change request at a time within one --wait (RIGHTS-O17): the
+// person confirms each in its own popup. The first rule that does not apply
+// stops the bundle, a pending one included; the command prints the rules
+// that landed and the one that stopped it, and never retries. --revision
+// applies the first rule only at that revision; later rules apply at the
+// current one.
+func rightsBundle(machine *client.Machine, source endpointSource, call func() (context.Context, context.CancelFunc), command, bundle string, rule rightsRule, rules []grants.Rule, revision, why string, ttl, wait time.Duration, asJSON bool, output io.Writer) error {
 	command += " --for " + bundle
 	operator, err := resolveOperator(machine, source, call, command)
 	if err != nil {
 		return err
 	}
-	reply := bundleReply{Command: command, Bundle: bundle, Subject: subjectOf(rule.subject()), Why: why, Rules: rules, Landed: []grants.Rule{}}
-	if revision == "" {
-		ctx, cancel := call()
-		page, err := operator.ListPolicyContext(ctx, "", 1)
-		cancel()
-		if err != nil {
-			return &exitError{exitNotResolved, fmt.Errorf("%s: %w", command, err)}
-		}
-		if page.Outcome != rights.PolicyPageOutcomePage {
-			reply.Outcome = page.Outcome.String()
-			return bundlePrint(output, asJSON, reply, rightsOperatorRefusal(command, page.Outcome.String(), "listing the policy revision"))
-		}
-		revision = page.Revision
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(len(rules))*timeoutOf(call))
-	result, writeErr := grants.Write(ctx, operator, revision, rule.subject(), rules, ttl, why)
-	cancel()
-	reply.Outcome, reply.Revision, reply.Landed, reply.Stopped = result.Outcome, result.Revision, result.Landed, result.Stopped
-	if result.Current != nil {
-		current := ruleOf(*result.Current)
-		reply.Current = &current
-	}
+	reply := bundleReply{Command: command, Bundle: bundle, Subject: subjectOf(rule.subject()), Why: why, Rules: rules, Landed: []grants.Rule{}, Outcome: "applied"}
+	deadline := time.Now().Add(wait)
 	var failure error
-	switch {
-	case writeErr != nil:
-		failure = &exitError{exitNotResolved, fmt.Errorf("%s: %s on %s is uncertain; list the policy before another edit: %w", command, result.Stopped.Action, result.Stopped.Resource, writeErr)}
-	case result.Outcome != "applied":
-		failure = refusal(command, result.Outcome, fmt.Sprintf("%s on %s did not apply; %d of %d rules landed", result.Stopped.Action, result.Stopped.Resource, len(result.Landed), len(rules)))
+	for _, r := range rules {
+		state, err := requestRuleChange(operator, command, rights.PolicyRule{Subject: rule.subject(), Action: r.Action, Resource: r.Resource, Permit: true}, revision, false, why, ttl, max(time.Until(deadline), 0), timeoutOf(call))
+		revision = ""
+		if err != nil {
+			stopped := r
+			reply.Outcome, reply.Stopped = "uncertain", &stopped
+			failure = err
+			break
+		}
+		if state.Revision != "" {
+			reply.Revision = state.Revision
+		}
+		if state.Outcome != rightswire.ChangeRequestOutcomeApplied {
+			stopped := r
+			reply.Outcome, reply.Stopped, reply.Request, reply.Expires = state.Outcome.String(), &stopped, state.ID, state.Expires
+			failure = changeFailure(command, state)
+			if state.Outcome != rightswire.ChangeRequestOutcomePending {
+				failure = refusal(command, state.Outcome.String(), fmt.Sprintf("%s on %s did not apply; %d of %d rules landed", r.Action, r.Resource, len(reply.Landed), len(rules)))
+			}
+			break
+		}
+		reply.Landed = append(reply.Landed, r)
 	}
 	return bundlePrint(output, asJSON, reply, failure)
 }

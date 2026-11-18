@@ -125,7 +125,7 @@ func TestMessagesProgramOnlySendDeliversToTheOneLiveChat(t *testing.T) {
 	r.closed("closed-two", "Old holiday")
 	_, live := r.open("live-one", "Pictures")
 	prepared := r.prepare("")
-	if prepared.Outcome != msg.OutcomePage || prepared.SendRequest == nil || prepared.SendRequest.Context != live || prepared.ChatTitle != "Pictures" {
+	if prepared.Outcome != msg.OutcomePage || prepared.SendRequest == nil || prepared.SendRequest.Context != live || prepared.ChatTitle != "Pictures" || len(prepared.Choices) != 0 {
 		t.Fatal("one live chat among closed ones was not selected", prepared)
 	}
 	// A second chat opens between prepare and send: the prepared chat stays.
@@ -144,7 +144,9 @@ func TestMessagesProgramOnlySendDeliversToTheOneLiveChat(t *testing.T) {
 	}
 }
 
-func TestMessagesProgramOnlySendUsesInboxOpenTime(t *testing.T) {
+// Several live chats list their choices most recently opened first; a renewal
+// keeps a chat's open time and a closed chat is no choice (ruling P3).
+func TestMessagesProgramOnlySendChoicesUseInboxOpenTime(t *testing.T) {
 	r := newRoutingRun(t)
 	clock := r.f.run.d.now
 	var offset atomic.Int64
@@ -158,23 +160,23 @@ func TestMessagesProgramOnlySendUsesInboxOpenTime(t *testing.T) {
 		t.Fatal(renewed, err)
 	}
 	out := r.prepare("")
-	if out.Outcome != msg.OutcomePage || out.SendRequest == nil || out.SendRequest.Context != second || out.ChatTitle != "Reports" {
-		t.Fatal("newest live inbox lost to renewal or closed chat", out)
+	if out.Outcome != msg.OutcomeConflict || out.Reason != "ambiguous_receiver" || out.SendRequest != nil || len(out.Choices) != 2 || out.Choices[0].Context != second || out.Choices[1].Context != first {
+		t.Fatal("live choices lost open-time order to renewal or listed a closed chat", out)
 	}
 	if chosen := r.prepare(first); chosen.Outcome != msg.OutcomePage || chosen.SendRequest == nil || chosen.SendRequest.Context != first {
-		t.Fatal("exact context did not override fallback", chosen)
+		t.Fatal("exact context did not select its chat", chosen)
 	}
 }
 
-func TestMessagesProgramOnlySendBreaksOpenTimeTiesByContext(t *testing.T) {
+func TestMessagesProgramOnlyChoicesBreakOpenTimeTiesByContext(t *testing.T) {
 	r := newRoutingRun(t)
 	opened := r.f.run.d.now()
 	r.f.run.d.now = func() time.Time { return opened }
 	_, a := r.open("tie-a", "A")
 	_, b := r.open("tie-b", "B")
 	out := r.prepare("")
-	if out.Outcome != msg.OutcomePage || out.SendRequest == nil || out.SendRequest.Context != min(a, b) {
-		t.Fatal("tie resolution", out)
+	if out.Outcome != msg.OutcomeConflict || len(out.Choices) != 2 || out.Choices[0].Context != min(a, b) || out.Choices[1].Context != max(a, b) {
+		t.Fatal("tie order", out)
 	}
 }
 

@@ -69,6 +69,29 @@ func TestAsksWakeKeyAdvancesOnlyForNewOccurrences(t *testing.T) {
 	}
 }
 
+func TestMessagesWatchAsksReadsKeepTheCallerDeadline(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	deadline, _ := ctx.Deadline()
+	reads := 0
+	probe := &messagesProbe{page: wire.Page{Outcome: wire.OutcomePage, Revision: "r1"}}
+	responder := &asksWakeResponder{questions: []asks.RecordMetadata{{ID: "routine"}}}
+	b := &messagesBackend{application: "oa-claude-integration", instance: "owned", contextName: "chat-" + strings.Repeat("5", 48),
+		native: func(context.Context) (nativeMessages, error) { return probe, nil }, adapter: new(messagesAdapter),
+		asksAccess: func(read context.Context) (string, error) {
+			reads++
+			if got, ok := read.Deadline(); !ok || !got.Equal(deadline) {
+				t.Errorf("Asks read replaced the caller deadline: got %v, want %v", got, deadline)
+			}
+			return "permitted", read.Err()
+		},
+		responder: func(context.Context) (gateway.AsksResponder, error) { return responder, nil }}
+	out, err := b.MessagesWatch(ctx, gateway.MessagesWatchInput{WaitMs: 25000})
+	if err != nil || out.AsksWake == "" || reads != 3 || probe.waitMs != asksWakeWaitMs {
+		t.Fatal("caller-owned enrollment and final observation", out, reads, probe.waitMs, err)
+	}
+}
+
 func TestMessagesWatchCarriesAsksWakeOnlyForAnEnrolledAnswerer(t *testing.T) {
 	probe := &messagesProbe{page: wire.Page{Outcome: wire.OutcomePage, Revision: "r1"}}
 	responder := &asksWakeResponder{}

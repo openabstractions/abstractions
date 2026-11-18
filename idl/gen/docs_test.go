@@ -20,6 +20,9 @@ service Other {Record Read() (readonly="true")}(wire_name="test/other@1")`)
 		t.Fatal(err)
 	}
 	got := genDocs(def)
+	if !strings.Contains(got, `<a href="threat-model.html">Security</a></footer>`) {
+		t.Fatal("generated schema footer must link to the public threat model")
+	}
 	if strings.Count(got, rule("DEF-S3")) != 2 {
 		t.Fatalf("want one trait citation in each service section: %s", got)
 	}

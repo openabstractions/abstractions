@@ -82,9 +82,14 @@ func TestLoggingDefaultNeverFallsBackAndKeepsBinding(t *testing.T) {
 	t.Setenv(logging.EnvSink, legacy)
 	t.Setenv(logging.EnvService, filepath.Join(home, "absent-legacy.sock"))
 	t.Setenv("ABSTRACTION_RUNTIME_ENDPOINT", listen.Endpoint(fmt.Sprintf("absent-%d", time.Now().UnixNano())))
-	handler := logging.Default("default-test")
+	missing := logging.Default("default-test")
 	record := slog.NewRecord(time.Now(), slog.LevelInfo, "resolved default", 0)
-	if err := handler.Handle(context.Background(), record); err == nil {
+	if err := missing.Handle(context.Background(), record); err != nil {
+		t.Fatal("Handle refused the record instead of queueing it", err)
+	}
+	closing, cancelClose := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelClose()
+	if _, err := missing.Close(closing); err == nil {
 		t.Fatal("missing resolver silently accepted logging")
 	}
 	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
@@ -96,7 +101,7 @@ func TestLoggingDefaultNeverFallsBackAndKeepsBinding(t *testing.T) {
 	}
 	defer sink.Close()
 	endpoint := serve(t, sink)
-	handler = logging.NewResolvedHandler("default-test", endpoint, fixtureServer(t))
+	handler := logging.NewResolvedHandler("default-test", endpoint, fixtureServer(t))
 	if err := handler.Handle(context.Background(), record); err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +324,7 @@ func TestPythonConfigUsesServiceAndPreservesRecords(t *testing.T) {
 func TestLoggingDefaultRetainsTypedNotReady(t *testing.T) {
 	isolate(t)
 	endpoint := serve(t, nil)
-	err := logging.NewResolvedHandler("refusal-test", endpoint, fixtureServer(t)).Handle(context.Background(), slog.NewRecord(time.Now(), slog.LevelInfo, "unavailable", 0))
+	err := logging.NewResolvedHandler("refusal-test", endpoint, fixtureServer(t)).Check(context.Background())
 	var refusal *logging.ResolutionError
 	if !errors.As(err, &refusal) || refusal.Status != "not_ready" {
 		t.Fatalf("typed refusal: %T %v", err, err)

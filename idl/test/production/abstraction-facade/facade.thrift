@@ -236,6 +236,11 @@ struct HostReading {
  1: required bool up
  2: required string why
 }(unknown_fields="refuse",doc="The router's latest reading of a host declaration: whether its last survey reached the engine, and why it did not.")
+// Whether OpenAbstractions shipped the provider a declaration names (A-SEC6).
+enum ProductStanding {
+ 1: product
+ 2: third_party
+}(unknown="refuse",reader="act",doc="product: the declared program is one OpenAbstractions shipped and the declared name is one that program ships, per the product's component table. third_party: anything else.")
 struct DeclarationState {
  1: required Declaration declaration
  2: required string declared_by
@@ -317,6 +322,16 @@ struct PinnedDeclarationObservation {
  2: required string cursor(length="..128",pattern="no_control")
  3: required list<PinnedDeclarationState> declarations(length="..64")
 }(unknown_fields="refuse",doc="Complete registry@2 configuration and readings from one snapshot, including extension inventory and remote pin changes. Refusals carry empty cursor and declarations.")
+struct ProviderStanding {
+ 1: required string name(length="0..64",pattern="no_control")
+ 2: required string program(length="0..4096",pattern="no_control")
+ 3: required ProductStanding standing
+}(unknown_fields="grant",doc="The runtime's one reading of whether OpenAbstractions shipped the provider a declaration names (A-SEC6). name and program are the declaration's; a reader applies standing only to the declaration with that name and program. Only product grants a product title or a shipped engine's rank; declared_by and the declaration's source grant no standing.")
+struct ProviderStandingList {
+ 1: required DeclarationListOutcome outcome
+ 2: required string revision(length="..128",pattern="no_control")
+ 3: required list<ProviderStanding> standings(length="..64")
+}(unknown_fields="grant",doc="page carries the standing of every declaration in name order, at the edit revision Declarations reads. A declaration a reader finds here under another program, or not at all, reads as third_party. Refusals carry an empty revision and no standings.")
 service RegistryV2 {
  DeclarationListV2 Declarations()(readonly="true",doc="Read all declarations, readings and extension inventories under provider.manage.")
  DeclarationChange Declare(1:string expected_revision,2:DeclarationWithExtensions declaration)(idempotent="true",doc="Conditionally add native or HTTP declarations and extension inventory under provider.manage. Pinless remote edits refuse before writes, rules or TLS; use DeclarePinned with explicit server configuration.")
@@ -326,6 +341,7 @@ service RegistryV2 {
  DeclarationChange DeclarePinned(1:string expected_revision(length="1..128",pattern="no_control"),2:PinnedDeclaration declaration)(remote="local",idempotent="true",doc="Conditionally add complete configuration as one generation under provider.manage. Remote edits require the explicit server SPKI pin; native and HTTP edits omit it. No fallback to pinless methods.")
  DeclarationChange ReplacePinned(1:string expected_revision(length="1..128",pattern="no_control"),2:PinnedDeclaration declaration)(remote="local",idempotent="true",doc="Conditionally replace an enabled operator record of the same name under provider.manage. Installed/product and disabled records refuse; stale revisions and precommit rejection retain the prior declaration. One new generation invalidates old readiness. Postcommit rule errors remain Applied; write uncertainty requires reread, never blind rollback.")
  PinnedDeclarationObservation ObservePinned(1:string cursor(length="..128",pattern="no_control"),2:i64 wait_ms)(remote="local",readonly="true",doc="Wait for complete configuration and readings, including remote server pin changes, under provider.manage.")
+ ProviderStandingList Standings()(remote="local",readonly="true",doc="Read the runtime's product standing of every declaration under provider.manage (A-SEC6). It carries no declaration fields beyond name and program, so a published registry@1 or registry@2 reading keeps its shape. An earlier registry@2 answers unknown_method, and its reader treats every declaration as third_party.")
 }(wire_name="abstraction.facade/registry@2",doc="The local operator registry with extension inventory and explicit remote server pins. It shares the authenticated endpoint, rights decision, revisions and withdrawal authority with registry@1. A registry@1 reading omits successor metadata and remains readable by published decoders. A registry@1 Declare refuses remote declarations; native and HTTP Declare create an empty inventory.")
 
 const list<string> default_runtime_contracts = [

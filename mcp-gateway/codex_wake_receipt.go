@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -27,7 +28,18 @@ type codexWakeLedger struct {
 	Receipts    map[string]string
 	Outstanding map[string]codexWakeSlot
 	Touched     map[string]int64 `json:",omitempty"`
+	// Issued keeps, per thread slot, the last codexIssuedTickets Codex
+	// tickets this ledger handed to the host, newest last. A read with one of
+	// them belongs to a turn OA's pointer started, even after a newer pointer
+	// replaced its slot (security review 2026-11-22, item 2).
+	Issued map[string][]string `json:",omitempty"`
 }
+
+// codexIssuedTickets and codexIssuedSlots bound the issued-ticket history.
+const (
+	codexIssuedTickets = 4
+	codexIssuedSlots   = 64
+)
 
 // Capacity may forget only a receipt with no live pointer. Ordinary helper
 // exit/restart performs no cleanup. A capacity-evicted binding may wake once.
@@ -90,6 +102,12 @@ type codexWakeState struct {
 	// turn.
 	ConfirmWake     func(context.Context, string) (string, bool, error)
 	ConfirmChatWake func(context.Context, string) (string, bool, error)
+	// Held reports a Codex pointer queued to the host and not yet read with
+	// its ticket. It is false for every other host.
+	Held func(context.Context) (bool, error)
+	// Issued reports a Codex ticket this ledger handed to the host for this
+	// thread. A read with it belongs to a turn OA's pointer started.
+	Issued func(context.Context, string) (bool, error)
 }
 
 const codexWakeLease = 30 * time.Minute
@@ -109,7 +127,17 @@ func validCodexWakeTicket(ticket string) bool {
 	return true
 }
 
+// codexQueuedWakePrompt is the pointer OA queues into a Codex thread. It
+// tells the turn it is reply-only (S5 ruling, 2026-11-22): OA refuses its
+// OA tools outside the list, while Codex's own tools follow Codex's approval
+// policy.
 func codexQueuedWakePrompt(ticket string) string {
+	return "Check your OA inbox with oa_messages_wait (wake_ticket: " + ticket + "). This turn is reply-only unless the person allowed more: read the message, read files to answer and reply with oa_messages_reply."
+}
+
+// codexQueuedWakePromptBefore081 is the pointer before 0.8.1. A ledger that
+// holds one stays valid.
+func codexQueuedWakePromptBefore081(ticket string) string {
 	return "Check your OA inbox with oa_messages_wait (wake_ticket: " + ticket + ")."
 }
 
@@ -201,6 +229,8 @@ func codexWakeReceiptWithRandom(ctx context.Context, application, nativeContext,
 // it is given or reserves a new one. Every agent's chat binding wires it here.
 func (b *messagesBackend) useWakeState(state *codexWakeState) {
 	b.wakeConfirm = state.ConfirmChatWake
+	b.wakeHeld = state.Held
+	b.wakeIssued = state.Issued
 	b.wakePointer = state.Pointer
 	b.wakeReserve = func(ctx context.Context, wake, ticket string) (string, error) {
 		if ticket != "" {
@@ -216,7 +246,17 @@ func chatWakeReceiptWithRandom(ctx context.Context, application, nativeContext, 
 
 func newChatWakeReceipt(ctx context.Context, application, nativeContext, thread string, random io.Reader, codex bool, clocks ...func() time.Time) (*codexWakeState, error) {
 	d, _ := ctx.Value(agentDiagnosticKey{}).(*agentDiagnostic)
-	if d == nil || !agentRoutingContext.MatchString(nativeContext) {
+	if d == nil {
+		return nil, errors.New("Codex durable wake binding unavailable")
+	}
+	return newWakeReceiptAt(d.root, application, nativeContext, thread, random, codex, clocks...)
+}
+
+// newWakeReceiptAt opens the wake ledger in the state folder root. The helper
+// passes its own state folder; the runtime's Codex start passes the recipe's,
+// the same folder.
+func newWakeReceiptAt(root setupIdentityRef, application, nativeContext, thread string, random io.Reader, codex bool, clocks ...func() time.Time) (*codexWakeState, error) {
+	if root == nil || !agentRoutingContext.MatchString(nativeContext) {
 		return nil, errors.New("Codex durable wake binding unavailable")
 	}
 	program, err := os.Executable()
@@ -232,16 +272,18 @@ func newChatWakeReceipt(ctx context.Context, application, nativeContext, thread 
 	binding := hex.EncodeToString(sum[:])
 	threadSum := sha256.Sum256([]byte(nativecli.AgentApplicationBase(application) + "\x00" + thread))
 	threadSlot := hex.EncodeToString(threadSum[:])
-	// Another chat may share the ledger. Preserve each accepted Codex pointer
-	// regardless of which adapter next prunes or reserves.
+	// Another chat may share the ledger. Preserve each live Codex pointer
+	// regardless of which adapter next prunes or reserves. An accepted pointer
+	// holds the slot for codexWakeLease from its acceptance; after that the
+	// next new message queues its own (architect ruling 1, 2026-11-22).
 	pending := func(slot codexWakeSlot, at int64) bool {
 		if slot.UnknownUntil != 0 {
 			return slot.UnknownUntil > at
 		}
-		return slot.Accepted || slot.Until > at
+		return slot.Until > at
 	}
 
-	path := filepath.Join(d.root.FileID().Path(), "codex-wake-receipts.json")
+	path := filepath.Join(root.FileID().Path(), "codex-wake-receipts.json")
 	decode := func(raw []byte) (codexWakeLedger, error) {
 		rows := codexWakeLedger{Receipts: map[string]string{}, Outstanding: map[string]codexWakeSlot{}}
 		if len(raw) != 0 {
@@ -254,6 +296,19 @@ func newChatWakeReceipt(ctx context.Context, application, nativeContext, thread 
 		}
 		if rows.Touched == nil {
 			rows.Touched = map[string]int64{}
+		}
+		if len(rows.Issued) > codexIssuedSlots {
+			return rows, errors.New("Codex issued ticket bound exceeded")
+		}
+		for slot, tickets := range rows.Issued {
+			if len(slot) != 64 || len(tickets) == 0 || len(tickets) > codexIssuedTickets {
+				return rows, errors.New("invalid Codex issued tickets")
+			}
+			for _, ticket := range tickets {
+				if !validCodexWakeTicket(ticket) {
+					return rows, errors.New("invalid Codex issued ticket")
+				}
+			}
 		}
 		if len(rows.Touched) > 256 {
 			return rows, errors.New("Codex wake timestamp bound exceeded")
@@ -275,7 +330,7 @@ func newChatWakeReceipt(ctx context.Context, application, nativeContext, thread 
 			if owner.Accepted && (!owner.Codex || owner.Prompt == "" || owner.UnknownUntil != 0) {
 				return rows, errors.New("invalid Codex queue acceptance")
 			}
-			currentCodexPrompt := owner.Codex && len(owner.Ticket) == 8 && owner.Prompt == codexQueuedWakePrompt(owner.Ticket)
+			currentCodexPrompt := owner.Codex && len(owner.Ticket) == 8 && (owner.Prompt == codexQueuedWakePrompt(owner.Ticket) || owner.Prompt == codexQueuedWakePromptBefore081(owner.Ticket))
 			if len(slot) != 64 || rows.Receipts[owner.Binding] == "" || !validCodexWakeTicket(owner.Ticket) || owner.Until <= 0 || len(owner.Prompt) > 512 || !currentCodexPrompt && !validWakePointer(owner.Prompt, owner.Ticket, owner.Repeat) || !validMessageWake(owner.PriorWake) || owner.PriorWake >= rows.Receipts[owner.Binding] {
 				return rows, errors.New("invalid Codex outstanding pointer")
 			}
@@ -294,7 +349,7 @@ func newChatWakeReceipt(ctx context.Context, application, nativeContext, thread 
 		}
 	}
 	current := func(call context.Context) error {
-		if !setupIdentitiesCurrent(call, []setupIdentityRef{d.root}) {
+		if !setupIdentitiesCurrent(call, []setupIdentityRef{root}) {
 			return errors.New("Codex wake state changed")
 		}
 		return nil
@@ -411,6 +466,7 @@ func newChatWakeReceipt(ctx context.Context, application, nativeContext, thread 
 			}
 			held.UnknownUntil = 0
 			held.Accepted = true
+			held.Until = now().Add(codexWakeLease).UnixMilli()
 			rows.Outstanding[threadSlot] = held
 			return encode(&rows)
 		})
@@ -418,6 +474,30 @@ func newChatWakeReceipt(ctx context.Context, application, nativeContext, thread 
 			return nil
 		}
 		return err
+	}
+	// heldCodex reports this thread's Codex pointer queued to the host and not
+	// yet read with its ticket: a read now belongs to the turn it starts (S5
+	// ruling, 2026-11-22). It changes nothing.
+	heldCodex := func(call context.Context) (bool, error) {
+		if !codex {
+			return false, nil
+		}
+		if err := current(call); err != nil {
+			return false, err
+		}
+		raw, err := cas.ReadLimitContext(call, path, 64<<10)
+		if errors.Is(err, cas.ErrNoValue) || errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		rows, err := decode(raw)
+		if err != nil {
+			return false, err
+		}
+		held, ok := rows.Outstanding[threadSlot]
+		return ok && held.Binding == binding && held.Prompt != "" && pending(held, now().UnixMilli()), nil
 	}
 	confirm := func(call context.Context, ticket string, currentChat bool) (string, bool, error) {
 		if err := current(call); err != nil {
@@ -437,7 +517,10 @@ func newChatWakeReceipt(ctx context.Context, application, nativeContext, thread 
 				return nil, err
 			}
 			held, ok := rows.Outstanding[threadSlot]
-			if !ok || !anyHeld && held.Ticket != ticket || !pending(held, now().UnixMilli()) || held.Binding != binding && !currentChat {
+			// A turn Codex runs after its accepted pointer's lease still
+			// confirms that pointer by its ticket while the slot is unreplaced.
+			live := pending(held, now().UnixMilli()) || codex && !anyHeld && held.Accepted
+			if !ok || !anyHeld && held.Ticket != ticket || !live || held.Binding != binding && !currentChat {
 				return raw, nil
 			}
 			// A ticketless read woke a turn only when the pointer reached
@@ -488,6 +571,7 @@ func newChatWakeReceipt(ctx context.Context, application, nativeContext, thread 
 				held.Codex = codex
 				if codex {
 					held.UnknownUntil = now().Add(codexUnknownQueueLease).UnixMilli()
+					rememberCodexIssued(&rows, threadSlot, ticket)
 				}
 				rows.Outstanding[threadSlot] = held
 			}
@@ -502,10 +586,59 @@ func newChatWakeReceipt(ctx context.Context, application, nativeContext, thread 
 		}
 		return confirm(ctx, ticket, true)
 	}
-	return &codexWakeState{Load: load, Pointer: pointer, Reserve: func(ctx context.Context, wake string) (string, error) { return claim(ctx, wake, "") }, Refresh: func(ctx context.Context, ticket, wake string) (string, error) { return claim(ctx, wake, ticket) },
+	// issued reports a Codex ticket this ledger handed to the host for this
+	// thread: the held pointer's or one of the last few. It changes nothing.
+	issued := func(call context.Context, ticket string) (bool, error) {
+		if !codex || !validCodexWakeTicket(ticket) {
+			return false, nil
+		}
+		if err := current(call); err != nil {
+			return false, err
+		}
+		raw, err := cas.ReadLimitContext(call, path, 64<<10)
+		if errors.Is(err, cas.ErrNoValue) || errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		rows, err := decode(raw)
+		if err != nil {
+			return false, err
+		}
+		if held, ok := rows.Outstanding[threadSlot]; ok && held.Ticket == ticket && held.Prompt != "" {
+			return true, nil
+		}
+		return slices.Contains(rows.Issued[threadSlot], ticket), nil
+	}
+	return &codexWakeState{Load: load, Pointer: pointer, Issued: issued, Reserve: func(ctx context.Context, wake string) (string, error) { return claim(ctx, wake, "") }, Refresh: func(ctx context.Context, ticket, wake string) (string, error) { return claim(ctx, wake, ticket) },
 		UndoUnstarted:   undoUnstarted,
 		AcceptQueued:    acceptQueued,
 		ConfirmWake:     func(ctx context.Context, ticket string) (string, bool, error) { return confirm(ctx, ticket, false) },
 		ConfirmChatWake: confirmChat,
+		Held:            heldCodex,
 	}, nil
+}
+
+// rememberCodexIssued records a ticket handed to the host for a thread slot,
+// keeping the last codexIssuedTickets. A full history drops the slot whose key
+// sorts first.
+func rememberCodexIssued(rows *codexWakeLedger, slot, ticket string) {
+	if rows.Issued == nil {
+		rows.Issued = map[string][]string{}
+	}
+	if _, ok := rows.Issued[slot]; !ok && len(rows.Issued) >= codexIssuedSlots {
+		oldest := ""
+		for key := range rows.Issued {
+			if oldest == "" || key < oldest {
+				oldest = key
+			}
+		}
+		delete(rows.Issued, oldest)
+	}
+	tickets := append(slices.DeleteFunc(slices.Clone(rows.Issued[slot]), func(t string) bool { return t == ticket }), ticket)
+	if len(tickets) > codexIssuedTickets {
+		tickets = tickets[len(tickets)-codexIssuedTickets:]
+	}
+	rows.Issued[slot] = tickets
 }

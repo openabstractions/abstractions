@@ -12,6 +12,7 @@ import (
 	"unsafe"
 
 	host "github.com/openabstractions/abstraction-facade/go/runtime"
+	rights "github.com/openabstractions/abstraction-rights/go"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	"golang.org/x/sys/windows"
 )
@@ -97,9 +98,10 @@ func withoutWindowsReadBypassPrivileges(t *testing.T, call func()) {
 }
 
 // A policy file whose ACL denies reads keeps answering access denied. The
-// policy store retries that transient writer-facing error until its read budget,
-// and the runtime fails the decision closed. Resetting the ACL restores the
-// exact policy bytes and the next decision.
+// policy store retries that open for rights.DecisionDeniedRetry, which covers a
+// writer's replace, and then answers access denied. The runtime fails the
+// decision closed within that window. Resetting the ACL restores the exact
+// policy bytes and the next decision.
 func TestADecisionThatCannotBeReadInTimeIsUnavailable(t *testing.T) {
 	r := testRights(t, t.TempDir())
 	rules := []installationRule{{host.ConfigEditAction, host.ConfigEditResource}}
@@ -143,11 +145,11 @@ func TestADecisionThatCannotBeReadInTimeIsUnavailable(t *testing.T) {
 		start := time.Now()
 		checkErr := r.policy.CheckState(context.Background())
 		checkElapsed := time.Since(start)
-		if !errors.Is(checkErr, context.DeadlineExceeded) {
-			t.Fatalf("CheckState = %v after %v, want deadline exceeded", checkErr, checkElapsed)
+		if !errors.Is(checkErr, os.ErrPermission) {
+			t.Fatalf("CheckState = %v after %v, want access denied", checkErr, checkElapsed)
 		}
-		if checkElapsed < decisionBudget-100*time.Millisecond || checkElapsed > decisionBudget+time.Second {
-			t.Fatalf("CheckState returned after %v, want the %v read budget", checkElapsed, decisionBudget)
+		if checkElapsed < rights.DecisionDeniedRetry-100*time.Millisecond || checkElapsed > rights.DecisionDeniedRetry+time.Second {
+			t.Fatalf("CheckState returned after %v, want the %v denied-open retry", checkElapsed, rights.DecisionDeniedRetry)
 		}
 
 		start = time.Now()
@@ -156,8 +158,8 @@ func TestADecisionThatCannotBeReadInTimeIsUnavailable(t *testing.T) {
 		if d.Outcome != rwire.DecisionOutcomeUnavailable {
 			t.Fatalf("read-denied policy decision: %+v after %v", d, decisionElapsed)
 		}
-		if decisionElapsed < decisionBudget-100*time.Millisecond || decisionElapsed > decisionBudget+time.Second {
-			t.Fatalf("decision returned after %v, want the %v read budget", decisionElapsed, decisionBudget)
+		if decisionElapsed < rights.DecisionDeniedRetry-100*time.Millisecond || decisionElapsed > rights.DecisionDeniedRetry+time.Second {
+			t.Fatalf("decision returned after %v, want the %v denied-open retry", decisionElapsed, rights.DecisionDeniedRetry)
 		}
 	})
 

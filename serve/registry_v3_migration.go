@@ -121,6 +121,9 @@ func shippedPublisherContinuous(prior *applicationV3Source, code identity.Code, 
 }
 
 func (p *runtimeProviders) adoptProgramRegistrations(ctx context.Context) error {
+	// Records naming OA tools of a removed installation folder are repaired
+	// first, so adoption reads them at the running installation's tools.
+	p.repairMovedInstall(ctx)
 	if p.registrationDirectory == nil {
 		return nil
 	}
@@ -199,13 +202,18 @@ func (p *runtimeProviders) adoptProgramRegistrations(ctx context.Context) error 
 		incomingDigests := map[registration.FacetReference]string{}
 		incomingFiles := map[registration.FacetReference]providerFile{}
 		for _, file := range group.files {
+			//unchecked: the grouping loop above admitted this file through legacyRegistrationSpec
 			_, individual, _ := legacyRegistrationSpec(file)
+			//unchecked: a spec past the @3 encoded bound encodes as nil; oldBytes still carries the whole legacy file
 			encoded, _ := registrationEncoded(registration.EncodeRegistrationSpec, &individual)
-			oldBytes, _ := registrationJSON(struct {
+			oldBytes, err := registrationJSON(struct {
 				File     providerFile
 				Source   string
 				Disabled bool
 			}{file, file.Source, file.Disabled})
+			if err != nil {
+				return err
+			}
 			digest := applicationV3Hash(append(append(encoded, oldBytes...), []byte(file.Source)...))
 			for _, facet := range registrationReferences(individual) {
 				incomingSources[facet] = registrationLegacySource(file.Source)

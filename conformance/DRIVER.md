@@ -262,6 +262,7 @@ epoch it last handed that owner and issues later operations against it.
 | `src=missing` | a `file://` source that does not exist |
 | `src=nofetcher` | a scheme no implementation is expected to have |
 | `src=http:<behaviour>` | `<base>/<behaviour>/<size>` against the fixture |
+| `src=https:gated` | the same gated artifact from a real loopback TLS origin, trusted through its test CA |
 | `sink=foreign` | an absolute path in the *other* platform's convention |
 | `sink=abs` | an absolute path in *this* platform's convention, which a record written by another machine would carry |
 | `cred=<name>` | the sources carry that credential name |
@@ -335,6 +336,14 @@ installed, and `ABSTRACTION_CRED_<NAME>_HOSTS` the hosts it is bound to, where
 is fixed, because the fixture's `gated` behaviour is what checks it:
 
     hf_thisMustNeverAppearOnDisk_EXAMPLE
+
+The Go driver's `https:gated` origin runs in the driver process with
+`httptest.NewTLSServer`. Its HTTP fetcher trusts that fixture's test CA and
+verifies the certificate and hostname. The bound and wrong-host scenarios use
+this secure origin; `credential-cleartext` keeps the plain HTTP refusal.
+Checkpoint expectations may name `@FIXTURE@`, expanded by the judge to the
+exact base URL supplied to that scenario. Observed checkpoints retain their
+actual source URLs, including the scenario path and origin port.
 
 sent as `Authorization: Bearer <that>`. It carries `EXAMPLE` for the reason the
 documented example keys of every cloud vendor do — a token that cannot

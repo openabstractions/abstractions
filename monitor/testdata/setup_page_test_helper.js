@@ -65,7 +65,7 @@ const comfy = (over = {}) => ({
 const overview = (over = {}) => ({version: '0.8.0', offered: ['thenoise', 'pytorch'], picture_engine: 'pytorch', picture_application: comfy(),
   installed: {}, picture_models: [compact(), full(), zimage()],
   coding_model: {...model('qwen', 'Qwen3.6 35B', 22.9 * GB), repository: 'unsloth/Qwen3.6-35B', source: 'https://huggingface.co/unsloth/Qwen3.6-35B', installed: false, used_by: []},
-  desktop_integration: {app: 'opencode', coding: true, installed: false, reason: 'This build can integrate an existing OpenCode Desktop installation.'}, engines: engines(), ...over});
+  desktop_integration: {app: 'opencode', coding: true, installed: false, reason: 'Get opens opencode.ai, where you download and install OpenCode yourself. Then Connect links it to OpenAbstractions.'}, engines: engines(), ...over});
 // engines are the overview's Engines rows on a Strix Halo computer, as
 // setupEngines writes them; withLemonade adds the core's Lemonade provider.
 const engines = (lemonade = null) => [{id: 'modelhost', title: 'llama.cpp', caption: 'Chat and embeddings', kind: 'included'}, ...(lemonade ? [{id: 'lemonade', title: 'Lemonade', caption: 'Pictures, speech and transcription', kind: 'provider', ready: !!lemonade.ready}] : []),

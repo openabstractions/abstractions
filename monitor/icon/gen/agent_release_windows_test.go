@@ -74,7 +74,7 @@ func TestCompiledAgentReleaseResource(t *testing.T) {
 				size, _, _ := kernel.NewProc("SizeofResource").Call(h, resource)
 				loaded, _, _ := kernel.NewProc("LoadResource").Call(h, resource)
 				data, _, _ := kernel.NewProc("LockResource").Call(loaded)
-				if data == 0 || size != uintptr(len(body)) || !bytes.Equal(unsafe.Slice((*byte)(unsafe.Pointer(data)), int(size)), body) {
+				if data == 0 || size != uintptr(len(body)) || !bytes.Equal(unsafe.Slice((*byte)(nativePointer(data)), int(size)), body) {
 					t.Fatal("linked resource changed producer bytes")
 				}
 				quoted, _ := syscall.UTF16PtrFromString(`"` + resourceName + `"`)

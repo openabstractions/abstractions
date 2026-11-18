@@ -28,9 +28,9 @@ var selfProgramSites = map[string]string{
 	"servicePanel.reviewClaudeBackgroundScope": "names this Panel's program in a question; launches none",
 	"exploreSelfProgram":                       "names this Panel's program; launches none",
 	"oaOwnPrograms":                            "titles this Panel and its runtime programs; launches none",
-	"shippedProvider":                          "reads this Panel's folder to title the providers shipped beside it; launches none",
 	"loadPanelNativeModel":                     "loads the app-model library beside the Panel; launches none",
 	"main":                                     "validates review examples against this Panel's program; launches none",
+	"guardLoopbackPage":                        "checks whether this Panel is the installed one to guard its developer page; launches none",
 }
 
 func TestEverySelfProgramSiteIsListed(t *testing.T) {

@@ -296,7 +296,7 @@ cited_rules() {
 SEP=$(printf '\034')
 
 judge() {
-    awk -v SEP="$SEP" '
+    awk -v SEP="$SEP" -v FIXTURE="${3:-}" '
     function head(s) { sub(/[ \t].*$/, "", s); return s }
     function tail(s,   p) { p = index(s, " "); return p ? substr(s, p + 1) : "" }
     function canonical_verdict(s) {
@@ -338,6 +338,11 @@ judge() {
     NR == FNR { answer[FNR] = $0; next }
     {
         want = substr($0, index($0, " ") + 1)
+        # The fixture base is allocated for this run. Expand a literal marker
+        # in expectations only; the observed checkpoint stays untouched.
+        while ((fixture_at = index(want, "@FIXTURE@")) != 0) {
+            want = substr(want, 1, fixture_at - 1) FIXTURE substr(want, fixture_at + 9)
+        }
         sub(/[ \t]+$/, "", want)
         tags = ""
         while (match(want, /\[[A-Z]+-[A-Z]*[0-9]+\]$/)) {
@@ -402,7 +407,7 @@ run_one() {
     bad=0
     held=0
     sed -n -E 's/^# *expect +([0-9]+) *: */\1 /p' "$f" > "$WORK/exp"
-    judge "$out" "$WORK/exp" > "$WORK/judged"
+    judge "$out" "$WORK/exp" "${FIXTURE:+$FIXTURE/$name}" > "$WORK/judged"
     while IFS=$SEP read -r verdict step tags want got; do
         if [ "$verdict" = held ]; then
             held=$((held + 1))

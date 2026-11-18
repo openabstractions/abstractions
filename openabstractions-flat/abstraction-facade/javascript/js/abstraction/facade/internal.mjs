@@ -183,6 +183,11 @@ export const DeclarationReadiness = Object.freeze({
   Disabled: "disabled",
 });
 
+export const ProductStanding = Object.freeze({
+  Product: "product",
+  ThirdParty: "third_party",
+});
+
 export const DeclarationListOutcome = Object.freeze({
   Page: "page",
   Invalid: "invalid",
@@ -1207,6 +1212,65 @@ function writePinnedDeclarationObservation(out, v, depth) {
   out.byte(0x7d);
 }
 
+function writeProviderStanding(out, v, depth) {
+  { const n = ENC.encode(v.name).length; if (n > 64) throw new Refusal("bad_value",0); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.name)) throw new Refusal("bad_value",0);
+  { const n = ENC.encode(v.program).length; if (n > 4096) throw new Refusal("bad_value",0); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.program)) throw new Refusal("bad_value",0);
+    if (typeof v.standing !== "string") throw new Refusal("wrong_type",0);
+    if (v.standing !== "product" && v.standing !== "third_party") { throw new Refusal("bad_enum",0); }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "name");
+  out.ascii(": ");
+  esc(out, v.name);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "program");
+  out.ascii(": ");
+  esc(out, v.program);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "standing");
+  out.ascii(": ");
+  esc(out, v.standing);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeProviderStandingList(out, v, depth) {
+  { const n = ENC.encode(v.revision).length; if (n > 128) throw new Refusal("bad_value",0); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.revision)) throw new Refusal("bad_value",0);
+  { const n = v.standings.length; if (n > 64) throw new Refusal("bad_value",0); }
+    if (typeof v.outcome !== "string") throw new Refusal("wrong_type",0);
+    if (v.outcome !== "page" && v.outcome !== "invalid" && v.outcome !== "forbidden" && v.outcome !== "unavailable") { throw new Refusal("bad_enum",0); }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "outcome");
+  out.ascii(": ");
+  esc(out, v.outcome);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "revision");
+  out.ascii(": ");
+  esc(out, v.revision);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "standings");
+  out.ascii(": ");
+  writeList(out, v.standings, depth + 1, writeProviderStanding);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
 function writeApplicationInterface(out, v, depth) {
   out.byte(0x7b);
   out.byte(0x0a);
@@ -1800,6 +1864,11 @@ function writeOARegistryV2ObservePinnedArguments(out, v, depth) {
   out.byte(0x7d);
 }
 
+function writeOARegistryV2StandingsArguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x7d);
+}
+
 function writeOAApplicationsRegisterArguments(out, v, depth) {
   out.byte(0x7b);
   out.byte(0x0a);
@@ -2185,6 +2254,18 @@ function writeOARegistryV2ObservePinnedResult(out, v, depth) {
   esc(out, "value");
   out.ascii(": ");
   writePinnedDeclarationObservation(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOARegistryV2StandingsResult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  writeProviderStandingList(out, v.value, depth + 1);
   out.byte(0x0a);
   pad(out, depth);
   out.byte(0x7d);
@@ -2903,6 +2984,23 @@ export function newPinnedDeclarationObservation() {
   return { outcome: "", cursor: "", declarations: [] };
 }
 
+// The runtime's one reading of whether OpenAbstractions shipped the provider a
+// declaration names (A-SEC6). name and program are the declaration's; a reader
+// applies standing only to the declaration with that name and program. Only
+// product grants a product title or a shipped engine's rank; declared_by and
+// the declaration's source grant no standing.
+export function newProviderStanding() {
+  return { name: "", program: "", standing: "" };
+}
+
+// page carries the standing of every declaration in name order, at the edit
+// revision Declarations reads. A declaration a reader finds here under another
+// program, or not at all, reads as third_party. Refusals carry an empty
+// revision and no standings.
+export function newProviderStandingList() {
+  return { outcome: "", revision: "", standings: [] };
+}
+
 // An application's claimed interface metadata. name identifies it within one
 // instance; protocol and contract describe claimed support. No connection
 // address or executable authority is conveyed. Invocation requires an
@@ -3084,6 +3182,10 @@ function newOARegistryV2ObservePinnedArguments() {
   return { cursor: "", waitMs: 0n };
 }
 
+function newOARegistryV2StandingsArguments() {
+  return { };
+}
+
 function newOAApplicationsRegisterArguments() {
   return { descriptor: newApplicationDescriptor() };
 }
@@ -3190,6 +3292,10 @@ function newOARegistryV2ReplacePinnedResult() {
 
 function newOARegistryV2ObservePinnedResult() {
   return { value: newPinnedDeclarationObservation() };
+}
+
+function newOARegistryV2StandingsResult() {
+  return { value: newProviderStandingList() };
 }
 
 function newOAApplicationsRegisterResult() {
@@ -4584,6 +4690,107 @@ function readPinnedDeclarationObservation(r) {
   return v;
 }
 
+function readProviderStanding(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newProviderStanding();
+  let seen = 0;
+  r.ws();
+  const unknownKeys = new Set();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "name") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.name = r.string();
+      } else if (key === "program") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.program = r.string();
+      } else if (key === "standing") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.standing = r.string();
+      } else {
+        if (unknownKeys.has(key)) throw r.refuse("duplicate_key");
+        unknownKeys.add(key);
+        r.skipValue();
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 7) >>> 0) !== 7) throw r.refuse("missing_field");
+  { const n = ENC.encode(v.name).length; if (n > 64) throw r.refuse("bad_value"); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.name)) throw r.refuse("bad_value");
+  { const n = ENC.encode(v.program).length; if (n > 4096) throw r.refuse("bad_value"); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.program)) throw r.refuse("bad_value");
+    if (v.standing !== "product" && v.standing !== "third_party") { throw r.refuse("bad_enum"); }
+  return v;
+}
+
+function readProviderStandingList(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newProviderStandingList();
+  let seen = 0;
+  r.ws();
+  const unknownKeys = new Set();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "outcome") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.outcome = r.string();
+      } else if (key === "revision") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.revision = r.string();
+      } else if (key === "standings") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.standings = readList(r, readProviderStanding);
+      } else {
+        if (unknownKeys.has(key)) throw r.refuse("duplicate_key");
+        unknownKeys.add(key);
+        r.skipValue();
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 7) >>> 0) !== 7) throw r.refuse("missing_field");
+  { const n = ENC.encode(v.revision).length; if (n > 128) throw r.refuse("bad_value"); }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(v.revision)) throw r.refuse("bad_value");
+  { const n = v.standings.length; if (n > 64) throw r.refuse("bad_value"); }
+    if (v.outcome !== "page" && v.outcome !== "invalid" && v.outcome !== "forbidden" && v.outcome !== "unavailable") { throw r.refuse("bad_enum"); }
+  return v;
+}
+
 function readApplicationInterface(r) {
   if (r.at() !== 0x7b) throw r.refuse("wrong_type");
   r.enter();
@@ -5737,6 +5944,37 @@ function readOARegistryV2ObservePinnedArguments(r) {
   return v;
 }
 
+function readOARegistryV2StandingsArguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOARegistryV2StandingsArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (false) {
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  return v;
+}
+
 function readOAApplicationsRegisterArguments(r) {
   if (r.at() !== 0x7b) throw r.refuse("wrong_type");
   r.enter();
@@ -6726,6 +6964,41 @@ function readOARegistryV2ObservePinnedResult(r) {
   return v;
 }
 
+function readOARegistryV2StandingsResult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOARegistryV2StandingsResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = readProviderStandingList(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
 function readOAApplicationsRegisterResult(r) {
   if (r.at() !== 0x7b) throw r.refuse("wrong_type");
   r.enter();
@@ -7044,6 +7317,8 @@ const JSON_RECORDS = Object.freeze({
   PinnedDeclarationState: [writePinnedDeclarationState, readPinnedDeclarationState],
   PinnedDeclarationList: [writePinnedDeclarationList, readPinnedDeclarationList],
   PinnedDeclarationObservation: [writePinnedDeclarationObservation, readPinnedDeclarationObservation],
+  ProviderStanding: [writeProviderStanding, readProviderStanding],
+  ProviderStandingList: [writeProviderStandingList, readProviderStandingList],
   ApplicationInterface: [writeApplicationInterface, readApplicationInterface],
   ApplicationActivationRecipe: [writeApplicationActivationRecipe, readApplicationActivationRecipe],
   ApplicationDescriptor: [writeApplicationDescriptor, readApplicationDescriptor],
@@ -7168,6 +7443,8 @@ _serviceRecords["PinnedDeclaration"] = [["declaration","Declaration","never"],["
 _serviceRecords["PinnedDeclarationState"] = [["state","DeclarationState","never"],["supportedExtensions","list<DeclarationExtension>","zero"],["remoteServerKeySha256","string","zero"],];
 _serviceRecords["PinnedDeclarationList"] = [["outcome","string","never"],["revision","string","never"],["declarations","list<PinnedDeclarationState>","never"],];
 _serviceRecords["PinnedDeclarationObservation"] = [["outcome","string","never"],["cursor","string","never"],["declarations","list<PinnedDeclarationState>","never"],];
+_serviceRecords["ProviderStanding"] = [["name","string","never"],["program","string","never"],["standing","string","never"],];
+_serviceRecords["ProviderStandingList"] = [["outcome","string","never"],["revision","string","never"],["standings","list<ProviderStanding>","never"],];
 _serviceRecords["ApplicationInterface"] = [["name","string","never"],["protocol","string","never"],["contract","string","never"],];
 _serviceRecords["ApplicationActivationRecipe"] = [["arguments","list<string>","never"],["readiness","ApplicationInterface","never"],["readinessTimeoutMs","i64","never"],];
 _serviceRecords["ApplicationDescriptor"] = [["name","string","never"],["program","string","never"],["title","string","never"],["startGuidance","string","never"],["activation","ApplicationActivationRecipe","absent"],];
@@ -7196,6 +7473,7 @@ _serviceRecords["OARegistryV2DeclarationsPinnedArguments"] = [];
 _serviceRecords["OARegistryV2DeclarePinnedArguments"] = [["expectedRevision","string","never"],["declaration","PinnedDeclaration","never"],];
 _serviceRecords["OARegistryV2ReplacePinnedArguments"] = [["expectedRevision","string","never"],["declaration","PinnedDeclaration","never"],];
 _serviceRecords["OARegistryV2ObservePinnedArguments"] = [["cursor","string","never"],["waitMs","i64","never"],];
+_serviceRecords["OARegistryV2StandingsArguments"] = [];
 _serviceRecords["OAApplicationsRegisterArguments"] = [["descriptor","ApplicationDescriptor","never"],];
 _serviceRecords["OAApplicationsAskConfirmationArguments"] = [["application","string","never"],];
 _serviceRecords["OAApplicationsRemoveArguments"] = [["application","string","never"],];
@@ -7223,6 +7501,7 @@ _serviceRecords["OARegistryV2DeclarationsPinnedResult"] = [["value","PinnedDecla
 _serviceRecords["OARegistryV2DeclarePinnedResult"] = [["value","DeclarationChange","never"],];
 _serviceRecords["OARegistryV2ReplacePinnedResult"] = [["value","DeclarationChange","never"],];
 _serviceRecords["OARegistryV2ObservePinnedResult"] = [["value","PinnedDeclarationObservation","never"],];
+_serviceRecords["OARegistryV2StandingsResult"] = [["value","ProviderStandingList","never"],];
 _serviceRecords["OAApplicationsRegisterResult"] = [["value","ApplicationChange","never"],];
 _serviceRecords["OAApplicationsAskConfirmationResult"] = [["value","ApplicationChange","never"],];
 _serviceRecords["OAApplicationsRemoveResult"] = [["value","ApplicationChange","never"],];
@@ -7470,6 +7749,17 @@ export class RegistryV2Client {
     const _result = _serviceDecode(readOARegistryV2ObservePinnedResult, _reply, 1);
     return _result.value;
   }
+
+  async standings() {
+    const _args = newOARegistryV2StandingsArguments();
+    _serviceCheck("OARegistryV2StandingsArguments", _args);
+    const _payload = _serviceEncode(writeOARegistryV2StandingsArguments, _args, 1);
+    _serviceDecode(readOARegistryV2StandingsArguments, _payload, 1);
+    const _request = _serviceRequest("abstraction.facade/registry@2", "Standings", _payload);
+    const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.facade/registry@2", "Standings");
+    const _result = _serviceDecode(readOARegistryV2StandingsResult, _reply, 1);
+    return _result.value;
+  }
 }
 export const RegistryV2Service = Object.freeze({wireName:"abstraction.facade/registry@2",Client:RegistryV2Client});
 
@@ -7606,6 +7896,8 @@ _namedRecords["PinnedDeclaration"] = [["declaration","Declaration","never"],["su
 _namedRecords["PinnedDeclarationState"] = [["state","DeclarationState","never"],["supportedExtensions","list<DeclarationExtension>","zero"],["remoteServerKeySha256","string","zero"],];
 _namedRecords["PinnedDeclarationList"] = [["outcome","string","never"],["revision","string","never"],["declarations","list<PinnedDeclarationState>","never"],];
 _namedRecords["PinnedDeclarationObservation"] = [["outcome","string","never"],["cursor","string","never"],["declarations","list<PinnedDeclarationState>","never"],];
+_namedRecords["ProviderStanding"] = [["name","string","never"],["program","string","never"],["standing","string","never"],];
+_namedRecords["ProviderStandingList"] = [["outcome","string","never"],["revision","string","never"],["standings","list<ProviderStanding>","never"],];
 _namedRecords["ApplicationInterface"] = [["name","string","never"],["protocol","string","never"],["contract","string","never"],];
 _namedRecords["ApplicationActivationRecipe"] = [["arguments","list<string>","never"],["readiness","ApplicationInterface","never"],["readinessTimeoutMs","i64","never"],];
 _namedRecords["ApplicationDescriptor"] = [["name","string","never"],["program","string","never"],["title","string","never"],["startGuidance","string","never"],["activation","ApplicationActivationRecipe","absent"],];
@@ -7764,6 +8056,14 @@ export function checkPinnedDeclarationList(v, depth = 0, limit = DEPTH_LIMIT) {
 
 export function checkPinnedDeclarationObservation(v, depth = 0, limit = DEPTH_LIMIT) {
   _namedCheck("PinnedDeclarationObservation", v, depth, Math.min(limit, DEPTH_LIMIT));
+}
+
+export function checkProviderStanding(v, depth = 0, limit = DEPTH_LIMIT) {
+  _namedCheck("ProviderStanding", v, depth, Math.min(limit, DEPTH_LIMIT));
+}
+
+export function checkProviderStandingList(v, depth = 0, limit = DEPTH_LIMIT) {
+  _namedCheck("ProviderStandingList", v, depth, Math.min(limit, DEPTH_LIMIT));
 }
 
 export function checkApplicationInterface(v, depth = 0, limit = DEPTH_LIMIT) {
@@ -8843,6 +9143,80 @@ export function encodePinnedDeclarationObservation(v) {
 
 export function decodePinnedDeclarationObservation(data) {
   const [v, n] = decodePinnedDeclarationObservationAt(data, 0, DEPTH_LIMIT);
+  const r = new Reader(data);
+  r.pos = n;
+  r.ws();
+  if (r.pos !== r.buf.length) throw r.refuse("trailing_bytes");
+  return v;
+}
+
+export function decodeProviderStandingAt(data, depth, limit) {
+  const r = new Reader(data);
+  if (depth < 0 || limit < 1) throw r.refuse("depth_exceeded");
+  r.depth = depth;
+  r.limit = Math.min(limit, DEPTH_LIMIT);
+  r.ws();
+  const v = readProviderStanding(r);
+  return [v, r.pos];
+}
+
+export function encodeProviderStandingAt(v, depth) {
+  if (depth < 0 || depth >= DEPTH_LIMIT) throw new Refusal("depth_exceeded", 0);
+  checkProviderStanding(v, depth, DEPTH_LIMIT);
+  const out = new Out();
+  writeProviderStanding(out, v, depth);
+  const bytes = out.bytes();
+  decodeProviderStandingAt(bytes, depth, DEPTH_LIMIT);
+  return bytes;
+}
+
+export function encodeProviderStanding(v) {
+  const bytes = encodeProviderStandingAt(v, 0);
+  const out = new Uint8Array(bytes.length + 1);
+  out.set(bytes);
+  out[bytes.length] = 0x0a;
+  return out;
+}
+
+export function decodeProviderStanding(data) {
+  const [v, n] = decodeProviderStandingAt(data, 0, DEPTH_LIMIT);
+  const r = new Reader(data);
+  r.pos = n;
+  r.ws();
+  if (r.pos !== r.buf.length) throw r.refuse("trailing_bytes");
+  return v;
+}
+
+export function decodeProviderStandingListAt(data, depth, limit) {
+  const r = new Reader(data);
+  if (depth < 0 || limit < 1) throw r.refuse("depth_exceeded");
+  r.depth = depth;
+  r.limit = Math.min(limit, DEPTH_LIMIT);
+  r.ws();
+  const v = readProviderStandingList(r);
+  return [v, r.pos];
+}
+
+export function encodeProviderStandingListAt(v, depth) {
+  if (depth < 0 || depth >= DEPTH_LIMIT) throw new Refusal("depth_exceeded", 0);
+  checkProviderStandingList(v, depth, DEPTH_LIMIT);
+  const out = new Out();
+  writeProviderStandingList(out, v, depth);
+  const bytes = out.bytes();
+  decodeProviderStandingListAt(bytes, depth, DEPTH_LIMIT);
+  return bytes;
+}
+
+export function encodeProviderStandingList(v) {
+  const bytes = encodeProviderStandingListAt(v, 0);
+  const out = new Uint8Array(bytes.length + 1);
+  out.set(bytes);
+  out[bytes.length] = 0x0a;
+  return out;
+}
+
+export function decodeProviderStandingList(data) {
+  const [v, n] = decodeProviderStandingListAt(data, 0, DEPTH_LIMIT);
   const r = new Reader(data);
   r.pos = n;
   r.ws();

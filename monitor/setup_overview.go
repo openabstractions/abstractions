@@ -49,6 +49,13 @@ type setupOverview struct {
 	// PictureApplication reports the official picture app and the presence
 	// of an earlier native build.
 	PictureApplication setupPictureApplication `json:"picture_application"`
+	// Integrations are the apps and agents OA can add or connect, each with
+	// its state button (setup_integrations.go).
+	Integrations []setupIntegration `json:"integrations"`
+	// Disk is the drive packages and models go on and its free space, when
+	// Setup could read it. The page ticks no model on arrival that does not
+	// fit, and the model's row says so.
+	Disk *setupDisk `json:"disk,omitempty"`
 }
 
 // setupEngine is one Engines row. Kind is "included" for the model host's
@@ -138,6 +145,10 @@ type setupDesktopIntegrationFacts struct {
 	Installed bool   `json:"installed"`
 	Action    string `json:"action,omitempty"`
 	Reason    string `json:"reason,omitempty"`
+	// Blocked: Windows stopped the official installer, and Reason says how
+	// to install again; Detail is the row's Technical details.
+	Blocked bool   `json:"blocked,omitempty"`
+	Detail  string `json:"detail,omitempty"`
 }
 
 // setupOverviewStep reads the setup step's journal; tests replace it.
@@ -183,6 +194,9 @@ func (p *servicePanel) readSetupOverview(ctx context.Context, journal setup.Jour
 	overview := setupOverview{Offered: []setup.AppID{}, Installed: map[string]setupInstalledPackage{}, PictureModels: []setupPictureOffer{}, Fixes: []setup.FixupStatus{}}
 	if version, err := setup.ReleaseVersion(); err == nil {
 		overview.Version = version
+	}
+	if volume, free, err := setupInstallDisk(); err == nil {
+		overview.Disk = &setupDisk{Volume: volume, FreeBytes: free}
 	}
 	for _, choice := range catalog.Choices {
 		if catalog.Available(choice.ID) {
@@ -243,6 +257,7 @@ func (p *servicePanel) readSetupOverview(ctx context.Context, journal setup.Jour
 			}
 		}
 	}
+	overview.Integrations = setupIntegrations(ctx, overview.PictureApplication, overview.DesktopIntegration)
 	if fixes, err := setupFixups(ctx, catalog); err != nil {
 		log.Printf("setup: fix-ups: %v", err)
 	} else {

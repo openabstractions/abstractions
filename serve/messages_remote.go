@@ -362,15 +362,15 @@ func (r *messagesReceiver) pairedTransport(key string) (*msg.MessagesClient, str
 	if err != nil {
 		return nil, "", err
 	}
-	transport, err := remote.Client(address, config, 30*time.Second, remoteRequestBytes, func(peer remote.Peer) error {
+	transport, err := (remote.Dialer{TLS: config, Timeout: 30 * time.Second, MaxFrame: remoteRequestBytes, AdmitContext: func(dialCtx context.Context, peer remote.Peer) error {
 		if hex.EncodeToString(peer.Key[:]) != key {
 			return remote.ErrTrust
 		}
-		if err := r.host.messagePairing.admit(peer); err != nil {
+		if err := r.host.messagePairing.admitContext(dialCtx, peer); err != nil {
 			return err
 		}
-		return messageGeneration(r.ctx, r.host.messagePairing, key, generation)
-	})
+		return messageGeneration(dialCtx, r.host.messagePairing, key, generation)
+	}}).Client(address)
 	if err != nil {
 		return nil, "", err
 	}

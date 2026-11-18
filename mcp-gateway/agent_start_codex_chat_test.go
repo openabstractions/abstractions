@@ -48,11 +48,13 @@ func TestAgentStartRegisteredCodexRetainedChat(t *testing.T) {
 	t.Cleanup(func() { codexDesktopRunning = prior })
 	chat := "chat-" + strings.Repeat("c", 48)
 	cold := &startprofile.ColdResume{Context: chat, Revision: strings.Repeat("d", 64), Binding: string(msg.EncodeChatBinding(&msg.ChatBinding{ChatID: codexOtherThread}))}
+	ledger := filepath.Join(p.StateDir, "codex-wake-receipts.json")
+	wake := "w-00000000000000000001"
 	deliver := func(selection *startprofile.ColdResume, target string) (agentStartResult, []string, error) {
 		t.Helper()
 		_ = os.Remove(marker)
 		custody := fixtureAgentCustody(t, p, program)
-		custody.target, custody.cold = target, selection
+		custody.target, custody.cold, custody.wake = target, selection, wake
 		r, err := resolveRegisteredAgentStart(context.Background(), p, program, read, selectCLI, custody)
 		if err != nil {
 			return agentStartResult{}, nil, err
@@ -66,12 +68,40 @@ func TestAgentStartRegisteredCodexRetainedChat(t *testing.T) {
 	}
 	// The thread need not be among the listed ones: no discovery runs.
 	result, args, err := deliver(cold, chat)
-	if err != nil || result.Outcome != "exited" || !reflect.DeepEqual(args, []string{"queue", "--thread", codexOtherThread, "--message", agentStartPrompt(chat), "--resume"}) {
+	if err != nil || result.Outcome != "exited" || len(args) != 6 {
 		t.Fatal("running Desktop did not receive the chat's pointer", result, args, err)
+	}
+	// The pointer is the fixed wake text and a ticket the wake ledger holds
+	// accepted (architect ruling 1, 2026-11-22).
+	ticket := wakeTicketInPrompt(args[4])
+	if !reflect.DeepEqual(args, []string{"queue", "--thread", codexOtherThread, "--message", codexQueuedWakePrompt(ticket), "--resume"}) || len(ticket) != 8 {
+		t.Fatal("the queued pointer is not the ticketed wake text", args)
+	}
+	raw, err := os.ReadFile(ledger)
+	if err != nil || !strings.Contains(string(raw), `"Ticket":"`+ticket+`"`) || !strings.Contains(string(raw), `"Accepted":true`) {
+		t.Fatal("the wake ledger does not hold the accepted pointer", string(raw), err)
 	}
 	if result.Delivery != agentDeliveryDesktopQueue {
 		t.Fatal("queued turn not reported as the Desktop's", result.Delivery)
 	}
+	// The same message queues nothing again; a new message waits while the
+	// accepted pointer holds the slot.
+	if result, _, err := deliver(cold, chat); err != nil || result.Outcome != "failed" || result.Reason != "codex_wake_stale" {
+		t.Fatal("the same wake was queued twice", result, err)
+	}
+	wake = "w-00000000000000000002"
+	if result, _, err := deliver(cold, chat); err != nil || result.Outcome != "failed" || result.Reason != "codex_wake_pending" {
+		t.Fatal("a second pointer was queued within the lease", result, err)
+	}
+	if _, e := os.Stat(marker); !errors.Is(e, os.ErrNotExist) {
+		t.Fatal("a refused wake reached the vendor")
+	}
+	wake = ""
+	if result, _, err := deliver(cold, chat); err != nil || result.Outcome != "failed" || result.Reason != "wake_key_unavailable" {
+		t.Fatal("a start without a wake key was queued", result, err)
+	}
+	wake = "w-00000000000000000003"
+	_ = os.Remove(ledger)
 	running = false
 	if _, _, err := deliver(cold, chat); agentSessionReason(err) != "codex_closed" {
 		t.Fatal("closed Codex was started", err)
@@ -92,6 +122,7 @@ func TestAgentStartRegisteredCodexRetainedChat(t *testing.T) {
 	if result, _, err := deliver(cold, chat); err != nil || result.Outcome != "failed" || result.Reason != "session_result_unconfirmed" {
 		t.Fatal("zero-exit warning claimed a wake", result, err)
 	}
+	_ = os.Remove(ledger)
 	t.Setenv("OA_CODEX_ATTACH_QUEUE_WARNING", "")
 	t.Setenv("OA_CODEX_ATTACH_LOGIN", "Logged in using an API key")
 	if _, _, err := deliver(cold, chat); err == nil || !strings.Contains(err.Error(), "subscription_signin_unavailable") {

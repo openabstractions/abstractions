@@ -5,8 +5,16 @@ const server = 'OpenAbstractions';
 const backgroundDisabled = {messages: false, asks: false};
 const watchTool = 'mcp__OpenAbstractions__oa_messages_watch';
 const waitTool = 'mcp__OpenAbstractions__oa_messages_wait';
+const chatReadTools = [waitTool, watchTool, 'mcp__OpenAbstractions__oa_messages_inbox_open'];
+const subagentReadRefusal = "This subagent can't read the chat's OpenAbstractions messages. Only the main chat reads them; report back to the main chat.";
 const sessionStartTool = 'oa_claude_session_start';
 const sessionEndTool = 'oa_claude_session_end';
+// CLAUDE-SESSION-TOOLS-HIDDEN: only this Mod starts and ends the chat's
+// receiving, through $.mcp.call. A model or subagent that could call these
+// tools could read the child_instance from a start and end the chat's
+// receiving with it, so no model loop is offered them and a call is refused.
+const hostOnlyTools = [sessionStartTool, sessionEndTool].map(name => 'mcp__' + server + '__' + name);
+const hostOnlyRefusal = "Only the OpenAbstractions plugin starts and ends this chat's receiving.";
 const wakePrompt = __OA_MESSAGES_WAKE_PROMPT__;
 // ASK-R14: the fixed pointer for a question this chat's enrolled program may
 // answer. It carries no question text, asker or ID.
@@ -194,8 +202,9 @@ function result(raw, state) {
   if (value.oldest_wake && (!value.wake || greaterWake(value.oldest_wake,value.wake))) throw terminal('OA wake range invalid');
   if (value.oldest_asks_wake && (!value.asks_wake || greaterWake(value.oldest_asks_wake,value.asks_wake))) throw terminal('OA Asks wake range invalid');
   if (value.wake_pointer != null && (!value.wake_ticket || !validPointer(value.wake_pointer, value.wake_ticket))) throw terminal('OA wake pointer invalid');
+  if ('peer_full_tools' in value && typeof value.peer_full_tools !== 'boolean') throw terminal('OA observation invalid');
   const wake = value.unread === 0 ? '' : value.wake;
-  return {outcome: value.outcome, context: value.context, revision: value.revision, pending_until_unix_ms: value.pending_until_unix_ms, reply_until_unix_ms: replyUntil, wake, wake_ticket: value.wake_ticket || '', wake_pointer:value.wake_pointer || '', asks_wake:value.asks_wake || '', unread:value.unread, pending_questions:value.pending_questions, oldest_unread_unix_ms:value.oldest_unread_unix_ms,
+  return {wake_sender: value.wake_sender || '', peer_full_tools: value.peer_full_tools === true, outcome: value.outcome, context: value.context, revision: value.revision, pending_until_unix_ms: value.pending_until_unix_ms, reply_until_unix_ms: replyUntil, wake, wake_ticket: value.wake_ticket || '', wake_pointer:value.wake_pointer || '', asks_wake:value.asks_wake || '', unread:value.unread, pending_questions:value.pending_questions, oldest_unread_unix_ms:value.oldest_unread_unix_ms,
     oldest_wake:value.oldest_wake, oldest_asks_wake:value.oldest_asks_wake, awaited_replies:value.awaited_replies, answerable_asks:value.answerable_asks, waiting_asks:value.waiting_asks, waiting_asks_wake:value.waiting_asks_wake};
 }
 async function reportHealth($, state, claim) {
@@ -292,13 +301,22 @@ async function observe($, state, wait, reservation = null) {
   status($, state, 'background messages ready');
   return page;
 }
+// Only a refused admission and a changed conversation stop the observer. A
+// malformed or unexpected reply is retried with backoff (TODO 0.8.1: one bad
+// reply stopped Background Messages until the person typed), and the debug log
+// names the failed check.
+function stops(error) { return error?.terminal && (error.health === 'stopped_forbidden' || error.health === 'stopped_context'); }
+function logFailure($, error) {
+  try { $.ui.log(`OpenAbstractions background messages: ${String(error?.message || error).slice(0, 200)}`, {to: 'debug'}); } catch { /* Logging supplies no admission. */ }
+}
 async function failedObservation($, state, error) {
   if (state.closed) return;
   state.summary = null;
   if (error?.permission) return;
-  if (error?.terminal) {
-    await reportHealth($, state, error.health || 'stopped_protocol');
-    if (!state.closed) status($, state, `background messages stopped: ${error.health || 'stopped_protocol'}; OpenAbstractions status unconfirmed`);
+  logFailure($, error);
+  if (stops(error)) {
+    await reportHealth($, state, error.health);
+    if (!state.closed) status($, state, `background messages stopped: ${error.health}; OpenAbstractions status unconfirmed`);
     close(state); return;
   }
   let now;
@@ -341,6 +359,11 @@ async function wakeAsks($, state) {
   } catch (error) { await failedObservation($, state, error); }
   finally { state.asks.waking = false; }
 }
+// A wake or hint already given covers the messages up to its key. A newer
+// message wakes the chat once more, also while earlier ones are still unread
+// (2026-11-22: after one hint the coordinator chat got no wake for 90 minutes
+// of later Codex questions).
+function newerThanDelivered(state, wake) { return !state.deliveredWake || greaterWake(wake || '', state.deliveredWake); }
 async function wake($, state) {
   if (state.closed || state.paused || state.waking || !state.idle || !state.wake) return;
   state.waking = true;
@@ -349,7 +372,7 @@ async function wake($, state) {
     let page = await observe($, state, 0);
     const now = await $.clock.now();
     const retry = state.knownDrop;
-    if (state.closed || state.paused || !state.idle || !page.wake || state.deliveredWake
+    if (state.closed || state.paused || !state.idle || !page.wake || !newerThanDelivered(state, page.wake)
       || !(greaterWake(page.wake, state.highWake || '') || retry && !greaterWake(retry.wake, page.wake)) || state.submission.state) return;
     page = await observe($, state, 0, {wake:page.wake,ticket:retry?.ticket});
     if (!validTicket(page.wake_ticket)) { if (retry) await rememberDrop($, state, null); return; }
@@ -473,7 +496,7 @@ async function lifecycle($, event, next, custody) {
     try {
       const page = await observe($, state, 0);
       if (state !== custody.state || state.closed || !(page.unread > 0) || page.pending_questions === undefined) return admitted;
-      if (state.deliveredWake) return admitted;
+      if (!newerThanDelivered(state, page.wake)) return admitted;
       // Classic Mod results flatten hookSpecificOutput; contexts are an array.
       return withWakeContext(admitted, inboxSummary(page));
     } catch (error) { await failedObservation($, state, error); return admitted; }
@@ -493,7 +516,7 @@ function withWakeContext(admitted, hint) {
 function wakeContext(state, now, afterWait) {
   const page = state.summary;
   if (!page || page.context !== state.context) return '';
-  const messages = !afterWait && !state.deliveredWake && !state.asks.hintedThisTurn && greaterWake(page.wake, state.highWake || '');
+  const messages = !afterWait && newerThanDelivered(state, page.wake) && !state.asks.hintedThisTurn && greaterWake(page.wake, state.highWake || '');
   const urgentReplies = messages && page.awaited_replies > 0;
   const asksEligible = !backgroundDisabled.asks && !state.deliveredWake && !state.asks.deliveredWake;
   const urgentAsks = asksEligible && !!page.asks_wake && page.waiting_asks > 0 && greaterWake(page.waiting_asks_wake || '', state.asks.waitingDelivered);
@@ -524,6 +547,119 @@ function recoverGatingHook(event, next, pointerGate = false) {
   return next(event);
 }
 
+// S5 architect ruling 2026-11-22: a turn OA's wake pointer started is
+// reply-only until the person allows more. It may read the message and reply
+// in that thread, read, list and search files inside the chat's working
+// directory, and use OA's read-only tools. OA itself refuses OA tools that
+// change anything and a reply outside the woken thread. The person's next
+// prompt in this chat ends the mark; typed while the woken turn runs, it ends
+// the mark when that turn completes.
+const ownTool = 'mcp__OpenAbstractions__';
+// The Mod's own oa_claude_session_start and _end go through $.mcp.call and
+// raise no tool.call; the model gets neither in a reply-only turn.
+const replyOnlyOATools = new Set(['oa_messages_wait', 'oa_messages_reply', 'oa_messages_watch', 'oa_messages_inbox_open', 'oa_messages_inboxes_list',
+  'oa_models_list', 'oa_applications_list', 'oa_applications_describe', 'oa_applications_commands_list',
+  'oa_applications_enrollment_read', 'oa_applications_command_call', 'oa_api_describe', 'oa_api_read', 'oa_inference_job_status', 'oa_inference_job_diagnose',
+  'oa_jobs_follow', 'oa_asks_watch', 'oa_asks_list_answerable', 'oa_asks_list_choices']);
+// The boundary is what this Mod knows for certain (coordinator decision,
+// 2026-11-22): a turn is reply-only exactly when this Mod submitted its
+// prompt as a validated wake pointer, the ticket it reserved and the pointer
+// text it holds for that ticket. Every other prompt that enters, whatever its
+// origin or text, is a normal turn and ends the mark; delivered into a
+// running woken turn, it ends the mark when that turn completes.
+async function endMarkFor($, custody, event, admitted) {
+  if (typeof admitted?.text !== 'string' || admitted.drop) return;
+  const mark = await currentMark($, custody);
+  if (!mark.value) return;
+  if (event.turnId === undefined) { mark.value = null; mark.ends = false; } else mark.ends = true;
+  await keepMark($, mark);
+}
+function replyOnlyReason(sender) {
+  return `This turn was started by a message from ${sender || 'another agent'}. Ask the person to allow more for this conversation.`;
+}
+const broadRootReason = ' File reads are off because this chat\'s folder is a whole drive or a home folder.';
+// A drive or file-system root, or a profile folder, is no project: reading
+// "inside" it reaches the person's other files.
+function broadRoot(root) {
+  const win = root.replaceAll('/', '\\');
+  return root === '' || root === '/' || /^[a-z]:\\?$/i.test(win) || /^[a-z]:\\users\\[^\\]+$/i.test(win) || /^\/(Users|home)\/[^/]+$/.test(root);
+}
+// A glob may not climb out of or start outside the searched folder.
+function relativeGlob(value) {
+  return value === undefined || typeof value === 'string' && value.length <= 4096 && !value.includes(':') && !/(?:^|[{,])\s*[\\/~]/.test(value) && !value.split(/[\\/{},]/).some(part => part.trim() === '..');
+}
+// Where the path lands, resolved by the host, or undefined.
+async function landed($, path) {
+  if (typeof path !== 'string' || !path || path.length > 4096 || /^[A-Za-z]:(?![\\/])/.test(path) || /^[\\/][\\/]/.test(path)) return undefined;
+  try { return (await $.fs.stat(path, {resolve: true}))?.realPath; } catch { return undefined; }
+}
+async function insideRoot($, mark, path) {
+  if (!mark.root) {
+    const root = typeof mark.cwd === 'string' ? await landed($, mark.cwd) : undefined;
+    if (typeof root !== 'string' || !root) return false;
+    mark.root = root.replace(/[\\/]+$/, '');
+  }
+  if (broadRoot(mark.root)) { mark.broadRoot = true; return false; }
+  const real = await landed($, path);
+  if (typeof real !== 'string') return false;
+  const fold = /^[A-Za-z]:/.test(mark.root) ? value => value.replaceAll('/', '\\').toLowerCase() : value => value;
+  const root = fold(mark.root), at = fold(real);
+  return at === root || at.startsWith(root + (root.includes('\\') ? '\\' : '/'));
+}
+// Whether a reply-only turn may make this call, before the person's pair rule.
+async function replyOnlyAllows($, mark, e) {
+  switch (e.tool) {
+    case 'ToolSearch': return true;
+    case 'Read': return await insideRoot($, mark, e.file_path);
+    case 'Glob': return relativeGlob(e.pattern) && await insideRoot($, mark, e.path ?? mark.cwd);
+    case 'Grep': return typeof e.pattern === 'string' && relativeGlob(e.glob) && await insideRoot($, mark, e.path ?? mark.cwd);
+  }
+  return typeof e.tool === 'string' && e.tool.startsWith(ownTool) && replyOnlyOATools.has(e.tool.slice(ownTool.length));
+}
+// The live answer through OA: whether the person allowed full tool use for
+// every sender of this turn (the pair rule on the Panel's Permissions page).
+async function peerFullTools($, state) {
+  const input = {revision: '', wait_ms: 0};
+  try {
+    if ((await $.tool.check({tool: watchTool, input}))?.decision !== 'allow') return false;
+    const out = await $.mcp.call(server, 'oa_messages_watch', input);
+    if (out?.isError || typeof out?.content?.[0]?.text !== 'string' || out.content[0].text.length > 4096) return false;
+    return JSON.parse(out.content[0].text)?.peer_full_tools === true;
+  } catch { return false; }
+}
+// The mark outlives a reload of this module: it is kept per conversation in
+// the plugin store. A store that cannot be read keeps the conversation
+// reply-only until the person's next prompt.
+const markKey = session => 'oa.messages.reply_only.v1:' + JSON.stringify([session ?? null]);
+const markValue = (sender, cwd) => ({sender: typeof sender === 'string' ? sender : '', cwd: typeof cwd === 'string' && cwd ? cwd : null, root: '', full: false});
+async function currentMark($, custody) {
+  let session = null;
+  try { session = await $.session.id(); } catch { /* One key for an unknown session. */ }
+  if (custody.mark && custody.mark.session === session) return custody.mark;
+  // One load per conversation: concurrent callers share its mark object.
+  if (custody.markLoad?.session !== session) custody.markLoad = {session, promise: (async () => {
+    let value = null, ends = false;
+    try {
+      const kept = await $.store.get(markKey(session));
+      if (kept) { value = markValue(kept.sender, kept.cwd); ends = kept.ends === true; }
+    } catch { value = markValue('', null); }
+    return custody.mark = {session, value, ends};
+  })()};
+  return custody.markLoad.promise;
+}
+async function keepMark($, mark) {
+  try { await $.store.set(markKey(mark.session), mark.value ? {sender: mark.value.sender, cwd: mark.value.cwd, ends: mark.ends} : null); } catch { /* The live mark still holds. */ }
+}
+async function replyOnlyTool($, custody, e, next) {
+  const kept = await currentMark($, custody), mark = kept.value;
+  // A read may bring another sender's message, and the person may have
+  // switched the pair off: full use is asked again after every read.
+  if (mark && e.tool === ownTool + 'oa_messages_wait') mark.full = false;
+  if (!mark || mark.full || await replyOnlyAllows($, mark, e)) return next(e);
+  if (await peerFullTools($, custody.state) && kept.value === mark) { mark.full = true; return next(e); }
+  return {deny: replyOnlyReason(mark.sender) + (mark.broadRoot && ['Read', 'Glob', 'Grep'].includes(e.tool) ? broadRootReason : '')};
+}
+
 export function register(on) {
   // A queued pointer retains custody until its host call reconciles.
   const custody = {state: null, generation: 0, submission: {state: null}};
@@ -549,6 +685,24 @@ export function register(on) {
     const hint = wakeContext(state, now, event.tool_name === waitTool);
     return hint ? withWakeContext(admitted, hint) : admitted;
   }).catch(($, event, next) => recoverGatingHook(event, next));
+  // Subagents share the chat's OA helper, and the runtime keeps one read
+  // position per inbox: a subagent's wait marked the chat's messages read
+  // (2026-11-22). Only the main chat reads its inbox, as the Codex ruling of
+  // 2026-11-22 holds for Codex threads.
+  // The session tools are offered to no model loop, main or subagent. An
+  // engine without tool.offer still refuses the call at tool.call below.
+  try {
+    on('tool.offer', {tool: hostOnlyTools}, () => ({isOffered: false}))
+      .catch(($, event, next) => hostOnlyTools.includes(event.tool) ? {isOffered: false} : next(event));
+  } catch { /* An engine that has no tool.offer event. */ }
+  // S5: every tool call of a reply-only turn, subagents' included, is checked
+  // before those. A guard that fails refuses the call while a mark stands.
+  on('tool.call', ($, event, next) => replyOnlyTool($, custody, event, e => {
+    if (hostOnlyTools.includes(e.tool)) return {deny: hostOnlyRefusal};
+    if (chatReadTools.includes(e.tool) && e.agentId !== undefined) return {deny: subagentReadRefusal};
+    return next(e);
+  })).catch(($, event, next) => hostOnlyTools.includes(event.tool) ? {deny: hostOnlyRefusal}
+    : next.called || custody.mark && !custody.mark.value ? next(event) : {deny: replyOnlyReason(custody.mark?.value?.sender)});
   on('session.end', async ($, event, next) => {
     custody.generation++;
     const binding = custody.state?.binding;
@@ -565,6 +719,12 @@ export function register(on) {
     return next(event);
   });
   on('turn.complete', ($, event, next) => {
+    if (event.agentId === undefined) {
+      // S5: the person typed during this woken turn; their turn is next.
+      const end = mark => { if (mark.ends) { mark.value = null; mark.ends = false; return keepMark($, mark); } };
+      if (custody.mark) void end(custody.mark);
+      else void currentMark($, custody).then(end);
+    }
     if (custody.state && event.agentId === undefined) {
       custody.state.idle = !event.isAborted;
       void signalTurn($, custody.state, 'ended');
@@ -590,7 +750,10 @@ export function register(on) {
           let page;
           try { page = await observe($, current, 0); } catch (error) { await failedObservation($, current, error); return {drop: 'OA native session observation unavailable'}; }
           if (current !== custody.state || custody.submission.state !== current || current.closed || current.paused || !current.idle || !page.asks_wake || greaterWake(current.asks.high, page.asks_wake)) return {drop: 'OA Asks are no longer eligible'};
-          return deliver();
+          // An Asks pointer is no peer wake: its turn is a normal one.
+          const admitted = await deliver();
+          await endMarkFor($, custody, event, admitted);
+          return admitted;
         }
         if (current.closed || current.paused || !current.submitting || !validTicket(current.ticket) || event.text !== current.pointerText
           || event.attachments?.length || event.context?.length) return {drop: 'OA wake is no longer eligible'};
@@ -605,13 +768,28 @@ export function register(on) {
             current.reservedWake = page.wake;
           }
           if (current !== custody.state || current.closed || current.paused || !current.idle) return {drop: 'OA wake belongs to an ended conversation'};
-          return deliver();
+          // S5: the turn this pointer starts is reply-only. The mark is set
+          // before the turn can run and put back if nothing entered.
+          const mark = await currentMark($, custody), prior = {value: mark.value, ends: mark.ends};
+          let cwd = null;
+          try { cwd = await $.session.cwd(); } catch { /* No folder: file tools stay refused. */ }
+          mark.value = markValue(page.wake_sender, cwd);
+          mark.value.full = page.peer_full_tools;
+          mark.ends = false;
+          await keepMark($, mark);
+          const admitted = await deliver();
+          // A proven drop entered nothing; an unknown delivery keeps the mark.
+          if (admitted?.drop && !current.deliveryUnknown) { Object.assign(mark, prior); await keepMark($, mark); }
+          return admitted;
         } catch (error) {
           await failedObservation($, current, error);
           return {drop: 'OA native session observation unavailable'};
         }
       }
       const admitted = await next(event);
+      // S5: a prompt this Mod did not submit as a wake pointer is a normal
+      // turn, whatever its origin and text.
+      await endMarkFor($, custody, event, admitted);
       if (invocation === custody.state && invocation && !invocation.closed && typeof admitted?.text === 'string' && !admitted.drop && event.origin?.kind === 'composer') {
         await signalTurn($, invocation, 'person');
         invocation.paused = false;

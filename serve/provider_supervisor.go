@@ -474,13 +474,22 @@ func (s *providerSupervisor) finishConfigChild(confirmed bool) {
 }
 
 // attach probes a provider something else runs until supervision stops.
+// While the provider is not ready the wait doubles after each failed probe,
+// from probeWaiting up to probeReady, so a provider that stays down costs one
+// probe per probeReady and one that comes up is read ready within one
+// probeReady. A ready reading resets the wait to probeWaiting. A declaration
+// change replaces the supervisor, which starts at probeWaiting again.
 func (s *providerSupervisor) attach() {
+	backoff := s.p.timing.probeWaiting
 	for {
 		readiness, why := s.probe()
 		s.set(readiness, why)
-		interval := s.p.timing.probeWaiting
+		interval := s.p.timing.probeReady
 		if readiness == wire.DeclarationReadinessReady {
-			interval = s.p.timing.probeReady
+			backoff = s.p.timing.probeWaiting
+		} else {
+			interval = min(backoff, s.p.timing.probeReady)
+			backoff = min(backoff*2, s.p.timing.probeReady)
 		}
 		if !s.wait(interval) {
 			return

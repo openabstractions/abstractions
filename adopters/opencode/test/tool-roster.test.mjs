@@ -37,7 +37,10 @@ test('agents reach application workflows through the generic OA application tool
 // sends every registered definition with every request, so the default set
 // and its text are bounded here. Measured 2026-11-11: 10,490 definition bytes
 // (2,969 Qwen3.6 tokens) and 1,717 instruction bytes (352 tokens).
-const DEFAULT_DEFINITION_BYTES=11000,INSTRUCTION_BYTES=1850;
+// Owner, 2026-11-22: the default definitions aim at 11,000 bytes, a target
+// that warns with the current size when exceeded, and must stay under the
+// 13,000-byte ceiling, which fails.
+const DEFAULT_DEFINITION_TARGET_BYTES=11000,DEFAULT_DEFINITION_CEILING_BYTES=13000,INSTRUCTION_BYTES=1850;
 
 test('the default OA tool definitions and instructions stay within their prompt budget',()=>{
   const require=createRequire(import.meta.url),agent=require('../generated/agent-tools.json');
@@ -47,7 +50,8 @@ test('the default OA tool definitions and instructions stay within their prompt 
     return JSON.stringify({type:'function',function:{name,description:metadata.description,parameters:agentToolInputSchema(name)}});
   });
   const bytes=lines.reduce((sum,line)=>sum+Buffer.byteLength(line),0);
-  assert.ok(bytes<=DEFAULT_DEFINITION_BYTES,`default OA tool definitions take ${bytes} bytes`);
+  if(bytes>DEFAULT_DEFINITION_TARGET_BYTES)console.warn(`WARNING: default OA tool definitions take ${bytes} bytes, over the ${DEFAULT_DEFINITION_TARGET_BYTES}-byte target; shorten the wording.`);
+  assert.ok(bytes<=DEFAULT_DEFINITION_CEILING_BYTES,`default OA tool definitions take ${bytes} bytes, over the ${DEFAULT_DEFINITION_CEILING_BYTES}-byte ceiling`);
   assert.ok(Buffer.byteLength(messageInstructions)<=INSTRUCTION_BYTES,`OA instructions take ${Buffer.byteLength(messageInstructions)} bytes`);
   for(const name of defaultHelperTools){
     const description=name==='oa_models_connect'?modelsConnectMetadata.description:agent.tools.find(value=>value.name===name).description;

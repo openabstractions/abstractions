@@ -1,6 +1,7 @@
 package main
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -8,8 +9,8 @@ import (
 	"github.com/openabstractions/abstractions/mcp-gateway/gateway"
 )
 
-// Architect ruling 2026-11-12 (messages CONTRACT, "Program-only routing and
-// chat disclosure"): the gateway words the runtime's program-only outcomes and
+// Architect rulings 2026-11-12 and P3 2026-11-22 (messages CONTRACT,
+// "Program-only routing and chat disclosure"): the gateway words the runtime's program-only outcomes and
 // names the chat a prepared request reaches.
 func TestMessagesPrepareProgramOnlyOutcomes(t *testing.T) {
 	b, p := reply1884Fixture()
@@ -21,14 +22,15 @@ func TestMessagesPrepareProgramOnlyOutcomes(t *testing.T) {
 	}
 
 	choices := []wire.Inbox{
-		{Program: "app:oa-claude-integration", Context: "internal-one", ChatTitle: "Pictures", Revision: "r1", LastSeenUnixMs: 2000, Reach: new(wire.InboxReachOpen)},
+		{Program: "app:oa-claude-integration", Context: "internal-one", ChatTitle: "Pictures", Revision: "r1", LastSeenUnixMs: 2000, Reach: new(wire.InboxReachOpen), Hints: []string{"last_exchanged"}},
 		{Program: "app:oa-claude-integration", Context: "internal-two", ChatTitle: "Reports", Revision: "r2", LastSeenUnixMs: 1000, Reach: new(wire.InboxReachOpen)},
 	}
 	p.prepareResult = wire.PrepareResult{Outcome: wire.OutcomeConflict, Reason: "ambiguous_receiver", Choices: choices}
 	out, err = b.MessagesPrepare(t.Context(), gateway.MessagesPrepareInput{Receiver: "Claude", Body: "body"})
 	if err != nil || out.Outcome != "ambiguous_receiver" || len(out.Choices) != 2 ||
-		!strings.HasPrefix(out.Guidance, "Several Claude chats are open. If the person's words name one of these, resend with its context; otherwise ask the person in your own chat which one, showing these titles:") ||
-		!strings.Contains(out.Guidance, `"Pictures"`) || !strings.Contains(out.Guidance, `"Reports"`) || strings.Contains(out.Guidance, "internal-one") {
+		!strings.HasPrefix(out.Guidance, "Several Claude chats can receive. Choose the one this message belongs to, using the person's words and these hints, and resend with its context.") ||
+		!strings.Contains(out.Guidance, `"Pictures" (last_exchanged)`) || !strings.Contains(out.Guidance, `"Reports". Nothing was sent.`) || !strings.Contains(out.Guidance, "Nothing was sent.") || strings.Contains(out.Guidance, "internal-one") ||
+		!reflect.DeepEqual(out.Choices[0].Hints, []string{"last_exchanged"}) || out.Choices[1].Hints != nil {
 		t.Fatal("ambiguous program-only send", out, err)
 	}
 

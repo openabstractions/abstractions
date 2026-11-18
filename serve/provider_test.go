@@ -313,8 +313,8 @@ func runProviderFixture(kind, endpoint, dir, brokerProgram string) int {
 			}
 			var reply []byte
 			switch kind {
-			case "chat", "chat-delayed":
-				reply, err = (&iwire.ChatDispatcher{Handler: fixtureChat{calls: filepath.Join(dir, "calls"), delayed: kind == "chat-delayed"}}).ExchangeFrame(call.Frame)
+			case "chat", "chat-delayed", "chat-panic":
+				reply, err = (&iwire.ChatDispatcher{Handler: fixtureChat{calls: filepath.Join(dir, "calls"), delayed: kind == "chat-delayed", panics: kind == "chat-panic"}}).ExchangeFrame(call.Frame)
 			case "image-blocked", "image-idle", "image-crash-start":
 				reply, err = (&iwire.ImageDispatcher{Handler: fixtureImage{calls: filepath.Join(dir, "calls"), crash: kind == "image-crash-start", progress: kind == "image-idle"}}).ExchangeFrame(call.Frame)
 			case "inventory":
@@ -387,6 +387,8 @@ func runMediatedAppFixture(oaEndpoint, providerEndpoint, resultPath, claim strin
 type fixtureChat struct {
 	calls   string
 	delayed bool
+	// panics makes Start panic, as a provider handler with a bug does.
+	panics bool
 }
 
 type fixtureImage struct {
@@ -491,6 +493,9 @@ func (fixtureInventory) Remove(string) (content.RemoveResult, error) {
 }
 
 func (f fixtureChat) Start(iwire.Request) (iwire.Admission, error) {
+	if f.panics {
+		panic("fixture chat start broke")
+	}
 	file, _ := os.OpenFile(f.calls, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if file != nil {
 		_, _ = file.WriteString("start\n")

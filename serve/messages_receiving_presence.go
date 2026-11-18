@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"sort"
 	"strings"
+	"time"
 
 	msg "github.com/openabstractions/abstraction-facade/go/abstraction/facade/messages"
 )
@@ -69,29 +71,41 @@ func (d *applicationDirectory) receivingNativeSnapshotsLocked(rows []nativeInbox
 	return kept
 }
 
-// newestLiveReceivingCandidate ranks eligible rows by their original inbox
-// open, using context order to break equal timestamps. The caller has already
-// restricted the listed candidates to one authorized application.
-func (d *applicationDirectory) newestLiveReceivingCandidate(ctx context.Context, candidates []msg.Inbox) (msg.Inbox, error) {
+// liveReceivingCandidates keeps the rows whose chat has a live receiving
+// inbox now, most recently opened first, using context order to break equal
+// open times. The caller has already restricted the listed candidates to one
+// authorized application.
+func (d *applicationDirectory) liveReceivingCandidates(ctx context.Context, candidates []msg.Inbox) ([]msg.Inbox, error) {
 	if !d.lock(ctx) {
-		return msg.Inbox{}, ctx.Err()
+		return nil, ctx.Err()
 	}
 	defer d.unlock()
 	d.expireLocked()
-	var selected msg.Inbox
-	var newest *nativeInbox
 	if d.nativeInboxes == nil || d.nativeInboxes.closed {
-		return selected, nil
+		return nil, nil
 	}
+	type liveRow struct {
+		inbox  msg.Inbox
+		opened time.Time
+	}
+	var live []liveRow
 	for _, candidate := range candidates {
 		application := strings.TrimPrefix(candidate.Program, "app:")
 		row := d.nativeInboxes.rows[application+"\x00"+candidate.Context]
 		if row == nil || !d.receivingNativeInboxLocked(*row) {
 			continue
 		}
-		if newest == nil || row.opened.After(newest.opened) || row.opened.Equal(newest.opened) && candidate.Context < selected.Context {
-			newest, selected = row, candidate
-		}
+		live = append(live, liveRow{inbox: candidate, opened: row.opened})
 	}
-	return selected, nil
+	sort.SliceStable(live, func(i, j int) bool {
+		if !live[i].opened.Equal(live[j].opened) {
+			return live[i].opened.After(live[j].opened)
+		}
+		return live[i].inbox.Context < live[j].inbox.Context
+	})
+	rows := make([]msg.Inbox, len(live))
+	for i, row := range live {
+		rows[i] = row.inbox
+	}
+	return rows, nil
 }

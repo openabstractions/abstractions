@@ -41,6 +41,7 @@ brings its scenario.
 | H | handle records and durable work |
 | V | MCP protocol versions and the adapter's own version |
 | C | the command line |
+| R | reply-only turns another agent's message started |
 
 `X` (extension) is reserved and unused here.
 
@@ -72,7 +73,7 @@ tool today. `scripts/unit_contracts.py` builds the gateway, reads its
 | `oa_api_read` | generated Rights, Logging, Router Models/Hosts and operator readonly methods | read | exact native contract/method/arguments; 1 MiB arguments and reply; 25-second native context | printed |
 | `oa_applications_commands_list` | `abstraction.facade/applications@3` | read | FAC-M32 CommandListing for one live instance; 1 MiB native reply | printed |
 | `oa_applications_command_call` | `abstraction.facade/applications@3` | command | FAC-M32 GatewayCall and exact application answer record; 1 MiB native request/reply | printed |
-| `oa_applications_open` | `abstraction.facade/applications@3` Activate | submit | FAC-M32 declared open verb and payload for a kept application; ActivationResult with the instance and a sentence naming the app by its title; the person gets `wait_ms`, at least 5 and at most 10 minutes, to answer the "Open <app>?" question, and an unanswered question reads `status` `awaiting_permission`; 1 MiB native request/reply | printed |
+| `oa_applications_open` | `abstraction.facade/applications@3` Open, or Activate on a runtime that answers Open unknown_method | submit | FAC-M32 declared open verb and payload for a kept application; ActivationResult with the instance and a sentence naming the app by its title; the person gets `wait_ms`, at least 5 and at most 10 minutes, to answer the "Open <app>?" question, and an unanswered question reads `status` `awaiting_permission`; when the runtime keeps the question up after the call (architect ruling 2026-11-22) the answer carries its `question` and `handle`, the sentence says the person's later Allow opens the app, and `oa_applications_describe` with `open_handle` reads that open's state; the agent's `wait_ms` caps the runtime's 40 s wait; 1 MiB native request/reply | printed |
 | `oa_models_list` | `abstraction.router/router@1`, `abstraction.model/catalog@1` | read | servable names, the stores that hold each model, and the reviewed models Setup sets up here as `setup_needed` entries with profile, download and preset times | printed |
 | `oa_models_connect` | composed `abstraction.asks/permission@1` Request/Observe and `abstraction.router/router@1` Hosts | setup | one fixed catalogue name; native person-only setup, actual submitted question IDs and own-caller servable readback; no key or inference input | printed |
 | `oa_setup_fit` | `abstraction.model/catalog@1` | read | one use; the catalogue's ranked entries with fit word, sizes and the pick, without source or digest | printed |
@@ -126,7 +127,10 @@ OA service MUST be projected to MCP through its generated codecs under the
 caller's native subject. Projection grants nothing. Until the emitter lands,
 unprojected methods MUST be listed as Not built. An exclusion MUST name an
 actual transport reason: a secret argument that cannot enter model context,
-or a stream/wait that the carrier cannot bound. Operator authority is never
+a stream/wait that the carrier cannot bound (`unbounded_stream:`), an adapter-only
+method (`local_adapter:`), or a method only the person may perform, which is never
+offered to agents (`person_only:`). A `projection.tsv` reason starts with the
+matching prefix, and `secret:` for the first. Operator authority alone is never
 an exclusion reason; the service returns its typed refusal. Held by:
 `scripts/unit_contracts_test.py` (`test_new_method_and_new_not_built_row_fail`) and
 `scripts/unit_contracts.py` (the projection section).
@@ -239,7 +243,7 @@ The dedicated native Codex composition alone additionally exposes the internal
 MUST refuse arguments. It answers `observed` or `unavailable` and grants no OA
 right, enrollment or vendor identity claim. The call lets the existing receiving
 middleware observe independently supplied host `_meta.threadId`. The first valid
-thread binds the connection's receiving; the binding MUST never retarget or
+thread proven top-level binds the connection's receiving; the binding MUST never retarget or
 restart while the connection lives. One helper serves a chat and its sub-agent
 threads. A later call with missing, invalid or another thread's metadata leaves
 the binding and its receiver running and is handled per call. Tools that are
@@ -286,6 +290,40 @@ the thread and rereads it every 30 seconds. Held by:
 `TestCodexLockHoldersNamesTheHoldingProcess` and
 `TestFollowCodexThreadTitleCarriesARename`.
 
+Architect ruling 3, 2026-11-22, Codex worker threads
+(`decisions/messaging-wake-0-8-1-proposed-rulings.md`, item 3), as given:
+
+> - Only a thread proven top-level binds receiving: either the parent
+>   app-server holds that thread's writer lock (the restore rule), or Codex's
+>   own session record names it top-level, read only. A thread that fails both
+>   leaves the connection unbound, and the main chat binds on its next call.
+> - Confirm the session-record field by reading, read-only, one of the owner's
+>   Codex session record files under %USERPROFILE%\.codex, or wherever Codex
+>   keeps them. Never open auth.json or any credential file.
+> - inboxes_list from a worker thread shows no `mine` row and no other_chats
+>   counts from the bound chat; needs_permission stays.
+> - Test: a restarted helper with a worker calling first stays unbound; the
+>   main chat then binds; the worker's list shows no `mine`.
+
+The parent proof is the restore rule above: the parent holds that thread's
+writer lock and no other. The session record is
+`CODEX_HOME/sessions/YYYY/MM/DD/rollout-<time>-<thread>.jsonl`, found in the
+day folders around the time the thread's UUIDv7 ID names. The helper reads only
+its first line, at most 1 MiB, and opens no other Codex file. Confirmed on the
+owner's machine on 2026-11-22 (Codex 0.171.0-alpha.13): that line is
+`{"type":"session_meta","payload":{...}}`, and a worker thread's payload has
+`"source":{"subagent":{"thread_spawn":{"parent_thread_id":...}}}`,
+`"thread_source":"subagent"` and a non-null `"parent_thread_id"`. A thread is
+top-level when `payload.id` is the thread, `source` is a plain string and the
+payload names no parent and no `subagent` thread source. A missing, unreadable
+or different record proves nothing. A call from an unproven thread binds
+nothing and is handled as another thread's call: its chat-bound tools refuse
+with the reason above. `oa_messages_inboxes_list` from another thread answers
+the bound chat's listing with no row marked `mine` and no `other_chats`;
+`needs_permission` is unchanged. Held by:
+`TestCodexSessionRecordNamesTopLevelThreads` and
+`TestCodexWorkerCallingFirstLeavesTheRestartedHelperUnbound`.
+
 A question to a retained Codex chat whose inbox is closed wakes that chat's
 own thread. The runtime selects the thread from the chat's retained binding and
 passes it on the owned start channel (`oa_receiver_cold` with no launch facts).
@@ -296,6 +334,52 @@ inbox. With Codex closed the start refuses (`codex_closed`) before any vendor
 call, and the message waits until the person opens the chat. This path never
 creates a thread and never runs one headless. Held by:
 `TestAgentStartRegisteredCodexRetainedChat`.
+
+Architect ruling 1, 2026-11-22, waking a Codex chat after its helper has gone
+(`decisions/messaging-wake-0-8-1-proposed-rulings.md`, item 1; security review
+follows), as given:
+
+> This is the closed-agent start the owner decided on 2026-11-03: configurable
+> in the Messages settings, with a per-direction right for who may start whom.
+> The runtime's `codex queue --thread <id> --message <pointer> --resume` runs
+> only when:
+> (a) the setting is on;
+> (b) the sender holds the start right toward that Codex chat;
+> (c) the Codex binary is the one Setup selected and verified (signer or pin);
+> (d) the woken turn is reply-only (the S5 ruling in
+> decisions/RULING-2026-11-22-S5-reply-only.md, cold-start quarantine).
+> - The pointer carries only the fixed wake text and the ticket. There is one
+>   wake key per new message, under the existing ledger.
+> - An accepted pointer holds the slot for a 30-minute lease; after that, the
+>   next new message queues its own.
+> - receiver_watching is true while the chat is wakeable this way.
+> - Without the setting or the right, the send says plainly: "Codex is closed;
+>   messages wait until it opens."
+
+The setting is `messages_start_questions` for a question and
+`messages_start_notes` for a note; the right is `application.message_start`
+for that direction; the binary is the recipe's Setup-saved Codex CLI, checked
+by file ID before every start. The runtime sends the message's wake key in the
+chat's inbox beside the thread selection (`oa_receiver_wake`, a routing label
+with no authority). Immediately before the spawn the launcher reserves the
+thread's slot in the wake ledger of the shared state folder
+(`codex-wake-receipts.json`) under that key and queues
+`codexQueuedWakePrompt(<ticket>)`; exit zero with no diagnostic marks the
+pointer accepted. A slot a live pointer holds refuses `codex_wake_pending`, a
+key already queued refuses `codex_wake_stale`, and a start without a key
+refuses `wake_key_unavailable`, each before any vendor call. The woken turn
+reads with its ticket, so its helper confirms the wake key, and the S5 rule
+marks the turn reply-only. A ticketed read of an accepted pointer whose lease
+ran out still confirms it while no newer pointer replaced it. A sent result to a
+retained Codex chat with no open inbox reports `receiver_watching` true while
+the start's checks pass, without claiming, charging or asking; otherwise it
+carries reason `codex_closed` and the tool result adds "Codex is closed;
+messages wait until it opens." Held by:
+`TestAgentStartRegisteredCodexRetainedChat`,
+`TestCodexAcceptedWakeHoldsTheSlotForItsLease`,
+`TestCodexUnknownQueueLeaseAllowsOnlyNewerWakeAfterReopen`,
+`TestMessagesClosedCodexChatWakeableOnlyWithSettingAndRight` and
+`TestSentToClosedCodexSaysCodexIsClosed`.
 
 A closed Claude Code chat is resumed in place only while no Claude desktop
 app or Claude Code CLI process (`claude.exe`) runs in this session: a missing
@@ -619,6 +703,158 @@ Untestable here: broader W3-14 published-content marking remains pending under
 the existing "Published content is untrusted" requirement in
 `research/release-0.8.0/PLAN.md`. These checks cover the Messages and AppModel
 constructors, without a coverage claim for every other published-content path.
+
+## Reply-only turns (S5)
+
+**[MCPG-R1] A peer-started turn is reply-only.** A turn OA starts in a chat
+because another agent's message arrived MUST be reply-only until the person
+allows more, in the words of the architect ruling below, which is
+`decisions/RULING-2026-11-22-S5-reply-only.md` verbatim. The 0.8.1 parts
+are built:
+
+- The gateway marks the inbox's turn at the adapter's keyed wake
+  reservation, at a read that confirms a wake key, and, for Codex, at a body
+  read while the queued pointer is held. The adapter's keyed turn signal or
+  the 30-minute wake lease ends the mark; the model cannot end it. While it
+  stands, every OA tool outside the ruling's list is refused before admission
+  with the ruling's reason; `oa_messages_reply` answers only a message the
+  turn read; `oa_applications_command_call` passes only an app-model read
+  tool or a command the kept manifest classes read or reveal.
+  (`messages_reply_only.go`, `gateway/reply_only.go`)
+- The person's rule `abstraction.facade/application.message_full_tools`
+  on `app:<sender>`, held by the receiving agent's own program, lifts the
+  mark. The gateway decides it as that program; `oa_messages_watch` reports
+  the live answer as `peer_full_tools` while a mark stands. Only the
+  Panel's Permissions page sets it; it is never asked at first use. Full
+  use needs the rule for every sender the turn read; a sender on a paired
+  computer is marked `remote:<from>`, which no local rule names, so its turn
+  never gets full use.
+- The Claude Mod (`claude-plugin/hooks/register.js`) marks the turn its
+  wake pointer starts and refuses every tool outside the list through its
+  `tool.call` hook. Read, Glob and Grep pass only inside the chat's
+  working directory after the host resolves links; a working directory that
+  is a drive or file-system root or a home folder allows none, and the
+  refusal says so. A turn is reply-only exactly when the Mod submitted its
+  prompt as a wake pointer it validated: the ticket it reserved and the
+  pointer text it holds for that ticket. Every other prompt that enters,
+  whatever its origin (`composer`, `sdk`, `bridge`, a cross-session send,
+  another plugin) or text, an imitated pointer included, starts a normal turn
+  and ends the mark; delivered into a running woken turn, it ends the mark
+  when that turn completes. A peer message read inside such a normal turn is
+  the ruling's 0.9.0 known limit: untrusted text, not tool-restricted. The
+  mark is kept per conversation in the plugin store across a reload. Full use is asked of OA again after every `oa_messages_wait`.
+- The OpenCode plugin (`adopters/opencode/reply-only.js`) does the same
+  through `tool.execute.before`, including the folder rule and the re-ask
+  after every read. Its mark comes only from its own `promptAsync` pointer;
+  the next busy turn it did not start ends it.
+- Codex: OA enforces the rule on OA's tools only. Codex's built-in tools
+  follow Codex's own approval policy; the queued pointer says the turn is
+  reply-only.
+- A cold start of Claude for a peer message keeps its fixed reply-only
+  profile (`agent_cold_resume.go`): no built-in tools and only the Messages
+  reply tools. The pair rule does not widen it in 0.8.1.
+
+Held by: `mcp-gateway/messages_reply_only_test.go`,
+`mcp-gateway/claude-plugin/hooks/register.test.mjs` (S5 tests),
+`adopters/opencode/test/reply-only.test.mjs`,
+`monitor/rights_message_tools_test.go`,
+`serve/messages_full_tools_catalog_test.go` (the receiver-only decision with the runtime's real policy).
+
+### Architect ruling, 2026-11-22
+
+The ruling text, verbatim:
+
+```markdown
+# S5: a peer message that wakes an open chat gets a reply-only turn
+
+Architect ruling, 2026-11-22, on the owner-delegated default (option b). A
+security review follows before merge.
+
+## Rule
+
+A turn that OA starts in a chat because another agent's message arrived (a
+wake prompt or a cold start) is a **reply-only turn** until the person
+allows more. A turn the person starts by typing is unaffected.
+
+**Allowed in a reply-only turn:**
+
+- reading the message, and replying in that thread (`oa_messages_reply`);
+- read-only file tools inside the chat's own working directory: read, list,
+  search;
+- OA's read-only tools: list models, describe apps, read app state, read job
+  status.
+
+**Refused:**
+
+- file writes and edits;
+- shell and command execution;
+- web fetch and search, which would send local data out through a query;
+- tools from other MCP servers;
+- OA tools that change anything: app commands that commit, downloads,
+  generation jobs, rights, sends to anyone other than the thread's sender,
+  new threads.
+
+Refusals carry the reason: "This turn was started by a message from
+<sender>. Ask the person to allow more for this conversation."
+
+Reading project files to answer stays allowed. The person already allowed
+this agent pair to exchange tasks (messaging consent is person-only). The
+reply-only rule stops side effects, not answers.
+
+## Per host
+
+- **Claude Code (0.8.1):** the OA plugin marks a turn reply-only when its
+  wake prompt started it. Its PreToolUse hook blocks every tool outside the
+  allowed list, with the reason. The person's next prompt in that chat ends
+  the mark.
+- **OpenCode (0.8.1):** the in-process plugin marks wake-started turns the
+  same way, and its `tool.execute.before` hook refuses tools outside the
+  list.
+- **Codex:**
+  - 0.8.1: OA enforces the rule on OA's own tools, for calls from a
+    wake-started turn.
+  - Codex's built-in tools follow Codex's own approval policy. The wake
+    prompt says the turn is reply-only, and the docs state this limit.
+  - 0.9.0: per-turn approval or sandbox mode through Codex's app-server, if
+    it is documented for integrations.
+
+## Promotion: the person allows more
+
+- **0.8.1:** the Panel's Messages page lists each agent pair with "Allow full
+  tool use when <sender> messages <receiver>". It's off by default. The
+  person turns it on with a click, it applies to that pair until switched
+  off, and every change is an Activity line.
+- **0.9.0:** a refused agent may ask, through a new tool, for full use in that
+  one conversation. OA raises a person-only popup: "Let OpenCode's messages
+  use all of Claude's tools in this conversation?", with "Allow for this
+  conversation" and "Not now".
+  - The answer is recorded per receiving chat, sender and thread.
+  - It ends when the thread ends, or after 24 hours.
+  - The agent can't grant it to itself: only the person's answer counts.
+
+## Cold-start quarantine
+
+A chat OA starts cold for a peer message is reply-only by the same rule.
+Starting closed chats for messages stays under the earlier ruling: later,
+with its own security review. Promotion applies to it the same way.
+
+## Known limit (0.9.0)
+
+A peer message read inside a turn the person started is untrusted text, as
+today, and is not tool-restricted. The in-turn pointer is a fixed one-line
+count with no body. The agent reads bodies through the inbox, where they are
+marked untrusted. 0.9.0 reviews whether bodies read inside a person turn
+should also restrict tools until that turn ends.
+
+## Tests
+
+- Claude and OpenCode: a peer message wakes the chat, and the agent's Edit
+  or Bash is refused with the reason. Read and reply succeed.
+- After the pair toggle is turned on, the same message's turn may edit.
+- The person typing in the chat gives a normal turn.
+- Codex: an OA commit-class app command from a wake-started turn is refused.
+```
+
 
 ## Errors and outcomes
 

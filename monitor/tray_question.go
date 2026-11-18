@@ -264,12 +264,7 @@ func selfRegisteredWords(record askclient.RecordMetadata, askerProgram string, c
 	if !ok {
 		return "", "", false
 	}
-	// A title that is the program's path names nothing more than its stem
-	// (architect ruling 2026-11-09, second block).
-	if title == programStem(program) {
-		return program, programStem(program) + " was added to OpenAbstractions. Keep it?", true
-	}
-	return program, title + " (" + programStem(program) + ") was added to OpenAbstractions. Keep it?", true
+	return program, "Let " + title + " work with OpenAbstractions?", true
 }
 
 func selfRegisteredTarget(key, about, askerProgram string, content *askclient.CatalogueContent) (program, title string, ok bool) {
@@ -483,10 +478,8 @@ func trayQuestionViewForContent(record askclient.RecordMetadata, publisher trayP
 		if rest, ok := strings.CutPrefix(record.Text, record.Asker+" "); ok && record.Asker != "" && name != "" {
 			heading = name + " " + rest
 		}
-		// Connection titles read "<App> integration"; the person knows the
-		// app ("Connect Claude?").
 		if record.Key == asks.AgentEnrollmentKey {
-			heading = strings.ReplaceAll(heading, " integration", "")
+			heading = enrollmentWords(heading)
 		}
 		if retained != nil && name != "" {
 			if words, ok := asks.QuestionPresentation(record.Key, name, retained.Slots); ok {

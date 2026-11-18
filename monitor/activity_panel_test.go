@@ -24,7 +24,7 @@ func TestActivityWordsEveryCatalogueQuestionWithoutRawValues(t *testing.T) {
 	code, digest := "7f3a9c2e5b1d4e6f8a0b", "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
 	about := map[string]string{"content.replace": "output:image/" + digest, "opencode.project.edit": folder, "download.reach": "huggingface.co",
 		asks.FirstUseKey: program, asks.SelfRegisteredKey: program, asks.SystemSecurityLogKey: code, asks.TypedPermissionKey: program,
-		asks.ApplicationCommandOnceKey: program, asks.AgentEnrollmentKey: program, asks.AgentUpdateKey: code, asks.SetupModelsKey: code}
+		asks.ApplicationCommandOnceKey: program, asks.AgentEnrollmentKey: program, asks.AgentUpdateKey: code, asks.SetupModelsKey: code, asks.RightsChangeKey: code}
 	title := map[string]string{
 		asks.PairingKey:                "Pair these computers? Check code " + code,
 		"content.replace":              "coder.exe requests a one-time replacement of output:image/" + digest + " with " + digest + ". Request " + code + " expires 10:00.",
@@ -40,6 +40,7 @@ func TestActivityWordsEveryCatalogueQuestionWithoutRawValues(t *testing.T) {
 		asks.AgentUpdateKey:            "Update the Coder connections? Keep these updated connections as your assistants. Restart Coder to finish. Request " + code + ".",
 		asks.SetupModelsKey:            "Set up models for Coder. " + digest,
 		asks.ProgramReviewKey:          "Review updated programs? " + program + " " + digest,
+		asks.RightsChangeKey:           "Let the command line give coder permission to download files? Program " + program + ". Action abstraction.job/acceptance.submit. Resource job:download. Request " + code + " expires 10:00.",
 	}
 	keys := []string{asks.TypedPermissionKey, "unknown.question"}
 	for _, q := range asks.Questions {
@@ -65,7 +66,7 @@ func TestActivityWordsEveryCatalogueQuestionWithoutRawValues(t *testing.T) {
 	}
 	for key, want := range map[string]string{"opencode.project.edit": "Asked to edit files in site", "content.replace": "Asked to replace stored content once",
 		"download.reach": "Asked to fetch from huggingface.co", "rights.register": "Asked for permissions", asks.PairingKey: "Asked to pair computers", "unknown.question": "Asked a question",
-		asks.ApplicationCommandOnceKey: "Asked a question", asks.AgentEnrollmentKey: "Asked a question", asks.AgentUpdateKey: "Asked a question", asks.SetupModelsKey: "Asked a question", asks.ProgramReviewKey: "Asked to review updated programs"} {
+		asks.ApplicationCommandOnceKey: "Asked a question", asks.AgentEnrollmentKey: "Asked a question", asks.AgentUpdateKey: "Asked a question", asks.SetupModelsKey: "Asked a question", asks.ProgramReviewKey: "Asked to review updated programs", asks.RightsChangeKey: "Asked to change permissions"} {
 		if got := answerEvent(askclient.AnswerContent{Answer: askclient.AnswerEntry{Key: key, Asker: "coder.exe", About: about[key], Title: title[key], Option: "once", AnsweredBy: askclient.AnswererOperator}}, names).What; got != want {
 			t.Errorf("%s: %q, want %q", key, got, want)
 		}

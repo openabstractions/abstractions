@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"strings"
 
 	msg "github.com/openabstractions/abstraction-facade/go/abstraction/facade/messages"
 	rights "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
@@ -69,6 +70,22 @@ func (r *messagesReceiver) projectSendReceipt(result msg.SendResult) msg.SendRes
 		result.Refused = state.Refused
 	}
 	result.ReceiverWatching = r.host.messageIsWatching(r.ctx, original.Actor.Account, original.Receiver, request.Context)
+	// A receiver whose wake is stuck behind an unconfirmed pointer holds its
+	// watch but wakes no chat. On 2026-11-22 Codex saw no message after 2941
+	// while every send reported receiver_watching=true.
+	if application := strings.TrimPrefix(request.To, "app:"); result.ReceiverWatching && r.host.directory != nil && messageWakeUnconfirmed(application, r.host.directory.messageContextStatus(r.ctx, application, request.Context)) {
+		result.ReceiverWatching = false
+	}
+	// A retained Codex chat whose helper has gone is watching while the
+	// runtime would wake it (architect ruling 1, 2026-11-22); otherwise the
+	// send says Codex is closed.
+	if !result.ReceiverWatching && original.Actor.Remote == nil && request.Withdraw == "" {
+		if codex, wakeable := r.host.messageCodexChatWakeable(r.ctx, original, request); wakeable {
+			result.ReceiverWatching = true
+		} else if codex && result.Reason == "" {
+			result.Reason = messageCodexClosedReason
+		}
+	}
 	// A local sent result names the chat it reached (architect ruling
 	// 2026-11-12, (a)); a retry reads the same original request.
 	if original.Actor.Remote == nil && original.Forward == nil && request.Withdraw == "" {

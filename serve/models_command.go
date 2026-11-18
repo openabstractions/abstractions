@@ -128,6 +128,11 @@ models host:
                        the runtime that starts the provider; by default the
                        declaration names none and that runtime tells the
                        provider its own (ABSTRACTION_RESOURCE_ENDPOINT)
+  --plan               host and unhost: print the registry edits as JSON and
+                       write nothing; the Panel applies them through its
+                       own registry client. A declaration this command
+                       writes itself reads third_party (no product title,
+                       rank or routine complete tier)
 
 A hosted model refuses in its own words: no_engine, not_permitted when no rule
 lets the provider hold the card, insufficient and holders_refused when the card

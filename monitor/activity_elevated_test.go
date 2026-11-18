@@ -70,3 +70,32 @@ func TestActivityComfyGraphEditsShowOnceWithoutUndoButton(t *testing.T) {
 		}
 	}
 }
+
+// An agent's open that the person allowed after the agent's call ended is one
+// row attributed to the agent (architect ruling 2026-11-22).
+func TestActivityOpenLaterRowNamesTheRequester(t *testing.T) {
+	agent := `C:\Users\person\AppData\Local\opencode\opencode.exe`
+	history := &messageHistoryFake{page: logclient.ApplicationLogPage{Outcome: logwire.HistoryPageOutcomePage, AtEnd: true, Records: []logwire.Record{
+		{Time: "2026-11-22T09:00:00Z", Msg: "Opened an app after the person's Allow", Attrs: map[string]string{"oa_event": "applications.open.later", "program": agent, "application": "comfyui", "title": "ComfyUI", "outcome": "ready", "handle": "h"}},
+		{Time: "2026-11-22T09:01:00Z", Msg: "Opened an app after the person's Allow", Attrs: map[string]string{"oa_event": "applications.open.later", "program": agent, "application": "comfyui", "title": "ComfyUI", "outcome": "forbidden", "reason": "blocked"}},
+		{Time: "2026-11-22T09:02:00Z", Attrs: map[string]string{"oa_event": "applications.open.later", "program": ""}},
+	}}}
+	old := messageActivityHistory
+	t.Cleanup(func() { messageActivityHistory = old })
+	messageActivityHistory = func(context.Context) (messageHistoryReader, logclient.ApplicationLogTarget, error) {
+		return history, logclient.ApplicationLogTarget{Selection: logwire.ApplicationLogSelectionOneApp, Program: "native-runtime"}, nil
+	}
+	panel := (&servicePanel{}).handler("test-key")
+	r := panelRequest(t, panel, "/activity/elevated", nil)
+	page := decodePanel[activityPage](t, r.Code, r.Body.Bytes())
+	if page.Outcome != "page" || len(page.Events) != 2 {
+		t.Fatal(page)
+	}
+	opened, blocked := page.Events[0], page.Events[1]
+	if opened.What != "Open ComfyUI after your Allow" || opened.Result != "Opened" || opened.Program != agent || opened.App == "" {
+		t.Fatal(opened)
+	}
+	if blocked.Result != "Not opened: you blocked it" || blocked.Program != agent {
+		t.Fatal(blocked)
+	}
+}

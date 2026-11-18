@@ -80,10 +80,93 @@ func claudeConnectionsCommand(args []string, output, diagnostics io.Writer) int 
 		return 1
 	}
 	if err != nil {
+		// One closed token names the failure for the Panel; the error text
+		// itself can hold profile paths and stays in this process.
+		checkLine(diagnostics, "OA_CLAUDE_CONNECTIONS_ERROR "+claudeInventoryReason(err))
 		checkLine(diagnostics, "Claude saved connections are unavailable; no current connection or permission claim was established.")
 		return 1
 	}
 	return 0
+}
+
+// claudeInventoryFailure tags an inventory failure with one closed reason
+// token: state_folder, bound, marker, settings_file or changed.
+type claudeInventoryFailure struct {
+	reason string
+	err    error
+}
+
+func (e *claudeInventoryFailure) Error() string { return e.err.Error() }
+func (e *claudeInventoryFailure) Unwrap() error { return e.err }
+
+func inventoryFailure(reason string, err error) error {
+	if err == nil {
+		return nil
+	}
+	var tagged *claudeInventoryFailure
+	if errors.As(err, &tagged) {
+		return err
+	}
+	return &claudeInventoryFailure{reason, err}
+}
+
+// claudeInventoryReason is the closed token for an inventory failure:
+// a tagged reason, timeout, or other.
+func claudeInventoryReason(err error) string {
+	var tagged *claudeInventoryFailure
+	switch {
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
+		return "timeout"
+	case errors.As(err, &tagged):
+		return tagged.reason
+	}
+	return "other"
+}
+
+// errClaudeConnectionProjectGone marks a saved project connection whose
+// project folder no longer exists. Its marker configures nothing, so the
+// inventory leaves it out and lists the others.
+var errClaudeConnectionProjectGone = errors.New("connection project folder no longer exists")
+
+// claudeInventoryEntryLimit bounds one enumeration of the state folder. The
+// folder also holds the gateway's own request and job records, so only
+// connection markers count toward claudeConnectionLimit.
+const claudeInventoryEntryLimit = 1 << 16
+
+// claudeConnectionMarkerNames lists the connection marker names in the open
+// state folder, reading it in chunks.
+func claudeConnectionMarkerNames(ctx context.Context, directory *os.File) ([]string, error) {
+	var names []string
+	seen := 0
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		entries, err := directory.ReadDir(256)
+		seen += len(entries)
+		if seen > claudeInventoryEntryLimit {
+			return nil, inventoryFailure("bound", errors.New("connection state folder exceeds its entry bound"))
+		}
+		for _, entry := range entries {
+			name := entry.Name()
+			// The user-scoped companion has no MCP server of its own. Its marker
+			// belongs to the separate companion owner, not the project-plugin
+			// connection reader. A saved user MCP remains independently readable.
+			if name == "claude-plugin-user.json" || !strings.HasSuffix(name, ".json") || (!strings.HasPrefix(name, "claude-setup-") && !strings.HasPrefix(name, "claude-plugin-")) {
+				continue
+			}
+			names = append(names, name)
+			if len(names) > claudeConnectionLimit {
+				return nil, inventoryFailure("bound", errors.New("connection inventory exceeds its bound"))
+			}
+		}
+		if errors.Is(err, io.EOF) || (err == nil && len(entries) == 0) {
+			return names, nil
+		}
+		if err != nil {
+			return nil, inventoryFailure("state_folder", err)
+		}
+	}
 }
 
 func readClaudeConnections(ctx context.Context, statePath string) (claudeConnectionPage, error) {
@@ -146,56 +229,43 @@ func readClaudeConnectionsWithOptions(ctx context.Context, statePath string, use
 		return page, errors.New("connection state ancestor changed during absence check")
 	}
 	if err := privatedir.CheckDir(statePath); err != nil {
-		return page, err
+		return page, inventoryFailure("state_folder", err)
 	}
 	state, _, err := setupIdentity(ctx, statePath, true)
 	if err != nil {
-		return page, err
+		return page, inventoryFailure("state_folder", err)
 	}
 	defer state.Close()
 	// Enumerate this one existing owned marker directory, never projects or an
-	// agent profile. ReadDir's finite count also bounds unrelated entries here.
+	// agent profile. Only marker names count toward the connection bound.
 	directory, err := os.Open(state.FileID().Path())
 	if err != nil {
-		return page, err
+		return page, inventoryFailure("state_folder", err)
 	}
 	defer directory.Close()
 	directoryKey, err := fileid.FileKeyOf(directory)
 	if err != nil || directoryKey != state.FileID().Key() {
-		return page, errors.New("connection directory identity changed")
+		return page, inventoryFailure("changed", errors.New("connection directory identity changed"))
 	}
-	entries, err := directory.ReadDir(2*claudeConnectionLimit + 1)
-	if err != nil && !errors.Is(err, io.EOF) {
+	names, err := claudeConnectionMarkerNames(ctx, directory)
+	if err != nil {
 		return page, err
 	}
-	if len(entries) > 2*claudeConnectionLimit || !setupIdentitiesCurrent(ctx, []setupIdentityRef{state}) {
-		return page, errors.New("connection inventory unavailable or exceeds its bound")
+	if !setupIdentitiesCurrent(ctx, []setupIdentityRef{state}) {
+		return page, inventoryFailure("changed", errors.New("connection state changed during enumeration"))
 	}
-	for _, entry := range entries {
+	for _, name := range names {
 		if err := ctx.Err(); err != nil {
 			return page, err
 		}
-		name := entry.Name()
-		// The user-scoped companion has no MCP server of its own. Its marker
-		// belongs to the separate companion owner, not the project-plugin
-		// connection reader below. A saved user MCP remains independently readable.
-		if name == "claude-plugin-user.json" {
-			continue
-		}
 		plugin := strings.HasPrefix(name, "claude-plugin-")
-		if (!strings.HasPrefix(name, "claude-setup-") && !plugin) || !strings.HasSuffix(name, ".json") {
-			continue
-		}
-		if len(page.Connections) == claudeConnectionLimit {
-			return page, errors.New("connection inventory exceeds its bound")
-		}
 		markerPath := filepath.Join(state.FileID().Path(), name)
 		if err := privatedir.CheckFile(markerPath); err != nil {
-			return page, err
+			return page, inventoryFailure("marker", err)
 		}
 		markerFile, err := state.Beneath(name, fileid.Options{Links: fileid.RefuseLinks})
 		if err != nil {
-			return page, err
+			return page, inventoryFailure("marker", err)
 		}
 		raw, readErr := cas.ReadLimitContext(ctx, markerPath, claudeMarkerLimit)
 		current, currentErr := state.Beneath(name, fileid.Options{Links: fileid.RefuseLinks})
@@ -205,7 +275,7 @@ func readClaudeConnectionsWithOptions(ctx context.Context, statePath string, use
 			current.Close()
 		}
 		if readErr != nil || !same {
-			return page, errors.New("connection ownership changed during read")
+			return page, inventoryFailure("changed", errors.New("connection ownership changed during read"))
 		}
 		var row claudeConnection
 		if plugin {
@@ -220,12 +290,15 @@ func readClaudeConnectionsWithOptions(ctx context.Context, statePath string, use
 				row, err = readClaudeConnection(ctx, state, name, marker, userHome)
 			}
 		}
+		if errors.Is(err, errClaudeConnectionProjectGone) {
+			continue
+		}
 		if err != nil {
-			return page, err
+			return page, inventoryFailure("marker", err)
 		}
 		after, err := cas.ReadLimitContext(ctx, markerPath, claudeMarkerLimit)
 		if err != nil || !bytes.Equal(raw, after) {
-			return page, errors.New("connection ownership changed during public readback")
+			return page, inventoryFailure("changed", errors.New("connection ownership changed during public readback"))
 		}
 		if !cliLocator {
 			row.CLIIdentity = ""
@@ -233,7 +306,7 @@ func readClaudeConnectionsWithOptions(ctx context.Context, statePath string, use
 		page.Connections = append(page.Connections, row)
 	}
 	if !setupIdentitiesCurrent(ctx, []setupIdentityRef{state}) {
-		return page, errors.New("connection state changed during read")
+		return page, inventoryFailure("changed", errors.New("connection state changed during read"))
 	}
 	sort.Slice(page.Connections, func(i, j int) bool {
 		if page.Connections[i].Project == page.Connections[j].Project {
@@ -259,6 +332,9 @@ func readClaudeConnection(ctx context.Context, state fileid.Handle, filename str
 		return row, err
 	}
 	currentProject, projectStatus, err := fileid.Revalidate(ctx, storedProject)
+	if err == nil && projectStatus == fileid.StateGone && marker.Scope != "user" {
+		return row, errClaudeConnectionProjectGone
+	}
 	if err != nil || projectStatus != fileid.StateSame {
 		return row, errors.New("connection project identity unavailable")
 	}
@@ -292,8 +368,11 @@ func readClaudeConnection(ctx context.Context, state fileid.Handle, filename str
 		return row, errors.New("connection ownership name mismatch")
 	}
 	current, err := readClaudeNamedEntry(ctx, project, configName, marker.Name)
-	if err != nil || !setupIdentitiesCurrent(ctx, []setupIdentityRef{state, project}) {
-		return row, errors.New("connection public readback unavailable")
+	if err != nil {
+		return row, inventoryFailure("settings_file", errors.New("connection public readback unavailable"))
+	}
+	if !setupIdentitiesCurrent(ctx, []setupIdentityRef{state, project}) {
+		return row, inventoryFailure("changed", errors.New("connection public readback changed"))
 	}
 	program, _, err := setupIdentity(ctx, marker.Entry.Command, false)
 	programKey := ""
@@ -341,6 +420,9 @@ func readClaudePluginConnection(ctx context.Context, state fileid.Handle, filena
 		return row, err
 	}
 	current, status, err := fileid.Revalidate(ctx, storedProject)
+	if err == nil && status == fileid.StateGone {
+		return row, errClaudeConnectionProjectGone
+	}
 	if err != nil || status != fileid.StateSame {
 		return row, errors.New("plugin project identity changed")
 	}

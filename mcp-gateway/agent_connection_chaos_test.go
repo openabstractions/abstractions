@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	cas "github.com/openabstractions/abstraction-cas/go"
 	facade "github.com/openabstractions/abstraction-facade/go/abstraction/facade"
 	msg "github.com/openabstractions/abstraction-facade/go/abstraction/facade/messages"
 	"github.com/openabstractions/abstraction-identity/go/privatedir"
@@ -46,6 +48,7 @@ type chaosRuntime struct {
 	nativeMessages
 	mu                   sync.Mutex
 	down                 bool
+	listing              *msg.InboxPage
 	hang                 chan struct{}
 	stalled              chan struct{} // open while the process is suspended (messages_stall_test.go)
 	decodeFaults         int
@@ -224,6 +227,12 @@ func (r *chaosRuntime) InboxesList(msg.InboxQuery) (msg.InboxPage, error) {
 	r.actions.Add(1)
 	if err := r.fault(); err != nil {
 		return msg.InboxPage{}, err
+	}
+	r.mu.Lock()
+	listing := r.listing
+	r.mu.Unlock()
+	if listing != nil {
+		return *listing, nil
 	}
 	return msg.InboxPage{Outcome: msg.OutcomePage}, nil
 }
@@ -457,7 +466,7 @@ func startChaosHelperConfigured(t *testing.T, runtime *chaosRuntime, queue *chao
 	if err != nil {
 		t.Fatal(err)
 	}
-	diagnostic := newAgentDiagnostic(dir, program)
+	diagnostic := newAgentDiagnostic(testCaller(t), dir, program)
 	if diagnostic == nil {
 		t.Fatal("lifecycle record unavailable")
 	}
@@ -542,6 +551,74 @@ func (h *chaosHelper) consumePointer(queue *chaosQueue) {
 	if out := h.call(gateway.ToolMessagesWait, map[string]any{"wait_ms": 0, "wake_ticket": ticket}); out.IsError {
 		h.t.Fatal("owned pointer body consumption refused", out)
 	}
+}
+
+// consumePointerReceipt proves the exact unknown-queue pointer was read and
+// removed durably. The later wake may already own a different ticket.
+func (h *chaosHelper) consumePointerReceipt(queue *chaosQueue) time.Time {
+	h.t.Helper()
+	queue.mu.Lock()
+	ticket := queue.tickets[h.thread]
+	queue.mu.Unlock()
+	outcome, oldHeld := "unread", true
+	fail := func(phase string, err error) {
+		h.t.Helper()
+		total, attempts := queue.snapshot()
+		h.t.Fatalf("pointer receipt phase=%s outcome=%s old_held=%t total=%d attempts=%d cause=%.200s", phase, outcome, oldHeld, total, attempts, fmt.Sprint(err))
+	}
+	if !validCodexWakeTicket(ticket) {
+		fail("ticket", errors.New("owned pointer omitted ticket"))
+	}
+	d := h.diagCtx.Value(agentDiagnosticKey{}).(*agentDiagnostic)
+	path := filepath.Join(d.root.FileID().Path(), "codex-wake-receipts.json")
+	read := func(ctx context.Context) (codexWakeLedger, error) {
+		var ledger codexWakeLedger
+		raw, err := cas.ReadLimitContext(ctx, path, 64<<10)
+		if err == nil {
+			err = json.Unmarshal(raw, &ledger)
+		}
+		return ledger, err
+	}
+	ctx, cancel := context.WithTimeout(h.t.Context(), 5*time.Second)
+	before, err := read(ctx)
+	cancel()
+	if err != nil {
+		fail("before-ledger", err)
+	}
+	slotKey := fmt.Sprintf("%x", sha256.Sum256([]byte("oa-codex-integration\x00"+h.thread)))
+	held, ok := before.Outstanding[slotKey]
+	if !ok || held.Ticket != ticket || !held.Codex {
+		fail("before-binding", errors.New("queued ticket is not the thread's outstanding Codex pointer"))
+	}
+	out := h.call(gateway.ToolMessagesWait, map[string]any{"wait_ms": 0, "wake_ticket": ticket})
+	deadline := time.Now().Add(5 * time.Second)
+	if out.IsError {
+		fail("body-call", errors.New("MCP tool error"))
+	}
+	raw, err := json.Marshal(out.StructuredContent)
+	if err != nil {
+		fail("body-result", err)
+	}
+	page, err := msg.DecodePage(raw)
+	if err != nil {
+		fail("body-result", err)
+	}
+	outcome = page.Outcome.String()
+	if page.Outcome != msg.OutcomePage {
+		fail("body-outcome", errors.New("exact-ticket read returned no page"))
+	}
+	ctx, cancel = context.WithDeadline(h.t.Context(), deadline)
+	after, err := read(ctx)
+	cancel()
+	if err != nil {
+		fail("after-ledger", err)
+	}
+	current, ok := after.Outstanding[slotKey]
+	oldHeld = ok && current.Ticket == ticket
+	if oldHeld {
+		fail("after-binding", errors.New("exact-ticket page left the original pointer outstanding"))
+	}
+	return deadline
 }
 
 // unavailable asserts a typed refusal: the call answered, it did not succeed.
@@ -824,8 +901,7 @@ func TestChaosCodexQueueFails(t *testing.T) {
 		if _, attempts := queue.snapshot(); attempts != before+1 {
 			t.Fatal("ticketless read released the unknown pointer", attempts, before)
 		}
-		h.consumePointer(queue)
-		deadline = time.Now().Add(5 * time.Second)
+		deadline = h.consumePointerReceipt(queue)
 		for {
 			if _, attempts := queue.snapshot(); attempts == before+2 {
 				break
@@ -909,6 +985,11 @@ func TestChaosSevenConcurrentHelpers(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+	// A helper that failed to start ended only its own goroutine; stop here
+	// instead of reading its nil entry, which panics the whole package.
+	if t.Failed() {
+		t.FailNow()
+	}
 	for _, h := range helpers {
 		h.recovered(5 * time.Second)
 	}
@@ -1086,6 +1167,11 @@ func TestChaosRawStdioLines(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("server did not end on EOF")
+	}
+	// The transport returns after its thread lock is released, so the state
+	// folder can be removed at once.
+	if _, held := codexHeldThreads.Load("00000000-0000-4000-8000-000000000077"); held {
+		t.Fatal("thread lock held after the transport returned")
 	}
 }
 

@@ -57,6 +57,9 @@ type applicationMessageStartRequest struct {
 	// own Context. It routes the start; consent and reservation ignore it.
 	Target string
 	Cold   *startprofile.ColdResume
+	// Wake is the message's wake key in a retained Codex chat's inbox. The
+	// launcher reserves the chat's pointer under it in the wake ledger.
+	Wake string
 	// Origin is the chain of question IDs the woken turn carries: the waking
 	// question's own chain and that question.
 	Origin []string

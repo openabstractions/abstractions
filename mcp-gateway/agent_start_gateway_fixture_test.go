@@ -31,7 +31,7 @@ func TestAgentStartGatewayFixture(t *testing.T) {
 	if json.Unmarshal([]byte(raw), &cfg) != nil || cfg.Endpoint == "" || cfg.State == "" {
 		t.Fatal("fixture configuration")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	cold, err := parseClaudeColdBinding(cfg.ColdBinding, cfg.ColdCwdKey, cfg.ColdContext, cfg.ColdBinding != "")
 	if err != nil {

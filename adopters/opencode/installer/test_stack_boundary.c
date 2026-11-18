@@ -82,7 +82,7 @@ static BOOL launcher_context(const wchar_t *directory) {
     /* Native held custody prevents replacement while JS receives the request. */
     if(DeleteFileW(b[2]))goto done;
     if(!json_string(b[10],32768,b[9]))goto done;
-    wchar_t *values[9]={L"\"install\"",L"\"directory\"",L"\"stage\"",L"\"plugin\"",L"\"cli\"",L"\"state\"",L"\"work\"",L"\"cache\"",b[10]};
+    wchar_t *values[7]={L"\"install\"",L"\"directory\"",L"\"plugin\"",L"\"state\"",L"\"work\"",L"\"cache\"",b[10]};
     wchar_t *json=HeapAlloc(GetProcessHeap(),0,65536*sizeof(wchar_t));
     if(!json)goto done;
     BOOL encoded=request_json(json,values)&&wcsstr(json,L"\"mcpLauncher\":")&&wcsstr(json,b[10]);

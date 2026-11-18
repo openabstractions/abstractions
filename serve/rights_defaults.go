@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"text/tabwriter"
+	"time"
 
 	"github.com/openabstractions/abstraction-facade/go/client"
 	rightswire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
@@ -56,16 +57,19 @@ type rightsDefaultsReply struct {
 	Revision string        `json:"revision,omitempty"`
 	Defaults []defaultJSON `json:"defaults,omitempty"`
 	Current  *defaultJSON  `json:"current,omitempty"`
+	// Request and Expires name a change request (RIGHTS-O17).
+	Request string `json:"request,omitempty"`
+	Expires string `json:"expires,omitempty"`
 }
 
 // rightsDefaults lists the defaults through the operator profile, or turns one
 // (name non-empty) at revision, read now when empty (rights RIGHTS-O13).
-func rightsDefaults(machine *client.Machine, source endpointSource, call func() (context.Context, context.CancelFunc), command, name string, on bool, revision string, asJSON bool, output io.Writer) error {
+func rightsDefaults(machine *client.Machine, source endpointSource, call func() (context.Context, context.CancelFunc), command, name string, on bool, revision string, wait time.Duration, asJSON bool, output io.Writer) error {
 	operator, err := resolveOperator(machine, source, call, command)
 	if err != nil {
 		return err
 	}
-	if name == "" || revision == "" {
+	if name == "" {
 		ctx, cancel := call()
 		page, err := operator.ListDefaultsContext(ctx)
 		cancel()
@@ -75,31 +79,31 @@ func rightsDefaults(machine *client.Machine, source endpointSource, call func() 
 		if page.Outcome != rightswire.PolicyPageOutcomePage {
 			return printDefaults(output, asJSON, rightsDefaultsReply{Command: command, Outcome: page.Outcome.String()}, rightsOperatorRefusal(command, page.Outcome.String(), ""))
 		}
-		if name == "" {
-			reply := rightsDefaultsReply{Command: command, Outcome: page.Outcome.String(), Revision: page.Revision}
-			for _, d := range page.Defaults {
-				reply.Defaults = append(reply.Defaults, defaultOf(d))
-			}
-			return printDefaults(output, asJSON, reply, nil)
+		reply := rightsDefaultsReply{Command: command, Outcome: page.Outcome.String(), Revision: page.Revision}
+		for _, d := range page.Defaults {
+			reply.Defaults = append(reply.Defaults, defaultOf(d))
 		}
-		revision = page.Revision
+		return printDefaults(output, asJSON, reply, nil)
 	}
-	ctx, cancel := call()
-	edit, err := operator.SetDefaultContext(ctx, revision, name, on)
-	cancel()
+	state, err := requestChange(operator, rightswire.PolicyChange{Kind: rightswire.ChangeKindSetDefault, ExpectedRevision: revision, Name: name, On: on}, wait, timeoutOf(call))
 	if err != nil {
-		return &exitError{exitNotResolved, fmt.Errorf("%s: outcome uncertain; list the defaults before another edit: %w", command, err)}
+		return changeUncertain(command, err)
 	}
-	reply := rightsDefaultsReply{Command: command, Outcome: edit.Outcome.String(), Revision: edit.Revision}
-	if edit.Current != nil {
-		current := defaultOf(*edit.Current)
-		reply.Current = &current
+	reply := rightsDefaultsReply{Command: command, Outcome: state.Outcome.String(), Revision: state.Revision, Request: state.ID, Expires: state.Expires}
+	if state.Outcome == rightswire.ChangeRequestOutcomeApplied || state.Outcome == rightswire.ChangeRequestOutcomeConflict {
+		ctx, cancel := call()
+		page, err := operator.ListDefaultsContext(ctx)
+		cancel()
+		if err == nil && page.Outcome == rightswire.PolicyPageOutcomePage {
+			for _, d := range page.Defaults {
+				if d.Name == name {
+					current := defaultOf(d)
+					reply.Current = &current
+				}
+			}
+		}
 	}
-	var failure error
-	if edit.Outcome != rightswire.PolicyEditOutcomeApplied {
-		failure = rightsOperatorRefusal(command, edit.Outcome.String(), "at revision "+revision)
-	}
-	return printDefaults(output, asJSON, reply, failure)
+	return printDefaults(output, asJSON, reply, changeFailure(command, state))
 }
 
 // revisionGiven reports whether the command line named --revision.

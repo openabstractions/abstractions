@@ -28,21 +28,30 @@ type codexReceivingConnection struct {
 	report          func(string)
 	binding         func(bool)
 	bindChat        func(string) error
+	// topLevel proves a thread top-level before host metadata binds it.
+	topLevel func(string) bool
 }
 
 func newCodexReceivingConnection(ctx context.Context, run func(context.Context, string) error, report func(string)) *codexReceivingConnection {
 	ctx, cancel := context.WithCancel(ctx)
 	r := &codexReceivingConnection{ctx: ctx, cancel: cancel, done: make(chan struct{}), run: run, report: report}
+	r.topLevel = func(thread string) bool {
+		//unchecked: an unknown Codex folder reads as "", and codexProvenTopLevel proves no thread under a home that is not absolute
+		home, _ := codexReceivingHome()
+		return codexThreadTopLevel(home, thread)
+	}
 	r.report("unavailable_missing_thread_metadata")
 	return r
 }
 
-// observe binds the first valid host thread and reports whether a call on a
-// bound connection comes from another thread. One Codex helper serves a chat
+// observe binds the first valid host thread proven top-level and reports
+// whether a call comes from another thread. One Codex helper serves a chat
 // and its sub-agent threads, so a call with missing, invalid or another
 // thread's metadata leaves the binding and its receiver running; the
 // middleware refuses only that call's chat-bound messaging (AB-1p ruling
-// 2026-11-22). The binding never retargets or restarts.
+// 2026-11-22). The binding never retargets or restarts. A thread not proven
+// top-level (ruling 3, 2026-11-22) leaves the connection unbound and its call
+// is handled as another thread's; the main chat binds on its next call.
 func (r *codexReceivingConnection) observe(meta map[string]any) (foreign bool) {
 	thread, ok := meta["threadId"].(string)
 	valid := ok && codexQueueThread.MatchString(thread)
@@ -53,6 +62,21 @@ func (r *codexReceivingConnection) observe(meta map[string]any) (foreign bool) {
 		return foreign
 	}
 	if r.closed || !valid {
+		r.mu.Unlock()
+		return false
+	}
+	topLevel := r.topLevel
+	r.mu.Unlock()
+	if topLevel == nil || !topLevel(thread) {
+		return true
+	}
+	r.mu.Lock()
+	if r.started {
+		foreign = thread != r.thread
+		r.mu.Unlock()
+		return foreign
+	}
+	if r.closed {
 		r.mu.Unlock()
 		return false
 	}
@@ -221,7 +245,7 @@ func (r *codexReceivingConnection) middleware(next mcp.MethodHandler) mcp.Method
 						fmt.Fprintf(os.Stderr, "OA_CODEX_RECEIVING foreign_thread_refused tool=%s\n", name)
 						return codexChatRefusal("not_permitted", codexForeignThreadReason), nil
 					}
-					ctx = context.WithValue(ctx, codexForeignThreadKey{}, true)
+					ctx = gateway.WithOtherThread(context.WithValue(ctx, codexForeignThreadKey{}, true))
 				} else if codexChatReads[name] {
 					// A bare unavailable read after receiving ended names that
 					// state; admission and runtime answers keep their own.
@@ -509,10 +533,15 @@ func runNativeMCPServerTransport(ctx context.Context, server *mcp.Server, backen
 		}
 	}
 	home, homeErr := codexReceivingHome()
+	// The thread lock, title and restore goroutines end with the connection.
+	// The transport returns after they have released the thread lock in
+	// directory, so a caller can remove or reuse that folder at once.
+	var background sync.WaitGroup
+	defer background.Wait()
 	r := newCodexReceivingConnection(ctx, func(receiving context.Context, thread string) error {
 		// A helper bound by host metadata keeps restoring helpers of the same
 		// app-server off its thread; a restored binding already holds this lock.
-		go holdCodexThread(receiving, directory, thread, time.After)
+		background.Go(func() { holdCodexThread(receiving, directory, thread, time.After) })
 		var wakeState *codexWakeState
 		var chat *messagesBackend
 		var stop func()
@@ -544,7 +573,7 @@ func runNativeMCPServerTransport(ctx context.Context, server *mcp.Server, backen
 		}
 		defer stop()
 		if homeErr == nil {
-			go followCodexThreadTitle(receiving, chat.status, home, thread, time.After)
+			background.Go(func() { followCodexThreadTitle(receiving, chat.status, home, thread, time.After) })
 		}
 		progress := &codexReceiverProgress{load: wakeState.Load}
 		once := func(receiving context.Context, observed func()) error {
@@ -600,7 +629,7 @@ func runNativeMCPServerTransport(ctx context.Context, server *mcp.Server, backen
 	if homeErr == nil {
 		restoring, cancelRestore := context.WithCancel(ctx)
 		defer cancelRestore()
-		go restoreCodexThread(restoring, r, home, directory, time.After)
+		background.Go(func() { restoreCodexThread(restoring, r, home, directory, time.After) })
 	}
 	server.AddReceivingMiddleware(r.middleware)
 	guardAgentServer(server)

@@ -410,25 +410,63 @@ func (o *inferenceOperator) AddHost(ctx context.Context, caller inference.Subjec
 		return iwire.HostChange{Outcome: iwire.EditOutcomeUnavailable}
 	}
 	entry.Profiles = entryProfiles(entry.Hosted, entry.Kind, entry.Base, entry.Profiles)
-	// A host is a registry declaration of role host: the registry decides the
-	// revision, the name and the count, and its watchers give the router the
-	// new host. The registry's own lock is taken without o.mu.
-	applied := o.providers.addAdmitted(ctx, expected, newHostFile(entry, declaredByOperator), o.providerEditAdmission(ctx, caller, inference.ActionHostManage))
-	if applied.Outcome != wire.DeclarationEditOutcomeApplied {
-		return iwire.HostChange{Outcome: hostEditOf(applied.Outcome), Revision: applied.Revision, Reason: applied.Reason}
+	// The host and the exact rules it writes (hostRuleList), its credential
+	// apply rule included, apply together: at once for the Panel window and an
+	// exempt elevated caller, and otherwise only on the person's Allow of one
+	// typed request (architect ruling (3) of 2026-11-22, RIGHTS-O17). A host
+	// add names no program, so it has no product standing.
+	by := rwire.Subject{Account: caller.Account, Program: caller.Program}
+	rules := o.hostRuleList(caller, entry)
+	// The person reads where the server is, not only its name.
+	request := rwire.PolicyChange{Kind: rwire.ChangeKindDeclaration, Name: entry.Name, Address: entry.Base, Rules: o.policyRules(rules)}
+	changes := o.changes()
+	route, pending := changes.declarationRoute(ctx, boundPeer(ctx, by), by, false)
+	apply := func(ctx context.Context, expected string) iwire.HostChange {
+		// A host is a registry declaration of role host: the registry decides
+		// the revision, the name and the count, and its watchers give the
+		// router the new host. The registry's own lock is taken without o.mu.
+		applied := o.providers.addAdmitted(ctx, expected, newHostFile(entry, declaredByOperator), o.providerEditAdmission(ctx, caller, inference.ActionHostManage))
+		if applied.Outcome != wire.DeclarationEditOutcomeApplied {
+			return iwire.HostChange{Outcome: hostEditOf(applied.Outcome), Revision: applied.Revision, Reason: applied.Reason}
+		}
+		change := iwire.HostChange{Outcome: iwire.EditOutcomeApplied, Revision: applied.Revision}
+		if err := o.writeDeclaredRules(rules); err != nil {
+			o.report(err)
+			change.Reason = "rules:" + err.Error()
+		}
+		// The declaration watcher may have surveyed before this call could
+		// grant the runtime's credential access. Publish a final post-rule
+		// observation so a newly added hosted server can expose its current
+		// models immediately.
+		if err := o.refreshHosts(); err != nil {
+			change.Reason = "hosts:unavailable"
+		}
+		return change
 	}
-	change := iwire.HostChange{Outcome: iwire.EditOutcomeApplied, Revision: applied.Revision}
-	if err := o.writeHostRules(caller, entry); err != nil {
-		o.report(err)
-		change.Reason = "rules:" + err.Error()
+	if pending {
+		state := changes.requestDeclaration(by, request, func(ctx context.Context) bool {
+			_, current, err := o.providers.listPinned()
+			return err == nil && apply(ctx, current).Outcome == iwire.EditOutcomeApplied
+		})
+		if state.ID == "" {
+			return iwire.HostChange{Outcome: inferenceEditRefusal(state.Outcome.String())}
+		}
+		return iwire.HostChange{Outcome: iwire.EditOutcomeForbidden, Reason: pendingReason(state)}
 	}
-	// The declaration watcher may have surveyed before this call could grant
-	// the runtime's credential access. Publish a final post-rule observation so
-	// a newly added hosted server can expose its current models immediately.
-	if err := o.refreshHosts(); err != nil {
-		change.Reason = "hosts:unavailable"
-	}
+	var change iwire.HostChange
+	changes.applyDeclaration(by, request, route, func() bool {
+		change = apply(ctx, expected)
+		return change.Outcome == iwire.EditOutcomeApplied
+	})
 	return change
+}
+
+// changes is the runtime's rights change gate, or nil without one.
+func (o *inferenceOperator) changes() *rightsChanges {
+	if o == nil || o.credentials == nil || o.credentials.runtimeRights == nil {
+		return nil
+	}
+	return o.credentials.runtimeRights.changes
 }
 
 // hostEditOf is the host edit outcome of a registry edit outcome.
@@ -448,23 +486,10 @@ func hostEditOf(outcome wire.DeclarationEditOutcome) iwire.EditOutcome {
 	return iwire.EditOutcomeUnavailable
 }
 
-// writeHostRules writes complete on the host for the runtime's operator
-// programs and the caller, and, for a hosted host with a credential, the
-// runtime's own apply rule its listing reads need. An existing rule on a
-// target, a deny included, is left as it is.
+// writeHostRules writes a host's rule set (hostRuleList). An existing rule on
+// a target, a deny included, is left as it is.
 func (o *inferenceOperator) writeHostRules(caller inference.Subject, entry iwire.HostEntry) error {
-	r := o.credentials.runtimeRights
-	by := rwire.Subject{Account: caller.Account, Program: caller.Program}
-	programs := slices.Clone(r.operators)
-	if !slices.ContainsFunc(programs, func(p string) bool { return samePrograms(p, caller.Program) }) {
-		programs = append(programs, caller.Program)
-	}
-	var errs []error
-	for _, program := range programs {
-		errs = append(errs, o.permitRule(by, program, inference.ActionComplete, inference.ResourceHost(entry.Name)))
-	}
-	errs = append(errs, o.ensureHostedApplyRule(by, entry, hostAddWhy))
-	return errors.Join(errs...)
+	return o.writeDeclaredRules(o.hostRuleList(caller, entry))
 }
 
 func (o *inferenceOperator) permitRule(by rwire.Subject, program, action, resource string) error {

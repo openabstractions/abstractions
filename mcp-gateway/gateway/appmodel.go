@@ -35,7 +35,8 @@ type AppModelBackend interface {
 	ApplicationsDescribe(context.Context, appmodel.ApplicationsQuery) (applications.DescribeResult, error)
 	ApplicationsCommands(context.Context, appmodel.CommandsQuery) (applications.CommandsResult, error)
 	ApplicationsCall(context.Context, appmodel.GatewayCall) (applications.CallResult, error)
-	ApplicationsOpen(context.Context, applications.ActivateRequest) (applications.ActivationResult, error)
+	ApplicationsOpen(context.Context, applications.OpenRequest) (applications.OpenResult, error)
+	ApplicationsDescribeOpen(context.Context, appmodel.OpenHandleQuery) (applications.DescribeResult, error)
 }
 
 func (o *OA) appModelClient(ctx context.Context) (*applications.ApplicationsClient, error) {
@@ -77,16 +78,49 @@ func (o *OA) ApplicationsCall(ctx context.Context, call appmodel.GatewayCall) (a
 // Opening runs the kept application's declared activation verb through the
 // native activation owner, which decides the verb's class for an agent and
 // reuses a running instance. A repeated open renews the same instance's page.
-func (o *OA) ApplicationsOpen(ctx context.Context, request applications.ActivateRequest) (applications.ActivationResult, error) {
+//
+// Open carries the caller's wait and answers an open question that outlives
+// it. A runtime before Open answers unknown_method; the open then goes
+// through Activate with the runtime's own wait, whose published answer
+// carries no question or handle.
+func (o *OA) ApplicationsOpen(ctx context.Context, request applications.OpenRequest) (applications.OpenResult, error) {
 	key, err := applications.NewRequestKey()
 	if err != nil {
-		return applications.ActivationResult{}, err
+		return applications.OpenResult{}, err
 	}
 	c, err := o.appModelClient(ctx)
 	if err != nil {
-		return applications.ActivationResult{}, err
+		return applications.OpenResult{}, err
 	}
-	return c.Activate(key, request)
+	return openOrActivate(c, key, request)
+}
+
+// applicationsOpener is the part of an applications@3 client an open uses.
+type applicationsOpener interface {
+	Open(string, applications.OpenRequest) (applications.OpenResult, error)
+	Activate(string, applications.ActivateRequest) (applications.ActivationResult, error)
+}
+
+// openOrActivate opens through Open, and through Activate on a runtime that
+// answers Open unknown_method. That runtime admitted nothing under the key.
+func openOrActivate(c applicationsOpener, key string, request applications.OpenRequest) (applications.OpenResult, error) {
+	out, err := c.Open(key, request)
+	var service *applications.ServiceError
+	if errors.As(err, &service) && service.Code == applications.ServiceErrorCodeUnknownMethod {
+		result, err := c.Activate(key, request.Request)
+		return applications.OpenResult{Result: result}, err
+	}
+	return out, err
+}
+
+// ApplicationsDescribeOpen reads an open handle's state. Only a runtime that
+// answered Open issues handles, so it has no older fallback.
+func (o *OA) ApplicationsDescribeOpen(ctx context.Context, query appmodel.OpenHandleQuery) (applications.DescribeResult, error) {
+	c, err := o.appModelClient(ctx)
+	if err != nil {
+		return applications.DescribeResult{}, err
+	}
+	return c.DescribeOpen(query)
 }
 
 // Reconciliation follows the caller's inner operation identity. Excluding the
@@ -288,18 +322,34 @@ func addAppModelTools(s *mcp.Server, backend AppModelBackend, bounded func(conte
 		return out
 	}
 	read := &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: boolp(false)}
-	s.AddTool(&mcp.Tool{Name: ToolApplicationsDescribe, Description: "Describe applications and their open instances. Leave application empty to list those you may read or open. See open_verbs for eligible activation verbs and their payload schemas.", Annotations: read, InputSchema: schema(map[string]any{"application": stringProperty})}, func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		query, err := appmodel.DecodeApplicationsQuery(request.Params.Arguments)
-		if err != nil {
-			return appModelInvalid(ToolApplicationsDescribe, err)
-		}
+	s.AddTool(&mcp.Tool{Name: ToolApplicationsDescribe, Description: "Describe apps and instances, or an open's state by open_handle. Empty application lists apps you may read or open; open_verbs has verbs and payload schemas.", Annotations: read, InputSchema: schema(map[string]any{"application": stringProperty, "open_handle": stringProperty})}, func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		var out applications.DescribeResult
-		err = bounded(ctx, func(ctx context.Context) (err error) {
-			out, err = backend.ApplicationsDescribe(ctx, *query)
-			return err
-		})
-		if err != nil {
-			return nil, err
+		if describesOpenHandle(request.Params.Arguments) {
+			// An open handle's state is DescribeOpen (architect ruling
+			// 2026-11-22); the published Describe query keeps its shape.
+			query, err := appmodel.DecodeOpenHandleQuery(request.Params.Arguments)
+			if err != nil {
+				return appModelInvalid(ToolApplicationsDescribe, err)
+			}
+			err = bounded(ctx, func(ctx context.Context) (err error) {
+				out, err = backend.ApplicationsDescribeOpen(ctx, *query)
+				return err
+			})
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			query, err := appmodel.DecodeApplicationsQuery(request.Params.Arguments)
+			if err != nil {
+				return appModelInvalid(ToolApplicationsDescribe, err)
+			}
+			err = bounded(ctx, func(ctx context.Context) (err error) {
+				out, err = backend.ApplicationsDescribe(ctx, *query)
+				return err
+			})
+			if err != nil {
+				return nil, err
+			}
 		}
 		if out.Outcome != applications.OutcomePage {
 			return appModelNativeRefusal(out.Outcome, out.Reason)
@@ -338,7 +388,7 @@ func addAppModelTools(s *mcp.Server, backend AppModelBackend, bounded func(conte
 		"tool":              stringProperty,
 		"arguments":         map[string]any{"type": "object"},
 		"mode":              map[string]any{"type": "string", "enum": []string{"propose", "apply"}},
-		"expected_revision": map[string]any{"type": "string", "description": "Revision your change depends on."},
+		"expected_revision": map[string]any{"type": "string", "description": "Revision from app_read."},
 		"idempotency_key":   map[string]any{"type": "string", "description": "Reuse it to retry a commit, spend, destroy or send call."},
 		"context":           stringProperty,
 		"proposal":          stringProperty,
@@ -400,21 +450,28 @@ func addAppModelTools(s *mcp.Server, backend AppModelBackend, bounded func(conte
 		if err != nil {
 			return appModelInvalid(ToolApplicationsOpen, err)
 		}
-		var out applications.ActivationResult
+		// The agent's own wait_ms caps the runtime's wait for the person
+		// (architect ruling 2026-11-22).
+		opening := applications.OpenRequest{Request: *open}
+		if ms, given := openGivenWait(request.Params.Arguments); given {
+			opening.WaitMs = &ms
+		}
+		var answered applications.OpenResult
 		// The runtime keeps its "Open <app>?" question open while this call
 		// waits, and the person gets at least openPersonFloor to answer it.
 		person := openPersonWait(wait)
 		err = bounded(withBoundedBudget(ctx, person), func(callCtx context.Context) (err error) {
-			out, err = backend.ApplicationsOpen(withCallWait(callCtx, person), *open)
+			answered, err = backend.ApplicationsOpen(withCallWait(callCtx, person), opening)
 			if err != nil && callCtx.Err() != nil && ctx.Err() == nil {
 				// The wait for the person ended before they answered.
-				out, err = applications.ActivationResult{Outcome: applications.ActivationOutcomeNotReady, Reason: "consent"}, nil
+				answered, err = applications.OpenResult{Result: applications.ActivationResult{Outcome: applications.ActivationOutcomeNotReady, Reason: "consent"}}, nil
 			}
 			return err
 		})
 		if err != nil {
 			return nil, err
 		}
+		out := answered.Result
 		if phase, starting := openStartingPhase(out); starting && out.Instance != "" {
 			handle, err := handles.add(open.Application, out.Instance, out.Title, phase)
 			if err != nil {
@@ -425,23 +482,32 @@ func addAppModelTools(s *mcp.Server, backend AppModelBackend, bounded func(conte
 		}
 		// The gateway's own sentence follows the native answer, for the agent
 		// to relay to the person.
-		return openAnswer(open.Application, out, "", "")
+		return openResultAnswer(open.Application, answered, "", "")
 	})
 }
 
-// appModelCallDescription tells an agent the simple call shape (FAC-M32).
-const appModelCallDescription = "Call an open instance's command with input_schema from oa_applications_commands_list. " +
-	"OA fills in context, revision, mode and idempotency_key; wait_ms bounds the wait."
+// appModelCallDescription tells an agent the simple call shape (FAC-M32) and
+// asks it to keep the staleness guard: an omitted expected_revision is the
+// current one, and an omitted mode is apply.
+const appModelCallDescription = "Call an open instance's command per oa_applications_commands_list. " +
+	"For edits pass expected_revision from app_read, and mode propose if unsure; wait_ms bounds the wait."
 
 // appModelOpenDescription tells an agent that it opens apps itself and talks
 // to the person in its own chat.
-const appModelOpenDescription = "Open a kept app; OA may ask once. Use oa_applications_describe open_verbs; omit verb for one choice and payload for {}. " +
-	"If starting, follow the exact next call with its handle; relay the closing sentence directly to the person in this chat."
+const appModelOpenDescription = "Open a kept app; OA may ask the person. Verbs: oa_applications_describe open_verbs; omit verb if only one, payload if {}. " +
+	"If starting, call again with its handle; relay the closing sentence to the person in this chat."
 
 // appModelOpenSentence is the plain sentence an agent relays about an open:
 // what happened and what the agent can do next, with the app's display name
 // and no reason codes.
 func appModelOpenSentence(application string, out applications.ActivationResult) string {
+	return appModelOpenResultSentence(application, applications.OpenResult{Result: out})
+}
+
+// appModelOpenResultSentence is appModelOpenSentence for an Open answer,
+// which may carry the open question that outlived the call.
+func appModelOpenResultSentence(application string, open applications.OpenResult) string {
+	out := open.Result
 	app := application
 	if out.Title != "" {
 		app = out.Title
@@ -451,6 +517,10 @@ func appModelOpenSentence(application string, out applications.ActivationResult)
 		return "Opened " + app + ". Use instance " + out.Instance + " with oa_applications_commands_list."
 	case out.Outcome == applications.ActivationOutcomeReady:
 		return app + " is already open. Use instance " + out.Instance + " with oa_applications_commands_list."
+	case openAwaitingPerson(out) && open.Question != "" && open.Handle != "":
+		// The question stays up until the person answers (architect ruling
+		// 2026-11-22); their Allow opens the app then.
+		return "OpenAbstractions asked the person whether to open " + app + ". The question stays up until they answer, and their Allow opens " + app + " then. Ask them in this chat to look for it; there is no need to call oa_applications_open again. To see whether " + app + " opened, call " + ToolApplicationsDescribe + " with {\"open_handle\":\"" + open.Handle + "\"} later."
 	case openAwaitingPerson(out):
 		return "The person has not answered OpenAbstractions' question whether to open " + app + " yet. Ask them in this chat to look for it, then call oa_applications_open again; it asks them once more."
 	case out.Outcome == applications.ActivationOutcomeNotReady && strings.HasPrefix(out.Reason, "activation:refused: "):

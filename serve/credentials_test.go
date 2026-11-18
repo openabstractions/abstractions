@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	credentials "github.com/openabstractions/abstraction-credentials/go"
+	cwire "github.com/openabstractions/abstraction-credentials/go/abstraction/credentials/api"
 	"github.com/openabstractions/abstraction-identity/listen"
 )
 
@@ -34,7 +36,7 @@ type gatedOrigin struct {
 func newGatedOrigin(t *testing.T, body []byte) *gatedOrigin {
 	t.Helper()
 	o := &gatedOrigin{}
-	o.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	o.Server = newTrustedTLSServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		o.mu.Lock()
 		o.seen = append(o.seen, r.Header.Get("Authorization"))
 		o.mu.Unlock()
@@ -83,6 +85,7 @@ func credentialsRuntime(t *testing.T) (runtimeFlags, string) {
 		cancel()
 		t.Fatalf("startup: %v", err)
 	case <-time.After(runtimeWait):
+		dumpGoroutines()
 		cancel()
 		t.Fatalf("runtime not ready within %v", runtimeWait)
 	}
@@ -332,5 +335,53 @@ func TestDownloadAppliesARegisteredCredential(t *testing.T) {
 	}
 	if log, err := os.ReadFile(options.out); err == nil && bytes.Contains(log, []byte(testCredentialSecret)) {
 		t.Fatal("the runtime log carries the secret")
+	}
+}
+
+// Polish 0.8.1: --for inference registers a hosted key for every hosted-model
+// consumer of the generated seed, the help names the same seed, and the
+// runtime stores the expanded scope.
+func TestCredentialsAddForInferenceNamesEveryHostedConsumer(t *testing.T) {
+	want := []string{"abstraction.inference/chat@1", "abstraction.inference/embed@1", "abstraction.inference/transcription@1",
+		"abstraction.inference/speech@1", "abstraction.inference/image@1", "abstraction.inference/live@1", "abstraction.router/router@1"}
+	if got := expandConsumers([]string{"inference", "abstraction.inference/chat@1"}); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("--for inference expands to %v", got)
+	}
+	help, _, err := runCredentials(t, "", "--help")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, consumer := range cwire.Consumers {
+		if !strings.Contains(help, consumer+"\n") {
+			t.Errorf("help omits seeded consumer %s", consumer)
+		}
+	}
+	for _, consumer := range want {
+		if !slices.Contains(cwire.Consumers, consumer) || !strings.Contains(help, "* "+consumer+"\n") {
+			t.Errorf("%s is not a seeded, marked inference consumer", consumer)
+		}
+	}
+
+	if !statusTransportProvesProgram(t) {
+		t.Skip("Program proof unavailable on current shared transport")
+	}
+	options, _ := credentialsRuntime(t)
+	out, diag, err := runCredentials(t, testCredentialSecret+"\n", "add", "openrouter", "--target", "openrouter.ai", "--for", "inference", "--from-stdin", "--endpoint", options.endpoint, "--timeout", "30s")
+	requireUserScopeAdd(t, err, out+diag)
+	listed, _, err := runCredentials(t, "", "list", "--endpoint", options.endpoint, "--json", "--timeout", "30s")
+	if err != nil {
+		t.Fatalf("credentials list: %v", err)
+	}
+	var page struct {
+		Records []struct {
+			Name  string
+			Scope struct{ Consumers []string }
+		}
+	}
+	if err := json.Unmarshal([]byte(listed), &page); err != nil || len(page.Records) != 1 {
+		t.Fatalf("list: %s %v", listed, err)
+	}
+	if got := page.Records[0].Scope.Consumers; strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("stored consumers %v, want %v", got, want)
 	}
 }

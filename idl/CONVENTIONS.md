@@ -126,11 +126,11 @@ duplicate Start. Each service adopts this field in its own window.
 Held by, for the record's shape: the generated record's round
 trip in Go, Python, JavaScript, Rust and C++ (`scripts/refusal_record_test.py`
 in the maintainer source). Current carriage is declared by `config@2` in
-[`config.thrift`](../openabstractions-flat/abstraction-config/config.thrift),
-messages@1 in [`messages.thrift`](../openabstractions-flat/abstraction-facade/messages.thrift),
+`config.thrift` (`../openabstractions-flat/abstraction-config/config.thrift`),
+messages@1 in `messages.thrift` (`../openabstractions-flat/abstraction-facade/messages.thrift`),
 registry@3 and endpoint@2 in
-[`registration.thrift`](../openabstractions-flat/abstraction-facade/registration.thrift),
-and chat@3 in [`inference.thrift`](../openabstractions-flat/abstraction-inference/inference.thrift).
+`registration.thrift` (`../openabstractions-flat/abstraction-facade/registration.thrift`),
+and chat@3 in `inference.thrift` (`../openabstractions-flat/abstraction-inference/inference.thrift`).
 Each adopting service owns its refusing-outcome rule and scenario; this
 convention's record-shape test supplies no whole-service carriage proof.
 

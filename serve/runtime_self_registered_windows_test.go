@@ -41,7 +41,7 @@ func TestSelfRegistrationQuestionShowsTheBoundProgram(t *testing.T) {
 		t.Fatalf("the descriptor keeps its own spelling: %+v", v)
 	}
 	q := selfRegisteredQuestion(t, f, run.d, "editor")
-	if q.About != caller.Program || !strings.HasPrefix(q.Text, caller.Program+" was added") {
+	if q.About != selfRegisteredSlot(caller.Program) || q.Text != "Let Editor work with OpenAbstractions?" {
 		t.Fatalf("the question names %q, not the bound program %q", q.About, caller.Program)
 	}
 	answer(t, f, q.ID, "remove")

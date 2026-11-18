@@ -461,3 +461,26 @@ class FileBoundaryTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "linked removal root"):
                 remove_tree(link)
             self.assertEqual((outside / "keep.txt").read_text(), "keep")
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX directory permissions and no-follow handles')
+    def test_readonly_module_directories_remove_without_chmod_following_links(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            outside = parent/'outside'; outside.mkdir()
+            sentinel = outside/'keep'; sentinel.write_bytes(b'foreign owned bytes')
+            sentinel.chmod(0o444)
+            outside.chmod(0o555)
+            root = parent/'owned'
+            cache = root/'module/cache'; cache.mkdir(parents=True)
+            (cache/'source.go').write_bytes(b'package fixture\n')
+            (cache/'foreign').symlink_to(outside, target_is_directory=True)
+            cache.chmod(0o555); cache.parent.chmod(0o555)
+            modes = [path.stat().st_mode for path in (parent, outside, sentinel)]
+            try:
+                remove_tree(root)
+                self.assertFalse(root.exists())
+                self.assertEqual(sentinel.read_bytes(), b'foreign owned bytes')
+                self.assertEqual([path.stat().st_mode for path in (parent, outside, sentinel)], modes)
+            finally:
+                outside.chmod(0o755)
+                sentinel.chmod(0o644)

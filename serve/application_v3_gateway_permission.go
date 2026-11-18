@@ -26,11 +26,19 @@ type applicationV3ConsentRequest struct {
 	context                                                                        *appmodel.ContextRef
 	replay                                                                         bool
 	recheck                                                                        func(context.Context) error
+	// stays keeps an open question pending when the caller's wait ends
+	// (architect ruling 2026-11-22): the result is outcome pending with the
+	// question id, and an Allow given later performs the parked open.
+	stays bool
+	// wait bounds a staying question's wait for the answer within the call.
+	wait time.Duration
 }
 type applicationV3ConsentResult struct {
 	outcome, reason string
-	recheck         func(context.Context) error
-	close           func()
+	// question is the open question's id: on pending, and on an Allow.
+	question string
+	recheck  func(context.Context) error
+	close    func()
 }
 
 func applicationV3BodyDigest(body []byte) string {
@@ -64,6 +72,10 @@ func (a *runtimeAsks) applicationV3OneCall(ctx context.Context, r applicationV3C
 		return refuse("invalid", "key")
 	}
 	deadline, ok := ctx.Deadline()
+	if opening && r.stays {
+		// A staying question states its own 24-hour expiry below.
+		ok = true
+	}
 	if !ok || len(r.bodyDigest) != 64 {
 		return refuse("unavailable", "rights")
 	}
@@ -73,12 +85,20 @@ func (a *runtimeAsks) applicationV3OneCall(ctx context.Context, r applicationV3C
 		return refuse("unavailable", "rights")
 	}
 	until := deadline.UTC().Format(time.RFC3339)
+	if opening && r.stays {
+		// The question stays until the person answers, for at most its
+		// lifetime in the Book (architect ruling 2026-11-22).
+		until = time.Now().Add(applicationV3OpenQuestionLife).UTC().Format(time.RFC3339)
+	}
 	if opening {
-		// The question asks for one Open. Its code names the
-		// caller, application and verb, so a second open while the person
-		// decides shows the same question and joins it.
+		// The question asks for one Open. Its code names the caller,
+		// application, verb and the exact request body, so a second open of
+		// the identical request while the person decides shows the same
+		// question and joins it, and an open with another payload asks its
+		// own (security review 2026-11-22: a shared handle always names one
+		// request).
 		operation = "Open " + r.title
-		stable, _ := json.Marshal(struct{ Account, Program, Application, Revision, Tool, Class, Method string }{r.caller.subject.Account, r.caller.subject.Program, r.application, r.revision, r.tool, r.class.String(), r.method})
+		stable, _ := json.Marshal(struct{ Account, Program, Application, Revision, Tool, Class, Method, Body string }{r.caller.subject.Account, r.caller.subject.Program, r.application, r.revision, r.tool, r.class.String(), r.method, r.bodyDigest})
 		code = applicationV3BodyDigest(stable)[:20]
 	}
 	// Reuse the catalogue's bounded slots without truncating the class sentence
@@ -117,14 +137,29 @@ func (a *runtimeAsks) applicationV3OneCall(ctx context.Context, r applicationV3C
 	if status == "unknown" || status == "gone" || status == "conflict" || record.ID == "" {
 		return refuse("unknown", "consent")
 	}
+	var waitEnd <-chan time.Time
+	if opening && r.stays {
+		timer := time.NewTimer(max(r.wait, 0))
+		defer timer.Stop()
+		waitEnd = timer.C
+	}
 	for record.Pending() {
 		if r.replay {
 			return refuse("unknown", "consent")
 		}
 		decided, stopWaiting := a.book.ObserveQuestionWait(record.ID)
 		select {
+		case <-waitEnd:
+			// The caller's wait for the answer ended; the question stays.
+			stopWaiting()
+			return applicationV3ConsentResult{outcome: "pending", reason: "consent", question: record.ID}
 		case <-ctx.Done():
 			stopWaiting()
+			if opening && r.stays {
+				// The caller stopped waiting; the question stays up and a
+				// later Allow performs the parked open.
+				return applicationV3ConsentResult{outcome: "pending", reason: "consent", question: record.ID}
+			}
 			if err := a.book.Forget(record.ID); err != nil && a.report != nil {
 				a.report(err)
 			}
@@ -169,7 +204,11 @@ func (a *runtimeAsks) applicationV3OneCall(ctx context.Context, r applicationV3C
 	if err := quiet(ctx); err != nil {
 		return refuse("unavailable", "rights")
 	}
-	return applicationV3ConsentResult{recheck: quiet}
+	result := applicationV3ConsentResult{recheck: quiet}
+	if opening {
+		result.question = record.ID
+	}
+	return result
 }
 
 func (g *applicationV3Gateway) authorization(ctx context.Context, c applicationV3Caller, k *applicationV3Kept, v applicationV3Invocation, call appmodel.GatewayCall, key string, body []byte, replay bool) applicationV3ConsentResult {

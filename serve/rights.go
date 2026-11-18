@@ -45,6 +45,15 @@ runtime's own operator programs may list, edit or read them.
   retire-action           remove --action and its rules from the catalogue
   defaults                the defaults for all apps; --on NAME or --off NAME
                           turns one
+  requests                the changes this program requested; --follow ID
+                          waits for one
+
+grant, revoke, register-action, retire-action and defaults --on/--off are
+requests: the person confirms each in an OpenAbstractions popup. The command
+waits up to --wait (default 60s), then reports pending with the request id;
+a request expires after 10 minutes. Run as administrator, while the
+elevated-callers default is on, the change applies at once and the Panel's
+Activity shows it with Undo.
 
 A rule names a proven program and exactly one action on one resource:
   --program PATH        the subject's absolute executable path (stored and
@@ -65,6 +74,8 @@ A rule names a proven program and exactly one action on one resource:
   --deny --why --ttl    grant: a deny rule, the recorded reason and expiry
   --registry --host --credential
                         grant --for: what the bundle covers
+  --wait DURATION       how long a change waits for the person (default
+                        60s); requests --follow waits as long
   --endpoint --runtime-program --timeout --json
                         every command's own runtime connection and output
 
@@ -74,7 +85,8 @@ verified; --runtime-program verifies an explicit --endpoint instead.
 
 Exit codes: 0 done (a read or decide that answered, whatever it found), 1
 runtime not resolved or transport failure, 2 usage, 3 typed refusal (forbidden,
-conflict, invalid, gap), 4 unavailable.
+conflict, invalid, gap, refused, expired), 4 unavailable, 7 pending: the
+person has not answered yet.
 
 Learn more: https://github.com/openabstractions/abstraction-rights/blob/main/CONTRACT.md
 `
@@ -348,14 +360,17 @@ type rightsReply struct {
 	Resource string        `json:"resource,omitempty"`
 	Permit   *bool         `json:"permit,omitempty"`
 	// Matched is revoke's answer to whether a rule was there to remove.
-	Matched     *bool                     `json:"matched,omitempty"`
-	Current     *ruleJSON                 `json:"current,omitempty"`
-	Record      *recordJSON               `json:"record,omitempty"`
-	Rules       []ruleJSON                `json:"rules,omitempty"`
-	Catalog     []string                  `json:"catalog,omitempty"`
-	Next        string                    `json:"next,omitempty"`
-	Complete    bool                      `json:"complete,omitempty"`
-	RuleOnFile  *rightsReply              `json:"rule_on_record,omitempty"`
+	Matched    *bool        `json:"matched,omitempty"`
+	Current    *ruleJSON    `json:"current,omitempty"`
+	Record     *recordJSON  `json:"record,omitempty"`
+	Rules      []ruleJSON   `json:"rules,omitempty"`
+	Catalog    []string     `json:"catalog,omitempty"`
+	Next       string       `json:"next,omitempty"`
+	Complete   bool         `json:"complete,omitempty"`
+	RuleOnFile *rightsReply `json:"rule_on_record,omitempty"`
+	// Request and Expires name a change request (RIGHTS-O17).
+	Request     string                    `json:"request,omitempty"`
+	Expires     string                    `json:"expires,omitempty"`
 	Description *publishedDescriptionJSON `json:"description,omitempty"`
 }
 
@@ -372,7 +387,7 @@ func rightsCommand(args []string, output, diagnostics io.Writer) error {
 		return commandMistake(diagnostics, "rights: a command is required", "openabstractions rights --help")
 	}
 	switch args[0] {
-	case "list", "grant", "revoke", "read", "decide", "register-action", "retire-action", "defaults":
+	case "list", "grant", "revoke", "read", "decide", "register-action", "retire-action", "defaults", "requests":
 	default:
 		return commandMistake(diagnostics, fmt.Sprintf("rights: no command called %q", args[0]), "openabstractions rights --help")
 	}
@@ -417,11 +432,41 @@ func rightsCommand(args []string, output, diagnostics io.Writer) error {
 	flags.StringVar(&hosts, "host", "", "inference hosts an inference bundle may complete on")
 	flags.StringVar(&outputs, "output", "", "output profiles an inference bundle may write and read back")
 	flags.StringVar(&credentialNames, "credential", "", "credential names a bundle may have applied")
-	var turnOn, turnOff string
+	var turnOn, turnOff, follow string
 	flags.StringVar(&turnOn, "on", "", "defaults: turn this default on")
 	flags.StringVar(&turnOff, "off", "", "defaults: turn this default off")
+	wait := defaultChangeWait
+	flags.DurationVar(&wait, "wait", defaultChangeWait, "how long a change waits for the person")
+	flags.StringVar(&follow, "follow", "", "requests: wait for this request")
 	if err := flags.Parse(args[1:]); err != nil {
 		return badFlag(flags, diagnostics, command, subUsage, args[1:], err)
+	}
+	if wait < 0 {
+		return flagMistake(diagnostics, command, subUsage, "--wait must not be negative")
+	}
+	if sub == "requests" {
+		invalid := false
+		flags.Visit(func(f *flag.Flag) {
+			switch f.Name {
+			case "follow", "wait", "endpoint", "runtime-program", "timeout", "json":
+			default:
+				invalid = true
+			}
+		})
+		if invalid || follow != "" && !rightsText(follow, 128) || follow == "" && waitGiven(flags) {
+			return flagMistake(diagnostics, command, subUsage, "use --follow ID and optional --wait; rule fields do not apply")
+		}
+		machine, source, err := rightsMachine(options, diagnostics, command, subUsage)
+		if err != nil {
+			return err
+		}
+		call := func() (context.Context, context.CancelFunc) {
+			return context.WithTimeout(context.Background(), options.timeout)
+		}
+		return rightsRequests(machine, source, call, command, follow, wait, options.asJSON, output)
+	}
+	if follow != "" {
+		return flagMistake(diagnostics, command, subUsage, "--follow belongs to rights requests")
 	}
 	if flags.NArg() != 0 {
 		return flagMistake(diagnostics, command, subUsage, fmt.Sprintf("unexpected arguments %q", flags.Args()))
@@ -436,7 +481,7 @@ func rightsCommand(args []string, output, diagnostics io.Writer) error {
 		invalid := turnOn != "" && turnOff != ""
 		flags.Visit(func(f *flag.Flag) {
 			switch f.Name {
-			case "on", "off", "revision", "endpoint", "runtime-program", "timeout", "json":
+			case "on", "off", "revision", "wait", "endpoint", "runtime-program", "timeout", "json":
 			default:
 				invalid = true
 			}
@@ -452,7 +497,7 @@ func rightsCommand(args []string, output, diagnostics io.Writer) error {
 		call := func() (context.Context, context.CancelFunc) {
 			return context.WithTimeout(context.Background(), options.timeout)
 		}
-		return rightsDefaults(machine, source, call, command, name, turnOn != "", revision, options.asJSON, output)
+		return rightsDefaults(machine, source, call, command, name, turnOn != "", revision, wait, options.asJSON, output)
 	}
 	if turnOn != "" || turnOff != "" {
 		return flagMistake(diagnostics, command, subUsage, "--on and --off belong to rights defaults")
@@ -502,7 +547,7 @@ func rightsCommand(args []string, output, diagnostics io.Writer) error {
 		invalid := false
 		flags.Visit(func(f *flag.Flag) {
 			switch f.Name {
-			case "action", "description-file", "revision", "endpoint", "runtime-program", "timeout", "json":
+			case "action", "description-file", "revision", "wait", "endpoint", "runtime-program", "timeout", "json":
 			default:
 				invalid = true
 			}
@@ -520,7 +565,7 @@ func rightsCommand(args []string, output, diagnostics io.Writer) error {
 		if invalid || !regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}/[a-z0-9][a-z0-9._-]{0,62}$`).MatchString(rule.action) {
 			return flagMistake(diagnostics, command, subUsage, "use --action <owner>/<name> and optional --revision; rule fields do not apply")
 		}
-		return rightsActionEdit(machine, source, call, command, rule.action, revision, args[0] == "retire-action", options.asJSON, output)
+		return rightsActionEdit(machine, source, call, command, rule.action, revision, args[0] == "retire-action", wait, options.asJSON, output)
 	case "list":
 		if limit < 1 || limit > 64 || len(cursor) > 256 {
 			return flagMistake(diagnostics, command, subUsage, "--limit is 1..64 and --cursor at most 256 bytes")
@@ -540,7 +585,7 @@ func rightsCommand(args []string, output, diagnostics io.Writer) error {
 			return flagMistake(diagnostics, command, subUsage, "--why is 0..256 bytes on one line and --ttl is not negative")
 		}
 		warnVirtualizedProgram(diagnostics, rule.program, os.Getenv("LOCALAPPDATA"), bootstrap.CurrentProfileView)
-		return rightsBundle(machine, source, call, command, bundle, rule, bundleRules, revision, why, ttl, options.asJSON, output)
+		return rightsBundle(machine, source, call, command, bundle, rule, bundleRules, revision, why, ttl, wait, options.asJSON, output)
 	}
 	if err := rule.check(diagnostics, command, subUsage, true); err != nil {
 		return err
@@ -554,7 +599,14 @@ func rightsCommand(args []string, output, diagnostics io.Writer) error {
 	if args[0] == "grant" {
 		warnVirtualizedProgram(diagnostics, rule.program, os.Getenv("LOCALAPPDATA"), bootstrap.CurrentProfileView)
 	}
-	return rightsEdit(machine, source, call, command, rule, revision, !deny, why, ttl, args[0] == "revoke", options.asJSON, output)
+	return rightsEdit(machine, source, call, command, rule, revision, !deny, why, ttl, args[0] == "revoke", wait, options.asJSON, output)
+}
+
+// waitGiven reports whether the command line named --wait.
+func waitGiven(flags *flag.FlagSet) bool {
+	given := false
+	flags.Visit(func(f *flag.Flag) { given = given || f.Name == "wait" })
+	return given
 }
 
 // rightsMachine resolves this command's runtime connection and reports which
@@ -616,40 +668,28 @@ func underFolderName(p, folder string) bool {
 	return identity.PathNameWithin(path.Clean(strings.ReplaceAll(p, `\`, "/")), path.Clean(strings.ReplaceAll(folder, `\`, "/")))
 }
 
-func rightsActionEdit(machine *client.Machine, source endpointSource, call func() (context.Context, context.CancelFunc), command, action, revision string, retire, asJSON bool, output io.Writer) error {
+func rightsActionEdit(machine *client.Machine, source endpointSource, call func() (context.Context, context.CancelFunc), command, action, revision string, retire bool, wait time.Duration, asJSON bool, output io.Writer) error {
 	operator, err := resolveOperator(machine, source, call, command)
 	if err != nil {
 		return err
 	}
-	if revision == "" {
-		ctx, cancel := call()
-		page, err := operator.ListPolicyContext(ctx, "", 1)
-		cancel()
-		if err != nil {
-			return notResolved(command, source, err)
-		}
-		if page.Outcome != rightswire.PolicyPageOutcomePage {
-			return rightsPrint(output, asJSON, rightsReply{Command: command, Outcome: page.Outcome.String()}, rightsOperatorRefusal(command, page.Outcome.String(), "listing the policy revision"))
-		}
-		revision = page.Revision
-	}
-	ctx, cancel := call()
-	var edit rightswire.ActionEdit
+	kind := rightswire.ChangeKindRegisterAction
 	if retire {
-		edit, err = operator.RetireActionContext(ctx, revision, action)
-	} else {
-		edit, err = operator.RegisterActionContext(ctx, revision, action)
+		kind = rightswire.ChangeKindRetireAction
 	}
-	cancel()
+	state, err := requestChange(operator, rightswire.PolicyChange{Kind: kind, ExpectedRevision: revision, Action: action}, wait, timeoutOf(call))
 	if err != nil {
-		return &exitError{exitNotResolved, fmt.Errorf("%s: outcome uncertain; list the catalogue before another edit: %w", command, err)}
+		return changeUncertain(command, err)
 	}
-	reply := rightsReply{Command: command, Outcome: edit.Outcome.String(), Revision: edit.Revision, Action: action}
-	var failure error
-	if edit.Outcome != rightswire.ActionEditOutcomeApplied {
-		failure = refusal(command, edit.Outcome.String(), "at revision "+revision)
+	reply := rightsReply{Command: command, Outcome: state.Outcome.String(), Revision: state.Revision, Action: action, Request: state.ID, Expires: state.Expires}
+	failure := changeFailure(command, state)
+	if !asJSON {
+		if _, err := fmt.Fprintf(output, "%s: %s%s\n", command, state.Outcome, pendingWords(state)); err != nil {
+			return err
+		}
+		return failure
 	}
-	return rightsPrint(output, asJSON, reply, failure)
+	return rightsPrint(output, true, reply, failure)
 }
 
 func resolveOperator(machine *client.Machine, source endpointSource, call func() (context.Context, context.CancelFunc), command string) (*rights.Operator, error) {
@@ -750,73 +790,64 @@ func ruleWord(permit bool) string {
 	return "deny"
 }
 
-func rightsEdit(machine *client.Machine, source endpointSource, call func() (context.Context, context.CancelFunc), command string, rule rightsRule, revision string, permit bool, why string, ttl time.Duration, revoke, asJSON bool, output io.Writer) error {
+func rightsEdit(machine *client.Machine, source endpointSource, call func() (context.Context, context.CancelFunc), command string, rule rightsRule, revision string, permit bool, why string, ttl time.Duration, revoke bool, wait time.Duration, asJSON bool, output io.Writer) error {
 	operator, err := resolveOperator(machine, source, call, command)
 	if err != nil {
 		return err
 	}
-	if revision == "" {
-		ctx, cancel := call()
-		page, err := operator.ListPolicyContext(ctx, "", 1)
-		cancel()
-		if err != nil {
-			return &exitError{exitNotResolved, fmt.Errorf("%s: %w", command, err)}
-		}
-		if page.Outcome != rightswire.PolicyPageOutcomePage {
-			return rightsPrint(output, asJSON, rightsReply{Command: command, Outcome: page.Outcome.String()}, rightsOperatorRefusal(command, page.Outcome.String(), "listing the policy revision"))
-		}
-		revision = page.Revision
-	}
 	subject := rule.subject()
+	// The rule as it stands now tells a revoke that matched from one that
+	// found nothing to remove.
 	ctx, cancel := call()
-	var edit rights.PolicyEdit
-	switch {
-	case revoke:
-		edit, err = operator.RevokeRuleContext(ctx, revision, subject, rule.action, rule.resource)
-	case why != "" || ttl != 0:
-		edit, err = operator.SetRuleForContext(ctx, revision, rights.PolicyRule{Subject: subject, Action: rule.action, Resource: rule.resource, Permit: permit}, ttl, why)
-	default:
-		edit, err = operator.SetRuleContext(ctx, revision, rights.PolicyRule{Subject: subject, Action: rule.action, Resource: rule.resource, Permit: permit})
-	}
+	before, err := operator.ReadRuleContext(ctx, subject, rule.action, rule.resource)
 	cancel()
 	if err != nil {
-		return &exitError{exitNotResolved, fmt.Errorf("%s: outcome uncertain; list the policy before another edit: %w", command, err)}
+		return &exitError{exitNotResolved, fmt.Errorf("%s: %w", command, err)}
 	}
-	reply := rightsReply{Command: command, Outcome: edit.Outcome.String(), Revision: edit.Revision, Subject: subjectOf(subject), Action: rule.action, Resource: rule.resource}
-	if edit.Current != nil {
-		current := ruleOf(*edit.Current)
-		reply.Current = &current
+	if before.Outcome == rightswire.RuleReadOutcomeForbidden || before.Outcome == rightswire.RuleReadOutcomeUnavailable {
+		return rightsPrint(output, asJSON, rightsReply{Command: command, Outcome: before.Outcome.String()}, rightsOperatorRefusal(command, before.Outcome.String(), "reading the rule"))
+	}
+	state, err := requestRuleChange(operator, command, rights.PolicyRule{Subject: subject, Action: rule.action, Resource: rule.resource, Permit: permit}, revision, revoke, why, ttl, wait, timeoutOf(call))
+	if err != nil {
+		return err
+	}
+	reply := rightsReply{Command: command, Outcome: state.Outcome.String(), Revision: state.Revision, Subject: subjectOf(subject), Action: rule.action, Resource: rule.resource, Request: state.ID, Expires: state.Expires}
+	if state.Outcome == rightswire.ChangeRequestOutcomeApplied || state.Outcome == rightswire.ChangeRequestOutcomeConflict {
+		ctx, cancel := call()
+		current, err := operator.ReadRuleContext(ctx, subject, rule.action, rule.resource)
+		cancel()
+		if err == nil && current.Outcome == rightswire.RuleReadOutcomeFound && current.Record != nil {
+			rule := ruleOf(current.Record.Rule)
+			reply.Current = &rule
+		}
 	}
 	if !revoke {
 		reply.Permit = &permit
 	}
-	// A revoke that removes nothing is applied without a write: the policy
-	// keeps the revision it was applied at.
-	revoked := revoke && edit.Outcome == rightswire.PolicyEditOutcomeApplied
-	matched := revoked && edit.Revision != revision
+	revoked := revoke && state.Outcome == rightswire.ChangeRequestOutcomeApplied
+	matched := revoked && (before.Outcome == rightswire.RuleReadOutcomeFound || before.Outcome == rightswire.RuleReadOutcomeExpired)
 	if revoked {
 		reply.Matched = &matched
 	}
-	var failure error
-	if edit.Outcome != rightswire.PolicyEditOutcomeApplied {
-		failure = refusal(command, edit.Outcome.String(), "at revision "+revision)
-	}
+	failure := changeFailure(command, state)
 	if !asJSON {
-		text := fmt.Sprintf("%s: %s at revision %s; policy revision now %s", command, edit.Outcome, revision, edit.Revision)
+		text := fmt.Sprintf("%s: %s%s", command, state.Outcome, pendingWords(state))
+		if state.Revision != "" {
+			text += "; policy revision now " + state.Revision
+		}
 		switch {
 		case revoked && !matched:
 			text = fmt.Sprintf("%s: nothing matched: there is no rule of %s running %s for %s on %s; the policy is unchanged at revision %s",
-				command, subject.Account, subject.Program, rule.action, rule.resource, edit.Revision)
+				command, subject.Account, subject.Program, rule.action, rule.resource, state.Revision)
 		case revoked:
 			text = fmt.Sprintf("%s: removed the rule of %s running %s for %s on %s; policy revision now %s",
-				command, subject.Account, subject.Program, rule.action, rule.resource, edit.Revision)
-		case edit.Current != nil:
-			text += fmt.Sprintf("; current rule: %s %s on %s for %s running %s", ruleWord(edit.Current.Permit), edit.Current.Action, edit.Current.Resource, edit.Current.Subject.Account, edit.Current.Subject.Program)
-		case edit.Outcome == rightswire.PolicyEditOutcomeApplied || edit.Outcome == rightswire.PolicyEditOutcomeConflict:
+				command, subject.Account, subject.Program, rule.action, rule.resource, state.Revision)
+		case reply.Current != nil:
+			text += fmt.Sprintf("; current rule: %s %s on %s for %s running %s", ruleWord(reply.Current.Permit), reply.Current.Action, reply.Current.Resource, reply.Current.Subject.Account, reply.Current.Subject.Program)
+		case state.Outcome == rightswire.ChangeRequestOutcomeApplied || state.Outcome == rightswire.ChangeRequestOutcomeConflict:
 			text += "; no exact rule"
 		}
-		_, err := fmt.Fprintln(output, text)
-		if err != nil {
+		if _, err := fmt.Fprintln(output, text); err != nil {
 			return err
 		}
 		return failure

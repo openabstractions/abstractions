@@ -48,6 +48,11 @@ func (r *messagesReceiver) Prepare(instance, sourceContext string, in msg.Prepar
 	ttl := in.TTLMs
 	if ttl == 0 {
 		ttl = 600000
+		// A question that names only its answer time lives at least that
+		// long; the default lifetime never refuses it.
+		if in.AnswerWithinMs > ttl && in.AnswerWithinMs <= 604800000 {
+			ttl = in.AnswerWithinMs
+		}
 	}
 	if ttl < 1000 || ttl > 604800000 || in.AnswerWithinMs < 0 || in.AnswerWithinMs > 0 && in.AnswerWithinMs < 1000 || in.AnswerWithinMs > ttl || kind == msg.KindNote && in.AnswerWithinMs != 0 {
 		return refuse(msg.OutcomeInvalid, "lifetime")
@@ -90,11 +95,19 @@ func (r *messagesReceiver) Prepare(instance, sourceContext string, in msg.Prepar
 	// just messaged this sender, resolves without discovery; discovery runs
 	// only for a conversation those rows do not hold.
 	// Prepare matches over one whole read of the listing, so it never pages.
+	// The sender's own rows, from the same listing, name the chats whose
+	// exchanges the last_exchanged hint reads.
+	var mine []messageChat
 	listWith := func(discover bool) ([]msg.Inbox, bool, msg.Outcome, string) {
 		return messagePrepareCandidates(r.ctx, in, func(msg.InboxQuery) (msg.InboxPage, map[string]messageListedName, error) {
 			page, names := r.inboxesListWhole(discover)
+			mine = messageMineChats(page)
 			return page, names, nil
 		})
+	}
+	ambiguous := func(choices []msg.Inbox) msg.PrepareResult {
+		r.markChoiceHints(actor, mine, choices)
+		return msg.PrepareResult{Outcome: msg.OutcomeConflict, Reason: "ambiguous_receiver", Choices: choices}
 	}
 	candidates, choose, outcome, reason := listWith(in.Context == "")
 	if in.Context != "" && outcome == msg.OutcomePage && len(candidates) == 0 {
@@ -106,18 +119,27 @@ func (r *messagesReceiver) Prepare(instance, sourceContext string, in msg.Prepar
 	// A name that can pass to another chat, such as a counted or last-active
 	// name seen earlier, offers its chats to choose from.
 	if choose && len(candidates) > 0 {
-		return msg.PrepareResult{Outcome: msg.OutcomeConflict, Reason: "ambiguous_receiver", Choices: messageAmbiguousChoices(candidates)}, nil
+		return ambiguous(messageAmbiguousChoices(candidates)), nil
 	}
-	// An explicit context or title keeps its own selection below.
+	// An explicit context or title keeps its own selection below. A name
+	// alone reaches its program's one live chat; with several, the sending
+	// agent chooses (architect ruling P3, 2026-11-22).
 	if in.Context == "" && in.ContextTitle == "" {
-		chat, answer := r.programOnlyRoute(candidates)
-		if answer != nil {
-			return *answer, nil
+		live, err := r.host.directory.liveReceivingCandidates(r.ctx, candidates)
+		if err != nil {
+			return refuse(msg.OutcomeUnavailable, "discovery_incomplete")
 		}
-		candidates = []msg.Inbox{chat}
+		switch len(live) {
+		case 0:
+			return refuse(msg.OutcomeUnavailable, messageNoReachableChat)
+		case 1:
+			candidates = live
+		default:
+			return ambiguous(messageBoundedChoices(live)), nil
+		}
 	}
 	if len(candidates) > 1 {
-		return msg.PrepareResult{Outcome: msg.OutcomeConflict, Reason: "ambiguous_receiver", Choices: messageAmbiguousChoices(candidates)}, nil
+		return ambiguous(messageAmbiguousChoices(candidates)), nil
 	}
 	if len(candidates) == 0 {
 		// Only a sender whose message right to this receiver is granted learns
@@ -164,27 +186,22 @@ func (r *messagesReceiver) Prepare(instance, sourceContext string, in msg.Prepar
 	return result, nil
 }
 
-// programOnlyRoute chooses the newest opened live inbox for the named program.
-func (r *messagesReceiver) programOnlyRoute(candidates []msg.Inbox) (msg.Inbox, *msg.PrepareResult) {
-	chat, err := r.host.directory.newestLiveReceivingCandidate(r.ctx, candidates)
-	if err != nil {
-		return chat, &msg.PrepareResult{Outcome: msg.OutcomeUnavailable, Reason: "discovery_incomplete"}
-	}
-	if chat.Context == "" {
-		return chat, &msg.PrepareResult{Outcome: msg.OutcomeUnavailable, Reason: messageNoReachableChat}
-	}
-	return chat, nil
-}
-
 // messageNoReachableChat answers a program-only send when none of the
 // program's chats has a live inbox. It names no chat.
 const messageNoReachableChat = "no_reachable_chat"
 
-// messageAmbiguousChoices bounds what ambiguous_receiver discloses: at most 8
-// chats, most recently seen first, titles cut to 60 characters.
+// messageAmbiguousChoices bounds what a title's ambiguous_receiver discloses:
+// at most 8 chats, most recently seen first, titles cut to 60 characters.
 func messageAmbiguousChoices(rows []msg.Inbox) []msg.Inbox {
 	choices := append([]msg.Inbox(nil), rows...)
 	sort.SliceStable(choices, func(i, j int) bool { return choices[i].LastSeenUnixMs > choices[j].LastSeenUnixMs })
+	return messageBoundedChoices(choices)
+}
+
+// messageBoundedChoices keeps the first 8 rows in their order, with titles
+// cut to 60 characters.
+func messageBoundedChoices(rows []msg.Inbox) []msg.Inbox {
+	choices := append([]msg.Inbox(nil), rows...)
 	if len(choices) > 8 {
 		choices = choices[:8]
 	}
@@ -245,4 +262,58 @@ func messagePrepareCandidates(ctx context.Context, in msg.PrepareRequest, list f
 		}
 	}
 	return nil, false, msg.OutcomeUnavailable, "discovery_incomplete"
+}
+
+// The fixed hint vocabulary of ambiguous_receiver choices (architect ruling
+// P3, 2026-11-22). Hints are shown to the sending agent and never acted on.
+// last_typed needs the person-typed signal (P16's in-process origin), which
+// is not established yet, so no row carries it.
+const (
+	messageHintLastExchanged = "last_exchanged"
+	messageHintLastTyped     = "last_typed"
+)
+
+// messageMineChats names the caller's own rows of one listing.
+func messageMineChats(page msg.InboxPage) []messageChat {
+	var mine []messageChat
+	for _, row := range page.Inboxes {
+		if row.Mine != nil && *row.Mine {
+			mine = append(mine, messageChat{Program: row.Program, Context: row.Context})
+		}
+	}
+	return mine
+}
+
+// markChoiceHints marks last_exchanged on the one choice the sending chat
+// last sent a message to or received one from. Prepare reaches this only
+// after the sender's message right to the program is permitted.
+func (r *messagesReceiver) markChoiceHints(actor messageActor, mine []messageChat, choices []msg.Inbox) {
+	if r.host.messages == nil || len(choices) == 0 {
+		return
+	}
+	senders := append([]messageChat{{Program: "app:" + actor.Application, Context: actor.returnContext()}}, mine...)
+	read := map[messageChat]bool{}
+	best, at := -1, int64(0)
+	for _, sender := range senders {
+		if read[sender] {
+			continue
+		}
+		read[sender] = true
+		peers, err := r.host.messages.threads(r.ctx, actor.Account, sender)
+		if err != nil {
+			// The hint is display data; a damaged index shows none.
+			r.reportMessageError("thread index read", err)
+			continue
+		}
+		for _, peer := range peers {
+			for i, choice := range choices {
+				if choice.Program == peer.Program && choice.Context == peer.Context && (best < 0 || peer.At > at) {
+					best, at = i, peer.At
+				}
+			}
+		}
+	}
+	if best >= 0 {
+		choices[best].Hints = append(choices[best].Hints, messageHintLastExchanged)
+	}
 }

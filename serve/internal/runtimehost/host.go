@@ -138,7 +138,7 @@ func Start(ctx context.Context, o Options) (*Host, error) {
 			return nil, fmt.Errorf("runtimehost readiness: %w", err)
 		}
 	case <-h.done:
-		return nil, fmt.Errorf("runtimehost: exited before readiness: %v", h.exitErr)
+		return nil, fmt.Errorf("runtimehost: exited before readiness: %w", h.exitErr)
 	case <-ctx.Done():
 		h.Close()
 		return nil, ctx.Err()

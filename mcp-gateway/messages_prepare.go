@@ -73,6 +73,9 @@ func (b *messagesBackend) MessagesPrepare(ctx context.Context, in gateway.Messag
 	case out.Outcome == wire.OutcomeUnavailable && out.Reason == "receiver_withdrawn":
 		result.Outcome = "receiver_withdrawn"
 		result.Guidance = "The receiver's last OpenAbstractions connection closed normally and none is open now. The person can reopen that agent's chat. Do not guess or ask the person for internal identifiers."
+	case out.Outcome == wire.OutcomeInvalid && messagePrepareInvalidSteps[out.Reason] != "":
+		result.Reason = out.Reason
+		result.Guidance = messagePrepareInvalidSteps[out.Reason]
 	case out.Outcome == wire.OutcomeUnavailable && out.Reason == "receiver_unavailable":
 		result.Outcome = "receiver_unavailable"
 		result.Guidance = "No authorized live inbox for that receiver is visible. Keep OpenAbstractions MCP connected in the intended agent app. After an update or closed connection, use that host's supported MCP restart/reconnect or close and reopen the client, then discover again. Permission alone does not keep an inbox open. Do not guess or ask the person for internal application/context identifiers. Tell the person to open a chat in that app with OpenAbstractions connected, then try again."
@@ -107,20 +110,33 @@ func (b *messagesBackend) MessagesPrepare(ctx context.Context, in gateway.Messag
 	return result, nil
 }
 
+// messagePrepareInvalidSteps names, for each refusal of the request's own
+// fields, the one change that makes Prepare succeed.
+var messagePrepareInvalidSteps = map[string]string{
+	"lifetime": "Nothing was sent. Set ttl_ms from 1000 to 604800000 and at least as long as answer_within_ms, and leave answer_within_ms out of a note.",
+	"kind":     "Nothing was sent. Set kind to question or note, or leave it out.",
+	"text":     "Nothing was sent. Give a non-empty plain-text body of at most 8192 bytes and a one-line subject of at most 80 characters.",
+	"receiver": "Nothing was sent. Name the receiver as Claude, Codex, OpenCode or app:<name>.",
+}
+
 const messageUnclearChoiceGuidance = " If the displayed titles do not identify the intended chat, ask the person to rename it in its app, then discover the choices again. OA connection last-seen times describe connection observations and cannot establish which chat the person used."
 
 // messageProgramChoiceGuidance answers a program-only send that found several
-// open chats (architect ruling 2026-11-12, rule 7).
+// live chats (architect ruling P3, 2026-11-22). The sending agent chooses; the
+// hints are shown and OA acts on none of them.
 func messageProgramChoiceGuidance(program string, choices []wire.Inbox) string {
 	titles := make([]string, 0, len(choices))
 	for _, choice := range choices {
-		if choice.ChatTitle == "" {
-			titles = append(titles, "an unnamed chat")
-			continue
+		title := "an unnamed chat"
+		if choice.ChatTitle != "" {
+			title = strconv.Quote(choice.ChatTitle)
 		}
-		titles = append(titles, strconv.Quote(choice.ChatTitle))
+		if len(choice.Hints) != 0 {
+			title += " (" + strings.Join(choice.Hints, ", ") + ")"
+		}
+		titles = append(titles, title)
 	}
-	return "Several " + program + " chats are open. If the person's words name one of these, resend with its context; otherwise ask the person in your own chat which one, showing these titles: " + strings.Join(titles, ", ") + ". Nothing was sent. Never message another agent to reach the person." + messageUnclearChoiceGuidance
+	return "Several " + program + " chats can receive. Choose the one this message belongs to, using the person's words and these hints, and resend with its context. Choices: " + strings.Join(titles, ", ") + ". Nothing was sent. Ask the person only if you can't choose."
 }
 
 // The native listing gives each chat that shares a host title a distinct

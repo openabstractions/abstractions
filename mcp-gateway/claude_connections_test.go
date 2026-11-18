@@ -8,6 +8,7 @@ import (
 	"github.com/openabstractions/abstraction-identity/fileid"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -217,7 +218,7 @@ func TestClaudeConnectionsPreservesExactNamesAndInactiveHistory(t *testing.T) {
 }
 
 func TestClaudeConnectionsUnknownOwnershipAndBoundsRefuse(t *testing.T) {
-	for _, broken := range []string{"corrupt", "renamed", "other-state", "many-entries"} {
+	for _, broken := range []string{"corrupt", "renamed", "other-state", "many-markers"} {
 		t.Run(broken, func(t *testing.T) {
 			options, self, vendor := claudeSetupFixture(t)
 			if err := applyClaudeSetup(context.Background(), options, self, vendor.run, &bytes.Buffer{}); err != nil {
@@ -250,9 +251,9 @@ func TestClaudeConnectionsUnknownOwnershipAndBoundsRefuse(t *testing.T) {
 				if err := os.WriteFile(marker, raw, 0600); err != nil {
 					t.Fatal(err)
 				}
-			case "many-entries":
-				for i := 0; i < 2*claudeConnectionLimit+1; i++ {
-					if err := os.WriteFile(filepath.Join(options.state, fmt.Sprintf("unrelated-%03d", i)), nil, 0600); err != nil {
+			case "many-markers":
+				for i := 0; i < claudeConnectionLimit+1; i++ {
+					if err := os.WriteFile(filepath.Join(options.state, fmt.Sprintf("claude-setup-extra-%03d.json", i)), nil, 0600); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -260,6 +261,10 @@ func TestClaudeConnectionsUnknownOwnershipAndBoundsRefuse(t *testing.T) {
 			var output, diagnostics bytes.Buffer
 			if exit := claudeConnectionsCommand([]string{"connections", "claude", "--state-dir", options.state}, &output, &diagnostics); exit != 1 {
 				t.Fatal(exit, output.String(), diagnostics.String())
+			}
+			want := map[string]string{"corrupt": "marker", "renamed": "marker", "other-state": "marker", "many-markers": "bound"}[broken]
+			if !strings.Contains(strings.ReplaceAll(diagnostics.String(), "\r", "")+"\n", "OA_CLAUDE_CONNECTIONS_ERROR "+want+"\n") {
+				t.Fatalf("diagnostic %q lacks reason %s", diagnostics.String(), want)
 			}
 			var page claudeConnectionPage
 			if err := json.Unmarshal(output.Bytes(), &page); err != nil || page.Outcome != "unavailable" || len(page.Connections) != 0 {
@@ -291,5 +296,53 @@ func TestClaudeConnectionsNoStateCreationAndCancellation(t *testing.T) {
 	}
 	if exit := claudeConnectionsCommand([]string{"connections", "claude", "--help"}, &bytes.Buffer{}, &bytes.Buffer{}); exit != 0 {
 		t.Fatal(exit)
+	}
+}
+
+// The state folder also keeps the gateway's own request and job records. On
+// the owner's PC on 2026-11-22 they passed 128 entries, and every inventory
+// read exited 1. Only connection markers count toward the bound.
+func TestClaudeConnectionsIgnoreGatewayRecordsInTheStateFolder(t *testing.T) {
+	options, self, vendor := claudeSetupFixture(t)
+	if err := applyClaudeSetup(context.Background(), options, self, vendor.run, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 600; i++ {
+		for _, name := range []string{"request-%03d.json", "request-%03d.json.lock", "job%03d.picture.json"} {
+			if err := os.WriteFile(filepath.Join(options.state, fmt.Sprintf(name, i)), []byte("{}"), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	var output, diagnostics bytes.Buffer
+	if exit := claudeConnectionsCommand([]string{"connections", "claude", "--state-dir", options.state}, &output, &diagnostics); exit != 0 {
+		t.Fatal(exit, diagnostics.String())
+	}
+	var page claudeConnectionPage
+	if err := json.Unmarshal(output.Bytes(), &page); err != nil || page.Outcome != "page" || len(page.Connections) != 1 || page.Connections[0].Registration != "saved" {
+		t.Fatal(page, err)
+	}
+}
+
+// A project connection whose folder was deleted configures nothing; the
+// inventory lists the other connections and leaves its marker in place.
+func TestClaudeConnectionsSkipDeletedProjectFolders(t *testing.T) {
+	options, self, vendor := claudeSetupFixture(t)
+	if err := applyClaudeSetup(context.Background(), options, self, vendor.run, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(options.project); err != nil {
+		t.Fatal(err)
+	}
+	var output, diagnostics bytes.Buffer
+	if exit := claudeConnectionsCommand([]string{"connections", "claude", "--state-dir", options.state}, &output, &diagnostics); exit != 0 {
+		t.Fatal(exit, diagnostics.String())
+	}
+	var page claudeConnectionPage
+	if err := json.Unmarshal(output.Bytes(), &page); err != nil || page.Outcome != "page" || len(page.Connections) != 0 {
+		t.Fatal(page, err)
+	}
+	if len(claudeMarkers(t, options.state)) != 1 {
+		t.Fatal("inventory removed a marker")
 	}
 }

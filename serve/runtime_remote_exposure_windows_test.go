@@ -239,19 +239,19 @@ func TestRemoteNetworkCallbackLifetime(t *testing.T) {
 	s.refs.Store(1)
 	networkEventOwners.Store(object, s)
 	defer networkEventOwners.Delete(object)
-	*(*uintptr)(unsafe.Pointer(object)) = uintptr(unsafe.Pointer(&networkEventVtable[0]))
+	*(*uintptr)(nativePointer(object)) = uintptr(unsafe.Pointer(&networkEventVtable[0]))
 	var out uintptr
-	if err := remoteCOMCall(unsafe.Pointer(object), 0, uintptr(unsafe.Pointer(&nlmEvents)), uintptr(unsafe.Pointer(&out))); err != nil {
+	if err := remoteCOMCall(nativePointer(object), 0, uintptr(unsafe.Pointer(&nlmEvents)), uintptr(unsafe.Pointer(&out))); err != nil {
 		t.Fatal(err)
 	}
 	if out != object || s.refs.Load() != 2 {
 		t.Fatalf("QueryInterface reference not owned: out=%x object=%x refs=%d", out, object, s.refs.Load())
 	}
 	s.armed.Store(true)
-	if err := comCall(unsafe.Pointer(object), 6, 0, 0x10); err != nil {
+	if err := comCall(nativePointer(object), 6, 0, 0x10); err != nil {
 		t.Fatal(err)
 	}
-	if err := comCall(unsafe.Pointer(object), 3, 0); err != nil {
+	if err := comCall(nativePointer(object), 3, 0); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -259,11 +259,11 @@ func TestRemoteNetworkCallbackLifetime(t *testing.T) {
 	default:
 		t.Fatal("category event did not invalidate")
 	}
-	comRelease(unsafe.Pointer(object))
+	comRelease(nativePointer(object))
 	if s.refs.Load() != 1 {
 		t.Fatal("native reference not released")
 	}
-	comRelease(unsafe.Pointer(object))
+	comRelease(nativePointer(object))
 	select {
 	case <-s.released:
 	default:
@@ -282,13 +282,13 @@ func TestRemoteNetworkSubscriptionLossInvalidates(t *testing.T) {
 	s.armed.Store(true)
 	networkEventOwners.Store(object, s)
 	defer networkEventOwners.Delete(object)
-	*(*uintptr)(unsafe.Pointer(object)) = uintptr(unsafe.Pointer(&networkEventVtable[0]))
-	comRelease(unsafe.Pointer(object))
+	*(*uintptr)(nativePointer(object)) = uintptr(unsafe.Pointer(&networkEventVtable[0]))
+	comRelease(nativePointer(object))
 	select {
 	case <-s.changed:
 	default:
 		t.Fatal("lost subscription remained safe")
 	}
-	comRelease(unsafe.Pointer(object))
+	comRelease(nativePointer(object))
 	<-s.released
 }

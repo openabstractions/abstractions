@@ -8,6 +8,8 @@ import (
 	"time"
 
 	wire "github.com/openabstractions/abstraction-facade/go/abstraction/facade/messages"
+	"github.com/openabstractions/abstraction-facade/go/client"
+	"github.com/openabstractions/abstraction-identity/listen"
 	"github.com/openabstractions/abstractions/mcp-gateway/gateway"
 )
 
@@ -39,6 +41,29 @@ type agentToolAdmission struct {
 	// its slow cadence, and want asks it to try at once.
 	waiters int
 	want    chan struct{}
+	// cause is the last presence loss of a supervised connection and
+	// lostSince when re-admission started failing; a confirmation clears
+	// both. A long outage names cause in tool refusals.
+	cause     error
+	lostSince time.Time
+}
+
+// agentReconnectPlainAfter is how long tools answer the generic
+// reconnecting sentence before they name the cause (2026-11-22: after a core
+// reinstall every tool call answered "reconnecting" for over five minutes).
+var agentReconnectPlainAfter = 10 * time.Second
+
+// noteLoss records why a supervised presence attempt failed.
+func (a *agentToolAdmission) noteLoss(err error, now time.Time) {
+	if a == nil || err == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.cause = err
+	if a.lostSince.IsZero() {
+		a.lostSince = now
+	}
 }
 
 // agentToolAdmissionWait bounds how long a tool call waits for a supervised
@@ -221,6 +246,7 @@ func (a *agentToolAdmission) confirmVersion(deadline time.Time, generation uint6
 	}
 	a.ready, a.deadline = true, deadline
 	a.admitted, a.lost, a.refused = true, nil, nil
+	a.cause, a.lostSince = nil, time.Time{}
 	a.wakeWaiters()
 	return true
 }
@@ -346,6 +372,12 @@ func (a *agentToolAdmission) unavailable() (state, detail string) {
 		return agentToolRefused, "OpenAbstractions was updated and this connection is older. Update the connection in OpenAbstractions, then reconnect OpenAbstractions in this app."
 	case a.refused != nil:
 		return agentToolRefused, "OpenAbstractions does not admit this chat's inbox right now (" + agentLossWord(a.refused) + "). OA tries again every few minutes. If this continues, reconnect OpenAbstractions in this app."
+	case a.cause != nil && !a.lostSince.IsZero() && time.Since(a.lostSince) >= agentReconnectPlainAfter:
+		state := agentToolReconnecting
+		if !a.admitted {
+			state = agentToolConnecting
+		}
+		return state, agentReconnectCause(a.cause)
 	case !a.admitted:
 		return agentToolConnecting, "OpenAbstractions is connecting this chat. Try again in a few seconds; the MCP connection stays open."
 	default:
@@ -472,4 +504,29 @@ func (b *messagesBackend) beginNativeToolOnce(ctx context.Context, explicitOpen 
 		return call, func() {}, false
 	}
 	return call, done, true
+}
+
+// agentReconnectCause says in plain words why re-admission keeps failing and
+// what the person does about it.
+func agentReconnectCause(err error) string {
+	var resolution *client.ResolutionError
+	var announce *agentAnnounceOutcomeError
+	var inbox *agentInboxOutcomeError
+	switch {
+	case errors.Is(err, listen.ErrServerUntrusted):
+		return "OpenAbstractions could not confirm the running OpenAbstractions service; an update may have left this connection on an older copy. Reconnect OpenAbstractions in this app."
+	case errors.As(err, &resolution) && resolution.Status == client.UpgradeInProgress:
+		return "OpenAbstractions is being updated. Try again when the update finishes; the MCP connection stays open."
+	case errors.As(err, &resolution) && resolution.Status == client.RuntimeUnavailable:
+		return "The OpenAbstractions service is not running or not answering. Start OpenAbstractions or wait for it to restart; this chat reconnects by itself."
+	case errors.As(err, &resolution):
+		return "OpenAbstractions could not find its Messages service (" + string(resolution.Status) + "). If this continues, reconnect OpenAbstractions in this app."
+	case errors.As(err, &announce):
+		return "OpenAbstractions answered " + announce.outcome.String() + " to this chat's connection. If this continues, reconnect OpenAbstractions in this app."
+	case errors.As(err, &inbox):
+		return "OpenAbstractions answered " + inbox.outcome.String() + " to this chat's inbox. If this continues, reconnect OpenAbstractions in this app."
+	case errors.Is(err, context.DeadlineExceeded):
+		return "The OpenAbstractions service did not answer in time; it may be busy. This chat keeps trying to reconnect."
+	}
+	return "OpenAbstractions has not reconnected this chat (" + agentLossWord(err) + "). If this continues, reconnect OpenAbstractions in this app."
 }

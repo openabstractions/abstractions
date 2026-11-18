@@ -176,7 +176,7 @@ func (b *messagesBackend) newChatReceiver(ctx context.Context, configure ...func
 	b.chatMu.Lock()
 	adapter := b.adapter
 	b.chatMu.Unlock()
-	receiver := &messagesBackend{Backend: b.Backend, application: b.application, contextName: contextName, native: b.native, status: status, chatID: chatID, adapter: adapter}
+	receiver := &messagesBackend{Backend: b.Backend, application: b.application, contextName: contextName, native: b.native, status: status, chatID: chatID, adapter: adapter, replyOnly: b.replyOnly, decideFullTools: b.decideFullTools}
 	for _, prepare := range configure {
 		if err := prepare(receiver); err != nil {
 			return nil, nil, err

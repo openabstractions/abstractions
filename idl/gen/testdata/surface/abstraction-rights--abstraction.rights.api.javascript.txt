@@ -28,12 +28,32 @@ class AuthorizationOperatorClient
   retireAction(expectedRevision, action)
   explainFor(subject, action, resource)
   listDefaults()
+  requestChange(change, waitMs)
+  observeChangeRequest(id, waitMs)
+  listChangeRequests()
   setDefault(expectedRevision, name, on)
 object AuthorizationOperatorService {wireName, Client}
 object AuthorizationService {wireName, Client}
 enum BatchCheckOutcome
   Checked
   Conflict
+  Invalid
+  Forbidden
+  Unavailable
+enum ChangeKind
+  SetRule
+  RevokeRule
+  SetDefault
+  RegisterAction
+  RetireAction
+  Declaration
+enum ChangeRequestOutcome
+  Applied
+  Pending
+  Refused
+  Expired
+  Conflict
+  Unknown
   Invalid
   Forbidden
   Unavailable
@@ -136,6 +156,8 @@ function decodeBatchDecision(data)
 function decodeBundleExpansion(data)
 function decodeBundleOrigin(data)
 function decodeCatalogEntry(data)
+function decodeChangeRequestPage(data)
+function decodeChangeRequestState(data)
 function decodeCheckBatchRequest(data)
 function decodeConcreteResource(data)
 function decodeDecision(data)
@@ -154,6 +176,7 @@ function decodePermissionDefinitionPage(data)
 function decodePermissionEffect(data)
 function decodePermissionKey(data)
 function decodePermissionSelection(data)
+function decodePolicyChange(data)
 function decodePolicyEdit(data)
 function decodePolicyObservation(data)
 function decodePolicyPage(data)
@@ -181,6 +204,8 @@ function encodeBatchDecision(v)
 function encodeBundleExpansion(v)
 function encodeBundleOrigin(v)
 function encodeCatalogEntry(v)
+function encodeChangeRequestPage(v)
+function encodeChangeRequestState(v)
 function encodeCheckBatchRequest(v)
 function encodeConcreteResource(v)
 function encodeDecision(v)
@@ -199,6 +224,7 @@ function encodePermissionDefinitionPage(v)
 function encodePermissionEffect(v)
 function encodePermissionKey(v)
 function encodePermissionSelection(v)
+function encodePolicyChange(v)
 function encodePolicyEdit(v)
 function encodePolicyObservation(v)
 function encodePolicyPage(v)
@@ -259,6 +285,16 @@ function newCatalogEntry()
   action
   registeredBy
   registeredAt
+function newChangeRequestPage()
+  outcome
+  requests
+function newChangeRequestState()
+  outcome
+  id
+  revision
+  change
+  expires
+  exempt
 function newCheckBatchRequest()
   expectedRevision
   collectionAdmission
@@ -350,6 +386,18 @@ function newPermissionKey()
 function newPermissionSelection()
   permission
   selector
+function newPolicyChange()
+  kind
+  expectedRevision
+  rule
+  ttlMs
+  why
+  name
+  on
+  action
+  program
+  rules
+  address
 function newPolicyEdit()
   outcome
   revision

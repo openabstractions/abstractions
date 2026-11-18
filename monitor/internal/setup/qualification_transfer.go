@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -134,12 +135,12 @@ func qualificationTransfer(machine *client.Machine, catalog Catalog, mirrors []Q
 		}
 		u, err := url.Parse(mirror.MirrorURL)
 		if err != nil || u.Scheme != "http" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.RawPath != "" || u.Opaque != "" {
-			return PublicTransfer{}, errors.New("qualification mirror needs an exact numeric loopback HTTP route")
+			return PublicTransfer{}, errors.New("qualification mirror needs an exact numeric local-network HTTP route")
 		}
 		host, port, err := net.SplitHostPort(u.Host)
 		n, portErr := strconv.Atoi(port)
 		parts := qualificationRoute.FindStringSubmatch(u.Path)
-		if err != nil || host != "127.0.0.1" || portErr != nil || n < 1 || n > 65535 || strconv.Itoa(n) != port || len(parts) != 3 || (attempt != "" && attempt != parts[1]) || (endpoint != "" && endpoint != u.Host) {
+		if err != nil || !qualificationMirrorHost(host) || portErr != nil || n < 1 || n > 65535 || strconv.Itoa(n) != port || len(parts) != 3 || (attempt != "" && attempt != parts[1]) || (endpoint != "" && endpoint != u.Host) {
 			return PublicTransfer{}, errors.New("qualification mirror route or attempt is invalid")
 		}
 		attempt = parts[1]
@@ -147,6 +148,31 @@ func qualificationTransfer(machine *client.Machine, catalog Catalog, mirrors []Q
 		q.mirrors[key] = mirror.MirrorURL
 	}
 	return PublicTransfer{Machine: machine, LocalOnly: true, qualification: q}, nil
+}
+
+// qualificationMirrorHost accepts a numeric IPv4 address in a local-network
+// range: the qualifying machine's own LAN or host-only adapter address, which
+// the person's allowed local hosts name. The download service never reaches
+// loopback, where the person's unauthenticated local services listen
+// (download CONTRACT.md DL-G4, DL-G5).
+func qualificationMirrorHost(host string) bool {
+	addr, err := netip.ParseAddr(host)
+	if err != nil || !addr.Is4() || addr.String() != host {
+		return false
+	}
+	for _, network := range qualificationMirrorNetworks {
+		if network.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+var qualificationMirrorNetworks = []netip.Prefix{
+	netip.MustParsePrefix("10.0.0.0/8"),
+	netip.MustParsePrefix("172.16.0.0/12"),
+	netip.MustParsePrefix("192.168.0.0/16"),
+	netip.MustParsePrefix("100.64.0.0/10"),
 }
 
 var qualificationRoute = regexp.MustCompile(`^/native-qualification/([0-9a-f]{32})/([0-9a-f]{64})$`)

@@ -492,7 +492,7 @@ func TestPictureAndJobToolsCarryTheRulingDescriptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]string{
-		ToolImageGenerate: "Make one picture from a prompt and save it as a file, answering its path. When outcome is working, follow the exact call in message using the returned handle. Waits wait_ms (default 20000; Codex ends a call at 60 s), then answers with progress and a handle to call again with.",
+		ToolImageGenerate: "Make one picture from a prompt and save it as a file, answering its path. When outcome is working, follow the exact call in message using the returned handle. Waits wait_ms (default 20000; Codex ends calls at 60 s), then returns progress and a handle to call again.",
 		ToolVideoGenerate: videoDescription,
 		ToolJobStatus:     jobStatusDescription,
 		ToolJobDiagnose:   "Say why a video job failed, by its handle.",

@@ -54,7 +54,7 @@ func TestNativeResourcesMatchCanonicalSources(t *testing.T) {
 	if err != nil || len(want) != 0 {
 		t.Fatalf("native SDK resource closure: %v, missing %v", err, want)
 	}
-	rc, err := resourceScript("0.8.0")
+	rc, err := resourceScript("0.8.1")
 	if err != nil {
 		t.Fatal(err)
 	}

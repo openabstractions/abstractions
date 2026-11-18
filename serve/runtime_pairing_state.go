@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"math/big"
@@ -74,8 +75,8 @@ type runtimePairingState struct {
 	activity                 map[string]*pairingActivity
 }
 
-// The state has one lock. Reserved operations can wait within their lifetime;
-// foreign admission keeps its immediate TryLock refusal.
+// The state has one lock. Reserved operations and authenticated admission wait
+// within the caller's lifetime. Snapshot and edit probes retain TryLock.
 type pairingStateLock struct {
 	once sync.Once
 	slot chan struct{}
@@ -363,7 +364,7 @@ func (s *runtimePairingState) read(ctx context.Context) (pairingDocument, []byte
 	}
 	_, state, err := fileid.Revalidate(ctx, s.fileID)
 	if err != nil {
-		return pairingDocument{}, nil, errPairingState
+		return pairingDocument{}, nil, fmt.Errorf("%w: %w", errPairingState, err)
 	}
 	if state != fileid.StateSame {
 		return pairingDocument{}, nil, s.unexpectedChange()
@@ -667,29 +668,61 @@ func (s *runtimePairingState) finishRemoval(ctx context.Context, expected uint64
 	})
 }
 
-func (s *runtimePairingState) admit(peer remote.Peer) error {
+func pairingAdmissionKey(peer remote.Peer) (string, error) {
 	if peer.Certificate == nil {
-		return errPairingState
+		return "", fmt.Errorf("pairing admission peer: %w", errPairingState)
 	}
 	key := pairingKey(peer.Certificate)
 	if hex.EncodeToString(peer.Key[:]) != key {
-		return errPairingState
+		return "", fmt.Errorf("pairing admission peer: %w", errPairingState)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	// Admission never queues behind a native/Rights reconciliation. Busy state
-	// is unavailable until its single owning edit completes.
-	if !s.mu.TryLock() {
-		return errPairingBusy
-	}
-	defer s.mu.Unlock()
-	d, _, err := s.read(ctx)
+	return key, nil
+}
+
+func (s *runtimePairingState) admitContext(ctx context.Context, peer remote.Peer) error {
+	key, err := pairingAdmissionKey(peer)
 	if err != nil {
 		return err
 	}
+	if err := s.mu.lockContext(ctx); err != nil {
+		return fmt.Errorf("pairing admission lock: %w: %w", errPairingBusy, err)
+	}
+	defer s.mu.Unlock()
+	return s.admitRead(ctx, key)
+}
+
+// probeStanding observes existing work's authority without waiting behind an
+// edit whose own synchronous recheck may be calling us. Busy is uncertainty,
+// not withdrawal (INF-A6). New TLS/frame admissions use admitContext and wait.
+func (s *runtimePairingState) probeStanding(ctx context.Context, peer remote.Peer) error {
+	key, err := pairingAdmissionKey(peer)
+	if err != nil {
+		return err
+	}
+	if err = ctx.Err(); err != nil {
+		return fmt.Errorf("pairing standing caller: %w: %w", errPairingBusy, err)
+	}
+	if !s.mu.TryLock() {
+		return fmt.Errorf("pairing standing lock: %w", errPairingBusy)
+	}
+	defer s.mu.Unlock()
+	err = s.admitRead(ctx, key)
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("pairing standing read: %w: %w", errPairingBusy, err)
+	}
+	return err
+}
+
+// admitRead requires the native state lock. Both admission owners retain the
+// same certificate, active-peer and exact native metadata checks.
+func (s *runtimePairingState) admitRead(ctx context.Context, key string) error {
+	d, _, err := s.read(ctx)
+	if err != nil {
+		return fmt.Errorf("pairing admission read: %w", err)
+	}
 	p, ok := d.Peers[key]
 	if !ok || p.State != "active" {
-		return errPairingState
+		return fmt.Errorf("pairing admission state: %w", errPairingState)
 	}
 	s.activityMu.Lock()
 	if s.activity == nil {

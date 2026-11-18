@@ -97,6 +97,46 @@ const routes = (state, over, plan, catalog = h.catalog) => (path, body) => {
     assert(!diffusers.some(f => /^Version|PSF|2\.11/.test(f)), 'runtime facts on Diffusers: ' + diffusers.join(' | '));
   }
 
+  // ComfyUI on this computer with no picture model: the compact Klein
+  // arrives ticked and the summary names it with its download before
+  // Install. The full-precision Klein is its own labelled row with its size
+  // and stays clear until the person ticks it.
+  for (const state of ['connected', 'connect', 'finish']) {
+    const p = await h.page(routes(h.ownerState(), h.ownerOverview({picture_application: h.comfy({state, open: true, connectable: true})})));
+    const row = p.parts('model:klein-full');
+    assert.strictEqual(p.parts('model:klein-compact').box.checked, true, state + ': the recommended model arrives ticked');
+    assert.strictEqual(row.box.checked, false, state + ': the full-precision model arrives clear');
+    assert.strictEqual(row.title, 'FLUX.2 Klein 4B full precision');
+    assert.strictEqual(row.caption, 'Full precision, larger');
+    assert.strictEqual(row.line, '16.1 GB download');
+    assert.deepStrictEqual(p.summary(), {sentence: 'Adds FLUX.2 Klein 4B compact, the picture model ComfyUI lacks.', facts: '8.27 GB download · needs 10.3 GB · 400 GB free on C:', button: 'Install', disabled: false});
+    assert.deepStrictEqual(p.posts('/setup/plan').at(-1).body.picture_model_plan_ids, ['klein-compact']);
+  }
+
+  // Agent-ux 2026-11-22: a recommended model that does not fit the install
+  // drive arrives clear, the page arrives neutral with Install off and no
+  // space warning in the summary, and the model rows say why. Ticking one
+  // still states the shortfall in the summary.
+  {
+    const disk = {volume: 'C:', free_bytes: 2.3 * GB};
+    const p = await h.page(routes(h.ownerState(), h.ownerOverview({disk, picture_application: h.comfy({state: 'connect', open: true, connectable: true}), desktop_integration: {app: 'opencode', coding: true, installed: true}, coding_model: {...h.ownerOverview().coding_model, installed: false, used_by: []}}),
+      body => h.planFor(body, ['pytorch-engine', 'thenoise-engine'], {disk})));
+    assert.strictEqual(p.parts('model:klein-compact').box.checked, false, 'a model that does not fit arrives clear');
+    assert.strictEqual(p.parts('coding').box.checked, false, 'a coding model that does not fit arrives clear');
+    assert.deepStrictEqual(p.summary(), {sentence: 'Tick to install. Clear a tick to remove.', facts: '', button: 'Install', disabled: true}, 'the page arrives neutral');
+    assert.strictEqual(p.parts('model:klein-compact').line, '8.27 GB download · Not enough space · needs 10.3 GB, 2.3 GB free on C:');
+    assert(p.parts('coding').line.includes('Not enough space'), p.parts('coding').line);
+    assert(!/Not enough space/.test(p.parts('comfyui').line || ''), 'the space note is on model rows only');
+    await p.tick('model:klein-compact');
+    assert(p.summary().sentence.startsWith('Not enough space on C:.'), p.summary().sentence);
+  }
+  // With room, the recommended model still arrives ticked.
+  {
+    const p = await h.page(routes(h.ownerState(), h.ownerOverview({disk: {volume: 'C:', free_bytes: 400 * GB}, picture_application: h.comfy({state: 'connect', open: true, connectable: true})})));
+    assert.strictEqual(p.parts('model:klein-compact').box.checked, true);
+    assert.strictEqual(p.parts('model:klein-compact').line, '8.27 GB download');
+  }
+
   // A saved plan naming an item this release does not carry (Lemonade) is
   // dropped silently: no row, never in a request, and Install stays enabled.
   {
@@ -178,7 +218,7 @@ const routes = (state, over, plan, catalog = h.catalog) => (path, body) => {
     const p = await h.page(routes(h.freshState(), h.overview(), body => h.planFor(body, [])));
     assert.deepStrictEqual(p.summary(), {sentence: 'Tick to install. Clear a tick to remove.', facts: '', button: 'Install', disabled: true});
     assert.strictEqual(p.parts('comfyui').line, 'Not installed');
-    assert.strictEqual(p.parts('opencode').line, 'This build can integrate an existing OpenCode Desktop installation.');
+    assert.strictEqual(p.parts('opencode').line, 'Get opens opencode.ai, where you download and install OpenCode yourself. Then Connect links it to OpenAbstractions.');
     // Every engine this computer is offered can be ticked on its own (the
     // R17 engine chooser could not select PyTorch at all).
     for (const engine of ['pytorch', 'thenoise']) {

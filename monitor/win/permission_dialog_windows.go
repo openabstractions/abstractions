@@ -64,6 +64,10 @@ const (
 	permissionWMDPI          = 0x02e0
 	permissionDetailsID      = 20
 	permissionTextID         = 21
+	permissionOverflowID     = 22
+	permissionFooterID       = 23
+	permissionDetailsLabelID = 24
+	permissionOverflowLabel  = 25
 	permissionTimerID        = 1
 	permissionDMSetDefID     = 0x0401
 	permissionDMGetDefID     = 0x0400
@@ -328,7 +332,7 @@ func permissionDialogDispatch(hwnd, msg, wparam, lparam uintptr) uintptr {
 			d.dpi = int(wparam & 0xffff)
 			d.replaceFonts()
 			d.loadRequesterIcon()
-			d.layout((*rect)(unsafe.Pointer(lparam)))
+			d.layout((*rect)(nativePointer(lparam)))
 		}
 		return 1
 	case wmThemeChanged, wmSettingChange:
@@ -359,7 +363,7 @@ func permissionDialogDispatch(hwnd, msg, wparam, lparam uintptr) uintptr {
 		return brush
 	case permissionWMNotify:
 		if lparam != 0 && !d.contrast {
-			draw := (*permissionCustomDraw)(unsafe.Pointer(lparam))
+			draw := (*permissionCustomDraw)(nativePointer(lparam))
 			if draw.Header.Code == permissionNMCustomDraw && draw.Stage == permissionCDPrePaint && d.isButton(draw.Header.From) {
 				d.paintButton(draw)
 				// Dialog procedures return TRUE and place notification results
@@ -441,18 +445,22 @@ func (d *permissionDialog) initialize() error {
 	}
 	// A read-only multiline Edit supplies native scrolling and keyboard text
 	// access for exact details and for arbitrarily long visible permission text.
+	// The toggle comes first, as it sits above the details it opens.
 	var err error
-	d.details, err = d.control("EDIT", d.prompt.Details, wsTabStop|0x0004|0x0040|0x0800|0x00200000, permissionTextID)
-	if err != nil {
-		return err
-	}
-	showWindow.Call(d.details, 0)
 	if d.prompt.Details != "" {
 		d.detailToggle, err = d.control("BUTTON", "Show details", wsTabStop|0x8000|0x0100, permissionDetailsID) // BS_FLAT | BS_LEFT
 		if err != nil {
 			return err
 		}
 	}
+	if _, err = d.label("Details", permissionDetailsLabelID); err != nil {
+		return err
+	}
+	d.details, err = d.control("EDIT", d.prompt.Details, wsTabStop|0x0004|0x0040|0x0800|0x00200000, permissionTextID)
+	if err != nil {
+		return err
+	}
+	showWindow.Call(d.details, 0) //unchecked: ShowWindow returns the previous visibility, not an error
 	for i, choice := range d.prompt.Choices {
 		style := uint32(wsTabStop | 0x2000) // BS_MULTILINE
 		if permissionDefaultButton(d.prompt, d.result) == int32(firstQuestionButton+i) {
@@ -554,6 +562,48 @@ func (d *permissionDialog) control(class, text string, style uint32, id int) (ui
 	return h, nil
 }
 
+// label creates a hidden STATIC that names the control created right after it.
+// Windows reads an Edit's accessible name from the static label before it in
+// the z-order; the visible layout needs no caption for these Edits.
+func (d *permissionDialog) label(text string, id int) (uintptr, error) {
+	h, err := d.control("STATIC", text, 0x0080, id) // SS_NOPREFIX
+	if err == nil {
+		showWindow.Call(h, 0) //unchecked: ShowWindow returns the previous visibility, not an error
+	}
+	return h, err
+}
+
+// readingOrder is every child control in the order the popup shows it, top
+// to bottom: header and body text, the scrolling body, the credential form,
+// the details toggle and details, the footer, then the answers and Cancel.
+// The z-order follows it, which gives Tab and screen readers the same order
+// a person reads.
+func (d *permissionDialog) readingOrder() []uintptr {
+	var order []uintptr
+	for _, b := range d.blocks {
+		order = append(order, b.hwnd)
+	}
+	order = append(order, d.item(permissionOverflowLabel), d.overflowControl())
+	if c := d.credential; c != nil {
+		order = append(order, c.label, c.key, c.getKey, c.budgetLabel, c.budget, c.status)
+	}
+	order = append(order, d.detailToggle, d.item(permissionDetailsLabelID), d.details, d.item(permissionFooterID))
+	order = append(order, d.buttons...)
+	return append(order, d.cancelButton())
+}
+
+func (d *permissionDialog) orderControls() {
+	previous := uintptr(0) // HWND_TOP
+	for _, h := range d.readingOrder() {
+		if h == 0 {
+			continue
+		}
+		//unchecked: z-order sets only the accessible reading order; a control left in place keeps its creation order
+		setWindowPos.Call(h, previous, 0, 0, 0, 0, swpNoMove|swpNoSize|0x0010) // SWP_NOACTIVATE
+		previous = h
+	}
+}
+
 func (d *permissionDialog) px(n int) int { return (n*d.dpi + 48) / 96 }
 
 func (d *permissionDialog) replaceFonts() {
@@ -569,7 +619,7 @@ func (d *permissionDialog) replaceFonts() {
 		d.blocks[i].font = d.fonts[font]
 		sendMessage.Call(d.blocks[i].hwnd, wmSetFont, d.fonts[font], 1)
 	}
-	for _, h := range append(append([]uintptr{d.details, d.detailToggle, d.cancelButton(), d.item(23)}, d.buttons...), d.overflowControl()) {
+	for _, h := range append(append([]uintptr{d.details, d.detailToggle, d.cancelButton(), d.item(permissionFooterID)}, d.buttons...), d.overflowControl()) {
 		if h != 0 {
 			sendMessage.Call(h, wmSetFont, d.fonts[0], 1)
 		}
@@ -736,7 +786,6 @@ func (d *permissionDialog) layout(suggested *rect) {
 			}
 		}
 		h := d.ensureOverflow(strings.Join(all, "\r\n\r\n"))
-		setWindowPos.Call(h, 0, 0, 0, 0, 0, swpNoMove|swpNoSize|0x0010)
 		for _, b := range d.blocks {
 			if !b.header {
 				showWindow.Call(b.hwnd, 0)
@@ -806,6 +855,7 @@ func (d *permissionDialog) layout(suggested *rect) {
 	x = max(int(work.Left), min(x, int(work.Right)-width-frameW))
 	top = max(int(work.Top), min(top, int(work.Bottom)-height-frameH))
 	setWindowPos.Call(d.hwnd, 0, uintptr(x), uintptr(top), uintptr(width+frameW), uintptr(height+frameH), 0x0004|0x0010)
+	d.orderControls()
 	invalidateRect.Call(d.hwnd, 0, 1)
 }
 
@@ -877,12 +927,24 @@ func (d *permissionDialog) item(id int) uintptr {
 	return h
 }
 func (d *permissionDialog) cancelButton() uintptr    { return d.item(idcCancel) }
-func (d *permissionDialog) overflowControl() uintptr { return d.item(22) }
+func (d *permissionDialog) overflowControl() uintptr { return d.item(permissionOverflowID) }
 func (d *permissionDialog) ensureOverflow(text string) uintptr {
 	h := d.overflowControl()
 	if h == 0 {
+		name := "Request"
+		if v := d.prompt.PermissionView; v != nil && v.Question != "" {
+			name = v.Question
+		} else if d.prompt.Instruction != "" {
+			name = d.prompt.Instruction
+		}
+		if _, err := d.label(name, permissionOverflowLabel); err != nil {
+			d.err = err
+			//unchecked: d.err already carries the failure; EndDialog fails only on a window that is already gone
+			permissionEndDialog.Call(d.hwnd, ^uintptr(0))
+			return 0
+		}
 		var err error
-		h, err = d.control("EDIT", text, wsTabStop|0x0004|0x0040|0x0800|0x00200000, 22)
+		h, err = d.control("EDIT", text, wsTabStop|0x0004|0x0040|0x0800|0x00200000, permissionOverflowID)
 		if err != nil {
 			d.err = err
 			permissionEndDialog.Call(d.hwnd, ^uintptr(0))
@@ -893,10 +955,10 @@ func (d *permissionDialog) ensureOverflow(text string) uintptr {
 	return h
 }
 func (d *permissionDialog) footerControl() uintptr {
-	h := d.item(23)
+	h := d.item(permissionFooterID)
 	if h == 0 {
 		var err error
-		h, err = d.control("STATIC", d.footer, 0x0080, 23)
+		h, err = d.control("STATIC", d.footer, 0x0080, permissionFooterID)
 		if err != nil {
 			d.err = err
 			permissionEndDialog.Call(d.hwnd, ^uintptr(0))

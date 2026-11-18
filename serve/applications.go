@@ -862,6 +862,7 @@ func (d *applicationDirectory) removeLocked(ctx context.Context, name string) wi
 	// The removed entry's mark and pin go with it; a failed write leaves a
 	// mark or pin for a name with no descriptor, which binds nothing.
 	_ = d.clearMarkLocked(ctx, name)
+	//unchecked: a pin left for a removed name has no descriptor to bind, as the comment above says
 	_ = d.setLegacyPinLocked(ctx, name, nil)
 	if kept, err := d.readSetupKeptLocked(ctx); err == nil {
 		if _, ok := kept[name]; ok {
@@ -1226,6 +1227,7 @@ func (d *applicationDirectory) announce(ctx context.Context, s rights.Subject, p
 }
 
 func (d *applicationDirectory) announceInSession(ctx context.Context, s rights.Subject, session string, p wire.ApplicationPresence) wire.ApplicationChange {
+	p = fitApplicationPresence(p)
 	if !validApplicationPresence(p) {
 		return appChange(wire.ApplicationOutcomeInvalid, "presence")
 	}

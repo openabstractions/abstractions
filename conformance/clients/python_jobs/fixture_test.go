@@ -229,3 +229,7 @@ func (fixtureCredentials) CheckCredential(_ context.Context, _, name, _ string) 
 func (fixtureCredentials) ApplyCredential(_ context.Context, _, name, _ string) (map[string]string, error) {
 	return nil, download.CredentialRefusal(name, "revoked")
 }
+
+// The download fixtures here listen on loopback, which the download service
+// refuses outside tests (download DL-G4).
+func init() { execution.AllowLoopbackForTesting() }

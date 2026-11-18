@@ -258,7 +258,7 @@ func main() {
 	if programErr != nil {
 		err = programErr
 	} else if application := dedicatedAgentApplication(program); application != "" {
-		diagnostic := newAgentDiagnostic(*state, program)
+		diagnostic := newAgentDiagnostic(ctx, *state, program)
 		if diagnostic != nil {
 			diagnostic.parent = ctx
 		}

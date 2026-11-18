@@ -330,6 +330,9 @@ func TestModelsRemoveFromOARecordsTheStepsModelFirst(t *testing.T) {
 		if len(args) > 1 && args[1] == "unhost" && !read().RemovedFromOA && args[2] == "oa-chat-1/object-coder" {
 			t.Error("the model host unhosted the step's model before the removal was recorded")
 		}
+		if slices.Contains(args, "--plan") {
+			return []byte(`{"steps":[]}`), nil
+		}
 		return []byte(`[]`), nil
 	}
 	h := p.handler("test-key")
@@ -378,6 +381,10 @@ func TestModelsRemoveFromOAWithoutSetupState(t *testing.T) {
 	p := newTestPanel(t)
 	p.modelHostOA = func(_ context.Context, args ...string) ([]byte, error) {
 		commands = append(commands, args)
+		if slices.Contains(args, "--plan") {
+			// The plan of a command that would change nothing.
+			return []byte(`{"steps":[]}`), nil
+		}
 		return []byte(`[]`), nil
 	}
 	h := p.handler("test-key")
@@ -415,6 +422,10 @@ func TestModelHostCommandsNameTheServedRuntime(t *testing.T) {
 	p := newTestPanel(t)
 	p.modelHostOA = func(_ context.Context, args ...string) ([]byte, error) {
 		commands = append(commands, args)
+		if slices.Contains(args, "--plan") {
+			// The plan of a command that would change nothing.
+			return []byte(`{"steps":[]}`), nil
+		}
 		return []byte(`[]`), nil
 	}
 	h := p.handler("test-key")
@@ -478,13 +489,18 @@ func TestModelsRemoveFromOAUnhostsAndKeepsTheFile(t *testing.T) {
 	if got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"unhosted":true`) {
 		t.Fatalf("unhost: %d %s", got.Code, got.Body.String())
 	}
-	want := [][]string{{"models", "unhost", "oa-chat-1/object-qwen", "--json", "--timeout", "30s"}, {"models", "hosts", "--json", "--timeout", "30s"}}
+	want := [][]string{{"models", "unhost", "oa-chat-1/object-qwen", "--json", "--timeout", "30s", "--plan"}, {"models", "hosts", "--json", "--timeout", "30s"}}
 	if !reflect.DeepEqual(commands, want) {
 		t.Fatalf("commands %v", commands)
 	}
 	// A runtime that still hosts the model is not reported as removed.
 	hosted = `[{"Name":"qwen3-8b","Store":"oa-chat-1","Object":"object-qwen"}]`
-	p.modelHostOA = func(_ context.Context, args ...string) ([]byte, error) { return []byte(hosted), nil }
+	p.modelHostOA = func(_ context.Context, args ...string) ([]byte, error) {
+		if slices.Contains(args, "--plan") {
+			return []byte(`{"steps":[]}`), nil
+		}
+		return []byte(hosted), nil
+	}
 	if got := panelRequest(t, h, "/setup/modelhost/unhost", modelHostUnhostRequest{Store: "oa-chat-1", ID: "object-qwen", Confirm: true}); got.Code != http.StatusServiceUnavailable {
 		t.Fatalf("a kept model answered %d %s", got.Code, got.Body.String())
 	}

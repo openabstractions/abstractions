@@ -220,7 +220,7 @@ UID 1001 with no XDG variable and temporary root `/tmp` names
 `/tmp/openabstractions-1001/runtime-v1.sock`; XDG root `/run/user/1001`
 names `/run/user/1001/openabstractions/runtime-v1.sock`.
 Installed XPC uses the published service-token roster in
-[bootstrap's XPC owner](../openabstractions-flat/abstraction-facade/go-core/bootstrap/endpoint_xpc.go).
+bootstrap's XPC owner (`../openabstractions-flat/abstraction-facade/go-core/bootstrap/endpoint_xpc.go`).
 The resolver is `runtime-v1`, including inside the isolated XPC prefix.
 
 An explicitly supplied `XDG_RUNTIME_DIR` must be absolute and already be an
@@ -230,13 +230,13 @@ child, or the UID-named temporary namespace when XDG is absent, may be missing:
 client naming returns its path without creating it. An existing namespace must
 itself pass the same owner/ordinary-directory/0700 check. These rules do not
 require the temporary root or every ancestor to have mode 0700. The listener
-uses [identity's private-directory owner](../openabstractions-flat/abstraction-identity/CONTRACT.md#private-folders)
+uses identity's private-directory owner (`../openabstractions-flat/abstraction-identity/CONTRACT.md`)
 to create a missing namespace and check an existing one; it does not repair an
 invalid existing namespace. It refuses foreign or nonordinary lock/socket
 objects without adopting them. Naming and listening have separate failure
 points; successful naming of a missing namespace does not promise a listener.
 The named-object checks belong to
-[layout.RuntimeEndpointRoot](../openabstractions-flat/abstraction-storage/go/layout/runtime_endpoint_unix.go)
+layout.RuntimeEndpointRoot (`../openabstractions-flat/abstraction-storage/go/layout/runtime_endpoint_unix.go`)
 using identity ID-D1: the supplied XDG root and final namespace are each
 checked as named objects. Intermediate ancestors follow normal OS path resolution and are
 not independently attested for links by these clauses. This supplies no
@@ -255,8 +255,8 @@ from the explicit resolver. Disabled jobs/models require no endpoint for that
 service; their conflicting explicit options still refuse. RUN-N1/N2/N4/N5/N6
 remain applicable.
 
-Local admission follows identity's [trust domain](../openabstractions-flat/abstraction-identity/CONTRACT.md#trust-domain)
-and [ID-K1](../openabstractions-flat/abstraction-identity/CONTRACT.md#windows).
+Local admission follows identity's trust domain (`../openabstractions-flat/abstraction-identity/CONTRACT.md`)
+and ID-K1 (`../openabstractions-flat/abstraction-identity/CONTRACT.md`).
 An unconfigured Windows endpoint admits the account alone. Only exact
 AppContainer SIDs named by the runtime's own admission configuration receive
 the additional client-data/sync ACE; no connection supplies one, and broad
@@ -269,7 +269,7 @@ and the plan's unspecified Snap rule remain separate acceptance work.
 The OS normally refuses another account at open. A privileged process that
 can open anyway is bound as its actual account and refused by the service's
 authorization owner. Account inequality is not an unmet proof level and has
-no additional IPC-F transport opcode. [IPC-P3](../openabstractions-flat/abstraction-ipc/CONTRACT.md#caller-proof)
+no additional IPC-F transport opcode. IPC-P3 (`../openabstractions-flat/abstraction-ipc/CONTRACT.md`)
 governs proof refusal; the service's existing typed authorization refusal
 governs an adequately proven caller lacking permission.
 
@@ -305,9 +305,9 @@ required observation fields even in this refusal:
 ```
 
 Their respective public codec owners are
-[asks Response](../openabstractions-flat/abstraction-asks/go/wire.go),
-[rights Response](../openabstractions-flat/abstraction-rights/go/wire.go) and
-[router Response](../openabstractions-flat/abstraction-router/go/wire.go).
+asks Response (`../openabstractions-flat/abstraction-asks/go/wire.go`),
+rights Response (`../openabstractions-flat/abstraction-rights/go/wire.go`) and
+router Response (`../openabstractions-flat/abstraction-router/go/wire.go`).
 
 **[RUN-N1] An endpoint is a full platform path.** An endpoint flag MUST name
 `\\.\pipe\<name>` on Windows, an absolute socket path elsewhere, or an `xpc:`
@@ -514,11 +514,14 @@ changes nothing, since the refusal always applies. Held by:
 per-session service instance through the service control manager when one
 exists, and otherwise launches the windowless image beside it, detached, as
 `serve supervisor`; a caller in a packaged app's profile view launches it
-through the desktop shell. On macOS it bootstraps or kickstarts the
+through the desktop shell. The launched runtime outlives the caller: it breaks
+away from the caller's job, and when that job forbids breakaway this account's
+desktop shell starts it. On macOS it bootstraps or kickstarts the
 LaunchAgent `com.openabstractions.runtime` in this user's `gui/<uid>` domain,
 from the user's graphical session only. On Linux it starts the user unit
 `abstraction-runtime.service`. Another platform refuses. Held by:
 `serve/start_windows_test.go` (`TestWindowsActivationUsesOnlyOwnedInstalledPaths`),
+`serve/start_job_windows_test.go` (`TestLaunchDetachedOutlivesStarterKillOnCloseJob`),
 `serve/start_darwin_test.go` (`TestDarwinActivationUsesRegisteredRuntime`)
 and `serve/start_linux_test.go` (`TestLinuxActivationRequiresInstalledUserUnit`).
 
@@ -697,7 +700,7 @@ or startup authority. The initial offered methods are endpoint Describe, chat
 Start/Observe/Cancel, embed Embed and router Models/Hosts. Describe lists only
 the explicitly supplied chat@1, embed@1 and router@1 services, including an
 unready supplied service with its readiness reason under
-[FAC-B1](../openabstractions-flat/abstraction-facade/CONTRACT.md).
+FAC-B1 (`../openabstractions-flat/abstraction-facade/CONTRACT.md`).
 Each actual handler retains its existing resource/action or operation-ownership
 guard. Messages is composed separately with its explicit peer-scoped methods
 and existing per-call permission checks; job and download delegation remain
@@ -717,7 +720,7 @@ that stage; typed arguments are still validated before the actual handler
 | Typed arguments and handler | Generated argument decoding retains its errors; the capability owns resource/action and operation-owner refusal. |
 
 For chat, operation IDs and receiving account/program ownership follow
-[INF-Q1 through INF-Q5](../openabstractions-flat/abstraction-inference/CONTRACT.md).
+INF-Q1 through INF-Q5 (`../openabstractions-flat/abstraction-inference/CONTRACT.md`).
 Each ingress checks offered access. Accepted operation standing authority,
 revocation and rechecks follow that contract's `INF-A6`; connection departure
 and stopping an observation retain the service-owned lifetime (`IPC-D5`).
@@ -732,14 +735,14 @@ chat/embed/Describe and 8 MiB for router views. Incoming execution is marked lea
 before owner dispatch: it may execute the selected receiving model server and
 MUST refuse another native or remote OA inference hop. Resource ownership stays
 on the answering machine under
-[RES-T6](../openabstractions-flat/abstraction-resource/CONTRACT.md).
+RES-T6 (`../openabstractions-flat/abstraction-resource/CONTRACT.md`).
 An optional minimum policy revision comes from receiving
 configuration, stays bound to the mapped subject, and reaches each resolved
 resource decision through the existing revision owner. Invalid, unavailable or
 incomparable observations refuse without an ordinary-decision fallback. An
 absent minimum requests a fresh current read and asserts no wire fence.
 The revision type, order, observation freshness and exact subject binding are
-owned by [RIGHTS-O15](../openabstractions-flat/abstraction-rights/CONTRACT.md).
+owned by RIGHTS-O15 (`../openabstractions-flat/abstraction-rights/CONTRACT.md`).
 Current-pin checks occur at each handshake and mapped policy evaluation;
 accepted operation rechecks follow `INF-A6`. These boundaries supply no atomic
 whole-call revocation or handler preemption guarantee.

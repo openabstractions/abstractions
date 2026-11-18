@@ -41,6 +41,7 @@ func TestRuntimeStatusUsesLiveResolver(t *testing.T) {
 	case err := <-done:
 		t.Fatalf("startup: %v", err)
 	case <-time.After(runtimeWait):
+		dumpGoroutines()
 		t.Fatalf("runtime not ready within %v", runtimeWait)
 	}
 	defer func() {

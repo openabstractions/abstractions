@@ -77,8 +77,9 @@ func TestMessagesPrepareClaudeFolderLabelsInActualChoices(t *testing.T) {
 	}
 }
 
-// A Watch on the earlier chat leaves the newest opened chat selected.
-func TestMessagesPrepareWatchingDoesNotChangeOpenTimeRoute(t *testing.T) {
+// A Watch on the earlier chat leaves the newest opened chat first among the
+// choices (ruling P3).
+func TestMessagesPrepareWatchingDoesNotChangeOpenTimeOrder(t *testing.T) {
 	const application = "oa-claude-integration"
 	const title = "AI abstractions"
 	f := messagesObserveFixtureNamed(t, application, application+".exe")
@@ -108,12 +109,12 @@ func TestMessagesPrepareWatchingDoesNotChangeOpenTimeRoute(t *testing.T) {
 		}
 		t.Cleanup(stop)
 	}
-	if out := prepare("", ""); out.Outcome != msg.OutcomePage || out.SendRequest == nil || out.SendRequest.Context != first {
-		t.Fatal("newest inbox not selected", out)
+	if out := prepare("", ""); out.Outcome != msg.OutcomeConflict || out.SendRequest != nil || len(out.Choices) != 2 || out.Choices[0].Context != first {
+		t.Fatal("newest inbox is not the first choice", out)
 	}
 	watch(dormantInstance, dormant)
-	if out := prepare("", ""); out.Outcome != msg.OutcomePage || out.SendRequest == nil || out.SendRequest.Context != first {
-		t.Fatal("watch on earlier chat changed selection", out)
+	if out := prepare("", ""); out.Outcome != msg.OutcomeConflict || out.SendRequest != nil || len(out.Choices) != 2 || out.Choices[0].Context != first {
+		t.Fatal("watch on earlier chat changed the choice order", out)
 	}
 	watch(firstInstance, first)
 	out := prepare("", title)

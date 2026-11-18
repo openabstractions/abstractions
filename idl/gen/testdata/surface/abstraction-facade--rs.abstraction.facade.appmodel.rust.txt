@@ -73,6 +73,12 @@ pub mod reveal_style
   pub const SCROLL_TO: &str
   pub const FRAME: &str
   pub const ALL: [&str; 3]
+pub mod open_handle_state
+  pub const PENDING: &str
+  pub const OPENED: &str
+  pub const EXPIRED: &str
+  pub const REFUSED: &str
+  pub const ALL: [&str; 4]
 pub const VERSIONS: [&str; 1]
 pub const EXTENSIONS: [&str; 4]
 pub const BINDING_TOOLS: [&str; 7]
@@ -206,6 +212,9 @@ pub struct CommandDeclaration
   commands: ::std::vec::Vec<DeclaredCommand>
 pub struct ApplicationsQuery
   application: ::std::string::String
+pub struct OpenHandleQuery
+  open_handle: ::std::string::String
+  application: ::std::string::String
 pub struct ListedInstance
   instance: ::std::string::String
   interface: ::std::string::String
@@ -222,11 +231,18 @@ pub struct ListedOpenVerb
 pub struct ApplicationOpenVerbs
   application: ::std::string::String
   verbs: ::std::vec::Vec<ListedOpenVerb>
+pub struct OpenHandle
+  handle: ::std::string::String
+  application: ::std::string::String
+  state: ::std::string::String
+  instance: ::std::string::String
+  reason: ::std::string::String
 pub struct ApplicationListing
   outcome: ReadingOutcome
   applications: ::std::vec::Vec<ListedApplication>
   reason: ::std::string::String
   open_verbs: ::std::vec::Vec<ApplicationOpenVerbs>
+  open: ::std::option::Option<OpenHandle>
 pub struct CommandsQuery
   application: ::std::string::String
   instance: ::std::string::String
@@ -339,6 +355,8 @@ pub fn encode_command_declaration_document(v: &CommandDeclaration) -> ::std::res
 pub fn decode_command_declaration_document(data: &[u8]) -> ::std::result::Result<CommandDeclaration, Refusal>
 pub fn encode_applications_query_document(v: &ApplicationsQuery) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
 pub fn decode_applications_query_document(data: &[u8]) -> ::std::result::Result<ApplicationsQuery, Refusal>
+pub fn encode_open_handle_query_document(v: &OpenHandleQuery) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_open_handle_query_document(data: &[u8]) -> ::std::result::Result<OpenHandleQuery, Refusal>
 pub fn encode_listed_instance_document(v: &ListedInstance) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
 pub fn decode_listed_instance_document(data: &[u8]) -> ::std::result::Result<ListedInstance, Refusal>
 pub fn encode_listed_application_document(v: &ListedApplication) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
@@ -347,6 +365,8 @@ pub fn encode_listed_open_verb_document(v: &ListedOpenVerb) -> ::std::result::Re
 pub fn decode_listed_open_verb_document(data: &[u8]) -> ::std::result::Result<ListedOpenVerb, Refusal>
 pub fn encode_application_open_verbs_document(v: &ApplicationOpenVerbs) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
 pub fn decode_application_open_verbs_document(data: &[u8]) -> ::std::result::Result<ApplicationOpenVerbs, Refusal>
+pub fn encode_open_handle_document(v: &OpenHandle) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
+pub fn decode_open_handle_document(data: &[u8]) -> ::std::result::Result<OpenHandle, Refusal>
 pub fn encode_application_listing_document(v: &ApplicationListing) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
 pub fn decode_application_listing_document(data: &[u8]) -> ::std::result::Result<ApplicationListing, Refusal>
 pub fn encode_commands_query_document(v: &CommandsQuery) -> ::std::result::Result<::std::vec::Vec<u8>, Refusal>
@@ -435,6 +455,9 @@ pub mod internal
   pub fn decode_applications_query_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ApplicationsQuery, usize), super::Refusal>
   pub fn check_applications_query(v: &super::ApplicationsQuery, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
   pub fn encode_applications_query_at(v: &super::ApplicationsQuery, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_open_handle_query_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::OpenHandleQuery, usize), super::Refusal>
+  pub fn check_open_handle_query(v: &super::OpenHandleQuery, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_open_handle_query_at(v: &super::OpenHandleQuery, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
   pub fn decode_listed_instance_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ListedInstance, usize), super::Refusal>
   pub fn check_listed_instance(v: &super::ListedInstance, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
   pub fn encode_listed_instance_at(v: &super::ListedInstance, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
@@ -447,6 +470,9 @@ pub mod internal
   pub fn decode_application_open_verbs_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ApplicationOpenVerbs, usize), super::Refusal>
   pub fn check_application_open_verbs(v: &super::ApplicationOpenVerbs, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
   pub fn encode_application_open_verbs_at(v: &super::ApplicationOpenVerbs, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
+  pub fn decode_open_handle_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::OpenHandle, usize), super::Refusal>
+  pub fn check_open_handle(v: &super::OpenHandle, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
+  pub fn encode_open_handle_at(v: &super::OpenHandle, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>
   pub fn decode_application_listing_at(data: &[u8], depth: i32, limit: i32) -> ::std::result::Result<(super::ApplicationListing, usize), super::Refusal>
   pub fn check_application_listing(v: &super::ApplicationListing, depth: i32, limit: i32) -> ::std::result::Result<(), super::Refusal>
   pub fn encode_application_listing_at(v: &super::ApplicationListing, depth: i32) -> ::std::result::Result<::std::vec::Vec<u8>, super::Refusal>

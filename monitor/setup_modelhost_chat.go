@@ -709,7 +709,15 @@ func (p *servicePanel) setupModelHostChat(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if !reply.Feature.Available {
-		reply.Unavailable = "platform"
+		// Only a platform refusal reads "Not supported on this computer": a
+		// Panel that is not the installed one, or an installation without
+		// the core package, reads as waiting for the installed
+		// OpenAbstractions (agent-ux 2026-11-22: Models said "Not supported"
+		// while the Catalog recommended a local model).
+		reply.Unavailable = "installation"
+		if reply.Feature.Unsupported {
+			reply.Unavailable = "platform"
+		}
 		reply.Reason = reply.Feature.Reason
 		panelJSON(w, reply)
 		return
@@ -1681,7 +1689,7 @@ func (p *servicePanel) setupModelHostUnhost(w http.ResponseWriter, r *http.Reque
 		writeModelHostError(w, modelHostFail(http.StatusServiceUnavailable, errors.New("OpenAbstractions could not record the removal for Setup, so the model is still hosted: "+err.Error())))
 		return
 	}
-	if _, err := p.modelHostOpenAbstractions(ctx, "models", "unhost", request.Store+"/"+request.ID, "--json", "--timeout", "30s"); err != nil {
+	if err := p.modelHostDeclare(ctx, "models", "unhost", request.Store+"/"+request.ID, "--json", "--timeout", "30s"); err != nil {
 		writeModelHostError(w, modelHostFail(http.StatusConflict, errors.New("the model host kept the model: "+err.Error())))
 		return
 	}
@@ -1735,7 +1743,8 @@ func (p *servicePanel) modelHostHostModel(ctx context.Context, store, id string,
 	if !approve(setup.ModelHostChatApprovalDigest(modelHostModelApproval(root.ModelHostChatRoot, model))) {
 		return modelHostFail(http.StatusConflict, errors.New("the selected model changed; review its approval again"))
 	}
-	_, err = p.modelHostOpenAbstractions(ctx, modelHostHostArgs(store, id, engine.Path, programs.ModelHost, engineArgs, name, content...)...)
+	// The Panel writes the declaration the command plans (FAC-R9).
+	err = p.modelHostDeclare(ctx, modelHostHostArgs(store, id, engine.Path, programs.ModelHost, engineArgs, name, content...)...)
 	if err != nil {
 		return modelHostFail(http.StatusConflict, errors.New("the model host declaration was not written: "+err.Error()))
 	}

@@ -160,7 +160,7 @@ func TestTheSelfRegisteredPopupAndQuestionsShareRecordedSlots(t *testing.T) {
 	}
 	response := panelRequest(t, (&servicePanel{}).handler("test-key"), "/questions?cursor=", nil)
 	page := decodePanel[questionPage](t, response.Code, response.Body.Bytes())
-	want := "Recorded Editor (editor) was added to OpenAbstractions. Keep it?"
+	want := "Let Recorded Editor work with OpenAbstractions?"
 	if page.Sentences[question.ID] != want {
 		t.Fatalf("question sentence %q, want %q", page.Sentences[question.ID], want)
 	}

@@ -42,7 +42,10 @@ type installedAgentConnectionView struct {
 	HostProgram      string   `json:"host_program"`
 	HelperProgram    string   `json:"helper_program"`
 	Reason           string   `json:"reason,omitempty"`
-	hostDigest       string
+	// Guidance is the page's plain sentence for a failure; Reason is the
+	// error for Technical details.
+	Guidance   string `json:"guidance,omitempty"`
+	hostDigest string
 }
 
 // This private composition grants no stock-host enrollment, answering or peer

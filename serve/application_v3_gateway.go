@@ -46,6 +46,11 @@ type applicationV3Gateway struct {
 	// report logs one bounded line for a failed owned start: the
 	// application name and the error, never arguments or payloads.
 	report func(error)
+	// later holds agents' opens whose question outlived the call
+	// (application_v3_open_later.go).
+	later applicationV3OpenLater
+	// noteOpen receives a deferred open's result for its requester.
+	noteOpen func(applicationV3OpenOutcome)
 }
 
 type applicationV3Caller struct {
@@ -95,6 +100,7 @@ func (g *applicationV3Gateway) invalidate(application, revision string) {
 // Called only after this listener's workers joined. Closing mediation never
 // terminates an application process or independently accepted application job.
 func (g *applicationV3Gateway) close() error {
+	g.later.close()
 	g.mu.Lock()
 	sessions := g.owned
 	g.owned = map[string]*ownedApplicationSession{}
@@ -537,6 +543,7 @@ func (g *applicationV3Gateway) readDescription(ctx context.Context, k *applicati
 	if d.Version != k.manifest.Offers.Version {
 		return nil, &applicationV3DescriptionError{outcome: "unsupported", reason: "version:" + d.Version}
 	}
+	fitApplicationV3Description(d)
 	if err := validateApplicationV3Description(d); err != nil {
 		return nil, &applicationV3DescriptionError{outcome: "invalid", reason: err.Error()}
 	}

@@ -237,7 +237,11 @@ func (p DesktopIntegration) applySource(ctx context.Context, action string, tran
 // service confirms failed or sealed and never starts another attempt on its own.
 func (p DesktopIntegration) downloadPackage(ctx context.Context, pin PinnedDownload, transfer Transfer) (WorkIdentity, error) {
 	key := workKey("desktop-integration-"+string(p.App), Artifact{SHA256: pin.SHA256})
-	return downloadPinnedIntegration(ctx, pin, transfer, key)
+	work, err := downloadPinnedIntegration(ctx, pin, transfer, key)
+	if errors.Is(err, ErrNotPublished) {
+		return WorkIdentity{}, &DesktopInstallerFailure{Reason: fmt.Sprintf("%s's download isn't published yet. Try again later.", p.Title), diagnostic: err}
+	}
+	return work, err
 }
 
 func downloadPinnedIntegration(ctx context.Context, pin PinnedDownload, transfer Transfer, key string) (WorkIdentity, error) {
@@ -270,6 +274,9 @@ func downloadPinnedIntegration(ctx context.Context, pin PinnedDownload, transfer
 			return work, nil
 		case jobwire.WorkStatePending.String(), jobwire.WorkStateRunning.String(), jobwire.WorkStateTransferred.String(), jobwire.ObservationOutcomeUnknown.String():
 		case jobwire.WorkStateFailed.String():
+			if observation.Cause == string(jobwire.FailureCauseNotFound) {
+				return WorkIdentity{}, fmt.Errorf("desktop integration download failed: %s: %w", observation.Failure, ErrNotPublished)
+			}
 			return WorkIdentity{}, fmt.Errorf("desktop integration download failed: %s", observation.Failure)
 		default:
 			return WorkIdentity{}, fmt.Errorf("desktop integration download status: %s", observation.State)

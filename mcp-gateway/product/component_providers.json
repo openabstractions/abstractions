@@ -1,0 +1,17 @@
+{
+  "comment": "The release's table of OpenAbstractions component ids (A-SEC6, architect rulings 2026-11-22 (1) and the declarer amendment). components: each provider program, the provider names it ships, and per name the components that may declare it (declarers). instance_names are prefixes Setup completes with -<lowercase hex>. declarer_programs: OA's other programs, resolved to a component id when they declare. original_name is the signed version resource's OriginalFilename, required for a program outside the per-machine install folder; a program without one resolves only from that folder. oa:cli and oa:mcp are never declarers. Setup, inside the Panel, declares the model host's modelhost and pytorch through the Panel's registry client.",
+  "components": [
+    {"id": "oa:inventory", "program": "inventoryd", "names": ["local-stores", "oa-setup-picture"], "instance_names": ["oa-setup-chat"]},
+    {"id": "oa:modelhost", "program": "modelhostd", "names": ["modelhost"], "declarers": {"modelhost": ["oa:panel"]}},
+    {"id": "oa:pytorch", "program": "pytorchd", "names": ["pytorch-image", "pytorch"], "declarers": {"pytorch-image": ["oa:panel"], "pytorch": ["oa:panel"]}},
+    {"id": "oa:lemonade", "program": "lemonaded", "names": ["lemonade-image"]},
+    {"id": "oa:thenoise", "program": "thenoise-provider", "names": ["thenoise-image"], "declarers": {"thenoise-image": ["oa:panel"]}}
+  ],
+  "declarer_programs": [
+    {"id": "oa:panel", "program": "Abstraction Panel", "original_name": "Abstraction Panel.exe"},
+    {"id": "oa:presenter", "program": "OpenAbstractions Presenter", "original_name": "OpenAbstractions Presenter.exe"},
+    {"id": "oa:cli", "program": "openabstractions"},
+    {"id": "oa:cli", "program": "openabstractionsw"},
+    {"id": "oa:mcp", "program": "openabstractions-mcp"}
+  ]
+}

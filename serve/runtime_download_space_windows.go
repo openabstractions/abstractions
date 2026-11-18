@@ -4,7 +4,7 @@ package main
 
 import "golang.org/x/sys/windows"
 
-func localDownloadDiskSpace(folder string) (free, total uint64, err error) {
+func readLocalDownloadDiskSpace(folder string) (free, total uint64, err error) {
 	path, err := windows.UTF16PtrFromString(folder)
 	if err != nil {
 		return 0, 0, err

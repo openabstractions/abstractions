@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,6 +26,8 @@ import (
 	"github.com/openabstractions/abstraction-facade/go/grants"
 	"github.com/openabstractions/abstraction-identity/remote"
 	rights "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
+	router "github.com/openabstractions/abstraction-router/go"
+	routerservice "github.com/openabstractions/abstraction-router/go/service"
 )
 
 type remoteMessagesFixture struct {
@@ -38,7 +41,7 @@ type remoteMessagesFixture struct {
 // Actual native kept agents, canonical private pairing books and the normal
 // generated runtime/mTLS handler. The fixture supplies already-approved books;
 // it performs no pairing UI or owner configuration operation.
-func pairedMessagesFixture(t *testing.T) *remoteMessagesFixture {
+func pairedMessagesFixture(t *testing.T, configure ...func(int, *runtimePairingState, *runtimeRemoteConfig)) *remoteMessagesFixture {
 	t.Helper()
 	f := &remoteMessagesFixture{}
 	var identities [2]tls.Certificate
@@ -104,7 +107,18 @@ func pairedMessagesFixture(t *testing.T) *remoteMessagesFixture {
 		roots := x509.NewCertPool()
 		roots.AddCert(certs[1-i])
 		config.TLS = &tls.Config{Certificates: []tls.Certificate{identities[i]}, ClientCAs: roots}
-		config.Admit = state.admit
+		config.Admit = nil
+		config.AdmitContext = func(ctx context.Context, peer remote.Peer) error {
+			err := state.admitContext(ctx, peer)
+			if err != nil {
+				t.Logf("native pairing admission: %T: %v", err, err)
+			}
+			return err
+		}
+		config.ClientRoots = state.clientRoots
+		for _, apply := range configure {
+			apply(i, state, config)
+		}
 		services.registry = &registryHost{pairing: &runtimePairing{state: state, messageHost: h}}
 		if err = h.messageRights.policy.RegisterAction(remoteServeAction); err != nil {
 			t.Fatal(err)
@@ -112,7 +126,7 @@ func pairedMessagesFixture(t *testing.T) *remoteMessagesFixture {
 		if err = h.messageRights.policy.Set(rights.Subject{Account: h.owner, Program: "remote:" + f.keys[1-i]}, remoteServeAction, "account", true); err != nil {
 			t.Fatal(err)
 		}
-		decision := h.messageRights.decideRemote(t.Context(), pairingStateAdmission(certs[1-i]), state.admit, remoteServeAction, "account", "")
+		decision := h.messageRights.decideRemote(t.Context(), pairingStateAdmission(certs[1-i]), func(peer remote.Peer) error { return state.admitContext(t.Context(), peer) }, remoteServeAction, "account", "")
 		if decision.Outcome != rights.DecisionOutcomePermitted {
 			t.Fatalf("fixture remote gate: %+v", decision)
 		}
@@ -159,6 +173,89 @@ func (f *remoteMessagesFixture) permit(t *testing.T, side int, to string) {
 	other := f.nodes[1-side]
 	if e := other.reader.host.messageRights.policy.Set(rights.Subject{Account: other.reader.host.owner, Program: "remote:" + f.keys[side]}, ActionApplicationMessage, to, true); e != nil {
 		t.Fatal(e)
+	}
+}
+
+func TestNativeCallerDeadlineCoversRemoteRouterAndMessages(t *testing.T) {
+	var enabled atomic.Bool
+	var rootsOnce, dialOnce sync.Once
+	rootsRead, dialRead := make(chan error, 1), make(chan error, 1)
+	// Hold the real native state lock at the TLS roots stage. The operation
+	// owns the wait and continues through the production receiving handler.
+	f := pairedMessagesFixture(t, func(side int, state *runtimePairingState, config *runtimeRemoteConfig) {
+		if side != 1 {
+			return
+		}
+		config.ClientRoots = func(ctx context.Context) (*x509.CertPool, error) {
+			if enabled.Load() {
+				rootsOnce.Do(func() {
+					state.mu.Lock()
+					go func() { time.Sleep(1100 * time.Millisecond); state.mu.Unlock() }()
+				})
+			}
+			roots, err := state.clientRoots(ctx)
+			if enabled.Load() {
+				select {
+				case rootsRead <- err:
+				default:
+				}
+			}
+			return roots, err
+		}
+	})
+	for _, action := range []string{routerservice.ActionInventory} {
+		policy := f.nodes[1].reader.host.messageRights.policy
+		if err := policy.RegisterAction(action); err != nil {
+			t.Fatal(err)
+		}
+		if err := policy.Set(rights.Subject{Account: f.nodes[1].reader.host.owner, Program: "remote:" + f.keys[0]}, action, routerservice.ResourceInventory, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	config, address, err := f.states[0].outgoingTLS(ctx, f.keys[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	host, err := router.NewRemoteWithDialer("paired", address, "", remote.Dialer{TLS: config, AdmitContext: func(ctx context.Context, peer remote.Peer) error {
+		dialOnce.Do(func() {
+			f.states[0].mu.Lock()
+			go func() { time.Sleep(1100 * time.Millisecond); f.states[0].mu.Unlock() }()
+		})
+		err := f.states[0].admitContext(ctx, peer)
+		select {
+		case dialRead <- err:
+		default:
+		}
+		return err
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	enabled.Store(true)
+	routes := router.New(host)
+	if err = routes.SurveyContext(ctx); err != nil {
+		t.Fatal(err)
+	}
+	hosts, _, _, _, _ := routes.Residency(false)
+	if len(hosts) != 1 || !hosts[0].Up {
+		t.Fatalf("production paired receive: %+v", hosts)
+	}
+	for _, read := range []<-chan error{rootsRead, dialRead} {
+		select {
+		case err := <-read:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+	}
+	instance, target := f.sender(t, 0)
+	f.permit(t, 0, "app:other-agent")
+	if out, err := f.nodes[0].reader.Send(instance, target, f.request(0, "caller-native-lock")); err != nil || out.Outcome != msg.OutcomeSent {
+		t.Fatalf("paired message receive: %+v %v", out, err)
 	}
 }
 
@@ -876,9 +973,9 @@ func TestMessagesPairedInboxStripsPeerSuppliedDiscovery(t *testing.T) {
 	}
 	roots := x509.NewCertPool()
 	roots.AddCert(sourceCertificate)
-	server := remote.Server{TLS: &tls.Config{Certificates: []tls.Certificate{identity}, ClientCAs: roots}, Admit: f.states[1].admit,
+	server := remote.Server{TLS: &tls.Config{Certificates: []tls.Certificate{identity}, ClientCAs: roots}, AdmitContext: f.states[1].admitContext,
 		Handler: func(ctx context.Context, peer remote.Peer, frame []byte) ([]byte, error) {
-			dispatcher := f.nodes[1].reader.host.remoteMessages(ctx, peer, f.states[1].admit)
+			dispatcher := f.nodes[1].reader.host.remoteMessages(ctx, peer, func(peer remote.Peer) error { return f.states[1].admitContext(ctx, peer) })
 			dispatcher.Handler = &messagesPeerWithLocalDiscovery{Messages: dispatcher.Handler}
 			return fwire.ServeEndpointRemote(frame, "openabstractions", "", func(string, string, string) error { return nil }, dispatcher)
 		}}

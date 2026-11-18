@@ -1,0 +1,166 @@
+{
+ "records": {
+  "ActivationResult": {
+   "closed": true,
+   "members": {
+    "instance": "",
+    "outcome": "",
+    "reason": "",
+    "started": "",
+    "title": ""
+   }
+  },
+  "Declaration": {
+   "closed": true,
+   "members": {
+    "activation": "",
+    "arguments": "",
+    "contracts": "",
+    "endpoint": "",
+    "guarantees": "",
+    "host": "DeclarationHost",
+    "models": "",
+    "name": "",
+    "program": "",
+    "remote": "RemoteTrust",
+    "resources": "",
+    "role": "",
+    "transport": ""
+   }
+  },
+  "DeclarationCeiling": {
+   "closed": true,
+   "members": {
+    "audio_seconds_per_day": "",
+    "characters_per_day": "",
+    "images_per_day": "",
+    "micros_per_day": "",
+    "requests_per_day": "",
+    "tokens_per_day": ""
+   }
+  },
+  "DeclarationExtension": {
+   "closed": true,
+   "members": {
+    "key": "",
+    "profile": ""
+   }
+  },
+  "DeclarationHost": {
+   "closed": true,
+   "members": {
+    "base": "",
+    "ceiling": "DeclarationCeiling",
+    "credential": "",
+    "hosted": "",
+    "kind": ""
+   }
+  },
+  "DeclarationList": {
+   "closed": true,
+   "members": {
+    "declarations": "DeclarationState",
+    "outcome": "",
+    "revision": ""
+   }
+  },
+  "DeclarationListV2": {
+   "closed": true,
+   "members": {
+    "declarations": "DeclarationStateV2",
+    "outcome": "",
+    "revision": ""
+   }
+  },
+  "DeclarationObservation": {
+   "closed": true,
+   "members": {
+    "cursor": "",
+    "declarations": "DeclarationState",
+    "outcome": ""
+   }
+  },
+  "DeclarationObservationV2": {
+   "closed": true,
+   "members": {
+    "cursor": "",
+    "declarations": "DeclarationStateV2",
+    "outcome": ""
+   }
+  },
+  "DeclarationState": {
+   "closed": true,
+   "members": {
+    "accepted": "",
+    "declaration": "Declaration",
+    "declared_by": "",
+    "declared_unix_ms": "",
+    "described": "ServiceState",
+    "host": "HostReading",
+    "readiness": "",
+    "restarts": "",
+    "role": "",
+    "why": ""
+   }
+  },
+  "DeclarationStateV2": {
+   "closed": true,
+   "members": {
+    "state": "DeclarationState",
+    "supported_extensions": "DeclarationExtension"
+   }
+  },
+  "HostReading": {
+   "closed": true,
+   "members": {
+    "up": "",
+    "why": ""
+   }
+  },
+  "PinnedDeclarationList": {
+   "closed": true,
+   "members": {
+    "declarations": "PinnedDeclarationState",
+    "outcome": "",
+    "revision": ""
+   }
+  },
+  "PinnedDeclarationObservation": {
+   "closed": true,
+   "members": {
+    "cursor": "",
+    "declarations": "PinnedDeclarationState",
+    "outcome": ""
+   }
+  },
+  "PinnedDeclarationState": {
+   "closed": true,
+   "members": {
+    "remote_server_key_sha256": "",
+    "state": "DeclarationState",
+    "supported_extensions": "DeclarationExtension"
+   }
+  },
+  "RemoteTrust": {
+   "closed": true,
+   "members": {
+    "certificate": "",
+    "credential": "",
+    "key": "",
+    "roots": "",
+    "server_name": ""
+   }
+  },
+  "ServiceState": {
+   "closed": true,
+   "members": {
+    "capabilities": "",
+    "contract": "",
+    "guarantees": "",
+    "readiness": "",
+    "why": ""
+   }
+  }
+ },
+ "source": "abstraction-facade facade.thrift and applications.thrift at private revision bf142588e9e7, the 0.8.0 publication published.tsv records"
+}

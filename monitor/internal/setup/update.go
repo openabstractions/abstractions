@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/openabstractions/abstraction-facade/go/programfiles"
 )
@@ -416,6 +417,32 @@ func removePackageTree(a Artifact, root string) (int, error) {
 	return removePackageTreeContext(context.Background(), a, root)
 }
 
+// renameAsideWaits are the pauses between rename attempts. Antivirus and
+// indexers open a new folder's files for a moment; a program running from
+// the version holds them for longer than these 1.55 seconds.
+var renameAsideWaits = []time.Duration{50 * time.Millisecond, 100 * time.Millisecond, 200 * time.Millisecond,
+	400 * time.Millisecond, 800 * time.Millisecond}
+
+// renameAside moves a version's folder to its removal sibling, trying again
+// with backoff while something holds a file in it.
+func renameAside(ctx context.Context, root, aside string) error {
+	err := os.Rename(root, aside)
+	for _, wait := range renameAsideWaits {
+		if err == nil || errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return err
+		case <-timer.C:
+		}
+		err = os.Rename(root, aside)
+	}
+	return err
+}
+
 func removePackageTreeContext(ctx context.Context, a Artifact, root string) (int, error) {
 	aside := filepath.Join(filepath.Dir(root), "."+filepath.Base(root)+".removing")
 	if _, err := os.Lstat(root); err == nil {
@@ -428,7 +455,7 @@ func removePackageTreeContext(ctx context.Context, a Artifact, root string) (int
 		} else if err != nil {
 			return 0, err
 		}
-		if err := os.Rename(root, aside); err != nil {
+		if err := renameAside(ctx, root, aside); err != nil {
 			return 0, fmt.Errorf("the version is in use or locked; close it and retry: %w", err)
 		}
 	} else if !errors.Is(err, fs.ErrNotExist) {

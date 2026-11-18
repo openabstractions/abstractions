@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -223,7 +224,7 @@ func cardTableWithoutAwake(t *testing.T) *resourceservice.Table {
 
 func panelCardRuntimeWithoutAwake(t *testing.T, policy resourceservice.Policy) {
 	t.Helper()
-	prefix := fmt.Sprintf("panel-card-no-awake-%d-%d", os.Getpid(), time.Now().UnixNano())
+	prefix := fmt.Sprintf("card-empty-%d-%d", os.Getpid(), panelRuntimeSerial.Add(1))
 	panelConfigRuntimeWith(t, func(o *host.Options) {
 		o.ResourceTable = cardTableWithoutAwake(t)
 		o.ResourceTableEndpoint = listen.Endpoint(prefix + "-resource-table")
@@ -256,6 +257,30 @@ func TestCardAwakeReadsTheTableFirst(t *testing.T) {
 // An empty resource-table result is authoritative even when legacy rights
 // state exists. The card page must not read its admin secret or dial that API.
 func TestCardAwakeEmptyTableDoesNotConsultLegacyRights(t *testing.T) {
+	t.Run("default", cardAwakeEmptyTableDoesNotConsultLegacyRights)
+	t.Run("unix-socket-budget", func(t *testing.T) {
+		if runtime.GOOS != "linux" {
+			t.Skip("Linux pathname socket budget")
+		}
+		parent, err := os.MkdirTemp("/var/tmp", "pc-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.RemoveAll(parent) })
+		sockets := filepath.Join(parent, "socket-budget")
+		if err := os.Mkdir(sockets, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		// The runtime/config endpoints fit here. The empty table must fit too,
+		// even after a loaded runner has reached a six-digit process ID.
+		t.Setenv("TMPDIR", sockets)
+		t.Setenv("XDG_RUNTIME_DIR", "")
+		cardAwakeEmptyTableDoesNotConsultLegacyRights(t)
+	})
+}
+
+func cardAwakeEmptyTableDoesNotConsultLegacyRights(t *testing.T) {
+	t.Helper()
 	own(t)
 	legacyState := rights.DefaultStateDir()
 	if err := os.MkdirAll(legacyState, 0o700); err != nil {

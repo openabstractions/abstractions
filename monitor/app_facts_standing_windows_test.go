@@ -11,36 +11,41 @@ import (
 )
 
 // A model server reads by an engine's upstream name on the app page only
-// when OpenAbstractions shipped it. An unregistered program that declares
-// the free name thenoise-image reads "Model server", never "TheNoise"
-// (quality review of security finding F1, 2026-11-09).
+// when the runtime's standing for its declaration is product (A-SEC6,
+// architect ruling 2026-11-22 (1)). A server no declaration names, an
+// installation's declaration and a declaration without standing read
+// "Model server", never "TheNoise".
 func TestAppPageServerTitleNeedsProductStanding(t *testing.T) {
 	machine := t.TempDir()
 	shippedFolders(t, machine)
-	signedByPanelSigner(t)
+	panelInstalledPerMachine(t)
 	evil := filepath.Join(t.TempDir(), "evil.exe")
-	titles := func(declaredBy string, providers ...fwire.DeclarationState) string {
+	titles := func(declaredBy string, providers ...providerState) string {
 		t.Helper()
 		operator := factsInference{hosts: []iclient.HostState{{Entry: iclient.HostEntry{Name: product.TheNoise, DeclaredBy: declaredBy}}}}
 		return appServerTitles(context.Background(), operator, fwire.ApplicationPage{}, providers)[product.TheNoise]
 	}
-	declared := func(program, by string) fwire.DeclarationState {
-		return fwire.DeclarationState{DeclaredBy: by, Declaration: fwire.Declaration{Name: product.TheNoise, Program: program}}
+	declared := func(program, by string, standing fwire.ProductStanding) providerState {
+		var sent *fwire.ProductStanding
+		if standing != 0 {
+			sent = &standing
+		}
+		return providerState{DeclarationState: fwire.DeclarationState{DeclaredBy: by, Declaration: fwire.Declaration{Name: product.TheNoise, Program: program}}, Standing: sent}
 	}
+	shipped := filepath.Join(machine, "thenoise-provider.exe")
 	if got := titles(evil); got != "Model server" {
-		t.Errorf("a server an unregistered program declared reads %q", got)
+		t.Errorf("a server no declaration names reads %q", got)
 	}
-	if got := titles(evil, declared(evil, evil)); got != "Model server" {
-		t.Errorf("an unregistered program's own thenoise-image reads %q", got)
+	if got := titles("installation"); got != "Model server" {
+		t.Errorf("a server the installation declared, with no declaration listed, reads %q", got)
 	}
-	if got := titles(providerDeclaredByInstallation); got != "Model server" {
-		t.Errorf("an installation declaration beside a per-user Panel reads %q", got)
+	if got := titles(evil, declared(shipped, "installation", 0)); got != "Model server" {
+		t.Errorf("a declaration without standing reads %q", got)
 	}
-	if got := titles(evil, declared(filepath.Join(machine, "thenoise.exe"), evil)); got != "TheNoise" {
-		t.Errorf("a provider in the per-machine folder reads %q", got)
+	if got := titles(evil, declared(shipped, evil, fwire.ProductStandingThirdParty)); got != "Model server" {
+		t.Errorf("a third-party declaration reads %q", got)
 	}
-	panelInstalledPerMachine(t)
-	if got := titles(providerDeclaredByInstallation); got != "TheNoise" {
-		t.Errorf("a per-machine installation's declaration reads %q", got)
+	if got := titles(evil, declared(shipped, evil, fwire.ProductStandingProduct)); got != "TheNoise" {
+		t.Errorf("a declaration with product standing reads %q", got)
 	}
 }

@@ -1,19 +1,36 @@
-type Artifact contract0.Artifact
-type Constraints contract0.Constraints
-type Network contract0.Network
+type Answer askswire.Answer
+type PendingQuestion askswire.PendingQuestion
+type PermissionIntent askswire.PermissionIntent
+type PermissionObservation askswire.PermissionObservation
+type PermissionOutcome askswire.PermissionOutcome
+const PermissionOutcomePending
+const PermissionOutcomeAnswered
+const PermissionOutcomeUnknown
+const PermissionOutcomeGone
+const PermissionOutcomeInvalid
+const PermissionOutcomeConflict
+const PermissionOutcomeForbidden
+const PermissionOutcomeUnavailable
+const PermissionOutcomePermitted
+const PermissionOutcomeDenied
+func PermissionOutcomeValues() []PermissionOutcome
+func ParsePermissionOutcome(word string) (PermissionOutcome, bool)
+type Artifact contract1.Artifact
+type Constraints contract1.Constraints
+type Network contract1.Network
 const NetworkAny
 const NetworkUnmetered
 func NetworkValues() []Network
 func ParseNetwork(word string) (Network, bool)
-type Request contract0.Request
-type Source contract0.Source
-type Activation contract1.Activation
+type Request contract1.Request
+type Source contract1.Source
+type Activation contract2.Activation
 const ActivationOnDemand
 const ActivationAttach
 const ActivationRemote
 func ActivationValues() []Activation
 func ParseActivation(word string) (Activation, bool)
-type ApplicationActivationOutcome contract1.ApplicationActivationOutcome
+type ApplicationActivationOutcome contract2.ApplicationActivationOutcome
 const ApplicationActivationOutcomeReady
 const ApplicationActivationOutcomeUnknown
 const ApplicationActivationOutcomeDisabled
@@ -25,15 +42,15 @@ const ApplicationActivationOutcomeNotReady
 const ApplicationActivationOutcomeUnavailable
 func ApplicationActivationOutcomeValues() []ApplicationActivationOutcome
 func ParseApplicationActivationOutcome(word string) (ApplicationActivationOutcome, bool)
-type ApplicationActivationRecipe contract1.ApplicationActivationRecipe
-type ApplicationActivationResult contract1.ApplicationActivationResult
-type ApplicationChange contract1.ApplicationChange
-type ApplicationContext contract1.ApplicationContext
-type ApplicationDescriptor contract1.ApplicationDescriptor
-type ApplicationEntry contract1.ApplicationEntry
-type ApplicationInstance contract1.ApplicationInstance
-type ApplicationInterface contract1.ApplicationInterface
-type ApplicationOutcome contract1.ApplicationOutcome
+type ApplicationActivationRecipe contract2.ApplicationActivationRecipe
+type ApplicationActivationResult contract2.ApplicationActivationResult
+type ApplicationChange contract2.ApplicationChange
+type ApplicationContext contract2.ApplicationContext
+type ApplicationDescriptor contract2.ApplicationDescriptor
+type ApplicationEntry contract2.ApplicationEntry
+type ApplicationInstance contract2.ApplicationInstance
+type ApplicationInterface contract2.ApplicationInterface
+type ApplicationOutcome contract2.ApplicationOutcome
 const ApplicationOutcomeApplied
 const ApplicationOutcomePage
 const ApplicationOutcomeUnknown
@@ -44,12 +61,12 @@ const ApplicationOutcomeForbidden
 const ApplicationOutcomeUnavailable
 func ApplicationOutcomeValues() []ApplicationOutcome
 func ParseApplicationOutcome(word string) (ApplicationOutcome, bool)
-type ApplicationPage contract1.ApplicationPage
-type ApplicationPresence contract1.ApplicationPresence
-type ApplicationStart contract1.ApplicationStart
-type ApplicationStartPage contract1.ApplicationStartPage
-type BootstrapObservation contract1.BootstrapObservation
-type BootstrapState contract1.BootstrapState
+type ApplicationPage contract2.ApplicationPage
+type ApplicationPresence contract2.ApplicationPresence
+type ApplicationStart contract2.ApplicationStart
+type ApplicationStartPage contract2.ApplicationStartPage
+type BootstrapObservation contract2.BootstrapObservation
+type BootstrapState contract2.BootstrapState
 const BootstrapStateUnknown
 const BootstrapStateInstalled
 const BootstrapStateStarting
@@ -57,18 +74,18 @@ const BootstrapStateRunning
 const BootstrapStateUnavailable
 func BootstrapStateValues() []BootstrapState
 func ParseBootstrapState(word string) (BootstrapState, bool)
-type CallerOutcome contract1.CallerOutcome
+type CallerOutcome contract2.CallerOutcome
 const CallerOutcomeObserved
 const CallerOutcomeForbidden
 const CallerOutcomeUnavailable
 const CallerOutcomeInvalid
 func CallerOutcomeValues() []CallerOutcome
 func ParseCallerOutcome(word string) (CallerOutcome, bool)
-type CapabilityObservation contract1.CapabilityObservation
-type Declaration contract1.Declaration
-type DeclarationCeiling contract1.DeclarationCeiling
-type DeclarationChange contract1.DeclarationChange
-type DeclarationEditOutcome contract1.DeclarationEditOutcome
+type CapabilityObservation contract2.CapabilityObservation
+type Declaration contract2.Declaration
+type DeclarationCeiling contract2.DeclarationCeiling
+type DeclarationChange contract2.DeclarationChange
+type DeclarationEditOutcome contract2.DeclarationEditOutcome
 const DeclarationEditOutcomeApplied
 const DeclarationEditOutcomeConflict
 const DeclarationEditOutcomeUnknown
@@ -77,20 +94,20 @@ const DeclarationEditOutcomeForbidden
 const DeclarationEditOutcomeUnavailable
 func DeclarationEditOutcomeValues() []DeclarationEditOutcome
 func ParseDeclarationEditOutcome(word string) (DeclarationEditOutcome, bool)
-type DeclarationExtension contract1.DeclarationExtension
-type DeclarationHost contract1.DeclarationHost
-type DeclarationList contract1.DeclarationList
-type DeclarationListOutcome contract1.DeclarationListOutcome
+type DeclarationExtension contract2.DeclarationExtension
+type DeclarationHost contract2.DeclarationHost
+type DeclarationList contract2.DeclarationList
+type DeclarationListOutcome contract2.DeclarationListOutcome
 const DeclarationListOutcomePage
 const DeclarationListOutcomeInvalid
 const DeclarationListOutcomeForbidden
 const DeclarationListOutcomeUnavailable
 func DeclarationListOutcomeValues() []DeclarationListOutcome
 func ParseDeclarationListOutcome(word string) (DeclarationListOutcome, bool)
-type DeclarationListV2 contract1.DeclarationListV2
-type DeclarationObservation contract1.DeclarationObservation
-type DeclarationObservationV2 contract1.DeclarationObservationV2
-type DeclarationReadiness contract1.DeclarationReadiness
+type DeclarationListV2 contract2.DeclarationListV2
+type DeclarationObservation contract2.DeclarationObservation
+type DeclarationObservationV2 contract2.DeclarationObservationV2
+type DeclarationReadiness contract2.DeclarationReadiness
 const DeclarationReadinessReady
 const DeclarationReadinessIdle
 const DeclarationReadinessStarting
@@ -101,36 +118,43 @@ const DeclarationReadinessNotReady
 const DeclarationReadinessDisabled
 func DeclarationReadinessValues() []DeclarationReadiness
 func ParseDeclarationReadiness(word string) (DeclarationReadiness, bool)
-type DeclarationRole contract1.DeclarationRole
+type DeclarationRole contract2.DeclarationRole
 const DeclarationRoleProvider
 const DeclarationRoleHost
 const DeclarationRoleRemote
 func DeclarationRoleValues() []DeclarationRole
 func ParseDeclarationRole(word string) (DeclarationRole, bool)
-type DeclarationState contract1.DeclarationState
-type DeclarationStateV2 contract1.DeclarationStateV2
-type DeclarationTransport contract1.DeclarationTransport
+type DeclarationState contract2.DeclarationState
+type DeclarationStateV2 contract2.DeclarationStateV2
+type DeclarationTransport contract2.DeclarationTransport
 const DeclarationTransportNative
 const DeclarationTransportRemote
 const DeclarationTransportHTTP
 func DeclarationTransportValues() []DeclarationTransport
 func ParseDeclarationTransport(word string) (DeclarationTransport, bool)
-type DeclarationWithExtensions contract1.DeclarationWithExtensions
-type Description contract1.Description
-type DescriptionOutcome contract1.DescriptionOutcome
+type DeclarationWithExtensions contract2.DeclarationWithExtensions
+type Description contract2.Description
+type DescriptionOutcome contract2.DescriptionOutcome
 const DescriptionOutcomeDescribed
 const DescriptionOutcomeForbidden
 const DescriptionOutcomeUnavailable
 const DescriptionOutcomeInvalid
 func DescriptionOutcomeValues() []DescriptionOutcome
 func ParseDescriptionOutcome(word string) (DescriptionOutcome, bool)
-type HostReading contract1.HostReading
-type PinnedDeclaration contract1.PinnedDeclaration
-type PinnedDeclarationList contract1.PinnedDeclarationList
-type PinnedDeclarationObservation contract1.PinnedDeclarationObservation
-type PinnedDeclarationState contract1.PinnedDeclarationState
-type RemoteTrust contract1.RemoteTrust
-type ResolutionStatus contract1.ResolutionStatus
+type HostReading contract2.HostReading
+type PinnedDeclaration contract2.PinnedDeclaration
+type PinnedDeclarationList contract2.PinnedDeclarationList
+type PinnedDeclarationObservation contract2.PinnedDeclarationObservation
+type PinnedDeclarationState contract2.PinnedDeclarationState
+type ProductStanding contract2.ProductStanding
+const ProductStandingProduct
+const ProductStandingThirdParty
+func ProductStandingValues() []ProductStanding
+func ParseProductStanding(word string) (ProductStanding, bool)
+type ProviderStanding contract2.ProviderStanding
+type ProviderStandingList contract2.ProviderStandingList
+type RemoteTrust contract2.RemoteTrust
+type ResolutionStatus contract2.ResolutionStatus
 const ResolutionStatusResolved
 const ResolutionStatusUnavailable
 const ResolutionStatusForbidden
@@ -140,17 +164,17 @@ const ResolutionStatusNotReady
 const ResolutionStatusInvalidRequest
 func ResolutionStatusValues() []ResolutionStatus
 func ParseResolutionStatus(word string) (ResolutionStatus, bool)
-type ResolveRequest contract1.ResolveRequest
-type ResolveResult contract1.ResolveResult
-type RuntimeObservation contract1.RuntimeObservation
-type ServiceReadiness contract1.ServiceReadiness
+type ResolveRequest contract2.ResolveRequest
+type ResolveResult contract2.ResolveResult
+type RuntimeObservation contract2.RuntimeObservation
+type ServiceReadiness contract2.ServiceReadiness
 const ServiceReadinessReady
 const ServiceReadinessNotReady
 const ServiceReadinessUnknown
 func ServiceReadinessValues() []ServiceReadiness
 func ParseServiceReadiness(word string) (ServiceReadiness, bool)
-type ServiceReference contract1.ServiceReference
-type ServiceState contract1.ServiceState
+type ServiceReference contract2.ServiceReference
+type ServiceState contract2.ServiceState
 type ActivateRequest wire.ActivateRequest
 type HostActivationOutcome wire.HostActivationOutcome
 const HostActivationOutcomeApplied
@@ -160,7 +184,7 @@ func HostActivationOutcomeValues() []HostActivationOutcome
 func ParseHostActivationOutcome(word string) (HostActivationOutcome, bool)
 type HostActivationResult wire.HostActivationResult
 type Raw wire.Raw
-type CommandClass contract3.CommandClass
+type CommandClass contract4.CommandClass
 const CommandClassRead
 const CommandClassReveal
 const CommandClassPropose
@@ -171,10 +195,10 @@ const CommandClassSpend
 const CommandClassSend
 func CommandClassValues() []CommandClass
 func ParseCommandClass(word string) (CommandClass, bool)
-type CommandDeclaration contract3.CommandDeclaration
-type DeclaredCommand contract3.DeclaredCommand
-type MachineAgreement contract4.MachineAgreement
-type MachineCancelOutcome contract4.MachineCancelOutcome
+type CommandDeclaration contract4.CommandDeclaration
+type DeclaredCommand contract4.DeclaredCommand
+type MachineAgreement contract5.MachineAgreement
+type MachineCancelOutcome contract5.MachineCancelOutcome
 const MachineCancelOutcomeUpdated
 const MachineCancelOutcomeUnknown
 const MachineCancelOutcomeForbidden
@@ -182,9 +206,9 @@ const MachineCancelOutcomeUnavailable
 const MachineCancelOutcomeInvalid
 func MachineCancelOutcomeValues() []MachineCancelOutcome
 func ParseMachineCancelOutcome(word string) (MachineCancelOutcome, bool)
-type MachineCancellation contract4.MachineCancellation
-type MachineDirection contract4.MachineDirection
-type MachineListOutcome contract4.MachineListOutcome
+type MachineCancellation contract5.MachineCancellation
+type MachineDirection contract5.MachineDirection
+type MachineListOutcome contract5.MachineListOutcome
 const MachineListOutcomePage
 const MachineListOutcomeGap
 const MachineListOutcomeForbidden
@@ -192,8 +216,8 @@ const MachineListOutcomeUnavailable
 const MachineListOutcomeInvalid
 func MachineListOutcomeValues() []MachineListOutcome
 func ParseMachineListOutcome(word string) (MachineListOutcome, bool)
-type MachineObservation contract4.MachineObservation
-type MachineObserveOutcome contract4.MachineObserveOutcome
+type MachineObservation contract5.MachineObservation
+type MachineObserveOutcome contract5.MachineObserveOutcome
 const MachineObserveOutcomeChanged
 const MachineObserveOutcomeUnchanged
 const MachineObserveOutcomeGap
@@ -205,9 +229,9 @@ const MachineObserveOutcomeExhausted
 const MachineObserveOutcomeFailed
 func MachineObserveOutcomeValues() []MachineObserveOutcome
 func ParseMachineObserveOutcome(word string) (MachineObserveOutcome, bool)
-type MachineOperation contract4.MachineOperation
-type MachinePage contract4.MachinePage
-type MachinePhase contract4.MachinePhase
+type MachineOperation contract5.MachineOperation
+type MachinePage contract5.MachinePage
+type MachinePhase contract5.MachinePhase
 const MachinePhaseOffering
 const MachinePhaseConnecting
 const MachinePhaseChecking
@@ -221,10 +245,10 @@ const MachinePhaseExpired
 const MachinePhaseUncertain
 func MachinePhaseValues() []MachinePhase
 func ParseMachinePhase(word string) (MachinePhase, bool)
-type MachinePreparation contract4.MachinePreparation
-type MachineRecord contract4.MachineRecord
-type MachineRemoval contract4.MachineRemoval
-type MachineRemoveOutcome contract4.MachineRemoveOutcome
+type MachinePreparation contract5.MachinePreparation
+type MachineRecord contract5.MachineRecord
+type MachineRemoval contract5.MachineRemoval
+type MachineRemoveOutcome contract5.MachineRemoveOutcome
 const MachineRemoveOutcomeRemoved
 const MachineRemoveOutcomeCleanupPending
 const MachineRemoveOutcomeConflict
@@ -234,14 +258,14 @@ const MachineRemoveOutcomeUnavailable
 const MachineRemoveOutcomeInvalid
 func MachineRemoveOutcomeValues() []MachineRemoveOutcome
 func ParseMachineRemoveOutcome(word string) (MachineRemoveOutcome, bool)
-type MachineRequestIdentity contract4.MachineRequestIdentity
-type MachineScopeKind contract4.MachineScopeKind
+type MachineRequestIdentity contract5.MachineRequestIdentity
+type MachineScopeKind contract5.MachineScopeKind
 const MachineScopeKindNone
 const MachineScopeKindOneHostInference
 func MachineScopeKindValues() []MachineScopeKind
 func ParseMachineScopeKind(word string) (MachineScopeKind, bool)
-type MachineStart contract4.MachineStart
-type MachineStartOutcome contract4.MachineStartOutcome
+type MachineStart contract5.MachineStart
+type MachineStartOutcome contract5.MachineStartOutcome
 const MachineStartOutcomeStarted
 const MachineStartOutcomeExisting
 const MachineStartOutcomeForbidden
@@ -491,19 +515,21 @@ const WorkStateFailed
 const WorkStateCancelled
 func WorkStateValues() []WorkState
 func ParseWorkState(word string) (WorkState, bool)
-type RefusalAsk contract7.RefusalAsk
+type PermissionKey rwire.PermissionKey
+type PermissionSelection rwire.PermissionSelection
+type RefusalAsk rwire.RefusalAsk
 const RefusalAskAvailable
 const RefusalAskNone
 func RefusalAskValues() []RefusalAsk
 func ParseRefusalAsk(word string) (RefusalAsk, bool)
-type RefusalDecision contract7.RefusalDecision
+type RefusalDecision rwire.RefusalDecision
 const RefusalDecisionDenied
 const RefusalDecisionNotGranted
 const RefusalDecisionPersonOnly
 func RefusalDecisionValues() []RefusalDecision
 func ParseRefusalDecision(word string) (RefusalDecision, bool)
-type RefusalDetail contract7.RefusalDetail
-type RefusalSource contract7.RefusalSource
+type RefusalDetail rwire.RefusalDetail
+type RefusalSource rwire.RefusalSource
 const RefusalSourceRights
 const RefusalSourceCredentials
 const RefusalSourceLicense
@@ -511,7 +537,13 @@ const RefusalSourceTerms
 const RefusalSourceIdentity
 const RefusalSourceOS
 func RefusalSourceValues() []RefusalSource
-type Placement contract8.Placement
+type ResourceSelector rwire.ResourceSelector
+type ResourceSelectorKind rwire.ResourceSelectorKind
+const ResourceSelectorKindOne
+const ResourceSelectorKindAll
+func ResourceSelectorKindValues() []ResourceSelectorKind
+func ParseResourceSelectorKind(word string) (ResourceSelectorKind, bool)
+type Placement contract9.Placement
 const PlacementLocal
 const PlacementHosted
 const PlacementAny

@@ -156,7 +156,7 @@ function startupWarnings(project, path = win32) {
   };
   const own = path.join(project, '.opencode');
   if (inspect(own)) {
-    warnings.push(`Project configuration ${own} remains enabled. OpenCode may try to prepare its dependencies at start; the OA sandbox has no network. Prepare project dependencies with OpenCode outside the sandbox before starting a protected session.`);
+    warnings.push(`Project configuration ${own} remains enabled. The OA sandbox has no network; OpenCode starts there without that folder's missing dependencies. Prepare project dependencies with OpenCode outside the sandbox before starting a protected session.`);
   }
   for (let current = path.dirname(project); current !== project; current = path.dirname(current)) {
     const candidate = path.join(current, '.opencode');

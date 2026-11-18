@@ -28,6 +28,22 @@ type permissionFailure struct {
 
 const permissionMetaKey = "org.openabstractions/permission"
 
+// CheckClientName is the MCP client name `openabstractions-mcp --check` connects
+// with. A check reads once and grants nothing, and nobody answers a question
+// it raises: its call returns awaiting_permission at once
+// (MCP-MODELS-OFFLINE-TIME). The name selects no rights.
+const CheckClientName = "openabstractions-mcp-check"
+
+// fromCheck says whether request came from a session CheckClientName opened.
+func fromCheck(request mcp.Request) bool {
+	session, ok := request.GetSession().(*mcp.ServerSession)
+	if !ok || session == nil {
+		return false
+	}
+	params := session.InitializeParams()
+	return params != nil && params.ClientInfo != nil && params.ClientInfo.Name == CheckClientName
+}
+
 // Generated refusal words are structured errors from the service boundary.
 // Model output, peer text and ordinary error strings are never parsed here.
 func permissionErrorReason(err error) string {
@@ -159,7 +175,7 @@ func permissionToolMiddleware(backend Backend, slots chan struct{}) mcp.Middlewa
 				return result, err
 			}
 			verdict := "waiting"
-			if waiter, ok := backend.(PermissionQuestionBackend); ok {
+			if waiter, ok := backend.(PermissionQuestionBackend); ok && !fromCheck(request) {
 				verdict, err = waiter.AwaitPermissionQuestions(ctx, ids)
 				if err != nil {
 					if errors.Is(err, context.DeadlineExceeded) {

@@ -414,6 +414,7 @@ func (p *servicePanel) registerInstalledManifest(ctx context.Context, manifest s
 		log.Printf("setup step: the installed manifest %s is not used: %v", manifest, err)
 		return
 	}
+	//unchecked: applyApplicationRegistration logs every outcome and leaves an unconnected request waiting in Apps
 	_ = p.applyApplicationRegistration(ctx, applicationStart{register: &descriptor, manifest: manifest})
 }
 

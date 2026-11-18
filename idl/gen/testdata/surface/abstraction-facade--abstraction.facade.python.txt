@@ -270,6 +270,17 @@ dataclass PinnedDeclarationState
   state: DeclarationState
   supported_extensions: list[DeclarationExtension]
   remote_server_key_sha256: str
+enum ProductStanding
+  PRODUCT = 'product'
+  THIRD_PARTY = 'third_party'
+dataclass ProviderStanding
+  name: str
+  program: str
+  standing: ProductStanding | None
+dataclass ProviderStandingList
+  outcome: DeclarationListOutcome | None
+  revision: str
+  standings: list[ProviderStanding]
 const REGISTRY_ACTIONS
 class Refusal(ValueError)
   __init__(word, offset)
@@ -293,6 +304,7 @@ class RegistryV2
   declare_pinned(expected_revision: str, declaration: PinnedDeclaration) -> DeclarationChange
   replace_pinned(expected_revision: str, declaration: PinnedDeclaration) -> DeclarationChange
   observe_pinned(cursor: str, wait_ms: int) -> PinnedDeclarationObservation
+  standings() -> ProviderStandingList
 class RegistryV2Client(RegistryV2)
   __init__(transport)
   declarations() -> DeclarationListV2
@@ -303,6 +315,7 @@ class RegistryV2Client(RegistryV2)
   declare_pinned(expected_revision: str, declaration: PinnedDeclaration) -> DeclarationChange
   replace_pinned(expected_revision: str, declaration: PinnedDeclaration) -> DeclarationChange
   observe_pinned(cursor: str, wait_ms: int) -> PinnedDeclarationObservation
+  standings() -> ProviderStandingList
 dataclass RemoteTrust
   server_name: str
   roots: str
@@ -401,6 +414,8 @@ def decode_pinned_declaration(data)
 def decode_pinned_declaration_list(data)
 def decode_pinned_declaration_observation(data)
 def decode_pinned_declaration_state(data)
+def decode_provider_standing(data)
+def decode_provider_standing_list(data)
 def decode_remote_trust(data)
 def decode_resolve_request(data)
 def decode_resolve_result(data)
@@ -442,6 +457,8 @@ def encode_pinned_declaration(v)
 def encode_pinned_declaration_list(v)
 def encode_pinned_declaration_observation(v)
 def encode_pinned_declaration_state(v)
+def encode_provider_standing(v)
+def encode_provider_standing_list(v)
 def encode_remote_trust(v)
 def encode_resolve_request(v)
 def encode_resolve_result(v)

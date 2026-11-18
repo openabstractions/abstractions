@@ -172,6 +172,12 @@ func (r *applicationV3Receiver) Activate(key string, request applications.Activa
 func (r *applicationV3Receiver) Describe(query appmodel.ApplicationsQuery) (applications.DescribeResult, error) {
 	return r.host.v3.describe(r.ctx, r.caller(), query), nil
 }
+func (r *applicationV3Receiver) Open(key string, request applications.OpenRequest) (applications.OpenResult, error) {
+	return r.host.v3.open(r.ctx, r.caller(), key, request), nil
+}
+func (r *applicationV3Receiver) DescribeOpen(query appmodel.OpenHandleQuery) (applications.DescribeResult, error) {
+	return r.host.v3.describeOpen(r.caller(), query), nil
+}
 func (r *applicationV3Receiver) Commands(query appmodel.CommandsQuery) (applications.CommandsResult, error) {
 	return r.host.v3.commands(r.ctx, r.caller(), query), nil
 }

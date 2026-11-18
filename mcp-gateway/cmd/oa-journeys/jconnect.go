@@ -102,12 +102,12 @@ func runConnect(ctx context.Context, e *env, o *options, r *result) {
 
 	// The Catalog row shows this ComfyUI, and no other.
 	var overview struct {
-		ComfyUI struct {
+		PictureApplication struct {
 			State, Kind, Folder string
-		} `json:"comfyui"`
+		} `json:"picture_application"`
 	}
 	_, err = e.panel(ctx, "GET", "/setup/overview", nil, &overview)
-	shown := overview.ComfyUI
+	shown := overview.PictureApplication
 	if !r.check("the Catalog row shows the fixture's ComfyUI", err == nil && sameConnectFolder(ctx, shown.Folder, base),
 		"%+v %v (Connect is pressed only for the fixture)", shown, err) {
 		return

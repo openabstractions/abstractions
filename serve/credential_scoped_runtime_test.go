@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -67,7 +66,7 @@ func (m *privateReleaseMemory) Delete(key string) error {
 }
 
 func TestPrivateReleaseFixtureHostRedirectRotationAndRevoke(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := runtimeTestContext(t, t.Context())
 	defer cancel()
 	r := testRights(t, t.TempDir())
 	holder, err := credentials.Open(credentials.Config{Backend: &privateReleaseMemory{values: map[string][]byte{}}, Namespace: "private-release-fixture"})
@@ -106,15 +105,17 @@ func TestPrivateReleaseFixtureHostRedirectRotationAndRevoke(t *testing.T) {
 	if stored.Outcome != cwire.StoreOutcomeStored {
 		t.Fatal("operator registration failed")
 	}
-	body := []byte("private release fixture asset\n")
+	// Each step serves its own bytes. The service reuses bytes it already
+	// proved for a digest, and a repeated digest would never reach the source.
+	var body []byte
 	var mu sync.Mutex
 	expected := string(first)
 	protected, unbound := 0, 0
 	var targetURL string
-	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	origin := newTrustedTLSServer(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
-		if strings.HasPrefix(req.Host, "localhost:") {
+		if strings.HasPrefix(req.Host, "[::1]:") {
 			unbound++
 			if req.Header.Get("Authorization") != "" {
 				t.Error("unbound redirect received Authorization")
@@ -134,7 +135,7 @@ func TestPrivateReleaseFixtureHostRedirectRotationAndRevoke(t *testing.T) {
 		http.ServeContent(w, req, "asset", time.Time{}, bytes.NewReader(body))
 	}))
 	defer origin.Close()
-	targetURL = strings.Replace(origin.URL, "127.0.0.1", "localhost", 1)
+	targetURL = strings.Replace(origin.URL, "127.0.0.1", "[::1]", 1)
 	root := t.TempDir()
 	p, err := acceptanceprovider.OpenWithExecutor(root, "private-release-fixture", downloadserve.HTTPExecution{Credentials: c})
 	if err != nil {
@@ -156,14 +157,26 @@ func TestPrivateReleaseFixtureHostRedirectRotationAndRevoke(t *testing.T) {
 		t.Fatal(err)
 	}
 	executionDone := make(chan error, 1)
-	go func() { executionDone <- p.Execute(ctx) }()
+	startExecution := make(chan struct{})
+	go func() {
+		select {
+		case <-startExecution:
+			executionDone <- p.Execute(ctx)
+		case <-ctx.Done():
+			executionDone <- ctx.Err()
+		}
+	}()
 	var stopOnce sync.Once
 	stopExecution := func() { stopOnce.Do(func() { cancel(); <-executionDone }) }
 	defer stopExecution()
 	var retained []any
 	perform := func(key, path string, want api.AcceptanceOutcome) {
 		t.Helper()
-		spec := request.Encode(&request.Request{Artifact: request.Artifact{Size: int64(len(body)), Digest: fmt.Sprintf("sha256:%x", sha256.Sum256(body))}, Sources: []request.Source{{Scheme: "http", Locator: origin.URL + path, Credential: "private-release"}}})
+		mu.Lock()
+		body = []byte("private release fixture asset: " + key + "\n")
+		asset, reached := body, protected+unbound
+		mu.Unlock()
+		spec := request.Encode(&request.Request{Artifact: request.Artifact{Size: int64(len(asset)), Digest: fmt.Sprintf("sha256:%x", sha256.Sum256(asset))}, Sources: []request.Source{{Scheme: "https", Locator: origin.URL + path, Credential: "private-release"}}})
 		submission := api.Submission{Identity: api.RequestIdentity{Key: key, HistoryEpoch: window.HistoryEpoch}, Kind: download.Kind, Spec: spec, RequiredGuarantees: append(slices.Clone(api.AdmissionGuarantees), request.ScopedCredentialGuarantees...)}
 		result, e := p.BindBinding(binding).Submit(submission)
 		retained = append(retained, submission, result)
@@ -176,17 +189,73 @@ func TestPrivateReleaseFixtureHostRedirectRotationAndRevoke(t *testing.T) {
 			}
 			return
 		}
+		var restoreObservation func()
+		if key == "first" {
+			// A one-shot observation reports unknown while its durable record is
+			// unavailable. Hold only this fixture's accepted record until that
+			// actual outcome is observed, then let the original executor run.
+			if result.Receipt == nil {
+				t.Fatal("accepted fixture job has no receipt")
+			}
+			path := filepath.Join(root, "jobs", result.Receipt.OperationID+".json")
+			held := path + ".fixture-held"
+			if err := os.Rename(path, held); err != nil {
+				t.Fatal(err)
+			}
+			var restoreOnce sync.Once
+			restoreObservation = func() {
+				restoreOnce.Do(func() {
+					if err := os.Rename(held, path); err != nil {
+						t.Fatal(err)
+					}
+					close(startExecution)
+				})
+			}
+			defer restoreObservation()
+		}
 		for {
 			observed, e := p.BindOperationsBinding(binding).ObserveWork(submission.Identity)
-			if e != nil || observed.Snapshot == nil {
-				t.Fatal("missing observation")
+			if restoreObservation != nil {
+				if e != nil || observed.Outcome != api.ObservationOutcomeUnknown || observed.Snapshot != nil {
+					t.Fatalf("unavailable fixture evidence reported %s: %v", observed.Outcome, e)
+				}
+				restoreObservation()
+				restoreObservation = nil
+			}
+			if e != nil {
+				t.Fatalf("fixture job %s missing observation: outcome=%s error=%v", key, observed.Outcome, e)
+			}
+			if observed.Snapshot == nil {
+				if observed.Outcome != api.ObservationOutcomeUnknown {
+					t.Fatalf("fixture job %s has no snapshot for %s", key, observed.Outcome)
+				}
+				// ObserveWork is a one-shot read. Unavailable evidence is unknown,
+				// and the fixture's caller decides how long to await a fresh read.
+				select {
+				case <-ctx.Done():
+					t.Fatalf("fixture job %s observation stayed unknown: %v", key, ctx.Err())
+				case <-time.After(10 * time.Millisecond):
+					continue
+				}
+			}
+			if observed.Outcome != api.ObservationOutcomeObserved {
+				t.Fatalf("fixture job %s snapshot has unexpected outcome %s", key, observed.Outcome)
 			}
 			retained = append(retained, observed)
 			if observed.Snapshot.State == api.WorkStateComplete {
+				mu.Lock()
+				now := protected + unbound
+				mu.Unlock()
+				if now == reached {
+					t.Fatalf("fixture job %s completed without reaching the source", key)
+				}
 				return
 			}
-			if observed.Snapshot.Failure != nil || ctx.Err() != nil {
+			if observed.Snapshot.Failure != nil || observed.Snapshot.State == api.WorkStateFailed || observed.Snapshot.State == api.WorkStateCancelled || ctx.Err() != nil {
 				message := "deadline"
+				if observed.Snapshot.State == api.WorkStateFailed || observed.Snapshot.State == api.WorkStateCancelled {
+					message = observed.Snapshot.State.String()
+				}
 				if observed.Snapshot.Failure != nil {
 					message = string(observed.Snapshot.Failure.Cause) + ":" + observed.Snapshot.Failure.Message
 				}
@@ -421,7 +490,7 @@ func TestNativeFullControlAllUsesExplicitDownloadRouteAndScopedManagement(t *tes
 	}
 	submit := func(name, key string) api.AcceptanceResult {
 		t.Helper()
-		result, e := jobs.Submit(ctx, api.Submission{Identity: api.RequestIdentity{HistoryEpoch: window.HistoryEpoch, Key: key}, Kind: download.Kind, RequiredGuarantees: required, Spec: request.Encode(&request.Request{Sources: []request.Source{{Scheme: "http", Locator: origin.URL + "/" + key + ".bin", Credential: name}}})})
+		result, e := jobs.Submit(ctx, api.Submission{Identity: api.RequestIdentity{HistoryEpoch: window.HistoryEpoch, Key: key}, Kind: download.Kind, RequiredGuarantees: required, Spec: request.Encode(&request.Request{Sources: []request.Source{{Scheme: "https", Locator: origin.URL + "/" + key + ".bin", Credential: name}}})})
 		if e != nil {
 			t.Fatal("scoped submission transport failed")
 		}

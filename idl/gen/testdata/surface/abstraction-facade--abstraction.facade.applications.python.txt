@@ -87,6 +87,8 @@ class Applications
   observe(query: Query) -> Page
   activate(key: str, request: ActivateRequest) -> ActivationResult
   describe(query: _dependency_appmodel.ApplicationsQuery) -> DescribeResult
+  open(key: str, request: OpenRequest) -> OpenResult
+  describe_open(query: _dependency_appmodel.OpenHandleQuery) -> DescribeResult
   commands(query: _dependency_appmodel.CommandsQuery) -> CommandsResult
   call(key: str, call: _dependency_appmodel.GatewayCall) -> CallResult
   read_sign_in_start() -> SignInStartResult
@@ -111,6 +113,8 @@ class ApplicationsClient(Applications)
   observe(query: Query) -> Page
   activate(key: str, request: ActivateRequest) -> ActivationResult
   describe(query: _dependency_appmodel.ApplicationsQuery) -> DescribeResult
+  open(key: str, request: OpenRequest) -> OpenResult
+  describe_open(query: _dependency_appmodel.OpenHandleQuery) -> DescribeResult
   commands(query: _dependency_appmodel.CommandsQuery) -> CommandsResult
   call(key: str, call: _dependency_appmodel.GatewayCall) -> CallResult
   read_sign_in_start() -> SignInStartResult
@@ -161,6 +165,13 @@ dataclass HostActivationResult
   reason: str
 dataclass NamedApplicationTarget
   name: str
+dataclass OpenRequest
+  request: ActivateRequest
+  wait_ms: int | None
+dataclass OpenResult
+  result: ActivationResult
+  question: str
+  handle: str
 enum Outcome
   APPLIED = 'applied'
   PAGE = 'page'
@@ -254,6 +265,8 @@ def decode_connect_expectation(data)
 def decode_describe_result(data)
 def decode_host_activation_result(data)
 def decode_named_application_target(data)
+def decode_open_request(data)
+def decode_open_result(data)
 def decode_page(data)
 def decode_query(data)
 def decode_register_request(data)
@@ -285,6 +298,8 @@ def encode_connect_expectation(v)
 def encode_describe_result(v)
 def encode_host_activation_result(v)
 def encode_named_application_target(v)
+def encode_open_request(v)
+def encode_open_result(v)
 def encode_page(v)
 def encode_query(v)
 def encode_register_request(v)

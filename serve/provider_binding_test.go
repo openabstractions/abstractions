@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,10 +24,19 @@ import (
 	router "github.com/openabstractions/abstraction-router/go"
 )
 
+// mediationEndpoints numbers this process's endpoint names. A clock reading
+// alone could repeat within one tick, and Listen then answered "the name is
+// taken".
+var mediationEndpoints atomic.Uint64
+
 func shortMediationEndpoint(t *testing.T) string {
 	t.Helper()
 	if runtime.GOOS == "windows" {
-		return fmt.Sprintf(`\\.\pipe\oa-mediation-%d-%d`, os.Getpid(), time.Now().UnixNano())
+		var nonce [6]byte
+		if _, err := rand.Read(nonce[:]); err != nil {
+			t.Fatal(err)
+		}
+		return fmt.Sprintf(`\\.\pipe\oa-mediation-%d-%d-%s`, os.Getpid(), mediationEndpoints.Add(1), hex.EncodeToString(nonce[:]))
 	}
 	dir, err := os.MkdirTemp("/tmp", "oa-mediation-")
 	if err != nil {

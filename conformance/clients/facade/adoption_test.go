@@ -52,7 +52,7 @@ func adoptResult(t *testing.T, ctx context.Context, c api.OperationControl, id a
 		if result.Snapshot.State == api.WorkStateComplete {
 			break
 		}
-		if result.Snapshot.State == "failed" {
+		if result.Snapshot.State == api.WorkStateFailed || result.Snapshot.State == api.WorkStateCancelled {
 			t.Fatalf("work failed: %+v", result.Snapshot)
 		}
 		select {
@@ -142,7 +142,7 @@ func TestExplicitAdoptionWrapperRetainsAcceptedOwner(t *testing.T) {
 	local := api.NewRecoverableAcceptanceClient(&api.RecoverableAcceptanceDispatcher{Handler: p.Bind("explicit-application")})
 	localOps := api.NewOperationControlClient(&api.OperationControlDispatcher{Handler: p.BindOperations("explicit-application")})
 	_, refused := adoptSubmit(t, local, "unsupported", source.URL, body, request.DownstreamRecoveryGuarantees)
-	if refused.Outcome != "definitely_not_accepted" || refused.Receipt != nil || calls.Load() != 0 {
+	if refused.Outcome != api.AcceptanceOutcomeDefinitelyNotAccepted || refused.Receipt != nil || calls.Load() != 0 {
 		t.Fatalf("unsupported promise: %+v requests=%d", refused, calls.Load())
 	}
 	id, accepted := adoptSubmit(t, local, "already-accepted", source.URL, body, acceptanceprovider.Guarantees())
@@ -202,3 +202,7 @@ func TestExplicitAdoptionWrapperRetainsAcceptedOwner(t *testing.T) {
 		t.Fatalf("external effects=%d", calls.Load())
 	}
 }
+
+// The download fixtures here listen on loopback, which the download service
+// refuses outside tests (download DL-G4).
+func init() { downloadserve.AllowLoopbackForTesting() }

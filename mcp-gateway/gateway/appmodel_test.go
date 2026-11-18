@@ -107,7 +107,12 @@ type appModelFixture struct {
 	refusal applications.Outcome
 }
 
-func (b *appModelFixture) ApplicationsOpen(_ context.Context, request applications.ActivateRequest) (applications.ActivationResult, error) {
+func (b *appModelFixture) ApplicationsOpen(_ context.Context, open applications.OpenRequest) (applications.OpenResult, error) {
+	result, err := b.activate(open.Request)
+	return applications.OpenResult{Result: result}, err
+}
+
+func (b *appModelFixture) activate(request applications.ActivateRequest) (applications.ActivationResult, error) {
 	b.opens = append(b.opens, request)
 	switch request.Application {
 	case "fixture":
@@ -167,6 +172,9 @@ func TestAppModelResultPreservesMarkedRawJSON(t *testing.T) {
 	}
 }
 
+func (b *appModelFixture) ApplicationsDescribeOpen(context.Context, appmodel.OpenHandleQuery) (applications.DescribeResult, error) {
+	return applications.DescribeResult{Outcome: applications.OutcomePage, Answer: &appmodel.ApplicationListing{Outcome: appmodel.ReadingOutcomeNotFound, Applications: []appmodel.ListedApplication{}, Reason: "open_handle"}}, nil
+}
 func (b *appModelFixture) ApplicationsDescribe(context.Context, appmodel.ApplicationsQuery) (applications.DescribeResult, error) {
 	return applications.DescribeResult{Outcome: applications.OutcomePage, Answer: &appmodel.ApplicationListing{Outcome: appmodel.ReadingOutcomePage, Applications: []appmodel.ListedApplication{}}}, nil
 }
@@ -427,7 +435,7 @@ func TestAppModelOpenToolSchemaAndAnswer(t *testing.T) {
 		t.Fatalf("lost: %+v", lost)
 	}
 	for _, sentence := range []string{appModelOpenDescription} {
-		if !strings.Contains(sentence, "Open a kept app") || !strings.Contains(sentence, "directly to the person in this chat") {
+		if !strings.Contains(sentence, "Open a kept app") || !strings.Contains(sentence, "relay the closing sentence to the person in this chat") {
 			t.Fatalf("open description: %s", sentence)
 		}
 	}

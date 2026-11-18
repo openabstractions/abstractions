@@ -226,6 +226,13 @@ struct ActivationResult
   bool started
   std::string reason
   std::string title
+struct OpenRequest
+  ActivateRequest request
+  std::optional<std::int64_t> wait_ms
+struct OpenResult
+  ActivationResult result
+  std::string question
+  std::string handle
 struct DescribeResult
   Outcome outcome
   std::optional<::abstraction::facade::appmodel::ApplicationListing> answer
@@ -326,6 +333,10 @@ inline std::string to_json(const Page& v)
 inline Page from_json<Page>(std::string_view data)
 inline std::string to_json(const ActivationResult& v)
 inline ActivationResult from_json<ActivationResult>(std::string_view data)
+inline std::string to_json(const OpenRequest& v)
+inline OpenRequest from_json<OpenRequest>(std::string_view data)
+inline std::string to_json(const OpenResult& v)
+inline OpenResult from_json<OpenResult>(std::string_view data)
 inline std::string to_json(const DescribeResult& v)
 inline DescribeResult from_json<DescribeResult>(std::string_view data)
 inline std::string to_json(const CommandsResult& v)
@@ -377,6 +388,8 @@ struct Applications
   virtual Page observe(const Query& query)
   virtual ActivationResult activate(const std::string& key, const ActivateRequest& request)
   virtual DescribeResult describe(const::abstraction::facade::appmodel::ApplicationsQuery& query)
+  virtual OpenResult open(const std::string& key, const OpenRequest& request)
+  virtual DescribeResult describe_open(const::abstraction::facade::appmodel::OpenHandleQuery& query)
   virtual CommandsResult commands(const::abstraction::facade::appmodel::CommandsQuery& query)
   virtual CallResult call(const std::string& key, const::abstraction::facade::appmodel::GatewayCall& call)
   virtual SignInStartResult read_sign_in_start()
@@ -401,6 +414,8 @@ template<class Transport>struct ApplicationsClient : Applications
   Page observe(const Query& query) override
   ActivationResult activate(const std::string& key, const ActivateRequest& request) override
   DescribeResult describe(const::abstraction::facade::appmodel::ApplicationsQuery& query) override
+  OpenResult open(const std::string& key, const OpenRequest& request) override
+  DescribeResult describe_open(const::abstraction::facade::appmodel::OpenHandleQuery& query) override
   CommandsResult commands(const::abstraction::facade::appmodel::CommandsQuery& query) override
   CallResult call(const std::string& key, const::abstraction::facade::appmodel::GatewayCall& call) override
   SignInStartResult read_sign_in_start() override
@@ -484,6 +499,10 @@ inline std::string encode_page(const Page& v)
 inline Page decode_page(std::string_view in)
 inline std::string encode_activation_result(const ActivationResult& v)
 inline ActivationResult decode_activation_result(std::string_view in)
+inline std::string encode_open_request(const OpenRequest& v)
+inline OpenRequest decode_open_request(std::string_view in)
+inline std::string encode_open_result(const OpenResult& v)
+inline OpenResult decode_open_result(std::string_view in)
 inline std::string encode_describe_result(const DescribeResult& v)
 inline DescribeResult decode_describe_result(std::string_view in)
 inline std::string encode_commands_result(const CommandsResult& v)

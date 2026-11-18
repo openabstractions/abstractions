@@ -33,7 +33,10 @@ var rightsPage = pageOwnsReady(oaPageHead("rights", "Permissions", "What your ap
 	`<p class="oa-status" id="defaults-status" role="status" aria-live="polite" data-state="idle"></p><div id="defaults-list"></div></section>` +
 	// The switch stays hidden, its status line loading, until the first
 	// defaults read shows its saved state (agentAskShow) or says why it cannot.
-	runtimeGroup(oaGroup("agent-messages", "Messages between agents", agentMessagesCaption, strings.Replace(oaRow(agentMessagesAskLabel, agentMessagesAskCaption, `<input type="checkbox" class="switch" id="agent-messages-ask" aria-label="`+agentMessagesAskName+`" disabled hidden>`, "agent-messages-status"), oaStatusLine("agent-messages-status", false), oaStatus("agent-messages-status"), 1))) +
+	runtimeGroup(oaGroup("agent-messages", "Messages between agents", agentMessagesCaption, strings.Replace(oaRow(agentMessagesAskLabel, agentMessagesAskCaption, `<input type="checkbox" class="switch" id="agent-messages-ask" aria-label="`+agentMessagesAskName+`" disabled hidden>`, "agent-messages-status"), oaStatusLine("agent-messages-status", false), oaStatus("agent-messages-status"), 1),
+		// S5 (2026-11-22): one switch per agent pair, drawn by messageToolsList
+		// (rights_message_tools.go).
+		`<div id="agent-tools-list"></div><p class="oa-status" id="agent-tools-status" role="status" aria-live="polite" data-state="idle"></p>`)) +
 	`<section id="assistant" data-runtime-echo class="oa-group"><h2>Answering access</h2><p class="oa-caption">The app that answers routine questions for you.</p><span id="answer-delegation"></span>` +
 	`<div id="assistant-list"></div><p class="oa-status" id="assistant-status" role="status" aria-live="polite" data-state="idle"></p>` +
 	`<details class="oa-expander"><summary>Choose an app that answers<span class="oa-row-chevron" aria-hidden="true"></span></summary><div class="oa-expander-body"><form id="assistant-form"><label for="assistant-program-select">App that answers</label> <select id="assistant-program-select"></select><input id="assistant-program" hidden data-oa-other><div id="assistant-warning"></div><label><input id="assistant-confirm" type="checkbox"> I have read this.</label> <button id="assistant-save" data-status="assistant-status" disabled>Let it answer</button></form></div></details>` +
@@ -464,8 +467,12 @@ function rightsAppName(program){if(rightsNames&&rightsNames[program])return righ
 function appendRightsRows(box,rules){
   for(const r of rules){const row=document.createElement('div'),text=document.createElement('div'),label=document.createElement('span'),caption=document.createElement('span'),control=document.createElement('div'),state=document.createElement('span'),edit=document.createElement('button');
    row.className='oa-row';row.permission=r;text.className='oa-row-text';label.className='oa-row-label';caption.className='oa-row-caption';control.className='oa-row-control';
-   label.textContent=r.Sentence||(r.Selector?selectorPermissionLabel(r.Selector.Permission):rulePlain(rightsActionPlainCache,r.Action));
-   caption.textContent=(r.Sentence?'':(r.Selector?selectorTargetWords(r.Selector):capitalize(rightsTargetLabel(r.Resource)))+' · ')+(r.Expires?(r.Expired?'Expired ':'Until ')+new Date(r.Expires).toLocaleString():'Until removed');
+   // An exact rule reads in the app page's words (oaRuleWords): the same
+   // label and lifetime on both pages, and no target for a device hold,
+   // whose label names the device.
+   const words=oaRuleWords(rulePlain(rightsActionPlainCache,r.Action),r),lifetime=words.caption.split(' · ').pop();
+   label.textContent=r.Sentence||(r.Selector?selectorPermissionLabel(r.Selector.Permission):words.label);
+   caption.textContent=r.Sentence?lifetime:r.Selector?selectorTargetWords(r.Selector)+' · '+lifetime:[r.Action==='abstraction.resource/hold'?'':capitalize(rightsTargetLabel(r.Resource)),lifetime].filter(Boolean).join(' · ');
    state.textContent=(r.Expired?'Expired · ':'')+(r.Permit?'Allowed':'Blocked');
    edit.textContent='Edit';edit.viewOnly=!!r.Selector&&!r.Selector.Editable;edit.disabled=edit.viewOnly;const said=document.createElement('p');said.className='oa-status';said.setAttribute('role','status');said.setAttribute('aria-live','polite');said.setAttribute('data-state','idle');
    edit.onclick=()=>{editListedRule(r,r.Selector&&!r.Selector.CanGrant?'remove':r.Permit?'permit':'deny');if(el('rights-editor').open){said.textContent='Review the change in the permission editor below.';said.setAttribute('data-state','ok')}};
@@ -613,6 +620,15 @@ async function agentAskWrites(){let retried=false;while(agentAsk.wanted!==agentA
  agentAskRevert(defaultStatus(r.Outcome));return}}
 async function agentAskSave(){if(agentAsk.saving)return agentAsk.saving;const run=agentAskWrites();agentAsk.saving=run;try{await run}finally{agentAsk.saving=null}}
 el('agent-messages-ask').onchange=()=>{agentAsk.wanted=!!el('agent-messages-ask').checked;return agentAskSave()};
+// Full tool use per agent pair (rights_message_tools.go, S5 ruling
+// 2026-11-22): off by default, a turn another agent's message started is
+// reply-only. Read with the defaults; a switch writes one rule at the
+// revision it was read at, then the list reads again.
+let agentToolsRevision='',agentToolsShown='';const agentToolsRows={last:new Map(),next:new Map()};
+function agentToolsItem(){const s=document.createElement('input');s.type='checkbox';s.className='switch';const box=rightsItem({label:'',controls:[s]});box.toggle=s;s.onchange=()=>agentToolsSave(box,s.checked);return box}
+async function messageToolsList(){if(rightsClosed)return;try{const v=await call('/rights/message-tools');if(rightsClosed)return;const out=el('agent-tools-list');if(v.outcome!=='page'){agentToolsRevision='';out.replaceChildren();oaSetStatus('agent-tools-status','error',defaultStatus(v.outcome));return}agentToolsRevision=v.revision||'';const shown=JSON.stringify(v.pairs);if(shown===agentToolsShown)return;agentToolsShown=shown;out.replaceChildren();
+ for(const pair of v.pairs){const box=rightsKeep(agentToolsRows,pair.senderApp+'|'+pair.receiverApp,agentToolsItem);box.pair=pair;box.row.querySelector('.oa-row-label').textContent=pair.label;box.toggle.setAttribute('aria-label',pair.label);if(!box.saving)box.toggle.checked=!!pair.on;out.append(box)}rightsKept(agentToolsRows)}catch(e){if(!rightsClosed)fail('agent-tools-status',e)}}
+async function agentToolsSave(box,on){if(box.saving)return;box.saving=true;box.toggle.disabled=true;try{const r=await call('/rights/message-tools',{revision:agentToolsRevision,sender:box.pair.senderApp,receiver:box.pair.receiverApp,on});if(r.outcome==='applied'){if(r.revision)agentToolsRevision=r.revision;oaSetStatus('agent-tools-status','ok',r.message||'')}else{box.toggle.checked=!on;oaSetStatus('agent-tools-status','error',r.message||defaultStatus(r.outcome))}}catch(e){box.toggle.checked=!on;fail('agent-tools-status',e)}finally{box.saving=false;box.toggle.disabled=false;agentToolsShown='';await messageToolsList()}}
 // Defaults for all apps (rights_defaults.go): one switch per account-wide
 // default, read after each complete permissions read, so a change made
 // elsewhere shows through the same watch. A switch stays usable while it
@@ -625,8 +641,8 @@ let defaultsRevision='',defaultsShown='',defaultsReadMark=0;const defaultsRows={
 const defaultsText={unsupported:'This version of OpenAbstractions has no defaults for all apps. Update OpenAbstractions to change them.'};
 function defaultStatus(o){return defaultsText[o]||rightsStatus(o)}
 function invalidateDefaultsSnapshot(){defaultsReadMark++;defaultsRevision='';defaultsShown='';el('defaults-list').replaceChildren();defaultsRows.rows.clear();defaultsRows.order=[];defaultsRows.drawn=false;agentAskHold('This setting is unavailable right now.')}
-function defaultCaption(d){return d.SetBy?(d.On?'Turned on':'Turned off')+' by '+rightsAppName(d.SetBy.Program)+(d.SetAt?', '+new Date(d.SetAt).toLocaleString():'')+'.':''}
-async function defaultsList(){if(rightsClosed)return;const readMark=++defaultsReadMark;try{const v=await call('/rights/defaults');if(rightsClosed||readMark!==defaultsReadMark||!rightsAvailable)return;if(v.Outcome!=='page'){invalidateDefaultsSnapshot();agentAskShow(v);show('defaults-status',defaultStatus(v.Outcome));return}defaultsRevision=v.Revision;agentAskShow(v);const shown=JSON.stringify(v.Defaults);if(shown===defaultsShown)return;defaultsShown=shown;rightsRows(el('defaults-list'),defaultsRows,v.Defaults,d=>d.Name,defaultItem,defaultFill,'No defaults.')}catch(e){if(rightsClosed||readMark!==defaultsReadMark||!rightsAvailable)return;invalidateDefaultsSnapshot();fail('defaults-status',e)}}
+function defaultCaption(d){return [d.Caption||'',d.SetBy?(d.On?'Turned on':'Turned off')+' by '+rightsAppName(d.SetBy.Program)+(d.SetAt?', '+new Date(d.SetAt).toLocaleString():'')+'.':''].filter(Boolean).join(' ')}
+async function defaultsList(){if(rightsClosed)return;void messageToolsList();const readMark=++defaultsReadMark;try{const v=await call('/rights/defaults');if(rightsClosed||readMark!==defaultsReadMark||!rightsAvailable)return;if(v.Outcome!=='page'){invalidateDefaultsSnapshot();agentAskShow(v);show('defaults-status',defaultStatus(v.Outcome));return}defaultsRevision=v.Revision;agentAskShow(v);const shown=JSON.stringify(v.Defaults);if(shown===defaultsShown)return;defaultsShown=shown;rightsRows(el('defaults-list'),defaultsRows,v.Defaults,d=>d.Name,defaultItem,defaultFill,'No defaults.')}catch(e){if(rightsClosed||readMark!==defaultsReadMark||!rightsAvailable)return;invalidateDefaultsSnapshot();fail('defaults-status',e)}}
 // defaultFill shows a default's saved state; a switch that is saving keeps
 // the person's choice until its saves finish.
 function defaultFill(box,d){box.d=d;box.saved=!!d.On;rightsFill(box,d.Label,defaultCaption(d));if(!box.saving){box.wanted=box.saved;box.toggle.checked=box.saved}}

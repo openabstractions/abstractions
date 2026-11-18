@@ -333,6 +333,7 @@ type Inbox struct
   Reach *InboxReach
   ChatTitle string
   Mine *bool
+  Hints []string
 type AgentApplication struct
   Program string
   Title string

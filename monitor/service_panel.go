@@ -393,6 +393,7 @@ func (p *servicePanel) routes(key string) *http.ServeMux {
 	mux.HandleFunc("/setup/intent", guard(key, p.setupIntent))
 	mux.HandleFunc("/setup/catalog", guard(key, p.setupCatalog))
 	mux.HandleFunc("/setup/overview", guard(key, p.setupOverview))
+	mux.HandleFunc("/setup/integrations", guard(key, p.setupIntegrationsView))
 	mux.HandleFunc("/setup/state", guard(key, p.setupState))
 	mux.HandleFunc("/setup/advance", guard(key, p.setupAdvance))
 	mux.HandleFunc("/setup/advance-next", guard(key, p.setupAdvanceNext))
@@ -434,6 +435,7 @@ func (p *servicePanel) routes(key string) *http.ServeMux {
 	p.permissionReviewRoutes(mux, key)
 	mux.HandleFunc("/rights/observe", guard(key, p.observeRights))
 	mux.HandleFunc("/rights/defaults", guard(key, p.rightsDefaults))
+	mux.HandleFunc("/rights/message-tools", guard(key, p.rightsMessageTools))
 	mux.HandleFunc("/rights/delegation", guard(key, p.questionDelegation))
 	mux.HandleFunc("/rights/assistant", guard(key, p.assistant))
 	mux.HandleFunc("/rights/answered", guard(key, p.answered))
@@ -646,6 +648,9 @@ func runServicePanelWithSetupTransfer(address string, open, native bool, pageNam
 		}
 		return runResourceWindow(run, quiet)
 	}
+	// Any program can drive the developer page; against the installed
+	// runtime it makes no change only the person's window makes.
+	guardLoopbackPage(native)
 	_, server, listener, panelURL, err := bindPanelPageWithSetupTransfer(address, pageName, transfer)
 	if err != nil {
 		return err

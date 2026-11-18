@@ -473,7 +473,7 @@ func (w *Window) setMinimumTrackSize(lparam uintptr) bool {
 		return false
 	}
 	minimum := minimumOuterSize(w.minWidth, w.minHeight, w.dpi, outer, client)
-	info := (*minMaxInfo)(unsafe.Pointer(lparam))
+	info := (*minMaxInfo)(nativePointer(lparam))
 	info.MinTrack.X = max(info.MinTrack.X, minimum.X)
 	info.MinTrack.Y = max(info.MinTrack.Y, minimum.Y)
 	return true

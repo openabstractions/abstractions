@@ -110,6 +110,20 @@ func (r *runtimeRegistry) DeclarationsPinned(ctx context.Context, caller inferen
 	return wire.PinnedDeclarationList{Outcome: wire.DeclarationListOutcomePage, Revision: revision, Declarations: list}
 }
 
+// Standings reads the runtime's product standing of every declaration
+// (A-SEC6) under provider.manage.
+func (r *runtimeRegistry) Standings(ctx context.Context, caller inference.Subject) wire.ProviderStandingList {
+	if word := r.operator.gate(ctx, caller, ActionProviderManage); word != "" {
+		return wire.ProviderStandingList{Outcome: declarationListRefusal(word), Standings: []wire.ProviderStanding{}}
+	}
+	list, revision, err := r.providers.standings()
+	if err != nil {
+		r.providers.report(err)
+		return wire.ProviderStandingList{Outcome: wire.DeclarationListOutcomeUnavailable, Standings: []wire.ProviderStanding{}}
+	}
+	return wire.ProviderStandingList{Outcome: wire.DeclarationListOutcomePage, Revision: revision, Standings: list}
+}
+
 // Declare adds one declaration. A program never declares itself: an adopter
 // cannot register its own program.
 func (r *runtimeRegistry) Declare(ctx context.Context, caller inference.Subject, expected string, declaration wire.Declaration) wire.DeclarationChange {
@@ -157,33 +171,52 @@ func (r *runtimeRegistry) declare(ctx context.Context, caller inference.Subject,
 		return wire.DeclarationChange{Outcome: wire.DeclarationEditOutcomeInvalid, Reason: "program:self"}
 	}
 	file := providerFile{Version: providerFileVersion, Declaration: d, DeclaredBy: caller.Program, DeclaredAt: time.Now().UnixMilli()}
-	before := r.hostedBefore(d.Name)
-	var change wire.DeclarationChange
-	if replace {
-		change = r.providers.replaceAdmitted(ctx, expected, file, r.operator.providerEditAdmission(ctx, caller, ActionProviderManage))
-	} else {
-		change = r.providers.addAdmitted(ctx, expected, file, r.operator.providerEditAdmission(ctx, caller, ActionProviderManage))
+	// The declaration and the exact rules it writes (providerRuleList) apply
+	// together: at once for the Panel window, a product-standing pair and an
+	// exempt elevated caller, and otherwise only on the person's Allow of one
+	// typed request (architect ruling (3) of 2026-11-22, RIGHTS-O17).
+	by := rwire.Subject{Account: caller.Account, Program: caller.Program}
+	rules := r.operator.providerRuleList(caller, d)
+	request := rwire.PolicyChange{Kind: rwire.ChangeKindDeclaration, Name: d.Name, Program: d.Program, Rules: r.operator.policyRules(rules)}
+	if d.host() || d.remote() {
+		// The person reads where the server is, not only its name.
+		request.Address = d.Endpoint
 	}
-	if change.Outcome != wire.DeclarationEditOutcomeApplied {
+	changes := r.operator.changes()
+	route, pending := changes.declarationRoute(ctx, boundPeer(ctx, by), by, r.providers.shippedProvider(providerFile{Version: providerFileVersion, Source: declarationSourceOperator, Declaration: d, DeclaredBy: caller.Program}))
+	apply := func(ctx context.Context, expected string) wire.DeclarationChange {
+		before := r.hostedBefore(d.Name)
+		var change wire.DeclarationChange
+		if replace {
+			change = r.providers.replaceAdmitted(ctx, expected, file, r.operator.providerEditAdmission(ctx, caller, ActionProviderManage))
+		} else {
+			change = r.providers.addAdmitted(ctx, expected, file, r.operator.providerEditAdmission(ctx, caller, ActionProviderManage))
+		}
+		if change.Outcome != wire.DeclarationEditOutcomeApplied {
+			return change
+		}
+		r.recordHosted(ctx, d.Name, before, hostedIn(d))
+		if err := r.operator.writeDeclaredRules(rules); err != nil {
+			r.providers.report(err)
+			change.Reason = "rules:" + err.Error()
+		}
 		return change
 	}
-	r.recordHosted(ctx, d.Name, before, hostedIn(d))
-	// Each capability reads its own acceptance rule: the person accepts each
-	// named store from this program, the resource table's card is held by the
-	// program that declared it, and a remote runtime's hosts serve the
-	// operator programs. An existing rule, a deny included, stays as it is.
-	by := rwire.Subject{Account: caller.Account, Program: caller.Program}
-	errs := r.operator.permitStoreRules(by, d.Program, d.resources("store"))
-	errs = append(errs, r.operator.permitCardRules(by, d.Program, d.resources("card"))...)
-	if d.host() {
-		errs = append(errs, r.operator.writeHostRules(caller, (providerFile{Declaration: d}).hostEntry()))
-	} else if d.remote() {
-		errs = append(errs, r.operator.writeHostRules(caller, iwire.HostEntry{Name: d.Name, Hosted: true, Kind: router.WireRemote}))
+	if pending {
+		state := changes.requestDeclaration(by, request, func(ctx context.Context) bool {
+			_, current, err := r.providers.listPinned()
+			return err == nil && apply(ctx, current).Outcome == wire.DeclarationEditOutcomeApplied
+		})
+		if state.ID == "" {
+			return wire.DeclarationChange{Outcome: declarationEditRefusal(state.Outcome.String())}
+		}
+		return wire.DeclarationChange{Outcome: wire.DeclarationEditOutcomeForbidden, Reason: pendingReason(state)}
 	}
-	if err := errors.Join(errs...); err != nil {
-		r.providers.report(err)
-		change.Reason = "rules:" + err.Error()
-	}
+	var change wire.DeclarationChange
+	changes.applyDeclaration(by, request, route, func() bool {
+		change = apply(ctx, expected)
+		return change.Outcome == wire.DeclarationEditOutcomeApplied
+	})
 	return change
 }
 
@@ -443,6 +476,16 @@ type registryReceiver struct {
 	ctx  context.Context
 }
 
+// peerContext is the call's context carrying its bound peer, which the
+// rights change gate reads (RIGHTS-O17).
+func (r *registryReceiver) peerContext() context.Context {
+	peer, err := r.call.Peer()
+	if err != nil {
+		return r.ctx
+	}
+	return inference.WithPeer(r.ctx, peer)
+}
+
 func (r *registryReceiver) caller() inference.Subject {
 	peer, err := r.call.Peer()
 	if err != nil {
@@ -460,7 +503,7 @@ func (r *registryReceiver) Declarations() (wire.DeclarationList, error) {
 }
 
 func (r *registryReceiver) Declare(expectedRevision string, declaration wire.Declaration) (wire.DeclarationChange, error) {
-	return r.host.registry.Declare(r.ctx, r.caller(), expectedRevision, declaration), nil
+	return r.host.registry.Declare(r.peerContext(), r.caller(), expectedRevision, declaration), nil
 }
 
 func (r *registryReceiver) Withdraw(expectedRevision, name string) (wire.DeclarationChange, error) {
@@ -511,7 +554,7 @@ func (r *registryV2Receiver) Declarations() (wire.DeclarationListV2, error) {
 }
 
 func (r *registryV2Receiver) Declare(expectedRevision string, declaration wire.DeclarationWithExtensions) (wire.DeclarationChange, error) {
-	return r.host.registry.DeclareV2(r.ctx, r.caller(), expectedRevision, declaration), nil
+	return r.host.registry.DeclareV2(r.peerContext(), r.caller(), expectedRevision, declaration), nil
 }
 
 func (r *registryV2Receiver) Observe(cursor string, waitMs int64) (wire.DeclarationObservationV2, error) {
@@ -522,10 +565,13 @@ func (r *registryV2Receiver) DeclarationsPinned() (wire.PinnedDeclarationList, e
 	return r.host.registry.DeclarationsPinned(r.ctx, r.caller()), nil
 }
 func (r *registryV2Receiver) DeclarePinned(expected string, declaration wire.PinnedDeclaration) (wire.DeclarationChange, error) {
-	return r.host.registry.DeclarePinned(r.ctx, r.caller(), expected, declaration), nil
+	return r.host.registry.DeclarePinned(r.peerContext(), r.caller(), expected, declaration), nil
 }
 func (r *registryV2Receiver) ReplacePinned(expected string, declaration wire.PinnedDeclaration) (wire.DeclarationChange, error) {
-	return r.host.registry.ReplacePinned(r.ctx, r.caller(), expected, declaration), nil
+	return r.host.registry.ReplacePinned(r.peerContext(), r.caller(), expected, declaration), nil
+}
+func (r *registryV2Receiver) Standings() (wire.ProviderStandingList, error) {
+	return r.host.registry.Standings(r.ctx, r.caller()), nil
 }
 func (r *registryV2Receiver) ObservePinned(cursor string, waitMs int64) (wire.PinnedDeclarationObservation, error) {
 	return r.host.registry.ObservePinned(r.ctx, r.caller(), cursor, waitMs), nil

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	msg "github.com/openabstractions/abstraction-facade/go/abstraction/facade/messages"
 	"github.com/openabstractions/abstraction-identity/go/privatedir"
@@ -89,7 +90,7 @@ func diagnosticFixture(t *testing.T) (*agentDiagnostic, context.Context, string)
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := newAgentDiagnostic(dir, program)
+	d := newAgentDiagnostic(testCaller(t), dir, program)
 	if d == nil {
 		t.Fatal("diagnostic unavailable")
 	}
@@ -179,13 +180,13 @@ func TestAgentDiagnosticReceivingUsesExistingBoundedSnapshot(t *testing.T) {
 		t.Fatal("untrusted or foreign diagnostic changed snapshot", got)
 	}
 	observeCodexReceiving(ctx, "queue_attempt", thread, nativeContext)
-	observeCodexReceiving(ctx, "unavailable_thread_changed", "", nativeContext)
+	observeCodexReceiving(ctx, "cli_unavailable", "", nativeContext)
 	observeCodexReceiving(ctx, "queue_unknown", thread, nativeContext)
 	d.observe("presence_end", "inbox_forbidden")
 	observeCodexReceiving(ctx, "unavailable_connection_closed", "", nativeContext)
 	rows = readAgentDiagnostics(ctx, dir)
 	r = rows[0].Receiving
-	if rows[0].Phase != "presence_end" || rows[0].Cause != "inbox_forbidden" || r.Reason != "thread_changed" || r.QueueAttempts != 2 || r.QueueResult != "unknown" {
+	if rows[0].Phase != "presence_end" || rows[0].Cause != "inbox_forbidden" || r.Reason != "cli_unavailable" || r.QueueAttempts != 2 || r.QueueResult != "unknown" {
 		t.Fatal(rows)
 	}
 	raw, err := os.ReadFile(filepath.Join(dir, agentDiagnosticName))
@@ -331,11 +332,48 @@ func TestAgentDiagnosticBoundedAndUntrustedRead(t *testing.T) {
 			t.Fatal("injected cause read back")
 		}
 	}
-	if got := newAgentDiagnostic(filepath.Join(dir, "missing"), "missing"); got != nil {
+	if got := newAgentDiagnostic(context.Background(), filepath.Join(dir, "missing"), "missing"); got != nil {
 		got.close()
 		t.Fatal("missing state accepted")
 	}
 	var absent *agentDiagnostic
 	absent.observe("stdio_end", "completed")
 	absent.close()
+}
+
+// A helper its host starts has no caller deadline and keeps the ordinary write
+// budget. A caller with a deadline, such as a test under host load, lets each
+// write use what remains of it, and never less than the ordinary budget.
+func TestAgentDiagnosticWriteBudgetDerivesFromCreatingCaller(t *testing.T) {
+	if got := agentDiagnosticBudget(time.Time{}, agentDiagnosticAttempt); got != agentDiagnosticAttempt {
+		t.Fatal("no caller deadline", got)
+	}
+	if got := agentDiagnosticBudget(time.Now().Add(-time.Second), agentDiagnosticFinalBudget); got != agentDiagnosticFinalBudget {
+		t.Fatal("expired caller deadline", got)
+	}
+	if got := agentDiagnosticBudget(time.Now().Add(time.Minute), agentDiagnosticAttempt); got < 50*time.Second || got > time.Minute {
+		t.Fatal("caller deadline", got)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	program, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "state")
+	if err := privatedir.Ensure(dir); err != nil {
+		t.Fatal(err)
+	}
+	d := newAgentDiagnostic(ctx, dir, program)
+	if d == nil {
+		t.Fatal("diagnostic unavailable")
+	}
+	defer d.close()
+	if want, _ := ctx.Deadline(); !d.deadline.Equal(want) {
+		t.Fatal("record lost its creating caller's deadline", d.deadline, want)
+	}
+	if host := newAgentDiagnostic(context.Background(), filepath.Join(t.TempDir(), "missing"), program); host != nil {
+		host.close()
+		t.Fatal("missing state accepted")
+	}
 }

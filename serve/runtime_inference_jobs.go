@@ -298,6 +298,19 @@ func (e *runtimeInferenceJobExecutor) OperationResultName(record *job.Record) (s
 	return "", acceptanceprovider.ErrResultNotNamed
 }
 
+// OperationTmpNames names the base kind's service-allocated result and
+// partial files for temporary collection. An inference job allocates no such
+// file, and a base without names has nothing collected.
+func (e *runtimeInferenceJobExecutor) OperationTmpNames(record *job.Record) (string, string, error) {
+	if record == nil || record.Kind == inference.InferenceJobKind {
+		return "", "", acceptanceprovider.ErrResultNotNamed
+	}
+	if namer, ok := e.base.(acceptanceprovider.TmpNamer); ok {
+		return namer.OperationTmpNames(record)
+	}
+	return "", "", acceptanceprovider.ErrResultNotNamed
+}
+
 func (e *runtimeInferenceJobExecutor) ReadOperationResult(root string, record *job.Record, offset, maxBytes int64) ([]byte, int64, error) {
 	if record.Kind == inference.InferenceJobKind {
 		return e.inference.ReadOperationResult(root, record, offset, maxBytes)

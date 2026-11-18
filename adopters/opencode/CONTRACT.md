@@ -71,6 +71,24 @@ messaging direction remain separate first-use decisions.
 Source fixtures prove the composition, joined-child result and pending retry.
 Fresh installed Connect and ping journeys remain pending qualification.
 
+## Reply-only turns
+
+A turn the plugin's own wake pointer starts (its `promptAsync` submission,
+never a prompt's text) is reply-only until the next turn the plugin did not
+start in that chat (architect ruling 2026-11-22; `mcp-gateway/CONTRACT.md`
+MCPG-R1). `reply-only.js` refuses every tool outside the ruling's list
+through `tool.execute.before`, with the ruling's reason: `read`, `list`,
+`glob` and `grep` pass only inside the project folder once links are
+resolved, never when that folder is a drive root or a home folder. OA's
+read-only tools and `oa_messages_reply` pass. The helper
+refuses OA tools that change anything. The mark is kept per host chat while
+OpenCode runs, across an instance reload of the folder; the person's pair rule ("Allow full tool use when <sender>
+messages <receiver>") lifts it, read live through the helper and asked again
+after every `oa_messages_wait`. A person's
+message queued while the woken turn runs is answered under the mark; the
+person's next turn is normal. Held by
+`test/reply-only.test.mjs`.
+
 ## Receiving and verification limits
 
 The MCP server declares one `oa_<area>_<verb>` name per tool. Private

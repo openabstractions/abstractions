@@ -229,5 +229,5 @@ func statusFailure(command string, source endpointSource, err error) error {
 	if cause, ok := runtimeMismatchCause(err.Error()); ok {
 		return errors.New(wrongRuntime(command, cause))
 	}
-	return fmt.Errorf("%s: %s (endpoint: %s)\n%s", command, noRuntimeFirstLine, source, err)
+	return fmt.Errorf("%s: %s (endpoint: %s)\n%w", command, noRuntimeFirstLine, source, err)
 }

@@ -67,3 +67,22 @@ func ParseTargetMetadata(meta map[string]any) (string, error) {
 	}
 	return target, nil
 }
+
+// WakeMetaKey carries, beside a Codex thread selection, the message's wake key
+// in that chat's inbox (architect ruling 1, 2026-11-22). The launcher reserves
+// the thread's pointer under it in the wake ledger. It is a routing label and
+// supplies no authority.
+const WakeMetaKey = "oa_receiver_wake"
+
+// ParseWakeMetadata returns the wake key, or "" when none was sent.
+func ParseWakeMetadata(meta map[string]any) (string, error) {
+	raw, present := meta[WakeMetaKey]
+	if !present {
+		return "", nil
+	}
+	wake, ok := raw.(string)
+	if !ok || wake == "" || len(wake) > 128 || strings.IndexFunc(wake, unicode.IsControl) >= 0 {
+		return "", errors.New("owned start wake metadata invalid")
+	}
+	return wake, nil
+}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/openabstractions/abstraction-identity/go/budget"
+	"log/slog"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -86,6 +87,16 @@ type runtimeRights struct {
 	peerElevated func(*identity.Peer) bool
 	// elevated records what the elevated-callers default admitted.
 	elevated elevatedAdmissions
+	// changes is the operator change gate (runtime_rights_changes.go, rights
+	// RIGHTS-O17); nil until configureChanges.
+	changes *rightsChanges
+	// operatorDirect admits a peer's operator edits and answers as the
+	// person's own. It is a test seam: the shipped runtime leaves it nil, so
+	// only the Panel window and its presenter edit directly.
+	operatorDirect func(*identity.Peer) bool
+	// composedChanges lets a test adjust the change gate once it is composed;
+	// nil in the shipped runtime.
+	composedChanges func(*rightsChanges)
 }
 
 // decideRemote maps the live paired key for each evaluation. The optional
@@ -141,7 +152,7 @@ func composeRights(options runtimeFlags) (retained *runtimeRights, _ error) {
 	}
 	account, err := user.Current()
 	if err != nil || account.Uid == "" {
-		return nil, fmt.Errorf("rights: runtime account unavailable: %v", err)
+		return nil, fmt.Errorf("rights: runtime account unavailable: %w", err)
 	}
 	operators, panels, err := operatorPrograms(options)
 	if err != nil {
@@ -170,6 +181,7 @@ func composeRights(options runtimeFlags) (retained *runtimeRights, _ error) {
 	if r.policy == nil {
 		return nil, err
 	}
+	r.policy.Logger = slog.Default()
 	r.policy.MetaHolder = r.refuseAnswerer
 	// Account-wide defaults (rights RIGHTS-R22, VISION 2026-10-07): every
 	// program of this account may register itself, ask, announce, notify and
@@ -178,8 +190,18 @@ func composeRights(options runtimeFlags) (retained *runtimeRights, _ error) {
 	if configureErr := r.policy.ConfigureDefaults(r.owner, r.accountDefaults(), defaultExcluded); configureErr != nil {
 		return nil, configureErr
 	}
+	r.operatorDirect = testOperatorDirect
+	if options.composedRights != nil {
+		options.composedRights(r)
+	}
 	return r, err
 }
+
+// testOperatorDirect is this package's tests' default for operatorDirect:
+// fixtures written before change requests keep their direct operator edits,
+// and the tests of the change gate clear it per runtime (composedRights). The
+// shipped runtime never sets it; nothing outside this package's tests can.
+var testOperatorDirect func(*identity.Peer) bool
 
 // defaultExcluded is the one program rule for account-wide defaults: a script
 // host (asks ASK-A8), whose grant would cover every script it runs, never
@@ -352,8 +374,33 @@ func (r *runtimeRights) isOperator(program string) bool {
 // panelRoster records the exact installed and explicitly admitted isolated
 // Panel files. Reserved locations can gain their own images after startup.
 type panelRoster struct {
-	images   []fileid.Handle
-	reserved []string
+	images []fileid.Handle
+	// imagePaths are the paths images were opened from, index for index.
+	imagePaths []string
+	reserved   []string
+	// presenters are the installed Asks presenter's images: the program that
+	// draws the person-only popups for the Panel (rights RIGHTS-O17), and
+	// presenterPaths the paths they were opened from.
+	presenters     []fileid.Handle
+	presenterPaths []string
+}
+
+// currentImage reports whether image is one of held and is still the file at
+// that one's path. The runtime holds each image open, and a file opened with
+// delete sharing can be renamed away and replaced in a user-writable install
+// folder; the moved original then fails closed, as does any image no longer at
+// its path.
+func currentImage(ctx context.Context, image fileid.FileID, held []fileid.Handle, paths []string) bool {
+	for i, h := range held {
+		if !image.Equal(h.FileID()) || i >= len(paths) {
+			continue
+		}
+		now, err := panelImage(ctx, fileid.Self, paths[i], fileid.FollowLocalLinks)
+		if err == nil && image.Equal(now) {
+			return true
+		}
+	}
+	return false
 }
 
 func openPanelImage(ctx context.Context, peer fileid.Peer, program string, links fileid.Links) (fileid.Handle, error) {
@@ -386,10 +433,10 @@ func (p panelRoster) contains(image fileid.FileID) bool {
 }
 
 func (p *panelRoster) close() {
-	for _, held := range p.images {
+	for _, held := range append(p.images, p.presenters...) {
 		held.Close()
 	}
-	p.images = nil
+	p.images, p.presenters, p.imagePaths, p.presenterPaths = nil, nil, nil, nil
 }
 
 func (r *runtimeRights) close() {
@@ -418,12 +465,26 @@ func (r *runtimeRights) isPanelPeer(ctx context.Context, peer *identity.Peer) bo
 	return err == nil && r.matchesPanel(ctx, peer, path, fileid.RefuseLinks)
 }
 
+// isPresenterPeer matches a live peer against the installed Asks presenter's
+// image, by file identity, refusing links, as isPanelPeer does.
+func (r *runtimeRights) isPresenterPeer(ctx context.Context, peer *identity.Peer) bool {
+	if len(r.panels.presenters) == 0 {
+		return false
+	}
+	path, err := peer.Path.AtLeast(listen.Program.Path)
+	if err != nil {
+		return false
+	}
+	image, err := panelImage(ctx, peer, path, fileid.RefuseLinks)
+	return err == nil && currentImage(ctx, image, r.panels.presenters, r.panels.presenterPaths)
+}
+
 func (r *runtimeRights) matchesPanel(ctx context.Context, peer fileid.Peer, program string, links fileid.Links) bool {
 	if len(r.panels.images) == 0 {
 		return false
 	}
 	image, err := panelImage(ctx, peer, program, links)
-	return err == nil && r.panels.contains(image) && !r.panels.excludes(ctx, image)
+	return err == nil && currentImage(ctx, image, r.panels.images, r.panels.imagePaths) && !r.panels.excludes(ctx, image)
 }
 
 // authorizeOperator admits the operator programs of this account.

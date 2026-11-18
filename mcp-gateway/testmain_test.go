@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/openabstractions/abstractions/mcp-gateway/internal/durabletemp"
 	"github.com/openabstractions/abstractions/mcp-gateway/internal/personfolders"
 )
 
@@ -17,6 +19,8 @@ func TestMain(m *testing.M) {
 	// session index. Restore tests supply their own threads and folders.
 	codexParentThreads = func(string) ([]string, error) { return nil, errors.New("Codex loaded threads are not read in tests") }
 	codexReceivingHome = func() (string, error) { return "", errors.New("the person's Codex folder is not read in tests") }
+	// Host metadata binds as before unless a test reads session records.
+	codexThreadTopLevel = func(string, string) bool { return true }
 	// No fixture reads the person's own Claude processes; a fixture that
 	// needs a running Claude sets OA_CLAUDE_RUNNING_FIXTURE.
 	claudeRunning = func(context.Context) (bool, error) { return os.Getenv("OA_CLAUDE_RUNNING_FIXTURE") == "1", nil }
@@ -60,5 +64,14 @@ func TestMain(m *testing.M) {
 	if codexAttachFixtureMain() {
 		return
 	}
-	os.Exit(personfolders.Main(m))
+	// Fixtures pin folders and programs by stored file ID; the temporary
+	// folder lies on a file system that keeps them (durabletemp.Enter).
+	temp, err := durabletemp.Enter()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "durabletemp:", err)
+		os.Exit(2)
+	}
+	code := personfolders.Main(m)
+	durabletemp.Leave(temp)
+	os.Exit(code)
 }

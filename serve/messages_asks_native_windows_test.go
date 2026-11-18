@@ -4,7 +4,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -74,7 +73,7 @@ func TestMessagesAsksNativeMCPPersonEnrollmentAndRoutineAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(run.ctx, 40*time.Second)
+	ctx, cancel := runtimeTestContext(t, run.ctx)
 	done := make(chan error, 1)
 	go func() { done <- host.Serve(ctx) }()
 	t.Cleanup(func() {
@@ -95,6 +94,11 @@ func TestMessagesAsksNativeMCPPersonEnrollmentAndRoutineAnswer(t *testing.T) {
 	cmd.Env = append(os.Environ(), "OA_RECEIVER_START_GATEWAY_FIXTURE="+string(config))
 	var diagnostics bytes.Buffer
 	cmd.Stderr = &diagnostics
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("native gateway diagnostics: %s", diagnostics.String())
+		}
+	})
 	session, err := mcp.NewClient(&mcp.Implementation{Name: "untrusted-vendor-label", Version: "fixture"}, nil).Connect(ctx, &mcp.CommandTransport{Command: cmd}, nil)
 	if err != nil {
 		t.Fatal("native gateway connection", err, diagnostics.String())

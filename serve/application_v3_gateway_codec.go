@@ -554,8 +554,8 @@ func validateApplicationV3Description(d *appmodel.Description) error {
 			return errors.New("kind:" + k.Name)
 		}
 		names[k.Name] = true
-		if manifestowner.ValidateApplicationSchema([]byte(k.Schema), nil) != nil {
-			return errors.New("schema:" + k.Name)
+		if err := manifestowner.ValidateApplicationSchema([]byte(k.Schema), nil); err != nil {
+			return schemaRefusal(k.Name, err)
 		}
 		fields := map[string]bool{}
 		for _, f := range k.Fields {
@@ -595,8 +595,11 @@ func validateApplicationV3Description(d *appmodel.Description) error {
 		if len(c.Title) < 1 || len(c.Title) > 256 || len(c.Description) > 4096 {
 			return errors.New("title:" + c.Name)
 		}
-		if manifestowner.ValidateApplicationSchema([]byte(c.InputSchema), nil) != nil || manifestowner.ValidateApplicationSchema([]byte(c.OutputSchema), nil) != nil {
-			return errors.New("schema:" + c.Name)
+		if err := manifestowner.ValidateApplicationSchema([]byte(c.InputSchema), nil); err != nil {
+			return schemaRefusal(c.Name, err)
+		}
+		if err := manifestowner.ValidateApplicationSchema([]byte(c.OutputSchema), nil); err != nil {
+			return schemaRefusal(c.Name, err)
 		}
 	}
 	b := d.Bounds
@@ -604,6 +607,15 @@ func validateApplicationV3Description(d *appmodel.Description) error {
 		return errors.New("bounds")
 	}
 	return nil
+}
+
+// schemaRefusal is FAC-M29's refusal: schema:<name>, then :<keyword> when the
+// profile names the keyword that refused the schema.
+func schemaRefusal(name string, err error) error {
+	if keyword := manifestowner.RefusedSchemaKeyword(err); keyword != "" {
+		return errors.New("schema:" + name + ":" + keyword)
+	}
+	return errors.New("schema:" + name)
 }
 
 func applicationV3LocalName(s string) bool {

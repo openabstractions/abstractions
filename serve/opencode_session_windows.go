@@ -626,6 +626,11 @@ func openCodeGuestEnvironment(installed *installedOpenCode, data, endpoint, owne
 		"LOCALAPPDATA="+filepath.Join(data, "local"), "USERPROFILE="+filepath.Join(data, "home"), "HOME="+filepath.Join(data, "home"),
 		"TEMP="+filepath.Join(data, "temp"), "TMP="+filepath.Join(data, "temp"), "OPENCODE_CONFIG="+config,
 		"OPENCODE_DISABLE_AUTOUPDATE=1", "OPENCODE_DISABLE_MODELS_FETCH=1",
+		// The guest has no network. OpenCode's npm installer (every config
+		// folder, including a project's .opencode, and every named plugin)
+		// retries each refused registry connection for about 70 s before
+		// plugins load. Offline, it fails at once from its own cache.
+		"npm_config_offline=true",
 		"SHELL="+filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
 		"OA_OPENCODE_SESSION_ENDPOINT="+endpoint, "OA_OPENCODE_SESSION_PROGRAM="+ownerProgram,
 		"OA_OPENCODE_SESSION_ACCOUNT="+account, "OA_OPENCODE_SESSION_ID="+launchID,

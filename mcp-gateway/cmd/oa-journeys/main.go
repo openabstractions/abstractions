@@ -149,11 +149,14 @@ type journey struct {
 }
 
 type options struct {
-	bin, work   string
-	tools       string
-	answerDelay time.Duration
-	pytorch     string
-	stall       time.Duration
+	bin, work string
+	tools     string
+	// runtimeTools is where the isolated runtime and its Panel start from
+	// (runtimeTools in tools_copy.go).
+	runtimeTools string
+	answerDelay  time.Duration
+	pytorch      string
+	stall        time.Duration
 	// chatModel is the GGUF the cold chat journeys host on the real model
 	// host; engineBundle the llama.cpp bundle ZIP its engine is staged from.
 	chatModel, engineBundle string
@@ -232,6 +235,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	staged, err := runtimeTools(o.tools, filepath.Join(o.work, "tools"))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "oa-journeys: private copy of the installed tools:", err)
+		os.Exit(1)
+	}
+	o.runtimeTools = staged
 	// The fixture home lies in a short temporary folder: the model host's
 	// engine socket under its LOCALAPPDATA must fit an AF_UNIX address (107
 	// bytes), which a home under a deep work folder outgrows.
@@ -355,7 +364,12 @@ func startJourneyEnv(ctx context.Context, name string, o *options, r *result, lo
 			return nil, err
 		}
 	}
-	e, err := startEnv(ctx, o.bin, o.tools, o.work, logf)
+	// The rights playground accepts only a runtime named rights-playground-*.
+	isolated := ""
+	if name == asksAgentJourney {
+		isolated = playgroundIsolatedPrefix + newID()[:16]
+	}
+	e, err := startEnv(ctx, o.bin, o.runtimeTools, o.work, isolated, logf)
 	if err != nil {
 		r.check("isolated runtime started", false, "%v", err)
 	}

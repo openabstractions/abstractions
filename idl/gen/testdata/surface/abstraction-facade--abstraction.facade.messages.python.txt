@@ -70,6 +70,7 @@ dataclass Inbox
   reach: InboxReach | None
   chat_title: str
   mine: bool | None
+  hints: list[str]
 dataclass InboxChange
   outcome: Outcome | None
   revision: str

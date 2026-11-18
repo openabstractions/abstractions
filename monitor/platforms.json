@@ -14,9 +14,15 @@
       "runtime": "The per-user MSI (Just me); installation starts the runtime immediately, and the next application that needs it starts a host that exited.",
       "limits": [
         "The release's appended Signatures section states the signing outcome for its MSIs and Setup.",
-        "The release's build record names the installed-tested architectures. A cross-built architecture is not installation-tested by its build."
+        "The release's build record names the installed-tested architectures. A cross-built architecture is not installation-tested by its build.",
+        "0.8.0: install app integrations from the Panel Catalog. App MSI double-click support and agent MCP connections after a 0.4 upgrade are deferred to 0.8.1. Smart App Control can block the bundled llama.cpp engine and the official OpenCode installer."
       ],
       "evidence": [
+        {
+          "path": "research/release-0.8.0/published.json",
+          "url": "https://github.com/openabstractions/redist/releases/tag/v0.8.0",
+          "shows": "0.8.0 public packages and checksums. Windows installers are signed; the release notes list App MSI, upgrade MCP and Smart App Control limits."
+        },
         {
           "path": "research/release-0.4.0/PLAN.md",
           "url": "https://github.com/openabstractions/redist/releases/tag/v0.4.0",
@@ -37,9 +43,15 @@
       "limits": [
         "Everyone installation requires elevation. Runtime instances run in each user's session.",
         "The release's appended Signatures section states the signing outcome for its MSIs and Setup.",
-        "The release's build record names the installed-tested architectures. A cross-built architecture is not installation-tested by its build."
+        "The release's build record names the installed-tested architectures. A cross-built architecture is not installation-tested by its build.",
+        "0.8.0: install app integrations from the Panel Catalog. App MSI double-click support and agent MCP connections after a 0.4 upgrade are deferred to 0.8.1. Smart App Control can block the bundled llama.cpp engine and the official OpenCode installer."
       ],
       "evidence": [
+        {
+          "path": "research/release-0.8.0/published.json",
+          "url": "https://github.com/openabstractions/redist/releases/tag/v0.8.0",
+          "shows": "0.8.0 public packages and checksums. Windows installers are signed; the release notes list App MSI, upgrade MCP and Smart App Control limits."
+        },
         {
           "path": "research/release-0.4.0/PLAN.md",
           "url": "https://github.com/openabstractions/redist/releases/tag/v0.4.0",
@@ -63,6 +75,11 @@
         "0.3.0 package qualification passed 26 installed Linux cases, with lifecycle evidence from WSL2 and a hosted Ubuntu amd64 runner. ARM64 installation, other distributions and graphical sessions are untested."
       ],
       "evidence": [
+        {
+          "path": "research/release-0.8.0/published.json",
+          "url": "https://github.com/openabstractions/redist/releases/tag/v0.8.0",
+          "shows": "0.8.0 public packages and checksums. Linux archives are unsigned; earlier lifecycle evidence retains its original release scope."
+        },
         {
           "path": "research/release-0.4.0/PLAN.md",
           "url": "https://github.com/openabstractions/redist/releases/tag/v0.4.0",
@@ -90,6 +107,11 @@
         "0.3.0 package qualification includes the no-user-manager installation check. `openabstractions serve runtime` runs in the foreground; an application reaches it only through an explicit endpoint."
       ],
       "evidence": [
+        {
+          "path": "research/release-0.8.0/published.json",
+          "url": "https://github.com/openabstractions/redist/releases/tag/v0.8.0",
+          "shows": "0.8.0 public packages and checksums. Linux archives are unsigned; earlier lifecycle evidence retains its original release scope."
+        },
         {
           "path": "research/release-0.4.0/PLAN.md",
           "url": "https://github.com/openabstractions/redist/releases/tag/v0.4.0",
@@ -121,6 +143,11 @@
         "The 0.4.0 macOS package left out Local model stores (inventoryd) and the model host (modelhostd), because native providers' caller check needed an XPC endpoint. Each release's notes list its package contents."
       ],
       "evidence": [
+        {
+          "path": "research/release-0.8.0/published.json",
+          "url": "https://github.com/openabstractions/redist/releases/tag/v0.8.0",
+          "shows": "0.8.0 public packages and checksums. The macOS package is signed; this observation adds no installed architecture result."
+        },
         {
           "path": "research/release-0.4.0/PLAN.md",
           "url": "https://github.com/openabstractions/redist/releases/tag/v0.4.0",

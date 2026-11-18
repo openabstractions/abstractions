@@ -9,6 +9,7 @@ import (
 	inference "github.com/openabstractions/abstraction-inference/go"
 	rwire "github.com/openabstractions/abstraction-rights/go/abstraction/rights/api"
 	router "github.com/openabstractions/abstraction-router/go"
+	"github.com/openabstractions/abstractions/mcp-gateway/product"
 )
 
 // ASK-R6: complete is routine only on a model server OpenAbstractions runs,
@@ -30,7 +31,12 @@ func TestAnswererRoutineTierRequiresOnMachineEndpoint(t *testing.T) {
 		h.BindingID = f.bindingID()
 		return h
 	}
-	installed := native("installed", declarationSourceInstallation, unshipped)
+	installedProgram := filepath.Join(machine, shippedFixtureProgram("modelhostd.exe"))
+	installed := native(product.ModelHost, declarationSourceInstallation, installedProgram)
+	// A shipped program under a name it does not ship (A-SEC6, ruling
+	// 2026-11-22 (1)).
+	localai := native("localai", declarationSourceOperator, installedProgram)
+	misplaced := native("misplaced", declarationSourceInstallation, unshipped)
 	registered := native("registered", declarationSourceOperator, unshipped)
 	productNative := native("product-native", declarationSourceProduct, unshipped)
 	ollama := router.Ollama("http://127.0.0.1:11434")
@@ -40,14 +46,14 @@ func TestAnswererRoutineTierRequiresOnMachineEndpoint(t *testing.T) {
 	remote := router.OpenAICompatible("operator-remote", "https://192.0.2.11:443", "/v1", []string{"model"})
 	var a runtimeAsks
 	a.useTierFacts(func() []*router.Host {
-		return []*router.Host{ollama, litellm, remote, installed, registered, productNative}
+		return []*router.Host{ollama, litellm, remote, installed, registered, productNative, localai, misplaced}
 	}, p.managedHost, nil)
-	for _, name := range []string{"ollama", "litellm", "operator-remote", "registered", "product-native"} {
+	for _, name := range []string{"ollama", "litellm", "operator-remote", "registered", "product-native", "localai", "misplaced"} {
 		if a.tierFacts.LocalServer(name) {
 			t.Errorf("%s was classified as a server OpenAbstractions runs", name)
 		}
 	}
-	if !a.tierFacts.LocalServer("installed") {
+	if !a.tierFacts.LocalServer(product.ModelHost) {
 		t.Error("a native installation provider with standing was not routine")
 	}
 }

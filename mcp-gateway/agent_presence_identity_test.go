@@ -31,16 +31,9 @@ func TestAgentPresenceReadmitRefusesRuntimeWithDifferentIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
-	var accepted atomic.Int64
-	go func() {
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				return
-			}
-			accepted.Add(1)
-			_ = conn.Close()
+	defer func() {
+		if listener != nil {
+			_ = listener.Close()
 		}
 	}()
 	principal, err := user.Current()
@@ -55,6 +48,7 @@ func TestAgentPresenceReadmitRefusesRuntimeWithDifferentIdentity(t *testing.T) {
 	status := &messagesInboxStatus{admission: new(agentToolAdmission)}
 	attempts := 0
 	var refusals []error
+	var missingEndpoint error
 	superviseAgentPresence(ctx, func(ctx context.Context, ready func(string), readmit bool, stop func()) error {
 		attempts++
 		if attempts == 1 {
@@ -63,13 +57,30 @@ func TestAgentPresenceReadmitRefusesRuntimeWithDifferentIdentity(t *testing.T) {
 			return &errAgentPresenceLost{cause: errors.New("presence lost")}
 		}
 		err := runNativeAgentPresenceAttempt(ctx, machine, "fixture-agent", "native-kept", ready, status, readmit, stop)
-		refusals = append(refusals, err)
-		if attempts == 4 {
+		if attempts <= 4 {
+			refusals = append(refusals, err)
+			// Each refusal precedes any server Accept. Retire its native
+			// instance and give the next retry a fresh one at the same name.
+			if err := listener.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if attempts < 4 {
+				next, err := listen.Listen(endpoint)
+				if err != nil {
+					t.Fatal(err)
+				}
+				listener = next
+			}
+		}
+		if attempts == 5 {
+			// The next retry must observe the closed native endpoint,
+			// proving fresh resolution after all three identity refusals.
+			missingEndpoint = err
 			cancel()
 		}
 		return err
 	}, status, readmitImmediately, time.Now)
-	if attempts != 4 {
+	if attempts != 5 {
 		t.Fatal(attempts)
 	}
 	if status.currentInstance() != "original" {
@@ -78,13 +89,18 @@ func TestAgentPresenceReadmitRefusesRuntimeWithDifferentIdentity(t *testing.T) {
 	if _, _, admitted := status.admission.begin(context.Background()); admitted {
 		t.Fatal("tools were admitted against a runtime with another identity")
 	}
+	if len(refusals) != 3 {
+		t.Fatal("native identity refusal count:", len(refusals))
+	}
 	for _, refusal := range refusals {
 		if !errors.Is(refusal, listen.ErrServerUntrusted) {
 			t.Fatal("resolve did not verify the server:", refusal)
 		}
 	}
-	if accepted.Load() < 3 {
-		t.Fatal("each attempt must resolve again; connections:", accepted.Load())
+	var resolution *client.ResolutionError
+	if !errors.As(missingEndpoint, &resolution) || resolution.Status != client.RuntimeUnavailable ||
+		!errors.Is(missingEndpoint, os.ErrNotExist) || errors.Is(missingEndpoint, listen.ErrServerUntrusted) {
+		t.Fatal("the next attempt did not resolve the closed native endpoint:", missingEndpoint)
 	}
 }
 

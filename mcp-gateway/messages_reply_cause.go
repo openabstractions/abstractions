@@ -72,7 +72,7 @@ func messagePrepareLostGuidance(cause string) string {
 	case "reply_connection_closed":
 		return "The connection to OpenAbstractions closed before it answered, as when OpenAbstractions restarts or updates. Nothing was sent by this operation. Try again once."
 	}
-	return "Native preparation reply unavailable; nothing was sent by this operation."
+	return "Native preparation reply unavailable; nothing was sent by this operation. Try again once."
 }
 
 // messageReceiverReplyError carries a version-skew cause out of discovery.

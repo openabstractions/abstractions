@@ -164,3 +164,49 @@ func TestDesktopReconnectOffersOneNoticeAndNoInstallOnRead(t *testing.T) {
 	action = "repair"
 	check(false, 1)
 }
+
+// Ruling OPENCODE-WATCHER-PIN 2: an OpenCode release outside the tested list
+// keeps its Catalog row without an action, the row names the supported
+// releases, and a click starts no installer.
+func TestCatalogLeavesAnUnsupportedOpenCodeReleaseAsItIs(t *testing.T) {
+	stubOverviewMachine(t)
+	verify, read, apply, present := verifyCatalogDesktopHost, readCatalogDesktopPackage, applyCatalogDesktopPackage, desktopProgramPresent
+	t.Cleanup(func() {
+		verifyCatalogDesktopHost, readCatalogDesktopPackage, applyCatalogDesktopPackage, desktopProgramPresent = verify, read, apply, present
+	})
+	doc := `{"schema":2,"release_tag":"v0.8.0","apps":[],"extensions":[{"id":"opencode","file":"opencode-0.8.0.msi","sha256":"` + strings.Repeat("a", 64) + `","bytes":100,"version":"0.8.0","product_code":"{01234567-89AB-CDEF-0123-456789ABCDEF}"}]}`
+	journal, err := (setup.Journal{Path: filepath.Join(t.TempDir(), "plan.json")}).WithAdopterAssets([]byte(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if journal.Catalog().DesktopIntegration == nil {
+		t.Skip("OpenCode integration is a Windows x64 catalog asset")
+	}
+	p := &servicePanel{setupJournal: &journal}
+	desktopProgramPresent = func(setup.AppID) bool { return true }
+	verifyCatalogDesktopHost = func(setup.AppID) error { return nil }
+	readCatalogDesktopPackage = func(setup.DesktopIntegration) (string, error) { return "install", nil }
+	applyCatalogDesktopPackage = func(setup.DesktopIntegration, context.Context, string, setup.Transfer) error {
+		t.Fatal("an unsupported release ran the integration installer")
+		return nil
+	}
+	const sentence = "This release of OpenAbstractions supports OpenCode 1.18.34 and 1.19.5."
+	unsupportedDesktopRelease = func(catalog setup.Catalog, app setup.AppID) string {
+		if app != setup.OpenCode || catalog.DesktopIntegration == nil {
+			t.Fatalf("release check of %q", app)
+		}
+		return sentence
+	}
+	facts := readOverview(t, p).DesktopIntegration
+	if !facts.Installed || facts.Action != "" || facts.Reason != sentence {
+		t.Fatalf("facts: %+v", facts)
+	}
+	post := installHandlerFor(p.handler("setup-test-key"))
+	if got := post("POST", "/setup/desktop-integration", `{"confirm":true}`); got.Code != http.StatusConflict || !strings.Contains(got.Body.String(), sentence) {
+		t.Fatalf("click: %d %s", got.Code, got.Body.String())
+	}
+	unsupportedDesktopRelease = func(setup.Catalog, setup.AppID) string { return "" }
+	if facts := readOverview(t, p).DesktopIntegration; facts.Action != "install" || facts.Reason != "" {
+		t.Fatalf("a listed release: %+v", facts)
+	}
+}
