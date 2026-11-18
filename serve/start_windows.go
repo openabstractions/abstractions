@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"unsafe"
 
 	"github.com/openabstractions/abstraction-facade/go/bootstrap"
@@ -30,9 +31,22 @@ func startGuard() error {
 
 func currentSupervisor() (string, error) { return bootstrap.SupervisorName() }
 
+func supervisorForActivation(lookup func() (string, error)) (string, string, error) {
+	name, err := lookup()
+	if err == nil || err == os.ErrNotExist {
+		return name, "", nil
+	}
+	// Bootstrap remains strict. Only its native SCM query refusal selects the
+	// existing owned host; a denied context registry read still refuses.
+	if errors.Is(err, windows.ERROR_ACCESS_DENIED) && strings.HasPrefix(err.Error(), "current supervisor instance query: ") {
+		return "", "per-user service lookup denied (Windows error 5)", nil
+	}
+	return "", "", err
+}
+
 func activateInstalled(ctx context.Context) error {
-	name, err := currentSupervisor()
-	if err != nil && err != os.ErrNotExist {
+	name, reason, err := supervisorForActivation(currentSupervisor)
+	if err != nil {
 		return err
 	}
 	system, err := windows.GetSystemDirectory()
@@ -40,7 +54,7 @@ func activateInstalled(ctx context.Context) error {
 		return err
 	}
 	return activateWindows(ctx, windowsActivation{
-		instance: name, sc: filepath.Join(system, "sc.exe"),
+		instance: name, sc: filepath.Join(system, "sc.exe"), fallbackReason: reason,
 		run: startCommand, launch: launchDetached, executable: os.Executable, stat: os.Stat, refusal: refuseDuringUpgrade,
 		profile: bootstrap.CurrentProfileView, shellLaunch: launchThroughShell,
 		report: func(reason string) { fmt.Fprintln(os.Stderr, "start: "+reason+"; activating the owned per-user host") },
@@ -98,12 +112,13 @@ func printPresenterStatus(output io.Writer, line string) error {
 }
 
 type windowsActivation struct {
-	instance, sc string
-	run          func(context.Context, string, ...string) error
-	launch       func(image string, args ...string) error
-	executable   func() (string, error)
-	stat         func(string) (os.FileInfo, error)
-	refusal      func() error
+	instance, sc   string
+	fallbackReason string
+	run            func(context.Context, string, ...string) error
+	launch         func(image string, args ...string) error
+	executable     func() (string, error)
+	stat           func(string) (os.FileInfo, error)
+	refusal        func() error
 	// profile probes the caller's profile view before a per-user launch; nil
 	// reads real.
 	profile func() (bootstrap.ProfileView, error)
@@ -127,6 +142,9 @@ func activateWindows(ctx context.Context, a windowsActivation) error {
 		return err
 	}
 	reason := "User Manager context is absent"
+	if a.fallbackReason != "" {
+		reason = a.fallbackReason
+	}
 	if a.instance != "" {
 		reason = "this session's per-user service is absent"
 		err = a.run(ctx, a.sc, "query", a.instance)
@@ -136,11 +154,17 @@ func activateWindows(ctx context.Context, a windowsActivation) error {
 			if errors.As(err, &exit) && exit.ExitCode() == 1056 {
 				return nil
 			}
-			return err
-		}
-		var exit *exec.ExitError
-		if !errors.As(err, &exit) || exit.ExitCode() != 1060 {
-			return err
+			if !serviceAccessDenied(err) {
+				return err
+			}
+			reason = "per-user service start denied (Windows error 5)"
+		} else if serviceAccessDenied(err) {
+			reason = "per-user service query denied (Windows error 5)"
+		} else {
+			var exit *exec.ExitError
+			if !errors.As(err, &exit) || exit.ExitCode() != 1060 {
+				return err
+			}
 		}
 	}
 	if a.report != nil {
@@ -165,6 +189,11 @@ func activateWindows(ctx context.Context, a windowsActivation) error {
 		}
 	}
 	return a.launch(twin, "serve", "supervisor")
+}
+
+func serviceAccessDenied(err error) bool {
+	var exit *exec.ExitError
+	return errors.Is(err, windows.ERROR_ACCESS_DENIED) || (errors.As(err, &exit) && exit.ExitCode() == 5)
 }
 
 const (

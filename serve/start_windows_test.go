@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -199,8 +200,9 @@ func TestWindowsActivationUsesOnlyOwnedInstalledPaths(t *testing.T) {
 				}
 				return
 			case "denied":
-				if err == nil || len(commands) != 1 || len(launched) != 0 {
-					t.Fatal(err, commands, launched)
+				if err != nil || len(commands) != 1 || !reflect.DeepEqual(launched, [][]string{{twin, "serve", "supervisor"}}) ||
+					!reflect.DeepEqual(reasons, []string{"per-user service query denied (Windows error 5)"}) {
+					t.Fatal(err, commands, launched, reasons)
 				}
 				return
 			case "virtualized":
@@ -227,6 +229,130 @@ func TestWindowsActivationUsesOnlyOwnedInstalledPaths(t *testing.T) {
 				t.Fatal(err, commands, launched)
 			}
 		})
+	}
+}
+
+func TestSupervisorActivationPreservesStrictNativeLookupErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		err      error
+		fallback bool
+	}{
+		{"native-query-denied", fmt.Errorf("current supervisor instance query: %w", windows.ERROR_ACCESS_DENIED), true},
+		{"registry-denied", fmt.Errorf("current User Manager context: %w", windows.ERROR_ACCESS_DENIED), false},
+		{"query-invalid-handle", fmt.Errorf("current supervisor instance query: %w", windows.ERROR_INVALID_HANDLE), false},
+		{"query-missing", fmt.Errorf("current supervisor instance query: %w", windows.ERROR_FILE_NOT_FOUND), false},
+		{"wrong-type", errors.New("current supervisor is not a per-user service instance"), false},
+		{"wrapped-missing-context", fmt.Errorf("unrelated observation: %w", os.ErrNotExist), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			name, reason, err := supervisorForActivation(func() (string, error) { return "", tc.err })
+			if tc.fallback {
+				if err != nil || name != "" || reason != "per-user service lookup denied (Windows error 5)" {
+					t.Fatal(name, reason, err)
+				}
+			} else if err != tc.err || name != "" || reason != "" {
+				t.Fatal(name, reason, err)
+			}
+		})
+	}
+}
+
+func TestDeniedServiceActivationRetainsOwnedLaunchGuards(t *testing.T) {
+	denied := exitForStartTest(t, 5)
+	other := exitForStartTest(t, 6)
+	root := t.TempDir()
+	twin := filepath.Join(root, "openabstractionsw.exe")
+	if err := os.WriteFile(twin, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, stage := range []string{"lookup", "query", "start"} {
+		for _, guard := range []string{"owned", "missing-image", "upgrade", "virtualized", "profile-error", "no-shell", "other-scm"} {
+			t.Run(stage+"/"+guard, func(t *testing.T) {
+				var commands int
+				var launched, shelled int
+				var reasons []string
+				instance, reason := "OpenAbstractionsSupervisor_123", ""
+				if stage == "lookup" {
+					var err error
+					instance, reason, err = supervisorForActivation(func() (string, error) {
+						return "", fmt.Errorf("current supervisor instance query: %w", windows.ERROR_ACCESS_DENIED)
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				a := windowsActivation{instance: instance, fallbackReason: reason, sc: `C:\Windows\System32\sc.exe`,
+					executable: func() (string, error) { return filepath.Join(root, "openabstractions.exe"), nil }, stat: os.Stat,
+					refusal: func() error {
+						if guard == "upgrade" {
+							return upgradeRefusal(errUpgradeInProgress)
+						}
+						return nil
+					},
+					run: func(_ context.Context, _ string, args ...string) error {
+						commands++
+						if args[0] == stage {
+							if guard == "other-scm" {
+								return other
+							}
+							return denied
+						}
+						return nil
+					},
+					launch: func(image string, args ...string) error {
+						if image != twin || !reflect.DeepEqual(args, []string{"serve", "supervisor"}) {
+							t.Fatal(image, args)
+						}
+						launched++
+						return nil
+					},
+					profile: func() (bootstrap.ProfileView, error) {
+						if guard == "profile-error" {
+							return bootstrap.ProfileView{}, errors.New("profile unavailable")
+						}
+						return bootstrap.ProfileView{Virtualized: guard == "virtualized" || guard == "no-shell"}, nil
+					},
+					shellLaunch: func(image, dir string, args ...string) error {
+						if guard == "no-shell" {
+							return errNoShell
+						}
+						if image != twin || dir != root || !reflect.DeepEqual(args, []string{"serve", "supervisor"}) {
+							t.Fatal(image, dir, args)
+						}
+						shelled++
+						return nil
+					},
+					report: func(value string) { reasons = append(reasons, value) },
+				}
+				if guard == "missing-image" {
+					a.stat = func(string) (os.FileInfo, error) { return nil, os.ErrNotExist }
+				}
+				if stage == "lookup" && guard == "other-scm" {
+					_, _, err := supervisorForActivation(func() (string, error) {
+						return "", fmt.Errorf("current supervisor instance query: %w", windows.ERROR_INVALID_HANDLE)
+					})
+					if err == nil {
+						t.Fatal("other native error accepted")
+					}
+					return
+				}
+				err := activateWindows(context.Background(), a)
+				if guard == "owned" || guard == "virtualized" {
+					if err != nil || !reflect.DeepEqual(reasons, []string{"per-user service " + stage + " denied (Windows error 5)"}) {
+						t.Fatal(err, reasons)
+					}
+					if guard == "owned" && (launched != 1 || shelled != 0) || guard == "virtualized" && (launched != 0 || shelled != 1) {
+						t.Fatal(launched, shelled)
+					}
+				} else if err == nil || launched+shelled != 0 {
+					t.Fatal(err, launched, shelled)
+				}
+				if (guard == "missing-image" || guard == "upgrade") && commands != 0 {
+					t.Fatal("SCM reached before guard", commands)
+				}
+			})
+		}
 	}
 }
 
